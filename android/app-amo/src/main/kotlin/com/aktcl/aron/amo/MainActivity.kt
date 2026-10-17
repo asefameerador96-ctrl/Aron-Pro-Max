@@ -179,6 +179,7 @@ class MainActivity : ComponentActivity() {
                                         com.aktcl.aron.core.ui.AronScreen(topBar = { com.aktcl.aron.core.ui.AronTopBar(stringResource(com.aktcl.aron.feature.home.R.string.hm_tile_sales_submit), onBack = back) }) { AmoSubmitHost(d) }
                                     },
                                     AmoScreen.OUTLET to { back -> AmoOutletHub(d, back) },
+                                    AmoScreen.TEAM to { back -> AmoTeamHub(d, reach, back) },
                                     AmoScreen.SALE to { back -> AmoSaleHub(d, back) },
                                     AmoScreen.CONTROL_CALL to { back -> ControlCallHost(d, back) },
                                     AmoScreen.JOINT_CALL to { back -> ControlCallHost(d, back, kind = com.aktcl.aron.feature.amo.AmoVisitKind.JOINT_CALL) },

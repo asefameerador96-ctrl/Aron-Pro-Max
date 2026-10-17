@@ -135,7 +135,7 @@ fun AmoOutletHub(day: AmoDay, onBack: () -> Unit, extra: @Composable (OutletHubE
                 rows?.let { com.aktcl.aron.feature.amo.VerifyListContent(it, names, { r -> verifyUuid = r.uuid; leaf = OutletLeaf.VERIFY_FORM }) }
                     ?: Box(Modifier.fillMaxSize(), Alignment.Center) { CircularProgressIndicator() }
             }
-            OutletLeaf.VERIFY_FORM -> AmoVerifyHost(day, verifyUuid, onDone = { leaf = OutletLeaf.VERIFY_LIST }, onGone = { leaf = OutletLeaf.VERIFY_LIST })
+            OutletLeaf.VERIFY_FORM -> PermissionGate(GatedFeature.OUTLET_REQUEST, onBack = back) { AmoVerifyHost(day, verifyUuid, onDone = { leaf = OutletLeaf.VERIFY_LIST }, onGone = { leaf = OutletLeaf.VERIFY_LIST }) }
             OutletLeaf.FORM -> PermissionGate(GatedFeature.OUTLET_REQUEST, onBack = back) { AmoRequestHost(day, onDone = { leaf = OutletLeaf.LIST }) }
         }
     }
@@ -209,23 +209,40 @@ private fun AmoVerifyHost(day: AmoDay, uuid: String?, onDone: () -> Unit, onGone
     var noFix by remember { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
     val bangla = androidx.compose.ui.platform.LocalConfiguration.current.locales[0].language == "bn"
-    val current = remember(req.outletId, day.zoneOutlets) {
-        day.zoneOutlets.firstOrNull { it.outletId == req.outletId }?.let { mapOf("name" to it.name, "owner_name" to it.ownerName, "contact_number" to it.contactNumber) }.orEmpty()
+    val outlet = remember(req.outletId, day.zoneOutlets.size) { day.zoneOutlets.firstOrNull { it.outletId == req.outletId } }
+    fun subLabel(id: String?) = id?.toLongOrNull()?.let { i -> subs.firstOrNull { it.id == i } }?.let { if (bangla) it.labelBn ?: it.labelEn else it.labelEn } ?: id
+    val loaded = detail as? com.aktcl.aron.feature.amo.VerifyDetailState.Loaded
+    val current: Map<String, String?> = outlet?.let {
+        mapOf("name" to it.name, "name_bn" to it.nameBn, "owner_name" to it.ownerName, "contact_number" to it.contactNumber, "sub_channel_id" to subLabel(it.subChannelId?.toString()))
+    }.orEmpty()
+    val changes = loaded?.let { l -> com.aktcl.aron.feature.amo.OutletVerify.changes(l.detail.proposed.mapValues { (k, v) -> if (k == "sub_channel_id") subLabel(v).orEmpty() else v }, current) }.orEmpty()
+    // The SR's proposed sub-channel and geo class are the starting point for a new outlet.
+    LaunchedEffect(loaded?.detail) {
+        loaded?.detail?.takeIf { it.type == "new" }?.let { d ->
+            if (subId == null) subId = d.proposed["sub_channel_id"]?.toLongOrNull()
+            if (geo == null) geo = d.proposed["geo_class"]?.takeIf { it in com.aktcl.aron.feature.amo.OutletVerify.GEO_CLASSES }
+        }
     }
-    val changes = (detail as? com.aktcl.aron.feature.amo.VerifyDetailState.Loaded)?.let { com.aktcl.aron.feature.amo.OutletVerify.changes(it.detail.proposed, current) }.orEmpty()
+    val dueLabel = stringResource(AmoR.string.amo_verify_f_due)
+    val money = com.aktcl.aron.rules.Formats.money(outlet?.openDueMtk ?: 0L, if (bangla) com.aktcl.aron.rules.UiLocale.BN else com.aktcl.aron.rules.UiLocale.EN)
+    val facts = if (req.type == "close" && outlet != null) listOf(dueLabel to money + (outlet.openDueAsOf?.let { " (" + stringResource(AmoR.string.amo_verify_f_due_as_of, it) + ")" } ?: "")) else emptyList()
+    val decidable = loaded?.takeIf { it.fresh }?.let { com.aktcl.aron.feature.amo.OutletVerify.decidable(it.detail, day.userId) } ?: true
     fun decide(verify: Boolean) {
         val e = com.aktcl.aron.feature.amo.OutletVerify.validate(req.type, verify, subId, geo)
         errors = e
         if (e.isNotEmpty() || busy) return
         busy = true; noFix = false
         scope.launch {
-            val ok = runCatching { day.decideRequest(recordUuid, req.uuid, verify, subId, geo, note.trim().ifEmpty { null }, null) }.getOrDefault(false)
+            val ask = req.type == "new"
+            val ok = try {
+                day.decideRequest(recordUuid, req.uuid, verify, if (ask) subId else null, if (ask) geo else null, note.trim().ifEmpty { null }, null)
+            } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { false }
             busy = false
             if (ok) onDone() else noFix = true
         }
     }
     com.aktcl.aron.feature.amo.VerifyFormContent(
-        request = req, detail = detail, changes = changes, subChannels = subs, bangla = bangla, subChannelId = subId, geoClass = geo, note = note,
+        request = req, detail = detail, changes = changes, facts = facts, askClassification = req.type == "new", decidable = decidable, subChannels = subs, bangla = bangla, subChannelId = subId, geoClass = geo, note = note,
         errors = errors, noFix = noFix, busy = busy, onSubChannel = { subId = it }, onGeoClass = { geo = it }, onNote = { note = it },
         onSave = { decide(true) }, onCancel = onGone, onReject = { decide(false) },
     )

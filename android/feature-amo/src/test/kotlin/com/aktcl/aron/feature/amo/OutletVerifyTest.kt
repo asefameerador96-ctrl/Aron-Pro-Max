@@ -53,4 +53,12 @@ class OutletVerifyTest {
         assertEquals(mapOf(7L to "Rahim"), OutletVerify.teamNames("""{"team":[{"user_id":7,"username":"sr7","full_name":"Rahim"},{"username":"x"}]}"""))
         assertTrue(OutletVerify.teamNames(null).isEmpty())
     }
+
+    @Test fun onlyAPendingRequestOfAnotherUserCanBeDecided() {
+        val base = OutletVerify.detail("""{"request_type":"new","status":"pending","requested_by_user_id":5,"proposed":{}}""")!!
+        assertTrue(OutletVerify.decidable(base, 99))
+        assertTrue(!OutletVerify.decidable(base, 5))
+        assertTrue(!OutletVerify.decidable(base.copy(status = "verified"), 99))
+        assertEquals("pending", OutletVerify.detail("""{"request_type":"new","proposed":{}}""")!!.status)
+    }
 }

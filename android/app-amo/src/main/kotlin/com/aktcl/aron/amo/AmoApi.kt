@@ -26,16 +26,27 @@ class AmoApi(private val client: AronApiClient, context: Context, userId: Long) 
         val r = client.call(path = path, auth = CallAuth.Grant(Grant.FULL), build = { get() }, decode = { body, _ -> body })
         return when (r) {
             is ApiResult.Success -> { remember(key, r.value); AmoFetch.Fresh(r.value) }
+            // Out of reach or gone: never serve an old copy of something the server now refuses.
+            is ApiResult.Failure -> if (r.httpStatus == 403 || r.httpStatus == 404) { forget(key); AmoFetch.Unavailable } else cached(key)
             else -> cached(key)
         }
     }
 
-    private fun cached(key: String): AmoFetch = prefs.getString(key, null)?.let { AmoFetch.Cached(it) } ?: AmoFetch.Unavailable
-
-    private fun remember(key: String, json: String) {
-        if (prefs.all.size >= MAX_ENTRIES) prefs.edit().clear().apply() // bounded: the lists are re-read when online
-        prefs.edit().putString(key, json).apply()
+    private fun cached(key: String): AmoFetch {
+        val at = prefs.getLong("$key$AT", 0L)
+        if (System.currentTimeMillis() - at > MAX_AGE_MS) { forget(key); return AmoFetch.Unavailable } // a month-old copy is not shown
+        return prefs.getString(key, null)?.let { AmoFetch.Cached(it) } ?: AmoFetch.Unavailable
     }
 
-    private companion object { const val MAX_ENTRIES = 300 }
+    private fun forget(key: String) = prefs.edit().remove(key).remove("$key$AT").apply()
+
+    /** Logout or a switched user: nothing of this user's reads stays behind. */
+    fun clear() = prefs.edit().clear().apply()
+
+    private fun remember(key: String, json: String) {
+        if (prefs.all.size >= 2 * MAX_ENTRIES) prefs.edit().clear().apply() // bounded: the lists are re-read when online
+        prefs.edit().putString(key, json).putLong("$key$AT", System.currentTimeMillis()).apply()
+    }
+
+    private companion object { const val MAX_ENTRIES = 300; const val AT = "_at"; const val MAX_AGE_MS = 30L * 24 * 3600 * 1000 }
 }

@@ -21,7 +21,7 @@ enum class VerifyError { SUB_CHANNEL_REQUIRED, GEO_CLASS_REQUIRED }
 data class FieldChange(val field: String, val old: String?, val new: String)
 
 /** The server's view of a request (`GET /v1/outlet-requests/{uuid}`), reduced to what the verification screens show. */
-data class VerifyDetail(val type: String, val proposed: Map<String, String>, val outletId: Long?, val lat: Double?, val lng: Double?, val photos: Int, val flags: List<String>)
+data class VerifyDetail(val type: String, val status: String, val requestedBy: Long?, val proposed: Map<String, String>, val outletId: Long?, val lat: Double?, val lng: Double?, val photos: Int, val flags: List<String>)
 
 /** Pure rules of the AMO verification screens (F-AMO-022/023/024); the app wires them to the API, the store and the camera. */
 object OutletVerify {
@@ -68,11 +68,14 @@ object OutletVerify {
         val proposed = (o["proposed"] as? JsonObject).orEmpty().mapNotNull { (k, v) -> (v as? JsonPrimitive)?.contentOrNull?.let { k to it } }.toMap()
         val fix = o["request_fix"] as? JsonObject
         return VerifyDetail(
-            str(o, "request_type") ?: return null, proposed, lng(o, "outlet_id"),
+            str(o, "request_type") ?: return null, str(o, "status") ?: "pending", lng(o, "requested_by_user_id"), proposed, lng(o, "outlet_id"),
             (fix?.get("lat") as? JsonPrimitive)?.contentOrNull?.toDoubleOrNull(), (fix?.get("lng") as? JsonPrimitive)?.contentOrNull?.toDoubleOrNull(),
             (o["photos"] as? JsonArray)?.size ?: 0, (o["flags"] as? JsonArray).orEmpty().mapNotNull { (it as? JsonPrimitive)?.contentOrNull },
         )
     }
+
+    /** A fresh server answer that says the request is no longer waiting (decided on the web, lapsed) or is the AMO's own: Save and Reject stay off. */
+    fun decidable(d: VerifyDetail, ownUserId: Long): Boolean = d.status == "pending" && d.requestedBy != ownUserId
 
     /** Info-change rows: only the fields the SR proposed, each with the value the outlet has now. */
     fun changes(proposed: Map<String, String>, current: Map<String, String?>): List<FieldChange> =

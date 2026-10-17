@@ -423,7 +423,10 @@ class AmoDay(
     // ---- Verify SR outlet requests (F-AMO-022/023/024)
 
     /** Request uuids this phone has already decided (queued or sent), so they leave the pending list at once. */
-    suspend fun decidedRequests(): Set<String> = db.captureDao().amoRecordsOfType("outlet_request_verification").mapNotNull {
+    suspend fun decidedRequests(): Set<String> = db.captureDao().amoRecordsOfType("outlet_request_verification").filter { r ->
+        // A decision the server refused (rejected, quarantined) does not hide the request: the AMO can decide it again.
+        db.outboxDao().byClientUuid(r.clientUuid)?.state.let { it != com.aktcl.aron.core.database.entity.OutboxState.REJECTED && it != com.aktcl.aron.core.database.entity.OutboxState.QUARANTINED }
+    }.mapNotNull {
         runCatching { (kotlinx.serialization.json.Json.parseToJsonElement(it.payloadJson) as kotlinx.serialization.json.JsonObject)["request_uuid"]?.let { v -> (v as kotlinx.serialization.json.JsonPrimitive).content } }.getOrNull()
     }.toSet()
 
@@ -451,11 +454,39 @@ class AmoDay(
             requestUuid, if (verify) "verified" else "discarded", subChannelId, geoClass, fix, photoUuid, note,
         )
         photoUuid?.let { runCatching { claimPhoto(it, "outlet_verification", "outlet_request_verification", recordUuid, fixEntity) } }
-        capture.recordAmo(
-            com.aktcl.aron.core.database.entity.AmoRecordEntity(recordUuid, metaProvider.meta(0L), "outlet_request_verification", recordUuid, 0, payload.toString()),
-        )
+        try {
+            capture.recordAmo(
+                com.aktcl.aron.core.database.entity.AmoRecordEntity(recordUuid, metaProvider.meta(0L), "outlet_request_verification", recordUuid, 0, payload.toString()),
+            )
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            // A concurrent second call with the same record uuid hit the primary key: the decision is queued once.
+            if (requestUuid !in decidedRequests()) throw e
+        }
         runCatching { requestSync() }
         return true
+    }
+
+    // ---- Exceptions (F-AMO-038): risk signals of the zone, reviewed offline
+
+    private suspend fun decidedSignals(): Set<Long> = db.captureDao().amoRecordsOfType("risk_review").mapNotNull {
+        runCatching { (kotlinx.serialization.json.Json.parseToJsonElement(it.payloadJson) as kotlinx.serialization.json.JsonObject)["signal_id"]?.let { v -> (v as kotlinx.serialization.json.JsonPrimitive).content.toLong() } }.getOrNull()
+    }.toSet()
+
+    /** Today's open signals of the zone that this phone has not reviewed yet (local read). */
+    suspend fun openSignals(): List<com.aktcl.aron.feature.amo.RiskSignalRow> =
+        com.aktcl.aron.feature.amo.Exceptions.open(runCatching { reference.section("supervisor") }.getOrNull(), businessDate(), decidedSignals())
+
+    /** Queues one review event for [signalId]; a signal already reviewed on this phone queues nothing (so a retry never doubles it). */
+    suspend fun reviewSignal(recordUuid: String, signalId: Long, action: String, note: String?): Boolean {
+        if (signalId in decidedSignals()) return false
+        val payload = com.aktcl.aron.core.database.record.AmoPayloads.riskReview(signalId, action, note)
+        val queued = capture.recordAmo(
+            com.aktcl.aron.core.database.entity.AmoRecordEntity(recordUuid, metaProvider.meta(0L), "risk_review", recordUuid, 0, payload.toString()),
+        )
+        runCatching { requestSync() }
+        return queued
     }
 
     // ---- Survey (F-AMO-043): the SR's POSM survey component without points
