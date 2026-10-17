@@ -67,7 +67,7 @@ fun AmoTeamHub(day: AmoDay, reach: AmoReach, onBack: () -> Unit) {
                 AronListRow(stringResource(AmoR.string.amo_exc_title), onClick = { leaf = TeamLeaf.EXCEPTIONS }, position = if (leaves.isEmpty()) RowPosition.Only else RowPosition.Last, divider = false, flat = true)
             }
         }
-        TeamLeaf.LEAF -> if (open == AmoLeaf.TASK_DELEGATION) AmoTaskHub(day, back) else RoleSectionPlaceholder(stringResource(open?.let { leafLabel(it) } ?: HomeR.string.rh_amo_team), AronIcons.Info, onBack = back)
+        TeamLeaf.LEAF -> if (open == AmoLeaf.TASK_DELEGATION) AmoTaskHub(day, back) else if (open == AmoLeaf.TEAM_LOCATION) AronScreen(topBar = { AronTopBar(stringResource(AmoR.string.amo_leaf_team_location), onBack = back) }) { AmoTeamLocation(day) } else RoleSectionPlaceholder(stringResource(open?.let { leafLabel(it) } ?: HomeR.string.rh_amo_team), AronIcons.Info, onBack = back)
         TeamLeaf.EXCEPTIONS, TeamLeaf.EXCEPTION_DETAIL -> AronScreen(topBar = { AronTopBar(stringResource(AmoR.string.amo_exc_title), onBack = back) }) {
             AmoExceptions(day, leaf == TeamLeaf.EXCEPTION_DETAIL, signalId, onOpen = { signalId = it.id; leaf = TeamLeaf.EXCEPTION_DETAIL }, onDone = { leaf = TeamLeaf.EXCEPTIONS })
         }

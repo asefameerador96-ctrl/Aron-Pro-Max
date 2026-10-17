@@ -67,7 +67,9 @@ fun AmoTaskHub(day: AmoDay, onBack: () -> Unit) {
             TaskLeaf.LIST -> AmoTaskList(day, team, days.orEmpty(), onAssign = { leaf = TaskLeaf.PICK_SR })
             TaskLeaf.PICK_SR -> TaskSrPickContent(team, { srId = it.userId; leaf = TaskLeaf.PICK_ROUTE })
             TaskLeaf.PICK_ROUTE -> {
-                val mine = days.orEmpty().filter { sr == null || it.route.routeId in sr.routeIds }
+                val all = days ?: run { Box(Modifier.fillMaxSize(), Alignment.Center) { CircularProgressIndicator() }; return@AronScreen }
+                // An SR with no known route of their own (or none in today's list) falls back to the zone's routes: the server accepts any outlet in reach.
+                val mine = all.filter { sr == null || it.route.routeId in sr.routeIds }.ifEmpty { all }
                 AmoRoutePick(ControlCall.routes(mine), { routeId = it.routeId; leaf = TaskLeaf.PICK_OUTLET })
             }
             TaskLeaf.PICK_OUTLET -> {
@@ -140,6 +142,7 @@ private fun AmoTaskForm(day: AmoDay, sr: TeamSr, outlet: OutletEntity, onDone: (
                 scope.launch {
                     val type = loaded.first { it.code == typeCode }
                     val ok = try {
+                        // A false answer means this form's task is already queued (a retry after a kill): the toast is true either way.
                         day.assignTask(uuid, type.code, sr.userId, outlet.outletId, TaskDelegation.title(type.labelEn, outlet.name), description.trim().ifEmpty { null }, due)
                         true
                     } catch (c: kotlinx.coroutines.CancellationException) { throw c } catch (x: Exception) { false }

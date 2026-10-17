@@ -502,6 +502,12 @@ class AmoDay(
         return queued
     }
 
+    /** `cfg.map.provider` and `cfg.map.tile_cache_mb` (defaults when the registry has none). */
+    suspend fun mapSettings(): com.aktcl.aron.core.map.MapSettings {
+        suspend fun cfg(k: String) = runCatching { reference.config(k, iso(clock.nowMs())) }.getOrNull()?.trim('"')
+        return com.aktcl.aron.core.map.MapSettings.of(cfg("cfg.map.provider"), cfg("cfg.map.tile_cache_mb")?.toIntOrNull())
+    }
+
     // ---- Task Delegation (F-AMO-018/019)
 
     suspend fun teamSrs(): List<com.aktcl.aron.feature.amo.TeamSr> = com.aktcl.aron.feature.amo.TaskDelegation.team(runCatching { reference.section("supervisor") }.getOrNull())
@@ -513,11 +519,11 @@ class AmoDay(
         val o = runCatching { kotlinx.serialization.json.Json.parseToJsonElement(r.payloadJson) as kotlinx.serialization.json.JsonObject }.getOrNull() ?: return@mapNotNull null
         fun s(k: String) = (o[k] as? kotlinx.serialization.json.JsonPrimitive)?.content
         val state = db.outboxDao().byClientUuid(r.clientUuid)?.state
-        if (state == com.aktcl.aron.core.database.entity.OutboxState.REJECTED || state == com.aktcl.aron.core.database.entity.OutboxState.QUARANTINED) return@mapNotNull null
+        val refused = state == com.aktcl.aron.core.database.entity.OutboxState.REJECTED || state == com.aktcl.aron.core.database.entity.OutboxState.QUARANTINED
         com.aktcl.aron.feature.amo.AssignedTask(
             r.clientUuid, s("task_type_code").orEmpty(), s("title").orEmpty(), s("outlet_id")?.toLongOrNull(), s("assignee_user_id")?.toLongOrNull() ?: return@mapNotNull null,
             "ongoing", s("due_date"), null, null, r.meta.capturedAt,
-            waiting = state == com.aktcl.aron.core.database.entity.OutboxState.PENDING || state == com.aktcl.aron.core.database.entity.OutboxState.IN_FLIGHT,
+            waiting = state == com.aktcl.aron.core.database.entity.OutboxState.PENDING || state == com.aktcl.aron.core.database.entity.OutboxState.IN_FLIGHT, rejected = refused,
         )
     }
 

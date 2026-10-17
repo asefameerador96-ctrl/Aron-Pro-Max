@@ -205,4 +205,5 @@
     <string name="amo_task_pick_route">Choose the route</string>
     <string name="amo_task_pick_outlet">Choose the shop</string>
     <string name="amo_task_failed">Could not save the task. Try again.</string>
+    <string name="amo_task_rejected">Not accepted by the office system</string>
 </resources>

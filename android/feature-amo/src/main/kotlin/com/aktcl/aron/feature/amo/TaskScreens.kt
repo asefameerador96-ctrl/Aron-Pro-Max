@@ -25,6 +25,7 @@ private fun pos(i: Int, n: Int) = if (n == 1) RowPosition.Only else if (i == 0) 
 @Composable
 private fun statusText(t: AssignedTask): String = stringResource(
     when {
+        t.rejected -> R.string.amo_task_rejected
         t.waiting -> R.string.amo_task_waiting
         t.status == "completed" -> R.string.amo_task_completed
         t.status == "cancelled" -> R.string.amo_task_cancelled

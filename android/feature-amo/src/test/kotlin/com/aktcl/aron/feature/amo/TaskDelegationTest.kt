@@ -16,9 +16,11 @@ class TaskDelegationTest {
 
     @Test fun mergeShowsPhoneOnlyTasksFirstAndNeverTwice() {
         val s = TaskDelegation.assignedBy("""{"items":[${task("a", 9, "2026-10-17T01:00:00Z")}]}""", 9)
-        val l = listOf(s[0], s[0].copy(uuid = "z", createdAt = "2026-10-18T00:00:00Z"))
+        val l = listOf(s[0], s[0].copy(uuid = "z", createdAt = "2026-10-18T00:00:00Z", waiting = true), s[0].copy(uuid = "r", createdAt = "2026-10-17T12:00:00Z", rejected = true), s[0].copy(uuid = "k", createdAt = "2026-10-17T11:00:00Z"))
         val m = TaskDelegation.merge(s, l)
-        assertEquals(listOf("z", "a"), m.map { it.uuid }); assertEquals(listOf(true, false), m.map { it.waiting })
+        assertEquals(listOf("z", "r", "k", "a"), m.map { it.uuid })
+        assertEquals(listOf(true, false, false, false), m.map { it.waiting }) // an acked phone-only task is not "waiting"
+        assertEquals(listOf(false, true, false, false), m.map { it.rejected })
     }
 
     @Test fun teamKeepsSrsOnly() {
@@ -43,5 +45,11 @@ class TaskDelegationTest {
         assertEquals(120, TaskDelegation.title("T".repeat(100), "S".repeat(100)).length)
         assertEquals("Stock check", TaskDelegation.title("Stock check", null))
         assertEquals(listOf("2026-10-30", "2026-10-31", "2026-11-01"), TaskDelegation.dueChoices("2026-10-30", 3))
+    }
+
+    @Test fun pagesAreCombinedAndTheCursorRead() {
+        assertEquals("c1", TaskDelegation.nextCursor("""{"items":[],"next_cursor":"c1"}""")); assertEquals(null, TaskDelegation.nextCursor("""{"items":[],"next_cursor":null}"""))
+        val all = TaskDelegation.combine(listOf("""{"items":[${task("a", 9, "2026-10-17T01:00:00Z")}]}""", """{"items":[${task("b", 9, "2026-10-17T02:00:00Z")}]}"""))
+        assertEquals(listOf("b", "a"), TaskDelegation.assignedBy(all, 9).map { it.uuid })
     }
 }

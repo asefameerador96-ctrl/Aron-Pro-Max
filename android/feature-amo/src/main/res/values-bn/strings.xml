@@ -205,4 +205,5 @@
     <string name="amo_task_pick_route">রুট বেছে নিন</string>
     <string name="amo_task_pick_outlet">দোকান বেছে নিন</string>
     <string name="amo_task_failed">কাজ সংরক্ষণ করা যায়নি। আবার চেষ্টা করুন।</string>
+    <string name="amo_task_rejected">অফিস সিস্টেম গ্রহণ করেনি</string>
 </resources>

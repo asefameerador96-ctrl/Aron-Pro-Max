@@ -5,6 +5,7 @@ import com.aktcl.aron.core.network.ApiResult
 import com.aktcl.aron.core.network.AronApiClient
 import com.aktcl.aron.core.network.CallAuth
 import com.aktcl.aron.core.network.Grant
+import com.aktcl.aron.feature.amo.TaskDelegation
 
 /** What an online read gave: fresh from the server, the last answer kept on this phone, or nothing. */
 sealed interface AmoFetch {
@@ -22,20 +23,36 @@ class AmoApi(private val client: AronApiClient, context: Context, userId: Long) 
 
     suspend fun outletRequest(uuid: String): AmoFetch = get("/v1/outlet-requests/$uuid", "req_$uuid")
 
-    /** `GET /v1/tasks` of the last [days] days (F-API-026); the caller keeps the ones it assigned. */
-    suspend fun tasks(fromDate: String): AmoFetch = get("/v1/tasks", "tasks", mapOf("from" to fromDate, "limit" to "200"))
+    /** `GET /v1/team/locations` (F-API-023): the last synced fix of each SR of the zone. */
+    suspend fun teamLocations(businessDate: String): AmoFetch = get("/v1/team/locations", "team_loc", mapOf("business_date" to businessDate))
 
-    private suspend fun get(path: String, key: String, query: Map<String, String> = emptyMap()): AmoFetch {
+    /** `GET /v1/tasks` created from [fromDate] on (F-API-026), all pages up to a few; the caller keeps the ones it assigned. */
+    suspend fun tasks(fromDate: String): AmoFetch {
+        val first = get("/v1/tasks", null, mapOf("from" to fromDate, "limit" to "200"))
+        if (first !is AmoFetch.Fresh) return cached("tasks")
+        // The reach holds every task of the zone: follow the cursor (a few pages) so the AMO's own are not cut off at 200.
+        val pages = mutableListOf(first.json)
+        var cursor = TaskDelegation.nextCursor(first.json)
+        while (cursor != null && pages.size < MAX_PAGES) {
+            val next = get("/v1/tasks", null, mapOf("from" to fromDate, "limit" to "200", "cursor" to cursor)) as? AmoFetch.Fresh ?: break
+            pages += next.json; cursor = TaskDelegation.nextCursor(next.json)
+        }
+        val all = TaskDelegation.combine(pages)
+        remember("tasks", all)
+        return AmoFetch.Fresh(all)
+    }
+
+    private suspend fun get(path: String, key: String?, query: Map<String, String> = emptyMap()): AmoFetch {
         val r = client.call(
             path = path, auth = CallAuth.Grant(Grant.FULL),
             build = { url(query.entries.fold(client.origin.path(path).newBuilder()) { b, (k, v) -> b.addQueryParameter(k, v) }.build()); get() },
             decode = { body, _ -> body },
         )
         return when (r) {
-            is ApiResult.Success -> { remember(key, r.value); AmoFetch.Fresh(r.value) }
+            is ApiResult.Success -> { if (key != null) remember(key, r.value); AmoFetch.Fresh(r.value) }
             // Out of reach or gone: never serve an old copy of something the server now refuses.
-            is ApiResult.Failure -> if (r.httpStatus == 403 || r.httpStatus == 404) { forget(key); AmoFetch.Unavailable } else cached(key)
-            else -> cached(key)
+            is ApiResult.Failure -> if (r.httpStatus == 403 || r.httpStatus == 404) { key?.let(::forget); AmoFetch.Unavailable } else key?.let(::cached) ?: AmoFetch.Unavailable
+            else -> key?.let(::cached) ?: AmoFetch.Unavailable
         }
     }
 
@@ -55,5 +72,5 @@ class AmoApi(private val client: AronApiClient, context: Context, userId: Long) 
         prefs.edit().putString(key, json).putLong("$key$AT", System.currentTimeMillis()).apply()
     }
 
-    private companion object { const val MAX_ENTRIES = 300; const val AT = "_at"; const val MAX_AGE_MS = 30L * 24 * 3600 * 1000 }
+    private companion object { const val MAX_PAGES = 5; const val MAX_ENTRIES = 300; const val AT = "_at"; const val MAX_AGE_MS = 30L * 24 * 3600 * 1000 }
 }

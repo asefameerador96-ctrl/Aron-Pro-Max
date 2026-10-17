@@ -15,6 +15,8 @@ data class TaskType(val code: String, val labelEn: String, val labelBn: String?)
 data class AssignedTask(
     val uuid: String, val typeCode: String, val title: String, val outletId: Long?, val assigneeId: Long, val status: String,
     val dueDate: String?, val resolvedAt: String?, val resolutionNote: String?, val createdAt: String, val waiting: Boolean = false,
+    /** The server refused the task (for example the SR is outside the AMO's reach): it never reaches the SR. */
+    val rejected: Boolean = false,
 )
 
 enum class AssignError { ASSIGNEE_REQUIRED, TYPE_REQUIRED, OUTLET_REQUIRED, DATE_INVALID, TEXT_TOO_LONG }
@@ -49,6 +51,12 @@ object TaskDelegation {
     }
 
     /** Tasks this AMO assigned, newest first, from a `GET /v1/tasks` page. */
+    /** `next_cursor` of a `GET /v1/tasks` page, or null on the last page. */
+    fun nextCursor(pageJson: String?): String? = runCatching { ((Json.parseToJsonElement(pageJson ?: return null) as? JsonObject)?.get("next_cursor") as? JsonPrimitive)?.contentOrNull }.getOrNull()
+
+    /** One list from several pages: the items of all of them. */
+    fun combine(pages: List<String>): String = JsonObject(mapOf("items" to JsonArray(pages.flatMap { p -> ((runCatching { Json.parseToJsonElement(p) as? JsonObject }.getOrNull())?.get("items") as? JsonArray).orEmpty() }))).toString()
+
     fun assignedBy(pageJson: String?, ownUserId: Long): List<AssignedTask> {
         val o = runCatching { Json.parseToJsonElement(pageJson ?: return emptyList()) as? JsonObject }.getOrNull() ?: return emptyList()
         return (o["items"] as? JsonArray).orEmpty().mapNotNull { e ->
@@ -62,10 +70,10 @@ object TaskDelegation {
         }.sortedByDescending { it.createdAt }
     }
 
-    /** The server's tasks plus those only on this phone (not in the server list yet), waiting ones first. */
+    /** The server's tasks plus those only on this phone (not in the server list yet), newest phone-only ones first; each keeps its own waiting/rejected state. */
     fun merge(server: List<AssignedTask>, local: List<AssignedTask>): List<AssignedTask> {
         val known = server.map { it.uuid }.toSet()
-        return local.filter { it.uuid !in known }.map { it.copy(waiting = true) }.sortedByDescending { it.createdAt } + server
+        return local.filter { it.uuid !in known }.sortedByDescending { it.createdAt } + server
     }
 
     /** The assign form's rules: an SR, a type, an outlet, a due date from [today] on, and the text within its limit. */
