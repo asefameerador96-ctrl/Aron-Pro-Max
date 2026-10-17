@@ -48,6 +48,10 @@ class ApiWorld(
     val ids = HashMap<String, Long>()
     val otherIds = HashMap<String, Long>()
     val wiring: Wiring
+    /** The in-memory blob store behind every blob port (SAS, photo writer, photo read): blob calls answer 2xx here. */
+    val blobs = FakeBlobs()
+    /** The key pair of the seeded SR phone ([SR_PHONE]): its public JWK replaces the seed placeholder, so the harness signs device proofs. */
+    val phoneKey: java.security.KeyPair = KeyPairGenerator.getInstance("EC").apply { initialize(ECGenParameterSpec("secp256r1")) }.generateKeyPair()
 
     init {
         // The blob issuer reads its account from the process environment, not from Settings: with it set the harness
@@ -68,6 +72,7 @@ class ApiWorld(
                 "INSERT INTO app.device (device_uuid, flavour, app_package, status, device_owner, lockdown_level, trust_level, public_key_jwk, public_key_thumbprint, attestation_summary, app_signing_cert_sha256, zone_id, device_info, app_version) " +
                     "SELECT '$THROWAWAY_PHONE', flavour, app_package, status, device_owner, lockdown_level, trust_level, public_key_jwk, 'qa-throwaway-0009', attestation_summary, app_signing_cert_sha256, zone_id, device_info, app_version FROM app.device WHERE device_uuid = '$SR_PHONE'",
             )
+            h.createUpdate("UPDATE app.device SET public_key_jwk = CAST(:jwk AS jsonb) WHERE device_uuid = '$SR_PHONE'").bind("jwk", publicJwk(phoneKey)).execute()
             fun load(into: HashMap<String, Long>, zone: String, outletPrefix: String, user: String, device: String?) {
                 fun one(sql: String) = h.createQuery(sql).mapTo(Long::class.java).findOne().orElse(null)
                 mapOf(
@@ -91,7 +96,7 @@ class ApiWorld(
             val k = KeyPairGenerator.getInstance("EC").apply { initialize(ECGenParameterSpec("secp256r1")) }.generateKeyPair().private
             writeText("-----BEGIN " + "PRIVATE KEY-----\n" + Base64.getMimeEncoder().encodeToString(k.encoded) + "\n-----END PRIVATE KEY-----\n")
         }
-        wiring = Wiring.production(Settings.load(mapOf("ARON_ROLE" to "api", "ARON_DB_URL" to fresh.url, "ARON_JWT_SIGNING_KEY_FILE" to key.absolutePath)), clock, extraRecordHandlers)
+        wiring = Wiring.production(Settings.load(mapOf("ARON_ROLE" to "api", "ARON_DB_URL" to fresh.url, "ARON_JWT_SIGNING_KEY_FILE" to key.absolutePath)), clock, extraRecordHandlers, blobPorts = blobs.ports())
     }
 
     override fun close() { wiring.database?.close(); fresh.close() }
@@ -119,8 +124,15 @@ class ApiWorld(
         pathIds: Map<String, Long> = ids, extraQuery: String = "", onInvalidBody: (List<String>) -> Unit = {},
         includeOptionalIds: Boolean = false, bodyEdit: ((com.fasterxml.jackson.databind.JsonNode) -> Unit)? = null,
         query: Map<String, String> = emptyMap(),
+        /** Path parameter values by name (uuids and ids an earlier answer created), before [pathIds] and samples. */
+        pathValues: Map<String, String> = emptyMap(),
+        headers: Map<String, String> = emptyMap(),
+        /** `X-Device-Proof` from the final method, path, sent bytes and JSON text (null: none); see [deviceProofOf]. */
+        proof: ((method: String, path: String, sent: ByteArray, json: String?) -> String)? = null,
+        /** A body sent as is (multipart) instead of the generated JSON sample. */
+        rawBody: io.ktor.http.content.OutgoingContent.ByteArrayContent? = null,
     ): HttpResponse {
-        val path = pathFor(contract, op, pathIds)
+        val path = pathFor(contract, op, pathIds, pathValues)
         val query = (
             op.parameters.filter { it.where == "query" && it.required }.map { p -> p.name + "=" + URLEncoder.encode(query[p.name] ?: paramValue(p.name, pathIds) ?: contract.sampleText(p.schema, p.name), "UTF-8") } +
                 listOfNotNull(extraQuery.ifEmpty { null })
@@ -134,9 +146,12 @@ class ApiWorld(
             ContractModel.json.writeValueAsString(sample)
         }
         val gzip = op.parameters.any { it.where == "header" && it.name == "Content-Encoding" && it.required }
+        val sent: ByteArray = rawBody?.bytes() ?: body?.let { if (gzip) gz(it) else it.toByteArray() } ?: ByteArray(0)
         return client.request(path + if (query.isEmpty()) "" else "?$query") {
             method = HttpMethod.parse(op.method)
             header("X-App-Version", APP_VERSION)
+            headers.forEach { (k, v) -> header(k, v) }
+            proof?.let { header("X-Device-Proof", it(op.method, path, sent, body)) }
             if (token != null) header("Authorization", "Bearer $token")
             c.device?.let { header("X-Device-Id", it) }
             for (p in op.parameters.filter { it.where == "header" && it.required }) {
@@ -147,7 +162,8 @@ class ApiWorld(
                     else -> header(p.name, contract.sampleText(p.schema, p.name))
                 }
             }
-            if (body != null) {
+            if (rawBody != null) setBody(rawBody)
+            else if (body != null) {
                 if (gzip) setBody(io.ktor.http.content.ByteArrayContent(gz(body), ContentType.Application.Json))
                 else { contentType(ContentType.Application.Json); setBody(body) }
             }
@@ -155,8 +171,21 @@ class ApiWorld(
     }
 
     /** The concrete request path of [op] with its parameters filled from [pathIds] (or samples). */
-    fun pathFor(contract: ContractModel, op: ContractModel.Operation, pathIds: Map<String, Long>): String =
-        op.path.replace(Regex("\\{([^}]*)}")) { m -> pathValue(contract, op, m.groupValues[1], pathIds) }
+    fun pathFor(contract: ContractModel, op: ContractModel.Operation, pathIds: Map<String, Long>, values: Map<String, String> = emptyMap()): String =
+        op.path.replace(Regex("\\{([^}]*)}")) { m -> values[m.groupValues[1]] ?: pathValue(contract, op, m.groupValues[1], pathIds) }
+
+    /** `X-Device-Proof` of the seeded SR phone: ES256 over `aron-proof-v1`, `device`, uuid, `METHOD path`, sha256 hex of the body, nonce bucket. */
+    fun deviceProofOf(method: String, path: String, body: ByteArray): String =
+        sign(listOf("aron-proof-v1", "device", SR_PHONE, "$method $path", com.aktcl.aron.backend.platform.DeviceProof.sha256Hex(body), bucket().toString()).joinToString("\n"))
+
+    /** The nonce bucket of the harness clock (`floor(unix_s / 300)`). */
+    fun bucket(): Long = com.aktcl.aron.backend.platform.DeviceProof.bucket(clock.now().epochSecond)
+
+    /** base64url ES256 (P1363, 64 bytes) by [phoneKey]. */
+    fun sign(message: String): String {
+        val s = java.security.Signature.getInstance("SHA256withECDSAinP1363Format").apply { initSign(phoneKey.private); update(message.toByteArray()) }.sign()
+        return Base64.getUrlEncoder().withoutPadding().encodeToString(s)
+    }
 
     /** A query or path value that names a resource of [pathIds] (or the clock's business date), else null. */
     private fun paramValue(name: String, pathIds: Map<String, Long>): String? = when (name) {
@@ -227,4 +256,31 @@ class ApiWorld(
             return out.distinct()
         }
     }
+}
+
+/**
+ * In-memory blob storage for the harness: every SAS and read URL points at `https://blob.test/<path>`, written photo
+ * bytes are kept by path. It lets the blob operations answer 2xx so their success bodies are validated too.
+ */
+class FakeBlobs {
+    val stored = java.util.concurrent.ConcurrentHashMap<String, ByteArray>()
+
+    fun ports() = BlobPorts(
+        object : com.aktcl.aron.backend.masterdata.BlobSasIssuer {
+            override fun writeSas(blobPath: String, maxBytes: Long, expiresAt: Instant) = "https://blob.test/$blobPath?sp=cw&se=${expiresAt.epochSecond}"
+            override fun readUrl(blobPath: String) = "https://blob.test/$blobPath"
+        },
+        com.aktcl.aron.backend.media.PhotoBlobWriter { path, bytes -> stored[path] = bytes },
+        com.aktcl.aron.backend.media.PhotoReadIssuer { path, until -> "https://blob.test/$path?sp=r&se=${until.epochSecond}" },
+    )
+}
+
+/** The public JWK (`kty` EC, `crv` P-256, base64url `x` and `y`) of an EC key pair. */
+fun publicJwk(k: java.security.KeyPair): String {
+    val w = (k.public as java.security.interfaces.ECPublicKey).w
+    fun b64(v: java.math.BigInteger): String {
+        val raw = v.toByteArray().let { if (it.size > 32) it.copyOfRange(it.size - 32, it.size) else ByteArray(32 - it.size) + it }
+        return Base64.getUrlEncoder().withoutPadding().encodeToString(raw)
+    }
+    return """{"kty":"EC","crv":"P-256","x":"${b64(w.affineX)}","y":"${b64(w.affineY)}"}"""
 }

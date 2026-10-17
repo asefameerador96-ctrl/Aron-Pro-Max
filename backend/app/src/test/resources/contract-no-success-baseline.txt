@@ -16,10 +16,8 @@ PATCH /v1/admin/rubrics/{}
 PATCH /v1/admin/surveys/{}
 PATCH /v1/admin/tutorials/{}
 PATCH /v1/feedback/{}
-POST /v1/admin/assets
 POST /v1/admin/config/changes/{}/decision
 POST /v1/admin/config/versions/{}/rollback
-POST /v1/admin/content
 POST /v1/admin/data-entry
 POST /v1/admin/device-otps
 POST /v1/admin/devices/{}/replace
@@ -42,14 +40,12 @@ POST /v1/day/sales-submit
 POST /v1/devices/enrol
 POST /v1/devices/me/status
 POST /v1/devices/nonce
-POST /v1/media/sas
 POST /v1/media/upload
 POST /v1/outlet-requests
 POST /v1/outlet-requests/{}/approve
 POST /v1/outlet-requests/{}/reject
 POST /v1/outlet-requests/{}/verify
 POST /v1/risk-signals/{}/review
-POST /v1/support/pda-upload
 POST /v1/tasks
 POST /v1/tasks/{}/cancel
 POST /v1/web-entry/qc

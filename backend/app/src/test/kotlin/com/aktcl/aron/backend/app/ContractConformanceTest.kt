@@ -90,22 +90,25 @@ class ContractConformanceTest {
             endpoints = ApiWorld.routes(application.plugin(RoutingRoot)).sortedBy { it.second + " " + it.first }
             out += notInContract(endpoints)
             val tokens = HashMap<ApiWorld.Caller, String?>()
-            // Each caller's bundle answer: its version, paged sections and delta cursor drive the page and delta reads.
-            val bundles = HashMap<ApiWorld.Caller, com.fasterxml.jackson.databind.JsonNode>()
+            val ctx = Ctx(world)
             suspend fun token(c: ApiWorld.Caller): String? = tokens.getOrPut(c) { world.login(client, c) }
             // A caller that cannot log in would silently skip every guarded call.
             for (c in callers) check(token(c) != null) { "no token for ${c.user}" }
-            suspend fun call(op: ContractModel.Operation, c: ApiWorld.Caller, t: String?) = world.call(
-                client, contract, op, c, t,
-                bodyEdit = FIXTURES[op.key]?.let { f -> { n: com.fasterxml.jackson.databind.JsonNode -> f(n as com.fasterxml.jackson.databind.node.ObjectNode, c, world.password) } },
-                query = bundles[c]?.let { QUERY_FIXTURES[op.key]?.invoke(it) }.orEmpty(),
-            ).also { checkedCalls++ }
-            // Reads first, then writes; the session-ending operations last (change-password before logout).
+            suspend fun call(op: ContractModel.Operation, c: ApiWorld.Caller, t: String?): io.ktor.client.statement.HttpResponse {
+                val fx = FX[op.key] ?: Fx()
+                return world.call(
+                    client, contract, op, c, t,
+                    bodyEdit = { n -> fx.body(n as com.fasterxml.jackson.databind.node.ObjectNode, c, ctx) },
+                    query = fx.query(c, ctx), pathValues = fx.path(c, ctx), headers = fx.headers(c, ctx),
+                    proof = fx.proof.takeIf { c.device == ApiWorld.SR_PHONE }?.let { f -> { m: String, path: String, sent: ByteArray, json: String? -> f(world, m, path, sent, json) } },
+                    rawBody = fx.raw?.invoke(c, ctx),
+                ).also { checkedCalls++ }
+            }
+            // Reads first, then writes; an operation with a producer after it ([Fx.after]); the session-ending
+            // operations last (change-password before logout).
             val last = listOf("POST /v1/auth/change-password", "POST /v1/auth/logout")
-            // Publishing prices needs the preview of the same batch first (ERR_REQUEST_STATE otherwise).
-            val late = listOf("POST /v1/admin/prices") + last
             val ops = endpoints.mapNotNull { (m, p) -> contract.operation(m, p) }.distinctBy { it.key }
-                .sortedWith(compareBy<ContractModel.Operation>({ late.indexOf(it.key) }, { it.method != "GET" && it.method != "HEAD" }, { it.key }))
+                .sortedWith(compareBy<ContractModel.Operation>({ last.indexOf(it.key) }, { depth(it.key) }, { it.method != "GET" && it.method != "HEAD" }, { it.key }))
             for (op in ops) {
                 // The generator's body must satisfy the contract's own request schema (or the schema is unsatisfiable).
                 op.requestSchema?.let { rs -> contract.errorKeys(rs, contract.sample(rs)).forEach { e -> out += Finding(op.method, ContractModel.shape(op.path), 0, "sample-invalid", e, keyed = true) } }
@@ -115,10 +118,11 @@ class ContractConformanceTest {
                     var r = call(op, c, t)
                     if (!op.public && r.status.value == 401 && op.key !in last) { tokens.remove(c); t = token(c) ?: continue; r = call(op, c, t) }
                     val text = r.bodyAsText()
-                    if (r.status.value in 200..299) succeeded += op.key
-                    else refusals.getOrPut(op.key) { mutableListOf() } += "${c.user} ${r.status.value} ${text.take(160).replace('\n', ' ')}"
+                    if (r.status.value in 200..299) {
+                        succeeded += op.key
+                        FX[op.key]?.capture?.invoke(c, if (text.isBlank()) com.fasterxml.jackson.databind.node.NullNode.instance else ContractModel.json.readTree(text), ctx)
+                    } else refusals.getOrPut(op.key) { mutableListOf() } += "${c.user} ${r.status.value} ${text.take(160).replace('\n', ' ')}"
                     if (op.key == "GET /v1/me" && c == callers[0] && r.status.value == 200) meBody = text
-                    if (op.key == "GET /v1/sync/bundle" && r.status.value == 200) bundles[c] = ContractModel.json.readTree(text)
                     out += check(op, r.status.value, r.headers["Content-Type"], text)
                 }
             }
@@ -233,36 +237,46 @@ class ContractConformanceTest {
     }
 
     companion object {
-        /** Request bodies a generated sample cannot get right (real credentials), filled per caller. */
         /** A business date 30 days after the harness day, for writes that refuse today or the past. */
         private val FUTURE: String = java.time.LocalDate.parse(ApiWorld.BUSINESS_DATE).plusDays(30).toString()
 
-        /** Query values taken from the caller's own `GET /v1/sync/bundle` answer (it runs first: keys sort before). */
-        val QUERY_FIXTURES: Map<String, (com.fasterxml.jackson.databind.JsonNode) -> Map<String, String>> = mapOf(
-            "GET /v1/sync/bundle/page" to { b ->
-                val meta = b.path("meta")
-                val paged = meta.path("paged_sections").firstOrNull()
-                if (paged == null) emptyMap() else mapOf("bundle_version" to meta.path("bundle_version").asText(), "section" to paged.path("section").asText(), "page" to "1")
-            },
-            "GET /v1/sync/delta" to { b -> mapOf("since" to b.path("meta").path("cursor").asText()) },
-        )
+        /** Rank of an operation in the run: 0 without a producer, else one more than its deepest producer. */
+        fun depth(key: String): Int = FX[key]?.after?.maxOfOrNull { depth(it) + 1 } ?: 0
 
-        val FIXTURES: Map<String, (com.fasterxml.jackson.databind.node.ObjectNode, ApiWorld.Caller, String) -> Unit> = mapOf(
-            "POST /v1/auth/login" to { n, c, pw ->
-                n.put("username", c.user); n.put("password", pw); n.put("client", c.client)
+        private fun obj(n: com.fasterxml.jackson.databind.JsonNode?) = n as? com.fasterxml.jackson.databind.node.ObjectNode
+
+        /**
+         * What a generated call cannot get right, per operation: real credentials and codes, a future date, the id or
+         * cursor an earlier answer created ([Fx.after] runs the producer first, [Fx.capture] keeps the value in [Ctx]).
+         */
+        val FX: Map<String, Fx> = mapOf(
+            // The seeded phone holds a real key ([ApiWorld.phoneKey]), so its calls carry a device proof.
+            "POST /v1/sync/batch" to Fx(proof = BATCH_PROOF),
+            "PUT /v1/devices/me/push-token" to Fx(proof = DEVICE_PROOF),
+            "POST /v1/auth/login" to Fx(body = { n, c, x ->
+                n.put("username", c.user); n.put("password", x.world.password); n.put("client", c.client)
                 if (c.device != null) n.put("device_uuid", c.device) else n.remove("device_uuid")
-            },
+            }),
+            // Each caller's bundle: its version, first paged section and delta cursor drive the page and delta reads.
+            "GET /v1/sync/bundle" to Fx(capture = { c, b, x -> x.bundles[c.user] = b }),
+            "GET /v1/sync/bundle/page" to Fx(after = listOf("GET /v1/sync/bundle"), query = { c, x ->
+                val meta = x.bundles[c.user]?.path("meta")
+                val paged = meta?.path("paged_sections")?.firstOrNull()
+                if (meta == null || paged == null) emptyMap() else mapOf("bundle_version" to meta.path("bundle_version").asText(), "section" to paged.path("section").asText(), "page" to "1")
+            }),
+            "GET /v1/sync/delta" to Fx(after = listOf("GET /v1/sync/bundle"), query = { c, x -> x.bundles[c.user]?.let { mapOf("since" to it.path("meta").path("cursor").asText()) }.orEmpty() }),
             // Seeded codes (V0027): a generated code is unknown to the code list and refused with 400 unknown_code.
-            "POST /v1/feedback" to { n, _, _ -> n.put("category_code", "suggestion") },
-            "POST /v1/leave" to { n, _, _ -> n.put("leave_type_code", "casual") },
+            "POST /v1/feedback" to Fx(body = { n, _, _ -> n.put("category_code", "suggestion") }),
+            "POST /v1/leave" to Fx(body = { n, _, _ -> n.put("leave_type_code", "casual") }),
             // Calendar and price writes take effect in the future only (ERR_MASTER_EFFECTIVE_DATE_PAST, finance.back_date).
-            "POST /v1/admin/calendar/holidays" to { n, _, _ -> n.put("date", FUTURE) },
-            "POST /v1/admin/prices" to { n, _, _ -> n.put("valid_from", FUTURE) },
-            "POST /v1/admin/prices/preview" to { n, _, _ -> n.put("valid_from", FUTURE) },
+            "POST /v1/admin/calendar/holidays" to Fx(body = { n, _, _ -> n.put("date", FUTURE) }),
+            "POST /v1/admin/prices/preview" to Fx(body = { n, _, _ -> n.put("valid_from", FUTURE) }),
+            // Publishing prices needs the preview of the same batch first (ERR_REQUEST_STATE otherwise).
+            "POST /v1/admin/prices" to Fx(after = listOf("POST /v1/admin/prices/preview"), body = { n, _, _ -> n.put("valid_from", FUTURE) }),
             // The sample parent is not a node of the parent level; a rename alone is a valid patch.
-            "PATCH /v1/admin/product-nodes/{}/{}" to { n, _, _ -> n.remove("parent_id"); n.put("name", "Contract check") },
+            "PATCH /v1/admin/product-nodes/{}/{}" to Fx(body = { n, _, _ -> n.remove("parent_id"); n.put("name", "Contract check") }),
             // The sample key is cfg.geo.radius_m, an integer key.
-            "POST /v1/admin/config/changes" to { n, _, _ -> (n.path("changes").firstOrNull() as? com.fasterxml.jackson.databind.node.ObjectNode)?.put("value", 150) },
+            "POST /v1/admin/config/changes" to Fx(body = { n, _, _ -> obj(n.path("changes").firstOrNull())?.put("value", 150) }),
         )
     }
 
@@ -270,3 +284,35 @@ class ContractConformanceTest {
     private var meBody: String? = null
     private fun meBody(): String = meBody ?: error("the run never got a 200 from GET /v1/me for the SR")
 }
+
+/** The `device` proof of docs/24 s8.3: `METHOD path` and the sha256 of the sent body. */
+val DEVICE_PROOF: (ApiWorld, String, String, ByteArray, String?) -> String = { w, m, path, sent, _ -> w.deviceProofOf(m, path, sent) }
+
+/** The `batch` proof: sha256 of the gzip body, `batch_uuid`, X-Batch-Attempt (1). */
+val BATCH_PROOF: (ApiWorld, String, String, ByteArray, String?) -> String = { w, _, _, sent, json ->
+    val batch = ContractModel.json.readTree(json ?: "{}").path("batch_uuid").asText()
+    w.sign(listOf("aron-proof-v1", "batch", ApiWorld.SR_PHONE, com.aktcl.aron.backend.platform.DeviceProof.sha256Hex(sent), batch, "1").joinToString("\n"))
+}
+
+/** Values one call cannot know: the world, each caller's bundle, and ids or tokens captured from earlier answers. */
+class Ctx(val world: ApiWorld) {
+    val bundles = HashMap<String, com.fasterxml.jackson.databind.JsonNode>()
+    val vars = HashMap<String, String>()
+    operator fun get(k: String): String? = vars[k]
+    operator fun set(k: String, v: String) { vars[k] = v }
+}
+
+/** The fixture of one operation (see [ContractConformanceTest.FX]); every part defaults to the generated call. */
+class Fx(
+    /** Producers that must run before this operation (their [capture] fills the [Ctx] values it reads). */
+    val after: List<String> = emptyList(),
+    val path: (ApiWorld.Caller, Ctx) -> Map<String, String> = { _, _ -> emptyMap() },
+    val query: (ApiWorld.Caller, Ctx) -> Map<String, String> = { _, _ -> emptyMap() },
+    val headers: (ApiWorld.Caller, Ctx) -> Map<String, String> = { _, _ -> emptyMap() },
+    val body: (com.fasterxml.jackson.databind.node.ObjectNode, ApiWorld.Caller, Ctx) -> Unit = { _, _, _ -> },
+    /** `X-Device-Proof` of the seeded SR phone from (world, method, path, sent bytes, JSON text); [DEVICE_PROOF] for the device calls. */
+    val proof: ((ApiWorld, String, String, ByteArray, String?) -> String)? = null,
+    val raw: ((ApiWorld.Caller, Ctx) -> io.ktor.http.content.OutgoingContent.ByteArrayContent)? = null,
+    /** Runs on each 2xx answer (body parsed; NullNode when empty). */
+    val capture: ((ApiWorld.Caller, com.fasterxml.jackson.databind.JsonNode, Ctx) -> Unit)? = null,
+)
