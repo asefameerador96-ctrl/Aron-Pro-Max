@@ -373,7 +373,7 @@ export const dashBn: Record<keyof typeof dashEn, string> = {
   "drill.login.not_uploaded": "লগইন করেছে, আপলোড হয়নি",
   "drill.login.note": "দিনের জন্য পরিকল্পিত রুট; এসআরের নাম দৈনিক ট্র্যাকিং থেকে।",
   "drill.unknown": "এই বিস্তারিত পাতাটি নেই।",
-  "drill.title.category": "বিক্রয়: {name}",
+  "drill.title.category": "{name}: বিস্তারিত",
   "drill.title.channel": "চ্যানেল অনুযায়ী",
   "drill.title.calls": "কল ও স্ট্রাইক রেট",
   "drill.title.login": "লগইন ও আপলোডের অবস্থা",

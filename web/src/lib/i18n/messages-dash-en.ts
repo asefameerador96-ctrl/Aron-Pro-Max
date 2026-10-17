@@ -371,7 +371,7 @@ export const dashEn = {
   "drill.login.not_uploaded": "Logged in, not uploaded",
   "drill.login.note": "Routes planned for the day; SR names come from the daily tracking read.",
   "drill.unknown": "This detail page does not exist.",
-  "drill.title.category": "Sales: {name}",
+  "drill.title.category": "{name}: details",
   "drill.title.channel": "By channel",
   "drill.title.calls": "Calls and strike rate",
   "drill.title.login": "Login and upload status",
