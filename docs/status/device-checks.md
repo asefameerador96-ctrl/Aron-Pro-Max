@@ -311,3 +311,9 @@ two defects outside this lane. The adb path (s10.4 step 5) is the one that works
 - Observation for android-sr-a / the real-data plan: on Saturday 2026-10-17 the picker opened the seeded "Mirpur 10 Daily"
   route without offering the real route 16685 (Sat/Mon/Wed); check whether seed 06's plan rows mark it `plannedToday`
   and whether the route picker (F-SR-065) is reached when two routes are planned.
+- **Check-out releases them: PASS** (laptop session over adb, 2026-10-17 17:03 Dhaka). Before: `com.facebook.katana`,
+  `com.ss.android.ugc.trill`, `com.google.android.youtube` all `suspended=true`. Attendance screen → "Check out" →
+  hold sheet ("Checking out", 17:03, no location reading indoors) → press-and-hold 1.5 s → within 6 s all three
+  `suspended=true` counts were 0 and `dumpsys device_policy` no longer lists `suspendedPackages`. Note: the Home dock
+  read "Sales submit" after 17:00 (day-state order: submit, then check out), so the check-out was taken from the
+  Attendance bar. **D-04 complete** on the Honor X5c Plus (device owner by adb path A).
