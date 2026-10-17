@@ -97,6 +97,8 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun attachBaseContext(newBase: Context) {
+        // D-181: the TSO app is English-first today (cfg.app.default_locale tso = en): the first run stores English once; the rep can switch to Bangla in Settings
+        newBase.getSharedPreferences("aron_ui", Context.MODE_PRIVATE).let { p -> if (!p.contains("language")) p.edit().putString("language", com.aktcl.aron.core.common.AppLanguage.EN.tag).commit() }
         super.attachBaseContext(AppLocale.wrap(newBase))
     }
 

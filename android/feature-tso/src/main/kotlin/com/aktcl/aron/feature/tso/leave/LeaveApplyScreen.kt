@@ -92,16 +92,15 @@ fun LeaveApplyScreen(state: LeaveApplyState, onBack: () -> Unit, modifier: Modif
             AronSectionLabel(stringResource(R.string.tso_leave_type))
             AronSegmented(LEAVE_TYPES.map { typeLabel(it) }, LEAVE_TYPES.indexOf(form.type).coerceAtLeast(0), { state.edit { f -> f.copy(type = LEAVE_TYPES[it]) } })
             AronSectionLabel(stringResource(R.string.tso_leave_from))
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
-                com.aktcl.aron.feature.tso.TsoTextField(
-                    form.fromDate, { v -> state.edit { f -> f.copy(fromDate = v.take(10)) } }, Modifier.weight(1f).testTag(LeaveApplyTags.DATE),
-                    singleLine = true, enabled = !queued, label = { Text(stringResource(R.string.tso_leave_date_hint)) },
-                )
-            }
+            val today = state.todayIso()
+            com.aktcl.aron.feature.tso.TsoDateField(
+                form.fromDate, { v -> state.edit { f -> f.copy(fromDate = v) } }, Modifier.testTag(LeaveApplyTags.DATE), enabled = !queued,
+                min = java.time.LocalDate.parse(today).minusDays(MAX_BACKDATE_DAYS).toString(), max = java.time.LocalDate.parse(today).plusDays(MAX_AHEAD_DAYS).toString(),
+            )
             AronSectionLabel(stringResource(R.string.tso_leave_days_label))
             AronStepper(form.days, { v -> state.edit { f -> f.copy(days = v) } }, stringResource(R.string.tso_leave_days_minus), stringResource(R.string.tso_leave_days_plus), min = 1, max = MAX_DAYS)
             runCatching { leaveToDate(form.fromDate, form.days) }.getOrNull()?.let {
-                Text(localizedDigits(stringResource(R.string.tso_leave_until, it)), Modifier.testTag(LeaveApplyTags.TO_DATE), style = MaterialTheme.typography.bodyMedium)
+                Text(stringResource(R.string.tso_leave_until, com.aktcl.aron.feature.tso.TsoDates.long(it, com.aktcl.aron.core.ui.LocalAppLanguage.current)), Modifier.testTag(LeaveApplyTags.TO_DATE), style = MaterialTheme.typography.bodyMedium)
             }
             AronSectionLabel(stringResource(R.string.tso_leave_reason))
             com.aktcl.aron.feature.tso.TsoTextField(

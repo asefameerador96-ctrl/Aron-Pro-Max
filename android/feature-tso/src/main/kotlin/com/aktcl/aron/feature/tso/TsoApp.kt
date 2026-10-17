@@ -119,7 +119,7 @@ fun TsoApp(
     ) {
     AronScreenTransition(screen, forward = { _, to -> to != TsoScreen.HOME }, Modifier) { s ->
         when (s) {
-            TsoScreen.HOME -> TsoDrawer(user.fullName, remember { tsoDrawerEntries() }, onEntry = { screen = it }) { open ->
+            TsoScreen.HOME -> TsoDrawer(user.fullName, remember { tsoDrawerEntries() }, onEntry = { screen = it }, onLogout = { confirmLogout = true }) { open ->
                 androidx.compose.foundation.layout.Column {
                     TsoChromeBar(user.fullName, onMenu = open, onLogout = { confirmLogout = true })
                     androidx.compose.foundation.layout.Box(Modifier.weight(1f)) {

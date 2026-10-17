@@ -8,8 +8,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import org.json.JSONArray
 import org.json.JSONObject
 
-/** One yes/no question of the retailer questionnaire rubric (bundle `rubrics`, kind `retailer_questionnaire`). */
-data class Criterion(val id: Long, val labelBn: String?, val labelEn: String) {
+/** One question of the retailer questionnaire rubric (bundle `rubrics`, kind `retailer_questionnaire`): a yes/no (`bool`) or a free-text answer (`text`, the two printed questions of the manual). */
+data class Criterion(val id: Long, val labelBn: String?, val labelEn: String, val text: Boolean = false) {
     fun label(bangla: Boolean) = if (bangla && !labelBn.isNullOrBlank()) labelBn else labelEn
 }
 
@@ -22,14 +22,14 @@ object RubricJson {
         // the newest retailer_questionnaire version that actually has bool questions (a newer one without them must not hide a usable older one)
         (0 until a.length()).map { a.getJSONObject(it) }.filter { it.optString("kind") == "retailer_questionnaire" }.mapNotNull { r ->
             val c = r.getJSONArray("criteria")
-            val crit = (0 until c.length()).map { c.getJSONObject(it) }.filter { (!it.has("enabled") || it.optBoolean("enabled", true)) && it.optString("answer_type") == "bool" }
-                .mapNotNull { runCatching { Criterion(it.getLong("criterion_id"), if (it.isNull("label_bn")) null else it.optString("label_bn").ifBlank { null }, it.getString("label_en").also { l -> require(l.isNotBlank()) }) }.getOrNull() }
+            val crit = (0 until c.length()).map { c.getJSONObject(it) }.filter { (!it.has("enabled") || it.optBoolean("enabled", true)) && it.optString("answer_type") in setOf("bool", "text") }
+                .mapNotNull { runCatching { Criterion(it.getLong("criterion_id"), if (it.isNull("label_bn")) null else it.optString("label_bn").ifBlank { null }, it.getString("label_en").also { l -> require(l.isNotBlank()) }, text = it.optString("answer_type") == "text") }.getOrNull() }
             if (crit.isEmpty()) null else Rubric(r.getLong("rubric_id"), r.getInt("version"), crit)
         }.maxByOrNull { it.version }
     }.getOrNull()
 }
 
-data class QuerySubmit(val planUuid: String, val outletId: Long, val routeId: Long, val rubric: Rubric, val answers: Map<Long, Boolean>, val delegate: Boolean)
+data class QuerySubmit(val planUuid: String, val outletId: Long, val routeId: Long, val rubric: Rubric, val answers: Map<Long, Boolean>, val delegate: Boolean, val texts: Map<Long, String> = emptyMap())
 
 /** One assessment per plan outlet: its uuid and each answer's uuid are derived, so a repeat Submit changes nothing. */
 object QueryIds {
@@ -46,29 +46,28 @@ sealed interface QueryResult {
     data object Editing : QueryResult
     /** [delegate]: the rep said Yes to "Delegate task?": the host opens Assign Task next. */
     data class Submitted(val delegate: Boolean) : QueryResult
-    data object Unanswered : QueryResult
     data object Failed : QueryResult
 }
 
-/** F-TSO-015: the printed questions, the delegate radio defaulting to No, Submit with no GPS or photo. */
+/** F-TSO-015: the printed questions (answers are OPTIONAL, D-199), the delegate radio defaulting to No, Submit with no GPS or photo. */
 class VisitQueryState(private val rubric: Rubric, private val planUuid: String, private val outletId: Long, private val routeId: Long, private val queue: QueryQueue) {
     private val _s = MutableStateFlow(Ui())
     val ui: StateFlow<Ui> = _s.asStateFlow()
     val criteria: List<Criterion> get() = rubric.criteria
     private var busy = false
 
-    data class Ui(val answers: Map<Long, Boolean> = emptyMap(), val delegate: Boolean = false, val result: QueryResult = QueryResult.Editing)
+    data class Ui(val answers: Map<Long, Boolean> = emptyMap(), val texts: Map<Long, String> = emptyMap(), val delegate: Boolean = false, val result: QueryResult = QueryResult.Editing)
 
     fun answer(criterionId: Long, yes: Boolean) { if (_s.value.result is QueryResult.Submitted) return; _s.value = _s.value.copy(answers = _s.value.answers + (criterionId to yes), result = QueryResult.Editing) }
+    fun text(criterionId: Long, value: String) { if (_s.value.result is QueryResult.Submitted) return; _s.value = _s.value.copy(texts = _s.value.texts + (criterionId to value.take(MAX_ANSWER_TEXT * 2)), result = QueryResult.Editing) }
     fun delegate(yes: Boolean) { if (_s.value.result is QueryResult.Submitted) return; _s.value = _s.value.copy(delegate = yes, result = QueryResult.Editing) }
 
     suspend fun submit() {
         val s = _s.value
         if (busy || s.result is QueryResult.Submitted) return
-        if (rubric.criteria.any { it.id !in s.answers }) { _s.value = s.copy(result = QueryResult.Unanswered); return }
         busy = true
         try {
-            queue.submit(QuerySubmit(planUuid, outletId, routeId, rubric, s.answers, s.delegate))
+            queue.submit(QuerySubmit(planUuid, outletId, routeId, rubric, s.answers, s.delegate, s.texts.mapValues { it.value.trim().take(MAX_ANSWER_TEXT) }.filterValues { it.isNotEmpty() }))
             _s.value = _s.value.copy(result = QueryResult.Submitted(s.delegate))
         } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) { _s.value = _s.value.copy(result = QueryResult.Failed) } finally { busy = false }
     }
@@ -92,6 +91,7 @@ object TaskTypes {
     }.getOrDefault(emptyList())
 }
 
+const val MAX_ANSWER_TEXT = 1000
 const val MAX_TASK_COMMENT = 1000
 const val MAX_TASK_TITLE = 120
 
@@ -137,6 +137,8 @@ class AssignTaskState(
     val ui: StateFlow<Ui> = _s.asStateFlow()
     val typeList: List<TaskType> get() = types
     val srName: String? get() = route?.sr?.fullName
+    fun todayIso() = today()
+    fun maxIso() = java.time.LocalDate.parse(today()).plusDays(MAX_PLAN_AHEAD_DAYS).toString()
 
     data class Ui(val typeCode: String? = null, val date: String, val comment: String = "", val result: TaskResult)
 

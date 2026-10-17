@@ -34,3 +34,25 @@ Result: **no breach found; one data item fixed.** Read from the code, not measur
 - **Maps:** the tile image is the lite-mode static map, loaded only on the map tiles, cached on disk with a bounded cache (core-map); offline shows the last image and the list.
 - **Size:** feature-tso adds the core-map and media wiring only; the APK size gate in CI is the check (infra `Release APKs and APK size gate`).
 - **Mocked / assumed against the contract (not yet served):** zone names (labelled "Zone N"), the `rubrics`, `task_type`, `feedback_category` sections in the TSO bundle, the `visit-plans` filter by `planner_user_id`, the offline password verifier after a change. All filed in `docs/requests/android-tso-record-mapping.md`.
+
+## Parity audit (Opus checker, 2026-10-18): per-screen result after the fixes of this pass
+Source: docs/08, docs/evidence/manuals/manual-tso.md and delta-tso.md (docs/ui-reference has no TSO screenshots). Not counted as divergences: Target Status and achievement rings (docs/27), Calm Glass styling (docs/32), "last fix with age" instead of live on My Team (G-10), the unsent-data logout guard (G-01), the Final Submit confirm (G-07), Settings in place of Target Status, the own-feedback list.
+| Screen | Result after this pass | Open owner |
+|---|---|---|
+| Login | match; dark navy theme, version, sun switch, enrolment step are deliberate; button reads "Log in" | feature-auth (label) |
+| Default language | fixed: English on first run (D-181), switch in Settings | - |
+| Home and greeting | greeting and logout icon match; Home lands on a tile Home (deliberate), the header shows twice (chrome bar + role header) | docs note |
+| Home button | strip below every non-Home screen (deliberate, never over a bar) | - |
+| Drawer | fixed: logout icon in the header, subtitles of the manual, My Call order; Settings replaces Target Status; hubs instead of expanding groups (deliberate) | - |
+| Dashboard tiles/cards, Not Logged In / Not Uploaded | not this lane (android-amo); blocker: rows lack user and department | android-amo, backend (requests/android-tso-parity-findings.md) |
+| Leave list | fixed: titles "Leave Applications", "Apply For Leave", "Reason:", "n Days"; type on the card and newest-first order are deliberate improvements | - |
+| Leave apply | fixed: real date picker, labels "Leave Apply / Select leave Type / Select Date / Number of Days / Apply", Casual/Sick/Earn; type is preselected (Casual) and days use a stepper (deliberate) | - |
+| Final Submit | fixed: Success dialog, Routes heading, zone shown; zone names and the five-level cascade need a scope-tree read | contract, backend |
+| My Team / Retailer | radius options match; zone names pending | contract |
+| Set Plan / My Visit Plan | fixed: date picker with the long date, hub order and subtitles; card fields lack labels and channel | backend (channel), later UI pass |
+| Visit Query | fixed: answers optional, free-text and yes/no criteria, delegate label of the manual, default No; two printed questions need seeding | backend (rubric seed) |
+| Assign Task | date picker; shows the assignee; no Outlet/Cluster/Route card; list of types not filtered | backend (assignable types) |
+| My Feedback form | labels differ ("Category/Title/Description"); image from camera not gallery | android-sys (gallery source) |
+| My Feedback list, Settings | deliberate improvements | - |
+| Logout dialog | fixed: title "Log Out!"; body and the unsent guard are deliberate | - |
+| Date formats | fixed: ISO in lists and Sales Date, long form in pickers and plan screens (TsoDates), Bangla month names and digits | - |

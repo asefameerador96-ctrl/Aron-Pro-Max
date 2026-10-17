@@ -53,6 +53,7 @@ object MyCallTags {
     fun outlet(id: Long) = "tso_mc_outlet_$id"
     fun yes(criterionId: Long) = "tso_mc_yes_$criterionId"
     fun no(criterionId: Long) = "tso_mc_no_$criterionId"
+    fun text(criterionId: Long) = "tso_mc_text_$criterionId"
     fun type(code: String) = "tso_mc_type_$code"
     const val DELEGATE_YES = "tso_mc_delegate_yes"
     const val DELEGATE_NO = "tso_mc_delegate_no"
@@ -87,8 +88,8 @@ private fun OutletCard(o: PlanOutlet, bangla: Boolean, modifier: Modifier = Modi
 fun MyCallHub(onSetPlan: () -> Unit, onVisitPlan: () -> Unit, onBack: () -> Unit, modifier: Modifier = Modifier) {
     AronScreen(modifier, topBar = { AronTopBar(stringResource(R.string.tso_drawer_my_call), onBack = onBack) }) {
         Column(Modifier.fillMaxSize().padding(AronTokens.Space.Screen), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.M)) {
-            AronCard(Modifier.fillMaxWidth().testTag(MyCallTags.SET_PLAN), onClick = onSetPlan) { AronListRow(stringResource(R.string.tso_mc_set_plan), subtitle = stringResource(R.string.tso_mc_set_plan_sub)) }
             AronCard(Modifier.fillMaxWidth().testTag(MyCallTags.VISIT_PLAN), onClick = onVisitPlan) { AronListRow(stringResource(R.string.tso_mc_visit_plan), subtitle = stringResource(R.string.tso_mc_visit_plan_sub)) }
+            AronCard(Modifier.fillMaxWidth().testTag(MyCallTags.SET_PLAN), onClick = onSetPlan) { AronListRow(stringResource(R.string.tso_mc_set_plan), subtitle = stringResource(R.string.tso_mc_set_plan_sub)) }
         }
     }
 }
@@ -109,7 +110,7 @@ fun SetPlanScreen(state: SetPlanState, onBack: () -> Unit, modifier: Modifier = 
             (ui.result as? SetPlanResult.Saved)?.let { AronBanner(stringResource(R.string.tso_mc_saved, it.newOutlets), Modifier.testTag(MyCallTags.SAVED), kind = BannerKind.Success) }
             if (ui.result is SetPlanResult.Failed) AronBanner(stringResource(R.string.tso_mc_save_failed), kind = BannerKind.Error)
             AronSectionLabel(stringResource(R.string.tso_mc_date))
-            com.aktcl.aron.feature.tso.TsoTextField(ui.date, { state.setDate(it) }, Modifier.fillMaxWidth().testTag(MyCallTags.DATE), singleLine = true, label = { Text(stringResource(R.string.tso_leave_date_hint)) })
+            com.aktcl.aron.feature.tso.TsoDateField(ui.date, { state.setDate(it) }, Modifier.testTag(MyCallTags.DATE), min = state.todayIso(), max = state.maxIso())
             Pickers(ui.routes, ui.routesLoad, ui.zoneId, ui.routeId, state::pickZone, state::pickRoute)
             if (ui.routeId != null) AronTextButton(stringResource(R.string.tso_mc_show_outlets), { scope.launch { state.showOutlets() } }, Modifier.testTag(MyCallTags.SHOW))
             if (ui.outletsLoad == PickLoad.UNAVAILABLE) AronBanner(stringResource(R.string.tso_mc_unavailable), kind = BannerKind.Offline)
@@ -138,7 +139,7 @@ fun VisitPlanScreen(state: VisitPlanState, onOpenOutlet: (planUuid: String, outl
     AronScreen(modifier, topBar = { AronTopBar(stringResource(R.string.tso_mc_visit_plan), onBack = onBack) }) {
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(AronTokens.Space.Screen), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.M)) {
             AronSectionLabel(stringResource(R.string.tso_mc_date))
-            com.aktcl.aron.feature.tso.TsoTextField(ui.date, { state.setDate(it) }, Modifier.fillMaxWidth().testTag(MyCallTags.DATE), singleLine = true, label = { Text(stringResource(R.string.tso_leave_date_hint)) })
+            com.aktcl.aron.feature.tso.TsoDateField(ui.date, { state.setDate(it) }, Modifier.testTag(MyCallTags.DATE), min = null, max = state.maxIso())
             Pickers(ui.routes, ui.routesLoad, ui.zoneId, ui.routeId, state::pickZone, state::pickRoute)
             if (ui.routeId != null) AronTextButton(stringResource(R.string.tso_mc_show_plan), { scope.launch { state.show() } }, Modifier.testTag(MyCallTags.SHOW))
             when (ui.planLoad) {
@@ -181,7 +182,8 @@ fun VisitQueryScreen(state: VisitQueryState, outletTitle: String, onDone: (deleg
                 AronCard(Modifier.fillMaxWidth()) {
                     Column(Modifier.fillMaxWidth().padding(AronTokens.Space.L), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
                         Text(c.label(bn), style = MaterialTheme.typography.titleSmall)
-                        YesNo(ui.answers[c.id], { state.answer(c.id, it) }, MyCallTags.yes(c.id), MyCallTags.no(c.id))
+                        if (c.text) com.aktcl.aron.feature.tso.TsoTextField(ui.texts[c.id].orEmpty(), { state.text(c.id, it) }, Modifier.fillMaxWidth().testTag(MyCallTags.text(c.id)), minLines = 2, label = { Text(stringResource(R.string.tso_mc_enter_answer)) })
+                        else YesNo(ui.answers[c.id], { state.answer(c.id, it) }, MyCallTags.yes(c.id), MyCallTags.no(c.id))
                     }
                 }
             }
@@ -191,7 +193,6 @@ fun VisitQueryScreen(state: VisitQueryState, outletTitle: String, onDone: (deleg
                     YesNo(ui.delegate, { state.delegate(it) }, MyCallTags.DELEGATE_YES, MyCallTags.DELEGATE_NO)
                 }
             }
-            if (ui.result is QueryResult.Unanswered) AronBanner(stringResource(R.string.tso_mc_err_unanswered), Modifier.testTag(MyCallTags.ERRORS), kind = BannerKind.Error)
             if (ui.result is QueryResult.Failed) AronBanner(stringResource(R.string.tso_mc_save_failed), kind = BannerKind.Error)
         }
     }
@@ -226,7 +227,7 @@ fun AssignTaskScreen(state: AssignTaskState, onDone: () -> Unit, modifier: Modif
             AronSectionLabel(stringResource(R.string.tso_mc_task_type))
             state.typeList.forEach { t -> AronListRow(t.label(bn), Modifier.testTag(MyCallTags.type(t.code)), onClick = { state.pickType(t.code) }, trailing = if (t.code == ui.typeCode) "✓" else null, flat = true) }
             AronSectionLabel(stringResource(R.string.tso_mc_date))
-            com.aktcl.aron.feature.tso.TsoTextField(ui.date, { state.setDate(it) }, Modifier.fillMaxWidth().testTag(MyCallTags.DATE), singleLine = true, label = { Text(stringResource(R.string.tso_leave_date_hint)) })
+            com.aktcl.aron.feature.tso.TsoDateField(ui.date, { state.setDate(it) }, Modifier.testTag(MyCallTags.DATE), min = state.todayIso(), max = state.maxIso())
             AronSectionLabel(stringResource(R.string.tso_mc_comment))
             com.aktcl.aron.feature.tso.TsoTextField(ui.comment, { state.setComment(it.take(MAX_TASK_COMMENT * 2)) }, Modifier.fillMaxWidth().testTag(MyCallTags.COMMENT), minLines = 3)
             (ui.result as? TaskResult.Invalid)?.errors?.forEach { e ->

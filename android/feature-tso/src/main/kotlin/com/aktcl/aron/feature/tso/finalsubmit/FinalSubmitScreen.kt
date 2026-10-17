@@ -12,6 +12,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
@@ -61,6 +62,11 @@ fun FinalSubmitScreen(state: FinalSubmitState, onBack: () -> Unit, modifier: Mod
     if (phase is FsPhase.AlreadySubmitted) {
         AronInfoDialog(stringResource(R.string.tso_fs_title), stringResource(R.string.tso_fs_already), stringResource(R.string.tso_fs_ok), onDismiss = { state.dismissAlready() })
     }
+    // the manual: a "Success" dialog with OK (the banner and the Done button stay as the lasting record)
+    var successSeen by androidx.compose.runtime.saveable.rememberSaveable { androidx.compose.runtime.mutableStateOf(false) }
+    if (phase is FsPhase.Done && !successSeen) {
+        AronInfoDialog(stringResource(R.string.tso_fs_success_title), stringResource(R.string.tso_fs_done, phase.result.routeCount, phase.result.memoCount, Money.formatTaka(phase.result.netMtk)), stringResource(R.string.tso_fs_ok), onDismiss = { successSeen = true })
+    }
     if (phase is FsPhase.Review && phase.confirming) {
         AronConfirmDialog(
             stringResource(R.string.tso_fs_confirm_title), stringResource(R.string.tso_fs_confirm_body, ui.date, localizedDigits(stringResource(R.string.tso_mc_zone, ui.zoneId.toString())), phase.preview.routes.size),
@@ -90,6 +96,7 @@ fun FinalSubmitScreen(state: FinalSubmitState, onBack: () -> Unit, modifier: Mod
             }
             if (phase is FsPhase.Review) {
                 Text(localizedDigits(stringResource(R.string.tso_fs_sales_date, ui.date)) + "  ·  " + localizedDigits(stringResource(R.string.tso_mc_zone, ui.zoneId.toString())), style = MaterialTheme.typography.titleSmall)
+                AronSectionLabel(stringResource(R.string.tso_fs_routes))
                 if (phase.preview.warnings.isNotEmpty()) AronBanner(warnLines(phase.preview.warnings), Modifier.testTag(FsTags.WARNINGS), kind = BannerKind.Warning)
                 phase.preview.routes.forEach { r ->
                     AronCard(Modifier.fillMaxWidth().testTag(FsTags.route(r.routeId))) {

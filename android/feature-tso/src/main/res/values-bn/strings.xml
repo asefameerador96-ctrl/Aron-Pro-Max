@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="tso_leave_title">ছুটি</string>
+    <string name="tso_leave_title">ছুটির আবেদনসমূহ</string>
     <string name="tso_leave_empty">এখনো কোনো ছুটির আবেদন নেই</string>
     <string name="tso_leave_empty_hint">আপনার পাঠানো আবেদন ডিএমও-র সিদ্ধান্তসহ এখানে দেখা যাবে।</string>
     <string name="tso_leave_error">ছুটির তালিকা আনা যায়নি</string>
@@ -18,7 +18,8 @@
     <string name="tso_as_of">%1$s পর্যন্ত</string>
     <string name="tso_offline_cached">অফলাইন: শেষ তালিকা দেখানো হচ্ছে</string>
     <string name="tso_leave_apply_title">ছুটির আবেদন</string>
-    <string name="tso_leave_apply">আবেদন</string>
+    <string name="tso_leave_apply">ছুটির আবেদন করুন</string>
+    <string name="tso_leave_reason_line">কারণ: %1$s</string>
     <string name="tso_leave_type">ছুটির ধরন</string>
     <string name="tso_leave_from">শুরুর তারিখ</string>
     <string name="tso_leave_date_hint">YYYY-MM-DD</string>
@@ -27,7 +28,7 @@
     <string name="tso_leave_days_plus">এক দিন বেশি</string>
     <string name="tso_leave_until">শেষ দিন: %1$s</string>
     <string name="tso_leave_reason">কারণ</string>
-    <string name="tso_leave_send">আবেদন পাঠান</string>
+    <string name="tso_leave_send">আবেদন করুন</string>
     <string name="tso_leave_done">ঠিক আছে</string>
     <string name="tso_leave_another">আরেকটি আবেদন করুন</string>
     <string name="tso_leave_queued">এই ফোনে সংরক্ষিত হয়েছে। সার্ভার না পাওয়া পর্যন্ত “এখনো পাঠানো হয়নি” দেখাবে।</string>
@@ -67,7 +68,7 @@
     <string name="tso_fb_err_description_long">বিবরণ অনেক বড় (সর্বোচ্চ ২০০০ অক্ষর)</string>
     <string name="tso_greeting">শুভ দিন, %1$s</string>
     <string name="tso_chrome_menu">মেনু খুলুন</string>
-    <string name="tso_chrome_logout">লগ আউট</string>
+    <string name="tso_chrome_logout">লগ আউট!</string>
     <string name="tso_chrome_home">হোম</string>
     <string name="tso_drawer_role">TSO</string>
     <string name="tso_drawer_dashboard">ড্যাশবোর্ড</string>
@@ -76,7 +77,7 @@
     <string name="tso_drawer_leave_sub">আপনার ছুটি পরিচালনা করুন</string>
     <string name="tso_drawer_final_submit">ফাইনাল সাবমিট</string>
     <string name="tso_drawer_final_submit_sub">বিক্রয়ের তথ্য জমা দিন</string>
-    <string name="tso_drawer_periphery">আমার এলাকা</string>
+    <string name="tso_drawer_periphery">আমার পরিধি</string>
     <string name="tso_drawer_periphery_sub">আপনার দল ও দোকান দেখুন</string>
     <string name="tso_drawer_my_call">আমার কল</string>
     <string name="tso_drawer_my_call_sub">পরিকল্পনা তৈরি ও পরিচালনা করুন</string>
@@ -230,4 +231,8 @@
     <string name="tso_dash_offline_kept">আপনি অফলাইনে আছেন। এই ফোনে রাখা শেষ তথ্য দেখাচ্ছে।</string>
     <string name="tso_dash_offline_none">আপনি অফলাইনে আছেন এবং এই ফোনে এখনও কিছু রাখা নেই। অনলাইনে থাকলে এটি খুলুন।</string>
     <string name="tso_dash_route_unnamed">রুট</string>
+    <string name="tso_date_ok">ঠিক আছে</string>
+    <string name="tso_mc_enter_answer">আপনার উত্তর লিখুন</string>
+    <string name="tso_fs_success_title">সফল</string>
+    <string name="tso_fs_routes">রুটসমূহ</string>
 </resources>

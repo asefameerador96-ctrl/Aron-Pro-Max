@@ -42,6 +42,10 @@ class SetPlanState(private val source: PlanSource, private val queue: PlanQueue,
     val ui: StateFlow<Ui> = _s.asStateFlow()
     private var busy = false
 
+    /** The date picker's bounds: today to [MAX_PLAN_AHEAD_DAYS] days ahead. */
+    fun todayIso() = today()
+    fun maxIso() = java.time.LocalDate.parse(today()).plusDays(MAX_PLAN_AHEAD_DAYS).toString()
+
     data class Ui(
         val date: String, val routes: List<PlanRoute> = emptyList(), val routesLoad: PickLoad = PickLoad.IDLE, val zoneId: Long? = null, val routeId: Long? = null,
         val outlets: List<PlanOutlet> = emptyList(), val outletsLoad: PickLoad = PickLoad.IDLE, val alreadyPlanned: Set<Long> = emptySet(),
@@ -91,6 +95,7 @@ class SetPlanState(private val source: PlanSource, private val queue: PlanQueue,
 class VisitPlanState(private val source: PlanSource, private val today: () -> String) {
     private val _s = MutableStateFlow(Ui(date = today()))
     val ui: StateFlow<Ui> = _s.asStateFlow()
+    fun maxIso() = java.time.LocalDate.parse(today()).plusDays(MAX_PLAN_AHEAD_DAYS).toString()
 
     data class Ui(
         val date: String, val routes: List<PlanRoute> = emptyList(), val routesLoad: PickLoad = PickLoad.IDLE, val zoneId: Long? = null, val routeId: Long? = null,

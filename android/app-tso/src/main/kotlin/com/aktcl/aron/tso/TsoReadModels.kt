@@ -268,6 +268,7 @@ class TsoReadModels(private val env: TsoEnv, private val databases: UserDatabase
         val box = checkNotNull(outbox) { "no outbox" }
         val a = com.aktcl.aron.feature.tso.mycall.QueryIds.assessment(q.planUuid, q.outletId)
         val score = q.answers.values.count { it }
+        val boolCount = q.rubric.criteria.count { !it.text }
         val recs = mutableListOf(TsoOutbox.Rec(
             com.aktcl.aron.contract.RecordType.CALL_ASSESSMENT, a,
             kotlinx.serialization.json.buildJsonObject {
@@ -275,16 +276,19 @@ class TsoReadModels(private val env: TsoEnv, private val databases: UserDatabase
                 put("visit_client_uuid", kotlinx.serialization.json.JsonNull)
                 put("visit_plan_outlet_client_uuid", kotlinx.serialization.json.JsonPrimitive(com.aktcl.aron.feature.tso.mycall.PlanIds.planOutlet(q.planUuid, q.outletId)))
                 put("rubric_id", kotlinx.serialization.json.JsonPrimitive(q.rubric.id)); put("rubric_version", kotlinx.serialization.json.JsonPrimitive(q.rubric.version))
-                put("total_score", kotlinx.serialization.json.JsonPrimitive(score)); put("max_score", kotlinx.serialization.json.JsonPrimitive(q.rubric.criteria.size))
+                put("total_score", kotlinx.serialization.json.JsonPrimitive(score)); put("max_score", kotlinx.serialization.json.JsonPrimitive(boolCount))
                 put("delegate_task", kotlinx.serialization.json.JsonPrimitive(q.delegate))
             }, routeId = q.routeId,
         ))
+        // only the questions the rep answered get an answer record (answers are optional)
         q.rubric.criteria.forEach { c ->
+            val yes = q.answers[c.id]; val text = q.texts[c.id]
+            if ((c.text && text == null) || (!c.text && yes == null)) return@forEach
             recs += TsoOutbox.Rec(
                 com.aktcl.aron.contract.RecordType.CALL_ASSESSMENT_ANSWER, com.aktcl.aron.feature.tso.mycall.QueryIds.answer(a, c.id),
                 kotlinx.serialization.json.buildJsonObject {
                     put("assessment_client_uuid", kotlinx.serialization.json.JsonPrimitive(a)); put("criterion_id", kotlinx.serialization.json.JsonPrimitive(c.id))
-                    put("answer_bool", kotlinx.serialization.json.JsonPrimitive(q.answers.getValue(c.id)))
+                    if (c.text) put("answer_text", kotlinx.serialization.json.JsonPrimitive(text)) else put("answer_bool", kotlinx.serialization.json.JsonPrimitive(yes))
                 }, familyUuid = a, rank = 1, routeId = q.routeId,
             )
         }

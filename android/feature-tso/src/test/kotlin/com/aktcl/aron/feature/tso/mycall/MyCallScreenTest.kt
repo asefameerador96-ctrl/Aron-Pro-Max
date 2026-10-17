@@ -47,10 +47,10 @@ class MyCallScreenTest {
         show(AppLanguage.EN) { VisitQueryScreen(st, "Shop One", onDone = {}, onBack = {}) }
         compose.onNodeWithText("Does the SR visit regularly?").assertIsDisplayed()
         compose.onNodeWithText("Does the SR print memos regularly?").assertIsDisplayed()
-        compose.onNodeWithText("Delegate task?").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Do you want to delegate the task?").performScrollTo().assertIsDisplayed()
         assertEquals(false, st.ui.value.delegate)
         compose.onNodeWithTag(MyCallTags.SUBMIT).performClick(); compose.waitForIdle()
-        assertEquals(QueryResult.Unanswered, st.ui.value.result)
+        assertEquals("answers are optional: Submit goes through", QueryResult.Submitted(false), st.ui.value.result)
     }
 
     @Test fun banglaQuestionsUseTheBanglaLabelWhenThereIsOne() {

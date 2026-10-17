@@ -142,12 +142,20 @@ class QueryAndTaskTest {
         assertEquals(null, RubricJson.retailer(null)); assertEquals(null, RubricJson.retailer("{"))
     }
 
-    @Test fun mustAnswerEveryQuestionDelegateDefaultsToNoAndSubmitIsOnce() = runBlocking {
+    @Test fun answersAreOptionalDelegateDefaultsToNoAndSubmitIsOnce() = runBlocking {
         val q = QQ(); val s = VisitQueryState(rubric, "plan", 9, 1, q)
         assertEquals(false, s.ui.value.delegate)
-        s.submit(); assertEquals(QueryResult.Unanswered, s.ui.value.result); assertTrue(q.subs.isEmpty())
-        s.answer(1, true); s.answer(2, false); s.submit(); s.submit()
-        assertEquals(1, q.subs.size); assertEquals(QueryResult.Submitted(false), s.ui.value.result); assertEquals(mapOf(1L to true, 2L to false), q.subs[0].answers)
+        s.answer(1, true); s.submit(); s.submit() // question 2 left empty: allowed (D-199), one submission
+        assertEquals(1, q.subs.size); assertEquals(QueryResult.Submitted(false), s.ui.value.result); assertEquals(mapOf(1L to true), q.subs[0].answers)
+        val q2 = QQ(); val s2 = VisitQueryState(rubric, "plan", 9, 1, q2); s2.submit()
+        assertEquals(1, q2.subs.size); assertTrue(q2.subs[0].answers.isEmpty()) // nothing answered at all is also a valid Submit
+    }
+
+    @Test fun textQuestionsAreTrimmedBlankOnesDroppedAndTheBoolScoreIgnoresThem() = runBlocking {
+        val r = Rubric(5, 1, listOf(Criterion(1, null, "Q1", text = true), Criterion(2, null, "Q2", text = true), Criterion(3, null, "Q3")))
+        val q = QQ(); val s = VisitQueryState(r, "plan", 9, 1, q)
+        s.text(1, "  weekly visits  "); s.text(2, "   "); s.answer(3, true); s.submit()
+        assertEquals(mapOf(1L to "weekly visits"), q.subs.single().texts); assertEquals(mapOf(3L to true), q.subs.single().answers)
     }
 
     @Test fun delegateYesAsksForTheTaskAndAFailureCanRetry() = runBlocking {

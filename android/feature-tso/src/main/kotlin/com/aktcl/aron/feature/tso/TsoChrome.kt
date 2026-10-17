@@ -47,6 +47,7 @@ object TsoChromeTags {
     const val LOGOUT = "tso_chrome_logout"
     const val HOME_BUTTON = "tso_chrome_home"
     const val DRAWER_HEADER = "tso_drawer_header"
+    const val DRAWER_LOGOUT = "tso_drawer_logout"
     fun entry(screen: TsoScreen) = "tso_drawer_entry_${screen.name.lowercase()}"
     fun subtitle(screen: TsoScreen) = "tso_drawer_subtitle_${screen.name.lowercase()}"
 }
@@ -122,7 +123,7 @@ fun TsoHomeButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
 
 /** The slide-in menu: header "TSO" plus the name, then the seven entries with their subtitles. */
 @Composable
-fun TsoDrawer(name: String, entries: List<TsoDrawerEntry>, onEntry: (TsoScreen) -> Unit, content: @Composable (open: () -> Unit) -> Unit) {
+fun TsoDrawer(name: String, entries: List<TsoDrawerEntry>, onEntry: (TsoScreen) -> Unit, onLogout: () -> Unit = {}, content: @Composable (open: () -> Unit) -> Unit) {
     val state = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
     val c = LocalAronColors.current
@@ -130,9 +131,13 @@ fun TsoDrawer(name: String, entries: List<TsoDrawerEntry>, onEntry: (TsoScreen) 
         drawerContent = {
             ModalDrawerSheet(drawerContainerColor = c.surfaceSolid) {
                 Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Vertical))) {
-                    Column(Modifier.fillMaxWidth().testTag(TsoChromeTags.DRAWER_HEADER).padding(AronTokens.Space.L)) {
-                        Text(stringResource(R.string.tso_drawer_role), style = MaterialTheme.typography.titleLarge, color = c.textPrimary)
-                        Text(name, style = MaterialTheme.typography.bodyMedium, color = c.textSecondary)
+                    // "TSO" and the name, with the logout icon in the header too (the manual, G-27)
+                    Row(Modifier.fillMaxWidth().testTag(TsoChromeTags.DRAWER_HEADER).padding(start = AronTokens.Space.L, top = AronTokens.Space.L, bottom = AronTokens.Space.L, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text(stringResource(R.string.tso_drawer_role), style = MaterialTheme.typography.titleLarge, color = c.textPrimary)
+                            Text(name, style = MaterialTheme.typography.bodyMedium, color = c.textSecondary)
+                        }
+                        AronIconButton(AronIcons.Logout, stringResource(R.string.tso_chrome_logout), { scope.launch { state.close() }; onLogout() }, Modifier.testTag(TsoChromeTags.DRAWER_LOGOUT))
                     }
                     entries.forEach { e ->
                         Row(

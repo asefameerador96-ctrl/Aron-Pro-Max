@@ -61,6 +61,7 @@ sealed interface LeaveApplyResult {
 class LeaveApplyState(private val queue: LeaveQueue, private val today: () -> String, private val newUuid: () -> String = { UUID.randomUUID().toString() }) {
     private var uuid = newUuid()
     private var busy = false
+    fun todayIso() = today()
     private val _form = MutableStateFlow(LeaveForm(fromDate = today()))
     val form: StateFlow<LeaveForm> = _form.asStateFlow()
     private val _result = MutableStateFlow<LeaveApplyResult>(LeaveApplyResult.Editing)

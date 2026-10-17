@@ -101,7 +101,7 @@ private fun LeaveCard(item: LeaveItem) {
         Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
             androidx.compose.material3.Text(type, style = androidx.compose.material3.MaterialTheme.typography.titleSmall)
             androidx.compose.material3.Text("$period  ·  $days", style = androidx.compose.material3.MaterialTheme.typography.bodyMedium)
-            androidx.compose.material3.Text(item.reason, style = androidx.compose.material3.MaterialTheme.typography.bodyMedium)
+            androidx.compose.material3.Text(stringResource(R.string.tso_leave_reason_line, item.reason), style = androidx.compose.material3.MaterialTheme.typography.bodyMedium)
             AronBanner(badge, Modifier.testTag(LeaveTags.badge(item.leaveUuid)), kind = kind)
             if (!item.sent) AronBanner(stringResource(R.string.tso_leave_not_sent), Modifier.testTag(LeaveTags.unsent(item.leaveUuid)), kind = BannerKind.Offline)
         }

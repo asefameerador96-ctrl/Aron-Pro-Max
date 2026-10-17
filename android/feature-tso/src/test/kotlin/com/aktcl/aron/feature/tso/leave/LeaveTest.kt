@@ -111,7 +111,7 @@ class LeaveScreenTest {
         compose.onNodeWithText("DMO approval pending").assertExists()
         compose.onNodeWithTag(LeaveTags.LIST).performScrollToNode(hasTestTag(LeaveTags.card("b")))
         compose.onNodeWithText("Rejected by DMO").assertExists()
-        compose.onNodeWithText("2026-10-05 to 2026-10-07  ·  3 days").assertExists()
+        compose.onNodeWithText("2026-10-05 to 2026-10-07  ·  3 Days").assertExists()
         compose.onNodeWithTag(LeaveTags.LIST).performScrollToNode(hasTestTag(LeaveTags.card("c")))
         compose.onNodeWithTag(LeaveTags.unsent("c")).assertExists()
         compose.onNodeWithText("As of 10:42").assertExists()
