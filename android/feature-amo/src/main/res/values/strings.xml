@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="amo_cc_title">Control Call</string>
+    <string name="amo_cc_pick_route">Choose a route</string>
+    <string name="amo_cc_pick_outlet">Choose a retailer</string>
+    <string name="amo_cc_routes_empty">No routes in your zone yet</string>
+    <string name="amo_cc_routes_empty_hint">Open the app with a connection once to download the zone.</string>
+    <string name="amo_cc_route_outlets">%1$s retailers</string>
+    <string name="amo_cc_out_of_range">AMO is not within the retailer\'s range.</string>
+    <string name="amo_cc_manual_override">Manual Override</string>
+    <string name="amo_cc_override_limit">Today\'s Manual Override limit (%1$s) is used. Move closer to the retailer or refresh the location.</string>
+    <string name="amo_cc_menu_title">What do you want to do at this retailer?</string>
+    <string name="amo_cc_menu_sale">Sale</string>
+    <string name="amo_cc_menu_assessment">SR Perf. Assessment</string>
+    <string name="amo_cc_menu_survey">Survey</string>
+    <string name="amo_cc_back_to_picker">Choose another retailer</string>
+    <string name="amo_cc_closing">Closing the call…</string>
+</resources>

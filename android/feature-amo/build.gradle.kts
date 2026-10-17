@@ -17,6 +17,8 @@ dependencies {
     implementation(project(":android:core-common"))
     implementation(project(":android:feature-home"))
     implementation(project(":android:feature-attendance"))
+    implementation(project(":android:feature-outlet"))
+    implementation(project(":android:core-database"))
     implementation(project(":android:core-system"))
     implementation(libs.maps.compose)
     implementation(libs.kotlinx.serialization.json)

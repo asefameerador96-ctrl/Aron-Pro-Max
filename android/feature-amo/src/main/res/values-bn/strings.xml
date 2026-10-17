@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="amo_cc_title">কন্ট্রোল কল</string>
+    <string name="amo_cc_pick_route">রুট বেছে নিন</string>
+    <string name="amo_cc_pick_outlet">খুচরা বিক্রেতা বেছে নিন</string>
+    <string name="amo_cc_routes_empty">আপনার জোনে এখনও কোনো রুট নেই</string>
+    <string name="amo_cc_routes_empty_hint">জোনের তথ্য নামাতে একবার ইন্টারনেট সংযোগসহ অ্যাপ খুলুন।</string>
+    <string name="amo_cc_route_outlets">%1$s জন খুচরা বিক্রেতা</string>
+    <string name="amo_cc_out_of_range">এএমও খুচরা বিক্রেতার সীমার মধ্যে নেই।</string>
+    <string name="amo_cc_manual_override">ম্যানুয়াল ওভাররাইড</string>
+    <string name="amo_cc_override_limit">আজকের ম্যানুয়াল ওভাররাইডের সীমা (%1$s) শেষ। বিক্রেতার কাছাকাছি যান বা লোকেশন রিফ্রেশ করুন।</string>
+    <string name="amo_cc_menu_title">এই বিক্রেতার কাছে কী করবেন?</string>
+    <string name="amo_cc_menu_sale">বিক্রয়</string>
+    <string name="amo_cc_menu_assessment">এসআর পারফরম্যান্স মূল্যায়ন</string>
+    <string name="amo_cc_menu_survey">সার্ভে</string>
+    <string name="amo_cc_back_to_picker">অন্য বিক্রেতা বেছে নিন</string>
+    <string name="amo_cc_closing">কল শেষ হচ্ছে…</string>
+</resources>

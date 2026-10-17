@@ -60,6 +60,7 @@ class MainActivity : ComponentActivity() {
     @Inject lateinit var imageCache: com.aktcl.aron.core.sync.ImageCache
     @Inject lateinit var databases: com.aktcl.aron.core.database.UserDatabases
     @Inject lateinit var scheduler: com.aktcl.aron.core.sync.SyncScheduler
+    @Inject lateinit var mediaShell: MediaShell
     @Inject lateinit var fixManager: com.aktcl.aron.core.geo.FixManager
     @Inject lateinit var deviceRuntime: com.aktcl.aron.core.sync.device.DeviceRuntime
     private val locationNotice by lazy { com.aktcl.aron.core.sync.LocationNotice({ databases.of(it) }, components.trustedClock, scheduler, com.aktcl.aron.core.sync.LocationNotice.offlineProbe(applicationContext)) }
@@ -163,11 +164,14 @@ class MainActivity : ComponentActivity() {
                             LaunchedEffect(s.user.userId) {
                                 val d = AmoDay(s.user.userId, applicationContext, databases.of(s.user.userId), components, scheduler, fixManager, deviceRuntime)
                                 runCatching { d.reload(); d.attendance.restore(d.attendanceToday()) }
+                                // F-SYS-030/010: the camera and this user's photo queue (Manual Override, Update Base, outlet requests).
+                                runCatching { d.attachMedia(mediaShell.componentsFor(s.user.userId, d::businessDate)) }
                                 day = d
                             }
                             val dayScope = rememberCoroutineScope()
                             val screens: Map<AmoScreen, @Composable (() -> Unit) -> Unit> = day?.let { d ->
                                 mapOf<AmoScreen, @Composable (() -> Unit) -> Unit>(
+                                    AmoScreen.CONTROL_CALL to { back -> ControlCallHost(d, back) },
                                     AmoScreen.ATTENDANCE to { back ->
                                         val attendance by d.attendance.state.collectAsStateWithLifecycle()
                                         LaunchedEffect(d) { d.attendance.tick() }

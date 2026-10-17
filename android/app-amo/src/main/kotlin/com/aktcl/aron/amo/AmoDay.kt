@@ -15,7 +15,16 @@ import com.aktcl.aron.core.sync.device.DayConfig
 import com.aktcl.aron.core.sync.device.DeviceRuntime
 import com.aktcl.aron.dpc.DeviceOwnerPolicy
 import com.aktcl.aron.feature.attendance.AttendanceFlow
+import com.aktcl.aron.feature.outlet.CapturedPhoto
 import com.aktcl.aron.feature.outlet.CaptureMetaProvider
+import com.aktcl.aron.feature.outlet.ForceSaleController
+import com.aktcl.aron.feature.outlet.GeoPhotoCapture
+import com.aktcl.aron.feature.outlet.GeoSettings
+import com.aktcl.aron.feature.outlet.OutletRequests
+import com.aktcl.aron.feature.outlet.PhotoPipeline
+import com.aktcl.aron.feature.outlet.VisitFlow
+import com.aktcl.aron.feature.outlet.VisitSession
+import com.aktcl.aron.feature.outlet.toEntities
 import com.aktcl.aron.feature.outlet.FixManagerSource
 import com.aktcl.aron.rules.BusinessDate
 import java.time.Instant
@@ -61,6 +70,8 @@ class AmoDay(
     suspend fun reload() {
         bundleVersion = reference.bundleVersion()
         configVersion = db.referenceDao().meta(ReferenceRepository.KEY_CONFIG_VERSION)?.toLongOrNull() ?: 0L
+        overrideMax = runCatching { reference.config("cfg.amo.manual_override_max_per_day", iso(clock.nowMs())) }.getOrNull()
+            ?.trim('"')?.toIntOrNull()?.takeIf { it in 0..100 } ?: com.aktcl.aron.feature.amo.ManualOverrideCap.DEFAULT_MAX
     }
 
     val metaProvider = CaptureMetaProvider { rid ->
@@ -107,4 +118,98 @@ class AmoDay(
         val m = deviceRuntime?.dayConfig?.checkoutEarliestMinutes ?: DayConfig.DEFAULT_CHECKOUT_MINUTES
         return "%02d:%02d".format(m / 60, m % 60)
     }
+
+    // ---- photos (F-SYS-030): the camera and this user's queue, attached by the shell once the queue is open
+    @Volatile var photoPipeline: PhotoPipeline = NoCameraPipeline
+    @Volatile var media: com.aktcl.aron.core.media.MediaComponents? = null
+        private set
+
+    suspend fun attachMedia(m: com.aktcl.aron.core.media.MediaComponents) {
+        media = m
+        photoPipeline = MediaPhotoPipeline(m)
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { m.resume() }
+    }
+
+    /** Claims a photo for the record about to be committed so the media worker uploads it after the record's ack; idempotent per record. */
+    private suspend fun claimPhoto(photoUuid: String, purpose: String, refType: String, refUuid: String, fix: com.aktcl.aron.core.database.entity.GeoFixEntity?) {
+        val m = media ?: return
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            val item = m.store.get(photoUuid) ?: return@withContext
+            val owner = item.ref
+            if (owner != null && owner.refClientUuid != refUuid) return@withContext
+            m.attach(
+                photoUuid, com.aktcl.aron.core.media.MediaRef(purpose, refType, refUuid),
+                fix?.let { com.aktcl.aron.core.media.PhotoStamp(it.lat, it.lng, it.accuracyM, it.isMock, it.clientUuid) },
+            )
+        }
+    }
+
+    fun newCapture(purpose: String) = GeoPhotoCapture(fixSource, object : PhotoPipeline {
+        override suspend fun captureAndCompress(photoUuid: String) = photoPipeline.captureAndCompress(photoUuid)
+        override suspend fun discard(photoUuid: String) = photoPipeline.discard(photoUuid)
+    }, purpose)
+
+    // ---- calls: the SR's visit flow, geo gate and Force Sale (Manual Override) on the AMO's own visit kinds
+    val visitSession = VisitSession()
+    @Volatile private var nextSequence = 1
+    suspend fun nextSequenceFromStore() { nextSequence = db.captureDao().visitsOn(businessDate()).size + 1 }
+
+    val visitFlow: VisitFlow = VisitFlow(
+        fixes = fixSource, metaProvider = metaProvider,
+        committer = { v, f ->
+            v.geoForcePhotoUuid?.let { claimPhoto(it, "force_sale", "visit", v.clientUuid, f) }
+            capture.recordVisitOpen(v, f); runCatching { requestSync() }
+        },
+        session = visitSession, settings = { GeoSettings.DEFAULT }, nowIso = { iso(clock.nowMs()) },
+        nextSequenceNo = { nextSequence++ },
+    )
+
+    private val requestFixUuids = java.util.concurrent.ConcurrentHashMap<String, String>()
+    val outletRequests = OutletRequests(
+        committer = { draft ->
+            val fix = draft.fix ?: fixSource.readFix("outlet_capture")
+            val fixUuid = requestFixUuids.getOrPut(draft.requestUuid) { com.aktcl.aron.core.common.ClientIds.newUuid() }
+            val (entity, fixEntity) = draft.toEntities(metaProvider.meta(0L), fix, fixUuid)
+            draft.photoUuids.forEach { claimPhoto(it, "outlet_capture", "outlet_change_request", entity.clientUuid, fixEntity) }
+            capture.recordOutletRequest(entity, fixEntity)
+            runCatching { requestSync() }
+        },
+    )
+
+    fun forceSaleController(capture: GeoPhotoCapture, locationGranted: () -> Boolean) = ForceSaleController(visitFlow, capture, outletRequests, locationGranted)
+
+    /** The zone's routes with their outlets for the date (the zone-wide bundle, local only). */
+    suspend fun routes() = reference.routesOfDay(businessDate()).ifEmpty { reference.businessDate()?.let { reference.routesOfDay(it) }.orEmpty() }
+
+    /** Daily Manual Override limit: `cfg.amo.manual_override_max_per_day` when the registry carries it, else the assumed default (MQ-14). */
+    fun manualOverrideMax(): Int = overrideMax
+    @Volatile private var overrideMax: Int = com.aktcl.aron.feature.amo.ManualOverrideCap.DEFAULT_MAX
+
+    /** Today's visits, for the Manual Override daily limit. */
+    suspend fun visitsToday() = db.captureDao().visitsOn(businessDate())
+
+    /** Ends the call in progress: a call with no memo closes `abandoned` (docs/24 s4.2). */
+    suspend fun closeVisit(outcome: String = "abandoned") {
+        val v = visitSession.current.value ?: return
+        capture.recordVisitClose(
+            com.aktcl.aron.core.database.entity.VisitCloseEntity(
+                clientUuid = com.aktcl.aron.core.common.ClientIds.newUuid(), meta = metaProvider.meta(v.routeId), visitClientUuid = v.visitUuid, outcomeCode = outcome,
+                callStartedAt = null, callDeclined = false, endedAt = iso(clock.nowMs()), isZeroSale = true,
+            ),
+        )
+        visitSession.close(); runCatching { requestSync() }
+    }
+}
+
+/** F-SYS-030 camera, compression and queue behind the outlet lane's [PhotoPipeline]; null when cancelled or no space. */
+class MediaPhotoPipeline(private val media: com.aktcl.aron.core.media.MediaComponents) : PhotoPipeline {
+    override suspend fun captureAndCompress(photoUuid: String): CapturedPhoto? =
+        media.capture(photoUuid)?.let { CapturedPhoto(photoUuid, it.thumbnailPath, it.item.bytes.toLong()) }
+    override suspend fun discard(photoUuid: String) { media.discard(photoUuid) }
+}
+
+/** No camera yet: photo-gated steps stay incomplete. */
+object NoCameraPipeline : PhotoPipeline {
+    override suspend fun captureAndCompress(photoUuid: String): CapturedPhoto? = null
+    override suspend fun discard(photoUuid: String) = Unit
 }
