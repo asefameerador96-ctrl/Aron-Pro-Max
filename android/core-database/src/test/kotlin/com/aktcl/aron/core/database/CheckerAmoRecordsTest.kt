@@ -97,7 +97,6 @@ class CheckerAmoRecordsTest {
     }
 
     /** A replay after the family was purged must not enqueue the record a second time. */
-    @org.junit.Ignore("Open, all capture types alike: a replay of a purged UUID is queued again; the server dedupes it. See docs/status/android-amo.md traps.")
     @Test fun aReplayAfterPurgeDoesNotEnqueueAgain() = runTest {
         val u = ClientIds.newUuid()
         val r = row("task", u, 0, AmoPayloads.task("visit_followup", 7, null, "T", null, null, null).toString(), uuid = u)

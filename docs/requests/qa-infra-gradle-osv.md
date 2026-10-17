@@ -10,7 +10,8 @@ Jackson advisories in the backend (`docs/requests/qa-backend-jackson-cves.md`).
 
 qa added `tools/ci/gradle-lockfile.py` and its self-test `tools/ci/test_gradle_lockfile.py`. The script turns
 `gradle dependencies` output into a `gradle.lockfile` that osv-scanner reads. It keeps resolved versions only:
-constraints, unresolved and failed lines are skipped, and rich versions are handled.
+constraint and declared-only lines are skipped, and rich versions are handled. A FAILED module or an unpinned range
+makes it exit 2, because a partial lockfile would scan as clean.
 
 **Ask (infra owns ci.yml):** in a job that already has the Gradle and Android SDK setup, add:
 ```yaml

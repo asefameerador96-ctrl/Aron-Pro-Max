@@ -83,34 +83,13 @@ class TsoAppTest {
         // the bundle version is an identifier and keeps ASCII; the date takes Bengali digits
         compose.onNodeWithText(context.getString(HomeR.string.home_bundle_ready, "২০২৬-১০-০৫", "b-17")).assertExists()
         compose.onNodeWithTag(RoleHomeTags.HERO).assertExists()
-        RoleHomes.tsoTiles().forEach { compose.onNodeWithTag(RoleHomeTags.tile(it.id)).assertExists() }
+        RoleHomes.tsoTiles().filter { it.id != RoleHomes.TsoTile.DEVICE_OTP }.forEach { compose.onNodeWithTag(RoleHomeTags.tile(it.id)).assertExists() }
+        // the TSO app has no bind OTP (D-AUTH-TSO-NOBIND): no tile for the page that read it
+        compose.onNodeWithTag(RoleHomeTags.tile(RoleHomes.TsoTile.DEVICE_OTP)).assertDoesNotExist()
         compose.onNodeWithTag(RoleHomeTags.tile("target_status")).assertDoesNotExist()
         compose.onNodeWithTag(RoleHomeTags.tile(RoleHomes.TsoTile.LEAVE)).performScrollTo()
         compose.onNode(hasContentDescription(context.getString(CoreR.string.core_ui_tile_badge, "১")), useUnmergedTree = true).assertExists()
         compose.onNodeWithTag(HomeTags.LOGOUT).assertDoesNotExist()
-    }
-
-    @Test
-    fun deviceOtpTileOpensTheWebPagePointerAndBackReturnsHome() {
-        val context = show(AppLanguage.BN)
-        compose.onNodeWithTag(RoleHomeTags.tile(RoleHomes.TsoTile.DEVICE_OTP)).performScrollTo().performClick()
-        compose.waitForIdle()
-        compose.onNodeWithTag(RoleHomeTags.OTP_URL).assertExists()
-        // no dashboard origin configured: the path alone, with the menu entry it sits under
-        compose.onNodeWithText(context.getString(HomeR.string.rh_tso_otp_url)).assertExists()
-        compose.onNodeWithText(context.getString(HomeR.string.rh_tso_otp_menu_hint)).assertExists()
-        compose.onNodeWithText(context.getString(HomeR.string.rh_tso_otp_title)).assertExists()
-        compose.onNodeWithContentDescription(context.getString(CoreR.string.core_ui_back)).performClick()
-        compose.waitForIdle()
-        compose.onNodeWithTag(HomeTags.HEADER).assertIsDisplayed()
-    }
-
-    @Test
-    fun deviceOtpShowsTheCompleteAddressWhenTheDashboardOriginIsConfigured() {
-        val context = show(AppLanguage.EN, webOrigin = "https://aron.example.com/")
-        compose.onNodeWithTag(RoleHomeTags.tile(RoleHomes.TsoTile.DEVICE_OTP)).performScrollTo().performClick()
-        compose.waitForIdle()
-        compose.onNodeWithTag(RoleHomeTags.OTP_URL).assertTextEquals("https://aron.example.com" + context.getString(HomeR.string.rh_tso_otp_url))
     }
 
     @Test
