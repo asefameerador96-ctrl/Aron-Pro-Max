@@ -424,3 +424,48 @@ dialog.sheet-start::backdrop {
     min-height: var(--ctl-h);
   }
 }
+
+/* Print (dashboard tables and drill-downs): the content only, black on white, no sidebar, bar, buttons or filters; every
+   table card stays whole across pages and the whole width is used. */
+@media print {
+  [data-testid="sidebar"],
+  [data-testid="top-bar"],
+  .no-print,
+  nav,
+  a[href="#content"] {
+    display: none !important;
+  }
+  .shell-main {
+    padding-inline-start: 0 !important;
+  }
+  body,
+  main {
+    background: #fff !important;
+    color: #000 !important;
+  }
+  main {
+    max-width: none !important;
+    padding: 0 !important;
+  }
+  .glass-card,
+  .glass-data {
+    background: #fff !important;
+    color: #000 !important;
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+    border: 1px solid #999 !important;
+  }
+  .print-block {
+    break-inside: avoid;
+  }
+  .overflow-x-auto {
+    overflow: visible !important;
+  }
+  table {
+    font-size: 10pt;
+  }
+  * {
+    animation: none !important;
+    transition: none !important;
+  }
+}

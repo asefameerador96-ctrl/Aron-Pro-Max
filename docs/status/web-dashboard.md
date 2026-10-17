@@ -1,5 +1,12 @@
 # Web-dashboard lane status
 
+## Session 4 (2026-10-17 night, replaces session 3)
+- **Item 1 per-role variants: done.** Same home for every role; below the cards TSO/AMO get "SR performance" (from daily-tracking rows grouped by SR, zones narrowed by the Filter through `lib/dash/scope-zones.ts`), every other role the "TSO / zone ranking" (summary children). Tables: `components/dash/tables.tsx`; pure builders `lib/dash/rows.ts`.
+- **Item 2 drill-downs: done.** `/drill/{category,channel,calls,login}` (`app/(dashboards)/drill/[kind]`): every home card has a "Details" link, channel donut slices link to `?code=`; date and Filter ids stay in the URL and the back link. Every table has CSV (BOM, CRLF, formula guard, taka with 3 decimals from integer milli-taka, Bengali digits in bn, units as stick/piece/dozen column) and Print (print stylesheet at the end of `styles/glass.css`). Gaps filed: `docs/requests/web-dashboard-drill-fields.md` (brand split per category, route-by-channel calls).
+- **Item 3 states: done.** Loading skeleton (home grid and drill tables), empty text, error with Retry (`RetryButton` = in-place `router.refresh()`), as-of stamp on every tile/table (`TileMeta`), `AutoRefresh` every 60 s (never faster, paused while the tab is hidden, rule tested in `shouldRefresh`).
+- Item 4 gates: not started. Item 5 missing server fields: see the request file.
+- Gates at this head: vitest 1136, lint and tsc clean, Playwright 134 pass; `config-tiers` permission goldens differ by 1 px in this container (admin pages, not touched here). Filter keyboard e2e now waits for hydration (was flaky).
+
 ## HANDOVER (2026-10-17 23:00 UTC, recycle requested by lead): items 1 to 5 of the lead's message are NOT started
 **Done and promoted/checked:** home on the portal layout (see Session 3 below), orange Filter with cascading scope, Escape-closes popover, role route audit spec, home/page screenshot spec (attachments only, no goldens). Head d4c24635 green, checked by the lead. Gates at handover: vitest 1119, lint and tsc clean, Playwright all pass locally.
 **Next (lead's rulings, build in this order, push each of 2, 3, 4 as its own checked head with a green run):**

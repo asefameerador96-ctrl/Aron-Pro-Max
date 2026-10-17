@@ -1,7 +1,7 @@
 // F-WEB-001, F-WEB-047, F-WEB-068, N-047: the seeded TSO's dashboard, report pages and the Maps cost guard, in a real browser.
 import { expect, test } from "@playwright/test";
 import { controlTotals, routesInScope } from "../mock/seed";
-import { MOCK, loginOk, resetMock } from "./helpers";
+import { MOCK, hydrated, loginOk, resetMock } from "./helpers";
 
 test.beforeEach(async () => {
   await resetMock();
@@ -116,6 +116,7 @@ test("the orange Filter narrows the home to a zone: bound levels are read-only, 
 test("the Filter popover works from the keyboard: Enter opens it, Escape closes it and returns focus", async ({ page }) => {
   await loginOk(page, "tso334", "tso-pass-1");
   await page.getByRole("link", { name: "English" }).click();
+  await hydrated(page.getByTestId("home-filter")); // a key pressed before React attaches is lost
   const summary = page.getByTestId("home-filter").locator("summary");
   await summary.focus();
   await page.keyboard.press("Enter");

@@ -30,6 +30,8 @@ export interface Slice {
   value: number;
   valueText: string;
   shareText: string;
+  /** Drill-down for this slice (its legend label becomes a link). */
+  href?: string;
 }
 
 /** Donut with a printed legend (value and share per slice). Zero and negative slices are dropped from the arc but stay in the legend. */
@@ -59,7 +61,13 @@ export function Donut({ slices, label, centerText, testId, size = 140 }: { slice
         {slices.map((s, i) => (
           <li key={s.key} data-label={s.label} data-value={s.value} className="flex items-center gap-2 text-body">
             <span className="size-3 shrink-0 rounded-full" style={{ background: VIZ[i % VIZ.length] }} aria-hidden="true" />
-            <span className="min-w-0 flex-1 truncate text-primary" title={s.label}>{s.label}</span>
+            {s.href ? (
+              <a href={s.href} data-testid={`slice-link-${s.key}`} className="inline-flex min-h-(--ctl-h) min-w-0 flex-1 items-center truncate text-accent underline-offset-2 hover:underline focus-visible:outline-(length:--focus-w) focus-visible:outline-offset-2 outline-focus" title={s.label}>
+                <span className="truncate">{s.label}</span>
+              </a>
+            ) : (
+              <span className="min-w-0 flex-1 truncate text-primary" title={s.label}>{s.label}</span>
+            )}
             <span className="whitespace-nowrap text-body-strong text-primary tabular-nums">{s.valueText}</span>
             <span className="w-14 shrink-0 whitespace-nowrap text-end text-caption text-secondary tabular-nums">{s.shareText}</span>
           </li>

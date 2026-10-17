@@ -1,3 +1,5 @@
+import { AutoRefresh, RetryButton } from "@/components/dash/table-actions";
+import { RankTable, SrTable } from "@/components/dash/tables";
 import { FinalSubmitPanel, zoneFinalOf } from "@/components/dash/final-submit-panel";
 import { TeamMapPlate } from "@/components/dash/team-map-plate";
 import { Tile, n, pctText, takaText } from "@/components/dash/tiles";
@@ -15,7 +17,10 @@ import { FilteredMap } from "@/components/dash/filtered-map";
 import type { MapPin } from "@/components/map-panel";
 import { requireSession } from "@/lib/auth/require";
 import { getLocale } from "@/lib/auth/service";
-import { getGeoValidation, getLoginSubmit, getSummary, getTeamLocations, listOutlets } from "@/lib/dash/server";
+import { getDailyTracking, getGeoValidation, getLoginSubmit, getSummary, getTeamLocations, listOutlets } from "@/lib/dash/server";
+import { drillHref } from "@/lib/dash/drill";
+import { rankRows, srRows } from "@/lib/dash/rows";
+import { zonesUnder } from "@/lib/dash/scope-zones";
 import { formatLakhCrore, mtkToTaka, pctChange } from "@/lib/dash/lakh";
 import { InfoTip } from "@/components/dash/info-tip";
 import { HomeFilter } from "@/components/dash/home-filter";
@@ -32,7 +37,28 @@ function Err({ locale, code }: { locale: Locale; code: string | undefined }) {
     <p role="alert" className="flex items-center gap-2 text-body text-danger-on-container" data-testid="tile-error">
       <Icon name="error" className="text-danger" />
       {problemMessage(locale, code)}
+      <RetryButton msg={t(locale, "table.retry")} />
     </p>
+  );
+}
+
+/** "Details" link of a card to its drill-down (hidden in print). */
+function DrillLink({ href, msg, testId }: { href: string; msg: string; testId: string }) {
+  return (
+    <Link href={href} data-testid={testId} className="no-print inline-flex min-h-(--ctl-h) items-center gap-1 text-label text-accent hover:underline focus-visible:outline-(length:--focus-w) focus-visible:outline-offset-2 outline-focus">
+      {msg}
+      <Icon name="chevron-right" size={16} />
+    </Link>
+  );
+}
+
+/** Card heading row with the drill-down link (same look as the Tile heading). */
+function SectionHead({ msg, link }: { msg: string; link: React.ReactNode }) {
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-2 border-b border-accent-graphic/40 pb-2">
+      <h2 className="text-body-strong text-accent">{msg}</h2>
+      {link}
+    </div>
   );
 }
 
@@ -62,13 +88,17 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
   const deepest = [...GEO_LEVELS].reverse().find((l) => picked[l]?.[0] !== undefined);
   const node = deepest ? { level: deepest, node_id: picked[deepest]![0]! } : {};
   const filtered = deepest !== undefined;
-  const [summary, loginSubmit, geo, team, previous, weekAgo] = await Promise.all([
+  const role = session.user.role;
+  const srRole = role === "TSO" || role === "AMO"; // TSO and AMO get the SR table, everyone else the TSO / zone ranking
+  const [summary, loginSubmit, geo, team, previous, weekAgo, tracking, trackZones] = await Promise.all([
     getSummary(token, { from: date, to: date, ...node }),
     getLoginSubmit(token, date, node),
     getGeoValidation(token, { from: date, to: date, ...node }),
     getTeamLocations(token, date, node.level === "zone" ? node.node_id : undefined),
     getSummary(token, { from: yesterday, to: yesterday, ...node }),
     getSummary(token, { from: lastWeek, to: lastWeek, ...node }),
+    srRole ? getDailyTracking(token, date) : Promise.resolve(null),
+    srRole ? zonesUnder(token, node, date) : Promise.resolve(null),
   ]);
 
   const asOf = summary.ok ? summary.data.as_of : null;
@@ -117,6 +147,10 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
   const brands = summary.ok ? [...(summary.data.by_brand ?? [])].sort((a, b) => (brandMode === "memo" ? b.memo_count - a.memo_count : b.net_mtk - a.net_mtk)).slice(0, 12) : [];
   const cprPct = k && k.target_outlets > 0 ? (k.successful_calls / k.target_outlets) * 100 : null;
   const geoQs = Object.fromEntries(GEO_LEVELS.filter((l) => picked[l]?.[0] !== undefined).map((l) => [l, String(picked[l]![0])]));
+  const dl = (kind: Parameters<typeof drillHref>[0], extra: Record<string, string> = {}) => drillHref(kind, { ...(date === today ? {} : { date }), ...geoQs, ...extra });
+  const detailsMsg = t(locale, "drill.open");
+  const stamp = { asOf, businessDate: date, today };
+  const sr = tracking?.ok ? srRows(tracking.data.items.filter((r) => trackZones === null || trackZones === undefined || trackZones.has(r.zone_id))) : [];
   const sameQs = (q: Record<string, string>) => {
     const qs = new URLSearchParams({ ...q, ...geoQs }).toString();
     return qs ? `/?${qs}` : "/";
@@ -158,7 +192,10 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
 
       {!summary.ok ? (
         <Banner tone="danger" role="alert" testId="dashboard-error">
-          {problemMessage(locale, summary.problem.code)}
+          <span className="flex flex-wrap items-center gap-3">
+            {problemMessage(locale, summary.problem.code)}
+            <RetryButton msg={t(locale, "table.retry")} />
+          </span>
         </Banner>
       ) : null}
       {empty ? <EmptyState icon="sync" title={t(locale, "dashboard.empty.title")} body={t(locale, "dashboard.empty.body")} testId="dashboard-empty" /> : null}
@@ -173,7 +210,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
               const change = pctChange(c.qty_base, prev?.qty_base);
               const share = catTotalNet > 0 ? (Math.max(0, c.net_mtk) / catTotalNet) * 100 : null;
               return (
-                <Tile key={c.category_code} id={`cat-${c.category_code}`} locale={locale} titleKey="dashboard.cat.heading" heading={catTitle(c.category_code)} date={d()} data tip={<InfoTip msg={t(locale, "dashboard.cat.info")} openMsg={t(locale, "dashboard.info.open")} />} className="col-span-full min-[480px]:col-span-1 md:col-span-3 lg:col-span-6 xl:col-span-3">
+                <Tile key={c.category_code} id={`cat-${c.category_code}`} locale={locale} titleKey="dashboard.cat.heading" heading={catTitle(c.category_code)} date={d()} data actions={<DrillLink href={dl("category", { code: c.category_code })} msg={detailsMsg} testId={`drill-cat-${c.category_code}`} />} tip={<InfoTip msg={t(locale, "dashboard.cat.info")} openMsg={t(locale, "dashboard.info.open")} />} className="col-span-full min-[480px]:col-span-1 md:col-span-3 lg:col-span-6 xl:col-span-3">
                   <p className="fit-number whitespace-nowrap text-display block text-primary tabular-nums" data-testid={`cat-qty-${c.category_code}`}>
                         {formatLakhCrore(locale, c.qty_base, lw)}
                       </p>
@@ -210,7 +247,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
           )}
 
           <section data-testid="tile-visits" className={`${STAT} min-[480px]:col-span-1 md:col-span-3 lg:col-span-6 xl:col-span-3`}>
-            <h2 className="border-b border-accent-graphic/40 pb-2 text-body-strong text-accent">{t(locale, "dashboard.cpr")}</h2>
+            <SectionHead msg={t(locale, "dashboard.cpr")} link={<DrillLink href={dl("calls")} msg={detailsMsg} testId="drill-calls" />} />
             <div className="flex items-center gap-3" data-testid="cpr">
               <Ring pct={cprPct} valueText={pctText(locale, cprPct)} label={t(locale, "dashboard.cpr.basis")} size={88} hue={2} testId="cpr-ring" />
               <dl className="min-w-0 text-caption text-secondary">
@@ -230,13 +267,13 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
             {meta()}
           </section>
 
-          <Tile id="channels" locale={locale} titleKey="dashboard.channels.calls" date={d()} data className="col-span-full min-[480px]:col-span-1 md:col-span-3 lg:col-span-6 xl:col-span-3">
+          <Tile id="channels" locale={locale} titleKey="dashboard.channels.calls" date={d()} data actions={<DrillLink href={dl("channel")} msg={detailsMsg} testId="drill-channels" />} className="col-span-full min-[480px]:col-span-1 md:col-span-3 lg:col-span-6 xl:col-span-3">
             {channels.length > 0 ? (
               <Donut
                 testId="channel-calls-donut"
                 label={t(locale, "dashboard.channels.calls")}
                 centerText={formatLakhCrore(locale, callsTotal, lw)}
-                slices={channels.map((c) => ({ key: c.code, label: c.name ?? c.code, value: c.successful_calls, valueText: formatLakhCrore(locale, c.successful_calls, lw), shareText: callsTotal > 0 ? pctText(locale, (c.successful_calls / callsTotal) * 100) : "—" }))}
+                slices={channels.map((c) => ({ key: c.code, label: c.name ?? c.code, value: c.successful_calls, valueText: formatLakhCrore(locale, c.successful_calls, lw), shareText: callsTotal > 0 ? pctText(locale, (c.successful_calls / callsTotal) * 100) : "—", href: dl("channel", { code: c.code }) }))}
                 size={120}
               />
             ) : (
@@ -247,7 +284,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
             <FinalSubmitPanel locale={locale} kpis={k} zones={summary.data.children} zoneFinal={loginSubmit.ok ? zoneFinalOf(loginSubmit.data.zones) : undefined} />
           </Tile>
           <section data-testid="tile-loginsubmit" className={`${STAT} min-[480px]:col-span-1 md:col-span-3 lg:col-span-6 xl:col-span-3`}>
-            <h2 className="border-b border-accent-graphic/40 pb-2 text-body-strong text-accent">{t(locale, "dashboard.login_submit")}</h2>
+            <SectionHead msg={t(locale, "dashboard.login_submit")} link={<DrillLink href={dl("login")} msg={detailsMsg} testId="drill-login" />} />
             {ls ? (
               <dl className="flex flex-col gap-2" data-testid="login-submit">
                 <div>
@@ -277,14 +314,14 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
             {meta(ls ? ls.as_of : null)}
           </section>
           {/* Row C: channels (ranked bars, span 4) and the zone ranking (span 8, screens-web s1) */}
-          <Tile id="channels-std" locale={locale} titleKey="dashboard.channels.net" date={d()} data className="col-span-full md:col-span-6 lg:col-span-12 xl:col-span-4">
+          <Tile id="channels-std" locale={locale} titleKey="dashboard.channels.net" date={d()} data actions={<DrillLink href={dl("channel")} msg={detailsMsg} testId="drill-channels-std" />} className="col-span-full md:col-span-6 lg:col-span-12 xl:col-span-4">
             {channels.length > 0 ? (
               <div className="space-y-4">
               <Donut
                 testId="channel-std-donut"
                 label={t(locale, "dashboard.channels.net")}
                 centerText={formatLakhCrore(locale, mtkToTaka(channelNetTotal), lw)}
-                slices={channels.map((c) => ({ key: c.code, label: c.name ?? c.code, value: Math.max(0, c.net_mtk), valueText: formatLakhCrore(locale, mtkToTaka(c.net_mtk), lw), shareText: channelNetTotal > 0 ? pctText(locale, (Math.max(0, c.net_mtk) / channelNetTotal) * 100) : "—" }))}
+                slices={channels.map((c) => ({ key: c.code, label: c.name ?? c.code, value: Math.max(0, c.net_mtk), valueText: formatLakhCrore(locale, mtkToTaka(c.net_mtk), lw), shareText: channelNetTotal > 0 ? pctText(locale, (Math.max(0, c.net_mtk) / channelNetTotal) * 100) : "—", href: dl("channel", { code: c.code }) }))}
               />
               </div>
             ) : (
@@ -400,7 +437,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
             caption={meta()}
           />
           <section data-testid="tile-strike" className={`${STAT} min-[480px]:col-span-1 md:col-span-3 lg:col-span-6 xl:col-span-3`}>
-            <h2 className="border-b border-accent-graphic/40 pb-2 text-body-strong text-accent">{t(locale, "dashboard.kpi.strike")}</h2>
+            <SectionHead msg={t(locale, "dashboard.kpi.strike")} link={<DrillLink href={dl("calls")} msg={detailsMsg} testId="drill-strike" />} />
             <p className="fit-number whitespace-nowrap text-display text-primary tabular-nums" data-testid="strike-rate">
               {pctText(locale, k.strike_rate_pct)}
             </p>
@@ -448,8 +485,21 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
             )}
           </Tile>
 
+
+          {/* Role extras: TSO and AMO see their SRs, DMO, HQ and the rest see the TSO / zone ranking */}
+          <div className="col-span-full" data-testid="role-extras">
+            {srRole ? (
+              <SrTable locale={locale} stamp={{ ...stamp, asOf: tracking?.ok ? tracking.data.as_of : asOf }} rows={sr} error={tracking && !tracking.ok ? tracking.problem.code : undefined} note={t(locale, "home.extras.sr_note")} />
+            ) : (
+              <RankTable locale={locale} stamp={stamp} rows={rankRows(summary.data.children)} note={t(locale, "home.extras.rank_note")} />
+            )}
+          </div>
         </div>
       ) : null}
+      <AutoRefresh />
+      <p className="no-print text-caption text-secondary" data-testid="auto-refresh-note">
+        {t(locale, "dashboard.auto_refresh")}
+      </p>
     </div>
   );
 }
