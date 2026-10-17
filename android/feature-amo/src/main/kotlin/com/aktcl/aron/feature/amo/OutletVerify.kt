@@ -52,6 +52,12 @@ object OutletVerify {
         return (o["team"] as? JsonArray).orEmpty().mapNotNull { e -> (e as? JsonObject)?.let { m -> lng(m, "user_id")?.let { id -> id to (str(m, "full_name") ?: str(m, "username") ?: return@mapNotNull null) } } }.toMap()
     }
 
+    /** The zones of the AMO (the bundle's `supervisor.zone_ids`). */
+    fun zoneIds(supervisorJson: String?): List<Long> {
+        val o = runCatching { Json.parseToJsonElement(supervisorJson ?: return emptyList()) as? JsonObject }.getOrNull() ?: return emptyList()
+        return (o["zone_ids"] as? JsonArray).orEmpty().mapNotNull { (it as? JsonPrimitive)?.longOrNull }
+    }
+
     /** The `sub_channel` code list with its ids (items without an id cannot be sent and are dropped). */
     fun subChannels(codeListsJson: String?): List<SubChannel> {
         val a = runCatching { Json.parseToJsonElement(codeListsJson ?: return emptyList()) as? JsonArray }.getOrNull() ?: return emptyList()

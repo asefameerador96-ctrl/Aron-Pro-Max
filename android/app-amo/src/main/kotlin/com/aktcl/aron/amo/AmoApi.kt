@@ -26,6 +26,14 @@ class AmoApi(private val client: AronApiClient, context: Context, userId: Long) 
     /** `GET /v1/team/locations` (F-API-023): the last synced fix of each SR of the zone. */
     suspend fun teamLocations(businessDate: String): AmoFetch = get("/v1/team/locations", "team_loc", mapOf("business_date" to businessDate))
 
+    /** `GET /v1/dashboards/summary` for one day of the AMO's zone (F-API-016); [zoneId] null is the caller's whole reach. */
+    suspend fun dashboardSummary(date: String, zoneId: Long?): AmoFetch = get("/v1/dashboards/summary", "dash_${zoneId ?: 0}_$date", mapOf("from" to date, "to" to date) + zoneQuery(zoneId))
+
+    /** `GET /v1/dashboards/login-submit` (Bikroy Joma status) with the lists behind each count. */
+    suspend fun loginSubmit(date: String, zoneId: Long?): AmoFetch = get("/v1/dashboards/login-submit", "login_${zoneId ?: 0}_$date", mapOf("business_date" to date) + zoneQuery(zoneId))
+
+    private fun zoneQuery(zoneId: Long?) = if (zoneId == null) emptyMap() else mapOf("level" to "zone", "node_id" to zoneId.toString())
+
     /** `GET /v1/team/stock` (F-API-024): issued, sold, returned and current stock per SR and SKU for [businessDate]. */
     suspend fun teamStock(businessDate: String): AmoFetch = get("/v1/team/stock", "team_stock_$businessDate", mapOf("business_date" to businessDate))
 

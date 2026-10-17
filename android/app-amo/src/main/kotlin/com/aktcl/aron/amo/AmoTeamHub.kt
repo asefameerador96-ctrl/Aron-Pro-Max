@@ -49,11 +49,12 @@ fun AmoTeamHub(day: AmoDay, reach: AmoReach, onBack: () -> Unit) {
     var leaf by rememberSaveable { mutableStateOf(TeamLeaf.HUB) }
     var open by rememberSaveable { mutableStateOf<AmoLeaf?>(null) }
     var signalId by rememberSaveable { mutableStateOf<Long?>(null) }
+    var liveFilter by rememberSaveable { mutableStateOf(false) }
     var stockSr by rememberSaveable { mutableStateOf<Long?>(null) }
     val back: () -> Unit = {
         when (leaf) {
             TeamLeaf.HUB -> onBack()
-            TeamLeaf.LEAF -> if (open == AmoLeaf.SR_STOCK && stockSr != null) stockSr = null else leaf = TeamLeaf.HUB
+            TeamLeaf.LEAF -> if (open == AmoLeaf.LIVE_DASHBOARD && liveFilter) liveFilter = false else if (open == AmoLeaf.SR_STOCK && stockSr != null) stockSr = null else leaf = TeamLeaf.HUB
             TeamLeaf.EXCEPTION_DETAIL -> leaf = TeamLeaf.EXCEPTIONS
             else -> leaf = TeamLeaf.HUB
         }
@@ -69,7 +70,7 @@ fun AmoTeamHub(day: AmoDay, reach: AmoReach, onBack: () -> Unit) {
                 AronListRow(stringResource(AmoR.string.amo_exc_title), onClick = { leaf = TeamLeaf.EXCEPTIONS }, position = if (leaves.isEmpty()) RowPosition.Only else RowPosition.Last, divider = false, flat = true)
             }
         }
-        TeamLeaf.LEAF -> if (open == AmoLeaf.TASK_DELEGATION) AmoTaskHub(day, back) else if (open == AmoLeaf.SR_STOCK) AronScreen(topBar = { AronTopBar(stringResource(AmoR.string.amo_leaf_sr_stock), onBack = back) }) { AmoTeamStock(day, stockSr, { stockSr = it }) } else if (open == AmoLeaf.TEAM_LOCATION) AronScreen(topBar = { AronTopBar(stringResource(AmoR.string.amo_leaf_team_location), onBack = back) }) { AmoTeamLocation(day) } else RoleSectionPlaceholder(stringResource(open?.let { leafLabel(it) } ?: HomeR.string.rh_amo_team), AronIcons.Info, onBack = back)
+        TeamLeaf.LEAF -> if (open == AmoLeaf.TASK_DELEGATION) AmoTaskHub(day, back) else if (open == AmoLeaf.LIVE_DASHBOARD) AronScreen(topBar = { AronTopBar(stringResource(AmoR.string.amo_live_title), onBack = back) }) { AmoLiveDashboard(day, liveFilter, { liveFilter = it }) } else if (open == AmoLeaf.SR_STOCK) AronScreen(topBar = { AronTopBar(stringResource(AmoR.string.amo_leaf_sr_stock), onBack = back) }) { AmoTeamStock(day, stockSr, { stockSr = it }) } else if (open == AmoLeaf.TEAM_LOCATION) AronScreen(topBar = { AronTopBar(stringResource(AmoR.string.amo_leaf_team_location), onBack = back) }) { AmoTeamLocation(day) } else RoleSectionPlaceholder(stringResource(open?.let { leafLabel(it) } ?: HomeR.string.rh_amo_team), AronIcons.Info, onBack = back)
         TeamLeaf.EXCEPTIONS, TeamLeaf.EXCEPTION_DETAIL -> AronScreen(topBar = { AronTopBar(stringResource(AmoR.string.amo_exc_title), onBack = back) }) {
             AmoExceptions(day, leaf == TeamLeaf.EXCEPTION_DETAIL, signalId, onOpen = { signalId = it.id; leaf = TeamLeaf.EXCEPTION_DETAIL }, onDone = { leaf = TeamLeaf.EXCEPTIONS })
         }
