@@ -293,3 +293,21 @@ two defects outside this lane. The adb path (s10.4 step 5) is the one that works
 - **Check-out releases them: PENDING** (the check-out gate opens at 17:00 Dhaka; run it this evening and re-check
   `suspended=` on the three packages). **D-05 (mock-location apps): PENDING**; a Google account may now be added to the
   phone (device owner is set) so Play can install the five mock apps and the cloning tool, or sideload them with adb.
+
+### D-05 result, mock-location detection (laptop session over adb, 2026-10-17 11:15 to 11:19 Dhaka)
+
+- Method: no third-party fake-GPS app was installed (Play needs the owner's Google account; APK mirrors are not a trusted
+  source). Instead the new device-lab test `android/core-geo/src/androidTest/.../MockGpsHoldTest.kt` (test APK with the
+  mock-location app-op, run with `am instrument`) held a fake fix at 23.8069, 90.3687 for 150 s: on the platform GPS test
+  provider AND on Google's fused client (`setMockMode` + `setMockLocation`), because the app reads the fused client
+  (`AndroidLocation.kt`) and a platform-only test provider never reaches it. A shell-created test provider cannot be used:
+  Android removes it when the `cmd location` process exits.
+- Visit check on "Mirpur 10 Store 1" (seeded route, radius 100 m): with the platform-only mock the app took the real
+  network fix (5,554 m away, no mock line). With the fused feed, Refresh gave **"নকল লোকেশন ধরা পড়েছে। নকল লোকেশন থেকে এই
+  দোকানে বিক্রয় করা যাবে না।"**, refresh count 2, the range view with the phone inside the circle, and the bar offered only
+  Force Sale and Refresh: **a mocked fix is never geo-valid (PASS for the mechanism; policy `warn_rep`)**.
+- Pending: the five real fake-GPS apps and the cloning tool (owner installs them from Play once a Google account is
+  added, or hands the APKs to the laptop); the server re-check of the stored visit flags (`is_mock`) after a sync.
+- Observation for android-sr-a / the real-data plan: on Saturday 2026-10-17 the picker opened the seeded "Mirpur 10 Daily"
+  route without offering the real route 16685 (Sat/Mon/Wed); check whether seed 06's plan rows mark it `plannedToday`
+  and whether the route picker (F-SR-065) is reached when two routes are planned.
