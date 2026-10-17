@@ -178,6 +178,14 @@ class ApiWorld(
     fun deviceProofOf(method: String, path: String, body: ByteArray): String =
         sign(listOf("aron-proof-v1", "device", SR_PHONE, "$method $path", com.aktcl.aron.backend.platform.DeviceProof.sha256Hex(body), bucket().toString()).joinToString("\n"))
 
+    /** The `batch` proof of [device] (docs/24 s8.3): sha256 of the gzip body, `batch_uuid`, X-Batch-Attempt 1. */
+    fun batchProof(device: String, gz: ByteArray, batchUuid: String): String =
+        sign(listOf("aron-proof-v1", "batch", device, com.aktcl.aron.backend.platform.DeviceProof.sha256Hex(gz), batchUuid, "1").joinToString("\n"))
+
+    /** [batchProof] of a gzip batch body, its `batch_uuid` read from the body. */
+    fun batchProof(device: String, gz: ByteArray): String =
+        batchProof(device, gz, ContractModel.json.readTree(java.util.zip.GZIPInputStream(gz.inputStream()).readBytes()).path("batch_uuid").asText())
+
     /** The nonce bucket of the harness clock (`floor(unix_s / 300)`). */
     fun bucket(): Long = com.aktcl.aron.backend.platform.DeviceProof.bucket(clock.now().epochSecond)
 

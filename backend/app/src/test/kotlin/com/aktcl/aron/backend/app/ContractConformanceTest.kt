@@ -290,8 +290,7 @@ val DEVICE_PROOF: (ApiWorld, String, String, ByteArray, String?) -> String = { w
 
 /** The `batch` proof: sha256 of the gzip body, `batch_uuid`, X-Batch-Attempt (1). */
 val BATCH_PROOF: (ApiWorld, String, String, ByteArray, String?) -> String = { w, _, _, sent, json ->
-    val batch = ContractModel.json.readTree(json ?: "{}").path("batch_uuid").asText()
-    w.sign(listOf("aron-proof-v1", "batch", ApiWorld.SR_PHONE, com.aktcl.aron.backend.platform.DeviceProof.sha256Hex(sent), batch, "1").joinToString("\n"))
+    w.batchProof(ApiWorld.SR_PHONE, sent, ContractModel.json.readTree(json ?: "{}").path("batch_uuid").asText())
 }
 
 /** Values one call cannot know: the world, each caller's bundle, and ids or tokens captured from earlier answers. */
