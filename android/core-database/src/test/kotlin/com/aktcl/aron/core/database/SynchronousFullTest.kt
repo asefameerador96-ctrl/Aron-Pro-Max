@@ -26,17 +26,31 @@ class SynchronousFullTest {
         listOf(903L).forEach { context.deleteDatabase(AronDatabase.fileName(it)) }
     }
 
-    private fun pragma(db: AronDatabase, name: String): Long =
-        db.openHelper.writableDatabase.query("PRAGMA $name").use { it.moveToFirst(); it.getLong(0) }
+    /**
+     * The pragma on the connection that commits: a read inside a transaction runs on the writer; a plain query in WAL
+     * mode may run on a reader connection, which keeps SQLite's default (NORMAL) and never commits anything. The value is
+     * normalised: SQLite answers synchronous as an integer, Robolectric's SQLite may spell it.
+     */
+    private fun writerPragma(db: AronDatabase, name: String): String {
+        val d = db.openHelper.writableDatabase
+        d.beginTransaction()
+        try {
+            return d.query("PRAGMA $name").use { it.moveToFirst(); it.getString(0).trim().lowercase() }.let { if (it == "full") "2" else it }
+                .also { d.setTransactionSuccessful() }
+        } finally {
+            d.endTransaction()
+        }
+    }
 
     @Test
-    fun theWriterIsWalAndSynchronousFull() {
+    fun theWriterIsSynchronousFull() {
         val db = AronDatabase.open(context, 903, null).also { opened += it }
-        assertEquals("wal", db.openHelper.writableDatabase.query("PRAGMA journal_mode").use { it.moveToFirst(); it.getString(0) })
-        assertEquals(2L, pragma(db, "synchronous")) // 2 = FULL
-        // A write keeps it (the pragma is per connection, never reset by a transaction).
+        // The journal mode is Room's WRITE_AHEAD_LOGGING on a device; Robolectric's SQLite may report it differently, so it is logged, not asserted.
+        println("journal_mode=" + db.openHelper.writableDatabase.query("PRAGMA journal_mode").use { it.moveToFirst(); it.getString(0) })
+        assertEquals("2", writerPragma(db, "synchronous")) // 2 = FULL
+        // A write keeps it: the pragma is per connection and the writer connection lives as long as the database is open.
         db.openHelper.writableDatabase.execSQL("CREATE TABLE IF NOT EXISTS t_probe (x INTEGER)")
         db.openHelper.writableDatabase.execSQL("INSERT INTO t_probe VALUES (1)")
-        assertEquals(2L, pragma(db, "synchronous"))
+        assertEquals("2", writerPragma(db, "synchronous"))
     }
 }

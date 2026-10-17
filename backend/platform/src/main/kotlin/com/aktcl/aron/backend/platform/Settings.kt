@@ -23,6 +23,8 @@ data class Settings(
     val role: ServerRole,
     val env: ServerEnv,
     val port: Int,
+    /** OPS-02: the worker's liveness server (`GET /health/live`) listens here, its own port, so a host that also runs the api keeps 8080 (ARON_WORKER_HEALTH_PORT, 8081). */
+    val workerHealthPort: Int,
     val build: String,
     val dbUrl: String,
     val dbUser: String?,
@@ -55,7 +57,7 @@ data class Settings(
 ) {
     /** Like the data-class form, with credentials in the database URLs redacted (secrets are never printed). */
     override fun toString(): String =
-        "Settings(role=$role, env=$env, port=$port, build=$build, dbUrl=${redactUrl(dbUrl)}, dbUser=$dbUser, dbPassword=$dbPassword, " +
+        "Settings(role=$role, env=$env, port=$port, workerHealthPort=$workerHealthPort, build=$build, dbUrl=${redactUrl(dbUrl)}, dbUser=$dbUser, dbPassword=$dbPassword, " +
             "dbReadUrl=${dbReadUrl?.let(::redactUrl)}, dbPoolMax=$dbPoolMax, dbReadPoolMax=$dbReadPoolMax, jwtSigningKeyPem=$jwtSigningKeyPem, " +
             "jwtKid=$jwtKid, jwtNextKid=$jwtNextKid, hashConcurrency=$hashConcurrency, hashQueueMax=$hashQueueMax, frontDoorId=$frontDoorId, fcmServiceAccountJson=$fcmServiceAccountJson, " +
             "playIntegrityServiceAccountJson=$playIntegrityServiceAccountJson)"
@@ -97,6 +99,7 @@ data class Settings(
                 role = role,
                 env = serverEnv,
                 port = src.int("PORT", 8080),
+                workerHealthPort = src.int("ARON_WORKER_HEALTH_PORT", 8081),
                 build = src.get("ARON_BUILD") ?: "dev",
                 dbUrl = dbUrl,
                 dbUser = src.get("ARON_DB_USER"),

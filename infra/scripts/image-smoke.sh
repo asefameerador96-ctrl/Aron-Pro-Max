@@ -78,12 +78,16 @@ for path in /v1/health /v1/health/ready; do
 done
 
 note "worker role (as app_jobs)"
-worker="$(docker run -d --network host -e ARON_ROLE=worker -e ARON_ENV=dev -e "ARON_DB_URL=$PG_JOBS" \
+# OPS-02: the worker's liveness server listens on its own port (the api holds 8080 on this host); GET /health/live must answer 200 once the first heartbeat ran.
+worker="$(docker run -d --network host -e ARON_ROLE=worker -e ARON_ENV=dev -e ARON_WORKER_HEALTH_PORT=8081 -e "ARON_DB_URL=$PG_JOBS" \
   -e "ARON_JWT_SIGNING_KEY=$(cat "$tmp/jwt.pem")" -e ARON_JWT_KID=ci "aron-backend:$TAG")"
 containers+=("$worker")
 sleep 15
 [ "$(docker inspect -f '{{.State.Running}}' "$worker")" = true ] || die "the worker exited (Container Apps would restart it in a loop)"
 note "worker still running after 15 s"
+code="$(wait_http "http://localhost:8081/health/live" 60)"
+[ "$code" = 200 ] || die "GET /health/live on the worker (port 8081) answered $code: the heartbeat did not run (OPS-02; Container Apps would restart it)"
+note "GET /health/live on the worker -> 200 (heartbeat ran)"
 for c in "$api" "$worker"; do
   if docker logs "$c" 2>&1 | grep -qi 'permission denied'; then die "a least-privilege login lacks a grant (see the logs below)"; fi
 done

@@ -62,9 +62,11 @@ fun main() {
             // Jobs registered so far: the aggregation worker (dirty keys into dw, F-SYS-015). Other lanes append theirs.
             val workerDb = Database.fromSettings(settings)
             // OPS-02 / OPS-03: the heartbeat (gauges a minute on aron.worker) and the liveness probe the Container Apps
-            // worker app calls on this port (infra/apps.bicep); a hung replica is restarted.
+            // worker app calls on ARON_WORKER_HEALTH_PORT (infra/apps.bicep); a hung replica is restarted. A port already
+            // taken (a host running the api too) is logged and the jobs run on: the probe fails, the work does not.
             val health = WorkerHealth(workerDb).also { it.start() }
-            workerServer(health, settings.port).start(wait = false)
+            runCatching { workerServer(health, settings.workerHealthPort).start(wait = false) }
+                .onFailure { log.error("worker liveness server not started on port {}: {} (GET /health/live will not answer; the jobs run)", settings.workerHealthPort, it.toString()) }
             AggregationWorker(workerDb).start()
             run {
                 val workerClock = com.aktcl.aron.backend.platform.AronClock.SYSTEM
@@ -89,7 +91,7 @@ fun main() {
             com.aktcl.aron.backend.sync.GeoRecheckSweepJob(workerDb).start()
             com.aktcl.aron.backend.sync.RetentionJob(workerDb).start()
             com.aktcl.aron.backend.masterdata.OutletRequestLapseJob(workerDb).start()
-            log.info("aron worker started (aggregation, risk signals, route-day planning, bundle pre-generation, geo re-check sweep, retention, outlet request lapse; heartbeat and /health/live on port {})", settings.port)
+            log.info("aron worker started (aggregation, risk signals, route-day planning, bundle pre-generation, geo re-check sweep, retention, outlet request lapse; heartbeat and /health/live on port {})", settings.workerHealthPort)
             Thread.currentThread().join()
         }
     }

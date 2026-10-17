@@ -377,13 +377,14 @@ resource worker 'Microsoft.App/containerApps@2025-07-01' = if (deployServices) {
             { name: 'ARON_DB_READ_POOL_MAX', value: string(workerDbReadPoolMax) }
             { name: 'APPLICATIONINSIGHTS_ROLE_NAME', value: 'aron-worker' }
             { name: 'AZURE_CLIENT_ID', value: idWorker.properties.clientId }
+            { name: 'ARON_WORKER_HEALTH_PORT', value: '8081' }
           ])
           probes: [
             {
               // OPS-02: the worker beats once a minute (WorkerHealth); /health/live answers 503 once the last beat is
               // 3 minutes old, so a hung replica is restarted. No ingress: the probe reaches the container port.
               type: 'Liveness'
-              httpGet: { path: '/health/live', port: 8080 }
+              httpGet: { path: '/health/live', port: 8081 }
               initialDelaySeconds: 90
               periodSeconds: 30
               failureThreshold: 3

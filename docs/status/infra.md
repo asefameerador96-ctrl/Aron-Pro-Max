@@ -978,6 +978,6 @@ of guarded properties fail validation.
 
 ## Hardening 2026-10-17
 
-- OPS-02: worker liveness probe `/health/live` (infra/apps.bicep, period 30 s, 3 failures, 90 s initial delay) and the `workerHeartbeat` log alert; OPS-03 alerts `outboxLag`, `syncSuccess`, `syncRejected`, `retentionBehind` (infra/modules/alerts.bicep, log alerts, off in the TEST profile with `enableLogAlerts = false`). Not deployed: `infra/validate.sh` and a deploy of the hardening branch are the next step; the seeded proof (N-062) after that.
+- OPS-02: worker liveness probe `/health/live` on port 8081 (`ARON_WORKER_HEALTH_PORT`; infra/apps.bicep, period 30 s, 3 failures, 90 s initial delay; the image smoke checks it answers 200) and the `workerHeartbeat` log alert; OPS-03 alerts `outboxLag`, `syncSuccess`, `syncRejected`, `retentionBehind` (infra/modules/alerts.bicep, log alerts, off in the TEST profile with `enableLogAlerts = false`). Not deployed: `infra/validate.sh` and a deploy of the hardening branch are the next step; the seeded proof (N-062) after that.
 - DD-02: `infra/scripts/mint-generation.sh` and RB-14 `docs/runbooks/pitr-restore.md`; `drill.sh pitr` now mints on the restored copy and prints `GENERATION MINTED` (HD-09 still waits on the owner's "approved restore drill").
 - SCALE-01: `.github/workflows/load-smoke.yml` (manual) needs the secrets `LOAD_BASE_URL`, `LOAD_USERS`, `LOAD_PASSWORD`.

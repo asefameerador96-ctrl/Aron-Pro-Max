@@ -35,10 +35,13 @@ jobs:
           BASE_URL: ${{ secrets.LOAD_BASE_URL }}
           USERS: ${{ secrets.LOAD_USERS }}
           PASSWORD: ${{ secrets.LOAD_PASSWORD }}
+          # Inputs reach the shell through env, never interpolated into the script (Semgrep run-shell-injection).
+          VUS: ${{ inputs.vus }}
+          EVENING_BATCHES: ${{ inputs.evening_batches }}
         run: |
           set -euo pipefail
           [ -n "$BASE_URL" ] || { echo "::error::LOAD_BASE_URL secret is not set"; exit 1; }
-          k6 run -e BASE_URL="$BASE_URL" -e USERS="$USERS" -e PASSWORD="$PASSWORD" -e VUS="${{ inputs.vus }}" -e EVENING_BATCHES="${{ inputs.evening_batches }}" tools/load/smoke.js
+          k6 run -e BASE_URL="$BASE_URL" -e USERS="$USERS" -e PASSWORD="$PASSWORD" -e VUS="$VUS" -e EVENING_BATCHES="$EVENING_BATCHES" tools/load/smoke.js
       - name: Upload the summary
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
