@@ -367,3 +367,13 @@ once with config readable and once with config refused for the TSO. You need an 
 4. Check 7, "stamped new radius", FAILS by design until `docs/requests/qa-visit-radius-read.md` is done. Until then
    the laptop session reads `app.visit.radius_m_used` for that visit on dev.
 5. Afterwards, set the radius back to 100 m (another approved change).
+
+### D-QA-4 Day 3 ten-minute check script (N-043; qa) — DEVICE-PENDING, laptop session + owner
+Script: `tools/checks/day3-check.ps1`. It was tested in the cloud with a fake adb on every path: device owner, the
+sideload restriction, a refused install, a present spoofing app, and suspended at check-in / released at check-out.
+It runs on the ENROLLED Honor X5c Plus, where the device owner was set by adb path A (D-04).
+1. Morning, checked out: `powershell -ExecutionPolicy Bypass -File .\tools\checks\day3-check.ps1 -SkipCheckout`. Add
+   `-SpoofApks <paths>` with the mock-location APKs and the cloning tool of N-039, if the owner has them.
+2. When asked, check in on the phone (press and hold). Pass = every chosen app is suspended.
+3. After 17:00: `... day3-check.ps1 -CheckoutOnly`, then check out. Pass = none is suspended.
+4. Record each spoofing app's line in `docs/status/qa-n039-antispoofing.md`.
