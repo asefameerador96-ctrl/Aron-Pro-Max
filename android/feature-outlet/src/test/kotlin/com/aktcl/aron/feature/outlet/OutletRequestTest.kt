@@ -94,4 +94,11 @@ class OutletRequestTest {
         assertEquals(setOf(RequestError.MOCK_FIX), errors(f.copy(fix = FixReading("ok", 23.79, 90.40, 8.0, true))))
         assertTrue(svc.validate(f.copy(pointLat = null, pointLng = null)) is RequestValidation.Ok) // no chosen point: the fix is the point
     }
+
+    @Test fun updateBaseRefusesAMoveBeyondTheLimitFromTheShopsCurrentPoint() {
+        val f = OutletRequestForm(OutletRequestKind.LOCATION, outletId = 5, fix = ok, photoUuids = photo, pointLat = 23.79, pointLng = 90.4005, oldLat = 23.79, oldLng = 90.4005)
+        assertTrue(svc.validate(f) is RequestValidation.Ok)
+        assertEquals(setOf(RequestError.MOVE_TOO_FAR), errors(f.copy(oldLat = 23.80, oldLng = 90.41))) // about 1.5 km
+        assertTrue(svc.validate(f.copy(oldLat = null, oldLng = null)) is RequestValidation.Ok) // an unknown old point skips the check
+    }
 }

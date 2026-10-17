@@ -37,11 +37,14 @@ data class OutletRequestForm(
     /** Update Base (F-AMO-028): the exact point the AMO chose for the outlet; null means the request's own fix is the point. */
     val pointLat: Double? = null,
     val pointLng: Double? = null,
+    /** The shop's current point, for the move limit of Update Base; null skips that check. */
+    val oldLat: Double? = null,
+    val oldLng: Double? = null,
 )
 
 enum class RequestError {
     DUES_BLOCK_CLOSE, OUTLET_REQUIRED, NAME_INVALID, OWNER_INVALID, MOBILE_INVALID, CLUSTER_REQUIRED, CLUSTER_UNCHANGED, REASON_REQUIRED,
-    GEO_REQUIRED, PHOTO_REQUIRED, CONFIRMATION_REQUIRED, NOTE_TOO_LONG, TOO_MANY_PHOTOS, POINT_TOO_FAR, MOCK_FIX,
+    GEO_REQUIRED, PHOTO_REQUIRED, CONFIRMATION_REQUIRED, NOTE_TOO_LONG, TOO_MANY_PHOTOS, POINT_TOO_FAR, MOCK_FIX, MOVE_TOO_FAR,
 }
 
 /** The request as committed: the proposed facts in contract shape (mobile is always the normalised 11 digits). */
@@ -80,6 +83,8 @@ class OutletRequests(
     private val closeBlockIfDues: () -> Boolean = { false },
     /** `cfg.geo.update_base_max_distance_m` (100): how far the chosen point may be from where the AMO stands. */
     private val updateBaseMaxM: () -> Int = { DEFAULT_UPDATE_BASE_MAX_M },
+    /** `cfg.geo.update_base_max_move_m` (1000): how far the shop's point may move from where the app had it. */
+    private val updateBaseMaxMoveM: () -> Int = { DEFAULT_UPDATE_BASE_MAX_MOVE_M },
 ) {
     /** A fresh uuid for a form that is just opening; keep it in the form state. */
     fun newRequestUuid(): String = newUuid()
@@ -109,6 +114,7 @@ class OutletRequests(
         if (k == OutletRequestKind.LOCATION && f.pointLat != null && f.pointLng != null && f.fix != null && f.fix.isOk) {
             if (f.fix.isMock) e += RequestError.MOCK_FIX
             else if (com.aktcl.aron.rules.Geo.haversineM(f.pointLat, f.pointLng, f.fix.lat!!, f.fix.lng!!) > updateBaseMaxM()) e += RequestError.POINT_TOO_FAR
+            if (f.oldLat != null && f.oldLng != null && com.aktcl.aron.rules.Geo.haversineM(f.pointLat, f.pointLng, f.oldLat, f.oldLng) > updateBaseMaxMoveM()) e += RequestError.MOVE_TOO_FAR
         }
         if (f.photoUuids.size > 4) e += RequestError.TOO_MANY_PHOTOS
         if ((f.note?.length ?: 0) > 500) e += RequestError.NOTE_TOO_LONG
@@ -131,5 +137,5 @@ class OutletRequests(
         return v
     }
 
-    companion object { const val DEFAULT_UPDATE_BASE_MAX_M = 100 }
+    companion object { const val DEFAULT_UPDATE_BASE_MAX_M = 100; const val DEFAULT_UPDATE_BASE_MAX_MOVE_M = 1000 }
 }

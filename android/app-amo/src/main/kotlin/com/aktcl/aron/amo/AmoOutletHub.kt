@@ -293,7 +293,7 @@ private fun AmoUpdateBaseHost(day: AmoDay, onDone: () -> Unit) {
             verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(AronTokens.Space.M),
         ) {
             AronListRow(outlet.name, subtitle = stringResource(AmoR.string.amo_base_title), flat = true)
-            com.aktcl.aron.feature.outlet.GeoPhotoBlock(cap, onShutter = { scope.launch { capture.shutter(); north = 0; east = 0 } }, note = stringResource(OutR.string.out_req_photo_note))
+            com.aktcl.aron.feature.outlet.GeoPhotoBlock(cap, onShutter = { scope.launch { val before = cap.fix; val after = capture.shutter(); if (after.fix !== before) { north = 0; east = 0 } } }, note = stringResource(OutR.string.out_req_photo_note))
             com.aktcl.aron.feature.amo.UpdateBasePointContent(north, east, day.updateBaseMaxM, fix != null, { dn, de -> north += dn; east += de }, { north = 0; east = 0 })
             val oldLat = outlet.lat; val oldLng = outlet.lng
             if (point != null && oldLat != null && oldLng != null) {
@@ -306,6 +306,7 @@ private fun AmoUpdateBaseHost(day: AmoDay, onDone: () -> Unit) {
                         RequestError.POINT_TOO_FAR -> OutR.string.out_req_err_point_far
                         RequestError.MOCK_FIX -> OutR.string.out_req_err_mock
                         RequestError.PHOTO_REQUIRED -> OutR.string.out_req_err_photo
+                        RequestError.MOVE_TOO_FAR -> OutR.string.out_req_err_move_far
                         else -> OutR.string.out_req_err_geo
                     }),
                     kind = com.aktcl.aron.core.ui.BannerKind.Error,
@@ -321,7 +322,7 @@ private fun AmoUpdateBaseHost(day: AmoDay, onDone: () -> Unit) {
                         scope.launch {
                             val form = OutletRequestForm(
                                 kind = OutletRequestKind.LOCATION, outletId = outlet.outletId, requestUuid = uuid, fix = cap.fix,
-                                photoUuids = listOfNotNull(cap.photo?.photoUuid), pointLat = point?.first, pointLng = point?.second,
+                                photoUuids = listOfNotNull(cap.photo?.photoUuid), pointLat = point?.first, pointLng = point?.second, oldLat = outlet.lat, oldLng = outlet.lng,
                             )
                             when (val r = day.outletRequests.submit(form)) {
                                 is RequestValidation.Invalid -> errors = r.errors

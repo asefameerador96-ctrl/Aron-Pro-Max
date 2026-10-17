@@ -100,7 +100,9 @@ class AmoDay(
         bundleVersion = reference.bundleVersion()
         configVersion = db.referenceDao().meta(ReferenceRepository.KEY_CONFIG_VERSION)?.toLongOrNull() ?: 0L
         updateBaseMaxM = runCatching { reference.config("cfg.geo.update_base_max_distance_m", iso(clock.nowMs())) }.getOrNull()
-            ?.trim('"')?.toIntOrNull()?.takeIf { it in 10..1000 } ?: com.aktcl.aron.feature.outlet.OutletRequests.DEFAULT_UPDATE_BASE_MAX_M
+            ?.trim('"')?.toIntOrNull()?.takeIf { it in 20..500 } ?: com.aktcl.aron.feature.outlet.OutletRequests.DEFAULT_UPDATE_BASE_MAX_M
+        updateBaseMaxMoveM = runCatching { reference.config("cfg.geo.update_base_max_move_m", iso(clock.nowMs())) }.getOrNull()
+            ?.trim('"')?.toIntOrNull()?.takeIf { it in 50..20000 } ?: com.aktcl.aron.feature.outlet.OutletRequests.DEFAULT_UPDATE_BASE_MAX_MOVE_M
         overrideMax = runCatching { reference.config("cfg.amo.manual_override_max_per_day", iso(clock.nowMs())) }.getOrNull()
             ?.trim('"')?.toIntOrNull()?.takeIf { it in 0..100 } ?: com.aktcl.aron.feature.amo.ManualOverrideCap.DEFAULT_MAX
     }
@@ -206,9 +208,11 @@ class AmoDay(
             runCatching { requestSync() }
         },
         updateBaseMaxM = { updateBaseMaxM },
+        updateBaseMaxMoveM = { updateBaseMaxMoveM },
     )
 
     /** `cfg.geo.update_base_max_distance_m` (default 100): how far the chosen Update Base point may be from the AMO. */
+    @Volatile var updateBaseMaxMoveM: Int = com.aktcl.aron.feature.outlet.OutletRequests.DEFAULT_UPDATE_BASE_MAX_MOVE_M
     @Volatile var updateBaseMaxM: Int = com.aktcl.aron.feature.outlet.OutletRequests.DEFAULT_UPDATE_BASE_MAX_M
 
     // Outlet request in progress (kept here so a language switch does not lose the chosen kind and outlet).

@@ -117,4 +117,5 @@
     <string name="out_menu_requests">অনুরোধ</string>
     <string name="out_req_err_point_far">বেছে নেওয়া বিন্দু আপনার অবস্থান থেকে অনেক দূরে। কাছে আনুন বা দোকানের কাছে যান।</string>
     <string name="out_req_err_mock">ভুয়া অবস্থান ধরা পড়েছে। এটি বন্ধ করে আবার চেষ্টা করুন।</string>
+    <string name="out_req_err_move_far">নতুন বিন্দু দোকানের আগের জায়গা থেকে অনেক দূরে। অফিসকে সরাতে বলুন।</string>
 </resources>

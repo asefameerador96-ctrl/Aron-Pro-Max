@@ -117,4 +117,5 @@
     <string name="out_menu_requests">Requests</string>
     <string name="out_req_err_point_far">The chosen point is too far from where you stand. Move it closer or walk to the shop.</string>
     <string name="out_req_err_mock">A fake location was detected. Turn it off and try again.</string>
+    <string name="out_req_err_move_far">The new point is too far from where the shop was. Ask the office to move it.</string>
 </resources>
