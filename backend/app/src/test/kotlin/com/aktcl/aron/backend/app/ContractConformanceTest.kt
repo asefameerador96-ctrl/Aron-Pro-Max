@@ -69,7 +69,7 @@ class ContractConformanceTest {
     @BeforeAll
     fun setUp() {
         contract = ContractModel.load(repoRoot.resolve("contract/openapi.yaml"))
-        world = ApiWorld(repoRoot)
+        world = ApiWorld(repoRoot, conformance = true)
         runSuite()
     }
 
@@ -277,6 +277,44 @@ class ContractConformanceTest {
             "PATCH /v1/admin/product-nodes/{}/{}" to Fx(body = { n, _, _ -> n.remove("parent_id"); n.put("name", "Contract check") }),
             // The sample key is cfg.geo.radius_m, an integer key.
             "POST /v1/admin/config/changes" to Fx(body = { n, _, _ -> obj(n.path("changes").firstOrNull())?.put("value", 150) }),
+
+            // Outlet requests: tso1001 raises an info change on its own outlet, amo1001 verifies, admin1001 approves
+            // (separation of duties); the seeded second request is rejected by amo1001.
+            "POST /v1/outlet-requests" to Fx(body = { n, _, x ->
+                n.put("request_type", "info"); n.put("outlet_id", x.id("outlet_req")); n.putObject("proposed").put("name", "QA Renamed Outlet")
+            }),
+            "GET /v1/outlet-requests/{}" to Fx(after = listOf("POST /v1/outlet-requests")),
+            "POST /v1/outlet-requests/{}/verify" to Fx(after = listOf("POST /v1/outlet-requests"), body = { n, _, x -> n.put("sub_channel_id", x.id("sub_channel")) }),
+            "POST /v1/outlet-requests/{}/approve" to Fx(after = listOf("POST /v1/outlet-requests/{}/verify")),
+            "POST /v1/outlet-requests/{}/reject" to Fx(path = { _, _ -> mapOf("request_uuid" to ApiWorld.SECOND_REQUEST) }),
+            // Feedback triage after tso1001's submit (the sample uuid on both); a real status change.
+            "PATCH /v1/feedback/{}" to Fx(after = listOf("POST /v1/feedback"), body = { n, _, _ -> n.put("status", "in_progress") }),
+            // The seeded risk signal; each caller reviews with its own review_uuid (a reuse by another user is 409).
+            "POST /v1/risk-signals/{}/review" to Fx(path = { _, x -> mapOf("signal_id" to x.id("risk-signals").toString()) }, body = { n, c, _ -> n.put("review_uuid", ApiWorld.v4("review/${c.user}")) }),
+            // Tasks for sr1001 (active, in every web caller's reach); amo1001 keeps the sample uuid so cancel targets its task.
+            "POST /v1/tasks" to Fx(body = { n, c, x ->
+                n.put("assignee_user_id", x.id("sr_user")); n.put("task_type_code", "qa_check")
+                if (c.user != "amo1001") n.put("task_uuid", ApiWorld.v4("task/${c.user}"))
+            }),
+            "POST /v1/tasks/{}/cancel" to Fx(after = listOf("POST /v1/tasks")),
+            // Actions open at cfg.day.take_action_after (17:00 Dhaka); the clock is 10:00, so the action is on yesterday's seeded route-day.
+            "POST /v1/dashboards/daily-tracking/actions" to Fx(body = { n, c, x ->
+                n.put("action_uuid", ApiWorld.v4("action/${c.user}")); n.put("route_id", x.id("sr_route")); n.put("business_date", ApiWorld.YESTERDAY)
+            }),
+            "POST /v1/day/sales-submit" to Fx(body = { n, c, x ->
+                n.put("client_uuid", ApiWorld.v4("sales-submit/${c.user}")); n.put("scope", "route_day"); n.put("route_id", x.id("sr_route"))
+            }),
+            // Web entry before the zone-day is Final Submitted (final-submit runs after both); per-caller client uuids, and
+            // a reason on every save (the 2nd and 3rd callers re-save).
+            "POST /v1/web-entry/qc" to Fx(body = { n, c, x ->
+                n.put("client_uuid", ApiWorld.v4("qc/${c.user}")); n.put("source", "market"); n.put("zone_id", x.id("zones")); n.put("route_id", x.id("routes"))
+                n.putArray("rows").addObject().put("sku_id", x.id("skus")).put("fault_type_code", "damaged_crushed").put("qty_base", 0)
+            }),
+            "POST /v1/web-entry/route-day" to Fx(body = { n, c, x ->
+                n.put("client_uuid", ApiWorld.v4("route-day/${c.user}")); n.put("route_id", x.id("routes")); n.put("change_reason", "contract conformance re-save")
+                n.putArray("lines").addObject().put("sku_id", x.id("skus")).put("issue_qty_base", 0).put("return_qty_base", 0).put("memo_count", 0)
+            }),
+            "POST /v1/day/final-submit" to Fx(after = listOf("POST /v1/web-entry/qc", "POST /v1/web-entry/route-day")),
         )
     }
 
@@ -299,6 +337,8 @@ class Ctx(val world: ApiWorld) {
     val vars = HashMap<String, String>()
     operator fun get(k: String): String? = vars[k]
     operator fun set(k: String, v: String) { vars[k] = v }
+    /** A seeded id of the home world ([ApiWorld.ids]). */
+    fun id(k: String): Long = world.ids[k] ?: error("no seeded id $k")
 }
 
 /** The fixture of one operation (see [ContractConformanceTest.FX]); every part defaults to the generated call. */

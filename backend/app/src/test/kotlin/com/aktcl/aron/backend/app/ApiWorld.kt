@@ -39,6 +39,8 @@ class ApiWorld(
     mirrors: List<String> = emptyList(),
     val clock: AronClock = AronClock { Instant.parse("2027-01-03T04:00:00Z") },
     extraRecordHandlers: List<com.aktcl.aron.backend.platform.RecordHandler> = emptyList(),
+    /** Load [conformanceSeed]: the rows the contract suite's fixtures need that no served operation creates. */
+    conformance: Boolean = false,
 ) : AutoCloseable {
     data class Caller(val user: String, val client: String, val device: String?)
 
@@ -89,6 +91,7 @@ class ApiWorld(
                 into["zone"] = into["zones"] ?: 0
             }
             load(ids, "Z-MIR", "MIR", "qa9001", THROWAWAY_PHONE)
+            if (conformance) conformanceSeed(h)
             mirrors.firstOrNull()?.let { tag -> load(otherIds, "Z-$tag", tag, "${tag.lowercase()}sr1001", null) }
         }
         val key = File.createTempFile("aron-jwt", ".pem").apply {
@@ -97,6 +100,34 @@ class ApiWorld(
             writeText("-----BEGIN " + "PRIVATE KEY-----\n" + Base64.getMimeEncoder().encodeToString(k.encoded) + "\n-----END PRIVATE KEY-----\n")
         }
         wiring = Wiring.production(Settings.load(mapOf("ARON_ROLE" to "api", "ARON_DB_URL" to fresh.url, "ARON_JWT_SIGNING_KEY_FILE" to key.absolutePath)), clock, extraRecordHandlers, blobPorts = blobs.ports())
+    }
+
+    /**
+     * Rows for the contract suite (N-014 E) that no served operation creates, in the home world, and their ids in [ids]:
+     * a second pending outlet request (reject), an export job (read), a risk signal (review), yesterday's route-day
+     * (Daily Tracking action) and the dw dimensions (the worker role fills them in production).
+     */
+    private fun conformanceSeed(h: org.jdbi.v3.core.Handle) {
+        fun one(sql: String) = h.createQuery(sql).mapTo(Long::class.java).one()
+        h.execute(
+            "INSERT INTO app.outlet_change_request (client_uuid, family_uuid, business_date, user_id, route_id, captured_at, config_version, request_type, outlet_id, proposed, note) " +
+                "SELECT '$SECOND_REQUEST', '$SECOND_REQUEST', DATE '$BUSINESS_DATE', u.id, o.route_id, TIMESTAMPTZ '${BUSINESS_DATE}T03:00:00Z', 0, 'info', o.id, '{\"name\":\"QA Reject Me\"}'::jsonb, 'qa harness' " +
+                "FROM app.app_user u, app.outlet o WHERE u.username = 'tso1001' AND o.id = (SELECT min(id) FROM app.outlet WHERE code LIKE 'MIR-%' AND status = 'active')",
+        )
+        h.execute(
+            "INSERT INTO app.report_export (export_id, report_key, user_id, format, status, filters, scope_hash, row_count, finished_at) " +
+                "SELECT '$SAMPLE_UUID', 'retailer-list', id, 'xlsx', 'done', '{}'::jsonb, 'qa', 0, TIMESTAMPTZ '${BUSINESS_DATE}T03:30:00Z' FROM app.app_user WHERE username = 'tso1001'",
+        )
+        ids["risk-signals"] = one(
+            "INSERT INTO app.risk_signal (code, severity, business_date, subject_type, subject_id, user_id, route_id, zone_id, score, config_version) " +
+                "SELECT 'GEO_MOCK', 2, DATE '$BUSINESS_DATE', 'user', 'qa-signal-1', u.id, r.id, r.zone_id, 50, 0 FROM app.app_user u, app.route r WHERE u.username = 'sr1001' AND r.code = 'MIR-SR-D' RETURNING id",
+        )
+        h.execute("INSERT INTO app.route_day (route_id, business_date, planned) SELECT id, DATE '$YESTERDAY', true FROM app.route WHERE code = 'MIR-SR-D'")
+        com.aktcl.aron.backend.analytics.Aggregator.refreshDimensions(h)
+        ids["outlet_req"] = one("SELECT max(id) FROM app.outlet WHERE code LIKE 'MIR-%' AND status = 'active'")
+        ids["sr_user"] = one("SELECT id FROM app.app_user WHERE username = 'sr1001'")
+        ids["sr_route"] = one("SELECT id FROM app.route WHERE code = 'MIR-SR-D'") // sr1001's primary route
+        ids["sub_channel"] = one("SELECT min(id) FROM app.sub_channel WHERE status = 'active'")
     }
 
     override fun close() { wiring.database?.close(); fresh.close() }
@@ -216,6 +247,18 @@ class ApiWorld(
 
     companion object {
         const val BUSINESS_DATE = "2027-01-03"
+        const val YESTERDAY = "2027-01-02"
+        /** The uuid the contract sample gives every `Uuid` (its first example). */
+        const val SAMPLE_UUID = "6f1c2b0e-8d1a-4c5e-9f3a-2b7d4e6a8c10"
+        /** The seeded second outlet request (pending, by tso1001). */
+        const val SECOND_REQUEST = "6f1c2b0e-8d1a-4c5e-9f3a-2b7d4e6a8c11"
+
+        /** A stable UUID v4 for [seed] (version and variant bits set), so a caller gets its own client uuid per operation. */
+        fun v4(seed: String): String {
+            val u = java.util.UUID.nameUUIDFromBytes(seed.toByteArray())
+            val versionMask = 0xF000L.inv() // the version nibble of time_hi_and_version
+            return java.util.UUID((u.mostSignificantBits and versionMask) or 0x4000L, (u.leastSignificantBits and 0x3FFFFFFFFFFFFFFFL) or Long.MIN_VALUE).toString()
+        }
         /** Parameter names that carry a resource id, and the [ids] key of that resource. */
         val PARAM_RESOURCE = mapOf(
             "outlet_id" to "outlets", "route_id" to "routes", "zone_id" to "zones", "cluster_id" to "clusters", "territory_id" to "territories",
