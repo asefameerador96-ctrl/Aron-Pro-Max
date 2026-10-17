@@ -328,3 +328,14 @@ Login as `amo1001` on the AMO app (bind OTP like the SR), seeded zone, Honor X5c
 - **D-AMO-OUTLET** (F-AMO-025/026/027/022/023/024/028): Outlet hub: New shop, Permanent close (dues warning), Change information, My requests; Verify requests lists an SR's pending request: a new outlet needs sub-channel and geo class before Save; Cancel returns with nothing queued; airplane mode shows the summary and Save still queues. Update Base: confirm, photo, move the pin with the 10 m buttons (not beyond 100 m), Send for approval; Bangla and English.
 - **D-AMO-TEAM** (F-AMO-016/017/018/019/020/021/038): Team hub: Team Location (needs the build with the Maps key; offline shows the list and the last image), Task Delegation (assign to an SR for an outlet; the task shows "Waiting to be sent" in airplane mode and the SR gets it after sync), Live Dashboard (Filter applies only on the button; strike rate 1 of 81 reads 1.23 %), SR Stock (masked phones, lifted stock by SKU), Exceptions (review/dismiss/confirm offline; one event each), Team Performance (empty state while targets are deferred).
 - **D-AMO-REPORT** (F-AMO-032/033/034): Report tile: STD Memo Report (first of the month to yesterday, first column stays while the table scrolls sideways) and Sales Summary Up To Now (a zero target shows a dash); Settings: language, Sunlight, PDA to Support queues the file offline and sends on reconnect, Log Out; Bangla and English.
+
+### D-QA-1 Day 1 ten-minute check script (N-015; qa) — DEVICE-PENDING, laptop session
+Script: `tools/checks/day1-check.ps1` (tested in the cloud against a fake adb and a mock API: all-pass, wrong
+password and no-tools runs; check 4 passes against dev from the cloud: `/v1/health` 200 via Front Door, build f84b22b).
+Steps (laptop session, the Honor X5c Plus on USB, about 5 minutes):
+1. `git pull`, then in PowerShell from the repository folder: `.\tools\checks\day1-check.ps1` (add `-Apk <path>` to
+   install or update the SR APK first). It asks for the password of `tso1001` (not shown, never stored; or set
+   `$env:ARON_CHECK_PASSWORD` in that window only).
+2. When it says so, the owner logs in on the phone as `sr1001` and answers `y` if the home screen opened.
+3. Pass = `ALL PASS (5 checks)`: phone listed, APK installed, login succeeded (API), login on phone, /health from
+   Azure. Paste the window (it holds no secret) into `docs/status/laptop.md` and tell the lead.

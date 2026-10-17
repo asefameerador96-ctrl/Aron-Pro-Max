@@ -1,0 +1,100 @@
+# N-014 / AUD-TP-2: contract deviations that existed when ContractConformanceTest was introduced (2026-10-17).
+# One line per finding key: `METHOD shape status kind[ error]` (a schema error is `<instance path> <keyword>[ <property>]`,
+# so a NEW error on an operation already listed still fails). May only SHRINK: remove a line when its deviation is fixed.
+# Routed in docs/requests/qa-contract-conformance.md.
+GET /v1/admin/code-lists 200 schema /lists/*/items/*/attrs/applies_to type
+GET /v1/admin/code-lists 200 schema /lists/*/items/*/attrs/roles type
+GET /v1/admin/code-lists 403 undeclared-status
+GET /v1/admin/config/keys 200 schema /items/*/default_value type
+GET /v1/admin/config/keys 200 schema /items/*/default_value/ADMIN type
+GET /v1/admin/config/keys 200 schema /items/*/default_value/ADMIN/* type
+GET /v1/admin/config/keys 200 schema /items/*/default_value/ANALYST type
+GET /v1/admin/config/keys 200 schema /items/*/default_value/ANALYST/* type
+GET /v1/admin/config/keys 200 schema /items/*/default_value/DMO type
+GET /v1/admin/config/keys 200 schema /items/*/default_value/DMO/* type
+GET /v1/admin/config/keys 200 schema /items/*/default_value/SR type
+GET /v1/admin/config/keys 200 schema /items/*/default_value/SR/exclude type
+GET /v1/admin/config/keys 200 schema /items/*/default_value/SUPERADMIN type
+GET /v1/admin/config/keys 200 schema /items/*/default_value/SUPERADMIN/* type
+GET /v1/admin/config/keys 200 schema /items/*/default_value/SUPPORT type
+GET /v1/admin/config/keys 200 schema /items/*/default_value/SUPPORT/* type
+GET /v1/admin/config/keys 200 schema /items/*/default_value/TOP type
+GET /v1/admin/config/keys 200 schema /items/*/default_value/TOP/* type
+GET /v1/admin/config/keys 200 schema /items/*/default_value/TSO type
+GET /v1/admin/config/keys 200 schema /items/*/default_value/TSO/* type
+GET /v1/admin/config/keys 200 schema /items/*/default_value/WM type
+GET /v1/admin/config/keys 200 schema /items/*/default_value/WM/* type
+GET /v1/admin/outlets/{} 200 schema / unevaluatedProperties address
+GET /v1/admin/outlets/{} 200 schema / unevaluatedProperties channel
+GET /v1/admin/outlets/{} 200 schema / unevaluatedProperties cluster_id
+GET /v1/admin/outlets/{} 200 schema / unevaluatedProperties code
+GET /v1/admin/outlets/{} 200 schema / unevaluatedProperties contact_number
+GET /v1/admin/outlets/{} 200 schema / unevaluatedProperties created_at
+GET /v1/admin/outlets/{} 200 schema / unevaluatedProperties external_ref
+GET /v1/admin/outlets/{} 200 schema / unevaluatedProperties geo_class
+GET /v1/admin/outlets/{} 200 schema / unevaluatedProperties id
+GET /v1/admin/outlets/{} 200 schema / unevaluatedProperties lat
+GET /v1/admin/outlets/{} 200 schema / unevaluatedProperties lng
+GET /v1/admin/outlets/{} 200 schema / unevaluatedProperties location_confirmed
+GET /v1/admin/outlets/{} 200 schema / unevaluatedProperties location_history
+GET /v1/admin/outlets/{} 200 schema / unevaluatedProperties name
+GET /v1/admin/outlets/{} 200 schema / unevaluatedProperties name_bn
+GET /v1/admin/outlets/{} 200 schema / unevaluatedProperties outlet_kind
+GET /v1/admin/outlets/{} 200 schema / unevaluatedProperties owner_name
+GET /v1/admin/outlets/{} 200 schema / unevaluatedProperties placement_history
+GET /v1/admin/outlets/{} 200 schema / unevaluatedProperties price_type
+GET /v1/admin/outlets/{} 200 schema / unevaluatedProperties route_id
+GET /v1/admin/outlets/{} 200 schema / unevaluatedProperties status
+GET /v1/admin/outlets/{} 200 schema / unevaluatedProperties sub_channel_id
+GET /v1/admin/outlets/{} 200 schema / unevaluatedProperties updated_at
+GET /v1/admin/outlets/{} 200 schema / unevaluatedProperties version
+GET /v1/admin/outlets/{} 200 schema / unevaluatedProperties visit_sequence
+GET /v1/admin/outlets/{} 200 schema / unevaluatedProperties zone_id
+GET /v1/app/home 403 undeclared-status
+GET /v1/reports 200 schema /items/*/area enum
+GET /v1/routes/{}/assignments 0 not-in-contract
+GET /v1/sync/bundle 200 schema /code_lists/*/items/*/attrs/applies_to type
+GET /v1/sync/bundle 200 schema /code_lists/*/items/*/attrs/roles type
+GET /v1/sync/bundle/page 403 undeclared-status
+GET /v1/sync/delta 400 undeclared-status
+GET /v1/sync/delta 403 undeclared-status
+PATCH /v1/admin/clusters/{} 409 undeclared-status
+POST /v1/admin/assets 503 undeclared-status
+POST /v1/admin/content 503 undeclared-status
+POST /v1/admin/enrolment-tokens 404 undeclared-status
+POST /v1/admin/rubrics 201 schema / additionalProperties status
+POST /v1/admin/rubrics 201 schema / unevaluatedProperties criteria
+POST /v1/admin/rubrics 201 schema / unevaluatedProperties kind
+POST /v1/admin/rubrics 201 schema / unevaluatedProperties rubric_id
+POST /v1/admin/rubrics 201 schema / unevaluatedProperties version
+POST /v1/admin/surveys 201 schema / additionalProperties kind
+POST /v1/admin/surveys 201 schema / additionalProperties points_per_photo
+POST /v1/admin/surveys 201 schema / additionalProperties status
+POST /v1/admin/surveys 201 schema / additionalProperties valid_from
+POST /v1/admin/surveys 201 schema / additionalProperties valid_to
+POST /v1/admin/surveys 201 schema / unevaluatedProperties questions
+POST /v1/admin/surveys 201 schema / unevaluatedProperties survey_id
+POST /v1/admin/surveys 201 schema / unevaluatedProperties title_bn
+POST /v1/admin/surveys 201 schema / unevaluatedProperties title_en
+POST /v1/admin/surveys 201 schema / unevaluatedProperties version
+POST /v1/auth/mfa/enrol 403 undeclared-status
+POST /v1/client-errors 403 undeclared-status
+POST /v1/feedback 0 not-in-contract
+POST /v1/leave 0 not-in-contract
+POST /v1/media/sas 503 undeclared-status
+POST /v1/support/pda-upload 403 undeclared-status
+POST /v1/support/pda-upload 503 undeclared-status
+POST /v1/visit-plans 0 not-in-contract
+PUT /v1/admin/code-lists/{} 200 schema /items/*/attrs/roles type
+PUT /v1/admin/permissions/roles/{} 202 schema /changes/* additionalProperties old_value
+PUT /v1/admin/permissions/roles/{} 202 schema /changes/* unevaluatedProperties effective_from
+PUT /v1/admin/permissions/roles/{} 202 schema /changes/* unevaluatedProperties effective_to
+PUT /v1/admin/permissions/roles/{} 202 schema /changes/* unevaluatedProperties key
+PUT /v1/admin/permissions/roles/{} 202 schema /changes/* unevaluatedProperties scope_id
+PUT /v1/admin/permissions/roles/{} 202 schema /changes/* unevaluatedProperties scope_type
+PUT /v1/admin/permissions/roles/{} 202 schema /changes/* unevaluatedProperties value
+PUT /v1/admin/permissions/roles/{} 202 schema /changes/*/value oneOf
+PUT /v1/admin/permissions/roles/{} 202 schema /changes/*/value type
+PUT /v1/admin/permissions/roles/{} 202 schema /changes/*/value/* type
+PUT /v1/admin/permissions/roles/{} 202 schema /changes/*/value/*/actions type
+PUT /v1/devices/me/push-token 403 undeclared-status
