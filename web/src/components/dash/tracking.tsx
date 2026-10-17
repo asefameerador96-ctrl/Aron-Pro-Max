@@ -12,7 +12,7 @@ export const BUCKET_KEY: Record<Bucket, MessageKey> = {
   exception: "tracking.bucket.exception",
   not_logged_in: "tracking.bucket.not_logged_in",
 };
-const TONE: Record<Bucket, string> = { ge_100: "bg-emerald-50 text-emerald-900", from_90: "bg-lime-50 text-lime-900", from_80: "bg-yellow-50 text-yellow-900", below_80: "bg-red-50 text-red-900", exception: "bg-sky-50 text-sky-900", not_logged_in: "bg-slate-100 text-slate-800" };
+const TONE: Record<Bucket, string> = { ge_100: "bg-success-container text-success-on-container", from_90: "bg-accent-container text-accent-on-container", from_80: "bg-warning-container text-warning-on-container", below_80: "bg-danger-container text-danger-on-container", exception: "bg-offline-container text-offline-on-container", not_logged_in: "bg-raised text-secondary" };
 
 type Row = Schemas["DailyTrackingRow"];
 
