@@ -13,6 +13,10 @@ abstract class OutboxDao {
     @Insert(onConflict = OnConflictStrategy.ABORT)
     abstract suspend fun insert(rows: List<OutboxEntity>): List<Long>
 
+    /** True when any of [uuids] was acked and purged from this phone (a replay of it must not be captured again). */
+    @Query("SELECT EXISTS(SELECT 1 FROM purged_uuid WHERE client_uuid IN (:uuids))")
+    abstract suspend fun anyPurged(uuids: List<String>): Boolean
+
     @Query("SELECT * FROM outbox WHERE client_uuid = :clientUuid")
     abstract suspend fun byClientUuid(clientUuid: String): OutboxEntity?
 
