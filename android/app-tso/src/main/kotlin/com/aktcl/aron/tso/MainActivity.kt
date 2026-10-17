@@ -137,10 +137,16 @@ class MainActivity : ComponentActivity() {
                                         try {
                                         when (val c = logoutFlow.check()) {
                                             is LogoutCheck.Refused -> unsent = c.unsent
-                                            is LogoutCheck.Proceed -> when (val r = logoutFlow.logout()) {
-                                                is LogoutResult.Refused -> unsent = r.unsent
-                                                is LogoutResult.WipeIncomplete -> Toast.makeText(this@MainActivity, SystemR.string.logout_wipe_incomplete, Toast.LENGTH_LONG).show()
-                                                else -> Unit
+                                            is LogoutCheck.Proceed -> {
+                                                // The kept dashboard copies do not outlive the sign-in (deleted once the logout was not refused).
+                                                val uid = (components.session.state.value as? SessionState.Active)?.user?.userId
+                                                val r = logoutFlow.logout()
+                                                when (r) {
+                                                    is LogoutResult.Refused -> unsent = r.unsent
+                                                    is LogoutResult.WipeIncomplete -> Toast.makeText(this@MainActivity, SystemR.string.logout_wipe_incomplete, Toast.LENGTH_LONG).show()
+                                                    else -> Unit
+                                                }
+                                                if (r !is LogoutResult.Refused) uid?.let { java.io.File(cacheDir, "tso_api_$it").deleteRecursively() }
                                             }
                                         }
                                         } catch (e: kotlinx.coroutines.CancellationException) {
@@ -186,6 +192,14 @@ class MainActivity : ComponentActivity() {
                                 updateAvailable = updateState is com.aktcl.aron.core.system.update.UpdateState.Available,
                                 // the dashboard origin from the build config (aron.webBaseUrl); empty until it is configured
                                 webOrigin = BuildConfig.WEB_BASE_URL.ifEmpty { null },
+                                screens = mapOf<com.aktcl.aron.feature.tso.TsoScreen, @androidx.compose.runtime.Composable (() -> Unit) -> Unit>(
+                                    com.aktcl.aron.feature.tso.TsoScreen.DASHBOARD to { back ->
+                                        val api = remember(s.user.userId) { TsoApi(components.apiClient, applicationContext, s.user.userId) }
+                                        // The business day follows the trusted clock at every recomposition, not the device clock at start.
+                                        val day = com.aktcl.aron.rules.BusinessDate.of(components.trustedClock.nowMs()).toString()
+                                        TsoDashboardHost(api, day, back)
+                                    },
+                                ),
                             ) }
                             }
                         }
