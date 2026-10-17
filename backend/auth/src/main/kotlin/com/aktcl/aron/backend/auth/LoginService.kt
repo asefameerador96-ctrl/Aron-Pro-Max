@@ -355,7 +355,9 @@ class LoginService(
             return base("mfa_required").copy(mfa_token = mfa.token, scope = null)
         }
         val ordinal = device?.let { devices.bindOrdinal(user.id, it.id) }
-        if (device != null && ordinal == null && config.bool("cfg.auth.bind_otp_required")) {
+        // No bind OTP for the TSO app (owner, 2026-10-18): the Device OTP panel lists only SR and AMO users, so a TSO's code
+        // could never be read. A TSO phone goes in on the password alone (the enrolment gate still applies).
+        if (device != null && ordinal == null && user.role != Role.TSO && config.bool("cfg.auth.bind_otp_required")) {
             // The OTP the TSO reads on the Device OTP panel is created here, sealed and with a keyed verifier (s8.1).
             if (binds != null && otpSealer != null) {
                 binds.ensureOtp(user.id, now, Duration.ofMinutes(cfgInt("cfg.auth.otp_ttl_min", 120).toLong()), cfgInt("cfg.auth.otp_length", 4), otpSealer)

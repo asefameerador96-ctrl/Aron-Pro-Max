@@ -251,6 +251,22 @@ open class LoginTest {
     }
 
     @Test
+    fun tsoLogsInWithoutABindOtpWhileSrStillNeedsOne() {
+        val f = fixture()
+        f.unbindAll()
+        val tsoPhone = "7a1c2b0e-8d1a-4c5e-9f3a-2b7d4e6a8c33"
+        f.addDevice(DeviceRecord(504, tsoPhone, "active", "tso", null))
+        testApplication {
+            application { f.application(this) }
+            val tso = json(client.login("tso5012", "correct horse 1", tsoPhone, client = "app_tso").bodyAsText())
+            assertEquals("ok", tso["status"]!!.jsonPrimitive.content)
+            assertNull(tso["bind_token"]!!.jsonPrimitive.contentOrNullSafe())
+            val sr = json(client.login("sr334001", "correct horse 1", f.srDevice).bodyAsText())
+            assertEquals("bind_required", sr["status"]!!.jsonPrimitive.content)
+        }
+    }
+
+    @Test
     fun disabledUserIsRefusedOnlyAfterTheRightPassword() {
         val f = fixture()
         f.addUser(f.user(1001, "sr334001", Role.SR, status = "disabled"))
