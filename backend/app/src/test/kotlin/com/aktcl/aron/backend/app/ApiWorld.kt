@@ -48,6 +48,8 @@ class ApiWorld(
     val ids = HashMap<String, Long>()
     val otherIds = HashMap<String, Long>()
     val wiring: Wiring
+    /** The API's signing key (a throwaway per world): a second wiring over a restored copy accepts the same tokens. */
+    val jwtKeyFile: File
 
     init {
         // The blob issuer reads its account from the process environment, not from Settings: with it set the harness
@@ -86,12 +88,12 @@ class ApiWorld(
             load(ids, "Z-MIR", "MIR", "qa9001", THROWAWAY_PHONE)
             mirrors.firstOrNull()?.let { tag -> load(otherIds, "Z-$tag", tag, "${tag.lowercase()}sr1001", null) }
         }
-        val key = File.createTempFile("aron-jwt", ".pem").apply {
+        jwtKeyFile = File.createTempFile("aron-jwt", ".pem").apply {
             deleteOnExit()
             val k = KeyPairGenerator.getInstance("EC").apply { initialize(ECGenParameterSpec("secp256r1")) }.generateKeyPair().private
             writeText("-----BEGIN " + "PRIVATE KEY-----\n" + Base64.getMimeEncoder().encodeToString(k.encoded) + "\n-----END PRIVATE KEY-----\n")
         }
-        wiring = Wiring.production(Settings.load(mapOf("ARON_ROLE" to "api", "ARON_DB_URL" to fresh.url, "ARON_JWT_SIGNING_KEY_FILE" to key.absolutePath)), clock, extraRecordHandlers)
+        wiring = Wiring.production(Settings.load(mapOf("ARON_ROLE" to "api", "ARON_DB_URL" to fresh.url, "ARON_JWT_SIGNING_KEY_FILE" to jwtKeyFile.absolutePath)), clock, extraRecordHandlers)
     }
 
     override fun close() { wiring.database?.close(); fresh.close() }
@@ -154,6 +156,15 @@ class ApiWorld(
         }
     }
 
+    /**
+     * Path parameters named by a record uuid or row id (`request_uuid`, `unlock_id`), set by a suite to the other
+     * division's rows: used only when the path is built from [otherIds], so the own call keeps its sample value.
+     */
+    val otherPathValues = HashMap<String, String>()
+
+    /** The value a required query parameter gets for [pathIds] (null when it names no resource). */
+    fun queryValue(name: String, pathIds: Map<String, Long>): String? = paramValue(name, pathIds)
+
     /** The concrete request path of [op] with its parameters filled from [pathIds] (or samples). */
     fun pathFor(contract: ContractModel, op: ContractModel.Operation, pathIds: Map<String, Long>): String =
         op.path.replace(Regex("\\{([^}]*)}")) { m -> pathValue(contract, op, m.groupValues[1], pathIds) }
@@ -169,6 +180,11 @@ class ApiWorld(
 
     private fun pathValue(contract: ContractModel, op: ContractModel.Operation, name: String, pathIds: Map<String, Long>): String {
         paramValue(name, pathIds)?.let { return it }
+        if (pathIds === otherIds) otherPathValues[name]?.let { return it }
+        // Reads of /v1/admin/geo/{level}/{id}: the division level, so the harness's two divisions tell the answers apart.
+        val geoRead = op.method == "GET" && op.path.startsWith("/v1/admin/geo/")
+        if (geoRead && name == "level") return "division"
+        if (geoRead && name == "id") pathIds["divisions"]?.let { return it.toString() }
         if (name == "id") {
             val segs = op.path.split('/')
             pathIds[segs.getOrNull(segs.indexOf("{$name}") - 1)]?.let { return it.toString() }

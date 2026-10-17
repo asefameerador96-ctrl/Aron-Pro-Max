@@ -12,6 +12,11 @@ They come in through `com.auth0:java-jwt:4.6.0` (under `ktor-server-auth-jwt`: t
 
 The SR, AMO and TSO release runtime classpaths are clean (no advisory).
 
+**Urgency:** java-jwt parses the token's JSON header and payload with Jackson **before** it checks the signature, so the
+jackson-core denial-of-service advisories can be reached by anyone who can send a bearer token, without logging in.
+The pin goes in `:backend:app`, which builds the one runnable image (api and worker roles). Any other module that
+ships its own runtime would need the same pin; none does today.
+
 **Failing check (reproduce):**
 ```sh
 ./gradlew -q :backend:app:dependencies --configuration runtimeClasspath > /tmp/backend.txt

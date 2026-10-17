@@ -9,7 +9,8 @@ Owner: qa. The repository has no Gradle lockfile or verification metadata yet (c
   osv-scanner scan source --lockfile out/gradle.lockfile --format json > osv.json
   python3 tools/ci/osv-gate.py osv.json tools/ci/osv-allow.txt
 
-Only resolved modules count: a constraint line "(c)" and an unresolved "(n)" or FAILED line are skipped; "a:b:1 -> 2"
+Only resolved modules count: a constraint line "(c)" and a declared-only "(n)" line are skipped; a FAILED line or an
+unpinned version range stops the run (exit 2), because a partial lockfile would scan as clean; "a:b:1 -> 2"
 and "a:b -> 2" take the resolved version 2;
 a rich version "a:b:{prefer 1} -> 2" takes 2 (or 1 when nothing resolved it). Project dependencies are not modules and are skipped.
 """
@@ -20,6 +21,10 @@ from pathlib import Path
 LINE = re.compile(r"[+\\]--- ([\w.\-]+):([\w.\-]+)(?::(\{[^}]*\}|[^\s:]+))?(?: -> ([^\s]+))?(.*)$")
 
 
+class Unresolved(Exception):
+    """A module Gradle could not resolve (FAILED) or a version range nothing pinned: the scan would be incomplete."""
+
+
 def modules(text: str) -> set:
     out = set()
     for line in text.splitlines():
@@ -27,11 +32,15 @@ def modules(text: str) -> set:
         if not m:
             continue
         group, artifact, requested, resolved, rest = m.groups()
-        if "(c)" in rest or "(n)" in rest or "FAILED" in rest:
+        if "FAILED" in rest:
+            raise Unresolved(f"{group}:{artifact} did not resolve: {line.strip()}")
+        if "(c)" in rest or "(n)" in rest:
             continue
         if requested and requested.startswith("{"):  # a rich version: {strictly 1.2} or {prefer 1.2}
             requested = (requested.strip("{}").split() or [None])[-1]
         version = resolved or requested
+        if version and re.search(r"[\[\](),+]", version):
+            raise Unresolved(f"{group}:{artifact} has the range {version} and nothing resolved it: {line.strip()}")
         if version:
             out.add(f"{group}:{artifact}:{version}")
     return out
@@ -43,7 +52,11 @@ def main(argv) -> int:
         return 2
     found = set()
     for path in argv[1:]:
-        mods = modules(Path(path).read_text(encoding="utf-8"))
+        try:
+            mods = modules(Path(path).read_text(encoding="utf-8"))
+        except Unresolved as e:
+            print(f"gradle-lockfile: {path}: {e}")
+            return 2
         if not mods:
             print(f"gradle-lockfile: no resolved module in {path} (did the dependencies task fail?)")
             return 2
