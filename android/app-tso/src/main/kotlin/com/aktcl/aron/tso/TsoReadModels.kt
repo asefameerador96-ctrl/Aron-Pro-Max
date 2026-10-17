@@ -9,6 +9,8 @@ import com.aktcl.aron.core.network.Grant
 import com.aktcl.aron.core.session.SessionComponents
 import com.aktcl.aron.feature.tso.leave.LeaveJson
 import com.aktcl.aron.feature.tso.leave.LeaveSource
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.RequestBody.Companion.toRequestBody
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -270,6 +272,37 @@ class TsoReadModels(private val components: SessionComponents, private val datab
                 put("due_date", kotlinx.serialization.json.JsonPrimitive(t.dueDate)); put("source_visit_client_uuid", kotlinx.serialization.json.JsonNull)
             }, routeId = t.routeId,
         )
+    }
+
+    /** F-TSO-010/021: preview read and the one online POST; no queue, scope from the token only. */
+    fun finalSubmit(userId: Long, plan: com.aktcl.aron.feature.tso.mycall.PlanSource): com.aktcl.aron.feature.tso.finalsubmit.FinalSubmitApi = object : com.aktcl.aron.feature.tso.finalsubmit.FinalSubmitApi {
+        private fun why(r: ApiResult<*>): com.aktcl.aron.feature.tso.finalsubmit.FsFailure = when (r) {
+            is ApiResult.Transport -> com.aktcl.aron.feature.tso.finalsubmit.FsFailure.OFFLINE
+            is ApiResult.Failure -> if (r.httpStatus == 403) com.aktcl.aron.feature.tso.finalsubmit.FsFailure.FORBIDDEN else if (r.httpStatus in 400..499) com.aktcl.aron.feature.tso.finalsubmit.FsFailure.REFUSED else com.aktcl.aron.feature.tso.finalsubmit.FsFailure.SERVER
+            else -> com.aktcl.aron.feature.tso.finalsubmit.FsFailure.SERVER
+        }
+
+        override suspend fun zones(): List<Long>? = runCatching { plan.routes() }.getOrNull()?.let { com.aktcl.aron.feature.tso.mycall.zonesOf(it) }
+
+        override suspend fun preview(zoneId: Long, date: String): com.aktcl.aron.feature.tso.finalsubmit.FsPreviewOutcome {
+            val r = client.call(path = "/v1/day/final-submit/preview", auth = CallAuth.Grant(Grant.FULL), build = {
+                url(client.origin.path("/v1/day/final-submit/preview").newBuilder().addQueryParameter("zone_id", zoneId.toString()).addQueryParameter("business_date", date).build()); get()
+            }, decode = { body, _ -> body })
+            if (r !is ApiResult.Success) return com.aktcl.aron.feature.tso.finalsubmit.FsPreviewOutcome.Failed(why(r))
+            return com.aktcl.aron.feature.tso.finalsubmit.FsJson.preview(r.value)?.let { com.aktcl.aron.feature.tso.finalsubmit.FsPreviewOutcome.Ok(it) }
+                ?: com.aktcl.aron.feature.tso.finalsubmit.FsPreviewOutcome.Failed(com.aktcl.aron.feature.tso.finalsubmit.FsFailure.SERVER)
+        }
+
+        override suspend fun submit(clientUuid: String, zoneId: Long, date: String): com.aktcl.aron.feature.tso.finalsubmit.FsSubmitOutcome {
+            val json = org.json.JSONObject().put("client_uuid", clientUuid).put("zone_id", zoneId).put("business_date", date).toString()
+            val r = client.call(path = "/v1/day/final-submit", auth = CallAuth.Grant(Grant.FULL), build = {
+                post(json.toRequestBody("application/json".toMediaType()))
+            }, decode = { body, _ -> body })
+            if (r is ApiResult.Failure && r.httpStatus == 409 && r.problem.code == "ERR_DAY_ALREADY_FINAL_SUBMITTED") return com.aktcl.aron.feature.tso.finalsubmit.FsSubmitOutcome.AlreadySubmitted
+            if (r !is ApiResult.Success) return com.aktcl.aron.feature.tso.finalsubmit.FsSubmitOutcome.Failed(why(r))
+            return com.aktcl.aron.feature.tso.finalsubmit.FsJson.result(r.value)?.let { com.aktcl.aron.feature.tso.finalsubmit.FsSubmitOutcome.Ok(it) }
+                ?: com.aktcl.aron.feature.tso.finalsubmit.FsSubmitOutcome.Failed(com.aktcl.aron.feature.tso.finalsubmit.FsFailure.SERVER)
+        }
     }
 
     suspend fun rubric(userId: Long) = com.aktcl.aron.feature.tso.mycall.RubricJson.retailer(runCatching { meta(userId).section("rubrics") }.getOrNull())

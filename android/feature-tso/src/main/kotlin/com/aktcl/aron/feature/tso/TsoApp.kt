@@ -81,6 +81,9 @@ fun TsoApp(
     nowIso: () -> String = { java.time.Instant.now().toString() },
     /** F-TSO-013..016: Set Plan, My Visit Plan, Visit Query and Assign Task; null shows the placeholder. */
     myCall: com.aktcl.aron.feature.tso.mycall.MyCallDeps? = null,
+    /** F-TSO-010/021: Final Submit (online only); null shows the placeholder. */
+    finalSubmit: com.aktcl.aron.feature.tso.finalsubmit.FinalSubmitApi? = null,
+    userId: Long = 0L,
     /** Real screens by destination, supplied by the app module; a screen not listed shows the placeholder frame. */
     screens: Map<TsoScreen, @Composable (onBack: () -> Unit) -> Unit> = emptyMap(),
 ) {
@@ -131,6 +134,11 @@ fun TsoApp(
                 } else {
                     com.aktcl.aron.feature.tso.leave.LeaveListScreen(state, onBack = { screen = TsoScreen.HOME }, onApply = if (leaveQueue != null) ({ applying = true }) else null)
                 }
+            } else TsoPlaceholderFor(s, tiles, syncedAt) { screen = TsoScreen.HOME }
+            TsoScreen.FINAL_SUBMIT -> if (finalSubmit != null) {
+                val counter = rememberRetained("tso-${user.username}-fs-epoch") { RetainedCounter() }
+                val st = rememberRetained("tso-${user.username}-fs-${counter.n}") { com.aktcl.aron.feature.tso.finalsubmit.FinalSubmitState(finalSubmit, userId, today) }
+                com.aktcl.aron.feature.tso.finalsubmit.FinalSubmitScreen(st, onBack = { screen = TsoScreen.HOME; counter.n++ })
             } else TsoPlaceholderFor(s, tiles, syncedAt) { screen = TsoScreen.HOME }
             TsoScreen.MY_CALL -> if (myCall != null) {
                 MyCallFlow(myCall, user.username, today, onBack = { screen = TsoScreen.HOME })

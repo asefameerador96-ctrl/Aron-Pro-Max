@@ -18,3 +18,6 @@ android-tso now queues its records itself with `app-tso/.../TsoOutbox.kt` (Recor
 - Zone names: the contract has no read that returns a zone name for a TSO (routes carry only `zone_id`); the My Call pickers label zones "Zone <id>". Wanted: a `zone_name` on Route (`GET /v1/routes`) or a scope-tree read.
 - `GET /v1/visit-plans` is read with `from`, `to` (one date) and `planner_user_id` of the caller; please confirm the server accepts the TSO's own id and returns completion from `call_assessment` with `visit_plan_outlet_client_uuid`.
 - The TSO bundle must carry the `rubrics` section (kind retailer_questionnaire, bool criteria) and the `task_type` and `feedback_category` code lists.
+
+## Update 2026-10-18 (Final Submit)
+F-TSO-010 shows one Zone list built from `GET /v1/routes` (zone ids) instead of the manual's five dropdowns Wing, Division, Territory, House, Zone: the contract has no read that returns the names of the TSO's scope tree. Wanted: a read of the caller's scope tree with names (or `zone_name`, `house_name`, `territory_name` on Route), then the cascade is a UI change only.

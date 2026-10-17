@@ -9,3 +9,5 @@ F-TSO-013,M,2026-10-17T23:00Z,2026-10-18T00:20Z,80,0,"Set Plan: deterministic pl
 F-TSO-014,S,2026-10-17T23:00Z,2026-10-18T00:20Z,0,0,"with F-TSO-013 (tabs, local completion overlay)"
 F-TSO-015,S,2026-10-17T23:00Z,2026-10-18T00:20Z,0,0,"with F-TSO-013 (rubric from bundle section rubrics, kind retailer_questionnaire; call_assessment + answers, no GPS no photo)"
 F-TSO-016,S,2026-10-17T23:00Z,2026-10-18T00:20Z,0,0,"with F-TSO-013 (assignee = SR on the route; SR Not Set blocks; task_type code list)"
+F-TSO-010,M,2026-10-18T00:20Z,2026-10-18T01:10Z,50,0,"T1 Final Submit: stable client uuid per (user, zone, date) so a retry replays; explicit confirm; online only; zone list from routes (five-level cascade names need a scope-tree read: request); Opus checker pending"
+F-TSO-021,S,2026-10-18T00:20Z,2026-10-18T01:10Z,0,0,"with F-TSO-010 (preview read at Get Sales Data, already-submitted alert in the verbatim Bangla)"

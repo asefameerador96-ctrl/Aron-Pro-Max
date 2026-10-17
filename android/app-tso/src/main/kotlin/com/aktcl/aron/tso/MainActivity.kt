@@ -196,6 +196,8 @@ class MainActivity : ComponentActivity() {
                                 today = { components.trustedClock.businessDate().toString() },
                                 feedback = remember(s.user.userId) { readModels.feedback(s.user.userId) },
                                 feedbackQueue = remember(s.user.userId) { readModels.feedbackQueue(s.user.userId) },
+                                userId = s.user.userId,
+                                finalSubmit = remember(s.user.userId) { readModels.finalSubmit(s.user.userId, readModels.plan(s.user.userId)) },
                                 myCall = remember(s.user.userId) {
                                     val src = readModels.plan(s.user.userId)
                                     com.aktcl.aron.feature.tso.mycall.MyCallDeps(
