@@ -66,3 +66,22 @@ review and fix stages overnight; they were resumed on 2026-10-17):
 
 A production-readiness audit ran alongside (six dimensions, adversarial verification); its write-up is
 `docs/audit/production-readiness-2026-10-15.md` once the resumed run completes.
+
+### 2026-10-17: phase 1 fixes, phase 2 screens, build 724 on the Honor
+
+- Phase 1 review fixes landed (`dec53bab`): kit bottom-bar and tile sizing, web page gradient and the 48 px touch floor,
+  versioned radius imports; `.pyc` files dropped from git.
+- Audit written: `docs/audit/production-readiness-2026-10-15.md` (`766c79ab`): no critical after verification, 25
+  confirmed majors with lane and hours, a 15-item go-live checklist.
+- Phase 2 (`bd579f7e`, `93e4d98c`): SR Home (hero, status row, tile groups with icons, KPI/stock/money cards, device
+  line, next-step dock), the SR frame on every screen (top bar, chip, printer, transitions), selling screens (Stock,
+  Picker, Visit with range view, Sale entry, Review, QC, Outlet menu), closing screens (Attendance with hold step, Memo,
+  Summary, Submit, Tasks, Login/OTP/Enrolment), AMO and TSO homes with designed destinations. 36 goldens re-recorded and
+  verified at 360 x 800 (Robolectric SDK 36 needs the Android Studio JBR locally; CI needs JDK 21+ for that job).
+- Built locally as CI does: `assembleRelease` with `-Paron.versionCode=724 -Paron.versionName=0.1.724` against the dev
+  Front Door, signed with the laptop keystore (certificate `468d9b4e…a4fb`, same as the dev app_release), installed with
+  `adb install -r` over 722 so the enrolment and the sr1001 bind survived. Cold start 1.7 s, no crash on Home, Stock and
+  the outlet picker. Fixed on the phone: white status-bar icons over the light top bar (now dark via WindowCompat).
+- Deferred to save the owner's allowance: web page-by-page restyle (the theme, shell, kit, dashboard and login are
+  done), kit polish items (bar label wrap at 360 dp, tile plate padding, segmented thumb animation), the hardening
+  items of the audit (next phase, owner's call).
