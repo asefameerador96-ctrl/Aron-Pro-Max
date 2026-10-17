@@ -229,7 +229,7 @@ class CaptureRepository(
     /**
      * One survey answer during an SR call (F-SR-021): in the visit's family, one per question per visit (a second answer is
      * refused with IllegalStateException). Exactly the member of [SurveyResponseEntity.answerType] is set; a `photo_only`
-     * answer carries the photo's media uuid, any other may carry one. SR calls only; no points ledger (docs/27).
+     * answer carries the photo's media uuid, any other may carry one. SR calls and AMO control calls; no points ledger (docs/27).
      */
     suspend fun recordSurveyResponse(answer: com.aktcl.aron.core.database.entity.SurveyResponseEntity) = db.withTransaction {
         requireUuids(answer.clientUuid, answer.visitClientUuid)
@@ -248,7 +248,7 @@ class CaptureRepository(
         answer.answerText?.let { require(it.length <= 1000) { "answer_text is at most 1000 characters" } }
         answer.answerNum?.let { require(it.isFinite()) { "answer_num is a finite number" } }
         requireOpenRouteDay(answer.meta)
-        requireSrCall(answer.visitClientUuid)
+        requireSurveyVisit(answer.visitClientUuid)
         check(capture.surveyResponsesOf(answer.visitClientUuid).none { it.surveyId == answer.surveyId && it.questionId == answer.questionId }) {
             "question ${answer.questionId} of survey ${answer.surveyId} is already answered in this visit"
         }
@@ -260,6 +260,12 @@ class CaptureRepository(
     private suspend fun requireSrCall(visitClientUuid: String) {
         val visit = checkNotNull(capture.visit(visitClientUuid)) { "the visit is not on this phone" }
         require(visit.visitKind == com.aktcl.aron.contract.VisitKind.SR_CALL.wire) { "content and surveys are for SR calls only" }
+    }
+
+    /** A survey belongs to an SR call or an AMO Control Call (F-AMO-043; the AMO survey earns no points). Never a Joint Call or a TSO visit. */
+    private suspend fun requireSurveyVisit(visitClientUuid: String) {
+        val visit = checkNotNull(capture.visit(visitClientUuid)) { "the visit is not on this phone" }
+        require(visit.visitKind == com.aktcl.aron.contract.VisitKind.SR_CALL.wire || visit.visitKind == "amo_control_call") { "surveys are for SR calls and AMO control calls only" }
     }
 
     /**

@@ -30,4 +30,12 @@
     <string name="amo_jc_sr">এসআর: %1$s</string>
     <string name="amo_jc_sr_none">নির্ধারিত নেই</string>
     <string name="amo_jc_star">৫-এর মধ্যে %1$s</string>
+    <string name="amo_sv_empty">এই রিটেইলারের জন্য কোনো সার্ভে নেই</string>
+    <string name="amo_sv_empty_hint">সার্ভে দিনের ডেটার সাথে নামে।</string>
+    <string name="amo_sv_photo">ছবি তুলুন</string>
+    <string name="amo_sv_photo_retake">আবার ছবি তুলুন</string>
+    <string name="amo_sv_photo_taken">ছবি সংরক্ষিত</string>
+    <string name="amo_sv_submit">জমা দিন</string>
+    <string name="amo_sv_skip">সার্ভে ছাড়া ফিরে যান</string>
+    <string name="amo_sv_confirm">আপনি কি সার্ভে জমা দেওয়ার বিষয়ে নিশ্চিত?</string>
 </resources>

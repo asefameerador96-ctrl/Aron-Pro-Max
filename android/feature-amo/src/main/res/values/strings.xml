@@ -30,4 +30,12 @@
     <string name="amo_jc_sr">SR: %1$s</string>
     <string name="amo_jc_sr_none">not assigned</string>
     <string name="amo_jc_star">%1$s of 5</string>
+    <string name="amo_sv_empty">No survey for this retailer</string>
+    <string name="amo_sv_empty_hint">The survey downloads with the day\'s data.</string>
+    <string name="amo_sv_photo">Take photo</string>
+    <string name="amo_sv_photo_retake">Retake photo</string>
+    <string name="amo_sv_photo_taken">Photo saved</string>
+    <string name="amo_sv_submit">Submit</string>
+    <string name="amo_sv_skip">Back without the survey</string>
+    <string name="amo_sv_confirm">Are you sure you want to submit the survey?</string>
 </resources>

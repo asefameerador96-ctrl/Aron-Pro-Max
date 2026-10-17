@@ -231,6 +231,35 @@ class AmoDay(
         runCatching { requestSync() }
     }
 
+    // ---- Survey (F-AMO-043): the SR's POSM survey component without points
+
+    /** The bundle's survey with its questions, or null when there is none or this visit already answered it. */
+    suspend fun pendingSurvey(visitUuid: String): Pair<com.aktcl.aron.core.database.entity.SurveyEntity, List<com.aktcl.aron.core.database.entity.SurveyQuestionEntity>>? {
+        if (db.captureDao().surveyResponsesOf(visitUuid).isNotEmpty()) return null
+        val survey = db.referenceDao().surveys().firstOrNull() ?: return null
+        val questions = db.referenceDao().surveyQuestions(survey.surveyId)
+        return if (questions.isEmpty()) null else survey to questions
+    }
+
+    /** Writes the confirmed answers all or nothing (one per question per visit; a kill mid-way keeps none) and claims the photos for them. */
+    suspend fun saveSurvey(visitUuid: String, survey: com.aktcl.aron.core.database.entity.SurveyEntity, rows: List<com.aktcl.aron.feature.outlet.SurveyResponseRow>) {
+        if (rows.isEmpty() || db.captureDao().surveyResponsesOf(visitUuid).isNotEmpty()) return
+        val meta = metaProvider.meta(visitSession.current.value?.routeId ?: 0L)
+        db.withTransaction {
+            for (r in rows) {
+                val a = r.answer
+                capture.recordSurveyResponse(
+                    com.aktcl.aron.core.database.entity.SurveyResponseEntity(
+                        r.clientUuid, meta, visitUuid, survey.surveyId, survey.version, r.question.questionId,
+                        r.question.answerType.name.lowercase(), a.bool, a.num, a.optionCode, a.text, a.photoUuid,
+                    ),
+                )
+            }
+        }
+        for (r in rows) r.answer.photoUuid?.let { runCatching { claimPhoto(it, "survey", "survey_response", r.clientUuid, null) } }
+        runCatching { requestSync() }
+    }
+
     /** SR Perf. Assessment (F-AMO-007/008/009): the check and its brand lines, all or nothing, family = the visit. A second Save for the visit writes nothing. */
     suspend fun saveAssessment(visitUuid: String, brands: List<com.aktcl.aron.feature.amo.AmoBrand>, state: com.aktcl.aron.feature.amo.PerfState) {
         if (db.captureDao().amoRecordsOfFamily(visitUuid).any { it.recordType == "distribution_check" }) return

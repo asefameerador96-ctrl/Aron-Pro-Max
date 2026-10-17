@@ -135,10 +135,24 @@ class ContentSurveyTest {
         assertThrows(IllegalArgumentException::class.java) {
             runBlocking { repo.recordContentView(ContentViewEntity(ClientIds.newUuid(), TestRows.meta(), visit.clientUuid, 1, 1, "kv", "viewed", 1)) }
         }
-        assertThrows(IllegalArgumentException::class.java) {
-            runBlocking { repo.recordSurveyResponse(SurveyResponseEntity(ClientIds.newUuid(), TestRows.meta(), visit.clientUuid, 7, 3, 71, "bool", answerBool = true)) }
-        }
         assertEquals(0, db.captureDao().contentViewsOf(visit.clientUuid).size)
+    }
+
+    @Test fun anAmoControlCallTakesASurveyButAJointCallDoesNot() = runTest {
+        val (v, fix) = TestRows.visit()
+        val control = v.copy(visitKind = "amo_control_call")
+        repo.recordVisitOpen(control, fix)
+        val answer = SurveyResponseEntity(ClientIds.newUuid(), TestRows.meta(), control.clientUuid, 7, 3, 71, "bool", answerBool = true)
+        repo.recordSurveyResponse(answer)
+        assertEquals(1, db.captureDao().surveyResponsesOf(control.clientUuid).size)
+        // the same question twice in one visit is refused; a replay of the stored row is not a second answer
+        assertThrows(IllegalStateException::class.java) { runBlocking { repo.recordSurveyResponse(answer.copy(clientUuid = ClientIds.newUuid())) } }
+        val (v2, fix2) = TestRows.visit(seq = 2)
+        val joint = v2.copy(visitKind = "amo_joint_call")
+        repo.recordVisitOpen(joint, fix2)
+        assertThrows(IllegalArgumentException::class.java) {
+            runBlocking { repo.recordSurveyResponse(SurveyResponseEntity(ClientIds.newUuid(), TestRows.meta(), joint.clientUuid, 7, 3, 71, "bool", answerBool = true)) }
+        }
     }
 
     @Test fun thePurgeTakesTheRecordsWithTheirVisitFamily() = runTest {

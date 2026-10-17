@@ -37,17 +37,17 @@ import kotlinx.coroutines.launch
 import androidx.compose.ui.res.stringResource
 import com.aktcl.aron.feature.amo.R as AmoR
 
-private enum class CcStep { ROUTE, OUTLET, CHECK, FORCE, MENU, ASSESS, JOINT }
+private enum class CcStep { ROUTE, OUTLET, CHECK, FORCE, MENU, ASSESS, JOINT, SURVEY }
 
 /**
  * F-AMO-004/005/036: Control Call. Route and retailer come from the zone-wide bundle (local), the geo gate is the SR's
  * [VisitFlow] (radius check on the phone, airplane mode safe) on visit kind `amo_control_call`, the out-of-range answer is
  * Manual Override (the SR's Force Sale with the outlet photo and a location-change request, capped per day) or Refresh.
- * [onSale], [onAssessment] and [onSurvey] open the per-outlet menu entries (null hides Survey until it exists).
+ * [onSale] opens the sale (null until the sale rows land); Assessment and Survey are steps of this host.
  */
 @Composable
 fun ControlCallHost(
-    day: AmoDay, onBack: () -> Unit, onSale: (() -> Unit)? = null, onSurvey: (() -> Unit)? = null,
+    day: AmoDay, onBack: () -> Unit, onSale: (() -> Unit)? = null,
     /** `amo_control_call` (menu: Sale, assessment, survey) or `amo_joint_call` (goes straight to the SR call assessment, F-AMO-011). */
     kind: String = com.aktcl.aron.feature.amo.AmoVisitKind.CONTROL_CALL,
 ) {
@@ -66,13 +66,13 @@ fun ControlCallHost(
     }
     // A call already open (kill and relaunch): back on its menu, never a second visit.
     val open by day.visitSession.current.collectAsState()
-    LaunchedEffect(open) { if (open != null && step != inCall && step != CcStep.FORCE && step != CcStep.ASSESS) step = inCall }
+    LaunchedEffect(open) { if (open != null && step != inCall && step != CcStep.FORCE && step != CcStep.ASSESS && step != CcStep.SURVEY) step = inCall }
     val goBack: () -> Unit = {
         when (step) {
             CcStep.ROUTE -> onBack()
             CcStep.OUTLET -> step = CcStep.ROUTE
             CcStep.CHECK, CcStep.FORCE -> step = CcStep.OUTLET
-            CcStep.ASSESS -> step = CcStep.MENU
+            CcStep.ASSESS, CcStep.SURVEY -> step = CcStep.MENU
             CcStep.MENU, CcStep.JOINT -> scope.launch { day.closeVisit(); step = CcStep.OUTLET }
         }
     }
@@ -110,8 +110,9 @@ fun ControlCallHost(
                 CcStep.FORCE -> ManualOverrideStep(day, onStarted = { step = inCall }, onBack = { step = CcStep.CHECK })
                 CcStep.JOINT -> JointCallStep(day, onSaved = { scope.launch { day.closeVisit(); step = CcStep.OUTLET } })
                 CcStep.ASSESS -> PerfAssessmentStep(day, onSaved = { scope.launch { day.closeVisit(); step = CcStep.OUTLET } })
+                CcStep.SURVEY -> SurveyStep(day, onDone = { step = CcStep.MENU })
                 CcStep.MENU -> ControlCallMenu(
-                    onSale = { onSale?.invoke() }, onAssessment = { step = CcStep.ASSESS }, onSurvey = onSurvey,
+                    onSale = { onSale?.invoke() }, onAssessment = { step = CcStep.ASSESS }, onSurvey = { step = CcStep.SURVEY },
                     onDone = { scope.launch { day.closeVisit(); step = CcStep.OUTLET } },
                 )
             }
@@ -228,5 +229,62 @@ private fun JointCallStep(day: AmoDay, onSaved: () -> Unit) {
                 }
             }
         },
+    )
+}
+
+private const val SEP = "\u0001"
+
+/** Answers as "key SEP bool SEP photoUuid" (this screen sets only those two fields); survives rotation and process death. */
+private val AnswersSaver = androidx.compose.runtime.saveable.Saver<Map<String, com.aktcl.aron.feature.outlet.SurveyAnswer>, ArrayList<String>>(
+    save = { m -> ArrayList(m.map { (k, a) -> listOf(k, a.bool?.toString().orEmpty(), a.photoUuid.orEmpty()).joinToString(SEP) }) },
+    restore = { l ->
+        l.mapNotNull { row ->
+            val p = row.split(SEP)
+            if (p.size < 3) null else p[0] to com.aktcl.aron.feature.outlet.SurveyAnswer(bool = p[1].toBooleanStrictOrNull(), photoUuid = p[2].ifEmpty { null })
+        }.toMap()
+    },
+)
+
+/** F-AMO-043/010: the survey of the open Control Call. Submit confirms, writes all answers at once and returns to the menu; the call is never blocked. */
+@Composable
+private fun SurveyStep(day: AmoDay, onDone: () -> Unit) {
+    val scope = rememberCoroutineScope()
+    val visit = day.visitSession.current.value
+    val bn = com.aktcl.aron.core.ui.LocalAppLanguage.current == com.aktcl.aron.core.common.AppLanguage.BN
+    var loaded by remember { mutableStateOf<Pair<com.aktcl.aron.core.database.entity.SurveyEntity, List<com.aktcl.aron.core.database.entity.SurveyQuestionEntity>>?>(null) }
+    var checked by remember { mutableStateOf(false) }
+    LaunchedEffect(day, visit?.visitUuid) { loaded = visit?.let { runCatching { day.pendingSurvey(it.visitUuid) }.getOrNull() }; checked = true }
+    if (!checked) return
+    val questions = remember(loaded, bn) { loaded?.let { com.aktcl.aron.feature.amo.AmoSurvey.questions(it.second, bn) }.orEmpty() }
+    var answers by rememberSaveable(stateSaver = AnswersSaver) { mutableStateOf<Map<String, com.aktcl.aron.feature.outlet.SurveyAnswer>>(emptyMap()) }
+    var confirming by rememberSaveable { mutableStateOf(false) }
+    var saving by remember { mutableStateOf(false) }
+    fun set(key: String, f: (com.aktcl.aron.feature.outlet.SurveyAnswer) -> com.aktcl.aron.feature.outlet.SurveyAnswer) {
+        answers = answers + (key to f(answers[key] ?: com.aktcl.aron.feature.outlet.SurveyAnswer()))
+    }
+    com.aktcl.aron.feature.amo.AmoSurveyContent(
+        questions, answers, confirming, saving,
+        onYes = { k -> set(k) { it.copy(bool = true) } }, onNo = { k -> set(k) { it.copy(bool = false) } },
+        onPhoto = { k ->
+            scope.launch {
+                val shot = runCatching { day.photoPipeline.captureAndCompress(com.aktcl.aron.core.common.ClientIds.newUuid()) }.getOrNull() ?: return@launch
+                set(k) { it.copy(photoUuid = shot.photoUuid) }
+            }
+        },
+        onSubmit = { confirming = true },
+        onConfirm = {
+            val l = loaded; val v = visit
+            confirming = false
+            if (!saving && l != null && v != null) {
+                saving = true
+                scope.launch {
+                    val defs = questions.map { it.question }
+                    val ok = runCatching { day.saveSurvey(v.visitUuid, l.first, com.aktcl.aron.feature.outlet.PosmSurvey.rows(v.visitUuid, l.first.surveyId, l.first.version, defs, answers)) }.isSuccess
+                    saving = false
+                    if (ok) onDone() // a failed write keeps the form (and the answers) on screen for another Submit
+                }
+            }
+        },
+        onDismiss = { confirming = false }, onSkip = onDone,
     )
 }
