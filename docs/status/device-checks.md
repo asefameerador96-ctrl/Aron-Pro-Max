@@ -336,3 +336,18 @@ Steps (laptop session, the Honor X5c Plus on USB, about 5 minutes):
 2. When it says so, the owner logs in on the phone as `sr1001` and answers `y` if the home screen opened.
 3. Pass = `ALL PASS (5 checks)`: phone listed, APK installed, login succeeded (API), login on phone, /health from
    Azure. Paste the window (it holds no secret) into `docs/status/laptop.md` and tell the lead.
+
+### D-QA-2 Day 2 ten-minute check script (N-022; qa) — DEVICE-PENDING, laptop session + owner
+Script: `tools/checks/day2-check.ps1` (shared helpers in `tools/checks/AronCheck.psm1`). It was tested in the cloud with
+a fake adb and a mock API: the all-pass path, a doubled memo (FAIL "2 new memos for one sale") and a run without
+tools. It needs an SR APK with sale and print (F-SR-028, android-print / android-sr-b) on the phone, logged in as
+`sr1001`, with the MP-58N paired.
+Steps (about 10 minutes; the Galaxy A06 or the Honor X5c Plus on USB):
+1. `git pull`. In PowerShell from the repository folder, run `.\tools\checks\day2-check.ps1`. It asks for `tso1001`'s
+   password, which is not shown and never stored.
+2. The script switches airplane mode ON itself. When it says so, the owner checks in, opens an outlet, sells ONE
+   memo and prints it, then answers `y` if exactly one memo printed.
+3. The script switches airplane mode OFF and waits up to 5 minutes for the memo on the server, then once more a
+   minute later.
+4. Pass = `ALL PASS (9 checks)`: phone, app, web login, airplane on, offline sale, printed memo, network on, on the
+   server, still once. Paste the window into `docs/status/laptop.md`.
