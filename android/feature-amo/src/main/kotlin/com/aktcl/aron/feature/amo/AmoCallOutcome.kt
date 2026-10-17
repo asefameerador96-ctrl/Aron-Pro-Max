@@ -10,8 +10,10 @@ enum class AmoCallOutcome(val wire: String) {
     ABANDONED("abandoned");
 
     companion object {
-        fun of(hasMemo: Boolean, hasAuditRecord: Boolean): AmoCallOutcome = when {
-            hasMemo -> SOLD
+        /** [memoLines]: line count of the visit's live memo, null when it has none; a zero-sale memo (no lines) is not a sale. */
+        fun of(memoLines: Int?, hasAuditRecord: Boolean): AmoCallOutcome = when {
+            memoLines != null && memoLines > 0 -> SOLD
+            memoLines != null -> AUDIT_ONLY
             hasAuditRecord -> AUDIT_ONLY
             else -> ABANDONED
         }

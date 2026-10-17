@@ -67,4 +67,6 @@
     <string name="amo_sc_r_damaged">Damaged</string>
     <string name="amo_sc_r_lost">Lost</string>
     <string name="amo_sc_r_other">Other</string>
+    <string name="amo_sale_done">A sale is already recorded for this call. To change it, use Memo.</string>
+    <string name="amo_sale_done_back">Back to the call</string>
 </resources>

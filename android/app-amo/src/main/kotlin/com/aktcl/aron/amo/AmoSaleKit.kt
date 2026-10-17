@@ -78,6 +78,7 @@ class AmoSaleKit(private val day: AmoDay, private val context: Context, private 
 
     /** Loads the SKU names once per screen entry; the print and name lookups below are synchronous reads of it. */
     suspend fun prepare() {
+        day.refreshZone()
         val skus = day.reference.skus()
         skuNames = skus.associate { it.skuId to it.shortName }
         skuCategory = skus.associate { it.skuId to it.categoryCode }

@@ -50,18 +50,29 @@ import com.aktcl.aron.feature.amo.R as AmoR
 
 /**
  * F-AMO-006: the SR sale route on the open Control Call. No start prompt, AV, KV or SR survey: the AMO is auditing the call.
- * Review's Print (or Save) ends the sale and returns to the call menu; the visit closes `sold` when the AMO leaves the call
- * ([AmoDay.closeVisit] reads the memo).
+ * Review's Print (or Save) ends the sale and returns to the call menu; the visit closes when the AMO leaves the call
+ * ([AmoDay.closeVisit] reads the memo). One sale per call: a second tap on Sale says so (the memo is edited from Memo).
  */
 @Composable
 fun AmoSaleHost(day: AmoDay, onDone: () -> Unit) {
     val open by day.visitSession.current.collectAsState()
     val v = open ?: return
     val kit = day.sale
-    val vm = viewModel(key = "sale-" + v.visitUuid) { kit.newSaleViewModel() }
-    LaunchedEffect(v.visitUuid) { kit.prepare(); vm.start(kit.saleVisit(v)) }
-    Column(Modifier.fillMaxSize()) {
-        SaleRoute(vm, day.printerManager, kit::skuName, modifier = Modifier.weight(1f), onFinished = { onDone() })
+    var already by remember(v.visitUuid) { mutableStateOf<Boolean?>(null) }
+    LaunchedEffect(v.visitUuid) { already = day.callHasSale() }
+    when (already) {
+        null -> Unit
+        true -> Column(Modifier.fillMaxSize().padding(AronTokens.Space.Screen), verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(AronTokens.Space.M)) {
+            androidx.compose.material3.Text(stringResource(AmoR.string.amo_sale_done), style = androidx.compose.material3.MaterialTheme.typography.bodyLarge)
+            AronSecondaryButton(stringResource(AmoR.string.amo_sale_done_back), onDone, Modifier.fillMaxWidth())
+        }
+        false -> {
+            val vm = viewModel(key = "sale-" + v.visitUuid) { kit.newSaleViewModel() }
+            LaunchedEffect(v.visitUuid) { kit.prepare(); vm.start(kit.saleVisit(v)) }
+            Column(Modifier.fillMaxSize()) {
+                SaleRoute(vm, day.printerManager, kit::skuName, modifier = Modifier.weight(1f), onFinished = { onDone() })
+            }
+        }
     }
 }
 

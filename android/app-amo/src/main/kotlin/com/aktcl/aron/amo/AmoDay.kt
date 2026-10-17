@@ -14,6 +14,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.withLock
 import com.aktcl.aron.core.database.entity.CaptureMeta
 import com.aktcl.aron.core.database.repo.CaptureRepository
 import com.aktcl.aron.core.database.repo.ReferenceRepository
@@ -94,9 +95,7 @@ class AmoDay(
     /** Re-reads the bundle stamp the records carry; cheap, called when the day opens and after a bundle change. */
     suspend fun reload() {
         loadPrintConfig()
-        runCatching { routes() }.getOrNull()?.let { days ->
-            zoneOutlets = days.flatMap { it.outlets }; zoneRoutes = days.associate { it.route.routeId to it.route.name }
-        }
+        refreshZone()
         bundleVersion = reference.bundleVersion()
         configVersion = db.referenceDao().meta(ReferenceRepository.KEY_CONFIG_VERSION)?.toLongOrNull() ?: 0L
         overrideMax = runCatching { reference.config("cfg.amo.manual_override_max_per_day", iso(clock.nowMs())) }.getOrNull()
@@ -222,17 +221,37 @@ class AmoDay(
      * audit record (assessment, price check, survey) means a real call with no sale, `zero_sale_stock_ok`; nothing at all means
      * `abandoned`, which does not count as a visit (D-AMO-CLOSE-01).
      */
-    suspend fun closeVisit() {
-        val v = visitSession.current.value ?: return
+    private val closeLock = kotlinx.coroutines.sync.Mutex()
+
+    suspend fun closeVisit() = closeLock.withLock {
+        // the lock makes a double tap wait; the second run finds the session already closed
+        val v = visitSession.current.value ?: return@withLock
         val date = businessDate()
-        val hasMemo = db.captureDao().memosOn(date).any { it.visitClientUuid == v.visitUuid }
-        val audited = !hasMemo && (db.captureDao().amoRecordsOfFamily(v.visitUuid).isNotEmpty() || db.captureDao().surveyResponsesOf(v.visitUuid).isNotEmpty())
-        when (com.aktcl.aron.feature.amo.AmoCallOutcome.of(hasMemo, audited)) {
+        val memo = db.captureDao().memosOn(date).filter { it.visitClientUuid == v.visitUuid }
+        val superseded = memo.mapNotNull { it.supersedesClientUuid }.toSet()
+        val live = memo.filter { it.clientUuid !in superseded }.maxByOrNull { it.committedAt }
+        val audited = db.captureDao().amoRecordsOfFamily(v.visitUuid).isNotEmpty() || db.captureDao().surveyResponsesOf(v.visitUuid).isNotEmpty()
+        when (com.aktcl.aron.feature.amo.AmoCallOutcome.of(live?.lineCount, audited)) {
             com.aktcl.aron.feature.amo.AmoCallOutcome.SOLD -> sale.closeVisit(com.aktcl.aron.feature.sale.domain.VisitOutcomeCode.SOLD)
             com.aktcl.aron.feature.amo.AmoCallOutcome.AUDIT_ONLY -> sale.closeVisit(com.aktcl.aron.feature.sale.domain.VisitOutcomeCode.ZERO_SALE)
             com.aktcl.aron.feature.amo.AmoCallOutcome.ABANDONED -> closeAbandoned(v)
         }
         routeId = null
+    }
+
+    /** True when the open call already has a live memo with lines (a second sale on one call is refused; edit the memo instead). */
+    suspend fun callHasSale(): Boolean {
+        val v = visitSession.current.value ?: return false
+        val memo = db.captureDao().memosOn(businessDate()).filter { it.visitClientUuid == v.visitUuid }
+        val superseded = memo.mapNotNull { it.supersedesClientUuid }.toSet()
+        return memo.any { it.clientUuid !in superseded && it.lineCount > 0 }
+    }
+
+    /** Re-reads the zone's outlets and route names (names on memos and prints); cheap, local. */
+    suspend fun refreshZone() {
+        runCatching { routes() }.getOrNull()?.let { days ->
+            zoneOutlets = days.flatMap { it.outlets }; zoneRoutes = days.associate { it.route.routeId to it.route.name }
+        }
     }
 
     private suspend fun closeAbandoned(v: com.aktcl.aron.feature.outlet.OpenVisit) {

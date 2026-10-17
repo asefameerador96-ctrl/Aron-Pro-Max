@@ -67,4 +67,6 @@
     <string name="amo_sc_r_damaged">নষ্ট</string>
     <string name="amo_sc_r_lost">হারিয়েছে</string>
     <string name="amo_sc_r_other">অন্যান্য</string>
+    <string name="amo_sale_done_back">কলে ফিরে যান</string>
+    <string name="amo_sale_done">এই কলে বিক্রি ইতিমধ্যে রেকর্ড করা আছে। বদলাতে মেমো ব্যবহার করুন।</string>
 </resources>
