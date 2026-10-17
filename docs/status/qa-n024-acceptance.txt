@@ -1,4 +1,9 @@
-# N-024 acceptance run (qa, local PG16, production wiring in process), started 2026-10-17T19:02:04Z, commit base 57c0cf9 + N-024 working tree
-# ARON_SYNC_FUZZ_SCHEDULES=10000 ARON_SYNC_FUZZ_PHONES=8 ARON_SYNC_FUZZ_SEED=20261017 (default)
-schedules=10000 phones=8 seconds=1939 kills_fired=3577 faults={concurrent=7234, drop=7411, kill=7268, kill-fired=3577, plain=21574, replay=7089, truncate=7162} rows=138260
-everyFaultScheduleEndsWithExactlyTheDevicesRowsAndEqualTotals: PASS (1941 s); aSeededDuplicateSaleIsReported: PASS; aSeededDoubledNumberIsReported: PASS
+# N-024 acceptance runs (qa, local PostgreSQL 16, production wiring in process)
+
+## Run 2 (binding): strengthened oracle (14 labelled clauses, whole-database checks), code at cec5e865
+# started 2026-10-17T20:16:00Z, ARON_SYNC_FUZZ_SCHEDULES=10000 ARON_SYNC_FUZZ_PHONES=8 ARON_SYNC_FUZZ_SEED=20261017 (default)
+schedules=10000 phones=8 seconds=2688 kills_fired=3583 faults={concurrent=7231, drop=7410, kill=7269, kill-fired=3583, partial=43412, plain=21577, replay=7079, ride-along=27416, truncate=7157} rows=138260
+everyFaultScheduleEndsWithExactlyTheDevicesRowsAndEqualTotals: PASS (2691 s); everySeededFaultIsReportedByItsOracleClause: PASS (every clause guarded)
+
+## Run 1 (superseded): first oracle (day slice only), base 57c0cf9 + N-024 working tree, started 2026-10-17T19:02:04Z
+schedules=10000 phones=8 seconds=1939 kills_fired=3577 faults={concurrent=7234, drop=7411, kill=7268, kill-fired=3577, plain=21574, replay=7089, truncate=7162} rows=138260 -> PASS

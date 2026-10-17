@@ -173,7 +173,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
               const change = pctChange(c.qty_base, prev?.qty_base);
               const share = catTotalNet > 0 ? (Math.max(0, c.net_mtk) / catTotalNet) * 100 : null;
               return (
-                <Tile key={c.category_code} id={`cat-${c.category_code}`} locale={locale} titleKey="dashboard.cat.heading" heading={catTitle(c.category_code)} date={d()} data actions={<InfoTip msg={t(locale, "dashboard.cat.info")} openMsg={t(locale, "dashboard.info.open")} />} className="col-span-full min-[480px]:col-span-1 md:col-span-3 lg:col-span-6 xl:col-span-3">
+                <Tile key={c.category_code} id={`cat-${c.category_code}`} locale={locale} titleKey="dashboard.cat.heading" heading={catTitle(c.category_code)} date={d()} data tip={<InfoTip msg={t(locale, "dashboard.cat.info")} openMsg={t(locale, "dashboard.info.open")} />} className="col-span-full min-[480px]:col-span-1 md:col-span-3 lg:col-span-6 xl:col-span-3">
                   <p className="fit-number whitespace-nowrap text-display block text-primary tabular-nums" data-testid={`cat-qty-${c.category_code}`}>
                         {formatLakhCrore(locale, c.qty_base, lw)}
                       </p>
@@ -321,7 +321,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
           </Tile>
 
           {/* Row B: geo valid, login and submit, final submit, needs attention */}
-          <section data-testid="tile-geo" className={`${STAT} min-[480px]:col-span-1 md:col-span-3 lg:col-span-6 xl:col-span-4`}>
+          <section data-testid="tile-geo" className={`${STAT} min-[480px]:col-span-1 md:col-span-6 lg:col-span-12 xl:col-span-4`}>
             <h2 className="border-b border-accent-graphic/40 pb-2 text-body-strong text-accent">{t(locale, "dashboard.geo_fencing")}</h2>
             {geo.ok ? (
               <dl data-testid="geo-fencing" className="contents">
