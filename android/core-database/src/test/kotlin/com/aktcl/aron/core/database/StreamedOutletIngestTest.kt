@@ -158,7 +158,8 @@ class StreamedOutletIngestTest {
         val db = newDb(); val repo = ReferenceRepository(db)
         val known = outletRows(6, "Known")
         val stray = outletRows(3, "Stray").mapIndexed { i, r -> JsonObject(r + mapOf("outlet_id" to JsonPrimitive(90_000L + i), "route_id" to JsonPrimitive(999_999L))) }
-        repo.applyStreamed(head("2026-10-05:5"), Pages(listOf(known.take(3) + stray, known.drop(3))))
+        // orphans on two pages, one page without any: the pieces read back as one array in page order
+        repo.applyStreamed(head("2026-10-05:5"), Pages(listOf(known.take(3) + stray.take(2), known.drop(3), stray.drop(2))))
         assertEquals(6, db.referenceDao().outletCount())
         val raw = Json.parseToJsonElement(repo.section("outlets_other_routes")!!).jsonArray
         assertEquals(listOf(90_000L, 90_001L, 90_002L), raw.map { it.jsonObject["outlet_id"]!!.jsonPrimitive.content.toLong() })
@@ -207,5 +208,28 @@ class StreamedOutletIngestTest {
         assertEquals("Renamed", db.referenceDao().outlet(70000)!!.name)
         assertNull(db.referenceDao().outlet(70001))
         assertNotNull(db.referenceDao().outlet(70002))
+    }
+
+    @Test fun aPrefetchWithAnUnreadableRowIsRefusedWhenStoredNotAtDayStart() = runBlocking {
+        val db = newDb(); val repo = ReferenceRepository(db)
+        repo.applyWhole(whole("2026-10-05:3", outletRows(5, "Today")))
+        val bad = JsonObject(outletRows(1, "Bad").single() - "outlet_id")
+        try {
+            repo.applyStreamed(head("2026-10-06:1", date = "2026-10-06", prefetch = true), Pages(listOf(outletRows(4, "Ok"), listOf(bad))), asDay = false)
+            fail("the bad row must fail the prefetch")
+        } catch (e: IllegalArgumentException) {
+        }
+        assertNull(repo.prefetch())
+    }
+
+    @Test fun aPrefetchWhosePageWentMissingIsDroppedSoTheDayStartAsksAgain() = runBlocking {
+        val db = newDb(); val repo = ReferenceRepository(db)
+        repo.applyWhole(whole("2026-10-05:3", outletRows(5, "Today")))
+        repo.applyStreamed(head("2026-10-06:1", date = "2026-10-06", prefetch = true), Pages(split(outletRows(12, "Tomorrow"), Random(1))), asDay = false)
+        db.referenceDao().deleteMeta("prefetch.outlets.0")
+        assertNull(repo.promotePrefetch("2026-10-06"))
+        assertNull(repo.prefetch()) // not promoted again on the next 304
+        assertEquals(5, db.referenceDao().outletCount())
+        assertEquals("2026-10-05:3", repo.bundleVersion())
     }
 }

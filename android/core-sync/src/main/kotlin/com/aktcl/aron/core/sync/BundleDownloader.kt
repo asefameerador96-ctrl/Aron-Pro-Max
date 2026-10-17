@@ -261,8 +261,7 @@ class BundleDownloader(
                 }
                 val applied = try {
                     repo.apply(bundle, merged, download.etag ?: "\"$version\"", asDay = isDay, outletPages = outletFiles.takeIf { it.isNotEmpty() }?.let(::FileOutletPages))
-                } catch (e: IllegalArgumentException) { // a staged page that does not read as outlets: nothing was written; the next run downloads it again
-                    withContext(Dispatchers.IO) { stage.deleteRecursively() }
+                } catch (e: IllegalArgumentException) { // a row that does not read as an outlet: nothing was written; the stage is kept (no new download of the same pages)
                     return BundleReport(BundleOutcome.FAILED, version, code = "malformed_page")
                 }
                 withContext(Dispatchers.IO) { stage.deleteRecursively() }

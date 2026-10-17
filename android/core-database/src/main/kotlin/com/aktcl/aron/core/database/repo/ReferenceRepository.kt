@@ -167,18 +167,22 @@ class ReferenceRepository(private val db: AronDatabase) {
 
     /** Inserts the paged outlets one page at a time; rows of unknown routes are kept raw (see [apply]). Runs inside the apply transaction. */
     private suspend fun streamOutlets(pages: OutletPages, knownRoutes: Set<Long>) {
-        val orphans = ArrayList<JsonObject>()
+        var chunk = 0 // the orphan rows of every page are written as they come, as pieces of ONE JSON array (pieces read back concatenated)
         for (i in 0 until pages.count) {
             val mine = ArrayList<OutletEntity>()
+            val orphans = ArrayList<JsonObject>()
             for (row in pages.rows(i)) {
                 val route = (row["route_id"] as? JsonPrimitive)?.contentOrNull?.toLongOrNull()
                 if (route != null && route in knownRoutes) mine += outletRow(DELTA_JSON.decodeFromJsonElement(BundleOutlet.serializer(), row)) else orphans += row
             }
             mine.inChunks { dao.insertOutlets(it) }
+            if (orphans.isNotEmpty()) {
+                val inner = JsonArray(orphans).toString().removePrefix("[").removeSuffix("]")
+                val text = (if (chunk == 0) "[" else ",") + inner
+                for (part in chunks(text)) dao.insertSections(listOf(BundleSectionEntity(chunkName("outlets_other_routes", chunk++), part)))
+            }
         }
-        if (orphans.isNotEmpty()) {
-            chunks(JsonArray(orphans).toString()).forEachIndexed { i, part -> dao.insertSections(listOf(BundleSectionEntity(chunkName("outlets_other_routes", i), part))) }
-        }
+        if (chunk > 0) dao.insertSections(listOf(BundleSectionEntity(chunkName("outlets_other_routes", chunk), "]")))
     }
 
     /** Keeps a later day's snapshot aside (sync_meta), replacing an older prefetch; today's tables are not touched. Outlet pages are kept one page per entry. */
@@ -189,7 +193,12 @@ class ReferenceRepository(private val db: AronDatabase) {
         putChunked(KEY_PREFETCH_JSON, raw.toString())
         deletePrefetchPages()
         if (outletPages != null) {
-            for (i in 0 until outletPages.count) putChunked(prefetchPageKey(i), JsonArray(outletPages.rows(i)).toString())
+            for (i in 0 until outletPages.count) {
+                val rows = outletPages.rows(i)
+                // Read now, as the morning apply will: a row that cannot be read fails the prefetch download, never the day start.
+                rows.forEach { DELTA_JSON.decodeFromJsonElement(BundleOutlet.serializer(), it) }
+                putChunked(prefetchPageKey(i), JsonArray(rows).toString())
+            }
             dao.putMeta(SyncMetaEntity(KEY_PREFETCH_OUTLET_PAGES, outletPages.count.toString()))
         }
         dao.putMeta(SyncMetaEntity(KEY_PREFETCH_VERSION, version))
@@ -437,7 +446,15 @@ class ReferenceRepository(private val db: AronDatabase) {
                         .map { r -> r as JsonObject }
             }
         }
-        val result = apply(BundleReference.json.decodeFromJsonElement(BundleReference.serializer(), raw), raw, dao.meta(KEY_PREFETCH_ETAG), asDay = true, outletPages = pages)
+        // A stored prefetch that cannot be applied (a missing or unreadable page) is dropped, so the day start asks the server again
+        // instead of promoting the same broken copy on every 304.
+        val result = try {
+            apply(BundleReference.json.decodeFromJsonElement(BundleReference.serializer(), raw), raw, dao.meta(KEY_PREFETCH_ETAG), asDay = true, outletPages = pages)
+        } catch (e: RuntimeException) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
+            clearPrefetch()
+            return null
+        }
         clearPrefetch()
         return result
     }
