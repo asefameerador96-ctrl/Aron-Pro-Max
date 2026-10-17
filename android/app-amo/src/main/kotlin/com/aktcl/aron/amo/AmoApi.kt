@@ -22,8 +22,15 @@ class AmoApi(private val client: AronApiClient, context: Context, userId: Long) 
 
     suspend fun outletRequest(uuid: String): AmoFetch = get("/v1/outlet-requests/$uuid", "req_$uuid")
 
-    private suspend fun get(path: String, key: String): AmoFetch {
-        val r = client.call(path = path, auth = CallAuth.Grant(Grant.FULL), build = { get() }, decode = { body, _ -> body })
+    /** `GET /v1/tasks` of the last [days] days (F-API-026); the caller keeps the ones it assigned. */
+    suspend fun tasks(fromDate: String): AmoFetch = get("/v1/tasks", "tasks", mapOf("from" to fromDate, "limit" to "200"))
+
+    private suspend fun get(path: String, key: String, query: Map<String, String> = emptyMap()): AmoFetch {
+        val r = client.call(
+            path = path, auth = CallAuth.Grant(Grant.FULL),
+            build = { url(query.entries.fold(client.origin.path(path).newBuilder()) { b, (k, v) -> b.addQueryParameter(k, v) }.build()); get() },
+            decode = { body, _ -> body },
+        )
         return when (r) {
             is ApiResult.Success -> { remember(key, r.value); AmoFetch.Fresh(r.value) }
             // Out of reach or gone: never serve an old copy of something the server now refuses.

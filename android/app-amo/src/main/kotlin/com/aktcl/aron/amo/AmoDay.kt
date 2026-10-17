@@ -502,6 +502,35 @@ class AmoDay(
         return queued
     }
 
+    // ---- Task Delegation (F-AMO-018/019)
+
+    suspend fun teamSrs(): List<com.aktcl.aron.feature.amo.TeamSr> = com.aktcl.aron.feature.amo.TaskDelegation.team(runCatching { reference.section("supervisor") }.getOrNull())
+
+    suspend fun taskTypes(): List<com.aktcl.aron.feature.amo.TaskType> = com.aktcl.aron.feature.amo.TaskDelegation.types(runCatching { reference.section("code_lists") }.getOrNull())
+
+    /** The tasks this AMO assigned on this phone (queued or sent), as list rows; an acked one stays until the server list has it. */
+    suspend fun localTasks(): List<com.aktcl.aron.feature.amo.AssignedTask> = db.captureDao().amoRecordsOfType("task").mapNotNull { r ->
+        val o = runCatching { kotlinx.serialization.json.Json.parseToJsonElement(r.payloadJson) as kotlinx.serialization.json.JsonObject }.getOrNull() ?: return@mapNotNull null
+        fun s(k: String) = (o[k] as? kotlinx.serialization.json.JsonPrimitive)?.content
+        val state = db.outboxDao().byClientUuid(r.clientUuid)?.state
+        if (state == com.aktcl.aron.core.database.entity.OutboxState.REJECTED || state == com.aktcl.aron.core.database.entity.OutboxState.QUARANTINED) return@mapNotNull null
+        com.aktcl.aron.feature.amo.AssignedTask(
+            r.clientUuid, s("task_type_code").orEmpty(), s("title").orEmpty(), s("outlet_id")?.toLongOrNull(), s("assignee_user_id")?.toLongOrNull() ?: return@mapNotNull null,
+            "ongoing", s("due_date"), null, null, r.meta.capturedAt,
+            waiting = state == com.aktcl.aron.core.database.entity.OutboxState.PENDING || state == com.aktcl.aron.core.database.entity.OutboxState.IN_FLIGHT,
+        )
+    }
+
+    /** Queues one `task` record (offline too); [recordUuid] is fixed when the form opens, so a double tap queues one. */
+    suspend fun assignTask(recordUuid: String, typeCode: String, assigneeId: Long, outletId: Long?, title: String, description: String?, dueDate: String?): Boolean {
+        val payload = com.aktcl.aron.core.database.record.AmoPayloads.task(typeCode, assigneeId, outletId, title, description, dueDate, null)
+        val queued = capture.recordAmo(
+            com.aktcl.aron.core.database.entity.AmoRecordEntity(recordUuid, metaProvider.meta(0L), "task", recordUuid, 0, payload.toString()),
+        )
+        runCatching { requestSync() }
+        return queued
+    }
+
     // ---- Survey (F-AMO-043): the SR's POSM survey component without points
 
     /** The bundle's survey with its questions, or null when there is none or this visit already answered it. */
