@@ -10,13 +10,17 @@ import { Icon, type IconName } from "@/components/kit/icons";
 import { Meter } from "@/components/kit/meter";
 import { RankedBars } from "@/components/kit/ranked-bars";
 import { SegmentedLinks } from "@/components/kit/segmented";
-import { MapPanel, type MapPin } from "@/components/map-panel";
+import { ColumnChart, Donut, Ring } from "@/components/dash/charts";
+import { FilteredMap } from "@/components/dash/filtered-map";
+import type { MapPin } from "@/components/map-panel";
 import { requireSession } from "@/lib/auth/require";
 import { getLocale } from "@/lib/auth/service";
 import { getGeoValidation, getLoginSubmit, getSummary, getTeamLocations, listOutlets } from "@/lib/dash/server";
+import { formatLakhCrore, mtkToTaka, pctChange } from "@/lib/dash/lakh";
 import { isCalendarDate } from "@/lib/dates";
 import { businessDate, formatBusinessDate, formatDateTime, problemMessage, t, type Locale, type MessageKey } from "@/lib/i18n";
 import { TileMeta, type StaleReason } from "@/components/reports/tile-meta";
+import type { LakhWords } from "@/lib/dash/lakh";
 import Link from "next/link";
 
 function Err({ locale, code }: { locale: Locale; code: string | undefined }) {
@@ -45,13 +49,16 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
   const today = businessDate();
   const date = isCalendarDate(sp.date) ? sp.date : today;
   const yesterday = minusDays(date, 1);
+  const lastWeek = minusDays(date, 7);
+  const brandMode = sp.bm === "memo" ? "memo" : "value";
   const token = session.at;
-  const [summary, loginSubmit, geo, team, previous] = await Promise.all([
+  const [summary, loginSubmit, geo, team, previous, weekAgo] = await Promise.all([
     getSummary(token, { from: date, to: date }),
     getLoginSubmit(token, date),
     getGeoValidation(token, { from: date, to: date }),
     getTeamLocations(token, date),
     getSummary(token, { from: yesterday, to: yesterday }),
+    getSummary(token, { from: lastWeek, to: lastWeek }),
   ]);
 
   const asOf = summary.ok ? summary.data.as_of : null;
@@ -86,6 +93,19 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
     { id: "exceptions", key: "dashboard.exceptions", icon: "flag", count: ls ? (ls.exceptions?.length ?? 0) : null, href: "/exceptions" },
   ];
   const allOk = attention.every((a) => a.count === 0);
+  const lw: LakhWords = { lakh: t(locale, "unit.lakh"), crore: t(locale, "unit.crore") };
+  const CATS = ["cigarette", "bidi", "lighter", "match"];
+  const catRank = (c: string) => (CATS.includes(c) ? CATS.indexOf(c) : CATS.length);
+  const cats = summary.ok ? [...summary.data.by_category].sort((a, b) => catRank(a.category_code) - catRank(b.category_code) || a.category_code.localeCompare(b.category_code)) : [];
+  const catTotalNet = cats.reduce((s, c) => s + Math.max(0, c.net_mtk), 0);
+  const prevCats = weekAgo.ok && weekAgo.data.kpis.target_routes > 0 ? weekAgo.data.by_category : [];
+  const catTitle = (code: string): string => (CATS.includes(code) ? t(locale, `dashboard.cat.${code}` as MessageKey) : t(locale, "dashboard.cat.other", { name: code }));
+  const unitWord = (u: string): string => t(locale, `unit.${u}` as MessageKey);
+  const channels = summary.ok ? (summary.data.by_channel ?? []) : [];
+  const channelNetTotal = channels.reduce((s2, c) => s2 + Math.max(0, c.net_mtk), 0);
+  const callsTotal = channels.reduce((s2, c) => s2 + c.successful_calls, 0);
+  const brands = summary.ok ? [...(summary.data.by_brand ?? [])].sort((a, b) => (brandMode === "memo" ? b.memo_count - a.memo_count : b.net_mtk - a.net_mtk)).slice(0, 12) : [];
+  const cprPct = k && k.target_outlets > 0 ? (k.successful_calls / k.target_outlets) * 100 : null;
   const sameQs = (q: Record<string, string>) => `/?${new URLSearchParams(q).toString()}`;
 
   return (
@@ -139,6 +159,224 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
 
       {k && summary.ok ? (
         <div className="grid grid-cols-1 gap-(--gap) min-[480px]:grid-cols-2 md:grid-cols-6 lg:grid-cols-12" data-testid="dashboard-tiles">
+          {/* Row 0: sales by category (current portal row 1). The ring is the category's share of net sales; the chip is the
+              quantity against the same weekday last week. Target achievement is deferred (docs/27). */}
+          {cats.length > 0 ? (
+            cats.slice(0, 4).map((c) => {
+              const prev = prevCats.find((p) => p.category_code === c.category_code);
+              const change = pctChange(c.qty_base, prev?.qty_base);
+              const share = catTotalNet > 0 ? (Math.max(0, c.net_mtk) / catTotalNet) * 100 : null;
+              return (
+                <Tile key={c.category_code} id={`cat-${c.category_code}`} locale={locale} titleKey="dashboard.cat.heading" heading={catTitle(c.category_code)} date={d()} data className="col-span-full min-[480px]:col-span-1 md:col-span-3 lg:col-span-6 xl:col-span-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="fit-number whitespace-nowrap text-display text-primary tabular-nums" data-testid={`cat-qty-${c.category_code}`}>
+                        {formatLakhCrore(locale, c.qty_base, lw)}
+                      </p>
+                      <p className="text-caption text-secondary">
+                        {t(locale, "dashboard.cat.total")} · {unitWord(c.base_unit)}
+                      </p>
+                      <p className="text-caption text-secondary tabular-nums" data-testid={`cat-net-${c.category_code}`}>
+                        {t(locale, "dashboard.cat.net", { amount: formatLakhCrore(locale, mtkToTaka(c.net_mtk), lw) })}
+                      </p>
+                      {change !== null ? (
+                        <StatusChip tone={change >= 0 ? "success" : "warning"} icon={change >= 0 ? "arrow-up" : "arrow-down"} testId={`cat-delta-${c.category_code}`}>
+                          {change >= 0 ? "+" : "−"}
+                          {pctText(locale, Math.abs(change))} {t(locale, "dashboard.cat.vs_week")}
+                        </StatusChip>
+                      ) : null}
+                    </div>
+                    <Ring pct={share} valueText={pctText(locale, share)} label={t(locale, "dashboard.cat.share")} size={128} hue={CATS.includes(c.category_code) ? CATS.indexOf(c.category_code) : 4} testId={`cat-ring-${c.category_code}`}>
+                      <span className="sr-only">{t(locale, "dashboard.cat.share")}</span>
+                    </Ring>
+                  </div>
+                </Tile>
+              );
+            })
+          ) : (
+            <p className="col-span-full text-body text-secondary" data-testid="cat-empty">
+              {t(locale, "dashboard.cat.empty")}
+            </p>
+          )}
+
+          <section data-testid="tile-visits" className={`${STAT} min-[480px]:col-span-1 md:col-span-3 lg:col-span-6 xl:col-span-3`}>
+            <h2 className="text-label text-secondary">{t(locale, "dashboard.cpr")}</h2>
+            <div className="flex items-center gap-3" data-testid="cpr">
+              <Ring pct={cprPct} valueText={pctText(locale, cprPct)} label={t(locale, "dashboard.cpr.basis")} size={88} hue={2} testId="cpr-ring" />
+              <dl className="min-w-0 text-caption text-secondary">
+                <dt>{t(locale, "dashboard.cpr.planned")}</dt>
+                <dd className="text-body-strong text-primary tabular-nums" data-testid="cpr-planned">{formatLakhCrore(locale, k.target_outlets, lw)}</dd>
+                <dt>{t(locale, "dashboard.cpr.calls")}</dt>
+                <dd className="text-body-strong text-primary tabular-nums" data-testid="cpr-calls">{formatLakhCrore(locale, k.successful_calls, lw)}</dd>
+              </dl>
+            </div>
+            <h3 className="text-label text-secondary">{t(locale, "dashboard.kpi.outlets_visited")}</h3>
+            <p className="fit-number whitespace-nowrap text-numeral text-primary tabular-nums">
+              {n(locale, k.visited_outlets)}
+              <span className="text-body text-secondary">/{n(locale, k.target_outlets)}</span>
+            </p>
+            <Meter pct={k.target_outlets > 0 ? (k.visited_outlets / k.target_outlets) * 100 : null} valueText={`${n(locale, k.visited_outlets)}/${n(locale, k.target_outlets)}`} label={t(locale, "dashboard.kpi.outlets_visited")} />
+            <p className="text-caption text-secondary">{t(locale, "dashboard.kpi.visits_basis", { visited: n(locale, k.visited_outlets), target: n(locale, k.target_outlets) })}</p>
+            {meta()}
+          </section>
+
+          <Tile id="channels" locale={locale} titleKey="dashboard.channels.calls" date={d()} data className="col-span-full min-[480px]:col-span-1 md:col-span-3 lg:col-span-6 xl:col-span-3">
+            {channels.length > 0 ? (
+              <Donut
+                testId="channel-calls-donut"
+                label={t(locale, "dashboard.channels.calls")}
+                centerText={formatLakhCrore(locale, callsTotal, lw)}
+                slices={channels.map((c) => ({ key: c.code, label: c.name ?? c.code, value: c.successful_calls, valueText: formatLakhCrore(locale, c.successful_calls, lw), shareText: callsTotal > 0 ? pctText(locale, (c.successful_calls / callsTotal) * 100) : "—" }))}
+                size={120}
+              />
+            ) : (
+              <p className="text-body text-secondary">{t(locale, "dashboard.channels.empty")}</p>
+            )}
+          </Tile>
+          <Tile id="finalsubmit" locale={locale} titleKey="dashboard.final_submit" date={d()} className="min-[480px]:col-span-1 md:col-span-3 lg:col-span-6 xl:col-span-3">
+            <FinalSubmitPanel locale={locale} kpis={k} zones={summary.data.children} zoneFinal={loginSubmit.ok ? zoneFinalOf(loginSubmit.data.zones) : undefined} />
+          </Tile>
+          <section data-testid="tile-loginsubmit" className={`${STAT} min-[480px]:col-span-1 md:col-span-3 lg:col-span-6 xl:col-span-3`}>
+            <h2 className="text-label text-secondary">{t(locale, "dashboard.login_submit")}</h2>
+            {ls ? (
+              <dl className="flex flex-col gap-2" data-testid="login-submit">
+                <div>
+                  <dt className="text-caption text-secondary">{t(locale, "dashboard.login_pct")}</dt>
+                  <dd className="fit-number whitespace-nowrap text-numeral text-primary tabular-nums" data-testid="login-pct">
+                    {pctText(locale, ls.kpis.login_pct)}
+                  </dd>
+                  <dd>
+                    <Meter pct={ls.kpis.login_pct} valueText={pctText(locale, ls.kpis.login_pct)} label={t(locale, "dashboard.login_pct")} />
+                  </dd>
+                  <dd className="text-caption text-secondary">{t(locale, "dashboard.kpi.login_basis", { logged: n(locale, ls.kpis.logged_in_routes), target: n(locale, ls.kpis.target_routes) })}</dd>
+                </div>
+                <div>
+                  <dt className="text-caption text-secondary">{t(locale, "finalsubmit.submit_pct")}</dt>
+                  <dd className="fit-number whitespace-nowrap text-numeral text-primary tabular-nums" data-testid="submit-pct-ls">
+                    {pctText(locale, ls.kpis.submit_pct_of_logged_in)}
+                  </dd>
+                  <dd>
+                    <Meter pct={ls.kpis.submit_pct_of_logged_in} valueText={pctText(locale, ls.kpis.submit_pct_of_logged_in)} label={t(locale, "finalsubmit.submit_pct")} />
+                  </dd>
+                  <dd className="text-caption text-secondary">{t(locale, "dashboard.kpi.submit_basis", { submitted: n(locale, ls.kpis.sales_submitted_routes), logged: n(locale, ls.kpis.logged_in_routes) })}</dd>
+                </div>
+              </dl>
+            ) : (
+              <Err locale={locale} code={lsError} />
+            )}
+            {meta(ls ? ls.as_of : null)}
+          </section>
+          {/* Row C: channels (ranked bars, span 4) and the zone ranking (span 8, screens-web s1) */}
+          <Tile id="channels-std" locale={locale} titleKey="dashboard.channels.net" date={d()} data className="col-span-full md:col-span-6 lg:col-span-12 xl:col-span-4">
+            {channels.length > 0 ? (
+              <div className="space-y-4">
+              <Donut
+                testId="channel-std-donut"
+                label={t(locale, "dashboard.channels.net")}
+                centerText={formatLakhCrore(locale, mtkToTaka(channelNetTotal), lw)}
+                slices={channels.map((c) => ({ key: c.code, label: c.name ?? c.code, value: Math.max(0, c.net_mtk), valueText: formatLakhCrore(locale, mtkToTaka(c.net_mtk), lw), shareText: channelNetTotal > 0 ? pctText(locale, (Math.max(0, c.net_mtk) / channelNetTotal) * 100) : "—" }))}
+              />
+              <RankedBars
+                testId="channel-list"
+                label={t(locale, "dashboard.channels")}
+                rows={channels.map((c) => ({
+                  key: c.code,
+                  label: c.name ?? c.code,
+                  value: Math.max(0, c.net_mtk),
+                  valueText: takaText(locale, c.net_mtk),
+                  sub: `${n(locale, c.successful_calls)}/${n(locale, c.memo_count)}${channelNetTotal > 0 ? ` · ${pctText(locale, (Math.max(0, c.net_mtk) / channelNetTotal) * 100)}` : ""}`,
+                }))}
+              />
+              </div>
+            ) : (
+              <p className="text-body text-secondary">{t(locale, "dashboard.channels.empty")}</p>
+            )}
+          </Tile>
+          {/* Row C2: brand breakdown with the STD (net sales) / Memo (memo count) toggle of the current portal */}
+          <Tile
+            id="brands"
+            locale={locale}
+            titleKey="dashboard.brand.heading"
+            date={d()}
+            data
+            className="col-span-full lg:col-span-12 xl:col-span-8"
+            actions={
+              <SegmentedLinks
+                label={t(locale, "dashboard.brand.mode")}
+                items={[
+                  { href: sameQs({ ...(date === today ? {} : { date }), bm: "value" }), label: t(locale, "dashboard.brand.value"), current: brandMode === "value", testId: "brand-mode-value" },
+                  { href: sameQs({ ...(date === today ? {} : { date }), bm: "memo" }), label: t(locale, "dashboard.brand.memo"), current: brandMode === "memo", testId: "brand-mode-memo" },
+                ]}
+              />
+            }
+          >
+            {brands.length > 0 ? (
+              <ColumnChart
+                testId="brand-chart"
+                label={t(locale, "dashboard.brand.heading")}
+                rows={brands.map((b) => ({ key: b.code, label: b.name ?? b.code, value: brandMode === "memo" ? b.memo_count : Math.max(0, b.net_mtk), valueText: brandMode === "memo" ? n(locale, b.memo_count) : formatLakhCrore(locale, mtkToTaka(b.net_mtk), lw) }))}
+              />
+            ) : (
+              <p className="text-body text-secondary">{t(locale, "dashboard.brand.empty")}</p>
+            )}
+          </Tile>
+
+          {/* Row B: geo valid, login and submit, final submit, needs attention */}
+          <section data-testid="tile-geo" className={`${STAT} min-[480px]:col-span-1 md:col-span-3 lg:col-span-6 xl:col-span-4`}>
+            <h2 className="text-label text-secondary">{t(locale, "dashboard.geo_fencing")}</h2>
+            {geo.ok ? (
+              <dl data-testid="geo-fencing" className="contents">
+                <dt className="sr-only">{t(locale, "dashboard.geo_valid")}</dt>
+                <dd className="flex items-center gap-3">
+                  <Ring pct={geo.data.geo_valid_pct} valueText={pctText(locale, geo.data.geo_valid_pct)} label={t(locale, "dashboard.geo_valid")} size={96} hue={2} testId="geo-ring" />
+                  <span className="text-caption text-secondary">
+                    <span className="block text-body-strong text-primary tabular-nums" data-testid="geo-valid">{pctText(locale, geo.data.geo_valid_pct)}</span>
+                    {t(locale, "dashboard.geo.validated")}
+                    <span className="block tabular-nums">{t(locale, "dashboard.geo.visits", { n: geo.data.visits })}</span>
+                  </span>
+                </dd>
+                <dd className="flex flex-wrap gap-1.5">
+                  <StatusChip tone="warning" icon="location">
+                    <span className="sr-only">{t(locale, "dashboard.force_sale")} </span>
+                    <span aria-hidden="true">{t(locale, "dashboard.force_sale")} </span>
+                    <span data-testid="force-sale">{pctText(locale, geo.data.force_sale_pct)}</span>
+                  </StatusChip>
+                  <StatusChip tone="offline" icon="devices">
+                    <span aria-hidden="true">{t(locale, "dashboard.mock")} </span>
+                    <span className="sr-only">{t(locale, "dashboard.mock")} </span>
+                    <span data-testid="mock-pct">{pctText(locale, geo.data.mock_pct)}</span>
+                  </StatusChip>
+                  <StatusChip tone="danger" icon="warning">
+                    <span aria-hidden="true">{t(locale, "dashboard.suspicious")} </span>
+                    <span className="sr-only">{t(locale, "dashboard.suspicious")} </span>
+                    <span data-testid="suspicious-pct">{pctText(locale, geo.data.suspicious_pct)}</span>
+                  </StatusChip>
+                </dd>
+              </dl>
+            ) : (
+              <Err locale={locale} code={geo.problem.code} />
+            )}
+            {meta(geo.ok ? geo.data.as_of : null)}
+          </section>
+          {/* Row D: team map plate, map loads on click only */}
+          <Tile id="ffgeo" locale={locale} titleKey="dashboard.ff_geo" date={d(team.ok ? team.data.as_of : null)} className="col-span-full lg:col-span-12 xl:col-span-8">
+            <TeamMapPlate
+              summary={t(locale, "dashboard.map.summary", { srs: n(locale, srCount), outlets: n(locale, outletCount) })}
+              hint={t(locale, "dashboard.map.hint")}
+              showLabel={t(locale, "dashboard.map.show")}
+              map={
+                <FilteredMap
+                  filterMsg={t(locale, "dashboard.map.filter")}
+                  allMsg={t(locale, "dashboard.map.filter.all")}
+                  outletsMsg={t(locale, "dashboard.map.filter.outlets")}
+                  fixesMsg={t(locale, "dashboard.map.filter.fixes")}
+                  pins={pins}
+                  labels={{ placeholder: t(locale, "dashboard.maps.placeholder"), capped: t(locale, "dashboard.maps.capped"), failed: t(locale, "dashboard.maps.failed"), outlets: t(locale, "dashboard.maps.outlets"), fixes: t(locale, "dashboard.maps.fixes"), pins: t(locale, "dashboard.maps.pins") }}
+                />
+              }
+            />
+          </Tile>
+          {/* More: net sales hero, strike rate, needs attention and the zone ranking */}
           {/* Row A: hero (net), strike rate, outlets visited */}
           <HeroCard
             testId="tile-sales"
@@ -173,85 +411,6 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
             </p>
             {meta()}
           </section>
-          <section data-testid="tile-visits" className={`${STAT} min-[480px]:col-span-1 md:col-span-3 lg:col-span-6 xl:col-span-3`}>
-            <h2 className="text-label text-secondary">{t(locale, "dashboard.kpi.outlets_visited")}</h2>
-            <p className="fit-number whitespace-nowrap text-display text-primary tabular-nums">
-              {n(locale, k.visited_outlets)}
-              <span className="text-body text-secondary">/{n(locale, k.target_outlets)}</span>
-            </p>
-            <Meter pct={k.target_outlets > 0 ? (k.visited_outlets / k.target_outlets) * 100 : null} valueText={`${n(locale, k.visited_outlets)}/${n(locale, k.target_outlets)}`} label={t(locale, "dashboard.kpi.outlets_visited")} />
-            <p className="text-caption text-secondary">{t(locale, "dashboard.kpi.visits_basis", { visited: n(locale, k.visited_outlets), target: n(locale, k.target_outlets) })}</p>
-            {meta()}
-          </section>
-
-          {/* Row B: geo valid, login and submit, final submit, needs attention */}
-          <section data-testid="tile-geo" className={`${STAT} min-[480px]:col-span-1 md:col-span-3 lg:col-span-4 xl:col-span-3`}>
-            <h2 className="text-label text-secondary">{t(locale, "dashboard.geo_fencing")}</h2>
-            {geo.ok ? (
-              <dl data-testid="geo-fencing" className="contents">
-                <dt className="sr-only">{t(locale, "dashboard.geo_valid")}</dt>
-                <dd className="fit-number whitespace-nowrap text-display text-primary tabular-nums" data-testid="geo-valid">
-                  {pctText(locale, geo.data.geo_valid_pct)}
-                </dd>
-                <dd>
-                  <Meter pct={geo.data.geo_valid_pct} valueText={pctText(locale, geo.data.geo_valid_pct)} label={t(locale, "dashboard.geo_valid")} />
-                </dd>
-                <dd className="flex flex-wrap gap-1.5">
-                  <StatusChip tone="warning" icon="location">
-                    <span className="sr-only">{t(locale, "dashboard.force_sale")} </span>
-                    <span aria-hidden="true">{t(locale, "dashboard.force_sale")} </span>
-                    <span data-testid="force-sale">{pctText(locale, geo.data.force_sale_pct)}</span>
-                  </StatusChip>
-                  <StatusChip tone="offline" icon="devices">
-                    <span aria-hidden="true">{t(locale, "dashboard.mock")} </span>
-                    <span className="sr-only">{t(locale, "dashboard.mock")} </span>
-                    <span data-testid="mock-pct">{pctText(locale, geo.data.mock_pct)}</span>
-                  </StatusChip>
-                  <StatusChip tone="danger" icon="warning">
-                    <span aria-hidden="true">{t(locale, "dashboard.suspicious")} </span>
-                    <span className="sr-only">{t(locale, "dashboard.suspicious")} </span>
-                    <span data-testid="suspicious-pct">{pctText(locale, geo.data.suspicious_pct)}</span>
-                  </StatusChip>
-                </dd>
-              </dl>
-            ) : (
-              <Err locale={locale} code={geo.problem.code} />
-            )}
-            {meta(geo.ok ? geo.data.as_of : null)}
-          </section>
-          <section data-testid="tile-loginsubmit" className={`${STAT} min-[480px]:col-span-1 md:col-span-3 lg:col-span-4 xl:col-span-3`}>
-            <h2 className="text-label text-secondary">{t(locale, "dashboard.login_submit")}</h2>
-            {ls ? (
-              <dl className="flex flex-col gap-2" data-testid="login-submit">
-                <div>
-                  <dt className="text-caption text-secondary">{t(locale, "dashboard.login_pct")}</dt>
-                  <dd className="fit-number whitespace-nowrap text-numeral text-primary tabular-nums" data-testid="login-pct">
-                    {pctText(locale, ls.kpis.login_pct)}
-                  </dd>
-                  <dd>
-                    <Meter pct={ls.kpis.login_pct} valueText={pctText(locale, ls.kpis.login_pct)} label={t(locale, "dashboard.login_pct")} />
-                  </dd>
-                  <dd className="text-caption text-secondary">{t(locale, "dashboard.kpi.login_basis", { logged: n(locale, ls.kpis.logged_in_routes), target: n(locale, ls.kpis.target_routes) })}</dd>
-                </div>
-                <div>
-                  <dt className="text-caption text-secondary">{t(locale, "finalsubmit.submit_pct")}</dt>
-                  <dd className="fit-number whitespace-nowrap text-numeral text-primary tabular-nums" data-testid="submit-pct-ls">
-                    {pctText(locale, ls.kpis.submit_pct_of_logged_in)}
-                  </dd>
-                  <dd>
-                    <Meter pct={ls.kpis.submit_pct_of_logged_in} valueText={pctText(locale, ls.kpis.submit_pct_of_logged_in)} label={t(locale, "finalsubmit.submit_pct")} />
-                  </dd>
-                  <dd className="text-caption text-secondary">{t(locale, "dashboard.kpi.submit_basis", { submitted: n(locale, ls.kpis.sales_submitted_routes), logged: n(locale, ls.kpis.logged_in_routes) })}</dd>
-                </div>
-              </dl>
-            ) : (
-              <Err locale={locale} code={lsError} />
-            )}
-            {meta(ls ? ls.as_of : null)}
-          </section>
-          <Tile id="finalsubmit" locale={locale} titleKey="dashboard.final_submit" date={d()} className="min-[480px]:col-span-1 md:col-span-3 lg:col-span-4 xl:col-span-3">
-            <FinalSubmitPanel locale={locale} kpis={k} zones={summary.data.children} zoneFinal={loginSubmit.ok ? zoneFinalOf(loginSubmit.data.zones) : undefined} />
-          </Tile>
           <section data-testid="tile-attention" className={`${STAT} min-[480px]:col-span-1 md:col-span-3 lg:col-span-12 xl:col-span-3`}>
             <h2 className="text-label text-secondary">{t(locale, "dashboard.attention")}</h2>
             {allOk ? (
@@ -282,24 +441,6 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
             {meta(ls ? ls.as_of : null)}
           </section>
 
-          {/* Row C: channels (ranked bars, span 4) and the zone ranking (span 8, screens-web s1) */}
-          <Tile id="channels" locale={locale} titleKey="dashboard.channels" date={d()} data className="col-span-full md:col-span-6 lg:col-span-12 xl:col-span-4">
-            {summary.data.by_channel && summary.data.by_channel.length > 0 ? (
-              <RankedBars
-                testId="channel-list"
-                label={t(locale, "dashboard.channels")}
-                rows={summary.data.by_channel.map((c) => ({
-                  key: c.code,
-                  label: c.name ?? c.code,
-                  value: Math.max(0, c.net_mtk),
-                  valueText: takaText(locale, c.net_mtk),
-                  sub: `${n(locale, c.successful_calls)}/${n(locale, c.memo_count)}`,
-                }))}
-              />
-            ) : (
-              <p className="text-body text-secondary">{t(locale, "dashboard.channels.empty")}</p>
-            )}
-          </Tile>
           <Tile id="zones" locale={locale} titleKey="dashboard.zones" date={d()} data className="col-span-full md:col-span-6 lg:col-span-12 xl:col-span-8" actions={<span className="text-caption text-secondary">{t(locale, "dashboard.zones.by_net")}</span>}>
             {ranked.length > 0 ? (
               <RankedBars label={t(locale, "dashboard.zones")} rows={ranked.map((c) => ({ key: `${c.node.type}-${c.node.id}`, label: c.node.name ?? c.node.code ?? String(c.node.id), value: Math.max(0, c.kpis.net_mtk), valueText: takaText(locale, c.kpis.net_mtk) }))} />
@@ -308,20 +449,6 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
             )}
           </Tile>
 
-          {/* Row D: team map plate, map loads on click only */}
-          <Tile id="ffgeo" locale={locale} titleKey="dashboard.ff_geo" date={d(team.ok ? team.data.as_of : null)} className="col-span-full lg:col-span-12">
-            <TeamMapPlate
-              summary={t(locale, "dashboard.map.summary", { srs: n(locale, srCount), outlets: n(locale, outletCount) })}
-              hint={t(locale, "dashboard.map.hint")}
-              showLabel={t(locale, "dashboard.map.show")}
-              map={
-                <MapPanel
-                  pins={pins}
-                  labels={{ placeholder: t(locale, "dashboard.maps.placeholder"), capped: t(locale, "dashboard.maps.capped"), failed: t(locale, "dashboard.maps.failed"), outlets: t(locale, "dashboard.maps.outlets"), fixes: t(locale, "dashboard.maps.fixes"), pins: t(locale, "dashboard.maps.pins") }}
-                />
-              }
-            />
-          </Tile>
         </div>
       ) : null}
     </div>

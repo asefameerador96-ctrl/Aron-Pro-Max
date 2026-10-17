@@ -69,7 +69,10 @@ export async function requestMaps(): Promise<MapsResult> {
 export function MapPanel({ pins, labels }: { pins: MapPin[]; labels: MapLabels }) {
   const el = useRef<HTMLDivElement>(null);
   const [phase, setPhase] = useState<Phase>("idle");
+  const loaded = useRef<{ g: GMaps; map: InstanceType<GMaps["maps"]["Map"]> } | null>(null);
+  const drawn = useRef<{ setMap: (m: unknown) => void }[]>([]);
 
+  // One Maps load per mount (it counts against the daily cap); a change of pins only redraws the markers.
   useEffect(() => {
     let dead = false;
     (async () => {
@@ -78,13 +81,7 @@ export function MapPanel({ pins, labels }: { pins: MapPin[]; labels: MapLabels }
         if (r.status !== "ready") return void (!dead && setPhase(r.status));
         const g = r.g;
         if (dead || !el.current) return;
-        const map = new g.maps.Map(el.current, { center: { lat: 23.78, lng: 90.4 }, zoom: 11, mapTypeControl: false, streetViewControl: false });
-        const bounds = new g.maps.LatLngBounds();
-        for (const p of pins) {
-          new g.maps.Marker({ map, position: { lat: p.lat, lng: p.lng }, title: p.label });
-          bounds.extend({ lat: p.lat, lng: p.lng });
-        }
-        if (pins.length > 0) map.fitBounds(bounds);
+        loaded.current = { g, map: new g.maps.Map(el.current, { center: { lat: 23.78, lng: 90.4 }, zoom: 11, mapTypeControl: false, streetViewControl: false, fullscreenControl: true }) };
         setPhase("ready");
       } catch {
         if (!dead) setPhase("failed");
@@ -93,7 +90,20 @@ export function MapPanel({ pins, labels }: { pins: MapPin[]; labels: MapLabels }
     return () => {
       dead = true;
     };
-  }, [pins]);
+  }, []);
+
+  useEffect(() => {
+    const l = loaded.current;
+    if (phase !== "ready" || !l) return;
+    for (const m of drawn.current) m.setMap(null);
+    const bounds = new l.g.maps.LatLngBounds();
+    drawn.current = pins.map((p) => {
+      bounds.extend({ lat: p.lat, lng: p.lng });
+      // SymbolPath.CIRCLE is 0; outlets blue, SR positions orange (the colour filter of the dashboard map).
+      return new l.g.maps.Marker({ map: l.map, position: { lat: p.lat, lng: p.lng }, title: p.label, icon: { path: 0, scale: 7, fillColor: p.kind === "outlet" ? "#2a78d6" : "#eb6834", fillOpacity: 1, strokeColor: "#ffffff", strokeWeight: 2 } }) as { setMap: (m: unknown) => void };
+    });
+    if (pins.length > 0) l.map.fitBounds(bounds);
+  }, [pins, phase]);
 
   const outlets = pins.filter((p) => p.kind === "outlet").length;
   const fixes = pins.length - outlets;

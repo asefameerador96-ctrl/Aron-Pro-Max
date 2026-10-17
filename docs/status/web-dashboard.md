@@ -1,5 +1,11 @@
 # Web-dashboard lane status
 
+## Session 3 (2026-10-17 night): completion pass, in progress
+**Changed:** dashboard home re-laid out to the owner's portal screenshot (`docs/evidence/web-dashboard-reference-2026-10-17.md`): row 1 four category cards (cigarette sticks, bidi, lighter pcs, match dozen; lakh/crore totals, big ring = share of net sales, chip = quantity vs same weekday last week), row 2 Live CPR (successful calls over planned outlets), calls-by-channel donut, final submit, login/submit; row 3 channel net donut with ranked bars, brand breakdown column chart with STD (net) / Memo toggle (`?bm=memo`); row 4 geo-fencing ring and the team map with "Filter by colour" (one Maps load per mount; filter only redraws markers); below, net hero, strike rate, needs attention, zone ranking. Tiles get the blue title and rule. New: `components/dash/charts.tsx` (Ring, Donut, ColumnChart), `filtered-map.tsx`, `lib/dash/lakh.ts`, tests `dash-lakh.test.ts`, new Playwright case.
+**Rulings kept:** target-based achievement rings are NOT built (docs/27, lead); rings show share and trend. Astha channel needs no special handling (it is simply a channel code if the server returns one).
+**Log in as:** `tso1001` (TSO), `dmo1001` (DMO), `admin1001` (admin); passwords in Key Vault.
+**Open:** audit of the other routes per role; per-role tile sets; scope Filter button (zone cascade) on the home; sidebar colouring left as the existing Calm Glass shell.
+
 ## Done
 - N-010 web skeleton (`web/`): generated client + drift test, HttpOnly-cookie BFF, proxy role gate (real 403), role-driven menu, scope badge, bn/en with Bengali digits, hardcoded-text lint in the build, contract-typed mock, Playwright smoke. Contract v1.1 merged, client regenerated, drift test green.
 

@@ -230,10 +230,18 @@ export async function handleDash(x: DashCtx): Promise<boolean> {
     const byChild = [...new Set(rows.map(key))].map((id) => ({ node: { type: childLevel, id, name: nodeName(id) }, kpis: kp(rows.filter((r) => key(r) === id)) }));
     const body: Schemas["DashboardSummary"] = {
       as_of: asOf, from: x.url.searchParams.get("from") ?? SEED_DATE, to: x.url.searchParams.get("to") ?? SEED_DATE, node: { type: top.type, id: top.id, name: "name" in top ? (top.name ?? null) : null }, kpis,
-      by_category: [{ category_code: "cigarette", base_unit: "stick", qty_base: 20_000, net_mtk: kpis.net_mtk }],
+      by_category: [
+        { category_code: "cigarette", base_unit: "stick", qty_base: 20_000, net_mtk: Math.round(kpis.net_mtk * 0.8) },
+        { category_code: "bidi", base_unit: "stick", qty_base: 6_500_000, net_mtk: Math.round(kpis.net_mtk * 0.1) },
+        { category_code: "lighter", base_unit: "piece", qty_base: 111_000, net_mtk: Math.round(kpis.net_mtk * 0.06) },
+        { category_code: "match", base_unit: "dozen", qty_base: 28_067, net_mtk: kpis.net_mtk - Math.round(kpis.net_mtk * 0.8) - Math.round(kpis.net_mtk * 0.1) - Math.round(kpis.net_mtk * 0.06) },
+      ],
       by_channel: [{ code: "grocery", name: "Grocery", net_mtk: Math.round(kpis.net_mtk * 0.7), memo_count: kpis.active_memo_count, successful_calls: kpis.successful_calls, memo_ratio_pct: 100 }, { code: "pan", name: "Pan", net_mtk: Math.round(kpis.net_mtk * 0.3), memo_count: 0, successful_calls: 0, memo_ratio_pct: null }],
       by_segment: [{ code: "premium", name: "Premium", net_mtk: kpis.net_mtk, memo_count: kpis.active_memo_count, successful_calls: kpis.successful_calls }],
-      by_brand: [{ code: "sample", name: "Sample", net_mtk: kpis.net_mtk, memo_count: kpis.active_memo_count, successful_calls: kpis.successful_calls, memo_ratio_pct: 100 }],
+      by_brand: [
+        { code: "sample", name: "Sample", net_mtk: Math.round(kpis.net_mtk * 0.6), memo_count: kpis.active_memo_count, successful_calls: kpis.successful_calls, memo_ratio_pct: 100 },
+        { code: "other", name: "Other brand", net_mtk: kpis.net_mtk - Math.round(kpis.net_mtk * 0.6), memo_count: Math.max(0, kpis.active_memo_count - 3), successful_calls: 0, memo_ratio_pct: null },
+      ],
       children: byChild,
     };
     return send(200, body), true;
