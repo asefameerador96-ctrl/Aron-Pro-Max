@@ -4,10 +4,10 @@ import { Icon } from "@/components/kit/icons";
 export function InfoTip({ msg, openMsg }: { msg: string; openMsg: string }) {
   return (
     <details className="relative" data-testid="info-tip">
-      <summary aria-label={openMsg} className="flex size-8 cursor-pointer list-none items-center justify-center rounded-full bg-accent-container text-accent-on-container hover:brightness-95 focus-visible:outline-(length:--focus-w) focus-visible:outline-offset-2 outline-focus [&::-webkit-details-marker]:hidden">
+      <summary aria-label={openMsg} className="flex size-(--ctl-h) cursor-pointer list-none items-center justify-center rounded-full bg-accent-container text-accent-on-container hover:brightness-95 focus-visible:outline-(length:--focus-w) focus-visible:outline-offset-2 outline-focus [&::-webkit-details-marker]:hidden">
         <Icon name="info" size={18} />
       </summary>
-      <p className="glass-pop absolute end-0 top-9 z-30 w-64 p-3 text-caption text-primary">{msg}</p>
+      <p className="glass-pop absolute end-0 top-12 z-30 w-64 p-3 text-caption text-primary">{msg}</p>
     </details>
   );
 }
