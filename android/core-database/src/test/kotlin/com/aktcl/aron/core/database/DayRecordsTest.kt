@@ -124,7 +124,10 @@ class DayRecordsTest {
         assertEquals("রহিম স্টোর", p["proposed"]!!.jsonObject["name"]!!.jsonPrimitive.content)
         assertEquals(1, (p["photo_uuids"] as kotlinx.serialization.json.JsonArray).size)
         assertTrue(p["fix"] is JsonObject)
-        assertThrows(SQLiteConstraintException::class.java) { kotlinx.coroutines.runBlocking { repo.recordOutletRequest(req, fix) } }
+        // a replay of the same request (a double tap, a retry after a kill) writes nothing and does not throw
+        repo.recordOutletRequest(req, fix)
+        assertEquals(1, db.captureDao().outletRequests().size)
+        assertEquals(1, db.outboxDao().nextPending(100).count { it.clientUuid == uuid })
     }
 
     @Test fun resolvingATaskCompletesItLocallyAndSurvivesTheNextBundle() = runTest {
