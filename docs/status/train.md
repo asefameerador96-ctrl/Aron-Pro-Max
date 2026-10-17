@@ -130,6 +130,7 @@ INT only moves by fast-forward to a green candidate. Owner of this file: integra
 | 2026-10-15 14:41 | see git log | candidate lane/train-20261015T1408-zzc, ALL GREEN (run 38748465593): backend-admin 01d8a92b, web-admin a51b3ccc, db bcb241f9 (V0082/V0083), backend-reports f3b629fd | INT 93e146f0 deploy 38748404145 green first; ancestor gate passed. Combined single run per lead (CI queue contention). |
 | 2026-10-15 15:33 | see git log | lane head backend-reports fcf19e1a promoted directly (own run 38754100534 green, INT 6e45b770 is its ancestor): Aggregator copies entered_by_user_id into dw.fact_memo/dw.fact_visit | INT 6e45b770 CI 38753516094 and deploy 38758373585 green first; Sonnet T2 checker no defects. |
 | 2026-10-17 10:48 | see git log | lane head lead-colors d5e72d37 promoted directly (own run 39025712710 all 9 jobs green, INT 4085e0d0 is its ancestor): web palette tokens + bar-chart chart-1..10; docs-only: lead-docs | Owner-requested priority; INT 4085e0d0 CI/deploy green earlier. |
+| 2026-10-17 11:07 | see git log | lane head lead-colors 02471875 promoted directly (own run 39026830602: Android job incl. 13 re-recorded ui-screenshots goldens, APK size gate, gates all green; other jobs skipped by changes filter, web green on d5e72d37 run 39025712710); docs-only INT merge | Owner-requested Android palette; INT ecb6c72e CI 39026229055 + deploy 39026628772 green first. |
 
 ## Open reds
 
