@@ -101,3 +101,14 @@ test("home follows the portal layout: four category cards, Live CPR, channel don
   await expect(page).toHaveURL(/bm=memo/);
   await expect(page.getByTestId("brand-chart")).toBeVisible();
 });
+
+test("the orange Filter narrows the home to a zone: bound levels are read-only, the choice cascades and is kept in the links", async ({ page }) => {
+  await loginOk(page, "tso334", "tso-pass-1");
+  await page.getByRole("link", { name: "English" }).click();
+  await page.getByTestId("home-filter").locator("summary").click();
+  await expect(page.getByTestId("scope-locked-territory")).toBeVisible();
+  await page.getByTestId("scope-select-zone").selectOption("3341");
+  await expect(page).toHaveURL(/zone=3341/);
+  await expect(page.getByTestId("dashboard-tiles")).toBeVisible();
+  await expect(page.getByTestId("date-yesterday")).toHaveAttribute("href", /zone=3341/);
+});

@@ -17,6 +17,9 @@ import { requireSession } from "@/lib/auth/require";
 import { getLocale } from "@/lib/auth/service";
 import { getGeoValidation, getLoginSubmit, getSummary, getTeamLocations, listOutlets } from "@/lib/dash/server";
 import { formatLakhCrore, mtkToTaka, pctChange } from "@/lib/dash/lakh";
+import { HomeFilter } from "@/components/dash/home-filter";
+import { ScopeFilter } from "@/components/reports/scope-filter";
+import { GEO_LEVELS, boundGeo, geoFromParams } from "@/lib/reports/query";
 import { isCalendarDate } from "@/lib/dates";
 import { businessDate, formatBusinessDate, formatDateTime, problemMessage, t, type Locale, type MessageKey } from "@/lib/i18n";
 import { TileMeta, type StaleReason } from "@/components/reports/tile-meta";
@@ -52,13 +55,19 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
   const lastWeek = minusDays(date, 7);
   const brandMode = sp.bm === "memo" ? "memo" : "value";
   const token = session.at;
+  // Scope narrowing from the Filter (F-WEB-041): the deepest chosen level; levels fixed by the token and ids outside the
+  // caller's own nodes are dropped, and the server re-checks reach (403 outside it).
+  const picked = boundGeo(session.scope, geoFromParams(sp)) ?? {};
+  const deepest = [...GEO_LEVELS].reverse().find((l) => picked[l]?.[0] !== undefined);
+  const node = deepest ? { level: deepest, node_id: picked[deepest]![0]! } : {};
+  const filtered = deepest !== undefined;
   const [summary, loginSubmit, geo, team, previous, weekAgo] = await Promise.all([
-    getSummary(token, { from: date, to: date }),
-    getLoginSubmit(token, date),
-    getGeoValidation(token, { from: date, to: date }),
-    getTeamLocations(token, date),
-    getSummary(token, { from: yesterday, to: yesterday }),
-    getSummary(token, { from: lastWeek, to: lastWeek }),
+    getSummary(token, { from: date, to: date, ...node }),
+    getLoginSubmit(token, date, node),
+    getGeoValidation(token, { from: date, to: date, ...node }),
+    getTeamLocations(token, date, node.level === "zone" ? node.node_id : undefined),
+    getSummary(token, { from: yesterday, to: yesterday, ...node }),
+    getSummary(token, { from: lastWeek, to: lastWeek, ...node }),
   ]);
 
   const asOf = summary.ok ? summary.data.as_of : null;
@@ -106,7 +115,11 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
   const callsTotal = channels.reduce((s2, c) => s2 + c.successful_calls, 0);
   const brands = summary.ok ? [...(summary.data.by_brand ?? [])].sort((a, b) => (brandMode === "memo" ? b.memo_count - a.memo_count : b.net_mtk - a.net_mtk)).slice(0, 12) : [];
   const cprPct = k && k.target_outlets > 0 ? (k.successful_calls / k.target_outlets) * 100 : null;
-  const sameQs = (q: Record<string, string>) => `/?${new URLSearchParams(q).toString()}`;
+  const geoQs = Object.fromEntries(GEO_LEVELS.filter((l) => picked[l]?.[0] !== undefined).map((l) => [l, String(picked[l]![0])]));
+  const sameQs = (q: Record<string, string>) => {
+    const qs = new URLSearchParams({ ...q, ...geoQs }).toString();
+    return qs ? `/?${qs}` : "/";
+  };
 
   return (
     <div className="space-y-6">
@@ -124,27 +137,19 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
           <SegmentedLinks
             label={t(locale, "dashboard.date.label")}
             items={[
-              { href: "/", label: t(locale, "dashboard.date.today"), current: date === today, testId: "date-today" },
+              { href: sameQs({}), label: t(locale, "dashboard.date.today"), current: date === today, testId: "date-today" },
               { href: sameQs({ date: minusDays(today, 1) }), label: t(locale, "dashboard.date.yesterday"), current: date === minusDays(today, 1), testId: "date-yesterday" },
             ]}
           />
-          <details className="relative">
-            <summary className="inline-flex min-h-(--ctl-h) cursor-pointer list-none items-center gap-2 rounded-full border border-divider bg-raised px-4 text-body-strong text-accent hover:bg-pressed [&::-webkit-details-marker]:hidden">
-              <Icon name="calendar" size={18} />
-              {t(locale, "dashboard.date.pick")}
-            </summary>
-            <form method="get" className="glass-pop absolute end-0 top-12 z-40 flex w-72 flex-col gap-3 p-4">
-              <label className="text-label text-secondary">
-                {t(locale, "dashboard.business_date")}
-                <input type="date" name="date" defaultValue={date} max={today} className="mt-1 min-h-(--ctl-h) w-full rounded-chip border border-input bg-raised px-3 text-body text-primary focus-visible:outline-(length:--focus-w) focus-visible:outline-offset-2 outline-focus" />
-              </label>
-              <button type="submit" className="inline-flex min-h-(--ctl-h) items-center justify-center gap-2 rounded-full border border-divider bg-raised px-5 text-body-strong text-accent hover:bg-pressed focus-visible:outline-(length:--focus-w) focus-visible:outline-offset-2 outline-focus">
-                <Icon name="filter" size={18} />
-                {t(locale, "common.filter")}
-              </button>
-            </form>
-          </details>
-          <ButtonLink href={date === today ? "/" : sameQs({ date })} reload variant="secondary" icon="refresh" testId="refresh">
+          <HomeFilter msg={t(locale, "common.filter")} applyMsg={t(locale, "common.filter")} resetMsg={t(locale, "dashboard.filter.reset")} resetHref={date === today ? "/" : sameQs({ date })} active={filtered}>
+            <label className="text-label text-secondary">
+              {t(locale, "dashboard.business_date")}
+              <input type="date" name="date" defaultValue={date} max={today} className="mt-1 min-h-(--ctl-h) w-full rounded-chip border border-input bg-raised px-3 text-body text-primary focus-visible:outline-(length:--focus-w) focus-visible:outline-offset-2 outline-focus" />
+            </label>
+            <input type="hidden" name="bm" value={brandMode} />
+            <ScopeFilter token={token} scope={session.scope} locale={locale} params={sp} />
+          </HomeFilter>
+          <ButtonLink href={date === today && !filtered ? "/" : sameQs(date === today ? {} : { date })} reload variant="secondary" icon="refresh" testId="refresh">
             {t(locale, "dashboard.refresh")}
           </ButtonLink>
         </div>
@@ -168,27 +173,31 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
               const share = catTotalNet > 0 ? (Math.max(0, c.net_mtk) / catTotalNet) * 100 : null;
               return (
                 <Tile key={c.category_code} id={`cat-${c.category_code}`} locale={locale} titleKey="dashboard.cat.heading" heading={catTitle(c.category_code)} date={d()} data className="col-span-full min-[480px]:col-span-1 md:col-span-3 lg:col-span-6 xl:col-span-3">
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="fit-number whitespace-nowrap text-display text-primary tabular-nums" data-testid={`cat-qty-${c.category_code}`}>
+                  <p className="fit-number whitespace-nowrap text-display block text-primary tabular-nums" data-testid={`cat-qty-${c.category_code}`}>
                         {formatLakhCrore(locale, c.qty_base, lw)}
                       </p>
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="min-w-0 flex-1">
+                      
                       <p className="text-caption text-secondary">
                         {t(locale, "dashboard.cat.total")} · {unitWord(c.base_unit)}
                       </p>
                       <p className="text-caption text-secondary tabular-nums" data-testid={`cat-net-${c.category_code}`}>
                         {t(locale, "dashboard.cat.net", { amount: formatLakhCrore(locale, mtkToTaka(c.net_mtk), lw) })}
                       </p>
-                      {change !== null ? (
-                        <StatusChip tone={change >= 0 ? "success" : "warning"} icon={change >= 0 ? "arrow-up" : "arrow-down"} testId={`cat-delta-${c.category_code}`}>
-                          {change >= 0 ? "+" : "−"}
-                          {pctText(locale, Math.abs(change))} {t(locale, "dashboard.cat.vs_week")}
-                        </StatusChip>
-                      ) : null}
+
                     </div>
-                    <Ring pct={share} valueText={pctText(locale, share)} label={t(locale, "dashboard.cat.share")} size={128} hue={CATS.includes(c.category_code) ? CATS.indexOf(c.category_code) : 4} testId={`cat-ring-${c.category_code}`}>
+                    <Ring pct={share} valueText={pctText(locale, share)} label={t(locale, "dashboard.cat.share")} size={104} hue={CATS.includes(c.category_code) ? CATS.indexOf(c.category_code) : 4} testId={`cat-ring-${c.category_code}`}>
                       <span className="sr-only">{t(locale, "dashboard.cat.share")}</span>
                     </Ring>
+                  </div>
+                  <div className="mt-2">
+                    {change !== null ? (
+                  <StatusChip tone={change >= 0 ? "success" : "warning"} icon={change >= 0 ? "arrow-up" : "arrow-down"} testId={`cat-delta-${c.category_code}`}>
+                        {change >= 0 ? "+" : "−"}
+                    {pctText(locale, Math.abs(change))} {t(locale, "dashboard.cat.vs_week")}
+                  </StatusChip>
+                ) : null}
                   </div>
                 </Tile>
               );
@@ -200,7 +209,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
           )}
 
           <section data-testid="tile-visits" className={`${STAT} min-[480px]:col-span-1 md:col-span-3 lg:col-span-6 xl:col-span-3`}>
-            <h2 className="text-label text-secondary">{t(locale, "dashboard.cpr")}</h2>
+            <h2 className="border-b border-accent-graphic/40 pb-2 text-body-strong text-accent">{t(locale, "dashboard.cpr")}</h2>
             <div className="flex items-center gap-3" data-testid="cpr">
               <Ring pct={cprPct} valueText={pctText(locale, cprPct)} label={t(locale, "dashboard.cpr.basis")} size={88} hue={2} testId="cpr-ring" />
               <dl className="min-w-0 text-caption text-secondary">
@@ -237,7 +246,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
             <FinalSubmitPanel locale={locale} kpis={k} zones={summary.data.children} zoneFinal={loginSubmit.ok ? zoneFinalOf(loginSubmit.data.zones) : undefined} />
           </Tile>
           <section data-testid="tile-loginsubmit" className={`${STAT} min-[480px]:col-span-1 md:col-span-3 lg:col-span-6 xl:col-span-3`}>
-            <h2 className="text-label text-secondary">{t(locale, "dashboard.login_submit")}</h2>
+            <h2 className="border-b border-accent-graphic/40 pb-2 text-body-strong text-accent">{t(locale, "dashboard.login_submit")}</h2>
             {ls ? (
               <dl className="flex flex-col gap-2" data-testid="login-submit">
                 <div>
@@ -323,7 +332,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
 
           {/* Row B: geo valid, login and submit, final submit, needs attention */}
           <section data-testid="tile-geo" className={`${STAT} min-[480px]:col-span-1 md:col-span-3 lg:col-span-6 xl:col-span-4`}>
-            <h2 className="text-label text-secondary">{t(locale, "dashboard.geo_fencing")}</h2>
+            <h2 className="border-b border-accent-graphic/40 pb-2 text-body-strong text-accent">{t(locale, "dashboard.geo_fencing")}</h2>
             {geo.ok ? (
               <dl data-testid="geo-fencing" className="contents">
                 <dt className="sr-only">{t(locale, "dashboard.geo_valid")}</dt>
@@ -401,7 +410,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
             caption={meta()}
           />
           <section data-testid="tile-strike" className={`${STAT} min-[480px]:col-span-1 md:col-span-3 lg:col-span-6 xl:col-span-3`}>
-            <h2 className="text-label text-secondary">{t(locale, "dashboard.kpi.strike")}</h2>
+            <h2 className="border-b border-accent-graphic/40 pb-2 text-body-strong text-accent">{t(locale, "dashboard.kpi.strike")}</h2>
             <p className="fit-number whitespace-nowrap text-display text-primary tabular-nums" data-testid="strike-rate">
               {pctText(locale, k.strike_rate_pct)}
             </p>
@@ -412,7 +421,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
             {meta()}
           </section>
           <section data-testid="tile-attention" className={`${STAT} min-[480px]:col-span-1 md:col-span-3 lg:col-span-12 xl:col-span-3`}>
-            <h2 className="text-label text-secondary">{t(locale, "dashboard.attention")}</h2>
+            <h2 className="border-b border-accent-graphic/40 pb-2 text-body-strong text-accent">{t(locale, "dashboard.attention")}</h2>
             {allOk ? (
               <p className="flex items-center gap-2 text-body-strong text-success-on-container" data-testid="attention-ok">
                 <Icon name="check-circle" className="text-success" />

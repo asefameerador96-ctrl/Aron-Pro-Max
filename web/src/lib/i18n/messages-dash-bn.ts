@@ -328,4 +328,5 @@ export const dashBn: Record<keyof typeof dashEn, string> = {
   "dashboard.map.filter.all": "সব রঙ",
   "dashboard.map.filter.outlets": "আউটলেট (নীল)",
   "dashboard.map.filter.fixes": "এসআর অবস্থান (কমলা)",
+  "dashboard.filter.reset": "ফিল্টার মুছুন",
 };

@@ -326,4 +326,5 @@ export const dashEn = {
   "dashboard.map.filter.all": "All colours",
   "dashboard.map.filter.outlets": "Outlets (blue)",
   "dashboard.map.filter.fixes": "SR positions (orange)",
+  "dashboard.filter.reset": "Clear filter",
 } as const;

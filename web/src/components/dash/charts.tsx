@@ -55,13 +55,13 @@ export function Donut({ slices, label, centerText, testId, size = 140 }: { slice
         </svg>
         {centerText ? <span className="absolute inset-0 flex items-center justify-center text-body-strong text-primary tabular-nums">{centerText}</span> : null}
       </div>
-      <ul aria-label={label} className="min-w-0 flex-1 space-y-1.5">
+      <ul aria-label={label} className="min-w-40 flex-[1_1_10rem] space-y-1.5">
         {slices.map((s, i) => (
           <li key={s.key} data-label={s.label} data-value={s.value} className="flex items-center gap-2 text-body">
             <span className="size-3 shrink-0 rounded-full" style={{ background: VIZ[i % VIZ.length] }} aria-hidden="true" />
             <span className="min-w-0 flex-1 truncate text-primary" title={s.label}>{s.label}</span>
-            <span className="text-body-strong text-primary tabular-nums">{s.valueText}</span>
-            <span className="w-14 text-end text-caption text-secondary tabular-nums">{s.shareText}</span>
+            <span className="whitespace-nowrap text-body-strong text-primary tabular-nums">{s.valueText}</span>
+            <span className="w-14 shrink-0 whitespace-nowrap text-end text-caption text-secondary tabular-nums">{s.shareText}</span>
           </li>
         ))}
       </ul>
