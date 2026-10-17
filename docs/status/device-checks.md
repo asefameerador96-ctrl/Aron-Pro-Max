@@ -330,7 +330,8 @@ Login as `amo1001` on the AMO app (bind OTP like the SR), seeded zone, Honor X5c
 Script: `tools/checks/day1-check.ps1` (tested in the cloud against a fake adb and a mock API: all-pass, wrong
 password and no-tools runs; check 4 passes against dev from the cloud: `/v1/health` 200 via Front Door, build f84b22b).
 Steps (laptop session, the Honor X5c Plus on USB, about 5 minutes):
-1. `git pull`, then in PowerShell from the repository folder: `.\tools\checks\day1-check.ps1` (add `-Apk <path>` to
+1. `git pull`, then in a PowerShell window (not double-click) from the repository folder:
+   `powershell -ExecutionPolicy Bypass -File .\tools\checks\day1-check.ps1` (add `-Apk <path>` to
    install or update the SR APK first). It asks for the password of `tso1001` (not shown, never stored; or set
    `$env:ARON_CHECK_PASSWORD` in that window only).
 2. When it says so, the owner logs in on the phone as `sr1001` and answers `y` if the home screen opened.
@@ -343,19 +344,21 @@ a fake adb and a mock API: the all-pass path, a doubled memo (FAIL "2 new memos 
 tools. It needs an SR APK with sale and print (F-SR-028, android-print / android-sr-b) on the phone, logged in as
 `sr1001`, with the MP-58N paired.
 Steps (about 10 minutes; the Galaxy A06 or the Honor X5c Plus on USB):
-1. `git pull`. In PowerShell from the repository folder, run `.\tools\checks\day2-check.ps1`. It asks for `tso1001`'s
+1. `git pull`. In a PowerShell window, run `powershell -ExecutionPolicy Bypass -File .\tools\checks\day2-check.ps1`. It asks for `tso1001`'s
    password, which is not shown and never stored.
-2. The script switches airplane mode ON itself. When it says so, the owner checks in, opens an outlet, sells ONE
-   memo and prints it, then answers `y` if exactly one memo printed.
+2. The script switches airplane mode ON itself and checks that the phone has no network. When it says so, the owner
+   checks in, opens an outlet, sells ONE memo and prints it, then answers `y` if exactly one memo printed. If the
+   printer needs Bluetooth, switch only Bluetooth back on: not Wi-Fi, not mobile data.
 3. The script switches airplane mode OFF and waits up to 5 minutes for the memo on the server, then once more a
    minute later.
-4. Pass = `ALL PASS (9 checks)`: phone, app, web login, airplane on, offline sale, printed memo, network on, on the
-   server, still once. Paste the window into `docs/status/laptop.md`.
+4. Pass = `ALL PASS (10 checks)`: phone, app, web login, airplane on, offline sale, printed memo, network on, on the
+   server, still once, print on server. The script always switches airplane mode back off, even when it fails. Paste the window into `docs/status/laptop.md`.
 
 ### D-QA-3 Day 4 ten-minute check script (N-050; qa) — DEVICE-PENDING, laptop session + owner outdoors
 Script: `tools/checks/day4-check.ps1 -Outlet MIR-D-001`. It was tested in the cloud with a fake adb and a mock API,
 once with config readable and once with config refused for the TSO. You need an outlet you can stand about 70 m from.
-1. `git pull`; run the script. It asks for `tso1001`'s password and reads the zone's radius. When config is refused
+1. `git pull`; `powershell -ExecutionPolicy Bypass -File .\tools\checks\day4-check.ps1 -Outlet MIR-D-001`. It asks
+   for `tso1001`'s password and reads the zone's radius. When config is refused
    for a TSO, the owner reads it from the portal and answers.
 2. In the web portal, set the zone's `cfg.geo.radius_m` to 50 m and approve it. Config changes are maker-checker, so
    a second admin may be needed. The script waits up to 10 minutes for the new value.

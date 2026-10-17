@@ -45,8 +45,9 @@ Write-Host "Aron Day 4 check  $(Get-Date -Format 'yyyy-MM-dd HH:mm')  API $ApiHo
 
 # The resolved radius at the outlet's zone, or $null when the caller may not read config.
 function Get-ZoneRadius([string]$Token, [long]$ZoneId) {
-  try { return [int](Invoke-AronGet $ApiHost $Token "/v1/admin/config/resolve?key=cfg.geo.radius_m&node_type=zone&node_id=$ZoneId").value }
-  catch { return $null }
+  $r = Get-Aron "/v1/admin/config/resolve?key=cfg.geo.radius_m&node_type=zone&node_id=$ZoneId"
+  if ($null -eq $r) { return $null }
+  return [int]$r.value
 }
 
 $serial = Get-PhoneSerial
@@ -58,10 +59,8 @@ $token = Get-WebToken $ApiHost $Supervisor 'web login'
 if (-not $token) { exit (Complete-Check) }
 
 $zone = $null
-try {
-  $o = Invoke-AronGet $ApiHost $token "/v1/admin/outlets?q=$([uri]::EscapeDataString($Outlet))&limit=5"
-  $zone = ($o.items | Where-Object { $_.code -eq $Outlet } | Select-Object -First 1).zone_id
-} catch { }
+$o = Get-Aron "/v1/admin/outlets?q=$([uri]::EscapeDataString($Outlet))&limit=5"
+if ($o) { $zone = (@($o.items) | Where-Object { $_.code -eq $Outlet } | Select-Object -First 1).zone_id }
 if (-not $zone) { Write-CheckResult 'outlet found' $false "$Supervisor cannot see outlet $Outlet (wrong code, or outside the supervisor's reach)"; exit (Complete-Check) }
 
 $before = Get-ZoneRadius $token $zone
@@ -82,7 +81,7 @@ if ($null -ne $before) {
 if ($serial) {
   Write-Host "  On the phone (online): open the SR app and tap Sync (or pull down on Home); wait until it says synced." -ForegroundColor Cyan
   $synced = Read-YesNo 'Did the phone finish syncing?'
-  $online = (Invoke-Adb @('-s', $serial, 'shell', 'settings', 'get', 'global', 'airplane_mode_on')).Out.Trim() -ne '1'
+  $online = Test-PhoneOnline $serial
   Write-CheckResult 'phone synced' ($synced -and $online) $(if (-not $online) { 'the phone is in airplane mode' } elseif ($synced) { 'owner: synced' } else { 'owner: not synced' })
   Write-Host "  Walk to about 70 m from $Outlet (more than $NewRadius m, less than $OldRadius m) and open the outlet for a sale." -ForegroundColor Cyan
   $judged = Read-YesNo "Did the phone say you are too far away (Force Sale offered) instead of opening the sale?"
