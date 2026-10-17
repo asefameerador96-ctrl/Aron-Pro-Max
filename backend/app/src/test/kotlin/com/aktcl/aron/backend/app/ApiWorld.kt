@@ -126,8 +126,49 @@ class ApiWorld(
         com.aktcl.aron.backend.analytics.Aggregator.refreshDimensions(h)
         ids["outlet_req"] = one("SELECT max(id) FROM app.outlet WHERE code LIKE 'MIR-%' AND status = 'active'")
         ids["sr_user"] = one("SELECT id FROM app.app_user WHERE username = 'sr1001'")
-        ids["sr_route"] = one("SELECT id FROM app.route WHERE code = 'MIR-SR-D'") // sr1001's primary route
         ids["sub_channel"] = one("SELECT min(id) FROM app.sub_channel WHERE status = 'active'")
+        ids["sr_route"] = one("SELECT id FROM app.route WHERE code = 'MIR-SR-D'") // sr1001's primary route
+        ids["variants"] = one("SELECT min(id) FROM app.product_node WHERE level = 'variant'")
+        ids["paper_outlet"] = one("SELECT id FROM app.outlet WHERE code = 'MIR-D-001'")
+        ids["paper_sku"] = one("SELECT id FROM app.sku WHERE code = 'MaxR-10S'")
+        // A tutorial video asset (the sample asset is content_av; a tutorial needs its own purpose).
+        h.execute("INSERT INTO app.admin_asset (asset_id, purpose, mime, bytes, sha256, blob_path) VALUES ('$TUTORIAL_ASSET', 'tutorial_video', 'video/mp4', 1, decode(repeat('00', 32), 'hex'), 'assets/tutorial_video/$TUTORIAL_ASSET.mp4')")
+        // Paper backfill is keyed for the throwaway SR on sr1001's route (a cover), so sr1001's day is untouched.
+        h.execute("INSERT INTO app.route_assignment (route_id, user_id, kind, valid_from, reason) SELECT r.id, u.id, 'cover', DATE '2026-01-01', 'qa harness: paper backfill' FROM app.route r, app.app_user u WHERE r.code = 'MIR-SR-D' AND u.username = 'qa9001'")
+        // Quarantine: a phone memo held as memo_no_duplicate of the paper memo (with its held line), for match-backfill,
+        // and a separate open item for resolve. Payloads are valid sync records (the quarantine read validates them).
+        ids["quarantine_match"] = quarantine(h, "00000000-0000-4000-8000-0000000000e2", PAPER_MEMO_NO, "memo_no_duplicate", "held: memo_no $PAPER_MEMO_NO already stored", withLine = true)
+        ids["quarantine_resolve"] = quarantine(h, "00000000-0000-4000-8000-0000000000e5", "qa9001-270103-002", "scope_out_of_reach", "qa resolve fixture", withLine = false)
+    }
+
+    /** One held phone memo of qa9001 on MIR-SR-D (net 9200 = one MaxR-10S stick at the outlet price), optionally with its held line; the memo row's id. */
+    private fun quarantine(h: org.jdbi.v3.core.Handle, memo: String, memoNo: String, code: String, detail: String, withLine: Boolean): Long {
+        val line = memo.dropLast(1) + "f"
+        val visit = memo.dropLast(1) + "d"
+        return h.createQuery(
+            """
+            WITH v AS (SELECT (SELECT id FROM app.app_user WHERE username = 'qa9001') u, (SELECT id FROM app.route WHERE code = 'MIR-SR-D') r,
+                              (SELECT id FROM app.outlet WHERE code = 'MIR-D-001') o, (SELECT id FROM app.sku WHERE code = 'MaxR-10S') s),
+            env AS (SELECT v.*, jsonb_build_object('family_uuid', '$visit', 'schema_version', 1, 'business_date', '$BUSINESS_DATE',
+                           'captured_at', '2027-01-02T18:01:00.000Z', 'captured_elapsed_ms', 0, 'boot_count', 0, 'clock_offset_ms', 0, 'captured_offline', false,
+                           'route_id', v.r, 'bundle_stale', false, 'config_version', 1) e FROM v),
+            recs AS (
+              SELECT u, r, 'memo' t, '$memo'::uuid cu, :detail d, 1 ord,
+                     e || jsonb_build_object('type', 'memo', 'client_uuid', '$memo', 'rank', 1, 'payload', jsonb_build_object(
+                       'visit_client_uuid', '$visit', 'outlet_id', o, 'memo_no', '$memoNo', 'memo_kind', 'sale',
+                       'committed_at', '2027-01-02T18:01:00.000Z', 'price_list_date', '$BUSINESS_DATE', 'price_type', 'outlet', 'gross_mtk', 9200, 'offer_discount_mtk', 0,
+                       'drp_discount_mtk', 0, 'qc_deduction_mtk', 0, 'round_adj_mtk', 0, 'net_mtk', 9200, 'paid_mtk', 0, 'due_mtk', 9200, 'is_credit', true,
+                       'line_count', 1, 'discount_line_count', 0, 'qc_line_count', 0, 'rounding_mode', 'half_up_paisa')) p FROM env
+              UNION ALL
+              SELECT u, r, 'memo_line', '$line'::uuid, 'memo $memo: held with its memo', 2,
+                     e || jsonb_build_object('type', 'memo_line', 'client_uuid', '$line', 'rank', 2, 'payload', jsonb_build_object(
+                       'memo_client_uuid', '$memo', 'line_no', 1, 'sku_id', s, 'line_kind', 'sale', 'qty_entered', 1, 'unit_entered', 'stick',
+                       'pack_factor', 10, 'qty_base', 1, 'price_type', 'outlet', 'price_valid_from', '2026-01-01', 'base_price_mtk', 9200, 'price_per_qty', 1, 'gross_mtk', 9200)) FROM env
+               WHERE :withLine)
+            INSERT INTO app.sync_quarantine (client_uuid, record_type, code, payload_sha256, payload, detail, user_id, route_id, business_date)
+            SELECT cu, t, :code, sha256(convert_to(p::text, 'UTF8')), p, d, u, r, DATE '$BUSINESS_DATE' FROM recs ORDER BY ord RETURNING id
+            """.trimIndent(),
+        ).bind("detail", detail).bind("withLine", withLine).bind("code", code).mapTo(Long::class.java).list().min() // the memo is inserted first
     }
 
     override fun close() { wiring.database?.close(); fresh.close() }
@@ -252,6 +293,9 @@ class ApiWorld(
         const val SAMPLE_UUID = "6f1c2b0e-8d1a-4c5e-9f3a-2b7d4e6a8c10"
         /** The seeded second outlet request (pending, by tso1001). */
         const val SECOND_REQUEST = "6f1c2b0e-8d1a-4c5e-9f3a-2b7d4e6a8c11"
+        const val TUTORIAL_ASSET = "00000000-0000-4000-8000-0000000000a2"
+        /** The paper memo the backfill enters for qa9001 (`<username>-<yyMMdd>-<seq>`). */
+        const val PAPER_MEMO_NO = "qa9001-270103-001"
 
         /** A stable UUID v4 for [seed] (version and variant bits set), so a caller gets its own client uuid per operation. */
         fun v4(seed: String): String {

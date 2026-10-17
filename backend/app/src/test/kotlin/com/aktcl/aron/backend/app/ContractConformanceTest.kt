@@ -314,6 +314,35 @@ class ContractConformanceTest {
                 n.put("client_uuid", ApiWorld.v4("route-day/${c.user}")); n.put("route_id", x.id("routes")); n.put("change_reason", "contract conformance re-save")
                 n.putArray("lines").addObject().put("sku_id", x.id("skus")).put("issue_qty_base", 0).put("return_qty_base", 0).put("memo_count", 0)
             }),
+            // Admin content: each PATCH after its create, on the id the create answered (version 1, If-Match "1").
+            "PATCH /v1/admin/content/{}" to Fx(after = listOf("POST /v1/admin/content"), path = { _, x -> mapOf("id" to x["content_id"].orEmpty()) }),
+            "POST /v1/admin/content" to Fx(capture = { _, b, x -> if (x["content_id"] == null) x["content_id"] = b.path("content_id").asText() }),
+            "PATCH /v1/admin/rubrics/{}" to Fx(after = listOf("POST /v1/admin/rubrics"), path = { _, x -> mapOf("id" to x["rubric_id"].orEmpty()) }),
+            "POST /v1/admin/rubrics" to Fx(capture = { _, b, x -> if (x["rubric_id"] == null) x["rubric_id"] = b.path("rubric_id").asText() }),
+            "PATCH /v1/admin/surveys/{}" to Fx(after = listOf("POST /v1/admin/surveys"), path = { _, x -> mapOf("id" to x["survey_id"].orEmpty()) }),
+            "POST /v1/admin/surveys" to Fx(capture = { _, b, x -> if (x["survey_id"] == null) x["survey_id"] = b.path("survey_id").asText() }),
+            // A tutorial video needs a tutorial_video asset (seeded; the sample asset is content_av).
+            "POST /v1/admin/tutorials" to Fx(
+                body = { n, _, _ -> n.put("asset_id", ApiWorld.TUTORIAL_ASSET) },
+                capture = { _, b, x -> if (x["tutorial_id"] == null) x["tutorial_id"] = b.path("tutorial_id").asText() },
+            ),
+            "PATCH /v1/admin/tutorials/{}" to Fx(after = listOf("POST /v1/admin/tutorials"), path = { _, x -> mapOf("id" to x["tutorial_id"].orEmpty()) }, body = { n, _, _ -> n.put("asset_id", ApiWorld.TUTORIAL_ASSET) }),
+            // Sending zone_id at all is a move (409 while the cluster has outlets); a rename is the patch.
+            "PATCH /v1/admin/clusters/{}" to Fx(body = { n, _, _ -> n.remove("zone_id"); n.put("name", "Contract Check Cluster") }),
+            "POST /v1/admin/skus" to Fx(body = { n, c, x -> n.put("variant_id", x.id("variants")); n.put("code", "QA-${c.user}") }),
+            // template_json is a JSON object as a string; effective later, so today's template stays.
+            "POST /v1/admin/print-templates" to Fx(body = { n, _, _ -> n.put("template_json", "{\"lines\":[\"{{memo_no}}\"]}"); n.put("effective_from", FUTURE) }),
+            // Paper backfill for the throwaway SR (cover on MIR-SR-D): one MaxR-10S stick at the outlet price 9200, on credit.
+            "POST /v1/admin/data-entry" to Fx(body = { n, _, x ->
+                n.put("client_uuid", "00000000-0000-4000-8000-0000000000e1"); n.put("memo_no", ApiWorld.PAPER_MEMO_NO)
+                n.put("user_id", x.id("users")); n.put("route_id", x.id("sr_route")); n.put("outlet_id", x.id("paper_outlet")); n.put("paid_mtk", 0)
+                n.putArray("lines").addObject().put("sku_id", x.id("paper_sku")).put("qty_base", 1).put("line_kind", "sale")
+            }),
+            // The seeded phone memo held as a duplicate of that paper memo; a separate held item is discarded.
+            "POST /v1/admin/quarantine/{}/match-backfill" to Fx(after = listOf("POST /v1/admin/data-entry"), path = { _, x -> mapOf("quarantine_id" to x.id("quarantine_match").toString()) }),
+            "POST /v1/admin/quarantine/{}/resolve" to Fx(path = { _, x -> mapOf("quarantine_id" to x.id("quarantine_resolve").toString()) }, body = { n, _, _ -> n.put("action", "discard") }),
+            // A -100 % change waits for a SUPERADMIN other than the submitter (admin1001): superadmin1001 rejects it.
+            "POST /v1/admin/prices/batches/{}/decision" to Fx(after = listOf("POST /v1/admin/prices"), body = { n, _, _ -> n.put("decision", "reject") }),
             "POST /v1/day/final-submit" to Fx(after = listOf("POST /v1/web-entry/qc", "POST /v1/web-entry/route-day")),
         )
     }
