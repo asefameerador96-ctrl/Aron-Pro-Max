@@ -37,7 +37,7 @@ import kotlinx.coroutines.launch
 import androidx.compose.ui.res.stringResource
 import com.aktcl.aron.feature.amo.R as AmoR
 
-private enum class CcStep { ROUTE, OUTLET, CHECK, FORCE, MENU }
+private enum class CcStep { ROUTE, OUTLET, CHECK, FORCE, MENU, ASSESS }
 
 /**
  * F-AMO-004/005/036: Control Call. Route and retailer come from the zone-wide bundle (local), the geo gate is the SR's
@@ -47,7 +47,7 @@ private enum class CcStep { ROUTE, OUTLET, CHECK, FORCE, MENU }
  */
 @Composable
 fun ControlCallHost(
-    day: AmoDay, onBack: () -> Unit, onSale: (() -> Unit)? = null, onAssessment: (() -> Unit)? = null, onSurvey: (() -> Unit)? = null,
+    day: AmoDay, onBack: () -> Unit, onSale: (() -> Unit)? = null, onSurvey: (() -> Unit)? = null,
 ) {
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
@@ -62,12 +62,13 @@ fun ControlCallHost(
     }
     // A call already open (kill and relaunch): back on its menu, never a second visit.
     val open by day.visitSession.current.collectAsState()
-    LaunchedEffect(open) { if (open != null && step != CcStep.MENU && step != CcStep.FORCE) step = CcStep.MENU }
+    LaunchedEffect(open) { if (open != null && step != CcStep.MENU && step != CcStep.FORCE && step != CcStep.ASSESS) step = CcStep.MENU }
     val goBack: () -> Unit = {
         when (step) {
             CcStep.ROUTE -> onBack()
             CcStep.OUTLET -> step = CcStep.ROUTE
             CcStep.CHECK, CcStep.FORCE -> step = CcStep.OUTLET
+            CcStep.ASSESS -> step = CcStep.MENU
             CcStep.MENU -> scope.launch { day.closeVisit(); step = CcStep.OUTLET }
         }
     }
@@ -103,8 +104,9 @@ fun ControlCallHost(
                     )
                 }
                 CcStep.FORCE -> ManualOverrideStep(day, onStarted = { step = CcStep.MENU }, onBack = { step = CcStep.CHECK })
+                CcStep.ASSESS -> PerfAssessmentStep(day, onSaved = { scope.launch { day.closeVisit(); step = CcStep.OUTLET } })
                 CcStep.MENU -> ControlCallMenu(
-                    onSale = { onSale?.invoke() }, onAssessment = { onAssessment?.invoke() }, onSurvey = onSurvey,
+                    onSale = { onSale?.invoke() }, onAssessment = { step = CcStep.ASSESS }, onSurvey = onSurvey,
                     onDone = { scope.launch { day.closeVisit(); step = CcStep.OUTLET } },
                 )
             }
@@ -158,4 +160,33 @@ private fun ManualOverrideStep(day: AmoDay, onStarted: () -> Unit, onBack: () ->
             }
         }
     }
+}
+
+/** F-AMO-007/008/009: SR Perf. Assessment of the open Control Call. Save writes the records in one go and returns to the outlet picker (route kept). */
+@Composable
+private fun PerfAssessmentStep(day: AmoDay, onSaved: () -> Unit) {
+    val scope = rememberCoroutineScope()
+    var brands by remember { mutableStateOf<List<com.aktcl.aron.feature.amo.AmoBrand>?>(null) }
+    var state by rememberSaveable(stateSaver = androidx.compose.runtime.saveable.listSaver<com.aktcl.aron.feature.amo.PerfState, Any?>(
+        save = { listOf(it.present.toList(), it.oos.toList(), it.posm) },
+        restore = { @Suppress("UNCHECKED_CAST") com.aktcl.aron.feature.amo.PerfState((it[0] as List<Long>).toSet(), (it[1] as List<Long>).toSet(), it[2] as Boolean?) },
+    )) { mutableStateOf(com.aktcl.aron.feature.amo.PerfState()) }
+    var saving by remember { mutableStateOf(false) }
+    var saved by remember { mutableStateOf(false) }
+    LaunchedEffect(day) { brands = com.aktcl.aron.feature.amo.PerfAssessment.brands(runCatching { day.reference.section("products") }.getOrNull()) }
+    val visit = day.visitSession.current.value
+    com.aktcl.aron.feature.amo.PerfAssessmentContent(
+        brands.orEmpty(), state, saved, saving,
+        { state = state.toggleDistributed(it) }, { state = state.toggleOos(it) }, { state = state.withPosm(it) },
+        onSave = {
+            if (!saving && !saved && visit != null) {
+                saving = true
+                scope.launch {
+                    val ok = runCatching { day.saveAssessment(visit.visitUuid, brands.orEmpty(), state) }.isSuccess
+                    saving = false; saved = ok
+                    if (ok) { kotlinx.coroutines.delay(900); onSaved() }
+                }
+            }
+        },
+    )
 }

@@ -15,4 +15,14 @@
     <string name="amo_cc_menu_survey">Survey</string>
     <string name="amo_cc_back_to_picker">Choose another retailer</string>
     <string name="amo_cc_closing">Closing the call…</string>
+    <string name="amo_pa_title">SR Perf. Assessment</string>
+    <string name="amo_pa_dist">Distribution performance</string>
+    <string name="amo_pa_oos">OOS performance</string>
+    <string name="amo_pa_posm">POSM (sticker or banner present)</string>
+    <string name="amo_pa_yes">Yes</string>
+    <string name="amo_pa_no">No</string>
+    <string name="amo_pa_save">Save</string>
+    <string name="amo_pa_saved">Saved</string>
+    <string name="amo_pa_no_brands">No brands in the downloaded product list</string>
+    <string name="amo_pa_oos_hint">Tick a brand as distributed first</string>
 </resources>

@@ -1,6 +1,7 @@
 package com.aktcl.aron.amo
 
 import android.content.Context
+import androidx.room.withTransaction
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import com.aktcl.aron.contract.SyncTrigger
@@ -213,6 +214,21 @@ class AmoDay(
                 forceReasonCode = last.geoForceReasonCode, openedAtIso = last.openedAt,
             ),
         )
+    }
+
+    // ---- AMO records (amo_record): assessments, price checks, verifications, tasks, reviews
+    private fun newUuid() = com.aktcl.aron.core.common.ClientIds.newUuid()
+
+    /** SR Perf. Assessment (F-AMO-007/008/009): the check and its brand lines, all or nothing, family = the visit. A second Save for the visit writes nothing. */
+    suspend fun saveAssessment(visitUuid: String, brands: List<com.aktcl.aron.feature.amo.AmoBrand>, state: com.aktcl.aron.feature.amo.PerfState) {
+        if (db.captureDao().amoRecordsOfFamily(visitUuid).any { it.recordType == "distribution_check" }) return
+        val planned = com.aktcl.aron.feature.amo.PerfAssessment.records(visitUuid, brands, state, ::newUuid)
+        db.withTransaction {
+            for (p in planned) capture.recordAmo(
+                com.aktcl.aron.core.database.entity.AmoRecordEntity(p.clientUuid, metaProvider.meta(visitSession.current.value?.routeId ?: 0L), p.type, p.familyUuid, p.rank, p.payload.toString()),
+            )
+        }
+        runCatching { requestSync() }
     }
 }
 
