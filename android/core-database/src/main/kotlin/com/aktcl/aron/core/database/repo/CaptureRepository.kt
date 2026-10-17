@@ -304,7 +304,7 @@ class CaptureRepository(
 
     /** A new-outlet, edit, relocation or closure request with the fix taken for it. */
     suspend fun recordOutletRequest(request: OutletChangeRequestEntity, fix: GeoFixEntity) = db.withTransaction {
-        if (purged(request.clientUuid)) return@withTransaction emptyList()
+        if (purged(request.clientUuid) || capture.outletRequestCount(request.clientUuid) > 0) return@withTransaction emptyList() // a replay of a request already on this phone writes nothing
         requireUuids(request.clientUuid, fix.clientUuid)
         require(OutletRequestType.entries.any { it.wire == request.requestType }) { "request_type ${request.requestType} is not in the contract" }
         require((request.requestType == OutletRequestType.NEW.wire) == (request.outletId == null)) { "outlet_id is null exactly for a new outlet" }
