@@ -1,4 +1,6 @@
 TutorialItem:
+  description: Open on purpose (N-014). `TutorialItem` is the `allOf` base of `TutorialAdmin`, which closes the
+    combined object, so `TutorialItem` carries no closing keyword.
   type: object
   required:
   - tutorial_id
@@ -6,7 +8,6 @@ TutorialItem:
   - title_en
   - url
   - sort
-  additionalProperties: false
   properties:
     tutorial_id:
       $ref: '#/components/schemas/Id'

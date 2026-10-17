@@ -1,0 +1,28 @@
+FeedbackSubmit:
+  type: object
+  description: Body of `submitFeedback`, the `FeedbackPayload` of the sync record plus its client uuid. `title`
+    and `description` are stored trimmed and must not be blank.
+  required:
+  - feedback_uuid
+  - category_code
+  - title
+  - description
+  additionalProperties: false
+  properties:
+    feedback_uuid:
+      $ref: '#/components/schemas/Uuid'
+    category_code:
+      type: string
+      pattern: ^[a-z][a-z0-9_]{1,40}$
+    title:
+      type: string
+      minLength: 1
+      maxLength: 120
+    description:
+      type: string
+      minLength: 1
+      maxLength: 2000
+    photo_uuid:
+      oneOf:
+      - $ref: '#/components/schemas/Uuid'
+      - type: 'null'

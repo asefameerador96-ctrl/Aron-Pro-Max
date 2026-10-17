@@ -49,7 +49,6 @@ POST /v1/day/sales-submit
 POST /v1/devices/enrol
 POST /v1/devices/me/status
 POST /v1/devices/nonce
-POST /v1/leave/{}/decision
 POST /v1/media/sas
 POST /v1/media/upload
 POST /v1/outlet-requests

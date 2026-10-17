@@ -334,6 +334,7 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/MfaEnrolment' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '409': { $ref: '#/components/responses/Conflict' }
   /v1/auth/mfa/verify:
     post:
@@ -495,6 +496,7 @@ paths:
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
 
+        '403': { $ref: '#/components/responses/Forbidden' }
   /v1/sync/bundle:
     get:
       tags: [sync]
@@ -561,6 +563,7 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/BundlePage' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
         '410': { $ref: '#/components/responses/Gone' }
         '429': { $ref: '#/components/responses/TooManyRequests' }
@@ -595,7 +598,9 @@ paths:
                 outletMoved:
                   $ref: '#/components/examples/DeltaExample'
         '304': { $ref: '#/components/responses/NotModified' }
+        '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '409': { $ref: '#/components/responses/Conflict' }
         '410': { $ref: '#/components/responses/Gone' }
         '429': { $ref: '#/components/responses/TooManyRequests' }
@@ -735,6 +740,7 @@ paths:
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '429': { $ref: '#/components/responses/TooManyRequests' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
   /v1/media/{media_uuid}/read-url:
     get:
       tags: [media]
@@ -788,6 +794,7 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/AppHome' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '429': { $ref: '#/components/responses/TooManyRequests' }
   /v1/app/update-check:
     get:
@@ -1329,6 +1336,36 @@ paths:
               schema: { $ref: '#/components/schemas/LeavePage' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [people]
+      operationId: applyLeave
+      summary: Apply for leave from the TSO app (online path of the `leave_application` sync record).
+      description: |
+        TSO only (other roles get 403 `ERR_FORBIDDEN`); the applicant is the token's user and the application starts
+        `pending`. Idempotent by `leave_uuid`: the first call stores it (201), a replay with the same content returns it
+        unchanged (200), and the same uuid with different content, or another user's uuid, is 409 `ERR_CONFLICT`.
+        `to_date` = `from_date` + `days` - 1. A second pending or approved application over any of the same days is 409
+        `ERR_CONFLICT` (`body.from_date` `overlap`); an unknown `leave_type` code is 400 `unknown_code`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LeaveApply' }
+      responses:
+        '200':
+          description: Replay of a stored application; nothing changed.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LeaveApplication' }
+        '201':
+          description: Stored as pending.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LeaveApplication' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
   /v1/leave/{leave_uuid}/decision:
     post:
       tags: [people]
@@ -1377,6 +1414,38 @@ paths:
               schema: { $ref: '#/components/schemas/VisitPlanPage' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [people]
+      operationId: saveVisitPlan
+      summary: Save a TSO visit plan for one route and date (online path of the `visit_plan` and `visit_plan_outlet` sync records).
+      description: |
+        TSO only (other roles get 403 `ERR_FORBIDDEN`); the planner is the token's user. The outlets are added to the
+        plan as a union (an outlet already in the plan stays once; none is removed). Every outlet must be in the caller's
+        reach (403 `ERR_OUT_OF_SCOPE` otherwise, the same answer as an unknown outlet) and on `route_id` (400
+        `not_on_route`). A new plan is for today or later (400 `in_past`). When the planner already has a plan for that
+        route and date, the outlets join it and that plan is returned. Idempotent by `plan_uuid`: 201 when anything was
+        stored, 200 when nothing changed; a `plan_uuid` that already stores another user's, another date's or another
+        route's plan is 409 `ERR_CONFLICT`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/VisitPlanSave' }
+      responses:
+        '200':
+          description: Nothing changed (replay); the stored plan.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/VisitPlan' }
+        '201':
+          description: Saved; the plan with all its outlets.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/VisitPlan' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
   /v1/feedback:
     get:
       tags: [people]
@@ -1406,6 +1475,35 @@ paths:
               schema: { $ref: '#/components/schemas/FeedbackPage' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [people]
+      operationId: submitFeedback
+      summary: Send one feedback item from the TSO app (online path of the `feedback` sync record).
+      description: |
+        TSO only (other roles get 403 `ERR_FORBIDDEN`); the author is the token's user. Idempotent by `feedback_uuid`:
+        the first call stores the item (201), a replay with the same content returns it unchanged (200), and the same
+        uuid with different content, or another user's uuid, is 409 `ERR_CONFLICT`. `category_code` must be a current
+        `feedback_category` code when that list has items (400 `unknown_code` otherwise).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/FeedbackSubmit' }
+      responses:
+        '200':
+          description: Replay of a stored item; nothing changed.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Feedback' }
+        '201':
+          description: Stored.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Feedback' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
 
   /v1/dashboards/summary:
     get:
@@ -1919,6 +2017,7 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
         '412': { $ref: '#/components/responses/PreconditionFailed' }
 
   /v1/admin/routes:
@@ -2692,6 +2791,7 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/CodeListCollection' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
   /v1/admin/code-lists/{list_key}:
     put:
       tags: [admin-calendar]
@@ -3121,6 +3221,7 @@ paths:
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
   /v1/admin/enrolment-tokens/{token_id}/revoke:
     post:
       tags: [admin-devices]
@@ -3380,6 +3481,31 @@ paths:
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
+  /v1/routes/{id}/assignments:
+    get:
+      tags: [team]
+      operationId: listRouteAssignees
+      summary: Users assigned to one route on a date, with their names (Browse Routes screen).
+      description: |
+        For TSO, DMO, WM, TOP, ANALYST, SUPPORT, ADMIN and SUPERADMIN (other roles get 403 `ERR_FORBIDDEN`). Only the
+        assignments valid on `valid_on` (default today, Dhaka business date) and not ended, ordered by `kind`,
+        `valid_from`, `id`. A route outside the caller's reach, or unknown, is 403 `ERR_OUT_OF_SCOPE`. The admin read
+        with history and filters is `listRouteAssignments`.
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+        - name: valid_on
+          in: query
+          required: false
+          schema: { $ref: '#/components/schemas/BusinessDate' }
+      responses:
+        '200':
+          description: The assignees of the route on the date.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RouteAssignees' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
 
   /v1/dashboards/daily-tracking/actions:
     post:
@@ -3442,9 +3568,11 @@ paths:
               schema: { $ref: '#/components/schemas/SupportUpload' }
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '413': { $ref: '#/components/responses/PayloadTooLarge' }
         '429': { $ref: '#/components/responses/TooManyRequests' }
 
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
   /v1/client-errors:
     post:
       tags: [support]
@@ -3459,6 +3587,7 @@ paths:
         '202': { description: Accepted (deduplicated by error_uuid). }
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '429': { $ref: '#/components/responses/TooManyRequests' }
 
   /v1/media/upload:
@@ -4348,6 +4477,7 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '413': { $ref: '#/components/responses/PayloadTooLarge' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
   /v1/admin/content/{id}:
     patch:
       tags: [admin-content]
@@ -4449,6 +4579,7 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '413': { $ref: '#/components/responses/PayloadTooLarge' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
   /v1/admin/print-templates:
     get:
       tags: [admin-content]
@@ -7614,9 +7745,9 @@ components:
         net_mtk: { $ref: '#/components/schemas/Mtk' }
         due_mtk: { $ref: '#/components/schemas/MtkNonNegative' }
     TargetRow:
+      description: Open on purpose (N-014). `TargetRow` is the `allOf` base of `Target`, which closes the combined object, so `TargetRow` carries no closing keyword.
       type: object
       required: [scope_type, scope_id, month, product_level, product_id, std_target, std_unit, memo_target]
-      additionalProperties: false
       properties:
         scope_type: { $ref: '#/components/schemas/TargetScopeType' }
         scope_id: { $ref: '#/components/schemas/Id' }
@@ -7744,9 +7875,9 @@ components:
           description: Holidays, make-up days and emergency off-days from yesterday to 14 days ahead for the user's zones.
           items: { $ref: '#/components/schemas/Holiday' }
     RubricDef:
+      description: Open on purpose (N-014). `RubricDef` is the `allOf` base of `RubricAdmin`, which closes the combined object, so `RubricDef` carries no closing keyword.
       type: object
       required: [rubric_id, version, kind, criteria]
-      additionalProperties: false
       properties:
         rubric_id: { $ref: '#/components/schemas/Id' }
         version: { type: integer, minimum: 1 }
@@ -7766,9 +7897,9 @@ components:
               enabled: { type: boolean }
               key: { type: string, pattern: '^[a-z][a-z0-9_]{1,40}$', description: 'Stable key of the criterion (the `key` of `RubricWrite`), returned on the admin read (`RubricAdmin`) so a definition round-trips into the write (docs/24 s14a R20); the bundle may omit it.' }
     SurveyDef:
+      description: Open on purpose (N-014). `SurveyDef` is the `allOf` base of `SurveyAdmin`, which closes the combined object, so `SurveyDef` carries no closing keyword.
       type: object
       required: [survey_id, version, questions]
-      additionalProperties: false
       properties:
         survey_id: { $ref: '#/components/schemas/Id' }
         version: { type: integer, minimum: 1 }
@@ -9451,9 +9582,9 @@ components:
             - { $ref: '#/components/schemas/PageCursor' }
             - type: 'null'
     RouteAssignment:
+      description: Open on purpose (N-014). `RouteAssignment` is the `allOf` base of `RouteAssignee`, which closes the combined object, so `RouteAssignment` carries no closing keyword.
       type: object
       required: [id, route_id, user_id, kind, valid_from, created_at]
-      additionalProperties: false
       properties:
         id: { $ref: '#/components/schemas/Id' }
         route_id: { $ref: '#/components/schemas/Id' }
@@ -9467,6 +9598,70 @@ components:
             - type: 'null'
         reason: { type: [string, 'null'], maxLength: 300 }
         created_at: { $ref: '#/components/schemas/Timestamp' }
+    FeedbackSubmit:
+      type: object
+      description: Body of `submitFeedback`, the `FeedbackPayload` of the sync record plus its client uuid. `title` and `description` are stored trimmed and must not be blank.
+      required: [feedback_uuid, category_code, title, description]
+      additionalProperties: false
+      properties:
+        feedback_uuid: { $ref: '#/components/schemas/Uuid' }
+        category_code: { type: string, pattern: '^[a-z][a-z0-9_]{1,40}$' }
+        title: { type: string, minLength: 1, maxLength: 120 }
+        description: { type: string, minLength: 1, maxLength: 2000 }
+        photo_uuid:
+          oneOf:
+            - { $ref: '#/components/schemas/Uuid' }
+            - type: 'null'
+    LeaveApply:
+      type: object
+      description: Body of `applyLeave`, the `LeaveApplicationPayload` of the sync record plus its client uuid. `reason` is stored trimmed and must not be blank.
+      required: [leave_uuid, leave_type_code, from_date, days, reason]
+      additionalProperties: false
+      properties:
+        leave_uuid: { $ref: '#/components/schemas/Uuid' }
+        leave_type_code: { type: string, pattern: '^[a-z][a-z0-9_]{1,40}$' }
+        from_date: { $ref: '#/components/schemas/BusinessDate' }
+        days: { type: integer, minimum: 1, maximum: 365, description: 'Authoritative; to_date = from_date + days - 1.' }
+        reason: { type: string, minLength: 1, maxLength: 500 }
+    VisitPlanSave:
+      type: object
+      description: Body of `saveVisitPlan`, the `visit_plan` record (`plan_uuid` is its client uuid) plus the route and the outlets chosen on the Set Plan screen.
+      required: [plan_uuid, plan_date, route_id, outlet_ids]
+      additionalProperties: false
+      properties:
+        plan_uuid: { $ref: '#/components/schemas/Uuid' }
+        plan_date: { $ref: '#/components/schemas/BusinessDate' }
+        route_id: { $ref: '#/components/schemas/Id' }
+        outlet_ids:
+          type: array
+          minItems: 1
+          maxItems: 500
+          description: Duplicates count once.
+          items: { $ref: '#/components/schemas/Id' }
+        note: { type: [string, 'null'], maxLength: 500 }
+    RouteAssignee:
+      description: One assignee of a route, the `RouteAssignment` members plus who the user is.
+      allOf:
+        - { $ref: '#/components/schemas/RouteAssignment' }
+        - type: object
+          required: [username, full_name, user_role]
+          properties:
+            username: { $ref: '#/components/schemas/Username' }
+            full_name: { type: string, maxLength: 120 }
+            user_role: { $ref: '#/components/schemas/Role' }
+      unevaluatedProperties: false
+    RouteAssignees:
+      type: object
+      required: [route_id, route_kind, valid_on, sr_not_set, items]
+      additionalProperties: false
+      properties:
+        route_id: { $ref: '#/components/schemas/Id' }
+        route_kind: { type: string, enum: [sr, amo] }
+        valid_on: { $ref: '#/components/schemas/BusinessDate' }
+        sr_not_set: { type: boolean, description: True when no SR is assigned on `valid_on`; the normal state of an AMO route. }
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/RouteAssignee' }
     RouteAssignmentWrite:
       type: object
       required: [route_id, user_id, kind, valid_from]
@@ -9968,6 +10163,7 @@ components:
             - { $ref: '#/components/schemas/Timestamp' }
             - type: 'null'
     Outlet:
+      description: Open on purpose (N-014). `Outlet` is the `allOf` base of `OutletDetail`, which closes the combined object, so `Outlet` carries no closing keyword.
       allOf:
         - { $ref: '#/components/schemas/MasterAudit' }
         - type: object
@@ -9998,7 +10194,6 @@ components:
             status: { $ref: '#/components/schemas/OutletStatus' }
             visit_sequence: { type: [integer, 'null'], minimum: 1 }
             external_ref: { type: [string, 'null'], maxLength: 64, description: Stable reference for Phase 2 integrations (docs/24 s12.5). }
-      unevaluatedProperties: false
     OutletDetail:
       allOf:
         - { $ref: '#/components/schemas/Outlet' }
@@ -10272,9 +10467,9 @@ components:
             - { $ref: '#/components/schemas/PageCursor' }
             - type: 'null'
     ConfigChangeItem:
+      description: Open on purpose (N-014). `ConfigChangeItem` is the `allOf` base of the `ConfigChange.changes` items, which close the combined object; the server refuses an unknown member of a request item with 400 `ERR_VALIDATION` all the same.
       type: object
       required: [key, scope_type, scope_id, value]
-      additionalProperties: false
       properties:
         key: { $ref: '#/components/schemas/ConfigKeyName' }
         scope_type: { $ref: '#/components/schemas/ConfigScopeType' }
@@ -11241,9 +11436,8 @@ components:
           items: { $ref: '#/components/schemas/PendingGiftVerification' }
     ContentItem:
       type: object
-      description: An AV or KV item delivered to phones; assets download on Wi-Fi (cfg.content.download_network_policy) into a bounded cache.
+      description: An AV or KV item delivered to phones; assets download on Wi-Fi (cfg.content.download_network_policy) into a bounded cache. Open on purpose (N-014). `ContentItem` is the `allOf` base of `ContentAdmin`, which closes the combined object, so `ContentItem` carries no closing keyword.
       required: [content_id, version, kind, title_en, asset_url, sha256, bytes, valid_from, valid_to, sequence, outlet_ids]
-      additionalProperties: false
       properties:
         content_id: { $ref: '#/components/schemas/Id' }
         version: { type: integer, minimum: 1 }
@@ -11319,9 +11513,9 @@ components:
             - { $ref: '#/components/schemas/PageCursor' }
             - type: 'null'
     TutorialItem:
+      description: Open on purpose (N-014). `TutorialItem` is the `allOf` base of `TutorialAdmin`, which closes the combined object, so `TutorialItem` carries no closing keyword.
       type: object
       required: [tutorial_id, kind, title_en, url, sort]
-      additionalProperties: false
       properties:
         tutorial_id: { $ref: '#/components/schemas/Id' }
         kind: { type: string, enum: [video, manual] }

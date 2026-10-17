@@ -945,7 +945,15 @@ export interface paths {
         /** Leave applications in the caller's reach. */
         get: operations["listLeave"];
         put?: never;
-        post?: never;
+        /**
+         * Apply for leave from the TSO app (online path of the `leave_application` sync record).
+         * @description TSO only (other roles get 403 `ERR_FORBIDDEN`); the applicant is the token's user and the application starts
+         *     `pending`. Idempotent by `leave_uuid`: the first call stores it (201), a replay with the same content returns it
+         *     unchanged (200), and the same uuid with different content, or another user's uuid, is 409 `ERR_CONFLICT`.
+         *     `to_date` = `from_date` + `days` - 1. A second pending or approved application over any of the same days is 409
+         *     `ERR_CONFLICT` (`body.from_date` `overlap`); an unknown `leave_type` code is 400 `unknown_code`.
+         */
+        post: operations["applyLeave"];
         delete?: never;
         options?: never;
         head?: never;
@@ -979,7 +987,17 @@ export interface paths {
         /** TSO visit plans with outlet completion. */
         get: operations["listVisitPlans"];
         put?: never;
-        post?: never;
+        /**
+         * Save a TSO visit plan for one route and date (online path of the `visit_plan` and `visit_plan_outlet` sync records).
+         * @description TSO only (other roles get 403 `ERR_FORBIDDEN`); the planner is the token's user. The outlets are added to the
+         *     plan as a union (an outlet already in the plan stays once; none is removed). Every outlet must be in the caller's
+         *     reach (403 `ERR_OUT_OF_SCOPE` otherwise, the same answer as an unknown outlet) and on `route_id` (400
+         *     `not_on_route`). A new plan is for today or later (400 `in_past`). When the planner already has a plan for that
+         *     route and date, the outlets join it and that plan is returned. Idempotent by `plan_uuid`: 201 when anything was
+         *     stored, 200 when nothing changed; a `plan_uuid` that already stores another user's, another date's or another
+         *     route's plan is 409 `ERR_CONFLICT`.
+         */
+        post: operations["saveVisitPlan"];
         delete?: never;
         options?: never;
         head?: never;
@@ -999,7 +1017,14 @@ export interface paths {
          */
         get: operations["listFeedback"];
         put?: never;
-        post?: never;
+        /**
+         * Send one feedback item from the TSO app (online path of the `feedback` sync record).
+         * @description TSO only (other roles get 403 `ERR_FORBIDDEN`); the author is the token's user. Idempotent by `feedback_uuid`:
+         *     the first call stores the item (201), a replay with the same content returns it unchanged (200), and the same
+         *     uuid with different content, or another user's uuid, is 409 `ERR_CONFLICT`. `category_code` must be a current
+         *     `feedback_category` code when that list has items (400 `unknown_code` otherwise).
+         */
+        post: operations["submitFeedback"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2194,6 +2219,29 @@ export interface paths {
          *     all. A selector outside the reach is 403. With `updated_since` the page is ordered by `(updated_at, id)`.
          */
         get: operations["listRoutesInReach"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/routes/{id}/assignments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Users assigned to one route on a date, with their names (Browse Routes screen).
+         * @description For TSO, DMO, WM, TOP, ANALYST, SUPPORT, ADMIN and SUPERADMIN (other roles get 403 `ERR_FORBIDDEN`). Only the
+         *     assignments valid on `valid_on` (default today, Dhaka business date) and not ended, ordered by `kind`,
+         *     `valid_from`, `id`. A route outside the caller's reach, or unknown, is 403 `ERR_OUT_OF_SCOPE`. The admin read
+         *     with history and filters is `listRouteAssignments`.
+         */
+        get: operations["listRouteAssignees"];
         put?: never;
         post?: never;
         delete?: never;
@@ -5086,6 +5134,7 @@ export interface components {
             net_mtk: components["schemas"]["Mtk"];
             due_mtk: components["schemas"]["MtkNonNegative"];
         };
+        /** @description Open on purpose (N-014). `TargetRow` is the `allOf` base of `Target`, which closes the combined object, so `TargetRow` carries no closing keyword. */
         TargetRow: {
             scope_type: components["schemas"]["TargetScopeType"];
             scope_id: components["schemas"]["Id"];
@@ -5161,6 +5210,7 @@ export interface components {
             /** @description Holidays, make-up days and emergency off-days from yesterday to 14 days ahead for the user's zones. */
             entries: components["schemas"]["Holiday"][];
         };
+        /** @description Open on purpose (N-014). `RubricDef` is the `allOf` base of `RubricAdmin`, which closes the combined object, so `RubricDef` carries no closing keyword. */
         RubricDef: {
             rubric_id: components["schemas"]["Id"];
             version: number;
@@ -5180,6 +5230,7 @@ export interface components {
                 key?: string;
             }[];
         };
+        /** @description Open on purpose (N-014). `SurveyDef` is the `allOf` base of `SurveyAdmin`, which closes the combined object, so `SurveyDef` carries no closing keyword. */
         SurveyDef: {
             survey_id: components["schemas"]["Id"];
             version: number;
@@ -6271,6 +6322,7 @@ export interface components {
             items: components["schemas"]["Route"][];
             next_cursor: components["schemas"]["PageCursor"] | null;
         };
+        /** @description Open on purpose (N-014). `RouteAssignment` is the `allOf` base of `RouteAssignee`, which closes the combined object, so `RouteAssignment` carries no closing keyword. */
         RouteAssignment: {
             id: components["schemas"]["Id"];
             route_id: components["schemas"]["Id"];
@@ -6282,6 +6334,47 @@ export interface components {
             valid_to?: components["schemas"]["BusinessDate"] | null;
             reason?: string | null;
             created_at: components["schemas"]["Timestamp"];
+        };
+        /** @description Body of `submitFeedback`, the `FeedbackPayload` of the sync record plus its client uuid. `title` and `description` are stored trimmed and must not be blank. */
+        FeedbackSubmit: {
+            feedback_uuid: components["schemas"]["Uuid"];
+            category_code: string;
+            title: string;
+            description: string;
+            photo_uuid?: components["schemas"]["Uuid"] | null;
+        };
+        /** @description Body of `applyLeave`, the `LeaveApplicationPayload` of the sync record plus its client uuid. `reason` is stored trimmed and must not be blank. */
+        LeaveApply: {
+            leave_uuid: components["schemas"]["Uuid"];
+            leave_type_code: string;
+            from_date: components["schemas"]["BusinessDate"];
+            /** @description Authoritative; to_date = from_date + days - 1. */
+            days: number;
+            reason: string;
+        };
+        /** @description Body of `saveVisitPlan`, the `visit_plan` record (`plan_uuid` is its client uuid) plus the route and the outlets chosen on the Set Plan screen. */
+        VisitPlanSave: {
+            plan_uuid: components["schemas"]["Uuid"];
+            plan_date: components["schemas"]["BusinessDate"];
+            route_id: components["schemas"]["Id"];
+            /** @description Duplicates count once. */
+            outlet_ids: components["schemas"]["Id"][];
+            note?: string | null;
+        };
+        /** @description One assignee of a route, the `RouteAssignment` members plus who the user is. */
+        RouteAssignee: components["schemas"]["RouteAssignment"] & {
+            username: components["schemas"]["Username"];
+            full_name: string;
+            user_role: components["schemas"]["Role"];
+        };
+        RouteAssignees: {
+            route_id: components["schemas"]["Id"];
+            /** @enum {string} */
+            route_kind: "sr" | "amo";
+            valid_on: components["schemas"]["BusinessDate"];
+            /** @description True when no SR is assigned on `valid_on`; the normal state of an AMO route. */
+            sr_not_set: boolean;
+            items: components["schemas"]["RouteAssignee"][];
         };
         RouteAssignmentWrite: {
             route_id: components["schemas"]["Id"];
@@ -6632,6 +6725,7 @@ export interface components {
             temporary_password?: string | null;
             temporary_password_expires_at?: components["schemas"]["Timestamp"] | null;
         };
+        /** @description Open on purpose (N-014). `Outlet` is the `allOf` base of `OutletDetail`, which closes the combined object, so `Outlet` carries no closing keyword. */
         Outlet: components["schemas"]["MasterAudit"] & {
             id: components["schemas"]["Id"];
             /** @description Text, never a number (both DHK-344-011 and 2689479 occur). */
@@ -6860,6 +6954,7 @@ export interface components {
             items: components["schemas"]["ConfigValue"][];
             next_cursor: components["schemas"]["PageCursor"] | null;
         };
+        /** @description Open on purpose (N-014). `ConfigChangeItem` is the `allOf` base of the `ConfigChange.changes` items, which close the combined object; the server refuses an unknown member of a request item with 400 `ERR_VALIDATION` all the same. */
         ConfigChangeItem: {
             key: components["schemas"]["ConfigKeyName"];
             scope_type: components["schemas"]["ConfigScopeType"];
@@ -7504,7 +7599,7 @@ export interface components {
             gift_assignments: components["schemas"]["GiftAssignment"][];
             pending_gift_verifications: components["schemas"]["PendingGiftVerification"][];
         };
-        /** @description An AV or KV item delivered to phones; assets download on Wi-Fi (cfg.content.download_network_policy) into a bounded cache. */
+        /** @description An AV or KV item delivered to phones; assets download on Wi-Fi (cfg.content.download_network_policy) into a bounded cache. Open on purpose (N-014). `ContentItem` is the `allOf` base of `ContentAdmin`, which closes the combined object, so `ContentItem` carries no closing keyword. */
         ContentItem: {
             content_id: components["schemas"]["Id"];
             version: number;
@@ -7554,6 +7649,7 @@ export interface components {
             items: components["schemas"]["ContentAdmin"][];
             next_cursor: components["schemas"]["PageCursor"] | null;
         };
+        /** @description Open on purpose (N-014). `TutorialItem` is the `allOf` base of `TutorialAdmin`, which closes the combined object, so `TutorialItem` carries no closing keyword. */
         TutorialItem: {
             tutorial_id: components["schemas"]["Id"];
             /** @enum {string} */
@@ -8666,6 +8762,7 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
             409: components["responses"]["Conflict"];
         };
     };
@@ -8896,6 +8993,7 @@ export interface operations {
             };
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
         };
     };
     getBundle: {
@@ -8966,6 +9064,7 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             410: components["responses"]["Gone"];
             429: components["responses"]["TooManyRequests"];
@@ -8999,7 +9098,9 @@ export interface operations {
                 };
             };
             304: components["responses"]["NotModified"];
+            400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
             409: components["responses"]["Conflict"];
             410: components["responses"]["Gone"];
             429: components["responses"]["TooManyRequests"];
@@ -9171,6 +9272,7 @@ export interface operations {
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     getMediaReadUrl: {
@@ -9248,6 +9350,7 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
             429: components["responses"]["TooManyRequests"];
         };
     };
@@ -9965,6 +10068,43 @@ export interface operations {
             403: components["responses"]["Forbidden"];
         };
     };
+    applyLeave: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LeaveApply"];
+            };
+        };
+        responses: {
+            /** @description Replay of a stored application; nothing changed. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LeaveApplication"];
+                };
+            };
+            /** @description Stored as pending. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LeaveApplication"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+        };
+    };
     decideLeave: {
         parameters: {
             query?: never;
@@ -10028,6 +10168,43 @@ export interface operations {
             403: components["responses"]["Forbidden"];
         };
     };
+    saveVisitPlan: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VisitPlanSave"];
+            };
+        };
+        responses: {
+            /** @description Nothing changed (replay); the stored plan. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VisitPlan"];
+                };
+            };
+            /** @description Saved; the plan with all its outlets. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VisitPlan"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+        };
+    };
     listFeedback: {
         parameters: {
             query?: {
@@ -10061,6 +10238,43 @@ export interface operations {
             };
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
+        };
+    };
+    submitFeedback: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FeedbackSubmit"];
+            };
+        };
+        responses: {
+            /** @description Replay of a stored item; nothing changed. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Feedback"];
+                };
+            };
+            /** @description Stored. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Feedback"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
         };
     };
     getDashboardSummary: {
@@ -10752,6 +10966,7 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
             412: components["responses"]["PreconditionFailed"];
         };
     };
@@ -11833,6 +12048,7 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
         };
     };
     putCodeList: {
@@ -12405,6 +12621,7 @@ export interface operations {
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
         };
     };
     revokeEnrolmentToken: {
@@ -12745,6 +12962,33 @@ export interface operations {
             403: components["responses"]["Forbidden"];
         };
     };
+    listRouteAssignees: {
+        parameters: {
+            query?: {
+                valid_on?: components["schemas"]["BusinessDate"];
+            };
+            header?: never;
+            path: {
+                id: components["parameters"]["IdPath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The assignees of the route on the date. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RouteAssignees"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
     createTrackingAction: {
         parameters: {
             query?: never;
@@ -12821,8 +13065,10 @@ export interface operations {
             };
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
             413: components["responses"]["PayloadTooLarge"];
             429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     reportClientError: {
@@ -12847,6 +13093,7 @@ export interface operations {
             };
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
             429: components["responses"]["TooManyRequests"];
         };
     };
@@ -14144,6 +14391,7 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             413: components["responses"]["PayloadTooLarge"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     updateContentItem: {
@@ -14291,6 +14539,7 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             413: components["responses"]["PayloadTooLarge"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     listPrintTemplates: {

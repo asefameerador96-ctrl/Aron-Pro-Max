@@ -1,7 +1,8 @@
 ContentItem:
   type: object
   description: An AV or KV item delivered to phones; assets download on Wi-Fi (cfg.content.download_network_policy)
-    into a bounded cache.
+    into a bounded cache. Open on purpose (N-014). `ContentItem` is the `allOf` base of `ContentAdmin`, which closes
+    the combined object, so `ContentItem` carries no closing keyword.
   required:
   - content_id
   - version
@@ -14,7 +15,6 @@ ContentItem:
   - valid_to
   - sequence
   - outlet_ids
-  additionalProperties: false
   properties:
     content_id:
       $ref: '#/components/schemas/Id'

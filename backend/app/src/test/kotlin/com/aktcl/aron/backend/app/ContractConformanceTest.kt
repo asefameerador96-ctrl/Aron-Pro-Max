@@ -229,6 +229,9 @@ class ContractConformanceTest {
                 n.put("username", c.user); n.put("password", pw); n.put("client", c.client)
                 if (c.device != null) n.put("device_uuid", c.device) else n.remove("device_uuid")
             },
+            // Seeded codes (V0027): a generated code is unknown to the code list and refused with 400 unknown_code.
+            "POST /v1/feedback" to { n, _, _ -> n.put("category_code", "suggestion") },
+            "POST /v1/leave" to { n, _, _ -> n.put("leave_type_code", "casual") },
         )
     }
 
