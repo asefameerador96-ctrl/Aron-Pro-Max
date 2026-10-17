@@ -129,7 +129,7 @@ class ContractModel private constructor(private val doc: ObjectNode) {
         s.get("const")?.let { return it }
         when (s.path("format").asText()) {
             "date" -> return f.textNode(TODAY)
-            "date-time" -> return f.textNode(TODAY + "T04:00:00Z")
+            "date-time" -> return f.textNode(TODAY + "T04:00:00.000Z")
         }
         s.get("examples")?.takeIf { it.isArray && !it.isEmpty }?.let { return it[0] }
         s.get("example")?.let { return it }
@@ -178,7 +178,7 @@ class ContractModel private constructor(private val doc: ObjectNode) {
         return when (s.path("format").asText()) {
             "uuid" -> UUID.randomUUID().toString()
             "date" -> TODAY
-            "date-time" -> TODAY + "T04:00:00Z"
+            "date-time" -> TODAY + "T04:00:00.000Z"
             "email" -> "qa@example.com"
             "uri" -> "https://example.com/qa"
             else -> s.get("pattern")?.asText()?.let { regexSample(it, min) } ?: "a".repeat(min.coerceAtMost(max))
