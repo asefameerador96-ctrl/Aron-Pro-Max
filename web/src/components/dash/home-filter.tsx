@@ -7,6 +7,13 @@ import { Icon } from "@/components/kit/icons";
 
 export function HomeFilter({ msg, applyMsg, resetMsg, resetHref, active, children }: { msg: string; applyMsg: string; resetMsg: string; resetHref: string; active: boolean; children: ReactNode }) {
   const form = useRef<HTMLFormElement>(null);
+  const box = useRef<HTMLDetailsElement>(null);
+  // Escape closes the popover and returns focus to its button (keyboard users never get trapped in it).
+  const onKey = (e: React.KeyboardEvent<HTMLDetailsElement>) => {
+    if (e.key !== "Escape" || !box.current?.open) return;
+    box.current.open = false;
+    box.current.querySelector("summary")?.focus();
+  };
   const onChange = (e: React.FormEvent<HTMLFormElement>) => {
     const el = e.target as unknown as HTMLSelectElement;
     if (el.tagName !== "SELECT") return;
@@ -15,7 +22,7 @@ export function HomeFilter({ msg, applyMsg, resetMsg, resetHref, active, childre
     form.current?.requestSubmit();
   };
   return (
-    <details className="relative" open={active} data-testid="home-filter">
+    <details ref={box} onKeyDown={onKey} className="relative" open={active} data-testid="home-filter">
       <summary className="inline-flex min-h-(--ctl-h) cursor-pointer list-none items-center gap-2 rounded-full border border-warning bg-warning-container px-4 text-body-strong text-warning-on-container hover:brightness-95 focus-visible:outline-(length:--focus-w) focus-visible:outline-offset-2 outline-focus [&::-webkit-details-marker]:hidden">
         <Icon name="filter" size={18} />
         {msg}
