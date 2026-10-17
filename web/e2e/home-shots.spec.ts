@@ -7,9 +7,9 @@ test.beforeEach(async () => {
   await resetMock();
 });
 
-for (const [scheme, w, h, lang] of [["light", 1366, 900, "English"], ["dark", 1366, 900, "English"], ["light", 820, 1180, "English"], ["light", 1366, 900, "বাংলা"]] as const) {
+for (const [scheme, w, h, lang] of [["light", 1366, 900, "English"], ["dark", 1366, 900, "English"], ["light", 820, 1180, "English"], ["light", 1366, 900, "বাংলা"], ["sunlight", 1366, 900, "English"]] as const) {
   test(`home screenshot ${scheme} ${w}x${h} ${lang}`, async ({ page }, info) => {
-    await page.emulateMedia({ colorScheme: scheme, reducedMotion: "reduce" });
+    await page.emulateMedia({ colorScheme: scheme === "dark" ? "dark" : "light", reducedMotion: "reduce" });
     await page.addInitScript((th) => { try { localStorage.setItem("aron.theme", th); } catch {} }, scheme);
     await loginOk(page, "tso334", "tso-pass-1"); // the helper expects the desktop shell
     await page.getByRole("link", { name: lang }).click();
