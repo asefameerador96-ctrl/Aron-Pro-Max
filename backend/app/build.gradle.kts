@@ -45,9 +45,10 @@ dependencies {
 tasks.withType<Test>().configureEach {
     environment("ARON_TEST_PG_URL", System.getenv("ARON_TEST_PG_URL") ?: "")
     // AUD-TP-1: the sync convergence harness reads its seed and run count (SyncConvergenceFuzzTest).
-    System.getenv("ARON_FUZZ_SEED")?.let { environment("ARON_FUZZ_SEED", it) }
-    System.getenv("ARON_FUZZ_RUNS")?.let { environment("ARON_FUZZ_RUNS", it) }
+    System.getenv("ARON_FUZZ_SEED")?.let { environment("ARON_FUZZ_SEED", it); inputs.property("ARON_FUZZ_SEED", it) }
+    System.getenv("ARON_FUZZ_RUNS")?.let { environment("ARON_FUZZ_RUNS", it); inputs.property("ARON_FUZZ_RUNS", it) }
     // N-024 (qa): SyncFaultScheduleFuzzTest size, seed and phone count (the acceptance run uses 10000 schedules).
-    listOf("ARON_SYNC_FUZZ_SCHEDULES", "ARON_SYNC_FUZZ_SEED", "ARON_SYNC_FUZZ_PHONES").forEach { k -> System.getenv(k)?.let { environment(k, it) } }
+    // Test.environment is not an up-to-date input: declare the values, or a changed size reuses the last result.
+    listOf("ARON_SYNC_FUZZ_SCHEDULES", "ARON_SYNC_FUZZ_SEED", "ARON_SYNC_FUZZ_PHONES").forEach { k -> System.getenv(k)?.let { environment(k, it); inputs.property(k, it) } }
     systemProperty("aron.repoRoot", rootProject.layout.projectDirectory.asFile.absolutePath)
 }
