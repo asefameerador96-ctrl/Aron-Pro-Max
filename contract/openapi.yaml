@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Aron API
-  version: 1.3.1
+  version: 1.3.2
   summary: The one API of the Aron rebuild (SR, AMO and TSO apps, web dashboards and admin portal).
   description: |
     Binding contract for every lane of the seven-day build. Rules that apply to every operation are in
@@ -5276,7 +5276,12 @@ components:
       type: [string, number, boolean, 'null']
       maxLength: 2000
     ConfigValueJson:
-      description: A config value; its shape is fixed by the key's `value_type` in the registry (validated by the registry, not by this schema).
+      description: |
+        A config value; its shape is fixed by the key's `value_type` in the registry (validated by the registry, not by
+        this schema). A role map holds per role a scalar, an object (`cfg.bundle.outlet_fields`:
+        `{"SR": {"exclude": [...]}}`) or an array of scalars or objects (`cfg.web.menu_by_role`:
+        `{"TSO": [{"menu": ..., "page": ..., "actions": [...]}]}`); an object inside holds scalars or arrays of scalars
+        (`ConfigValueRecord`).
       anyOf:
         - type: [number, boolean]
         - type: string
@@ -5287,17 +5292,27 @@ components:
             anyOf:
               - type: [string, number]
                 maxLength: 200
-              - type: object
-                additionalProperties: { $ref: '#/components/schemas/JsonScalar' }
+              - { $ref: '#/components/schemas/ConfigValueRecord' }
         - type: object
           additionalProperties:
             anyOf:
               - { $ref: '#/components/schemas/JsonScalar' }
               - type: array
                 maxItems: 200
-                items: { $ref: '#/components/schemas/JsonScalar' }
-              - type: object
-                additionalProperties: { $ref: '#/components/schemas/JsonScalar' }
+                items:
+                  anyOf:
+                    - { $ref: '#/components/schemas/JsonScalar' }
+                    - { $ref: '#/components/schemas/ConfigValueRecord' }
+              - { $ref: '#/components/schemas/ConfigValueRecord' }
+    ConfigValueRecord:
+      description: An object inside a config value (a menu entry, a per-role rule); members are scalars or arrays of scalars.
+      type: object
+      additionalProperties:
+        anyOf:
+          - { $ref: '#/components/schemas/JsonScalar' }
+          - type: array
+            maxItems: 200
+            items: { $ref: '#/components/schemas/JsonScalar' }
 
     # ---------- enums ----------
     Role:
@@ -7621,8 +7636,13 @@ components:
         sort: { type: integer }
         attrs:
           type: object
-          description: List-specific attributes (for example `group` MFC or MKT on qc_fault_type).
-          additionalProperties: { $ref: '#/components/schemas/JsonScalar' }
+          description: List-specific attributes, each a scalar or an array of scalars (for example `group` MFC or MKT and `applies_to` [app, web] on qc_fault_type, `roles` [AMO] on force_reason).
+          additionalProperties:
+            anyOf:
+              - { $ref: '#/components/schemas/JsonScalar' }
+              - type: array
+                maxItems: 50
+                items: { $ref: '#/components/schemas/JsonScalar' }
         valid_from: { $ref: '#/components/schemas/BusinessDate' }
         valid_to:
           oneOf:

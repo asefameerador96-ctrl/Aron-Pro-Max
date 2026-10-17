@@ -2,37 +2,4 @@
 # One line per finding key: `METHOD shape status kind[ error]` (a schema error is `<instance path> <keyword>[ <property>]`,
 # so a NEW error on an operation already listed still fails). May only SHRINK: remove a line when its deviation is fixed.
 # Routed in docs/requests/qa-contract-conformance.md.
-GET /v1/admin/code-lists 200 schema /lists/*/items/*/attrs/applies_to type
-GET /v1/admin/code-lists 200 schema /lists/*/items/*/attrs/roles type
 GET /v1/admin/config/keys 200 schema /items/*/default_value type
-GET /v1/admin/config/keys 200 schema /items/*/default_value/ADMIN type
-GET /v1/admin/config/keys 200 schema /items/*/default_value/ADMIN/* type
-GET /v1/admin/config/keys 200 schema /items/*/default_value/ANALYST type
-GET /v1/admin/config/keys 200 schema /items/*/default_value/ANALYST/* type
-GET /v1/admin/config/keys 200 schema /items/*/default_value/DMO type
-GET /v1/admin/config/keys 200 schema /items/*/default_value/DMO/* type
-GET /v1/admin/config/keys 200 schema /items/*/default_value/SR type
-GET /v1/admin/config/keys 200 schema /items/*/default_value/SR/exclude type
-GET /v1/admin/config/keys 200 schema /items/*/default_value/SUPERADMIN type
-GET /v1/admin/config/keys 200 schema /items/*/default_value/SUPERADMIN/* type
-GET /v1/admin/config/keys 200 schema /items/*/default_value/SUPPORT type
-GET /v1/admin/config/keys 200 schema /items/*/default_value/SUPPORT/* type
-GET /v1/admin/config/keys 200 schema /items/*/default_value/TOP type
-GET /v1/admin/config/keys 200 schema /items/*/default_value/TOP/* type
-GET /v1/admin/config/keys 200 schema /items/*/default_value/TSO type
-GET /v1/admin/config/keys 200 schema /items/*/default_value/TSO/* type
-GET /v1/admin/config/keys 200 schema /items/*/default_value/WM type
-GET /v1/admin/config/keys 200 schema /items/*/default_value/WM/* type
-GET /v1/sync/bundle 200 schema /code_lists/*/items/*/attrs/applies_to type
-GET /v1/sync/bundle 200 schema /code_lists/*/items/*/attrs/roles type
-PUT /v1/admin/code-lists/{} 200 schema /items/*/attrs/roles type
-PUT /v1/admin/permissions/roles/{} 202 schema /changes/* unevaluatedProperties effective_from
-PUT /v1/admin/permissions/roles/{} 202 schema /changes/* unevaluatedProperties effective_to
-PUT /v1/admin/permissions/roles/{} 202 schema /changes/* unevaluatedProperties key
-PUT /v1/admin/permissions/roles/{} 202 schema /changes/* unevaluatedProperties scope_id
-PUT /v1/admin/permissions/roles/{} 202 schema /changes/* unevaluatedProperties scope_type
-PUT /v1/admin/permissions/roles/{} 202 schema /changes/* unevaluatedProperties value
-PUT /v1/admin/permissions/roles/{} 202 schema /changes/*/value oneOf
-PUT /v1/admin/permissions/roles/{} 202 schema /changes/*/value type
-PUT /v1/admin/permissions/roles/{} 202 schema /changes/*/value/* type
-PUT /v1/admin/permissions/roles/{} 202 schema /changes/*/value/*/actions type

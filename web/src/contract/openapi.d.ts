@@ -3249,13 +3249,19 @@ export interface components {
         TimeOfDay: string;
         /** @description A JSON scalar (strings at most 2000 characters). */
         JsonScalar: string | number | boolean | null;
-        /** @description A config value; its shape is fixed by the key's `value_type` in the registry (validated by the registry, not by this schema). */
-        ConfigValueJson: (number | boolean) | string | ((string | number) | {
-            [key: string]: components["schemas"]["JsonScalar"];
-        })[] | {
-            [key: string]: components["schemas"]["JsonScalar"] | components["schemas"]["JsonScalar"][] | {
-                [key: string]: components["schemas"]["JsonScalar"];
-            };
+        /**
+         * @description A config value; its shape is fixed by the key's `value_type` in the registry (validated by the registry, not by
+         *     this schema). A role map holds per role a scalar, an object (`cfg.bundle.outlet_fields`:
+         *     `{"SR": {"exclude": [...]}}`) or an array of scalars or objects (`cfg.web.menu_by_role`:
+         *     `{"TSO": [{"menu": ..., "page": ..., "actions": [...]}]}`); an object inside holds scalars or arrays of scalars
+         *     (`ConfigValueRecord`).
+         */
+        ConfigValueJson: (number | boolean) | string | ((string | number) | components["schemas"]["ConfigValueRecord"])[] | {
+            [key: string]: components["schemas"]["JsonScalar"] | (components["schemas"]["JsonScalar"] | components["schemas"]["ConfigValueRecord"])[] | components["schemas"]["ConfigValueRecord"];
+        };
+        /** @description An object inside a config value (a menu entry, a per-role rule); members are scalars or arrays of scalars. */
+        ConfigValueRecord: {
+            [key: string]: components["schemas"]["JsonScalar"] | components["schemas"]["JsonScalar"][];
         };
         /**
          * @description User role (docs/24 s8.5). One role per user; admin permission bundles are separate.
@@ -5054,9 +5060,9 @@ export interface components {
             label_bn?: string | null;
             label_en: string;
             sort: number;
-            /** @description List-specific attributes (for example `group` MFC or MKT on qc_fault_type). */
+            /** @description List-specific attributes, each a scalar or an array of scalars (for example `group` MFC or MKT and `applies_to` [app, web] on qc_fault_type, `roles` [AMO] on force_reason). */
             attrs?: {
-                [key: string]: components["schemas"]["JsonScalar"];
+                [key: string]: components["schemas"]["JsonScalar"] | components["schemas"]["JsonScalar"][];
             };
             valid_from?: components["schemas"]["BusinessDate"];
             valid_to?: components["schemas"]["BusinessDate"] | null;
