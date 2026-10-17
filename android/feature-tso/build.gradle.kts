@@ -16,6 +16,7 @@ dependencies {
     implementation(project(":android:core-ui"))
     implementation(project(":android:core-common"))
     implementation(project(":android:feature-home"))
+    implementation(libs.kotlinx.serialization.json)
     implementation(libs.maps.compose)
     testImplementation(libs.junit4)
     testImplementation(libs.mockk)

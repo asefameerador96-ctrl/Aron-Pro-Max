@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="tso_dash_dash">–</string>
+    <string name="tso_dash_as_of">%1$s পর্যন্ত</string>
+    <string name="tso_dash_offline">আনা যায়নি। এই ফোনে যা আছে তা দেখাচ্ছে।</string>
+    <string name="tso_dash_kept">শেষবার অনলাইনে থাকার সময়ের তথ্য।</string>
+    <string name="tso_dash_none">এখনও কোনো তথ্য নেই</string>
+    <string name="tso_dash_none_hint">অনলাইনে থাকলে এটি খুলুন। এটি নিজে থেকে হালনাগাদ হয় না।</string>
+    <string name="tso_dash_filter">ফিল্টার</string>
+    <string name="tso_dash_refresh">রিফ্রেশ</string>
+    <string name="tso_dash_zone">জোন</string>
+    <string name="tso_dash_all_zones">আমার সব জোন</string>
+    <string name="tso_dash_selected">নির্বাচিত</string>
+    <string name="tso_cat_cigarette">সিগারেট</string>
+    <string name="tso_cat_bidi">বিড়ি</string>
+    <string name="tso_cat_lighter">লাইটার</string>
+    <string name="tso_cat_match">ম্যাচ</string>
+    <string name="tso_unit_stick">শলাকা</string>
+    <string name="tso_unit_dozen">ডজন</string>
+    <string name="tso_unit_box">বক্স</string>
+    <string name="tso_unit_pack">প্যাক</string>
+    <string name="tso_unit_piece">পিস</string>
+    <string name="tso_dash_sales_of">বিক্রি (%1$s)</string>
+    <string name="tso_dash_lakh">লাখ</string>
+    <string name="tso_dash_crore">কোটি</string>
+    <string name="tso_dash_cpr">লাইভ সিপিআর</string>
+    <string name="tso_dash_x_of_y">%2$s এর মধ্যে %1$s</string>
+    <string name="tso_dash_cpr_labels">টার্গেট আউটলেটের মধ্যে সফল কল</string>
+    <string name="tso_dash_channel_std">চ্যানেল অনুযায়ী এসটিডি</string>
+    <string name="tso_dash_segment">সেগমেন্ট অনুযায়ী মূল্যের অবদান</string>
+    <string name="tso_dash_value">মূল্য</string>
+    <string name="tso_dash_volume">পরিমাণ</string>
+    <string name="tso_dash_brand_ratio">ব্র্যান্ড অনুযায়ী কল/মেমো অনুপাত</string>
+    <string name="tso_dash_no_sales">এখনও কোনো বিক্রি নেই।</string>
+    <string name="tso_dash_login_submit">লগইন ও বিক্রয় জমার অবস্থা</string>
+    <string name="tso_dash_login_status">লগইনের অবস্থা</string>
+    <string name="tso_dash_submit_status">জমার অবস্থা</string>
+    <string name="tso_dash_no_login">এখনও লগইনের তথ্য নেই।</string>
+    <string name="tso_dash_not_logged_in">লগইন করেননি (%1$s)</string>
+    <string name="tso_dash_not_uploaded">আপলোড হয়নি (%1$s)</string>
+    <string name="tso_dash_list_empty">এখানে কিছু নেই।</string>
+    <string name="tso_dash_routes">রুট</string>
+    <string name="tso_dash_title">ড্যাশবোর্ড</string>
+</resources>
