@@ -110,7 +110,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import com.aktcl.aron.feature.home.R as HomeR
 
-enum class SrScreen { PERMISSIONS, ROUTE_PICK, HOME, ATTENDANCE, STOCK, PICKER, VISIT, FORCE, TASKS, SETTINGS, SUPPORT, OUTLET_MENU, OWN_REQUESTS, REQUEST_OUTLET, REQUEST_FORM, NO_SALE, SKIP, MEMO, EDIT, SUMMARY, SUBMIT, JOURNEY, KPI }
+enum class SrScreen { PERMISSIONS, ROUTE_PICK, HOME, ATTENDANCE, STOCK, PICKER, VISIT, FORCE, TASKS, SETTINGS, SUPPORT, OUTLET_MENU, OWN_REQUESTS, REQUEST_OUTLET, REQUEST_FORM, NO_SALE, SKIP, MEMO, EDIT, SUMMARY, SUBMIT, JOURNEY, KPI, TUTORIAL }
 
 /** The screen tree of the SR app: Back and the top bar's back button follow the same parent mapping; depth drives the transition direction. */
 object SrNav {
@@ -343,6 +343,7 @@ fun SrApp(
                         HomeTile.SALES_SUBMIT -> screen = SrScreen.SUBMIT
                         HomeTile.SALES_JOURNEY -> screen = SrScreen.JOURNEY
                         HomeTile.KPI -> screen = SrScreen.KPI
+                        HomeTile.TUTORIAL -> screen = SrScreen.TUTORIAL
                         else -> onOtherTile(t)
                     }
                 },
@@ -433,6 +434,7 @@ fun SrApp(
         SrScreen.SUBMIT -> SrFrame(stringResource(HomeR.string.hm_tile_sales_submit), goBack, sync, openSync) { SubmitHost(day) }
         SrScreen.JOURNEY -> SrFrame(stringResource(HomeR.string.hm_tile_sales_journey), goBack, sync, openSync) { JourneyHost(day) }
         SrScreen.KPI -> SrFrame(stringResource(HomeR.string.hm_tile_kpi), goBack, sync, openSync) { KpiHost(day) }
+        SrScreen.TUTORIAL -> TutorialHost(day, onBack = goBack)
         SrScreen.FORCE -> SrFrame(stringResource(HomeR.string.hm_tile_sale), goBack, sync, openSync) {
             val st by day.visitFlow.state.collectAsState()
             val capture = remember { day.newCapture("outlet_capture") }
