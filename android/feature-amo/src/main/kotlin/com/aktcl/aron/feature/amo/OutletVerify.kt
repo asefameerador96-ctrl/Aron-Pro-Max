@@ -25,7 +25,9 @@ data class VerifyDetail(val type: String, val status: String, val requestedBy: L
 
 /** Pure rules of the AMO verification screens (F-AMO-022/023/024); the app wires them to the API, the store and the camera. */
 object OutletVerify {
-    val GEO_CLASSES = listOf("Hill", "Urban", "SemiUrban", "Rural")
+    /** Contract `geo_class` values; the names are the wire values. */
+    private enum class GeoClass { Hill, Urban, SemiUrban, Rural }
+    val GEO_CLASSES: List<String> = GeoClass.entries.map { it.name }
     private val INFO_FIELDS = listOf("name", "name_bn", "owner_name", "contact_number", "address", "sub_channel_id")
 
     private fun str(o: JsonObject, k: String) = (o[k] as? JsonPrimitive)?.contentOrNull

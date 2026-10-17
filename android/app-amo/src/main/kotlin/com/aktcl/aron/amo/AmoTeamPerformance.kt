@@ -26,7 +26,7 @@ fun AmoTeamPerformance(day: AmoDay, modifier: Modifier = Modifier) {
     var tillDate by rememberSaveable { mutableStateOf(false) }
     LaunchedEffect(day) {
         val f = day.api.targets(day.businessDate().take(7))
-        json = when (f) { is AmoFetch.Fresh -> f.json; is AmoFetch.Cached -> f.json; AmoFetch.Unavailable -> null }
+        json = f.jsonOrNull()
         stale = f is AmoFetch.Cached; failed = f is AmoFetch.Unavailable; loaded = true
     }
     if (!loaded) { Box(modifier.fillMaxSize(), Alignment.Center) { CircularProgressIndicator() }; return }

@@ -48,8 +48,8 @@ fun AmoLiveDashboard(day: AmoDay, filtering: Boolean, onFiltering: (Boolean) -> 
         loaded = false
         val date = day.businessDate()
         val l = day.api.liveDashboard(date, applied.first)
-        val json = when (l) { is AmoFetch.Fresh -> l.json; is AmoFetch.Cached -> l.json; AmoFetch.Unavailable -> null }
-        stale = l is AmoFetch.Cached; failed = l is AmoFetch.Unavailable
+        val json = l.jsonOrNull()
+        stale = l is AmoFetch.Cached; failed = l.isMissing()
         // The login-submit answer carries the whole KPI block and the route lists: one call, and the stale flag is its own.
         figures = LiveDashboard.parse(json, json, applied.second)
         loaded = true

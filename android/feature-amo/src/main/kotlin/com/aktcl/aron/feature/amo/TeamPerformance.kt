@@ -18,7 +18,11 @@ data class PerfBar(val name: String, val unit: String, val target: Double, val a
  * with no rows today and the screen shows its empty state; the parsing and the bars are ready for when targets come back.
  */
 object TeamPerformance {
-    fun band(pct: Double): PerfBand = if (pct >= 80.0) PerfBand.GREEN else if (pct >= 40.0) PerfBand.AMBER else PerfBand.RED
+    /** The band follows the printed whole percent, so the number and the colour never disagree (79.6 prints 80 and is green). */
+    fun band(pct: Double): PerfBand = Math.round(printed(pct)).let { p -> if (p >= 80) PerfBand.GREEN else if (p >= 40) PerfBand.AMBER else PerfBand.RED }
+
+    /** A quantity with up to two decimals and no trailing zeros (12.5, 13, 0.25). */
+    fun qty(v: Double): String = java.math.BigDecimal(v).setScale(2, java.math.RoundingMode.HALF_UP).stripTrailingZeros().toPlainString()
 
     /** The printed percent never exceeds 100; the bar is full at 100. */
     fun printed(pct: Double): Double = pct.coerceIn(0.0, 100.0)

@@ -7,7 +7,7 @@ import org.junit.Test
 
 class TeamPerformanceTest {
     @Test fun bandsAreGreenFrom80AmberFrom40RedBelow() {
-        assertEquals(PerfBand.GREEN, TeamPerformance.band(80.0)); assertEquals(PerfBand.AMBER, TeamPerformance.band(79.99)); assertEquals(PerfBand.AMBER, TeamPerformance.band(40.0)); assertEquals(PerfBand.RED, TeamPerformance.band(39.9))
+        assertEquals(PerfBand.GREEN, TeamPerformance.band(80.0)); assertEquals(PerfBand.AMBER, TeamPerformance.band(79.4)); assertEquals(PerfBand.AMBER, TeamPerformance.band(40.0)); assertEquals(PerfBand.RED, TeamPerformance.band(39.4))
         assertEquals(100.0, TeamPerformance.printed(135.0), 0.0); assertEquals(0.0, TeamPerformance.printed(-3.0), 0.0)
     }
 
@@ -25,5 +25,10 @@ class TeamPerformanceTest {
     @Test fun zeroTargetIsADashAndNoRowsIsEmpty() {
         assertNull(TeamPerformance.bars(json, "category", false)[1].pct)
         assertTrue(TeamPerformance.bars("""{"rows":[]}""", "category", false).isEmpty()); assertTrue(TeamPerformance.bars(null, "category", false).isEmpty())
+    }
+
+    @Test fun bandFollowsThePrintedPercentAndQuantitiesKeepTwoDecimals() {
+        assertEquals(PerfBand.GREEN, TeamPerformance.band(79.6)); assertEquals(PerfBand.AMBER, TeamPerformance.band(79.4)); assertEquals(PerfBand.AMBER, TeamPerformance.band(39.6)); assertEquals(PerfBand.RED, TeamPerformance.band(39.4))
+        assertEquals("12.5", TeamPerformance.qty(12.5)); assertEquals("13", TeamPerformance.qty(13.0)); assertEquals("0.25", TeamPerformance.qty(0.25))
     }
 }

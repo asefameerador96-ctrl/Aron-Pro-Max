@@ -73,8 +73,8 @@ private fun rememberReport(day: AmoDay, key: String, from: String, to: String): 
     var loaded by remember(key, from, to) { mutableStateOf<Loaded?>(null) }
     LaunchedEffect(key, from, to) {
         val f = day.api.report(key, from, to)
-        val json = when (f) { is AmoFetch.Fresh -> f.json; is AmoFetch.Cached -> f.json; AmoFetch.Unavailable -> null }
-        loaded = Loaded(Reports.parse(json), f is AmoFetch.Cached, f is AmoFetch.Unavailable)
+        val json = f.jsonOrNull()
+        loaded = Loaded(Reports.parse(json), f is AmoFetch.Cached, f.isMissing())
     }
     return loaded
 }

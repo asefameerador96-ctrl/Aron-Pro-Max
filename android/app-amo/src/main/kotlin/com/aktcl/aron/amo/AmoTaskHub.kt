@@ -99,7 +99,7 @@ private fun AmoTaskList(day: AmoDay, team: List<TeamSr>, days: List<RouteDay>, o
         val local = runCatching { day.localTasks() }.getOrDefault(emptyList())
         val from = java.time.LocalDate.parse(day.businessDate()).minusDays(30).toString()
         val fetched = day.api.tasks(from)
-        val json = when (fetched) { is AmoFetch.Fresh -> fetched.json; is AmoFetch.Cached -> fetched.json; AmoFetch.Unavailable -> null }
+        val json = fetched.jsonOrNull()
         stale = fetched is AmoFetch.Cached; failed = fetched !is AmoFetch.Fresh
         tasks = TaskDelegation.merge(TaskDelegation.assignedBy(json, day.userId), local)
     }

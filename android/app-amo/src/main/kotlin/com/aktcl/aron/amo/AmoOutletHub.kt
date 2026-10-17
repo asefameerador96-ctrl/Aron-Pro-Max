@@ -204,6 +204,7 @@ private fun AmoVerifyHost(day: AmoDay, uuid: String?, onDone: () -> Unit, onGone
         detail = when (val f = day.api.outletRequest(r.uuid)) {
             is AmoFetch.Fresh -> com.aktcl.aron.feature.amo.OutletVerify.detail(f.json)?.let { com.aktcl.aron.feature.amo.VerifyDetailState.Loaded(it, true) }
             is AmoFetch.Cached -> com.aktcl.aron.feature.amo.OutletVerify.detail(f.json)?.let { com.aktcl.aron.feature.amo.VerifyDetailState.Loaded(it, false) }
+            AmoFetch.Gone -> com.aktcl.aron.feature.amo.VerifyDetailState.Gone
             AmoFetch.Unavailable -> null
         } ?: com.aktcl.aron.feature.amo.VerifyDetailState.Unavailable
     }
@@ -216,6 +217,7 @@ private fun AmoVerifyHost(day: AmoDay, uuid: String?, onDone: () -> Unit, onGone
     var note by rememberSaveable(uuid) { mutableStateOf("") }
     var errors by remember { mutableStateOf<Set<com.aktcl.aron.feature.amo.VerifyError>>(emptySet()) }
     var noFix by remember { mutableStateOf(false) }
+    var saveFailed by remember { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
     val bangla = androidx.compose.ui.platform.LocalConfiguration.current.locales[0].language == "bn"
     val outlet = remember(req.outletId, day.zoneOutlets.size) { day.zoneOutlets.firstOrNull { it.outletId == req.outletId } }
@@ -228,14 +230,15 @@ private fun AmoVerifyHost(day: AmoDay, uuid: String?, onDone: () -> Unit, onGone
     // The SR's proposed sub-channel and geo class are the starting point for a new outlet.
     LaunchedEffect(loaded?.detail) {
         loaded?.detail?.takeIf { it.type == "new" }?.let { d ->
-            if (subId == null) subId = d.proposed["sub_channel_id"]?.toLongOrNull()
+            if (subId == null) subId = d.proposed["sub_channel_id"]?.toLongOrNull()?.takeIf { id -> subs.any { it.id == id } }
             if (geo == null) geo = d.proposed["geo_class"]?.takeIf { it in com.aktcl.aron.feature.amo.OutletVerify.GEO_CLASSES }
         }
     }
     val dueLabel = stringResource(AmoR.string.amo_verify_f_due)
     val money = com.aktcl.aron.rules.Formats.money(outlet?.openDueMtk ?: 0L, if (bangla) com.aktcl.aron.rules.UiLocale.BN else com.aktcl.aron.rules.UiLocale.EN)
     val facts = if (req.type == "close" && outlet != null) listOf(dueLabel to money + (outlet.openDueAsOf?.let { " (" + stringResource(AmoR.string.amo_verify_f_due_as_of, it) + ")" } ?: "")) else emptyList()
-    val decidable = loaded?.takeIf { it.fresh }?.let { com.aktcl.aron.feature.amo.OutletVerify.decidable(it.detail, day.userId) } ?: true
+    // A request the server refuses or no longer has (403/404) cannot be decided; a stale kept copy or no detail offline can (the server re-checks).
+    val decidable = detail !is com.aktcl.aron.feature.amo.VerifyDetailState.Gone && (loaded?.takeIf { it.fresh }?.let { com.aktcl.aron.feature.amo.OutletVerify.decidable(it.detail, day.userId) } ?: true)
     fun decide(verify: Boolean) {
         val e = com.aktcl.aron.feature.amo.OutletVerify.validate(req.type, verify, subId, geo)
         errors = e
@@ -243,16 +246,18 @@ private fun AmoVerifyHost(day: AmoDay, uuid: String?, onDone: () -> Unit, onGone
         busy = true; noFix = false
         scope.launch {
             val ask = req.type == "new"
+            var threw = false
             val ok = try {
                 day.decideRequest(recordUuid, req.uuid, verify, if (ask) subId else null, if (ask) geo else null, note.trim().ifEmpty { null }, null)
-            } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { false }
+            } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { threw = true; false }
             busy = false
-            if (ok) onDone() else noFix = true
+            saveFailed = threw
+            if (ok) onDone() else noFix = !threw
         }
     }
     com.aktcl.aron.feature.amo.VerifyFormContent(
         request = req, detail = detail, changes = changes, facts = facts, askClassification = req.type == "new", decidable = decidable, subChannels = subs, bangla = bangla, subChannelId = subId, geoClass = geo, note = note,
-        errors = errors, noFix = noFix, busy = busy, onSubChannel = { subId = it }, onGeoClass = { geo = it }, onNote = { note = it },
+        errors = errors, noFix = noFix, saveFailed = saveFailed, busy = busy, onSubChannel = { subId = it }, onGeoClass = { geo = it }, onNote = { note = it },
         onSave = { decide(true) }, onCancel = onGone, onReject = { decide(false) },
     )
 }

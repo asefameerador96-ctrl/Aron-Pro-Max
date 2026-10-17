@@ -31,6 +31,8 @@ sealed interface VerifyDetailState {
     data object Loading : VerifyDetailState
     data class Loaded(val detail: VerifyDetail, val fresh: Boolean) : VerifyDetailState
     data object Unavailable : VerifyDetailState
+    /** The server refuses the request or no longer has it (403/404). */
+    data object Gone : VerifyDetailState
 }
 
 @Composable
@@ -101,6 +103,7 @@ fun VerifyFormContent(
     note: String,
     errors: Set<VerifyError>,
     noFix: Boolean,
+    saveFailed: Boolean,
     busy: Boolean,
     onSubChannel: (Long) -> Unit,
     onGeoClass: (String) -> Unit,
@@ -121,6 +124,7 @@ fun VerifyFormContent(
             when (detail) {
                 VerifyDetailState.Loading -> Box(Modifier.fillMaxWidth().padding(AronTokens.Space.L), Alignment.Center) { CircularProgressIndicator() }
                 VerifyDetailState.Unavailable -> AronBanner(stringResource(R.string.amo_verify_details_offline), kind = BannerKind.Warning)
+                VerifyDetailState.Gone -> Unit // the not-pending banner above says it
                 is VerifyDetailState.Loaded -> {
                     if (!detail.fresh) AronBanner(stringResource(R.string.amo_verify_details_kept), kind = BannerKind.Info)
                     detail.detail.flags.forEach { AronBanner(flagLabel(it), kind = BannerKind.Warning) }
@@ -157,6 +161,7 @@ fun VerifyFormContent(
             }
             KitTextField(note, onNote, stringResource(R.string.amo_verify_note), Modifier.fillMaxWidth(), singleLine = false)
             if (noFix) AronBanner(stringResource(R.string.amo_verify_no_fix), kind = BannerKind.Error)
+            if (saveFailed) AronBanner(stringResource(R.string.amo_task_failed), kind = BannerKind.Error)
         }
         Column(Modifier.fillMaxWidth().padding(AronTokens.Space.Screen), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
             AronPrimaryButton(stringResource(R.string.amo_verify_save), onSave, Modifier.fillMaxWidth(), enabled = !busy && decidable, busy = busy)

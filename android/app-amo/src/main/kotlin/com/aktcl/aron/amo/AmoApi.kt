@@ -14,7 +14,14 @@ sealed interface AmoFetch {
     data class Fresh(val json: String) : AmoFetch
     data class Cached(val json: String) : AmoFetch
     data object Unavailable : AmoFetch
+    /** The server refuses or does not offer it (403, 404, 501): no old copy is served and the screen says so instead of "offline". */
+    data object Gone : AmoFetch
 }
+
+fun AmoFetch.jsonOrNull(): String? = when (this) { is AmoFetch.Fresh -> json; is AmoFetch.Cached -> json; else -> null }
+
+/** Nothing to show: offline with no kept copy, or refused. */
+fun AmoFetch.isMissing(): Boolean = this is AmoFetch.Unavailable || this is AmoFetch.Gone
 
 /**
  * The AMO's online reads (docs/24 s3: the zone's lists that are not in the bundle). Every read keeps its last answer per user on this
@@ -47,7 +54,7 @@ class AmoApi(private val client: AronApiClient, context: Context, userId: Long) 
     suspend fun report(key: String, from: String, to: String): AmoFetch {
         val cacheKey = "rep_${key}_${from}_$to"
         val first = post("/v1/reports/$key/query", com.aktcl.aron.feature.amo.Reports.body(from, to, 1))
-        if (first.refused) { forget(cacheKey); return AmoFetch.Unavailable }
+        if (first.refused) { forget(cacheKey); return AmoFetch.Gone }
         if (first.json == null) return cached(cacheKey)
         val pages = mutableListOf(first.json)
         val total = com.aktcl.aron.feature.amo.Reports.parse(first.json)?.totalRows ?: 0
@@ -74,7 +81,7 @@ class AmoApi(private val client: AronApiClient, context: Context, userId: Long) 
         )
         return when {
             r is ApiResult.Success -> PostResult(r.value, false)
-            r is ApiResult.Failure && (r.httpStatus == 403 || r.httpStatus == 404) -> PostResult(null, true) // out of reach: no old copy either
+            r is ApiResult.Failure && (r.httpStatus == 403 || r.httpStatus == 404 || r.httpStatus == 501) -> PostResult(null, true) // out of reach: no old copy either
             else -> PostResult(null, false)
         }
     }
@@ -103,7 +110,7 @@ class AmoApi(private val client: AronApiClient, context: Context, userId: Long) 
         return when (r) {
             is ApiResult.Success -> { if (key != null) remember(key, r.value); AmoFetch.Fresh(r.value) }
             // Out of reach or gone: never serve an old copy of something the server now refuses.
-            is ApiResult.Failure -> if (r.httpStatus == 403 || r.httpStatus == 404) { key?.let(::forget); AmoFetch.Unavailable } else key?.let(::cached) ?: AmoFetch.Unavailable
+            is ApiResult.Failure -> if (r.httpStatus == 403 || r.httpStatus == 404 || r.httpStatus == 501) { key?.let(::forget); AmoFetch.Gone } else key?.let(::cached) ?: AmoFetch.Unavailable
             else -> key?.let(::cached) ?: AmoFetch.Unavailable
         }
     }

@@ -273,4 +273,8 @@
     <string name="amo_perf_empty_hint">এই সংস্করণে টার্গেট নেই। টার্গেট চালু হলে বারগুলো এখানে দেখা যাবে।</string>
     <string name="amo_perf_line">টার্গেট %1$s · অর্জন %2$s · বাকি %3$s</string>
     <string name="amo_rep_totals_hidden">রুটের মোট শুধু ছোট রিপোর্টে দেখানো হয়। এখানে মেমোগুলো আছে।</string>
+    <string name="amo_perf_good">ঠিক পথে</string>
+    <string name="amo_perf_watch">নজর দিন</string>
+    <string name="amo_perf_low">পিছিয়ে</string>
+    <string name="amo_perf_offline">টার্গেট আনা যায়নি। সংযোগ দেখে আবার খুলুন।</string>
 </resources>

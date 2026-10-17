@@ -33,8 +33,8 @@ fun AmoTeamStock(day: AmoDay, selected: Long?, onSelect: (Long) -> Unit, modifie
         phones = TeamStock.phones(runCatching { day.reference.section("supervisor") }.getOrNull())
         skus = runCatching { day.skuInfo() }.getOrDefault(emptyMap())
         val f = day.api.teamStock(day.businessDate())
-        stale = f is AmoFetch.Cached; failed = f is AmoFetch.Unavailable
-        srs = TeamStock.parse(when (f) { is AmoFetch.Fresh -> f.json; is AmoFetch.Cached -> f.json; AmoFetch.Unavailable -> null })
+        stale = f is AmoFetch.Cached; failed = f.isMissing()
+        srs = TeamStock.parse(f.jsonOrNull())
     }
     val list = srs ?: run { Box(modifier.fillMaxSize(), Alignment.Center) { CircularProgressIndicator() }; return }
     val sr = list.firstOrNull { it.userId == selected }

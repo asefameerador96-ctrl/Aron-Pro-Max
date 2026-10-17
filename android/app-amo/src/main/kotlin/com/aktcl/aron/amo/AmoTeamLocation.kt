@@ -45,8 +45,8 @@ fun AmoTeamLocation(day: AmoDay, modifier: Modifier = Modifier) {
     LaunchedEffect(day) {
         settings = day.mapSettings()
         val fetched = day.api.teamLocations(day.businessDate())
-        val json = when (fetched) { is AmoFetch.Fresh -> fetched.json; is AmoFetch.Cached -> fetched.json; AmoFetch.Unavailable -> null }
-        kept = fetched is AmoFetch.Cached; failed = fetched is AmoFetch.Unavailable
+        val json = fetched.jsonOrNull()
+        kept = fetched is AmoFetch.Cached; failed = fetched.isMissing()
         points = TeamLocations.parse(json).map { MapPoint(it.userId.toString(), it.name, it.lat, it.lng, it.atMs, it.source?.let { s -> sources[s] ?: s }) }
     }
     val list = points ?: run { Box(modifier.fillMaxSize(), Alignment.Center) { CircularProgressIndicator() }; return }
