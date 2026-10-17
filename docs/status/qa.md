@@ -35,8 +35,8 @@
     same or another date, the same uuid past a broken trigger, a foreign registry row, a stray ledger row, a doubled
     ledger amount, and tampered totals.
   - CI default is 240 schedules, about 40 s.
-  - Acceptance: 10,000 schedules on 8 phones, green (`docs/status/qa-n024-acceptance.txt`). It is being re-run on the
-    strengthened oracle; see In progress.
+  - Acceptance: 10,000 schedules on 8 phones, green (`docs/status/qa-n024-acceptance.txt`). The re-run on the
+    strengthened oracle passed too: 10,000 schedules, 3,583 kills, 138,260 rows.
   - Known gap, no seam without a product change: a death after the last family committed but before the response is
     stored.
 - **N-015 (T2)**: `tools/checks/day1-check.ps1` prints PASS/FAIL per check. It was tested with a fake adb and a mock
@@ -49,22 +49,42 @@
   - Generating 8,500 SRs, 9,842 users, 11,336 routes and 464,771 outlets took 75 s.
   - A 50-SR replay through the batch endpoint sent 8,187 records; 50 of 50 SRs reconciled and the resend came back
     all duplicate.
-  - The Opus checker is running.
+  - Two Opus checker rounds; every confirmed defect is fixed.
+
+- **N-022, N-050, N-043, N-042 (check scripts)**: `tools/checks/day2-check.ps1`, `day4-check.ps1`, `day3-check.ps1`
+  and `release-install-check.ps1`, each on the shared `AronCheck.psm1`.
+  - Each was tested on every path with a fake adb, a fake SDK and a mock API.
+  - Checkers: a Sonnet checker (N-022) and an Opus checker plus a re-check (N-042/043/050). The re-check confirmed all 9
+    majors fixed; its two minors are fixed too.
+  - **DEVICE-PENDING**: D-QA-2..5 in `device-checks.md`.
+  - The N-050 radius stamp waits on `qa-visit-radius-read.md`; N-042 `-ViaInAppUpdate` waits on
+    `qa-release-publish-route.md`.
+- **Executable bits**: tools/ci scripts are 100755 (the `infra/validate.sh` gate).
+- Heads sent as `checked`: f5976bf6.
 
 ## In progress
-- The N-024 10,000-schedule re-run on the strengthened oracle (started about 20:30Z).
-- The N-054 checker.
+- **N-061 (T1)**: report `docs/status/qa-n061-security-review.md`; the Opus checker is running.
+  - Scope harness: every debt read is judged; 0 leaks. The blind list shrank from 48 to 35 lines, global or
+    per-caller only.
+  - Dependencies: the Gradle OSV scan (`tools/ci/gradle-lockfile.py`) found Jackson 2.22.0 in the backend, 5 High.
+    Requests went to backend-core and infra.
+  - APK check: `tools/ci/apk-security-check.py`, with a CI request.
+  - Secrets: test fixtures only.
+- **N-059 (T2), local half**: `RestoreDrillReconciliationTest`. A restore copy plus the s4.8 re-send reconciles to 0
+  missing and 0 duplicated; the negative control loses the tail. The Sonnet checker is running.
+  - Finding: nothing mints a new server generation after a restore
+    (`docs/requests/qa-restore-mints-generation.md`).
+  - The Azure half needs the owner's phrase in `drill.yml`.
 
-## Next three rows
-1. N-061 security review: work down `scope-blind-baseline.txt`; map the `*_uuid` record path parameters; add a
-   secrets, dependency and token scan.
-2. N-022 Day 2 check script (airplane-mode sale, one memo on the server). F-SR-028, the print memo row, is not
-   logged done yet.
-3. N-050 Day 4 check script (radius 100 m to 50 m is obeyed at the next sync).
+## Next rows
+1. N-055 Day 5 script (needs F-AMO-022, F-TSO-010), N-063 Day 6 script (needs N-058, N-060), N-066 Day 7 script.
+2. N-058 load on Azure: pilot size only in the test account; it is blocked on N-056/N-057 and on sizing.
+3. Device rows (N-020, N-060, N-039): DEVICE-PENDING steps.
 
 ## Requests filed
-- `docs/requests/qa-contract-conformance.md` (lead: contract; backend-core, backend-admin, backend-reports).
-- `docs/requests/qa-done-rows-check.md` (infra: a CI step).
+- `qa-contract-conformance.md`, `qa-done-rows-check.md`, `qa-visit-radius-read.md`, `qa-apk-security-check.md`,
+  `qa-release-publish-route.md`, `qa-backend-jackson-cves.md`, `qa-infra-gradle-osv.md`,
+  `qa-restore-mints-generation.md` (all under `docs/requests/`).
 
 ## Traps
 - `Test.environment` is not an up-to-date input in Gradle. Declare `inputs.property` too, or a changed
@@ -83,3 +103,8 @@
 - Local setup: `service postgresql start`; role aron/aron; db aron_test;
   `ARON_TEST_PG_URL=jdbc:postgresql://localhost:5432/aron_test?user=aron&password=aron`.
   Migrations by psql need `-1`. `.claude/worktrees/` goes in `.git/info/exclude`.
+- A restore copy of a test database: `ALTER DATABASE src WITH ALLOW_CONNECTIONS false`, end its connections, then
+  `CREATE DATABASE copy TEMPLATE src`, then allow connections again. Then call `softEvictConnections()` on the
+  pools: otherwise their ended connections answer 503 at the next request.
+- `infra/validate.sh` fails any `tools/ci/*.py` or `*.sh` that is not 100755 in git: add new scripts with
+  `git update-index --chmod=+x`.
