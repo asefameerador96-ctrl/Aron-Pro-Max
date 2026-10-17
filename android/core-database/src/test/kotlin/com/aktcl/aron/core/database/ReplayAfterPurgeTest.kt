@@ -115,11 +115,38 @@ class ReplayAfterPurgeTest {
         ack()
         purge()
         assertEquals(1, scalar("SELECT COUNT(*) FROM purged_uuid WHERE client_uuid = ?", u))
+        LocalPurge(db).purge("2026-12-02", "2026-12-02T06:00:00.000Z") // 50 days after the purge on 2026-10-13
+        assertEquals("a younger tombstone stays", 1, scalar("SELECT COUNT(*) FROM purged_uuid WHERE client_uuid = ?", u))
         LocalPurge(db).purge("2026-12-20", "2026-12-20T06:00:00.000Z")
         assertEquals("older than 60 days: forgotten (the server dedupes it)", 0, scalar("SELECT COUNT(*) FROM purged_uuid WHERE client_uuid = ?", u))
+    }
+
+    @Test fun aReplayedNumberedSaleDoesNotBurnANumberOrLookSaved() = runBlocking {
+        val (visit, fix) = TestRows.visit()
+        repo.recordVisitOpen(visit, fix)
+        val numbering = com.aktcl.aron.core.database.repo.MemoNumbering("sr334001", 1, 500)
+        val sale = TestRows.sale(visit.clientUuid)
+        repo.recordNumberedSale(sale, numbering)
+        ack(); purge()
+        val before = scalar("SELECT COUNT(*) FROM memo_counter")
+        val failed = runCatching { repo.recordNumberedSale(sale, numbering) }.exceptionOrNull()
+        assertTrue("the replay fails loudly", failed is IllegalStateException)
+        assertEquals("no number was reserved", before, scalar("SELECT COUNT(*) FROM memo_counter"))
+        assertEquals(0, scalar("SELECT COUNT(*) FROM memo"))
+    }
+
+    @Test fun aReplayedPrintEventAfterThePurgeIsNotRecordedAgain() = runBlocking {
+        val ledger = com.aktcl.aron.core.database.repo.RoomPrintLedger(db, { base -> (base ?: TestRows.meta(routeId = null)) }, { "2026-10-05T04:40:00.000Z" })
+        val id = ClientIds.newUuid()
+        val event = com.aktcl.aron.core.printing.flow.PrintEvent(id, "stock_slip", null, ClientIds.newUuid(), 1, com.aktcl.aron.core.printing.flow.PrintEvent.PRINTED, true, 1, "RPP02N", 1_000L)
+        ledger.record(event)
+        ack(); purge()
+        ledger.record(event)
+        assertEquals(0, outboxRows(id)); assertEquals(0, scalar("SELECT COUNT(*) FROM print_event WHERE client_uuid = ?", id))
     }
 
     private companion object {
         const val MONEY = """{"active_memo_count":0,"gross_mtk":0,"offer_discount_mtk":0,"drp_discount_mtk":0,"qc_deduction_mtk":0,"net_mtk":0,"paid_mtk":0,"due_mtk":0,"due_collected_mtk":0,"net_by_category_mtk":{},"issued_qty_base_by_sku":{},"sold_qty_base_by_sku":{}}"""
     }
+
 }

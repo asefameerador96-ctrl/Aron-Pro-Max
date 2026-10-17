@@ -150,6 +150,8 @@ class CaptureRepository(
      * with it in one transaction. Returns the memo number. If the save fails the number is burned, never reused.
      */
     suspend fun recordNumberedSale(sale: SaleCapture, numbering: MemoNumbering): String {
+        // A replay of a sale that was already sent and purged must not burn a memo number or look saved: it fails loudly, as a missing visit would.
+        check(!purged(sale.memo.clientUuid)) { "memo ${sale.memo.clientUuid} was already saved and sent from this phone" }
         val memoNo = MemoNumbers(db).reserve(sale.memo.meta.businessDate, numbering)
         recordSale(sale.copy(memo = sale.memo.copy(memoNo = memoNo)))
         return memoNo
@@ -179,7 +181,7 @@ class CaptureRepository(
      * changes nothing and returns false, so a retried tap or replay never doubles it. Only the AMO record types are accepted.
      */
     suspend fun recordAmo(record: com.aktcl.aron.core.database.entity.AmoRecordEntity): Boolean = db.withTransaction {
-        if (purged(record.clientUuid)) return@withTransaction false
+        if (purged(record.clientUuid) || (record.familyUuid != record.clientUuid && purged(record.familyUuid))) return@withTransaction false // a child of a purged family is stale too
         requireUuids(record.clientUuid, record.familyUuid)
         require(record.recordType in AMO_RECORD_TYPES) { "not an AMO record type: ${record.recordType}" }
         val payload = runCatching { Json.parseToJsonElement(record.payloadJson) as? JsonObject }.getOrNull()

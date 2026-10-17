@@ -61,7 +61,7 @@ class LocalPurge(private val db: AronDatabase) {
             // Tombstones first: a replay of a purged UUID is then recognised and writes nothing (capture rows and outbox rows alike).
             w.execSQL("INSERT OR IGNORE INTO purged_uuid(client_uuid, purged_at) SELECT client_uuid, ? FROM purge_uuid", arrayOf<Any>(nowIso))
             w.execSQL("INSERT OR IGNORE INTO purged_uuid(client_uuid, purged_at) SELECT client_uuid, ? FROM purge_owner", arrayOf<Any>(nowIso))
-            val tombCutoff = java.time.Instant.parse(nowIso).minus(java.time.Duration.ofDays(TOMBSTONE_DAYS)).toString()
+            val tombCutoff = CaptureRepository.ISO_MILLIS.format(java.time.Instant.parse(nowIso).minus(java.time.Duration.ofDays(TOMBSTONE_DAYS)))
             w.execSQL("DELETE FROM purged_uuid WHERE purged_at < ?", arrayOf<Any>(tombCutoff))
             val fixes = w.compileStatement("DELETE FROM geo_fix WHERE owner_client_uuid IN (SELECT client_uuid FROM purge_owner)").use { it.executeUpdateDelete() }
             if (fixes > 0) counts["geo_fix"] = fixes
