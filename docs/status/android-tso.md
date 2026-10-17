@@ -1,19 +1,25 @@
 # Status: lane android-tso (wave 2, started 2026-10-17)
 
-## Done
-- F-TSO-001 checked (Opus), defects fixed. DEVICE-PENDING: Galaxy A06 check in Bangla and English (not yet in device-checks.md).
+## Done (all pushed to lane/android-tso, each with a fresh checker; defects fixed with tests)
+F-TSO-001 (Opus), 008, 009, 010+021 (Opus), 011, 012, 013-016, 018 (with photo), 024, 028, 029 (Sonnet).
+F-TSO-027, 002-007 were handed to the android-amo session by the lead (2026-10-18); not done by this lane.
 
-## Was in progress
-- F-TSO-001 (T1): dark navy login as the kit Dark mode (`TsoLoginTheme` in feature-tso, wired in `app-tso` MainActivity; status/nav bar icons follow; sunlight overrides dark). Logout dialog and reconciled-only wipe pre-exist (`ShellLogout`, `UnsentItemsDialog`, Settings confirm). Tests green locally. Opus checker running; row goes to the CSV when it reports.
+## How it is built (read before touching)
+- `feature-tso`: one package per area (`leave`, `feedback`, `mycall`, `finalsubmit`, `periphery`, `password`) with pure states (StateFlow, ports), JSON readers (org.json, bad rows dropped), screens on the Calm Glass kit. `TsoApp` wires them; state survives recreation through `rememberRetained` (keys carry the username; epochs in `RetainedCounter`).
+- `app-tso`: `TsoReadModels` (online GET + cache in the encrypted per-user `sync_meta`, wiped with the DB), `TsoOutbox` (generic durable queue: outbox row + mirror rows in ONE Room transaction, idempotent by client uuid), `MediaShell`/`SystemShell` (copies of the AMO ones), `MainActivity` hosts it all.
+- Every stable client uuid goes through `StableIds.v4` (the server accepts only UUID v4; `nameUUIDFromBytes` is v3 and is refused).
+- Final Submit is online only by design; everything else a TSO writes is offline-first.
 
-## Done (cont.)
-- F-TSO-008 leave list (checked by Sonnet, 4 defects fixed). Host: `TsoReadModels` (GET + cache in the encrypted per-user sync_meta, wiped with the DB), `TsoOutbox` (generic durable queue: outbox row + mirror row in one transaction, idempotent by uuid; no shared DTOs needed, payload is a JsonObject). Reuse `TsoOutbox` for every TSO write.
-- F-TSO-009 leave apply done (Sonnet checker: 1 defect fixed). `rememberRetained` keeps forms across recreation.
-- F-TSO-018 My Feedback form + F-TSO-029 list built and wired (categories from the bundle code_lists, offline; queue via TsoOutbox; toasts). The ONE-PHOTO part is not wired yet: needs a TSO MediaComponents shell like app-sr `MediaShell` (core-media + upload scheduler) and a `FeedbackPhotos` implementation; the form already has the port (`photosEnabled`). Checker for 018/029 pending.
+## Waiting / filed
+- `docs/requests/android-tso-record-mapping.md`: zone names and the Wing/Division/Territory/House/Zone cascade (needs a scope-tree read; Final Submit shows one zone list), the TSO bundle must carry `rubrics`, `task_type` and `feedback_category`, confirm `GET /v1/visit-plans` filter, offline password verifier after a password change (android-core).
+- DEVICE-PENDING lines are in `docs/status/device-checks.md` (D-TSO-001, 008/009, 011/012, 018/029 + photo, 024, 028).
 
-## Next rows
-F-TSO-018 My Feedback, F-TSO-028 chrome, F-TSO-029 feedback list, then Day 5 rows.
+## Known limits (not defects)
+- My Team list is not grouped by route (legend counts only); Retailer "clustered markers" is the server cap of 300 plus LiteMapScreen's own cap.
+- A rejected record keeps its "not sent yet" mirror row until the server shows the uuid.
+- Zone label is "Zone <id>" (no name in the contract reads).
 
 ## Traps
-- Local Gradle works online (not `--offline`): `echo sdk.dir=/opt/android-sdk > local.properties` after `tools/android-sdk.sh`; filter the `Picked up JAVA_TOOL_OPTIONS` noise.
-- Decision: only the login is dark; the signed-in day stays Calm Glass light (revisit in F-TSO-028).
+- Local Gradle works online: `echo sdk.dir=/opt/android-sdk > local.properties`; run from the repo root; filter `Picked up JAVA_TOOL_OPTIONS`.
+- Robolectric windows are small: use `performScrollTo` or tags on lazy lists; the real activity context is needed for `rememberLauncherForActivityResult`.
+- Merging `lane/android-amo` conflicts in `TsoApp.kt` and strings: keep both (host-supplied `screens` map and the TSO flows).
