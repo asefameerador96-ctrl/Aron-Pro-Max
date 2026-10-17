@@ -644,7 +644,7 @@ Source: contract/openapi.yaml, version 1.3.1.
 - `operations/issueDeviceOtp.yaml`  POST /v1/admin/device-otps (751 B)
 - `operations/listReleases.yaml`  GET /v1/admin/releases (590 B)
 - `operations/createRelease.yaml`  POST /v1/admin/releases (752 B)
-- `operations/updateRelease.yaml`  PATCH /v1/admin/releases/{release_id} (975 B)
+- `operations/updateRelease.yaml`  PATCH /v1/admin/releases/{release_id} (1032 B)
 - `operations/getReleasePolicy.yaml`  GET /v1/admin/releases/policy (525 B)
 - `operations/listAudit.yaml`  GET /v1/admin/audit (1062 B)
 - `operations/getNearbyOutlets.yaml`  GET /v1/outlets/nearby (1605 B)
