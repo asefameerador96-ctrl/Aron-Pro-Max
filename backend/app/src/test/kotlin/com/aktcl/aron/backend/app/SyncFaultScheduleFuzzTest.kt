@@ -19,6 +19,7 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
@@ -50,9 +51,12 @@ import kotlin.test.assertTrue
  * - **reorder** and **partial**: the outbox sends a random subset in random order (children before parents);
  * - **duplicate**: rows already acknowledged ride along in later batches; a whole batch is replayed (same batch_uuid);
  * - **drop**: the response is lost; the phone later resends the same batch (docs/24 s4.6: the persisted batch first);
- * - **truncated**: the gzip body is cut short in transit; the phone resends the same batch_uuid whole;
+ * - **truncated**: the gzip body is cut short in transit; the server must refuse it whole (it fails at decode, before
+ *   the batch is claimed) and accept the same batch_uuid resent whole;
  * - **kill**: the API process dies in the middle of the batch ([KillSwitch] throws an Error out of ingest after the
- *   n-th stored record: the families before it are committed, no response is sent); the phone resends the same batch;
+ *   n-th stored record: the families before it are committed, no response is sent); the phone resends the same batch.
+ *   Not modelled (no seam without a product change): a death after the last family committed but before the response
+ *   is stored, or during after-commit hooks; that window is covered by the replay path of the drop fault only;
  * - **concurrent**: the same batch twice in flight at once.
  * After every schedule the phone drains its outbox and resends its whole day once more, then [Oracle] checks the
  * property: for the phone's user and business date the server holds exactly the device's rows (every client_uuid,
@@ -63,8 +67,10 @@ import kotlin.test.assertTrue
  *
  * Size: `ARON_SYNC_FUZZ_SCHEDULES` (default 240, about two minutes; the acceptance run uses 10000), seed
  * `ARON_SYNC_FUZZ_SEED` (default fixed), phones `ARON_SYNC_FUZZ_PHONES` (default 4, each runs its schedules in
- * sequence, the phones in parallel). A failure names the phone and schedule seed; rerun with that seed and
- * `ARON_SYNC_FUZZ_SCHEDULES=1 ARON_SYNC_FUZZ_PHONES=1`.
+ * sequence, the phones in parallel). A failure names the phone and schedule seed; rerun with ARON_SYNC_FUZZ_SEED,
+ * the same ARON_SYNC_FUZZ_SCHEDULES and ARON_SYNC_FUZZ_PHONES: a phone's schedules build on each other (sale numbers,
+ * totals), so a schedule is reproduced only together with the ones before it on that phone. Client and batch uuids are
+ * random; they never steer a schedule's choices.
  */
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 @TestMethodOrder(MethodOrderer.OrderAnnotation::class)
@@ -76,7 +82,7 @@ class SyncFaultScheduleFuzzTest {
     private val kill = KillSwitch()
     private lateinit var world: ApiWorld
     private lateinit var phones: List<SyncPhone>
-    /** Two more phones of their own for the seeded-fault tests, so a failing fuzz run cannot leave them half-delivered. */
+    /** Six more phones of their own for the seeded-fault tests, so a failing fuzz run cannot leave them half-delivered. */
     private lateinit var probes: List<SyncPhone>
     private val day = "2027-01-03"
     private val faultsSeen = ConcurrentHashMap<String, AtomicInteger>()
@@ -145,6 +151,23 @@ class SyncFaultScheduleFuzzTest {
                 if (extra.isNotEmpty()) problems += "$type: ${extra.size} server rows the device never made, e.g. ${extra.first()}"
                 if (server.size != server.toSet().size) problems += "$type: a client_uuid stored twice"
             }
+            // The whole database, not only this day (checker N-024 #1): the phone only ever captures [day], so any row of
+            // its user or its phone on another date, or more rows by user or phone than the device made, is a second sale.
+            for ((type, tc) in tables) {
+                val (table, col) = tc
+                val device = p.rows[type].orEmpty().size
+                val byUser = h.createQuery("SELECT count(*) FROM $table WHERE user_id = :u AND $col IS NOT NULL").bind("u", p.userId).mapTo(Long::class.java).one()
+                if (byUser != device.toLong()) problems += "$type: the user holds $byUser rows over all dates, the device made $device"
+                if (hasColumn(h, table, "device_id")) {
+                    val byDevice = h.createQuery("SELECT count(*) FROM $table WHERE device_id = :d AND $col IS NOT NULL").bind("d", p.deviceId).mapTo(Long::class.java).one()
+                    if (byDevice != device.toLong()) problems += "$type: the phone holds $byDevice rows over all dates, the device made $device"
+                }
+            }
+            val made = p.rows.values.flatten().toSet()
+            val registry = h.createQuery("SELECT client_uuid::text FROM app.ingest_registry WHERE user_id = :u").bind("u", p.userId).mapTo(String::class.java).list()
+            if (registry.size != made.size || registry.toSet() != made) problems += "ingest registry: ${registry.size} rows for the user, the device made ${made.size} (${(registry.toSet() - made).size} unknown)"
+            val ledgerElsewhere = h.createQuery("SELECT count(*) FROM app.due_ledger WHERE user_id = :u AND business_date <> CAST(:d AS date)").bind("u", p.userId).bind("d", day).mapTo(Long::class.java).one()
+            if (ledgerElsewhere != 0L) problems += "due ledger: $ledgerElsewhere rows of the user on another date"
             val balances = h.createQuery("SELECT memo_client_uuid::text, COALESCE(sum(amount_mtk), 0) FROM app.due_ledger WHERE memo_client_uuid IN (SELECT client_uuid FROM app.memo WHERE user_id = :u AND business_date = CAST(:d AS date)) GROUP BY 1")
                 .bind("u", p.userId).bind("d", day).map { rs, _ -> rs.getString(1) to rs.getLong(2) }.list().toMap()
             val wrong = p.memoDue.filter { (m, open) -> (balances[m] ?: 0L) != open }
@@ -170,11 +193,17 @@ class SyncFaultScheduleFuzzTest {
         return problems
     }
 
+    private val columns = ConcurrentHashMap<String, Boolean>()
+    private fun hasColumn(h: Handle, table: String, column: String) = columns.getOrPut("$table.$column") {
+        h.createQuery("SELECT count(*) > 0 FROM information_schema.columns WHERE table_schema || '.' || table_name = :t AND column_name = :c")
+            .bind("t", table).bind("c", column).mapTo(Boolean::class.java).one()
+    }
+
     // ---- one schedule ----------------------------------------------------------------------------------------------
 
     private fun seen(f: String) = faultsSeen.getOrPut(f) { AtomicInteger() }.incrementAndGet()
 
-    private suspend fun HttpClient.schedule(p: SyncPhone, seed: Long) {
+    private suspend fun HttpClient.schedule(p: SyncPhone, seed: Long): JsonObject {
         val rnd = Random(seed)
         val day0 = p.captureDay(rnd)
         val acked = HashSet<String>()
@@ -190,8 +219,9 @@ class SyncFaultScheduleFuzzTest {
         var rounds = 0
         while (pending.isNotEmpty() && rounds++ < 40) {
             val take = rnd.nextInt(1, pending.size + 1)
+            if (take < pending.size) seen("partial")
             val chunk = pending.take(take).toMutableList()
-            if (rnd.nextInt(3) == 0) day0.filter { it.uuid() in acked }.shuffled(rnd).take(2).forEach { chunk += it } // duplicates ride along
+            if (rnd.nextInt(3) == 0) day0.filter { it.uuid() in acked }.shuffled(rnd).take(2).forEach { chunk += it; seen("ride-along") } // duplicates ride along
             val records = chunk.shuffled(rnd).distinctBy { it.uuid() }
             val bu = uuid()
             val text = batch(p, records, bu)
@@ -247,13 +277,14 @@ class SyncFaultScheduleFuzzTest {
         }
         val problems = oracle(p, last)
         if (problems.isNotEmpty()) throw AssertionError("phone ${p.tag} seed=$seed: the server differs from the device:\n  " + problems.joinToString("\n  "))
+        return last!!
     }
 
     // ---- setup and tests -------------------------------------------------------------------------------------------
 
     @BeforeAll
     fun setUp() {
-        val tags = (0 until phoneCount + 2).map { i -> "Q" + ('A' + i / 26) + ('A' + i % 26) }
+        val tags = (0 until phoneCount + 6).map { i -> "Q" + ('A' + i / 26) + ('A' + i % 26) }
         world = ApiWorld(repoRoot, mirrors = tags, extraRecordHandlers = listOf(kill))
         world.fresh.db.jdbi.useHandle<Exception> { h ->
             // The day is long: a family is never skipped for its attempts.
@@ -305,38 +336,82 @@ class SyncFaultScheduleFuzzTest {
         }
     }
 
-    @Test
-    @Order(2)
-    fun aSeededDuplicateSaleIsReported() = withApi {
-        val p = probes[0]
-        signIn(p)
-        schedule(p, baseSeed + 1_000_000)
-        assertEquals(emptyList(), oracle(p, null), "the oracle agrees before the seeded fault")
-        // A second sale: the same memo stored again under another client_uuid and memo number (what a broken upsert does).
-        val memo = p.memoDue.keys.last()
-        world.fresh.db.jdbi.useHandle<Exception> { h ->
-            val cols = h.createQuery("SELECT string_agg(quote_ident(column_name), ', ' ORDER BY ordinal_position) FROM information_schema.columns WHERE table_schema = 'app' AND table_name = 'memo' AND column_name NOT IN ('id', 'client_uuid', 'memo_no', 'external_ref') AND is_generated = 'NEVER'")
-                .mapTo(String::class.java).one()
-            h.execute("INSERT INTO app.memo (client_uuid, memo_no, $cols) SELECT gen_random_uuid(), regexp_replace(memo_no, '-[0-9]+$', '-9999'), $cols FROM app.memo WHERE client_uuid = CAST(? AS uuid)", memo)
-        }
-        val found = oracle(p, null)
-        assertTrue(found.any { it.startsWith("memo: server holds") } && found.any { it.startsWith("memo:") && "never made" in it }, "a duplicate sale must be reported: $found")
+    /** Copies one row of [table] that matches [where], with [fresh] column values (SQL expressions) in place of the copied ones. */
+    private fun copyRow(table: String, where: String, fresh: Map<String, String>) = world.fresh.db.jdbi.useHandle<Exception> { h ->
+        val cols = h.createQuery("SELECT string_agg(quote_ident(column_name), ', ' ORDER BY ordinal_position) FROM information_schema.columns WHERE table_schema || '.' || table_name = :t AND column_name <> 'id' AND is_generated = 'NEVER' AND column_name <> ALL(:skip)")
+            .bind("t", table).bind("skip", fresh.keys.toTypedArray()).mapTo(String::class.java).one()
+        val n = h.execute("INSERT INTO $table (${fresh.keys.joinToString(", ")}, $cols) SELECT ${fresh.values.joinToString(", ")}, $cols FROM $table WHERE $where LIMIT 1")
+        check(n == 1) { "nothing to copy in $table where $where" }
     }
 
-    @Test
-    @Order(3)
-    fun aSeededDoubledNumberIsReported() = withApi {
-        val p = probes[1]
+    /** A probe phone with a clean, oracle-approved day (with a collection when [needCollection]) and its last batch answer. */
+    private suspend fun HttpClient.cleanDay(p: SyncPhone, seed: Long, needCollection: Boolean = false): JsonObject {
         signIn(p)
-        schedule(p, baseSeed + 2_000_000)
-        // A collection counted twice in the ledger (a replay that re-ran a side effect).
-        val memo = p.memoDue.keys.last()
-        world.fresh.db.jdbi.useHandle<Exception> { h ->
-            val cols = h.createQuery("SELECT string_agg(quote_ident(column_name), ', ' ORDER BY ordinal_position) FROM information_schema.columns WHERE table_schema = 'app' AND table_name = 'due_ledger' AND column_name NOT IN ('id', 'source_client_uuid') AND is_generated = 'NEVER'")
-                .mapTo(String::class.java).one()
-            h.execute("INSERT INTO app.due_ledger (source_client_uuid, $cols) SELECT gen_random_uuid(), $cols FROM app.due_ledger WHERE memo_client_uuid = CAST(? AS uuid) ORDER BY id LIMIT 1", memo)
+        var last = schedule(p, seed)
+        var k = 1
+        while (needCollection && p.rows["due_collection"].isNullOrEmpty() && k < 20) last = schedule(p, seed + k++)
+        assertEquals(emptyList(), oracle(p, last), "the oracle agrees before the seeded fault")
+        return last
+    }
+
+    /**
+     * One seeded fault per oracle clause (checker N-024 #2), each on its own phone and judged with a real batch answer,
+     * so weakening any clause of [oracle] turns one of these red.
+     */
+    @Test
+    @Order(2)
+    fun everySeededFaultIsReportedByItsOracleClause() = withApi {
+        val faults = mutableListOf<Pair<String, List<String>>>()
+        // A second sale on the same day (a broken upsert stores the memo again under another uuid and number).
+        probes[0].let { p ->
+            val last = cleanDay(p, baseSeed + 1_000_000)
+            copyRow("app.memo", "client_uuid = '${p.memoDue.keys.last()}'", mapOf("client_uuid" to "gen_random_uuid()", "memo_no" to "regexp_replace(memo_no, '-[0-9]+$', '-9999')", "external_ref" to "NULL"))
+            faults += "duplicate sale, same day" to oracle(p, last)
         }
-        val found = oracle(p, null)
-        assertTrue(found.any { "memo balances differ" in it }, "a doubled ledger amount must be reported: $found")
+        // A second sale filed under another business date (outside the day's slice).
+        probes[1].let { p ->
+            val last = cleanDay(p, baseSeed + 1_100_000)
+            copyRow("app.memo", "client_uuid = '${p.memoDue.keys.last()}'", mapOf("client_uuid" to "gen_random_uuid()", "business_date" to "business_date - 1", "external_ref" to "NULL"))
+            faults += "duplicate sale, another date" to oracle(p, last)
+        }
+        // A line stored twice.
+        probes[2].let { p ->
+            val last = cleanDay(p, baseSeed + 1_200_000)
+            copyRow("app.memo_line", "client_uuid = '${p.rows["memo_line"]!!.first()}'", mapOf("client_uuid" to "gen_random_uuid()", "line_no" to "3", "external_ref" to "NULL"))
+            faults += "duplicate line" to oracle(p, last)
+        }
+        // A collection stored twice.
+        probes[3].let { p ->
+            val last = cleanDay(p, baseSeed + 1_300_000, needCollection = true)
+            copyRow("app.due_collection", "client_uuid = '${p.rows["due_collection"]!!.first()}'", mapOf("client_uuid" to "gen_random_uuid()", "external_ref" to "NULL"))
+            faults += "duplicate collection" to oracle(p, last)
+        }
+        // A ledger amount counted twice (a replay that re-ran a side effect).
+        probes[4].let { p ->
+            val last = cleanDay(p, baseSeed + 1_400_000)
+            copyRow("app.due_ledger", "memo_client_uuid = '${p.memoDue.keys.last()}' ORDER BY id", mapOf("source_client_uuid" to "gen_random_uuid()"))
+            faults += "doubled ledger amount" to oracle(p, last)
+        }
+        // The server's own totals differ from the device (money, sticks, accepted count), with the database intact.
+        probes[5].let { p ->
+            val last = cleanDay(p, baseSeed + 1_500_000)
+            fun tamper(path: List<String>, delta: Long): JsonObject {
+                val totals = last["server_totals"]!!.jsonArray.map { it.jsonObject }
+                val changed = totals.map { t ->
+                    if (t["business_date"]!!.jsonPrimitive.content != day) t else {
+                        fun edit(o: JsonObject, rest: List<String>): JsonObject = JsonObject(o + (rest[0] to if (rest.size == 1) JsonPrimitive(o[rest[0]]!!.jsonPrimitive.content.toLong() + delta) else edit(o[rest[0]]!!.jsonObject, rest.drop(1))))
+                        edit(t, path)
+                    }
+                }
+                return JsonObject(last + ("server_totals" to JsonArray(changed)))
+            }
+            faults += "server gross differs" to oracle(p, tamper(listOf("money", "gross_mtk"), 10))
+            faults += "server collected differs" to oracle(p, tamper(listOf("money", "due_collected_mtk"), 1000))
+            faults += "server sticks differ" to oracle(p, tamper(listOf("money", "sold_qty_base_by_sku", p.sold.firstKey()), 1))
+            faults += "server accepted count differs" to oracle(p, tamper(listOf("by_type", "memo", "accepted"), 1))
+        }
+        val silent = faults.filter { it.second.isEmpty() }.map { it.first }
+        assertEquals(emptyList(), silent, "seeded faults the oracle did not report")
+        println("SyncFaultScheduleFuzzTest seeded faults: " + faults.joinToString("; ") { "${it.first} -> ${it.second.first()}" })
     }
 }

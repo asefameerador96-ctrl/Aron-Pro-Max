@@ -30,14 +30,8 @@ GET /v1/admin/rubrics
 GET /v1/admin/skus
 GET /v1/admin/surveys
 GET /v1/admin/tutorials
-GET /v1/app/home
 GET /v1/app/update-check
 GET /v1/config/delta
-GET /v1/dashboards/daily-tracking
-GET /v1/dashboards/geo-validation
-GET /v1/dashboards/login-submit
-GET /v1/dashboards/summary
-GET /v1/dashboards/sync-health
 GET /v1/day/final-submit/preview
 GET /v1/feedback
 GET /v1/leave
@@ -55,8 +49,6 @@ GET /v1/sync/delta
 GET /v1/sync/generation
 GET /v1/sync/totals
 GET /v1/tasks
-GET /v1/team/locations
-GET /v1/team/stock
 GET /v1/tutorials
 GET /v1/visit-plans
 GET /v1/web-entry/route-day
