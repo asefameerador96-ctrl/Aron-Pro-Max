@@ -151,7 +151,8 @@ function Get-EffectiveRestrictions([string]$Serial) {
   $d = (Invoke-Adb @('-s', $Serial, 'shell', 'dumpsys', 'user')).Out
   $m = [regex]::Match($d, '(?s)UserInfo\{0:.*?Effective restrictions:(.*?)(?:\n\s*\S[^\n]*:\s*\n|UserInfo\{|$)')
   if (-not $m.Success) { return $null }
-  return @([regex]::Matches($m.Groups[1].Value, '\b(no_[a-z_]+)\b') | ForEach-Object { $_.Groups[1].Value } | Select-Object -Unique)
+  # The comma keeps an empty list an (empty) array; a bare @() reaches the caller as $null ("could not read").
+  return ,@([regex]::Matches($m.Groups[1].Value, '\b(no_[a-z_]+)\b') | ForEach-Object { $_.Groups[1].Value } | Select-Object -Unique)
 }
 
 # The HTTP status of the last Get-Aron (200, 4xx, 5xx, or $null for a transport failure).

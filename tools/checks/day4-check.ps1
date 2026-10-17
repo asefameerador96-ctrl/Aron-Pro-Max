@@ -101,7 +101,8 @@ if ($serial) {
   $limit = Read-YesNo "Does the visit screen read 'limit $NewRadius m' (সীমা $NewRadius মি) next to the distance?"
   $distance = Read-Host '  The distance it shows, in metres (number only)'
   $refused = Read-YesNo 'Did the sale stay closed (Refresh, then Force Sale offered), not open?'
-  $far = ($distance -as [int]) -gt $NewRadius -and ($distance -as [int]) -lt $OldRadius
+  $metres = [regex]::Match("$distance", '\d+').Value -as [int]  # "70", "70 m" and "70.4" all read 70
+  $far = $null -ne $metres -and $metres -gt $NewRadius -and $metres -lt $OldRadius
   Write-CheckResult 'judged by new radius' ($limit -and $refused -and $far) ("screen limit {0} m: {1}; distance {2} m (between {0} and {3}: {4}); sale refused: {5}" -f $NewRadius, $limit, $distance, $OldRadius, $far, $refused)
   Write-Host "  Use Force Sale (photo) or close the visit, so the visit record syncs." -ForegroundColor Cyan
 }
