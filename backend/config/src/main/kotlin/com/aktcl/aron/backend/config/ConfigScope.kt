@@ -41,6 +41,20 @@ internal class ConfigScope(private val db: Database) {
         if (!ok) throw ApiProblem(ProblemCode.ERR_OUT_OF_SCOPE, "scope node outside your reach")
     }
 
+    /**
+     * For resolve: the node and every node of its resolution chain must be visible, so a cover route (or an outlet on
+     * one) in another zone never shows that zone's winning row; such a node is 403 like any node outside the reach.
+     */
+    fun requireChain(reach: Reach, chain: List<ScopeNode>) {
+        if (reach.national) return
+        val ok = db.jdbi.withHandle<Boolean, Exception> { h -> chain.all { visible(h, reach, it.type, it.id) && (it.type != "route" || routeInZones(h, reach, it.id)) } }
+        if (!ok) throw ApiProblem(ProblemCode.ERR_OUT_OF_SCOPE, "scope node outside your reach")
+    }
+
+    private fun routeInZones(h: Handle, reach: Reach, id: Long): Boolean =
+        h.createQuery("SELECT EXISTS (SELECT 1 FROM app.route WHERE id = :i AND zone_id = ANY(:z))").bind("i", id)
+            .bindArray("z", Long::class.javaObjectType, reach.zoneIds.toList().ifEmpty { listOf(-1L) }).mapTo(Boolean::class.java).one()
+
     fun filter(reach: Reach, rows: List<ConfigValueDto>): List<ConfigValueDto> =
         if (reach.national) rows else db.jdbi.withHandle<List<ConfigValueDto>, Exception> { h -> rows.filter { visible(h, reach, it.scope_type, it.scope_id) } }
 }

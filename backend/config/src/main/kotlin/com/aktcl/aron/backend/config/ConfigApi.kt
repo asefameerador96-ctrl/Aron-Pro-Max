@@ -70,7 +70,10 @@ fun Route.configAdminRoutes(d: ConfigDeps) {
             val id = q["node_id"]?.let { it.toLongOrNull()?.takeIf { v -> v >= 0 } ?: bad("query.node_id") } ?: bad("query.node_id", "required")
             val at = q["at"]?.let { runCatching { Instant.parse(it) }.getOrNull() ?: bad("query.at") } ?: d.clock.now()
             val key = call.keyParam()
-            d.reach?.reach(p.userId, p.role, p.scopeVersion, Dhaka.today(d.clock))?.let { scope.require(it, type, id) }
+            d.reach?.reach(p.userId, p.role, p.scopeVersion, Dhaka.today(d.clock))?.let { r ->
+                scope.require(r, type, id)
+                scope.requireChain(r, s.resolver.chainOf(type, id))
+            }
             call.respond(s.resolve(key, type, id, at))
         }
         get("/admin/config/changes") {

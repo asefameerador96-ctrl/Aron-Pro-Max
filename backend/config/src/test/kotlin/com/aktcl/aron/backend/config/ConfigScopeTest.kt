@@ -35,7 +35,7 @@ import kotlin.test.assertTrue
 class ConfigScopeTest {
     private lateinit var env: SeededConfigDb
     private var home = 0L; private var homeTerr = 0L; private var homeDiv = 0L
-    private var far = 0L; private var farTerr = 0L; private var farDiv = 0L; private var farRoute = 0L
+    private var far = 0L; private var farTerr = 0L; private var farDiv = 0L; private var farRoute = 0L; private var farRoute2 = 0L
     private val key = "cfg.geo.radius_m"
 
     @BeforeAll fun setUp() {
@@ -45,12 +45,14 @@ class ConfigScopeTest {
             h.execute("INSERT INTO app.territory (code, name, division_id) SELECT 'T-FAR', 'Far Territory', id FROM app.division WHERE code = 'D-FAR'")
             h.execute("INSERT INTO app.zone (code, name, territory_id) SELECT 'Z-FAR', 'Far Zone', id FROM app.territory WHERE code = 'T-FAR'")
             h.execute("INSERT INTO app.route (code, name, zone_id, kind, visit_kind, visit_days_mask) SELECT 'FAR-R1', 'Far route', id, 'sr', 'daily', 127 FROM app.zone WHERE code = 'Z-FAR'")
+            h.execute("INSERT INTO app.route (code, name, zone_id, kind, visit_kind, visit_days_mask) SELECT 'FAR-R2', 'Far cover route', id, 'sr', 'daily', 127 FROM app.zone WHERE code = 'Z-FAR'")
         }
         fun id(sql: String) = env.one(sql)!!.toLong()
         home = id("SELECT id FROM app.zone WHERE code = 'Z-MIR'"); homeTerr = id("SELECT territory_id FROM app.zone WHERE code = 'Z-MIR'")
         homeDiv = id("SELECT division_id FROM app.territory WHERE id = $homeTerr")
         far = id("SELECT id FROM app.zone WHERE code = 'Z-FAR'"); farTerr = id("SELECT territory_id FROM app.zone WHERE code = 'Z-FAR'")
         farDiv = id("SELECT division_id FROM app.territory WHERE id = $farTerr"); farRoute = id("SELECT id FROM app.route WHERE code = 'FAR-R1'")
+        farRoute2 = id("SELECT id FROM app.route WHERE code = 'FAR-R2'")
         env.fresh.db.jdbi.useHandle<Exception> { h ->
             for ((t, i, v) in listOf(Triple("zone", home, 61), Triple("zone", far, 62), Triple("division", farDiv, 63), Triple("route", farRoute, 64), Triple("territory", homeTerr, 65))) {
                 h.execute("INSERT INTO app.cfg_value (key, scope_type, scope_id, value, effective_from, config_version, reason) SELECT '$key', '$t', $i, '$v'::jsonb, now() - interval '1 day', max(config_version), 'scope test' FROM app.cfg_version")
@@ -61,6 +63,8 @@ class ConfigScopeTest {
 
     private fun reachOf(userId: Long, role: Role): Reach = when (role) {
         Role.TSO, Role.DMO -> Reach(userId, role, java.time.LocalDate.now(), false, setOf(home), emptySet(), false, listOf(ReachNode("zone", home)))
+        // Checker (T1 scope): a TSO-like reach with one cover route in a zone outside its own zones.
+        Role.WM -> Reach(userId, role, java.time.LocalDate.now(), false, setOf(home), setOf(farRoute2), false, listOf(ReachNode("zone", home)))
         else -> Reach(userId, role, java.time.LocalDate.now(), true, setOf(home, far), emptySet(), false, listOf(ReachNode("national", 0)))
     }
 
@@ -99,5 +103,17 @@ class ConfigScopeTest {
         assertEquals(HttpStatusCode.OK, client.get("/v1/admin/config/resolve?key=$key&node_type=zone&node_id=$far") { bearerAuth(admin) }.status)
         val all = Json.parseToJsonElement(client.get("/v1/admin/config/values?key=$key") { bearerAuth(admin) }.bodyAsText()).jsonObject["items"]!!.jsonArray
         assertTrue(all.any { it.jsonObject["scope_id"]!!.jsonPrimitive.long == far })
+    }
+
+    /** Checker (T1 scope, 8a571fa1): a cover route outside the caller's zones is visible, and resolving it returns the foreign zone's row. Expected to FAIL until fixed. */
+    @Test
+    fun aCoverRouteDoesNotRevealTheForeignZoneRow() = app {
+        val t = TestTokens.web(env.ids.getValue("tso1001"), Role.WM)
+        val r = client.get("/v1/admin/config/resolve?key=$key&node_type=route&node_id=$farRoute2") { bearerAuth(t) }
+        if (r.status == HttpStatusCode.OK) {
+            val o = Json.parseToJsonElement(r.bodyAsText()).jsonObject
+            val leaked = o["scope_type"]!!.jsonPrimitive.content to o["scope_id"]?.jsonPrimitive?.long
+            assertTrue(leaked != ("zone" to far) && leaked != ("division" to farDiv), "cover route resolve leaks the foreign node row: $leaked value=${o["value"]}")
+        }
     }
 }
