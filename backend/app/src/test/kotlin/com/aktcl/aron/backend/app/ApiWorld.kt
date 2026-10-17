@@ -118,10 +118,11 @@ class ApiWorld(
         client: HttpClient, contract: ContractModel, op: ContractModel.Operation, c: Caller, token: String?,
         pathIds: Map<String, Long> = ids, extraQuery: String = "", onInvalidBody: (List<String>) -> Unit = {},
         includeOptionalIds: Boolean = false, bodyEdit: ((com.fasterxml.jackson.databind.JsonNode) -> Unit)? = null,
+        query: Map<String, String> = emptyMap(),
     ): HttpResponse {
         val path = pathFor(contract, op, pathIds)
         val query = (
-            op.parameters.filter { it.where == "query" && it.required }.map { p -> p.name + "=" + URLEncoder.encode(paramValue(p.name, pathIds) ?: contract.sampleText(p.schema, p.name), "UTF-8") } +
+            op.parameters.filter { it.where == "query" && it.required }.map { p -> p.name + "=" + URLEncoder.encode(query[p.name] ?: paramValue(p.name, pathIds) ?: contract.sampleText(p.schema, p.name), "UTF-8") } +
                 listOfNotNull(extraQuery.ifEmpty { null })
             ).joinToString("&")
         val body = op.requestSchema?.let { s ->
@@ -161,6 +162,7 @@ class ApiWorld(
     private fun paramValue(name: String, pathIds: Map<String, Long>): String? = when (name) {
         "business_date", "date" -> BUSINESS_DATE
         "node_type" -> "zone"
+        "radius_m" -> "100" // one of cfg.tso.periphery_radius_options_m (50, 100, 300), as the contract says
         "node_id" -> pathIds["zones"]?.toString()
         else -> PARAM_RESOURCE[name]?.let { pathIds[it]?.toString() }
     }

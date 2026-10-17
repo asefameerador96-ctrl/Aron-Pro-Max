@@ -90,12 +90,15 @@ class ContractConformanceTest {
             endpoints = ApiWorld.routes(application.plugin(RoutingRoot)).sortedBy { it.second + " " + it.first }
             out += notInContract(endpoints)
             val tokens = HashMap<ApiWorld.Caller, String?>()
+            // Each caller's bundle answer: its version, paged sections and delta cursor drive the page and delta reads.
+            val bundles = HashMap<ApiWorld.Caller, com.fasterxml.jackson.databind.JsonNode>()
             suspend fun token(c: ApiWorld.Caller): String? = tokens.getOrPut(c) { world.login(client, c) }
             // A caller that cannot log in would silently skip every guarded call.
             for (c in callers) check(token(c) != null) { "no token for ${c.user}" }
             suspend fun call(op: ContractModel.Operation, c: ApiWorld.Caller, t: String?) = world.call(
                 client, contract, op, c, t,
                 bodyEdit = FIXTURES[op.key]?.let { f -> { n: com.fasterxml.jackson.databind.JsonNode -> f(n as com.fasterxml.jackson.databind.node.ObjectNode, c, world.password) } },
+                query = bundles[c]?.let { QUERY_FIXTURES[op.key]?.invoke(it) }.orEmpty(),
             ).also { checkedCalls++ }
             // Reads first, then writes; the session-ending operations last (change-password before logout).
             val last = listOf("POST /v1/auth/change-password", "POST /v1/auth/logout")
@@ -115,6 +118,7 @@ class ContractConformanceTest {
                     if (r.status.value in 200..299) succeeded += op.key
                     else refusals.getOrPut(op.key) { mutableListOf() } += "${c.user} ${r.status.value} ${text.take(160).replace('\n', ' ')}"
                     if (op.key == "GET /v1/me" && c == callers[0] && r.status.value == 200) meBody = text
+                    if (op.key == "GET /v1/sync/bundle" && r.status.value == 200) bundles[c] = ContractModel.json.readTree(text)
                     out += check(op, r.status.value, r.headers["Content-Type"], text)
                 }
             }
@@ -232,6 +236,16 @@ class ContractConformanceTest {
         /** Request bodies a generated sample cannot get right (real credentials), filled per caller. */
         /** A business date 30 days after the harness day, for writes that refuse today or the past. */
         private val FUTURE: String = java.time.LocalDate.parse(ApiWorld.BUSINESS_DATE).plusDays(30).toString()
+
+        /** Query values taken from the caller's own `GET /v1/sync/bundle` answer (it runs first: keys sort before). */
+        val QUERY_FIXTURES: Map<String, (com.fasterxml.jackson.databind.JsonNode) -> Map<String, String>> = mapOf(
+            "GET /v1/sync/bundle/page" to { b ->
+                val meta = b.path("meta")
+                val paged = meta.path("paged_sections").firstOrNull()
+                if (paged == null) emptyMap() else mapOf("bundle_version" to meta.path("bundle_version").asText(), "section" to paged.path("section").asText(), "page" to "1")
+            },
+            "GET /v1/sync/delta" to { b -> mapOf("since" to b.path("meta").path("cursor").asText()) },
+        )
 
         val FIXTURES: Map<String, (com.fasterxml.jackson.databind.node.ObjectNode, ApiWorld.Caller, String) -> Unit> = mapOf(
             "POST /v1/auth/login" to { n, c, pw ->

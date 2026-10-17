@@ -7,7 +7,6 @@ GET /v1/admin/config/versions/{}
 GET /v1/devices/me/policy
 GET /v1/media/{}/read-url
 GET /v1/outlet-requests/{}
-GET /v1/outlets/nearby
 GET /v1/report-exports/{}
 GET /v1/sync/bundle/page
 GET /v1/sync/delta
