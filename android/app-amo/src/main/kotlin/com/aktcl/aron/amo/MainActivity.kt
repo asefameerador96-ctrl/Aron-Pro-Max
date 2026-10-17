@@ -54,6 +54,7 @@ class MainActivity : ComponentActivity() {
     @Inject lateinit var deviceEnrolment: com.aktcl.aron.core.sync.device.DeviceEnrolment
     @Inject lateinit var shellLogout: ShellLogout
     @Inject lateinit var updateShell: com.aktcl.aron.core.sync.shell.UpdateShell
+    @Inject lateinit var systemShell: SystemShell
     @Inject lateinit var pushShell: com.aktcl.aron.core.sync.shell.PushShell
     @Inject lateinit var activityLog: com.aktcl.aron.core.sync.ActivityLog
     @Inject lateinit var telemetry: com.aktcl.aron.core.sync.DeviceTelemetry
@@ -177,6 +178,9 @@ class MainActivity : ComponentActivity() {
                                 mapOf<AmoScreen, @Composable (() -> Unit) -> Unit>(
                                     AmoScreen.SALES_SUBMIT to { back ->
                                         com.aktcl.aron.core.ui.AronScreen(topBar = { com.aktcl.aron.core.ui.AronTopBar(stringResource(com.aktcl.aron.feature.home.R.string.hm_tile_sales_submit), onBack = back) }) { AmoSubmitHost(d) }
+                                    },
+                                    AmoScreen.SUPPORT to { back ->
+                                        com.aktcl.aron.core.ui.AronScreen(topBar = { com.aktcl.aron.core.ui.AronTopBar(stringResource(com.aktcl.aron.feature.home.R.string.set_support), onBack = back) }) { SupportHost(systemShell, d.userId, versionName) }
                                     },
                                     AmoScreen.OUTLET to { back -> AmoOutletHub(d, back) },
                                     AmoScreen.TEAM to { back -> AmoTeamHub(d, reach, back) },
