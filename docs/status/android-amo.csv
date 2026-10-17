@@ -58,3 +58,4 @@ F-TSO-004,S,2026-10-18T13:00Z,2026-10-18T14:00Z,0,0,"CPR card: successful calls 
 F-TSO-005,S,2026-10-18T13:00Z,2026-10-18T14:00Z,0,0,"By Segment Value Contribution: net value share against volume share per segment; checker pending; DEVICE-PENDING"
 F-TSO-006,S,2026-10-18T13:00Z,2026-10-18T14:00Z,0,0,"By Brand Call/Memo Ratio: memos with the brand over active memos (server ratio or derived), dash without memos; checker pending; DEVICE-PENDING"
 F-TSO-007,M,2026-10-18T13:00Z,2026-10-18T14:00Z,0,0,"Login Status and Bikroy Joma (submit) status with Not logged in / Not uploaded route lists from login-submit; Opus checker pending; DEVICE-PENDING"
+AMO-POLISH-1,M,2026-10-18T14:00Z,2026-10-18T14:40Z,40,0,"Polish pass part 1: goldens recorded on Linux for the new AMO screens and the TSO dashboard in normal, empty, offline/kept and long-Bangla states (AmoTsoScreenshotTests, 24 PNGs); looked at and verified locally"
