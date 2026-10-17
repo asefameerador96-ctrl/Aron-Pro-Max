@@ -41,4 +41,9 @@
     <string name="tso_dash_list_empty">Nothing here.</string>
     <string name="tso_dash_routes">Routes</string>
     <string name="tso_dash_title">Dashboard</string>
+    <string name="tso_dash_sep">" · "</string>
+    <string name="tso_dash_refused">The server did not give these figures to this login.</string>
+    <string name="tso_dash_offline_kept">You are offline. Showing the last figures kept on this phone.</string>
+    <string name="tso_dash_offline_none">You are offline and nothing is kept on this phone yet. Open this when you are online.</string>
+    <string name="tso_dash_route_unnamed">Route</string>
 </resources>

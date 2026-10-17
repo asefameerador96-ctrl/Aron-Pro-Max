@@ -41,4 +41,9 @@
     <string name="tso_dash_list_empty">এখানে কিছু নেই।</string>
     <string name="tso_dash_routes">রুট</string>
     <string name="tso_dash_title">ড্যাশবোর্ড</string>
+    <string name="tso_dash_sep">" · "</string>
+    <string name="tso_dash_refused">সার্ভার এই লগইনকে এই তথ্য দেয়নি।</string>
+    <string name="tso_dash_offline_kept">আপনি অফলাইনে আছেন। এই ফোনে রাখা শেষ তথ্য দেখাচ্ছে।</string>
+    <string name="tso_dash_offline_none">আপনি অফলাইনে আছেন এবং এই ফোনে এখনও কিছু রাখা নেই। অনলাইনে থাকলে এটি খুলুন।</string>
+    <string name="tso_dash_route_unnamed">রুট</string>
 </resources>

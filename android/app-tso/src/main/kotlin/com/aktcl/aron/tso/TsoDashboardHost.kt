@@ -22,6 +22,7 @@ import com.aktcl.aron.core.ui.LocalAppLanguage
 import com.aktcl.aron.feature.tso.R as TsoR
 import com.aktcl.aron.feature.tso.TsoDashboardContent
 import com.aktcl.aron.feature.tso.TsoDashboardState
+import com.aktcl.aron.feature.tso.TsoFailure
 import com.aktcl.aron.feature.tso.TsoDashboards
 import com.aktcl.aron.feature.tso.TsoRouteListContent
 import com.aktcl.aron.feature.tso.TsoZoneFilterContent
@@ -32,23 +33,29 @@ private enum class DashLeaf { MAIN, FILTER, NOT_LOGGED_IN, NOT_UPLOADED }
 
 /**
  * The TSO Dashboard tile (F-TSO-002..007, F-TSO-027): loads once when opened and again only on Refresh or after a Filter; there is no timer.
- * The zone filter is a selector over the territory's zones (taken from the summary), the scope itself comes from the token.
+ * The zone filter is a selector over the territory's zones (taken from the territory-wide summary), applied when chosen; the scope itself comes from the token.
  */
 @Composable
 fun TsoDashboardHost(api: TsoApi, businessDate: String, onBack: () -> Unit, modifier: Modifier = Modifier) {
     var leaf by rememberSaveable { mutableStateOf(DashLeaf.MAIN) }
     var zone by rememberSaveable { mutableStateOf<Long?>(null) }
-    var draft by rememberSaveable { mutableStateOf<Long?>(null) }
     var reload by remember { mutableIntStateOf(0) }
     var state by remember { mutableStateOf<TsoDashboardState?>(null) }
-    var zones by remember { mutableStateOf<List<com.aktcl.aron.feature.tso.ZoneRef>>(emptyList()) }
-    LaunchedEffect(zone, reload) {
+    LaunchedEffect(zone, reload, businessDate) {
         state = null
         val s = api.summary(businessDate, zone)
         val l = api.loginSubmit(businessDate, zone)
         val dash = TsoDashboards.summary(s.jsonOrNull())
-        if (zone == null && dash != null) zones = dash.zones
-        state = TsoDashboardState(dash, TsoDashboards.loginSubmit(l.jsonOrNull()), stale = s is TsoFetch.Cached, failed = s is TsoFetch.Unavailable || s is TsoFetch.Gone)
+        // The zones to choose from come from the territory-wide answer (a kept copy is enough), also after a restore with a zone chosen.
+        val zones = when {
+            zone == null -> dash?.zones.orEmpty()
+            else -> TsoDashboards.summary(api.summary(businessDate, null).jsonOrNull())?.zones.orEmpty()
+        }
+        fun failure(f: TsoFetch) = when (f) { TsoFetch.Gone -> TsoFailure.REFUSED; TsoFetch.Unavailable -> TsoFailure.OFFLINE; else -> TsoFailure.NONE }
+        state = TsoDashboardState(
+            dash, TsoDashboards.loginSubmit(l.jsonOrNull()), stale = s is TsoFetch.Cached, failure = failure(s),
+            loginStale = l is TsoFetch.Cached, loginFailure = failure(l), zones = zones, businessDate = businessDate,
+        )
     }
     val back: () -> Unit = { if (leaf == DashLeaf.MAIN) onBack() else leaf = DashLeaf.MAIN }
     BackHandler(onBack = back)
@@ -57,13 +64,13 @@ fun TsoDashboardHost(api: TsoApi, businessDate: String, onBack: () -> Unit, modi
     AronScreen(topBar = { AronTopBar(stringResource(TsoR.string.tso_dash_title), onBack = back) }, modifier = modifier) {
         val st = state
         when {
-            leaf == DashLeaf.FILTER -> TsoZoneFilterContent(zones, draft, { draft = it; zone = it; leaf = DashLeaf.MAIN })
             st == null -> Box(Modifier.fillMaxSize(), Alignment.Center) { CircularProgressIndicator() }
-            leaf == DashLeaf.NOT_LOGGED_IN -> TsoRouteListContent(st.login?.notLoggedIn.orEmpty())
-            leaf == DashLeaf.NOT_UPLOADED -> TsoRouteListContent(st.login?.loggedInNotSubmitted.orEmpty())
+            leaf == DashLeaf.FILTER -> TsoZoneFilterContent(st.zones, zone, { zone = it; leaf = DashLeaf.MAIN })
+            leaf == DashLeaf.NOT_LOGGED_IN -> TsoRouteListContent(st.login?.notLoggedIn.orEmpty(), st.businessDate, st.login?.asOf, st.loginStale || st.loginFailure != TsoFailure.NONE)
+            leaf == DashLeaf.NOT_UPLOADED -> TsoRouteListContent(st.login?.loggedInNotSubmitted.orEmpty(), st.businessDate, st.login?.asOf, st.loginStale || st.loginFailure != TsoFailure.NONE)
             else -> TsoDashboardContent(
-                st, zones.firstOrNull { it.id == zone }?.name ?: stringResource(TsoR.string.tso_dash_all_zones), money,
-                onRefresh = { reload++ }, onFilter = { draft = zone; leaf = DashLeaf.FILTER },
+                st, st.zones.firstOrNull { it.id == zone }?.name ?: stringResource(TsoR.string.tso_dash_all_zones), money,
+                onRefresh = { reload++ }, onFilter = { leaf = DashLeaf.FILTER },
                 onNotLoggedIn = { leaf = DashLeaf.NOT_LOGGED_IN }, onNotUploaded = { leaf = DashLeaf.NOT_UPLOADED },
             )
         }

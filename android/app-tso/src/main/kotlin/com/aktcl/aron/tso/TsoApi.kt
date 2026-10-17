@@ -65,8 +65,5 @@ class TsoApi(private val client: AronApiClient, context: Context, userId: Long) 
         }
     }
 
-    /** Logout: nothing of this user's reads stays behind. */
-    fun clear() { dir.deleteRecursively() }
-
     private companion object { const val MAX_FILES = 60; const val MAX_COPY_CHARS = 400_000; const val MAX_AGE_MS = 3L * 24 * 3600 * 1000 }
 }
