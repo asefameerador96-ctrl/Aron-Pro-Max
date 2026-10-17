@@ -1,0 +1,2 @@
+row_id,size,started_utc,finished_utc,minutes,review_findings,notes
+F-AMO-001,M,2026-10-17T00:00Z,2026-10-17T00:40Z,40,0,"AmoReach/AmoMenu pure logic + Outlet badge from supervisor section; 17 = flat leaves incl. Settings and deferred Astha (16 now), SS 13 = no Team Location/Performance/SR Stock; Sonnet checker: no defect; open: pending count not filtered to SR requesters (server already scopes)"
