@@ -1,6 +1,8 @@
 package com.aktcl.aron.core.database.repo
 
 import androidx.room.withTransaction
+import com.aktcl.aron.core.database.record.AmoPayloads
+import kotlinx.serialization.json.JsonObject
 import com.aktcl.aron.core.common.ClientIds
 import com.aktcl.aron.core.database.AronDatabase
 import com.aktcl.aron.core.database.entity.CaptureMeta
@@ -172,7 +174,21 @@ class CaptureRepository(
     suspend fun recordAmo(record: com.aktcl.aron.core.database.entity.AmoRecordEntity): Boolean = db.withTransaction {
         requireUuids(record.clientUuid, record.familyUuid)
         require(record.recordType in AMO_RECORD_TYPES) { "not an AMO record type: ${record.recordType}" }
-        require(record.rank in 0..3) { "rank is 0 to 3" }
+        val payload = runCatching { Json.parseToJsonElement(record.payloadJson) as? JsonObject }.getOrNull()
+        require(payload != null) { "the payload is a JSON object" }
+        AmoPayloads.problem(record.recordType, payload)?.let { throw IllegalArgumentException(it) }
+        // docs/24 s4.2/s4.3: family and rank by type; visit-family records carry the route worked.
+        val own = record.familyUuid == record.clientUuid
+        val ok = when (record.recordType) {
+            "distribution_check" -> record.rank == 1 && !own
+            "distribution_check_line" -> record.rank == 2 && !own
+            "price_compliance_check" -> record.rank == 2 && !own
+            "call_assessment" -> (record.rank == 1 && !own) || (record.rank == 0 && own)
+            "call_assessment_answer" -> (record.rank == 2 || record.rank == 1) && !own
+            else -> record.rank == 0 && own // risk_review, outlet_request_verification, task
+        }
+        require(ok) { "${record.recordType}: wrong family or rank (rank ${record.rank}, own family $own)" }
+        if (!own && record.rank > 0 && record.recordType != "call_assessment_answer") requireRoute(record.meta)
         if (capture.amoRecordCount(record.clientUuid) > 0) return@withTransaction false
         capture.insertAmoRecord(record)
         outbox.insert(listOf(RecordMapping.amoRecord(record, nowIso())))

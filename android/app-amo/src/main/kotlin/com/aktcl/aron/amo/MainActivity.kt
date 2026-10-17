@@ -172,6 +172,7 @@ class MainActivity : ComponentActivity() {
                             val screens: Map<AmoScreen, @Composable (() -> Unit) -> Unit> = day?.let { d ->
                                 mapOf<AmoScreen, @Composable (() -> Unit) -> Unit>(
                                     AmoScreen.CONTROL_CALL to { back -> ControlCallHost(d, back) },
+                                    AmoScreen.JOINT_CALL to { back -> ControlCallHost(d, back, kind = com.aktcl.aron.feature.amo.AmoVisitKind.JOINT_CALL) },
                                     AmoScreen.ATTENDANCE to { back ->
                                         val attendance by d.attendance.state.collectAsStateWithLifecycle()
                                         LaunchedEffect(d) { d.attendance.tick() }

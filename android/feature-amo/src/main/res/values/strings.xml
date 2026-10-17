@@ -25,4 +25,9 @@
     <string name="amo_pa_saved">Saved</string>
     <string name="amo_pa_no_brands">No brands in the downloaded product list</string>
     <string name="amo_pa_oos_hint">Tick a brand as distributed first</string>
+    <string name="amo_jc_title">Joint Call</string>
+    <string name="amo_jc_no_rubric">No Joint Call form downloaded yet</string>
+    <string name="amo_jc_sr">SR: %1$s</string>
+    <string name="amo_jc_sr_none">not assigned</string>
+    <string name="amo_jc_star">%1$s stars</string>
 </resources>

@@ -54,6 +54,13 @@ class AmoRecordsTest {
         check("TaskPayload", AmoPayloads.task("visit_followup", 7, 50001, "Title", "d", "2026-10-06", u), AmoPayloads.task("visit_followup", 7, null, "Title", null, null, null))
     }
 
+    @Test fun shapeTablesEqualTheContract() {
+        for (shape in AmoPayloads.SHAPES.values) {
+            assertEquals(shape.schema, ContractYaml.propertyNames(shape.schema), shape.allowed)
+            assertEquals(shape.schema, ContractYaml.requiredNames(shape.schema), shape.required)
+        }
+    }
+
     @Test fun builtInRulesRefuseWhatTheServerWouldReject() {
         assertThrows(IllegalArgumentException::class.java) { AmoPayloads.distributionLine(u, 3, present = false, oos = true) }
         assertThrows(IllegalArgumentException::class.java) { AmoPayloads.callAssessmentAnswer(u, 1, 6, null, null) }
@@ -63,7 +70,7 @@ class AmoRecordsTest {
     }
 
     private fun row(type: String, family: String, rank: Int, payload: JsonObject, uuid: String = ClientIds.newUuid()) =
-        AmoRecordEntity(uuid, TestRows.meta(routeId = null), type, family, rank, payload.toString())
+        AmoRecordEntity(uuid, TestRows.meta(), type, family, rank, payload.toString())
 
     @Test fun oneRowAndOneOutboxRecordPerClientUuidWhateverTheReplay() = runTest {
         val visit = ClientIds.newUuid()
@@ -81,7 +88,7 @@ class AmoRecordsTest {
 
     @Test fun otherRecordTypesAndBadIdsAreRefused() = runTest {
         assertThrows(IllegalArgumentException::class.java) { kotlinx.coroutines.runBlocking { repo.recordAmo(row("memo", u, 1, JsonObject(emptyMap()))) } }
-        assertThrows(IllegalArgumentException::class.java) { kotlinx.coroutines.runBlocking { repo.recordAmo(row("task", "not-a-uuid", 0, JsonObject(emptyMap()))) } }
+        assertThrows(IllegalArgumentException::class.java) { kotlinx.coroutines.runBlocking { repo.recordAmo(row("task", "not-a-uuid", 0, AmoPayloads.task("visit_followup", 1, null, "t", null, null, null))) } }
         assertEquals(0, db.captureDao().amoRecordsOn("task", "2026-10-05").size)
     }
 

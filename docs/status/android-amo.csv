@@ -4,3 +4,8 @@ F-AMO-003,S,2026-10-17T01:00Z,2026-10-17T01:40Z,40,0,"AmoDay (thin copy of SrDay
 F-AMO-004,M,2026-10-17T02:00Z,2026-10-17T03:30Z,90,5,"Control Call route/retailer/geo gate on amo_control_call; Sonnet checker: process-death restore, double tap, stale routeId, cap fail-open: fixed"
 F-AMO-005,S,2026-10-17T02:00Z,2026-10-17T03:30Z,0,0,"Manual Override = SR ForceSaleController with daily cap (default 10, ASSUMED, MQ-14; key cfg.amo.manual_override_max_per_day read if present)"
 F-AMO-036,S,2026-10-17T02:00Z,2026-10-17T03:30Z,0,0,"visit kind amo_control_call on every AMO outlet open (ControlCall.visitOutlet); joint kind amo_joint_call ready"
+AMO-RECORDS,M,2026-10-17T03:40Z,2026-10-17T05:00Z,80,4,"support for F-AMO rows: amo_record table (Room v6 auto-migration), AmoPayloads, CaptureRepository.recordAmo; Opus T1 checker: payload/type, family/rank, route, replay-after-purge; first three fixed, last open for all capture types (ignored test)"
+F-AMO-007,S,2026-10-17T05:00Z,2026-10-17T05:50Z,50,0,"distribution check + one line per brand (brands from bundle products level=brand)"
+F-AMO-008,S,2026-10-17T05:00Z,2026-10-17T05:50Z,0,0,"OOS only for distributed brands (PerfState)"
+F-AMO-009,S,2026-10-17T05:00Z,2026-10-17T05:50Z,0,0,"POSM tri-state; Save shows saved message then back to outlet picker, route kept; tests in PerfAssessmentTest"
+F-AMO-011,M,2026-10-17T05:50Z,2026-10-17T06:40Z,50,0,"Joint Call = same route/retailer/geo gate on amo_joint_call, assigned SR read-only, 1-5 stars, disabled rubric items shown greyed not scored, star 1 preselected (ASSUMED); no Sonnet checker run yet"

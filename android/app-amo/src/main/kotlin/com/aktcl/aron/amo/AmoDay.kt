@@ -219,6 +219,18 @@ class AmoDay(
     // ---- AMO records (amo_record): assessments, price checks, verifications, tasks, reviews
     private fun newUuid() = com.aktcl.aron.core.common.ClientIds.newUuid()
 
+    /** Joint Call assessment (F-AMO-011): one assessment and its answers, family = the visit; a second Save for the visit writes nothing. */
+    suspend fun saveJointCall(visitUuid: String, rubric: com.aktcl.aron.feature.amo.JointRubric, state: com.aktcl.aron.feature.amo.JointState, assessedUserId: Long?) {
+        if (db.captureDao().amoRecordsOfFamily(visitUuid).any { it.recordType == "call_assessment" }) return
+        val planned = com.aktcl.aron.feature.amo.JointCall.records(visitUuid, rubric, state, assessedUserId, ::newUuid)
+        db.withTransaction {
+            for (p in planned) capture.recordAmo(
+                com.aktcl.aron.core.database.entity.AmoRecordEntity(p.clientUuid, metaProvider.meta(visitSession.current.value?.routeId ?: 0L), p.type, p.familyUuid, p.rank, p.payload.toString()),
+            )
+        }
+        runCatching { requestSync() }
+    }
+
     /** SR Perf. Assessment (F-AMO-007/008/009): the check and its brand lines, all or nothing, family = the visit. A second Save for the visit writes nothing. */
     suspend fun saveAssessment(visitUuid: String, brands: List<com.aktcl.aron.feature.amo.AmoBrand>, state: com.aktcl.aron.feature.amo.PerfState) {
         if (db.captureDao().amoRecordsOfFamily(visitUuid).any { it.recordType == "distribution_check" }) return

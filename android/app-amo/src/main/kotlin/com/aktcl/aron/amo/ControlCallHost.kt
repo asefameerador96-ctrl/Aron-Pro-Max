@@ -37,7 +37,7 @@ import kotlinx.coroutines.launch
 import androidx.compose.ui.res.stringResource
 import com.aktcl.aron.feature.amo.R as AmoR
 
-private enum class CcStep { ROUTE, OUTLET, CHECK, FORCE, MENU, ASSESS }
+private enum class CcStep { ROUTE, OUTLET, CHECK, FORCE, MENU, ASSESS, JOINT }
 
 /**
  * F-AMO-004/005/036: Control Call. Route and retailer come from the zone-wide bundle (local), the geo gate is the SR's
@@ -48,7 +48,11 @@ private enum class CcStep { ROUTE, OUTLET, CHECK, FORCE, MENU, ASSESS }
 @Composable
 fun ControlCallHost(
     day: AmoDay, onBack: () -> Unit, onSale: (() -> Unit)? = null, onSurvey: (() -> Unit)? = null,
+    /** `amo_control_call` (menu: Sale, assessment, survey) or `amo_joint_call` (goes straight to the SR call assessment, F-AMO-011). */
+    kind: String = com.aktcl.aron.feature.amo.AmoVisitKind.CONTROL_CALL,
 ) {
+    val joint = kind == com.aktcl.aron.feature.amo.AmoVisitKind.JOINT_CALL
+    val inCall = if (joint) CcStep.JOINT else CcStep.MENU
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     var step by rememberSaveable { mutableStateOf(CcStep.ROUTE) }
@@ -62,18 +66,18 @@ fun ControlCallHost(
     }
     // A call already open (kill and relaunch): back on its menu, never a second visit.
     val open by day.visitSession.current.collectAsState()
-    LaunchedEffect(open) { if (open != null && step != CcStep.MENU && step != CcStep.FORCE && step != CcStep.ASSESS) step = CcStep.MENU }
+    LaunchedEffect(open) { if (open != null && step != inCall && step != CcStep.FORCE && step != CcStep.ASSESS) step = inCall }
     val goBack: () -> Unit = {
         when (step) {
             CcStep.ROUTE -> onBack()
             CcStep.OUTLET -> step = CcStep.ROUTE
             CcStep.CHECK, CcStep.FORCE -> step = CcStep.OUTLET
             CcStep.ASSESS -> step = CcStep.MENU
-            CcStep.MENU -> scope.launch { day.closeVisit(); step = CcStep.OUTLET }
+            CcStep.MENU, CcStep.JOINT -> scope.launch { day.closeVisit(); step = CcStep.OUTLET }
         }
     }
     androidx.activity.compose.BackHandler(onBack = goBack)
-    AronScreen(topBar = { AronTopBar(stringResource(AmoR.string.amo_cc_title), onBack = goBack) }) {
+    AronScreen(topBar = { AronTopBar(stringResource(if (joint) AmoR.string.amo_jc_title else AmoR.string.amo_cc_title), onBack = goBack) }) {
         PermissionGate(GatedFeature.SALE, onBack = onBack) {
             val list = days
             when (step) {
@@ -88,7 +92,7 @@ fun ControlCallHost(
                             opening = true
                             scope.launch {
                                 day.routeId = r.outlet.routeId
-                                runCatching { day.visitFlow.open(ControlCall.visitOutlet(r.outlet)) }
+                                runCatching { day.visitFlow.open(ControlCall.visitOutlet(r.outlet, kind)) }
                                 opening = false; step = CcStep.CHECK
                             }
                         }
@@ -96,14 +100,15 @@ fun ControlCallHost(
                 }
                 CcStep.CHECK -> {
                     val st by day.visitFlow.state.collectAsState()
-                    LaunchedEffect(st) { if (st is VisitUiState.Open) step = CcStep.MENU }
+                    LaunchedEffect(st) { if (st is VisitUiState.Open) step = inCall }
                     VisitCheckContent(
                         st, onRefresh = { scope.launch { day.visitFlow.refresh() } }, onForceSale = { step = CcStep.FORCE },
                         onRetry = { scope.launch { day.visitFlow.retryCommit() } }, onMap = null,
                         texts = amoVisitCheckTexts(), onBack = { step = CcStep.OUTLET },
                     )
                 }
-                CcStep.FORCE -> ManualOverrideStep(day, onStarted = { step = CcStep.MENU }, onBack = { step = CcStep.CHECK })
+                CcStep.FORCE -> ManualOverrideStep(day, onStarted = { step = inCall }, onBack = { step = CcStep.CHECK })
+                CcStep.JOINT -> JointCallStep(day, routeId, onSaved = { scope.launch { day.closeVisit(); step = CcStep.OUTLET } })
                 CcStep.ASSESS -> PerfAssessmentStep(day, onSaved = { scope.launch { day.closeVisit(); step = CcStep.OUTLET } })
                 CcStep.MENU -> ControlCallMenu(
                     onSale = { onSale?.invoke() }, onAssessment = { step = CcStep.ASSESS }, onSurvey = onSurvey,
@@ -183,6 +188,39 @@ private fun PerfAssessmentStep(day: AmoDay, onSaved: () -> Unit) {
                 saving = true
                 scope.launch {
                     val ok = runCatching { day.saveAssessment(visit.visitUuid, brands.orEmpty(), state) }.isSuccess
+                    saving = false; saved = ok
+                    if (ok) { kotlinx.coroutines.delay(900); onSaved() }
+                }
+            }
+        },
+    )
+}
+
+/** F-AMO-011: the SR call assessment of an open Joint Call; the SR is the route's assigned one, read-only. */
+@Composable
+private fun JointCallStep(day: AmoDay, routeId: Long?, onSaved: () -> Unit) {
+    val scope = rememberCoroutineScope()
+    var rubric by remember { mutableStateOf<com.aktcl.aron.feature.amo.JointRubric?>(null) }
+    var sr by remember { mutableStateOf<com.aktcl.aron.feature.amo.AssignedSr?>(null) }
+    var stars by rememberSaveable(stateSaver = androidx.compose.runtime.saveable.listSaver<com.aktcl.aron.feature.amo.JointState, Long>(
+        save = { s -> s.stars.flatMap { listOf(it.key, it.value.toLong()) } },
+        restore = { l -> com.aktcl.aron.feature.amo.JointState(l.chunked(2).associate { it[0] to it[1].toInt() }) },
+    )) { mutableStateOf(com.aktcl.aron.feature.amo.JointState()) }
+    var saving by remember { mutableStateOf(false) }
+    var saved by remember { mutableStateOf(false) }
+    LaunchedEffect(day, routeId) {
+        rubric = com.aktcl.aron.feature.amo.JointCall.rubric(runCatching { day.reference.section("rubrics") }.getOrNull())
+        sr = routeId?.let { com.aktcl.aron.feature.amo.JointCall.assignedSr(runCatching { day.reference.section("supervisor") }.getOrNull(), it) }
+    }
+    val visit = day.visitSession.current.value
+    com.aktcl.aron.feature.amo.JointCallContent(
+        rubric, sr, stars, saved, saving, { id, n -> stars = stars.star(id, n) },
+        onSave = {
+            val r = rubric
+            if (!saving && !saved && visit != null && r != null) {
+                saving = true
+                scope.launch {
+                    val ok = runCatching { day.saveJointCall(visit.visitUuid, r, stars, sr?.userId) }.isSuccess
                     saving = false; saved = ok
                     if (ok) { kotlinx.coroutines.delay(900); onSaved() }
                 }

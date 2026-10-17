@@ -25,4 +25,9 @@
     <string name="amo_pa_saved">সংরক্ষিত হয়েছে</string>
     <string name="amo_pa_no_brands">ডাউনলোড করা পণ্য তালিকায় কোনো ব্র্যান্ড নেই</string>
     <string name="amo_pa_oos_hint">আগে ব্র্যান্ডটি বিতরণ হয়েছে বলে টিক দিন</string>
+    <string name="amo_jc_title">জয়েন্ট কল</string>
+    <string name="amo_jc_no_rubric">জয়েন্ট কলের ফর্ম এখনও নামানো হয়নি</string>
+    <string name="amo_jc_sr">এসআর: %1$s</string>
+    <string name="amo_jc_sr_none">নির্ধারিত নেই</string>
+    <string name="amo_jc_star">%1$s তারা</string>
 </resources>
