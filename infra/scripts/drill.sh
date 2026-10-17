@@ -109,17 +109,20 @@ copy="$(printf "%s" "$live" | sed "s#//[^:/]*#//$RESTORED_HOST#")"
 psql "$live" -XAtc "$q" > /tmp/live.txt
 psql "$copy" -XAtc "$q" > /tmp/copy.txt
 echo "tables: $(wc -l < /tmp/live.txt) live, $(wc -l < /tmp/copy.txt) restored"
-if diff /tmp/live.txt /tmp/copy.txt > /tmp/diff.txt; then echo "ROWCOUNTS EQUAL"; else echo "ROWCOUNTS DIFFER (rows written after the restore point):"; cat /tmp/diff.txt; fi'
+if diff /tmp/live.txt /tmp/copy.txt > /tmp/diff.txt; then echo "ROWCOUNTS EQUAL"; else echo "ROWCOUNTS DIFFER (rows written after the restore point):"; cat /tmp/diff.txt; fi
+# DD-02 (V0087, RB-14 step 5): the restored copy gets its new generation, as the real restore would, before anything serves from it.
+gen="$(psql "$copy" -XAtc "SELECT app.mint_server_generation(\$\$pitr_restore\$\$, TIMESTAMPTZ \$\$$RESTORE_POINT\$\$, TIMESTAMPTZ \$\$$RESTORE_POINT\$\$, \$\$drill.sh pitr\$\$)")"
+echo "GENERATION MINTED $gen current=$(psql "$copy" -XAtc "SELECT count(*) FROM app.server_generation WHERE is_current")"'
   # The documented override: a YAML template for this one execution (the job's own template stays unchanged).
   tpl="$(mktemp --suffix .yaml)"
-  python3 - "$image" "$restored_fqdn" "$script" > "$tpl" <<'PY'
+  python3 - "$image" "$restored_fqdn" "$script" "$point" > "$tpl" <<'PY'
 import json, sys
-image, host, script = sys.argv[1:4]
+image, host, script, point = sys.argv[1:5]
 # JSON is valid YAML, so no YAML library is needed.
 print(json.dumps({"containers": [{
     "name": "dblogins", "image": image, "resources": {"cpu": 0.25, "memory": "0.5Gi"},
     "command": ["/bin/sh", "-c", script],
-    "env": [{"name": "ARON_DB_URL", "secretRef": "db-direct-url"}, {"name": "RESTORED_HOST", "value": host}]}]}))
+    "env": [{"name": "ARON_DB_URL", "secretRef": "db-direct-url"}, {"name": "RESTORED_HOST", "value": host}, {"name": "RESTORE_POINT", "value": point}]}]}))
 PY
   execution="$(az containerapp job start -g "$RG" -n "$job" --yaml "$tpl" --query name -o tsv)" \
     || { summary "- row counts: the comparison job could not start"; exit 1; }
@@ -129,7 +132,7 @@ PY
     case "$status" in Succeeded|Failed|Stopped|Degraded) break ;; esac
     sleep 10
   done
-  summary "- row-count comparison job $execution: $status (output in Log Analytics, ContainerAppConsoleLogs, ContainerGroupName startswith $execution)"
+  summary "- row-count comparison job $execution: $status (output in Log Analytics, ContainerAppConsoleLogs, ContainerGroupName startswith $execution; its last line GENERATION MINTED proves RB-14 step 5)"
   hours=$(( ( $(now) - t0 + 3599 ) / 3600 ))
   summary "- cost estimate: about USD $(python3 -c "print(round($hours * 0.244 + 0.05, 2))") (D2ds_v5 at USD 0.244 per hour, $hours h billed, no HA on the copy, plus storage)"
   [ "$status" = Succeeded ] || exit 1

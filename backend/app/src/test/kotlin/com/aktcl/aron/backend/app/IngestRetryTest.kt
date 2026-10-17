@@ -224,9 +224,11 @@ class IngestRetryTest {
         return JsonObject(v + ("business_date" to kotlinx.serialization.json.JsonPrimitive(date)))
     }
 
+    /** DD-02 (V0087): the restore runbook's mint, then the generation's start is moved to the test's instant (the function stamps now()). */
     private fun restore(startedSql: String, lostAfterSql: String) = fresh.db.jdbi.useTransaction<Exception> { h ->
-        h.execute("UPDATE app.server_generation SET is_current = false WHERE is_current")
-        h.execute("INSERT INTO app.server_generation (generation, kind, started_at, lost_after_utc) VALUES (gen_random_uuid(), 'pitr_restore', $startedSql, $lostAfterSql)")
+        val g = h.createQuery("SELECT app.mint_server_generation('pitr_restore', $lostAfterSql, $startedSql, 'IngestRetryTest')").mapTo(String::class.java).one()
+        h.execute("UPDATE app.server_generation SET started_at = $startedSql WHERE generation = CAST('$g' AS uuid)")
+        assertEquals(1L, h.createQuery("SELECT count(*) FROM app.server_generation WHERE is_current").mapTo(Long::class.java).one(), "exactly one current generation")
     }
 
     /**
