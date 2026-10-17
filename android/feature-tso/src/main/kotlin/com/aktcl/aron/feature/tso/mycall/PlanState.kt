@@ -17,6 +17,9 @@ interface PlanSource {
 
     /** Outlets completed on this phone (Visit Query submitted) whose completion the server list does not show yet. */
     suspend fun locallyDone(planUuid: String): Set<Long>
+
+    /** Outlets whose Visit Query said "Delegate task? Yes" and whose task has not been assigned yet: Assign Task stays reachable for them. */
+    suspend fun taskPending(planUuid: String): Set<Long>
 }
 
 /** Queues the plan record and one plan-outlet record per new outlet in one transaction; returns how many outlets were new. */
@@ -92,7 +95,7 @@ class VisitPlanState(private val source: PlanSource, private val today: () -> St
     data class Ui(
         val date: String, val routes: List<PlanRoute> = emptyList(), val routesLoad: PickLoad = PickLoad.IDLE, val zoneId: Long? = null, val routeId: Long? = null,
         val plan: VisitPlanItem? = null, val planLoad: PickLoad = PickLoad.IDLE, val outlets: Map<Long, PlanOutlet> = emptyMap(),
-        val pending: List<Long> = emptyList(), val completed: List<Long> = emptyList(), val tab: Int = 0,
+        val pending: List<Long> = emptyList(), val completed: List<Long> = emptyList(), val tab: Int = 0, val taskPending: Set<Long> = emptySet(),
     )
 
     suspend fun loadRoutes() {
@@ -115,7 +118,8 @@ class VisitPlanState(private val source: PlanSource, private val today: () -> St
         val outs = runCatching { source.outlets(rid) }.getOrNull().orEmpty().associateBy { it.id }
         val local = plan?.let { runCatching { source.locallyDone(it.planUuid) }.getOrDefault(emptySet()) }.orEmpty()
         val (p, c) = splitPlan(plan, local)
-        _s.value = _s.value.copy(plan = plan, planLoad = PickLoad.READY, outlets = outs, pending = p, completed = c)
+        val tp = plan?.let { runCatching { source.taskPending(it.planUuid) }.getOrDefault(emptySet()) }.orEmpty()
+        _s.value = _s.value.copy(plan = plan, planLoad = PickLoad.READY, outlets = outs, pending = p, completed = c, taskPending = tp)
     }
 
     /** Re-reads after a Visit Query was submitted so the outlet moves to Completed without leaving the screen. */
@@ -134,5 +138,6 @@ class McSelection {
     var outlet: PlanOutlet? = null
     var route: PlanRoute? = null
     var rubric: Rubric? = null
+    var rubricMissing: Boolean = false
     var types: List<TaskType> = emptyList()
 }

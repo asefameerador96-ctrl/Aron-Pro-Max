@@ -198,6 +198,10 @@ class TsoReadModels(private val components: SessionComponents, private val datab
             return merged
         }
 
+        override suspend fun taskPending(planUuid: String): Set<Long> = runCatching {
+            meta(userId).metaWithPrefix(TASK_PENDING + planUuid + ".").mapNotNull { it.key.substringAfterLast('.').toLongOrNull() }.toSet()
+        }.getOrDefault(emptySet())
+
         override suspend fun locallyDone(planUuid: String): Set<Long> = runCatching {
             meta(userId).metaWithPrefix(DONE_MIRROR + planUuid + ".").mapNotNull { it.key.substringAfterLast('.').toLongOrNull() }.toSet()
         }.getOrDefault(emptySet())
@@ -257,13 +261,14 @@ class TsoReadModels(private val components: SessionComponents, private val datab
                 }, familyUuid = a, rank = 1, routeId = q.routeId,
             )
         }
-        box.enqueueAll(userId, recs, listOf(DONE_MIRROR + q.planUuid + "." + q.outletId to "1")) > 0
+        val mirrors = listOfNotNull(DONE_MIRROR + q.planUuid + "." + q.outletId to "1", if (q.delegate) TASK_PENDING + q.planUuid + "." + q.outletId to "1" else null)
+        box.enqueueAll(userId, recs, mirrors) > 0
     }
 
     /** F-TSO-016: a `task` record for the SR on the route (self family, rank 0). */
     fun taskQueue(userId: Long): com.aktcl.aron.feature.tso.mycall.TaskQueue = com.aktcl.aron.feature.tso.mycall.TaskQueue { t ->
         val box = checkNotNull(outbox) { "no outbox" }
-        box.enqueue(
+        val done = box.enqueue(
             userId, com.aktcl.aron.contract.RecordType.TASK, t.uuid,
             kotlinx.serialization.json.buildJsonObject {
                 put("task_type_code", kotlinx.serialization.json.JsonPrimitive(t.typeCode)); put("assignee_user_id", kotlinx.serialization.json.JsonPrimitive(t.assigneeUserId))
@@ -272,6 +277,9 @@ class TsoReadModels(private val components: SessionComponents, private val datab
                 put("due_date", kotlinx.serialization.json.JsonPrimitive(t.dueDate)); put("source_visit_client_uuid", kotlinx.serialization.json.JsonNull)
             }, routeId = t.routeId,
         )
+        // the task is queued (or was already, same uuid): Assign Task is no longer pending for this outlet
+        t.planUuid?.let { p -> runCatching { meta(userId).deleteMeta(TASK_PENDING + p + "." + t.outletId) } }
+        done
     }
 
     /** F-TSO-010/021: preview read and the one online POST; no queue, scope from the token only. */
@@ -308,5 +316,5 @@ class TsoReadModels(private val components: SessionComponents, private val datab
     suspend fun rubric(userId: Long) = com.aktcl.aron.feature.tso.mycall.RubricJson.retailer(runCatching { meta(userId).section("rubrics") }.getOrNull())
     suspend fun taskTypes(userId: Long) = com.aktcl.aron.feature.tso.mycall.TaskTypes.parse(runCatching { meta(userId).section("code_lists") }.getOrNull())
 
-    private companion object { const val PLAN_MIRROR = "tso.unsent.plan."; const val DONE_MIRROR = "tso.visit.done."; const val FEEDBACK_MIRROR = "tso.unsent.feedback."; const val LEAVE_MIRROR = "tso.unsent.leave." }
+    private companion object { const val PLAN_MIRROR = "tso.unsent.plan."; const val TASK_PENDING = "tso.task.pending."; const val DONE_MIRROR = "tso.visit.done."; const val FEEDBACK_MIRROR = "tso.unsent.feedback."; const val LEAVE_MIRROR = "tso.unsent.leave." }
 }

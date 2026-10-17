@@ -5,7 +5,7 @@ F-TSO-009,S,2026-10-17T21:00Z,2026-10-17T22:10Z,70,1,"Sonnet checker: form and u
 F-TSO-028,M,2026-10-17T22:10Z,2026-10-17T23:00Z,50,0,"chrome: hamburger, greeting, logout icon with confirm, blue Home button, drawer of seven entries with subtitles, date formats (TsoDates); checker pending; placement of the Home button over screens with a bottom bar is DEVICE-PENDING D-TSO-028"
 F-TSO-018,M,2026-10-17T21:30Z,2026-10-17T23:30Z,90,2,"Sonnet checker: retained state shared between users on one phone (HIGH, keys now carry the username), stale form after Done (epoch now retained), repeat toast (one-shot), raw truncation; photo part not wired (needs TSO media shell), DEVICE-PENDING"
 F-TSO-029,S,2026-10-17T21:30Z,2026-10-17T23:30Z,0,0,"with F-TSO-018"
-F-TSO-013,M,2026-10-17T23:00Z,2026-10-18T00:20Z,80,0,"Set Plan: deterministic plan and plan-outlet uuids make a repeat a union; zone label is the id (no zone-name read in the contract: request); checker pending"
+F-TSO-013,M,2026-10-17T23:00Z,2026-10-18T00:20Z,80,0,"Set Plan: deterministic plan and plan-outlet uuids make a repeat a union; zone label is the id (no zone-name read in the contract: request); Sonnet checker: 4 findings fixed (missing rubric dead end, lost delegated task now re-enterable with stable task uuid, task-type validation, rubric version choice)"
 F-TSO-014,S,2026-10-17T23:00Z,2026-10-18T00:20Z,0,0,"with F-TSO-013 (tabs, local completion overlay)"
 F-TSO-015,S,2026-10-17T23:00Z,2026-10-18T00:20Z,0,0,"with F-TSO-013 (rubric from bundle section rubrics, kind retailer_questionnaire; call_assessment + answers, no GPS no photo)"
 F-TSO-016,S,2026-10-17T23:00Z,2026-10-18T00:20Z,0,0,"with F-TSO-013 (assignee = SR on the route; SR Not Set blocks; task_type code list)"

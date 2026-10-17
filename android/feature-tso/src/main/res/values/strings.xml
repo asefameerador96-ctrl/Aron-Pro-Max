@@ -187,4 +187,7 @@
     <string name="tso_fs_warn_not_submitted">Some routes have not submitted their sales.</string>
     <string name="tso_fs_warn_pending">Some routes still have records that were not sent.</string>
     <string name="tso_fs_warn_not_logged_in">Some routes were not logged in.</string>
+    <string name="tso_mc_task_waiting">Assign task</string>
+    <string name="tso_mc_no_task_types">The task types have not been downloaded yet. Connect once and open the app again.</string>
+    <string name="tso_mc_no_rubric">The visit questions have not been downloaded yet. Connect once and open the app again.</string>
 </resources>

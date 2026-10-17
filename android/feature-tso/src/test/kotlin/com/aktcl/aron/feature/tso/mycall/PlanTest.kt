@@ -17,6 +17,7 @@ private class Src(var routes: List<PlanRoute>? = listOf(r(1, 10), r(2, 10), r(3,
     override suspend fun outlets(routeId: Long) = outlets[routeId]
     override suspend fun plans(date: String) = plans
     override suspend fun locallyDone(planUuid: String) = done
+    override suspend fun taskPending(planUuid: String) = emptySet<Long>()
 }
 
 @RunWith(AndroidJUnit4::class)
@@ -171,7 +172,7 @@ class QueryAndTaskTest {
         s.pickType("irregular_visit"); s.setDate("2026-10-16"); s.submit(); assertTrue((s.ui.value.result as TaskResult.Invalid).errors.contains(TaskError.DATE_PAST))
         s.setDate("2026-10-20"); s.setComment("  go  "); s.submit(); s.submit()
         assertEquals(1, q.made.size); val t = q.made[0]
-        assertEquals(TaskSubmit("t-1", "irregular_visit", "Irregular Visit", 77, 1, 9, "2026-10-20", "go"), t)
+        assertEquals(TaskSubmit(null, "t-1", "irregular_visit", "Irregular Visit", 77, 1, 9, "2026-10-20", "go"), t)
     }
 
     @Test fun routeWithNoSrBlocksAssigning() = runBlocking {
@@ -181,7 +182,30 @@ class QueryAndTaskTest {
     }
 
     @Test fun taskTypesComeFromTheCodeListSorted() {
-        val cl = """[{"list_key":"task_type","items":[{"code":"b","label_en":"B","sort":2},{"code":"a","label_en":"A","label_bn":"এ","sort":1},{"label_en":"bad"}]}]"""
-        assertEquals(listOf("a", "b"), TaskTypes.parse(cl).map { it.code }); assertTrue(TaskTypes.parse(null).isEmpty())
+        val cl = """[{"list_key":"task_type","items":[{"code":"bb","label_en":"B","sort":2},{"code":"aa","label_en":"A","label_bn":"এ","sort":1},{"label_en":"bad"}]}]"""
+        assertEquals(listOf("aa", "bb"), TaskTypes.parse(cl).map { it.code }); assertTrue(TaskTypes.parse(null).isEmpty())
+    }
+}
+
+@RunWith(AndroidJUnit4::class)
+@Config(sdk = [34])
+class CheckerFixesTest {
+    @Test fun newerRubricWithoutBoolQuestionsDoesNotHideAnOlderUsableOne() {
+        val j = """[{"rubric_id":5,"version":1,"kind":"retailer_questionnaire","criteria":[{"criterion_id":1,"label_en":"Q1","answer_type":"bool"}]},{"rubric_id":5,"version":2,"kind":"retailer_questionnaire","criteria":[{"criterion_id":2,"label_en":"stars","answer_type":"score_1_5"}]}]"""
+        assertEquals(1, RubricJson.retailer(j)!!.version)
+    }
+
+    @Test fun badTaskTypesAreDropped() {
+        val cl = """[{"list_key":"task_type","items":[{"code":"X Y","label_en":"Bad code","sort":1},{"code":"ok_type","label_en":"","sort":2},{"code":"fine","label_en":"Fine","sort":3}]}]"""
+        assertEquals(listOf("fine"), TaskTypes.parse(cl).map { it.code })
+    }
+
+    @Test fun reopeningAssignTaskForTheSameOutletUsesTheSameTaskUuid() = runBlocking {
+        val made = mutableListOf<TaskSubmit>(); val types = listOf(TaskType("a_b", null, "A", 1)); val route = PlanRoute(1, "R", "N", 10, null, RouteSr(7, "Rahim"))
+        repeat(2) {
+            val s = AssignTaskState(types, route, 9, { made += it; true }, { "2026-10-17" }, "plan", QueryIds.task("plan", 9))
+            s.pickType("a_b"); s.submit()
+        }
+        assertEquals(1, made.map { it.uuid }.distinct().size); assertEquals("plan", made[0].planUuid)
     }
 }

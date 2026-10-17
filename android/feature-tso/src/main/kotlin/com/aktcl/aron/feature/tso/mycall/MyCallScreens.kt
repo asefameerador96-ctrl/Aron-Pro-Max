@@ -131,7 +131,7 @@ fun SetPlanScreen(state: SetPlanState, onBack: () -> Unit, modifier: Modifier = 
 
 /** F-TSO-014 My Visit Plan. */
 @Composable
-fun VisitPlanScreen(state: VisitPlanState, onOpenOutlet: (planUuid: String, outlet: PlanOutlet, route: PlanRoute) -> Unit, onBack: () -> Unit, modifier: Modifier = Modifier) {
+fun VisitPlanScreen(state: VisitPlanState, onOpenOutlet: (planUuid: String, outlet: PlanOutlet, route: PlanRoute) -> Unit, onOpenTask: (planUuid: String, outlet: PlanOutlet, route: PlanRoute) -> Unit, onBack: () -> Unit, modifier: Modifier = Modifier) {
     val ui by state.ui.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
     val bn = LocalAppLanguage.current == AppLanguage.BN
@@ -151,7 +151,12 @@ fun VisitPlanScreen(state: VisitPlanState, onOpenOutlet: (planUuid: String, outl
                     val route = ui.routes.firstOrNull { it.id == ui.routeId }
                     ids.forEach { id ->
                         val o = ui.outlets[id] ?: PlanOutlet(id, id.toString(), id.toString(), null, "", null, null)
-                        OutletCard(o, bn, Modifier.testTag(MyCallTags.outlet(id)), onClick = if (ui.tab == 0 && ui.plan != null && route != null) ({ onOpenOutlet(ui.plan!!.planUuid, o, route) }) else null)
+                        val canQuery = ui.tab == 0 && ui.plan != null && route != null
+                        val needsTask = ui.tab == 1 && id in ui.taskPending && ui.plan != null && route != null
+                        OutletCard(
+                            o, bn, Modifier.testTag(MyCallTags.outlet(id)), trailing = if (needsTask) stringResource(R.string.tso_mc_task_waiting) else null,
+                            onClick = if (canQuery) ({ onOpenOutlet(ui.plan!!.planUuid, o, route!!) }) else if (needsTask) ({ onOpenTask(ui.plan!!.planUuid, o, route!!) }) else null,
+                        )
                     }
                 }
                 else -> Unit
@@ -213,6 +218,7 @@ fun AssignTaskScreen(state: AssignTaskState, onDone: () -> Unit, modifier: Modif
         bottomBar = { AronBottomBar(primary = if (assigned) AronBarAction(stringResource(R.string.tso_leave_done), onDone) else AronBarAction(stringResource(R.string.tso_mc_assign), { scope.launch { state.submit() } }, enabled = ui.result !is TaskResult.NoSr), modifier = Modifier.testTag(MyCallTags.SUBMIT)) },
     ) {
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(AronTokens.Space.Screen), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.M)) {
+            if (state.typeList.isEmpty()) AronBanner(stringResource(R.string.tso_mc_no_task_types), kind = BannerKind.Warning)
             if (ui.result is TaskResult.NoSr) AronBanner(stringResource(R.string.tso_mc_no_sr), Modifier.testTag(MyCallTags.NO_SR), kind = BannerKind.Warning)
             if (assigned) AronBanner(stringResource(R.string.tso_mc_assigned, state.srName ?: ""), Modifier.testTag(MyCallTags.ASSIGNED), kind = BannerKind.Success)
             if (ui.result is TaskResult.Failed) AronBanner(stringResource(R.string.tso_mc_save_failed), kind = BannerKind.Error)
@@ -229,5 +235,13 @@ fun AssignTaskScreen(state: AssignTaskState, onDone: () -> Unit, modifier: Modif
                     TaskError.DATE_FAR -> R.string.tso_leave_err_date_far; TaskError.COMMENT_LONG -> R.string.tso_mc_err_comment }), Modifier.testTag(MyCallTags.ERRORS), kind = BannerKind.Error)
             }
         }
+    }
+}
+
+/** Shown instead of a silent hub when the questionnaire (or the task types) is not on the phone yet. */
+@Composable
+fun MyCallUnavailable(messageRes: Int, onBack: () -> Unit, modifier: Modifier = Modifier) {
+    AronScreen(modifier, topBar = { AronTopBar(stringResource(R.string.tso_drawer_my_call), onBack = onBack) }) {
+        Column(Modifier.fillMaxSize().padding(AronTokens.Space.Screen)) { AronBanner(stringResource(messageRes), Modifier.testTag(MyCallTags.UNAVAILABLE), kind = BannerKind.Warning) }
     }
 }

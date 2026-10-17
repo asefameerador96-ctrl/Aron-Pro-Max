@@ -38,6 +38,7 @@ class MyCallScreenTest {
         override suspend fun outlets(routeId: Long) = listOf(PlanOutlet(1, "DHK-344-011", "Shop One", null, "Karim", "Cluster A", "01711000000"), PlanOutlet(2, "DHK-344-012", "Shop Two", null, "Salam", null, null))
         override suspend fun plans(date: String): List<VisitPlanItem>? = emptyList()
         override suspend fun locallyDone(planUuid: String) = emptySet<Long>()
+        override suspend fun taskPending(planUuid: String) = emptySet<Long>()
     }
 
     @Test fun visitQueryShowsTheTwoQuestionsAndDelegateDefaultsToNo() {

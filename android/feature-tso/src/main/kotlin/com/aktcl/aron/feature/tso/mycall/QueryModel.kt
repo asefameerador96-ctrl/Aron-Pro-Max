@@ -19,13 +19,13 @@ object RubricJson {
     /** The newest enabled-criteria `retailer_questionnaire` rubric out of the bundle section; only bool criteria are asked. */
     fun retailer(section: String?): Rubric? = runCatching {
         val a = JSONArray(section ?: return null)
-        (0 until a.length()).map { a.getJSONObject(it) }.filter { it.optString("kind") == "retailer_questionnaire" }
-            .maxByOrNull { it.getInt("version") }?.let { r ->
-                val c = r.getJSONArray("criteria")
-                val crit = (0 until c.length()).map { c.getJSONObject(it) }.filter { (!it.has("enabled") || it.optBoolean("enabled", true)) && it.optString("answer_type") == "bool" }
-                    .map { Criterion(it.getLong("criterion_id"), if (it.isNull("label_bn")) null else it.optString("label_bn").ifBlank { null }, it.getString("label_en")) }
-                if (crit.isEmpty()) null else Rubric(r.getLong("rubric_id"), r.getInt("version"), crit)
-            }
+        // the newest retailer_questionnaire version that actually has bool questions (a newer one without them must not hide a usable older one)
+        (0 until a.length()).map { a.getJSONObject(it) }.filter { it.optString("kind") == "retailer_questionnaire" }.mapNotNull { r ->
+            val c = r.getJSONArray("criteria")
+            val crit = (0 until c.length()).map { c.getJSONObject(it) }.filter { (!it.has("enabled") || it.optBoolean("enabled", true)) && it.optString("answer_type") == "bool" }
+                .mapNotNull { runCatching { Criterion(it.getLong("criterion_id"), if (it.isNull("label_bn")) null else it.optString("label_bn").ifBlank { null }, it.getString("label_en").also { l -> require(l.isNotBlank()) }) }.getOrNull() }
+            if (crit.isEmpty()) null else Rubric(r.getLong("rubric_id"), r.getInt("version"), crit)
+        }.maxByOrNull { it.version }
     }.getOrNull()
 }
 
@@ -33,6 +33,7 @@ data class QuerySubmit(val planUuid: String, val outletId: Long, val routeId: Lo
 
 /** One assessment per plan outlet: its uuid and each answer's uuid are derived, so a repeat Submit changes nothing. */
 object QueryIds {
+    fun task(planUuid: String, outletId: Long) = v3("aron.tso.query-task:$planUuid:$outletId")
     fun assessment(planUuid: String, outletId: Long) = v3("aron.tso.query:$planUuid:$outletId")
     fun answer(assessmentUuid: String, criterionId: Long) = v3("aron.tso.query-answer:$assessmentUuid:$criterionId")
     private fun v3(n: String) = UUID.nameUUIDFromBytes(n.toByteArray(Charsets.UTF_8)).toString()
@@ -77,11 +78,14 @@ class VisitQueryState(private val rubric: Rubric, private val planUuid: String, 
 
 data class TaskType(val code: String, val labelBn: String?, val labelEn: String, val sort: Int) { fun label(bangla: Boolean) = if (bangla && !labelBn.isNullOrBlank()) labelBn else labelEn }
 
+private val TASK_CODE = Regex("^[a-z][a-z0-9_]{1,40}$")
+
 object TaskTypes {
     fun parse(codeLists: String?): List<TaskType> = runCatching {
         val a = JSONArray(codeLists ?: return emptyList())
         (0 until a.length()).map { a.getJSONObject(it) }.firstOrNull { it.optString("list_key") == "task_type" }?.getJSONArray("items")?.let { items ->
             (0 until items.length()).mapNotNull { i -> runCatching { items.getJSONObject(i).let { o ->
+                require(TASK_CODE.matches(o.getString("code")) && o.getString("label_en").isNotBlank())
                 TaskType(o.getString("code"), if (o.isNull("label_bn")) null else o.optString("label_bn").ifBlank { null }, o.getString("label_en"), o.optInt("sort", 0)) } }.getOrNull() }
                 .sortedWith(compareBy<TaskType> { it.sort }.thenBy { it.code })
         } ?: emptyList()
@@ -91,7 +95,7 @@ object TaskTypes {
 const val MAX_TASK_COMMENT = 1000
 const val MAX_TASK_TITLE = 120
 
-data class TaskSubmit(val uuid: String, val typeCode: String, val title: String, val assigneeUserId: Long, val routeId: Long, val outletId: Long, val dueDate: String, val comment: String?)
+data class TaskSubmit(val planUuid: String?, val uuid: String, val typeCode: String, val title: String, val assigneeUserId: Long, val routeId: Long, val outletId: Long, val dueDate: String, val comment: String?)
 fun interface TaskQueue { suspend fun create(t: TaskSubmit): Boolean }
 
 enum class TaskError { NO_TYPE, DATE_FORMAT, DATE_PAST, DATE_FAR, COMMENT_LONG }
@@ -121,9 +125,12 @@ fun validateTask(typeCode: String?, types: List<TaskType>, date: String, comment
 /** F-TSO-016: type, date and comment; the assignee is the SR active on the route (never chosen by the client from a free list). */
 class AssignTaskState(
     private val types: List<TaskType>, private val route: PlanRoute?, private val outletId: Long, private val queue: TaskQueue, private val today: () -> String,
+    private val planUuid: String? = null,
+    /** From a Visit Query: one task per plan outlet, so re-opening Assign Task can never create a second one. */
+    taskUuid: String? = null,
     private val newUuid: () -> String = { UUID.randomUUID().toString() },
 ) {
-    private val uuid = newUuid()
+    private val uuid = taskUuid ?: newUuid()
     private var busy = false
     private val _s = MutableStateFlow(Ui(date = today(), result = if (route?.sr == null) TaskResult.NoSr else TaskResult.Editing))
     val ui: StateFlow<Ui> = _s.asStateFlow()
@@ -146,7 +153,7 @@ class AssignTaskState(
         busy = true
         try {
             val type = types.first { it.code == s.typeCode }
-            queue.create(TaskSubmit(uuid, type.code, type.labelEn.take(MAX_TASK_TITLE), sr.userId, route.id, outletId, s.date, s.comment.trim().ifEmpty { null }))
+            queue.create(TaskSubmit(planUuid, uuid, type.code, type.labelEn.take(MAX_TASK_TITLE), sr.userId, route.id, outletId, s.date, s.comment.trim().ifEmpty { null }))
             _s.value = _s.value.copy(result = TaskResult.Assigned)
         } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) { _s.value = _s.value.copy(result = TaskResult.Failed) } finally { busy = false }
     }

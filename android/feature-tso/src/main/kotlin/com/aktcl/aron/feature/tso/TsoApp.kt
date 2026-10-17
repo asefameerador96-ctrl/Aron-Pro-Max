@@ -206,11 +206,17 @@ private fun MyCallFlow(deps: com.aktcl.aron.feature.tso.mycall.MyCallDeps, userK
                     sel.planUuid = planUuid; sel.outlet = outlet; sel.route = route
                     scope.launch { sel.rubric = deps.loadRubric(); step = "query" }
                 },
+                onOpenTask = { planUuid, outlet, route ->
+                    sel.planUuid = planUuid; sel.outlet = outlet; sel.route = route
+                    scope.launch { sel.types = deps.loadTaskTypes(); step = "task" }
+                },
             )
         }
         "query" -> {
             val outlet = sel.outlet; val route = sel.route; val rubric = sel.rubric
-            if (outlet == null || route == null || rubric == null) {
+            if (outlet != null && route != null && rubric == null) {
+                com.aktcl.aron.feature.tso.mycall.MyCallUnavailable(com.aktcl.aron.feature.tso.R.string.tso_mc_no_rubric, onBack = { step = "plan" })
+            } else if (outlet == null || route == null || rubric == null) {
                 com.aktcl.aron.feature.tso.mycall.MyCallHub({ step = "set" }, { step = "plan" }, onBack) // nothing selected after a restore: back to the hub
             } else {
                 val st = rememberRetained("tso-$userKey-mc-query-${sel.planUuid}-${outlet.id}") { com.aktcl.aron.feature.tso.mycall.VisitQueryState(rubric, sel.planUuid, outlet.id, route.id, deps.queryQueue) }
@@ -223,7 +229,7 @@ private fun MyCallFlow(deps: com.aktcl.aron.feature.tso.mycall.MyCallDeps, userK
         "task" -> {
             val outlet = sel.outlet; val route = sel.route
             if (outlet == null) com.aktcl.aron.feature.tso.mycall.MyCallHub({ step = "set" }, { step = "plan" }, onBack) else {
-                val st = rememberRetained("tso-$userKey-mc-task-${sel.planUuid}-${outlet.id}") { com.aktcl.aron.feature.tso.mycall.AssignTaskState(sel.types, route, outlet.id, deps.taskQueue, today) }
+                val st = rememberRetained("tso-$userKey-mc-task-${sel.planUuid}-${outlet.id}") { com.aktcl.aron.feature.tso.mycall.AssignTaskState(sel.types, route, outlet.id, deps.taskQueue, today, sel.planUuid, com.aktcl.aron.feature.tso.mycall.QueryIds.task(sel.planUuid, outlet.id)) }
                 com.aktcl.aron.feature.tso.mycall.AssignTaskScreen(st, onDone = { step = "plan" })
             }
         }

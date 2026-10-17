@@ -187,4 +187,7 @@
     <string name="tso_fs_warn_not_submitted">কিছু রুট বিক্রয় জমা দেয়নি।</string>
     <string name="tso_fs_warn_pending">কিছু রুটের তথ্য এখনো পাঠানো হয়নি।</string>
     <string name="tso_fs_warn_not_logged_in">কিছু রুট লগইন করেনি।</string>
+    <string name="tso_mc_task_waiting">কাজ দিন</string>
+    <string name="tso_mc_no_task_types">কাজের ধরনের তালিকা এখনো নামেনি। একবার ইন্টারনেটে যুক্ত হয়ে অ্যাপ আবার খুলুন।</string>
+    <string name="tso_mc_no_rubric">ভিজিটের প্রশ্ন এখনো নামেনি। একবার ইন্টারনেটে যুক্ত হয়ে অ্যাপ আবার খুলুন।</string>
 </resources>
