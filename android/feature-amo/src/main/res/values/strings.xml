@@ -38,4 +38,12 @@
     <string name="amo_sv_submit">Submit</string>
     <string name="amo_sv_skip">Back without the survey</string>
     <string name="amo_sv_confirm">Are you sure you want to submit the survey?</string>
+    <string name="amo_cc_menu_price">Price compliance</string>
+    <string name="amo_pc_empty">No list prices downloaded for this retailer</string>
+    <string name="amo_pc_empty_hint">The price list downloads with the day\'s data.</string>
+    <string name="amo_pc_list">List price %1$s ৳ per pack of %2$s</string>
+    <string name="amo_pc_field">Shelf price (৳)</string>
+    <string name="amo_pc_ok">Matches the list price</string>
+    <string name="amo_pc_off">Differs from the list price by %1$s ৳</string>
+    <string name="amo_pc_invalid">Enter a price like 125 or 125.5</string>
 </resources>

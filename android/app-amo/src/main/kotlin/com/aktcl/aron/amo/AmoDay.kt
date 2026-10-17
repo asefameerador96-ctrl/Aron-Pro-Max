@@ -260,6 +260,33 @@ class AmoDay(
         runCatching { requestSync() }
     }
 
+    // ---- Price compliance (F-AMO-035)
+
+    /** Tolerance in basis points: `cfg.amo.price_tolerance_bp` when the registry carries it, else the assumed default. */
+    suspend fun priceToleranceBp(): Int = runCatching { reference.config("cfg.amo.price_tolerance_bp", iso(clock.nowMs())) }.getOrNull()
+        ?.trim('"')?.toIntOrNull()?.takeIf { it in 0..5000 } ?: com.aktcl.aron.feature.amo.PriceCompliance.DEFAULT_TOLERANCE_BP
+
+    /** SKUs with a list price today for the open call's outlet price type. */
+    suspend fun priceRows(bn: Boolean): List<com.aktcl.aron.feature.amo.PriceRow> {
+        val outlet = visitSession.current.value?.outletId?.let { db.referenceDao().outlet(it) } ?: return emptyList()
+        val date = businessDate()
+        val skus = reference.skus()
+        val prices = skus.associate { it.skuId to reference.priceOn(it.skuId, outlet.priceType, date) }
+        return com.aktcl.aron.feature.amo.PriceCompliance.rows(skus, { prices[it.skuId] }, outlet.priceType, bn)
+    }
+
+    /** One `price_compliance_check` per typed SKU, all or nothing; a second Save for the visit writes nothing. */
+    suspend fun savePriceCompliance(visitUuid: String, rows: List<com.aktcl.aron.feature.amo.PriceRow>, typed: Map<Long, String>, toleranceBp: Int) {
+        if (db.captureDao().amoRecordsOfFamily(visitUuid).any { it.recordType == "price_compliance_check" }) return
+        val planned = com.aktcl.aron.feature.amo.PriceCompliance.records(visitUuid, rows, typed, toleranceBp, ::newUuid)
+        db.withTransaction {
+            for (p in planned) capture.recordAmo(
+                com.aktcl.aron.core.database.entity.AmoRecordEntity(p.clientUuid, metaProvider.meta(visitSession.current.value?.routeId ?: 0L), "price_compliance_check", p.familyUuid, p.rank, p.payload.toString()),
+            )
+        }
+        runCatching { requestSync() }
+    }
+
     /** SR Perf. Assessment (F-AMO-007/008/009): the check and its brand lines, all or nothing, family = the visit. A second Save for the visit writes nothing. */
     suspend fun saveAssessment(visitUuid: String, brands: List<com.aktcl.aron.feature.amo.AmoBrand>, state: com.aktcl.aron.feature.amo.PerfState) {
         if (db.captureDao().amoRecordsOfFamily(visitUuid).any { it.recordType == "distribution_check" }) return

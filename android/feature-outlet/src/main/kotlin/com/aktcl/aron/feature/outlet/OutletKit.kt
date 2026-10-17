@@ -125,7 +125,7 @@ internal fun StatusPill(label: String, icon: ImageVector, container: Color, ink:
  * lays out the whole control (label and field); [fieldModifier] goes on the field itself (a test tag).
  */
 @Composable
-internal fun KitTextField(
+fun KitTextField(
     value: String,
     onValueChange: (String) -> Unit,
     label: String,

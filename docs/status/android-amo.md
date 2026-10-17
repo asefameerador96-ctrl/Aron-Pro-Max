@@ -1,5 +1,8 @@
 # Status: lane android-amo (wave 2, started 2026-10-17)
 
+## Session 2 progress
+Done: F-AMO-043 + 010 (Survey, checked), F-AMO-035 (Price compliance, checker pending). Changes in modules of other lanes: `core-database` `recordSurveyResponse` allows `amo_control_call` (test in ContentSurveyTest); `feature-outlet` `KitTextField` is public. Next: F-AMO-013/014/015/029/049/030 (sale wiring: copy SrSaleKit into app-amo), then 018/019, 022-028. Local branch to push from: `amo-work` -> `origin/lane/android-amo` (the container's local `lane/android-amo` was stale).
+
 ## HANDOVER (READY TO RECYCLE, 2026-10-17, session 1 of the lane)
 **State:** all on `lane/android-amo` (merged with INT; local Gradle works online: `echo sdk.dir=/opt/android-sdk > local.properties`; `./gradlew :android:feature-amo:testDebugUnitTest :android:app-amo:compileDebugKotlin :android:core-database:testDebugUnitTest -q 2>&1 | grep -v JAVA_TOOL`). CI on the lane head has not been looked at yet: check it first.
 

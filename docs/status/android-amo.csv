@@ -9,3 +9,6 @@ F-AMO-007,S,2026-10-17T05:00Z,2026-10-17T05:50Z,50,0,"distribution check + one l
 F-AMO-008,S,2026-10-17T05:00Z,2026-10-17T05:50Z,0,0,"OOS only for distributed brands (PerfState)"
 F-AMO-009,S,2026-10-17T05:00Z,2026-10-17T05:50Z,0,0,"POSM tri-state; Save shows saved message then back to outlet picker, route kept; tests in PerfAssessmentTest"
 F-AMO-011,M,2026-10-17T05:50Z,2026-10-17T06:40Z,50,0,"Joint Call = same route/retailer/geo gate on amo_joint_call, assigned SR read-only, 1-5 stars, disabled rubric items shown greyed not scored, star 1 preselected (ASSUMED); Sonnet checker: SR lost after relaunch (route from visit now), star label: fixed"
+F-AMO-043,S,2026-10-17T19:10Z,2026-10-17T19:45Z,35,0,"AMO Survey on PosmSurvey rules, no points; recordSurveyResponse widened to amo_control_call (core-database, tested); Sonnet checker PASS: empty-state back button added; survey audience question logged D-AMO-SURVEY-01"
+F-AMO-010,S,2026-10-17T19:10Z,2026-10-17T19:45Z,0,0,"Control Call menu Survey entry wired (same commit as 043); DEVICE-PENDING on the Galaxy A06"
+F-AMO-035,M,2026-10-17T19:45Z,2026-10-17T20:20Z,35,0,"Price compliance per pack, tolerance 1% ASSUMED (D-AMO-PRICE-01); KitTextField made public in feature-outlet; logic tests in PriceComplianceTest; Sonnet checker pending"

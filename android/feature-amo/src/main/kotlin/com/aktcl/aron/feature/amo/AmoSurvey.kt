@@ -72,7 +72,11 @@ fun AmoSurveyContent(
     modifier: Modifier = Modifier,
 ) {
     if (all.isEmpty()) {
-        AronEmptyState(stringResource(R.string.amo_sv_empty), modifier.fillMaxSize().testTag(AmoSurveyTags.EMPTY), hint = stringResource(R.string.amo_sv_empty_hint))
+        Column(modifier.fillMaxSize()) {
+            AronEmptyState(stringResource(R.string.amo_sv_empty), Modifier.weight(1f).fillMaxWidth().testTag(AmoSurveyTags.EMPTY), hint = stringResource(R.string.amo_sv_empty_hint))
+            // already submitted for this call (or none downloaded): a way back to the menu
+            AronSecondaryButton(stringResource(R.string.amo_sv_skip), onSkip, Modifier.fillMaxWidth().padding(AronTokens.Space.Screen).testTag(AmoSurveyTags.SKIP))
+        }
         return
     }
     val c = LocalAronColors.current

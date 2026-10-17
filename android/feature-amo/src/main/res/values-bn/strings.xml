@@ -38,4 +38,12 @@
     <string name="amo_sv_submit">জমা দিন</string>
     <string name="amo_sv_skip">সার্ভে ছাড়া ফিরে যান</string>
     <string name="amo_sv_confirm">আপনি কি সার্ভে জমা দেওয়ার বিষয়ে নিশ্চিত?</string>
+    <string name="amo_cc_menu_price">মূল্য সম্মতি</string>
+    <string name="amo_pc_empty">এই রিটেইলারের জন্য কোনো তালিকা মূল্য নামানো নেই</string>
+    <string name="amo_pc_empty_hint">মূল্য তালিকা দিনের ডেটার সাথে নামে।</string>
+    <string name="amo_pc_list">তালিকা মূল্য %1$s ৳ (প্রতি প্যাক, %2$s)</string>
+    <string name="amo_pc_field">শেলফ মূল্য (৳)</string>
+    <string name="amo_pc_ok">তালিকা মূল্যের সাথে মিলেছে</string>
+    <string name="amo_pc_off">তালিকা মূল্য থেকে %1$s ৳ ভিন্ন</string>
+    <string name="amo_pc_invalid">১২৫ বা ১২৫.৫-এর মতো মূল্য লিখুন</string>
 </resources>

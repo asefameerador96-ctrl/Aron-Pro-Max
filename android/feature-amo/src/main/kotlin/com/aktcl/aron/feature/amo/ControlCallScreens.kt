@@ -25,7 +25,7 @@ import com.aktcl.aron.core.ui.LocalAronColors
 import com.aktcl.aron.core.ui.RowPosition
 import com.aktcl.aron.feature.outlet.VisitCheckTexts
 
-object AmoCallTags { const val ROUTE_LIST = "amo_cc_routes"; const val EMPTY = "amo_cc_empty"; const val MENU_SALE = "amo_cc_sale"; const val MENU_ASSESS = "amo_cc_assess"; const val MENU_SURVEY = "amo_cc_survey"; const val OVERRIDE_LIMIT = "amo_cc_limit" }
+object AmoCallTags { const val ROUTE_LIST = "amo_cc_routes"; const val EMPTY = "amo_cc_empty"; const val MENU_SALE = "amo_cc_sale"; const val MENU_ASSESS = "amo_cc_assess"; const val MENU_SURVEY = "amo_cc_survey"; const val MENU_PRICE = "amo_cc_price"; const val OVERRIDE_LIMIT = "amo_cc_limit" }
 
 /** Route step of a Control or Joint Call (F-AMO-004): the zone's routes from the local bundle; empty state when none are downloaded. */
 @Composable
@@ -64,9 +64,9 @@ fun ManualOverrideLimit(max: Int, onBack: () -> Unit, modifier: Modifier = Modif
     }
 }
 
-/** The per-outlet menu of an open Control Call: Sale, SR Perf. Assessment, Survey (docs/07). The Survey entry is hidden when [onSurvey] is null. */
+/** The per-outlet menu of an open Control Call: Sale, SR Perf. Assessment, Survey (docs/07), and Price compliance (F-AMO-035). An entry is hidden when its callback is null. */
 @Composable
-fun ControlCallMenu(onSale: () -> Unit, onAssessment: () -> Unit, onSurvey: (() -> Unit)?, onDone: () -> Unit, modifier: Modifier = Modifier) {
+fun ControlCallMenu(onSale: () -> Unit, onAssessment: () -> Unit, onSurvey: (() -> Unit)?, onDone: () -> Unit, modifier: Modifier = Modifier, onPrice: (() -> Unit)? = null) {
     Column(
         modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(AronTokens.Space.Screen),
         verticalArrangement = Arrangement.spacedBy(AronTokens.Space.M),
@@ -75,6 +75,7 @@ fun ControlCallMenu(onSale: () -> Unit, onAssessment: () -> Unit, onSurvey: (() 
         AronPrimaryButton(stringResource(R.string.amo_cc_menu_sale), onSale, Modifier.fillMaxWidth().testTag(AmoCallTags.MENU_SALE))
         AronPrimaryButton(stringResource(R.string.amo_cc_menu_assessment), onAssessment, Modifier.fillMaxWidth().testTag(AmoCallTags.MENU_ASSESS))
         if (onSurvey != null) AronPrimaryButton(stringResource(R.string.amo_cc_menu_survey), onSurvey, Modifier.fillMaxWidth().testTag(AmoCallTags.MENU_SURVEY))
+        if (onPrice != null) AronPrimaryButton(stringResource(R.string.amo_cc_menu_price), onPrice, Modifier.fillMaxWidth().testTag(AmoCallTags.MENU_PRICE))
         AronSecondaryButton(stringResource(R.string.amo_cc_back_to_picker), onDone, Modifier.fillMaxWidth())
     }
 }

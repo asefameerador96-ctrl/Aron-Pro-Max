@@ -37,7 +37,7 @@ import kotlinx.coroutines.launch
 import androidx.compose.ui.res.stringResource
 import com.aktcl.aron.feature.amo.R as AmoR
 
-private enum class CcStep { ROUTE, OUTLET, CHECK, FORCE, MENU, ASSESS, JOINT, SURVEY }
+private enum class CcStep { ROUTE, OUTLET, CHECK, FORCE, MENU, ASSESS, JOINT, SURVEY, PRICE }
 
 /**
  * F-AMO-004/005/036: Control Call. Route and retailer come from the zone-wide bundle (local), the geo gate is the SR's
@@ -66,13 +66,13 @@ fun ControlCallHost(
     }
     // A call already open (kill and relaunch): back on its menu, never a second visit.
     val open by day.visitSession.current.collectAsState()
-    LaunchedEffect(open) { if (open != null && step != inCall && step != CcStep.FORCE && step != CcStep.ASSESS && step != CcStep.SURVEY) step = inCall }
+    LaunchedEffect(open) { if (open != null && step != inCall && step != CcStep.FORCE && step != CcStep.ASSESS && step != CcStep.SURVEY && step != CcStep.PRICE) step = inCall }
     val goBack: () -> Unit = {
         when (step) {
             CcStep.ROUTE -> onBack()
             CcStep.OUTLET -> step = CcStep.ROUTE
             CcStep.CHECK, CcStep.FORCE -> step = CcStep.OUTLET
-            CcStep.ASSESS, CcStep.SURVEY -> step = CcStep.MENU
+            CcStep.ASSESS, CcStep.SURVEY, CcStep.PRICE -> step = CcStep.MENU
             CcStep.MENU, CcStep.JOINT -> scope.launch { day.closeVisit(); step = CcStep.OUTLET }
         }
     }
@@ -111,8 +111,9 @@ fun ControlCallHost(
                 CcStep.JOINT -> JointCallStep(day, onSaved = { scope.launch { day.closeVisit(); step = CcStep.OUTLET } })
                 CcStep.ASSESS -> PerfAssessmentStep(day, onSaved = { scope.launch { day.closeVisit(); step = CcStep.OUTLET } })
                 CcStep.SURVEY -> SurveyStep(day, onDone = { step = CcStep.MENU })
+                CcStep.PRICE -> PriceStep(day, onSaved = { step = CcStep.MENU })
                 CcStep.MENU -> ControlCallMenu(
-                    onSale = { onSale?.invoke() }, onAssessment = { step = CcStep.ASSESS }, onSurvey = { step = CcStep.SURVEY },
+                    onSale = { onSale?.invoke() }, onAssessment = { step = CcStep.ASSESS }, onSurvey = { step = CcStep.SURVEY }, onPrice = { step = CcStep.PRICE },
                     onDone = { scope.launch { day.closeVisit(); step = CcStep.OUTLET } },
                 )
             }
@@ -286,5 +287,35 @@ private fun SurveyStep(day: AmoDay, onDone: () -> Unit) {
             }
         },
         onDismiss = { confirming = false }, onSkip = onDone,
+    )
+}
+
+/** F-AMO-035: price compliance of the open Control Call. Save writes one check per typed SKU, then back to the menu. */
+@Composable
+private fun PriceStep(day: AmoDay, onSaved: () -> Unit) {
+    val scope = rememberCoroutineScope()
+    val bn = com.aktcl.aron.core.ui.LocalAppLanguage.current == com.aktcl.aron.core.common.AppLanguage.BN
+    var rows by remember { mutableStateOf<List<com.aktcl.aron.feature.amo.PriceRow>?>(null) }
+    var tolerance by remember { mutableStateOf(com.aktcl.aron.feature.amo.PriceCompliance.DEFAULT_TOLERANCE_BP) }
+    var typed by rememberSaveable(stateSaver = androidx.compose.runtime.saveable.listSaver<Map<Long, String>, Any>(
+        save = { m -> m.flatMap { listOf(it.key, it.value) } },
+        restore = { l -> l.chunked(2).associate { (it[0] as Long) to (it[1] as String) } },
+    )) { mutableStateOf<Map<Long, String>>(emptyMap()) }
+    var saving by remember { mutableStateOf(false) }
+    var saved by remember { mutableStateOf(false) }
+    LaunchedEffect(day, bn) { tolerance = day.priceToleranceBp(); rows = runCatching { day.priceRows(bn) }.getOrDefault(emptyList()) }
+    val visit = day.visitSession.current.value
+    com.aktcl.aron.feature.amo.PriceComplianceContent(
+        rows.orEmpty(), typed, tolerance, saved, saving, { id, t -> typed = typed + (id to t) },
+        onSave = {
+            if (!saving && !saved && visit != null) {
+                saving = true
+                scope.launch {
+                    val ok = runCatching { day.savePriceCompliance(visit.visitUuid, rows.orEmpty(), typed, tolerance) }.isSuccess
+                    saving = false; saved = ok
+                    if (ok) { kotlinx.coroutines.delay(900); onSaved() }
+                }
+            }
+        },
     )
 }
