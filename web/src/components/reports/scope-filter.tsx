@@ -26,17 +26,17 @@ export async function ScopeFilter({ token, scope, locale, params }: { token: str
   );
   return (
     <fieldset className="flex flex-wrap gap-3" data-testid="scope-filter">
-      <legend className="mb-1 text-sm font-semibold text-slate-700">{t(locale, "filter.scope")}</legend>
+      <legend className="mb-1 text-sm font-semibold text-secondary">{t(locale, "filter.scope")}</legend>
       {parts.map((p) =>
         p.locked ? (
           <div key={p.lvl} className="min-w-32" data-testid={`scope-locked-${p.lvl}`}>
-            <span className="block text-xs text-slate-500">{t(locale, LABEL[p.lvl])}</span>
-            <span className="block rounded bg-slate-100 px-2 py-1 text-sm text-slate-700">{own || t(locale, "filter.scope.fixed")}</span>
+            <span className="block text-caption text-secondary">{t(locale, LABEL[p.lvl])}</span>
+            <span className="block rounded-chip bg-raised px-2 py-1 text-body text-primary">{own || t(locale, "filter.scope.fixed")}</span>
           </div>
         ) : (
           <label key={p.lvl} className="min-w-32 text-sm">
-            <span className="block text-xs text-slate-500">{t(locale, LABEL[p.lvl])}</span>
-            <select name={p.lvl} defaultValue={chosen[p.lvl]?.[0] ?? ""} className="w-full rounded border border-slate-300 bg-white px-2 py-1" data-testid={`scope-select-${p.lvl}`}>
+            <span className="block text-caption text-secondary">{t(locale, LABEL[p.lvl])}</span>
+            <select name={p.lvl} defaultValue={chosen[p.lvl]?.[0] ?? ""} className="min-h-(--ctl-h) w-full rounded-chip border border-input bg-raised px-2 text-primary focus-visible:outline-(length:--focus-w) focus-visible:outline-offset-2 outline-focus" data-testid={`scope-select-${p.lvl}`}>
               <option value="">{t(locale, "common.all")}</option>
               {p.options.map((o) => (
                 <option key={o.id} value={o.id}>
