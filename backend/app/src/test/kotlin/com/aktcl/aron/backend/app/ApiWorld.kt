@@ -131,6 +131,25 @@ class ApiWorld(
         ids["variants"] = one("SELECT min(id) FROM app.product_node WHERE level = 'variant'")
         ids["paper_outlet"] = one("SELECT id FROM app.outlet WHERE code = 'MIR-D-001'")
         ids["paper_sku"] = one("SELECT id FROM app.sku WHERE code = 'MaxR-10S'")
+        // A pending C3 config change requested by admin1001 (decided by superadmin1001: never the requester).
+        ids["cfg_change"] = one(
+            "INSERT INTO app.cfg_change (status, items, reason, risk_class, requested_by, requested_at) SELECT 'pending_approval', " +
+                "jsonb_build_array(jsonb_build_object('key', 'cfg.geo.radius_m', 'scope_type', 'outlet', 'scope_id', o.id, 'value', 120, 'effective_from', null, 'effective_to', null, 'old_value', null)), " +
+                "'qa harness: seeded pending change', 3, u.id, TIMESTAMPTZ '${BUSINESS_DATE}T03:00:00Z' FROM app.app_user u, (SELECT min(id) AS id FROM app.outlet WHERE code LIKE 'MIR-%') o WHERE u.username = 'admin1001' RETURNING change_id",
+        )
+        // A published SR release (enrolment tokens provision one; no served operation publishes releases). version_code 1
+        // keeps GET /v1/app/update-check answering "no update" for the sample version.
+        h.execute(
+            "INSERT INTO app.app_release (flavour, version_name, version_code, abi, sha256, size_bytes, download_url, signing_cert_sha256, status, rollout_pct, created_by, published_at, published_by) " +
+                "SELECT 'sr', '1.0.0', 1, 'universal', sha256('qa-release-sr'::bytea), 1000000, 'https://example.com/qa/aron-sr.apk', sha256('qa-signing-cert'::bytea), 'published', 100, a.id, now(), s.id " +
+                "FROM app.app_user a, app.app_user s WHERE a.username = 'admin1001' AND s.username = 'superadmin1001'",
+        )
+        // A throwaway AMO with a zone scope for the scope write (an SR's reach comes from its routes, so it is refused).
+        h.execute("INSERT INTO app.app_user (username, full_name, role, designation, employee_code, locale, home_zone_id, pilot, must_change_password) SELECT 'qa9002', 'QA Throwaway AMO', role, designation, 'QA9002', locale, home_zone_id, false, false FROM app.app_user WHERE username = 'amo1001'")
+        h.execute("INSERT INTO app.user_scope (user_id, node_type, node_id, valid_from, reason) SELECT u.id, 'zone', z.id, DATE '2026-01-01', 'qa harness' FROM app.app_user u, app.zone z WHERE u.username = 'qa9002' AND z.code = 'Z-MIR'")
+        ids["scope_user"] = one("SELECT id FROM app.app_user WHERE username = 'qa9002'")
+        // Another SR route of Z-MIR for the route-assignment create (MIR-SR-D already carries qa9001's backfill cover).
+        ids["cover_route"] = one("SELECT min(id) FROM app.route WHERE code LIKE 'MIR-SR-%' AND code <> 'MIR-SR-D' AND kind = 'sr' AND status = 'active'")
         // A tutorial video asset (the sample asset is content_av; a tutorial needs its own purpose).
         h.execute("INSERT INTO app.admin_asset (asset_id, purpose, mime, bytes, sha256, blob_path) VALUES ('$TUTORIAL_ASSET', 'tutorial_video', 'video/mp4', 1, decode(repeat('00', 32), 'hex'), 'assets/tutorial_video/$TUTORIAL_ASSET.mp4')")
         // Paper backfill is keyed for the throwaway SR on sr1001's route (a cover), so sr1001's day is untouched.

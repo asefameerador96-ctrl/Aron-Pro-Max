@@ -343,6 +343,34 @@ class ContractConformanceTest {
             "POST /v1/admin/quarantine/{}/resolve" to Fx(path = { _, x -> mapOf("quarantine_id" to x.id("quarantine_resolve").toString()) }, body = { n, _, _ -> n.put("action", "discard") }),
             // A -100 % change waits for a SUPERADMIN other than the submitter (admin1001): superadmin1001 rejects it.
             "POST /v1/admin/prices/batches/{}/decision" to Fx(after = listOf("POST /v1/admin/prices"), body = { n, _, _ -> n.put("decision", "reject") }),
+            // Config: the seeded pending change, version 1 (V0006 always creates it); a TSO names a zone of its reach.
+            "GET /v1/admin/config/changes/{}" to Fx(path = { _, x -> mapOf("change_id" to x.id("cfg_change").toString()) }),
+            "GET /v1/admin/config/versions/{}" to Fx(path = { _, _ -> mapOf("version" to "1") }),
+            "GET /v1/admin/config/reach/{}" to Fx(path = { _, _ -> mapOf("version" to "1") }, query = { _, x -> mapOf("zone_id" to x.id("zones").toString()) }),
+            "GET /v1/admin/config/reach/{}/pending" to Fx(path = { _, _ -> mapOf("version" to "1") }, query = { _, x -> mapOf("zone_id" to x.id("zones").toString()) }),
+            "POST /v1/admin/config/changes/{}/decision" to Fx(path = { _, x -> mapOf("change_id" to x.id("cfg_change").toString()) }, body = { n, _, _ -> n.put("decision", "reject") }),
+            // Version 1 reverts role-scope C2 rows: scheduled, never applied under the fixed clock.
+            "POST /v1/admin/config/versions/{}/rollback" to Fx(path = { _, _ -> mapOf("version" to "1") }),
+            "PUT /v1/admin/users/{}/scope" to Fx(path = { _, x -> mapOf("id" to x.id("scope_user").toString()) }),
+            // A future cover for the throwaway SR (every MIR route has sr1001 as primary; a cover today would take its day);
+            // each caller its own window. /end ends that cover, never a seeded assignment.
+            "POST /v1/admin/route-assignments" to Fx(
+                body = { n, c, x ->
+                    val day = if (c.user == "superadmin1001") 12 else 10
+                    n.put("route_id", x.id("cover_route")); n.put("user_id", x.id("users")); n.put("kind", "cover")
+                    n.put("valid_from", "2027-01-$day"); n.put("valid_to", "2027-01-${day + 1}")
+                },
+                capture = { _, b, x -> if (x["assignment_id"] == null) x["assignment_id"] = b.path("id").asText() },
+            ),
+            "POST /v1/admin/route-assignments/{}/end" to Fx(
+                after = listOf("POST /v1/admin/route-assignments"),
+                path = { _, x -> mapOf("id" to x["assignment_id"].orEmpty()) }, body = { n, _, _ -> n.put("valid_to", "2027-01-11") },
+            ),
+            // Device admin on the throwaway SR and phone (OTPs revoke its previous OTP only; upload_first changes no state).
+            "POST /v1/admin/device-otps" to Fx(body = { n, _, x -> n.put("user_id", x.id("users")) }),
+            "POST /v1/admin/devices/{}/replace" to Fx(body = { n, _, x -> n.put("new_device_user_id", x.id("users")) }),
+            "POST /v1/admin/enrolment-tokens" to Fx(capture = { _, b, x -> if (x["token_id"] == null) x["token_id"] = b.path("token").path("token_id").asText() }),
+            "POST /v1/admin/enrolment-tokens/{}/revoke" to Fx(after = listOf("POST /v1/admin/enrolment-tokens"), path = { _, x -> mapOf("token_id" to x["token_id"].orEmpty()) }),
             "POST /v1/day/final-submit" to Fx(after = listOf("POST /v1/web-entry/qc", "POST /v1/web-entry/route-day")),
         )
     }
