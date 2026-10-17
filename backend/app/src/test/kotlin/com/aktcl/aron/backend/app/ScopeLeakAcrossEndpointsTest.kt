@@ -1,0 +1,416 @@
+package com.aktcl.aron.backend.app
+
+import com.fasterxml.jackson.databind.JsonNode
+import com.fasterxml.jackson.databind.node.ObjectNode
+import com.aktcl.aron.backend.analytics.AggregationWorker
+import com.aktcl.aron.backend.analytics.Aggregator
+import io.ktor.client.HttpClient
+import io.ktor.client.request.bearerAuth
+import io.ktor.client.request.header
+import io.ktor.client.request.post
+import io.ktor.client.request.setBody
+import io.ktor.client.statement.bodyAsText
+import io.ktor.http.ContentType
+import io.ktor.http.content.ByteArrayContent
+import io.ktor.server.application.plugin
+import io.ktor.server.routing.RoutingRoot
+import io.ktor.server.testing.testApplication
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import org.junit.jupiter.api.AfterAll
+import org.junit.jupiter.api.BeforeAll
+import org.junit.jupiter.api.TestInstance
+import java.io.File
+import kotlin.random.Random
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertTrue
+
+/**
+ * N-014 (scope-leak harness over every endpoint; N-061 widens it). The seed is loaded twice ([ApiWorld] mirror): a whole
+ * second division (D-LKX: zone, routes, 60 outlets, users, all marked `lkx`) that no scoped seed user may reach. Both
+ * divisions get a phone and a day of real sales through `POST /v1/sync/batch` (visits, memos, lines, collections,
+ * voids), so lists, reports and dashboards have rows on both sides.
+ *
+ * Every operation the production wiring serves is called by the scoped callers (sr1001 on its phone, amo1001, tso1001,
+ * dmo1001 on the web): with their own ids, with the other division's ids in every resource path parameter, with each
+ * optional selector query parameter set to the other division, and (writes) with the other division's ids in every id
+ * field of the body, optional ones included. An answer leaks when it carries the other division by
+ * - text: the marker, or a client_uuid of one of its records, or
+ * - id: one of its outlet, route, user, zone, cluster, territory, division or device ids under a key of that kind
+ *   (`outlet_id`, `route_ids`, ..., and `id` inside a collection of that resource);
+ * and a write leaks when it answers 2xx while naming the other division. The positive control is per endpoint: the
+ * national admin must see the other division on each read, or the read is in `scope-blind-baseline.txt` (a read the
+ * harness cannot judge yet; the list may only shrink). Known leaks would go to `scope-leak-baseline.txt` (empty).
+ * The seeded-leak test runs the same probes with the national token swapped in for a TSO on chosen operations (a
+ * server that ignores the token's reach) and requires the leaks to be reported through the same baseline check.
+ * Report: build/scope-leak-endpoints.txt.
+ */
+@TestInstance(TestInstance.Lifecycle.PER_CLASS)
+class ScopeLeakAcrossEndpointsTest {
+    private lateinit var world: ApiWorld
+    private lateinit var contract: ContractModel
+    private val repoRoot = File(System.getProperty("aron.repoRoot") ?: "../..")
+    private val day = ApiWorld.BUSINESS_DATE
+
+    private val scoped = listOf(
+        ApiWorld.Caller("sr1001", "app_sr", ApiWorld.SR_PHONE),
+        ApiWorld.Caller("amo1001", "web", null),
+        ApiWorld.Caller("tso1001", "web", null),
+        ApiWorld.Caller("dmo1001", "web", null),
+    )
+    private val national = ApiWorld.Caller("admin1001", "web", null)
+
+    /** The top node of each scoped supervisor in the seed (level, ids key): its dashboards must show exactly that node. */
+    private val topNode = mapOf("amo1001" to ("zone" to "zones"), "tso1001" to ("territory" to "territories"), "dmo1001" to ("division" to "divisions"))
+
+    /** National numbers of each dashboard read for each supervisor's top node: `<op> <user>` to numbers. */
+    private val nationalTop = HashMap<String, List<String>>()
+
+    data class Leak(val method: String, val shape: String, val caller: String, val variant: String, val detail: String) {
+        val key: String get() = "$method $shape $caller $variant"
+    }
+
+    /** The other division: ids per resource kind, and the client_uuids of its records. */
+    private val otherIds = HashMap<String, Set<Long>>()
+    private val otherUuids = HashSet<String>()
+
+    private lateinit var ops: List<ContractModel.Operation>
+    private val leaks = mutableListOf<Leak>()
+    private val nationalSees = sortedMapOf<String, Boolean>()
+    /** Counters of one probe run (the main run's are kept apart from the seeded test's). */
+    class Stats { var calls = 0; var otherIdCalls = 0; var refusedOtherIdCalls = 0; val scopedSuccess = sortedMapOf<String, Int>() }
+    private val stats = Stats()
+
+    /** National answers' numbers per `<op> <selector>`: (own division, other division), for the aggregate rule. */
+    private val nationalNumbers = HashMap<String, Pair<List<String>, List<String>>>()
+
+    @BeforeAll
+    fun setUp() {
+        contract = ContractModel.load(repoRoot.resolve("contract/openapi.yaml"))
+        world = ApiWorld(repoRoot, mirrors = listOf(ApiWorld.OTHER))
+        val own = world.fresh.db.jdbi.withHandle<SyncPhone, Exception> { h ->
+            fun id(sql: String) = h.createQuery(sql).mapTo(Long::class.java).one()
+            val route = id("SELECT id FROM app.route WHERE code = 'MIR-SR-D'")
+            val skus = h.createQuery("SELECT s.id, p.amount_mtk FROM app.sku s JOIN app.sku_price p ON p.sku_id = s.id AND p.price_type = 'outlet' WHERE p.amount_mtk > 0 ORDER BY s.id LIMIT 2").map { rs, _ -> rs.getLong(1) to rs.getLong(2) }.list()
+            SyncPhone(
+                day, "MIR", ApiWorld.SR_PHONE, id("SELECT id FROM app.device WHERE device_uuid = '${ApiWorld.SR_PHONE}'"), id("SELECT id FROM app.app_user WHERE username = 'sr1001'"), "sr1001", route,
+                h.createQuery("SELECT id FROM app.outlet WHERE route_id = :r ORDER BY id").bind("r", route).mapTo(Long::class.java).list(), skus,
+            )
+        }
+        val other = world.phoneFor(ApiWorld.OTHER, 50, day)
+        world.otherIds["devices"] = other.deviceId
+        testApplication {
+            application { aronApi(world.wiring) }
+            client.sellADay(own, 7); client.sellADay(other, 11) // different days, so the two divisions' aggregates differ
+        }
+        // The dw projector and the route-day aggregates, as the worker role runs them, so dashboards and reports have
+        // both divisions (dashboards resolve their node through dw.dim_geo).
+        AggregationWorker(world.fresh.db, world.clock).also { w ->
+            w.runUntilIdle(); world.fresh.db.jdbi.useHandle<Exception> { Aggregator.refreshDimensions(it) }; w.requestRebuild(java.time.LocalDate.parse(day)); w.runUntilIdle()
+        }
+        world.fresh.db.jdbi.useHandle<Exception> { h ->
+            fun ids(sql: String) = h.createQuery(sql).mapTo(Long::class.java).set()
+            val zones = "SELECT id FROM app.zone WHERE code = 'Z-LKX'"
+            otherIds["outlets"] = ids("SELECT id FROM app.outlet WHERE zone_id IN ($zones)")
+            otherIds["routes"] = ids("SELECT id FROM app.route WHERE zone_id IN ($zones)")
+            otherIds["zones"] = ids(zones)
+            otherIds["clusters"] = ids("SELECT id FROM app.cluster WHERE zone_id IN ($zones)")
+            otherIds["territories"] = ids("SELECT territory_id FROM app.zone WHERE code = 'Z-LKX'")
+            otherIds["divisions"] = ids("SELECT id FROM app.division WHERE code = 'D-LKX'")
+            otherIds["users"] = ids("SELECT id FROM app.app_user WHERE username LIKE 'lkx%'")
+            otherIds["devices"] = setOf(other.deviceId)
+            otherUuids += h.createQuery("SELECT client_uuid::text FROM app.visit WHERE user_id = :u UNION SELECT client_uuid::text FROM app.memo WHERE user_id = :u UNION SELECT client_uuid::text FROM app.due_collection WHERE user_id = :u")
+                .bind("u", other.userId).mapTo(String::class.java).list()
+        }
+        check(otherIds.values.all { it.isNotEmpty() } && otherUuids.isNotEmpty()) { "the other division is incomplete: $otherIds, ${otherUuids.size} records" }
+        // Ids of the two divisions never coincide per kind, so an id hit is never the caller's own row.
+        check(world.ids.entries.none { (k, v) -> otherIds[k]?.contains(v) == true })
+        run()
+    }
+
+    @AfterAll
+    fun tearDown() { world.close() }
+
+    /** Logs [p] in and delivers one selling day until every record is acknowledged. */
+    private suspend fun HttpClient.sellADay(p: SyncPhone, seed: Int) {
+        p.token = world.login(this, ApiWorld.Caller(p.username, "app_sr", p.deviceUuid)) ?: error("no token for ${p.username}")
+        var pending = p.captureDay(Random(seed))
+        repeat(5) {
+            if (pending.isEmpty()) return
+            val r = post("/v1/sync/batch") {
+                bearerAuth(p.token); header("X-Device-Id", p.deviceUuid); header("X-App-Version", ApiWorld.APP_VERSION); header("Content-Encoding", "gzip")
+                setBody(ByteArrayContent(gz(p.batch(pending)), ContentType.Application.Json))
+            }
+            val acked = Json.parseToJsonElement(r.bodyAsText()).jsonObject["acks"]!!.jsonArray.map { it.jsonObject }
+                .filter { it["status"]!!.jsonPrimitive.content in setOf("accepted", "duplicate") }.map { it["client_uuid"]!!.jsonPrimitive.content }.toSet()
+            pending = pending.filter { it.uuid() !in acked }
+        }
+        check(pending.isEmpty()) { "${p.username}: ${pending.size} records never accepted" }
+    }
+
+    // ---- detection -------------------------------------------------------------------------------------------------
+
+    /** What in [text] shows the other division (null when nothing does). [resource] is the collection `id` belongs to. */
+    internal fun shows(text: String, resource: String?): String? {
+        val i = text.indexOf(ApiWorld.MARK, ignoreCase = true)
+        if (i >= 0) return "text …" + text.substring(maxOf(0, i - 40), minOf(text.length, i + 40)) + "…"
+        otherUuids.firstOrNull { it in text }?.let { return "a record of the other division ($it)" }
+        val node = runCatching { ContractModel.json.readTree(text) }.getOrNull() ?: return null
+        return idHit(node, resource)
+    }
+
+    private fun kindOf(key: String, resource: String?): String? = when {
+        key == "id" -> resource
+        key == "node_id" || key == "home_zone_id" -> "zones"
+        key.endsWith("user_id") || key.endsWith("user_ids") -> "users"
+        else -> ApiWorld.PARAM_RESOURCE[key] ?: ApiWorld.PARAM_RESOURCE[key.removeSuffix("s")]
+    }
+
+    private fun idHit(n: JsonNode, resource: String?): String? {
+        if (n.isArray) { n.forEach { idHit(it, resource)?.let { h -> return h } }; return null }
+        if (!n.isObject) return null
+        for ((k, v) in n.properties()) {
+            val kind = kindOf(k, resource)
+            val set = kind?.let { otherIds[it] }
+            if (set != null) {
+                val values = if (v.isArray) v.toList() else listOf(v)
+                values.firstOrNull { it.isIntegralNumber && it.asLong() in set }?.let { return "$k=${it.asLong()} is a ${kind.removeSuffix("s")} of the other division" }
+            }
+            if (v.isContainerNode) idHit(v, resource)?.let { return it }
+        }
+        return null
+    }
+
+    /** The collection an operation's `id` belongs to (`/v1/admin/outlets/{id}` and `/v1/admin/outlets` are outlets). */
+    private fun resourceOf(op: ContractModel.Operation): String? =
+        op.path.split('/').lastOrNull { it.isNotEmpty() && !it.startsWith("{") }?.let { seg -> seg.takeIf { it in otherIds.keys } }
+
+    /** Points every resource id field of a body (single or list) at the other division; true when one changed. */
+    private fun retarget(n: JsonNode): Boolean {
+        var changed = false
+        if (n is ObjectNode) n.fieldNames().asSequence().toList().forEach { f ->
+            val v = n.get(f)
+            val other = kindOf(f, null)?.let { world.otherIds[it] ?: otherIds[it]?.first() }
+            when {
+                other != null && v.isIntegralNumber -> { n.put(f, other); changed = true }
+                other != null && v.isArray && v.size() > 0 && v.all { it.isIntegralNumber } -> { n.putArray(f).add(other); changed = true }
+                retarget(v) -> changed = true
+            }
+        } else if (n.isArray) n.forEach { if (retarget(it)) changed = true }
+        return changed
+    }
+
+    // ---- the probes ------------------------------------------------------------------------------------------------
+
+    /**
+     * Calls every operation of [which] as every scoped caller in every variant and returns the leaks; [tokenFor] gives
+     * the bearer of a caller (the seeded-leak test swaps in the national one).
+     */
+    private suspend fun HttpClient.probe(which: List<ContractModel.Operation>, st: Stats, tokenFor: suspend (ApiWorld.Caller) -> String?): List<Leak> {
+        val found = mutableListOf<Leak>()
+        for (op in which) {
+            val shape = ContractModel.shape(op.path)
+            val read = op.method == "GET" || READ_BY_POST.containsMatchIn(op.operationId)
+            val resource = resourceOf(op)
+            val ownNumbers = HashMap<String, List<String>>()
+            for (c in scoped) {
+                suspend fun once(variant: String, pathIds: Map<String, Long>, query: String = "", body: Boolean = false) {
+                    var retargeted = !body
+                    val edit: ((JsonNode) -> Unit)? = if (body) { n -> retargeted = retarget(n) } else null
+                    val r = world.call(this, contract, op, c, tokenFor(c), pathIds, query, includeOptionalIds = body, bodyEdit = edit)
+                    if (!retargeted) return // the body names no resource: nothing to learn beyond the own call
+                    st.calls++
+                    val text = r.bodyAsText()
+                    if (variant == "own" && r.status.value in 200..299) st.scopedSuccess.merge(op.key, 1, Int::plus)
+                    shows(text, resource)?.let { found += Leak(op.method, shape, c.user, variant, "${r.status.value} $it") }
+                    // An aggregate carries no ids: a scoped answer to an other-division selector that equals the national
+                    // view of the other division (and that view differs from the caller's own division) is a leak.
+                    // Dashboards (a `level` selector): the own answer must be exactly the national view of the caller's top
+                    // node, and an other-division selector must be refused or ignored (the own answer again). This catches
+                    // an answer that mixes the divisions, which neither text nor ids show (checker N-014 A).
+                    if (isDashboard(op) && r.status.value in 200..299) {
+                        val n = numbers(text)
+                        if (variant == "own") {
+                            ownNumbers[c.user] = n
+                            nationalTop["${op.key} ${c.user}"]?.let { want -> if (n != want) found += Leak(op.method, shape, c.user, variant, "${r.status.value} the numbers differ from the national view of the caller's own node") }
+                        } else if (variant.startsWith("other-") && variant != "other-body") {
+                            ownNumbers[c.user]?.let { mine -> if (n != mine) found += Leak(op.method, shape, c.user, variant, "${r.status.value} an other-division selector changed the numbers (not refused, not ignored)") }
+                        }
+                    }
+                    if (read && r.status.value in 200..299 && variant.startsWith("other-") && variant != "other-path" && variant != "other-body") {
+                        nationalNumbers["${op.key} ${variant.removePrefix("other-")}"]?.let { (ownN, otherN) ->
+                            if (otherN.isNotEmpty() && otherN != ownN && numbers(text) == otherN) found += Leak(op.method, shape, c.user, variant, "${r.status.value} the answer equals the national view of the other division")
+                        }
+                    }
+                    if (variant != "own") {
+                        st.otherIdCalls++
+                        if (r.status.value == 403 || r.status.value == 404) st.refusedOtherIdCalls++
+                        if (!read && r.status.value in 200..299) found += Leak(op.method, shape, c.user, variant, "${r.status.value} a write naming the other division succeeded: ${text.take(160)}")
+                    }
+                }
+                once("own", world.ids)
+                if (world.pathFor(contract, op, world.ids) != world.pathFor(contract, op, world.otherIds)) once("other-path", world.otherIds)
+                for (p in op.parameters.filter { it.where == "query" && !it.required && (it.name in ApiWorld.PARAM_RESOURCE || it.name == "node_id") }) {
+                    val v = if (p.name == "node_id") world.otherIds["zones"] else ApiWorld.PARAM_RESOURCE[p.name]?.let { world.otherIds[it] }
+                    v?.let { once("other-${p.name}", world.ids, selector(op, p.name, it)) }
+                }
+                if (op.requestSchema != null) once("other-body", world.ids, body = true)
+            }
+        }
+        return found
+    }
+
+    private fun isDashboard(op: ContractModel.Operation) = op.method == "GET" && op.parameters.any { it.name == "level" } && op.parameters.any { it.name == "node_id" }
+
+    /** The query that selects [id] by [param] (a dashboard's node_id goes with its `level`, others with `node_type`). */
+    private fun selector(op: ContractModel.Operation, param: String, id: Long): String {
+        if (param != "node_id") return "$param=$id"
+        val names = op.parameters.map { it.name }
+        return "node_id=$id" + when { "level" in names -> "&level=zone"; "node_type" in names && op.parameters.none { it.name == "node_type" && it.required } -> "&node_type=zone"; else -> "" }
+    }
+
+    /** The numeric leaves of a JSON answer (times, versions and cursors left out), as a comparable fingerprint. */
+    internal fun numbers(text: String): List<String> {
+        val out = mutableListOf<String>()
+        fun walk(n: JsonNode, key: String) {
+            when {
+                n.isObject -> n.properties().forEach { (k, v) -> walk(v, k) }
+                n.isArray -> n.forEach { walk(it, key) }
+                n.isNumber && !TIMEISH.containsMatchIn(key) -> out += "$key=${n.asText()}"
+            }
+        }
+        runCatching { ContractModel.json.readTree(text) }.getOrNull()?.let { walk(it, "") }
+        return out.sorted()
+    }
+
+    private fun run() = testApplication {
+        application { aronApi(world.wiring) }
+        startApplication()
+        ops = ApiWorld.routes(application.plugin(RoutingRoot)).mapNotNull { (m, p) -> contract.operation(m, p) }.distinctBy { it.key }
+            .filter { !it.public && it.key !in SESSION_ENDING }
+            .sortedWith(compareBy({ it.method != "GET" }, { it.key }))
+        val tokens = HashMap<String, String?>()
+        suspend fun token(c: ApiWorld.Caller): String? = tokens.getOrPut(c.user) { world.login(client, c) }
+        for (c in scoped + national) check(token(c) != null) { "no token for ${c.user}" }
+        // The positive control: does the national admin see the other division on this read (own or other ids)?
+        for (op in ops.filter { it.method == "GET" }) {
+            val r = world.call(client, contract, op, national, token(national))
+            var sees = shows(r.bodyAsText(), resourceOf(op)) != null
+            if (!sees && world.pathFor(contract, op, world.ids) != world.pathFor(contract, op, world.otherIds)) {
+                sees = shows(world.call(client, contract, op, national, token(national), world.otherIds).bodyAsText(), resourceOf(op)) != null
+            }
+            // Reads whose division is chosen by a query selector: the national view of each division, for the aggregate rule.
+            for (p in op.parameters.filter { it.where == "query" && !it.required && (it.name in ApiWorld.PARAM_RESOURCE || it.name == "node_id") }) {
+                val kind = if (p.name == "node_id") "zones" else ApiWorld.PARAM_RESOURCE.getValue(p.name)
+                val ownId = world.ids[kind] ?: continue
+                val otherId = world.otherIds[kind] ?: continue
+                val ownR = world.call(client, contract, op, national, token(national), extraQuery = selector(op, p.name, ownId))
+                val otherR = world.call(client, contract, op, national, token(national), extraQuery = selector(op, p.name, otherId))
+                if (ownR.status.value == 200 && otherR.status.value == 200) {
+                    val pair = numbers(ownR.bodyAsText()) to numbers(otherR.bodyAsText())
+                    nationalNumbers["${op.key} ${p.name}"] = pair
+                    if (pair.second.isNotEmpty() && pair.first != pair.second) sees = true
+                }
+            }
+            nationalSees[op.key] = sees
+            if (isDashboard(op)) for ((user, top) in topNode) {
+                val id = world.ids[top.second] ?: continue
+                val r2 = world.call(client, contract, op, national, token(national), extraQuery = "level=${top.first}&node_id=$id")
+                if (r2.status.value == 200) nationalTop["${op.key} $user"] = numbers(r2.bodyAsText())
+            }
+        }
+        leaks += client.probe(ops, stats) { c -> token(c) }
+        File("build").mkdirs()
+        File("build/scope-leak-endpoints.txt").writeText(
+            "operations=${ops.size} calls=${stats.calls} other_id_calls=${stats.otherIdCalls} refused_403_404=${stats.refusedOtherIdCalls} " +
+                "national_sees=${nationalSees.count { it.value }}/${nationalSees.size} aggregate_pairs=${nationalNumbers.size} dashboard_top_views=${nationalTop.size} scoped_2xx_ops=${stats.scopedSuccess.size}\n" +
+                leaks.joinToString("\n") { "${it.key}  ${it.detail}" } + "\n# reads the national control cannot see the other division in:\n" +
+                nationalSees.filterValues { !it }.keys.joinToString("\n") + "\n",
+        )
+    }
+
+    private fun baseline(name: String) = javaClass.getResource("/$name")!!.readText().lines().map { it.substringBefore('#').trim() }.filter { it.isNotEmpty() }.toSet()
+
+    /** The verdict over a set of leaks: empty when it matches the baseline, else the message the test fails with. */
+    private fun verdict(found: List<Leak>): String {
+        val base = baseline("scope-leak-baseline.txt")
+        val now = found.associateBy { it.key }
+        val fresh = now.keys - base
+        val stale = base - now.keys
+        return buildString {
+            if (fresh.isNotEmpty()) append("cross-scope reads or writes:\n" + fresh.sorted().joinToString("\n") { "  $it  ${now[it]!!.detail}" } + "\n")
+            if (stale.isNotEmpty()) append("fixed leaks still in scope-leak-baseline.txt (remove them):\n" + stale.sorted().joinToString("\n") { "  $it" })
+        }
+    }
+
+    // ---- tests -----------------------------------------------------------------------------------------------------
+
+    @Test
+    fun noScopedCallerReachesTheOtherDivisionThroughAnyEndpoint() {
+        val msg = verdict(leaks)
+        assertTrue(msg.isEmpty(), msg)
+    }
+
+    @Test
+    fun theHarnessReallyProbedTheOtherDivision() {
+        assertTrue(stats.calls > 500, "calls ${stats.calls}")
+        assertTrue(stats.otherIdCalls > 200, "other-division calls ${stats.otherIdCalls}")
+        assertTrue(stats.refusedOtherIdCalls > 50, "other-division calls refused with 403/404: ${stats.refusedOtherIdCalls}")
+        assertTrue(stats.scopedSuccess.size > 30, "own-scope reads answered 2xx on only ${stats.scopedSuccess.size} operations")
+        // The aggregate surface is judged: the dashboards answer the national control for both divisions.
+        val dashboards = nationalSees.filterKeys { it.startsWith("GET /v1/dashboards/") }
+        assertTrue(dashboards.count { it.value } >= 3, "dashboards the national control can tell the divisions apart on: $dashboards")
+        // A scoped supervisor reads its own dashboard (the reads are not refused for everyone).
+        assertTrue((stats.scopedSuccess["GET /v1/dashboards/summary"] ?: 0) >= 1, "no scoped caller got its own dashboard summary")
+        assertTrue(nationalTop.size >= 10, "national views of the supervisors' own nodes: ${nationalTop.keys}")
+    }
+
+    @Test
+    fun everyReadIsJudgedByThePositiveControlExceptTheShrinkingBlindList() {
+        // A read where even the national admin shows nothing of the other division cannot reveal a leak (empty lists,
+        // per-caller data). Each is listed with its reason; a new blind read needs other-division data or a reason.
+        val blind = nationalSees.filterValues { !it }.keys
+        val base = baseline("scope-blind-baseline.txt")
+        val msg = buildString {
+            (blind - base).sorted().takeIf { it.isNotEmpty() }?.let { append("reads the harness cannot judge (seed other-division data or list them with a reason):\n  " + it.joinToString("\n  ") + "\n") }
+            (base - blind).sorted().takeIf { it.isNotEmpty() }?.let { append("judged now, remove from scope-blind-baseline.txt:\n  " + it.joinToString("\n  ")) }
+        }
+        assertTrue(msg.isEmpty(), msg)
+        assertTrue(nationalSees.count { it.value } >= 15, "the national control sees the other division on only ${nationalSees.count { it.value }} reads")
+    }
+
+    @Test
+    fun aSeededCrossScopeReadIsCaught() = testApplication {
+        // A server that ignores the token's reach on these reads: the TSO's calls carry the national admin's token.
+        application { aronApi(world.wiring) }
+        val tokens = HashMap<String, String?>()
+        val nationalToken = world.login(client, national)!!
+        val seeded = listOf("GET /v1/admin/outlets", "GET /v1/admin/route-assignments", "GET /v1/dashboards/summary").map { k -> ops.single { it.key == k } }
+        val found = client.probe(seeded, Stats()) { c -> if (c.user == "tso1001") nationalToken else tokens.getOrPut(c.user) { world.login(client, c) } }
+        val msg = verdict(found)
+        assertTrue("GET /v1/admin/outlets tso1001 own" in msg, "a seeded outlet leak (marker) must fail the test: $msg")
+        assertTrue("GET /v1/admin/route-assignments tso1001 own" in msg, "a seeded assignment leak (ids only) must fail the test: $msg")
+        assertTrue("GET /v1/dashboards/summary tso1001 other-node_id" in msg, "a seeded aggregate leak (numbers only) must fail the test: $msg")
+        assertTrue("GET /v1/dashboards/summary tso1001 own" in msg, "a TSO served the national view on its own read must fail the test: $msg")
+        assertTrue(found.none { it.caller != "tso1001" }, "only the seeded caller leaks: $found")
+    }
+
+    @Test
+    fun theIdDetectorSeesBareIds() {
+        val outlet = otherIds["outlets"]!!.first()
+        val route = otherIds["routes"]!!.first()
+        assertEquals(null, shows("""{"items":[{"id":${world.ids["outlets"]},"route_id":${world.ids["routes"]}}]}""", "outlets"))
+        assertTrue(shows("""{"items":[{"id":$outlet}]}""", "outlets") != null, "an outlet id in an outlet list")
+        assertTrue(shows("""{"rows":[{"route_ids":[$route]}]}""", null) != null, "a route id in a list field")
+        assertTrue(shows("""{"rows":[{"x":"${otherUuids.first()}"}]}""", null) != null, "a record uuid of the other division")
+    }
+
+    companion object {
+        val SESSION_ENDING = setOf("POST /v1/auth/logout", "POST /v1/auth/change-password")
+        val TIMEISH = Regex("(_at|time|generation|version|cursor|_ms|_s|as_of)$")
+        val READ_BY_POST = Regex("^(query|search|list|get|preview|check|validate|compute|digest)", RegexOption.IGNORE_CASE)
+    }
+}

@@ -325,3 +325,14 @@ Login as `amo1001` on the AMO app (bind OTP like the SR), seeded zone, Honor X5c
 - **D-AMO-CC** (F-AMO-004/005/036): Control Call tile, pick route then retailer; stand away from the retailer: "AMO is not within the retailer's range" with Refresh and Manual Override; Manual Override takes the outlet photo (camera permission), the call proceeds, a location-change request appears in the outbox; the 11th override of a day is refused (default limit 10); repeat the radius check in airplane mode; kill the app on the menu and relaunch (back on the menu, no second visit).
 - **D-AMO-ASSESS** (F-AMO-007/008/009): in a Control Call open SR Perf. Assessment: brands from the product list, OOS only after the brand is ticked, POSM yes/no/unanswered, Save shows "Saved" and returns to the retailer list with the route kept; after sync the server shows one distribution_check and one line per brand.
 - **D-AMO-JOINT** (F-AMO-011): Joint Call shows the route's SR, stars for the enabled criteria, Save, in Bangla and English.
+
+### D-QA-1 Day 1 ten-minute check script (N-015; qa) — DEVICE-PENDING, laptop session
+Script: `tools/checks/day1-check.ps1` (tested in the cloud against a fake adb and a mock API: all-pass, wrong
+password and no-tools runs; check 4 passes against dev from the cloud: `/v1/health` 200 via Front Door, build f84b22b).
+Steps (laptop session, the Honor X5c Plus on USB, about 5 minutes):
+1. `git pull`, then in PowerShell from the repository folder: `.\tools\checks\day1-check.ps1` (add `-Apk <path>` to
+   install or update the SR APK first). It asks for the password of `tso1001` (not shown, never stored; or set
+   `$env:ARON_CHECK_PASSWORD` in that window only).
+2. When it says so, the owner logs in on the phone as `sr1001` and answers `y` if the home screen opened.
+3. Pass = `ALL PASS (5 checks)`: phone listed, APK installed, login succeeded (API), login on phone, /health from
+   Azure. Paste the window (it holds no secret) into `docs/status/laptop.md` and tell the lead.
