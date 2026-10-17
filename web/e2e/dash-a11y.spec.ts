@@ -2,7 +2,7 @@
 // drill-down, in light, dark and sunlight; a keyboard-only path through the Filter and the tables; Bangla digits on the home.
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
-import { hydrated, loginOk, resetMock } from "./helpers";
+import { loginOk, resetMock } from "./helpers";
 
 export const DASH_PAGES = ["/", "/daily-tracking", "/tso-daily-tracking", "/final-submit", "/sync-health", "/exceptions", "/leave", "/routes", "/tutorial", "/credentials", "/products/category", "/products/tree", "/reports/retailers", "/reports/route-std", "/drill/category?code=cigarette", "/drill/channel?code=grocery", "/drill/calls", "/drill/login"];
 
@@ -52,7 +52,7 @@ test("axe: the DMO home (ranking table) has no violation", async ({ page }) => {
 test("keyboard only: Filter opens, a zone is chosen, Escape closes; tables are reachable and CSV downloads from the keyboard", async ({ page }) => {
   await loginOk(page, "tso334", "tso-pass-1");
   await english(page);
-  await hydrated(page.getByTestId("home-filter"));
+  await expect(page.getByTestId("home-filter")).toHaveAttribute("data-ready", "");
   const summary = page.getByTestId("home-filter").locator("summary");
   await summary.focus();
   await page.keyboard.press("Enter");

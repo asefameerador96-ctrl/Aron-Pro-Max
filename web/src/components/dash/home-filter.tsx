@@ -2,12 +2,14 @@
 // The orange Filter button of the portal home: a popover form (GET) with the business date and the cascading scope selects.
 // Choosing a level submits at once so the next level loads its options; deeper selects are cleared first, so a stale child of
 // another parent is never sent. The popover stays open while a scope is applied.
-import { useRef, type ReactNode } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 import { Icon } from "@/components/kit/icons";
 
 export function HomeFilter({ msg, applyMsg, resetMsg, resetHref, active, children }: { msg: string; applyMsg: string; resetMsg: string; resetHref: string; active: boolean; children: ReactNode }) {
   const form = useRef<HTMLFormElement>(null);
   const box = useRef<HTMLDetailsElement>(null);
+  // `data-ready` marks that the handlers are attached; tests (and nothing else) wait for it before pressing keys.
+  useEffect(() => box.current?.setAttribute("data-ready", ""), []);
   // Escape closes the popover and returns focus to its button (keyboard users never get trapped in it).
   const onKey = (e: React.KeyboardEvent<HTMLDetailsElement>) => {
     if (e.key !== "Escape" || !box.current?.open) return;
