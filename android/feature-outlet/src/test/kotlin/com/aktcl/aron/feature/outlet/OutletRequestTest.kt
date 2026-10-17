@@ -85,4 +85,13 @@ class OutletRequestTest {
         assertTrue(RequestError.TOO_MANY_PHOTOS in errors(OutletRequestForm(OutletRequestKind.NEW, photoUuids = many)))
         assertTrue(RequestError.NOTE_TOO_LONG in errors(OutletRequestForm(OutletRequestKind.ROUTE_ADD, outletId = 1, note = "x".repeat(501))))
     }
+
+    @Test fun updateBaseKeepsTheChosenPointWithinTheLimitOfTheFixAndRefusesAMockedFix() = runTest {
+        val f = OutletRequestForm(OutletRequestKind.LOCATION, outletId = 5, fix = ok, photoUuids = photo, pointLat = 23.79, pointLng = 90.4005)
+        val r = svc.submit(f) as RequestValidation.Ok // about 51 m east of the fix
+        assertEquals(90.4005, r.draft.pointLng!!, 0.0)
+        assertEquals(setOf(RequestError.POINT_TOO_FAR), errors(f.copy(pointLng = 90.4020)))
+        assertEquals(setOf(RequestError.MOCK_FIX), errors(f.copy(fix = FixReading("ok", 23.79, 90.40, 8.0, true))))
+        assertTrue(svc.validate(f.copy(pointLat = null, pointLng = null)) is RequestValidation.Ok) // no chosen point: the fix is the point
+    }
 }

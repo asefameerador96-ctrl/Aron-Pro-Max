@@ -34,11 +34,14 @@ data class OutletRequestForm(
     val requestUuid: String? = null,
     /** Open dues in milli-taka of the outlet being closed, for the dues warning. */
     val openDueMtk: Long = 0,
+    /** Update Base (F-AMO-028): the exact point the AMO chose for the outlet; null means the request's own fix is the point. */
+    val pointLat: Double? = null,
+    val pointLng: Double? = null,
 )
 
 enum class RequestError {
     DUES_BLOCK_CLOSE, OUTLET_REQUIRED, NAME_INVALID, OWNER_INVALID, MOBILE_INVALID, CLUSTER_REQUIRED, CLUSTER_UNCHANGED, REASON_REQUIRED,
-    GEO_REQUIRED, PHOTO_REQUIRED, CONFIRMATION_REQUIRED, NOTE_TOO_LONG, TOO_MANY_PHOTOS,
+    GEO_REQUIRED, PHOTO_REQUIRED, CONFIRMATION_REQUIRED, NOTE_TOO_LONG, TOO_MANY_PHOTOS, POINT_TOO_FAR, MOCK_FIX,
 }
 
 /** The request as committed: the proposed facts in contract shape (mobile is always the normalised 11 digits). */
@@ -55,6 +58,8 @@ data class OutletRequestDraft(
     val fix: FixReading?,
     val photoUuids: List<String>,
     val originVisitUuid: String?,
+    val pointLat: Double? = null,
+    val pointLng: Double? = null,
 )
 
 sealed interface RequestValidation {
@@ -73,6 +78,8 @@ class OutletRequests(
     private val newUuid: () -> String = ClientIds::newUuid,
     /** `cfg.outlet.close_block_if_dues`: when true a close request with open dues is refused (default: only a warning). */
     private val closeBlockIfDues: () -> Boolean = { false },
+    /** `cfg.geo.update_base_max_distance_m` (100): how far the chosen point may be from where the AMO stands. */
+    private val updateBaseMaxM: () -> Int = { DEFAULT_UPDATE_BASE_MAX_M },
 ) {
     /** A fresh uuid for a form that is just opening; keep it in the form state. */
     fun newRequestUuid(): String = newUuid()
@@ -99,6 +106,10 @@ class OutletRequests(
             if (f.fix == null || !f.fix.isOk) e += RequestError.GEO_REQUIRED
             if (f.photoUuids.isEmpty()) e += RequestError.PHOTO_REQUIRED
         }
+        if (k == OutletRequestKind.LOCATION && f.pointLat != null && f.pointLng != null && f.fix != null && f.fix.isOk) {
+            if (f.fix.isMock) e += RequestError.MOCK_FIX
+            else if (com.aktcl.aron.rules.Geo.haversineM(f.pointLat, f.pointLng, f.fix.lat!!, f.fix.lng!!) > updateBaseMaxM()) e += RequestError.POINT_TOO_FAR
+        }
         if (f.photoUuids.size > 4) e += RequestError.TOO_MANY_PHOTOS
         if ((f.note?.length ?: 0) > 500) e += RequestError.NOTE_TOO_LONG
         if (k.needsConfirmation && !f.confirmed) e += RequestError.CONFIRMATION_REQUIRED
@@ -108,7 +119,7 @@ class OutletRequests(
             name = f.name?.trim()?.takeIf { it.isNotEmpty() }, ownerName = f.ownerName?.trim()?.takeIf { it.isNotEmpty() },
             contactNumber = f.mobile?.let { TextRules.normalisePhone(it)?.value },
             clusterId = f.clusterId, closeReasonCode = f.closeReasonCode, note = f.note?.trim()?.takeIf { it.isNotEmpty() },
-            fix = f.fix, photoUuids = f.photoUuids, originVisitUuid = f.originVisitUuid,
+            fix = f.fix, photoUuids = f.photoUuids, originVisitUuid = f.originVisitUuid, pointLat = f.pointLat, pointLng = f.pointLng,
         )
         return RequestValidation.Ok(draft, warnOpenDues = k == OutletRequestKind.CLOSE && f.openDueMtk > 0)
     }
@@ -119,4 +130,6 @@ class OutletRequests(
         if (v is RequestValidation.Ok) committer.commit(v.draft)
         return v
     }
+
+    companion object { const val DEFAULT_UPDATE_BASE_MAX_M = 100 }
 }

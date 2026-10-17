@@ -120,8 +120,6 @@
     <string name="amo_exc_title">Exceptions</string>
     <string name="amo_exc_empty">No open exceptions today</string>
     <string name="amo_exc_empty_hint">Fraud and anomaly signals of your zone show up here.</string>
-    <string name="amo_exc_code_mock">Fake location</string>
-    <string name="amo_exc_code_teleport">Impossible jump between visits</string>
     <string name="amo_exc_group_geo">Location</string>
     <string name="amo_exc_group_device">Device</string>
     <string name="amo_exc_group_clock">Clock</string>
@@ -142,4 +140,26 @@
     <string name="amo_verify_not_pending">This request is no longer waiting for verification.</string>
     <string name="amo_verify_f_due">Open balance</string>
     <string name="amo_verify_f_due_as_of">as of %1$s</string>
+    <string name="amo_exc_code_geo_mock">Fake location</string>
+    <string name="amo_exc_code_geo_teleport">Impossible jump between visits</string>
+    <string name="amo_exc_code_geo_zero_jitter">Location never moves, not even a little</string>
+    <string name="amo_exc_code_geo_perfect_accuracy">Suspiciously perfect location accuracy</string>
+    <string name="amo_exc_code_geo_same_point">Many visits from the same point</string>
+    <string name="amo_exc_code_geo_route_single_point">Whole route worked from one point</string>
+    <string name="amo_exc_code_geo_stale_fix">Old location used</string>
+    <string name="amo_exc_code_geo_gnss_inconsistent">Satellite data does not match the location</string>
+    <string name="amo_exc_code_geo_gnss_time_skew">Satellite time does not match the phone</string>
+    <string name="amo_exc_code_geo_device_server_mismatch">Phone and server locations differ</string>
+    <string name="amo_exc_code_geo_short_visit_gaps">Visits too close together in time</string>
+    <string name="amo_exc_code_geo_out_of_bounds">Location outside the working area</string>
+    <string name="amo_exc_code_device_not_owner">Phone is not under company control</string>
+    <string name="amo_exc_code_device_integrity_fail">Phone failed the integrity check</string>
+    <string name="amo_exc_code_device_debug_enabled">Developer options or USB debugging on</string>
+    <string name="amo_exc_code_device_mock_app_present">A fake-location app is installed</string>
+    <string name="amo_exc_code_device_policy_drift">Phone settings differ from the policy</string>
+    <string name="amo_exc_code_clock_skew">Phone clock is wrong</string>
+    <string name="amo_exc_code_config_stamp_regress">Settings version went backwards</string>
+    <string name="amo_exc_code_memo_duplicate_suspect">Possible duplicate memo</string>
+    <string name="amo_exc_failed">Could not save. Try again.</string>
+    <string name="amo_exc_severity">Level %1$d</string>
 </resources>

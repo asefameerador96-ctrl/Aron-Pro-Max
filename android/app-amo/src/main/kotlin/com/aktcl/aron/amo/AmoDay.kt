@@ -470,7 +470,10 @@ class AmoDay(
 
     // ---- Exceptions (F-AMO-038): risk signals of the zone, reviewed offline
 
-    private suspend fun decidedSignals(): Set<Long> = db.captureDao().amoRecordsOfType("risk_review").mapNotNull {
+    private suspend fun decidedSignals(): Set<Long> = db.captureDao().amoRecordsOfType("risk_review").filter { r ->
+        // A review the server refused (rejected, quarantined) does not hide the signal: it can be reviewed again.
+        db.outboxDao().byClientUuid(r.clientUuid)?.state.let { it != com.aktcl.aron.core.database.entity.OutboxState.REJECTED && it != com.aktcl.aron.core.database.entity.OutboxState.QUARANTINED }
+    }.mapNotNull {
         runCatching { (kotlinx.serialization.json.Json.parseToJsonElement(it.payloadJson) as kotlinx.serialization.json.JsonObject)["signal_id"]?.let { v -> (v as kotlinx.serialization.json.JsonPrimitive).content.toLong() } }.getOrNull()
     }.toSet()
 

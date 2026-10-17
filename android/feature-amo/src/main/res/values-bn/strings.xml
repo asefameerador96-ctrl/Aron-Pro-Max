@@ -120,8 +120,6 @@
     <string name="amo_exc_title">ব্যতিক্রম</string>
     <string name="amo_exc_empty">আজ কোনো খোলা ব্যতিক্রম নেই</string>
     <string name="amo_exc_empty_hint">আপনার জোনের জালিয়াতি ও অসঙ্গতির সংকেত এখানে দেখা যাবে।</string>
-    <string name="amo_exc_code_mock">ভুয়া অবস্থান</string>
-    <string name="amo_exc_code_teleport">দুই ভিজিটের মধ্যে অসম্ভব দূরত্ব</string>
     <string name="amo_exc_group_geo">অবস্থান</string>
     <string name="amo_exc_group_device">ডিভাইস</string>
     <string name="amo_exc_group_clock">ঘড়ি</string>
@@ -142,4 +140,26 @@
     <string name="amo_verify_not_pending">এই অনুরোধ আর যাচাইয়ের অপেক্ষায় নেই।</string>
     <string name="amo_verify_f_due">বকেয়া</string>
     <string name="amo_verify_f_due_as_of">%1$s পর্যন্ত</string>
+    <string name="amo_exc_code_geo_mock">ভুয়া অবস্থান</string>
+    <string name="amo_exc_code_geo_teleport">দুই ভিজিটের মধ্যে অসম্ভব দূরত্ব</string>
+    <string name="amo_exc_code_geo_zero_jitter">অবস্থান একটুও নড়ছে না</string>
+    <string name="amo_exc_code_geo_perfect_accuracy">সন্দেহজনকভাবে নিখুঁত অবস্থানের সঠিকতা</string>
+    <string name="amo_exc_code_geo_same_point">একই বিন্দু থেকে অনেক ভিজিট</string>
+    <string name="amo_exc_code_geo_route_single_point">পুরো রুট একই বিন্দু থেকে করা হয়েছে</string>
+    <string name="amo_exc_code_geo_stale_fix">পুরনো অবস্থান ব্যবহার করা হয়েছে</string>
+    <string name="amo_exc_code_geo_gnss_inconsistent">স্যাটেলাইট তথ্য অবস্থানের সঙ্গে মেলে না</string>
+    <string name="amo_exc_code_geo_gnss_time_skew">স্যাটেলাইটের সময় ফোনের সঙ্গে মেলে না</string>
+    <string name="amo_exc_code_geo_device_server_mismatch">ফোন ও সার্ভারের অবস্থান ভিন্ন</string>
+    <string name="amo_exc_code_geo_short_visit_gaps">ভিজিটগুলোর মধ্যে সময়ের ব্যবধান খুব কম</string>
+    <string name="amo_exc_code_geo_out_of_bounds">কর্মএলাকার বাইরে অবস্থান</string>
+    <string name="amo_exc_code_device_not_owner">ফোন কোম্পানির নিয়ন্ত্রণে নেই</string>
+    <string name="amo_exc_code_device_integrity_fail">ফোন নিরাপত্তা পরীক্ষায় ব্যর্থ</string>
+    <string name="amo_exc_code_device_debug_enabled">ডেভেলপার অপশন বা ইউএসবি ডিবাগিং চালু</string>
+    <string name="amo_exc_code_device_mock_app_present">ভুয়া অবস্থানের অ্যাপ ইনস্টল করা আছে</string>
+    <string name="amo_exc_code_device_policy_drift">ফোনের সেটিং নীতির সঙ্গে মেলে না</string>
+    <string name="amo_exc_code_clock_skew">ফোনের ঘড়ি ভুল</string>
+    <string name="amo_exc_code_config_stamp_regress">সেটিংয়ের সংস্করণ পিছিয়ে গেছে</string>
+    <string name="amo_exc_code_memo_duplicate_suspect">সম্ভাব্য ডুপ্লিকেট মেমো</string>
+    <string name="amo_exc_failed">সংরক্ষণ করা যায়নি। আবার চেষ্টা করুন।</string>
+    <string name="amo_exc_severity">মাত্রা %1$d</string>
 </resources>

@@ -61,10 +61,10 @@ fun AmoTeamHub(day: AmoDay, reach: AmoReach, onBack: () -> Unit) {
     when (leaf) {
         TeamLeaf.HUB -> AronScreen(topBar = { AronTopBar(stringResource(HomeR.string.rh_amo_team), onBack = back) }) {
             Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = AronTokens.Space.Screen)) {
-                leaves.forEach { l ->
-                    AronListRow(stringResource(leafLabel(l)), onClick = { open = l; leaf = TeamLeaf.LEAF }, position = RowPosition.Middle, divider = true, flat = true)
+                leaves.forEachIndexed { i, l ->
+                    AronListRow(stringResource(leafLabel(l)), onClick = { open = l; leaf = TeamLeaf.LEAF }, position = if (i == 0) RowPosition.First else RowPosition.Middle, divider = true, flat = true)
                 }
-                AronListRow(stringResource(AmoR.string.amo_exc_title), onClick = { leaf = TeamLeaf.EXCEPTIONS }, position = RowPosition.Last, divider = false, flat = true)
+                AronListRow(stringResource(AmoR.string.amo_exc_title), onClick = { leaf = TeamLeaf.EXCEPTIONS }, position = if (leaves.isEmpty()) RowPosition.Only else RowPosition.Last, divider = false, flat = true)
             }
         }
         TeamLeaf.LEAF -> RoleSectionPlaceholder(stringResource(open?.let { leafLabel(it) } ?: HomeR.string.rh_amo_team), AronIcons.Info, onBack = back)
@@ -100,12 +100,18 @@ private fun AmoExceptions(day: AmoDay, detail: Boolean, signalId: Long?, onOpen:
     val recordUuid = rememberSaveable(row.id) { com.aktcl.aron.core.common.ClientIds.newUuid() }
     var note by rememberSaveable(row.id) { mutableStateOf("") }
     var busy by remember(row.id) { mutableStateOf(false) }
-    ExceptionDetailContent(row, row.userId?.let { names[it] }, note, busy, { note = it }, onAction = { action ->
+    var failed by remember(row.id) { mutableStateOf(false) }
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val savedText = stringResource(AmoR.string.amo_exc_saved)
+    ExceptionDetailContent(row, row.userId?.let { names[it] }, note.take(500), busy, failed, { note = it.take(500) }, onAction = { action ->
         if (busy) return@ExceptionDetailContent
-        busy = true
+        busy = true; failed = false
         scope.launch {
-            runCatching { day.reviewSignal(recordUuid, row.id, action, note.trim().ifEmpty { null }) }
-            busy = false; reload++; onDone()
+            val ok = try {
+                day.reviewSignal(recordUuid, row.id, action, note.trim().ifEmpty { null }) || row.id !in day.openSignals().map { it.id }
+            } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { false }
+            busy = false
+            if (ok) { android.widget.Toast.makeText(context, savedText, android.widget.Toast.LENGTH_SHORT).show(); reload++; onDone() } else failed = true
         }
     })
 }
