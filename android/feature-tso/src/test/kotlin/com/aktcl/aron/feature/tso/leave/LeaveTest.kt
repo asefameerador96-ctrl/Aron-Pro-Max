@@ -119,7 +119,7 @@ class LeaveScreenTest {
 
     @Test fun banglaUsesBengaliDigitsAndBanglaBadge() {
         show(AppLanguage.BN, FakeSource(fresh = rows))
-        compose.onNodeWithText("DMO অনুমোদনের অপেক্ষায়").assertExists()
+        compose.onNodeWithText("ডিএমও অনুমোদনের অপেক্ষায়").assertExists()
         compose.onNodeWithText("২০২৬-১০-০৫ থেকে ২০২৬-১০-০৭  ·  ৩ দিন").assertExists()
         compose.onNodeWithText("১০:৪২ পর্যন্ত").assertExists()
     }

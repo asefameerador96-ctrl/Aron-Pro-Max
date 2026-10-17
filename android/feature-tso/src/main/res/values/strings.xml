@@ -224,4 +224,5 @@
     <string name="tso_cp_rate">Too many tries. Wait a little and try again.</string>
     <string name="tso_pe_out_of_area">Your location is outside Bangladesh, so nothing was searched. Check the location setting and try again.</string>
     <string name="tso_pe_settings">Open app settings</string>
+    <string name="tso_role_dmo">DMO</string>
 </resources>

@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -110,7 +109,7 @@ fun SetPlanScreen(state: SetPlanState, onBack: () -> Unit, modifier: Modifier = 
             (ui.result as? SetPlanResult.Saved)?.let { AronBanner(stringResource(R.string.tso_mc_saved, it.newOutlets), Modifier.testTag(MyCallTags.SAVED), kind = BannerKind.Success) }
             if (ui.result is SetPlanResult.Failed) AronBanner(stringResource(R.string.tso_mc_save_failed), kind = BannerKind.Error)
             AronSectionLabel(stringResource(R.string.tso_mc_date))
-            OutlinedTextField(ui.date, { state.setDate(it) }, Modifier.fillMaxWidth().testTag(MyCallTags.DATE), singleLine = true, label = { Text(stringResource(R.string.tso_leave_date_hint)) })
+            com.aktcl.aron.feature.tso.TsoTextField(ui.date, { state.setDate(it) }, Modifier.fillMaxWidth().testTag(MyCallTags.DATE), singleLine = true, label = { Text(stringResource(R.string.tso_leave_date_hint)) })
             Pickers(ui.routes, ui.routesLoad, ui.zoneId, ui.routeId, state::pickZone, state::pickRoute)
             if (ui.routeId != null) AronTextButton(stringResource(R.string.tso_mc_show_outlets), { scope.launch { state.showOutlets() } }, Modifier.testTag(MyCallTags.SHOW))
             if (ui.outletsLoad == PickLoad.UNAVAILABLE) AronBanner(stringResource(R.string.tso_mc_unavailable), kind = BannerKind.Offline)
@@ -139,7 +138,7 @@ fun VisitPlanScreen(state: VisitPlanState, onOpenOutlet: (planUuid: String, outl
     AronScreen(modifier, topBar = { AronTopBar(stringResource(R.string.tso_mc_visit_plan), onBack = onBack) }) {
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(AronTokens.Space.Screen), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.M)) {
             AronSectionLabel(stringResource(R.string.tso_mc_date))
-            OutlinedTextField(ui.date, { state.setDate(it) }, Modifier.fillMaxWidth().testTag(MyCallTags.DATE), singleLine = true, label = { Text(stringResource(R.string.tso_leave_date_hint)) })
+            com.aktcl.aron.feature.tso.TsoTextField(ui.date, { state.setDate(it) }, Modifier.fillMaxWidth().testTag(MyCallTags.DATE), singleLine = true, label = { Text(stringResource(R.string.tso_leave_date_hint)) })
             Pickers(ui.routes, ui.routesLoad, ui.zoneId, ui.routeId, state::pickZone, state::pickRoute)
             if (ui.routeId != null) AronTextButton(stringResource(R.string.tso_mc_show_plan), { scope.launch { state.show() } }, Modifier.testTag(MyCallTags.SHOW))
             when (ui.planLoad) {
@@ -200,9 +199,10 @@ fun VisitQueryScreen(state: VisitQueryState, outletTitle: String, onDone: (deleg
 
 @Composable
 private fun YesNo(value: Boolean?, onPick: (Boolean) -> Unit, yesTag: String, noTag: String) {
-    androidx.compose.foundation.layout.Row(horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.M)) {
-        com.aktcl.aron.core.ui.AronYesButton(stringResource(R.string.tso_mc_yes) + if (value == true) " ✓" else "", { onPick(true) }, Modifier.testTag(yesTag))
-        com.aktcl.aron.core.ui.AronNoButton(stringResource(R.string.tso_mc_no) + if (value == false) " ✓" else "", { onPick(false) }, Modifier.testTag(noTag))
+    // two equal, full-width targets: easy to hit with a thumb outdoors; the chosen one also says so with a tick, never by colour alone
+    androidx.compose.foundation.layout.Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.M)) {
+        com.aktcl.aron.core.ui.AronYesButton(stringResource(R.string.tso_mc_yes) + if (value == true) " ✓" else "", { onPick(true) }, Modifier.weight(1f).testTag(yesTag))
+        com.aktcl.aron.core.ui.AronNoButton(stringResource(R.string.tso_mc_no) + if (value == false) " ✓" else "", { onPick(false) }, Modifier.weight(1f).testTag(noTag))
     }
 }
 
@@ -226,9 +226,9 @@ fun AssignTaskScreen(state: AssignTaskState, onDone: () -> Unit, modifier: Modif
             AronSectionLabel(stringResource(R.string.tso_mc_task_type))
             state.typeList.forEach { t -> AronListRow(t.label(bn), Modifier.testTag(MyCallTags.type(t.code)), onClick = { state.pickType(t.code) }, trailing = if (t.code == ui.typeCode) "✓" else null, flat = true) }
             AronSectionLabel(stringResource(R.string.tso_mc_date))
-            OutlinedTextField(ui.date, { state.setDate(it) }, Modifier.fillMaxWidth().testTag(MyCallTags.DATE), singleLine = true, label = { Text(stringResource(R.string.tso_leave_date_hint)) })
+            com.aktcl.aron.feature.tso.TsoTextField(ui.date, { state.setDate(it) }, Modifier.fillMaxWidth().testTag(MyCallTags.DATE), singleLine = true, label = { Text(stringResource(R.string.tso_leave_date_hint)) })
             AronSectionLabel(stringResource(R.string.tso_mc_comment))
-            OutlinedTextField(ui.comment, { state.setComment(it.take(MAX_TASK_COMMENT * 2)) }, Modifier.fillMaxWidth().testTag(MyCallTags.COMMENT), minLines = 3)
+            com.aktcl.aron.feature.tso.TsoTextField(ui.comment, { state.setComment(it.take(MAX_TASK_COMMENT * 2)) }, Modifier.fillMaxWidth().testTag(MyCallTags.COMMENT), minLines = 3)
             (ui.result as? TaskResult.Invalid)?.errors?.forEach { e ->
                 AronBanner(stringResource(when (e) {
                     TaskError.NO_TYPE -> R.string.tso_mc_err_type; TaskError.DATE_FORMAT -> R.string.tso_leave_err_date_format; TaskError.DATE_PAST -> R.string.tso_mc_err_date_past

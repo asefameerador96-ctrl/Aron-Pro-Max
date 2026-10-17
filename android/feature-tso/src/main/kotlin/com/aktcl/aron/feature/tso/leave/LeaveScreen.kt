@@ -92,9 +92,9 @@ private fun LeaveCard(item: LeaveItem) {
     val period = localizedDigits(stringResource(R.string.tso_leave_period, item.fromDate, item.toDate))
     val days = if (item.days == 1) stringResource(R.string.tso_leave_days_one) else stringResource(R.string.tso_leave_days, localizedNumber(item.days.toLong()))
     val badge = when (item.status) {
-        LeaveStatus.PENDING -> stringResource(R.string.tso_leave_status_pending, APPROVER_ROLE)
-        LeaveStatus.APPROVED -> stringResource(R.string.tso_leave_status_approved, APPROVER_ROLE)
-        LeaveStatus.REJECTED -> stringResource(R.string.tso_leave_status_rejected, APPROVER_ROLE)
+        LeaveStatus.PENDING -> stringResource(R.string.tso_leave_status_pending, stringResource(R.string.tso_role_dmo))
+        LeaveStatus.APPROVED -> stringResource(R.string.tso_leave_status_approved, stringResource(R.string.tso_role_dmo))
+        LeaveStatus.REJECTED -> stringResource(R.string.tso_leave_status_rejected, stringResource(R.string.tso_role_dmo))
     }
     val kind = when (item.status) { LeaveStatus.PENDING -> BannerKind.Warning; LeaveStatus.APPROVED -> BannerKind.Success; LeaveStatus.REJECTED -> BannerKind.Error }
     AronCard(Modifier.fillMaxWidth().testTag(LeaveTags.card(item.leaveUuid))) {

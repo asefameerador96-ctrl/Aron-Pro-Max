@@ -9,7 +9,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -94,7 +93,7 @@ fun LeaveApplyScreen(state: LeaveApplyState, onBack: () -> Unit, modifier: Modif
             AronSegmented(LEAVE_TYPES.map { typeLabel(it) }, LEAVE_TYPES.indexOf(form.type).coerceAtLeast(0), { state.edit { f -> f.copy(type = LEAVE_TYPES[it]) } })
             AronSectionLabel(stringResource(R.string.tso_leave_from))
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
-                OutlinedTextField(
+                com.aktcl.aron.feature.tso.TsoTextField(
                     form.fromDate, { v -> state.edit { f -> f.copy(fromDate = v.take(10)) } }, Modifier.weight(1f).testTag(LeaveApplyTags.DATE),
                     singleLine = true, enabled = !queued, label = { Text(stringResource(R.string.tso_leave_date_hint)) },
                 )
@@ -105,7 +104,7 @@ fun LeaveApplyScreen(state: LeaveApplyState, onBack: () -> Unit, modifier: Modif
                 Text(localizedDigits(stringResource(R.string.tso_leave_until, it)), Modifier.testTag(LeaveApplyTags.TO_DATE), style = MaterialTheme.typography.bodyMedium)
             }
             AronSectionLabel(stringResource(R.string.tso_leave_reason))
-            OutlinedTextField(
+            com.aktcl.aron.feature.tso.TsoTextField(
                 form.reason, { v -> state.edit { f -> f.copy(reason = v.take(MAX_REASON * 2)) } }, Modifier.fillMaxWidth().testTag(LeaveApplyTags.REASON),
                 minLines = 3, enabled = !queued,
             )

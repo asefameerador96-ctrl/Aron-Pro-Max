@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -55,9 +54,9 @@ fun ChangePasswordScreen(state: ChangePasswordState, onBack: () -> Unit, modifie
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(AronTokens.Space.Screen), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.M)) {
             if (phase is CpPhase.Done) AronBanner(stringResource(R.string.tso_cp_done), Modifier.testTag(CpTags.DONE), kind = BannerKind.Success)
             if (phase !is CpPhase.Done) {
-                OutlinedTextField(ui.current, state::setCurrent, Modifier.fillMaxWidth().testTag(CpTags.CURRENT), singleLine = true, label = { Text(stringResource(R.string.tso_cp_current)) }, visualTransformation = transform, keyboardOptions = kb)
-                OutlinedTextField(ui.new, state::setNew, Modifier.fillMaxWidth().testTag(CpTags.NEW), singleLine = true, label = { Text(stringResource(R.string.tso_cp_new)) }, visualTransformation = transform, keyboardOptions = kb, supportingText = { Text(stringResource(R.string.tso_cp_hint)) })
-                OutlinedTextField(ui.confirm, state::setConfirm, Modifier.fillMaxWidth().testTag(CpTags.CONFIRM), singleLine = true, label = { Text(stringResource(R.string.tso_cp_confirm)) }, visualTransformation = transform, keyboardOptions = kb)
+                com.aktcl.aron.feature.tso.TsoTextField(ui.current, state::setCurrent, Modifier.fillMaxWidth().testTag(CpTags.CURRENT), singleLine = true, label = { Text(stringResource(R.string.tso_cp_current)) }, visualTransformation = transform, keyboardOptions = kb)
+                com.aktcl.aron.feature.tso.TsoTextField(ui.new, state::setNew, Modifier.fillMaxWidth().testTag(CpTags.NEW), singleLine = true, label = { Text(stringResource(R.string.tso_cp_new)) }, visualTransformation = transform, keyboardOptions = kb, supportingText = { Text(stringResource(R.string.tso_cp_hint)) })
+                com.aktcl.aron.feature.tso.TsoTextField(ui.confirm, state::setConfirm, Modifier.fillMaxWidth().testTag(CpTags.CONFIRM), singleLine = true, label = { Text(stringResource(R.string.tso_cp_confirm)) }, visualTransformation = transform, keyboardOptions = kb)
                 AronTextButton(stringResource(if (ui.visible) R.string.tso_cp_hide else R.string.tso_cp_show), { state.toggleVisible() })
             }
             (phase as? CpPhase.Invalid)?.errors?.forEach { e ->

@@ -12,7 +12,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -147,9 +146,9 @@ fun FeedbackFormScreen(state: FeedbackFormState, onBack: () -> Unit, modifier: M
             val cats = state.categoryList
             if (cats.isNotEmpty()) AronSegmented(cats.map { it.label(bn) }, cats.indexOfFirst { it.code == form.categoryCode }, { i -> state.edit { f -> f.copy(categoryCode = cats[i].code) } })
             AronSectionLabel(stringResource(R.string.tso_fb_title_label))
-            OutlinedTextField(form.title, { v -> state.edit { f -> f.copy(title = v.take(MAX_TITLE * 2)) } }, Modifier.fillMaxWidth().testTag(FeedbackTags.TITLE), singleLine = true, enabled = !queued)
+            com.aktcl.aron.feature.tso.TsoTextField(form.title, { v -> state.edit { f -> f.copy(title = v.take(MAX_TITLE * 2)) } }, Modifier.fillMaxWidth().testTag(FeedbackTags.TITLE), singleLine = true, enabled = !queued)
             AronSectionLabel(stringResource(R.string.tso_fb_description_label))
-            OutlinedTextField(form.description, { v -> state.edit { f -> f.copy(description = v.take(MAX_DESCRIPTION * 2)) } }, Modifier.fillMaxWidth().testTag(FeedbackTags.DESCRIPTION), minLines = 4, enabled = !queued)
+            com.aktcl.aron.feature.tso.TsoTextField(form.description, { v -> state.edit { f -> f.copy(description = v.take(MAX_DESCRIPTION * 2)) } }, Modifier.fillMaxWidth().testTag(FeedbackTags.DESCRIPTION), minLines = 4, enabled = !queued)
             if (photosEnabled && !queued) {
                 if (form.photoUuid == null) AronTextButton(stringResource(R.string.tso_fb_add_photo), { scope.launch { state.takePhoto() } }, Modifier.testTag(FeedbackTags.PHOTO))
                 else {
