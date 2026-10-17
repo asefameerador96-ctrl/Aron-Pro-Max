@@ -14,13 +14,7 @@ GET /v1/admin/config/versions  # global by design: catalogue, configuration or c
 GET /v1/admin/config/versions/{}  # global by design: catalogue, configuration or calendar shared by every division
 GET /v1/admin/config/whatif  # global by design: catalogue, configuration or calendar shared by every division
 GET /v1/admin/content  # global by design: catalogue, configuration or calendar shared by every division
-GET /v1/admin/devices/{}/directives  # debt (N-061): scoped data the other division has no rows of yet in the harness
-GET /v1/admin/devices/{}/status-history  # debt (N-061): scoped data the other division has no rows of yet in the harness
-GET /v1/admin/dues-adjustments  # debt (N-061): scoped data the other division has no rows of yet in the harness
 GET /v1/admin/enrolment-tokens  # global by design: catalogue, configuration or calendar shared by every division
-GET /v1/admin/entry-unlocks  # debt (N-061): scoped data the other division has no rows of yet in the harness
-GET /v1/admin/geo/{}  # debt (N-061): scoped data the other division has no rows of yet in the harness
-GET /v1/admin/geo/{}/{}  # debt (N-061): scoped data the other division has no rows of yet in the harness
 GET /v1/admin/prices  # global by design: catalogue, configuration or calendar shared by every division
 GET /v1/admin/print-templates  # global by design: catalogue, configuration or calendar shared by every division
 GET /v1/admin/product-nodes/{}  # global by design: catalogue, configuration or calendar shared by every division
@@ -30,12 +24,8 @@ GET /v1/admin/surveys  # global by design: catalogue, configuration or calendar 
 GET /v1/admin/tutorials  # global by design: catalogue, configuration or calendar shared by every division
 GET /v1/app/update-check  # global by design: catalogue, configuration or calendar shared by every division
 GET /v1/config/delta  # per-caller: answers only the caller's own data (bundle, totals, exports, own media)
-GET /v1/day/final-submit/preview  # per-caller: answers only the caller's own data (bundle, totals, exports, own media)
 GET /v1/me  # per-caller: answers only the caller's own data (bundle, totals, exports, own media)
 GET /v1/media/{}/read-url  # per-caller: answers only the caller's own data (bundle, totals, exports, own media)
-GET /v1/outlet-requests  # debt (N-061): scoped data the other division has no rows of yet in the harness
-GET /v1/outlet-requests/{}  # debt (N-061): scoped data the other division has no rows of yet in the harness
-GET /v1/outlets/nearby  # debt (N-061): scoped data the other division has no rows of yet in the harness
 GET /v1/report-exports  # per-caller: answers only the caller's own data (bundle, totals, exports, own media)
 GET /v1/report-exports/{}  # per-caller: answers only the caller's own data (bundle, totals, exports, own media)
 GET /v1/reports  # global by design: catalogue, configuration or calendar shared by every division
@@ -44,7 +34,4 @@ GET /v1/sync/bundle/page  # per-caller: answers only the caller's own data (bund
 GET /v1/sync/delta  # per-caller: answers only the caller's own data (bundle, totals, exports, own media)
 GET /v1/sync/generation  # global by design: catalogue, configuration or calendar shared by every division
 GET /v1/sync/totals  # per-caller: answers only the caller's own data (bundle, totals, exports, own media)
-GET /v1/tasks  # debt (N-061): scoped data the other division has no rows of yet in the harness
 GET /v1/tutorials  # global by design: catalogue, configuration or calendar shared by every division
-GET /v1/visit-plans  # debt (N-061): scoped data the other division has no rows of yet in the harness
-GET /v1/web-entry/route-day  # debt (N-061): scoped data the other division has no rows of yet in the harness

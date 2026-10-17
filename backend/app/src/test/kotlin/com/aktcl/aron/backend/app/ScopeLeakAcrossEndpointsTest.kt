@@ -126,10 +126,13 @@ class ScopeLeakAcrossEndpointsTest {
             otherIds["users"] = ids("SELECT id FROM app.app_user WHERE username LIKE 'lkx%'")
             otherIds["devices"] = setOf(other.deviceId)
             fun pin(outlet: Long) = h.createQuery("SELECT lat::text || ',' || lng::text FROM app.outlet WHERE id = :o").bind("o", outlet).mapTo(String::class.java).one()
-                .split(',').let { mapOf("lat" to it[0], "lng" to it[1], "radius_m" to "500") }
+                .split(',').let { mapOf("lat" to it[0], "lng" to it[1], "radius_m" to "300") }
             ownPin = pin(own.outlets.first()); otherPin = pin(other.outlets.first())
             otherUuids += h.createQuery("SELECT client_uuid::text FROM app.visit WHERE user_id = :u UNION SELECT client_uuid::text FROM app.memo WHERE user_id = :u UNION SELECT client_uuid::text FROM app.due_collection WHERE user_id = :u")
                 .bind("u", other.userId).mapTo(String::class.java).list()
+            otherUuids += seedOtherRows(h, other)
+            // Record paths named by uuid (`/v1/outlet-requests/{request_uuid}`) are probed at the other division's row.
+            world.uuidParams["request_uuid"] = otherRequestUuid
         }
         check(otherIds.values.all { it.isNotEmpty() } && otherUuids.isNotEmpty()) { "the other division is incomplete: $otherIds, ${otherUuids.size} records" }
         // Ids of the two divisions never coincide per kind, so an id hit is never the caller's own row.
@@ -176,6 +179,45 @@ class ScopeLeakAcrossEndpointsTest {
         }
         return out
     }
+
+    /**
+     * Rows of the other division that no phone record creates (admin, web and device tables), inserted directly so
+     * their reads are judged (N-061: the debt lines of `scope-blind-baseline.txt`). Every text field carries the marker;
+     * returns the uuids of the rows, which count as the other division's records.
+     */
+    private fun seedOtherRows(h: org.jdbi.v3.core.Handle, p: SyncPhone): List<String> {
+        fun uuid() = java.util.UUID.randomUUID().toString()
+        val task = uuid(); val request = uuid(); val plan = uuid(); val planOutlet = uuid()
+        val entry = uuid(); val directive = uuid(); val adjustment = uuid()
+        otherRequestUuid = request
+        val outlet = p.outlets.first()
+        val zone = h.createQuery("SELECT zone_id FROM app.outlet WHERE id = :o").bind("o", outlet).mapTo(Long::class.java).one()
+        val at = "${day}T04:00:00Z"
+        // The sync-shaped tables' guards (client_uuid_once and friends) expect ingest; these rows are fixtures.
+        h.execute("SET session_replication_role = replica")
+        try {
+            val base = "client_uuid, family_uuid, business_date, user_id, captured_at, config_version"
+            fun vals(u: String) = "'$u'::uuid, '$u'::uuid, '$day'::date, ${p.userId}, '$at'::timestamptz, 1"
+            h.execute("INSERT INTO app.task ($base, task_type_code, assignee_user_id, title, route_id) VALUES (${vals(task)}, 'lkx_check', ${p.userId}, 'LKX seeded task', ${p.routeId})")
+            h.execute("INSERT INTO app.outlet_change_request ($base, request_type, outlet_id, route_id, proposed) VALUES (${vals(request)}, 'info', $outlet, ${p.routeId}, '{\"note\":\"LKX seeded request\"}'::jsonb)")
+            h.execute("INSERT INTO app.visit_plan ($base, plan_date) VALUES (${vals(plan)}, '$day'::date)")
+            h.execute("INSERT INTO app.visit_plan_outlet ($base, plan_client_uuid, outlet_id) VALUES (${vals(planOutlet)}, '$plan'::uuid, $outlet)")
+            h.execute("INSERT INTO app.web_entry_route_day (client_uuid, route_id, business_date, successful_calls, target_outlets, entered_by) VALUES ('$entry'::uuid, ${p.routeId}, '$day'::date, 3, 9, ${p.userId})")
+            h.execute("INSERT INTO app.device_directive (directive_id, device_id, type, sig, expires_at) VALUES ('$directive'::uuid, ${p.deviceId}, 'send_status', '${"A".repeat(86)}', now() + interval '1 hour')")
+            h.execute(
+                """INSERT INTO app.device_status_report (source, device_id, business_date, reported_at, app_version, device_owner, lockdown_level_applied, blocking_active,
+                   location_enabled, dev_options_enabled, adb_enabled, auto_time_enabled, pending_rows, battery_pct, report)
+                   VALUES ('online', ${p.deviceId}, '$day'::date, '$at'::timestamptz, '${ApiWorld.APP_VERSION}', true, 'dev', false, true, false, false, true, 0, 80, '{"note":"LKX seeded status"}'::jsonb)""",
+            )
+            h.execute("INSERT INTO app.dues_adjustment (client_uuid, outlet_id, kind, amount_mtk, reason, created_by) VALUES ('$adjustment'::uuid, $outlet, 'correction', 1000, 'LKX seeded adjustment', ${p.userId})")
+            h.execute("INSERT INTO app.entry_unlock (scope_type, scope_id, from_date, to_date, reason, expires_at, created_by) VALUES ('zone', $zone, '$day'::date, '$day'::date, 'LKX seeded unlock', now() + interval '1 day', ${p.userId})")
+        } finally {
+            h.execute("SET session_replication_role = origin")
+        }
+        return listOf(task, request, plan, planOutlet, entry, directive, adjustment)
+    }
+
+    private lateinit var otherRequestUuid: String
 
     /** Logs [p] in and delivers one selling day until every record is acknowledged. */
     private suspend fun HttpClient.sellADay(p: SyncPhone, seed: Int) {
@@ -266,7 +308,8 @@ class ScopeLeakAcrossEndpointsTest {
                     val r = world.call(this, contract, op, c, tokenFor(c), pathIds, query, includeOptionalIds = body, bodyEdit = edit, queryOverrides = pins)
                     if (!retargeted) return // the body names no resource: nothing to learn beyond the own call
                     st.calls++
-                    val text = r.bodyAsText()
+                    // A refusal may echo the record uuid the request named (problem `instance`): that is not a leak.
+                    val text = r.bodyAsText().let { t -> if (r.status.value >= 400) world.uuidParams.values.fold(t) { a, u -> a.replace(u, "<asked>") } else t }
                     if (variant == "own" && r.status.value in 200..299) st.scopedSuccess.merge(op.key, 1, Int::plus)
                     shows(text, resource)?.let { found += Leak(op.method, shape, c.user, variant, "${r.status.value} $it") }
                     // An aggregate carries no ids: a scoped answer to an other-division selector that equals the national
@@ -346,7 +389,8 @@ class ScopeLeakAcrossEndpointsTest {
             if (!sees && op.parameters.any { it.where == "query" && it.name == "lat" }) {
                 sees = shows(world.call(client, contract, op, national, token(national), queryOverrides = otherPin).bodyAsText(), resourceOf(op)) != null
             }
-            if (!sees && world.pathFor(contract, op, world.ids) != world.pathFor(contract, op, world.otherIds)) {
+            val requiredIdQuery = op.parameters.any { it.where == "query" && it.required && it.name in ApiWorld.PARAM_RESOURCE }
+            if (!sees && (requiredIdQuery || world.pathFor(contract, op, world.ids) != world.pathFor(contract, op, world.otherIds))) {
                 sees = shows(world.call(client, contract, op, national, token(national), world.otherIds).bodyAsText(), resourceOf(op)) != null
             }
             // Reads whose division is chosen by a query selector: the national view of each division, for the aggregate rule.
