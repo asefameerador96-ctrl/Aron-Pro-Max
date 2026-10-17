@@ -274,3 +274,22 @@ two defects outside this lane. The adb path (s10.4 step 5) is the one that works
    several users" (second user / Private Space) and drops the "already set-up" message, which Android raises only for
    non-shell callers; the QR path moved to an appendix. The runbook is about 1,500 words including the four adb blocks (the
    brief's eight required parts plus the review's additions), a little over two printed pages.
+
+### D-04 result, Honor X5c Plus (owner + laptop session, 2026-10-17 Dhaka 10:55 to 11:09)
+
+- Factory reset by the owner; `adb install -r aron-sr-0.1.724-dev.apk` (local release-signed build, cert `468d9b4e…a4fb`);
+  `adb shell dpm set-device-owner com.aktcl.aron.sr/com.aktcl.aron.dpc.AronDeviceAdminReceiver` → "Device owner set";
+  `dpm list-owners` lists it as DeviceOwner, Affiliated; USB debugging stayed on (dev lockdown). Path A of the runbook.
+- Enrolment: a token typed over adb was refused as unknown (the IME altered the injected text, most likely); token 4 scanned
+  with the in-app QR scanner from the laptop screen → enrolled. Login sr1001 and the bind code (Device OTP panel) → bound.
+  Location notice accepted and permissions granted by the owner.
+- **Check-in suspends the blocked apps: PASS.** Before: `com.facebook.katana`, `com.ss.android.ugc.trill`,
+  `com.google.android.youtube` not suspended. After the hold-to-confirm check-in (11:08:59): all three `suspended=true`,
+  `dumpsys device_policy` shows `suspendedPackages=[youtube, trill, facebook]`; YouTube Music and Chrome untouched.
+- Note for android-geo-dpc: at the same second PackageManager logged "Cannot suspend package" for `com.hihonor.ridemode`,
+  `com.android.vending`, `com.hihonor.contacts`, `com.hihonor.systemmanager` and `com.aktcl.aron.sr` (system-exempt,
+  verifier, default dialer, active admin). Harmless, but the policy apparently asks the OS to suspend packages that can
+  never be suspended; trim the list or filter by `PackageManager` exemptions to keep the log clean.
+- **Check-out releases them: PENDING** (the check-out gate opens at 17:00 Dhaka; run it this evening and re-check
+  `suspended=` on the three packages). **D-05 (mock-location apps): PENDING**; a Google account may now be added to the
+  phone (device owner is set) so Play can install the five mock apps and the cloning tool, or sideload them with adb.
