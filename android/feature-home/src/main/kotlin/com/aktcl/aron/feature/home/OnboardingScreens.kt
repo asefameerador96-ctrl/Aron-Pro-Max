@@ -151,7 +151,7 @@ object TutorialJson {
         (0 until a.length()).mapNotNull { i ->
             runCatching {
                 val o = a.getJSONObject(i)
-                val url = o.getString("url").takeIf { it.startsWith("https://") || it.startsWith("http://") } ?: return@runCatching null
+                val url = o.getString("url").takeIf { it.startsWith("https://") } ?: return@runCatching null // https only: no cleartext, no other scheme
                 val bn = if (o.isNull("title_bn")) null else o.optString("title_bn").ifBlank { null }
                 Triple(o.optInt("sort", 0), o.getLong("tutorial_id"), TutorialItem(
                     o.getLong("tutorial_id").toString(), if (bangla && bn != null) bn else o.getString("title_en").also { t -> require(t.isNotBlank()) }, url,

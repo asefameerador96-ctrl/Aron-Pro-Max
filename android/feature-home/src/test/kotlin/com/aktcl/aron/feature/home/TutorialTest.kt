@@ -30,6 +30,7 @@ class TutorialTest {
       {"tutorial_id":2,"kind":"manual","title_en":"Price list manual","title_bn":null,"url":"https://cdn.example.com/m.pdf","bytes":1000,"duration_s":null,"sort":2},
       {"tutorial_id":1,"kind":"video","title_en":"How to sell","title_bn":"কীভাবে বিক্রি করবেন","url":"https://cdn.example.com/v.mp4","bytes":9000,"duration_s":125,"sort":1},
       {"tutorial_id":3,"kind":"video","title_en":"Bad scheme","url":"javascript:alert(1)","sort":3},
+      {"tutorial_id":5,"kind":"video","title_en":"Cleartext","url":"http://cdn.example.com/c.mp4","sort":5},
       {"tutorial_id":4,"kind":"video","title_en":"","url":"https://x.example.com/a.mp4","sort":4},
       {"kind":"video"}
     ]"""

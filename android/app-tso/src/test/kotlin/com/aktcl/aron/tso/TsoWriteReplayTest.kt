@@ -19,6 +19,7 @@ import com.aktcl.aron.feature.tso.mycall.QuerySubmit
 import com.aktcl.aron.feature.tso.mycall.Rubric
 import com.aktcl.aron.feature.tso.mycall.TaskSubmit
 import com.aktcl.aron.feature.tso.StableIds
+import kotlinx.coroutines.async
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
@@ -162,10 +163,10 @@ class TsoWriteReplayTest {
         val taskUuid = QueryIds.task("p-1", 9)
         val t = TaskSubmit("p-1", taskUuid, "irregular_visit", "Irregular Visit", 77, 1, 9, "2026-10-20", "go")
         assertTrue(models().taskQueue(user).create(t))
-        val before = rowsOf(RecordType.TASK).single(); assertEquals(0, mirror("tso.task.pending.").size)
+        val before = rowsOf(RecordType.TASK).single(); assertEquals("the flag ended in the same transaction as the record", 0, mirror("tso.task.pending.").size)
 
         relaunch()
-        models().taskQueue(user).create(t) // the rep opened Assign Task again after the kill: same deterministic uuid
+        assertFalse(models().taskQueue(user).create(t.copy(dueDate = "2026-10-25", comment = "second"))) // Assign Task opened again after the kill: same uuid, the first confirmed task stays
         assertEquals(1, rowsOf(RecordType.TASK).size); assertEquals(before.payloadJson, rowsOf(RecordType.TASK).single().payloadJson)
         assertEquals(77L, JSONObject(before.payloadJson).getJSONObject("payload").getLong("assignee_user_id"))
     }
@@ -222,5 +223,63 @@ class TsoWriteReplayTest {
         val o = JSONObject(rows().single().payloadJson)
         assertTrue(StableIds.isV4(o.getString("client_uuid"))); assertEquals(5_000L, o.getLong("captured_elapsed_ms")); assertEquals(3, o.getInt("boot_count")); assertTrue(o.getBoolean("captured_offline"))
         assertNotNull(o.opt("config_version")); assertNull(o.opt("route_id"))
+    }
+
+    // ---------- the cases the Opus checker added (each failed on the first version) ----------
+    @Test fun twoInterleavedPlanSavesKeepEveryOutletInTheLocalPlanRow() = runBlocking {
+        val date = "2026-10-18"; val gate = kotlinx.coroutines.CompletableDeferred<Unit>(); var reads = 0
+        val src = object : com.aktcl.aron.feature.tso.mycall.PlanSource {
+            override suspend fun routes() = null
+            override suspend fun outlets(routeId: Long) = null
+            override suspend fun plans(date: String): List<com.aktcl.aron.feature.tso.mycall.VisitPlanItem>? { val r = models().plan(user).plans(date); if (++reads == 2) gate.complete(Unit); gate.await(); return r }
+            override suspend fun locallyDone(planUuid: String) = emptySet<Long>()
+            override suspend fun taskPending(planUuid: String) = emptySet<Long>()
+        }
+        val a = async { models().planQueue(user, src).save(PlanSave(date, 1, setOf(1, 2))) }
+        val b = async { models().planQueue(user, src).save(PlanSave(date, 1, setOf(3))) }
+        a.await(); b.await()
+        assertEquals(3, rowsOf(RecordType.VISIT_PLAN_OUTLET).size)
+        val m = JSONObject(mirror("tso.unsent.plan.").values.single()).getJSONArray("outlets")
+        assertEquals("the local plan view shows every queued outlet", setOf(1L, 2L, 3L), (0 until m.length()).map { m.getLong(it) }.toSet())
+    }
+
+    @Test fun capturedAtHasMillisecondPrecisionAndAZ() {
+        runBlocking { models().leaveQueue(user).submit(uuid, LeavePayload("sick", "2026-10-20", 1, "x")) }
+        val at = JSONObject(rows().single().payloadJson).getString("captured_at")
+        assertTrue(at, Regex("""^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$""").matches(at))
+    }
+
+    @Test fun aMirrorThatFailsRollsBackTheOutboxRowsToo() = runBlocking {
+        val rec = TsoOutbox.Rec(RecordType.FEEDBACK, StableIds.v4("m3"), buildJsonObject { put("title", JsonPrimitive("x")) })
+        val failed = runCatching { outbox().enqueueAll(user, listOf(rec), merges = listOf("tso.test.merge" to { _: String? -> error("mirror failed") })) }
+        assertTrue(failed.isFailure); assertTrue("the outbox row is rolled back with its mirror", rows().isEmpty())
+    }
+
+    @Test fun everyRecordCarriesTheRequiredMembersOfItsSchema() = runBlocking {
+        val src = object : com.aktcl.aron.feature.tso.mycall.PlanSource {
+            override suspend fun routes() = null; override suspend fun outlets(routeId: Long) = null; override suspend fun plans(date: String) = emptyList<com.aktcl.aron.feature.tso.mycall.VisitPlanItem>()
+            override suspend fun locallyDone(planUuid: String) = emptySet<Long>(); override suspend fun taskPending(planUuid: String) = emptySet<Long>()
+        }
+        models().leaveQueue(user).submit(StableIds.v4("l"), LeavePayload("sick", "2026-10-20", 1, "x"))
+        models().feedbackQueue(user).submit(StableIds.v4("f"), "2026-10-17T10:00:00.000Z", FeedbackPayload("suggestion", "t", "d", null))
+        models().planQueue(user, src).save(PlanSave("2026-10-18", 1, setOf(4)))
+        models().queryQueue(user).submit(QuerySubmit("p-9", 4, 1, Rubric(5, 2, listOf(Criterion(1, null, "Q"))), mapOf(1L to true), delegate = false))
+        models().taskQueue(user).create(TaskSubmit("p-9", QueryIds.task("p-9", 4), "irregular_visit", "Irregular Visit", 77, 1, 4, "2026-10-20", null))
+        val envelope = listOf("type", "client_uuid", "family_uuid", "rank", "schema_version", "business_date", "captured_at", "captured_elapsed_ms", "boot_count", "captured_offline", "config_version", "payload")
+        val required = mapOf(
+            RecordType.LEAVE_APPLICATION to listOf("leave_type_code", "from_date", "days", "reason"), RecordType.FEEDBACK to listOf("category_code", "title", "description"),
+            RecordType.VISIT_PLAN to listOf("plan_date"), RecordType.VISIT_PLAN_OUTLET to listOf("plan_client_uuid", "outlet_id"),
+            RecordType.CALL_ASSESSMENT to listOf("kind", "rubric_id", "rubric_version", "total_score", "max_score", "delegate_task"),
+            RecordType.CALL_ASSESSMENT_ANSWER to listOf("assessment_client_uuid", "criterion_id"), RecordType.TASK to listOf("task_type_code", "assignee_user_id", "title"),
+        )
+        for ((type, members) in required) {
+            val r = rowsOf(type).first(); val o = JSONObject(r.payloadJson)
+            envelope.forEach { assertTrue("$type lacks envelope member $it", o.has(it)) }
+            val p = o.getJSONObject("payload"); members.forEach { assertTrue("$type payload lacks $it", p.has(it)) }
+            assertTrue("$type uuid is not v4", StableIds.isV4(r.clientUuid)); assertEquals(type.wire, o.getString("type"))
+        }
+        for (type in listOf(RecordType.VISIT_PLAN, RecordType.VISIT_PLAN_OUTLET, RecordType.CALL_ASSESSMENT, RecordType.CALL_ASSESSMENT_ANSWER, RecordType.TASK))
+            assertEquals("$type carries the route in its envelope", 1L, JSONObject(rowsOf(type).first().payloadJson).getLong("route_id"))
+        assertEquals("the leave reason is sent", "x", JSONObject(rowsOf(RecordType.LEAVE_APPLICATION).single().payloadJson).getJSONObject("payload").getString("reason"))
     }
 }

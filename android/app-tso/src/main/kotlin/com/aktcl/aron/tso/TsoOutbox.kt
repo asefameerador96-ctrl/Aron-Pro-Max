@@ -23,6 +23,8 @@ import kotlinx.serialization.json.JsonObject
  * asked for. Idempotent by the client uuid: a second call with the same uuid changes nothing and returns false. The
  * payload is built by the screen's own pure code; the envelope comes from trusted time exactly as the SR app's does.
  */
+private val ISO_MS: java.time.format.DateTimeFormatter = java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'").withZone(java.time.ZoneOffset.UTC)
+
 class TsoOutbox(
     private val env: TsoEnv,
     private val databases: UserDatabases,
@@ -36,7 +38,8 @@ class TsoOutbox(
             caps?.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED) == true
         })
 
-    private fun iso(ms: Long) = java.time.Instant.ofEpochMilli(ms).toString()
+    // the contract's Timestamp: millisecond precision and a Z suffix (Instant.toString drops ".000" on whole seconds)
+    private fun iso(ms: Long) = ISO_MS.format(java.time.Instant.ofEpochMilli(ms))
 
     /** One record of a batch (a plan and its outlets are one family and must commit together). */
     class Rec(val type: RecordType, val clientUuid: String, val payload: JsonObject, val familyUuid: String = clientUuid, val rank: Int = 0, val routeId: Long? = null)
@@ -50,7 +53,13 @@ class TsoOutbox(
      * All [recs] and all [mirrors] in ONE transaction; a record whose uuid is already queued is skipped (so a repeated save of a
      * union adds only what is new). Returns how many records were added; a sync is asked for when at least one was.
      */
-    suspend fun enqueueAll(userId: Long, recs: List<Rec>, mirrors: List<Pair<String, String>> = emptyList()): Int {
+    suspend fun enqueueAll(
+        userId: Long, recs: List<Rec>, mirrors: List<Pair<String, String>> = emptyList(),
+        /** Mirror rows whose new value is computed FROM the stored one inside the transaction (a union cannot lose an update to a concurrent save). */
+        merges: List<Pair<String, (existing: String?) -> String>> = emptyList(),
+        /** Mirror rows removed in the same transaction (a pending flag ends with the record that settles it). */
+        deletes: List<String> = emptyList(),
+    ): Int {
         val db = databases.of(userId)
         val added = db.withTransaction {
             val outbox = db.outboxDao()
@@ -75,6 +84,8 @@ class TsoOutbox(
                 n++
             }
             if (n > 0) mirrors.forEach { (k, v) -> dao.putMeta(SyncMetaEntity(k, v)) }
+            for ((k, f) in merges) { val cur = dao.meta(k); val v = f(cur); if (v != cur) dao.putMeta(SyncMetaEntity(k, v)) }
+            deletes.forEach { dao.deleteMeta(it) }
             n
         }
         if (added > 0) runCatching { scheduler.requestSync(userId, SyncTrigger.WRITE_DEBOUNCE) }

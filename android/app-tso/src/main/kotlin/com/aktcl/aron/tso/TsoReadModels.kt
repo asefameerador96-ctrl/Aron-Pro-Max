@@ -1,5 +1,6 @@
 package com.aktcl.aron.tso
 
+import androidx.room.withTransaction
 import com.aktcl.aron.core.database.UserDatabases
 import com.aktcl.aron.core.database.entity.SyncMetaEntity
 import com.aktcl.aron.core.network.AronApiClient
@@ -199,7 +200,15 @@ class TsoReadModels(private val env: TsoEnv, private val databases: UserDatabase
             if (base == null && local.isEmpty()) return null
             // a server plan that already holds every local outlet retires its mirror row
             if (server != null) runCatching {
-                local.forEach { m -> if (server.any { it.planUuid == m.planUuid && it.outlets.map { o -> o.outletId }.containsAll(m.outlets.map { o -> o.outletId }) }) meta(userId).deleteMeta(PLAN_MIRROR + m.planDate + "." + m.routeId) }
+                val db = databases.of(userId)
+                // re-read inside a transaction: a save that added an outlet since the read above keeps its row
+                db.withTransaction {
+                    for (m in local) {
+                        val key = PLAN_MIRROR + m.planDate + "." + m.routeId
+                        val now = db.referenceDao().meta(key)?.let { parsePlanMirror(it) } ?: continue
+                        if (server.any { it.planUuid == now.planUuid && it.outlets.map { o -> o.outletId }.containsAll(now.outlets.map { o -> o.outletId }) }) db.referenceDao().deleteMeta(key)
+                    }
+                }
             }
             val merged = (base.orEmpty()).toMutableList()
             for (m in local) {
@@ -244,9 +253,13 @@ class TsoReadModels(private val env: TsoEnv, private val databases: UserDatabase
                 familyUuid = planUuid, rank = 1, routeId = save.routeId,
             )
         }
-        val union = (known + save.outletIds).sorted()
-        val mirror = org.json.JSONObject().put("plan_uuid", planUuid).put("plan_date", save.date).put("route_id", save.routeId).put("outlets", org.json.JSONArray(union)).toString()
-        box.enqueueAll(userId, recs, listOf(PLAN_MIRROR + save.date + "." + save.routeId to mirror))
+        // the local plan row is the UNION of what it holds, what the server list showed and this save, computed inside the transaction
+        val merge: (String?) -> String = { existing ->
+            val held = runCatching { org.json.JSONObject(existing ?: "{}").optJSONArray("outlets") }.getOrNull()?.let { arr -> (0 until arr.length()).map { arr.getLong(it) } }.orEmpty()
+            val union = (held + known + save.outletIds).toSortedSet().toList()
+            org.json.JSONObject().put("plan_uuid", planUuid).put("plan_date", save.date).put("route_id", save.routeId).put("outlets", org.json.JSONArray(union)).toString()
+        }
+        box.enqueueAll(userId, recs, merges = listOf((PLAN_MIRROR + save.date + "." + save.routeId) to merge))
         (save.outletIds - known).size
     }
 
@@ -282,18 +295,20 @@ class TsoReadModels(private val env: TsoEnv, private val databases: UserDatabase
     /** F-TSO-016: a `task` record for the SR on the route (self family, rank 0). */
     fun taskQueue(userId: Long): com.aktcl.aron.feature.tso.mycall.TaskQueue = com.aktcl.aron.feature.tso.mycall.TaskQueue { t ->
         val box = checkNotNull(outbox) { "no outbox" }
-        val done = box.enqueue(
-            userId, com.aktcl.aron.contract.RecordType.TASK, t.uuid,
-            kotlinx.serialization.json.buildJsonObject {
-                put("task_type_code", kotlinx.serialization.json.JsonPrimitive(t.typeCode)); put("assignee_user_id", kotlinx.serialization.json.JsonPrimitive(t.assigneeUserId))
-                put("outlet_id", kotlinx.serialization.json.JsonPrimitive(t.outletId)); put("title", kotlinx.serialization.json.JsonPrimitive(t.title))
-                put("description", t.comment?.let { kotlinx.serialization.json.JsonPrimitive(it) } ?: kotlinx.serialization.json.JsonNull)
-                put("due_date", kotlinx.serialization.json.JsonPrimitive(t.dueDate)); put("source_visit_client_uuid", kotlinx.serialization.json.JsonNull)
-            }, routeId = t.routeId,
-        )
-        // the task is queued (or was already, same uuid): Assign Task is no longer pending for this outlet
-        t.planUuid?.let { p -> runCatching { meta(userId).deleteMeta(TASK_PENDING + p + "." + t.outletId) } }
-        done
+        // the record and the end of its pending flag commit together: a kill can never leave a flag for a task that exists
+        box.enqueueAll(
+            userId,
+            listOf(TsoOutbox.Rec(
+                com.aktcl.aron.contract.RecordType.TASK, t.uuid,
+                kotlinx.serialization.json.buildJsonObject {
+                    put("task_type_code", kotlinx.serialization.json.JsonPrimitive(t.typeCode)); put("assignee_user_id", kotlinx.serialization.json.JsonPrimitive(t.assigneeUserId))
+                    put("outlet_id", kotlinx.serialization.json.JsonPrimitive(t.outletId)); put("title", kotlinx.serialization.json.JsonPrimitive(t.title))
+                    put("description", t.comment?.let { kotlinx.serialization.json.JsonPrimitive(it) } ?: kotlinx.serialization.json.JsonNull)
+                    put("due_date", kotlinx.serialization.json.JsonPrimitive(t.dueDate)); put("source_visit_client_uuid", kotlinx.serialization.json.JsonNull)
+                }, routeId = t.routeId,
+            )),
+            deletes = listOfNotNull(t.planUuid?.let { TASK_PENDING + it + "." + t.outletId }),
+        ) > 0
     }
 
     // ---- My Periphery (F-TSO-011/012) ----

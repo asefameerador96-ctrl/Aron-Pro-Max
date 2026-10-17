@@ -39,7 +39,7 @@ object QueryIds {
     private fun v3(name: String) = com.aktcl.aron.feature.tso.StableIds.v4(name)
 }
 
-/** Queues call_assessment + its answers (one family) and marks the plan outlet completed locally, in one transaction. */
+/** Queues call_assessment + its answers (one family) and marks the plan outlet completed locally, in one transaction. A false answer means the same assessment was already queued: the screen treats it as done. */
 fun interface QueryQueue { suspend fun submit(q: QuerySubmit): Boolean }
 
 sealed interface QueryResult {
@@ -96,6 +96,7 @@ const val MAX_TASK_COMMENT = 1000
 const val MAX_TASK_TITLE = 120
 
 data class TaskSubmit(val planUuid: String?, val uuid: String, val typeCode: String, val title: String, val assigneeUserId: Long, val routeId: Long, val outletId: Long, val dueDate: String, val comment: String?)
+/** false = a task with this uuid was already queued (the rep re-opened Assign Task): it is shown as assigned, never silently re-edited. */
 fun interface TaskQueue { suspend fun create(t: TaskSubmit): Boolean }
 
 enum class TaskError { NO_TYPE, DATE_FORMAT, DATE_PAST, DATE_FAR, COMMENT_LONG }

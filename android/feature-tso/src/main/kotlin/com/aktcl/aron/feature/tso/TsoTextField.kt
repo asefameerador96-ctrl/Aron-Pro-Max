@@ -5,6 +5,8 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.text.input.VisualTransformation
 import com.aktcl.aron.core.ui.LocalAronColors
 
@@ -19,8 +21,11 @@ fun TsoTextField(
     keyboardOptions: KeyboardOptions = KeyboardOptions.Default, supportingText: (@Composable () -> Unit)? = null,
 ) {
     val c = LocalAronColors.current
+    // the label sits ABOVE the field (never in the outline notch, which would paint a patch over the page gradient and clip at large fonts)
+    androidx.compose.foundation.layout.Column(androidx.compose.ui.Modifier.fillMaxWidth(), verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(4.dp)) {
+    if (label != null) androidx.compose.material3.ProvideTextStyle(androidx.compose.material3.MaterialTheme.typography.labelMedium.copy(color = c.textSecondary)) { label() }
     OutlinedTextField(
-        value, onValueChange, modifier, enabled = enabled, singleLine = singleLine, label = label, minLines = minLines, supportingText = supportingText,
+        value, onValueChange, modifier, enabled = enabled, singleLine = singleLine, minLines = minLines, supportingText = supportingText,
         visualTransformation = visualTransformation, keyboardOptions = keyboardOptions,
         colors = OutlinedTextFieldDefaults.colors(
             focusedContainerColor = c.surfaceSolid, unfocusedContainerColor = c.surfaceSolid, disabledContainerColor = c.surfaceSolid,
@@ -29,4 +34,5 @@ fun TsoTextField(
             cursorColor = c.accent,
         ),
     )
+    }
 }

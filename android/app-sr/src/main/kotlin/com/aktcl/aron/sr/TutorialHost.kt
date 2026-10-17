@@ -1,7 +1,11 @@
 package com.aktcl.aron.sr
 
 import android.content.Intent
+import android.net.ConnectivityManager
+import android.net.Network
+import android.net.NetworkCapabilities
 import android.net.Uri
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -26,8 +30,20 @@ fun TutorialHost(day: SrDay, onBack: () -> Unit) {
     var json by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(day) { json = day.tutorialsJson() }
     val items = remember(json, bangla) { TutorialJson.parse(json, bangla) }
+    // the online state follows the network while the screen is open (a callback, no polling); it only changes what is tappable
+    var online by remember { mutableStateOf(day.isOnline()) }
+    DisposableEffect(context) {
+        val cm = context.getSystemService(ConnectivityManager::class.java)
+        val callback = object : ConnectivityManager.NetworkCallback() {
+            override fun onAvailable(network: Network) { online = day.isOnline() }
+            override fun onLost(network: Network) { online = day.isOnline() }
+            override fun onCapabilitiesChanged(network: Network, caps: NetworkCapabilities) { online = day.isOnline() }
+        }
+        runCatching { cm?.registerDefaultNetworkCallback(callback) }
+        onDispose { runCatching { cm?.unregisterNetworkCallback(callback) } }
+    }
     TutorialListContent(
-        items, online = day.isOnline(), onBack = onBack,
+        items, online = online, onBack = onBack,
         onPlay = { t ->
             val url = t.url ?: return@TutorialListContent
             if (day.isOnline()) runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
