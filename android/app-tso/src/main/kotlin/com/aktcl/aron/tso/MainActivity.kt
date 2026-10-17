@@ -28,12 +28,13 @@ import com.aktcl.aron.core.session.SessionComponents
 import com.aktcl.aron.core.session.SessionState
 import com.aktcl.aron.core.session.UnlockMode
 import com.aktcl.aron.core.ui.AppLocale
-import com.aktcl.aron.core.ui.AronTheme
 import com.aktcl.aron.core.ui.SunlightPreference
 import com.aktcl.aron.core.ui.aronPageBackground
 import com.aktcl.aron.feature.auth.LoginScreen
 import com.aktcl.aron.feature.auth.LoginViewModel
 import com.aktcl.aron.feature.tso.TsoApp
+import com.aktcl.aron.feature.tso.TsoLoginTheme
+import com.aktcl.aron.feature.tso.tsoLoginNeedsLightBarIcons
 import com.aktcl.aron.feature.home.HomePlaceholderViewModel
 import com.aktcl.aron.feature.home.HomeUser
 import dagger.hilt.android.AndroidEntryPoint
@@ -99,9 +100,15 @@ class MainActivity : ComponentActivity() {
         val versionName = BuildConfig.VERSION_NAME + " (" + BuildConfig.VERSION_CODE + ")"
         setContent {
             var sunlight by remember { mutableStateOf(false) }
-            AronTheme(language, sunlight = sunlight) {
+            val state by components.session.state.collectAsStateWithLifecycle()
+            // The login is the dark navy kit theme (F-TSO-001); the signed-in day keeps the Calm Glass light theme.
+            val loggedOut = state == SessionState.LoggedOut
+            androidx.compose.runtime.SideEffect {
+                val needsLight = tsoLoginNeedsLightBarIcons(loggedOut, sunlight)
+                androidx.core.view.WindowCompat.getInsetsController(window, window.decorView).apply { isAppearanceLightStatusBars = !needsLight; isAppearanceLightNavigationBars = !needsLight }
+            }
+            TsoLoginTheme(language, sunlight = sunlight, loggedOut = loggedOut) {
                 Box(Modifier.fillMaxSize().aronPageBackground()) {
-                    val state by components.session.state.collectAsStateWithLifecycle()
                     when (val s = state) {
                         SessionState.Restoring -> Unit // AUD-PERF-05: the background is the splash for the few ms of the restore
                         SessionState.LoggedOut -> com.aktcl.aron.feature.auth.EnrolmentGate(
