@@ -204,4 +204,24 @@
     <string name="tso_pe_no_fix">আপনার অবস্থান পাওয়া যায়নি। খোলা জায়গায় আবার চেষ্টা করুন।</string>
     <string name="tso_pe_mock">এই অবস্থান নকল বলে মনে হচ্ছে। ফলাফল শুধু জানার জন্য।</string>
     <string name="tso_pe_truncated">সবচেয়ে কাছের %1$d টি দোকান দেখানো হচ্ছে।</string>
+    <string name="tso_cp_title">পাসওয়ার্ড বদলান</string>
+    <string name="tso_cp_row">পাসওয়ার্ড বদলান</string>
+    <string name="tso_cp_current">বর্তমান পাসওয়ার্ড</string>
+    <string name="tso_cp_new">নতুন পাসওয়ার্ড</string>
+    <string name="tso_cp_confirm">নতুন পাসওয়ার্ড আবার লিখুন</string>
+    <string name="tso_cp_hint">কমপক্ষে ৮ অক্ষর, আগে ব্যবহার করেননি এমন</string>
+    <string name="tso_cp_show">পাসওয়ার্ড দেখান</string>
+    <string name="tso_cp_hide">পাসওয়ার্ড লুকান</string>
+    <string name="tso_cp_submit">পাসওয়ার্ড বদলান</string>
+    <string name="tso_cp_done">আপনার পাসওয়ার্ড বদলানো হয়েছে। পরের বার লগইনে নতুন পাসওয়ার্ড দিন।</string>
+    <string name="tso_cp_err_current">বর্তমান পাসওয়ার্ড লিখুন</string>
+    <string name="tso_cp_err_short">নতুন পাসওয়ার্ডে কমপক্ষে ৮ অক্ষর লাগবে</string>
+    <string name="tso_cp_err_long">নতুন পাসওয়ার্ড অনেক বড়</string>
+    <string name="tso_cp_err_same">নতুন পাসওয়ার্ড বর্তমানটির থেকে আলাদা হতে হবে</string>
+    <string name="tso_cp_err_mismatch">দুইবারের নতুন পাসওয়ার্ড একই নয়</string>
+    <string name="tso_cp_wrong">বর্তমান পাসওয়ার্ড ঠিক নয়।</string>
+    <string name="tso_cp_policy">এই পাসওয়ার্ড চলবে না। অন্যটি বেছে নিন।</string>
+    <string name="tso_cp_rate">অনেকবার চেষ্টা হয়েছে। একটু অপেক্ষা করে আবার চেষ্টা করুন।</string>
+    <string name="tso_pe_out_of_area">আপনার অবস্থান বাংলাদেশের বাইরে দেখাচ্ছে, তাই কিছু খোঁজা হয়নি। লোকেশন সেটিং দেখে আবার চেষ্টা করুন।</string>
+    <string name="tso_pe_settings">অ্যাপের সেটিং খুলুন</string>
 </resources>

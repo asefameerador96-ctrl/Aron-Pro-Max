@@ -51,6 +51,7 @@ data class Stamped<T>(val value: T, val asOf: String, val fromCache: Boolean)
 
 interface PeripherySource {
     suspend fun zones(): List<Long>?
+    /** The answer for a position; a cached copy is only ever returned for the SAME rounded position (see [positionKey]). */
     suspend fun nearby(lat: Double, lng: Double, radiusM: Int, zoneId: Long?): Stamped<Nearby>?
     suspend fun team(zoneId: Long?, date: String): Stamped<List<TeamMember>>?
     /** Route code labels for the legend (id to code), from the cached routes. */
@@ -63,6 +64,12 @@ sealed interface FixResult {
     data object LocationOff : FixResult
     data object Failed : FixResult
 }
+
+/** Bangladesh bounds of the contract's lat and lng parameters; a fix outside them (0,0 or a fake) is never sent. */
+fun inBangladesh(lat: Double, lng: Double) = lat in 20.0..27.0 && lng in 88.0..93.0
+
+/** A position rounded to about 25 m, for cache keys: a result is never shown for another place. */
+fun positionKey(lat: Double, lng: Double): String = "%d_%d".format(Math.round(lat * 4000), Math.round(lng * 4000))
 
 /** One balanced-power location on demand (no stream, no cached last-known). */
 fun interface PeripheryFix { suspend fun current(): FixResult }
@@ -85,7 +92,9 @@ sealed interface RetailerUi {
     data object Pick : RetailerUi
     data object Locating : RetailerUi
     data object Loading : RetailerUi
-    data class Shown(val result: Stamped<Nearby>) : RetailerUi
+    data class Shown(val result: Stamped<Nearby>, val lat: Double, val lng: Double, val radiusM: Int, val zoneId: Long?) : RetailerUi
+    /** The fix is outside Bangladesh (0,0, a failed or fake fix): nothing is sent. */
+    data object OutOfArea : RetailerUi
     data object NeedsPermission : RetailerUi
     data object LocationOff : RetailerUi
     data object NoFix : RetailerUi
@@ -99,27 +108,35 @@ class RetailerState(private val source: PeripherySource, private val fix: Periph
     val ui: StateFlow<Ui> = _s.asStateFlow()
     private var busy = false
 
-    data class Ui(val zones: List<Long> = emptyList(), val zoneId: Long? = null, val radiusM: Int = RADIUS_OPTIONS_M.first(), val phase: RetailerUi = RetailerUi.Pick, val mockWarning: Boolean = false)
+    data class Ui(val zones: List<Long> = emptyList(), val zoneId: Long? = null, val radiusM: Int = RADIUS_OPTIONS_M.first(), val phase: RetailerUi = RetailerUi.Pick, val mockWarning: Boolean = false, val permissionDenied: Boolean = false)
 
     suspend fun loadZones() { _s.value = _s.value.copy(zones = runCatching { source.zones() }.getOrNull().orEmpty().sorted()) }
-    fun pickZone(z: Long?) { _s.value = _s.value.copy(zoneId = z, phase = RetailerUi.Pick) }
-    fun pickRadius(r: Int) { if (r in RADIUS_OPTIONS_M) _s.value = _s.value.copy(radiusM = r, phase = RetailerUi.Pick) }
+    private var generation = 0
+    fun pickZone(z: Long?) { generation++; _s.value = _s.value.copy(zoneId = z, phase = RetailerUi.Pick) }
+    fun pickRadius(r: Int) { if (r in RADIUS_OPTIONS_M) { generation++; _s.value = _s.value.copy(radiusM = r, phase = RetailerUi.Pick) } }
+
+    /** The rep refused the location permission in the system dialog (no asking again): the screen then offers the app settings. */
+    fun permissionRefused() { _s.value = _s.value.copy(permissionDenied = true, phase = RetailerUi.NeedsPermission) }
 
     suspend fun find() {
         if (busy) return
         busy = true
         try {
             val s = _s.value
-            _s.value = s.copy(phase = RetailerUi.Locating)
+            val gen = generation
+            _s.value = s.copy(phase = RetailerUi.Locating, permissionDenied = false)
             val f = runCatching { fix.current() }.getOrElse { FixResult.Failed }
             when (f) {
                 FixResult.PermissionNeeded -> { _s.value = _s.value.copy(phase = RetailerUi.NeedsPermission); return }
                 FixResult.LocationOff -> { _s.value = _s.value.copy(phase = RetailerUi.LocationOff); return }
                 FixResult.Failed -> { _s.value = _s.value.copy(phase = RetailerUi.NoFix); return }
                 is FixResult.Ok -> {
+                    if (!inBangladesh(f.lat, f.lng)) { _s.value = _s.value.copy(phase = RetailerUi.OutOfArea, mockWarning = f.isMock); return }
                     _s.value = _s.value.copy(phase = RetailerUi.Loading, mockWarning = f.isMock)
                     val r = runCatching { source.nearby(f.lat, f.lng, s.radiusM, s.zoneId) }.getOrNull()
-                    _s.value = _s.value.copy(phase = if (r == null) RetailerUi.Unavailable else RetailerUi.Shown(r))
+                    // the rep changed zone or radius while this ran: the answer belongs to the old choice and is dropped
+                    if (gen != generation) return
+                    _s.value = _s.value.copy(phase = if (r == null) RetailerUi.Unavailable else RetailerUi.Shown(r, f.lat, f.lng, s.radiusM, s.zoneId))
                 }
             }
         } finally { busy = false }

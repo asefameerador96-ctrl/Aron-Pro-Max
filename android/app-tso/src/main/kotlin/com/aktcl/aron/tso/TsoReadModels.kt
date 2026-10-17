@@ -292,7 +292,7 @@ class TsoReadModels(private val components: SessionComponents, private val datab
         override suspend fun routeCodes(): Map<Long, String> = runCatching { plan.routes() }.getOrNull().orEmpty().associate { it.id to it.code }
 
         override suspend fun nearby(lat: Double, lng: Double, radiusM: Int, zoneId: Long?): com.aktcl.aron.feature.tso.periphery.Stamped<com.aktcl.aron.feature.tso.periphery.Nearby>? {
-            val key = "nearby.${zoneId ?: 0}.$radiusM"
+            val key = "nearby.${zoneId ?: 0}.$radiusM." + com.aktcl.aron.feature.tso.periphery.positionKey(lat, lng)
             val path = "/v1/outlets/nearby?lat=$lat&lng=$lng&radius_m=$radiusM" + (zoneId?.let { "&zone_id=$it" } ?: "")
             val fresh = get(path)?.let { J.nearby(it) }
             if (fresh != null) { cachePut(userId, key, J.nearbyToCache(fresh), asOfNow()); return com.aktcl.aron.feature.tso.periphery.Stamped(fresh, asOfNow(), false) }
@@ -300,7 +300,7 @@ class TsoReadModels(private val components: SessionComponents, private val datab
         }
 
         override suspend fun team(zoneId: Long?, date: String): com.aktcl.aron.feature.tso.periphery.Stamped<List<com.aktcl.aron.feature.tso.periphery.TeamMember>>? {
-            val key = "team.${zoneId ?: 0}"
+            val key = "team.${zoneId ?: 0}.$date"
             val fresh = get("/v1/team/locations?business_date=$date" + (zoneId?.let { "&zone_id=$it" } ?: ""))?.let { J.team(it) }
             if (fresh != null) { cachePut(userId, key, J.teamToCache(fresh), asOfNow()); return com.aktcl.aron.feature.tso.periphery.Stamped(fresh, asOfNow(), false) }
             return cacheGet(userId, key)?.let { (body, asOf) -> J.team(body)?.let { com.aktcl.aron.feature.tso.periphery.Stamped(it, asOf, true) } }
@@ -320,6 +320,20 @@ class TsoReadModels(private val components: SessionComponents, private val datab
                     else -> com.aktcl.aron.feature.tso.periphery.FixResult.Failed
                 }
             }
+        }
+    }
+
+    /** F-TSO-024: the online password change (204); the secrets go into the request body only, never a log or a field of ours. */
+    fun changePassword(): com.aktcl.aron.feature.tso.password.ChangePasswordApi = com.aktcl.aron.feature.tso.password.ChangePasswordApi { current, new ->
+        val json = org.json.JSONObject().put("current_password", current).put("new_password", new).toString()
+        val r = runCatching { client.call(path = "/v1/auth/change-password", auth = CallAuth.Grant(Grant.FULL), build = { post(json.toRequestBody("application/json".toMediaType())) }, decode = { body, _ -> body }) }.getOrNull()
+        when {
+            r is ApiResult.Success -> com.aktcl.aron.feature.tso.password.CpOutcome.Ok
+            r is ApiResult.Transport -> com.aktcl.aron.feature.tso.password.CpOutcome.Offline
+            r is ApiResult.Failure && r.httpStatus == 401 -> com.aktcl.aron.feature.tso.password.CpOutcome.WrongCurrent
+            r is ApiResult.Failure && r.httpStatus == 429 -> com.aktcl.aron.feature.tso.password.CpOutcome.RateLimited
+            r is ApiResult.Failure && r.httpStatus == 400 -> com.aktcl.aron.feature.tso.password.CpOutcome.Policy
+            else -> com.aktcl.aron.feature.tso.password.CpOutcome.Failed
         }
     }
 

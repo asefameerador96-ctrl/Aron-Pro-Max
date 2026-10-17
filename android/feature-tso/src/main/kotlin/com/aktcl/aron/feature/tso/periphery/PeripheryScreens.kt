@@ -52,6 +52,7 @@ object PeripheryTags {
     const val CACHED = "tso_pe_cached"
     const val TRUNCATED = "tso_pe_truncated"
     const val MOCK = "tso_pe_mock"
+    const val SETTINGS = "tso_pe_settings"
     fun zone(id: Long) = "tso_pe_zone_$id"
     fun radius(m: Int) = "tso_pe_radius_$m"
 }
@@ -105,7 +106,7 @@ fun RetailerScreen(state: RetailerState, online: () -> Boolean, nowMs: () -> Lon
     val context = LocalContext.current
     LaunchedEffect(state) { state.loadZones() }
     val cache = androidx.compose.runtime.remember(userKey) { MapTileCache(File(context.cacheDir, "map_tso_$userKey")) { settings.tileCacheBytes } }
-    val askPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted -> if (granted) scope.launch { state.find() } }
+    val askPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted -> if (granted) scope.launch { state.find() } else state.permissionRefused() }
     val phase = ui.phase
     AronScreen(modifier, topBar = { AronTopBar(stringResource(R.string.tso_pe_retailer), onBack = onBack) }) {
         Column(Modifier.fillMaxSize()) {
@@ -121,8 +122,12 @@ fun RetailerScreen(state: RetailerState, online: () -> Boolean, nowMs: () -> Lon
                     RetailerUi.NeedsPermission -> {
                         AronBanner(stringResource(R.string.tso_pe_need_permission), Modifier.testTag(PeripheryTags.STATUS), kind = BannerKind.Warning)
                         AronTextButton(stringResource(R.string.tso_pe_allow), { askPermission.launch(Manifest.permission.ACCESS_FINE_LOCATION) }, Modifier.testTag(PeripheryTags.ALLOW))
+                        if (ui.permissionDenied) AronTextButton(stringResource(R.string.tso_pe_settings), {
+                            context.startActivity(android.content.Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS, android.net.Uri.fromParts("package", context.packageName, null)).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
+                        }, Modifier.testTag(PeripheryTags.SETTINGS))
                     }
                     RetailerUi.LocationOff -> AronBanner(stringResource(R.string.tso_pe_location_off), Modifier.testTag(PeripheryTags.STATUS), kind = BannerKind.Warning)
+                    RetailerUi.OutOfArea -> AronBanner(stringResource(R.string.tso_pe_out_of_area), Modifier.testTag(PeripheryTags.STATUS), kind = BannerKind.Warning)
                     RetailerUi.NoFix -> AronBanner(stringResource(R.string.tso_pe_no_fix), Modifier.testTag(PeripheryTags.STATUS), kind = BannerKind.Warning)
                     RetailerUi.Unavailable -> AronBanner(stringResource(R.string.tso_mc_unavailable), Modifier.testTag(PeripheryTags.STATUS), kind = BannerKind.Offline)
                     else -> Unit
@@ -134,7 +139,7 @@ fun RetailerScreen(state: RetailerState, online: () -> Boolean, nowMs: () -> Lon
                 if (phase.result.fromCache) AronBanner(stringResource(R.string.tso_offline_cached), Modifier.testTag(PeripheryTags.CACHED), kind = BannerKind.Offline)
                 if (n.truncated) AronBanner(stringResource(R.string.tso_pe_truncated, MAX_SHOWN), Modifier.testTag(PeripheryTags.TRUNCATED), kind = BannerKind.Info)
                 Text(localizedDigits(stringResource(R.string.tso_as_of, phase.result.asOf)), Modifier.padding(horizontal = AronTokens.Space.Screen).testTag(PeripheryTags.ASOF), style = MaterialTheme.typography.bodySmall)
-                LiteMapScreen(nearbyPoints(n), settings, online(), MapsKey.present(context), nowMs(), cache, "near_${userKey}_${ui.zoneId}_${ui.radiusM}", Modifier.weight(1f))
+                LiteMapScreen(nearbyPoints(n), settings, online(), MapsKey.present(context), nowMs(), cache, "near_${userKey}_${phase.zoneId}_${phase.radiusM}_${positionKey(phase.lat, phase.lng)}", Modifier.weight(1f))
             }
         }
     }

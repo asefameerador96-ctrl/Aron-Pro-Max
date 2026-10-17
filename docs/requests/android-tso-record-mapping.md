@@ -21,3 +21,6 @@ android-tso now queues its records itself with `app-tso/.../TsoOutbox.kt` (Recor
 
 ## Update 2026-10-18 (Final Submit)
 F-TSO-010 shows one Zone list built from `GET /v1/routes` (zone ids) instead of the manual's five dropdowns Wing, Division, Territory, House, Zone: the contract has no read that returns the names of the TSO's scope tree. Wanted: a read of the caller's scope tree with names (or `zone_name`, `house_name`, `territory_name` on Route), then the cascade is a UI change only.
+
+## Update 2026-10-18 (Settings, change password)
+F-TSO-024 changes the password online (`POST /v1/auth/change-password`). The phone keeps an offline password verifier made at the last online login (core-session `PasswordVerifier`); there is no call to replace it after a change, so until the TSO logs in online once with the new password, an offline unlock still accepts the OLD password. Wanted from android-core: `SessionRepository.updateOfflineVerifier(userId, newPassword)` (or a rule that a successful change ends the offline unlock until the next online login). The screen tells the rep to use the new password at the next login.

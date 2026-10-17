@@ -5,6 +5,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.padding
 import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.platform.testTag
 import kotlinx.coroutines.launch
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -85,6 +86,9 @@ fun TsoApp(
     finalSubmit: com.aktcl.aron.feature.tso.finalsubmit.FinalSubmitApi? = null,
     /** F-TSO-011/012: My Team and Retailer maps; null shows the placeholder. */
     periphery: PeripheryDeps? = null,
+    /** F-TSO-024: change password (online) and the PDA to Support screen; null hides the row. */
+    changePassword: com.aktcl.aron.feature.tso.password.ChangePasswordApi? = null,
+    support: (@Composable (onBack: () -> Unit) -> Unit)? = null,
     userId: Long = 0L,
     /** Real screens by destination, supplied by the app module; a screen not listed shows the placeholder frame. */
     screens: Map<TsoScreen, @Composable (onBack: () -> Unit) -> Unit> = emptyMap(),
@@ -117,10 +121,32 @@ fun TsoApp(
                     }
                 }
             }
-            TsoScreen.SETTINGS -> RoleSettingsContent(
-                versionText, stringResource(R.string.rh_set_logout_wipe), onLanguageSelect, onLogout, onBack = { screen = TsoScreen.HOME },
-                sunlight = sunlight, onSunlight = onSunlight, onUpdate = onUpdate, updateAvailable = updateAvailable,
-            )
+            TsoScreen.SETTINGS -> {
+                var step by rememberSaveable { mutableStateOf("main") }
+                BackHandler(enabled = step != "main") { step = "main" }
+                when (step) {
+                    "password" -> if (changePassword != null) {
+                        val st = rememberRetained("tso-${user.username}-cp") { com.aktcl.aron.feature.tso.password.ChangePasswordState(changePassword) }
+                        com.aktcl.aron.feature.tso.password.ChangePasswordScreen(st, onBack = { step = "main" })
+                    }
+                    "support" -> support?.invoke { step = "main" }
+                    else -> androidx.compose.foundation.layout.Column {
+                        androidx.compose.foundation.layout.Box(Modifier.weight(1f)) {
+                            RoleSettingsContent(
+                                versionText, stringResource(R.string.rh_set_logout_wipe), onLanguageSelect, onLogout, onBack = { screen = TsoScreen.HOME },
+                                sunlight = sunlight, onSunlight = onSunlight, onUpdate = onUpdate, updateAvailable = updateAvailable,
+                                onSupport = if (support != null) ({ step = "support" }) else null,
+                            )
+                        }
+                        if (changePassword != null) {
+                            com.aktcl.aron.core.ui.AronListRow(
+                                stringResource(com.aktcl.aron.feature.tso.R.string.tso_cp_row), Modifier.padding(horizontal = 16.dp).testTag(TsoSettingsTags.CHANGE_PASSWORD), flat = true,
+                                onClick = { step = "password" },
+                            )
+                        }
+                    }
+                }
+            }
             TsoScreen.DEVICE_OTP -> RoleDeviceOtpContent(onBack = { screen = TsoScreen.HOME }, webOrigin = webOrigin)
             TsoScreen.LEAVE -> if (leave != null) {
                 var applying by rememberSaveable { mutableStateOf(false) }
@@ -264,3 +290,5 @@ private fun PeripheryFlow(deps: PeripheryDeps, userKey: String, today: () -> Str
         else -> com.aktcl.aron.feature.tso.periphery.PeripheryHub({ step = "team" }, { step = "retailer" }, onBack)
     }
 }
+
+object TsoSettingsTags { const val CHANGE_PASSWORD = "tso_settings_change_password" }

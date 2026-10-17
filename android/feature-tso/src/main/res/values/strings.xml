@@ -204,4 +204,24 @@
     <string name="tso_pe_no_fix">Could not read your location. Try again outdoors.</string>
     <string name="tso_pe_mock">This location looks like a fake location. The result is for information only.</string>
     <string name="tso_pe_truncated">Showing the nearest %1$d outlets.</string>
+    <string name="tso_cp_title">Change password</string>
+    <string name="tso_cp_row">Change password</string>
+    <string name="tso_cp_current">Current password</string>
+    <string name="tso_cp_new">New password</string>
+    <string name="tso_cp_confirm">Write the new password again</string>
+    <string name="tso_cp_hint">At least 8 characters, not one you used before</string>
+    <string name="tso_cp_show">Show passwords</string>
+    <string name="tso_cp_hide">Hide passwords</string>
+    <string name="tso_cp_submit">Change password</string>
+    <string name="tso_cp_done">Your password was changed. Use the new password the next time you log in.</string>
+    <string name="tso_cp_err_current">Write your current password</string>
+    <string name="tso_cp_err_short">The new password needs at least 8 characters</string>
+    <string name="tso_cp_err_long">The new password is too long</string>
+    <string name="tso_cp_err_same">The new password must be different from the current one</string>
+    <string name="tso_cp_err_mismatch">The two new passwords are not the same</string>
+    <string name="tso_cp_wrong">The current password is not correct.</string>
+    <string name="tso_cp_policy">This password is not allowed. Choose a different one.</string>
+    <string name="tso_cp_rate">Too many tries. Wait a little and try again.</string>
+    <string name="tso_pe_out_of_area">Your location is outside Bangladesh, so nothing was searched. Check the location setting and try again.</string>
+    <string name="tso_pe_settings">Open app settings</string>
 </resources>

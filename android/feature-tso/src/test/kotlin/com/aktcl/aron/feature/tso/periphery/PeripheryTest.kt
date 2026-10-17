@@ -12,6 +12,7 @@ import com.aktcl.aron.core.common.AppLanguage
 import com.aktcl.aron.core.ui.AppLocale
 import com.aktcl.aron.core.ui.AronTheme
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.launch
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -42,6 +43,32 @@ class PeripheryLogicTest {
         s.loadZones(); s.pickZone(10); s.pickRadius(300); s.find()
         assertEquals(1, fixes); assertEquals(Triple(23.7, 90.4, 300), src.asked)
         assertTrue(s.ui.value.phase is RetailerUi.Shown)
+    }
+
+    @Test fun aFixOutsideBangladeshIsNeverSent() = runBlocking {
+        for ((lat, lng) in listOf(0.0 to 0.0, 19.9 to 90.0, 23.7 to 87.9, 27.1 to 90.0)) {
+            val src = Src(); val s = RetailerState(src) { FixResult.Ok(lat, lng, 5.0, false) }; s.find()
+            assertEquals(RetailerUi.OutOfArea, s.ui.value.phase); assertNull(src.asked)
+        }
+    }
+
+    @Test fun changingTheRadiusWhileLoadingDropsTheOldAnswer() = runBlocking {
+        val gate = kotlinx.coroutines.CompletableDeferred<Unit>()
+        val src = object : PeripherySource by Src() { override suspend fun nearby(lat: Double, lng: Double, radiusM: Int, zoneId: Long?): Stamped<Nearby>? { gate.await(); return Stamped(Nearby("x", radiusM, false, emptyList()), "x", false) } }
+        val s = RetailerState(src) { FixResult.Ok(23.7, 90.4, 5.0, false) }
+        val job = kotlinx.coroutines.GlobalScope.launch { s.find() }
+        kotlinx.coroutines.delay(100); s.pickRadius(300); gate.complete(Unit); job.join()
+        assertEquals(RetailerUi.Pick, s.ui.value.phase); assertEquals(300, s.ui.value.radiusM)
+    }
+
+    @Test fun positionKeyDiffersBetweenPlacesAndMatchesNearbyOnes() {
+        assertEquals(positionKey(23.78101, 90.40001), positionKey(23.78102, 90.40002))
+        assertTrue(positionKey(23.78, 90.40) != positionKey(23.80, 90.40))
+    }
+
+    @Test fun refusingThePermissionOffersTheSettings() = runBlocking {
+        val s = RetailerState(Src()) { FixResult.PermissionNeeded }; s.permissionRefused()
+        assertTrue(s.ui.value.permissionDenied); assertEquals(RetailerUi.NeedsPermission, s.ui.value.phase)
     }
 
     @Test fun anInvalidRadiusIsIgnored() = runBlocking { val s = RetailerState(Src()) { FixResult.Failed }; s.pickRadius(75); assertEquals(50, s.ui.value.radiusM) }

@@ -51,6 +51,7 @@ class MainActivity : ComponentActivity() {
     @Inject lateinit var components: SessionComponents
     @Inject lateinit var deviceEnrolment: com.aktcl.aron.core.sync.device.DeviceEnrolment
     @Inject lateinit var shellLogout: ShellLogout
+    @Inject lateinit var systemShell: SystemShell
     @Inject lateinit var updateShell: com.aktcl.aron.core.sync.shell.UpdateShell
     @Inject lateinit var pushShell: com.aktcl.aron.core.sync.shell.PushShell
     @Inject lateinit var activityLog: com.aktcl.aron.core.sync.ActivityLog
@@ -203,6 +204,10 @@ class MainActivity : ComponentActivity() {
                                 feedback = remember(s.user.userId) { readModels.feedback(s.user.userId) },
                                 feedbackQueue = remember(s.user.userId) { readModels.feedbackQueue(s.user.userId) },
                                 userId = s.user.userId,
+                                changePassword = remember { readModels.changePassword() },
+                                support = { back ->
+                                    com.aktcl.aron.core.ui.AronScreen(topBar = { com.aktcl.aron.core.ui.AronTopBar(stringResource(com.aktcl.aron.feature.home.R.string.set_support), onBack = back) }) { SupportHost(systemShell, s.user.userId, versionName) }
+                                },
                                 periphery = remember(s.user.userId) {
                                     com.aktcl.aron.feature.tso.PeripheryDeps(
                                         readModels.periphery(s.user.userId, readModels.plan(s.user.userId)), readModels.fix(applicationContext),
