@@ -170,7 +170,7 @@
     <string name="tso_fs_ok">ঠিক আছে</string>
     <string name="tso_fs_already">আপনি ইতিমধ্যেই আজকের জন্য \'FINAL SUBMIT\' জমা দিয়েছেন!</string>
     <string name="tso_fs_confirm_title">ফাইনাল সাবমিট</string>
-    <string name="tso_fs_confirm_body">%1$s তারিখের বিক্রয় %2$d টি রুটের জন্য জমা দেবেন? এটি আর ফেরানো যাবে না।</string>
+    <string name="tso_fs_confirm_body">%1$s তারিখের বিক্রয় %2$s এর %3$d টি রুটের জন্য জমা দেবেন? এটি আর ফেরানো যাবে না।</string>
     <string name="tso_fs_sales_date">বিক্রয়ের তারিখ: %1$s</string>
     <string name="tso_fs_sales_date_label">বিক্রয়ের তারিখ</string>
     <string name="tso_fs_ff">এফএফ: %1$s</string>

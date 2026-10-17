@@ -36,7 +36,7 @@ object QueryIds {
     fun task(planUuid: String, outletId: Long) = v3("aron.tso.query-task:$planUuid:$outletId")
     fun assessment(planUuid: String, outletId: Long) = v3("aron.tso.query:$planUuid:$outletId")
     fun answer(assessmentUuid: String, criterionId: Long) = v3("aron.tso.query-answer:$assessmentUuid:$criterionId")
-    private fun v3(n: String) = UUID.nameUUIDFromBytes(n.toByteArray(Charsets.UTF_8)).toString()
+    private fun v3(name: String) = com.aktcl.aron.feature.tso.StableIds.v4(name)
 }
 
 /** Queues call_assessment + its answers (one family) and marks the plan outlet completed locally, in one transaction. */

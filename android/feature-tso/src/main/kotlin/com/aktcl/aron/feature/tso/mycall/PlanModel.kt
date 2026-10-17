@@ -32,7 +32,7 @@ data class PlanSave(val date: String, val routeId: Long, val outletIds: Set<Long
 object PlanIds {
     fun plan(plannerUserId: Long, date: String, routeId: Long): String = v3("aron.tso.plan:$plannerUserId:$date:$routeId")
     fun planOutlet(planUuid: String, outletId: Long): String = v3("aron.tso.plan-outlet:$planUuid:$outletId")
-    private fun v3(name: String) = UUID.nameUUIDFromBytes(name.toByteArray(Charsets.UTF_8)).toString()
+    private fun v3(name: String) = com.aktcl.aron.feature.tso.StableIds.v4(name)
 }
 
 enum class PlanError { NO_ROUTE, NO_OUTLETS, DATE_FORMAT, DATE_PAST, DATE_FAR }

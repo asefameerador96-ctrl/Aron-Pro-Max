@@ -64,7 +64,7 @@ interface FinalSubmitApi {
  * (contract: "the same client_uuid replays the first success") instead of looking like a second submit.
  */
 object FsIds {
-    fun clientUuid(userId: Long, zoneId: Long, date: String): String = UUID.nameUUIDFromBytes("aron.tso.final-submit:$userId:$zoneId:$date".toByteArray(Charsets.UTF_8)).toString()
+    fun clientUuid(userId: Long, zoneId: Long, date: String): String = com.aktcl.aron.feature.tso.StableIds.v4("aron.tso.final-submit:$userId:$zoneId:$date")
 }
 
 enum class FsError { NO_ZONE, DATE_FORMAT, DATE_FUTURE }
@@ -104,8 +104,7 @@ class FinalSubmitState(private val api: FinalSubmitApi, private val userId: Long
         _s.value = _s.value.copy(zones = z.orEmpty().sorted(), zonesLoaded = z != null)
     }
 
-    fun pickZone(id: Long) { if (_s.value.phase is FsPhase.Done) return; _s.value = _s.value.copy(zoneId = id, phase = FsPhase.Pick, errors = emptyList()) }
-    fun setDate(d: String) { if (_s.value.phase is FsPhase.Done) return; _s.value = _s.value.copy(date = d.take(10), phase = FsPhase.Pick, errors = emptyList()) }
+    fun pickZone(id: Long) { if (_s.value.phase is FsPhase.Done || _s.value.phase is FsPhase.Loading || _s.value.phase is FsPhase.Submitting) return; _s.value = _s.value.copy(zoneId = id, phase = FsPhase.Pick, errors = emptyList()) }
 
     /** The alert's OK: back to the pickers. */
     fun dismissAlready() { _s.value = _s.value.copy(phase = FsPhase.Pick) }
@@ -118,7 +117,8 @@ class FinalSubmitState(private val api: FinalSubmitApi, private val userId: Long
         busy = true
         _s.value = s.copy(phase = FsPhase.Loading, errors = emptyList())
         try {
-            _s.value = _s.value.copy(phase = when (val o = runCatching { api.preview(checkNotNull(s.zoneId), s.date) }.getOrElse { FsPreviewOutcome.Failed(FsFailure.SERVER) }) {
+            val o = runCatching { api.preview(checkNotNull(s.zoneId), s.date) }.getOrElse { FsPreviewOutcome.Failed(FsFailure.SERVER) }
+            _s.value = _s.value.copy(phase = when (o) {
                 is FsPreviewOutcome.Ok -> if (o.preview.alreadySubmitted) FsPhase.AlreadySubmitted(o.preview) else FsPhase.Review(o.preview)
                 is FsPreviewOutcome.Failed -> FsPhase.Failed(o.why)
             })
@@ -136,7 +136,8 @@ class FinalSubmitState(private val api: FinalSubmitApi, private val userId: Long
         _s.value = s.copy(phase = FsPhase.Submitting)
         try {
             val zone = checkNotNull(s.zoneId)
-            _s.value = _s.value.copy(phase = when (val o = runCatching { api.submit(FsIds.clientUuid(userId, zone, s.date), zone, s.date) }.getOrElse { FsSubmitOutcome.Failed(FsFailure.SERVER) }) {
+            val o = runCatching { api.submit(FsIds.clientUuid(userId, zone, s.date), zone, s.date) }.getOrElse { FsSubmitOutcome.Failed(FsFailure.SERVER) }
+            _s.value = _s.value.copy(phase = when (o) {
                 is FsSubmitOutcome.Ok -> FsPhase.Done(o.result)
                 FsSubmitOutcome.AlreadySubmitted -> FsPhase.AlreadySubmitted(p.preview.copy(alreadySubmitted = true))
                 is FsSubmitOutcome.Failed -> FsPhase.Failed(o.why)

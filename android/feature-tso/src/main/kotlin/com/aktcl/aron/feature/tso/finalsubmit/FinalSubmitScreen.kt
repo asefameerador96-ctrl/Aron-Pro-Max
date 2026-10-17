@@ -64,7 +64,7 @@ fun FinalSubmitScreen(state: FinalSubmitState, onBack: () -> Unit, modifier: Mod
     }
     if (phase is FsPhase.Review && phase.confirming) {
         AronConfirmDialog(
-            stringResource(R.string.tso_fs_confirm_title), stringResource(R.string.tso_fs_confirm_body, ui.date, phase.preview.routes.size),
+            stringResource(R.string.tso_fs_confirm_title), stringResource(R.string.tso_fs_confirm_body, ui.date, localizedDigits(stringResource(R.string.tso_mc_zone, ui.zoneId.toString())), phase.preview.routes.size),
             confirmLabel = stringResource(R.string.tso_fs_submit), dismissLabel = stringResource(R.string.tso_fs_cancel),
             onConfirm = { scope.launch { state.confirmSubmit() } }, onDismiss = { state.cancelConfirm() },
         )
@@ -90,7 +90,7 @@ fun FinalSubmitScreen(state: FinalSubmitState, onBack: () -> Unit, modifier: Mod
                 else -> Unit
             }
             if (phase is FsPhase.Review) {
-                Text(localizedDigits(stringResource(R.string.tso_fs_sales_date, ui.date)), style = MaterialTheme.typography.titleSmall)
+                Text(localizedDigits(stringResource(R.string.tso_fs_sales_date, ui.date)) + "  ·  " + localizedDigits(stringResource(R.string.tso_mc_zone, ui.zoneId.toString())), style = MaterialTheme.typography.titleSmall)
                 if (phase.preview.warnings.isNotEmpty()) AronBanner(warnLines(phase.preview.warnings), Modifier.testTag(FsTags.WARNINGS), kind = BannerKind.Warning)
                 phase.preview.routes.forEach { r ->
                     AronCard(Modifier.fillMaxWidth().testTag(FsTags.route(r.routeId))) {
@@ -107,7 +107,8 @@ fun FinalSubmitScreen(state: FinalSubmitState, onBack: () -> Unit, modifier: Mod
                 AronSectionLabel(stringResource(R.string.tso_mc_zone_label))
                 ui.zones.forEach { z -> AronListRow(localizedDigits(stringResource(R.string.tso_mc_zone, z.toString())), Modifier.testTag(FsTags.zone(z)), onClick = { state.pickZone(z) }, trailing = if (z == ui.zoneId) "✓" else null, flat = true) }
                 AronSectionLabel(stringResource(R.string.tso_fs_sales_date_label))
-                OutlinedTextField(ui.date, { state.setDate(it) }, Modifier.fillMaxWidth().testTag(FsTags.DATE), singleLine = true, label = { Text(stringResource(R.string.tso_leave_date_hint)) })
+                // read-only: the sales date is the Dhaka business date (docs/15 F-TSO-010)
+                Text(localizedDigits(ui.date), Modifier.testTag(FsTags.DATE), style = MaterialTheme.typography.titleSmall)
                 ui.errors.forEach { e -> AronBanner(stringResource(when (e) { FsError.NO_ZONE -> R.string.tso_fs_err_zone; FsError.DATE_FORMAT -> R.string.tso_leave_err_date_format; FsError.DATE_FUTURE -> R.string.tso_fs_err_future }), Modifier.testTag(FsTags.ERRORS), kind = BannerKind.Error) }
             }
         }

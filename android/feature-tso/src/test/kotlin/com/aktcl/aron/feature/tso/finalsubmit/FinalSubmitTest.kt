@@ -47,6 +47,15 @@ class FinalSubmitLogicTest {
         assertNotEquals(a, FsIds.clientUuid(8, 10, "2026-10-17")); assertNotEquals(a, FsIds.clientUuid(7, 11, "2026-10-17")); assertNotEquals(a, FsIds.clientUuid(7, 10, "2026-10-16"))
     }
 
+    @Test fun everyStableIdIsAValidVersion4Uuid() {
+        val ids = listOf(
+            FsIds.clientUuid(7, 10, "2026-10-17"), com.aktcl.aron.feature.tso.mycall.PlanIds.plan(7, "2026-10-18", 1), com.aktcl.aron.feature.tso.mycall.PlanIds.planOutlet("p", 5),
+            com.aktcl.aron.feature.tso.mycall.QueryIds.assessment("p", 1), com.aktcl.aron.feature.tso.mycall.QueryIds.answer("a", 2), com.aktcl.aron.feature.tso.mycall.QueryIds.task("p", 3),
+        )
+        ids.forEach { assertTrue("not v4: $it", com.aktcl.aron.feature.tso.StableIds.isV4(it)) }
+        assertEquals(ids.size, ids.toSet().size)
+    }
+
     @Test fun validation() {
         assertTrue(validateFs(10, "2026-10-17", "2026-10-17").isEmpty()); assertTrue(validateFs(10, "2026-10-01", "2026-10-17").isEmpty())
         assertEquals(listOf(FsError.NO_ZONE), validateFs(null, "2026-10-17", "2026-10-17"))
@@ -98,7 +107,7 @@ class FinalSubmitLogicTest {
 
     @Test fun doneIsFinal() = runBlocking {
         val api = Api(); val s = st(api); s.pickZone(10); s.getSalesData(); s.askConfirm(); s.confirmSubmit()
-        s.pickZone(11); s.setDate("2026-10-16"); s.getSalesData()
+        s.pickZone(11); s.getSalesData()
         assertTrue(s.ui.value.phase is FsPhase.Done); assertEquals(1, api.previews)
     }
 
@@ -134,9 +143,9 @@ class FinalSubmitScreenTest {
         compose.onNodeWithTag(FsTags.zone(10)).performScrollTo().performClick(); compose.waitForIdle()
         compose.onNodeWithTag(FsTags.GET).performClick(); compose.waitForIdle()
         compose.onNodeWithText("FF: Rahim").assertExists(); compose.onNodeWithText("FF: SR Not Set").performScrollTo().assertExists()
-        compose.onNodeWithText("Sales Date: 2026-10-17").assertExists()
+        compose.onNodeWithText("Sales Date: 2026-10-17  ·  Zone 10").assertExists()
         compose.onNodeWithTag(FsTags.SUBMIT).performClick(); compose.waitForIdle()
         assertTrue("a confirm dialog comes first", api.submits.isEmpty())
-        compose.onNodeWithText("Submit the sales of 2026-10-17 for 2 routes? This cannot be undone.").assertExists()
+        compose.onNodeWithText("Submit the sales of 2026-10-17 for Zone 10, 2 routes? This cannot be undone.").assertExists()
     }
 }

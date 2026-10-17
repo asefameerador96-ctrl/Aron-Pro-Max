@@ -170,7 +170,7 @@
     <string name="tso_fs_ok">OK</string>
     <string name="tso_fs_already">You have already given FINAL SUBMIT for this zone and day!</string>
     <string name="tso_fs_confirm_title">Final Submit</string>
-    <string name="tso_fs_confirm_body">Submit the sales of %1$s for %2$d routes? This cannot be undone.</string>
+    <string name="tso_fs_confirm_body">Submit the sales of %1$s for %2$s, %3$d routes? This cannot be undone.</string>
     <string name="tso_fs_sales_date">Sales Date: %1$s</string>
     <string name="tso_fs_sales_date_label">Sales Date</string>
     <string name="tso_fs_ff">FF: %1$s</string>
