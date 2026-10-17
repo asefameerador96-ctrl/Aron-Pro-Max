@@ -118,4 +118,8 @@
     <string name="tut_play_hint">Play online</string>
     <!-- First bundle (F-SR-001) -->
     <string name="fb_progress_unknown">Download in progress</string>
+    <string name="tut_open">Open</string>
+    <string name="tut_kind_video">Video</string>
+    <string name="tut_kind_manual">Manual</string>
+    <string name="tut_minutes">%1$d min</string>
 </resources>

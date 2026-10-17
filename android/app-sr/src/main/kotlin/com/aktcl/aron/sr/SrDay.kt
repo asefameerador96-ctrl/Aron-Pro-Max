@@ -40,6 +40,8 @@ import com.aktcl.aron.rules.BusinessDate
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.datetime.LocalDate
 import java.time.Instant
@@ -238,6 +240,11 @@ class SrDay(
             ),
         )
     }
+
+    /** The `tutorials` section of the user's bundle as stored (F-SR-048): the list is read from the phone, never fetched here. */
+    suspend fun tutorialsJson(): String? = withContext(Dispatchers.IO) { db.referenceDao().section("tutorials") }
+
+    fun isOnline(): Boolean = online()
 
     private fun online(): Boolean {
         val cm = context.getSystemService(ConnectivityManager::class.java) ?: return false
