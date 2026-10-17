@@ -64,6 +64,8 @@ fun TsoApp(
     onSync: (() -> Unit)? = null,
     /** The web dashboard origin (scheme and host, no path) for the Device OTP page; null shows the path alone. */
     webOrigin: String? = null,
+    /** Real screens by destination, supplied by the app module; a screen not listed shows the placeholder frame. */
+    screens: Map<TsoScreen, @Composable (onBack: () -> Unit) -> Unit> = emptyMap(),
 ) {
     var screen by rememberSaveable { mutableStateOf(TsoScreen.HOME) }
     BackHandler(enabled = screen != TsoScreen.HOME) { screen = TsoScreen.HOME }
@@ -82,7 +84,7 @@ fun TsoApp(
                 sunlight = sunlight, onSunlight = onSunlight, onUpdate = onUpdate, updateAvailable = updateAvailable,
             )
             TsoScreen.DEVICE_OTP -> RoleDeviceOtpContent(onBack = { screen = TsoScreen.HOME }, webOrigin = webOrigin)
-            else -> {
+            else -> if (screens[s] != null) screens.getValue(s)({ screen = TsoScreen.HOME }) else {
                 val tile = tiles.first { it.id == s.tileId }
                 RoleSectionPlaceholder(stringResource(tile.label), tile.icon, onBack = { screen = TsoScreen.HOME }, syncedAt = syncedAt)
             }
