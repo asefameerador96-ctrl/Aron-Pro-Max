@@ -5,6 +5,8 @@
 -- path). One function, one statement, run by the restore runbook (docs/runbooks/pitr-restore.md), the failover runbook
 -- and the drill (infra/scripts/mint-generation.sh): closes the current generation and opens the new one.
 
+SET lock_timeout = '5s';
+
 CREATE FUNCTION app.mint_server_generation(p_kind text, p_lost_after_utc timestamptz, p_restore_point_utc timestamptz DEFAULT NULL, p_note text DEFAULT NULL)
 RETURNS uuid LANGUAGE plpgsql AS $$
 DECLARE g uuid := gen_random_uuid();
