@@ -3,6 +3,10 @@ package com.aktcl.aron.feature.tso
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.consumeWindowInsets
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.platform.testTag
@@ -106,7 +110,12 @@ fun TsoApp(
             onConfirm = { confirmLogout = false; onLogout() }, onDismiss = { confirmLogout = false },
         )
     }
-    androidx.compose.foundation.layout.Box(modifier) {
+    // The content and, for every screen but Home, a Home strip BELOW it in the layout (never an overlay): it cannot cover a screen's
+    // bottom bar. The strip owns the navigation inset, so the content is told it is consumed and its own bars do not pad twice.
+    androidx.compose.foundation.layout.Column(modifier) {
+    androidx.compose.foundation.layout.Box(
+        Modifier.weight(1f).then(if (screen != TsoScreen.HOME) Modifier.consumeWindowInsets(androidx.compose.foundation.layout.WindowInsets.Companion.navigationBars) else Modifier),
+    ) {
     AronScreenTransition(screen, forward = { _, to -> to != TsoScreen.HOME }, Modifier) { s ->
         when (s) {
             TsoScreen.HOME -> TsoDrawer(user.fullName, remember { tsoDrawerEntries() }, onEntry = { screen = it }) { open ->
@@ -126,8 +135,10 @@ fun TsoApp(
                 BackHandler(enabled = step != "main") { step = "main" }
                 when (step) {
                     "password" -> if (changePassword != null) {
-                        val st = rememberRetained("tso-${user.username}-cp") { com.aktcl.aron.feature.tso.password.ChangePasswordState(changePassword) }
-                        com.aktcl.aron.feature.tso.password.ChangePasswordScreen(st, onBack = { step = "main" })
+                        // a fresh form (and no typed password kept) every time the screen is opened
+                        val cpEpoch = rememberRetained("tso-${user.username}-cp-epoch") { RetainedCounter() }
+                        val st = rememberRetained("tso-${user.username}-cp-${cpEpoch.n}") { com.aktcl.aron.feature.tso.password.ChangePasswordState(changePassword) }
+                        com.aktcl.aron.feature.tso.password.ChangePasswordScreen(st, onBack = { step = "main"; cpEpoch.n++ })
                     }
                     "support" -> support?.invoke { step = "main" }
                     else -> androidx.compose.foundation.layout.Column {
@@ -197,13 +208,17 @@ fun TsoApp(
             }
         }
     }
+    }
     if (screen != TsoScreen.HOME) {
-        // the blue Home button (bottom centre), above any screen's own bottom bar
-        TsoHomeButton(
-            { screen = TsoScreen.HOME },
-            Modifier.align(androidx.compose.ui.Alignment.BottomCenter).padding(bottom = 96.dp)
-                .background(com.aktcl.aron.core.ui.LocalAronColors.current.accentFill, androidx.compose.foundation.shape.RoundedCornerShape(28.dp)),
-        )
+        androidx.compose.foundation.layout.Box(
+            Modifier.fillMaxWidth().background(com.aktcl.aron.core.ui.LocalAronColors.current.surfaceSolid).navigationBarsPadding().padding(vertical = 4.dp),
+            contentAlignment = androidx.compose.ui.Alignment.Center,
+        ) {
+            TsoHomeButton(
+                { screen = TsoScreen.HOME },
+                Modifier.background(com.aktcl.aron.core.ui.LocalAronColors.current.accentFill, androidx.compose.foundation.shape.RoundedCornerShape(28.dp)),
+            )
+        }
     }
     }
 }
