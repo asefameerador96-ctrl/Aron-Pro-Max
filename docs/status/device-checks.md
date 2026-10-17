@@ -377,3 +377,16 @@ It runs on the ENROLLED Honor X5c Plus, where the device owner was set by adb pa
 2. When asked, check in on the phone (press and hold). Pass = every chosen app is suspended.
 3. After 17:00: `... day3-check.ps1 -CheckoutOnly`, then check out. Pass = none is suspended.
 4. Record each spoofing app's line in `docs/status/qa-n039-antispoofing.md`.
+
+### D-QA-5 Release install and upgrade without Google Play (N-042; qa) — DEVICE-PENDING, laptop session
+Script: `tools/checks/release-install-check.ps1`. It was tested in the cloud with a fake SDK and a fake adb: a release
+pair passes, and a different or debug signer fails. You need two release-signed SR APKs from CI (an older and a newer
+run's `aron-sr-*.apk`) and the Android SDK build-tools on the laptop.
+1. On the enrolled Honor X5c Plus: `powershell -ExecutionPolicy Bypass -File .\tools\checks\release-install-check.ps1
+   -OldApk <older>.apk -NewApk <newer>.apk`. It checks the signer and versions, installs the older build if needed,
+   upgrades with `adb install -r`, and checks the upgrade kept the app (firstInstallTime) and the device owner.
+2. Production path: `... -NewApk <newer>.apk -ViaManagedUpdate`, after an admin publishes that release in the portal.
+   The phone must reach the new versionCode by itself within 20 minutes.
+3. Each run appends one line to `release-install-check.log`: phone, Android version and patch, path, and whether
+   Google's developer verification refused the install. Copy the lines into `docs/status/laptop.md`. The Galaxy A06
+   and A07 follow when they are in hand.
