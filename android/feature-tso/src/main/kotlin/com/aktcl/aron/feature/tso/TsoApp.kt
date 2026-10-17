@@ -81,6 +81,8 @@ fun TsoApp(
     nowIso: () -> String = { java.time.Instant.now().toString() },
     /** F-TSO-013..016: Set Plan, My Visit Plan, Visit Query and Assign Task; null shows the placeholder. */
     myCall: com.aktcl.aron.feature.tso.mycall.MyCallDeps? = null,
+    /** Real screens by destination, supplied by the app module; a screen not listed shows the placeholder frame. */
+    screens: Map<TsoScreen, @Composable (onBack: () -> Unit) -> Unit> = emptyMap(),
 ) {
     var screen by rememberSaveable { mutableStateOf(TsoScreen.HOME) }
     BackHandler(enabled = screen != TsoScreen.HOME) { screen = TsoScreen.HOME }
@@ -150,7 +152,10 @@ fun TsoApp(
                     com.aktcl.aron.feature.tso.feedback.FeedbackListScreen(list, loaded ?: emptyList(), onBack = { screen = TsoScreen.HOME }, onNew = if (feedbackQueue != null && loaded != null) ({ writing = true }) else null)
                 }
             } else TsoPlaceholderFor(s, tiles, syncedAt) { screen = TsoScreen.HOME }
-            else -> TsoPlaceholderFor(s, tiles, syncedAt) { screen = TsoScreen.HOME }
+            else -> if (screens[s] != null) screens.getValue(s)({ screen = TsoScreen.HOME }) else {
+                val tile = tiles.first { it.id == s.tileId }
+                RoleSectionPlaceholder(stringResource(tile.label), tile.icon, onBack = { screen = TsoScreen.HOME }, syncedAt = syncedAt)
+            }
         }
     }
     if (screen != TsoScreen.HOME) {

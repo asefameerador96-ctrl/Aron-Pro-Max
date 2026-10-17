@@ -41,6 +41,8 @@ dependencies {
     testImplementation(project(":android:feature-dayclose"))
     testImplementation(project(":android:feature-tasks"))
     testImplementation(project(":android:feature-auth"))
+    testImplementation(project(":android:feature-amo")) // AmoShot (goldens of the AMO screens in their five states)
+    testImplementation(project(":android:feature-tso")) // the TSO dashboard cards
     testImplementation(libs.kotlinx.serialization.json)
     testImplementation(libs.junit4)
     testImplementation(libs.robolectric)
