@@ -21,6 +21,16 @@ class PriceComplianceTest {
         assertEquals("125", PriceCompliance.formatTaka(125_000)); assertEquals("125.5", PriceCompliance.formatTaka(125_500)); assertEquals("0.05", PriceCompliance.formatTaka(50))
     }
 
+    @Test fun banglaDigitsParseLikeAscii() {
+        assertEquals(125_500L, PriceCompliance.parseTakaToMtk("১২৫.৫"))
+        assertEquals(PriceCompliance.parseTakaToMtk("9999999"), PriceCompliance.parseTakaToMtk("৯৯৯৯৯৯৯"))
+    }
+
+    @Test fun aLargePriceDoesNotOverflowTheToleranceMaths() {
+        val big = 999_999_999_000L
+        assertTrue(PriceCompliance.compliant(big, big, 5000)); assertFalse(PriceCompliance.compliant(big, 0, 5000))
+    }
+
     @Test fun referenceIsThePriceOfOnePackRoundedHalfUp() {
         assertEquals(90_000L, PriceCompliance.packReferenceMtk(price(1, 9_000), sku(1, 10)))
         assertEquals(10_000L, PriceCompliance.packReferenceMtk(price(1, 5_000, per = 3), sku(1, 6))) // 5000 x 6 / 3

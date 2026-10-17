@@ -275,17 +275,22 @@ class AmoDay(
         return com.aktcl.aron.feature.amo.PriceCompliance.rows(skus, { prices[it.skuId] }, outlet.priceType, bn)
     }
 
-    /** One `price_compliance_check` per typed SKU, all or nothing; a second Save for the visit writes nothing. */
+    /** One `price_compliance_check` per typed SKU, all or nothing. A SKU already recorded for the visit is skipped, so a later Save adds only new SKUs and a double tap writes nothing twice. */
     suspend fun savePriceCompliance(visitUuid: String, rows: List<com.aktcl.aron.feature.amo.PriceRow>, typed: Map<Long, String>, toleranceBp: Int) {
-        if (db.captureDao().amoRecordsOfFamily(visitUuid).any { it.recordType == "price_compliance_check" }) return
-        val planned = com.aktcl.aron.feature.amo.PriceCompliance.records(visitUuid, rows, typed, toleranceBp, ::newUuid)
         db.withTransaction {
+            val done = db.captureDao().amoRecordsOfFamily(visitUuid).filter { it.recordType == "price_compliance_check" }
+                .mapNotNull { runCatching { (kotlinx.serialization.json.Json.parseToJsonElement(it.payloadJson) as kotlinx.serialization.json.JsonObject)["sku_id"].toString().toLong() }.getOrNull() }.toSet()
+            val planned = com.aktcl.aron.feature.amo.PriceCompliance.records(visitUuid, rows.filter { it.skuId !in done }, typed, toleranceBp, ::newUuid)
             for (p in planned) capture.recordAmo(
                 com.aktcl.aron.core.database.entity.AmoRecordEntity(p.clientUuid, metaProvider.meta(visitSession.current.value?.routeId ?: 0L), "price_compliance_check", p.familyUuid, p.rank, p.payload.toString()),
             )
         }
         runCatching { requestSync() }
     }
+
+    /** SKUs already recorded for the open call, so the screen can show them as done. */
+    suspend fun pricedSkus(visitUuid: String): Set<Long> = db.captureDao().amoRecordsOfFamily(visitUuid).filter { it.recordType == "price_compliance_check" }
+        .mapNotNull { runCatching { (kotlinx.serialization.json.Json.parseToJsonElement(it.payloadJson) as kotlinx.serialization.json.JsonObject)["sku_id"].toString().toLong() }.getOrNull() }.toSet()
 
     /** SR Perf. Assessment (F-AMO-007/008/009): the check and its brand lines, all or nothing, family = the visit. A second Save for the visit writes nothing. */
     suspend fun saveAssessment(visitUuid: String, brands: List<com.aktcl.aron.feature.amo.AmoBrand>, state: com.aktcl.aron.feature.amo.PerfState) {

@@ -181,15 +181,16 @@ private fun PerfAssessmentStep(day: AmoDay, onSaved: () -> Unit) {
     var saving by remember { mutableStateOf(false) }
     var saved by remember { mutableStateOf(false) }
     LaunchedEffect(day) { brands = com.aktcl.aron.feature.amo.PerfAssessment.brands(runCatching { day.reference.section("products") }.getOrNull()) }
-    val visit = day.visitSession.current.value
+    val visit by day.visitSession.current.collectAsState()
     com.aktcl.aron.feature.amo.PerfAssessmentContent(
         brands.orEmpty(), state, saved, saving,
         { state = state.toggleDistributed(it) }, { state = state.toggleOos(it) }, { state = state.withPosm(it) },
         onSave = {
-            if (!saving && !saved && visit != null) {
+            val v = visit
+            if (!saving && !saved && v != null) {
                 saving = true
                 scope.launch {
-                    val ok = runCatching { day.saveAssessment(visit.visitUuid, brands.orEmpty(), state) }.isSuccess
+                    val ok = runCatching { day.saveAssessment(v.visitUuid, brands.orEmpty(), state) }.isSuccess
                     saving = false; saved = ok
                     if (ok) { kotlinx.coroutines.delay(900); onSaved() }
                 }
@@ -202,7 +203,8 @@ private fun PerfAssessmentStep(day: AmoDay, onSaved: () -> Unit) {
 @Composable
 private fun JointCallStep(day: AmoDay, onSaved: () -> Unit) {
     // the open visit carries the route (it survives a kill and relaunch; the host's saved route does not)
-    val routeId = day.visitSession.current.value?.routeId?.takeIf { it != 0L }
+    val openVisit by day.visitSession.current.collectAsState()
+    val routeId = openVisit?.routeId?.takeIf { it != 0L }
     val scope = rememberCoroutineScope()
     var rubric by remember { mutableStateOf<com.aktcl.aron.feature.amo.JointRubric?>(null) }
     var sr by remember { mutableStateOf<com.aktcl.aron.feature.amo.AssignedSr?>(null) }
@@ -216,15 +218,16 @@ private fun JointCallStep(day: AmoDay, onSaved: () -> Unit) {
         rubric = com.aktcl.aron.feature.amo.JointCall.rubric(runCatching { day.reference.section("rubrics") }.getOrNull())
         sr = routeId?.let { com.aktcl.aron.feature.amo.JointCall.assignedSr(runCatching { day.reference.section("supervisor") }.getOrNull(), it) }
     }
-    val visit = day.visitSession.current.value
+    val visit by day.visitSession.current.collectAsState()
     com.aktcl.aron.feature.amo.JointCallContent(
         rubric, sr, stars, saved, saving, { id, n -> stars = stars.star(id, n) },
         onSave = {
             val r = rubric
-            if (!saving && !saved && visit != null && r != null) {
+            val v = visit
+            if (!saving && !saved && v != null && r != null) {
                 saving = true
                 scope.launch {
-                    val ok = runCatching { day.saveJointCall(visit.visitUuid, r, stars, sr?.userId) }.isSuccess
+                    val ok = runCatching { day.saveJointCall(v.visitUuid, r, stars, sr?.userId) }.isSuccess
                     saving = false; saved = ok
                     if (ok) { kotlinx.coroutines.delay(900); onSaved() }
                 }
@@ -250,7 +253,7 @@ private val AnswersSaver = androidx.compose.runtime.saveable.Saver<Map<String, c
 @Composable
 private fun SurveyStep(day: AmoDay, onDone: () -> Unit) {
     val scope = rememberCoroutineScope()
-    val visit = day.visitSession.current.value
+    val visit by day.visitSession.current.collectAsState()
     val bn = com.aktcl.aron.core.ui.LocalAppLanguage.current == com.aktcl.aron.core.common.AppLanguage.BN
     var loaded by remember { mutableStateOf<Pair<com.aktcl.aron.core.database.entity.SurveyEntity, List<com.aktcl.aron.core.database.entity.SurveyQuestionEntity>>?>(null) }
     var checked by remember { mutableStateOf(false) }
@@ -301,17 +304,23 @@ private fun PriceStep(day: AmoDay, onSaved: () -> Unit) {
         save = { m -> m.flatMap { listOf(it.key, it.value) } },
         restore = { l -> l.chunked(2).associate { (it[0] as Long) to (it[1] as String) } },
     )) { mutableStateOf<Map<Long, String>>(emptyMap()) }
+    val visit by day.visitSession.current.collectAsState()
     var saving by remember { mutableStateOf(false) }
     var saved by remember { mutableStateOf(false) }
-    LaunchedEffect(day, bn) { tolerance = day.priceToleranceBp(); rows = runCatching { day.priceRows(bn) }.getOrDefault(emptyList()) }
-    val visit = day.visitSession.current.value
+    LaunchedEffect(day, bn, visit?.visitUuid) {
+        tolerance = day.priceToleranceBp()
+        val done = visit?.let { runCatching { day.pricedSkus(it.visitUuid) }.getOrNull() }.orEmpty()
+        rows = runCatching { day.priceRows(bn) }.getOrDefault(emptyList()).filter { it.skuId !in done } // already recorded SKUs are not asked again
+    }
+    val list = rows ?: return // loading: the local read is a few ms, nothing to show yet
     com.aktcl.aron.feature.amo.PriceComplianceContent(
-        rows.orEmpty(), typed, tolerance, saved, saving, { id, t -> typed = typed + (id to t) },
+        list, typed, tolerance, saved, saving, { id, t -> typed = typed + (id to t) },
         onSave = {
-            if (!saving && !saved && visit != null) {
+            val v = visit
+            if (!saving && !saved && v != null) {
                 saving = true
                 scope.launch {
-                    val ok = runCatching { day.savePriceCompliance(visit.visitUuid, rows.orEmpty(), typed, tolerance) }.isSuccess
+                    val ok = runCatching { day.savePriceCompliance(v.visitUuid, list, typed, tolerance) }.isSuccess
                     saving = false; saved = ok
                     if (ok) { kotlinx.coroutines.delay(900); onSaved() }
                 }

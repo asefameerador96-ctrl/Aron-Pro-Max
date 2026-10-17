@@ -31,7 +31,8 @@ object PriceCompliance {
 
     /** "125", "125.5", "125.50" or "125.125" taka to milli-taka; null for anything else (empty, a sign, more than 3 decimals, too long). */
     fun parseTakaToMtk(text: String): Long? {
-        val t = text.trim().replace(',', '.')
+        // Bangla digits (U+09E6..09EF) from a Bangla keyboard count as their ASCII twins
+        val t = text.trim().replace(',', '.').map { if (it in '\u09E6'..'\u09EF') '0' + (it - '\u09E6') else it }.joinToString("")
         val m = Regex("^(\\d{1,9})(?:\\.(\\d{1,3}))?$").matchEntire(t) ?: return null
         val whole = m.groupValues[1].toLong()
         val frac = m.groupValues[2].padEnd(3, '0').toLong()
