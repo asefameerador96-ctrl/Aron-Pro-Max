@@ -12,7 +12,7 @@ the class of docs/16 s13.1. **PII**: none, personal, sensitive, secret. Other pr
 
 | Schema | Relations | Columns |
 |---|---|---|
-| `app` | 149 | 2582 |
+| `app` | 150 | 2589 |
 | `dw` | 34 | 528 |
 
 ## Index
@@ -39,6 +39,7 @@ the class of docs/16 s13.1. **PII**: none, personal, sensitive, secret. Other pr
 | [`app.cfg_key`](#appcfg_key) | table | backend:config | REFERENCE | master | none | Registry of every config key with type, default, bounds, scope levels, risk class and delivery; seeded by migration, never deleted. |
 | [`app.cfg_value`](#appcfg_value) | table | backend:config | ONLINE | master | none | One scoped value of a config key valid for a period; rows are closed, never edited. |
 | [`app.cfg_version`](#appcfg_version) | table | backend:config | ONLINE | audit | none | One committed config version; versions are global and increase monotonically. |
+| [`app.change_stamp`](#appchange_stamp) | table | backend:sync | SERVER | ops | none | One counter per named set of tables, bumped by a statement trigger on every write to them; a stored bundle snapshot that remembers the counter knows when it went stale. |
 | [`app.client_error`](#appclient_error) | table | backend:platform | ONLINE | telemetry | none | One row is a privacy-scrubbed error report from the web app (POST /v1/client-errors, F-SYS-032); phones report errors as app.app_error. |
 | [`app.cluster`](#appcluster) | table | backend:masterdata | ONLINE | master | none | A named group of outlets within a zone, used to organise routes. |
 | [`app.code_list`](#appcode_list) | table | backend:masterdata | REFERENCE | master | none | Header of a business code list (reasons, outcomes, channels and similar) with its key. |
@@ -544,6 +545,10 @@ One row is a distinct day-bundle content the server generated for a user and bus
 | `snapshot_seq` | integer | not null |  | Order of the content within the user and date, from 1; the <seq> of bundle_version <date>:<seq>. |
 | `content_sha256` | bytea | not null |  | SHA-256 of the bundle content; equal to the latest row means the seq is reused. |
 | `generated_at` | timestamp with time zone | not null |  | UTC instant the snapshot was first generated. |
+| `body_gz` | bytea | null |  | The full bundle (every section, placeholder meta) as gzip JSON, served by GET /v1/sync/bundle while the snapshot is current; null until a build stored it. |
+| `scope_version` | bigint | null |  | app_user.scope_version the body was built under; a token carrying another one rebuilds. |
+| `config_version` | bigint | null |  | The committed config version the body carries; a newer one rebuilds. |
+| `change_stamp` | bigint | null |  | app.change_stamp.value (masterdata) when the body was built; a later reference write rebuilds. |
 
 Keys: `PRIMARY KEY (user_id, business_date, snapshot_seq)`
 
@@ -806,6 +811,20 @@ One committed config version; versions are global and increase monotonically.
 Keys: `PRIMARY KEY (config_version)`
 
 References: `FOREIGN KEY (change_id) REFERENCES app.cfg_change(change_id)`; `FOREIGN KEY (committed_by) REFERENCES app.app_user(id)`; `FOREIGN KEY (is_revert_of) REFERENCES app.cfg_version(config_version)`
+
+## app.change_stamp
+
+One counter per named set of tables, bumped by a statement trigger on every write to them; a stored bundle snapshot that remembers the counter knows when it went stale.
+
+`owner: backend:sync | capture: SERVER | retention: ops | pii: none` · table
+
+| Column | Type | Null | PII | Description |
+|---|---|---|---|---|
+| `name` | text | not null |  | The counter: masterdata (the reference tables the field bundle reads). |
+| `value` | bigint | not null |  | Grows by one per writing statement on the set; never reset. |
+| `updated_at` | timestamp with time zone | not null |  | When the counter last moved. |
+
+Keys: `PRIMARY KEY (name)`
 
 ## app.client_error
 

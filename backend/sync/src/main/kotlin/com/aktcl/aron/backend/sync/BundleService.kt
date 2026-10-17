@@ -27,6 +27,7 @@ import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import org.jdbi.v3.core.Handle
+import org.slf4j.LoggerFactory
 import java.nio.ByteBuffer
 import java.security.MessageDigest
 import java.sql.ResultSet
@@ -61,11 +62,22 @@ class BundleService(
     private val pageCache = java.util.concurrent.ConcurrentHashMap<String, Pair<Result, Instant>>()
 
     /** [bundle] is what the wire carries (paged sections emptied); [full] holds every row (pages, delta). */
-    data class Result(
-        val bundle: Bundle, val version: String, val full: Bundle = bundle, val seq: Long = 0,
+    class Result(
+        body: Bundle?, val version: String, full: Bundle? = body, val seq: Long = 0,
+        /** True when the caller's `If-None-Match` named the stored snapshot's version: nothing was built or decoded, there is no body. */
+        val notModified: Boolean = false,
+        /** True when the body came from the stored snapshot (SCALE-03); false when it was built now. */
+        val fromSnapshot: Boolean = false,
         /** The route-days the bundle carries (F-SYS-025 download log); none for a pre-fetch. */
         val routeIds: List<Long> = emptyList(), val date: LocalDate? = null,
-    )
+    ) {
+        private val body: Bundle? = body
+        private val fullBody: Bundle? = full
+        /** The bundle to answer (paged sections stripped). */
+        val bundle: Bundle get() = body ?: error("a not-modified result has no body")
+        /** The whole bundle, paged sections included (pages, deltas). */
+        val full: Bundle get() = fullBody ?: error("a not-modified result has no body")
+    }
 
     private data class UserRow(
         val id: Long, val username: String, val fullName: String, val role: String, val designation: String?, val locale: String,
@@ -102,25 +114,57 @@ class BundleService(
         return device to listOf(tomorrow, nextWorkingDay(today, home, weekend)).distinct()
     }
 
-    /** [prebuild] (the worker's pre-generation) never records a download: it only creates the day's rows and the snapshot, like a pre-fetch. */
-    fun bundle(p: AronPrincipal, forDate: LocalDate?, appVersion: String?, prebuild: Boolean = false): Result {
+    /** What every bundle request does before a body is served or built: the user, the date, the day's rows and the login side effects. */
+    private class Head(
+        val now: Instant, val today: LocalDate, val user: UserRow, val home: GeoChain?, val roleOrdinal: Long?, val weekend: Set<Int>,
+        val date: LocalDate, val prefetch: Boolean, val plans: List<RouteDayPlan>, val dayStates: Map<Long, DayRow>, val configVersion: Long,
+    )
+
+    /** A stored snapshot row with its body (SCALE-03). */
+    private class Snapshot(val seq: Long, val body: ByteArray?, val scopeVersion: Long?, val configVersion: Long?, val changeStamp: Long?, val generatedAt: Instant)
+
+    /**
+     * [prebuild] (the worker's pre-generation) never records a download: it only creates the day's rows and the snapshot,
+     * like a pre-fetch; it always builds. [fresh] (the delta) always builds too, so the diff is against the bundle of now.
+     * Otherwise (SCALE-03, F-SYS-067) the stored snapshot of the user and date is served when it is current: built under
+     * the caller's scope version, the committed config version and the masterdata change stamp, and not dirtied since.
+     * A served snapshot carries the day states and frozen targets of now (the login side effects just ran) and fresh
+     * meta; its content and version are the stored ones. With [etag] naming the stored version, nothing is decoded.
+     */
+    fun bundle(p: AronPrincipal, forDate: LocalDate?, appVersion: String?, prebuild: Boolean = false, fresh: Boolean = false, etag: String? = null): Result {
+        val head = head(p, forDate, appVersion, prebuild)
+        if (!prebuild && !fresh) {
+            val stamps = db.jdbi.withHandle<Triple<Snapshot?, Long, Boolean>, Exception> { h ->
+                Triple(latestSnapshot(h, head.user.id, head.date), changeStamp(h), dirtied(h, head.user.id, head.date))
+            }
+            val (s, stamp, dirty) = stamps
+            val current = s != null && s.body != null && s.scopeVersion == p.scopeVersion && s.configVersion == head.configVersion && s.changeStamp == stamp && !dirty
+            if (current) {
+                val version = "${head.date}:${s!!.seq}"
+                if (etag != null && ifNoneMatch(etag, version)) {
+                    return Result(null, version, seq = s.seq, notModified = true, fromSnapshot = true,
+                        routeIds = if (head.prefetch) emptyList() else head.plans.map { it.routeId }.distinct(), date = head.date)
+                }
+                val decoded = runCatching { ResponseJson.decodeFromString(Bundle.serializer(), gunzip(s.body!!).decodeToString()) }
+                    .onFailure { log.warn("stored bundle snapshot not readable user={} date={} seq={}: {}", head.user.id, head.date, s.seq, it.javaClass.simpleName) }.getOrNull()
+                if (decoded != null) return finish(p, head, refreshDayStates(decoded, head), s.seq, s.generatedAt, fromSnapshot = true)
+            }
+        }
+        return build(p, head)
+    }
+
+    private fun head(p: AronPrincipal, forDate: LocalDate?, appVersion: String?, prebuild: Boolean): Head {
         val now = clock.now()
         val today = BusinessDate.of(now.toEpochMilli()).toJavaLocalDate()
         val user = db.jdbi.withHandle<UserRow, Exception> { h -> loadUser(h, p.userId) }
         val home = user.homeZoneId?.let { z -> db.jdbi.withHandle<Map<Long, GeoChain>, Exception> { h -> chains(h, listOf(z)) }[z] }
-        val horizonDays = config.int("cfg.sys.schedule_horizon_days").coerceIn(0, 31)
-        val until = now.plusSeconds(horizonDays * 86_400L)
-        val cfg = db.jdbi.withHandle<ScopedConfig, Exception> { h -> ScopedConfig.load(h, now, until) }
+        // Only the weekend key here: the full config load belongs to a build (SCALE-03: a served snapshot never scans cfg_value).
+        val cfg = db.jdbi.withHandle<ScopedConfig, Exception> { h -> ScopedConfig.load(h, now, now, setOf(WEEKEND_KEY)) }
         val roleOrdinal = db.jdbi.withHandle<Long?, Exception> { h ->
             h.createQuery("SELECT ordinal FROM app.role_def WHERE role = :r").bind("r", user.role).mapTo(Long::class.java).findOne().orElse(null)
         }
-        val userChain = ScopedConfig.Chain.of(
-            ConfigScopeType.ROLE to roleOrdinal, ConfigScopeType.WING to home?.wingId, ConfigScopeType.DIVISION to home?.divisionId,
-            ConfigScopeType.TERRITORY to home?.territoryId, ConfigScopeType.ZONE to home?.zoneId, ConfigScopeType.USER to user.id,
-            ConfigScopeType.DEVICE to p.deviceId,
-        )
-        val weekend = cfg.value("cfg.calendar.weekend_days", userChain)?.let { v -> runCatching { v.jsonArray.mapNotNull { it.jsonPrimitive.intOrNull }.filter { it in 1..7 } }.getOrNull() }
-            ?.toSet() ?: DayPlan.DEFAULT_WEEKEND
+        val userChain = userChain(user, home, roleOrdinal, p)
+        val weekend = weekendOf(cfg, userChain)
 
         val date = forDate ?: today
         if (date.isBefore(today)) throw badFor("for must not be before today ($today)")
@@ -136,10 +180,32 @@ class BundleService(
             recordFirstBundle(h, user.id, plans, date, prefetch, now)
             loadDayStates(h, plans.map { it.routeId }, date)
         }
-
         val configVersion = config.configVersion() // one read: config.version and device_policy_version agree
+        return Head(now, today, user, home, roleOrdinal, weekend, date, prefetch, plans, dayStates, configVersion)
+    }
+
+    private fun userChain(user: UserRow, home: GeoChain?, roleOrdinal: Long?, p: AronPrincipal) = ScopedConfig.Chain.of(
+        ConfigScopeType.ROLE to roleOrdinal, ConfigScopeType.WING to home?.wingId, ConfigScopeType.DIVISION to home?.divisionId,
+        ConfigScopeType.TERRITORY to home?.territoryId, ConfigScopeType.ZONE to home?.zoneId, ConfigScopeType.USER to user.id,
+        ConfigScopeType.DEVICE to p.deviceId,
+    )
+
+    /** Builds the bundle of now for [head] (every section), stores it as the day's snapshot when its content is new, and answers it. */
+    private fun build(p: AronPrincipal, head: Head): Result {
+        val now = head.now
+        val user = head.user
+        val home = head.home
+        val date = head.date
+        val plans = head.plans
+        val roleOrdinal = head.roleOrdinal
+        val horizonDays = config.int("cfg.sys.schedule_horizon_days").coerceIn(0, 31)
+        val until = now.plusSeconds(horizonDays * 86_400L)
+        val cfg = db.jdbi.withHandle<ScopedConfig, Exception> { h -> ScopedConfig.load(h, now, until) }
+        val userChain = userChain(user, home, roleOrdinal, p)
+        val weekend = head.weekend
+        val configVersion = head.configVersion
         val bundle = db.jdbi.withHandle<Bundle, Exception> { h ->
-            val own = routeSnapshots(h, user.id, plans, date, dayStates, cfg, roleOrdinal)
+            val own = routeSnapshots(h, user.id, plans, date, head.dayStates, cfg, roleOrdinal)
             // F-AMO-044: the AMO also carries every route of the zone (outlets for a Control Call anywhere in airplane mode).
             val supReach = if (reach != null && SupervisorBundle.isSupervisor(p.role)) reach.reach(user.id, p.role, p.scopeVersion, date) else null
             val zonePlans = if (supReach != null) SupervisorBundle.zoneRoutePlans(h, supReach, plans.map { it.routeId }.toSet()) else emptyList()
@@ -175,20 +241,55 @@ class BundleService(
                 tutorials = emptyList(),
             )
         }
-        val seq = snapshotSeq(user.id, date, bundle)
+        val seq = snapshotSeq(user.id, date, bundle, p.scopeVersion, configVersion, now)
+        return finish(p, head, bundle, seq, now, fromSnapshot = false)
+    }
+
+    /** The response of a built or stored [bundle]: fingerprint, pages and meta. [generatedAt] is when the content was built; the cursor is as of now. */
+    private fun finish(p: AronPrincipal, head: Head, bundle: Bundle, seq: Long, generatedAt: Instant, fromSnapshot: Boolean): Result {
+        val date = head.date
         val version = "$date:$seq"
-        fingerprints.putIfAbsent(user.id, date, seq) { BundleFingerprint.of(bundle) }
+        fingerprints.putIfAbsent(head.user.id, date, seq) { BundleFingerprint.of(bundle) }
         val paged = BundlePaging.paged(bundle, pageThreshold(), pageRows())
         val meta = BundleMeta(
-            bundle_version = version, valid_for_business_date = date.toString(), generated_at = now.wire(), server_time = clock.now().wire(),
-            user_id = user.id, role = user.role, config_version = bundle.config.config_version, schema_version = ContractInfo.SCHEMA_VERSION,
-            cursor = cursor(date, seq, now), is_prefetch = prefetch, paged_sections = paged,
+            bundle_version = version, valid_for_business_date = date.toString(), generated_at = generatedAt.wire(), server_time = clock.now().wire(),
+            user_id = head.user.id, role = head.user.role, config_version = bundle.config.config_version, schema_version = ContractInfo.SCHEMA_VERSION,
+            cursor = cursor(date, seq, head.now), is_prefetch = head.prefetch, paged_sections = paged,
         )
         val result = Result(BundlePaging.strip(bundle, paged).copy(meta = meta), version, bundle.copy(meta = meta), seq,
-            if (prefetch) emptyList() else plans.map { it.routeId }.distinct(), date)
-        if (paged.isNotEmpty()) cachePages(p, result, now)
+            notModified = false, fromSnapshot = fromSnapshot,
+            routeIds = if (head.prefetch) emptyList() else head.plans.map { it.routeId }.distinct(), date = date)
+        if (paged.isNotEmpty()) cachePages(p, result, head.now)
         return result
     }
+
+    /**
+     * A stored body with the day states and frozen targets of now on the caller's own routes (the login side effects of
+     * this request moved them; the zone routes of an AMO keep their synthetic state). The content digest leaves these
+     * out of nothing: the stored seq stays the version, and the day-state change reaches the phone through the delta.
+     */
+    private fun refreshDayStates(b: Bundle, head: Head): Bundle {
+        if (head.dayStates.isEmpty()) return b
+        val plans = head.plans.associateBy { it.routeId }
+        return b.copy(routes = b.routes.map { r ->
+            val day = head.dayStates[r.route_id] ?: return@map r
+            val plan = plans[r.route_id] ?: return@map r
+            r.copy(day_state = day.state, target_outlets = day.target ?: plan.targetOutlets, route_snapshot_version = day.snapshotVersion)
+        })
+    }
+
+    private fun latestSnapshot(h: Handle, userId: Long, date: LocalDate): Snapshot? = h.createQuery(
+        "SELECT snapshot_seq, body_gz, scope_version, config_version, change_stamp, generated_at FROM app.bundle_snapshot WHERE user_id = :u AND business_date = :d ORDER BY snapshot_seq DESC LIMIT 1",
+    ).bind("u", userId).bind("d", date).map { rs, _ ->
+        Snapshot(rs.getLong(1), rs.getBytes(2), rs.getObject(3) as Long?, rs.getObject(4) as Long?, rs.getObject(5) as Long?, rs.getObject(6, OffsetDateTime::class.java).toInstant())
+    }.findOne().orElse(null)
+
+    /** The masterdata change stamp (V0084): bumped by every write to a reference table the bundle reads. */
+    private fun changeStamp(h: Handle): Long = h.createQuery("SELECT value FROM app.change_stamp WHERE name = 'masterdata'").mapTo(Long::class.java).findOne().orElse(0L)
+
+    /** True while a `bundle_user` dirty key of the user and date waits for the 03:30 refresh (F-SYS-067). */
+    private fun dirtied(h: Handle, userId: Long, date: LocalDate): Boolean =
+        h.createQuery("SELECT EXISTS (SELECT 1 FROM app.dirty_key WHERE kind = 'bundle_user' AND subject_id = :u AND business_date = :d)").bind("u", userId).bind("d", date).mapTo(Boolean::class.java).one()
 
     private fun pageKey(p: AronPrincipal, version: String) = "${p.userId}|${p.scopeVersion}|$version"
 
@@ -228,7 +329,7 @@ class BundleService(
         }
         val maxAgeH = runCatching { config.int("cfg.bundle.delta_max_age_h") }.getOrDefault(72).coerceIn(24, 168).toLong()
         if (since.at.isBefore(now.minusSeconds(maxAgeH * 3600))) throw expired("the cursor is older than $maxAgeH h")
-        val r = bundle(p, date, appVersion) // the version gate of a new date applies as to the bundle
+        val r = bundle(p, date, appVersion, fresh = true) // the version gate of a new date applies as to the bundle; the diff is against the bundle of now
         val resolutions = db.jdbi.withHandle<List<Resolution>, Exception> { h -> resolutionsAfter(h, p.userId, since.at, now) }
         if (r.seq == since.seq && resolutions.isEmpty()) return null
         val body = if (r.seq == since.seq) DeltaDiff.Body(emptyMap(), emptyList(), emptyList(), emptyList(), emptyList(), emptyList())
@@ -307,22 +408,32 @@ class BundleService(
      * every new content of the user's date (equal content keeps its number); until the table exists, the content
      * digest. Either way equal content gives an equal version (ETag) on every replica.
      */
-    private fun snapshotSeq(userId: Long, date: LocalDate, b: Bundle): Long {
+    private fun snapshotSeq(userId: Long, date: LocalDate, b: Bundle, scopeVersion: Long, configVersion: Long, now: Instant): Long {
         // The paging settings are server keys outside the content: a change must move the seq, so staged pages of the
         // old size are never mixed with pages of the new size under one bundle_version (BC-71 checker M1).
         val digest = MessageDigest.getInstance("SHA-256").apply {
             update(contentDigest(b)); update("|${pageThreshold()}|${pageRows()}".toByteArray())
         }.digest()
+        // The stored body (SCALE-03): the full bundle with placeholder meta, gzip JSON, served while the snapshot is current.
+        val body = gzip(ResponseJson.encodeToString(Bundle.serializer(), b.copy(meta = PLACEHOLDER_META)).toByteArray(Charsets.UTF_8))
         return db.jdbi.inTransaction<Long, Exception> { h ->
             val hasTable = h.createQuery("SELECT to_regclass('app.bundle_snapshot') IS NOT NULL").mapTo(Boolean::class.java).one()
             if (!hasTable) return@inTransaction contentSeq(b)
             h.execute("SELECT pg_advisory_xact_lock(hashtextextended(?, 1))", "bundle:$userId:$date")
+            val stamp = changeStamp(h)
             val latest = h.createQuery("SELECT snapshot_seq, content_sha256 FROM app.bundle_snapshot WHERE user_id = :u AND business_date = :d ORDER BY snapshot_seq DESC LIMIT 1")
                 .bind("u", userId).bind("d", date).map { rs, _ -> rs.getLong(1) to rs.getBytes(2) }.findOne().orElse(null)
-            if (latest != null && latest.second.contentEquals(digest)) return@inTransaction latest.first
+            if (latest != null && latest.second.contentEquals(digest)) {
+                // Same content: the row is marked current again (and gets a body if it had none) so the next login serves it.
+                h.createUpdate("UPDATE app.bundle_snapshot SET body_gz = COALESCE(body_gz, :b), scope_version = :sv, config_version = :cv, change_stamp = :st WHERE user_id = :u AND business_date = :d AND snapshot_seq = :s")
+                    .bind("b", body).bind("sv", scopeVersion).bind("cv", configVersion).bind("st", stamp).bind("u", userId).bind("d", date).bind("s", latest.first).execute()
+                return@inTransaction latest.first
+            }
             val next = (latest?.first ?: 0L) + 1
-            h.createUpdate("INSERT INTO app.bundle_snapshot (user_id, business_date, snapshot_seq, content_sha256) VALUES (:u, :d, :s, :h)")
-                .bind("u", userId).bind("d", date).bind("s", next).bind("h", digest).execute()
+            // generated_at from the service clock (the meta's generated_at and the delta cursor's instant come from it, never from the database's).
+            h.createUpdate("INSERT INTO app.bundle_snapshot (user_id, business_date, snapshot_seq, content_sha256, body_gz, scope_version, config_version, change_stamp, generated_at) VALUES (:u, :d, :s, :h, :b, :sv, :cv, :st, :at)")
+                .bind("u", userId).bind("d", date).bind("s", next).bind("h", digest).bind("b", body).bind("sv", scopeVersion).bind("cv", configVersion).bind("st", stamp)
+                .bind("at", OffsetDateTime.ofInstant(now, ZoneOffset.UTC)).execute()
             next
         }
     }
@@ -664,7 +775,12 @@ class BundleService(
     }.list()
 
     companion object {
+        private val log = LoggerFactory.getLogger("aron.sync.bundle")
+        private const val WEEKEND_KEY = "cfg.calendar.weekend_days"
         private val RADIUS_KEYS = arrayOf("cfg.geo.radius_m", "cfg.geo.max_accuracy_m", "cfg.geo.radius_min_m", "cfg.geo.radius_max_m")
+
+        fun gzip(b: ByteArray): ByteArray = java.io.ByteArrayOutputStream().also { o -> java.util.zip.GZIPOutputStream(o).use { it.write(b) } }.toByteArray()
+        fun gunzip(b: ByteArray): ByteArray = java.util.zip.GZIPInputStream(b.inputStream()).use { it.readBytes() }
 
         private const val PAGE_CACHE_TTL_S = 300L
         private const val PAGE_CACHE_BUDGET_ROWS = 150_000

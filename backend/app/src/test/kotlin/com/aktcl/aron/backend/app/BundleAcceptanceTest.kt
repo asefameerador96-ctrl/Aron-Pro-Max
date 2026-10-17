@@ -418,4 +418,71 @@ class BundleAcceptanceTest {
     }
 
     private fun kotlinx.serialization.json.JsonPrimitive.contentOrNullSafe(): String? = if (this is kotlinx.serialization.json.JsonNull) null else content
+    // ---- SCALE-03 (F-SYS-067, V0084): the stored snapshot serves the login; a masterdata change rebuilds it --------
+
+    /**
+     * After the day's first full download stored the snapshot, the next login is served from it without a build (a
+     * bounded handful of statements: the login side effects, the snapshot row, the stamp), a repeat with the ETag is 304
+     * without even decoding it, and an admin's change to an outlet (the masterdata change stamp) makes the next login
+     * build and store a new version that shows the change. The stored body carries the day states of now.
+     */
+    @Test
+    @Order(90)
+    fun theStoredSnapshotServesTheLoginWithoutABuildUntilMasterdataChanges() = testApplication {
+        application { aronApi(wiring) }
+        val token = client.token()
+        val db = wiring.database!!
+        val first = client.bundle(token)
+        assertEquals(HttpStatusCode.OK, first.status)
+        val v1 = first.gunzipJson()["meta"]!!.jsonObject["bundle_version"]!!.jsonPrimitive.content
+        assertEquals(1L, fresh.db.jdbi.withHandle<Long, Exception> { h ->
+            h.createQuery("SELECT count(*) FROM app.bundle_snapshot WHERE user_id = (SELECT id FROM app.app_user WHERE username = 'sr1001') AND business_date = DATE '2027-01-03' AND body_gz IS NOT NULL AND change_stamp IS NOT NULL AND snapshot_seq = ${v1.substringAfter(':')}")
+                .mapTo(Long::class.java).one()
+        }, "the build stored its body with the stamps")
+
+        // Served from the snapshot: same version, same content, fresh server time, the day states of now, no build.
+        val s0 = db.statements.sum()
+        val second = client.bundle(token)
+        val served = db.statements.sum() - s0
+        assertEquals(HttpStatusCode.OK, second.status)
+        assertEquals("snapshot", second.headers["X-Bundle-Source"])
+        val b2 = second.gunzipJson()
+        assertEquals(v1, b2["meta"]!!.jsonObject["bundle_version"]!!.jsonPrimitive.content)
+        assertEquals(first.gunzipJson()["routes"], b2["routes"], "the same routes, outlets and day states")
+        assertEquals(first.gunzipJson()["products"], b2["products"])
+        b2["routes"]!!.jsonArray.forEach { rt -> assertEquals("logged_in", rt.jsonObject["day_state"]!!.jsonObject["state"]!!.jsonPrimitive.content) }
+        assertTrue(served <= SNAPSHOT_SERVE_STATEMENTS, "a login served from the snapshot took $served statements (bound $SNAPSHOT_SERVE_STATEMENTS)")
+
+        // The ETag: 304 from the stored seq, nothing decoded or built.
+        val s1 = db.statements.sum()
+        val notModified = client.bundle(token, etag = "\"$v1\"")
+        val served304 = db.statements.sum() - s1
+        assertEquals(HttpStatusCode.NotModified, notModified.status)
+        assertTrue(served304 <= SNAPSHOT_SERVE_STATEMENTS, "a 304 took $served304 statements")
+        println("SCALE-03 snapshot login: $served statements; 304: $served304 statements")
+
+        // An admin renames one of the SR's outlets: the stamp moves, the next login builds, stores and serves the change.
+        val outlet = b2["routes"]!!.jsonArray.first().jsonObject["outlets"]!!.jsonArray.first().jsonObject
+        val outletId = outlet["outlet_id"]!!.jsonPrimitive.long
+        val stampBefore = fresh.db.jdbi.withHandle<Long, Exception> { h -> h.createQuery("SELECT value FROM app.change_stamp WHERE name = 'masterdata'").mapTo(Long::class.java).one() }
+        fresh.db.jdbi.useHandle<Exception> { h -> h.execute("UPDATE app.outlet SET name = 'Renamed by admin' WHERE id = ?", outletId) }
+        assertEquals(stampBefore + 1, fresh.db.jdbi.withHandle<Long, Exception> { h -> h.createQuery("SELECT value FROM app.change_stamp WHERE name = 'masterdata'").mapTo(Long::class.java).one() }, "V0084: one statement, one bump")
+        val s2 = db.statements.sum()
+        val third = client.bundle(token, etag = "\"$v1\"")
+        val built = db.statements.sum() - s2
+        assertEquals(HttpStatusCode.OK, third.status, "the stamp moved: the stored snapshot is stale and the ETag no longer matches")
+        assertEquals("built", third.headers["X-Bundle-Source"])
+        val b3 = third.gunzipJson()
+        assertNotEquals(v1, b3["meta"]!!.jsonObject["bundle_version"]!!.jsonPrimitive.content)
+        assertEquals("Renamed by admin", b3["routes"]!!.jsonArray.flatMap { it.jsonObject["outlets"]!!.jsonArray }.map { it.jsonObject }.first { it["outlet_id"]!!.jsonPrimitive.long == outletId }["name"]!!.jsonPrimitive.content)
+        assertTrue(built > SNAPSHOT_SERVE_STATEMENTS, "a build costs more than a served snapshot ($built)")
+        // And the new snapshot serves the next login.
+        assertEquals("snapshot", client.bundle(token).headers["X-Bundle-Source"])
+    }
+
+    private companion object {
+        /** The login side effects, the snapshot row, the stamp and the dirty-key check (measured 2026-10-17; a build is about 40). */
+        const val SNAPSHOT_SERVE_STATEMENTS = 30
+    }
+
 }

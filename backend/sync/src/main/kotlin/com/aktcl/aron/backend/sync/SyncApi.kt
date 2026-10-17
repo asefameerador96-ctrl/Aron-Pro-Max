@@ -260,10 +260,12 @@ private suspend fun getBundle(call: ApplicationCall, d: SyncDeps) {
         runCatching { LocalDate.parse(it) }.getOrNull()?.takeIf { _ -> DATE.matches(it) }
             ?: throw ApiProblem(ProblemCode.ERR_VALIDATION, "for must be YYYY-MM-DD", errors = listOf(FieldError("query.for", "invalid_value")))
     }
-    val r = d.bundles.bundle(p, forDate, call.request.headers["X-App-Version"])
+    val etag = call.request.headers[HttpHeaders.IfNoneMatch]
+    val r = withContext(Dispatchers.IO) { d.bundles.bundle(p, forDate, call.request.headers["X-App-Version"], etag = etag) }
     call.response.header(HttpHeaders.ETag, "\"${r.version}\"")
     call.response.header("X-Bundle-Version-Current", r.version)
-    if (ifNoneMatch(call.request.headers[HttpHeaders.IfNoneMatch], r.version)) {
+    call.response.header("X-Bundle-Source", if (r.fromSnapshot) "snapshot" else "built")
+    if (r.notModified || ifNoneMatch(etag, r.version)) {
         call.respond(HttpStatusCode.NotModified)
         return
     }

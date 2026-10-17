@@ -125,7 +125,9 @@ class BundlePreGenerationTest {
             c.createStatement().use { it.execute("SELECT pg_advisory_lock(hashtextextended('bundle-pregen:d1:2027-01-05', 7))") }
             assertNull(gen.generate(LocalDate.parse("2027-01-05")))
         }
-        assertNotNull(gen.generate(LocalDate.parse("2027-01-05")), "the lock goes with its session")
+        // The lock goes with its session; the backend releases it a moment after the connection closes.
+        val got = (1..40).firstNotNullOfOrNull { gen.generate(LocalDate.parse("2027-01-05")) ?: null.also { Thread.sleep(50) } }
+        assertNotNull(got, "the lock goes with its session")
     }
 
     private fun tickAt(iso: String) { now.set(Instant.parse(iso)); gen.tick(now.get()) }
