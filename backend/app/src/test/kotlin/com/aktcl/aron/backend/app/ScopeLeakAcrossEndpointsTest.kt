@@ -81,7 +81,11 @@ class ScopeLeakAcrossEndpointsTest {
     private val leaks = mutableListOf<Leak>()
     private val nationalSees = sortedMapOf<String, Boolean>()
     /** Counters of one probe run (the main run's are kept apart from the seeded test's). */
-    class Stats { var calls = 0; var otherIdCalls = 0; var refusedOtherIdCalls = 0; val scopedSuccess = sortedMapOf<String, Int>() }
+    class Stats {
+        var calls = 0; var otherIdCalls = 0; var refusedOtherIdCalls = 0; val scopedSuccess = sortedMapOf<String, Int>()
+        /** Per operation and caller, every variant's status (`own:200 other-path:403`): the ledger in build/scope-ledger.tsv. */
+        val ledger = sortedMapOf<String, java.util.TreeMap<String, MutableList<String>>>()
+    }
     private val stats = Stats()
 
     /** National answers' numbers per `<op> <selector>`: (own division, other division), for the aggregate rule. */
@@ -319,6 +323,7 @@ class ScopeLeakAcrossEndpointsTest {
                     val r = world.call(this, contract, op, c, tokenFor(c), pathIds, query, includeOptionalIds = body, bodyEdit = edit, queryOverrides = pins)
                     if (!retargeted) return // the body names no resource: nothing to learn beyond the own call
                     st.calls++
+                    st.ledger.getOrPut(op.key) { java.util.TreeMap() }.getOrPut(c.user) { mutableListOf() } += "$variant:${r.status.value}"
                     // A refusal echoes the asked path in its problem `instance` (the caller's own words): not a leak. Only that
                     // field is blanked, only on a refusal.
                     val text = r.bodyAsText().let { t -> if (r.status.value >= 400) t.replace(INSTANCE, "\"instance\":\"<asked>\"") else t }
@@ -433,6 +438,13 @@ class ScopeLeakAcrossEndpointsTest {
         }
         leaks += client.probe(ops, stats) { c -> token(c) }
         File("build").mkdirs()
+        // The ledger: per operation, whether the national control judges it, and every caller's variants and statuses.
+        File("build/scope-ledger.tsv").writeText(
+            "operation\tjudged\t" + scoped.joinToString("\t") { it.user } + "\n" + stats.ledger.entries.joinToString("") { (k, byCaller) ->
+                val judged = when (nationalSees[k]) { true -> "judged"; false -> "blind"; null -> "write" }
+                "$k\t$judged\t" + scoped.joinToString("\t") { c -> byCaller[c.user]?.joinToString(" ") ?: "" } + "\n"
+            },
+        )
         File("build/scope-leak-endpoints.txt").writeText(
             "operations=${ops.size} calls=${stats.calls} other_id_calls=${stats.otherIdCalls} refused_403_404=${stats.refusedOtherIdCalls} " +
                 "other_division_records=$otherRecords national_sees=${nationalSees.count { it.value }}/${nationalSees.size} aggregate_pairs=${nationalNumbers.size} dashboard_top_views=${nationalTop.size} scoped_2xx_ops=${stats.scopedSuccess.size}\n" +
