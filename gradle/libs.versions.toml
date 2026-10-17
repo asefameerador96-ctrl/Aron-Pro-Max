@@ -170,6 +170,10 @@ androidx-camera-lifecycle = { module = "androidx.camera:camera-lifecycle", versi
 androidx-camera-view = { module = "androidx.camera:camera-view", version = "1.6.2" }
 androidx-exifinterface = { module = "androidx.exifinterface:exifinterface", version = "1.4.2" }
 
+# Appended by qa (N-014, AUD-TP-2): JSON Schema 2020-12 validation of live API responses against contract/openapi.yaml
+# (test scope only; brings Jackson databind and dataformat-yaml to the backend:app test classpath).
+json-schema-validator = { module = "com.networknt:json-schema-validator", version = "1.5.9" }
+
 [bundles]
 ktor-server = ["ktor-server-core", "ktor-server-netty", "ktor-server-content-negotiation", "ktor-server-status-pages",
   "ktor-server-compression", "ktor-server-call-id", "ktor-server-auth-jwt", "ktor-serialization-kotlinx-json"]

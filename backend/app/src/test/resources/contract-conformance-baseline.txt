@@ -1,0 +1,32 @@
+# N-014 / AUD-TP-2: contract deviations that existed when ContractConformanceTest was introduced (2026-10-17).
+# One line per `METHOD shape status kind`. This list may only SHRINK: a new deviation fails the build, and a fixed one
+# must be removed here (a stale line fails too). Each line is routed to its owning lane (docs/requests/*-conformance-*.md).
+# Routed in docs/requests/qa-contract-conformance.md.
+GET /v1/admin/code-lists 200 schema
+GET /v1/admin/code-lists 403 undeclared-status
+GET /v1/admin/config/keys 200 schema
+GET /v1/admin/outlets/{} 200 schema
+GET /v1/app/home 403 undeclared-status
+GET /v1/reports 200 schema
+GET /v1/routes/{}/assignments 0 not-in-contract
+GET /v1/sync/bundle 200 schema
+GET /v1/sync/bundle/page 403 undeclared-status
+GET /v1/sync/delta 400 undeclared-status
+GET /v1/sync/delta 403 undeclared-status
+PATCH /v1/admin/clusters/{} 409 undeclared-status
+POST /v1/admin/assets 503 undeclared-status
+POST /v1/admin/content 503 undeclared-status
+POST /v1/admin/enrolment-tokens 404 undeclared-status
+POST /v1/admin/rubrics 201 schema
+POST /v1/admin/surveys 201 schema
+POST /v1/auth/mfa/enrol 403 undeclared-status
+POST /v1/client-errors 403 undeclared-status
+POST /v1/feedback 0 not-in-contract
+POST /v1/leave 0 not-in-contract
+POST /v1/media/sas 503 undeclared-status
+POST /v1/support/pda-upload 403 undeclared-status
+POST /v1/support/pda-upload 503 undeclared-status
+POST /v1/visit-plans 0 not-in-contract
+PUT /v1/admin/code-lists/{} 200 schema
+PUT /v1/admin/permissions/roles/{} 202 schema
+PUT /v1/devices/me/push-token 403 undeclared-status
