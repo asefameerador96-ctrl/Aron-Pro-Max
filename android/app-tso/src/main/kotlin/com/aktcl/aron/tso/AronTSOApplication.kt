@@ -25,6 +25,7 @@ class AronTSOApplication : Application(), Configuration.Provider {
     @Inject lateinit var updateShell: com.aktcl.aron.core.sync.shell.UpdateShell
     @Inject lateinit var pushShell: com.aktcl.aron.core.sync.shell.PushShell
     @Inject lateinit var systemShell: SystemShell
+    @Inject lateinit var mediaShell: MediaShell
     @Inject lateinit var sessionComponents: com.aktcl.aron.core.session.SessionComponents
 
     override fun onCreate() {
@@ -48,6 +49,7 @@ class AronTSOApplication : Application(), Configuration.Provider {
         }
         // N-038: push nudges (token for the signed-in user, notices, jittered pulls); off without google-services.json.
         pushShell.install()
+        mediaShell.install() // F-SYS-010: the photo upload worker finds the user's uploader
         systemShell.install() // F-TSO-024: the support worker finds the signed-in user's uploader
     }
 

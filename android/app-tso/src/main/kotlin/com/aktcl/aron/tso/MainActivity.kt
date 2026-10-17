@@ -52,6 +52,7 @@ class MainActivity : ComponentActivity() {
     @Inject lateinit var deviceEnrolment: com.aktcl.aron.core.sync.device.DeviceEnrolment
     @Inject lateinit var shellLogout: ShellLogout
     @Inject lateinit var systemShell: SystemShell
+    @Inject lateinit var mediaShell: MediaShell
     @Inject lateinit var updateShell: com.aktcl.aron.core.sync.shell.UpdateShell
     @Inject lateinit var pushShell: com.aktcl.aron.core.sync.shell.PushShell
     @Inject lateinit var activityLog: com.aktcl.aron.core.sync.ActivityLog
@@ -163,6 +164,11 @@ class MainActivity : ComponentActivity() {
                                     }
                             }
                             // The bundle head check of Day 1 stays the source of the status row; nothing on Home waits for it.
+                            // F-SYS-030: this user's camera and photo queue; the overlay is drawn once at the top of the day
+                            val media by androidx.compose.runtime.produceState<com.aktcl.aron.core.media.MediaComponents?>(null, s.user.userId) {
+                                value = runCatching { mediaShell.componentsFor(s.user.userId) { components.trustedClock.businessDate().toString() } }.getOrNull()
+                            }
+                            media?.let { com.aktcl.aron.core.media.CameraCaptureOverlay(it.camera) }
                             val vm = viewModel(key = "home-" + s.user.userId) {
                                 HomePlaceholderViewModel(System::currentTimeMillis) { components.syncApi.bundle() }
                             }
@@ -202,7 +208,8 @@ class MainActivity : ComponentActivity() {
                                 leaveQueue = remember(s.user.userId) { readModels.leaveQueue(s.user.userId) },
                                 today = { components.trustedClock.businessDate().toString() },
                                 feedback = remember(s.user.userId) { readModels.feedback(s.user.userId) },
-                                feedbackQueue = remember(s.user.userId) { readModels.feedbackQueue(s.user.userId) },
+                                feedbackQueue = remember(s.user.userId) { readModels.feedbackQueue(s.user.userId) { mediaShell.componentsFor(s.user.userId) { components.trustedClock.businessDate().toString() } } },
+                                feedbackPhotos = media?.let { readModels.feedbackPhotos(it) },
                                 userId = s.user.userId,
                                 changePassword = remember { readModels.changePassword() },
                                 support = { back ->

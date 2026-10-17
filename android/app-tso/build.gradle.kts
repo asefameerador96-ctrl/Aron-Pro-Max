@@ -97,6 +97,7 @@ dependencies {
     implementation(project(":android:core-system"))
     implementation(libs.androidx.work.runtime.ktx) // Configuration.Provider for the sync worker factory
     implementation(project(":android:core-geo"))
+    implementation(project(":android:core-media")) // the feedback photo (F-TSO-018)
     implementation(project(":android:core-printing"))
     implementation(project(":android:dpc"))
     implementation(project(":android:feature-auth"))

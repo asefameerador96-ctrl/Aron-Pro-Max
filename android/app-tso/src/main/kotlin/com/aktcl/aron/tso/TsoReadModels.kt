@@ -127,8 +127,10 @@ class TsoReadModels(private val components: SessionComponents, private val datab
     }
 
     /** F-TSO-018: outbox row (record type feedback, family self, rank 0) plus the mirror row, one transaction. */
-    fun feedbackQueue(userId: Long): com.aktcl.aron.feature.tso.feedback.FeedbackQueue = com.aktcl.aron.feature.tso.feedback.FeedbackQueue { uuid, createdAt, p ->
+    fun feedbackQueue(userId: Long, media: (suspend () -> com.aktcl.aron.core.media.MediaComponents?)? = null): com.aktcl.aron.feature.tso.feedback.FeedbackQueue = com.aktcl.aron.feature.tso.feedback.FeedbackQueue { uuid, createdAt, p ->
         val box = checkNotNull(outbox) { "no outbox" }
+        // F-SYS-030: the photo is claimed for its record BEFORE the record is committed, so the media worker uploads it; a failure here fails the save (retry-safe: same uuid)
+        p.photoUuid?.let { photo -> checkNotNull(media?.invoke()) { "no media queue" }.attach(photo, com.aktcl.aron.core.media.MediaRef("feedback", "feedback", uuid), null) }
         val item = com.aktcl.aron.feature.tso.feedback.FeedbackItem(uuid, p.categoryCode, p.title, p.description, createdAt, com.aktcl.aron.feature.tso.feedback.FeedbackStatus.NEW, sent = false, hasPhoto = p.photoUuid != null)
         box.enqueue(
             userId, com.aktcl.aron.contract.RecordType.FEEDBACK, uuid,
@@ -321,6 +323,12 @@ class TsoReadModels(private val components: SessionComponents, private val datab
                 }
             }
         }
+    }
+
+    /** F-TSO-018: the one compressed photo of a feedback, through the shared camera and media queue. */
+    fun feedbackPhotos(media: com.aktcl.aron.core.media.MediaComponents): com.aktcl.aron.feature.tso.feedback.FeedbackPhotos = object : com.aktcl.aron.feature.tso.feedback.FeedbackPhotos {
+        override suspend fun take(photoUuid: String): String? = media.capture(photoUuid)?.let { photoUuid }
+        override suspend fun discard(photoUuid: String) { media.discard(photoUuid) }
     }
 
     /** F-TSO-024: the online password change (204); the secrets go into the request body only, never a log or a field of ours. */
