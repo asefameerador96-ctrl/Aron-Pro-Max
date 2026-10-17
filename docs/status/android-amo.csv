@@ -1,2 +1,6 @@
 row_id,size,started_utc,finished_utc,minutes,review_findings,notes
 F-AMO-001,M,2026-10-17T00:00Z,2026-10-17T00:40Z,40,0,"AmoReach/AmoMenu pure logic + Outlet badge from supervisor section; 17 = flat leaves incl. Settings and deferred Astha (16 now), SS 13 = no Team Location/Performance/SR Stock; Sonnet checker: no defect; open: pending count not filtered to SR requesters (server already scopes)"
+F-AMO-003,S,2026-10-17T01:00Z,2026-10-17T01:40Z,40,0,"AmoDay (thin copy of SrDay parts) + AmoAttendance on the SR AttendanceFlow; MediaShell copied into app-amo"
+F-AMO-004,M,2026-10-17T02:00Z,2026-10-17T03:30Z,90,5,"Control Call route/retailer/geo gate on amo_control_call; Sonnet checker: process-death restore, double tap, stale routeId, cap fail-open: fixed"
+F-AMO-005,S,2026-10-17T02:00Z,2026-10-17T03:30Z,0,0,"Manual Override = SR ForceSaleController with daily cap (default 10, ASSUMED, MQ-14; key cfg.amo.manual_override_max_per_day read if present)"
+F-AMO-036,S,2026-10-17T02:00Z,2026-10-17T03:30Z,0,0,"visit kind amo_control_call on every AMO outlet open (ControlCall.visitOutlet); joint kind amo_joint_call ready"

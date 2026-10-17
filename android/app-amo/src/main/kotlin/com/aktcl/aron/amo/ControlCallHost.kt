@@ -54,7 +54,12 @@ fun ControlCallHost(
     var step by rememberSaveable { mutableStateOf(CcStep.ROUTE) }
     var routeId by rememberSaveable { mutableStateOf<Long?>(null) }
     var days by remember { mutableStateOf<List<RouteDay>?>(null) }
-    LaunchedEffect(day) { days = runCatching { day.routes() }.getOrDefault(emptyList()); day.nextSequenceFromStore() }
+    LaunchedEffect(day) {
+        days = runCatching { day.routes() }.getOrDefault(emptyList()); day.nextSequenceFromStore()
+        // Kill and relaunch: a committed visit with no close is the call in progress; with none, a saved CHECK/MENU/FORCE step is dead.
+        day.restoreOpenVisit()
+        if (day.visitSession.current.value == null && step != CcStep.ROUTE && step != CcStep.OUTLET) step = if (routeId != null) CcStep.OUTLET else CcStep.ROUTE
+    }
     // A call already open (kill and relaunch): back on its menu, never a second visit.
     val open by day.visitSession.current.collectAsState()
     LaunchedEffect(open) { if (open != null && step != CcStep.MENU && step != CcStep.FORCE) step = CcStep.MENU }
@@ -113,7 +118,7 @@ private fun ManualOverrideStep(day: AmoDay, onStarted: () -> Unit, onBack: () ->
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     var capped by remember { mutableStateOf<Boolean?>(null) }
-    LaunchedEffect(day) { capped = runCatching { ManualOverrideCap.reached(day.visitsToday(), day.manualOverrideMax()) }.getOrDefault(false) }
+    LaunchedEffect(day) { capped = runCatching { ManualOverrideCap.reached(day.visitsToday(), day.manualOverrideMax()) }.getOrDefault(true) } // fails closed
     when (capped) {
         null -> Unit
         true -> ManualOverrideLimit(day.manualOverrideMax(), onBack)
@@ -123,6 +128,7 @@ private fun ManualOverrideStep(day: AmoDay, onStarted: () -> Unit, onBack: () ->
             val cap by capture.state.collectAsState()
             var reason by remember { mutableStateOf<ForceReason?>(ForceReason.LOCATION_CHANGE) }
             var missing by remember { mutableStateOf<Set<ForceSaleMissing>>(emptySet()) }
+            var confirming by remember { mutableStateOf(false) }
             val decision = st as? VisitUiState.NeedsDecision
             if (decision == null) {
                 LaunchedEffect(Unit) { onBack() }
@@ -135,11 +141,16 @@ private fun ManualOverrideStep(day: AmoDay, onStarted: () -> Unit, onBack: () ->
                     noOutletLocation = decision.result.verdict == com.aktcl.aron.rules.GeoVerdict.NO_OUTLET_LOCATION,
                     onReason = { reason = it }, onShutter = { scope.launch { capture.shutter() } },
                     onConfirm = {
-                        scope.launch {
-                            when (val r = controller.confirm(reason, decision.outlet)) {
-                                is ForceSaleResult.Invalid -> missing = r.missing
-                                is ForceSaleResult.Started -> onStarted()
-                                ForceSaleResult.NotAvailable -> onBack()
+                        if (!confirming) {
+                            confirming = true
+                            scope.launch {
+                                try {
+                                    when (val r = runCatching { controller.confirm(reason, decision.outlet) }.getOrDefault(ForceSaleResult.NotAvailable)) {
+                                        is ForceSaleResult.Invalid -> missing = r.missing
+                                        is ForceSaleResult.Started -> onStarted()
+                                        ForceSaleResult.NotAvailable -> onBack()
+                                    }
+                                } finally { confirming = false }
                             }
                         }
                     },

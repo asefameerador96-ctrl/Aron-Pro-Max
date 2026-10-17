@@ -197,7 +197,22 @@ class AmoDay(
                 callStartedAt = null, callDeclined = false, endedAt = iso(clock.nowMs()), isZeroSale = true,
             ),
         )
-        visitSession.close(); runCatching { requestSync() }
+        visitSession.close(); routeId = null; runCatching { requestSync() }
+    }
+
+    /** After a relaunch: a committed visit with no close is the call in progress. */
+    suspend fun restoreOpenVisit() {
+        if (visitSession.current.value != null) return
+        val date = businessDate()
+        val closed = db.captureDao().visitClosesOn(date).map { it.visitClientUuid }.toSet()
+        val last = db.captureDao().visitsOn(date).filter { it.clientUuid !in closed && it.geoAction != "blocked" && it.visitKind.startsWith("amo_") }.maxByOrNull { it.sequenceNo } ?: return
+        visitSession.restore(
+            com.aktcl.aron.feature.outlet.OpenVisit(
+                visitUuid = last.clientUuid, outletId = last.outletId, routeId = last.meta.routeId ?: 0L, geoVerdict = last.geoVerdict,
+                geoAction = last.geoAction, geoValidated = last.geoVerdict == "in_range", photoValidated = last.geoForcePhotoUuid != null,
+                forceReasonCode = last.geoForceReasonCode, openedAtIso = last.openedAt,
+            ),
+        )
     }
 }
 
