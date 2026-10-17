@@ -58,7 +58,15 @@ private fun unitName(unit: String?) = when (unit) {
 }
 
 /** What the dashboard knows: the territory figures and the login status, each possibly a kept copy; [asOf] is shown on every aggregate card. */
-data class TsoDashboardState(val dash: TsoDash?, val login: LoginSubmit?, val stale: Boolean, val failed: Boolean)
+enum class TsoFailure { NONE, OFFLINE, REFUSED }
+
+data class TsoDashboardState(
+    val dash: TsoDash?, val login: LoginSubmit?, val stale: Boolean, val failure: TsoFailure, val loginStale: Boolean = false, val loginFailure: TsoFailure = TsoFailure.NONE,
+    /** Zones the TSO can filter by (only zones; empty hides the Filter button). */
+    val zones: List<ZoneRef> = emptyList(), val businessDate: String = "",
+    /** A zone is chosen: Filter stays reachable so the TSO can go back to all zones even when the zone list could not be read. */
+    val zoneChosen: Boolean = false,
+)
 
 /**
  * F-TSO-002..007 and F-TSO-027: the TSO dashboard. Opened on demand: Refresh is a button, there is no timer. Each aggregate card names its
@@ -71,24 +79,41 @@ fun TsoDashboardContent(
 ) {
     val d = state.dash
     Column(modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = AronTokens.Space.Screen), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
-        if (state.failed) AronBanner(stringResource(R.string.tso_dash_offline), kind = BannerKind.Warning)
-        else if (state.stale) AronBanner(stringResource(R.string.tso_dash_kept), kind = BannerKind.Info)
-        AronListRow(zoneLabel, subtitle = d?.asOf?.let { TsoDashboards.asOfClock(it) }?.let { stringResource(R.string.tso_dash_as_of, localizedDigits(it)) }, flat = true)
+        FailureBanner(state.failure, state.stale, d != null)
+        AronListRow(zoneLabel, subtitle = AsOfLine(state.businessDate, d?.asOf), flat = true)
         Row(horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
-            AronSecondaryButton(stringResource(R.string.tso_dash_filter), onFilter, Modifier.weight(1f))
+            if (state.zones.isNotEmpty() || state.zoneChosen) AronSecondaryButton(stringResource(R.string.tso_dash_filter), onFilter, Modifier.weight(1f))
             AronSecondaryButton(stringResource(R.string.tso_dash_refresh), onRefresh, Modifier.weight(1f))
         }
         if (d == null) {
-            AronEmptyState(stringResource(R.string.tso_dash_none), Modifier.fillMaxWidth(), hint = stringResource(R.string.tso_dash_none_hint))
-            return@Column
+            // The banner above already says why; the open-me hint is for a plain empty answer only.
+            if (state.failure == TsoFailure.NONE) AronEmptyState(stringResource(R.string.tso_dash_none), Modifier.fillMaxWidth(), hint = stringResource(R.string.tso_dash_none_hint))
+        } else {
+            SalesTiles(d.categories)
+            CprCard(d)
+            ChannelCard(d.channels, money)
+            SegmentCard(d.segments, money)
+            BrandCard(d.brands, d.activeMemos)
         }
-        SalesTiles(d.categories)
-        CprCard(d)
-        ChannelCard(d.channels, money)
-        SegmentCard(d.segments, money)
-        BrandCard(d.brands, d.activeMemos)
-        LoginCard(state.login, onNotLoggedIn, onNotUploaded)
+        LoginCard(state.login, state.loginStale, state.loginFailure, onNotLoggedIn, onNotUploaded)
     }
+}
+
+/** Three honest states: offline with no copy, refused by the server, or a kept copy of an earlier answer. */
+@Composable
+internal fun FailureBanner(failure: TsoFailure, stale: Boolean, hasData: Boolean) {
+    when {
+        failure == TsoFailure.REFUSED -> AronBanner(stringResource(R.string.tso_dash_refused), kind = BannerKind.Error)
+        failure == TsoFailure.OFFLINE -> AronBanner(stringResource(if (hasData) R.string.tso_dash_offline_kept else R.string.tso_dash_offline_none), kind = BannerKind.Warning)
+        stale -> AronBanner(stringResource(R.string.tso_dash_kept), kind = BannerKind.Info)
+    }
+}
+
+/** "2026-10-17 · as of 14:30": the business day next to the stamp, so a kept copy of another day is never taken for today's. */
+@Composable
+internal fun AsOfLine(businessDate: String, asOf: String?): String? {
+    val clock = asOf?.let { TsoDashboards.asOfClock(it) }?.let { stringResource(R.string.tso_dash_as_of, localizedDigits(it)) }
+    return listOfNotNull(businessDate.takeIf { it.isNotBlank() }?.let { localizedDigits(it) }, clock).joinToString(stringResource(R.string.tso_dash_sep)).ifEmpty { null }
 }
 
 @Composable
@@ -102,17 +127,17 @@ private fun CardTitle(text: String, asOf: String?) {
 @Composable
 private fun SalesTiles(categories: List<CategorySales>) {
     val order = listOf("cigarette", "bidi", "lighter", "match")
-    val rows = order.map { code -> categories.firstOrNull { it.code == code } ?: CategorySales(code, "", 0, null, null, 0) } + categories.filter { it.code !in order }
+    val rows = order.map { code -> categories.firstOrNull { it.code == code } ?: CategorySales(code, TsoDashboards.defaultUnit(code), 0, null, null, 0) } + categories.filter { it.code !in order }
     rows.chunked(2).forEach { pair ->
         Row(horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
             pair.forEach { cat ->
                 val c = LocalAronColors.current
                 val qty = cat.qtyReport ?: cat.qtyBase.toDouble()
-                val unit = unitName(cat.reportUnit ?: cat.baseUnit.ifBlank { null })
+                val unit = unitName(cat.reportUnit ?: cat.baseUnit.ifBlank { TsoDashboards.defaultUnit(cat.code) })
                 AronCard(Modifier.weight(1f)) {
                     Column(Modifier.fillMaxWidth().padding(AronTokens.Space.M), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.Xs)) {
                         Text(stringResource(R.string.tso_dash_sales_of, categoryName(cat.code)), style = MaterialTheme.typography.labelMedium, color = c.textSecondary)
-                        Text(quantity(qty), style = MaterialTheme.typography.headlineSmall, color = c.textPrimary, maxLines = 1)
+                        Text(quantity(qty, cat.qtyReport != null), style = MaterialTheme.typography.headlineSmall, color = c.textPrimary, maxLines = 1)
                         Text(unit, style = MaterialTheme.typography.bodySmall, color = c.textSecondary)
                     }
                 }
@@ -124,13 +149,14 @@ private fun SalesTiles(categories: List<CategorySales>) {
 
 /** One decimal, with the lakh or crore word for large quantities, digits in the user's language. */
 @Composable
-private fun quantity(v: Double): String {
+private fun quantity(v: Double, fractional: Boolean): String {
     val whole = v.toLong()
     val compact = TsoDashboards.compact(whole)
     return when (compact.scale) {
         TsoDashboards.Scale.CRORE -> localizedDigits(compact.text) + " " + stringResource(R.string.tso_dash_crore)
         TsoDashboards.Scale.LAKH -> localizedDigits(compact.text) + " " + stringResource(R.string.tso_dash_lakh)
-        TsoDashboards.Scale.NONE -> localizedDigits(TsoDashboards.oneDecimal(v))
+        // A whole base quantity is grouped (28,067); one decimal only for a report-unit quantity (1,110.5 boxes).
+        TsoDashboards.Scale.NONE -> if (fractional && v != Math.floor(v)) localizedNumber(whole) + localizedDigits("." + TsoDashboards.fractionDigit(v)) else localizedNumber(whole)
     }
 }
 
@@ -206,7 +232,7 @@ private fun SegmentCard(segments: List<SliceRow>, money: (Long) -> String) {
 private fun Bar(pct: Double, color: Color, label: String) {
     val c = LocalAronColors.current
     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-        Box(Modifier.fillMaxWidth().height(10.dp).background(c.surfaceSolid, RoundedCornerShape(5.dp))) {
+        Box(Modifier.fillMaxWidth().height(10.dp).background(c.accentContainer, RoundedCornerShape(5.dp))) {
             Box(Modifier.fillMaxHeight().fillMaxWidth((pct / 100.0).coerceIn(0.0, 1.0).toFloat()).background(color, RoundedCornerShape(5.dp)))
         }
         Text(label, style = MaterialTheme.typography.labelSmall, color = c.textSecondary)
@@ -232,12 +258,14 @@ private fun BrandCard(brands: List<SliceRow>, activeMemos: Long) {
 
 /** F-TSO-007: Login Status and Bikroy Joma (submit) status with the two drill-down lists. */
 @Composable
-private fun LoginCard(login: LoginSubmit?, onNotLoggedIn: () -> Unit, onNotUploaded: () -> Unit) {
+private fun LoginCard(login: LoginSubmit?, stale: Boolean, failure: TsoFailure, onNotLoggedIn: () -> Unit, onNotUploaded: () -> Unit) {
     val c = LocalAronColors.current
     AronCard(Modifier.fillMaxWidth()) {
         Column(Modifier.fillMaxWidth().padding(AronTokens.Space.M), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
             CardTitle(stringResource(R.string.tso_dash_login_submit), login?.asOf?.let { TsoDashboards.asOfClock(it) })
-            if (login == null) { Text(stringResource(R.string.tso_dash_no_login), style = MaterialTheme.typography.bodyMedium, color = c.textSecondary); return@Column }
+            if (failure == TsoFailure.REFUSED) { AronBanner(stringResource(R.string.tso_dash_refused), kind = BannerKind.Error); return@Column }
+            if (login == null) { Text(stringResource(if (failure == TsoFailure.OFFLINE) R.string.tso_dash_offline_none else R.string.tso_dash_no_login), style = MaterialTheme.typography.bodyMedium, color = c.textSecondary); return@Column }
+            if (stale || failure == TsoFailure.OFFLINE) AronBanner(stringResource(R.string.tso_dash_kept), kind = BannerKind.Info)
             Text(stringResource(R.string.tso_dash_login_status) + " " + pct1(login.loginPct), style = MaterialTheme.typography.bodyMedium, color = c.textPrimary)
             Bar(login.loginPct ?: 0.0, c.accent, stringResource(R.string.tso_dash_x_of_y, localizedNumber(login.loggedIn), localizedNumber(login.targetRoutes)))
             Text(stringResource(R.string.tso_dash_submit_status) + " " + pct1(login.submitPct), style = MaterialTheme.typography.bodyMedium, color = c.textPrimary)
@@ -248,13 +276,20 @@ private fun LoginCard(login: LoginSubmit?, onNotLoggedIn: () -> Unit, onNotUploa
     }
 }
 
-/** The drill-down: the (route) pairs behind a count. The server names the route, never an SR phone. */
+/** The drill-down: the routes behind a count with their stamp. The server names the route (code and name); it sends no SR name yet (request filed). */
 @Composable
-fun TsoRouteListContent(rows: List<RouteDayRow>, modifier: Modifier = Modifier) {
-    if (rows.isEmpty()) { AronEmptyState(stringResource(R.string.tso_dash_list_empty), modifier.fillMaxSize()); return }
+fun TsoRouteListContent(rows: List<RouteDayRow>, businessDate: String, asOf: String?, stale: Boolean, failure: TsoFailure, modifier: Modifier = Modifier) {
     Column(modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = AronTokens.Space.Screen)) {
+        FailureBanner(failure, stale, rows.isNotEmpty() || asOf != null)
+        AronListRow(AsOfLine(businessDate, asOf) ?: stringResource(R.string.tso_dash_dash), flat = true)
+        if (rows.isEmpty()) { AronEmptyState(stringResource(R.string.tso_dash_list_empty), Modifier.fillMaxWidth()); return@Column }
         AronSectionLabel(stringResource(R.string.tso_dash_routes))
-        rows.forEachIndexed { i, r -> AronListRow(r.routeCode ?: localizedNumber(r.routeId), position = pos(i, rows.size), divider = i < rows.lastIndex, flat = true) }
+        rows.forEachIndexed { i, r ->
+            AronListRow(
+                listOfNotNull(r.routeCode, r.routeName).joinToString(stringResource(R.string.tso_dash_sep)).ifBlank { stringResource(R.string.tso_dash_route_unnamed) },
+                position = pos(i, rows.size), divider = i < rows.lastIndex, flat = true,
+            )
+        }
     }
 }
 

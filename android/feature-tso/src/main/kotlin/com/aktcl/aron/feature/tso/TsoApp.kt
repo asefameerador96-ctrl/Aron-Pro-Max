@@ -99,7 +99,8 @@ fun TsoApp(
 ) {
     var screen by rememberSaveable { mutableStateOf(TsoScreen.HOME) }
     BackHandler(enabled = screen != TsoScreen.HOME) { screen = TsoScreen.HOME }
-    val tiles = remember(badges) { RoleHomes.tsoTiles(badges) }
+    // the TSO app has no bind OTP (D-AUTH-TSO-NOBIND), so the Device OTP tile of the shared catalogue has nothing to show and is not offered
+    val tiles = remember(badges) { RoleHomes.tsoTiles(badges).filter { it.id != RoleHomes.TsoTile.DEVICE_OTP } }
     val sync = RoleHomes.syncState(bundle, user.offline).let { if (it == SyncChipState.Synced && syncedAt != null) SyncChipState.SyncedAt(syncedAt) else it }
     val header = remember(user, businessDate) { RoleHomes.header(RoleHomes.TSO_PREFIX, user, businessDate) }
     var confirmLogout by rememberSaveable { mutableStateOf(false) }

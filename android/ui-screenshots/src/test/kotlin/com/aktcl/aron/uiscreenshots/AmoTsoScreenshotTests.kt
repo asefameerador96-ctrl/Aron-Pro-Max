@@ -66,11 +66,11 @@ class AmoTsoScreenshotTests {
     private val goldens: String = System.getProperty("aron.screenshots.goldens") ?: "src/test/screenshots"
     private val options = RoborazziOptions(compareOptions = RoborazziOptions.CompareOptions(changeThreshold = 0.002f))
 
-    private fun shot(name: String, language: AppLanguage, title: String, content: @Composable () -> Unit) {
+    private fun shot(name: String, language: AppLanguage, title: String, sunlight: Boolean = false, content: @Composable () -> Unit) {
         val ctx = AppLocale.wrap(ApplicationProvider.getApplicationContext<Context>(), language)
         rule.setContent {
             CompositionLocalProvider(LocalContext provides ctx) {
-                AronTheme(language, dark = false, sunlight = false, tier = GlassTier.B, reducedMotion = true) {
+                AronTheme(language, dark = false, sunlight = sunlight, tier = GlassTier.B, reducedMotion = true) {
                     AronScreen(topBar = { AronTopBar(title = title, onBack = {}) }) { content() }
                 }
             }
@@ -142,9 +142,9 @@ class AmoTsoScreenshotTests {
     )
 
     // ---- Verify
-    @Test @Config(qualifiers = "w360dp-h800dp") fun amo_verify_form_new_en() = shot("amo_verify_form_new_en", AppLanguage.EN, "Verify requests", verifyForm(false, newDetail))
-    @Test @Config(qualifiers = "bn-w360dp-h800dp") fun amo_verify_form_new_bn_long() = shot("amo_verify_form_new_bn", AppLanguage.BN, "অনুরোধ যাচাই", verifyForm(true, newDetail, setOf(com.aktcl.aron.feature.amo.VerifyError.GEO_CLASS_REQUIRED)))
-    @Test @Config(qualifiers = "w360dp-h800dp") fun amo_verify_form_offline_en() = shot("amo_verify_form_offline_en", AppLanguage.EN, "Verify requests", verifyForm(false, VerifyDetailState.Unavailable))
+    @Test @Config(qualifiers = "w360dp-h800dp") fun amo_verify_form_new_en() = shot("amo_verify_form_new_en", AppLanguage.EN, "Verify requests", content = verifyForm(false, newDetail))
+    @Test @Config(qualifiers = "bn-w360dp-h800dp") fun amo_verify_form_new_bn_long() = shot("amo_verify_form_new_bn", AppLanguage.BN, "অনুরোধ যাচাই", content = verifyForm(true, newDetail, setOf(com.aktcl.aron.feature.amo.VerifyError.GEO_CLASS_REQUIRED)))
+    @Test @Config(qualifiers = "w360dp-h800dp") fun amo_verify_form_offline_en() = shot("amo_verify_form_offline_en", AppLanguage.EN, "Verify requests", content = verifyForm(false, VerifyDetailState.Unavailable))
     @Test @Config(qualifiers = "w360dp-h800dp") fun amo_verify_list_en() = shot("amo_verify_list_en", AppLanguage.EN, "Verify requests") { VerifyListContent(listOf(pendingNew, pendingNew.copy(uuid = "x", type = "close", outletName = "Pan Ghar")), mapOf(5L to "Rahim Uddin"), {}) }
     @Test @Config(qualifiers = "bn-w360dp-h800dp") fun amo_verify_list_empty_bn() = shot("amo_verify_list_empty_bn", AppLanguage.BN, "অনুরোধ যাচাই") { VerifyListContent(emptyList(), emptyMap(), {}) }
 
@@ -179,7 +179,12 @@ class AmoTsoScreenshotTests {
     @Test @Config(qualifiers = "bn-w360dp-h800dp") fun amo_sales_summary_bn() = shot("amo_sales_summary_bn", AppLanguage.BN, "বিক্রির সারসংক্ষেপ") { SalesSummaryContent(summaryCards, money(true), true, false, {}) }
 
     // ---- TSO dashboard
-    @Test @Config(qualifiers = "w360dp-h800dp") fun tso_dashboard_en() = shot("tso_dashboard_en", AppLanguage.EN, "Dashboard") { TsoDashboardContent(TsoDashboardState(TsoDashboards.summary(tsoJson), tsoLogin, false, false), "All my zones", money(false), {}, {}, {}, {}) }
-    @Test @Config(qualifiers = "bn-w360dp-h800dp") fun tso_dashboard_bn() = shot("tso_dashboard_bn", AppLanguage.BN, "ড্যাশবোর্ড") { TsoDashboardContent(TsoDashboardState(TsoDashboards.summary(tsoJson), tsoLogin, true, false), "আমার সব জোন", money(true), {}, {}, {}, {}) }
-    @Test @Config(qualifiers = "w360dp-h800dp") fun tso_dashboard_empty_offline_en() = shot("tso_dashboard_empty_offline_en", AppLanguage.EN, "Dashboard") { TsoDashboardContent(TsoDashboardState(null, null, false, true), "All my zones", money(false), {}, {}, {}, {}) }
+    @Test @Config(qualifiers = "w360dp-h800dp") fun tso_dashboard_en() = shot("tso_dashboard_en", AppLanguage.EN, "Dashboard") { TsoDashboardContent(TsoDashboardState(TsoDashboards.summary(tsoJson), tsoLogin, false, com.aktcl.aron.feature.tso.TsoFailure.NONE, zones = listOf(com.aktcl.aron.feature.tso.ZoneRef(11, "Zone 11")), businessDate = "2026-10-17"), "All my zones", money(false), {}, {}, {}, {}) }
+    @Test @Config(qualifiers = "bn-w360dp-h800dp") fun tso_dashboard_bn() = shot("tso_dashboard_bn", AppLanguage.BN, "ড্যাশবোর্ড") { TsoDashboardContent(TsoDashboardState(TsoDashboards.summary(tsoJson), tsoLogin, true, com.aktcl.aron.feature.tso.TsoFailure.NONE, businessDate = "2026-10-17"), "আমার সব জোন", money(true), {}, {}, {}, {}) }
+    @Test @Config(qualifiers = "w360dp-h800dp") fun tso_dashboard_empty_offline_en() = shot("tso_dashboard_empty_offline_en", AppLanguage.EN, "Dashboard") { TsoDashboardContent(TsoDashboardState(null, null, false, com.aktcl.aron.feature.tso.TsoFailure.OFFLINE, loginFailure = com.aktcl.aron.feature.tso.TsoFailure.OFFLINE, businessDate = "2026-10-17"), "All my zones", money(false), {}, {}, {}, {}) }
+
+    // ---- Sunlight mode (outdoor-first: solid surfaces for figures, key numbers at 7:1)
+    @Test @Config(qualifiers = "bn-w360dp-h800dp") fun tso_dashboard_sunlight_bn() = shot("tso_dashboard_sunlight_bn", AppLanguage.BN, "ড্যাশবোর্ড", sunlight = true) { TsoDashboardContent(TsoDashboardState(TsoDashboards.summary(tsoJson), tsoLogin, false, com.aktcl.aron.feature.tso.TsoFailure.NONE, businessDate = "2026-10-17"), "আমার সব জোন", money(true), {}, {}, {}, {}) }
+    @Test @Config(qualifiers = "w360dp-h800dp") fun amo_live_dashboard_sunlight_en() = shot("amo_live_dashboard_sunlight_en", AppLanguage.EN, "Live Dashboard", sunlight = true) { LiveDashboardContent(live, "14:30", "All my zones", false, false, false, money(false), {}) }
+    @Test @Config(qualifiers = "w360dp-h800dp") fun amo_verify_form_sunlight_en() = shot("amo_verify_form_sunlight_en", AppLanguage.EN, "Verify requests", sunlight = true, content = verifyForm(false, newDetail))
 }

@@ -11,13 +11,13 @@ class TsoDashboardsTest {
       "by_category":[{"category_code":"cigarette","base_unit":"stick","qty_base":36100000,"report_unit":"stick","qty_report":"36100000.000","net_mtk":700000},{"category_code":"match","base_unit":"dozen","qty_base":28067,"report_unit":null,"qty_report":null,"net_mtk":1000}],
       "by_channel":[{"code":"GT","name":"General Trade","net_mtk":600,"memo_count":1,"successful_calls":1},{"code":"DCC","net_mtk":400,"memo_count":1,"successful_calls":1}],
       "by_brand":[{"code":"B1","name":"Brand 1","net_mtk":1,"memo_count":1,"successful_calls":1,"memo_ratio_pct":50.0},{"code":"B2","net_mtk":1,"memo_count":0,"successful_calls":0}],
-      "children":[{"node":{"type":"zone","id":11,"name":"Zone 11"},"kpis":{}}]}"""
+      "children":[{"node":{"type":"zone","id":11,"name":"Zone 11"},"kpis":{}},{"node":{"type":"route","id":99,"name":"R99"},"kpis":{}}]}"""
 
     @Test fun parsesTheTerritoryFigures() {
         val d = TsoDashboards.summary(summary)!!
         assertEquals(2, d.categories.size); assertEquals(36100000L, d.categories[0].qtyBase); assertEquals(36100000.0, d.categories[0].qtyReport!!, 0.0); assertNull(d.categories[1].qtyReport)
         assertEquals(listOf("GT", "DCC"), d.channels.map { it.code }); assertEquals("DCC", d.channels[1].name)
-        assertEquals(44L, d.targetOutlets); assertEquals(listOf(ZoneRef(11, "Zone 11")), d.zones); assertEquals("2026-10-17T08:30:00Z", d.asOf)
+        assertEquals(44L, d.targetOutlets); assertEquals(listOf(ZoneRef(11, "Zone 11")), d.zones) // a route child is not a zone; assertEquals("2026-10-17T08:30:00Z", d.asOf)
     }
 
     @Test fun strikeRateIsOneDecimalFromCallsOnly() {
@@ -54,4 +54,17 @@ class TsoDashboardsTest {
     }
 
     @Test fun malformedIsNull() { assertNull(TsoDashboards.summary("[")); assertNull(TsoDashboards.summary(null)); assertNull(TsoDashboards.loginSubmit("{}")) }
+
+    @Test fun roundingUsesTheDecimalValueNotTheBinaryOne() {
+        assertEquals("4.6", TsoDashboards.oneDecimal(4.55)); assertEquals("1.2", TsoDashboards.oneDecimal(1.15)); assertEquals("100.0", TsoDashboards.oneDecimal(100.0))
+    }
+
+    @Test fun anEmptyTileKeepsItsOwnUnit() {
+        assertEquals("stick", TsoDashboards.defaultUnit("cigarette")); assertEquals("stick", TsoDashboards.defaultUnit("bidi")); assertEquals("piece", TsoDashboards.defaultUnit("lighter")); assertEquals("dozen", TsoDashboards.defaultUnit("match"))
+    }
+
+    @Test fun routeRowsKeepTheName() {
+        val ls = TsoDashboards.loginSubmit("""{"as_of":"x","kpis":{},"not_logged_in":[{"route_id":2,"route_code":"R2","route_name":"North","state":"x"}],"logged_in_not_submitted":[],"submitted":[]}""")!!
+        assertEquals("North", ls.notLoggedIn[0].routeName)
+    }
 }

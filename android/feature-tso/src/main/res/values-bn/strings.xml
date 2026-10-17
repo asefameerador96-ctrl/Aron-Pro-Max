@@ -225,4 +225,9 @@
     <string name="tso_pe_out_of_area">আপনার অবস্থান বাংলাদেশের বাইরে দেখাচ্ছে, তাই কিছু খোঁজা হয়নি। লোকেশন সেটিং দেখে আবার চেষ্টা করুন।</string>
     <string name="tso_pe_settings">অ্যাপের সেটিং খুলুন</string>
     <string name="tso_role_dmo">ডিএমও</string>
+    <string name="tso_dash_sep">" · "</string>
+    <string name="tso_dash_refused">সার্ভার এই লগইনকে এই তথ্য দেয়নি।</string>
+    <string name="tso_dash_offline_kept">আপনি অফলাইনে আছেন। এই ফোনে রাখা শেষ তথ্য দেখাচ্ছে।</string>
+    <string name="tso_dash_offline_none">আপনি অফলাইনে আছেন এবং এই ফোনে এখনও কিছু রাখা নেই। অনলাইনে থাকলে এটি খুলুন।</string>
+    <string name="tso_dash_route_unnamed">রুট</string>
 </resources>

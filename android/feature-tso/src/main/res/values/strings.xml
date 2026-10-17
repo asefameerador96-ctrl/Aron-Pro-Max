@@ -225,4 +225,9 @@
     <string name="tso_pe_out_of_area">Your location is outside Bangladesh, so nothing was searched. Check the location setting and try again.</string>
     <string name="tso_pe_settings">Open app settings</string>
     <string name="tso_role_dmo">DMO</string>
+    <string name="tso_dash_sep">" · "</string>
+    <string name="tso_dash_refused">The server did not give these figures to this login.</string>
+    <string name="tso_dash_offline_kept">You are offline. Showing the last figures kept on this phone.</string>
+    <string name="tso_dash_offline_none">You are offline and nothing is kept on this phone yet. Open this when you are online.</string>
+    <string name="tso_dash_route_unnamed">Route</string>
 </resources>

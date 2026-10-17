@@ -147,13 +147,15 @@ class MainActivity : ComponentActivity() {
                                         when (val c = logoutFlow.check()) {
                                             is LogoutCheck.Refused -> unsent = c.unsent
                                             is LogoutCheck.Proceed -> {
-                                                // The kept dashboard copies do not outlive the sign-in.
-                                                (components.session.state.value as? SessionState.Active)?.user?.userId?.let { java.io.File(cacheDir, "tso_api_$it").deleteRecursively() }
-                                                when (val r = logoutFlow.logout()) {
+                                                // The kept dashboard copies do not outlive the sign-in (deleted once the logout was not refused).
+                                                val uid = (components.session.state.value as? SessionState.Active)?.user?.userId
+                                                val r = logoutFlow.logout()
+                                                when (r) {
                                                     is LogoutResult.Refused -> unsent = r.unsent
                                                     is LogoutResult.WipeIncomplete -> Toast.makeText(this@MainActivity, SystemR.string.logout_wipe_incomplete, Toast.LENGTH_LONG).show()
                                                     else -> Unit
                                                 }
+                                                if (r !is LogoutResult.Refused) uid?.let { java.io.File(cacheDir, "tso_api_$it").deleteRecursively() }
                                             }
                                         }
                                         } catch (e: kotlinx.coroutines.CancellationException) {
@@ -233,7 +235,9 @@ class MainActivity : ComponentActivity() {
                                 screens = mapOf<com.aktcl.aron.feature.tso.TsoScreen, @androidx.compose.runtime.Composable (() -> Unit) -> Unit>(
                                     com.aktcl.aron.feature.tso.TsoScreen.DASHBOARD to { back ->
                                         val api = remember(s.user.userId) { TsoApi(components.apiClient, applicationContext, s.user.userId) }
-                                        TsoDashboardHost(api, home.businessDate, back)
+                                        // The business day follows the trusted clock at every recomposition, not the device clock at start.
+                                        val day = com.aktcl.aron.rules.BusinessDate.of(components.trustedClock.nowMs()).toString()
+                                        TsoDashboardHost(api, day, back)
                                     },
                                 ),
                             ) }
