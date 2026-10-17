@@ -72,7 +72,7 @@ private fun LeaveContent(u: LeaveListUi.Content) {
         ) {
             items(u.items, key = { it.leaveUuid }) { LeaveCard(it) }
         }
-        u.asOf?.let {
+        u.asOf?.takeIf { it.isNotBlank() }?.let {
             androidx.compose.material3.Text(
                 localizedDigits(stringResource(R.string.tso_as_of, it)), Modifier.padding(AronTokens.Space.Screen).testTag(LeaveTags.ASOF),
                 style = androidx.compose.material3.MaterialTheme.typography.bodySmall,

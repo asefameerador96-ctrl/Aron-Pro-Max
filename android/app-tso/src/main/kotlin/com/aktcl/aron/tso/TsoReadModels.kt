@@ -57,8 +57,16 @@ class TsoReadModels(private val components: SessionComponents, private val datab
         }.getOrDefault(emptyList())
 
         override suspend fun refresh(): LeaveSource.Cached? {
-            val body = get("/v1/leave") ?: return null
-            val page = LeaveJson.parsePage(body) ?: return null
+            // follow next_cursor (at most 5 pages of 100): a TSO's history can exceed one page; a failure on a later page keeps the whole refresh out
+            val all = mutableListOf<com.aktcl.aron.feature.tso.leave.LeaveItem>()
+            var cursor: String? = null
+            for (pageNo in 1..5) {
+                val body = get("/v1/leave?limit=100" + (cursor?.let { "&cursor=" + java.net.URLEncoder.encode(it, "UTF-8") } ?: "")) ?: return null
+                val pg = LeaveJson.parsePage(body) ?: return null
+                all += pg.items; cursor = pg.nextCursor
+                if (cursor == null) break
+            }
+            val page = LeaveJson.Page(all.distinctBy { it.leaveUuid }, null)
             val asOf = asOfNow()
             cachePut(userId, "leave", LeaveJson.toCache(page.items), asOf)
             // the server has these: their "not sent yet" mirror rows are done
