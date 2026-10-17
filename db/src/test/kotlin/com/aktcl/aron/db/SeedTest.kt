@@ -32,6 +32,8 @@ class SeedTest {
             "SELECT n.nspname || '.' || k.relname FROM pg_class k JOIN pg_namespace n ON n.oid = k.relnamespace " +
                 "WHERE n.nspname IN ('app','dw') AND k.relkind IN ('r','p') AND NOT k.relispartition ORDER BY 1",
         ).filterNotNull()
+            // V0084: the masterdata change stamp counts writing statements, idempotent or not, by design.
+            .filter { it != "app.change_stamp" }
         tables.associateWith { t ->
             c.scalar("SELECT count(*) || ':' || coalesce(md5(string_agg(x::text, '|' ORDER BY x::text)), '-') FROM $t x")!!
         }
