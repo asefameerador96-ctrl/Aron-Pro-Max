@@ -12,6 +12,8 @@ import androidx.test.core.app.ApplicationProvider
 import com.aktcl.aron.core.common.AppLanguage
 import com.aktcl.aron.core.ui.AppLocale
 import com.aktcl.aron.core.ui.AronTheme
+import com.aktcl.aron.core.ui.aronPageBackground
+import androidx.compose.foundation.layout.fillMaxSize
 import com.aktcl.aron.core.ui.GlassTier
 import com.aktcl.aron.feature.home.BundleFreshness
 import com.aktcl.aron.feature.home.DeviceHealthModel
@@ -61,7 +63,10 @@ class ScreenshotTests {
             CompositionLocalProvider(
                 LocalContext provides ctx,
                 LocalDensity provides Density(LocalDensity.current.density, fontScale = fontScale),
-            ) { AronTheme(language, dark = false, sunlight = sunlight, tier = GlassTier.B) { content() } }
+            ) { AronTheme(language, dark = false, sunlight = sunlight, tier = GlassTier.B) {
+                // the same page the apps draw behind every screen (aurora gradient; flat in sunlight)
+                androidx.compose.foundation.layout.Box(androidx.compose.ui.Modifier.fillMaxSize().aronPageBackground()) { content() }
+            } }
         }
         rule.waitForIdle()
         if (recordTo == null && System.getProperty("roborazzi.test.record") != "true") {

@@ -19,6 +19,7 @@ import com.aktcl.aron.core.session.SessionState
 import com.aktcl.aron.core.session.UnlockMode
 import com.aktcl.aron.core.ui.AppLocale
 import com.aktcl.aron.core.ui.AronTheme
+import com.aktcl.aron.core.ui.aronPageBackground
 import com.aktcl.aron.feature.auth.LoginScreen
 import com.aktcl.aron.feature.auth.LoginViewModel
 import com.aktcl.aron.feature.home.HomeUser
@@ -129,7 +130,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             var sunlight by remember { mutableStateOf(false) }
             AronTheme(language, sunlight = sunlight) {
-                Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+                Surface(modifier = Modifier.fillMaxSize().aronPageBackground(), color = androidx.compose.ui.graphics.Color.Transparent, contentColor = MaterialTheme.colorScheme.onBackground) {
                     val state by components.session.state.collectAsStateWithLifecycle()
                     when (val s = state) {
                         SessionState.Restoring -> Unit // AUD-PERF-05: the background is the splash for the few ms of the restore

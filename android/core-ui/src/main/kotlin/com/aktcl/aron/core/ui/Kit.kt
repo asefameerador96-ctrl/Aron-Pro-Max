@@ -1,6 +1,7 @@
 package com.aktcl.aron.core.ui
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -51,6 +52,42 @@ fun AronPrimaryButton(text: String, onClick: () -> Unit, modifier: Modifier = Mo
         ),
         contentPadding = PaddingValues(horizontal = AronTokens.Space.Xl, vertical = AronTokens.Space.M),
     ) { Text(text, textAlign = TextAlign.Center, style = MaterialTheme.typography.titleMedium) }   // 18 sp bold: the glare exception of s2a item 4 depends on it
+}
+
+/**
+ * The page behind every screen: the theme's three-stop gradient (aurora sky, lavender and blush in light, deep indigo to violet in dark; flat
+ * in sunlight, where the three stops are equal). Chrome only: every number, status and action sits on a solid card (docs/32 s2a item 1).
+ */
+@Composable
+fun Modifier.aronPageBackground(): Modifier {
+    val c = LocalAronColors.current
+    return this.background(androidx.compose.ui.graphics.Brush.verticalGradient(listOf(c.bgGradientTop, c.bgGradientMid, c.bgGradientBottom)))
+}
+
+/** Yes / confirm: a green filled pill (owner 2026-10-17). The label is [AronColorRoles.textOnAccent] at 7:1 (TokenContrastTest), 18 sp bold. */
+@Composable
+fun AronYesButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true) =
+    AronToneButton(text, onClick, LocalAronColors.current.yesFill, modifier, enabled)
+
+/** No / cancel: a red filled pill, the pair of [AronYesButton]. */
+@Composable
+fun AronNoButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true) =
+    AronToneButton(text, onClick, LocalAronColors.current.noFill, modifier, enabled)
+
+@Composable
+private fun AronToneButton(text: String, onClick: () -> Unit, fill: androidx.compose.ui.graphics.Color, modifier: Modifier, enabled: Boolean) {
+    val c = LocalAronColors.current
+    Button(
+        onClick = onClick,
+        enabled = enabled,
+        modifier = modifier.heightIn(min = MinTouch),
+        shape = AronTokens.ButtonShape,
+        colors = ButtonDefaults.buttonColors(
+            containerColor = fill, contentColor = c.textOnAccent,
+            disabledContainerColor = c.stateDisabledFill, disabledContentColor = c.stateDisabledLabel,
+        ),
+        contentPadding = PaddingValues(horizontal = AronTokens.Space.L, vertical = AronTokens.Space.S),
+    ) { Text(text, textAlign = TextAlign.Center, style = MaterialTheme.typography.titleMedium) }   // 18 sp bold: the label rule of s2a item 4
 }
 
 /** Secondary action with an outline. */
@@ -145,7 +182,7 @@ fun OfflineBanner(modifier: Modifier = Modifier) =
     AronBanner(androidx.compose.ui.res.stringResource(R.string.core_ui_offline_mode), modifier, BannerKind.Warning)
 
 /**
- * One tile of the home grid: a glass backdrop (chrome) with a SOLID label plate, so the reading never depends on the
+ * One tile of the home grid: a glass backdrop (chrome) with a SOLID, hue-tinted label plate, so the reading never depends on the
  * glass (docs/32 s2a item 1). [badge] shows below the label, hidden when 0.
  */
 @Composable
@@ -157,8 +194,10 @@ fun AronTile(label: String, onClick: () -> Unit, modifier: Modifier = Modifier, 
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(AronTokens.Space.Xs, Alignment.CenterVertically),
         ) {
-            Surface(shape = RoundedCornerShape(AronTokens.Radius.Chip), color = c.surfaceSolid) {
-                Text(label, style = MaterialTheme.typography.labelMedium, color = if (enabled) c.textPrimary else c.stateDisabledLabel, textAlign = TextAlign.Center, modifier = Modifier.padding(horizontal = AronTokens.Space.S, vertical = AronTokens.Space.Xs))
+            val hues = AronTokens.Hues.forMode(c.mode)
+            val hue = hues[(LocalTileHue.current.takeIf { it >= 0 } ?: (label.hashCode() and Int.MAX_VALUE)) % hues.size]
+            Surface(shape = RoundedCornerShape(AronTokens.Radius.Chip), color = if (enabled) hue.container else c.stateDisabledFill) {
+                Text(label, style = MaterialTheme.typography.labelMedium, color = if (enabled) hue.ink else c.stateDisabledLabel, textAlign = TextAlign.Center, modifier = Modifier.padding(horizontal = AronTokens.Space.S, vertical = AronTokens.Space.Xs))
             }
             if (badge > 0) {
                 Surface(shape = RoundedCornerShape(AronTokens.Radius.Chip), color = c.dangerContainer) {
@@ -184,9 +223,11 @@ fun <T> AronTileGrid(items: List<T>, columns: Int? = null, modifier: Modifier = 
     val cols = columns ?: autoTileColumns(config.screenWidthDp.toFloat(), fontScale)
     require(cols > 0)
     Column(modifier.fillMaxWidth().padding(AronTokens.Space.S), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
-        items.chunked(cols).forEach { rowItems ->
+        items.chunked(cols).forEachIndexed { rowIndex, rowItems ->
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
-                rowItems.forEach { tile(it, Modifier.weight(1f)) }
+                rowItems.forEachIndexed { colIndex, item ->
+                    androidx.compose.runtime.CompositionLocalProvider(LocalTileHue provides rowIndex * cols + colIndex) { tile(item, Modifier.weight(1f)) }
+                }
                 repeat(cols - rowItems.size) { Box(Modifier.weight(1f)) }
             }
         }
