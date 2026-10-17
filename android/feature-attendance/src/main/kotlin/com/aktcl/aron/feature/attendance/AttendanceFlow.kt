@@ -7,6 +7,7 @@ import com.aktcl.aron.core.database.entity.GeoFixEntity
 import com.aktcl.aron.feature.outlet.CaptureMetaProvider
 import com.aktcl.aron.feature.outlet.FixReading
 import com.aktcl.aron.feature.outlet.LocationFixSource
+import com.aktcl.aron.feature.outlet.VisitFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -130,7 +131,7 @@ class AttendanceFlow(
         if (ui.value.busy || ui.value.readingFix) return
         ui.value = ui.value.copy(readingFix = true)
         try {
-            val fix = fixes.readFix("refresh") // contract `FixPurpose.REFRESH`: a display-only reading, never attached to an event
+            val fix = fixes.readFix(VisitFlow.PURPOSE_REFRESH) // contract `FixPurpose.REFRESH`: a display-only reading, never attached to an event
             val coords = if (fix.isOk) String.format(java.util.Locale.ROOT, "%.6f, %.6f", fix.lat, fix.lng) else null
             ui.value = ui.value.copy(readingFix = false, lastFixMock = fix.isMock).withFix(fix, coords)
             if (coords != null) ui.value = ui.value.copy(addressText = coords)

@@ -34,5 +34,7 @@
     <string name="stk_save_failed">সংরক্ষণ করা যায়নি। কিছু বদলায়নি। আবার চেষ্টা করুন।</string>
     <string name="stk_print_failed">প্রিন্ট হয়নি। প্রিন্টার চালু ও কানেক্ট আছে কিনা দেখুন।</string>
     <string name="stk_print">স্টক স্লিপ প্রিন্ট</string>
+    <string name="stk_packs">%1$s প্যাক</string>
+    <string name="stk_reason_join">" · "</string>
     <string name="stk_empty">আপনার জোনের জন্য কোনো SKU নেই</string>
 </resources>

@@ -29,8 +29,9 @@
     <string name="sale_pack_badge">= %1$s প্যাকেট + %2$s</string>
     <string name="sale_stock_warning">%2$s এর স্টক আছে মাত্র %1$s।</string>
     <string name="sale_empty">বিক্রি শুরু করতে একটি পরিমাণ দিন।</string>
-    <string name="sale_zero_confirm_title">শূন্য বিক্রয়</string>
-    <string name="sale_zero_confirm_message">কোনো এসকেইউ দেওয়া হয়নি। বিক্রয় ছাড়া ভিজিট রেকর্ড করবেন?</string>
+    <string name="sale_zero_confirm_title">বিক্রয়ের জন্য কোনও SKU নির্বাচন করা হয় নি</string>
+    <string name="sale_zero_confirm_message">আপনি কি জিরো (০) বিক্রয় করতে চান?</string>
+    <string name="sale_qty_a11y">পরিমাণ %1$s %2$s</string>
     <string name="sale_yes">হ্যাঁ</string>
     <string name="sale_no">না</string>
     <string name="review_title">নিরীক্ষণ</string>

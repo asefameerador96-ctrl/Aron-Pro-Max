@@ -18,6 +18,7 @@
     <string name="submit_info">Submit is possible once all of today\'s data has synced. Sync runs by itself.</string>
     <string name="submit_sync">Sync data</string>
     <string name="submit_button">Submit sales</string>
+    <string name="submit_button_offline">Submit sales (sends when connected)</string>
     <string name="submit_reason_unsynced">Enabled once the data has synced</string>
     <string name="submit_reason_mismatch">The counts must match first</string>
     <string name="submit_reason_queued">Submit saved; waiting for the network</string>

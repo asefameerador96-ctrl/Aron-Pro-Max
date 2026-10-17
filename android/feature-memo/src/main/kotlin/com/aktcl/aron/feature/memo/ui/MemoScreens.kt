@@ -30,6 +30,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -88,19 +89,36 @@ internal fun dhakaTime(iso: String): String {
     return runCatching { Formats.time(java.time.Instant.parse(iso).toEpochMilli(), locale) }.getOrDefault(iso)
 }
 
-/** The widths of the dense table columns on a 328 dp content width (screens-sr s9: SKU, quantity, price). */
+/** The least widths of the dense table columns on a 328 dp content width (screens-sr s9: SKU, quantity, price); a wider number grows its column and the name gives way. */
 private val QtyColumn = 84.dp
 private val PriceColumn = 96.dp
 
+/** From `fontScale.vertical` the dense tables reflow: the name on its own line, the numbers on the next (screens-sr s0: numbers never wrap or clip). */
+@Composable
+internal fun tablesStacked(): Boolean = LocalDensity.current.fontScale >= AronTokens.Size.VerticalFontScale
+
 /**
- * The Memo menu (F-SR-030; screens-sr s9): the info banner, then today's live memos as flat rows (outlet, memo number and
+ * The Memo menu (F-SR-030; screens-sr s9): the info banner (dismissible per day: [onDismissBanner] fires and the host
+ * remembers the business date, [bannerDismissed] hides it), then today's live memos as flat rows (outlet, memo number and
  * time, the total and a due chip); selecting one shows [MemoDetailView]. A query on local memos: offline, always.
  */
 @Composable
-fun MemoMenuScreen(rows: List<MemoMenuRow>, outletName: (Long) -> String, onOpen: (MemoMenuRow) -> Unit, modifier: Modifier = Modifier) {
+fun MemoMenuScreen(
+    rows: List<MemoMenuRow>,
+    outletName: (Long) -> String,
+    onOpen: (MemoMenuRow) -> Unit,
+    modifier: Modifier = Modifier,
+    bannerDismissed: Boolean = false,
+    onDismissBanner: (() -> Unit)? = null,
+) {
     val c = LocalAronColors.current
     ScrollColumn(modifier) {
-        AronBanner(stringResource(R.string.memo_banner), Modifier.padding(horizontal = AronTokens.Space.Screen, vertical = AronTokens.Space.M), BannerKind.Info)
+        if (!bannerDismissed) {
+            AronBanner(
+                stringResource(R.string.memo_banner), Modifier.padding(horizontal = AronTokens.Space.Screen, vertical = AronTokens.Space.M), BannerKind.Info,
+                dismissLabel = if (onDismissBanner != null) stringResource(R.string.memo_banner_dismiss) else null, onDismiss = onDismissBanner,
+            )
+        }
         if (rows.isEmpty()) {
             AronEmptyState(stringResource(R.string.memo_empty), icon = AronIcons.Memo)
         } else {
@@ -168,10 +186,18 @@ fun MemoDetailView(
     val memo = detail.memo
     ScreenWithBar(modifier, bar = {
         Column(Modifier.fillMaxWidth()) {
+            // a disabled action always says why above the bar (android-glass s6.1): the bar carries the primary's reason (both
+            // reasons when both are disabled); when only Edit is disabled its reason is the caption above the bar
+            if (printDisabledReason == null && editDisabledReason != null) {
+                Text(
+                    editDisabledReason, style = MaterialTheme.typography.bodySmall, color = c.textSecondary,
+                    modifier = Modifier.padding(horizontal = AronTokens.Space.Screen, vertical = AronTokens.Space.S),
+                )
+            }
             AronBottomBar(
                 secondary = AronBarAction(stringResource(R.string.memo_edit), onEdit, enabled = editDisabledReason == null, icon = AronIcons.Edit),
                 primary = AronBarAction(stringResource(R.string.memo_print), onPrint, enabled = printDisabledReason == null, icon = AronIcons.Print, busy = printing),
-                reasonWhenDisabled = printDisabledReason,
+                reasonWhenDisabled = printDisabledReason?.let { p -> listOfNotNull(p, editDisabledReason).joinToString(" ") },
             )
         }
     }) {
@@ -223,7 +249,6 @@ fun MemoDetailView(
                 }
             }
             if (dueMtk > 0) CreditBox(money(dueMtk), canMarkPaid) { confirm = true }
-            editDisabledReason?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = c.textSecondary) }
             if (onHistory != null) AronTextButton(stringResource(R.string.history_title), onHistory, Modifier.fillMaxWidth(), icon = AronIcons.Calendar)
         }
     }
@@ -306,25 +331,60 @@ internal fun CardDivider() {
     Spacer(Modifier.fillMaxWidth().height(h).drawBehind { drawRect(color) })
 }
 
-/** The dense table header: `type.label` in `text.secondary`, numbers right-aligned under their heads. */
+/**
+ * The dense table header: `type.label` in `text.secondary`, numbers right-aligned under their heads. Below
+ * `fontScale.vertical` the number columns have their least widths (a wider number grows its column, the name gives way);
+ * from it the heads sit at the end of one line and every row stacks its numbers under the name ([tablesStacked]).
+ */
 @Composable
 internal fun TableHeader(name: String, qty: String, value: String) {
     val c = LocalAronColors.current
-    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+    val stacked = tablesStacked()
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
         Text(name, style = MaterialTheme.typography.labelMedium, color = c.textSecondary, modifier = Modifier.weight(1f))
-        Text(qty, style = MaterialTheme.typography.labelMedium, color = c.textSecondary, textAlign = TextAlign.End, modifier = Modifier.width(QtyColumn))
-        Text(value, style = MaterialTheme.typography.labelMedium, color = c.textSecondary, textAlign = TextAlign.End, modifier = Modifier.width(PriceColumn))
+        Text(qty, style = MaterialTheme.typography.labelMedium, color = c.textSecondary, textAlign = TextAlign.End, modifier = if (stacked) Modifier else Modifier.widthIn(min = QtyColumn))
+        Text(value, style = MaterialTheme.typography.labelMedium, color = c.textSecondary, textAlign = TextAlign.End, modifier = if (stacked) Modifier else Modifier.widthIn(min = PriceColumn))
     }
 }
 
-/** One table line: the name wraps to two lines, the quantity and the amount never wrap. */
+/** One table line: the name wraps to two lines, the quantity and the amount never wrap or clip (they stack under the name from `fontScale.vertical`). */
 @Composable
 internal fun TableRow(name: String, qty: String, value: String) {
     val c = LocalAronColors.current
-    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+    if (tablesStacked()) {
+        Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.Xs)) {
+            Text(name, style = MaterialTheme.typography.bodyLarge, color = c.textPrimary, maxLines = 2)
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.M)) {
+                if (qty.isNotEmpty()) MoneyText(qty, Modifier.weight(1f), style = MaterialTheme.typography.titleSmall) else Spacer(Modifier.weight(1f))
+                MoneyText(value, style = MaterialTheme.typography.titleSmall, textAlign = TextAlign.End)
+            }
+        }
+        return
+    }
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
         Text(name, style = MaterialTheme.typography.bodyLarge, color = c.textPrimary, maxLines = 2, modifier = Modifier.weight(1f))
-        MoneyText(qty, Modifier.width(QtyColumn), style = MaterialTheme.typography.titleSmall, textAlign = TextAlign.End)
-        MoneyText(value, Modifier.width(PriceColumn), style = MaterialTheme.typography.titleSmall, textAlign = TextAlign.End)
+        MoneyText(qty, Modifier.widthIn(min = QtyColumn), style = MaterialTheme.typography.titleSmall, textAlign = TextAlign.End)
+        MoneyText(value, Modifier.widthIn(min = PriceColumn), style = MaterialTheme.typography.titleSmall, textAlign = TextAlign.End)
+    }
+}
+
+/** The two-column table header (name and amount) of the sale history: no empty quantity column. */
+@Composable
+internal fun TableHeader2(name: String, value: String) {
+    val c = LocalAronColors.current
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
+        Text(name, style = MaterialTheme.typography.labelMedium, color = c.textSecondary, modifier = Modifier.weight(1f))
+        Text(value, style = MaterialTheme.typography.labelMedium, color = c.textSecondary, textAlign = TextAlign.End, modifier = if (tablesStacked()) Modifier else Modifier.widthIn(min = PriceColumn))
+    }
+}
+
+/** One two-column line (name and amount): the amount takes the width it needs, the name wraps to two lines. */
+@Composable
+internal fun TableRow2(name: String, value: String) {
+    val c = LocalAronColors.current
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
+        Text(name, style = MaterialTheme.typography.bodyLarge, color = c.textPrimary, maxLines = 2, modifier = Modifier.weight(1f))
+        MoneyText(value, if (tablesStacked()) Modifier else Modifier.widthIn(min = PriceColumn), style = MaterialTheme.typography.titleSmall, textAlign = TextAlign.End)
     }
 }
 

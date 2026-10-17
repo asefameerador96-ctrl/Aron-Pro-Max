@@ -30,8 +30,9 @@
     <string name="sale_pack_badge">= %1$s packs + %2$s</string>
     <string name="sale_stock_warning">Only %1$s in stock for %2$s.</string>
     <string name="sale_empty">Add a quantity to start the sale.</string>
-    <string name="sale_zero_confirm_title">Zero sale</string>
-    <string name="sale_zero_confirm_message">No SKU was entered. Record a visit with no sale?</string>
+    <string name="sale_zero_confirm_title">No SKU selected for sale</string>
+    <string name="sale_zero_confirm_message">Do you want to make a zero (0) sale?</string>
+    <string name="sale_qty_a11y">Quantity %1$s %2$s</string>
     <string name="sale_yes">Yes</string>
     <string name="sale_no">No</string>
     <string name="review_title">Review</string>

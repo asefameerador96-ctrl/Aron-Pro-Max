@@ -23,7 +23,7 @@ import org.robolectric.annotation.Config
 
 /** F-SYS-018 on the login screen: Bangla strings, Bengali digits and the bundled Bengali font; English the same in ASCII. */
 @RunWith(AndroidJUnit4::class)
-@Config(sdk = [34], qualifiers = "w360dp-h800dp") // the field phone: the banner under the fields is on screen without scrolling (screens-sr s0)
+@Config(sdk = [36], qualifiers = "w360dp-h800dp") // the field phone: the banner under the fields is on screen without scrolling (screens-sr s0)
 class LoginScreenLocaleTest {
     @get:Rule val compose = createComposeRule()
 

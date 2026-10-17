@@ -8,9 +8,9 @@ import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
-import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performCustomAccessibilityActionWithLabel
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.aktcl.aron.core.common.AppLanguage
@@ -46,10 +46,12 @@ class StockScreenTest {
         compose.onNodeWithText("লাইটার ৪০০ পিস").assertExists(); compose.onNodeWithText("ম্যাচ ৪০০ ডজন").assertExists()
     }
 
+    @OptIn(androidx.compose.ui.test.ExperimentalTestApi::class)
     @Test fun steppingPlusReportsTheNewQuantityAndSaveCallsBack() {
         val got = mutableListOf<Pair<Long, Int>>(); var saved = 0
         show(AppLanguage.EN, rows = rowsWithEntry, onIssue = { id, q -> got += id to q }, onSave = { saved++ })
-        compose.onAllNodesWithContentDescription("More")[0].performClick()
+        // the row is one TalkBack node (android-glass s6.3): its plus action steps the Issue; the buttons themselves are touch only
+        compose.onNodeWithTag(StockTags.row(1)).performCustomAccessibilityActionWithLabel("More")
         assertEquals(listOf(1L to 2), got)
         compose.onNodeWithTag(StockTags.SAVE).performClick(); assertEquals(1, saved)
         compose.onNodeWithText("The stock slip is not printed yet. Print it before Sales Submit.").assertExists()

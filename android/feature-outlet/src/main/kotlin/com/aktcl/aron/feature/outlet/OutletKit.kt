@@ -28,6 +28,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -80,10 +81,14 @@ internal fun DockChip(label: String, selected: Boolean, onClick: () -> Unit, mod
         Row(
             Modifier
                 .heightIn(min = 40.dp)
-                .drawBehind {
-                    val r = CornerRadius(AronTokens.Radius.Chip.toPx()); val w = stroke.toPx()
-                    drawRoundRect(fill, cornerRadius = r)
-                    drawRoundRect(edge, Offset(w / 2, w / 2), Size(size.width - w, size.height - w), CornerRadius(r.x - w / 2), style = Stroke(w))
+                .drawWithCache {
+                    // the ring and the stroke style are built once per size, not on every draw of a scrolling dock
+                    val r = CornerRadius(AronTokens.Radius.Chip.toPx()); val w = stroke.toPx(); val edgeStyle = Stroke(w)
+                    val inner = CornerRadius(r.x - w / 2); val edgeSize = Size(size.width - w, size.height - w); val edgeAt = Offset(w / 2, w / 2)
+                    onDrawBehind {
+                        drawRoundRect(fill, cornerRadius = r)
+                        drawRoundRect(edge, edgeAt, edgeSize, inner, style = edgeStyle)
+                    }
                 }
                 .padding(horizontal = AronTokens.Space.M),
             verticalAlignment = Alignment.CenterVertically,
@@ -152,19 +157,23 @@ internal fun KitTextField(
     }
 }
 
-/** The flat row paint of a long list (android-glass s6.3): `surface.glass.field`, `radius.card` on the first and last row. */
-@Composable
-internal fun Modifier.flatRow(position: RowPosition): Modifier {
-    val c = LocalAronColors.current
-    val solid = LocalGlassTier.current == GlassTier.C || c.sunlight
+/** The shape of a flat row by its place in the group: `radius.card` on the outer corners of the first and last row. */
+internal fun rowShape(position: RowPosition): RoundedCornerShape {
     val r = AronTokens.Radius.Card
-    val shape = when (position) {
+    return when (position) {
         RowPosition.Only -> RoundedCornerShape(r)
         RowPosition.First -> RoundedCornerShape(topStart = r, topEnd = r)
         RowPosition.Last -> RoundedCornerShape(bottomStart = r, bottomEnd = r)
         RowPosition.Middle -> RoundedCornerShape(0.dp)
     }
-    return background(if (solid) c.surfaceSolid else c.surfaceField, shape)
+}
+
+/** The flat row paint of a long list (android-glass s6.3): `surface.glass.field`, `radius.card` on the first and last row. */
+@Composable
+internal fun Modifier.flatRow(position: RowPosition): Modifier {
+    val c = LocalAronColors.current
+    val solid = LocalGlassTier.current == GlassTier.C || c.sunlight
+    return background(if (solid) c.surfaceSolid else c.surfaceField, rowShape(position))
 }
 
 /** An error line under a field or a form (android-glass s6.12): a 16 dp warning glyph and the words in `danger.onContainer`. */
@@ -192,10 +201,13 @@ internal fun RadioRow(label: String, selected: Boolean, onClick: () -> Unit, mod
     Box(
         modifier
             .fillMaxWidth()
-            .drawBehind {
-                val r = CornerRadius(AronTokens.Radius.Chip.toPx()); val w = edgeWidth.toPx()
-                drawRoundRect(fill, cornerRadius = r)
-                drawRoundRect(edge, Offset(w / 2, w / 2), Size(size.width - w, size.height - w), CornerRadius(r.x - w / 2), style = Stroke(w))
+            .drawWithCache {
+                val r = CornerRadius(AronTokens.Radius.Chip.toPx()); val w = edgeWidth.toPx(); val edgeStyle = Stroke(w)
+                val inner = CornerRadius(r.x - w / 2); val edgeSize = Size(size.width - w, size.height - w); val edgeAt = Offset(w / 2, w / 2)
+                onDrawBehind {
+                    drawRoundRect(fill, cornerRadius = r)
+                    drawRoundRect(edge, edgeAt, edgeSize, inner, style = edgeStyle)
+                }
             }
             .clip(shape)
             .selectable(selected = selected, role = Role.RadioButton, onClick = onClick),

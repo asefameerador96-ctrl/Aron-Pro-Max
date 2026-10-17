@@ -34,5 +34,7 @@
     <string name="stk_save_failed">Could not save. Nothing was changed. Try again.</string>
     <string name="stk_print_failed">Not printed. Check that the printer is on and connected.</string>
     <string name="stk_print">Print stock slip</string>
+    <string name="stk_packs">%1$s packs</string>
+    <string name="stk_reason_join">" · "</string>
     <string name="stk_empty">No SKU for your zone</string>
 </resources>

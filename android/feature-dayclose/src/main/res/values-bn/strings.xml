@@ -17,6 +17,7 @@
     <string name="submit_info">আজকের সব তথ্য সিঙ্ক হলে বিক্রয় জমা দেওয়া যাবে। সিঙ্ক নিজে থেকেই চলছে।</string>
     <string name="submit_sync">ডাটা সিঙ্ক করুন</string>
     <string name="submit_button">বিক্রয় জমা</string>
+    <string name="submit_button_offline">বিক্রয় জমা (সংযোগ পেলে যাবে)</string>
     <string name="submit_reason_unsynced">ডাটা সিঙ্ক হলে চালু হবে</string>
     <string name="submit_reason_mismatch">আগে সংখ্যা মিলতে হবে</string>
     <string name="submit_reason_queued">জমা সংরক্ষিত; নেটওয়ার্কের অপেক্ষায়</string>

@@ -1,6 +1,7 @@
 package com.aktcl.aron.feature.outlet
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -36,6 +37,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
@@ -46,12 +48,13 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.aktcl.aron.core.ui.AronCard
 import com.aktcl.aron.core.ui.AronEmptyState
 import com.aktcl.aron.core.ui.AronIcons
-import com.aktcl.aron.core.ui.AronListRow
 import com.aktcl.aron.core.ui.AronMeter
 import com.aktcl.aron.core.ui.AronSegmented
 import com.aktcl.aron.core.ui.AronTextButton
@@ -118,12 +121,19 @@ fun OutletPickerContent(
     marks: Map<Long, PickerMark> = emptyMap(),
     syncedAt: String? = null,
     onReloadRoute: (() -> Unit)? = null,
+    /**
+     * The whole route, when [rows] is already narrowed by the alphabet chip: the meter and the segment counts read n/N of
+     * the route, not of the letter. Null means [rows] is the route.
+     */
+    allRows: List<PickerRow>? = null,
 ) {
     val c = LocalAronColors.current
     var segment by rememberSaveable { mutableIntStateOf(0) }
     var searching by rememberSaveable { mutableStateOf(false) }
     var query by rememberSaveable { mutableStateOf("") }
-    val visitedCount = rows.count { marks[it.outlet.outletId]?.visited == true }
+    val route = allRows ?: rows
+    val routeSize = route.size
+    val visitedCount = route.count { marks[it.outlet.outletId]?.visited == true }
     val q = query.trim()
     val visible = rows.filter { r ->
         val visited = marks[r.outlet.outletId]?.visited == true
@@ -135,16 +145,16 @@ fun OutletPickerContent(
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.M)) {
                 Text(stringResource(R.string.out_picker_select), Modifier.weight(1f), style = MaterialTheme.typography.titleMedium, color = c.textPrimary)
                 Text(
-                    stringResource(R.string.out_visited_meter, localizedNumber(visitedCount.toLong()), localizedNumber(rows.size.toLong())),
+                    stringResource(R.string.out_visited_meter, localizedNumber(visitedCount.toLong()), localizedNumber(routeSize.toLong())),
                     style = MaterialTheme.typography.labelMedium, color = c.textSecondary, maxLines = 1,
                 )
             }
-            AronMeter(visitedCount, rows.size)
+            AronMeter(visitedCount, routeSize)
             AronSegmented(
                 listOf(
-                    stringResource(R.string.out_seg_remaining, localizedNumber((rows.size - visitedCount).toLong())),
+                    stringResource(R.string.out_seg_remaining, localizedNumber((routeSize - visitedCount).toLong())),
                     stringResource(R.string.out_seg_visited, localizedNumber(visitedCount.toLong())),
-                    stringResource(R.string.out_seg_all, localizedNumber(rows.size.toLong())),
+                    stringResource(R.string.out_seg_all, localizedNumber(routeSize.toLong())),
                 ),
                 selected = segment, onSelect = { segment = it },
             )
@@ -196,32 +206,52 @@ fun OutletPickerContent(
     }
 }
 
+/**
+ * One picker row (screens-sr s5): the name in `type.bodyStrong` (2 lines), the "code · phone · cluster" caption, and the
+ * due pill UNDER the caption so a wide amount never squeezes the name; trailing only the visited check with the memo total
+ * or the outcome word. The whole row (72 dp or more) is the target, painted like the kit's flat row.
+ */
 @Composable
 private fun PickerRowView(r: PickerRow, mark: PickerMark?, showDistance: Boolean, position: RowPosition, divider: Boolean, onPick: () -> Unit) {
     val c = LocalAronColors.current
     val outcome = mark?.outcomeCode?.let { outcomeWord(it) }
-    AronListRow(
-        title = r.outlet.name, subtitle = captionOf(r.outlet), onClick = onPick, flat = true, position = position, divider = divider,
-        trailingContent = {
-            Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(AronTokens.Space.Xs)) {
-                when {
-                    mark?.visited == true && outcome == null -> {
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.Xs)) {
-                            Icon(AronIcons.Check, contentDescription = null, tint = c.successOnContainer, modifier = Modifier.size(AronTokens.Space.L))
-                            Text(stringResource(R.string.out_row_visited), style = MaterialTheme.typography.labelMedium, color = c.successOnContainer, maxLines = 1)
-                        }
-                        mark.memoTotalMtk?.let { Text(outletMoney(it), style = MaterialTheme.typography.bodySmall, color = c.textSecondary, maxLines = 1) }
-                    }
-                    outcome != null -> Text(outcome, style = MaterialTheme.typography.labelMedium, color = c.textSecondary, maxLines = 2)
-                }
-                if (r.outlet.openDueMtk > 0) {
-                    StatusPill(stringResource(R.string.out_due_chip, outletMoney(r.outlet.openDueMtk)), AronIcons.Wallet, c.warningContainer, c.warningOnContainer)
-                }
-                if (showDistance) r.distanceM?.let { Text(stringResource(R.string.out_distance_m, localizedNumber(Math.round(it))), style = MaterialTheme.typography.bodySmall, color = c.textSecondary, maxLines = 1) }
+    val dividerColor = c.borderDivider
+    val dividerWidth = if (c.sunlight) AronTokens.Stroke.SunlightHairline else AronTokens.Stroke.Hairline
+    val inset = AronTokens.Space.L
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .flatRow(position)
+            .drawBehind { if (divider) drawRect(dividerColor, Offset(inset.toPx(), size.height - dividerWidth.toPx()), Size(size.width - inset.toPx(), dividerWidth.toPx())) }
+            .clip(rowShape(position))
+            .clickable(role = Role.Button, onClick = onPick)
+            .heightIn(min = PickerRowMin)
+            .padding(horizontal = AronTokens.Space.L, vertical = AronTokens.Space.M),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.M),
+    ) {
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.Xs)) {
+            Text(r.outlet.name, style = MaterialTheme.typography.titleSmall, color = c.textPrimary, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Text(captionOf(r.outlet), style = MaterialTheme.typography.bodySmall, color = c.textSecondary)
+            if (r.outlet.openDueMtk > 0) {
+                StatusPill(stringResource(R.string.out_due_chip, outletMoney(r.outlet.openDueMtk)), AronIcons.Wallet, c.warningContainer, c.warningOnContainer, Modifier.padding(top = AronTokens.Space.Xs))
             }
-        },
-    )
+            if (showDistance) r.distanceM?.let { Text(stringResource(R.string.out_distance_m, localizedNumber(Math.round(it))), style = MaterialTheme.typography.bodySmall, color = c.textSecondary, maxLines = 1) }
+        }
+        when {
+            mark?.visited == true && outcome == null -> Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(AronTokens.Space.Xs)) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.Xs)) {
+                    Icon(AronIcons.Check, contentDescription = null, tint = c.successOnContainer, modifier = Modifier.size(AronTokens.Space.L))
+                    Text(stringResource(R.string.out_row_visited), style = MaterialTheme.typography.labelMedium, color = c.successOnContainer, maxLines = 1)
+                }
+                mark.memoTotalMtk?.let { Text(outletMoney(it), style = MaterialTheme.typography.bodySmall, color = c.textSecondary, maxLines = 1) }
+            }
+            outcome != null -> Text(outcome, style = MaterialTheme.typography.labelMedium, color = c.textSecondary, maxLines = 2)
+        }
+    }
 }
+
+private val PickerRowMin = 72.dp
 
 /** The verdict card kinds (screens-sr s6): the card's container colour, ink and icon. */
 private enum class GeoKind { Reading, InRange, Warning, Danger }
@@ -296,6 +326,7 @@ fun VisitCheckContent(
                 VisitUiState.Idle -> Unit
                 VisitUiState.ReadingFix -> GeoCard(GeoKind.Reading, stringResource(R.string.out_reading_fix), emptyList(), Modifier.testTag(OutletTags.MESSAGE))
                 is VisitUiState.NeedsDecision -> {
+                    val noCoordinates = state.result.verdict == GeoVerdict.NO_OUTLET_LOCATION
                     val headline = stringResource(
                         when (state.result.verdict) {
                             GeoVerdict.OUT_OF_RANGE -> R.string.out_out_of_range
@@ -311,9 +342,12 @@ fun VisitCheckContent(
                         if (state.result.verdict != GeoVerdict.IN_RANGE) {
                             state.result.distanceM?.let { add(stringResource(R.string.out_distance_line, localizedNumber(Math.round(it)), localizedNumber(state.outlet.radiusM.toLong()))) }
                         }
-                        if (state.mockWarning) add(stringResource(R.string.out_mocked_warn))
-                        if (state.refreshLeft) add(stringResource(R.string.out_refresh_left_line, localizedNumber((state.refreshMax - state.refreshCount).toLong())))
-                        else add(stringResource(R.string.out_no_refresh_left))
+                        if (state.mockWarning) add(stringResource(R.string.out_mocked_refresh))
+                        // a refresh cannot give an outlet its coordinates (Geo.kt always answers FORCE_SALE), so no refresh line there
+                        if (!noCoordinates) {
+                            if (state.refreshLeft) add(stringResource(R.string.out_refresh_left_line, localizedNumber((state.refreshMax - state.refreshCount).toLong())))
+                            else add(stringResource(R.string.out_no_refresh_left))
+                        }
                     }
                     val kind = if (state.result.verdict == GeoVerdict.IN_RANGE) GeoKind.InRange else GeoKind.Warning
                     GeoCard(kind, headline, lines, Modifier.testTag(OutletTags.MESSAGE)) {
@@ -346,6 +380,8 @@ fun VisitCheckContent(
             is VisitUiState.NeedsDecision -> {
                 val force = BarAction(stringResource(R.string.out_force_sale), onForceSale, OutletTags.FORCE)
                 when {
+                    // outlet has no coordinates: the primary is Force Sale (screens-sr s6 table); a refresh changes nothing
+                    state.result.verdict == GeoVerdict.NO_OUTLET_LOCATION && state.forceSaleAvailable -> OutletBar(force)
                     state.refreshLeft -> OutletBar(
                         BarAction(stringResource(R.string.out_refresh_n, localizedNumber((state.refreshMax - state.refreshCount).toLong())), onRefresh, OutletTags.REFRESH, icon = AronIcons.Refresh),
                         secondary = if (state.forceSaleAvailable) force else null,

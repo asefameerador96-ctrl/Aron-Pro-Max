@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.only
@@ -29,13 +30,17 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
@@ -175,14 +180,15 @@ fun StockContent(
     }
 }
 
-/** The column head (screens-sr s4): SKU, Issue, then Stock when the rows carry the on-hand figure, else Total load, in `type.label`. */
+/**
+ * The column head (screens-sr s4) in `type.label`: SKU, then Stock when the rows carry the on-hand figure, else Total
+ * load. It names the two columns of line 1; the Issue word sits on line 2 beside the stepper, where that figure is.
+ */
 @Composable
 private fun ColumnHead(hasStock: Boolean) {
     val c = LocalAronColors.current
     Row(Modifier.fillMaxWidth().padding(horizontal = AronTokens.Space.Screen, vertical = AronTokens.Space.S), verticalAlignment = Alignment.CenterVertically) {
         Text(stringResource(R.string.stk_col_sku), Modifier.weight(1f), style = MaterialTheme.typography.labelMedium, color = c.textSecondary)
-        Text(stringResource(R.string.stk_col_issue), style = MaterialTheme.typography.labelMedium, color = c.textSecondary)
-        Spacer(Modifier.size(AronTokens.Space.Xl))
         Text(stringResource(if (hasStock) R.string.stk_col_stock else R.string.stk_col_loaded), style = MaterialTheme.typography.labelMedium, color = c.textSecondary, textAlign = TextAlign.End)
     }
 }
@@ -203,11 +209,14 @@ private fun Modifier.flatRow(position: RowPosition): Modifier {
 }
 
 /**
- * One SKU row (screens-sr s4, 136 dp): line 1 is the thumbnail slot, the name in `type.bodyStrong`, the "loaded today"
- * caption and the key figure as a numeral over its label: the stock in the bag plus the increment being entered when the
- * host supplies [StockRow.stockBase], else the total load (loaded today plus the increment), labelled as such so a
- * number under "Stock" never misstates the bag after a sale. Line 2 is the Issue stepper at the trailing edge with the
- * unit beside it. Step 1 in the SKU's own unit (unchanged rule).
+ * One SKU row (screens-sr s4, 136 dp): line 1 is the thumbnail slot (with the packs pill), the name in `type.bodyStrong`,
+ * the "loaded today" caption and the key figure as a numeral over its label: the stock in the bag plus the increment
+ * being entered when the host supplies [StockRow.stockBase], else the total load (loaded today plus the increment),
+ * labelled as such so a number under "Stock" never misstates the bag after a sale. Line 2 is the Issue label at the
+ * start and the stepper at the trailing edge with the unit beside it. Step 1 in the SKU's own unit (unchanged rule).
+ *
+ * TalkBack (android-glass s6.3): the row is ONE merged node reading "name, loaded today, stock, issue, packs" with the
+ * stepper's plus and minus as custom actions; the stepper's own buttons stay touchable but leave the semantics tree.
  */
 @Composable
 private fun StockSkuRow(r: StockRow, position: RowPosition, divider: Boolean, softCeiling: Long, onIssue: (Long, Int) -> Unit) {
@@ -215,21 +224,43 @@ private fun StockSkuRow(r: StockRow, position: RowPosition, divider: Boolean, so
     val unit = unitLabel(r.sku.baseUnit)
     val dividerColor = c.borderDivider
     val dividerWidth = if (c.sunlight) AronTokens.Stroke.SunlightHairline else AronTokens.Stroke.Hairline
+    val stock = r.stockBase
+    val figure = (stock ?: r.loadedBase) + r.entered
+    val packs = if (r.sku.basePerPack > 1) figure / r.sku.basePerPack else null
+    val loadedCaption = stringResource(R.string.stk_loaded_today, localizedNumber(r.loadedBase), unit)
+    val issueLabel = stringResource(R.string.stk_col_issue)
+    val plusLabel = stringResource(R.string.stk_more)
+    val minusLabel = stringResource(R.string.stk_less)
+    val max = StockLoad.MAX_ENTRY.toInt()
+    val summary = listOfNotNull(
+        r.sku.shortName,
+        loadedCaption,
+        stringResource(if (stock != null) R.string.stk_col_stock else R.string.stk_col_loaded) + " " + localizedNumber(figure) + " " + unit,
+        issueLabel + " " + localizedNumber(r.entered) + " " + unit,
+        packs?.let { stringResource(R.string.stk_packs, localizedNumber(it)) },
+    ).joinToString(", ")
+    val actions = listOfNotNull(
+        if (r.entered < max) CustomAccessibilityAction(plusLabel) { onIssue(r.sku.skuId, r.entered.toInt() + 1); true } else null,
+        if (r.entered > 0) CustomAccessibilityAction(minusLabel) { onIssue(r.sku.skuId, r.entered.toInt() - 1); true } else null,
+    )
     Column(
         Modifier
             .fillMaxWidth()
             .padding(horizontal = AronTokens.Space.Screen)
             .flatRow(position)
-            .testTag(StockTags.row(r.sku.skuId)),
+            .testTag(StockTags.row(r.sku.skuId))
+            .semantics(mergeDescendants = true) {
+                contentDescription = summary
+                customActions = actions
+            },
     ) {
         AronListRow(
             title = r.sku.shortName,
-            subtitle = stringResource(R.string.stk_loaded_today, localizedNumber(r.loadedBase), unit),
-            leading = { SkuThumb(r.sku.shortName) },
+            subtitle = loadedCaption,
+            leading = { SkuThumb(r.sku.shortName, packs) },
             trailingContent = {
                 Column(horizontalAlignment = Alignment.End) {
-                    val stock = r.stockBase
-                    MoneyText(localizedNumber((stock ?: r.loadedBase) + r.entered), style = MaterialTheme.typography.headlineLarge)
+                    MoneyText(localizedNumber(figure), style = MaterialTheme.typography.headlineLarge)
                     Text(
                         stringResource(if (stock != null) R.string.stk_stock_unit else R.string.stk_load_total_unit, unit),
                         style = MaterialTheme.typography.bodySmall, color = c.textSecondary, maxLines = 1,
@@ -239,13 +270,18 @@ private fun StockSkuRow(r: StockRow, position: RowPosition, divider: Boolean, so
         )
         Row(
             Modifier.fillMaxWidth().padding(start = AronTokens.Space.L, end = AronTokens.Space.L, bottom = AronTokens.Space.M),
-            horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically,
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            AronStepper(
-                value = r.entered.toInt(), onValueChange = { onIssue(r.sku.skuId, it) },
-                minusLabel = stringResource(R.string.stk_less), plusLabel = stringResource(R.string.stk_more),
-                max = StockLoad.MAX_ENTRY.toInt(),
-            )
+            Text(issueLabel, style = MaterialTheme.typography.labelMedium, color = c.textSecondary, maxLines = 1)
+            Spacer(Modifier.weight(1f))
+            // the buttons stay touchable; the merged row above carries the value and the actions for TalkBack
+            Box(Modifier.clearAndSetSemantics { }) {
+                AronStepper(
+                    value = r.entered.toInt(), onValueChange = { onIssue(r.sku.skuId, it) },
+                    minusLabel = minusLabel, plusLabel = plusLabel,
+                    max = max,
+                )
+            }
             Spacer(Modifier.size(AronTokens.Space.S))
             Text(unit, style = MaterialTheme.typography.bodySmall, color = c.textSecondary, maxLines = 1)
         }
@@ -261,18 +297,50 @@ private fun StockSkuRow(r: StockRow, position: RowPosition, divider: Boolean, so
     }
 }
 
-/** The 48 dp thumbnail slot: no pack image is bundled yet, so an `accent.container` disc carries the SKU's initial (decorative). */
+/**
+ * The 48 dp thumbnail slot: no pack image is bundled yet, so an `accent.container` disc carries the SKU's initial
+ * (decorative), and the packs equivalent rides as a small `accent.container` pill at its bottom end (screens-sr s4,
+ * Q-UI-11) when the SKU is packed. The row's merged description reads the packs; the thumb itself is silent.
+ */
 @Composable
-private fun SkuThumb(name: String) {
+private fun SkuThumb(name: String, packs: Long?) {
     val c = LocalAronColors.current
     val fill = c.accentContainer
-    Box(
-        Modifier.size(AronTokens.Touch.Min).drawBehind { drawRoundRect(fill, cornerRadius = CornerRadius(AronTokens.Radius.Chip.toPx())) }.clearAndSetSemantics { },
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(name.trim().take(1).uppercase(), style = MaterialTheme.typography.titleMedium, color = c.accentOnContainer)
+    val pillFill = if (c.sunlight) c.accentHi else c.accentContainer
+    val pillInk = if (c.sunlight) c.textOnAccent else c.accentOnContainer
+    val pillEdge = c.surfaceSolid
+    Box(Modifier.size(AronTokens.Touch.Min).clearAndSetSemantics { }) {
+        Box(
+            Modifier.size(AronTokens.Touch.Min).drawBehind { drawRoundRect(fill, cornerRadius = CornerRadius(AronTokens.Radius.Chip.toPx())) },
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(name.trim().take(1).uppercase(), style = MaterialTheme.typography.titleMedium, color = c.accentOnContainer)
+        }
+        if (packs != null) {
+            Box(
+                Modifier
+                    .align(Alignment.BottomEnd)
+                    .offset(x = AronTokens.Space.Xs, y = AronTokens.Space.Xs)
+                    .heightIn(min = PackPillHeight)
+                    .drawWithCache {
+                        val r = CornerRadius(size.height / 2f); val w = AronTokens.Stroke.Focus.toPx(); val edge = Stroke(w)
+                        onDrawBehind {
+                            drawRoundRect(pillEdge, cornerRadius = r)
+                            drawRoundRect(pillFill, Offset(w / 2, w / 2), Size(size.width - w, size.height - w), CornerRadius(r.x - w / 2))
+                            drawRoundRect(pillEdge, Offset(w / 2, w / 2), Size(size.width - w, size.height - w), CornerRadius(r.x - w / 2), style = edge)
+                        }
+                    }
+                    .padding(horizontal = AronTokens.Space.S),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(localizedNumber(packs), style = MaterialTheme.typography.labelMedium, color = pillInk, maxLines = 1)
+            }
+        }
     }
 }
+
+/** The packs pill on the thumbnail: 20 dp so the initial stays readable behind it (the spec's 24 would cover half the disc). */
+private val PackPillHeight = 20.dp
 
 /** The category dock (android-glass s6.17): opaque `surface.solid.raised` chips, one per category, with the unit. */
 @Composable
@@ -288,10 +356,13 @@ private fun CategoryDock(totals: List<CategoryTotal>, unitByCategory: Map<String
             Box(
                 Modifier
                     .heightIn(min = MinChip)
-                    .drawBehind {
-                        val r = CornerRadius(AronTokens.Radius.Chip.toPx()); val w = stroke.toPx()
-                        drawRoundRect(fill, cornerRadius = r)
-                        drawRoundRect(edge, Offset(w / 2, w / 2), Size(size.width - w, size.height - w), CornerRadius(r.x - w / 2), style = Stroke(w))
+                    .drawWithCache {
+                        val r = CornerRadius(AronTokens.Radius.Chip.toPx()); val w = stroke.toPx(); val edgeStyle = Stroke(w)
+                        val inner = CornerRadius(r.x - w / 2); val edgeSize = Size(size.width - w, size.height - w); val edgeAt = Offset(w / 2, w / 2)
+                        onDrawBehind {
+                            drawRoundRect(fill, cornerRadius = r)
+                            drawRoundRect(edge, edgeAt, edgeSize, inner, style = edgeStyle)
+                        }
                     }
                     .padding(horizontal = AronTokens.Space.M, vertical = AronTokens.Space.S),
                 contentAlignment = Alignment.Center,
@@ -315,12 +386,15 @@ private val MinChip = 40.dp
 @Composable
 private fun StockBar(hasChange: Boolean, onSave: () -> Unit, onPrint: (() -> Unit)?, printBlock: StockPrintBlock?) {
     val c = LocalAronColors.current
-    val reason = when {
-        !hasChange -> stringResource(R.string.stk_reason_no_change)
-        onPrint != null && printBlock == StockPrintBlock.SAVE_FIRST -> stringResource(R.string.stk_reason_save_first)
-        onPrint != null && printBlock == StockPrintBlock.PRINTER_OFF -> stringResource(R.string.stk_reason_connect_printer)
+    // each disabled button names its own reason (screens-sr s4); both read on one line when both are disabled
+    val printReason = when {
+        onPrint == null -> null
+        printBlock == StockPrintBlock.SAVE_FIRST -> stringResource(R.string.stk_reason_save_first)
+        printBlock == StockPrintBlock.PRINTER_OFF -> stringResource(R.string.stk_reason_connect_printer)
         else -> null
     }
+    val reason = listOfNotNull(if (!hasChange) stringResource(R.string.stk_reason_no_change) else null, printReason)
+        .takeIf { it.isNotEmpty() }?.joinToString(stringResource(R.string.stk_reason_join))
     GlassSurface(modifier = Modifier.fillMaxWidth(), kind = GlassKind.ActionBar) {
         Column(
             Modifier

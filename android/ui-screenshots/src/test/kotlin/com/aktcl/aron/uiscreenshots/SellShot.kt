@@ -155,6 +155,14 @@ class SellShot {
         )
     }
 
+    /** The outlet has no coordinates: the card says so and the bar's primary is Force Sale, no refresh (screens-sr s6 table). */
+    @Composable private fun VisitNoCoordinates() = Frame(card.name) {
+        VisitCheckContent(
+            VisitUiState.NeedsDecision(visitOutlet.copy(lat = null, lng = null, locationBasis = "none"), GeoVerdictResult(GeoVerdict.NO_OUTLET_LOCATION, GeoAction.FORCE_SALE, null), 0, true, 3, true, false),
+            onRefresh = {}, onForceSale = {}, onRetry = {}, onMap = null, outlet = card, onPreviousSales = {}, onNoSale = {},
+        )
+    }
+
     @Composable private fun Sale() = Frame(stringResource(com.aktcl.aron.feature.sale.R.string.sale_title), subtitle = card.name) {
         SaleEntryScreen(skus, saleReview, { id -> saleDraft.lines.firstOrNull { it.skuId == id }?.qtyEntered ?: 0 }, { _, _ -> }, {}, {}, recentSkuIds = setOf(100L), onPreviousSales = {})
     }
@@ -171,6 +179,7 @@ class SellShot {
     @Test fun visit_in_bn_sunlight() = shot("sell_visit_in_bn_sunlight", sunlight = true) { VisitInRange() }
     @Test fun visit_out_bn_light() = shot("sell_visit_out_bn_light") { VisitOutOfRange() }
     @Test fun visit_out_bn_sunlight() = shot("sell_visit_out_bn_sunlight", sunlight = true) { VisitOutOfRange() }
+    @Test fun visit_nocoords_bn_light() = shot("sell_visit_nocoords_bn_light") { VisitNoCoordinates() }
     @Test fun sale_bn_light() = shot("sell_sale_bn_light") { Sale() }
     @Test fun sale_bn_sunlight() = shot("sell_sale_bn_sunlight", sunlight = true) { Sale() }
     @Test fun review_bn_light() = shot("sell_review_bn_light") { Review() }

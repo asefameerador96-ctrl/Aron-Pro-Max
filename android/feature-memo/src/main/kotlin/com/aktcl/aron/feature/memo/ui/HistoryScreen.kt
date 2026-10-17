@@ -47,9 +47,9 @@ fun SaleHistoryScreen(h: SaleHistory, offlineBanner: Boolean, modifier: Modifier
                         MoneyText(money(day.subtotalMtk), style = MaterialTheme.typography.titleMedium, textAlign = TextAlign.End)
                     }
                     CardDivider()
-                    TableHeader(stringResource(R.string.history_col_memo), "", stringResource(R.string.memo_col_price))
+                    TableHeader2(stringResource(R.string.history_col_memo), stringResource(R.string.memo_col_price))
                     day.memos.forEach { r ->
-                        TableRow(stringResource(R.string.memo_row_meta, localizedDigits(shortMemoNo(r.memoNo)), dhakaTime(r.committedAtIso)), "", amount(r.totalMtk))
+                        TableRow2(stringResource(R.string.memo_row_meta, localizedDigits(shortMemoNo(r.memoNo)), dhakaTime(r.committedAtIso)), amount(r.totalMtk))
                     }
                 }
             }

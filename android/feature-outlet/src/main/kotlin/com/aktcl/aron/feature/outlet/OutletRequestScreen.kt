@@ -73,6 +73,11 @@ fun OutletRequestContent(
     onShutter: () -> Unit,
     onSave: () -> Unit,
     modifier: Modifier = Modifier,
+    /**
+     * Why the form cannot be submitted yet, from the host's validator (screens-sr s15: the primary is disabled with its
+     * reason until the form is valid). Null keeps the older behaviour: Submit is enabled and the errors show after the tap.
+     */
+    blockingReason: String? = null,
 ) {
     val c = LocalAronColors.current
     var confirm by rememberSaveable { mutableStateOf(false) }
@@ -131,7 +136,10 @@ fun OutletRequestContent(
             if (kind.needsGeoPhoto) GeoPhotoBlock(capture, onShutter, note = stringResource(R.string.out_req_photo_note))
             fieldErrors.forEach { FieldError(errorText(it)) }
         }
-        OutletBar(BarAction(stringResource(R.string.out_req_save), { if (kind.needsConfirmation && !form.confirmed) confirm = true else onSave() }, RequestTags.SAVE, icon = AronIcons.Submit))
+        OutletBar(
+            BarAction(stringResource(R.string.out_req_save), { if (kind.needsConfirmation && !form.confirmed) confirm = true else onSave() }, RequestTags.SAVE, enabled = blockingReason == null, icon = AronIcons.Submit),
+            reason = blockingReason,
+        )
     }
     if (confirm) {
         AronConfirmDialog(

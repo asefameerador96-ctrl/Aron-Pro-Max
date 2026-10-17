@@ -34,13 +34,17 @@ import com.aktcl.aron.feature.memo.domain.Journey
 import com.aktcl.aron.feature.memo.domain.JourneyStatus
 import com.aktcl.aron.feature.memo.domain.KpiStrip
 
+/** 100 percent in hundredths: the strike-rate meter's full scale. */
+private const val STRIKE_RATE_MAX = 10_000
+
 /** Percent from hundredths with two decimals ("10.00"), digits per locale; blank when nothing is planned. */
 fun percentText(hundredths: Int?): String =
     hundredths?.let { (it / 100).toString() + "." + (it % 100).toString().padStart(2, '0') }.orEmpty()
 
 /**
- * KPI (F-SR-010; screens-sr s18): stat cards of the day from the local aggregate: outlets visited (with a meter),
- * strike rate, non-visit, no sale; then issue and current stock per category in the category's own unit.
+ * KPI (F-SR-010; screens-sr s18): stat cards of the day from the local aggregate: outlets visited (with a meter), the
+ * strike rate (with its own meter out of 100 percent), non-visit, no sale; then issue and current stock per category in
+ * the category's own unit.
  */
 @Composable
 fun KpiStripView(strip: KpiStrip, categoryLabel: (String) -> String, unitLabel: (String) -> String, modifier: Modifier = Modifier) {
@@ -53,10 +57,17 @@ fun KpiStripView(strip: KpiStrip, categoryLabel: (String) -> String, unitLabel: 
                 AronMeter(strip.visitedOutlets, strip.plannedOutlets)
             }
         }
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.M)) {
-            AronStatCard(stringResource(R.string.kpi_strike), strip.strikeRateHundredths?.let { localizedDigits(stringResource(R.string.kpi_percent, percentText(it))) } ?: stringResource(R.string.kpi_none), Modifier.weight(1f))
-            AronStatCard(stringResource(R.string.kpi_non_visit), localizedNumber(strip.nonVisitOutlets.toLong()), Modifier.weight(1f))
-            AronStatCard(stringResource(R.string.kpi_no_sale), localizedNumber(strip.noSaleOutlets.toLong()), Modifier.weight(1f))
+        // the strike rate with its meter (screens-sr s18): hundredths of a percent out of 10,000
+        AronCard(Modifier.fillMaxWidth()) {
+            Column(Modifier.fillMaxWidth().padding(AronTokens.Space.L), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.Xs)) {
+                Text(stringResource(R.string.kpi_strike), style = MaterialTheme.typography.bodySmall, color = c.textSecondary)
+                MoneyText(strip.strikeRateHundredths?.let { localizedDigits(stringResource(R.string.kpi_percent, percentText(it))) } ?: stringResource(R.string.kpi_none))
+                AronMeter(strip.strikeRateHundredths ?: 0, STRIKE_RATE_MAX, Modifier.padding(top = AronTokens.Space.Xs))
+            }
+        }
+        Row(Modifier.fillMaxWidth().height(IntrinsicSize.Max), horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.M)) {
+            AronStatCard(stringResource(R.string.kpi_non_visit), localizedNumber(strip.nonVisitOutlets.toLong()), Modifier.weight(1f).fillMaxHeight())
+            AronStatCard(stringResource(R.string.kpi_no_sale), localizedNumber(strip.noSaleOutlets.toLong()), Modifier.weight(1f).fillMaxHeight())
         }
         if (strip.categories.isNotEmpty()) {
             AronCard(Modifier.fillMaxWidth()) {

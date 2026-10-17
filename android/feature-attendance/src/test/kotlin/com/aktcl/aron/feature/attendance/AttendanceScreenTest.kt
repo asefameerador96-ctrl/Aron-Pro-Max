@@ -27,7 +27,7 @@ import org.robolectric.annotation.Config
 
 /** F-SR-011 / F-SR-012 screen (screens-sr s3): prompt, the one bar primary, the hold sheet, Bangla and English, the dhaka clock. */
 @RunWith(AndroidJUnit4::class)
-@Config(sdk = [34])
+@Config(sdk = [36])
 class AttendanceScreenTest {
     @get:Rule val compose = createComposeRule()
 

@@ -3,6 +3,7 @@
 <resources>
     <string name="memo_title">Memo</string>
     <string name="memo_banner">Select an outlet to see its memo. You can reprint it from here.</string>
+    <string name="memo_banner_dismiss">Dismiss</string>
     <string name="memo_section_today">Today\'s memos</string>
     <string name="memo_row_meta">Memo %1$s · %2$s</string>
     <string name="memo_due_chip">Due</string>

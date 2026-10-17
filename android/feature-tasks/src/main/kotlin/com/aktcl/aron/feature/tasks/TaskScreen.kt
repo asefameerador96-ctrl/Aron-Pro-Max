@@ -1,6 +1,7 @@
 package com.aktcl.aron.feature.tasks
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -13,12 +14,19 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.SwipeToDismissBox
+import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.Text
+import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -27,6 +35,8 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -57,12 +67,17 @@ private const val ONGOING = "ongoing"
 /** screens-sr s12: at most this many task cards carry a shadow; beyond it the cards turn flat (no shadow layer per row on the 2 GB phones). */
 private const val SHADOWED_CARDS = 8
 
+/** screens-sr s12: a swipe to the end past this share of the card width resolves the task (F-SR-047). */
+private const val SWIPE_RESOLVE_FRACTION = 0.4f
+
 /**
  * The Task screen (F-SR-046, F-SR-047; screens-sr s12): the ongoing and completed tabs (segmented, with counts), one
  * field card per task (title, description, outlet, due date, the status chip and a "Resolve" text button at the card's
  * end: discoverable and TalkBack-friendly, no dialog and no note), and the empty state with the synced-at caption so an
- * empty list is not mistaken for a stale one. Resolved tasks stay in place under "Completed". Only the first eight cards
- * cast a shadow; the rest are flat (same fill, edge and radius), so a long list never draws a shadow layer per row.
+ * empty list is not mistaken for a stale one. An ongoing card also resolves on a swipe to the end past 40 percent of its
+ * width (F-SR-047 parity, a Confirm haptic; the card springs back, the task moves to "Completed"). Resolved tasks stay in
+ * place under "Completed". Only the first eight cards cast a shadow; the rest are flat (same fill, edge and radius), so
+ * a long list never draws a shadow layer per row.
  */
 @Composable
 fun TaskContent(state: TaskListState, onResolve: (String) -> Unit, modifier: Modifier = Modifier) {
@@ -93,11 +108,55 @@ fun TaskContent(state: TaskListState, onResolve: (String) -> Unit, modifier: Mod
                     contentPadding = PaddingValues(start = AronTokens.Space.Screen, end = AronTokens.Space.Screen, bottom = AronTokens.Space.L),
                     verticalArrangement = Arrangement.spacedBy(AronTokens.Space.M),
                 ) {
-                    itemsIndexed(shown, key = { _, t -> t.taskUuid }) { i, t -> TaskCard(t, onResolve, Modifier.testTag(TaskTags.item(t.taskUuid)), flat = i >= SHADOWED_CARDS) }
+                    itemsIndexed(shown, key = { _, t -> t.taskUuid }) { i, t ->
+                        if (t.status == ONGOING) SwipeToResolve(t.taskUuid, onResolve, Modifier.testTag(TaskTags.item(t.taskUuid))) { TaskCard(t, onResolve, flat = i >= SHADOWED_CARDS) }
+                        else TaskCard(t, onResolve, Modifier.testTag(TaskTags.item(t.taskUuid)), flat = i >= SHADOWED_CARDS)
+                    }
                 }
             }
         }
     }
+}
+
+/**
+ * The swipe of F-SR-047 around an ongoing card: start to end only, past [SWIPE_RESOLVE_FRACTION] of the width; the
+ * `success.container` panel with the check glyph shows under the card while it moves. The value change is refused so
+ * the card springs back in place (the row leaves the list by its status, never by a dismiss animation); the resolve
+ * fires once per swipe with a Confirm haptic. TalkBack users use the button on the card.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SwipeToResolve(taskUuid: String, onResolve: (String) -> Unit, modifier: Modifier = Modifier, content: @Composable () -> Unit) {
+    val c = LocalAronColors.current
+    val haptic = LocalHapticFeedback.current
+    // the refused change is asked again on every move past the threshold: one resolve per gesture, re-armed once the card has settled
+    var armed by remember { mutableStateOf(true) }
+    val box = rememberSwipeToDismissBoxState(
+        confirmValueChange = { v ->
+            if (v == SwipeToDismissBoxValue.StartToEnd && armed) { armed = false; haptic.performHapticFeedback(HapticFeedbackType.Confirm); onResolve(taskUuid) }
+            false
+        },
+        positionalThreshold = { it * SWIPE_RESOLVE_FRACTION },
+    )
+    LaunchedEffect(box.targetValue) { if (box.targetValue == SwipeToDismissBoxValue.Settled) armed = true }
+    val panel = c.successContainer
+    SwipeToDismissBox(
+        state = box,
+        modifier = modifier,
+        enableDismissFromEndToStart = false,
+        backgroundContent = {
+            Box(
+                Modifier.fillMaxSize().drawBehind { drawRoundRect(panel, cornerRadius = CornerRadius(AronTokens.Radius.Card.toPx())) }.padding(horizontal = AronTokens.Space.L),
+                contentAlignment = Alignment.CenterStart,
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
+                    Icon(AronIcons.Check, contentDescription = null, tint = c.successOnContainer, modifier = Modifier.size(AronTokens.Size.Icon))
+                    Text(stringResource(R.string.tsk_resolve), style = MaterialTheme.typography.labelMedium, color = c.successOnContainer)
+                }
+            }
+        },
+        content = { content() },
+    )
 }
 
 /** One task on a field card: status chip, title, description (4 lines), the outlet and the due date with their icons, Resolve. [flat]: no shadow. */
@@ -118,7 +177,7 @@ private fun TaskCard(t: TaskItem, onResolve: (String) -> Unit, modifier: Modifie
             }
             t.description?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = c.textPrimary, maxLines = 4, overflow = TextOverflow.Ellipsis) }
             t.outletName?.let { MetaLine(AronIcons.Outlet, stringResource(R.string.tsk_outlet, it)) }
-            t.dueDate?.let { MetaLine(AronIcons.Flag, stringResource(R.string.tsk_due, localizedDigits(it))) }
+            t.dueDate?.let { MetaLine(AronIcons.Flag, stringResource(R.string.tsk_due, dueDateText(it))) }
             if (ongoing) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                     AronTextButton(stringResource(R.string.tsk_resolve), { onResolve(t.taskUuid) }, Modifier.testTag(TaskTags.resolve(t.taskUuid)), icon = AronIcons.Check)
@@ -152,6 +211,19 @@ private fun Pill(container: Color?, ink: Color, icon: ImageVector, label: String
         Text(label, style = MaterialTheme.typography.labelMedium, color = ink, maxLines = 1)
     }
 }
+
+/** "30 November" / "৩০ নভেম্বর" of a `yyyy-MM-dd` due date (screens-sr s12); the raw text with localised digits when it does not parse. */
+@Composable
+private fun dueDateText(isoDate: String): String {
+    val date = runCatching { java.time.LocalDate.parse(isoDate) }.getOrNull() ?: return localizedDigits(isoDate)
+    val month = stringResource(MONTHS[date.monthValue - 1])
+    return stringResource(R.string.tsk_due_date, localizedNumber(date.dayOfMonth.toLong()), month)
+}
+
+private val MONTHS = listOf(
+    R.string.tsk_month_1, R.string.tsk_month_2, R.string.tsk_month_3, R.string.tsk_month_4, R.string.tsk_month_5, R.string.tsk_month_6,
+    R.string.tsk_month_7, R.string.tsk_month_8, R.string.tsk_month_9, R.string.tsk_month_10, R.string.tsk_month_11, R.string.tsk_month_12,
+)
 
 /** `yyyy-MM-dd HH:mm` in Asia/Dhaka (UTC+6) of an RFC 3339 instant. */
 internal fun dhakaStamp(iso: String): String = runCatching {

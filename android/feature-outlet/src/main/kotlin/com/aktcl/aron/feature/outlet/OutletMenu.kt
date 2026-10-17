@@ -13,6 +13,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import com.aktcl.aron.core.ui.AronIcons
@@ -38,7 +39,9 @@ fun OutletMenuContent(onKind: (OutletRequestKind) -> Unit, modifier: Modifier = 
             .padding(vertical = AronTokens.Space.S),
     ) {
         AronSectionLabel(stringResource(R.string.out_menu_requests))
-        AronTileGrid(tiles, columns = 2) { k, mod ->
+        // two columns, one from font scale 1.9 (screens-sr s0 reflow, tokens s6 `fontScale.tiles1`)
+        val columns = if (LocalDensity.current.fontScale >= AronTokens.Size.OneColumnFontScale) 1 else 2
+        AronTileGrid(tiles, columns = columns) { k, mod ->
             AronTile(
                 label = stringResource(when (k) { OutletRequestKind.NEW -> R.string.out_req_new; OutletRequestKind.CLOSE -> R.string.out_req_close; OutletRequestKind.INFO -> R.string.out_req_info; else -> R.string.out_req_cluster }),
                 icon = when (k) { OutletRequestKind.NEW -> AronIcons.Outlet; OutletRequestKind.CLOSE -> AronIcons.Close; OutletRequestKind.INFO -> AronIcons.Edit; else -> AronIcons.Team },

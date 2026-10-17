@@ -15,4 +15,18 @@
     <string name="tsk_outlet">Outlet: %1$s</string>
     <string name="tsk_resolve">Resolve</string>
     <string name="tsk_badge_open">%1$s open</string>
+    <!-- "30 November": the due date as day and month name (screens-sr s12) -->
+    <string name="tsk_due_date">%1$s %2$s</string>
+    <string name="tsk_month_1">January</string>
+    <string name="tsk_month_2">February</string>
+    <string name="tsk_month_3">March</string>
+    <string name="tsk_month_4">April</string>
+    <string name="tsk_month_5">May</string>
+    <string name="tsk_month_6">June</string>
+    <string name="tsk_month_7">July</string>
+    <string name="tsk_month_8">August</string>
+    <string name="tsk_month_9">September</string>
+    <string name="tsk_month_10">October</string>
+    <string name="tsk_month_11">November</string>
+    <string name="tsk_month_12">December</string>
 </resources>

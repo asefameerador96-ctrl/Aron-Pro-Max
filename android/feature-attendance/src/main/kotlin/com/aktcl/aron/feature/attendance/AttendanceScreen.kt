@@ -17,6 +17,7 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -58,6 +59,7 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
@@ -133,9 +135,12 @@ fun AttendanceContent(
     var hold by rememberSaveable { mutableStateOf<String?>(null) }
     val checkOutPhase = state.checkedInAt != null
     val dayComplete = state.checkedInAt != null && state.checkedOutAt != null
-    // the hold sheet closes itself when the flow is done or the day moved on (a kill and relaunch never reopens it)
-    if (hold == HOLD_IN && checkOutPhase) hold = null
-    if (hold == HOLD_OUT && dayComplete) hold = null
+    // the hold sheet closes itself when the flow is done or the day moved on (a kill and relaunch never reopens it);
+    // an effect, not a write during composition
+    LaunchedEffect(checkOutPhase, dayComplete) {
+        if (hold == HOLD_IN && checkOutPhase) hold = null
+        if (hold == HOLD_OUT && dayComplete) hold = null
+    }
     Box(modifier.fillMaxSize()) {
         ScreenWithBar(Modifier.fillMaxSize(), bar = {
             Column(Modifier.fillMaxWidth()) {
@@ -395,7 +400,7 @@ private fun HoldSheet(visible: Boolean, title: String, icon: ImageVector, timeTe
     val scrim = c.surfaceScrim
     val handle = c.textSecondary.copy(alpha = 0.7f)
     BackHandler(enabled = visible, onBack = onCancel)
-    val scrimT by animateFloatAsState(if (visible) 1f else 0f, tween(if (reduced) AronTokens.Motion.Reduced else AronTokens.Motion.Base, easing = LinearEasing), label = "scrim")
+    val scrimT by animateFloatAsState(if (visible) 1f else 0f, tween(if (reduced) AronTokens.Motion.Reduced else AronTokens.Motion.Base, easing = LinearEasing))
     AnimatedVisibility(
         visible,
         enter = if (reduced) fadeIn(tween(AronTokens.Motion.Reduced, easing = LinearEasing)) else EnterTransition.None,
@@ -417,7 +422,7 @@ private fun HoldSheet(visible: Boolean, title: String, icon: ImageVector, timeTe
                     .align(Alignment.BottomCenter)
                     .fillMaxWidth()
                     .then(sheetMotion)
-                    .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = {}),
+                    .pointerInput(Unit) { detectTapGestures { } }, // the sheet swallows taps without an actionable node for TalkBack
                 kind = GlassKind.Sheet,
             ) {
                 Column(

@@ -7,6 +7,7 @@ import androidx.compose.ui.test.assertContentDescriptionEquals
 import androidx.compose.ui.test.assertHasClickAction
 import androidx.compose.ui.test.assertHasNoClickAction
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsOff
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasContentDescription
@@ -94,7 +95,9 @@ class AmoAppTest {
         assertEquals(SyncChipState.Synced, RoleHomes.syncState(BundleStatus.Ready("v1", "2026-10-05"), offline = false))
         assertEquals(SyncChipState.Synced, RoleHomes.syncState(BundleStatus.Unchanged, offline = false))
         assertEquals(SyncChipState.Offline, RoleHomes.syncState(BundleStatus.Offline, offline = false))
-        assertEquals(SyncChipState.Offline, RoleHomes.syncState(BundleStatus.Refused(401, "x"), offline = false))
+        // a refusal arrived over a working connection: the chip is not "offline"; the bundle line carries the refusal
+        assertEquals(SyncChipState.Synced, RoleHomes.syncState(BundleStatus.Refused(401, "x"), offline = false))
+        assertEquals(SyncChipState.Offline, RoleHomes.syncState(BundleStatus.Refused(401, "x"), offline = true))
     }
 
     @Test
@@ -156,7 +159,8 @@ class AmoAppTest {
         show(AppLanguage.BN, onSunlight = { on = it })
         compose.onNodeWithTag(RoleHomeTags.SETTINGS).performClick()
         compose.waitForIdle()
-        compose.onNodeWithTag(RoleHomeTags.SET_SUNLIGHT).performScrollTo().assertHasClickAction().performClick()
+        // the row announces itself as a switch with its state (UI-SR-6), not as a plain button
+        compose.onNodeWithTag(RoleHomeTags.SET_SUNLIGHT).performScrollTo().assertIsOff().assertHasClickAction().performClick()
         compose.waitForIdle()
         assertEquals(true, on)
     }

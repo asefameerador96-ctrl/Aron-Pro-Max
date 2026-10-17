@@ -14,7 +14,8 @@
     <string name="out_no_outlet_location">This shop has no saved location.</string>
     <string name="out_mocked">A mock location was detected. A sale at this shop is not allowed from a mock location.</string>
     <string name="out_mocked_warn">A mock location was detected. This is recorded.</string>
-    <string name="out_blocked_mock">Mock location detected. This visit is closed.</string>
+    <string name="out_blocked_mock">This sale cannot be made because of a mock location.</string>
+    <string name="out_mocked_refresh">Mock location found. Turn it off, then Refresh.</string>
     <string name="out_location_denied">Precise location is not allowed. Allow location for ARON to continue.</string>
     <string name="out_location_off">Location is off. Turn it on to start selling.</string>
     <string name="out_refresh">Refresh</string>

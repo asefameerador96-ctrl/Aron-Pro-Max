@@ -20,7 +20,7 @@ import org.robolectric.annotation.Config
 
 /** F-SR-002 screen. */
 @RunWith(AndroidJUnit4::class)
-@Config(sdk = [34])
+@Config(sdk = [36])
 class OtpScreenTest {
     @get:Rule val compose = createComposeRule()
 
@@ -32,6 +32,7 @@ class OtpScreenTest {
 
     @Test fun verifyIsDisabledUntilFourDigits() {
         show(AppLanguage.EN, OtpState("12")); compose.onNodeWithTag(OtpTags.VERIFY).assertIsNotEnabled()
+        compose.onNodeWithText("Enter the 4-digit code.").assertExists() // a disabled primary always says why (android-glass s6.1)
     }
 
 

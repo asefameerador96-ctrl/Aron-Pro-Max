@@ -7,6 +7,8 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.swipeRight
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.aktcl.aron.core.common.AppLanguage
@@ -20,7 +22,7 @@ import org.robolectric.annotation.Config
 
 /** F-SR-046 / F-SR-047 screen. */
 @RunWith(AndroidJUnit4::class)
-@Config(sdk = [34])
+@Config(sdk = [36])
 class TaskScreenTest {
     @get:Rule val compose = createComposeRule()
 
@@ -41,10 +43,30 @@ class TaskScreenTest {
     @Test fun resolveIsOnTheCardAndTapResolves() {
         var resolved: String? = null
         show(AppLanguage.EN, TaskListState(listOf(t("a")), 1), onResolve = { resolved = it })
-        // Resolve is always on the card (screens-sr s12: discoverable and TalkBack-friendly); no swipe is needed (DECISIONS: swipe parity deferred)
+        // Resolve is always on the card (screens-sr s12: discoverable and TalkBack-friendly); the swipe is the parity gesture beside it
         compose.onNodeWithTag(TaskTags.resolve("a")).assertExists()
         compose.onNodeWithTag(TaskTags.resolve("a")).performClick()
         assertEquals("a", resolved)
+    }
+
+    @Test fun swipeToTheEndResolvesOnce() {
+        var resolved = 0
+        show(AppLanguage.EN, TaskListState(listOf(t("a")), 1), onResolve = { resolved++ })
+        // F-SR-047: a swipe to the end past 40 percent of the card resolves; the card springs back (no dismiss animation)
+        compose.onNodeWithTag(TaskTags.item("a")).performTouchInput { swipeRight() }
+        compose.waitForIdle()
+        assertEquals(1, resolved)
+        compose.onNodeWithTag(TaskTags.item("a")).assertExists()
+    }
+
+    @Test fun dueDateReadsAsDayAndMonthName() {
+        show(AppLanguage.EN, TaskListState(listOf(t("a")), 1))
+        compose.onNodeWithText("Due 9 October").assertExists()
+    }
+
+    @Test fun dueDateReadsAsDayAndMonthNameInBangla() {
+        show(AppLanguage.BN, TaskListState(listOf(t("a")), 1))
+        compose.onNodeWithText("শেষ তারিখ ৯ অক্টোবর").assertExists()
     }
 
     @Test fun aLongListKeepsEveryCardAndItsResolveButton() {

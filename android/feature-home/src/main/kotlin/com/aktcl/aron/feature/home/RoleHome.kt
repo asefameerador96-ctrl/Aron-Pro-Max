@@ -38,10 +38,14 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.toggleableState
+import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.aktcl.aron.core.common.AppLanguage
@@ -163,12 +167,16 @@ object RoleHomes {
     fun header(rolePrefix: String, user: HomeUser, businessDate: String): HomeHeader =
         HomeModel.header(rolePrefix, user.fullName, user.username, null, null, businessDate)
 
-    /** The status chip from what the bundle check said; an offline unlock is offline whatever the check says. Pure. */
+    /**
+     * The status chip from what the bundle check said; an offline unlock is offline whatever the check says. A refusal
+     * (401/403/404 received while online) is not "offline": the connection worked, so the chip stays Synced and the bundle
+     * line beside it carries the refusal (kit follow-up: an "attention" chip state would say it in one place). Pure.
+     */
     fun syncState(bundle: BundleStatus, offline: Boolean): SyncChipState = when {
         offline -> SyncChipState.Offline
         bundle == BundleStatus.Checking -> SyncChipState.Syncing
-        bundle is BundleStatus.Ready || bundle == BundleStatus.Unchanged -> SyncChipState.Synced
-        else -> SyncChipState.Offline
+        bundle == BundleStatus.Offline -> SyncChipState.Offline
+        else -> SyncChipState.Synced
     }
 }
 
@@ -225,7 +233,7 @@ fun RoleHomeContent(
             // The title is `type.heading`, up to 2 lines (screens-sr s2). The avatar is decorative and gives way to the title:
             // dropped from font scale 1.3 as the spec says, and also when the name would otherwise be cut (latched per title).
             var squeezed by remember(header.title) { mutableStateOf(false) }
-            val showAvatar = LocalDensity.current.fontScale < AvatarDropFontScale && !squeezed
+            val showAvatar = LocalDensity.current.fontScale < AronTokens.Size.ReflowFontScale && !squeezed
             val dateSpoken = stringResource(R.string.home_business_date, localizedDigits(header.subtitle))
             Row(
                 Modifier
@@ -258,7 +266,8 @@ fun RoleHomeContent(
                     Text(bundleLine(bundle), style = MaterialTheme.typography.bodySmall, color = c.textSecondary, modifier = Modifier.testTag(HomeTags.BUNDLE))
                 }
             }
-            Column(Modifier.padding(top = AronTokens.Space.S), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
+            // banners keep the screen gutter like every other block (screens-sr s0: content width 328, never edge to edge)
+            Column(Modifier.padding(top = AronTokens.Space.S).padding(horizontal = AronTokens.Space.Screen), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
                 if (user.offline) AronBanner(stringResource(CoreR.string.core_ui_offline_mode), Modifier.testTag(HomeTags.MODE), BannerKind.Offline)
                 if (user.reauthRequired) AronBanner(stringResource(R.string.home_reauth_required), kind = BannerKind.Warning)
                 if (user.updateRequired) AronBanner(stringResource(R.string.home_update_required), kind = BannerKind.Warning)
@@ -275,9 +284,6 @@ fun RoleHomeContent(
         }
     }
 }
-
-/** Font scale from which the header avatar is dropped to give the title room (screens-sr s2). */
-private const val AvatarDropFontScale = 1.3f
 
 /** A 40 dp generic avatar with the first letter of the name; decorative (the title beside it carries the name). */
 @Composable
@@ -366,9 +372,14 @@ fun RoleSettingsContent(
             }
             if (onSunlight != null) {
                 AronSectionLabel(stringResource(R.string.rh_set_display))
-                // the same [switch] row as the SR Settings (screens-sr s14): the whole 56 dp row toggles; the switch is decorative for TalkBack
+                // the same [switch] row as the SR Settings (screens-sr s14, UI-SR-6): the whole 56 dp row toggles and announces
+                // itself as a switch with its on/off state (docs/32 s2a: never by colour alone); the Switch itself is decorative
                 AronListRow(
-                    stringResource(R.string.rh_set_sunlight), Modifier.padding(horizontal = AronTokens.Space.Screen).testTag(RoleHomeTags.SET_SUNLIGHT),
+                    stringResource(R.string.rh_set_sunlight),
+                    Modifier
+                        .padding(horizontal = AronTokens.Space.Screen)
+                        .testTag(RoleHomeTags.SET_SUNLIGHT)
+                        .semantics { role = Role.Switch; toggleableState = ToggleableState(sunlight) },
                     subtitle = stringResource(R.string.rh_set_sunlight_hint), flat = true, onClick = { onSunlight(!sunlight) },
                     leading = { Icon(AronIcons.Sun, contentDescription = null, tint = c.accent, modifier = Modifier.size(AronTokens.Size.Icon)) },
                     trailingContent = {
@@ -435,7 +446,15 @@ fun RoleSectionPlaceholder(
     syncedAt: String? = null,
 ) {
     AronScreen(modifier, topBar = { AronTopBar(title, onBack = onBack) }) {
-        Box(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom)), contentAlignment = Alignment.Center) {
+        // scrolls so the illustration, heading, hint and caption never clip at large font scales on a short window
+        Box(
+            Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom))
+                .padding(vertical = AronTokens.Space.Xl),
+            contentAlignment = Alignment.Center,
+        ) {
             AronEmptyState(
                 stringResource(R.string.rh_empty_title, title), Modifier.testTag(RoleHomeTags.EMPTY),
                 hint = stringResource(R.string.rh_empty_hint), icon = icon, syncedAt = syncedAt,

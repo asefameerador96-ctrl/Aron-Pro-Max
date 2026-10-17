@@ -79,9 +79,10 @@ fun OtpContent(
     val c = LocalAronColors.current
     ScreenWithBar(modifier.fillMaxSize(), bar = {
         Column(Modifier.fillMaxWidth()) {
+            // the disabled primary says why (android-glass s6.1); the reason slot stays reserved so the bar never jumps at the fourth digit
             AuthBar(
                 primaryText = stringResource(R.string.otp_verify), onPrimary = onVerify, primaryTag = OtpTags.VERIFY,
-                enabled = state.canVerify, busy = state.busy,
+                enabled = state.canVerify, busy = state.busy, reason = stringResource(R.string.otp_reason_digits),
             )
         }
     }) {

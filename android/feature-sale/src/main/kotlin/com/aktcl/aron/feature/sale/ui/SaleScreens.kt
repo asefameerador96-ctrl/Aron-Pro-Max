@@ -1,6 +1,9 @@
 package com.aktcl.aron.feature.sale.ui
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
@@ -20,6 +23,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.toggleable
@@ -33,27 +37,36 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import com.aktcl.aron.core.common.AppLanguage
 import com.aktcl.aron.core.ui.AronBanner
@@ -177,10 +190,14 @@ internal fun DockChip(label: String, selected: Boolean, onClick: () -> Unit, mod
         Row(
             Modifier
                 .heightIn(min = 40.dp)
-                .drawBehind {
-                    val r = CornerRadius(AronTokens.Radius.Chip.toPx()); val w = stroke.toPx()
-                    drawRoundRect(fill, cornerRadius = r)
-                    drawRoundRect(edge, Offset(w / 2, w / 2), Size(size.width - w, size.height - w), CornerRadius(r.x - w / 2), style = Stroke(w))
+                .drawWithCache {
+                    // the ring and the stroke style are built once per size, not on every draw of a scrolling dock
+                    val r = CornerRadius(AronTokens.Radius.Chip.toPx()); val w = stroke.toPx(); val edgeStyle = Stroke(w)
+                    val inner = CornerRadius(r.x - w / 2); val edgeSize = Size(size.width - w, size.height - w); val edgeAt = Offset(w / 2, w / 2)
+                    onDrawBehind {
+                        drawRoundRect(fill, cornerRadius = r)
+                        drawRoundRect(edge, edgeAt, edgeSize, inner, style = edgeStyle)
+                    }
                 }
                 .padding(horizontal = AronTokens.Space.M),
             verticalAlignment = Alignment.CenterVertically,
@@ -268,6 +285,39 @@ fun SaleEntryScreen(
     val groups = visible.filterNot { it.skuId in recentSkuIds }.groupBy { it.categoryCode }.toList().sortedBy { categoryRank(it.first) }
     val categories = skus.map { it.categoryCode }.distinct().sortedBy { categoryRank(it) }
     val hasLines = review?.lines?.isNotEmpty() == true
+    val reducedMotion = LocalReducedMotion.current
+    // the dock (screens-sr s7, android-glass s6.17): above the bar at the default scale, the first item of the list from font scale 1.3
+    val dockInList = LocalDensity.current.fontScale >= AronTokens.Size.ReflowFontScale
+    val listState = rememberLazyListState()
+    var dockShown by remember { mutableStateOf(true) }
+    LaunchedEffect(listState) {
+        // hides on scroll down, returns on scroll up (and at the top); the first item's index and offset say which way
+        var lastIndex = listState.firstVisibleItemIndex
+        var lastOffset = listState.firstVisibleItemScrollOffset
+        snapshotFlow { listState.firstVisibleItemIndex to listState.firstVisibleItemScrollOffset }.collect { (index, offset) ->
+            val down = index > lastIndex || (index == lastIndex && offset > lastOffset + ScrollSlackPx)
+            val up = index < lastIndex || (index == lastIndex && offset < lastOffset - ScrollSlackPx)
+            if (down) dockShown = false else if (up || (index == 0 && offset == 0)) dockShown = true
+            lastIndex = index; lastOffset = offset
+        }
+    }
+    val dock: @Composable () -> Unit = {
+        if (searching) {
+            Row(Modifier.fillMaxWidth().padding(horizontal = AronTokens.Space.Screen, vertical = AronTokens.Space.Xs), verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
+                KitTextField(query, { query = it }, stringResource(R.string.sale_search), Modifier.weight(1f))
+                DockChip(stringResource(R.string.sale_search_close), selected = false, onClick = { searching = false; query = "" }, icon = AronIcons.Close)
+            }
+        } else {
+            Row(
+                Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = AronTokens.Space.Screen, vertical = AronTokens.Space.Xs),
+                horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.S),
+            ) {
+                DockChip(stringResource(R.string.sale_search), selected = false, onClick = { searching = true }, icon = AronIcons.Search)
+                DockChip(stringResource(R.string.sale_filter_all), selected = category == null, onClick = { category = null })
+                categories.forEach { code -> DockChip(categoryLabel(code), selected = category == code, onClick = { category = code }) }
+            }
+        }
+    }
     Column(modifier.fillMaxSize()) {
         Column(Modifier.weight(1f).fillMaxWidth()) {
             if (onPreviousSales != null) {
@@ -275,11 +325,15 @@ fun SaleEntryScreen(
             }
             when {
                 skus.isEmpty() || review == null -> AronEmptyState(stringResource(R.string.sale_empty), icon = AronIcons.Sale)
-                visible.isEmpty() -> AronEmptyState(
-                    stringResource(R.string.sale_search_none), icon = AronIcons.Search,
-                    actionLabel = stringResource(R.string.sale_clear), onAction = { query = ""; category = null },
-                )
-                else -> LazyColumn(Modifier.weight(1f), contentPadding = PaddingValues(bottom = AronTokens.Space.L)) {
+                visible.isEmpty() -> {
+                    if (dockInList) dock()
+                    AronEmptyState(
+                        stringResource(R.string.sale_search_none), icon = AronIcons.Search,
+                        actionLabel = stringResource(R.string.sale_clear), onAction = { query = ""; category = null },
+                    )
+                }
+                else -> LazyColumn(Modifier.weight(1f), state = listState, contentPadding = PaddingValues(bottom = AronTokens.Space.L)) {
+                    if (dockInList) item(key = "dock", contentType = "dock") { dock() }
                     if (recent.isNotEmpty()) {
                         item(key = "recent_head", contentType = "head") { GroupLabel(stringResource(R.string.sale_group_recent)) }
                         recent.forEachIndexed { i, sku ->
@@ -301,23 +355,11 @@ fun SaleEntryScreen(
                 }
             }
         }
-        // the filter dock (android-glass s6.17): search, All, one chip per category present
-        if (skus.isNotEmpty()) {
-            if (searching) {
-                Row(Modifier.fillMaxWidth().padding(horizontal = AronTokens.Space.Screen, vertical = AronTokens.Space.Xs), verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
-                    KitTextField(query, { query = it }, stringResource(R.string.sale_search), Modifier.weight(1f))
-                    DockChip(stringResource(R.string.sale_search_close), selected = false, onClick = { searching = false; query = "" }, icon = AronIcons.Close)
-                }
-            } else {
-                Row(
-                    Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = AronTokens.Space.Screen, vertical = AronTokens.Space.Xs),
-                    horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.S),
-                ) {
-                    DockChip(stringResource(R.string.sale_search), selected = false, onClick = { searching = true }, icon = AronIcons.Search)
-                    DockChip(stringResource(R.string.sale_filter_all), selected = category == null, onClick = { category = null })
-                    categories.forEach { code -> DockChip(categoryLabel(code), selected = category == code, onClick = { category = code }) }
-                }
-            }
+        // the filter dock above the bar (android-glass s6.17): search, All, one chip per category present; it folds away on
+        // scroll down over `motion.fast` (a snap under reduced motion) and never while the search field is open
+        if (skus.isNotEmpty() && !dockInList) {
+            val fold = if (reducedMotion) snap<IntSize>() else tween(AronTokens.Motion.Fast, easing = AronEasing.Out)
+            AnimatedVisibility(visible = dockShown || searching, enter = expandVertically(fold), exit = shrinkVertically(fold)) { dock() }
         }
         AronBottomBar(
             summaryLabel = stringResource(R.string.sale_total),
@@ -348,6 +390,10 @@ private fun GroupLabel(text: String) {
  * and a trailing 48 dp `+` (one tap adds 1 and the row expands); expanded = `accent.container` fill, line total as a
  * numeral, the stepper with the unit beside it, the packs caption, and the over-stock warning well (a warning, never a block).
  * The row morphs between the two over `motion.fast` (`animateContentSize`); under reduced motion it snaps.
+ *
+ * TalkBack: each row is ONE merged node. Idle: the row's own click action adds one (the `+` stays touchable, silent).
+ * Expanded: the row reads name, caption, line total and quantity, with plus and minus as custom actions; the stepper's
+ * buttons stay touchable but leave the semantics tree.
  */
 @Composable
 private fun SaleSkuRow(sku: SaleSku, qty: Long, line: ReviewLine?, position: RowPosition, onQuantity: (Long, Long) -> Unit) {
@@ -359,22 +405,24 @@ private fun SaleSkuRow(sku: SaleSku, qty: Long, line: ReviewLine?, position: Row
     val name = skuDisplayName(sku)
     val expanded = qty > 0
     val addLabel = stringResource(R.string.sale_add)
-    val morph = if (LocalReducedMotion.current) snap() else tween<androidx.compose.ui.unit.IntSize>(AronTokens.Motion.Fast, easing = AronEasing.Out)
+    val morph = if (LocalReducedMotion.current) snap() else tween<IntSize>(AronTokens.Motion.Fast, easing = AronEasing.Out)
     Box(Modifier.fillMaxWidth().padding(horizontal = AronTokens.Space.Screen).animateContentSize(morph)) {
         if (!expanded) {
-            AronListRow(
-                title = name, subtitle = caption, leading = { SkuThumb(name) }, flat = true, position = position, divider = position != RowPosition.Last && position != RowPosition.Only,
-                trailingContent = {
-                    val fill = if (c.sunlight) c.accentHi else c.accentContainer
-                    val ink = if (c.sunlight) c.textOnAccent else c.accentOnContainer
-                    Box(
-                        Modifier.size(AronTokens.Touch.Min).clip(CircleShape).drawBehind { drawCircle(fill) }
-                            .clickable(role = Role.Button, onClick = { onQuantity(sku.skuId, 1) })
-                            .semantics { contentDescription = addLabel },
-                        contentAlignment = Alignment.Center,
-                    ) { Icon(AronIcons.Add, contentDescription = null, tint = ink, modifier = Modifier.size(AronTokens.Size.Icon)) }
-                },
-            )
+            Box(Modifier.semantics(mergeDescendants = true) { onClick(label = addLabel) { onQuantity(sku.skuId, 1); true } }) {
+                AronListRow(
+                    title = name, subtitle = caption, leading = { SkuThumb(name) }, flat = true, position = position, divider = position != RowPosition.Last && position != RowPosition.Only,
+                    trailingContent = {
+                        val fill = if (c.sunlight) c.accentHi else c.accentContainer
+                        val ink = if (c.sunlight) c.textOnAccent else c.accentOnContainer
+                        Box(
+                            Modifier.size(AronTokens.Touch.Min).clip(CircleShape).drawBehind { drawCircle(fill) }
+                                .clickable(role = Role.Button, onClick = { onQuantity(sku.skuId, 1) })
+                                .clearAndSetSemantics { },
+                            contentAlignment = Alignment.Center,
+                        ) { Icon(AronIcons.Add, contentDescription = null, tint = ink, modifier = Modifier.size(AronTokens.Size.Icon)) }
+                    },
+                )
+            }
         } else {
             ExpandedSkuRow(sku, qty, line, position, name, caption, unit, onQuantity)
         }
@@ -384,23 +432,40 @@ private fun SaleSkuRow(sku: SaleSku, qty: Long, line: ReviewLine?, position: Row
 @Composable
 private fun ExpandedSkuRow(sku: SaleSku, qty: Long, line: ReviewLine?, position: RowPosition, name: String, caption: String, unit: String, onQuantity: (Long, Long) -> Unit) {
     val c = LocalAronColors.current
+    val plusLabel = stringResource(R.string.sale_more)
+    val minusLabel = stringResource(R.string.sale_less)
+    val qtyState = stringResource(R.string.sale_qty_a11y, localizedNumber(qty), unit)
+    val actions = listOfNotNull(
+        if (qty < MaxLineQty) CustomAccessibilityAction(plusLabel) { onQuantity(sku.skuId, qty + 1); true } else null,
+        if (qty > 0) CustomAccessibilityAction(minusLabel) { onQuantity(sku.skuId, qty - 1); true } else null,
+    )
     Column(
-        Modifier.fillMaxWidth().flatRow(position, selected = true).padding(horizontal = AronTokens.Space.L, vertical = AronTokens.Space.M),
+        Modifier
+            .fillMaxWidth()
+            .flatRow(position, selected = true)
+            .semantics(mergeDescendants = true) { stateDescription = qtyState; customActions = actions }
+            .padding(horizontal = AronTokens.Space.L, vertical = AronTokens.Space.M),
         verticalArrangement = Arrangement.spacedBy(AronTokens.Space.S),
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.M)) {
+        // line 1: the thumbnail, then the name beside the line total and the caption on its own full-width line
+        Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.M)) {
             SkuThumb(name)
             Column(Modifier.weight(1f)) {
-                Text(name, style = MaterialTheme.typography.titleSmall, color = c.textPrimary, maxLines = 2)
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.M)) {
+                    Text(name, Modifier.weight(1f), style = MaterialTheme.typography.titleSmall, color = c.textPrimary, maxLines = 2)
+                    if (line != null) MoneyText(money(line.memoLine.grossMtk), style = MaterialTheme.typography.headlineLarge, textAlign = TextAlign.End)
+                }
                 Text(caption, style = MaterialTheme.typography.bodySmall, color = c.textSecondary)
             }
-            if (line != null) MoneyText(money(line.memoLine.grossMtk), style = MaterialTheme.typography.headlineLarge, textAlign = TextAlign.End)
         }
         Row(verticalAlignment = Alignment.CenterVertically) {
-            AronStepper(
-                value = qty.toInt(), onValueChange = { onQuantity(sku.skuId, it.toLong()) },
-                minusLabel = stringResource(R.string.sale_less), plusLabel = stringResource(R.string.sale_more), min = 0, max = 999_999,
-            )
+            // the quantity for TalkBack is the merged row's state description; the buttons stay touchable
+            Box(Modifier.clearAndSetSemantics { }) {
+                AronStepper(
+                    value = qty.toInt(), onValueChange = { onQuantity(sku.skuId, it.toLong()) },
+                    minusLabel = minusLabel, plusLabel = plusLabel, min = 0, max = MaxLineQty.toInt(),
+                )
+            }
             Spacer(Modifier.width(AronTokens.Space.S))
             Text(unit, style = MaterialTheme.typography.bodySmall, color = c.textSecondary, maxLines = 1)
         }
@@ -419,6 +484,12 @@ private fun ExpandedSkuRow(sku: SaleSku, qty: Long, line: ReviewLine?, position:
         }
     }
 }
+
+/** The stepper's ceiling per line (unchanged rule). */
+private const val MaxLineQty = 999_999L
+
+/** Scroll movement under this many pixels does not flip the dock (a finger resting on the list). */
+private const val ScrollSlackPx = 4
 
 /**
  * Review (নিরীক্ষণ, screens-sr s8): the lines card (three columns, category subtotals, no per-row sign), the totals card
@@ -583,12 +654,13 @@ private fun CreditSwitchRow(on: Boolean, label: String, onToggle: (Boolean) -> U
     }
 }
 
+/** A labelled amount of the totals card: the value is a `MoneyText` (tokens s7.3: money never wraps or clips; a leading true minus survives the split). */
 @Composable
 private fun Amount(label: String, value: String) {
     val c = LocalAronColors.current
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.M), verticalAlignment = Alignment.CenterVertically) {
         Text(label, style = MaterialTheme.typography.bodyLarge, color = c.textSecondary, modifier = Modifier.weight(1f))
-        Text(value, style = MaterialTheme.typography.titleSmall, color = c.textPrimary, maxLines = 1)
+        MoneyText(value, style = MaterialTheme.typography.headlineMedium, textAlign = TextAlign.End)
     }
 }
 

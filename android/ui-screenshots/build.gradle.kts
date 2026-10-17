@@ -1,4 +1,4 @@
-// android:ui-screenshots: Roborazzi screenshot tests of Home, Sale entry, Review and Memo detail (N-023, docs/32 s2a item 8b).
+// android:ui-screenshots: Roborazzi screenshot goldens of every SR screen on the Calm Glass kit plus the AMO and TSO homes (N-023, docs/32 s2a item 8b).
 // Test scope only: nothing here is packaged into an APK. Lane: android-core-ui.
 // Modes: default = VERIFY against src/test/screenshots; -Proborazzi.record=true = RECORD into src/test/screenshots;
 // -Paron.screenshots.recordTo=<dir> = RECORD into <dir> (CI bootstrap: build/test-results is in the uploaded artifact).

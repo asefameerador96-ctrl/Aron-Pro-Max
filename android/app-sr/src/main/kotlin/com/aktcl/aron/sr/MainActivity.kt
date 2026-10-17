@@ -122,6 +122,8 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Calm Glass light theme: dark status and navigation bar icons over the light page (docs/32 s2a legibility).
+        androidx.core.view.WindowCompat.getInsetsController(window, window.decorView).apply { isAppearanceLightStatusBars = true; isAppearanceLightNavigationBars = true }
         if (savedInstanceState == null) takePushIntent(intent)
         val language = AppLocale.current(this)
         val onLanguageSelect: (AppLanguage) -> Unit = { if (AppLocale.set(this, it)) recreate() }

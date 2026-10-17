@@ -4,8 +4,10 @@ import android.content.Context
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.unit.Density
 import androidx.test.core.app.ApplicationProvider
 import com.aktcl.aron.core.common.AppLanguage
 import com.aktcl.aron.core.ui.AppLocale
@@ -56,22 +58,23 @@ import java.io.File
 /**
  * Look-and-fix captures (not goldens, never verified) of the day-close side of the SR app: Attendance (not checked in,
  * checked in), Memo menu and detail, Summary, Sales Submit, Tasks (with items and empty), Journey, Login and the OTP
- * step; Bangla light and Bangla sunlight (plus English light for Login), tier B, 360 x 800 dp. The PNGs go to
+ * step; Bangla light and Bangla sunlight (plus English light for Login, and font scale 2.0 for the Memo and Submit
+ * tables), tier B, 360 x 800 dp. The PNGs go to
  * `-Daron.kitshot.dir` (default `build/kitshots`). Run: `./gradlew :android:ui-screenshots:testDebugUnitTest --tests '*CloseShot*'`.
  */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
-@Config(sdk = [34], qualifiers = "bn-w360dp-h800dp")
+@Config(sdk = [36], qualifiers = "bn-w360dp-h800dp")
 class CloseShot {
     @get:Rule val rule = createComposeRule()
 
     private val dir: File = File(System.getProperty("aron.kitshot.dir") ?: "build/kitshots").also { it.mkdirs() }
     private val options = RoborazziOptions(taskType = RoborazziTaskType.Record)
 
-    private fun shot(name: String, language: AppLanguage = AppLanguage.BN, sunlight: Boolean = false, content: @Composable () -> Unit) {
+    private fun shot(name: String, language: AppLanguage = AppLanguage.BN, sunlight: Boolean = false, fontScale: Float = 1f, content: @Composable () -> Unit) {
         val ctx = AppLocale.wrap(ApplicationProvider.getApplicationContext<Context>(), language)
         rule.setContent {
-            CompositionLocalProvider(LocalContext provides ctx) {
+            CompositionLocalProvider(LocalContext provides ctx, LocalDensity provides Density(LocalDensity.current.density, fontScale = fontScale)) {
                 AronTheme(language, dark = false, sunlight = sunlight, tier = GlassTier.B, reducedMotion = false) { content() }
             }
         }
@@ -106,6 +109,8 @@ class CloseShot {
     private val units = mapOf("lighter" to "পিস", "cigarette" to "স্টিক")
     private val counts = listOf(CountRow("visit", 6, 6), CountRow("memo", 6, 5), CountRow("stock_movement", 2, null), CountRow("qc_line", 0, 0))
     private val gate = SalesSubmitRules.gate(OutboxStates(1, 0, 40, 0, 0), counts, DuesAtSubmit(1, 84_000), false)
+    private val cleanCounts = listOf(CountRow("visit", 6, 6), CountRow("memo", 6, 6), CountRow("stock_movement", 2, 2), CountRow("qc_line", 0, 0))
+    private val cleanGate = SalesSubmitRules.gate(OutboxStates(0, 0, 40, 0, 0), cleanCounts, DuesAtSubmit(0, 0), false)
     private val labels = mapOf("visit" to "আউটলেট", "memo" to "মেমো", "stock_movement" to "স্টক", "qc_line" to "কিউসি")
     private val tasks = TaskListState(
         listOf(
@@ -122,10 +127,12 @@ class CloseShot {
 
     @Composable private fun AttendanceA() = AttendanceContent(notCheckedIn, "17:00", {}, {}, onRefreshFix = {}, nowIso = now)
     @Composable private fun AttendanceC() = AttendanceContent(checkedIn, "17:00", {}, {}, onRefreshFix = {}, nowIso = now)
-    @Composable private fun Memo() = MemoDetailView(MemoMenu.detail(memo), true, 57_500, ::skuName, {}, {}, {}, outletName = "Banani Store", onHistory = {})
+    private fun skuUnit(id: Long) = if (id == 100L) "স্টিক" else "পিস"
+    @Composable private fun Memo() = MemoDetailView(MemoMenu.detail(memo), true, 57_500, ::skuName, {}, {}, {}, outletName = "Banani Store", onHistory = {}, skuUnit = ::skuUnit)
     @Composable private fun Menu() = MemoMenuScreen(MemoMenu.rows(listOf(memo, memo2)), ::outletName, {})
     @Composable private fun Summary() = SummaryScreen(summary, ::skuName, {}, categoryLabel = { cats[it] ?: it }, unitLabel = { units[it] ?: "" })
     @Composable private fun Submit() = SalesSubmitScreen(true, counts, gate, SubmitProgress.Idle, { labels[it] ?: it }, {}, {}, lastContactText = "১০:৪২")
+    @Composable private fun SubmitClean() = SalesSubmitScreen(true, cleanCounts, cleanGate, SubmitProgress.Idle, { labels[it] ?: it }, {}, {}, lastContactText = "১০:৪২")
     @Composable private fun Tasks() = TaskContent(tasks, {})
     @Composable private fun TasksEmpty() = TaskContent(TaskListState(showEmptyState = true, syncedAt = "2026-10-05T04:42:00.000Z"), {})
     @Composable private fun Journey() = JourneyScreen(journey)
@@ -138,11 +145,13 @@ class CloseShot {
     @Test fun attendance_c_bn_sunlight() = shot("close_attendance_c_bn_sunlight", sunlight = true) { AttendanceC() }
     @Test fun memo_bn_light() = shot("close_memo_bn_light") { Memo() }
     @Test fun memo_bn_sunlight() = shot("close_memo_bn_sunlight", sunlight = true) { Memo() }
+    @Test fun memo_bn_light_fs2() = shot("close_memo_bn_light_fs2", fontScale = 2f) { Memo() } // the lines table stacks its numbers under the name
     @Test fun memo_menu_bn_light() = shot("close_memo_menu_bn_light") { Menu() }
     @Test fun summary_bn_light() = shot("close_summary_bn_light") { Summary() }
     @Test fun summary_bn_sunlight() = shot("close_summary_bn_sunlight", sunlight = true) { Summary() }
     @Test fun submit_bn_light() = shot("close_submit_bn_light") { Submit() }
     @Test fun submit_bn_sunlight() = shot("close_submit_bn_sunlight", sunlight = true) { Submit() }
+    @Test fun submit_bn_light_fs2() = shot("close_submit_bn_light_fs2", fontScale = 2f) { SubmitClean() } // the counts table (near the top: no block banners) as caption-over-value cells
     @Test fun tasks_bn_light() = shot("close_tasks_bn_light") { Tasks() }
     @Test fun tasks_bn_sunlight() = shot("close_tasks_bn_sunlight", sunlight = true) { Tasks() }
     @Test fun tasks_empty_bn_light() = shot("close_tasks_empty_bn_light") { TasksEmpty() }

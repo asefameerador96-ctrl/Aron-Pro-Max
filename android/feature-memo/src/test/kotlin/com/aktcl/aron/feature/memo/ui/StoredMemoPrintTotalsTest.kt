@@ -34,7 +34,7 @@ import java.util.Random
  * recomputed on the way. Amounts that are not whole paisa are included (printed with 3 decimals, AP-04).
  */
 @RunWith(AndroidJUnit4::class)
-@Config(sdk = [34])
+@Config(sdk = [36])
 class StoredMemoPrintTotalsTest {
     private val context = ApplicationProvider.getApplicationContext<Context>()
     private val db = Room.inMemoryDatabaseBuilder(context, AronDatabase::class.java).allowMainThreadQueries().build()

@@ -15,6 +15,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -33,11 +34,13 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -49,6 +52,8 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
@@ -84,8 +89,12 @@ object SalesSubmitTags {
     const val HOLD = "submit_hold"
 }
 
-/** The count columns of the reconciliation table on a 328 dp content width (screens-sr s11). */
+/** The least width of the count columns of the reconciliation table on a 328 dp content width (screens-sr s11); a wider count grows its column. */
 private val CountColumn = 56.dp
+
+/** From `fontScale.vertical` the table stacks each row's counts under its item (screens-sr s0: numbers never wrap or clip). */
+@Composable
+private fun tableStacked(): Boolean = LocalDensity.current.fontScale >= AronTokens.Size.VerticalFontScale
 
 /** The three steps of the day close (screens-sr s11): sync, reconcile, submit. */
 private enum class SubmitStep { Sync, Match, Submit }
@@ -96,8 +105,9 @@ private enum class SubmitStep { Sync, Match, Submit }
  * and a mismatch row in warning words), the gate banners (the mismatch banner carries "Sync again"), the info caption,
  * and the bar with "Sync data" (secondary, busy arc while [syncing]) and "Submit sales" (primary). The primary never
  * commits on its tap: it opens the hold step, and [onSubmit] fires only when the press-and-hold completes. Submit is
- * enabled only by [SubmitGate]; once the server has settled the submit the table gives way to the full success state
- * (the 96 dp disc, the record count and the check-out reminder).
+ * enabled only by [SubmitGate]; offline the primary says the submit will go when the phone connects (the submit is
+ * queued as the last event of the day, [SalesSubmitRules]); once the server has settled the submit the table gives way
+ * to the full success state (the 96 dp disc, the record count and the check-out reminder).
  */
 @Composable
 fun SalesSubmitScreen(
@@ -117,7 +127,8 @@ fun SalesSubmitScreen(
     val bn = LocalAppLanguage.current == AppLanguage.BN
     var hold by rememberSaveable { mutableStateOf(false) }
     val canSubmit = gate.enabled && progress == SubmitProgress.Idle
-    if (hold && !canSubmit) hold = false
+    // the hold step closes itself once the submit is no longer possible (an effect, not a write during composition)
+    LaunchedEffect(canSubmit) { if (hold && !canSubmit) hold = false }
     val allMatched = counts.isNotEmpty() && counts.all { it.matches }
     val step = when {
         progress != SubmitProgress.Idle || gate.blocks.any { it == SubmitBlock.AlreadySubmitted } || canSubmit -> SubmitStep.Submit
@@ -139,7 +150,10 @@ fun SalesSubmitScreen(
                         stringResource(R.string.submit_sync), onSync,
                         enabled = SalesSubmitRules.syncButtonEnabled(online, syncing), busy = syncing, // no icon: the Bangla label needs the width (screens-sr s11)
                     ),
-                    primary = AronBarAction(stringResource(R.string.submit_button), { hold = true }, enabled = canSubmit, icon = AronIcons.Submit),
+                    primary = AronBarAction(
+                        stringResource(if (canSubmit && !online) R.string.submit_button_offline else R.string.submit_button), { hold = true },
+                        enabled = canSubmit, icon = AronIcons.Submit,
+                    ),
                     reasonWhenDisabled = reason,
                 )
             }
@@ -220,12 +234,15 @@ private fun SettledState(records: Int) {
 @Composable
 private fun CountsCard(counts: List<CountRow>, typeLabel: (String) -> String) {
     val c = LocalAronColors.current
+    val stacked = tableStacked()
     AronCard(Modifier.fillMaxWidth()) {
         Column(Modifier.fillMaxWidth().padding(AronTokens.Space.L), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
                 Text(stringResource(R.string.submit_col_item), style = MaterialTheme.typography.labelMedium, color = c.textSecondary, modifier = Modifier.weight(1f))
-                Text(stringResource(R.string.submit_col_device), style = MaterialTheme.typography.labelMedium, color = c.textSecondary, textAlign = TextAlign.End, modifier = Modifier.width(CountColumn))
-                Text(stringResource(R.string.submit_col_server), style = MaterialTheme.typography.labelMedium, color = c.textSecondary, textAlign = TextAlign.End, modifier = Modifier.width(CountColumn))
+                if (!stacked) {
+                    Text(stringResource(R.string.submit_col_device), style = MaterialTheme.typography.labelMedium, color = c.textSecondary, textAlign = TextAlign.End, modifier = Modifier.widthIn(min = CountColumn))
+                    Text(stringResource(R.string.submit_col_server), style = MaterialTheme.typography.labelMedium, color = c.textSecondary, textAlign = TextAlign.End, modifier = Modifier.widthIn(min = CountColumn))
+                }
             }
             if (counts.isEmpty()) Text(stringResource(R.string.submit_no_counts), style = MaterialTheme.typography.bodyMedium, color = c.textSecondary)
             counts.forEach { row ->
@@ -241,10 +258,21 @@ private fun CountsCard(counts: List<CountRow>, typeLabel: (String) -> String) {
                         .padding(horizontal = if (mismatch) AronTokens.Space.S else 0.dp, vertical = AronTokens.Space.Xs),
                     verticalArrangement = Arrangement.spacedBy(AronTokens.Space.Xs),
                 ) {
-                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        Text(typeLabel(row.recordType), style = MaterialTheme.typography.bodyLarge, color = ink, maxLines = 2, modifier = Modifier.weight(1f))
-                        MoneyText(localizedNumber(row.device.toLong()), Modifier.width(CountColumn), style = MaterialTheme.typography.titleSmall, color = ink, textAlign = TextAlign.End)
-                        MoneyText(row.server?.let { localizedNumber(it.toLong()) } ?: stringResource(R.string.submit_server_blank), Modifier.width(CountColumn), style = MaterialTheme.typography.titleSmall, color = ink, textAlign = TextAlign.End)
+                    val deviceText = localizedNumber(row.device.toLong())
+                    val serverText = row.server?.let { localizedNumber(it.toLong()) } ?: stringResource(R.string.submit_server_blank)
+                    if (stacked) {
+                        // large text: the item on its own line, then "Device" and "Server" as caption-over-value cells
+                        Text(typeLabel(row.recordType), style = MaterialTheme.typography.bodyLarge, color = ink, maxLines = 2)
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.M)) {
+                            CountCell(stringResource(R.string.submit_col_device), deviceText, ink, Modifier.weight(1f))
+                            CountCell(stringResource(R.string.submit_col_server), serverText, ink, Modifier.weight(1f))
+                        }
+                    } else {
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
+                            Text(typeLabel(row.recordType), style = MaterialTheme.typography.bodyLarge, color = ink, maxLines = 2, modifier = Modifier.weight(1f))
+                            MoneyText(deviceText, Modifier.widthIn(min = CountColumn), style = MaterialTheme.typography.titleSmall, color = ink, textAlign = TextAlign.End)
+                            MoneyText(serverText, Modifier.widthIn(min = CountColumn), style = MaterialTheme.typography.titleSmall, color = ink, textAlign = TextAlign.End)
+                        }
                     }
                     when {
                         quiet -> Pill(null, c.successOnContainer, AronIcons.Check, stringResource(R.string.submit_row_matched))
@@ -254,6 +282,16 @@ private fun CountsCard(counts: List<CountRow>, typeLabel: (String) -> String) {
                 }
             }
         }
+    }
+}
+
+/** A caption over a count (the stacked form of the table at large text). */
+@Composable
+private fun CountCell(caption: String, value: String, ink: Color, modifier: Modifier = Modifier) {
+    val c = LocalAronColors.current
+    Column(modifier) {
+        Text(caption, style = MaterialTheme.typography.bodySmall, color = c.textSecondary, maxLines = 1)
+        MoneyText(value, style = MaterialTheme.typography.titleSmall, color = ink)
     }
 }
 
@@ -307,7 +345,7 @@ private fun HoldSheet(visible: Boolean, title: String, icon: ImageVector, summar
     val scrim = c.surfaceScrim
     val handle = c.textSecondary.copy(alpha = 0.7f)
     BackHandler(enabled = visible, onBack = onCancel)
-    val scrimT by animateFloatAsState(if (visible) 1f else 0f, tween(if (reduced) AronTokens.Motion.Reduced else AronTokens.Motion.Base, easing = LinearEasing), label = "scrim")
+    val scrimT by animateFloatAsState(if (visible) 1f else 0f, tween(if (reduced) AronTokens.Motion.Reduced else AronTokens.Motion.Base, easing = LinearEasing))
     AnimatedVisibility(
         visible,
         enter = if (reduced) fadeIn(tween(AronTokens.Motion.Reduced, easing = LinearEasing)) else EnterTransition.None,
@@ -329,7 +367,7 @@ private fun HoldSheet(visible: Boolean, title: String, icon: ImageVector, summar
                     .align(Alignment.BottomCenter)
                     .fillMaxWidth()
                     .then(sheetMotion)
-                    .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = {}),
+                    .pointerInput(Unit) { detectTapGestures { } }, // the sheet swallows taps without an actionable node for TalkBack
                 kind = GlassKind.Sheet,
             ) {
                 Column(

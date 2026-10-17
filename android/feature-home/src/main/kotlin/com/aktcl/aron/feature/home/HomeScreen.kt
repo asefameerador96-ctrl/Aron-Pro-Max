@@ -197,7 +197,7 @@ fun HomeContent(
     val reduced = LocalReducedMotion.current
     // the two caption lines of s2: the route name, then "<ISO date> · <route kind>"; earlier callers without the parts keep their one line
     val subtitle = if (header.isoDate != null) {
-        listOfNotNull(header.routeName, listOfNotNull(header.isoDate, kind).joinToString(" · ")).joinToString("\n")
+        listOfNotNull(header.routeName, listOfNotNull(localizedDigits(header.isoDate), kind).joinToString(" · ")).joinToString("\n")
     } else header.subtitle
     val dockBlocked = dock != null && dock.target in SELLING_TILES && !freshness.canSell
     AronScreen(
@@ -216,7 +216,7 @@ fun HomeContent(
         bottomBar = {
             // the dock cross-fades (150 ms, 120 ms linear under reduced motion) when the day state changes; no slide, it is a bar
             val fade = tween<Float>(if (reduced) AronTokens.Motion.Reduced else AronTokens.Motion.Fast, easing = LinearEasing)
-            AnimatedContent(targetState = dock, transitionSpec = { fadeIn(fade) togetherWith fadeOut(fade) }, label = "dock") { d ->
+            AnimatedContent(targetState = dock, transitionSpec = { fadeIn(fade) togetherWith fadeOut(fade) }) { d ->
                 if (d != null) {
                     AronBottomBar(
                         primary = AronBarAction(dockLabel(d), onClick = { onTile(d.target) }, icon = tileIcon(d.target), enabled = !dockBlocked),
