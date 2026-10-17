@@ -50,5 +50,7 @@ tasks.withType<Test>().configureEach {
     // N-024 (qa): SyncFaultScheduleFuzzTest size, seed and phone count (the acceptance run uses 10000 schedules).
     // Test.environment is not an up-to-date input: declare the values, or a changed size reuses the last result.
     listOf("ARON_SYNC_FUZZ_SCHEDULES", "ARON_SYNC_FUZZ_SEED", "ARON_SYNC_FUZZ_PHONES").forEach { k -> System.getenv(k)?.let { environment(k, it); inputs.property(k, it) } }
+    // N-024 (qa): SupervisorSyncFaultFuzzTest (the AMO record types) size, seed and phone count, declared the same way.
+    listOf("ARON_SUPERVISOR_FUZZ_SCHEDULES", "ARON_SUPERVISOR_FUZZ_SEED", "ARON_SUPERVISOR_FUZZ_PHONES").forEach { k -> System.getenv(k)?.let { environment(k, it); inputs.property(k, it) } }
     systemProperty("aron.repoRoot", rootProject.layout.projectDirectory.asFile.absolutePath)
 }
