@@ -1,0 +1,5 @@
+row_id,size,started_utc,finished_utc,minutes,review_findings,notes
+N-014,M,2026-10-17T18:33Z,2026-10-17T20:25Z,112,19,"T1, three Opus checker rounds: tautological seeded leak, id-blind detector, dashboards never judged, mixed aggregates, narrow probes, coarse baseline key, dead invalid-body hook, ...; all fixed with tests; 0 leaks; 28 contract deviation pairs routed (qa-contract-conformance.md)"
+AUD-TP-2,M,2026-10-17T18:33Z,2026-10-17T20:25Z,0,0,"with N-014 (ContractConformanceTest); part 2 already in infra/scripts/slice-smoke.py"
+N-015,S,2026-10-17T19:03Z,2026-10-17T19:10Z,7,1,"self-found: Adb function shadowed adb.exe (infinite recursion); DEVICE-PENDING laptop run D-QA-1"
+AUD-TP-8,S,2026-10-17T19:14Z,2026-10-17T19:20Z,6,0,"warning mode; CI wiring requested from infra (qa-done-rows-check.md)"

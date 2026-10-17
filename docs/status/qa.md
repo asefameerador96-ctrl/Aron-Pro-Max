@@ -1,47 +1,85 @@
 # Status: lane qa (wave 2, session 1, started 2026-10-17 18:30Z)
 
-## Done
-- **N-014 + AUD-TP-2 (T1)**: the server-side harness in `backend/app/src/test` (all through the production wiring, seeded db):
-  - `ContractConformanceTest` + `ContractModel` (contract/openapi.yaml as a JSON Schema 2020-12 oracle, networknt
-    1.5.9, test scope): every served operation called as six seeded callers. A run makes 971 calls and validates 897
-    bodies. It checks the declared status, the body schema and the ProblemCode, and fails on a route missing from the
-    contract. 28 real deviations were found and frozen in a baseline that may only shrink
-    (`contract-conformance-baseline.txt`); they are routed in `docs/requests/qa-contract-conformance.md`. Notable: a
-    contract bug, `OutletDetail` can never validate because `Outlet` closes itself with `unevaluatedProperties: false`.
-  - `ScopeLeakAcrossEndpointsTest` + `ApiWorld` mirror: a second, marked division (D-LKX) loaded from the seed files.
-    Every endpoint is probed as SR, AMO, TSO and DMO with own ids, other-division path ids, selector query params and
-    body ids. A run makes 908 calls, 288 of them at the other division, and 262 of those are refused. **Zero leaks.**
-    The national admin is the positive control.
-  - Self-tests that turn the suites red: a seeded wrong body, a seeded problem code, an undeclared status, an unknown
-    route and a seeded cross-scope read. The seeded duplicate sale is in N-024.
-  - AUD-TP-2 part (2), the deploy probe, already exists: `infra/scripts/slice-smoke.py` from `infra/deploy.sh`. Part
-    (3), the web mock, is left alone as the audit says.
-- **N-024 (T1)**: `SyncFaultScheduleFuzzTest`. Phones are the SRs of their own mirrored divisions. Random days are
-  delivered under the faults reorder, partial, duplicate, drop, truncated gzip, kill mid-batch (an Error thrown out of
-  ingest after the n-th stored record: committed prefix, no response) and concurrent twins. The oracle checks: exactly
-  the device's rows on the server per table, in count and identity; memo balances; `server_totals` money, sticks by
-  SKU and accepted per type equal to the device. Self-tests seed a duplicate sale and a doubled ledger amount. CI
-  default is 240 schedules (about 40 s). The acceptance run of 10,000 schedules is recorded below.
-- **N-015 (T2)**: `tools/checks/day1-check.ps1` (PASS/FAIL per check). Tested in the cloud with a fake adb and a mock
-  API. **DEVICE-PENDING** for the laptop run: D-QA-1 in `device-checks.md`.
+## Done (pushed to `lane/qa`)
+- **N-014 + AUD-TP-2 (T1)**: the server-side harness in `backend/app/src/test`. Everything runs through the
+  production wiring on a seeded db. **Three Opus checker rounds; every confirmed defect is fixed.**
+  - `ContractConformanceTest` + `ContractModel` use contract/openapi.yaml as a JSON Schema 2020-12 oracle.
+    - Six seeded callers make 970 calls; 902 bodies are validated.
+    - 106 of 169 operations get a validated 2xx, including the gzipped `/sync/batch`, `/sync/bundle`, login and `/me`.
+    - It checks the declared status, the body schema (one baseline key per normalised error), the ProblemCode, empty
+      declared bodies and generated request samples. It fails on a route missing from the contract, proven with a
+      real extra route.
+    - Shrinking baselines: 96 deviations, 63 operations without a 2xx, 14 unsatisfiable 2xx schemas (a contract
+      defect: `allOf` over closed bases). All routed in `docs/requests/qa-contract-conformance.md`.
+  - `ScopeLeakAcrossEndpointsTest` + `ApiWorld` mirror: a second, marked division (D-LKX).
+    - Both divisions sell different real days through the batch endpoint, then the AggregationWorker runs.
+    - Every endpoint is probed as SR, AMO, TSO and DMO: own ids, other-division ids in every `*_id` path, query and
+      body field (optional ones too), and selectors.
+    - Detection uses three signals: the text marker, other-division ids per kind plus record uuids, and dashboard
+      numbers. A supervisor's own answer must equal the national view of its node; an other-division selector must
+      be refused or ignored.
+    - The positive control runs per read: the national admin sees the other division on 27 of 78 reads. The other 51
+      are in `scope-blind-baseline.txt`, which may only shrink.
+    - **Zero leaks.** The seeded leak is caught through the real probes on a marker, on ids only and on numbers only,
+      including the national view served to a TSO.
+  - AUD-TP-2 part (2), the deploy probe, already exists: `infra/scripts/slice-smoke.py`. Part (3) is left alone, as
+    the audit says.
+- **N-024 (T1)**: `SyncFaultScheduleFuzzTest` with `SyncPhone`. **Two Opus checker rounds; every confirmed defect is
+  fixed.**
+  - Faults: reorder, partial, ride-along duplicates, whole-batch replay, lost response, truncated gzip, a process kill
+    mid-batch (an Error out of ingest after the n-th stored record) and concurrent twins.
+  - The oracle has 14 labelled clauses: the day's rows per table (count and identity), and the user's and the phone's
+    rows over all dates. It also checks the ingest registry, ledger rows on the phone's outlets on any date, memo
+    balances and `server_totals` (money, sticks, accepted, rejected, presence).
+  - Every clause is proven by its own seeded fault on its own phone: lost line, identity swap, a second sale on the
+    same or another date, the same uuid past a broken trigger, a foreign registry row, a stray ledger row, a doubled
+    ledger amount, and tampered totals.
+  - CI default is 240 schedules, about 40 s.
+  - Acceptance: 10,000 schedules on 8 phones, green (`docs/status/qa-n024-acceptance.txt`). It is being re-run on the
+    strengthened oracle; see In progress.
+  - Known gap, no seam without a product change: a death after the last family committed but before the response is
+    stored.
+- **N-015 (T2)**: `tools/checks/day1-check.ps1` prints PASS/FAIL per check. It was tested with a fake adb and a mock
+  API, and its /health check passes against dev from the cloud. **DEVICE-PENDING**: the laptop run is D-QA-1 in
+  `device-checks.md`.
+- **AUD-TP-8 (T1)**: `tools/ci/done-rows-check.py` (warning mode) and its self-test `tools/ci/test_done_rows.py`.
+  Today: 351 finished rows, 77 untested. The CI wiring is requested from infra in
+  `docs/requests/qa-done-rows-check.md`.
+- **N-054 (T1)**: `tools/loadgen/` (generate.sql, replay.py and their self-test).
+  - Generating 8,500 SRs, 9,842 users, 11,336 routes and 464,771 outlets took 75 s.
+  - A 50-SR replay through the batch endpoint sent 8,187 records; 50 of 50 SRs reconciled and the resend came back
+    all duplicate.
+  - The Opus checker is running.
 
 ## In progress
-- (see the CSV for finish times)
+- The N-024 10,000-schedule re-run on the strengthened oracle (started about 20:30Z).
+- The N-054 checker.
 
 ## Next three rows
-1. N-022 Day 2 check script (airplane-mode sale, one memo on the server): needs F-SR-028 / F-API-006 / F-SYS-046 / F-SR-011 on INT.
-2. N-061 security review: widen ScopeLeakAcrossEndpointsTest (sales of the other division in reports and dashboards), secrets and dependency scan, token and device-proof tests.
-3. AUD-TP-8 done-rows check (`tools/ci/done-rows-check.py`, warning first).
+1. N-061 security review: work down `scope-blind-baseline.txt`; map the `*_uuid` record path parameters; add a
+   secrets, dependency and token scan.
+2. N-022 Day 2 check script (airplane-mode sale, one memo on the server). F-SR-028, the print memo row, is not
+   logged done yet.
+3. N-050 Day 4 check script (radius 100 m to 50 m is obeyed at the next sync).
 
 ## Requests filed
 - `docs/requests/qa-contract-conformance.md` (lead: contract; backend-core, backend-admin, backend-reports).
+- `docs/requests/qa-done-rows-check.md` (infra: a CI step).
 
 ## Traps
-- Test env vars reach the Test JVM only when forwarded in `backend/app/build.gradle.kts`, and `Test.environment` is
-  not an up-to-date input: declare `inputs.property`, or a changed `ARON_SYNC_FUZZ_SCHEDULES` reuses the last result.
-  (Fixed for `ARON_FUZZ_*` too.)
-- `testApplication {}` (Ktor 3.6) has a one-minute coroutine timeout: long runs use `TestApplication` plus `runBlocking`.
-- The existing `SyncConvergenceFuzzTest` hits its own 600/min device limit above about 50 runs (`ARON_FUZZ_RUNS=60`
-  fails with 429). This is a harness limit, not a product defect.
-- PowerShell: a helper function named `Adb` shadows `adb.exe` (names are case-insensitive) and recurses forever.
-- Local: `service postgresql start`; role aron/aron and db aron_test; `ARON_TEST_PG_URL=jdbc:postgresql://localhost:5432/aron_test?user=aron&password=aron`.
+- `Test.environment` is not an up-to-date input in Gradle. Declare `inputs.property` too, or a changed
+  `ARON_SYNC_FUZZ_SCHEDULES` reuses the last result. This is now done for `ARON_FUZZ_*` as well.
+- `testApplication {}` (Ktor 3.6) has a one-minute coroutine timeout: long runs use `TestApplication` plus
+  `runBlocking`.
+- The existing `SyncConvergenceFuzzTest` hits its own 600-per-minute device limit above about 50 runs. That is a
+  harness limit, not a product defect.
+- Database guards (`client_uuid_once`, `guard_synced_row`) refuse seeded faults; seed them with
+  `session_replication_role = replica`.
+- Ingest posts `due_ledger` rows without a user_id: attribute them by outlet.
+- Dashboards resolve their node through `dw.dim_geo`. Run the AggregationWorker (with refreshDimensions) after
+  seeding, or every dashboard is refused for everyone.
+- PowerShell: a helper named `Adb` shadows `adb.exe` (names are case-insensitive). In bash, `pkill -f <pattern>`
+  kills your own shell when the pattern is in the command line: kill by PID.
+- Local setup: `service postgresql start`; role aron/aron; db aron_test;
+  `ARON_TEST_PG_URL=jdbc:postgresql://localhost:5432/aron_test?user=aron&password=aron`.
+  Migrations by psql need `-1`. `.claude/worktrees/` goes in `.git/info/exclude`.
