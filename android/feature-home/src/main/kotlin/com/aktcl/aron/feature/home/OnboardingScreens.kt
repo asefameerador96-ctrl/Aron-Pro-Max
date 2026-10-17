@@ -35,6 +35,7 @@ import com.aktcl.aron.core.ui.AronTokens
 import com.aktcl.aron.core.ui.AronTopBar
 import com.aktcl.aron.core.ui.BannerKind
 import com.aktcl.aron.core.ui.LocalAronColors
+import com.aktcl.aron.core.ui.localizedDigits
 import com.aktcl.aron.core.ui.RowPosition
 
 object OnboardingTags {
@@ -141,7 +142,25 @@ private fun positionOf(i: Int, n: Int): RowPosition = when {
 }
 
 /** A tutorial video entry from the cache (F-SR-048). */
-data class TutorialItem(val id: String, val title: String)
+data class TutorialItem(val id: String, val title: String, val url: String? = null, val manual: Boolean = false, val durationS: Int? = null)
+
+/** Reads the `tutorials` section the bundle keeps (contract `TutorialItem[]`): sorted by `sort`, the Bangla title when the app is Bangla and there is one, bad rows dropped. Never fetches anything. */
+object TutorialJson {
+    fun parse(section: String?, bangla: Boolean): List<TutorialItem> = runCatching {
+        val a = org.json.JSONArray(section ?: return emptyList())
+        (0 until a.length()).mapNotNull { i ->
+            runCatching {
+                val o = a.getJSONObject(i)
+                val url = o.getString("url").takeIf { it.startsWith("https://") } ?: return@runCatching null // https only: no cleartext, no other scheme
+                val bn = if (o.isNull("title_bn")) null else o.optString("title_bn").ifBlank { null }
+                Triple(o.optInt("sort", 0), o.getLong("tutorial_id"), TutorialItem(
+                    o.getLong("tutorial_id").toString(), if (bangla && bn != null) bn else o.getString("title_en").also { t -> require(t.isNotBlank()) }, url,
+                    o.optString("kind") == "manual", if (o.isNull("duration_s")) null else o.optInt("duration_s").takeIf { it > 0 },
+                ))
+            }.getOrNull()
+        }.sortedWith(compareBy<Triple<Int, Long, TutorialItem>> { it.first }.thenBy { it.second }).map { it.third }
+    }.getOrDefault(emptyList())
+}
 
 /**
  * Tutorial list (F-SR-048, screens-sr s16): rows with a play glyph from the cache; playback is online only and never
@@ -158,8 +177,8 @@ fun TutorialListContent(items: List<TutorialItem>, online: Boolean, onPlay: (Tut
                 itemsIndexed(items, key = { _, t -> t.id }) { i, t ->
                     AronListRow(
                         t.title, Modifier.testTag(OnboardingTags.tutorial(t.id)),
-                        subtitle = if (online) stringResource(R.string.tut_play_hint) else null,
-                        trailing = stringResource(R.string.tut_play), onClick = if (online) ({ onPlay(t) }) else null,
+                        subtitle = tutorialSubtitle(t, online),
+                        trailing = stringResource(if (t.manual) R.string.tut_open else R.string.tut_play), onClick = if (online) ({ onPlay(t) }) else null,
                         leading = { IconWell(AronIcons.Tutorial) },
                         trailingContent = { Icon(AronIcons.ChevronRight, contentDescription = null, tint = if (online) c.textSecondary else c.textDisabled, modifier = Modifier.size(AronTokens.Size.Icon)) },
                         position = positionOf(i, items.size), divider = i < items.size - 1, flat = true,
@@ -168,4 +187,12 @@ fun TutorialListContent(items: List<TutorialItem>, online: Boolean, onPlay: (Tut
             }
         }
     }
+}
+
+@Composable
+private fun tutorialSubtitle(t: TutorialItem, online: Boolean): String? {
+    val kind = stringResource(if (t.manual) R.string.tut_kind_manual else R.string.tut_kind_video)
+    val minutes = t.durationS?.let { localizedDigits(stringResource(R.string.tut_minutes, (it + 59) / 60)) }
+    val hint = if (online) stringResource(R.string.tut_play_hint) else null
+    return listOfNotNull(kind, minutes, hint).joinToString("  ·  ")
 }
