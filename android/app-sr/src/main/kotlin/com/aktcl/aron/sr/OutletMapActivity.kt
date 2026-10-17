@@ -42,13 +42,16 @@ class OutletMapActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        androidx.core.view.WindowCompat.getInsetsController(window, window.decorView).apply { isAppearanceLightStatusBars = true; isAppearanceLightNavigationBars = true }
+        val cm = getSystemService(Context.CONNECTIVITY_SERVICE) as android.net.ConnectivityManager
+        val online = cm.getNetworkCapabilities(cm.activeNetwork)?.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET) == true
         val name = intent.getStringExtra(NAME).orEmpty()
         val outlet = LatLng(intent.getDoubleExtra(LAT, 0.0), intent.getDoubleExtra(LNG, 0.0))
         val radius = intent.getIntExtra(RADIUS, 100)
         val phone = if (intent.hasExtra(PHONE_LAT)) LatLng(intent.getDoubleExtra(PHONE_LAT, 0.0), intent.getDoubleExtra(PHONE_LNG, 0.0)) else null
         setContent {
             AronTheme(AppLocale.current(this)) {
-                OutletMapScreen(name, outlet, radius, phone, onBack = { finish() })
+                OutletMapScreen(name, outlet, radius, phone, online, onBack = { finish() })
             }
         }
     }
@@ -64,21 +67,26 @@ class OutletMapActivity : ComponentActivity() {
 }
 
 @Composable
-private fun OutletMapScreen(name: String, outlet: LatLng, radiusM: Int, phone: LatLng?, onBack: () -> Unit) {
+private fun OutletMapScreen(name: String, outlet: LatLng, radiusM: Int, phone: LatLng?, online: Boolean, onBack: () -> Unit) {
     val camera = rememberCameraPositionState { position = CameraPosition.fromLatLngZoom(outlet, 17f) }
-    Column(Modifier.fillMaxSize()) {
-        Text(stringResource(R.string.sr_map_title), Modifier.padding(AronTokens.Space.L), style = MaterialTheme.typography.headlineSmall)
-        phone?.let {
-            val d = Geo.haversineM(it.latitude, it.longitude, outlet.latitude, outlet.longitude)
-            Text(stringResource(R.string.sr_map_distance, localizedNumber(Math.round(d)), localizedNumber(radiusM.toLong())), Modifier.padding(horizontal = AronTokens.Space.L))
+    val c = com.aktcl.aron.core.ui.LocalAronColors.current
+    val distance = phone?.let {
+        val d = Geo.haversineM(it.latitude, it.longitude, outlet.latitude, outlet.longitude)
+        stringResource(R.string.sr_map_distance, localizedNumber(Math.round(d)), localizedNumber(radiusM.toLong()))
+    }
+    com.aktcl.aron.core.ui.AronScreen(
+        topBar = { com.aktcl.aron.core.ui.AronTopBar(stringResource(R.string.sr_map_title), subtitle = distance, onBack = onBack) },
+    ) {
+        Column(Modifier.fillMaxSize()) {
+            // The map is a bonus: when it cannot load (no key, no Play services, no network) the tiles stay blank and the distance in the bar remains.
+            GoogleMap(Modifier.fillMaxWidth().weight(1f).heightIn(min = 240.dp), cameraPositionState = camera) {
+                Marker(state = rememberMarkerState(position = outlet), title = name)
+                // The allowed radius: a translucent accent disc with an accent ring (the library's defaults paint an opaque disc).
+                Circle(center = outlet, radius = radiusM.toDouble(), fillColor = c.accent.copy(alpha = 0.16f), strokeColor = c.accent, strokeWidth = 3f)
+                phone?.let { Marker(state = rememberMarkerState(position = it), title = stringResource(R.string.sr_map_you)) }
+            }
+            if (!online) AronBanner(stringResource(R.string.sr_map_offline), kind = BannerKind.Offline)
+            AronSecondaryButton(stringResource(R.string.sr_map_back), onBack, Modifier.padding(AronTokens.Space.L))
         }
-        // The map is a bonus: when it cannot load (no key, no Play services, no network) the tiles stay blank and the text above remains.
-        GoogleMap(Modifier.fillMaxWidth().weight(1f).heightIn(min = 240.dp), cameraPositionState = camera) {
-            Marker(state = rememberMarkerState(position = outlet), title = name)
-            Circle(center = outlet, radius = radiusM.toDouble(), strokeWidth = 3f)
-            phone?.let { Marker(state = rememberMarkerState(position = it), title = stringResource(R.string.sr_map_you)) }
-        }
-        AronBanner(stringResource(R.string.sr_map_offline), kind = BannerKind.Info)
-        AronSecondaryButton(stringResource(R.string.sr_map_back), onBack, Modifier.padding(AronTokens.Space.L))
     }
 }

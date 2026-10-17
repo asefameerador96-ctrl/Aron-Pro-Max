@@ -47,7 +47,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
 
-/** Confirm dialog: both buttons are 48 dp text buttons; [onDismiss] covers Back and tapping outside. */
+/** Confirm dialog: a green yes and a red no, both at least 48 dp; [onDismiss] covers Back and tapping outside. */
 @Composable
 fun AronConfirmDialog(
     title: String,
@@ -63,8 +63,8 @@ fun AronConfirmDialog(
         containerColor = c.surfaceSolid, titleContentColor = c.textPrimary, textContentColor = c.textPrimary,
         title = { Text(title) },
         text = { Text(message) },
-        confirmButton = { TextButton(onClick = onConfirm, modifier = Modifier.heightIn(min = MinTouch)) { Text(confirmLabel) } },
-        dismissButton = { TextButton(onClick = onDismiss, modifier = Modifier.heightIn(min = MinTouch)) { Text(dismissLabel) } },
+        confirmButton = { AronYesButton(confirmLabel, onConfirm) },    // yes is green, no is red (owner 2026-10-17)
+        dismissButton = { AronNoButton(dismissLabel, onDismiss) },
     )
 }
 

@@ -118,4 +118,49 @@ class TokenContrastTest {
         // section labels and captions sit on the bare gradient (tokens.md s2.7): body 7:1, secondary 4.5:1, raw
         m.pageStops().forEach { check(m, "textPrimary on page", m.textPrimary, it, 7.0); check(m, "textSecondary on page", m.textSecondary, it, 4.5) }
     }
+
+    // ---- owner 2026-10-17: vibrant palette, green yes and red no, ten tile hues --------------------------------------------------------
+
+    @Test fun yesAndNoButtonsCarryASevenToOneLabelAndSurviveGlare() = modes.forEach { m ->
+        listOf("yes" to m.yesFill, "no" to m.noFill).forEach { (name, fill) ->
+            check(m, "label on $name fill", m.textOnAccent, fill, 7.0)
+            glareCheck(m, "label on $name fill", m.textOnAccent, fill, 3.0)   // the documented 3:1 exception: 18 sp bold primary-action label (AronYesButton and AronNoButton use titleMedium)
+        }
+    }
+
+    @Test fun yesIsGreenAndNoIsRed() = modes.forEach { m ->
+        assertTrue("${m.mode} yes must be green", m.yesFill.green > m.yesFill.red && m.yesFill.green > m.yesFill.blue)
+        assertTrue("${m.mode} no must be red", m.noFill.red > m.noFill.green && m.noFill.red > m.noFill.blue)
+    }
+
+    @Test fun everyTileHueReadsAtSevenToOneAndTilesCoverTenHues() = listOf(AronMode.Light, AronMode.Dark, AronMode.Sunlight).forEach { mode ->
+        val m = AronTokens.forMode(mode)
+        val hues = AronTokens.Hues.forMode(mode)
+        assertTrue("$mode needs at least ten tile hues", hues.size >= 10)
+        hues.forEachIndexed { i, h ->
+            check(m, "tile hue $i ink on container", h.ink, h.container, 7.0)
+            glareCheck(m, "tile hue $i ink on container", h.ink, h.container, 3.0)   // a tile label is body text: 3:1 under glare (docs/32 s2a item 4)
+        }
+        val buckets = hues.map { h ->
+            val mx = maxOf(h.container.red, h.container.green, h.container.blue); val mn = minOf(h.container.red, h.container.green, h.container.blue)
+            val d = mx - mn
+            val hue = when {
+                d == 0f -> 0f
+                mx == h.container.red -> ((h.container.green - h.container.blue) / d + 6) % 6
+                mx == h.container.green -> (h.container.blue - h.container.red) / d + 2
+                else -> (h.container.red - h.container.green) / d + 4
+            } * 60f
+            (hue / 24f).toInt()
+        }.toSet()
+        assertTrue("$mode tile hues must span at least eight 24-degree hue buckets, got ${buckets.size}", buckets.size >= 8)
+    }
+
+    @Test fun theVibrantPaletteHasAtLeastTenDistinctColours() {
+        val m = AronTokens.Light
+        val colours = listOf(
+            m.bgGradientTop, m.bgGradientMid, m.bgGradientBottom, m.accent, m.accentHi, m.accentContainer, m.success, m.successContainer,
+            m.warning, m.warningContainer, m.danger, m.dangerContainer, m.offline, m.offlineContainer, m.yesFill, m.noFill,
+        ).map { Triple((it.red * 255).toInt() / 16, (it.green * 255).toInt() / 16, (it.blue * 255).toInt() / 16) }.toSet()
+        assertTrue("distinct colours: ${colours.size}", colours.size >= 10)
+    }
 }

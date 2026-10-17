@@ -43,6 +43,8 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.aktcl.aron.core.printing.R
+import com.aktcl.aron.core.ui.AronNoButton
+import com.aktcl.aron.core.ui.AronYesButton
 import com.aktcl.aron.core.printing.bt.BluetoothSppTransport
 import com.aktcl.aron.core.printing.bt.PrinterManager
 import com.aktcl.aron.core.printing.bt.PrinterState
@@ -232,8 +234,8 @@ private fun YesNo(@StringRes title: Int?, @StringRes text: Int, answer: (Boolean
         onDismissRequest = {},
         title = title?.let { { Text(stringResource(it)) } },
         text = { Text(stringResource(text)) },
-        confirmButton = { TextButton(onClick = { answer(true) }) { Text(stringResource(R.string.dialog_yes)) } },
-        dismissButton = { TextButton(onClick = { answer(false) }) { Text(stringResource(R.string.dialog_no)) } },
+        confirmButton = { AronYesButton(stringResource(R.string.dialog_yes), { answer(true) }) },    // yes is green, no is red (owner 2026-10-17)
+        dismissButton = { AronNoButton(stringResource(R.string.dialog_no), { answer(false) }) },
     )
 }
 

@@ -26,6 +26,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.CornerRadius
@@ -247,3 +248,34 @@ internal fun BusyArc(color: Color, size: androidx.compose.ui.unit.Dp) {
 
 /** Kept for callers that lay a label beside an icon in a bar: the minimum width of a text target. */
 internal fun Modifier.minTextTarget(): Modifier = widthIn(min = MinTouch).heightIn(min = MinTouch)
+
+/** Yes / confirm: a green pill (owner 2026-10-17). Label [AronColorRoles.textOnAccent] at 7:1, 18 sp bold (the label rule of docs/32 s2a item 4). 48 dp minimum. */
+@Composable
+fun AronYesButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true) =
+    AronToneButton(text, onClick, LocalAronColors.current.yesFill, modifier, enabled)
+
+/** No / cancel: a red pill, the pair of [AronYesButton]. */
+@Composable
+fun AronNoButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true) =
+    AronToneButton(text, onClick, LocalAronColors.current.noFill, modifier, enabled)
+
+@Composable
+private fun AronToneButton(text: String, onClick: () -> Unit, fill: Color, modifier: Modifier, enabled: Boolean) {
+    val c = LocalAronColors.current
+    val interaction = remember { MutableInteractionSource() }
+    val shape = AronTokens.ButtonShape
+    val body = if (enabled) fill else c.stateDisabledFill
+    val labelColor = if (enabled) c.textOnAccent else c.stateDisabledLabel
+    Row(
+        modifier
+            .heightIn(min = AronTokens.Touch.Min)
+            .aronFocusRing(shape)
+            .pressScale(interaction, AronTokens.Motion.ButtonPressScale)
+            .drawBehind { drawRoundRect(body, cornerRadius = CornerRadius(size.height / 2f)) }
+            .clip(shape)
+            .clickable(interactionSource = interaction, indication = null, enabled = enabled, role = Role.Button, onClick = onClick)
+            .padding(horizontal = AronTokens.Space.L, vertical = AronTokens.Space.S),
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically,
+    ) { Text(text, color = labelColor, textAlign = TextAlign.Center, style = MaterialTheme.typography.titleMedium) }
+}

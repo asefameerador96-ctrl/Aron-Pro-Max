@@ -22,6 +22,7 @@ android {
 
 dependencies {
     implementation(project(":android:core-common"))
+    implementation(project(":android:core-ui"))
     implementation(libs.kotlinx.serialization.json)
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.bundles.compose)
