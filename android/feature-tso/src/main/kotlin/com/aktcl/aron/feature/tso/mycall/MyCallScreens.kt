@@ -1,0 +1,233 @@
+package com.aktcl.aron.feature.tso.mycall
+
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.stringResource
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.aktcl.aron.core.common.AppLanguage
+import com.aktcl.aron.core.ui.AronBanner
+import com.aktcl.aron.core.ui.AronBarAction
+import com.aktcl.aron.core.ui.AronBottomBar
+import com.aktcl.aron.core.ui.AronCard
+import com.aktcl.aron.core.ui.AronListRow
+import com.aktcl.aron.core.ui.AronScreen
+import com.aktcl.aron.core.ui.AronSectionLabel
+import com.aktcl.aron.core.ui.AronSegmented
+import com.aktcl.aron.core.ui.AronTextButton
+import com.aktcl.aron.core.ui.AronTokens
+import com.aktcl.aron.core.ui.AronTopBar
+import com.aktcl.aron.core.ui.BannerKind
+import com.aktcl.aron.core.ui.LocalAppLanguage
+import com.aktcl.aron.core.ui.localizedDigits
+import com.aktcl.aron.feature.tso.R
+import kotlinx.coroutines.launch
+
+object MyCallTags {
+    const val SET_PLAN = "tso_mc_set_plan"
+    const val VISIT_PLAN = "tso_mc_visit_plan"
+    const val DATE = "tso_mc_date"
+    const val SHOW = "tso_mc_show"
+    const val SAVE = "tso_mc_save"
+    const val UNAVAILABLE = "tso_mc_unavailable"
+    const val SAVED = "tso_mc_saved"
+    const val ERRORS = "tso_mc_errors"
+    const val SUBMIT = "tso_mc_submit"
+    const val NO_SR = "tso_mc_no_sr"
+    const val ASSIGNED = "tso_mc_assigned"
+    const val COMMENT = "tso_mc_comment"
+    fun zone(id: Long) = "tso_mc_zone_$id"
+    fun route(id: Long) = "tso_mc_route_$id"
+    fun outlet(id: Long) = "tso_mc_outlet_$id"
+    fun yes(criterionId: Long) = "tso_mc_yes_$criterionId"
+    fun no(criterionId: Long) = "tso_mc_no_$criterionId"
+    fun type(code: String) = "tso_mc_type_$code"
+    const val DELEGATE_YES = "tso_mc_delegate_yes"
+    const val DELEGATE_NO = "tso_mc_delegate_no"
+}
+
+@Composable
+private fun zoneLabel(id: Long) = localizedDigits(stringResource(R.string.tso_mc_zone, id.toString()))
+
+@Composable
+private fun Pickers(
+    routes: List<PlanRoute>, load: PickLoad, zoneId: Long?, routeId: Long?, onZone: (Long) -> Unit, onRoute: (Long) -> Unit,
+) {
+    if (load == PickLoad.UNAVAILABLE) AronBanner(stringResource(R.string.tso_mc_unavailable), Modifier.testTag(MyCallTags.UNAVAILABLE), kind = BannerKind.Offline)
+    AronSectionLabel(stringResource(R.string.tso_mc_zone_label))
+    zonesOf(routes).forEach { z -> AronListRow(zoneLabel(z), Modifier.testTag(MyCallTags.zone(z)), onClick = { onZone(z) }, trailing = if (z == zoneId) "✓" else null, flat = true) }
+    if (zoneId != null) {
+        AronSectionLabel(stringResource(R.string.tso_mc_route_label))
+        routes.filter { it.zoneId == zoneId }.forEach { r ->
+            AronListRow(r.name, Modifier.testTag(MyCallTags.route(r.id)), subtitle = r.code + (r.label?.let { "  ·  $it" } ?: ""), onClick = { onRoute(r.id) }, trailing = if (r.id == routeId) "✓" else null, flat = true)
+        }
+    }
+}
+
+@Composable
+private fun OutletCard(o: PlanOutlet, bangla: Boolean, modifier: Modifier = Modifier, trailing: String? = null, onClick: (() -> Unit)? = null) {
+    AronListRow(
+        o.title(bangla), modifier, subtitle = listOfNotNull(o.code, o.owner, o.phone, o.cluster).joinToString("  ·  "), trailing = trailing, onClick = onClick, flat = true,
+    )
+}
+
+@Composable
+fun MyCallHub(onSetPlan: () -> Unit, onVisitPlan: () -> Unit, onBack: () -> Unit, modifier: Modifier = Modifier) {
+    AronScreen(modifier, topBar = { AronTopBar(stringResource(R.string.tso_drawer_my_call), onBack = onBack) }) {
+        Column(Modifier.fillMaxSize().padding(AronTokens.Space.Screen), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.M)) {
+            AronCard(Modifier.fillMaxWidth().testTag(MyCallTags.SET_PLAN), onClick = onSetPlan) { AronListRow(stringResource(R.string.tso_mc_set_plan), subtitle = stringResource(R.string.tso_mc_set_plan_sub)) }
+            AronCard(Modifier.fillMaxWidth().testTag(MyCallTags.VISIT_PLAN), onClick = onVisitPlan) { AronListRow(stringResource(R.string.tso_mc_visit_plan), subtitle = stringResource(R.string.tso_mc_visit_plan_sub)) }
+        }
+    }
+}
+
+/** F-TSO-013 Set Plan. */
+@Composable
+fun SetPlanScreen(state: SetPlanState, onBack: () -> Unit, modifier: Modifier = Modifier) {
+    val ui by state.ui.collectAsStateWithLifecycle()
+    val scope = rememberCoroutineScope()
+    val bn = LocalAppLanguage.current == AppLanguage.BN
+    LaunchedEffect(state) { state.loadRoutes() }
+    val saved = ui.result is SetPlanResult.Saved
+    AronScreen(
+        modifier, topBar = { AronTopBar(stringResource(R.string.tso_mc_set_plan), onBack = onBack) },
+        bottomBar = { AronBottomBar(primary = if (saved) AronBarAction(stringResource(R.string.tso_leave_done), onBack) else AronBarAction(stringResource(R.string.tso_mc_set_plan), { scope.launch { state.submit() } }), modifier = Modifier.testTag(MyCallTags.SAVE)) },
+    ) {
+        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(AronTokens.Space.Screen), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.M)) {
+            (ui.result as? SetPlanResult.Saved)?.let { AronBanner(stringResource(R.string.tso_mc_saved, it.newOutlets), Modifier.testTag(MyCallTags.SAVED), kind = BannerKind.Success) }
+            if (ui.result is SetPlanResult.Failed) AronBanner(stringResource(R.string.tso_mc_save_failed), kind = BannerKind.Error)
+            AronSectionLabel(stringResource(R.string.tso_mc_date))
+            OutlinedTextField(ui.date, { state.setDate(it) }, Modifier.fillMaxWidth().testTag(MyCallTags.DATE), singleLine = true, label = { Text(stringResource(R.string.tso_leave_date_hint)) })
+            Pickers(ui.routes, ui.routesLoad, ui.zoneId, ui.routeId, state::pickZone, state::pickRoute)
+            if (ui.routeId != null) AronTextButton(stringResource(R.string.tso_mc_show_outlets), { scope.launch { state.showOutlets() } }, Modifier.testTag(MyCallTags.SHOW))
+            if (ui.outletsLoad == PickLoad.UNAVAILABLE) AronBanner(stringResource(R.string.tso_mc_unavailable), kind = BannerKind.Offline)
+            if (ui.outletsLoad == PickLoad.READY) {
+                AronSectionLabel(stringResource(R.string.tso_mc_outlets_selected, ui.selected.size))
+                if (ui.outlets.isEmpty()) Text(stringResource(R.string.tso_mc_no_outlets), style = MaterialTheme.typography.bodyMedium)
+                else AronTextButton(stringResource(R.string.tso_mc_select_all), { state.selectAll() })
+                ui.outlets.forEach { o -> OutletCard(o, bn, Modifier.testTag(MyCallTags.outlet(o.id)), trailing = if (o.id in ui.selected) "✓" else null, onClick = { state.toggle(o.id) }) }
+            }
+            (ui.result as? SetPlanResult.Invalid)?.errors?.forEach { e ->
+                AronBanner(stringResource(when (e) {
+                    PlanError.NO_ROUTE -> R.string.tso_mc_err_route; PlanError.NO_OUTLETS -> R.string.tso_mc_err_outlets; PlanError.DATE_FORMAT -> R.string.tso_leave_err_date_format
+                    PlanError.DATE_PAST -> R.string.tso_mc_err_date_past; PlanError.DATE_FAR -> R.string.tso_leave_err_date_far }), Modifier.testTag(MyCallTags.ERRORS), kind = BannerKind.Error)
+            }
+        }
+    }
+}
+
+/** F-TSO-014 My Visit Plan. */
+@Composable
+fun VisitPlanScreen(state: VisitPlanState, onOpenOutlet: (planUuid: String, outlet: PlanOutlet, route: PlanRoute) -> Unit, onBack: () -> Unit, modifier: Modifier = Modifier) {
+    val ui by state.ui.collectAsStateWithLifecycle()
+    val scope = rememberCoroutineScope()
+    val bn = LocalAppLanguage.current == AppLanguage.BN
+    LaunchedEffect(state) { state.loadRoutes(); if (state.ui.value.routeId != null) state.refresh() }
+    AronScreen(modifier, topBar = { AronTopBar(stringResource(R.string.tso_mc_visit_plan), onBack = onBack) }) {
+        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(AronTokens.Space.Screen), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.M)) {
+            AronSectionLabel(stringResource(R.string.tso_mc_date))
+            OutlinedTextField(ui.date, { state.setDate(it) }, Modifier.fillMaxWidth().testTag(MyCallTags.DATE), singleLine = true, label = { Text(stringResource(R.string.tso_leave_date_hint)) })
+            Pickers(ui.routes, ui.routesLoad, ui.zoneId, ui.routeId, state::pickZone, state::pickRoute)
+            if (ui.routeId != null) AronTextButton(stringResource(R.string.tso_mc_show_plan), { scope.launch { state.show() } }, Modifier.testTag(MyCallTags.SHOW))
+            when (ui.planLoad) {
+                PickLoad.UNAVAILABLE -> AronBanner(stringResource(R.string.tso_mc_unavailable), kind = BannerKind.Offline)
+                PickLoad.READY -> {
+                    AronSegmented(listOf(stringResource(R.string.tso_mc_pending, ui.pending.size), stringResource(R.string.tso_mc_completed, ui.completed.size)), ui.tab, { state.tab(it) })
+                    val ids = if (ui.tab == 0) ui.pending else ui.completed
+                    if (ids.isEmpty()) Text(stringResource(if (ui.plan == null) R.string.tso_mc_no_plan else R.string.tso_mc_nothing_here), style = MaterialTheme.typography.bodyMedium)
+                    val route = ui.routes.firstOrNull { it.id == ui.routeId }
+                    ids.forEach { id ->
+                        val o = ui.outlets[id] ?: PlanOutlet(id, id.toString(), id.toString(), null, "", null, null)
+                        OutletCard(o, bn, Modifier.testTag(MyCallTags.outlet(id)), onClick = if (ui.tab == 0 && ui.plan != null && route != null) ({ onOpenOutlet(ui.plan!!.planUuid, o, route) }) else null)
+                    }
+                }
+                else -> Unit
+            }
+        }
+    }
+}
+
+/** F-TSO-015 Visit Query: no GPS, no photo. */
+@Composable
+fun VisitQueryScreen(state: VisitQueryState, outletTitle: String, onDone: (delegate: Boolean) -> Unit, onBack: () -> Unit, modifier: Modifier = Modifier) {
+    val ui by state.ui.collectAsStateWithLifecycle()
+    val scope = rememberCoroutineScope()
+    val bn = LocalAppLanguage.current == AppLanguage.BN
+    val submitted = ui.result as? QueryResult.Submitted
+    LaunchedEffect(submitted) { submitted?.let { onDone(it.delegate) } }
+    AronScreen(
+        modifier, topBar = { AronTopBar(stringResource(R.string.tso_mc_visit_query), subtitle = outletTitle, onBack = onBack) },
+        bottomBar = { AronBottomBar(primary = AronBarAction(stringResource(R.string.tso_mc_submit), { scope.launch { state.submit() } }, enabled = submitted == null), modifier = Modifier.testTag(MyCallTags.SUBMIT)) },
+    ) {
+        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(AronTokens.Space.Screen), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.M)) {
+            state.criteria.forEach { c ->
+                AronCard(Modifier.fillMaxWidth()) {
+                    Column(Modifier.fillMaxWidth().padding(AronTokens.Space.L), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
+                        Text(c.label(bn), style = MaterialTheme.typography.titleSmall)
+                        YesNo(ui.answers[c.id], { state.answer(c.id, it) }, MyCallTags.yes(c.id), MyCallTags.no(c.id))
+                    }
+                }
+            }
+            AronCard(Modifier.fillMaxWidth()) {
+                Column(Modifier.fillMaxWidth().padding(AronTokens.Space.L), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
+                    Text(stringResource(R.string.tso_mc_delegate), style = MaterialTheme.typography.titleSmall)
+                    YesNo(ui.delegate, { state.delegate(it) }, MyCallTags.DELEGATE_YES, MyCallTags.DELEGATE_NO)
+                }
+            }
+            if (ui.result is QueryResult.Unanswered) AronBanner(stringResource(R.string.tso_mc_err_unanswered), Modifier.testTag(MyCallTags.ERRORS), kind = BannerKind.Error)
+            if (ui.result is QueryResult.Failed) AronBanner(stringResource(R.string.tso_mc_save_failed), kind = BannerKind.Error)
+        }
+    }
+}
+
+@Composable
+private fun YesNo(value: Boolean?, onPick: (Boolean) -> Unit, yesTag: String, noTag: String) {
+    androidx.compose.foundation.layout.Row(horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.M)) {
+        com.aktcl.aron.core.ui.AronYesButton(stringResource(R.string.tso_mc_yes) + if (value == true) " ✓" else "", { onPick(true) }, Modifier.testTag(yesTag))
+        com.aktcl.aron.core.ui.AronNoButton(stringResource(R.string.tso_mc_no) + if (value == false) " ✓" else "", { onPick(false) }, Modifier.testTag(noTag))
+    }
+}
+
+/** F-TSO-016 Assign Task. */
+@Composable
+fun AssignTaskScreen(state: AssignTaskState, onDone: () -> Unit, modifier: Modifier = Modifier) {
+    val ui by state.ui.collectAsStateWithLifecycle()
+    val scope = rememberCoroutineScope()
+    val bn = LocalAppLanguage.current == AppLanguage.BN
+    val assigned = ui.result is TaskResult.Assigned
+    AronScreen(
+        modifier, topBar = { AronTopBar(stringResource(R.string.tso_mc_assign_task), onBack = onDone) },
+        bottomBar = { AronBottomBar(primary = if (assigned) AronBarAction(stringResource(R.string.tso_leave_done), onDone) else AronBarAction(stringResource(R.string.tso_mc_assign), { scope.launch { state.submit() } }, enabled = ui.result !is TaskResult.NoSr), modifier = Modifier.testTag(MyCallTags.SUBMIT)) },
+    ) {
+        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(AronTokens.Space.Screen), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.M)) {
+            if (ui.result is TaskResult.NoSr) AronBanner(stringResource(R.string.tso_mc_no_sr), Modifier.testTag(MyCallTags.NO_SR), kind = BannerKind.Warning)
+            if (assigned) AronBanner(stringResource(R.string.tso_mc_assigned, state.srName ?: ""), Modifier.testTag(MyCallTags.ASSIGNED), kind = BannerKind.Success)
+            if (ui.result is TaskResult.Failed) AronBanner(stringResource(R.string.tso_mc_save_failed), kind = BannerKind.Error)
+            state.srName?.let { Text(stringResource(R.string.tso_mc_assignee, it), style = MaterialTheme.typography.bodyMedium) }
+            AronSectionLabel(stringResource(R.string.tso_mc_task_type))
+            state.typeList.forEach { t -> AronListRow(t.label(bn), Modifier.testTag(MyCallTags.type(t.code)), onClick = { state.pickType(t.code) }, trailing = if (t.code == ui.typeCode) "✓" else null, flat = true) }
+            AronSectionLabel(stringResource(R.string.tso_mc_date))
+            OutlinedTextField(ui.date, { state.setDate(it) }, Modifier.fillMaxWidth().testTag(MyCallTags.DATE), singleLine = true, label = { Text(stringResource(R.string.tso_leave_date_hint)) })
+            AronSectionLabel(stringResource(R.string.tso_mc_comment))
+            OutlinedTextField(ui.comment, { state.setComment(it.take(MAX_TASK_COMMENT * 2)) }, Modifier.fillMaxWidth().testTag(MyCallTags.COMMENT), minLines = 3)
+            (ui.result as? TaskResult.Invalid)?.errors?.forEach { e ->
+                AronBanner(stringResource(when (e) {
+                    TaskError.NO_TYPE -> R.string.tso_mc_err_type; TaskError.DATE_FORMAT -> R.string.tso_leave_err_date_format; TaskError.DATE_PAST -> R.string.tso_mc_err_date_past
+                    TaskError.DATE_FAR -> R.string.tso_leave_err_date_far; TaskError.COMMENT_LONG -> R.string.tso_mc_err_comment }), Modifier.testTag(MyCallTags.ERRORS), kind = BannerKind.Error)
+            }
+        }
+    }
+}

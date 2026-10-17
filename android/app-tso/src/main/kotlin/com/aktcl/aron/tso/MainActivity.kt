@@ -192,6 +192,13 @@ class MainActivity : ComponentActivity() {
                                 today = { components.trustedClock.businessDate().toString() },
                                 feedback = remember(s.user.userId) { readModels.feedback(s.user.userId) },
                                 feedbackQueue = remember(s.user.userId) { readModels.feedbackQueue(s.user.userId) },
+                                myCall = remember(s.user.userId) {
+                                    val src = readModels.plan(s.user.userId)
+                                    com.aktcl.aron.feature.tso.mycall.MyCallDeps(
+                                        src, readModels.planQueue(s.user.userId, src), readModels.queryQueue(s.user.userId), readModels.taskQueue(s.user.userId),
+                                        { readModels.rubric(s.user.userId) }, { readModels.taskTypes(s.user.userId) },
+                                    )
+                                },
                                 nowIso = { java.time.Instant.ofEpochMilli(components.trustedClock.nowMs()).toString() },
                             ) }
                             }

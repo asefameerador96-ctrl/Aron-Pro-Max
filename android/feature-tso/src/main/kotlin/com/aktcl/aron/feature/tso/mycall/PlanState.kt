@@ -121,3 +121,18 @@ class VisitPlanState(private val source: PlanSource, private val today: () -> St
     /** Re-reads after a Visit Query was submitted so the outlet moves to Completed without leaving the screen. */
     suspend fun refresh() = show()
 }
+
+/** Everything My Call needs from the host; null hides the flow (previews and tests). */
+class MyCallDeps(
+    val source: PlanSource, val planQueue: PlanQueue, val queryQueue: QueryQueue, val taskQueue: TaskQueue,
+    val loadRubric: suspend () -> Rubric?, val loadTaskTypes: suspend () -> List<TaskType>,
+)
+
+/** The outlet the rep opened from My Visit Plan, kept across recreation while Visit Query and Assign Task are open. */
+class McSelection {
+    var planUuid: String = ""
+    var outlet: PlanOutlet? = null
+    var route: PlanRoute? = null
+    var rubric: Rubric? = null
+    var types: List<TaskType> = emptyList()
+}

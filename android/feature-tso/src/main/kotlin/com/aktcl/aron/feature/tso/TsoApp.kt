@@ -5,6 +5,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.padding
 import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.Composable
+import kotlinx.coroutines.launch
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -78,6 +79,8 @@ fun TsoApp(
     feedbackQueue: com.aktcl.aron.feature.tso.feedback.FeedbackQueue? = null,
     feedbackPhotos: com.aktcl.aron.feature.tso.feedback.FeedbackPhotos? = null,
     nowIso: () -> String = { java.time.Instant.now().toString() },
+    /** F-TSO-013..016: Set Plan, My Visit Plan, Visit Query and Assign Task; null shows the placeholder. */
+    myCall: com.aktcl.aron.feature.tso.mycall.MyCallDeps? = null,
 ) {
     var screen by rememberSaveable { mutableStateOf(TsoScreen.HOME) }
     BackHandler(enabled = screen != TsoScreen.HOME) { screen = TsoScreen.HOME }
@@ -127,6 +130,9 @@ fun TsoApp(
                     com.aktcl.aron.feature.tso.leave.LeaveListScreen(state, onBack = { screen = TsoScreen.HOME }, onApply = if (leaveQueue != null) ({ applying = true }) else null)
                 }
             } else TsoPlaceholderFor(s, tiles, syncedAt) { screen = TsoScreen.HOME }
+            TsoScreen.MY_CALL -> if (myCall != null) {
+                MyCallFlow(myCall, user.username, today, onBack = { screen = TsoScreen.HOME })
+            } else TsoPlaceholderFor(s, tiles, syncedAt) { screen = TsoScreen.HOME }
             TsoScreen.FEEDBACK -> if (feedback != null) {
                 var writing by rememberSaveable { mutableStateOf(false) }
                 val uk = user.username
@@ -162,4 +168,52 @@ fun TsoApp(
 private fun TsoPlaceholderFor(s: TsoScreen, tiles: List<RoleTile>, syncedAt: String?, onBack: () -> Unit) {
     val tile = tiles.first { it.id == s.tileId }
     RoleSectionPlaceholder(stringResource(tile.label), tile.icon, onBack = onBack, syncedAt = syncedAt)
+}
+
+/** The My Call sub-navigation: hub, Set Plan, My Visit Plan, then Visit Query and Assign Task for one outlet. States survive recreation and are per user. */
+@Composable
+private fun MyCallFlow(deps: com.aktcl.aron.feature.tso.mycall.MyCallDeps, userKey: String, today: () -> String, onBack: () -> Unit) {
+    var step by rememberSaveable { mutableStateOf("hub") }
+    val counter = rememberRetained("tso-$userKey-mc-epoch") { RetainedCounter() }
+    val sel = rememberRetained("tso-$userKey-mc-sel") { com.aktcl.aron.feature.tso.mycall.McSelection() }
+    val e = counter.n
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    BackHandler(enabled = step != "hub") { step = if (step == "task") "plan" else "hub"; if (step == "hub") counter.n++ }
+    when (step) {
+        "set" -> {
+            val st = rememberRetained("tso-$userKey-mc-set-$e") { com.aktcl.aron.feature.tso.mycall.SetPlanState(deps.source, deps.planQueue, today, { java.time.LocalDate.parse(today()).plusDays(1).toString() }) }
+            com.aktcl.aron.feature.tso.mycall.SetPlanScreen(st, onBack = { step = "hub"; counter.n++ })
+        }
+        "plan" -> {
+            val st = rememberRetained("tso-$userKey-mc-plan-$e") { com.aktcl.aron.feature.tso.mycall.VisitPlanState(deps.source, today) }
+            androidx.compose.runtime.LaunchedEffect(Unit) { if (sel.outlet != null) st.refresh() }
+            com.aktcl.aron.feature.tso.mycall.VisitPlanScreen(
+                st, onBack = { step = "hub"; counter.n++ },
+                onOpenOutlet = { planUuid, outlet, route ->
+                    sel.planUuid = planUuid; sel.outlet = outlet; sel.route = route
+                    scope.launch { sel.rubric = deps.loadRubric(); step = "query" }
+                },
+            )
+        }
+        "query" -> {
+            val outlet = sel.outlet; val route = sel.route; val rubric = sel.rubric
+            if (outlet == null || route == null || rubric == null) {
+                com.aktcl.aron.feature.tso.mycall.MyCallHub({ step = "set" }, { step = "plan" }, onBack) // nothing selected after a restore: back to the hub
+            } else {
+                val st = rememberRetained("tso-$userKey-mc-query-${sel.planUuid}-${outlet.id}") { com.aktcl.aron.feature.tso.mycall.VisitQueryState(rubric, sel.planUuid, outlet.id, route.id, deps.queryQueue) }
+                com.aktcl.aron.feature.tso.mycall.VisitQueryScreen(
+                    st, outlet.name, onBack = { step = "plan" },
+                    onDone = { delegate -> if (delegate) { scope.launch { sel.types = deps.loadTaskTypes(); step = "task" } } else step = "plan" },
+                )
+            }
+        }
+        "task" -> {
+            val outlet = sel.outlet; val route = sel.route
+            if (outlet == null) com.aktcl.aron.feature.tso.mycall.MyCallHub({ step = "set" }, { step = "plan" }, onBack) else {
+                val st = rememberRetained("tso-$userKey-mc-task-${sel.planUuid}-${outlet.id}") { com.aktcl.aron.feature.tso.mycall.AssignTaskState(sel.types, route, outlet.id, deps.taskQueue, today) }
+                com.aktcl.aron.feature.tso.mycall.AssignTaskScreen(st, onDone = { step = "plan" })
+            }
+        }
+        else -> com.aktcl.aron.feature.tso.mycall.MyCallHub({ step = "set" }, { step = "plan" }, onBack)
+    }
 }
