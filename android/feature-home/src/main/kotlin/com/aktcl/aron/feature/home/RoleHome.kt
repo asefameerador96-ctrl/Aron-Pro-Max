@@ -95,6 +95,7 @@ object RoleHomeTags {
     const val SET_LANG_EN = "rh_set_lang_en"
     const val SET_SUNLIGHT = "rh_set_sunlight"
     const val SET_UPDATE = "rh_set_update"
+    const val SET_SUPPORT = "rh_set_support"
     fun tile(id: String) = "rh_tile_$id"
 }
 
@@ -353,6 +354,8 @@ fun RoleSettingsContent(
     onSunlight: ((Boolean) -> Unit)? = null,
     onUpdate: (() -> Unit)? = null,
     updateAvailable: Boolean = false,
+    /** PDA to Support (F-AMO-034): the row shows only when the app wires it. */
+    onSupport: (() -> Unit)? = null,
 ) {
     val c = LocalAronColors.current
     val language = LocalAppLanguage.current
@@ -397,14 +400,22 @@ fun RoleSettingsContent(
             Column(Modifier.padding(horizontal = AronTokens.Space.Screen)) {
                 AronListRow(
                     stringResource(R.string.set_version, localizedDigits(versionText)), Modifier.testTag(RoleHomeTags.SET_VERSION),
-                    flat = true, position = if (onUpdate != null) RowPosition.First else RowPosition.Only, divider = onUpdate != null,
+                    flat = true, position = if (onUpdate != null || onSupport != null) RowPosition.First else RowPosition.Only, divider = onUpdate != null || onSupport != null,
                     leading = { Icon(AronIcons.Info, contentDescription = null, tint = c.accent, modifier = Modifier.size(AronTokens.Size.Icon)) },
                 )
                 if (onUpdate != null) {
                     AronListRow(
                         stringResource(if (updateAvailable) R.string.set_update_available else R.string.set_update), Modifier.testTag(RoleHomeTags.SET_UPDATE),
-                        flat = true, position = RowPosition.Last, onClick = onUpdate,
+                        flat = true, position = if (onSupport != null) RowPosition.Middle else RowPosition.Last, divider = onSupport != null, onClick = onUpdate,
                         leading = { Icon(AronIcons.CloudUpload, contentDescription = null, tint = c.accent, modifier = Modifier.size(AronTokens.Size.Icon)) },
+                        trailingContent = { Icon(AronIcons.ChevronRight, contentDescription = null, tint = c.textSecondary, modifier = Modifier.size(AronTokens.Size.Icon)) },
+                    )
+                }
+                if (onSupport != null) {
+                    AronListRow(
+                        stringResource(R.string.set_support), Modifier.testTag(RoleHomeTags.SET_SUPPORT),
+                        flat = true, position = RowPosition.Last, onClick = onSupport,
+                        leading = { Icon(AronIcons.Info, contentDescription = null, tint = c.accent, modifier = Modifier.size(AronTokens.Size.Icon)) },
                         trailingContent = { Icon(AronIcons.ChevronRight, contentDescription = null, tint = c.textSecondary, modifier = Modifier.size(AronTokens.Size.Icon)) },
                     )
                 }

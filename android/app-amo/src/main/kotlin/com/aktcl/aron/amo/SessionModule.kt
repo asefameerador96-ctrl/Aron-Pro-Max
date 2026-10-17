@@ -127,6 +127,12 @@ object SessionModule {
             bangla = { com.aktcl.aron.core.ui.AppLocale.current(it) == com.aktcl.aron.core.common.AppLanguage.BN },
         )
 
+    /** PDA to Support (android-sys F-SYS-021; docs/requests/android-sys-app-wiring.md item 5). */
+    @Provides
+    @Singleton
+    fun systemShell(@ApplicationContext context: Context, components: SessionComponents, databases: UserDatabases): SystemShell =
+        SystemShell(context, components, databases)
+
     /** F-SYS-020 updater: update check, download, install (android-sys). */
     @Provides
     @Singleton

@@ -25,6 +25,7 @@ class AronAMOApplication : Application(), Configuration.Provider {
     @Inject lateinit var updateShell: com.aktcl.aron.core.sync.shell.UpdateShell
     @Inject lateinit var pushShell: com.aktcl.aron.core.sync.shell.PushShell
     @Inject lateinit var mediaShell: MediaShell
+    @Inject lateinit var systemShell: SystemShell
     @Inject lateinit var sessionComponents: com.aktcl.aron.core.session.SessionComponents
 
     override fun onCreate() {
@@ -50,6 +51,8 @@ class AronAMOApplication : Application(), Configuration.Provider {
         pushShell.install()
         // Photos (F-SYS-010): every user's queue uploads on its own job; no network work here.
         mediaShell.install()
+        // PDA to Support (F-SYS-021): the worker finds the signed-in user's queue; no network work here.
+        systemShell.install()
     }
 
     override val workManagerConfiguration: Configuration
