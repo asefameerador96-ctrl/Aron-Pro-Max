@@ -94,5 +94,51 @@ class TsoReadModels(private val components: SessionComponents, private val datab
         )
     }
 
-    private companion object { const val LEAVE_MIRROR = "tso.unsent.leave." }
+    /** F-TSO-018/029: categories come from the login snapshot (bundle section code_lists), so they work offline. */
+    fun feedback(userId: Long): com.aktcl.aron.feature.tso.feedback.FeedbackSource = object : com.aktcl.aron.feature.tso.feedback.FeedbackSource {
+        override suspend fun categories() = com.aktcl.aron.feature.tso.feedback.CodeLists.feedbackCategories(runCatching { meta(userId).section("code_lists") }.getOrNull())
+
+        override suspend fun cached(): com.aktcl.aron.feature.tso.feedback.FeedbackSource.Cached? {
+            val (body, asOf) = cacheGet(userId, "feedback") ?: return null
+            return com.aktcl.aron.feature.tso.feedback.FeedbackJson.parsePage(body)?.let { com.aktcl.aron.feature.tso.feedback.FeedbackSource.Cached(it.items, asOf) }
+        }
+
+        override suspend fun unsent() = runCatching {
+            meta(userId).metaWithPrefix(FEEDBACK_MIRROR).mapNotNull { com.aktcl.aron.feature.tso.feedback.FeedbackJson.parseUnsent(it.value) }
+        }.getOrDefault(emptyList())
+
+        override suspend fun refresh(): com.aktcl.aron.feature.tso.feedback.FeedbackSource.Cached? {
+            val all = mutableListOf<com.aktcl.aron.feature.tso.feedback.FeedbackItem>()
+            var cursor: String? = null
+            for (pageNo in 1..5) {
+                val body = get("/v1/feedback?limit=100" + (cursor?.let { "&cursor=" + java.net.URLEncoder.encode(it, "UTF-8") } ?: "")) ?: return null
+                val pg = com.aktcl.aron.feature.tso.feedback.FeedbackJson.parsePage(body) ?: return null
+                all += pg.items; cursor = pg.nextCursor
+                if (cursor == null) break
+            }
+            val items = all.distinctBy { it.feedbackUuid }
+            val asOf = asOfNow()
+            cachePut(userId, "feedback", com.aktcl.aron.feature.tso.feedback.FeedbackJson.toCache(items), asOf)
+            runCatching { items.forEach { meta(userId).deleteMeta(FEEDBACK_MIRROR + it.feedbackUuid) } }
+            return com.aktcl.aron.feature.tso.feedback.FeedbackSource.Cached(items, asOf)
+        }
+    }
+
+    /** F-TSO-018: outbox row (record type feedback, family self, rank 0) plus the mirror row, one transaction. */
+    fun feedbackQueue(userId: Long): com.aktcl.aron.feature.tso.feedback.FeedbackQueue = com.aktcl.aron.feature.tso.feedback.FeedbackQueue { uuid, createdAt, p ->
+        val box = checkNotNull(outbox) { "no outbox" }
+        val item = com.aktcl.aron.feature.tso.feedback.FeedbackItem(uuid, p.categoryCode, p.title, p.description, createdAt, com.aktcl.aron.feature.tso.feedback.FeedbackStatus.NEW, sent = false, hasPhoto = p.photoUuid != null)
+        box.enqueue(
+            userId, com.aktcl.aron.contract.RecordType.FEEDBACK, uuid,
+            kotlinx.serialization.json.buildJsonObject {
+                put("category_code", kotlinx.serialization.json.JsonPrimitive(p.categoryCode))
+                put("title", kotlinx.serialization.json.JsonPrimitive(p.title))
+                put("description", kotlinx.serialization.json.JsonPrimitive(p.description))
+                put("photo_uuid", p.photoUuid?.let { kotlinx.serialization.json.JsonPrimitive(it) } ?: kotlinx.serialization.json.JsonNull)
+            },
+            mirrorKey = FEEDBACK_MIRROR + uuid, mirrorValue = com.aktcl.aron.feature.tso.feedback.FeedbackJson.unsentToJson(item),
+        )
+    }
+
+    private companion object { const val FEEDBACK_MIRROR = "tso.unsent.feedback."; const val LEAVE_MIRROR = "tso.unsent.leave." }
 }

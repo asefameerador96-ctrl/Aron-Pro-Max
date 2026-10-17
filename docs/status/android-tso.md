@@ -8,7 +8,8 @@
 
 ## Done (cont.)
 - F-TSO-008 leave list (checked by Sonnet, 4 defects fixed). Host: `TsoReadModels` (GET + cache in the encrypted per-user sync_meta, wiped with the DB), `TsoOutbox` (generic durable queue: outbox row + mirror row in one transaction, idempotent by uuid; no shared DTOs needed, payload is a JsonObject). Reuse `TsoOutbox` for every TSO write.
-- F-TSO-009 leave apply built (validation, one uuid per form, queue via TsoOutbox, 'not sent yet' from the mirror); checker pending.
+- F-TSO-009 leave apply done (Sonnet checker: 1 defect fixed). `rememberRetained` keeps forms across recreation.
+- F-TSO-018 My Feedback form + F-TSO-029 list built and wired (categories from the bundle code_lists, offline; queue via TsoOutbox; toasts). The ONE-PHOTO part is not wired yet: needs a TSO MediaComponents shell like app-sr `MediaShell` (core-media + upload scheduler) and a `FeedbackPhotos` implementation; the form already has the port (`photosEnabled`). Checker for 018/029 pending.
 
 ## Next rows
 F-TSO-018 My Feedback, F-TSO-028 chrome, F-TSO-029 feedback list, then Day 5 rows.

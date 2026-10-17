@@ -70,6 +70,11 @@ fun TsoApp(
     leaveQueue: com.aktcl.aron.feature.tso.leave.LeaveQueue? = null,
     /** Dhaka business date `YYYY-MM-DD` from trusted time, for the apply form's date checks. */
     today: () -> String = { businessDate },
+    /** F-TSO-018/029: the feedback source (categories from the login snapshot, own list), its queue, the photo port (null hides it) and trusted `now` as RFC 3339. */
+    feedback: com.aktcl.aron.feature.tso.feedback.FeedbackSource? = null,
+    feedbackQueue: com.aktcl.aron.feature.tso.feedback.FeedbackQueue? = null,
+    feedbackPhotos: com.aktcl.aron.feature.tso.feedback.FeedbackPhotos? = null,
+    nowIso: () -> String = { java.time.Instant.now().toString() },
 ) {
     var screen by rememberSaveable { mutableStateOf(TsoScreen.HOME) }
     BackHandler(enabled = screen != TsoScreen.HOME) { screen = TsoScreen.HOME }
@@ -90,15 +95,30 @@ fun TsoApp(
             TsoScreen.DEVICE_OTP -> RoleDeviceOtpContent(onBack = { screen = TsoScreen.HOME }, webOrigin = webOrigin)
             TsoScreen.LEAVE -> if (leave != null) {
                 var applying by rememberSaveable { mutableStateOf(false) }
-                // a new list state after an application, so the unsent card shows at once
-                var listEpoch by rememberSaveable { mutableStateOf(0) }
-                val state = remember(leave, listEpoch) { com.aktcl.aron.feature.tso.leave.LeaveListState(leave) }
-                BackHandler(enabled = applying) { applying = false; listEpoch++ }
+                // the epochs make a fresh list state / form after an application; the states themselves survive recreation
+                var epoch by rememberSaveable { mutableStateOf(0) }
+                val state = rememberRetained("tso-leave-list-$epoch") { com.aktcl.aron.feature.tso.leave.LeaveListState(leave) }
+                BackHandler(enabled = applying) { applying = false; epoch++ }
                 if (applying && leaveQueue != null) {
-                    val apply = remember(leaveQueue) { com.aktcl.aron.feature.tso.leave.LeaveApplyState(leaveQueue, today) }
-                    com.aktcl.aron.feature.tso.leave.LeaveApplyScreen(apply, onBack = { applying = false; listEpoch++ })
+                    val apply = rememberRetained("tso-leave-apply-$epoch") { com.aktcl.aron.feature.tso.leave.LeaveApplyState(leaveQueue, today) }
+                    com.aktcl.aron.feature.tso.leave.LeaveApplyScreen(apply, onBack = { applying = false; epoch++ })
                 } else {
                     com.aktcl.aron.feature.tso.leave.LeaveListScreen(state, onBack = { screen = TsoScreen.HOME }, onApply = if (leaveQueue != null) ({ applying = true }) else null)
+                }
+            } else TsoPlaceholderFor(s, tiles, syncedAt) { screen = TsoScreen.HOME }
+            TsoScreen.FEEDBACK -> if (feedback != null) {
+                var writing by rememberSaveable { mutableStateOf(false) }
+                var epoch by rememberSaveable { mutableStateOf(0) }
+                val cats = rememberRetained("tso-fb-cats-$epoch") { com.aktcl.aron.feature.tso.feedback.CategoryHolder() }
+                androidx.compose.runtime.LaunchedEffect(epoch) { if (cats.list == null) cats.list = runCatching { feedback.categories() }.getOrDefault(emptyList()) }
+                val list = rememberRetained("tso-fb-list-$epoch") { com.aktcl.aron.feature.tso.feedback.FeedbackListState(feedback) }
+                BackHandler(enabled = writing) { writing = false; epoch++ }
+                val loaded = cats.list
+                if (writing && feedbackQueue != null && loaded != null) {
+                    val form = rememberRetained("tso-fb-form-$epoch") { com.aktcl.aron.feature.tso.feedback.FeedbackFormState(feedbackQueue, loaded, nowIso, feedbackPhotos) }
+                    com.aktcl.aron.feature.tso.feedback.FeedbackFormScreen(form, onBack = { writing = false; epoch++ }, photosEnabled = feedbackPhotos != null)
+                } else {
+                    com.aktcl.aron.feature.tso.feedback.FeedbackListScreen(list, loaded ?: emptyList(), onBack = { screen = TsoScreen.HOME }, onNew = if (feedbackQueue != null && loaded != null) ({ writing = true }) else null)
                 }
             } else TsoPlaceholderFor(s, tiles, syncedAt) { screen = TsoScreen.HOME }
             else -> TsoPlaceholderFor(s, tiles, syncedAt) { screen = TsoScreen.HOME }

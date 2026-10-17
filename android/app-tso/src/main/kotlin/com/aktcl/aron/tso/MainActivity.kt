@@ -190,6 +190,9 @@ class MainActivity : ComponentActivity() {
                                 leave = remember(s.user.userId) { readModels.leave(s.user.userId) },
                                 leaveQueue = remember(s.user.userId) { readModels.leaveQueue(s.user.userId) },
                                 today = { components.trustedClock.businessDate().toString() },
+                                feedback = remember(s.user.userId) { readModels.feedback(s.user.userId) },
+                                feedbackQueue = remember(s.user.userId) { readModels.feedbackQueue(s.user.userId) },
+                                nowIso = { java.time.Instant.ofEpochMilli(components.trustedClock.nowMs()).toString() },
                             ) }
                             }
                         }

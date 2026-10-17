@@ -336,3 +336,8 @@ Steps (laptop session, the Honor X5c Plus on USB, about 5 minutes):
 2. When it says so, the owner logs in on the phone as `sr1001` and answers `y` if the home screen opened.
 3. Pass = `ALL PASS (5 checks)`: phone listed, APK installed, login succeeded (API), login on phone, /health from
    Azure. Paste the window (it holds no secret) into `docs/status/laptop.md` and tell the lead.
+
+## android-tso (wave 2, 2026-10-17): checks that need the phone
+- D-TSO-001 (F-TSO-001): on the Honor X5c Plus or Galaxy A06 the TSO login is dark navy in Bangla and English; the sun switch on the login row turns on Sunlight mode (light, solid); log out with unsent items is refused with the count, with nothing unsent it wipes and returns to the dark login.
+- D-TSO-008/009 (F-TSO-008/009): leave list in Bangla and English against the seeded zone; apply one leave in flight mode: the card shows "not sent yet"; switch the data on: it becomes "DMO approval pending" after the next list refresh.
+- D-TSO-018/029 (F-TSO-018/029): feedback saved offline shows "not sent yet" and becomes a server row after sync; the category list is the seeded one.
