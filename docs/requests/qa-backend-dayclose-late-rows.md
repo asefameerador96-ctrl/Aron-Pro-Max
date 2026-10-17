@@ -17,8 +17,18 @@ flight, and reopen races, under a strict oracle of 17 clauses. Each clause is pr
   - 20261051 (date 2027-03-12: counted 17, allowed {18, 13, 12});
   - 873 (run seed 777, 2027-07-14: route-day 9 against close row 10);
   - 797, 837, 854, 880, 20261031, 20261045.
-- **Suggested fix:** take the route-day row lock (`SELECT ... FOR NO KEY UPDATE`, or `FOR SHARE` against the close's
-  `UPDATE`) before the late check, so a close and a family serialise. A lock on the zone-day key also works.
+- **Fix, verified by the qa checker in a scratch clone:** in `DayStates.afterStored`, before the late checks, run
+  `SELECT 1 FROM app.route_day WHERE route_id = ANY(:r) AND business_date = :d ORDER BY route_id FOR NO KEY UPDATE`
+  (after `planner.planIn`). Both shapes then give 0/0, and 200 strict rounds were green.
+  - Lock the route-days in route_id order, because a `day_open` names several routes. Final Submit
+    (`DayApi.kt`, before its route_day UPDATE) should lock the zone's route-days in the same order.
+  - **Do not use FOR SHARE.** Two families on one route can both hold it and then both try to UPDATE: a deadlock.
+    `IngestService` runs `afterStored` inside a savepoint and only logs its failures, so a deadlock there would
+    silently drop the late count.
+  - A zone-day advisory lock also works, but ingest must take it in shared mode so the SRs of one zone do not
+    serialise.
+- **Severity:** a reporting miscount (one late row per affected close), not a lost or doubled sale. The qa checker
+  reproduced it deterministically in both shapes.
 - **Proof:** with the fix, `ARON_DAYCLOSE_TOLERATE=none ARON_DAYCLOSE_FUZZ_ROUNDS=200 ./gradlew :backend:app:test
   --tests '*DayCloseRaceTest*'` must be green.
 - **Then drop the default** `KD-1` tolerance in `DayCloseRaceTest` (one line, marked). Until then the test counts KD-1
@@ -30,8 +40,8 @@ flight, and reopen races, under a strict oracle of 17 clauses. Each clause is pr
   as the next millisecond.
 - Repro: `aReplayAnswersTheFirstSuccessToTheMillisecond`, `@Disabled` with this request's name. The clock is fixed at
   `06:00:00.9999997`; the first answer is `.999Z` and the replay is `06:00:01.000Z`.
-- **Suggested fix:** truncate `now` once (to the microsecond or the millisecond) before it is both answered and
-  stored. Then remove the `@Disabled`.
+- **Fix, verified by the qa checker:** `val now = clock.now().truncatedTo(ChronoUnit.MICROS)` in `finalSubmit`
+  (`DayApi.kt`). The repro then passes; remove the `@Disabled`.
 
 **Latent, for when `POST /v1/day/reopen` is built** (today it answers 404; docs/33 G29/G34): a submit queued behind a
 reopen reads its clock before it waits for the zone-day lock, so the second close can be stamped slightly before the
