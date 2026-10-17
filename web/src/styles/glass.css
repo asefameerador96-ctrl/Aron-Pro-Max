@@ -409,10 +409,10 @@ dialog.sheet-start::backdrop {
   font-size: min(var(--text-hero, 3rem), 12.5cqi);
 }
 .fit-number.text-display {
-  font-size: min(var(--text-display, 2.125rem), 10cqi);
+  font-size: min(var(--text-display, 2.125rem), max(1.75rem, 10cqi));
 }
 .fit-number.text-numeral {
-  font-size: min(var(--text-numeral, 1.625rem), 8cqi);
+  font-size: min(var(--text-numeral, 1.625rem), max(1.5rem, 8cqi));
 }
 
 /* Coarse pointer: each segment is the 48 px target; the control grows by its 3 px padding and 1 px border on each side. */
@@ -467,5 +467,43 @@ dialog.sheet-start::backdrop {
   * {
     animation: none !important;
     transition: none !important;
+  }
+}
+
+/* Phone tables (below 30rem): each row becomes a small card, first cell as the title, the other cells as "label: value", so no column is cut off. */
+@media (max-width: 29.99rem) {
+  table.stack-sm thead {
+    position: absolute;
+    inline-size: 1px;
+    block-size: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+  table.stack-sm,
+  table.stack-sm tbody,
+  table.stack-sm tr,
+  table.stack-sm td {
+    display: block;
+    width: 100%;
+  }
+  table.stack-sm tr {
+    padding-block: 0.5rem;
+  }
+  table.stack-sm td {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.125rem 0.75rem;
+    text-align: end;
+  }
+  table.stack-sm td:first-child {
+    justify-content: flex-start;
+    text-align: start;
+    padding-block: 0.25rem;
+  }
+  table.stack-sm td:not(:first-child)::before {
+    content: attr(data-label);
+    color: var(--text-secondary);
+    text-align: start;
   }
 }

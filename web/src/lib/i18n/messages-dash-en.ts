@@ -362,10 +362,10 @@ export const dashEn = {
   "drill.cat.routes": "{name}: routes",
   "drill.cat.srs": "{name}: SRs",
   "drill.cat.brands": "Brands in scope (all categories)",
-  "drill.cat.brands_note": "The server gives brand figures for the whole scope, not split by category yet; the split is requested.",
+  "drill.cat.brands_note": "Brand figures for all categories in your area.",
   "drill.channel.title": "Channels in scope",
   "drill.channel.routes": "Routes in scope",
-  "drill.channel.routes_note": "Calls per route and channel are not given by the server yet, so the routes below are all routes of the scope; the split is requested.",
+  "drill.channel.routes_note": "All routes in your area.",
   "drill.calls.title": "Calls by route",
   "drill.login.title": "Not logged in",
   "drill.login.not_uploaded": "Logged in, not uploaded",
@@ -375,4 +375,5 @@ export const dashEn = {
   "drill.title.channel": "By channel",
   "drill.title.calls": "Calls and strike rate",
   "drill.title.login": "Login and upload status",
+  "table.more": "Show {n} more rows",
 } as const;

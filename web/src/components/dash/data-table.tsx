@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { RowsTable } from "@/components/dash/rows-table";
 import { CsvButton, PrintButton, RetryButton } from "@/components/dash/table-actions";
 import { Icon } from "@/components/kit/icons";
 import { Skeleton } from "@/components/kit/skeleton";
@@ -54,34 +55,7 @@ export function DataTable({ id, locale, heading, columns, rows, csvName, asOf, b
         </p>
       ) : (
         <div role="region" aria-labelledby={`h-${id}`} tabIndex={0} className="overflow-x-auto rounded-chip focus-visible:outline-(length:--focus-w) focus-visible:outline-offset-2 outline-focus">
-          <table className="min-w-full text-body" data-testid={`rows-${id}`}>
-            <thead>
-              <tr className="border-b border-divider text-start text-label text-secondary">
-                {columns.map((c, i) => (
-                  <th key={i} scope="col" className={`whitespace-nowrap px-3 py-2 font-semibold ${c.numeric ? "text-end" : "text-start"}`}>
-                    {c.header}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-divider">
-              {rows.map((r) => (
-                <tr key={r.key}>
-                  {r.cells.map((c, i) => (
-                    <td key={i} className={`px-3 py-2 ${columns[i]?.numeric ? "text-end tabular-nums" : "text-start"} ${i === 0 ? "text-body-strong" : ""}`}>
-                      {i === 0 && r.href ? (
-                        <a href={r.href} className="text-accent underline-offset-2 hover:underline focus-visible:outline-(length:--focus-w) focus-visible:outline-offset-2 outline-focus">
-                          {c}
-                        </a>
-                      ) : (
-                        c
-                      )}
-                    </td>
-                  ))}
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <RowsTable id={id} columns={columns} rows={rows} moreMsg={t(locale, "table.more")} />
         </div>
       )}
       <TileMeta locale={locale} businessDate={businessDate} asOf={asOf} today={today} />

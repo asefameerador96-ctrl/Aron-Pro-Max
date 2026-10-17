@@ -364,10 +364,10 @@ export const dashBn: Record<keyof typeof dashEn, string> = {
   "drill.cat.routes": "{name}: রুট",
   "drill.cat.srs": "{name}: এসআর",
   "drill.cat.brands": "এলাকার ব্র্যান্ড (সব ক্যাটাগরি)",
-  "drill.cat.brands_note": "সার্ভার এখনো ক্যাটাগরি অনুযায়ী ব্র্যান্ড ভাগ দেয় না, পুরো এলাকার ব্র্যান্ড দেখানো হলো; ভাগটি অনুরোধ করা আছে।",
+  "drill.cat.brands_note": "আপনার এলাকার সব ক্যাটাগরির ব্র্যান্ডের হিসাব।",
   "drill.channel.title": "এলাকার চ্যানেল",
   "drill.channel.routes": "এলাকার রুট",
-  "drill.channel.routes_note": "রুট ও চ্যানেল অনুযায়ী কল সার্ভার এখনো দেয় না, তাই নিচে এলাকার সব রুট; ভাগটি অনুরোধ করা আছে।",
+  "drill.channel.routes_note": "আপনার এলাকার সব রুট।",
   "drill.calls.title": "রুট অনুযায়ী কল",
   "drill.login.title": "লগইন করেনি",
   "drill.login.not_uploaded": "লগইন করেছে, আপলোড হয়নি",
@@ -377,4 +377,5 @@ export const dashBn: Record<keyof typeof dashEn, string> = {
   "drill.title.channel": "চ্যানেল অনুযায়ী",
   "drill.title.calls": "কল ও স্ট্রাইক রেট",
   "drill.title.login": "লগইন ও আপলোডের অবস্থা",
+  "table.more": "আরও {n}টি সারি দেখান",
 };

@@ -17,6 +17,7 @@ vi.mock("@/lib/dash/server", async (orig) => {
 
 import Drill from "@/app/(dashboards)/drill/[kind]/page";
 import { DataTable } from "@/components/dash/data-table";
+import { formatTakaDisplay } from "@/lib/reports/format";
 import { shouldRefresh } from "@/components/dash/table-actions";
 import { csvField, csvTaka, toCsv } from "@/lib/dash/csv";
 import { callsRows, categoryRoutes, rankRows, srRows, strikeOf, type TrackingRow } from "@/lib/dash/rows";
@@ -140,5 +141,31 @@ describe("drill route", () => {
   });
   it("keeps scope and date in the links", () => {
     expect(drillHref("category", { code: "bidi", zone: "3", date: "2026-10-16" })).toBe("/drill/category?code=bidi&zone=3&date=2026-10-16");
+  });
+});
+
+describe("large tables and paisa agreement", () => {
+  const base = { id: "big", locale: "en" as const, heading: "H", columns: [{ header: "A" }], csvName: "big", asOf: null, businessDate: "2026-10-17", today: "2026-10-17" };
+  it("puts at most 200 rows in the DOM and says how many are held back", () => {
+    const rows = Array.from({ length: 450 }, (_, i) => ({ key: String(i), cells: [`r${i}`] }));
+    const h = renderToStaticMarkup(<DataTable {...base} rows={rows} />);
+    expect((h.match(/<tr/g) ?? []).length).toBe(201); // header + 200
+    expect(h).toContain('data-rows="450"');
+    expect(h).toContain("more-big");
+  });
+  it("the CSV amount rounds to the on-screen amount for any milli-taka value", () => {
+    let seed = 12345;
+    const rnd = () => (seed = (seed * 1103515245 + 12345) % 2147483648);
+    for (let i = 0; i < 2000; i++) {
+      const mtk = (rnd() % 2_000_000_000) - 500_000_000;
+      const screen = formatTakaDisplay("en", mtk).replace(/,/g, "");
+      const csv = csvTaka("en", mtk);
+      // round the three-decimal CSV text to paisa by integer maths, half away from zero
+      const neg = csv.startsWith("-");
+      const digits = BigInt(csv.replace("-", "").replace(".", ""));
+      const paisa = (digits + 5n) / 10n;
+      const back = `${neg && paisa > 0n ? "-" : ""}${paisa / 100n}.${String(paisa % 100n).padStart(2, "0")}`;
+      expect(back).toBe(screen);
+    }
   });
 });

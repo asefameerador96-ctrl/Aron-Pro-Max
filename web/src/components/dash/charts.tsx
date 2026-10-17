@@ -55,7 +55,7 @@ export function Donut({ slices, label, centerText, testId, size = 140 }: { slice
               })
             : null}
         </svg>
-        {centerText ? <span className="absolute inset-0 flex items-center justify-center text-body-strong text-primary tabular-nums">{centerText}</span> : null}
+        {centerText ? <span className={`absolute inset-0 flex items-center justify-center px-[22%] text-center tabular-nums text-primary ${centerText.length > 7 ? "text-caption font-semibold" : "text-body-strong"}`}>{centerText}</span> : null}
       </div>
       <ul aria-label={label} className="min-w-40 flex-[1_1_10rem] space-y-1.5">
         {slices.map((s, i) => (

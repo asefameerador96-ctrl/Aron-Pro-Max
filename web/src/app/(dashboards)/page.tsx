@@ -55,9 +55,9 @@ function DrillLink({ href, msg, testId }: { href: string; msg: string; testId: s
 /** Card heading row with the drill-down link (same look as the Tile heading). */
 function SectionHead({ msg, link }: { msg: string; link: React.ReactNode }) {
   return (
-    <div className="flex flex-wrap items-center justify-between gap-2 border-b border-accent-graphic/40 pb-2">
-      <h2 className="text-body-strong text-accent">{msg}</h2>
-      {link}
+    <div className="flex items-start justify-between gap-2 border-b border-accent-graphic/40 pb-2">
+      <h2 className="min-w-0 flex-1 text-body-strong text-accent">{msg}</h2>
+      <div className="shrink-0">{link}</div>
     </div>
   );
 }
@@ -68,7 +68,7 @@ function minusDays(ymd: string, days: number): string {
   return new Date(Date.UTC(y!, m! - 1, d! - days)).toISOString().slice(0, 10);
 }
 
-const STAT = "glass-card @container relative flex min-h-32 flex-col gap-2 p-(--card-pad) text-primary";
+const STAT = "glass-data @container relative flex min-h-32 flex-col gap-2 p-(--card-pad) text-primary";
 
 // The role-aware home dashboard (F-WEB-001) on the Calm Glass layout (docs/design/screens-web.md s1): hero (net sales), stat
 // cards with meters, channel and zone ranked bars, the needs-attention list and the team map plate. Everything comes from the
@@ -226,13 +226,13 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
 
                     </div>
                     <Ring pct={share} valueText={pctText(locale, share)} label={t(locale, "dashboard.cat.share")} size={104} hue={CATS.includes(c.category_code) ? CATS.indexOf(c.category_code) : 4} testId={`cat-ring-${c.category_code}`}>
-                      <span className="sr-only">{t(locale, "dashboard.cat.share")}</span>
+                      <span className="text-caption text-secondary">{t(locale, "dashboard.cat.share")}</span>
                     </Ring>
                   </div>
                   <div className="mt-2">
                     {change !== null ? (
-                  <StatusChip tone={change >= 0 ? "success" : "warning"} icon={change >= 0 ? "arrow-up" : "arrow-down"} testId={`cat-delta-${c.category_code}`}>
-                        {change >= 0 ? "+" : "−"}
+                  <StatusChip tone={Math.abs(change) < 0.05 ? "quiet" : change > 0 ? "success" : "warning"} icon={Math.abs(change) < 0.05 ? null : change > 0 ? "arrow-up" : "arrow-down"} testId={`cat-delta-${c.category_code}`}>
+                        {Math.abs(change) < 0.05 ? "" : change > 0 ? "+" : "−"}
                     {pctText(locale, Math.abs(change))} {t(locale, "dashboard.cat.vs_week")}
                   </StatusChip>
                 ) : null}
@@ -377,7 +377,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
                     <span aria-hidden="true">{t(locale, "dashboard.force_sale")} </span>
                     <span data-testid="force-sale">{pctText(locale, geo.data.force_sale_pct)}</span>
                   </StatusChip>
-                  <StatusChip tone="offline" icon="devices">
+                  <StatusChip tone="warning" icon="devices">
                     <span aria-hidden="true">{t(locale, "dashboard.mock")} </span>
                     <span className="sr-only">{t(locale, "dashboard.mock")} </span>
                     <span data-testid="mock-pct">{pctText(locale, geo.data.mock_pct)}</span>
@@ -428,8 +428,8 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
             }
             delta={
               deltaPct !== null ? (
-                <StatusChip tone={deltaPct >= 0 ? "success" : "warning"} icon={deltaPct >= 0 ? "arrow-up" : "arrow-down"} testId="sales-delta">
-                  {deltaPct >= 0 ? "+" : "−"}
+                <StatusChip tone={Math.abs(deltaPct) < 0.05 ? "quiet" : deltaPct > 0 ? "success" : "warning"} icon={Math.abs(deltaPct) < 0.05 ? null : deltaPct > 0 ? "arrow-up" : "arrow-down"} testId="sales-delta">
+                  {Math.abs(deltaPct) < 0.05 ? "" : deltaPct > 0 ? "+" : "−"}
                   {pctText(locale, Math.abs(deltaPct))} {t(locale, date === today ? "dashboard.delta.vs_yesterday" : "dashboard.delta.vs_previous_day")}
                 </StatusChip>
               ) : null
@@ -477,7 +477,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
             {meta(ls ? ls.as_of : null)}
           </section>
 
-          <Tile id="zones" locale={locale} titleKey="dashboard.zones" date={d()} data className="col-span-full md:col-span-6 lg:col-span-12 xl:col-span-8" actions={<span className="text-caption text-secondary">{t(locale, "dashboard.zones.by_net")}</span>}>
+          <Tile id="zones" locale={locale} titleKey="dashboard.zones" date={d()} data className={`col-span-full ${srRole ? "" : "hidden"}`} actions={<span className="text-caption text-secondary">{t(locale, "dashboard.zones.by_net")}</span>}>
             {ranked.length > 0 ? (
               <RankedBars label={t(locale, "dashboard.zones")} rows={ranked.map((c) => ({ key: `${c.node.type}-${c.node.id}`, label: c.node.name ?? c.node.code ?? String(c.node.id), value: Math.max(0, c.kpis.net_mtk), valueText: takaText(locale, c.kpis.net_mtk) }))} />
             ) : (
