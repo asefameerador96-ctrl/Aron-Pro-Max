@@ -77,4 +77,5 @@
     <string name="amo_rec_survey_response">Survey</string>
     <string name="amo_day_submitted">Today is submitted. New calls open when the server reopens the day.</string>
     <string name="amo_submit_open_call">A call is still open. Close it from Control Call before you submit the day.</string>
+    <string name="amo_load_failed_retry">Could not load. Tap to try again.</string>
 </resources>

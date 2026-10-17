@@ -77,4 +77,5 @@
     <string name="amo_rec_survey_response">সার্ভে</string>
     <string name="amo_day_submitted">আজকের দিন জমা হয়েছে। সার্ভার দিন আবার খুললে নতুন কল করা যাবে।</string>
     <string name="amo_submit_open_call">একটি কল এখনও খোলা আছে। দিন জমা দেওয়ার আগে কন্ট্রোল কল থেকে সেটি বন্ধ করুন।</string>
+    <string name="amo_load_failed_retry">লোড করা যায়নি। আবার চেষ্টা করতে ট্যাপ করুন।</string>
 </resources>

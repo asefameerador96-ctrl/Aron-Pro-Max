@@ -1,7 +1,10 @@
 package com.aktcl.aron.amo
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.ui.Alignment
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
@@ -53,6 +56,12 @@ private enum class OutletLeaf { LIST, OWN_LIST, PICK_ROUTE, PICK_OUTLET, FORM }
 fun AmoOutletHub(day: AmoDay, onBack: () -> Unit, extra: @Composable (OutletHubExtras) -> Unit = {}) {
     var leaf by rememberSaveable { mutableStateOf(OutletLeaf.LIST) }
     var routeId by rememberSaveable { mutableStateOf<Long?>(null) }
+    var savedKind by rememberSaveable { mutableStateOf(OutletRequestKind.NEW.name) }
+    // After process death AmoDay is rebuilt: the chosen kind is restored, and a Close/Info step whose outlet is gone starts over.
+    day.requestKind = OutletRequestKind.valueOf(savedKind)
+    if ((leaf == OutletLeaf.FORM && day.requestKind != OutletRequestKind.NEW && day.requestOutlet == null) ||
+        (leaf == OutletLeaf.PICK_OUTLET && routeId == null)
+    ) leaf = OutletLeaf.LIST
     val back: () -> Unit = {
         when (leaf) {
             OutletLeaf.LIST -> onBack()
@@ -73,7 +82,7 @@ fun AmoOutletHub(day: AmoDay, onBack: () -> Unit, extra: @Composable (OutletHubE
                     AronListRow(
                         stringResource(label),
                         onClick = {
-                            day.requestKind = kind; day.requestOutlet = null
+                            day.requestKind = kind; savedKind = kind.name; day.requestOutlet = null
                             leaf = if (kind == OutletRequestKind.NEW) OutletLeaf.FORM else OutletLeaf.PICK_ROUTE
                         },
                         position = if (i == 0) RowPosition.First else RowPosition.Middle, divider = true, flat = true,
@@ -83,8 +92,19 @@ fun AmoOutletHub(day: AmoDay, onBack: () -> Unit, extra: @Composable (OutletHubE
             }
             OutletLeaf.OWN_LIST -> {
                 var list by remember { mutableStateOf<List<OwnRequestRow>?>(null) }
-                LaunchedEffect(Unit) { list = runCatching { day.ownRequests() }.getOrDefault(emptyList()) }
-                list?.let { OwnRequestsContent(it) }
+                var failed by remember { mutableStateOf(false) }
+                var reload by remember { mutableStateOf(0) }
+                LaunchedEffect(reload) {
+                    list = null; failed = false
+                    runCatching { day.ownRequests() }.onSuccess { list = it }.onFailure { failed = true }
+                }
+                when {
+                    failed -> Column(Modifier.fillMaxSize().padding(AronTokens.Space.Screen)) {
+                        AronListRow(stringResource(AmoR.string.amo_load_failed_retry), onClick = { reload++ }, position = RowPosition.Only, divider = false, flat = true)
+                    }
+                    list == null -> Box(Modifier.fillMaxSize(), Alignment.Center) { CircularProgressIndicator() }
+                    else -> OwnRequestsContent(list.orEmpty())
+                }
             }
             OutletLeaf.PICK_ROUTE -> {
                 var days by remember { mutableStateOf<List<com.aktcl.aron.core.database.repo.RouteDay>?>(null) }

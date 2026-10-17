@@ -26,3 +26,4 @@ F-AMO-030-fix,M,2026-10-18T00:00Z,2026-10-18T00:50Z,50,0,"Opus T1 checker: submi
 F-AMO-025,S,2026-10-18T00:50Z,2026-10-18T01:10Z,20,0,"AMO Outlet hub: own New shop (SR request form on the AMO store, no AMO verification step), checker pending"
 F-AMO-026,S,2026-10-18T00:50Z,2026-10-18T01:10Z,0,0,"own Permanent close (open-dues warning from the shared form); checker pending"
 F-AMO-027,S,2026-10-18T00:50Z,2026-10-18T01:10Z,0,0,"own Change information (GEO + photo, confirm, queue); own-requests list; checker pending; DEVICE-PENDING"
+F-AMO-025-fix,S,2026-10-18T01:30Z,2026-10-18T01:50Z,20,0,"Sonnet checker on 025-027: restored kind/outlet after process death, own-requests loading+error+retry; open (minor): typed form draft not kept over process death; saved banner text says pending verification but is never shown (host leaves at once)"
