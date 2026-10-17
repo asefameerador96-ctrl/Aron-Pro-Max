@@ -1,15 +1,2 @@
 # N-014 / AUD-TP-2: operations no caller of ContractConformanceTest got a 2xx from (2026-10-17), so only their refusals
 # are validated. Each needs a fixture (real ids, tokens, cursors) or a fix. May only SHRINK. Routed in docs/requests/qa-contract-conformance.md.
-GET /v1/devices/me/policy
-GET /v1/media/{}/read-url
-GET /v1/sync/bundle/page
-GET /v1/sync/delta
-POST /v1/auth/bind-device
-POST /v1/auth/change-password
-POST /v1/auth/mfa/enrol
-POST /v1/auth/mfa/verify
-POST /v1/auth/refresh
-POST /v1/devices/enrol
-POST /v1/devices/me/status
-POST /v1/devices/nonce
-POST /v1/media/upload

@@ -50,6 +50,8 @@ class ApiWorld(
     val ids = HashMap<String, Long>()
     val otherIds = HashMap<String, Long>()
     val wiring: Wiring
+    /** Each user's latest login answer (refresh token, bind or MFA token). */
+    val logins = java.util.concurrent.ConcurrentHashMap<String, com.fasterxml.jackson.databind.JsonNode>()
     /** The in-memory blob store behind every blob port (SAS, photo writer, photo read): blob calls answer 2xx here. */
     val blobs = FakeBlobs()
     /** The key pair of the seeded SR phone ([SR_PHONE]): its public JWK replaces the seed placeholder, so the harness signs device proofs. */
@@ -66,7 +68,7 @@ class ApiWorld(
         }
         fresh.db.jdbi.useHandle<Exception> { h ->
             h.createUpdate("UPDATE app.app_user SET password_hash = :h WHERE pilot").bind("h", PasswordHasher().hash(password)).execute()
-            for ((k, v) in listOf("cfg.api.rl.device_per_min" to "100000", "cfg.api.rl.user_per_min" to "100000", "cfg.auth.mfa_required_roles" to "[]")) {
+            for ((k, v) in listOf("cfg.api.rl.device_per_min" to "100000", "cfg.api.rl.user_per_min" to "100000", "cfg.auth.mfa_required_roles" to if (conformance) "[\"DMO\"]" else "[]")) {
                 h.execute("INSERT INTO app.cfg_value (key, scope_type, scope_id, value, effective_from, config_version, reason) SELECT '$k', 'global', 0, '$v'::jsonb, now() - interval '1 day', max(config_version), 'qa harness' FROM app.cfg_version")
             }
             h.execute("INSERT INTO app.app_user (username, full_name, role, designation, employee_code, locale, home_zone_id, pilot, must_change_password) SELECT 'qa9001', 'QA Throwaway', role, designation, 'QA9001', locale, home_zone_id, false, false FROM app.app_user WHERE username = 'sr1001'")
@@ -150,6 +152,25 @@ class ApiWorld(
         ids["scope_user"] = one("SELECT id FROM app.app_user WHERE username = 'qa9002'")
         // Another SR route of Z-MIR for the route-assignment create (MIR-SR-D already carries qa9001's backfill cover).
         ids["cover_route"] = one("SELECT min(id) FROM app.route WHERE code LIKE 'MIR-SR-%' AND code <> 'MIR-SR-D' AND kind = 'sr' AND status = 'active'")
+        // A proof phone with the harness key (device-proof calls: policy, nonce, status), so the SR phone's trust never moves;
+        // an unbound SR and an unbound phone with the placeholder key (bind-device).
+        h.execute("INSERT INTO app.device (device_uuid, flavour, app_package, status, device_owner, lockdown_level, trust_level, public_key_jwk, public_key_thumbprint, attestation_summary, app_signing_cert_sha256, zone_id, device_info, app_version) SELECT '$PROOF_PHONE', flavour, app_package, 'active', device_owner, lockdown_level, 'normal', public_key_jwk, 'qa-proof-000a', attestation_summary, app_signing_cert_sha256, zone_id, device_info, app_version FROM app.device WHERE device_uuid = '$SR_PHONE'")
+        h.execute("INSERT INTO app.device (device_uuid, flavour, app_package, status, device_owner, lockdown_level, trust_level, public_key_jwk, public_key_thumbprint, attestation_summary, app_signing_cert_sha256, zone_id, device_info, app_version) SELECT '$BIND_PHONE', flavour, app_package, 'active', device_owner, lockdown_level, trust_level, public_key_jwk, 'qa-bind-000b', attestation_summary, app_signing_cert_sha256, zone_id, device_info, app_version FROM app.device WHERE device_uuid = '$THROWAWAY_PHONE'")
+        h.execute("INSERT INTO app.app_user (username, full_name, role, designation, employee_code, locale, home_zone_id, pilot, must_change_password, password_hash) SELECT '$BIND_USER', 'QA Bind', role, designation, 'QA9003', locale, home_zone_id, false, false, password_hash FROM app.app_user WHERE username = 'sr1001'")
+        ids["bind_user"] = one("SELECT id FROM app.app_user WHERE username = '$BIND_USER'")
+        // A stored photo of sr1001 (read-url reads app.media; a media_meta record leaves it pending_blob).
+        h.execute(
+            "INSERT INTO app.media (client_uuid, family_uuid, business_date, user_id, captured_at, config_version, purpose, ref_type, ref_client_uuid, sha256, bytes, width, height, blob_path, taken_at, status, stored_at, blob_bytes, blob_sha256) " +
+                "SELECT '$STORED_PHOTO', gen_random_uuid(), DATE '$BUSINESS_DATE', u.id, TIMESTAMPTZ '${BUSINESS_DATE}T03:00:00Z', 0, 'outlet_capture', 'visit', gen_random_uuid(), decode(repeat('ab', 32), 'hex'), 1000, 640, 480, " +
+                "'photos/$BUSINESS_DATE/$SR_PHONE/$STORED_PHOTO.jpg', TIMESTAMPTZ '${BUSINESS_DATE}T03:00:00Z', 'stored', now(), 1000, decode(repeat('ab', 32), 'hex') FROM app.app_user u WHERE u.username = 'sr1001'",
+        )
+        // A paged bundle section: the threshold at its floor (500) and 501 open tasks for sr1001.
+        h.execute("INSERT INTO app.cfg_value (key, scope_type, scope_id, value, effective_from, config_version, reason) SELECT 'cfg.bundle.page_threshold_rows', 'global', 0, '500'::jsonb, now() - interval '1 day', max(config_version), 'qa harness' FROM app.cfg_version")
+        h.execute(
+            "INSERT INTO app.task (client_uuid, family_uuid, business_date, user_id, captured_at, config_version, task_type_code, assignee_user_id, title, source, status) " +
+                "SELECT gen_random_uuid(), gen_random_uuid(), DATE '$BUSINESS_DATE', a.id, TIMESTAMPTZ '${BUSINESS_DATE}T03:00:00Z', 0, 'general', s.id, 'QA paging task ' || g, 'online', 'ongoing' " +
+                "FROM generate_series(1, 501) g, app.app_user s, app.app_user a WHERE s.username = 'sr1001' AND a.username = 'amo1001'",
+        )
         // A tutorial video asset (the sample asset is content_av; a tutorial needs its own purpose).
         h.execute("INSERT INTO app.admin_asset (asset_id, purpose, mime, bytes, sha256, blob_path) VALUES ('$TUTORIAL_ASSET', 'tutorial_video', 'video/mp4', 1, decode(repeat('00', 32), 'hex'), 'assets/tutorial_video/$TUTORIAL_ASSET.mp4')")
         // Paper backfill is keyed for the throwaway SR on sr1001's route (a cover), so sr1001's day is untouched.
@@ -158,6 +179,12 @@ class ApiWorld(
         // and a separate open item for resolve. Payloads are valid sync records (the quarantine read validates them).
         ids["quarantine_match"] = quarantine(h, "00000000-0000-4000-8000-0000000000e2", PAPER_MEMO_NO, "memo_no_duplicate", "held: memo_no $PAPER_MEMO_NO already stored", withLine = true)
         ids["quarantine_resolve"] = quarantine(h, "00000000-0000-4000-8000-0000000000e5", "qa9001-270103-002", "scope_out_of_reach", "qa resolve fixture", withLine = false)
+        // A quarantine item of sr1001 resolved after the bundle cursor (the clock): the delta carries the resolution.
+        h.execute(
+            "INSERT INTO app.sync_quarantine (client_uuid, record_type, code, status, payload_sha256, payload, user_id, business_date, resolved_at, resolution_note) " +
+                "SELECT '$RESOLVED_ITEM', 'memo', 'memo_no_duplicate', 'discarded', decode(repeat('cd', 32), 'hex'), jsonb_set(q.payload, '{client_uuid}', '\"$RESOLVED_ITEM\"'), u.id, DATE '$BUSINESS_DATE', TIMESTAMPTZ '${BUSINESS_DATE}T04:30:00Z', 'qa harness' " +
+                "FROM app.app_user u, app.sync_quarantine q WHERE u.username = 'sr1001' AND q.id = ${ids["quarantine_resolve"]}",
+        )
     }
 
     /** One held phone memo of qa9001 on MIR-SR-D (net 9200 = one MaxR-10S stick at the outlet price), optionally with its held line; the memo row's id. */
@@ -198,7 +225,8 @@ class ApiWorld(
             setBody("""{"username":"${c.user}","password":"$password","client":"${c.client}"${c.device?.let { ",\"device_uuid\":\"$it\"" } ?: ""}}""")
         }
         val text = r.bodyAsText()
-        return ContractModel.json.readTree(text).path("access_token").takeIf { it.isTextual }?.asText().also {
+        val answer = ContractModel.json.readTree(text).also { logins[c.user] = it }
+        return answer.path("access_token").takeIf { it.isTextual }?.asText().also {
             if (it == null) println("ApiWorld: no token for ${c.user}: ${r.status} ${text.take(200)}")
         }
     }
@@ -243,8 +271,8 @@ class ApiWorld(
             header("X-App-Version", APP_VERSION)
             headers.forEach { (k, v) -> header(k, v) }
             proof?.let { header("X-Device-Proof", it(op.method, path, sent, body)) }
-            if (token != null) header("Authorization", "Bearer $token")
-            c.device?.let { header("X-Device-Id", it) }
+            if (token != null && "Authorization" !in headers) header("Authorization", "Bearer $token")
+            if ("X-Device-Id" !in headers) c.device?.let { header("X-Device-Id", it) }
             for (p in op.parameters.filter { it.where == "header" && it.required }) {
                 when (p.name) {
                     "X-Device-Id" -> if (c.device == null) header(p.name, SR_PHONE)
@@ -265,9 +293,9 @@ class ApiWorld(
     fun pathFor(contract: ContractModel, op: ContractModel.Operation, pathIds: Map<String, Long>, values: Map<String, String> = emptyMap()): String =
         op.path.replace(Regex("\\{([^}]*)}")) { m -> values[m.groupValues[1]] ?: pathValue(contract, op, m.groupValues[1], pathIds) }
 
-    /** `X-Device-Proof` of the seeded SR phone: ES256 over `aron-proof-v1`, `device`, uuid, `METHOD path`, sha256 hex of the body, nonce bucket. */
-    fun deviceProofOf(method: String, path: String, body: ByteArray): String =
-        sign(listOf("aron-proof-v1", "device", SR_PHONE, "$method $path", com.aktcl.aron.backend.platform.DeviceProof.sha256Hex(body), bucket().toString()).joinToString("\n"))
+    /** `X-Device-Proof` of the seeded SR phone: ES256 over `aron-proof-v1`, `device`, uuid, `METHOD path`, sha256 hex of the body (empty line without one), nonce bucket. */
+    fun deviceProofOf(method: String, path: String, body: ByteArray, device: String = SR_PHONE): String =
+        sign(listOf("aron-proof-v1", "device", device, "$method $path", if (body.isEmpty()) "" else com.aktcl.aron.backend.platform.DeviceProof.sha256Hex(body), bucket().toString()).joinToString("\n"))
 
     /** The `batch` proof of [device] (docs/24 s8.3): sha256 of the gzip body, `batch_uuid`, X-Batch-Attempt 1. */
     fun batchProof(device: String, gz: ByteArray, batchUuid: String): String =
@@ -313,6 +341,14 @@ class ApiWorld(
         /** The seeded second outlet request (pending, by tso1001). */
         const val SECOND_REQUEST = "6f1c2b0e-8d1a-4c5e-9f3a-2b7d4e6a8c11"
         const val TUTORIAL_ASSET = "00000000-0000-4000-8000-0000000000a2"
+        const val PROOF_PHONE = "00000000-0000-4000-8000-00000000000a"
+        const val BIND_PHONE = "00000000-0000-4000-8000-00000000000b"
+        const val ENROL_PHONE = "00000000-0000-4000-8000-00000000000c"
+        const val BIND_USER = "qa9003"
+        const val STORED_PHOTO = "6f1c2a3b-4d5e-4f60-8a71-b2c3d4e5f601"
+        const val RESOLVED_ITEM = "7a1b2c3d-4e5f-4a60-9b71-c2d3e4f5a602"
+        /** The signing certificate digest of the seeded SR release (`sha256('qa-signing-cert')`), which an enrolment attests. */
+        val RELEASE_CERT: ByteArray = java.security.MessageDigest.getInstance("SHA-256").digest("qa-signing-cert".toByteArray())
         /** The paper memo the backfill enters for qa9001 (`<username>-<yyMMdd>-<seq>`). */
         const val PAPER_MEMO_NO = "qa9001-270103-001"
 

@@ -1,6 +1,12 @@
 package com.aktcl.aron.backend.app
 
+import io.ktor.client.request.header
+import io.ktor.client.request.request
+import io.ktor.client.request.setBody
 import io.ktor.client.statement.bodyAsText
+import io.ktor.http.ContentType
+import io.ktor.http.HttpMethod
+import io.ktor.http.contentType
 import io.ktor.server.application.plugin
 import io.ktor.server.response.respondText
 import io.ktor.server.routing.RoutingRoot
@@ -104,15 +110,16 @@ class ContractConformanceTest {
                     rawBody = fx.raw?.invoke(c, ctx),
                 ).also { checkedCalls++ }
             }
-            // Reads first, then writes; an operation with a producer after it ([Fx.after]); the session-ending
+            // Reads first, then writes; an operation after its producers ([Fx.after]); the session-ending
             // operations last (change-password before logout).
             val last = listOf("POST /v1/auth/change-password", "POST /v1/auth/logout")
             val ops = endpoints.mapNotNull { (m, p) -> contract.operation(m, p) }.distinctBy { it.key }
-                .sortedWith(compareBy<ContractModel.Operation>({ last.indexOf(it.key) }, { depth(it.key) }, { it.method != "GET" && it.method != "HEAD" }, { it.key }))
+                .sortedWith(compareBy<ContractModel.Operation>({ last.indexOf(it.key) }, { writePhase(it.key) }, { depth(it.key) }, { it.key }))
             for (op in ops) {
                 // The generator's body must satisfy the contract's own request schema (or the schema is unsatisfiable).
                 op.requestSchema?.let { rs -> contract.errorKeys(rs, contract.sample(rs)).forEach { e -> out += Finding(op.method, ContractModel.shape(op.path), 0, "sample-invalid", e, keyed = true) } }
                 called += op.key
+                FX[op.key]?.prepare?.invoke(client, ctx)
                 for (c in if (op.public) callers.take(1) else callers) {
                     var t = if (op.public) null else token(c) ?: continue
                     var r = call(op, c, t)
@@ -239,6 +246,9 @@ class ContractConformanceTest {
     companion object {
         /** A business date 30 days after the harness day, for writes that refuse today or the past. */
         private val FUTURE: String = java.time.LocalDate.parse(ApiWorld.BUSINESS_DATE).plusDays(30).toString()
+
+        /** A write, or a read that needs a write first: runs after every plain read (a read chain stays with the reads). */
+        fun writePhase(key: String): Boolean = !(key.startsWith("GET ") || key.startsWith("HEAD ")) || FX[key]?.after.orEmpty().any { writePhase(it) }
 
         /** Rank of an operation in the run: 0 without a producer, else one more than its deepest producer. */
         fun depth(key: String): Int = FX[key]?.after?.maxOfOrNull { depth(it) + 1 } ?: 0
@@ -369,8 +379,59 @@ class ContractConformanceTest {
             // Device admin on the throwaway SR and phone (OTPs revoke its previous OTP only; upload_first changes no state).
             "POST /v1/admin/device-otps" to Fx(body = { n, _, x -> n.put("user_id", x.id("users")) }),
             "POST /v1/admin/devices/{}/replace" to Fx(body = { n, _, x -> n.put("new_device_user_id", x.id("users")) }),
-            "POST /v1/admin/enrolment-tokens" to Fx(capture = { _, b, x -> if (x["token_id"] == null) x["token_id"] = b.path("token").path("token_id").asText() }),
+            // The first token is revoked; the last one enrols a phone.
+            "POST /v1/admin/enrolment-tokens" to Fx(capture = { _, b, x ->
+                if (x["token_id"] == null) x["token_id"] = b.path("token").path("token_id").asText()
+                x["enrol_secret"] = b.path("enrolment_token").asText()
+            }),
             "POST /v1/admin/enrolment-tokens/{}/revoke" to Fx(after = listOf("POST /v1/admin/enrolment-tokens"), path = { _, x -> mapOf("token_id" to x["token_id"].orEmpty()) }),
+            // Devices: a proof phone with the harness key (its trust may move; the SR phone's must not).
+            "GET /v1/devices/me/policy" to Fx(headers = { _, _ -> mapOf("X-Device-Id" to ApiWorld.PROOF_PHONE) }, proof = deviceProof(ApiWorld.PROOF_PHONE)),
+            "POST /v1/devices/nonce" to Fx(headers = { _, _ -> mapOf("X-Device-Id" to ApiWorld.PROOF_PHONE) }, proof = deviceProof(ApiWorld.PROOF_PHONE)),
+            "POST /v1/devices/me/status" to Fx(headers = { _, _ -> mapOf("X-Device-Id" to ApiWorld.PROOF_PHONE) }, proof = deviceProof(ApiWorld.PROOF_PHONE)),
+            // Enrolment with a dev token (no Google root needed): a new phone and key, a self-built chain attesting the
+            // token, the SR package and the seeded release's signing certificate.
+            "POST /v1/devices/enrol" to Fx(after = listOf("POST /v1/admin/enrolment-tokens"), body = { n, _, x ->
+                val token = x["enrol_secret"].orEmpty()
+                val key = AttestationChains.keyPair()
+                val certHex = ApiWorld.RELEASE_CERT.joinToString("") { "%02x".format(it) }
+                val desc = AttestationChains.keyDescription(java.security.MessageDigest.getInstance("SHA-256").digest(token.toByteArray()), "com.aktcl.aron.sr", ApiWorld.RELEASE_CERT)
+                n.put("enrolment_token", token); n.put("device_uuid", ApiWorld.ENROL_PHONE); n.put("app_package", "com.aktcl.aron.sr"); n.put("app_version", ApiWorld.APP_VERSION)
+                n.put("app_signing_cert_sha256", certHex); n.put("device_owner", false)
+                n.set<com.fasterxml.jackson.databind.JsonNode>("public_key", ContractModel.json.readTree(publicJwk(key)))
+                n.putArray("key_attestation_chain").apply { AttestationChains.chain(key.public, desc).chainBase64.forEach { add(it) } }
+            }),
+            // Bind: an unbound SR logs in on an unbound phone (bind_required), an admin issues the OTP the TSO reads out.
+            "POST /v1/auth/bind-device" to Fx(
+                prepare = { client, x ->
+                    x.world.login(client, ApiWorld.Caller(ApiWorld.BIND_USER, "app_sr", ApiWorld.BIND_PHONE))
+                    val admin = x.world.login(client, ApiWorld.Caller("admin1001", "web", null))
+                    val r = client.request("/v1/admin/device-otps") {
+                        method = HttpMethod.Post; contentType(ContentType.Application.Json); header("Authorization", "Bearer $admin"); header("X-App-Version", ApiWorld.APP_VERSION)
+                        setBody("""{"user_id":${x.id("bind_user")},"reason":"conformance bind fixture"}""")
+                    }
+                    x["bind_otp"] = ContractModel.json.readTree(r.bodyAsText()).path("otp").asText()
+                },
+                headers = { c, x -> if (c.user == "sr1001") mapOf("Authorization" to "Bearer " + x.world.logins[ApiWorld.BIND_USER]?.path("bind_token")?.asText(), "X-Device-Id" to ApiWorld.BIND_PHONE) else emptyMap() },
+                body = { n, c, x -> if (c.user == "sr1001") { n.put("device_uuid", ApiWorld.BIND_PHONE); n.put("otp", x["bind_otp"].orEmpty()) } },
+            ),
+            // MFA: DMO is MFA-required in this world only; dmo1001's login answers mfa_required, the enrolment's secret gives the TOTP.
+            "POST /v1/auth/mfa/enrol" to Fx(
+                prepare = { client, x -> x.world.login(client, ApiWorld.Caller("dmo1001", "web", null)) },
+                headers = { c, x -> if (c.user == "admin1001") mapOf("Authorization" to "Bearer " + x.world.logins["dmo1001"]?.path("mfa_token")?.asText()) else emptyMap() },
+                capture = { _, b, x -> x["mfa_secret"] = Regex("[?&]secret=([A-Z2-7]+)").find(b.path("otpauth_uri").asText())?.groupValues?.get(1).orEmpty() },
+            ),
+            "POST /v1/auth/mfa/verify" to Fx(after = listOf("POST /v1/auth/mfa/enrol"), body = { n, _, x ->
+                n.put("mfa_token", x.world.logins["dmo1001"]?.path("mfa_token")?.asText().orEmpty())
+                n.put("code", com.aktcl.aron.backend.auth.Totp.code(base32Decode(x["mfa_secret"].orEmpty()), com.aktcl.aron.backend.auth.Totp.step(x.world.clock.now())))
+            }),
+            // Refresh the SR phone's latest login, with its refresh proof.
+            "POST /v1/auth/refresh" to Fx(proof = REFRESH_PROOF, body = { n, _, x ->
+                n.put("grant", "full"); n.put("refresh_token", x.world.logins["sr1001"]?.path("refresh_token")?.asText().orEmpty()); n.put("device_uuid", ApiWorld.SR_PHONE)
+            }),
+            "POST /v1/auth/change-password" to Fx(body = { n, _, x -> n.put("current_password", x.world.password); n.put("new_password", "Qz7-Kestrel-Lagoon-91") }),
+            "GET /v1/media/{}/read-url" to Fx(path = { _, _ -> mapOf("media_uuid" to ApiWorld.STORED_PHOTO) }),
+            "POST /v1/media/upload" to Fx(raw = { c, _ -> photoUpload(ApiWorld.v4("upload/${c.user}")) }),
             "POST /v1/day/final-submit" to Fx(after = listOf("POST /v1/web-entry/qc", "POST /v1/web-entry/route-day")),
         )
     }
@@ -380,8 +441,38 @@ class ContractConformanceTest {
     private fun meBody(): String = meBody ?: error("the run never got a 200 from GET /v1/me for the SR")
 }
 
-/** The `device` proof of docs/24 s8.3: `METHOD path` and the sha256 of the sent body. */
-val DEVICE_PROOF: (ApiWorld, String, String, ByteArray, String?) -> String = { w, m, path, sent, _ -> w.deviceProofOf(m, path, sent) }
+/** The `device` proof of docs/24 s8.3 by [device]: `METHOD path` and the sha256 of the sent body. */
+fun deviceProof(device: String = ApiWorld.SR_PHONE): (ApiWorld, String, String, ByteArray, String?) -> String = { w, m, path, sent, _ -> w.deviceProofOf(m, path, sent, device) }
+val DEVICE_PROOF = deviceProof()
+
+/** The `refresh` proof of the seeded SR phone over the body's refresh token. */
+val REFRESH_PROOF: (ApiWorld, String, String, ByteArray, String?) -> String = { w, _, _, _, json ->
+    w.sign(com.aktcl.aron.backend.platform.DeviceProof.refreshString(ApiWorld.SR_PHONE, ContractModel.json.readTree(json ?: "{}").path("refresh_token").asText(), w.bucket()))
+}
+
+/** RFC 4648 base32 (no padding), the `secret` of an otpauth URI. */
+fun base32Decode(s: String): ByteArray {
+    val alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567"
+    var buffer = 0; var bits = 0
+    val out = java.io.ByteArrayOutputStream()
+    for (ch in s.uppercase().trimEnd('=')) {
+        buffer = (buffer shl 5) or alphabet.indexOf(ch).also { require(it >= 0) { "not base32: $ch" } }
+        bits += 5
+        if (bits >= 8) { bits -= 8; out.write((buffer shr bits) and 0xFF) }
+    }
+    return out.toByteArray()
+}
+
+/** A multipart/form-data body (quoted part names, CRLF) for POST /v1/media/upload: a tiny JPEG and its sha256. */
+fun photoUpload(mediaUuid: String): io.ktor.http.content.ByteArrayContent {
+    val jpeg = byteArrayOf(0xFF.toByte(), 0xD8.toByte(), 0xFF.toByte(), 0xE0.toByte()) + "contract conformance".toByteArray()
+    val sha = com.aktcl.aron.backend.platform.DeviceProof.sha256Hex(jpeg)
+    fun field(name: String, value: String) = "--B\r\nContent-Disposition: form-data; name=\"$name\"\r\n\r\n$value\r\n"
+    val head = field("media_uuid", mediaUuid) + field("purpose", "feedback") + field("sha256", sha) +
+        "--B\r\nContent-Disposition: form-data; name=\"file\"; filename=\"p.jpg\"\r\nContent-Type: image/jpeg\r\n\r\n"
+    val bytes = head.toByteArray() + jpeg + "\r\n--B--\r\n".toByteArray()
+    return io.ktor.http.content.ByteArrayContent(bytes, io.ktor.http.ContentType.parse("multipart/form-data; boundary=B"))
+}
 
 /** The `batch` proof: sha256 of the gzip body, `batch_uuid`, X-Batch-Attempt (1). */
 val BATCH_PROOF: (ApiWorld, String, String, ByteArray, String?) -> String = { w, _, _, sent, json ->
@@ -411,4 +502,6 @@ class Fx(
     val raw: ((ApiWorld.Caller, Ctx) -> io.ktor.http.content.OutgoingContent.ByteArrayContent)? = null,
     /** Runs on each 2xx answer (body parsed; NullNode when empty). */
     val capture: ((ApiWorld.Caller, com.fasterxml.jackson.databind.JsonNode, Ctx) -> Unit)? = null,
+    /** Runs once before the operation's calls (a login or an issue the calls need). */
+    val prepare: (suspend (io.ktor.client.HttpClient, Ctx) -> Unit)? = null,
 )
