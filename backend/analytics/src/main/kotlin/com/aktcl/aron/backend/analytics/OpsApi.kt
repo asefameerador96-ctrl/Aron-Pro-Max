@@ -66,7 +66,7 @@ data class SyncHealthPage(val as_of: String, val summary: SyncHealthSummary, val
 data class RouteDayStateDto(
     val route_id: Long, val business_date: String, val state: String, val planned: Boolean, val submit_cycle: Int, val submit_voided: Boolean, val submit_count_mismatch: Boolean?,
     val logged_in_at: String?, val sales_submitted_at: String?, val final_submitted_at: String?, val rows_awaited: Int?, val route_code: String?, val route_name: String?,
-    val assigned_user_id: Long?, val acting_user_id: Long?,
+    val assigned_user_id: Long?, val acting_user_id: Long?, val assigned_username: String? = null, val assigned_user_full_name: String? = null,
 )
 
 @Serializable
@@ -208,9 +208,10 @@ class OpsService(
             node.bind(
                 h.createQuery(
                     """
-                    SELECT rd.*, g.route_code, g.route_name,
+                    SELECT rd.*, g.route_code, g.route_name, au.username AS assigned_username, au.full_name AS assigned_user_full_name,
                            EXISTS (SELECT 1 FROM app.day_exception e WHERE e.status = 'approved' AND e.voided_at IS NULL AND rd.route_id = ANY (e.route_ids) AND rd.business_date BETWEEN e.from_date AND e.to_date) AS excused
-                      FROM app.route_day rd JOIN dw.dim_geo g ON g.route_id = rd.route_id WHERE rd.business_date = :d AND rd.planned AND ${node.clause("g.zone_id")} ORDER BY g.route_code
+                      FROM app.route_day rd JOIN dw.dim_geo g ON g.route_id = rd.route_id LEFT JOIN app.app_user au ON au.id = rd.assigned_user_id
+                     WHERE rd.business_date = :d AND rd.planned AND ${node.clause("g.zone_id")} ORDER BY g.route_code
                     """,
                 ).bind("d", date),
             ).map { rs, _ ->
@@ -218,7 +219,7 @@ class OpsService(
                 Triple(
                     RouteDayStateDto(rs.getLong("route_id"), date.toString(), rs.getString("state"), rs.getBoolean("planned"), rs.getInt("submit_cycle"), rs.getBoolean("submit_voided"), rs.getObject("submit_count_mismatch") as Boolean?,
                         t("logged_in_at"), t("sales_submitted_at"), t("final_submitted_at"), rs.getObject("rows_awaited") as Int?, rs.getString("route_code"), rs.getString("route_name"),
-                        rs.getObject("assigned_user_id") as Long?, rs.getObject("acting_user_id") as Long?),
+                        rs.getObject("assigned_user_id") as Long?, rs.getObject("acting_user_id") as Long?, rs.getString("assigned_username"), rs.getString("assigned_user_full_name")),
                     rs.getBoolean("excused"), rs.getString("state") in setOf("sales_submitted", "final_submitted"),
                 )
             }.list()

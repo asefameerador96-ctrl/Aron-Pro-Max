@@ -202,7 +202,7 @@ Source: contract/openapi.yaml, version 1.3.1.
 - `schemas/RecordAck.yaml` (752 B)
 - `schemas/ServerTotals.yaml` (564 B)
 - `schemas/TypeOutcomeCounts.yaml` (371 B)
-- `schemas/RouteDayState.yaml` (1360 B)
+- `schemas/RouteDayState.yaml` (1719 B)
 - `schemas/SupervisorDayState.yaml` (406 B)
 - `schemas/DayStateList.yaml` (308 B)
 - `schemas/Resolution.yaml` (422 B)

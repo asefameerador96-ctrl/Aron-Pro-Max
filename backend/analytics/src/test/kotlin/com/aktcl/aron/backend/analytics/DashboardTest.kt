@@ -133,4 +133,48 @@ class DashboardTest {
             if (v != null) assertTrue(v in 0.0..100.0)
         for (b in all.by_brand) assertTrue((b.memo_ratio_pct ?: 0.0) <= 100.0)
     }
+
+    private fun sql(q: String) = fresh.db.jdbi.useHandle<Exception> { it.execute(q) }
+
+    @Test
+    fun bySegmentCountsEachMemoOncePerSegmentAndIsScoped() {
+        val s = service.summary(reach(national = true), null, null, day, day)
+        val seg = s.by_segment.single()
+        assertEquals("Premium", seg.name)
+        assertEquals(63_000, seg.net_mtk); assertEquals(4, seg.memo_count)                // 4 active memos, each counted once although memo a2 has two brands
+        assertEquals(100.0, seg.memo_ratio_pct)
+        assertEquals(s.by_category.sumOf { it.qty_base }, seg.qty_base)                    // no free lines in the fixture
+        assertEquals(24_000, service.summary(reach(z2), null, null, day, day).by_segment.single().net_mtk)
+        // Rebuilding the route-day twice gives the same rows (delete-then-insert).
+        AggregationWorker(fresh.db).also { it.requestRebuild(day); it.runUntilIdle() }
+        assertEquals(seg, DashboardService(fresh.db, AronClock { now }).summary(reach(national = true), null, null, day, day).by_segment.single())
+    }
+
+    @Test
+    fun categoryReportQuantityOnlyWhenEverySkuSharesTheReportUnit() {
+        fun cat() = DashboardService(fresh.db, AronClock { now }).summary(reach(national = true), null, null, day, day).by_category.single()
+        assertNull(cat().report_unit); assertNull(cat().qty_report)                         // no report unit set
+        sql("UPDATE app.sku SET report_unit = 'pack', report_factor = 3")
+        val c = cat()
+        assertEquals("pack", c.report_unit)
+        // exact sum of qty_base / 3, rounded once to 3 decimals half up
+        assertEquals(java.math.BigDecimal(c.qty_base).divide(java.math.BigDecimal(3), 3, java.math.RoundingMode.HALF_UP).toPlainString(), c.qty_report)
+        sql("UPDATE app.sku SET report_unit = 'box' WHERE code = 'SKU2'")
+        assertNull(cat().report_unit); assertNull(cat().qty_report)                         // mixed units are never summed
+        sql("UPDATE app.sku SET report_unit = NULL WHERE code = 'SKU2'")
+        assertNull(cat().qty_report)                                                        // one SKU without a unit
+    }
+
+    @Test
+    fun aCoverRouteOutsideTheZonesIsNeverTheDashboardNode() {
+        val r3 = id("SELECT id FROM app.route WHERE code = 'R3'")
+        // Route node first (as a type-sorted reach list may give it): the dashboard labels and scopes with the zone.
+        val mixed = Reach(1, Role.TSO, day, false, setOf(z1), setOf(r3), false, listOf(ReachNode("route", r3), ReachNode("zone", z1)))
+        val s = service.summary(mixed, null, null, day, day)
+        assertEquals("zone", s.node.type); assertEquals(z1, s.node.id); assertEquals(39_000, s.kpis.gross_mtk)
+        assertEquals("zone", service.geoValidation(mixed, null, null, day, day).node.type)
+        // Only a cover route and no geo node: a clean 403, not a 500.
+        val onlyRoute = Reach(1, Role.TSO, day, false, emptySet(), setOf(r3), false, listOf(ReachNode("route", r3)))
+        assertEquals(ProblemCode.ERR_FORBIDDEN, assertFailsWith<ApiProblem> { service.summary(onlyRoute, null, null, day, day) }.code)
+    }
 }
