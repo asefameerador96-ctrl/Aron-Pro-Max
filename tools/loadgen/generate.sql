@@ -4,21 +4,33 @@
 -- `srs` (default 8500, docs/28: run small in the test account, e.g. -v srs=50) scales everything like the real fleet
 -- (docs/22, db/perf/generate.sql): one zone per 8.09 SRs, 3.6 zones per territory, 5.8 territories per division, 1.334
 -- routes per SR in the three kinds (Daily 28.6 %, 3F 53.7 %, 2F 17.7 %, P-17 visit-day groups), 30 to 52 outlets
--- per route (mean 41; 8,500 SRs give about 4.65 lakh outlets), 3 clusters per zone, an AMO per zone and a TSO per
+-- per route (mean 41; 8,500 SRs give about 4.65 lakh outlets; pins 22.6-25.1 N, 89.6-90.6 E), 3 clusters per zone, an AMO per zone and a TSO per
 -- territory. Every SR gets a bound, active phone (a copy of the seed's dev phone, device_uuid 1d000000-...-<n>) and
 -- every synthetic user the seeded SR's password hash, so `tools/loadgen/replay.py` logs in with the seed password
--- (set it first with ARON_SEED_PASSWORD; it is never in this file). Idempotent per run: refuses a second load.
+-- (set it first with ARON_SEED_PASSWORD; it is never in this file). Refuses a second load, a database whose name does
+-- not start with aron_load (unless -v scratch=yes) and a seed password that is not an Argon2 hash. One transaction:
+-- a failure leaves nothing behind.
 \set ON_ERROR_STOP 1
 \if :{?srs}
 \else
   \set srs 8500
 \endif
+\if :{?scratch}
+\else
+  \set scratch no
+\endif
+BEGIN;
+CREATE TEMP TABLE lg_args AS SELECT :srs::int AS srs, :'scratch'::text AS scratch;
 SET synchronous_commit = off;
 SELECT setseed(0.54);
 
 DO $$ BEGIN
+  IF (SELECT srs FROM lg_args) < 1 THEN RAISE EXCEPTION 'srs must be at least 1'; END IF;
+  IF current_database() NOT LIKE 'aron\_load%' AND (SELECT scratch FROM lg_args) <> 'yes' THEN
+    RAISE EXCEPTION 'database % is not a scratch load database (name it aron_load*, or pass -v scratch=yes)', current_database();
+  END IF;
   IF EXISTS (SELECT 1 FROM app.app_user WHERE username LIKE 'lsr%') THEN RAISE EXCEPTION 'load data already present (lsr* users): use a fresh scratch database'; END IF;
-  IF NOT EXISTS (SELECT 1 FROM app.app_user WHERE username = 'sr1001' AND password_hash IS NOT NULL) THEN RAISE EXCEPTION 'set the seed password first (db/seed with ARON_SEED_PASSWORD)'; END IF;
+  IF NOT EXISTS (SELECT 1 FROM app.app_user WHERE username = 'sr1001' AND password_hash LIKE '$argon2%') THEN RAISE EXCEPTION 'set the seed password first (db/seed with ARON_SEED_PASSWORD): sr1001 has no Argon2 hash'; END IF;
 END $$;
 
 CREATE TEMP TABLE lg_size AS
@@ -43,13 +55,14 @@ INSERT INTO app.cluster (zone_id, name, cluster_type) SELECT z.id, 'Market ' || 
 
 -- ---------- routes of the three kinds (bit0 Sat ... bit6 Fri) ----------
 CREATE TEMP TABLE lg_route AS
-SELECT r, CASE WHEN r % 1000 < 286 THEN 'daily' WHEN r % 1000 < 823 THEN '3f' ELSE '2f' END AS kind
+SELECT r, CASE WHEN (r * 7919) % 1000 < 286 THEN 'daily' WHEN (r * 7919) % 1000 < 823 THEN '3f' ELSE '2f' END AS kind
   FROM lg_size, generate_series(1, routes) r;
 INSERT INTO app.route (code, name, display_label, zone_id, kind, visit_kind, visit_days_mask, sequence_no)
   SELECT 'LR' || x.r, 'Load route ' || x.r, x.kind, z.id, 'sr', x.kind,
          CASE x.kind WHEN 'daily' THEN 127 WHEN '3f' THEN (ARRAY[42, 21])[1 + x.r % 2] ELSE (ARRAY[36, 18, 9])[1 + x.r % 3] END,
          1 + x.r / (SELECT zones FROM lg_size)
-    FROM lg_route x JOIN app.zone z ON z.code = 'LZ' || (1 + (x.r * 7919) % (SELECT zones FROM lg_size));
+    -- Route r belongs to SR 1 + (r - 1) % srs (below); it lies in that SR's home zone (the same formula as the users).
+    FROM lg_route x JOIN app.zone z ON z.code = 'LZ' || (1 + ((1 + (x.r - 1) % (SELECT srs FROM lg_size)) * 7919) % (SELECT zones FROM lg_size));
 INSERT INTO app.route_planned (route_id, visit_kind, visit_days_mask, valid_from)
   SELECT id, visit_kind, visit_days_mask, DATE '2026-01-01' FROM app.route WHERE code LIKE 'LR%';
 
@@ -59,7 +72,7 @@ INSERT INTO app.outlet (code, name, owner_name, contact_number, address, zone_id
 SELECT 'LO' || r.id || '-' || n, 'Store ' || n, 'Owner ' || n, '019' || lpad(((r.id * 64 + n) % 100000000)::text, 8, '0'), 'Road ' || n,
        r.zone_id, r.id, (SELECT min(c.id) FROM app.cluster c WHERE c.zone_id = r.zone_id),
        CASE WHEN n % 10 = 0 THEN 'Astha' ELSE 'GT' END, 'Urban',
-       round((21.0 + (r.id % 500) * 0.008 + n * 0.0004)::numeric, 6), round((88.5 + (r.id / 500) * 0.01 + n * 0.0004)::numeric, 6),
+       round((22.6 + (r.id % 500) * 0.005 + n * 0.0004)::numeric, 6), round((89.6 + (r.id / 500) * 0.04 + n * 0.0004)::numeric, 6),
        'master', true, 10, CASE WHEN n = 1 THEN 'wholesale' ELSE 'retail' END, CASE WHEN n = 1 THEN 'distributor' ELSE 'outlet' END, n
   FROM app.route r CROSS JOIN LATERAL generate_series(1, 30 + (r.id * 37) % 23) n
  WHERE r.code LIKE 'LR%';
@@ -112,3 +125,4 @@ SELECT (SELECT count(*) FROM app.app_user WHERE username LIKE 'l%' AND username 
        (SELECT count(*) FROM app.route WHERE code LIKE 'LR%') AS routes,
        (SELECT count(*) FROM app.outlet WHERE code LIKE 'LO%') AS outlets,
        (SELECT count(*) FROM app.device_binding b JOIN app.device d ON d.id = b.device_id WHERE d.device_uuid::text LIKE '1d000000-%') AS bound_phones;
+COMMIT;

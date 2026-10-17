@@ -118,11 +118,11 @@ class ApiWorld(
         client: HttpClient, contract: ContractModel, op: ContractModel.Operation, c: Caller, token: String?,
         pathIds: Map<String, Long> = ids, extraQuery: String = "", onInvalidBody: (List<String>) -> Unit = {},
         includeOptionalIds: Boolean = false, bodyEdit: ((com.fasterxml.jackson.databind.JsonNode) -> Unit)? = null,
-        query: Map<String, String> = emptyMap(),
+        queryOverrides: Map<String, String> = emptyMap(),
     ): HttpResponse {
         val path = pathFor(contract, op, pathIds)
         val query = (
-            op.parameters.filter { it.where == "query" && it.required }.map { p -> p.name + "=" + URLEncoder.encode(query[p.name] ?: paramValue(p.name, pathIds) ?: contract.sampleText(p.schema, p.name), "UTF-8") } +
+            op.parameters.filter { it.where == "query" && it.required }.map { p -> p.name + "=" + URLEncoder.encode(queryOverrides[p.name] ?: paramValue(p.name, pathIds) ?: contract.sampleText(p.schema, p.name), "UTF-8") } +
                 listOfNotNull(extraQuery.ifEmpty { null })
             ).joinToString("&")
         val body = op.requestSchema?.let { s ->

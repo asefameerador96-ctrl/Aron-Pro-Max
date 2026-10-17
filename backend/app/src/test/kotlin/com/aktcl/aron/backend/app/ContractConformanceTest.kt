@@ -98,7 +98,7 @@ class ContractConformanceTest {
             suspend fun call(op: ContractModel.Operation, c: ApiWorld.Caller, t: String?) = world.call(
                 client, contract, op, c, t,
                 bodyEdit = FIXTURES[op.key]?.let { f -> { n: com.fasterxml.jackson.databind.JsonNode -> f(n as com.fasterxml.jackson.databind.node.ObjectNode, c, world.password) } },
-                query = bundles[c]?.let { QUERY_FIXTURES[op.key]?.invoke(it) }.orEmpty(),
+                queryOverrides = bundles[c]?.let { QUERY_FIXTURES[op.key]?.invoke(it) }.orEmpty(),
             ).also { checkedCalls++ }
             // Reads first, then writes; the session-ending operations last (change-password before logout).
             val last = listOf("POST /v1/auth/change-password", "POST /v1/auth/logout")
