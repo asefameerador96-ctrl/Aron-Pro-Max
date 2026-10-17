@@ -37,7 +37,7 @@ web-dashboard, backend-reports, backend-admin, android-sys, shared-2. android-ge
 | integrator | session_01Tnq7EdCPTGyqe5XvTS3QCj | Sonnet | 2026-10-15 | eleventh session, started 12:57 UTC on the handover at the top of docs/status/train.md on INT cb03ff58 (zzt: backend-core 025e0edb incl. db 20040eb7, backend-admin 81b754e9); predecessor session_01F6nMLE9VLyNh7zf4JSVj4u (tenth, 364k, READY TO RECYCLE 12:56) archived; session_01FP3UqHMD3DgT58J3iUjfEm (ninth) and earlier archived. Next: backend-reports 26f5bef0 alone |
 | laptop operator | session_01UbRHnSorx4s1XARa6aN1Tg | Opus | 2026-10-06 | never nudged; runs only owner-approved laptop tasks |
 
-Wave 2 (not started): android-amo, android-tso, qa: start when the SR slice (login, bundle, visit, sale, memo, sync) runs end to end on dev.
+Wave 2 (STARTED 2026-10-17 on the owner's word `start wave 2`; the usual gate, SR slice end to end on dev and usage `allowed`, was waived by the owner): android-amo, android-tso, qa. Briefs: docs/lanes/android-amo.md, android-tso.md, qa.md; session ids are in the table below as they start.
 
 **Throttle (2026-10-07 08:38 UTC, usage constraint):** woken automatically: integrator, backend-core, db, android-core, android-sr-a, android-sr-b, android-core-ui, android-geo-dpc, android-print, infra. ON HOLD until the lead releases them: web-config (released 2026-10-07 09:41 UTC for ONE job only: de-flake web/e2e/config-journeys.spec.ts, then back on hold), web-admin, web-dashboard, backend-reports, backend-admin, android-sys, shared-2.
 

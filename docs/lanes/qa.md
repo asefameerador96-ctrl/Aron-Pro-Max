@@ -1,0 +1,10 @@
+# Lane brief: qa (wave 2, started 2026-10-17)
+
+Session model: **Opus** (docs/29: sync, security and anti-spoofing rows are T1; never below Sonnet). Owns: test harnesses and check scripts (`tools/`, `android/benchmark`, `android/core-ui-testing`, the contract and scope-leak suites) and the written QA reports under `docs/status/`. You may add tests to any module; you change product code only for a defect you prove with a failing test, in a small commit named in your status file. Read `docs/lanes/README.md` first.
+
+- Scope: `python3 tools/my-rows.py qa --todo` lists about 20 rows, among them the contract and scope-leak harness (N-014), the sync property and fuzz suite (N-024: duplicate, reordered, partial, truncated and killed-mid-batch uploads never create a second sale or double a number), the ten-minute check scripts (N-015, N-022, N-043), print goldens (N-020), anti-spoofing acceptance (N-039) and the developer-verification check (N-042).
+- Order: the server-side harness and the fuzz suite first (they run in CI with no phone); then the scripts; then the device halves.
+- Devices: the only phone in reach is the owner's Honor X5c Plus (device owner by adb path A, see `docs/status/device-checks.md`); the Galaxy A06 and A07 and the MP-58N printer are not in hand. A row that needs them is written up as DEVICE-PENDING with the exact command or steps; the laptop operator session runs adb and the owner holds the phone. Do not wait on a phone: write the script so it prints PASS or FAIL per check, run what the cloud can, hand over the rest.
+- Findings go to the owning lane as `docs/requests/<lane>-<name>.md` with a failing test; you do not fix feature code in another lane's area beyond the rule above.
+- Money, sync, geofence, security: never mark a row done on a green happy path alone. Seeded failures must turn the suite red (the acceptance of N-014).
+- Git: push to `lane/qa`. Status, time log and handover: `docs/status/qa.md` and `docs/status/qa.csv` (format of `android-sr-a`).
