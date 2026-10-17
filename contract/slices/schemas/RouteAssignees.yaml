@@ -1,0 +1,26 @@
+RouteAssignees:
+  type: object
+  required:
+  - route_id
+  - route_kind
+  - valid_on
+  - sr_not_set
+  - items
+  additionalProperties: false
+  properties:
+    route_id:
+      $ref: '#/components/schemas/Id'
+    route_kind:
+      type: string
+      enum:
+      - sr
+      - amo
+    valid_on:
+      $ref: '#/components/schemas/BusinessDate'
+    sr_not_set:
+      type: boolean
+      description: True when no SR is assigned on `valid_on`; the normal state of an AMO route.
+    items:
+      type: array
+      items:
+        $ref: '#/components/schemas/RouteAssignee'

@@ -1,4 +1,6 @@
 Outlet:
+  description: Open on purpose (N-014). `Outlet` is the `allOf` base of `OutletDetail`, which closes the combined
+    object, so `Outlet` carries no closing keyword.
   allOf:
   - $ref: '#/components/schemas/MasterAudit'
   - type: object
@@ -111,4 +113,3 @@ Outlet:
         - 'null'
         maxLength: 64
         description: Stable reference for Phase 2 integrations (docs/24 s12.5).
-  unevaluatedProperties: false
