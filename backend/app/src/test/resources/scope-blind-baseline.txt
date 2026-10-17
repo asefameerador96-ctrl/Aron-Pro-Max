@@ -2,7 +2,6 @@
 # Each line carries its reason. May only SHRINK: seed other-division data for a debt line, then remove it.
 GET /v1/admin/calendar/holidays  # global by design: catalogue, configuration or calendar shared by every division
 GET /v1/admin/code-lists  # global by design: catalogue, configuration or calendar shared by every division
-GET /v1/admin/config/blast-radius  # global by design: catalogue, configuration or calendar shared by every division
 GET /v1/admin/config/changes  # global by design: catalogue, configuration or calendar shared by every division
 GET /v1/admin/config/changes/{}  # global by design: catalogue, configuration or calendar shared by every division
 GET /v1/admin/config/keys  # global by design: catalogue, configuration or calendar shared by every division
@@ -12,7 +11,6 @@ GET /v1/admin/config/resolve  # global by design: catalogue, configuration or ca
 GET /v1/admin/config/values  # global by design: catalogue, configuration or calendar shared by every division
 GET /v1/admin/config/versions  # global by design: catalogue, configuration or calendar shared by every division
 GET /v1/admin/config/versions/{}  # global by design: catalogue, configuration or calendar shared by every division
-GET /v1/admin/config/whatif  # global by design: catalogue, configuration or calendar shared by every division
 GET /v1/admin/content  # global by design: catalogue, configuration or calendar shared by every division
 GET /v1/admin/enrolment-tokens  # global by design: catalogue, configuration or calendar shared by every division
 GET /v1/admin/prices  # global by design: catalogue, configuration or calendar shared by every division

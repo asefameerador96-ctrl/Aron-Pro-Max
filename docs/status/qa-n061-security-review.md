@@ -11,7 +11,7 @@ not the dev API and not the final account. Nothing here logged in to the dev API
 
 | Part | Result | Evidence |
 |---|---|---|
-| Scope leaks, every endpoint | **0 leaks**: 952 probe calls on 155 operations, from 4 scoped callers plus the national control. The national control sees the other division on 43 of 78 reads. The other 35 are global or per-caller by design, each listed with its reason; **no debt line is left** | `ScopeLeakAcrossEndpointsTest`, `scope-leak-baseline.txt` (empty), `scope-blind-baseline.txt` |
+| Scope leaks, every endpoint | **0 leaks**: 1,008 probe calls on 155 operations (388 of them name the other division; 351 refused with 403/404), from 4 scoped callers plus the national control. The national control sees the other division on 45 of 78 reads. Of the other 33: 22 are global and 8 per-caller by design, and **3 are debt** (`media/{}/read-url`, `admin/config/reach/{}` and `.../pending`), each listed with its reason | `ScopeLeakAcrossEndpointsTest`, `scope-leak-baseline.txt` (empty), `scope-blind-baseline.txt` |
 | Seeded leak turns the suite red | yes: the national token swapped in for tso1001 on three operations is reported | `aSeededCrossScopeReadIsCaught` |
 | Secrets in the repository | **none**: only test-fixture passwords (listed below) | gitleaks over the whole history in CI; `NoSecretsInRepoTest`; this sweep |
 | Secrets in the APKs | **none** in a local, unsigned SR build. The CI-built APKs (all three) are not scanned yet; they carry the Maps and Firebase client keys by design | `tools/ci/apk-security-check.py` |
@@ -51,28 +51,41 @@ A write leaks when it answers 2xx while naming the other division.
 may only shrink.
 
 **This review's additions:**
-- The 12 debt lines are now judged. `seedOtherRows` inserts other-division rows that no phone record creates: a task,
-  an outlet request, a visit plan with its outlet, a web route-day entry, a device directive and status report, a
-  dues adjustment and an entry unlock.
-- The harness fixes behind that:
-  - `outlets/nearby` was probed with a radius the config refuses (500 m; the allowed values are 50, 100 and 300).
-  - `admin/geo/{level}` reads now use the division level.
-  - The national control now also tries required id queries (`web-entry/route-day`).
-  - `outlet-requests/{request_uuid}` is probed at the other division's request. A refusal that only echoes the
-    asked uuid is not a leak.
-- `day/final-submit/preview` also became judged.
+- **Other-division rows to read.** `seedOtherRows` inserts the other division's rows that no phone record creates: a
+  task, an outlet request, a visit plan with its outlet, a web route-day entry, a device directive and status report,
+  a dues adjustment and an entry unlock. The inserts run with triggers and foreign keys off, so they are fixtures,
+  not ingest.
+- **Aimed probes.** The other-path variant puts the other division's ids into the path **and into every required id
+  query parameter**, e.g. `web-entry/route-day?route_id=` and `day/final-submit/preview?zone_id=`. It also puts the
+  other division's record uuids and row ids into these paths:
+  - `outlet-requests/{request_uuid}`, `tasks/{task_uuid}/cancel`, `leave/{leave_uuid}/decision`,
+    `day/exceptions/{exception_uuid}/decision`, `feedback/{feedback_uuid}`;
+  - `admin/entry-unlocks/{unlock_id}/expire`, `admin/dues-adjustments/{adjustment_id}/decision`.
+  The own call keeps its sample value.
+- **Config selectors.** `scope_type=zone&scope_id=` is probed on the config tools: blast-radius, whatif, density and
+  calibration.
+- **The national control counts only a 2xx**, because a refusal echoes the asked path in its problem `instance`. For
+  the scoped probes, only that `instance` field is blanked on a refusal; everything else in the body is still
+  scanned.
+- **Fixes to the probes themselves.** `outlets/nearby` was probed at a radius the config refuses (500 m; 50, 100 and
+  300 are allowed). `admin/geo` reads use the division level.
 
-The blind list went from 48 lines to 35: 25 global by design (catalogues, configuration, calendar, release check)
-and 10 per-caller (bundle, delta, totals, own exports and media, `/me`). Every probe of the newly judged reads, by
-every scoped caller in every variant, finds no leak.
+The blind list went from 48 lines to 33. Every probe of the newly judged reads, by every scoped caller in every
+variant, finds no leak. The first Opus checker's findings are fixed or listed below; a re-check follows.
 
-**Lines worth a second look** (the reason may be too broad):
-- `GET /v1/admin/config/reach/{}` and `.../pending` take a `zone_id` and check it against the caller's reach
-  (`requireZone`). The scoped probes do send the other division's zone. But the national control does not see the
-  other division there, so a leak of numbers only would go unnoticed.
-- `GET /v1/admin/enrolment-tokens` needs a write role and has no zone filter.
-
-Neither is a leak found. Both are recorded as gaps in the proof.
+**Known gaps in the proof (none is a leak found):**
+- `media/{}/read-url`: reach-filtered, but the answer carries no division identity. It needs an other-division photo
+  and a status-code rule.
+- `admin/config/reach/{}` and `.../pending`: scoped callers are probed with the other `zone_id`, but the national
+  control does not see the other division yet.
+- `admin/geo`: only the division level is probed. Zone, territory, house and wing use other reach predicates.
+- Not aimed at the other division:
+  - `admin/route-assignments/{id}/end`, `risk-signals/{signal_id}/review`, `admin/quarantine/{id}/...`;
+  - geo writes;
+  - the `planner_user_id` and `assignee_user_id` selectors.
+- `admin/enrolment-tokens`, `admin/dues-adjustments` and `admin/entry-unlocks` are readable by national roles only.
+  "Judged" there says no scoped caller reached them, not that their zone filters work.
+- No positive "own" check on the uuid paths: a server that answered 404 to everyone would pass them.
 
 ## 2. Secrets
 
@@ -149,7 +162,8 @@ the missing signature. A debug-signed copy fails the gate, as it should.
 
 ## Open items
 
-- Judge `admin/config/reach/{}` (zone-checked, marked global) and `admin/enrolment-tokens` with other-division data.
+- The scope gaps listed in section 1.
+- The CI scan of the three release APKs, and the Maps and Firebase key restrictions (section 5).
 - Jackson 2.22.3 pin (backend-core) and the Gradle OSV CI step (infra).
 - APK check in CI (infra); AMO and TSO release builds.
-- Opus checker of this row.
+- Opus re-check of this row.
