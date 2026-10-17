@@ -329,4 +329,6 @@ export const dashBn: Record<keyof typeof dashEn, string> = {
   "dashboard.map.filter.outlets": "আউটলেট (নীল)",
   "dashboard.map.filter.fixes": "এসআর অবস্থান (কমলা)",
   "dashboard.filter.reset": "ফিল্টার মুছুন",
+  "dashboard.cat.info": "ব্যবসায়িক তারিখে এই এলাকায় বিক্রীত পরিমাণ, পণ্যের নিজস্ব এককে (শলাকা, পিস, ডজন)। রিং হলো নিট বিক্রয়ে এই ক্যাটাগরির অংশ; চিপে গত সপ্তাহের একই বারের সঙ্গে তুলনা।",
+  "dashboard.info.open": "এটি কী দেখায়?",
 };

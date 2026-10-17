@@ -327,4 +327,6 @@ export const dashEn = {
   "dashboard.map.filter.outlets": "Outlets (blue)",
   "dashboard.map.filter.fixes": "SR positions (orange)",
   "dashboard.filter.reset": "Clear filter",
+  "dashboard.cat.info": "Quantity sold in the scope on the business date, in the product's own unit (sticks, pieces, dozens). The ring is this category's share of net sales; the chip compares quantity with the same weekday last week.",
+  "dashboard.info.open": "What does this show?",
 } as const;

@@ -17,6 +17,7 @@ import { requireSession } from "@/lib/auth/require";
 import { getLocale } from "@/lib/auth/service";
 import { getGeoValidation, getLoginSubmit, getSummary, getTeamLocations, listOutlets } from "@/lib/dash/server";
 import { formatLakhCrore, mtkToTaka, pctChange } from "@/lib/dash/lakh";
+import { InfoTip } from "@/components/dash/info-tip";
 import { HomeFilter } from "@/components/dash/home-filter";
 import { ScopeFilter } from "@/components/reports/scope-filter";
 import { GEO_LEVELS, boundGeo, geoFromParams } from "@/lib/reports/query";
@@ -172,7 +173,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
               const change = pctChange(c.qty_base, prev?.qty_base);
               const share = catTotalNet > 0 ? (Math.max(0, c.net_mtk) / catTotalNet) * 100 : null;
               return (
-                <Tile key={c.category_code} id={`cat-${c.category_code}`} locale={locale} titleKey="dashboard.cat.heading" heading={catTitle(c.category_code)} date={d()} data className="col-span-full min-[480px]:col-span-1 md:col-span-3 lg:col-span-6 xl:col-span-3">
+                <Tile key={c.category_code} id={`cat-${c.category_code}`} locale={locale} titleKey="dashboard.cat.heading" heading={catTitle(c.category_code)} date={d()} data actions={<InfoTip msg={t(locale, "dashboard.cat.info")} openMsg={t(locale, "dashboard.info.open")} />} className="col-span-full min-[480px]:col-span-1 md:col-span-3 lg:col-span-6 xl:col-span-3">
                   <p className="fit-number whitespace-nowrap text-display block text-primary tabular-nums" data-testid={`cat-qty-${c.category_code}`}>
                         {formatLakhCrore(locale, c.qty_base, lw)}
                       </p>
