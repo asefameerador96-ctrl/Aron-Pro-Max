@@ -285,17 +285,6 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
                 centerText={formatLakhCrore(locale, mtkToTaka(channelNetTotal), lw)}
                 slices={channels.map((c) => ({ key: c.code, label: c.name ?? c.code, value: Math.max(0, c.net_mtk), valueText: formatLakhCrore(locale, mtkToTaka(c.net_mtk), lw), shareText: channelNetTotal > 0 ? pctText(locale, (Math.max(0, c.net_mtk) / channelNetTotal) * 100) : "—" }))}
               />
-              <RankedBars
-                testId="channel-list"
-                label={t(locale, "dashboard.channels")}
-                rows={channels.map((c) => ({
-                  key: c.code,
-                  label: c.name ?? c.code,
-                  value: Math.max(0, c.net_mtk),
-                  valueText: takaText(locale, c.net_mtk),
-                  sub: `${n(locale, c.successful_calls)}/${n(locale, c.memo_count)}${channelNetTotal > 0 ? ` · ${pctText(locale, (Math.max(0, c.net_mtk) / channelNetTotal) * 100)}` : ""}`,
-                }))}
-              />
               </div>
             ) : (
               <p className="text-body text-secondary">{t(locale, "dashboard.channels.empty")}</p>

@@ -24,7 +24,7 @@ test("the TSO dashboard loads without a button press and shows every tile with i
   await expect(page.getByTestId("strike-basis")).toContainText("37 successful of 108 visited");
   await expect(page.getByTestId("strike-rate")).toHaveText("34.3%");
   await expect(page.getByTestId("sales-net")).toHaveText("543,435.00");
-  await expect(page.getByTestId("tile-channels-std").getByTestId("channel-list")).toContainText("Grocery");
+  await expect(page.getByTestId("tile-channels-std").getByTestId("channel-std-donut")).toContainText("Grocery");
   await expect(page.getByTestId("geo-fencing")).toBeVisible();
 });
 
