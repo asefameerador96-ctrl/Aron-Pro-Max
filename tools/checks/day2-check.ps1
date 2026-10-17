@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 <#
 .SYNOPSIS
   N-022 Day 2 ten-minute check: an offline sale with a printed memo reaches the server exactly once.
@@ -79,7 +79,7 @@ $token = Get-WebToken $ApiHost $Supervisor 'web login'
 $before = $null
 if ($token) {
   $before = Get-SrMemos
-  if ($null -eq $before) { Write-CheckResult 'memo count before' $false "GET /v1/memos failed: $script:GetError" }
+  if ($null -eq $before) { Write-CheckResult 'memo count before' $false "GET /v1/memos failed: $(Get-AronError)" }
   else { Write-Host "  $Sr has $($before.Count) active memos of $day on the server before the sale" }
 }
 
@@ -99,7 +99,7 @@ try {
       $stillOffline = -not (Test-PhoneOnline $serial)
       $meanwhile = Get-SrMemos
       $leaked = if ($null -eq $meanwhile) { $null } else { $meanwhile.Count - $before.Count }
-      Write-CheckResult 'offline sale' ($stillOffline -and $leaked -eq 0) $(if (-not $stillOffline) { 'the phone went online during the sale' } elseif ($null -eq $leaked) { "the server could not be read: $script:GetError" } elseif ($leaked -ne 0) { "the server got $leaked memo(s) while the phone was offline?" } else { 'sold offline; nothing reached the server' })
+      Write-CheckResult 'offline sale' ($stillOffline -and $leaked -eq 0) $(if (-not $stillOffline) { 'the phone went online during the sale' } elseif ($null -eq $leaked) { "the server could not be read: $(Get-AronError)" } elseif ($leaked -ne 0) { "the server got $leaked memo(s) while the phone was offline?" } else { 'sold offline; nothing reached the server' })
       Write-CheckResult 'printed memo' $printed $(if ($printed) { 'owner: one memo printed' } else { 'owner: no memo, or more than one, printed' })
 
       [void](Invoke-Adb @('-s', $serial, 'shell', 'cmd', 'connectivity', 'airplane-mode', 'disable'))
@@ -116,12 +116,12 @@ try {
         Start-Sleep -Seconds 10
       }
       $new = @($now.Keys | Where-Object { -not $before.ContainsKey($_) })
-      Write-CheckResult 'on the server' ($new.Count -eq 1 -and $now.Count -eq $before.Count + 1) $(if ($new.Count -eq 1) { "one new $Sr memo: $($new[0])" } elseif ($new.Count -eq 0) { "no new memo after $WaitSeconds s: open the app, check the sync screen ($script:GetError)" } else { "$($new.Count) new memos for one sale: $($new -join ', ')" })
+      Write-CheckResult 'on the server' ($new.Count -eq 1 -and $now.Count -eq $before.Count + 1) $(if ($new.Count -eq 1) { "one new $Sr memo: $($new[0])" } elseif ($new.Count -eq 0) { "no new memo after $WaitSeconds s: open the app, check the sync screen ($(Get-AronError))" } else { "$($new.Count) new memos for one sale: $($new -join ', ')" })
       if ($new.Count -eq 1) {
         Start-Sleep -Seconds 60
         $later = Get-SrMemos
         $again = if ($null -eq $later) { $null } else { @($later.Keys | Where-Object { -not $before.ContainsKey($_) }) }
-        Write-CheckResult 'still once' ($null -ne $again -and $again.Count -eq 1) $(if ($null -eq $again) { "the server could not be read: $script:GetError" } else { "$($again.Count) new memo(s) a minute later" })
+        Write-CheckResult 'still once' ($null -ne $again -and $again.Count -eq 1) $(if ($null -eq $again) { "the server could not be read: $(Get-AronError)" } else { "$($again.Count) new memo(s) a minute later" })
         $m = if ($later) { $later[$new[0]] } else { $null }
         $pc = if ($m) { [int]$m.print_count } else { 0 }
         Write-CheckResult 'print on server' ($pc -ge 1) "memo $($new[0]) print_count $pc"

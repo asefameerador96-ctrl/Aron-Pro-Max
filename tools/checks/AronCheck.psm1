@@ -1,4 +1,4 @@
-# Shared helpers of the ten-minute check scripts (qa; tools/checks/day*-check.ps1). Each check prints one PASS or FAIL
+﻿# Shared helpers of the ten-minute check scripts (qa; tools/checks/day*-check.ps1). Each check prints one PASS or FAIL
 # line; Complete-Check prints the summary and returns the number of failures (the script's exit code).
 # Passwords are read without echo (or from ARON_CHECK_PASSWORD in that window) and never printed or stored.
 
@@ -94,11 +94,12 @@ function Get-Aron([string]$PathAndQuery) {
   if (-not $l) { $script:GetError = 'not logged in'; return $null }
   if (-not $script:Token) { $script:Token = New-WebToken }
   for ($i = 1; $i -le 4; $i++) {
-    try { return Invoke-AronGet $l.ApiHost $script:Token $PathAndQuery }
+    try { $script:GetStatus = 200; return Invoke-AronGet $l.ApiHost $script:Token $PathAndQuery }
     catch {
       $status = $null
       try { $status = [int]$_.Exception.Response.StatusCode } catch { }
       $script:GetError = "$status $($_.Exception.Message)"
+      $script:GetStatus = $status
       if ($status -eq 401) { $script:Token = New-WebToken }
       elseif ($status -ge 400 -and $status -lt 500) { return $null }
       Start-Sleep -Seconds (2 * $i)
@@ -120,6 +121,45 @@ function Complete-Check {
   return $failed
 }
 
+# A build-tools program of the Android SDK (newest stable folder first; release candidates and odd names sort last).
+function Get-BuildTool([string]$Name) {
+  $local = if ($env:LOCALAPPDATA) { Join-Path $env:LOCALAPPDATA 'Android\Sdk' } else { $null }
+  $sdk = @($env:ANDROID_HOME, $env:ANDROID_SDK_ROOT, $local) | Where-Object { $_ -and (Test-Path $_) } | Select-Object -First 1
+  if (-not $sdk) { return $null }
+  $dirs = Get-ChildItem (Join-Path $sdk 'build-tools') -Directory -ErrorAction SilentlyContinue | ForEach-Object {
+    $v = $null
+    try { $v = [version]($_.Name -replace '-.*$', '') } catch { }
+    if ($v) { [pscustomobject]@{ Dir = $_.FullName; Version = $v; Stable = $_.Name -notmatch '-' } }
+  } | Sort-Object Stable, Version -Descending
+  foreach ($d in $dirs) {
+    $hit = @("$($d.Dir)\$Name.bat", "$($d.Dir)\$Name.exe", "$($d.Dir)/$Name") | Where-Object { Test-Path $_ } | Select-Object -First 1
+    if ($hit) { return $hit }
+  }
+  return $null
+}
+
+# User 0's block of `dumpsys package <pkg>`: @{ Installed; Suspended } (a package missing for user 0 is not installed).
+function Get-PackageState([string]$Serial, [string]$Pkg) {
+  $d = (Invoke-Adb @('-s', $Serial, 'shell', 'dumpsys', 'package', $Pkg)).Out
+  $line = ($d -split "`r?`n" | Where-Object { $_ -match '^\s*User 0:' } | Select-Object -First 1)
+  if (-not $line) { return @{ Installed = $false; Suspended = $false } }
+  return @{ Installed = "$line" -match 'installed=true'; Suspended = "$line" -match 'suspended=true' }
+}
+
+# The user restrictions in effect for user 0 (from `dumpsys user`, the "Effective restrictions" of UserInfo{0:...}).
+function Get-EffectiveRestrictions([string]$Serial) {
+  $d = (Invoke-Adb @('-s', $Serial, 'shell', 'dumpsys', 'user')).Out
+  $m = [regex]::Match($d, '(?s)UserInfo\{0:.*?Effective restrictions:(.*?)(?:\n\s*\S[^\n]*:\s*\n|UserInfo\{|$)')
+  if (-not $m.Success) { return $null }
+  return @([regex]::Matches($m.Groups[1].Value, '\b(no_[a-z_]+)\b') | ForEach-Object { $_.Groups[1].Value } | Select-Object -Unique)
+}
+
+# The HTTP status of the last Get-Aron (200, 4xx, 5xx, or $null for a transport failure).
+function Get-AronStatus { return $script:GetStatus }
+
+# The message of the last failed Get-Aron, or of the last failed login.
+function Get-AronError { return "$script:GetError$(if (-not $script:GetError) { $script:LoginError })" }
+
 # Whether the phone has an active network (dumpsys connectivity "Active default network: none" when offline).
 function Test-PhoneOnline([string]$Serial) {
   $c = (Invoke-Adb @('-s', $Serial, 'shell', 'dumpsys', 'connectivity')).Out
@@ -128,4 +168,4 @@ function Test-PhoneOnline([string]$Serial) {
   return $c -match 'NetworkAgentInfo\{.*state: CONNECTED'
 }
 
-Export-ModuleMember -Function Write-CheckResult, Test-AdbPresent, Invoke-Adb, Get-PhoneSerial, Test-PackageInstalled, Get-WebToken, New-WebToken, Invoke-AronGet, Get-Aron, Get-DhakaDate, Read-YesNo, Test-PhoneOnline, Complete-Check
+Export-ModuleMember -Function Get-AronError, Get-AronStatus, Get-BuildTool, Get-PackageState, Get-EffectiveRestrictions, Write-CheckResult, Test-AdbPresent, Invoke-Adb, Get-PhoneSerial, Test-PackageInstalled, Get-WebToken, New-WebToken, Invoke-AronGet, Get-Aron, Get-DhakaDate, Read-YesNo, Test-PhoneOnline, Complete-Check

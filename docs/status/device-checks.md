@@ -355,38 +355,45 @@ Steps (about 10 minutes; the Galaxy A06 or the Honor X5c Plus on USB):
    server, still once, print on server. The script always switches airplane mode back off, even when it fails. Paste the window into `docs/status/laptop.md`.
 
 ### D-QA-3 Day 4 ten-minute check script (N-050; qa) — DEVICE-PENDING, laptop session + owner outdoors
-Script: `tools/checks/day4-check.ps1 -Outlet MIR-D-001`. It was tested in the cloud with a fake adb and a mock API,
-once with config readable and once with config refused for the TSO. You need an outlet you can stand about 70 m from.
+Script: `tools/checks/day4-check.ps1`. It was tested in the cloud with a fake adb and a mock API: a readable config, a
+refused config (403) and a config outage. Stand about 70 m from the outlet.
 1. `git pull`; `powershell -ExecutionPolicy Bypass -File .\tools\checks\day4-check.ps1 -Outlet MIR-D-001`. It asks
-   for `tso1001`'s password and reads the zone's radius. When config is refused
-   for a TSO, the owner reads it from the portal and answers.
-2. In the web portal, set the zone's `cfg.geo.radius_m` to 50 m and approve it. Config changes are maker-checker, so
-   a second admin may be needed. The script waits up to 10 minutes for the new value.
-3. On the phone, Sync. Then stand about 70 m from the outlet and open it: Pass = the phone says too far, offering
-   Force Sale. Force-sell or close the visit so it syncs.
+   for `tso1001`'s password and reads `cfg.geo.radius_m` resolved AT THE OUTLET, which is what the phone's bundle
+   carries.
+2. In the web portal, set 50 m for that outlet's zone (or the outlet) and approve it. Config changes are
+   maker-checker, so a second admin may be needed. The script waits up to 10 minutes for the outlet to resolve 50.
+3. On the phone, Sync. At about 70 m from the outlet, read the visit screen: it must say "limit 50 m" (সীমা ৫০ মি) and
+   a distance between 50 and 100 m, and the sale must stay closed (Refresh, then Force Sale). An accuracy, mock or
+   no-fix refusal does not count. Force-sell or close the visit so it syncs.
 4. Check 7, "stamped new radius", FAILS by design until `docs/requests/qa-visit-radius-read.md` is done. Until then
-   the laptop session reads `app.visit.radius_m_used` for that visit on dev.
-5. Afterwards, set the radius back to 100 m (another approved change).
+   the laptop session reads `app.visit.radius_m_used` of that visit on dev.
+5. Set it back to 100 m in the portal and approve it. Check 8 waits for the outlet to resolve 100 again.
 
 ### D-QA-4 Day 3 ten-minute check script (N-043; qa) — DEVICE-PENDING, laptop session + owner
-Script: `tools/checks/day3-check.ps1`. It was tested in the cloud with a fake adb on every path: device owner, the
-sideload restriction, a refused install, a present spoofing app, and suspended at check-in / released at check-out.
-It runs on the ENROLLED Honor X5c Plus, where the device owner was set by adb path A (D-04).
-1. Morning, checked out: `powershell -ExecutionPolicy Bypass -File .\tools\checks\day3-check.ps1 -SkipCheckout`. Add
-   `-SpoofApks <paths>` with the mock-location APKs and the cloning tool of N-039, if the owner has them.
-2. When asked, check in on the phone (press and hold). Pass = every chosen app is suspended.
-3. After 17:00: `... day3-check.ps1 -CheckoutOnly`, then check out. Pass = none is suspended.
-4. Record each spoofing app's line in `docs/status/qa-n039-antispoofing.md`.
+Script: `tools/checks/day3-check.ps1`. It was tested in the cloud with a fake adb that has real-format per-user output
+(user 0 versus a work profile): no spoofing app (FAIL "not tested"), a visit accepted (FAIL), check-in, and check-out
+(including "not checked in" FAIL). It runs on the ENROLLED Honor X5c Plus (device owner by adb path A, D-04).
+1. Morning, checked out:
+   `powershell -ExecutionPolicy Bypass -File .\tools\checks\day3-check.ps1 -SkipCheckout -SpoofApks <N-039 apks>`.
+   At least one spoofing app must be on the phone, or check 3 FAILS as not tested. For each app the owner switches it
+   on (fake location next to an outlet), opens that outlet in the SR app, and answers whether the visit was refused
+   with the fake-location message. That answer, or a suspension, decides; the mock app-op is logged as information.
+2. When asked, check in (press and hold). Pass = every chosen app suspended for user 0 within 30 s.
+3. After 17:00, still checked in: `... day3-check.ps1 -CheckoutOnly`, then check out. Pass = the apps were suspended
+   before and none is suspended within 30 s after.
+4. Record each spoofing app in `docs/status/qa-n039-antispoofing.md`. Remove the spoofing apps afterwards
+   (`adb uninstall <package>`).
 
 ### D-QA-5 Release install and upgrade without Google Play (N-042; qa) — DEVICE-PENDING, laptop session
 Script: `tools/checks/release-install-check.ps1`. It was tested in the cloud with a fake SDK and a fake adb: a release
-pair passes, and a different or debug signer fails. You need two release-signed SR APKs from CI (an older and a newer
-run's `aron-sr-*.apk`) and the Android SDK build-tools on the laptop.
+pair passes; two signers, a different or debug signer, and a failed install each FAIL; odd build-tools folder names
+are handled. You need two release-signed SR APKs from CI (an older and a newer run's `aron-sr-*.apk`) and the SDK
+build-tools on the laptop.
 1. On the enrolled Honor X5c Plus: `powershell -ExecutionPolicy Bypass -File .\tools\checks\release-install-check.ps1
-   -OldApk <older>.apk -NewApk <newer>.apk`. It checks the signer and versions, installs the older build if needed,
-   upgrades with `adb install -r`, and checks the upgrade kept the app (firstInstallTime) and the device owner.
-2. Production path: `... -NewApk <newer>.apk -ViaManagedUpdate`, after an admin publishes that release in the portal.
-   The phone must reach the new versionCode by itself within 20 minutes.
-3. Each run appends one line to `release-install-check.log`: phone, Android version and patch, path, and whether
-   Google's developer verification refused the install. Copy the lines into `docs/status/laptop.md`. The Galaxy A06
-   and A07 follow when they are in hand.
+   -OldApk <older>.apk -NewApk <newer>.apk -ExpectedCertSha256 <the CI release certificate SHA-256>`.
+2. The field path (`-ViaInAppUpdate`) cannot pass yet: the backend does not serve the release publish routes
+   (`docs/requests/qa-release-publish-route.md`).
+3. Each run appends one line to `release-install-check.log`: phone, Android and patch, path, the result and the install
+   output. It states that Google's developer-verification rule is not exercised by these installs (first rollout
+   September 2026 in Brazil, Indonesia, Singapore and Thailand). Copy the lines into `docs/status/laptop.md`. N-042
+   stays open until the Galaxy A06 and A07 runs are logged.

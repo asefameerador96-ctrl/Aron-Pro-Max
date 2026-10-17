@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 <#
 .SYNOPSIS
   N-015 Day 1 ten-minute check: phone listed, SR app installed, login works, the API answers from Azure.

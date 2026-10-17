@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 <#
 .SYNOPSIS
   N-050 Day 4 ten-minute check: the geofence radius changed in the portal (100 m to 50 m) is obeyed by the phone
@@ -13,16 +13,20 @@
   Checks (PASS or FAIL each; the exit code is the number of failures):
    1. phone listed, SR app installed
    2. web login            the supervisor (default tso1001) logs in; the password is never printed or stored
-   3. radius before        the outlet's zone resolves cfg.geo.radius_m to the old value (default 100)
-   4. radius changed       after you change it in the portal (Settings > Geofence > zone, 50 m, approve), the zone
-                           resolves to the new value (the script polls up to 10 minutes: maker-checker)
-   5. phone synced         you tap Sync on the phone; the phone stays online
-   6. judged by 50 m       at about 70 m from the outlet the phone refuses the in-range sale (Force Sale shown)
-   7. stamped 50 m         the visit reaches the server stamped radius_m_used = 50. Needs a visit read that shows
+   3. radius before        cfg.geo.radius_m resolved AT THE OUTLET (outlet overrides, then route, zone, ...: what
+                           the phone gets in its bundle) is the old value (default 100)
+   4. radius changed       after you change it in the portal and it is approved, the outlet resolves to the new value
+                           (polled up to 10 minutes: config changes are maker-checker)
+   5. phone synced         you tap Sync on the phone; the phone has a network
+   6. judged by new radius at about 70 m from the outlet the visit screen reads "limit 50 m" (সীমা ৫০ মি) with a distance
+                           above 50 m, and the sale does not open (Refresh, then Force Sale). An accuracy, mock or
+                           no-fix refusal does not count: the screen must show the limit and the distance.
+   7. stamped new radius   the visit reaches the server stamped radius_m_used = 50. Needs a visit read that shows
                            radius_m_used (docs/requests/qa-visit-radius-read.md); until then this check FAILS with
-                           that reason, and the stamp is read by the laptop session from the dev database instead.
-  Reading the config needs the supervisor to hold config read (admin-config); with a TSO that is refused, and checks
-  3 and 4 fall back to your own answer from the portal screen.
+                           that reason, and the laptop session reads the stamp from the dev database instead.
+   8. radius restored      after you set it back in the portal, the outlet resolves to the old value again
+  The supervisor reads config through GET /v1/admin/config/resolve (TSO is a config reader). If that is refused
+  (403), checks 3, 4 and 8 fall back to your answer from the portal screen; any other failure is a FAIL.
 
 .PARAMETER Outlet
   The outlet code you will stand next to (default MIR-D-001, the first seeded outlet of the daily route).
@@ -43,11 +47,19 @@ Import-Module (Join-Path $PSScriptRoot 'AronCheck.psm1') -Force
 $Package = 'com.aktcl.aron.sr'
 Write-Host "Aron Day 4 check  $(Get-Date -Format 'yyyy-MM-dd HH:mm')  API $ApiHost  outlet $Outlet" -ForegroundColor Cyan
 
-# The resolved radius at the outlet's zone, or $null when the caller may not read config.
-function Get-ZoneRadius([string]$Token, [long]$ZoneId) {
-  $r = Get-Aron "/v1/admin/config/resolve?key=cfg.geo.radius_m&node_type=zone&node_id=$ZoneId"
-  if ($null -eq $r) { return $null }
-  return [int]$r.value
+# The radius resolved at the outlet (what its bundle row carries); $null when config reads are refused (403), and
+# 'error' when the server could not be read at all.
+function Get-OutletRadius([long]$OutletId) {
+  $r = Get-Aron "/v1/admin/config/resolve?key=cfg.geo.radius_m&node_type=outlet&node_id=$OutletId"
+  if ($null -ne $r) { return [int]$r.value }
+  if ((Get-AronStatus) -eq 403) { return $null }
+  return 'error'
+}
+
+function Report-Radius([string]$Name, $Value, [int]$Want, [string]$Ask) {
+  if ($Value -eq 'error') { Write-CheckResult $Name $false "config could not be read: $(Get-AronError)" }
+  elseif ($null -ne $Value) { Write-CheckResult $Name ($Value -eq $Want) "outlet $Outlet resolves $Value m (expected $Want m)" }
+  else { Write-CheckResult $Name (Read-YesNo $Ask) "$Supervisor may not read config (403): owner read the portal" }
 }
 
 $serial = Get-PhoneSerial
@@ -58,25 +70,27 @@ if ($serial) {
 $token = Get-WebToken $ApiHost $Supervisor 'web login'
 if (-not $token) { exit (Complete-Check) }
 
-$zone = $null
-$o = Get-Aron "/v1/admin/outlets?q=$([uri]::EscapeDataString($Outlet))&limit=5"
-if ($o) { $zone = (@($o.items) | Where-Object { $_.code -eq $Outlet } | Select-Object -First 1).zone_id }
-if (-not $zone) { Write-CheckResult 'outlet found' $false "$Supervisor cannot see outlet $Outlet (wrong code, or outside the supervisor's reach)"; exit (Complete-Check) }
-
-$before = Get-ZoneRadius $token $zone
-if ($null -ne $before) { Write-CheckResult 'radius before' ($before -eq $OldRadius) "zone $zone resolves $before m (expected $OldRadius m)" }
-else { Write-CheckResult 'radius before' (Read-YesNo "The portal shows $OldRadius m for the zone of $Outlet now?") "$Supervisor may not read config: owner read the portal" }
-
-Write-Host "  Now, in the web portal: Settings > Geofence, set the zone of $Outlet to $NewRadius m and approve it (a second admin may be needed)." -ForegroundColor Cyan
-[void](Read-Host '  Press Enter when the change is approved')
-if ($null -ne $before) {
-  $deadline = (Get-Date).AddMinutes(10)
-  $now = $before
-  while ((Get-Date) -lt $deadline) { $now = Get-ZoneRadius $token $zone; if ($now -eq $NewRadius) { break }; Start-Sleep -Seconds 15 }
-  Write-CheckResult 'radius changed' ($now -eq $NewRadius) "zone $zone resolves $now m (expected $NewRadius m)"
-} else {
-  Write-CheckResult 'radius changed' (Read-YesNo "The portal shows $NewRadius m for the zone of $Outlet, approved?") 'owner read the portal'
+$outletId = $null
+$cursor = $null
+for ($n = 0; $n -lt 20 -and -not $outletId; $n++) {
+  $o = Get-Aron ("/v1/admin/outlets?q=$([uri]::EscapeDataString($Outlet))&limit=200" + $(if ($cursor) { "&cursor=$([uri]::EscapeDataString($cursor))" } else { '' }))
+  if (-not $o) { break }
+  $outletId = (@($o.items) | Where-Object { $_.code -eq $Outlet } | Select-Object -First 1).id
+  $cursor = $o.next_cursor
+  if (-not $cursor) { break }
 }
+if (-not $outletId) { Write-CheckResult 'outlet found' $false "$Supervisor cannot see outlet $Outlet (wrong code, outside the supervisor's reach, or $(Get-AronError))"; exit (Complete-Check) }
+
+Report-Radius 'radius before' (Get-OutletRadius $outletId) $OldRadius "The portal shows $OldRadius m for $Outlet now?"
+
+Write-Host "  Now, in the web portal: Settings > Geofence, set $NewRadius m for $Outlet's zone (or the outlet) and approve it (a second admin may be needed)." -ForegroundColor Cyan
+[void](Read-Host '  Press Enter when the change is approved')
+$now = Get-OutletRadius $outletId
+if ($null -ne $now -and $now -ne 'error') {
+  $deadline = (Get-Date).AddMinutes(10)
+  while ($now -ne $NewRadius -and (Get-Date) -lt $deadline) { Start-Sleep -Seconds 15; $now = Get-OutletRadius $outletId; if ($now -eq 'error') { break } }
+}
+Report-Radius 'radius changed' $now $NewRadius "The portal shows $NewRadius m for $Outlet, approved?"
 
 if ($serial) {
   Write-Host "  On the phone (online): open the SR app and tap Sync (or pull down on Home); wait until it says synced." -ForegroundColor Cyan
@@ -84,9 +98,21 @@ if ($serial) {
   $online = Test-PhoneOnline $serial
   Write-CheckResult 'phone synced' ($synced -and $online) $(if (-not $online) { 'the phone is in airplane mode' } elseif ($synced) { 'owner: synced' } else { 'owner: not synced' })
   Write-Host "  Walk to about 70 m from $Outlet (more than $NewRadius m, less than $OldRadius m) and open the outlet for a sale." -ForegroundColor Cyan
-  $judged = Read-YesNo "Did the phone say you are too far away (Force Sale offered) instead of opening the sale?"
-  Write-CheckResult 'judged by new radius' $judged $(if ($judged) { "owner: refused at about 70 m (judged by $NewRadius m)" } else { "owner: the sale opened, so the phone still uses the old radius" })
+  $limit = Read-YesNo "Does the visit screen read 'limit $NewRadius m' (সীমা $NewRadius মি) next to the distance?"
+  $distance = Read-Host '  The distance it shows, in metres (number only)'
+  $refused = Read-YesNo 'Did the sale stay closed (Refresh, then Force Sale offered), not open?'
+  $far = ($distance -as [int]) -gt $NewRadius -and ($distance -as [int]) -lt $OldRadius
+  Write-CheckResult 'judged by new radius' ($limit -and $refused -and $far) ("screen limit {0} m: {1}; distance {2} m (between {0} and {3}: {4}); sale refused: {5}" -f $NewRadius, $limit, $distance, $OldRadius, $far, $refused)
   Write-Host "  Use Force Sale (photo) or close the visit, so the visit record syncs." -ForegroundColor Cyan
 }
 Write-CheckResult 'stamped new radius' $false "no API shows a visit's radius_m_used yet (docs/requests/qa-visit-radius-read.md): the laptop session reads app.visit.radius_m_used for $Outlet today on dev"
+
+Write-Host "  Now set the radius back to $OldRadius m in the portal (the same place) and approve it: the zone's other SRs use it too." -ForegroundColor Cyan
+[void](Read-Host '  Press Enter when the change is approved')
+$back = Get-OutletRadius $outletId
+if ($null -ne $back -and $back -ne 'error') {
+  $deadline = (Get-Date).AddMinutes(10)
+  while ($back -ne $OldRadius -and (Get-Date) -lt $deadline) { Start-Sleep -Seconds 15; $back = Get-OutletRadius $outletId; if ($back -eq 'error') { break } }
+}
+Report-Radius 'radius restored' $back $OldRadius "The portal shows $OldRadius m for $Outlet again?"
 exit (Complete-Check)
