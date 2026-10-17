@@ -160,7 +160,16 @@ class FeedbackFormState(
         } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) { _result.value = FeedbackResult.Failed } finally { busy = false }
     }
 
-    fun startNew() { uuid = newUuid(); _form.value = FeedbackForm(); _result.value = FeedbackResult.Editing }
+    private var toasted: FeedbackResult? = null
+
+    /** The Queued or Failed result once, for the toast: a recreation of the screen does not toast it again. */
+    fun consumeToast(): FeedbackResult? {
+        val r = _result.value
+        if ((r is FeedbackResult.Queued || r is FeedbackResult.Failed) && toasted != r) { toasted = r; return r }
+        return null
+    }
+
+    fun startNew() { uuid = newUuid(); _form.value = FeedbackForm(); _result.value = FeedbackResult.Editing; toasted = null }
 }
 
 /** Holds the category list once loaded (null = still loading) across recreation. */

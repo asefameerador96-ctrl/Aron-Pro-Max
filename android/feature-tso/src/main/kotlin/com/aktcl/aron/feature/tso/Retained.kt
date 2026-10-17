@@ -17,3 +17,11 @@ fun <T : Any> rememberRetained(key: String, factory: () -> T): T =
         @Suppress("UNCHECKED_CAST")
         override fun <V : ViewModel> create(modelClass: Class<V>): V = RetainedHolder(factory()) as V
     }).value
+
+/** A retained counter: bumped when a screen's form or list must start fresh; survives recreation (unlike rememberSaveable inside AnimatedContent). */
+class RetainedCounter {
+    private val state = androidx.compose.runtime.mutableIntStateOf(0)
+    var n: Int
+        get() = state.intValue
+        set(v) { state.intValue = v }
+}

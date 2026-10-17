@@ -173,3 +173,14 @@ class FeedbackScreenTest {
 }
 
 private fun androidx.compose.ui.test.SemanticsNodeInteraction.performClickOnPrimary() = performClick()
+
+class FeedbackToastTest {
+    @Test fun theToastIsConsumedOnce() = runBlocking {
+        val s = FeedbackFormState(Q(), cats, { "x" })
+        s.edit { it.copy(categoryCode = "suggestion", title = "a", description = "b") }
+        assertNull(s.consumeToast())
+        s.submit()
+        assertEquals(FeedbackResult.Queued, s.consumeToast())
+        assertNull(s.consumeToast()) // a recreated screen does not toast again
+    }
+}

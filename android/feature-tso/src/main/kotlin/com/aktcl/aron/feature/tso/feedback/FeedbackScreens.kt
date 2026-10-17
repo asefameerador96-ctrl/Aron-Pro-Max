@@ -121,7 +121,7 @@ fun FeedbackFormScreen(state: FeedbackFormState, onBack: () -> Unit, modifier: M
     val queuedText = stringResource(R.string.tso_fb_toast_ok)
     val failedText = stringResource(R.string.tso_fb_toast_failed)
     LaunchedEffect(result) {
-        when (result) {
+        when (state.consumeToast()) {
             FeedbackResult.Queued -> Toast.makeText(context, queuedText, Toast.LENGTH_SHORT).show()
             FeedbackResult.Failed -> Toast.makeText(context, failedText, Toast.LENGTH_LONG).show()
             else -> Unit
@@ -147,9 +147,9 @@ fun FeedbackFormScreen(state: FeedbackFormState, onBack: () -> Unit, modifier: M
             val cats = state.categoryList
             if (cats.isNotEmpty()) AronSegmented(cats.map { it.label(bn) }, cats.indexOfFirst { it.code == form.categoryCode }, { i -> state.edit { f -> f.copy(categoryCode = cats[i].code) } })
             AronSectionLabel(stringResource(R.string.tso_fb_title_label))
-            OutlinedTextField(form.title, { v -> state.edit { f -> f.copy(title = v.take(MAX_TITLE + 1)) } }, Modifier.fillMaxWidth().testTag(FeedbackTags.TITLE), singleLine = true, enabled = !queued)
+            OutlinedTextField(form.title, { v -> state.edit { f -> f.copy(title = v.take(MAX_TITLE * 2)) } }, Modifier.fillMaxWidth().testTag(FeedbackTags.TITLE), singleLine = true, enabled = !queued)
             AronSectionLabel(stringResource(R.string.tso_fb_description_label))
-            OutlinedTextField(form.description, { v -> state.edit { f -> f.copy(description = v.take(MAX_DESCRIPTION + 1)) } }, Modifier.fillMaxWidth().testTag(FeedbackTags.DESCRIPTION), minLines = 4, enabled = !queued)
+            OutlinedTextField(form.description, { v -> state.edit { f -> f.copy(description = v.take(MAX_DESCRIPTION * 2)) } }, Modifier.fillMaxWidth().testTag(FeedbackTags.DESCRIPTION), minLines = 4, enabled = !queued)
             if (photosEnabled && !queued) {
                 if (form.photoUuid == null) AronTextButton(stringResource(R.string.tso_fb_add_photo), { scope.launch { state.takePhoto() } }, Modifier.testTag(FeedbackTags.PHOTO))
                 else {

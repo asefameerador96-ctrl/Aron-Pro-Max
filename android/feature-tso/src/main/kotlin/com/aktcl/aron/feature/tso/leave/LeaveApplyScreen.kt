@@ -106,7 +106,7 @@ fun LeaveApplyScreen(state: LeaveApplyState, onBack: () -> Unit, modifier: Modif
             }
             AronSectionLabel(stringResource(R.string.tso_leave_reason))
             OutlinedTextField(
-                form.reason, { v -> state.edit { f -> f.copy(reason = v.take(MAX_REASON + 1)) } }, Modifier.fillMaxWidth().testTag(LeaveApplyTags.REASON),
+                form.reason, { v -> state.edit { f -> f.copy(reason = v.take(MAX_REASON * 2)) } }, Modifier.fillMaxWidth().testTag(LeaveApplyTags.REASON),
                 minLines = 3, enabled = !queued,
             )
             (result as? LeaveApplyResult.Invalid)?.errors?.forEach { e ->
