@@ -317,3 +317,11 @@ two defects outside this lane. The adb path (s10.4 step 5) is the one that works
   `suspended=true` counts were 0 and `dumpsys device_policy` no longer lists `suspendedPackages`. Note: the Home dock
   read "Sales submit" after 17:00 (day-state order: submit, then check out), so the check-out was taken from the
   Attendance bar. **D-04 complete** on the Honor X5c Plus (device owner by adb path A).
+
+## android-amo (wave 2), DEVICE-PENDING (nothing here has run on a phone; unit and Robolectric tests only)
+Login as `amo1001` on the AMO app (bind OTP like the SR), seeded zone, Honor X5c Plus (the Galaxy A06 is not in reach).
+- **D-AMO-HOME** (F-AMO-001): the eight hub tiles show; Outlet carries a badge only while verification requests are pending.
+- **D-AMO-ATT** (F-AMO-003): check-in with press-and-hold, address online and coordinates in airplane mode, check-out only from 17:00, Bangla and English.
+- **D-AMO-CC** (F-AMO-004/005/036): Control Call tile, pick route then retailer; stand away from the retailer: "AMO is not within the retailer's range" with Refresh and Manual Override; Manual Override takes the outlet photo (camera permission), the call proceeds, a location-change request appears in the outbox; the 11th override of a day is refused (default limit 10); repeat the radius check in airplane mode; kill the app on the menu and relaunch (back on the menu, no second visit).
+- **D-AMO-ASSESS** (F-AMO-007/008/009): in a Control Call open SR Perf. Assessment: brands from the product list, OOS only after the brand is ticked, POSM yes/no/unanswered, Save shows "Saved" and returns to the retailer list with the route kept; after sync the server shows one distribution_check and one line per brand.
+- **D-AMO-JOINT** (F-AMO-011): Joint Call shows the route's SR, stars for the enabled criteria, Save, in Bangla and English.
