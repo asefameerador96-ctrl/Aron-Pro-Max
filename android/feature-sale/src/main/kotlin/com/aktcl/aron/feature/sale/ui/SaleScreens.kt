@@ -469,7 +469,7 @@ private fun ExpandedSkuRow(sku: SaleSku, qty: Long, line: ReviewLine?, position:
             Spacer(Modifier.width(AronTokens.Space.S))
             Text(unit, style = MaterialTheme.typography.bodySmall, color = c.textSecondary, maxLines = 1)
         }
-        if (line != null && line.packBadge.first > 0) {
+        if (line != null && sku.packFactor > 1 && line.packBadge.first > 0) {
             Text(localizedDigits(stringResource(R.string.sale_pack_badge, line.packBadge.first.toString(), line.packBadge.second.toString())), style = MaterialTheme.typography.bodySmall, color = c.textSecondary)
         }
         if (line?.exceedsStock == true) {

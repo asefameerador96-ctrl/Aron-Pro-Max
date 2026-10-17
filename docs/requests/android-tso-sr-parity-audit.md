@@ -247,3 +247,11 @@ Severity: **blocker** = a rep cannot finish a selling day, or money/units are sh
 - A2 reverse-geocoded address (deliberate; keep coordinates offline).
 - E4 the three sale-card indicators (meaning unknown, G-man-sr-05).
 - Printed memo digits (`memo.json` `"digits": "latin"`) and the layout are unverified against a real printout (N-020); M3 is the only print divergence evidenced by the on-screen memo.
+
+## Fixed by the android-tso lane (2026-10-17, first batch, goldens re-recorded)
+- **E3** pack badge only when the SKU's pack factor is above 1 (lighters and matches no longer read "N packets").
+- **H5** `sr_unit_stick` (bn) is "স্টিক", as on every other SR screen.
+- **P4** picker segment "বাকি N" (outlets left) is now "অবশিষ্ট N"; "বাকি" stays the due word.
+- **E1/R1** the outlet name and code stay on screen above Sale entry and Review (`SaleHost`).
+- **Memo number** shown as issued (ASCII) on the memo detail, no more mixed script.
+Still open (needs a decision or a larger change): the two non-presentation majors (QC six-type entry, per-SKU sale history), the Attendance green/red and 12-hour wording (A5, A6), day-end dues dialog, stock category totals panel, memo category subtotals, "OTP" wording on binding, Yes/No and "সফল / ওকে" dialogs, small label and format items.
