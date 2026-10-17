@@ -37,22 +37,22 @@ import kotlinx.coroutines.launch
 import androidx.compose.ui.res.stringResource
 import com.aktcl.aron.feature.amo.R as AmoR
 
-private enum class CcStep { ROUTE, OUTLET, CHECK, FORCE, MENU, ASSESS, JOINT, SURVEY, PRICE }
+private enum class CcStep { ROUTE, OUTLET, CHECK, FORCE, MENU, ASSESS, JOINT, SURVEY, PRICE, SALE }
 
 /**
  * F-AMO-004/005/036: Control Call. Route and retailer come from the zone-wide bundle (local), the geo gate is the SR's
  * [VisitFlow] (radius check on the phone, airplane mode safe) on visit kind `amo_control_call`, the out-of-range answer is
  * Manual Override (the SR's Force Sale with the outlet photo and a location-change request, capped per day) or Refresh.
- * [onSale] opens the sale (null until the sale rows land); Assessment and Survey are steps of this host.
+ * Sale, Assessment, Survey and Price compliance are steps of this host; [startWithSale] (the standalone Sale tile) opens the sale as soon as the call is open.
  */
 @Composable
 fun ControlCallHost(
-    day: AmoDay, onBack: () -> Unit, onSale: (() -> Unit)? = null,
+    day: AmoDay, onBack: () -> Unit, startWithSale: Boolean = false,
     /** `amo_control_call` (menu: Sale, assessment, survey) or `amo_joint_call` (goes straight to the SR call assessment, F-AMO-011). */
     kind: String = com.aktcl.aron.feature.amo.AmoVisitKind.CONTROL_CALL,
 ) {
     val joint = kind == com.aktcl.aron.feature.amo.AmoVisitKind.JOINT_CALL
-    val inCall = if (joint) CcStep.JOINT else CcStep.MENU
+    val inCall = if (joint) CcStep.JOINT else if (startWithSale) CcStep.SALE else CcStep.MENU
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     var step by rememberSaveable { mutableStateOf(CcStep.ROUTE) }
@@ -66,13 +66,13 @@ fun ControlCallHost(
     }
     // A call already open (kill and relaunch): back on its menu, never a second visit.
     val open by day.visitSession.current.collectAsState()
-    LaunchedEffect(open) { if (open != null && step != inCall && step != CcStep.FORCE && step != CcStep.ASSESS && step != CcStep.SURVEY && step != CcStep.PRICE) step = inCall }
+    LaunchedEffect(open) { if (open != null && step != inCall && step != CcStep.FORCE && step != CcStep.ASSESS && step != CcStep.SURVEY && step != CcStep.PRICE && step != CcStep.SALE) step = inCall }
     val goBack: () -> Unit = {
         when (step) {
             CcStep.ROUTE -> onBack()
             CcStep.OUTLET -> step = CcStep.ROUTE
             CcStep.CHECK, CcStep.FORCE -> step = CcStep.OUTLET
-            CcStep.ASSESS, CcStep.SURVEY, CcStep.PRICE -> step = CcStep.MENU
+            CcStep.ASSESS, CcStep.SURVEY, CcStep.PRICE, CcStep.SALE -> step = CcStep.MENU
             CcStep.MENU, CcStep.JOINT -> scope.launch { day.closeVisit(); step = CcStep.OUTLET }
         }
     }
@@ -110,10 +110,11 @@ fun ControlCallHost(
                 CcStep.FORCE -> ManualOverrideStep(day, onStarted = { step = inCall }, onBack = { step = CcStep.CHECK })
                 CcStep.JOINT -> JointCallStep(day, onSaved = { scope.launch { day.closeVisit(); step = CcStep.OUTLET } })
                 CcStep.ASSESS -> PerfAssessmentStep(day, onSaved = { scope.launch { day.closeVisit(); step = CcStep.OUTLET } })
+                CcStep.SALE -> AmoSaleHost(day, onDone = { step = CcStep.MENU })
                 CcStep.SURVEY -> SurveyStep(day, onDone = { step = CcStep.MENU })
                 CcStep.PRICE -> PriceStep(day, onSaved = { step = CcStep.MENU })
                 CcStep.MENU -> ControlCallMenu(
-                    onSale = { onSale?.invoke() }, onAssessment = { step = CcStep.ASSESS }, onSurvey = { step = CcStep.SURVEY }, onPrice = { step = CcStep.PRICE },
+                    onSale = { step = CcStep.SALE }, onAssessment = { step = CcStep.ASSESS }, onSurvey = { step = CcStep.SURVEY }, onPrice = { step = CcStep.PRICE },
                     onDone = { scope.launch { day.closeVisit(); step = CcStep.OUTLET } },
                 )
             }

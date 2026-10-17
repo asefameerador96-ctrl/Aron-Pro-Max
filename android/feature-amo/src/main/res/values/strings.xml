@@ -46,4 +46,15 @@
     <string name="amo_pc_ok">Matches the list price</string>
     <string name="amo_pc_off">Differs from the list price by %1$s ৳</string>
     <string name="amo_pc_invalid">Enter a price like 125 or 125.5</string>
+    <string name="amo_edit_checking">Checking that you are at the shop…</string>
+    <string name="amo_sale_history">Sale history of this shop</string>
+    <string name="amo_rec_visit">Visits</string>
+    <string name="amo_rec_memo">Memos</string>
+    <string name="amo_rec_stock_movement">Stock</string>
+    <string name="amo_rec_qc_line">Product QC</string>
+    <string name="amo_rec_memo_discount">Discounts</string>
+    <string name="amo_rec_visit_close">Visit ends</string>
+    <string name="amo_rec_due_collection">Dues collected</string>
+    <string name="amo_rec_attendance_event">Attendance</string>
+    <string name="amo_rec_visit_skip">Skipped shops</string>
 </resources>

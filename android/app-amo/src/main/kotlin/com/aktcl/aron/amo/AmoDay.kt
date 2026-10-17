@@ -5,7 +5,15 @@ import androidx.room.withTransaction
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import com.aktcl.aron.contract.SyncTrigger
+import com.aktcl.aron.core.common.AppLanguage
 import com.aktcl.aron.core.database.AronDatabase
+import com.aktcl.aron.core.database.entity.OutletEntity
+import com.aktcl.aron.feature.outlet.VisitOutlet
+import com.aktcl.aron.feature.stock.StockLoad
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 import com.aktcl.aron.core.database.entity.CaptureMeta
 import com.aktcl.aron.core.database.repo.CaptureRepository
 import com.aktcl.aron.core.database.repo.ReferenceRepository
@@ -43,8 +51,24 @@ class AmoDay(
     components: SessionComponents,
     private val scheduler: SyncScheduler,
     fixManager: FixManager,
+    val printerManager: com.aktcl.aron.core.printing.bt.PrinterManager,
+    private val userName: String,
+    /** The phone's memo numbering (username, bind ordinal, block size) from the login; null only in previews and tests. */
+    val memoNumbering: com.aktcl.aron.core.database.repo.MemoNumbering? = null,
     private val deviceRuntime: DeviceRuntime? = null,
 ) {
+    internal val database: AronDatabase get() = db
+    val userDisplayName: String get() = userName
+    fun currentMs(): Long = clock.nowMs()
+    /** Sale, memo, summary and Sales Submit of the SR modules on this user's database (F-AMO-006: the SR sale flow against the AMO's own stock). */
+    val sale: AmoSaleKit by lazy { AmoSaleKit(this, context, scheduler, ::online) }
+
+    /** Every outlet of the zone's routes (local bundle); names for memos and prints. Reloaded by [reload]. */
+    @Volatile var zoneOutlets: List<com.aktcl.aron.core.database.entity.OutletEntity> = emptyList()
+    @Volatile private var zoneRoutes: Map<Long, String> = emptyMap()
+    /** Name of the route the open call is on (prints), or empty. */
+    fun routeName(): String = zoneRoutes[visitSession.current.value?.routeId ?: routeId ?: 0L].orEmpty()
+
     private val clock = components.trustedClock
     val capture = CaptureRepository(db) { iso(clock.nowMs()) }
     val reference = ReferenceRepository(db)
@@ -69,6 +93,10 @@ class AmoDay(
 
     /** Re-reads the bundle stamp the records carry; cheap, called when the day opens and after a bundle change. */
     suspend fun reload() {
+        loadPrintConfig()
+        runCatching { routes() }.getOrNull()?.let { days ->
+            zoneOutlets = days.flatMap { it.outlets }; zoneRoutes = days.associate { it.route.routeId to it.route.name }
+        }
         bundleVersion = reference.bundleVersion()
         configVersion = db.referenceDao().meta(ReferenceRepository.KEY_CONFIG_VERSION)?.toLongOrNull() ?: 0L
         overrideMax = runCatching { reference.config("cfg.amo.manual_override_max_per_day", iso(clock.nowMs())) }.getOrNull()
@@ -189,16 +217,32 @@ class AmoDay(
     /** Today's visits, for the Manual Override daily limit. */
     suspend fun visitsToday() = db.captureDao().visitsOn(businessDate())
 
-    /** Ends the call in progress: a call with no memo closes `abandoned` (docs/24 s4.2). */
-    suspend fun closeVisit(outcome: String = "abandoned") {
+    /**
+     * Ends the call in progress (docs/24 s4.2). The outcome follows what the call produced: a memo means `sold`; no memo but an
+     * audit record (assessment, price check, survey) means a real call with no sale, `zero_sale_stock_ok`; nothing at all means
+     * `abandoned`, which does not count as a visit (D-AMO-CLOSE-01).
+     */
+    suspend fun closeVisit() {
         val v = visitSession.current.value ?: return
+        val date = businessDate()
+        val hasMemo = db.captureDao().memosOn(date).any { it.visitClientUuid == v.visitUuid }
+        val audited = !hasMemo && (db.captureDao().amoRecordsOfFamily(v.visitUuid).isNotEmpty() || db.captureDao().surveyResponsesOf(v.visitUuid).isNotEmpty())
+        when (com.aktcl.aron.feature.amo.AmoCallOutcome.of(hasMemo, audited)) {
+            com.aktcl.aron.feature.amo.AmoCallOutcome.SOLD -> sale.closeVisit(com.aktcl.aron.feature.sale.domain.VisitOutcomeCode.SOLD)
+            com.aktcl.aron.feature.amo.AmoCallOutcome.AUDIT_ONLY -> sale.closeVisit(com.aktcl.aron.feature.sale.domain.VisitOutcomeCode.ZERO_SALE)
+            com.aktcl.aron.feature.amo.AmoCallOutcome.ABANDONED -> closeAbandoned(v)
+        }
+        routeId = null
+    }
+
+    private suspend fun closeAbandoned(v: com.aktcl.aron.feature.outlet.OpenVisit) {
         capture.recordVisitClose(
             com.aktcl.aron.core.database.entity.VisitCloseEntity(
-                clientUuid = com.aktcl.aron.core.common.ClientIds.newUuid(), meta = metaProvider.meta(v.routeId), visitClientUuid = v.visitUuid, outcomeCode = outcome,
+                clientUuid = com.aktcl.aron.core.common.ClientIds.newUuid(), meta = metaProvider.meta(v.routeId), visitClientUuid = v.visitUuid, outcomeCode = "abandoned",
                 callStartedAt = null, callDeclined = false, endedAt = iso(clock.nowMs()), isZeroSale = true,
             ),
         )
-        visitSession.close(); routeId = null; runCatching { requestSync() }
+        visitSession.close(); runCatching { requestSync() }
     }
 
     /** After a relaunch: a committed visit with no close is the call in progress. */
@@ -215,6 +259,111 @@ class AmoDay(
             ),
         )
     }
+
+
+    // ---- printing (F-SR-015): the ledger is Room, the renderer is built once (font parsing is the expensive part)
+    private val renderer: com.aktcl.aron.core.printing.PaperRenderer by lazy {
+        val labels = com.aktcl.aron.core.printing.AndroidPrintLabels(context, AppLanguage.BN)
+        fun font(id: Int) = context.resources.openRawResource(id).use { it.readBytes() }
+        com.aktcl.aron.core.printing.PaperRenderer(
+            com.aktcl.aron.core.printing.render.PrintFonts(font(com.aktcl.aron.core.ui.R.font.noto_sans_bengali_regular), font(com.aktcl.aron.core.ui.R.font.noto_sans_bengali_bold)),
+            com.aktcl.aron.core.printing.TemplateSet(emptyList(), labels), labels,
+        )
+    }
+
+    val printing: com.aktcl.aron.core.printing.flow.MemoPrinting by lazy {
+        com.aktcl.aron.core.printing.flow.MemoPrinting(
+            printerManager, { renderer }, com.aktcl.aron.core.database.repo.RoomPrintLedger(db, { base -> base ?: metaProvider.meta(0L) }),
+            com.aktcl.aron.core.common.ClientIds::newUuid, clock::nowMs,
+            reprintMax = { printConfig.reprintMax }, confirmAfterPrint = { printConfig.confirmAfterPrint },
+        )
+    }
+
+    /** The last `cfg.memo.reprint_max` and `cfg.print.confirm_after_print` read from the stored config (contract defaults until the first read). */
+    @Volatile private var printConfig = PrintConfig()
+
+    suspend fun loadPrintConfig() {
+        val now = com.aktcl.aron.core.sync.SyncEngine.iso(clock.nowMs())
+        printConfig = PrintConfig.from(
+            runCatching { reference.config("cfg.memo.reprint_max", now) }.getOrNull(),
+            runCatching { reference.config("cfg.print.confirm_after_print", now) }.getOrNull(),
+        )
+    }
+
+    /** Finishes jobs a killed process left (paper out becomes printed, else failed); once per process, before any print. */
+    private var printingRecovered = false
+
+    suspend fun recoverPrinting() {
+        if (printingRecovered) return
+        printingRecovered = true
+        runCatching { printing.recover() }
+    }
+
+    /** The stock slip of one Save, from the stored rows only (quantities as entered in the base unit). */
+    suspend fun stockSlip(movements: List<com.aktcl.aron.core.database.entity.StockMovementEntity>): com.aktcl.aron.core.printing.doc.StockSlipPrint {
+        val skus = reference.skus().associateBy { it.skuId }
+        return com.aktcl.aron.core.printing.doc.StockSlipPrint(
+            printedAtEpochMs = clock.nowMs(), sr = userName, route = routeName(), distributor = "",
+            lines = movements.sortedBy { it.skuId }.map { com.aktcl.aron.core.printing.doc.StockSlipLine(skus[it.skuId]?.categoryCode.orEmpty(), skus[it.skuId]?.shortName ?: it.skuId.toString(), it.qtyBase) },
+        )
+    }
+
+    /** True while any stock row of today is not on a printed slip (Sales Submit warns on this). */
+    suspend fun slipNotPrinted(): Boolean = db.captureDao().stockOn(businessDate()).any { !it.slipPrinted }
+
+    /** Outlives every screen: a print and its readable-question answer must finish even if the SR leaves Stock. */
+    private val printScope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Default)
+    private val _stockAttempt = MutableStateFlow<com.aktcl.aron.core.printing.flow.PrintAttempt?>(null)
+    val stockAttempt: StateFlow<com.aktcl.aron.core.printing.flow.PrintAttempt?> = _stockAttempt.asStateFlow()
+
+    /** Today's stock rows not yet on a printed slip, read from Room (survives a kill and relaunch). */
+    suspend fun unprintedStock() = db.captureDao().stockOn(businessDate()).filter { !it.slipPrinted }
+
+    /** Prints one slip for every unprinted stock row of today; the confirmation question is answered by [answerStockPrint]. */
+    fun printUnprintedStock() {
+        printScope.launch {
+            if (_stockAttempt.value != null) return@launch
+            // One slip covers exactly one Save (the ledger flips the rows of the named row's Save); the next Save prints on the next tap.
+            val save = StockSlips.oldestUnprintedSave(unprintedStock())
+            if (save.isEmpty()) return@launch
+            runCatching { printing.printStockSlip(StockSlips.slipUuid(save), stockSlip(save)) }.onSuccess { _stockAttempt.value = it }
+        }
+    }
+
+    fun answerStockPrint(a: com.aktcl.aron.core.printing.flow.PrintAttempt.AwaitingConfirmation, readable: Boolean) {
+        // A ledger error keeps the attempt, so the answer can be given again; it never crashes the app.
+        printScope.launch { runCatching { printing.confirm(a, readable) }.onSuccess { _stockAttempt.value = null } }
+    }
+
+    fun closeStockAttempt() { _stockAttempt.value = null }
+
+    /** The Summary print result lives here, not in the screen: leaving Summary while "readable?" is open keeps the question. */
+    private val _summaryAttempt = MutableStateFlow<com.aktcl.aron.core.printing.flow.PrintAttempt?>(null)
+    val summaryAttempt: StateFlow<com.aktcl.aron.core.printing.flow.PrintAttempt?> = _summaryAttempt.asStateFlow()
+
+    fun printSummary(b: SummaryBundle) {
+        printScope.launch { if (_summaryAttempt.value == null) _summaryAttempt.value = sale.printSummary(b) }
+    }
+
+    fun answerSummaryPrint(a: com.aktcl.aron.core.printing.flow.PrintAttempt.AwaitingConfirmation, readable: Boolean) {
+        printScope.launch { runCatching { printing.confirm(a, readable) }.onSuccess { _summaryAttempt.value = null } }
+    }
+
+    fun closeSummaryAttempt() { _summaryAttempt.value = null }
+
+    fun visitOutlet(o: OutletEntity) = VisitOutlet(
+        outletId = o.outletId, routeId = o.routeId, name = o.name, code = o.code, lat = o.lat, lng = o.lng,
+        locationBasis = if (o.lat == null || o.lng == null) "none" else if (o.locationConfirmed) "master" else "provisional",
+        radiusM = o.radiusM, maxAccuracyM = o.maxAccuracyM,
+    )
+
+    // ---- stock: one StockLoad per day and screen visit; the re-save guard survives a kill (SharedPreferences)
+    private var stock: StockLoad? = null
+    suspend fun stockLoad(): StockLoad = stock ?: run {
+        val loaded = db.captureDao().stockBalanceOn(businessDate()).associate { it.skuId to it.qtyBase }
+        StockLoad(reference.skus(), loaded, guardStore = PrefsGuardStore(context, userId)).also { stock = it }
+    }
+    fun forgetStock() { stock = null }
 
     // ---- AMO records (amo_record): assessments, price checks, verifications, tasks, reviews
     private fun newUuid() = com.aktcl.aron.core.common.ClientIds.newUuid()

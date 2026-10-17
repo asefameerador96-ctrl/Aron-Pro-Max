@@ -46,4 +46,15 @@
     <string name="amo_pc_ok">তালিকা মূল্যের সাথে মিলেছে</string>
     <string name="amo_pc_off">তালিকা মূল্য থেকে %1$s ৳ ভিন্ন</string>
     <string name="amo_pc_invalid">১২৫ বা ১২৫.৫-এর মতো মূল্য লিখুন</string>
+    <string name="amo_edit_checking">আপনি দোকানে আছেন কিনা দেখা হচ্ছে…</string>
+    <string name="amo_sale_history">এই দোকানের বিক্রয় ইতিহাস</string>
+    <string name="amo_rec_visit">ভিজিট</string>
+    <string name="amo_rec_memo">মেমো</string>
+    <string name="amo_rec_stock_movement">স্টক</string>
+    <string name="amo_rec_qc_line">পণ্য কিউসি</string>
+    <string name="amo_rec_memo_discount">ছাড়</string>
+    <string name="amo_rec_visit_close">ভিজিট শেষ</string>
+    <string name="amo_rec_due_collection">বাকি আদায়</string>
+    <string name="amo_rec_attendance_event">হাজিরা</string>
+    <string name="amo_rec_visit_skip">বাদ দেওয়া দোকান</string>
 </resources>

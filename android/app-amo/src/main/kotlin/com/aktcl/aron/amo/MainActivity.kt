@@ -61,6 +61,7 @@ class MainActivity : ComponentActivity() {
     @Inject lateinit var databases: com.aktcl.aron.core.database.UserDatabases
     @Inject lateinit var scheduler: com.aktcl.aron.core.sync.SyncScheduler
     @Inject lateinit var mediaShell: MediaShell
+    @Inject lateinit var printerManager: com.aktcl.aron.core.printing.bt.PrinterManager
     @Inject lateinit var fixManager: com.aktcl.aron.core.geo.FixManager
     @Inject lateinit var deviceRuntime: com.aktcl.aron.core.sync.device.DeviceRuntime
     private val locationNotice by lazy { com.aktcl.aron.core.sync.LocationNotice({ databases.of(it) }, components.trustedClock, scheduler, com.aktcl.aron.core.sync.LocationNotice.offlineProbe(applicationContext)) }
@@ -162,7 +163,10 @@ class MainActivity : ComponentActivity() {
                             // F-AMO-003: the day object (attendance first); one per user, restored from Room after a kill.
                             var day by remember(s.user.userId) { mutableStateOf<AmoDay?>(null) }
                             LaunchedEffect(s.user.userId) {
-                                val d = AmoDay(s.user.userId, applicationContext, databases.of(s.user.userId), components, scheduler, fixManager, deviceRuntime)
+                                val d = AmoDay(
+                                    s.user.userId, applicationContext, databases.of(s.user.userId), components, scheduler, fixManager, printerManager, s.user.fullName,
+                                    runCatching { com.aktcl.aron.core.database.repo.MemoNumbering(s.user.username, s.user.bindOrdinal ?: 0, s.user.memoSeqBlockSize ?: 500) }.getOrNull(), deviceRuntime,
+                                )
                                 runCatching { d.reload(); d.attendance.restore(d.attendanceToday()) }
                                 // F-SYS-030/010: the camera and this user's photo queue (Manual Override, Update Base, outlet requests).
                                 runCatching { d.attachMedia(mediaShell.componentsFor(s.user.userId, d::businessDate)) }
@@ -171,6 +175,7 @@ class MainActivity : ComponentActivity() {
                             val dayScope = rememberCoroutineScope()
                             val screens: Map<AmoScreen, @Composable (() -> Unit) -> Unit> = day?.let { d ->
                                 mapOf<AmoScreen, @Composable (() -> Unit) -> Unit>(
+                                    AmoScreen.SALE to { back -> AmoSaleHub(d, back) },
                                     AmoScreen.CONTROL_CALL to { back -> ControlCallHost(d, back) },
                                     AmoScreen.JOINT_CALL to { back -> ControlCallHost(d, back, kind = com.aktcl.aron.feature.amo.AmoVisitKind.JOINT_CALL) },
                                     AmoScreen.ATTENDANCE to { back ->
