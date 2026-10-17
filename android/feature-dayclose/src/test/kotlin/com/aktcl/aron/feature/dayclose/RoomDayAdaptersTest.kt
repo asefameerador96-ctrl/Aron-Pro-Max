@@ -61,4 +61,14 @@ class RoomDayAdaptersTest {
         // nothing more is captured after the submit
         assertThrows(IllegalStateException::class.java) { kotlinx.coroutines.runBlocking { sell(0) } }
     }
+
+    @Test fun anAmoSubmitIsASupervisorDayWithNoRoute() = runTest {
+        val source = RoomDaySource(db)
+        val noRoute = { meta().copy(routeId = null) }
+        val gate = SalesSubmitRules.gate(source.outboxStates("2026-10-05"), emptyList(), source.dues("2026-10-05"), false)
+        RoomDaySubmitWriter(db, repo, noRoute, { "match" }, scope = "supervisor_day").queue("2026-10-05", gate, emptyList())
+        val submit = db.captureDao().daySubmitsOn("2026-10-05").single()
+        assertEquals("supervisor_day", submit.scope); assertEquals(null, submit.meta.routeId); assertEquals(1, submit.submitCycle)
+        assertTrue(source.alreadySubmitted("2026-10-05"))
+    }
 }

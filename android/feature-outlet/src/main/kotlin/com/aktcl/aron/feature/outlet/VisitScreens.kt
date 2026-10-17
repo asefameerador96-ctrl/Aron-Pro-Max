@@ -292,6 +292,9 @@ private fun GeoCard(kind: GeoKind, headline: String, lines: List<String>, modifi
 
 private data class Look(val bg: Color, val ink: Color, val edge: Color, val icon: ImageVector)
 
+/** Wording a role may replace on the visit check; both null = the SR's text. */
+data class VisitCheckTexts(val outOfRange: String? = null, val forceLabel: String? = null)
+
 /**
  * The visit check (F-SR-017, 018, 019, N-041; screens-sr s6): the outlet card, the geo card in the verdict's colour, the
  * offline range view, the text buttons, and the bar whose primary follows the verdict table. Renders its own bar. The
@@ -312,6 +315,8 @@ fun VisitCheckContent(
     onNoSale: (() -> Unit)? = null,
     onOpenLocationSettings: (() -> Unit)? = null,
     onBack: (() -> Unit)? = null,
+    /** Role wording over the defaults (the AMO's "not within retailer range" and "Manual Override"); null keeps the SR text. */
+    texts: VisitCheckTexts? = null,
 ) {
     val c = LocalAronColors.current
     val startLabel = stringResource(R.string.out_start_call)
@@ -327,7 +332,8 @@ fun VisitCheckContent(
                 VisitUiState.ReadingFix -> GeoCard(GeoKind.Reading, stringResource(R.string.out_reading_fix), emptyList(), Modifier.testTag(OutletTags.MESSAGE))
                 is VisitUiState.NeedsDecision -> {
                     val noCoordinates = state.result.verdict == GeoVerdict.NO_OUTLET_LOCATION
-                    val headline = stringResource(
+                    val overrideHeadline = texts?.outOfRange?.takeIf { state.result.verdict == GeoVerdict.OUT_OF_RANGE }
+                    val headline = overrideHeadline ?: stringResource(
                         when (state.result.verdict) {
                             GeoVerdict.OUT_OF_RANGE -> R.string.out_out_of_range
                             GeoVerdict.NO_FIX -> R.string.out_no_fix
@@ -378,7 +384,7 @@ fun VisitCheckContent(
         when (state) {
             VisitUiState.ReadingFix -> OutletBar(BarAction(startLabel, {}, enabled = false), reason = stringResource(R.string.out_reason_wait_fix))
             is VisitUiState.NeedsDecision -> {
-                val force = BarAction(stringResource(R.string.out_force_sale), onForceSale, OutletTags.FORCE)
+                val force = BarAction(texts?.forceLabel ?: stringResource(R.string.out_force_sale), onForceSale, OutletTags.FORCE)
                 when {
                     // outlet has no coordinates: the primary is Force Sale (screens-sr s6 table); a refresh changes nothing
                     state.result.verdict == GeoVerdict.NO_OUTLET_LOCATION && state.forceSaleAvailable -> OutletBar(force)
