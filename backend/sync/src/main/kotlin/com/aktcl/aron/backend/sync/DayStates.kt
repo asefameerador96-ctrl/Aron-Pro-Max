@@ -91,6 +91,55 @@ object DayStates {
             .execute()
     }
 
+    /** One stored record for [afterStoredBatch]. */
+    class Stored(val type: String, val env: JsonObject, val p: JsonObject)
+
+    /** Records that move a day's own timestamps or a supervisor's day: applied one by one by [afterStoredBatch]. */
+    private val SINGLE_TYPES = setOf("day_open", "attendance_event", "day_submit")
+
+    /**
+     * The effect of [afterStored] for every record a batch stored, in a bounded number of statements (SCALE-02): the
+     * records that only count as rows of their route-day (memo, memo_line, ...) and the visits are grouped by business
+     * date (one assignment read, one plan, two late-row updates and one `in_field_at` fill per date); the rare records
+     * that set a day's timestamps (day_open, attendance, day_submit) go one by one. Same rows and guards as the
+     * per-record path; a visit fills `in_field_at` with the earliest capture of the group, once.
+     */
+    fun afterStoredBatch(h: Handle, items: List<Stored>, up: Uploader, now: Instant, planner: RouteDayPlanningJob, touched: Touched) {
+        val (single, grouped) = items.partition { it.type in SINGLE_TYPES }
+        val byDate = grouped.mapNotNull { s ->
+            val date = s.env.str("business_date")?.let { runCatching { LocalDate.parse(it) }.getOrNull() } ?: return@mapNotNull null
+            val route = s.env.long("route_id") ?: return@mapNotNull null
+            Triple(date, route, s)
+        }.groupBy({ it.first }, { it.second to it.third })
+        for ((date, rows) in byDate) {
+            val named = rows.map { it.first }.distinct()
+            // Only routes the uploader holds on the date (primary or cover), with their zone for the final-submit count.
+            val held: Map<Long, Long> = h.createQuery(
+                "SELECT DISTINCT a.route_id, r.zone_id FROM app.route_assignment a JOIN app.route r ON r.id = a.route_id WHERE a.user_id = :u AND a.route_id = ANY(:r) AND a.valid_from <= :d AND (a.valid_to IS NULL OR a.valid_to > :d)",
+            ).bind("u", up.userId).bindArray("r", Long::class.javaObjectType, named).bind("d", date).map { rs, _ -> rs.getLong(1) to rs.getLong(2) }.list().toMap()
+            if (held.isEmpty()) continue
+            planner.planIn(h, date, held.keys)
+            held.keys.forEach { touched.routeDays += it to date }
+            val perRoute = rows.map { it.first }.filter { it in held }.groupingBy { it }.eachCount()
+            h.createUpdate(
+                "UPDATE app.route_day d SET late_rows_after_final = late_rows_after_final + x.n FROM unnest(CAST(:r AS bigint[]), CAST(:n AS int[])) AS x(route, n) WHERE d.route_id = x.route AND d.business_date = :d AND d.final_submitted_at IS NOT NULL",
+            ).bindArray("r", Long::class.javaObjectType, perRoute.keys.toList()).bindArray("n", Int::class.javaObjectType, perRoute.values.toList()).bind("d", date).execute()
+            val perZone = perRoute.entries.groupBy { held.getValue(it.key) }.mapValues { e -> e.value.sumOf { it.value } }
+            h.createUpdate(
+                "UPDATE app.final_submit f SET late_rows = late_rows + x.n FROM unnest(CAST(:z AS bigint[]), CAST(:n AS int[])) AS x(zone, n) WHERE f.zone_id = x.zone AND f.business_date = :d AND f.reopened_at IS NULL",
+            ).bindArray("z", Long::class.javaObjectType, perZone.keys.toList()).bindArray("n", Int::class.javaObjectType, perZone.values.toList()).bind("d", date).execute()
+            val firstVisit = rows.filter { it.second.type == "visit" && it.first in held }
+                .groupBy({ it.first }, { it.second.env.str("captured_at")?.let { c -> runCatching { Instant.parse(c) }.getOrNull() } ?: now })
+                .mapValues { it.value.min() }
+            if (firstVisit.isNotEmpty()) {
+                h.createUpdate(
+                    "UPDATE app.route_day d SET in_field_at = COALESCE(in_field_at, x.at) FROM unnest(CAST(:r AS bigint[]), CAST(:at AS timestamptz[])) AS x(route, at) WHERE d.route_id = x.route AND d.business_date = :d",
+                ).bindArray("r", Long::class.javaObjectType, firstVisit.keys.toList()).bindArray("at", String::class.java, firstVisit.values.map { it.toString() }).bind("d", date).execute()
+            }
+        }
+        single.forEach { afterStored(h, it.type, it.env, it.p, up, now, planner, touched) }
+    }
+
     /** Settle timeout (`cfg.day.submit_settle_timeout_min`, 30); set by the ingest service from config. */
     @Volatile var settleMinutes: Long = 30
 

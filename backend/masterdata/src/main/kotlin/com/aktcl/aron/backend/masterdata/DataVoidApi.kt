@@ -200,13 +200,27 @@ private const val LATE_COLLECTION_NOTE = "late_collection_reopens_closure"
  * the barrier is accepted (D24-45). The phone is told once and drops it (final, not retryable).
  */
 class DataVoidBarrierHandler(override val types: Set<String>) : RecordHandler {
+    /**
+     * Per transaction handle (weakly held): the route-days whose shared lock is taken, and the latest barrier of each
+     * (null for none). A batch of 500 rows of one route-day costs two statements, not a thousand (SCALE-02); the shared
+     * lock keeps a void of that route-day waiting until the transaction ends, so the cached barrier cannot change.
+     */
+    private class Days(val barriers: HashMap<String, Instant?> = HashMap())
+    private val perHandle: MutableMap<Handle, Days> = java.util.Collections.synchronizedMap(java.util.WeakHashMap())
+
     override fun checkEarly(h: Handle, rec: IngestRecord): RecordRefusal? {
         val route = (rec.envelope["route_id"] as? JsonPrimitive)?.content?.toLongOrNull() ?: return null
         val captured = (rec.envelope["captured_at"] as? JsonPrimitive)?.content?.let { runCatching { Instant.parse(it) }.getOrNull() } ?: return null
-        // Shared lock until the record's transaction ends: a void of this route-day waits for in-flight rows, and rows after it see the barrier.
-        h.createQuery("SELECT pg_advisory_xact_lock_shared(hashtextextended(:k, 0))").bind("k", "voidday:$route:${rec.businessDate}").mapTo(String::class.java).findOne()
-        val hit = h.createQuery("SELECT EXISTS (SELECT 1 FROM app.route_day_void_barrier WHERE route_id = :r AND business_date = :d AND :c < barrier_at AND affected->>'scope' <> 'web_entry')")
-            .bind("r", route).bind("d", rec.businessDate).bind("c", OffsetDateTime.ofInstant(captured, ZoneOffset.UTC)).mapTo(Boolean::class.java).one()
+        val key = "voidday:$route:${rec.businessDate}"
+        val days = perHandle.getOrPut(h) { Days() }
+        val barrier: Instant? = if (days.barriers.containsKey(key)) days.barriers[key] else {
+            // Shared lock until the record's transaction ends: a void of this route-day waits for in-flight rows, and rows after it see the barrier.
+            h.createQuery("SELECT pg_advisory_xact_lock_shared(hashtextextended(:k, 0))").bind("k", key).mapTo(String::class.java).findOne()
+            h.createQuery("SELECT max(barrier_at) FROM app.route_day_void_barrier WHERE route_id = :r AND business_date = :d AND affected->>'scope' <> 'web_entry'")
+                .bind("r", route).bind("d", rec.businessDate).mapTo(OffsetDateTime::class.java).findOne().orElse(null)?.toInstant()
+                .also { days.barriers[key] = it }
+        }
+        val hit = barrier != null && captured.isBefore(barrier)
         return if (hit) RecordRefusal(RecordOutcomeCode.VOIDED_BY_ADMIN, "route-day voided by an administrator after this row was captured") else null
     }
 }

@@ -63,6 +63,14 @@ interface RecordHandler {
     fun afterStored(h: Handle, rec: IngestRecord, serverId: Long?) {}
 
     /**
+     * True when [afterStored] is enrichment that must never decide the record (a server geo verdict): the ingest runs
+     * it in a guarded phase after the record's unit (one savepoint for the batch's enrichment, bisected on failure,
+     * docs/18 s4.2 step 7), so a failure is logged and the record stays stored. The handler then opens no savepoint of
+     * its own. A strict handler (the default) runs inside the record's unit: throwing rolls the record back.
+     */
+    val enrichment: Boolean get() = false
+
+    /**
      * After the record's family transaction committed with the record stored (never for a rolled-back or refused
      * record, a duplicate or a replay): the place for side effects outside the database (a push nudge). It runs on the
      * request thread, must not block and must not throw (a throw is logged and ignored).

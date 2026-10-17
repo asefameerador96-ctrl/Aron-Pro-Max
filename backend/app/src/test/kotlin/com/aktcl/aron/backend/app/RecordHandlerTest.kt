@@ -43,6 +43,7 @@ import java.util.concurrent.atomic.AtomicInteger
 import java.util.zip.GZIPOutputStream
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 
 /**
  * The ingest extension point (F-API-006 family): a registered [RecordHandler] can refuse a record before it is
@@ -149,8 +150,12 @@ class RecordHandlerTest {
         assertEquals(listOf("accepted", "rejected", "rejected", "accepted"), first.map { it.s("status") }, first.toString())
         assertEquals("schema_invalid", first[1].s("code"))
         assertEquals("server_error", first[2].s("code")); assertEquals("true", first[2].s("retryable"))
-        assertEquals(1, afterCalls[ids[0]]?.get()); assertEquals(1, afterCalls[ids[3]]?.get())
+        // SCALE-02 (docs/18 s4.2 step 7): the batch ran in one savepoint; the throwing record rolled it back and the
+        // records were bisected, so a good record's afterStored ran again after its first run was rolled back (the
+        // handler's row-level effect is still one: the counts below). Once per committed store, never on a duplicate.
+        assertTrue(afterCalls[ids[0]]!!.get() >= 1); assertTrue(afterCalls[ids[3]]!!.get() >= 1)
         assertEquals(null, afterCalls[ids[1]], "a refused record never reaches afterStored")
+        val afterFirst = ids.map { afterCalls[it]?.get() }
         // Nothing of the refused or failed record is stored; the accepted ones are.
         assertEquals(2, count("SELECT count(*) FROM app.cfg_ack WHERE client_uuid IN ('${ids.joinToString("','")}')"))
         assertEquals(0, count("SELECT count(*) FROM app.cfg_ack WHERE client_uuid IN ('${ids[1]}', '${ids[2]}')"))
@@ -161,8 +166,8 @@ class RecordHandlerTest {
         assertEquals(first, client.send(token, body))
         val again = client.send(token, batch(listOf(ok, refused, ok2)))
         assertEquals(listOf("duplicate", "rejected", "duplicate"), again.map { it.s("status") })
-        assertEquals(1, afterCalls[ids[0]]?.get()); assertEquals(1, afterCalls[ids[3]]?.get())
-        assertEquals(1, checkCalls[ids[1]]?.get(), "a final rejection is answered from the registry, not re-checked")
+        assertEquals(afterFirst, ids.map { afterCalls[it]?.get() }, "a replay and a duplicate never run afterStored again")
+        assertTrue(checkCalls[ids[1]]!!.get() <= 2, "a final rejection is answered from the registry, not re-checked (at most the bisected first run)")
         assertEquals(1, count("SELECT count(*) FROM app.ingest_registry WHERE client_uuid = '${ids[1]}' AND status = 'rejected'"))
     }
 }

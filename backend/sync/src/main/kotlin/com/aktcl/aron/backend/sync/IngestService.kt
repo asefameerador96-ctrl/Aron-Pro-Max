@@ -133,15 +133,145 @@ class IngestService(
         val signatureMode: SignatureMode = SignatureMode.of(runCatching { config.string("cfg.sec.record_signature_mode") }.getOrNull())
         /** N-027: the device's enrolment and Play Integrity standing and the two gates, read once per batch. */
         val gate: DeviceGate = if (manual != null) DeviceGate(false, "pass", false, false) else deviceGate(up)
-        /** F-SYS-091: the device's applied config versions (ack capture time, version), read once per batch on first use. */
-        val acks: List<Pair<Instant, Long>> by lazy {
+        /**
+         * F-SYS-091: the device's applied config versions (ack capture time, version), read once per batch on first use,
+         * on the batch's own handle so the acks this batch stored are seen.
+         */
+        private var acksCache: List<Pair<Instant, Long>>? = null
+        fun acks(h: Handle): List<Pair<Instant, Long>> = acksCache ?: runCatching { up.deviceId?.let { deviceAcks(h, it) } ?: emptyList() }
             // A flag, never a gate: a failed read means "no acks" (no flag), never a parked sale.
-            runCatching { up.deviceId?.let { deviceAcks(it) } ?: emptyList() }.onFailure { log.warn("config acks not read device_id=${up.deviceId} cause=${it.javaClass.simpleName}") }.getOrDefault(emptyList())
-        }
-        /** Memo arithmetic failures of the current family segment (client_uuid to detail). */
+            .onFailure { log.warn("config acks not read device_id=${up.deviceId} cause=${it.javaClass.simpleName}") }.getOrDefault(emptyList()).also { acksCache = it }
+        /** Memo arithmetic failures of the batch (client_uuid to detail). */
         var arith: Map<String, String> = emptyMap()
-        /** Memo content fingerprints of the current segment (s4.5: same outlet, lines and minute). */
+        /** Memo content fingerprints of the batch (s4.5: same outlet, lines and minute). */
         var memoFps: Map<String, ByteArray> = emptyMap()
+        /** The batch run in progress (null on the single-record paths: a paper backfill, a reviewer's release). */
+        var run: Run? = null
+        /** Where a handler's after-commit call goes: the open segment of a batch run, else the context. */
+        fun afterCommitList(): MutableList<Triple<Int, com.aktcl.aron.backend.platform.RecordHandler, IngestRecord>> = run?.segment?.afterCommit ?: afterCommit
+
+        /**
+         * Runs [body] so that its failure never decides a record (a risk signal, a day-state move, an enrichment
+         * handler): in a batch it is queued for the guarded phase after the records (one savepoint for all, bisected on
+         * failure, docs/18 s4.2 step 7); on the single-record paths it runs now in its own savepoint, as before.
+         */
+        fun guarded(h: Handle, name: String, body: (Handle) -> Unit) {
+            val r = run
+            if (r != null) {
+                r.segment.enrich += name to body
+                return
+            }
+            h.savepoint(name)
+            IngestMetrics.savepoints.increment()
+            try {
+                body(h)
+                h.release(name)
+            } catch (e: Exception) {
+                h.rollbackToSavepoint(name)
+                log.error("$name failed", e)
+            }
+        }
+    }
+
+    /** A registry row as the batch sees it: the database row, or one this batch registered and not yet flushed. */
+    private class Reg(val status: String, val code: String?, val hash: ByteArray, val serverId: Long?, val recordType: String, val userId: Long)
+
+    /** A registry upsert a batch segment buffered ([register] in batch mode), flushed by [registerRows]. */
+    private class RegRow(val r: Rec, val bd: LocalDate?, val status: String, val code: RecordOutcomeCode?, val serverId: Long?, val contentFp: ByteArray?, val flags: List<String>)
+
+    /** The previous value of an overlay key, for undo: whether the key was present, and its value. */
+    private class Prev<T>(val present: Boolean, val value: T?)
+
+    /**
+     * The lookups of one batch transaction (SCALE-02): read up front in a handful of multi-row statements by [prefetch],
+     * then served from memory; a key the prefetch did not see is read on demand, one row at a time (the single-record
+     * paths work this way throughout). A key mapped to null is known absent. The registry map is an overlay: rows this
+     * batch registers are added as it goes, so a child finds its parent before the segment's flush writes the row.
+     */
+    private class Lookups {
+        val registry = HashMap<String, Reg?>()
+        val routes = HashMap<Long, Long?>()
+        val outlets = HashMap<Long, Pair<Long?, Long>?>()
+        val skus = HashMap<Long, Boolean>()
+        /** "type|fp-hex" to the stored (accepted or voided) rows of the uploader with that content, own uuid included. */
+        val cfpTwins = HashMap<String, MutableList<String>>()
+        /** "table|uuid" to the owner of a parent stored without a registry row, null for none. */
+        val parentRows = HashMap<String, Long?>()
+        /** Memo alias target to the paper twin it was matched to, null for none ([memoAlias]). */
+        val aliases = HashMap<String, String?>()
+        val locked = HashSet<String>()
+        val cfpLocked = HashSet<String>()
+    }
+
+    /**
+     * One transaction try of a batch (docs/18 s4.2 steps 5 to 7, D-411, D-521): the records run in one savepoint per
+     * segment (the whole batch first; on failure the segment is bisected), each segment's registry rows, touches and
+     * memo child checks are flushed in multi-row statements before its savepoint is released, and the guarded side
+     * effects (day states, risk signals, enrichment handlers) run after the records in savepoints of their own. The
+     * in-memory effects of a segment (registry overlay, buffers, queued side effects) are undone when it rolls back.
+     */
+    private inner class Run(val cap: Int, size: Int, val lastTry: Boolean) {
+        val outcomes = arrayOfNulls<Outcome>(size)
+        val lookups = Lookups()
+        var savepoints = 0
+        val afterCommit = ArrayList<Triple<Int, com.aktcl.aron.backend.platform.RecordHandler, IngestRecord>>()
+        val enrich = ArrayList<Pair<String, (Handle) -> Unit>>()
+        val dayItems = ArrayList<DayStates.Stored>()
+        var segment = Segment()
+        /** True while one record runs alone: its writer keeps its savepoint, so a unique violation is answered, not bisected. */
+        var leaf = false
+
+        inner class Segment {
+            val registry = LinkedHashMap<String, RegRow>()
+            val touched = LinkedHashSet<String>()
+            val acceptedResends = ArrayList<Pair<String, ByteArray>>()
+            val memoChildren = ArrayList<Pair<String, JsonObject>>()
+            val overlayUndo = ArrayList<Pair<String, Prev<Reg>>>()
+            val overlayWritten = HashSet<String>()
+            val cfpUndo = ArrayList<Pair<String, Prev<List<String>>>>()
+            val cfpWritten = HashSet<String>()
+            val afterCommit = ArrayList<Triple<Int, com.aktcl.aron.backend.platform.RecordHandler, IngestRecord>>()
+            val enrich = ArrayList<Pair<String, (Handle) -> Unit>>()
+            val dayItems = ArrayList<DayStates.Stored>()
+
+            fun clear() {
+                registry.clear(); touched.clear(); acceptedResends.clear(); memoChildren.clear()
+                overlayUndo.clear(); overlayWritten.clear(); cfpUndo.clear(); cfpWritten.clear()
+                afterCommit.clear(); enrich.clear(); dayItems.clear()
+            }
+        }
+
+        fun begin(): Segment = Segment().also { segment = it }
+
+        fun savepoint(h: Handle, name: String) {
+            h.savepoint(name)
+            savepoints++
+            IngestMetrics.savepoints.increment()
+        }
+
+        /** Writes what the segment buffered, in multi-row statements: memo child checks, registry rows, touches, resend bookkeeping. */
+        fun flush(h: Handle, ctx: Ctx, s: Segment) {
+            if (s.memoChildren.isNotEmpty()) MemoChecks.afterChildrenStored(h, s.memoChildren)
+            if (s.registry.isNotEmpty()) registerRows(h, ctx, s.registry.values)
+            if (s.touched.isNotEmpty()) touchRows(h, s.touched)
+            if (s.acceptedResends.isNotEmpty()) storedResends(h, ctx, s.acceptedResends)
+            s.memoChildren.clear(); s.registry.clear(); s.touched.clear(); s.acceptedResends.clear()
+        }
+
+        /** The segment's savepoint was released: its queued side effects belong to the run. */
+        fun commit(s: Segment) {
+            afterCommit += s.afterCommit
+            enrich += s.enrich
+            dayItems += s.dayItems
+            s.clear()
+        }
+
+        /** The segment's savepoint rolled back: its in-memory effects are undone. */
+        fun undo(s: Segment) {
+            for ((k, prev) in s.overlayUndo.asReversed()) if (prev.present) lookups.registry[k] = prev.value else lookups.registry.remove(k)
+            for ((k, prev) in s.cfpUndo.asReversed()) if (prev.present) lookups.cfpTwins[k] = prev.value.orEmpty().toMutableList() else lookups.cfpTwins.remove(k)
+            s.clear()
+        }
     }
 
     fun ingest(up: Uploader, req: SyncBatchRequest): SyncBatchResponse {
@@ -155,8 +285,14 @@ class IngestService(
         replayOrClaim(up, req, recs.size, fingerprint, now)?.let { return it }
 
         val ctx = Ctx(up, req.batch_uuid, now, resyncWindow(req.trigger, now))
-        val outcomes = runFamilies(ctx, recs)
+        val outcomes = runBatch(ctx, recs)
         val acks = acksOf(recs, outcomes)
+        IngestMetrics.batches.increment()
+        IngestMetrics.records.add(recs.size.toLong())
+        acks.forEach { a ->
+            when (a.status) { "accepted" -> IngestMetrics.accepted; "duplicate" -> IngestMetrics.duplicate; "rejected" -> IngestMetrics.rejected; else -> IngestMetrics.quarantined }.increment()
+            if (a.code == RecordOutcomeCode.SERVER_ERROR.wire) IngestMetrics.parkedServerError.increment()
+        }
         val response = db.jdbi.withHandle<SyncBatchResponse, Exception> { h ->
             val dates = ((recs.mapNotNull { r -> (r.json["business_date"] as? JsonPrimitive)?.content?.let { runCatching { LocalDate.parse(it) }.getOrNull() } } + ctx.today)
                 .filter { it != ctx.today }.distinct().sortedDescending().take(9) + ctx.today).distinct()
@@ -420,20 +556,23 @@ class IngestService(
      * The memo references that follow a matched phone memo to its paper twin: a collection, a void or an edit naming the
      * phone memo's uuid. Lines, discounts, QC lines and print events never do (the paper memo's own lines stand).
      */
-    private fun memoAlias(h: Handle, type: String, env: JsonObject): JsonObject {
+    private fun memoAlias(h: Handle, ctx: Ctx, type: String, env: JsonObject): JsonObject {
         val field = MEMO_ALIAS_FIELDS[type] ?: return env
         val p = env["payload"] as? JsonObject ?: return env
         val target = p.str(field)?.takeIf { UUID_V4.matches(it) } ?: return env
-        // A match in flight holds the memo's registry row: wait for it, so a collection sent meanwhile is never held behind
-        // a memo that is matched a moment later (nothing would release it).
-        h.createQuery("SELECT 1 FROM app.ingest_registry WHERE client_uuid = CAST(:u AS uuid) FOR SHARE").bind("u", target).mapTo(Int::class.java).list()
-        // A memo uuid registered accepted with another memo row's id has no row of its own: it was matched (or deduplicated).
-        val twin = h.createQuery(
-            """
-            SELECT m.client_uuid::text FROM app.ingest_registry g JOIN app.memo m ON m.id = g.server_id AND m.business_date = g.business_date
-            WHERE g.client_uuid = CAST(:u AS uuid) AND g.record_type = 'memo' AND g.status = 'accepted' AND m.client_uuid <> g.client_uuid
-            """.trimIndent(),
-        ).bind("u", target).mapTo(String::class.java).findOne().orElse(null) ?: return env
+        val l = ctx.run?.lookups
+        val twin = if (l != null && l.aliases.containsKey(target)) l.aliases[target] else {
+            // A match in flight holds the memo's registry row: wait for it, so a collection sent meanwhile is never held behind
+            // a memo that is matched a moment later (nothing would release it).
+            h.createQuery("SELECT 1 FROM app.ingest_registry WHERE client_uuid = CAST(:u AS uuid) FOR SHARE").bind("u", target).mapTo(Int::class.java).list()
+            // A memo uuid registered accepted with another memo row's id has no row of its own: it was matched (or deduplicated).
+            h.createQuery(
+                """
+                SELECT m.client_uuid::text FROM app.ingest_registry g JOIN app.memo m ON m.id = g.server_id AND m.business_date = g.business_date
+                WHERE g.client_uuid = CAST(:u AS uuid) AND g.record_type = 'memo' AND g.status = 'accepted' AND m.client_uuid <> g.client_uuid
+                """.trimIndent(),
+            ).bind("u", target).mapTo(String::class.java).findOne().orElse(null).also { l?.aliases?.put(target, it) }
+        } ?: return env
         return JsonObject(env + ("payload" to JsonObject(p + (field to JsonPrimitive(twin)))))
     }
 
@@ -633,59 +772,354 @@ class IngestService(
     }
 
     /** Families in order (config acks first), each in its own transaction with retries; then the day states. */
-    private fun runFamilies(ctx: Ctx, recs: List<Rec>): Array<Outcome?> {
+    /**
+     * Runs a batch's records (docs/18 s4.2 steps 4 to 7, SCALE-02): one transaction, the lookups read up front
+     * ([prefetch]), the records in one savepoint per segment with bisection on failure ([runRecords]), the guarded side
+     * effects after the records ([runGuarded]), then the day states. A transient database failure (deadlock,
+     * serialization, failover, pool timeout) retries the whole batch in a fresh transaction, at most [FAMILY_TRIES]
+     * tries within [FAMILY_RETRY_BUDGET_MS] (AUD-REL-02); every record upserts by its client UUID and a failed try
+     * rolls back whole, so a retry can never store a record twice. On the last try a transient failure is isolated like
+     * a poison row and parked. A failure that escapes everything parks every record `server_error`, retryable, in a
+     * fresh transaction: never a 500 (D-65).
+     */
+    private fun runBatch(ctx: Ctx, recs: List<Rec>): Array<Outcome?> {
         val up = ctx.up
         val now = ctx.now
-        val outcomes = arrayOfNulls<Outcome>(recs.size)
-        // Families as the phone sent them, except that families of config_ack records only go first: an ack has no
-        // parent or child, and F-SYS-091 must see an ack of this batch when it judges the batch's other rows (BC-85).
-        // The acks are read lazily on the first non-telemetry row, so after these families committed. Outcomes keep
-        // their index, so the response order does not change.
-        val families = ArrayList<List<Rec>>()
-        run {
-            var a = 0
-            while (a < recs.size) {
-                var b = a
-                while (b + 1 < recs.size && recs[b + 1].family == recs[a].family) b++
-                families += recs.subList(a, b + 1)
-                a = b + 1
-            }
-        }
-        val ordered = families.filter { f -> f.all { it.type == "config_ack" } } + families.filterNot { f -> f.all { it.type == "config_ack" } }
-        for (family in ordered) {
-            val i = family.first().index
-            ctx.arith = MemoChecks.familyMismatches(family.map { it.json }) + db.jdbi.withHandle<Map<String, String>, Exception> { h -> MemoChecks.unknownSkuSiblings(h, family.map { it.json }) }
-            ctx.memoFps = MemoChecks.memoFingerprints(family.map { it.json })
+        val cap = runCatching { config.int("cfg.sync.max_savepoints_per_tx") }.getOrDefault(60).coerceIn(8, 60)
+        val all = recs.map { it.json }
+        ctx.memoFps = MemoChecks.memoFingerprints(all)
+        // Records of config_ack go first: an ack has no parent or child, and F-SYS-091 must see an ack of this batch when
+        // it judges the batch's other rows (BC-85). Outcomes keep their index, so the response order does not change.
+        val (ackRecs, rest) = recs.partition { it.type == "config_ack" }
+        var attempt = 0
+        val start = clock.now()
+        var done: Run? = null
+        while (done == null) {
+            val run = Run(cap, recs.size, lastTry = attempt + 1 >= FAMILY_TRIES)
+            ctx.run = run
             try {
-                // AUD-REL-02: a transient failure (deadlock, serialization, failover, pool timeout) retries the family
-                // in a fresh transaction, at most three tries within 10 s; every record upserts by its client UUID and a
-                // failed try rolls back whole, so a retry can never store a record twice.
-                var attempt = 0
-                val familyStart = clock.now()
-                while (true) {
-                    ctx.afterCommit.clear()
-                    try {
-                        db.jdbi.inTransaction<Unit, Exception> { h -> family.forEach { r -> outcomes[r.index] = processInSavepoint(h, ctx, r) } }
-                        break
-                    } catch (e: Exception) {
-                        if (++attempt >= FAMILY_TRIES || !isTransientDbFailure(e) || clock.now().isAfter(familyStart.plusMillis(FAMILY_RETRY_BUDGET_MS))) throw e
-                        log.warn("family retry batch_uuid=${ctx.batchUuid} family=${recs[i].family} attempt=$attempt: ${e.javaClass.simpleName}")
-                        Thread.sleep(java.util.concurrent.ThreadLocalRandom.current().nextLong(20, 101))
+                db.jdbi.inTransaction<Unit, Exception> { h ->
+                    prefetch(h, ctx, run, recs)
+                    ctx.arith = MemoChecks.familyMismatches(all) + MemoChecks.unknownSkuSiblings(run.lookups.skus.filterValues { it }.keys, all)
+                    runRecords(h, ctx, run, ackRecs, 0)
+                    runRecords(h, ctx, run, rest, 0)
+                    // Guarded phase: the day states of what was stored (one step per business date), then the queued
+                    // signals and enrichments, in record order.
+                    val days = run.dayItems.groupBy { it.env.str("business_date") ?: "" }.map { (d, items) ->
+                        "day_states_$d" to { hh: Handle -> DayStates.afterStoredBatch(hh, items, up, now, routeDays, ctx.touched) }
                     }
+                    runGuarded(h, ctx, run, days + run.enrich, 0)
                 }
-                // Committed: only now may a handler reach outside the database.
-                ctx.afterCommit.forEach { (_, hd, rec) -> runCatching { hd.afterCommit(rec) }.onFailure { log.warn("afterCommit failed type=${rec.type}", it) } }
+                done = run
             } catch (e: Exception) {
-                log.error("family failed batch_uuid=${ctx.batchUuid} family=${recs[i].family}", e)
-                db.jdbi.useTransaction<Exception> { h -> family.forEach { r -> outcomes[r.index] = park(h, ctx, r, RecordOutcomeCode.SERVER_ERROR, e.javaClass.simpleName) } }
+                ctx.run = null
+                val retry = isTransientDbFailure(e) && attempt + 1 < FAMILY_TRIES && !clock.now().isAfter(start.plusMillis(FAMILY_RETRY_BUDGET_MS))
+                if (!retry) {
+                    log.error("batch failed batch_uuid=${ctx.batchUuid} records=${recs.size}", e)
+                    db.jdbi.useTransaction<Exception> { h -> recs.forEach { r -> run.outcomes[r.index] = park(h, ctx, r, RecordOutcomeCode.SERVER_ERROR, e.javaClass.simpleName) } }
+                    settleDays(ctx)
+                    return run.outcomes
+                }
+                attempt++
+                IngestMetrics.retries.increment()
+                log.warn("batch retry batch_uuid=${ctx.batchUuid} attempt=$attempt: ${e.javaClass.simpleName}")
+                Thread.sleep(java.util.concurrent.ThreadLocalRandom.current().nextLong(20, 101))
+            } finally {
+                ctx.run = null
             }
         }
+        // Committed: only now may a handler reach outside the database.
+        done.afterCommit.forEach { (_, hd, rec) -> runCatching { hd.afterCommit(rec) }.onFailure { log.warn("afterCommit failed type=${rec.type}", it) } }
+        settleDays(ctx)
+        return done.outcomes
+    }
 
-        // Day states move forward from what this batch brought (F-SYS-016, s4.9); a failure here never fails the batch.
+    /** Day states move forward from what this batch brought (F-SYS-016, s4.9); a failure here never fails the batch. */
+    private fun settleDays(ctx: Ctx) {
         DayStates.settleMinutes = runCatching { config.int("cfg.day.submit_settle_timeout_min").toLong() }.getOrDefault(30L)
-        runCatching { db.jdbi.useTransaction<Exception> { h -> DayStates.afterBatch(h, up.userId, ctx.touched, now) } }
+        runCatching { db.jdbi.useTransaction<Exception> { h -> DayStates.afterBatch(h, ctx.up.userId, ctx.touched, ctx.now) } }
             .onFailure { log.error("day states failed batch_uuid=${ctx.batchUuid}", it) }
-        return outcomes
+    }
+
+    /**
+     * Runs [recs] in one savepoint. On a failure that is not transient (or is, on the last try) the savepoint rolls
+     * back, the segment's in-memory effects are undone and the records are bisected, down to one record, which then
+     * runs guarded ([processInSavepoint]) so its failure is answered as an outcome (docs/18 s4.2 step 7, D-521: never a
+     * savepoint per record while the batch is healthy). Past the savepoint budget the rest is parked `server_error`,
+     * retryable: the phone resends it.
+     */
+    private fun runRecords(h: Handle, ctx: Ctx, run: Run, recs: List<Rec>, depth: Int) {
+        if (recs.isEmpty()) return
+        if (run.savepoints >= run.cap) {
+            log.error("savepoint budget exhausted batch_uuid=${ctx.batchUuid}: ${recs.size} record(s) parked")
+            val s = run.begin()
+            recs.forEach { r -> run.outcomes[r.index] = park(h, ctx, r, RecordOutcomeCode.SERVER_ERROR, "savepoint budget exhausted") }
+            run.flush(h, ctx, s)
+            run.commit(s)
+            return
+        }
+        if (recs.size == 1) {
+            val r = recs[0]
+            val s = run.begin()
+            run.leaf = true
+            try {
+                run.outcomes[r.index] = processInSavepoint(h, ctx, r)
+            } finally {
+                run.leaf = false
+            }
+            run.flush(h, ctx, s)
+            run.commit(s)
+            return
+        }
+        val sp = "u${depth}_${run.savepoints}"
+        run.savepoint(h, sp)
+        val s = run.begin()
+        try {
+            recs.forEach { r -> run.outcomes[r.index] = process(h, ctx, r) }
+            run.flush(h, ctx, s)
+            h.release(sp)
+            run.commit(s)
+        } catch (e: Exception) {
+            if (isTransientDbFailure(e) && !run.lastTry) throw e
+            try {
+                h.rollbackToSavepoint(sp)
+            } catch (x: Exception) {
+                e.addSuppressed(x)
+                throw e
+            }
+            run.undo(s)
+            IngestMetrics.bisections.increment()
+            log.info("segment of ${recs.size} record(s) bisected batch_uuid=${ctx.batchUuid} depth=$depth cause=${e.javaClass.simpleName}")
+            val mid = recs.size / 2
+            runRecords(h, ctx, run, recs.subList(0, mid), depth + 1)
+            runRecords(h, ctx, run, recs.subList(mid, recs.size), depth + 1)
+        }
+    }
+
+    /** The guarded side effects in one savepoint, bisected on failure down to the one step that fails, which is logged (never a record's outcome). */
+    private fun runGuarded(h: Handle, ctx: Ctx, run: Run, steps: List<Pair<String, (Handle) -> Unit>>, depth: Int) {
+        if (steps.isEmpty()) return
+        if (run.savepoints >= run.cap) {
+            log.error("savepoint budget exhausted batch_uuid=${ctx.batchUuid}: ${steps.size} guarded step(s) skipped (${steps.first().first} ..)")
+            return
+        }
+        val sp = "g${depth}_${run.savepoints}"
+        run.savepoint(h, sp)
+        try {
+            steps.forEach { it.second(h) }
+            h.release(sp)
+        } catch (e: Exception) {
+            if (isTransientDbFailure(e) && !run.lastTry) throw e
+            try {
+                h.rollbackToSavepoint(sp)
+            } catch (x: Exception) {
+                e.addSuppressed(x)
+                throw e
+            }
+            if (steps.size == 1) {
+                log.error("${steps[0].first} failed batch_uuid=${ctx.batchUuid}", e)
+                return
+            }
+            IngestMetrics.bisections.increment()
+            val mid = steps.size / 2
+            runGuarded(h, ctx, run, steps.subList(0, mid), depth + 1)
+            runGuarded(h, ctx, run, steps.subList(mid, steps.size), depth + 1)
+        }
+    }
+
+    /**
+     * The batch's lookups in a handful of multi-row statements (SCALE-02): the uuid locks, the registry rows of the
+     * batch's records (locked, as the per-record read was) and of the parents they name, parents stored without a
+     * registry row, routes, outlets and SKUs, the content-fingerprint locks and stored twins, and the memo aliases.
+     */
+    private fun prefetch(h: Handle, ctx: Ctx, run: Run, recs: List<Rec>) {
+        val l = run.lookups
+        fun payload(r: Rec) = r.json["payload"] as? JsonObject
+        val own = recs.map { it.clientUuid }.filter { UUID_V4.matches(it) }.distinct()
+        lockKeys(h, own, 0)
+        l.locked += own
+        val parentRefs = recs.flatMap { r ->
+            val p = payload(r) ?: return@flatMap emptyList()
+            val fields = TypeRules.BY_TYPE[r.type]?.parents.orEmpty() + listOfNotNull(MEMO_ALIAS_FIELDS[r.type])
+            fields.mapNotNull { f -> p.str(f)?.takeIf { UUID_V4.matches(it) }?.let { f to it } }
+        }
+        val parents = parentRefs.map { it.second }.distinct().filter { it !in own }
+        own.forEach { l.registry[it] = null }
+        parents.forEach { l.registry[it] = null }
+        l.registry += regRows(h, own, forUpdate = true)
+        l.registry += regRows(h, parents, forUpdate = false)
+        // Parents without a stored registry row: their table (online commands, migrated history), once per table.
+        parentRefs.filter { (_, u) -> l.registry[u]?.status !in STORED_STATUSES }.groupBy({ PARENT_TABLES[it.first] }, { it.second }).forEach { (table, uuids) ->
+            if (table == null) return@forEach
+            val ids = uuids.distinct()
+            ids.forEach { l.parentRows["$table|$it"] = null }
+            h.createQuery("SELECT client_uuid::text, user_id FROM app.$table WHERE client_uuid = ANY(CAST(:u AS uuid[]))").bindArray("u", String::class.java, ids)
+                .map { rs, _ -> rs.getString(1) to rs.getLong(2) }.list().forEach { (u, owner) -> l.parentRows["$table|$u"] = owner }
+        }
+        recs.mapNotNull { it.json.long("route_id") }.distinct().takeIf { it.isNotEmpty() }?.let { ids ->
+            ids.forEach { l.routes[it] = null }
+            h.createQuery("SELECT id, zone_id FROM app.route WHERE id = ANY(:r)").bindArray("r", Long::class.javaObjectType, ids)
+                .map { rs, _ -> rs.getLong(1) to rs.getLong(2) }.list().forEach { (id, z) -> l.routes[id] = z }
+        }
+        recs.mapNotNull { payload(it)?.long("outlet_id") }.distinct().takeIf { it.isNotEmpty() }?.let { ids ->
+            ids.forEach { l.outlets[it] = null }
+            h.createQuery("SELECT id, route_id, zone_id FROM app.outlet WHERE id = ANY(:o)").bindArray("o", Long::class.javaObjectType, ids)
+                .map { rs, _ -> rs.getLong(1) to ((rs.getObject(2) as Long?) to rs.getLong(3)) }.list().forEach { (id, v) -> l.outlets[id] = v }
+        }
+        recs.mapNotNull { payload(it)?.long("sku_id") }.distinct().takeIf { it.isNotEmpty() }?.let { ids ->
+            ids.forEach { l.skus[it] = false }
+            h.createQuery("SELECT id FROM app.sku WHERE id = ANY(:s)").bindArray("s", Long::class.javaObjectType, ids).mapTo(Long::class.java).list().forEach { l.skus[it] = true }
+        }
+        // Content fingerprints (F-SYS-055): one lock statement, then the uploader's stored twins in one read.
+        val cfps = recs.mapNotNull { r -> TypeRules.BY_TYPE[r.type]?.let { rule -> contentFpOf(ctx, r, rule) }?.let { r.type to hex(it) } }.distinct()
+        if (cfps.isNotEmpty()) {
+            val keys = cfps.map { "cfp:" + it.second }.distinct()
+            lockKeys(h, keys, 2)
+            l.cfpLocked += keys
+            cfps.forEach { (t, x) -> l.cfpTwins.getOrPut("$t|$x") { ArrayList() } }
+            h.createQuery(
+                """
+                SELECT record_type, encode(content_fp, 'hex'), client_uuid::text FROM app.ingest_registry
+                WHERE user_id = :u AND record_type = ANY(:t) AND content_fp = ANY(ARRAY(SELECT decode(x, 'hex') FROM unnest(CAST(:fp AS text[])) AS x)) AND status IN ('accepted', 'voided')
+                """.trimIndent(),
+            ).bind("u", ctx.up.userId).bindArray("t", String::class.java, cfps.map { it.first }.distinct()).bindArray("fp", String::class.java, cfps.map { it.second }.distinct())
+                .map { rs, _ -> Triple(rs.getString(1), rs.getString(2), rs.getString(3)) }.list()
+                .forEach { (t, x, u) -> l.cfpTwins.getOrPut("$t|$x") { ArrayList() }.add(u) }
+        }
+        // Memo aliases (matchBackfill): the targets' rows are shared-locked, so a match in flight is waited for.
+        val targets = recs.mapNotNull { r -> MEMO_ALIAS_FIELDS[r.type]?.let { f -> payload(r)?.str(f) }?.takeIf { UUID_V4.matches(it) } }.distinct()
+        if (targets.isNotEmpty()) {
+            targets.forEach { l.aliases[it] = null }
+            h.createQuery("SELECT 1 FROM app.ingest_registry WHERE client_uuid = ANY(CAST(:u AS uuid[])) FOR SHARE").bindArray("u", String::class.java, targets).mapTo(Int::class.java).list()
+            h.createQuery(
+                """
+                SELECT g.client_uuid::text, m.client_uuid::text FROM app.ingest_registry g JOIN app.memo m ON m.id = g.server_id AND m.business_date = g.business_date
+                WHERE g.client_uuid = ANY(CAST(:u AS uuid[])) AND g.record_type = 'memo' AND g.status = 'accepted' AND m.client_uuid <> g.client_uuid
+                """.trimIndent(),
+            ).bindArray("u", String::class.java, targets).map { rs, _ -> rs.getString(1) to rs.getString(2) }.list().forEach { (t, twin) -> l.aliases[t] = twin }
+        }
+    }
+
+    /** Transaction-scoped advisory locks on [keys] (hash class [cls]) in one statement, in sorted order, so two batches never deadlock on them. */
+    private fun lockKeys(h: Handle, keys: Collection<String>, cls: Int) {
+        if (keys.isEmpty()) return
+        h.createQuery(
+            "SELECT count(*) FROM (SELECT pg_advisory_xact_lock(hashtextextended(k, $cls)) FROM (SELECT k FROM unnest(CAST(:k AS text[])) WITH ORDINALITY AS t(k, i) ORDER BY i) s) z",
+        ).bindArray("k", String::class.java, keys.sorted()).mapTo(Long::class.java).one()
+    }
+
+    private fun lockUuid(h: Handle, ctx: Ctx, uuid: String) {
+        val l = ctx.run?.lookups
+        if (l != null && uuid in l.locked) return
+        h.execute("SELECT pg_advisory_xact_lock(hashtextextended(?, 0))", uuid)
+        l?.locked?.add(uuid)
+    }
+
+    private fun regRows(h: Handle, uuids: Collection<String>, forUpdate: Boolean): Map<String, Reg> = if (uuids.isEmpty()) emptyMap() else h.createQuery(
+        "SELECT client_uuid::text, status, outcome_code, payload_sha256, server_id, record_type, user_id FROM app.ingest_registry WHERE client_uuid = ANY(CAST(:u AS uuid[]))" + (if (forUpdate) " FOR UPDATE" else ""),
+    ).bindArray("u", String::class.java, uuids.toList()).map { rs, _ -> rs.getString(1) to Reg(rs.getString(2), rs.getString(3), rs.getBytes(4), rs.getObject(5) as Long?, rs.getString(6), rs.getLong(7)) }.list().toMap()
+
+    /** The registry row of [uuid], locked for update: the batch's overlay first, else one row read and cached. */
+    private fun prior(h: Handle, ctx: Ctx, uuid: String): Reg? {
+        val l = ctx.run?.lookups
+        if (l != null && l.registry.containsKey(uuid)) return l.registry[uuid]
+        return regRows(h, listOf(uuid), forUpdate = true)[uuid].also { l?.registry?.put(uuid, it) }
+    }
+
+    /** The registry row of a parent reference (no lock, as the per-record read had none). */
+    private fun parentReg(h: Handle, ctx: Ctx, uuid: String): Reg? {
+        val l = ctx.run?.lookups
+        if (l != null && l.registry.containsKey(uuid)) return l.registry[uuid]
+        return regRows(h, listOf(uuid), forUpdate = false)[uuid].also { l?.registry?.put(uuid, it) }
+    }
+
+    private fun parentOwner(h: Handle, ctx: Ctx, table: String, uuid: String): Long? {
+        val l = ctx.run?.lookups
+        val key = "$table|$uuid"
+        if (l != null && l.parentRows.containsKey(key)) return l.parentRows[key]
+        return h.createQuery("SELECT user_id FROM app.$table WHERE client_uuid = CAST(:p AS uuid) LIMIT 1").bind("p", uuid).mapTo(Long::class.java).findOne().orElse(null)
+            .also { l?.parentRows?.put(key, it) }
+    }
+
+    private fun routeZone(h: Handle, ctx: Ctx, routeId: Long): Long? {
+        val l = ctx.run?.lookups
+        if (l != null && l.routes.containsKey(routeId)) return l.routes[routeId]
+        return h.createQuery("SELECT zone_id FROM app.route WHERE id = :r").bind("r", routeId).mapTo(Long::class.java).findOne().orElse(null).also { l?.routes?.put(routeId, it) }
+    }
+
+    private fun outletOf(h: Handle, ctx: Ctx, outletId: Long): Pair<Long?, Long>? {
+        val l = ctx.run?.lookups
+        if (l != null && l.outlets.containsKey(outletId)) return l.outlets[outletId]
+        return h.createQuery("SELECT route_id, zone_id FROM app.outlet WHERE id = :o").bind("o", outletId)
+            .map { rs, _ -> (rs.getObject(1) as Long?) to rs.getLong(2) }.findOne().orElse(null).also { l?.outlets?.put(outletId, it) }
+    }
+
+    private fun skuExists(h: Handle, ctx: Ctx, skuId: Long): Boolean {
+        val l = ctx.run?.lookups
+        l?.skus?.get(skuId)?.let { return it }
+        return (h.createQuery("SELECT count(*) FROM app.sku WHERE id = :s").bind("s", skuId).mapTo(Long::class.java).one() > 0L).also { l?.skus?.put(skuId, it) }
+    }
+
+    /** A stored (accepted or voided) row of the uploader with the same content under another uuid (F-SYS-055); the content lock is taken first. */
+    private fun cfpTwin(h: Handle, ctx: Ctx, r: Rec, cfp: ByteArray): String? {
+        val x = hex(cfp)
+        val l = ctx.run?.lookups
+        val lockKey = "cfp:$x"
+        if (l == null || lockKey !in l.cfpLocked) {
+            // Serialise re-mints carrying the same content under different uuids (the uuid lock does not cover them).
+            h.execute("SELECT pg_advisory_xact_lock(hashtextextended(?, 2))", lockKey)
+            l?.cfpLocked?.add(lockKey)
+        }
+        val key = "${r.type}|$x"
+        val twins = if (l != null && l.cfpTwins.containsKey(key)) l.cfpTwins.getValue(key) else h.createQuery(
+            "SELECT client_uuid::text FROM app.ingest_registry WHERE user_id = :u AND record_type = :t AND content_fp = :fp AND status IN ('accepted','voided')",
+        ).bind("u", ctx.up.userId).bind("t", r.type).bind("fp", cfp).mapTo(String::class.java).list().toMutableList().also { l?.cfpTwins?.put(key, it) }
+        return twins.firstOrNull { it != r.clientUuid }
+    }
+
+    /** The content fingerprint a record is judged by (s4.5): a memo's, or a signed header's; none for a paper backfill. */
+    private fun contentFpOf(ctx: Ctx, r: Rec, rule: TypeRule): ByteArray? =
+        if (ctx.manual != null) null else ctx.memoFps[r.clientUuid] ?: if (rule.signedHeader) contentFingerprint(r) else null
+
+    private fun hex(b: ByteArray): String = b.joinToString("") { "%02x".format(it) }
+
+    /** The buffered registry rows of a segment in one upsert (docs/18 s4.2 step 5); the same conflict rule as [register]. */
+    private fun registerRows(h: Handle, ctx: Ctx, rows: Collection<RegRow>) {
+        val json = kotlinx.serialization.json.JsonArray(rows.map { x ->
+            kotlinx.serialization.json.buildJsonObject {
+                put("c", JsonPrimitive(x.r.clientUuid)); put("t", JsonPrimitive(x.r.type)); put("h", JsonPrimitive(hex(x.r.hash)))
+                put("fp", x.contentFp?.let { JsonPrimitive(hex(it)) } ?: JsonNull); put("f", JsonPrimitive(x.r.family.takeIf { UUID_V4.matches(it) } ?: x.r.clientUuid))
+                put("s", JsonPrimitive(x.status)); put("code", x.code?.let { JsonPrimitive(it.wire) } ?: JsonNull); put("sid", x.serverId?.let { JsonPrimitive(it) } ?: JsonNull)
+                put("bd", x.bd?.let { JsonPrimitive(it.toString()) } ?: JsonNull); put("fl", kotlinx.serialization.json.JsonArray(x.flags.map { JsonPrimitive(it) }))
+            }
+        })
+        h.createUpdate(
+            """
+            INSERT INTO app.ingest_registry (client_uuid, record_type, payload_sha256, content_fp, family_uuid, status, outcome_code, server_id, business_date, user_id, device_id, first_batch_uuid, received_at, last_seen_at, flags)
+            SELECT CAST(x.c AS uuid), x.t, decode(x.h, 'hex'), decode(x.fp, 'hex'), CAST(x.f AS uuid), x.s, x.code, x.sid, CAST(x.bd AS date), :u, :d, CAST(:b AS uuid), :now, :now, COALESCE(x.fl, '{}')
+            FROM jsonb_to_recordset(CAST(:rows AS jsonb)) AS x(c text, t text, h text, fp text, f text, s text, code text, sid bigint, bd text, fl text[])
+            ON CONFLICT (client_uuid) DO UPDATE SET status = EXCLUDED.status, outcome_code = EXCLUDED.outcome_code, server_id = EXCLUDED.server_id, content_fp = EXCLUDED.content_fp,
+                last_seen_at = EXCLUDED.last_seen_at, seen_count = app.ingest_registry.seen_count + 1,
+                flags = ARRAY(SELECT DISTINCT f FROM unnest(app.ingest_registry.flags || EXCLUDED.flags) AS f ORDER BY f)
+            WHERE (app.ingest_registry.status = 'parked' OR (app.ingest_registry.status = 'quarantined' AND app.ingest_registry.outcome_code IN ('device_integrity_failed', 'device_not_enrolled')))
+              AND app.ingest_registry.payload_sha256 = EXCLUDED.payload_sha256
+            """.trimIndent(),
+        ).bind("rows", json.toString()).bind("u", ctx.up.userId).bind("d", ctx.up.deviceId).bind("b", ctx.batchUuid).bind("now", ts(ctx.now)).execute()
+    }
+
+    private fun touchRows(h: Handle, uuids: Collection<String>) {
+        h.createUpdate("UPDATE app.ingest_registry SET last_seen_at = now(), seen_count = seen_count + 1 WHERE client_uuid = ANY(CAST(:u AS uuid[]))")
+            .bindArray("u", String::class.java, uuids.toList()).execute()
+    }
+
+    /** Accepted resends of parked or held rows: the rejected copies are marked stored and the open integrity items accepted (as [register] does one by one). */
+    private fun storedResends(h: Handle, ctx: Ctx, rows: Collection<Pair<String, ByteArray>>) {
+        h.createUpdate(
+            "UPDATE app.sync_rejected r SET stored_at = :now FROM unnest(CAST(:u AS uuid[]), CAST(:h AS text[])) AS x(u, h) WHERE r.client_uuid = x.u AND r.payload_sha256 = decode(x.h, 'hex') AND r.stored_at IS NULL",
+        ).bind("now", ts(ctx.now)).bindArray("u", String::class.java, rows.map { it.first }).bindArray("h", String::class.java, rows.map { hex(it.second) }).execute()
+        h.createUpdate(
+            "UPDATE app.sync_quarantine SET status = 'accepted', resolved_at = :now WHERE client_uuid = ANY(CAST(:u AS uuid[])) AND code IN ('device_integrity_failed', 'device_not_enrolled') AND status = 'open'",
+        ).bind("now", ts(ctx.now)).bindArray("u", String::class.java, rows.map { it.first }).execute()
     }
 
     private fun acksOf(recs: List<Rec>, outcomes: Array<Outcome?>): List<RecordAck> {
@@ -746,15 +1180,18 @@ class IngestService(
      */
     private fun processInSavepoint(h: Handle, ctx: Ctx, r: Rec): Outcome {
         val sp = "rec_${r.index}"
-        h.savepoint(sp)
+        val run = ctx.run
+        if (run != null) run.savepoint(h, sp) else { h.savepoint(sp); IngestMetrics.savepoints.increment() }
         return try {
             process(h, ctx, r).also { h.release(sp) }
         } catch (e: Exception) {
-            ctx.afterCommit.removeAll { it.first == r.index }
-            if (e is ApiProblem) throw e
-            // A transient failure is not the record's fault: the family is retried whole (AUD-REL-02).
-            if (isTransientDbFailure(e)) throw e
+            if (run == null) ctx.afterCommit.removeAll { it.first == r.index }
+            // On the single-record paths an API problem reaches the caller (a reviewer's release); in a batch it is the record's server error.
+            if (e is ApiProblem && run == null) throw e
+            // A transient failure is not the record's fault: the batch (or family) is retried whole (AUD-REL-02), except on the last try.
+            if (isTransientDbFailure(e) && run?.lastTry != true) throw e
             h.rollbackToSavepoint(sp)
+            run?.undo(run.segment)
             val state = generateSequence<Throwable>(e) { it.cause }.filterIsInstance<SQLException>().firstOrNull()?.sqlState ?: ""
             if (state.startsWith("22") || state.startsWith("23")) {
                 log.info("record refused by the database client_uuid=${r.clientUuid} type=${r.type} sqlstate=$state")
@@ -781,25 +1218,24 @@ class IngestService(
         val rule = TypeRules.BY_TYPE.getValue(r.type)
         // A dues record or edit aimed at a phone memo matched to its paper twin follows to the paper memo (matchBackfill);
         // the registry keeps the phone's own hash, so its resends stay duplicates.
-        val env = memoAlias(h, r.type, r.json)
+        val env = memoAlias(h, ctx, r.type, r.json)
         val payload = env["payload"] as JsonObject
         val bd = LocalDate.parse(env.str("business_date")!!)
 
         // 2. Registry: one uniqueness point for every device record. A transaction-scoped advisory lock on the uuid
         // serialises concurrent batches carrying the same client_uuid (FOR UPDATE locks nothing while no row exists).
-        h.execute("SELECT pg_advisory_xact_lock(hashtextextended(?, 0))", r.clientUuid)
-        val prior = h.createQuery("SELECT status, outcome_code, payload_sha256, server_id FROM app.ingest_registry WHERE client_uuid = CAST(:c AS uuid) FOR UPDATE")
-            .bind("c", r.clientUuid).map { rs, _ -> Prior(rs.getString(1), rs.getString(2), rs.getBytes(3), rs.getObject(4) as Long?) }.findOne().orElse(null)
+        lockUuid(h, ctx, r.clientUuid)
+        val prior = prior(h, ctx, r.clientUuid)
         var released = false
         if (prior != null) {
             // The phone's own copy of a record a reviewer accepted with a fix is that record (its resend is a duplicate).
-            if (!prior.hash.contentEquals(r.hash) && prior.status == "accepted" && fixedCopy(h, r)) { touch(h, r); return Outcome.duplicate(prior.serverId) }
+            if (!prior.hash.contentEquals(r.hash) && prior.status == "accepted" && fixedCopy(h, r)) { touch(h, ctx, r); return Outcome.duplicate(prior.serverId) }
             if (!prior.hash.contentEquals(r.hash) && !prior.hash.contentEquals(r.fullHash)) return quarantine(h, ctx, r, bd, RecordOutcomeCode.PAYLOAD_CONFLICT, "same client_uuid, different payload", register = false)
             // Registered before the hash left `sig` out: re-key it, so the parked upsert and the stored_at mark match (BC-53).
             if (!prior.hash.contentEquals(r.hash)) rekey(h, r)
             when (prior.status) {
-                "accepted", "voided" -> { touch(h, r); return Outcome.duplicate(prior.serverId) }
-                "rejected" -> { touch(h, r); return Outcome.of(code(prior.code) ?: RecordOutcomeCode.SCHEMA_INVALID) }
+                "accepted", "voided" -> { touch(h, ctx, r); return Outcome.duplicate(prior.serverId) }
+                "rejected" -> { touch(h, ctx, r); return Outcome.of(code(prior.code) ?: RecordOutcomeCode.SCHEMA_INVALID) }
                 // A signature quarantine is released once the mode is no longer enforce: the resend is processed like a
                 // parked row, so a sale held under enforce (or before modes existed) reaches the server (BC-53).
                 // Only while its review item is still open: a reviewer's discard or return-to-device stands (android-core
@@ -808,7 +1244,7 @@ class IngestService(
                 // processed again on every resend while its item is open; the gate and the signature check re-apply,
                 // so under enforce a bad signature is quarantined again with the same outcome.
                 "quarantined" -> if (prior.code !in DEVICE_HOLD_CODES || !openIntegrityItem(h, r)) {
-                    touch(h, r); return Outcome.of(code(prior.code) ?: RecordOutcomeCode.PAYLOAD_CONFLICT)
+                    touch(h, ctx, r); return Outcome.of(code(prior.code) ?: RecordOutcomeCode.PAYLOAD_CONFLICT)
                 } else {
                     released = true
                 }
@@ -849,7 +1285,7 @@ class IngestService(
         // row's capture time is accepted and flagged `config_stamp_regress` (a rolled-back app or an edited stamp); the
         // third such row of the device and business date raises CONFIG_STAMP_REGRESS. Telemetry rows are not judged.
         val stampRegress = !rule.telemetry && env.long("config_version")?.let { cv ->
-            ctx.acks.filter { it.first.isBefore(captured) }.maxOfOrNull { it.second }?.let { cv < it }
+            ctx.acks(h).filter { it.first.isBefore(captured) }.maxOfOrNull { it.second }?.let { cv < it }
         } == true
 
         // 4. References that must exist (unknown ids are final rejections, s4.5).
@@ -858,16 +1294,13 @@ class IngestService(
         val skuId = payload.long("sku_id")
         var routeZone: Long? = null
         if (routeId != null) {
-            routeZone = h.createQuery("SELECT zone_id FROM app.route WHERE id = :r").bind("r", routeId).mapTo(Long::class.java).findOne().orElse(null)
-                ?: return finalReject(h, ctx, r, RecordOutcomeCode.UNKNOWN_ROUTE, "route $routeId")
+            routeZone = routeZone(h, ctx, routeId) ?: return finalReject(h, ctx, r, RecordOutcomeCode.UNKNOWN_ROUTE, "route $routeId")
         }
         var outlet: Pair<Long?, Long>? = null
         if (outletId != null) {
-            outlet = h.createQuery("SELECT route_id, zone_id FROM app.outlet WHERE id = :o").bind("o", outletId)
-                .map { rs, _ -> (rs.getObject(1) as Long?) to rs.getLong(2) }.findOne().orElse(null)
-                ?: return finalReject(h, ctx, r, RecordOutcomeCode.UNKNOWN_OUTLET, "outlet $outletId")
+            outlet = outletOf(h, ctx, outletId) ?: return finalReject(h, ctx, r, RecordOutcomeCode.UNKNOWN_OUTLET, "outlet $outletId")
         }
-        if (skuId != null && h.createQuery("SELECT count(*) FROM app.sku WHERE id = :s").bind("s", skuId).mapTo(Long::class.java).one() == 0L) {
+        if (skuId != null && !skuExists(h, ctx, skuId)) {
             return finalReject(h, ctx, r, RecordOutcomeCode.UNKNOWN_SKU, "sku $skuId")
         }
 
@@ -929,13 +1362,9 @@ class IngestService(
         // copy stands and the second is quarantined content_duplicate, never stored twice.
         // Not for a paper backfill: its memo number is the identity (checked before the run), and two real paper memos
         // of one outlet with the same lines are often keyed with the same placeholder time.
-        val contentFp = if (ctx.manual != null) null else ctx.memoFps[r.clientUuid] ?: if (rule.signedHeader) contentFingerprint(r) else null
+        val contentFp = contentFpOf(ctx, r, rule)
         if (contentFp != null && !ctx.overrides(RecordOutcomeCode.CONTENT_DUPLICATE)) {
-            // Serialise re-mints carrying the same content under different uuids (the uuid lock does not cover them).
-            h.execute("SELECT pg_advisory_xact_lock(hashtextextended(?, 2))", "cfp:" + contentFp.joinToString("") { "%02x".format(it) })
-            val twin = h.createQuery(
-                "SELECT client_uuid::text FROM app.ingest_registry WHERE user_id = :u AND record_type = :t AND content_fp = :fp AND client_uuid <> CAST(:c AS uuid) AND status IN ('accepted','voided') LIMIT 1",
-            ).bind("u", ctx.up.userId).bind("t", r.type).bind("fp", contentFp).bind("c", r.clientUuid).mapTo(String::class.java).findOne().orElse(null)
+            val twin = cfpTwin(h, ctx, r, contentFp)
             if (twin != null) return quarantine(h, ctx, r, bd, RecordOutcomeCode.CONTENT_DUPLICATE, "same content as $twin", contentFp = contentFp)
         }
 
@@ -957,21 +1386,17 @@ class IngestService(
         for (field in rule.parents) {
             val parent = payload.str(field) ?: continue
             if (!UUID_V4.matches(parent)) return finalReject(h, ctx, r, RecordOutcomeCode.SCHEMA_INVALID, "$field is not a UUID v4")
-            val reg = h.createQuery("SELECT record_type, user_id, status, outcome_code FROM app.ingest_registry WHERE client_uuid = CAST(:p AS uuid)")
-                .bind("p", parent).map { rs, _ -> listOf(rs.getString(1), rs.getLong(2).toString(), rs.getString(3), rs.getString(4)) }.findOne().orElse(null)
+            val reg = parentReg(h, ctx, parent)
             // (type, owner) of a stored parent: from the registry, or from its table for parents written outside the
             // batch (online endpoints, migrated history).
-            val found: Pair<String, Long>? = if (reg != null && reg[2] in setOf("accepted", "voided")) reg[0] to reg[1].toLong()
-            else PARENT_TABLES[field]?.let { t ->
-                h.createQuery("SELECT user_id FROM app.$t WHERE client_uuid = CAST(:p AS uuid) LIMIT 1").bind("p", parent).mapTo(Long::class.java).findOne().orElse(null)
-                    ?.let { (PARENT_TYPES[field] ?: t) to it }
-            }
+            val found: Pair<String, Long>? = if (reg != null && reg.status in STORED_STATUSES) reg.recordType to reg.userId
+            else PARENT_TABLES[field]?.let { t -> parentOwner(h, ctx, t, parent)?.let { (PARENT_TYPES[field] ?: t) to it } }
             if (found == null) {
                 // The child of a quarantined parent is held with it (same code), so a review that accepts the parent
                 // finds its children; parking it would let the phone give up on it.
-                if (reg?.get(2) == "quarantined") {
-                    val code = code(reg[3]) ?: RecordOutcomeCode.PAYLOAD_CONFLICT
-                    return quarantine(h, ctx, r, bd, code, "parent $parent is quarantined (${reg[3]})")
+                if (reg?.status == "quarantined") {
+                    val code = code(reg.code) ?: RecordOutcomeCode.PAYLOAD_CONFLICT
+                    return quarantine(h, ctx, r, bd, code, "parent $parent is quarantined (${reg.code})")
                 }
                 return park(h, ctx, r, RecordOutcomeCode.PARENT_MISSING, "$field $parent")
             }
@@ -1008,7 +1433,8 @@ class IngestService(
             register(h, ctx, r, bd, "accepted", null, first, contentFp)
             return Outcome.duplicate(first)
         }
-        val stored = RecordWriter.write(h, r.type, rule, env, payload, ctx.up, ctx.batchUuid, ctx.now, enteredBy = ctx.manual?.actorUserId)
+        val run = ctx.run
+        val stored = RecordWriter.write(h, r.type, rule, env, payload, ctx.up, ctx.batchUuid, ctx.now, enteredBy = ctx.manual?.actorUserId, guarded = run == null || run.leaf)
         return when (stored) {
             is RecordWriter.Result.Stored -> {
                 val flags = listOfNotNull("resync_late".takeIf { resyncLate }, "checkout_too_early".takeIf { tooEarly }, "config_stamp_regress".takeIf { stampRegress },
@@ -1016,19 +1442,17 @@ class IngestService(
                 register(h, ctx, r, bd, "accepted", null, stored.serverId, contentFp, flags)
                 if (stampRegress) stampRegressSignal(h, ctx, r, bd, routeId)
                 if (r.type == "memo") memoDuplicateSuspect(h, ctx, r, payload, bd, routeId)
-                MemoChecks.afterChildStored(h, r.type, payload)
+                // Memo child checks: one by one here; in a batch, four statements per segment ([MemoChecks.afterChildrenStored]).
+                if (run == null) MemoChecks.afterChildStored(h, r.type, payload) else if (r.type in MemoChecks.CHILD_TYPES) run.segment.memoChildren += r.type to payload
                 DuesLedger.afterStored(h, r.type, env, payload)
-                // Day states follow the record but never decide its outcome: a failure here is logged, the record stays stored.
-                h.savepoint("day_${r.index}")
-                try {
-                    DayStates.afterStored(h, r.type, env, payload, ctx.up, ctx.now, routeDays, ctx.touched)
-                    h.release("day_${r.index}")
-                } catch (e: Exception) {
-                    h.rollbackToSavepoint("day_${r.index}")
-                    log.error("day state update failed client_uuid=${r.clientUuid} type=${r.type}", e)
-                }
-                hs.forEach { it.afterStored(h, ingestRec!!, stored.serverId) }
-                hs.forEach { ctx.afterCommit += Triple(r.index, it, ingestRec!!) }
+                // Day states follow the record but never decide its outcome: in a batch they are applied after the records,
+                // grouped by date ([DayStates.afterStoredBatch]); here a failure is logged and the record stays stored.
+                if (run != null) run.segment.dayItems += DayStates.Stored(r.type, env, payload)
+                else ctx.guarded(h, "day_${r.index}") { hh -> DayStates.afterStored(hh, r.type, env, payload, ctx.up, ctx.now, routeDays, ctx.touched) }
+                // Strict handlers run in the record's segment (throwing rolls the record back); enrichment handlers in the guarded phase.
+                hs.filter { !it.enrichment }.forEach { it.afterStored(h, ingestRec!!, stored.serverId) }
+                hs.filter { it.enrichment }.forEach { hd -> ctx.guarded(h, "enrich_${r.index}") { hh -> hd.afterStored(hh, ingestRec!!, stored.serverId) } }
+                hs.forEach { ctx.afterCommitList() += Triple(r.index, it, ingestRec!!) }
                 outOfBounds(h, ctx, r, rule, payload, bd, routeId)
                 gnssConsistency(h, ctx, r, rule, payload, bd, routeId)
                 Outcome.accepted(stored.serverId)
@@ -1064,23 +1488,13 @@ class IngestService(
      * In its own savepoint: the flag never decides the sale's outcome (a failure is logged and the record goes on).
      */
     private fun flagSignature(h: Handle, ctx: Ctx, r: Rec, bd: LocalDate, routeId: Long?, reason: String) {
-        val sp = "sigflag_${r.index}"
-        h.savepoint(sp)
-        try {
-            insertSignatureFlag(h, ctx, r, bd, routeId, reason)
-            h.release(sp)
-        } catch (e: Exception) {
-            h.rollbackToSavepoint(sp)
-            log.error("signature flag failed client_uuid=${r.clientUuid}", e)
-        }
+        ctx.guarded(h, "sigflag_${r.index}") { hh -> insertSignatureFlag(hh, ctx, r, bd, routeId, reason) }
     }
 
     /** N-027 supervisor flag: DEVICE_INTEGRITY_FAIL on the device for the business date (s11.4: severity 4, weight 30), in its own savepoint. */
     private fun flagDevice(h: Handle, ctx: Ctx, r: Rec, bd: LocalDate, routeId: Long?, reason: String) {
-        val sp = "devflag_${r.index}"
-        h.savepoint(sp)
-        try {
-            h.createUpdate(
+        ctx.guarded(h, "devflag_${r.index}") { hh ->
+            hh.createUpdate(
                 """
                 INSERT INTO app.risk_signal (code, severity, business_date, subject_type, subject_id, user_id, route_id, score, evidence, config_version)
                 VALUES ('DEVICE_INTEGRITY_FAIL', 4, :bd, 'device', :sid, :u, :route, 30, CAST(:ev AS jsonb), :cv)
@@ -1093,18 +1507,13 @@ class IngestService(
                     put("gate", JsonPrimitive(reason)); put("record_type", JsonPrimitive(r.type)); put("client_uuid", JsonPrimitive(r.clientUuid))
                     put("held", JsonPrimitive(if (reason == "device_not_enrolled") ctx.gate.requireEnrolled else ctx.gate.requireIntegrity))
                 }.toString()).bind("cv", config.configVersion()).execute()
-            h.release(sp)
-        } catch (e: Exception) {
-            h.rollbackToSavepoint(sp)
-            log.error("device flag failed client_uuid=${r.clientUuid}", e)
         }
     }
 
     /** F-SYS-091: (capture time, applied version) of the device's config acks, oldest first. */
-    private fun deviceAcks(deviceId: Long): List<Pair<Instant, Long>> = db.jdbi.withHandle<List<Pair<Instant, Long>>, Exception> { h ->
+    private fun deviceAcks(h: Handle, deviceId: Long): List<Pair<Instant, Long>> =
         h.createQuery("SELECT captured_at, acked_config_version FROM app.cfg_ack WHERE device_id = :d AND voided_at IS NULL ORDER BY captured_at")
             .bind("d", deviceId).map { rs, _ -> rs.getObject(1, java.time.OffsetDateTime::class.java).toInstant() to rs.getLong(2) }.list()
-    }
 
     /**
      * The third `config_stamp_regress` row of the device and business date raises CONFIG_STAMP_REGRESS (s11.4: severity 2,
@@ -1112,16 +1521,14 @@ class IngestService(
      * never rolls the stored record back.
      */
     private fun stampRegressSignal(h: Handle, ctx: Ctx, r: Rec, bd: LocalDate, routeId: Long?) {
-        val sp = "stamp_${r.index}"
-        h.savepoint(sp)
-        try {
+        ctx.guarded(h, "stamp_${r.index}") { hh ->
             // Concurrent batches of the same device and day count one after the other (READ COMMITTED would let two
             // batches each see two rows and neither raise the signal).
-            h.execute("SELECT pg_advisory_xact_lock(hashtextextended(?, 5))", "stamp:${ctx.up.deviceId}:$bd")
-            val n = h.createQuery("SELECT count(*) FROM app.ingest_registry WHERE device_id = :d AND business_date = :bd AND 'config_stamp_regress' = ANY (flags)")
+            hh.execute("SELECT pg_advisory_xact_lock(hashtextextended(?, 5))", "stamp:${ctx.up.deviceId}:$bd")
+            val n = hh.createQuery("SELECT count(*) FROM app.ingest_registry WHERE device_id = :d AND business_date = :bd AND 'config_stamp_regress' = ANY (flags)")
                 .bind("d", ctx.up.deviceId).bind("bd", bd).mapTo(Long::class.java).one()
             if (n >= 3) {
-                h.createUpdate(
+                hh.createUpdate(
                     """
                     INSERT INTO app.risk_signal (code, severity, business_date, subject_type, subject_id, user_id, route_id, score, evidence, config_version)
                     VALUES ('CONFIG_STAMP_REGRESS', 2, :bd, 'device', :sid, :u, :route, 20, CAST(:ev AS jsonb), :cv)
@@ -1132,10 +1539,6 @@ class IngestService(
                         put("rows", JsonPrimitive(n)); put("record_type", JsonPrimitive(r.type)); put("client_uuid", JsonPrimitive(r.clientUuid))
                     }.toString()).bind("cv", config.configVersion()).execute()
             }
-            h.release(sp)
-        } catch (e: Exception) {
-            h.rollbackToSavepoint(sp)
-            log.error("config stamp signal failed client_uuid=${r.clientUuid}", e)
         }
     }
 
@@ -1150,10 +1553,8 @@ class IngestService(
         val gross = p.long("gross_mtk") ?: return
         val outlet = p.long("outlet_id") ?: return
         if (gross <= 0) return
-        val sp = "memodup_${r.index}"
-        h.savepoint(sp)
-        try {
-            val twin = h.createQuery(
+        ctx.guarded(h, "memodup_${r.index}") { hh ->
+            val twin = hh.createQuery(
                 """
                 SELECT client_uuid::text AS cu, memo_no, entry_source FROM app.memo
                 WHERE business_date = :bd AND outlet_id = :o AND gross_mtk = :g AND memo_no <> :n AND status = 'active' AND voided_at IS NULL
@@ -1164,7 +1565,7 @@ class IngestService(
                 .mapToMap().findOne().orElse(null)
             if (twin != null) {
                 val weight: Double = runCatching<Double?> { (config.value("cfg.geo.integrity_weight") as JsonObject)["MEMO_DUPLICATE_SUSPECT"]?.jsonPrimitive?.content?.toDoubleOrNull() }.getOrNull() ?: 30.0
-                h.createUpdate(
+                hh.createUpdate(
                     """
                     INSERT INTO app.risk_signal (code, severity, business_date, subject_type, subject_id, user_id, route_id, score, evidence, config_version)
                     VALUES ('MEMO_DUPLICATE_SUSPECT', 2, :bd, 'memo', :sid, :u, :route, :score, CAST(:ev AS jsonb), :cv)
@@ -1177,10 +1578,6 @@ class IngestService(
                         put("twin_entry_source", JsonPrimitive(twin["entry_source"] as String)); put("outlet_id", JsonPrimitive(outlet)); put("gross_mtk", JsonPrimitive(gross))
                     }.toString()).bind("cv", config.configVersion()).execute()
             }
-            h.release(sp)
-        } catch (e: Exception) {
-            h.rollbackToSavepoint(sp)
-            log.error("memo duplicate signal failed client_uuid=${r.clientUuid}", e)
         }
     }
 
@@ -1216,16 +1613,8 @@ class IngestService(
     /** GEO_OUT_OF_BOUNDS (s11.4): a fix outside the Bangladesh box raises a signal; the record itself is stored. */
     private fun outOfBounds(h: Handle, ctx: Ctx, r: Rec, rule: TypeRule, payload: JsonObject, bd: LocalDate, routeId: Long?) {
         for (slot in listOf("fix", "edit_fix")) (payload[slot] as? JsonObject)?.let { fix ->
-            // In its own savepoint: a failed signal insert never aborts the sale's family transaction.
-            val sp = "oob_${r.index}_$slot"
-            h.savepoint(sp)
-            try {
-                outOfBoundsFix(h, ctx, r, rule, fix, bd, routeId)
-                h.release(sp)
-            } catch (e: Exception) {
-                h.rollbackToSavepoint(sp)
-                log.error("out-of-bounds signal failed client_uuid=${r.clientUuid}", e)
-            }
+            // Guarded: a failed signal insert never decides the sale.
+            ctx.guarded(h, "oob_${r.index}_$slot") { hh -> outOfBoundsFix(hh, ctx, r, rule, fix, bd, routeId) }
         }
     }
 
@@ -1258,10 +1647,8 @@ class IngestService(
             val fix = payload[slot] as? JsonObject ?: continue
             if ((fix["provider"] as? JsonPrimitive)?.content != "gps") continue // judged only for gps; no config read otherwise
             val reason = GnssRule.check(fix, gnssThresholds()) ?: continue
-            val sp = "gnss_${r.index}_$slot"
-            h.savepoint(sp)
-            try {
-                h.createUpdate(
+            ctx.guarded(h, "gnss_${r.index}_$slot") { hh ->
+                hh.createUpdate(
                     """
                     INSERT INTO app.risk_signal (code, severity, business_date, subject_type, subject_id, user_id, route_id, score, evidence, config_version)
                     VALUES ('GEO_GNSS_INCONSISTENT', 3, :bd, :st, :sid, :u, :route, 30, CAST(:ev AS jsonb), :cv)
@@ -1271,10 +1658,6 @@ class IngestService(
                     .bind("u", ctx.up.userId).bind("route", routeId)
                     .bind("ev", JsonObject(reason + mapOf("record_type" to JsonPrimitive(rule.type), "client_uuid" to JsonPrimitive(r.clientUuid), "slot" to JsonPrimitive(slot))).toString())
                     .bind("cv", config.configVersion()).execute()
-                h.release(sp)
-            } catch (e: Exception) {
-                h.rollbackToSavepoint(sp)
-                log.error("gnss signal failed client_uuid=${r.clientUuid}", e)
             }
         }
     }
@@ -1319,11 +1702,15 @@ class IngestService(
         ).bind("r", routeId).bind("u", ctx.up.userId).bind("d", bd).bind("a", actingFor).mapTo(Long::class.java).one() > 0
     }
 
-    private data class Prior(val status: String, val code: String?, val hash: ByteArray, val serverId: Long?)
-
     private fun code(wire: String?): RecordOutcomeCode? = wire?.let { w -> RecordOutcomeCode.entries.firstOrNull { it.wire == w } }
 
-    private fun touch(h: Handle, r: Rec) {
+    /** A duplicate's registry row is touched: at once, or with the segment's other touches in one statement in a batch. */
+    private fun touch(h: Handle, ctx: Ctx, r: Rec) {
+        val run = ctx.run
+        if (run != null) {
+            run.segment.touched += r.clientUuid
+            return
+        }
         h.createUpdate("UPDATE app.ingest_registry SET last_seen_at = now(), seen_count = seen_count + 1 WHERE client_uuid = CAST(:c AS uuid)").bind("c", r.clientUuid).execute()
     }
 
@@ -1335,6 +1722,27 @@ class IngestService(
         h: Handle, ctx: Ctx, r: Rec, bd: LocalDate?, status: String, code: RecordOutcomeCode?, serverId: Long?, contentFp: ByteArray? = null,
         flags: List<String> = emptyList(),
     ) {
+        val run = ctx.run
+        if (run != null) {
+            // Batch: buffered for the segment's multi-row upsert ([registerRows]); the overlay answers the batch's own
+            // reads meanwhile, and the segment undoes both when its savepoint rolls back.
+            val s = run.segment
+            val l = run.lookups
+            val prior = l.registry[r.clientUuid]
+            s.registry[r.clientUuid] = RegRow(r, bd, status, code, serverId, contentFp, flags)
+            if (s.overlayWritten.add(r.clientUuid)) s.overlayUndo += r.clientUuid to Prev(l.registry.containsKey(r.clientUuid), prior)
+            l.registry[r.clientUuid] = Reg(status, code?.wire, r.hash, serverId, r.type, ctx.up.userId)
+            if (status == "accepted") {
+                if (contentFp != null) {
+                    val key = "${r.type}|${hex(contentFp)}"
+                    if (s.cfpWritten.add(key)) s.cfpUndo += key to Prev(l.cfpTwins.containsKey(key), l.cfpTwins[key]?.toList())
+                    l.cfpTwins.getOrPut(key) { ArrayList() }.add(r.clientUuid)
+                }
+                // A resend of a parked or held row: its rejected copy is marked stored and its open integrity item accepted, at the flush.
+                if (prior != null) s.acceptedResends += r.clientUuid to r.hash
+            }
+            return
+        }
         h.createUpdate(
             """
             INSERT INTO app.ingest_registry (client_uuid, record_type, payload_sha256, content_fp, family_uuid, status, outcome_code, server_id, business_date, user_id, device_id, first_batch_uuid, received_at, last_seen_at, flags)
@@ -1693,6 +2101,8 @@ class IngestService(
         /** Data-entry (money and stock) records: a reviewer's fix of one needs a second person (docs/24 s8.6). */
         val MONEY_TYPES = setOf("memo", "memo_line", "memo_discount", "qc_line", "memo_void", "due_collection", "stock_movement", "redemption", "redemption_line", "day_submit")
         private val DEVICE_HOLD_CODES = setOf(RecordOutcomeCode.DEVICE_INTEGRITY_FAILED.wire, RecordOutcomeCode.DEVICE_NOT_ENROLLED.wire)
+        /** Registry statuses of a stored row (a parent a child may name). */
+        private val STORED_STATUSES = setOf("accepted", "voided")
         val UUID_V4 = Regex("^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")
         private val DATE = Regex("^\\d{4}-\\d{2}-\\d{2}$")
         private val TYPE_PATTERN = Regex("^[a-z][a-z_]{1,40}$")

@@ -627,5 +627,109 @@ class BatchAcceptanceTest {
         assertEquals(1, count("SELECT count(*) FROM app.visit WHERE visit_kind = 'sr_call' AND client_uuid = '${visits[0]["client_uuid"]!!.jsonPrimitive.content}'"))
     }
 
+    // ---- SCALE-02 (docs/18 s4.2 steps 5 to 7, D-411, D-521): a batch is bounded in statements and savepoints -----
+
+    /** Its own wiring: the class's per-device limiter (40 per minute under the fixed clock) is not spent on these big batches. */
+    private fun ownWiring() = Wiring.production(Settings.load(mapOf("ARON_ROLE" to "api", "ARON_DB_URL" to fresh.url, "ARON_JWT_SIGNING_KEY_FILE" to keyFile.absolutePath)), clock)
+
+    /**
+     * A 500-record batch (100 sale families) runs the lookups up front, the records in one savepoint and the guarded
+     * side effects in one more: at most [MAX_STATEMENTS_PER_RECORD] statements per record plus a fixed overhead, and a
+     * handful of savepoints, never one per record. A replay and a full-duplicate resend cost almost nothing.
+     */
+    @Test
+    fun aFiveHundredRecordBatchIsBoundedInStatementsAndSavepoints() = testApplication {
+        val own = ownWiring()
+        try {
+        application { aronApi(own) }
+        fun statements(): Long = own.database!!.statements.sum()
+        val token = client.login()
+        val records = (1..100).flatMap { saleFamily() }
+        assertEquals(500, records.size)
+        val batchUuid = uuid()
+        val body = batch(records, batchUuid)
+        val s0 = statements(); val sp0 = com.aktcl.aron.backend.sync.IngestMetrics.savepoints.sum()
+        val r = client.send(token, body)
+        val statements = statements() - s0; val savepoints = com.aktcl.aron.backend.sync.IngestMetrics.savepoints.sum() - sp0
+        assertEquals(HttpStatusCode.OK, r.status, r.bodyAsText())
+        val b = json(r.bodyAsText())
+        assertEquals(500, b["acks"]!!.jsonArray.size)
+        assertEquals(List(500) { "accepted" }, statuses(b), b["acks"]!!.jsonArray.filter { it.jsonObject["status"]!!.jsonPrimitive.content != "accepted" }.take(3).toString())
+        assertEquals(100, count("SELECT count(*) FROM app.memo WHERE client_uuid IN (${records.filter { it["type"]!!.jsonPrimitive.content == "memo" }.joinToString { "'" + it["client_uuid"]!!.jsonPrimitive.content + "'" }})").toInt())
+        assertEquals(500, count("SELECT count(*) FROM app.ingest_registry WHERE first_batch_uuid = '$batchUuid' AND status = 'accepted'").toInt())
+        assertEquals(100, count("SELECT count(*) FROM app.visit v JOIN app.ingest_registry g ON g.client_uuid = v.client_uuid WHERE g.first_batch_uuid = '$batchUuid' AND v.server_verdict IS NOT NULL").toInt(), "the geo re-check ran for every visit")
+        assertTrue(statements <= MAX_STATEMENTS_PER_RECORD * 500 + STATEMENT_OVERHEAD, "500 records took $statements statements (bound ${MAX_STATEMENTS_PER_RECORD * 500 + STATEMENT_OVERHEAD})")
+        assertTrue(savepoints in 1..MAX_SAVEPOINTS_HEALTHY, "500 records took $savepoints savepoints (bound $MAX_SAVEPOINTS_HEALTHY)")
+        println("SCALE-02 500 accepted: $statements statements, $savepoints savepoints")
+
+        // The same batch_uuid: the stored response, no record touched.
+        val s1 = statements()
+        assertEquals(true, json(client.send(token, body).bodyAsText())["replayed"]!!.jsonPrimitive.boolean)
+        val replay = statements() - s1
+        assertTrue(replay <= 12, "a replay took $replay statements")
+
+        // The same 500 rows under a new batch_uuid: 500 duplicates in a bounded number of statements, nothing stored twice.
+        val s2 = statements(); val sp2 = com.aktcl.aron.backend.sync.IngestMetrics.savepoints.sum()
+        val dup = json(client.send(token, batch(records)).bodyAsText())
+        val dupStatements = statements() - s2; val dupSavepoints = com.aktcl.aron.backend.sync.IngestMetrics.savepoints.sum() - sp2
+        assertEquals(List(500) { "duplicate" }, statuses(dup))
+        assertEquals(500, count("SELECT count(*) FROM app.ingest_registry WHERE first_batch_uuid = '$batchUuid' AND seen_count = 2").toInt(), "every duplicate touched its registry row once")
+        assertTrue(dupStatements <= STATEMENT_OVERHEAD, "500 duplicates took $dupStatements statements")
+        assertTrue(dupSavepoints <= MAX_SAVEPOINTS_HEALTHY, "500 duplicates took $dupSavepoints savepoints")
+        println("SCALE-02 500 duplicates: $dupStatements statements, $dupSavepoints savepoints")
+        } finally {
+            own.database?.close()
+        }
+    }
+
+    /**
+     * One poison row in a big batch (a memo whose number is already stored: the insert raises a unique violation) is
+     * isolated by bisection: it is answered as today (`memo_no_duplicate`, its lines held with it), every other record
+     * is accepted, and the transaction stays under the savepoint budget (D-521: at most 60).
+     */
+    @Test
+    fun aPoisonRowInABigBatchIsIsolatedByBisectionWithinTheSavepointBudget() = testApplication {
+        val own = ownWiring()
+        try {
+        application { aronApi(own) }
+        val token = client.login()
+        val taken = "sr1001-270103-7777"
+        assertEquals(List(5) { "accepted" }, statuses(json(client.send(token, batch(saleFamily(memoNo = taken))).bodyAsText())))
+        val families = (1..100).map { i -> if (i == 37) saleFamily(memoNo = taken) else saleFamily() }
+        val records = families.flatten()
+        val sp0 = com.aktcl.aron.backend.sync.IngestMetrics.savepoints.sum(); val b0 = com.aktcl.aron.backend.sync.IngestMetrics.bisections.sum()
+        val r = json(client.send(token, batch(records)).bodyAsText())
+        val savepoints = com.aktcl.aron.backend.sync.IngestMetrics.savepoints.sum() - sp0
+        val bisections = com.aktcl.aron.backend.sync.IngestMetrics.bisections.sum() - b0
+        val acks = r["acks"]!!.jsonArray.map { it.jsonObject }
+        val poison = families[36]
+        val poisonUuids = poison.map { it["client_uuid"]!!.jsonPrimitive.content }
+        val byUuid = acks.associateBy { it["client_uuid"]!!.jsonPrimitive.content }
+        assertEquals("quarantined:memo_no_duplicate", byUuid.getValue(poisonUuids[1]).let { it["status"]!!.jsonPrimitive.content + ":" + it["code"]!!.jsonPrimitive.content })
+        assertEquals("quarantined", byUuid.getValue(poisonUuids[2])["status"]!!.jsonPrimitive.content, "a line of the held memo is held with it")
+        assertEquals("quarantined", byUuid.getValue(poisonUuids[3])["status"]!!.jsonPrimitive.content)
+        assertEquals("accepted", byUuid.getValue(poisonUuids[0])["status"]!!.jsonPrimitive.content, "the family's visit stands")
+        assertEquals(497, acks.count { it["status"]!!.jsonPrimitive.content == "accepted" }, acks.filter { it["status"]!!.jsonPrimitive.content != "accepted" }.toString())
+        assertEquals(1, count("SELECT count(*) FROM app.memo WHERE memo_no = '$taken'").toInt(), "no second memo under the taken number")
+        assertTrue(bisections >= 1, "the unique violation bisected the batch")
+        assertTrue(savepoints <= 60, "a poisoned batch took $savepoints savepoints (D-521 budget 60)")
+        println("SCALE-02 poison row: $savepoints savepoints, $bisections bisections")
+        } finally {
+            own.database?.close()
+        }
+    }
+
+    private companion object {
+        /**
+         * Statements per record a healthy batch may cost on average (measured 2.7 on 2026-10-17: the typed insert, a
+         * geo_fix or domain-event row, the geo re-check's three per visit, a memo's duplicate check and device flag).
+         */
+        const val MAX_STATEMENTS_PER_RECORD = 3
+        /** Prefetch, flushes, day states, response totals, replay bookkeeping (measured 23 for a 500-duplicate batch). */
+        const val STATEMENT_OVERHEAD = 120
+        /** Records in one savepoint, the guarded phase in one more; a few for the rare single-record steps. */
+        const val MAX_SAVEPOINTS_HEALTHY = 6
+    }
+
     private fun JsonPrimitive.contentOrNull(): String? = if (this is kotlinx.serialization.json.JsonNull) null else content
 }

@@ -12,8 +12,17 @@ import javax.sql.DataSource
  * (docs/24 s2.5, s6.3). SQL lives in each context's repository class and uses bind parameters only.
  */
 class Database(val write: DataSource, val read: DataSource = write) : AutoCloseable {
-    val jdbi: Jdbi = jdbiFor(write)
-    val readJdbi: Jdbi = if (read === write) jdbi else jdbiFor(read)
+    /**
+     * Statements executed through [jdbi] and [readJdbi] since start (OPS-03 metric `aron_db_statements_total`; the
+     * ingest test bounds a 500-record batch with it, SCALE-02). Savepoints are not statements here: see IngestMetrics.
+     */
+    val statements = java.util.concurrent.atomic.LongAdder()
+    private val counting = object : org.jdbi.v3.core.statement.SqlLogger {
+        override fun logAfterExecution(context: org.jdbi.v3.core.statement.StatementContext) { statements.increment() }
+        override fun logException(context: org.jdbi.v3.core.statement.StatementContext, ex: java.sql.SQLException) { statements.increment() }
+    }
+    val jdbi: Jdbi = jdbiFor(write).also { it.setSqlLogger(counting) }
+    val readJdbi: Jdbi = if (read === write) jdbi else jdbiFor(read).also { it.setSqlLogger(counting) }
 
     /** True when a connection can be borrowed and answers within [timeoutMs] (readiness probe; never blocks longer). */
     fun ping(timeoutMs: Long = 2_000): Boolean = runCatching {

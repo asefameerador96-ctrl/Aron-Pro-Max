@@ -24,7 +24,7 @@ import org.jdbi.v3.core.Handle
  *   never rejected: the printed memo is the fact.
  */
 object MemoChecks {
-    private val CHILD_TYPES = setOf("memo_line", "memo_discount", "qc_line")
+    internal val CHILD_TYPES = setOf("memo_line", "memo_discount", "qc_line")
 
     /** client_uuid to mismatch detail for every record of a memo whose segment holds all its children and fails. */
     fun familyMismatches(records: List<JsonObject>): Map<String, String> {
@@ -62,6 +62,12 @@ object MemoChecks {
         val skus = lines.mapNotNull { (it["payload"] as? JsonObject)?.long("sku_id") }.distinct()
         if (skus.isEmpty()) return emptyMap()
         val known = h.createQuery("SELECT id FROM app.sku WHERE id = ANY(:s)").bindArray("s", Long::class.javaObjectType, skus).mapTo(Long::class.java).set()
+        return unknownSkuSiblings(known, records)
+    }
+
+    /** [unknownSkuSiblings] against SKU ids already read (the batch prefetch, SCALE-02). */
+    fun unknownSkuSiblings(known: Set<Long>, records: List<JsonObject>): Map<String, String> {
+        val lines = records.filter { it.str("type") == "memo_line" }
         val out = HashMap<String, String>()
         lines.filter { (it["payload"] as? JsonObject)?.long("sku_id")?.let { s -> s !in known } == true }.forEach { bad ->
             val memo = (bad["payload"] as JsonObject).str("memo_client_uuid") ?: return@forEach
@@ -170,6 +176,61 @@ object MemoChecks {
             """.trimIndent(),
         ).bind("m", memo).mapTo(Boolean::class.java).findOne().orElse(false)
         if (over) flag(h, memo, "arithmetic_mismatch")
+    }
+
+    /**
+     * [afterChildStored] for every child stored by one batch unit in four statements, not three per line (SCALE-02):
+     * the price check of all memo lines in one query, then the completeness, sums and over-count checks of every memo
+     * touched in one query, then one flag update per flag. Same flags, same guards.
+     */
+    fun afterChildrenStored(h: Handle, children: List<Pair<String, JsonObject>>) {
+        val lines = children.filter { it.first == "memo_line" && it.second.str("memo_client_uuid") != null }
+        val priceBad = LinkedHashSet<String>()
+        if (lines.isNotEmpty()) {
+            priceBad += h.createQuery(
+                """
+                SELECT DISTINCT x.memo FROM unnest(CAST(:memo AS text[]), CAST(:sku AS bigint[]), CAST(:price AS bigint[]), CAST(:per AS bigint[])) AS x(memo, sku, price, per)
+                LEFT JOIN app.memo m ON m.client_uuid = CAST(x.memo AS uuid)
+                LEFT JOIN LATERAL (SELECT sp.amount_mtk, sp.per_base_qty FROM app.sku_price sp WHERE sp.sku_id = x.sku AND sp.price_type = m.price_type
+                                   AND sp.valid_from <= m.price_list_date AND (sp.valid_to IS NULL OR sp.valid_to > m.price_list_date) LIMIT 1) sp ON true
+                WHERE sp.amount_mtk IS NULL OR sp.amount_mtk IS DISTINCT FROM x.price OR sp.per_base_qty IS DISTINCT FROM x.per
+                """.trimIndent(),
+            ).bindArray("memo", String::class.java, lines.map { it.second.str("memo_client_uuid")!! })
+                .bindArray("sku", Long::class.javaObjectType, lines.map { it.second.long("sku_id") })
+                .bindArray("price", Long::class.javaObjectType, lines.map { it.second.long("base_price_mtk") })
+                .bindArray("per", Long::class.javaObjectType, lines.map { it.second.long("price_per_qty") })
+                .mapTo(String::class.java).list()
+        }
+        val memos = children.filter { it.first in CHILD_TYPES }.mapNotNull { it.second.str("memo_client_uuid") }.distinct()
+        val arithBad = LinkedHashSet<String>()
+        if (memos.isNotEmpty()) {
+            arithBad += h.createQuery(
+                """
+                SELECT m.client_uuid::text FROM app.memo m
+                CROSS JOIN LATERAL (
+                  SELECT (SELECT count(*) FROM app.memo_line l WHERE l.memo_client_uuid = m.client_uuid) AS n_lines,
+                         (SELECT count(*) FROM app.memo_discount d WHERE d.memo_client_uuid = m.client_uuid) AS n_disc,
+                         (SELECT count(*) FROM app.qc_entry_line q WHERE q.memo_client_uuid = m.client_uuid AND q.applied_to_memo) AS n_qc,
+                         COALESCE((SELECT sum(l.gross_mtk) FROM app.memo_line l WHERE l.memo_client_uuid = m.client_uuid), 0) AS s_gross,
+                         COALESCE((SELECT sum(d.value_mtk) FROM app.memo_discount d WHERE d.memo_client_uuid = m.client_uuid AND d.kind <> 'drp'), 0) AS s_offer,
+                         COALESCE((SELECT sum(d.value_mtk) FROM app.memo_discount d WHERE d.memo_client_uuid = m.client_uuid AND d.kind = 'drp'), 0) AS s_drp,
+                         COALESCE((SELECT sum(q.settlement_mtk) FROM app.qc_entry_line q WHERE q.memo_client_uuid = m.client_uuid AND q.applied_to_memo), 0) AS s_qc
+                ) c
+                WHERE m.client_uuid = ANY(CAST(:m AS uuid[]))
+                  AND ((m.line_count = c.n_lines AND m.discount_line_count = c.n_disc AND m.qc_line_count = c.n_qc
+                        AND NOT (m.gross_mtk = c.s_gross AND m.offer_discount_mtk = c.s_offer AND m.drp_discount_mtk = c.s_drp AND m.qc_deduction_mtk = c.s_qc))
+                       OR m.line_count < c.n_lines OR m.discount_line_count < c.n_disc OR m.qc_line_count < c.n_qc)
+                """.trimIndent(),
+            ).bindArray("m", String::class.java, memos).mapTo(String::class.java).list()
+        }
+        if (priceBad.isNotEmpty()) flagAll(h, priceBad, "price_mismatch")
+        if (arithBad.isNotEmpty()) flagAll(h, arithBad, "arithmetic_mismatch")
+    }
+
+    private fun flagAll(h: Handle, memos: Collection<String>, flag: String) {
+        h.createUpdate(
+            "UPDATE app.memo SET server_flags = array_append(COALESCE(server_flags, '{}'), :f) WHERE client_uuid = ANY(CAST(:m AS uuid[])) AND NOT (:f = ANY(COALESCE(server_flags, '{}')))",
+        ).bind("f", flag).bindArray("m", String::class.java, memos.toList()).execute()
     }
 
     private fun flag(h: Handle, memo: String, flag: String) {

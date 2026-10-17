@@ -48,6 +48,9 @@ class ScopedConfig private constructor(
         }
     }
 
+    /** The same loaded rows resolved as of [t] (a load over a window serves every instant in it, SCALE-02). */
+    fun at(t: Instant): ScopedConfig = if (t == now) this else ScopedConfig(keys, rows, t)
+
     /** The winning row valid now for [key] in [chain], or null when only the registry default applies. */
     fun winner(key: String, chain: Chain, at: Instant = now): ValueRow? =
         rows[key].orEmpty().filter { it.validAt(at) && chain.matches(it) }.maxByOrNull { it.scope.precedence }

@@ -31,22 +31,42 @@ import java.util.concurrent.TimeUnit
  * `server_distance_m`, `server_radius_m`, `server_max_accuracy_m`, `server_checked_at`); the visit is never refused for it
  * (the sale happened; the record is evidence). A mismatch is a risk signal the worker derives (`GEO_DEVICE_SERVER_MISMATCH`).
  *
- * Runs once, on first store, inside the record's savepoint; the update is guarded by `server_checked_at IS NULL`. A
- * visit whose re-check failed there is picked up by [sweep] (worker, [GeoRecheckSweepJob]).
+ * Runs once, on first store, in the ingest's guarded phase ([RecordHandler.enrichment]: one savepoint for the batch's
+ * enrichment, never one per visit, D-521); the update is guarded by `server_checked_at IS NULL`. A visit whose re-check
+ * failed there is picked up by [sweep] (worker, [GeoRecheckSweepJob]).
  */
 class GeoRecheckHandler : RecordHandler {
     override val types: Set<String> = setOf("visit")
 
+    override val enrichment: Boolean get() = true
+
     override fun afterStored(h: Handle, rec: IngestRecord, serverId: Long?) {
-        recheckOne(h, rec.clientUuid, rec.businessDate, rec.receivedAt)
+        recheckOne(h, rec.clientUuid, rec.businessDate, rec.receivedAt, guarded = false)
     }
 
     /**
-     * Re-checks one stored, not yet checked visit inside its own savepoint and stores the verdict. The re-check is
-     * enrichment: it never refuses or parks the visit. On any failure the savepoint is rolled back, `server_verdict`
-     * stays null and [sweep] tries again later. Returns true when a verdict was stored.
+     * The config a re-check judges against, loaded once per transaction handle and upload time (SCALE-02): the accept
+     * window, and the geo keys over the whole window [receivedAt - 168 h, receivedAt] so any capture's `evalAt` resolves
+     * from the same rows ([ScopedConfig.at]). Keyed weakly by the handle: a batch of 100 visits loads twice, not 200 times.
      */
-    internal fun recheckOne(h: Handle, clientUuid: String, businessDate: LocalDate, receivedAt: Instant, checkedAt: Instant = receivedAt): Boolean {
+    private class HandleCache(val receivedAt: Instant, val windowH: Int, val cfg: ScopedConfig)
+    private val caches: MutableMap<Handle, HandleCache> = java.util.Collections.synchronizedMap(java.util.WeakHashMap())
+
+    private fun cache(h: Handle, receivedAt: Instant): HandleCache {
+        caches[h]?.takeIf { it.receivedAt == receivedAt }?.let { return it }
+        val global = ScopedConfig.Chain.of()
+        val windowH = ScopedConfig.load(h, receivedAt, receivedAt, setOf(WINDOW_KEY)).int(WINDOW_KEY, global, 48).coerceIn(0, 168)
+        val cfg = ScopedConfig.load(h, receivedAt.minusSeconds(168 * 3600L), receivedAt, KEYS)
+        return HandleCache(receivedAt, windowH, cfg).also { caches[h] = it }
+    }
+
+    /**
+     * Re-checks one stored, not yet checked visit and stores the verdict. The re-check is enrichment: it never refuses
+     * or parks the visit. [guarded]: in its own savepoint (the sweep), so on any failure the savepoint is rolled back,
+     * `server_verdict` stays null and [sweep] tries again later; the ingest passes false and guards the batch's
+     * enrichment itself. Returns true when a verdict was stored.
+     */
+    internal fun recheckOne(h: Handle, clientUuid: String, businessDate: LocalDate, receivedAt: Instant, checkedAt: Instant = receivedAt, guarded: Boolean = true): Boolean {
         val v = h.createQuery(
             """
             SELECT v.captured_at, v.outlet_id, v.fix_status, v.fix_lat, v.fix_lng, v.fix_accuracy_m, v.fix_is_mock, u.role
@@ -60,8 +80,7 @@ class GeoRecheckHandler : RecordHandler {
                 rs.getObject("fix_is_mock") as Boolean?, rs.getString("role"),
             )
         }.findOne().orElse(null) ?: return false
-        h.savepoint(SAVEPOINT)
-        return try {
+        fun store(): Boolean {
             val r = recheck(h, v, receivedAt)
             val n = h.createUpdate(
                 """
@@ -70,8 +89,13 @@ class GeoRecheckHandler : RecordHandler {
                 """.trimIndent(),
             ).bind("sv", r.verdict).bind("sd", r.distanceM).bind("sr", r.radiusM).bind("sa", r.maxAccuracyM)
                 .bind("at", OffsetDateTime.ofInstant(checkedAt, ZoneOffset.UTC)).bind("u", clientUuid).bind("bd", businessDate).execute()
-            h.release(SAVEPOINT)
-            n > 0
+            return n > 0
+        }
+        if (!guarded) return store()
+        h.savepoint(SAVEPOINT)
+        IngestMetrics.savepoints.increment()
+        return try {
+            store().also { h.release(SAVEPOINT) }
         } catch (e: Exception) {
             h.rollbackToSavepoint(SAVEPOINT)
             log.warn("geo re-check skipped visit=$clientUuid: ${e.javaClass.simpleName}")
@@ -89,9 +113,9 @@ class GeoRecheckHandler : RecordHandler {
     internal fun recheck(h: Handle, v: VisitFix, receivedAt: Instant): Result {
         val global = ScopedConfig.Chain.of()
         // D-431: judge against the values in force at capture, unless the change is older than the accept window.
-        val windowH = ScopedConfig.load(h, receivedAt, receivedAt, setOf(WINDOW_KEY)).int(WINDOW_KEY, global, 48).coerceIn(0, 168)
-        val evalAt = maxOf(v.capturedAt, receivedAt.minusSeconds(windowH * 3600L)).let { if (it.isAfter(receivedAt)) receivedAt else it }
-        val cfg = ScopedConfig.load(h, evalAt, evalAt, KEYS)
+        val c = cache(h, receivedAt)
+        val evalAt = maxOf(v.capturedAt, receivedAt.minusSeconds(c.windowH * 3600L)).let { if (it.isAfter(receivedAt)) receivedAt else it }
+        val cfg = c.cfg.at(evalAt)
         val o = h.createQuery(
             """
             SELECT o.zone_id, o.route_id, z.territory_id, t.division_id, d.wing_id, g.ordinal AS geo_ord,

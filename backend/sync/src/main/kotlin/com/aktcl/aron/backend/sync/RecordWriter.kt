@@ -39,8 +39,13 @@ object RecordWriter {
         ).bind("t", table).mapTo(String::class.java).set()
     }
 
-    /** [enteredBy]: the web user of a paper backfill (F-API-038); the row is marked `entry_source = manual` where the table has it. */
-    fun write(h: Handle, type: String, rule: TypeRule, env: JsonObject, payload: JsonObject, up: Uploader, batchUuid: String, now: Instant, enteredBy: Long? = null): Result {
+    /**
+     * [enteredBy]: the web user of a paper backfill (F-API-038); the row is marked `entry_source = manual` where the table has it.
+     * [guarded]: the insert runs in its own savepoint so a unique violation is answered here ([Result.AlreadyThere] or
+     * [Result.Refused]). The batch path passes false for a unit of several records (D-521: no savepoint per record): a
+     * unique violation then propagates, the unit is bisected, and the record runs alone, guarded, so the answer is the same.
+     */
+    fun write(h: Handle, type: String, rule: TypeRule, env: JsonObject, payload: JsonObject, up: Uploader, batchUuid: String, now: Instant, enteredBy: Long? = null, guarded: Boolean = true): Result {
         val clientUuid = env.str("client_uuid")!!
         return when (type) {
             "visit_close" -> closeVisit(h, clientUuid, env, payload, now)
@@ -96,7 +101,7 @@ object RecordWriter {
                 doc["entered_by_user_id"] = JsonPrimitive(enteredBy)
                 doc["first_batch_uuid"] = JsonPrimitive(batchUuid)
                 doc["received_at"] = JsonPrimitive(now.wire())
-                val result = insert(h, rule.table, clientUuid, doc)
+                val result = insert(h, rule.table, clientUuid, doc, guarded)
                 if (result is Result.Stored) {
                     (payload["fix"] as? JsonObject)?.let { geoFix(h, type, "fix", env, it, up, now) }
                     (payload["edit_fix"] as? JsonObject)?.let { geoFix(h, type, "edit_fix", env, it, up, now) }
@@ -121,15 +126,17 @@ object RecordWriter {
      * [Result.AlreadyThere]; any other unique violation (a reused memo number, a second check-in, a second gift photo)
      * is never swallowed: the record is refused with its outcome code and kept for review (docs/24 s4.5).
      */
-    private fun insert(h: Handle, table: String, clientUuid: String, doc: Map<String, JsonElement>): Result {
+    private fun insert(h: Handle, table: String, clientUuid: String, doc: Map<String, JsonElement>, guarded: Boolean): Result {
         val cols = columns(h, table).let { tc -> doc.keys.filter { it in tc } }
         require(cols.isNotEmpty()) { "no columns for $table" }
         val list = cols.joinToString(", ") { "\"$it\"" }
+        val sql = "INSERT INTO app.$table ($list) SELECT $list FROM jsonb_populate_record(NULL::app.$table, CAST(:doc AS jsonb)) RETURNING id"
+        if (!guarded) return Result.Stored(h.createQuery(sql).bind("doc", JsonObject(doc).toString()).mapTo(Long::class.java).one())
         val sp = "ins"
         h.savepoint(sp)
+        IngestMetrics.savepoints.increment()
         val id = try {
-            h.createQuery("INSERT INTO app.$table ($list) SELECT $list FROM jsonb_populate_record(NULL::app.$table, CAST(:doc AS jsonb)) RETURNING id")
-                .bind("doc", JsonObject(doc).toString()).mapTo(Long::class.java).one().also { h.release(sp) }
+            h.createQuery(sql).bind("doc", JsonObject(doc).toString()).mapTo(Long::class.java).one().also { h.release(sp) }
         } catch (e: Exception) {
             val sql = generateSequence<Throwable>(e) { it.cause }.filterIsInstance<SQLException>().firstOrNull()
             if (sql?.sqlState != "23505") throw e
