@@ -128,6 +128,27 @@ class RiskSignalsTest {
     }
 
     @Test
+    fun theMemoDuplicateCodeIsAFilterValue() = testApplication {
+        // Contract 1.3.1: RiskSignalCode is x-extensible-enum and names MEMO_DUPLICATE_SUSPECT (db V0077, subject memo).
+        application { aronApi(wiring) }
+        val id = fresh.db.jdbi.withHandle<Long, Exception> { h ->
+            h.createQuery(
+                """
+                INSERT INTO app.risk_signal (code, severity, business_date, subject_type, subject_id, user_id, zone_id, score, evidence, config_version)
+                VALUES ('MEMO_DUPLICATE_SUSPECT', 2, DATE '2027-01-03', 'memo', 'dup', NULL, (SELECT id FROM app.zone WHERE code = 'Z-MIR'), 30, '{"n": 1}'::jsonb, 1) RETURNING id
+                """.trimIndent(),
+            ).mapTo(Long::class.java).one()
+        }
+        try {
+            val r = client.list("amo1001", "?code=MEMO_DUPLICATE_SUSPECT")
+            assertEquals(HttpStatusCode.OK, r.status, r.bodyAsText())
+            assertEquals(listOf("dup"), subjects(r.bodyAsText()))
+        } finally {
+            fresh.db.jdbi.useHandle<Exception> { it.execute("DELETE FROM app.risk_signal WHERE id = ?", id) }
+        }
+    }
+
+    @Test
     fun aReviewIsAnIdempotentEventAndOutOfReachIsNotFound() = testApplication {
         application { aronApi(wiring) }
         val id = ids.getValue("mir")

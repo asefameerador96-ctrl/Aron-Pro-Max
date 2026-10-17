@@ -36,10 +36,11 @@ describe("menu is driven from data", () => {
     for (const r of ["TSO", "ANALYST"] as const) {
       expect(menuFor(r).map((s) => s.group), r).toEqual(["main", "reports", "products", "admin"]);
     }
-    expect(menuFor("TSO").find((s) => s.group === "admin")?.items.map((i) => i.href)).toEqual(["/admin/outlet-requests", "/admin/team", "/admin/radius"]);
-    for (const r of ["ANALYST", "DMO", "WM", "TOP"] as const) {
+    expect(menuFor("TSO").find((s) => s.group === "admin")?.items.map((i) => i.href)).toEqual(["/admin/outlet-requests", "/admin/outlet-change", "/admin/team", "/admin/radius"]);
+    for (const r of ["ANALYST", "WM", "TOP"] as const) {
       expect(menuFor(r).find((s) => s.group === "admin")?.items.map((i) => i.href), r).toEqual(["/admin/outlet-requests"]);
     }
+    expect(menuFor("DMO").find((s) => s.group === "admin")?.items.map((i) => i.href)).toEqual(["/admin/outlet-requests", "/admin/outlet-change"]);
     expect(menuFor("SUPPORT").find((s) => s.group === "admin")?.items.map((i) => i.href)).toEqual(["/admin", "/admin/master-data", "/admin/team", "/admin/audit"]);
     expect(menuFor("ADMIN").map((s) => s.group)).toEqual(["main", "reports", "products", "admin", "config"]);
   });

@@ -112,6 +112,14 @@ private suspend fun voidDay(call: ApplicationCall, d: DataVoidDeps): DataVoidOut
             voidedUuids += uuids
             if (t == "memo") voidedMemos += uuids
         }
+        // An approved dues correction attached to a tombstoned memo would survive the void and leave the balance wrong: refuse the whole void
+        // (smallest safe version; reversal through a ledger row is a later row, DECISIONS.md). Read after the tombstoning UPDATE, which waited
+        // for any approval holding the memo row, so a concurrent approval is seen (the approval takes FOR SHARE on the memo).
+        if (voidedMemos.isNotEmpty()) {
+            val attached = h.createQuery("SELECT a.id FROM app.dues_adjustment a WHERE a.status = 'approved' AND a.memo_client_uuid IN (<u>) LIMIT 1")
+                .bindList("u", voidedMemos.map { java.util.UUID.fromString(it) }).mapTo(Long::class.java).findOne().orElse(null)
+            if (attached != null) throw ApiProblem(ProblemCode.ERR_DAY_DATA_VOID_NOT_ALLOWED, "a memo of this route-day has an approved dues adjustment (#$attached); a data void is not allowed")
+        }
         // geo_fix has no client_uuid of its own: it follows its route-day.
         val fixes = h.createUpdate("UPDATE app.geo_fix SET voided_at = :now WHERE route_id = :r AND business_date = :d AND voided_at IS NULL").bind("now", now).bind("r", req.route_id).bind("d", date).execute()
         if (fixes > 0) counts["geo_fix"] = fixes
@@ -131,6 +139,8 @@ private suspend fun voidDay(call: ApplicationCall, d: DataVoidDeps): DataVoidOut
         val affected = buildJsonObject { put("scope", req.scope); put("total", total); counts.forEach { (k, v) -> put(k, v) } }
         h.createUpdate("INSERT INTO app.route_day_void_barrier (client_uuid, route_id, business_date, barrier_at, voided_by, reason, affected) VALUES (:u, :r, :d, :at, :by, :why, CAST(:a AS jsonb))")
             .bind("u", id).bind("r", req.route_id).bind("d", date).bind("at", now).bind("by", p.userId).bind("why", reason).bind("a", affected.toString()).execute()
+        // F-SYS-086: the day tile follows every void, not only memo voids (those also reach the projector as memo.voided events).
+        h.execute("SELECT app.mark_dirty('route_day_agg', ?, ?, 'data_void')", req.route_id, date)
         AuditWriter.write(h, p, "data_void", req.client_uuid, "void", null, buildJsonObject { put("route_id", req.route_id); put("business_date", date.toString()); put("scope", req.scope); put("tombstoned", total) }, reason, call.requestId)
         DataVoidOut(req.route_id, date.toString(), req.scope, now.toInstant().wire(), total, pending)
     }
@@ -146,31 +156,44 @@ private fun pendingRows(h: Handle, routeId: Long): Int? = h.createQuery(
 
 /**
  * The dues ledger is append-only. A tombstoned memo is taken off it by ONE `adjustment` (source = the memo) that nets every
- * ledger row of that memo (its due, collections against it, an earlier `memo_void` or supersession), so a memo already
+ * ledger row of that memo (its due, collections against it, an earlier `memo_void` or supersession, the late-collection give-backs; only a data void's own reversal row is left out), so a memo already
  * voided elsewhere nets to zero and posts nothing. A tombstoned collection whose memo is not tombstoned in this void is
  * reversed on its own. `memo_void` and supersession records are not reversed: the memo's status was set by them and stays.
  */
 private fun reverseDues(h: Handle, voided: List<String>, voidUuid: String) {
     val u = voided.map { java.util.UUID.fromString(it) }
+    // 1. A tombstoned memo is netted whole: its due, closures, and the collections and give-backs that are tombstoned with it. A collection (and
+    //    the give-back it caused) from a day this void does not touch is real cash and stays, so the balance does not depend on whether it synced
+    //    before or after the void (it is reversed on its own if its own day is voided later, step 2).
     h.createUpdate(
         """
         INSERT INTO app.due_ledger (outlet_id, business_date, entry_kind, amount_mtk, memo_client_uuid, memo_no, source_client_uuid, note)
         SELECT l.outlet_id, min(l.business_date), 'adjustment', -sum(l.amount_mtk), l.memo_client_uuid, max(l.memo_no), l.memo_client_uuid, 'data void ' || CAST(:v AS text)
-        FROM app.due_ledger l WHERE l.memo_client_uuid IN (<u>) AND l.entry_kind <> 'adjustment'
+        FROM app.due_ledger l WHERE l.memo_client_uuid IN (<u>)
+          AND NOT (l.entry_kind = 'adjustment' AND l.note LIKE 'data void %')
+          AND NOT (l.entry_kind = 'collection' AND l.source_client_uuid NOT IN (<u>))
+          AND NOT (l.entry_kind = 'adjustment' AND l.note = :late AND l.source_client_uuid NOT IN (<u>))
         GROUP BY l.outlet_id, l.memo_client_uuid HAVING sum(l.amount_mtk) <> 0
         ON CONFLICT (source_client_uuid, entry_kind) DO NOTHING
         """.trimIndent(),
-    ).bind("v", voidUuid).bindList("u", u).execute()
+    ).bind("v", voidUuid).bind("late", LATE_COLLECTION_NOTE).bindList("u", u).execute()
+    // 2. A tombstoned collection whose memo is not tombstoned in this void: the collection and the give-back it caused (same source) are reversed
+    //    together by ONE row of its own source (derived from the void and the collection), so neither unique key collides with the give-back row.
     h.createUpdate(
         """
         INSERT INTO app.due_ledger (outlet_id, business_date, entry_kind, amount_mtk, memo_client_uuid, memo_no, source_client_uuid, note)
-        SELECT l.outlet_id, l.business_date, 'adjustment', -l.amount_mtk, l.memo_client_uuid, l.memo_no, l.source_client_uuid, 'data void ' || CAST(:v AS text)
-        FROM app.due_ledger l WHERE l.source_client_uuid IN (<u>) AND l.entry_kind = 'collection'
+        SELECT l.outlet_id, min(l.business_date), 'adjustment', -sum(l.amount_mtk), l.memo_client_uuid, max(l.memo_no),
+               CAST(md5(CAST(:v AS text) || l.source_client_uuid::text) AS uuid), 'data void ' || CAST(:v AS text)
+        FROM app.due_ledger l WHERE l.source_client_uuid IN (<u>) AND (l.entry_kind = 'collection' OR (l.entry_kind = 'adjustment' AND l.note = :late))
           AND (l.memo_client_uuid IS NULL OR l.memo_client_uuid NOT IN (<u>))
+        GROUP BY l.outlet_id, l.memo_client_uuid, l.source_client_uuid HAVING sum(l.amount_mtk) <> 0
         ON CONFLICT (source_client_uuid, entry_kind) DO NOTHING
         """.trimIndent(),
-    ).bind("v", voidUuid).bindList("u", u).execute()
+    ).bind("v", voidUuid).bind("late", LATE_COLLECTION_NOTE).bindList("u", u).execute()
 }
+
+/** `DuesLedger.LATE_COLLECTION` (backend/sync); masterdata does not depend on sync. */
+private const val LATE_COLLECTION_NOTE = "late_collection_reopens_closure"
 
 /**
  * Late rows: a record captured before an admin data void of its route-day is refused `voided_by_admin`; one captured after

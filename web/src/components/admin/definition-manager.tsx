@@ -20,6 +20,8 @@ interface Item {
   photo: boolean;
   show_if_key: string;
   show_if_bool: string;
+  /** Comma separated codes of an `option` question. */
+  option_codes: string;
 }
 interface Scope {
   node_type: string;
@@ -28,9 +30,12 @@ interface Scope {
 
 const ID_KEY = { surveys: "survey_id", rubrics: "rubric_id", content: "content_id" } as const;
 const KINDS = { surveys: SURVEY_KINDS, rubrics: RUBRIC_KINDS, content: CONTENT_KINDS } as const;
-const blankItem = (n: number): Item => ({ key: `q${n}`, label_en: "", label_bn: "", answer_type: "bool", required: false, photo: false, show_if_key: "", show_if_bool: "" });
-// REQUEST: web-admin-definition-reads. The read has no keys and a different rubric answer enum, so a template regenerates both.
-const RUBRIC_READ_TO_WRITE: Record<string, string> = { score_1_5: "stars_1_5", bool: "bool", text: "text" };
+const blankItem = (n: number): Item => ({ key: `q${n}`, label_en: "", label_bn: "", answer_type: "bool", required: false, photo: false, show_if_key: "", show_if_bool: "", option_codes: "" });
+const validCodes = (s: string): boolean => {
+  const c = s.split(",").map((x) => x.trim()).filter(Boolean);
+  return c.length >= 1 && c.length <= 20 && new Set(c).size === c.length && c.every((x) => /^[a-z][a-z0-9_]{1,40}$/.test(x));
+};
+const RUBRIC_ANSWER_ALIAS: Record<string, string> = { stars_1_5: "score_1_5" }; // an older stored spelling of the same answer type
 
 /** List and editor of the survey, rubric and content definitions. Editing publishes a new version (PATCH with If-Match). */
 export function DefinitionManager({ kind, items, canWrite }: { kind: DefKind; items: Row[]; canWrite: boolean }) {
@@ -71,7 +76,22 @@ export function DefinitionManager({ kind, items, canWrite }: { kind: DefKind; it
     const src = (((r?.questions ?? r?.criteria) as Record<string, unknown>[] | undefined) ?? []).filter((q) => q.enabled !== false); // a disabled placeholder must not go live (the write has no `enabled`)
     setRows(
       src.length
-        ? src.map((q, i) => ({ ...blankItem(i + 1), label_en: String(q.label_en ?? ""), label_bn: String(q.label_bn ?? ""), answer_type: kind === "rubrics" ? (RUBRIC_READ_TO_WRITE[String(q.answer_type)] ?? "text") : String(q.answer_type ?? "bool"), photo: q.requires_photo === true }))
+        ? src.map((q, i) => {
+            // The admin read round-trips into the write (contract v1.3): keys, flags, conditions and options come back as written.
+            const type = String(q.answer_type ?? "bool");
+            return {
+              ...blankItem(i + 1),
+              key: typeof q.key === "string" && q.key ? q.key : `q${i + 1}`,
+              label_en: String(q.label_en ?? ""),
+              label_bn: String(q.label_bn ?? ""),
+              answer_type: kind === "rubrics" ? (RUBRIC_ANSWER_ALIAS[type] ?? type) : type,
+              required: q.required === true,
+              photo: typeof q.photo === "boolean" ? q.photo : q.requires_photo === true && type !== "photo_only",
+              show_if_key: typeof q.show_if_key === "string" ? q.show_if_key : "",
+              show_if_bool: typeof q.show_if_bool === "boolean" ? String(q.show_if_bool) : "",
+              option_codes: Array.isArray(q.option_codes) ? q.option_codes.map(String).join(", ") : "",
+            };
+          })
         : [blankItem(1)],
     );
   }
@@ -91,14 +111,17 @@ export function DefinitionManager({ kind, items, canWrite }: { kind: DefKind; it
       if (rows.length < 1 || rows.length > DEF_MAX_ITEMS) e.rows = t("error.field.invalid");
       else if (rows.some((r) => !r.label_en.trim() || !/^[a-z][a-z0-9_]{1,40}$/.test(r.key))) e.rows = t("def.rows_invalid");
       else if (new Set(rows.map((r) => r.key)).size !== rows.length) e.rows = t("def.keys_unique");
+      else if (kind === "surveys" && rows.some((r) => r.answer_type === "option" && !validCodes(r.option_codes))) e.rows = t("def.option_codes_invalid");
       else if (kind === "surveys" && rows.some((r, i) => r.show_if_key && !rows.slice(0, i).some((p) => p.key === r.show_if_key))) e.rows = t("def.stale_condition");
     }
+    // An edit keeps the stored file when the read returned its asset (and the kind is unchanged: a video cannot become an image).
+    const keepAsset = kind === "content" && typeof editing?.asset_id === "string" && editing.kind === defKind ? editing.asset_id : null;
     const purpose = defKind === "kv" ? "content_kv" : "content_av";
     if (kind === "content") {
       if (file) {
         const p = fileProblem(file, purpose);
         if (p) e.file = t(p === "type" ? "tut.file_type" : p === "big" ? (defKind === "kv" ? "def.file_big_kv" : "def.file_big_av") : "error.field.invalid");
-      } else e.file = t("tut.file_required"); // REQUEST: web-admin-definition-reads (asset_id is not readable)
+      } else if (!keepAsset) e.file = t("tut.file_required");
       if (scope.some((s) => !/^[0-9]{1,15}$/.test(String(asciiDigits(s.node_id)).trim()) || Number(String(asciiDigits(s.node_id)).trim()) < 1)) e.scope = t("error.field.invalid");
     }
     if (n < REASON_MIN_LENGTH) e.reason = t("admin.reason.too_short");
@@ -115,13 +138,15 @@ export function DefinitionManager({ kind, items, canWrite }: { kind: DefKind; it
         body.valid_from = validFrom;
         body.valid_to = validTo || null;
       }
-      if (kind === "surveys") body.questions = rows.map((r) => ({ key: r.key, answer_type: r.answer_type, label_en: r.label_en.trim(), label_bn: r.label_bn.trim() || null, required: r.required, photo: r.photo, ...(r.show_if_key ? { show_if_key: r.show_if_key, show_if_bool: r.show_if_bool === "" ? null : r.show_if_bool === "true" } : {}) }));
+      if (kind === "surveys") body.questions = rows.map((r) => ({ key: r.key, answer_type: r.answer_type, label_en: r.label_en.trim(), label_bn: r.label_bn.trim() || null, required: r.required, photo: r.photo, ...(r.answer_type === "option" ? { option_codes: r.option_codes.split(",").map((c) => c.trim()).filter(Boolean) } : {}), ...(r.show_if_key ? { show_if_key: r.show_if_key, show_if_bool: r.show_if_bool === "" ? null : r.show_if_bool === "true" } : {}) }));
       if (kind === "rubrics") body.criteria = rows.map((r) => ({ key: r.key, answer_type: r.answer_type, label_en: r.label_en.trim(), label_bn: r.label_bn.trim() || null }));
       if (kind === "content") {
         setMessage({ ok: true, text: t("tut.uploading") });
-        const up = await uploadAsset(file!, purpose);
-        if (!up.ok) return setMessage({ ok: false, text: up.code === "upload_failed" ? t("tut.upload_failed") : problem(up.code as never) });
-        body.asset_id = up.assetId;
+        if (file) {
+          const up = await uploadAsset(file, purpose);
+          if (!up.ok) return setMessage({ ok: false, text: up.code === "upload_failed" ? t("tut.upload_failed") : problem(up.code as never) });
+          body.asset_id = up.assetId;
+        } else body.asset_id = keepAsset;
         body.sequence = Number(seq);
         body.assigned_scope = scope.map((s) => ({ node_type: s.node_type, node_id: Number(String(asciiDigits(s.node_id)).trim()) }));
       }
@@ -240,6 +265,12 @@ export function DefinitionManager({ kind, items, canWrite }: { kind: DefKind; it
                   </select>
                   <input aria-label={`${t("def.label_en")} ${i + 1}`} data-testid={`label-${i}`} maxLength={300} value={r.label_en} onChange={(ev) => setRow(i, { label_en: ev.target.value })} className={inputClass} />
                   <input aria-label={`${t("def.label_bn")} ${i + 1}`} maxLength={300} value={r.label_bn} onChange={(ev) => setRow(i, { label_bn: ev.target.value })} className={inputClass} />
+                  {kind === "surveys" && r.answer_type === "option" ? (
+                    <div className="sm:col-span-2">
+                      <input aria-label={`${t("def.option_codes")} ${i + 1}`} data-testid={`options-${i}`} value={r.option_codes} onChange={(ev) => setRow(i, { option_codes: ev.target.value })} className={inputClass} />
+                      <p className="mt-1 text-xs text-slate-600">{t("def.option_codes_hint")}</p>
+                    </div>
+                  ) : null}
                   {kind === "surveys" ? (
                     <div className="flex flex-wrap items-center gap-3 text-sm sm:col-span-2">
                       <label className="flex items-center gap-1"><input type="checkbox" checked={r.required} onChange={(ev) => setRow(i, { required: ev.target.checked })} />{t("def.required")}</label>

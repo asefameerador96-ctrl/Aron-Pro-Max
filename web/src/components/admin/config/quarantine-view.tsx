@@ -4,6 +4,7 @@ import { DataTable, type Column } from "@/components/admin/kit/data-table";
 import { FilterBar } from "@/components/admin/kit/filter-bar";
 import { OpForm, type OpFieldDef } from "@/components/admin/kit/op-form";
 import { Card, NextLink, PageHeading } from "@/components/admin/kit/page";
+import { BackfillMatchForm } from "./backfill-match-form";
 import { maskPayload } from "@/lib/admin/mask";
 import type { QuarantineItem } from "@/lib/admin/types";
 import { formatBusinessDate, formatDateTime, formatNumber, t, type Locale, type MessageKey } from "@/lib/i18n";
@@ -11,7 +12,7 @@ import { formatBusinessDate, formatDateTime, formatNumber, t, type Locale, type 
 const STATUSES = ["open", "accepted", "accepted_with_fix", "discarded"] as const;
 const ACTIONS = ["accept", "accept_with_fix", "discard", "return_to_device"] as const;
 
-export function QuarantineView({ locale, rows, filters, basePath, nextHref, canWrite, titleKey = "qr.title", selected, cursor }: { locale: Locale; rows: QuarantineItem[]; filters: { status: string; code: string; zone_id: string }; basePath: string; nextHref: string | null; canWrite: boolean; titleKey?: "qr.title" | "cfgp14.title"; selected: QuarantineItem | null; cursor?: string }) {
+export function QuarantineView({ locale, rows, filters, basePath, nextHref, canWrite, canMatch = false, titleKey = "qr.title", selected, cursor }: { locale: Locale; rows: QuarantineItem[]; filters: { status: string; code: string; zone_id: string }; basePath: string; nextHref: string | null; canWrite: boolean; canMatch?: boolean; titleKey?: "qr.title" | "cfgp14.title"; selected: QuarantineItem | null; cursor?: string }) {
   const columns: Column<QuarantineItem>[] = [
     { key: "id", header: t(locale, "cfgc.col.id"), render: (q) => formatNumber(locale, q.quarantine_id, { useGrouping: false }) },
     { key: "code", header: t(locale, "qr.col.reason"), render: (q) => q.code },
@@ -44,6 +45,7 @@ export function QuarantineView({ locale, rows, filters, basePath, nextHref, canW
           <p className="text-sm">{selected.code}{selected.detail ? ` · ${selected.detail}` : ""}</p>
           <p className="text-xs text-slate-600">{t(locale, "qr.masked")}</p>
           <pre className="max-h-72 overflow-auto rounded bg-slate-100 p-2 text-xs" data-testid="masked-payload">{JSON.stringify(maskPayload(selected.payload), null, 2)}</pre>
+          {canMatch && selected.type === "memo" && selected.code === "memo_no_duplicate" ? <BackfillMatchForm quarantineId={selected.quarantine_id} open={selected.status === "open"} /> : null}
           {canWrite && selected.status === "open" ? <OpForm op="quarantine.resolve" params={{ quarantine_id: String(selected.quarantine_id) }} fields={fields} submitLabel={t(locale, "qr.resolve")} successKey="qr.done" testId="resolve-form" /> : null}
         </Card>
       ) : null}

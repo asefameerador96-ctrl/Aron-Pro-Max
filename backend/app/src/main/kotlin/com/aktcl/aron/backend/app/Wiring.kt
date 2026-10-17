@@ -52,6 +52,17 @@ import com.aktcl.aron.backend.masterdata.DataVoidDeps
 import com.aktcl.aron.backend.masterdata.dataVoidRoutes
 import com.aktcl.aron.backend.masterdata.EntryUnlockDeps
 import com.aktcl.aron.backend.masterdata.entryUnlockRoutes
+import com.aktcl.aron.backend.masterdata.PaperAck
+import com.aktcl.aron.backend.masterdata.PaperBackfillDeps
+import com.aktcl.aron.backend.masterdata.PaperIngest
+import com.aktcl.aron.backend.masterdata.PaperIngestResult
+import com.aktcl.aron.backend.masterdata.paperBackfillRoutes
+import com.aktcl.aron.backend.masterdata.BackfillMatchDeps
+import com.aktcl.aron.backend.masterdata.BackfillMatchOut
+import com.aktcl.aron.backend.masterdata.BackfillMatcher
+import com.aktcl.aron.backend.masterdata.backfillMatchRoutes
+import com.aktcl.aron.backend.masterdata.DuesAdjustmentDeps
+import com.aktcl.aron.backend.masterdata.duesAdjustmentRoutes
 import com.aktcl.aron.backend.masterdata.WebEntryDeps
 import com.aktcl.aron.backend.masterdata.webEntryRoutes
 import com.aktcl.aron.backend.masterdata.DeviceOtpDeps
@@ -183,10 +194,17 @@ class Wiring(
                     .onFailure { org.slf4j.LoggerFactory.getLogger("aron.wiring").error("play integrity service account unreadable (${it.javaClass.simpleName}); verdicts stay unevaluated") }.getOrNull()
             }
             val deviceEnrolment = DeviceDeps(DeviceService(db, config, keys, enrolment, clock, integrity = integrityDecoder), reach, guard, clock)
-            val ops = OpsDeps(OpsService(db, config, clock), dashboardService, reach, guard, clock)
+            // Accepting a quarantined record re-runs it through ingest (the sync service is built below).
+            var ingestForReview: com.aktcl.aron.backend.sync.IngestService? = null
+            val acceptor = com.aktcl.aron.backend.analytics.QuarantineAcceptor { id, fix, resolver, why ->
+                (ingestForReview ?: throw com.aktcl.aron.backend.platform.ApiProblem(com.aktcl.aron.contract.ProblemCode.ERR_SERVICE_UNAVAILABLE, "ingest is not ready")).acceptQuarantined(id, fix, resolver, why)
+            }
+            val ops = OpsDeps(OpsService(db, config, clock, acceptor), dashboardService, reach, guard, clock)
             val tracking = DailyTrackingDeps(DailyTrackingService(db, config, clock), reach, guard, clock)
             val team = AppTeamDeps(TeamService(db, dashboardService, clock), reach, guard, clock)
-            val reports = ReportDeps(db, ReportEngine(db, config, clock, ReportHandlers.all), reach, guard, clock)
+            val reportEngine = ReportEngine(db, config, clock, ReportHandlers.all)
+            val exportService = com.aktcl.aron.backend.analytics.ExportJobService(db, reportEngine, reach, exportStoreFromEnvironment(), clock)
+            val reports = ReportDeps(db, reportEngine, reach, guard, clock, exportService, exportService)
             val configResolver = ConfigResolver(db, clock)
             val toolsReach = com.aktcl.aron.backend.config.NodeReach { p, z -> reach.reach(p.userId, p.role, p.scopeVersion, com.aktcl.aron.rules.BusinessDate.of(clock.now().toEpochMilli()).let { d -> java.time.LocalDate.of(d.year, d.monthNumber, d.dayOfMonth) }).coversZone(z) }
             val configService = ConfigService(db, configResolver, clock, toolsReach)
@@ -254,7 +272,8 @@ class Wiring(
                     (configResolver.resolve(key, chain, clock.now()).value as kotlinx.serialization.json.JsonPrimitive).content == "true"
                 }.getOrDefault(false)
             }
-            val sync = SyncDeps(BundleService(db, config, SqlRoutePlanner(db, geo, config), clock), guard, IngestService(db, config, reach, clock, generation::current, RecordHandlers(recordHandlers(db, clock) + com.aktcl.aron.backend.sync.TaskRecords(reach, push) + com.aktcl.aron.backend.sync.RiskReviewRecords(reach) + com.aktcl.aron.backend.masterdata.OutletRequestVerificationHandler(reach) + extraRecordHandlers)), db, config, clock)
+            val sync = SyncDeps(BundleService(db, config, SqlRoutePlanner(db, geo, config), clock, reach = reach), guard, IngestService(db, config, reach, clock, generation::current, RecordHandlers(recordHandlers(db, clock) + com.aktcl.aron.backend.sync.TaskRecords(reach, push) + com.aktcl.aron.backend.sync.RiskReviewRecords(reach) + com.aktcl.aron.backend.masterdata.OutletRequestVerificationHandler(reach) + extraRecordHandlers)), db, config, clock)
+            ingestForReview = sync.ingest
             val hikari = db.write as? com.zaxxer.hikari.HikariDataSource
             val admission = com.aktcl.aron.backend.analytics.AdmissionControl(
                 ingestCapacity = runCatching { config.int("cfg.api.inflight_batches_per_replica") }.getOrDefault(64),
@@ -281,10 +300,23 @@ class Wiring(
                 feedbackRoutes(FeedbackDeps(db, reach, config, guard, clock))
                 dataVoidRoutes(DataVoidDeps(db, reach, guard, clock))
                 entryUnlockRoutes(EntryUnlockDeps(db, reach, config, guard, clock))
+                duesAdjustmentRoutes(DuesAdjustmentDeps(db, reach, guard, clock))
+                backfillMatchRoutes(BackfillMatchDeps(db, reach, guard, sync.ingest?.let { svc ->
+                    BackfillMatcher { qid, resolver, why ->
+                        val m = svc.matchBackfill(qid, resolver, why)
+                        BackfillMatchOut(m.paperMemoId, m.paperMemoUuid, m.released, m.keptOpen, m.voidedPaperVisitUuid, m.phoneVisitUuid)
+                    }
+                }, clock))
+                paperBackfillRoutes(PaperBackfillDeps(db, guard, sync.ingest?.let { svc ->
+                    PaperIngest { actor, forUser, entry, recs ->
+                        val r = svc.ingestManual(actor, forUser, entry, recs)
+                        PaperIngestResult(r.acks.map { PaperAck(it.client_uuid, it.type, it.status, it.code, it.server_id) }, r.duplicateMemoNo, r.stored)
+                    }
+                }, clock))
                 webEntryRoutes(WebEntryDeps(db, reach, config, guard, clock))
                 adminContentRoutes(AdminContentDeps(db, blob, config, guard, clock))
                 adminMasterRoutes(AdminMasterDeps(db, geo, reach, guard, PasswordHasher()::hash, clock, config = config))
-                adminProductsRoutes(AdminProductsDeps(db, guard, clock))
+                adminProductsRoutes(AdminProductsDeps(db, guard, clock, blob))
                 adminPricesRoutes(AdminPricesDeps(db, config, guard, clock))
                 configToolRoutes(toolsDeps)
                 configPermissionRoutes(permDeps)

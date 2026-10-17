@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Aron API
-  version: 1.3.0
+  version: 1.3.1
   summary: The one API of the Aron rebuild (SR, AMO and TSO apps, web dashboards and admin portal).
   description: |
     Binding contract for every lane of the seven-day build. Rules that apply to every operation are in
@@ -1715,6 +1715,33 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/QuarantineItem' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /v1/admin/quarantine/{quarantine_id}/match-backfill:
+    post:
+      tags: [sync]
+      operationId: matchQuarantineBackfill
+      summary: Resolve a held phone memo as the same memo as a paper backfill (same SR, outlet, lines and money); releases its held collections onto the paper memo.
+      description: The held item is an open `memo_no_duplicate` memo whose stored twin is a live `source = manual` paper backfill. Any difference between the two is 409 `ERR_CONFLICT` with one `errors[]` entry per difference and nothing changes. The phone's visit is kept and the paper visit is voided (`superseded_by_device_visit`). A repeat of a done match is 409 `ERR_REQUEST_STATE` (the item is no longer open). SUPPORT, ADMIN, SUPERADMIN; the item's route must be in the caller's reach.
+      parameters:
+        - name: quarantine_id
+          in: path
+          required: true
+          schema: { $ref: '#/components/schemas/Id' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ReasonRequest' }
+      responses:
+        '200':
+          description: Matched.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BackfillMatchResult' }
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
@@ -3953,6 +3980,7 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/DuesAdjustmentPage' }
+        '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
     post:
@@ -3973,6 +4001,7 @@ paths:
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
   /v1/admin/dues-adjustments/{adjustment_id}/decision:
     post:
       tags: [admin-finance]
@@ -5279,8 +5308,11 @@ components:
       enum: [write_debounce, foreground, connectivity, workmanager_connectivity, periodic, manual, day_submit, checkout, resync, digest_resend, directive]
     RiskSignalCode:
       type: string
-      description: Risk signal catalogue (docs/24 s11.4).
-      enum: [GEO_MOCK, GEO_TELEPORT, GEO_ZERO_JITTER, GEO_PERFECT_ACCURACY, GEO_SAME_POINT, GEO_ROUTE_SINGLE_POINT, GEO_STALE_FIX, GEO_GNSS_INCONSISTENT, GEO_GNSS_TIME_SKEW, GEO_DEVICE_SERVER_MISMATCH, GEO_SHORT_VISIT_GAPS, DEVICE_NOT_OWNER, DEVICE_INTEGRITY_FAIL, DEVICE_DEBUG_ENABLED, DEVICE_MOCK_APP_PRESENT, DEVICE_POLICY_DRIFT, CLOCK_SKEW, GEO_OUT_OF_BOUNDS, CONFIG_STAMP_REGRESS]
+      description: |
+        Risk signal catalogue (docs/24 s11.4). Extensible (contract 1.3.1, docs/requests/contract-risk-signal-extensible-enum.md):
+        the server may add codes without a new contract version, so every client must accept a code it does not know
+        (show it by its code, never fail the response or the bundle).
+      x-extensible-enum: [GEO_MOCK, GEO_TELEPORT, GEO_ZERO_JITTER, GEO_PERFECT_ACCURACY, GEO_SAME_POINT, GEO_ROUTE_SINGLE_POINT, GEO_STALE_FIX, GEO_GNSS_INCONSISTENT, GEO_GNSS_TIME_SKEW, GEO_DEVICE_SERVER_MISMATCH, GEO_SHORT_VISIT_GAPS, DEVICE_NOT_OWNER, DEVICE_INTEGRITY_FAIL, DEVICE_DEBUG_ENABLED, DEVICE_MOCK_APP_PRESENT, DEVICE_POLICY_DRIFT, CLOCK_SKEW, GEO_OUT_OF_BOUNDS, CONFIG_STAMP_REGRESS, MEMO_DUPLICATE_SUSPECT]
     RiskSignalStatus:
       type: string
       enum: [open, reviewed, dismissed, confirmed]
@@ -8256,6 +8288,23 @@ components:
       properties:
         decision: { type: string, enum: [approve, reject] }
         note: { type: [string, 'null'], maxLength: 500 }
+    BackfillMatchResult:
+      type: object
+      required: [paper_memo_id, paper_memo_uuid, released, kept_open, voided_paper_visit_uuid, phone_visit_uuid]
+      additionalProperties: false
+      properties:
+        paper_memo_id: { $ref: '#/components/schemas/Id' }
+        paper_memo_uuid: { $ref: '#/components/schemas/Uuid' }
+        released:
+          type: array
+          description: client_uuids of the held records closed or released onto the paper memo.
+          items: { $ref: '#/components/schemas/Uuid' }
+        kept_open:
+          type: array
+          description: client_uuids of held records that stay open for a review of their own.
+          items: { $ref: '#/components/schemas/Uuid' }
+        voided_paper_visit_uuid: { oneOf: [{ $ref: '#/components/schemas/Uuid' }, { type: 'null' }], description: The paper web_entry visit voided in favour of the phone visit; null when already voided. }
+        phone_visit_uuid: { oneOf: [{ $ref: '#/components/schemas/Uuid' }, { type: 'null' }] }
     ReasonRequest:
       type: object
       required: [reason]
@@ -11716,7 +11765,7 @@ components:
         outlet_id: { $ref: '#/components/schemas/Id' }
         lines:
           type: array
-          minItems: 0
+          minItems: 1
           maxItems: 60
           items:
             type: object

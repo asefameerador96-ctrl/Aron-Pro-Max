@@ -20,7 +20,8 @@ data class IngestRecord(
     val payload: JsonObject,
     val userId: Long,
     val role: Role,
-    val deviceId: Long,
+    /** The uploading phone; null for a paper backfill keyed on the web (F-API-038). */
+    val deviceId: Long?,
     val batchUuid: String,
     val receivedAt: Instant,
 )

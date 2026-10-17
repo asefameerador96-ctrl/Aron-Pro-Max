@@ -7,3 +7,5 @@ Lane: web-admin (F-ADM-026 tutorials).
 Proposed: return `asset_id` in `TutorialAdmin`, or make `asset_id` optional on update (omitted keeps the file).
 
 Stub: the edit form requires a new file when the row has no `asset_id`.
+
+**State (2026-10-15, web-admin):** done in the web portal against contract v1.3; server half to be confirmed live.

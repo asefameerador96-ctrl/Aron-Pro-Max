@@ -9,7 +9,9 @@ const KEY = /^[a-z][a-z0-9_]{1,40}$/;
 export const SURVEY_KINDS = ["posm", "amo_survey", "tso_visit_query"] as const;
 export const SURVEY_ANSWERS = ["bool", "num", "option", "text", "photo_only"] as const;
 export const RUBRIC_KINDS = ["joint_call", "retailer_questionnaire"] as const;
-export const RUBRIC_ANSWERS = ["stars_1_5", "bool", "text"] as const;
+// The read and the write share one enum (contract v1.3): score_1_5 is canonical, the older stars_1_5 is still accepted on write.
+export const RUBRIC_ANSWERS = ["score_1_5", "bool", "text"] as const;
+const RUBRIC_WRITE_ANSWERS = [...RUBRIC_ANSWERS, "stars_1_5"] as const;
 export const CONTENT_KINDS = ["av", "kv"] as const;
 export const SCOPE_TYPES = ["wing", "division", "territory", "zone", "route", "outlet"] as const;
 export const DEF_MAX_ITEMS = 50;
@@ -66,7 +68,7 @@ export function checkSurveyWrite(b: unknown): Out {
     qs.forEach((q, i) => {
       const p = `/questions/${i}`;
       if (!isObj(q)) return void issues.push({ pointer: p, code: "invalid" });
-      for (const k of Object.keys(q)) if (!["key", "answer_type", "label_en", "label_bn", "required", "show_if_key", "show_if_bool", "photo"].includes(k)) issues.push({ pointer: `${p}/${k}`, code: "unknown_member" });
+      for (const k of Object.keys(q)) if (!["key", "answer_type", "label_en", "label_bn", "required", "show_if_key", "show_if_bool", "photo", "option_codes"].includes(k)) issues.push({ pointer: `${p}/${k}`, code: "unknown_member" });
       if (typeof q.key !== "string" || !KEY.test(q.key)) issues.push({ pointer: `${p}/key`, code: "invalid" });
       else if (keys.has(q.key)) issues.push({ pointer: `${p}/key`, code: "duplicate" });
       else keys.add(q.key);
@@ -75,6 +77,12 @@ export function checkSurveyWrite(b: unknown): Out {
       if (!en || codePoints(en) > 300) issues.push({ pointer: `${p}/label_en`, code: en ? "too_long" : "required" });
       const bn = q.label_bn === undefined || q.label_bn === null ? null : typeof q.label_bn === "string" ? q.label_bn.trim() || null : undefined;
       if (bn === undefined || (bn !== null && codePoints(bn) > 300)) issues.push({ pointer: `${p}/label_bn`, code: "invalid" });
+      if (q.option_codes !== undefined) {
+        const oc = q.option_codes;
+        if (!Array.isArray(oc) || oc.length > 20 || !oc.every((c) => typeof c === "string" && KEY.test(c)) || new Set(oc).size !== oc.length) issues.push({ pointer: `${p}/option_codes`, code: "invalid" });
+        else if (q.answer_type !== "option" && oc.length > 0) issues.push({ pointer: `${p}/option_codes`, code: "invalid" });
+      }
+      if (q.answer_type === "option" && (!Array.isArray(q.option_codes) || q.option_codes.length < 1)) issues.push({ pointer: `${p}/option_codes`, code: "required" });
       for (const f of ["required", "photo"]) if (q[f] !== undefined && typeof q[f] !== "boolean") issues.push({ pointer: `${p}/${f}`, code: "invalid" });
       if (q.show_if_key !== undefined && q.show_if_key !== null && (typeof q.show_if_key !== "string" || !KEY.test(q.show_if_key))) issues.push({ pointer: `${p}/show_if_key`, code: "invalid" });
       // A condition may only look at an EARLIER question of the same survey (no forward or self reference).
@@ -119,7 +127,7 @@ export function checkRubricWrite(b: unknown): Out {
       if (typeof c.key !== "string" || !KEY.test(c.key)) issues.push({ pointer: `${p}/key`, code: "invalid" });
       else if (keys.has(c.key)) issues.push({ pointer: `${p}/key`, code: "duplicate" });
       else keys.add(c.key);
-      if (!oneOf(RUBRIC_ANSWERS, c.answer_type)) issues.push({ pointer: `${p}/answer_type`, code: "invalid" });
+      if (!oneOf(RUBRIC_WRITE_ANSWERS, c.answer_type)) issues.push({ pointer: `${p}/answer_type`, code: "invalid" });
       const en = typeof c.label_en === "string" ? c.label_en.trim() : "";
       if (!en || codePoints(en) > 300) issues.push({ pointer: `${p}/label_en`, code: en ? "too_long" : "required" });
       const bn = c.label_bn === undefined || c.label_bn === null ? null : typeof c.label_bn === "string" ? c.label_bn.trim() || null : undefined;

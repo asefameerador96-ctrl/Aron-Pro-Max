@@ -16,6 +16,13 @@ class ReportBatchCTest : ReportFixture() {
     """.trimIndent()
 
     @Test
+    fun qcReportNamesTheSourceMarketOrWarehouse() = app {
+        val rows = run(10, Role.ANALYST, "qc-report").result().rows()
+        for (r in rows) assertEquals(if (r.str("fault_group") == "MKT") "market" else "warehouse", r.str("source"))
+        assertEquals(setOf("market", "warehouse"), rows.map { it.str("source")!! }.toSet())
+    }
+
+    @Test
     fun qcReportsMatchTheHandComputedTotals() = app {
         val q = run(10, Role.ANALYST, "qc-report").result()
         assertEquals(3, q.rows().size); assertEquals(6, q.total("qty_base")); assertEquals(4_800, q.total("settlement_mtk"))

@@ -87,9 +87,9 @@ class AzureBlobSasIssuer internal constructor(
          * Reads ARON_BLOB_ACCOUNT and ARON_BLOB_CONTAINER_MEDIA (infra/apps.bicep); AZURE_CLIENT_ID picks the
          * user-assigned managed identity. Building it makes no network call; the first SAS fetches the key.
          */
-        fun fromEnvironment(env: (String) -> String? = System::getenv): AzureBlobSasIssuer? {
+        fun fromEnvironment(containerVar: String = "ARON_BLOB_CONTAINER_MEDIA", defaultContainer: String = "media", env: (String) -> String? = System::getenv): AzureBlobSasIssuer? {
             val account = env("ARON_BLOB_ACCOUNT")?.trim()?.takeIf { it.isNotEmpty() } ?: return null
-            val container = env("ARON_BLOB_CONTAINER_MEDIA")?.trim()?.takeIf { it.isNotEmpty() } ?: "media"
+            val container = env(containerVar)?.trim()?.takeIf { it.isNotEmpty() } ?: defaultContainer
             val credential: TokenCredential = DefaultAzureCredentialBuilder()
                 .apply { env("AZURE_CLIENT_ID")?.takeIf { it.isNotBlank() }?.let { managedIdentityClientId(it) } }
                 .build()

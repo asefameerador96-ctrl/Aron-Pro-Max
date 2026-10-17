@@ -55,6 +55,15 @@ abstract class ReportFixture {
     /** Config values a test overrides on top of the registry defaults. */
     protected open val configOverrides: Map<String, JsonElement> = emptyMap()
 
+    /** In-memory export store; tests read the files from here. */
+    protected val storedExports = java.util.concurrent.ConcurrentHashMap<String, ByteArray>()
+    protected open val exportStore: ExportStore = object : ExportStore {
+        override fun put(path: String, bytes: ByteArray) { storedExports[path] = bytes }
+        override fun readUrl(path: String, expiresAt: Instant) = "https://exports.test/$path?se=$expiresAt"
+    }
+    protected lateinit var exports: ExportJobService
+    protected val testClock = AronClock { Instant.parse("2026-10-04T12:00:00Z") }
+
     private val config = object : ServerConfig {
         private val d = RegistryDefaults()
         override fun value(key: String): JsonElement = configOverrides[key] ?: if (key == "cfg.api.rl.user_per_min") JsonPrimitive(5000) else d.value(key)
@@ -90,7 +99,9 @@ abstract class ReportFixture {
     protected fun app(block: suspend ApplicationTestBuilder.() -> Unit) = testApplication {
         val clock = AronClock { Instant.parse("2026-10-04T12:00:00Z") }
         val reach = ReachResolver { uid, _, _, _ -> reaches.getValue(uid) }
-        val deps = ReportDeps(fresh.db, ReportEngine(fresh.db, config, clock, handlers), reach, AuthGuardDeps(AccessTokenVerifier(TestTokens.keys), ScopeVersionLookup { 1 }, config), clock)
+        val engine = ReportEngine(fresh.db, config, clock, handlers)
+        exports = ExportJobService(fresh.db, engine, reach, exportStore, clock)
+        val deps = ReportDeps(fresh.db, engine, reach, AuthGuardDeps(AccessTokenVerifier(TestTokens.keys), ScopeVersionLookup { 1 }, config), clock, exports, exports)
         application {
             installAronPlatform(PlatformContext(config = RegistryDefaults(), generation = { "6f1c2b0e-8d1a-4c5e-9f3a-2b7d4e6a8c10" }))
             routing { route("/v1") { reportRoutes(deps); mount(this, clock, reach, deps.guard) } }

@@ -1,5 +1,14 @@
 # backend-reports lane status
 
+## HANDOVER (2026-10-15, session 3 recycling early: queue done; context was far below 400k)
+- **Full `:backend:analytics:test` on 26f5bef0: GREEN, 134 tests, 0 failed** (19 min, local PG16; a fresh container needs the `aron_test` role and database: `CREATE ROLE aron_test LOGIN SUPERUSER PASSWORD 'aron_test'; CREATE DATABASE aron_test OWNER aron_test;` and `ARON_TEST_PG_URL=jdbc:postgresql://127.0.0.1:5432/aron_test?user=aron_test&password=aron_test`). ContractDriftTest green; slice and WireDtos checks pass; not run locally: AuthDtoContractTest (no Android SDK here), redocly lint. No contract change since.
+- **F-AMO-044 zone-wide AMO bundle**: done (`SupervisorBundle.kt`, `BundleService`, 28c0fe0 + ea71d69). Opus checker: 4 confirmed defects, all fixed with its tests kept (`AmoZoneBundleCheckerTest`). Decisions D-REP-09, D-REP-11. The checker's fixes were not re-reviewed.
+- **F-SYS-067 bundle pre-generation**: generation, refresh, coverage check done (`BundlePreGeneration.kt`, worker); Sonnet checker: 4 confirmed defects, all fixed with its tests kept (`BundlePreGenerationCheckerTest`). **Serving stored bodies is NOT built** (no `bundle_user` dirty producers; infra `bundles` container): `docs/requests/backend-reports-bundle-serve-snapshot.md`. So the row's "morning download serves it" stays open; ETag and 304 work as before. The 8,500-bundle load budget is N-058's.
+- **F-AMO-039**: backend-core's `DayStates` already covers it; added `anAmoVisitOnAnSrRouteLeavesTheRouteDayAlone`. Its dw projection (`dw.fact_supervisor_day`) and the dw copy of `entered_by_user_id` wait on `docs/requests/backend-reports-db-entered-by.md` (db not yet answered).
+- **Checked** (independent checker finished, findings fixed): everything up to `403e6146`, plus F-AMO-044 and F-SYS-067 as above. **Not independently re-reviewed**: c58d9beb, 575c0792, 80565e8b (older checker regression tests and fixes) and the fix commits of this session.
+- Old known gaps still open: PDF export (D-REP-06); other lanes' list endpoints must call `PiiReadBudget.charge`; export-job poison guard needs `report_export.attempts` (D-REP-08); memo-gap lost block tail (D-REP-05).
+- Traps: `--offline` fails in a fresh container (no Gradle cache); a `//` comment inside a chained call swallows the rest of the line; JDBI reads `[1:20]` in SQL as a named parameter; a bundle test's version numbers (`<date>:<seq>`) are per user and can coincide.
+
 Updated 2026-10-15. Released by the lead; wall-clock test offenders fixed (scan: 0 in analytics); audit writes now go through `AuditLog.write` (tracking action, quarantine resolve, report export) with the actor and `after.scope` recorded and tested.
 
 ## Done (pushed to INT)

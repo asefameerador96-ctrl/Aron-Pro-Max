@@ -31,7 +31,8 @@ export default async function UserScopePage({ params }: { params: Promise<{ id: 
   const options: Record<string, NodeOption[]> = {};
   await Promise.all(LEVELS.filter((l) => allowed.includes(l)).map(async (l) => void (options[l] = await loadRefOptions({ path: "/v1/admin/geo/{level}", params: { level: l }, label: ["code", "name"] }, session.at))));
   const label = (type: string, nodeId: number) => (type === "national" ? t(locale, "scope.national") : (options[type]?.find((o) => o.value === String(nodeId))?.label ?? String(nodeId)));
-  const current: ScopeNodeRow[] = scope.data.nodes.filter((n) => !n.valid_to || n.valid_to >= businessDate()).map((n) => ({ type: n.node_type, id: n.node_id, label: label(n.node_type, n.node_id), validTo: n.valid_to ?? null }));
+  // valid_to is the EXCLUSIVE end: a node ending today is already out of scope.
+  const current: ScopeNodeRow[] = scope.data.nodes.filter((n) => !n.valid_to || n.valid_to > businessDate()).map((n) => ({ type: n.node_type, id: n.node_id, label: label(n.node_type, n.node_id), validTo: n.valid_to ?? null }));
   // ADMIN cannot write ADMIN-role users (docs/24 s8.5).
   const canWrite = ["ADMIN", "SUPERADMIN"].includes(session.user.role) && (session.user.role === "SUPERADMIN" || !["ADMIN", "SUPERADMIN"].includes(user.data.role));
   return (

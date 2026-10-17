@@ -4,6 +4,7 @@ import type { Problem } from "@/contract/types";
 import { authenticate, problemResponse } from "@/lib/api/guard";
 import { rawRequest } from "@/lib/api/raw";
 import { codePoints, REASON_MAX, REASON_MIN } from "@/components/admin/crud/validation";
+import { paperEntryEnabled } from "./features";
 import { opRules } from "./op-rules";
 import { fillPath, isOpKey, isTeamOpKey, OPS, TEAM_OPS, type OpDef, type OpKey } from "./ops";
 
@@ -27,6 +28,7 @@ export async function handleOp(req: NextRequest, table: "admin" | "team" = "admi
   const def: OpDef = table === "admin" ? OPS[input.op as OpKey] : TEAM_OPS[input.op as keyof typeof TEAM_OPS];
   if (!def.roles.includes(auth.session.user.role)) return auth.finish(problemResponse(403, "ERR_FORBIDDEN"));
 
+  if (input.op === "paper-backfill.create" && !paperEntryEnabled()) return auth.finish(problemResponse(404, "ERR_NOT_FOUND")); // dark until switched on
   const path = fillPath(def.path, isPlainObject(input.params) ? input.params : undefined);
   if (path === null) return auth.finish(problemResponse(400, "ERR_VALIDATION", { errors: [{ pointer: "/params", code: "invalid" }] }));
 

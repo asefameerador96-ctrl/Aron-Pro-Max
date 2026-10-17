@@ -37,8 +37,9 @@ describe("definition checks (F-ADM-020)", () => {
       { extra: 1 },
     ]);
   });
-  it("rubrics: the write enum is stars_1_5, keys unique", () => {
-    bad(checkRubricWrite, rubric, [{ criteria: [{ key: "c1", label_en: "x", answer_type: "score_1_5" }] }, { criteria: [] }, { criteria: [{ key: "c1", label_en: "a", answer_type: "bool" }, { key: "c1", label_en: "b", answer_type: "bool" }] }, { kind: "x" }]);
+  it("rubrics: score_1_5 is canonical and stars_1_5 is still accepted (contract v1.3), keys unique", () => {
+    for (const answer_type of ["score_1_5", "stars_1_5"]) expect(checkRubricWrite(rubric({ criteria: [{ key: "c1", label_en: "x", answer_type }] })).body, answer_type).toBeDefined();
+    bad(checkRubricWrite, rubric, [{ criteria: [{ key: "c1", label_en: "x", answer_type: "five" }] }, { criteria: [] }, { criteria: [{ key: "c1", label_en: "a", answer_type: "bool" }, { key: "c1", label_en: "b", answer_type: "bool" }] }, { kind: "x" }]);
   });
   it("content: asset uuid, dates ordered, sequence 1..20, scope unique with ids >= 1", () => {
     bad(checkContentWrite, content, [{ asset_id: "nope" }, { valid_to: "2026-10-01" }, { sequence: 0 }, { sequence: 21 }, { assigned_scope: [{ node_type: "zone", node_id: 1 }, { node_type: "zone", node_id: 1 }] }, { assigned_scope: [{ node_type: "country", node_id: 1 }] }, { assigned_scope: [{ node_type: "zone", node_id: 0 }] }, { kind: "pdf" }]);

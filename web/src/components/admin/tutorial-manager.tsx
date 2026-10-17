@@ -18,7 +18,7 @@ export interface TutorialRow {
   status: "active" | "inactive";
   version: number;
   bytes: number | null;
-  /** Not in the contract's TutorialAdmin yet (docs/requests/web-admin-tutorial-asset-id.md): without it an edit needs a new file. */
+  /** The current file (TutorialAdmin.asset_id, contract v1.3); absent on an old row, whose edit then needs a new file. */
   asset_id?: string;
 }
 
@@ -58,6 +58,8 @@ export function TutorialManager({ items, canWrite }: { items: TutorialRow[]; can
   async function submit() {
     const e: Record<string, string> = {};
     const n = Array.from(reason.trim()).length;
+    // The stored file is kept only while the kind is unchanged (a video cannot become a manual).
+    const keepAsset = editing?.asset_id && editing.kind === kind ? editing.asset_id : "";
     if (!titleEn.trim()) e.title_en = t("error.field.required");
     else if (Array.from(titleEn.trim()).length > 120) e.title_en = t("error.field.too_long");
     if (Array.from(titleBn.trim()).length > 120) e.title_bn = t("error.field.too_long");
@@ -66,7 +68,7 @@ export function TutorialManager({ items, canWrite }: { items: TutorialRow[]; can
     if (file && file.type !== KIND_MIME[kind]) e.file = t("tut.file_type");
     else if (file && file.size > MAX_ASSET_BYTES) e.file = t("tut.file_big");
     else if (file && file.size < 1) e.file = t("error.field.invalid");
-    else if (!file && !editing?.asset_id) e.file = t("tut.file_required");
+    else if (!file && !keepAsset) e.file = t("tut.file_required");
     if (n < REASON_MIN_LENGTH) e.reason = t("admin.reason.too_short");
     else if (n > 500) e.reason = t("error.field.too_long");
     setErrors(e);
@@ -74,7 +76,7 @@ export function TutorialManager({ items, canWrite }: { items: TutorialRow[]; can
     setBusy(true);
     setMessage(null);
     try {
-      let assetId = editing?.asset_id ?? "";
+      let assetId = keepAsset;
       if (file) {
         setMessage({ ok: true, text: t("tut.uploading") });
         assetId = crypto.randomUUID();
