@@ -63,15 +63,19 @@
 - Heads sent as `checked`: f5976bf6.
 
 ## In progress
-- **N-061 (T1)**: report `docs/status/qa-n061-security-review.md`; the Opus checker is running.
-  - Scope harness: every debt read is judged; 0 leaks. The blind list shrank from 48 to 35 lines, global or
-    per-caller only.
+- **N-061 (T1)**: report `docs/status/qa-n061-security-review.md`.
+  - The first Opus check failed; its findings are fixed.
+  - The re-check passes the code and found two wrong report claims, now fixed.
+  - The APK half stays partial and open: the CI-built APKs are not scanned yet.
+  - Scope harness: 0 leaks. The blind list is down from 48 to 33 lines: 22 global, 8 per-caller and 3 debt.
   - Dependencies: the Gradle OSV scan (`tools/ci/gradle-lockfile.py`) found Jackson 2.22.0 in the backend, 5 High.
     Requests went to backend-core and infra.
   - APK check: `tools/ci/apk-security-check.py`, with a CI request.
   - Secrets: test fixtures only.
 - **N-059 (T2), local half**: `RestoreDrillReconciliationTest`. A restore copy plus the s4.8 re-send reconciles to 0
-  missing and 0 duplicated; the negative control loses the tail. The Sonnet checker is running.
+  missing and 0 duplicated; the negative control loses the tail.
+  - Checks: the Sonnet check failed and was fixed; the Opus re-check passes.
+  - **Not evidenced: the zone-failover half** of the acceptance (kind `failover`, HA promotion). It needs Azure.
   - Open on INT, **fixed on hardening da5f3382** (V0087 `app.mint_server_generation`, `mint-generation.sh`,
     `pitr-restore.md`); it promotes with that branch. The test calls the function once it is on INT.
   - The Azure half needs the owner's phrase in `drill.yml`.

@@ -77,7 +77,7 @@ class RestoreDrillReconciliationTest {
         val sent = mutableListOf<Sent>()
         var generationSeen: String? = null
         var lastTotals: JsonObject? = null
-        /** Records the phone re-sent after a generation change (each pass), and the statement it acted on. */
+        /** Records the phone re-sent after a generation change (each pass), and the first statement it acted on. */
         val resent = mutableListOf<Int>()
         var statement: JsonObject? = null
     }
@@ -259,7 +259,7 @@ class RestoreDrillReconciliationTest {
         // A new generation without a loss instant would leave the phone guessing: the drill treats it as a failure.
         val lostAfter = listOf("earliest_lost_after_utc", "lost_after_utc").firstNotNullOfOrNull { k -> statement[k]?.takeIf { it != JsonNull }?.jsonPrimitive?.content }
             ?: error("generation $current names no lost_after_utc: $statement")
-        ph.statement = statement
+        if (ph.statement == null) ph.statement = statement // the first pass's statement is the one asserted
         val again = ph.sent.filter { it.ackedAt > Instant.parse(lostAfter) }.map { it.record }
         ph.resent += again.size
         if (again.isNotEmpty()) deliver(ph, again, resend = true)

@@ -82,7 +82,7 @@ class ScopeLeakAcrossEndpointsTest {
     private val nationalSees = sortedMapOf<String, Boolean>()
     /** Counters of one probe run (the main run's are kept apart from the seeded test's). */
     class Stats {
-        var calls = 0; var otherIdCalls = 0; var refusedOtherIdCalls = 0; val scopedSuccess = sortedMapOf<String, Int>()
+        var calls = 0; var otherIdCalls = 0; var refusedOtherIdCalls = 0; var scopeRefusedOtherIdCalls = 0; val scopedSuccess = sortedMapOf<String, Int>()
         /** Per operation and caller, every variant's status (`own:200 other-path:403`): the ledger in build/scope-ledger.tsv. */
         val ledger = sortedMapOf<String, java.util.TreeMap<String, MutableList<String>>>()
     }
@@ -144,6 +144,9 @@ class ScopeLeakAcrossEndpointsTest {
             fun rowId(sql: String) = h.createQuery(sql).mapTo(Long::class.java).findOne().orElse(null)?.toString()
             rowId("SELECT max(id) FROM app.entry_unlock WHERE reason LIKE 'LKX%'")?.let { world.otherPathValues["unlock_id"] = it }
             rowId("SELECT max(id) FROM app.dues_adjustment WHERE reason LIKE 'LKX%'")?.let { world.otherPathValues["adjustment_id"] = it }
+            // A missing value would silently drop the other-path probe of its writes.
+            val aimedAt = setOf("request_uuid", "task_uuid", "leave_uuid", "feedback_uuid", "unlock_id", "adjustment_id")
+            check(world.otherPathValues.keys.containsAll(aimedAt)) { "other-division rows missing for ${aimedAt - world.otherPathValues.keys}" }
         }
         check(otherIds.values.all { it.isNotEmpty() } && otherUuids.isNotEmpty()) { "the other division is incomplete: $otherIds, ${otherUuids.size} records" }
         // Ids of the two divisions never coincide per kind, so an id hit is never the caller's own row.
@@ -351,6 +354,8 @@ class ScopeLeakAcrossEndpointsTest {
                     if (variant != "own") {
                         st.otherIdCalls++
                         if (r.status.value == 403 || r.status.value == 404) st.refusedOtherIdCalls++
+                        // A refusal for scope, not for role: out of scope, or not found (the row is hidden).
+                        if (r.status.value == 404 || text.contains("ERR_OUT_OF_SCOPE")) st.scopeRefusedOtherIdCalls++
                         if (!read && r.status.value in 200..299) found += Leak(op.method, shape, c.user, variant, "${r.status.value} a write naming the other division succeeded: ${text.take(160)}")
                     }
                 }
@@ -446,7 +451,7 @@ class ScopeLeakAcrossEndpointsTest {
             },
         )
         File("build/scope-leak-endpoints.txt").writeText(
-            "operations=${ops.size} calls=${stats.calls} other_id_calls=${stats.otherIdCalls} refused_403_404=${stats.refusedOtherIdCalls} " +
+            "operations=${ops.size} calls=${stats.calls} other_id_calls=${stats.otherIdCalls} refused_403_404=${stats.refusedOtherIdCalls} refused_for_scope=${stats.scopeRefusedOtherIdCalls} " +
                 "other_division_records=$otherRecords national_sees=${nationalSees.count { it.value }}/${nationalSees.size} aggregate_pairs=${nationalNumbers.size} dashboard_top_views=${nationalTop.size} scoped_2xx_ops=${stats.scopedSuccess.size}\n" +
                 leaks.joinToString("\n") { "${it.key}  ${it.detail}" } + "\n# reads the national control cannot see the other division in:\n" +
                 nationalSees.filterValues { !it }.keys.joinToString("\n") + "\n",
@@ -480,6 +485,8 @@ class ScopeLeakAcrossEndpointsTest {
         assertTrue(stats.calls > 500, "calls ${stats.calls}")
         assertTrue(stats.otherIdCalls > 200, "other-division calls ${stats.otherIdCalls}")
         assertTrue(stats.refusedOtherIdCalls > 50, "other-division calls refused with 403/404: ${stats.refusedOtherIdCalls}")
+        // Role refusals alone would pass the line above: the scope checks themselves must have refused calls too.
+        assertTrue(stats.scopeRefusedOtherIdCalls > 30, "other-division calls refused for scope (out of scope or 404): ${stats.scopeRefusedOtherIdCalls}")
         assertTrue(stats.scopedSuccess.size > 30, "own-scope reads answered 2xx on only ${stats.scopedSuccess.size} operations")
         // The aggregate surface is judged: the dashboards answer the national control for both divisions.
         val dashboards = nationalSees.filterKeys { it.startsWith("GET /v1/dashboards/") }

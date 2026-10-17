@@ -59,7 +59,8 @@ may only shrink.
   query parameter**, e.g. `web-entry/route-day?route_id=` and `day/final-submit/preview?zone_id=`. It also puts the
   other division's record uuids and row ids into these paths:
   - `outlet-requests/{request_uuid}`, `tasks/{task_uuid}/cancel`, `leave/{leave_uuid}/decision`,
-    `day/exceptions/{exception_uuid}/decision`, `feedback/{feedback_uuid}`;
+    `feedback/{feedback_uuid}`. (`day/exceptions/{exception_uuid}/decision` is in the contract but not served, so it
+    is never probed.)
   - `admin/entry-unlocks/{unlock_id}/expire`, `admin/dues-adjustments/{adjustment_id}/decision`.
   The own call keeps its sample value.
 - **Config selectors.** `scope_type=zone&scope_id=` is probed on the config tools: blast-radius, whatif, density and
@@ -83,8 +84,12 @@ variant, finds no leak. The first Opus checker's findings are fixed or listed be
   - `admin/route-assignments/{id}/end`, `risk-signals/{signal_id}/review`, `admin/quarantine/{id}/...`;
   - geo writes;
   - the `planner_user_id` and `assignee_user_id` selectors.
-- `admin/enrolment-tokens`, `admin/dues-adjustments` and `admin/entry-unlocks` are readable by national roles only.
-  "Judged" there says no scoped caller reached them, not that their zone filters work.
+- `admin/dues-adjustments` and `admin/entry-unlocks` are readable by national roles only. "Judged" there says no
+  scoped caller reached them, not that their zone filters work. `admin/enrolment-tokens` is national-only too, and it is
+  on the blind list with that reason.
+- `report-exports/{export_id}` (per-caller) is never tried with another user's export id.
+- On the uuid write paths (task cancel, leave decision, outlet-request verify, approve and reject) every scoped call,
+  own included, answers 403 or 404. Nothing shows that the seeded rows are reachable through those lookups.
 - No positive "own" check on the uuid paths: a server that answered 404 to everyone would pass them.
 
 ## 2. Secrets

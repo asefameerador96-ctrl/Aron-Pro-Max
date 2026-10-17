@@ -58,6 +58,9 @@ class Modules(unittest.TestCase):
             self.assertIn("com.fasterxml.jackson.core:jackson-databind:2.22.0=runtimeClasspath", lines)
             self.assertEqual(sorted(lines), lines)
             self.assertEqual(2, gradlelock.main([str(out), str(tree), str(empty)]))
+            failed = Path(d) / "f.txt"
+            failed.write_text(TREE + "+--- org.example:missing:1.0 FAILED\n", encoding="utf-8")
+            self.assertEqual(2, gradlelock.main([str(out), str(failed)]), "a FAILED module stops the run")
 
 
 if __name__ == "__main__":
