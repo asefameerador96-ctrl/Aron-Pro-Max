@@ -15,7 +15,9 @@ class AuditWriteRedactionTest {
         val insert = Regex("""(?i)(insert\s+into|copy)\s+("?app"?\.)?"?audit_log\b""")
         val sources = root.resolve("backend").listFiles()!!.filter { it.isDirectory }.flatMap { m ->
             m.resolve("src/main").takeIf { it.isDirectory }?.walkTopDown()?.filter { it.isFile && it.extension in setOf("kt", "sql") }?.toList().orEmpty()
-        } + listOf("db/migrations", "db/seed").flatMap { d -> root.resolve(d).walkTopDown().filter { it.isFile && it.extension == "sql" }.toList() }
+        } + listOf("db/migrations", "db/seed", "db/src/main", "infra", "tools", "scripts").flatMap { d ->
+            root.resolve(d).walkTopDown().filter { it.isFile && it.extension in setOf("sql", "kt", "py", "sh", "ps1", "bicep") }.toList()
+        }
         assertTrue(sources.size > 100, "the scan found the sources (${sources.size})")
         val writers = sources.filter { insert.containsMatchIn(it.readText()) }.map { it.relativeTo(root).path }
         assertEquals(listOf("backend/platform/src/main/kotlin/com/aktcl/aron/backend/platform/AuditLog.kt"), writers, "only AuditLog.write inserts audit rows")
