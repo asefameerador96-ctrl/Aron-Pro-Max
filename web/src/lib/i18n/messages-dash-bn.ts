@@ -378,4 +378,5 @@ export const dashBn: Record<keyof typeof dashEn, string> = {
   "drill.title.calls": "কল ও স্ট্রাইক রেট",
   "drill.title.login": "লগইন ও আপলোডের অবস্থা",
   "table.more": "আরও {n}টি সারি দেখান",
+  "error.ERR_WEB_MFA_RESIGNIN": "অথেনটিকেটর কোড দিয়ে আবার সাইন ইন করুন।",
 };

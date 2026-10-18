@@ -2,6 +2,8 @@
 <resources>
     <string name="stk_title">স্টক</string>
     <string name="stk_col_sku">এসকেইউ</string>
+    <string name="stk_col_category">ক্যাটাগরি</string>
+    <string name="stk_col_total_issue">মোট ইস্যু</string>
     <string name="stk_col_issue">ইস্যু</string>
     <string name="stk_col_loaded">মোট লোড</string>
     <string name="stk_col_stock">স্টক</string>
@@ -10,7 +12,6 @@
     <string name="stk_more">বেশি</string>
     <string name="stk_totals">ক্যাটাগরি অনুযায়ী মোট</string>
     <string name="stk_group">%1$s · %2$s</string>
-    <string name="stk_dock_chip">%1$s %2$s %3$s</string>
     <string name="stk_loaded_today">আজ লোড %1$s %2$s</string>
     <string name="stk_stock_unit">স্টক · %1$s</string>
     <string name="stk_unit_stick">স্টিক</string>

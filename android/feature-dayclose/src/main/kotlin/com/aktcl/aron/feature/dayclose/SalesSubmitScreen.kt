@@ -64,6 +64,7 @@ import com.aktcl.aron.core.ui.AronBanner
 import com.aktcl.aron.core.ui.AronBarAction
 import com.aktcl.aron.core.ui.AronBottomBar
 import com.aktcl.aron.core.ui.AronCard
+import com.aktcl.aron.core.ui.AronConfirmDialog
 import com.aktcl.aron.core.ui.AronEasing
 import com.aktcl.aron.core.ui.AronIcons
 import com.aktcl.aron.core.ui.AronIllustration
@@ -126,9 +127,10 @@ fun SalesSubmitScreen(
     val c = LocalAronColors.current
     val bn = LocalAppLanguage.current == AppLanguage.BN
     var hold by rememberSaveable { mutableStateOf(false) }
+    var duesAsk by rememberSaveable { mutableStateOf(false) }
     val canSubmit = gate.enabled && progress == SubmitProgress.Idle
     // the hold step closes itself once the submit is no longer possible (an effect, not a write during composition)
-    LaunchedEffect(canSubmit) { if (hold && !canSubmit) hold = false }
+    LaunchedEffect(canSubmit) { if (!canSubmit) { hold = false; duesAsk = false } }
     val allMatched = counts.isNotEmpty() && counts.all { it.matches }
     val step = when {
         progress != SubmitProgress.Idle || gate.blocks.any { it == SubmitBlock.AlreadySubmitted } || canSubmit -> SubmitStep.Submit
@@ -151,7 +153,7 @@ fun SalesSubmitScreen(
                         enabled = SalesSubmitRules.syncButtonEnabled(online, syncing), busy = syncing, // no icon: the Bangla label needs the width (screens-sr s11)
                     ),
                     primary = AronBarAction(
-                        stringResource(if (canSubmit && !online) R.string.submit_button_offline else R.string.submit_button), { hold = true },
+                        stringResource(if (canSubmit && !online) R.string.submit_button_offline else R.string.submit_button), { if (gate.duesWarning != null) duesAsk = true else hold = true },
                         enabled = canSubmit, icon = AronIcons.Submit,
                     ),
                     reasonWhenDisabled = reason,
@@ -193,6 +195,15 @@ fun SalesSubmitScreen(
                     if (progress == SubmitProgress.Idle) Text(stringResource(R.string.submit_info), style = MaterialTheme.typography.bodySmall, color = c.textSecondary)
                 }
             }
+        }
+        if (duesAsk) {
+            // SS4: the manual asks first, in a green Yes / red No dialog; Yes opens the hold step (the close of the day stays irreversible)
+            AronConfirmDialog(
+                title = stringResource(R.string.submit_dues_title),
+                message = stringResource(R.string.submit_dues_ask, localizedNumber((gate.duesWarning?.retailersWithDues ?: 0).toLong())),
+                confirmLabel = stringResource(R.string.submit_yes), dismissLabel = stringResource(R.string.submit_no),
+                onConfirm = { duesAsk = false; hold = true }, onDismiss = { duesAsk = false },
+            )
         }
         val summary = stringResource(R.string.submit_hold_summary, localizedNumber(counts.sumOf { it.device }.toLong()))
         HoldSheet(hold, stringResource(R.string.submit_hold_title), AronIcons.Submit, summary, onCancel = { hold = false }, onConfirmed = { hold = false; onSubmit() })
