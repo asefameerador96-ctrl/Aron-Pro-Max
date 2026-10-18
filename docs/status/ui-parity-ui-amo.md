@@ -11,7 +11,7 @@ Existing Aron: red-to-purple header with white avatar and gear, white page, 4-co
 ## Planned composition per screen (kit names from PARITY-SPEC section 2)
 | # | Screen (host) | Manual | Composition | Status |
 |---|---|---|---|---|
-| 1 | Home (`AmoApp`, feature-home `RoleHomeContent`) | S-06 | AronHomeHeader (`AMO - name (user)`, territory + date, gear) + AronTileGrid of the AMO tiles (8 hubs as built; deferred Astha hidden); no glass cards; Sunlight toggle moves to Settings | NOT STARTED |
+| 1 | Home (`AmoApp`; AMO's OWN Home composed in feature-amo, NOT feature-home `RoleHomeContent`, per lead 2026-10-18) | S-06 | AronHomeHeader (`AMO - name (user)`, territory + date, gear) + AronTileGrid of the AMO tiles (8 hubs as built; deferred Astha hidden); no glass cards; Sunlight toggle moves to Settings | NOT STARTED |
 | 2 | Shell of every screen (`AronScreen`/`AronTopBar` in all hosts) | all | AronScaffold + AronTopBar (gradient, centered icon + title) | NOT STARTED |
 | 3 | Live dashboard + filter (`LiveDashboardScreens`) | S-29 | AronTopBar; filter pill row; white cards titled Sales / Strike rate / Geo / Login with big numbers; purple header on the sales card; gradient Filter button | NOT STARTED |
 | 4 | Verify list + form (`OutletVerifyScreens`) | S-33/34/36-39 | white row cards with request type icon; form in white cards, dark-grey section headers, chips for sub-channel, geo-class chips, gradient Save, grey Cancel | NOT STARTED |
@@ -27,6 +27,6 @@ Existing Aron: red-to-purple header with white avatar and gear, white page, 4-co
 | 14 | Perf assessment (`PerfAssessmentScreen`) | S-22 | white cards, chips per question, gradient Save | NOT STARTED |
 | 15 | Reports: STD memo, sales summary (`ReportScreens`) | S-55-58 | SummaryTable (dark header, purple SKU names, subtotals, totals block), gradient Print | NOT STARTED |
 | 16 | Sale hub, Stock, STD/Memo, Sales summary, Sales submit (`app-amo` hosts over SR kit screens) | S-45/46/50/51 | SR screens restyled by lanes ui-sr-a/b; AMO only the hub list as AronTileGrid | NOT STARTED |
-| 17 | Settings (`RoleSettingsContent`, feature-home) | S-59 | shared with SR/TSO (home owner); AMO passes Sunlight row | NOT STARTED |
+| 17 | Settings (AMO's OWN Settings in feature-amo; feature-home is ui-sr-a's, not edited) | S-59 | kit top bar + white cards: language, Sunlight, PDA to Support, update, logout | NOT STARTED |
 
 Every row: layout from manual, needs owner screenshot.
