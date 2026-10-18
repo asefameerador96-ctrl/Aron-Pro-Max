@@ -72,7 +72,7 @@ class ApiWorld(
         fresh.db.jdbi.useHandle<Exception> { h ->
             h.createUpdate("UPDATE app.app_user SET password_hash = :h WHERE pilot").bind("h", PasswordHasher().hash(password)).execute()
             for ((k, v) in listOf("cfg.api.rl.device_per_min" to "100000", "cfg.api.rl.user_per_min" to "100000", "cfg.auth.mfa_required_roles" to if (conformance) "[\"DMO\"]" else "[]")) {
-                h.execute("INSERT INTO app.cfg_value (key, scope_type, scope_id, value, effective_from, config_version, reason) SELECT '$k', 'global', 0, '$v'::jsonb, now() - interval '1 day', max(config_version), 'qa harness' FROM app.cfg_version")
+                h.execute("INSERT INTO app.cfg_value (key, scope_type, scope_id, value, effective_from, config_version, reason) SELECT '$k', 'global', 0, '$v'::jsonb, TIMESTAMPTZ '$CFG_FROM', max(config_version), 'qa harness' FROM app.cfg_version")
             }
             h.execute("INSERT INTO app.app_user (username, full_name, role, designation, employee_code, locale, home_zone_id, pilot, must_change_password) SELECT 'qa9001', 'QA Throwaway', role, designation, 'QA9001', locale, home_zone_id, false, false FROM app.app_user WHERE username = 'sr1001'")
             h.execute(
@@ -174,7 +174,7 @@ class ApiWorld(
                 "'photos/$BUSINESS_DATE/$SR_PHONE/$STORED_PHOTO.jpg', TIMESTAMPTZ '${BUSINESS_DATE}T03:00:00Z', 'stored', now(), 1000, decode(repeat('ab', 32), 'hex') FROM app.app_user u WHERE u.username = 'sr1001'",
         )
         // A paged bundle section: the threshold at its floor (500) and 501 open tasks for sr1001.
-        h.execute("INSERT INTO app.cfg_value (key, scope_type, scope_id, value, effective_from, config_version, reason) SELECT 'cfg.bundle.page_threshold_rows', 'global', 0, '500'::jsonb, now() - interval '1 day', max(config_version), 'qa harness' FROM app.cfg_version")
+        h.execute("INSERT INTO app.cfg_value (key, scope_type, scope_id, value, effective_from, config_version, reason) SELECT 'cfg.bundle.page_threshold_rows', 'global', 0, '500'::jsonb, TIMESTAMPTZ '$CFG_FROM', max(config_version), 'qa harness' FROM app.cfg_version")
         h.execute(
             "INSERT INTO app.task (client_uuid, family_uuid, business_date, user_id, captured_at, config_version, task_type_code, assignee_user_id, title, source, status) " +
                 "SELECT gen_random_uuid(), gen_random_uuid(), DATE '$BUSINESS_DATE', a.id, TIMESTAMPTZ '${BUSINESS_DATE}T03:00:00Z', 0, 'general', s.id, 'QA paging task ' || g, 'online', 'ongoing' " +
@@ -391,6 +391,12 @@ class ApiWorld(
         )
         /** Body fields the scope probes fill even when optional (single ids and id lists). */
         val ID_FIELD = Regex("^[a-z_]*_ids?$")
+        /**
+         * effective_from of the harness's config overrides: a fixed instant before every clock the suites use (the fixed
+         * test clocks around 2027-01-03, and the real time of the run). `now() - 1 day` stopped activating once the real
+         * date passed the fixed clock, because the resolver compares against the API clock (a date bomb).
+         */
+        const val CFG_FROM = "2026-01-01T00:00:00Z"
         const val SR_PHONE = "00000000-0000-4000-8000-000000000001"
         const val THROWAWAY_PHONE = "00000000-0000-4000-8000-000000000009"
         const val APP_VERSION = "1.0.9+9"
