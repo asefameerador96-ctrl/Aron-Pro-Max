@@ -47,6 +47,7 @@ object FsTags {
     const val ERRORS = "tso_fs_errors"
     const val UNAVAILABLE = "tso_fs_unavailable"
     const val WARNINGS = "tso_fs_warnings"
+    fun level(level: Int, id: Long) = "tso_fs_level_${level}_$id"
     fun zone(id: Long) = "tso_fs_zone_$id"
     fun route(id: Long) = "tso_fs_route_$id"
     fun ff(id: Long) = "tso_fs_ff_$id"
@@ -57,7 +58,8 @@ object FsTags {
 fun FinalSubmitScreen(state: FinalSubmitState, onBack: () -> Unit, modifier: Modifier = Modifier) {
     val ui by state.ui.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
-    LaunchedEffect(state) { state.loadZones() }
+    LaunchedEffect(state) { state.loadZones(); state.loadCascade() }
+    val bangla = androidx.compose.ui.platform.LocalConfiguration.current.locales[0].language == "bn"
     val phase = ui.phase
     val busy = phase is FsPhase.Loading || phase is FsPhase.Submitting
     if (phase is FsPhase.AlreadySubmitted) {
@@ -111,8 +113,16 @@ fun FinalSubmitScreen(state: FinalSubmitState, onBack: () -> Unit, modifier: Mod
             } else if (phase !is FsPhase.Done) {
                 if (ui.zonesLoaded && ui.zones.isEmpty()) AronBanner(stringResource(R.string.tso_fs_no_zones), kind = BannerKind.Warning)
                 if (!ui.zonesLoaded) AronBanner(stringResource(R.string.tso_mc_unavailable), Modifier.testTag(FsTags.UNAVAILABLE), kind = BannerKind.Offline)
+                if (ui.cascade) {
+                    val labels = listOf(R.string.tso_fs_level_wing, R.string.tso_fs_level_division, R.string.tso_fs_level_territory, R.string.tso_fs_level_house, R.string.tso_mc_zone_label)
+                    ui.options.toSortedMap().forEach { (lv, nodes) ->
+                        AronSectionLabel(stringResource(labels[lv]))
+                        nodes.forEach { n -> AronListRow(n.label(bangla), Modifier.testTag(FsTags.level(lv, n.id)), onClick = { scope.launch { state.pickLevel(lv, n.id) } }, trailing = if (ui.picks[lv] == n.id) "✓" else null, flat = true) }
+                    }
+                } else {
                 AronSectionLabel(stringResource(R.string.tso_mc_zone_label))
                 ui.zones.forEach { z -> AronListRow(zoneName(z), Modifier.testTag(FsTags.zone(z)), onClick = { state.pickZone(z) }, trailing = if (z == ui.zoneId) "✓" else null, flat = true) }
+                }
                 AronSectionLabel(stringResource(R.string.tso_fs_sales_date_label))
                 // read-only: the sales date is the Dhaka business date (docs/15 F-TSO-010)
                 Text(localizedDigits(ui.date), Modifier.testTag(FsTags.DATE), style = MaterialTheme.typography.titleSmall)
