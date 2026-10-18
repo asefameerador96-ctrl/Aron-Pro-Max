@@ -205,4 +205,8 @@ class TsoScreenshotTests {
     @Test @Config(qualifiers = "bn-w360dp-h800dp") fun dash_tso_dashboard_bn() = kitShot("tso_dashboard_bn", AppLanguage.BN, "ড্যাশবোর্ড") { TsoDashboardContent(TsoDashboardState(TsoDashboards.summary(tsoJson), tsoLogin, true, TsoFailure.NONE, businessDate = "2026-10-17"), "আমার সব জোন", dashMoney(true), {}, {}, {}, {}) }
     @Test @Config(qualifiers = "w360dp-h800dp") fun dash_tso_dashboard_empty_offline_en() = kitShot("tso_dashboard_empty_offline_en", AppLanguage.EN, "Dashboard") { TsoDashboardContent(TsoDashboardState(null, null, false, TsoFailure.OFFLINE, loginFailure = TsoFailure.OFFLINE, businessDate = "2026-10-17"), "All my zones", dashMoney(false), {}, {}, {}, {}) }
     @Test @Config(qualifiers = "bn-w360dp-h800dp") fun dash_tso_dashboard_sunlight_bn() = kitShot("tso_dashboard_sunlight_bn", AppLanguage.BN, "ড্যাশবোর্ড", sunlight = true) { TsoDashboardContent(TsoDashboardState(TsoDashboards.summary(tsoJson), tsoLogin, false, TsoFailure.NONE, businessDate = "2026-10-17"), "আমার সব জোন", dashMoney(true), {}, {}, {}, {}) }
+
+    // ---- menu hubs (sr/outlet-menu.png look)
+    @Test fun my_call_hub_bn() = shot("tso_my_call_hub_bn", AppLanguage.BN) { com.aktcl.aron.feature.tso.mycall.MyCallHub({}, {}, {}) }
+    @Test fun periphery_hub_en() = shot("tso_periphery_hub_en", AppLanguage.EN) { com.aktcl.aron.feature.tso.periphery.PeripheryHub({}, {}, {}) }
 }

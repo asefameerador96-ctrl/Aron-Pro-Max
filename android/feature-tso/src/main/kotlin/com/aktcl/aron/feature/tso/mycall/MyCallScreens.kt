@@ -91,8 +91,12 @@ private fun OutletCard(o: PlanOutlet, bangla: Boolean, modifier: Modifier = Modi
 fun MyCallHub(onSetPlan: () -> Unit, onVisitPlan: () -> Unit, onBack: () -> Unit, modifier: Modifier = Modifier) {
     TsoFrame(stringResource(R.string.tso_drawer_my_call), onBack, modifier, tile = com.aktcl.aron.feature.home.RoleHomes.TsoTile.MY_CALL) {
         Column(Modifier.fillMaxSize().padding(AronTokens.Space.Screen), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.M)) {
-            AronListRow(stringResource(R.string.tso_mc_visit_plan), Modifier.fillMaxWidth().testTag(MyCallTags.VISIT_PLAN), subtitle = stringResource(R.string.tso_mc_visit_plan_sub), onClick = onVisitPlan)
-            AronListRow(stringResource(R.string.tso_mc_set_plan), Modifier.fillMaxWidth().testTag(MyCallTags.SET_PLAN), subtitle = stringResource(R.string.tso_mc_set_plan_sub), onClick = onSetPlan)
+            com.aktcl.aron.feature.tso.TsoMenuGrid(
+                listOf(
+                    com.aktcl.aron.feature.tso.TsoMenuTile(stringResource(R.string.tso_mc_visit_plan), "visit_plan", MyCallTags.VISIT_PLAN, onVisitPlan),
+                    com.aktcl.aron.feature.tso.TsoMenuTile(stringResource(R.string.tso_mc_set_plan), "set_plan", MyCallTags.SET_PLAN, onSetPlan),
+                ),
+            )
         }
     }
 }

@@ -44,6 +44,7 @@ internal fun tsoIcon(tileId: String?): Painter = painterResource(
         RoleHomes.TsoTile.PERIPHERY -> CoreR.drawable.aron_ic_tso_periphery
         RoleHomes.TsoTile.MY_CALL -> CoreR.drawable.aron_ic_tso_my_call
         RoleHomes.TsoTile.FEEDBACK -> CoreR.drawable.aron_ic_tso_feedback
+        "retailer" -> CoreR.drawable.aron_art_outlet
         "team" -> CoreR.drawable.aron_ic_tso_team
         "set_plan" -> CoreR.drawable.aron_ic_tso_set_plan
         "visit_plan" -> CoreR.drawable.aron_art_sales_journey

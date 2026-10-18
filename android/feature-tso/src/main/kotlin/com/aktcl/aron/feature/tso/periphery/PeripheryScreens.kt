@@ -67,8 +67,12 @@ object PeripheryTags {
 fun PeripheryHub(onTeam: () -> Unit, onRetailer: () -> Unit, onBack: () -> Unit, modifier: Modifier = Modifier) {
     TsoFrame(stringResource(R.string.tso_drawer_periphery), onBack, modifier, tile = com.aktcl.aron.feature.home.RoleHomes.TsoTile.PERIPHERY) {
         Column(Modifier.fillMaxSize().padding(AronTokens.Space.Screen), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.M)) {
-            AronListRow(stringResource(R.string.tso_pe_team), Modifier.fillMaxWidth().testTag(PeripheryTags.TEAM), subtitle = stringResource(R.string.tso_pe_team_sub), onClick = onTeam)
-            AronListRow(stringResource(R.string.tso_pe_retailer), Modifier.fillMaxWidth().testTag(PeripheryTags.RETAILER), subtitle = stringResource(R.string.tso_pe_retailer_sub), onClick = onRetailer)
+            com.aktcl.aron.feature.tso.TsoMenuGrid(
+                listOf(
+                    com.aktcl.aron.feature.tso.TsoMenuTile(stringResource(R.string.tso_pe_team), "team", PeripheryTags.TEAM, onTeam),
+                    com.aktcl.aron.feature.tso.TsoMenuTile(stringResource(R.string.tso_pe_retailer), "retailer", PeripheryTags.RETAILER, onRetailer),
+                ),
+            )
         }
     }
 }

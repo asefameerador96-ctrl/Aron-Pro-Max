@@ -17,6 +17,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -66,6 +67,20 @@ fun RowScope.TsoBottomBar(primary: TsoAction, modifier: Modifier = Modifier, sec
 @Composable
 fun TsoButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true) {
     AronSecondaryButton(text, onClick, modifier.fillMaxWidth(), enabled = enabled)
+}
+
+/** One tile of a menu screen: its label, the icon id for [tsoIcon], the test tag and what it opens. */
+data class TsoMenuTile(val label: String, val icon: String, val tag: String, val onClick: () -> Unit)
+
+/** A menu screen's tiles (sr/outlet-menu.png): grey tiles with the gradient icon over a red label, three to a row. */
+@Composable
+fun TsoMenuGrid(tiles: List<TsoMenuTile>, modifier: Modifier = Modifier) {
+    val look = LocalAronLook.current
+    com.aktcl.aron.core.ui.aron.AronTileGrid(tiles, modifier.padding(12.dp), columns = 3) { t, m ->
+        com.aktcl.aron.core.ui.aron.AronTile(
+            t.label, tsoIcon(t.icon), onClick = t.onClick, modifier = m.then(Modifier.testTag(t.tag)), menu = true, labelColor = look.tileLabelOutlet,
+        )
+    }
 }
 
 enum class TsoBannerKind { Info, Warning, Error, Success, Offline }
