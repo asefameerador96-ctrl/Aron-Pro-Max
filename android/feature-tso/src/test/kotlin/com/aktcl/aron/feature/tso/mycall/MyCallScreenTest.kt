@@ -1,5 +1,6 @@
 package com.aktcl.aron.feature.tso.mycall
 
+import com.aktcl.aron.feature.tso.a11yProblems
 import android.content.Context
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalContext
@@ -51,6 +52,7 @@ class MyCallScreenTest {
         assertEquals(false, st.ui.value.delegate)
         compose.onNodeWithTag(MyCallTags.SUBMIT).performClick(); compose.waitForIdle()
         assertEquals("answers are optional: Submit goes through", QueryResult.Submitted(false), st.ui.value.result)
+        org.junit.Assert.assertEquals("accessibility: " + compose.a11yProblems(), emptyList<String>(), compose.a11yProblems())
     }
 
     @Test fun banglaQuestionsUseTheBanglaLabelWhenThereIsOne() {
@@ -74,6 +76,7 @@ class MyCallScreenTest {
         val st = AssignTaskState(listOf(TaskType("irregular_visit", null, "Irregular Visit", 1)), PlanRoute(1, "R", "N", 10, null, null), 1, { true }, { "2026-10-17" })
         show(AppLanguage.EN) { AssignTaskScreen(st, onDone = {}) }
         compose.onNodeWithTag(MyCallTags.NO_SR).assertIsDisplayed()
+        org.junit.Assert.assertEquals("accessibility: " + compose.a11yProblems(), emptyList<String>(), compose.a11yProblems())
     }
 
     @Test fun setPlanListsZonesRoutesAndOutletsWithPhoneOnlyWhenPresent() {
@@ -88,5 +91,6 @@ class MyCallScreenTest {
         compose.onNodeWithText("DHK-344-012  ·  Salam").assertExists() // no phone without the pii claim
         compose.onNodeWithTag(MyCallTags.outlet(1)).performScrollTo().performClick(); compose.waitForIdle()
         assertTrue(1L in st.ui.value.selected)
+        org.junit.Assert.assertEquals("accessibility: " + compose.a11yProblems(), emptyList<String>(), compose.a11yProblems())
     }
 }

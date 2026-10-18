@@ -13,6 +13,7 @@ import androidx.compose.ui.res.stringResource
 import com.aktcl.aron.core.ui.AronBanner
 import com.aktcl.aron.core.ui.BannerKind
 import com.aktcl.aron.core.ui.AronEmptyState
+import com.aktcl.aron.core.ui.localizedDigits
 import com.aktcl.aron.core.ui.AronListRow
 import com.aktcl.aron.core.ui.AronNoButton
 import com.aktcl.aron.core.ui.AronSecondaryButton
@@ -86,7 +87,7 @@ fun ExceptionDetailContent(
             AronListRow(codeLabel(row.code), subtitle = listOfNotNull(groupLabel(Exceptions.group(row.code)), userName).joinToString(stringResource(R.string.amo_verify_sep)), flat = true)
             if (failed) AronBanner(stringResource(R.string.amo_exc_failed), kind = BannerKind.Error)
             AronSectionLabel(stringResource(R.string.amo_exc_evidence))
-            row.evidence.forEach { (k, v) -> AronListRow(v, subtitle = k, flat = true) }
+            row.evidence.forEach { (k, v) -> AronListRow(localizedDigits(v), subtitle = k, flat = true) }
             KitTextField(note, onNote, stringResource(R.string.amo_verify_note), Modifier.fillMaxWidth(), singleLine = false)
         }
         Column(Modifier.fillMaxWidth().padding(AronTokens.Space.Screen), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {

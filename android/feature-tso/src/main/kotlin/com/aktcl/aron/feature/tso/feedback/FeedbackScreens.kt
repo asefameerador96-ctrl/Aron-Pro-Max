@@ -146,9 +146,9 @@ fun FeedbackFormScreen(state: FeedbackFormState, onBack: () -> Unit, modifier: M
             val cats = state.categoryList
             if (cats.isNotEmpty()) AronSegmented(cats.map { it.label(bn) }, cats.indexOfFirst { it.code == form.categoryCode }, { i -> state.edit { f -> f.copy(categoryCode = cats[i].code) } })
             AronSectionLabel(stringResource(R.string.tso_fb_title_label))
-            com.aktcl.aron.feature.tso.TsoTextField(form.title, { v -> state.edit { f -> f.copy(title = v.take(MAX_TITLE * 2)) } }, Modifier.fillMaxWidth().testTag(FeedbackTags.TITLE), singleLine = true, enabled = !queued)
+            com.aktcl.aron.feature.tso.TsoTextField(form.title, { v -> state.edit { f -> f.copy(title = v.take(MAX_TITLE * 2)) } }, Modifier.fillMaxWidth().testTag(FeedbackTags.TITLE), singleLine = true, enabled = !queued, name = stringResource(R.string.tso_fb_title_label))
             AronSectionLabel(stringResource(R.string.tso_fb_description_label))
-            com.aktcl.aron.feature.tso.TsoTextField(form.description, { v -> state.edit { f -> f.copy(description = v.take(MAX_DESCRIPTION * 2)) } }, Modifier.fillMaxWidth().testTag(FeedbackTags.DESCRIPTION), minLines = 4, enabled = !queued)
+            com.aktcl.aron.feature.tso.TsoTextField(form.description, { v -> state.edit { f -> f.copy(description = v.take(MAX_DESCRIPTION * 2)) } }, Modifier.fillMaxWidth().testTag(FeedbackTags.DESCRIPTION), minLines = 4, enabled = !queued, name = stringResource(R.string.tso_fb_description_label))
             if (photosEnabled && !queued) {
                 if (form.photoUuid == null) AronTextButton(stringResource(R.string.tso_fb_add_photo), { scope.launch { state.takePhoto() } }, Modifier.testTag(FeedbackTags.PHOTO))
                 else {

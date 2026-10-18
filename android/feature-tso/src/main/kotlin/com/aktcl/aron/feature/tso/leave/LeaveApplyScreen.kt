@@ -105,7 +105,7 @@ fun LeaveApplyScreen(state: LeaveApplyState, onBack: () -> Unit, modifier: Modif
             AronSectionLabel(stringResource(R.string.tso_leave_reason))
             com.aktcl.aron.feature.tso.TsoTextField(
                 form.reason, { v -> state.edit { f -> f.copy(reason = v.take(MAX_REASON * 2)) } }, Modifier.fillMaxWidth().testTag(LeaveApplyTags.REASON),
-                minLines = 3, enabled = !queued,
+                minLines = 3, enabled = !queued, name = stringResource(R.string.tso_leave_reason),
             )
             (result as? LeaveApplyResult.Invalid)?.errors?.forEach { e ->
                 AronBanner(errorText(e), Modifier.testTag(LeaveApplyTags.ERRORS), kind = BannerKind.Error)
