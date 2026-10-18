@@ -78,7 +78,7 @@ fun Route.configAdminRoutes(d: ConfigDeps) {
             val id = q["node_id"]?.let { it.toLongOrNull()?.takeIf { v -> v >= 0 } ?: bad("query.node_id") } ?: bad("query.node_id", "required")
             val at = q["at"]?.let { runCatching { Instant.parse(it) }.getOrNull() ?: bad("query.at") } ?: d.clock.now()
             val key = call.keyParam()
-            if (p.role == Role.TSO && (key != TSO_RESOLVE_KEY || type != "zone" || q["at"] != null)) {
+            if (p.role == Role.TSO && (key != TSO_RESOLVE_KEY || type != "zone" || q["at"] != null || d.reach == null)) {   // no reach resolver: fail closed
                 throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "a TSO resolves only $TSO_RESOLVE_KEY for a zone, now")
             }
             d.reach?.reach(p.userId, p.role, p.scopeVersion, Dhaka.today(d.clock))?.let { r ->
