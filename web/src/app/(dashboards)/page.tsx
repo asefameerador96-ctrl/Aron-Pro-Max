@@ -401,6 +401,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
               summary={t(locale, "dashboard.map.summary", { srs: n(locale, srCount), outlets: n(locale, outletCount) })}
               hint={t(locale, "dashboard.map.hint")}
               showLabel={t(locale, "dashboard.map.show")}
+              empty={pins.length === 0 ? t(locale, "dashboard.map.empty") : undefined}
               map={
                 <FilteredMap
                   filterMsg={t(locale, "dashboard.map.filter")}
