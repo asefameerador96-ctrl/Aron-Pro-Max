@@ -121,6 +121,34 @@ class PaperBackfillTest {
     }
 
     @Test
+    fun aReplayAfterABackDatedPriceChangeGetsTheStoredAnswer() = testApplication {
+        // Replay first: the retry is answered from the stored entry, not re-priced into payload_conflict.
+        application { aronApi(wiring) }
+        val admin = client.webToken("admin1001")
+        val cu = uuid(); val no = memoNo()
+        val first = client.entry(admin, body(cu, no))
+        assertEquals(HttpStatusCode.OK, first.status, first.bodyAsText())
+        val net = js(first.bodyAsText())["net_mtk"]!!.jsonPrimitive.content
+        val sku = skus[0].first
+        fun price(sql: String) = fresh.db.jdbi.useHandle<Exception> { h -> h.createUpdate(sql).bind("s", sku).bind("d", java.time.LocalDate.parse(day)).execute() }
+        // A price published today, valid from before the memo's business date (the old row is closed at that date).
+        price("UPDATE app.sku_price SET valid_to = :d WHERE sku_id = :s AND price_type = 'outlet' AND valid_from < :d AND (valid_to IS NULL OR valid_to > :d)")
+        price("INSERT INTO app.sku_price (sku_id, price_type, amount_mtk, valid_from) VALUES (:s, 'outlet', ${skus[0].second + 1_000}, :d)")
+        try {
+            val again = client.entry(admin, body(cu, no))
+            assertEquals(HttpStatusCode.OK, again.status, again.bodyAsText())
+            assertEquals("replayed", js(again.bodyAsText())["status"]!!.jsonPrimitive.content)
+            assertEquals(net, js(again.bodyAsText())["net_mtk"]!!.jsonPrimitive.content)
+            assertEquals(1, count("SELECT count(*) FROM app.audit_log WHERE entity = 'paper_backfill' AND entity_id = '$cu' AND action = 'create'"))
+            // Other content under the same uuid is still a conflict.
+            assertEquals(HttpStatusCode.Conflict, client.entry(admin, body(cu, no, qty2 = 11)).status)
+        } finally {
+            price("DELETE FROM app.sku_price WHERE sku_id = :s AND price_type = 'outlet' AND valid_from = :d")
+            price("UPDATE app.sku_price SET valid_to = NULL WHERE sku_id = :s AND price_type = 'outlet' AND valid_to = :d")
+        }
+    }
+
+    @Test
     fun aMemoNumberAlreadyStoredAnswersDuplicateAndWritesNothing() = testApplication {
         application { aronApi(wiring) }
         val admin = client.webToken("admin1001")

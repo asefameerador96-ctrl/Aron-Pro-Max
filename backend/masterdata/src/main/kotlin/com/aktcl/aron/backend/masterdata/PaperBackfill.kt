@@ -101,6 +101,16 @@ private fun createBackfill(p: AronPrincipal, req: PaperBackfillIn, requestId: St
     AdminSupport.noNul("body.reason", req.reason)
     val reason = AdminSupport.reason(req.reason, "body.reason")
 
+    // Replay first: the stored entry answers before anything is looked up again, so a retry after a back-dated price
+    // change (a new price on the date) or a renamed user gets the stored answer, never payload_conflict or
+    // no_price_on_date. Other content under the same uuid is a conflict, as the ingest would answer.
+    storedEntry(d, entry)?.let { s ->
+        val asked = StoredEntry(req.memo_no, bd, req.user_id, req.route_id, req.outlet_id, req.paid_mtk, req.lines.map { Triple(it.sku_id, it.qty_base, it.line_kind) }, s.net)
+        if (asked != s) throw ApiProblem(ProblemCode.ERR_CONFLICT, "another entry is stored under this client_uuid")
+        auditOnce(d, p, entry, req, bd, s.net, s.lines.size, reason, requestId)
+        return PaperBackfillOut(entry, "replayed", s.net)
+    }
+
     val username = d.db.jdbi.withHandle<String?, Exception> { h -> h.createQuery("SELECT username FROM app.app_user WHERE id = :u").bind("u", req.user_id).mapTo(String::class.java).findOne().orElse(null) }
         ?: bad("body.user_id", "unknown_user")
     if (req.memo_no.substringBefore('-') != username) bad("body.memo_no", "memo_no_user_mismatch")
@@ -172,14 +182,30 @@ private fun createBackfill(p: AronPrincipal, req: PaperBackfillIn, requestId: St
         throw ApiProblem(problem, "the entry was not stored: $code", errors = if (problem == ProblemCode.ERR_VALIDATION) listOf(FieldError("body", code)) else emptyList())
     }
     val replayed = res.acks.all { it.status == "duplicate" }
-    // The audit row of the keying: written once per entry (a retry after a crash between ingest and audit still gets one).
+    auditOnce(d, p, entry, req, bd, net, priced.size, reason, requestId)
+    return PaperBackfillOut(memoId, if (replayed) "replayed" else "created", net)
+}
+
+/** What a stored paper entry was keyed with: the memo of the entry's uuid (entry_source manual) and its lines in order. */
+private data class StoredEntry(val memoNo: String, val bd: LocalDate, val userId: Long, val routeId: Long?, val outletId: Long, val paid: Long, val lines: List<Triple<Long, Long, String>>, val net: Long)
+
+private fun storedEntry(d: PaperBackfillDeps, entry: String): StoredEntry? = d.db.jdbi.withHandle<StoredEntry?, Exception> { h ->
+    val lines = h.createQuery("SELECT sku_id, qty_base, line_kind FROM app.memo_line WHERE memo_client_uuid = CAST(:m AS uuid) ORDER BY line_no")
+        .bind("m", entry).map { rs, _ -> Triple(rs.getLong(1), rs.getLong(2), rs.getString(3)) }.list()
+    h.createQuery("SELECT memo_no, business_date, user_id, route_id, outlet_id, paid_mtk, net_mtk FROM app.memo WHERE client_uuid = CAST(:m AS uuid) AND entry_source = 'manual'")
+        .bind("m", entry).map { rs, _ ->
+            StoredEntry(rs.getString(1), rs.getObject(2, LocalDate::class.java), rs.getLong(3), rs.getObject(4) as Long?, rs.getLong(5), rs.getLong(6), lines, rs.getLong(7))
+        }.findOne().orElse(null)
+}
+
+/** The audit row of the keying: written once per entry (a retry after a crash between ingest and audit still gets one). */
+private fun auditOnce(d: PaperBackfillDeps, p: AronPrincipal, entry: String, req: PaperBackfillIn, bd: LocalDate, net: Long, lines: Int, reason: String, requestId: String?) {
     d.db.jdbi.useTransaction<Exception> { h ->
         h.createQuery("SELECT pg_advisory_xact_lock(hashtextextended(:k, 0))").bind("k", "paper-audit:$entry").mapTo(String::class.java).findOne()
         val has = h.createQuery("SELECT EXISTS (SELECT 1 FROM app.audit_log WHERE entity = 'paper_backfill' AND entity_id = :e AND action = 'create')").bind("e", entry).mapTo(Boolean::class.java).one()
         if (!has) AuditWriter.write(h, p, "paper_backfill", entry, "create", null, buildJsonObject {
             put("memo_no", req.memo_no); put("user_id", req.user_id); put("route_id", req.route_id); put("outlet_id", req.outlet_id)
-            put("business_date", bd.toString()); put("net_mtk", net); put("paid_mtk", req.paid_mtk); put("lines", priced.size)
+            put("business_date", bd.toString()); put("net_mtk", net); put("paid_mtk", req.paid_mtk); put("lines", lines)
         }, reason, requestId)
     }
-    return PaperBackfillOut(memoId, if (replayed) "replayed" else "created", net)
 }
