@@ -1,0 +1,24 @@
+# Reviewed floating-point uses on money lines (tools/ci/money-float-scan.py). Owner: qa lane. Reviewed 2026-10-18.
+# Format: <path> | <exact offending fragment> | ok|finding[ xN] | <reason>
+# The fragment covers every float use on its line and matches exactly one float line of the file (xN: N identical lines).
+# ok      = not money arithmetic (a percentage, a font size, a quantity in a report unit) on a line that also names money
+# finding = a real float on a money path, routed to the owning lane (docs/requests/qa-money-gate-findings.md); delete when fixed
+# The list only shrinks: CEILING in the script is the most entries it may hold.
+backend/analytics/src/main/kotlin/com/aktcl/aron/backend/analytics/DashboardApi.kt | val strike_rate_pct: Double? | ok | a KPI percentage in the same DTO line as gross_mtk/net_mtk (Long)
+backend/analytics/src/main/kotlin/com/aktcl/aron/backend/analytics/ReportHandlersB.kt | round(100.0 * a.successful_calls | ok | SQL strike-rate percentage; net_mtk on the line is a bigint column
+backend/analytics/src/main/kotlin/com/aktcl/aron/backend/analytics/ReportHandlersB.kt | round(100.0 * ca.total_score | ok | SQL score percentage ("total" is a score, not money)
+backend/analytics/src/main/kotlin/com/aktcl/aron/backend/analytics/ReportHandlersB.kt | round(100.0 * br.bm | ok | SQL brand-share percentage; net_mtk on the line is a bigint column
+backend/analytics/src/main/kotlin/com/aktcl/aron/backend/analytics/ReportOutputs.kt | ws.value(r, c, p.content.toDouble()) | finding | QA-MNY-03 (backend): an Excel cell of type mtk that is not an integer string is written as a double instead of failing; money cells must stay integers
+android/core-ui/src/main/kotlin/com/aktcl/aron/core/ui/Money.kt | fun moneyAnnotated(text: String, baseSp: Float, | ok | font size (sp) of the money text style, not an amount
+android/core-ui/src/main/kotlin/com/aktcl/aron/core/ui/Money.kt | fun moneyFloorSp(baseSp: Float): Float | ok | font size (sp), not an amount
+android/core-ui/src/main/kotlin/com/aktcl/aron/core/ui/Money.kt | fun moneyCappedSp(baseSp: Float, fontScale: Float): Float | ok | font size (sp) and font scale, not an amount
+android/core-ui/src/main/kotlin/com/aktcl/aron/core/ui/Money.kt | (value.toFloat() / max) | ok | progress meter fraction (count / max), not an amount
+android/core-ui/src/main/kotlin/com/aktcl/aron/core/ui/Money.kt | ProgressBarRangeInfo(value.toFloat().coerceIn(0f, max.toFloat().coerceAtLeast(0f)), 0f..max.toFloat().coerceAtLeast(0f)) | ok | progress meter semantics range (counts), not an amount
+android/feature-amo/src/main/kotlin/com/aktcl/aron/feature/amo/LiveDashboard.kt | val strikeRatePct: Double? | ok | KPI percentage beside grossMtk/netMtk (Long)
+android/feature-amo/src/main/kotlin/com/aktcl/aron/feature/amo/Reports.kt | val cprPct: Double? | ok | KPI percentage beside netMtk (Long)
+android/feature-tso/src/main/kotlin/com/aktcl/aron/feature/tso/TsoDashboard.kt | val qtyReport: Double? | ok | a quantity in the report unit (boxes), not money; netMtk is Long
+android/feature-tso/src/main/kotlin/com/aktcl/aron/feature/tso/TsoDashboard.kt | val ratioPct: Double? | ok | a percentage; netMtk is Long
+android/feature-tso/src/main/kotlin/com/aktcl/aron/feature/tso/TsoDashboard.kt | qty_report")?.toDoubleOrNull() | ok | parses the report-unit quantity, not money
+android/feature-tso/src/main/kotlin/com/aktcl/aron/feature/tso/TsoDashboard.kt | pos.map { it * 100.0 / total } | ok | donut shares in percent of the total (display only); the amounts stay Long
+web/src/lib/admin/taka.ts | Math.round(Math.log10(scale)) | ok | the decimal count of a power-of-ten scale, not an amount
+web/src/app/(dashboards)/reports/[slug]/page.tsx | Math.ceil(result.data.total_rows / size) | ok | page count of a report ("total" is rows), not money

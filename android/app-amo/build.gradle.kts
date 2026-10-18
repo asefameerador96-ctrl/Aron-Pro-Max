@@ -55,6 +55,13 @@ android {
     buildFeatures { compose = true }
     // Only the two app languages ship (docs/24 s5.6); drops library translations and keeps the APK lean (s5.7).
     androidResources { localeFilters += listOf("en", "bn") }
+    packaging {
+        // APK size (docs/31, the +15 % gate): native libraries ship deflated and are extracted at install (about 1.2 MB less to
+        // download on a 2 GB/day pack, the same code and the same behaviour); library licence texts and build-only files are dropped.
+        jniLibs.useLegacyPackaging = true
+        resources.excludes += setOf("/META-INF/androidx/**/LICENSE.txt", "/DebugProbesKt.bin", "/META-INF/com/android/build/gradle/**")
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = true

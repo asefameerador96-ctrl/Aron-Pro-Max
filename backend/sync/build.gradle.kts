@@ -20,4 +20,8 @@ dependencies {
 tasks.withType<Test>().configureEach {
     environment("ARON_TEST_PG_URL", System.getenv("ARON_TEST_PG_URL") ?: "")
     systemProperty("aron.repoRoot", rootProject.layout.projectDirectory.asFile.absolutePath)
+    // qa money gate: MoneyFormatCorpusTest reads the shared corpus; a corpus change must re-run the tests.
+    inputs.file(rootProject.layout.projectDirectory.file("contract/fixtures/money-format-corpus.json"))
+        .withPropertyName("moneyCorpus")
+        .withPathSensitivity(PathSensitivity.RELATIVE)
 }

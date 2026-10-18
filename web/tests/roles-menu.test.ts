@@ -41,7 +41,7 @@ describe("menu is driven from data", () => {
       expect(menuFor(r).find((s) => s.group === "admin")?.items.map((i) => i.href), r).toEqual(["/admin/outlet-requests"]);
     }
     expect(menuFor("DMO").find((s) => s.group === "admin")?.items.map((i) => i.href)).toEqual(["/admin/outlet-requests", "/admin/outlet-change"]);
-    expect(menuFor("SUPPORT").find((s) => s.group === "admin")?.items.map((i) => i.href)).toEqual(["/admin", "/admin/master-data", "/admin/team", "/admin/audit"]);
+    expect(menuFor("SUPPORT").find((s) => s.group === "admin")?.items.map((i) => i.href)).toEqual(["/admin", "/admin/master-data", "/admin/team"]);
     expect(menuFor("ADMIN").map((s) => s.group)).toEqual(["main", "reports", "products", "admin", "config"]);
   });
   it("keeps the admin menu short: master-data tables hang off one hub, not one menu entry each", () => {
