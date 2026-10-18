@@ -5,6 +5,7 @@ import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { pathToFileURL } from "node:url";
 import { handleTable, type Ctx, type Row } from "./tables";
+import { LONG_BANGLA } from "./seed";
 import { seedCodeLists, seedTables, tableDefs } from "./master-seed";
 import { maskAudit } from "./audit-mask";
 import { freshConfigStore, handleConfig, type ConfigStore } from "./config";
@@ -115,9 +116,14 @@ function problem(status: number, code: ProblemCode, extra: Partial<Problem> = {}
   return { type: `urn:aron:problem:${code.toLowerCase()}`, title: code, status, code, request_id: randomUUID(), server_time: new Date().toISOString(), ...extra };
 }
 
+/** Set by POST /__mock/long-names: the seeded route, user and outlet names come back as real-length Bangla names. */
+let longNames = false;
+const longify = (text: string): string => LONG_BANGLA.reduce((acc, [from, to]) => acc.split(from).join(to), text);
+
 function send(res: ServerResponse, status: number, body: unknown, headers: Record<string, string | string[]> = {}): void {
   const isProblem = status >= 400;
-  const text = body === undefined ? "" : JSON.stringify(body);
+  const json = body === undefined ? "" : JSON.stringify(body);
+  const text = longNames && !isProblem ? longify(json) : json;
   res.writeHead(status, {
     "Content-Type": isProblem ? "application/problem+json" : "application/json; charset=utf-8",
     "X-Aron-Api": "1",
@@ -233,6 +239,10 @@ async function handle(state: State, reset: () => void, req: IncomingMessage, res
     const as = state.users[b.as];
     if (!as) return send(res, 400, problem(400, "ERR_VALIDATION"));
     audit(state, as, b.entity, b.entity_id, b.action, b.before, b.after, b.reason);
+    return send(res, 204, undefined);
+  }
+  if (path === "/__mock/long-names" && method === "POST") {
+    longNames = ((await readJson(req)) as { on?: boolean } | undefined)?.on !== false;
     return send(res, 204, undefined);
   }
   if (path === "/__mock/pii-window" && method === "POST") {
