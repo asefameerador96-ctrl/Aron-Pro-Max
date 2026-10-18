@@ -128,4 +128,6 @@
     <string name="core_ui_look_server">Server</string>
     <string name="core_ui_look_notice">Before you finish today, sync all data and submit the sales from here.</string>
     <string name="core_ui_look_sync">Sync data</string>
+    <string name="core_ui_look_discount">Discount</string>
+    <string name="core_ui_look_net_value">Discounted value</string>
 </resources>
