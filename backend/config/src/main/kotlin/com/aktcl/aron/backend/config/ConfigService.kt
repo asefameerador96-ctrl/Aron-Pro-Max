@@ -185,8 +185,10 @@ class ConfigService(private val db: Database, val resolver: ConfigResolver, priv
                 val after = if (pr.item.value !is JsonNull) pr.item.value else without(at)
                 var c = RiskClassifier.classify(pr.def, node.type, pr.item.value.takeUnless { v -> v is JsonNull }, before, after)
                 if (pr.def.key in RiskClassifier.LOOSENING_GUARDED) {
-                    // Q3/Q4 checker B1: when a window ends the node falls back to what resolves without it; judge that too.
-                    if (pr.to != null) c = maxOf(c, RiskClassifier.classify(pr.def, node.type, null, before, without(pr.to)))
+                    // Q3/Q4 checkers B1, B3: when a window ends the node falls back to what resolves without it, judged against
+                    // rows that may only start after create (the C2 delay); rather than chase every tail, a guarded change WITH
+                    // an end is C3: a temporary change of these controls always takes two SUPERADMINs.
+                    if (pr.to != null) c = 3
                     // Checker N1: the item replaces the timeline over [from, to); at every boundary of an existing row of this
                     // node inside it (a windowed loosening ending, a scheduled row starting) the value it overrides changes,
                     // so a 'same value, no end' change cannot make an approved temporary loosening permanent.

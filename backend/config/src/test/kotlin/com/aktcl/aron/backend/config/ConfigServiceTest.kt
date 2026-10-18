@@ -176,7 +176,7 @@ class ConfigServiceTest {
         clock.advance(11 * 60); svc.applyDue()
         assertEquals("applied", svc.change(tight.change_id).status)
         assertEquals(10, svc.resolve("cfg.price.max_change_pct", "global", 0, clock.now()).value.jsonPrimitive.int)
-        // B1: the same value (or a tighter one) for a window falls back to the default 15 when the window ends: C3, so one ADMIN cannot.
+        // B1: a window (same value or tighter) falls back to the default 15 when it ends: C3, so one ADMIN cannot.
         val end = clock.now().plusSeconds(3 * 3600).toString()
         assertEquals(ProblemCode.ERR_FORBIDDEN, code { svc.create(admin, pct(10, to = end), null, null) })
         assertEquals(ProblemCode.ERR_FORBIDDEN, code { svc.create(admin, pct(5, to = end), null, null) })
@@ -198,10 +198,11 @@ class ConfigServiceTest {
         assertEquals(25, svc.resolve("cfg.price.max_change_pct", "global", 0, clock.now()).value.jsonPrimitive.int)
         assertEquals(ProblemCode.ERR_FORBIDDEN, code { svc.create(admin, pct(25), null, null) }, "same value, open-ended")
         assertEquals(ProblemCode.ERR_FORBIDDEN, code { svc.create(admin, pct(25, to = clock.now().plusSeconds(12 * 3600).toString()), null, null) }, "a longer window")
-        // A shorter window inside T stays C2 (it ends back on 25 until T, then 15: no loosening).
-        val shorter = svc.create(admin, pct(20, to = clock.now().plusSeconds(3600).toString()), null, null)
-        assertEquals(2, shorter.risk_class)
-        svc.decide(admin, shorter.change_id, ConfigDecisionIn("cancel"), null)
+        // Any change of the guarded keys with an end is C3 (checker B3: its tail is judged against rows that start later),
+        // even a shorter, tighter window inside T.
+        assertEquals(ProblemCode.ERR_FORBIDDEN, code { svc.create(admin, pct(20, to = clock.now().plusSeconds(3600).toString()), null, null) }, "a shorter window")
+        // B3: a windowed tightening by one ADMIN (it could cut a row starting during the C2 delay and fall back to 15 after its end).
+        assertEquals(ProblemCode.ERR_FORBIDDEN, code { svc.create(admin, pct(5, to = clock.now().plusSeconds(48 * 3600).toString()), null, null) }, "a windowed tightening")
         // Clean up: back to the default once the window has passed.
         clock.advance(7 * 3600)
         assertEquals(15, svc.resolve("cfg.price.max_change_pct", "global", 0, clock.now()).value.jsonPrimitive.int)
