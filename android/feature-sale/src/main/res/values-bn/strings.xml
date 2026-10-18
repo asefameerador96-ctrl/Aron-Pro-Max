@@ -65,8 +65,6 @@
     <string name="credit_paid_label">আদায়কৃত অর্থ</string>
     <string name="credit_due_label">বাকিঃ %1$s</string>
     <string name="credit_error">আদায়ের অঙ্ক মোটের চেয়ে কম হতে হবে।</string>
-    <string name="credit_apply">নিশ্চিত করুন</string>
-    <string name="credit_cancel">পরে</string>
     <string name="credit_reason_enter">আদায়কৃত অর্থ লিখুন</string>
     <string name="slide_title">স্লাইড (খালি প্যাকেট)</string>
     <string name="slide_reward">%1$s টি পুরস্কার প্যাকেট = %2$s</string>
