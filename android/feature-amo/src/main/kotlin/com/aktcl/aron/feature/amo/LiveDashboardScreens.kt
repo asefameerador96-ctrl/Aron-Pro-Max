@@ -44,7 +44,7 @@ fun LiveDashboardContent(
                 val sales = listOf(
                     stringResource(R.string.amo_live_gross) to money(f.grossMtk), stringResource(R.string.amo_live_net) to money(f.netMtk),
                     stringResource(R.string.amo_live_visited) to stringResource(R.string.amo_live_x_of_y, localizedNumber(f.visitedOutlets), localizedNumber(f.targetOutlets)),
-                    stringResource(R.string.amo_live_strike) to (LiveDashboard.pct(f.strikeRatePct)?.let { localizedDigits("$it %") + " (" + stringResource(R.string.amo_live_x_of_y, localizedNumber(f.successfulCalls), localizedNumber(f.visitedOutlets)) + ")" } ?: stringResource(R.string.amo_live_dash)),
+                    stringResource(R.string.amo_live_strike) to (LiveDashboard.pct(f.strikeRatePct)?.let { localizedDigits("$it %") + " (" + stringResource(R.string.amo_live_x_of_y, localizedNumber(f.successfulCalls), localizedNumber(f.targetOutlets)) + ")" } ?: stringResource(R.string.amo_live_dash)),
                 )
                 sales.forEachIndexed { i, (k, v) -> AronListRow(v, subtitle = k, position = pos(i, sales.size), divider = i < sales.lastIndex, flat = true) }
                 AronSectionLabel(stringResource(R.string.amo_live_geo))

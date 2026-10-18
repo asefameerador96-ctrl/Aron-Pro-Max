@@ -1,5 +1,6 @@
 package com.aktcl.aron.feature.tso.finalsubmit
 
+import com.aktcl.aron.feature.tso.a11yProblems
 import android.content.Context
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalContext
@@ -120,6 +121,8 @@ class FinalSubmitLogicTest {
 }
 
 @RunWith(AndroidJUnit4::class)
+// NATIVE graphics: the legacy mode measures text at 1 px per character, which makes the touch-target sweep meaningless
+@org.robolectric.annotation.GraphicsMode(org.robolectric.annotation.GraphicsMode.Mode.NATIVE)
 @Config(sdk = [34])
 class FinalSubmitScreenTest {
     @get:Rule val compose = createComposeRule()
@@ -147,5 +150,6 @@ class FinalSubmitScreenTest {
         compose.onNodeWithTag(FsTags.SUBMIT).performClick(); compose.waitForIdle()
         assertTrue("a confirm dialog comes first", api.submits.isEmpty())
         compose.onNodeWithText("Submit the sales of 2026-10-17 for Zone 10, 2 routes? This cannot be undone.").assertExists()
+        org.junit.Assert.assertEquals("accessibility: " + compose.a11yProblems(), emptyList<String>(), compose.a11yProblems())
     }
 }

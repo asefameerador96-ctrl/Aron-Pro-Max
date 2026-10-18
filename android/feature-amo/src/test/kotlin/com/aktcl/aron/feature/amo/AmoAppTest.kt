@@ -73,11 +73,11 @@ class AmoAppTest {
     fun catalogueKeepsTheReferenceOrderWithIconsAndHidesAstha() {
         val tiles = RoleHomes.amoTiles(mapOf(RoleHomes.AmoTile.OUTLET to 3))
         assertEquals(
-            listOf("attendance", "control_call", "joint_call", "sale", "team", "outlet", "sales_submit", "report"),
+            listOf("attendance", "joint_call", "control_call", "sale", "team", "outlet", "sales_submit", "report"),
             tiles.map { it.id },
         )
         assertFalse(tiles.any { it.id.contains("astha") || it.id.contains("target") })
-        assertEquals(AronIcons.Attendance, tiles[0].icon); assertEquals(AronIcons.Place, tiles[1].icon); assertEquals(AronIcons.Team, tiles[2].icon)
+        assertEquals(AronIcons.Attendance, tiles[0].icon); assertEquals(AronIcons.Team, tiles[1].icon); assertEquals(AronIcons.Place, tiles[2].icon)
         assertEquals(AronIcons.Sale, tiles[3].icon); assertEquals(AronIcons.Team, tiles[4].icon); assertEquals(AronIcons.Outlet, tiles[5].icon)
         assertEquals(AronIcons.Submit, tiles[6].icon); assertEquals(AronIcons.Trend, tiles[7].icon)
         assertEquals(3, tiles.first { it.id == "outlet" }.badge)
