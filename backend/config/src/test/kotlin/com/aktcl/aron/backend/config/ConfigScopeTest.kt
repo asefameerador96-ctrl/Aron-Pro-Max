@@ -109,6 +109,28 @@ class ConfigScopeTest {
         assertTrue(all.any { it.jsonObject["scope_id"]!!.jsonPrimitive.long == far })
     }
 
+    /** D-AUTHZ-Q2 amendment: SUPPORT resolves only the calendar weekend days, globally, now (the calendar page); nothing else in config. */
+    @Test
+    fun supportResolvesOnlyTheWeekendDays() = app {
+        val t = TestTokens.web(env.ids.getValue("support1001"), Role.SUPPORT)
+        suspend fun resolve(k: String, type: String = "global", id: Long = 0, extra: String = "") =
+            client.get("/v1/admin/config/resolve?key=$k&node_type=$type&node_id=$id$extra") { bearerAuth(t) }.status
+        assertEquals(HttpStatusCode.OK, resolve("cfg.calendar.weekend_days"))
+        assertEquals(HttpStatusCode.Forbidden, resolve("cfg.calendar.weekend_days", "zone", home), "another node type")
+        assertEquals(HttpStatusCode.Forbidden, resolve("cfg.calendar.weekend_days", extra = "&at=2030-01-01T00:00:00Z"), "a future value")
+        for (k in listOf("cfg.web.entry_classes", "cfg.geo.integrity_weight", "cfg.auth.mfa_required_roles", key)) assertEquals(HttpStatusCode.Forbidden, resolve(k), k)
+        assertEquals(HttpStatusCode.Forbidden, resolve("cfg.web.entry_classes", "zone", home), "the TSO's key at its node type")
+        assertEquals(HttpStatusCode.Forbidden, resolve("cfg.geo.integrity_weight", extra = "&key=cfg.calendar.weekend_days"), "the first key is the one judged and read")
+        assertTrue(resolve("cfg.calendar.weekend_days", extra = "&at=").value in setOf(400, 403), "an empty at is refused")
+        assertEquals(HttpStatusCode.Forbidden, client.get("/v1/admin/config/changes/1") { bearerAuth(t) }.status)
+        for (path in listOf("/v1/admin/config/keys?area=calendar", "/v1/admin/config/values?key=cfg.calendar.weekend_days", "/v1/admin/config/changes", "/v1/admin/config/versions")) {
+            assertEquals(HttpStatusCode.Forbidden, client.get(path) { bearerAuth(t) }.status, path)
+        }
+        // The TSO's grant is not SUPPORT's, and SUPPORT's is not the TSO's.
+        val tso = TestTokens.web(env.ids.getValue("tso1001"), Role.TSO)
+        assertEquals(HttpStatusCode.Forbidden, client.get("/v1/admin/config/resolve?key=cfg.calendar.weekend_days&node_type=global&node_id=0") { bearerAuth(tso) }.status)
+    }
+
     /** AZ-3: the config lists follow the contract Limit, 1..500 (default 100). */
     @Test
     fun configListsAcceptTheContractLimitRange() = app {
