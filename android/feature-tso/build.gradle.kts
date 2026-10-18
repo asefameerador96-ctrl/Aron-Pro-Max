@@ -31,5 +31,7 @@ dependencies {
 
 // qa money gate: TsoCompactCorpusTest reads the shared corpus; a corpus change must re-run the unit tests.
 tasks.withType<Test>().configureEach {
-    inputs.file(rootProject.layout.projectDirectory.file("contract/fixtures/money-format-corpus.json")).withPropertyName("moneyCorpus").withPathSensitivity(PathSensitivity.RELATIVE)
+    inputs.file(rootProject.layout.projectDirectory.file("contract/fixtures/money-format-corpus.json"))
+        .withPropertyName("moneyCorpus")
+        .withPathSensitivity(PathSensitivity.RELATIVE)
 }
