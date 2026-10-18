@@ -259,6 +259,8 @@ export async function handleDash(x: DashCtx): Promise<boolean> {
       ],
       children: byChild,
     };
+    // A scope without seeded routes has no sales at all: no category, channel, segment or brand rows (empty-state screenshots).
+    if (rows.length === 0) Object.assign(body, { by_category: [], by_channel: [], by_segment: [], by_brand: [] });
     return send(200, body), true;
   }
 

@@ -147,6 +147,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
   const channelNetTotal = channels.reduce((s2, c) => s2 + Math.max(0, c.net_mtk), 0);
   const callsTotal = channels.reduce((s2, c) => s2 + c.successful_calls, 0);
   const brands = summary.ok ? [...(summary.data.by_brand ?? [])].sort((a, b) => (brandMode === "memo" ? b.memo_count - a.memo_count : b.net_mtk - a.net_mtk)).slice(0, 12) : [];
+  const brandRows = brands.map((b) => ({ key: b.code, label: b.name ?? b.code, value: brandMode === "memo" ? b.memo_count : Math.max(0, b.net_mtk), valueText: brandMode === "memo" ? n(locale, b.memo_count) : formatLakhCrore(locale, mtkToTaka(b.net_mtk), lw) }));
   const cprPct = k && k.target_outlets > 0 ? (k.successful_calls / k.target_outlets) * 100 : null;
   const geoQs = Object.fromEntries(GEO_LEVELS.filter((l) => picked[l]?.[0] !== undefined).map((l) => [l, String(picked[l]![0])]));
   const dl = (kind: Parameters<typeof drillHref>[0], extra: Record<string, string> = {}) => drillHref(kind, { ...(date === today ? {} : { date }), ...geoQs, ...extra });
@@ -347,12 +348,11 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
               />
             }
           >
-            {brands.length > 0 ? (
-              <ColumnChart
-                testId="brand-chart"
-                label={t(locale, "dashboard.brand.heading")}
-                rows={brands.map((b) => ({ key: b.code, label: b.name ?? b.code, value: brandMode === "memo" ? b.memo_count : Math.max(0, b.net_mtk), valueText: brandMode === "memo" ? n(locale, b.memo_count) : formatLakhCrore(locale, mtkToTaka(b.net_mtk), lw) }))}
-              />
+            {brands.length >= 4 ? (
+              <ColumnChart testId="brand-chart" label={t(locale, "dashboard.brand.heading")} rows={brandRows} />
+            ) : brands.length > 0 ? (
+              // Two or three brands read better as ranked bars than as a few wide columns (design review).
+              <RankedBars testId="brand-chart" label={t(locale, "dashboard.brand.heading")} rows={brandRows} />
             ) : (
               <p className="text-body text-secondary">{t(locale, "dashboard.brand.empty")}</p>
             )}

@@ -6,6 +6,9 @@ export const VIZ = ["var(--viz-1)", "var(--viz-2)", "var(--viz-3)", "var(--viz-4
 
 /** Ring gauge: a 0 to 100 value on a track, the figure printed in the middle as text. Null draws an empty track. The
  *  component is ready for a target-based percentage later (docs/27); today the callers pass a share or a rate. */
+/** Ring hues: the palette members that keep 3:1 against the data surface in light and dark (WCAG 1.4.11; tests/ring-contrast.test.ts). */
+export const RING_HUES = [VIZ[0], VIZ[1], VIZ[6], VIZ[7], VIZ[5]] as const;
+
 export function Ring({ pct, valueText, label, size = 112, hue = 0, children, testId }: { pct: number | null | undefined; valueText: string; label: string; size?: number; hue?: number; children?: ReactNode; testId?: string }) {
   const v = pct === null || pct === undefined ? 0 : Math.max(0, Math.min(100, pct));
   const r = 42;
@@ -14,7 +17,8 @@ export function Ring({ pct, valueText, label, size = 112, hue = 0, children, tes
     <div role="img" aria-label={`${label}: ${valueText}`} data-testid={testId} data-pct={pct ?? ""} className="relative shrink-0" style={{ width: size, height: size }}>
       <svg viewBox="0 0 100 100" width={size} height={size} aria-hidden="true" className="-rotate-90">
         <circle cx="50" cy="50" r={r} fill="none" stroke="var(--state-skeleton)" strokeWidth="11" />
-        <circle cx="50" cy="50" r={r} fill="none" stroke={VIZ[hue % VIZ.length]} strokeWidth="11" strokeLinecap="round" strokeDasharray={`${(v / 100) * c} ${c}`} />
+        {/* No arc at 0: a round cap would still paint a dot. */}
+        {v > 0 ? <circle cx="50" cy="50" r={r} fill="none" stroke={RING_HUES[hue % RING_HUES.length]} strokeWidth="11" strokeLinecap="round" strokeDasharray={`${(v / 100) * c} ${c}`} /> : null}
       </svg>
       <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
         <span className="text-heading text-primary tabular-nums">{valueText}</span>
@@ -90,10 +94,10 @@ export function ColumnChart({ rows, label, testId, height = 200 }: { rows: reado
   return (
     <div role="region" aria-label={label} tabIndex={0} className="overflow-x-auto focus-visible:outline-(length:--focus-w) focus-visible:outline-offset-2 outline-focus" data-testid={testId}>
       <ul aria-label={label} className="flex items-end gap-3 pt-2" style={{ minWidth: Math.max(rows.length * 64, 0) }}>
-        {rows.map((r, i) => (
+        {rows.map((r) => (
           <li key={r.key} data-label={r.label} data-value={r.value} className="flex w-16 min-w-0 flex-1 flex-col items-center justify-end gap-1" style={{ height: height + 56 }}>
             <span className="text-caption text-primary tabular-nums">{r.valueText}</span>
-            <span className="w-full max-w-12 rounded-t-chip" style={{ height: Math.max(r.value > 0 ? 3 : 0, (r.value / max) * height), background: VIZ[i % VIZ.length] }} aria-hidden="true" />
+            <span className="w-full max-w-12 rounded-t-chip" style={{ height: Math.max(r.value > 0 ? 3 : 0, (r.value / max) * height), background: VIZ[0] }} aria-hidden="true" />
             <span className="line-clamp-2 h-10 w-full text-center text-caption text-secondary [overflow-wrap:anywhere]" title={r.label}>{r.label}</span>
           </li>
         ))}
