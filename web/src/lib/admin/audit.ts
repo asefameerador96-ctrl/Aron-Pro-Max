@@ -52,11 +52,14 @@ export function auditCsvRow(e: AuditEntry): unknown[] {
   return [e.id, e.at, e.actor_user_id, e.actor_username, e.actor_role, e.via, e.entity, e.entity_id, e.action, e.reason, e.before, e.after, e.request_id, e.row_hash];
 }
 
-/** `key: old → new` lines for the members that differ (a missing side shows as an empty value). */
-export function diffLines(before: AuditEntry["before"], after: AuditEntry["after"]): { key: string; from: string; to: string }[] {
+/**
+ * `key: old → new` lines for the members that differ (a missing side shows as an empty value). `changedOnly`: the server already
+ * listed only changed members (ANALYST/SUPPORT), so every listed member is shown, a masked pair included.
+ */
+export function diffLines(before: AuditEntry["before"], after: AuditEntry["after"], changedOnly = false): { key: string; from: string; to: string }[] {
   const b = before ?? {};
   const a = after ?? {};
   const show = (v: unknown) => (v === undefined || v === null ? "" : typeof v === "object" ? JSON.stringify(v) : String(v));
   const keys = [...new Set([...Object.keys(b), ...Object.keys(a)])].sort();
-  return keys.filter((k) => show(b[k]) !== show(a[k])).map((k) => ({ key: k, from: show(b[k]), to: show(a[k]) }));
+  return keys.filter((k) => (changedOnly ? k in b || k in a : show(b[k]) !== show(a[k]))).map((k) => ({ key: k, from: show(b[k]), to: show(a[k]) }));
 }

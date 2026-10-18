@@ -379,5 +379,5 @@ export const dashBn: Record<keyof typeof dashEn, string> = {
   "drill.title.login": "লগইন ও আপলোডের অবস্থা",
   "table.more": "আরও {n}টি সারি দেখান",
   "error.ERR_WEB_MFA_RESIGNIN": "অথেনটিকেটর কোড দিয়ে আবার সাইন ইন করুন।",
-  "admin.audit.unavailable": "অডিট লগ এখনো পাওয়া যায় না। সার্ভার চালু করলে এখানে দেখা যাবে।",
+  "admin.history.failed": "ইতিহাস লোড করা যায়নি। আবার চেষ্টা করতে পাতাটি রিলোড করুন।",
 };

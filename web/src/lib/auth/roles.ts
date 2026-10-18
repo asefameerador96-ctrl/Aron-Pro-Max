@@ -13,6 +13,8 @@ export const ADMIN_PORTAL_ROLES = ["SUPPORT", "ADMIN", "SUPERADMIN"] as const sa
 export const ADMIN_ONLY_ROLES = ["ADMIN", "SUPERADMIN"] as const satisfies readonly Role[];
 
 /** Roles that must complete a TOTP step after the password (cfg.auth.mfa_required_roles, docs/24 s6.5, D24-33). */
+/** docs/24 s8.5 "Audit log": read for ANALYST, SUPPORT, ADMIN and SUPERADMIN, nationally (listAudit; backend-authz). */
+export const AUDIT_READ_ROLES = ["ANALYST", "SUPPORT", "ADMIN", "SUPERADMIN"] as const satisfies readonly Role[];
 export const MFA_ROLES = ["SUPPORT", "ADMIN", "SUPERADMIN"] as const satisfies readonly Role[];
 
 export type RoleList = readonly Role[];
@@ -39,6 +41,8 @@ export const ADMIN_PATH_ROLES: readonly { prefix: string; roles: RoleList }[] = 
   { prefix: "/admin/outlet-change", roles: OUTLET_REQUEST_RAISE_ROLES },
   { prefix: "/admin/team", roles: TEAM_CREDENTIAL_ROLES },
   { prefix: "/admin/radius", roles: ["TSO"] },
+  { prefix: "/admin/audit", roles: AUDIT_READ_ROLES },
+  { prefix: "/api/bff/admin-export/audit", roles: AUDIT_READ_ROLES },
 ];
 
 export function hasRole(role: Role | undefined, allowed: RoleList): boolean {

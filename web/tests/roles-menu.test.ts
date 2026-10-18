@@ -37,9 +37,11 @@ describe("menu is driven from data", () => {
       expect(menuFor(r).map((s) => s.group), r).toEqual(["main", "reports", "products", "admin"]);
     }
     expect(menuFor("TSO").find((s) => s.group === "admin")?.items.map((i) => i.href)).toEqual(["/admin/outlet-requests", "/admin/outlet-change", "/admin/team", "/admin/radius"]);
-    for (const r of ["ANALYST", "WM", "TOP"] as const) {
+    for (const r of ["WM", "TOP"] as const) {
       expect(menuFor(r).find((s) => s.group === "admin")?.items.map((i) => i.href), r).toEqual(["/admin/outlet-requests"]);
     }
+    // ANALYST also reads the audit log (docs/24 s8.5, listAudit).
+    expect(menuFor("ANALYST").find((s) => s.group === "admin")?.items.map((i) => i.href)).toEqual(["/admin/outlet-requests", "/admin/audit"]);
     expect(menuFor("DMO").find((s) => s.group === "admin")?.items.map((i) => i.href)).toEqual(["/admin/outlet-requests", "/admin/outlet-change"]);
     expect(menuFor("SUPPORT").find((s) => s.group === "admin")?.items.map((i) => i.href)).toEqual(["/admin", "/admin/master-data", "/admin/team", "/admin/audit"]);
     expect(menuFor("ADMIN").map((s) => s.group)).toEqual(["main", "reports", "products", "admin", "config"]);
