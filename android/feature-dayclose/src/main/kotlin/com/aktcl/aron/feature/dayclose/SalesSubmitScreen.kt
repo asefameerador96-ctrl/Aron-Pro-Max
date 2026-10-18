@@ -173,8 +173,9 @@ fun SalesSubmitScreen(
                 gate.blocks.filter { it !is SubmitBlock.CountMismatch }.forEach { b -> NoticeCard(blockText(b, typeLabel), Notice.Warning) }
                 if (mismatches.isNotEmpty()) {
                     // one notice names every mismatch (never silent) and offers the sync again; the table row carries the same word
+                    val lines = mismatches.map { blockText(it, typeLabel) }
                     NoticeCard(
-                        mismatches.joinToString(separator = "\n") { blockText(it, typeLabel) }, Notice.Warning, title = stringResource(R.string.submit_row_mismatch),
+                        lines.joinToString(separator = "\n"), Notice.Warning, title = stringResource(R.string.submit_row_mismatch),
                         actionLabel = if (SalesSubmitRules.syncButtonEnabled(online, syncing)) stringResource(R.string.submit_sync_again) else null, onAction = onSync,
                     )
                 }
