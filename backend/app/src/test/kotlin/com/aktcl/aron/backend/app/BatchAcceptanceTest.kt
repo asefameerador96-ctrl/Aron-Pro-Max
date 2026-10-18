@@ -516,7 +516,9 @@ class BatchAcceptanceTest {
         assertEquals("quarantined", statuses(again)[1], again.toString())
         val mu = family[1]["client_uuid"]!!.jsonPrimitive.content
         assertEquals(0, count("SELECT count(*) FROM app.memo WHERE client_uuid = '$mu'"))
-        client.send(token, batch(negative.drop(2)))
+        val late = json(client.send(token, batch(negative.drop(2))).bodyAsText())
+        val lateAcks = late["acks"]!!.jsonArray.map { it.jsonObject }.filter { it["type"]!!.jsonPrimitive.content == "memo_line" }
+        assertEquals(List(2) { "quarantined:arithmetic_mismatch" }, lateAcks.map { it["status"]!!.jsonPrimitive.content + ":" + it["code"]!!.jsonPrimitive.content }, late.toString())
         assertEquals(0, count("SELECT count(*) FROM app.memo_line WHERE memo_client_uuid = '$mu'"))
     }
 
