@@ -12,7 +12,7 @@ Proof pictures (light, English; Bangla at 1366): `docs/evidence/ui-parity/web-ho
 | No glass: no blur, no translucent surfaces, no pastel gradient | directive | DONE (tokens solid in every theme; the blur utilities read `none`; css-contrast test now asserts "nothing blurs"; dark mode kept as an option) | d6227f65 |
 | Four sales cards: total, cyan "Total sales" words, big ring blue to cyan, (i) bottom right | yes | DONE except the ring value: share of net sales and a chip vs same weekday last week, never target % (docs/27) | e5c01fdd |
 | Live CPR: green ring, planned outlets and successful calls at its left | yes | DONE ("Planned outlets", not "Target Outlet") | e5c01fdd |
-| By channel successful calls: list at the left, concentric radial chart | yes | PARTIAL: radial chart and list are there, but at 1366 the card is narrow so the chart sits below the list; side by side from about 1500 px | e5c01fdd |
+| By channel successful calls: list at the left, concentric radial chart | yes | PARTIAL: radial chart and list are there, but at 1366 the card is narrow so the chart sits below the list; side by side at wider widths is not checked | e5c01fdd |
 | Final submit: Total Zone / Total Service Zone / Remaining and a ring | yes | PARTIAL: Total zones, Submitted, Remaining and a ring (zones submitted over zones with routes); no "Total Service Zone" (server field missing: `docs/requests/web-service-zone-count.md`) | e5c01fdd |
 | Login/submit: two bars with download and upload icons | yes | DONE | 86c793e8 |
 | By channel STD: 3D pie, legend at the left | yes | PARTIAL: flat donut, legend first; no 3D (kept flat on purpose: legibility) | e5c01fdd |
