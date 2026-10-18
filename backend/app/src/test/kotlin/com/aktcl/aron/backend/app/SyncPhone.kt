@@ -104,12 +104,14 @@ fun SyncPhone.batch(records: List<JsonObject>, batchUuid: String = UUID.randomUU
  * Creates a bound, active phone for the SR of mirror [tag] (a copy of the seeded dev phone) and returns it with its
  * route, outlets and two priced SKUs.
  */
+// The phones send no X-Device-Proof, so they carry the seed's placeholder key, not the SR phone's real key (ApiWorld
+// gives the seeded SR phone a real key pair for the proof-signing contract fixtures; a copy of it would demand proofs).
 fun ApiWorld.phoneFor(tag: String, index: Int, day: String): SyncPhone = fresh.db.jdbi.withHandle<SyncPhone, Exception> { h ->
     val device = "00000000-0000-4000-8000-0000000001%02d".format(index)
     val user = "${tag.lowercase()}sr1001"
     h.execute(
         "INSERT INTO app.device (device_uuid, flavour, app_package, status, device_owner, lockdown_level, trust_level, public_key_jwk, public_key_thumbprint, attestation_summary, app_signing_cert_sha256, zone_id, device_info, app_version) " +
-            "SELECT '$device', d.flavour, d.app_package, d.status, d.device_owner, d.lockdown_level, d.trust_level, d.public_key_jwk, 'qa-phone-$index', d.attestation_summary, d.app_signing_cert_sha256, z.id, d.device_info, d.app_version FROM app.device d, app.zone z WHERE d.device_uuid = '${ApiWorld.SR_PHONE}' AND z.code = 'Z-$tag'",
+            "SELECT '$device', d.flavour, d.app_package, d.status, d.device_owner, d.lockdown_level, d.trust_level, CAST('{\"kty\": \"EC\", \"crv\": \"P-256\", \"x\": \"seed-placeholder\", \"y\": \"seed-placeholder\"}' AS jsonb), 'qa-phone-$index', d.attestation_summary, d.app_signing_cert_sha256, z.id, d.device_info, d.app_version FROM app.device d, app.zone z WHERE d.device_uuid = '${ApiWorld.SR_PHONE}' AND z.code = 'Z-$tag'",
     )
     h.execute("INSERT INTO app.device_binding (device_id, user_id, bind_ordinal, bound_via) SELECT d.id, u.id, 0, 'support' FROM app.device d, app.app_user u WHERE d.device_uuid = '$device' AND u.username = '$user'")
     fun id(sql: String) = h.createQuery(sql).mapTo(Long::class.java).one()

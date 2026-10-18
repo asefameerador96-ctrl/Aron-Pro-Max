@@ -254,7 +254,7 @@ class SupervisorSyncFaultFuzzTest {
         val user = "${prefix}amo1001"
         h.execute(
             "INSERT INTO app.device (device_uuid, flavour, app_package, status, device_owner, lockdown_level, trust_level, public_key_jwk, public_key_thumbprint, attestation_summary, app_signing_cert_sha256, zone_id, device_info, app_version) " +
-                "SELECT '$device', 'amo', 'com.aktcl.aron.amo', d.status, d.device_owner, d.lockdown_level, d.trust_level, d.public_key_jwk, 'qa-amo-$index', d.attestation_summary, d.app_signing_cert_sha256, z.id, d.device_info, d.app_version FROM app.device d, app.zone z WHERE d.device_uuid = '${ApiWorld.SR_PHONE}' AND z.code = '$zone'",
+                "SELECT '$device', 'amo', 'com.aktcl.aron.amo', d.status, d.device_owner, d.lockdown_level, d.trust_level, CAST('{\"kty\": \"EC\", \"crv\": \"P-256\", \"x\": \"seed-placeholder\", \"y\": \"seed-placeholder\"}' AS jsonb), 'qa-amo-$index', d.attestation_summary, d.app_signing_cert_sha256, z.id, d.device_info, d.app_version FROM app.device d, app.zone z WHERE d.device_uuid = '${ApiWorld.SR_PHONE}' AND z.code = '$zone'",
         )
         h.execute("INSERT INTO app.device_binding (device_id, user_id, bind_ordinal, bound_via) SELECT d.id, u.id, 0, 'support' FROM app.device d, app.app_user u WHERE d.device_uuid = '$device' AND u.username = '$user'")
         fun id(sql: String) = h.createQuery(sql).mapTo(Long::class.java).one()
