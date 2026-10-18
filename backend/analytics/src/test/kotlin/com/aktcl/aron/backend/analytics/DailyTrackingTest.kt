@@ -176,6 +176,10 @@ class DailyTrackingTest : ReportFixture() {
             val again = act(11, Role.TSO, body("4a1c2b0e-8d1a-4c5e-9f3a-2b7d4e6a8c10", r4))
             assertEquals(HttpStatusCode.Created, again.status, again.bodyAsText())
             assertEquals(Json.parseToJsonElement(first.bodyAsText()).jsonObject.s("created_at"), Json.parseToJsonElement(again.bodyAsText()).jsonObject.s("created_at"))
+            assertEquals(Json.parseToJsonElement(first.bodyAsText()).jsonObject["notified_user_ids"], Json.parseToJsonElement(again.bodyAsText()).jsonObject["notified_user_ids"])
+            assertEquals(1, fresh.db.jdbi.withHandle<Int, Exception> { it.createQuery("SELECT count(*) FROM app.audit_log WHERE entity = 'tracking_action' AND entity_id = '4a1c2b0e-8d1a-4c5e-9f3a-2b7d4e6a8c10'").mapTo(Int::class.java).one() })
+            // Another user outside the route's reach sending the stored uuid: 403, never the stored action or a 409.
+            assertEquals(HttpStatusCode.Forbidden, act(14, Role.TSO, body("4a1c2b0e-8d1a-4c5e-9f3a-2b7d4e6a8c10", r4)).status)
             // A new action on that route is outside the moved reach, and another note under the stored uuid is still a conflict.
             assertEquals(HttpStatusCode.Forbidden, act(11, Role.TSO, body("4b1c2b0e-8d1a-4c5e-9f3a-2b7d4e6a8c10", r4)).status)
             assertEquals(HttpStatusCode.Conflict, act(11, Role.TSO, body("4a1c2b0e-8d1a-4c5e-9f3a-2b7d4e6a8c10", r4, note = "Another note")).status)
