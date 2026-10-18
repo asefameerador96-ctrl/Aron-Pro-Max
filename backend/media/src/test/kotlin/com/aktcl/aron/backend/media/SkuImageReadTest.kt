@@ -51,19 +51,20 @@ class SkuImageReadTest {
 
     @Test fun aBoundPackPictureIsStreamedWithItsAssetIdAsETag() {
         fixture().use { f ->
-            val img = read(f).image(bound)
-            assertContentEquals(png, img.bytes)
-            assertEquals("image/png", img.mime)
-            assertEquals("\"$bound\"", img.etag)
+            val m = read(f).meta(bound)
+            assertEquals("image/png", m.mime)
+            assertEquals("\"$bound\"", m.etag)
+            assertEquals(emptyList(), reads, "the metadata (and so a 304) never reads the blob")
+            assertContentEquals(png, read(f).bytes(m))
             assertEquals(listOf("assets/sku_image/$bound.png" to 300L * 1024L), reads, "read once, capped at 300 KB")
-            assertEquals("\"$bound\"", read(f).image(bound.uppercase()).etag, "the id is case-insensitive, the ETag canonical")
+            assertEquals("\"$bound\"", read(f).meta(bound.uppercase()).etag, "the id is case-insensitive, the ETag canonical")
         }
     }
 
     @Test fun onlyABoundSkuImageWithinTheCapIsServed() {
         fixture().use { f ->
             val r = read(f)
-            fun code(id: String?) = assertFailsWith<ApiProblem> { r.image(id) }.code.name
+            fun code(id: String?) = assertFailsWith<ApiProblem> { r.bytes(r.meta(id)) }.code.name
             assertEquals("ERR_NOT_FOUND", code(unbound), "uploaded but no SKU binds it")
             assertEquals("ERR_NOT_FOUND", code(gift), "another purpose")
             assertEquals("ERR_NOT_FOUND", code(big), "over the 300 KB cap")
@@ -72,8 +73,18 @@ class SkuImageReadTest {
             assertEquals("ERR_NOT_FOUND", code(null))
             assertEquals(emptyList(), reads, "no blob is read for a refused id")
             assertEquals("ERR_NOT_FOUND", code(gone), "the row exists but the blob is gone")
-            assertEquals("ERR_SERVICE_UNAVAILABLE", assertFailsWith<ApiProblem> { read(f, BlobBytesReader { _, _ -> error("storage down") }).image(bound) }.code.name)
-            assertEquals("ERR_SERVICE_UNAVAILABLE", assertFailsWith<ApiProblem> { read(f, UnconfiguredBlobBytesReader).image(bound) }.code.name)
+            assertEquals("ERR_SERVICE_UNAVAILABLE", assertFailsWith<ApiProblem> { read(f, BlobBytesReader { _, _ -> error("storage down") }).let { it.bytes(it.meta(bound)) } }.code.name)
+            assertEquals("ERR_SERVICE_UNAVAILABLE", assertFailsWith<ApiProblem> { read(f, UnconfiguredBlobBytesReader).let { it.bytes(it.meta(bound)) } }.code.name)
         }
+    }
+
+    @Test fun ifNoneMatchFollowsTheWeakComparison() {
+        val tag = "\"$bound\""
+        assertEquals(true, SkuImageRead.notModified(tag, tag))
+        assertEquals(true, SkuImageRead.notModified("W/$tag", tag))
+        assertEquals(true, SkuImageRead.notModified("\"x\", $tag", tag))
+        assertEquals(true, SkuImageRead.notModified("*", tag))
+        assertEquals(false, SkuImageRead.notModified("\"x\"", tag))
+        assertEquals(false, SkuImageRead.notModified(null, tag))
     }
 }

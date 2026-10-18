@@ -102,13 +102,14 @@ fun Route.mediaRoutes(d: MediaDeps) {
         }
         // PARITY-SPEC s2.6: the pack picture's bytes by its stable asset id (no signed URL leaves the API)
         get("/sku-images/{asset_id}") {
-            val img = withContext(Dispatchers.IO) { SkuImageRead(d).image(call.parameters["asset_id"]) }
+            val read = SkuImageRead(d)
+            val meta = withContext(Dispatchers.IO) { read.meta(call.parameters["asset_id"]) }
             call.response.header(HttpHeaders.CacheControl, SkuImageRead.CACHE_CONTROL)
-            call.response.header(HttpHeaders.ETag, img.etag)
-            if (call.request.headers[HttpHeaders.IfNoneMatch]?.split(',')?.any { it.trim() == img.etag } == true) {
+            call.response.header(HttpHeaders.ETag, meta.etag)
+            if (SkuImageRead.notModified(call.request.headers[HttpHeaders.IfNoneMatch], meta.etag)) {
                 call.respond(HttpStatusCode.NotModified)
             } else {
-                call.respondBytes(img.bytes, ContentType.parse(img.mime))
+                call.respondBytes(withContext(Dispatchers.IO) { read.bytes(meta) }, ContentType.parse(meta.mime))
             }
         }
     }

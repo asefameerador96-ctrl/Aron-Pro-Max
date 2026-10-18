@@ -64,7 +64,7 @@ class BundleImageStabilityTest {
         }
         val a = build(); val b = build()
         assertContentEquals(BundleService.contentDigest(a.full), BundleService.contentDigest(b.full), "two builds, one hash")
-        assert(!BundleService.contentDigest(a.full).contentEquals(before)) { "binding a picture changes the bundle once" }
+        kotlin.test.assertFalse(BundleService.contentDigest(a.full).contentEquals(before), "binding a picture changes the bundle once")
         val sku = a.full.products.skus.single { it.code == "MaxR-10S" }
         assertEquals(asset, sku.image_asset_id)
         assertNull(a.full.products.skus.firstOrNull { it.code == "MaxR-20S" }?.image_asset_id)

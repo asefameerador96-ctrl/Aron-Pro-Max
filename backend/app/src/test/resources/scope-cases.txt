@@ -63,7 +63,7 @@ GET /v1/feedback -> case FeedbackTest#randomisedListsNeverLeakFeedbackOutsideThe
 GET /v1/leave -> case LeaveTest#randomisedListsNeverLeakLeaveOutsideTheCallersReach
 GET /v1/me -> exempt: the caller's own account, token or phone only; no geography rows
 GET /v1/media/{media_uuid}/read-url -> case MediaReadTest#aPhotoIsReadableOnlyInsideTheCallersReach
-GET /v1/sku-images/{asset_id} -> exempt: company-wide pack art, the same for every role and reach (PARITY-SPEC s2.6); only an asset a SKU binds is served (SkuImageReadTest#onlyABoundSkuImageIsServed)
+GET /v1/sku-images/{asset_id} -> exempt: company-wide pack art, the same for every role and reach (PARITY-SPEC s2.6); only an asset a SKU binds is served (SkuImageReadTest#onlyABoundSkuImageWithinTheCapIsServed)
 GET /v1/memos -> case SyncReadsTest#memosAreReadByNumberOrOutletWithLinesAndNeverOutsideTheCallersReach
 GET /v1/outlets -> case ScopeLeakHttpTest#theFieldReadForEveryRoleFindsZeroCrossScopeRows
 GET /v1/outlets/nearby -> case NearbyOutletsTest#nearbyOutletsAreTheSeededOnesInsideTheCircleAndTheReachNearestFirst

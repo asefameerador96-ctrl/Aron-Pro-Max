@@ -29,6 +29,8 @@ import java.io.FileNotFoundException
 @Config(sdk = [34])
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class SkuPackshotsTest {
+    private val A7 = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa7"
+    private val A8 = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa8"
     @get:Rule val tmp = TemporaryFolder()
     private val server = MockWebServer()
 
@@ -77,33 +79,44 @@ class SkuPackshotsTest {
 
     @Test fun thePreloadStoresOncePerAssetAndTheAdminPictureThenWins() = runBlocking {
         val cache = ImageCache(tmp.newFolder("img"), OkHttpClient(), { false }) // a metered network: thumbnails still come
-        var asset = "a7"
+        var asset = A7
         val p = SkuPackshots(cache, devAssets(), lookup = { id -> if (id == 7L) SkuPackshots.SkuInfo("MaxR-10S", SkuPackshots.SkuImageRef(asset)) else null })
         val dev = p.bitmap("7")!! // nothing cached yet: the dev Regular art stands in, nothing is downloaded on the row's path
         assertEquals(webpPixel("maxim-regular"), dev.getPixel(73, 60))
 
         var downloads = 0
         val download: suspend (String) -> ByteArray? = { downloads++; webp("maxim-bolt") }
-        assertEquals(1, p.preload(listOf(7L to "a7"), download))
+        assertEquals(1, p.preload(listOf(7L to A7), download))
         val admin = p.bitmap("7")!!
         assertTrue(admin.getPixel(73, 60) != webpPixel("maxim-regular")) // the preload dropped the stand-in: the Bolt picture
-        assertEquals("cached under the asset id: never downloaded again", 0, p.preload(listOf(7L to "a7"), download))
+        assertEquals("cached under the asset id: never downloaded again", 0, p.preload(listOf(7L to A7), download))
         assertEquals(1, downloads)
 
-        asset = "a8" // a new upload is a new asset: the stand-in until the next preload
+        asset = A8 // a new upload is a new asset: the stand-in until the next preload
         p.invalidate()
         assertEquals(webpPixel("maxim-regular"), p.bitmap("7")!!.getPixel(73, 60))
-        assertEquals(1, p.preload(listOf(7L to "a8"), download))
+        assertEquals(1, p.preload(listOf(7L to A8), download))
         assertEquals(2, downloads)
+        p.bitmap("7")
+        assertNotNull(p.cached("7"))
+        assertEquals(0, p.preload(emptyList(), download)) // the picture was removed in the admin portal
+        assertNull("a changed pictured set drops the decoded pictures", p.cached("7"))
     }
 
     @Test fun aRefusedFailingOrNonImageDownloadIsSkippedNeverThrown() = runBlocking {
         val cache = ImageCache(tmp.newFolder("img"), OkHttpClient(), { false })
         val p = SkuPackshots(cache, devAssets = null)
-        val bodies = mapOf("x1" to null, "x3" to "<html>captive portal</html>".toByteArray(), "x4" to ByteArray(300 * 1024 + 1) { 0xFF.toByte() })
-        assertEquals(0, p.preload(listOf(1L to "x1", 2L to "x2", 3L to "x3", 4L to "x4")) { id -> if (id == "x2") error("offline") else bodies[id] })
+        val x = (1..4).map { "0000000$it-0000-4000-8000-000000000000" }
+        val bodies = mapOf(x[0] to null, x[2] to "<html>captive portal</html>".toByteArray(), x[3] to ByteArray(300 * 1024 + 1) { 0xFF.toByte() })
+        var asked = 0
+        val download: suspend (String) -> ByteArray? = { id -> asked++; if (id == x[1]) error("offline") else bodies[id] }
+        val pictured = x.mapIndexed { i, id -> i.toLong() to id } + (9L to "../../etc/passwd")
+        assertEquals(0, p.preload(pictured, download))
         assertEquals(0L, cache.sizeBytes())
-        assertEquals(0, SkuPackshots(images = null, devAssets = null).preload(listOf(1L to "x1")) { webp("maxim-bolt") })
+        assertEquals("a malformed asset id is never asked for", 4, asked)
+        assertEquals(0, p.preload(pictured, download))
+        assertEquals("a failed asset is not asked again in this process (no retry storm)", 4, asked)
+        assertEquals(0, SkuPackshots(images = null, devAssets = null).preload(listOf(1L to x[0])) { webp("maxim-bolt") })
     }
 
     @Test fun aMissingOrBrokenPictureIsNullNeverAnError() = runBlocking {

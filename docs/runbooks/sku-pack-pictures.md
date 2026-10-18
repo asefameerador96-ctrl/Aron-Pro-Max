@@ -36,6 +36,9 @@ Do not use photos from the internet.
 - To remove a picture: edit the SKU, clear **Pack image**, save. The phones go back to the silhouette after their next
   sync.
 
+- The release that first brings this field makes each phone download its full bundle once (every SKU gains
+  `image_asset_id`). That is a few hundred KB per phone at pilot size, a one-off.
+
 ## Checks
 
 - Admin list: the SKU shows the preview.

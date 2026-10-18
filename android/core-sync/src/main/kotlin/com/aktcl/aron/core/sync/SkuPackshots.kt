@@ -65,6 +65,12 @@ class SkuPackshots(
 
     private val preloading = kotlinx.coroutines.sync.Mutex()
 
+    /** Assets whose download failed or was refused in this process: not asked again until the next start (no retry storm). */
+    private val failed = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+
+    /** The pictured set of the last preload: a change (a picture bound, replaced or removed) drops the decoded pictures. */
+    @Volatile private var lastPictured: Set<Pair<Long, String>>? = null
+
     /**
      * Downloads the pictures of [pictured] (SKU id to asset id) that are not cached yet: [download] reads the bytes from
      * the API (`GET /v1/sku-images/{asset_id}`; null: refused or offline, tried again after the next sync), stored under
@@ -75,14 +81,18 @@ class SkuPackshots(
         val cache = images ?: return 0
         if (!preloading.tryLock()) return 0
         return try {
+            val valid = pictured.filter { UUID_RE.matches(it.second) }.map { it.first to it.second.lowercase() }
+            if (valid.toSet() != lastPictured) { memory.evictAll(); lastPictured = valid.toSet() }
             var fetched = 0
-            for ((skuId, assetId) in pictured.distinctBy { it.second }.take(MAX_PRELOAD)) {
+            for ((_, assetId) in valid.distinctBy { it.second }.take(MAX_PRELOAD)) {
                 val key = cacheKey(assetId)
-                if (cache.get(key, key) != null) continue
-                val bytes = try { download(assetId) } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) { null } ?: continue
-                if (cache.store(key, bytes) != null) {
+                if (assetId in failed || cache.get(key, key) != null) continue
+                val bytes = try { download(assetId) } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) { null }
+                if (bytes != null && cache.store(key, bytes) != null) {
                     fetched++
-                    pictured.filter { it.second == assetId }.forEach { memory.remove(it.first.toString()) }
+                    valid.filter { it.second == assetId }.forEach { memory.remove(it.first.toString()) }
+                } else {
+                    failed += assetId
                 }
             }
             fetched
@@ -129,6 +139,7 @@ class SkuPackshots(
         /** 120 dp at xxhdpi plus a margin; a bigger upload is downsampled on decode. */
         const val DEFAULT_MAX_HEIGHT_PX = 400
         const val DEV_DIR = "dev-packshots"
+        private val UUID_RE = Regex("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
 
         /** Pictures fetched per sync run at most (the pilot catalogue has about 40 SKUs). */
         const val MAX_PRELOAD = 100
