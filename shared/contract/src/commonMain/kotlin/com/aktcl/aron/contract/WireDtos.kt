@@ -603,6 +603,7 @@ data class Me(
     @SerialName("permissions") val permissions: List<String>,
     @SerialName("scope") val scope: ScopeSummary,
     @SerialName("pii") val pii: Boolean? = null,
+    @SerialName("pii_until") val piiUntil: String? = null,
     @SerialName("mfa_enabled") val mfaEnabled: Boolean? = null,
     @SerialName("menus") val menus: List<JsonElement>? = null,
 )
