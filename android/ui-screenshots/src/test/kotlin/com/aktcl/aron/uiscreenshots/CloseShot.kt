@@ -145,8 +145,8 @@ class CloseShot {
 
     /** The host frame of the parity apps (app-sr wiring): the gradient top bar with the tile icon and the title, on the grey page. */
     @Composable
-    private fun Parity(title: String, icon: Int, content: @Composable () -> Unit) {
-        AronScaffold(topBar = { AronTopBar(title, icon = painterResource(icon), onBack = {}, backLabel = "back") }) { content() }
+    private fun Parity(title: String, icon: Int?, content: @Composable () -> Unit) {
+        AronScaffold(topBar = { AronTopBar(title, icon = icon?.let { painterResource(it) }, onBack = {}, backLabel = "back") }) { content() }
     }
 
     @Test fun parity_submit_bn() = shot("parity_submit_bn") { Parity("বিক্রয় জমা", com.aktcl.aron.core.ui.R.drawable.aron_art_sales_submit) { Submit() } }
@@ -156,6 +156,9 @@ class CloseShot {
 
     @Test fun parity_memo_bn() = shot("parity_memo_bn") { Parity("মেমো", com.aktcl.aron.core.ui.R.drawable.aron_art_memo) { Memo() } }
     @Test fun parity_memo_menu_bn() = shot("parity_memo_menu_bn") { Parity("মেমো", com.aktcl.aron.core.ui.R.drawable.aron_art_memo) { Menu() } }
+
+    @Test fun parity_tasks_bn() = shot("parity_tasks_bn") { Parity("টাস্ক", null) { Tasks() } }
+    @Test fun parity_tasks_empty_bn() = shot("parity_tasks_empty_bn") { Parity("টাস্ক", null) { TasksEmpty() } }
 
     @Test fun parity_summary_bn() = shot("parity_summary_bn") { Parity("বিক্রয় সারসংক্ষেপ", com.aktcl.aron.core.ui.R.drawable.aron_art_summary) { Summary() } }
 
