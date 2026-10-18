@@ -1,5 +1,8 @@
 package com.aktcl.aron.feature.dayclose
 
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.test.assertIsDisplayed
@@ -135,5 +138,44 @@ class SalesSubmitScreenTest {
         compose.setContent { AronTheme(AppLanguage.EN) { SalesSubmitScreen(true, counts, gate, SubmitProgress.Idle, { "<" + it + ">" }, {}, {}) } }
         compose.onNodeWithText("<distribution_check>").assertExists()
         compose.onNodeWithText("<distribution_check_line>").assertExists()
+    }
+
+    /** The stronger proof: the SAME view model drives the composed screen without and then with the nine groups; what reaches the writer is identical. */
+    @Test fun theGroupedAndTheUngroupedScreenSubmitTheSamePerTypeRowsAndGate() {
+        class Day : DaySource {
+            override suspend fun outboxStates(businessDate: String) = OutboxStates(0, 0, 10, 0, 0)
+            override suspend fun deviceCounts(businessDate: String) = mapOf("memo" to 6, "distribution_check" to 3, "distribution_check_line" to 9)
+            override suspend fun dues(businessDate: String) = DuesAtSubmit(0, 0)
+            override suspend fun alreadySubmitted(businessDate: String) = false
+            override suspend fun submitSettled(businessDate: String) = false
+        }
+        val sched = object : com.aktcl.aron.core.sync.SyncScheduler { override fun requestSync(userId: Long, trigger: com.aktcl.aron.contract.SyncTrigger) {} }
+        val server = mapOf("memo" to 6, "distribution_check" to 3, "distribution_check_line" to 9)
+        val sent = ArrayList<Pair<SubmitGate, List<CountRow>>>()
+        fun newVm() = SalesSubmitViewModel(1, { "2026-10-05" }, Day(), { server }, { _, g, c -> sent += g to c }, sched, { true })
+        val ungrouped = newVm().also { it.refresh() }
+        val grouped = newVm().also { it.refresh() }
+        val groups = listOf(listOf("memo"), listOf("distribution_check", "distribution_check_line"))
+        var useGrouped by androidx.compose.runtime.mutableStateOf(false)
+        compose.setContent {
+            AronTheme(AppLanguage.EN) {
+                val vm = if (useGrouped) grouped else ungrouped
+                val st by vm.state.collectAsState()
+                SalesSubmitScreen(true, st.counts, st.gate, st.progress, { it }, {}, vm::submit, rowGroups = if (useGrouped) groups else null)
+            }
+        }
+        fun holdSubmit() {
+            compose.onNodeWithText("Submit sales").assertIsEnabled().performClick(); compose.waitForIdle()
+            compose.onNodeWithTag(SalesSubmitTags.HOLD).performSemanticsAction(SemanticsActions.OnLongClick); compose.waitForIdle()
+        }
+        compose.onNodeWithText("distribution_check_line").assertExists()
+        holdSubmit()
+        useGrouped = true; compose.waitForIdle()
+        compose.onNodeWithText("distribution_check_line").assertDoesNotExist() // the grouped view really is on screen
+        holdSubmit()
+        assertEquals(2, sent.size)
+        assertEquals(sent[0].first, sent[1].first) // the gate
+        assertEquals(sent[0].second, sent[1].second) // the per-type rows, device and server, in the same order
+        assertEquals(listOf("distribution_check", "distribution_check_line", "memo"), sent[1].second.map { it.recordType })
     }
 }

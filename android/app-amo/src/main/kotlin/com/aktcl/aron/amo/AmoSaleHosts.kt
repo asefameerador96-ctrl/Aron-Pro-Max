@@ -132,6 +132,9 @@ fun AmoSubmitHost(day: AmoDay) {
     val vm = viewModel(key = "submit-" + day.userId) { day.sale.newSubmitViewModel() }
     val st by vm.state.collectAsState()
     LaunchedEffect(Unit) { vm.refresh() }
+    // DISPLAY ONLY: the manual's nine rows, from the admin's AMO reconciliation rows (the gate and the day_submit rows stay per record type)
+    var rowGroups by remember { mutableStateOf<List<List<String>>?>(null) }
+    LaunchedEffect(Unit) { rowGroups = runCatching { day.sale.submitRowGroups() }.getOrNull() }
     val recordLabels = mapOf(
         "visit" to stringResource(AmoR.string.amo_rec_visit), "memo" to stringResource(AmoR.string.amo_rec_memo), "stock_movement" to stringResource(AmoR.string.amo_rec_stock_movement),
         "qc_line" to stringResource(AmoR.string.amo_rec_qc_line), "memo_discount" to stringResource(AmoR.string.amo_rec_memo_discount), "visit_close" to stringResource(AmoR.string.amo_rec_visit_close),
@@ -142,19 +145,9 @@ fun AmoSubmitHost(day: AmoDay) {
     )
     SalesSubmitScreen(
         online = st.online, counts = st.counts, gate = st.gate, progress = st.progress, typeLabel = { recordLabels[it] ?: it },
-        onSync = vm::sync, onSubmit = vm::submit, syncing = st.syncing, rowGroups = AMO_SUBMIT_ROWS,
+        onSync = vm::sync, onSubmit = vm::submit, syncing = st.syncing, rowGroups = rowGroups,
     )
 }
-
-/**
- * The manual's nine rows of Sales Submit (docs/07), DISPLAY ONLY: each group's first record type names it (its label is the row's), the
- * others add their counts. The gate and the day_submit payload keep one row per record type (`SubmitDisplay`).
- */
-private val AMO_SUBMIT_ROWS = listOf(
-    listOf("visit"), listOf("memo"), listOf("stock_movement"), listOf("qc_line"), listOf("memo_discount"),
-    listOf("distribution_check", "distribution_check_line"), listOf("price_compliance_check"),
-    listOf("call_assessment", "call_assessment_answer"), listOf("survey_response"),
-)
 
 /** Sale edit (F-SR-033): the gate and a fresh fix first, then the reason, then the pre-filled sale route; Print supersedes the memo. */
 @Composable
