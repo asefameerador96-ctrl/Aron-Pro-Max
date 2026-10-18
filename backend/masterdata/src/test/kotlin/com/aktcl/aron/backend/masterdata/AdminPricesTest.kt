@@ -137,6 +137,30 @@ class AdminPricesTest {
         assertEquals(setOf("outlet", "cc", "distributor"), tso)
     }
 
+    /** Q5: finance.backdate comes from the role's grants, read per request (not from the token): grant, revoke, and replay first. */
+    @Test
+    fun aRoleGrantOfFinanceBackdateTakesEffectPerRequestAndARevokeToo() = t.app {
+        val sku = t.newSku("PRC-Q5A", outlet = 10000)
+        val today = t.today.toString()
+        val body = req(uuid(), today, row(sku, "outlet", 10200))
+        try {
+            // No grant: the plain admin token (no perm claim) is refused.
+            assertEquals("ERR_MASTER_EFFECTIVE_DATE_PAST", preview(t.admin, body).obj()["code"]!!.jsonPrimitive.content)
+            // Granted to ADMIN: the same token, unchanged, now back-dates.
+            t.grants["ADMIN"] = setOf("finance.backdate")
+            val ok = previewAndPublish(t.admin, body)
+            assertEquals(HttpStatusCode.Created, ok.status, ok.obj().toString())
+            assertEquals("10000@2026-01-01>$today 10200@$today>open", rows(sku, "outlet"))
+            // A grant to another role does not reach ADMIN.
+            t.grants.remove("ADMIN"); t.grants["SUPERADMIN"] = setOf("finance.backdate")
+            assertEquals("ERR_MASTER_EFFECTIVE_DATE_PAST", preview(t.admin, req(uuid(), today, row(sku, "cc", 10200))).obj()["code"]!!.jsonPrimitive.content)
+            // Revoked: a new back-dated batch is refused again, but the stored batch's retry answers its first publish (replay first).
+            val replay = publish(t.admin, body)
+            assertTrue(replay.status.isSuccess(), "${replay.status} ${replay.obj()}")
+            assertEquals("10000@2026-01-01>$today 10200@$today>open", rows(sku, "outlet"))
+        } finally { t.grants.clear() }
+    }
+
     @Test
     fun backDatingNeedsFinanceBackdateAndOverlapsAreRefused() = t.app {
         val sku = t.newSku("PRC-B1", outlet = 10000)

@@ -20,6 +20,12 @@ fun interface ScopeVersionLookup {
 
     /** `app.device.status` of a token's device (`did`), null when no such device; cached like the scope version. */
     fun deviceStatus(deviceId: Long): String? = "active"
+
+    /**
+     * Admin permissions granted to a role now (`app.role_grant_map`, e.g. `finance.backdate`; Q5), cached like the scope
+     * version, so a grant or a revoke holds within seconds. Read per request, never carried in the token.
+     */
+    fun rolePermissions(role: String): Set<String> = emptySet()
 }
 
 /** Dependencies of the bearer guard; one instance per application. */
@@ -84,7 +90,10 @@ private fun authenticate(call: ApplicationCall, cfg: AuthGuardConfig): AronPrinc
         }
     }
     requireMfaWhereNeeded(call, p, cfg.deps.config)
-    return p
+    // Q5: the role's current grants join whatever the token named (issued tokens name none), so p.permissions is live.
+    if (p.audience != Audience.API) return p
+    val granted = cfg.deps.scopeVersions.rolePermissions(p.role.wire)
+    return if (granted.isEmpty()) p else p.copy(permissions = (p.permissions + granted).distinct())
 }
 
 /**
