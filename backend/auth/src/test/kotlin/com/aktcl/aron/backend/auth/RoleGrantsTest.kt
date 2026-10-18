@@ -7,6 +7,7 @@ import java.util.concurrent.atomic.AtomicReference
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 
 /** Q5: role grants come from app.role_grant_map per request through the user store's short cache, so a grant and a revoke hold within it. */
 class RoleGrantsTest {
@@ -22,14 +23,16 @@ class RoleGrantsTest {
 
     @Test
     fun aGrantAndARevokeTakeEffectWithinTheCacheWindow() {
-        assertEquals(emptySet(), store.rolePermissions("ADMIN"))
+        // V0085 seeds the cfg.edit.* grants of ADMIN and SUPERADMIN; this test judges finance.backdate on top of them.
+        val seeded = store.rolePermissions("ADMIN")
+        assertTrue(seeded.none { it == "finance.backdate" } && seeded.all { it.startsWith("cfg.edit.") }, "$seeded")
         sql("INSERT INTO app.role_grant_map (role, permission) VALUES ('ADMIN', 'finance.backdate')")
-        assertEquals(emptySet(), store.rolePermissions("ADMIN"), "cached for up to 10 s")
+        assertEquals(seeded, store.rolePermissions("ADMIN"), "cached for up to 10 s")
         later(11)
-        assertEquals(setOf("finance.backdate"), store.rolePermissions("ADMIN"))
-        assertEquals(emptySet(), store.rolePermissions("SUPERADMIN"), "per role")
-        sql("DELETE FROM app.role_grant_map WHERE role = 'ADMIN'")
+        assertEquals(seeded + "finance.backdate", store.rolePermissions("ADMIN"))
+        assertTrue("finance.backdate" !in store.rolePermissions("SUPERADMIN"), "per role")
+        sql("DELETE FROM app.role_grant_map WHERE role = 'ADMIN' AND permission = 'finance.backdate'")
         later(11)
-        assertEquals(emptySet(), store.rolePermissions("ADMIN"), "revoked")
+        assertEquals(seeded, store.rolePermissions("ADMIN"), "revoked")
     }
 }
