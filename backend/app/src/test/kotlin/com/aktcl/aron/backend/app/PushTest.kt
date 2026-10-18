@@ -128,7 +128,7 @@ class PushTest {
         // The switch: no push while cfg.notify.task_push_enabled is false.
         fresh.db.jdbi.useHandle<Exception> { h ->
             h.execute("INSERT INTO app.cfg_version (config_version, kind, committed_by, summary) SELECT max(config_version) + 1, 'change', (SELECT id FROM app.app_user WHERE username = 'aron.system'), 'test push off' FROM app.cfg_version")
-            h.execute("INSERT INTO app.cfg_value (key, scope_type, scope_id, value, effective_from, config_version, reason) SELECT 'cfg.notify.task_push_enabled', 'global', 0, 'false'::jsonb, now() - interval '1 day', max(config_version), 'test' FROM app.cfg_version")
+            h.execute("INSERT INTO app.cfg_value (key, scope_type, scope_id, value, effective_from, config_version, reason) SELECT 'cfg.notify.task_push_enabled', 'global', 0, 'false'::jsonb, TIMESTAMPTZ '${ApiWorld.CFG_FROM}', max(config_version), 'test' FROM app.cfg_version")
         }
         now.updateAndGet { it.plusSeconds(31) } // past the server config cache (30 s)
         sent.clear()

@@ -1,5 +1,7 @@
 # qa → backend-core: Final Submit races (KD-1 late rows undercounted, KD-2 replay off by 1 ms), 2026-10-17
 
+**Status (2026-10-18): KD-1 and KD-2 fixed** by lead-backend f13adb3 (on INT f5296cd6). The KD-2 repro is enabled, and `DayCloseRaceTest` is strict by default (`ARON_DAYCLOSE_TOLERATE` defaults to `none`; 200 strict rounds green). The text below is kept as the record.
+
 Found by `backend/app/src/test/kotlin/com/aktcl/aron/backend/app/DayCloseRaceTest.kt`. That is a concurrency fuzz of
 `POST /v1/day/final-submit`: shared-uuid double submits, two-tab submits, a delegate DMO, the SR phone's batches in
 flight, and reopen races, under a strict oracle of 17 clauses. Each clause is proven by a seeded fault.

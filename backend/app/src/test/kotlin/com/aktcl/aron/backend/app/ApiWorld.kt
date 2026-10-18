@@ -397,6 +397,8 @@ class ApiWorld(
          * date passed the fixed clock, because the resolver compares against the API clock (a date bomb).
          */
         const val CFG_FROM = "2026-01-01T00:00:00Z"
+        /** Where a test's mid-run config switch closes the [CFG_FROM] row and opens the next: after it, before every clock. */
+        const val CFG_SWITCH = "2026-06-01T00:00:00Z"
         const val SR_PHONE = "00000000-0000-4000-8000-000000000001"
         const val THROWAWAY_PHONE = "00000000-0000-4000-8000-000000000009"
         const val APP_VERSION = "1.0.9+9"
