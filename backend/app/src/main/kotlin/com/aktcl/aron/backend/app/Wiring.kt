@@ -94,6 +94,8 @@ import com.aktcl.aron.backend.masterdata.adminPricesRoutes
 import com.aktcl.aron.backend.masterdata.adminProductsRoutes
 import com.aktcl.aron.backend.masterdata.deviceReplaceRoutes
 import com.aktcl.aron.backend.masterdata.deviceOtpRoutes
+import com.aktcl.aron.backend.masterdata.auditReadRoutes
+import com.aktcl.aron.backend.masterdata.AuditReadDeps
 import com.aktcl.aron.backend.masterdata.OutletsDeps
 import com.aktcl.aron.backend.masterdata.SqlReachResolver
 import com.aktcl.aron.backend.masterdata.outletRoutes
@@ -297,6 +299,7 @@ class Wiring(
                 configAdminRoutes(configDeps)
                 configDeltaRoutes(deltaDeps)
                 deviceOtpRoutes(otpDeps)
+                auditReadRoutes(AuditReadDeps(db, guard))
                 deviceReplaceRoutes(otpDeps)
                 visitPlanRoutes(VisitPlanDeps(db, reach, config, guard, clock))
                 routeAssignmentRoutes(RouteAssignmentsDeps(db, reach, guard, clock))

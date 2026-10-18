@@ -13,6 +13,16 @@
   4. PII reveal (docs/21 s4.5; docs/requests/backend-authz-pii-reveal.md); the lead gives the migration number.
 - Open, logged: Q5 grants are SQL rows (no admin route, no revoke audit; follow-up via a C3 change + audit log); Q6 PII reveal (docs/requests/backend-authz-pii-reveal.md); Q8 kept stricter.
 
+## Session 2 (2026-10-18)
+- listAudit (queue 1): built locally (AuditRead.kt, AuditReadTest), DECISIONS D-AUTHZ-AUDIT. Not pushed until 72776516 is on INT.
+- Audit never-show list (write-site audit of every AuditWriter.write / AuditLog.write / AdminCtx.audit / Mfa.audit / DeviceService.audit call, 2026-10-18):
+  - Secret material actually written today: `enrolment_token.after.prefix` (secret.take(6), DeviceService.kt) and `device.after.token_id` (enrol). Both masked for every role.
+  - Checked absent from every image: device OTP digits, otp_cipher, otp_sha256, MFA secret_cipher and recovery hashes, password_hash, temporary_password, token_sha256, refresh ids, directive sig, Wi-Fi passwords. Kept in `AuditMask.NEVER_SHOW` plus a name pattern (secret, password, hash, token, otp, nonce, cipher, private, jti, refresh, totp, seed, signature, proof) as a guard.
+  - Raw config values live only in `cfg_version` images (value, old_value); masked when the key name looks secret (none does today).
+  - entity_id and reason never carry a secret (ids, uuids, `page`, `kind:version`, code-list keys; reason is typed by a person).
+  - Personal data in images (masked without the PII grant, never shown to ANALYST/SUPPORT): full_name, phone, email, contact_number, owner_name, address, pda_contact_no, dep_name, nid, tin, trade_license, lat, lng, provisional_lat, provisional_lng. Stored in clear today (not redacted at write): owner_name, full_name, address, pda_contact_no, dep_name, lat/lng.
+  - Free text (shown to ADMIN/SUPERADMIN, masked for ANALYST/SUPPORT): task title/description/resolution_note, tracking note, notification title_en, report_export filters, route_assignment reason, the reason column.
+
 ## Items (2026-10-18 ~05:10 UTC; nothing pushed yet: the lead's train order is tso -> qa 12b8cc4f -> lead-backend batch 2 -> backend-authz; rebuild on INT after batch 2, full CI + :backend:app:test green, ONE push, then 'ready <sha>')
 - Branch carries INT 60485582 + lead-backend d7c82910 + qa 12b8cc4f. My ReleaseAdmin/AuthzAuditTest edits were dropped (lead ruling: lead-backend owns the releases fix, qa owns the audit files); my baseline deletions are separate commits (e5792260, 2af3de98).
 - AZ-2 (SUPPORT reports): DONE d39db691 + 15d2cf90 (WEB_ROLES kept as deprecated alias of REPORT_ROLES). Opus PASS.
