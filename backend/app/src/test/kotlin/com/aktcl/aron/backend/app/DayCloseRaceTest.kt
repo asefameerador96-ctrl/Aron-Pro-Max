@@ -622,7 +622,7 @@ class DayCloseRaceTest {
         println("DayCloseRaceTest: $report")
         File("build").mkdirs()
         File("build/dayclose-race-fuzz.txt").writeText(report + "\n")
-        if (toleratedSeeds.size > kd1Cap(rounds)) throw AssertionError("${toleratedSeeds.size} of $rounds rounds tolerated as KD-1, above the cap ${kd1Cap(rounds)} (about 4% observed): another defect may wear its shape; seeds $toleratedSeeds")
+        if (toleratedSeeds.size > kd1Cap(rounds)) throw AssertionError("${toleratedSeeds.size} of $rounds rounds tolerated as KD-1, above the cap ${kd1Cap(rounds)} (about 5% observed): another defect may wear its shape; seeds $toleratedSeeds")
         if (failed.isNotEmpty()) throw AssertionError("${failed.size} of $rounds rounds broke the oracle ($byClause); first ones:\n" + failed.take(5).joinToString("\n"))
         if (rounds >= 20) {
             assertTrue((stats["reopen-rounds"]?.get() ?: 0) > 0, "no round reopened")
