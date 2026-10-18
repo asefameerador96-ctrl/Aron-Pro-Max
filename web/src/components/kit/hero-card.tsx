@@ -44,7 +44,7 @@ export function Sparkline({ points, label }: { points: readonly number[]; label:
 
 export function HeroCard({ label, amount, sub, delta, sparkline, sparklineLabel, href, testId, valueTestId, caption, className = "" }: { label: string; amount: string; sub?: ReactNode; delta?: ReactNode; sparkline?: readonly number[]; sparklineLabel?: string; href?: string; testId?: string; valueTestId?: string; caption?: ReactNode; className?: string }) {
   return (
-    <section data-testid={testId} className={`glass-card @container relative flex min-h-42 flex-col gap-2 p-(--card-pad) text-primary ${className}`}>
+    <section data-testid={testId} className={`glass-data @container relative flex min-h-42 flex-col gap-2 p-(--card-pad) text-primary ${className}`}>
       <h2 className="text-label text-secondary">{href ? <Link href={href} className={STRETCHED_LINK}>{label}</Link> : label}</h2>
       <div className="flex flex-wrap items-end justify-between gap-4">
         <p className="fit-number min-w-0 text-hero text-primary">

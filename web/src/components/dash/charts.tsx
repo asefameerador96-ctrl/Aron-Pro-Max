@@ -30,6 +30,8 @@ export interface Slice {
   value: number;
   valueText: string;
   shareText: string;
+  /** Drill-down for this slice (its legend label becomes a link). */
+  href?: string;
 }
 
 /** Donut with a printed legend (value and share per slice). Zero and negative slices are dropped from the arc but stay in the legend. */
@@ -53,13 +55,19 @@ export function Donut({ slices, label, centerText, testId, size = 140 }: { slice
               })
             : null}
         </svg>
-        {centerText ? <span className="absolute inset-0 flex items-center justify-center text-body-strong text-primary tabular-nums">{centerText}</span> : null}
+        {centerText ? <span className={`absolute inset-0 flex items-center justify-center px-[22%] text-center tabular-nums text-primary ${centerText.length > 7 ? "text-caption font-semibold" : "text-body-strong"}`}>{centerText}</span> : null}
       </div>
       <ul aria-label={label} className="min-w-40 flex-[1_1_10rem] space-y-1.5">
         {slices.map((s, i) => (
           <li key={s.key} data-label={s.label} data-value={s.value} className="flex items-center gap-2 text-body">
             <span className="size-3 shrink-0 rounded-full" style={{ background: VIZ[i % VIZ.length] }} aria-hidden="true" />
-            <span className="min-w-0 flex-1 truncate text-primary" title={s.label}>{s.label}</span>
+            {s.href ? (
+              <a href={s.href} data-testid={`slice-link-${s.key}`} className="inline-flex min-h-(--ctl-h) min-w-0 flex-1 items-center truncate text-accent underline-offset-2 hover:underline focus-visible:outline-(length:--focus-w) focus-visible:outline-offset-2 outline-focus" title={s.label}>
+                <span className="truncate">{s.label}</span>
+              </a>
+            ) : (
+              <span className="min-w-0 flex-1 truncate text-primary" title={s.label}>{s.label}</span>
+            )}
             <span className="whitespace-nowrap text-body-strong text-primary tabular-nums">{s.valueText}</span>
             <span className="w-14 shrink-0 whitespace-nowrap text-end text-caption text-secondary tabular-nums">{s.shareText}</span>
           </li>
@@ -80,7 +88,7 @@ export interface Column {
 export function ColumnChart({ rows, label, testId, height = 200 }: { rows: readonly Column[]; label: string; testId?: string; height?: number }) {
   const max = Math.max(1, ...rows.map((r) => r.value));
   return (
-    <div className="overflow-x-auto" data-testid={testId}>
+    <div role="region" aria-label={label} tabIndex={0} className="overflow-x-auto focus-visible:outline-(length:--focus-w) focus-visible:outline-offset-2 outline-focus" data-testid={testId}>
       <ul aria-label={label} className="flex items-end gap-3 pt-2" style={{ minWidth: Math.max(rows.length * 64, 0) }}>
         {rows.map((r, i) => (
           <li key={r.key} data-label={r.label} data-value={r.value} className="flex w-16 min-w-0 flex-1 flex-col items-center justify-end gap-1" style={{ height: height + 56 }}>

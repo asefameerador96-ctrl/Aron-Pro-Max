@@ -3,6 +3,19 @@ import { randomUUID } from "node:crypto";
 import type { Problem, ProblemCode, Role, ScopeSummary, Schemas } from "../src/contract/types";
 import { GEO, OUTLETS, PRODUCT_NODES, SEED_DATE, SKUS, controlTotals, pct, routesInScope, sum, type SeedRoute } from "./seed";
 
+
+/** The seeded category split of one route (80/10/6/4 percent of its net sales; sticks, sticks, pieces, dozens), zero when the route sold nothing. */
+function routeCategories(r: SeedRoute): Schemas["CategoryVolume"][] {
+  if (r.net_mtk <= 0) return [];
+  const part = (f: number): number => Math.round(r.net_mtk * f);
+  return [
+    { category_code: "cigarette", base_unit: "stick", qty_base: Math.round(r.memos * 40), net_mtk: part(0.8) },
+    { category_code: "bidi", base_unit: "stick", qty_base: Math.round(r.memos * 300), net_mtk: part(0.1) },
+    { category_code: "lighter", base_unit: "piece", qty_base: Math.round(r.memos * 3), net_mtk: part(0.06) },
+    { category_code: "match", base_unit: "dozen", qty_base: Math.round(r.memos * 2), net_mtk: r.net_mtk - part(0.8) - part(0.1) - part(0.06) },
+  ];
+}
+
 type Cell = string | number | boolean | null;
 type Row = Record<string, Cell>;
 type Col = Schemas["ReportColumn"];
@@ -255,7 +268,7 @@ export async function handleDash(x: DashCtx): Promise<boolean> {
       const p = pct(r.visited, r.target_outlets) ?? 0;
       return p >= 100 ? "ge_100" : p >= 90 ? "from_90" : p >= 80 ? "from_80" : "below_80";
     };
-    const items: Schemas["DailyTrackingRow"][] = rows.map((r) => ({ route_id: r.route_id, route_name: r.route_name, zone_id: r.zone_id, user_id: r.user_id, user_name: r.user_name, state: r.state === "not_started" ? "not_started" : r.state === "final_submitted" ? "final_submitted" : r.state === "sales_submitted" ? "sales_submitted" : "in_field", target_outlets: r.target_outlets, visited_outlets: r.visited, successful_calls: r.successful, active_memo_count: r.memos, net_mtk: r.net_mtk, tilldate_target_achievement_pct: pct(r.visited, r.target_outlets), bucket: bucket(r) }));
+    const items: Schemas["DailyTrackingRow"][] = rows.map((r) => ({ route_id: r.route_id, route_name: r.route_name, zone_id: r.zone_id, user_id: r.user_id, user_name: r.user_name, state: r.state === "not_started" ? "not_started" : r.state === "final_submitted" ? "final_submitted" : r.state === "sales_submitted" ? "sales_submitted" : "in_field", target_outlets: r.target_outlets, visited_outlets: r.visited, successful_calls: r.successful, active_memo_count: r.memos, net_mtk: r.net_mtk, tilldate_target_achievement_pct: pct(r.visited, r.target_outlets), by_category: routeCategories(r), bucket: bucket(r) }));
     const cnt = (b: Schemas["DailyTrackingRow"]["bucket"]) => items.filter((i) => i.bucket === b).length;
     const body: Schemas["DailyTrackingPage"] = { as_of: asOf, business_date: x.url.searchParams.get("business_date") ?? SEED_DATE, items, next_cursor: null, comparator: { business_date: "2026-10-06", as_of_time: "17:00", buckets: { ge_100: cnt("ge_100") + 1, from_90: cnt("from_90"), from_80: cnt("from_80"), below_80: cnt("below_80"), exception: cnt("exception"), not_logged_in: cnt("not_logged_in") } } };
     return send(200, body), true;
