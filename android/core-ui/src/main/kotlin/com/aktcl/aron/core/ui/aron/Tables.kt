@@ -44,9 +44,12 @@ import com.aktcl.aron.core.ui.AronLook
 import com.aktcl.aron.core.ui.LocalAronLook
 import com.aktcl.aron.core.ui.aron.Glyph.caretDown
 
-/** One row of a [TotalsPanel] or a [SummaryTable] subtotal: a [label] and its figures, already localised. */
+/**
+ * One row of a [TotalsPanel] or a [SummaryTable] subtotal: a [label] and its figures, already localised; [caption] is an optional
+ * small line under the label in the totals panel (the unit: `স্টিক`, `পিস`, `ডজন`).
+ */
 @Immutable
-data class TotalsLine(val label: String, val values: List<String>)
+data class TotalsLine(val label: String, val values: List<String>, val caption: String? = null)
 
 /**
  * The solid purple totals panel docked above the Stock and Sale buttons (PARITY-SPEC s2.7, sr/stock.webp): the [header] row in 12 sp
@@ -65,7 +68,10 @@ fun TotalsPanel(header: TotalsLine, lines: List<TotalsLine>, modifier: Modifier 
 @Composable
 private fun TotalsRow(line: TotalsLine, size: TextUnit, color: Color) {
     Row(Modifier.fillMaxWidth().padding(vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
-        Text(line.label, style = lookStyle(size, color = color), modifier = Modifier.weight(1.3f))
+        Column(Modifier.weight(1.3f)) {
+            Text(line.label, style = lookStyle(size, color = color))
+            if (line.caption != null) Text(line.caption, style = lookStyle(12.sp, color = LocalAronLook.current.onPanelMuted))
+        }
         line.values.forEach { Text(it, style = lookStyle(size, color = color, align = TextAlign.End), modifier = Modifier.weight(1f)) }
     }
 }
@@ -187,7 +193,7 @@ private fun CenteredWrap(modifier: Modifier, content: @Composable () -> Unit) {
 @Immutable
 data class SummaryRow(val title: String, val values: List<String>)
 
-/** A line of the totals block under a [SummaryTable] (`সর্বমোট`, `ডিসকাউন্ট এবং অন্যান্য (-)`): purple bold 22 sp, value at the end. */
+/** A line of the totals block under a [SummaryTable] (`সর্বমোট`, `ডিসকাউন্ট এবং অন্যান্য (-)`): purple bold 20 sp, value at the end. */
 @Immutable
 data class SummaryTotal(val label: String, val value: String)
 
@@ -202,14 +208,22 @@ private fun cellAlign(index: Int, count: Int): TextAlign = when (index) {
  * cell, then wraps only between words (sr/summary.png keeps "৪,৬৮৭.৫০৳" and "ডিসকাউন্ট" whole on 360 dp).
  */
 @Composable
-internal fun FitText(text: String, style: TextStyle, minSize: TextUnit, modifier: Modifier = Modifier, maxLines: Int = Int.MAX_VALUE) {
+internal fun FitText(text: String, style: TextStyle, minSize: TextUnit, modifier: Modifier = Modifier, maxLines: Int = Int.MAX_VALUE, oneLineDown: TextUnit? = null) {
     BoxWithConstraints(modifier) {
         val measurer = rememberTextMeasurer()
         val maxPx = constraints.maxWidth
-        val size = remember(text, style, maxPx, minSize) {
+        val size = remember(text, style, maxPx, minSize, oneLineDown) {
+            val fits = { t: String, sp: Float -> measurer.measure(t, style.copy(fontSize = sp.sp), softWrap = false, maxLines = 1).size.width <= maxPx }
+            // [oneLineDown]: keep the whole text on one line while that needs no smaller size than this (a SKU code), else wrap
+            var oneLine = style.fontSize.value
+            val floor = oneLineDown?.value
+            if (floor != null) {
+                while (oneLine > floor && !fits(text, oneLine)) oneLine -= 0.5f
+                if (fits(text, oneLine)) return@remember oneLine
+            }
             val words = text.split(' ').filter { it.isNotEmpty() }
-            var sp = style.fontSize.value
-            while (sp > minSize.value && words.any { measurer.measure(it, style.copy(fontSize = sp.sp), softWrap = false, maxLines = 1).size.width > maxPx }) sp -= 0.5f
+            var sp = floor ?: style.fontSize.value
+            while (sp > minSize.value && words.any { !fits(it, sp) }) sp -= 0.5f
             sp
         }
         Text(text, style = style.copy(fontSize = size.sp), maxLines = maxLines, modifier = Modifier.fillMaxWidth())
@@ -268,8 +282,8 @@ fun SummaryTable(
             Column(Modifier.fillMaxWidth().background(look.rowAlt).padding(horizontal = 12.dp, vertical = 8.dp)) {
                 totals.forEach { t ->
                     Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Text(t.label, style = lookStyle(22.sp, bold = true, color = look.purple), modifier = Modifier.weight(1f))
-                        Text(t.value, style = lookStyle(22.sp, bold = true, color = look.purple, align = TextAlign.End), modifier = Modifier.padding(start = 12.dp))
+                        Text(t.label, style = lookStyle(20.sp, bold = true, color = look.purple), modifier = Modifier.weight(1f))
+                        Text(t.value, style = lookStyle(20.sp, bold = true, color = look.purple, align = TextAlign.End), modifier = Modifier.padding(start = 12.dp))
                     }
                 }
             }
