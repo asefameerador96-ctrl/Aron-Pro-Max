@@ -251,7 +251,7 @@ class ScreenshotTests {
     private val health = DeviceHealthModel.of(62, 1200, 3, 15)
 
     // ---- screens ----
-    @Composable private fun Stock() = Frame(stringResource(HomeR.string.hm_tile_stock)) {
+    @Composable private fun Stock() = ParityFrame(stringResource(HomeR.string.hm_tile_stock), com.aktcl.aron.core.ui.R.drawable.aron_art_stock, printerConnected = false) {
         StockContent(stockRows, stockTotals, StockMessage.SAVED, slipNotPrinted = true, onIssue = { _, _ -> }, onSave = {}, onPrint = {})
     }
 
