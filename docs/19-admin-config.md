@@ -563,7 +563,7 @@ Restrictive direction (D-432) is registered for every key where a direction exis
 | `cfg.memo.rounding_mode` | S | enum(half_up_paisa, floor_paisa, half_even_paisa) | half_up_paisa (A) | enum | G | O | S | both | C3 | FD. Totals are summed unrounded and rounded once; must equal Apsis to the paisa (T-2-41). Stamped on memo | D-19 | 1a |
 | `cfg.memo.show_due_balance_on_print` | S | bool | true (A) | n/a | G | F | B | dev | C0 | Previous-due line on the memo | docs/06 | 2b |
 | `cfg.memo.due_balance_staleness_marker` | S | bool | true | n/a | G | F | B | dev | C0 | Marker "<date> পর্যন্ত" on a stale balance | G-field-09 | 2b |
-| `cfg.memo.allow_negative_net` | S | bool | true | n/a | G | F | B | both | C2 | Zero sale plus QC can make the net negative; stored as a credit. unknown; confirm: MQ-04 | D-18 | 2a |
+| `cfg.memo.allow_negative_net` | S | bool | true | n/a | G | F | B | both | C2 | Zero sale plus QC can make the net negative; stored as a credit. unknown; confirm: MQ-04. Fixed by D-18, not a runtime switch; no code reads it (DECISIONS D-18-FIXED-KEY) | D-18 | 2a |
 | `cfg.credit.enabled` | S | bool | true | n/a | G W D T Z O | F+TSO | B | both | C2 | `false` at outlet is a credit stop; TSO inside own territory; the DMO sees the count | docs/06 | 2a |
 | `cfg.credit.max_due_mtk` | S | money_mtk | 0 = no limit (Apsis shows none) | 0 to 10,000,000,000 | G W T Z O | F+TSO | B | both | C2 | unknown; confirm: any business limit (D-320) | D-320 | 2a |
 | `cfg.credit.max_days` | S | int | 0 = no limit | 0 to 180 | G W T Z O | F | B | both | C2 | | D-320 | 2a |
@@ -777,6 +777,7 @@ Restrictive direction (D-432) is registered for every key where a direction exis
 | `cfg.sla.targets_missing_alert_day` | S | int | 26 | 20 to 31 | G | P | B | srv | C1 | Month-end readiness board alerts when M+1 targets are missing | G-field-17 | 5c |
 | `cfg.support.contacts` | S | content(cfg.support.contacts) | AKTCL helpdesk numbers and hours (A placeholder); banner text keys | 1 to 10 | G W D T | O | B | both | C0 | Also served unauthenticated by `GET /config/public` | G-man-087 | 1c |
 | `cfg.support.max_upload_mb` | S | int | 20 | 5 to 100 | G | O | B | dev | C1 | "PDA to Support" upload cap | G-man-025 | 2e |
+| `cfg.support.upload_replay_max_h` | S | int | 168 | 1 to 720 | G | O | B | srv | C1 | Hours a stored PDA upload may be replayed for a fresh SAS; older replays are refused, start a new upload (D-PDA-REPLAY-AGE) | — | 2e |
 | `cfg.support.public_key_id` | S | text | set at 2e from Key Vault | id of an existing key | G | S | B | dev | C3 | Id of the AKTCL support public key that encrypts the PDA to Support bundle; an unknown id makes the device refuse to send. Added at the editorial merge from doc 21 s5 | G-sec-14; G-man-025 | 2e |
 | `cfg.support.pda_upload_wifi_only` | S | bool | true | n/a | G | O | B | dev | C1 | | G-man-025 | 2e |
 | `cfg.sys.schedule_horizon_days` | S | int | 7 (A) | 1 to 30 | G | O | B | both | C1 | How far ahead future-dated values ship so an offline phone applies them on time | G-cfg-06 | 1c |
