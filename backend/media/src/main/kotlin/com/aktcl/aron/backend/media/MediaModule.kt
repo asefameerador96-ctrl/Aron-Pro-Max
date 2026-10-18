@@ -96,6 +96,12 @@ fun Route.mediaRoutes(d: MediaDeps) {
             call.response.header(HttpHeaders.CacheControl, "no-store")
             call.respond(answer)
         }
+        // PARITY-SPEC s2.6: the pack picture by its stable asset id (the bundle never carries a signed URL)
+        get("/sku-images/{asset_id}/read-url") {
+            val answer = withContext(Dispatchers.IO) { SkuImageRead(d).readUrl(call.parameters["asset_id"]) }
+            call.response.header(HttpHeaders.CacheControl, "no-store")
+            call.respond(answer)
+        }
     }
 }
 

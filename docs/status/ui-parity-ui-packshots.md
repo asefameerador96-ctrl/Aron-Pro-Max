@@ -1,9 +1,10 @@
 # UI parity: pack pictures (packshots) in Stock and Sale (lane ui-packshots)
 
 <!-- HANDOVER (for a recycled session): read this block first. Lane branch lane/ui-packshots; lead session_01MbUQSxrP7AB9tbyANjUTPS.
-Items: (1) FAST PATH dev pack pictures = this file's section 1, pushed; (2) SERVER PATH bundle image_url/asset/version
-+ Room column + preload = NOT STARTED (T1: contract + Room migration; ask the lead for the Opus checker; V0087 reserved
-if a db migration is needed); (3) ADMIN PATH check + runbook = NOT STARTED. -->
+Items: (1) FAST PATH dev pack pictures: pushed 564c5c3e. (2) SERVER PATH: built (section 5): additive contract
+(Sku.image_asset_id + getSkuImageReadUrl), Room v8, preload after sync. T1: the lead's Opus checker is asked before
+'ready'; no Postgres migration (V0087 released). (3) ADMIN PATH: the web upload exists; runbook
+docs/runbooks/sku-pack-pictures.md. Open: AMO/TSO-only SKU tables have no picture slot; owner screenshots needed. -->
 
 Owner question (2026-10-18): "why is there no packshot in the Stock and Sale menus". Reference: `docs/ui-reference/sr/stock.webp`,
 `stock.md` UI-SR-18..20, PARITY-SPEC s2.5 and s2.6.
@@ -51,7 +52,7 @@ WebP, 6.8 to 7.4 KB each (22 KB total in a dev APK), made by `tools/packshots/cr
 - `-Paron.devPackshots=true` (root `build.gradle.kts`) adds `android/dev-packshots` to the APK assets and sets
   `BuildConfig.DEV_PACKSHOTS`. Only the ci.yml `android-release` job (dev origin) passes it; `infra/tests/check_infra.py`
   fails if any other workflow (release-app.yml, production) mentions it.
-- Source (1) has no data yet: the bundle does not carry a SKU image reference (item 2 of this lane).
+- Source (1) is fed by the server path (section 5) once the admin uploads the pictures.
 - Today's Stock and Sale screens are still the Calm Glass rows; their 48 x 78 dp picture slot calls the kit's
   `PackshotImage`. When feature-stock / feature-sale move to the kit `PackCard`, pass `skuId = sku.skuId.toString()` and
   the pictures come along with no further wiring.
@@ -68,4 +69,27 @@ WebP, 6.8 to 7.4 KB each (22 KB total in a dev APK), made by `tools/packshots/cr
 
 | Item | sha | CI |
 |---|---|---|
-| 1 fast path | (this push) | pending |
+| 1 fast path | 564c5c3e52803f3f747095036b4104b7a04b64fb | run 39175158082 |
+| 2 server path + 3 admin runbook | (next push) | pending; Opus checker asked |
+
+## 5. Server path (item 2)
+
+- **Contract (additive, no version bump):** `Sku.image_asset_id` (nullable uuid). The bundle fills it from
+  `app.sku.image_asset_id`, only while that asset is a `sku_image`, and **never** sends a signed `image_url`: a SAS
+  signed per build would move the bundle fingerprint and expire after a day. New operation
+  `GET /v1/sku-images/{asset_id}/read-url` (`getSkuImageReadUrl`) answers `MediaReadUrl` with a 5-minute read URL.
+  Any signed-in user may call it, because pack art is the same for every reach. Only an asset that a SKU binds is
+  served; anything else is 404. Slices, `WireDtos`, `web/src/contract/openapi.d.ts` and docs/24 Appendix A are
+  regenerated or updated in the same push.
+- **Backend:** `backend/media` `SkuImageRead` + route; `BundleService.products` selects the asset id;
+  `SkuImageReadTest`; a `BundleAcceptanceTest` assertion (the asset id is carried, no SKU carries an `image_url`); a
+  conformance fixture; scope registry `exempt` (global pack art); one `scope-blind-baseline.txt` line ("global by
+  design", like the code lists and tutorials). That line is flagged to the checker because the file says it may only
+  shrink.
+- **Phone:** Room **v8** (`AutoMigration(7, 8)`, `sku.image_asset_id`, exported `schemas/8.json`, `Migration78Test`);
+  `ReferenceRepository.skuRow` maps it (`SeededDayLoadTest.aSkuImageAssetIsStoredFromTheBundle`).
+  `SyncApi.skuImageReadUrl`. `PackshotPreload.afterSync` runs from each app's sync runner `afterRun`: it lists the
+  pictured SKUs from Room, asks for one read URL per uncached asset, and downloads one bounded thumbnail (300 KB, mobile
+  data allowed) keyed `sku-image:<asset id>`, at most 100 per run, one run at a time. The fetched SKU's stand-in is then
+  dropped from memory. The screens only read disk.
+- **No Postgres migration** (the column exists since V0075): V0087 is not used.

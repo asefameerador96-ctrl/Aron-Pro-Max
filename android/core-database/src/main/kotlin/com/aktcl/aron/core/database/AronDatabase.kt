@@ -43,7 +43,7 @@ import com.aktcl.aron.core.database.entity.VisitEntity
  * a Migration with a test, and destructive migration is never enabled.
  */
 @Database(
-    version = 7,
+    version = 8,
     exportSchema = true,
     autoMigrations = [
         AutoMigration(from = 1, to = 2), // v2 (F-SYS-006): price, config_value, bundle_section
@@ -52,6 +52,7 @@ import com.aktcl.aron.core.database.entity.VisitEntity
         AutoMigration(from = 4, to = 5), // v5 (F-SR-020/021): content_item, outlet_content_assignment, survey, survey_question, content_view, survey_response
         AutoMigration(from = 5, to = 6), // v6 (F-AMO): amo_record, the AMO's own records (assessments, distribution, verifications, tasks, reviews)
         AutoMigration(from = 6, to = 7), // v7: purged_uuid, the tombstones that stop a replay of a purged record from being captured again
+        AutoMigration(from = 7, to = 8), // v8 (PARITY-SPEC s2.6): sku.image_asset_id, the pack picture of the bundle
     ],
     entities = [
         RouteEntity::class, OutletEntity::class, SkuEntity::class,

@@ -75,29 +75,51 @@ class SkuPackshotsTest {
         assertNull(p.cached("MaxB-10S"))
     }
 
-    @Test fun theAdminThumbnailWinsAndIsKeyedByAssetAndVersionNotByTheSignedUrl() = runBlocking {
-        server.enqueue(MockResponse.Builder().code(200).addHeader("Content-Type", "image/webp").body(Buffer().write(webp("maxim-bolt"))).build())
+    private fun imageServer(art: String) {
+        server.dispatcher = object : mockwebserver3.Dispatcher() {
+            override fun dispatch(request: mockwebserver3.RecordedRequest): MockResponse =
+                MockResponse.Builder().code(200).addHeader("Content-Type", "image/webp").body(Buffer().write(webp(art))).build()
+        }
         server.start()
-        val cache = ImageCache(tmp.newFolder("img"), OkHttpClient(), { false })
-        val first = server.url("/sku/7.webp?sig=one").toString()
-        assertNotNull(cache.fetch(first, ImageCache.Kind.THUMBNAIL, cacheKey = SkuPackshots.cacheKey("a7", 3)))
-        var ref = SkuPackshots.SkuImageRef(server.url("/sku/7.webp?sig=two").toString(), "a7", 3) // a new signature, the same picture
-        val p = SkuPackshots(cache, devAssets(), lookup = { id -> if (id == 7L) SkuPackshots.SkuInfo("MaxR-10S", ref) else null })
-        val b = p.bitmap("7")
-        assertNotNull(b)
-        assertEquals(1, server.requestCount) // read from disk: no second download, no network in the row
-        assertTrue(b!!.getPixel(73, 60) != webpPixel("maxim-regular")) // the admin (Bolt) picture, not the dev Regular art
+    }
 
-        ref = ref.copy(version = 4) // a new version not fetched yet: the dev art until the preload brings it
-        p.invalidate()
-        assertNotNull(p.bitmap("7"))
+    @Test fun thePreloadFetchesOncePerAssetAndTheAdminPictureThenWins() = runBlocking {
+        imageServer("maxim-bolt")
+        val cache = ImageCache(tmp.newFolder("img"), OkHttpClient(), { false }) // a metered network: thumbnails still come
+        var asset = "a7"
+        val p = SkuPackshots(cache, devAssets(), lookup = { id -> if (id == 7L) SkuPackshots.SkuInfo("MaxR-10S", SkuPackshots.SkuImageRef(asset)) else null })
+        val dev = p.bitmap("7")!! // nothing cached yet: the dev Regular art stands in, no network on the row's path
+        assertEquals(0, server.requestCount)
+        assertEquals(webpPixel("maxim-regular"), dev.getPixel(73, 60))
+
+        var asked = 0
+        val readUrl: suspend (String) -> String? = { id -> asked++; server.url("/sku/$id.webp?sig=" + asked).toString() }
+        assertEquals(1, p.preload(listOf(7L to "a7"), readUrl))
+        val admin = p.bitmap("7")!!
+        assertTrue(admin.getPixel(73, 60) != webpPixel("maxim-regular")) // the preload dropped the stand-in: the Bolt picture
+        assertEquals("cached under the asset id: a new signed URL is not fetched again", 0, p.preload(listOf(7L to "a7"), readUrl))
+        assertEquals(1, asked)
         assertEquals(1, server.requestCount)
+
+        asset = "a8" // a new upload is a new asset: the stand-in until the next preload
+        p.invalidate()
+        assertEquals(webpPixel("maxim-regular"), p.bitmap("7")!!.getPixel(73, 60))
+        assertEquals(1, p.preload(listOf(7L to "a8"), readUrl))
+    }
+
+    @Test fun aRefusedOrFailingReadUrlIsSkippedNeverThrown() = runBlocking {
+        imageServer("maxim-bolt")
+        val cache = ImageCache(tmp.newFolder("img"), OkHttpClient(), { false })
+        val p = SkuPackshots(cache, devAssets = null)
+        assertEquals(0, p.preload(listOf(1L to "x1", 2L to "x2"), { id -> if (id == "x1") null else error("offline") }))
+        assertEquals(0, server.requestCount)
+        assertEquals(0, SkuPackshots(images = null, devAssets = null).preload(listOf(1L to "x1"), { "https://x.invalid/" }))
     }
 
     @Test fun aMissingOrBrokenPictureIsNullNeverAnError() = runBlocking {
         val broken = File(tmp.newFolder("img"), "x").also { it.writeText("not an image") }
         val cache = ImageCache(broken.parentFile!!, OkHttpClient(), { false })
-        val p = SkuPackshots(cache, devAssets = null, lookup = { SkuPackshots.SkuInfo("MaxR-10S", SkuPackshots.SkuImageRef("https://x.invalid/a.png", "a", 1)) })
+        val p = SkuPackshots(cache, devAssets = null, lookup = { SkuPackshots.SkuInfo("MaxR-10S", SkuPackshots.SkuImageRef("a")) })
         assertNull(p.bitmap("1"))
         val throwing = SkuPackshots(cache, devAssets(), lookup = { error("bundle not open") })
         assertNull(throwing.bitmap("1"))
@@ -111,9 +133,9 @@ class SkuPackshotsTest {
     }
 
     @Test fun theCacheKeyIsStable() {
-        assertEquals("sku-image:a7:v3", SkuPackshots.cacheKey("a7", 3))
-        assertEquals(SkuPackshots.cacheKey("a7", 3), SkuPackshots.cacheKey("a7", 3))
-        assertTrue(SkuPackshots.cacheKey("a7", 3) != SkuPackshots.cacheKey("a7", 4))
+        assertEquals("sku-image:aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", SkuPackshots.cacheKey("AAAAAAAA-aaaa-4aaa-8aaa-aaaaaaaaaaaa"))
+        assertEquals(SkuPackshots.cacheKey("a7"), SkuPackshots.cacheKey("a7"))
+        assertTrue(SkuPackshots.cacheKey("a7") != SkuPackshots.cacheKey("a8"))
     }
 
     @Test fun bigUploadsAreDownsampledOnDecode() {
@@ -128,5 +150,5 @@ class SkuPackshotsTest {
     }
 
     private fun webpPixel(art: String): Int =
-        android.graphics.BitmapFactory.decodeByteArray(webp(art), 0, webp(art).size).getPixel(73, 60)
+        android.graphics.BitmapFactory.decodeByteArray(webp(art), 0, webp(art).size, android.graphics.BitmapFactory.Options().apply { inPreferredConfig = android.graphics.Bitmap.Config.RGB_565 }).getPixel(73, 60) // decoded as the provider does
 }

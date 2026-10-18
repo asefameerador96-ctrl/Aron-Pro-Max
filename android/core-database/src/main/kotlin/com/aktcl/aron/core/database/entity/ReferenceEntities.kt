@@ -84,6 +84,8 @@ data class SkuEntity(
     val sort: Int,
     val status: String,
     val version: Int?,
+    /** The pack picture's admin asset (PARITY-SPEC s2.6, v8); null: no picture, the row shows the silhouette. */
+    @ColumnInfo(name = "image_asset_id") val imageAssetId: String? = null,
 )
 
 /** A selling price of the bundle (`SkuPrice`, docs/24 s4.10): today's prices plus scheduled ones within the horizon. */

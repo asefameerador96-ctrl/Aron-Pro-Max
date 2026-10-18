@@ -790,6 +790,32 @@ paths:
         '404': { $ref: '#/components/responses/NotFound' }
         '503': { $ref: '#/components/responses/ServiceUnavailable' }
 
+  /v1/sku-images/{asset_id}/read-url:
+    get:
+      tags: [media]
+      operationId: getSkuImageReadUrl
+      summary: Short-lived read URL of a SKU's pack picture (PARITY-SPEC s2.6), by the stable `Sku.image_asset_id` of the bundle.
+      description: |
+        Any signed-in user (pack art is the same for every role and reach). The URL is valid for 5 minutes; the phone
+        downloads at once and caches the bytes under the asset id, so a new upload (a new asset id) is the only refetch.
+        Only an asset of purpose `sku_image` that a SKU currently binds is served; anything else is 404. The bundle
+        carries the asset id, never a signed URL, so the bundle fingerprint stays stable. The answer is `no-store`.
+      parameters:
+        - name: asset_id
+          in: path
+          required: true
+          schema: { $ref: '#/components/schemas/Uuid' }
+      responses:
+        '200':
+          description: Read URL valid for 5 minutes (a JPEG or PNG of at most 300 KB).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MediaReadUrl' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+
   /v1/config/delta:
     get:
       tags: [config]
@@ -9844,7 +9870,12 @@ components:
           oneOf:
             - { $ref: '#/components/schemas/Uuid' }
             - type: 'null'
-        image_url: { type: [string, 'null'], format: uri, maxLength: 1000, description: 'Pack image (the asset bound by `image_asset_id`); null when the SKU has none (docs/24 s14a R20).' }
+        image_url: { type: [string, 'null'], format: uri, maxLength: 1000, description: 'Pack image (the asset bound by `image_asset_id`) as a short-lived signed URL in admin answers; null when the SKU has none (docs/24 s14a R20). The phone bundle leaves it null (a signed URL would change the bundle fingerprint) and carries `image_asset_id` instead.' }
+        image_asset_id:
+          description: 'The admin asset of the pack picture (purpose `sku_image`), fetched by phones through `GET /v1/sku-images/{asset_id}/read-url`; a new upload is a new id. Null or absent: no picture (the app shows the pack silhouette).'
+          oneOf:
+            - { $ref: '#/components/schemas/Uuid' }
+            - type: 'null'
         updated_at: { $ref: '#/components/schemas/Timestamp' }
         version: { type: integer, minimum: 1 }
     SkuWrite:

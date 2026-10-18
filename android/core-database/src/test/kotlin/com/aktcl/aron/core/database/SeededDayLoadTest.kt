@@ -55,6 +55,25 @@ class SeededDayLoadTest {
         context.deleteDatabase(name)
     }
 
+    /** PARITY-SPEC s2.6: the bundle's `image_asset_id` lands on the SKU row and feeds the thumbnail preload; absent is null. */
+    @Test
+    fun aSkuImageAssetIsStoredFromTheBundle() = runTest {
+        val db = Room.inMemoryDatabaseBuilder(context, AronDatabase::class.java).allowMainThreadQueries().build()
+        val json = kotlinx.serialization.json.Json.parseToJsonElement(fixture()).let { root ->
+            val o = root as kotlinx.serialization.json.JsonObject
+            val products = o["products"] as kotlinx.serialization.json.JsonObject
+            val skus = (products["skus"] as kotlinx.serialization.json.JsonArray).mapIndexed { i, s ->
+                if (i == 0) kotlinx.serialization.json.JsonObject((s as kotlinx.serialization.json.JsonObject) + ("image_asset_id" to kotlinx.serialization.json.JsonPrimitive("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"))) else s
+            }
+            kotlinx.serialization.json.JsonObject(o + ("products" to kotlinx.serialization.json.JsonObject(products + ("skus" to kotlinx.serialization.json.JsonArray(skus)))))
+        }.toString()
+        ReferenceRepository(db).apply(BundleReference.parse(json))
+        assertEquals("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", db.referenceDao().sku(100)!!.imageAssetId)
+        assertEquals(null, db.referenceDao().sku(101)!!.imageAssetId)
+        assertEquals(listOf(100L to "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"), db.referenceDao().skuImages().map { it.skuId to it.assetId })
+        db.close()
+    }
+
     @Test
     fun applyingABundleNeverTouchesCapturesOrTheOutbox() = runTest {
         val db = Room.inMemoryDatabaseBuilder(context, AronDatabase::class.java).allowMainThreadQueries().build()

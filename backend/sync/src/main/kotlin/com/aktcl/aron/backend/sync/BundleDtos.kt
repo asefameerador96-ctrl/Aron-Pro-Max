@@ -130,6 +130,8 @@ data class SkuDto(
     val thumbnail_media_uuid: String?,
     val updated_at: String,
     val version: Int,
+    /** The pack picture's admin asset (PARITY-SPEC s2.6): phones fetch it from GET /v1/sku-images/{id}; never a signed URL here. */
+    val image_asset_id: String? = null,
 )
 
 @Serializable
