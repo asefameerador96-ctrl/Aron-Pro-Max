@@ -184,6 +184,7 @@ INT only moves by fast-forward to a green candidate. Owner of this file: integra
 | 2026-10-18 20:02 | see git log | `lane/train-20261018T1859-web` 4a01a784 (INT ec7d53b6 docs-only handover + web-dashboard 2ff372c8 [web-only: ring contrast test and web changes]) | run 39156813639 ALL green | checked by lead (web lane run 39155691812 green); no V0086 'checked' arrived by 20:00, so promoted alone. Ancestor gate passed. |
 | 2026-10-18 21:05 | see git log | backend-authz 24f56a23 (PII reveal D-AUTHZ-PII, MIGRATION V0086 db/migrations/V0086__cfg_pii_reauth_min.sql; contract additive POST /v1/auth/reauth, Me.pii_until) fast-forward of INT c91d9cc6 | lane run 39162706249 ALL green (Infra validation + Dependency review skipped by change detection) | checked by lead 21:02. Ancestor gate passed. Deploy's migrate job applies V0086 on dev. |
 | 2026-10-18 21:42 | see git log | web-dashboard 6701987a (PII reveal UX: BFF /api/bff/reauth, reveal bar, redacted chip, e2e pii-reveal; web/ + docs only) fast-forward of INT 8edc7124 | lane run 39167967544 ALL green (Web incl. e2e ran) | checked by lead 21:39. Ancestor gate passed. |
+| 2026-10-18 22:30 | see git log | lead-docs-night 3bd3aa53 (docs-only: CLAUDE.md, DECISIONS.md, docs/32 banner, docs/ui-reference/PARITY-SPEC.md, status docs; UI-parity priority change) fast-forward of INT 9d1d8e18 | docs-only (no CI created) | checked by lead 22:25. Ancestor gate passed. |
 
 ## Open reds
 
