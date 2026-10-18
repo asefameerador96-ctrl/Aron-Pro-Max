@@ -291,6 +291,20 @@ class ScopeLeakAcrossEndpointsTest {
     private fun resourceOf(op: ContractModel.Operation): String? =
         op.path.split('/').lastOrNull { it.isNotEmpty() && !it.startsWith("{") }?.let { seg -> seg.takeIf { it in otherIds.keys } }
 
+    /**
+     * Report queries choose their geography with `geo: {zone: [..], division: [..], ...}` (docs/24 s12.3), keys without
+     * an `_id` suffix: a body whose schema has `geo` gets the other division's zone, territory and division there.
+     */
+    private fun aimGeo(op: ContractModel.Operation, n: JsonNode): Boolean {
+        val schema = op.requestSchema?.let { r -> r.get("\$ref")?.asText()?.let { contract.component(it.substringAfterLast('/')) } ?: r } ?: return false
+        if (n !is ObjectNode || !schema.path("properties").has("geo")) return false
+        val geo = n.putObject("geo")
+        for ((key, kind) in listOf("zone" to "zones", "territory" to "territories", "division" to "divisions")) {
+            world.otherIds[kind]?.let { geo.putArray(key).add(it) }
+        }
+        return true
+    }
+
     /** Points every resource id field of a body (single or list) at the other division; true when one changed. */
     private fun retarget(n: JsonNode): Boolean {
         var changed = false
@@ -322,7 +336,7 @@ class ScopeLeakAcrossEndpointsTest {
             for (c in scoped) {
                 suspend fun once(variant: String, pathIds: Map<String, Long>, query: String = "", body: Boolean = false, pins: Map<String, String> = ownPin) {
                     var retargeted = !body
-                    val edit: ((JsonNode) -> Unit)? = if (body) { n -> retargeted = retarget(n) } else null
+                    val edit: ((JsonNode) -> Unit)? = if (body) { n -> retargeted = retarget(n) or aimGeo(op, n) } else null
                     val r = world.call(this, contract, op, c, tokenFor(c), pathIds, query, includeOptionalIds = body, bodyEdit = edit, queryOverrides = pins)
                     if (!retargeted) return // the body names no resource: nothing to learn beyond the own call
                     st.calls++
