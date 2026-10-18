@@ -793,6 +793,8 @@ data class RouteDayState(
     @SerialName("route_name") val routeName: String? = null,
     @SerialName("assigned_user_id") val assignedUserId: Long? = null,
     @SerialName("acting_user_id") val actingUserId: Long? = null,
+    @SerialName("assigned_username") val assignedUsername: String? = null,
+    @SerialName("assigned_user_full_name") val assignedUserFullName: String? = null,
 )
 
 /** The server's view of one user and business date. */

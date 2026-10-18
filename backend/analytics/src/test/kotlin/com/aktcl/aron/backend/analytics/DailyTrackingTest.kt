@@ -165,6 +165,28 @@ class DailyTrackingTest : ReportFixture() {
     }
 
     @Test
+    fun aReplayAfterTheCallersReachMovedGetsTheStoredAction() = app {
+        // Replay first: the caller's own action answers before the reach check (the TSO was moved to zone 2 meanwhile).
+        val r4 = routeId("R4")
+        val first = act(11, Role.TSO, body("4a1c2b0e-8d1a-4c5e-9f3a-2b7d4e6a8c10", r4))
+        assertEquals(HttpStatusCode.Created, first.status)
+        val before = reaches.getValue(11)
+        reaches[11] = com.aktcl.aron.backend.platform.Reach(11, Role.TSO, day, false, setOf(z2), emptySet(), false, listOf(com.aktcl.aron.backend.platform.ReachNode("zone", z2)))
+        try {
+            val again = act(11, Role.TSO, body("4a1c2b0e-8d1a-4c5e-9f3a-2b7d4e6a8c10", r4))
+            assertEquals(HttpStatusCode.Created, again.status, again.bodyAsText())
+            assertEquals(Json.parseToJsonElement(first.bodyAsText()).jsonObject.s("created_at"), Json.parseToJsonElement(again.bodyAsText()).jsonObject.s("created_at"))
+            assertEquals(Json.parseToJsonElement(first.bodyAsText()).jsonObject["notified_user_ids"], Json.parseToJsonElement(again.bodyAsText()).jsonObject["notified_user_ids"])
+            assertEquals(1, fresh.db.jdbi.withHandle<Int, Exception> { it.createQuery("SELECT count(*) FROM app.audit_log WHERE entity = 'tracking_action' AND entity_id = '4a1c2b0e-8d1a-4c5e-9f3a-2b7d4e6a8c10'").mapTo(Int::class.java).one() })
+            // Another user outside the route's reach sending the stored uuid: 403, never the stored action or a 409.
+            assertEquals(HttpStatusCode.Forbidden, act(14, Role.TSO, body("4a1c2b0e-8d1a-4c5e-9f3a-2b7d4e6a8c10", r4)).status)
+            // A new action on that route is outside the moved reach, and another note under the stored uuid is still a conflict.
+            assertEquals(HttpStatusCode.Forbidden, act(11, Role.TSO, body("4b1c2b0e-8d1a-4c5e-9f3a-2b7d4e6a8c10", r4)).status)
+            assertEquals(HttpStatusCode.Conflict, act(11, Role.TSO, body("4a1c2b0e-8d1a-4c5e-9f3a-2b7d4e6a8c10", r4, note = "Another note")).status)
+        } finally { reaches[11] = before }
+    }
+
+    @Test
     fun checker_twoConcurrentInsertsOfOneUuidStoreOneAction() = app {
         val r4 = routeId("R4")
         val results = java.util.concurrent.ConcurrentLinkedQueue<String>()

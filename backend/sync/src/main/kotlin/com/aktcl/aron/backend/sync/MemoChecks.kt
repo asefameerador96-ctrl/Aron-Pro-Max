@@ -17,9 +17,12 @@ import org.jdbi.v3.core.Handle
  * - [familyMismatches]: a memo and its children in one family segment (the normal case: the phone holds a family until
  *   it is complete) are verified before anything is stored; on any failed equation the memo and every child are
  *   quarantined `arithmetic_mismatch` together, so a half-applied memo never exists.
- * - [recordMismatch]: equations one record shows on its own (memo header net/round/paid/due/credit, line gross).
+ * - [recordMismatch]: equations one record shows on its own (memo header net/round/paid/due/credit, line gross) and
+ *   the sign of the net (D-18: a negative net only for a zero-gross sale, a QC credit), so a header sent before its
+ *   children is held to the same rule as a whole family (QA-MNY-01).
  * - [afterChildStored]: a family split across batches is verified when its last child arrives; the memo already
- *   stored (it was printed) stays and gets `server_flags` `arithmetic_mismatch` for review.
+ *   stored (it was printed) stays and gets `server_flags` `arithmetic_mismatch` for review. A stored header with a
+ *   gross and a negative net (stored before the header check existed) is flagged when any child lands.
  * - A line priced differently from the price list valid on `price_list_date` flags the memo `price_mismatch` and is
  *   never rejected: the printed memo is the fact.
  */
@@ -100,6 +103,8 @@ object MemoChecks {
                     round != net - raw -> "round_adj_mtk $round, recomputed ${net - raw}"
                     paid + due != net -> "paid_mtk + due_mtk ${paid + due} != net_mtk $net"
                     p.bool("is_credit") != (due > 0) -> "is_credit ${p.bool("is_credit")} with due_mtk $due"
+                    // D-18, as MemoMath.verify `net_negative`: the header carries both numbers, so no child is needed.
+                    net < 0 && gross != 0L -> "net_negative stated $net with gross_mtk $gross, recomputed 0"
                     else -> null
                 }
             }
@@ -160,6 +165,10 @@ object MemoChecks {
             """.trimIndent(),
         ).bind("m", memo).map { rs, _ -> rs.getBoolean(1) to rs.getBoolean(2) }.findOne().orElse(null) ?: return
         if (split.first && !split.second) flag(h, memo, "arithmetic_mismatch")
+        // D-18 on a header stored before recordMismatch checked the sign; idempotent, so a replayed child is a no-op.
+        val negative = h.createQuery("SELECT net_mtk < 0 AND gross_mtk <> 0 FROM app.memo WHERE client_uuid = CAST(:m AS uuid)")
+            .bind("m", memo).mapTo(Boolean::class.java).findOne().orElse(false)
+        if (negative) flag(h, memo, "arithmetic_mismatch")
         // More stored children than the header counts: a split family that went wrong.
         val over = h.createQuery(
             """

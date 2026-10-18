@@ -8,7 +8,6 @@ backend/analytics/src/main/kotlin/com/aktcl/aron/backend/analytics/DashboardApi.
 backend/analytics/src/main/kotlin/com/aktcl/aron/backend/analytics/ReportHandlersB.kt | round(100.0 * a.successful_calls | ok | SQL strike-rate percentage; net_mtk on the line is a bigint column
 backend/analytics/src/main/kotlin/com/aktcl/aron/backend/analytics/ReportHandlersB.kt | round(100.0 * ca.total_score | ok | SQL score percentage ("total" is a score, not money)
 backend/analytics/src/main/kotlin/com/aktcl/aron/backend/analytics/ReportHandlersB.kt | round(100.0 * br.bm | ok | SQL brand-share percentage; net_mtk on the line is a bigint column
-backend/analytics/src/main/kotlin/com/aktcl/aron/backend/analytics/ReportOutputs.kt | ws.value(r, c, p.content.toDouble()) | finding | QA-MNY-03 (backend): an Excel cell of type mtk that is not an integer string is written as a double instead of failing; money cells must stay integers
 android/core-ui/src/main/kotlin/com/aktcl/aron/core/ui/Money.kt | fun moneyAnnotated(text: String, baseSp: Float, | ok | font size (sp) of the money text style, not an amount
 android/core-ui/src/main/kotlin/com/aktcl/aron/core/ui/Money.kt | fun moneyFloorSp(baseSp: Float): Float | ok | font size (sp), not an amount
 android/core-ui/src/main/kotlin/com/aktcl/aron/core/ui/Money.kt | fun moneyCappedSp(baseSp: Float, fontScale: Float): Float | ok | font size (sp) and font scale, not an amount

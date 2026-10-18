@@ -3346,6 +3346,7 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
         '412': { $ref: '#/components/responses/PreconditionFailed' }
   /v1/admin/releases/policy:
     get:
@@ -7363,6 +7364,8 @@ components:
         route_name: { type: [string, 'null'], maxLength: 120 }
         assigned_user_id: { type: [integer, 'null'], format: int64, minimum: 1 }
         acting_user_id: { type: [integer, 'null'], format: int64, minimum: 1 }
+        assigned_username: { type: [string, 'null'], maxLength: 64, description: 'Login of the assigned SR, for the supervisor route lists (F-TSO-007).' }
+        assigned_user_full_name: { type: [string, 'null'], maxLength: 120, description: 'Full name of the assigned SR, for the supervisor route lists (F-TSO-007).' }
     SupervisorDayState:
       type: object
       required: [user_id, business_date, checked_in, sales_submitted]

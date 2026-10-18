@@ -363,7 +363,6 @@ class MoneyIngestOracleTest {
      * recordMismatch, which never checks the sign of the net, and afterChildStored only compares sums, so a sale with a
      * gross and a negative net is stored and never flagged.
      */
-    @Disabled("QA-MNY-01: split family stores a negative net with a gross (D-18); enable when MemoChecks checks the sign outside the family path")
     @Test
     fun aSplitFamilyWithANegativeNetAndAGrossIsNotStoredSilently() = testApplication {
         application { aronApi(wiring) }
