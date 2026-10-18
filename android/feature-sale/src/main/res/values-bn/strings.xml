@@ -43,7 +43,8 @@
     <string name="review_gross">মোট</string>
     <string name="review_offer_discount">ডিসকাউন্ট</string>
     <string name="review_drp_discount">স্লাইড</string>
-    <string name="review_qc">QC</string>
+    <string name="review_qc">মোট QC</string>
+    <string name="review_credit_note">এটি একটি ক্রেডিট হিসেবে সংরক্ষিত হবে</string>
     <string name="review_net">সর্বমোট</string>
     <string name="review_paid">পরিশোধ</string>
     <string name="review_due">বাকি</string>
@@ -56,6 +57,8 @@
     <string name="review_problem_unit">%1$s এর জন্য এই একক অনুমোদিত নয়।</string>
     <string name="review_problem_paid">পরিশোধ ০ বা তার বেশি এবং মোটের কম হতে হবে, পুরো পয়সায়।</string>
     <string name="review_problem_nothing">বিক্রির কিছু নেই।</string>
+    <string name="review_problem_net_negative">QC এর কারণে মোট শূন্যের নিচে যাচ্ছে। QC কমান।</string>
+    <string name="review_problem_qc_cap">একটি পণ্যের QC সর্বোচ্চ সীমার বেশি।</string>
     <string name="review_problem_other">অনুগ্রহ করে বিক্রয়টি দেখুন।</string>
     <string name="credit_title">পরিশোধিত টাকার পরিমাণ লিখুন</string>
     <string name="credit_body">এখন আপনি রিটেইলার থেকে কত টাকা সংগ্রহ করছেন?</string>
@@ -72,12 +75,24 @@
     <string name="qc_pick">QC এ প্রবেশ করতে, আপনি যে পণ্যটি যোগ করতে চান সেটি নির্বাচন করুন।</string>
     <string name="qc_empty">QC করার জন্য কোনো পণ্য নেই।</string>
     <string name="qc_summary">QC সারাংশ</string>
-    <string name="qc_col_type">QC ধরন</string>
     <string name="qc_production">উৎপাদন ত্রুটি</string>
     <string name="qc_transport">পরিবহন ত্রুটি</string>
-    <string name="qc_deduction">কর্তন: %1$s</string>
+    <string name="qc_deduction">সেটেলমেন্ট পরিমাণ: %1$s</string>
     <string name="qc_cancel">বাতিল</string>
     <string name="qc_done">QC জমা দিন</string>
+    <string name="qc_max">সর্বোচ্চ QC</string>
+    <string name="qc_done_amount">QC হয়ে গেছে</string>
+    <string name="qc_remaining">বাকি আছে</string>
+    <string name="qc_clear">ডিলিট</string>
+    <string name="qc_total_qty">মোট QC নিষ্পত্তি: %1$s</string>
+    <string name="qc_confirm_title">ইনফর্মেশন</string>
+    <string name="qc_confirm_message">আপনি কি QC জমা দিতে চান?</string>
+    <string name="qc_type_damaged_crushed">ড্যামেজড ও ক্রাশড – প্যাক / আউটার CBC</string>
+    <string name="qc_type_short_outer_pack_stick">আউটার / প্যাক / স্টিক কম থাকা</string>
+    <string name="qc_type_other_mfc">অন্যান্য ত্রুটি</string>
+    <string name="qc_type_expired_stock">মেয়াদোত্তীর্ণ স্টক (৪ মাস+)</string>
+    <string name="qc_type_damaged_in_transit">স্টক ড্যামেজড – রুট সার্ভিস কালীন</string>
+    <string name="qc_type_taste">স্বাদ সংক্রান্ত সমস্যা</string>
     <string name="qc_locked">এই আউটলেটে QC সম্পন্ন হয়েছে; বিক্রয় আর সম্পাদনা করা যাবে না।</string>
     <string name="call_start_title">কল শুরু করবেন?</string>
     <string name="call_start_message">আপনি %1$s এ আছেন। এখনই কল শুরু করবেন?</string>
@@ -88,4 +103,10 @@
     <string name="edit_denied_outside">বিক্রয় এডিট করা যায় শুধু দোকানে, জিওফেন্সের ভিতরে।</string>
     <string name="edit_denied_qc">এই আউটলেটে QC সম্পন্ন; বিক্রয় এডিট করা যাবে না।</string>
     <string name="edit_denied_superseded">এই মেমোর জায়গায় নতুন মেমো এসেছে।</string>
+    <string name="qc_col_mfc">MFC ত্রুটি</string>
+    <string name="qc_col_mkt">MKT ত্রুটি</string>
+    <string name="qc_col_total">মোট</string>
+    <string name="qc_typed_max">সর্বোচ্চ এখানে %1$s পর্যন্ত লেখা যায়</string>
+    <string name="sale_qc_only">বিক্রয় ছাড়া প্রোডাক্ট QC</string>
+    <string name="review_problem_qc_rows">একটি মেমোতে সর্বোচ্চ %1$s টি QC সারি রাখা যায়। কিছু মুছুন।</string>
 </resources>

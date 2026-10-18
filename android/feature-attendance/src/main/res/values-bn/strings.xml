@@ -19,7 +19,7 @@
     <string name="att_checked_out">চেক আউট সম্পন্ন হয়েছে %1$s</string>
     <string name="att_check_in">চেক ইন</string>
     <string name="att_check_out">চেক আউট</string>
-    <string name="att_check_out_hint">চেক আউট %1$s থেকে চালু হবে।</string>
+    <string name="att_check_out_hint">চেক আউট %1$s-এর পরে সক্রিয় হবে।</string>
     <string name="att_mock_warning">নকল লোকেশন (Fake GPS) পাওয়া গেছে। এটি বন্ধ করুন।</string>
     <string name="att_day_complete_message">আপনি আজকের জন্য চেক ইন এবং চেক আউট সম্পন্ন করেছেন। সহযোগিতার জন্য ধন্যবাদ।</string>
     <string name="att_hold_title_in">চেক ইন করা হচ্ছে</string>

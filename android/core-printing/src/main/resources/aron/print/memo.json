@@ -22,6 +22,10 @@
     { "header": "{@print_sku}", "value": "{sku}", "width": 48, "align": "left" },
     { "header": "{@print_qty}", "value": "{qty}", "width": 22, "align": "right" },
     { "header": "{@print_price}", "value": "{value}", "width": 30, "align": "right" } ] },
+  { "type": "if", "when": "has_categories", "blocks": [
+    { "type": "table", "rows": "category_totals", "columns": [
+      { "header": "", "value": "{@print_total} {category}", "width": 70, "align": "left" },
+      { "header": "", "value": "{value}", "width": 30, "align": "right" } ] } ] },
   { "type": "rule", "style": "dashed" },
   { "type": "table", "rows": "line_total", "columns": [
     { "header": "", "value": "{@print_total}", "width": 48, "align": "left" },

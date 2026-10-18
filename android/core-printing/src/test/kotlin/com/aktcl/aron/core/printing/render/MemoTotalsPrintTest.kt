@@ -97,3 +97,24 @@ class MemoTotalsPrintTest {
         assertEquals("০৭/১০/২০২৬", DocumentBuilder(DigitStyle.BENGALI).date(Fixtures.T))
     }
 }
+
+/** M3: the category subtotals are money sums of the lines of that category, in first-seen order; no label, no row. */
+class MemoCategoryTotalsPrintTest {
+    @Test fun oneSubtotalRowPerCategoryAndTheyAddUpToTheGross() {
+        val lines = listOf(
+            MemoPrintLine("A", 20, 100_000, "সিগারেট"), MemoPrintLine("B", 5, 7_000, "লাইটার"), MemoPrintLine("C", 10, 50_500, "সিগারেট"),
+        )
+        val m = Fixtures.seededSale.copy(lines = lines, grossMtk = lines.sumOf { it.grossMtk })
+        val doc = DocumentBuilder(DigitStyle.LATIN).memo(m)
+        val rows = doc.tables.getValue("category_totals")
+        assertEquals(listOf("সিগারেট", "লাইটার"), rows.map { it.getValue("category") })
+        assertEquals(listOf("150.50", "7.00"), rows.map { it.getValue("value") })
+        assertTrue("has_categories" in doc.flags)
+    }
+
+    @Test fun linesWithoutACategoryLabelPrintNoSubtotals() {
+        val doc = DocumentBuilder(DigitStyle.LATIN).memo(Fixtures.seededSale)
+        assertTrue(doc.tables.getValue("category_totals").isEmpty())
+        assertTrue("has_categories" !in doc.flags)
+    }
+}
