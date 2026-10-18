@@ -38,7 +38,7 @@
     <string name="summary_col_qty">পরিমাণ</string>
     <string name="summary_col_value">মূল্য</string>
     <string name="summary_col_discount">ডিসকাউন্ট</string>
-    <string name="summary_col_after">ছাড়ের পর</string>
+    <string name="summary_col_after">ডিসকাউন্ট মূল্য</string>
     <string name="summary_col_return">ফেরত</string>
     <string name="summary_qty_unit">%1$s %2$s</string>
     <string name="summary_totals">মোট হিসাব</string>

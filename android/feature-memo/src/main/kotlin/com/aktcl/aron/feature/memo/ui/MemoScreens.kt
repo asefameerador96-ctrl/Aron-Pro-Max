@@ -235,12 +235,12 @@ fun MemoDetailView(
                     }
                 }
             }
-            // totals: gross and net always; every other component only when non-zero, with its word and a true minus
+            // totals: gross, the discount and QC lines (zero too, as the manual p44 and the print show them) and net, each with its word and a true minus
             AronCard(Modifier.fillMaxWidth()) {
                 Column(Modifier.fillMaxWidth().padding(AronTokens.Space.L), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
                     TotalLine(stringResource(R.string.memo_total), money(memo.grossMtk))
-                    if (detail.totalDiscountMtk != 0L) DeductionLine(stringResource(R.string.memo_total_discount), minusMoney(detail.totalDiscountMtk))
-                    if (detail.totalQcMtk != 0L) DeductionLine(stringResource(R.string.memo_total_qc), minusMoney(detail.totalQcMtk))
+                    DeductionLine(stringResource(R.string.memo_total_discount), minusMoney(detail.totalDiscountMtk))
+                    DeductionLine(stringResource(R.string.memo_total_qc), minusMoney(detail.totalQcMtk))
                     CardDivider()
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         Text(stringResource(R.string.memo_grand_total), style = MaterialTheme.typography.titleSmall, color = c.textPrimary, modifier = Modifier.weight(1f))

@@ -109,7 +109,7 @@ class HomeCardsTest {
         val k = com.aktcl.aron.feature.memo.domain.KpiStripBuilder.build(60, 6, 6, mapOf(103L to 400L), mapOf(103L to 25L), mapOf(103L to SummarySku(103, "lighter"))) { "piece" }
         compose.setContent { AronTheme(AppLanguage.EN) { KpiStripView(k, { it }, { it }) } }
         compose.onNodeWithText("Outlets visited").assertExists(); compose.onNodeWithText("6/60").assertExists()
-        compose.onNodeWithText("Strike rate").assertExists(); compose.onNodeWithText("10.00%").assertExists()
+        compose.onNodeWithText("Strike rate").assertExists(); compose.onNodeWithText("10%").assertExists()
         compose.onNodeWithText("Non-visit").assertExists(); compose.onNodeWithText("54").assertExists()
         compose.onNodeWithText("lighter").assertExists(); compose.onNodeWithText("Issue 400 piece · Stock 25 piece").assertExists() // the unit beside every quantity (screens-sr s0)
     }
