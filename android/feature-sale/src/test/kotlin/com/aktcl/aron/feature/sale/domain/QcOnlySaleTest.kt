@@ -158,4 +158,44 @@ class QcOnlySaleTest {
         val big = SaleReviewCalculator.review(Fx.draft().copy(zeroSale = true, qc = List(61) { QcEntry(100, "damaged_crushed", "MFC", 1L + it) }), Fx.catalog)
         assertTrue(big.problems.any { it is ReviewProblem.TooManyQcRows }); assertEquals(false, big.canCommit)
     }
+
+    // QA-MNY-05: with a sale (gross above zero) the net may not go below zero; the boundary is the paisa-rounded net, the same rule the server quarantines on
+    private fun qcCatalog(qcPriceMtk: Long) = Fx.catalog + (200L to SaleSku(200, "QCX", "cigarette", "Qc X", null, "stick", 10, qcPriceMtk, 1, "2026-09-01"))
+    private fun saleWithQc(qcPriceMtk: Long, gross: Long = 12_500L): SaleReview {
+        val d = Fx.draft().copy(lines = listOf(DraftLine(103, 1, "piece")), qc = listOf(QcEntry(200, "damaged_crushed", "MFC", 1)))
+        check(Fx.aster.unitPriceMtk == gross)
+        return SaleReviewCalculator.review(d, qcCatalog(qcPriceMtk))
+    }
+
+    @Test fun qcAboveTheGrossOfASaleIsBlockedEvenWithNoCap() {
+        val r = SaleReviewCalculator.review(
+            Fx.draft().copy(lines = listOf(DraftLine(103, 1, "piece")), qc = listOf(QcEntry(200, "damaged_crushed", "MFC", 1))), qcCatalog(40_000L),
+        ) // the QA repro: gross 12,500, QC 40,000, net -27,500
+        assertEquals(-27_500L, r.totals.netMtk)
+        assertTrue(r.problems.any { it is ReviewProblem.NetNegative }); assertEquals(false, r.canCommit)
+    }
+
+    @Test fun grossExactlyEqualToQcGivesNetZeroAndIsAllowed() {
+        val r = saleWithQc(12_500L)
+        assertEquals(0L, r.totals.netMtk); assertTrue(r.problems.toString(), r.canCommit)
+    }
+
+    @Test fun overByLessThanHalfAPaisaRoundsToZeroAndIsAllowedOverByHalfIsBlocked() {
+        assertEquals("raw -4 mtk rounds to 0 (one rounding, half away from zero)", 0L, saleWithQc(12_504L).totals.netMtk)
+        assertTrue(saleWithQc(12_504L).canCommit)
+        val over = saleWithQc(12_505L) // raw -5 mtk rounds to -10
+        assertEquals(-10L, over.totals.netMtk); assertEquals(false, over.canCommit)
+        assertEquals("one whole paisa over", false, saleWithQc(12_510L).canCommit)
+    }
+
+    @Test fun aZeroSaleWithQcStaysAllowedAsACredit() {
+        val r = SaleReviewCalculator.review(Fx.draft().copy(zeroSale = true, qc = listOf(QcEntry(200, "damaged_crushed", "MFC", 1))), qcCatalog(40_000L))
+        assertEquals(-40_000L, r.totals.netMtk); assertTrue(r.canCommit)
+    }
+
+    @Test fun theCapStillAppliesOnTopWhenTheBundleCarriesOne() {
+        val d = Fx.draft().copy(lines = listOf(DraftLine(100, 100, "stick")), qc = listOf(QcEntry(200, "damaged_crushed", "MFC", 1)))
+        val r = SaleReviewCalculator.review(d, qcCatalog(30_000L), qcCapMtkBySku = mapOf(200L to 20_000L)) // gross 800.00, net positive, but over its cap
+        assertTrue(r.problems.any { it is ReviewProblem.QcAboveCap }); assertEquals(false, r.canCommit)
+    }
 }

@@ -20,6 +20,7 @@ Traps: QC fault_group is MFC|MKT and the six codes live in `QcEntryModel`; unsub
 - 5 `web/mock/master-seed.ts`: the invented 11-code QC list is replaced by the 11 rows of the closed `qc_fault_type` list of db V0027 (six carry `app`); web unit tests 1119 passed.
 - 6 Max-QC basis (MQ-03): unchanged, no invented rule; the screen shows only "QC done" (+ cap lines only when the host passes a cap). Backend not asked for `max_qc_mtk`.
 - 7 GET /memos fallback: not done, as ruled.
+- 2b QA-MNY-05 (gross > 0 and net < 0 blocked at review): already enforced since the Q2 checker fixes by `ReviewProblem.NetNegative` (gross != 0 and net < 0, Bangla and English text `review_problem_net_negative`, offline, same rule as the server `net_negative`, also refuses `completeQc`); boundary tests added in `QcOnlySaleTest` (the QA repro 12,500 / 40,000 blocked; gross = QC gives net 0 and is allowed; raw -4 mtk rounds to 0 and is allowed, raw -5 mtk rounds to -10 and is blocked, because the net is rounded once to the paisa exactly as the server does; zero sale + QC allowed; the bundle cap still applies on top).
 - 8 TSO bundle / dashboard wiring: waiting; lead-backend has not landed the TSO outlet bundle section or the dashboard fields on INT yet (checked at 00:50 UTC; INT head a08dc51).
 
 
