@@ -24,6 +24,16 @@ describe("SUPPORT on the dashboards", () => {
     expect(accessFor("SUPPORT", "/admin/config/audit")).toBe("ok");
     expect(menuFor("SUPPORT").flatMap((x) => x.items.map((i) => i.href))).not.toContain("/admin/audit");
   });
+  it("the config pages that read /v1/admin/config* are ADMIN only; the ones on other endpoints stay for SUPPORT", () => {
+    for (const p of ["/admin/config", "/admin/config/keys", "/admin/config/rules", "/admin/config/switches", "/admin/config/changes", "/admin/config/history", "/admin/config/reach", "/admin/config/geofence"]) {
+      expect(accessFor("SUPPORT", p), p).toBe("forbidden");
+      expect(accessFor("ADMIN", p), p).toBe("ok");
+    }
+    for (const p of ["/admin/config/sync-health", "/admin/config/audit", "/admin/config/app-block", "/admin/config/day", "/admin/config/flags", "/admin/quarantine"]) expect(accessFor("SUPPORT", p), p).toBe("ok");
+    const cfg = menuFor("SUPPORT").find((x) => x.group === "config")!.items.map((i) => i.href);
+    expect(cfg).not.toContain("/admin/config/keys");
+    expect(cfg).toContain("/admin/config/sync-health");
+  });
   it("other roles are untouched", () => {
     for (const r of ["TSO", "DMO", "ANALYST"] as const) for (const p of ["/daily-tracking", "/reports/retailers", "/sync-health"]) expect(accessFor(r, p)).toBe("ok");
   });

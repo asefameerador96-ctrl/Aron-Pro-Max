@@ -28,6 +28,11 @@ export const TEAM_CREDENTIAL_ROLES = ["TSO", "SUPPORT", "ADMIN", "SUPERADMIN"] a
 /** Roles that raise an outlet change request from the web (the others edit directly or have no outlet write). */
 export const OUTLET_REQUEST_RAISE_ROLES = ["TSO", "DMO"] as const satisfies readonly Role[];
 
+/** The config pages that read /v1/admin/config* (keys, changes, versions, reach, blast radius): ADMIN and SUPERADMIN only on the server (AZ-6 Q2),
+ *  so SUPPORT gets 403 at the gate instead of a failing page. The config home is an exact path because /admin/config/sync-health, app-block,
+ *  day, flags, audit, ... use other endpoints and stay open to SUPPORT. */
+export const ADMIN_CONFIG_READ_PATHS = ["/admin/config", "/admin/config/keys", "/admin/config/rules", "/admin/config/switches", "/admin/config/changes", "/admin/config/history", "/admin/config/reach", "/admin/config/geofence"] as const;
+
 export const ADMIN_PATH_ROLES: readonly { prefix: string; roles: RoleList }[] = [
   { prefix: "/admin/audit", roles: ADMIN_ONLY_ROLES }, // the audit-log read route is not open to SUPPORT (backend-authz AZ-6); /admin/config/audit is a different page
   { prefix: "/admin/outlet-requests", roles: OUTLET_REQUEST_READ_ROLES },
@@ -68,6 +73,7 @@ export function accessFor(role: Role | undefined, pathname: string): Access {
   if (group === "public") return "ok";
   if (role === undefined) return "unauthenticated";
   if (group === "admin") {
+    if ((ADMIN_CONFIG_READ_PATHS as readonly string[]).some((p) => pathname === p || (p !== "/admin/config" && pathname.startsWith(`${p}/`)))) return hasRole(role, ADMIN_ONLY_ROLES) ? "ok" : "forbidden";
     const override = ADMIN_PATH_ROLES.find((o) => pathname === o.prefix || pathname.startsWith(`${o.prefix}/`));
     return hasRole(role, override ? override.roles : ADMIN_PORTAL_ROLES) ? "ok" : "forbidden";
   }
