@@ -100,9 +100,12 @@ import kotlin.test.assertTrue
  *   NULL`, lock no row while the day is open; the route-day row lock comes only from the visit's state UPDATE
  *   (`in_field_at`) after them, so the close can commit in between.) A report "matches KD-1" only when the split family
  *   opens with a visit, has more than one record, lies in the observed cut range and its batch overlaps the close
- *   window ([kd1Families]).
+ *   window ([kd1Families]). Third shape (T3 only): a one-record family (due_collection, memo_void) takes no route-day
+ *   lock, so the close can commit between its route-day check and its close-row check; the close row is right and the
+ *   route-day one short. It matches only for a one-record family in the cut range whose batch overlaps the window
+ *   ([kd1SingleFamilies]).
  * KD-1 rounds are counted and listed by default (`tolerated-KD-1` and their seeds in the report) until the fix lands,
- * at most max(5, rounds / 12) of them (about 4% observed; more fails the run); every other failure fails the run.
+ * at most max(5, rounds / 10) of them (about 5% observed; more fails the run); every other failure fails the run.
  * `ARON_DAYCLOSE_TOLERATE=none` makes KD-1 fail too (the strict run). KD-2 is kept out of the fuzz: its clock ticks in
  * whole microseconds until the fix lands (the disabled repro stays).
  *
@@ -371,12 +374,21 @@ class DayCloseRaceTest {
      * observed cut range, and whose batch overlaps the close window (sent no later than the close was seen, answered no
      * earlier than the winner's first call was sent). Anything one short elsewhere is not KD-1.
      */
-    internal fun kd1Families(r: Round, first: Close): List<Int> {
+    internal fun kd1Families(r: Round, first: Close): List<Int> = windowFamilies(r, first) { f -> r.familySizes[f] > 1 && r.familyFirstTypes.getOrNull(f) == "visit" }
+
+    /**
+     * KD-1, third shape: a one-record family (due_collection, memo_void) takes no route-day lock at all, so the close can
+     * commit between its route-day late check and its close-row late check: the close row counts it, the route-day does
+     * not. The same window rule applies: in the observed cut range, its batch overlapping the close window.
+     */
+    internal fun kd1SingleFamilies(r: Round, first: Close): List<Int> = windowFamilies(r, first) { f -> r.familySizes[f] == 1 }
+
+    private fun windowFamilies(r: Round, first: Close, shape: (Int) -> Boolean): List<Int> {
         val (cuts, _) = lateBounds(r, first)
         val winnerStart = r.calls.filter { it.wave == 1 && it.uuid == first.uuid }.minOfOrNull { it.start } ?: return emptyList()
         val closeSeen = r.calls.filter { it.wave == 1 && (it.status == 200 && it.uuid == first.uuid || it.status == 409 && code(it) == ALREADY) }.minOfOrNull { it.end } ?: return emptyList()
         return r.familySizes.indices.filter { f ->
-            f in cuts && r.familySizes[f] > 1 && r.familyFirstTypes.getOrNull(f) == "visit" &&
+            f in cuts && shape(f) &&
                 r.batches.any { b -> f in b.families && b.start <= closeSeen && b.end >= winnerStart }
         }
     }
@@ -385,7 +397,7 @@ class DayCloseRaceTest {
     internal fun tolerable(problems: List<String>): Boolean = "KD-1" in tolerate && problems.isNotEmpty() && problems.all { "KD-1" in it }
 
     /** Most tolerated KD-1 rounds a run accepts (about 4% observed): more fails the run. */
-    private fun kd1Cap(rounds: Int) = maxOf(5, rounds / 12) // at about 4% per round: P(more than the cap) is about 0.6% at 30 rounds, 0.3% at 200
+    private fun kd1Cap(rounds: Int) = maxOf(5, rounds / 10) // at about 5% per round (three shapes): P(more than the cap) is about 0.4% at 30 rounds, 0.2% at 200
 
     private fun code(c: Call) = c.body?.get("code")?.jsonPrimitive?.content
     private fun ctxAt(c: Call) = (c.body?.get("context") as? JsonObject)?.get("submitted_at")?.jsonPrimitive?.content
@@ -492,7 +504,8 @@ class DayCloseRaceTest {
                 // KD-1, second shape: the close committed between the visit's route-day check and its close-row check, so
                 // the close row counts the visit (rightly) and the route-day does not.
                 val closeLate = closes.sumOf { it.late }
-                val split = closeLate - routeLate == 1 && kd1Families(r, first).any { f -> closeLate == suffixOf(r, f) + r.postRecords }
+                // Third shape: the same for a one-record family, which takes no route-day lock before either check.
+                val split = closeLate - routeLate == 1 && (kd1Families(r, first) + kd1SingleFamilies(r, first)).any { f -> closeLate == suffixOf(r, f) + r.postRecords }
                 p += "[T3] close rows count ${closes.map { it.late }} late rows, the route-days $routeLate" +
                     if (split) " -- matches KD-1: the route-day missed the first record of a family the close row counted" else ""
             }
@@ -708,7 +721,29 @@ class DayCloseRaceTest {
             val inside = oracle(r.copy(batches = r.batches.map { it.copy(start = winnerStart - 1, end = maxOf(seen, winnerStart) + 1) }))
             assertTrue(inside.isNotEmpty() && inside.all { "KD-1" in it }, "the same count inside the close window is KD-1: $inside")
             if ("KD-1" in tolerate) assertTrue(tolerable(inside), "the KD-1 shape inside the window is tolerated: $inside")
-            assertEquals(5, kd1Cap(20)); assertEquals(16, kd1Cap(200))
+            assertEquals(5, kd1Cap(20)); assertEquals(20, kd1Cap(200))
+        }
+        // KD-1 third shape, through the same verdict: the close row counts a one-record family the route-day missed. With
+        // one batch per family, timed inside the close window, it is tolerated; with that family's batch (and every one
+        // before it) answered before the winner's first call, it is OUTSIDE the window and fails. The route-day value is
+        // an allowed suffix in both, so only T3 speaks.
+        run {
+            var r = clean()
+            var tries = 0
+            while (r.familySizes.indices.none { r.familySizes[it] == 1 } && tries++ < 20) r = clean()
+            val f = r.familySizes.indices.last { r.familySizes[it] == 1 }
+            db("UPDATE app.route_day SET late_rows_after_final = ${suffixOf(r, f + 1)} WHERE ${rd(r)}"); db("UPDATE app.final_submit SET late_rows = ${suffixOf(r, f)} WHERE ${where(r)}")
+            val winnerStart = r.calls.filter { it.status == 200 }.minOf { it.start }
+            val seen = r.calls.filter { it.status == 200 || it.status == 409 }.minOf { it.end }
+            fun inWindow(i: Int) = Sent(listOf(i), winnerStart - 1, maxOf(seen, winnerStart) + 1)
+            fun before(i: Int) = Sent(listOf(i), winnerStart - 20, winnerStart - 10)
+            val inside = oracle(r.copy(batches = r.familySizes.indices.map(::inWindow)))
+            assertTrue(inside.isNotEmpty() && inside.all { it.startsWith("[T3]") && "KD-1" in it }, "a one-record family split inside the window is KD-1 (T3 only): $inside")
+            if ("KD-1" in tolerate) assertTrue(tolerable(inside), "the one-record KD-1 shape inside the window is tolerated: $inside")
+            val outside = oracle(r.copy(batches = r.familySizes.indices.map { if (it <= f) before(it) else inWindow(it) }))
+            expect("one-record family split outside the close window", setOf("T3"), outside)
+            assertTrue(outside.none { it.startsWith("[T1]") }, "the route-day value is an allowed suffix outside the window too: $outside")
+            assertTrue(outside.none { "KD-1" in it } && !tolerable(outside), "a one-record split outside the close window was tolerated: $outside")
         }
         clean(reopen = true).let { r ->
             db("UPDATE app.final_submit SET submitted_at = (SELECT submitted_at FROM app.final_submit WHERE ${where(r)} AND reopened_at IS NOT NULL) - interval '1 second' WHERE ${where(r)} AND reopened_at IS NULL")
