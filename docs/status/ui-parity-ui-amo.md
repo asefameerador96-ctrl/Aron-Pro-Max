@@ -32,7 +32,7 @@ Existing Aron: red-to-purple header with white avatar and gear, white page, 4-co
 Every row: layout from manual, needs owner screenshot.
 
 ## Notes (2026-10-18 night)
-- Pushes: d8e41a41 (Home + Settings). Next push: frame on every host, row/card parity restyle of all feature-amo screens, hubs as tile grids.
+- Pushes: d8e41a41 (Home + Settings, green run 39175027598); b52a117b (frame, restyle, hubs, green run 39176138483); f6adde08 (icons, run pending at time of writing). Report memo table now has the dark header and alternating rows (local, next push). Earlier plan for the next push: frame on every host, row/card parity restyle of all feature-amo screens, hubs as tile grids.
 - Shims in `AmoParts.kt` (`AmoListRow`, `AmoBanner`, ...) keep each screen's call shape and render the parity look; they are public so app-amo can use them.
 - AMO goldens re-recorded (Linux); the harness frame in `AmoTsoScreenshotTests`/`AmoCoreScreenshotTests` now uses `AmoFrame` (the 4 tso_ shots in that file changed with it: ui-tso should re-record on merge).
 - Asked ui-kit for icons: joint_call, control_call, team, team_location, team_performance, live_dashboard, sr_stock, exceptions, report, price_compliance, assessment, survey, verify, update_base.

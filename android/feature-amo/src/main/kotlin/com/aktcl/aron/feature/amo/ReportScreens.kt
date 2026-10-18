@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
@@ -121,11 +122,12 @@ fun StdMemoReportContent(
                 }
             }
             stickyHeader(cols, bangla, h)
-            items(data.rows, key = { (it["memo_no"] as? JsonPrimitive)?.contentOrNull ?: it.hashCode().toString() }) { row ->
-                Row(Modifier.fillMaxWidth().padding(horizontal = AronTokens.Space.Screen)) {
-                    cols.firstOrNull()?.let { Text(cell(row[it.key], it.type, money), Modifier.width(FIRST_W), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, color = c.textPrimary, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis) }
+            itemsIndexed(data.rows, key = { _, it -> (it["memo_no"] as? JsonPrimitive)?.contentOrNull ?: it.hashCode().toString() }) { i, row ->
+                val look = com.aktcl.aron.core.ui.LocalAronLook.current
+                Row(Modifier.fillMaxWidth().background(if (i % 2 == 0) look.card else look.rowAlt).padding(horizontal = 12.dp, vertical = 8.dp)) {
+                    cols.firstOrNull()?.let { Text(cell(row[it.key], it.type, money), Modifier.width(FIRST_W), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, color = com.aktcl.aron.core.ui.LocalAronLook.current.purple, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis) }
                     Row(Modifier.weight(1f).horizontalScroll(h), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        cols.drop(1).forEach { Text(cell(row[it.key], it.type, money), Modifier.width(CELL_W), style = MaterialTheme.typography.bodyMedium, color = c.textPrimary, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis) }
+                        cols.drop(1).forEach { Text(cell(row[it.key], it.type, money), Modifier.width(CELL_W), style = MaterialTheme.typography.bodyMedium, color = com.aktcl.aron.core.ui.LocalAronLook.current.ink, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis) }
                     }
                 }
             }
@@ -139,10 +141,10 @@ private val CELL_W = 104.dp
 private fun androidx.compose.foundation.lazy.LazyListScope.stickyHeader(cols: List<ReportCol>, bangla: Boolean, h: androidx.compose.foundation.ScrollState) {
     stickyHeader {
         val c = LocalAronColors.current
-        Row(Modifier.fillMaxWidth().background(LocalAronColors.current.surfaceSolid).padding(horizontal = AronTokens.Space.Screen)) {
-            cols.firstOrNull()?.let { Text(if (bangla) it.labelBn ?: it.labelEn else it.labelEn, Modifier.width(FIRST_W), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, color = c.textSecondary) }
+        Row(Modifier.fillMaxWidth().background(com.aktcl.aron.core.ui.LocalAronLook.current.tableHeader).padding(horizontal = 12.dp, vertical = 12.dp)) {
+            cols.firstOrNull()?.let { Text(if (bangla) it.labelBn ?: it.labelEn else it.labelEn, Modifier.width(FIRST_W), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, color = androidx.compose.ui.graphics.Color.White) }
             Row(Modifier.weight(1f).horizontalScroll(h), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                cols.drop(1).forEach { Text(if (bangla) it.labelBn ?: it.labelEn else it.labelEn, Modifier.width(CELL_W), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, color = c.textSecondary) }
+                cols.drop(1).forEach { Text(if (bangla) it.labelBn ?: it.labelEn else it.labelEn, Modifier.width(CELL_W), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, color = androidx.compose.ui.graphics.Color.White) }
             }
         }
     }
