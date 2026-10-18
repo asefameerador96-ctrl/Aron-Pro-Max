@@ -21,6 +21,7 @@ PackListHeader(sku = "এসকেইউ", quantity = "ইস্যু", stock =
 PackCard(skuId, skuCode, quantity: String, onQuantityChange: (String) -> Unit /* digits only, max 6 */, onMinus, onPlus, stock: String,
          minusLabel, plusLabel, quantityLabel, packBadge: String? = null, packshotDescription: String? = null,
          category = PackCategory.Cigarette /* Bidi, Lighter, Match */, minusEnabled = true, plusEnabled = true, editable = true)
+// SKU code purple 18 sp medium; quantity and stock bold; the quantity field is 48 dp at 360 dp and grows to 96 dp on wider rows (header follows)
 PackshotImage(skuId, modifier, contentDescription = null, category)       // provider thumbnail or the grey pack silhouette; never a letter or spinner
 interface PackshotProvider { @Composable fun painter(skuId: String): Painter? }   // ui-packshots implements over ImageCache
 CompositionLocalProvider(LocalPackshotProvider provides yourProvider) { ... }    // default NoPackshots

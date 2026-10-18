@@ -1,6 +1,13 @@
 # UI parity: lane ui-kit (android/core-ui)
 
-## HANDOVER (2026-10-18 23:20 UTC, READY TO RECYCLE)
+## SESSION 2 (2026-10-18 23:50 UTC, session_012DWzsWtYJkEcYzFUUfg1sn, Opus)
+- **Up.** Session 1's last push 9c4b2a83 (run 1216) was red: the three AMO Home goldens from INT (ui-amo d8e41a41) were recorded before the kit's Home header went to 15/11 sp. Re-recorded here (`amo_home_bn_{light,sunlight,fs2}.png`); ui-amo told.
+- **Container:** the SDK is not baked in; install it with `sdkmanager --sdk_root=/opt/android-sdk "platforms;android-37.0" "build-tools;37.0.0" "platform-tools"` (cmdline-tools zip from dl.google.com), `local.properties` sdk.dir=/opt/android-sdk.
+- **Evidence:** `python3 tools/ui-kit/parity_evidence.py [stock ...]` rebuilds docs/evidence/ui-parity/kit-*.png from the KitParityShot captures (reference left, kit right, 1000 px high).
+- **Scale note (fidelity):** measured on sr/stock.webp scaled to 411 units, the reference's elements are about 0.6 to 0.75 of the PARITY-SPEC dp values (minus 21 units vs 36 dp, top bar 36 vs 56): the reference phone runs a smaller display size. The kit keeps the spec's dp sizes (48 dp targets, legible Bangla on 360 dp phones) and matches proportions, weights and layout within them.
+- **Fidelity log:** PackCard: SKU code medium weight (reference stroke/cap 0.12 = Medium, was Bold), quantity and stock figures bold, quantity field grows from 48 dp (360 dp phones, unchanged) to 96 dp at 411 dp so the underline fills minus-to-plus as on the reference; PackListHeader follows.
+
+## HANDOVER from session 1 (2026-10-18 23:20 UTC)
 - **State:** branch `lane/ui-kit`; candidate run 1211 on abac6ba46385 (pushed 23:13). Lead rule: never push while a run of this branch is running or queued (a push cancels it); push at most once per CI cycle; after a green run send the lead `ready <full sha>` with the parity PNG list (docs/evidence/ui-parity/kit-*.png). Every earlier run was cancelled except 69e77e2 (red: money-float scan, fixed) and 8bb3d86 (Android, lint, size gate green before cancel).
 - **Local build works:** Android SDK at /opt/android-sdk (cmdline-tools; `platforms;android-37.0`, `build-tools;37.0.0`), `local.properties` sdk.dir (git-ignored). Fast loop: `./gradlew :android:core-ui:testDebugUnitTest :android:ui-screenshots:testDebugUnitTest` (~50 s), then `python3 tools/ci/test_money_gates.py` (the money-float scan reads any `Float` near "total"/"amount" words in core-ui as money: use TextUnit/Int). Captures: `android/ui-screenshots/build/kitshots/{look_*,parity_*,icons_sheet}.png`.
 - **Kit:** package `com.aktcl.aron.core.ui.aron` (Chrome.kt, Tiles.kt, Packs.kt, Tables.kt, Forms.kt, Glyphs.kt, AronLookGallery.kt); tokens `AronLook`/`AronLookColors`/`LocalAronLook` in Tokens.kt (provided by AronTheme). API list at the top of docs/status/android-core-ui.md. Old Calm Glass kit untouched (other lanes' goldens depend on it until they migrate).
@@ -19,7 +26,7 @@ What still differs (kit level): packshots show the grey silhouette until ui-pack
 | AronScaffold | stock.webp | DONE | kit skeleton |
 | AronHomeHeader | home-1-tiles.webp | DONE (drawn gear and avatar) | kit skeleton |
 | AronTile + AronTileGrid | home-1-tiles.webp, outlet-menu.png | DONE (menu tiles 72 dp icon, red labels) | icons push |
-| PackCard + PackListHeader | stock.webp | DONE; packshot 56 x 90 dp (measured 51 x 83 on the screenshot; spec text says about 68 x 120, screenshot wins) | kit skeleton |
+| PackCard + PackListHeader | stock.webp | DONE; SKU medium, figures bold, quantity field 48 to 96 dp with the row (session 2); packshot 56 x 90 dp (measured 51 x 83 on the screenshot; spec text says about 68 x 120, screenshot wins) | kit skeleton |
 | PackshotImage + PackshotProvider | stock.webp | DONE (silhouette fallback per category); real images: ui-packshots lane | kit skeleton |
 | TotalsPanel | stock.webp | DONE | kit skeleton |
 | AronPrimaryButton / AronSecondaryButton / AronPlus / AronMinus | stock.webp, summary.png | DONE | kit skeleton |
