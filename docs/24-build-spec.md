@@ -1078,6 +1078,7 @@ Legend. **Levels:** G global, ROLE, W wing, D division, T territory, GC geo_clas
 | `cfg.tso.periphery_max_markers` | int | 300 | 50..2000 | G | O | B | both | C1 |
 | `cfg.support.max_upload_mb` | int | 20 | 5..100 | G | O | B | dev | C1 |
 | `cfg.support.pda_upload_wifi_only` | bool | true | — | G | O | B | dev | C1 |
+| `cfg.support.upload_replay_max_h` | int | 168 | 1..720 | G | O | B | srv | C1 |
 | **Back office** (s12.6) |||||||||
 | `cfg.web.entry_backdate_days` | int | 0 (today only) | 0..31 | G Z | F | B | srv | C2 |
 | `cfg.web.entry_classes` | list<sub_channel> | [GT] | subset of sub-channels | G Z | F | B | srv | C1 |
