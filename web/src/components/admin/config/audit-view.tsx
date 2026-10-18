@@ -6,7 +6,7 @@ import { AUDIT_FILTER_KEYS, diffLines, type AuditFilter } from "@/lib/admin/audi
 import type { AuditEntry } from "@/lib/admin/types";
 import { formatDateTime, t, type Locale } from "@/lib/i18n";
 
-export function AuditView({ locale, entries, filter, nextCursor, basePath, titleKey = "audit.title" }: { locale: Locale; entries: AuditEntry[]; filter: AuditFilter; nextCursor: string | null; basePath: string; titleKey?: "audit.title" | "cfgp.audit.title" }) {
+export function AuditView({ locale, entries, filter, nextCursor, basePath, titleKey = "audit.title", changedOnly = false }: { locale: Locale; entries: AuditEntry[]; filter: AuditFilter; nextCursor: string | null; basePath: string; titleKey?: "audit.title" | "cfgp.audit.title"; changedOnly?: boolean }) {
   const labels: Record<(typeof AUDIT_FILTER_KEYS)[number], string> = {
     entity: t(locale, "audit.col.entity"),
     entity_id: t(locale, "audit.filter.entity_id"),
@@ -25,7 +25,7 @@ export function AuditView({ locale, entries, filter, nextCursor, basePath, title
       key: "change",
       header: t(locale, "audit.col.change"),
       render: (e) => {
-        const lines = diffLines(e.before, e.after);
+        const lines = diffLines(e.before, e.after, changedOnly);
         return lines.length === 0 ? (
           <span className="text-slate-400">—</span>
         ) : (

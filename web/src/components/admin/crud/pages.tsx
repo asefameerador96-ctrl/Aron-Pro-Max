@@ -259,7 +259,7 @@ export async function EntityEditPage({ meta, id, searchParams }: { meta: AnyEnti
       {failed ? <RefFailure locale={locale} /> : null}
       <Details items={meta.fields.filter((f) => f.mode === "readonly" && !f.column).map((f) => ({ label: t(locale, f.labelKey), value: cell(locale, f, row.data as Record<string, unknown>, refs) }))} />
       <EntityForm mode="update" slug={meta.slug} id={id} version={version} fields={fields} initial={initial} listHref={`/admin/${meta.slug}`} reasonStored={meta.reasonOnUpdate !== null} />
-      <AuditHistory entries={hist.ok ? hist.data.items : []} locale={locale} />
+      <AuditHistory entries={hist.ok ? hist.data.items : []} failed={!hist.ok} locale={locale} />
     </div>
   );
 }
