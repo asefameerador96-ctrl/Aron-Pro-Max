@@ -33,17 +33,17 @@ internal fun TsoSectionTitle(text: String, modifier: Modifier = Modifier) {
 
 /**
  * The line-art icon of a TSO screen (Home tile and the top bar of the screen it opens). The kit's TSO-specific drawings are
- * requested from lane ui-kit (aron_ic_tso_*); until they land the closest original-art icons stand in (the picture is the only thing that changes).
+ * the kit draws the TSO-only ones (aron_ic_tso_*) in the same gradient line-art style; Dashboard and Final Submit use the owner's art.
  */
 @Composable
 internal fun tsoIcon(tileId: String?): Painter = painterResource(
     when (tileId) {
         RoleHomes.TsoTile.DASHBOARD -> CoreR.drawable.aron_art_kpi
-        RoleHomes.TsoTile.LEAVE -> CoreR.drawable.aron_art_attendance
+        RoleHomes.TsoTile.LEAVE -> CoreR.drawable.aron_ic_tso_leave
         RoleHomes.TsoTile.FINAL_SUBMIT -> CoreR.drawable.aron_art_sales_submit
-        RoleHomes.TsoTile.PERIPHERY -> CoreR.drawable.aron_art_outlet
-        RoleHomes.TsoTile.MY_CALL -> CoreR.drawable.aron_art_task_delegation
-        RoleHomes.TsoTile.FEEDBACK -> CoreR.drawable.aron_art_memo
+        RoleHomes.TsoTile.PERIPHERY -> CoreR.drawable.aron_ic_tso_periphery
+        RoleHomes.TsoTile.MY_CALL -> CoreR.drawable.aron_ic_tso_my_call
+        RoleHomes.TsoTile.FEEDBACK -> CoreR.drawable.aron_ic_tso_feedback
         else -> CoreR.drawable.aron_ic_gear
     },
 )
