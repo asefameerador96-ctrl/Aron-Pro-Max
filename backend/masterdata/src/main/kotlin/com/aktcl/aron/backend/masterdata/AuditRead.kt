@@ -191,7 +191,8 @@ internal object AuditMask {
 
     fun neverShow(key: String) = key.lowercase() in NEVER_SHOW || SECRETISH.containsMatchIn(key)
 
-    fun personal(key: String) = key.lowercase() in PII || PII_LIKE.containsMatchIn(key)
+    /** An id or uuid named after a phone (`phone_memo_uuid`) is a reference, not personal data. */
+    fun personal(key: String) = key.lowercase() in PII || (PII_LIKE.containsMatchIn(key) && !Regex("_(id|uuid)$", RegexOption.IGNORE_CASE).containsMatchIn(key))
 
     fun view(p: AronPrincipal, entity: String, before: JsonObject?, after: JsonObject?): Pair<JsonObject?, JsonObject?> =
         if (p.role == Role.ADMIN || p.role == Role.SUPERADMIN) full(p, before) to full(p, after) else restricted(entity, before, after)

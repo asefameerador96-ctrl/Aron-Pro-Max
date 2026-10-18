@@ -72,7 +72,7 @@ class AuditReadTest {
                 null, null,
             )
             // An entity nobody listed: ANALYST and SUPPORT see member names only.
-            AuditLog.write(h, actor, "zz_unknown", "t-audit-4", "make", null, buildJsonObject { put("count", 3); put("Owner_Phone", "01712345678"); put("PREFIX", "AbC123"); put("home_lat", 23.7) }, null, null)
+            AuditLog.write(h, actor, "zz_unknown", "t-audit-4", "make", null, buildJsonObject { put("count", 3); put("Owner_Phone", "01712345678"); put("PREFIX", "AbC123"); put("home_lat", 23.7); put("phone_memo_uuid", "m-1") }, null, null)
         }
     }
     @AfterAll fun tearDown() = env.close()
@@ -123,6 +123,7 @@ class AuditReadTest {
             // Case and suffix variants of personal and secret names are caught too.
             val u = one("t-audit-4", role).side("after")
             assertEquals("3", u.s("count")); for (k in listOf("Owner_Phone", "PREFIX", "home_lat")) assertEquals(AuditMask.MASK, u.s(k), k)
+            assertEquals("m-1", u.s("phone_memo_uuid"), "an id named after a phone is not personal data")
         }
         // The PII grant of docs/21 s4.5 (no login sets it yet) shows personal data, never secrets.
         val withPii = one("t-audit-1", Role.ADMIN, pii = true)
