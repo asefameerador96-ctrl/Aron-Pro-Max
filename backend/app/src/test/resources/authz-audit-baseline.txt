@@ -98,21 +98,3 @@ ROLE GET /v1/admin/config/whatif WM denied
 IDOR GET /v1/report-exports SUPPORT others-listed
 IDOR GET /v1/report-exports/{} SUPPORT export-of-DMO
 IDOR GET /v1/report-exports/{} SUPPORT export-of-TSO
-# AZ-7 (low, lead-backend): POST and PATCH /v1/admin/releases read and validate the body before the role check, so a refused role
-# with an invalid body gets 400, not 403 (ReleaseAdmin: receiveStrict before create/patch check WRITERS). Fixed by its requireWriter() commit.
-ROLE PATCH /v1/admin/releases/{} (invalid body) AMO denied
-ROLE PATCH /v1/admin/releases/{} (invalid body) ANALYST denied
-ROLE PATCH /v1/admin/releases/{} (invalid body) DMO denied
-ROLE PATCH /v1/admin/releases/{} (invalid body) SR denied
-ROLE PATCH /v1/admin/releases/{} (invalid body) SUPPORT denied
-ROLE PATCH /v1/admin/releases/{} (invalid body) TOP denied
-ROLE PATCH /v1/admin/releases/{} (invalid body) TSO denied
-ROLE PATCH /v1/admin/releases/{} (invalid body) WM denied
-ROLE POST /v1/admin/releases (invalid body) AMO denied
-ROLE POST /v1/admin/releases (invalid body) ANALYST denied
-ROLE POST /v1/admin/releases (invalid body) DMO denied
-ROLE POST /v1/admin/releases (invalid body) SR denied
-ROLE POST /v1/admin/releases (invalid body) SUPPORT denied
-ROLE POST /v1/admin/releases (invalid body) TOP denied
-ROLE POST /v1/admin/releases (invalid body) TSO denied
-ROLE POST /v1/admin/releases (invalid body) WM denied
