@@ -42,6 +42,10 @@ class AdminOutletsTest {
         assertEquals("\"1\"", res.headers["ETag"])
         assertEquals(1, env.audit("outlet", id, "create"))
         assertEquals("Added from the paper survey", env.sql("SELECT reason FROM app.audit_log WHERE entity = 'outlet' AND entity_id = '$id'"))
+        // D-AUDIT-PII-01: personal text is stored redacted, the outlet pin and the business name stay in clear.
+        assertEquals("Admin Store 1|[redacted]|[redacted]|23.8103|90.4125", env.sql(
+            "SELECT concat_ws('|', after->>'name', after->>'owner_name', after->>'contact_number', after->>'lat', after->>'lng') FROM app.audit_log WHERE entity = 'outlet' AND entity_id = '$id' AND action = 'create'",
+        ))
         assertEquals("master", env.sql("SELECT location_basis FROM app.outlet WHERE id = $id"))
         assertEquals("1", env.sql("SELECT count(*) FROM app.outlet_placement_history WHERE outlet_id = $id AND valid_to IS NULL"))
         assertEquals("web_edit", env.sql("SELECT source FROM app.outlet_location_history WHERE outlet_id = $id"))
@@ -102,6 +106,10 @@ class AdminOutletsTest {
         assertEquals(HttpStatusCode.BadRequest, sendA1(HttpMethod.Patch, "/admin/outlets/$id", admin, """{"lat":23.7}""", ifMatch = v4).status)
         val pin = sendA1(HttpMethod.Patch, "/admin/outlets/$id", admin, """{"lat":23.7,"lng":90.3}""", ifMatch = v4)
         assertEquals(HttpStatusCode.OK, pin.status)
+        // The pin move's audit row keeps the outlet coordinates in clear (D-AUDIT-PII-01: forensic record of pin moves).
+        assertEquals("||23.7|90.3", env.sql(
+            "SELECT concat_ws('|', coalesce(before->>'lat', ''), coalesce(before->>'lng', ''), after->>'lat', after->>'lng') FROM app.audit_log WHERE entity = 'outlet' AND entity_id = '$id' AND action = 'update' AND after->'lat' IS NOT NULL ORDER BY id DESC LIMIT 1",
+        ))
         // Every basis change is a history row: the outlet was created without a pin ('none'), then pinned ('master').
         assertEquals("none,master", env.sql("SELECT string_agg(basis, ',' ORDER BY id) FROM app.outlet_location_history WHERE outlet_id = $id"))
         assertEquals("master", env.sql("SELECT location_basis FROM app.outlet WHERE id = $id"))
