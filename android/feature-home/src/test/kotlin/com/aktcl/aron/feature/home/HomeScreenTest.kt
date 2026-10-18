@@ -86,7 +86,7 @@ class HomeScreenTest {
         show(AppLanguage.EN, hero = hero, kpis = kpis, money = money, dock = HomeDock.START_SELLING, sync = SyncChipState.Waiting(3))
         compose.onNodeWithTag(HomeScreenTags.HERO).assertExists()
         compose.onNodeWithText("Today's total").assertExists()
-        compose.onNodeWithText("Checked in 08:52", substring = true).assertExists(); compose.onNodeWithText("6/60", substring = true).assertExists()
+        compose.onNodeWithText("Checked in 08:52", substring = true).assertExists(); compose.onAllNodesWithText("6/60", substring = true)[0].assertExists() // the caption and the bar
         compose.onNodeWithTag(HomeScreenTags.CHIP).assertExists()
         compose.onNodeWithTag(HomeScreenTags.KPI).assertExists()
         compose.onNodeWithText("Strike rate").assertExists(); compose.onNodeWithText("Non-visit").assertExists()
