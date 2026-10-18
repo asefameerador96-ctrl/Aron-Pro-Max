@@ -67,6 +67,8 @@ object StockTags {
     const val SAVE = "stk_save"
     const val MESSAGE = "stk_message"
     const val TOTALS = "stk_totals"
+    /** The scrolling list of SKU rows; the totals panel is its last item. */
+    const val LIST = "stk_list"
     const val PRINT = "stk_print"
     fun row(skuId: Long) = "stk_row_$skuId"
 }
@@ -149,7 +151,7 @@ fun StockContent(
                 AronEmptyState(stringResource(R.string.stk_empty), icon = AronIcons.Stock, syncedAt = syncedAt)
             } else {
                 ColumnHead(hasStock)
-                LazyColumn(Modifier.weight(1f), contentPadding = PaddingValues(bottom = AronTokens.Space.L)) {
+                LazyColumn(Modifier.weight(1f).testTag(StockTags.LIST), contentPadding = PaddingValues(bottom = AronTokens.Space.L)) {
                     groups.forEach { (code, group) ->
                         item(key = "head_$code", contentType = "head") {
                             Text(
@@ -170,10 +172,11 @@ fun StockContent(
                             }
                         }
                     }
+                    // the totals panel closes the list, just above Save: pinned it would take a third of a small phone's screen
+                    item(key = "totals", contentType = "totals") { CategoryDock(rows, totals, hasStock) }
                 }
             }
         }
-        if (totals.isNotEmpty()) CategoryDock(totals, unitByCategory)
         StockBar(
             hasChange = hasChange, onSave = onSave, onPrint = onPrint, printBlock = block,
         )
@@ -342,41 +345,40 @@ private fun SkuThumb(name: String, packs: Long?) {
 /** The packs pill on the thumbnail: 20 dp so the initial stays readable behind it (the spec's 24 would cover half the disc). */
 private val PackPillHeight = 20.dp
 
-/** The category dock (android-glass s6.17): opaque `surface.solid.raised` chips, one per category, with the unit. */
+/**
+ * The totals panel (manual "ক্যাটাগরি / মোট ইস্যু / স্টক", S3): one row per category, all four always shown (zeros included),
+ * on an opaque raised surface. Issued is today's total in base units; stock is the bag after the issue being entered when
+ * the host supplies it, else the total load (the head says which, as on the SKU rows).
+ */
 @Composable
-private fun CategoryDock(totals: List<CategoryTotal>, unitByCategory: Map<String, String>) {
+private fun CategoryDock(rows: List<StockRow>, totals: List<CategoryTotal>, hasStock: Boolean) {
     val c = LocalAronColors.current
-    val fill = c.surfaceSolidRaised; val edge = c.borderDivider
-    val stroke = if (c.sunlight) AronTokens.Stroke.SunlightHairline else AronTokens.Stroke.Hairline
-    Row(
-        Modifier.fillMaxWidth().testTag(StockTags.TOTALS).horizontalScroll(rememberScrollState()).padding(horizontal = AronTokens.Space.Screen, vertical = AronTokens.Space.Xs),
-        horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.S),
+    val line = if (c.sunlight) AronTokens.Stroke.SunlightHairline else AronTokens.Stroke.Hairline
+    val divider = c.borderDivider
+    val issued = totals.associate { it.categoryCode to it.issuedBase }
+    val unitOf = mapOf("cigarette" to "stick", "bidi" to "stick", "lighter" to "piece", "match" to "dozen")
+    val cats = listOf("cigarette", "bidi", "lighter", "match")
+    Column(
+        Modifier.fillMaxWidth().testTag(StockTags.TOTALS).padding(horizontal = AronTokens.Space.Screen, vertical = AronTokens.Space.Xs)
+            .background(c.surfaceSolidRaised, MaterialTheme.shapes.medium).padding(horizontal = AronTokens.Space.M, vertical = AronTokens.Space.Xs),
     ) {
-        totals.sortedBy { categoryRank(it.categoryCode) }.forEach { t ->
-            Box(
-                Modifier
-                    .heightIn(min = MinChip)
-                    .drawWithCache {
-                        val r = CornerRadius(AronTokens.Radius.Chip.toPx()); val w = stroke.toPx(); val edgeStyle = Stroke(w)
-                        val inner = CornerRadius(r.x - w / 2); val edgeSize = Size(size.width - w, size.height - w); val edgeAt = Offset(w / 2, w / 2)
-                        onDrawBehind {
-                            drawRoundRect(fill, cornerRadius = r)
-                            drawRoundRect(edge, edgeAt, edgeSize, inner, style = edgeStyle)
-                        }
-                    }
-                    .padding(horizontal = AronTokens.Space.M, vertical = AronTokens.Space.S),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(
-                    stringResource(R.string.stk_dock_chip, categoryLabel(t.categoryCode), localizedNumber(t.issuedBase), unitLabel(unitByCategory[t.categoryCode] ?: "stick")),
-                    style = MaterialTheme.typography.labelMedium, color = c.textPrimary, maxLines = 1,
-                )
+        Row(Modifier.fillMaxWidth()) {
+            Text(stringResource(R.string.stk_col_category), Modifier.weight(1.2f), style = MaterialTheme.typography.labelMedium, color = c.textSecondary)
+            Text(stringResource(R.string.stk_col_total_issue), Modifier.weight(1f), style = MaterialTheme.typography.labelMedium, color = c.textSecondary, textAlign = TextAlign.End)
+            Text(stringResource(if (hasStock) R.string.stk_col_stock else R.string.stk_col_loaded), Modifier.weight(1f), style = MaterialTheme.typography.labelMedium, color = c.textSecondary, textAlign = TextAlign.End)
+        }
+        cats.forEach { code ->
+            val unit = unitLabel(rows.firstOrNull { it.sku.categoryCode == code }?.sku?.baseUnit ?: unitOf.getValue(code))
+            val stock = rows.filter { it.sku.categoryCode == code }.sumOf { (it.stockBase ?: it.loadedBase) + it.entered }
+            Box(Modifier.fillMaxWidth().height(line).drawBehind { drawRect(divider) })
+            Row(Modifier.fillMaxWidth().heightIn(min = 28.dp).padding(vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text(categoryLabel(code), Modifier.weight(1.2f), style = MaterialTheme.typography.bodyMedium, color = c.textPrimary)
+                Text(localizedNumber(issued[code] ?: 0L) + " " + unit, Modifier.weight(1f), style = MaterialTheme.typography.labelLarge, color = c.textPrimary, textAlign = TextAlign.End)
+                Text(localizedNumber(stock) + " " + unit, Modifier.weight(1f), style = MaterialTheme.typography.labelLarge, color = c.textPrimary, textAlign = TextAlign.End)
             }
         }
     }
 }
-
-private val MinChip = 40.dp
 
 /**
  * The action bar of Stock (android-glass s6.7): the `ActionBar` recipe, the 104 dp height reserved for the reason caption,

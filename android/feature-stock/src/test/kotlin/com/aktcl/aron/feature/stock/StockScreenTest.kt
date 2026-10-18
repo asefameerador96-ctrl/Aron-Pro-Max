@@ -17,6 +17,10 @@ import com.aktcl.aron.core.common.AppLanguage
 import com.aktcl.aron.core.database.entity.SkuEntity
 import com.aktcl.aron.core.ui.AppLocale
 import com.aktcl.aron.core.ui.AronTheme
+import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.performScrollToNode
+import androidx.compose.ui.test.onAllNodesWithText
 import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
@@ -43,7 +47,13 @@ class StockScreenTest {
 
     @Test fun categoryTotalsShowFourHundredAndFourHundredInBanglaDigits() {
         show(AppLanguage.BN)
-        compose.onNodeWithText("লাইটার ৪০০ পিস").assertExists(); compose.onNodeWithText("ম্যাচ ৪০০ ডজন").assertExists()
+        // the manual's totals panel (S3): head "ক্যাটাগরি / মোট ইস্যু / মোট লোড", all four categories, zeros included
+        compose.onNodeWithTag(StockTags.LIST).performScrollToNode(hasTestTag(StockTags.TOTALS))
+        compose.onNodeWithTag(StockTags.TOTALS).assertExists()
+        compose.onNodeWithText("ক্যাটাগরি").assertExists(); compose.onNodeWithText("মোট ইস্যু").assertExists()
+        listOf("সিগারেট", "বিড়ি", "লাইটার", "ম্যাচ").forEach { compose.onNodeWithText(it).assertExists() }
+        compose.onAllNodesWithText("৪০০ পিস").assertCountEquals(2); compose.onAllNodesWithText("৪০০ ডজন").assertCountEquals(2)
+        compose.onAllNodesWithText("০ স্টিক").assertCountEquals(4) // cigarette and bidi: no issue, no stock
     }
 
     @OptIn(androidx.compose.ui.test.ExperimentalTestApi::class)

@@ -16,6 +16,11 @@ export function mtkToTaka(mtk: number | string | bigint): string {
   return `${neg ? "-" : ""}${whole}.${digits.slice(-3)}`;
 }
 
+/** Western three-digit grouping (912,669.05) with the digit script of the UI language (F-SYS-051): the one grouping every amount
+ *  on the web, the phone and the memo shares. Bengali digits come from the locale extension, never from lakh grouping. */
+export const WESTERN_LOCALE: Record<Locale, string> = { en: "en-US", bn: "en-US-u-nu-beng" };
+export const groupWestern = (locale: Locale, n: bigint | number, opts?: Intl.NumberFormatOptions): string => new Intl.NumberFormat(WESTERN_LOCALE[locale], { useGrouping: true, ...opts }).format(n);
+
 /** Localise a plain decimal string's digits (Bengali digits for bn) keeping its decimals. */
 function localiseDecimal(locale: Locale, s: string): string {
   if (locale === "en") return s;
@@ -29,7 +34,7 @@ export function formatTaka(locale: Locale, mtk: number | string | bigint): strin
   if (plain === "—") return plain;
   const neg = plain.startsWith("-");
   const [whole = "0", frac = "000"] = plain.replace("-", "").split(".");
-  const grouped = new Intl.NumberFormat(locale === "bn" ? "bn-BD-u-nu-beng" : "en-US", { useGrouping: true }).format(BigInt(whole));
+  const grouped = groupWestern(locale, BigInt(whole));
   return `${neg ? "-" : ""}${grouped}.${localiseDecimal(locale, frac)}`;
 }
 
@@ -43,7 +48,7 @@ export function formatTakaDisplay(locale: Locale, mtk: number | string | bigint)
   const paisa = (BigInt(raw.replace(/^-/, "")) + 5n) / 10n; // milli-taka to paisa, half up on the magnitude
   const whole = paisa / 100n;
   const frac = String(paisa % 100n).padStart(2, "0");
-  const grouped = new Intl.NumberFormat(locale === "bn" ? "bn-BD-u-nu-beng" : "en-US", { useGrouping: true }).format(whole);
+  const grouped = groupWestern(locale, whole);
   const sign = neg && paisa > 0n ? "-" : "";
   return `${sign}${grouped}.${localiseDecimal(locale, frac)}`;
 }

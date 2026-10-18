@@ -434,3 +434,4 @@ Notes:
   verification refuses an unknown one. With `-WebVerify`, set `ARON_CHECK_PASSWORD_AMO1001` for an unattended run.
 - **Reach:** dmo1001 and amo1001 must reach the request's zone, otherwise they get a 404. `-Zone` must be the zone of
   the SR's route; the preview step checks that the request's route is listed.
+- D-SIZE-01 DEVICE-PENDING (android-tso, 2026-10-18): install sr-release and tso-release (native libraries now deflated, `useLegacyPackaging`; R8 `-repackageclasses`, `-processkotlinnullchecks remove`); cold start, log in, open the encrypted DB (SQLCipher + argon2 load from the extracted libraries), sell offline, sync, print. Expect no difference; the installed size is about 1.3 MB larger than before.

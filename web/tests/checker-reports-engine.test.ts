@@ -122,7 +122,7 @@ describe("formatting", () => {
     expect(formatTaka("en", "abc")).not.toBe("0.000");
   });
   it("bn negative keeps sign and Bengali digits", () => {
-    expect(formatTaka("bn", -12_345_678_900)).toBe("-১,২৩,৪৫,৬৭৮.৯০০");
+    expect(formatTaka("bn", -12_345_678_900)).toBe("-১২,৩৪৫,৬৭৮.৯০০");
   });
   it("string money with decimals ('7.935') is not reinterpreted as 7935 mtk", () => {
     expect(formatTaka("en", "7.935")).not.toBe("7.935");

@@ -176,15 +176,15 @@ fun Modifier.skeleton(visible: Boolean): Modifier {
  * get a long-click action instead of a hold. It is a primary action, so 56 dp. The fill shows progress (draw phase only).
  */
 @Composable
-fun AronPressAndHoldButton(text: String, onConfirmed: () -> Unit, modifier: Modifier = Modifier, holdMillis: Int = AronTokens.Motion.Hold, enabled: Boolean = true) {
+fun AronPressAndHoldButton(text: String, onConfirmed: () -> Unit, modifier: Modifier = Modifier, holdMillis: Int = AronTokens.Motion.Hold, enabled: Boolean = true, tint: Color? = null) {
     val progress = remember { Animatable(0f) }
     val scope = rememberCoroutineScope()
     val currentOnConfirmed by rememberUpdatedState(onConfirmed)
     val currentEnabled by rememberUpdatedState(enabled)
     val c = LocalAronColors.current
     val trackColor = if (enabled) c.accentContainer else c.stateDisabledFill
-    val ringColor = if (enabled) c.accent else c.stateDisabledLabel
-    val barColor = c.accent
+    val ringColor = if (enabled) (tint ?: c.accent) else c.stateDisabledLabel
+    val barColor = tint ?: c.accent
     val textColor = if (enabled) c.accentOnContainer else c.stateDisabledLabel
     val ring = if (c.sunlight) AronTokens.Stroke.SunlightHairline else AronTokens.Stroke.Strong
     Box(

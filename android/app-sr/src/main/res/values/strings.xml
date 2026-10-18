@@ -42,6 +42,7 @@
     <string name="sr_cat_bidi">Bidi</string>
     <string name="sr_cat_lighter">Lighter</string>
     <string name="sr_cat_match">Match</string>
+    <string name="sr_tasks_title">Tasks</string>
     <string name="sr_unit_stick">sticks</string>
     <string name="sr_unit_piece">pieces</string>
     <string name="sr_unit_dozen">dozen</string>

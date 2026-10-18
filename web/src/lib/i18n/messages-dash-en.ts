@@ -376,4 +376,5 @@ export const dashEn = {
   "drill.title.calls": "Calls and strike rate",
   "drill.title.login": "Login and upload status",
   "table.more": "Show {n} more rows",
+  "error.ERR_WEB_MFA_RESIGNIN": "Sign in again with your authenticator code.",
 } as const;

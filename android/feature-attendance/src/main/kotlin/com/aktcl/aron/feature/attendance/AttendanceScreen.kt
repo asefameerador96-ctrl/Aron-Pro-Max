@@ -72,7 +72,8 @@ import com.aktcl.aron.core.ui.AronCard
 import com.aktcl.aron.core.ui.AronIconButton
 import com.aktcl.aron.core.ui.AronIcons
 import com.aktcl.aron.core.ui.AronPressAndHoldButton
-import com.aktcl.aron.core.ui.AronPrimaryButton
+import com.aktcl.aron.core.ui.AronNoButton
+import com.aktcl.aron.core.ui.AronYesButton
 import com.aktcl.aron.core.ui.AronTextButton
 import com.aktcl.aron.core.ui.AronTokens
 import com.aktcl.aron.core.ui.BannerKind
@@ -100,6 +101,13 @@ internal fun dhakaClock(iso: String): String = runCatching {
     val minutes = (Instant.parse(iso).epochSecond / 60 + 6 * 60).mod(24 * 60L)
     "%02d:%02d".format(java.util.Locale.ROOT, minutes / 60, minutes % 60)
 }.getOrDefault(iso)
+
+/** The 12-hour form of an `HH:mm` clock ("16:47" -> "04:47 PM"), as the manual's hold sheet shows it (A5, A6); bad input comes back unchanged. */
+internal fun clock12(hhmm: String): String = runCatching {
+    val (h, m) = hhmm.split(":").map { it.trim().toInt() }
+    require(h in 0..23 && m in 0..59)
+    "%02d:%02d %s".format(java.util.Locale.ROOT, if (h % 12 == 0) 12 else h % 12, m, if (h < 12) "AM" else "PM")
+}.getOrDefault(hhmm)
 
 /** Fix quality of screens-sr s3 (design defaults): at most 30 m good, 31 to 100 fair, over 100 weak. Pure. */
 enum class FixQuality {
@@ -167,7 +175,7 @@ fun AttendanceContent(
                         AttendanceBar(
                             stringResource(R.string.att_check_out), { hold = HOLD_OUT }, AttendanceTags.CHECK_OUT,
                             enabled = state.checkOutEnabled && !state.busy, busy = state.busy,
-                            reason = stringResource(R.string.att_check_out_hint, localizedDigits(checkoutAtLabel)),
+                            reason = stringResource(R.string.att_check_out_hint, localizedDigits(clock12(checkoutAtLabel))),
                         )
                     }
                 }
@@ -191,13 +199,13 @@ fun AttendanceContent(
         var lastHold by remember { mutableStateOf(HOLD_IN) }
         hold?.let { lastHold = it }
         val out = lastHold == HOLD_OUT
-        val time = localizedDigits(remember(hold) { dhakaClock(nowIso()) })
+        val time = localizedDigits(remember(hold) { clock12(dhakaClock(nowIso())) })
         val fixLine = state.fixAccuracyM?.let { stringResource(R.string.att_fix_line, localizedNumber(it.toLong())) } ?: stringResource(R.string.att_fix_line_none)
         HoldSheet(
             visible = hold != null,
             title = stringResource(if (out) R.string.att_hold_title_out else R.string.att_hold_title_in),
             icon = if (out) AronIcons.Logout else AronIcons.Login,
-            timeText = time, fixLine = fixLine,
+            timeText = time, fixLine = fixLine, tint = if (out) LocalAronColors.current.noFill else LocalAronColors.current.yesFill,
             onCancel = { hold = null },
             onConfirmed = { hold = null; if (out) onCheckOut() else onCheckIn() },
         )
@@ -280,15 +288,15 @@ private fun DayCard(state: AttendanceState, checkoutAtLabel: String) {
             val inAt = state.checkedInAt
             DayRow(
                 done = inAt != null,
-                title = if (inAt != null) stringResource(R.string.att_checked_in, localizedDigits(dhakaClock(inAt))) else stringResource(R.string.att_check_in),
+                title = if (inAt != null) stringResource(R.string.att_checked_in, localizedDigits(clock12(dhakaClock(inAt)))) else stringResource(R.string.att_check_in),
                 caption = null, dim = false, tag = if (inAt != null) AttendanceTags.STATUS else null,
             )
             Box(Modifier.fillMaxWidth().height(hairline).drawBehind { drawRect(divider) })
             val outAt = state.checkedOutAt
             DayRow(
                 done = outAt != null,
-                title = if (outAt != null) stringResource(R.string.att_checked_out, localizedDigits(dhakaClock(outAt))) else stringResource(R.string.att_check_out),
-                caption = if (outAt == null && inAt != null && !state.checkOutEnabled) stringResource(R.string.att_check_out_hint, localizedDigits(checkoutAtLabel)) else null,
+                title = if (outAt != null) stringResource(R.string.att_checked_out, localizedDigits(clock12(dhakaClock(outAt)))) else stringResource(R.string.att_check_out),
+                caption = if (outAt == null && inAt != null && !state.checkOutEnabled) stringResource(R.string.att_check_out_hint, localizedDigits(clock12(checkoutAtLabel))) else null,
                 dim = inAt == null, tag = null,
             )
         }
@@ -380,7 +388,9 @@ private fun AttendanceBar(text: String, onClick: () -> Unit, tag: String, enable
             verticalArrangement = Arrangement.spacedBy(AronTokens.Space.S),
         ) {
             if (reason != null && !enabled && !busy) Text(reason, style = MaterialTheme.typography.bodySmall, color = c.textSecondary)
-            AronPrimaryButton(text, onClick, Modifier.testTag(tag), enabled = enabled, busy = busy)
+            val m = Modifier.fillMaxWidth().testTag(tag)
+            // green in, red out: the colour cue the rep uses daily (A3); busy disables the button, the label already says "checking in"
+            if (tag == AttendanceTags.CHECK_OUT) AronNoButton(text, onClick, m, enabled = enabled && !busy) else AronYesButton(text, onClick, m, enabled = enabled && !busy)
         }
     }
 }
@@ -394,7 +404,7 @@ private fun AttendanceBar(text: String, onClick: () -> Unit, tag: String, enable
  * stops under the host top bar (open issue for core-ui).
  */
 @Composable
-private fun HoldSheet(visible: Boolean, title: String, icon: ImageVector, timeText: String, fixLine: String, onCancel: () -> Unit, onConfirmed: () -> Unit) {
+private fun HoldSheet(visible: Boolean, title: String, icon: ImageVector, timeText: String, fixLine: String, tint: Color, onCancel: () -> Unit, onConfirmed: () -> Unit) {
     val c = LocalAronColors.current
     val reduced = LocalReducedMotion.current
     val scrim = c.surfaceScrim
@@ -442,7 +452,7 @@ private fun HoldSheet(visible: Boolean, title: String, icon: ImageVector, timeTe
                         Pill(c.accentContainer, c.accentOnContainer, AronIcons.Clock, timeText)
                         Text(fixLine, style = MaterialTheme.typography.bodyMedium, color = c.textSecondary, modifier = Modifier.weight(1f))
                     }
-                    AronPressAndHoldButton(stringResource(R.string.att_hold_label), onConfirmed, Modifier.testTag(AttendanceTags.HOLD))
+                    AronPressAndHoldButton(stringResource(R.string.att_hold_label), onConfirmed, Modifier.testTag(AttendanceTags.HOLD), tint = tint)
                     Text(stringResource(R.string.att_hold_hint), style = MaterialTheme.typography.bodySmall, color = c.textSecondary, textAlign = TextAlign.Center)
                     AronTextButton(stringResource(R.string.att_cancel), onCancel, Modifier.fillMaxWidth())
                 }

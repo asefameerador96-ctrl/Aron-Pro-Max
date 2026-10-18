@@ -33,8 +33,8 @@
     <string name="auth_error_offline_wrong_password">No internet, and the password does not match your last online login.</string>
     <string name="auth_error_offline_cooldown">Too many wrong passwords. Try again after %1$s.</string>
     <string name="auth_error_offline_clock_wrong">No internet, and the phone\'s date is earlier than your last online login. Set the correct date or connect to the internet.</string>
-    <string name="otp_title">Bind this phone</string>
-    <string name="otp_hint">Enter the 4-digit code from your TSO.</string>
+    <string name="otp_title">OTP verification</string>
+    <string name="otp_hint">Enter the 4-digit OTP provided by your TSO.</string>
     <string name="otp_verify">Verify</string>
     <string name="otp_reason_digits">Enter the 4-digit code.</string>
     <string name="otp_back">Back to login</string>
