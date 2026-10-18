@@ -268,6 +268,9 @@ class DayService(
         if (!IngestService.UUID_V4.matches(req.client_uuid)) throw invalid("/client_uuid")
         if (req.zone_id < 1) throw invalid("/zone_id")
         val date = runCatching { LocalDate.parse(req.business_date) }.getOrNull()?.takeIf { DATE.matches(req.business_date) } ?: throw invalid("/business_date")
+        // Replay first: the caller's own stored submit answers before the role and the delegate list are re-judged (a
+        // delegate role removed from cfg.day.final_submit_delegate_roles after the submit must not turn a retry into 403).
+        replay(h = null, req.client_uuid, p.userId)?.let { return it.checked(req, date) }
         val delegates = runCatching { config.value("cfg.day.final_submit_delegate_roles").jsonArray.map { it.jsonPrimitive.content }.toSet() }.getOrDefault(emptySet())
         val kind = when {
             p.role == Role.TSO -> "manual"
@@ -277,8 +280,6 @@ class DayService(
         val now = clock.now()
         val today = LocalDate.ofInstant(now, java.time.ZoneId.of("Asia/Dhaka"))
         if (date.isAfter(today)) throw ApiProblem(ProblemCode.ERR_VALIDATION, "a zone-day after today cannot be final-submitted", errors = listOf(FieldError("/business_date", "invalid_value")))
-        // A retry of the caller's own submit answers the first success (whatever the scope is now).
-        replay(h = null, req.client_uuid, p.userId)?.let { return it.checked(req, date) }
         requireZone(p, req.zone_id, date)
         return db.jdbi.inTransaction<FinalSubmitResultDto, Exception> { h ->
             // Same uuid racing (double click, timeout retry): the uuid lock first, then the zone-day lock, always in

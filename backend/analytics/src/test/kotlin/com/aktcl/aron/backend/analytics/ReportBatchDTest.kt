@@ -54,6 +54,15 @@ class ReportBatchDTest : ReportFixture() {
         assertTrue(expected.isNotEmpty())
         val got = run(10, Role.ANALYST, "geofence-calibration").result().rows().associate { (it.str("distance_band_m")!! to it.str("territory")!!) to (it.num("visits").toInt() to it.num("force_sale_share")) }
         assertEquals(expected, got)
+        // N-050 evidence: the radius stamps of the row's visits, without changing the grain.
+        fresh.db.jdbi.useHandle<Exception> { it.execute("UPDATE app.visit SET server_radius_m = 60") }
+        val stamped = fresh.db.jdbi.withHandle<Pair<Int, Int>, Exception> { h ->
+            h.createQuery("SELECT min(av.radius_m_used), max(av.radius_m_used) FROM dw.fact_visit v JOIN app.visit av ON av.client_uuid = v.visit_client_uuid AND av.business_date = v.business_date WHERE v.visit_kind = 'sr_call' AND NOT v.voided AND v.distance_m IS NOT NULL")
+                .map { rs, _ -> rs.getInt(1) to rs.getInt(2) }.one()
+        }
+        val rows = run(10, Role.ANALYST, "geofence-calibration").result().rows()
+        assertEquals(stamped.first, rows.minOf { it.num("radius_used_min_m").toInt() }); assertEquals(stamped.second, rows.maxOf { it.num("radius_used_max_m").toInt() })
+        assertTrue(rows.all { it.num("server_radius_min_m").toInt() == 60 && it.num("server_radius_max_m").toInt() == 60 })
         // Scope: a TSO's histogram counts only the visits of their own zone's territory.
         val own = run(14, Role.TSO, "geofence-calibration").result().rows()
         val zone2Visits = fresh.db.jdbi.withHandle<Int, Exception> { h ->

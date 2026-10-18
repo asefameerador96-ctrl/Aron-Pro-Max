@@ -186,4 +186,22 @@ class AmoZoneBundleCheckerTest {
         assertTrue(b["meta"]!!.jsonObject["paged_sections"]!!.jsonArray.isEmpty(), "fixture: not paged")
         assertFalse(other in carried, "outlet $other (zone Z-OTH) must not reach the Mirpur AMO")
     }
+
+    /** Lead ruling 2026-10-18 (F-TSO-027 login snapshot): the TSO bundle carries the outlets of its zones' routes, never another zone's, and touches no route-day. */
+    @Test
+    @Order(6)
+    fun theTsoBundleCarriesTheZoneOutletsOfItsReach() = testApplication {
+        application { aronApi(wiring) }
+        val before = ids("SELECT count(*) FROM app.route_day WHERE route_id IN ($mirRoutes)").single()
+        val b = client.bundle("tso1001", "app_tso", tsoPhone)
+        val routes = b["routes"]!!.jsonArray.map { it.jsonObject }
+        val zone = routes.filter { it["route"]!!.jsonObject["code"]!!.jsonPrimitive.content.startsWith("MIR-SR-") }
+        assertEquals(3, zone.size, "the Mirpur routes ride in the TSO bundle")
+        val carried = routes.flatMap { r -> r["outlets"]!!.jsonArray.map { it.jsonObject["outlet_id"]!!.jsonPrimitive.long } }.toSet()
+        val mir = ids("SELECT o.id FROM app.outlet o JOIN app.zone z ON z.id = o.zone_id WHERE z.code = 'Z-MIR' AND o.status = 'active' AND o.route_id IN ($mirRoutes)").toSet()
+        assertTrue(mir.isNotEmpty() && carried.containsAll(mir), "every active Mirpur outlet travels: missing ${mir - carried}")
+        assertFalse(ids("SELECT id FROM app.outlet WHERE code = 'OTH-ON-MIR'").single() in carried, "an outlet of another zone never travels")
+        assertEquals(listOf(0, 0, 0), zone.map { it["target_outlets"]!!.jsonPrimitive.int }, "no SR target on a supervisor's zone routes")
+        assertEquals(before, ids("SELECT count(*) FROM app.route_day WHERE route_id IN ($mirRoutes)").single(), "no route-day from a TSO fetch")
+    }
 }

@@ -44,6 +44,7 @@ fun interface NodeReach {
 
 class ConfigService(private val db: Database, val resolver: ConfigResolver, private val clock: AronClock = AronClock.SYSTEM, private val nodeReach: NodeReach? = null) {
     private val dhaka = ZoneId.of("Asia/Dhaka")
+    internal val database: Database get() = db
 
     // ---------------------------------------------------------------- reads
 
@@ -111,9 +112,26 @@ class ConfigService(private val db: Database, val resolver: ConfigResolver, priv
 
     // ---------------------------------------------------------------- write: create
 
+    private fun replayOf(p: AronPrincipal, req: ConfigChangeRequestIn, clientUuid: UUID): ConfigChangeDto? = db.jdbi.withHandle<ConfigChangeDto?, Exception> { h ->
+        val id = h.createQuery("SELECT change_id, requested_by FROM app.cfg_change WHERE client_uuid = CAST(:u AS uuid)").bind("u", clientUuid.toString())
+            .map { rs, _ -> rs.getLong(1) to rs.getLong(2) }.findOne().orElse(null) ?: return@withHandle null
+        if (id.second != p.userId) throw ApiProblem(ProblemCode.ERR_CONFLICT, "idempotency key already used")
+        val stored = loadChange(h, id.first)!!
+        // Values compare as JSON (jsonb reorders object members), the items as a set of key, scope and value.
+        val same = stored.reason == req.reason.trim() &&
+            stored.changes.map { Triple(it.key, "${it.scope_type}:${it.scope_id}", it.value) }.toSet() == req.changes.map { Triple(it.key, "${it.scope_type}:${it.scope_id}", it.value) }.toSet() &&
+            stored.changes.size == req.changes.size
+        if (!same) throw ApiProblem(ProblemCode.ERR_CONFLICT, "idempotency key already used for another change")
+        stored
+    }
+
     /** POST /admin/config/changes. [clientUuid] (Idempotency-Key) makes a replay return the first answer. */
     fun create(p: AronPrincipal, req: ConfigChangeRequestIn, clientUuid: UUID?, requestId: String?, revertOf: Long? = null, kind: String = "change"): ConfigChangeDto {
         val tso = p.role == Role.TSO
+        // Replay first (Idempotency-Key): a stored change of this caller answers as it is now, before the dates, the
+        // registry or reach are re-judged (a retry minutes later must not turn into 400 in_past); the same key with other
+        // changes or another reason is a 409, never the first change silently.
+        if (clientUuid != null) replayOf(p, req, clientUuid)?.let { return it }
         if (p.role != Role.ADMIN && p.role != Role.SUPERADMIN && !tso) throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "config changes are made by ADMIN or SUPERADMIN")
         if (req.reason.trim().length < 10 || req.reason.length > 500) throw ApiProblem(ProblemCode.ERR_CFG_REASON_REQUIRED, "a reason of 10 to 500 characters is required", errors = listOf(FieldError("body.reason", "length")))
         if (req.changes.isEmpty() || req.changes.size > 100) throw ApiProblem(ProblemCode.ERR_VALIDATION, "1 to 100 changes", errors = listOf(FieldError("body.changes", "out_of_range")))

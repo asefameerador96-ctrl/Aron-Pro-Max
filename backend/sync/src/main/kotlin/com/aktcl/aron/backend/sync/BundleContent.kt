@@ -67,6 +67,38 @@ object BundleContent {
     }
 
     /**
+     * Active rubrics at their current version for the AMO and TSO (joint-call scores, the TSO retailer questionnaire);
+     * none for other roles. Criteria in the RubricDef item shape; a stored criterion without its id, type or English
+     * label is skipped, never sent invalid (contract max 10 rubrics, 50 criteria).
+     */
+    fun rubrics(h: Handle, role: String): List<JsonObject> {
+        if (role != "AMO" && role != "TSO") return emptyList()
+        return h.createQuery(
+            """
+            SELECT r.id, r.version, r.kind, v.criteria::text AS criteria FROM app.rubric r
+            JOIN app.rubric_version v ON v.rubric_id = r.id AND v.version = r.version
+            WHERE r.status = 'active' ORDER BY r.id LIMIT 10
+            """.trimIndent(),
+        ).map { rs, _ ->
+            buildJsonObject {
+                put("rubric_id", rs.getLong("id")); put("version", rs.getInt("version")); put("kind", rs.getString("kind"))
+                put("criteria", JsonArray(Json.parseToJsonElement(rs.getString("criteria")).jsonArray.mapNotNull { criterion(it.jsonObject) }.take(50)))
+            }
+        }.list()
+    }
+
+    private fun criterion(c: JsonObject): JsonObject? {
+        if (listOf("criterion_id", "answer_type", "label_en").any { c[it] == null || c[it] is JsonNull }) return null
+        // stars_1_5 is the older spelling of score_1_5 (docs/24 s14a R20); any other unknown type is never sent.
+        val type = when (val t = (c["answer_type"] as? JsonPrimitive)?.content) { "stars_1_5" -> "score_1_5"; in setOf("score_1_5", "text", "bool") -> t; else -> return null }
+        return buildJsonObject {
+            put("criterion_id", c.getValue("criterion_id")); put("label_en", c.getValue("label_en")); put("label_bn", c["label_bn"] ?: JsonNull)
+            put("answer_type", type); put("enabled", true)
+            c["key"]?.takeIf { it !is JsonNull }?.let { put("key", it) }
+        }
+    }
+
+    /**
      * A stored question (the admin's StoredQuestion) in the SurveyDef item shape; `photo` becomes `requires_photo`. A
      * row without its id, type or English label (hand-edited or migrated) is skipped, never sent invalid.
      */

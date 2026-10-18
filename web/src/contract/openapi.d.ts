@@ -4910,6 +4910,10 @@ export interface components {
             assigned_user_id?: number | null;
             /** Format: int64 */
             acting_user_id?: number | null;
+            /** @description Login of the assigned SR, for the supervisor route lists (F-TSO-007). */
+            assigned_username?: string | null;
+            /** @description Full name of the assigned SR, for the supervisor route lists (F-TSO-007). */
+            assigned_user_full_name?: string | null;
         };
         SupervisorDayState: {
             user_id: components["schemas"]["Id"];
@@ -12807,6 +12811,7 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
             412: components["responses"]["PreconditionFailed"];
         };
     };
