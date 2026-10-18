@@ -32,6 +32,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.zIndex
+import androidx.compose.foundation.layout.offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.draw.drawBehind
@@ -75,13 +77,18 @@ fun AronLookColors.verticalBrush(): Brush = if (sunlight) SolidColor(purple) els
 
 /** A text style in the bundled font of the current language. */
 @Composable
-internal fun lookStyle(size: TextUnit, bold: Boolean = false, color: Color = Color.Unspecified, align: TextAlign = TextAlign.Unspecified) =
-    TextStyle(fontFamily = AronFonts.forLanguage(LocalAppLanguage.current), fontSize = size, fontWeight = if (bold) FontWeight.Bold else FontWeight.Normal, color = color, textAlign = align)
+internal fun lookStyle(size: TextUnit, bold: Boolean = false, color: Color = Color.Unspecified, align: TextAlign = TextAlign.Unspecified, medium: Boolean = false) =
+    TextStyle(
+        fontFamily = AronFonts.forLanguage(LocalAppLanguage.current), fontSize = size, color = color, textAlign = align,
+        fontWeight = if (bold) FontWeight.Bold else if (medium) FontWeight.Medium else FontWeight.Normal,
+    )
 
 /**
  * The top bar of every non-Home screen (PARITY-SPEC s2.1, sr/stock.webp, sr/sale-select.png, sr/summary.png): full-width gradient, a white
  * back chevron at the start (shown when [onBack] is set; [backLabel] is its TalkBack label), the screen [icon] (36 dp, the gradient line
- * icon of the tile) and the white bold [title] centred, and an optional [trailing] slot at the end (the printer state, [AronPrinterBadge]).
+ * icon of the tile) and the white bold [title] (22 sp) centred, an optional [trailing] slot at the end inside the bar, and an optional
+ * [hanging] slot whose centre sits on the bar's bottom edge at the end (the printer state, [AronPrinterBadge], as in sr/stock.webp).
+ * Inside [AronScaffold] the bar is drawn above the content so the hanging badge stays visible and tappable.
  */
 @Composable
 fun AronTopBar(
@@ -91,39 +98,43 @@ fun AronTopBar(
     onBack: (() -> Unit)? = null,
     backLabel: String? = null,
     trailing: (@Composable () -> Unit)? = null,
+    hanging: (@Composable () -> Unit)? = null,
 ) {
     val look = LocalAronLook.current
-    Box(
-        modifier
-            .fillMaxWidth()
-            .background(look.barBrush())
-            .sunlightRule(look)
-            .windowInsetsPadding(WindowInsets.statusBars)
-            .heightIn(min = AronLook.BarHeight),
-        contentAlignment = Alignment.Center,
-    ) {
-        if (onBack != null) {
-            Box(
-                Modifier
-                    .align(Alignment.CenterStart)
-                    .size(AronLook.Touch)
-                    .clickable(role = Role.Button, onClick = onBack)
-                    .semantics { if (backLabel != null) contentDescription = backLabel },
-                contentAlignment = Alignment.Center,
-            ) { GlyphCanvas(Modifier.size(24.dp)) { chevronBack(look.onBar) } }
-        }
-        Row(
-            Modifier.padding(horizontal = AronLook.Touch + 8.dp, vertical = 6.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.Center,
+    Box(modifier.fillMaxWidth()) {
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .background(look.barBrush())
+                .sunlightRule(look)
+                .windowInsetsPadding(WindowInsets.statusBars)
+                .heightIn(min = AronLook.BarHeight),
+            contentAlignment = Alignment.Center,
         ) {
-            if (icon != null) {
-                Image(icon, contentDescription = null, modifier = Modifier.size(AronLook.BarIcon))
-                Spacer(Modifier.width(10.dp))
+            if (onBack != null) {
+                Box(
+                    Modifier
+                        .align(Alignment.CenterStart)
+                        .size(AronLook.Touch)
+                        .clickable(role = Role.Button, onClick = onBack)
+                        .semantics { if (backLabel != null) contentDescription = backLabel },
+                    contentAlignment = Alignment.Center,
+                ) { GlyphCanvas(Modifier.size(24.dp)) { chevronBack(look.onBar) } }
             }
-            Text(title, style = lookStyle(20.sp, bold = true, color = look.onBar, align = TextAlign.Center), modifier = Modifier.semantics { heading() })
+            Row(
+                Modifier.padding(horizontal = AronLook.Touch + 8.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center,
+            ) {
+                if (icon != null) {
+                    Image(icon, contentDescription = null, modifier = Modifier.size(AronLook.BarIcon))
+                    Spacer(Modifier.width(10.dp))
+                }
+                Text(title, style = lookStyle(22.sp, bold = true, color = look.onBar, align = TextAlign.Center), modifier = Modifier.semantics { heading() })
+            }
+            if (trailing != null) Box(Modifier.align(Alignment.CenterEnd).padding(end = 4.dp)) { trailing() }
         }
-        if (trailing != null) Box(Modifier.align(Alignment.CenterEnd).padding(end = 4.dp)) { trailing() }
+        if (hanging != null) Box(Modifier.align(Alignment.BottomEnd).padding(end = 40.dp).offset(y = AronLook.Touch / 2)) { hanging() }
     }
 }
 
@@ -136,9 +147,10 @@ fun AronPrinterBadge(connected: Boolean, label: String, onClick: () -> Unit, mod
     val look = LocalAronLook.current
     Box(
         modifier
-            .size(AronLook.Touch)
+            .size(AronLook.Touch + 4.dp)
+            .shadow(3.dp, CircleShape)
             .clip(CircleShape)
-            .background(look.card.copy(alpha = 0.92f))
+            .background(look.rowAlt)
             .clickable(role = Role.Button, onClick = onClick)
             .semantics { contentDescription = label },
         contentAlignment = Alignment.Center,
@@ -163,7 +175,7 @@ fun AronScaffold(
 ) {
     val look = LocalAronLook.current
     Column(modifier.fillMaxSize().background(if (home) look.pageHome else look.page)) {
-        topBar()
+        Box(Modifier.zIndex(1f)) { topBar() }
         Box(Modifier.weight(1f).fillMaxWidth(), content = content)
         if (bottomPanel != null || bottomButtons != null) {
             Column(

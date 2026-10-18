@@ -4,8 +4,8 @@
 Package **`com.aktcl.aron.core.ui.aron`** (module `:android:core-ui`). Build every screen from these only; no glass, no `AronCard`/`GlassSurface`/old `AronTile` on a parity screen. The old Calm Glass components in `com.aktcl.aron.core.ui` stay until every screen has moved (same names, other package: import from `...core.ui.aron`). Wrap the app in `AronTheme(language, sunlight = ...)` as today: it provides fonts, `LocalAppLanguage` and `LocalAronLook` (`AronLook.Default` = the existing-Aron look; `AronLook.Sunlight` = optional outdoor theme). Tokens: `AronLook` / `AronLookColors` in `Tokens.kt` (exact PARITY-SPEC s1 values). All strings come resolved from your module (`stringResource`), digits localised by you (`localizedNumber`, `localizedDigits`).
 ```kotlin
 AronScaffold(
-    topBar = { AronTopBar(title, icon = painterResource(R.drawable.aron_ic_stock), onBack = back, backLabel = stringResource(R.string.core_ui_back),
-               trailing = { AronPrinterBadge(connected, label = printerStateText, onClick = connectPrinter) }) },
+    topBar = { AronTopBar(title, icon = painterResource(R.drawable.aron_art_stock), onBack = back, backLabel = stringResource(R.string.core_ui_back),
+               hanging = { AronPrinterBadge(connected, label = printerStateText, onClick = connectPrinter) }) },   // badge centred on the bar's bottom edge (stock.webp); trailing = inside the bar
     home = false,                                   // true: white page (Home grid); false: grey #E8E8E8
     bottomPanel = { TotalsPanel(header = TotalsLine(category, listOf(totalIssue, stock)), lines = listOf(TotalsLine(cigarettes, listOf(a, b)), ...)) },
     bottomButtons = { AronPrimaryButton(save, onSave, Modifier.weight(1f), glyph = ButtonGlyph.Save)
@@ -33,10 +33,12 @@ RetailerPicker(selected: T?, options: List<T>, optionLabel: (T) -> String, place
 RetailerPickerField(value: String?, placeholder, onClick)                                       // opens your own searchable sheet
 LetterFilterBar(letters = listOf(all, "A", "B", ...), selected, onSelect, letterDescription = null)
 
+AronInfoCard(text, trailing = { AronPrinterBadge(...) })            // summary.png info card
+AronTargetCard(title, label, value = daySales, percent = null)       // Home target card shell; targets deferred (docs/27)
 SummaryTable(headers: List<String>, rows: List<SummaryRow(title, values)>, subtotals: List<TotalsLine> = empty, totals: List<SummaryTotal(label, value)> = empty)
 // then AronPrimaryButton(print, onPrint, Modifier.fillMaxWidth(), glyph = ButtonGlyph.Print, reverse = true)
 ```
-Gallery: `AronLookGallery()` (tests `AronLookGalleryTest`: bn/en, font scale 1.0/1.3, sunlight, 48 dp targets, TalkBack names, no clipped text). Capture: `./gradlew :android:ui-screenshots:testDebugUnitTest --tests '*KitGalleryShot*look*'` -> `android/ui-screenshots/build/kitshots/look_*.png`. Icons: `com.aktcl.aron.core.ui.R.drawable.aron_ic_{attendance,stock,sale,memo,summary,sales_submit,outlet,tutorial,task_delegation,photo_capture,sales_journey,kpi,outlet_new,outlet_close,outlet_edit,cluster,back,gear,printer,printer_off}` (`painterResource(...)`); the top bar icon of a screen is its tile icon. `icon = null` draws a gradient placeholder square.
+Gallery: `AronLookGallery()` (tests `AronLookGalleryTest`: bn/en, font scale 1.0/1.3, sunlight, 48 dp targets, TalkBack names, no clipped text). Capture: `./gradlew :android:ui-screenshots:testDebugUnitTest --tests '*KitGalleryShot*look*'` -> `android/ui-screenshots/build/kitshots/look_*.png`. Icons (lead ruling 2026-10-18: the owner's original art): `com.aktcl.aron.core.ui.R.drawable.aron_art_{attendance,stock,sale,memo,summary,sales_submit,outlet,tutorial,task_delegation,photo_capture,sales_journey,kpi,outlet_new,outlet_close,outlet_edit,cluster}` (WebP crops of sr/home-1-tiles.webp and sr/outlet-menu.png, 168 px, drawable-nodpi) for tiles and title bars; no Astha or loyalty art (deferred). Redrawn vectors stay as fallback and for glyphs with no reference: `aron_ic_{attendance,stock,sale,memo,summary,sales_submit,outlet,tutorial,task_delegation,photo_capture,sales_journey,kpi,outlet_new,outlet_close,outlet_edit,cluster,back,gear,printer,printer_off}` (`painterResource(...)`); the top bar icon of a screen is its tile icon. `icon = null` draws a gradient placeholder square.
 Local build works in this container: Android SDK at /opt/android-sdk (`local.properties` sdk.dir, git-ignored), Gradle resolves through the mirror.
 
 
