@@ -87,6 +87,16 @@ class AronLookGalleryTest {
         sweep()
     }
 
+    @Test @Config(qualifiers = "bn-w360dp-h5200dp") fun banglaFontScaleTwo() {
+        render(AppLanguage.BN, 2f)
+        sweep()
+    }
+
+    @Test @Config(qualifiers = "bn-w411dp-h3200dp") fun banglaWidePhone() {
+        render(AppLanguage.BN, 1f)
+        sweep()
+    }
+
     @Test fun englishLargeText() {
         render(AppLanguage.EN, 1.3f)
         rule.onNodeWithText("Select retailer", useUnmergedTree = true).assertExists()
