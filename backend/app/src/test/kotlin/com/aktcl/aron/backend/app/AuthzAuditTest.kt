@@ -353,6 +353,12 @@ class AuthzAuditTest {
     private val writers = setOf("ADMIN", "SUPERADMIN")
     /** docs/24 s8.5 "Config changes": TSO (radius proposals), ADMIN, SUPERADMIN; — for everyone else. */
     private val cfgDocs = setOf("TSO", "ADMIN", "SUPERADMIN")
+    /**
+     * Config reads (keys, values, changes, versions, reach and the tools): ADMIN and SUPERADMIN only (D-AUTHZ-Q2, docs/24
+     * s8.5). The TSO's radius proposal writes and reads nothing; its one read is resolve of `cfg.web.entry_classes` for its
+     * own zone (the web entry page), probed on its own row.
+     */
+    private val cfgReaders = writers
     /** docs/24 s8.5 "Master data": R for DMO, WM, TOP, ANALYST, SUPPORT; W for ADMIN, SUPERADMIN (the TSO reads are an open point). */
     private val masterDocs = setOf("DMO", "WM", "TOP", "ANALYST", "SUPPORT", "ADMIN", "SUPERADMIN")
     /**
@@ -374,22 +380,23 @@ class AuthzAuditTest {
             RouteSpec("POST /v1/admin/enrolment-tokens/{}/revoke", p, { "/v1/admin/enrolment-tokens/$tokenId/revoke" }, null, setOf("SUPPORT", "ADMIN", "SUPERADMIN")),
             RouteSpec("GET /v1/admin/device-otps", g, { "/v1/admin/device-otps" }, null, setOf("TSO", "DMO", "WM", "SUPPORT", "ADMIN", "SUPERADMIN")),
             RouteSpec("POST /v1/admin/device-otps", p, { "/v1/admin/device-otps" }, { otpBody().toString() }, setOf("TSO", "SUPPORT", "ADMIN", "SUPERADMIN")),
-            RouteSpec("GET /v1/admin/config/keys", g, { "/v1/admin/config/keys" }, null, cfgDocs),
-            RouteSpec("GET /v1/admin/config/values", g, { "/v1/admin/config/values?key=cfg.geo.radius_m" }, null, cfgDocs),
-            RouteSpec("GET /v1/admin/config/resolve", g, { "/v1/admin/config/resolve?key=cfg.geo.radius_m&node_type=zone&node_id=$zone" }, null, cfgDocs),
-            RouteSpec("GET /v1/admin/config/changes", g, { "/v1/admin/config/changes" }, null, cfgDocs),
-            RouteSpec("GET /v1/admin/config/changes/{}", g, { "/v1/admin/config/changes/$adminChange" }, null, cfgDocs),
+            RouteSpec("GET /v1/admin/config/keys", g, { "/v1/admin/config/keys" }, null, cfgReaders),
+            RouteSpec("GET /v1/admin/config/values", g, { "/v1/admin/config/values?key=cfg.geo.radius_m" }, null, cfgReaders),
+            RouteSpec("GET /v1/admin/config/resolve", g, { "/v1/admin/config/resolve?key=cfg.geo.radius_m&node_type=zone&node_id=$zone" }, null, cfgReaders),
+            RouteSpec("GET /v1/admin/config/resolve (entry classes)", g, { "/v1/admin/config/resolve?key=cfg.web.entry_classes&node_type=zone&node_id=$zone" }, null, cfgReaders + "TSO"),
+            RouteSpec("GET /v1/admin/config/changes", g, { "/v1/admin/config/changes" }, null, cfgReaders),
+            RouteSpec("GET /v1/admin/config/changes/{}", g, { "/v1/admin/config/changes/$adminChange" }, null, cfgReaders),
             RouteSpec("POST /v1/admin/config/changes", p, { "/v1/admin/config/changes" }, { cfgBody().toString() }, cfgDocs),
             RouteSpec("POST /v1/admin/config/changes/{}/decision", p, { "/v1/admin/config/changes/$c3Change/decision" }, dec("approve"), writers, rule = setOf("ADMIN")),
             RouteSpec("POST /v1/admin/config/versions/{}/rollback", p, { "/v1/admin/config/versions/$c3Version/rollback" }, { obj("mode" to "revert_this_version", "reason" to "qa authz audit rollback").toString() }, cfgDocs, rule = setOf("ADMIN", "TSO")),
-            RouteSpec("GET /v1/admin/config/versions", g, { "/v1/admin/config/versions" }, null, cfgDocs),
-            RouteSpec("GET /v1/admin/config/versions/{}", g, { "/v1/admin/config/versions/$ownVersion" }, null, cfgDocs),
-            RouteSpec("GET /v1/admin/config/blast-radius", g, { "/v1/admin/config/blast-radius?scope_type=zone&scope_id=$zone" }, null, cfgDocs),
-            RouteSpec("GET /v1/admin/config/whatif", g, { "/v1/admin/config/whatif?scope_type=zone&scope_id=$zone&value=120" }, null, cfgDocs),
-            RouteSpec("GET /v1/admin/config/density", g, { "/v1/admin/config/density?scope_type=zone&scope_id=$zone" }, null, cfgDocs),
-            RouteSpec("GET /v1/admin/config/calibration", g, { "/v1/admin/config/calibration?scope_type=zone&scope_id=$zone" }, null, cfgDocs),
-            RouteSpec("GET /v1/admin/config/reach/{}", g, { "/v1/admin/config/reach/$ownVersion?zone_id=$zone" }, null, cfgDocs),
-            RouteSpec("GET /v1/admin/config/reach/{}/pending", g, { "/v1/admin/config/reach/$ownVersion/pending?zone_id=$zone" }, null, cfgDocs),
+            RouteSpec("GET /v1/admin/config/versions", g, { "/v1/admin/config/versions" }, null, cfgReaders),
+            RouteSpec("GET /v1/admin/config/versions/{}", g, { "/v1/admin/config/versions/$ownVersion" }, null, cfgReaders),
+            RouteSpec("GET /v1/admin/config/blast-radius", g, { "/v1/admin/config/blast-radius?scope_type=zone&scope_id=$zone" }, null, cfgReaders),
+            RouteSpec("GET /v1/admin/config/whatif", g, { "/v1/admin/config/whatif?scope_type=zone&scope_id=$zone&value=120" }, null, cfgReaders),
+            RouteSpec("GET /v1/admin/config/density", g, { "/v1/admin/config/density?scope_type=zone&scope_id=$zone" }, null, cfgReaders),
+            RouteSpec("GET /v1/admin/config/calibration", g, { "/v1/admin/config/calibration?scope_type=zone&scope_id=$zone" }, null, cfgReaders),
+            RouteSpec("GET /v1/admin/config/reach/{}", g, { "/v1/admin/config/reach/$ownVersion?zone_id=$zone" }, null, cfgReaders),
+            RouteSpec("GET /v1/admin/config/reach/{}/pending", g, { "/v1/admin/config/reach/$ownVersion/pending?zone_id=$zone" }, null, cfgReaders),
             RouteSpec("GET /v1/admin/dues-adjustments", g, { "/v1/admin/dues-adjustments" }, null, writers),
             RouteSpec("POST /v1/admin/dues-adjustments", p, { "/v1/admin/dues-adjustments" }, { dueBody().toString() }, writers),
             RouteSpec("POST /v1/admin/dues-adjustments/{}/decision", p, { "/v1/admin/dues-adjustments/$matrixAdjustment/decision" }, dec("approve"), setOf("SUPERADMIN")),
