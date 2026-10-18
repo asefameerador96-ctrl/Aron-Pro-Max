@@ -31,7 +31,7 @@ import re
 import sys
 from pathlib import Path
 
-CEILING = 18  # the allow-list only shrinks: lower this with every removed entry, never raise it without the lead's review
+CEILING = 17  # the allow-list only shrinks: lower this with every removed entry, never raise it without the lead's review
 ALLOW = Path(__file__).resolve().parent / "money-float-allow.txt"
 
 MONEY = re.compile(r"mtk|amount|price|money|net_|gross|due|qc|taka|paisa|settlement|discount|paid|total|cash|collect", re.IGNORECASE)

@@ -91,7 +91,7 @@ class BundleCheckerTest {
             )
         }
         // Minimum SR build 5 (as in BundleAcceptanceTest).
-        commitCfg("cfg.release.min_version_code", "'global'", "0", """{"sr": 5, "amo": 1, "tso": 1}""", "now() - interval '1 day'", null)
+        commitCfg("cfg.release.min_version_code", "'global'", "0", """{"sr": 5, "amo": 1, "tso": 1}""", "TIMESTAMPTZ '${ApiWorld.CFG_FROM}'", null)
         val key = File.createTempFile("aron-jwt", ".pem").apply {
             deleteOnExit()
             val k = KeyPairGenerator.getInstance("EC").apply { initialize(ECGenParameterSpec("secp256r1")) }.generateKeyPair().private

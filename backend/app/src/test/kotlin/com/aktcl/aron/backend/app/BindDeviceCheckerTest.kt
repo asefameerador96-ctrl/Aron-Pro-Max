@@ -83,11 +83,12 @@ class BindDeviceCheckerTest {
             outZone = h.createQuery("SELECT id FROM app.zone WHERE code = 'Z-OTHER'").mapTo(Long::class.java).one()
             h.execute("INSERT INTO app.cfg_version (config_version, kind, committed_by, summary) SELECT max(config_version) + 1, 'change', (SELECT id FROM app.app_user WHERE username = 'aron.system'), 'checker' FROM app.cfg_version")
             for ((k, v) in listOf("cfg.api.rl.device_per_min" to "600", "cfg.api.rl.user_per_min" to "2000")) {
-                h.execute("INSERT INTO app.cfg_value (key, scope_type, scope_id, value, effective_from, config_version, reason) SELECT '$k', 'global', 0, '$v'::jsonb, now() - interval '1 day', max(config_version), 'test' FROM app.cfg_version")
+                h.execute("INSERT INTO app.cfg_value (key, scope_type, scope_id, value, effective_from, config_version, reason) SELECT '$k', 'global', 0, '$v'::jsonb, TIMESTAMPTZ '${ApiWorld.CFG_FROM}', max(config_version), 'test' FROM app.cfg_version")
             }
             // Production value: the dev seed turns enrolment off.
             h.useTransaction<Exception> { tx ->
                 // One transaction, so now() is one instant: no gap in which the dev value or the env default applies.
+                // now(), not ApiWorld.CFG_SWITCH: the row closed is the dev seed's, which starts at the seed's now() (db/seed/04).
                 assertEquals(1, tx.execute("UPDATE app.cfg_value SET effective_to = now() WHERE key = 'cfg.device.require_enrolled' AND scope_type = 'global' AND effective_to IS NULL"))
                 tx.execute("INSERT INTO app.cfg_value (key, scope_type, scope_id, value, effective_from, config_version, reason) SELECT 'cfg.device.require_enrolled', 'global', 0, 'true'::jsonb, now(), max(config_version), 'test' FROM app.cfg_version")
             }

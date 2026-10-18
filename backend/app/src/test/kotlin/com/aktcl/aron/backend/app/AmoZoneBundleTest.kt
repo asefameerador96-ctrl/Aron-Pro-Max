@@ -116,7 +116,7 @@ class AmoZoneBundleTest {
         }
         for ((k, v) in listOf("cfg.bundle.page_threshold_rows" to 500, "cfg.bundle.page_rows" to 200)) fresh.db.jdbi.useHandle<Exception> { h ->
             h.execute("INSERT INTO app.cfg_version (config_version, kind, committed_by, summary) SELECT max(config_version) + 1, 'change', (SELECT id FROM app.app_user WHERE username = 'aron.system'), 'amo zone' FROM app.cfg_version")
-            h.execute("INSERT INTO app.cfg_value (key, scope_type, scope_id, value, effective_from, config_version, reason) SELECT '$k', 'global', 0, '$v'::jsonb, now() - interval '1 day', max(config_version), 'amo zone' FROM app.cfg_version")
+            h.execute("INSERT INTO app.cfg_value (key, scope_type, scope_id, value, effective_from, config_version, reason) SELECT '$k', 'global', 0, '$v'::jsonb, TIMESTAMPTZ '${ApiWorld.CFG_FROM}', max(config_version), 'amo zone' FROM app.cfg_version")
         }
         val key = File.createTempFile("aron-jwt", ".pem").apply {
             deleteOnExit()

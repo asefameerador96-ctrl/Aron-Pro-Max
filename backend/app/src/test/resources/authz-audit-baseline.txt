@@ -18,7 +18,7 @@ LIMIT-CONTRACT GET /v1/admin/config/values ADMIN limit=500
 LIMIT-CONTRACT GET /v1/admin/config/versions ADMIN default
 LIMIT-CONTRACT GET /v1/admin/config/versions ADMIN limit=500
 LIMIT-CONTRACT GET /v1/admin/device-otps ADMIN limit=500
-# AZ-4 (medium): config reads have no reach filter. A TSO or DMO reads the other division's zone values (values, resolve), its
+# AZ-4 (medium): config reads have no reach filter. A TSO or DMO reads the other division's zone (values and resolve fixed by 8a13fe8), its
 # change sets (the list and by id) and its versions (by id). ConfigService.values/changes/change/resolve and ConfigTools.versionDetail.
 IDOR GET /v1/admin/config/changes DMO list
 IDOR GET /v1/admin/config/changes TSO list

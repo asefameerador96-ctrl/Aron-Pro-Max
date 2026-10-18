@@ -87,7 +87,7 @@ class WorkingDayWindowTest {
             h.execute(
                 """
                 INSERT INTO app.cfg_value (key, scope_type, scope_id, value, effective_from, config_version, reason)
-                SELECT 'cfg.calendar.window_unit', 'global', 0, '"working_days"'::jsonb, now() - interval '1 day', max(config_version), 'test'
+                SELECT 'cfg.calendar.window_unit', 'global', 0, '"working_days"'::jsonb, TIMESTAMPTZ '${ApiWorld.CFG_FROM}', max(config_version), 'test'
                 FROM app.cfg_version
                 """.trimIndent(),
             )

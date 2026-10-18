@@ -107,6 +107,8 @@ class DeviceGateTest {
     /** A global switch the way the portal sets it: the old row ends where the new one starts; the config cache is skipped. */
     private fun set(key: String, value: Boolean) {
         // One transaction: now() is the same instant for the end of the old row and the start of the new one.
+        // now(), not ApiWorld.CFG_SWITCH: the first row closed is the dev seed's, which starts at the seed's now()
+        // (db/seed/04), and the gate reads through DbServerConfig on the database clock.
         fresh.db.jdbi.useTransaction<Exception> { h ->
             h.execute("INSERT INTO app.cfg_version (config_version, kind, committed_by, summary) SELECT max(config_version) + 1, 'change', (SELECT id FROM app.app_user WHERE username = 'aron.system'), 'test gate' FROM app.cfg_version")
             h.execute("UPDATE app.cfg_value SET effective_to = now() WHERE key = '$key' AND scope_type = 'global' AND effective_to IS NULL")
