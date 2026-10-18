@@ -1,6 +1,9 @@
 package com.aktcl.aron.core.ui.aron
 
 import androidx.compose.foundation.background
+import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -23,6 +26,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.Placeable
@@ -38,9 +44,12 @@ import com.aktcl.aron.core.ui.AronLook
 import com.aktcl.aron.core.ui.LocalAronLook
 import com.aktcl.aron.core.ui.aron.Glyph.caretDown
 
-/** One row of a [TotalsPanel] or a [SummaryTable] subtotal: a [label] and its figures, already localised. */
+/**
+ * One row of a [TotalsPanel] or a [SummaryTable] subtotal: a [label] and its figures, already localised; [caption] is an optional
+ * small line under the label in the totals panel (the unit: `স্টিক`, `পিস`, `ডজন`).
+ */
 @Immutable
-data class TotalsLine(val label: String, val values: List<String>)
+data class TotalsLine(val label: String, val values: List<String>, val caption: String? = null)
 
 /**
  * The solid purple totals panel docked above the Stock and Sale buttons (PARITY-SPEC s2.7, sr/stock.webp): the [header] row in 12 sp
@@ -59,7 +68,10 @@ fun TotalsPanel(header: TotalsLine, lines: List<TotalsLine>, modifier: Modifier 
 @Composable
 private fun TotalsRow(line: TotalsLine, size: TextUnit, color: Color) {
     Row(Modifier.fillMaxWidth().padding(vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
-        Text(line.label, style = lookStyle(size, color = color), modifier = Modifier.weight(1.3f))
+        Column(Modifier.weight(1.3f)) {
+            Text(line.label, style = lookStyle(size, color = color))
+            if (line.caption != null) Text(line.caption, style = lookStyle(12.sp, color = LocalAronLook.current.onPanelMuted))
+        }
         line.values.forEach { Text(it, style = lookStyle(size, color = color, align = TextAlign.End), modifier = Modifier.weight(1f)) }
     }
 }
@@ -181,7 +193,7 @@ private fun CenteredWrap(modifier: Modifier, content: @Composable () -> Unit) {
 @Immutable
 data class SummaryRow(val title: String, val values: List<String>)
 
-/** A line of the totals block under a [SummaryTable] (`সর্বমোট`, `ডিসকাউন্ট এবং অন্যান্য (-)`): purple bold 22 sp, value at the end. */
+/** A line of the totals block under a [SummaryTable] (`সর্বমোট`, `ডিসকাউন্ট এবং অন্যান্য (-)`): purple bold 20 sp, value at the end. */
 @Immutable
 data class SummaryTotal(val label: String, val value: String)
 
@@ -192,10 +204,41 @@ private fun cellAlign(index: Int, count: Int): TextAlign = when (index) {
 }
 
 /**
- * The day summary table (PARITY-SPEC s2.10, sr/summary.png): a dark `#4D4D4D` header row of [headers] (white 12 sp, rounded top), one
- * block per [rows] item (the SKU name in purple 20 sp over its figures) on alternating white and `#F0F0F0`, then the category
- * [subtotals] in purple (the label takes the first column, its values the rest), then the [totals] block. Not lazy (one day's SKUs);
- * put it in a scrolling column and the full-width `AronPrimaryButton(reverse = true, glyph = Print)` under it.
+ * A cell text that never breaks inside a word: it shrinks from the style's size (down to [minSize]) until its longest word fits the
+ * cell, then wraps only between words (sr/summary.png keeps "৪,৬৮৭.৫০৳" and "ডিসকাউন্ট" whole on 360 dp).
+ */
+@Composable
+internal fun FitText(text: String, style: TextStyle, minSize: TextUnit, modifier: Modifier = Modifier, maxLines: Int = Int.MAX_VALUE, oneLineDown: TextUnit? = null) {
+    BoxWithConstraints(modifier) {
+        val measurer = rememberTextMeasurer()
+        val maxPx = constraints.maxWidth
+        val size = remember(text, style, maxPx, minSize, oneLineDown) {
+            val fits = { t: String, sp: Float -> measurer.measure(t, style.copy(fontSize = sp.sp), softWrap = false, maxLines = 1).size.width <= maxPx }
+            // [oneLineDown]: keep the whole text on one line while that needs no smaller size than this (a SKU code), else wrap
+            var oneLine = style.fontSize.value
+            val floor = oneLineDown?.value
+            if (floor != null) {
+                while (oneLine > floor && !fits(text, oneLine)) oneLine -= 0.5f
+                if (fits(text, oneLine)) return@remember oneLine
+            }
+            val words = text.split(' ').filter { it.isNotEmpty() }
+            var sp = floor ?: style.fontSize.value
+            while (sp > minSize.value && words.any { !fits(it, sp) }) sp -= 0.5f
+            sp
+        }
+        Text(text, style = style.copy(fontSize = size.sp), maxLines = maxLines, modifier = Modifier.fillMaxWidth())
+    }
+}
+
+/** Column weights of the six-column day summary at 360 dp (memo, quantity, value, discount, net value, return). */
+private val SummaryWeights6 = listOf(0.7f, 0.9f, 1.4f, 1.2f, 1.4f, 0.8f)
+
+/**
+ * The day summary table (PARITY-SPEC s2.10, sr/summary.png): a dark `#4D4D4D` header row of [headers] (white bold 11 sp, at most two
+ * lines, rounded top), one block per [rows] item (the SKU name in purple 20 sp over its figures, 14 sp) on alternating white and
+ * `#F0F0F0`, then the category [subtotals] in purple (the label takes the first column, its values the rest), then the [totals] block.
+ * [weights] set the column widths (default: the six-column summary weights, else equal); no cell breaks inside a word or a number, it
+ * shrinks instead. Not lazy (one day's SKUs); put it in a scrolling column with `AronPrimaryButton(reverse = true, glyph = Print)` under it.
  */
 @Composable
 fun SummaryTable(
@@ -204,27 +247,33 @@ fun SummaryTable(
     modifier: Modifier = Modifier,
     subtotals: List<TotalsLine> = emptyList(),
     totals: List<SummaryTotal> = emptyList(),
+    weights: List<Float>? = null,
 ) {
     val look = LocalAronLook.current
     val n = headers.size
+    val w = weights ?: if (n == SummaryWeights6.size) SummaryWeights6 else List(n) { 1f }
     Column(modifier.fillMaxWidth().clip(RoundedCornerShape(AronLook.CardRadius)).background(look.card)) {
-        Row(Modifier.fillMaxWidth().background(look.tableHeader).padding(horizontal = 12.dp, vertical = 14.dp)) {
-            headers.forEachIndexed { i, h -> Text(h, style = lookStyle(12.sp, bold = true, color = Color.White, align = cellAlign(i, n)), modifier = Modifier.weight(1f)) }
+        Row(Modifier.fillMaxWidth().background(look.tableHeader).padding(horizontal = 10.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+            headers.forEachIndexed { i, h ->
+                FitText(h, lookStyle(11.sp, bold = true, color = Color.White, align = cellAlign(i, n)), 7.sp, Modifier.weight(w[i]).padding(horizontal = 1.dp), maxLines = 2)
+            }
         }
         rows.forEachIndexed { r, row ->
-            Column(Modifier.fillMaxWidth().background(if (r % 2 == 0) look.card else look.rowAlt).padding(horizontal = 12.dp, vertical = 10.dp)) {
+            Column(Modifier.fillMaxWidth().background(if (r % 2 == 0) look.card else look.rowAlt).padding(horizontal = 10.dp, vertical = 10.dp)) {
                 Text(row.title, style = lookStyle(20.sp, color = look.purple))
                 Row(Modifier.fillMaxWidth().padding(top = 6.dp)) {
-                    row.values.forEachIndexed { i, v -> Text(v, style = lookStyle(14.sp, color = look.ink, align = cellAlign(i, n)), modifier = Modifier.weight(1f)) }
+                    row.values.forEachIndexed { i, v -> FitText(v, lookStyle(14.sp, color = look.ink, align = cellAlign(i, n)), 7.sp, Modifier.weight(w[i]).padding(horizontal = 1.dp)) }
                 }
             }
         }
         if (subtotals.isNotEmpty()) {
-            Column(Modifier.fillMaxWidth().background(look.rowAlt).padding(horizontal = 12.dp, vertical = 8.dp)) {
+            Column(Modifier.fillMaxWidth().background(look.rowAlt).padding(horizontal = 10.dp, vertical = 8.dp)) {
                 subtotals.forEach { line ->
-                    Row(Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
-                        Text(line.label, style = lookStyle(16.sp, color = look.purple), modifier = Modifier.weight(1f))
-                        line.values.forEachIndexed { i, v -> Text(v, style = lookStyle(14.sp, color = look.purple, align = cellAlign(i + 1, n)), modifier = Modifier.weight(1f)) }
+                    Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                        FitText(line.label, lookStyle(16.sp, color = look.purple), 9.sp, Modifier.weight(w[0]).padding(horizontal = 1.dp))
+                        line.values.forEachIndexed { i, v ->
+                            FitText(v, lookStyle(14.sp, color = look.purple, align = cellAlign(i + 1, n)), 7.sp, Modifier.weight(w.getOrElse(i + 1) { 1f }).padding(horizontal = 1.dp))
+                        }
                     }
                 }
             }
@@ -233,10 +282,35 @@ fun SummaryTable(
             Column(Modifier.fillMaxWidth().background(look.rowAlt).padding(horizontal = 12.dp, vertical = 8.dp)) {
                 totals.forEach { t ->
                     Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Text(t.label, style = lookStyle(22.sp, bold = true, color = look.purple), modifier = Modifier.weight(1f))
-                        Text(t.value, style = lookStyle(22.sp, bold = true, color = look.purple, align = TextAlign.End), modifier = Modifier.padding(start = 12.dp))
+                        Text(t.label, style = lookStyle(20.sp, bold = true, color = look.purple), modifier = Modifier.weight(1f))
+                        Text(t.value, style = lookStyle(20.sp, bold = true, color = look.purple, align = TextAlign.End), modifier = Modifier.padding(start = 12.dp))
                     }
                 }
+            }
+        }
+    }
+}
+
+/**
+ * A plain data table (sr/sales-submit.png): a solid purple header with rounded corners ([headers], white bold 22 sp), then white rows
+ * with a thin rule, 18 sp. The first column is start-aligned, the others centred; [weights] (one per column, default first 2, rest 1)
+ * set the column widths. Not lazy: for short tables such as the five submit rows.
+ */
+@Composable
+fun AronDataTable(headers: List<String>, rows: List<List<String>>, modifier: Modifier = Modifier, weights: List<Float>? = null) {
+    val look = LocalAronLook.current
+    val w = weights ?: List(headers.size) { if (it == 0) 2f else 1f }
+    val align = { i: Int -> if (i == 0) TextAlign.Start else TextAlign.Center }
+    Column(modifier.fillMaxWidth()) {
+        Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(AronLook.CardRadius)).background(look.panel).padding(horizontal = 12.dp, vertical = 16.dp)) {
+            headers.forEachIndexed { i, h -> Text(h, style = lookStyle(22.sp, bold = true, color = look.onPanel, align = align(i)), modifier = Modifier.weight(w[i])) }
+        }
+        rows.forEach { row ->
+            Row(
+                Modifier.fillMaxWidth().background(look.card).drawBehind { drawRect(look.rowRule, Offset(0f, size.height - 1.dp.toPx()), Size(size.width, 1.dp.toPx())) }
+                    .padding(horizontal = 12.dp, vertical = 12.dp),
+            ) {
+                row.forEachIndexed { i, cell -> Text(cell, style = lookStyle(18.sp, color = look.ink, align = align(i)), modifier = Modifier.weight(w[i])) }
             }
         }
     }
