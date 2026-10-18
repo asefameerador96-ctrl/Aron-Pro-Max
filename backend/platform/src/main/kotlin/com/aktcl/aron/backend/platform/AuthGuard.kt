@@ -62,6 +62,8 @@ val AuthGuard = createRouteScopedPlugin("AronAuthGuard", ::AuthGuardConfig) {
     val cfg = pluginConfig
     onCall { call ->
         val authed = authenticate(call, cfg)
+        // Masked until the reveal gate below, so a rate-limited call still logs who it was (checker N10).
+        call.attributes.put(PrincipalKey, authed.copy(pii = false))
         val decision = if (authed.isPhone && authed.deviceUuid != null) cfg.deps.perDevice.tryAcquire("d:" + authed.deviceUuid)
         else cfg.deps.perUser.tryAcquire("u:" + authed.userId)
         if (!decision.allowed) throw decision.toProblem()

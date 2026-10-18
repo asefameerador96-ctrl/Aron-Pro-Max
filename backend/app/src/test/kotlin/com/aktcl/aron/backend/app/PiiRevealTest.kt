@@ -251,10 +251,13 @@ class PiiRevealTest {
         now.set(now.get().plusSeconds(11))
 
         // ADMIN: masked without a reveal; with one, only the named personal member (owner_name), never one that merely looks personal.
-        val (_, admin) = user("ADMIN")
+        val (adminId, admin) = user("ADMIN")
         val (access, secret) = client.mfaSession(admin)
+        fun budget() = fresh.db.jdbi.withHandle<Int, Exception> { h -> h.createQuery("SELECT coalesce(sum(rows_read), 0)::int FROM app.pii_read_budget WHERE user_id = :u").bind("u", adminId).mapTo(Int::class.java).one() }
         auditAfter(access).let { assertEquals("[masked]", it["owner_name"]!!.jsonPrimitive.content); assertEquals("closed", it["status"]!!.jsonPrimitive.content) }
         val revealed = json(client.reauth(access, """{"password":"$password","code":"${nextCode(secret)}"}""").bodyAsText())["access_token"]!!.jsonPrimitive.content
+        assertEquals(0, budget(), "a masked audit page costs nothing")
         auditAfter(revealed).let { assertEquals("Karim", it["owner_name"]!!.jsonPrimitive.content); assertEquals("[masked]", it["owner_phone"]!!.jsonPrimitive.content) }
+        assertEquals(1, budget(), "a revealed audit page counts its rows (checker B4)")
     }
 }

@@ -301,7 +301,7 @@ class Wiring(
                 configAdminRoutes(configDeps)
                 configDeltaRoutes(deltaDeps)
                 deviceOtpRoutes(otpDeps)
-                auditReadRoutes(AuditReadDeps(db, guard))
+                auditReadRoutes(AuditReadDeps(db, guard, clock))
                 deviceReplaceRoutes(otpDeps)
                 visitPlanRoutes(VisitPlanDeps(db, reach, config, guard, clock))
                 routeAssignmentRoutes(RouteAssignmentsDeps(db, reach, guard, clock))

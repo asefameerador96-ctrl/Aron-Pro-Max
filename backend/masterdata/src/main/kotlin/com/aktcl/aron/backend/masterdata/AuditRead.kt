@@ -31,7 +31,7 @@ data class AuditEntryDto(
 @Serializable
 data class AuditPageDto(val items: List<AuditEntryDto>, val next_cursor: String?)
 
-class AuditReadDeps(val db: Database, val guard: AuthGuardDeps)
+class AuditReadDeps(val db: Database, val guard: AuthGuardDeps, val clock: com.aktcl.aron.backend.platform.AronClock = com.aktcl.aron.backend.platform.AronClock.SYSTEM)
 
 /** docs/24 s8.5 "Audit log": R for ANALYST, SUPPORT, ADMIN and SUPERADMIN, nationally (the log has no reach). */
 private val AUDIT_READERS = setOf(Role.ANALYST, Role.SUPPORT, Role.ADMIN, Role.SUPERADMIN)
@@ -85,6 +85,8 @@ private fun listAudit(call: ApplicationCall, d: AuditReadDeps): AuditPageDto {
         }.list()
     }
     val page = rows.take(limit)
+    // Only ADMIN/SUPERADMIN images are unmasked by a reveal; their rows count against the hourly PII budget (checker B4).
+    if (p.role == Role.ADMIN || p.role == Role.SUPERADMIN) com.aktcl.aron.backend.platform.PiiReadBudget.chargeRevealed(d.db, d.guard.config, d.clock, p, page.size)
     return AuditPageDto(page, if (rows.size > limit) page.last().id.toString() else null)
 }
 
