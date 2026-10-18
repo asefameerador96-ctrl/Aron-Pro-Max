@@ -17,6 +17,8 @@ data class AssignedTask(
     val dueDate: String?, val resolvedAt: String?, val resolutionNote: String?, val createdAt: String, val waiting: Boolean = false,
     /** The server refused the task (for example the SR is outside the AMO's reach): it never reaches the SR. */
     val rejected: Boolean = false,
+    /** The text the AMO wrote for the SR (shown under the task in the list, as the manual does). */
+    val description: String? = null,
 )
 
 enum class AssignError { ASSIGNEE_REQUIRED, TYPE_REQUIRED, OUTLET_REQUIRED, DATE_INVALID, TEXT_TOO_LONG }
@@ -65,10 +67,17 @@ object TaskDelegation {
             AssignedTask(
                 str(t, "task_uuid") ?: return@mapNotNull null, str(t, "task_type_code").orEmpty(), str(t, "title").orEmpty(), lng(t, "outlet_id"),
                 lng(t, "assignee_user_id") ?: return@mapNotNull null, str(t, "status") ?: "ongoing", str(t, "due_date"), str(t, "resolved_at"),
-                str(t, "resolution_note"), str(t, "created_at").orEmpty(),
+                str(t, "resolution_note"), str(t, "created_at").orEmpty(), description = str(t, "description")?.takeIf { it.isNotBlank() },
             )
         }.sortedByDescending { it.createdAt }
     }
+
+    /**
+     * The SRs who can take a task for an outlet of [routeId]: those whose routes include it. The AMO picks the route and the outlet
+     * first, so the SR is derived (the manual's flow); a route nobody is known to cover offers the whole team (the server accepts any
+     * outlet in the AMO's reach).
+     */
+    fun srsOfRoute(team: List<TeamSr>, routeId: Long): List<TeamSr> = team.filter { routeId in it.routeIds }.ifEmpty { team }
 
     /** The server's tasks plus those only on this phone (not in the server list yet), newest phone-only ones first; each keeps its own waiting/rejected state. */
     fun merge(server: List<AssignedTask>, local: List<AssignedTask>): List<AssignedTask> {

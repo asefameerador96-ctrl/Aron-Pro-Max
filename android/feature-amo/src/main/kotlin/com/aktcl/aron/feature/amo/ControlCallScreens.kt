@@ -16,6 +16,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import com.aktcl.aron.core.ui.AronEmptyState
+import com.aktcl.aron.core.ui.localizedNumber
 import com.aktcl.aron.core.ui.AronIcons
 import com.aktcl.aron.core.ui.AronListRow
 import com.aktcl.aron.core.ui.AronPrimaryButton
@@ -43,7 +44,7 @@ fun AmoRoutePick(rows: List<AmoRouteRow>, onPick: (AmoRouteRow) -> Unit, modifie
             itemsIndexed(rows, key = { _, r -> r.routeId }) { i, r ->
                 val pos = when { rows.size == 1 -> RowPosition.Only; i == 0 -> RowPosition.First; i == rows.lastIndex -> RowPosition.Last; else -> RowPosition.Middle }
                 AronListRow(
-                    r.title, subtitle = stringResource(R.string.amo_cc_route_outlets, r.outletCount.toString()), onClick = { onPick(r) },
+                    r.title, subtitle = stringResource(R.string.amo_cc_route_outlets, localizedNumber(r.outletCount.toLong())), onClick = { onPick(r) },
                     position = pos, divider = i != rows.lastIndex, flat = true,
                 )
             }

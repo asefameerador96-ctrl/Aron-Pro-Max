@@ -152,6 +152,8 @@ class CaptureRepository(
     suspend fun recordNumberedSale(sale: SaleCapture, numbering: MemoNumbering): String {
         // A replay of a sale that was already sent and purged must not burn a memo number or look saved: it fails loudly, as a missing visit would.
         check(!purged(sale.memo.clientUuid)) { "memo ${sale.memo.clientUuid} was already saved and sent from this phone" }
+        // A replay of a sale that is still stored (a retry after a kill and relaunch) gets its own number back and burns none.
+        capture.memo(sale.memo.clientUuid)?.memoNo?.let { return it }
         val memoNo = MemoNumbers(db).reserve(sale.memo.meta.businessDate, numbering)
         recordSale(sale.copy(memo = sale.memo.copy(memoNo = memoNo)))
         return memoNo
@@ -304,7 +306,7 @@ class CaptureRepository(
 
     /** A new-outlet, edit, relocation or closure request with the fix taken for it. */
     suspend fun recordOutletRequest(request: OutletChangeRequestEntity, fix: GeoFixEntity) = db.withTransaction {
-        if (purged(request.clientUuid)) return@withTransaction emptyList()
+        if (purged(request.clientUuid) || capture.outletRequestCount(request.clientUuid) > 0) return@withTransaction emptyList() // a replay of a request already on this phone writes nothing
         requireUuids(request.clientUuid, fix.clientUuid)
         require(OutletRequestType.entries.any { it.wire == request.requestType }) { "request_type ${request.requestType} is not in the contract" }
         require((request.requestType == OutletRequestType.NEW.wire) == (request.outletId == null)) { "outlet_id is null exactly for a new outlet" }
