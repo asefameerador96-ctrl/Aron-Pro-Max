@@ -124,7 +124,10 @@ class DayRecordsTest {
         assertEquals("রহিম স্টোর", p["proposed"]!!.jsonObject["name"]!!.jsonPrimitive.content)
         assertEquals(1, (p["photo_uuids"] as kotlinx.serialization.json.JsonArray).size)
         assertTrue(p["fix"] is JsonObject)
-        assertThrows(SQLiteConstraintException::class.java) { kotlinx.coroutines.runBlocking { repo.recordOutletRequest(req, fix) } }
+        // a replay of the same request (a double tap, a retry after a kill) writes nothing and does not throw
+        repo.recordOutletRequest(req, fix)
+        assertEquals(1, db.captureDao().outletRequests().size)
+        assertEquals(1, db.outboxDao().nextPending(100).count { it.clientUuid == uuid })
     }
 
     @Test fun resolvingATaskCompletesItLocallyAndSurvivesTheNextBundle() = runTest {
@@ -171,8 +174,9 @@ class DayRecordsTest {
         val numbering = MemoNumbering("sr334001", 0)
         val good = TestRows.sale(visit.clientUuid)
         assertEquals("sr334001-261005-001", repo.recordNumberedSale(good, numbering))
-        val bad = TestRows.sale(visit.clientUuid, memoUuid = good.memo.clientUuid) // duplicate uuid: the save fails
-        assertThrows(SQLiteConstraintException::class.java) { kotlinx.coroutines.runBlocking { repo.recordNumberedSale(bad, numbering) } }
+        assertEquals("a replay of the stored memo returns its number and burns none", "sr334001-261005-001", repo.recordNumberedSale(good, numbering))
+        val bad = TestRows.sale("00000000-0000-4000-8000-0000000000ff") // no such visit: the save fails after the number was reserved
+        assertTrue(runCatching { repo.recordNumberedSale(bad, numbering) }.isFailure)
         assertEquals("sr334001-261005-003", repo.recordNumberedSale(TestRows.sale(visit.clientUuid), numbering))
         assertEquals(listOf("sr334001-261005-001", "sr334001-261005-003"), db.captureDao().memosOn("2026-10-05").map { it.memoNo }.sorted())
         val memoRow = db.outboxDao().nextPending(100).first { it.recordType == "memo" && it.clientUuid != good.memo.clientUuid }

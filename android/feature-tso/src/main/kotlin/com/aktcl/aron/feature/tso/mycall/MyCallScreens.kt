@@ -182,7 +182,7 @@ fun VisitQueryScreen(state: VisitQueryState, outletTitle: String, onDone: (deleg
                 AronCard(Modifier.fillMaxWidth()) {
                     Column(Modifier.fillMaxWidth().padding(AronTokens.Space.L), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
                         Text(c.label(bn), style = MaterialTheme.typography.titleSmall)
-                        if (c.text) com.aktcl.aron.feature.tso.TsoTextField(ui.texts[c.id].orEmpty(), { state.text(c.id, it) }, Modifier.fillMaxWidth().testTag(MyCallTags.text(c.id)), minLines = 2, label = { Text(stringResource(R.string.tso_mc_enter_answer)) })
+                        if (c.text) com.aktcl.aron.feature.tso.TsoTextField(ui.texts[c.id].orEmpty(), { state.text(c.id, it) }, Modifier.fillMaxWidth().testTag(MyCallTags.text(c.id)), minLines = 2, label = { Text(stringResource(R.string.tso_mc_enter_answer)) }, name = c.label(bn))
                         else YesNo(ui.answers[c.id], { state.answer(c.id, it) }, MyCallTags.yes(c.id), MyCallTags.no(c.id))
                     }
                 }
@@ -229,7 +229,7 @@ fun AssignTaskScreen(state: AssignTaskState, onDone: () -> Unit, modifier: Modif
             AronSectionLabel(stringResource(R.string.tso_mc_date))
             com.aktcl.aron.feature.tso.TsoDateField(ui.date, { state.setDate(it) }, Modifier.testTag(MyCallTags.DATE), min = state.todayIso(), max = state.maxIso())
             AronSectionLabel(stringResource(R.string.tso_mc_comment))
-            com.aktcl.aron.feature.tso.TsoTextField(ui.comment, { state.setComment(it.take(MAX_TASK_COMMENT * 2)) }, Modifier.fillMaxWidth().testTag(MyCallTags.COMMENT), minLines = 3)
+            com.aktcl.aron.feature.tso.TsoTextField(ui.comment, { state.setComment(it.take(MAX_TASK_COMMENT * 2)) }, Modifier.fillMaxWidth().testTag(MyCallTags.COMMENT), minLines = 3, name = stringResource(R.string.tso_mc_comment))
             (ui.result as? TaskResult.Invalid)?.errors?.forEach { e ->
                 AronBanner(stringResource(when (e) {
                     TaskError.NO_TYPE -> R.string.tso_mc_err_type; TaskError.DATE_FORMAT -> R.string.tso_leave_err_date_format; TaskError.DATE_PAST -> R.string.tso_mc_err_date_past

@@ -4,6 +4,8 @@ import android.content.Context
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onRoot
 import androidx.test.core.app.ApplicationProvider
@@ -49,11 +51,11 @@ class AmoCoreScreenshotTests {
     private val goldens: String = System.getProperty("aron.screenshots.goldens") ?: "src/test/screenshots"
     private val options = RoborazziOptions(compareOptions = RoborazziOptions.CompareOptions(changeThreshold = 0.002f))
 
-    private fun shot(name: String, language: AppLanguage, title: String, content: @Composable () -> Unit) {
+    private fun shot(name: String, language: AppLanguage, title: String, sunlight: Boolean = false, fontScale: Float = 1f, content: @Composable () -> Unit) {
         val ctx = AppLocale.wrap(ApplicationProvider.getApplicationContext<Context>(), language)
         rule.setContent {
-            CompositionLocalProvider(LocalContext provides ctx) {
-                AronTheme(language, dark = false, sunlight = false, tier = GlassTier.B, reducedMotion = true) {
+            CompositionLocalProvider(LocalContext provides ctx, LocalDensity provides Density(LocalDensity.current.density, fontScale = fontScale)) {
+                AronTheme(language, dark = false, sunlight = sunlight, tier = GlassTier.B, reducedMotion = true) {
                     AronScreen(topBar = { AronTopBar(title = title, onBack = {}) }) { content() }
                 }
             }
@@ -79,4 +81,19 @@ class AmoCoreScreenshotTests {
     @Test @Config(qualifiers = "w360dp-h800dp") fun amo_price_compliance_en() = shot("amo_price_compliance_en", AppLanguage.EN, "Price compliance") { PriceComplianceContent(prices, mapOf(1L to "120", 2L to "260"), 500, false, false, { _, _ -> }, {}) }
     @Test @Config(qualifiers = "bn-w360dp-h800dp") fun amo_price_compliance_empty_bn() = shot("amo_price_compliance_empty_bn", AppLanguage.BN, "দামের সামঞ্জস্য") { PriceComplianceContent(emptyList(), emptyMap(), 500, false, false, { _, _ -> }, {}) }
     @Test @Config(qualifiers = "bn-w360dp-h800dp") fun amo_stock_correction_bn() = shot("amo_stock_correction_bn", AppLanguage.BN, "স্টক সংশোধন") { StockCorrectionContent(listOf(CorrectionRow(1, "গোল্ড লিফ ১০", "stick", 1500), CorrectionRow(2, "লাইটার", "piece", 40)), 1L, "1400", null, false, false, {}, {}, {}, {}) }
+
+    // ---- long Bangla at 200% font scale (3-line wrap), and Sunlight for every screen with a figure, a status or a primary action
+    private val longRoutes = listOf(AmoRouteRow(1, "রুট ১ - কাওরান বাজার ও তেজগাঁও শিল্প এলাকা (শনি, সোম, বুধ)", 42), AmoRouteRow(2, "রুট ২ - মোহাম্মদপুর, আদাবর ও শ্যামলী রিং রোড সংলগ্ন এলাকা", 37))
+    @Test @Config(qualifiers = "bn-w360dp-h800dp") fun amo_route_pick_bn_fs2() = shot("amo_route_pick_bn_fs2", AppLanguage.BN, "কন্ট্রোল কল অ্যাক্টিভিটি", fontScale = 2f) { AmoRoutePick(longRoutes, {}) }
+    @Test @Config(qualifiers = "bn-w360dp-h800dp") fun amo_control_call_menu_bn_fs2() = shot("amo_control_call_menu_bn_fs2", AppLanguage.BN, "কন্ট্রোল কল অ্যাক্টিভিটি", fontScale = 2f) { ControlCallMenu({}, {}, {}, {}, onPrice = {}) }
+    @Test @Config(qualifiers = "bn-w360dp-h800dp") fun amo_manual_override_bn_fs2() = shot("amo_manual_override_bn_fs2", AppLanguage.BN, "কন্ট্রোল কল অ্যাক্টিভিটি", fontScale = 2f) { com.aktcl.aron.feature.amo.ManualOverrideContent(com.aktcl.aron.feature.outlet.GeoPhotoState(), emptySet(), {}, {}) }
+    @Test @Config(qualifiers = "bn-w360dp-h800dp") fun amo_manual_override_bn() = shot("amo_manual_override_bn", AppLanguage.BN, "কন্ট্রোল কল অ্যাক্টিভিটি") { com.aktcl.aron.feature.amo.ManualOverrideContent(com.aktcl.aron.feature.outlet.GeoPhotoState(), setOf(com.aktcl.aron.feature.outlet.ForceSaleMissing.PHOTO), {}, {}) }
+    @Test @Config(qualifiers = "bn-w360dp-h800dp") fun amo_manual_override_sunlight_bn() = shot("amo_manual_override_sunlight_bn", AppLanguage.BN, "কন্ট্রোল কল অ্যাক্টিভিটি", sunlight = true) { com.aktcl.aron.feature.amo.ManualOverrideContent(com.aktcl.aron.feature.outlet.GeoPhotoState(), setOf(com.aktcl.aron.feature.outlet.ForceSaleMissing.PHOTO), {}, {}) }
+    @Test @Config(qualifiers = "bn-w360dp-h800dp") fun amo_route_pick_sunlight_bn() = shot("amo_route_pick_sunlight_bn", AppLanguage.BN, "কন্ট্রোল কল অ্যাক্টিভিটি", sunlight = true) { AmoRoutePick(longRoutes, {}) }
+    @Test @Config(qualifiers = "bn-w360dp-h800dp") fun amo_control_call_menu_sunlight_bn() = shot("amo_control_call_menu_sunlight_bn", AppLanguage.BN, "কন্ট্রোল কল অ্যাক্টিভিটি", sunlight = true) { ControlCallMenu({}, {}, {}, {}, onPrice = {}) }
+    @Test @Config(qualifiers = "bn-w360dp-h800dp") fun amo_joint_call_sunlight_bn() = shot("amo_joint_call_sunlight_bn", AppLanguage.BN, "জয়েন্ট কল", sunlight = true) { JointCallContent(rubric, AssignedSr(7, "রহিম উদ্দিন"), JointState(mapOf(1L to 4)), false, false, { _, _ -> }, {}) }
+    @Test @Config(qualifiers = "bn-w360dp-h800dp") fun amo_perf_assessment_sunlight_bn() = shot("amo_perf_assessment_sunlight_bn", AppLanguage.BN, "এসআর পারফ. অ্যাসেসমেন্ট", sunlight = true) { PerfAssessmentContent(brands, PerfState(present = setOf(1L, 3L), oos = setOf(3L), posm = true), false, false, {}, {}, {}, {}) }
+    @Test @Config(qualifiers = "w360dp-h800dp") fun amo_price_compliance_sunlight_en() = shot("amo_price_compliance_sunlight_en", AppLanguage.EN, "Price compliance", sunlight = true) { PriceComplianceContent(prices, mapOf(1L to "120", 2L to "260"), 500, false, false, { _, _ -> }, {}) }
+    @Test @Config(qualifiers = "bn-w360dp-h800dp") fun amo_stock_correction_sunlight_bn() = shot("amo_stock_correction_sunlight_bn", AppLanguage.BN, "স্টক সংশোধন", sunlight = true) { StockCorrectionContent(listOf(CorrectionRow(1, "গোল্ড লিফ ১০", "stick", 1500), CorrectionRow(2, "লাইটার", "piece", 40)), 1L, "1400", null, false, false, {}, {}, {}, {}) }
+    @Test @Config(qualifiers = "bn-w360dp-h800dp") fun amo_joint_call_bn_fs2() = shot("amo_joint_call_bn_fs2", AppLanguage.BN, "জয়েন্ট কল", fontScale = 2f) { JointCallContent(rubric, AssignedSr(7, "রহিম উদ্দিন"), JointState(mapOf(1L to 4)), false, false, { _, _ -> }, {}) }
 }

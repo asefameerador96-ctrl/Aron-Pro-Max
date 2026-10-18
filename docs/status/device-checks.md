@@ -433,3 +433,4 @@ Notes:
   verification refuses an unknown one. With `-WebVerify`, set `ARON_CHECK_PASSWORD_AMO1001` for an unattended run.
 - **Reach:** dmo1001 and amo1001 must reach the request's zone, otherwise they get a 404. `-Zone` must be the zone of
   the SR's route; the preview step checks that the request's route is listed.
+- D-TSO-A11Y-01 (DEVICE-PENDING): TalkBack on the TSO app: Leave apply, Feedback, Assign Task, Change Password fields announce their names; the drawer and Home button read in order; every control reachable by swipe.
