@@ -4,7 +4,7 @@ package com.aktcl.aron.backend.analytics
 
 /** `route-memo`: memo counts and value by route and period. */
 object RouteMemoReport : ReportHandler {
-    override val roles = WEB_ROLES + com.aktcl.aron.contract.Role.AMO   // the AMO Report tile's per-route totals, its zone only
+    override val roles = REPORT_ROLES + com.aktcl.aron.contract.Role.AMO   // the AMO Report tile's per-route totals, its zone only
     override val definition = definition(
         "route-memo", "Route-wise Memo", "sales", "route x period",
         listOf(
@@ -104,7 +104,7 @@ object SrEfficiencyReport : ReportHandler {
 
 /** `route-std`: sales by route and SKU for the period. The monthly target column is out of the build (docs/27: target reports deferred). */
 object RouteStdReport : ReportHandler {
-    override val roles = WEB_ROLES + com.aktcl.aron.contract.Role.AMO   // the AMO Report tile's per-route STD by category, its zone only
+    override val roles = REPORT_ROLES + com.aktcl.aron.contract.Role.AMO   // the AMO Report tile's per-route STD by category, its zone only
     override val definition = definition(
         "route-std", "Route-wise STD", "sales", "route x SKU",
         listOf(
