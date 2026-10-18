@@ -25,6 +25,7 @@ describe("mock audit masking mirrors the server", () => {
     const m = maskAudit(row(), "ADMIN");
     expect(m.after).toEqual({ status: "disabled", full_name: MASK, designation: "SR", password_hash: MASK });
     expect(m.reason).toBe("Left the company");
+    expect(maskAudit(row(), "ADMIN", true).after).toEqual({ status: "disabled", full_name: "Rahim U.", designation: "SR", password_hash: MASK }); // inside a reveal
   });
   it("ANALYST and SUPPORT see changed members only, allowlisted values only, and the reason masked", () => {
     for (const r of ["ANALYST", "SUPPORT"] as const) {

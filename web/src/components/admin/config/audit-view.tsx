@@ -6,6 +6,8 @@ import { AUDIT_FILTER_KEYS, diffLines, type AuditFilter } from "@/lib/admin/audi
 import type { AuditEntry } from "@/lib/admin/types";
 import { formatDateTime, t, type Locale } from "@/lib/i18n";
 
+const REDACTED = "[redacted]";
+
 export function AuditView({ locale, entries, filter, nextCursor, basePath, titleKey = "audit.title", changedOnly = false }: { locale: Locale; entries: AuditEntry[]; filter: AuditFilter; nextCursor: string | null; basePath: string; titleKey?: "audit.title" | "cfgp.audit.title"; changedOnly?: boolean }) {
   const labels: Record<(typeof AUDIT_FILTER_KEYS)[number], string> = {
     entity: t(locale, "audit.col.entity"),
@@ -26,13 +28,22 @@ export function AuditView({ locale, entries, filter, nextCursor, basePath, title
       header: t(locale, "audit.col.change"),
       render: (e) => {
         const lines = diffLines(e.before, e.after, changedOnly);
+        // D-AUDIT-PII-01: personal text is written as "[redacted]"; show it as a quiet chip, not as a change or an error.
+        const side = (v: string, tone: string) =>
+          v === REDACTED ? (
+            <span className="rounded-chip bg-raised px-1.5 text-secondary" title={t(locale, "audit.redacted.tip")} data-testid="audit-redacted">
+              {REDACTED}
+            </span>
+          ) : (
+            <span className={tone}>{v || "∅"}</span>
+          );
         return lines.length === 0 ? (
           <span className="text-slate-400">—</span>
         ) : (
           <ul className="space-y-0.5 font-mono text-xs">
             {lines.map((l) => (
               <li key={l.key}>
-                {l.key}: <span className="text-danger-on-container">{l.from || "∅"}</span> → <span className="text-success-on-container">{l.to || "∅"}</span>
+                {l.key}: {side(l.from, "text-danger-on-container")} → {side(l.to, "text-success-on-container")}
               </li>
             ))}
           </ul>

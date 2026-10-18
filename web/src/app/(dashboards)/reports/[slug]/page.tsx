@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation";
+import { PiiRevealBar } from "@/components/dash/pii-reveal-bar";
 import { ReportFilters } from "@/components/reports/report-filters";
 import { BarChart, chartPoints } from "@/components/reports/bar-chart";
 import { ReportTable } from "@/components/reports/report-table";
@@ -59,6 +60,7 @@ export default async function ReportPage({ params, searchParams }: { params: Pro
         <h1 className="text-2xl font-bold">{t(locale, report.titleKey)}</h1>
         {result.ok ? <TileMeta locale={locale} businessDate={query.period.date ?? query.period.to ?? today} asOf={result.data.as_of} today={today} /> : null}
       </div>
+      <PiiRevealBar me={me.ok ? me.data : null} locale={locale} />
       <ReportFilters report={report} locale={locale} params={sp} token={token} scope={session.scope} categories={categories} skus={skuOptions} today={today} />
       {job?.ok ? (
         <p role="status" className="rounded bg-sky-50 p-3 text-sm text-sky-900" data-testid="export-job">
@@ -73,7 +75,8 @@ export default async function ReportPage({ params, searchParams }: { params: Pro
       ) : null}
       {!result.ok ? (
         <p role="alert" className="rounded bg-red-50 p-3 text-red-900" data-testid="report-error">
-          {problemMessage(locale, result.problem.code)}
+          {/* While revealed, a 429 means the hourly personal-data read budget (cfg.pii.list_rows_per_hour) is spent: say so. */}
+          {pii && result.problem.code === "ERR_RATE_LIMITED" ? t(locale, "pii.limited") : problemMessage(locale, result.problem.code)}
         </p>
       ) : (
         <>
