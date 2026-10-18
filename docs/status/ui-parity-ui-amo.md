@@ -37,3 +37,7 @@ Every row: layout from manual, needs owner screenshot.
 - AMO goldens re-recorded (Linux); the harness frame in `AmoTsoScreenshotTests`/`AmoCoreScreenshotTests` now uses `AmoFrame` (the 4 tso_ shots in that file changed with it: ui-tso should re-record on merge).
 - Asked ui-kit for icons: joint_call, control_call, team, team_location, team_performance, live_dashboard, sr_stock, exceptions, report, price_compliance, assessment, survey, verify, update_base.
 - Open: feature-outlet KitTextField (lavender) and rating stars/checkboxes are old-look controls; ui-packshots provider not yet wired into AMO screens.
+
+## Status at push 2026-10-19 00:00 UTC
+Merged INT 970662c1 + ui-sr-a fda4ed67; AMO goldens re-recorded (no pixel change vs the merged render); full local verify, lint, tests and the three debug APKs green. Run ids: d8e41a41 -> 39175027598 green; b52a117b -> 39176138483 green; f6adde08 -> 39177067752 green.
+Rows: 1 Home PARTIAL (icons now owner art + kit line icons); 2 Shell PARTIAL; 3 Live dashboard PARTIAL (fs2 stacks); 4 Verify PARTIAL; 5 Team stock PARTIAL; 6 Control-call PARTIAL; 7 Manual override PARTIAL (GeoPhotoBlock restyled by ui-sr-b); 8 Joint call PARTIAL; 9 Exceptions PARTIAL; 10 Tasks PARTIAL; 11 Hubs DONE for look (icons wired); 12-14 PARTIAL; 15 Reports PARTIAL (dark-header memo table); 16 shared SR bodies: ui-sr-a/b; 17 Settings PARTIAL (no golden yet).
