@@ -1,6 +1,8 @@
 package com.aktcl.aron.core.ui.aron
 
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.layout.wrapContentWidth
+import androidx.compose.foundation.layout.BoxWithConstraints
 import com.aktcl.aron.core.ui.aron.Glyph.info
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.foundation.layout.height
@@ -196,7 +198,7 @@ fun AronScaffold(
 
 /**
  * The Home header (PARITY-SPEC s2.3, sr/home-1-tiles.webp): the gradient, a white round avatar with the person glyph (or [avatar]),
- * [title] = "Role - Name (login)" in white bold 16 sp, [subtitle] = route and date in 12 sp, and the white settings gear at the end
+ * [title] = "Role - Name (login)" in white bold 15 sp, [subtitle] = route and date in 11 sp (measured on the reference), and the white settings gear at the end
  * ([settingsLabel] is its TalkBack label).
  */
 @Composable
@@ -223,8 +225,8 @@ fun AronHomeHeader(
             else GlyphCanvas(Modifier.size(40.dp)) { person(look.purple) }
         }
         Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
-            Text(title, style = lookStyle(16.sp, bold = true, color = look.onBar))
-            Text(subtitle, style = lookStyle(12.sp, color = look.onBar))
+            Text(title, style = lookStyle(15.sp, bold = true, color = look.onBar))
+            Text(subtitle, style = lookStyle(11.sp, color = look.onBar))
         }
         Box(
             Modifier.size(AronLook.Touch).clickable(role = Role.Button, onClick = onSettings).semantics { contentDescription = settingsLabel },
@@ -344,7 +346,7 @@ fun AronInfoCard(text: String, modifier: Modifier = Modifier, trailing: (@Compos
         Box(Modifier.size(24.dp).clip(CircleShape).background(look.inkMuted), contentAlignment = Alignment.Center) {
             GlyphCanvas(Modifier.size(24.dp)) { info(Color.White) }
         }
-        Text(text, style = lookStyle(17.sp, color = look.ink), modifier = Modifier.weight(1f).padding(horizontal = 12.dp))
+        Text(text, style = lookStyle(15.sp, color = look.ink), modifier = Modifier.weight(1f).padding(horizontal = 12.dp))
         trailing?.invoke()
     }
 }
@@ -376,9 +378,20 @@ fun AronTargetCard(
         if (value != null) Text(value, style = lookStyle(26.sp, bold = true, color = Color.White))
         if (percent != null) {
             Spacer(Modifier.height(6.dp))
-            Box(Modifier.fillMaxWidth().heightIn(min = 20.dp).clip(RoundedCornerShape(50)).background(look.track)) {
-                Box(Modifier.fillMaxWidth(percent.coerceIn(1, 100) / 100f).heightIn(min = 20.dp).clip(RoundedCornerShape(50)).background(look.trackFill))
-                if (percentText != null) Text(percentText, style = lookStyle(13.sp, bold = true, color = look.trackFill), modifier = Modifier.align(Alignment.CenterStart).padding(start = 12.dp))
+            // the figure follows the red fill on the grey track (sr/home-1-tiles.webp); past 75 % it sits inside the fill, in white
+            BoxWithConstraints(Modifier.fillMaxWidth().heightIn(min = 20.dp).clip(RoundedCornerShape(50)).background(look.track)) {
+                val fraction = percent.coerceIn(1, 100) / 100f
+                val fill = maxWidth * fraction
+                Box(Modifier.width(fill).heightIn(min = 20.dp).clip(RoundedCornerShape(50)).background(look.trackFill))
+                if (percentText != null) {
+                    val inside = fraction > 0.75f
+                    Text(
+                        percentText,
+                        style = lookStyle(13.sp, bold = true, color = if (inside) Color.White else look.trackFill),
+                        modifier = if (inside) Modifier.align(Alignment.CenterStart).width(fill).padding(end = 8.dp).wrapContentWidth(Alignment.End)
+                        else Modifier.align(Alignment.CenterStart).padding(start = fill + 6.dp),
+                    )
+                }
             }
         }
         if (detailsLabel != null && onDetails != null) {
