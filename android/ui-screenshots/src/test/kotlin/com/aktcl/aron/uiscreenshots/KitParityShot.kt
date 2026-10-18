@@ -91,6 +91,7 @@ class KitParityShot {
             AronHomeHeader("SR - Testing Banani (sr334001)", "Apsis RouteDaily, ২০২৬-১০-০৫", onSettings = {}, settingsLabel = "সেটিংস")
             AronTileGrid(tiles, Modifier.padding(6.dp)) { (label, icon), m -> AronTile(label, painterResource(icon), onClick = {}, modifier = m) }
             AronTargetCard("টার্গেট ও অ্যাচিভমেন্ট", "আজকের বিক্রয়", Modifier.padding(6.dp), value = "৪,৩৯১.০০৳")
+            AronTargetCard("আউটলেট ভিজিট", "৩ / ৩০", Modifier.padding(6.dp), percent = 10, percentText = "১০%")
         }
     }
 

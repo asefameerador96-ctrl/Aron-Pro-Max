@@ -1,6 +1,8 @@
 package com.aktcl.aron.core.ui.aron
 
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.layout.wrapContentWidth
+import androidx.compose.foundation.layout.BoxWithConstraints
 import com.aktcl.aron.core.ui.aron.Glyph.info
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.foundation.layout.height
@@ -376,9 +378,20 @@ fun AronTargetCard(
         if (value != null) Text(value, style = lookStyle(26.sp, bold = true, color = Color.White))
         if (percent != null) {
             Spacer(Modifier.height(6.dp))
-            Box(Modifier.fillMaxWidth().heightIn(min = 20.dp).clip(RoundedCornerShape(50)).background(look.track)) {
-                Box(Modifier.fillMaxWidth(percent.coerceIn(1, 100) / 100f).heightIn(min = 20.dp).clip(RoundedCornerShape(50)).background(look.trackFill))
-                if (percentText != null) Text(percentText, style = lookStyle(13.sp, bold = true, color = look.trackFill), modifier = Modifier.align(Alignment.CenterStart).padding(start = 12.dp))
+            // the figure follows the red fill on the grey track (sr/home-1-tiles.webp); past 75 % it sits inside the fill, in white
+            BoxWithConstraints(Modifier.fillMaxWidth().heightIn(min = 20.dp).clip(RoundedCornerShape(50)).background(look.track)) {
+                val fraction = percent.coerceIn(1, 100) / 100f
+                val fill = maxWidth * fraction
+                Box(Modifier.width(fill).heightIn(min = 20.dp).clip(RoundedCornerShape(50)).background(look.trackFill))
+                if (percentText != null) {
+                    val inside = fraction > 0.75f
+                    Text(
+                        percentText,
+                        style = lookStyle(13.sp, bold = true, color = if (inside) Color.White else look.trackFill),
+                        modifier = if (inside) Modifier.align(Alignment.CenterStart).width(fill).padding(end = 8.dp).wrapContentWidth(Alignment.End)
+                        else Modifier.align(Alignment.CenterStart).padding(start = fill + 6.dp),
+                    )
+                }
             }
         }
         if (detailsLabel != null && onDetails != null) {
