@@ -158,6 +158,7 @@ private val PCT_CAP = BigDecimal("9999999999.99")
 
 private data class Analysis(val rows: List<PriceRowIn>, val skus: Int, val types: List<String>, val outlets: Int, val devices: Int, val maxPct: BigDecimal, val approval: Boolean)
 
+/** [backdate] is informational (the submitter held finance.backdate at submit); the approval judges the approver's live grant (D-AUTHZ-Q5). */
 private class StoredBatch(val status: String, val fingerprint: String, val validFrom: LocalDate, val rows: List<PriceRowIn>, val reason: String?, val backdate: Boolean, val submittedBy: Long?,
                           val decidedBy: Long?, val decidedAt: OffsetDateTime?, val listVersion: Long?, val note: String?)
 
@@ -441,7 +442,7 @@ private suspend fun decide(call: ApplicationCall, d: AdminPricesDeps): PriceBatc
                 val version = bumpListVersion(h, p, d, uuid, why)
                 h.createUpdate("UPDATE app.price_batch SET status = 'published', decided_by = :by, decided_at = now(), decision_note = :n, price_list_version = :v, updated_at = now() WHERE batch_uuid = :b")
                     .bind("by", p.userId).bind("n", note).bind("v", version).bind("b", uuid).execute()
-                AuditWriter.write(h, p, "price_batch", uuid.toString(), "approve", auditObj("status" to "pending_approval"), auditObj("status" to "published", "rows" to items.size, "price_list_version" to version, "submitted_by" to b.submittedBy), why, call.requestId)
+                AuditWriter.write(h, p, "price_batch", uuid.toString(), "approve", auditObj("status" to "pending_approval"), auditObj("status" to "published", "rows" to items.size, "price_list_version" to version, "submitted_by" to b.submittedBy, "valid_from" to b.validFrom, "backdated" to !b.validFrom.isAfter(today(d))), why, call.requestId)
             }
             batchOut(uuid, loadBatch(h, uuid, lock = false)!!)
         }

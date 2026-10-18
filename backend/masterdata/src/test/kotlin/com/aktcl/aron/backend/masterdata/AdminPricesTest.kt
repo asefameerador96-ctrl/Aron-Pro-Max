@@ -345,7 +345,7 @@ class AdminPricesTest {
     }
 
     @Test
-    fun approvalAfterTheStartDateHasPassedIsRefusedUnlessBackdated() = t.app {
+    fun approvalOfAPastStartDateNeedsTheApproversBackdateGrant() = t.app {
         val a = t.newSku("PRC-G1", outlet = 10000)
         val bu = uuid()
         assertEquals("pending_approval", previewAndPublish(t.admin, req(bu, fwd, row(a, "outlet", 15000))).headers[BATCH_STATUS_HEADER])
@@ -366,8 +366,14 @@ class AdminPricesTest {
             assertEquals(HttpStatusCode.OK, decide(t.sup1, bu2, "approve").status)
             assertEquals("10000@2026-01-01>${t.today} 15000@${t.today}>open", rows(b, "outlet"))
             // The approver's grant is revoked; the same approval again is a replay and answers the stored result first.
+            val version = listVersion()
+            val first = t.scalar("SELECT decided_by || '|' || decided_at FROM app.price_batch WHERE batch_uuid = '$bu2'")
             t.grants.clear()
             assertEquals(HttpStatusCode.OK, decide(t.sup1, bu2, "approve").status)
+            assertEquals("10000@2026-01-01>${t.today} 15000@${t.today}>open", rows(b, "outlet"))
+            assertEquals(version, listVersion(), "a replay bumps no price list version")
+            assertEquals(first, t.scalar("SELECT decided_by || '|' || decided_at FROM app.price_batch WHERE batch_uuid = '$bu2'"))
+            assertEquals("true", t.scalar("SELECT after->>'backdated' FROM app.audit_log WHERE entity = 'price_batch' AND entity_id = '$bu2' AND action = 'approve'"))
             // The batch that came due while pending is approved too once the approver holds the grant.
             t.grants["SUPERADMIN"] = setOf("finance.backdate")
             assertEquals(HttpStatusCode.OK, decide(t.sup1, bu, "approve").status)
