@@ -29,6 +29,9 @@ import com.aktcl.aron.feature.amo.AmoLeaf
 import com.aktcl.aron.feature.amo.AmoMenu
 import com.aktcl.aron.feature.amo.AmoReach
 import com.aktcl.aron.feature.amo.ExceptionDetailContent
+import com.aktcl.aron.feature.amo.HubListContent
+import com.aktcl.aron.feature.amo.HubRow
+import com.aktcl.aron.feature.amo.HubSection
 import com.aktcl.aron.feature.amo.ExceptionsListContent
 import com.aktcl.aron.feature.amo.OutletVerify
 import com.aktcl.aron.feature.amo.RiskSignalRow
@@ -63,12 +66,9 @@ fun AmoTeamHub(day: AmoDay, reach: AmoReach, onBack: () -> Unit) {
     val leaves = AmoMenu.hub(RoleHomes.AmoTile.TEAM, reach)
     when (leaf) {
         TeamLeaf.HUB -> AronScreen(topBar = { AronTopBar(stringResource(HomeR.string.rh_amo_team), onBack = back) }) {
-            Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = AronTokens.Space.Screen)) {
-                leaves.forEachIndexed { i, l ->
-                    AronListRow(stringResource(leafLabel(l)), onClick = { open = l; leaf = TeamLeaf.LEAF }, position = if (i == 0) RowPosition.First else RowPosition.Middle, divider = true, flat = true)
-                }
-                AronListRow(stringResource(AmoR.string.amo_exc_title), onClick = { leaf = TeamLeaf.EXCEPTIONS }, position = if (leaves.isEmpty()) RowPosition.Only else RowPosition.Last, divider = false, flat = true)
-            }
+            val rows = leaves.map { l -> HubRow(stringResource(leafLabel(l)), onClick = { open = l; leaf = TeamLeaf.LEAF }) } +
+                HubRow(stringResource(AmoR.string.amo_exc_title), onClick = { leaf = TeamLeaf.EXCEPTIONS })
+            HubListContent(listOf(HubSection(null, rows)))
         }
         TeamLeaf.LEAF -> if (open == AmoLeaf.TASK_DELEGATION) AmoTaskHub(day, back) else if (open == AmoLeaf.TEAM_PERFORMANCE) AronScreen(topBar = { AronTopBar(stringResource(AmoR.string.amo_leaf_team_performance), onBack = back) }) { AmoTeamPerformance(day) } else if (open == AmoLeaf.LIVE_DASHBOARD) AronScreen(topBar = { AronTopBar(stringResource(AmoR.string.amo_live_title), onBack = back) }) { AmoLiveDashboard(day, liveFilter, { liveFilter = it }) } else if (open == AmoLeaf.SR_STOCK) AronScreen(topBar = { AronTopBar(stringResource(AmoR.string.amo_leaf_sr_stock), onBack = back) }) { AmoTeamStock(day, stockSr, { stockSr = it }) } else if (open == AmoLeaf.TEAM_LOCATION) AronScreen(topBar = { AronTopBar(stringResource(AmoR.string.amo_leaf_team_location), onBack = back) }) { AmoTeamLocation(day) } else RoleSectionPlaceholder(stringResource(open?.let { leafLabel(it) } ?: HomeR.string.rh_amo_team), AronIcons.Info, onBack = back)
         TeamLeaf.EXCEPTIONS, TeamLeaf.EXCEPTION_DETAIL -> AronScreen(topBar = { AronTopBar(stringResource(AmoR.string.amo_exc_title), onBack = back) }) {
@@ -100,7 +100,8 @@ private fun AmoExceptions(day: AmoDay, detail: Boolean, signalId: Long?, onOpen:
     if (detail && row == null) { LaunchedEffect(Unit) { onDone() }; return }
     if (row == null) { ExceptionsListContent(list, names, onOpen); return }
     // Fixed when the detail opens: a double tap queues one event.
-    val recordUuid = rememberSaveable(row.id) { com.aktcl.aron.core.common.ClientIds.newUuid() }
+    val draftKey = "signal:${row.id}"
+    val recordUuid = remember(draftKey) { day.drafts.uuid(draftKey) }
     var note by rememberSaveable(row.id) { mutableStateOf("") }
     var busy by remember(row.id) { mutableStateOf(false) }
     var failed by remember(row.id) { mutableStateOf(false) }
@@ -114,7 +115,7 @@ private fun AmoExceptions(day: AmoDay, detail: Boolean, signalId: Long?, onOpen:
                 day.reviewSignal(recordUuid, row.id, action, note.trim().ifEmpty { null }) || row.id !in day.openSignals().map { it.id }
             } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { false }
             busy = false
-            if (ok) { android.widget.Toast.makeText(context, savedText, android.widget.Toast.LENGTH_SHORT).show(); reload++; onDone() } else failed = true
+            if (ok) { day.drafts.clear(draftKey); android.widget.Toast.makeText(context, savedText, android.widget.Toast.LENGTH_SHORT).show(); reload++; onDone() } else failed = true
         }
     })
 }

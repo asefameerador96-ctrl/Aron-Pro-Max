@@ -26,7 +26,6 @@ import com.aktcl.aron.feature.amo.ManualOverrideCap
 import com.aktcl.aron.feature.amo.ManualOverrideLimit
 import com.aktcl.aron.feature.amo.amoVisitCheckTexts
 import com.aktcl.aron.feature.outlet.ForceReason
-import com.aktcl.aron.feature.outlet.ForceSaleContent
 import com.aktcl.aron.feature.outlet.ForceSaleMissing
 import com.aktcl.aron.feature.outlet.ForceSaleResult
 import com.aktcl.aron.feature.outlet.OutletPicker
@@ -148,10 +147,8 @@ private fun ManualOverrideStep(day: AmoDay, onStarted: () -> Unit, onBack: () ->
                 val controller = remember {
                     day.forceSaleController(capture) { ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED }
                 }
-                ForceSaleContent(
-                    selected = reason, capture = cap, missing = missing,
-                    noOutletLocation = decision.result.verdict == com.aktcl.aron.rules.GeoVerdict.NO_OUTLET_LOCATION,
-                    onReason = { reason = it }, onShutter = { scope.launch { capture.shutter() } },
+                com.aktcl.aron.feature.amo.ManualOverrideContent(
+                    capture = cap, missing = missing, onShutter = { scope.launch { capture.shutter() } },
                     onConfirm = {
                         if (!confirming) {
                             confirming = true

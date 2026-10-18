@@ -158,4 +158,20 @@ class TsoNavigationTest {
         val drawer = tsoDrawerEntries().map { it.screen }.toSet() - TsoScreen.SETTINGS
         assertEquals(tiles, drawer)
     }
+
+    @Test fun everyTsoScreenIsAccessible() {
+        show()
+        val problems = mutableListOf<String>()
+        fun sweep(where: String) { compose.waitForIdle(); compose.a11yProblems().forEach { problems += "$where: $it" } }
+        sweep("home")
+        for (tile in RoleHomes.tsoTiles().filter { it.id != RoleHomes.TsoTile.DEVICE_OTP }) {
+            val screen = TsoScreen.of(tile)
+            compose.onNodeWithTag(RoleHomeTags.tile(tile.id)).performScrollTo().performClick()
+            assertRealScreen(screen)
+            sweep(screen.name)
+            compose.onNodeWithTag(TsoChromeTags.HOME_BUTTON).performClick(); compose.waitForIdle()
+        }
+        compose.onNodeWithTag(TsoChromeTags.MENU).performClick(); sweep("drawer")
+        assertEquals("accessibility problems:\n" + problems.joinToString("\n"), emptyList<String>(), problems)
+    }
 }
