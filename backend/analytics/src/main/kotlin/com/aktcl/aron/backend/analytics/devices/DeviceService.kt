@@ -140,6 +140,8 @@ class DeviceService(
             val existing = h.createQuery("SELECT id, public_key_thumbprint, enrolment_token_id, lockdown_level, trust_level, enrolled_at FROM app.device WHERE device_uuid = :u").bind("u", uuid)
                 .map { rs, _ -> listOf(rs.getLong(1), rs.getString(2), rs.getObject(3), rs.getString(4), rs.getString(5), rs.getObject(6, OffsetDateTime::class.java)) }.findOne().orElse(null)
             if (existing != null) {
+                // A revoked token answers only its own phone's replay: anything else gets the revoked-token answer, no device oracle.
+                if (tok.revoked && (existing[1] != thumb || existing[2] != tok.id)) throw ApiProblem(ProblemCode.ERR_ENROLMENT_TOKEN_INVALID, "enrolment token revoked")
                 val st = h.createQuery("SELECT status FROM app.device WHERE id = :i").bind("i", existing[0] as Long).mapTo(String::class.java).one()
                 if (st == "revoked" || st == "replaced") throw ApiProblem(ProblemCode.ERR_DEVICE_REVOKED, "device revoked")
                 if (existing[1] != thumb || existing[2] != tok.id) throw ApiProblem(ProblemCode.ERR_CONFLICT, "device already enrolled")
