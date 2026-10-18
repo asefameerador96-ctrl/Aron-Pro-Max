@@ -40,6 +40,7 @@ describe("dashboard whole-taka rounding", () => {
     expect(lakhMtkToTaka(1_500)).toBe(2);
     expect(lakhMtkToTaka(-1_500)).toBe(-2);
     expect(lakhMtkToTaka(0)).toBe(0);
+    expect(Object.is(lakhMtkToTaka(0), 0)).toBe(true); // no negative zero
   });
 });
 
@@ -82,6 +83,17 @@ describe("compact lakh/crore figures by BigInt maths", () => {
   });
   it("whole-taka rounding stays exact for large values", () => {
     expect(lakhMtkToTaka(9_007_199_254_740_000)).toBe(9_007_199_254_740);
-    expect(lakhMtkToTaka(Number.NaN)).toBe(0);
+    expect(lakhMtkToTaka(Number.NaN)).toBeNaN();
+  });
+});
+
+describe("non-integer and unsafe compact input is not shown", () => {
+  it("formatLakhCrore answers an em dash and mtkToTaka NaN, never another amount", () => {
+    const w = { lakh: "Lakh", crore: "Cr" };
+    for (const bad of [1.5, 2 ** 60, Number.POSITIVE_INFINITY, Number.NaN]) {
+      expect(formatLakhCrore("en", bad, w), String(bad)).toBe("—");
+      expect(lakhMtkToTaka(bad), String(bad)).toBeNaN();
+    }
+    expect(formatLakhCrore("en", lakhMtkToTaka(2 ** 60), w)).toBe("—");
   });
 });
