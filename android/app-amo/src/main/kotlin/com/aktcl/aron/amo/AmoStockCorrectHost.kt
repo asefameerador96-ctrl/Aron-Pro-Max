@@ -50,10 +50,8 @@ fun AmoStockCorrectHost(day: AmoDay, onDone: () -> Unit) {
                 saving = true
                 scope.launch {
                     val ok = runCatching {
-                        val current = StockTracker.of(day.database, day.businessDate())[id]?.current ?: 0L // fresh read: never a stale delta
                         val right = com.aktcl.aron.feature.amo.StockCorrection.parseTotal(text) ?: error("not a total")
-                        StockAdjustments.correctTotal(id, current, right, r.code, sku.unit, day.metaProvider.meta(0L))
-                            ?.let { day.capture.recordStock(listOf(it)); day.requestSync() }
+                        day.correctStock(id, right, r.code, sku.unit)
                     }.isSuccess
                     saving = false; saved = ok
                     if (ok) { kotlinx.coroutines.delay(900); runCatching { load() }; day.forgetStock(); onDone() }

@@ -4,6 +4,8 @@ import android.content.Context
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onRoot
 import androidx.test.core.app.ApplicationProvider
@@ -66,10 +68,10 @@ class AmoTsoScreenshotTests {
     private val goldens: String = System.getProperty("aron.screenshots.goldens") ?: "src/test/screenshots"
     private val options = RoborazziOptions(compareOptions = RoborazziOptions.CompareOptions(changeThreshold = 0.002f))
 
-    private fun shot(name: String, language: AppLanguage, title: String, sunlight: Boolean = false, content: @Composable () -> Unit) {
+    private fun shot(name: String, language: AppLanguage, title: String, sunlight: Boolean = false, fontScale: Float = 1f, content: @Composable () -> Unit) {
         val ctx = AppLocale.wrap(ApplicationProvider.getApplicationContext<Context>(), language)
         rule.setContent {
-            CompositionLocalProvider(LocalContext provides ctx) {
+            CompositionLocalProvider(LocalContext provides ctx, LocalDensity provides Density(LocalDensity.current.density, fontScale = fontScale)) {
                 AronTheme(language, dark = false, sunlight = sunlight, tier = GlassTier.B, reducedMotion = true) {
                     AronScreen(topBar = { AronTopBar(title = title, onBack = {}) }) { content() }
                 }
@@ -187,4 +189,59 @@ class AmoTsoScreenshotTests {
     @Test @Config(qualifiers = "bn-w360dp-h800dp") fun tso_dashboard_sunlight_bn() = shot("tso_dashboard_sunlight_bn", AppLanguage.BN, "ড্যাশবোর্ড", sunlight = true) { TsoDashboardContent(TsoDashboardState(TsoDashboards.summary(tsoJson), tsoLogin, false, com.aktcl.aron.feature.tso.TsoFailure.NONE, businessDate = "2026-10-17"), "আমার সব জোন", money(true), {}, {}, {}, {}) }
     @Test @Config(qualifiers = "w360dp-h800dp") fun amo_live_dashboard_sunlight_en() = shot("amo_live_dashboard_sunlight_en", AppLanguage.EN, "Live Dashboard", sunlight = true) { LiveDashboardContent(live, "14:30", "All my zones", false, false, false, money(false), {}) }
     @Test @Config(qualifiers = "w360dp-h800dp") fun amo_verify_form_sunlight_en() = shot("amo_verify_form_sunlight_en", AppLanguage.EN, "Verify requests", sunlight = true, content = verifyForm(false, newDetail))
+
+    // ---- long Bangla at 200% font scale (3-line wrap) and Sunlight for every screen with a figure, a status or a primary action
+    private val longVerify = listOf(
+        pendingNew.copy(outletName = "রহিম স্টোর অ্যান্ড জেনারেল ট্রেডার্স, কাওরান বাজার, তেজগাঁও শিল্প এলাকা সংলগ্ন, ঢাকা-১২১৫"),
+        pendingNew.copy(uuid = "x", type = "close", outletName = "পান ঘর"),
+    )
+    private fun teamHub(sunlight: Boolean = false) = @Composable {
+        com.aktcl.aron.feature.amo.HubListContent(listOf(com.aktcl.aron.feature.amo.HubSection(null, listOf(
+            com.aktcl.aron.feature.amo.HubRow("টিম লোকেশন"), com.aktcl.aron.feature.amo.HubRow("টিম পারফর্মেন্স"), com.aktcl.aron.feature.amo.HubRow("টাস্ক ডেলিগেশন"),
+            com.aktcl.aron.feature.amo.HubRow("লাইভ ডেটা"), com.aktcl.aron.feature.amo.HubRow("এসআর স্টক"), com.aktcl.aron.feature.amo.HubRow("ব্যতিক্রম"),
+        ))))
+    }
+    private fun outletHub() = @Composable {
+        com.aktcl.aron.feature.amo.HubListContent(listOf(
+            com.aktcl.aron.feature.amo.HubSection("এসআর থেকে আসা অনুরোধগুলো যাচাই করুন", listOf(
+                com.aktcl.aron.feature.amo.HubRow("নতুন আউটলেট যাচাইকরণ", "৩"), com.aktcl.aron.feature.amo.HubRow("আউটলেট বন্ধের যাচাইকরণ", "১"), com.aktcl.aron.feature.amo.HubRow("আউটলেট সংশোধনের যাচাইকরণ"),
+            )),
+            com.aktcl.aron.feature.amo.HubSection("দোকান সংক্রান্ত অপারেশন্স", listOf(
+                com.aktcl.aron.feature.amo.HubRow("নতুন দোকান"), com.aktcl.aron.feature.amo.HubRow("স্থায়ী বন্ধ"), com.aktcl.aron.feature.amo.HubRow("তথ্য পরিবর্তন করুন"),
+                com.aktcl.aron.feature.amo.HubRow("আপডেট বেস"), com.aktcl.aron.feature.amo.HubRow("আমার অনুরোধ"),
+            )),
+        ))
+    }
+    @Test @Config(qualifiers = "bn-w360dp-h800dp") fun amo_team_hub_bn_fs2() = shot("amo_team_hub_bn_fs2", AppLanguage.BN, "টিম", fontScale = 2f, content = teamHub())
+    @Test @Config(qualifiers = "bn-w360dp-h800dp") fun amo_team_hub_sunlight_bn() = shot("amo_team_hub_sunlight_bn", AppLanguage.BN, "টিম", sunlight = true, content = teamHub())
+    @Test @Config(qualifiers = "bn-w360dp-h800dp") fun amo_outlet_hub_bn() = shot("amo_outlet_hub_bn", AppLanguage.BN, "আউটলেট", content = outletHub())
+    @Test @Config(qualifiers = "bn-w360dp-h800dp") fun amo_outlet_hub_bn_fs2() = shot("amo_outlet_hub_bn_fs2", AppLanguage.BN, "আউটলেট", fontScale = 2f, content = outletHub())
+    @Test @Config(qualifiers = "bn-w360dp-h800dp") fun amo_outlet_hub_sunlight_bn() = shot("amo_outlet_hub_sunlight_bn", AppLanguage.BN, "আউটলেট", sunlight = true, content = outletHub())
+    @Test @Config(qualifiers = "bn-w360dp-h800dp") fun amo_verify_list_bn_fs2() = shot("amo_verify_list_bn_fs2", AppLanguage.BN, "অনুরোধ যাচাই", fontScale = 2f) { VerifyListContent(longVerify, mapOf(5L to "রহিম উদ্দিন"), {}) }
+    @Test @Config(qualifiers = "bn-w360dp-h800dp") fun amo_verify_list_sunlight_bn() = shot("amo_verify_list_sunlight_bn", AppLanguage.BN, "অনুরোধ যাচাই", sunlight = true) { VerifyListContent(longVerify, mapOf(5L to "রহিম উদ্দিন"), {}) }
+    @Test @Config(qualifiers = "bn-w360dp-h800dp") fun amo_verify_form_bn_fs2() = shot("amo_verify_form_bn_fs2", AppLanguage.BN, "অনুরোধ যাচাই", fontScale = 2f, content = verifyForm(true, newDetail, setOf(com.aktcl.aron.feature.amo.VerifyError.GEO_CLASS_REQUIRED)))
+    @Test @Config(qualifiers = "bn-w360dp-h800dp") fun amo_home_bn_fs2() = shot("amo_home_bn_fs2", AppLanguage.BN, "", fontScale = 2f) {
+        val amo = com.aktcl.aron.feature.home.HomeUser("Testing Banani", "amo5001", "AMO", offline = false, reauthRequired = false, updateRequired = false)
+        com.aktcl.aron.feature.home.RoleHomeContent(
+            com.aktcl.aron.feature.home.RoleHomes.header(com.aktcl.aron.feature.home.RoleHomes.AMO_PREFIX, amo, "2026-10-05"), amo, com.aktcl.aron.feature.home.BundleStatus.Ready("b-17", "2026-10-05"),
+            com.aktcl.aron.feature.home.RoleHomes.amoTiles(mapOf(com.aktcl.aron.feature.home.RoleHomes.AmoTile.OUTLET to 3)), com.aktcl.aron.core.ui.SyncChipState.SyncedAt("১০:৪২"), onTile = {}, onSettings = {},
+            hero = null, health = com.aktcl.aron.feature.home.DeviceHealthModel.of(62, 1200, 3, 15), sunlight = false,
+        )
+    }
+    @Test @Config(qualifiers = "bn-w360dp-h800dp") fun amo_tasks_sunlight_bn() = shot("amo_tasks_sunlight_bn", AppLanguage.BN, "টাস্ক ডেলিগেশন", sunlight = true) { AssignedTasksContent(tasks, mapOf(7L to "রহিম উদ্দিন"), mapOf(1L to "রহিম স্টোর"), taskType, false, false, {}) }
+    @Test @Config(qualifiers = "w360dp-h800dp") fun amo_task_assign_sunlight_en() = shot("amo_task_assign_sunlight_en", AppLanguage.EN, "Task Delegation", sunlight = true) {
+        TaskAssignContent("Rahim Uddin", listOf("Rahim Store", "R-1042", "Kawran Bazar"), listOf(TaskType("stock_check", "Stock check", "স্টক পরীক্ষা"), TaskType("price", "Price check", "দাম যাচাই")), false, "stock_check", listOf("2026-10-18", "2026-10-19"), "2026-10-18", "", emptySet(), false, false, {}, {}, {}, {})
+    }
+    @Test @Config(qualifiers = "w360dp-h800dp") fun amo_exceptions_list_sunlight_en() = shot("amo_exceptions_list_sunlight_en", AppLanguage.EN, "Exceptions", sunlight = true) { ExceptionsListContent(signals, mapOf(7L to "Rahim Uddin", 8L to "Karim"), {}) }
+    @Test @Config(qualifiers = "bn-w360dp-h800dp") fun amo_exception_detail_sunlight_bn() = shot("amo_exception_detail_sunlight_bn", AppLanguage.BN, "ব্যতিক্রম", sunlight = true) { ExceptionDetailContent(signals[0], "রহিম উদ্দিন", "", false, true, {}, {}) }
+    @Test @Config(qualifiers = "w360dp-h800dp") fun amo_team_stock_list_sunlight_en() = shot("amo_team_stock_list_sunlight_en", AppLanguage.EN, "SR Stock", sunlight = true) { TeamStockListContent(TeamStock.parse(stockJson), mapOf(7L to "017****678"), false, false, {}) }
+    @Test @Config(qualifiers = "bn-w360dp-h800dp") fun amo_team_stock_detail_sunlight_bn() = shot("amo_team_stock_detail_sunlight_bn", AppLanguage.BN, "এসআর স্টক", sunlight = true) {
+        val sr = TeamStock.parse(stockJson).first { it.userId == 7L }; TeamStockDetailContent(sr, skuInfo, TeamStock.totals(sr.lines, skuInfo), true)
+    }
+    @Test @Config(qualifiers = "bn-w360dp-h800dp") fun amo_team_performance_sunlight_bn() = shot("amo_team_performance_sunlight_bn", AppLanguage.BN, "টিম পারফর্মেন্স", sunlight = true) {
+        TeamPerformanceContent(listOf(PerfBar("সিগারেট", "stick", 1000.0, 850.0, 150.0, 85.0), PerfBar("বিড়ি", "stick", 500.0, 230.0, 270.0, 46.0)), false, {}, false, false)
+    }
+    @Test @Config(qualifiers = "w360dp-h800dp") fun amo_std_memo_sunlight_en() = shot("amo_std_memo_sunlight_en", AppLanguage.EN, "STD Memo Report", sunlight = true) { StdMemoReportContent("2026-10-01" to "2026-10-16", stdRows, Reports.stdByRoute(stdRows), false, money(false), false, false) }
+    @Test @Config(qualifiers = "bn-w360dp-h800dp") fun amo_sales_summary_sunlight_bn() = shot("amo_sales_summary_sunlight_bn", AppLanguage.BN, "এখন পর্যন্ত বিক্রয় সারসংক্ষেপ", sunlight = true) { SalesSummaryContent(summaryCards, money(true), true, false, {}) }
+    @Test @Config(qualifiers = "bn-w360dp-h800dp") fun amo_live_dashboard_bn_fs2() = shot("amo_live_dashboard_bn_fs2", AppLanguage.BN, "লাইভ ডেটা", fontScale = 2f) { LiveDashboardContent(live, "14:30", "আমার সব জোন", false, false, false, money(true), {}) }
 }

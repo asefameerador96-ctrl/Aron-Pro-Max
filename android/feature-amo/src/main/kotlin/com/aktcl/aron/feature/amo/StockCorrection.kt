@@ -93,6 +93,6 @@ fun StockCorrectionContent(
 
 /** The unit as a word in the user's language (sticks, pieces, dozens); an unknown unit is shown as sent. */
 @Composable
-private fun unitWord(unit: String): String = when (unit) {
+internal fun unitWord(unit: String): String = when (unit) {
     "stick" -> stringResource(R.string.amo_unit_stick); "piece" -> stringResource(R.string.amo_unit_piece); "dozen" -> stringResource(R.string.amo_unit_dozen); else -> unit
 }

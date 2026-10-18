@@ -12,6 +12,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import com.aktcl.aron.core.ui.AronBanner
 import com.aktcl.aron.core.ui.AronEmptyState
+import com.aktcl.aron.core.ui.localizedDigits
 import com.aktcl.aron.core.ui.AronListRow
 import com.aktcl.aron.core.ui.AronPrimaryButton
 import com.aktcl.aron.core.ui.AronSectionLabel
@@ -48,8 +49,8 @@ fun AssignedTasksContent(
             }
             tasks.forEachIndexed { i, t ->
                 val lines = listOfNotNull(
-                    t.outletId?.let { outletNames[it] }, srNames[t.assigneeId], t.dueDate?.let { stringResource(R.string.amo_task_due, it) },
-                    t.resolvedAt?.take(10)?.let { stringResource(R.string.amo_task_done_on, it) }, t.resolutionNote,
+                    t.outletId?.let { outletNames[it] }, srNames[t.assigneeId], t.dueDate?.let { stringResource(R.string.amo_task_due, localizedDigits(it)) },
+                    t.resolvedAt?.take(10)?.let { stringResource(R.string.amo_task_done_on, localizedDigits(it)) }, t.resolutionNote, t.description,
                 )
                 AronListRow(
                     typeLabel(t.typeCode).ifBlank { t.title }, subtitle = lines.joinToString(stringResource(R.string.amo_verify_sep)),
@@ -98,7 +99,7 @@ fun TaskAssignContent(
             if (AssignError.TYPE_REQUIRED in errors) AronBanner(stringResource(R.string.amo_task_type_required), kind = BannerKind.Error)
             AronSectionLabel(stringResource(R.string.amo_task_date))
             dueChoices.forEachIndexed { i, d ->
-                AronListRow(d, onClick = { onDue(d) }, trailing = if (d == due) stringResource(R.string.amo_verify_selected) else null, position = pos(i, dueChoices.size), divider = i < dueChoices.lastIndex, flat = true)
+                AronListRow(localizedDigits(d), onClick = { onDue(d) }, trailing = if (d == due) stringResource(R.string.amo_verify_selected) else null, position = pos(i, dueChoices.size), divider = i < dueChoices.lastIndex, flat = true)
             }
             if (AssignError.DATE_INVALID in errors) AronBanner(stringResource(R.string.amo_task_date_invalid), kind = BannerKind.Error)
             KitTextField(description, onDescription, stringResource(R.string.amo_task_description), Modifier.fillMaxWidth(), singleLine = false, isError = AssignError.TEXT_TOO_LONG in errors)
