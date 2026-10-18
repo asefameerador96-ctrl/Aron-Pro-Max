@@ -8,7 +8,7 @@ Branch `lane/ui-sr-a`. Binding spec: `docs/ui-reference/PARITY-SPEC.md` (CLAUDE.
 ## Parity table
 | Screen | Reference | Status | What differs | sha |
 |---|---|---|---|---|
-| Home | `sr/home-1-tiles.webp`, `home-2-kpis.webp` | NOT STARTED | Calm Glass today (pastel, hero card, dock) | - |
+| Home | `sr/home-1-tiles.webp`, `home-2-kpis.webp` | DONE (side-by-side `docs/evidence/ui-parity/sr-home.png`) | Astha and Loyalty tiles absent on purpose (docs/27); kit icons are redraws, not the vendor art; header is slimmer (no status-bar strip); extra slim row for the sync chip and Sunlight switch; target card shows today's sales and outlet progress with no target percentage (deferred); the next-step dock is kept as a gradient button at the bottom | see git log |
 | Stock | `sr/stock.webp` | NOT STARTED | letter circles, no packshot, stepper outline | - |
 | Sale: choose retailer | `sr/sale-select.png` | NOT STARTED | picker is in `feature-outlet` (not this lane's module) | - |
 | Sale: product list + cart | `sr/sale-select.png` + Stock card layout | NOT STARTED | expandable rows, letter circles | - |
@@ -31,3 +31,9 @@ Step 1 `RetailerPicker` (pill dropdown, dark A-Z panel, All = gradient square, e
 
 ### Attendance (`feature-attendance` AttendanceContent)
 `AronTopBar` calendar-clock icon, user card (avatar tile, `SR - Name (login)`, route and date) over a red hairline, location card (pin tile, address or coordinates, red refresh), prompt text, two big buttons (green Check in, grey Check out) keeping the press-and-hold confirm sheet and every existing state.
+
+## Decisions (Home)
+- 2026-10-18: the bottom card is titled "আজকের অগ্রগতি / Today's progress" (not "Target and achievement") because no target exists (docs/27); it carries the day's sales total, outlets visited of planned, check-in time and a Details link to Summary.
+- 2026-10-18: the day's next-step dock is kept (behaviour) as `AronPrimaryButton` in the scaffold's bottom slot; the "needs a fresh route bundle" reason is a banner above the grid.
+- 2026-10-18: the two tile group labels ("Today's work", "Others") are gone: the reference is one grid; HomeScreenTest updated accordingly.
+- Goldens re-recorded: the 10 `home_*` goldens (ScreenshotTests, SrStateScreenshotTests) only.

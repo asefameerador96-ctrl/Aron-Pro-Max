@@ -341,7 +341,7 @@ private fun TargetCard(total: String, visited: Int, planned: Int, meterText: Str
         Text(stringResource(R.string.hm_hero_meter), color = ink, fontSize = 14.sp)
         Box(Modifier.fillMaxWidth().height(22.dp).clip(RoundedCornerShape(11.dp)).background(look.track)) {
             if (fraction > 0f) Box(Modifier.fillMaxWidth(fraction).fillMaxHeight().background(look.trackFill, RoundedCornerShape(11.dp)))
-            Text(meterText, color = look.purple, fontSize = 13.sp, fontWeight = FontWeight.Bold, modifier = Modifier.align(Alignment.CenterStart).padding(start = 10.dp))
+            Text(meterText, color = look.ink, fontSize = 13.sp, fontWeight = FontWeight.Bold, modifier = Modifier.align(Alignment.CenterEnd).padding(end = 12.dp))
         }
         checkIn?.let { Text(it, color = ink, fontSize = 12.sp) }
         Box(Modifier.fillMaxWidth().heightIn(min = 48.dp).clickable(role = Role.Button, onClick = onDetails), contentAlignment = Alignment.Center) {
