@@ -294,6 +294,7 @@ export const dashBn: Record<keyof typeof dashEn, string> = {
   "dashboard.zones.by_net": "নিট বিক্রয় অনুযায়ী",
   "dashboard.zones.empty": "এখনো কোনো জোন নেই",
   "dashboard.channels.empty": "চ্যানেলের সংখ্যা এখনো নেই",
+  "dashboard.map.empty": "এই দিন ও ফিল্টারে মানচিত্রে দেখানোর মতো কোনো এসআর অবস্থান বা আউটলেট নেই।",
   "dashboard.map.show": "মানচিত্র দেখান",
   "dashboard.map.summary": "{srs} জন এসআর · {outlets}টি আউটলেট",
   "dashboard.map.hint": "মানচিত্র শুধু চাইলে লোড হয়, তাই পাতা খুললে কোনো ম্যাপ লোড খরচ হয় না।",

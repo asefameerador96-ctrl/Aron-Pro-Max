@@ -6,7 +6,8 @@ import { useState, type ReactNode } from "react";
 import { Button } from "@/components/kit/button";
 import { Icon } from "@/components/kit/icons";
 
-export function TeamMapPlate({ summary, hint, showLabel, map }: { summary: string; hint: string; showLabel: string; map: ReactNode }) {
+/** `empty` replaces the hint and the button when there is nothing to pin (a map of no pins would spend a Maps load for nothing). */
+export function TeamMapPlate({ summary, hint, showLabel, map, empty }: { summary: string; hint: string; showLabel: string; map: ReactNode; empty?: string }) {
   const [shown, setShown] = useState(false);
   if (shown) return <>{map}</>;
   return (
@@ -15,10 +16,16 @@ export function TeamMapPlate({ summary, hint, showLabel, map }: { summary: strin
         <Icon name="map" size={32} />
       </span>
       <p className="text-body-strong text-primary">{summary}</p>
-      <p className="max-w-prose text-caption text-secondary">{hint}</p>
-      <Button variant="secondary" icon="map" onClick={() => setShown(true)} testId="map-show">
-        {showLabel}
-      </Button>
+      {empty ? (
+        <p className="max-w-prose text-caption text-secondary" data-testid="map-empty">{empty}</p>
+      ) : (
+        <>
+          <p className="max-w-prose text-caption text-secondary">{hint}</p>
+          <Button variant="secondary" icon="map" onClick={() => setShown(true)} testId="map-show">
+            {showLabel}
+          </Button>
+        </>
+      )}
     </div>
   );
 }
