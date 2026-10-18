@@ -52,4 +52,20 @@ class MemoDomainTest {
         assertEquals(h.footerMtk, h.days.flatMap { it.memos }.sumOf { it.totalMtk })
         assertTrue(SaleHistoryBuilder.build(ms, 1, fromServer = true).fromServer)
     }
+
+    @Test fun perSkuTableSumsLinesOfTheDateAndItsFooterIsTheExactSumOfTheRows() {
+        fun m(id: String, date: String, vararg lines: MemoItem, sup: String? = null) =
+            StoredMemo(id, "n-$id", 1, date, "${date}T04:00:00.000Z", sup, lines.toList(), emptyList(), emptyList(), 0, 0, 0, 0, 0, 0, 0)
+        val ms = listOf(
+            m("a", "2026-10-05", MemoItem(105, 3, 28_000, 84_000), MemoItem(100, 40, 8_000, 320_000)),
+            m("b", "2026-10-05", MemoItem(100, 10, 8_000, 80_000)),
+            m("old", "2026-10-05", MemoItem(100, 99, 8_000, 792_000)), // superseded by c: never counted
+            m("c", "2026-10-05", MemoItem(105, 1, 28_000, 28_000), sup = "old"),
+            m("d", "2026-10-04", MemoItem(105, 2, 28_000, 56_000)),
+        )
+        val day = SaleHistoryBuilder.build(ms, 1).days.first { it.businessDate == "2026-10-05" }
+        assertEquals(listOf(HistorySkuRow(100, 50, 400_000), HistorySkuRow(105, 4, 112_000)), day.skuRows)
+        assertEquals(512_000, day.skuTotalMtk)
+        assertEquals(day.skuRows.sumOf { it.valueMtk }, day.skuTotalMtk)
+    }
 }
