@@ -32,3 +32,5 @@ operation:
       $ref: '#/components/responses/PayloadTooLarge'
     '415':
       $ref: '#/components/responses/UnsupportedMediaType'
+    '503':
+      $ref: '#/components/responses/ServiceUnavailable'

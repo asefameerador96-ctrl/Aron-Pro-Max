@@ -58,6 +58,8 @@ class ContractConformanceTest {
     /** Operations that answered 2xx at least once, and every operation called. */
     private val succeeded = sortedSetOf<String>()
     private val called = sortedSetOf<String>()
+    /** Refusals of the operations without a 2xx answer, for the report (which fixture each one needs). */
+    private val refusals = HashMap<String, MutableList<String>>()
 
     /** One deviation; [detail] is part of the key for schema and sample errors (a normalised error, see errorKeys). */
     data class Finding(val method: String, val shape: String, val status: Int, val kind: String, val detail: String, val keyed: Boolean = false) {
@@ -88,17 +90,22 @@ class ContractConformanceTest {
             endpoints = ApiWorld.routes(application.plugin(RoutingRoot)).sortedBy { it.second + " " + it.first }
             out += notInContract(endpoints)
             val tokens = HashMap<ApiWorld.Caller, String?>()
+            // Each caller's bundle answer: its version, paged sections and delta cursor drive the page and delta reads.
+            val bundles = HashMap<ApiWorld.Caller, com.fasterxml.jackson.databind.JsonNode>()
             suspend fun token(c: ApiWorld.Caller): String? = tokens.getOrPut(c) { world.login(client, c) }
             // A caller that cannot log in would silently skip every guarded call.
             for (c in callers) check(token(c) != null) { "no token for ${c.user}" }
             suspend fun call(op: ContractModel.Operation, c: ApiWorld.Caller, t: String?) = world.call(
                 client, contract, op, c, t,
                 bodyEdit = FIXTURES[op.key]?.let { f -> { n: com.fasterxml.jackson.databind.JsonNode -> f(n as com.fasterxml.jackson.databind.node.ObjectNode, c, world.password) } },
+                queryOverrides = bundles[c]?.let { QUERY_FIXTURES[op.key]?.invoke(it) }.orEmpty(),
             ).also { checkedCalls++ }
             // Reads first, then writes; the session-ending operations last (change-password before logout).
             val last = listOf("POST /v1/auth/change-password", "POST /v1/auth/logout")
+            // Publishing prices needs the preview of the same batch first (ERR_REQUEST_STATE otherwise).
+            val late = listOf("POST /v1/admin/prices") + last
             val ops = endpoints.mapNotNull { (m, p) -> contract.operation(m, p) }.distinctBy { it.key }
-                .sortedWith(compareBy<ContractModel.Operation>({ last.indexOf(it.key) }, { it.method != "GET" && it.method != "HEAD" }, { it.key }))
+                .sortedWith(compareBy<ContractModel.Operation>({ late.indexOf(it.key) }, { it.method != "GET" && it.method != "HEAD" }, { it.key }))
             for (op in ops) {
                 // The generator's body must satisfy the contract's own request schema (or the schema is unsatisfiable).
                 op.requestSchema?.let { rs -> contract.errorKeys(rs, contract.sample(rs)).forEach { e -> out += Finding(op.method, ContractModel.shape(op.path), 0, "sample-invalid", e, keyed = true) } }
@@ -109,7 +116,9 @@ class ContractConformanceTest {
                     if (!op.public && r.status.value == 401 && op.key !in last) { tokens.remove(c); t = token(c) ?: continue; r = call(op, c, t) }
                     val text = r.bodyAsText()
                     if (r.status.value in 200..299) succeeded += op.key
+                    else refusals.getOrPut(op.key) { mutableListOf() } += "${c.user} ${r.status.value} ${text.take(160).replace('\n', ' ')}"
                     if (op.key == "GET /v1/me" && c == callers[0] && r.status.value == 200) meBody = text
+                    if (op.key == "GET /v1/sync/bundle" && r.status.value == 200) bundles[c] = ContractModel.json.readTree(text)
                     out += check(op, r.status.value, r.headers["Content-Type"], text)
                 }
             }
@@ -119,7 +128,8 @@ class ContractConformanceTest {
         File("build/contract-conformance.txt").writeText(
             "calls=$checkedCalls bodies_validated=$validatedBodies statuses=$statusSeen operations=${called.size} with_2xx=${succeeded.size}\n" +
                 findings.joinToString("\n") { it.key + if (it.keyed) "" else "  " + it.detail } + "\n" +
-                "# operations without any 2xx answer:\n" + (called - succeeded).joinToString("\n") + "\n",
+                "# operations without any 2xx answer (with each caller's refusal):\n" +
+                    (called - succeeded).joinToString("\n") { k -> k + refusals[k].orEmpty().joinToString("") { "\n    $it" } } + "\n",
         )
     }
 
@@ -224,11 +234,35 @@ class ContractConformanceTest {
 
     companion object {
         /** Request bodies a generated sample cannot get right (real credentials), filled per caller. */
+        /** A business date 30 days after the harness day, for writes that refuse today or the past. */
+        private val FUTURE: String = java.time.LocalDate.parse(ApiWorld.BUSINESS_DATE).plusDays(30).toString()
+
+        /** Query values taken from the caller's own `GET /v1/sync/bundle` answer (it runs first: keys sort before). */
+        val QUERY_FIXTURES: Map<String, (com.fasterxml.jackson.databind.JsonNode) -> Map<String, String>> = mapOf(
+            "GET /v1/sync/bundle/page" to { b ->
+                val meta = b.path("meta")
+                val paged = meta.path("paged_sections").firstOrNull()
+                if (paged == null) emptyMap() else mapOf("bundle_version" to meta.path("bundle_version").asText(), "section" to paged.path("section").asText(), "page" to "1")
+            },
+            "GET /v1/sync/delta" to { b -> mapOf("since" to b.path("meta").path("cursor").asText()) },
+        )
+
         val FIXTURES: Map<String, (com.fasterxml.jackson.databind.node.ObjectNode, ApiWorld.Caller, String) -> Unit> = mapOf(
             "POST /v1/auth/login" to { n, c, pw ->
                 n.put("username", c.user); n.put("password", pw); n.put("client", c.client)
                 if (c.device != null) n.put("device_uuid", c.device) else n.remove("device_uuid")
             },
+            // Seeded codes (V0027): a generated code is unknown to the code list and refused with 400 unknown_code.
+            "POST /v1/feedback" to { n, _, _ -> n.put("category_code", "suggestion") },
+            "POST /v1/leave" to { n, _, _ -> n.put("leave_type_code", "casual") },
+            // Calendar and price writes take effect in the future only (ERR_MASTER_EFFECTIVE_DATE_PAST, finance.back_date).
+            "POST /v1/admin/calendar/holidays" to { n, _, _ -> n.put("date", FUTURE) },
+            "POST /v1/admin/prices" to { n, _, _ -> n.put("valid_from", FUTURE) },
+            "POST /v1/admin/prices/preview" to { n, _, _ -> n.put("valid_from", FUTURE) },
+            // The sample parent is not a node of the parent level; a rename alone is a valid patch.
+            "PATCH /v1/admin/product-nodes/{}/{}" to { n, _, _ -> n.remove("parent_id"); n.put("name", "Contract check") },
+            // The sample key is cfg.geo.radius_m, an integer key.
+            "POST /v1/admin/config/changes" to { n, _, _ -> (n.path("changes").firstOrNull() as? com.fasterxml.jackson.databind.node.ObjectNode)?.put("value", 150) },
         )
     }
 

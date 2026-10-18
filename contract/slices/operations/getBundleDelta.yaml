@@ -39,8 +39,12 @@ operation:
               $ref: '#/components/examples/DeltaExample'
     '304':
       $ref: '#/components/responses/NotModified'
+    '400':
+      $ref: '#/components/responses/BadRequest'
     '401':
       $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'
     '409':
       $ref: '#/components/responses/Conflict'
     '410':

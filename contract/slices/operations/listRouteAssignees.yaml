@@ -1,0 +1,37 @@
+path: /v1/routes/{id}/assignments
+method: get
+operation:
+  tags:
+  - team
+  operationId: listRouteAssignees
+  summary: Users assigned to one route on a date, with their names (Browse Routes screen).
+  description: 'For TSO, DMO, WM, TOP, ANALYST, SUPPORT, ADMIN and SUPERADMIN (other roles get 403 `ERR_FORBIDDEN`).
+    Only the
+
+    assignments valid on `valid_on` (default today, Dhaka business date) and not ended, ordered by `kind`,
+
+    `valid_from`, `id`. A route outside the caller''s reach, or unknown, is 403 `ERR_OUT_OF_SCOPE`. The admin read
+
+    with history and filters is `listRouteAssignments`.
+
+    '
+  parameters:
+  - $ref: '#/components/parameters/IdPath'
+  - name: valid_on
+    in: query
+    required: false
+    schema:
+      $ref: '#/components/schemas/BusinessDate'
+  responses:
+    '200':
+      description: The assignees of the route on the date.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/RouteAssignees'
+    '400':
+      $ref: '#/components/responses/BadRequest'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'
