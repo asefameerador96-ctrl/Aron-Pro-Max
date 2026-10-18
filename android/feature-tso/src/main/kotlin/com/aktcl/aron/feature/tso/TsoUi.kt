@@ -44,6 +44,12 @@ internal fun tsoIcon(tileId: String?): Painter = painterResource(
         RoleHomes.TsoTile.PERIPHERY -> CoreR.drawable.aron_ic_tso_periphery
         RoleHomes.TsoTile.MY_CALL -> CoreR.drawable.aron_ic_tso_my_call
         RoleHomes.TsoTile.FEEDBACK -> CoreR.drawable.aron_ic_tso_feedback
+        "team" -> CoreR.drawable.aron_ic_tso_team
+        "set_plan" -> CoreR.drawable.aron_ic_tso_set_plan
+        "visit_plan" -> CoreR.drawable.aron_art_sales_journey
+        "query" -> CoreR.drawable.aron_art_memo
+        "task" -> CoreR.drawable.aron_art_task_delegation
+        "password" -> CoreR.drawable.aron_ic_lock
         else -> CoreR.drawable.aron_ic_gear
     },
 )

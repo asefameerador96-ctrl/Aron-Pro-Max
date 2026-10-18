@@ -19,22 +19,26 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.aktcl.aron.core.ui.AronBanner
-import com.aktcl.aron.core.ui.AronBarAction
-import com.aktcl.aron.core.ui.AronBottomBar
-import com.aktcl.aron.core.ui.AronCard
 import com.aktcl.aron.core.ui.AronConfirmDialog
 import com.aktcl.aron.core.ui.AronInfoDialog
-import com.aktcl.aron.core.ui.AronListRow
-import com.aktcl.aron.core.ui.AronScreen
-import com.aktcl.aron.core.ui.AronSectionLabel
 import com.aktcl.aron.core.ui.AronTokens
-import com.aktcl.aron.core.ui.AronTopBar
-import com.aktcl.aron.core.ui.BannerKind
 import com.aktcl.aron.core.ui.localizedDigits
 import com.aktcl.aron.feature.tso.R
 import com.aktcl.aron.rules.Money
 import kotlinx.coroutines.launch
+import com.aktcl.aron.core.ui.aron.AronCard
+import com.aktcl.aron.core.ui.aron.AronListRow
+import com.aktcl.aron.core.ui.aron.AronSecondaryButton
+import com.aktcl.aron.core.ui.aron.AronTabs
+import com.aktcl.aron.feature.tso.TsoAction
+import com.aktcl.aron.feature.tso.TsoBanner
+import com.aktcl.aron.feature.tso.TsoBannerKind
+import com.aktcl.aron.feature.tso.TsoBottomBar
+import com.aktcl.aron.feature.tso.TsoEmpty
+import com.aktcl.aron.feature.tso.TsoError
+import com.aktcl.aron.feature.tso.TsoFrame
+import com.aktcl.aron.feature.tso.TsoSectionTitle
+import com.aktcl.aron.feature.tso.TsoStepper
 
 object FsTags {
     const val DATE = "tso_fs_date"
@@ -77,14 +81,12 @@ fun FinalSubmitScreen(state: FinalSubmitState, onBack: () -> Unit, modifier: Mod
             onConfirm = { scope.launch { state.confirmSubmit() } }, onDismiss = { state.cancelConfirm() },
         )
     }
-    AronScreen(
-        modifier, topBar = { AronTopBar(stringResource(R.string.tso_fs_title), onBack = onBack) },
-        bottomBar = {
-            AronBottomBar(
+    TsoFrame(stringResource(R.string.tso_fs_title), onBack, modifier, tile = com.aktcl.aron.feature.home.RoleHomes.TsoTile.FINAL_SUBMIT, bottomBar = {
+            TsoBottomBar(
                 primary = when (phase) {
-                    is FsPhase.Review -> AronBarAction(stringResource(R.string.tso_fs_submit), { state.askConfirm() })
-                    is FsPhase.Done -> AronBarAction(stringResource(R.string.tso_leave_done), onBack)
-                    else -> AronBarAction(stringResource(R.string.tso_fs_get), { scope.launch { state.getSalesData() } }, enabled = ui.zoneId != null && !busy, busy = busy)
+                    is FsPhase.Review -> TsoAction(stringResource(R.string.tso_fs_submit), { state.askConfirm() })
+                    is FsPhase.Done -> TsoAction(stringResource(R.string.tso_leave_done), onBack)
+                    else -> TsoAction(stringResource(R.string.tso_fs_get), { scope.launch { state.getSalesData() } }, enabled = ui.zoneId != null && !busy, busy = busy)
                 },
                 modifier = Modifier.testTag(if (phase is FsPhase.Review) FsTags.SUBMIT else FsTags.GET),
             )
@@ -92,15 +94,15 @@ fun FinalSubmitScreen(state: FinalSubmitState, onBack: () -> Unit, modifier: Mod
     ) {
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(AronTokens.Space.Screen), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.M)) {
             when (phase) {
-                is FsPhase.Done -> AronBanner(stringResource(R.string.tso_fs_done, phase.result.routeCount, phase.result.memoCount, Money.formatTaka(phase.result.netMtk)), Modifier.testTag(FsTags.DONE), kind = BannerKind.Success)
-                is FsPhase.Failed -> AronBanner(stringResource(when (phase.why) {
-                    FsFailure.OFFLINE -> R.string.tso_fs_offline; FsFailure.FORBIDDEN -> R.string.tso_fs_forbidden; FsFailure.REFUSED -> R.string.tso_fs_refused; FsFailure.SERVER -> R.string.tso_fs_server }), Modifier.testTag(FsTags.FAILED), kind = BannerKind.Error)
+                is FsPhase.Done -> TsoBanner(stringResource(R.string.tso_fs_done, phase.result.routeCount, phase.result.memoCount, Money.formatTaka(phase.result.netMtk)), Modifier.testTag(FsTags.DONE), kind = TsoBannerKind.Success)
+                is FsPhase.Failed -> TsoBanner(stringResource(when (phase.why) {
+                    FsFailure.OFFLINE -> R.string.tso_fs_offline; FsFailure.FORBIDDEN -> R.string.tso_fs_forbidden; FsFailure.REFUSED -> R.string.tso_fs_refused; FsFailure.SERVER -> R.string.tso_fs_server }), Modifier.testTag(FsTags.FAILED), kind = TsoBannerKind.Error)
                 else -> Unit
             }
             if (phase is FsPhase.Review) {
                 Text(localizedDigits(stringResource(R.string.tso_fs_sales_date, ui.date)) + "  ·  " + (ui.zoneId?.let { zoneName(it) }.orEmpty()), style = MaterialTheme.typography.titleSmall)
-                AronSectionLabel(stringResource(R.string.tso_fs_routes))
-                if (phase.preview.warnings.isNotEmpty()) AronBanner(warnLines(phase.preview.warnings), Modifier.testTag(FsTags.WARNINGS), kind = BannerKind.Warning)
+                TsoSectionTitle(stringResource(R.string.tso_fs_routes))
+                if (phase.preview.warnings.isNotEmpty()) TsoBanner(warnLines(phase.preview.warnings), Modifier.testTag(FsTags.WARNINGS), kind = TsoBannerKind.Warning)
                 phase.preview.routes.forEach { r ->
                     AronCard(Modifier.fillMaxWidth().testTag(FsTags.route(r.routeId))) {
                         Column(Modifier.fillMaxWidth().padding(AronTokens.Space.L), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.Xs)) {
@@ -111,22 +113,22 @@ fun FinalSubmitScreen(state: FinalSubmitState, onBack: () -> Unit, modifier: Mod
                     }
                 }
             } else if (phase !is FsPhase.Done) {
-                if (ui.zonesLoaded && ui.zones.isEmpty()) AronBanner(stringResource(R.string.tso_fs_no_zones), kind = BannerKind.Warning)
-                if (!ui.zonesLoaded) AronBanner(stringResource(R.string.tso_mc_unavailable), Modifier.testTag(FsTags.UNAVAILABLE), kind = BannerKind.Offline)
+                if (ui.zonesLoaded && ui.zones.isEmpty()) TsoBanner(stringResource(R.string.tso_fs_no_zones), kind = TsoBannerKind.Warning)
+                if (!ui.zonesLoaded) TsoBanner(stringResource(R.string.tso_mc_unavailable), Modifier.testTag(FsTags.UNAVAILABLE), kind = TsoBannerKind.Offline)
                 if (ui.cascade) {
                     val labels = listOf(R.string.tso_fs_level_wing, R.string.tso_fs_level_division, R.string.tso_fs_level_territory, R.string.tso_fs_level_house, R.string.tso_mc_zone_label)
                     ui.options.toSortedMap().forEach { (lv, nodes) ->
-                        AronSectionLabel(stringResource(labels[lv]))
+                        TsoSectionTitle(stringResource(labels[lv]))
                         nodes.forEach { n -> AronListRow(n.label(bangla), Modifier.testTag(FsTags.level(lv, n.id)), onClick = { scope.launch { state.pickLevel(lv, n.id) } }, trailing = if (ui.picks[lv] == n.id) "✓" else null, flat = true) }
                     }
                 } else {
-                AronSectionLabel(stringResource(R.string.tso_mc_zone_label))
+                TsoSectionTitle(stringResource(R.string.tso_mc_zone_label))
                 ui.zones.forEach { z -> AronListRow(zoneName(z), Modifier.testTag(FsTags.zone(z)), onClick = { state.pickZone(z) }, trailing = if (z == ui.zoneId) "✓" else null, flat = true) }
                 }
-                AronSectionLabel(stringResource(R.string.tso_fs_sales_date_label))
+                TsoSectionTitle(stringResource(R.string.tso_fs_sales_date_label))
                 // read-only: the sales date is the Dhaka business date (docs/15 F-TSO-010)
                 Text(localizedDigits(ui.date), Modifier.testTag(FsTags.DATE), style = MaterialTheme.typography.titleSmall)
-                ui.errors.forEach { e -> AronBanner(stringResource(when (e) { FsError.NO_ZONE -> R.string.tso_fs_err_zone; FsError.DATE_FORMAT -> R.string.tso_leave_err_date_format; FsError.DATE_FUTURE -> R.string.tso_fs_err_future }), Modifier.testTag(FsTags.ERRORS), kind = BannerKind.Error) }
+                ui.errors.forEach { e -> TsoBanner(stringResource(when (e) { FsError.NO_ZONE -> R.string.tso_fs_err_zone; FsError.DATE_FORMAT -> R.string.tso_leave_err_date_format; FsError.DATE_FUTURE -> R.string.tso_fs_err_future }), Modifier.testTag(FsTags.ERRORS), kind = TsoBannerKind.Error) }
             }
         }
     }

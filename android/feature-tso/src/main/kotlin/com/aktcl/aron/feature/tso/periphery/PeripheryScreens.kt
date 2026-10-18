@@ -27,21 +27,25 @@ import com.aktcl.aron.core.map.LiteMapScreen
 import com.aktcl.aron.core.map.MapSettings
 import com.aktcl.aron.core.map.MapTileCache
 import com.aktcl.aron.core.map.MapsKey
-import com.aktcl.aron.core.ui.AronBanner
-import com.aktcl.aron.core.ui.AronCard
-import com.aktcl.aron.core.ui.AronListRow
-import com.aktcl.aron.core.ui.AronScreen
-import com.aktcl.aron.core.ui.AronSectionLabel
-import com.aktcl.aron.core.ui.AronSegmented
-import com.aktcl.aron.core.ui.AronTextButton
 import com.aktcl.aron.core.ui.AronTokens
-import com.aktcl.aron.core.ui.AronTopBar
-import com.aktcl.aron.core.ui.BannerKind
 import com.aktcl.aron.core.ui.localizedDigits
 import com.aktcl.aron.core.ui.localizedNumber
 import com.aktcl.aron.feature.tso.R
 import java.io.File
 import kotlinx.coroutines.launch
+import com.aktcl.aron.core.ui.aron.AronCard
+import com.aktcl.aron.core.ui.aron.AronListRow
+import com.aktcl.aron.core.ui.aron.AronSecondaryButton
+import com.aktcl.aron.core.ui.aron.AronTabs
+import com.aktcl.aron.feature.tso.TsoAction
+import com.aktcl.aron.feature.tso.TsoBanner
+import com.aktcl.aron.feature.tso.TsoBannerKind
+import com.aktcl.aron.feature.tso.TsoBottomBar
+import com.aktcl.aron.feature.tso.TsoEmpty
+import com.aktcl.aron.feature.tso.TsoError
+import com.aktcl.aron.feature.tso.TsoFrame
+import com.aktcl.aron.feature.tso.TsoSectionTitle
+import com.aktcl.aron.feature.tso.TsoStepper
 
 object PeripheryTags {
     const val TEAM = "tso_pe_team"
@@ -61,10 +65,10 @@ object PeripheryTags {
 
 @Composable
 fun PeripheryHub(onTeam: () -> Unit, onRetailer: () -> Unit, onBack: () -> Unit, modifier: Modifier = Modifier) {
-    AronScreen(modifier, topBar = { AronTopBar(stringResource(R.string.tso_drawer_periphery), onBack = onBack) }) {
+    TsoFrame(stringResource(R.string.tso_drawer_periphery), onBack, modifier, tile = com.aktcl.aron.feature.home.RoleHomes.TsoTile.PERIPHERY) {
         Column(Modifier.fillMaxSize().padding(AronTokens.Space.Screen), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.M)) {
-            AronCard(Modifier.fillMaxWidth().testTag(PeripheryTags.TEAM), onClick = onTeam) { AronListRow(stringResource(R.string.tso_pe_team), subtitle = stringResource(R.string.tso_pe_team_sub)) }
-            AronCard(Modifier.fillMaxWidth().testTag(PeripheryTags.RETAILER), onClick = onRetailer) { AronListRow(stringResource(R.string.tso_pe_retailer), subtitle = stringResource(R.string.tso_pe_retailer_sub)) }
+            AronListRow(stringResource(R.string.tso_pe_team), Modifier.fillMaxWidth().testTag(PeripheryTags.TEAM), subtitle = stringResource(R.string.tso_pe_team_sub), onClick = onTeam)
+            AronListRow(stringResource(R.string.tso_pe_retailer), Modifier.fillMaxWidth().testTag(PeripheryTags.RETAILER), subtitle = stringResource(R.string.tso_pe_retailer_sub), onClick = onRetailer)
         }
     }
 }
@@ -82,14 +86,14 @@ fun TeamScreen(state: TeamState, online: () -> Boolean, nowMs: () -> Long, userK
     val context = LocalContext.current
     LaunchedEffect(state) { state.load() }
     val cache = androidx.compose.runtime.remember(userKey) { MapTileCache(File(context.cacheDir, "map_tso_$userKey")) { settings.tileCacheBytes } }
-    AronScreen(modifier, topBar = { AronTopBar(stringResource(R.string.tso_pe_team), onBack = onBack) }) {
+    TsoFrame(stringResource(R.string.tso_pe_team), onBack, modifier, tile = "team") {
         Column(Modifier.fillMaxSize()) {
             if (ui.zones.size > 1) Column(Modifier.padding(horizontal = AronTokens.Space.Screen)) { ZonePicker(ui.zones, ui.zoneId) { state.pickZone(it); scope.launch { state.refresh() } } }
             when (val p = ui.phase) {
                 TeamUi.Loading -> Unit
-                TeamUi.Unavailable -> AronBanner(stringResource(R.string.tso_mc_unavailable), Modifier.testTag(PeripheryTags.STATUS), kind = BannerKind.Offline)
+                TeamUi.Unavailable -> TsoBanner(stringResource(R.string.tso_mc_unavailable), Modifier.testTag(PeripheryTags.STATUS), kind = TsoBannerKind.Offline)
                 is TeamUi.Shown -> {
-                    if (p.result.fromCache) AronBanner(stringResource(R.string.tso_offline_cached), Modifier.testTag(PeripheryTags.CACHED), kind = BannerKind.Offline)
+                    if (p.result.fromCache) TsoBanner(stringResource(R.string.tso_offline_cached), Modifier.testTag(PeripheryTags.CACHED), kind = TsoBannerKind.Offline)
                     val lg = legend(p.result.value, p.codes)
                     if (lg.isNotEmpty()) Text(lg.joinToString("   ") { "${it.first}: ${it.second}" }.let { localizedDigits(it) }, Modifier.padding(horizontal = AronTokens.Space.Screen).testTag(PeripheryTags.LEGEND), style = MaterialTheme.typography.bodySmall)
                     Text(localizedDigits(stringResource(R.string.tso_as_of, p.result.asOf)), Modifier.padding(horizontal = AronTokens.Space.Screen).testTag(PeripheryTags.ASOF), style = MaterialTheme.typography.bodySmall)
@@ -112,36 +116,36 @@ fun RetailerScreen(state: RetailerState, online: () -> Boolean, nowMs: () -> Lon
     val phase = ui.phase
     val resources = LocalResources.current
     val language = com.aktcl.aron.core.ui.LocalAppLanguage.current
-    AronScreen(modifier, topBar = { AronTopBar(stringResource(R.string.tso_pe_retailer), onBack = onBack) }) {
+    TsoFrame(stringResource(R.string.tso_pe_retailer), onBack, modifier, tile = com.aktcl.aron.feature.home.RoleHomes.TsoTile.PERIPHERY) {
         Column(Modifier.fillMaxSize()) {
             Column(Modifier.padding(horizontal = AronTokens.Space.Screen).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
-                AronSectionLabel(stringResource(R.string.tso_mc_zone_label))
+                TsoSectionTitle(stringResource(R.string.tso_mc_zone_label))
                 ZonePicker(ui.zones, ui.zoneId) { state.pickZone(it) }
-                AronSectionLabel(stringResource(R.string.tso_pe_radius))
-                AronSegmented(RADIUS_OPTIONS_M.map { stringResource(R.string.tso_unit_m, localizedNumber(it.toLong())) }, RADIUS_OPTIONS_M.indexOf(ui.radiusM), { state.pickRadius(RADIUS_OPTIONS_M[it]) }, Modifier.testTag("tso_pe_radius"))
-                AronTextButton(stringResource(R.string.tso_pe_find), { scope.launch { state.find() } }, Modifier.testTag(PeripheryTags.FIND))
+                TsoSectionTitle(stringResource(R.string.tso_pe_radius))
+                AronTabs(RADIUS_OPTIONS_M.map { stringResource(R.string.tso_unit_m, localizedNumber(it.toLong())) }, RADIUS_OPTIONS_M.indexOf(ui.radiusM), { state.pickRadius(RADIUS_OPTIONS_M[it]) }, Modifier.testTag("tso_pe_radius"))
+                AronSecondaryButton(stringResource(R.string.tso_pe_find), { scope.launch { state.find() } }, Modifier.testTag(PeripheryTags.FIND))
                 when (phase) {
-                    RetailerUi.Locating -> AronBanner(stringResource(R.string.tso_pe_locating), Modifier.testTag(PeripheryTags.STATUS), kind = BannerKind.Info)
-                    RetailerUi.Loading -> AronBanner(stringResource(R.string.tso_pe_loading), Modifier.testTag(PeripheryTags.STATUS), kind = BannerKind.Info)
+                    RetailerUi.Locating -> TsoBanner(stringResource(R.string.tso_pe_locating), Modifier.testTag(PeripheryTags.STATUS), kind = TsoBannerKind.Info)
+                    RetailerUi.Loading -> TsoBanner(stringResource(R.string.tso_pe_loading), Modifier.testTag(PeripheryTags.STATUS), kind = TsoBannerKind.Info)
                     RetailerUi.NeedsPermission -> {
-                        AronBanner(stringResource(R.string.tso_pe_need_permission), Modifier.testTag(PeripheryTags.STATUS), kind = BannerKind.Warning)
-                        AronTextButton(stringResource(R.string.tso_pe_allow), { askPermission.launch(Manifest.permission.ACCESS_FINE_LOCATION) }, Modifier.testTag(PeripheryTags.ALLOW))
-                        if (ui.permissionDenied) AronTextButton(stringResource(R.string.tso_pe_settings), {
+                        TsoBanner(stringResource(R.string.tso_pe_need_permission), Modifier.testTag(PeripheryTags.STATUS), kind = TsoBannerKind.Warning)
+                        AronSecondaryButton(stringResource(R.string.tso_pe_allow), { askPermission.launch(Manifest.permission.ACCESS_FINE_LOCATION) }, Modifier.testTag(PeripheryTags.ALLOW))
+                        if (ui.permissionDenied) AronSecondaryButton(stringResource(R.string.tso_pe_settings), {
                             context.startActivity(android.content.Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS, android.net.Uri.fromParts("package", context.packageName, null)).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
                         }, Modifier.testTag(PeripheryTags.SETTINGS))
                     }
-                    RetailerUi.LocationOff -> AronBanner(stringResource(R.string.tso_pe_location_off), Modifier.testTag(PeripheryTags.STATUS), kind = BannerKind.Warning)
-                    RetailerUi.OutOfArea -> AronBanner(stringResource(R.string.tso_pe_out_of_area), Modifier.testTag(PeripheryTags.STATUS), kind = BannerKind.Warning)
-                    RetailerUi.NoFix -> AronBanner(stringResource(R.string.tso_pe_no_fix), Modifier.testTag(PeripheryTags.STATUS), kind = BannerKind.Warning)
-                    RetailerUi.Unavailable -> AronBanner(stringResource(R.string.tso_mc_unavailable), Modifier.testTag(PeripheryTags.STATUS), kind = BannerKind.Offline)
+                    RetailerUi.LocationOff -> TsoBanner(stringResource(R.string.tso_pe_location_off), Modifier.testTag(PeripheryTags.STATUS), kind = TsoBannerKind.Warning)
+                    RetailerUi.OutOfArea -> TsoBanner(stringResource(R.string.tso_pe_out_of_area), Modifier.testTag(PeripheryTags.STATUS), kind = TsoBannerKind.Warning)
+                    RetailerUi.NoFix -> TsoBanner(stringResource(R.string.tso_pe_no_fix), Modifier.testTag(PeripheryTags.STATUS), kind = TsoBannerKind.Warning)
+                    RetailerUi.Unavailable -> TsoBanner(stringResource(R.string.tso_mc_unavailable), Modifier.testTag(PeripheryTags.STATUS), kind = TsoBannerKind.Offline)
                     else -> Unit
                 }
-                if (ui.mockWarning) AronBanner(stringResource(R.string.tso_pe_mock), Modifier.testTag(PeripheryTags.MOCK), kind = BannerKind.Warning)
+                if (ui.mockWarning) TsoBanner(stringResource(R.string.tso_pe_mock), Modifier.testTag(PeripheryTags.MOCK), kind = TsoBannerKind.Warning)
             }
             if (phase is RetailerUi.Shown) {
                 val n = phase.result.value
-                if (phase.result.fromCache) AronBanner(stringResource(R.string.tso_offline_cached), Modifier.testTag(PeripheryTags.CACHED), kind = BannerKind.Offline)
-                if (n.truncated) AronBanner(stringResource(R.string.tso_pe_truncated, MAX_SHOWN), Modifier.testTag(PeripheryTags.TRUNCATED), kind = BannerKind.Info)
+                if (phase.result.fromCache) TsoBanner(stringResource(R.string.tso_offline_cached), Modifier.testTag(PeripheryTags.CACHED), kind = TsoBannerKind.Offline)
+                if (n.truncated) TsoBanner(stringResource(R.string.tso_pe_truncated, MAX_SHOWN), Modifier.testTag(PeripheryTags.TRUNCATED), kind = TsoBannerKind.Info)
                 Text(localizedDigits(stringResource(R.string.tso_as_of, phase.result.asOf)), Modifier.padding(horizontal = AronTokens.Space.Screen).testTag(PeripheryTags.ASOF), style = MaterialTheme.typography.bodySmall)
                 LiteMapScreen(nearbyPoints(n) { d -> resources.getString(R.string.tso_unit_m, com.aktcl.aron.core.common.LocaleDigits.localize(d.toString(), language)) }, settings, online(), MapsKey.present(context), nowMs(), cache, "near_${userKey}_${phase.zoneId}_${phase.radiusM}_${positionKey(phase.lat, phase.lng)}", Modifier.weight(1f))
             }
