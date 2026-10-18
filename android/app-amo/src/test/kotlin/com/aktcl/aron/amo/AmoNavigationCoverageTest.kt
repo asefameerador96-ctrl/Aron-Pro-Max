@@ -41,8 +41,8 @@ class AmoNavigationCoverageTest {
 
     @Test fun settingsAndSupportHaveRealScreens() {
         assertTrue("Support is built in MainActivity", AmoScreen.SUPPORT in built)
-        // Settings, like Home, is rendered by AmoApp itself (RoleSettingsContent), never by the placeholder
-        assertTrue(File("../feature-amo/src/main/kotlin/com/aktcl/aron/feature/amo/AmoApp.kt").readText().contains("AmoScreen.SETTINGS -> RoleSettingsContent"))
+        // Settings, like Home, is rendered by AmoApp itself (AmoSettingsContent), never by the placeholder
+        assertTrue(File("../feature-amo/src/main/kotlin/com/aktcl/aron/feature/amo/AmoApp.kt").readText().contains("AmoScreen.SETTINGS -> AmoSettingsContent"))
     }
 
     @Test fun everyTeamHubEntryOpensARealScreen() {
