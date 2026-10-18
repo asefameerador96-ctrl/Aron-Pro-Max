@@ -250,6 +250,28 @@ class IngestRulesCheckerTest {
         assertEquals(List(fam.size) { "accepted" }, codes(r), "zero sale with a QC credit (net -15,000, s7.4 allow_negative_net)")
     }
 
+    // cfg.memo.allow_negative_net = false: the zero-sale QC credit is refused too, whole family and header alone.
+    @Test
+    fun aZeroSaleQcCreditIsQuarantinedWhenNegativeNetsAreSwitchedOff() {
+        fun cfg(sql: String) = fresh.db.jdbi.useHandle<Exception> { it.execute(sql) }
+        cfg("INSERT INTO app.cfg_value (key, scope_type, scope_id, value, effective_from, config_version, reason) SELECT 'cfg.memo.allow_negative_net', 'global', 0, 'false'::jsonb, now() - interval '1 day', max(config_version), 'test' FROM app.cfg_version")
+        // Its own wiring reads the switched-off value; the class wiring keeps the default for the other tests.
+        val own = Wiring.production(Settings.load(mapOf("ARON_ROLE" to "api", "ARON_DB_URL" to fresh.url, "ARON_JWT_SIGNING_KEY_FILE" to keyFile.absolutePath)), clock)
+        try {
+            testApplication {
+                application { aronApi(own) }
+                val token = client.token()
+                val whole = memoFamily(emptyList(), qcs = listOf(Q(skus[0].first, 15_000, applied = true)))
+                assertEquals("quarantined:arithmetic_mismatch", codes(client.ok(token, batch(whole)))[1], "whole family")
+                val split = memoFamily(emptyList(), qcs = listOf(Q(skus[0].first, 15_000, applied = true)))
+                assertEquals("quarantined:arithmetic_mismatch", codes(client.ok(token, batch(split.take(2))))[1], "header alone")
+            }
+        } finally {
+            own.database?.close()
+            cfg("UPDATE app.cfg_value SET effective_to = now() WHERE key = 'cfg.memo.allow_negative_net' AND reason = 'test' AND effective_to IS NULL")
+        }
+    }
+
     // QA-MNY-01: the header sign check (D-18) must not catch a zero-sale QC credit sent before its children.
     @Test
     fun checkerAZeroSaleQcCreditSentHeaderFirstIsStoredUnflagged() = testApplication {

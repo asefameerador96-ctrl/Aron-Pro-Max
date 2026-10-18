@@ -30,7 +30,7 @@ object MemoChecks {
     private val CHILD_TYPES = setOf("memo_line", "memo_discount", "qc_line")
 
     /** client_uuid to mismatch detail for every record of a memo whose segment holds all its children and fails. */
-    fun familyMismatches(records: List<JsonObject>): Map<String, String> {
+    fun familyMismatches(records: List<JsonObject>, allowNegativeNet: Boolean = true): Map<String, String> {
         val out = HashMap<String, String>()
         for (memo in records.filter { it.str("type") == "memo" }) {
             val mu = memo.str("client_uuid") ?: continue
@@ -46,7 +46,7 @@ object MemoChecks {
                 continue
             }
             if (counts != stated) continue
-            val problems = runCatching { verify(p, children.map { it.str("type")!! to (it["payload"] as JsonObject) }) }.getOrElse { listOf("unreadable: ${it.message}") }
+            val problems = runCatching { verify(p, children.map { it.str("type")!! to (it["payload"] as JsonObject) }, allowNegativeNet) }.getOrElse { listOf("unreadable: ${it.message}") }
             if (problems.isNotEmpty()) {
                 val detail = "memo $mu: " + problems.joinToString("; ")
                 out[mu] = detail
@@ -90,8 +90,11 @@ object MemoChecks {
         mu to java.security.MessageDigest.getInstance("SHA-256").digest(body.toByteArray())
     }.toMap()
 
-    /** Equations a single record shows on its own; null when they hold (or the record is not money). */
-    fun recordMismatch(type: String, p: JsonObject): String? = runCatching {
+    /**
+     * Equations a single record shows on its own; null when they hold (or the record is not money). [allowNegativeNet] is
+     * `cfg.memo.allow_negative_net`: false refuses a negative net even for a zero-gross QC credit.
+     */
+    fun recordMismatch(type: String, p: JsonObject, allowNegativeNet: Boolean = true): String? = runCatching {
         when (type) {
             "memo" -> {
                 val gross = p.long("gross_mtk")!!; val offer = p.long("offer_discount_mtk")!!; val drp = p.long("drp_discount_mtk")!!
@@ -104,7 +107,7 @@ object MemoChecks {
                     paid + due != net -> "paid_mtk + due_mtk ${paid + due} != net_mtk $net"
                     p.bool("is_credit") != (due > 0) -> "is_credit ${p.bool("is_credit")} with due_mtk $due"
                     // D-18, as MemoMath.verify `net_negative`: the header carries both numbers, so no child is needed.
-                    net < 0 && gross != 0L -> "net_negative stated $net with gross_mtk $gross, recomputed 0"
+                    net < 0 && (gross != 0L || !allowNegativeNet) -> "net_negative stated $net with gross_mtk $gross, recomputed 0"
                     else -> null
                 }
             }
@@ -116,7 +119,7 @@ object MemoChecks {
         }
     }.getOrElse { "unreadable money member" }
 
-    private fun verify(memo: JsonObject, children: List<Pair<String, JsonObject>>): List<String> {
+    private fun verify(memo: JsonObject, children: List<Pair<String, JsonObject>>, allowNegativeNet: Boolean): List<String> {
         val lines = children.filter { it.first == "memo_line" }.map { (_, c) ->
             MemoLine.priced(c.long("sku_id")!!, c.long("qty_base")!!, c.long("base_price_mtk")!!, c.long("price_per_qty")!!).copy(grossMtk = c.long("gross_mtk")!!)
         }
@@ -130,7 +133,7 @@ object MemoChecks {
             paidMtk = memo.long("paid_mtk")!!, dueMtk = memo.long("due_mtk")!!, lineCount = memo.int("line_count")!!,
             discountLineCount = memo.int("discount_line_count")!!, qcLineCount = memo.int("qc_line_count")!!,
         )
-        return MemoMath.verify(stated, lines, discounts, qc).map { "${it.field} stated ${it.stated}, recomputed ${it.computed}" }
+        return MemoMath.verify(stated, lines, discounts, qc, allowNegativeNet = allowNegativeNet).map { "${it.field} stated ${it.stated}, recomputed ${it.computed}" }
     }
 
     /**
