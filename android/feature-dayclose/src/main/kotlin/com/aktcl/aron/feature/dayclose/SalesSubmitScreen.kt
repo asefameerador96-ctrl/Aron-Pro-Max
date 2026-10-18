@@ -68,7 +68,11 @@ import com.aktcl.aron.core.ui.AronTextButton
 import com.aktcl.aron.core.ui.AronLook
 import com.aktcl.aron.core.ui.AronTokens
 import com.aktcl.aron.core.ui.LocalAronLook
+import com.aktcl.aron.core.ui.aron.AronDataTable
+import com.aktcl.aron.core.ui.aron.AronNoticeCard
 import com.aktcl.aron.core.ui.aron.AronPrimaryButton
+import com.aktcl.aron.core.ui.aron.AronStatusDot
+import com.aktcl.aron.core.ui.aron.ButtonGlyph
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -152,16 +156,10 @@ fun SalesSubmitScreen(
             verticalArrangement = Arrangement.spacedBy(AronTokens.Space.M),
         ) {
             // device status: derived from the last server contact
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.End) {
-                Text(stringResource(R.string.submit_status_title), style = MaterialTheme.typography.bodyMedium, color = look.ink)
-                Spacer(Modifier.width(AronTokens.Space.M))
-                Box(Modifier.size(28.dp).clip(CircleShape).background(if (online) OnlineGreen else look.inkMuted))
-                Spacer(Modifier.width(AronTokens.Space.S))
-                Text(
-                    stringResource(if (online) R.string.submit_status_online else R.string.submit_status_offline),
-                    style = MaterialTheme.typography.bodyMedium, color = if (online) OkInk else look.inkMuted,
-                )
-            }
+            AronStatusDot(
+                stringResource(R.string.submit_status_title), stringResource(if (online) R.string.submit_status_online else R.string.submit_status_offline), online,
+                Modifier.fillMaxWidth(),
+            )
             lastContactText?.let { Text(stringResource(R.string.submit_last_contact, it), style = MaterialTheme.typography.bodySmall, color = look.inkMuted, modifier = Modifier.align(Alignment.End)) }
             if (progress == SubmitProgress.Settled) {
                 // the day is closed: the success state replaces the table (screens-sr s11)
@@ -190,11 +188,11 @@ fun SalesSubmitScreen(
             }
             AronPrimaryButton(
                 stringResource(R.string.submit_sync), onSync, Modifier.fillMaxWidth(),
-                enabled = SalesSubmitRules.syncButtonEnabled(online, syncing),
+                enabled = SalesSubmitRules.syncButtonEnabled(online, syncing), glyph = ButtonGlyph.Sync,
             )
             AronPrimaryButton(
                 stringResource(if (canSubmit && !online) R.string.submit_button_offline else R.string.submit_button), { if (gate.duesWarning != null) duesAsk = true else hold = true },
-                Modifier.fillMaxWidth(), enabled = canSubmit,
+                Modifier.fillMaxWidth(), enabled = canSubmit, glyph = ButtonGlyph.Submit,
             )
             if (!canSubmit) Text(reason, style = MaterialTheme.typography.bodySmall, color = look.inkMuted, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
         }
@@ -217,6 +215,7 @@ private enum class Notice { Info, Warning, Success }
 /** A notice card (sr/sales-submit.png): the warning is the pink card with the red edge, an info or success note the white card. */
 @Composable
 private fun NoticeCard(text: String, kind: Notice, title: String? = null, actionLabel: String? = null, onAction: () -> Unit = {}) {
+    if (kind == Notice.Warning && title == null && actionLabel == null) { AronNoticeCard(text); return }
     val look = LocalAronLook.current
     val warn = kind == Notice.Warning
     val shape = RoundedCornerShape(AronLook.CardRadius)
@@ -252,6 +251,19 @@ private fun SettledState(records: Int) {
 private fun CountsTable(counts: List<CountView>, typeLabel: (String) -> String) {
     val look = LocalAronLook.current
     val stacked = tableStacked()
+    if (!stacked && counts.isNotEmpty()) {
+        val waitingWord = stringResource(R.string.submit_row_waiting)
+        val mismatchWord = stringResource(R.string.submit_row_mismatch)
+        val blank = stringResource(R.string.submit_server_blank)
+        AronDataTable(
+            headers = listOf(stringResource(R.string.submit_col_item), stringResource(R.string.submit_col_device), stringResource(R.string.submit_col_server)),
+            rows = counts.map { row ->
+                val word = when { row.server == null -> waitingWord; !row.matches -> mismatchWord; else -> null }
+                listOf(listOfNotNull(typeLabel(row.key), word).joinToString("\n"), localizedNumber(row.device.toLong()), row.server?.let { localizedNumber(it.toLong()) } ?: blank)
+            },
+        )
+        return
+    }
     Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(AronLook.CardRadius)).background(look.card)) {
         Row(
             Modifier.fillMaxWidth().background(look.purple).padding(horizontal = AronTokens.Space.L, vertical = AronTokens.Space.M),
