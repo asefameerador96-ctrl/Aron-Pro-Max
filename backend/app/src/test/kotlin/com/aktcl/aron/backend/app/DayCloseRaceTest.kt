@@ -522,8 +522,8 @@ class DayCloseRaceTest {
         world = ApiWorld(repoRoot, mirrors = listOf(tag), clock = clock)
         world.fresh.db.jdbi.useHandle<Exception> { h ->
             // The DMO is a Final Submit delegate (cfg.day.final_submit_delegate_roles), so two people can race.
-            h.execute("INSERT INTO app.cfg_value (key, scope_type, scope_id, value, effective_from, config_version, reason) SELECT 'cfg.day.final_submit_delegate_roles', 'global', 0, '[\"DMO\"]'::jsonb, now() - interval '1 day', max(config_version), 'qa day-close race' FROM app.cfg_version")
-            h.execute("INSERT INTO app.cfg_value (key, scope_type, scope_id, value, effective_from, config_version, reason) SELECT 'cfg.sync.family_skip_after', 'global', 0, '1000'::jsonb, now() - interval '1 day', max(config_version), 'qa day-close race' FROM app.cfg_version")
+            h.execute("INSERT INTO app.cfg_value (key, scope_type, scope_id, value, effective_from, config_version, reason) SELECT 'cfg.day.final_submit_delegate_roles', 'global', 0, '[\"DMO\"]'::jsonb, TIMESTAMPTZ '${ApiWorld.CFG_FROM}', max(config_version), 'qa day-close race' FROM app.cfg_version")
+            h.execute("INSERT INTO app.cfg_value (key, scope_type, scope_id, value, effective_from, config_version, reason) SELECT 'cfg.sync.family_skip_after', 'global', 0, '1000'::jsonb, TIMESTAMPTZ '${ApiWorld.CFG_FROM}', max(config_version), 'qa day-close race' FROM app.cfg_version")
             zone = h.createQuery("SELECT id FROM app.zone WHERE code = 'Z-$tag'").mapTo(Long::class.java).one()
             zoneRoutes = h.createQuery("SELECT id FROM app.route WHERE zone_id = :z AND status = 'active' ORDER BY id").bind("z", zone).mapTo(Long::class.java).list()
             adminId = h.createQuery("SELECT id FROM app.app_user WHERE username = 'admin1001'").mapTo(Long::class.java).one()
