@@ -6,13 +6,13 @@
 - Module test tokens (analytics TestTokens, config ConfigTestSupport, masterdata TestTokens/AdminProductsHarness) give ADMIN, SUPERADMIN and SUPPORT amr [pwd, mfa] since AZ-1; a test of a password-only admin token must build its own.
 - Queue order (lead): AZ-2, Q1 rest, Q2, AZ-3, AZ-1, Q5; report-only Q3/Q4/Q6/Q8. Q1/AZ-3/Q2 and Q5 build on lead-backend's unpromoted commits (8a571fa1, faae41f7, 45755543): merge the sha lead-backend calls checked before editing ConfigApi/ConfigScope/AdminPrices.
 
-## Items
-- AZ-2 (SUPPORT ran all 32 reports): DONE d39db691. REPORT_ROLES (was WEB_ROLES) drops SUPPORT; SUPPORT also cannot open others' export jobs (download URL); sync health (/v1/dashboards/sync-health) unchanged. Test SupportReportAccessTest (32 keys). web-dashboard told (catalog REPORT_ROLES and menu still show SUPPORT the reports). Opus checker: running.
-- AZ-1 (MFA only at login/refresh): DONE 68522d11. AuthGuard: web API token, role in cfg.auth.mfa_required_roles, amr without mfa -> 401 ERR_AUTH_MFA_INVALID on writes and on /v1/admin/config*, /v1/admin/enrolment-tokens* reads; /v1/auth/* and plain reads open; phones exempt. Test MfaPerRequestTest (old token after the flag turns on). Opus checker: running.
-- Q1 rest (config changes/versions/reach pending scope): waiting on lead-backend's checked sha.
-- Q2 (CONFIG_READERS too wide): after Q1.
-- AZ-3 (config list limits 1..500, default 100): after Q1 (same file).
-- Q5 (finance.backdate never grantable): investigated. Grants live per role in `app.role_grant_map` (V0002, no rows, no API); the token `perm` claim is always empty. Plan: the guard adds the role's grants from a cached lookup (JdbiUserStore, 10 s like the scope version) to the principal, so a grant or revoke (a row in role_grant_map) takes effect within seconds; waits on lead-backend 45755543 (price replay-first) reaching this branch.
-- Q3/Q4 (one ADMIN can loosen MFA roles / max_change_pct alone): reported, docs/requests/backend-authz-c3-keys.md (option B, value-triggered C3 in RiskClassifier, needs no migration).
-- Q6 (pii claim never set): reported, docs/requests/backend-authz-pii-reveal.md (safe default today).
-- Q8 (enrolment-token reads refused to DMO/WM): stricter than docs/24, kept (lead).
+## Items (2026-10-18 ~05:10 UTC; nothing pushed yet: the lead's train order is tso -> qa 12b8cc4f -> lead-backend batch 2 -> backend-authz; rebuild on INT after batch 2, full CI + :backend:app:test green, ONE push, then 'ready <sha>')
+- Branch carries INT 60485582 + lead-backend d7c82910 + qa 12b8cc4f. My ReleaseAdmin/AuthzAuditTest edits were dropped (lead ruling: lead-backend owns the releases fix, qa owns the audit files); my baseline deletions are separate commits (e5792260, 2af3de98).
+- AZ-2 (SUPPORT reports): DONE d39db691 + 15d2cf90 (WEB_ROLES kept as deprecated alias of REPORT_ROLES). Opus PASS.
+- AZ-6 (SUPPORT export log/jobs): DONE 30c214d8; positive controls c1ec08e9 (SupportAccessControlTest).
+- AZ-1 (MFA per request): DONE 68522d11 + 83097001 (checker blocker: percent-encoded path). Opus FAIL -> fixed, encoded paths in the test.
+- Q2 + Q1 rest + AZ-5 (config readers): DONE 96a0ad26 + ba56d67f. Readers ADMIN, SUPERADMIN; TSO only resolve of cfg.web.entry_classes at a zone in reach, now (checker B2). DECISIONS D-AUTHZ-Q2. Opus: FAIL (B1 scope-cases name, B2 any key) -> fixed; re-check running.
+- AZ-3 (limits 1..500, default 100; config lists + device-otps): DONE 96a0ad26. The 3 LIMIT-CONTRACT default baseline lines are a probe artifact (qa told).
+- Q5 (finance.backdate never grantable): DONE ece14b39. Grants per role from app.role_grant_map via JdbiUserStore (10 s cache), added by the guard to every API principal. No API writes role_grant_map (SQL only) — see the checker result. Opus check running.
+- Q3/Q4: reported, docs/requests/backend-authz-c3-keys.md. Q6: reported, docs/requests/backend-authz-pii-reveal.md. Q8: kept stricter (lead).
+- Web follow-ups sent to web-dashboard: SUPPORT menu (reports, config pages), AZ-1 sign-in-again UX for 401 ERR_AUTH_MFA_INVALID.
