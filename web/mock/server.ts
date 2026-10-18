@@ -60,6 +60,8 @@ export interface StubResult { status: number; body?: unknown; headers?: Record<s
 export interface Stub { method: string; path: string | RegExp; fn: (call: StubCall, match: RegExpMatchArray | null) => StubResult | Promise<StubResult> }
 
 interface State {
+  /** Test knob: API paths starting with this answer 500 (screenshots of the error states). */
+  failPrefix: string | null;
   stubs: Stub[];
   calls: StubCall[];
   users: Record<string, MockUser>;
@@ -103,7 +105,7 @@ export function createMock(opts: MockOptions = {}): { server: Server; state: Sta
 
 function freshState(accessTtlS = Number(process.env.MOCK_ACCESS_TTL_S ?? 900)): State {
   const tables = seedTables();
-  return { stubs: [], calls: [], users: users(), tables, blobs: new Map(), custom: { tables, ...seedCustom() }, codeLists: seedCodeLists(), bulkBatches: new Map(), clusters: tables.clusters as unknown as Cluster[], audit: [], access: new Map(), refresh: new Map(), mfaTokens: new Map(), mfaEnrolled: new Set(["admin1", "madmin1", "msupport1", "support1", "pwmfa1"]), pwcTokens: new Map(), refreshCount: 0, nextId: 100, accessTtlS, dash: freshDashStore(), cfg: freshConfigStore() };
+  return { failPrefix: null, stubs: [], calls: [], users: users(), tables, blobs: new Map(), custom: { tables, ...seedCustom() }, codeLists: seedCodeLists(), bulkBatches: new Map(), clusters: tables.clusters as unknown as Cluster[], audit: [], access: new Map(), refresh: new Map(), mfaTokens: new Map(), mfaEnrolled: new Set(["admin1", "madmin1", "msupport1", "support1", "pwmfa1"]), pwcTokens: new Map(), refreshCount: 0, nextId: 100, accessTtlS, dash: freshDashStore(), cfg: freshConfigStore() };
 }
 
 function problem(status: number, code: ProblemCode, extra: Partial<Problem> = {}): Problem {
@@ -230,6 +232,10 @@ async function handle(state: State, reset: () => void, req: IncomingMessage, res
     audit(state, as, b.entity, b.entity_id, b.action, b.before, b.after, b.reason);
     return send(res, 204, undefined);
   }
+  if (path === "/__mock/fail" && method === "POST") {
+    state.failPrefix = ((await readJson(req)) as { prefix?: string | null } | undefined)?.prefix ?? null;
+    return send(res, 204, undefined);
+  }
   if (path === "/__mock/tutorial" && method === "POST") {
     state.dash.tutorialExtra.push((await readJson(req)) as DashStore["tutorialExtra"][number]);
     return send(res, 204, undefined);
@@ -344,6 +350,8 @@ async function handle(state: State, reset: () => void, req: IncomingMessage, res
     problem,
     audit: (entity, id, action, before, after, reason) => audit(state, user, entity, id, action, before, after, reason),
   })) return;
+
+  if (state.failPrefix && path.startsWith(state.failPrefix)) return send(res, 500, problem(500, "ERR_INTERNAL"));
 
   if (!user.master && await handleDash({
     user: { role: user.summary.role, scope: user.scope, id: user.summary.user_id, name: user.summary.full_name, password: state.dash.passwords[user.summary.user_id] ?? user.password },
