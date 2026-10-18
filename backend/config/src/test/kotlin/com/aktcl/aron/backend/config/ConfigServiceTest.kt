@@ -140,6 +140,28 @@ class ConfigServiceTest {
         assertEquals(120, svc.resolve("cfg.geo.radius_m", "global", 0, clock.now()).value.jsonPrimitive.int)
     }
 
+    /** Q3/Q4 option B: loosening MFA roles or the price-change rail needs a second SUPERADMIN (C3); tightening or no change stays C2. */
+    @Test
+    fun loosenedSecurityControlsNeedASecondApproverAndTightenedOnesDoNot() {
+        fun roles(vararg r: String) = ConfigChangeItemIn("cfg.auth.mfa_required_roles", "global", 0, kotlinx.serialization.json.JsonArray(r.map { JsonPrimitive(it) }), null, null)
+        fun mfa(vararg r: String) = req(roles(*r), reason = "Review of the admin second factor policy")
+        fun pct(v: Int) = req(item("cfg.price.max_change_pct", "global", 0, v), reason = "Review of the price change rail threshold")
+        // Loosening: one ADMIN cannot even ask; a SUPERADMIN's request waits for a second SUPERADMIN.
+        for (r in listOf(mfa(), mfa("ADMIN", "SUPERADMIN"), pct(100), pct(16))) {
+            assertEquals(ProblemCode.ERR_FORBIDDEN, code { svc.create(admin, r, null, null) }, r.changes.toString())
+            val c = svc.create(sa1, r, null, null)
+            assertEquals(3, c.risk_class, r.changes.toString()); assertEquals("pending_approval", c.status)
+            assertEquals(ProblemCode.ERR_CFG_SELF_APPROVAL, code { svc.decide(sa1, c.change_id, ConfigDecisionIn("approve"), null) })
+            svc.decide(sa1, c.change_id, ConfigDecisionIn("cancel"), null)
+        }
+        // Tightening, or the same value: C2, scheduled by one ADMIN after the delay.
+        for (r in listOf(mfa("ADMIN", "SUPERADMIN", "SUPPORT", "TSO"), mfa("ADMIN", "SUPERADMIN", "SUPPORT"), pct(10), pct(15))) {
+            val c = svc.create(admin, r, null, null)
+            assertEquals(2, c.risk_class, r.changes.toString()); assertEquals("scheduled", c.status)
+            svc.decide(admin, c.change_id, ConfigDecisionIn("cancel"), null)
+        }
+    }
+
     @Test
     fun radiusAbove150ThatGrowsTheValueEscalatesToC3AtAnyLevel() {
         val outlet = freshOutlet()
