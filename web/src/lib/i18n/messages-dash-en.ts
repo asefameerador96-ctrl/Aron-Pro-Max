@@ -292,6 +292,7 @@ export const dashEn = {
   "dashboard.zones.by_net": "By net sales",
   "dashboard.zones.empty": "No zones in reach yet",
   "dashboard.channels.empty": "No channel figures yet",
+  "dashboard.map.empty": "No SR positions or outlets to show on the map for this day and filter.",
   "dashboard.map.show": "Show map",
   "dashboard.map.summary": "{srs} SRs · {outlets} outlets",
   "dashboard.map.hint": "The map loads only when you ask, so a visit costs no map load.",
