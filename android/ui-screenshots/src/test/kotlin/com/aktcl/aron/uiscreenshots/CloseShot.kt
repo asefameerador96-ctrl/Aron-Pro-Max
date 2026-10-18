@@ -160,6 +160,9 @@ class CloseShot {
     @Test fun parity_tasks_bn() = shot("parity_tasks_bn") { Parity("টাস্ক", null) { Tasks() } }
     @Test fun parity_tasks_empty_bn() = shot("parity_tasks_empty_bn") { Parity("টাস্ক", null) { TasksEmpty() } }
 
+    @Test fun parity_login_bn() = shot("parity_login_bn") { Login() }
+    @Test fun parity_otp_bn() = shot("parity_otp_bn") { Otp() }
+
     @Test fun parity_summary_bn() = shot("parity_summary_bn") { Parity("বিক্রয় সারসংক্ষেপ", com.aktcl.aron.core.ui.R.drawable.aron_art_summary) { Summary() } }
 
     @Test fun attendance_a_bn_light() = shot("close_attendance_a_bn_light") { AttendanceA() }
