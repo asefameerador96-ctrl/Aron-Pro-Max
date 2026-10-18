@@ -13,6 +13,38 @@ data class CountRow(val recordType: String, val device: Int, val server: Int?) {
     val matches: Boolean get() = server != null && server == device
 }
 
+/** One line of the reconciliation table as shown: a record type, or several grouped by [SubmitDisplay.views]. */
+data class CountView(val key: String, val device: Int, val server: Int?, val matches: Boolean)
+
+/**
+ * DISPLAY ONLY grouping of the reconciliation rows (the AMO manual lists nine rows: Outlet, Sale, Stock, QC, Promotion,
+ * Distribution and OOS, Price compliance, Joint call, Survey, while the phone counts one row per record type). The submit gate and
+ * the day_submit payload read the per-type [CountRow]s and never see this: nothing here changes, sorts or drops them.
+ */
+object SubmitDisplay {
+    /**
+     * The rows to show. Without [groups] one view per row, in order. With [groups] (each group lists record types, the first one names
+     * the group), one view per group that has any member, in the groups' order: device summed, server summed (unknown when any member's
+     * server count is unknown), and `matches` only when EVERY member matches (a +1 and a -1 never cancel). Types in no group follow
+     * as their own rows, in their original order, so no count is hidden.
+     */
+    fun views(counts: List<CountRow>, groups: List<List<String>>?): List<CountView> {
+        if (groups == null) return counts.map { CountView(it.recordType, it.device, it.server, it.matches) }
+        val grouped = groups.flatten().toSet()
+        val out = ArrayList<CountView>()
+        for (g in groups) {
+            val members = counts.filter { it.recordType in g }
+            if (members.isEmpty()) continue
+            out += CountView(
+                g.first(), members.sumOf { it.device }, if (members.any { it.server == null }) null else members.sumOf { it.server!! },
+                members.all { it.matches },
+            )
+        }
+        counts.filter { it.recordType !in grouped }.forEach { out += CountView(it.recordType, it.device, it.server, it.matches) }
+        return out
+    }
+}
+
 /** Dues owed by retailers at submit: a warning, never a block (assumed rule, Q-UI-08). */
 data class DuesAtSubmit(val retailersWithDues: Int, val outstandingMtk: Long)
 

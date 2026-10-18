@@ -224,6 +224,15 @@ private fun AmoVerifyHost(day: AmoDay, uuid: String?, onDone: () -> Unit, onGone
     var noFix by remember { mutableStateOf(false) }
     var saveFailed by remember { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
+    // The manual's success dialog: the decision is saved on this phone and goes out with the next sync; OK returns to the list.
+    var savedDialog by rememberSaveable(uuid) { mutableStateOf(false) }
+    if (savedDialog) {
+        com.aktcl.aron.core.ui.AronInfoDialog(
+            stringResource(AmoR.string.amo_success_title), stringResource(AmoR.string.amo_verify_saved), stringResource(AmoR.string.amo_ok),
+            onDismiss = { savedDialog = false; onDone() },
+        )
+        return
+    }
     val bangla = androidx.compose.ui.platform.LocalConfiguration.current.locales[0].language == "bn"
     val outlet = remember(req.outletId, day.zoneOutlets.size) { day.zoneOutlets.firstOrNull { it.outletId == req.outletId } }
     fun subLabel(id: String?) = id?.toLongOrNull()?.let { i -> subs.firstOrNull { it.id == i } }?.let { if (bangla) it.labelBn ?: it.labelEn else it.labelEn } ?: id
@@ -257,7 +266,7 @@ private fun AmoVerifyHost(day: AmoDay, uuid: String?, onDone: () -> Unit, onGone
             } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { threw = true; false }
             busy = false
             saveFailed = threw
-            if (ok) { day.drafts.clear(draftKey); onDone() } else noFix = !threw
+            if (ok) { day.drafts.clear(draftKey); savedDialog = true } else noFix = !threw
         }
     }
     com.aktcl.aron.feature.amo.VerifyFormContent(

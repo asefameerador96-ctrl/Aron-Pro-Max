@@ -287,4 +287,6 @@
     <string name="amo_ops_section">দোকান সংক্রান্ত অপারেশন্স</string>
     <string name="amo_mo_note">আউটলেটের ছবি তুলুন। ছবির লোকেশন আউটলেটের অবস্থান সংশোধনের অনুরোধ হিসেবে অনুমোদনের জন্য যাবে।</string>
     <string name="amo_mo_continue">এগিয়ে যান</string>
+    <string name="amo_success_title">সফল</string>
+    <string name="amo_ok">ওকে</string>
 </resources>
