@@ -24,7 +24,7 @@ Owner: backend-authz (session_01LaW5TQ87wr3m8HBjQVjcZG, lane/backend-authz), rou
 | AZ-1 | low | No route checks the token's `amr`. After `cfg.auth.mfa_required_roles` turns on, a password-only token minted before still writes until it expires (15 min on the web): ADMIN, SUPERADMIN and SUPPORT (dues adjustments, config changes, entry unlocks, enrolment tokens, device OTPs). MFA is enforced only at login and refresh. | `STEPUP …` (3) | routed |
 | AZ-2 | medium | SUPPORT runs all 32 business reports (`POST /v1/reports/{key}/query` → 200), against docs/24 s8.5 (SUPPORT: sync health only). `ReportEngine.WEB_ROLES` includes SUPPORT; `DASHBOARD_ROLES` already excludes it. | `ROLE POST /v1/reports/{}/query SUPPORT docs-denied` | routed |
 | AZ-3 | low (contract) | Config lists (changes, values, versions, reach pending) and the device-OTP panel cap `limit` at 200 with a default page of 50; the contract's `Limit` is 1..500, default 100. | `LIMIT-CONTRACT …` (8) | routed |
-| AZ-4 | medium (scope) | TSO and DMO read the other division's zone config value (values, resolve), its change set (list and by id) and its version by id. Code: `ConfigService.values/changes/change/resolve`, `versionDetail`. | (10) | routed |
+| AZ-4 | medium (scope) | TSO and DMO read the other division's zone config value (values, resolve), its change set (list and by id) and its version by id. Code: `ConfigService.values/changes/change/resolve`, `versionDetail`. | (6 left) | **partly fixed**: values and resolve are reach-scoped by lead-backend 8a13fe8 (4 lines deleted, 2026-10-18); changes and versions still open |
 | AZ-5 | medium | `CONFIG_READERS` lets DMO, WM, TOP, ANALYST and SUPPORT read all 15 config GET routes; docs/24 s8.5 gives them "—". The lead's ruling: follow docs/24 unless a built screen needs the read. | (75, one per route and role) | routed |
 | AZ-6 | medium | SUPPORT lists every user's report exports and opens anyone's export job; a finished job carries a signed read URL (`ReportApi.ADMIN_VIEWERS`, `ExportJobs.kt:142-144`). TSO and DMO see only their own. | (3) | routed |
 
@@ -36,6 +36,12 @@ row needs updating:** prices R, route assignments R, device OTP issue.
 - Scope must still hold, and is kept as positive controls: a TSO issues OTPs only for SRs in its own reach, and reads
   prices read-only.
 
+**Probed since 2026-10-18 (lead-backend 8a13fe8):** `GET /v1/admin/releases` and `/policy` (SUPPORT, ADMIN, SUPERADMIN),
+`POST /v1/admin/releases` (ADMIN, SUPERADMIN; a valid draft), `PATCH /v1/admin/releases/{id}` publishing a draft
+(SUPERADMIN only, never the author). Every other role gets 403. No finding. **AMO reports (lead's ruling):** the AMO
+runs `std-memo`, `sales-summary` (F-AMO-032/033) and `route-memo`, `route-std` (docs/requests/android-amo-report-access.md),
+zone-scoped; the other 28 are refused. No finding.
+
 **Note, contract (not a finding yet):** several reach refusals answer 403 `ERR_FORBIDDEN` instead of the contract's
 `ERR_OUT_OF_SCOPE`. They are refused correctly; only the code differs. Affected:
 - the five dashboards (summary, geo-validation, daily-tracking, login-submit, sync-health);
@@ -46,7 +52,6 @@ row needs updating:** prices R, route assignments R, device OTP issue.
 **Questions still open** (they never fail the test):
 - C2 → C3 for `cfg.auth.mfa_required_roles` and `cfg.price.max_change_pct`: agreed in principle, but it needs a
   registry migration (a final-account item; `docs/requests/backend-authz-c3-keys.md`).
-- `/v1/admin/releases*` is built by lead-backend (4e0a3206): qa adds it to the probe set when it is on INT.
 - The `pii` claim is never set, so even ADMIN sees masked phones: the safe default, a later feature.
 - `editor_permission` is never enforced: backend-authz (Q5).
 - DMO and WM are refused enrolment-token reads that docs/24 gives them: stricter, so keep it.
