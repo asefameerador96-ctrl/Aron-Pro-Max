@@ -22,12 +22,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
-import com.aktcl.aron.core.ui.AronBanner
-import com.aktcl.aron.core.ui.AronCard
-import com.aktcl.aron.core.ui.AronTextButton
 import com.aktcl.aron.core.ui.AronTokens
 import com.aktcl.aron.core.ui.BannerKind
 import com.aktcl.aron.core.ui.LocalAronColors
+import com.aktcl.aron.core.ui.LocalAronLook
 import com.aktcl.aron.core.ui.aronPageBackground
 import com.aktcl.aron.core.ui.skeleton
 import kotlinx.coroutines.launch
@@ -69,21 +67,21 @@ fun LocationNoticeContent(
         }
     }) {
         ScrollColumn(contentPadding = PaddingValues(AronTokens.Space.Screen), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.M)) {
-            AronCard(Modifier.fillMaxWidth()) {
+            AuthCard(Modifier.fillMaxWidth()) {
                 Column(Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.M)) {
-                    Text(stringResource(R.string.location_notice_title_bn), style = MaterialTheme.typography.titleLarge, color = c.textPrimary)
-                    Text(stringResource(R.string.location_notice_title_en), style = MaterialTheme.typography.titleSmall, color = c.textSecondary)
-                    Text(stringResource(R.string.location_notice_body_bn), style = MaterialTheme.typography.bodyLarge, color = c.textPrimary)
+                    Text(stringResource(R.string.location_notice_title_bn), style = MaterialTheme.typography.titleLarge, color = LocalAronLook.current.ink)
+                    Text(stringResource(R.string.location_notice_title_en), style = MaterialTheme.typography.titleSmall, color = LocalAronLook.current.inkMuted)
+                    Text(stringResource(R.string.location_notice_body_bn), style = MaterialTheme.typography.bodyLarge, color = LocalAronLook.current.ink)
                     CardDivider()
-                    Text(stringResource(R.string.location_notice_body_en), style = MaterialTheme.typography.bodyLarge, color = c.textPrimary)
+                    Text(stringResource(R.string.location_notice_body_en), style = MaterialTheme.typography.bodyLarge, color = LocalAronLook.current.ink)
                 }
             }
-            if (required) Text(stringResource(R.string.location_notice_required_hint), style = MaterialTheme.typography.bodyMedium, color = c.textSecondary)
+            if (required) Text(stringResource(R.string.location_notice_required_hint), style = MaterialTheme.typography.bodyMedium, color = LocalAronLook.current.inkMuted)
             if (acceptFailed) {
-                AronBanner(stringResource(R.string.location_notice_failed), Modifier.testTag(LocationNoticeTags.FAILED), kind = BannerKind.Error)
+                AuthBanner(stringResource(R.string.location_notice_failed), Modifier.testTag(LocationNoticeTags.FAILED), kind = BannerKind.Error)
             }
             // A rep signed in by mistake on a shared phone leaves without accepting (checker).
-            onLogout?.let { AronTextButton(stringResource(R.string.location_notice_logout), it, Modifier.fillMaxWidth().testTag(LocationNoticeTags.LOGOUT)) }
+            onLogout?.let { AuthLink(stringResource(R.string.location_notice_logout), it, Modifier.fillMaxWidth().testTag(LocationNoticeTags.LOGOUT)) }
         }
     }
 }

@@ -20,15 +20,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
-import com.aktcl.aron.core.ui.AronBanner
-import com.aktcl.aron.core.ui.AronCard
-import com.aktcl.aron.core.ui.AronEmptyState
-import com.aktcl.aron.core.ui.AronIcons
-import com.aktcl.aron.core.ui.AronListRow
-import com.aktcl.aron.core.ui.AronSectionLabel
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.ui.semantics.Role
+import com.aktcl.aron.core.ui.AronLook
 import com.aktcl.aron.core.ui.AronTokens
-import com.aktcl.aron.core.ui.BannerKind
-import com.aktcl.aron.core.ui.LocalAronColors
+import com.aktcl.aron.core.ui.LocalAronLook
+import com.aktcl.aron.core.ui.aron.AronInfoCard
 import com.aktcl.aron.core.ui.MoneyText
 import com.aktcl.aron.core.ui.localizedDigits
 import com.aktcl.aron.feature.memo.R
@@ -44,36 +43,45 @@ fun SaleHistoryScreen(
     h: SaleHistory, offlineBanner: Boolean, modifier: Modifier = Modifier,
     skuName: (Long) -> String = { it.toString() }, skuUnit: (Long) -> String = { "" },
 ) {
-    val c = LocalAronColors.current
+    val look = LocalAronLook.current
     var picked by rememberSaveable { mutableStateOf<String?>(null) }
     val day = h.days.firstOrNull { it.businessDate == picked } ?: h.days.firstOrNull()
-    ScrollColumn(modifier, contentPadding = PaddingValues(horizontal = AronTokens.Space.Screen), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.M)) {
-        if (offlineBanner || h.fromServer) AronBanner(stringResource(R.string.history_offline), kind = BannerKind.Offline)
-        if (h.days.isEmpty()) AronEmptyState(stringResource(R.string.history_empty), icon = AronIcons.Calendar)
+    ScrollColumn(modifier.background(look.page), contentPadding = PaddingValues(AronTokens.Space.Screen), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.M)) {
+        if (offlineBanner || h.fromServer) AronInfoCard(stringResource(R.string.history_offline))
+        if (h.days.isEmpty()) {
+            Text(
+                stringResource(R.string.history_empty), style = MaterialTheme.typography.bodyLarge, color = look.inkMuted, textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth().padding(vertical = AronTokens.Space.Xl),
+            )
+        }
         if (h.days.isNotEmpty()) {
-            AronSectionLabel(stringResource(R.string.history_pick_date))
-            Column(Modifier.fillMaxWidth()) {
+            Text(stringResource(R.string.history_pick_date), style = MaterialTheme.typography.titleMedium, color = look.purple)
+            WhiteCard {
                 h.days.forEachIndexed { i, d ->
-                    AronListRow(
-                        localizedDigits(d.businessDate), Modifier.testTag(HistoryTags.date(d.businessDate)), onClick = { picked = d.businessDate },
-                        trailing = if (d.businessDate == day?.businessDate) "\u2713" else null, flat = true, position = rowPosition(i, h.days.size), divider = i < h.days.lastIndex,
-                    )
+                    if (i > 0) CardDivider()
+                    Row(
+                        Modifier.fillMaxWidth().heightIn(min = AronLook.Touch).testTag(HistoryTags.date(d.businessDate))
+                            .clickable(role = Role.Button) { picked = d.businessDate }.padding(AronTokens.Space.L),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(localizedDigits(d.businessDate), style = MaterialTheme.typography.titleSmall, color = look.purple, modifier = Modifier.weight(1f))
+                        if (d.businessDate == day?.businessDate) Text("\u2713", style = MaterialTheme.typography.titleSmall, color = look.purple)
+                    }
                 }
             }
         }
         if (day != null) {
-            AronCard(Modifier.fillMaxWidth().testTag(HistoryTags.TABLE)) {
-                Column(Modifier.fillMaxWidth().padding(AronTokens.Space.L), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
-                    Pill(c.accentContainer, c.accentOnContainer, AronIcons.Calendar, localizedDigits(day.businessDate))
-                    CardDivider()
+            WhiteCard(Modifier.testTag(HistoryTags.TABLE)) {
+                Column(Modifier.fillMaxWidth().padding(AronTokens.Space.M), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
+                    Text(localizedDigits(day.businessDate), style = MaterialTheme.typography.titleSmall, color = look.purple, modifier = Modifier.padding(horizontal = AronTokens.Space.M))
                     TableHeader(stringResource(R.string.memo_col_sku), stringResource(R.string.memo_col_qty), stringResource(R.string.memo_col_price))
                     day.skuRows.forEach { r ->
                         TableRow(skuName(r.skuId), qtyText(r.qtyBase, skuUnit(r.skuId)), amount(r.valueMtk))
                     }
                     CardDivider()
-                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        Text(stringResource(R.string.history_footer), style = MaterialTheme.typography.titleSmall, color = c.textPrimary, modifier = Modifier.weight(1f))
-                        MoneyText(money(day.skuTotalMtk), style = MaterialTheme.typography.headlineMedium, textAlign = TextAlign.End, modifier = Modifier.testTag(HistoryTags.TOTAL))
+                    Row(Modifier.fillMaxWidth().padding(horizontal = AronTokens.Space.M), verticalAlignment = Alignment.CenterVertically) {
+                        Text(stringResource(R.string.history_footer), style = MaterialTheme.typography.titleMedium, color = look.purple, modifier = Modifier.weight(1f))
+                        MoneyText(money(day.skuTotalMtk), style = MaterialTheme.typography.headlineMedium, color = look.purple, textAlign = TextAlign.End, modifier = Modifier.testTag(HistoryTags.TOTAL))
                     }
                 }
             }

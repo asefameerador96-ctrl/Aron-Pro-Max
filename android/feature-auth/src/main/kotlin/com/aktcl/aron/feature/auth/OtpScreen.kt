@@ -38,13 +38,11 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.aktcl.aron.core.common.AppLanguage
-import com.aktcl.aron.core.ui.AronBanner
-import com.aktcl.aron.core.ui.AronCard
 import com.aktcl.aron.core.ui.AronIcons
-import com.aktcl.aron.core.ui.AronTextButton
 import com.aktcl.aron.core.ui.AronTokens
 import com.aktcl.aron.core.ui.BannerKind
 import com.aktcl.aron.core.ui.LocalAronColors
+import com.aktcl.aron.core.ui.LocalAronLook
 import com.aktcl.aron.core.ui.localizedDigits
 
 object OtpTags {
@@ -93,19 +91,19 @@ fun OtpContent(
                 BrandBlock(appTitle)
                 Spacer(Modifier.height(AronTokens.Space.L))
             }
-            AronCard(Modifier.fillMaxWidth()) {
+            AuthCard(Modifier.fillMaxWidth()) {
                 Column(Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.L), horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(stringResource(R.string.otp_title), style = MaterialTheme.typography.titleLarge, color = c.textPrimary, modifier = Modifier.fillMaxWidth())
+                    Text(stringResource(R.string.otp_title), style = MaterialTheme.typography.titleLarge, color = LocalAronLook.current.ink, modifier = Modifier.fillMaxWidth())
                     // the code errors replace the hint in one danger line (screens-sr s1); the other refusals are banners under the boxes
                     val codeError = state.error?.takeIf { it == OtpError.INVALID || it == OtpError.EXPIRED || it == OtpError.ATTEMPTS_EXCEEDED }
                     if (codeError != null) {
                         DangerLine(stringResource(when (codeError) { OtpError.INVALID -> R.string.otp_invalid; OtpError.EXPIRED -> R.string.otp_expired; else -> R.string.otp_attempts }), Modifier.testTag(OtpTags.MESSAGE))
                     } else {
-                        Text(stringResource(R.string.otp_hint), style = MaterialTheme.typography.bodyLarge, color = c.textSecondary, modifier = Modifier.fillMaxWidth())
+                        Text(stringResource(R.string.otp_hint), style = MaterialTheme.typography.bodyLarge, color = LocalAronLook.current.inkMuted, modifier = Modifier.fillMaxWidth())
                     }
                     OtpBoxes(state.digits, onDigits, enabled = !state.bound && !state.busy, error = codeError != null)
                     state.error?.takeIf { codeError == null }?.let {
-                        AronBanner(
+                        AuthBanner(
                             stringResource(when (it) {
                                 OtpError.LOCKED -> R.string.otp_locked
                                 OtpError.OFFLINE -> R.string.otp_offline
@@ -116,10 +114,10 @@ fun OtpContent(
                             Modifier.testTag(OtpTags.MESSAGE), if (it == OtpError.OFFLINE) BannerKind.Offline else BannerKind.Error,
                         )
                     }
-                    if (state.bound) AronBanner(stringResource(R.string.otp_bound), kind = BannerKind.Success)
+                    if (state.bound) AuthBanner(stringResource(R.string.otp_bound), kind = BannerKind.Success)
                 }
             }
-            if (onBack != null) AronTextButton(stringResource(R.string.otp_back), onBack, Modifier.fillMaxWidth().testTag(OtpTags.BACK), enabled = !state.busy)
+            if (onBack != null) AuthLink(stringResource(R.string.otp_back), onBack, Modifier.fillMaxWidth().testTag(OtpTags.BACK), enabled = !state.busy)
         }
     }
 }
@@ -167,7 +165,7 @@ private fun OtpBoxes(digits: String, onDigits: (String) -> Unit, enabled: Boolea
                     },
                     contentAlignment = Alignment.Center,
                 ) {
-                    Text(shown.getOrNull(i)?.toString().orEmpty(), style = MaterialTheme.typography.headlineLarge, color = c.textPrimary, textAlign = TextAlign.Center)
+                    Text(shown.getOrNull(i)?.toString().orEmpty(), style = MaterialTheme.typography.headlineLarge, color = LocalAronLook.current.ink, textAlign = TextAlign.Center)
                 }
             }
         }
