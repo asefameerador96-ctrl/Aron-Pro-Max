@@ -406,10 +406,9 @@ class AuthzAuditTest {
             RouteSpec("GET /v1/dashboards/sync-health", g, { "/v1/dashboards/sync-health?business_date=$day" }, null, dashDocs + "SUPPORT"),
             // Everyone lists their own exports (ReportApi); judged per owner in exports().
             RouteSpec("GET /v1/report-exports", g, { "/v1/report-exports" }, null, all),
-            // Releases (built by lead-backend, Q7; docs/24 s8.5: SUPPORT R, ADMIN W draft, SUPERADMIN publish).
-            RouteSpec("GET /v1/admin/releases", g, { "/v1/admin/releases" }, null, setOf("SUPPORT", "ADMIN", "SUPERADMIN")),
-            RouteSpec("POST /v1/admin/releases", p, { "/v1/admin/releases" }, { "{}" }, setOf("ADMIN", "SUPERADMIN")),
-            // Contract only (targets and Astha outlet-SKU entry deferred, docs/27): 404 for everyone.
+            // Contract only (releases not built; targets and Astha outlet-SKU entry deferred, docs/27): 404 for everyone.
+            RouteSpec("GET /v1/admin/releases", g, { "/v1/admin/releases" }, null, emptySet()),
+            RouteSpec("POST /v1/admin/releases", p, { "/v1/admin/releases" }, { "{}" }, emptySet()),
             RouteSpec("GET /v1/dashboards/targets", g, { "/v1/dashboards/targets" }, null, emptySet()),
             RouteSpec("POST /v1/web-entry/outlet-sku", p, { "/v1/web-entry/outlet-sku" }, { "{}" }, emptySet()),
         )
@@ -437,8 +436,8 @@ class AuthzAuditTest {
     // ---- reports (docs/24 s8.5: AMO only its app-home reports, SUPPORT and SR none) ------------------------------------
 
     private val reportKeys = mutableListOf<String>()
-    /** F-AMO-032 and F-AMO-033 (F-API-017b) plus the AMO Report tile's per-route reports (docs/requests/android-amo-report-access.md, D-AMO-REPORT-01). */
-    private val amoReports = setOf("std-memo", "sales-summary", "route-memo", "route-std")
+    /** F-AMO-032 and F-AMO-033 (F-API-017b): the two reports the AMO app shows. */
+    private val amoReports = setOf("std-memo", "sales-summary")
 
     private fun reportDocs(role: String, key: String) = when (role) {
         "SR", "SUPPORT" -> false

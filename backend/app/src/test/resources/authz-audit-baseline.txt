@@ -1,6 +1,13 @@
 # AuthzAuditTest (qa, 2026-10-18): confirmed authorisation findings, one line per `CHECK route role variant`.
 # May only SHRINK; every line is a defect routed to lead-backend (evidence in build/authz-audit.txt).
-# AZ-1 (MFA per request), AZ-2 (SUPPORT reports) and AZ-6 (SUPPORT exports): fixed on lane/backend-authz, lines removed.
+# AZ-1 (low): no route checks the access token's amr. MFA is enforced at login and refresh only, so an ADMIN, SUPERADMIN or
+# SUPPORT token minted password-only before cfg.auth.mfa_required_roles named the role keeps writing until it expires (web: 15 min).
+STEPUP admin-writes ADMIN amr-pwd-token-under-mfa-policy
+STEPUP admin-writes SUPERADMIN amr-pwd-token-under-mfa-policy
+STEPUP admin-writes SUPPORT amr-pwd-token-under-mfa-policy
+# AZ-2 (medium): SUPPORT runs every business report; docs/24 s8.5 gives SUPPORT 'R (sync health)' only (DASHBOARD_ROLES already
+# excludes it; ReportEngine.WEB_ROLES includes it).
+ROLE POST /v1/reports/{}/query SUPPORT docs-denied
 # AZ-3 (low, contract): the config lists and the device-OTP panel cap limit at 200 with a default page of 50; the contract Limit is
 # 1..500, default 100. A contract-valid limit 201..500 is refused 400, and the default page is 50. Never unbounded.
 LIMIT-CONTRACT GET /v1/admin/config/changes ADMIN default
@@ -17,6 +24,10 @@ IDOR GET /v1/admin/config/changes DMO list
 IDOR GET /v1/admin/config/changes TSO list
 IDOR GET /v1/admin/config/changes/{} DMO other-division-change
 IDOR GET /v1/admin/config/changes/{} TSO other-division-change
+IDOR GET /v1/admin/config/resolve DMO other-zone
+IDOR GET /v1/admin/config/resolve TSO other-zone
+IDOR GET /v1/admin/config/values DMO other-zone
+IDOR GET /v1/admin/config/values TSO other-zone
 IDOR GET /v1/admin/config/versions/{} DMO other-division-version
 IDOR GET /v1/admin/config/versions/{} TSO other-division-version
 # AZ-5 (medium): ConfigApi.CONFIG_READERS lets DMO, WM, TOP, ANALYST and SUPPORT read keys, values, changes, versions and the
@@ -88,3 +99,6 @@ ROLE GET /v1/admin/config/whatif TOP denied
 ROLE GET /v1/admin/config/whatif WM denied
 # AZ-6 (medium): SUPPORT lists every user's report exports and opens any export job (ReportApi.ADMIN_VIEWERS includes SUPPORT;
 # a done job carries a signed read URL of the file, ExportJobService.job). docs/24 s8.5 gives SUPPORT no reports.
+IDOR GET /v1/report-exports SUPPORT others-listed
+IDOR GET /v1/report-exports/{} SUPPORT export-of-DMO
+IDOR GET /v1/report-exports/{} SUPPORT export-of-TSO
