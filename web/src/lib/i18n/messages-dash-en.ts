@@ -282,7 +282,6 @@ export const dashEn = {
   "dashboard.refresh": "Refresh",
   "dashboard.kpi.net": "Net sales",
   "dashboard.kpi.outlets_visited": "Outlets visited",
-  "dashboard.kpi.visits_basis": "{visited} of {target} target outlets",
   "dashboard.kpi.login_basis": "{logged} of {target} routes logged in",
   "dashboard.kpi.submit_basis": "{submitted} of {logged} logged-in routes",
   "dashboard.delta.vs_yesterday": "vs yesterday",
@@ -377,7 +376,5 @@ export const dashEn = {
   "drill.title.login": "Login and upload status",
   "table.more": "Show {n} more rows",
   "error.ERR_WEB_MFA_RESIGNIN": "Sign in again with your authenticator code.",
-  "admin.cfgread.unavailable": "{what} is not available for your role (configuration reads are limited to administrators).",
-  "admin.cfgread.weekend": "The weekend days setting",
   "admin.audit.unavailable": "The audit log is not available yet. It will appear here once the server serves it.",
 } as const;
