@@ -1,5 +1,10 @@
 # backend-authz lane status
 
+## HANDOVER (session 4, 2026-10-18 ~22:20 UTC) — read this first
+- Same rules as below. Lead session_01MbUQSxrP7AB9tbyANjUTPS; INTEGRATOR now session_012aTvwNtkJci6g8oT3CwV3Y (never message it; the lead sends 'checked <sha>'); web-dashboard session_015FfhYC96ei2KQKhPYhFF1c; qa and lead-backend archived.
+- Done: D-AUDIT-PII-01 (lead ruling copied into DECISIONS + 'D-AUDIT-PII-01 implemented'). `AuditLog.write` redacts `AuditLog.PII` (and `AuditLog.GEO` outside entity `outlet`) to `[redacted]` before the insert; old rows untouched; chain verifies. Tests: AuditLogTest, AuditReadTest, AdminOutletsTest, AuditWriteRedactionTest. Opus checker PASS (no blockers; N2-N5 fixed; N1 = ANALYST/SUPPORT no longer see a personal member as changed in new rows, logged for the lead; N6 free text in clear, logged). CI backend command green locally before the push.
+- Check: this push's own CI run, then 'ready <sha>' to the lead, then ask for the next item (candidates in 'Open, logged' below: grant admin route with revoke audit; scheduled C2 change after the requester's grant is revoked; AdminPrices bumpListVersion outside the editor grant).
+
 ## HANDOVER (session 3 -> session 4, 2026-10-18 ~20:20 UTC) — read this first
 - Same rules as the blocks below. Lead session_01MbUQSxrP7AB9tbyANjUTPS; web-dashboard session_015FfhYC96ei2KQKhPYhFF1c; integrator session_01E5Npz6awntNxGPuFaaGjRF (never message it).
 - Done this session: (a) test-only flake fix BundlePreGenerationTest (bounded 5 s poll for an async advisory-lock release), 8924aba9, run 1150 green, lead checked. (b) PII reveal (D-AUTHZ-PII; V0086; contract additive: POST /v1/auth/reauth, Me.pii_until), pushed 24f56a23 (merges INT c91d9cc6); Opus checker PASS in round 3 (B1 export link needs the viewer's reveal, B2/B3/B4 every revealed read charges cfg.pii.list_rows_per_hour, N2/N10 guard order). Web told (route, fields, errors). D-AUDIT-PII-01 proposal written in DECISIONS (lead to rule; no write-time change made).
