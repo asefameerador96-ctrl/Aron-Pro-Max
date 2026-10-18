@@ -18,6 +18,12 @@ describe("SUPPORT on the dashboards", () => {
     for (const p of ["/daily-tracking", "/tso-daily-tracking", "/final-submit", "/leave", "/routes", "/products/brand", "/reports/retailers", "/api/bff/reports/retailers/export"]) expect(accessFor("SUPPORT", p), p).toBe("forbidden");
     for (const p of ["/", "/sync-health", "/credentials", "/tutorial", "/exceptions", "/device-otp", "/api/bff/password", "/api/bff/maps/load", "/admin/devices", "/_next/static/x.js"]) expect(accessFor("SUPPORT", p), p).toBe("ok");
   });
+  it("the audit log page is closed to SUPPORT (no read route), the config audit page is not", () => {
+    expect(accessFor("SUPPORT", "/admin/audit")).toBe("forbidden");
+    expect(accessFor("ADMIN", "/admin/audit")).toBe("ok");
+    expect(accessFor("SUPPORT", "/admin/config/audit")).toBe("ok");
+    expect(menuFor("SUPPORT").flatMap((x) => x.items.map((i) => i.href))).not.toContain("/admin/audit");
+  });
   it("other roles are untouched", () => {
     for (const r of ["TSO", "DMO", "ANALYST"] as const) for (const p of ["/daily-tracking", "/reports/retailers", "/sync-health"]) expect(accessFor(r, p)).toBe("ok");
   });

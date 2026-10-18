@@ -29,6 +29,7 @@ export const TEAM_CREDENTIAL_ROLES = ["TSO", "SUPPORT", "ADMIN", "SUPERADMIN"] a
 export const OUTLET_REQUEST_RAISE_ROLES = ["TSO", "DMO"] as const satisfies readonly Role[];
 
 export const ADMIN_PATH_ROLES: readonly { prefix: string; roles: RoleList }[] = [
+  { prefix: "/admin/audit", roles: ADMIN_ONLY_ROLES }, // the audit-log read route is not open to SUPPORT (backend-authz AZ-6); /admin/config/audit is a different page
   { prefix: "/admin/outlet-requests", roles: OUTLET_REQUEST_READ_ROLES },
   { prefix: "/api/bff/admin/outlet-requests", roles: OUTLET_REQUEST_READ_ROLES },
   { prefix: "/admin/outlet-change", roles: OUTLET_REQUEST_RAISE_ROLES },
