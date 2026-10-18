@@ -100,7 +100,8 @@ private fun AmoExceptions(day: AmoDay, detail: Boolean, signalId: Long?, onOpen:
     if (detail && row == null) { LaunchedEffect(Unit) { onDone() }; return }
     if (row == null) { ExceptionsListContent(list, names, onOpen); return }
     // Fixed when the detail opens: a double tap queues one event.
-    val recordUuid = rememberSaveable(row.id) { com.aktcl.aron.core.common.ClientIds.newUuid() }
+    val draftKey = "signal:${row.id}"
+    val recordUuid = remember(draftKey) { day.drafts.uuid(draftKey) }
     var note by rememberSaveable(row.id) { mutableStateOf("") }
     var busy by remember(row.id) { mutableStateOf(false) }
     var failed by remember(row.id) { mutableStateOf(false) }
@@ -114,7 +115,7 @@ private fun AmoExceptions(day: AmoDay, detail: Boolean, signalId: Long?, onOpen:
                 day.reviewSignal(recordUuid, row.id, action, note.trim().ifEmpty { null }) || row.id !in day.openSignals().map { it.id }
             } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { false }
             busy = false
-            if (ok) { android.widget.Toast.makeText(context, savedText, android.widget.Toast.LENGTH_SHORT).show(); reload++; onDone() } else failed = true
+            if (ok) { day.drafts.clear(draftKey); android.widget.Toast.makeText(context, savedText, android.widget.Toast.LENGTH_SHORT).show(); reload++; onDone() } else failed = true
         }
     })
 }

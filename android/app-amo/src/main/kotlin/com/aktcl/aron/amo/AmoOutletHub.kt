@@ -215,7 +215,8 @@ private fun AmoVerifyHost(day: AmoDay, uuid: String?, onDone: () -> Unit, onGone
     if (gone) { LaunchedEffect(Unit) { onGone() }; return }
     val req = request ?: run { Box(Modifier.fillMaxSize(), Alignment.Center) { CircularProgressIndicator() }; return }
     // Fixed when the form opens: a double tap or a replay queues one decision.
-    val recordUuid = rememberSaveable(uuid) { com.aktcl.aron.core.common.ClientIds.newUuid() }
+    val draftKey = "verify:${req.uuid}"
+    val recordUuid = remember(draftKey) { day.drafts.uuid(draftKey) }
     var subId by rememberSaveable(uuid) { mutableStateOf<Long?>(null) }
     var geo by rememberSaveable(uuid) { mutableStateOf<String?>(null) }
     var note by rememberSaveable(uuid) { mutableStateOf("") }
@@ -256,7 +257,7 @@ private fun AmoVerifyHost(day: AmoDay, uuid: String?, onDone: () -> Unit, onGone
             } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { threw = true; false }
             busy = false
             saveFailed = threw
-            if (ok) onDone() else noFix = !threw
+            if (ok) { day.drafts.clear(draftKey); onDone() } else noFix = !threw
         }
     }
     com.aktcl.aron.feature.amo.VerifyFormContent(

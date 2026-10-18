@@ -17,3 +17,5 @@ From the Opus parity audit of the AMO screens against docs/07, the AMO manual an
 
 ## android-core
 10. `localizedNumber` groups in lakh style (12,34,567); F-SYS-051 and the AMO manual use Western grouping (2,082,820), as `Formats.money` does.
+
+11. **Own-request form uuid across a swipe-kill (feature-outlet, SR lane).** `OutletRequest` keeps its record uuid with `remember`; after a swipe-kill a reopened form queues a second request. The AMO forms use `FormDrafts` (app-amo, a uuid per target kept until the save succeeds): the same few lines fit the SR host.

@@ -71,6 +71,8 @@ class AmoDay(
     fun routeName(): String = zoneRoutes[visitSession.current.value?.routeId ?: routeId ?: 0L].orEmpty()
 
     private val clock = components.trustedClock
+    /** Fixed client uuids of the forms that queue a record, across a kill ([FormDrafts]). */
+    val drafts: FormDrafts by lazy { FormDrafts(context, userId) }
     val api: AmoApi by lazy { AmoApi(components.apiClient, context, userId) }
     val capture = CaptureRepository(db) { iso(clock.nowMs()) }
     val reference = ReferenceRepository(db)

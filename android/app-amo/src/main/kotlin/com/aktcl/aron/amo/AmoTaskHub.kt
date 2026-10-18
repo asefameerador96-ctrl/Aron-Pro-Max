@@ -128,7 +128,8 @@ private fun AmoTaskForm(day: AmoDay, sr: TeamSr, outlet: OutletEntity, onDone: (
     LaunchedEffect(day) { types = runCatching { day.taskTypes() }.getOrDefault(emptyList()) }
     val today = remember { day.businessDate() }
     // Fixed when the form opens: a double tap or a retry queues one task.
-    val uuid = rememberSaveable(outlet.outletId, sr.userId) { com.aktcl.aron.core.common.ClientIds.newUuid() }
+    val draftKey = "task:${sr.userId}:${outlet.outletId}"
+    val uuid = remember(draftKey) { day.drafts.uuid(draftKey) }
     var typeCode by rememberSaveable { mutableStateOf<String?>(null) }
     var due by rememberSaveable { mutableStateOf<String?>(today) }
     var description by rememberSaveable { mutableStateOf("") }
@@ -156,7 +157,7 @@ private fun AmoTaskForm(day: AmoDay, sr: TeamSr, outlet: OutletEntity, onDone: (
                         true
                     } catch (c: kotlinx.coroutines.CancellationException) { throw c } catch (x: Exception) { false }
                     busy = false
-                    if (ok) { android.widget.Toast.makeText(context, savedText, android.widget.Toast.LENGTH_SHORT).show(); onDone() } else android.widget.Toast.makeText(context, failedText, android.widget.Toast.LENGTH_SHORT).show()
+                    if (ok) { day.drafts.clear(draftKey); android.widget.Toast.makeText(context, savedText, android.widget.Toast.LENGTH_SHORT).show(); onDone() } else android.widget.Toast.makeText(context, failedText, android.widget.Toast.LENGTH_SHORT).show()
                 }
             }
         },
