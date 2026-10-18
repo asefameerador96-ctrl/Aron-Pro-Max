@@ -14,6 +14,7 @@ export type LoginResponse = Schemas["LoginResponse"];
 export type TokenPair = Schemas["TokenPair"];
 export type MfaVerifyRequest = Schemas["MfaVerifyRequest"];
 export type Me = Schemas["Me"];
+export type ReauthResponse = Schemas["ReauthResponse"];
 export type Problem = Schemas["Problem"];
 export type ProblemCode = Schemas["ProblemCode"];
 export type AuditEntry = Schemas["AuditEntry"];

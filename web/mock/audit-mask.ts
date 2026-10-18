@@ -29,11 +29,11 @@ const PLAIN: Record<string, readonly string[]> = {
 
 const neverShow = (k: string) => NEVER_SHOW.has(k.toLowerCase()) || SECRETISH.test(k);
 const personal = (k: string) => PII.has(k.toLowerCase()) || (PII_LIKE.test(k) && !/_(id|uuid)$/i.test(k));
-const full = (o: Image | null | undefined) => (o ? Object.fromEntries(Object.entries(o).map(([k, v]) => [k, neverShow(k) || personal(k) ? MASK : v])) : null);
+const full = (o: Image | null | undefined, pii: boolean) => (o ? Object.fromEntries(Object.entries(o).map(([k, v]) => [k, neverShow(k) || (personal(k) && !pii) ? MASK : v])) : null);
 
-/** One stored row as `role` may read it. */
-export function maskAudit(e: AuditEntry, role: Role): AuditEntry {
-  if (role === "ADMIN" || role === "SUPERADMIN") return { ...e, before: full(e.before), after: full(e.after) };
+/** One stored row as `role` may read it; `pii`: the reader is inside a PII reveal window (ADMIN/SUPERADMIN only). */
+export function maskAudit(e: AuditEntry, role: Role, pii = false): AuditEntry {
+  if (role === "ADMIN" || role === "SUPERADMIN") return { ...e, before: full(e.before, pii), after: full(e.after, pii) };
   const allowed = new Set(PLAIN[e.entity] ?? []);
   const keys = new Set([...Object.keys(e.before ?? {}), ...Object.keys(e.after ?? {})]);
   const changed = new Set([...keys].filter((k) => e.before?.[k] !== e.after?.[k]));

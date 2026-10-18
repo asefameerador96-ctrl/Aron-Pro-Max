@@ -74,7 +74,10 @@ interface State {
   /** Alias of tables.clusters (used by tests). */
   clusters: Cluster[];
   audit: AuditEntry[];
-  access: Map<string, { userId: string; exp: number }>;
+  access: Map<string, { userId: string; exp: number; piiUntil?: number }>;
+  /** PII reveal (POST /v1/auth/reauth): failed tries per user (locks the reveal at 3) and the window length in seconds. */
+  reauthFails: Map<string, number>;
+  piiWindowS: number;
   refresh: Map<string, { userId: string }>;
   mfaTokens: Map<string, string>;
   /** Usernames that already confirmed an authenticator; the others may enrol one. */
@@ -105,7 +108,7 @@ export function createMock(opts: MockOptions = {}): { server: Server; state: Sta
 
 function freshState(accessTtlS = Number(process.env.MOCK_ACCESS_TTL_S ?? 900)): State {
   const tables = seedTables();
-  return { failPrefix: null, stubs: [], calls: [], users: users(), tables, blobs: new Map(), custom: { tables, ...seedCustom() }, codeLists: seedCodeLists(), bulkBatches: new Map(), clusters: tables.clusters as unknown as Cluster[], audit: [], access: new Map(), refresh: new Map(), mfaTokens: new Map(), mfaEnrolled: new Set(["admin1", "madmin1", "msupport1", "support1", "pwmfa1"]), pwcTokens: new Map(), refreshCount: 0, nextId: 100, accessTtlS, dash: freshDashStore(), cfg: freshConfigStore() };
+  return { failPrefix: null, reauthFails: new Map(), piiWindowS: 900, stubs: [], calls: [], users: users(), tables, blobs: new Map(), custom: { tables, ...seedCustom() }, codeLists: seedCodeLists(), bulkBatches: new Map(), clusters: tables.clusters as unknown as Cluster[], audit: [], access: new Map(), refresh: new Map(), mfaTokens: new Map(), mfaEnrolled: new Set(["admin1", "madmin1", "msupport1", "support1", "pwmfa1"]), pwcTokens: new Map(), refreshCount: 0, nextId: 100, accessTtlS, dash: freshDashStore(), cfg: freshConfigStore() };
 }
 
 function problem(status: number, code: ProblemCode, extra: Partial<Problem> = {}): Problem {
@@ -178,14 +181,14 @@ function loginBody(state: State, u: MockUser, extra: Partial<LoginResponse>): Lo
   };
 }
 
-function authed(state: State, req: IncomingMessage): { user: MockUser } | { error: Problem; status: number } {
+function authed(state: State, req: IncomingMessage): { user: MockUser; piiUntil: number | null } | { error: Problem; status: number } {
   const h = req.headers.authorization;
   const token = h?.startsWith("Bearer ") ? h.slice(7) : "";
   const rec = state.access.get(token);
   if (!rec) return { status: 401, error: problem(401, "ERR_UNAUTHENTICATED") };
   if (rec.exp < Date.now()) return { status: 401, error: problem(401, "ERR_TOKEN_EXPIRED", { retryable: true }) };
   const user = state.users[rec.userId];
-  return user ? { user } : { status: 401, error: problem(401, "ERR_UNAUTHENTICATED") };
+  return user ? { user, piiUntil: rec.piiUntil && rec.piiUntil > Date.now() ? rec.piiUntil : null } : { status: 401, error: problem(401, "ERR_UNAUTHENTICATED") };
 }
 
 // docs/24 s8.5: master data is readable by DMO, WM and TOP as well (the approval panel reads zones and users).
@@ -230,6 +233,10 @@ async function handle(state: State, reset: () => void, req: IncomingMessage, res
     const as = state.users[b.as];
     if (!as) return send(res, 400, problem(400, "ERR_VALIDATION"));
     audit(state, as, b.entity, b.entity_id, b.action, b.before, b.after, b.reason);
+    return send(res, 204, undefined);
+  }
+  if (path === "/__mock/pii-window" && method === "POST") {
+    state.piiWindowS = ((await readJson(req)) as { seconds?: number } | undefined)?.seconds ?? 900;
     return send(res, 204, undefined);
   }
   if (path === "/__mock/fail" && method === "POST") {
@@ -328,8 +335,30 @@ async function handle(state: State, reset: () => void, req: IncomingMessage, res
   if ("error" in a) return send(res, a.status, a.error);
   const user = a.user;
 
+  // PII reveal (backend-authz, V0086): ADMIN and SUPERADMIN hold pii.reveal; their Me.pii is true only inside the window.
+  // Known gap: ANALYST and SUPPORT keep the mock's older always-on PII (the server never reveals to them).
+  const revealer = user.summary.role === "ADMIN" || user.summary.role === "SUPERADMIN";
+  if (path === "/v1/auth/reauth" && method === "POST") {
+    if (!revealer) return send(res, 403, problem(403, "ERR_FORBIDDEN"));
+    const name = user.summary.username;
+    if ((state.reauthFails.get(name) ?? 0) >= 3) return send(res, 403, problem(403, "ERR_AUTH_ACCOUNT_LOCKED"), { "Retry-After": "900" });
+    const b = (await readJson(req)) as { password?: unknown; code?: unknown } | undefined;
+    if (!b || typeof b.password !== "string" || b.password.length < 1 || (b.code != null && (typeof b.code !== "string" || !/^[0-9]{6}$/.test(b.code))) || (user.mfa && b.code == null)) return send(res, 400, problem(400, "ERR_VALIDATION"));
+    if (b.password !== user.password || (user.mfa && b.code !== "123456")) {
+      state.reauthFails.set(name, (state.reauthFails.get(name) ?? 0) + 1);
+      return send(res, 401, problem(401, "ERR_AUTH_INVALID_CREDENTIALS"));
+    }
+    state.reauthFails.delete(name);
+    const t = newTokens(state, name);
+    const piiUntil = Math.min(t.exp, Date.now() + state.piiWindowS * 1000);
+    state.access.get(t.at)!.piiUntil = piiUntil;
+    return send(res, 200, { access_token: t.at, access_expires_at: new Date(t.exp).toISOString(), pii_until: new Date(piiUntil).toISOString() });
+  }
+
   if (path === "/v1/me") {
-    const me: Me = { user: user.summary, permissions: user.summary.role === "ADMIN" ? ["admin.master.write", "admin.audit.read"] : ["dashboards.read"], scope: user.scope, pii: hasPii(user.summary.role), mfa_enabled: user.mfa, ...(user.summary.role === "TSO" ? { menus: [{ menu_id: "dashboard", actions: ["view"] as ("view")[] }] } : {}) };
+    const pii = revealer ? a.piiUntil !== null : hasPii(user.summary.role);
+    const perms = user.summary.role === "ADMIN" ? ["admin.master.write", "admin.audit.read"] : ["dashboards.read"];
+    const me: Me = { user: user.summary, permissions: revealer ? [...perms, "pii.reveal"] : perms, scope: user.scope, pii, pii_until: revealer && a.piiUntil !== null ? new Date(a.piiUntil).toISOString() : null, mfa_enabled: user.mfa, ...(user.summary.role === "TSO" ? { menus: [{ menu_id: "dashboard", actions: ["view"] as ("view")[] }] } : {}) };
     return send(res, 200, me);
   }
 
@@ -619,7 +648,7 @@ async function handle(state: State, reset: () => void, req: IncomingMessage, res
       .filter((e) => (!from || day(e.at) >= from) && (!to || day(e.at) <= to) && (!cursor || e.id < Number(cursor)))
       .sort((a, b) => b.id - a.id)
       .slice(0, limit + 1);
-    const page = rows.slice(0, limit).map((e) => maskAudit(e, user.summary.role));
+    const page = rows.slice(0, limit).map((e) => maskAudit(e, user.summary.role, a.piiUntil !== null));
     return send(res, 200, { items: page, next_cursor: rows.length > limit ? String(page[page.length - 1]!.id) : null });
   }
 
