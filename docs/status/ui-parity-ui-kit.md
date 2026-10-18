@@ -1,7 +1,8 @@
 # UI parity: lane ui-kit (android/core-ui)
 
 Reference: docs/ui-reference/PARITY-SPEC.md s1 and s2, images in docs/ui-reference/sr/. Kit API: top of docs/status/android-core-ui.md.
-Evidence: all icons on one sheet docs/evidence/ui-parity/kit-icons-sheet.png. Side by side (left reference, right ours): docs/evidence/ui-parity/kit-home-tiles.png, kit-outlet-menu.png, kit-stock-packcard-totals.png, kit-retailer-letters.png, kit-summary-table.png; whole gallery kit-gallery-bn.png and -sunlight.
+Evidence (left: the owner's screenshot; right: the same screen built only from the kit with the screenshot's data, 411 dp Bangla, `KitParityShot`): docs/evidence/ui-parity/kit-home.png, kit-stock.png, kit-sale-select.png, kit-summary.png, kit-sales-submit.png, kit-outlet-menu.png. All icons: kit-icons-sheet.png. Whole gallery at 360 dp: kit-gallery-bn.png (and -sunlight).
+What still differs (kit level): packshots show the grey silhouette until ui-packshots provides images; the Home target card shows the day's sales and no target bar (targets deferred, docs/27); Astha and Loyalty tiles are absent (deferred); our Bangla is Noto Sans Bengali, the reference uses a different Bangla face (slightly narrower), so line breaks can differ.
 
 | Component | Reference | Status | sha |
 |---|---|---|---|
@@ -26,4 +27,5 @@ Evidence: all icons on one sheet docs/evidence/ui-parity/kit-icons-sheet.png. Si
 | AMO icons (14, requested by ui-amo): joint_call, control_call, team, team_location, team_performance, live_dashboard, sr_stock, exceptions, report, price_compliance, assessment, survey, verify, update_base | no screenshot (noref) | DONE in the set's style; needs owner screenshots | amo icons push |
 | SummaryTable weights + shrink-to-fit cells | summary.png | DONE (six columns at 360 dp, nothing breaks inside a word) | 8591ffb |
 | AronCard, AronListRow, AronField, AronTabs, AronDialog, AronSwitchRow, AronLogoutButton | no screenshot (manual layouts; AMO/TSO) | DONE in the reference language (white cards, gradient selection, purple ink) | forms push |
+| TSO icons (7, requested by ui-tso): tso_leave, tso_periphery, tso_my_call, tso_feedback, tso_team, tso_set_plan, lock | no screenshot (noref) | DONE in the set's style; needs owner screenshots | tso icons push |
 | Sizes | APK budget | 19 vectors, 44 KB source total, largest 4.5 KB | icons push |

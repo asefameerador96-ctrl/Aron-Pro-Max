@@ -187,7 +187,7 @@ private fun CenteredWrap(modifier: Modifier, content: @Composable () -> Unit) {
 @Immutable
 data class SummaryRow(val title: String, val values: List<String>)
 
-/** A line of the totals block under a [SummaryTable] (`সর্বমোট`, `ডিসকাউন্ট এবং অন্যান্য (-)`): purple bold 22 sp, value at the end. */
+/** A line of the totals block under a [SummaryTable] (`সর্বমোট`, `ডিসকাউন্ট এবং অন্যান্য (-)`): purple bold 20 sp, value at the end. */
 @Immutable
 data class SummaryTotal(val label: String, val value: String)
 
@@ -268,8 +268,8 @@ fun SummaryTable(
             Column(Modifier.fillMaxWidth().background(look.rowAlt).padding(horizontal = 12.dp, vertical = 8.dp)) {
                 totals.forEach { t ->
                     Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Text(t.label, style = lookStyle(22.sp, bold = true, color = look.purple), modifier = Modifier.weight(1f))
-                        Text(t.value, style = lookStyle(22.sp, bold = true, color = look.purple, align = TextAlign.End), modifier = Modifier.padding(start = 12.dp))
+                        Text(t.label, style = lookStyle(20.sp, bold = true, color = look.purple), modifier = Modifier.weight(1f))
+                        Text(t.value, style = lookStyle(20.sp, bold = true, color = look.purple, align = TextAlign.End), modifier = Modifier.padding(start = 12.dp))
                     }
                 }
             }
