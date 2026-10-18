@@ -1,6 +1,7 @@
 package com.aktcl.aron.backend.platform
 
 import com.aktcl.aron.contract.ProblemCode
+import io.ktor.http.decodeURLPart
 import io.ktor.server.application.ApplicationCall
 import io.ktor.server.application.createRouteScopedPlugin
 import io.ktor.server.request.httpMethod
@@ -95,14 +96,17 @@ private fun authenticate(call: ApplicationCall, cfg: AuthGuardConfig): AronPrinc
  */
 private fun requireMfaWhereNeeded(call: ApplicationCall, p: AronPrincipal, config: ServerConfig) {
     if (p.isPhone || p.audience != Audience.API || "mfa" in p.amr) return
-    val path = call.request.path()
-    if (path.startsWith("/v1/auth/")) return
+    // Judge the path the router matches: decoded segments, empty ones dropped (`/v1/admin/%63onfig` is the config route).
+    val segments = call.request.path().split('/').filter { it.isNotEmpty() }.map { seg -> runCatching<String> { seg.decodeURLPart() }.getOrDefault(seg) }
+    val path = segments.joinToString("/", prefix = "/")
+    if (path.startsWith("/v1/auth/") && segments.none { it == "." || it == ".." }) return
     val method = call.request.httpMethod.value
     val write = method != "GET" && method != "HEAD" && method != "OPTIONS"
     val sensitiveRead = path.startsWith("/v1/admin/config") || path.startsWith("/v1/admin/enrolment-tokens")
     if (!write && !sensitiveRead) return
+    // A value that is not a list fails closed to the registry default, never open.
     val roles = (config.value("cfg.auth.mfa_required_roles") as? kotlinx.serialization.json.JsonArray)
-        ?.mapNotNull { (it as? kotlinx.serialization.json.JsonPrimitive)?.content }.orEmpty()
+        ?.mapNotNull { (it as? kotlinx.serialization.json.JsonPrimitive)?.content } ?: listOf("ADMIN", "SUPERADMIN", "SUPPORT")
     if (p.role.wire in roles) throw ApiProblem(ProblemCode.ERR_AUTH_MFA_INVALID, "this action needs a sign-in with the second factor; sign in again")
 }
 

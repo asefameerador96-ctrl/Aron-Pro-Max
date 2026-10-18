@@ -86,6 +86,7 @@ class MfaPerRequestTest {
         val gated = listOf(
             "POST" to "/v1/admin/config/changes", "POST" to "/v1/admin/enrolment-tokens", "POST" to "/v1/admin/dues-adjustments",
             "POST" to "/v1/admin/prices/preview", "GET" to "/v1/admin/config/values", "GET" to "/v1/admin/config/changes", "GET" to "/v1/admin/enrolment-tokens",
+            "GET" to "/v1/admin/%63onfig/values", "GET" to "/v1/admin/enrolment%2Dtokens",
         )
         // Before: the token is judged on its merits (validation, not found, ...), never refused for MFA.
         for ((m, path) in gated) assertNotEquals("ERR_AUTH_MFA_INVALID", code(call(m, path, token).bodyAsText().ifBlank { "{}" }), "$m $path before")
