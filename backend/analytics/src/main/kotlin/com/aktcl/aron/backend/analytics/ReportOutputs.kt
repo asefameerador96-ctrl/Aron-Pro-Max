@@ -41,13 +41,17 @@ object ReportOutputs {
         return n
     }
 
+    private const val MAX_EXACT = 9_007_199_254_740_992L // 2^53
+
     internal fun cell(ws: org.dhatim.fastexcel.Worksheet, r: Int, c: Int, v: JsonElement?, type: String) {
         val p = v as? JsonPrimitive
         when {
             v == null || v is JsonNull || p == null -> Unit
             p.isString -> ws.value(r, c, sanitize(p.content))
             p.content == "true" || p.content == "false" -> ws.value(r, c, p.content.toBoolean())
-            type == "integer" || type == "mtk" -> p.content.toLongOrNull()?.let { ws.value(r, c, it) } ?: ws.value(r, c, p.content.toDouble())
+            // An xlsx number is a double: integers up to 2^53 stay numeric; a larger or non-integer value is written as text,
+            // never through toDouble (QA-MNY-03: money is never a float).
+            type == "integer" || type == "mtk" -> p.content.toLongOrNull()?.takeIf { it in -MAX_EXACT..MAX_EXACT }?.let { ws.value(r, c, it) } ?: ws.value(r, c, p.content)
             else -> ws.value(r, c, p.content.toDouble())
         }
     }

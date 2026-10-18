@@ -250,6 +250,18 @@ class IngestRulesCheckerTest {
         assertEquals(List(fam.size) { "accepted" }, codes(r), "zero sale with a QC credit (net -15,000, s7.4 allow_negative_net)")
     }
 
+    // QA-MNY-01: the header sign check (D-18) must not catch a zero-sale QC credit sent before its children.
+    @Test
+    fun checkerAZeroSaleQcCreditSentHeaderFirstIsStoredUnflagged() = testApplication {
+        app()
+        val token = client.token()
+        val fam = memoFamily(emptyList(), qcs = listOf(Q(skus[0].first, 15_000, applied = true)))
+        val memo = fam[1].s("client_uuid")
+        assertEquals(listOf("accepted", "accepted"), codes(client.ok(token, batch(fam.take(2)))), "visit and memo header")
+        assertEquals(List(fam.size - 2) { "accepted" }, codes(client.ok(token, batch(fam.drop(2)))), "the late children")
+        assertEquals(1, count("SELECT count(*) FROM app.memo WHERE client_uuid = '$memo' AND net_mtk < 0 AND cardinality(COALESCE(server_flags, '{}')) = 0"))
+    }
+
     // F-SYS-062 / s7.4 "line_count = the number of child records": more lines than the header states, all in one batch.
     @Test
     fun checkerAMemoWithMoreLinesThanItsHeaderCountsIsNotAcceptedSilently() = testApplication {

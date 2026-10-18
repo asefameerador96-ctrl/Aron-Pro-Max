@@ -65,6 +65,11 @@ object DayStates {
         if (routes.isEmpty()) return
         planner.planIn(h, date, routes)
         routes.forEach { touched.routeDays += it to date }
+        // KD-1: hold the route-days (route_id order, as Final Submit takes them) before the late checks, so a close cannot
+        // commit between two records of one family or between the two late counters. Not FOR SHARE: two families on a
+        // route would both hold it and then deadlock on the UPDATE below.
+        h.createQuery("SELECT 1 FROM app.route_day WHERE route_id = ANY(:r) AND business_date = :d ORDER BY route_id FOR NO KEY UPDATE")
+            .bindArray("r", Long::class.javaObjectType, routes).bind("d", date).mapTo(Int::class.java).list()
         // Rule 4: a row stored after the zone-day's Final Submit is accepted and counted as late, never reopening the day
         // (cfg.day.late_sync_after_final_policy = accept_and_flag). Runs once per stored record, so a replay never counts twice.
         h.createUpdate(
@@ -113,7 +118,8 @@ object DayStates {
      * submitted one settles; then each state moves forward to what its timestamps say.
      */
     fun afterBatch(h: Handle, userId: Long, touched: Touched, now: Instant) {
-        for ((route, date) in touched.routeDays) {
+        // Route-days in (date, route_id) order, the order Final Submit locks them in (KD-1 checker): no lock-order deadlock.
+        for ((route, date) in touched.routeDays.sortedWith(compareBy({ it.second }, { it.first }))) {
             val parked = h.createQuery(
                 "SELECT count(*) FROM app.sync_rejected WHERE user_id = :u AND route_id = :r AND business_date = :d AND retryable AND stored_at IS NULL",
             ).bind("u", userId).bind("r", route).bind("d", date).mapTo(Long::class.java).one()

@@ -59,14 +59,14 @@ class TaskScreenTest {
         compose.onNodeWithTag(TaskTags.item("a")).assertExists()
     }
 
-    @Test fun dueDateReadsAsDayAndMonthName() {
+    @Test fun dueDateReadsAsIsoWithTheYear() {
         show(AppLanguage.EN, TaskListState(listOf(t("a")), 1))
-        compose.onNodeWithText("Due 9 October").assertExists()
+        compose.onNodeWithText("Due 2026-10-09").assertExists()
     }
 
-    @Test fun dueDateReadsAsDayAndMonthNameInBangla() {
+    @Test fun dueDateReadsAsIsoWithTheYearInBangla() {
         show(AppLanguage.BN, TaskListState(listOf(t("a")), 1))
-        compose.onNodeWithText("শেষ তারিখ ৯ অক্টোবর").assertExists()
+        compose.onNodeWithText("শেষ তারিখ ২০২৬-১০-০৯").assertExists()
     }
 
     @Test fun aLongListKeepsEveryCardAndItsResolveButton() {

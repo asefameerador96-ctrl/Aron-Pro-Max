@@ -23,6 +23,11 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import com.aktcl.aron.core.ui.GlassKind
+import com.aktcl.aron.core.ui.GlassSurface
+import com.aktcl.aron.core.ui.AronNoButton
+import com.aktcl.aron.core.ui.AronYesButton
+import androidx.compose.foundation.layout.imePadding
 import com.aktcl.aron.core.ui.AronQtyField
 import androidx.compose.ui.semantics.Role
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -88,12 +93,20 @@ fun CreditPrompt(review: SaleReview, onPaid: (Long?) -> Unit, modifier: Modifier
                 }
             }
         }
-        AronBottomBar(
-            secondary = onCancel?.let { AronBarAction(stringResource(R.string.credit_cancel), onClick = it) },
-            primary = AronBarAction(stringResource(R.string.credit_apply), onClick = { onPaid(parsed) }, enabled = valid, icon = AronIcons.Check),
-            // an empty field: the bar says what to do; a wrong value: the inline error line says it once
-            reasonWhenDisabled = if (text.isEmpty()) stringResource(R.string.credit_reason_enter) else null,
-        )
+        // R6: the manual's green হ্যাঁ / red না pair (the answers of "how much are you collecting now?")
+        GlassSurface(modifier = Modifier.fillMaxWidth(), kind = GlassKind.ActionBar) {
+            Column(
+                Modifier.fillMaxWidth().windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal)).imePadding()
+                    .padding(horizontal = AronTokens.Space.Screen, vertical = AronTokens.Space.M),
+                verticalArrangement = Arrangement.spacedBy(AronTokens.Space.S),
+            ) {
+                if (text.isEmpty()) Text(stringResource(R.string.credit_reason_enter), style = MaterialTheme.typography.bodySmall, color = c.textSecondary)
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.M)) {
+                    if (onCancel != null) AronNoButton(stringResource(R.string.sale_no), onCancel, Modifier.weight(1f).testTag(CreditTags.NO))
+                    AronYesButton(stringResource(R.string.sale_yes), { onPaid(parsed) }, Modifier.weight(1f).testTag(CreditTags.YES), enabled = valid)
+                }
+            }
+        }
     }
 }
 
@@ -143,6 +156,12 @@ fun SlideScreen(skus: List<SaleSku>, review: SaleReview, emptyOf: (Long) -> Long
  * the same function as the Review). The bar's primary asks "submit QC?" (green Yes, red No) before it completes QC.
  * Renders its own bottom bar.
  */
+/** Test tags of the credit prompt. */
+object CreditTags {
+    const val YES = "credit_yes"
+    const val NO = "credit_no"
+}
+
 /** Test tags of the QC screen. */
 object QcTags {
     const val CARD = "qc_card"

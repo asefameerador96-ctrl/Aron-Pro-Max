@@ -1,6 +1,5 @@
 package com.aktcl.aron.backend.app
 
-import kotlinx.serialization.json.long
 import com.aktcl.aron.backend.auth.PasswordHasher
 import com.aktcl.aron.backend.platform.AronClock
 import com.aktcl.aron.backend.platform.FreshDb
@@ -27,6 +26,7 @@ import kotlinx.serialization.json.int
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.long
 import kotlinx.serialization.json.put
 import org.junit.jupiter.api.AfterAll
 import org.junit.jupiter.api.BeforeAll
@@ -491,6 +491,60 @@ class BatchAcceptanceTest {
         // A header whose own equation fails (net != gross - discounts) is quarantined too, never a schema rejection.
         val broken = saleFamily().let { f -> f.mapIndexed { i, rec -> if (i == 1) JsonObject(rec + ("payload" to JsonObject(rec["payload"]!!.jsonObject + ("net_mtk" to JsonPrimitive(10))))) else rec } }
         assertEquals("quarantined", statuses(json(client.send(token, batch(broken)).bodyAsText()))[1])
+    }
+
+    @Test
+    fun aHeaderSentBeforeItsChildrenWithAGrossAndANegativeNetIsQuarantinedAndReplaysTheSame() = testApplication {
+        // QA-MNY-01 (D-18): the sign is a header fact, so a split family meets the same rule as a whole one.
+        // Its own wiring: the shared one's per-device limit (40 a minute, fixed clock) is spent by the other tests.
+        application { aronApi(Wiring.production(Settings.load(mapOf("ARON_ROLE" to "api", "ARON_DB_URL" to fresh.url, "ARON_JWT_SIGNING_KEY_FILE" to keyFile.absolutePath)), clock)) }
+        val token = client.login()
+        val family = saleFamily()
+        val gross = family[1]["payload"]!!.jsonObject["gross_mtk"]!!.jsonPrimitive.long
+        val qc = gross + 30_480
+        val negative = family.mapIndexed { i, rec ->
+            if (i != 1) rec else JsonObject(rec + ("payload" to JsonObject(rec["payload"]!!.jsonObject + mapOf(
+                "qc_deduction_mtk" to JsonPrimitive(qc), "net_mtk" to JsonPrimitive(-30_480), "paid_mtk" to JsonPrimitive(0),
+                "due_mtk" to JsonPrimitive(-30_480), "is_credit" to JsonPrimitive(false)))))
+        }
+        val header = negative.take(2)
+        val first = json(client.send(token, batch(header)).bodyAsText())
+        assertEquals(listOf("accepted", "quarantined"), statuses(first), first.toString())
+        assertEquals("arithmetic_mismatch", first["acks"]!!.jsonArray[1].jsonObject["code"]!!.jsonPrimitive.content)
+        // A retried header (same uuid, same body) gets the same answer and stores nothing.
+        val again = json(client.send(token, batch(header)).bodyAsText())
+        assertEquals("quarantined", statuses(again)[1], again.toString())
+        val mu = family[1]["client_uuid"]!!.jsonPrimitive.content
+        assertEquals(0, count("SELECT count(*) FROM app.memo WHERE client_uuid = '$mu'"))
+        val late = json(client.send(token, batch(negative.drop(2))).bodyAsText())
+        val lateAcks = late["acks"]!!.jsonArray.map { it.jsonObject }.filter { it["type"]!!.jsonPrimitive.content == "memo_line" }
+        assertEquals(List(2) { "quarantined:arithmetic_mismatch" }, lateAcks.map { it["status"]!!.jsonPrimitive.content + ":" + it["code"]!!.jsonPrimitive.content }, late.toString())
+        assertEquals(0, count("SELECT count(*) FROM app.memo_line WHERE memo_client_uuid = '$mu'"))
+    }
+
+    @Test
+    fun aStoredHeaderWithAGrossAndANegativeNetIsFlaggedWhenItsChildrenLand() = testApplication {
+        // A header stored before the sign check existed (simulated by editing the stored row) is flagged, not lost.
+        // Its own wiring: the shared one's per-device limit (40 a minute, fixed clock) is spent by the other tests.
+        application { aronApi(Wiring.production(Settings.load(mapOf("ARON_ROLE" to "api", "ARON_DB_URL" to fresh.url, "ARON_JWT_SIGNING_KEY_FILE" to keyFile.absolutePath)), clock)) }
+        val token = client.login()
+        val family = saleFamily()
+        val mu = family[1]["client_uuid"]!!.jsonPrimitive.content
+        assertEquals(listOf("accepted", "accepted"), statuses(json(client.send(token, batch(family.take(2))).bodyAsText())))
+        fresh.db.jdbi.useTransaction<Exception> { h ->
+            h.execute("SET LOCAL session_replication_role = replica") // past the synced-row guard, as an old row would be
+            h.execute("UPDATE app.memo SET qc_deduction_mtk = gross_mtk + 30480, net_mtk = -30480, paid_mtk = 0, due_mtk = -30480, qc_line_count = 1 WHERE client_uuid = CAST(? AS uuid)", mu)
+        }
+        // Children whose sums match the header exactly: only the sign is wrong.
+        val gross = family[1]["payload"]!!.jsonObject["gross_mtk"]!!.jsonPrimitive.long
+        val qc = envelope("qc_line", uuid(), family[0]["client_uuid"]!!.jsonPrimitive.content, 2, buildJsonObject {
+            put("visit_client_uuid", family[0]["client_uuid"]!!.jsonPrimitive.content); put("memo_client_uuid", mu); put("applied_to_memo", true)
+            put("sku_id", skus[0].first); put("fault_type_code", "torn_pack"); put("fault_group", "MFC"); put("qty_base", 1)
+            put("unit_price_mtk", skus[0].second); put("settlement_mtk", gross + 30_480)
+        })
+        val acks = statuses(json(client.send(token, batch(family.drop(2) + qc)).bodyAsText()))
+        assertEquals(List(4) { "accepted" }, acks)
+        assertEquals(1, count("SELECT count(*) FROM app.memo WHERE client_uuid = '$mu' AND 'arithmetic_mismatch' = ANY(server_flags)"))
     }
 
     @Test

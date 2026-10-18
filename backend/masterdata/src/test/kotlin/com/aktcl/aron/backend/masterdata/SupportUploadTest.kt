@@ -58,6 +58,20 @@ class SupportUploadTest {
     }
 
     @Test
+    fun aRetryAfterTheCapWasLoweredGetsTheStoredUploadWithAFreshSas() {
+        // Replay first: the stored upload answers before the cap; a new file of that size is refused under the lower cap.
+        val id = uuid(); val h = mapOf("X-Device-Id" to device)
+        var path = ""
+        env.app { path = sendA3(HttpMethod.Post, "/v1/support/pda-upload", env.phone("sr1001", device), req(id, bytes = 20L * 1_048_576), h).objA3().strA3("blob_path") }
+        env.app(mapOf("cfg.support.max_upload_mb" to JsonPrimitive(5))) {
+            val again = sendA3(HttpMethod.Post, "/v1/support/pda-upload", env.phone("sr1001", device), req(id, bytes = 20L * 1_048_576), h)
+            assertEquals(HttpStatusCode.OK, again.status, again.bodyAsText())
+            assertEquals(path, again.objA3().strA3("blob_path"))
+            assertEquals(HttpStatusCode.PayloadTooLarge, sendA3(HttpMethod.Post, "/v1/support/pda-upload", env.phone("sr1001", device), req(uuid(), bytes = 20L * 1_048_576), h).status)
+        }
+    }
+
+    @Test
     fun aLowerConfiguredCapApplies() = env.app(mapOf("cfg.support.max_upload_mb" to JsonPrimitive(5))) {
         val h = mapOf("X-Device-Id" to device)
         assertEquals(HttpStatusCode.PayloadTooLarge, sendA3(HttpMethod.Post, "/v1/support/pda-upload", env.phone("sr1001", device), req(uuid(), bytes = 5L * 1_048_576 + 1), h).status)

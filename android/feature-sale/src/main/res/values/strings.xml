@@ -66,8 +66,6 @@
     <string name="credit_paid_label">Amount collected</string>
     <string name="credit_due_label">Due: %1$s</string>
     <string name="credit_error">The amount collected must be less than the total.</string>
-    <string name="credit_apply">Confirm</string>
-    <string name="credit_cancel">Later</string>
     <string name="credit_reason_enter">Enter the amount collected</string>
     <string name="slide_title">Slide (empty packets)</string>
     <string name="slide_reward">%1$s reward packs = %2$s</string>
