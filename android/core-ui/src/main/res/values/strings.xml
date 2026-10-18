@@ -109,4 +109,12 @@
     <string name="core_ui_look_value">Value</string>
     <string name="core_ui_look_return">Return</string>
     <string name="core_ui_look_grand_total">Grand total</string>
+    <string name="core_ui_look_outlet_new">New shop</string>
+    <string name="core_ui_look_outlet_close">Permanently closed</string>
+    <string name="core_ui_look_outlet_edit">Change information</string>
+    <string name="core_ui_look_outlet_cluster">Cluster</string>
+    <string name="core_ui_look_tile_tutorial">Tutorial</string>
+    <string name="core_ui_look_tile_photo">Photo Capture</string>
+    <string name="core_ui_look_tile_journey">Sales journey</string>
+    <string name="core_ui_look_tile_kpi">KPI</string>
 </resources>

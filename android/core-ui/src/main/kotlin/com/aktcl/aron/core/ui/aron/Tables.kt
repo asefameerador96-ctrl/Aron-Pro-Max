@@ -31,6 +31,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.aktcl.aron.core.ui.AronLook
@@ -50,16 +51,16 @@ data class TotalsLine(val label: String, val values: List<String>)
 fun TotalsPanel(header: TotalsLine, lines: List<TotalsLine>, modifier: Modifier = Modifier) {
     val look = LocalAronLook.current
     Column(modifier.fillMaxWidth().background(look.panel).padding(start = 16.dp, end = 16.dp, top = 12.dp)) {
-        TotalsRow(header, 13f, look.onPanelMuted)
-        lines.forEach { TotalsRow(it, 22f, look.onPanel) }
+        TotalsRow(header, 13.sp, look.onPanelMuted)
+        lines.forEach { TotalsRow(it, 22.sp, look.onPanel) }
     }
 }
 
 @Composable
-private fun TotalsRow(line: TotalsLine, sp: Float, color: Color) {
+private fun TotalsRow(line: TotalsLine, size: TextUnit, color: Color) {
     Row(Modifier.fillMaxWidth().padding(vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
-        Text(line.label, style = lookStyle(sp.sp, color = color), modifier = Modifier.weight(1.3f))
-        line.values.forEach { Text(it, style = lookStyle(sp.sp, color = color, align = TextAlign.End), modifier = Modifier.weight(1f)) }
+        Text(line.label, style = lookStyle(size, color = color), modifier = Modifier.weight(1.3f))
+        line.values.forEach { Text(it, style = lookStyle(size, color = color, align = TextAlign.End), modifier = Modifier.weight(1f)) }
     }
 }
 
