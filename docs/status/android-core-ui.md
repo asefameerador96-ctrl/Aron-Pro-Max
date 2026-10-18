@@ -36,7 +36,7 @@ LetterFilterBar(letters = listOf(all, "A", "B", ...), selected, onSelect, letter
 SummaryTable(headers: List<String>, rows: List<SummaryRow(title, values)>, subtotals: List<TotalsLine> = empty, totals: List<SummaryTotal(label, value)> = empty)
 // then AronPrimaryButton(print, onPrint, Modifier.fillMaxWidth(), glyph = ButtonGlyph.Print, reverse = true)
 ```
-Gallery: `AronLookGallery()` (tests `AronLookGalleryTest`: bn/en, font scale 1.0/1.3, sunlight, 48 dp targets, TalkBack names, no clipped text). Capture: `./gradlew :android:ui-screenshots:testDebugUnitTest --tests '*KitGalleryShot*look*'` -> `android/ui-screenshots/build/kitshots/look_*.png`. Icons (vector drawables `aron_ic_*`) follow in the next push; until then pass `icon = null` (a gradient placeholder square).
+Gallery: `AronLookGallery()` (tests `AronLookGalleryTest`: bn/en, font scale 1.0/1.3, sunlight, 48 dp targets, TalkBack names, no clipped text). Capture: `./gradlew :android:ui-screenshots:testDebugUnitTest --tests '*KitGalleryShot*look*'` -> `android/ui-screenshots/build/kitshots/look_*.png`. Icons: `com.aktcl.aron.core.ui.R.drawable.aron_ic_{attendance,stock,sale,memo,summary,sales_submit,outlet,tutorial,task_delegation,photo_capture,sales_journey,kpi,outlet_new,outlet_close,outlet_edit,cluster,back,gear,printer,printer_off}` (`painterResource(...)`); the top bar icon of a screen is its tile icon. `icon = null` draws a gradient placeholder square.
 Local build works in this container: Android SDK at /opt/android-sdk (`local.properties` sdk.dir, git-ignored), Gradle resolves through the mirror.
 
 

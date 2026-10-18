@@ -73,12 +73,14 @@ fun AronTile(
             .clickable(enabled = enabled, role = Role.Button, onClick = onClick),
     ) {
         Column(
-            Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 12.dp),
+            Modifier.fillMaxWidth().padding(horizontal = 2.dp, vertical = 12.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center,
         ) {
-            if (icon != null) Image(icon, contentDescription = null, modifier = Modifier.size(AronLook.TileIcon))
-            else Box(Modifier.size(AronLook.TileIcon).clip(RoundedCornerShape(14.dp)).background(look.verticalBrush()))
+            // menu tiles (sr/outlet-menu.png, three per row) carry a larger picture than the Home grid
+            val iconSize = if (menu) AronLook.MenuTileIcon else AronLook.TileIcon
+            if (icon != null) Image(icon, contentDescription = null, modifier = Modifier.size(iconSize))
+            else Box(Modifier.size(iconSize).clip(RoundedCornerShape(14.dp)).background(look.verticalBrush()))
             Spacer(Modifier.height(10.dp))
             Text(label, style = lookStyle(14.sp, color = labelColor ?: look.tileLabel, align = TextAlign.Center))
         }
@@ -113,16 +115,16 @@ fun aronTileColumns(widthDp: Float, fontScale: Float): Int {
 
 /**
  * The tile grid (PARITY-SPEC s2.4): [columns] or [aronTileColumns], 8 dp gaps, every tile in a row as tall as the tallest. Not lazy:
- * a Home has at most about 16 tiles. The [tile] lambda gets the modifier that sizes the cell; pass it to [AronTile].
+ * a Home has at most about 16 tiles. Gaps 6 dp: four Bangla labels such as `টিউটোরিয়াল` fit one line at 360 dp. The [tile] lambda gets the modifier that sizes the cell; pass it to [AronTile].
  */
 @Composable
 fun <T> AronTileGrid(items: List<T>, modifier: Modifier = Modifier, columns: Int? = null, tile: @Composable (T, Modifier) -> Unit) {
     val fontScale = LocalDensity.current.fontScale
     BoxWithConstraints(modifier.fillMaxWidth()) {
         val n = columns ?: aronTileColumns(maxWidth.value, fontScale)
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
             items.chunked(n).forEach { row ->
-                Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     row.forEach { item -> tile(item, Modifier.weight(1f).fillMaxHeight()) }
                     repeat(n - row.size) { Spacer(Modifier.weight(1f)) }
                 }

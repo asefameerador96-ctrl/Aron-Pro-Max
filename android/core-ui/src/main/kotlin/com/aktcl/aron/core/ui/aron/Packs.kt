@@ -114,8 +114,8 @@ private fun DrawScope.silhouette(category: PackCategory, ink: Color) {
 }
 
 /** Widths shared by [PackCard] and [PackListHeader] so the column headers sit over their columns. */
-private val StockColumn = 44.dp
-private val QtyField = 56.dp
+private val StockColumn = 40.dp
+private val QtyField = 48.dp
 private val QtyColumn = AronLook.Touch * 2 + QtyField
 
 /**

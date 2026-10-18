@@ -106,4 +106,12 @@
     <string name="core_ui_look_value">মূল্য</string>
     <string name="core_ui_look_return">ফেরত</string>
     <string name="core_ui_look_grand_total">সর্বমোট</string>
+    <string name="core_ui_look_outlet_new">নতুন দোকান</string>
+    <string name="core_ui_look_outlet_close">স্থায়ী বন্ধ</string>
+    <string name="core_ui_look_outlet_edit">তথ্য পরিবর্তন করুন</string>
+    <string name="core_ui_look_outlet_cluster">ক্লাস্টার</string>
+    <string name="core_ui_look_tile_tutorial">টিউটোরিয়াল</string>
+    <string name="core_ui_look_tile_photo">Photo Capture</string>
+    <string name="core_ui_look_tile_journey">বিক্রয় যাত্রা</string>
+    <string name="core_ui_look_tile_kpi">কেপিআই</string>
 </resources>

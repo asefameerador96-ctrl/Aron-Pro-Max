@@ -264,6 +264,7 @@ object AronLook {
     val BarHeight: Dp = 56.dp
     val BarIcon: Dp = 36.dp
     val TileIcon: Dp = 56.dp
+    val MenuTileIcon: Dp = 72.dp
     val ButtonHeight: Dp = 52.dp
     /**
      * Packshot in a [PackCard][com.aktcl.aron.core.ui.aron.PackCard]: measured on sr/stock.webp (145 x 235 px on a 1146 px, ~407 dp
