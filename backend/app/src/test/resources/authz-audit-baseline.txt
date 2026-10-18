@@ -24,10 +24,6 @@ IDOR GET /v1/admin/config/changes DMO list
 IDOR GET /v1/admin/config/changes TSO list
 IDOR GET /v1/admin/config/changes/{} DMO other-division-change
 IDOR GET /v1/admin/config/changes/{} TSO other-division-change
-IDOR GET /v1/admin/config/resolve DMO other-zone
-IDOR GET /v1/admin/config/resolve TSO other-zone
-IDOR GET /v1/admin/config/values DMO other-zone
-IDOR GET /v1/admin/config/values TSO other-zone
 IDOR GET /v1/admin/config/versions/{} DMO other-division-version
 IDOR GET /v1/admin/config/versions/{} TSO other-division-version
 # AZ-5 (medium): ConfigApi.CONFIG_READERS lets DMO, WM, TOP, ANALYST and SUPPORT read keys, values, changes, versions and the
