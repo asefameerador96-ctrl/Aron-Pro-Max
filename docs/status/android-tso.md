@@ -6,7 +6,9 @@
 - 2 F-SR-048 Tutorial list in the SR app: cached list, empty text, online-only tap, https-only, no autoplay or download; Linux goldens `sr_tutorial_*` (Sonnet checked).
 - 3 Parity audit vs docs/08 and the manual (Opus): fixes applied; table and requests in `docs/requests/android-tso-parity-findings.md`.
 - 4 Bangla + long-text sweep: lint green on feature-tso/feature-home, units localized (`tso_unit_m`), 3-line and 200% font-scale goldens (Home, Leave apply, Final Submit).
-- 5 SR Home/Sale/Memo state-coverage check: not started.
+- 5 SR Home/Sale/Review/Memo state coverage: 21 new goldens (`SrStateScreenshotTests`), matrix and 5 presentation gaps in `docs/requests/android-tso-sr-state-coverage.md`; no SR logic edited.
+- 6 Accessibility pass: in progress.
+- 7 SR parity audit (Opus): `docs/requests/android-tso-sr-parity-audit.md` (0 blockers, 11 majors, 62 minors); first batch of presentation fixes done (pack badge, stick word, picker wording, outlet on Sale/Review, memo number), goldens re-recorded.
 
 ## Done (all pushed to lane/android-tso, each with a fresh checker; defects fixed with tests)
 F-TSO-001 (Opus), 008, 009, 010+021 (Opus), 011, 012, 013-016, 018 (with photo), 024, 028, 029 (Sonnet).

@@ -1,0 +1,28 @@
+LeaveApply:
+  type: object
+  description: Body of `applyLeave`, the `LeaveApplicationPayload` of the sync record plus its client uuid. `reason`
+    is stored trimmed and must not be blank.
+  required:
+  - leave_uuid
+  - leave_type_code
+  - from_date
+  - days
+  - reason
+  additionalProperties: false
+  properties:
+    leave_uuid:
+      $ref: '#/components/schemas/Uuid'
+    leave_type_code:
+      type: string
+      pattern: ^[a-z][a-z0-9_]{1,40}$
+    from_date:
+      $ref: '#/components/schemas/BusinessDate'
+    days:
+      type: integer
+      minimum: 1
+      maximum: 365
+      description: Authoritative; to_date = from_date + days - 1.
+    reason:
+      type: string
+      minLength: 1
+      maxLength: 500

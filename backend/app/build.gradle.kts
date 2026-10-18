@@ -55,4 +55,9 @@ tasks.withType<Test>().configureEach {
     // qa: DayCloseRaceTest (the zone-day close race fuzz) round count, seed and opt-in known-defect tolerance, declared the same way.
     listOf("ARON_DAYCLOSE_FUZZ_ROUNDS", "ARON_DAYCLOSE_FUZZ_SEED", "ARON_DAYCLOSE_TOLERATE").forEach { k -> System.getenv(k)?.let { environment(k, it); inputs.property(k, it) } }
     systemProperty("aron.repoRoot", rootProject.layout.projectDirectory.asFile.absolutePath)
+    // N-014: ContractConformanceTest, RouteInventoryTest and ScopeLeakAcrossEndpointsTest read the contract through
+    // aron.repoRoot, which is not a file input: declare it and the conformance baselines, or a contract-only change
+    // reuses the cached verdict.
+    inputs.file(rootProject.layout.projectDirectory.file("contract/openapi.yaml")).withPropertyName("openapi").withPathSensitivity(PathSensitivity.RELATIVE)
+    inputs.files(fileTree("src/test/resources") { include("contract-*-baseline.txt") }).withPropertyName("contractBaselines").withPathSensitivity(PathSensitivity.RELATIVE)
 }

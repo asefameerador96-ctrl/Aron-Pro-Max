@@ -1,4 +1,6 @@
 TargetRow:
+  description: Open on purpose (N-014). `TargetRow` is the `allOf` base of `Target`, which closes the combined object,
+    so `TargetRow` carries no closing keyword.
   type: object
   required:
   - scope_type
@@ -9,7 +11,6 @@ TargetRow:
   - std_target
   - std_unit
   - memo_target
-  additionalProperties: false
   properties:
     scope_type:
       $ref: '#/components/schemas/TargetScopeType'
