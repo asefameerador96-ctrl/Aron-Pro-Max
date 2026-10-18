@@ -284,7 +284,6 @@ export const dashBn: Record<keyof typeof dashEn, string> = {
   "dashboard.refresh": "হালনাগাদ",
   "dashboard.kpi.net": "বিক্রয় (সর্বমোট)",
   "dashboard.kpi.outlets_visited": "আউটলেট ভ্রমণ",
-  "dashboard.kpi.visits_basis": "{target}টি টার্গেট আউটলেটের মধ্যে {visited}টি",
   "dashboard.kpi.login_basis": "{target}টি রুটের মধ্যে {logged}টি লগইন",
   "dashboard.kpi.submit_basis": "{logged}টি লগইন রুটের মধ্যে {submitted}টি",
   "dashboard.delta.vs_yesterday": "গতকালের তুলনায়",
