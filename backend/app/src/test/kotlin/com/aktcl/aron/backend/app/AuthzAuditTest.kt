@@ -356,7 +356,7 @@ class AuthzAuditTest {
     /**
      * Config reads (keys, values, changes, versions, reach and the tools): ADMIN and SUPERADMIN only (D-AUTHZ-Q2, docs/24
      * s8.5). The TSO's radius proposal writes and reads nothing; its one read is resolve of `cfg.web.entry_classes` for its
-     * own zone (the web entry page), probed on its own row.
+     * own zone (the web entry page), probed on its own row. SUPPORT's one read is the global `cfg.calendar.weekend_days`.
      */
     private val cfgReaders = writers
     /** docs/24 s8.5 "Master data": R for DMO, WM, TOP, ANALYST, SUPPORT; W for ADMIN, SUPERADMIN (the TSO reads are an open point). */
@@ -384,6 +384,8 @@ class AuthzAuditTest {
             RouteSpec("GET /v1/admin/config/values", g, { "/v1/admin/config/values?key=cfg.geo.radius_m" }, null, cfgReaders),
             RouteSpec("GET /v1/admin/config/resolve", g, { "/v1/admin/config/resolve?key=cfg.geo.radius_m&node_type=zone&node_id=$zone" }, null, cfgReaders),
             RouteSpec("GET /v1/admin/config/resolve (entry classes)", g, { "/v1/admin/config/resolve?key=cfg.web.entry_classes&node_type=zone&node_id=$zone" }, null, cfgReaders + "TSO"),
+            // The calendar page's one SUPPORT read (backend-authz c081c78c): the global weekend days; any other key stays refused.
+            RouteSpec("GET /v1/admin/config/resolve (calendar weekend days)", g, { "/v1/admin/config/resolve?key=cfg.calendar.weekend_days&node_type=global&node_id=0" }, null, cfgReaders + "SUPPORT"),
             RouteSpec("GET /v1/admin/config/changes", g, { "/v1/admin/config/changes" }, null, cfgReaders),
             RouteSpec("GET /v1/admin/config/changes/{}", g, { "/v1/admin/config/changes/$adminChange" }, null, cfgReaders),
             RouteSpec("POST /v1/admin/config/changes", p, { "/v1/admin/config/changes" }, { cfgBody().toString() }, cfgDocs),

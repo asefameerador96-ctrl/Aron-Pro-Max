@@ -99,10 +99,11 @@
 - **Honor device-lab sheet**: `docs/status/qa-device-lab-honor.md`.
 
 ## Handover (qa session 1, 2026-10-18 morning)
-**On INT** (a8e5be48 and the backend-authz train after it): qa 7ca3c5ea, i.e. the money gates, the authorisation audit
+**On INT** (104f28c1, with backend-authz 31ede218; its calendar allowlist c081c78c is in this push): qa 7ca3c5ea, i.e. the money gates, the authorisation audit
 (releases, AMO reports, AZ-7 probes), the date-bomb fix, the strict day-close race and the next_cursor probe fix.
-**The last qa push** carries DeviceGate/BindDeviceChecker on `CFG_SWITCH` (needs the dbfdbfca seed fix), the audit
-oracle on D-AUTHZ-Q2, AZ-1..AZ-6 marked fixed, and these status rows.
+**The last qa push** carries DeviceGate/BindDeviceChecker on `CFG_SWITCH` (the dbfdbfca seed fix is on INT), the audit
+oracle on D-AUTHZ-Q2 with the TSO entry-classes and SUPPORT calendar positive controls, AZ-1..AZ-6 marked fixed, and
+these status rows.
 
 **Ratchets (all shrink-only):**
 | Ratchet | Where | Now |
