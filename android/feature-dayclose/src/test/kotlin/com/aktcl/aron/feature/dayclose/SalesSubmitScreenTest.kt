@@ -7,6 +7,8 @@ import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.getBoundsInRoot
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.semantics.SemanticsActions
@@ -108,5 +110,30 @@ class SalesSubmitScreenTest {
         compose.onNodeWithText("Submit is saved and will be sent when you are online.").assertExists()
         compose.onNodeWithText("Your sales for today are submitted.").assertDoesNotExist()
         compose.onNodeWithText("Submit sales").assertIsNotEnabled()
+    }
+
+    @Test fun groupedRowsShowTheManualsNineAndTheSubmitStillGoesOutOnce() {
+        var submitted = 0
+        val counts = listOf(CountRow("memo", 6, 6), CountRow("distribution_check", 3, 3), CountRow("distribution_check_line", 9, 9))
+        val gate = SalesSubmitRules.gate(clean, counts, DuesAtSubmit(0, 0), false)
+        val groups = listOf(listOf("memo"), listOf("distribution_check", "distribution_check_line"))
+        compose.setContent { AronTheme(AppLanguage.EN) { SalesSubmitScreen(true, counts, gate, SubmitProgress.Idle, { "<" + it + ">" }, {}, { submitted++ }, rowGroups = groups) } }
+        compose.onNodeWithText("<memo>").assertExists()
+        compose.onNodeWithText("<distribution_check>").assertExists()
+        compose.onNodeWithText("<distribution_check_line>").assertDoesNotExist() // folded into its group row
+        compose.onAllNodesWithText("12").assertCountEquals(2) // 3 + 9 in the device column and in the server column
+        compose.onNodeWithText("Submit sales").assertIsEnabled().performClick()
+        compose.waitForIdle()
+        compose.onNodeWithTag(SalesSubmitTags.HOLD).performSemanticsAction(SemanticsActions.OnLongClick)
+        compose.waitForIdle()
+        assertEquals(1, submitted)
+    }
+
+    @Test fun withoutGroupsTheTableIsOneRowPerTypeAsBefore() {
+        val counts = listOf(CountRow("distribution_check", 3, 3), CountRow("distribution_check_line", 9, 9))
+        val gate = SalesSubmitRules.gate(clean, counts, DuesAtSubmit(0, 0), false)
+        compose.setContent { AronTheme(AppLanguage.EN) { SalesSubmitScreen(true, counts, gate, SubmitProgress.Idle, { "<" + it + ">" }, {}, {}) } }
+        compose.onNodeWithText("<distribution_check>").assertExists()
+        compose.onNodeWithText("<distribution_check_line>").assertExists()
     }
 }

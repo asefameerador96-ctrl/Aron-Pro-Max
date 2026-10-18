@@ -142,9 +142,19 @@ fun AmoSubmitHost(day: AmoDay) {
     )
     SalesSubmitScreen(
         online = st.online, counts = st.counts, gate = st.gate, progress = st.progress, typeLabel = { recordLabels[it] ?: it },
-        onSync = vm::sync, onSubmit = vm::submit, syncing = st.syncing,
+        onSync = vm::sync, onSubmit = vm::submit, syncing = st.syncing, rowGroups = AMO_SUBMIT_ROWS,
     )
 }
+
+/**
+ * The manual's nine rows of Sales Submit (docs/07), DISPLAY ONLY: each group's first record type names it (its label is the row's), the
+ * others add their counts. The gate and the day_submit payload keep one row per record type (`SubmitDisplay`).
+ */
+private val AMO_SUBMIT_ROWS = listOf(
+    listOf("visit"), listOf("memo"), listOf("stock_movement"), listOf("qc_line"), listOf("memo_discount"),
+    listOf("distribution_check", "distribution_check_line"), listOf("price_compliance_check"),
+    listOf("call_assessment", "call_assessment_answer"), listOf("survey_response"),
+)
 
 /** Sale edit (F-SR-033): the gate and a fresh fix first, then the reason, then the pre-filled sale route; Print supersedes the memo. */
 @Composable
