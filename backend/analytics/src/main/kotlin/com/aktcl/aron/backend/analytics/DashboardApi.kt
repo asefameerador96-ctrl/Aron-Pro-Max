@@ -53,7 +53,7 @@ data class ChannelVolume(
 )
 
 @Serializable
-data class GeoValidationChild(val node: NodeRefDto, val visits: Int, val geo_valid_pct: Double?, val suspicious_visits: Int)
+data class GeoValidationChild(val node: NodeRefDto, val visits: Int, val geo_valid_pct: Double?, val suspicious_visits: Int, val geo_valid_visits: Int)
 
 /** Contract `GeoValidationSummary`. */
 @Serializable
@@ -61,6 +61,8 @@ data class GeoValidationSummary(
     val as_of: String, val from: String, val to: String, val node: NodeRefDto, val visits: Int, val geo_valid_pct: Double?,
     val force_sale_pct: Double?, val mock_pct: Double?, val geo_mismatch_pct: Double?, val suspicious_pct: Double?,
     val signals_by_code: Map<String, Int>, val children: List<GeoValidationChild>,
+    /** The numerator of [geo_valid_pct] (web request web-geo-validated-visits), never derived from the rounded percent. */
+    val geo_valid_visits: Int,
 )
 
 @Serializable
@@ -183,7 +185,7 @@ class DashboardService(
                   FROM dw.agg_daily_zone a JOIN zg ON zg.zone_id = a.zone_id
                  WHERE a.business_date BETWEEN :f AND :t AND ${eff.clause("a.zone_id")} GROUP BY 1, 2 ORDER BY 1
                 """,
-            ) { it.map { rs, _ -> GeoValidationChild(NodeRefDto(lv.childType!!, rs.getLong("cid"), null, rs.getString("cname")), rs.getInt("vis"), pct(rs.getLong("gv"), rs.getLong("vis")), rs.getInt("susp")) }.list() }
+            ) { it.map { rs, _ -> GeoValidationChild(NodeRefDto(lv.childType!!, rs.getLong("cid"), null, rs.getString("cname")), rs.getInt("vis"), pct(rs.getLong("gv"), rs.getLong("vis")), rs.getInt("susp"), rs.getInt("gv")) }.list() }
         } else {
             q(
                 """
@@ -192,11 +194,11 @@ class DashboardService(
                   FROM dw.agg_daily_route a JOIN dw.dim_geo g ON g.route_id = a.route_id
                  WHERE a.business_date BETWEEN :f AND :t AND ${eff.clause("a.zone_id")} GROUP BY 1, 2, 3 ORDER BY 1
                 """,
-            ) { it.map { rs, _ -> GeoValidationChild(NodeRefDto("route", rs.getLong("cid"), rs.getString("ccode"), rs.getString("cname")), rs.getInt("vis"), pct(rs.getLong("gv"), rs.getLong("vis")), rs.getInt("susp")) }.list() }
+            ) { it.map { rs, _ -> GeoValidationChild(NodeRefDto("route", rs.getLong("cid"), rs.getString("ccode"), rs.getString("cname")), rs.getInt("vis"), pct(rs.getLong("gv"), rs.getLong("vis")), rs.getInt("susp"), rs.getInt("gv")) }.list() }
         }
         return GeoValidationSummary(
             asOf.wire(), from.toString(), to.toString(), ns.ref, t.vis.toInt(), pct(t.gv, t.vis), pct(t.fs, t.vis), pct(t.mock, t.vis),
-            pct(mismatched, checked), pct(t.susp, t.vis), signals, children,
+            pct(mismatched, checked), pct(t.susp, t.vis), signals, children, t.gv.toInt(),
         )
     }
 

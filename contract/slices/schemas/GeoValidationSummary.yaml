@@ -6,6 +6,7 @@ GeoValidationSummary:
   - to
   - node
   - visits
+  - geo_valid_visits
   - geo_valid_pct
   - force_sale_pct
   - mock_pct
@@ -26,6 +27,10 @@ GeoValidationSummary:
     visits:
       type: integer
       minimum: 0
+    geo_valid_visits:
+      type: integer
+      minimum: 0
+      description: Visits counted as geo-valid in the period and node; the numerator of geo_valid_pct.
     geo_valid_pct:
       type:
       - number
@@ -70,6 +75,7 @@ GeoValidationSummary:
         required:
         - node
         - visits
+        - geo_valid_visits
         - geo_valid_pct
         - suspicious_visits
         additionalProperties: false
@@ -79,6 +85,10 @@ GeoValidationSummary:
           visits:
             type: integer
             minimum: 0
+          geo_valid_visits:
+            type: integer
+            minimum: 0
+            description: Visits counted as geo-valid in the period and node; the numerator of geo_valid_pct.
           geo_valid_pct:
             type:
             - number

@@ -9132,7 +9132,7 @@ components:
               config_ack_pct: { type: [number, 'null'], minimum: 0, maximum: 100 }
     GeoValidationSummary:
       type: object
-      required: [as_of, from, to, node, visits, geo_valid_pct, force_sale_pct, mock_pct, geo_mismatch_pct, suspicious_pct, signals_by_code, children]
+      required: [as_of, from, to, node, visits, geo_valid_visits, geo_valid_pct, force_sale_pct, mock_pct, geo_mismatch_pct, suspicious_pct, signals_by_code, children]
       additionalProperties: false
       properties:
         as_of: { $ref: '#/components/schemas/Timestamp' }
@@ -9140,6 +9140,7 @@ components:
         to: { $ref: '#/components/schemas/BusinessDate' }
         node: { $ref: '#/components/schemas/NodeRef' }
         visits: { type: integer, minimum: 0 }
+        geo_valid_visits: { type: integer, minimum: 0, description: 'Visits counted as geo-valid in the period and node; the numerator of geo_valid_pct.' }
         geo_valid_pct: { type: [number, 'null'], minimum: 0, maximum: 100 }
         force_sale_pct: { type: [number, 'null'], minimum: 0, maximum: 100 }
         mock_pct: { type: [number, 'null'], minimum: 0, maximum: 100 }
@@ -9153,11 +9154,12 @@ components:
           type: array
           items:
             type: object
-            required: [node, visits, geo_valid_pct, suspicious_visits]
+            required: [node, visits, geo_valid_visits, geo_valid_pct, suspicious_visits]
             additionalProperties: false
             properties:
               node: { $ref: '#/components/schemas/NodeRef' }
               visits: { type: integer, minimum: 0 }
+              geo_valid_visits: { type: integer, minimum: 0, description: 'Visits counted as geo-valid in the period and node; the numerator of geo_valid_pct.' }
               geo_valid_pct: { type: [number, 'null'], minimum: 0, maximum: 100 }
               suspicious_visits: { type: integer, minimum: 0 }
     TargetAchievement:
