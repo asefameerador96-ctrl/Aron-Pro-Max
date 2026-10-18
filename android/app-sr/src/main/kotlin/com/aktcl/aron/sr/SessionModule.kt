@@ -192,6 +192,12 @@ object SessionModule {
             currentUser = { (components.session.state.value as? com.aktcl.aron.core.session.SessionState.Active)?.user?.userId },
         )
 
+    /** PARITY-SPEC s2.6: the pack pictures of the SKU rows; the dev-only bundled art only when BuildConfig.DEV_PACKSHOTS. */
+    @Provides
+    @Singleton
+    fun skuPackshots(@ApplicationContext context: Context, imageCache: com.aktcl.aron.core.sync.ImageCache): com.aktcl.aron.core.sync.SkuPackshots =
+        com.aktcl.aron.core.sync.SkuPackshots(imageCache, if (BuildConfig.DEV_PACKSHOTS) context.assets else null)
+
     /** F-SYS-029: pack thumbnails and AV/KV assets, bounded LRU on disk (AV only on unmetered networks). */
     @Provides
     @Singleton

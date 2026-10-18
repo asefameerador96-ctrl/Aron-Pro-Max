@@ -1,5 +1,6 @@
 package com.aktcl.aron.uiscreenshots
 
+import com.aktcl.aron.core.ui.LocalPackshotProvider
 import android.content.Context
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -130,7 +131,7 @@ class ScreenshotTests {
             CompositionLocalProvider(
                 LocalContext provides ctx,
                 LocalDensity provides Density(LocalDensity.current.density, fontScale = fontScale),
-            ) { AronTheme(language, dark = false, sunlight = sunlight, tier = GlassTier.B, reducedMotion = true) { content() } }
+            ) { AronTheme(language, dark = false, sunlight = sunlight, tier = GlassTier.B, reducedMotion = true) { CompositionLocalProvider(LocalPackshotProvider provides TestPackshots) { content() } } }
         }
         rule.waitForIdle()
         if (recordTo == null && System.getProperty("roborazzi.test.record") != "true") {
@@ -255,6 +256,15 @@ class ScreenshotTests {
         StockContent(stockRows, stockTotals, StockMessage.SAVED, slipNotPrinted = true, onIssue = { _, _ -> }, onSave = {}, onPrint = {})
     }
 
+    /** PARITY-SPEC s2.6 evidence: the five SKUs of docs/ui-reference/sr/stock.webp with their (dev) pack pictures. */
+    @Composable private fun StockPackshots() = Frame(stringResource(HomeR.string.hm_tile_stock)) {
+        val rows = listOf("MaxR-10S" to 10, "MaxR-20S" to 20, "MaxB-10S" to 10, "MaxB-20S" to 20, "MaxWB-10S" to 10).mapIndexed { i, (code, per) ->
+            val id = 200L + i
+            StockRow(SkuEntity(id, code, id, "cigarette", code, code, null, "stick", per, "pack", null, "1.000", i, "active", 1), 0, 0)
+        }
+        StockContent(rows, emptyList(), null, slipNotPrinted = false, onIssue = { _, _ -> }, onSave = {}, onPrint = {})
+    }
+
     @Composable private fun Picker() = Frame(stringResource(HomeR.string.hm_tile_sale)) {
         val rows = OutletPicker.rows(outlets)
         OutletPickerContent(rows, OutletPicker.chips(rows), OutletPicker.ALL_CHIP, {}, {}, marks = marks)
@@ -341,6 +351,7 @@ class ScreenshotTests {
 
     // ---- Stock ----
     @Test @Config(qualifiers = "bn-w360dp-h800dp") fun stock_bn_light() = shot("stock_bn_light", AppLanguage.BN) { Stock() }
+    @Test @Config(qualifiers = "bn-w360dp-h800dp") fun stock_bn_packshots() = shot("stock_bn_packshots", AppLanguage.BN) { StockPackshots() }
     @Test @Config(qualifiers = "bn-w360dp-h800dp") fun stock_bn_sunlight() = shot("stock_bn_sunlight", AppLanguage.BN, sunlight = true) { Stock() }
 
     // ---- Outlet picker ----

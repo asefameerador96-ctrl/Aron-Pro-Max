@@ -1,5 +1,6 @@
 package com.aktcl.aron.uiscreenshots
 
+import com.aktcl.aron.core.ui.LocalPackshotProvider
 import android.content.Context
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -126,7 +127,7 @@ class SrStateScreenshotTests {
         val ctx = AppLocale.wrap(ApplicationProvider.getApplicationContext<Context>(), language)
         rule.setContent {
             CompositionLocalProvider(LocalContext provides ctx, LocalDensity provides Density(LocalDensity.current.density, fontScale = fontScale)) {
-                AronTheme(language, dark = false, sunlight = sunlight, tier = GlassTier.B, reducedMotion = true) { content() }
+                AronTheme(language, dark = false, sunlight = sunlight, tier = GlassTier.B, reducedMotion = true) { CompositionLocalProvider(LocalPackshotProvider provides TestPackshots) { content() } }
             }
         }
         rule.waitForIdle()

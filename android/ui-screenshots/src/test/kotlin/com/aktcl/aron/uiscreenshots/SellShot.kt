@@ -1,5 +1,6 @@
 package com.aktcl.aron.uiscreenshots
 
+import com.aktcl.aron.core.ui.LocalPackshotProvider
 import android.content.Context
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -74,7 +75,7 @@ class SellShot {
         val ctx = AppLocale.wrap(ApplicationProvider.getApplicationContext<Context>(), AppLanguage.BN)
         rule.setContent {
             CompositionLocalProvider(LocalContext provides ctx) {
-                AronTheme(AppLanguage.BN, dark = false, sunlight = sunlight, tier = GlassTier.B, reducedMotion = false) { content() }
+                AronTheme(AppLanguage.BN, dark = false, sunlight = sunlight, tier = GlassTier.B, reducedMotion = false) { CompositionLocalProvider(LocalPackshotProvider provides TestPackshots) { content() } }
             }
         }
         rule.waitForIdle()

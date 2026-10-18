@@ -45,6 +45,7 @@ import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import com.aktcl.aron.core.database.entity.SkuEntity
 import com.aktcl.aron.core.ui.AronBanner
 import com.aktcl.aron.core.ui.AronEmptyState
 import com.aktcl.aron.core.ui.AronIcons
@@ -54,6 +55,8 @@ import com.aktcl.aron.core.ui.AronSecondaryButton
 import com.aktcl.aron.core.ui.AronStepper
 import com.aktcl.aron.core.ui.AronTokens
 import com.aktcl.aron.core.ui.BannerKind
+import com.aktcl.aron.core.ui.PackshotImage
+import com.aktcl.aron.core.ui.PackshotSku
 import com.aktcl.aron.core.ui.GlassKind
 import com.aktcl.aron.core.ui.GlassSurface
 import com.aktcl.aron.core.ui.GlassTier
@@ -260,7 +263,7 @@ private fun StockSkuRow(r: StockRow, position: RowPosition, divider: Boolean, so
         AronListRow(
             title = r.sku.shortName,
             subtitle = loadedCaption,
-            leading = { SkuThumb(r.sku.shortName, packs) },
+            leading = { SkuThumb(r.sku, packs) },
             trailingContent = {
                 Column(horizontalAlignment = Alignment.End) {
                     MoneyText(localizedNumber(figure), style = MaterialTheme.typography.headlineLarge)
@@ -301,24 +304,19 @@ private fun StockSkuRow(r: StockRow, position: RowPosition, divider: Boolean, so
 }
 
 /**
- * The 48 dp thumbnail slot: no pack image is bundled yet, so an `accent.container` disc carries the SKU's initial
- * (decorative), and the packs equivalent rides as a small `accent.container` pill at its bottom end (screens-sr s4,
- * Q-UI-11) when the SKU is packed. The row's merged description reads the packs; the thumb itself is silent.
+ * The pack picture (PARITY-SPEC s2.5, s2.6, stock.md UI-SR-19): the SKU's cached thumbnail, or the neutral pack
+ * silhouette with the category glyph when none is on the phone yet, never a letter circle. The packs equivalent rides as
+ * a small `accent.container` pill at its bottom end (screens-sr s4, Q-UI-11, UI-SR-18) when the SKU is packed. The row's
+ * merged description reads the packs; the picture itself is silent.
  */
 @Composable
-private fun SkuThumb(name: String, packs: Long?) {
+private fun SkuThumb(sku: SkuEntity, packs: Long?) {
     val c = LocalAronColors.current
-    val fill = c.accentContainer
     val pillFill = if (c.sunlight) c.accentHi else c.accentContainer
     val pillInk = if (c.sunlight) c.textOnAccent else c.accentOnContainer
     val pillEdge = c.surfaceSolid
-    Box(Modifier.size(AronTokens.Touch.Min).clearAndSetSemantics { }) {
-        Box(
-            Modifier.size(AronTokens.Touch.Min).drawBehind { drawRoundRect(fill, cornerRadius = CornerRadius(AronTokens.Radius.Chip.toPx())) },
-            contentAlignment = Alignment.Center,
-        ) {
-            Text(name.trim().take(1).uppercase(), style = MaterialTheme.typography.titleMedium, color = c.accentOnContainer)
-        }
+    Box(Modifier.size(PackshotWidth, PackshotHeight).clearAndSetSemantics { }) {
+        PackshotImage(PackshotSku(sku.skuId, sku.code, sku.categoryCode), Modifier.size(PackshotWidth, PackshotHeight))
         if (packs != null) {
             Box(
                 Modifier
@@ -342,8 +340,12 @@ private fun SkuThumb(name: String, packs: Long?) {
     }
 }
 
-/** The packs pill on the thumbnail: 20 dp so the initial stays readable behind it (the spec's 24 would cover half the disc). */
+/** The packs pill on the picture: 20 dp so it covers only the corner of the pack. */
 private val PackPillHeight = 20.dp
+
+/** The pack picture in the row: the pack's own shape (about 0.62 wide to 1 high, PARITY-SPEC s2.5). */
+private val PackshotWidth = 48.dp
+private val PackshotHeight = 78.dp
 
 /**
  * The totals panel (manual "ক্যাটাগরি / মোট ইস্যু / স্টক", S3): one row per category, all four always shown (zeros included),
