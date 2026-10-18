@@ -1,4 +1,5 @@
-import { formatNumber, type Locale } from "@/lib/i18n";
+import type { Locale } from "@/lib/i18n";
+import { groupWestern } from "@/lib/reports/format";
 
 export interface LakhWords {
   lakh: string;
@@ -12,9 +13,9 @@ export function formatLakhCrore(locale: Locale, value: number, words: LakhWords)
   const abs = Math.abs(value);
   const sign = value < 0 ? "-" : "";
   const two = { minimumFractionDigits: 2, maximumFractionDigits: 2 } as const;
-  if (abs >= 1e7) return `${sign}${formatNumber(locale, abs / 1e7, two)} ${words.crore}`;
-  if (abs >= 1e5) return `${sign}${formatNumber(locale, abs / 1e5, two)} ${words.lakh}`;
-  return `${sign}${formatNumber(locale, abs, { maximumFractionDigits: 0 })}`;
+  if (abs >= 1e7) return `${sign}${groupWestern(locale, abs / 1e7, two)} ${words.crore}`;
+  if (abs >= 1e5) return `${sign}${groupWestern(locale, abs / 1e5, two)} ${words.lakh}`;
+  return `${sign}${groupWestern(locale, abs, { maximumFractionDigits: 0 })}`;
 }
 
 /** Milli-taka to whole taka (half up on the magnitude) for the lakh/crore card figures. */
