@@ -274,13 +274,14 @@ fun HomeContent(
                         listOf(
                             h.checkInText?.let { stringResource(R.string.hm_checkin_at, localizedDigits(it)) } ?: stringResource(R.string.hm_checkin_due),
                             stringResource(R.string.hm_hero_meter) + " " + meterText,
-                        ).joinToString(" · "),
+                        ).joinToString(" · "), // the bar carries the figure; the caption names it for TalkBack and large text
                         color = look.inkMuted, fontSize = 12.sp, modifier = Modifier.padding(horizontal = HOME_GUTTER + 4.dp),
                     )
                 }
                 AronTargetCard(
                     title = stringResource(R.string.hm_target_title), label = stringResource(R.string.hm_hero_total),
                     value = hero?.grandTotalText ?: localizedNumber(0L),
+                    percentText = meterText,
                     percent = if (planned > 0) (visited * 100 / planned).coerceAtLeast(1) else null,
                     detailsLabel = stringResource(R.string.hm_target_details), onDetails = onHero ?: { onTile(HomeTile.SUMMARY) },
                     modifier = Modifier

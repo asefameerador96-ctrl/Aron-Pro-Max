@@ -9,7 +9,7 @@ Branch `lane/ui-sr-a`. Binding spec: `docs/ui-reference/PARITY-SPEC.md` (CLAUDE.
 | Screen | Reference | Status | What differs | sha |
 |---|---|---|---|---|
 | Home | `sr/home-1-tiles.webp`, `home-2-kpis.webp` | DONE (side-by-side `docs/evidence/ui-parity/sr-home.png`) | Astha and Loyalty tiles absent on purpose (docs/27); kit icons are redraws, not the vendor art; header is slimmer (no status-bar strip); extra slim row for the sync chip and Sunlight switch; target card shows today's sales and outlet progress with no target percentage (deferred); the next-step dock is kept as a gradient button at the bottom | see git log |
-| Stock | `sr/stock.webp` | NOT STARTED | letter circles, no packshot, stepper outline | - |
+| Stock | `sr/stock.webp` | PARTIAL (`docs/evidence/ui-parity/sr-stock.png`) | packshots show the neutral silhouette until the ui-packshots data lands; kit asks open with ui-kit: stock column 40 dp too narrow (header wraps, 5-digit figures), long SKU code clips, per-category unit makes the cigarette total row wrap (unit is in the label); the grouping headings by category are gone (reference is one flat list); Print is always shown, grey until a slip is saved and a printer is connected | see git log |
 | Sale: choose retailer | `sr/sale-select.png` | NOT STARTED | picker is in `feature-outlet` (not this lane's module) | - |
 | Sale: product list + cart | `sr/sale-select.png` + Stock card layout | NOT STARTED | expandable rows, letter circles | - |
 | Attendance | `sr/attendance.png` | NOT STARTED | status card rows, bar buttons | - |
@@ -37,3 +37,9 @@ Step 1 `RetailerPicker` (pill dropdown, dark A-Z panel, All = gradient square, e
 - 2026-10-18: the day's next-step dock is kept (behaviour) as `AronPrimaryButton` in the scaffold's bottom slot; the "needs a fresh route bundle" reason is a banner above the grid.
 - 2026-10-18: the two tile group labels ("Today's work", "Others") are gone: the reference is one grid; HomeScreenTest updated accordingly.
 - Goldens re-recorded: the 10 `home_*` goldens (ScreenshotTests, SrStateScreenshotTests) only.
+
+## Decisions (Stock and host frame)
+- 2026-10-18: `SrFrame` (app-sr) now draws the kit bar: back chevron, the tile art (`icon` param, drawable res of `core-ui` `aron_art_*`), white title; the printer state hangs on the bar edge (`SrPrinterBadge`: red crossed printer when not connected, tap opens the existing picker). The green/red printer banner is gone (the badge carries the state and its TalkBack text). The sync chip shows only when offline, syncing or waiting.
+- 2026-10-18: Stock units: cigarettes in sticks, lighters in pieces, matches in dozens stay; the unit is part of each category label in the totals panel ("লাইটার (পিস)").
+- 2026-10-18: Stock TalkBack: each pack card control has its own label with the SKU name (minus, Issue field, plus); the old merged row with custom actions is gone because the kit card owns its controls.
+- Goldens re-recorded: `stock_bn_light`, `stock_bn_sunlight` (ScreenshotTests, via the new `ParityFrame` test twin of the host frame; other screens keep the old frame twin until they move).
