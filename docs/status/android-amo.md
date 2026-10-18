@@ -1,5 +1,50 @@
 # Status: lane android-amo (wave 2, started 2026-10-17)
 
+## Session 4 (2026-10-17 night)
+- **1 Streamed outlet ingest: DONE (Opus checker, 3 findings fixed).** `ReferenceRepository.apply(outletPages)` parses and inserts each page of the paged `outlets` section INSIDE the one apply transaction (heap = one page; a kill or bad page rolls the whole snapshot back, staged pages let the next run apply again; this replaces the proposed per-page transactions, which would have exposed a half snapshot). Prefetch keeps its pages one entry each (rows validated when stored; a broken stored prefetch is dropped at promote so day start asks again); rows of unknown routes stream to `outlets_other_routes` per page. Zone-scale (11,000 / 54 routes): ingest 1 to 3 s, live heap above baseline about 0 MB (was 157 MB raw; the metric is now live heap after a forced GC, with a raw-peak guard of 400 MB; control with an 80 MB array reads 76). `AmoDay.zoneOutlets` still holds all outlet entities (about 30 MB): a route-scoped read is not built. **Shared-module change for owners (android-core):** core-database `ReferenceRepository` (`OutletPages`, `FileOutletPages`, `apply(..., outletPages)`), core-sync `BundleDownloader` (streams `outlets`, code `malformed_page`). Tests: `StreamedOutletIngestTest`, `ZoneScaleBudgetTest`, `BundleDownloaderTest`.
+- Merged INT and android-tso; the shared Home header now wraps to 3 lines so `tso_home_200_bn` golden was re-recorded (Linux).
+- 2 Parity (presentation-only), 3 new server data (waiting for lead-backend 4e0a3206/2e83eb75 on INT), 4 write-path gaps: next.
+
+## HANDOVER (session 3, 2026-10-19): the 5-item package of 22:20 is done except what is listed
+**State:** head 974e65fb on `lane/android-amo` (local branch `amo-work`; push `git push origin amo-work:lane/android-amo`), INT merged, full local CI command green (`./gradlew --offline :android:app-sr:assembleDebug :android:app-amo:assembleDebug :android:app-tso:assembleDebug testDebugUnitTest lintDebug`, then CHECK `BUILD SUCCESSFUL` in the file, not the pipe's exit code). Record goldens on Linux only: `./gradlew :android:ui-screenshots:testDebugUnitTest -Proborazzi.record=true --tests '*Amo*'`.
+**Package:** 1 replay proof done (Opus findings fixed); 2 zone-scale done (heap MISS reported, request to android-core); 3 parity audit done (fixed list and OPEN list in the table below, requests in `docs/requests/android-amo-parity-findings.md`); 4 long-text and Sunlight goldens done; 5 SR Outlet hub check written (no goldens for request form, own requests, Force Sale; no logic defect).
+**Left, in order:** (a) OPEN parity items below: Task assign flow (route > outlet > SR derived, description in list, date picker), Sales Submit rows grouped as the manual's 9, SR Stock route/outlet count and category names, Verify success dialog and photo, Perf Assessment header card/tips and saved dialog, previous-sale-data button, check-out time 12 h, logout wording (needs a role parameter in feature-home), SS menu flag; (b) task/own-request form uuid persistence (rememberSaveable does not survive a swipe-kill) or a content guard; (c) streamed outlet ingest when android-core lands it, then tighten the 400 MB guard in `ZoneScaleBudgetTest`.
+**Traps:** `AmoRecordWriter` holds every AMO write (AmoDay delegates); `StockLoad.save` now writes its guard before the commit (shared with SR); `recordNumberedSale` returns the stored number for a stored memo; Home tile order changed (goldens re-recorded); a failed gradle pipe through `tail` reports exit 0; no phone: everything is DEVICE-PENDING.
+
+## Package items (2026-10-18/19)
+- 1 Replay proof: kill-and-relaunch + replay for every AMO write path over a file database (`AmoRecordWriterReplayTest`, 16 tests; fresh `UserDatabases` per relaunch; Opus checked). Fixes from the checker: a replayed numbered sale returns its stored memo number and burns none (`CaptureRepository.recordNumberedSale`); a survey replay re-claims the photos the stored answers name; Update Base reuses the fix uuid already stamped on its photo; stock correction lives in `AmoRecordWriter.correctStock` and the test calls it; the stock-load re-save guard is written BEFORE the commit (`StockLoad.save`, given back by `commitFailed`; SR gets it too). Honest limits: the "kill" mid-way is an injected exception (rollback on throw), not an interrupted journal; Task and own-request form uuids are `rememberSaveable`/`remember` (survive a system-restored process death, not a swipe-kill: a second form queues a second row); `closeAbandoned` has no test of its own (safe by `restoreOpenVisit` dropping closed visits); the survey photo of a row whose claim failed with no replay is only swept by the media store's one-day keep.
+- 2 Zone scale: 11,000 outlets / 54 routes, 2,000 a page: ingest 1.2 s, routesOfDay 0.25 s, one route 3 ms, nearest <1 ms / 8 ms: inside the proposed budgets. Peak heap MISSES the proposed 150 MB Android target (157 MB after merge, 283 MB after parse on the JVM); request `docs/requests/android-core-streamed-outlet-ingest.md`.
+- 3 Parity audit (Opus, read-only) vs docs/07, the AMO manual and delta-amo: table below; fixes applied for the items marked FIXED; the rest filed in `docs/requests/android-amo-parity-findings.md` or listed OPEN.
+- 4 Bangla and long-text: 200% font scale and 3-line Bangla wrap goldens for AMO Home, Control Call (route pick, menu, Manual Override, Joint Call), Verify (list, form) and the Team and Outlet hubs (`HubListContent`, extracted so the hub rows are testable); Sunlight goldens for every AMO screen with a number, status or primary action (Control Call, Manual Override, Joint Call, Assessment, Price compliance, Stock correction, Tasks, Task assign, Exceptions, SR Stock, Team Performance, Live Dashboard, Reports, Verify, Team and Outlet hubs, Home). Recorded on Linux; the full ui-screenshots suite verifies. Home header now wraps to 3 lines at 200% font scale.
+- 5 SR Outlet hub five-state check: see the last section.
+
+## Parity audit (Opus checker, 2026-10-18): per-screen result after the fixes of this pass
+| Screen | Result | Owner / next |
+|---|---|---|
+| Home grid | Order fixed (Joint Call before Control Call). 8 hub tiles + Settings gear are a deliberate change from the manual's 17-tile grid (D-AMO-HOME-01) | logged |
+| Home SS variant | Team Location stays hidden for SS (no SRs to show); Report not flag-gated | OPEN, needs a flag (request) |
+| Home header | "AMO - name (username)" over the date; territory name needs the bundle | request: backend/contract |
+| Attendance | match; check-out time is shown 24 h | OPEN (minor) |
+| Control Call route/outlet | two steps, label "name (code)"; title now "কন্ট্রোল কল অ্যাক্টিভিটি" | OPEN (minor: label with visit days) |
+| Manual Override | FIXED: own screen (photo, no reason question, "এগিয়ে যান", note says the location goes for approval) | done |
+| Call menu / Assessment | Labels FIXED to the manual ("এসআর পারফ. অ্যাসেসমেন্ট", "ডিস্ট্রিবিউশন পারফর্মেন্স", "OOS Performance", "POSM", saved text); header card and tips not built | OPEN |
+| Joint Call | geo gate, form match; sections, guidance, Low/উচ্চ chips need rubric fields | request: contract |
+| Sale hub | Order FIXED (Stock, Sale, Memo, Summary); printer icon and banner on Stock, Memo, Summary FIXED | done |
+| Previous sale data | not on the AMO sale path | OPEN |
+| Sales Submit | rows are per record type, not the manual's 9 rows; "বিক্রয়" label FIXED | OPEN (row grouping) |
+| Outlet hub | FIXED: "যাচাই করুন" section with three rows and counts, "দোকান সংক্রান্ত অপারেশন্স" section, "আমার অনুরোধ" last | done |
+| Verify list/form | Labels FIXED (দোকানের নাম, মালিকের নাম, মোবাইল নম্বর, Sub-Channel, Geo Classification, Save); route/cluster editing and "GEO এবং ছবি" not built; no success dialog | request: contract + OPEN |
+| Own New/Close/Info | route > outlet, generic confirm, no success feedback | request: feature-outlet (SR lane) |
+| Update Base | Strings FIXED (confirm question, আপডেট/বাতিল, নিশ্চিত করুন); step picker instead of a map is deliberate (D-AMO-BASE-01) | done |
+| Team Location / Performance | deliberate (D-170) / deferred (docs/27) | - |
+| Task list / assign | Strings FIXED; SR-first flow, description in the list, date picker | OPEN |
+| Live Dashboard | Title and headings FIXED; strike caption now over target outlets; geo counts need backend | request: backend |
+| SR Stock | "লিফটেড স্টক" FIXED; route and outlet count, category names | OPEN |
+| Reports | Titles FIXED; Summary range FIXED (month to date); date-range picker, per-category columns | request: backend (D-AMO-REPORT-01) |
+| Settings / PDA to Support | match / deliberate (G-43) | - |
+| Logout dialog | shared feature-home wording differs (title, buttons) | OPEN, needs a role parameter |
+| Number grouping | `localizedNumber` uses lakh grouping against F-SYS-051 | request: android-core |
+
 ## HANDOVER (session 3, 2026-10-18 morning): every row of the lane list is built
 **Branch:** push from the local branch `amo-work` to `origin/lane/android-amo` (`git push origin amo-work:lane/android-amo`). Local build: `echo sdk.dir=/opt/android-sdk > local.properties`, then `./gradlew :android:feature-amo:testDebugUnitTest :android:app-amo:lintDebug -q 2>&1 | grep -v JAVA_TOOL` (run lintDebug before every push). `python3 tools/my-rows.py android-amo --todo` is empty.
 
@@ -9,6 +54,14 @@
 **Architecture added:** `AmoApi` (online reads over `components.apiClient`; kept copies are files in `cacheDir/amo_api_<user>`, 3 days for dated lists, 30 for request details, 150 files, 600 KB each; 403/404 never serve an old copy), pure models + tests in feature-amo (`OutletVerify`, `Exceptions`, `TaskDelegation`, `TeamLocations`, `TeamStock`, `LiveDashboard`, `Reports`, `TeamPerformance`, `UpdateBasePoint`).
 **Requests/decisions:** `docs/requests/android-amo-update-base-server-guards.md` (server enforces none of the Update Base limits), D-AMO-VERIFY-01, D-AMO-BASE-01, D-AMO-REPORT-01; earlier `android-amo-supervisor-day-reopen.md`.
 **Open / traps:** route and cluster are not editable in Verify (payload has no member) and no photo re-capture there; per-category STD needs `route-std` opened to the AMO; zone and category names are not in the bundle (ids/codes shown); Team Performance zone/route cards wait for the target engine; SRs without stock rows are missing from SR Stock (backend lists only aggregates); `Cancel` in Verify is back-only and Reject is a separate press-and-hold (docs/07 says Cancel = reject: owner to confirm); typed Outlet request draft is not kept over process death. No phone here: every row is DEVICE-PENDING (lines D-AMO-OUTLET, D-AMO-TEAM, D-AMO-REPORT in device-checks.md); goldens not recorded; the open Opus finding from session 1 (replay of a purged UUID queued again) is still with android-core.
+
+## Five-state check of the SR Outlet hub screens (read-only, 2026-10-19; for the lead, SR logic untouched)
+Screens: request form (`OutletRequestContent`), own requests (`OwnRequestsContent`), outlet picker, Force Sale, call screens. States: empty, loading, offline, error, long Bangla.
+- **Own requests:** empty has an `AronEmptyState`; the SR host's loading and error are host-level. No golden at all (list, empty, long Bangla, Sunlight).
+- **Request form:** validation errors and the saved state exist and are unit-tested (`RequestScreensTest`, `OutletRequestTest`); no golden for the form (New/Close/Info/Update Base), its errors, or 200% font scale; the confirm dialog text is generic for Close and Info (see `docs/requests/android-amo-parity-findings.md` 7-8).
+- **Picker, visit in/out:** goldens exist (light, Sunlight); no 200% font scale or 3-line Bangla row golden for the picker.
+- **Force Sale:** no golden in any state.
+- **Gaps for the lead / SR lane:** goldens for request form, own requests and Force Sale; font-scale 2 goldens for picker and visit screens. No logic defect found, none of the above edited.
 
 ## Earlier handover (session 1)
 **State:** all on `lane/android-amo` (merged with INT; local Gradle works online: `echo sdk.dir=/opt/android-sdk > local.properties`; `./gradlew :android:feature-amo:testDebugUnitTest :android:app-amo:compileDebugKotlin :android:core-database:testDebugUnitTest -q 2>&1 | grep -v JAVA_TOOL`). CI on the lane head has not been looked at yet: check it first.

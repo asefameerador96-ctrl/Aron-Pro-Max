@@ -1,5 +1,6 @@
 package com.aktcl.aron.feature.tso.feedback
 
+import com.aktcl.aron.feature.tso.a11yProblems
 import android.content.Context
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalContext
@@ -143,6 +144,7 @@ class FeedbackScreenTest {
         compose.onNodeWithTag(FeedbackTags.card("u")).assertExists(); compose.onNodeWithTag(FeedbackTags.unsent("u")).assertExists()
         compose.onNodeWithTag(FeedbackTags.LIST).performScrollToNode(hasTestTag(FeedbackTags.card("a")))
         compose.onNodeWithText("In progress").assertExists(); compose.onNodeWithText("Suggestion  ·  2026-10-01").assertExists()
+        org.junit.Assert.assertEquals("accessibility: " + compose.a11yProblems(), emptyList<String>(), compose.a11yProblems())
     }
 
     @Test fun banglaListUsesBanglaStatusAndCategoryAndDigits() {
@@ -164,6 +166,7 @@ class FeedbackScreenTest {
         compose.waitForIdle()
         compose.onAllNodesWithTag(FeedbackTags.ERRORS).assertCountEquals(3) // category, title, description
         assertTrue(q.sent.isEmpty())
+        org.junit.Assert.assertEquals("accessibility: " + compose.a11yProblems(), emptyList<String>(), compose.a11yProblems())
     }
 
     @Test fun noCategoriesShowsTheWarning() {

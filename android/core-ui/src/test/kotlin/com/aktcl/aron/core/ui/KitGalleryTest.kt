@@ -58,6 +58,12 @@ class KitGalleryTest {
                 .map { "${it.config.getOrNull(SemanticsProperties.Text)} size=${it.size}" }
             assertTrue("touch targets too small: $small", small.isEmpty())
         }
+        // lane item 6: every control says its name to TalkBack (text or content description, merged); an icon-only control needs a description
+        val unnamed = clickable.filter { n ->
+            n.size.width > 0 && n.size.height > 0 &&
+                n.config.getOrNull(SemanticsProperties.Text).isNullOrEmpty() && n.config.getOrNull(SemanticsProperties.ContentDescription).isNullOrEmpty()
+        }.map { "${it.boundsInRoot} tag=${it.config.getOrNull(SemanticsProperties.TestTag)} role=${it.config.getOrNull(SemanticsProperties.Role)}" }
+        assertTrue("controls without a name: $unnamed", unnamed.isEmpty())
     }
 
     /** Dialogs are separate windows and closed in the gallery: open one and run the same sweeps (its text and its buttons). */

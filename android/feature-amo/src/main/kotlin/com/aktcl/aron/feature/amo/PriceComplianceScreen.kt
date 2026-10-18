@@ -15,6 +15,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import com.aktcl.aron.core.ui.AronEmptyState
+import com.aktcl.aron.core.ui.localizedDigits
 import com.aktcl.aron.core.ui.AronPrimaryButton
 import com.aktcl.aron.core.ui.AronTokens
 import com.aktcl.aron.core.ui.LocalAronColors
@@ -44,7 +45,7 @@ fun PriceComplianceContent(
                 val observed = PriceCompliance.parseTakaToMtk(text)
                 Column(verticalArrangement = Arrangement.spacedBy(AronTokens.Space.Xs)) {
                     Text(r.name, style = MaterialTheme.typography.titleMedium, color = c.textPrimary)
-                    Text(stringResource(R.string.amo_pc_list, PriceCompliance.formatTaka(r.referenceMtk), r.packLabel), style = MaterialTheme.typography.bodyMedium, color = c.textSecondary)
+                    Text(stringResource(R.string.amo_pc_list, localizedDigits(PriceCompliance.formatTaka(r.referenceMtk)), packText(r.packLabel)), style = MaterialTheme.typography.bodyMedium, color = c.textSecondary)
                     KitTextField(
                         text, { if (editable) onType(r.skuId, it) }, stringResource(R.string.amo_pc_field), isError = text.isNotBlank() && observed == null,
                         keyboardType = KeyboardType.Decimal, fieldModifier = Modifier.testTag(PriceTags.field(r.skuId)),
@@ -53,7 +54,7 @@ fun PriceComplianceContent(
                         text.isBlank() -> null
                         observed == null -> stringResource(R.string.amo_pc_invalid)
                         PriceCompliance.compliant(r.referenceMtk, observed, toleranceBp) -> stringResource(R.string.amo_pc_ok)
-                        else -> stringResource(R.string.amo_pc_off, PriceCompliance.formatTaka(observed - r.referenceMtk).let { if (observed > r.referenceMtk) "+$it" else it })
+                        else -> stringResource(R.string.amo_pc_off, localizedDigits(PriceCompliance.formatTaka(observed - r.referenceMtk).let { if (observed > r.referenceMtk) "+$it" else it }))
                     }
                     if (verdict != null) Text(verdict, style = MaterialTheme.typography.labelLarge, color = if (observed != null && PriceCompliance.compliant(r.referenceMtk, observed, toleranceBp)) c.textPrimary else c.danger, modifier = Modifier.testTag(PriceTags.verdict(r.skuId)))
                 }
@@ -62,4 +63,11 @@ fun PriceComplianceContent(
         if (saved) Text(stringResource(R.string.amo_pa_saved), style = MaterialTheme.typography.titleMedium, color = c.textPrimary, modifier = Modifier.padding(AronTokens.Space.Screen).testTag(PriceTags.SAVED))
         AronPrimaryButton(stringResource(R.string.amo_pa_save), onSave, Modifier.fillMaxWidth().padding(AronTokens.Space.Screen).testTag(PriceTags.SAVE), enabled = editable && PriceCompliance.canSave(rows, typed), busy = saving)
     }
+}
+
+/** "10 stick" as the pack is described to the user: Bangla digits and the unit word in the user's language. */
+@Composable
+private fun packText(label: String): String {
+    val parts = label.split(' ', limit = 2)
+    return localizedDigits(parts[0]) + parts.getOrNull(1)?.let { " " + unitWord(it) }.orEmpty()
 }

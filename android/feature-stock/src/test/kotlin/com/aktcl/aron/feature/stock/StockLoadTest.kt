@@ -88,4 +88,22 @@ class StockLoadTest {
         assertEquals(SaveOutcome.Refused(SaveRefusal.SAME_VALUES_WITHIN_GUARD), b.save(100_000, meta))
         assertTrue(b.save(1_000 + StockLoad.DEFAULT_GUARD_MS, meta) is SaveOutcome.Saved)
     }
+
+    @Test fun aKillBetweenTheCommitAndCommittedStillRefusesTheSameValuesAfterRelaunch() {
+        val store = StockLoad.GuardStore.InMemory()
+        val a = StockLoad(skus, emptyMap(), guardStore = store)
+        a.setEntered(1, 5); assertTrue(a.save(1_000, meta) is SaveOutcome.Saved) // the process dies here: committed() is never called
+        val b = StockLoad(skus, emptyMap(), guardStore = store)
+        b.setEntered(1, 5)
+        assertEquals(SaveOutcome.Refused(SaveRefusal.SAME_VALUES_WITHIN_GUARD), b.save(2_000, meta))
+    }
+
+    @Test fun aFailedCommitGivesTheGuardBack() {
+        val store = StockLoad.GuardStore.InMemory()
+        val a = StockLoad(skus, emptyMap(), guardStore = store)
+        a.setEntered(1, 5); assertTrue(a.save(1_000, meta) is SaveOutcome.Saved); a.commitFailed()
+        val b = StockLoad(skus, emptyMap(), guardStore = store)
+        b.setEntered(1, 5)
+        assertTrue(b.save(2_000, meta) is SaveOutcome.Saved)
+    }
 }

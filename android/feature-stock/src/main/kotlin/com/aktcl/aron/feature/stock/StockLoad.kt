@@ -52,6 +52,7 @@ class StockLoad(
     private val loaded = loadedBaseBySku.toMutableMap()
     private val entered = linkedMapOf<Long, Long>()
     private var inFlightSignature: String? = null
+    private var priorGuard: Pair<String, Long>? = null
 
     val rows: List<StockRow>
         get() = skus.filter { it.status == "active" }.sortedBy { it.sort }
@@ -82,6 +83,9 @@ class StockLoad(
         if (sig == inFlightSignature) return SaveOutcome.Refused(SaveRefusal.SAME_VALUES_WITHIN_GUARD) // double tap before commit
         guardStore.load()?.let { (s, at) -> if (s == sig && nowMs - at in 0 until guardWindowMs) return SaveOutcome.Refused(SaveRefusal.SAME_VALUES_WITHIN_GUARD) }
         inFlightSignature = sig
+        // The guard is written BEFORE the commit: a kill between the commit and `committed` must not leave an empty guard that lets the same increments post twice.
+        priorGuard = guardStore.load()
+        guardStore.save(sig, nowMs)
         val movements = entered.entries.map { (id, qty) ->
             val sku = skus.first { it.skuId == id }
             val f = factorOf(sku)
@@ -95,7 +99,12 @@ class StockLoad(
     }
 
     /** Call when the committer failed: the same values may be saved again. */
-    fun commitFailed() { inFlightSignature = null }
+    fun commitFailed() {
+        inFlightSignature = null
+        // Give back the guard written at save time: a failed commit is not a save, so the same values may go again.
+        priorGuard?.let { guardStore.save(it.first, it.second) } ?: guardStore.save("", 0L)
+        priorGuard = null
+    }
 
     /** Call after the committer succeeded: folds the increment into today's loaded totals and starts the guard window. */
     fun committed(saved: SaveOutcome.Saved, nowMs: Long) {
