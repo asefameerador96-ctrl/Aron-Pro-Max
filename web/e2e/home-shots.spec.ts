@@ -35,3 +35,30 @@ for (const [path, name] of [["/daily-tracking", "tracking"], ["/sync-health", "s
     await info.attach(`${name}-dark`, { path: file, contentType: "image/png" });
   });
 }
+
+// The matrix of the completion pass (item 4): phone / tablet / desktop x light / dark / sunlight, for the home and each drill-down.
+const SIZES = [["phone", 360, 740], ["tablet", 820, 1180], ["laptop", 1366, 768]] as const;
+const MATRIX_PAGES = [["home", "/"], ["drill-category", "/drill/category?code=cigarette"], ["drill-channel", "/drill/channel"], ["drill-calls", "/drill/calls"], ["drill-login", "/drill/login"]] as const;
+for (const [theme, who, pass, lang] of [["light", "tso334", "tso-pass-1", "English"], ["dark", "tso334", "tso-pass-1", "English"], ["sunlight", "tso334", "tso-pass-1", "English"], ["light", "dmo1", "dmo-pass-1", "English"], ["light", "tso334", "tso-pass-1", "বাংলা"]] as const) {
+  for (const [name, path] of MATRIX_PAGES) {
+    test(`matrix ${name} ${theme} ${who} ${lang === "English" ? "en" : "bn"}`, async ({ page }, info) => {
+      test.setTimeout(120_000);
+      await page.emulateMedia({ colorScheme: theme === "dark" ? "dark" : "light", reducedMotion: "reduce" });
+      await page.addInitScript((th) => { try { localStorage.setItem("aron.theme", th); } catch {} }, theme);
+      await loginOk(page, who, pass);
+      await page.getByRole("link", { name: lang }).click();
+      for (const [size, w, h] of SIZES) {
+        await page.setViewportSize({ width: w, height: h });
+        await page.goto(path);
+        await expect(page.locator("h1").first()).toBeVisible();
+        await page.waitForLoadState("networkidle");
+        const file = info.outputPath(`${name}-${theme}-${who}-${lang === "English" ? "en" : "bn"}-${size}.png`);
+        await page.screenshot({ path: file, fullPage: true });
+        await info.attach(`${name}-${theme}-${who}-${lang === "English" ? "en" : "bn"}-${size}`, { path: file, contentType: "image/png" });
+        // no horizontal page scroll at any size (tables scroll inside their own region)
+        const over = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+        expect(over, `${name} ${theme} ${size} overflows the page by ${over}px`).toBeLessThanOrEqual(1);
+      }
+    });
+  }
+}

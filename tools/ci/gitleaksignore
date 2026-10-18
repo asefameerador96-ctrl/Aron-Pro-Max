@@ -22,3 +22,5 @@ f4f0df38be282bf8c5f8eb66ca0ae3831941fe7b:contract/openapi.yaml:generic-api-key:9
 b1b02649f535fc4098286d5cdf9eb1b5956843d9:infra/lib/naming.bicep:generic-api-key:56
 # Azure built-in role definition id (public GUID, not a secret)
 b1b02649f535fc4098286d5cdf9eb1b5956843d9:infra/lib/naming.bicep:generic-api-key:57
+# Test placeholder password literal for new_password in the change-password fixture (ContractConformanceTest), no secret; reviewed by lead 2026-10-18
+9ebcc23808cc2b87130f8c8997fd155b1d2a15ab:backend/app/src/test/kotlin/com/aktcl/aron/backend/app/ContractConformanceTest.kt:generic-api-key:432

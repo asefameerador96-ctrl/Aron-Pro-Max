@@ -38,7 +38,7 @@ export default async function LeavePage({ searchParams }: { searchParams: Promis
           {t(locale, "leave.empty")}
         </p>
       ) : (
-        <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white shadow-sm">
+        <div role="region" aria-label={t(locale, "menu.leave")} tabIndex={0} className="overflow-x-auto rounded-lg border border-slate-200 bg-white shadow-sm focus-visible:outline-(length:--focus-w) focus-visible:outline-offset-2 outline-focus">
           <table className="min-w-full divide-y divide-slate-200 text-sm" data-testid="leave-table">
             <thead className="bg-slate-50 text-left">
               <tr>

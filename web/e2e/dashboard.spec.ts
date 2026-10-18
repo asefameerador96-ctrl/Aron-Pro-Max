@@ -116,6 +116,7 @@ test("the orange Filter narrows the home to a zone: bound levels are read-only, 
 test("the Filter popover works from the keyboard: Enter opens it, Escape closes it and returns focus", async ({ page }) => {
   await loginOk(page, "tso334", "tso-pass-1");
   await page.getByRole("link", { name: "English" }).click();
+  await expect(page.getByTestId("home-filter")).toHaveAttribute("data-ready", ""); // a key pressed before React attaches is lost
   const summary = page.getByTestId("home-filter").locator("summary");
   await summary.focus();
   await page.keyboard.press("Enter");
