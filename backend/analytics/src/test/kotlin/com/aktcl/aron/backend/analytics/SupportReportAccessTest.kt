@@ -19,7 +19,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
-/** AZ-2: SUPPORT sees sync health only (docs/24 s8.5): every business report is 403, the report list is empty, other users' export files stay hidden. */
+/** AZ-2: SUPPORT sees sync health only (docs/24 s8.5): every business report is 403, the report list is empty, other users' exports (log and files) stay hidden. */
 class SupportReportAccessTest : ReportFixture() {
     private val support = 15L
 
@@ -59,7 +59,10 @@ class SupportReportAccessTest : ReportFixture() {
         exports.runUntilIdle()
         assertEquals(HttpStatusCode.NotFound, client.get("/v1/report-exports/$id") { bearerAuth(TestTokens.web(support, Role.SUPPORT)) }.status)
         assertEquals(HttpStatusCode.OK, client.get("/v1/report-exports/$id") { bearerAuth(TestTokens.web(13, Role.ADMIN)) }.status)
-        // The export log stays readable to SUPPORT (who exported what; no rows, no link), as the audit log is.
-        assertEquals(HttpStatusCode.OK, client.get("/v1/report-exports") { bearerAuth(TestTokens.web(support, Role.SUPPORT)) }.status)
+        // The export log shows SUPPORT its own exports only (none), not who exported what; an admin sees the analyst's.
+        val log = client.get("/v1/report-exports?user_id=10") { bearerAuth(TestTokens.web(support, Role.SUPPORT)) }
+        assertEquals(HttpStatusCode.OK, log.status)
+        assertEquals(0, Json.parseToJsonElement(log.bodyAsText()).jsonObject["items"]!!.jsonArray.size)
+        assertEquals(1, Json.parseToJsonElement(client.get("/v1/report-exports?user_id=10") { bearerAuth(TestTokens.web(13, Role.ADMIN)) }.bodyAsText()).jsonObject["items"]!!.jsonArray.size)
     }
 }
