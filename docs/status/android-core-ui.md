@@ -7,7 +7,7 @@ AronScaffold(
     topBar = { AronTopBar(title, icon = painterResource(R.drawable.aron_art_stock), onBack = back, backLabel = stringResource(R.string.core_ui_back),
                hanging = { AronPrinterBadge(connected, label = printerStateText, onClick = connectPrinter) }) },   // badge centred on the bar's bottom edge (stock.webp); trailing = inside the bar
     home = false,                                   // true: white page (Home grid); false: grey #E8E8E8
-    bottomPanel = { TotalsPanel(header = TotalsLine(category, listOf(totalIssue, stock)), lines = listOf(TotalsLine(cigarettes, listOf(a, b)), ...)) },
+    bottomPanel = { TotalsPanel(header = TotalsLine(category, listOf(totalIssue, stock)), lines = listOf(TotalsLine(cigarettes, listOf(a, b), caption = sticks), ...)) },
     bottomButtons = { AronPrimaryButton(save, onSave, Modifier.weight(1f), glyph = ButtonGlyph.Save)
                       AronSecondaryButton(print, onPrint, Modifier.weight(1f), enabled = printerConnected, glyph = ButtonGlyph.Print) },
 ) { /* BoxScope content: LazyColumn of PackCard ... */ }
