@@ -100,7 +100,7 @@ class AuthzAuditTest {
     private var ownUnlock = 0L; private var oUnlock = 0L
     private var adminId = 0L; private var superId = 0L; private var tsoId = 0L; private var dmoId = 0L; private var faultCode = ""
     private var ownVersion = 0L; private var lkxVersion = 0L
-    private var tsoExport = ""; private var dmoExport = ""
+    private var tsoExport = ""; private var dmoExport = ""; private var lkxVisits = 0L
     private val memoSeq = AtomicInteger(900)
 
     @BeforeAll
@@ -191,6 +191,17 @@ class AuthzAuditTest {
         for ((uid, eid) in listOf(tsoId to tsoExport, dmoId to dmoExport)) {
             h.execute("INSERT INTO app.report_export (export_id, report_key, user_id, format, status, filters, scope_hash) VALUES ('$eid'::uuid, 'retailer-list', $uid, 'xlsx', 'queued', '{}'::jsonb, 'qa')")
         }
+        // Geofence visits in the other division (calibration reads app.visit), so an unrefused calibration of its zone has rows.
+        h.execute("SET session_replication_role = replica")
+        try {
+            h.execute(
+                "INSERT INTO app.visit (client_uuid, family_uuid, business_date, user_id, route_id, captured_at, config_version, visit_kind, outlet_id, opened_at, sequence_no, planned, " +
+                    "verdict, distance_m, radius_m_used, max_accuracy_m_used, location_basis, geo_action) " +
+                    "SELECT u, u, DATE '$day', $oSrId, $oRoute, TIMESTAMPTZ '${day}T03:00:00Z', 1, 'sr_call', o.id, TIMESTAMPTZ '${day}T03:00:00Z', 1, true, 'in_range', 40 + o.id % 30, 100, 50, 'master', 'sale_allowed' " +
+                    "FROM (SELECT id, gen_random_uuid() AS u FROM app.outlet WHERE route_id = $oRoute) o",
+            )
+        } finally { h.execute("SET session_replication_role = origin") }
+        lkxVisits = id("SELECT count(*) FROM app.visit WHERE route_id = $oRoute")
         Aggregator.refreshDimensions(h)
     }
 
@@ -314,8 +325,14 @@ class AuthzAuditTest {
         control("qc", "TSO", p, "/v1/web-entry/qc", qcBody().toString(), setOf(200))
         control("paper", "ADMIN", p, "/v1/admin/data-entry", paperBody().toString(), setOf(200))
         control("unlock", "SUPPORT", p, "/v1/admin/entry-unlocks", unlockBody().toString(), setOf(201))
+        // Lead's ruling: a TSO issues device OTPs for SRs in its own reach (the LKX SR is refused in idor()).
+        control("tso-otp-own-sr", "TSO", p, "/v1/admin/device-otps", otpBody().toString(), setOf(201))
         control("unlock-expire", "SUPPORT", p, "/v1/admin/entry-unlocks/${ownUnlock - 1}/expire", null, setOf(200))
         control("reports", "ADMIN", g, "/v1/reports", null, setOf(200))
+        val cal = control("lkx-calibration", "ADMIN", g, "/v1/admin/config/calibration?scope_type=zone&scope_id=$oZone", null, setOf(200))
+        if (lkxVisits == 0L || !cal.body.contains("\"visits\":$lkxVisits")) failures += "the LKX calibration control shows none of the $lkxVisits seeded visits: ${cal.body.take(200)}"
+        val br = control("lkx-blast-radius", "ADMIN", g, "/v1/admin/config/blast-radius?scope_type=zone&scope_id=$oZone", null, setOf(200))
+        if (!Regex("\"outlets\"\\s*:\\s*[1-9]").containsMatchIn(br.body)) failures += "the LKX blast-radius control counts no outlets: ${br.body.take(200)}"
     }
 
     // ---- ROLE: every route x every role (docs/24 s8.5 as the oracle) -------------------------------------------------
@@ -333,6 +350,11 @@ class AuthzAuditTest {
     private val cfgDocs = setOf("TSO", "ADMIN", "SUPERADMIN")
     /** docs/24 s8.5 "Master data": R for DMO, WM, TOP, ANALYST, SUPPORT; W for ADMIN, SUPERADMIN (the TSO reads are an open point). */
     private val masterDocs = setOf("DMO", "WM", "TOP", "ANALYST", "SUPPORT", "ADMIN", "SUPERADMIN")
+    /**
+     * Lead's ruling (2026-10-18): the TSO reads prices (read only) and route assignments and issues SR device OTPs, as the
+     * current Aron does (docs/14 3b/4c, docs/15, docs/19); docs/24 s8.5's "R (OTP view)" cell is stale
+     * (docs/requests/qa-authz-audit-findings.md). Those three TSO rows are allowed; the scope probes stay as controls.
+     */
     /** "Dashboards, reports, team map": TSO and above on the web (AMO reads its app home; SUPPORT sync health only). */
     private val dashDocs = setOf("TSO", "DMO", "WM", "TOP", "ANALYST", "ADMIN", "SUPERADMIN")
 
@@ -344,7 +366,7 @@ class AuthzAuditTest {
             RouteSpec("POST /v1/admin/enrolment-tokens", p, { "/v1/admin/enrolment-tokens" }, { tokenBody().toString() }, setOf("SUPPORT", "ADMIN", "SUPERADMIN")),
             RouteSpec("POST /v1/admin/enrolment-tokens/{}/revoke", p, { "/v1/admin/enrolment-tokens/$tokenId/revoke" }, null, setOf("SUPPORT", "ADMIN", "SUPERADMIN")),
             RouteSpec("GET /v1/admin/device-otps", g, { "/v1/admin/device-otps" }, null, setOf("TSO", "DMO", "WM", "SUPPORT", "ADMIN", "SUPERADMIN")),
-            RouteSpec("POST /v1/admin/device-otps", p, { "/v1/admin/device-otps" }, { otpBody().toString() }, setOf("SUPPORT", "ADMIN", "SUPERADMIN"), open = setOf("TSO")),
+            RouteSpec("POST /v1/admin/device-otps", p, { "/v1/admin/device-otps" }, { otpBody().toString() }, setOf("TSO", "SUPPORT", "ADMIN", "SUPERADMIN")),
             RouteSpec("GET /v1/admin/config/keys", g, { "/v1/admin/config/keys" }, null, cfgDocs),
             RouteSpec("GET /v1/admin/config/values", g, { "/v1/admin/config/values?key=cfg.geo.radius_m" }, null, cfgDocs),
             RouteSpec("GET /v1/admin/config/resolve", g, { "/v1/admin/config/resolve?key=cfg.geo.radius_m&node_type=zone&node_id=$zone" }, null, cfgDocs),
@@ -364,11 +386,11 @@ class AuthzAuditTest {
             RouteSpec("GET /v1/admin/dues-adjustments", g, { "/v1/admin/dues-adjustments" }, null, writers),
             RouteSpec("POST /v1/admin/dues-adjustments", p, { "/v1/admin/dues-adjustments" }, { dueBody().toString() }, writers),
             RouteSpec("POST /v1/admin/dues-adjustments/{}/decision", p, { "/v1/admin/dues-adjustments/$matrixAdjustment/decision" }, dec("approve"), setOf("SUPERADMIN")),
-            RouteSpec("GET /v1/admin/prices", g, { "/v1/admin/prices" }, null, masterDocs, open = setOf("TSO")),
+            RouteSpec("GET /v1/admin/prices", g, { "/v1/admin/prices" }, null, masterDocs + "TSO"),
             RouteSpec("POST /v1/admin/prices/preview", p, { "/v1/admin/prices/preview" }, { priceBody().toString() }, writers),
             RouteSpec("POST /v1/admin/prices", p, { "/v1/admin/prices" }, { priceBody().toString() }, writers),
             RouteSpec("POST /v1/admin/prices/batches/{}/decision", p, { "/v1/admin/prices/batches/$matrixBatch/decision" }, dec("approve"), setOf("SUPERADMIN")),
-            RouteSpec("GET /v1/routes/{}/assignments", g, { "/v1/routes/$route/assignments" }, null, masterDocs, open = setOf("TSO")),
+            RouteSpec("GET /v1/routes/{}/assignments", g, { "/v1/routes/$route/assignments" }, null, masterDocs + "TSO"),
             RouteSpec("GET /v1/web-entry/route-day", g, { "/v1/web-entry/route-day?route_id=$route&business_date=$day" }, null, setOf("TSO", "ADMIN", "SUPERADMIN")),
             RouteSpec("POST /v1/web-entry/route-day", p, { "/v1/web-entry/route-day" }, { routeDayBody().toString() }, setOf("TSO", "ADMIN", "SUPERADMIN")),
             RouteSpec("POST /v1/web-entry/qc", p, { "/v1/web-entry/qc" }, { qcBody().toString() }, setOf("TSO", "ADMIN", "SUPERADMIN")),
@@ -474,17 +496,30 @@ class AuthzAuditTest {
         Regex("\"(zone_id|route_id|outlet_id|node_id|scope_id|id)\"\\s*:\\s*($oZone|$oRoute|$oOutlet)\\b").containsMatchIn(text) ||
         Regex("\"value\"\\s*:\\s*137\\b").containsMatchIn(text)
 
-    private suspend fun HttpClient.idorProbe(route: String, role: String, variant: String, method: HttpMethod, path: String, body: String?, acted: (() -> Boolean)? = null) {
+    /** Reach-checked refusals that answer ERR_FORBIDDEN instead of the contract's ERR_OUT_OF_SCOPE (a NOTE, by route). */
+    private val forbiddenNotOutOfScope = sortedSetOf<String>()
+
+    /**
+     * A scoped caller names an id outside its reach. On a reach-checked route ([reachFree] false) any 2xx is a finding and
+     * the expected answer is 403 (ERR_OUT_OF_SCOPE); [validation] allows a 400 with that problem detail (a body that is
+     * refused as inconsistent before reach). On a reach-free read or a list ([reachFree] true) the answer is judged by
+     * content: the other division's marker, ids or seeded values.
+     */
+    private suspend fun HttpClient.idorProbe(route: String, role: String, variant: String, method: HttpMethod, path: String, body: String?, acted: (() -> Boolean)? = null, reachFree: Boolean = false, validation: String? = null) {
         val h = hit(role, method, path, body)
-        val leak = h.ok && leaksOther(h.body)
         val didAct = acted?.invoke() == true
-        val v = if (didAct || leak || (h.ok && method != HttpMethod.Get)) Verdict.FINDING else Verdict.OK
-        val why = when {
-            didAct -> "acted on the other division"
-            leak -> "answered with the other division's data"
-            v == Verdict.FINDING -> "a write naming the other division was accepted"
-            else -> "refused (${h.status} ${h.code()}) or nothing of the other division"
+        val leak = h.ok && leaksOther(h.body)
+        val (v, why) = when {
+            didAct -> Verdict.FINDING to "acted on the other division"
+            reachFree && leak -> Verdict.FINDING to "answered with the other division's data"
+            reachFree && h.ok && method != HttpMethod.Get -> Verdict.FINDING to "a write naming the other division was accepted"
+            reachFree -> Verdict.OK to if (h.ok) "answered ${h.status} without anything of the other division" else "refused ${h.status} ${h.code()}"
+            h.ok -> Verdict.FINDING to "an out-of-reach id was answered ${h.status} (expected 403 ERR_OUT_OF_SCOPE)" + if (leak) "; the answer carries the other division" else ""
+            h.status == 403 -> Verdict.OK to "refused 403 ${h.code()}"
+            h.status == 400 && validation != null && h.str("detail")?.contains(validation) == true -> Verdict.OK to "refused 400 (${h.str("detail")})"
+            else -> Verdict.FINDING to "an out-of-reach id got ${h.status} ${h.code()} (expected 403 ERR_OUT_OF_SCOPE)"
         }
+        if (!reachFree && h.status == 403 && h.code() == "ERR_FORBIDDEN") forbiddenNotOutOfScope += route
         record("IDOR", route, role, variant, method, path, body, h, v, why)
     }
 
@@ -496,7 +531,7 @@ class AuthzAuditTest {
         idorProbe("POST /v1/web-entry/qc", "TSO", "other-zone", p, "/v1/web-entry/qc", qcBody(oZone, oRoute).toString(),
             acted = { count("SELECT count(*) FROM app.qc_summary_entry WHERE zone_id = $oZone AND entered_by = $tsoId") > 0 })
         idorProbe("POST /v1/web-entry/qc", "TSO", "own-zone-other-route", p, "/v1/web-entry/qc", qcBody(zone, oRoute).toString(),
-            acted = { count("SELECT count(*) FROM app.qc_summary_entry WHERE route_id = $oRoute") > 0 })
+            acted = { count("SELECT count(*) FROM app.qc_summary_entry WHERE route_id = $oRoute") > 0 }, validation = "body.route_id")
         for ((type, id) in listOf("zone" to oZone, "route" to oRoute, "outlet" to oOutlet)) {
             idorProbe("POST /v1/admin/config/changes", "TSO", "other-$type", p, "/v1/admin/config/changes", cfgBody(type, id, 110).toString(),
                 acted = { count("SELECT count(*) FROM app.cfg_change c WHERE c.requested_by = $tsoId AND c.items::text LIKE '%\"scope_id\": $id%'") > 0 })
@@ -511,14 +546,14 @@ class AuthzAuditTest {
             idorProbe("GET /v1/admin/config/reach/{}", role, "other-zone", g, "/v1/admin/config/reach/$ownVersion?zone_id=$oZone", null)
             idorProbe("GET /v1/admin/config/reach/{}/pending", role, "other-zone", g, "/v1/admin/config/reach/$ownVersion/pending?zone_id=$oZone", null)
             // No reach filter in ConfigService.values/changes/resolve/versionDetail: the other division's settings and change sets.
-            idorProbe("GET /v1/admin/config/values", role, "other-zone", g, "/v1/admin/config/values?key=cfg.geo.radius_m&scope_type=zone&scope_id=$oZone", null)
-            idorProbe("GET /v1/admin/config/resolve", role, "other-zone", g, "/v1/admin/config/resolve?key=cfg.geo.radius_m&node_type=zone&node_id=$oZone", null)
-            idorProbe("GET /v1/admin/config/changes", role, "list", g, "/v1/admin/config/changes", null)
-            idorProbe("GET /v1/admin/config/changes/{}", role, "other-division-change", g, "/v1/admin/config/changes/$lkxChange", null)
-            idorProbe("GET /v1/admin/config/versions/{}", role, "other-division-version", g, "/v1/admin/config/versions/$lkxVersion", null)
+            idorProbe("GET /v1/admin/config/values", role, "other-zone", g, "/v1/admin/config/values?key=cfg.geo.radius_m&scope_type=zone&scope_id=$oZone", null, reachFree = true)
+            idorProbe("GET /v1/admin/config/resolve", role, "other-zone", g, "/v1/admin/config/resolve?key=cfg.geo.radius_m&node_type=zone&node_id=$oZone", null, reachFree = true)
+            idorProbe("GET /v1/admin/config/changes", role, "list", g, "/v1/admin/config/changes", null, reachFree = true)
+            idorProbe("GET /v1/admin/config/changes/{}", role, "other-division-change", g, "/v1/admin/config/changes/$lkxChange", null, reachFree = true)
+            idorProbe("GET /v1/admin/config/versions/{}", role, "other-division-version", g, "/v1/admin/config/versions/$lkxVersion", null, reachFree = true)
             idorProbe("GET /v1/routes/{}/assignments", role, "other-route", g, "/v1/routes/$oRoute/assignments", null)
             idorProbe("GET /v1/admin/device-otps", role, "other-zone", g, "/v1/admin/device-otps?zone_id=$oZone", null)
-            idorProbe("GET /v1/admin/device-otps", role, "list", g, "/v1/admin/device-otps", null)
+            idorProbe("GET /v1/admin/device-otps", role, "list", g, "/v1/admin/device-otps", null, reachFree = true)
             idorProbe("POST /v1/dashboards/daily-tracking/actions", role, "other-route", p, "/v1/dashboards/daily-tracking/actions", actionBody(oRoute).toString())
         }
         idorProbe("POST /v1/admin/device-otps", "TSO", "other-sr", p, "/v1/admin/device-otps", otpBody(oSrId).toString())
@@ -887,6 +922,8 @@ class AuthzAuditTest {
     }
 
     private fun notes() {
+        if (forbiddenNotOutOfScope.isNotEmpty()) record("NOTE", "out-of-reach-refusals", "SCOPED", "error-code", HttpMethod.Get, "-", null, null, Verdict.NOTE,
+            "refused with 403 ERR_FORBIDDEN instead of ERR_OUT_OF_SCOPE: ${forbiddenNotOutOfScope.joinToString()}")
         record("NOTE", "GET /v1/me", "ALL", "pii-claim", HttpMethod.Get, "/v1/me", null, null, Verdict.QUESTION,
             "TokenSubject.pii is never set at login, so no role ever gets phone or owner columns (docs/21 s4.5 gives the PII right to some supervisor and admin roles, with re-authentication within cfg.pii.reauth_min, which does not exist yet). Intended for now?")
         record("NOTE", "GET /v1/admin/releases", "ALL", "unserved", HttpMethod.Get, "/v1/admin/releases", null, null, Verdict.QUESTION,
