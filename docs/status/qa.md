@@ -80,6 +80,14 @@
     `pitr-restore.md`); it promotes with that branch. The test calls the function once it is on INT.
   - The Azure half needs the owner's phrase in `drill.yml`.
 
+- **N-024 widened to AMO (T1)**: `SupervisorSyncFaultFuzzTest`. The AMO record types under every sync fault; 14
+  clauses, each proven by a seeded fault. The Opus checker passed it; 1,000 schedules found no defect.
+- **N-055 (T2)**: `tools/checks/day5-check.ps1` (SR request, AMO verify, web approve, TSO Final Submit). The Sonnet
+  checker's two majors are fixed. DEVICE-PENDING D-QA-6.
+- **Supervisor scope ledger**: `docs/status/qa-scope-ledger-supervisors.md`: 60 routes, 0 leaks. Open question: TSO
+  and DMO can read another zone's config through `config/resolve` and `config/values`.
+- **Honor device-lab sheet**: `docs/status/qa-device-lab-honor.md`.
+
 ## Next rows
 1. N-055 Day 5 script (needs F-AMO-022, F-TSO-010), N-063 Day 6 script (needs N-058, N-060), N-066 Day 7 script.
 2. N-058 load on Azure: pilot size only in the test account; it is blocked on N-056/N-057 and on sizing.

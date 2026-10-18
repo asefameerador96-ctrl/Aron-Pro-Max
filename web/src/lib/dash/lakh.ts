@@ -10,9 +10,9 @@ export interface LakhWords {
  *  is never rounded below a lakh. BigInt maths (no float division): the two decimals are half up on the integer hundredths, and the
  *  whole part is grouped in threes like every other amount (F-SYS-051). */
 export function formatLakhCrore(locale: Locale, value: number, words: LakhWords): string {
-  if (!Number.isFinite(value)) return "—";
-  const abs = BigInt(Math.round(Math.abs(value)));
-  const sign = value < 0 && abs > 0n ? "-" : "";
+  if (!Number.isSafeInteger(value)) return "—"; // never another amount for a non-integer or unsafe one
+  const abs = BigInt(value < 0 ? -value : value);
+  const sign = value < 0 ? "-" : "";
   const scaled = (unit: bigint): string => {
     const hundredths = (abs * 100n + unit / 2n) / unit; // half up
     const frac = String(hundredths % 100n).padStart(2, "0");
@@ -27,9 +27,10 @@ const toBengali = (s: string): string => s.replace(/\d/g, (d) => "\u09E6\u09E7\u
 
 /** Milli-taka to whole taka (half up on the magnitude) for the lakh/crore card figures. */
 export function mtkToTaka(mtk: number): number {
-  if (!Number.isFinite(mtk)) return 0;
-  const abs = BigInt(Math.round(Math.abs(mtk))); // an integer valued double is exact as a BigInt; (abs + 500) / 1000 is half up
-  return Math.sign(mtk) * Number((abs + 500n) / 1000n);
+  if (!Number.isSafeInteger(mtk)) return Number.NaN; // not shown by formatLakhCrore (an em dash), never another amount
+  const abs = BigInt(mtk < 0 ? -mtk : mtk);
+  const taka = Number((abs + 500n) / 1000n); // half up on the magnitude, integer maths
+  return mtk < 0 ? -taka : taka;
 }
 
 /** Percent change between two non-negative figures; null when the base is 0 or missing (never a fake comparison). */
