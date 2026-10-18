@@ -377,4 +377,7 @@ export const dashEn = {
   "drill.title.login": "Login and upload status",
   "table.more": "Show {n} more rows",
   "error.ERR_WEB_MFA_RESIGNIN": "Sign in again with your authenticator code.",
+  "admin.cfgread.unavailable": "{what} is not available for your role (configuration reads are limited to administrators).",
+  "admin.cfgread.weekend": "The weekend days setting",
+  "admin.cfgread.policy": "The release policy",
 } as const;
