@@ -277,8 +277,7 @@ class DayService(
             p.role.wire in delegates -> "delegated"
             else -> throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "Final Submit is the TSO's (or a delegate role's)")
         }
-        val now = clock.now()
-        val today = LocalDate.ofInstant(now, java.time.ZoneId.of("Asia/Dhaka"))
+        val today = LocalDate.ofInstant(clock.now(), java.time.ZoneId.of("Asia/Dhaka"))
         if (date.isAfter(today)) throw ApiProblem(ProblemCode.ERR_VALIDATION, "a zone-day after today cannot be final-submitted", errors = listOf(FieldError("/business_date", "invalid_value")))
         requireZone(p, req.zone_id, date)
         return db.jdbi.inTransaction<FinalSubmitResultDto, Exception> { h ->
@@ -286,6 +285,9 @@ class DayService(
             // this order; the loser of either race sees the winner's row below.
             h.execute("SELECT pg_advisory_xact_lock(hashtextextended(?, 3))", "final-uuid:${req.client_uuid}")
             h.execute("SELECT pg_advisory_xact_lock(hashtextextended(?, 3))", "final:${req.zone_id}:$date")
+            // KD-2: the clock after the zone-day lock (a submit queued behind another never stamps before it), cut to the
+            // microsecond the column stores, so the answer and a replay of the stored row agree to the millisecond.
+            val now = clock.now().truncatedTo(java.time.temporal.ChronoUnit.MICROS)
             replay(h, req.client_uuid, null)?.let { found ->
                 if (found.first != p.userId) throw ApiProblem(ProblemCode.ERR_CONFLICT, "client_uuid was used by another submit")
                 return@inTransaction found.checked(req, date)
@@ -314,6 +316,9 @@ class DayService(
                     "INSERT INTO app.route_day (route_id, business_date, planned) SELECT r, :d, false FROM unnest(CAST(:r AS bigint[])) r ON CONFLICT (route_id, business_date) DO NOTHING",
                 ).bind("d", date).bindArray("r", Long::class.javaObjectType, listed).execute()
             }
+            // KD-1: the zone's route-days in route_id order, the order ingest takes them in (DayStates.afterStored).
+            h.createQuery("SELECT 1 FROM app.route_day WHERE business_date = :d AND route_id IN (SELECT id FROM app.route WHERE zone_id = :z) ORDER BY route_id FOR NO KEY UPDATE")
+                .bind("d", date).bind("z", req.zone_id).mapTo(Int::class.java).list()
             val routeIds = h.createUpdate(
                 """
                 UPDATE app.route_day SET final_submitted_at = COALESCE(final_submitted_at, :at)
