@@ -53,7 +53,7 @@ fun LeaveListScreen(state: LeaveListState, onBack: () -> Unit, modifier: Modifie
     val scope = androidx.compose.runtime.rememberCoroutineScope()
     val ui by state.ui.collectAsStateWithLifecycle()
     LaunchedEffect(state) { state.load() }
-    TsoFrame(stringResource(R.string.tso_leave_title), onBack, modifier, tile = com.aktcl.aron.feature.home.RoleHomes.TsoTile.LEAVE, bottomBar = { if (onApply != null) com.aktcl.aron.core.ui.TsoBottomBar(primary = com.aktcl.aron.core.ui.TsoAction(stringResource(R.string.tso_leave_apply), onApply), modifier = Modifier.testTag(LeaveTags.APPLY)) },
+    TsoFrame(stringResource(R.string.tso_leave_title), onBack, modifier, tile = com.aktcl.aron.feature.home.RoleHomes.TsoTile.LEAVE, bottomBar = { if (onApply != null) TsoBottomBar(primary = TsoAction(stringResource(R.string.tso_leave_apply), onApply), modifier = Modifier.testTag(LeaveTags.APPLY)) },
     ) {
         when (val u = ui) {
             LeaveListUi.Loading -> Column(Modifier.fillMaxSize()) { }

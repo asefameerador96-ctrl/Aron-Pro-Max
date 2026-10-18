@@ -71,11 +71,11 @@ private fun Pickers(
 ) {
     if (load == PickLoad.UNAVAILABLE) TsoBanner(stringResource(R.string.tso_mc_unavailable), Modifier.testTag(MyCallTags.UNAVAILABLE), kind = TsoBannerKind.Offline)
     TsoSectionTitle(stringResource(R.string.tso_mc_zone_label))
-    zonesOf(routes).forEach { z -> AronListRow(zoneLabel(z), Modifier.testTag(MyCallTags.zone(z)), onClick = { onZone(z) }, trailing = if (z == zoneId) "✓" else null, flat = true) }
+    zonesOf(routes).forEach { z -> AronListRow(zoneLabel(z), Modifier.testTag(MyCallTags.zone(z)), onClick = { onZone(z) }, trailing = if (z == zoneId) "✓" else null) }
     if (zoneId != null) {
         TsoSectionTitle(stringResource(R.string.tso_mc_route_label))
         routes.filter { it.zoneId == zoneId }.forEach { r ->
-            AronListRow(r.name, Modifier.testTag(MyCallTags.route(r.id)), subtitle = r.code + (r.label?.let { "  ·  $it" } ?: ""), onClick = { onRoute(r.id) }, trailing = if (r.id == routeId) "✓" else null, flat = true)
+            AronListRow(r.name, Modifier.testTag(MyCallTags.route(r.id)), subtitle = r.code + (r.label?.let { "  ·  $it" } ?: ""), onClick = { onRoute(r.id) }, trailing = if (r.id == routeId) "✓" else null)
         }
     }
 }
@@ -83,13 +83,13 @@ private fun Pickers(
 @Composable
 private fun OutletCard(o: PlanOutlet, bangla: Boolean, modifier: Modifier = Modifier, trailing: String? = null, onClick: (() -> Unit)? = null) {
     AronListRow(
-        o.title(bangla), modifier, subtitle = listOfNotNull(o.code, o.owner, o.phone, o.cluster).joinToString("  ·  "), trailing = trailing, onClick = onClick, flat = true,
+        o.title(bangla), modifier, subtitle = listOfNotNull(o.code, o.owner, o.phone, o.cluster).joinToString("  ·  "), trailing = trailing, onClick = onClick,
     )
 }
 
 @Composable
 fun MyCallHub(onSetPlan: () -> Unit, onVisitPlan: () -> Unit, onBack: () -> Unit, modifier: Modifier = Modifier) {
-    TsoFrame(stringResource(R.string.tso_drawer_my_call), onBack = onBack) }) {
+    TsoFrame(stringResource(R.string.tso_drawer_my_call), onBack, modifier, tile = com.aktcl.aron.feature.home.RoleHomes.TsoTile.MY_CALL) {
         Column(Modifier.fillMaxSize().padding(AronTokens.Space.Screen), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.M)) {
             AronListRow(stringResource(R.string.tso_mc_visit_plan), Modifier.fillMaxWidth().testTag(MyCallTags.VISIT_PLAN), subtitle = stringResource(R.string.tso_mc_visit_plan_sub), onClick = onVisitPlan)
             AronListRow(stringResource(R.string.tso_mc_set_plan), Modifier.fillMaxWidth().testTag(MyCallTags.SET_PLAN), subtitle = stringResource(R.string.tso_mc_set_plan_sub), onClick = onSetPlan)
@@ -139,7 +139,7 @@ fun VisitPlanScreen(state: VisitPlanState, onOpenOutlet: (planUuid: String, outl
     val scope = rememberCoroutineScope()
     val bn = LocalAppLanguage.current == AppLanguage.BN
     LaunchedEffect(state) { state.loadRoutes(); if (state.ui.value.routeId != null) state.refresh() }
-    TsoFrame(stringResource(R.string.tso_mc_visit_plan), onBack = onBack) }) {
+    TsoFrame(stringResource(R.string.tso_mc_visit_plan), onBack, modifier, tile = "visit_plan") {
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(AronTokens.Space.Screen), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.M)) {
             TsoSectionTitle(stringResource(R.string.tso_mc_date))
             com.aktcl.aron.feature.tso.TsoDateField(ui.date, { state.setDate(it) }, Modifier.testTag(MyCallTags.DATE), min = null, max = state.maxIso())
@@ -226,7 +226,7 @@ fun AssignTaskScreen(state: AssignTaskState, onDone: () -> Unit, modifier: Modif
             if (ui.result is TaskResult.Failed) TsoBanner(stringResource(R.string.tso_mc_save_failed), kind = TsoBannerKind.Error)
             state.srName?.let { Text(stringResource(R.string.tso_mc_assignee, it), style = MaterialTheme.typography.bodyMedium) }
             TsoSectionTitle(stringResource(R.string.tso_mc_task_type))
-            state.typeList.forEach { t -> AronListRow(t.label(bn), Modifier.testTag(MyCallTags.type(t.code)), onClick = { state.pickType(t.code) }, trailing = if (t.code == ui.typeCode) "✓" else null, flat = true) }
+            state.typeList.forEach { t -> AronListRow(t.label(bn), Modifier.testTag(MyCallTags.type(t.code)), onClick = { state.pickType(t.code) }, trailing = if (t.code == ui.typeCode) "✓" else null) }
             TsoSectionTitle(stringResource(R.string.tso_mc_date))
             com.aktcl.aron.feature.tso.TsoDateField(ui.date, { state.setDate(it) }, Modifier.testTag(MyCallTags.DATE), min = state.todayIso(), max = state.maxIso())
             TsoSectionTitle(stringResource(R.string.tso_mc_comment))

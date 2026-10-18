@@ -119,11 +119,11 @@ fun FinalSubmitScreen(state: FinalSubmitState, onBack: () -> Unit, modifier: Mod
                     val labels = listOf(R.string.tso_fs_level_wing, R.string.tso_fs_level_division, R.string.tso_fs_level_territory, R.string.tso_fs_level_house, R.string.tso_mc_zone_label)
                     ui.options.toSortedMap().forEach { (lv, nodes) ->
                         TsoSectionTitle(stringResource(labels[lv]))
-                        nodes.forEach { n -> AronListRow(n.label(bangla), Modifier.testTag(FsTags.level(lv, n.id)), onClick = { scope.launch { state.pickLevel(lv, n.id) } }, trailing = if (ui.picks[lv] == n.id) "✓" else null, flat = true) }
+                        nodes.forEach { n -> AronListRow(n.label(bangla), Modifier.testTag(FsTags.level(lv, n.id)), onClick = { scope.launch { state.pickLevel(lv, n.id) } }, trailing = if (ui.picks[lv] == n.id) "✓" else null) }
                     }
                 } else {
                 TsoSectionTitle(stringResource(R.string.tso_mc_zone_label))
-                ui.zones.forEach { z -> AronListRow(zoneName(z), Modifier.testTag(FsTags.zone(z)), onClick = { state.pickZone(z) }, trailing = if (z == ui.zoneId) "✓" else null, flat = true) }
+                ui.zones.forEach { z -> AronListRow(zoneName(z), Modifier.testTag(FsTags.zone(z)), onClick = { state.pickZone(z) }, trailing = if (z == ui.zoneId) "✓" else null) }
                 }
                 TsoSectionTitle(stringResource(R.string.tso_fs_sales_date_label))
                 // read-only: the sales date is the Dhaka business date (docs/15 F-TSO-010)
