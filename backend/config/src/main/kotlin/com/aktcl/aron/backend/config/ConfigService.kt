@@ -180,11 +180,13 @@ class ConfigService(private val db: Database, val resolver: ConfigResolver, priv
                 val chain = resolver.chainOf(h, node.type, node.id)
                 val at = pr.from ?: now
                 val before = resolver.resolve(pr.def.key, chain, at).value
-                val after = if (pr.item.value !is JsonNull) pr.item.value else resolver.resolve(pr.def.key, chain.filterNot { it == node }, at).value
+                // What the node resolves to without its own rows; a global node has nothing above it but the registry default.
+                fun without(t: Instant) = chain.filterNot { it == node }.let { rest -> if (rest.isEmpty()) pr.def.default else resolver.resolve(pr.def.key, rest, t).value }
+                val after = if (pr.item.value !is JsonNull) pr.item.value else without(at)
                 var c = RiskClassifier.classify(pr.def, node.type, pr.item.value.takeUnless { v -> v is JsonNull }, before, after)
                 // Q3/Q4 checker B1: when a window ends the node falls back to what resolves without it; judge that too.
                 if (pr.to != null && pr.def.key in RiskClassifier.LOOSENING_GUARDED) {
-                    val afterWindow = resolver.resolve(pr.def.key, chain.filterNot { it == node }, pr.to).value
+                    val afterWindow = without(pr.to)
                     c = maxOf(c, RiskClassifier.classify(pr.def, node.type, null, before, afterWindow))
                 }
                 // F-ADM-012: an outlet override above 3 x the radius its zone resolves to needs an approver (C3).
