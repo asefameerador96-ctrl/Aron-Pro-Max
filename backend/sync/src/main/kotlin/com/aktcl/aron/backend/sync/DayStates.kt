@@ -118,7 +118,8 @@ object DayStates {
      * submitted one settles; then each state moves forward to what its timestamps say.
      */
     fun afterBatch(h: Handle, userId: Long, touched: Touched, now: Instant) {
-        for ((route, date) in touched.routeDays) {
+        // Route-days in (date, route_id) order, the order Final Submit locks them in (KD-1 checker): no lock-order deadlock.
+        for ((route, date) in touched.routeDays.sortedWith(compareBy({ it.second }, { it.first }))) {
             val parked = h.createQuery(
                 "SELECT count(*) FROM app.sync_rejected WHERE user_id = :u AND route_id = :r AND business_date = :d AND retryable AND stored_at IS NULL",
             ).bind("u", userId).bind("r", route).bind("d", date).mapTo(Long::class.java).one()

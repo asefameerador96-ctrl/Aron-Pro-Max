@@ -326,7 +326,7 @@ class DayService(
                 RETURNING route_id
                 """.trimIndent(),
             ).bind("at", ts(now)).bind("d", date).bind("z", req.zone_id).executeAndReturnGeneratedKeys("route_id").mapTo(Long::class.java).list()
-            routeIds.forEach { DayStates.advance(h, it, date); h.execute("SELECT app.mark_dirty('route_day_agg', ?, ?, 'final_submit')", it, date) }
+            routeIds.sorted().forEach { DayStates.advance(h, it, date); h.execute("SELECT app.mark_dirty('route_day_agg', ?, ?, 'final_submit')", it, date) }
             FinalSubmitResultDto(req.zone_id, date.toString(), now.wire(), kind, preview.routes.size, preview.routes.sumOf { it.memo_count }, preview.routes.sumOf { it.net_mtk })
         }
     }
