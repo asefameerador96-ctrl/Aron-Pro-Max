@@ -4,8 +4,8 @@ import { ADMIN_MENU } from "@/app/admin/menu";
 import { CONFIG_MENU } from "@/app/admin/config-menu";
 import type { Role } from "@/contract/types";
 import type { MessageKey } from "@/lib/i18n";
-import { WEB_ROLES, type RoleList } from "@/lib/auth/roles";
-import { WEB_REPORTS } from "@/lib/reports/catalog";
+import { SUPPORT_DASHBOARD_PATHS, WEB_ROLES, type RoleList } from "@/lib/auth/roles";
+import { REPORT_ROLES, WEB_REPORTS } from "@/lib/reports/catalog";
 
 export type MenuGroup = "main" | "reports" | "products" | "admin" | "config";
 
@@ -19,20 +19,24 @@ export interface MenuItem {
   group: MenuGroup;
 }
 
+/** Everyone with web access except SUPPORT, which keeps only the pages in SUPPORT_DASHBOARD_PATHS. */
+const NOT_SUPPORT: RoleList = WEB_ROLES.filter((r) => r !== "SUPPORT");
+const rolesFor = (href: string): RoleList => (SUPPORT_DASHBOARD_PATHS.some((p) => href === p) ? WEB_ROLES : NOT_SUPPORT);
+
 export const DASHBOARD_MENU: readonly MenuItem[] = [
-  { id: "dashboard", labelKey: "menu.dashboard", href: "/", roles: WEB_ROLES, group: "main" },
-  { id: "daily-tracking", labelKey: "menu.daily_tracking", href: "/daily-tracking", roles: WEB_ROLES, group: "main" },
-  { id: "tso-daily-tracking", labelKey: "menu.tso_daily_tracking", href: "/tso-daily-tracking", roles: WEB_ROLES, group: "main" },
-  { id: "final-submit", labelKey: "menu.final_submit", href: "/final-submit", roles: WEB_ROLES, group: "main" },
-  { id: "sync-health", labelKey: "menu.sync_health", href: "/sync-health", roles: WEB_ROLES, group: "main" },
-  { id: "exceptions", labelKey: "menu.exceptions", href: "/exceptions", roles: WEB_ROLES, group: "main" },
-  { id: "leave", labelKey: "menu.leave", href: "/leave", roles: WEB_ROLES, group: "main" },
-  { id: "routes", labelKey: "menu.routes", href: "/routes", roles: WEB_ROLES, group: "main" },
-  { id: "tutorial", labelKey: "menu.tutorial", href: "/tutorial", roles: WEB_ROLES, group: "main" },
-  { id: "credentials", labelKey: "menu.credentials", href: "/credentials", roles: WEB_ROLES, group: "main" },
-  ...(["category", "segment", "brand", "variant"] as const).map((l): MenuItem => ({ id: `products-${l}`, labelKey: `menu.products.${l}`, href: `/products/${l}`, roles: WEB_ROLES, group: "products" })),
-  { id: "products-tree", labelKey: "menu.products.tree", href: "/products/tree", roles: WEB_ROLES, group: "products" },
-  ...WEB_REPORTS.map((r): MenuItem => ({ id: `report-${r.slug}`, labelKey: r.titleKey, href: `/reports/${r.slug}`, roles: r.roles ?? WEB_ROLES, group: "reports" })),
+  { id: "dashboard", labelKey: "menu.dashboard", href: "/", roles: rolesFor("/"), group: "main" },
+  { id: "daily-tracking", labelKey: "menu.daily_tracking", href: "/daily-tracking", roles: rolesFor("/daily-tracking"), group: "main" },
+  { id: "tso-daily-tracking", labelKey: "menu.tso_daily_tracking", href: "/tso-daily-tracking", roles: rolesFor("/tso-daily-tracking"), group: "main" },
+  { id: "final-submit", labelKey: "menu.final_submit", href: "/final-submit", roles: rolesFor("/final-submit"), group: "main" },
+  { id: "sync-health", labelKey: "menu.sync_health", href: "/sync-health", roles: rolesFor("/sync-health"), group: "main" },
+  { id: "exceptions", labelKey: "menu.exceptions", href: "/exceptions", roles: rolesFor("/exceptions"), group: "main" },
+  { id: "leave", labelKey: "menu.leave", href: "/leave", roles: rolesFor("/leave"), group: "main" },
+  { id: "routes", labelKey: "menu.routes", href: "/routes", roles: rolesFor("/routes"), group: "main" },
+  { id: "tutorial", labelKey: "menu.tutorial", href: "/tutorial", roles: rolesFor("/tutorial"), group: "main" },
+  { id: "credentials", labelKey: "menu.credentials", href: "/credentials", roles: rolesFor("/credentials"), group: "main" },
+  ...(["category", "segment", "brand", "variant"] as const).map((l): MenuItem => ({ id: `products-${l}`, labelKey: `menu.products.${l}`, href: `/products/${l}`, roles: NOT_SUPPORT, group: "products" })),
+  { id: "products-tree", labelKey: "menu.products.tree", href: "/products/tree", roles: rolesFor("/products/tree"), group: "products" },
+  ...WEB_REPORTS.map((r): MenuItem => ({ id: `report-${r.slug}`, labelKey: r.titleKey, href: `/reports/${r.slug}`, roles: r.roles ?? REPORT_ROLES, group: "reports" })),
 ];
 
 export const MENU: readonly MenuItem[] = [...DASHBOARD_MENU, ...ADMIN_MENU, ...CONFIG_MENU];

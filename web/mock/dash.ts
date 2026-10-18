@@ -186,6 +186,8 @@ const sanitise = (v: Cell): Cell => (typeof v === "string" && /^[=+\-@\t\r]/.tes
 export async function handleDash(x: DashCtx): Promise<boolean> {
   const { path, method, user, send, problem, store } = x;
   const nowIso = store.now ?? new Date().toISOString();
+  // docs/24 s8.5 (AZ-2): SUPPORT reads sync health only; every other dashboard and every report answers 403.
+  if (user.role === "SUPPORT" && ((path.startsWith("/v1/dashboards/") && path !== "/v1/dashboards/sync-health") || path === "/v1/reports" || path.startsWith("/v1/reports/"))) return send(403, problem(403, "ERR_FORBIDDEN")), true;
   const kp = (rows: SeedRoute[]) => {
     const d = controlTotals(rows);
     const logged = rows.filter((r) => r.state !== "not_started").length;

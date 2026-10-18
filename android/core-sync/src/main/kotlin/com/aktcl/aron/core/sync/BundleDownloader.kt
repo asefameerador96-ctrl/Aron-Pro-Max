@@ -6,6 +6,7 @@ import com.aktcl.aron.core.database.entity.SyncMetaEntity
 import com.aktcl.aron.core.database.reference.BundleReference
 import com.aktcl.aron.core.database.repo.ApplyResult
 import com.aktcl.aron.core.database.repo.BundleDeltaResult
+import com.aktcl.aron.core.database.repo.FileOutletPages
 import com.aktcl.aron.core.database.repo.ReferenceRepository
 import com.aktcl.aron.core.network.ApiResult
 import com.aktcl.aron.core.network.SyncApi
@@ -219,7 +220,12 @@ class BundleDownloader(
                     stage.mkdirs()
                 }
                 val pages = HashMap<String, MutableList<JsonElement>>()
+                // The `outlets` pages (the bulk of an AMO/TSO bundle) are never merged into one tree: they are checked here one
+                // page at a time and streamed into Room page by page by the apply (heap = one page, not 11,000 outlets).
+                val outletFiles = ArrayList<File>()
                 for (paged in download.head.meta.pagedSections) {
+                    val streamed = paged.section == STREAMED_SECTION
+                    var streamedRows = 0
                     for (page in 1..paged.pages) {
                         val file = File(stage, "${paged.section}-$page.json")
                         val text = withContext(Dispatchers.IO) { file.takeIf { it.exists() }?.readText() } ?: when (val p = api.bundlePage(version, paged.section, page)) {
@@ -239,9 +245,9 @@ class BundleDownloader(
                             withContext(Dispatchers.IO) { file.delete() }
                             return BundleReport(BundleOutcome.FAILED, version, code = "malformed_page")
                         }
-                        pages.getOrPut(paged.section) { ArrayList() }.addAll(rows)
+                        if (streamed) { streamedRows += rows.size; outletFiles += file } else pages.getOrPut(paged.section) { ArrayList() }.addAll(rows)
                     }
-                    val got = pages[paged.section].orEmpty().size
+                    val got = if (streamed) streamedRows else pages[paged.section].orEmpty().size
                     if (paged.rows > 0 && got != paged.rows) {
                         withContext(Dispatchers.IO) { stage.deleteRecursively() }
                         return BundleReport(BundleOutcome.FAILED, version, code = "page_rows_mismatch")
@@ -253,7 +259,11 @@ class BundleDownloader(
                 } catch (e: IllegalArgumentException) {
                     return BundleReport(BundleOutcome.FAILED, version, code = "malformed")
                 }
-                val applied = repo.apply(bundle, merged, download.etag ?: "\"$version\"", asDay = isDay)
+                val applied = try {
+                    repo.apply(bundle, merged, download.etag ?: "\"$version\"", asDay = isDay, outletPages = outletFiles.takeIf { it.isNotEmpty() }?.let(::FileOutletPages))
+                } catch (e: IllegalArgumentException) { // a row that does not read as an outlet: nothing was written; the stage is kept (no new download of the same pages)
+                    return BundleReport(BundleOutcome.FAILED, version, code = "malformed_page")
+                }
                 withContext(Dispatchers.IO) { stage.deleteRecursively() }
                 if (isDay) markLoggedIn(forDate)
                 when (applied) {
@@ -293,6 +303,9 @@ class BundleDownloader(
             BundleOutcome.FAILED -> r.httpStatus.let { it == null || (it != 429 && it < 500) }
             else -> true
         }
+
+        /** The paged section that is streamed into Room instead of merged into the bundle tree (heap: one page). */
+        internal const val STREAMED_SECTION = "outlets"
 
         /** Paged sections whose rows belong inside `routes[]` (matched by `route_id`). */
         private val ROUTE_NESTED = setOf("outlets", "open_memos")

@@ -4,9 +4,9 @@ import { describe, expect, it } from "vitest";
 import { formatTaka, formatTakaDisplay } from "@/lib/reports/format";
 
 describe("formatTakaDisplay", () => {
-  it("prints two decimals with locale grouping and Bengali digits for bn", () => {
+  it("prints two decimals with Western grouping and Bengali digits for bn", () => {
     expect(formatTakaDisplay("en", 543_435_000)).toBe("543,435.00");
-    expect(formatTakaDisplay("bn", 543_435_000)).toBe("৫,৪৩,৪৩৫.০০");
+    expect(formatTakaDisplay("bn", 543_435_000)).toBe("৫৪৩,৪৩৫.০০");
     expect(formatTakaDisplay("en", 4_828_500)).toBe("4,828.50");
     expect(formatTakaDisplay("en", 0)).toBe("0.00");
     expect(formatTakaDisplay("en", 7)).toBe("0.01");

@@ -10,19 +10,20 @@ export function parseTakaToMtk(input: string): number | null {
   const s = toAscii(input.trim());
   const m = /^(\d{1,12})(?:\.(\d{1,3}))?$/.exec(s);
   if (!m) return null;
-  const mtk = Number(m[1]) * 1000 + Number((m[2] ?? "").padEnd(3, "0"));
-  return Number.isSafeInteger(mtk) ? mtk : null;
+  const mtk = BigInt(m[1]!) * 1000n + BigInt((m[2] ?? "").padEnd(3, "0"));
+  return mtk <= BigInt(Number.MAX_SAFE_INTEGER) ? Number(mtk) : null;
 }
 
 /** 12500 mtk to "12.500" (ASCII) with exactly three decimals. */
-export function mtkToTaka(mtk: number): string {
-  const sign = mtk < 0 ? "-" : "";
-  const abs = Math.abs(mtk);
-  return `${sign}${Math.trunc(abs / 1000)}.${String(abs % 1000).padStart(3, "0")}`;
+export function mtkToTaka(mtk: number | bigint): string {
+  const v = typeof mtk === "bigint" ? mtk : Number.isSafeInteger(mtk) ? BigInt(mtk) : null;
+  if (v === null) return "\u2014"; // never show a different amount for a value that is not an exact integer
+  const abs = v < 0n ? -v : v;
+  return `${v < 0n ? "-" : ""}${abs / 1000n}.${String(abs % 1000n).padStart(3, "0")}`;
 }
 
 /** Localised: Bengali digits for bn. */
-export function formatPriceMtk(locale: Locale, mtk: number): string {
+export function formatPriceMtk(locale: Locale, mtk: number | bigint): string {
   const s = mtkToTaka(mtk);
   return locale === "bn" ? s.replace(/\d/g, (d) => BN[Number(d)] ?? d) : s;
 }
