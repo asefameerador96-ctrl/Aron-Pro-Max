@@ -52,10 +52,12 @@ export function routeGroup(pathname: string): RouteGroup {
   return "dashboards";
 }
 
-/** Dashboard pages SUPPORT keeps (docs/24 s8.5: "SUPPORT: R (sync health)"): the server refuses SUPPORT on every other dashboard and
+/** Dashboard pages SUPPORT keeps (docs/24 s8.5 line 777: national read of users, devices and sync health; credential and device actions;
+ *  risk signals in reach, line 1247; tutorials are open to all). Its users, devices, enrolment, device OTP and entry unlock pages live in the
+ *  admin portal, which this gate does not touch. The server refuses SUPPORT on every other dashboard and
  *  report endpoint, so the web never offers or serves those pages to it. Access only ever narrows here. */
-export const SUPPORT_DASHBOARD_PATHS = ["/sync-health", "/credentials", "/api/bff/password", "/api/bff/locale"] as const;
-const SUPPORT_DENIED_API = ["/api/bff/reports", "/api/bff/maps"];
+export const SUPPORT_DASHBOARD_PATHS = ["/sync-health", "/credentials", "/tutorial", "/exceptions", "/device-otp", "/api/bff/password", "/api/bff/locale"] as const;
+const SUPPORT_DENIED_API = ["/api/bff/reports"];
 
 export type Access = "ok" | "unauthenticated" | "forbidden";
 

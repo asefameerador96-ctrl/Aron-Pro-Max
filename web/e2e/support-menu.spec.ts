@@ -15,7 +15,7 @@ test("SUPPORT lands on /sync-health, sees no report menu, and is refused the oth
   await expect(page.getByTestId("zone-table")).toBeVisible(); // runs on the sync-health read alone
   await expect(page.getByTestId("sync-login").getByTestId("not-available")).toBeVisible();
   await expect(page.getByRole("link", { name: "Browse Retailer" })).toHaveCount(0);
-  for (const p of ["/daily-tracking", "/reports/retailers", "/exceptions"]) {
+  for (const p of ["/daily-tracking", "/reports/retailers", "/leave"]) {
     const res = await page.goto(p);
     expect(res?.status(), p).toBe(403);
   }
