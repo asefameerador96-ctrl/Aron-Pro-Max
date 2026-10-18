@@ -38,7 +38,7 @@ import kotlin.test.assertTrue
  * Authorisation audit (qa lane, 2026-10-18) of the admin, data-entry and drill-down routes: enrolment tokens, config
  * changes, versions and tools, dues adjustments, price batches, web entry and QC, paper backfill (data entry), entry
  * unlocks, device OTPs, route assignments, report queries and exports, and the dashboards. Contract-only surfaces
- * (`/v1/admin/releases`, `/v1/dashboards/targets`, `/v1/web-entry/outlet-sku`) must answer 404 to everyone.
+ * (`/v1/dashboards/targets`, `/v1/web-entry/outlet-sku`) must answer 404 to everyone.
  *
  * Every role calls every route (SR on its phone; AMO, TSO, DMO, WM, TOP, ANALYST, SUPPORT, ADMIN, SUPERADMIN on the web;
  * WM, TOP, ANALYST and a second SUPERADMIN are inserted here) in an ApiWorld with a mirrored second division (`LKX`).
@@ -406,9 +406,14 @@ class AuthzAuditTest {
             RouteSpec("GET /v1/dashboards/sync-health", g, { "/v1/dashboards/sync-health?business_date=$day" }, null, dashDocs + "SUPPORT"),
             // Everyone lists their own exports (ReportApi); judged per owner in exports().
             RouteSpec("GET /v1/report-exports", g, { "/v1/report-exports" }, null, all),
-            // Contract only (releases not built; targets and Astha outlet-SKU entry deferred, docs/27): 404 for everyone.
-            RouteSpec("GET /v1/admin/releases", g, { "/v1/admin/releases" }, null, emptySet()),
-            RouteSpec("POST /v1/admin/releases", p, { "/v1/admin/releases" }, { "{}" }, emptySet()),
+            // App releases (docs/24 s8.5: SUPPORT R, ADMIN W draft, SUPERADMIN publish); a valid draft of its own code and hash.
+            RouteSpec("GET /v1/admin/releases", g, { "/v1/admin/releases" }, null, setOf("SUPPORT", "ADMIN", "SUPERADMIN")),
+            RouteSpec("GET /v1/admin/releases/policy", g, { "/v1/admin/releases/policy" }, null, setOf("SUPPORT", "ADMIN", "SUPERADMIN")),
+            RouteSpec("POST /v1/admin/releases", p, { "/v1/admin/releases" }, {
+                """{"flavour":"amo","version_name":"1.0.0","version_code":7,"abi":"universal","sha256":"${"a1".repeat(32)}","size_bytes":1000,""" +
+                    """"download_url":"https://example.com/qa/amo.apk","signing_cert_sha256":"${"b2".repeat(32)}"}"""
+            }, writers),
+            // Contract only (targets and Astha outlet-SKU entry deferred, docs/27): 404 for everyone.
             RouteSpec("GET /v1/dashboards/targets", g, { "/v1/dashboards/targets" }, null, emptySet()),
             RouteSpec("POST /v1/web-entry/outlet-sku", p, { "/v1/web-entry/outlet-sku" }, { "{}" }, emptySet()),
         )
@@ -436,8 +441,11 @@ class AuthzAuditTest {
     // ---- reports (docs/24 s8.5: AMO only its app-home reports, SUPPORT and SR none) ------------------------------------
 
     private val reportKeys = mutableListOf<String>()
-    /** F-AMO-032 and F-AMO-033 (F-API-017b): the two reports the AMO app shows. */
-    private val amoReports = setOf("std-memo", "sales-summary")
+    /**
+     * F-AMO-032 and F-AMO-033 (F-API-017b): the reports the AMO app shows; route-memo and route-std opened to the AMO, zone
+     * scoped by the token (D-AMO-REPORT-01, docs/requests/android-amo-report-access.md).
+     */
+    private val amoReports = setOf("std-memo", "sales-summary", "route-memo", "route-std")
 
     private fun reportDocs(role: String, key: String) = when (role) {
         "SR", "SUPPORT" -> false
@@ -926,8 +934,6 @@ class AuthzAuditTest {
             "refused with 403 ERR_FORBIDDEN instead of ERR_OUT_OF_SCOPE: ${forbiddenNotOutOfScope.joinToString()}")
         record("NOTE", "GET /v1/me", "ALL", "pii-claim", HttpMethod.Get, "/v1/me", null, null, Verdict.QUESTION,
             "TokenSubject.pii is never set at login, so no role ever gets phone or owner columns (docs/21 s4.5 gives the PII right to some supervisor and admin roles, with re-authentication within cfg.pii.reauth_min, which does not exist yet). Intended for now?")
-        record("NOTE", "GET /v1/admin/releases", "ALL", "unserved", HttpMethod.Get, "/v1/admin/releases", null, null, Verdict.QUESTION,
-            "the contract has /v1/admin/releases, /{release_id} and /policy (docs/24 s8.5: SUPPORT R, ADMIN W draft, SUPERADMIN publish) but no route serves them; the enrolment-token path reads app_release directly. Who builds it and when?")
         record("NOTE", "editor_permission", "ADMIN", "unenforced", HttpMethod.Post, "/v1/admin/config/changes", null, null, Verdict.QUESTION,
             "cfg_key.editor_permission (cfg.edit.security, cfg.edit.finance, ...) is loaded but never checked, and no token carries permissions (TokenSubject.permissions is never set): every ADMIN edits every C0..C2 key, and `finance.backdate` can never be granted")
     }
