@@ -69,3 +69,19 @@ describe("one grouping for every full amount (F-SYS-051)", () => {
     expect(formatLakhCrore("bn", 123_456_780_000_000, { lakh: "লাখ", crore: "কোটি" })).toBe("১২,৩৪৫,৬৭৮.০০ কোটি");
   });
 });
+
+describe("compact lakh/crore figures by BigInt maths", () => {
+  const w = { lakh: "Lakh", crore: "Cr" };
+  it("rounds the hundredths half up with no float error and keeps small counts whole", () => {
+    expect(formatLakhCrore("en", 100_500, w)).toBe("1.01 Lakh"); // 1.005 lakh: a double would say 1.00
+    expect(formatLakhCrore("en", 10_050_000, w)).toBe("1.01 Cr");
+    expect(formatLakhCrore("en", 99_999, w)).toBe("99,999");
+    expect(formatLakhCrore("en", -361_000_000, w)).toBe("-36.10 Cr");
+    expect(formatLakhCrore("bn", 6_507_000, { lakh: "লাখ", crore: "কোটি" })).toBe("৬৫.০৭ লাখ");
+    expect(formatLakhCrore("en", Number.NaN, w)).toBe("—");
+  });
+  it("whole-taka rounding stays exact for large values", () => {
+    expect(lakhMtkToTaka(9_007_199_254_740_000)).toBe(9_007_199_254_740);
+    expect(lakhMtkToTaka(Number.NaN)).toBe(0);
+  });
+});
