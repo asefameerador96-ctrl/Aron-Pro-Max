@@ -1,5 +1,6 @@
 package com.aktcl.aron.feature.tso.leave
 
+import com.aktcl.aron.feature.tso.a11yProblems
 import android.content.Context
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalContext
@@ -115,6 +116,7 @@ class LeaveScreenTest {
         compose.onNodeWithTag(LeaveTags.LIST).performScrollToNode(hasTestTag(LeaveTags.card("c")))
         compose.onNodeWithTag(LeaveTags.unsent("c")).assertExists()
         compose.onNodeWithText("As of 10:42").assertExists()
+        org.junit.Assert.assertEquals("accessibility: " + compose.a11yProblems(), emptyList<String>(), compose.a11yProblems())
     }
 
     @Test fun banglaUsesBengaliDigitsAndBanglaBadge() {
@@ -127,6 +129,7 @@ class LeaveScreenTest {
     @Test fun emptyAndErrorStatesRender() {
         show(AppLanguage.EN, FakeSource(fresh = LeaveSource.Cached(emptyList(), "10:00")))
         compose.onNodeWithTag(LeaveTags.EMPTY).assertIsDisplayed()
+        org.junit.Assert.assertEquals("accessibility: " + compose.a11yProblems(), emptyList<String>(), compose.a11yProblems())
     }
 
     @Test fun offlineCachedShowsTheBanner() {

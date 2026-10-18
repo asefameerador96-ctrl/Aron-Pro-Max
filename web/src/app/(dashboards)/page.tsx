@@ -31,6 +31,7 @@ import { businessDate, formatBusinessDate, formatDateTime, problemMessage, t, ty
 import { TileMeta, type StaleReason } from "@/components/reports/tile-meta";
 import type { LakhWords } from "@/lib/dash/lakh";
 import Link from "next/link";
+import { redirect } from "next/navigation";
 
 function Err({ locale, code }: { locale: Locale; code: string | undefined }) {
   return (
@@ -76,6 +77,7 @@ const STAT = "glass-data @container relative flex min-h-32 flex-col gap-2 p-(--c
 // business date, as-of stamp and reason chip. No figure is invented: a missing value renders as "no data", never a number.
 export default async function DashboardPage({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
   const [sp, locale, session] = await Promise.all([searchParams, getLocale(), requireSession()]);
+  if (session.user.role === "SUPPORT") redirect("/sync-health"); // SUPPORT has no dashboard home (docs/24 s8.5: sync health only)
   const today = businessDate();
   const date = isCalendarDate(sp.date) ? sp.date : today;
   const yesterday = minusDays(date, 1);

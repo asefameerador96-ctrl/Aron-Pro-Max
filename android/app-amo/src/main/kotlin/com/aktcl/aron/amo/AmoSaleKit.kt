@@ -86,7 +86,8 @@ class AmoSaleKit(private val day: AmoDay, private val context: Context, private 
 
     fun skuName(id: Long): String = skuNames[id] ?: id.toString()
     fun outletName(id: Long): String = day.zoneOutlets.firstOrNull { it.outletId == id }?.let { it.name + " (" + it.code + ")" } ?: id.toString()
-    fun names() = PrintNames(::skuName, ::outletName, day.userDisplayName, day.routeName())
+    fun skuCategoryCode(id: Long): String? = skuCategory[id]
+    fun names() = PrintNames(::skuName, ::outletName, day.userDisplayName, day.routeName(), category = { id -> com.aktcl.aron.feature.memo.ui.MemoCategories.label(context, skuCategory[id]) })
 
     /** Prices of the bundle and the day's stock (docs/24 s7.2, F-SYS-045). */
     val catalog = SaleCatalog { date, priceType -> reads.catalog(date, priceType) }

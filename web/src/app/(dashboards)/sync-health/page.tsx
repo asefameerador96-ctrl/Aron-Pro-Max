@@ -26,10 +26,12 @@ export default async function SyncHealthPage({ searchParams }: { searchParams: P
   const route = sp.route && ID.test(sp.route) ? Number(sp.route) : null;
   const token = session.at;
   const [tracking, health, summary] = await Promise.all([getDailyTracking(token, date), getSyncHealth(token, date), getSummary(token, { from: date, to: date })]);
-  if (!tracking.ok || !health.ok)
+  // SUPPORT may read sync health but not the daily-tracking or summary dashboards (docs/24 s8.5): the page then runs on the
+  // sync-health read alone (zone table from by_zone) and says "not available" for the figures that need the route roll-up.
+  if (!health.ok || (!tracking.ok && !health.data.by_zone))
     return (
       <p role="alert" className="rounded bg-red-50 p-3 text-red-900" data-testid="sync-error">
-        {problemMessage(locale, (!tracking.ok ? tracking : (health as { problem: { code: string } })).problem.code)}
+        {problemMessage(locale, (!health.ok ? health : (tracking as { problem: { code: string } })).problem.code)}
       </p>
     );
   // Contract v1.2 gives config ack, pending photos, quarantine backlog and the zone breakdown on the sync-health page itself; the older
@@ -40,8 +42,9 @@ export default async function SyncHealthPage({ searchParams }: { searchParams: P
     sm.pending_photos === undefined ? getPendingPhotos(token) : Promise.resolve(null),
   ]);
   const byZone = health.data.by_zone;
-  const zones = rollupByZone(tracking.data.items);
-  const tot = totalsOf(zones);
+  const items = tracking.ok ? tracking.data.items : [];
+  const zones = rollupByZone(items);
+  const tot = tracking.ok ? totalsOf(zones) : { login_pct: null, submit_pct: null, zones_done: (byZone ?? []).filter((z) => z.final_submitted).length, zones: (byZone ?? []).length };
   const lat = latency(health.data.items);
   const names = new Map((summary.ok ? summary.data.children : []).map((c) => [c.node.id, c.node.name ?? String(c.node.id)]));
   const d = { businessDate: date, asOf: health.data.as_of, today };
@@ -53,7 +56,7 @@ export default async function SyncHealthPage({ searchParams }: { searchParams: P
       </p>
     </Tile>
   );
-  const routeRows = zone === null ? [] : tracking.data.items.filter((r) => r.zone_id === zone);
+  const routeRows = zone === null ? [] : items.filter((r) => r.zone_id === zone);
   const deviceRows = route === null ? [] : health.data.items.filter((x) => x.route_ids?.includes(route));
   return (
     <div className="space-y-4" data-testid="sync-health">
@@ -67,8 +70,8 @@ export default async function SyncHealthPage({ searchParams }: { searchParams: P
         </form>
       </div>
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4" data-testid="sync-tiles">
-        {cell("sync.login_pct", "login", pctText(locale, tot.login_pct))}
-        {cell("sync.submit_pct", "submit", pctText(locale, tot.submit_pct))}
+        {cell("sync.login_pct", "login", tracking.ok ? pctText(locale, tot.login_pct) : NA(locale))}
+        {cell("sync.submit_pct", "submit", tracking.ok ? pctText(locale, tot.submit_pct) : NA(locale))}
         {cell("sync.final_submit", "final", t(locale, "sync.zones_done", { done: n(locale, tot.zones_done), total: n(locale, tot.zones) }))}
         {cell("sync.trickle", "trickle", lat.worst === null ? NA(locale) : t(locale, "sync.seconds_worst_median", { worst: n(locale, lat.worst), median: n(locale, lat.median ?? 0) }))}
         {cell("sync.quarantine", "quarantine", n(locale, sm.quarantine_backlog ?? sm.quarantined))}
@@ -109,7 +112,7 @@ export default async function SyncHealthPage({ searchParams }: { searchParams: P
         {route !== null ? (
           <>
             <span>›</span>
-            <span>{tracking.data.items.find((r) => r.route_id === route)?.route_name ?? n(locale, route)}</span>
+            <span>{items.find((r) => r.route_id === route)?.route_name ?? n(locale, route)}</span>
           </>
         ) : null}
       </nav>

@@ -51,7 +51,7 @@ class RoomSaleReads(private val db: AronDatabase, private val reference: Referen
         }
         val superseded = memos.mapNotNull { it.supersedesUuid }.toSet()
         val live = memos.filter { it.memoUuid !in superseded }
-        return SummaryBundle(DaySummaryCalculator.compute(sm, cats, issued), live.sumOf { it.qcDeductionMtk }, live.sumOf { it.dueMtk })
+        return SummaryBundle(DaySummaryCalculator.compute(sm, cats, issued), live.sumOf { it.qcDeductionMtk }, live.sumOf { it.dueMtk.coerceAtLeast(0) }) // a QC credit (negative due) is not money the outlet owes: it must not cancel real dues
     }
 
     /** Route progress of the planned [outlets] from stored visits and closes (F-SR-067). */

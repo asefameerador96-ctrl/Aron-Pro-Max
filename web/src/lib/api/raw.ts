@@ -1,7 +1,7 @@
 // Path-driven request used by the generic CRUD engine, where the path comes from entity metadata (typed as `keyof paths`
 // there) instead of a literal at the call site. Same marker check, same problem handling as client.ts.
 import type { Problem } from "@/contract/types";
-import { apiBase, transportProblem, type ApiOutcome } from "./client";
+import { apiBase, relabelMfa, transportProblem, type ApiOutcome } from "./client";
 
 export interface RawRequest {
   method: "GET" | "POST" | "PATCH" | "PUT" | "DELETE";
@@ -41,5 +41,5 @@ export async function rawRequest<T>(req: RawRequest): Promise<ApiOutcome<T>> {
   if (response.ok) return { ok: true, status: response.status, data: json as T, response };
   const p = json as Partial<Problem> | undefined;
   const problem: Problem = p && typeof p.code === "string" ? (p as Problem) : { ...transportProblem(response.status), code: "ERR_INTERNAL" };
-  return { ok: false, status: response.status, problem, response };
+  return { ok: false, status: response.status, problem: relabelMfa(response.status, req.path, problem), response };
 }

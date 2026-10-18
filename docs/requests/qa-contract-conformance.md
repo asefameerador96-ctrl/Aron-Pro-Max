@@ -2,6 +2,27 @@
 
 **From:** qa lane. **To:** lead (contract owner), backend-core, backend-admin, backend-reports.
 
+> **Handover (lead-contract, 2026-10-17): all sections are closed.** The three baselines are empty: no contract
+> deviation, no unsatisfiable success schema, and every operation the production wiring serves answers 2xx at least once
+> (173 of 173), so every success body is validated. What a successor maintains:
+> - **A new operation** answers 2xx with the generated call, or gets an entry in `ContractConformanceTest.FX`. An `Fx`
+>   says only what the generator cannot know: `body`/`path`/`query`/`headers` edits; `after` (producers that run first;
+>   a read that needs a write moves to the write phase); `capture` (keep an id or token from a 2xx answer in `Ctx`,
+>   read it with `Ctx.need`, which fails fast); `proof` (`deviceProof(...)`, `BATCH_PROOF`, `REFRESH_PROOF`; the seeded SR
+>   phone holds `ApiWorld.phoneKey`); `raw` (multipart); `prepare` (a login or an issue once before the calls). A fixture's
+>   body is itself checked against the request schema (`fixture-invalid`). Rows no served operation creates go in
+>   `ApiWorld.conformanceSeed` (only the contract suite's world loads them). Blobs go through `FakeBlobs`
+>   (`Wiring.production(blobPorts = ...)`, tests only).
+> - **A new finding** is fixed in the code or, when the server is right, in the contract (oasdiff additive, or a version
+>   bump plus a `contract-*.md` request the lead approves); never added to a baseline. The report
+>   `backend/app/build/contract-conformance.txt` lists each caller's refusal under any operation without a 2xx.
+> - **A phone batch in any ApiWorld test** sends `X-Device-Proof` (`world.batchProof(device, gzBody)`): the seeded phone
+>   and its mirrored copies hold the harness key.
+> - **Date bomb (routed to qa):** the harness's seeded config overrides (`cfg_value.effective_from = now() - 1 day`) are
+>   activated against the database's real time while the harness clock is fixed at 2027-01-03; after real date
+>   2027-01-04 they no longer apply (rate limits, MFA roles, page threshold). A clock-relative date was tried and did not
+>   take effect; it needs a deliberate fix.
+
 `backend/app` now has `ContractConformanceTest`. It drives every operation the production wiring serves, as six seeded callers, and validates every answer against `contract/openapi.yaml` with a JSON Schema 2020-12 validator (status declared, body valid against the declared schema, problem `code` in ProblemCode). The run makes 970 calls and validates 902 bodies. It found the deviations below (28 operation and status pairs). They are frozen in `backend/app/src/test/resources/contract-conformance-baseline.txt` (96 keys). A schema finding is keyed per normalised error (`<path> <keyword>[ <property>]`), so a new error on an operation already listed still fails. The list may only shrink: a new deviation fails CI. **When you fix one, delete its lines from the baseline in the same commit**, or the test fails as stale. The full report of a run is `backend/app/build/contract-conformance.txt`.
 
 For each finding, decide whether the code or the contract is wrong. The column "likely fix" is qa's reading, not a ruling.
@@ -71,21 +92,24 @@ cat backend/app/build/contract-conformance.txt
   four routes are contract operations (`submitFeedback`, `applyLeave`, `saveVisitPlan`, `listRouteAssignees`). C: the
   report area was a code fix (backend-reports); attrs, config role maps and the null `default_value` are contract
   widenings approved by the lead (contract 1.3.3, `docs/requests/contract-conformance-widening.md`).
-- **E: 63 -> 55.** New fixtures: feedback, leave (and so the leave decision), holidays, config change, price preview
-  and publish, product-node patch, client errors (sample timestamps carry milliseconds), nearby outlets. The report
-  (`backend/app/build/contract-conformance.txt`) now lists every caller's refusal under each operation without a 2xx.
-- **E, what the remaining 55 need** (none is a one-line body fix):
-  - *An id the run creates first* (create, then use the id): config changes, versions, reach, decision, rollback;
-    admin content, rubric, survey and tutorial PATCH; feedback PATCH; outlet requests (create needs a valid
-    `proposed`, then get, verify, approve and reject); tasks and cancel; report exports; quarantine items; price batch
-    decision; risk-signal review; enrolment token revoke.
-  - *A device proof* (signed request headers): devices/me/policy, devices/me/status, devices/nonce; and a P-256 key
-    for devices/enrol.
-  - *Blob storage* (503 by design in the harness): admin assets, admin content create, media SAS, PDA upload, and
-    media read-url (needs a stored photo).
-  - *Auth state*: a refresh token, an MFA challenge, the current password for change-password, a bind-capable token.
-  - *Seed data*: a published release (enrolment tokens), a variant node (SKU create), an active non-SR user (route
-    assignment, device OTP, user scope), a cluster without outlets, an open zone-day (web-entry route-day), a valid
-    print template and memo number, an AMO route for the daily-tracking action.
-  - *Harness*: `POST /v1/media/upload` is multipart; the harness sends JSON. Delta answers 304 when nothing changed;
-    the seeded SR bundle has no paged section.
+- **E: 63 -> 0 (lane/lead-contract, after the lead's go, 2026-10-17).** Every operation the production wiring serves is
+  validated on at least one success answer. How (all in the harness, `ContractConformanceTest.FX` and the opt-in
+  `ApiWorld(conformance = true)` seed):
+  - *Chained ids*: an operation runs after its producers (`Fx.after`) and reads what their answers created
+    (`Fx.capture`): outlet request create, verify, approve; content, rubric, survey and tutorial PATCH on the created id;
+    route-assignment end on the created cover (the run no longer ends sr1001's seeded primary); enrolment token revoke
+    and enrol; feedback triage; task cancel; price decision after the publish; delta after the bundle.
+  - *Seed rows no served operation creates*: a second outlet request, an export job, a risk signal, yesterday's
+    route-day and the dw dimensions, a pending C3 config change, a published SR release, a throwaway AMO with a zone
+    scope, a tutorial asset, quarantine items (a held duplicate of the paper memo with its line, one to discard, one
+    resolved for the delta), a stored photo, 501 tasks over the page threshold (set to its floor, 500).
+  - *Devices and auth*: the seeded SR phone carries a real P-256 key (`ApiWorld.phoneKey`), so batch, push token and
+    refresh are proven with their device proofs (the scope-leak and sync-fault harnesses send batch proofs too); a proof
+    phone for policy, nonce and status; a dev-token enrolment with a self-built attestation chain; bind with an unbound
+    SR, phone and an admin-issued OTP; MFA enrol and verify for dmo1001 (DMO is MFA-required in this world only).
+  - *Blobs*: `Wiring.production(blobPorts = ...)` (tests only) takes an in-memory store, so the SAS, upload and read
+    paths answer 2xx; production is unchanged (Azure when ARON_BLOB_ACCOUNT is set, else 503).
+  - *Code defect found on the way*: `POST /v1/admin/enrolment-tokens` sent unset optional QR provisioning extras as JSON
+    null (contract: optional, not nullable; the setup wizard could read "null"). Fixed in backend devices with a test.
+  - The report (`backend/app/build/contract-conformance.txt`) lists each caller's refusal under any operation without a
+    2xx, so a new gap is a read away.

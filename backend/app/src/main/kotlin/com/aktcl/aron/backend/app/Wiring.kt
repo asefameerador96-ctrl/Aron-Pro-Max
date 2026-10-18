@@ -161,11 +161,13 @@ class Wiring(
             com.aktcl.aron.backend.sync.ConsentRecords(),
         )
 
-        /** [extraRecordHandlers] and [pushSender] are for tests only; production handlers are listed in [recordHandlers]. */
+        /** [extraRecordHandlers], [pushSender] and [blobPorts] are for tests only; production handlers are listed in [recordHandlers]. */
         fun production(
             s: Settings, clock: AronClock = AronClock.SYSTEM, extraRecordHandlers: List<RecordHandler> = emptyList(),
             /** Tests only: a push sender in place of FCM. */
             pushSender: com.aktcl.aron.backend.notify.PushSender? = null,
+            /** Tests only: an in-memory blob store in place of Azure (or of the 503 answers where blob storage is not configured). */
+            blobPorts: BlobPorts? = null,
         ): Wiring {
             val db = Database.fromSettings(s)
             val config = DbServerConfig(db, RegistryDefaults(s.env), clock)
@@ -241,7 +243,8 @@ class Wiring(
             val publicDeps = ConfigPublicDeps(ConfigPublic(db, configResolver, clock), guard)
             // Azure user-delegation SAS via the managed identity when ARON_BLOB_ACCOUNT is set (Azure); 503 elsewhere
             // (docs/requests/backend-admin-blob-sas.md).
-            val blob: BlobSasIssuer = AzureBlobSasIssuer.fromEnvironment() ?: com.aktcl.aron.backend.masterdata.UnconfiguredBlobSasIssuer
+            val blobs = blobPorts ?: BlobPorts.fromEnvironment()
+            val blob: BlobSasIssuer = blobs.sas
             val otpDeps = DeviceOtpDeps(db, reach, otpCipher, config, guard, clock)
             // F-SYS-053: the delta re-resolves outlet radius with the bundle's own resolution.
             val radiusBundle = BundleService(db, config, SqlRoutePlanner(db, geo, config), clock)
@@ -331,9 +334,7 @@ class Wiring(
                 memoRoutes(com.aktcl.aron.backend.sync.MemoDeps(db, reach, guard, clock))
                 nearbyRoutes(com.aktcl.aron.backend.sync.NearbyDeps(db, config, reach, guard, clock))
                 riskSignalRoutes(com.aktcl.aron.backend.sync.RiskSignalDeps(db, config, reach, guard, clock))
-                mediaRoutes(MediaDeps(db, { path, max, until -> blob.writeSas(path, max, until) }, guard, clock,
-                    (blob as? AzureBlobSasIssuer)?.let { az -> com.aktcl.aron.backend.media.PhotoBlobWriter(az::putBytes) } ?: com.aktcl.aron.backend.media.UnconfiguredPhotoBlobWriter,
-                    reach, (blob as? AzureBlobSasIssuer)?.let { az -> com.aktcl.aron.backend.media.PhotoReadIssuer(az::readSas) } ?: com.aktcl.aron.backend.media.UnconfiguredPhotoReadIssuer))
+                mediaRoutes(MediaDeps(db, { path, max, until -> blob.writeSas(path, max, until) }, guard, clock, blobs.photoWriter, reach, blobs.photoRead))
                 pushRoutes(com.aktcl.aron.backend.notify.PushDeps(db, config, guard, clock))
                 notificationRoutes(com.aktcl.aron.backend.notify.NotificationDeps(db, config, reach, push, guard, clock))
             }, frontDoorId = s.frontDoorId, admission = admission, cachedGeneration = generation::cached,

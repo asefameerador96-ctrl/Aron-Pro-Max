@@ -29,6 +29,9 @@ class SaleViewModel(
     fun setQc(entry: QcEntry) { viewModelScope.launch { flow.setQc(entry) } }
     fun setPaid(paidMtk: Long?) { viewModelScope.launch { flow.setPaid(paidMtk) } }
     fun confirmZeroSale() { viewModelScope.launch { flow.confirmZeroSale() } }
+    fun startQcOnly() { viewModelScope.launch { flow.startQcOnly() } }
+    fun cancelQcOnly() { viewModelScope.launch { flow.cancelQcOnly() } }
+    fun restoreQc(entries: List<QcEntry>) { viewModelScope.launch { flow.restoreQc(entries) } }
     fun completeQc() { viewModelScope.launch { flow.completeQc() } }
     fun beginEdit(edit: EditContext) { viewModelScope.launch { flow.withEdit(edit) } }
     /** The scope the print dialogs run in: it outlives the screen's composition, so a rotation never cancels a save or a print. */

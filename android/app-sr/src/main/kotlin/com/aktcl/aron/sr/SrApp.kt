@@ -430,7 +430,7 @@ fun SrApp(
             MemoHost(day, sunlight, onSunlight, onEdit = { editMemo = it; screen = SrScreen.EDIT })
         }
         SrScreen.EDIT -> SrFrame(stringResource(HomeR.string.hm_tile_memo), goBack, sync, openSync) { EditHost(day, editMemo, sunlight, onSunlight, onDone = { screen = SrScreen.MEMO }) }
-        SrScreen.SUMMARY -> SrFrame(stringResource(HomeR.string.hm_tile_summary), goBack, sync, openSync, printer = day.printerManager) { SummaryHost(day, sunlight, onSunlight) }
+        SrScreen.SUMMARY -> SrFrame(stringResource(com.aktcl.aron.feature.memo.R.string.summary_title), goBack, sync, openSync, printer = day.printerManager) { SummaryHost(day, sunlight, onSunlight) }
         SrScreen.SUBMIT -> SrFrame(stringResource(HomeR.string.hm_tile_sales_submit), goBack, sync, openSync) { SubmitHost(day) }
         SrScreen.JOURNEY -> SrFrame(stringResource(HomeR.string.hm_tile_sales_journey), goBack, sync, openSync) { JourneyHost(day) }
         SrScreen.KPI -> SrFrame(stringResource(HomeR.string.hm_tile_kpi), goBack, sync, openSync) { KpiHost(day) }
@@ -462,7 +462,7 @@ fun SrApp(
                 )
             }
         }
-        SrScreen.TASKS -> SrFrame(stringResource(HomeR.string.hm_tile_tasks), goBack, sync, openSync) {
+        SrScreen.TASKS -> SrFrame(stringResource(R.string.sr_tasks_title), goBack, sync, openSync) {
             LaunchedEffect(Unit) { day.taskBoard.load() }
             TaskContent(tasks, onResolve = { id -> scope.launch { day.taskBoard.resolve(id) } })
         }

@@ -44,7 +44,8 @@
     <string name="review_gross">Total</string>
     <string name="review_offer_discount">Discount</string>
     <string name="review_drp_discount">Slide</string>
-    <string name="review_qc">QC</string>
+    <string name="review_qc">Total QC</string>
+    <string name="review_credit_note">This will be saved as a credit.</string>
     <string name="review_net">Grand total</string>
     <string name="review_paid">Paid</string>
     <string name="review_due">Due</string>
@@ -57,6 +58,8 @@
     <string name="review_problem_unit">This unit is not allowed for %1$s.</string>
     <string name="review_problem_paid">Paid must be 0 or more and less than the total, in whole paisa.</string>
     <string name="review_problem_nothing">Nothing to sell.</string>
+    <string name="review_problem_net_negative">QC takes the total below zero. Reduce the QC.</string>
+    <string name="review_problem_qc_cap">QC is above the maximum for a product.</string>
     <string name="review_problem_other">Please check the sale.</string>
     <string name="credit_title">Enter the amount paid</string>
     <string name="credit_body">How much are you collecting from the retailer now?</string>
@@ -73,12 +76,24 @@
     <string name="qc_pick">Choose the product you want to add QC for.</string>
     <string name="qc_empty">No product for QC.</string>
     <string name="qc_summary">QC summary</string>
-    <string name="qc_col_type">QC type</string>
     <string name="qc_production">Production fault</string>
     <string name="qc_transport">Transport fault</string>
-    <string name="qc_deduction">Deduction: %1$s</string>
+    <string name="qc_deduction">Settlement amount: %1$s</string>
     <string name="qc_cancel">Cancel</string>
     <string name="qc_done">Submit QC</string>
+    <string name="qc_max">Maximum QC</string>
+    <string name="qc_done_amount">QC done</string>
+    <string name="qc_remaining">Remaining</string>
+    <string name="qc_clear">Delete</string>
+    <string name="qc_total_qty">Total QC quantity: %1$s</string>
+    <string name="qc_confirm_title">Information</string>
+    <string name="qc_confirm_message">Do you want to submit QC?</string>
+    <string name="qc_type_damaged_crushed">Damaged &amp; Crushed Pack/Outer CBC</string>
+    <string name="qc_type_short_outer_pack_stick">Outer, Pack or Stick missing</string>
+    <string name="qc_type_other_mfc">Others (manufacturing)</string>
+    <string name="qc_type_expired_stock">Expired stock (4 months+)</string>
+    <string name="qc_type_damaged_in_transit">Stock damaged during route service</string>
+    <string name="qc_type_taste">Taste-related problem</string>
     <string name="qc_locked">QC is done at this outlet; the sale can no longer be edited.</string>
     <string name="call_start_title">Start the call?</string>
     <string name="call_start_message">You are at %1$s. Start the call now?</string>
@@ -89,4 +104,10 @@
     <string name="edit_denied_outside">You can edit a sale only at the shop, inside the geofence.</string>
     <string name="edit_denied_qc">QC is done at this outlet; the sale cannot be edited.</string>
     <string name="edit_denied_superseded">This memo was already replaced by a newer one.</string>
+    <string name="qc_col_mfc">MFC Fault</string>
+    <string name="qc_col_mkt">MKT Fault</string>
+    <string name="qc_col_total">Total</string>
+    <string name="qc_typed_max">Most you can enter: %1$s</string>
+    <string name="sale_qc_only">Product QC without a sale</string>
+    <string name="review_problem_qc_rows">At most %1$s QC rows fit on one memo. Clear some.</string>
 </resources>

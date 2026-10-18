@@ -144,8 +144,8 @@ object RoleHomes {
      */
     fun amoTiles(badges: Map<String, Int> = emptyMap()): List<RoleTile> = listOf(
         RoleTile(AmoTile.ATTENDANCE, R.string.rh_amo_attendance, AronIcons.Attendance, badges[AmoTile.ATTENDANCE] ?: 0, RoleTileGroup.Today),
-        RoleTile(AmoTile.CONTROL_CALL, R.string.rh_amo_control_call, AronIcons.Place, badges[AmoTile.CONTROL_CALL] ?: 0, RoleTileGroup.Today),
         RoleTile(AmoTile.JOINT_CALL, R.string.rh_amo_joint_call, AronIcons.Team, badges[AmoTile.JOINT_CALL] ?: 0, RoleTileGroup.Today),
+        RoleTile(AmoTile.CONTROL_CALL, R.string.rh_amo_control_call, AronIcons.Place, badges[AmoTile.CONTROL_CALL] ?: 0, RoleTileGroup.Today),
         RoleTile(AmoTile.SALE, R.string.rh_amo_sale, AronIcons.Sale, badges[AmoTile.SALE] ?: 0, RoleTileGroup.Today),
         RoleTile(AmoTile.TEAM, R.string.rh_amo_team, AronIcons.Team, badges[AmoTile.TEAM] ?: 0, RoleTileGroup.Today),
         RoleTile(AmoTile.OUTLET, R.string.rh_amo_outlet, AronIcons.Outlet, badges[AmoTile.OUTLET] ?: 0, RoleTileGroup.Today),
@@ -247,7 +247,7 @@ fun RoleHomeContent(
                 if (showAvatar) AvatarInitial(user.fullName)
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.Xs)) {
                     Text(
-                        header.title, style = MaterialTheme.typography.titleMedium, color = c.textPrimary, maxLines = 2, overflow = TextOverflow.Ellipsis,
+                        header.title, style = MaterialTheme.typography.titleMedium, color = c.textPrimary, maxLines = if (LocalDensity.current.fontScale >= AronTokens.Size.ReflowFontScale) 3 else 2, overflow = TextOverflow.Ellipsis,
                         onTextLayout = { if (it.hasVisualOverflow) squeezed = true }, modifier = Modifier.testTag(HomeTags.HEADER),
                     )
                     // the bare ISO date as the SR header shows it; TalkBack reads the full "Business date: ..." sentence

@@ -52,4 +52,19 @@ class TaskDelegationTest {
         val all = TaskDelegation.combine(listOf("""{"items":[${task("a", 9, "2026-10-17T01:00:00Z")}]}""", """{"items":[${task("b", 9, "2026-10-17T02:00:00Z")}]}"""))
         assertEquals(listOf("b", "a"), TaskDelegation.assignedBy(all, 9).map { it.uuid })
     }
+
+    @Test fun theSrIsDerivedFromTheRouteAndTheWholeTeamIsOfferedWhenNobodyCoversIt() {
+        val a = TeamSr(1, "Amin", listOf(5, 6)); val b = TeamSr(2, "Zed", listOf(6)); val c = TeamSr(3, "Cy", emptyList())
+        assertEquals(listOf(a), TaskDelegation.srsOfRoute(listOf(a, b, c), 5)) // one SR: no question
+        assertEquals(listOf(a, b), TaskDelegation.srsOfRoute(listOf(a, b, c), 6)) // two: the AMO picks
+        assertEquals(listOf(a, b, c), TaskDelegation.srsOfRoute(listOf(a, b, c), 99)) // none known: the team
+        assertTrue(TaskDelegation.srsOfRoute(emptyList(), 5).isEmpty())
+    }
+
+    @Test fun theDescriptionIsKeptAndABlankOneIsNot() {
+        val withText = task("d", 9, "2026-10-17T01:00:00Z").replace("\"source\"", "\"description\":\"Count the lighters\",\"source\"")
+        val blank = task("e", 9, "2026-10-17T02:00:00Z").replace("\"source\"", "\"description\":\"  \",\"source\"")
+        val l = TaskDelegation.assignedBy("""{"items":[$withText,$blank]}""", 9)
+        assertEquals(mapOf("d" to "Count the lighters", "e" to null), l.associate { it.uuid to it.description })
+    }
 }

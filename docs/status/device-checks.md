@@ -408,3 +408,6 @@ build-tools on the laptop.
    output. It states that Google's developer-verification rule is not exercised by these installs (first rollout
    September 2026 in Brazil, Indonesia, Singapore and Thailand). Copy the lines into `docs/status/laptop.md`. N-042
    stays open until the Galaxy A06 and A07 runs are logged.
+- D-TSO-A11Y-01 (DEVICE-PENDING): TalkBack on the TSO app: Leave apply, Feedback, Assign Task, Change Password fields announce their names; the drawer and Home button read in order; every control reachable by swipe.
+
+- D-SIZE-01 DEVICE-PENDING (android-tso, 2026-10-18): install sr-release and tso-release (native libraries now deflated, `useLegacyPackaging`; R8 `-repackageclasses`, `-processkotlinnullchecks remove`); cold start, log in, open the encrypted DB (SQLCipher + argon2 load from the extracted libraries), sell offline, sync, print. Expect no difference; the installed size is about 1.3 MB larger than before.

@@ -79,7 +79,7 @@ export function reportBySlug(slug: string): WebReport | undefined {
 }
 
 /** Roles that may open report pages at all (the server's own ACL narrows further). */
-export const REPORT_ROLES: RoleList = WEB_ROLES;
+export const REPORT_ROLES: RoleList = WEB_ROLES.filter((r) => r !== "SUPPORT"); // the server answers SUPPORT 403 on every report (AZ-2)
 
 export function canSeeReport(r: WebReport, role: Role): boolean {
   return (r.roles ?? REPORT_ROLES).includes(role);
