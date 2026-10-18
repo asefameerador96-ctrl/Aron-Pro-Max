@@ -48,8 +48,18 @@ fun AmoReportHub(day: AmoDay, onBack: () -> Unit) {
             ReportLeaf.STD -> {
                 val range = remember { Reports.stdMemoRange(day.businessDate()) }
                 val loaded = rememberReport(day, "std-memo", range.first, range.second)
-                if (loaded == null) Box(Modifier.fillMaxSize(), Alignment.Center) { CircularProgressIndicator() }
-                else StdMemoReportContent(range, loaded.data, loaded.data?.let { Reports.stdByRoute(it) }.orEmpty(), bangla, money, loaded.stale, loaded.failed)
+                // Route totals and the per-category STD come from the server (`route-memo`, `route-std`, zone-scoped by the token); a refused or missing one falls back to the memo rows.
+                val totals = rememberReport(day, "route-memo", range.first, range.second)
+                val std = rememberReport(day, "route-std", range.first, range.second)
+                if (loaded == null || totals == null || std == null) Box(Modifier.fillMaxSize(), Alignment.Center) { CircularProgressIndicator() }
+                else {
+                    val server = totals.data?.takeIf { !it.truncated && it.rows.isNotEmpty() }?.let { Reports.routeMemoTotals(it) }
+                    StdMemoReportContent(
+                        range, loaded.data, server ?: loaded.data?.let { Reports.stdByRoute(it) }.orEmpty(), bangla, money, loaded.stale || (totals.stale && server != null), loaded.failed,
+                        exactTotals = if (server != null) true else null,
+                        categories = std.data?.takeIf { !it.truncated }?.let { Reports.routeCategories(it) }.orEmpty(),
+                    )
+                }
             }
             ReportLeaf.SUMMARY, ReportLeaf.ROUTE -> {
                 // F-AMO-033: month to date over the trading days up to yesterday (today on the 1st), the same range as the STD report.
