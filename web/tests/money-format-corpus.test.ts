@@ -48,22 +48,15 @@ const CHECKS: Record<string, (e: Entry, l: Locale) => [string, string]> = {
 };
 
 /**
- * Findings (2026-10-18, qa money gate). Each names the locale(s) that disagree and why; delete the line when fixed.
- * - Intl "bn-BD" groups the South Asian way (১২,৩৪,৫৬৭.০০) while F-SYS-051 and shared:rules Formats use Western
- *   3-digit grouping in both locales (১,২৩৪,৫৬৭.০০): every bn amount from 1 lakh taka up differs between the web and
- *   the phone.
+ * Findings: none open. The bn grouping finding (QA-MNY-06: Intl "bn-BD" grouped the South Asian way against F-SYS-051)
+ * was fixed by web-dashboard 32adcf33 (Western grouping); its six pairs left KNOWN on 2026-10-18. A new disagreement
+ * is added here only with a routed finding, and KNOWN_CEILING raised only with the lead's review.
  */
 const KNOWN: Record<string, Partial<Record<Locale, number>>> = {
-  // formatter/format -> locale -> the most corpus amounts that may differ (measured 2026-10-18; may only go down)
-  "reports/format.formatTakaDisplay+sign:money2": { bn: 95 },
-  "reports/format.formatTakaDisplay:amount2": { bn: 95 },
-  "admin/money.formatMtk:amount2": { bn: 95 },
-  "reports/format.formatTaka:money3": { bn: 95 },
-  "admin/money.formatMtkExact:money3": { bn: 95 },
-  "dash/lakh.formatLakhCrore:lakh_crore": { bn: 3 },
+  // formatter/format -> locale -> the most corpus amounts that may differ (may only go down)
 };
 /** The exact number of known (formatter, locale) pairs, like CEILING in tools/ci/money-float-scan.py: lower it with each fix. */
-const KNOWN_CEILING = 6;
+const KNOWN_CEILING = 0;
 
 /** Mismatches of [id]; with [ignoreGrouping] the separators are dropped first (a known grouping finding hides nothing else). */
 function mismatches(id: string, locale: Locale, ignoreGrouping = false): string[] {

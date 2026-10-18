@@ -20,11 +20,6 @@ android/feature-tso/src/main/kotlin/com/aktcl/aron/feature/tso/TsoDashboard.kt |
 android/feature-tso/src/main/kotlin/com/aktcl/aron/feature/tso/TsoDashboard.kt | val ratioPct: Double? | ok | a percentage; netMtk is Long
 android/feature-tso/src/main/kotlin/com/aktcl/aron/feature/tso/TsoDashboard.kt | qty_report")?.toDoubleOrNull() | ok | parses the report-unit quantity, not money
 android/feature-tso/src/main/kotlin/com/aktcl/aron/feature/tso/TsoDashboard.kt | pos.map { it * 100.0 / total } | ok | donut shares in percent of the total (display only); the amounts stay Long
-web/src/lib/admin/money.ts | const abs = Math.abs(Math.trunc(mtk)); | ok x2 | truncation of an integer mtk (no division), in formatMtkExact and formatMtk
-web/src/lib/admin/money.ts | formatNumber(locale, Math.floor(abs / 1000)) | finding | QA-MNY-04 (web): formatMtkExact divides mtk as a JS double; correct for |mtk| < 2^53 (corpus-proved) but docs/24 s7.1 forbids float on money; use the BigInt/string maths of lib/reports/format.ts
-web/src/lib/admin/money.ts | let whole = Math.floor(abs / 1000); | finding | QA-MNY-04 (web): formatMtk divides mtk as a JS double; same fix
-web/src/lib/admin/money.ts | Math.round((abs % 1000) / 10) | finding | QA-MNY-04 (web): formatMtk rounds the paisa through a double; same fix
-web/src/lib/admin/price-money.ts | Math.trunc(abs / 1000) | finding | QA-MNY-04 (web): mtkToTaka divides mtk as a double; same fix
 web/src/lib/admin/taka.ts | Math.round(Math.log10(scale)) | ok | the decimal count of a power-of-ten scale, not an amount
 web/src/lib/dash/lakh.ts | abs / 1e7 | finding | QA-MNY-04 (web): formatLakhCrore passes taka / 1e7 (a double) to Intl for rounding; compute the hundredths with integer maths
 web/src/lib/dash/lakh.ts | abs / 1e5 | finding | QA-MNY-04 (web): the lakh branch of formatLakhCrore, same fix
