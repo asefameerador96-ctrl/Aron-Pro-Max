@@ -117,4 +117,8 @@
     <string name="core_ui_look_tile_photo">Photo Capture</string>
     <string name="core_ui_look_tile_journey">Sales journey</string>
     <string name="core_ui_look_tile_kpi">KPI</string>
+    <string name="core_ui_look_target_title">Target and achievement</string>
+    <string name="core_ui_look_target_label">Today\'s sales</string>
+    <string name="core_ui_look_info">Your whole day\'s sales are shown here</string>
+    <string name="core_ui_look_printer_on">Printer connected</string>
 </resources>

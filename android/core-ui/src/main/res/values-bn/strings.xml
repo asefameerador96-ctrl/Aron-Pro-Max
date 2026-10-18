@@ -114,4 +114,8 @@
     <string name="core_ui_look_tile_photo">Photo Capture</string>
     <string name="core_ui_look_tile_journey">বিক্রয় যাত্রা</string>
     <string name="core_ui_look_tile_kpi">কেপিআই</string>
+    <string name="core_ui_look_target_title">টার্গেট ও অ্যাচিভমেন্ট</string>
+    <string name="core_ui_look_target_label">আজকের বিক্রয়</string>
+    <string name="core_ui_look_info">আপনার পুরো দিনের বিক্রয় বিবরণ এখানে থাকবে</string>
+    <string name="core_ui_look_printer_on">প্রিন্টার সংযুক্ত</string>
 </resources>

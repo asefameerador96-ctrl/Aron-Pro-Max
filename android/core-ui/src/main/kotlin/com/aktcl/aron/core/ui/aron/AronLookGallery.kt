@@ -77,6 +77,8 @@ fun AronLookGallery(modifier: Modifier = Modifier) {
         }
         AronScaffoldBottomSample()
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            AronTargetCard(stringResource(R.string.core_ui_look_target_title), stringResource(R.string.core_ui_look_target_label), value = localizedDigits("4,771.50"))
+            AronInfoCard(stringResource(R.string.core_ui_look_info), trailing = { AronPrinterBadge(connected = true, label = stringResource(R.string.core_ui_look_printer_on), onClick = {}) })
             RetailerPicker(retailer, listOf("FB", "SL", "MaxR-10S"), { it }, stringResource(R.string.core_ui_look_select_retailer), onSelect = { retailer = it })
             LetterFilterBar(listOf(all, "A", "B", "E", "J", "M", "N", "R", "S", "T", "a", "b", "c"), selected = letter.ifEmpty { all }, onSelect = { letter = it })
             SummaryTable(

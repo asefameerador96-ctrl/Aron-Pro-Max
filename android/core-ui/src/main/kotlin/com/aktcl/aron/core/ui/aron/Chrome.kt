@@ -1,6 +1,10 @@
 package com.aktcl.aron.core.ui.aron
 
 import androidx.compose.foundation.Image
+import com.aktcl.aron.core.ui.aron.Glyph.info
+import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.border
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -299,3 +303,63 @@ fun AronMinus(onClick: () -> Unit, contentDescription: String, modifier: Modifie
 @Composable
 fun AronPlus(onClick: () -> Unit, contentDescription: String, modifier: Modifier = Modifier, enabled: Boolean = true) =
     StepSquare(LocalAronLook.current.purple, plus = true, onClick, contentDescription, enabled, modifier)
+
+/**
+ * The white info card at the top of Summary (sr/summary.png): a dark round "i", the [text] in 17 sp, and an optional [trailing]
+ * slot (the light printer circle, [AronPrinterBadge]).
+ */
+@Composable
+fun AronInfoCard(text: String, modifier: Modifier = Modifier, trailing: (@Composable () -> Unit)? = null) {
+    val look = LocalAronLook.current
+    val shape = RoundedCornerShape(AronLook.CardRadius)
+    Row(
+        modifier.fillMaxWidth().clip(shape).background(look.card).border(1.dp, look.underline.copy(alpha = 0.4f), shape).padding(16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(Modifier.size(24.dp).clip(CircleShape).background(look.inkMuted), contentAlignment = Alignment.Center) {
+            GlyphCanvas(Modifier.size(24.dp)) { info(Color.White) }
+        }
+        Text(text, style = lookStyle(17.sp, color = look.ink), modifier = Modifier.weight(1f).padding(horizontal = 12.dp))
+        trailing?.invoke()
+    }
+}
+
+/**
+ * The Home "Target and achievement" card shell (PARITY-SPEC s1 `aron.target`, sr/home-1-tiles.webp): vertical red-to-purple gradient,
+ * white [title] and [label]. Targets are deferred (docs/27), so [percent] stays null until the programme returns: the bar is then
+ * hidden and [value] (the day's sales) shows instead. [detailsLabel] with [onDetails] adds the underlined "details" link.
+ */
+@Composable
+fun AronTargetCard(
+    title: String,
+    label: String,
+    modifier: Modifier = Modifier,
+    value: String? = null,
+    percent: Int? = null,
+    percentText: String? = null,
+    detailsLabel: String? = null,
+    onDetails: (() -> Unit)? = null,
+) {
+    val look = LocalAronLook.current
+    val shape = RoundedCornerShape(AronLook.CardRadius)
+    Column(
+        modifier.fillMaxWidth().clip(shape).background(Brush.verticalGradient(listOf(look.targetTop, look.targetBottom))).padding(horizontal = 20.dp, vertical = 16.dp),
+    ) {
+        Text(title, style = lookStyle(22.sp, bold = true, color = Color.White), modifier = Modifier.semantics { heading() })
+        Spacer(Modifier.height(8.dp))
+        Text(label, style = lookStyle(16.sp, color = Color.White))
+        if (value != null) Text(value, style = lookStyle(26.sp, bold = true, color = Color.White))
+        if (percent != null) {
+            Spacer(Modifier.height(6.dp))
+            Box(Modifier.fillMaxWidth().heightIn(min = 20.dp).clip(RoundedCornerShape(50)).background(look.track)) {
+                Box(Modifier.fillMaxWidth(percent.coerceIn(1, 100) / 100f).heightIn(min = 20.dp).clip(RoundedCornerShape(50)).background(look.trackFill))
+                if (percentText != null) Text(percentText, style = lookStyle(13.sp, bold = true, color = look.trackFill), modifier = Modifier.align(Alignment.CenterStart).padding(start = 12.dp))
+            }
+        }
+        if (detailsLabel != null && onDetails != null) {
+            Box(Modifier.fillMaxWidth().heightIn(min = AronLook.Touch).clickable(role = Role.Button, onClick = onDetails), contentAlignment = Alignment.Center) {
+                Text(detailsLabel, style = lookStyle(14.sp, color = Color.White).copy(textDecoration = TextDecoration.Underline))
+            }
+        }
+    }
+}

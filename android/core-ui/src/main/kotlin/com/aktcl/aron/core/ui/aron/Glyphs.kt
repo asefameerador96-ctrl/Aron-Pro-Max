@@ -87,6 +87,13 @@ internal object Glyph {
         if (vertical) drawLine(color, Offset(center.x, center.y - s * 0.30f), Offset(center.x, center.y + s * 0.30f), w, StrokeCap.Round)
     }
 
+    /** The "i" of the info card: a dot over a stem. */
+    fun DrawScope.info(color: Color) {
+        val s = min(size.width, size.height)
+        drawCircle(color, s * 0.08f, Offset(center.x, center.y - s * 0.20f))
+        drawLine(color, Offset(center.x, center.y - s * 0.04f), Offset(center.x, center.y + s * 0.26f), s * 0.14f, StrokeCap.Round)
+    }
+
     /** Floppy-disk "save" glyph of the reference Save button. */
     fun DrawScope.save(color: Color, gap: Color) {
         val s = min(size.width, size.height)
