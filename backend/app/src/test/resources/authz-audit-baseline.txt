@@ -1,0 +1,5 @@
+# AuthzAuditTest (qa, 2026-10-18): confirmed authorisation findings, one line per `CHECK route role variant`.
+# May only SHRINK; every line is a defect routed to lead-backend (evidence in build/authz-audit.txt).
+# AZ-1 (MFA per request), AZ-2 (SUPPORT reports) and AZ-6 (SUPPORT exports): fixed on lane/backend-authz, lines removed.
+# AZ-3 limits, AZ-4 (config reach) and AZ-5 (CONFIG_READERS): fixed on lane/backend-authz, lines removed (the three
+# `default` lines cleared with qa's next_cursor probe, deb11af6). AZ-7: fixed by lead-backend f13adb3 (qa 5ee869ee).

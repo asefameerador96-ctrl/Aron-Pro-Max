@@ -232,6 +232,7 @@ internal class OutletRequests(private val d: AdminMasterDeps) {
 
     fun get(call: ApplicationCall, p: AronPrincipal, u: UUID): OutletRequestDto =
         d.db.readJdbi.withHandle<OutletRequestDto, Exception> { h -> one(h, u, reachOf(p), lock = false)?.let { dto(h, it, p) } ?: admNotFound("request not found") }
+            .also { com.aktcl.aron.backend.platform.PiiReadBudget.chargeRevealed(d.db, d.guard.config, d.clock, p, 1) }
 
     /** The request row when it is in reach (out of reach and unknown are the same 404). */
     private fun one(h: Handle, u: UUID, reach: Reach, lock: Boolean): Map<String, Any?>? {
@@ -360,6 +361,45 @@ internal class OutletRequests(private val d: AdminMasterDeps) {
         return m to (o["location_confirmed"] == true && m > limit)
     }
 
+    /**
+     * Update Base guards on a location request (D-95, D-111; docs/19 s4 `cfg.geo.update_base_*`;
+     * docs/requests/android-amo-update-base-server-guards.md), enforced when it is approved so the outlet never moves on
+     * a request that breaks one; the phone checks the same limits offline, and the stored request is never refused at
+     * ingest (sync stays idempotent). A mocked request fix; the proposed point farther than `update_base_max_distance_m`
+     * (100) from the request's own fix; a move farther than `update_base_max_move_m` (1000) from the stored point; or
+     * `update_base_max_per_outlet_month` (1) location changes already approved for the outlet in this Dhaka month: 409.
+     * A key not yet in the registry reads its documented default.
+     */
+    private fun updateBaseGuards(h: Handle, r: Map<String, Any?>) {
+        if (r["request_type"] != "location") return
+        fun cfg(key: String, default: Int) = runCatching { d.config?.int(key) }.getOrNull() ?: default
+        fun refuse(guard: String, msg: String): Nothing =
+            throw ApiProblem(ProblemCode.ERR_CONFLICT, msg, context = mapOf("guard" to JsonPrimitive(guard)))
+        if (r["fix_is_mock"] == true) refuse("mocked_fix", "a location change from a mocked fix is not applied")
+        val p = Json.parseToJsonElement(r["proposed"].toString()).jsonObject
+        val lat = p["lat"]?.jsonPrimitive?.doubleOrNull ?: return
+        val lng = p["lng"]?.jsonPrimitive?.doubleOrNull ?: return
+        val fixLat = r["fix_lat"] as Double?; val fixLng = r["fix_lng"] as Double?
+        if (fixLat != null && fixLng != null) {
+            val maxFix = cfg("cfg.geo.update_base_max_distance_m", 100)
+            if (com.aktcl.aron.rules.Geo.haversineM(fixLat, fixLng, lat, lng) > maxFix) refuse("update_base_distance", "the new point is more than $maxFix m from where the request was made")
+        }
+        val outletId = (r["outlet_id"] as Number?)?.toLong() ?: return
+        val o = h.row("SELECT lat, lng FROM app.outlet WHERE id = :o", "o" to outletId)
+        val ol = o?.get("lat") as Double?; val og = o?.get("lng") as Double?
+        if (ol != null && og != null) {
+            val maxMove = cfg("cfg.geo.update_base_max_move_m", 1000)
+            if (com.aktcl.aron.rules.Geo.haversineM(ol, og, lat, lng) > maxMove) refuse("update_base_move", "a move of more than $maxMove m is not applied")
+        }
+        val cap = cfg("cfg.geo.update_base_max_per_outlet_month", 1)
+        val month = java.time.LocalDate.ofInstant(d.clock.now(), java.time.ZoneId.of("Asia/Dhaka")).withDayOfMonth(1)
+        val done = h.createQuery(
+            "SELECT count(*) FROM app.outlet_change_request WHERE outlet_id = :o AND request_type = 'location' AND status = 'approved' AND voided_at IS NULL " +
+                "AND decided_at >= (CAST(:m AS date)::timestamp AT TIME ZONE 'Asia/Dhaka') AND decided_at < ((CAST(:m AS date) + interval '1 month')::timestamp AT TIME ZONE 'Asia/Dhaka')",
+        ).bind("o", outletId).bind("m", month).mapTo(Int::class.java).one()
+        if (done >= cap) refuse("update_base_monthly_cap", "the outlet's location was already changed $done time(s) this month (limit $cap)")
+    }
+
     // ---- web create ----------------------------------------------------------------------------------------------------
 
     fun create(call: ApplicationCall, p: AronPrincipal, req: OutletRequestCreateDto): Pair<HttpStatusCode, OutletRequestDto> {
@@ -377,7 +417,9 @@ internal class OutletRequests(private val d: AdminMasterDeps) {
                     if ((prior["user_id"] as Number).toLong() != p.userId || (prior["outlet_id"] as Number?)?.toLong() != req.outlet_id || prior["request_type"] != req.request_type || prior["same"] != true) {
                         throw ApiProblem(ProblemCode.ERR_CONFLICT, "request_uuid is already used for another request")
                     }
-                    return@inTransaction HttpStatusCode.Created to dto(h, one(h, u, reach, lock = false) ?: admNotFound("request not found"), p)
+                    // Replay: the caller's own request is read by requester, not by today's reach (an outlet re-zoned since the first
+                    // send must not turn a retry into 404); it is the caller's own record, so nothing outside the reach is new to them.
+                    return@inTransaction HttpStatusCode.Created to dto(h, one(h, u, reach.copy(ownRecordsOnly = true), lock = false) ?: admNotFound("request not found"), p)
                 }
                 val outlet = h.row("SELECT zone_id, route_id, status FROM app.outlet WHERE id = :o", "o" to req.outlet_id) ?: admNotFound("outlet not found")
                 if (!reach.coversZone((outlet["zone_id"] as Number).toLong())) throw ApiProblem(ProblemCode.ERR_OUT_OF_SCOPE, "the outlet is outside your reach")
@@ -491,6 +533,7 @@ internal class OutletRequests(private val d: AdminMasterDeps) {
                 if (r["status"] == "approved" && (r["decided_by"] as Number?)?.toLong() == p.userId) return@inTransaction dto(h, r, p)
                 if (r["status"] != "verified") throw ApiProblem(ProblemCode.ERR_CONFLICT, "only a verified request can be approved (it is ${r["status"]})")
                 sod(p, r)
+                updateBaseGuards(h, r)
                 val (_, tso) = movement(h, r)
                 if (tso && p.role !in setOf(Role.TSO, Role.ADMIN, Role.SUPERADMIN)) throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "a move above the alert distance is approved by the TSO")
                 if (!tso && p.role == Role.TSO) throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "requests are approved by the DMO or an admin")

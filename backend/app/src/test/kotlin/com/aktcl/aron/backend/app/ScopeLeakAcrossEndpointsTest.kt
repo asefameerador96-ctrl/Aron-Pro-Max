@@ -184,9 +184,11 @@ class ScopeLeakAcrossEndpointsTest {
                    "captured_elapsed_ms":18330000,"boot_count":412,"clock_offset_ms":0,"captured_offline":true,"route_id":${p.routeId},"bundle_version":"$day:3",
                    "bundle_stale":false,"config_version":1,"payload":${ContractModel.json.writeValueAsString(payload)}}""",
             ).jsonObject
+            val body = gz(p.batch(listOf(env)))
             val r = post("/v1/sync/batch") {
                 bearerAuth(p.token); header("X-Device-Id", p.deviceUuid); header("X-App-Version", ApiWorld.APP_VERSION); header("Content-Encoding", "gzip")
-                setBody(ByteArrayContent(gz(p.batch(listOf(env))), ContentType.Application.Json))
+                header("X-Device-Proof", world.batchProof(p.deviceUuid, body)) // the phones hold the harness key (ApiWorld.phoneKey)
+                setBody(ByteArrayContent(body, ContentType.Application.Json))
             }
             val ack = runCatching { Json.parseToJsonElement(r.bodyAsText()).jsonObject["acks"]!!.jsonArray.single().jsonObject }.getOrNull()
             if (ack?.get("status")?.jsonPrimitive?.content == "accepted") generatedUuids[type] = cu
@@ -226,6 +228,8 @@ class ScopeLeakAcrossEndpointsTest {
             )
             h.execute("INSERT INTO app.dues_adjustment (client_uuid, outlet_id, kind, amount_mtk, reason, created_by) VALUES ('$adjustment'::uuid, $outlet, 'correction', 1000, 'LKX seeded adjustment', ${p.userId})")
             h.execute("INSERT INTO app.entry_unlock (scope_type, scope_id, from_date, to_date, reason, expires_at, created_by) VALUES ('zone', $zone, '$day'::date, '$day'::date, 'LKX seeded unlock', now() + interval '1 day', ${p.userId})")
+            // DMO and WM read enrolment tokens of their zones (D-AUTHZ-ENROL-READ): one of the other division's zone.
+            h.execute("INSERT INTO app.enrolment_token (token_sha256, token_prefix, flavour, lockdown_level, max_uses, zone_id, expires_at, created_by) VALUES (sha256(convert_to('$entry', 'UTF8')), 'LKXtok', 'sr', 'dev', 1, $zone, now() + interval '1 day', ${p.userId})")
         } finally {
             h.execute("SET session_replication_role = origin")
         }
@@ -243,11 +247,14 @@ class ScopeLeakAcrossEndpointsTest {
         var pending = p.captureDay(Random(seed))
         repeat(5) {
             if (pending.isEmpty()) return
+            val body = gz(p.batch(pending))
             val r = post("/v1/sync/batch") {
                 bearerAuth(p.token); header("X-Device-Id", p.deviceUuid); header("X-App-Version", ApiWorld.APP_VERSION); header("Content-Encoding", "gzip")
-                setBody(ByteArrayContent(gz(p.batch(pending)), ContentType.Application.Json))
+                // The phones hold the harness key (ApiWorld.phoneKey; the mirrored phone is a copy of the seeded one), so a batch carries its proof.
+                header("X-Device-Proof", world.batchProof(p.deviceUuid, body))
+                setBody(ByteArrayContent(body, ContentType.Application.Json))
             }
-            val acked = Json.parseToJsonElement(r.bodyAsText()).jsonObject["acks"]!!.jsonArray.map { it.jsonObject }
+            val acked = (Json.parseToJsonElement(r.bodyAsText()).jsonObject["acks"] ?: error("${p.username}: ${r.status} ${r.bodyAsText().take(300)}")).jsonArray.map { it.jsonObject }
                 .filter { it["status"]!!.jsonPrimitive.content in setOf("accepted", "duplicate") }.map { it["client_uuid"]!!.jsonPrimitive.content }.toSet()
             pending = pending.filter { it.uuid() !in acked }
         }
@@ -291,6 +298,20 @@ class ScopeLeakAcrossEndpointsTest {
     private fun resourceOf(op: ContractModel.Operation): String? =
         op.path.split('/').lastOrNull { it.isNotEmpty() && !it.startsWith("{") }?.let { seg -> seg.takeIf { it in otherIds.keys } }
 
+    /**
+     * Report queries choose their geography with `geo: {zone: [..], division: [..], ...}` (docs/24 s12.3), keys without
+     * an `_id` suffix: a body whose schema has `geo` gets the other division's zone, territory and division there.
+     */
+    private fun aimGeo(op: ContractModel.Operation, n: JsonNode): Boolean {
+        val schema = op.requestSchema?.let { r -> r.get("\$ref")?.asText()?.let { contract.component(it.substringAfterLast('/')) } ?: r } ?: return false
+        if (n !is ObjectNode || !schema.path("properties").has("geo")) return false
+        val geo = n.putObject("geo")
+        for ((key, kind) in listOf("zone" to "zones", "territory" to "territories", "division" to "divisions")) {
+            world.otherIds[kind]?.let { geo.putArray(key).add(it) }
+        }
+        return true
+    }
+
     /** Points every resource id field of a body (single or list) at the other division; true when one changed. */
     private fun retarget(n: JsonNode): Boolean {
         var changed = false
@@ -322,7 +343,7 @@ class ScopeLeakAcrossEndpointsTest {
             for (c in scoped) {
                 suspend fun once(variant: String, pathIds: Map<String, Long>, query: String = "", body: Boolean = false, pins: Map<String, String> = ownPin) {
                     var retargeted = !body
-                    val edit: ((JsonNode) -> Unit)? = if (body) { n -> retargeted = retarget(n) } else null
+                    val edit: ((JsonNode) -> Unit)? = if (body) { n -> retargeted = retarget(n) or aimGeo(op, n) } else null
                     val r = world.call(this, contract, op, c, tokenFor(c), pathIds, query, includeOptionalIds = body, bodyEdit = edit, queryOverrides = pins)
                     if (!retargeted) return // the body names no resource: nothing to learn beyond the own call
                     st.calls++

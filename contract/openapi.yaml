@@ -356,6 +356,37 @@ paths:
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '429': { $ref: '#/components/responses/TooManyRequests' }
+  /v1/auth/reauth:
+    post:
+      tags: [auth]
+      operationId: reauth
+      summary: Step-up before a PII reveal (web sessions of a role that holds pii.reveal).
+      description: |
+        A web API session re-enters its password and, for an MFA user, a fresh 6-digit TOTP code (docs/21 s4.5). The
+        role must hold the `pii.reveal` grant (`app.role_grant_map`, read per request; ADMIN and SUPERADMIN by default),
+        else 403. Wrong answers share one 401 `ERR_AUTH_INVALID_CREDENTIALS` and count towards the lockout
+        (`cfg.auth.lockout_attempts`, then 403 `ERR_AUTH_ACCOUNT_LOCKED`). Success returns a new web access token whose
+        reveal holds until `pii_until` (now + `cfg.pii.reauth_min`, at most the token's life); the refresh token is
+        unchanged and a refresh mints a token without the reveal. While it holds, `Me.pii` is true and the masked
+        personal columns (phone, owner, report `pii` columns, ADMIN audit-log personal members) are served; every such
+        request writes an audit row (entity `pii_reveal`, no personal value). ANALYST and SUPPORT audit-log masking
+        never changes.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ReauthRequest' }
+      responses:
+        '200':
+          description: Reveal window opened; use the returned access token.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ReauthResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
   /v1/auth/jwks:
     get:
       tags: [auth]
@@ -3346,6 +3377,7 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
         '412': { $ref: '#/components/responses/PreconditionFailed' }
   /v1/admin/releases/policy:
     get:
@@ -5725,6 +5757,21 @@ components:
       properties:
         mfa_token: { type: string, maxLength: 4096 }
         code: { type: string, pattern: '^([0-9]{6}|[A-Z0-9]{4}-[A-Z0-9]{4})$' }
+    ReauthRequest:
+      type: object
+      required: [password]
+      additionalProperties: false
+      properties:
+        password: { type: string, minLength: 1, maxLength: 128, writeOnly: true }
+        code: { type: [string, 'null'], pattern: '^[0-9]{6}$', writeOnly: true, description: 'TOTP code; required for an MFA user (cfg.auth.mfa_required_roles or an own enrolment). Recovery codes are not accepted here.' }
+    ReauthResponse:
+      type: object
+      required: [access_token, access_expires_at, pii_until]
+      additionalProperties: false
+      properties:
+        access_token: { type: string, maxLength: 4096 }
+        access_expires_at: { $ref: '#/components/schemas/Timestamp' }
+        pii_until: { $ref: '#/components/schemas/Timestamp' }
     Jwks:
       type: object
       required: [keys]
@@ -5758,7 +5805,8 @@ components:
           maxItems: 200
           items: { type: string, pattern: '^[a-z_]+(\.[a-z_]+)*$' }
         scope: { $ref: '#/components/schemas/ScopeSummary' }
-        pii: { type: boolean, description: Whether the caller may see outlet phone and owner columns. }
+        pii: { type: boolean, description: 'Whether the caller may see outlet phone and owner columns now: true only inside a reveal window opened by POST /v1/auth/reauth.' }
+        pii_until: { oneOf: [{ $ref: '#/components/schemas/Timestamp' }, { type: 'null' }], description: 'End of the reveal window while pii is true, else null.' }
         mfa_enabled: { type: boolean }
         menus:
           type: array
@@ -7363,6 +7411,8 @@ components:
         route_name: { type: [string, 'null'], maxLength: 120 }
         assigned_user_id: { type: [integer, 'null'], format: int64, minimum: 1 }
         acting_user_id: { type: [integer, 'null'], format: int64, minimum: 1 }
+        assigned_username: { type: [string, 'null'], maxLength: 64, description: 'Login of the assigned SR, for the supervisor route lists (F-TSO-007).' }
+        assigned_user_full_name: { type: [string, 'null'], maxLength: 120, description: 'Full name of the assigned SR, for the supervisor route lists (F-TSO-007).' }
     SupervisorDayState:
       type: object
       required: [user_id, business_date, checked_in, sales_submitted]
@@ -9129,7 +9179,7 @@ components:
               config_ack_pct: { type: [number, 'null'], minimum: 0, maximum: 100 }
     GeoValidationSummary:
       type: object
-      required: [as_of, from, to, node, visits, geo_valid_pct, force_sale_pct, mock_pct, geo_mismatch_pct, suspicious_pct, signals_by_code, children]
+      required: [as_of, from, to, node, visits, geo_valid_visits, geo_valid_pct, force_sale_pct, mock_pct, geo_mismatch_pct, suspicious_pct, signals_by_code, children]
       additionalProperties: false
       properties:
         as_of: { $ref: '#/components/schemas/Timestamp' }
@@ -9137,6 +9187,7 @@ components:
         to: { $ref: '#/components/schemas/BusinessDate' }
         node: { $ref: '#/components/schemas/NodeRef' }
         visits: { type: integer, minimum: 0 }
+        geo_valid_visits: { type: integer, minimum: 0, description: 'Visits counted as geo-valid in the period and node; the numerator of geo_valid_pct.' }
         geo_valid_pct: { type: [number, 'null'], minimum: 0, maximum: 100 }
         force_sale_pct: { type: [number, 'null'], minimum: 0, maximum: 100 }
         mock_pct: { type: [number, 'null'], minimum: 0, maximum: 100 }
@@ -9150,11 +9201,12 @@ components:
           type: array
           items:
             type: object
-            required: [node, visits, geo_valid_pct, suspicious_visits]
+            required: [node, visits, geo_valid_visits, geo_valid_pct, suspicious_visits]
             additionalProperties: false
             properties:
               node: { $ref: '#/components/schemas/NodeRef' }
               visits: { type: integer, minimum: 0 }
+              geo_valid_visits: { type: integer, minimum: 0, description: 'Visits counted as geo-valid in the period and node; the numerator of geo_valid_pct.' }
               geo_valid_pct: { type: [number, 'null'], minimum: 0, maximum: 100 }
               suspicious_visits: { type: integer, minimum: 0 }
     TargetAchievement:

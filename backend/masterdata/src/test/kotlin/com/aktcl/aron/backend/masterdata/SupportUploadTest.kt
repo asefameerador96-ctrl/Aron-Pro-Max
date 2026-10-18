@@ -58,6 +58,38 @@ class SupportUploadTest {
     }
 
     @Test
+    fun aRetryAfterTheCapWasLoweredGetsTheStoredUploadWithAFreshSas() {
+        // Replay first: the stored upload answers before the cap; a new file of that size is refused under the lower cap.
+        val id = uuid(); val h = mapOf("X-Device-Id" to device)
+        var path = ""
+        env.app { path = sendA3(HttpMethod.Post, "/v1/support/pda-upload", env.phone("sr1001", device), req(id, bytes = 20L * 1_048_576), h).objA3().strA3("blob_path") }
+        env.app(mapOf("cfg.support.max_upload_mb" to JsonPrimitive(5))) {
+            val again = sendA3(HttpMethod.Post, "/v1/support/pda-upload", env.phone("sr1001", device), req(id, bytes = 20L * 1_048_576), h)
+            assertEquals(HttpStatusCode.OK, again.status, again.bodyAsText())
+            assertEquals(path, again.objA3().strA3("blob_path"))
+            assertEquals(HttpStatusCode.PayloadTooLarge, sendA3(HttpMethod.Post, "/v1/support/pda-upload", env.phone("sr1001", device), req(uuid(), bytes = 20L * 1_048_576), h).status)
+        }
+    }
+
+    @Test
+    fun aReplayOlderThanTheReplayWindowIsRefusedWithAVisibleReasonAndChangesNothing() = env.app {
+        // D-PDA-REPLAY-AGE: cfg.support.upload_replay_max_h (default 168 h); an older replay answers 400 replay_expired.
+        val id = uuid(); val h = mapOf("X-Device-Id" to device)
+        assertEquals(HttpStatusCode.OK, sendA3(HttpMethod.Post, "/v1/support/pda-upload", env.phone("sr1001", device), req(id), h).status)
+        env.exec("UPDATE app.support_upload SET created_at = now() - interval '167 hours' WHERE upload_uuid = '$id'")
+        assertEquals(HttpStatusCode.OK, sendA3(HttpMethod.Post, "/v1/support/pda-upload", env.phone("sr1001", device), req(id), h).status, "inside the window")
+        env.exec("UPDATE app.support_upload SET created_at = now() - interval '169 hours' WHERE upload_uuid = '$id'")
+        val writes = env.blob.writes.size
+        val old = sendA3(HttpMethod.Post, "/v1/support/pda-upload", env.phone("sr1001", device), req(id), h)
+        assertEquals(HttpStatusCode.BadRequest, old.status)
+        assertTrue(old.bodyAsText().contains("replay_expired"), old.bodyAsText())
+        assertEquals(writes, env.blob.writes.size, "no SAS for an expired replay")
+        assertEquals(1, env.count("SELECT count(*) FROM app.support_upload WHERE upload_uuid = '$id'"))
+        // A new upload_uuid for the same file is a new upload.
+        assertEquals(HttpStatusCode.OK, sendA3(HttpMethod.Post, "/v1/support/pda-upload", env.phone("sr1001", device), req(uuid(), hash = "c".repeat(64)), h).status)
+    }
+
+    @Test
     fun aLowerConfiguredCapApplies() = env.app(mapOf("cfg.support.max_upload_mb" to JsonPrimitive(5))) {
         val h = mapOf("X-Device-Id" to device)
         assertEquals(HttpStatusCode.PayloadTooLarge, sendA3(HttpMethod.Post, "/v1/support/pda-upload", env.phone("sr1001", device), req(uuid(), bytes = 5L * 1_048_576 + 1), h).status)

@@ -74,6 +74,12 @@ export function setAuthCookies(res: NextResponse, a: AuthCookies): void {
   res.cookies.delete(PWC_COOKIE);
 }
 
+/** Rewrite only the session cookie (PII reveal swaps the access token; the refresh cookie is unchanged), living until the absolute limit. */
+export function setSessionCookie(res: NextResponse, session: SessionData, absoluteDays: number): void {
+  const ttl = Math.max(60, ((session.sat ?? Date.now()) + absoluteDays * 86_400_000 - Date.now()) / 1000);
+  res.cookies.set(SESSION_COOKIE, seal(session, SESSION_PURPOSE, ttl), cookieOptions(ttl, session.rem === true));
+}
+
 export function setMfaCookie(res: NextResponse, mfaToken: string): void {
   res.cookies.set(MFA_COOKIE, seal({ mfaToken }, MFA_PURPOSE, MFA_TTL_S), cookieOptions(MFA_TTL_S));
 }

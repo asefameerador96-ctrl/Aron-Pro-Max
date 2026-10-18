@@ -116,6 +116,8 @@ class SyncFaultScheduleFuzzTest {
     private suspend fun HttpClient.send(p: SyncPhone, body: ByteArray): Pair<Int, JsonObject?> = try {
         val r = post("/v1/sync/batch") {
             bearerAuth(p.token); header("X-Device-Id", p.deviceUuid); header("X-App-Version", ApiWorld.APP_VERSION); header("Content-Encoding", "gzip")
+            // The mirrored phones are copies of the seeded one and hold the harness key (ApiWorld.phoneKey).
+            header("X-Device-Proof", world.batchProof(p.deviceUuid, body))
             setBody(ByteArrayContent(body, ContentType.Application.Json))
         }
         val text = r.bodyAsText()
@@ -292,7 +294,7 @@ class SyncFaultScheduleFuzzTest {
         world = ApiWorld(repoRoot, mirrors = tags, extraRecordHandlers = listOf(kill))
         world.fresh.db.jdbi.useHandle<Exception> { h ->
             // The day is long: a family is never skipped for its attempts.
-            h.execute("INSERT INTO app.cfg_value (key, scope_type, scope_id, value, effective_from, config_version, reason) SELECT 'cfg.sync.family_skip_after', 'global', 0, '1000'::jsonb, now() - interval '1 day', max(config_version), 'qa fuzz' FROM app.cfg_version")
+            h.execute("INSERT INTO app.cfg_value (key, scope_type, scope_id, value, effective_from, config_version, reason) SELECT 'cfg.sync.family_skip_after', 'global', 0, '1000'::jsonb, TIMESTAMPTZ '${ApiWorld.CFG_FROM}', max(config_version), 'qa fuzz' FROM app.cfg_version")
         }
         val all = tags.mapIndexed { i, tag -> world.phoneFor(tag, i, day) }
         phones = all.take(phoneCount); probes = all.drop(phoneCount)

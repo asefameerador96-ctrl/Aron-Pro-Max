@@ -5,7 +5,6 @@
     <string name="memo_banner_dismiss">বন্ধ করুন</string>
     <string name="memo_section_today">আজকের মেমো</string>
     <string name="memo_row_meta">মেমো %1$s · %2$s</string>
-    <string name="memo_due_chip">বাকি</string>
     <string name="memo_col_sku">এসকেইউ</string>
     <string name="memo_col_qty">পরিমাণ</string>
     <string name="memo_col_price">দাম (৳)</string>
@@ -38,7 +37,7 @@
     <string name="summary_col_qty">পরিমাণ</string>
     <string name="summary_col_value">মূল্য</string>
     <string name="summary_col_discount">ডিসকাউন্ট</string>
-    <string name="summary_col_after">ছাড়ের পর</string>
+    <string name="summary_col_after">ডিসকাউন্ট মূল্য</string>
     <string name="summary_col_return">ফেরত</string>
     <string name="summary_qty_unit">%1$s %2$s</string>
     <string name="summary_totals">মোট হিসাব</string>
@@ -72,6 +71,13 @@
     <string name="history_title">বিক্রয়ের ইতিহাস</string>
     <string name="history_offline">সংযোগ নেই: এই ফোনের শেষ ৭ দিনের তথ্য, অথবা আগে নামানো সার্ভারের তালিকা দেখানো হচ্ছে।</string>
     <string name="history_col_memo">মেমো</string>
+    <string name="history_pick_date">তারিখ বেছে নিন</string>
     <string name="history_footer">মোট</string>
     <string name="history_empty">এই আউটলেটের কোনো বিক্রয় নেই।</string>
+    <string name="memo_cat_cigarette">সিগারেট</string>
+    <string name="memo_cat_bidi">বিড়ি</string>
+    <string name="memo_cat_lighter">লাইটার</string>
+    <string name="memo_cat_match">ম্যাচ</string>
+    <string name="memo_total_category">মোট %1$s</string>
+    <string name="memo_due_chip_amount">বাকি %1$s</string>
 </resources>

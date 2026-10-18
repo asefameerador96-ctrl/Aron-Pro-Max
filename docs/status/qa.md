@@ -80,6 +80,57 @@
     `pitr-restore.md`); it promotes with that branch. The test calls the function once it is on INT.
   - The Azure half needs the owner's phrase in `drill.yml`.
 
+- **N-024 widened to AMO (T1)**: `SupervisorSyncFaultFuzzTest`. The AMO record types under every sync fault; 14
+  clauses, each proven by a seeded fault. The Opus checker passed it; 1,000 schedules found no defect.
+- **N-055 (T2)**: `tools/checks/day5-check.ps1` (SR request, AMO verify, web approve, TSO Final Submit). The Sonnet
+  checker's two majors are fixed. DEVICE-PENDING D-QA-6.
+- **Supervisor scope ledger**: `docs/status/qa-scope-ledger-supervisors.md`: 60 routes, 0 leaks. The TSO/DMO cross-zone
+  config read is closed (lead-backend 8a13fe8; D-AUTHZ-Q2 then made config reads ADMIN/SUPERADMIN only).
+- **Money gates (docs/31, T1)**: oracle property tests, `MoneyIngestOracleTest`, the 200-amount format corpus (web,
+  shared, backend, TSO) and the no-float scan (CEILING 17). QA-MNY-01/03/04/05(lane)/06/08(lane) fixed; 02 and 07 open
+  (`docs/requests/qa-money-gate-findings.md`).
+- **Authorisation audit (T1)**: `AuthzAuditTest`, 1,646 probes. AZ-1..AZ-7 all fixed (backend-authz 31ede218,
+  lead-backend f13adb3): 0 findings, 6 open questions; the oracle follows docs/24 s8.5 plus the lead's rulings
+  (D-AMO-REPORT-02, D-AUTHZ-Q2) (`docs/requests/qa-authz-audit-findings.md`).
+- **Day-close race (T1)**: `DayCloseRaceTest` is strict by default since lead-backend fixed KD-1 and KD-2 (f13adb3).
+- **Date bomb**: every test config row starts at `ApiWorld.CFG_FROM` / switches at `CFG_SWITCH`, not the wall clock
+  (33 test files; the dev seed's device overrides fixed by lead-backend dbfdbfca), so the suite keeps passing after
+  the API test clock date (2027-01-03).
+- **Honor device-lab sheet**: `docs/status/qa-device-lab-honor.md`.
+
+## Handover (qa session 1, 2026-10-18 morning)
+**On INT** (104f28c1, with backend-authz 31ede218; its calendar allowlist c081c78c is in this push): qa 7ca3c5ea, i.e. the money gates, the authorisation audit
+(releases, AMO reports, AZ-7 probes), the date-bomb fix, the strict day-close race and the next_cursor probe fix.
+**The last qa push** carries DeviceGate/BindDeviceChecker on `CFG_SWITCH` (the dbfdbfca seed fix is on INT), the audit
+oracle on D-AUTHZ-Q2 with the TSO entry-classes and SUPPORT calendar positive controls, AZ-1..AZ-6 marked fixed, and
+these status rows.
+
+**Ratchets (all shrink-only):**
+| Ratchet | Where | Now |
+|---|---|---|
+| Authorisation findings | `backend/app/src/test/resources/authz-audit-baseline.txt` | 0 (comments only) |
+| Scope-blind reads | `backend/app/src/test/resources/scope-blind-baseline.txt` | 35 lines (23 global, 8 per-caller, 3 debt, 1 national-only) |
+| Money float allow-list | `tools/ci/money-float-allow.txt`, CEILING in `tools/ci/money-float-scan.py` | 17 / 17, 0 open findings |
+| Web money format | `web/tests/money-format-corpus.test.ts` KNOWN_CEILING | 0 |
+| TSO compact format | `TsoCompactCorpusTest` knownCeiling (android-tso owns it) | 0 |
+| Day-close race | `DayCloseRaceTest`, `ARON_DAYCLOSE_TOLERATE` | `none` by default (strict) |
+
+**Open findings and questions:**
+- Money: QA-MNY-02 (QC settlement vs qty x price, flag only, waits on D-34/MQ-03; the fix needs `price_per_qty` in the
+  contract), QA-MNY-07 (`LocaleDigits.formatInteger` lakh grouping, android-core, no owner free). QA-MNY-05 and 08 are
+  fixed on lane/android-tso; on INT check `MoneyGateReviewTest`'s `@Ignore` (remove it and add the four oracle
+  boundaries in `docs/requests/qa-money-gate-findings.md`).
+- Authorisation: 6 open questions, none failing: C2 -> C3 for two keys (final account), the `pii` claim never set,
+  `editor_permission` (D-AUTHZ-Q5 follow-up), and DMO/WM refused enrolment-token reads (stricter, kept). Several
+  reach refusals answer 403 ERR_FORBIDDEN, not ERR_OUT_OF_SCOPE (contract note).
+- N-061: the CI scan of the three release APKs and the Maps/Firebase key restrictions (owner console step), the
+  Jackson 2.22.3 pin (backend-core) and the Gradle OSV CI step (infra).
+- Contract conformance: the shrinking baselines in `docs/requests/qa-contract-conformance.md`.
+
+**Next for qa:** N-063 Day 6 script when N-058/N-060 produce report files; the replay-after-state-change cases
+(feedback, leave, visit plans, Idempotency-Key config changes, price batch, dues adjustment); the device rows
+(DEVICE-PENDING).
+
 ## Next rows
 1. N-055 Day 5 script (needs F-AMO-022, F-TSO-010), N-063 Day 6 script (needs N-058, N-060), N-066 Day 7 script.
 2. N-058 load on Azure: pilot size only in the test account; it is blocked on N-056/N-057 and on sizing.

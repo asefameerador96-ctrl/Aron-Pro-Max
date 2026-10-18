@@ -72,7 +72,7 @@ class ScopeDbTest {
 
     private fun app(block: suspend io.ktor.server.testing.ApplicationTestBuilder.() -> Unit) = testApplication {
         val config = RegistryDefaults()
-        val guard = AuthGuardDeps(AccessTokenVerifier(TestTokens.keys), ScopeVersionLookup { 1 }, config)
+        val guard = TestTokens.guard(config)
         application {
             installAronPlatform(PlatformContext(config = config, generation = { "6f1c2b0e-8d1a-4c5e-9f3a-2b7d4e6a8c10" }))
             routing { route("/v1") { outletRoutes(OutletsDeps(fresh.db, geo, resolver, guard)) } }

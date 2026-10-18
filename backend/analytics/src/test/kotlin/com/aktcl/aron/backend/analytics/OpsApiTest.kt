@@ -85,6 +85,9 @@ class OpsApiTest : ReportFixture() {
         assertEquals(100.0, k["login_pct"]!!.jsonPrimitive.content.toDouble()); assertEquals(66.67, k["submit_pct_of_logged_in"]!!.jsonPrimitive.content.toDouble())
         assertEquals(0, o["not_logged_in"]!!.jsonArray.size)
         assertEquals(listOf("R2"), o["logged_in_not_submitted"]!!.jsonArray.map { it.jsonObject.s("route_code") })
+        // F-TSO-007: the route lists name the assigned SR.
+        val r2 = o["logged_in_not_submitted"]!!.jsonArray.single().jsonObject
+        assertEquals("sr002", r2.s("assigned_username")); assertEquals("SR Two", r2.s("assigned_user_full_name"))
         assertEquals(setOf("R1", "R3"), o["submitted"]!!.jsonArray.map { it.jsonObject.s("route_code") }.toSet())
         assertEquals(listOf("Route3"), get(14, Role.TSO, "/v1/dashboards/login-submit?business_date=2026-10-04").obj()["submitted"]!!.jsonArray.map { it.jsonObject.s("route_name") })
         // Config ack: version 7 is applied by 2 of the 3 selling phones.

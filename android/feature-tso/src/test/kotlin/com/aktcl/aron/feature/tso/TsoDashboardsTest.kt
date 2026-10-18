@@ -31,8 +31,20 @@ class TsoDashboardsTest {
 
     @Test fun compactUsesLakhAndCrore() {
         assertEquals(TsoDashboards.Compact("3.61", TsoDashboards.Scale.CRORE), TsoDashboards.compact(36_100_000))
+        assertEquals("1,000.00 crore and up is grouped in threes", TsoDashboards.Compact("1,000.00", TsoDashboards.Scale.CRORE), TsoDashboards.compact(10_000_000_000))
+        assertEquals(TsoDashboards.Compact("12,345.68", TsoDashboards.Scale.CRORE), TsoDashboards.compact(123_456_789_000))
+        assertEquals(TsoDashboards.Compact("999.99", TsoDashboards.Scale.CRORE), TsoDashboards.compact(9_999_900_000))
         assertEquals(TsoDashboards.Compact("1.11", TsoDashboards.Scale.LAKH), TsoDashboards.compact(111_000))
         assertEquals(TsoDashboards.Compact("28067", TsoDashboards.Scale.NONE), TsoDashboards.compact(28_067))
+    }
+
+    @Test fun routeListsCarryTheSrNameWhenTheServerSendsIt() {
+        // RouteDayState of the contract: assigned_user_id, assigned_username and assigned_user_full_name are optional
+        val ls = TsoDashboards.loginSubmit("""{"as_of":"x","kpis":{},"not_logged_in":[
+          {"route_id":2,"route_code":"R2","route_name":"North","state":"not_started","assigned_user_id":7,"assigned_username":"sr7","assigned_user_full_name":"Rahim Uddin"},
+          {"route_id":3,"route_code":"R3","state":"not_started","assigned_user_full_name":" "}],"logged_in_not_submitted":[],"submitted":[]}""")!!
+        assertEquals("Rahim Uddin", ls.notLoggedIn[0].srName); assertEquals("sr7", ls.notLoggedIn[0].srUsername)
+        assertNull("a blank name is no name", ls.notLoggedIn[1].srName); assertNull(ls.notLoggedIn[1].srUsername)
     }
 
     @Test fun asOfIsDhakaTime() {
@@ -66,5 +78,21 @@ class TsoDashboardsTest {
     @Test fun routeRowsKeepTheName() {
         val ls = TsoDashboards.loginSubmit("""{"as_of":"x","kpis":{},"not_logged_in":[{"route_id":2,"route_code":"R2","route_name":"North","state":"x"}],"logged_in_not_submitted":[],"submitted":[]}""")!!
         assertEquals("North", ls.notLoggedIn[0].routeName)
+    }
+}
+
+@org.junit.runner.RunWith(androidx.test.ext.junit.runners.AndroidJUnit4::class)
+@org.robolectric.annotation.Config(sdk = [36])
+class ZoneNamesJsonTest {
+    private val page = """{"items":[{"id":10,"level":"zone","code":"Z10","name":"Banani Zone","name_bn":"বনানী জোন","status":"active"},
+        {"id":11,"level":"zone","code":"Z11","name":"Gulshan Zone","name_bn":null,"status":"active"},{"id":0,"name":"bad"},{"id":12,"name":" "}],"next_cursor":null}"""
+
+    @Test fun readsNamesInTheUsersLanguageWithTheEnglishFallbackAndDropsBadRows() {
+        assertEquals(mapOf(10L to "Banani Zone", 11L to "Gulshan Zone"), ZoneNamesJson.parse(page, bangla = false))
+        assertEquals(mapOf(10L to "বনানী জোন", 11L to "Gulshan Zone"), ZoneNamesJson.parse(page, bangla = true))
+    }
+
+    @Test fun aMissingOrBrokenBodyIsNoNames() {
+        assertEquals(emptyMap<Long, String>(), ZoneNamesJson.parse(null, false)); assertEquals(emptyMap<Long, String>(), ZoneNamesJson.parse("x", true))
     }
 }

@@ -43,7 +43,7 @@ import com.aktcl.aron.core.ui.AronConfirmDialog
 import com.aktcl.aron.core.ui.AronEmptyState
 import com.aktcl.aron.core.ui.AronIcons
 import com.aktcl.aron.core.ui.AronListRow
-import com.aktcl.aron.core.ui.AronSecondaryButton
+import com.aktcl.aron.core.ui.AronYesButton
 import com.aktcl.aron.core.ui.AronSectionLabel
 import com.aktcl.aron.core.ui.AronTextButton
 import com.aktcl.aron.core.ui.AronTokens
@@ -135,7 +135,7 @@ fun MemoMenuScreen(
                         trailingContent = {
                             Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(AronTokens.Space.Xs)) {
                                 MoneyText(money(r.totalMtk), style = MaterialTheme.typography.titleMedium, textAlign = TextAlign.End)
-                                if (r.dueMtk > 0) Pill(c.warningContainer, c.warningOnContainer, AronIcons.Warning, stringResource(R.string.memo_due_chip))
+                                if (r.dueMtk > 0) Pill(c.warningContainer, c.warningOnContainer, AronIcons.Warning, stringResource(R.string.memo_due_chip_amount, money(r.dueMtk)))
                             }
                         },
                     )
@@ -180,6 +180,8 @@ fun MemoDetailView(
     paidBanner: Boolean = false,
     onHistory: (() -> Unit)? = null,
     skuUnit: (Long) -> String = { "" },
+    /** The category code of a SKU ("cigarette", "bidi", "lighter", "match"); drives the "মোট <category>" subtotal rows (M3). */
+    skuCategory: (Long) -> String? = { null },
 ) {
     val c = LocalAronColors.current
     var confirm by remember { mutableStateOf(false) }
@@ -222,6 +224,10 @@ fun MemoDetailView(
                 Column(Modifier.fillMaxWidth().padding(AronTokens.Space.L), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
                     TableHeader(stringResource(R.string.memo_col_sku), stringResource(R.string.memo_col_qty), stringResource(R.string.memo_col_price))
                     detail.items.forEach { i -> TableRow(skuName(i.skuId), qtyText(i.qtyBase, skuUnit(i.skuId)), amount(i.grossMtk)) }
+                    // M3: a money subtotal per category, in first-seen order (quantities of different units are never added)
+                    detail.items.filter { MemoCategories.label(skuCategory(it.skuId)).isNotBlank() }.groupBy { skuCategory(it.skuId) }.forEach { (code, items) ->
+                        TableRow2(stringResource(R.string.memo_total_category, MemoCategories.label(code)), amount(items.sumOf { it.grossMtk }))
+                    }
                     if (detail.discountTable.isNotEmpty()) {
                         CardDivider()
                         Text(stringResource(R.string.memo_discount_section), style = MaterialTheme.typography.labelMedium, color = c.textSecondary)
@@ -235,12 +241,12 @@ fun MemoDetailView(
                     }
                 }
             }
-            // totals: gross and net always; every other component only when non-zero, with its word and a true minus
+            // totals: gross, the discount and QC lines (zero too, as the manual p44 and the print show them) and net, each with its word and a true minus
             AronCard(Modifier.fillMaxWidth()) {
                 Column(Modifier.fillMaxWidth().padding(AronTokens.Space.L), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
                     TotalLine(stringResource(R.string.memo_total), money(memo.grossMtk))
-                    if (detail.totalDiscountMtk != 0L) DeductionLine(stringResource(R.string.memo_total_discount), minusMoney(detail.totalDiscountMtk))
-                    if (detail.totalQcMtk != 0L) DeductionLine(stringResource(R.string.memo_total_qc), minusMoney(detail.totalQcMtk))
+                    DeductionLine(stringResource(R.string.memo_total_discount), minusMoney(detail.totalDiscountMtk))
+                    DeductionLine(stringResource(R.string.memo_total_qc), minusMoney(detail.totalQcMtk))
                     CardDivider()
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         Text(stringResource(R.string.memo_grand_total), style = MaterialTheme.typography.titleSmall, color = c.textPrimary, modifier = Modifier.weight(1f))
@@ -283,7 +289,7 @@ private fun CreditBox(dueText: String, canMarkPaid: Boolean, onMarkPaid: () -> U
             Text(stringResource(R.string.memo_credit_title), style = MaterialTheme.typography.titleSmall, color = ink, modifier = Modifier.weight(1f))
         }
         Text(stringResource(R.string.memo_due, dueText), style = MaterialTheme.typography.bodyLarge, color = ink)
-        if (canMarkPaid) AronSecondaryButton(stringResource(R.string.memo_mark_paid), onMarkPaid, Modifier.fillMaxWidth())
+        if (canMarkPaid) AronYesButton(stringResource(R.string.memo_mark_paid), onMarkPaid, Modifier.fillMaxWidth()) // the manual's green "পরিশোধিত করুন" (M6)
     }
 }
 

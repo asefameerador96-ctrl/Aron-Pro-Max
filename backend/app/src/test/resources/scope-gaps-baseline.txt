@@ -8,8 +8,6 @@ GET /v1/admin/config/density
 GET /v1/admin/config/keys
 GET /v1/admin/config/reach/{version}
 GET /v1/admin/config/reach/{version}/pending
-GET /v1/admin/config/resolve
-GET /v1/admin/config/values
 GET /v1/admin/config/versions
 GET /v1/admin/config/versions/{version}
 GET /v1/admin/config/whatif
@@ -18,7 +16,6 @@ GET /v1/admin/devices
 GET /v1/admin/devices/{device_id}
 GET /v1/admin/devices/{device_id}/directives
 GET /v1/admin/devices/{device_id}/status-history
-GET /v1/admin/enrolment-tokens
 GET /v1/admin/prices
 GET /v1/admin/quarantine
 GET /v1/admin/route-assignments

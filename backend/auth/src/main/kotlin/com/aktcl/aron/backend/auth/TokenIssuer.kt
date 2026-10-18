@@ -27,6 +27,8 @@ data class TokenSubject(
     val permissions: List<String> = emptyList(),
     val pii: Boolean = false,
     val amr: List<String> = listOf("pwd"),
+    /** The PII reveal window of a step-up (`POST /v1/auth/reauth`); the `pii` claim holds only with it. */
+    val piiUntil: Instant? = null,
 )
 
 data class IssuedAccess(val token: String, val expiresAt: Instant)
@@ -72,7 +74,8 @@ class TokenIssuer(
             }
             .claim("flv", subject.flavour)
             .claim("perm", subject.permissions)
-            .claim("pii", subject.pii)
+            .claim("pii", subject.pii && subject.piiUntil != null)
+            .apply { if (subject.pii) subject.piiUntil?.let { claim("pii_until", it.epochSecond) } }
             .claim("amr", subject.amr)
             .issueTime(Date.from(now))
             .notBeforeTime(Date.from(now))

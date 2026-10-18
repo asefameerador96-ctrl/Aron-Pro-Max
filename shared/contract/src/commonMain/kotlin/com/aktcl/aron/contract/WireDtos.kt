@@ -603,6 +603,7 @@ data class Me(
     @SerialName("permissions") val permissions: List<String>,
     @SerialName("scope") val scope: ScopeSummary,
     @SerialName("pii") val pii: Boolean? = null,
+    @SerialName("pii_until") val piiUntil: String? = null,
     @SerialName("mfa_enabled") val mfaEnabled: Boolean? = null,
     @SerialName("menus") val menus: List<JsonElement>? = null,
 )
@@ -793,6 +794,8 @@ data class RouteDayState(
     @SerialName("route_name") val routeName: String? = null,
     @SerialName("assigned_user_id") val assignedUserId: Long? = null,
     @SerialName("acting_user_id") val actingUserId: Long? = null,
+    @SerialName("assigned_username") val assignedUsername: String? = null,
+    @SerialName("assigned_user_full_name") val assignedUserFullName: String? = null,
 )
 
 /** The server's view of one user and business date. */

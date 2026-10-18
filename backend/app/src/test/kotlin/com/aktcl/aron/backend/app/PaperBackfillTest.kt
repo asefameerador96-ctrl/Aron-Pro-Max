@@ -59,7 +59,7 @@ class PaperBackfillTest {
             skus += h.createQuery("SELECT s.id, p.amount_mtk FROM app.sku s JOIN app.sku_price p ON p.sku_id = s.id AND p.price_type = 'outlet' WHERE p.amount_mtk > 0 ORDER BY s.id LIMIT 2")
                 .map { rs, _ -> rs.getLong(1) to rs.getLong(2) }.list()
             h.execute("INSERT INTO app.cfg_version (config_version, kind, committed_by, summary) SELECT max(config_version) + 1, 'change', (SELECT id FROM app.app_user WHERE username = 'aron.system'), 'test mfa' FROM app.cfg_version")
-            h.execute("INSERT INTO app.cfg_value (key, scope_type, scope_id, value, effective_from, config_version, reason) SELECT 'cfg.auth.mfa_required_roles', 'global', 0, '[]'::jsonb, now() - interval '1 day', max(config_version), 'test' FROM app.cfg_version")
+            h.execute("INSERT INTO app.cfg_value (key, scope_type, scope_id, value, effective_from, config_version, reason) SELECT 'cfg.auth.mfa_required_roles', 'global', 0, '[]'::jsonb, TIMESTAMPTZ '${ApiWorld.CFG_FROM}', max(config_version), 'test' FROM app.cfg_version")
         }
         val keyFile = File.createTempFile("aron-jwt", ".pem").apply {
             deleteOnExit()
@@ -118,6 +118,38 @@ class PaperBackfillTest {
         val cu2 = uuid()
         assertEquals(HttpStatusCode.OK, client.entry(admin, body(cu2, memoNo(), paid = 0)).status)
         assertEquals(net, count("SELECT COALESCE(sum(amount_mtk),0) FROM app.due_ledger WHERE memo_client_uuid = '$cu2' AND entry_kind = 'memo_due'"))
+    }
+
+    @Test
+    fun aReplayAfterABackDatedPriceChangeGetsTheStoredAnswer() = testApplication {
+        // Replay first: the retry is answered from the stored entry, not re-priced into payload_conflict.
+        application { aronApi(wiring) }
+        val admin = client.webToken("admin1001")
+        val cu = uuid(); val no = memoNo()
+        val first = client.entry(admin, body(cu, no))
+        assertEquals(HttpStatusCode.OK, first.status, first.bodyAsText())
+        val net = js(first.bodyAsText())["net_mtk"]!!.jsonPrimitive.content
+        val sku = skus[0].first
+        fun price(sql: String) = fresh.db.jdbi.withHandle<List<Long>, Exception> { h -> h.createQuery(sql).bind("s", sku).bind("d", java.time.LocalDate.parse(day)).mapTo(Long::class.java).list() }
+        // A price published today, valid from before the memo's business date (the old row is closed at that date).
+        val closed = price("UPDATE app.sku_price SET valid_to = :d WHERE sku_id = :s AND price_type = 'outlet' AND valid_from < :d AND (valid_to IS NULL OR valid_to > :d) RETURNING id")
+        val added = price("INSERT INTO app.sku_price (sku_id, price_type, amount_mtk, valid_from) VALUES (:s, 'outlet', ${skus[0].second + 1_000}, :d) RETURNING id")
+        try {
+            val again = client.entry(admin, body(cu, no))
+            assertEquals(HttpStatusCode.OK, again.status, again.bodyAsText())
+            assertEquals("replayed", js(again.bodyAsText())["status"]!!.jsonPrimitive.content)
+            assertEquals(net, js(again.bodyAsText())["net_mtk"]!!.jsonPrimitive.content)
+            assertEquals(1, count("SELECT count(*) FROM app.audit_log WHERE entity = 'paper_backfill' AND entity_id = '$cu' AND action = 'create'"))
+            // Other content under the same uuid is still a conflict.
+            assertEquals(HttpStatusCode.Conflict, client.entry(admin, body(cu, no, qty2 = 11)).status)
+            // Another keyer gets no stored answer: the ingest path with its reach check (re-priced, so a conflict, as before).
+            assertEquals(HttpStatusCode.Conflict, client.entry(client.webToken("support1001"), body(cu, no)).status)
+        } finally {
+            fresh.db.jdbi.useHandle<Exception> { h ->
+                h.createUpdate("DELETE FROM app.sku_price WHERE id = ANY(:a)").bindArray("a", Long::class.javaObjectType, added).execute()
+                h.createUpdate("UPDATE app.sku_price SET valid_to = NULL WHERE id = ANY(:c)").bindArray("c", Long::class.javaObjectType, closed).execute()
+            }
+        }
     }
 
     @Test

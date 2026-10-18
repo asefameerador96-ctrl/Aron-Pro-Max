@@ -321,24 +321,25 @@ type Item = { id?: number; code: string; label_en: string; label_bn: string | nu
 const it = (code: string, label_en: string, label_bn: string | null, sort: number, attrs?: Item["attrs"]): Item => ({ code, label_en, label_bn, sort, ...(attrs ? { attrs } : {}), valid_from: "2026-01-01", valid_to: null });
 
 export function seedCodeLists(): Record<string, Item[]> {
-  const qc = (code: string, en: string, bn: string, sort: number, group: string, applies_to = "app") => it(code, en, bn, sort, { group, applies_to });
+  const qc = (code: string, en: string, bn: string | null, sort: number, group: string, applies_to: string) => it(code, en, bn, sort, { group, applies_to });
   return {
     channel: [it("retail", "Retail", "খুচরা", 1), it("wholesale", "Wholesale", "পাইকারি", 2)],
     sub_channel: [{ ...it("grocery", "Grocery", "মুদি", 1), id: 11 }, { ...it("tea_stall", "Tea stall", "চায়ের দোকান", 2), id: 12 }],
     geo_class: [it("urban", "Urban", "শহর", 1), it("semi_urban", "Semi-urban", "উপশহর", 2), it("rural", "Rural", "গ্রাম", 3), it("hill", "Hill", "পাহাড়", 4)],
     task_type: [it("oos", "Out of stock", "স্টক নেই", 1, { roles: "AMO,TSO" }), it("general", "General", "সাধারণ", 2, { roles: "AMO,TSO" }), it("irregular_visit", "Irregular visit", "অনিয়মিত ভিজিট", 3, { roles: "TSO" })],
+    // the closed list of db V0027 (the six app codes carry applies_to "app"); never invent a code here
     qc_fault_type: [
-      qc("broken_stick", "Broken stick", "ভাঙা স্টিক", 1, "MFC"),
-      qc("loose_filter", "Loose filter", "ঢিলা ফিল্টার", 2, "MFC"),
-      qc("under_filled", "Under-filled", "কম তামাক", 3, "MFC"),
-      qc("pack_damage", "Pack damage", "প্যাক নষ্ট", 4, "MFC"),
-      qc("print_defect", "Print defect", "ছাপার ত্রুটি", 5, "MFC"),
-      qc("stale", "Stale stock", "পুরনো স্টক", 6, "MKT"),
-      qc("wet", "Wet or damp", "ভেজা", 7, "MKT"),
-      qc("pest", "Pest damage", "পোকা", 8, "MKT"),
-      qc("counterfeit", "Counterfeit", "নকল", 9, "MKT"),
-      qc("seal_broken", "Seal broken", "সিল ভাঙা", 10, "MKT"),
-      qc("other", "Other", "অন্যান্য", 11, "MKT", "web"),
+      qc("damaged_crushed", "Damaged & Crushed Pack/Outer CBC", "ড্যামেজড ও ক্রাশড – প্যাক / আউটার CBC", 1, "MFC", "app,web"),
+      qc("short_outer_pack_stick", "Outer, Pack or Stick missing", "আউটার / প্যাক / স্টিক কম থাকা", 2, "MFC", "app,web"),
+      qc("other_mfc", "Others (manufacturing)", "অন্যান্য ত্রুটি", 3, "MFC", "app,web"),
+      qc("brand_mix_up", "Brand Mix Up", null, 4, "MFC", "web"),
+      qc("visual_fault", "Cigarette Visual Fault", null, 5, "MFC", "web"),
+      qc("expired_stock", "Expired stock (4 months+)", "মেয়াদোত্তীর্ণ স্টক (৪ মাস+)", 6, "MKT", "app,web"),
+      qc("damaged_in_transit", "Stock damaged during route service", "স্টক ড্যামেজড – রুট সার্ভিস কালীন", 7, "MKT", "app,web"),
+      qc("taste", "Taste-related problem", "স্বাদ সংক্রান্ত সমস্যা", 8, "MKT", "app"),
+      qc("damp_stick", "Damp Cigarette stick", null, 9, "MKT", "web"),
+      qc("spotting", "Spotting on Cigarette", null, 10, "MKT", "web"),
+      qc("other_mkt", "Others (marketing)", null, 11, "MKT", "web"),
     ],
     force_reason: [it("gps_weak", "GPS signal weak", "জিপিএস দুর্বল", 1), it("outlet_moved", "Outlet moved", "দোকান সরেছে", 2)],
     edit_reason: [it("wrong_qty", "Wrong quantity", "ভুল পরিমাণ", 1)],

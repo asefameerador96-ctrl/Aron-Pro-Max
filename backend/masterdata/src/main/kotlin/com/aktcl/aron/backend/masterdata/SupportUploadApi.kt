@@ -67,21 +67,33 @@ private suspend fun create(call: ApplicationCall, d: SupportUploadDeps): Support
     if (req.app_version.length !in 1..40) bad("body.app_version", "length")
     val lastSync = req.last_sync_at?.let { runCatching { Instant.parse(it) }.getOrNull() ?: bad("body.last_sync_at") }
     if (req.pending_rows != null && req.pending_rows < 0) bad("body.pending_rows", "out_of_range")
-    val maxMb = AdminSupport.intConfig(d.config, "cfg.support.max_upload_mb", 20)
-    if (req.bytes > maxMb * 1_048_576L) throw ApiProblem(ProblemCode.ERR_PAYLOAD_TOO_LARGE, "the file is above $maxMb MB", errors = listOf(FieldError("body.bytes", "above_cap")))
     val now = d.clock.now()
     val sha = req.sha256.chunked(2).map { it.toInt(16).toByte() }.toByteArray()
     val stored = d.db.jdbi.inTransaction<Pair<String, Boolean>, Exception> { h ->
+        fun row() = h.createQuery("SELECT user_id, bytes, sha256, blob_path FROM app.support_upload WHERE upload_uuid = :u").bind("u", id)
+            .map { rs, _ -> arrayOf(rs.getLong(1), rs.getLong(2), rs.getBytes(3), rs.getString(4)) }.findOne().orElse(null)
+        // Another user's uuid or a different file under the same uuid is a conflict, never a second blob path.
+        fun same(r: Array<out Any?>) = r[0] == p.userId && r[1] == req.bytes && (r[2] as ByteArray).contentEquals(sha)
+        // Replay first: a stored upload answers before the cap, so a retry after cfg.support.max_upload_mb was lowered gets its SAS,
+        // while it is younger than cfg.support.upload_replay_max_h (D-PDA-REPLAY-AGE); an older one is refused, nothing is written.
+        row()?.let { r ->
+            if (!same(r)) throw ApiProblem(ProblemCode.ERR_CONFLICT, "upload_uuid already stores a different file")
+            val maxH = AdminSupport.intConfig(d.config, "cfg.support.upload_replay_max_h", 168).coerceIn(1, 720)
+            val expired = h.createQuery("SELECT created_at < now() - make_interval(hours => :h) FROM app.support_upload WHERE upload_uuid = :u")
+                .bind("h", maxH).bind("u", id).mapTo(Boolean::class.java).one()
+            if (expired) throw ApiProblem(ProblemCode.ERR_VALIDATION, "the upload under this upload_uuid is older than $maxH h: start a new upload", errors = listOf(FieldError("body.upload_uuid", "replay_expired")))
+            return@inTransaction (r[3] as String) to false
+        }
+        val maxMb = AdminSupport.intConfig(d.config, "cfg.support.max_upload_mb", 20)
+        if (req.bytes > maxMb * 1_048_576L) throw ApiProblem(ProblemCode.ERR_PAYLOAD_TOO_LARGE, "the file is above $maxMb MB", errors = listOf(FieldError("body.bytes", "above_cap")))
         val path = "support/${now.atOffset(ZoneOffset.UTC).year}/${p.userId}/$id.zip.enc"
         val inserted = h.createUpdate(
             "INSERT INTO app.support_upload (upload_uuid, user_id, device_uuid, bytes, sha256, app_version, last_sync_at, pending_rows, blob_path) VALUES (:u, :uid, :dev, :b, :sha, :v, CAST(:ls AS timestamptz), CAST(:pr AS int), :path) ON CONFLICT (upload_uuid) DO NOTHING",
         ).bind("u", id).bind("uid", p.userId).bind("dev", UUID.fromString(device)).bind("b", req.bytes).bind("sha", sha).bind("v", req.app_version)
             .bind("ls", lastSync?.let { OffsetDateTime.ofInstant(it, ZoneOffset.UTC) }).bind("pr", req.pending_rows).bind("path", path).execute()
-        val row = h.createQuery("SELECT user_id, bytes, sha256, blob_path FROM app.support_upload WHERE upload_uuid = :u").bind("u", id)
-            .map { rs, _ -> arrayOf(rs.getLong(1), rs.getLong(2), rs.getBytes(3), rs.getString(4)) }.one()
-        // Another user's uuid or a different file under the same uuid is a conflict, never a second blob path.
-        if (row[0] != p.userId || row[1] != req.bytes || !(row[2] as ByteArray).contentEquals(sha)) throw ApiProblem(ProblemCode.ERR_CONFLICT, "upload_uuid already stores a different file")
-        (row[3] as String) to (inserted > 0)
+        val r = row()!!
+        if (!same(r)) throw ApiProblem(ProblemCode.ERR_CONFLICT, "upload_uuid already stores a different file")
+        (r[3] as String) to (inserted > 0)
     }
     val expires = now.plusSeconds(SAS_TTL_S)
     return SupportUploadOut(id.toString(), d.blob.writeSas(stored.first, req.bytes, expires), stored.first, expires.wire())

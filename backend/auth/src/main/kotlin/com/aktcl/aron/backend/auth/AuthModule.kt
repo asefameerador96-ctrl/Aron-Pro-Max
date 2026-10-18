@@ -127,6 +127,14 @@ fun Route.authRoutes(d: AuthDeps) {
         }
     }
     authenticated(d.guard) {
+        // PII step-up (D-AUTHZ-PII): a web API session re-enters its password (and TOTP) for a short reveal window.
+        post("/auth/reauth") {
+            val req = call.receiveStrict(ReauthRequest.serializer())
+            val p = call.principal
+            val res = withContext(Dispatchers.IO) { d.login.reauth(p, req, call.attributes.getOrNull(com.aktcl.aron.backend.platform.RequestIdKey)) }
+            call.response.headers.append(io.ktor.http.HttpHeaders.CacheControl, "no-store")
+            call.respond(res)
+        }
         get("/me") {
             val p = call.principal
             withContext(Dispatchers.IO) { me(call, d) }.let { call.respond(it) }
@@ -143,6 +151,7 @@ private fun me(call: ApplicationCall, d: AuthDeps): Me {
                 permissions = p.permissions,
                 scope = ScopeSummary(user.scopeVersion, reach.topNodes.take(16).map { NodeRef(it.type, it.id, it.code, it.name) }),
                 pii = p.pii,
+                pii_until = if (p.pii) p.piiUntil?.wire() else null,
                 mfa_enabled = user.mfaEnabled,
                 menus = d.menusForRole(user.role.wire)?.take(200),
             )

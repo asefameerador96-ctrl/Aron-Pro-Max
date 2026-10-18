@@ -6,7 +6,6 @@
     <string name="memo_banner_dismiss">Dismiss</string>
     <string name="memo_section_today">Today\'s memos</string>
     <string name="memo_row_meta">Memo %1$s · %2$s</string>
-    <string name="memo_due_chip">Due</string>
     <string name="memo_col_sku">SKU</string>
     <string name="memo_col_qty">Qty</string>
     <string name="memo_col_price">Price (৳)</string>
@@ -73,6 +72,13 @@
     <string name="history_title">Sale history</string>
     <string name="history_offline">No connection: showing the last 7 days from this phone, or the server list when it was loaded.</string>
     <string name="history_col_memo">Memo</string>
+    <string name="history_pick_date">Choose a date</string>
     <string name="history_footer">Total</string>
     <string name="history_empty">No sales for this outlet.</string>
+    <string name="memo_cat_cigarette">Cigarette</string>
+    <string name="memo_cat_bidi">Bidi</string>
+    <string name="memo_cat_lighter">Lighter</string>
+    <string name="memo_cat_match">Match</string>
+    <string name="memo_total_category">Total %1$s</string>
+    <string name="memo_due_chip_amount">Due %1$s</string>
 </resources>

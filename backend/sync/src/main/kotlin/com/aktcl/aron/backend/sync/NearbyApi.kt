@@ -104,5 +104,8 @@ internal fun nearby(d: NearbyDeps, p: AronPrincipal, q: NearbyQuery): NearbyOutl
                 )
             }.list().filterNotNull()
     }.sortedWith(compareBy<NearbyOutletDto> { it.distance_m }.thenBy { it.outlet_id })
-    return NearbyOutletsDto(now.wire(), q.radiusM, rows.size > q.maxMarkers, rows.take(q.maxMarkers))
+    val shown = rows.take(q.maxMarkers)
+    // A reveal's contact numbers count against the hourly PII budget (D-AUTHZ-PII, checker B3).
+    com.aktcl.aron.backend.platform.PiiReadBudget.chargeRevealed(d.db, d.config, d.clock, p, shown.size)
+    return NearbyOutletsDto(now.wire(), q.radiusM, rows.size > q.maxMarkers, shown)
 }

@@ -82,6 +82,13 @@ object ConfigValidator {
  * that ends above 150 m and grows the resolved value, "C3 at D and wider", and the value-triggered C3 keys.
  */
 object RiskClassifier {
+    /**
+     * Keys whose loosening is C3 (Q3/Q4 option B): the windowed and waiting-change rules in ConfigService.create apply to them.
+     * The boundary rule reads only the node's own rows, which is complete because both keys are global-only (V0006, V0009);
+     * ConfigServiceTest fails if their scope levels ever widen.
+     */
+    val LOOSENING_GUARDED = setOf("cfg.auth.mfa_required_roles", "cfg.price.max_change_pct")
+
     /** [newValue] is the item's own value (null for a removal); [before] and [after] are the value the node resolves to without and with the change. */
     fun classify(def: KeyDef, scopeType: String, newValue: JsonElement?, before: JsonElement?, after: JsonElement?): Int {
         var c = def.riskClass
@@ -96,6 +103,19 @@ object RiskClassifier {
             "cfg.geo.fix_timeout_s" -> if (num != null && num > 15) c = 3
             "cfg.media.photo_max_kb" -> if (num != null && num > 150) c = 3
             "cfg.geo.fix_accuracy_mode" -> if ((newValue as? JsonPrimitive)?.content == "high") c = 3
+            // Q3/Q4 (option B, lead 2026-10-18): loosening a control that exists to stop one person needs a second (C3);
+            // tightening stays C2. MFA roles: any role the node resolves to now that the change drops.
+            "cfg.auth.mfa_required_roles" -> {
+                fun roles(v: JsonElement?) = (v as? kotlinx.serialization.json.JsonArray)?.mapNotNull { (it as? JsonPrimitive)?.content }?.toSet()
+                val b = roles(before).orEmpty(); val a = roles(after)
+                if (a == null || (b - a).isNotEmpty()) c = 3
+            }
+            // The price-change rail: a higher threshold lets bigger moves skip the checker.
+            "cfg.price.max_change_pct" -> {
+                val b = (before as? JsonPrimitive)?.takeIf { !it.isString }?.doubleOrNull
+                val a = (after as? JsonPrimitive)?.takeIf { !it.isString }?.doubleOrNull
+                if (a == null || b == null || a > b) c = 3
+            }
         }
         if (def.riskRule?.contains("C3 at D and wider") == true && scopeType in Precedence.wideLevels) c = 3
         return c

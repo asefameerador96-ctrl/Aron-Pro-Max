@@ -120,7 +120,7 @@ class BackendAdminEnv : AutoCloseable {
         val cfg = config(overrides)
         application {
             installAronPlatform(PlatformContext(AronClock.SYSTEM, cfg, { "00000000-0000-0000-0000-000000000000" }))
-            val guard = AuthGuardDeps(AccessTokenVerifier(TestTokens.keys), ScopeVersionLookup { 1 }, cfg)
+            val guard = TestTokens.guard(cfg)
             val reach = SqlReachResolver(db, GeoRepository(db))
             routing {
                 route("/v1") {

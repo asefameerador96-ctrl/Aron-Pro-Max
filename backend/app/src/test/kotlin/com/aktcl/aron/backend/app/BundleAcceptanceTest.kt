@@ -82,7 +82,7 @@ class BundleAcceptanceTest {
             h.execute(
                 """
                 INSERT INTO app.cfg_value (key, scope_type, scope_id, value, effective_from, config_version, reason)
-                SELECT 'cfg.release.min_version_code', 'global', 0, '{"sr": 5, "amo": 1, "tso": 1}'::jsonb, now() - interval '1 day', max(config_version), 'test'
+                SELECT 'cfg.release.min_version_code', 'global', 0, '{"sr": 5, "amo": 1, "tso": 1}'::jsonb, TIMESTAMPTZ '${ApiWorld.CFG_FROM}', max(config_version), 'test'
                 FROM app.cfg_version
                 """.trimIndent(),
             )
@@ -363,7 +363,7 @@ class BundleAcceptanceTest {
         assertEquals(HttpStatusCode.NotModified, quiet.status, quiet.bodyAsText())
         fresh.db.jdbi.useHandle<Exception> { h ->
             h.execute("INSERT INTO app.cfg_version (config_version, kind, committed_by, summary) SELECT max(config_version) + 1, 'change', (SELECT id FROM app.app_user WHERE username = 'aron.system'), 'outlet radius' FROM app.cfg_version")
-            h.execute("INSERT INTO app.cfg_value (key, scope_type, scope_id, value, effective_from, config_version, reason) SELECT 'cfg.geo.radius_m', 'outlet', $outlet, '250'::jsonb, now() - interval '1 minute', max(config_version), 'wide yard' FROM app.cfg_version")
+            h.execute("INSERT INTO app.cfg_value (key, scope_type, scope_id, value, effective_from, config_version, reason) SELECT 'cfg.geo.radius_m', 'outlet', $outlet, '250'::jsonb, TIMESTAMPTZ '${ApiWorld.CFG_FROM}', max(config_version), 'wide yard' FROM app.cfg_version")
         }
         val r = delta(before)
         assertEquals(HttpStatusCode.OK, r.status, r.bodyAsText())

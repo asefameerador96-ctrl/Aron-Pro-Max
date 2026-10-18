@@ -64,6 +64,7 @@ import com.aktcl.aron.core.ui.AronBanner
 import com.aktcl.aron.core.ui.AronBarAction
 import com.aktcl.aron.core.ui.AronBottomBar
 import com.aktcl.aron.core.ui.AronCard
+import com.aktcl.aron.core.ui.AronConfirmDialog
 import com.aktcl.aron.core.ui.AronEasing
 import com.aktcl.aron.core.ui.AronIcons
 import com.aktcl.aron.core.ui.AronIllustration
@@ -122,13 +123,16 @@ fun SalesSubmitScreen(
     syncing: Boolean = false,
     /** The Dhaka time of the last server contact (pre-formatted, localised digits), beside the status chip when known. */
     lastContactText: String? = null,
+    /** DISPLAY ONLY: record types shown as one table row (see [SubmitDisplay]); null keeps one row per type. The gate and the submit never see it. */
+    rowGroups: List<List<String>>? = null,
 ) {
     val c = LocalAronColors.current
     val bn = LocalAppLanguage.current == AppLanguage.BN
     var hold by rememberSaveable { mutableStateOf(false) }
+    var duesAsk by rememberSaveable { mutableStateOf(false) }
     val canSubmit = gate.enabled && progress == SubmitProgress.Idle
     // the hold step closes itself once the submit is no longer possible (an effect, not a write during composition)
-    LaunchedEffect(canSubmit) { if (hold && !canSubmit) hold = false }
+    LaunchedEffect(canSubmit) { if (!canSubmit) { hold = false; duesAsk = false } }
     val allMatched = counts.isNotEmpty() && counts.all { it.matches }
     val step = when {
         progress != SubmitProgress.Idle || gate.blocks.any { it == SubmitBlock.AlreadySubmitted } || canSubmit -> SubmitStep.Submit
@@ -151,7 +155,7 @@ fun SalesSubmitScreen(
                         enabled = SalesSubmitRules.syncButtonEnabled(online, syncing), busy = syncing, // no icon: the Bangla label needs the width (screens-sr s11)
                     ),
                     primary = AronBarAction(
-                        stringResource(if (canSubmit && !online) R.string.submit_button_offline else R.string.submit_button), { hold = true },
+                        stringResource(if (canSubmit && !online) R.string.submit_button_offline else R.string.submit_button), { if (gate.duesWarning != null) duesAsk = true else hold = true },
                         enabled = canSubmit, icon = AronIcons.Submit,
                     ),
                     reasonWhenDisabled = reason,
@@ -189,10 +193,19 @@ fun SalesSubmitScreen(
                         AronBanner(stringResource(R.string.submit_dues_warning, localizedNumber(d.retailersWithDues.toLong()), money), kind = BannerKind.Warning)
                     }
                     if (allMatched && gate.blocks.isEmpty() && progress == SubmitProgress.Idle) AronBanner(stringResource(R.string.submit_all_matched), kind = BannerKind.Success)
-                    CountsCard(counts, typeLabel)
+                    CountsCard(SubmitDisplay.views(counts, rowGroups), typeLabel)
                     if (progress == SubmitProgress.Idle) Text(stringResource(R.string.submit_info), style = MaterialTheme.typography.bodySmall, color = c.textSecondary)
                 }
             }
+        }
+        if (duesAsk) {
+            // SS4: the manual asks first, in a green Yes / red No dialog; Yes opens the hold step (the close of the day stays irreversible)
+            AronConfirmDialog(
+                title = stringResource(R.string.submit_dues_title),
+                message = stringResource(R.string.submit_dues_ask, localizedNumber((gate.duesWarning?.retailersWithDues ?: 0).toLong())),
+                confirmLabel = stringResource(R.string.submit_yes), dismissLabel = stringResource(R.string.submit_no),
+                onConfirm = { duesAsk = false; hold = true }, onDismiss = { duesAsk = false },
+            )
         }
         val summary = stringResource(R.string.submit_hold_summary, localizedNumber(counts.sumOf { it.device }.toLong()))
         HoldSheet(hold, stringResource(R.string.submit_hold_title), AronIcons.Submit, summary, onCancel = { hold = false }, onConfirmed = { hold = false; onSubmit() })
@@ -232,7 +245,7 @@ private fun SettledState(records: Int) {
 
 /** The reconciliation table: item, device, server, and the row's status word with its icon (equal rows quiet). */
 @Composable
-private fun CountsCard(counts: List<CountRow>, typeLabel: (String) -> String) {
+private fun CountsCard(counts: List<CountView>, typeLabel: (String) -> String) {
     val c = LocalAronColors.current
     val stacked = tableStacked()
     AronCard(Modifier.fillMaxWidth()) {
@@ -262,14 +275,14 @@ private fun CountsCard(counts: List<CountRow>, typeLabel: (String) -> String) {
                     val serverText = row.server?.let { localizedNumber(it.toLong()) } ?: stringResource(R.string.submit_server_blank)
                     if (stacked) {
                         // large text: the item on its own line, then "Device" and "Server" as caption-over-value cells
-                        Text(typeLabel(row.recordType), style = MaterialTheme.typography.bodyLarge, color = ink, maxLines = 2)
+                        Text(typeLabel(row.key), style = MaterialTheme.typography.bodyLarge, color = ink, maxLines = 2)
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.M)) {
                             CountCell(stringResource(R.string.submit_col_device), deviceText, ink, Modifier.weight(1f))
                             CountCell(stringResource(R.string.submit_col_server), serverText, ink, Modifier.weight(1f))
                         }
                     } else {
                         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
-                            Text(typeLabel(row.recordType), style = MaterialTheme.typography.bodyLarge, color = ink, maxLines = 2, modifier = Modifier.weight(1f))
+                            Text(typeLabel(row.key), style = MaterialTheme.typography.bodyLarge, color = ink, maxLines = 2, modifier = Modifier.weight(1f))
                             MoneyText(deviceText, Modifier.widthIn(min = CountColumn), style = MaterialTheme.typography.titleSmall, color = ink, textAlign = TextAlign.End)
                             MoneyText(serverText, Modifier.widthIn(min = CountColumn), style = MaterialTheme.typography.titleSmall, color = ink, textAlign = TextAlign.End)
                         }

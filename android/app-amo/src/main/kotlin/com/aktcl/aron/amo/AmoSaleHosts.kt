@@ -90,10 +90,10 @@ fun AmoMemoHost(day: AmoDay, onEdit: (String) -> Unit) {
         val sel = st.selected
         val h = history
         when {
-            h != null -> SaleHistoryScreen(h, offlineBanner = true)
+            h != null -> SaleHistoryScreen(h, offlineBanner = true, skuName = kit::skuName)
             sel == null -> MemoMenuScreen(st.rows, kit::outletName, onOpen = { vm.open(it.memoUuid) })
             else -> {
-                MemoDetailView(sel, st.canMarkPaid, st.remainingDueMtk, kit::skuName, onPrint = vm::reprint, onEdit = { onEdit(sel.memo.memoUuid) }, onMarkPaid = vm::markPaid)
+                MemoDetailView(sel, st.canMarkPaid, st.remainingDueMtk, kit::skuName, onPrint = vm::reprint, onEdit = { onEdit(sel.memo.memoUuid) }, onMarkPaid = vm::markPaid, skuCategory = kit::skuCategoryCode)
                 AronSecondaryButton(
                     stringResource(AmoR.string.amo_sale_history),
                     { scope.launch { history = SaleHistoryBuilder.build(kit.history(), sel.memo.outletId) } },
@@ -132,6 +132,9 @@ fun AmoSubmitHost(day: AmoDay) {
     val vm = viewModel(key = "submit-" + day.userId) { day.sale.newSubmitViewModel() }
     val st by vm.state.collectAsState()
     LaunchedEffect(Unit) { vm.refresh() }
+    // DISPLAY ONLY: the manual's nine rows, from the admin's AMO reconciliation rows (the gate and the day_submit rows stay per record type)
+    var rowGroups by remember { mutableStateOf<List<List<String>>?>(null) }
+    LaunchedEffect(Unit) { rowGroups = runCatching { day.sale.submitRowGroups() }.getOrNull() }
     val recordLabels = mapOf(
         "visit" to stringResource(AmoR.string.amo_rec_visit), "memo" to stringResource(AmoR.string.amo_rec_memo), "stock_movement" to stringResource(AmoR.string.amo_rec_stock_movement),
         "qc_line" to stringResource(AmoR.string.amo_rec_qc_line), "memo_discount" to stringResource(AmoR.string.amo_rec_memo_discount), "visit_close" to stringResource(AmoR.string.amo_rec_visit_close),
@@ -142,7 +145,7 @@ fun AmoSubmitHost(day: AmoDay) {
     )
     SalesSubmitScreen(
         online = st.online, counts = st.counts, gate = st.gate, progress = st.progress, typeLabel = { recordLabels[it] ?: it },
-        onSync = vm::sync, onSubmit = vm::submit, syncing = st.syncing,
+        onSync = vm::sync, onSubmit = vm::submit, syncing = st.syncing, rowGroups = rowGroups,
     )
 }
 

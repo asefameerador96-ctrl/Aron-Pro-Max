@@ -46,7 +46,7 @@ export default async function ReleasesPage() {
       adoption={adoptionByVersion(devices)}
       policyKeys={keys.ok ? keys.data.items.filter((k) => POLICY_KEYS.includes(k.key)) : []}
       policyValues={values}
-      apkMaxMb={Number.isFinite(apkMax) && apkMax > 0 ? apkMax : 30}
+      apkMaxMb={!keys.ok && !(ver.ok && ver.data) ? undefined : Number.isFinite(apkMax) && apkMax > 0 ? apkMax : 30}
       canWrite={canOp("release.update", session.user.role)}
       canPublish={canOp("release.publish", session.user.role)}
     />

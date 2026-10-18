@@ -1,12 +1,17 @@
 package com.aktcl.aron.backend.platform
 
 import com.aktcl.aron.contract.ProblemCode
+import io.ktor.http.decodeURLPart
 import io.ktor.server.application.ApplicationCall
 import io.ktor.server.application.createRouteScopedPlugin
+import io.ktor.server.request.httpMethod
+import io.ktor.server.request.path
 import io.ktor.server.routing.Route
 import io.ktor.server.routing.RouteSelector
 import io.ktor.server.routing.RouteSelectorEvaluation
 import io.ktor.server.routing.RoutingResolveContext
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 /** Current scope_version of a user, or null when the user does not exist (docs/24 s8.4). Implemented by auth. */
 fun interface ScopeVersionLookup {
@@ -17,6 +22,12 @@ fun interface ScopeVersionLookup {
 
     /** `app.device.status` of a token's device (`did`), null when no such device; cached like the scope version. */
     fun deviceStatus(deviceId: Long): String? = "active"
+
+    /**
+     * Admin permissions granted to a role now (`app.role_grant_map`, e.g. `finance.backdate`; Q5), cached like the scope
+     * version, so a grant or a revoke holds within seconds. Read per request, never carried in the token.
+     */
+    fun rolePermissions(role: String): Set<String> = emptySet()
 }
 
 /** Dependencies of the bearer guard; one instance per application. */
@@ -25,6 +36,8 @@ class AuthGuardDeps(
     val scopeVersions: ScopeVersionLookup,
     val config: ServerConfig,
     clock: AronClock = AronClock.SYSTEM,
+    /** Reveal audit rows (D-AUTHZ-PII); without it no request is ever served unmasked. */
+    val piiReveals: PiiRevealLog? = null,
 ) {
     val perDevice = RateLimiter(config.int("cfg.api.rl.device_per_min"), 60, clock)
     val perUser = RateLimiter(config.int("cfg.api.rl.user_per_min"), 60, clock)
@@ -48,11 +61,14 @@ class AuthGuardConfig {
 val AuthGuard = createRouteScopedPlugin("AronAuthGuard", ::AuthGuardConfig) {
     val cfg = pluginConfig
     onCall { call ->
-        val p = authenticate(call, cfg)
-        call.attributes.put(PrincipalKey, p)
-        val decision = if (p.isPhone && p.deviceUuid != null) cfg.deps.perDevice.tryAcquire("d:" + p.deviceUuid)
-        else cfg.deps.perUser.tryAcquire("u:" + p.userId)
+        val authed = authenticate(call, cfg)
+        // Masked until the reveal gate below, so a rate-limited call still logs who it was (checker N10).
+        call.attributes.put(PrincipalKey, authed.copy(pii = false))
+        val decision = if (authed.isPhone && authed.deviceUuid != null) cfg.deps.perDevice.tryAcquire("d:" + authed.deviceUuid)
+        else cfg.deps.perUser.tryAcquire("u:" + authed.userId)
         if (!decision.allowed) throw decision.toProblem()
+        // After the rate limit, so a refused call writes no reveal row (checker N2).
+        call.attributes.put(PrincipalKey, revealGate(call, authed, cfg.deps))
     }
 }
 
@@ -80,7 +96,52 @@ private fun authenticate(call: ApplicationCall, cfg: AuthGuardConfig): AronPrinc
             }
         }
     }
-    return p
+    requireMfaWhereNeeded(call, p, cfg.deps.config)
+    // Q5: the role's current grants join whatever the token named (issued tokens name none), so p.permissions is live.
+    if (p.audience != Audience.API) return p
+    val granted = cfg.deps.scopeVersions.rolePermissions(p.role.wire)
+    return if (granted.isEmpty()) p else p.copy(permissions = (p.permissions + granted).distinct())
+}
+
+/**
+ * D-AUTHZ-PII: a token's `pii` (already limited to its `pii_until` window by the verifier) holds only for a web API
+ * token whose role holds [PiiReveal.PERMISSION] now, and only once the request is in the audit log; otherwise the
+ * request is served masked. GET /v1/me reports the window and serves no personal value, so it writes no row.
+ */
+private suspend fun revealGate(call: ApplicationCall, p: AronPrincipal, deps: AuthGuardDeps): AronPrincipal {
+    if (!p.pii) return p
+    val log = deps.piiReveals
+    if (log == null || p.isPhone || p.audience != Audience.API || p.piiUntil == null) return p.copy(pii = false)
+    if (PiiReveal.PERMISSION !in deps.scopeVersions.rolePermissions(p.role.wire)) return p.copy(pii = false)
+    val path = call.request.path()
+    if (path == "/v1/me") return p
+    val written = runCatching {
+        withContext(Dispatchers.IO) { log.read(p, call.request.httpMethod.value, path, call.attributes.getOrNull(RequestIdKey)) }
+    }.isSuccess
+    return if (written) p else p.copy(pii = false)
+}
+
+/**
+ * AZ-1: `cfg.auth.mfa_required_roles` holds per request, not only at login and refresh. A web API token of a role in
+ * the list whose `amr` lacks "mfa" (issued before the flag turned on) may still read, but every write and every read of
+ * config, enrolment tokens or the audit log (it carries committed config values) answers 401 ERR_AUTH_MFA_INVALID: the web refresh refuses that family too (BC-89), so the
+ * next step is a login with the code. Phones never carry the second factor (web only, s6.5) and the /v1/auth paths
+ * (logout, change-password, MFA enrolment) stay open so the user can get out or finish the step.
+ */
+private fun requireMfaWhereNeeded(call: ApplicationCall, p: AronPrincipal, config: ServerConfig) {
+    if (p.isPhone || p.audience != Audience.API || "mfa" in p.amr) return
+    // Judge the path the router matches: decoded segments, empty ones dropped (`/v1/admin/%63onfig` is the config route).
+    val segments = call.request.path().split('/').filter { it.isNotEmpty() }.map { seg -> runCatching<String> { seg.decodeURLPart() }.getOrDefault(seg) }
+    val path = segments.joinToString("/", prefix = "/")
+    if (path.startsWith("/v1/auth/") && segments.none { it == "." || it == ".." }) return
+    val method = call.request.httpMethod.value
+    val write = method != "GET" && method != "HEAD" && method != "OPTIONS"
+    val sensitiveRead = path.startsWith("/v1/admin/config") || path.startsWith("/v1/admin/enrolment-tokens") || path.startsWith("/v1/admin/audit")
+    if (!write && !sensitiveRead) return
+    // A value that is not a list fails closed to the registry default, never open.
+    val roles = (config.value("cfg.auth.mfa_required_roles") as? kotlinx.serialization.json.JsonArray)
+        ?.mapNotNull { (it as? kotlinx.serialization.json.JsonPrimitive)?.content } ?: listOf("ADMIN", "SUPERADMIN", "SUPPORT")
+    if (p.role.wire in roles) throw ApiProblem(ProblemCode.ERR_AUTH_MFA_INVALID, "this action needs a sign-in with the second factor; sign in again")
 }
 
 val ApplicationCall.principal: AronPrincipal

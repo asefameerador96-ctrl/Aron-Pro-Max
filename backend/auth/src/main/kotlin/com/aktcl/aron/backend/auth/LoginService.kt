@@ -63,6 +63,8 @@ class LoginService(
     /** TOTP enrolment and the second login step (F-WEB-043); null where a test wires no database (503). */
     private val mfa: MfaStore? = null,
     private val mfaCipher: MfaCipher? = null,
+    /** The step-up audit row of a PII reveal (D-AUTHZ-PII); null where a test wires no database (503). */
+    private val piiReveals: com.aktcl.aron.backend.platform.PiiRevealLog? = null,
 ) {
     private val perUsername = RateLimiter(10, 15 * 60, clock)
     private val perDevice = RateLimiter(30, 15 * 60, clock)
@@ -280,6 +282,65 @@ class LoginService(
         users.invalidate(user.id)
         val fresh = users.findById(user.id) ?: throw ApiProblem(ProblemCode.ERR_AUTH_MFA_INVALID, "sign in again")
         return complete(fresh, null, null, "web", minVersionCode("web"), afterPasswordChange = false, afterMfa = true)
+    }
+
+    /**
+     * POST /v1/auth/reauth (contract reauth, docs/21 s4.5, D-AUTHZ-PII): the step-up before a PII reveal. A web API
+     * session whose role holds `pii.reveal` now (the guard merged the live grants into [p]) re-enters its password and,
+     * for an MFA user (`cfg.auth.mfa_required_roles` or an own enrolment), a fresh TOTP code (recovery codes are kept for
+     * sign-in). Wrong answers share one 401 and count towards `cfg.auth.lockout_attempts` under their own key. Success
+     * writes the step-up audit row, then mints a web access token with the same `amr` whose `pii` claim holds until
+     * now + `cfg.pii.reauth_min` (1..15, inside the token's 15 minutes); a refresh mints a token without it.
+     */
+    suspend fun reauth(p: AronPrincipal, req: ReauthRequest, requestId: String?): ReauthResponse {
+        val log = piiReveals ?: throw ApiProblem(ProblemCode.ERR_SERVICE_UNAVAILABLE, "personal data cannot be revealed here")
+        if (p.isPhone || p.audience != Audience.API) throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "a reveal is for web sessions only")
+        val user = users.findById(p.userId) ?: throw ApiProblem(ProblemCode.ERR_UNAUTHENTICATED)
+        if (user.status != "active") throw ApiProblem(ProblemCode.ERR_AUTH_USER_DISABLED, "user is disabled")
+        // Before any hashing: a role without the grant learns nothing about the password.
+        if (com.aktcl.aron.backend.platform.PiiReveal.PERMISSION !in p.permissions) throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "this role may not reveal personal data")
+        val needsCode = user.role.wire in mfaRoles() || user.mfaEnabled
+        if (needsCode && "mfa" !in p.amr) throw ApiProblem(ProblemCode.ERR_AUTH_MFA_INVALID, "this action needs a sign-in with the second factor; sign in again")
+        if (needsCode && req.code == null) throw ApiProblem(ProblemCode.ERR_VALIDATION, "the authenticator code is required", errors = listOf(FieldError("/code", "required")))
+        val now = clock.now()
+        val lockKey = "reauth|${user.id}"
+        lockouts.lockedUntil(lockKey, now)?.let { until ->
+            val sec = Duration.between(now, until).seconds.coerceAtLeast(1).toInt()
+            throw ApiProblem(ProblemCode.ERR_AUTH_ACCOUNT_LOCKED, "too many failed attempts", retryAfterS = sec, headers = mapOf("Retry-After" to sec.toString()))
+        }
+        perUsername.tryAcquire("r:${user.id}").let { if (!it.allowed) throw it.toProblem("too many attempts") }
+        var ok = user.passwordHash != null && webLimiter.run { hasher.verify(user.passwordHash, req.password) }
+        if (ok && needsCode) {
+            val store = mfa ?: throw ApiProblem(ProblemCode.ERR_SERVICE_UNAVAILABLE, "MFA is not available")
+            val cipher = mfaCipher ?: throw ApiProblem(ProblemCode.ERR_SERVICE_UNAVAILABLE, "MFA is not available")
+            val code = req.code!!
+            val outcome = store.verify(user.id, now, p) { state ->
+                val secret = state?.takeIf { it.confirmed }?.let { cipher.open(it.secretCipher, user.id) }
+                when {
+                    state == null || !state.confirmed -> MfaUpdate.None
+                    secret == null -> MfaUpdate.Unreadable
+                    else -> Totp.matchingStep(secret, code, now)?.takeIf { s -> state.lastUsedStep == null || s > state.lastUsedStep }
+                        ?.let { MfaUpdate.TotpUsed(it) } ?: MfaUpdate.None
+                }
+            }
+            if (outcome == MfaUpdate.Unreadable) throw ApiProblem(ProblemCode.ERR_SERVICE_UNAVAILABLE, "the authenticator setup cannot be read; ask an administrator to reset MFA")
+            ok = outcome is MfaUpdate.TotpUsed
+        }
+        if (!ok) {
+            val n = lockouts.recordFailure(lockKey, now, Duration.ofMinutes(config.int("cfg.auth.lockout_window_min").toLong()))
+            if (n >= config.int("cfg.auth.lockout_attempts")) {
+                lockouts.lock(lockKey, now, Duration.ofMinutes(config.int("cfg.auth.lockout_min").toLong()))
+                securityEvents.safely(SecurityEvent(SecurityEventKind.LOCKOUT, now, user.id, null, detail = mapOf("flow" to "reauth", "failures" to n.toString())))
+            }
+            throw ApiProblem(ProblemCode.ERR_AUTH_INVALID_CREDENTIALS, "the password or the code is wrong")
+        }
+        lockouts.reset(lockKey)
+        val minutes = cfgInt("cfg.pii.reauth_min", 15).coerceIn(1, 15).toLong()
+        val until = now.truncatedTo(java.time.temporal.ChronoUnit.SECONDS).plusSeconds(minutes * 60)
+        // Audited first: a step-up whose row cannot be written opens no window.
+        log.stepUp(p, until, requestId)
+        val access = issuer.access(TokenSubject(user, null, null, "web", amr = p.amr, pii = true, piiUntil = until), Audience.API)
+        return ReauthResponse(access.token, access.expiresAt.wire(), until.wire())
     }
 
     private fun cfgInt(key: String, default: Int): Int = runCatching { config.int(key) }.getOrDefault(default)

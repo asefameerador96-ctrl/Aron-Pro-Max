@@ -7,6 +7,7 @@ import { currentPath, requireSession } from "@/lib/auth/require";
 import { getLocale } from "@/lib/auth/service";
 import { formatBusinessDate, formatDateTime, formatNumber, problemMessage, t, type Locale } from "@/lib/i18n";
 import type { Problem } from "@/contract/types";
+import { WEB_MFA_RESIGNIN } from "@/lib/api/client";
 import { AuditHistory } from "../audit-history";
 import { DataTable, type Column } from "../kit/data-table";
 import { FilterBar, type FilterControl } from "../kit/filter-bar";
@@ -22,6 +23,7 @@ const CURSOR_MAX = 512; // PageCursor maxLength in the contract
 export async function onApiFailure(status: number, problem: Problem, locale: Locale): Promise<ReactNode> {
   if (status === 401) {
     const path = await currentPath();
+    if (problem.code === (WEB_MFA_RESIGNIN as Problem["code"])) redirect(`/login?next=${encodeURIComponent(path)}`); // a password-only session of a role that needs the authenticator step: no refresh, sign in again
     redirect(path.includes("r=1") ? `/login?next=${encodeURIComponent(path)}` : `/api/bff/session/refresh?next=${encodeURIComponent(path + (path.includes("?") ? "&" : "?") + "r=1")}`);
   }
   if (status === 403) return <Forbidden locale={locale} />;
@@ -257,7 +259,7 @@ export async function EntityEditPage({ meta, id, searchParams }: { meta: AnyEnti
       {failed ? <RefFailure locale={locale} /> : null}
       <Details items={meta.fields.filter((f) => f.mode === "readonly" && !f.column).map((f) => ({ label: t(locale, f.labelKey), value: cell(locale, f, row.data as Record<string, unknown>, refs) }))} />
       <EntityForm mode="update" slug={meta.slug} id={id} version={version} fields={fields} initial={initial} listHref={`/admin/${meta.slug}`} reasonStored={meta.reasonOnUpdate !== null} />
-      <AuditHistory entries={hist.ok ? hist.data.items : []} locale={locale} />
+      <AuditHistory entries={hist.ok ? hist.data.items : []} failed={!hist.ok} locale={locale} />
     </div>
   );
 }

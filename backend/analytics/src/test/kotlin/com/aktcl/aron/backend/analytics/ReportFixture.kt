@@ -101,7 +101,7 @@ abstract class ReportFixture {
         val reach = ReachResolver { uid, _, _, _ -> reaches.getValue(uid) }
         val engine = ReportEngine(fresh.db, config, clock, handlers)
         exports = ExportJobService(fresh.db, engine, reach, exportStore, clock)
-        val deps = ReportDeps(fresh.db, engine, reach, AuthGuardDeps(AccessTokenVerifier(TestTokens.keys), ScopeVersionLookup { 1 }, config), clock, exports, exports)
+        val deps = ReportDeps(fresh.db, engine, reach, TestTokens.guard(config), clock, exports, exports)
         application {
             installAronPlatform(PlatformContext(config = RegistryDefaults(), generation = { "6f1c2b0e-8d1a-4c5e-9f3a-2b7d4e6a8c10" }))
             routing { route("/v1") { reportRoutes(deps); mount(this, clock, reach, deps.guard) } }

@@ -78,8 +78,8 @@ class IngestRulesCheckerTest {
             skus += h.createQuery("SELECT s.id, p.amount_mtk FROM app.sku s JOIN app.sku_price p ON p.sku_id = s.id AND p.price_type = 'outlet' WHERE p.amount_mtk > 0 ORDER BY s.id LIMIT 3")
                 .map { rs, _ -> rs.getLong(1) to rs.getLong(2) }.list()
             h.execute("INSERT INTO app.cfg_version (config_version, kind, committed_by, summary) SELECT max(config_version) + 1, 'change', (SELECT id FROM app.app_user WHERE username = 'aron.system'), 'checker rl' FROM app.cfg_version")
-            h.execute("INSERT INTO app.cfg_value (key, scope_type, scope_id, value, effective_from, config_version, reason) SELECT 'cfg.api.rl.device_per_min', 'global', 0, '600'::jsonb, now() - interval '1 day', max(config_version), 'test' FROM app.cfg_version")
-            h.execute("INSERT INTO app.cfg_value (key, scope_type, scope_id, value, effective_from, config_version, reason) SELECT 'cfg.api.rl.user_per_min', 'global', 0, '2000'::jsonb, now() - interval '1 day', max(config_version), 'test' FROM app.cfg_version")
+            h.execute("INSERT INTO app.cfg_value (key, scope_type, scope_id, value, effective_from, config_version, reason) SELECT 'cfg.api.rl.device_per_min', 'global', 0, '600'::jsonb, TIMESTAMPTZ '${ApiWorld.CFG_FROM}', max(config_version), 'test' FROM app.cfg_version")
+            h.execute("INSERT INTO app.cfg_value (key, scope_type, scope_id, value, effective_from, config_version, reason) SELECT 'cfg.api.rl.user_per_min', 'global', 0, '2000'::jsonb, TIMESTAMPTZ '${ApiWorld.CFG_FROM}', max(config_version), 'test' FROM app.cfg_version")
         }
         keyFile = File.createTempFile("aron-jwt", ".pem").apply {
             deleteOnExit()
@@ -248,6 +248,18 @@ class IngestRulesCheckerTest {
         val fam = memoFamily(emptyList(), qcs = listOf(Q(skus[0].first, 15_000, applied = true)))
         val r = client.ok(token, batch(fam))
         assertEquals(List(fam.size) { "accepted" }, codes(r), "zero sale with a QC credit (net -15,000, s7.4 allow_negative_net)")
+    }
+
+    // QA-MNY-01: the header sign check (D-18) must not catch a zero-sale QC credit sent before its children.
+    @Test
+    fun checkerAZeroSaleQcCreditSentHeaderFirstIsStoredUnflagged() = testApplication {
+        app()
+        val token = client.token()
+        val fam = memoFamily(emptyList(), qcs = listOf(Q(skus[0].first, 15_000, applied = true)))
+        val memo = fam[1].s("client_uuid")
+        assertEquals(listOf("accepted", "accepted"), codes(client.ok(token, batch(fam.take(2)))), "visit and memo header")
+        assertEquals(List(fam.size - 2) { "accepted" }, codes(client.ok(token, batch(fam.drop(2)))), "the late children")
+        assertEquals(1, count("SELECT count(*) FROM app.memo WHERE client_uuid = '$memo' AND net_mtk < 0 AND cardinality(COALESCE(server_flags, '{}')) = 0"))
     }
 
     // F-SYS-062 / s7.4 "line_count = the number of child records": more lines than the header states, all in one batch.

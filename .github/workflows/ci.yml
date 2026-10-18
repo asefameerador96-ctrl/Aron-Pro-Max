@@ -109,7 +109,8 @@ jobs:
             # db's DataDictionaryTest compares docs/data-dictionary.md with the migrated schema.
             echo "jvm=$(has "${common}|^(contract/|shared/|db/|backend/|docs/24-build-spec\.md|docs/data-dictionary\.md)")"
             echo "android=$(has "${common}|^(contract/|shared/|android/|tools/android-sdk\.sh)")"
-            echo "web=$(has '^(web/|contract/openapi\.yaml|\.github/workflows/ci\.yml)')"
+            # web/tests/money-format-corpus.test.ts reads contract/fixtures/, so a corpus change re-runs the web tests.
+            echo "web=$(has '^(web/|contract/openapi\.yaml|contract/fixtures/|\.github/workflows/ci\.yml)')"
             echo "infra=$(has '^(infra/|\.github/|tools/ci/)')"
             # What ends up in Azure: the backend image (shared, db, backend), the web image, the Bicep, the deploy.
             echo "deploy=$(has "${common}|^(shared/|db/|backend/|web/|infra/|\.github/workflows/deploy\.yml)")"
@@ -190,6 +191,11 @@ jobs:
         run: python3 tools/ci/wallclock-scan.py .
       - name: npm install scripts reviewed (web/.npmrc ignore-scripts; tools/ci/npm-install-scripts.txt)
         run: python3 tools/ci/install-scripts-check.py web/package-lock.json tools/ci/npm-install-scripts.txt
+      - name: Money gates (no float on money, shrink-only allow-list; the shared format corpus is current; their self-tests)
+        run: |
+          python3 tools/ci/test_money_gates.py
+          python3 tools/ci/money-float-scan.py
+          python3 tools/ci/money-format-corpus.py
       - name: Static analysis (Semgrep, pinned image; findings new since the base fail)
         # A lane's own diff only: on a lane branch the base is the integration commit it last merged, so code another lane
         # already landed on the integration branch never counts as new here. On the integration branch, the gate base.

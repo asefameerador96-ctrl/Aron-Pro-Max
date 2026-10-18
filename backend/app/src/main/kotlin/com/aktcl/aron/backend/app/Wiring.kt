@@ -40,6 +40,9 @@ import com.aktcl.aron.backend.config.ConfigPublic
 import com.aktcl.aron.backend.config.ConfigPublicDeps
 import com.aktcl.aron.backend.config.configPermissionRoutes
 import com.aktcl.aron.backend.config.configPublicRoutes
+import com.aktcl.aron.backend.config.ReleaseAdmin
+import com.aktcl.aron.backend.config.ReleaseAdminDeps
+import com.aktcl.aron.backend.config.releaseAdminRoutes
 import com.aktcl.aron.backend.config.ConfigService
 import com.aktcl.aron.backend.config.ConfigTools
 import com.aktcl.aron.backend.config.ConfigToolsDeps
@@ -91,6 +94,8 @@ import com.aktcl.aron.backend.masterdata.adminPricesRoutes
 import com.aktcl.aron.backend.masterdata.adminProductsRoutes
 import com.aktcl.aron.backend.masterdata.deviceReplaceRoutes
 import com.aktcl.aron.backend.masterdata.deviceOtpRoutes
+import com.aktcl.aron.backend.masterdata.auditReadRoutes
+import com.aktcl.aron.backend.masterdata.AuditReadDeps
 import com.aktcl.aron.backend.masterdata.OutletsDeps
 import com.aktcl.aron.backend.masterdata.SqlReachResolver
 import com.aktcl.aron.backend.masterdata.outletRoutes
@@ -158,17 +163,20 @@ class Wiring(
             com.aktcl.aron.backend.sync.ConsentRecords(),
         )
 
-        /** [extraRecordHandlers] and [pushSender] are for tests only; production handlers are listed in [recordHandlers]. */
+        /** [extraRecordHandlers], [pushSender] and [blobPorts] are for tests only; production handlers are listed in [recordHandlers]. */
         fun production(
             s: Settings, clock: AronClock = AronClock.SYSTEM, extraRecordHandlers: List<RecordHandler> = emptyList(),
             /** Tests only: a push sender in place of FCM. */
             pushSender: com.aktcl.aron.backend.notify.PushSender? = null,
+            /** Tests only: an in-memory blob store in place of Azure (or of the 503 answers where blob storage is not configured). */
+            blobPorts: BlobPorts? = null,
         ): Wiring {
             val db = Database.fromSettings(s)
             val config = DbServerConfig(db, RegistryDefaults(s.env), clock)
             val keys = JwtKeys.fromSettings(s)
             val users = JdbiUserStore(db, clock)
-            val guard = AuthGuardDeps(AccessTokenVerifier(keys, clock), users, config, clock)
+            val piiReveals = com.aktcl.aron.backend.platform.JdbiPiiRevealLog(db)
+            val guard = AuthGuardDeps(AccessTokenVerifier(keys, clock), users, config, clock, piiReveals)
             val geo = GeoRepository(db, clock)
             val reach = SqlReachResolver(db, geo, clock)
             val issuer = TokenIssuer(keys, config, clock)
@@ -208,7 +216,7 @@ class Wiring(
             val configResolver = ConfigResolver(db, clock)
             val toolsReach = com.aktcl.aron.backend.config.NodeReach { p, z -> reach.reach(p.userId, p.role, p.scopeVersion, com.aktcl.aron.rules.BusinessDate.of(clock.now().toEpochMilli()).let { d -> java.time.LocalDate.of(d.year, d.monthNumber, d.dayOfMonth) }).coversZone(z) }
             val configService = ConfigService(db, configResolver, clock, toolsReach)
-            val configDeps = ConfigDeps(configService, guard, clock)
+            val configDeps = ConfigDeps(configService, guard, clock, reach)
             val toolsDeps = ConfigToolsDeps(ConfigTools(db, configService, configResolver, clock, toolsReach), guard, com.aktcl.aron.backend.config.ConfigGeoReports(db, configService, configResolver, clock))
             val permissions = ConfigPermissions(db, configService, clock)
             // One cipher for the bind OTP: login creates it sealed with a keyed verifier, the TSO panel opens it (s8.1).
@@ -229,6 +237,7 @@ class Wiring(
                 passwords = com.aktcl.aron.backend.auth.JdbiPasswordStore(db), minPasswordLen = minPasswordLen,
                 binds = com.aktcl.aron.backend.auth.JdbiBindStore(db), otpSealer = otpSealer, securityEvents = securityEvents,
                 mfa = com.aktcl.aron.backend.auth.JdbiMfaStore(db), mfaCipher = com.aktcl.aron.backend.auth.MfaCipher(mfaKeyRing(s, keys)),
+                piiReveals = piiReveals,
             )
             val permDeps = ConfigPermissionsDeps(permissions, guard)
             val auth = AuthDeps(
@@ -238,7 +247,8 @@ class Wiring(
             val publicDeps = ConfigPublicDeps(ConfigPublic(db, configResolver, clock), guard)
             // Azure user-delegation SAS via the managed identity when ARON_BLOB_ACCOUNT is set (Azure); 503 elsewhere
             // (docs/requests/backend-admin-blob-sas.md).
-            val blob: BlobSasIssuer = AzureBlobSasIssuer.fromEnvironment() ?: com.aktcl.aron.backend.masterdata.UnconfiguredBlobSasIssuer
+            val blobs = blobPorts ?: BlobPorts.fromEnvironment()
+            val blob: BlobSasIssuer = blobs.sas
             val otpDeps = DeviceOtpDeps(db, reach, otpCipher, config, guard, clock)
             // F-SYS-053: the delta re-resolves outlet radius with the bundle's own resolution.
             val radiusBundle = BundleService(db, config, SqlRoutePlanner(db, geo, config), clock)
@@ -291,6 +301,7 @@ class Wiring(
                 configAdminRoutes(configDeps)
                 configDeltaRoutes(deltaDeps)
                 deviceOtpRoutes(otpDeps)
+                auditReadRoutes(AuditReadDeps(db, guard, clock))
                 deviceReplaceRoutes(otpDeps)
                 visitPlanRoutes(VisitPlanDeps(db, reach, config, guard, clock))
                 routeAssignmentRoutes(RouteAssignmentsDeps(db, reach, guard, clock))
@@ -321,15 +332,14 @@ class Wiring(
                 configToolRoutes(toolsDeps)
                 configPermissionRoutes(permDeps)
                 configPublicRoutes(publicDeps)
+                releaseAdminRoutes(ReleaseAdminDeps(ReleaseAdmin(db, configResolver, clock), guard))
                 syncRoutes(sync)
                 taskRoutes(com.aktcl.aron.backend.sync.TaskDeps(com.aktcl.aron.backend.sync.TaskService(db, reach, clock, push), guard))
                 dayRoutes(com.aktcl.aron.backend.sync.DayDeps(guard, com.aktcl.aron.backend.sync.DayService(db, config, reach, sync.ingest!!, clock)))
                 memoRoutes(com.aktcl.aron.backend.sync.MemoDeps(db, reach, guard, clock))
                 nearbyRoutes(com.aktcl.aron.backend.sync.NearbyDeps(db, config, reach, guard, clock))
                 riskSignalRoutes(com.aktcl.aron.backend.sync.RiskSignalDeps(db, config, reach, guard, clock))
-                mediaRoutes(MediaDeps(db, { path, max, until -> blob.writeSas(path, max, until) }, guard, clock,
-                    (blob as? AzureBlobSasIssuer)?.let { az -> com.aktcl.aron.backend.media.PhotoBlobWriter(az::putBytes) } ?: com.aktcl.aron.backend.media.UnconfiguredPhotoBlobWriter,
-                    reach, (blob as? AzureBlobSasIssuer)?.let { az -> com.aktcl.aron.backend.media.PhotoReadIssuer(az::readSas) } ?: com.aktcl.aron.backend.media.UnconfiguredPhotoReadIssuer))
+                mediaRoutes(MediaDeps(db, { path, max, until -> blob.writeSas(path, max, until) }, guard, clock, blobs.photoWriter, reach, blobs.photoRead))
                 pushRoutes(com.aktcl.aron.backend.notify.PushDeps(db, config, guard, clock))
                 notificationRoutes(com.aktcl.aron.backend.notify.NotificationDeps(db, config, reach, push, guard, clock))
             }, frontDoorId = s.frontDoorId, admission = admission, cachedGeneration = generation::cached,

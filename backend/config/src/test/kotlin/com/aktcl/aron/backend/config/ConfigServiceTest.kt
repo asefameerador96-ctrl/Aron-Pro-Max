@@ -140,6 +140,80 @@ class ConfigServiceTest {
         assertEquals(120, svc.resolve("cfg.geo.radius_m", "global", 0, clock.now()).value.jsonPrimitive.int)
     }
 
+    /** Q3/Q4 option B: loosening MFA roles or the price-change rail needs a second SUPERADMIN (C3); tightening or no change stays C2. */
+    @Test
+    fun loosenedSecurityControlsNeedASecondApproverAndTightenedOnesDoNot() {
+        fun roles(vararg r: String) = ConfigChangeItemIn("cfg.auth.mfa_required_roles", "global", 0, kotlinx.serialization.json.JsonArray(r.map { JsonPrimitive(it) }), null, null)
+        fun mfa(vararg r: String) = req(roles(*r), reason = "Review of the admin second factor policy")
+        fun pct(v: Int) = req(item("cfg.price.max_change_pct", "global", 0, v), reason = "Review of the price change rail threshold")
+        // Loosening: one ADMIN cannot even ask; a SUPERADMIN's request waits for a second SUPERADMIN.
+        for (r in listOf(mfa(), mfa("ADMIN", "SUPERADMIN"), pct(100), pct(16))) {
+            assertEquals(ProblemCode.ERR_FORBIDDEN, code { svc.create(admin, r, null, null) }, r.changes.toString())
+            val c = svc.create(sa1, r, null, null)
+            assertEquals(3, c.risk_class, r.changes.toString()); assertEquals("pending_approval", c.status)
+            assertEquals(ProblemCode.ERR_CFG_SELF_APPROVAL, code { svc.decide(sa1, c.change_id, ConfigDecisionIn("approve"), null) })
+            svc.decide(sa1, c.change_id, ConfigDecisionIn("cancel"), null)
+        }
+        // Tightening, or the same value: C2, scheduled by one ADMIN after the delay.
+        for (r in listOf(mfa("ADMIN", "SUPERADMIN", "SUPPORT", "TSO"), mfa("ADMIN", "SUPERADMIN", "SUPPORT"), pct(10), pct(15))) {
+            val c = svc.create(admin, r, null, null)
+            assertEquals(2, c.risk_class, r.changes.toString()); assertEquals("scheduled", c.status)
+            svc.decide(admin, c.change_id, ConfigDecisionIn("cancel"), null)
+        }
+    }
+
+    /** The loosening rules read only the node's own rows; that is complete only while both keys are global-only. */
+    @Test
+    fun theLooseningGuardedKeysStayGlobalOnly() {
+        for (k in RiskClassifier.LOOSENING_GUARDED) assertEquals(listOf("global"), svc.resolver.registry().getValue(k).scopeLevels, k)
+    }
+
+    /** Checker B1 and B2 on option B: a window that ends on a looser value is C3; a change cannot undo one that is still waiting. */
+    @Test
+    fun aWindowThatEndsLooserIsC3AndAWaitingChangeCannotBeUndone() {
+        // The config timeline needs a clock that never goes back (setDhaka alone may jump backwards past rows already written).
+        fun noonAhead() { val was = clock.now(); clock.setDhaka(12, 0); if (clock.now().isBefore(was)) clock.advance(24 * 3600) }
+        fun pct(v: Int, to: String? = null) = req(item("cfg.price.max_change_pct", "global", 0, v, to = to), reason = "Review of the price change rail threshold")
+        // B2: an ADMIN's tightening (15 -> 10) is scheduled; nobody can queue another change of the key behind it.
+        val tight = svc.create(admin, pct(10), null, null)
+        assertEquals("scheduled", tight.status); assertEquals(2, tight.risk_class)
+        assertEquals(ProblemCode.ERR_REQUEST_STATE, code { svc.create(admin, pct(15), null, null) })
+        assertEquals(ProblemCode.ERR_REQUEST_STATE, code { svc.create(sa1, pct(20), null, null) })
+        clock.advance(11 * 60); svc.applyDue()
+        assertEquals("applied", svc.change(tight.change_id).status)
+        assertEquals(10, svc.resolve("cfg.price.max_change_pct", "global", 0, clock.now()).value.jsonPrimitive.int)
+        // B1: a window (same value or tighter) falls back to the default 15 when it ends: C3, so one ADMIN cannot.
+        val end = clock.now().plusSeconds(3 * 3600).toString()
+        assertEquals(ProblemCode.ERR_FORBIDDEN, code { svc.create(admin, pct(10, to = end), null, null) })
+        assertEquals(ProblemCode.ERR_FORBIDDEN, code { svc.create(admin, pct(5, to = end), null, null) })
+        val windowed = svc.create(sa1, pct(5, to = end), null, null)
+        assertEquals(3, windowed.risk_class); assertEquals("pending_approval", windowed.status)
+        svc.decide(sa1, windowed.change_id, ConfigDecisionIn("cancel"), null)
+        // Back to the default, which is a loosening (10 -> 15): C3, two SUPERADMINs.
+        val back = svc.create(sa1, pct(15), null, null)
+        assertEquals(3, back.risk_class)
+        noonAhead()
+        assertEquals("applied", svc.decide(sa2, back.change_id, ConfigDecisionIn("approve"), null).status)
+        // Checker N1: two SUPERADMINs approve a temporary 25 until T; one ADMIN's 'same value, no end' (or a longer window)
+        // would make it permanent, so it is C3 and refused to the ADMIN.
+        val t = clock.now().plusSeconds(6 * 3600).toString()
+        val temp = svc.create(sa1, pct(25, to = t), null, null)
+        assertEquals(3, temp.risk_class)
+        assertEquals("applied", svc.decide(sa2, temp.change_id, ConfigDecisionIn("approve"), null).status)
+        clock.advance(60)
+        assertEquals(25, svc.resolve("cfg.price.max_change_pct", "global", 0, clock.now()).value.jsonPrimitive.int)
+        assertEquals(ProblemCode.ERR_FORBIDDEN, code { svc.create(admin, pct(25), null, null) }, "same value, open-ended")
+        assertEquals(ProblemCode.ERR_FORBIDDEN, code { svc.create(admin, pct(25, to = clock.now().plusSeconds(12 * 3600).toString()), null, null) }, "a longer window")
+        // Any change of the guarded keys with an end is C3 (checker B3: its tail is judged against rows that start later),
+        // even a shorter, tighter window inside T.
+        assertEquals(ProblemCode.ERR_FORBIDDEN, code { svc.create(admin, pct(20, to = clock.now().plusSeconds(3600).toString()), null, null) }, "a shorter window")
+        // B3: a windowed tightening by one ADMIN (it could cut a row starting during the C2 delay and fall back to 15 after its end).
+        assertEquals(ProblemCode.ERR_FORBIDDEN, code { svc.create(admin, pct(5, to = clock.now().plusSeconds(48 * 3600).toString()), null, null) }, "a windowed tightening")
+        // Clean up: back to the default once the window has passed.
+        clock.advance(7 * 3600)
+        assertEquals(15, svc.resolve("cfg.price.max_change_pct", "global", 0, clock.now()).value.jsonPrimitive.int)
+    }
+
     @Test
     fun radiusAbove150ThatGrowsTheValueEscalatesToC3AtAnyLevel() {
         val outlet = freshOutlet()
@@ -174,6 +248,18 @@ class ConfigServiceTest {
         val v = svc.currentVersion()
         val b = svc.create(admin, req(item("cfg.sys.schedule_horizon_days", "global", 0, 8)), key, null)
         assertEquals(a.change_id, b.change_id); assertEquals(v, svc.currentVersion())
+    }
+
+    /** Replay-first: a retry after the effective_from passed answers the stored change; the same key with other content is 409. */
+    @Test
+    fun aLateReplayOfAFutureDatedChangeAnswersTheStoredChange() {
+        val key = UUID.randomUUID()
+        val from = clock.now().plusSeconds(30).toString()
+        val body = req(item("cfg.sys.schedule_horizon_days", "global", 0, 9).copy(effective_from = from))
+        val a = svc.create(admin, body, key, null)
+        clock.advance(120)                                                     // the first answer was lost; the retry comes two minutes later
+        assertEquals(a.change_id, svc.create(admin, body, key, null).change_id)
+        assertEquals(ProblemCode.ERR_CONFLICT, assertFailsWith<ApiProblem> { svc.create(admin, req(item("cfg.sys.schedule_horizon_days", "global", 0, 10)), key, null) }.code)
     }
 
     @Test

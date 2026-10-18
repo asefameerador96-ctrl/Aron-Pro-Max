@@ -39,6 +39,8 @@ dependencies {
     // N-014 (qa): ContractConformanceTest validates live answers against contract/openapi.yaml (JSON Schema 2020-12).
     testImplementation(libs.json.schema.validator)
     testImplementation(libs.snakeyaml.engine)
+    // N-014: the conformance run enrols a phone with a self-built key-attestation chain (dev token, no Google root).
+    testImplementation(libs.bouncycastle.bcpkix)
     testRuntimeOnly(libs.junit.platform.launcher)
 }
 
@@ -50,6 +52,10 @@ tasks.withType<Test>().configureEach {
     // N-024 (qa): SyncFaultScheduleFuzzTest size, seed and phone count (the acceptance run uses 10000 schedules).
     // Test.environment is not an up-to-date input: declare the values, or a changed size reuses the last result.
     listOf("ARON_SYNC_FUZZ_SCHEDULES", "ARON_SYNC_FUZZ_SEED", "ARON_SYNC_FUZZ_PHONES").forEach { k -> System.getenv(k)?.let { environment(k, it); inputs.property(k, it) } }
+    // N-024 (qa): SupervisorSyncFaultFuzzTest (the AMO record types) size, seed and phone count, declared the same way.
+    listOf("ARON_SUPERVISOR_FUZZ_SCHEDULES", "ARON_SUPERVISOR_FUZZ_SEED", "ARON_SUPERVISOR_FUZZ_PHONES").forEach { k -> System.getenv(k)?.let { environment(k, it); inputs.property(k, it) } }
+    // qa: DayCloseRaceTest (the zone-day close race fuzz) round count, seed and opt-in known-defect tolerance, declared the same way.
+    listOf("ARON_DAYCLOSE_FUZZ_ROUNDS", "ARON_DAYCLOSE_FUZZ_SEED", "ARON_DAYCLOSE_TOLERATE").forEach { k -> System.getenv(k)?.let { environment(k, it); inputs.property(k, it) } }
     systemProperty("aron.repoRoot", rootProject.layout.projectDirectory.asFile.absolutePath)
     // N-014: ContractConformanceTest, RouteInventoryTest and ScopeLeakAcrossEndpointsTest read the contract through
     // aron.repoRoot, which is not a file input: declare it and the conformance baselines, or a contract-only change

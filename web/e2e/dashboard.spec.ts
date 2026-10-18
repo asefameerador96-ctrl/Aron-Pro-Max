@@ -26,6 +26,7 @@ test("the TSO dashboard loads without a button press and shows every tile with i
   await expect(page.getByTestId("sales-net")).toHaveText("543,435.00");
   await expect(page.getByTestId("tile-channels-std").getByTestId("channel-std-donut")).toContainText("Grocery");
   await expect(page.getByTestId("geo-fencing")).toBeVisible();
+  await expect(page.getByTestId("geo-visits")).toHaveText(/^\d+ of \d+ visits$/); // geo_valid_visits of visits, as the server sends them
 });
 
 test("the live strike rate of one route: 1 of 43 is 2.3 percent", async ({ page }) => {
@@ -116,6 +117,7 @@ test("the orange Filter narrows the home to a zone: bound levels are read-only, 
 test("the Filter popover works from the keyboard: Enter opens it, Escape closes it and returns focus", async ({ page }) => {
   await loginOk(page, "tso334", "tso-pass-1");
   await page.getByRole("link", { name: "English" }).click();
+  await expect(page.getByTestId("home-filter")).toHaveAttribute("data-ready", ""); // a key pressed before React attaches is lost
   const summary = page.getByTestId("home-filter").locator("summary");
   await summary.focus();
   await page.keyboard.press("Enter");

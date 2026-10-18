@@ -106,6 +106,7 @@ private fun listOutlets(call: ApplicationCall, d: OutletsDeps, readers: Set<Role
         st.map { rs, _ -> mapOutlet(rs, p.pii) to rs.getObject("updated_at", OffsetDateTime::class.java).toInstant() }.list()
     }
     val page = rows.take(limit)
+    com.aktcl.aron.backend.platform.PiiReadBudget.chargeRevealed(d.db, d.guard.config, d.clock, p, page.size)
     val next = if (rows.size > limit) page.last().let { (o, at) -> encodeCursor(if (updatedSince != null) at else null, o.id) } else null
     return OutletPage(page.map { it.first }, next)
 }

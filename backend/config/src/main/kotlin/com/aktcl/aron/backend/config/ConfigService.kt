@@ -44,6 +44,7 @@ fun interface NodeReach {
 
 class ConfigService(private val db: Database, val resolver: ConfigResolver, private val clock: AronClock = AronClock.SYSTEM, private val nodeReach: NodeReach? = null) {
     private val dhaka = ZoneId.of("Asia/Dhaka")
+    internal val database: Database get() = db
 
     // ---------------------------------------------------------------- reads
 
@@ -111,9 +112,26 @@ class ConfigService(private val db: Database, val resolver: ConfigResolver, priv
 
     // ---------------------------------------------------------------- write: create
 
+    private fun replayOf(p: AronPrincipal, req: ConfigChangeRequestIn, clientUuid: UUID): ConfigChangeDto? = db.jdbi.withHandle<ConfigChangeDto?, Exception> { h ->
+        val id = h.createQuery("SELECT change_id, requested_by FROM app.cfg_change WHERE client_uuid = CAST(:u AS uuid)").bind("u", clientUuid.toString())
+            .map { rs, _ -> rs.getLong(1) to rs.getLong(2) }.findOne().orElse(null) ?: return@withHandle null
+        if (id.second != p.userId) throw ApiProblem(ProblemCode.ERR_CONFLICT, "idempotency key already used")
+        val stored = loadChange(h, id.first)!!
+        // Values compare as JSON (jsonb reorders object members), the items as a set of key, scope and value.
+        val same = stored.reason == req.reason.trim() &&
+            stored.changes.map { Triple(it.key, "${it.scope_type}:${it.scope_id}", it.value) }.toSet() == req.changes.map { Triple(it.key, "${it.scope_type}:${it.scope_id}", it.value) }.toSet() &&
+            stored.changes.size == req.changes.size
+        if (!same) throw ApiProblem(ProblemCode.ERR_CONFLICT, "idempotency key already used for another change")
+        stored
+    }
+
     /** POST /admin/config/changes. [clientUuid] (Idempotency-Key) makes a replay return the first answer. */
     fun create(p: AronPrincipal, req: ConfigChangeRequestIn, clientUuid: UUID?, requestId: String?, revertOf: Long? = null, kind: String = "change"): ConfigChangeDto {
         val tso = p.role == Role.TSO
+        // Replay first (Idempotency-Key): a stored change of this caller answers as it is now, before the dates, the
+        // registry or reach are re-judged (a retry minutes later must not turn into 400 in_past); the same key with other
+        // changes or another reason is a 409, never the first change silently.
+        if (clientUuid != null) replayOf(p, req, clientUuid)?.let { return it }
         if (p.role != Role.ADMIN && p.role != Role.SUPERADMIN && !tso) throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "config changes are made by ADMIN or SUPERADMIN")
         if (req.reason.trim().length < 10 || req.reason.length > 500) throw ApiProblem(ProblemCode.ERR_CFG_REASON_REQUIRED, "a reason of 10 to 500 characters is required", errors = listOf(FieldError("body.reason", "length")))
         if (req.changes.isEmpty() || req.changes.size > 100) throw ApiProblem(ProblemCode.ERR_VALIDATION, "1 to 100 changes", errors = listOf(FieldError("body.changes", "out_of_range")))
@@ -147,14 +165,45 @@ class ConfigService(private val db: Database, val resolver: ConfigResolver, priv
                     return@inTransaction loadChange(h, id)!!
                 }
             }
+            // D-AUTHZ-QA-Q4: an editor needs each key's editor_permission among its role's grants, read in this transaction
+            // (a revoke holds at once). The TSO radius proposal is governed by its own rule (cfg.geo.tso_radius_mode), not by the grants.
+            if (!tso) requireEditorGrants(h, p, items.map { it.def })
+            // Q3/Q4 checker B2: a C2-looking change of a loosening-guarded key must not undo a change that is still waiting
+            // (scheduled or pending): its risk was judged against the value before that one applies. One waiting change per key.
+            for (k in items.map { it.def.key }.filter { it in RiskClassifier.LOOSENING_GUARDED }.distinct().sorted()) {
+                h.createQuery("SELECT pg_advisory_xact_lock(hashtext(:k))").bind("k", "cfg_guard:$k").mapTo(String::class.java).findOne()
+                h.createQuery("SELECT change_id FROM app.cfg_change c WHERE c.status IN ('scheduled', 'pending_approval') AND EXISTS (SELECT 1 FROM jsonb_array_elements(c.items) i WHERE i->>'key' = :k) LIMIT 1")
+                    .bind("k", k).mapTo(Long::class.java).findOne().orElse(null)?.let {
+                        throw ApiProblem(ProblemCode.ERR_REQUEST_STATE, "change $it of $k is still waiting; it is decided, applied or cancelled first")
+                    }
+            }
             val outItems = items.map { it.withOld(oldValueAt(h, it)) }
             val risk = outItems.maxOf { pr ->
                 val node = ScopeNode(pr.item.scope_type, pr.item.scope_id)
                 val chain = resolver.chainOf(h, node.type, node.id)
                 val at = pr.from ?: now
                 val before = resolver.resolve(pr.def.key, chain, at).value
-                val after = if (pr.item.value !is JsonNull) pr.item.value else resolver.resolve(pr.def.key, chain.filterNot { it == node }, at).value
+                // What the node resolves to without its own rows; a global node has nothing above it but the registry default.
+                fun without(t: Instant) = chain.filterNot { it == node }.let { rest -> if (rest.isEmpty()) pr.def.default else resolver.resolve(pr.def.key, rest, t).value }
+                val after = if (pr.item.value !is JsonNull) pr.item.value else without(at)
                 var c = RiskClassifier.classify(pr.def, node.type, pr.item.value.takeUnless { v -> v is JsonNull }, before, after)
+                if (pr.def.key in RiskClassifier.LOOSENING_GUARDED) {
+                    // Q3/Q4 checkers B1, B3: when a window ends the node falls back to what resolves without it, judged against
+                    // rows that may only start after create (the C2 delay); rather than chase every tail, a guarded change WITH
+                    // an end is C3: a temporary change of these controls always takes two SUPERADMINs.
+                    if (pr.to != null) c = 3
+                    // The resolver reads on its own connection: safe because the cfg_guard lock above serialises every write of the key.
+                    // Checker N1: the item replaces the timeline over [from, to); at every boundary of an existing row of this
+                    // node inside it (a windowed loosening ending, a scheduled row starting) the value it overrides changes,
+                    // so a 'same value, no end' change cannot make an approved temporary loosening permanent.
+                    val bounds = h.createQuery(
+                        "SELECT t FROM (SELECT effective_to AS t FROM app.cfg_value WHERE key = :k AND scope_type = :st AND scope_id = :si AND effective_to IS NOT NULL " +
+                            "UNION SELECT effective_from FROM app.cfg_value WHERE key = :k AND scope_type = :st AND scope_id = :si) b WHERE t > :from" + if (pr.to != null) " AND t < :to" else "",
+                    ).bind("k", pr.def.key).bind("st", node.type).bind("si", node.id).bind("from", java.time.OffsetDateTime.ofInstant(at, java.time.ZoneOffset.UTC))
+                        .also { q -> pr.to?.let { q.bind("to", java.time.OffsetDateTime.ofInstant(it, java.time.ZoneOffset.UTC)) } }
+                        .mapTo(java.time.OffsetDateTime::class.java).list()
+                    for (t in bounds) c = maxOf(c, RiskClassifier.classify(pr.def, node.type, pr.item.value.takeUnless { v -> v is JsonNull }, resolver.resolve(pr.def.key, chain, t.toInstant()).value, after))
+                }
                 // F-ADM-012: an outlet override above 3 x the radius its zone resolves to needs an approver (C3).
                 if (pr.def.key == "cfg.geo.radius_m" && node.type == "outlet" && pr.item.value !is JsonNull) {
                     val zoneValue = (resolver.resolve(pr.def.key, chain.filterNot { it == node }, at).value as? JsonPrimitive)?.doubleOrNull
@@ -258,6 +307,10 @@ class ConfigService(private val db: Database, val resolver: ConfigResolver, priv
                     if (status != "pending_approval") state()
                     if (p.role != Role.SUPERADMIN) throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "a C3 change is approved by a SUPERADMIN")
                     if (requestedBy == p.userId) throw ApiProblem(ProblemCode.ERR_CFG_SELF_APPROVAL, "the approver is never the requester")
+                    // The approval is where the change takes effect, so the APPROVER's live grants are judged too (as D-AUTHZ-Q5).
+                    val keys = h.createQuery("SELECT DISTINCT i->>'key' FROM app.cfg_change c, jsonb_array_elements(c.items) i WHERE c.change_id = :id").bind("id", changeId).mapTo(String::class.java).list()
+                    val reg = resolver.registry()
+                    requireEditorGrants(h, p, keys.map { reg[it] ?: throw ApiProblem(ProblemCode.ERR_REQUEST_STATE, "key $it is no longer registered") }, pointer = null)
                     if (inFreezeWindow(h, now)) throw ApiProblem(ProblemCode.ERR_CFG_FREEZE_WINDOW, "no class C3 change inside the freeze windows")
                     h.execute("SELECT pg_advisory_xact_lock(7242001)") // serialises the hourly cap with every commit
                     val cap = cfgInt(h, "cfg.sys.c3_max_per_hour", now)
@@ -274,6 +327,9 @@ class ConfigService(private val db: Database, val resolver: ConfigResolver, priv
                     val proposerRole = h.createQuery("SELECT u.role FROM app.cfg_change c JOIN app.app_user u ON u.id = c.requested_by WHERE c.change_id = :id").bind("id", changeId).mapTo(String::class.java).one()
                     if (proposerRole != "TSO") throw ApiProblem(ProblemCode.ERR_REQUEST_STATE, "only a TSO proposal is adopted")
                     val orig = loadChange(h, changeId)!!
+                    // Checker B2: the adopted set is created after this transaction, so its grants are judged here first; a
+                    // refused adopter must not cancel the TSO's proposal.
+                    requireEditorGrants(h, p, orig.changes.map { resolver.registry()[it.key] ?: throw ApiProblem(ProblemCode.ERR_REQUEST_STATE, "key ${it.key} is no longer registered") }, pointer = null)
                     h.createUpdate("UPDATE app.cfg_change SET status = 'cancelled', decided_at = :at, decision_note = :n WHERE change_id = :id")
                         .bind("at", OffsetDateTime.ofInstant(now, ZoneOffset.UTC)).bind("n", ("adopted: " + (req.note ?: "")).take(500)).bind("id", changeId).execute()
                     AuditWriter.write(h, p, "cfg_change", changeId.toString(), "adopt", JsonPrimitive(status), JsonPrimitive("cancelled"), req.note, requestId)
@@ -304,6 +360,18 @@ class ConfigService(private val db: Database, val resolver: ConfigResolver, priv
     }
 
     private fun risk3(c: ConfigChangeDto) = c.risk_class >= 3
+
+    /** 403 unless the role of [p] holds every `editor_permission` of [defs] in `app.role_grant_map` now (D-AUTHZ-QA-Q4). */
+    private fun requireEditorGrants(h: Handle, p: AronPrincipal, defs: List<KeyDef>, pointer: String? = "body.changes") {
+        val needed = defs.map { it.editorPermission }.toSortedSet()
+        val held = h.createQuery("SELECT permission FROM app.role_grant_map WHERE role = :r AND permission = ANY(:p)").bind("r", p.role.wire)
+            .bindArray("p", String::class.java, needed.toList()).mapTo(String::class.java).set()
+        val missing = needed - held
+        if (missing.isNotEmpty()) {
+            val keys = defs.filter { it.editorPermission in missing }.map { it.key }.distinct().sorted()
+            throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "editing ${keys.joinToString()} needs ${missing.joinToString()}", errors = pointer?.let { listOf(FieldError(it, "permission")) } ?: emptyList())
+        }
+    }
 
     // ---------------------------------------------------------------- scheduled application (worker tick)
 

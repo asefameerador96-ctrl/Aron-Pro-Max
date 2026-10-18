@@ -66,7 +66,7 @@ class AmoApi(private val client: AronApiClient, context: Context, userId: Long) 
             if (next == null) { complete = false; break }
             pages += next
         }
-        val all = com.aktcl.aron.feature.amo.Reports.combine(pages, if (key == "std-memo") com.aktcl.aron.feature.amo.Reports.STD_COLUMNS.toSet() else null)
+        val all = com.aktcl.aron.feature.amo.Reports.combine(pages, com.aktcl.aron.feature.amo.Reports.keptColumns(key))
         // A short list (pages missing because of a failure or the page cap) never replaces a complete kept copy.
         if (complete) remember(cacheKey, all)
         return AmoFetch.Fresh(all)

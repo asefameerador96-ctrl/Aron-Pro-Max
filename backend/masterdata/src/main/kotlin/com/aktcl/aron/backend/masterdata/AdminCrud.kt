@@ -2,6 +2,7 @@ package com.aktcl.aron.backend.masterdata
 
 import com.aktcl.aron.backend.platform.ApiProblem
 import com.aktcl.aron.backend.platform.AronPrincipal
+import com.aktcl.aron.backend.platform.PiiReadBudget
 import com.aktcl.aron.backend.platform.Reach
 import com.aktcl.aron.contract.ProblemCode
 import com.aktcl.aron.contract.Role
@@ -111,6 +112,7 @@ internal fun adminList(call: ApplicationCall, d: AdminMasterDeps, p: AronPrincip
         st.mapToMap().list()
     }
     val page = rows.take(limit)
+    if (e === USER || e === OUTLET) PiiReadBudget.chargeRevealed(d.db, d.guard.config, d.clock, p, page.size)
     val next = if (rows.size > limit) page.last().let { r ->
         AdminCursor(if (since != null) (r["updated_at"] as java.sql.Timestamp).toInstant() else null, (r["id"] as Number).toLong()).encode()
     } else null
@@ -122,6 +124,7 @@ internal fun adminList(call: ApplicationCall, d: AdminMasterDeps, p: AronPrincip
 internal suspend fun adminGet(call: ApplicationCall, d: AdminMasterDeps, p: AronPrincipal, e: MasterEntity, id: Long) {
     val ctx = d.ctx(call, p)
     val row = d.db.jdbi.withHandle<Map<String, Any?>?, Exception> { h -> ctx.visibleRow(h, e, id, false) } ?: admNotFound()
+    if (e === USER || e === OUTLET) PiiReadBudget.chargeRevealed(d.db, d.guard.config, d.clock, p, 1)
     call.admRespond(HttpStatusCode.OK, e.out(row, p), (row["version"] as Number).toInt())
 }
 

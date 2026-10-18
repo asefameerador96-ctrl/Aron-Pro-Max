@@ -38,6 +38,7 @@ export function formatDateTime(locale: Locale, iso: string): string {
     timeZone: "Asia/Dhaka",
     dateStyle: "medium",
     timeStyle: "short",
+    ...(locale === "bn" ? { hourCycle: "h23" as const } : {}),
   }).format(d);
 }
 

@@ -25,16 +25,27 @@ class LocaleDigitsTest {
     }
 
     @Test
-    fun groupsTheSouthAsianWay() {
-        assertEquals("0", LocaleDigits.groupSouthAsian(0))
-        assertEquals("999", LocaleDigits.groupSouthAsian(999))
-        assertEquals("1,000", LocaleDigits.groupSouthAsian(1000))
-        assertEquals("12,34,567", LocaleDigits.groupSouthAsian(1234567))
-        assertEquals("1,00,00,000", LocaleDigits.groupSouthAsian(10_000_000))
-        assertEquals("-1,000", LocaleDigits.groupSouthAsian(-1000))
-        assertEquals("-92,23,37,20,36,85,47,75,808", LocaleDigits.groupSouthAsian(Long.MIN_VALUE))
-        assertEquals("১২,৩৪,৫৬৭", LocaleDigits.formatInteger(1234567, AppLanguage.BN))
+    fun groupsInThrees() {
+        assertEquals("0", LocaleDigits.groupWestern(0))
+        assertEquals("999", LocaleDigits.groupWestern(999))
+        assertEquals("1,000", LocaleDigits.groupWestern(1000))
+        assertEquals("1,234,567", LocaleDigits.groupWestern(1234567))
+        assertEquals("10,000,000", LocaleDigits.groupWestern(10_000_000))
+        assertEquals("-1,000", LocaleDigits.groupWestern(-1000))
+        assertEquals("-999", LocaleDigits.groupWestern(-999))
+        assertEquals("2,147,483,648", LocaleDigits.groupWestern(2_147_483_648L)) // above 2^31
+        assertEquals("-9,223,372,036,854,775,808", LocaleDigits.groupWestern(Long.MIN_VALUE))
+        assertEquals("9,223,372,036,854,775,807", LocaleDigits.groupWestern(Long.MAX_VALUE))
+    }
+
+    @Test
+    fun theDigitsFollowTheLanguageNotTheGrouping() {
+        assertEquals("1,234,567", LocaleDigits.formatInteger(1234567, AppLanguage.EN))
+        assertEquals("১,২৩৪,৫৬৭", LocaleDigits.formatInteger(1234567, AppLanguage.BN))
+        assertEquals("২,১৪৭,৪৮৩,৬৪৮", LocaleDigits.formatInteger(2_147_483_648L, AppLanguage.BN))
+        assertEquals("2,147,483,648", LocaleDigits.formatInteger(2_147_483_648L, AppLanguage.EN))
         assertEquals("1234567", LocaleDigits.formatInteger(1234567, AppLanguage.EN, grouping = false))
+        assertEquals("১২৩৪৫৬৭", LocaleDigits.formatInteger(1234567, AppLanguage.BN, grouping = false))
     }
 
     @Test

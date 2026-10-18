@@ -289,7 +289,7 @@ class PushCheckerTest {
         val fcm = tok("zone")
         assertEquals(HttpStatusCode.NoContent, client.register(phone, fcm).status)
         exec("INSERT INTO app.cfg_version (config_version, kind, committed_by, summary) SELECT max(config_version) + 1, 'change', (SELECT id FROM app.app_user WHERE username = 'aron.system'), 'chk zone push off' FROM app.cfg_version")
-        exec("INSERT INTO app.cfg_value (key, scope_type, scope_id, value, effective_from, config_version, reason) SELECT 'cfg.notify.task_push_enabled', 'zone', $zone, 'false'::jsonb, now() - interval '1 day', max(config_version), 'chk' FROM app.cfg_version")
+        exec("INSERT INTO app.cfg_value (key, scope_type, scope_id, value, effective_from, config_version, reason) SELECT 'cfg.notify.task_push_enabled', 'zone', $zone, 'false'::jsonb, TIMESTAMPTZ '${ApiWorld.CFG_FROM}', max(config_version), 'chk' FROM app.cfg_version")
         now.updateAndGet { it.plusSeconds(61) } // past every config cache
         val web = client.login("amo1001", "web")
         settle(); sent.clear()
@@ -383,7 +383,7 @@ class PushCheckerTest {
     fun theGlobalOpsSwitchStopsEveryPush() = testApplication {
         application { aronApi(wiring) }
         exec("INSERT INTO app.cfg_version (config_version, kind, committed_by, summary) SELECT max(config_version) + 1, 'change', (SELECT id FROM app.app_user WHERE username = 'aron.system'), 'chk ops push off' FROM app.cfg_version")
-        exec("INSERT INTO app.cfg_value (key, scope_type, scope_id, value, effective_from, config_version, reason) SELECT 'cfg.ops.push_enabled', 'global', 0, 'false'::jsonb, now() - interval '1 day', max(config_version), 'chk' FROM app.cfg_version")
+        exec("INSERT INTO app.cfg_value (key, scope_type, scope_id, value, effective_from, config_version, reason) SELECT 'cfg.ops.push_enabled', 'global', 0, 'false'::jsonb, TIMESTAMPTZ '${ApiWorld.CFG_FROM}', max(config_version), 'chk' FROM app.cfg_version")
         now.updateAndGet { it.plusSeconds(61) }
         val phone = client.login("sr1001", "app_sr", devPhone)
         assertEquals(HttpStatusCode.NoContent, client.register(phone, tok("ops")).status)

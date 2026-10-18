@@ -57,6 +57,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.customActions
@@ -249,6 +250,9 @@ internal fun KitTextField(
     }
 }
 
+/** Test tags of the sale screens. */
+object SaleTags { const val QC_ONLY = "sale_qc_only" }
+
 /**
  * Sale: SKU quantity entry (F-SR-023, screens-sr s7). Quantities are in the SKU's own unit with the unit shown, a
  * read-only pack badge, a running total in the bar and a stock warning that never blocks. Idle rows are 72 dp with a
@@ -268,6 +272,8 @@ fun SaleEntryScreen(
     /** SKUs sold to this outlet in the last 7 local days: listed first as a jump aid, no pre-filled quantity. */
     recentSkuIds: Set<Long> = emptySet(),
     onPreviousSales: (() -> Unit)? = null,
+    /** Product QC with no sale lines (D-18): offered only while the memo has no line; null hides it (AMO, tests). */
+    onQcOnly: (() -> Unit)? = null,
 ) {
     val c = LocalAronColors.current
     var askZero by remember { mutableStateOf(false) }
@@ -322,6 +328,9 @@ fun SaleEntryScreen(
         Column(Modifier.weight(1f).fillMaxWidth()) {
             if (onPreviousSales != null) {
                 AronTextButton(stringResource(R.string.sale_history), onPreviousSales, Modifier.padding(horizontal = AronTokens.Space.S))
+            }
+            if (onQcOnly != null && !hasLines && skus.isNotEmpty()) {
+                AronTextButton(stringResource(R.string.sale_qc_only), onQcOnly, Modifier.padding(horizontal = AronTokens.Space.S).testTag(SaleTags.QC_ONLY))
             }
             when {
                 skus.isEmpty() || review == null -> AronEmptyState(stringResource(R.string.sale_empty), icon = AronIcons.Sale)
@@ -563,6 +572,8 @@ fun ReviewScreen(
                     }
                 }
             }
+            // a QC-only sale (D-18): the net is below zero and is stored as a credit; the sign is shown, never hidden
+            if (t.netMtk < 0) AronBanner(stringResource(R.string.review_credit_note), kind = BannerKind.Warning)
             review.problems.forEach { p -> AronBanner(problemText(p), kind = BannerKind.Error) }
             Text(stringResource(R.string.review_print_later), style = MaterialTheme.typography.bodySmall, color = c.textSecondary)
         }
@@ -670,5 +681,8 @@ private fun problemText(p: ReviewProblem): String = when (p) {
     is ReviewProblem.UnitNotAllowed -> stringResource(R.string.review_problem_unit, p.skuId.toString())
     is ReviewProblem.PaidOutOfRange, is ReviewProblem.PaidNotPaisa, ReviewProblem.PaidNegative -> stringResource(R.string.review_problem_paid)
     ReviewProblem.NothingToSell -> stringResource(R.string.review_problem_nothing)
+    is ReviewProblem.NetNegative -> stringResource(R.string.review_problem_net_negative)
+    is ReviewProblem.QcAboveCap -> stringResource(R.string.review_problem_qc_cap)
+    is ReviewProblem.TooManyQcRows -> localizedDigits(stringResource(R.string.review_problem_qc_rows, p.max.toString()))
     else -> stringResource(R.string.review_problem_other)
 }

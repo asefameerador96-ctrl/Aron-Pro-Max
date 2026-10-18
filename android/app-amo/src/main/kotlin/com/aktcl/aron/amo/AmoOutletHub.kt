@@ -27,11 +27,15 @@ import com.aktcl.aron.core.system.permission.GatedFeature
 import com.aktcl.aron.core.system.permission.PermissionGate
 import com.aktcl.aron.core.ui.AronListRow
 import com.aktcl.aron.core.ui.AronScreen
+import com.aktcl.aron.core.ui.AronSectionLabel
 import com.aktcl.aron.core.ui.AronTokens
 import com.aktcl.aron.core.ui.AronTopBar
 import com.aktcl.aron.core.ui.RowPosition
 import com.aktcl.aron.feature.amo.AmoRoutePick
 import com.aktcl.aron.feature.amo.ControlCall
+import com.aktcl.aron.feature.amo.HubListContent
+import com.aktcl.aron.feature.amo.HubRow
+import com.aktcl.aron.feature.amo.HubSection
 import com.aktcl.aron.feature.outlet.ClusterOption
 import com.aktcl.aron.feature.outlet.OutletPicker
 import com.aktcl.aron.feature.outlet.OutletPickerContent
@@ -59,6 +63,7 @@ fun AmoOutletHub(day: AmoDay, onBack: () -> Unit, extra: @Composable (OutletHubE
     var leaf by rememberSaveable { mutableStateOf(OutletLeaf.LIST) }
     var routeId by rememberSaveable { mutableStateOf<Long?>(null) }
     var verifyUuid by rememberSaveable { mutableStateOf<String?>(null) }
+    var verifyGroup by rememberSaveable { mutableStateOf("new") }
     var savedKind by rememberSaveable { mutableStateOf(OutletRequestKind.NEW.name) }
     // After process death AmoDay is rebuilt: the chosen kind is restored, and a Close/Info step whose outlet is gone starts over.
     day.requestKind = OutletRequestKind.valueOf(savedKind)
@@ -77,31 +82,27 @@ fun AmoOutletHub(day: AmoDay, onBack: () -> Unit, extra: @Composable (OutletHubE
     BackHandler(onBack = back)
     AronScreen(topBar = { AronTopBar(stringResource(HomeR.string.hm_tile_outlet), onBack = back) }) {
         when (leaf) {
-            OutletLeaf.LIST -> Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = AronTokens.Space.Screen)) {
-                val rows = listOf(
-                    Triple(OutR.string.out_req_new, OutletRequestKind.NEW, true), Triple(OutR.string.out_req_close, OutletRequestKind.CLOSE, true),
-                    Triple(OutR.string.out_req_info, OutletRequestKind.INFO, true),
+            OutletLeaf.LIST -> {
+                // docs/07 + manual: first the verification of the SRs' requests (three rows with their counts), then the AMO's own shop operations.
+                var pending by remember { mutableStateOf<List<com.aktcl.aron.feature.amo.PendingRequest>>(emptyList()) }
+                LaunchedEffect(day) { pending = runCatching { day.pendingVerifications() }.getOrDefault(emptyList()) }
+                val verify = listOf(
+                    HubRow(stringResource(AmoR.string.amo_verify_new), countText(pending.count { it.type == "new" }), { verifyGroup = "new"; leaf = OutletLeaf.VERIFY_LIST }),
+                    HubRow(stringResource(AmoR.string.amo_verify_closure), countText(pending.count { it.type == "close" }), { verifyGroup = "close"; leaf = OutletLeaf.VERIFY_LIST }),
+                    HubRow(stringResource(AmoR.string.amo_verify_change), countText(pending.count { it.type != "new" && it.type != "close" }), { verifyGroup = "info"; leaf = OutletLeaf.VERIFY_LIST }),
                 )
-                rows.forEachIndexed { i, (label, kind, _) ->
-                    AronListRow(
-                        stringResource(label),
-                        onClick = {
-                            day.requestKind = kind; savedKind = kind.name; day.requestOutlet = null
-                            leaf = if (kind == OutletRequestKind.NEW) OutletLeaf.FORM else OutletLeaf.PICK_ROUTE
-                        },
-                        position = if (i == 0) RowPosition.First else RowPosition.Middle, divider = true, flat = true,
-                    )
+                fun request(kind: OutletRequestKind): () -> Unit = {
+                    day.requestKind = kind; savedKind = kind.name; day.requestOutlet = null
+                    leaf = if (kind == OutletRequestKind.NEW) OutletLeaf.FORM else OutletLeaf.PICK_ROUTE
                 }
-                AronListRow(
-                    stringResource(AmoR.string.amo_leaf_update_base),
-                    onClick = { day.requestKind = OutletRequestKind.LOCATION; savedKind = OutletRequestKind.LOCATION.name; day.requestOutlet = null; leaf = OutletLeaf.PICK_ROUTE },
-                    position = RowPosition.Middle, divider = true, flat = true,
+                val ops = listOf(
+                    HubRow(stringResource(OutR.string.out_req_new), onClick = request(OutletRequestKind.NEW)),
+                    HubRow(stringResource(OutR.string.out_req_close), onClick = request(OutletRequestKind.CLOSE)),
+                    HubRow(stringResource(OutR.string.out_req_info), onClick = request(OutletRequestKind.INFO)),
+                    HubRow(stringResource(AmoR.string.amo_leaf_update_base), onClick = request(OutletRequestKind.LOCATION)),
+                    HubRow(stringResource(OutR.string.out_own_open), onClick = { leaf = OutletLeaf.OWN_LIST }),
                 )
-                AronListRow(
-                    stringResource(AmoR.string.amo_verify_open), onClick = { leaf = OutletLeaf.VERIFY_LIST },
-                    position = RowPosition.Middle, divider = true, flat = true,
-                )
-                AronListRow(stringResource(OutR.string.out_own_open), onClick = { leaf = OutletLeaf.OWN_LIST }, position = RowPosition.Last, divider = false, flat = true)
+                HubListContent(listOf(HubSection(stringResource(AmoR.string.amo_verify_section), verify), HubSection(stringResource(AmoR.string.amo_ops_section), ops)))
             }
             OutletLeaf.OWN_LIST -> {
                 var list by remember { mutableStateOf<List<OwnRequestRow>?>(null) }
@@ -139,7 +140,7 @@ fun AmoOutletHub(day: AmoDay, onBack: () -> Unit, extra: @Composable (OutletHubE
                     rows = runCatching { day.pendingVerifications() }.getOrDefault(emptyList())
                     names = com.aktcl.aron.feature.amo.OutletVerify.teamNames(runCatching { day.reference.section("supervisor") }.getOrNull())
                 }
-                rows?.let { com.aktcl.aron.feature.amo.VerifyListContent(it, names, { r -> verifyUuid = r.uuid; leaf = OutletLeaf.VERIFY_FORM }) }
+                rows?.let { all -> com.aktcl.aron.feature.amo.VerifyListContent(all.filter { when (verifyGroup) { "new" -> it.type == "new"; "close" -> it.type == "close"; else -> it.type != "new" && it.type != "close" } }, names, { r -> verifyUuid = r.uuid; leaf = OutletLeaf.VERIFY_FORM }) }
                     ?: Box(Modifier.fillMaxSize(), Alignment.Center) { CircularProgressIndicator() }
             }
             OutletLeaf.VERIFY_FORM -> PermissionGate(GatedFeature.OUTLET_REQUEST, onBack = back) { AmoVerifyHost(day, verifyUuid, onDone = { leaf = OutletLeaf.VERIFY_LIST }, onGone = { leaf = OutletLeaf.VERIFY_LIST }) }
@@ -149,6 +150,9 @@ fun AmoOutletHub(day: AmoDay, onBack: () -> Unit, extra: @Composable (OutletHubE
         }
     }
 }
+
+@Composable
+private fun countText(n: Int): String? = n.takeIf { it > 0 }?.let { com.aktcl.aron.core.ui.localizedNumber(it.toLong()) }
 
 /** What an extension of the hub (Verify, Update Base) can use; kept empty until those rows land. */
 class OutletHubExtras
@@ -211,7 +215,8 @@ private fun AmoVerifyHost(day: AmoDay, uuid: String?, onDone: () -> Unit, onGone
     if (gone) { LaunchedEffect(Unit) { onGone() }; return }
     val req = request ?: run { Box(Modifier.fillMaxSize(), Alignment.Center) { CircularProgressIndicator() }; return }
     // Fixed when the form opens: a double tap or a replay queues one decision.
-    val recordUuid = rememberSaveable(uuid) { com.aktcl.aron.core.common.ClientIds.newUuid() }
+    val draftKey = "verify:${req.uuid}"
+    val recordUuid = remember(draftKey) { day.drafts.uuid(draftKey) }
     var subId by rememberSaveable(uuid) { mutableStateOf<Long?>(null) }
     var geo by rememberSaveable(uuid) { mutableStateOf<String?>(null) }
     var note by rememberSaveable(uuid) { mutableStateOf("") }
@@ -219,6 +224,15 @@ private fun AmoVerifyHost(day: AmoDay, uuid: String?, onDone: () -> Unit, onGone
     var noFix by remember { mutableStateOf(false) }
     var saveFailed by remember { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
+    // The manual's success dialog: the decision is saved on this phone and goes out with the next sync; OK returns to the list.
+    var savedDialog by rememberSaveable(uuid) { mutableStateOf(false) }
+    if (savedDialog) {
+        com.aktcl.aron.core.ui.AronInfoDialog(
+            stringResource(AmoR.string.amo_success_title), stringResource(AmoR.string.amo_verify_saved), stringResource(AmoR.string.amo_ok),
+            onDismiss = { savedDialog = false; onDone() },
+        )
+        return
+    }
     val bangla = androidx.compose.ui.platform.LocalConfiguration.current.locales[0].language == "bn"
     val outlet = remember(req.outletId, day.zoneOutlets.size) { day.zoneOutlets.firstOrNull { it.outletId == req.outletId } }
     fun subLabel(id: String?) = id?.toLongOrNull()?.let { i -> subs.firstOrNull { it.id == i } }?.let { if (bangla) it.labelBn ?: it.labelEn else it.labelEn } ?: id
@@ -252,7 +266,7 @@ private fun AmoVerifyHost(day: AmoDay, uuid: String?, onDone: () -> Unit, onGone
             } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { threw = true; false }
             busy = false
             saveFailed = threw
-            if (ok) onDone() else noFix = !threw
+            if (ok) { day.drafts.clear(draftKey); savedDialog = true } else noFix = !threw
         }
     }
     com.aktcl.aron.feature.amo.VerifyFormContent(

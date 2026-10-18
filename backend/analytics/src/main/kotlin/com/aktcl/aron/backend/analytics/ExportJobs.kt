@@ -132,17 +132,22 @@ class ExportJobService(
         }
     }
 
-    /** The job as its owner (or an admin viewer) sees it; the download link exists only while the file does. */
+    /**
+     * The job as its owner (or an admin viewer) sees it; the download link exists only while the file does. Another
+     * user's export with personal columns gets a link only while the viewer's own PII reveal holds (D-AUTHZ-PII, checker
+     * B1), so the guard has audited the request; otherwise the job is shown without a link.
+     */
     fun job(exportId: String, viewer: AronPrincipal, adminViewer: Boolean): ExportJob? {
         if (runCatching { UUID.fromString(exportId) }.getOrNull()?.toString() != exportId) return null
         val row = db.readJdbi.withHandle<Row?, Exception> { h ->
-            h.createQuery("SELECT report_key, user_id, status, row_count, created_at, blob_path, expires_at, error FROM app.report_export WHERE export_id = CAST(:id AS uuid)").bind("id", exportId)
-                .map { rs, _ -> Row(rs.getString(1), rs.getLong(2), rs.getString(3), rs.getObject(4) as Int?, rs.getObject(5, OffsetDateTime::class.java).toInstant(), rs.getString(6), rs.getObject(7, OffsetDateTime::class.java)?.toInstant(), rs.getString(8)) }.findOne().orElse(null)
+            h.createQuery("SELECT report_key, user_id, status, row_count, created_at, blob_path, expires_at, error, pii_included FROM app.report_export WHERE export_id = CAST(:id AS uuid)").bind("id", exportId)
+                .map { rs, _ -> Row(rs.getString(1), rs.getLong(2), rs.getString(3), rs.getObject(4) as Int?, rs.getObject(5, OffsetDateTime::class.java).toInstant(), rs.getString(6), rs.getObject(7, OffsetDateTime::class.java)?.toInstant(), rs.getString(8), rs.getBoolean(9)) }.findOne().orElse(null)
         } ?: return null
         if (row.userId != viewer.userId && !adminViewer) return null   // someone else's export looks like none
-        val live = row.status == "done" && row.path != null && row.expires != null && clock.now().isBefore(row.expires)
+        val live = row.status == "done" && row.path != null && row.expires != null && clock.now().isBefore(row.expires) &&
+            (!row.pii || row.userId == viewer.userId || viewer.pii)
         return ExportJob(exportId, row.key, row.status, row.rows, row.created.wire(), if (live) store.readUrl(row.path!!, minOf(row.expires!!, clock.now().plus(Duration.ofMinutes(15)))) else null, row.expires?.wire(), row.error)
     }
 
-    private class Row(val key: String, val userId: Long, val status: String, val rows: Int?, val created: Instant, val path: String?, val expires: Instant?, val error: String?)
+    private class Row(val key: String, val userId: Long, val status: String, val rows: Int?, val created: Instant, val path: String?, val expires: Instant?, val error: String?, val pii: Boolean)
 }

@@ -50,4 +50,19 @@ class TokenVerifierTest {
         // sync/batch grace: expired by at most 60 s is still accepted there.
         assertEquals(1001, f.verifier.verify(short, setOf(Audience.API), expiredGraceS = 60).userId)
     }
+
+    /** D-AUTHZ-PII: the `pii` claim holds only with a `pii_until` window that is still open (fail closed). */
+    @Test
+    fun aPiiClaimHoldsOnlyInsideItsWindow() {
+        val admin = f.users.findById(9001)!!
+        val noWindow = f.issuer.access(TokenSubject(admin, null, null, "web", pii = true)).token
+        assertEquals(false, f.verifier.verify(noWindow, setOf(Audience.API)).pii, "no pii_until: no reveal")
+        val until = f.clock.now().plusSeconds(300)
+        val open = f.issuer.access(TokenSubject(admin, null, null, "web", pii = true, piiUntil = until)).token
+        f.verifier.verify(open, setOf(Audience.API)).let { assertEquals(true, it.pii); assertEquals(until.epochSecond, it.piiUntil!!.epochSecond) }
+        f.clock.advance(301)
+        assertEquals(false, f.verifier.verify(open, setOf(Audience.API)).pii, "the window closed before the token expired")
+        val off = f.issuer.access(TokenSubject(admin, null, null, "web", piiUntil = f.clock.now().plusSeconds(300))).token
+        assertEquals(false, f.verifier.verify(off, setOf(Audience.API)).pii, "a window without the pii flag reveals nothing")
+    }
 }

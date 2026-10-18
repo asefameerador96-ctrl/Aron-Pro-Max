@@ -211,6 +211,34 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/auth/reauth": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Step-up before a PII reveal (web sessions of a role that holds pii.reveal).
+         * @description A web API session re-enters its password and, for an MFA user, a fresh 6-digit TOTP code (docs/21 s4.5). The
+         *     role must hold the `pii.reveal` grant (`app.role_grant_map`, read per request; ADMIN and SUPERADMIN by default),
+         *     else 403. Wrong answers share one 401 `ERR_AUTH_INVALID_CREDENTIALS` and count towards the lockout
+         *     (`cfg.auth.lockout_attempts`, then 403 `ERR_AUTH_ACCOUNT_LOCKED`). Success returns a new web access token whose
+         *     reveal holds until `pii_until` (now + `cfg.pii.reauth_min`, at most the token's life); the refresh token is
+         *     unchanged and a refresh mints a token without the reveal. While it holds, `Me.pii` is true and the masked
+         *     personal columns (phone, owner, report `pii` columns, ADMIN audit-log personal members) are served; every such
+         *     request writes an audit row (entity `pii_reveal`, no personal value). ANALYST and SUPPORT audit-log masking
+         *     never changes.
+         */
+        post: operations["reauth"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/auth/jwks": {
         parameters: {
             query?: never;
@@ -3580,6 +3608,16 @@ export interface components {
             mfa_token: string;
             code: string;
         };
+        ReauthRequest: {
+            password: string;
+            /** @description TOTP code; required for an MFA user (cfg.auth.mfa_required_roles or an own enrolment). Recovery codes are not accepted here. */
+            code?: string | null;
+        };
+        ReauthResponse: {
+            access_token: string;
+            access_expires_at: components["schemas"]["Timestamp"];
+            pii_until: components["schemas"]["Timestamp"];
+        };
         Jwks: {
             keys: components["schemas"]["JwkEcPublic"][];
         };
@@ -3600,8 +3638,10 @@ export interface components {
             user: components["schemas"]["UserSummary"];
             permissions: string[];
             scope: components["schemas"]["ScopeSummary"];
-            /** @description Whether the caller may see outlet phone and owner columns. */
+            /** @description Whether the caller may see outlet phone and owner columns now: true only inside a reveal window opened by POST /v1/auth/reauth. */
             pii?: boolean;
+            /** @description End of the reveal window while pii is true, else null. */
+            pii_until?: components["schemas"]["Timestamp"] | null;
             mfa_enabled?: boolean;
             /** @description The caller's role row of cfg.web.menu_by_role, resolved now (same mapping as GET /v1/admin/permissions). */
             menus?: components["schemas"]["MenuPermission"][];
@@ -4910,6 +4950,10 @@ export interface components {
             assigned_user_id?: number | null;
             /** Format: int64 */
             acting_user_id?: number | null;
+            /** @description Login of the assigned SR, for the supervisor route lists (F-TSO-007). */
+            assigned_username?: string | null;
+            /** @description Full name of the assigned SR, for the supervisor route lists (F-TSO-007). */
+            assigned_user_full_name?: string | null;
         };
         SupervisorDayState: {
             user_id: components["schemas"]["Id"];
@@ -5979,6 +6023,8 @@ export interface components {
             to: components["schemas"]["BusinessDate"];
             node: components["schemas"]["NodeRef"];
             visits: number;
+            /** @description Visits counted as geo-valid in the period and node; the numerator of geo_valid_pct. */
+            geo_valid_visits: number;
             geo_valid_pct: number | null;
             force_sale_pct: number | null;
             mock_pct: number | null;
@@ -5990,6 +6036,8 @@ export interface components {
             children: {
                 node: components["schemas"]["NodeRef"];
                 visits: number;
+                /** @description Visits counted as geo-valid in the period and node; the numerator of geo_valid_pct. */
+                geo_valid_visits: number;
                 geo_valid_pct: number | null;
                 suspicious_visits: number;
             }[];
@@ -8802,6 +8850,35 @@ export interface operations {
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             429: components["responses"]["TooManyRequests"];
+        };
+    };
+    reauth: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReauthRequest"];
+            };
+        };
+        responses: {
+            /** @description Reveal window opened; use the returned access token. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReauthResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     getJwks: {
@@ -12807,6 +12884,7 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
             412: components["responses"]["PreconditionFailed"];
         };
     };

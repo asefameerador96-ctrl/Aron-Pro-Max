@@ -5,6 +5,7 @@
 # scope-gaps-baseline.txt, frozen 2026-10-07, so the gap set may only shrink). A case must name the route's path. Cases were matched 2026-10-07 by test name and the route path in its body;
 # a reviewer who finds a case that does not assert scope for that route turns it back into a gap.
 # Role denial (which roles may call a route) is not recorded here: the contract carries no per-operation roles.
+GET /v1/admin/audit -> exempt: national readers only (docs/24 s8.5 Audit log: ANALYST, SUPPORT, ADMIN, SUPERADMIN), no scoped role reads it; role refusal in AuditReadTest#onlyAnalystSupportAdminAndSuperadminRead
 GET /v1/admin/calendar/holidays -> gap: backend-admin
 GET /v1/admin/clusters -> case AdminMasterTest#readersSeeOnlyTheirReachAndOnlyAdminsWrite
 GET /v1/admin/code-lists -> exempt: company-wide reference data, identical for every reach; role-gated, no geography rows
@@ -16,8 +17,8 @@ GET /v1/admin/config/density -> gap: backend-admin
 GET /v1/admin/config/keys -> gap: backend-admin
 GET /v1/admin/config/reach/{version} -> gap: backend-admin
 GET /v1/admin/config/reach/{version}/pending -> gap: backend-admin
-GET /v1/admin/config/resolve -> gap: backend-admin
-GET /v1/admin/config/values -> gap: backend-admin
+GET /v1/admin/config/resolve -> case ConfigScopeTest#aTsoResolvesOnlyItsOwnNodesAndAncestorsAndNoOtherNonNationalRoleReadsConfig
+GET /v1/admin/config/values -> case ConfigScopeTest#aTsoResolvesOnlyItsOwnNodesAndAncestorsAndNoOtherNonNationalRoleReadsConfig
 GET /v1/admin/config/versions -> gap: backend-admin
 GET /v1/admin/config/versions/{version} -> gap: backend-admin
 GET /v1/admin/config/whatif -> gap: backend-admin
@@ -27,7 +28,7 @@ GET /v1/admin/devices -> gap: backend-reports
 GET /v1/admin/devices/{device_id} -> gap: backend-reports
 GET /v1/admin/devices/{device_id}/directives -> gap: backend-reports
 GET /v1/admin/devices/{device_id}/status-history -> gap: backend-reports
-GET /v1/admin/enrolment-tokens -> gap: backend-reports
+GET /v1/admin/enrolment-tokens -> case DeviceEnrolmentTest#dmoAndWmListTheTokensOfTheirZonesWithoutTheSecretPrefixOrNote
 GET /v1/admin/geo/{level} -> case AdminMasterTest#readersSeeOnlyTheirReachAndOnlyAdminsWrite
 GET /v1/admin/geo/{level}/{id} -> case AdminMasterTest#readersSeeOnlyTheirReachAndOnlyAdminsWrite
 GET /v1/admin/outlets -> case ScopeLeakHttpTest#twoHundredRandomisedHttpQueriesFindZeroCrossScopeRows
@@ -37,6 +38,8 @@ GET /v1/admin/prices -> gap: backend-admin
 GET /v1/admin/print-templates -> exempt: company-wide reference data, identical for every reach; role-gated, no geography rows
 GET /v1/admin/product-nodes/{level} -> exempt: company-wide reference data, identical for every reach; role-gated, no geography rows
 GET /v1/admin/quarantine -> gap: backend-reports
+GET /v1/admin/releases -> exempt: company-wide app releases, identical for every reach; role-gated (SUPPORT reads, ADMIN drafts, SUPERADMIN publishes), no geography rows
+GET /v1/admin/releases/policy -> exempt: company-wide app releases, identical for every reach; role-gated (SUPPORT reads, ADMIN drafts, SUPERADMIN publishes), no geography rows
 GET /v1/admin/route-assignments -> gap: backend-admin
 GET /v1/admin/routes -> case AdminUsersRoutesTest#routesCreatePatchEffectiveDatedVisitDaysDuplicateAndScope
 GET /v1/admin/routes/{id} -> case AdminUsersRoutesTest#routesCreatePatchEffectiveDatedVisitDaysDuplicateAndScope
@@ -95,6 +98,7 @@ PATCH /v1/admin/content/{id} -> gap: backend-admin
 PATCH /v1/admin/geo/{level}/{id} -> gap: backend-admin
 PATCH /v1/admin/outlets/{id} -> case AdminOutletsTest#outletScopeAndRoles
 PATCH /v1/admin/product-nodes/{level}/{id} -> exempt: company-wide reference data, identical for every reach; role-gated, no geography rows
+PATCH /v1/admin/releases/{release_id} -> exempt: company-wide app releases, identical for every reach; role-gated (SUPPORT reads, ADMIN drafts, SUPERADMIN publishes), no geography rows
 PATCH /v1/admin/routes/{id} -> case AdminUsersRoutesTest#routesCreatePatchEffectiveDatedVisitDaysDuplicateAndScope
 PATCH /v1/admin/rubrics/{id} -> exempt: company-wide reference data, identical for every reach; role-gated, no geography rows
 PATCH /v1/admin/skus/{id} -> exempt: company-wide reference data, identical for every reach; role-gated, no geography rows
@@ -126,6 +130,7 @@ POST /v1/admin/prices/preview -> gap: backend-admin
 POST /v1/admin/print-templates -> exempt: company-wide reference data, identical for every reach; role-gated, no geography rows
 POST /v1/admin/product-nodes/{level} -> exempt: company-wide reference data, identical for every reach; role-gated, no geography rows
 POST /v1/admin/quarantine/{quarantine_id}/resolve -> gap: backend-reports
+POST /v1/admin/releases -> exempt: company-wide app releases, identical for every reach; role-gated (SUPPORT reads, ADMIN drafts, SUPERADMIN publishes), no geography rows
 POST /v1/admin/route-assignments -> gap: backend-admin
 POST /v1/admin/route-assignments/{id}/end -> gap: backend-admin
 POST /v1/admin/routes -> case AdminUsersRoutesTest#routesCreatePatchEffectiveDatedVisitDaysDuplicateAndScope
@@ -139,6 +144,7 @@ POST /v1/auth/bind-device -> exempt: the caller's own account, token or phone on
 POST /v1/auth/change-password -> exempt: the caller's own account, token or phone only; no geography rows
 POST /v1/auth/logout -> exempt: the caller's own account, token or phone only; no geography rows
 POST /v1/auth/mfa/enrol -> exempt: the caller's own account, token or phone only; no geography rows
+POST /v1/auth/reauth -> exempt: the caller's own account, token or phone only; no geography rows
 POST /v1/dashboards/daily-tracking/actions -> case DailyTrackingTest#checker_sameUuidByAnotherUserIsAConflictAndNeverALeak
 POST /v1/day/final-submit -> case DayApiTest#zoneDayOutsideReachAndFieldRolesAreRefused
 POST /v1/day/sales-submit -> exempt: the caller's own route-day only; ingest re-checks the route against the uploader's assignment (BatchCheckerTest scope cases)

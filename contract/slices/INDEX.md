@@ -3,7 +3,7 @@
 Source: contract/openapi.yaml, version 1.3.3.
 
 
-## Schemas (503)
+## Schemas (505)
 
 - `schemas/Uuid.yaml` (273 B)
 - `schemas/Id.yaml` (104 B)
@@ -94,9 +94,11 @@ Source: contract/openapi.yaml, version 1.3.3.
 - `schemas/BindDeviceRequest.yaml` (322 B)
 - `schemas/MfaEnrolment.yaml` (362 B)
 - `schemas/MfaVerifyRequest.yaml` (249 B)
+- `schemas/ReauthRequest.yaml` (446 B)
+- `schemas/ReauthResponse.yaml` (327 B)
 - `schemas/Jwks.yaml` (212 B)
 - `schemas/JwkEcPublic.yaml` (465 B)
-- `schemas/Me.yaml` (736 B)
+- `schemas/Me.yaml` (985 B)
 - `schemas/JwkEcPublicDevice.yaml` (394 B)
 - `schemas/DeviceInfo.yaml` (680 B)
 - `schemas/EnrolDeviceRequest.yaml` (2083 B)
@@ -203,7 +205,7 @@ Source: contract/openapi.yaml, version 1.3.3.
 - `schemas/RecordAck.yaml` (752 B)
 - `schemas/ServerTotals.yaml` (564 B)
 - `schemas/TypeOutcomeCounts.yaml` (371 B)
-- `schemas/RouteDayState.yaml` (1360 B)
+- `schemas/RouteDayState.yaml` (1719 B)
 - `schemas/SupervisorDayState.yaml` (406 B)
 - `schemas/DayStateList.yaml` (308 B)
 - `schemas/Resolution.yaml` (422 B)
@@ -291,7 +293,7 @@ Source: contract/openapi.yaml, version 1.3.3.
 - `schemas/LoginSubmitStatus.yaml` (1155 B)
 - `schemas/SyncHealthRow.yaml` (1475 B)
 - `schemas/SyncHealthPage.yaml` (3362 B)
-- `schemas/GeoValidationSummary.yaml` (1768 B)
+- `schemas/GeoValidationSummary.yaml` (2164 B)
 - `schemas/TargetAchievement.yaml` (1727 B)
 - `schemas/RiskSignal.yaml` (2123 B)
 - `schemas/RiskSignalPage.yaml` (302 B)
@@ -509,7 +511,7 @@ Source: contract/openapi.yaml, version 1.3.3.
 - `schemas/ChannelVolume.yaml` (751 B)
 - `schemas/SuggestedQty.yaml` (234 B)
 
-## Operations (214)
+## Operations (215)
 
 - `operations/getHealth.yaml`  GET /v1/health (770 B)
 - `operations/headHealth.yaml`  HEAD /v1/health (483 B)
@@ -522,6 +524,7 @@ Source: contract/openapi.yaml, version 1.3.3.
 - `operations/bindDevice.yaml`  POST /v1/auth/bind-device (1046 B)
 - `operations/enrolMfa.yaml`  POST /v1/auth/mfa/enrol (546 B)
 - `operations/verifyMfa.yaml`  POST /v1/auth/mfa/verify (677 B)
+- `operations/reauth.yaml`  POST /v1/auth/reauth (1781 B)
 - `operations/getJwks.yaml`  GET /v1/auth/jwks (505 B)
 - `operations/getMe.yaml`  GET /v1/me (363 B)
 - `operations/enrolDevice.yaml`  POST /v1/devices/enrol (1146 B)
@@ -653,7 +656,7 @@ Source: contract/openapi.yaml, version 1.3.3.
 - `operations/issueDeviceOtp.yaml`  POST /v1/admin/device-otps (751 B)
 - `operations/listReleases.yaml`  GET /v1/admin/releases (590 B)
 - `operations/createRelease.yaml`  POST /v1/admin/releases (752 B)
-- `operations/updateRelease.yaml`  PATCH /v1/admin/releases/{release_id} (975 B)
+- `operations/updateRelease.yaml`  PATCH /v1/admin/releases/{release_id} (1032 B)
 - `operations/getReleasePolicy.yaml`  GET /v1/admin/releases/policy (525 B)
 - `operations/listAudit.yaml`  GET /v1/admin/audit (1062 B)
 - `operations/getNearbyOutlets.yaml`  GET /v1/outlets/nearby (1605 B)

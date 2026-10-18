@@ -134,10 +134,45 @@ class DeviceEnrolmentTest : ReportFixture() {
         val used = enrol(enrolBody(secret, other, goodChain(other, secret)))
         assertEquals(HttpStatusCode.Forbidden, used.status); assertTrue(used.bodyAsText().contains("ERR_ENROLMENT_TOKEN_EXHAUSTED"))
         assertEquals(1, count("SELECT count(*) FROM app.device"))
+        // Replay first: the token revoked after the enrolment, the same phone's lost response is still answered with its device;
+        // a new phone on the revoked token is refused.
+        assertEquals(HttpStatusCode.OK, client.post("/v1/admin/enrolment-tokens/${t["token"]!!.jsonObject.s("token_id")}/revoke") { bearerAuth(TestTokens.web(13, Role.ADMIN)) }.status)
+        val afterRevoke = enrol(enrolBody(secret, phone, goodChain(phone, secret)))
+        assertEquals(HttpStatusCode.Created, afterRevoke.status, afterRevoke.bodyAsText())
+        assertEquals(res.s("device_id"), Json.parseToJsonElement(afterRevoke.bodyAsText()).jsonObject.s("device_id"))
+        assertTrue(enrol(enrolBody(secret, other, goodChain(other, secret))).bodyAsText().contains("ERR_ENROLMENT_TOKEN_INVALID"))
+        assertEquals(1, count("SELECT count(*) FROM app.device"))
         // The registry: model, Android version, app version, policy version, last status report.
         val dev = Json.parseToJsonElement(client.get("/v1/admin/devices/${deviceId(phone)}") { bearerAuth(TestTokens.web(13, Role.ADMIN)) }.bodyAsText()).jsonObject
         assertEquals("A70", dev["device_info"]!!.jsonObject.s("model")); assertEquals("13", dev["device_info"]!!.jsonObject.s("os_version")); assertEquals("1.0.0+1", dev.s("app_version"))
         assertEquals("enrolled", dev.s("status")); assertEquals("true", dev.s("hardware_backed_key")); assertEquals("81", dev["last_status"]!!.jsonObject.s("battery_pct"))
+    }
+
+    /** docs/24 s8.5 R (D-AUTHZ-QA-Q5/Q6): DMO and WM read the tokens of their zones, ids, status and expiry only; TSO and the rest are refused. */
+    @Test
+    fun dmoAndWmListTheTokensOfTheirZonesWithoutTheSecretPrefixOrNote() = app {
+        val inZ1 = mintToken()["token"]!!.jsonObject
+        val z2 = client.post("/v1/admin/enrolment-tokens") { bearerAuth(TestTokens.web(13, Role.ADMIN)); contentType(ContentType.Application.Json); setBody("""{"flavour":"sr","lockdown_level":"dev","max_uses":2,"expires_in_h":24,"zone_id":$z2,"note":"for the depot"}""") }
+        val inZ2 = Json.parseToJsonElement(z2.bodyAsText()).jsonObject["token"]!!.jsonObject
+        val national = client.post("/v1/admin/enrolment-tokens") { bearerAuth(TestTokens.web(13, Role.ADMIN)); contentType(ContentType.Application.Json); setBody("""{"flavour":"sr","lockdown_level":"dev","max_uses":1,"expires_in_h":24}""") }
+        val noZone = Json.parseToJsonElement(national.bodyAsText()).jsonObject["token"]!!.jsonObject.s("token_id")
+        suspend fun list(uid: Long, role: Role) = client.get("/v1/admin/enrolment-tokens?active_only=false") { bearerAuth(TestTokens.web(uid, role)) }
+        fun items(body: String) = Json.parseToJsonElement(body).jsonObject["items"]!!.jsonArray.map { it.jsonObject }
+        // uid 11 reaches Z1 only, uid 14 Z2 only (fixture reaches; the role is the token's).
+        val dmo = items(list(11, Role.DMO).bodyAsText())
+        assertEquals(listOf(inZ1.s("token_id")), dmo.map { it.s("token_id") }, "only its zone; neither Z2 nor the zone-less token")
+        assertEquals("------", dmo.single().s("token_prefix")); assertNotEquals(inZ1.s("token_prefix"), "------")
+        val wm = items(list(14, Role.WM).bodyAsText()).single()
+        assertEquals(inZ2.s("token_id"), wm.s("token_id")); assertEquals("------", wm.s("token_prefix"))
+        assertTrue(wm["note"] == null || wm["note"] is kotlinx.serialization.json.JsonNull, "no free-text note")
+        assertEquals(inZ2.s("expires_at"), wm.s("expires_at")); assertEquals("2", wm.s("max_uses"))
+        // The writers still see everything, the prefix and the note included.
+        val all = items(list(13, Role.ADMIN).bodyAsText()).associateBy { it.s("token_id") }
+        assertTrue(noZone in all); assertEquals(inZ2.s("token_prefix"), all.getValue(inZ2.s("token_id")).s("token_prefix")); assertEquals("for the depot", all.getValue(inZ2.s("token_id")).s("note"))
+        for (r in listOf(Role.TSO, Role.TOP, Role.ANALYST, Role.SR, Role.AMO)) assertEquals(HttpStatusCode.Forbidden, list(11, r).status, "$r")
+        // Read only: DMO and WM neither mint nor revoke.
+        assertEquals(HttpStatusCode.Forbidden, client.post("/v1/admin/enrolment-tokens/${inZ1.s("token_id")}/revoke") { bearerAuth(TestTokens.web(11, Role.DMO)) }.status)
+        assertEquals(HttpStatusCode.Forbidden, client.post("/v1/admin/enrolment-tokens") { bearerAuth(TestTokens.web(14, Role.WM)); contentType(ContentType.Application.Json); setBody("""{"flavour":"sr","lockdown_level":"dev","max_uses":1,"expires_in_h":1}""") }.status)
     }
 
     @Test

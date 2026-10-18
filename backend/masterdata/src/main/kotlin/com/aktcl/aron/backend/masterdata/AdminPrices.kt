@@ -158,6 +158,7 @@ private val PCT_CAP = BigDecimal("9999999999.99")
 
 private data class Analysis(val rows: List<PriceRowIn>, val skus: Int, val types: List<String>, val outlets: Int, val devices: Int, val maxPct: BigDecimal, val approval: Boolean)
 
+/** [backdate] is informational (the submitter held finance.backdate at submit); the approval judges the approver's live grant (D-AUTHZ-Q5). */
 private class StoredBatch(val status: String, val fingerprint: String, val validFrom: LocalDate, val rows: List<PriceRowIn>, val reason: String?, val backdate: Boolean, val submittedBy: Long?,
                           val decidedBy: Long?, val decidedAt: OffsetDateTime?, val listVersion: Long?, val note: String?)
 
@@ -356,7 +357,6 @@ private fun currentListVersion(h: Handle): Long = h.createQuery(
 private suspend fun publish(call: ApplicationCall, d: AdminPricesDeps) {
     val p = call.masterWriter()
     val (req, from) = parseRequest(call, call.receiveText())
-    val backdated = checkDate(p, from, d)
     val uuid = UUID.fromString(req.batch_uuid)
     val fp = fingerprint(from, req.prices)
     val reason = req.change_reason.trim()
@@ -373,6 +373,9 @@ private suspend fun publish(call: ApplicationCall, d: AdminPricesDeps) {
                 else emptyList()
                 return@inTransaction SkuPriceListOut(items, existing.listVersion ?: currentListVersion(h)) to existing.status
             }
+            // After the replay: a batch published at 23:55 for tomorrow and retried at 00:05 answers the first publish,
+            // only a new publish is judged back-dated against today.
+            val backdated = checkDate(p, from, d)
             if (d.requirePreview && (existing == null || existing.fingerprint != fp)) throw ApiProblem(
                 ProblemCode.ERR_REQUEST_STATE, "preview these prices first (POST /v1/admin/prices/preview with the same batch_uuid and rows)", errors = listOf(FieldError("body.batch_uuid", "preview_required")),
             )
@@ -429,13 +432,17 @@ private suspend fun decide(call: ApplicationCall, d: AdminPricesDeps): PriceBatc
                     .bind("by", p.userId).bind("n", note).bind("b", uuid).execute()
                 AuditWriter.write(h, p, "price_batch", uuid.toString(), "reject", auditObj("status" to "pending_approval"), auditObj("status" to "rejected", "submitted_by" to b.submittedBy), why, call.requestId)
             } else {
-                // A back-dated batch stays valid only if its submitter had the permission; a forward-dated one that has since come due is refused as past.
-                if (!b.validFrom.isAfter(today(d)) && !b.backdate) throw ApiProblem(ProblemCode.ERR_MASTER_EFFECTIVE_DATE_PAST, "the start date has passed; submit the prices again with a later date", errors = listOf(FieldError("valid_from", "past")))
+                // The approval is where a back-date takes effect, so the APPROVER's finance.backdate grant is judged now, per request
+                // (lead 2026-10-18; Q5): a batch submitted back-dated, or one that came due while pending, needs it; a revoke in between holds.
+                if (!b.validFrom.isAfter(today(d)) && BACKDATE_PERMISSION !in p.permissions) throw ApiProblem(
+                    ProblemCode.ERR_MASTER_EFFECTIVE_DATE_PAST, "the start date has passed; approving it back-dates the prices and needs the $BACKDATE_PERMISSION permission, or submit again with a later date",
+                    errors = listOf(FieldError("valid_from", "past")),
+                )
                 val items = applyRows(h, p, call, uuid, b.validFrom, b.rows, why)
                 val version = bumpListVersion(h, p, d, uuid, why)
                 h.createUpdate("UPDATE app.price_batch SET status = 'published', decided_by = :by, decided_at = now(), decision_note = :n, price_list_version = :v, updated_at = now() WHERE batch_uuid = :b")
                     .bind("by", p.userId).bind("n", note).bind("v", version).bind("b", uuid).execute()
-                AuditWriter.write(h, p, "price_batch", uuid.toString(), "approve", auditObj("status" to "pending_approval"), auditObj("status" to "published", "rows" to items.size, "price_list_version" to version, "submitted_by" to b.submittedBy), why, call.requestId)
+                AuditWriter.write(h, p, "price_batch", uuid.toString(), "approve", auditObj("status" to "pending_approval"), auditObj("status" to "published", "rows" to items.size, "price_list_version" to version, "submitted_by" to b.submittedBy, "valid_from" to b.validFrom, "backdated" to !b.validFrom.isAfter(today(d))), why, call.requestId)
             }
             batchOut(uuid, loadBatch(h, uuid, lock = false)!!)
         }

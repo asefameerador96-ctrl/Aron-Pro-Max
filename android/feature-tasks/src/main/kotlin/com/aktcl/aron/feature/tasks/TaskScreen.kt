@@ -171,6 +171,8 @@ private fun TaskCard(t: TaskItem, onResolve: (String) -> Unit, modifier: Modifie
     card {
         Column(Modifier.fillMaxWidth().padding(AronTokens.Space.L), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
+                // T2: the task type code as a red tag ("OOS") ahead of the title, as on the manual's card
+                if (t.taskTypeCode.isNotBlank()) Pill(c.dangerContainer, c.dangerOnContainer, AronIcons.Flag, t.taskTypeCode.uppercase(java.util.Locale.ROOT))
                 Text(t.title, style = MaterialTheme.typography.titleSmall, color = c.textPrimary, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
                 if (ongoing) Pill(c.accentContainer, c.accentOnContainer, AronIcons.Clock, stringResource(R.string.tsk_status_ongoing))
                 else Pill(null, c.textSecondary, AronIcons.Check, stringResource(R.string.tsk_status_completed))
@@ -212,18 +214,9 @@ private fun Pill(container: Color?, ink: Color, icon: ImageVector, label: String
     }
 }
 
-/** "30 November" / "৩০ নভেম্বর" of a `yyyy-MM-dd` due date (screens-sr s12); the raw text with localised digits when it does not parse. */
+/** The due date as ISO with the year ("2026-11-30", digits in the user's language), as the manual's "Completion on: 2025-11-30" (T4, F-SYS-051). */
 @Composable
-private fun dueDateText(isoDate: String): String {
-    val date = runCatching { java.time.LocalDate.parse(isoDate) }.getOrNull() ?: return localizedDigits(isoDate)
-    val month = stringResource(MONTHS[date.monthValue - 1])
-    return stringResource(R.string.tsk_due_date, localizedNumber(date.dayOfMonth.toLong()), month)
-}
-
-private val MONTHS = listOf(
-    R.string.tsk_month_1, R.string.tsk_month_2, R.string.tsk_month_3, R.string.tsk_month_4, R.string.tsk_month_5, R.string.tsk_month_6,
-    R.string.tsk_month_7, R.string.tsk_month_8, R.string.tsk_month_9, R.string.tsk_month_10, R.string.tsk_month_11, R.string.tsk_month_12,
-)
+private fun dueDateText(isoDate: String): String = localizedDigits(isoDate)
 
 /** `yyyy-MM-dd HH:mm` in Asia/Dhaka (UTC+6) of an RFC 3339 instant. */
 internal fun dhakaStamp(iso: String): String = runCatching {

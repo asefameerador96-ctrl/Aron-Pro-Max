@@ -1,0 +1,15 @@
+ReauthResponse:
+  type: object
+  required:
+  - access_token
+  - access_expires_at
+  - pii_until
+  additionalProperties: false
+  properties:
+    access_token:
+      type: string
+      maxLength: 4096
+    access_expires_at:
+      $ref: '#/components/schemas/Timestamp'
+    pii_until:
+      $ref: '#/components/schemas/Timestamp'

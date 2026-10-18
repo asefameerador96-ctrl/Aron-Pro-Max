@@ -17,6 +17,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import io.ktor.http.isSuccess
 
 /** F-API-080 and F-ADM-081: preview, idempotent publish, back-dating, and the second-approver rail above cfg.price.max_change_pct. */
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
@@ -136,6 +137,30 @@ class AdminPricesTest {
         assertEquals(setOf("outlet", "cc", "distributor"), tso)
     }
 
+    /** Q5: finance.backdate comes from the role's grants, read per request (not from the token): grant, revoke, and replay first. */
+    @Test
+    fun aRoleGrantOfFinanceBackdateTakesEffectPerRequestAndARevokeToo() = t.app {
+        val sku = t.newSku("PRC-Q5A", outlet = 10000)
+        val today = t.today.toString()
+        val body = req(uuid(), today, row(sku, "outlet", 10200))
+        try {
+            // No grant: the plain admin token (no perm claim) is refused.
+            assertEquals("ERR_MASTER_EFFECTIVE_DATE_PAST", preview(t.admin, body).obj()["code"]!!.jsonPrimitive.content)
+            // Granted to ADMIN: the same token, unchanged, now back-dates.
+            t.grants["ADMIN"] = setOf("finance.backdate")
+            val ok = previewAndPublish(t.admin, body)
+            assertEquals(HttpStatusCode.Created, ok.status, ok.obj().toString())
+            assertEquals("10000@2026-01-01>$today 10200@$today>open", rows(sku, "outlet"))
+            // A grant to another role does not reach ADMIN.
+            t.grants.remove("ADMIN"); t.grants["SUPERADMIN"] = setOf("finance.backdate")
+            assertEquals("ERR_MASTER_EFFECTIVE_DATE_PAST", preview(t.admin, req(uuid(), today, row(sku, "cc", 10200))).obj()["code"]!!.jsonPrimitive.content)
+            // Revoked: a new back-dated batch is refused again, but the stored batch's retry answers its first publish (replay first).
+            val replay = publish(t.admin, body)
+            assertTrue(replay.status.isSuccess(), "${replay.status} ${replay.obj()}")
+            assertEquals("10000@2026-01-01>$today 10200@$today>open", rows(sku, "outlet"))
+        } finally { t.grants.clear() }
+    }
+
     @Test
     fun backDatingNeedsFinanceBackdateAndOverlapsAreRefused() = t.app {
         val sku = t.newSku("PRC-B1", outlet = 10000)
@@ -149,6 +174,11 @@ class AdminPricesTest {
         val withPerm = t.tok("admin1001", Role.ADMIN, "finance.backdate")
         val ok = previewAndPublish(withPerm, body)
         assertEquals(HttpStatusCode.Created, ok.status)
+        assertEquals("10000@2026-01-01>$today 10100@$today>open", rows(sku, "outlet"))
+        // Replay first: the same batch retried once the date check would refuse it (here the permission was withdrawn;
+        // in the field a 23:55 publish for tomorrow retried at 00:05) answers the first publish, nothing doubles.
+        val replay = publish(t.admin, body)
+        assertTrue(replay.status.isSuccess(), "${replay.status} ${replay.obj()}")
         assertEquals("10000@2026-01-01>$today 10100@$today>open", rows(sku, "outlet"))
 
         // A price already scheduled from that date or later cannot be overwritten silently.
@@ -315,7 +345,7 @@ class AdminPricesTest {
     }
 
     @Test
-    fun approvalAfterTheStartDateHasPassedIsRefusedUnlessBackdated() = t.app {
+    fun approvalOfAPastStartDateNeedsTheApproversBackdateGrant() = t.app {
         val a = t.newSku("PRC-G1", outlet = 10000)
         val bu = uuid()
         assertEquals("pending_approval", previewAndPublish(t.admin, req(bu, fwd, row(a, "outlet", 15000))).headers[BATCH_STATUS_HEADER])
@@ -324,12 +354,31 @@ class AdminPricesTest {
         val late = decide(t.sup1, bu, "approve")
         assertEquals(HttpStatusCode.BadRequest, late.status); assertEquals("ERR_MASTER_EFFECTIVE_DATE_PAST", late.obj()["code"]!!.jsonPrimitive.content)
         assertEquals("pending_approval", t.scalar("SELECT status FROM app.price_batch WHERE batch_uuid = '$bu'")); assertEquals("10000@2026-01-01>open", rows(a, "outlet"))
-        // A batch whose submitter held finance.backdate may be approved for a past date.
+        // The approval is where the back-date takes effect: the approver's grant decides, judged at approval time.
         val b = t.newSku("PRC-G2", outlet = 10000)
         val bu2 = uuid()
         assertEquals("pending_approval", previewAndPublish(t.tok("admin1001", Role.ADMIN, "finance.backdate"), req(bu2, t.today.toString(), row(b, "outlet", 15000))).headers[BATCH_STATUS_HEADER])
-        assertEquals(HttpStatusCode.OK, decide(t.sup1, bu2, "approve").status)
-        assertEquals("10000@2026-01-01>${t.today} 15000@${t.today}>open", rows(b, "outlet"))
+        // A submitter's grant alone (the stored backdate flag) is not enough.
+        assertEquals("ERR_MASTER_EFFECTIVE_DATE_PAST", decide(t.sup1, bu2, "approve").obj()["code"]!!.jsonPrimitive.content)
+        assertEquals("pending_approval", t.scalar("SELECT status FROM app.price_batch WHERE batch_uuid = '$bu2'"))
+        try {
+            t.grants["SUPERADMIN"] = setOf("finance.backdate")
+            assertEquals(HttpStatusCode.OK, decide(t.sup1, bu2, "approve").status)
+            assertEquals("10000@2026-01-01>${t.today} 15000@${t.today}>open", rows(b, "outlet"))
+            // The approver's grant is revoked; the same approval again is a replay and answers the stored result first.
+            val version = listVersion()
+            val first = t.scalar("SELECT decided_by || '|' || decided_at FROM app.price_batch WHERE batch_uuid = '$bu2'")
+            t.grants.clear()
+            assertEquals(HttpStatusCode.OK, decide(t.sup1, bu2, "approve").status)
+            assertEquals("10000@2026-01-01>${t.today} 15000@${t.today}>open", rows(b, "outlet"))
+            assertEquals(version, listVersion(), "a replay bumps no price list version")
+            assertEquals(first, t.scalar("SELECT decided_by || '|' || decided_at FROM app.price_batch WHERE batch_uuid = '$bu2'"))
+            assertEquals("true", t.scalar("SELECT after->>'backdated' FROM app.audit_log WHERE entity = 'price_batch' AND entity_id = '$bu2' AND action = 'approve'"))
+            // The batch that came due while pending is approved too once the approver holds the grant.
+            t.grants["SUPERADMIN"] = setOf("finance.backdate")
+            assertEquals(HttpStatusCode.OK, decide(t.sup1, bu, "approve").status)
+            assertEquals("10000@2026-01-01>${t.today} 15000@${t.today}>open", rows(a, "outlet"))
+        } finally { t.grants.clear() }
     }
 
     @Test

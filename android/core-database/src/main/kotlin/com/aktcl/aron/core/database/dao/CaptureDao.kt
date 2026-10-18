@@ -96,6 +96,8 @@ interface CaptureDao {
     @Query("SELECT * FROM outlet_change_request ORDER BY captured_at DESC")
     suspend fun outletRequests(): List<OutletChangeRequestEntity>
 
+    @Query("SELECT COUNT(*) FROM outlet_change_request WHERE client_uuid = :clientUuid") suspend fun outletRequestCount(clientUuid: String): Int
+
     @Query("SELECT * FROM task_event WHERE task_uuid = :taskUuid ORDER BY captured_at")
     suspend fun taskEventsOf(taskUuid: String): List<TaskEventEntity>
 

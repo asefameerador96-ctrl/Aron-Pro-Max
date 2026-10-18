@@ -37,6 +37,8 @@ class DeviceDeps(val service: DeviceService, val reach: ReachResolver, val guard
 
 private val DEVICE_WRITERS = setOf(Role.ADMIN, Role.SUPERADMIN, Role.SUPPORT)
 private val DEVICE_READERS = DEVICE_WRITERS + setOf(Role.TSO, Role.DMO, Role.WM)   // docs/24 s8.5: TOP and ANALYST have no access to devices
+/** Read-only token list (no TSO: its s8.5 cell is the OTP panel only). */
+private val TOKEN_READERS = setOf(Role.DMO, Role.WM)
 private const val MAX_BODY = 256L * 1024
 
 /**
@@ -84,7 +86,15 @@ fun Route.deviceRoutes(d: DeviceDeps) {
         fun ApplicationCall.enum(name: String, allowed: Set<String>) = request.queryParameters[name]?.also { if (it !in allowed) throw ApiProblem(ProblemCode.ERR_VALIDATION, "bad $name", errors = listOf(FieldError("query.$name", "invalid_value"))) }
 
         post("/admin/enrolment-tokens") { call.write(); call.respond(HttpStatusCode.Created, d.service.createToken(call.principal, call.receiveStrict(EnrolmentTokenCreateRequest.serializer()))) }
-        get("/admin/enrolment-tokens") { call.write(); call.respond(d.service.listTokens(call.request.queryParameters["active_only"] != "false", call.limit(), call.cursor())) }
+        get("/admin/enrolment-tokens") {
+            val activeOnly = call.request.queryParameters["active_only"] != "false"
+            when (call.principal.role) {
+                in DEVICE_WRITERS -> call.respond(d.service.listTokens(activeOnly, call.limit(), call.cursor()))
+                // docs/24 s8.5 R (D-AUTHZ-QA-Q5/Q6): DMO and WM read the tokens of zones in their reach, ids, status and expiry only.
+                in TOKEN_READERS -> call.respond(d.service.listTokens(activeOnly, call.limit(), call.cursor(), readerReach = call.reach()))
+                else -> throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "enrolment tokens are not available to this role")
+            }
+        }
         post("/admin/enrolment-tokens/{token_id}/revoke") { call.write(); call.respond(d.service.revokeToken(call.principal, call.id("token_id"))) }
 
         get("/admin/devices") {

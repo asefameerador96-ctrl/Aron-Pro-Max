@@ -51,10 +51,33 @@ sealed interface FsSubmitOutcome {
     data class Failed(val why: FsFailure) : FsSubmitOutcome
 }
 
+/** One node of the scope tree (`GeoNode` of `GET /v1/admin/geo/{level}`); [nameBn] is null when the node has no Bangla name. */
+data class FsGeoNode(val id: Long, val name: String, val nameBn: String?) {
+    fun label(bangla: Boolean): String = if (bangla && !nameBn.isNullOrBlank()) nameBn else name
+}
+
+object FsGeo {
+    /** The five levels of the manual's cascade, top first. */
+    val LEVELS = listOf("wing", "division", "territory", "house", "zone")
+
+    /** Bad rows are dropped; null when the body is not a node page at all. */
+    fun parse(body: String?): List<FsGeoNode>? = runCatching {
+        val items = JSONObject(body ?: return null).getJSONArray("items")
+        (0 until items.length()).mapNotNull { i ->
+            val o = items.optJSONObject(i) ?: return@mapNotNull null
+            val id = o.optLong("id", 0L).takeIf { it > 0 } ?: return@mapNotNull null
+            val name = o.optString("name", "").takeIf { it.isNotBlank() } ?: return@mapNotNull null
+            FsGeoNode(id, name, if (o.isNull("name_bn")) null else o.optString("name_bn").ifBlank { null })
+        }
+    }.getOrNull()
+}
+
 /** The server side of Final Submit. Online only by design (docs/24): there is no queue. Scope is the server's. */
 interface FinalSubmitApi {
     /** Zone ids the TSO reaches (server scope; the five-level cascade names are a request, see docs/requests). */
     suspend fun zones(): List<Long>?
+    /** The children of [parentId] at [level] (one of [FsGeo.LEVELS]; null parent = the top) inside the caller's reach; null = unreadable, the screen then falls back to the flat zone list. */
+    suspend fun geo(level: String, parentId: Long?): List<FsGeoNode>? = null
     suspend fun preview(zoneId: Long, date: String): FsPreviewOutcome
     suspend fun submit(clientUuid: String, zoneId: Long, date: String): FsSubmitOutcome
 }
@@ -97,11 +120,35 @@ class FinalSubmitState(private val api: FinalSubmitApi, private val userId: Long
     val ui: StateFlow<Ui> = _s.asStateFlow()
     private var busy = false
 
-    data class Ui(val date: String, val zones: List<Long> = emptyList(), val zonesLoaded: Boolean = false, val zoneId: Long? = null, val phase: FsPhase = FsPhase.Pick, val errors: List<FsError> = emptyList())
+    data class Ui(val date: String, val zones: List<Long> = emptyList(), val zonesLoaded: Boolean = false, val zoneId: Long? = null, val phase: FsPhase = FsPhase.Pick, val errors: List<FsError> = emptyList(),
+        /** Options per cascade level (index into [FsGeo.LEVELS]) and the picked id per level; [cascade] false = the flat zone list is used. */
+        val options: Map<Int, List<FsGeoNode>> = emptyMap(), val picks: Map<Int, Long> = emptyMap(), val cascade: Boolean = false)
 
     suspend fun loadZones() {
         val z = runCatching { api.zones() }.getOrNull()
         _s.value = _s.value.copy(zones = z.orEmpty().sorted(), zonesLoaded = z != null)
+    }
+
+    /** Wing, Division, Territory, House, Zone: the top level is read once; a level with a single node is picked for the TSO. Any failure leaves the flat zone list. */
+    suspend fun loadCascade() {
+        val top = runCatching { api.geo(FsGeo.LEVELS[0], null) }.getOrNull()
+        if (top.isNullOrEmpty()) { _s.value = _s.value.copy(cascade = false); return }
+        _s.value = _s.value.copy(cascade = true, options = mapOf(0 to top), picks = emptyMap(), zoneId = null)
+        if (top.size == 1) pickLevel(0, top[0].id)
+    }
+
+    suspend fun pickLevel(level: Int, id: Long) {
+        val s = _s.value
+        if (!s.cascade || level !in FsGeo.LEVELS.indices || s.phase is FsPhase.Done || s.phase is FsPhase.Loading || s.phase is FsPhase.Submitting) return
+        if (s.options[level]?.any { it.id == id } != true) return
+        _s.value = s.copy(picks = s.picks.filterKeys { it < level } + (level to id), options = s.options.filterKeys { it <= level }, zoneId = if (level == FsGeo.LEVELS.lastIndex) id else null, phase = FsPhase.Pick, errors = emptyList())
+        if (level == FsGeo.LEVELS.lastIndex) return
+        val kids = runCatching { api.geo(FsGeo.LEVELS[level + 1], id) }.getOrNull()
+        // a stale answer (the TSO already picked something else) is dropped
+        if (_s.value.picks[level] != id) return
+        if (kids == null) { _s.value = _s.value.copy(cascade = false, options = emptyMap(), picks = emptyMap(), zoneId = null); return }
+        _s.value = _s.value.copy(options = _s.value.options + (level + 1 to kids))
+        if (kids.size == 1) pickLevel(level + 1, kids[0].id)
     }
 
     fun pickZone(id: Long) { if (_s.value.phase is FsPhase.Done || _s.value.phase is FsPhase.Loading || _s.value.phase is FsPhase.Submitting) return; _s.value = _s.value.copy(zoneId = id, phase = FsPhase.Pick, errors = emptyList()) }

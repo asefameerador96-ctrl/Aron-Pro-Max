@@ -92,13 +92,25 @@ class DeviceService(
         }
     }
 
-    fun listTokens(activeOnly: Boolean, limit: Int, after: Long?): EnrolmentTokenPage = db.readJdbi.withHandle<EnrolmentTokenPage, Exception> { h ->
-        val where = buildList { if (activeOnly) add("revoked_at IS NULL AND expires_at > now() AND used_count < max_uses"); if (after != null) add("id < :after") }.joinToString(" AND ").ifEmpty { "true" }
+    /**
+     * A [readerReach] (DMO, WM) limits the list to tokens of zones in that reach (a token with no zone is national, shown
+     * to a national reach only) and strips it to ids, status and expiry: the secret's prefix becomes [MASKED_PREFIX]
+     * (the contract requires six characters) and the free-text note is left out.
+     */
+    fun listTokens(activeOnly: Boolean, limit: Int, after: Long?, readerReach: Reach? = null): EnrolmentTokenPage = db.readJdbi.withHandle<EnrolmentTokenPage, Exception> { h ->
+        if (readerReach != null && !readerReach.national && readerReach.zoneIds.isEmpty()) return@withHandle EnrolmentTokenPage(emptyList(), null)
+        val where = buildList {
+            if (activeOnly) add("revoked_at IS NULL AND expires_at > now() AND used_count < max_uses"); if (after != null) add("id < :after")
+            if (readerReach != null && !readerReach.national) add("zone_id = ANY(:zones)")
+        }.joinToString(" AND ").ifEmpty { "true" }
         val q = h.createQuery("SELECT * FROM app.enrolment_token WHERE $where ORDER BY id DESC LIMIT :lim").bind("lim", limit + 1)
         if (after != null) q.bind("after", after)
-        val rows = q.map { rs, _ -> tokenDto(rs) }.list()
+        if (readerReach != null && !readerReach.national) q.bindArray("zones", Long::class.javaObjectType, readerReach.zoneIds.toList())
+        val rows = q.map { rs, _ -> tokenDto(rs).let { if (readerReach != null) it.copy(token_prefix = MASKED_PREFIX, note = null) else it } }.list()
         EnrolmentTokenPage(rows.take(limit), if (rows.size > limit) rows[limit - 1].token_id.toString() else null)
     }
+
+    private val MASKED_PREFIX = "------"
 
     private fun tokenDto(rs: java.sql.ResultSet) = EnrolmentTokenDto(
         rs.getLong("id"), rs.getString("token_prefix"), rs.getString("flavour"), rs.getString("lockdown_level"), rs.getInt("max_uses"), rs.getInt("used_count"), rs.getObject("zone_id") as Long?,
@@ -135,16 +147,19 @@ class DeviceService(
                 .map { rs, _ -> TokenRow(rs.getLong("id"), rs.getString("flavour"), rs.getString("lockdown_level"), rs.getInt("max_uses"), rs.getInt("used_count"), rs.getObject("zone_id") as Long?,
                     rs.getObject("expires_at", OffsetDateTime::class.java).toInstant(), rs.getObject("revoked_at") != null) }.findOne().orElse(null)
                 ?: throw ApiProblem(ProblemCode.ERR_ENROLMENT_TOKEN_INVALID, "unknown enrolment token")
-            if (tok.revoked) throw ApiProblem(ProblemCode.ERR_ENROLMENT_TOKEN_INVALID, "enrolment token revoked")
-            // The same phone repeating a successful enrolment (a lost response) gets the same device back and uses no further slot of the token.
+            // The same phone repeating a successful enrolment (a lost response) gets the same device back and uses no further slot of the token,
+            // also after the token was revoked or expired: the device was enrolled while it was valid (a revoked device is still refused).
             val existing = h.createQuery("SELECT id, public_key_thumbprint, enrolment_token_id, lockdown_level, trust_level, enrolled_at FROM app.device WHERE device_uuid = :u").bind("u", uuid)
                 .map { rs, _ -> listOf(rs.getLong(1), rs.getString(2), rs.getObject(3), rs.getString(4), rs.getString(5), rs.getObject(6, OffsetDateTime::class.java)) }.findOne().orElse(null)
             if (existing != null) {
+                // A revoked token answers only its own phone's replay: anything else gets the revoked-token answer, no device oracle.
+                if (tok.revoked && (existing[1] != thumb || existing[2] != tok.id)) throw ApiProblem(ProblemCode.ERR_ENROLMENT_TOKEN_INVALID, "enrolment token revoked")
                 val st = h.createQuery("SELECT status FROM app.device WHERE id = :i").bind("i", existing[0] as Long).mapTo(String::class.java).one()
                 if (st == "revoked" || st == "replaced") throw ApiProblem(ProblemCode.ERR_DEVICE_REVOKED, "device revoked")
                 if (existing[1] != thumb || existing[2] != tok.id) throw ApiProblem(ProblemCode.ERR_CONFLICT, "device already enrolled")
                 return@inTransaction EnrolDeviceResponse(existing[0] as Long, req.device_uuid, (existing[5] as OffsetDateTime).toInstant().wire(), existing[3] as String, existing[4] as String, policy.render(existing[3] as String), now.wire())
             }
+            if (tok.revoked) throw ApiProblem(ProblemCode.ERR_ENROLMENT_TOKEN_INVALID, "enrolment token revoked")
             if (h.createQuery("SELECT EXISTS (SELECT 1 FROM app.device WHERE public_key_thumbprint = :t)").bind("t", thumb).mapTo(Boolean::class.java).one()) throw ApiProblem(ProblemCode.ERR_CONFLICT, "this key is already enrolled")
             if (!now.isBefore(tok.expiresAt)) throw ApiProblem(ProblemCode.ERR_ENROLMENT_TOKEN_EXPIRED, "enrolment token expired")
             if (tok.used >= tok.maxUses) throw ApiProblem(ProblemCode.ERR_ENROLMENT_TOKEN_EXHAUSTED, "enrolment token used up")

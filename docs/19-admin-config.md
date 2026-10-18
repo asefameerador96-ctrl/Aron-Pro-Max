@@ -563,7 +563,7 @@ Restrictive direction (D-432) is registered for every key where a direction exis
 | `cfg.memo.rounding_mode` | S | enum(half_up_paisa, floor_paisa, half_even_paisa) | half_up_paisa (A) | enum | G | O | S | both | C3 | FD. Totals are summed unrounded and rounded once; must equal Apsis to the paisa (T-2-41). Stamped on memo | D-19 | 1a |
 | `cfg.memo.show_due_balance_on_print` | S | bool | true (A) | n/a | G | F | B | dev | C0 | Previous-due line on the memo | docs/06 | 2b |
 | `cfg.memo.due_balance_staleness_marker` | S | bool | true | n/a | G | F | B | dev | C0 | Marker "<date> পর্যন্ত" on a stale balance | G-field-09 | 2b |
-| `cfg.memo.allow_negative_net` | S | bool | true | n/a | G | F | B | both | C2 | Zero sale plus QC can make the net negative; stored as a credit. unknown; confirm: MQ-04 | D-18 | 2a |
+| `cfg.memo.allow_negative_net` | S | bool | true | n/a | G | F | B | both | C2 | Zero sale plus QC can make the net negative; stored as a credit. unknown; confirm: MQ-04. Fixed by D-18, not a runtime switch; no code reads it (DECISIONS D-18-FIXED-KEY) | D-18 | 2a |
 | `cfg.credit.enabled` | S | bool | true | n/a | G W D T Z O | F+TSO | B | both | C2 | `false` at outlet is a credit stop; TSO inside own territory; the DMO sees the count | docs/06 | 2a |
 | `cfg.credit.max_due_mtk` | S | money_mtk | 0 = no limit (Apsis shows none) | 0 to 10,000,000,000 | G W T Z O | F+TSO | B | both | C2 | unknown; confirm: any business limit (D-320) | D-320 | 2a |
 | `cfg.credit.max_days` | S | int | 0 = no limit | 0 to 180 | G W T Z O | F | B | both | C2 | | D-320 | 2a |
@@ -777,6 +777,7 @@ Restrictive direction (D-432) is registered for every key where a direction exis
 | `cfg.sla.targets_missing_alert_day` | S | int | 26 | 20 to 31 | G | P | B | srv | C1 | Month-end readiness board alerts when M+1 targets are missing | G-field-17 | 5c |
 | `cfg.support.contacts` | S | content(cfg.support.contacts) | AKTCL helpdesk numbers and hours (A placeholder); banner text keys | 1 to 10 | G W D T | O | B | both | C0 | Also served unauthenticated by `GET /config/public` | G-man-087 | 1c |
 | `cfg.support.max_upload_mb` | S | int | 20 | 5 to 100 | G | O | B | dev | C1 | "PDA to Support" upload cap | G-man-025 | 2e |
+| `cfg.support.upload_replay_max_h` | S | int | 168 | 1 to 720 | G | O | B | srv | C1 | Hours a stored PDA upload may be replayed for a fresh SAS; older replays are refused, start a new upload (D-PDA-REPLAY-AGE) | — | 2e |
 | `cfg.support.public_key_id` | S | text | set at 2e from Key Vault | id of an existing key | G | S | B | dev | C3 | Id of the AKTCL support public key that encrypts the PDA to Support bundle; an unknown id makes the device refuse to send. Added at the editorial merge from doc 21 s5 | G-sec-14; G-man-025 | 2e |
 | `cfg.support.pda_upload_wifi_only` | S | bool | true | n/a | G | O | B | dev | C1 | | G-man-025 | 2e |
 | `cfg.sys.schedule_horizon_days` | S | int | 7 (A) | 1 to 30 | G | O | B | both | C1 | How far ahead future-dated values ship so an offline phone applies them on time | G-cfg-06 | 1c |
@@ -841,7 +842,7 @@ Restrictive direction (D-432) is registered for every key where a direction exis
 | `cfg.auth.app_lock_idle_min` | S | int | 0 (supervisors with PII: 30) | 0 to 240 | G ROLE | S | B | dev | C1 | Idle minutes before the app asks for the local unlock again; 0 is parity (no re-authentication on resume). Added at the editorial merge from doc 21 s2.8 | G-fraud-04 | 2e |
 | `cfg.pii.field_roles` | S | json {field: roles} | P: TSO web sees Address, NID, TIN, Trade Licence columns (null where blank or the placeholder `123`); phone visible to field roles / R: NID, TIN and licence for admin and pii_officer only | fields from the outlet PII set | G ROLE | S | S | both | C3 | Over-exposure is irreversible once on 8,500 phones. unknown; confirm: whether the live Excel carries NID or TIN (MUST-CONFIRM by 4c) | D-108, D-207; G-man-039 | 1a |
 | `cfg.pii.mask_style` | S | enum(hide, last4) | P: hide for SR phones in the AMO view (11 asterisks); last4 elsewhere | enum | G ROLE | S | S | srv | C0 | | D-108; G-man-062 | 3a |
-| `cfg.pii.reauth_min` | S | int | 15 | 1 to 120 | G ROLE | S | S | srv | C2 | Re-authentication age required for a PII export or a reveal. Added at the editorial merge from doc 21 s4 | D-121 | 4c |
+| `cfg.pii.reauth_min` | S | int | 15 | 1 to 15 | G | S | S | srv | C2 | Minutes a `POST /v1/auth/reauth` step-up keeps a web session's PII revealed. Built by V0086 with range 1 to 15 and scope G (the web access token lives 15 minutes and a refresh drops the reveal; D-AUTHZ-PII). Added at the editorial merge from doc 21 s4 | D-121 | 4c |
 | `cfg.pii.export_allowed_roles` | S | list<role> | [tso, dmo, wm, admin] (A) | subset | G | S | S | srv | C2 | Exports containing PII columns; every export is logged | D-108, D-121 | 4b |
 | `cfg.pii.log_scrub_patterns` | S | list<regex> | NID, phone, TIN and SAS `sig=` patterns | valid regex | G | S | S | srv | C1 | | G-fraud-15 | 0c |
 | `cfg.pii.export_rows_per_day` | S | int | 5000 | 100 to 100000 | G ROLE | S | S | srv | C2 | | D-121 | 4c |
@@ -1804,7 +1805,7 @@ Every key with a direction carries `restrictive_dir` in the registry seed (`up`:
 | `cfg.credit.max_due_mtk`, `max_days`, `cfg.memo.reprint_max`, `edit_window_min`, `edit_chain_max` | down | |
 | `cfg.auth.lockout_attempts`, `access_ttl_min`, `refresh_ttl_days`, `offline_unlock_max_days`, `otp_ttl_min`, `max_devices_per_user`, `max_users_per_device` | down | |
 | `cfg.auth.password_min_len` | up | |
-| `cfg.pii.export_rows_per_day`, `list_rows_per_hour`, `cfg.web.entry_backdate_days`, `entry_unlock_max_days` | down | |
+| `cfg.pii.export_rows_per_day`, `list_rows_per_hour`, `reauth_min`, `cfg.web.entry_backdate_days`, `entry_unlock_max_days` | down | |
 | `cfg.sec.record_signature_mode` | enum_order | off < record < enforce |
 | `cfg.ops.kill_switch`, `read_only_mode`, `sync_hold_s`, `bundle_hold` | enum_order or up | engaged is stricter; allowed under break-glass for at most `break_glass_max_h` |
 | BRAKE-lane keys (D-588, s7.6c): `cfg.release.blocked_versions` | `list_add` | adding a build to the list is the restrictive move |

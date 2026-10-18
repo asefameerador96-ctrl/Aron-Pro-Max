@@ -84,6 +84,17 @@ class GeoValidationTest {
         assertEquals(mapOf("CLOCK_SKEW" to 1, "GEO_MOCK" to 1, "GEO_TELEPORT" to 1), g.signals_by_code, "dismissed and other dates left out")
         assertEquals(listOf("wing"), g.children.map { it.node.type }.distinct())
         assertEquals(5, g.children.sumOf { it.visits })
+        assertEquals(1, g.geo_valid_visits); assertEquals(1, g.children.sumOf { it.geo_valid_visits }, "children sum to the parent")
+    }
+
+    @Test
+    fun theGeoValidCountIsTheNumeratorOfThePercent() {
+        val g = service.geoValidation(reach(z1), null, null, day, day)
+        assertEquals(1, g.geo_valid_visits); assertEquals(25.0, g.geo_valid_pct)
+        assertEquals(g.geo_valid_visits, g.children.sumOf { it.geo_valid_visits })
+        val r1 = g.children.single { it.visits == 3 }
+        assertEquals(1, r1.geo_valid_visits); assertEquals(33.33, r1.geo_valid_pct)
+        for (c in g.children) assertEquals(com.aktcl.aron.backend.analytics.pct(c.geo_valid_visits.toLong(), c.visits.toLong()), c.geo_valid_pct, "${c.node}")
     }
 
     @Test
@@ -104,7 +115,7 @@ class GeoValidationTest {
     @Test
     fun emptyRangesAreNullRatesAndBadRangesAre400() {
         val g = service.geoValidation(reach(national = true), null, null, day.plusDays(10), day.plusDays(10))
-        assertEquals(0, g.visits); assertNull(g.geo_valid_pct); assertNull(g.geo_mismatch_pct); assertTrue(g.signals_by_code.isEmpty())
+        assertEquals(0, g.visits); assertEquals(0, g.geo_valid_visits); assertNull(g.geo_valid_pct); assertNull(g.geo_mismatch_pct); assertTrue(g.signals_by_code.isEmpty())
         assertEquals(ProblemCode.ERR_VALIDATION, assertFailsWith<ApiProblem> { service.geoValidation(reach(national = true), null, null, day, day.minusDays(1)) }.code)
         assertEquals(ProblemCode.ERR_VALIDATION, assertFailsWith<ApiProblem> { service.geoValidation(reach(national = true), null, null, day, day.plusDays(93)) }.code)
     }

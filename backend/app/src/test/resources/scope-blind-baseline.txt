@@ -1,5 +1,6 @@
 # N-014 / N-061: reads where even the national admin shows nothing of the other division, so a leak there cannot be seen.
 # Each line carries its reason. May only SHRINK: seed other-division data for a debt line, then remove it.
+GET /v1/admin/audit  # global by design: national readers only (docs/24 s8.5), the log carries no reach and no scoped role reads it
 GET /v1/admin/calendar/holidays  # global by design: catalogue, configuration or calendar shared by every division
 GET /v1/admin/code-lists  # global by design: catalogue, configuration or calendar shared by every division
 GET /v1/admin/config/changes  # global by design: catalogue, configuration or calendar shared by every division
@@ -12,10 +13,11 @@ GET /v1/admin/config/values  # global by design: catalogue, configuration or cal
 GET /v1/admin/config/versions  # global by design: catalogue, configuration or calendar shared by every division
 GET /v1/admin/config/versions/{}  # global by design: catalogue, configuration or calendar shared by every division
 GET /v1/admin/content  # global by design: catalogue, configuration or calendar shared by every division
-GET /v1/admin/enrolment-tokens  # national roles only (ADMIN, SUPERADMIN, SUPPORT); per-user rows, no zone filter to judge
 GET /v1/admin/prices  # global by design: catalogue, configuration or calendar shared by every division
 GET /v1/admin/print-templates  # global by design: catalogue, configuration or calendar shared by every division
 GET /v1/admin/product-nodes/{}  # global by design: catalogue, configuration or calendar shared by every division
+GET /v1/admin/releases  # global by design: catalogue, configuration or calendar shared by every division
+GET /v1/admin/releases/policy  # global by design: catalogue, configuration or calendar shared by every division
 GET /v1/admin/rubrics  # global by design: catalogue, configuration or calendar shared by every division
 GET /v1/admin/skus  # global by design: catalogue, configuration or calendar shared by every division
 GET /v1/admin/surveys  # global by design: catalogue, configuration or calendar shared by every division

@@ -86,7 +86,8 @@ class AmoSaleKit(private val day: AmoDay, private val context: Context, private 
 
     fun skuName(id: Long): String = skuNames[id] ?: id.toString()
     fun outletName(id: Long): String = day.zoneOutlets.firstOrNull { it.outletId == id }?.let { it.name + " (" + it.code + ")" } ?: id.toString()
-    fun names() = PrintNames(::skuName, ::outletName, day.userDisplayName, day.routeName())
+    fun skuCategoryCode(id: Long): String? = skuCategory[id]
+    fun names() = PrintNames(::skuName, ::outletName, day.userDisplayName, day.routeName(), category = { id -> com.aktcl.aron.feature.memo.ui.MemoCategories.label(context, skuCategory[id]) })
 
     /** Prices of the bundle and the day's stock (docs/24 s7.2, F-SYS-045). */
     val catalog = SaleCatalog { date, priceType -> reads.catalog(date, priceType) }
@@ -190,8 +191,13 @@ class AmoSaleKit(private val day: AmoDay, private val context: Context, private 
     }
 
 
-    private suspend fun reconcileTypes(): List<String> =
-        com.aktcl.aron.feature.amo.AmoReconciliation.types(runCatching { day.reference.config(com.aktcl.aron.core.database.repo.ReconciliationRepository.CONFIG_KEY, day.iso(day.currentMs())) }.getOrNull())
+    private suspend fun reconcileConfig(): String? =
+        runCatching { day.reference.config(com.aktcl.aron.core.database.repo.ReconciliationRepository.CONFIG_KEY, day.iso(day.currentMs())) }.getOrNull()
+
+    private suspend fun reconcileTypes(): List<String> = com.aktcl.aron.feature.amo.AmoReconciliation.types(reconcileConfig())
+
+    /** The Sales Submit table's row groups (display only), from the same configuration as [reconcileTypes]. */
+    suspend fun submitRowGroups(): List<List<String>> = com.aktcl.aron.feature.amo.AmoReconciliation.rowGroups(reconcileConfig())
 
     /** F-AMO-030: the extended reconciliation (fixed rows, zero when the type has no records) and a `supervisor_day` submit. */
     fun newSubmitViewModel() = SalesSubmitViewModel(

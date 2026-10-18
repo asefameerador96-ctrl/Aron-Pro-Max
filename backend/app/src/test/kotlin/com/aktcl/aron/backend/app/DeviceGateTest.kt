@@ -104,15 +104,19 @@ class DeviceGateTest {
     private fun count(sql: String): Long = fresh.db.jdbi.withHandle<Long, Exception> { h -> h.createQuery(sql).mapTo(Long::class.java).one() }
     private fun cu(r: JsonObject) = r["client_uuid"]!!.jsonPrimitive.content
 
+    private val switches = AtomicInteger(0)
+
     /** A global switch the way the portal sets it: the old row ends where the new one starts; the config cache is skipped. */
     private fun set(key: String, value: Boolean) {
-        // One transaction: now() is the same instant for the end of the old row and the start of the new one.
+        // Fixed instants, one second apart per switch, after the dev seed's start (db/seed/04: 2026-01-01) and before both
+        // the database clock and the API clock, so the newest row is the one in force whatever today's date is.
+        val n = switches.incrementAndGet()
         fresh.db.jdbi.useTransaction<Exception> { h ->
             h.execute("INSERT INTO app.cfg_version (config_version, kind, committed_by, summary) SELECT max(config_version) + 1, 'change', (SELECT id FROM app.app_user WHERE username = 'aron.system'), 'test gate' FROM app.cfg_version")
-            h.execute("UPDATE app.cfg_value SET effective_to = now() WHERE key = '$key' AND scope_type = 'global' AND effective_to IS NULL")
+            h.execute("UPDATE app.cfg_value SET effective_to = TIMESTAMPTZ '${ApiWorld.CFG_SWITCH}' + interval '1 second' * $n WHERE key = '$key' AND scope_type = 'global' AND effective_to IS NULL")
             h.execute(
                 "INSERT INTO app.cfg_value (key, scope_type, scope_id, value, effective_from, config_version, reason) " +
-                    "SELECT '$key', 'global', 0, '$value'::jsonb, now(), max(config_version), 'test' FROM app.cfg_version",
+                    "SELECT '$key', 'global', 0, '$value'::jsonb, TIMESTAMPTZ '${ApiWorld.CFG_SWITCH}' + interval '1 second' * $n, max(config_version), 'test' FROM app.cfg_version",
             )
         }
         now.updateAndGet { it.plusSeconds(31) } // DbServerConfig caches 30 s by the injected clock

@@ -255,3 +255,8 @@ Severity: **blocker** = a rep cannot finish a selling day, or money/units are sh
 - **E1/R1** the outlet name and code stay on screen above Sale entry and Review (`SaleHost`).
 - **Memo number** shown as issued (ASCII) on the memo detail, no more mixed script.
 Still open (needs a decision or a larger change): the two non-presentation majors (QC six-type entry, per-SKU sale history), the Attendance green/red and 12-hour wording (A5, A6), day-end dues dialog, stock category totals panel, memo category subtotals, "OTP" wording on binding, Yes/No and "সফল / ওকে" dialogs, small label and format items.
+
+## Fixed by the android-tso lane, second batch (2026-10-18, goldens re-recorded)
+SU1 summary screen title "বিক্রয় সারসংক্ষেপ"; SU4 column "ডিসকাউন্ট মূল্য"; T1 Tasks screen title "টাস্ক" (the Home tile label is left, it is a kit width fixture); M4 the memo's "মোট ডিসকাউন্ট" and "মোট QC" lines always show, zeros included; H7 the KPI strike rate reads "10%" like Home.
+Also done earlier: Q2 six-type QC (with an Opus checker), SH2 per-SKU Sale History, Q4 QC submit confirm.
+Still open (presentation, not yet done): A3 green check-in / red check-out buttons and A5/A6 wording and 12-hour time, SS4 day-end dues Yes/No dialog and SS2 row words, S2/S3 stock category totals panel, M2 due amount in the memo list, M3 category subtotals on the memo (screen and print template), M6/M8 button colours, M9 edit-reason dialog, H1 header line, T2-T4 task tag/date, OTP wording on binding, success dialogs. E4 sale-card indicators and A2 attendance address are left on the lead's ruling.

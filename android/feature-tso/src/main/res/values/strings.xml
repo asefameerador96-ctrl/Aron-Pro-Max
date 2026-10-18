@@ -145,7 +145,7 @@
     <string name="tso_unit_piece">pieces</string>
     <string name="tso_dash_sales_of">Sales (%1$s)</string>
     <string name="tso_dash_lakh">Lakh</string>
-    <string name="tso_dash_crore">Crore</string>
+    <string name="tso_dash_crore">Cr</string>
     <string name="tso_dash_cpr">Live CPR</string>
     <string name="tso_dash_x_of_y">%1$s of %2$s</string>
     <string name="tso_dash_cpr_labels">Successful calls of target outlets</string>
@@ -183,6 +183,10 @@
     <string name="tso_fs_forbidden">This zone is not in your area.</string>
     <string name="tso_fs_refused">The server did not accept this. Check the zone and date.</string>
     <string name="tso_fs_server">Something went wrong. Try again.</string>
+    <string name="tso_fs_level_wing">Wing</string>
+    <string name="tso_fs_level_division">Division</string>
+    <string name="tso_fs_level_territory">Territory</string>
+    <string name="tso_fs_level_house">House</string>
     <string name="tso_fs_err_zone">Choose a zone</string>
     <string name="tso_fs_err_future">The sales date cannot be in the future</string>
     <string name="tso_fs_warn_not_submitted">Some routes have not submitted their sales.</string>
@@ -250,4 +254,5 @@
         <item>November</item>
         <item>December</item>
     </string-array>
+    <string name="tso_dash_sr_of_route">SR: %1$s</string>
 </resources>

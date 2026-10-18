@@ -89,7 +89,7 @@ class NearbyOutletsTest {
                 """.trimIndent(),
             )
             h.execute("INSERT INTO app.cfg_version (config_version, kind, committed_by, summary) SELECT max(config_version) + 1, 'change', (SELECT id FROM app.app_user WHERE username = 'aron.system'), 'test cap' FROM app.cfg_version")
-            h.execute("INSERT INTO app.cfg_value (key, scope_type, scope_id, value, effective_from, config_version, reason) SELECT 'cfg.tso.periphery_max_markers', 'global', 0, '50'::jsonb, now() - interval '1 day', max(config_version), 'test' FROM app.cfg_version")
+            h.execute("INSERT INTO app.cfg_value (key, scope_type, scope_id, value, effective_from, config_version, reason) SELECT 'cfg.tso.periphery_max_markers', 'global', 0, '50'::jsonb, TIMESTAMPTZ '${ApiWorld.CFG_FROM}', max(config_version), 'test' FROM app.cfg_version")
         }
         val keyFile = File.createTempFile("aron-jwt", ".pem").apply {
             deleteOnExit()

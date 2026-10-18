@@ -84,8 +84,8 @@ class DataVoidAcceptanceTest {
                 .map { rs, _ -> rs.getLong(1) to rs.getLong(2) }.list()
             // A small per-device limit so a storm is cheap to provoke (the guard reads it at wiring time).
             h.execute("INSERT INTO app.cfg_version (config_version, kind, committed_by, summary) SELECT max(config_version) + 1, 'change', (SELECT id FROM app.app_user WHERE username = 'aron.system'), 'test rl' FROM app.cfg_version")
-            h.execute("INSERT INTO app.cfg_value (key, scope_type, scope_id, value, effective_from, config_version, reason) SELECT 'cfg.api.rl.device_per_min', 'global', 0, '40'::jsonb, now() - interval '1 day', max(config_version), 'test' FROM app.cfg_version")
-            h.execute("INSERT INTO app.cfg_value (key, scope_type, scope_id, value, effective_from, config_version, reason) SELECT 'cfg.auth.mfa_required_roles', 'global', 0, '[]'::jsonb, now() - interval '1 day', max(config_version), 'test: admins log in without MFA' FROM app.cfg_version")
+            h.execute("INSERT INTO app.cfg_value (key, scope_type, scope_id, value, effective_from, config_version, reason) SELECT 'cfg.api.rl.device_per_min', 'global', 0, '40'::jsonb, TIMESTAMPTZ '${ApiWorld.CFG_FROM}', max(config_version), 'test' FROM app.cfg_version")
+            h.execute("INSERT INTO app.cfg_value (key, scope_type, scope_id, value, effective_from, config_version, reason) SELECT 'cfg.auth.mfa_required_roles', 'global', 0, '[]'::jsonb, TIMESTAMPTZ '${ApiWorld.CFG_FROM}', max(config_version), 'test: admins log in without MFA' FROM app.cfg_version")
         }
         keyFile = File.createTempFile("aron-jwt", ".pem").apply {
             deleteOnExit()
@@ -262,8 +262,25 @@ class DataVoidAcceptanceTest {
         }
         val first = uuid()
         assertEquals(HttpStatusCode.OK, save(first).status)
-        val v = client.voidDay(tso, uuid(), scope = "web_entry")
+        val voidUuid = uuid()
+        val v = client.voidDay(tso, voidUuid, scope = "web_entry")
         assertEquals(HttpStatusCode.OK, v.status, v.bodyAsText())
+        // Replay first: after the route moved out of the TSO's reach, the TSO's retry still answers its void (no live pending rows).
+        fresh.db.jdbi.useHandle<Exception> { h ->
+            h.execute("INSERT INTO app.division (code, name, wing_id) SELECT 'D-DVR', 'Void Replay Division', wing_id FROM app.division ORDER BY id LIMIT 1")
+            h.execute("INSERT INTO app.territory (code, name, division_id) SELECT 'T-DVR', 'Void Replay Territory', id FROM app.division WHERE code = 'D-DVR'")
+            h.execute("INSERT INTO app.zone (code, name, territory_id) SELECT 'Z-DVR', 'Void Replay Zone', id FROM app.territory WHERE code = 'T-DVR'")
+        }
+        val homeZone = count("SELECT zone_id FROM app.route WHERE id = $routeId")
+        fresh.db.jdbi.useHandle<Exception> { it.execute("UPDATE app.route SET zone_id = (SELECT id FROM app.zone WHERE code = 'Z-DVR') WHERE id = $routeId") }
+        try {
+            val replay = client.voidDay(tso, voidUuid, scope = "web_entry")
+            assertEquals(HttpStatusCode.OK, replay.status, replay.bodyAsText())
+            assertEquals(json(v.bodyAsText())["voided_at"], json(replay.bodyAsText())["voided_at"])
+            assertEquals(HttpStatusCode.Forbidden, client.voidDay(tso, uuid(), scope = "web_entry").status, "a new void of that route is refused")
+        } finally {
+            fresh.db.jdbi.useHandle<Exception> { it.execute("UPDATE app.route SET zone_id = $homeZone WHERE id = $routeId") }
+        }
         assertEquals(0, count("SELECT count(*) FROM app.web_entry_route_day WHERE route_id = $routeId AND business_date = '$day' AND voided_at IS NULL"))
         assertEquals(0, count("SELECT count(*) FROM app.web_entry_line WHERE entry_client_uuid = '$first' AND voided_at IS NULL"))
         // The tombstoned entry no longer counts as live: a fresh entry needs no change reason, and the web void left no barrier for app rows.
