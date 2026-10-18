@@ -87,10 +87,10 @@ class BindDeviceCheckerTest {
             }
             // Production value: the dev seed turns enrolment off.
             h.useTransaction<Exception> { tx ->
-                // One transaction, so now() is one instant: no gap in which the dev value or the env default applies.
-                // now(), not ApiWorld.CFG_SWITCH: the row closed is the dev seed's, which starts at the seed's now() (db/seed/04).
-                assertEquals(1, tx.execute("UPDATE app.cfg_value SET effective_to = now() WHERE key = 'cfg.device.require_enrolled' AND scope_type = 'global' AND effective_to IS NULL"))
-                tx.execute("INSERT INTO app.cfg_value (key, scope_type, scope_id, value, effective_from, config_version, reason) SELECT 'cfg.device.require_enrolled', 'global', 0, 'true'::jsonb, now(), max(config_version), 'test' FROM app.cfg_version")
+                // One instant ends the dev seed's row (from 2026-01-01, db/seed/04) and starts the production value: no gap in
+                // which the dev value or the env default applies, on any clock.
+                assertEquals(1, tx.execute("UPDATE app.cfg_value SET effective_to = TIMESTAMPTZ '${ApiWorld.CFG_SWITCH}' WHERE key = 'cfg.device.require_enrolled' AND scope_type = 'global' AND effective_to IS NULL"))
+                tx.execute("INSERT INTO app.cfg_value (key, scope_type, scope_id, value, effective_from, config_version, reason) SELECT 'cfg.device.require_enrolled', 'global', 0, 'true'::jsonb, TIMESTAMPTZ '${ApiWorld.CFG_SWITCH}', max(config_version), 'test' FROM app.cfg_version")
             }
         }
         val key = File.createTempFile("aron-jwt", ".pem").apply {
