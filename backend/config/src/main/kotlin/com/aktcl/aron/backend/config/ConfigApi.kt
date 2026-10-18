@@ -25,16 +25,22 @@ import java.util.UUID
 /** [reach] scopes the values and resolve reads of TSO, DMO and WM ([ConfigScope]); null (tests of other surfaces) reads unscoped. */
 class ConfigDeps(val service: ConfigService, val guard: AuthGuardDeps, val clock: AronClock = AronClock.SYSTEM, val reach: ReachResolver? = null)
 
-/** Roles that read the registry, values, changes and versions on the web (docs/24 s8.5). Field roles read config only through the bundle and delta. */
-private val CONFIG_READERS = setOf(Role.TSO, Role.DMO, Role.WM, Role.TOP, Role.ANALYST, Role.SUPPORT, Role.ADMIN, Role.SUPERADMIN)
+/**
+ * Roles that read the registry, values, changes, versions and the config tools (docs/24 s8.5 "Config changes": ADMIN and
+ * SUPERADMIN; Q2). Field roles read config only through the bundle and delta. Both are national, so these lists need no reach filter.
+ */
+private val CONFIG_READERS = setOf(Role.ADMIN, Role.SUPERADMIN)
+/** The one exception (DECISIONS D-AUTHZ-Q2): the TSO web entry screen resolves `cfg.web.entry_classes` for its own zone, reach-scoped. */
+private val RESOLVE_READERS = CONFIG_READERS + Role.TSO
 
-internal fun ApplicationCall.reader() = principal.also {
-    if (it.role !in CONFIG_READERS) throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "config is not available to this role")
+internal fun ApplicationCall.reader(roles: Set<Role> = CONFIG_READERS) = principal.also {
+    if (it.role !in roles) throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "config is not available to this role")
 }
 
 internal fun bad(pointer: String, code: String = "invalid_value"): Nothing = throw ApiProblem(ProblemCode.ERR_VALIDATION, "invalid $pointer", errors = listOf(FieldError(pointer, code)))
 
-internal fun ApplicationCall.limit(): Int = request.queryParameters["limit"]?.let { it.toIntOrNull()?.takeIf { v -> v in 1..200 } ?: bad("query.limit", "out_of_range") } ?: 50
+/** The contract `Limit` (1..500, default 100; AZ-3). */
+internal fun ApplicationCall.limit(): Int = request.queryParameters["limit"]?.let { it.toIntOrNull()?.takeIf { v -> v in 1..500 } ?: bad("query.limit", "out_of_range") } ?: 100
 internal fun ApplicationCall.cursor(): Long? = request.queryParameters["cursor"]?.let { it.toLongOrNull()?.takeIf { v -> v >= 1 } ?: bad("query.cursor") }
 private fun ApplicationCall.keyParam(): String = request.queryParameters["key"]?.takeIf { it.matches(Regex("^cfg\\.[a-z]+\\.[a-z0-9_]+(\\.[a-z0-9_]+)?$")) } ?: bad("query.key")
 private fun ApplicationCall.date(name: String): LocalDate? = request.queryParameters[name]?.let { runCatching { LocalDate.parse(it) }.getOrNull() ?: bad("query.$name") }
@@ -64,7 +70,7 @@ fun Route.configAdminRoutes(d: ConfigDeps) {
             call.respond(if (reach == null) page else page.copy(items = scope.filter(reach, page.items)))
         }
         get("/admin/config/resolve") {
-            val p = call.reader()
+            val p = call.reader(RESOLVE_READERS)
             val q = call.request.queryParameters
             val type = q["node_type"]?.takeIf { it in SCOPE_TYPES } ?: bad("query.node_type")
             val id = q["node_id"]?.let { it.toLongOrNull()?.takeIf { v -> v >= 0 } ?: bad("query.node_id") } ?: bad("query.node_id", "required")

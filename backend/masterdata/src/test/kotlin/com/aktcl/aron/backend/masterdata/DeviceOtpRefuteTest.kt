@@ -151,7 +151,7 @@ class DeviceOtpRefuteTest {
             assertEquals(HttpStatusCode.BadRequest, s, "body <$b>")
         }
         assertEquals(HttpStatusCode.Forbidden, issue("admin1001", Role.ADMIN, Long.MAX_VALUE).status)
-        for (qs in listOf("?cursor=abc", "?cursor=99999999999999999999", "?limit=0", "?limit=201", "?limit=x", "?zone_id=-1", "?q=a")) {
+        for (qs in listOf("?cursor=abc", "?cursor=99999999999999999999", "?limit=0", "?limit=501", "?limit=x", "?zone_id=-1", "?q=a")) {
             assertEquals(HttpStatusCode.BadRequest, client.get("/v1/admin/device-otps$qs") { bearerAuth(adm) }.status, qs)
         }
         val inj = client.get("/v1/admin/device-otps?q=%27%20OR%201%3D1%20--") { bearerAuth(adm) }
