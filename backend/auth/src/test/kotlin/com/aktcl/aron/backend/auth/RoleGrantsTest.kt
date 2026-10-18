@@ -23,9 +23,9 @@ class RoleGrantsTest {
 
     @Test
     fun aGrantAndARevokeTakeEffectWithinTheCacheWindow() {
-        // V0085 seeds the cfg.edit.* grants of ADMIN and SUPERADMIN; this test judges finance.backdate on top of them.
+        // V0085 seeds the cfg.edit.* grants of ADMIN and SUPERADMIN (V0086 adds pii.reveal); this test judges finance.backdate on top of them.
         val seeded = store.rolePermissions("ADMIN")
-        assertTrue(seeded.none { it == "finance.backdate" } && seeded.all { it.startsWith("cfg.edit.") }, "$seeded")
+        assertTrue(seeded.none { it == "finance.backdate" } && seeded.all { it.startsWith("cfg.edit.") || it == "pii.reveal" }, "$seeded")   // V0086: pii.reveal
         sql("INSERT INTO app.role_grant_map (role, permission) VALUES ('ADMIN', 'finance.backdate')")
         assertEquals(seeded, store.rolePermissions("ADMIN"), "cached for up to 10 s")
         later(11)

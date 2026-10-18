@@ -65,8 +65,9 @@ class ExportJobsTest : ReportFixture() {
     @Test
     fun anAdminGetsTheLinkOfSomeoneElsesPiiExportOnlyWhileTheirOwnRevealHolds() = app {
         val id = run(10, Role.ANALYST, "route-memo", body(format = "xlsx")).result().str("export_id")!!
-        assertEquals(1, exports.runUntilIdle())
+        // Marked as a personal-data export while queued (a done export is frozen by its trigger).
         fresh.db.jdbi.useHandle<Exception> { it.execute("UPDATE app.report_export SET pii_included = true WHERE export_id = '$id'") }
+        assertEquals(1, exports.runUntilIdle())
         fun url(r: String) = Json.parseToJsonElement(r).jsonObject.str("download_url")
         assertTrue(url(job(10, Role.ANALYST, id).bodyAsText()) != null, "the owner keeps the link of their own export")
         val masked = job(13, Role.ADMIN, id)
