@@ -287,6 +287,7 @@ fun TsoRouteListContent(rows: List<RouteDayRow>, businessDate: String, asOf: Str
         rows.forEachIndexed { i, r ->
             AronListRow(
                 listOfNotNull(r.routeCode, r.routeName).joinToString(stringResource(R.string.tso_dash_sep)).ifBlank { stringResource(R.string.tso_dash_route_unnamed) },
+                subtitle = r.srName?.let { sr -> stringResource(R.string.tso_dash_sr_of_route, sr) },
                 position = pos(i, rows.size), divider = i < rows.lastIndex, flat = true,
             )
         }

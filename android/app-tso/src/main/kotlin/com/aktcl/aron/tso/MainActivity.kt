@@ -188,7 +188,9 @@ class MainActivity : ComponentActivity() {
                                 nowMs = components.trustedClock::nowMs,
                                 onLogout = { logoutTap() },
                             ) {
-                            UpdateHost(updateShell, dayOpen = { false }, serverSaidTooOld = s.updateRequired, onLogout = { logoutTap() }) { TsoApp(
+                            // zone names for the pickers (scope-tree read, kept 30 min; "Zone <id>" until it lands)
+                            val zoneNames by androidx.compose.runtime.produceState(emptyMap<Long, String>(), s.user.userId, language) { value = runCatching { readModels.zoneNames(s.user.userId, language == com.aktcl.aron.core.common.AppLanguage.BN) }.getOrDefault(emptyMap()) }
+                            UpdateHost(updateShell, dayOpen = { false }, serverSaidTooOld = s.updateRequired, onLogout = { logoutTap() }) { androidx.compose.runtime.CompositionLocalProvider(com.aktcl.aron.feature.tso.LocalZoneNames provides zoneNames) { TsoApp(
                                 user = HomeUser(
                                     fullName = s.user.fullName,
                                     username = s.user.username,
@@ -242,7 +244,7 @@ class MainActivity : ComponentActivity() {
                                         TsoDashboardHost(api, day, back)
                                     },
                                 ),
-                            ) }
+                            ) } }
                             }
                         }
                     }

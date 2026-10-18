@@ -8,7 +8,8 @@ import { ADMIN_PORTAL_ROLES, hasRole } from "@/lib/auth/roles";
 import { requireSession } from "@/lib/auth/require";
 import { getLocale } from "@/lib/auth/service";
 import { isRealDate } from "@/lib/admin/time";
-import { businessDate } from "@/lib/i18n";
+import { Banner } from "@/components/kit/banner";
+import { businessDate, t } from "@/lib/i18n";
 
 const DAY = 86_400_000;
 
@@ -28,5 +29,10 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
   ]);
   if (!list.ok) return onApiFailure(list.status, list.problem, locale);
   const weekendKey = keys.ok ? (keys.data.items.find((k) => k.key === "cfg.calendar.weekend_days") ?? null) : null;
-  return <CalendarView locale={locale} holidays={list.data.items} weekend={weekend.ok ? weekend.data : null} weekendKey={weekendKey} from={from} to={to} canWrite={canOp("holiday.create", session.user.role)} />;
+  return (
+    <div className="space-y-4">
+      {!weekend.ok && weekend.status === 403 ? <Banner tone="info" role="note" testId="weekend-unavailable">{t(locale, "admin.cfgread.unavailable", { what: t(locale, "admin.cfgread.weekend") })}</Banner> : null}
+      <CalendarView locale={locale} holidays={list.data.items} weekend={weekend.ok ? weekend.data : null} weekendKey={weekendKey} from={from} to={to} canWrite={canOp("holiday.create", session.user.role)} />
+    </div>
+  );
 }

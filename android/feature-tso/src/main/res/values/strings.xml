@@ -250,4 +250,5 @@
         <item>November</item>
         <item>December</item>
     </string-array>
+    <string name="tso_dash_sr_of_route">SR: %1$s</string>
 </resources>

@@ -23,6 +23,13 @@ object AmoReconciliation {
     fun types(configJson: String?): List<String> =
         ReconciliationRepository.rowTypes(configJson, "AMO").ifEmpty { DEFAULT_ROWS }.flatMap { it.second }.distinct()
 
+    /**
+     * The groups of record types the Sales Submit table shows as ONE row each (display only, `SubmitDisplay`): the admin's AMO rows
+     * (`cfg.sync.reconcile_types`) in their order, or [DEFAULT_ROWS]. The same rows [types] flattens, so the table and the counts agree.
+     */
+    fun rowGroups(configJson: String?): List<List<String>> =
+        ReconciliationRepository.rowTypes(configJson, "AMO").ifEmpty { DEFAULT_ROWS }.map { it.second }
+
     fun deviceCounts(types: List<String>, device: Map<String, Int>): Map<String, Int> = types.associateWith { 0 } + device
 
     /** Server totals (null before the first answer stays null); a covered type the server never saw is 0, not missing. */
