@@ -26,7 +26,7 @@ import com.aktcl.aron.feature.tso.R
 import kotlinx.coroutines.launch
 import com.aktcl.aron.core.ui.aron.AronCard
 import com.aktcl.aron.core.ui.aron.AronListRow
-import com.aktcl.aron.core.ui.aron.AronSecondaryButton
+import com.aktcl.aron.feature.tso.TsoButton
 import com.aktcl.aron.core.ui.aron.AronTabs
 import com.aktcl.aron.feature.tso.TsoAction
 import com.aktcl.aron.feature.tso.TsoBanner
@@ -115,12 +115,12 @@ fun SetPlanScreen(state: SetPlanState, onBack: () -> Unit, modifier: Modifier = 
             TsoSectionTitle(stringResource(R.string.tso_mc_date))
             com.aktcl.aron.feature.tso.TsoDateField(ui.date, { state.setDate(it) }, Modifier.testTag(MyCallTags.DATE), min = state.todayIso(), max = state.maxIso())
             Pickers(ui.routes, ui.routesLoad, ui.zoneId, ui.routeId, state::pickZone, state::pickRoute)
-            if (ui.routeId != null) AronSecondaryButton(stringResource(R.string.tso_mc_show_outlets), { scope.launch { state.showOutlets() } }, Modifier.testTag(MyCallTags.SHOW))
+            if (ui.routeId != null) TsoButton(stringResource(R.string.tso_mc_show_outlets), { scope.launch { state.showOutlets() } }, Modifier.testTag(MyCallTags.SHOW))
             if (ui.outletsLoad == PickLoad.UNAVAILABLE) TsoBanner(stringResource(R.string.tso_mc_unavailable), kind = TsoBannerKind.Offline)
             if (ui.outletsLoad == PickLoad.READY) {
                 TsoSectionTitle(stringResource(R.string.tso_mc_outlets_selected, ui.selected.size))
                 if (ui.outlets.isEmpty()) Text(stringResource(R.string.tso_mc_no_outlets), style = MaterialTheme.typography.bodyMedium)
-                else AronSecondaryButton(stringResource(R.string.tso_mc_select_all), { state.selectAll() })
+                else TsoButton(stringResource(R.string.tso_mc_select_all), { state.selectAll() })
                 ui.outlets.forEach { o -> OutletCard(o, bn, Modifier.testTag(MyCallTags.outlet(o.id)), trailing = if (o.id in ui.selected) "✓" else null, onClick = { state.toggle(o.id) }) }
             }
             (ui.result as? SetPlanResult.Invalid)?.errors?.forEach { e ->
@@ -144,7 +144,7 @@ fun VisitPlanScreen(state: VisitPlanState, onOpenOutlet: (planUuid: String, outl
             TsoSectionTitle(stringResource(R.string.tso_mc_date))
             com.aktcl.aron.feature.tso.TsoDateField(ui.date, { state.setDate(it) }, Modifier.testTag(MyCallTags.DATE), min = null, max = state.maxIso())
             Pickers(ui.routes, ui.routesLoad, ui.zoneId, ui.routeId, state::pickZone, state::pickRoute)
-            if (ui.routeId != null) AronSecondaryButton(stringResource(R.string.tso_mc_show_plan), { scope.launch { state.show() } }, Modifier.testTag(MyCallTags.SHOW))
+            if (ui.routeId != null) TsoButton(stringResource(R.string.tso_mc_show_plan), { scope.launch { state.show() } }, Modifier.testTag(MyCallTags.SHOW))
             when (ui.planLoad) {
                 PickLoad.UNAVAILABLE -> TsoBanner(stringResource(R.string.tso_mc_unavailable), kind = TsoBannerKind.Offline)
                 PickLoad.READY -> {

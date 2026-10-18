@@ -62,6 +62,12 @@ fun RowScope.TsoBottomBar(primary: TsoAction, modifier: Modifier = Modifier, sec
     AronPrimaryButton(primary.text, primary.onClick, modifier.weight(1f), enabled = primary.enabled && !primary.busy)
 }
 
+/** A full-width grey button (the secondary action inside a form or list). */
+@Composable
+fun TsoButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true) {
+    AronSecondaryButton(text, onClick, modifier.fillMaxWidth(), enabled = enabled)
+}
+
 enum class TsoBannerKind { Info, Warning, Error, Success, Offline }
 
 /** A status line on a white card; the words carry the meaning, the colour only backs them (error red, success purple). */

@@ -99,14 +99,17 @@ private fun LeaveCard(item: LeaveItem) {
         LeaveStatus.APPROVED -> stringResource(R.string.tso_leave_status_approved, stringResource(R.string.tso_role_dmo))
         LeaveStatus.REJECTED -> stringResource(R.string.tso_leave_status_rejected, stringResource(R.string.tso_role_dmo))
     }
-    val kind = when (item.status) { LeaveStatus.PENDING -> TsoBannerKind.Warning; LeaveStatus.APPROVED -> TsoBannerKind.Success; LeaveStatus.REJECTED -> TsoBannerKind.Error }
     AronCard(Modifier.fillMaxWidth().testTag(LeaveTags.card(item.leaveUuid))) {
-        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
+        Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             androidx.compose.material3.Text(type, style = androidx.compose.material3.MaterialTheme.typography.titleSmall)
             androidx.compose.material3.Text("$period  ·  $days", style = androidx.compose.material3.MaterialTheme.typography.bodyMedium)
             androidx.compose.material3.Text(stringResource(R.string.tso_leave_reason_line, item.reason), style = androidx.compose.material3.MaterialTheme.typography.bodyMedium)
-            TsoBanner(badge, Modifier.testTag(LeaveTags.badge(item.leaveUuid)), kind = kind)
-            if (!item.sent) TsoBanner(stringResource(R.string.tso_leave_not_sent), Modifier.testTag(LeaveTags.unsent(item.leaveUuid)), kind = TsoBannerKind.Offline)
+            val look = com.aktcl.aron.core.ui.LocalAronLook.current
+            androidx.compose.material3.Text(
+                badge, Modifier.testTag(LeaveTags.badge(item.leaveUuid)), style = androidx.compose.material3.MaterialTheme.typography.titleSmall,
+                color = when (item.status) { LeaveStatus.PENDING -> look.ink; LeaveStatus.APPROVED -> look.purple; LeaveStatus.REJECTED -> look.red },
+            )
+            if (!item.sent) androidx.compose.material3.Text(stringResource(R.string.tso_leave_not_sent), Modifier.testTag(LeaveTags.unsent(item.leaveUuid)), style = androidx.compose.material3.MaterialTheme.typography.bodySmall, color = look.inkMuted)
         }
     }
 }

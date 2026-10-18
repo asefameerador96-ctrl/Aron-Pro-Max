@@ -24,7 +24,7 @@ import com.aktcl.aron.feature.tso.R
 import kotlinx.coroutines.launch
 import com.aktcl.aron.core.ui.aron.AronCard
 import com.aktcl.aron.core.ui.aron.AronListRow
-import com.aktcl.aron.core.ui.aron.AronSecondaryButton
+import com.aktcl.aron.feature.tso.TsoButton
 import com.aktcl.aron.core.ui.aron.AronTabs
 import com.aktcl.aron.feature.tso.TsoAction
 import com.aktcl.aron.feature.tso.TsoBanner
@@ -61,7 +61,7 @@ fun ChangePasswordScreen(state: ChangePasswordState, onBack: () -> Unit, modifie
                 com.aktcl.aron.feature.tso.TsoTextField(ui.current, state::setCurrent, Modifier.fillMaxWidth().testTag(CpTags.CURRENT), singleLine = true, label = { Text(stringResource(R.string.tso_cp_current)) }, name = stringResource(R.string.tso_cp_current), visualTransformation = transform, keyboardOptions = kb)
                 com.aktcl.aron.feature.tso.TsoTextField(ui.new, state::setNew, Modifier.fillMaxWidth().testTag(CpTags.NEW), singleLine = true, label = { Text(stringResource(R.string.tso_cp_new)) }, name = stringResource(R.string.tso_cp_new), visualTransformation = transform, keyboardOptions = kb, supportingText = { Text(stringResource(R.string.tso_cp_hint)) })
                 com.aktcl.aron.feature.tso.TsoTextField(ui.confirm, state::setConfirm, Modifier.fillMaxWidth().testTag(CpTags.CONFIRM), singleLine = true, label = { Text(stringResource(R.string.tso_cp_confirm)) }, name = stringResource(R.string.tso_cp_confirm), visualTransformation = transform, keyboardOptions = kb)
-                AronSecondaryButton(stringResource(if (ui.visible) R.string.tso_cp_hide else R.string.tso_cp_show), { state.toggleVisible() })
+                TsoButton(stringResource(if (ui.visible) R.string.tso_cp_hide else R.string.tso_cp_show), { state.toggleVisible() })
             }
             (phase as? CpPhase.Invalid)?.errors?.forEach { e ->
                 TsoBanner(stringResource(when (e) {

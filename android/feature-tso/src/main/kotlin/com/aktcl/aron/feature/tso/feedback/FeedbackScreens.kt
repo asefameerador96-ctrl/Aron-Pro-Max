@@ -30,7 +30,7 @@ import com.aktcl.aron.feature.tso.R
 import kotlinx.coroutines.launch
 import com.aktcl.aron.core.ui.aron.AronCard
 import com.aktcl.aron.core.ui.aron.AronListRow
-import com.aktcl.aron.core.ui.aron.AronSecondaryButton
+import com.aktcl.aron.feature.tso.TsoButton
 import com.aktcl.aron.core.ui.aron.AronTabs
 import com.aktcl.aron.feature.tso.TsoAction
 import com.aktcl.aron.feature.tso.TsoBanner
@@ -136,7 +136,7 @@ fun FeedbackFormScreen(state: FeedbackFormState, onBack: () -> Unit, modifier: M
             if (result is FeedbackResult.NoCategories) TsoBanner(stringResource(R.string.tso_fb_no_categories), Modifier.testTag(FeedbackTags.NO_CATEGORIES), kind = TsoBannerKind.Warning)
             if (queued) {
                 TsoBanner(stringResource(R.string.tso_fb_queued), Modifier.testTag(FeedbackTags.QUEUED), kind = TsoBannerKind.Success)
-                AronSecondaryButton(stringResource(R.string.tso_fb_another), { state.startNew() })
+                TsoButton(stringResource(R.string.tso_fb_another), { state.startNew() })
             }
             TsoSectionTitle(stringResource(R.string.tso_fb_category))
             val cats = state.categoryList
@@ -146,10 +146,10 @@ fun FeedbackFormScreen(state: FeedbackFormState, onBack: () -> Unit, modifier: M
             TsoSectionTitle(stringResource(R.string.tso_fb_description_label))
             com.aktcl.aron.feature.tso.TsoTextField(form.description, { v -> state.edit { f -> f.copy(description = v.take(MAX_DESCRIPTION * 2)) } }, Modifier.fillMaxWidth().testTag(FeedbackTags.DESCRIPTION), minLines = 4, enabled = !queued, name = stringResource(R.string.tso_fb_description_label))
             if (photosEnabled && !queued) {
-                if (form.photoUuid == null) AronSecondaryButton(stringResource(R.string.tso_fb_add_photo), { scope.launch { state.takePhoto() } }, Modifier.testTag(FeedbackTags.PHOTO))
+                if (form.photoUuid == null) TsoButton(stringResource(R.string.tso_fb_add_photo), { scope.launch { state.takePhoto() } }, Modifier.testTag(FeedbackTags.PHOTO))
                 else {
                     Text(stringResource(R.string.tso_fb_photo_added), style = MaterialTheme.typography.bodyMedium)
-                    AronSecondaryButton(stringResource(R.string.tso_fb_remove_photo), { scope.launch { state.removePhoto() } })
+                    TsoButton(stringResource(R.string.tso_fb_remove_photo), { scope.launch { state.removePhoto() } })
                 }
             }
             (result as? FeedbackResult.Invalid)?.errors?.forEach { e ->

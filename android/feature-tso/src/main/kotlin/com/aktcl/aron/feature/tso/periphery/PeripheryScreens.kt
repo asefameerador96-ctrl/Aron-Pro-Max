@@ -35,7 +35,7 @@ import java.io.File
 import kotlinx.coroutines.launch
 import com.aktcl.aron.core.ui.aron.AronCard
 import com.aktcl.aron.core.ui.aron.AronListRow
-import com.aktcl.aron.core.ui.aron.AronSecondaryButton
+import com.aktcl.aron.feature.tso.TsoButton
 import com.aktcl.aron.core.ui.aron.AronTabs
 import com.aktcl.aron.feature.tso.TsoAction
 import com.aktcl.aron.feature.tso.TsoBanner
@@ -123,14 +123,14 @@ fun RetailerScreen(state: RetailerState, online: () -> Boolean, nowMs: () -> Lon
                 ZonePicker(ui.zones, ui.zoneId) { state.pickZone(it) }
                 TsoSectionTitle(stringResource(R.string.tso_pe_radius))
                 AronTabs(RADIUS_OPTIONS_M.map { stringResource(R.string.tso_unit_m, localizedNumber(it.toLong())) }, RADIUS_OPTIONS_M.indexOf(ui.radiusM), { state.pickRadius(RADIUS_OPTIONS_M[it]) }, Modifier.testTag("tso_pe_radius"))
-                AronSecondaryButton(stringResource(R.string.tso_pe_find), { scope.launch { state.find() } }, Modifier.testTag(PeripheryTags.FIND))
+                TsoButton(stringResource(R.string.tso_pe_find), { scope.launch { state.find() } }, Modifier.testTag(PeripheryTags.FIND))
                 when (phase) {
                     RetailerUi.Locating -> TsoBanner(stringResource(R.string.tso_pe_locating), Modifier.testTag(PeripheryTags.STATUS), kind = TsoBannerKind.Info)
                     RetailerUi.Loading -> TsoBanner(stringResource(R.string.tso_pe_loading), Modifier.testTag(PeripheryTags.STATUS), kind = TsoBannerKind.Info)
                     RetailerUi.NeedsPermission -> {
                         TsoBanner(stringResource(R.string.tso_pe_need_permission), Modifier.testTag(PeripheryTags.STATUS), kind = TsoBannerKind.Warning)
-                        AronSecondaryButton(stringResource(R.string.tso_pe_allow), { askPermission.launch(Manifest.permission.ACCESS_FINE_LOCATION) }, Modifier.testTag(PeripheryTags.ALLOW))
-                        if (ui.permissionDenied) AronSecondaryButton(stringResource(R.string.tso_pe_settings), {
+                        TsoButton(stringResource(R.string.tso_pe_allow), { askPermission.launch(Manifest.permission.ACCESS_FINE_LOCATION) }, Modifier.testTag(PeripheryTags.ALLOW))
+                        if (ui.permissionDenied) TsoButton(stringResource(R.string.tso_pe_settings), {
                             context.startActivity(android.content.Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS, android.net.Uri.fromParts("package", context.packageName, null)).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
                         }, Modifier.testTag(PeripheryTags.SETTINGS))
                     }

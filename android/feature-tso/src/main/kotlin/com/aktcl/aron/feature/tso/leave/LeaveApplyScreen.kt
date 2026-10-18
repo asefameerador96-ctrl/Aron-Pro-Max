@@ -24,7 +24,7 @@ import java.time.LocalDate
 import kotlinx.coroutines.launch
 import com.aktcl.aron.core.ui.aron.AronCard
 import com.aktcl.aron.core.ui.aron.AronListRow
-import com.aktcl.aron.core.ui.aron.AronSecondaryButton
+import com.aktcl.aron.feature.tso.TsoButton
 import com.aktcl.aron.core.ui.aron.AronTabs
 import com.aktcl.aron.feature.tso.TsoAction
 import com.aktcl.aron.feature.tso.TsoBanner
@@ -88,7 +88,7 @@ fun LeaveApplyScreen(state: LeaveApplyState, onBack: () -> Unit, modifier: Modif
         ) {
             if (queued) {
                 TsoBanner(stringResource(R.string.tso_leave_queued), Modifier.testTag(LeaveApplyTags.QUEUED), kind = TsoBannerKind.Success)
-                AronSecondaryButton(stringResource(R.string.tso_leave_another), { state.startNew() })
+                TsoButton(stringResource(R.string.tso_leave_another), { state.startNew() })
             }
             if (result is LeaveApplyResult.Failed) TsoBanner(stringResource(R.string.tso_leave_failed), Modifier.testTag(LeaveApplyTags.FAILED), kind = TsoBannerKind.Error)
             TsoSectionTitle(stringResource(R.string.tso_leave_type))
