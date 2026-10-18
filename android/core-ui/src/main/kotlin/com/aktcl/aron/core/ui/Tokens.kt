@@ -209,3 +209,71 @@ object AronTokens {
 }
 
 val LocalAronColors = staticCompositionLocalOf { AronTokens.Light }
+
+/**
+ * The existing-Aron look (OWNER DIRECTIVE 2026-10-18, CLAUDE.md rule 14a, docs/ui-reference/PARITY-SPEC.md s1): the exact values
+ * sampled from the owner's screenshots in docs/ui-reference/sr/. The parity kit (`com.aktcl.aron.core.ui.aron`) reads only these;
+ * no glass, no blur, solid surfaces. [AronLookColors.Sunlight] is the optional one-tap outdoor theme (solid white bars, black ink).
+ */
+@Immutable
+data class AronLookColors(
+    val sunlight: Boolean,
+    /** `aron.gradient.bar` stops: 0 %, 50 %, 100 % (horizontal on bars and buttons, vertical on the selected letter). */
+    val barStart: Color, val barMid: Color, val barEnd: Color,
+    val onBar: Color,
+    val red: Color, val minus: Color, val purple: Color, val panel: Color, val onPanel: Color, val onPanelMuted: Color,
+    val page: Color, val pageHome: Color, val card: Color, val tileHairline: Color, val tileMenu: Color, val tileLabel: Color, val tileLabelOutlet: Color,
+    val panelDark: Color, val tableHeader: Color, val rowAlt: Color,
+    val targetTop: Color, val targetBottom: Color, val track: Color, val trackFill: Color,
+    val disabledFill: Color, val disabledText: Color, val secondaryText: Color,
+    val ink: Color, val inkMuted: Color, val columnHeader: Color, val underline: Color, val silhouette: Color, val silhouetteInk: Color,
+    val badge: Color, val printerOff: Color, val printerOn: Color,
+)
+
+object AronLook {
+    val Default = AronLookColors(
+        sunlight = false,
+        barStart = hex(0xD5484A), barMid = hex(0x903171), barEnd = hex(0x4B1C97), onBar = hex(0xFFFFFF),
+        red = hex(0xD5484A), minus = hex(0xD84A4A), purple = hex(0x4B1C97), panel = hex(0x481B9A), onPanel = hex(0xFFFFFF), onPanelMuted = hex(0xE6DDF7),
+        page = hex(0xE8E8E8), pageHome = hex(0xFFFFFF), card = hex(0xFFFFFF), tileHairline = hex(0xEEEEEE), tileMenu = hex(0xF5F5F5),
+        tileLabel = hex(0x3F2D9B), tileLabelOutlet = hex(0xD0434A),
+        panelDark = hex(0x505050), tableHeader = hex(0x4D4D4D), rowAlt = hex(0xF0F0F0),
+        targetTop = hex(0xC74350), targetBottom = hex(0x561F91), track = hex(0xEFEFEF), trackFill = hex(0xFF0100),
+        disabledFill = hex(0xE8E8E8), disabledText = hex(0xA5A5A5), secondaryText = hex(0x303030),
+        ink = hex(0x111111), inkMuted = hex(0x505050), columnHeader = hex(0x505050), underline = hex(0x9E9E9E),
+        silhouette = hex(0xD9D9D9), silhouetteInk = hex(0x8A8A8A),
+        badge = hex(0xD5484A), printerOff = hex(0xE53935), printerOn = hex(0x4B1C97),
+    )
+
+    /** Optional outdoor theme: solid white bars and panels with black ink (key figures far above 7:1); the accents stay. */
+    val Sunlight = Default.copy(
+        sunlight = true,
+        barStart = hex(0xFFFFFF), barMid = hex(0xFFFFFF), barEnd = hex(0xFFFFFF), onBar = hex(0x000000),
+        red = hex(0xB0001C), minus = hex(0xB0001C), purple = hex(0x2A0A6B), panel = hex(0xFFFFFF), onPanel = hex(0x000000), onPanelMuted = hex(0x202020),
+        page = hex(0xF4F4F4), tileLabel = hex(0x1B0F5C), tileLabelOutlet = hex(0x8A0016), panelDark = hex(0x202020), tableHeader = hex(0x202020),
+        targetTop = hex(0x2A0A6B), targetBottom = hex(0x2A0A6B), disabledText = hex(0x505050), secondaryText = hex(0x000000),
+        ink = hex(0x000000), inkMuted = hex(0x202020), columnHeader = hex(0x202020), underline = hex(0x202020), silhouetteInk = hex(0x404040),
+    )
+
+    /** Card and tile radius 12 dp, button radius 8 dp, the plus/minus square 36 dp drawn inside a 48 dp hit area. */
+    val CardRadius: Dp = 12.dp
+    val ButtonRadius: Dp = 8.dp
+    val StepRadius: Dp = 8.dp
+    val Step: Dp = 36.dp
+    val Touch: Dp = 48.dp
+    val BarHeight: Dp = 56.dp
+    val BarIcon: Dp = 36.dp
+    val TileIcon: Dp = 56.dp
+    val MenuTileIcon: Dp = 72.dp
+    val ButtonHeight: Dp = 52.dp
+    /**
+     * Packshot in a [PackCard][com.aktcl.aron.core.ui.aron.PackCard]: measured on sr/stock.webp (145 x 235 px on a 1146 px, ~407 dp
+     * screen) = 51 x 83 dp; PARITY-SPEC says "about 68 x 120". The screenshot wins (rule 14a), rounded up a little for legibility.
+     */
+    val PackshotWidth: Dp = 56.dp
+    val PackshotHeight: Dp = 90.dp
+    val PackBadge: Dp = 26.dp
+}
+
+/** The look in force; the parity kit reads it. `AronTheme(sunlight = true)` switches it to [AronLook.Sunlight]. */
+val LocalAronLook = staticCompositionLocalOf { AronLook.Default }
