@@ -37,8 +37,8 @@ import kotlin.test.assertTrue
 /**
  * Authorisation audit (qa lane, 2026-10-18) of the admin, data-entry and drill-down routes: enrolment tokens, config
  * changes, versions and tools, dues adjustments, price batches, web entry and QC, paper backfill (data entry), entry
- * unlocks, device OTPs, route assignments, report queries and exports, and the dashboards. Contract-only surfaces
- * (`/v1/dashboards/targets`, `/v1/web-entry/outlet-sku`) must answer 404 to everyone.
+ * unlocks, device OTPs, route assignments, app releases, report queries and exports, and the dashboards. Contract-only
+ * surfaces (`/v1/dashboards/targets`, `/v1/web-entry/outlet-sku`) must answer 404 to everyone.
  *
  * Every role calls every route (SR on its phone; AMO, TSO, DMO, WM, TOP, ANALYST, SUPPORT, ADMIN, SUPERADMIN on the web;
  * WM, TOP, ANALYST and a second SUPERADMIN are inserted here) in an ApiWorld with a mirrored second division (`LKX`).
@@ -215,9 +215,10 @@ class AuthzAuditTest {
         fun str(k: String): String? = ((json as? JsonObject)?.get(k) as? JsonPrimitive)?.contentOrNull
     }
 
-    private suspend fun HttpClient.hit(role: String, method: HttpMethod, path: String, body: String? = null, token: String? = tokens[role], cookie: String? = null): Hit {
+    private suspend fun HttpClient.hit(role: String, method: HttpMethod, path: String, body: String? = null, token: String? = tokens[role], cookie: String? = null, headers: Map<String, String> = emptyMap()): Hit {
         val r = request(path) {
             this.method = method
+            headers.forEach { (k, v) -> header(k, v) }
             header("X-App-Version", ApiWorld.APP_VERSION)
             if (token != null) header("Authorization", "Bearer $token")
             if (role == "SR") header("X-Device-Id", ApiWorld.SR_PHONE)
@@ -258,6 +259,10 @@ class AuthzAuditTest {
 
     // ---- request bodies (own division, valid for an allowed role) -------------------------------------------------
 
+    private fun releaseBody() = obj(
+        "flavour" to "amo", "version_name" to "1.4.2", "version_code" to 77001, "abi" to "universal", "sha256" to "ab".repeat(32),
+        "signing_cert_sha256" to "cd".repeat(32), "size_bytes" to 1000, "download_url" to "https://example.invalid/qa-amo.apk", "notes_en" to "qa authz audit",
+    )
     private fun tokenBody() = obj("flavour" to "sr", "lockdown_level" to "prod", "max_uses" to 1, "expires_in_h" to 1, "zone_id" to zone, "note" to "qa authz audit")
     private fun cfgBody(scopeType: String = "zone", scopeId: Long = zone, value: Any = 120, key: String = "cfg.geo.radius_m") =
         obj("reason" to "qa authz audit change", "changes" to listOf(obj("key" to key, "scope_type" to scopeType, "scope_id" to scopeId, "value" to value)))
@@ -342,7 +347,7 @@ class AuthzAuditTest {
      * ([open]: served or refused there is a QUESTION, not a finding); allowed roles a business rule refuses with 403
      * on this probe's target ([rule], a NOTE).
      */
-    class RouteSpec(val name: String, val method: HttpMethod, val path: () -> String, val body: (() -> String)?, val docs: Set<String>, val open: Set<String> = emptySet(), val rule: Set<String> = emptySet())
+    class RouteSpec(val name: String, val method: HttpMethod, val path: () -> String, val body: (() -> String)?, val docs: Set<String>, val open: Set<String> = emptySet(), val rule: Set<String> = emptySet(), val headers: Map<String, String> = emptyMap())
 
     private val all = setOf("SR", "AMO", "TSO", "DMO", "WM", "TOP", "ANALYST", "SUPPORT", "ADMIN", "SUPERADMIN")
     private val writers = setOf("ADMIN", "SUPERADMIN")
@@ -357,6 +362,8 @@ class AuthzAuditTest {
      */
     /** "Dashboards, reports, team map": TSO and above on the web (AMO reads its app home; SUPPORT sync health only). */
     private val dashDocs = setOf("TSO", "DMO", "WM", "TOP", "ANALYST", "ADMIN", "SUPERADMIN")
+    /** docs/24 s8.5 "App releases": R for SUPPORT, W (draft) for ADMIN, W and publish for SUPERADMIN. */
+    private val releaseReaders = setOf("SUPPORT", "ADMIN", "SUPERADMIN")
 
     private fun specs(): List<RouteSpec> {
         val g = HttpMethod.Get; val p = HttpMethod.Post
@@ -406,13 +413,14 @@ class AuthzAuditTest {
             RouteSpec("GET /v1/dashboards/sync-health", g, { "/v1/dashboards/sync-health?business_date=$day" }, null, dashDocs + "SUPPORT"),
             // Everyone lists their own exports (ReportApi); judged per owner in exports().
             RouteSpec("GET /v1/report-exports", g, { "/v1/report-exports" }, null, all),
-            // App releases (docs/24 s8.5: SUPPORT R, ADMIN W draft, SUPERADMIN publish); a valid draft of its own code and hash.
-            RouteSpec("GET /v1/admin/releases", g, { "/v1/admin/releases" }, null, setOf("SUPPORT", "ADMIN", "SUPERADMIN")),
-            RouteSpec("GET /v1/admin/releases/policy", g, { "/v1/admin/releases/policy" }, null, setOf("SUPPORT", "ADMIN", "SUPERADMIN")),
-            RouteSpec("POST /v1/admin/releases", p, { "/v1/admin/releases" }, {
-                """{"flavour":"amo","version_name":"1.0.0","version_code":7,"abi":"universal","sha256":"${"a1".repeat(32)}","size_bytes":1000,""" +
-                    """"download_url":"https://example.com/qa/amo.apk","signing_cert_sha256":"${"b2".repeat(32)}"}"""
-            }, writers),
+            // App releases (docs/24 s8.5): SUPPORT reads; ADMIN and SUPERADMIN register drafts; only SUPERADMIN publishes. The
+            // POST body is a valid registration (ADMIN creates it, SUPERADMIN's identical call replays it); the PATCH publishes
+            // ApiWorld's draft 900001 (by admin1001, version 1), so SUPERADMIN, the last role, is its only success.
+            RouteSpec("GET /v1/admin/releases", g, { "/v1/admin/releases" }, null, releaseReaders),
+            RouteSpec("GET /v1/admin/releases/policy", g, { "/v1/admin/releases/policy" }, null, releaseReaders),
+            RouteSpec("POST /v1/admin/releases", p, { "/v1/admin/releases" }, { releaseBody().toString() }, writers),
+            RouteSpec("PATCH /v1/admin/releases/{}", HttpMethod.Patch, { "/v1/admin/releases/900001" }, { obj("status" to "published", "change_reason" to "qa authz audit publish").toString() },
+                setOf("SUPERADMIN"), headers = mapOf("If-Match" to "\"1\"")),
             // Contract only (targets and Astha outlet-SKU entry deferred, docs/27): 404 for everyone.
             RouteSpec("GET /v1/dashboards/targets", g, { "/v1/dashboards/targets" }, null, emptySet()),
             RouteSpec("POST /v1/web-entry/outlet-sku", p, { "/v1/web-entry/outlet-sku" }, { "{}" }, emptySet()),
@@ -424,7 +432,7 @@ class AuthzAuditTest {
     private suspend fun HttpClient.roleMatrix() {
         for (s in specs()) for (role in roles) {
             val path = s.path(); val body = s.body?.invoke()
-            val h = hit(role, s.method, path, body)
+            val h = hit(role, s.method, path, body, headers = s.headers)
             val (v, why) = when {
                 role in s.open -> (if (h.ok || h.status in refused) Verdict.QUESTION else Verdict.FINDING) to "docs/24 s8.5 and the code disagree for $role here (open point); answered ${h.status}"
                 role !in s.docs && h.ok -> Verdict.FINDING to "served to a role outside docs/24 s8.5"
@@ -442,8 +450,9 @@ class AuthzAuditTest {
 
     private val reportKeys = mutableListOf<String>()
     /**
-     * F-AMO-032 and F-AMO-033 (F-API-017b): the reports the AMO app shows; route-memo and route-std opened to the AMO, zone
-     * scoped by the token; every other report refused (lead ruling 2026-10-18 04:23, DECISIONS D-AMO-REPORT-02).
+     * The AMO app's reports: `std-memo` and `sales-summary` (F-AMO-032, F-AMO-033, F-API-017b) and the Report tile's
+     * route reports `route-memo` and `route-std` (the current Aron's Route reports; lead's ruling 2026-10-18,
+     * docs/requests/android-amo-report-access.md), all zone-scoped. Every other report is refused to the AMO.
      */
     private val amoReports = setOf("std-memo", "sales-summary", "route-memo", "route-std")
 
