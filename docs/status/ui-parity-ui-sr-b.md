@@ -38,8 +38,10 @@ Proofs: `docs/evidence/ui-parity/sr-<screen>.png` (left reference, right ours, B
 | Sales summary | sr/summary.png, `sr-summary.png` | DONE (content) | Host top bar (icon, printer) is wired by app-sr (ui-sr-a); `printerBadge` slot is ready. Category subtotal labels shrink in the narrow first column. Values show no taka sign (header-less, density). Discount line zero while docs/27 holds. | see git log |
 | Sales submit | sr/sales-submit.png, `sr-submit.png` | DONE (content) | Reference shows the clean state; ours adds gate notices (unsynced, mismatch, dues) only when they apply, plus the reconciliation rows by record type (legacy five rows kept for the grouped view). Hold sheet and dues dialog still use the old kit button and dialog (press-and-hold is not in the parity kit yet). | see git log |
 | Outlet menu | sr/outlet-menu.png, `sr-outlet-menu.png` | DONE | Our two extra actions (add to route, my requests) sit under the tiles as gradient buttons; the reference has only the four tiles. | see git log |
-| Outlet forms | -noref | NOT STARTED | | |
-| Memo list + detail | memo.md (no image) | NOT STARTED | | |
-| Tasks | sr/tasks.png | NOT STARTED | | |
-| Login / enrolment / OTP | -noref | NOT STARTED | | |
-| Settings, tutorial, photo capture | -noref | NOT STARTED | | |
+| Outlet forms (new shop, close, info, cluster, add to route), Force Sale with GEO and photo block, My requests | -noref, `sr-outlet-forms-noref.png` | DONE (layout from the shell, no reference image) | Built in the same language as the reference screens; owner screenshot welcome. Visit check and retailer picker are ui-sr-a's. | see git log |
+| Memo list + detail + sale history | memo.md (no image), `sr-memo-noref.png` | DONE (layout from memo.md) | No reference image. The memo selector with the A-Z letter filter of memo.md is not built: the screen lists today's memos (docs/16 UI-SR-28). Edit is amber, Mark paid green. | see git log |
+| Tasks | sr/tasks.png, `sr-tasks.png` | DONE | Reference shows only the empty state; the card list and the tabs are our addition in the same language. | see git log |
+| Login, OTP, enrolment, location notice | -noref, `sr-login-otp-noref.png` | DONE (layout from the shell) | No reference image; gradient brand card instead of the vendor logo. Language and sun toggles keep the old kit look. | see git log |
+| Tutorial list | sr/ (none) | NOT MINE | Lives in app-sr TutorialHost and feature-home OnboardingScreens (ui-sr-a). | |
+| Settings gear page | sr/ (none) | NOT FOUND in my modules | Asked ui-sr-a; no composable in feature-memo, dayclose, outlet, tasks or auth. | |
+| Photo capture | -noref | DONE | The capture block (`GeoPhotoBlock`) is restyled; the camera itself is the system camera. | see git log |
