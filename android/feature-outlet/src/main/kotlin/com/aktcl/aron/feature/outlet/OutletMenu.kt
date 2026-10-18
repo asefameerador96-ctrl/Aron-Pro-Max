@@ -21,7 +21,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import com.aktcl.aron.core.ui.AronTokens
 import com.aktcl.aron.core.ui.LocalAronLook
-import com.aktcl.aron.core.ui.aron.AronSecondaryButton
+import com.aktcl.aron.core.ui.aron.AronPrimaryButton
 import com.aktcl.aron.core.ui.aron.AronTile
 import com.aktcl.aron.core.ui.aron.AronTileGrid
 
@@ -60,7 +60,7 @@ fun OutletMenuContent(onKind: (OutletRequestKind) -> Unit, modifier: Modifier = 
                 onClick = { onKind(k) }, modifier = mod.testTag(OutletMenuTags.kind(k)), menu = true, labelColor = look.tileLabelOutlet,
             )
         }
-        AronSecondaryButton(stringResource(R.string.out_req_route_add), { onKind(OutletRequestKind.ROUTE_ADD) }, Modifier.fillMaxWidth().testTag(OutletMenuTags.kind(OutletRequestKind.ROUTE_ADD)))
-        onOwnRequests?.let { AronSecondaryButton(stringResource(R.string.out_own_open), it, Modifier.fillMaxWidth().testTag(OutletMenuTags.OWN)) }
+        AronPrimaryButton(stringResource(R.string.out_req_route_add), { onKind(OutletRequestKind.ROUTE_ADD) }, Modifier.fillMaxWidth().testTag(OutletMenuTags.kind(OutletRequestKind.ROUTE_ADD)))
+        onOwnRequests?.let { AronPrimaryButton(stringResource(R.string.out_own_open), it, Modifier.fillMaxWidth().testTag(OutletMenuTags.OWN)) }
     }
 }

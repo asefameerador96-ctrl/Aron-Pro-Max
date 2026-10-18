@@ -152,6 +152,8 @@ class CloseShot {
     @Test fun parity_submit_bn() = shot("parity_submit_bn") { Parity("বিক্রয় জমা", com.aktcl.aron.core.ui.R.drawable.aron_art_sales_submit) { Submit() } }
     @Test fun parity_submit_clean_bn() = shot("parity_submit_clean_bn") { Parity("বিক্রয় জমা", com.aktcl.aron.core.ui.R.drawable.aron_art_sales_submit) { SubmitClean() } }
 
+    @Test fun parity_outlet_menu_bn() = shot("parity_outlet_menu_bn") { Parity("আউটলেট", com.aktcl.aron.core.ui.R.drawable.aron_art_outlet) { com.aktcl.aron.feature.outlet.OutletMenuContent({}, onOwnRequests = {}) } }
+
     @Test fun parity_summary_bn() = shot("parity_summary_bn") { Parity("বিক্রয় সারসংক্ষেপ", com.aktcl.aron.core.ui.R.drawable.aron_art_summary) { Summary() } }
 
     @Test fun attendance_a_bn_light() = shot("close_attendance_a_bn_light") { AttendanceA() }

@@ -31,11 +31,13 @@ Top bar `টাস্ক` (no icon). Grey page, centered empty text. Task cards 
 
 ## Parity table
 
+Proofs: `docs/evidence/ui-parity/sr-<screen>.png` (left reference, right ours, Bangla light, 360 dp). Local build works (SDK installed in the lane container); feature-memo, feature-dayclose, feature-outlet and ui-screenshots tests pass locally.
+
 | Screen | Reference | Status | Differs | sha |
 |---|---|---|---|---|
-| Sales summary | sr/summary.png | NOT STARTED | | |
-| Sales submit | sr/sales-submit.png | NOT STARTED | | |
-| Outlet menu | sr/outlet-menu.png | NOT STARTED | | |
+| Sales summary | sr/summary.png, `sr-summary.png` | DONE (content) | Host top bar (icon, printer) is wired by app-sr (ui-sr-a); `printerBadge` slot is ready. Category subtotal labels shrink in the narrow first column. Values show no taka sign (header-less, density). Discount line zero while docs/27 holds. | see git log |
+| Sales submit | sr/sales-submit.png, `sr-submit.png` | DONE (content) | Reference shows the clean state; ours adds gate notices (unsynced, mismatch, dues) only when they apply, plus the reconciliation rows by record type (legacy five rows kept for the grouped view). Hold sheet and dues dialog still use the old kit button and dialog (press-and-hold is not in the parity kit yet). | see git log |
+| Outlet menu | sr/outlet-menu.png, `sr-outlet-menu.png` | DONE | Our two extra actions (add to route, my requests) sit under the tiles as gradient buttons; the reference has only the four tiles. | see git log |
 | Outlet forms | -noref | NOT STARTED | | |
 | Memo list + detail | memo.md (no image) | NOT STARTED | | |
 | Tasks | sr/tasks.png | NOT STARTED | | |
