@@ -178,10 +178,10 @@ class ScreenshotTests {
     private fun sku(id: Long, cat: String, name: String, unit: String, perPack: Int) =
         SkuEntity(id, "S$id", id, cat, name, name, null, unit, perPack, if (perPack > 1) "pack" else "base", null, "1.000", id.toInt(), "active", 1)
     private val stockRows = listOf(
-        StockRow(sku(1, "cigarette", "MaxR 10S", "stick", 10), 400, 20),
-        StockRow(sku(2, "cigarette", "Prime Gold 10S", "stick", 10), 200, 0),
-        StockRow(sku(3, "lighter", "Aster", "piece", 1), 400, 0),
-        StockRow(sku(4, "match", "Flame Box", "dozen", 1), 400, 0),
+        StockRow(sku(1, "cigarette", "MaxR 10S", "stick", 10), 400, 20, stockBase = 380),
+        StockRow(sku(2, "cigarette", "Prime Gold 10S", "stick", 10), 200, 0, stockBase = 190),
+        StockRow(sku(3, "lighter", "Aster", "piece", 1), 400, 0, stockBase = 25),
+        StockRow(sku(4, "match", "Flame Box", "dozen", 1), 400, 0, stockBase = 394),
     )
     private val stockTotals = listOf(CategoryTotal("cigarette", 600), CategoryTotal("lighter", 400), CategoryTotal("match", 400))
 

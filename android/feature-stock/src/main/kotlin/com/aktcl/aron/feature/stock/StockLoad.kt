@@ -37,6 +37,11 @@ class StockLoad(
     private val guardStore: GuardStore = GuardStore.InMemory(),
     /** `cfg.stock.max_issue_qty`: a soft ceiling, warn and allow. */
     val softCeiling: Long = DEFAULT_SOFT_CEILING,
+    /**
+     * The stock in the bag now per SKU in base units (`StockTracker`: issued + adjusted - QC returned - sold), display only: it
+     * never enters a Save. Null = the host has no on-hand figure and the screen says "total load" instead of "stock".
+     */
+    currentBaseBySku: Map<Long, Long>? = null,
 ) {
     /** Last saved signature and instant. */
     interface GuardStore {
@@ -50,13 +55,14 @@ class StockLoad(
     }
 
     private val loaded = loadedBaseBySku.toMutableMap()
+    private val current = currentBaseBySku?.toMutableMap()
     private val entered = linkedMapOf<Long, Long>()
     private var inFlightSignature: String? = null
     private var priorGuard: Pair<String, Long>? = null
 
     val rows: List<StockRow>
         get() = skus.filter { it.status == "active" }.sortedBy { it.sort }
-            .map { StockRow(it, loaded[it.skuId] ?: 0L, entered[it.skuId] ?: 0L) }
+            .map { StockRow(it, loaded[it.skuId] ?: 0L, entered[it.skuId] ?: 0L, stockBase = current?.let { c -> c[it.skuId] ?: 0L }) }
 
     /** Totals per category over what is already loaded today (the entered, unsaved quantities are not counted). */
     val totals: List<CategoryTotal>
@@ -108,7 +114,10 @@ class StockLoad(
 
     /** Call after the committer succeeded: folds the increment into today's loaded totals and starts the guard window. */
     fun committed(saved: SaveOutcome.Saved, nowMs: Long) {
-        saved.movements.forEach { loaded[it.skuId] = (loaded[it.skuId] ?: 0L) + it.qtyBase }
+        saved.movements.forEach {
+            loaded[it.skuId] = (loaded[it.skuId] ?: 0L) + it.qtyBase
+            current?.let { c -> c[it.skuId] = (c[it.skuId] ?: 0L) + it.qtyBase }
+        }
         guardStore.save(entered.entries.sortedBy { it.key }.joinToString(";") { "${it.key}=${it.value}" }, nowMs)
         inFlightSignature = null
         entered.clear()
