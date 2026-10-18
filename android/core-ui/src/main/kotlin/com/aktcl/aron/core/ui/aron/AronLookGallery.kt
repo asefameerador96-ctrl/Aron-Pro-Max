@@ -73,7 +73,7 @@ fun AronLookGallery(modifier: Modifier = Modifier) {
                     skuId = code, skuCode = code,
                     quantity = if (i == 0) localizedDigits(qty) else localizedNumber(0),
                     onQuantityChange = { if (i == 0) qty = it }, onMinus = {}, onPlus = {},
-                    stock = localizedNumber(if (i == 0) 0L else 394L),
+                    stock = localizedNumber(if (i == 0) 12000L else 394L),
                     minusLabel = stringResource(R.string.core_ui_look_less), plusLabel = stringResource(R.string.core_ui_look_more),
                     quantityLabel = stringResource(R.string.core_ui_look_quantity),
                     packBadge = localizedNumber(0), category = category,

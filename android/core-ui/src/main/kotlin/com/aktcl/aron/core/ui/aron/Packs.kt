@@ -112,7 +112,8 @@ private fun DrawScope.silhouette(category: PackCategory, ink: Color) {
 }
 
 /** Widths shared by [PackCard] and [PackListHeader] so the column headers sit over their columns. */
-private val StockColumn = 40.dp
+/** 52 dp: a 5-digit stick count with its separator (`১২,০০০`) and the `স্টক` header fit on one line, shrinking to 12 sp at most. */
+private val StockColumn = 52.dp
 private val QtyField = 48.dp
 private val QtyColumn = AronLook.Touch * 2 + QtyField
 
@@ -123,10 +124,10 @@ private val QtyColumn = AronLook.Touch * 2 + QtyField
 @Composable
 fun PackListHeader(sku: String, quantity: String, stock: String, modifier: Modifier = Modifier) {
     val look = LocalAronLook.current
-    Row(modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-        Text(sku, style = lookStyle(20.sp, color = look.columnHeader), modifier = Modifier.weight(1f).padding(start = 16.dp))
-        Text(quantity, style = lookStyle(20.sp, color = look.columnHeader, align = TextAlign.Center), modifier = Modifier.width(QtyColumn))
-        Text(stock, style = lookStyle(20.sp, color = look.columnHeader, align = TextAlign.End), modifier = Modifier.width(StockColumn))
+    Row(modifier.fillMaxWidth().padding(start = 12.dp, end = 16.dp, top = 12.dp, bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+        FitText(sku, lookStyle(20.sp, color = look.columnHeader), 12.sp, Modifier.weight(1f).padding(start = 16.dp), oneLineDown = 12.sp)
+        FitText(quantity, lookStyle(20.sp, color = look.columnHeader, align = TextAlign.Center), 12.sp, Modifier.width(QtyColumn), oneLineDown = 12.sp)
+        FitText(stock, lookStyle(20.sp, color = look.columnHeader, align = TextAlign.End), 12.sp, Modifier.width(StockColumn), oneLineDown = 12.sp)
     }
 }
 
@@ -209,6 +210,6 @@ fun PackCard(
             },
         )
         AronPlus(onPlus, plusLabel, enabled = plusEnabled)
-        Text(stock, style = lookStyle(18.sp, color = look.ink, align = TextAlign.End), modifier = Modifier.width(StockColumn))
+        FitText(stock, lookStyle(18.sp, color = look.ink, align = TextAlign.End), 12.sp, Modifier.width(StockColumn), oneLineDown = 12.sp)
     }
 }
