@@ -140,11 +140,12 @@ class BundleService(
         val configVersion = config.configVersion() // one read: config.version and device_policy_version agree
         val bundle = db.jdbi.withHandle<Bundle, Exception> { h ->
             val own = routeSnapshots(h, user.id, plans, date, dayStates, cfg, roleOrdinal)
-            // F-AMO-044: the AMO also carries every route of the zone (outlets for a Control Call anywhere in airplane mode).
+            // F-AMO-044: the AMO (and the TSO) also carries every route of the zone (outlets for a Control Call anywhere in airplane mode).
             val supReach = if (reach != null && SupervisorBundle.isSupervisor(p.role)) reach.reach(user.id, p.role, p.scopeVersion, date) else null
             val zonePlans = if (supReach != null) SupervisorBundle.zoneRoutePlans(h, supReach, plans.map { it.routeId }.toSet()) else emptyList()
-            // Only the AMO carries the zone's outlets; the TSO's section lists the zone's routes and team without them.
-            val zoneRoutes = if (supReach != null && p.role == Role.AMO) routeSnapshots(h, user.id, zonePlans, date, emptyMap(), cfg, roleOrdinal, zoneIds = supReach.zoneIds.toList()) else emptyList()
+            // The AMO and the TSO carry the outlets of every route of their zones (the TSO's login snapshot, F-TSO-027, lead
+            // ruling 2026-10-18): same builder, scope from the token, paged above cfg.bundle.page_threshold_rows like any section.
+            val zoneRoutes = if (supReach != null && (p.role == Role.AMO || p.role == Role.TSO)) routeSnapshots(h, user.id, zonePlans, date, emptyMap(), cfg, roleOrdinal, zoneIds = supReach.zoneIds.toList()) else emptyList()
             val routes = own + zoneRoutes
             val zones = (plans.map { it.zoneId } + listOfNotNull(user.homeZoneId)).distinct()
             Bundle(
@@ -166,7 +167,7 @@ class BundleService(
                 routes = routes,
                 tasks = tasks(h, user.id),
                 surveys = BundleContent.surveys(h, user.role, date),
-                rubrics = emptyList(),
+                rubrics = BundleContent.rubrics(h, user.role),
                 supervisor = supReach?.let { SupervisorBundle.section(h, user.id, p.role, it, date, (plans.map { r -> r.routeId } + zonePlans.map { r -> r.routeId }).distinct()) },
                 reason_texts = ReasonTexts.ALL,
                 device_policy_version = configVersion,
@@ -461,7 +462,7 @@ class BundleService(
 
     private fun routeSnapshots(
         h: Handle, userId: Long, plans: List<RouteDayPlan>, date: LocalDate, states: Map<Long, DayRow>, cfg: ScopedConfig, roleOrdinal: Long?,
-        /** F-AMO-044: non-null builds the AMO's zone-wide routes: only outlets of these zones, no open memos, no target, no rep state. */
+        /** F-AMO-044: non-null builds the AMO's and TSO's zone-wide routes: only outlets of these zones, no open memos, no target, no rep state. */
         zoneIds: List<Long>? = null,
     ): List<RouteSnapshot> {
         if (plans.isEmpty()) return emptyList()

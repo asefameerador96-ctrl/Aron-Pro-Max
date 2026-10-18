@@ -132,12 +132,14 @@ class ReportApiTest {
         // Scope ids sent as body members are not part of the contract: refused, not ignored.
         val stray = query(11, Role.TSO, body(extra = ""","zone_ids":[$z2],"scope":{"zones":[$z2]}"""))
         assertEquals(HttpStatusCode.BadRequest, stray.status); assertTrue(stray.bodyAsText().contains("ERR_VALIDATION"))
-        assertEquals(HttpStatusCode.Forbidden, query(12, Role.AMO, body()).status)          // the role gate precedes the body
+        assertEquals(HttpStatusCode.Forbidden, query(12, Role.SR, body()).status)           // the role gate precedes the body
         assertEquals(HttpStatusCode.NotFound, query(10, Role.ANALYST, body(), key = "no-such-report").status)
         assertEquals(HttpStatusCode.BadRequest, query(10, Role.ANALYST, body(format = "csv")).status)
         val defs = Json.parseToJsonElement(client.get("/v1/reports") { bearerAuth(TestTokens.web(10, Role.ANALYST)) }.bodyAsText()).jsonObject["items"]!!.jsonArray
         assertEquals("route-memo", defs.single().jsonObject["report_key"]!!.jsonPrimitive.content)
-        assertEquals(0, Json.parseToJsonElement(client.get("/v1/reports") { bearerAuth(TestTokens.web(12, Role.AMO)) }.bodyAsText()).jsonObject["items"]!!.jsonArray.size)
+        // route-memo is open to the AMO app for its zone (docs/requests/android-amo-report-access.md); a field SR sees no report.
+        assertEquals(1, Json.parseToJsonElement(client.get("/v1/reports") { bearerAuth(TestTokens.web(12, Role.AMO)) }.bodyAsText()).jsonObject["items"]!!.jsonArray.size)
+        assertEquals(0, Json.parseToJsonElement(client.get("/v1/reports") { bearerAuth(TestTokens.web(12, Role.SR)) }.bodyAsText()).jsonObject["items"]!!.jsonArray.size)
     }
 
     @Test

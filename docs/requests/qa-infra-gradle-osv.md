@@ -1,3 +1,7 @@
+> **lead-backend, 2026-10-17:** not the same fix. The Jackson pin landed (see `qa-backend-jackson-cves.md`), so the step
+> below now passes on the backend classpath; adding it to `ci.yml` stays with infra (owner of `.github/`). The qa scripts
+> `tools/ci/gradle-lockfile.py` and `test_gradle_lockfile.py` are on `lane/qa` and must reach INT with or before the step.
+
 # qa → infra: put the Gradle runtime classpaths under the OSV gate (N-061), 2026-10-17
 
 ci.yml's dependency scan reads only `web/package-lock.json` ("the Gradle verification file joins it when it exists").
