@@ -82,7 +82,7 @@ fun AronTile(
             if (icon != null) Image(icon, contentDescription = null, modifier = Modifier.size(iconSize))
             else Box(Modifier.size(iconSize).clip(RoundedCornerShape(14.dp)).background(look.verticalBrush()))
             Spacer(Modifier.height(10.dp))
-            Text(label, style = lookStyle(14.sp, color = labelColor ?: look.tileLabel, align = TextAlign.Center))
+            Text(label, style = lookStyle(14.sp, color = labelColor ?: look.tileLabel, align = TextAlign.Center, medium = true))
         }
         if (badge > 0) {
             val text = if (badge > 99) localizedDigits("99+") else localizedNumber(badge.toLong())

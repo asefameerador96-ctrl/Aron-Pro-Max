@@ -117,4 +117,15 @@
     <string name="core_ui_look_tile_photo">Photo Capture</string>
     <string name="core_ui_look_tile_journey">Sales journey</string>
     <string name="core_ui_look_tile_kpi">KPI</string>
+    <string name="core_ui_look_target_title">Target and achievement</string>
+    <string name="core_ui_look_target_label">Today\'s sales</string>
+    <string name="core_ui_look_info">Your whole day\'s sales are shown here</string>
+    <string name="core_ui_look_printer_on">Printer connected</string>
+    <string name="core_ui_look_device_status">Device status</string>
+    <string name="core_ui_look_online">Online</string>
+    <string name="core_ui_look_subject">Item</string>
+    <string name="core_ui_look_device">Device</string>
+    <string name="core_ui_look_server">Server</string>
+    <string name="core_ui_look_notice">Before you finish today, sync all data and submit the sales from here.</string>
+    <string name="core_ui_look_sync">Sync data</string>
 </resources>

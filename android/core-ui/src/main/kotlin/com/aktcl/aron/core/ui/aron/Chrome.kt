@@ -1,6 +1,10 @@
 package com.aktcl.aron.core.ui.aron
 
 import androidx.compose.foundation.Image
+import com.aktcl.aron.core.ui.aron.Glyph.info
+import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.border
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -28,6 +32,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.zIndex
+import androidx.compose.foundation.layout.offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -54,23 +63,33 @@ import com.aktcl.aron.core.ui.aron.Glyph.gear
 import com.aktcl.aron.core.ui.aron.Glyph.person
 import com.aktcl.aron.core.ui.aron.Glyph.printer
 import com.aktcl.aron.core.ui.aron.Glyph.save
+import com.aktcl.aron.core.ui.aron.Glyph.sync
 
 /** The horizontal `aron.gradient.bar` (red, plum, purple); solid in sunlight. [reverse] runs purple to red (the Summary Print button). */
 fun AronLookColors.barBrush(reverse: Boolean = false): Brush =
     if (sunlight) SolidColor(barStart) else Brush.horizontalGradient(if (reverse) listOf(barEnd, barMid, barStart) else listOf(barStart, barMid, barEnd))
+
+/** Sunlight bars are solid white: a 2 dp ink rule under them keeps the edge visible (the gradient does it otherwise). */
+internal fun Modifier.sunlightRule(look: AronLookColors): Modifier =
+    if (!look.sunlight) this else drawBehind { drawRect(look.ink, Offset(0f, size.height - 2.dp.toPx()), Size(size.width, 2.dp.toPx())) }
 
 /** The vertical gradient of the selected letter pill. */
 fun AronLookColors.verticalBrush(): Brush = if (sunlight) SolidColor(purple) else Brush.verticalGradient(listOf(barStart, barEnd))
 
 /** A text style in the bundled font of the current language. */
 @Composable
-internal fun lookStyle(size: TextUnit, bold: Boolean = false, color: Color = Color.Unspecified, align: TextAlign = TextAlign.Unspecified) =
-    TextStyle(fontFamily = AronFonts.forLanguage(LocalAppLanguage.current), fontSize = size, fontWeight = if (bold) FontWeight.Bold else FontWeight.Normal, color = color, textAlign = align)
+internal fun lookStyle(size: TextUnit, bold: Boolean = false, color: Color = Color.Unspecified, align: TextAlign = TextAlign.Unspecified, medium: Boolean = false) =
+    TextStyle(
+        fontFamily = AronFonts.forLanguage(LocalAppLanguage.current), fontSize = size, color = color, textAlign = align,
+        fontWeight = if (bold) FontWeight.Bold else if (medium) FontWeight.Medium else FontWeight.Normal,
+    )
 
 /**
  * The top bar of every non-Home screen (PARITY-SPEC s2.1, sr/stock.webp, sr/sale-select.png, sr/summary.png): full-width gradient, a white
  * back chevron at the start (shown when [onBack] is set; [backLabel] is its TalkBack label), the screen [icon] (36 dp, the gradient line
- * icon of the tile) and the white bold [title] centred, and an optional [trailing] slot at the end (the printer state, [AronPrinterBadge]).
+ * icon of the tile) and the white bold [title] (22 sp) centred, an optional [trailing] slot at the end inside the bar, and an optional
+ * [hanging] slot whose centre sits on the bar's bottom edge at the end (the printer state, [AronPrinterBadge], as in sr/stock.webp).
+ * Inside [AronScaffold] the bar is drawn above the content so the hanging badge stays visible and tappable.
  */
 @Composable
 fun AronTopBar(
@@ -80,38 +99,43 @@ fun AronTopBar(
     onBack: (() -> Unit)? = null,
     backLabel: String? = null,
     trailing: (@Composable () -> Unit)? = null,
+    hanging: (@Composable () -> Unit)? = null,
 ) {
     val look = LocalAronLook.current
-    Box(
-        modifier
-            .fillMaxWidth()
-            .background(look.barBrush())
-            .windowInsetsPadding(WindowInsets.statusBars)
-            .heightIn(min = AronLook.BarHeight),
-        contentAlignment = Alignment.Center,
-    ) {
-        if (onBack != null) {
-            Box(
-                Modifier
-                    .align(Alignment.CenterStart)
-                    .size(AronLook.Touch)
-                    .clickable(role = Role.Button, onClick = onBack)
-                    .semantics { if (backLabel != null) contentDescription = backLabel },
-                contentAlignment = Alignment.Center,
-            ) { GlyphCanvas(Modifier.size(24.dp)) { chevronBack(look.onBar) } }
-        }
-        Row(
-            Modifier.padding(horizontal = AronLook.Touch + 8.dp, vertical = 6.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.Center,
+    Box(modifier.fillMaxWidth()) {
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .background(look.barBrush())
+                .sunlightRule(look)
+                .windowInsetsPadding(WindowInsets.statusBars)
+                .heightIn(min = AronLook.BarHeight),
+            contentAlignment = Alignment.Center,
         ) {
-            if (icon != null) {
-                Image(icon, contentDescription = null, modifier = Modifier.size(AronLook.BarIcon))
-                Spacer(Modifier.width(10.dp))
+            if (onBack != null) {
+                Box(
+                    Modifier
+                        .align(Alignment.CenterStart)
+                        .size(AronLook.Touch)
+                        .clickable(role = Role.Button, onClick = onBack)
+                        .semantics { if (backLabel != null) contentDescription = backLabel },
+                    contentAlignment = Alignment.Center,
+                ) { GlyphCanvas(Modifier.size(24.dp)) { chevronBack(look.onBar) } }
             }
-            Text(title, style = lookStyle(20.sp, bold = true, color = look.onBar, align = TextAlign.Center), modifier = Modifier.semantics { heading() })
+            Row(
+                Modifier.padding(horizontal = AronLook.Touch + 8.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center,
+            ) {
+                if (icon != null) {
+                    Image(icon, contentDescription = null, modifier = Modifier.size(AronLook.BarIcon))
+                    Spacer(Modifier.width(10.dp))
+                }
+                Text(title, style = lookStyle(22.sp, bold = true, color = look.onBar, align = TextAlign.Center), modifier = Modifier.semantics { heading() })
+            }
+            if (trailing != null) Box(Modifier.align(Alignment.CenterEnd).padding(end = 4.dp)) { trailing() }
         }
-        if (trailing != null) Box(Modifier.align(Alignment.CenterEnd).padding(end = 4.dp)) { trailing() }
+        if (hanging != null) Box(Modifier.align(Alignment.BottomEnd).padding(end = 40.dp).offset(y = AronLook.Touch / 2)) { hanging() }
     }
 }
 
@@ -124,9 +148,10 @@ fun AronPrinterBadge(connected: Boolean, label: String, onClick: () -> Unit, mod
     val look = LocalAronLook.current
     Box(
         modifier
-            .size(AronLook.Touch)
+            .size(AronLook.Touch + 4.dp)
+            .shadow(3.dp, CircleShape)
             .clip(CircleShape)
-            .background(look.card.copy(alpha = 0.92f))
+            .background(look.rowAlt)
             .clickable(role = Role.Button, onClick = onClick)
             .semantics { contentDescription = label },
         contentAlignment = Alignment.Center,
@@ -151,7 +176,7 @@ fun AronScaffold(
 ) {
     val look = LocalAronLook.current
     Column(modifier.fillMaxSize().background(if (home) look.pageHome else look.page)) {
-        topBar()
+        Box(Modifier.zIndex(1f)) { topBar() }
         Box(Modifier.weight(1f).fillMaxWidth(), content = content)
         if (bottomPanel != null || bottomButtons != null) {
             Column(
@@ -188,6 +213,7 @@ fun AronHomeHeader(
         modifier
             .fillMaxWidth()
             .background(look.barBrush())
+            .sunlightRule(look)
             .windowInsetsPadding(WindowInsets.statusBars)
             .padding(start = 12.dp, end = 4.dp, top = 20.dp, bottom = 24.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -208,7 +234,7 @@ fun AronHomeHeader(
 }
 
 /** The leading glyph of a button (sr/stock.webp: Save has a disk, Print a printer). */
-enum class ButtonGlyph { Save, Print }
+enum class ButtonGlyph { Save, Print, Sync, Submit }
 
 @Composable
 private fun ButtonContent(text: String, glyph: ButtonGlyph?, icon: Painter?, ink: Color, gap: Color) {
@@ -217,6 +243,8 @@ private fun ButtonContent(text: String, glyph: ButtonGlyph?, icon: Painter?, ink
             icon != null -> Image(icon, contentDescription = null, modifier = Modifier.size(20.dp))
             glyph == ButtonGlyph.Save -> GlyphCanvas(Modifier.size(18.dp)) { save(ink, gap) }
             glyph == ButtonGlyph.Print -> GlyphCanvas(Modifier.size(20.dp)) { printer(ink, crossed = false, gap = gap) }
+            glyph == ButtonGlyph.Sync -> GlyphCanvas(Modifier.size(20.dp)) { sync(ink) }
+            glyph == ButtonGlyph.Submit -> GlyphCanvas(Modifier.size(18.dp)) { save(ink, gap) }
         }
         if (icon != null || glyph != null) Spacer(Modifier.width(8.dp))
         Text(text, style = lookStyle(18.sp, bold = true, color = ink, align = TextAlign.Center))
@@ -225,7 +253,8 @@ private fun ButtonContent(text: String, glyph: ButtonGlyph?, icon: Painter?, ink
 
 /**
  * The big action button (PARITY-SPEC s2.8): red-to-purple gradient ([reverse]: purple to red, as the Summary Print), 8 dp radius,
- * white bold label with an optional leading [glyph] or [icon], at least 52 dp tall. Disabled: grey `#E8E8E8` with `#A5A5A5` text.
+ * white bold label with an optional leading [glyph] or [icon], at least 52 dp tall. Disabled: solid grey `#B8B8B8` with a white label
+ * (the Sales-submit button before the sync, sr/sales-submit.png); the grey Print of Stock is [AronSecondaryButton].
  */
 @Composable
 fun AronPrimaryButton(
@@ -239,8 +268,8 @@ fun AronPrimaryButton(
 ) {
     val look = LocalAronLook.current
     val shape = RoundedCornerShape(AronLook.ButtonRadius)
-    val fill: Brush = if (enabled) (if (look.sunlight) SolidColor(look.purple) else look.barBrush(reverse)) else SolidColor(look.disabledFill)
-    val ink = if (enabled) Color.White else look.disabledText
+    val fill: Brush = if (enabled) (if (look.sunlight) SolidColor(look.purple) else look.barBrush(reverse)) else SolidColor(look.primaryDisabled)
+    val ink = Color.White
     Box(
         modifier
             .heightIn(min = AronLook.ButtonHeight)
@@ -248,7 +277,7 @@ fun AronPrimaryButton(
             .background(fill)
             .clickable(enabled = enabled, role = Role.Button, onClick = onClick),
         contentAlignment = Alignment.Center,
-    ) { ButtonContent(text, glyph, icon, ink, if (enabled) look.purple else look.disabledFill) }
+    ) { ButtonContent(text, glyph, icon, ink, if (enabled) look.purple else look.primaryDisabled) }
 }
 
 /** The grey button (PARITY-SPEC s2.8, the Stock Print before a printer is connected): `#E8E8E8`, dark label, `#A5A5A5` when disabled. */
@@ -299,3 +328,88 @@ fun AronMinus(onClick: () -> Unit, contentDescription: String, modifier: Modifie
 @Composable
 fun AronPlus(onClick: () -> Unit, contentDescription: String, modifier: Modifier = Modifier, enabled: Boolean = true) =
     StepSquare(LocalAronLook.current.purple, plus = true, onClick, contentDescription, enabled, modifier)
+
+/**
+ * The white info card at the top of Summary (sr/summary.png): a dark round "i", the [text] in 17 sp, and an optional [trailing]
+ * slot (the light printer circle, [AronPrinterBadge]).
+ */
+@Composable
+fun AronInfoCard(text: String, modifier: Modifier = Modifier, trailing: (@Composable () -> Unit)? = null) {
+    val look = LocalAronLook.current
+    val shape = RoundedCornerShape(AronLook.CardRadius)
+    Row(
+        modifier.fillMaxWidth().clip(shape).background(look.card).border(1.dp, look.underline.copy(alpha = 0.4f), shape).padding(16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(Modifier.size(24.dp).clip(CircleShape).background(look.inkMuted), contentAlignment = Alignment.Center) {
+            GlyphCanvas(Modifier.size(24.dp)) { info(Color.White) }
+        }
+        Text(text, style = lookStyle(17.sp, color = look.ink), modifier = Modifier.weight(1f).padding(horizontal = 12.dp))
+        trailing?.invoke()
+    }
+}
+
+/**
+ * The Home "Target and achievement" card shell (PARITY-SPEC s1 `aron.target`, sr/home-1-tiles.webp): vertical red-to-purple gradient,
+ * white [title] and [label]. Targets are deferred (docs/27), so [percent] stays null until the programme returns: the bar is then
+ * hidden and [value] (the day's sales) shows instead. [detailsLabel] with [onDetails] adds the underlined "details" link.
+ */
+@Composable
+fun AronTargetCard(
+    title: String,
+    label: String,
+    modifier: Modifier = Modifier,
+    value: String? = null,
+    percent: Int? = null,
+    percentText: String? = null,
+    detailsLabel: String? = null,
+    onDetails: (() -> Unit)? = null,
+) {
+    val look = LocalAronLook.current
+    val shape = RoundedCornerShape(AronLook.CardRadius)
+    Column(
+        modifier.fillMaxWidth().clip(shape).background(Brush.verticalGradient(listOf(look.targetTop, look.targetBottom))).padding(horizontal = 20.dp, vertical = 16.dp),
+    ) {
+        Text(title, style = lookStyle(22.sp, bold = true, color = Color.White), modifier = Modifier.semantics { heading() })
+        Spacer(Modifier.height(8.dp))
+        Text(label, style = lookStyle(16.sp, color = Color.White))
+        if (value != null) Text(value, style = lookStyle(26.sp, bold = true, color = Color.White))
+        if (percent != null) {
+            Spacer(Modifier.height(6.dp))
+            Box(Modifier.fillMaxWidth().heightIn(min = 20.dp).clip(RoundedCornerShape(50)).background(look.track)) {
+                Box(Modifier.fillMaxWidth(percent.coerceIn(1, 100) / 100f).heightIn(min = 20.dp).clip(RoundedCornerShape(50)).background(look.trackFill))
+                if (percentText != null) Text(percentText, style = lookStyle(13.sp, bold = true, color = look.trackFill), modifier = Modifier.align(Alignment.CenterStart).padding(start = 12.dp))
+            }
+        }
+        if (detailsLabel != null && onDetails != null) {
+            Box(Modifier.fillMaxWidth().heightIn(min = AronLook.Touch).clickable(role = Role.Button, onClick = onDetails), contentAlignment = Alignment.Center) {
+                Text(detailsLabel, style = lookStyle(14.sp, color = Color.White).copy(textDecoration = TextDecoration.Underline))
+            }
+        }
+    }
+}
+
+/**
+ * The device status line of Sales submit (sr/sales-submit.png): [label] (`ডিভাইস স্ট্যাটাস`), a 20 dp dot, green when [online] and grey
+ * otherwise, then [state] (`অনলাইন` / `অফলাইন`) in the dot's colour. End-aligned.
+ */
+@Composable
+fun AronStatusDot(label: String, state: String, online: Boolean, modifier: Modifier = Modifier) {
+    val look = LocalAronLook.current
+    val tone = if (online) look.online else look.offlineDot
+    Row(modifier.fillMaxWidth().padding(vertical = 8.dp), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
+        Text(label, style = lookStyle(15.sp, color = look.ink))
+        Box(Modifier.padding(horizontal = 8.dp).size(20.dp).clip(CircleShape).background(tone))
+        Text(state, style = lookStyle(15.sp, color = tone, medium = true))
+    }
+}
+
+/** The pink notice card of Sales submit (sr/sales-submit.png): `#E6C8CA`, red 4 dp edges left and right, 14 sp text. */
+@Composable
+fun AronNoticeCard(text: String, modifier: Modifier = Modifier) {
+    val look = LocalAronLook.current
+    val shape = RoundedCornerShape(AronLook.ButtonRadius)
+    Box(
+        modifier.fillMaxWidth().clip(shape).background(look.red).padding(horizontal = 4.dp).background(look.noticeFill).padding(horizontal = 12.dp, vertical = 12.dp),
+    ) { Text(text, style = lookStyle(14.sp, color = look.ink)) }
+}

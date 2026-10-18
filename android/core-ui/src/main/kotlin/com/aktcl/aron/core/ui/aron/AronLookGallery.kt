@@ -2,6 +2,7 @@ package com.aktcl.aron.core.ui.aron
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -16,6 +17,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.zIndex
 import com.aktcl.aron.core.ui.LocalAronLook
 import com.aktcl.aron.core.ui.R
 import com.aktcl.aron.core.ui.localizedDigits
@@ -34,33 +36,33 @@ fun AronLookGallery(modifier: Modifier = Modifier) {
     var retailer by remember { mutableStateOf<String?>(null) }
     val all = stringResource(R.string.core_ui_look_all)
     val tiles = listOf(
-        R.string.core_ui_look_tile_attendance to R.drawable.aron_ic_attendance, R.string.core_ui_look_tile_stock to R.drawable.aron_ic_stock,
-        R.string.core_ui_look_tile_sale to R.drawable.aron_ic_sale, R.string.core_ui_look_tile_memo to R.drawable.aron_ic_memo,
-        R.string.core_ui_look_tile_summary to R.drawable.aron_ic_summary, R.string.core_ui_look_tile_submit to R.drawable.aron_ic_sales_submit,
-        R.string.core_ui_look_tile_outlet to R.drawable.aron_ic_outlet, R.string.core_ui_look_tile_tutorial to R.drawable.aron_ic_tutorial,
-        R.string.core_ui_look_tile_tasks to R.drawable.aron_ic_task_delegation, R.string.core_ui_look_tile_photo to R.drawable.aron_ic_photo_capture,
-        R.string.core_ui_look_tile_journey to R.drawable.aron_ic_sales_journey, R.string.core_ui_look_tile_kpi to R.drawable.aron_ic_kpi,
+        R.string.core_ui_look_tile_attendance to R.drawable.aron_art_attendance, R.string.core_ui_look_tile_stock to R.drawable.aron_art_stock,
+        R.string.core_ui_look_tile_sale to R.drawable.aron_art_sale, R.string.core_ui_look_tile_memo to R.drawable.aron_art_memo,
+        R.string.core_ui_look_tile_summary to R.drawable.aron_art_summary, R.string.core_ui_look_tile_submit to R.drawable.aron_art_sales_submit,
+        R.string.core_ui_look_tile_outlet to R.drawable.aron_art_outlet, R.string.core_ui_look_tile_tutorial to R.drawable.aron_art_tutorial,
+        R.string.core_ui_look_tile_tasks to R.drawable.aron_art_task_delegation, R.string.core_ui_look_tile_photo to R.drawable.aron_art_photo_capture,
+        R.string.core_ui_look_tile_journey to R.drawable.aron_art_sales_journey, R.string.core_ui_look_tile_kpi to R.drawable.aron_art_kpi,
     )
     val outletMenu = listOf(
-        R.string.core_ui_look_outlet_new to R.drawable.aron_ic_outlet_new, R.string.core_ui_look_outlet_close to R.drawable.aron_ic_outlet_close,
-        R.string.core_ui_look_outlet_edit to R.drawable.aron_ic_outlet_edit, R.string.core_ui_look_outlet_cluster to R.drawable.aron_ic_cluster,
+        R.string.core_ui_look_outlet_new to R.drawable.aron_art_outlet_new, R.string.core_ui_look_outlet_close to R.drawable.aron_art_outlet_close,
+        R.string.core_ui_look_outlet_edit to R.drawable.aron_art_outlet_edit, R.string.core_ui_look_outlet_cluster to R.drawable.aron_art_cluster,
     )
     Column(modifier.fillMaxWidth().background(look.page).verticalScroll(rememberScrollState())) {
         AronHomeHeader(stringResource(R.string.core_ui_look_home_name), localizedDigits(stringResource(R.string.core_ui_look_home_route)), onSettings = {}, settingsLabel = stringResource(R.string.core_ui_look_settings))
         AronTileGrid(tiles, Modifier.background(look.pageHome).padding(6.dp)) { (label, icon), m ->
             AronTile(stringResource(label), icon = painterResource(icon), onClick = {}, modifier = m, badge = if (label == R.string.core_ui_look_tile_tasks) 3 else 0)
         }
-        AronTopBar(stringResource(R.string.core_ui_look_tile_outlet), icon = painterResource(R.drawable.aron_ic_outlet), onBack = {}, backLabel = stringResource(R.string.core_ui_back))
+        AronTopBar(stringResource(R.string.core_ui_look_tile_outlet), icon = painterResource(R.drawable.aron_art_outlet), onBack = {}, backLabel = stringResource(R.string.core_ui_back))
         AronTileGrid(outletMenu, Modifier.padding(12.dp), columns = 3) { (label, icon), m ->
             AronTile(stringResource(label), icon = painterResource(icon), onClick = {}, modifier = m, menu = true, labelColor = look.tileLabelOutlet)
         }
-        AronTopBar(
+        Box(Modifier.zIndex(1f)) { AronTopBar(
             stringResource(R.string.core_ui_look_title_stock),
-            icon = painterResource(R.drawable.aron_ic_stock),
+            icon = painterResource(R.drawable.aron_art_stock),
             onBack = {},
             backLabel = stringResource(R.string.core_ui_back),
-            trailing = { AronPrinterBadge(connected = false, label = stringResource(R.string.core_ui_look_printer_off), onClick = {}) },
-        )
+            hanging = { AronPrinterBadge(connected = false, label = stringResource(R.string.core_ui_look_printer_off), onClick = {}) },
+        ) }
         PackListHeader(stringResource(R.string.core_ui_look_col_sku), stringResource(R.string.core_ui_look_col_issue), stringResource(R.string.core_ui_look_col_stock))
         Column(Modifier.padding(horizontal = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             listOf("MaxR-10S" to PackCategory.Cigarette, "SL-L1" to PackCategory.Lighter, "FB-M10" to PackCategory.Match).forEachIndexed { i, (code, category) ->
@@ -77,6 +79,8 @@ fun AronLookGallery(modifier: Modifier = Modifier) {
         }
         AronScaffoldBottomSample()
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            AronTargetCard(stringResource(R.string.core_ui_look_target_title), stringResource(R.string.core_ui_look_target_label), value = localizedDigits("4,771.50"))
+            AronInfoCard(stringResource(R.string.core_ui_look_info), trailing = { AronPrinterBadge(connected = true, label = stringResource(R.string.core_ui_look_printer_on), onClick = {}) })
             RetailerPicker(retailer, listOf("FB", "SL", "MaxR-10S"), { it }, stringResource(R.string.core_ui_look_select_retailer), onSelect = { retailer = it })
             LetterFilterBar(listOf(all, "A", "B", "E", "J", "M", "N", "R", "S", "T", "a", "b", "c"), selected = letter.ifEmpty { all }, onSelect = { letter = it })
             SummaryTable(
@@ -89,6 +93,17 @@ fun AronLookGallery(modifier: Modifier = Modifier) {
                 totals = listOf(SummaryTotal(stringResource(R.string.core_ui_look_grand_total), localizedDigits("4,771.50"))),
             )
             AronPrimaryButton(stringResource(R.string.core_ui_look_print), onClick = {}, modifier = Modifier.fillMaxWidth(), glyph = ButtonGlyph.Print, reverse = true)
+            AronStatusDot(stringResource(R.string.core_ui_look_device_status), stringResource(R.string.core_ui_look_online), online = true)
+            AronDataTable(
+                headers = listOf(stringResource(R.string.core_ui_look_subject), stringResource(R.string.core_ui_look_device), stringResource(R.string.core_ui_look_server)),
+                rows = listOf(
+                    listOf(stringResource(R.string.core_ui_look_tile_outlet), localizedNumber(6), localizedNumber(0)),
+                    listOf(stringResource(R.string.core_ui_look_tile_sale), localizedNumber(381), localizedNumber(0)),
+                ),
+            )
+            AronNoticeCard(stringResource(R.string.core_ui_look_notice))
+            AronPrimaryButton(stringResource(R.string.core_ui_look_sync), onClick = {}, modifier = Modifier.fillMaxWidth(), glyph = ButtonGlyph.Sync)
+            AronPrimaryButton(stringResource(R.string.core_ui_look_tile_submit), onClick = {}, modifier = Modifier.fillMaxWidth(), glyph = ButtonGlyph.Submit, enabled = false)
         }
     }
 }

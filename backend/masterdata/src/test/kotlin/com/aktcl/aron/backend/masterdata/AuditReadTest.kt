@@ -50,16 +50,19 @@ class AuditReadTest {
         admin = env.ids.getValue("admin1001")
         val actor = AronPrincipal(admin, "admin1001", Role.ADMIN, 1, "aron-api", null, null, "web", emptyList(), false, listOf("pwd", "mfa"), "j", Instant.now().plusSeconds(600))
         env.fresh.db.jdbi.useTransaction<Exception> { h ->
-            // An outlet update: a plain change, an unchanged member, personal data and a nested image.
-            AuditLog.write(
-                h, actor, "outlet", "t-audit-1", "update",
-                buildJsonObject { put("status", "active"); put("name", "Shop A"); put("owner_name", "Rahim"); put("code", "O-1") },
-                buildJsonObject {
-                    put("status", "closed"); put("name", "Shop A"); put("owner_name", "Karim"); put("code", "O-1"); put("brand_new_key", "x")
-                    put("scope", buildJsonObject { put("national", false); put("phone", "01711111111") })
-                },
-                "Owner sold the shop to his cousin", null,
-            )
+            // An outlet update: a plain change, an unchanged member, personal data and a nested image. Written as a row from
+            // before D-AUDIT-PII-01 (raw insert, personal text in clear; the chain trigger still hashes it), then the same
+            // images through the platform writer, which stores the personal text as "[redacted]".
+            val before = buildJsonObject { put("status", "active"); put("name", "Shop A"); put("owner_name", "Rahim"); put("code", "O-1") }
+            val after = buildJsonObject {
+                put("status", "closed"); put("name", "Shop A"); put("owner_name", "Karim"); put("code", "O-1"); put("brand_new_key", "x")
+                put("scope", buildJsonObject { put("national", false); put("phone", "01711111111") })
+            }
+            h.createUpdate(
+                "INSERT INTO app.audit_log (actor_user_id, actor_username, actor_role, via, entity, entity_id, action, before, after, reason) " +
+                    "VALUES (:u, 'admin1001', 'ADMIN', 'web', 'outlet', 't-audit-1', 'update', CAST(:b AS jsonb), CAST(:a AS jsonb), 'Owner sold the shop to his cousin')",
+            ).bind("u", admin).bind("b", before.toString()).bind("a", after.toString()).execute()
+            AuditLog.write(h, actor, "outlet", "t-audit-5", "update", before, after, "Owner sold the shop to his cousin", null)
             // An enrolment token: its prefix is a fragment of the secret, and a secret-looking member a future writer might add.
             AuditLog.write(h, actor, "enrolment_token", "t-audit-2", "create", null, buildJsonObject { put("flavour", "sr"); put("prefix", "AbC123"); put("max_uses", 5); put("api_secret_v2", "zzz") }, null, null)
             // Raw config values: a secret-looking key loses its value, a plain one keeps it.
@@ -128,6 +131,22 @@ class AuditReadTest {
         // The PII grant of docs/21 s4.5 (no login sets it yet) shows personal data, never secrets.
         val withPii = one("t-audit-1", Role.ADMIN, pii = true)
         assertEquals("Karim", withPii.side("after").s("owner_name"))
+        assertEquals("01711111111", Json.parseToJsonElement(withPii.side("after").s("scope")).jsonObject.s("phone"))
+    }
+
+    @Test
+    fun aRevealShowsOldRowsInClearAndNewRowsRedacted() = app {
+        // D-AUDIT-PII-01: rows written before the rule keep their personal text (readable only under the reveal); new rows never had it.
+        for (role in listOf(Role.ADMIN, Role.SUPERADMIN)) {
+            val old = one("t-audit-1", role, pii = true); val new = one("t-audit-5", role, pii = true)
+            assertEquals("Rahim", old.side("before").s("owner_name")); assertEquals("Karim", old.side("after").s("owner_name"))
+            assertEquals(AuditLog.REDACTED, new.side("before").s("owner_name")); assertEquals(AuditLog.REDACTED, new.side("after").s("owner_name"))
+            assertEquals(AuditLog.REDACTED, Json.parseToJsonElement(new.side("after").s("scope")).jsonObject.s("phone"))
+            assertEquals("closed", new.side("after").s("status")); assertEquals("x", new.side("after").s("brand_new_key"))
+            // Without the reveal both are masked the same way.
+            assertEquals(AuditMask.MASK, one("t-audit-1", role).side("after").s("owner_name")); assertEquals(AuditMask.MASK, one("t-audit-5", role).side("after").s("owner_name"))
+        }
+        assertNull(env.fresh.db.jdbi.withHandle<Long?, Exception> { AuditLog.verify(it) }, "the chain verifies across old clear rows and new redacted rows")
         assertEquals(AuditMask.MASK, one("t-audit-2", Role.SUPERADMIN, pii = true).side("after").s("prefix"))
     }
 
