@@ -370,7 +370,7 @@ object FreeSampleReport : ReportHandler {
 
 /** `sales-summary` (F-API-017b): the AMO app's Sales Summary Up To Now: a card per route (CPR, memos, net) with its brand table (memos with the brand, BSR). */
 object SalesSummaryReport : ReportHandler {
-    override val roles = WEB_ROLES + Role.AMO
+    override val roles = REPORT_ROLES + Role.AMO
     override val definition = definition(
         "sales-summary", "Sales Summary Up To Now", "sales", "route x brand",
         listOf(

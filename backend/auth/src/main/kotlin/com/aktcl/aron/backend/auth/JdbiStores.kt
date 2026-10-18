@@ -76,6 +76,20 @@ class JdbiUserStore(private val db: Database, private val clock: AronClock = Aro
         deviceCache[deviceId] = DeviceGate(status, now)
         return status
     }
+
+    private data class Grants(val permissions: Set<String>, val at: Long)
+    private val grantCache = ConcurrentHashMap<String, Grants>()
+
+    /** `app.role_grant_map` rows of the role, cached for [svCacheMs] (Q5: a grant or revoke holds within seconds). */
+    override fun rolePermissions(role: String): Set<String> {
+        val now = clock.now().toEpochMilli()
+        grantCache[role]?.let { if (now - it.at < svCacheMs) return it.permissions }
+        val perms = db.jdbi.withHandle<Set<String>, Exception> { h ->
+            h.createQuery("SELECT permission FROM app.role_grant_map WHERE role = :r").bind("r", role).mapTo(String::class.java).list().toSet()
+        }
+        grantCache[role] = Grants(perms, now)
+        return perms
+    }
 }
 
 /** Refresh families and hashed tokens; rotation is atomic (the unused-token update and the child insert commit together). */

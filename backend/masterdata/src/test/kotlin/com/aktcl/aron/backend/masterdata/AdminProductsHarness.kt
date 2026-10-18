@@ -42,6 +42,9 @@ import java.util.UUID
 internal class AdminHarness : AutoCloseable {
     val env = SeededAdminDb()
 
+    /** Role grants the guard reads per request (stands in for app.role_grant_map; Q5). A test grants and revokes here. */
+    val grants = java.util.concurrent.ConcurrentHashMap<String, Set<String>>()
+
     /** The value `cfg.price.max_change_pct` answers in the tests; a test sets it, the default is the registry's 15. */
     @Volatile var maxPct: JsonElement = JsonPrimitive(15)
 
@@ -66,7 +69,7 @@ internal class AdminHarness : AutoCloseable {
         val now = Instant.now()
         val c = JWTClaimsSet.Builder().issuer("aron").audience("aron-api").subject(id(user).toString()).claim("uname", user)
             .claim("role", role.wire).claim("sv", 1L).claim("flv", "web").claim("perm", perms.toList()).claim("pii", false)
-            .claim("amr", listOf("pwd")).issueTime(Date.from(now)).notBeforeTime(Date.from(now)).expirationTime(Date.from(now.plusSeconds(900)))
+            .claim("amr", if (role.wire in listOf("ADMIN", "SUPERADMIN", "SUPPORT")) listOf("pwd", "mfa") else listOf("pwd")).issueTime(Date.from(now)).notBeforeTime(Date.from(now)).expirationTime(Date.from(now.plusSeconds(900)))
             .jwtID(UUID.randomUUID().toString()).build()
         return SignedJWT(JWSHeader.Builder(JWSAlgorithm.ES256).keyID("t").build(), c).apply { sign(TestTokens.keys.signer) }.serialize()
     }
@@ -79,7 +82,10 @@ internal class AdminHarness : AutoCloseable {
     fun app(requirePreview: Boolean = true, block: suspend ApplicationTestBuilder.() -> Unit) = testApplication {
         application {
             installAronPlatform(PlatformContext(AronClock.SYSTEM, base, { "00000000-0000-0000-0000-000000000000" }))
-            val guard = AuthGuardDeps(AccessTokenVerifier(TestTokens.keys), ScopeVersionLookup { 1 }, base)
+            val guard = AuthGuardDeps(AccessTokenVerifier(TestTokens.keys), object : ScopeVersionLookup {
+                override fun current(userId: Long): Long = 1
+                override fun rolePermissions(role: String): Set<String> = grants[role].orEmpty()
+            }, base)
             routing {
                 route("/v1") {
                     adminProductsRoutes(AdminProductsDeps(env.fresh.db, guard, blob = FakeBlob()))

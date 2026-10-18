@@ -1,8 +1,11 @@
 package com.aktcl.aron.backend.platform
 
 import com.aktcl.aron.contract.ProblemCode
+import io.ktor.http.decodeURLPart
 import io.ktor.server.application.ApplicationCall
 import io.ktor.server.application.createRouteScopedPlugin
+import io.ktor.server.request.httpMethod
+import io.ktor.server.request.path
 import io.ktor.server.routing.Route
 import io.ktor.server.routing.RouteSelector
 import io.ktor.server.routing.RouteSelectorEvaluation
@@ -17,6 +20,12 @@ fun interface ScopeVersionLookup {
 
     /** `app.device.status` of a token's device (`did`), null when no such device; cached like the scope version. */
     fun deviceStatus(deviceId: Long): String? = "active"
+
+    /**
+     * Admin permissions granted to a role now (`app.role_grant_map`, e.g. `finance.backdate`; Q5), cached like the scope
+     * version, so a grant or a revoke holds within seconds. Read per request, never carried in the token.
+     */
+    fun rolePermissions(role: String): Set<String> = emptySet()
 }
 
 /** Dependencies of the bearer guard; one instance per application. */
@@ -80,7 +89,34 @@ private fun authenticate(call: ApplicationCall, cfg: AuthGuardConfig): AronPrinc
             }
         }
     }
-    return p
+    requireMfaWhereNeeded(call, p, cfg.deps.config)
+    // Q5: the role's current grants join whatever the token named (issued tokens name none), so p.permissions is live.
+    if (p.audience != Audience.API) return p
+    val granted = cfg.deps.scopeVersions.rolePermissions(p.role.wire)
+    return if (granted.isEmpty()) p else p.copy(permissions = (p.permissions + granted).distinct())
+}
+
+/**
+ * AZ-1: `cfg.auth.mfa_required_roles` holds per request, not only at login and refresh. A web API token of a role in
+ * the list whose `amr` lacks "mfa" (issued before the flag turned on) may still read, but every write and every read of
+ * config or enrolment tokens answers 401 ERR_AUTH_MFA_INVALID: the web refresh refuses that family too (BC-89), so the
+ * next step is a login with the code. Phones never carry the second factor (web only, s6.5) and the /v1/auth paths
+ * (logout, change-password, MFA enrolment) stay open so the user can get out or finish the step.
+ */
+private fun requireMfaWhereNeeded(call: ApplicationCall, p: AronPrincipal, config: ServerConfig) {
+    if (p.isPhone || p.audience != Audience.API || "mfa" in p.amr) return
+    // Judge the path the router matches: decoded segments, empty ones dropped (`/v1/admin/%63onfig` is the config route).
+    val segments = call.request.path().split('/').filter { it.isNotEmpty() }.map { seg -> runCatching<String> { seg.decodeURLPart() }.getOrDefault(seg) }
+    val path = segments.joinToString("/", prefix = "/")
+    if (path.startsWith("/v1/auth/") && segments.none { it == "." || it == ".." }) return
+    val method = call.request.httpMethod.value
+    val write = method != "GET" && method != "HEAD" && method != "OPTIONS"
+    val sensitiveRead = path.startsWith("/v1/admin/config") || path.startsWith("/v1/admin/enrolment-tokens")
+    if (!write && !sensitiveRead) return
+    // A value that is not a list fails closed to the registry default, never open.
+    val roles = (config.value("cfg.auth.mfa_required_roles") as? kotlinx.serialization.json.JsonArray)
+        ?.mapNotNull { (it as? kotlinx.serialization.json.JsonPrimitive)?.content } ?: listOf("ADMIN", "SUPERADMIN", "SUPPORT")
+    if (p.role.wire in roles) throw ApiProblem(ProblemCode.ERR_AUTH_MFA_INVALID, "this action needs a sign-in with the second factor; sign in again")
 }
 
 val ApplicationCall.principal: AronPrincipal

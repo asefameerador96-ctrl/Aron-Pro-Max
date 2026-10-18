@@ -107,7 +107,7 @@ private fun listOtps(call: ApplicationCall, d: DeviceOtpDeps): DeviceOtpPage {
     val p = call.principal
     if (p.role !in OTP_VIEWERS) throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "the device OTP panel is not available to this role")
     val q = call.request.queryParameters
-    val limit = q["limit"]?.let { it.toIntOrNull()?.takeIf { v -> v in 1..200 } ?: bad("query.limit", "out_of_range") } ?: 50
+    val limit = q["limit"]?.let { it.toIntOrNull()?.takeIf { v -> v in 1..500 } ?: bad("query.limit", "out_of_range") } ?: 100   // contract Limit (AZ-3)
     val zoneSel = q["zone_id"]?.let { it.toLongOrNull()?.takeIf { v -> v >= 1 } ?: bad("query.zone_id") }
     val search = q["q"]?.also { if (it.length !in 2..80) bad("query.q", "out_of_range") }
     val cursor = q["cursor"]?.let { it.toLongOrNull()?.takeIf { v -> v >= 0 } ?: bad("query.cursor") }

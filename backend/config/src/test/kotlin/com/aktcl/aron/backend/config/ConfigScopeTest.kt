@@ -62,9 +62,9 @@ class ConfigScopeTest {
     @AfterAll fun tearDown() = env.close()
 
     private fun reachOf(userId: Long, role: Role): Reach = when (role) {
-        Role.TSO, Role.DMO -> Reach(userId, role, java.time.LocalDate.now(), false, setOf(home), emptySet(), false, listOf(ReachNode("zone", home)))
-        // Checker (T1 scope): a TSO-like reach with one cover route in a zone outside its own zones.
-        Role.WM -> Reach(userId, role, java.time.LocalDate.now(), false, setOf(home), setOf(farRoute2), false, listOf(ReachNode("zone", home)))
+        // Checker (T1 scope): the TSO also holds one cover route in a zone outside its own zones.
+        Role.TSO -> Reach(userId, role, java.time.LocalDate.now(), false, setOf(home), setOf(farRoute2), false, listOf(ReachNode("zone", home)))
+        Role.DMO, Role.WM -> Reach(userId, role, java.time.LocalDate.now(), false, setOf(home), emptySet(), false, listOf(ReachNode("zone", home)))
         else -> Reach(userId, role, java.time.LocalDate.now(), true, setOf(home, far), emptySet(), false, listOf(ReachNode("national", 0)))
     }
 
@@ -81,22 +81,26 @@ class ConfigScopeTest {
     }
 
     @Test
-    fun aTsoAndADmoReadOnlyTheirOwnNodesAndAncestors() = app {
-        for ((user, role) in listOf("tso1001" to Role.TSO, "dmo1001" to Role.DMO)) {
-            val t = TestTokens.web(env.ids.getValue(user), role)
-            suspend fun resolve(type: String, id: Long) = client.get("/v1/admin/config/resolve?key=$key&node_type=$type&node_id=$id") { bearerAuth(t) }.status
-            assertEquals(HttpStatusCode.OK, resolve("zone", home), user); assertEquals(HttpStatusCode.OK, resolve("territory", homeTerr), user)
-            assertEquals(HttpStatusCode.OK, resolve("division", homeDiv), user); assertEquals(HttpStatusCode.OK, resolve("global", 0), user)
-            for ((type, id) in listOf("zone" to far, "territory" to farTerr, "division" to farDiv, "route" to farRoute, "zone" to 999_999L)) {
-                assertEquals(HttpStatusCode.Forbidden, resolve(type, id), "$user $type $id")
-            }
-            suspend fun values(q: String) = client.get("/v1/admin/config/values?key=$key$q") { bearerAuth(t) }
-            assertEquals(HttpStatusCode.Forbidden, values("&scope_type=zone&scope_id=$far").status, user)
-            assertEquals(HttpStatusCode.OK, values("&scope_type=zone&scope_id=$home").status, user)
-            val items = Json.parseToJsonElement(values("").bodyAsText()).jsonObject["items"]!!.jsonArray.map { it.jsonObject }
-            val seen = items.map { it["scope_type"]!!.jsonPrimitive.content to it["scope_id"]!!.jsonPrimitive.long }.toSet()
-            assertTrue(("zone" to home) in seen && ("territory" to homeTerr) in seen, "$user own rows: $seen")
-            assertTrue(seen.none { it == ("zone" to far) || it == ("division" to farDiv) || it == ("route" to farRoute) }, "$user sees another division: $seen")
+    fun aTsoResolvesOnlyItsOwnNodesAndAncestorsAndNoOtherNonNationalRoleReadsConfig() = app {
+        val t = TestTokens.web(env.ids.getValue("tso1001"), Role.TSO)
+        val entry = "cfg.web.entry_classes"
+        suspend fun resolve(type: String, id: Long, tok: String = t, k: String = entry, extra: String = "") =
+            client.get("/v1/admin/config/resolve?key=$k&node_type=$type&node_id=$id$extra") { bearerAuth(tok) }.status
+        // The TSO's one read (web entry classes): its own zone, now.
+        assertEquals(HttpStatusCode.OK, resolve("zone", home))
+        for (id in listOf(far, 999_999L)) assertEquals(HttpStatusCode.Forbidden, resolve("zone", id), "tso zone $id")
+        // Checker B2: no other key (server-only thresholds), no other node type, no future value.
+        for ((type, id) in listOf("territory" to homeTerr, "division" to homeDiv, "global" to 0L, "route" to farRoute)) assertEquals(HttpStatusCode.Forbidden, resolve(type, id), "tso $type $id")
+        for (k in listOf(key, "cfg.geo.integrity_weight", "cfg.auth.mfa_required_roles")) assertEquals(HttpStatusCode.Forbidden, resolve("zone", home, k = k), "tso $k")
+        assertEquals(HttpStatusCode.Forbidden, resolve("zone", home, extra = "&at=2030-01-01T00:00:00Z"), "tso at=")
+        // Q2 (docs/24 s8.5): the TSO's only config read is that resolve (web entry classes); values, changes, versions are ADMIN and SUPERADMIN.
+        for (path in listOf("/v1/admin/config/values?key=$key", "/v1/admin/config/values?key=$key&scope_type=zone&scope_id=$home", "/v1/admin/config/changes", "/v1/admin/config/versions", "/v1/admin/config/keys")) {
+            assertEquals(HttpStatusCode.Forbidden, client.get(path) { bearerAuth(t) }.status, "tso $path")
+        }
+        for ((user, role) in listOf("dmo1001" to Role.DMO, "tso1001" to Role.WM)) {
+            val o = TestTokens.web(env.ids.getValue(user), role)
+            assertEquals(HttpStatusCode.Forbidden, resolve("zone", home, o), "$role resolve")
+            assertEquals(HttpStatusCode.Forbidden, client.get("/v1/admin/config/values?key=$key") { bearerAuth(o) }.status, "$role values")
         }
         // A national reader is unchanged.
         val admin = TestTokens.web(env.ids.getValue("admin1001"), Role.ADMIN)
@@ -105,11 +109,24 @@ class ConfigScopeTest {
         assertTrue(all.any { it.jsonObject["scope_id"]!!.jsonPrimitive.long == far })
     }
 
+    /** AZ-3: the config lists follow the contract Limit, 1..500 (default 100). */
+    @Test
+    fun configListsAcceptTheContractLimitRange() = app {
+        val admin = TestTokens.web(env.ids.getValue("admin1001"), Role.ADMIN)
+        for (path in listOf("/v1/admin/config/values?key=$key&", "/v1/admin/config/changes?", "/v1/admin/config/versions?")) {
+            assertEquals(HttpStatusCode.OK, client.get("${path}limit=500") { bearerAuth(admin) }.status, path)
+            assertEquals(HttpStatusCode.OK, client.get("${path}limit=201") { bearerAuth(admin) }.status, path)
+            assertEquals(HttpStatusCode.BadRequest, client.get("${path}limit=501") { bearerAuth(admin) }.status, path)
+            assertEquals(HttpStatusCode.BadRequest, client.get("${path}limit=0") { bearerAuth(admin) }.status, path)
+        }
+    }
+
     /** Checker (T1 scope, 8a571fa1): a cover route outside the caller's zones is visible, and resolving it returns the foreign zone's row. Expected to FAIL until fixed. */
     @Test
     fun aCoverRouteDoesNotRevealTheForeignZoneRow() = app {
-        val t = TestTokens.web(env.ids.getValue("tso1001"), Role.WM)
+        val t = TestTokens.web(env.ids.getValue("tso1001"), Role.TSO)
         val r = client.get("/v1/admin/config/resolve?key=$key&node_type=route&node_id=$farRoute2") { bearerAuth(t) }
+        assertEquals(HttpStatusCode.Forbidden, r.status, "a TSO resolves zones only (and never a foreign cover route)")
         if (r.status == HttpStatusCode.OK) {
             val o = Json.parseToJsonElement(r.bodyAsText()).jsonObject
             val leaked = o["scope_type"]!!.jsonPrimitive.content to o["scope_id"]?.jsonPrimitive?.long

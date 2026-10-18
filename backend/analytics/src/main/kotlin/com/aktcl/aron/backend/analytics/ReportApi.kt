@@ -48,7 +48,8 @@ class ReportDeps(
 )
 
 private val XLSX = ContentType.parse("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-private val ADMIN_VIEWERS = setOf(Role.ADMIN, Role.SUPERADMIN, Role.SUPPORT)
+/** Who sees everyone's exports (log and jobs, whose download URL carries the rows): not SUPPORT, which runs no business report (AZ-2, AZ-6). */
+private val ADMIN_VIEWERS = setOf(Role.ADMIN, Role.SUPERADMIN)
 
 fun Route.reportRoutes(d: ReportDeps) {
     authenticated(d.guard) {

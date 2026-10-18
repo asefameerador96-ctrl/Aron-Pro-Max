@@ -1,0 +1,18 @@
+# backend-authz lane status
+
+## HANDOVER (session 1, 2026-10-18) — read this first
+- Lane: backend-authz (Opus), branch `lane/backend-authz` (from INT 0a228647). Push only there; merge INT before every push; tell the lead (session_01MbUQSxrP7AB9tbyANjUTPS) `ready <sha>` once that sha's own CI run is ALL green. Integrator: session_01E5Npz6awntNxGPuFaaGjRF. lead-backend (money/sync/idempotency, owns ConfigScope.kt and the price replay-first): session_014aSx5HgZg1V3hp2ydEvQC4. qa (AuthzAuditTest baseline): session_01EBKfNb2MyCc7ddsrfjcmcP. web-dashboard: session_01DFSVGQoFFF3whoQaJgMPpN.
+- Local tests: `service postgresql start`; role `aron`/`aron` (superuser) and db `aron_test`; `export ARON_TEST_PG_URL='jdbc:postgresql://localhost:5432/aron_test?user=aron&password=aron'` in the same shell as gradle. Never put a `//` comment in the middle of a one-line JWT builder chain (it swallowed `.expirationTime` once).
+- Module test tokens (analytics TestTokens, config ConfigTestSupport, masterdata TestTokens/AdminProductsHarness) give ADMIN, SUPERADMIN and SUPPORT amr [pwd, mfa] since AZ-1; a test of a password-only admin token must build its own.
+- Queue order (lead): AZ-2, Q1 rest, Q2, AZ-3, AZ-1, Q5; report-only Q3/Q4/Q6/Q8. Q1/AZ-3/Q2 and Q5 build on lead-backend's unpromoted commits (8a571fa1, faae41f7, 45755543): merge the sha lead-backend calls checked before editing ConfigApi/ConfigScope/AdminPrices.
+
+## Items (2026-10-18 ~05:10 UTC; nothing pushed yet: the lead's train order is tso -> qa 12b8cc4f -> lead-backend batch 2 -> backend-authz; rebuild on INT after batch 2, full CI + :backend:app:test green, ONE push, then 'ready <sha>')
+- Branch carries INT 60485582 + lead-backend d7c82910 + qa 12b8cc4f. My ReleaseAdmin/AuthzAuditTest edits were dropped (lead ruling: lead-backend owns the releases fix, qa owns the audit files); my baseline deletions are separate commits (e5792260, 2af3de98).
+- AZ-2 (SUPPORT reports): DONE d39db691 + 15d2cf90 (WEB_ROLES kept as deprecated alias of REPORT_ROLES). Opus PASS.
+- AZ-6 (SUPPORT export log/jobs): DONE 30c214d8; positive controls c1ec08e9 (SupportAccessControlTest).
+- AZ-1 (MFA per request): DONE 68522d11 + 83097001 (checker blocker: percent-encoded path). Opus FAIL -> fixed, encoded paths in the test.
+- Q2 + Q1 rest + AZ-5 (config readers): DONE 96a0ad26 + ba56d67f. Readers ADMIN, SUPERADMIN; TSO only resolve of cfg.web.entry_classes at a zone in reach, now (checker B2). DECISIONS D-AUTHZ-Q2. Opus: FAIL (B1 scope-cases name, B2 any key) -> fixed; re-check PASS; a missing reach resolver now refuses the TSO (fail closed).
+- AZ-3 (limits 1..500, default 100; config lists + device-otps): DONE 96a0ad26. The 3 LIMIT-CONTRACT default baseline lines are a probe artifact (qa told).
+- Q5 (finance.backdate never grantable): DONE ece14b39. Grants per role from app.role_grant_map via JdbiUserStore (10 s cache), added by the guard to every API principal. Opus PASS. Open (non-blocking, logged): no API writes role_grant_map, grants are SQL rows with no audit trail of a revoke (an admin route via a C3 change + AuditWriter is the follow-up, with the PII reveal request); a pending back-dated batch keeps its submit-time `backdate` flag if the grant is revoked before approval (pre-existing policy); cache entries assume a monotonic clock (same as the gate caches).
+- Q3/Q4: reported, docs/requests/backend-authz-c3-keys.md. Q6: reported, docs/requests/backend-authz-pii-reveal.md. Q8: kept stricter (lead).
+- Web follow-ups sent to web-dashboard: SUPPORT menu (reports, config pages), AZ-1 sign-in-again UX for 401 ERR_AUTH_MFA_INVALID.

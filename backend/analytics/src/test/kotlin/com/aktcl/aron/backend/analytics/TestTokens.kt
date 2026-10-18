@@ -25,7 +25,7 @@ object TestTokens {
         val now = Instant.now() // wall-clock-ok: the access-token verifier checks exp/nbf against the real clock
         val c = JWTClaimsSet.Builder().issuer("aron").audience("aron-api").subject(userId.toString()).claim("uname", "u$userId")
             .claim("role", role.wire).claim("sv", sv).claim("flv", "web").claim("perm", emptyList<String>()).claim("pii", pii)
-            .claim("amr", listOf("pwd")).issueTime(Date.from(now)).notBeforeTime(Date.from(now)).expirationTime(Date.from(now.plusSeconds(900)))
+            .claim("amr", if (role.wire in listOf("ADMIN", "SUPERADMIN", "SUPPORT")) listOf("pwd", "mfa") else listOf("pwd")).issueTime(Date.from(now)).notBeforeTime(Date.from(now)).expirationTime(Date.from(now.plusSeconds(900)))
             .jwtID(UUID.randomUUID().toString()).build()
         return SignedJWT(JWSHeader.Builder(JWSAlgorithm.ES256).keyID("t").build(), c).apply { sign(keys.signer) }.serialize()
     }
