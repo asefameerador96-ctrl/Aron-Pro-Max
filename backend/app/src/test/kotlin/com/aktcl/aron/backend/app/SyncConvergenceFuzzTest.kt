@@ -84,8 +84,8 @@ class SyncConvergenceFuzzTest {
         check(outlets.size >= 4) { "the seed route has ${outlets.size} outlets; the harness needs 4" }
         // The harness sends many batches from one phone under a fixed clock: lift the per-minute limits.
         fresh.db.jdbi.useHandle<Exception> { h ->
-            h.execute("INSERT INTO app.cfg_value (key, scope_type, scope_id, value, effective_from, config_version, reason) SELECT 'cfg.api.rl.device_per_min', 'global', 0, '600'::jsonb, now() - interval '1 day', max(config_version), 'fuzz' FROM app.cfg_version")
-            h.execute("INSERT INTO app.cfg_value (key, scope_type, scope_id, value, effective_from, config_version, reason) SELECT 'cfg.api.rl.user_per_min', 'global', 0, '2000'::jsonb, now() - interval '1 day', max(config_version), 'fuzz' FROM app.cfg_version")
+            h.execute("INSERT INTO app.cfg_value (key, scope_type, scope_id, value, effective_from, config_version, reason) SELECT 'cfg.api.rl.device_per_min', 'global', 0, '600'::jsonb, TIMESTAMPTZ '${ApiWorld.CFG_FROM}', max(config_version), 'fuzz' FROM app.cfg_version")
+            h.execute("INSERT INTO app.cfg_value (key, scope_type, scope_id, value, effective_from, config_version, reason) SELECT 'cfg.api.rl.user_per_min', 'global', 0, '2000'::jsonb, TIMESTAMPTZ '${ApiWorld.CFG_FROM}', max(config_version), 'fuzz' FROM app.cfg_version")
         }
         keyFile = File.createTempFile("aron-jwt", ".pem").apply {
             deleteOnExit()

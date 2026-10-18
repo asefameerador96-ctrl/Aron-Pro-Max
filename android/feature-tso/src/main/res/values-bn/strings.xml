@@ -250,4 +250,5 @@
         <item>নভেম্বর</item>
         <item>ডিসেম্বর</item>
     </string-array>
+    <string name="tso_dash_sr_of_route">এসআর: %1$s</string>
 </resources>

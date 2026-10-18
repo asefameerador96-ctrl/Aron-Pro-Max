@@ -104,10 +104,10 @@ import kotlin.test.assertTrue
  *   lock, so the close can commit between its route-day check and its close-row check; the close row is right and the
  *   route-day one short. It matches only for a one-record family in the cut range whose batch overlaps the window
  *   ([kd1SingleFamilies]).
- * KD-1 rounds are counted and listed by default (`tolerated-KD-1` and their seeds in the report) until the fix lands,
- * at most max(5, rounds / 10) of them (about 5% observed; more fails the run); every other failure fails the run.
- * `ARON_DAYCLOSE_TOLERATE=none` makes KD-1 fail too (the strict run). KD-2 is kept out of the fuzz: its clock ticks in
- * whole microseconds until the fix lands (the disabled repro stays).
+ * KD-1 and KD-2 are fixed (lead-backend f13adb3, 2026-10-18): every failure fails the run, KD-1 included. The KD-1
+ * classifier stays as a diagnosis: `ARON_DAYCLOSE_TOLERATE=KD-1` tolerates at most max(5, rounds / 10) KD-1 rounds
+ * (listed as `tolerated-KD-1` with their seeds) for a local investigation only. The fuzz clock still ticks in whole
+ * microseconds; KD-2 has its own repro.
  *
  * Size: `ARON_DAYCLOSE_FUZZ_ROUNDS` (default 30, about 20 s), seed `ARON_DAYCLOSE_FUZZ_SEED` (default fixed). A failure
  * names the round seed; every round runs and the failures are listed together with a count per clause. Timing is the
@@ -120,10 +120,9 @@ class DayCloseRaceTest {
     private val repoRoot = File(System.getProperty("aron.repoRoot") ?: "../..")
     private val rounds = System.getenv("ARON_DAYCLOSE_FUZZ_ROUNDS")?.toIntOrNull()?.coerceIn(1, 20_000) ?: 30
     private val baseSeed = System.getenv("ARON_DAYCLOSE_FUZZ_SEED")?.toLongOrNull() ?: 20261017L
-    // KD-1 is an open product defect (docs/requests/qa-backend-dayclose-late-rows.md): its rounds are counted and listed
-    // by default so CI stays green while the fix is queued; any other failure still fails. Set ARON_DAYCLOSE_TOLERATE=none
-    // for the strict run, and drop this default with the fix (the request says so).
-    private val tolerate = (System.getenv("ARON_DAYCLOSE_TOLERATE") ?: "KD-1").split(',').map { it.trim() }.filter { it.isNotEmpty() && it != "none" }.toSet()
+    // Strict by default since the KD-1 fix (docs/requests/qa-backend-dayclose-late-rows.md); ARON_DAYCLOSE_TOLERATE=KD-1
+    // only for a local investigation.
+    private val tolerate = (System.getenv("ARON_DAYCLOSE_TOLERATE") ?: "none").split(',').map { it.trim() }.filter { it.isNotEmpty() && it != "none" }.toSet()
     private val tag = "QDC"
     private lateinit var world: ApiWorld
     private lateinit var proto: SyncPhone

@@ -1,6 +1,7 @@
 package com.aktcl.aron.feature.tso.mycall
 
 import androidx.compose.foundation.layout.Arrangement
+import com.aktcl.aron.feature.tso.zoneName
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -60,7 +61,7 @@ object MyCallTags {
 }
 
 @Composable
-private fun zoneLabel(id: Long) = localizedDigits(stringResource(R.string.tso_mc_zone, id.toString()))
+private fun zoneLabel(id: Long) = zoneName(id)
 
 @Composable
 private fun Pickers(

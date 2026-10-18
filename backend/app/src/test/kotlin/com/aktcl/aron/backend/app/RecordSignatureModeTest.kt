@@ -116,10 +116,10 @@ class RecordSignatureModeTest {
             h.execute("INSERT INTO app.cfg_version (config_version, kind, committed_by, summary) SELECT max(config_version) + 1, 'change', (SELECT id FROM app.app_user WHERE username = 'aron.system'), 'test sig mode' FROM app.cfg_version")
             val n = modes.incrementAndGet()
             // One valid row per key and scope: the previous value ends where this one starts.
-            h.execute("UPDATE app.cfg_value SET effective_to = now() - interval '1 hour' + interval '1 second' * $n WHERE key = 'cfg.sec.record_signature_mode' AND effective_to IS NULL")
+            h.execute("UPDATE app.cfg_value SET effective_to = TIMESTAMPTZ '${ApiWorld.CFG_SWITCH}' + interval '1 second' * $n WHERE key = 'cfg.sec.record_signature_mode' AND effective_to IS NULL")
             h.execute(
                 "INSERT INTO app.cfg_value (key, scope_type, scope_id, value, effective_from, config_version, reason) " +
-                    "SELECT 'cfg.sec.record_signature_mode', 'global', 0, '\"$value\"'::jsonb, now() - interval '1 hour' + interval '1 second' * $n, max(config_version), 'test' FROM app.cfg_version",
+                    "SELECT 'cfg.sec.record_signature_mode', 'global', 0, '\"$value\"'::jsonb, TIMESTAMPTZ '${ApiWorld.CFG_SWITCH}' + interval '1 second' * $n, max(config_version), 'test' FROM app.cfg_version",
             )
         }
         now.updateAndGet { it.plusSeconds(31) } // DbServerConfig caches 30 s by the injected clock

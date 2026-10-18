@@ -179,12 +179,12 @@ class AuthzAuditTest {
         h.execute("INSERT INTO app.cfg_change (status, items, reason, risk_class, requested_by) SELECT 'cancelled', '[]'::jsonb, 'qa page row ' || g, 0, $adminId FROM generate_series(1, 60) g")
         h.execute(
             "INSERT INTO app.cfg_value (key, scope_type, scope_id, value, effective_from, config_version, reason) " +
-                "SELECT 'cfg.geo.radius_m', 'outlet', o.id, '100'::jsonb, now() - interval '1 day', $ownVersion + 1, 'qa page row' FROM app.outlet o WHERE o.code LIKE 'MIR-%' AND o.id <> $outlet",
+                "SELECT 'cfg.geo.radius_m', 'outlet', o.id, '100'::jsonb, TIMESTAMPTZ '${ApiWorld.CFG_FROM}', $ownVersion + 1, 'qa page row' FROM app.outlet o WHERE o.code LIKE 'MIR-%' AND o.id <> $outlet",
         )
         // An applied radius of the other division's zone (its own version), so the config reads have something of LKX to show.
         lkxVersion = ownVersion + 61
         h.execute("INSERT INTO app.cfg_version (config_version, kind, committed_by, summary) VALUES ($lkxVersion, 'change', $adminId, 'LKX zone radius for the audit')")
-        h.execute("INSERT INTO app.cfg_value (key, scope_type, scope_id, value, effective_from, config_version, reason) VALUES ('cfg.geo.radius_m', 'zone', $oZone, '137'::jsonb, now() - interval '1 day', $lkxVersion, 'LKX radius for the audit')")
+        h.execute("INSERT INTO app.cfg_value (key, scope_type, scope_id, value, effective_from, config_version, reason) VALUES ('cfg.geo.radius_m', 'zone', $oZone, '137'::jsonb, TIMESTAMPTZ '${ApiWorld.CFG_FROM}', $lkxVersion, 'LKX radius for the audit')")
         ownVersion = id("SELECT max(config_version) FROM app.cfg_version")
         // Export jobs of two scoped users (queued: no file, so no signed URL is minted in the test).
         tsoExport = UUID.randomUUID().toString(); dmoExport = UUID.randomUUID().toString()
@@ -421,6 +421,11 @@ class AuthzAuditTest {
             RouteSpec("POST /v1/admin/releases", p, { "/v1/admin/releases" }, { releaseBody().toString() }, writers),
             RouteSpec("PATCH /v1/admin/releases/{}", HttpMethod.Patch, { "/v1/admin/releases/900001" }, { obj("status" to "published", "change_reason" to "qa authz audit publish").toString() },
                 setOf("SUPERADMIN"), headers = mapOf("If-Match" to "\"1\"")),
+            // AZ-7: the role is checked before the body is read, so a refused role with an invalid body still gets 403, never 400
+            // (a 400 tells an outsider the route exists and how its body is validated). An allowed role gets the 400.
+            RouteSpec("POST /v1/admin/releases (invalid body)", p, { "/v1/admin/releases" }, { "{}" }, writers),
+            RouteSpec("PATCH /v1/admin/releases/{} (invalid body)", HttpMethod.Patch, { "/v1/admin/releases/900001" }, { obj("bogus" to 1).toString() },
+                writers, headers = mapOf("If-Match" to "\"1\"")),
             // Contract only (targets and Astha outlet-SKU entry deferred, docs/27): 404 for everyone.
             RouteSpec("GET /v1/dashboards/targets", g, { "/v1/dashboards/targets" }, null, emptySet()),
             RouteSpec("POST /v1/web-entry/outlet-sku", p, { "/v1/web-entry/outlet-sku" }, { "{}" }, emptySet()),
@@ -799,7 +804,7 @@ class AuthzAuditTest {
             "GET /v1/dashboards/sync-health" to "/v1/dashboards/sync-health?business_date=$day",
             "GET /v1/dashboards/daily-tracking" to "/v1/dashboards/daily-tracking?business_date=$day",
         )
-        /** Lists seeded with more than 100 rows (the default page must be exactly 100) and with more than 50 (must not be 50). */
+        /** Lists seeded with more than 100 rows (the default page must be exactly 100) and with 61..99 (a default page under 100 with a next_cursor is short). */
         val over100 = setOf("GET /v1/admin/enrolment-tokens", "GET /v1/admin/dues-adjustments", "GET /v1/admin/entry-unlocks")
         val over50 = setOf("GET /v1/admin/config/values", "GET /v1/admin/config/changes", "GET /v1/admin/config/versions")
         val g = HttpMethod.Get
@@ -823,7 +828,8 @@ class AuthzAuditTest {
                 val n = h.items()
                 record("LIMIT", route, "ADMIN", "no-limit", g, base, null, h, if (n != null && n > 100) Verdict.FINDING else if (h.ok) Verdict.OK else Verdict.NOTE, "items=$n (contract default 100)")
                 if (route in over100 && n != 100) record("LIMIT-CONTRACT", route, "ADMIN", "default", g, base, null, h, Verdict.FINDING, "default page is $n with more than 100 rows seeded; contract says 100")
-                if (route in over50 && n != null && n < 100) record("LIMIT-CONTRACT", route, "ADMIN", "default", g, base, null, h, Verdict.FINDING, "default page is $n with more than 50 rows seeded; contract says 100")
+                // A default page under 100 is short only while more rows remain (next_cursor set); a list of 61..99 rows returned whole is right.
+                if (route in over50 && n != null && n < 100 && h.str("next_cursor") != null) record("LIMIT-CONTRACT", route, "ADMIN", "default", g, base, null, h, Verdict.FINDING, "default page is $n with more rows behind next_cursor; contract says 100")
             }
         }
         val key = reportKeys.first()

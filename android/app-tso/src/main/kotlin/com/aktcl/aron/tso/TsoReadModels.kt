@@ -53,6 +53,14 @@ class TsoReadModels(private val env: TsoEnv, private val databases: UserDatabase
         if (env.nowMs() - ts in 0 until ttlMs) dao.meta("tso.cache.$key") else null
     }.getOrNull()
 
+    /** Zone names of the TSO's reach (`GET /v1/admin/geo/zone`, scope from the token), kept 30 minutes; empty when never read (the screens then say "Zone <id>"). */
+    suspend fun zoneNames(userId: Long, bangla: Boolean): Map<Long, String> {
+        val body = cacheFresh(userId, "geo.zone", REFERENCE_TTL_MS)
+            ?: get("/v1/admin/geo/zone?limit=500")?.also { cachePut(userId, "geo.zone", it, asOfNow()) }
+            ?: cacheGet(userId, "geo.zone")?.first
+        return com.aktcl.aron.feature.tso.ZoneNamesJson.parse(body, bangla)
+    }
+
     private suspend fun get(path: String): String? {
         val r = runCatching { client.call(path = path, auth = CallAuth.Grant(Grant.FULL), build = { get() }, decode = { body, _ -> body }) }.getOrNull()
         return (r as? ApiResult.Success)?.value
@@ -178,10 +186,14 @@ class TsoReadModels(private val env: TsoEnv, private val databases: UserDatabase
                 val all = fresh.filterNotNull().flatten().distinctBy { it.id }
                 cachePut(userId, "routes", J.routesToCache(all), asOfNow()); return all
             }
-            return cacheGet(userId, "routes")?.let { J.parseRoutes(it.first) }
+            cacheGet(userId, "routes")?.let { c -> J.parseRoutes(c.first)?.let { return it } }
+            // nothing online and nothing cached: the routes of the bundle (no SR names there)
+            return runCatching { TsoBundleReads.routes(meta(userId).routesFor(com.aktcl.aron.rules.BusinessDate.of(System.currentTimeMillis()).toString())) }.getOrNull()?.takeIf { it.isNotEmpty() }
         }
 
         override suspend fun outlets(routeId: Long): List<com.aktcl.aron.feature.tso.mycall.PlanOutlet>? {
+            // the bundle first (D-TSO-BUNDLE-OUTLETS): local, instant and offline; the online read only when the bundle has none
+            runCatching { TsoBundleReads.outlets(meta(userId).outletsOf(routeId)) }.getOrNull()?.takeIf { it.isNotEmpty() }?.let { return it }
             cacheFresh(userId, "outlets.$routeId", REFERENCE_TTL_MS)?.let { c -> J.parseOutlets(c)?.let { return it } }
             val fresh = getPages("/v1/outlets?route_id=$routeId")?.map { J.parseOutlets(it) }
             if (fresh != null && fresh.none { it == null }) {
