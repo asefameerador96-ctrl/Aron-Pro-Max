@@ -379,7 +379,5 @@ export const dashBn: Record<keyof typeof dashEn, string> = {
   "drill.title.login": "লগইন ও আপলোডের অবস্থা",
   "table.more": "আরও {n}টি সারি দেখান",
   "error.ERR_WEB_MFA_RESIGNIN": "অথেনটিকেটর কোড দিয়ে আবার সাইন ইন করুন।",
-  "admin.cfgread.unavailable": "{what} আপনার ভূমিকার জন্য উপলভ্য নয় (কনফিগারেশন পড়া শুধু অ্যাডমিনদের জন্য)।",
-  "admin.cfgread.weekend": "সাপ্তাহিক ছুটির দিনের সেটিং",
   "admin.audit.unavailable": "অডিট লগ এখনো পাওয়া যায় না। সার্ভার চালু করলে এখানে দেখা যাবে।",
 };

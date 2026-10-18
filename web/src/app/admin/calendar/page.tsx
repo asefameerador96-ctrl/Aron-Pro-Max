@@ -4,12 +4,11 @@ import { onApiFailure } from "@/components/admin/crud/pages";
 import { Forbidden } from "@/components/forbidden";
 import { canOp } from "@/lib/admin/access";
 import type { ConfigKey, Holiday, ResolvedConfigValue } from "@/lib/admin/types";
-import { ADMIN_PORTAL_ROLES, hasRole } from "@/lib/auth/roles";
+import { ADMIN_ONLY_ROLES, ADMIN_PORTAL_ROLES, hasRole } from "@/lib/auth/roles";
 import { requireSession } from "@/lib/auth/require";
 import { getLocale } from "@/lib/auth/service";
 import { isRealDate } from "@/lib/admin/time";
-import { Banner } from "@/components/kit/banner";
-import { businessDate, t } from "@/lib/i18n";
+import { businessDate } from "@/lib/i18n";
 
 const DAY = 86_400_000;
 
@@ -25,13 +24,13 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
   const [list, weekend, keys] = await Promise.all([
     apiGet<{ items: Holiday[] }>("/v1/admin/calendar/holidays", session.at, { from, to }),
     apiGet<ResolvedConfigValue>("/v1/admin/config/resolve", session.at, { key: "cfg.calendar.weekend_days", node_type: "global", node_id: 0 }),
-    apiGet<{ items: ConfigKey[] }>("/v1/admin/config/keys", session.at, { area: "calendar" }),
+    // The registry (for the edit form) is ADMIN/SUPERADMIN only; SUPPORT reads the weekend days through its resolve grant (D-AUTHZ-Q2).
+    hasRole(session.user.role, ADMIN_ONLY_ROLES) ? apiGet<{ items: ConfigKey[] }>("/v1/admin/config/keys", session.at, { area: "calendar" }) : null,
   ]);
   if (!list.ok) return onApiFailure(list.status, list.problem, locale);
-  const weekendKey = keys.ok ? (keys.data.items.find((k) => k.key === "cfg.calendar.weekend_days") ?? null) : null;
+  const weekendKey = keys?.ok ? (keys.data.items.find((k) => k.key === "cfg.calendar.weekend_days") ?? null) : null;
   return (
     <div className="space-y-4">
-      {!weekend.ok && weekend.status === 403 ? <Banner tone="info" role="note" testId="weekend-unavailable">{t(locale, "admin.cfgread.unavailable", { what: t(locale, "admin.cfgread.weekend") })}</Banner> : null}
       <CalendarView locale={locale} holidays={list.data.items} weekend={weekend.ok ? weekend.data : null} weekendKey={weekendKey} from={from} to={to} canWrite={canOp("holiday.create", session.user.role)} />
     </div>
   );

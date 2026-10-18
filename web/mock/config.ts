@@ -96,6 +96,11 @@ export async function handleConfig(c: CfgCtx): Promise<boolean> {
   const q = url.searchParams;
   // Roles outside the admin read set fall through to the mock's own role gate (403), as before this service existed.
   if (path.startsWith("/v1/admin/") && !ADMIN_READ.includes(c.role)) return false;
+  // Server (ConfigApi RESOLVE_GRANTS, D-AUTHZ-Q2): SUPPORT reads config only through one resolve, the global weekend days, now.
+  if (c.role === "SUPPORT" && path.startsWith("/v1/admin/config")) {
+    const grant = path === "/v1/admin/config/resolve" && method === "GET" && q.get("key") === "cfg.calendar.weekend_days" && (q.get("node_type") ?? "global") === "global" && q.get("at") === null;
+    if (!grant) return c.send(403, c.problem(403, "ERR_FORBIDDEN")), true;
+  }
   const lastVersion = () => store.versions[store.versions.length - 1]!;
 
   if (path === "/v1/admin/config/keys" && method === "GET") {

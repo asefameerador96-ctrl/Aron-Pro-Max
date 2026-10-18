@@ -20,3 +20,12 @@ test("SUPPORT lands on /sync-health, sees no report menu, and is refused the oth
     expect(res?.status(), p).toBe(403);
   }
 });
+
+test("SUPPORT reads the weekend days on the calendar through its resolve grant, without the edit form", async ({ page }) => {
+  await loginOk(page, "support1", "support-pass-1", "123456");
+  const res = await page.goto("/admin/calendar");
+  expect(res?.status()).toBe(200);
+  await expect(page.getByTestId("weekend-days")).not.toHaveText("—");
+  await expect(page.getByTestId("weekend-form")).toHaveCount(0);
+  await expect(page.getByTestId("weekend-unavailable")).toHaveCount(0);
+});
