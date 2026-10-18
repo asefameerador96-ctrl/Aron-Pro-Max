@@ -24,4 +24,7 @@ Evidence: all icons on one sheet docs/evidence/ui-parity/kit-icons-sheet.png. Si
 | AronInfoCard, AronTargetCard | summary.png, home-1-tiles.webp | DONE (target bar hidden while targets are deferred) | art push |
 | AronStatusDot, AronNoticeCard, AronDataTable, Sync/Submit glyphs, grey disabled primary | sales-submit.png | DONE | submit push |
 | AMO icons (14, requested by ui-amo): joint_call, control_call, team, team_location, team_performance, live_dashboard, sr_stock, exceptions, report, price_compliance, assessment, survey, verify, update_base | no screenshot (noref) | DONE in the set's style; needs owner screenshots | amo icons push |
+| SummaryTable weights + shrink-to-fit cells | summary.png | DONE (six columns at 360 dp, nothing breaks inside a word) | 8591ffb |
+| AronCard, AronListRow, AronField, AronTabs, AronDialog, AronSwitchRow, AronLogoutButton | no screenshot (manual layouts; AMO/TSO) | DONE in the reference language (white cards, gradient selection, purple ink) | forms push |
+| TSO icons (7, requested by ui-tso): tso_leave, tso_periphery, tso_my_call, tso_feedback, tso_team, tso_set_plan, lock | no screenshot (noref) | DONE in the set's style; needs owner screenshots | tso icons push |
 | Sizes | APK budget | 19 vectors, 44 KB source total, largest 4.5 KB | icons push |
