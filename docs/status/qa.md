@@ -98,6 +98,38 @@
   the API test clock date (2027-01-03).
 - **Honor device-lab sheet**: `docs/status/qa-device-lab-honor.md`.
 
+## Handover (qa session 1, 2026-10-18 morning)
+**On INT** (a8e5be48 and the backend-authz train after it): qa 7ca3c5ea, i.e. the money gates, the authorisation audit
+(releases, AMO reports, AZ-7 probes), the date-bomb fix, the strict day-close race and the next_cursor probe fix.
+**The last qa push** carries DeviceGate/BindDeviceChecker on `CFG_SWITCH` (needs the dbfdbfca seed fix), the audit
+oracle on D-AUTHZ-Q2, AZ-1..AZ-6 marked fixed, and these status rows.
+
+**Ratchets (all shrink-only):**
+| Ratchet | Where | Now |
+|---|---|---|
+| Authorisation findings | `backend/app/src/test/resources/authz-audit-baseline.txt` | 0 (comments only) |
+| Scope-blind reads | `backend/app/src/test/resources/scope-blind-baseline.txt` | 35 lines (23 global, 8 per-caller, 3 debt, 1 national-only) |
+| Money float allow-list | `tools/ci/money-float-allow.txt`, CEILING in `tools/ci/money-float-scan.py` | 17 / 17, 0 open findings |
+| Web money format | `web/tests/money-format-corpus.test.ts` KNOWN_CEILING | 0 |
+| TSO compact format | `TsoCompactCorpusTest` knownCeiling (android-tso owns it) | 0 |
+| Day-close race | `DayCloseRaceTest`, `ARON_DAYCLOSE_TOLERATE` | `none` by default (strict) |
+
+**Open findings and questions:**
+- Money: QA-MNY-02 (QC settlement vs qty x price, flag only, waits on D-34/MQ-03; the fix needs `price_per_qty` in the
+  contract), QA-MNY-07 (`LocaleDigits.formatInteger` lakh grouping, android-core, no owner free). QA-MNY-05 and 08 are
+  fixed on lane/android-tso; on INT check `MoneyGateReviewTest`'s `@Ignore` (remove it and add the four oracle
+  boundaries in `docs/requests/qa-money-gate-findings.md`).
+- Authorisation: 6 open questions, none failing: C2 -> C3 for two keys (final account), the `pii` claim never set,
+  `editor_permission` (D-AUTHZ-Q5 follow-up), and DMO/WM refused enrolment-token reads (stricter, kept). Several
+  reach refusals answer 403 ERR_FORBIDDEN, not ERR_OUT_OF_SCOPE (contract note).
+- N-061: the CI scan of the three release APKs and the Maps/Firebase key restrictions (owner console step), the
+  Jackson 2.22.3 pin (backend-core) and the Gradle OSV CI step (infra).
+- Contract conformance: the shrinking baselines in `docs/requests/qa-contract-conformance.md`.
+
+**Next for qa:** N-063 Day 6 script when N-058/N-060 produce report files; the replay-after-state-change cases
+(feedback, leave, visit plans, Idempotency-Key config changes, price batch, dues adjustment); the device rows
+(DEVICE-PENDING).
+
 ## Next rows
 1. N-055 Day 5 script (needs F-AMO-022, F-TSO-010), N-063 Day 6 script (needs N-058, N-060), N-066 Day 7 script.
 2. N-058 load on Azure: pilot size only in the test account; it is blocked on N-056/N-057 and on sizing.
