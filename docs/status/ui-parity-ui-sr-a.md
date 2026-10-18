@@ -3,15 +3,15 @@
 Branch `lane/ui-sr-a`. Binding spec: `docs/ui-reference/PARITY-SPEC.md` (CLAUDE.md rule 14a). Kit: `android/core-ui` (lane ui-kit owns it).
 
 ## HANDOVER
-(empty: session 1 of the lane, started 2026-10-18)
+(empty: session 1 of the lane, started 2026-10-18). State: Home, Stock (11433dbf, CHECKED), then fda4ed67 (Home fixes, Sale, Attendance, Settings, Tutorial). Open: restyle QC, Credit and Slide screens of the sale flow; permission onboarding and route picker in OnboardingScreens; kit tip 704183d (PackCard weights) needs a golden re-record when merged; `RoleSettingsContent` (AMO/TSO) is ui-amo/ui-tso scope.
 
 ## Parity table
 | Screen | Reference | Status | What differs | sha |
 |---|---|---|---|---|
 | Home | `sr/home-1-tiles.webp`, `home-2-kpis.webp` | DONE (side-by-side `docs/evidence/ui-parity/sr-home.png`) | Astha and Loyalty tiles absent on purpose (docs/27); kit icons are redraws, not the vendor art; header is slimmer (no status-bar strip); extra slim row for the sync chip and Sunlight switch; target card shows today's sales and outlet progress with no target percentage (deferred); the next-step dock button is removed (lead, 2026-10-18); the sync and Sunlight row sits below the target card | see git log |
-| Stock | `sr/stock.webp` | PARTIAL (`docs/evidence/ui-parity/sr-stock.png`) | packshots show the neutral silhouette until the ui-packshots data lands; kit asks open with ui-kit: stock column 40 dp too narrow (header wraps, 5-digit figures), long SKU code clips, per-category unit makes the cigarette total row wrap (unit is in the label); the grouping headings by category are gone (reference is one flat list); Print is always shown, grey until a slip is saved and a printer is connected | see git log |
+| Stock | `sr/stock.webp` | DONE except packshots (`docs/evidence/ui-parity/sr-stock.png`) | packshots show the neutral silhouette until the ui-packshots data lands (the rows already use `PackshotImage(skuId, category)`); no category group headings (the reference is one flat list); the totals panel carries the unit as a caption under each category, so the panel is taller than the reference; Print is always shown, grey until a slip is saved and a printer is connected | see git log |
 | Sale: choose retailer | `sr/sale-select.png` | DONE (`docs/evidence/ui-parity/sr-sale-picker.png`) | pill field, dark A-Z panel and the empty hint as the reference; the route list opens on a tap on the field or a letter; the visited/remaining segments and the meter are gone (marks stay on rows) | see git log |
-| Sale: product list + cart | `sr/stock.webp` layout, `sr/summary.png` table | PARTIAL (`sr-sale-list.png`, `sr-sale-review.png`) | packshots are silhouettes until ui-packshots lands; kit fixes pending merge (stock column width, 2-line SKU code); QC, Credit and Slide screens of the sale flow are NOT restyled yet | see git log |
+| Sale: product list + cart | `sr/stock.webp` layout, `sr/summary.png` table | PARTIAL (`sr-sale-list.png`, `sr-sale-review.png`) | packshots are silhouettes until ui-packshots lands; the price/unit/stock caption under each card and the packs + line total line are additions the reference lacks (the seller needs them); QC, Credit and Slide screens of the sale flow are NOT restyled yet | see git log |
 | Tutorial list | no screenshot in git (`sr/home-1-tiles.webp` only shows the tile) | DONE as layout from the kit, needs owner screenshot (`docs/evidence/ui-parity/sr-tutorial-noref.png`) | rows are kit list rows with the tutorial art; permission onboarding and route picker of the same file are NOT restyled | see git log |
 | Settings (gear page) | no screenshot in git | DONE as layout from the kit, needs owner screenshot (`docs/evidence/ui-parity/sr-settings-noref.png`) | language tabs, switch rows, list rows, red logout button; `RoleSettingsContent` (AMO and TSO, in `RoleHome.kt`) NOT touched: it sits in the ui-amo/ui-tso scope with the role Home | see git log |
 | Attendance | `sr/attendance.png` | DONE (`docs/evidence/ui-parity/sr-attendance.png`) | the hold sheet (press and hold to confirm) is kept as the confirmation and is not in the reference; the refresh icon is not red; both big buttons always show, grey when not open | see git log |
@@ -36,13 +36,13 @@ Step 1 `RetailerPicker` (pill dropdown, dark A-Z panel, All = gradient square, e
 
 ## Decisions (Home)
 - 2026-10-18: the bottom card is titled "আজকের অগ্রগতি / Today's progress" (not "Target and achievement") because no target exists (docs/27); it carries the day's sales total, outlets visited of planned, check-in time and a Details link to Summary.
-- 2026-10-18: the day's next-step dock is kept (behaviour) as `AronPrimaryButton` in the scaffold's bottom slot; the "needs a fresh route bundle" reason is a banner above the grid.
+- 2026-10-18 (lead): the next-step dock button is removed; the Sale tile is the entry. `HomeDock`/`HomeDayModel` stay in the model (unused by the screen); the "fresh bundle needed" state is the disabled selling tiles plus the bundle banner.
 - 2026-10-18: the two tile group labels ("Today's work", "Others") are gone: the reference is one grid; HomeScreenTest updated accordingly.
 - Goldens re-recorded: the 10 `home_*` goldens (ScreenshotTests, SrStateScreenshotTests) only.
 
 ## Decisions (Stock and host frame)
 - 2026-10-18: `SrFrame` (app-sr) now draws the kit bar: back chevron, the tile art (`icon` param, drawable res of `core-ui` `aron_art_*`), white title; the printer state hangs on the bar edge (`SrPrinterBadge`: red crossed printer when not connected, tap opens the existing picker). The green/red printer banner is gone (the badge carries the state and its TalkBack text). The sync chip shows only when offline, syncing or waiting.
-- 2026-10-18: Stock units: cigarettes in sticks, lighters in pieces, matches in dozens stay; the unit is part of each category label in the totals panel ("লাইটার (পিস)").
+- 2026-10-18: Stock units: cigarettes in sticks, lighters in pieces, matches in dozens stay; the unit is the caption under each category in the totals panel (kit `TotalsLine.caption`).
 - 2026-10-18: Stock TalkBack: each pack card control has its own label with the SKU name (minus, Issue field, plus); the old merged row with custom actions is gone because the kit card owns its controls.
 - Goldens re-recorded: `stock_bn_light`, `stock_bn_sunlight` (ScreenshotTests, via the new `ParityFrame` test twin of the host frame; other screens keep the old frame twin until they move).
 
