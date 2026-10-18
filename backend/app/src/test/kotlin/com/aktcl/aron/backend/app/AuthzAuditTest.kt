@@ -804,7 +804,7 @@ class AuthzAuditTest {
             "GET /v1/dashboards/sync-health" to "/v1/dashboards/sync-health?business_date=$day",
             "GET /v1/dashboards/daily-tracking" to "/v1/dashboards/daily-tracking?business_date=$day",
         )
-        /** Lists seeded with more than 100 rows (the default page must be exactly 100) and with more than 50 (must not be 50). */
+        /** Lists seeded with more than 100 rows (the default page must be exactly 100) and with 61..99 (a default page under 100 with a next_cursor is short). */
         val over100 = setOf("GET /v1/admin/enrolment-tokens", "GET /v1/admin/dues-adjustments", "GET /v1/admin/entry-unlocks")
         val over50 = setOf("GET /v1/admin/config/values", "GET /v1/admin/config/changes", "GET /v1/admin/config/versions")
         val g = HttpMethod.Get
@@ -828,7 +828,8 @@ class AuthzAuditTest {
                 val n = h.items()
                 record("LIMIT", route, "ADMIN", "no-limit", g, base, null, h, if (n != null && n > 100) Verdict.FINDING else if (h.ok) Verdict.OK else Verdict.NOTE, "items=$n (contract default 100)")
                 if (route in over100 && n != 100) record("LIMIT-CONTRACT", route, "ADMIN", "default", g, base, null, h, Verdict.FINDING, "default page is $n with more than 100 rows seeded; contract says 100")
-                if (route in over50 && n != null && n < 100) record("LIMIT-CONTRACT", route, "ADMIN", "default", g, base, null, h, Verdict.FINDING, "default page is $n with more than 50 rows seeded; contract says 100")
+                // A default page under 100 is short only while more rows remain (next_cursor set); a list of 61..99 rows returned whole is right.
+                if (route in over50 && n != null && n < 100 && h.str("next_cursor") != null) record("LIMIT-CONTRACT", route, "ADMIN", "default", g, base, null, h, Verdict.FINDING, "default page is $n with more rows behind next_cursor; contract says 100")
             }
         }
         val key = reportKeys.first()
