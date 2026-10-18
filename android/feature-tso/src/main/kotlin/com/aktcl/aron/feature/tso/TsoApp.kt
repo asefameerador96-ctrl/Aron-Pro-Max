@@ -103,34 +103,14 @@ fun TsoApp(
     val tiles = remember(badges) { RoleHomes.tsoTiles(badges).filter { it.id != RoleHomes.TsoTile.DEVICE_OTP } }
     val sync = RoleHomes.syncState(bundle, user.offline).let { if (it == SyncChipState.Synced && syncedAt != null) SyncChipState.SyncedAt(syncedAt) else it }
     val header = remember(user, businessDate) { RoleHomes.header(RoleHomes.TSO_PREFIX, user, businessDate) }
-    var confirmLogout by rememberSaveable { mutableStateOf(false) }
-    if (confirmLogout) {
-        com.aktcl.aron.core.ui.AronConfirmDialog(
-            stringResource(com.aktcl.aron.feature.tso.R.string.tso_chrome_logout), stringResource(R.string.rh_set_logout_wipe),
-            confirmLabel = stringResource(com.aktcl.aron.feature.home.R.string.set_logout_confirm), dismissLabel = stringResource(com.aktcl.aron.feature.home.R.string.set_cancel),
-            onConfirm = { confirmLogout = false; onLogout() }, onDismiss = { confirmLogout = false },
-        )
-    }
-    // The content and, for every screen but Home, a Home strip BELOW it in the layout (never an overlay): it cannot cover a screen's
-    // bottom bar. The strip owns the navigation inset, so the content is told it is consumed and its own bars do not pad twice.
-    androidx.compose.foundation.layout.Column(modifier) {
-    androidx.compose.foundation.layout.Box(
-        Modifier.weight(1f).then(if (screen != TsoScreen.HOME) Modifier.consumeWindowInsets(androidx.compose.foundation.layout.WindowInsets.Companion.navigationBars) else Modifier),
-    ) {
+    // Every screen but Home carries its own gradient top bar with the back chevron (PARITY-SPEC s2.1), so there is no Home strip below it.
+    androidx.compose.foundation.layout.Box(modifier) {
     AronScreenTransition(screen, forward = { _, to -> to != TsoScreen.HOME }, Modifier) { s ->
         when (s) {
-            TsoScreen.HOME -> TsoDrawer(user.fullName, remember { tsoDrawerEntries() }, onEntry = { screen = it }, onLogout = { confirmLogout = true }) { open ->
-                androidx.compose.foundation.layout.Column {
-                    TsoChromeBar(user.fullName, onMenu = open, onLogout = { confirmLogout = true })
-                    androidx.compose.foundation.layout.Box(Modifier.weight(1f)) {
-                        RoleHomeContent(
-                            header, user, bundle, tiles, sync,
-                            onTile = { screen = TsoScreen.of(it) }, onSettings = { screen = TsoScreen.SETTINGS },
-                            hero = hero, health = health, sunlight = sunlight, onSunlight = onSunlight, banners = banners, onSync = onSync,
-                        )
-                    }
-                }
-            }
+            TsoScreen.HOME -> TsoHomeContent(
+                header, user, bundle, tiles, sync, onTile = { screen = TsoScreen.of(it) }, onSettings = { screen = TsoScreen.SETTINGS },
+                hero = hero, health = health, banners = banners, onSync = onSync,
+            )
             TsoScreen.SETTINGS -> {
                 var step by rememberSaveable { mutableStateOf("main") }
                 BackHandler(enabled = step != "main") { step = "main" }
@@ -142,21 +122,12 @@ fun TsoApp(
                         com.aktcl.aron.feature.tso.password.ChangePasswordScreen(st, onBack = { step = "main"; cpEpoch.n++ })
                     }
                     "support" -> support?.invoke { step = "main" }
-                    else -> androidx.compose.foundation.layout.Column {
-                        androidx.compose.foundation.layout.Box(Modifier.weight(1f)) {
-                            RoleSettingsContent(
-                                versionText, stringResource(R.string.rh_set_logout_wipe), onLanguageSelect, onLogout, onBack = { screen = TsoScreen.HOME },
-                                sunlight = sunlight, onSunlight = onSunlight, onUpdate = onUpdate, updateAvailable = updateAvailable,
-                                onSupport = if (support != null) ({ step = "support" }) else null,
-                            )
-                        }
-                        if (changePassword != null) {
-                            com.aktcl.aron.core.ui.AronListRow(
-                                stringResource(com.aktcl.aron.feature.tso.R.string.tso_cp_row), Modifier.padding(horizontal = 16.dp).testTag(TsoSettingsTags.CHANGE_PASSWORD), flat = true,
-                                onClick = { step = "password" },
-                            )
-                        }
-                    }
+                    else -> TsoSettingsContent(
+                        versionText, stringResource(R.string.rh_set_logout_wipe), onLanguageSelect, onLogout, onBack = { screen = TsoScreen.HOME },
+                        sunlight = sunlight, onSunlight = onSunlight, onUpdate = onUpdate, updateAvailable = updateAvailable,
+                        onSupport = if (support != null) ({ step = "support" }) else null,
+                        onChangePassword = if (changePassword != null) ({ step = "password" }) else null,
+                    )
                 }
             }
             TsoScreen.DEVICE_OTP -> RoleDeviceOtpContent(onBack = { screen = TsoScreen.HOME }, webOrigin = webOrigin)
@@ -209,17 +180,6 @@ fun TsoApp(
             }
         }
     }
-    }
-    if (screen != TsoScreen.HOME) {
-        androidx.compose.foundation.layout.Box(
-            Modifier.fillMaxWidth().background(com.aktcl.aron.core.ui.LocalAronColors.current.surfaceSolid).navigationBarsPadding().padding(vertical = 4.dp),
-            contentAlignment = androidx.compose.ui.Alignment.Center,
-        ) {
-            TsoHomeButton(
-                { screen = TsoScreen.HOME },
-                Modifier.background(com.aktcl.aron.core.ui.LocalAronColors.current.accentFill, androidx.compose.foundation.shape.RoundedCornerShape(28.dp)),
-            )
-        }
     }
     }
 }

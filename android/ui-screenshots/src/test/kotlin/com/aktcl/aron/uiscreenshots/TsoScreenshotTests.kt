@@ -11,8 +11,6 @@ import com.aktcl.aron.core.common.AppLanguage
 import com.aktcl.aron.core.ui.AppLocale
 import com.aktcl.aron.core.ui.AronTheme
 import com.aktcl.aron.core.ui.GlassTier
-import com.aktcl.aron.feature.tso.TsoChromeBar
-import com.aktcl.aron.feature.tso.TsoDrawer
 import com.aktcl.aron.feature.tso.feedback.FeedbackCategory
 import com.aktcl.aron.feature.tso.feedback.FeedbackFormScreen
 import com.aktcl.aron.feature.tso.feedback.FeedbackFormState
@@ -30,6 +28,13 @@ import com.aktcl.aron.feature.tso.finalsubmit.FsResult
 import com.aktcl.aron.feature.tso.finalsubmit.FsRoute
 import com.aktcl.aron.feature.tso.finalsubmit.FsSubmitOutcome
 import com.aktcl.aron.feature.tso.leave.LeaveItem
+import com.aktcl.aron.feature.tso.TsoHomeContent
+import com.aktcl.aron.feature.tso.TsoSettingsContent
+import com.aktcl.aron.feature.home.BundleStatus
+import com.aktcl.aron.feature.home.HomeUser
+import com.aktcl.aron.feature.home.RoleHero
+import com.aktcl.aron.feature.home.RoleHomes
+import com.aktcl.aron.core.ui.SyncChipState
 import com.aktcl.aron.feature.tso.leave.LeaveListScreen
 import com.aktcl.aron.feature.tso.leave.LeaveListState
 import com.aktcl.aron.feature.tso.leave.LeaveSource
@@ -51,7 +56,6 @@ import com.aktcl.aron.feature.tso.password.ChangePasswordApi
 import com.aktcl.aron.feature.tso.password.ChangePasswordScreen
 import com.aktcl.aron.feature.tso.password.ChangePasswordState
 import com.aktcl.aron.feature.tso.password.CpOutcome
-import com.aktcl.aron.feature.tso.tsoDrawerEntries
 import com.github.takahirom.roborazzi.RoborazziOptions
 import com.github.takahirom.roborazzi.captureRoboImage
 import kotlinx.coroutines.runBlocking
@@ -64,7 +68,7 @@ import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 
 /**
- * Goldens of the TSO screens (leave, feedback, My Call, Final Submit, change password, chrome and drawer) in their states: content,
+ * Goldens of the TSO screens (leave, feedback, My Call, Final Submit, change password, Home and Settings) in their states: content,
  * empty, kept copy (offline), error, long Bangla, Sunlight (docs/32 s2a). Record on Linux only:
  * `./gradlew :android:ui-screenshots:testDebugUnitTest -Proborazzi.record=true --tests '*TsoScreenshotTests*'`.
  */
@@ -162,5 +166,17 @@ class TsoScreenshotTests {
         val st = ChangePasswordState(ChangePasswordApi { _, _ -> CpOutcome.WrongCurrent }); st.setCurrent("old-pass-1"); st.setNew("new-pass-22"); st.setConfirm("new-pass-22"); runBlocking { st.submit() }
         ChangePasswordScreen(st, onBack = {})
     }
-    @Test fun chrome_bar_bn() = shot("tso_chrome_bar_bn", AppLanguage.BN) { androidx.compose.foundation.layout.Column { TsoChromeBar("টেস্টিং ঢাকা নর্থ", {}, {}) } }
+
+    // ---- home and settings (existing-Aron look, PARITY-SPEC s2.3 and s2.4)
+    private val tsoUser = HomeUser("টেস্টিং ঢাকা নর্থ", "tso1001", "TSO", offline = false, reauthRequired = false, updateRequired = false)
+    @Composable private fun TsoHomeShot(user: HomeUser = tsoUser, bundle: BundleStatus = BundleStatus.Ready("b-17", "2026-10-05"), sync: SyncChipState = SyncChipState.SyncedAt("10:42")) = TsoHomeContent(
+        RoleHomes.header(RoleHomes.TSO_PREFIX, user, "2026-10-05"), user, bundle,
+        RoleHomes.tsoTiles(mapOf(RoleHomes.TsoTile.LEAVE to 1)).filter { it.id != RoleHomes.TsoTile.DEVICE_OTP }, sync, onTile = {}, onSettings = {}, hero = RoleHero.Tso(3, 12),
+    )
+    @Test fun home_parity_bn() = shot("tso_home_parity_bn", AppLanguage.BN) { TsoHomeShot() }
+    @Test fun home_parity_offline_en() = shot("tso_home_parity_offline_en", AppLanguage.EN) { TsoHomeShot(tsoUser.copy(offline = true), BundleStatus.Offline, SyncChipState.Offline) }
+    @Test fun home_parity_sunlight_bn() = shot("tso_home_parity_sunlight_bn", AppLanguage.BN, sunlight = true) { TsoHomeShot() }
+    @Test fun settings_parity_bn() = shot("tso_settings_parity_bn", AppLanguage.BN) {
+        TsoSettingsContent("0.1.0 (1)", "লগআউট করলে এই ফোন থেকে অ্যাপের সব তথ্য মুছে যাবে।", {}, {}, {}, sunlight = false, onSunlight = {}, onUpdate = {}, onSupport = {}, onChangePassword = {})
+    }
 }
