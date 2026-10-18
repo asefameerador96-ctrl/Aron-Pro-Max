@@ -5983,6 +5983,8 @@ export interface components {
             to: components["schemas"]["BusinessDate"];
             node: components["schemas"]["NodeRef"];
             visits: number;
+            /** @description Visits counted as geo-valid in the period and node; the numerator of geo_valid_pct. */
+            geo_valid_visits: number;
             geo_valid_pct: number | null;
             force_sale_pct: number | null;
             mock_pct: number | null;
@@ -5994,6 +5996,8 @@ export interface components {
             children: {
                 node: components["schemas"]["NodeRef"];
                 visits: number;
+                /** @description Visits counted as geo-valid in the period and node; the numerator of geo_valid_pct. */
+                geo_valid_visits: number;
                 geo_valid_pct: number | null;
                 suspicious_visits: number;
             }[];

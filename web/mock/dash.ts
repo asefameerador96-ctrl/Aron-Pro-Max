@@ -293,7 +293,7 @@ export async function handleDash(x: DashCtx): Promise<boolean> {
   if (path === "/v1/dashboards/geo-validation") {
     const rows = routesInScope(user.scope.nodes);
     const visits = sum(rows, (r) => r.visited);
-    const body: Schemas["GeoValidationSummary"] = { as_of: asOf, from: SEED_DATE, to: SEED_DATE, node: { type: "national", id: 0 }, visits, geo_valid_pct: pct(sum(rows, (r) => r.geo_valid), visits), force_sale_pct: pct(sum(rows, (r) => r.force_sale), visits), mock_pct: pct(sum(rows, (r) => r.mock_visits), visits), geo_mismatch_pct: 0, suspicious_pct: pct(sum(rows, (r) => r.suspicious), visits), signals_by_code: { GEO_MOCK: sum(rows, (r) => r.mock_visits) }, children: [] };
+    const body: Schemas["GeoValidationSummary"] = { as_of: asOf, from: SEED_DATE, to: SEED_DATE, node: { type: "national", id: 0 }, visits, geo_valid_visits: sum(rows, (r) => r.geo_valid), geo_valid_pct: pct(sum(rows, (r) => r.geo_valid), visits), force_sale_pct: pct(sum(rows, (r) => r.force_sale), visits), mock_pct: pct(sum(rows, (r) => r.mock_visits), visits), geo_mismatch_pct: 0, suspicious_pct: pct(sum(rows, (r) => r.suspicious), visits), signals_by_code: { GEO_MOCK: sum(rows, (r) => r.mock_visits) }, children: [] };
     return send(200, body), true;
   }
 
