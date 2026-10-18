@@ -1,4 +1,44 @@
-# Status: lane android-core-ui
+# Status: lane android-core-ui (owner of the parity kit: lane ui-kit)
+
+## UI PARITY KIT API (OWNER DIRECTIVE 2026-10-18, CLAUDE.md rule 14a, docs/ui-reference/PARITY-SPEC.md)
+Package **`com.aktcl.aron.core.ui.aron`** (module `:android:core-ui`). Build every screen from these only; no glass, no `AronCard`/`GlassSurface`/old `AronTile` on a parity screen. The old Calm Glass components in `com.aktcl.aron.core.ui` stay until every screen has moved (same names, other package: import from `...core.ui.aron`). Wrap the app in `AronTheme(language, sunlight = ...)` as today: it provides fonts, `LocalAppLanguage` and `LocalAronLook` (`AronLook.Default` = the existing-Aron look; `AronLook.Sunlight` = optional outdoor theme). Tokens: `AronLook` / `AronLookColors` in `Tokens.kt` (exact PARITY-SPEC s1 values). All strings come resolved from your module (`stringResource`), digits localised by you (`localizedNumber`, `localizedDigits`).
+```kotlin
+AronScaffold(
+    topBar = { AronTopBar(title, icon = painterResource(R.drawable.aron_ic_stock), onBack = back, backLabel = stringResource(R.string.core_ui_back),
+               trailing = { AronPrinterBadge(connected, label = printerStateText, onClick = connectPrinter) }) },
+    home = false,                                   // true: white page (Home grid); false: grey #E8E8E8
+    bottomPanel = { TotalsPanel(header = TotalsLine(category, listOf(totalIssue, stock)), lines = listOf(TotalsLine(cigarettes, listOf(a, b)), ...)) },
+    bottomButtons = { AronPrimaryButton(save, onSave, Modifier.weight(1f), glyph = ButtonGlyph.Save)
+                      AronSecondaryButton(print, onPrint, Modifier.weight(1f), enabled = printerConnected, glyph = ButtonGlyph.Print) },
+) { /* BoxScope content: LazyColumn of PackCard ... */ }
+
+AronHomeHeader(title = "SR - Name (login)", subtitle = routeAndDate, onSettings = openSettings, settingsLabel = settings, avatar = null)
+AronTileGrid(tiles /*, columns = null -> aronTileColumns(widthDp, fontScale): 4 / 3 / 2 */) { t, m ->
+    AronTile(label, icon = painterResource(t.icon), onClick = t.go, modifier = m, badge = n, badgeDescription = text, menu = false, labelColor = null) }
+    // Outlet menu: menu = true, labelColor = LocalAronLook.current.tileLabelOutlet. Deferred/locked tiles: leave them out.
+
+PackListHeader(sku = "এসকেইউ", quantity = "ইস্যু", stock = "স্টক")
+PackCard(skuId, skuCode, quantity: String, onQuantityChange: (String) -> Unit /* digits only, max 6 */, onMinus, onPlus, stock: String,
+         minusLabel, plusLabel, quantityLabel, packBadge: String? = null, packshotDescription: String? = null,
+         category = PackCategory.Cigarette /* Bidi, Lighter, Match */, minusEnabled = true, plusEnabled = true, editable = true)
+PackshotImage(skuId, modifier, contentDescription = null, category)       // provider thumbnail or the grey pack silhouette; never a letter or spinner
+interface PackshotProvider { @Composable fun painter(skuId: String): Painter? }   // ui-packshots implements over ImageCache
+CompositionLocalProvider(LocalPackshotProvider provides yourProvider) { ... }    // default NoPackshots
+
+AronPrimaryButton(text, onClick, modifier, enabled = true, glyph: ButtonGlyph? = null, icon: Painter? = null, reverse = false /* purple->red: Summary Print */)
+AronSecondaryButton(text, onClick, modifier, enabled = true, glyph = null, icon = null)
+AronMinus(onClick, contentDescription, modifier, enabled)  /  AronPlus(...)    // 36 dp square in a 48 dp target
+
+RetailerPicker(selected: T?, options: List<T>, optionLabel: (T) -> String, placeholder, onSelect)   // drop-down; or:
+RetailerPickerField(value: String?, placeholder, onClick)                                       // opens your own searchable sheet
+LetterFilterBar(letters = listOf(all, "A", "B", ...), selected, onSelect, letterDescription = null)
+
+SummaryTable(headers: List<String>, rows: List<SummaryRow(title, values)>, subtotals: List<TotalsLine> = empty, totals: List<SummaryTotal(label, value)> = empty)
+// then AronPrimaryButton(print, onPrint, Modifier.fillMaxWidth(), glyph = ButtonGlyph.Print, reverse = true)
+```
+Gallery: `AronLookGallery()` (tests `AronLookGalleryTest`: bn/en, font scale 1.0/1.3, sunlight, 48 dp targets, TalkBack names, no clipped text). Capture: `./gradlew :android:ui-screenshots:testDebugUnitTest --tests '*KitGalleryShot*look*'` -> `android/ui-screenshots/build/kitshots/look_*.png`. Icons (vector drawables `aron_ic_*`) follow in the next push; until then pass `icon = null` (a gradient placeholder square).
+Local build works in this container: Android SDK at /opt/android-sdk (`local.properties` sdk.dir, git-ignored), Gradle resolves through the mirror.
+
 
 ## State (2026-10-07 resume)
 N-023 complete: tokens v2 ported, 13 goldens re-recorded (67e7fd53), device checks D-UI-01/02 filed. Open: tile-columns request (docs/requests/android-core-ui-tile-columns.md); CI result on the merged head to confirm.

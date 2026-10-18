@@ -1,0 +1,301 @@
+package com.aktcl.aron.core.ui.aron
+
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.painter.Painter
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.TextUnit
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.aktcl.aron.core.ui.AronFonts
+import com.aktcl.aron.core.ui.AronLook
+import com.aktcl.aron.core.ui.AronLookColors
+import com.aktcl.aron.core.ui.LocalAppLanguage
+import com.aktcl.aron.core.ui.LocalAronLook
+import com.aktcl.aron.core.ui.aron.Glyph.bar
+import com.aktcl.aron.core.ui.aron.Glyph.chevronBack
+import com.aktcl.aron.core.ui.aron.Glyph.gear
+import com.aktcl.aron.core.ui.aron.Glyph.person
+import com.aktcl.aron.core.ui.aron.Glyph.printer
+import com.aktcl.aron.core.ui.aron.Glyph.save
+
+/** The horizontal `aron.gradient.bar` (red, plum, purple); solid in sunlight. [reverse] runs purple to red (the Summary Print button). */
+fun AronLookColors.barBrush(reverse: Boolean = false): Brush =
+    if (sunlight) SolidColor(barStart) else Brush.horizontalGradient(if (reverse) listOf(barEnd, barMid, barStart) else listOf(barStart, barMid, barEnd))
+
+/** The vertical gradient of the selected letter pill. */
+fun AronLookColors.verticalBrush(): Brush = if (sunlight) SolidColor(purple) else Brush.verticalGradient(listOf(barStart, barEnd))
+
+/** A text style in the bundled font of the current language. */
+@Composable
+internal fun lookStyle(size: TextUnit, bold: Boolean = false, color: Color = Color.Unspecified, align: TextAlign = TextAlign.Unspecified) =
+    TextStyle(fontFamily = AronFonts.forLanguage(LocalAppLanguage.current), fontSize = size, fontWeight = if (bold) FontWeight.Bold else FontWeight.Normal, color = color, textAlign = align)
+
+/**
+ * The top bar of every non-Home screen (PARITY-SPEC s2.1, sr/stock.webp, sr/sale-select.png, sr/summary.png): full-width gradient, a white
+ * back chevron at the start (shown when [onBack] is set; [backLabel] is its TalkBack label), the screen [icon] (36 dp, the gradient line
+ * icon of the tile) and the white bold [title] centred, and an optional [trailing] slot at the end (the printer state, [AronPrinterBadge]).
+ */
+@Composable
+fun AronTopBar(
+    title: String,
+    modifier: Modifier = Modifier,
+    icon: Painter? = null,
+    onBack: (() -> Unit)? = null,
+    backLabel: String? = null,
+    trailing: (@Composable () -> Unit)? = null,
+) {
+    val look = LocalAronLook.current
+    Box(
+        modifier
+            .fillMaxWidth()
+            .background(look.barBrush())
+            .windowInsetsPadding(WindowInsets.statusBars)
+            .heightIn(min = AronLook.BarHeight),
+        contentAlignment = Alignment.Center,
+    ) {
+        if (onBack != null) {
+            Box(
+                Modifier
+                    .align(Alignment.CenterStart)
+                    .size(AronLook.Touch)
+                    .clickable(role = Role.Button, onClick = onBack)
+                    .semantics { if (backLabel != null) contentDescription = backLabel },
+                contentAlignment = Alignment.Center,
+            ) { GlyphCanvas(Modifier.size(24.dp)) { chevronBack(look.onBar) } }
+        }
+        Row(
+            Modifier.padding(horizontal = AronLook.Touch + 8.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Center,
+        ) {
+            if (icon != null) {
+                Image(icon, contentDescription = null, modifier = Modifier.size(AronLook.BarIcon))
+                Spacer(Modifier.width(10.dp))
+            }
+            Text(title, style = lookStyle(20.sp, bold = true, color = look.onBar, align = TextAlign.Center), modifier = Modifier.semantics { heading() })
+        }
+        if (trailing != null) Box(Modifier.align(Alignment.CenterEnd).padding(end = 4.dp)) { trailing() }
+    }
+}
+
+/**
+ * The printer state at the end of the top bar (sr/stock.webp): a light round badge with a red crossed printer while no printer is
+ * connected, a purple printer once one is. [label] is the TalkBack text of the state; tapping it opens the connect flow.
+ */
+@Composable
+fun AronPrinterBadge(connected: Boolean, label: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    val look = LocalAronLook.current
+    Box(
+        modifier
+            .size(AronLook.Touch)
+            .clip(CircleShape)
+            .background(look.card.copy(alpha = 0.92f))
+            .clickable(role = Role.Button, onClick = onClick)
+            .semantics { contentDescription = label },
+        contentAlignment = Alignment.Center,
+    ) {
+        GlyphCanvas(Modifier.size(28.dp)) { printer(if (connected) look.printerOn else look.printerOff, crossed = !connected, gap = look.card) }
+    }
+}
+
+/**
+ * The screen frame (PARITY-SPEC s2.2): the [topBar], the content on the light grey `aron.page` (white for the Home grid: [home]),
+ * then an optional [bottomPanel] (solid purple, [TotalsPanel] goes here) and an optional [bottomButtons] row, which sits on the
+ * purple panel when there is one (sr/stock.webp) and on the page otherwise.
+ */
+@Composable
+fun AronScaffold(
+    topBar: @Composable () -> Unit,
+    modifier: Modifier = Modifier,
+    home: Boolean = false,
+    bottomPanel: (@Composable ColumnScope.() -> Unit)? = null,
+    bottomButtons: (@Composable RowScope.() -> Unit)? = null,
+    content: @Composable BoxScope.() -> Unit,
+) {
+    val look = LocalAronLook.current
+    Column(modifier.fillMaxSize().background(if (home) look.pageHome else look.page)) {
+        topBar()
+        Box(Modifier.weight(1f).fillMaxWidth(), content = content)
+        if (bottomPanel != null || bottomButtons != null) {
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .background(if (bottomPanel != null) look.panel else look.page)
+                    .windowInsetsPadding(WindowInsets.navigationBars),
+            ) {
+                bottomPanel?.invoke(this)
+                if (bottomButtons != null) {
+                    Row(Modifier.fillMaxWidth().padding(12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), content = bottomButtons)
+                }
+            }
+        }
+    }
+}
+
+/**
+ * The Home header (PARITY-SPEC s2.3, sr/home-1-tiles.webp): the gradient, a white round avatar with the person glyph (or [avatar]),
+ * [title] = "Role - Name (login)" in white bold 16 sp, [subtitle] = route and date in 12 sp, and the white settings gear at the end
+ * ([settingsLabel] is its TalkBack label).
+ */
+@Composable
+fun AronHomeHeader(
+    title: String,
+    subtitle: String,
+    onSettings: () -> Unit,
+    settingsLabel: String,
+    modifier: Modifier = Modifier,
+    avatar: Painter? = null,
+) {
+    val look = LocalAronLook.current
+    Row(
+        modifier
+            .fillMaxWidth()
+            .background(look.barBrush())
+            .windowInsetsPadding(WindowInsets.statusBars)
+            .padding(start = 12.dp, end = 4.dp, top = 20.dp, bottom = 24.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(Modifier.size(56.dp).shadow(2.dp, CircleShape).clip(CircleShape).background(look.card), contentAlignment = Alignment.Center) {
+            if (avatar != null) Image(avatar, contentDescription = null, modifier = Modifier.size(56.dp))
+            else GlyphCanvas(Modifier.size(40.dp)) { person(look.purple) }
+        }
+        Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
+            Text(title, style = lookStyle(16.sp, bold = true, color = look.onBar))
+            Text(subtitle, style = lookStyle(12.sp, color = look.onBar))
+        }
+        Box(
+            Modifier.size(AronLook.Touch).clickable(role = Role.Button, onClick = onSettings).semantics { contentDescription = settingsLabel },
+            contentAlignment = Alignment.Center,
+        ) { GlyphCanvas(Modifier.size(34.dp)) { gear(look.onBar, hole = if (look.sunlight) look.card else look.barEnd) } }
+    }
+}
+
+/** The leading glyph of a button (sr/stock.webp: Save has a disk, Print a printer). */
+enum class ButtonGlyph { Save, Print }
+
+@Composable
+private fun ButtonContent(text: String, glyph: ButtonGlyph?, icon: Painter?, ink: Color, gap: Color) {
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center, modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
+        when {
+            icon != null -> Image(icon, contentDescription = null, modifier = Modifier.size(20.dp))
+            glyph == ButtonGlyph.Save -> GlyphCanvas(Modifier.size(18.dp)) { save(ink, gap) }
+            glyph == ButtonGlyph.Print -> GlyphCanvas(Modifier.size(20.dp)) { printer(ink, crossed = false, gap = gap) }
+        }
+        if (icon != null || glyph != null) Spacer(Modifier.width(8.dp))
+        Text(text, style = lookStyle(18.sp, bold = true, color = ink, align = TextAlign.Center))
+    }
+}
+
+/**
+ * The big action button (PARITY-SPEC s2.8): red-to-purple gradient ([reverse]: purple to red, as the Summary Print), 8 dp radius,
+ * white bold label with an optional leading [glyph] or [icon], at least 52 dp tall. Disabled: grey `#E8E8E8` with `#A5A5A5` text.
+ */
+@Composable
+fun AronPrimaryButton(
+    text: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    glyph: ButtonGlyph? = null,
+    icon: Painter? = null,
+    reverse: Boolean = false,
+) {
+    val look = LocalAronLook.current
+    val shape = RoundedCornerShape(AronLook.ButtonRadius)
+    val fill: Brush = if (enabled) (if (look.sunlight) SolidColor(look.purple) else look.barBrush(reverse)) else SolidColor(look.disabledFill)
+    val ink = if (enabled) Color.White else look.disabledText
+    Box(
+        modifier
+            .heightIn(min = AronLook.ButtonHeight)
+            .clip(shape)
+            .background(fill)
+            .clickable(enabled = enabled, role = Role.Button, onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) { ButtonContent(text, glyph, icon, ink, if (enabled) look.purple else look.disabledFill) }
+}
+
+/** The grey button (PARITY-SPEC s2.8, the Stock Print before a printer is connected): `#E8E8E8`, dark label, `#A5A5A5` when disabled. */
+@Composable
+fun AronSecondaryButton(
+    text: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    glyph: ButtonGlyph? = null,
+    icon: Painter? = null,
+) {
+    val look = LocalAronLook.current
+    val shape = RoundedCornerShape(AronLook.ButtonRadius)
+    val ink = if (enabled) look.secondaryText else look.disabledText
+    Box(
+        modifier
+            .heightIn(min = AronLook.ButtonHeight)
+            .clip(shape)
+            .background(look.disabledFill)
+            .clickable(enabled = enabled, role = Role.Button, onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) { ButtonContent(text, glyph, icon, ink, look.disabledFill) }
+}
+
+@Composable
+private fun StepSquare(fill: Color, plus: Boolean, onClick: () -> Unit, contentDescription: String, enabled: Boolean, modifier: Modifier) {
+    val look = LocalAronLook.current
+    Box(
+        modifier
+            .size(AronLook.Touch)
+            .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
+            .semantics { this.contentDescription = contentDescription },
+        contentAlignment = Alignment.Center,
+    ) {
+        Box(Modifier.size(AronLook.Step).clip(RoundedCornerShape(AronLook.StepRadius)).background(if (enabled) fill else look.disabledFill), contentAlignment = Alignment.Center) {
+            GlyphCanvas(Modifier.size(26.dp)) { bar(if (enabled) Color.White else look.disabledText, vertical = plus) }
+        }
+    }
+}
+
+/** The red rounded-square minus (36 dp drawn, 48 dp touch target; PARITY-SPEC s2.5). */
+@Composable
+fun AronMinus(onClick: () -> Unit, contentDescription: String, modifier: Modifier = Modifier, enabled: Boolean = true) =
+    StepSquare(LocalAronLook.current.minus, plus = false, onClick, contentDescription, enabled, modifier)
+
+/** The purple rounded-square plus (36 dp drawn, 48 dp touch target; PARITY-SPEC s2.5). */
+@Composable
+fun AronPlus(onClick: () -> Unit, contentDescription: String, modifier: Modifier = Modifier, enabled: Boolean = true) =
+    StepSquare(LocalAronLook.current.purple, plus = true, onClick, contentDescription, enabled, modifier)
