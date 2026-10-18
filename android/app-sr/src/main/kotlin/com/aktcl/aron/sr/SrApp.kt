@@ -10,6 +10,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -34,7 +35,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import com.aktcl.aron.core.ui.R as CoreR
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.role
@@ -46,8 +49,11 @@ import com.aktcl.aron.core.common.AppLanguage
 import com.aktcl.aron.core.database.entity.OutletEntity
 import com.aktcl.aron.core.printing.bt.PrinterManager
 import com.aktcl.aron.core.printing.ui.HoldPrinter
-import com.aktcl.aron.core.printing.ui.PrinterBanner
-import com.aktcl.aron.core.printing.ui.PrinterIcon
+import com.aktcl.aron.core.printing.ui.PrinterIndicator
+import com.aktcl.aron.core.printing.ui.PrinterPickerDialog
+import com.aktcl.aron.core.ui.aron.AronPrinterBadge
+import com.aktcl.aron.core.ui.aron.AronScaffold as ParityScaffold
+import com.aktcl.aron.core.ui.aron.AronTopBar as ParityTopBar
 import com.aktcl.aron.core.system.permission.AndroidPermissions
 import com.aktcl.aron.core.system.permission.GatedFeature
 import com.aktcl.aron.core.system.permission.PermissionGate
@@ -61,7 +67,6 @@ import com.aktcl.aron.core.ui.AronSecondaryButton
 import com.aktcl.aron.core.ui.AronStatusChip
 import com.aktcl.aron.core.ui.AronTextButton
 import com.aktcl.aron.core.ui.AronTokens
-import com.aktcl.aron.core.ui.AronTopBar
 import com.aktcl.aron.core.ui.ChipForm
 import com.aktcl.aron.core.ui.LocalAppLanguage
 import com.aktcl.aron.core.ui.LocalAronColors
@@ -146,30 +151,46 @@ fun SrFrame(
     onSync: (() -> Unit)?,
     modifier: Modifier = Modifier,
     printer: PrinterManager? = null,
+    /** The drawable of the screen's tile art (`R.drawable.aron_art_*` of core-ui), shown beside the title. */
+    icon: Int? = null,
     subtitle: String? = null,
     bottomBar: @Composable () -> Unit = {},
     content: @Composable () -> Unit,
 ) {
-    val dot = LocalDensity.current.fontScale >= AronTokens.Size.ReflowFontScale
     if (printer != null) HoldPrinter(printer)
-    AronScreen(
+    val back = stringResource(com.aktcl.aron.core.ui.R.string.core_ui_back)
+    // the gradient bar of the reference: back chevron, the screen's tile art and the white title; the printer state hangs on the bar's bottom edge
+    ParityScaffold(
         modifier = modifier,
         topBar = {
-            AronTopBar(
-                title, subtitle = subtitle, onBack = onBack,
-                trailing = {
-                    if (printer != null) PrinterIcon(printer)
-                    if (sync != null) AronStatusChip(sync, form = if (dot) ChipForm.Dot else ChipForm.Compact, onClick = onSync)
-                },
+            ParityTopBar(
+                title = title, icon = icon?.let { painterResource(it) }, onBack = onBack, backLabel = back,
+                hanging = if (printer != null) ({ SrPrinterBadge(printer) }) else null,
             )
         },
-        bottomBar = bottomBar,
     ) {
         Column(Modifier.fillMaxSize()) {
-            if (printer != null) PrinterBanner(printer)
+            // sync is quiet when synced: the strip only shows for offline, syncing or waiting rows (Home keeps its own chip)
+            if (sync != null && sync !is SyncChipState.Synced && sync !is SyncChipState.SyncedAt) {
+                Row(Modifier.fillMaxWidth().padding(horizontal = AronTokens.Space.Screen), horizontalArrangement = Arrangement.End) {
+                    AronStatusChip(sync, form = ChipForm.Full, onClick = onSync)
+                }
+            }
+            subtitle?.let { Text(it, Modifier.padding(horizontal = AronTokens.Space.Screen, vertical = AronTokens.Space.Xs), style = MaterialTheme.typography.bodySmall) }
             Box(Modifier.weight(1f).fillMaxWidth()) { content() }
+            bottomBar()
         }
     }
+}
+
+/** The printer state of the reference (sr/stock.webp): a red crossed printer when not connected, tap opens the connect flow. */
+@Composable
+internal fun SrPrinterBadge(manager: PrinterManager) {
+    val state by manager.state.collectAsState()
+    var picking by remember { mutableStateOf(false) }
+    val ind = PrinterIndicator.of(state)
+    AronPrinterBadge(connected = ind.green, label = stringResource(ind.banner), onClick = { picking = true })
+    if (picking) PrinterPickerDialog(manager) { picking = false }
 }
 
 /**
@@ -358,7 +379,7 @@ fun SrApp(
                 noRoute = data.route == null && data.freshness !is BundleFreshness.Missing,
             )
         }
-        SrScreen.ATTENDANCE -> SrFrame(stringResource(HomeR.string.hm_tile_attendance), goBack, sync, openSync) {
+        SrScreen.ATTENDANCE -> SrFrame(stringResource(HomeR.string.hm_tile_attendance), goBack, sync, openSync, icon = CoreR.drawable.aron_art_attendance) {
             PermissionGate(GatedFeature.ATTENDANCE, onBack = goBack) {
                 AttendanceContent(attendance, "17:00", onCheckIn = { scope.launch { day.attendance.checkIn(); resumeTick++ } }, onCheckOut = { scope.launch { day.attendance.checkOut(); resumeTick++ } })
             }
@@ -379,8 +400,8 @@ fun SrApp(
             )
         }
         SrScreen.SUPPORT -> SrFrame(stringResource(HomeR.string.set_support), goBack, sync, openSync) { shell?.let { SupportHost(it, day.userId, versionText) } }
-        SrScreen.STOCK -> SrFrame(stringResource(HomeR.string.hm_tile_stock), goBack, sync, openSync, printer = day.printerManager) { StockHost(day) }
-        SrScreen.PICKER -> SrFrame(stringResource(HomeR.string.hm_tile_sale), goBack, sync, openSync) {
+        SrScreen.STOCK -> SrFrame(stringResource(HomeR.string.hm_tile_stock), goBack, sync, openSync, printer = day.printerManager, icon = CoreR.drawable.aron_art_stock) { StockHost(day) }
+        SrScreen.PICKER -> SrFrame(stringResource(HomeR.string.hm_tile_sale), goBack, sync, openSync, icon = CoreR.drawable.aron_art_sale) {
             PermissionGate(GatedFeature.SALE, onBack = goBack) {
                 var chip by rememberSaveable { mutableStateOf(OutletPicker.ALL_CHIP) }
                 var opening by remember { mutableStateOf(false) }
@@ -405,7 +426,7 @@ fun SrApp(
                 }
             }
         }
-        SrScreen.VISIT -> SrFrame(stringResource(HomeR.string.hm_tile_sale), goBack, sync, openSync) {
+        SrScreen.VISIT -> SrFrame(stringResource(HomeR.string.hm_tile_sale), goBack, sync, openSync, icon = CoreR.drawable.aron_art_sale) {
             PermissionGate(GatedFeature.SALE, onBack = goBack) {
                 val st by day.visitFlow.state.collectAsState()
                 val open by day.visitSession.current.collectAsState()
@@ -426,16 +447,16 @@ fun SrApp(
         SrScreen.SKIP -> SrFrame(stringResource(R.string.sr_skip_outlet), goBack, sync, openSync) {
             skipOutlet?.let { o -> SkipHost(day, o, onDone = { screen = SrScreen.HOME }) } ?: LaunchedEffect(Unit) { screen = SrScreen.PICKER }
         }
-        SrScreen.MEMO -> SrFrame(stringResource(HomeR.string.hm_tile_memo), goBack, sync, openSync, printer = day.printerManager) {
+        SrScreen.MEMO -> SrFrame(stringResource(HomeR.string.hm_tile_memo), goBack, sync, openSync, printer = day.printerManager, icon = CoreR.drawable.aron_art_memo) {
             MemoHost(day, sunlight, onSunlight, onEdit = { editMemo = it; screen = SrScreen.EDIT })
         }
-        SrScreen.EDIT -> SrFrame(stringResource(HomeR.string.hm_tile_memo), goBack, sync, openSync) { EditHost(day, editMemo, sunlight, onSunlight, onDone = { screen = SrScreen.MEMO }) }
-        SrScreen.SUMMARY -> SrFrame(stringResource(com.aktcl.aron.feature.memo.R.string.summary_title), goBack, sync, openSync, printer = day.printerManager) { SummaryHost(day, sunlight, onSunlight) }
-        SrScreen.SUBMIT -> SrFrame(stringResource(HomeR.string.hm_tile_sales_submit), goBack, sync, openSync) { SubmitHost(day) }
-        SrScreen.JOURNEY -> SrFrame(stringResource(HomeR.string.hm_tile_sales_journey), goBack, sync, openSync) { JourneyHost(day) }
-        SrScreen.KPI -> SrFrame(stringResource(HomeR.string.hm_tile_kpi), goBack, sync, openSync) { KpiHost(day) }
+        SrScreen.EDIT -> SrFrame(stringResource(HomeR.string.hm_tile_memo), goBack, sync, openSync, icon = CoreR.drawable.aron_art_memo) { EditHost(day, editMemo, sunlight, onSunlight, onDone = { screen = SrScreen.MEMO }) }
+        SrScreen.SUMMARY -> SrFrame(stringResource(com.aktcl.aron.feature.memo.R.string.summary_title), goBack, sync, openSync, printer = day.printerManager, icon = CoreR.drawable.aron_art_summary) { SummaryHost(day, sunlight, onSunlight) }
+        SrScreen.SUBMIT -> SrFrame(stringResource(HomeR.string.hm_tile_sales_submit), goBack, sync, openSync, icon = CoreR.drawable.aron_art_sales_submit) { SubmitHost(day) }
+        SrScreen.JOURNEY -> SrFrame(stringResource(HomeR.string.hm_tile_sales_journey), goBack, sync, openSync, icon = CoreR.drawable.aron_art_sales_journey) { JourneyHost(day) }
+        SrScreen.KPI -> SrFrame(stringResource(HomeR.string.hm_tile_kpi), goBack, sync, openSync, icon = CoreR.drawable.aron_art_kpi) { KpiHost(day) }
         SrScreen.TUTORIAL -> TutorialHost(day, onBack = goBack)
-        SrScreen.FORCE -> SrFrame(stringResource(HomeR.string.hm_tile_sale), goBack, sync, openSync) {
+        SrScreen.FORCE -> SrFrame(stringResource(HomeR.string.hm_tile_sale), goBack, sync, openSync, icon = CoreR.drawable.aron_art_sale) {
             val st by day.visitFlow.state.collectAsState()
             val capture = remember { day.newCapture("outlet_capture") }
             val cap by capture.state.collectAsState()
@@ -466,23 +487,23 @@ fun SrApp(
             LaunchedEffect(Unit) { day.taskBoard.load() }
             TaskContent(tasks, onResolve = { id -> scope.launch { day.taskBoard.resolve(id) } })
         }
-        SrScreen.OWN_REQUESTS -> SrFrame(stringResource(HomeR.string.hm_tile_outlet), goBack, sync, openSync) {
+        SrScreen.OWN_REQUESTS -> SrFrame(stringResource(HomeR.string.hm_tile_outlet), goBack, sync, openSync, icon = CoreR.drawable.aron_art_outlet) {
             var rows by remember { mutableStateOf<List<com.aktcl.aron.feature.outlet.OwnRequestRow>?>(null) }
             LaunchedEffect(Unit) { rows = runCatching { day.ownRequests() }.getOrDefault(emptyList()) }
             rows?.let { com.aktcl.aron.feature.outlet.OwnRequestsContent(it) }
         }
-        SrScreen.OUTLET_MENU -> SrFrame(stringResource(HomeR.string.hm_tile_outlet), goBack, sync, openSync) {
+        SrScreen.OUTLET_MENU -> SrFrame(stringResource(HomeR.string.hm_tile_outlet), goBack, sync, openSync, icon = CoreR.drawable.aron_art_outlet) {
             OutletMenuContent(onOwnRequests = { screen = SrScreen.OWN_REQUESTS }, onKind = { k ->
                 day.requestKind = k
                 screen = if (k == OutletRequestKind.NEW) SrScreen.REQUEST_FORM.also { day.requestOutlet = null } else SrScreen.REQUEST_OUTLET
             })
         }
-        SrScreen.REQUEST_OUTLET -> SrFrame(stringResource(HomeR.string.hm_tile_outlet), goBack, sync, openSync) {
+        SrScreen.REQUEST_OUTLET -> SrFrame(stringResource(HomeR.string.hm_tile_outlet), goBack, sync, openSync, icon = CoreR.drawable.aron_art_outlet) {
             val all = OutletPicker.rows(data.outlets)
             var chip by rememberSaveable { mutableStateOf(OutletPicker.ALL_CHIP) }
             OutletPickerContent(OutletPicker.rows(data.outlets, chip), OutletPicker.chips(all), chip, { chip = it }, { r -> day.requestOutlet = r.outlet; screen = SrScreen.REQUEST_FORM })
         }
-        SrScreen.REQUEST_FORM -> SrFrame(stringResource(HomeR.string.hm_tile_outlet), goBack, sync, openSync) {
+        SrScreen.REQUEST_FORM -> SrFrame(stringResource(HomeR.string.hm_tile_outlet), goBack, sync, openSync, icon = CoreR.drawable.aron_art_outlet) {
             PermissionGate(GatedFeature.OUTLET_REQUEST, onBack = goBack) {
                 RequestHost(day, data.outlets, onDone = { screen = SrScreen.OUTLET_MENU })
             }

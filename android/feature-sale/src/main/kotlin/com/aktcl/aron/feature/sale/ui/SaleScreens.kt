@@ -28,8 +28,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
-import com.aktcl.aron.core.ui.aron.PackshotImage
-import com.aktcl.aron.core.ui.aron.packCategoryOf
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -161,18 +159,18 @@ internal fun positionOf(index: Int, size: Int): RowPosition = when {
     else -> RowPosition.Middle
 }
 
-/**
- * The pack picture of a sale row (PARITY-SPEC s2.5, s2.6): the SKU's cached thumbnail, or the neutral pack silhouette
- * with the category glyph, never a letter circle; decorative (the row's text names the SKU).
- */
+/** The 48 dp thumbnail slot: no pack image is bundled yet, so an `accent.container` disc carries the SKU's initial (decorative). */
 @Composable
-internal fun SkuThumb(sku: SaleSku) {
-    PackshotImage(sku.skuId.toString(), Modifier.size(PackshotWidth, PackshotHeight), category = packCategoryOf(sku.categoryCode))
+internal fun SkuThumb(name: String) {
+    val c = LocalAronColors.current
+    val fill = c.accentContainer
+    Box(
+        Modifier.size(AronTokens.Touch.Min).drawBehind { drawRoundRect(fill, cornerRadius = CornerRadius(AronTokens.Radius.Chip.toPx())) }.clearAndSetSemantics { },
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(name.trim().take(1).uppercase(), style = MaterialTheme.typography.titleMedium, color = c.accentOnContainer)
+    }
 }
-
-/** The pack's own shape (about 0.62 wide to 1 high, PARITY-SPEC s2.5). */
-internal val PackshotWidth = 48.dp
-internal val PackshotHeight = 78.dp
 
 /** A dock chip (android-glass s6.17): 40 dp visual in a 48 dp hit area, opaque `surface.solid.raised`, selected = `accent.container` with the ring and a check. */
 @Composable
@@ -421,7 +419,7 @@ private fun SaleSkuRow(sku: SaleSku, qty: Long, line: ReviewLine?, position: Row
         if (!expanded) {
             Box(Modifier.semantics(mergeDescendants = true) { onClick(label = addLabel) { onQuantity(sku.skuId, 1); true } }) {
                 AronListRow(
-                    title = name, subtitle = caption, leading = { SkuThumb(sku) }, flat = true, position = position, divider = position != RowPosition.Last && position != RowPosition.Only,
+                    title = name, subtitle = caption, leading = { SkuThumb(name) }, flat = true, position = position, divider = position != RowPosition.Last && position != RowPosition.Only,
                     trailingContent = {
                         val fill = if (c.sunlight) c.accentHi else c.accentContainer
                         val ink = if (c.sunlight) c.textOnAccent else c.accentOnContainer
@@ -460,7 +458,7 @@ private fun ExpandedSkuRow(sku: SaleSku, qty: Long, line: ReviewLine?, position:
     ) {
         // line 1: the thumbnail, then the name beside the line total and the caption on its own full-width line
         Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.M)) {
-            SkuThumb(sku)
+            SkuThumb(name)
             Column(Modifier.weight(1f)) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.M)) {
                     Text(name, Modifier.weight(1f), style = MaterialTheme.typography.titleSmall, color = c.textPrimary, maxLines = 2)

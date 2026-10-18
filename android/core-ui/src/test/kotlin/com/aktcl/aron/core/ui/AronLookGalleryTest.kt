@@ -10,6 +10,7 @@ import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -38,7 +39,7 @@ import org.robolectric.annotation.GraphicsMode
 /** The parity kit (OWNER DIRECTIVE 2026-10-18): every component renders in Bangla and English at font scale 1.0 and 1.3 on 360 dp. */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
-@Config(sdk = [34], qualifiers = "w360dp-h3200dp")
+@Config(sdk = [34], qualifiers = "w360dp-h3800dp")
 class AronLookGalleryTest {
     @get:Rule val rule = createComposeRule()
 
@@ -75,15 +76,25 @@ class AronLookGalleryTest {
         assertTrue("controls without a name: $unnamed", unnamed.isEmpty())
     }
 
-    @Test @Config(qualifiers = "bn-w360dp-h3200dp") fun bangla() {
+    @Test @Config(qualifiers = "bn-w360dp-h3800dp") fun bangla() {
         render(AppLanguage.BN, 1f)
         rule.onNodeWithText("সংরক্ষণ", useUnmergedTree = true).assertExists()
         rule.onNodeWithText("Apsis RouteDaily, ২০২৬-১০-০৫", useUnmergedTree = true).assertExists()
         sweep()
     }
 
-    @Test @Config(qualifiers = "bn-w360dp-h3200dp") fun banglaLargeText() {
+    @Test @Config(qualifiers = "bn-w360dp-h3800dp") fun banglaLargeText() {
         render(AppLanguage.BN, 1.3f)
+        sweep()
+    }
+
+    @Test @Config(qualifiers = "bn-w360dp-h6200dp") fun banglaFontScaleTwo() {
+        render(AppLanguage.BN, 2f)
+        sweep()
+    }
+
+    @Test @Config(qualifiers = "bn-w411dp-h3800dp") fun banglaWidePhone() {
+        render(AppLanguage.BN, 1f)
         sweep()
     }
 
@@ -93,7 +104,7 @@ class AronLookGalleryTest {
         sweep()
     }
 
-    @Test @Config(qualifiers = "bn-w360dp-h3200dp") fun banglaSunlight() {
+    @Test @Config(qualifiers = "bn-w360dp-h3800dp") fun banglaSunlight() {
         render(AppLanguage.BN, 1f, sunlight = true)
         sweep()
     }
@@ -139,6 +150,29 @@ class AronLookGalleryTest {
         rule.onNodeWithContentDescription("pack has").assertExists()
         rule.onNodeWithContentDescription("pack none").assertExists()
         assertTrue(asked.containsAll(listOf("has", "none")))
+    }
+
+    @Test @Config(qualifiers = "bn-w360dp-h800dp") fun dialogInBanglaAtLargeText() {
+        var confirmed = false
+        rule.setContent {
+            CompositionLocalProvider(LocalDensity provides Density(LocalDensity.current.density, fontScale = 1.3f)) {
+                AronTheme(AppLanguage.BN) {
+                    com.aktcl.aron.core.ui.aron.AronDialog(
+                        title = "বিক্রয় জমা দেবেন?", text = "জমা দেওয়ার পর আজকের বিক্রয় আর পরিবর্তন করা যাবে না।",
+                        confirmText = "হ্যাঁ", onConfirm = { confirmed = true }, onDismiss = {}, dismissText = "না",
+                    )
+                }
+            }
+        }
+        rule.onNodeWithText("হ্যাঁ").performClick()
+        assertTrue(confirmed)
+    }
+
+    @Test fun fieldReportsItsError() {
+        rule.setContent {
+            AronTheme(AppLanguage.EN) { com.aktcl.aron.core.ui.aron.AronField("", {}, "Shop name", errorText = "Required") }
+        }
+        rule.onNodeWithContentDescription("Shop name").assert(SemanticsMatcher.expectValue(SemanticsProperties.Error, "Required"))
     }
 
     @Test fun tileColumns() {

@@ -128,7 +128,7 @@ fun SlideScreen(skus: List<SaleSku>, review: SaleReview, emptyOf: (Long) -> Long
             AronCard(Modifier.fillMaxWidth()) {
                 Column(Modifier.fillMaxWidth().padding(AronTokens.Space.L), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.M)) {
-                        SkuThumb(sku)
+                        SkuThumb(sku.name)
                         Text(skuDisplayName(sku), style = MaterialTheme.typography.titleSmall, color = c.textPrimary, modifier = Modifier.weight(1f))
                     }
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -205,7 +205,7 @@ fun QcScreen(
                             (if (collapsible) Modifier.clickable(role = Role.Button) { open = !open } else Modifier).heightIn(min = AronTokens.Touch.Min).testTag(QcTags.CARD),
                             verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.M),
                         ) {
-                            SkuThumb(sku)
+                            SkuThumb(sku.name)
                             Text(skuDisplayName(sku), style = MaterialTheme.typography.titleSmall, color = c.textPrimary, modifier = Modifier.weight(1f))
                         }
                         if (shown) {

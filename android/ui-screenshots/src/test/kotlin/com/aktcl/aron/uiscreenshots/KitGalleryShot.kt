@@ -15,6 +15,10 @@ import com.aktcl.aron.core.ui.aron.AronLookGallery
 import com.github.takahirom.roborazzi.RoborazziOptions
 import com.github.takahirom.roborazzi.RoborazziTaskType
 import com.github.takahirom.roborazzi.captureRoboImage
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.ui.unit.dp
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -54,8 +58,29 @@ class KitGalleryShot {
     @Test @Config(qualifiers = "bn-w360dp-h3800dp") fun kit_bn_dark() = shot("kit_bn_dark", AppLanguage.BN, dark = true)
 
     // the parity kit in the existing-Aron look (OWNER DIRECTIVE 2026-10-18, docs/ui-reference/PARITY-SPEC.md)
-    @Test @Config(qualifiers = "bn-w360dp-h3000dp") fun look_bn() = shot("look_bn", AppLanguage.BN, look = true)
-    @Test @Config(qualifiers = "w360dp-h3000dp") fun look_en() = shot("look_en", AppLanguage.EN, look = true)
-    @Test @Config(qualifiers = "bn-w360dp-h3000dp") fun look_bn_sunlight() = shot("look_bn_sunlight", AppLanguage.BN, sunlight = true, look = true)
-    @Test @Config(qualifiers = "bn-w411dp-h3000dp", fontScale = 1.3f) fun look_bn_411_fs13() = shot("look_bn_411_fs13", AppLanguage.BN, look = true)
+    @Test @Config(qualifiers = "bn-w360dp-h3600dp") fun look_bn() = shot("look_bn", AppLanguage.BN, look = true)
+    @Test @Config(qualifiers = "w360dp-h3600dp") fun look_en() = shot("look_en", AppLanguage.EN, look = true)
+    @Test @Config(qualifiers = "bn-w360dp-h3600dp") fun look_bn_sunlight() = shot("look_bn_sunlight", AppLanguage.BN, sunlight = true, look = true)
+    @Test @Config(qualifiers = "bn-w411dp-h3600dp", fontScale = 1.3f) fun look_bn_411_fs13() = shot("look_bn_411_fs13", AppLanguage.BN, look = true)
+
+    /** Every kit icon (redrawn vectors aron_ic_* and the original-art crops aron_art_*) on one sheet, 56 dp each. */
+    @Test @Config(qualifiers = "w360dp-h900dp") fun icons_sheet() {
+        val ids = com.aktcl.aron.core.ui.R.drawable::class.java.fields.filter { it.name.startsWith("aron_") }.sortedBy { it.name }.map { it.getInt(null) }
+        rule.setContent {
+            androidx.compose.foundation.layout.Column(androidx.compose.ui.Modifier.background(androidx.compose.ui.graphics.Color(0xFFE8E8E8))) {
+                ids.chunked(6).forEach { row ->
+                    androidx.compose.foundation.layout.Row {
+                        row.forEach { id ->
+                            androidx.compose.foundation.Image(
+                                androidx.compose.ui.res.painterResource(id), null,
+                                androidx.compose.ui.Modifier.padding(2.dp).size(56.dp).background(androidx.compose.ui.graphics.Color.White),
+                            )
+                        }
+                    }
+                }
+            }
+        }
+        rule.waitForIdle()
+        rule.onRoot().captureRoboImage(File(dir, "icons_sheet.png").path, roborazziOptions = options)
+    }
 }

@@ -17,7 +17,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.foundation.text.TextAutoSize
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.staticCompositionLocalOf
@@ -34,7 +33,6 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.KeyboardType
@@ -114,7 +112,8 @@ private fun DrawScope.silhouette(category: PackCategory, ink: Color) {
 }
 
 /** Widths shared by [PackCard] and [PackListHeader] so the column headers sit over their columns. */
-private val StockColumn = 40.dp
+/** 52 dp: a 5-digit stick count with its separator (`১২,০০০`) and the `স্টক` header fit on one line, shrinking to 12 sp at most. */
+private val StockColumn = 52.dp
 private val QtyField = 48.dp
 private val QtyColumn = AronLook.Touch * 2 + QtyField
 
@@ -125,10 +124,10 @@ private val QtyColumn = AronLook.Touch * 2 + QtyField
 @Composable
 fun PackListHeader(sku: String, quantity: String, stock: String, modifier: Modifier = Modifier) {
     val look = LocalAronLook.current
-    Row(modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-        Text(sku, style = lookStyle(20.sp, color = look.columnHeader), modifier = Modifier.weight(1f).padding(start = 16.dp))
-        Text(quantity, style = lookStyle(20.sp, color = look.columnHeader, align = TextAlign.Center), modifier = Modifier.width(QtyColumn))
-        Text(stock, style = lookStyle(20.sp, color = look.columnHeader, align = TextAlign.End), modifier = Modifier.width(StockColumn))
+    Row(modifier.fillMaxWidth().padding(start = 12.dp, end = 16.dp, top = 12.dp, bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+        FitText(sku, lookStyle(20.sp, color = look.columnHeader), 12.sp, Modifier.weight(1f).padding(start = 16.dp), oneLineDown = 12.sp)
+        FitText(quantity, lookStyle(20.sp, color = look.columnHeader, align = TextAlign.Center), 12.sp, Modifier.width(QtyColumn), oneLineDown = 12.sp)
+        FitText(stock, lookStyle(20.sp, color = look.columnHeader, align = TextAlign.End), 12.sp, Modifier.width(StockColumn), oneLineDown = 12.sp)
     }
 }
 
@@ -184,13 +183,9 @@ fun PackCard(
             }
         }
         Spacer(Modifier.width(6.dp))
-        // one line, shrinking from 18 sp to 12 sp before it wraps (sr/stock.webp shows the code on one line); large text may wrap to two
-        val wide = LocalDensity.current.fontScale >= 1.15f
-        Text(
-            skuCode, style = lookStyle(18.sp, bold = true, color = look.purple), modifier = Modifier.weight(1f),
-            maxLines = if (wide) 2 else 1, softWrap = wide,
-            autoSize = TextAutoSize.StepBased(minFontSize = 12.sp, maxFontSize = 18.sp, stepSize = 1.sp),
-        )
+        // one line, shrinking from 18 sp down to 14 sp (sr/stock.webp shows the code on one line); a longer name such as "Prime Gold
+        // 10S" then wraps between words, each word shrinking to at most 12 sp: no code is ever cut
+        FitText(skuCode, lookStyle(18.sp, bold = true, color = look.purple), 12.sp, Modifier.weight(1f), oneLineDown = 14.sp)
         AronMinus(onMinus, minusLabel, enabled = minusEnabled)
         BasicTextField(
             value = quantity,
@@ -215,6 +210,6 @@ fun PackCard(
             },
         )
         AronPlus(onPlus, plusLabel, enabled = plusEnabled)
-        Text(stock, style = lookStyle(18.sp, color = look.ink, align = TextAlign.End), modifier = Modifier.width(StockColumn))
+        FitText(stock, lookStyle(18.sp, color = look.ink, align = TextAlign.End), 12.sp, Modifier.width(StockColumn), oneLineDown = 12.sp)
     }
 }
