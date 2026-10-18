@@ -291,7 +291,7 @@ Source: contract/openapi.yaml, version 1.3.3.
 - `schemas/LoginSubmitStatus.yaml` (1155 B)
 - `schemas/SyncHealthRow.yaml` (1475 B)
 - `schemas/SyncHealthPage.yaml` (3362 B)
-- `schemas/GeoValidationSummary.yaml` (1768 B)
+- `schemas/GeoValidationSummary.yaml` (2164 B)
 - `schemas/TargetAchievement.yaml` (1727 B)
 - `schemas/RiskSignal.yaml` (2123 B)
 - `schemas/RiskSignalPage.yaml` (302 B)
