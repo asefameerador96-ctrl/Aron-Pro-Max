@@ -31,16 +31,15 @@ async function settle(page: Page, tier: Tier): Promise<void> {
 const filter = (page: Page) => page.locator("aside[aria-label]").first().evaluate((el) => ({ blur: getComputedStyle(el).backdropFilter, fill: getComputedStyle(el).backgroundColor }));
 
 for (const tier of TIERS) {
-  test(`tier ${tier}: radius map with the glass side panel`, async ({ page }) => {
+  test(`tier ${tier}: radius map with the solid side panel (no glass in the Aron look)`, async ({ page }) => {
     await enter(page, tier, "admin1");
     await page.goto("/admin/config/geofence?level=global&id=0");
     await settle(page, tier);
     await expect(page.getByTestId("geo-current")).toBeVisible();
     const s = await filter(page);
-    if (tier === "A") expect(s.blur).toContain("blur");
-    else expect(s.blur).toBe("none");
-    if (tier === "C") expect(s.fill).toMatch(/^rgb\(/); // solid: no alpha channel
-    else expect(s.fill).toMatch(/^rgba\(/);
+    // Owner directive 2026-10-18: no blur and no translucent surface in any tier; the panel is a solid white card.
+    expect(s.blur).toBe("none");
+    expect(s.fill).toMatch(/^rgb\(/); // solid: no alpha channel
     await expect(page.getByTestId("geo-current")).toHaveScreenshot(`radius-map-tier-${tier}.png`, { maxDiffPixelRatio: 0.03, animations: "disabled" });
   });
 
