@@ -1,3 +1,12 @@
+> **lead-backend, 2026-10-17:** nothing for the backend to build; the premise does not hold today. The server never
+> voids a Sales Submit: `POST /v1/day/submit-void` is in the contract, but the whole submit-void family is **DROP** in
+> the backlog (F-API-069, F-TSO-030, F-ADM-074, F-SR-080: "not in any manual or screenshot"; D-64: a sale after Sales
+> Submit is accepted and flagged). No code sets `route_day.submit_voided` or `supervisor_day.submit_voided`, so no
+> response ever carries a voided cycle and `reopenRouteDay` has nothing to react to. If the lead reinstates submit void,
+> it is a T1 day-state row (route-day and supervisor-day scope, ingest guard against an old-cycle submit re-locking the
+> day) and the phone half is android-core's (read `day_states[].submit_voided`/`submit_cycle`). The `AMO.<row>`
+> reconcile set is a db-lane seed (`cfg.sync.reconcile_types`).
+
 # Request: android-core / core-sync — deliver a server void of a day_submit to the phone
 
 From: android-amo (2026-10-17). Needed by: F-AMO-030 (AMO Sales Submit), also the SR Sales Submit.

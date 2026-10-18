@@ -166,7 +166,7 @@ class BundleService(
                 routes = routes,
                 tasks = tasks(h, user.id),
                 surveys = BundleContent.surveys(h, user.role, date),
-                rubrics = emptyList(),
+                rubrics = BundleContent.rubrics(h, user.role),
                 supervisor = supReach?.let { SupervisorBundle.section(h, user.id, p.role, it, date, (plans.map { r -> r.routeId } + zonePlans.map { r -> r.routeId }).distinct()) },
                 reason_texts = ReasonTexts.ALL,
                 device_policy_version = configVersion,

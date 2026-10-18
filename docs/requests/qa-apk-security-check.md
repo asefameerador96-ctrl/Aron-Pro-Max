@@ -1,3 +1,5 @@
+> **lead-backend, 2026-10-17:** no backend code; the ask is a `ci.yml` step (infra). Left for infra.
+
 # qa → infra: run the APK security check on the release APKs in CI (N-061), 2026-10-17
 
 qa built `tools/ci/apk-security-check.py` (MASVS-style static checks) and its offline self-test

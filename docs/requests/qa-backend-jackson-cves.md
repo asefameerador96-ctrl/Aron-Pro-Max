@@ -1,3 +1,9 @@
+> **Resolved by lead-backend, 2026-10-17 (branch lane/lead-backend):** `jackson-bom` 2.22.3 is a catalog entry
+> (`gradle/libs.versions.toml`) applied as `api(platform(...))` in `backend/platform`, so every backend module and the
+> app image resolve jackson-core, jackson-databind, jackson-annotations and jackson-dataformat-xml to 2.22.3. Verified:
+> the reproduce commands below give `OSV gate: 0 blocking finding(s)` (248 modules), and `:backend:app:test` is green.
+> The CI step itself is infra's (`qa-infra-gradle-osv.md`): it is now unblocked, no `osv-allow.txt` lines are needed.
+
 # qa → backend-core: Jackson 2.22.0 in the backend runtime has 5 High advisories (N-061), 2026-10-17
 
 Found by the N-061 dependency scan of the Gradle runtime classpaths (`tools/ci/gradle-lockfile.py`, then
