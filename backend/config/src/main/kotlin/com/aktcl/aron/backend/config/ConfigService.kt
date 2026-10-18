@@ -157,9 +157,6 @@ class ConfigService(private val db: Database, val resolver: ConfigResolver, priv
                 if (zone == null || !reach.coversZone(p, zone)) throw ApiProblem(ProblemCode.ERR_OUT_OF_SCOPE, "outside your territory")
             }
         }
-        // D-AUTHZ-QA-Q4: an editor needs each key's editor_permission among its role's grants, read live (a revoke holds at
-        // once). The TSO radius proposal is governed by its own rule above (cfg.geo.tso_radius_mode), not by the grants.
-        if (!tso) db.jdbi.withHandle<Unit, Exception> { h -> requireEditorGrants(h, p, items.map { it.def }) }
         val tsoPropose = tso && resolver.resolve("cfg.geo.tso_radius_mode", listOf(ScopeNode("global", 0)), now).value.let { (it as JsonPrimitive).content } == "propose"
         return db.jdbi.inTransaction<ConfigChangeDto, Exception> { h ->
             if (clientUuid != null) {
@@ -168,6 +165,9 @@ class ConfigService(private val db: Database, val resolver: ConfigResolver, priv
                     return@inTransaction loadChange(h, id)!!
                 }
             }
+            // D-AUTHZ-QA-Q4: an editor needs each key's editor_permission among its role's grants, read in this transaction
+            // (a revoke holds at once). The TSO radius proposal is governed by its own rule (cfg.geo.tso_radius_mode), not by the grants.
+            if (!tso) requireEditorGrants(h, p, items.map { it.def })
             // Q3/Q4 checker B2: a C2-looking change of a loosening-guarded key must not undo a change that is still waiting
             // (scheduled or pending): its risk was judged against the value before that one applies. One waiting change per key.
             for (k in items.map { it.def.key }.filter { it in RiskClassifier.LOOSENING_GUARDED }.distinct().sorted()) {
@@ -310,7 +310,7 @@ class ConfigService(private val db: Database, val resolver: ConfigResolver, priv
                     // The approval is where the change takes effect, so the APPROVER's live grants are judged too (as D-AUTHZ-Q5).
                     val keys = h.createQuery("SELECT DISTINCT i->>'key' FROM app.cfg_change c, jsonb_array_elements(c.items) i WHERE c.change_id = :id").bind("id", changeId).mapTo(String::class.java).list()
                     val reg = resolver.registry()
-                    requireEditorGrants(h, p, keys.map { reg[it] ?: throw ApiProblem(ProblemCode.ERR_REQUEST_STATE, "key $it is no longer registered") })
+                    requireEditorGrants(h, p, keys.map { reg[it] ?: throw ApiProblem(ProblemCode.ERR_REQUEST_STATE, "key $it is no longer registered") }, pointer = null)
                     if (inFreezeWindow(h, now)) throw ApiProblem(ProblemCode.ERR_CFG_FREEZE_WINDOW, "no class C3 change inside the freeze windows")
                     h.execute("SELECT pg_advisory_xact_lock(7242001)") // serialises the hourly cap with every commit
                     val cap = cfgInt(h, "cfg.sys.c3_max_per_hour", now)
@@ -327,6 +327,9 @@ class ConfigService(private val db: Database, val resolver: ConfigResolver, priv
                     val proposerRole = h.createQuery("SELECT u.role FROM app.cfg_change c JOIN app.app_user u ON u.id = c.requested_by WHERE c.change_id = :id").bind("id", changeId).mapTo(String::class.java).one()
                     if (proposerRole != "TSO") throw ApiProblem(ProblemCode.ERR_REQUEST_STATE, "only a TSO proposal is adopted")
                     val orig = loadChange(h, changeId)!!
+                    // Checker B2: the adopted set is created after this transaction, so its grants are judged here first; a
+                    // refused adopter must not cancel the TSO's proposal.
+                    requireEditorGrants(h, p, orig.changes.map { resolver.registry()[it.key] ?: throw ApiProblem(ProblemCode.ERR_REQUEST_STATE, "key ${it.key} is no longer registered") }, pointer = null)
                     h.createUpdate("UPDATE app.cfg_change SET status = 'cancelled', decided_at = :at, decision_note = :n WHERE change_id = :id")
                         .bind("at", OffsetDateTime.ofInstant(now, ZoneOffset.UTC)).bind("n", ("adopted: " + (req.note ?: "")).take(500)).bind("id", changeId).execute()
                     AuditWriter.write(h, p, "cfg_change", changeId.toString(), "adopt", JsonPrimitive(status), JsonPrimitive("cancelled"), req.note, requestId)
@@ -359,14 +362,14 @@ class ConfigService(private val db: Database, val resolver: ConfigResolver, priv
     private fun risk3(c: ConfigChangeDto) = c.risk_class >= 3
 
     /** 403 unless the role of [p] holds every `editor_permission` of [defs] in `app.role_grant_map` now (D-AUTHZ-QA-Q4). */
-    private fun requireEditorGrants(h: Handle, p: AronPrincipal, defs: List<KeyDef>) {
+    private fun requireEditorGrants(h: Handle, p: AronPrincipal, defs: List<KeyDef>, pointer: String? = "body.changes") {
         val needed = defs.map { it.editorPermission }.toSortedSet()
         val held = h.createQuery("SELECT permission FROM app.role_grant_map WHERE role = :r AND permission = ANY(:p)").bind("r", p.role.wire)
             .bindArray("p", String::class.java, needed.toList()).mapTo(String::class.java).set()
         val missing = needed - held
         if (missing.isNotEmpty()) {
             val keys = defs.filter { it.editorPermission in missing }.map { it.key }.distinct().sorted()
-            throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "editing ${keys.joinToString()} needs ${missing.joinToString()}", errors = listOf(FieldError("body.changes", "permission")))
+            throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "editing ${keys.joinToString()} needs ${missing.joinToString()}", errors = pointer?.let { listOf(FieldError(it, "permission")) } ?: emptyList())
         }
     }
 

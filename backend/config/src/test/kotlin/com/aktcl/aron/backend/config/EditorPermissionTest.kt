@@ -22,11 +22,14 @@ class EditorPermissionTest {
     private val admin get() = env.principal("admin1001", Role.ADMIN)
     private val sa1 get() = env.principal("superadmin1001", Role.SUPERADMIN)
     private val sa2 get() = env.principal("superadmin1002", Role.SUPERADMIN)
+    private val tso get() = env.principal("tso1001", Role.TSO)
+    private var zone = 0L
 
     @BeforeAll
     fun setUp() {
         env = SeededConfigDb()
-        svc = ConfigService(env.fresh.db, ConfigResolver(env.fresh.db, clock), clock)
+        zone = env.one("SELECT zone_id FROM app.outlet ORDER BY id OFFSET 5 LIMIT 1")!!.toLong()
+        svc = ConfigService(env.fresh.db, ConfigResolver(env.fresh.db, clock), clock) { _, z -> z == zone }
     }
 
     @AfterAll
@@ -86,5 +89,18 @@ class EditorPermissionTest {
             assertEquals("pending_approval", env.one("SELECT status FROM app.cfg_change WHERE change_id = ${c.change_id}"))
         } finally { grant("SUPERADMIN", "cfg.edit.field") }
         assertEquals("applied", svc.decide(sa2, c.change_id, ConfigDecisionIn("approve"), null).status)
+    }
+
+    @Test
+    fun aRefusedAdopterLeavesTheTsoProposalPending() {
+        // The TSO proposes under its own rule (no grant needed); the ADMIN adopting it needs cfg.edit.field.
+        val prop = svc.create(tso, field(outlet(5)), null, null)
+        assertEquals("pending_approval", prop.status)
+        revoke("ADMIN", "cfg.edit.field")
+        try {
+            assertEquals(ProblemCode.ERR_FORBIDDEN, refused { svc.decide(admin, prop.change_id, ConfigDecisionIn("adopt", "ok"), null) }.code)
+            assertEquals("pending_approval", env.one("SELECT status FROM app.cfg_change WHERE change_id = ${prop.change_id}"), "not cancelled by a refused adopt")
+        } finally { grant("ADMIN", "cfg.edit.field") }
+        assertEquals("applied", svc.decide(admin, prop.change_id, ConfigDecisionIn("adopt", "ok"), null).status)
     }
 }
