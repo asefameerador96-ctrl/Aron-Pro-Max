@@ -21,8 +21,8 @@ datetime = "0.8.0"
 
 # Backend
 ktor = "3.6.0"
-flyway = "13.9.0"
-postgresql = "42.7.13"
+flyway = "13.10.0"
+postgresql = "42.7.14"
 hikari = "7.1.0"
 jdbi = "3.55.0"                        # DB access decision: JDBI + hand-written SQL, no jOOQ codegen (docs/24 s2.5)
 logback = "1.6.5"
@@ -47,7 +47,7 @@ datastore = "1.2.1"
 play-integrity = "1.6.0"
 play-services-location = "21.4.0"
 play-services-code-scanner = "16.1.0"    # enrolment QR on a normally installed phone (Play services UI, no camera permission)
-maps-compose = "9.0.0"                 # AMO and TSO flavours only; never in the SR app (docs/17 s10.5)
+maps-compose = "9.0.1"                 # AMO and TSO flavours only; never in the SR app (docs/17 s10.5)
 firebase-bom = "34.19.0"
 google-services = "4.5.0"
 okhttp = "5.5.0"                       # phone HTTP client (no Retrofit, no Ktor client on the phone)
@@ -104,7 +104,7 @@ azure-identity = { module = "com.azure:azure-identity" }
 azure-core-http-jdk-httpclient = { module = "com.azure:azure-core-http-jdk-httpclient" }
 firebase-admin = { module = "com.google.firebase:firebase-admin", version.ref = "firebase-admin" }
 fastexcel = { module = "org.dhatim:fastexcel", version.ref = "fastexcel" }
-bouncycastle-bcpkix = { module = "org.bouncycastle:bcpkix-jdk18on", version = "1.80" }   # tests only: builds key-attestation chains
+bouncycastle-bcpkix = { module = "org.bouncycastle:bcpkix-jdk18on", version = "1.86" }   # tests only: builds key-attestation chains
 
 # Android
 androidx-compose-bom = { module = "androidx.compose:compose-bom", version.ref = "compose-bom" }
