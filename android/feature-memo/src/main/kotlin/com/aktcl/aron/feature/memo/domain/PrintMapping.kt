@@ -8,7 +8,7 @@ import com.aktcl.aron.core.printing.doc.MemoPrintLine
 import java.time.Instant
 
 /** Names the print needs, resolved from the bundle (SKU short names, outlet `name (code)`, SR and route names). */
-data class PrintNames(val sku: (Long) -> String, val outlet: (Long) -> String, val sr: String, val route: String)
+data class PrintNames(val sku: (Long) -> String, val outlet: (Long) -> String, val sr: String, val route: String, val category: (Long) -> String = { "" })
 
 /**
  * Maps stored rows to the print models for android-print (docs/requests/android-print-integration.md s2): every amount is
@@ -27,7 +27,7 @@ object PrintMapping {
     fun memo(m: StoredMemo, names: PrintNames, reprintNo: Int = 0): MemoPrint = MemoPrint(
         kind = kindOf(m), memoNo = m.memoNo, committedAtEpochMs = Instant.parse(m.committedAtIso).toEpochMilli(),
         outlet = names.outlet(m.outletId), sr = names.sr, route = names.route,
-        lines = m.lines.map { MemoPrintLine(names.sku(it.skuId), it.qtyBase, it.grossMtk) },
+        lines = m.lines.map { MemoPrintLine(names.sku(it.skuId), it.qtyBase, it.grossMtk, names.category(it.skuId)) },
         discounts = m.discounts.map { MemoPrintDiscount(it.skuId?.let(names.sku).orEmpty(), it.qtyBase, it.valueMtk) },
         grossMtk = m.grossMtk, offerDiscountMtk = m.offerDiscountMtk, drpDiscountMtk = m.drpDiscountMtk, qcDeductionMtk = m.qcDeductionMtk,
         roundAdjMtk = m.roundAdjMtk, netMtk = m.netMtk, paidMtk = m.paidMtk, dueMtk = m.dueMtk, isCredit = m.dueMtk > 0,

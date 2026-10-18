@@ -37,9 +37,9 @@ import com.aktcl.aron.feature.memo.domain.KpiStrip
 /** 100 percent in hundredths: the strike-rate meter's full scale. */
 private const val STRIKE_RATE_MAX = 10_000
 
-/** Percent from hundredths with two decimals ("10.00"), digits per locale; blank when nothing is planned. */
+/** Percent from hundredths ("10", or "12.34" with a fraction), digits per locale; blank when nothing is planned. */
 fun percentText(hundredths: Int?): String =
-    hundredths?.let { (it / 100).toString() + "." + (it % 100).toString().padStart(2, '0') }.orEmpty()
+    hundredths?.let { if (it % 100 == 0) (it / 100).toString() else (it / 100).toString() + "." + (it % 100).toString().padStart(2, '0') }.orEmpty() // whole percent as on Home ("10%")
 
 /**
  * KPI (F-SR-010; screens-sr s18): stat cards of the day from the local aggregate: outlets visited (with a meter), the

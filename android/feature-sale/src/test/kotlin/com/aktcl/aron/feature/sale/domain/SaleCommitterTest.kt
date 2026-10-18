@@ -48,7 +48,7 @@ class SaleCommitterTest {
         var d = SaleDraftOps.setQuantity(it, 100, 20, QtyUnit.STICK)
         d = SaleDraftOps.setQuantity(d, 103, 3, QtyUnit.PIECE)
         d = SaleDraftOps.setSlide(d, 100, 10)
-        SaleDraftOps.setQc(d, QcEntry(103, "torn_pack", "MFC", 1))
+        SaleDraftOps.setQc(d, QcEntry(103, "damaged_crushed", "MFC", 1))
     }
 
     @Test fun commitWritesMemoLinesDiscountsQcAndOutboxInOneGoAndVerifiesAgainstSharedRules() = runTest {
@@ -83,6 +83,21 @@ class SaleCommitterTest {
         val before = listOf("memo", "memo_line", "memo_discount", "qc_line", "outbox").map(::count)
         assertThrows(SQLiteConstraintException::class.java) { kotlinx.coroutines.runBlocking { committer.commit(d, Fx.catalog) } }
         assertEquals(before, listOf("memo", "memo_line", "memo_discount", "qc_line", "outbox").map(::count))
+    }
+
+    @Test fun sixQcTypesCommitAsSixLinesWithContractGroupsAndTheMemoDeductionIsTheirSum() = runTest {
+        var d = SaleDraftOps.setQuantity(Fx.draft(visitUuid), 100, 40, QtyUnit.STICK) // 320.00 sold: the 21 sticks of QC (168.00) leave the net positive
+        QcEntryModel.APP_TYPES.forEachIndexed { i, t -> d = SaleDraftOps.setQc(d, QcEntry(100, t.code, t.group, i + 1L)) } // 1..6 sticks at 8.00
+        val out = committer.commit(d, Fx.catalog)
+        assertEquals(6, count("qc_line"))
+        val rows = db.query("SELECT fault_type_code, fault_group, qty_base, unit_price_mtk, settlement_mtk FROM qc_line", null).use { c ->
+            generateSequence { if (c.moveToNext()) listOf(c.getString(0), c.getString(1), c.getLong(2), c.getLong(3), c.getLong(4)) else null }.toList()
+        }
+        assertEquals(QcEntryModel.APP_TYPES.map { it.code }.toSet(), rows.map { it[0] as String }.toSet())
+        assertEquals(QcEntryModel.APP_TYPES.associate { it.code to it.group }, rows.associate { (it[0] as String) to (it[1] as String) }) // every code with its own group
+        assertTrue(rows.all { it[4] == (it[2] as Long) * (it[3] as Long) }) // settlement = quantity x price at capture
+        assertEquals(21L * 8_000, rows.sumOf { it[4] as Long })
+        assertEquals(21L * 8_000, db.captureDao().memo(out.memoUuid)!!.qcDeductionMtk)
     }
 
     @Test fun aFailureInsideTheTransactionLeavesNothingAndARetryOfTheSameDraftSucceeds() = runTest {
@@ -159,4 +174,5 @@ class NumberedSaleTest {
         assertEquals("sr334001-261005-001", a.memoNo); assertEquals("sr334001-261005-002", b.memoNo)
         assertEquals(a.memoNo, db.captureDao().memo(a.memoUuid)!!.memoNo)
     }
+
 }

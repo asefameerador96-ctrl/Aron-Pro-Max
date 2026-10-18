@@ -58,6 +58,7 @@
     <string name="printer_forget">Remove printer</string>
     <string name="dialog_yes">Yes</string>
     <string name="dialog_no">No</string>
+    <string name="dialog_success">Success</string>
     <string name="dialog_ok">OK</string>
     <string name="dialog_cancel">Cancel</string>
     <string name="sale_confirm_title">Are you sure?</string>

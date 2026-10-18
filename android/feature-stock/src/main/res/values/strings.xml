@@ -2,6 +2,8 @@
 <resources>
     <string name="stk_title">Stock</string>
     <string name="stk_col_sku">SKU</string>
+    <string name="stk_col_category">Category</string>
+    <string name="stk_col_total_issue">Total issue</string>
     <string name="stk_col_issue">Issue</string>
     <string name="stk_col_loaded">Total load</string>
     <string name="stk_col_stock">Stock</string>
@@ -10,7 +12,6 @@
     <string name="stk_more">More</string>
     <string name="stk_totals">Totals by category</string>
     <string name="stk_group">%1$s · %2$s</string>
-    <string name="stk_dock_chip">%1$s %2$s %3$s</string>
     <string name="stk_loaded_today">Loaded today %1$s %2$s</string>
     <string name="stk_stock_unit">Stock · %1$s</string>
     <string name="stk_unit_stick">sticks</string>
