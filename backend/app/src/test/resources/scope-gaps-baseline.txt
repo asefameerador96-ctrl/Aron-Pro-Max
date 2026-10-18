@@ -8,8 +8,6 @@ GET /v1/admin/config/density
 GET /v1/admin/config/keys
 GET /v1/admin/config/reach/{version}
 GET /v1/admin/config/reach/{version}/pending
-GET /v1/admin/config/resolve
-GET /v1/admin/config/values
 GET /v1/admin/config/versions
 GET /v1/admin/config/versions/{version}
 GET /v1/admin/config/whatif

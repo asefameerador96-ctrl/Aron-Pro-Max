@@ -38,8 +38,8 @@ data class SupervisorSectionDto(
  * derived from the token's [Reach] (role, `user_scope`, assignments); the client sends no zone or route ids.
  *
  * AMO: the active routes of the reach's zones (at most 2,000; a 54-route zone has 3,500 to 11,000 outlets, which the bundle
- * pages above `cfg.bundle.page_threshold_rows`). TSO: the section only (team, pending requests); the field outlets of
- * several zones are a web job, not an offline list.
+ * pages above `cfg.bundle.page_threshold_rows`). TSO: the section (team, pending requests) and, since the lead ruling of
+ * 2026-10-18 (F-TSO-027 login snapshot), the same zone-wide routes and outlets as the AMO, paged the same way.
  */
 internal object SupervisorBundle {
     const val MAX_ROUTES = 2000
