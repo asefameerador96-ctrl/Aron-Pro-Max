@@ -421,6 +421,11 @@ class AuthzAuditTest {
             RouteSpec("POST /v1/admin/releases", p, { "/v1/admin/releases" }, { releaseBody().toString() }, writers),
             RouteSpec("PATCH /v1/admin/releases/{}", HttpMethod.Patch, { "/v1/admin/releases/900001" }, { obj("status" to "published", "change_reason" to "qa authz audit publish").toString() },
                 setOf("SUPERADMIN"), headers = mapOf("If-Match" to "\"1\"")),
+            // AZ-7: the role is checked before the body is read, so a refused role with an invalid body still gets 403, never 400
+            // (a 400 tells an outsider the route exists and how its body is validated). An allowed role gets the 400.
+            RouteSpec("POST /v1/admin/releases (invalid body)", p, { "/v1/admin/releases" }, { "{}" }, writers),
+            RouteSpec("PATCH /v1/admin/releases/{} (invalid body)", HttpMethod.Patch, { "/v1/admin/releases/900001" }, { obj("bogus" to 1).toString() },
+                writers, headers = mapOf("If-Match" to "\"1\"")),
             // Contract only (targets and Astha outlet-SKU entry deferred, docs/27): 404 for everyone.
             RouteSpec("GET /v1/dashboards/targets", g, { "/v1/dashboards/targets" }, null, emptySet()),
             RouteSpec("POST /v1/web-entry/outlet-sku", p, { "/v1/web-entry/outlet-sku" }, { "{}" }, emptySet()),
