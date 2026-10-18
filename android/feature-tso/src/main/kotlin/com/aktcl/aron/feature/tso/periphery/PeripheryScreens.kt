@@ -1,6 +1,7 @@
 package com.aktcl.aron.feature.tso.periphery
 
 import android.Manifest
+import com.aktcl.aron.feature.tso.zoneName
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
@@ -70,7 +71,7 @@ fun PeripheryHub(onTeam: () -> Unit, onRetailer: () -> Unit, onBack: () -> Unit,
 
 @Composable
 private fun ZonePicker(zones: List<Long>, zoneId: Long?, onPick: (Long) -> Unit) {
-    zones.forEach { z -> AronListRow(localizedDigits(stringResource(R.string.tso_mc_zone, z.toString())), Modifier.testTag(PeripheryTags.zone(z)), onClick = { onPick(z) }, trailing = if (z == zoneId) "✓" else null, flat = true) }
+    zones.forEach { z -> AronListRow(zoneName(z), Modifier.testTag(PeripheryTags.zone(z)), onClick = { onPick(z) }, trailing = if (z == zoneId) "✓" else null, flat = true) }
 }
 
 /** F-TSO-011 My Team: the SRs' last synced fixes on a lite map, grouped by route with a legend; offline the last list and image stay. */

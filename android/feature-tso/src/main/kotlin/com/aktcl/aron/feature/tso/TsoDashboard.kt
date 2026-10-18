@@ -30,7 +30,7 @@ data class TsoDash(
 )
 
 /** A route that has not logged in or not uploaded, with the SR (the pair the drill-down shows). */
-data class RouteDayRow(val routeId: Long, val routeCode: String?, val routeName: String?, val state: String)
+data class RouteDayRow(val routeId: Long, val routeCode: String?, val routeName: String?, val state: String, val srName: String? = null, val srUsername: String? = null)
 data class LoginSubmit(
     val asOf: String, val targetRoutes: Long, val loggedIn: Long, val loginPct: Double?, val submitted: Long, val submitPct: Double?,
     val notLoggedIn: List<RouteDayRow>, val loggedInNotSubmitted: List<RouteDayRow>, val submittedRoutes: List<RouteDayRow>,
@@ -70,7 +70,11 @@ object TsoDashboards {
 
     private fun routes(o: JsonObject, k: String) = (o[k] as? JsonArray).orEmpty().mapNotNull { e ->
         val r = e as? JsonObject ?: return@mapNotNull null
-        RouteDayRow(l(r, "route_id") ?: return@mapNotNull null, s(r, "route_code"), s(r, "route_name"), s(r, "state").orEmpty())
+        RouteDayRow(
+            l(r, "route_id") ?: return@mapNotNull null, s(r, "route_code"), s(r, "route_name"), s(r, "state").orEmpty(),
+            // the SR of the route (RouteDayState.assigned_user_full_name / assigned_username, served since lead-backend f13adb3); null on a route with none
+            s(r, "assigned_user_full_name")?.takeIf { it.isNotBlank() }, s(r, "assigned_username")?.takeIf { it.isNotBlank() },
+        )
     }
 
     fun loginSubmit(json: String?): LoginSubmit? {
