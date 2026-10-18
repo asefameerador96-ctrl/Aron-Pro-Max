@@ -34,7 +34,7 @@ export default async function RoutesPage() {
           {t(locale, "report.empty")}
         </p>
       ) : (
-        <div tabIndex={0} className="overflow-x-auto rounded-lg border border-slate-200 bg-white shadow-sm focus-visible:outline-(length:--focus-w) focus-visible:outline-offset-2 outline-focus">
+        <div role="region" aria-label={t(locale, "menu.routes")} tabIndex={0} className="overflow-x-auto rounded-lg border border-slate-200 bg-white shadow-sm focus-visible:outline-(length:--focus-w) focus-visible:outline-offset-2 outline-focus">
           <table className="min-w-full divide-y divide-slate-200 text-sm" data-testid="routes-table">
             <thead className="bg-slate-50 text-left">
               <tr>

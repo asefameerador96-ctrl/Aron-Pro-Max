@@ -41,7 +41,7 @@ export function BucketCards({ locale, items, compare, compareLabel }: { locale: 
 export function TrackingTable({ locale, items, businessDate, canAct }: { locale: Locale; items: Row[]; businessDate: string; canAct: boolean }) {
   if (items.length === 0) return <p data-testid="table-empty" className="rounded border border-dashed border-slate-300 bg-white p-6 text-center text-slate-600">{t(locale, "report.empty")}</p>;
   return (
-    <div tabIndex={0} className="overflow-x-auto rounded-lg border border-slate-200 bg-white shadow-sm focus-visible:outline-(length:--focus-w) focus-visible:outline-offset-2 outline-focus">
+    <div role="region" aria-label={t(locale, "menu.daily_tracking")} tabIndex={0} className="overflow-x-auto rounded-lg border border-slate-200 bg-white shadow-sm focus-visible:outline-(length:--focus-w) focus-visible:outline-offset-2 outline-focus">
       <table className="min-w-full divide-y divide-slate-200 text-sm" data-testid="tracking-table">
         <thead className="bg-slate-50 text-left">
           <tr>

@@ -14,13 +14,15 @@ async function english(page: Page) {
   await page.getByRole("link", { name: "English" }).click();
 }
 
-for (const theme of ["light", "dark", "sunlight"] as const) {
-  test(`axe: every dashboard route has no WCAG A/AA violation (${theme})`, async ({ page }) => {
+// 1366 is the office laptop; 1024 and 360 make the tables overflow the way a CI runner's wider data or a phone does.
+for (const [theme, width] of [["light", 1366], ["dark", 1366], ["sunlight", 1366], ["light", 1024], ["light", 360], ["dark", 360]] as const) {
+  test(`axe: every dashboard route has no WCAG A/AA violation (${theme}, ${width}px)`, async ({ page }) => {
     test.setTimeout(300_000);
     await page.emulateMedia({ colorScheme: theme === "dark" ? "dark" : "light", reducedMotion: "reduce" });
     await page.addInitScript((th) => { try { localStorage.setItem("aron.theme", th); } catch {} }, theme);
     await loginOk(page, "tso334", "tso-pass-1");
     await english(page);
+    await page.setViewportSize({ width, height: 900 });
     const failures: string[] = [];
     for (const path of DASH_PAGES) {
       const res = await page.goto(path);

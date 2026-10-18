@@ -15,7 +15,7 @@ export function ReportTable({ result, locale, pii, drill }: { result: ReportResu
   }
   const show = (c: ReportColumn, v: Cell) => (c.pii && !pii ? PII_MASK : formatCell(locale, c, v, labels));
   return (
-    <div tabIndex={0} className="overflow-x-auto rounded-lg border border-slate-200 bg-white shadow-sm focus-visible:outline-(length:--focus-w) focus-visible:outline-offset-2 outline-focus">
+    <div role="region" aria-label={t(locale, "menu.group.reports")} tabIndex={0} className="overflow-x-auto rounded-lg border border-slate-200 bg-white shadow-sm focus-visible:outline-(length:--focus-w) focus-visible:outline-offset-2 outline-focus">
       <table className="min-w-full divide-y divide-slate-200 text-sm" data-testid="report-table">
         <caption className="sr-only">{t(locale, "report.table")}</caption>
         <thead className="bg-slate-50">
