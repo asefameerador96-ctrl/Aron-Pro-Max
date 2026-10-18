@@ -61,7 +61,7 @@ object Aggregator {
     }
 
     /**
-     * Facts, then the route-day aggregates (route, sku, brand, outlet). Returns the zones whose zone-day must be rebuilt: the
+     * Facts, then the route-day aggregates (route, sku, brand, segment, outlet). Returns the zones whose zone-day must be rebuilt: the
      * route's current zone and, when the route moved zones since its last rebuild, the zone it was counted in before. Empty for an unknown route.
      */
     fun rebuildRouteDay(h: Handle, routeId: Long, date: LocalDate, suspiciousThreshold: Int = DEFAULT_SUSPICIOUS_THRESHOLD): Set<Long> {
@@ -74,6 +74,7 @@ object Aggregator {
         rebuildAggRoute(h, routeId, zoneId, date, wm, suspiciousThreshold)
         rebuildAggRouteSku(h, routeId, date, wm)
         rebuildAggRouteBrand(h, routeId, date, wm)
+        rebuildAggRouteSegment(h, routeId, date, wm)
         rebuildAggOutlet(h, routeId, date, wm)
         rebuildAttendance(h, routeId, date, wm)
         rebuildGeoFixes(h, routeId, date, wm)
@@ -206,6 +207,21 @@ object Aggregator {
               JOIN app.sku s ON s.id = ml.sku_id JOIN app.product_node v ON v.id = s.variant_id JOIN app.product_node b ON b.id = v.parent_id
              WHERE m.route_id = :r AND m.business_date = :d AND $ACTIVE_MEMO AND ml.voided_at IS NULL AND ml.line_kind = 'sale'
              GROUP BY b.id
+            """,
+        ).bind("r", routeId).bind("d", date).bind("wm", wm).execute()
+    }
+
+    /** Contract `by_segment` (TSO By Segment Value Contribution): like the brand rollup, each memo counted once per segment (segment = the brand's parent node). */
+    private fun rebuildAggRouteSegment(h: Handle, routeId: Long, date: LocalDate, wm: Long) {
+        h.createUpdate("DELETE FROM dw.agg_daily_route_segment WHERE route_id = :r AND business_date = :d").bind("r", routeId).bind("d", date).execute()
+        h.createUpdate(
+            """
+            INSERT INTO dw.agg_daily_route_segment (business_date, route_id, segment_id, memo_count, sold_qty_base, gross_mtk, last_event_id, updated_at)
+            SELECT :d, :r, b.parent_id, count(DISTINCT m.client_uuid), coalesce(sum(ml.qty_base), 0), coalesce(sum(ml.gross_mtk), 0), :wm, now()
+              FROM app.memo_line ml JOIN app.memo m ON m.client_uuid = ml.memo_client_uuid AND m.business_date = ml.business_date
+              JOIN app.sku s ON s.id = ml.sku_id JOIN app.product_node v ON v.id = s.variant_id JOIN app.product_node b ON b.id = v.parent_id
+             WHERE m.route_id = :r AND m.business_date = :d AND $ACTIVE_MEMO AND ml.voided_at IS NULL AND ml.line_kind = 'sale'
+             GROUP BY b.parent_id
             """,
         ).bind("r", routeId).bind("d", date).bind("wm", wm).execute()
     }

@@ -11,6 +11,7 @@ dependencies {
     api(project(":shared:contract"))
     api(project(":shared:rules"))
     api(platform(libs.ktor.bom))
+    api(platform(libs.jackson.bom))   // N-061: Jackson 2.22.0 advisories fixed in 2.22.3
     api(libs.bundles.ktor.server)
     api(libs.bundles.db)
     api(libs.kotlinx.serialization.json)

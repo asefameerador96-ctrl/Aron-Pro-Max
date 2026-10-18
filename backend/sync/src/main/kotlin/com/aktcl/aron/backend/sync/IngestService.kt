@@ -1024,6 +1024,8 @@ class IngestService(
                     DayStates.afterStored(h, r.type, env, payload, ctx.up, ctx.now, routeDays, ctx.touched)
                     h.release("day_${r.index}")
                 } catch (e: Exception) {
+                    // A deadlock or serialisation failure retries the whole family (AUD-REL-02) instead of dropping a late count.
+                    if (isTransientDbFailure(e)) throw e
                     h.rollbackToSavepoint("day_${r.index}")
                     log.error("day state update failed client_uuid=${r.clientUuid} type=${r.type}", e)
                 }

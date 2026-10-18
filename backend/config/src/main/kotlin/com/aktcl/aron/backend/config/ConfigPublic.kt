@@ -64,7 +64,11 @@ class ConfigPublic(private val db: Database, private val resolver: ConfigResolve
         if (abi !in setOf("universal", "arm64-v8a", "armeabi-v7a")) throw ApiProblem(ProblemCode.ERR_VALIDATION, "bad abi", errors = listOf(FieldError("query.abi", "invalid_value")))
         if (versionCode !in 1..2100000000) throw ApiProblem(ProblemCode.ERR_VALIDATION, "bad version_code", errors = listOf(FieldError("query.version_code", "out_of_range")))
         val min = ((value("cfg.release.min_version_code") as? JsonObject)?.get(flavour) as? JsonPrimitive)?.intOrNull ?: 1
-        val blocked = ((value("cfg.release.blocked_version_codes") as? JsonArray)?.any { (it as? JsonPrimitive)?.intOrNull == versionCode }) ?: false
+        // Per flavour (docs/24 s9.5: {sr: [..], amo: [..], tso: [..]}); reading it as a bare list never blocked anything.
+        // A release blocked in the release admin blocks the phones running it too, not only its offer.
+        val blocked = versionCode in ReleaseAdmin.blockedCodes(value("cfg.release.blocked_version_codes"), flavour) || db.jdbi.withHandle<Boolean, Exception> { h ->
+            h.createQuery("SELECT EXISTS (SELECT 1 FROM app.app_release WHERE flavour = :f AND version_code = :v AND status = 'blocked')").bind("f", flavour).bind("v", versionCode).mapTo(Boolean::class.java).one()
+        }
         val policy = (value("cfg.release.update_prompt_policy") as? JsonPrimitive)?.content?.takeIf { it in setOf("silent", "prompt", "force_after_date") } ?: "prompt"
         val wifi = (value("cfg.release.update_wifi_only") as? JsonPrimitive)?.content == "true"
         val latest = db.jdbi.withHandle<List<AppReleaseDto>, Exception> { h ->

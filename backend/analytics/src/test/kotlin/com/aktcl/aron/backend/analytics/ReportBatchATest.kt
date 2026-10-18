@@ -68,6 +68,12 @@ class ReportBatchATest : ReportFixture() {
         val skuId = fresh.db.jdbi.withHandle<Long, Exception> { it.createQuery("SELECT id FROM app.sku WHERE code = 'SKU1'").mapTo(Long::class.java).one() }
         val filtered = run(10, Role.ANALYST, "route-std", body(""","product_type":"sku","products":[$skuId]""")).result()
         assertEquals(2, filtered.rows().size); assertTrue(filtered.rows().all { it.str("sku_code") == "SKU1" })
+        assertTrue(o.rows().all { it.str("category_name") == "Cigarettes" })
+        // The AMO app reads route-std and route-memo for its zone only (R1, R2; never zone 2's R3).
+        val amoStd = run(12, Role.AMO, "route-std").result()
+        assertTrue(amoStd.rows().isNotEmpty()); assertTrue(amoStd.rows().none { it.str("route_code") == "R3" })
+        val amoMemo = run(12, Role.AMO, "route-memo").result()
+        assertEquals(setOf("R1", "R2"), amoMemo.rows().map { it.str("route_code") }.toSet()); assertEquals(39_000, amoMemo.total("gross_mtk"))
     }
 
     @Test

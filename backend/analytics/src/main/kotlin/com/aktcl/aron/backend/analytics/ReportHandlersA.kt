@@ -4,6 +4,7 @@ package com.aktcl.aron.backend.analytics
 
 /** `route-memo`: memo counts and value by route and period. */
 object RouteMemoReport : ReportHandler {
+    override val roles = WEB_ROLES + com.aktcl.aron.contract.Role.AMO   // the AMO Report tile's per-route totals, its zone only
     override val definition = definition(
         "route-memo", "Route-wise Memo", "sales", "route x period",
         listOf(
@@ -103,11 +104,12 @@ object SrEfficiencyReport : ReportHandler {
 
 /** `route-std`: sales by route and SKU for the period. The monthly target column is out of the build (docs/27: target reports deferred). */
 object RouteStdReport : ReportHandler {
+    override val roles = WEB_ROLES + com.aktcl.aron.contract.Role.AMO   // the AMO Report tile's per-route STD by category, its zone only
     override val definition = definition(
         "route-std", "Route-wise STD", "sales", "route x SKU",
         listOf(
             col("route_code", "Route", "string"), col("route_name", "Route name", "string"), col("sku_code", "SKU", "string"), col("sku_name", "SKU name", "string"),
-            col("base_unit", "Unit", "string"), col("sold_qty_base", "Sold", "integer"), col("free_qty_base", "Free", "integer"), col("gross_mtk", "Gross", "mtk", unit = "mtk"), col("memos", "Memos", "integer"),
+            col("category_name", "Category", "string"), col("base_unit", "Unit", "string"), col("sold_qty_base", "Sold", "integer"), col("free_qty_base", "Free", "integer"), col("gross_mtk", "Gross", "mtk", unit = "mtk"), col("memos", "Memos", "integer"),
         ),
         listOf("period", "geo", "category", "product_type", "products"),
     )
@@ -116,11 +118,11 @@ object RouteStdReport : ReportHandler {
         val (prod, binds) = productClause(ctx, "p")
         return SqlSpec(
             """
-            SELECT g.route_code, g.route_name, p.sku_code, p.short_name AS sku_name, p.base_unit, sum(a.sold_qty_base)::bigint AS sold_qty_base,
+            SELECT g.route_code, g.route_name, p.sku_code, p.short_name AS sku_name, p.category_name, p.base_unit, sum(a.sold_qty_base)::bigint AS sold_qty_base,
                    sum(a.free_qty_base)::bigint AS free_qty_base, sum(a.gross_mtk)::bigint AS gross_mtk, sum(a.memo_count)::int AS memos
               FROM dw.agg_daily_route_sku a JOIN dw.dim_product p ON p.sku_id = a.sku_id JOIN dw.dim_geo g ON g.route_id = a.route_id
              WHERE ${ctx.dateClause("a.business_date")} AND ${ctx.zoneClause("g.zone_id")} AND ${ctx.routeClause("a.route_id")} AND $prod
-             GROUP BY 1, 2, 3, 4, 5
+             GROUP BY 1, 2, 3, 4, 5, 6
             """,
             binds, listOf("sold_qty_base", "free_qty_base", "gross_mtk"),
         )

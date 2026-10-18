@@ -158,17 +158,21 @@ class DailyTrackingService(private val db: Database, private val config: ServerC
         return db.jdbi.inTransaction<TrackingAction, Exception> { h ->
             // One writer per action_uuid at a time: two concurrent posts of the same uuid serialise here, the second then replays the first.
             h.execute("SELECT pg_advisory_xact_lock(hashtextextended(?, 0))", "tracking_action:" + req.action_uuid)
+            // Replay first: the caller's own action under this uuid answers before the reach check, so a retry after the caller's
+            // reach changed still gets the stored action (it is their own row, nothing outside their reach is shown). A different
+            // body under it is a conflict. Another user's uuid is answered only after the reach check, as before.
+            val stored = h.createQuery("SELECT actor_user_id, after, at FROM app.audit_log WHERE entity = 'tracking_action' AND entity_id = :id ORDER BY id LIMIT 1").bind("id", req.action_uuid)
+                .map { rs, _ -> Triple(rs.getLong(1), kotlinx.serialization.json.Json.parseToJsonElement(rs.getString(2)).let { it as kotlinx.serialization.json.JsonObject }, rs.getObject(3, OffsetDateTime::class.java).toInstant()) }
+                .findOne().orElse(null)
+            stored?.takeIf { it.first == p.userId }?.let { (by, after, at) ->
+                fun s(k: String) = (after[k] as? kotlinx.serialization.json.JsonPrimitive)?.content
+                if (s("route_id") != req.route_id.toString() || s("business_date") != req.business_date || s("note") != req.note) throw ApiProblem(ProblemCode.ERR_CONFLICT, "action_uuid already used for a different action")
+                return@inTransaction TrackingAction(req.action_uuid, req.route_id, req.business_date, req.note, by, at.wire(), (after["notified_user_ids"] as kotlinx.serialization.json.JsonArray).map { (it as kotlinx.serialization.json.JsonPrimitive).content.toLong() })
+            }
             // A route outside the caller's reach, or unknown, is 403 (no existence leak).
             val geo = h.createQuery("SELECT zone_id, territory_id FROM dw.dim_geo WHERE route_id = :r").bind("r", req.route_id).map { rs, _ -> rs.getLong(1) to rs.getLong(2) }.findOne().orElse(null)
             if (geo == null || (!reach.national && geo.first !in reach.zoneIds)) throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "route is outside your reach")
-            // Replay: the same uuid by the same user returns the stored action unchanged; a different body under it is a conflict.
-            h.createQuery("SELECT actor_user_id, after, at FROM app.audit_log WHERE entity = 'tracking_action' AND entity_id = :id ORDER BY id LIMIT 1").bind("id", req.action_uuid)
-                .map { rs, _ -> Triple(rs.getLong(1), kotlinx.serialization.json.Json.parseToJsonElement(rs.getString(2)).let { it as kotlinx.serialization.json.JsonObject }, rs.getObject(3, OffsetDateTime::class.java).toInstant()) }
-                .findOne().orElse(null)?.let { (by, after, at) ->
-                    fun s(k: String) = (after[k] as? kotlinx.serialization.json.JsonPrimitive)?.content
-                    if (by != p.userId || s("route_id") != req.route_id.toString() || s("business_date") != req.business_date || s("note") != req.note) throw ApiProblem(ProblemCode.ERR_CONFLICT, "action_uuid already used for a different action")
-                    return@inTransaction TrackingAction(req.action_uuid, req.route_id, req.business_date, req.note, by, at.wire(), (after["notified_user_ids"] as kotlinx.serialization.json.JsonArray).map { (it as kotlinx.serialization.json.JsonPrimitive).content.toLong() })
-                }
+            if (stored != null) throw ApiProblem(ProblemCode.ERR_CONFLICT, "action_uuid already used for a different action")
             if (!h.createQuery("SELECT EXISTS (SELECT 1 FROM app.route_day WHERE route_id = :r AND business_date = :d)").bind("r", req.route_id).bind("d", date).mapTo(Boolean::class.java).one())
                 throw ApiProblem(ProblemCode.ERR_REQUEST_STATE, "the route has no route-day on that date")
             val after = runCatching { LocalTime.parse(config.string("cfg.day.take_action_after")) }.getOrDefault(LocalTime.of(17, 0))

@@ -1,3 +1,16 @@
+> **lead-backend, 2026-10-17 (lane/lead-backend), the backend asks of this file:**
+> - **Bundle `rubrics`:** done. The AMO and TSO bundles carry the active rubrics at their current version (`RubricDef`:
+>   rubric_id, version, kind, criteria with criterion_id, labels, answer_type, enabled, key); other roles get none.
+> - **`task_type` and `feedback_category` code lists:** already in every bundle (`code_lists` carries every list valid
+>   on the date; `task_type` items are seeded by V0027). If `feedback_category` shows empty, it has no items seeded yet:
+>   an admin adds them in the code-list admin page (no code change).
+> - **Zone names and the scope tree:** no new read needed. `GET /v1/admin/geo/{level}` (`listGeoNodes`, levels wing,
+>   division, territory, house, zone; `parent_id` filter) is open to the TSO and returns only the nodes in the caller's
+>   reach (tested in `AdminMasterTest#readersSeeOnlyTheirReachAndOnlyAdminsWrite`). The Final Submit cascade is a UI change.
+> - **`GET /v1/visit-plans`:** confirmed. A TSO may pass its own `planner_user_id` (another id is 403); completion is the
+>   first `call_assessment` of kind `retailer_questionnaire` with that `visit_plan_outlet_client_uuid`.
+> - Offline verifier after change-password: android-core's, not backend.
+
 # Request: TSO write records (android-tso -> shared, android-core)
 
 Needed by F-TSO-009 (leave apply), F-TSO-018 (feedback), F-TSO-013/014/015/016 (visit plan, visit query, assign task), F-TSO-010 (final submit).

@@ -132,12 +132,14 @@ class ReportApiTest {
         // Scope ids sent as body members are not part of the contract: refused, not ignored.
         val stray = query(11, Role.TSO, body(extra = ""","zone_ids":[$z2],"scope":{"zones":[$z2]}"""))
         assertEquals(HttpStatusCode.BadRequest, stray.status); assertTrue(stray.bodyAsText().contains("ERR_VALIDATION"))
-        assertEquals(HttpStatusCode.Forbidden, query(12, Role.AMO, body()).status)          // the role gate precedes the body
+        assertEquals(HttpStatusCode.Forbidden, query(12, Role.SR, body()).status)           // the role gate precedes the body
         assertEquals(HttpStatusCode.NotFound, query(10, Role.ANALYST, body(), key = "no-such-report").status)
         assertEquals(HttpStatusCode.BadRequest, query(10, Role.ANALYST, body(format = "csv")).status)
         val defs = Json.parseToJsonElement(client.get("/v1/reports") { bearerAuth(TestTokens.web(10, Role.ANALYST)) }.bodyAsText()).jsonObject["items"]!!.jsonArray
         assertEquals("route-memo", defs.single().jsonObject["report_key"]!!.jsonPrimitive.content)
-        assertEquals(0, Json.parseToJsonElement(client.get("/v1/reports") { bearerAuth(TestTokens.web(12, Role.AMO)) }.bodyAsText()).jsonObject["items"]!!.jsonArray.size)
+        // route-memo is open to the AMO app for its zone (docs/requests/android-amo-report-access.md); a field SR sees no report.
+        assertEquals(1, Json.parseToJsonElement(client.get("/v1/reports") { bearerAuth(TestTokens.web(12, Role.AMO)) }.bodyAsText()).jsonObject["items"]!!.jsonArray.size)
+        assertEquals(0, Json.parseToJsonElement(client.get("/v1/reports") { bearerAuth(TestTokens.web(12, Role.SR)) }.bodyAsText()).jsonObject["items"]!!.jsonArray.size)
     }
 
     @Test
@@ -180,6 +182,25 @@ class ReportApiTest {
     fun sanitiserNeutralisesEveryFormulaLeader() {
         for (s in listOf("=1+1", "+cmd", "-2+3", "@SUM(A1)", "\tx", "\rx", "  =x")) assertTrue(ReportOutputs.sanitize(s).startsWith("'"), s)
         for (s in listOf("Route 1", "12", "রুট", "a=b", "")) assertEquals(s, ReportOutputs.sanitize(s))
+    }
+
+    @Test
+    fun anMtkCellAbove2Pow53OrNotAnIntegerIsTextNeverADouble() {
+        // QA-MNY-03: an xlsx number is a double, exact only up to 2^53.
+        val out = java.io.ByteArrayOutputStream()
+        val wb = org.dhatim.fastexcel.Workbook(out, "t", "1.0"); val ws = wb.newWorksheet("s")
+        ReportOutputs.cell(ws, 0, 0, kotlinx.serialization.json.JsonPrimitive(9_007_199_254_740_992L), "mtk")
+        ReportOutputs.cell(ws, 0, 1, kotlinx.serialization.json.JsonPrimitive(9_007_199_254_740_993L), "mtk")
+        ReportOutputs.cell(ws, 0, 2, kotlinx.serialization.json.JsonPrimitive(12.5), "mtk")
+        ReportOutputs.cell(ws, 0, 3, kotlinx.serialization.json.JsonPrimitive(-9_007_199_254_740_993L), "integer")
+        wb.finish()
+        val tmp = java.io.File.createTempFile("mtk", ".xlsx").also { it.deleteOnExit(); it.writeBytes(out.toByteArray()) }
+        val files = java.util.zip.ZipFile(tmp).use { z -> z.entries().asSequence().associate { it.name to z.getInputStream(it).readBytes().decodeToString() } }
+        val sheet = files.getValue("xl/worksheets/sheet1.xml")
+        assertTrue(Regex("<c r=\"A1\"[^>]*><v>9007199254740992</v>").containsMatchIn(sheet), sheet)
+        for (col in listOf("B1", "C1", "D1")) assertTrue(Regex("<c r=\"$col\"[^>]*t=\"s\"").containsMatchIn(sheet), "$col is text: $sheet")
+        val strings = files.getValue("xl/sharedStrings.xml")
+        for (v in listOf("9007199254740993", "12.5", "-9007199254740993")) assertTrue(strings.contains(">$v<"), strings)
     }
 
     // ---------------- checker_ tests (independent checker, F-API-017) ----------------
