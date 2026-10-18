@@ -416,7 +416,9 @@ internal class OutletRequests(private val d: AdminMasterDeps) {
                     if ((prior["user_id"] as Number).toLong() != p.userId || (prior["outlet_id"] as Number?)?.toLong() != req.outlet_id || prior["request_type"] != req.request_type || prior["same"] != true) {
                         throw ApiProblem(ProblemCode.ERR_CONFLICT, "request_uuid is already used for another request")
                     }
-                    return@inTransaction HttpStatusCode.Created to dto(h, one(h, u, reach, lock = false) ?: admNotFound("request not found"), p)
+                    // Replay: the caller's own request is read by requester, not by today's reach (an outlet re-zoned since the first
+                    // send must not turn a retry into 404); it is the caller's own record, so nothing outside the reach is new to them.
+                    return@inTransaction HttpStatusCode.Created to dto(h, one(h, u, reach.copy(ownRecordsOnly = true), lock = false) ?: admNotFound("request not found"), p)
                 }
                 val outlet = h.row("SELECT zone_id, route_id, status FROM app.outlet WHERE id = :o", "o" to req.outlet_id) ?: admNotFound("outlet not found")
                 if (!reach.coversZone((outlet["zone_id"] as Number).toLong())) throw ApiProblem(ProblemCode.ERR_OUT_OF_SCOPE, "the outlet is outside your reach")

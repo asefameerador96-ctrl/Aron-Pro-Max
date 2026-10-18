@@ -17,6 +17,23 @@ carries the resolution note at its top.
 Checkers: Opus (T1: aggregation, Update Base, releases) found 4 defects, all fixed with tests; Sonnet (T2) found none,
 one guard taken (legacy stars_1_5).
 
+## Night, second round (lead messages 2026-10-17 21:41, 22:43, 23:24)
+
+| Item | Outcome | Commit |
+|---|---|---|
+| 1b replay-first (feedback, leave, visit plans) | stored uuid answers before rules; merged plan uuid and re-routed outlet covered (Opus checker) | 7503bdef |
+| config resolve/values scope (qa ledger) | TSO/DMO/WM see own nodes, ancestors, nodes under; whole resolve chain in reach; values filtered | 8a571fa1, follow-up |
+| config changes Idempotency-Key | replay before date checks; other body 409 | follow-up |
+| replay sweep (money) | price batch, dues adjustment | 45755543 |
+| TSO outlet bundle (F-TSO-027) | AMO zone-wide builder for TSO | 3f3184bd |
+| replay sweep | final submit, data void, web-entry route-day and QC | f29d6892, e4cdb414 |
+| web contract types | regenerated after the additive contract hunks | f7425e97 |
+
+Sweep items still open (Opus list): outlet-request and risk-signal replays read through reach-filtered rows (404),
+daily-tracking actions (reach), PDA upload cap, device enrol after token revoke, paper backfill (prices re-looked up).
+Also open: config changes, changes/{id} and versions/{v} return every zone's items to a TSO (gaps baseline).
+Questions with the lead: owner phone unmasked to the TSO in the bundle; fleet-size TSO territories.
+
 Open for others: db + lead register `cfg.geo.update_base_*` (3 keys, docs/24 s9.5 rows); infra adds the Gradle OSV
 and APK security CI steps; lead decides a TSO outlet bundle section and whether submit void comes back.
 Traps: V0084-V0087 are taken by lane/lead-hardening (not on INT): do not number a migration in that range or after it

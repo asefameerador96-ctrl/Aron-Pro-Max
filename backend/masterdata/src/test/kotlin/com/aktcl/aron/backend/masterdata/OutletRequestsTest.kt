@@ -111,6 +111,26 @@ class OutletRequestsTest {
         assertEquals("active", env.sql("SELECT status FROM app.outlet WHERE id = $outlet"), "a rejected close changes nothing")
     }
 
+    /** Replay first: the TSO's retry of its own web request answers it after the outlet moved out of the TSO's reach (not 404). */
+    @Test
+    fun aWebRequestReplayAnswersAfterTheOutletLeavesTheReach() = env.app {
+        val outlet = id("SELECT id FROM app.outlet WHERE route_id = $route AND status = 'active' ORDER BY id DESC OFFSET 1 LIMIT 1")
+        val u = UUID.randomUUID()
+        val body = """{"request_uuid":"$u","request_type":"info","outlet_id":$outlet,"proposed":{"name":"Renamed Store"}}"""
+        val c = sendA1(HttpMethod.Post, "/outlet-requests", tso, body)
+        assertEquals(HttpStatusCode.Created, c.status, c.objA1().toString())
+        val home = env.sql("SELECT zone_id FROM app.outlet WHERE id = $outlet")!!
+        env.db.fresh.db.jdbi.useHandle<Exception> { it.execute("UPDATE app.outlet SET zone_id = (SELECT id FROM app.zone WHERE code <> 'Z-MIR' ORDER BY id LIMIT 1) WHERE id = $outlet") }
+        try {
+            val r = sendA1(HttpMethod.Post, "/outlet-requests", tso, body)
+            assertEquals(HttpStatusCode.Created, r.status, r.objA1().toString())
+            assertEquals(u.toString(), r.objA1().strA1("request_uuid"))
+            assertEquals(HttpStatusCode.Forbidden, sendA1(HttpMethod.Post, "/outlet-requests", tso, body.replace("$u", UUID.randomUUID().toString())).status, "a new request there is refused")
+        } finally {
+            env.db.fresh.db.jdbi.useHandle<Exception> { it.execute("UPDATE app.outlet SET zone_id = $home WHERE id = $outlet") }
+        }
+    }
+
     @Test
     fun aLargeMoveOfAConfirmedPinIsApprovedByTheTsoAndTheVerifierCannotDecide() = env.app {
         val outlet = id("SELECT id FROM app.outlet WHERE route_id = $route AND status = 'active' AND location_confirmed ORDER BY id LIMIT 1")
