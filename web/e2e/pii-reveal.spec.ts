@@ -44,6 +44,7 @@ test("a wrong code says so; three wrong tries lock the reveal", async ({ page })
 for (const [user, pass, totp] of [["analyst1", "analyst-pass-1", undefined], ["support1", "support-pass-1", "123456"]] as const) {
   test(`${user} has no Show personal data control`, async ({ page }) => {
     await loginOk(page, user, pass, totp);
+    await page.waitForLoadState("networkidle"); // SUPPORT lands on "/" and is sent on to /sync-health; let that finish first
     await page.goto("/admin/audit");
     await expect(page.locator("h1").first()).toBeVisible();
     await expect(page.getByTestId("pii-open")).toHaveCount(0);
