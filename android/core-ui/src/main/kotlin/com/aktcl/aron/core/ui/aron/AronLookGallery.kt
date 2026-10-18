@@ -68,7 +68,7 @@ fun AronLookGallery(modifier: Modifier = Modifier) {
         ) }
         PackListHeader(stringResource(R.string.core_ui_look_col_sku), stringResource(R.string.core_ui_look_col_issue), stringResource(R.string.core_ui_look_col_stock))
         Column(Modifier.padding(horizontal = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            listOf("MaxR-10S" to PackCategory.Cigarette, "SL-L1" to PackCategory.Lighter, "FB-M10" to PackCategory.Match).forEachIndexed { i, (code, category) ->
+            listOf("MaxR-10S" to PackCategory.Cigarette, stringResource(R.string.core_ui_look_long_sku) to PackCategory.Cigarette, "SL-L1" to PackCategory.Lighter, "FB-M10" to PackCategory.Match).forEachIndexed { i, (code, category) ->
                 PackCard(
                     skuId = code, skuCode = code,
                     quantity = if (i == 0) localizedDigits(qty) else localizedNumber(0),
@@ -126,7 +126,7 @@ private fun AronScaffoldBottomSample() {
         TotalsPanel(
             header = TotalsLine(stringResource(R.string.core_ui_look_category), listOf(stringResource(R.string.core_ui_look_total_issue), stringResource(R.string.core_ui_look_col_stock))),
             lines = listOf(
-                TotalsLine(stringResource(R.string.core_ui_look_cigarette), listOf(localizedNumber(0), localizedNumber(0))),
+                TotalsLine(stringResource(R.string.core_ui_look_cigarette), listOf(localizedNumber(0), localizedNumber(0)), caption = stringResource(R.string.core_ui_look_sticks)),
                 TotalsLine(stringResource(R.string.core_ui_look_bidi), listOf(localizedNumber(0), localizedNumber(0))),
                 TotalsLine(stringResource(R.string.core_ui_look_lighter), listOf(localizedNumber(400), localizedNumber(25))),
                 TotalsLine(stringResource(R.string.core_ui_look_match), listOf(localizedNumber(400), localizedNumber(394))),

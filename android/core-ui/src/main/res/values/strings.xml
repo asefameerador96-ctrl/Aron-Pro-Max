@@ -140,4 +140,6 @@
     <string name="core_ui_look_dialog_text">After submitting you cannot change today\'s sales.</string>
     <string name="core_ui_look_yes">Yes</string>
     <string name="core_ui_look_no">No</string>
+    <string name="core_ui_look_sticks">Sticks</string>
+    <string name="core_ui_look_long_sku">Prime Gold 10S</string>
 </resources>
