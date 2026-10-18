@@ -107,6 +107,7 @@ fun AronTheme(
         LocalAppLanguage provides language,
         LocalAronColors provides roles,
         LocalSunlight provides sunlight,
+        LocalAronLook provides (if (sunlight) AronLook.Sunlight else AronLook.Default),
         LocalGlassTier provides resolvedTier,
         LocalReducedMotion provides (reducedMotion || resolvedTier == GlassTier.C),
     ) {
