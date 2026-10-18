@@ -31,7 +31,7 @@ import org.robolectric.annotation.Config
 
 /** F-SR-014 screen: stepped Issue, loaded total, category totals 400 and 400, Save. */
 @RunWith(AndroidJUnit4::class)
-@Config(sdk = [36])
+@Config(sdk = [36], qualifiers = "w360dp-h800dp") // the field phone's design frame (screens-sr s0)
 class StockScreenTest {
     @get:Rule val compose = createComposeRule()
 
@@ -52,7 +52,9 @@ class StockScreenTest {
         // the reference panel: head "ক্যাটাগরি / মোট ইস্যু / মোট লোড", all four categories with their unit, zeros included
         compose.onNodeWithTag(StockTags.TOTALS).assertExists()
         compose.onNodeWithText("ক্যাটাগরি").assertExists(); compose.onNodeWithText("মোট ইস্যু").assertExists()
-        listOf("সিগারেট (স্টিক)", "বিড়ি (স্টিক)", "লাইটার (পিস)", "ম্যাচ (ডজন)").forEach { compose.onNodeWithText(it).assertExists() }
+        listOf("সিগারেট", "বিড়ি", "লাইটার", "ম্যাচ").forEach { compose.onNodeWithText(it).assertExists() }
+        // the unit is the caption under each category (two stick categories, one piece, one dozen)
+        compose.onAllNodesWithText("স্টিক").assertCountEquals(2); compose.onNodeWithText("পিস").assertExists(); compose.onNodeWithText("ডজন").assertExists()
         // the issued and stock figures of the two panel lines at least (a second pack card may sit below the fold of the test window)
         assertTrue(compose.onAllNodesWithText("৪০০").fetchSemanticsNodes().size >= 4)
     }
