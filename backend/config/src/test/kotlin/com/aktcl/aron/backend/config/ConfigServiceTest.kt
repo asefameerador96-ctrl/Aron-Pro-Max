@@ -165,6 +165,8 @@ class ConfigServiceTest {
     /** Checker B1 and B2 on option B: a window that ends on a looser value is C3; a change cannot undo one that is still waiting. */
     @Test
     fun aWindowThatEndsLooserIsC3AndAWaitingChangeCannotBeUndone() {
+        // The config timeline needs a clock that never goes back (setDhaka alone may jump backwards past rows already written).
+        fun noonAhead() { val was = clock.now(); clock.setDhaka(12, 0); if (clock.now().isBefore(was)) clock.advance(24 * 3600) }
         fun pct(v: Int, to: String? = null) = req(item("cfg.price.max_change_pct", "global", 0, v, to = to), reason = "Review of the price change rail threshold")
         // B2: an ADMIN's tightening (15 -> 10) is scheduled; nobody can queue another change of the key behind it.
         val tight = svc.create(admin, pct(10), null, null)
@@ -184,8 +186,25 @@ class ConfigServiceTest {
         // Back to the default, which is a loosening (10 -> 15): C3, two SUPERADMINs.
         val back = svc.create(sa1, pct(15), null, null)
         assertEquals(3, back.risk_class)
-        clock.setDhaka(12, 0)
+        noonAhead()
         assertEquals("applied", svc.decide(sa2, back.change_id, ConfigDecisionIn("approve"), null).status)
+        // Checker N1: two SUPERADMINs approve a temporary 25 until T; one ADMIN's 'same value, no end' (or a longer window)
+        // would make it permanent, so it is C3 and refused to the ADMIN.
+        val t = clock.now().plusSeconds(6 * 3600).toString()
+        val temp = svc.create(sa1, pct(25, to = t), null, null)
+        assertEquals(3, temp.risk_class)
+        assertEquals("applied", svc.decide(sa2, temp.change_id, ConfigDecisionIn("approve"), null).status)
+        clock.advance(60)
+        assertEquals(25, svc.resolve("cfg.price.max_change_pct", "global", 0, clock.now()).value.jsonPrimitive.int)
+        assertEquals(ProblemCode.ERR_FORBIDDEN, code { svc.create(admin, pct(25), null, null) }, "same value, open-ended")
+        assertEquals(ProblemCode.ERR_FORBIDDEN, code { svc.create(admin, pct(25, to = clock.now().plusSeconds(12 * 3600).toString()), null, null) }, "a longer window")
+        // A shorter window inside T stays C2 (it ends back on 25 until T, then 15: no loosening).
+        val shorter = svc.create(admin, pct(20, to = clock.now().plusSeconds(3600).toString()), null, null)
+        assertEquals(2, shorter.risk_class)
+        svc.decide(admin, shorter.change_id, ConfigDecisionIn("cancel"), null)
+        // Clean up: back to the default once the window has passed.
+        clock.advance(7 * 3600)
+        assertEquals(15, svc.resolve("cfg.price.max_change_pct", "global", 0, clock.now()).value.jsonPrimitive.int)
     }
 
     @Test

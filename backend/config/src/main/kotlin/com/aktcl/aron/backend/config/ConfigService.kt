@@ -184,10 +184,19 @@ class ConfigService(private val db: Database, val resolver: ConfigResolver, priv
                 fun without(t: Instant) = chain.filterNot { it == node }.let { rest -> if (rest.isEmpty()) pr.def.default else resolver.resolve(pr.def.key, rest, t).value }
                 val after = if (pr.item.value !is JsonNull) pr.item.value else without(at)
                 var c = RiskClassifier.classify(pr.def, node.type, pr.item.value.takeUnless { v -> v is JsonNull }, before, after)
-                // Q3/Q4 checker B1: when a window ends the node falls back to what resolves without it; judge that too.
-                if (pr.to != null && pr.def.key in RiskClassifier.LOOSENING_GUARDED) {
-                    val afterWindow = without(pr.to)
-                    c = maxOf(c, RiskClassifier.classify(pr.def, node.type, null, before, afterWindow))
+                if (pr.def.key in RiskClassifier.LOOSENING_GUARDED) {
+                    // Q3/Q4 checker B1: when a window ends the node falls back to what resolves without it; judge that too.
+                    if (pr.to != null) c = maxOf(c, RiskClassifier.classify(pr.def, node.type, null, before, without(pr.to)))
+                    // Checker N1: the item replaces the timeline over [from, to); at every boundary of an existing row of this
+                    // node inside it (a windowed loosening ending, a scheduled row starting) the value it overrides changes,
+                    // so a 'same value, no end' change cannot make an approved temporary loosening permanent.
+                    val bounds = h.createQuery(
+                        "SELECT t FROM (SELECT effective_to AS t FROM app.cfg_value WHERE key = :k AND scope_type = :st AND scope_id = :si AND effective_to IS NOT NULL " +
+                            "UNION SELECT effective_from FROM app.cfg_value WHERE key = :k AND scope_type = :st AND scope_id = :si) b WHERE t > :from" + if (pr.to != null) " AND t < :to" else "",
+                    ).bind("k", pr.def.key).bind("st", node.type).bind("si", node.id).bind("from", java.time.OffsetDateTime.ofInstant(at, java.time.ZoneOffset.UTC))
+                        .also { q -> pr.to?.let { q.bind("to", java.time.OffsetDateTime.ofInstant(it, java.time.ZoneOffset.UTC)) } }
+                        .mapTo(java.time.OffsetDateTime::class.java).list()
+                    for (t in bounds) c = maxOf(c, RiskClassifier.classify(pr.def, node.type, pr.item.value.takeUnless { v -> v is JsonNull }, resolver.resolve(pr.def.key, chain, t.toInstant()).value, after))
                 }
                 // F-ADM-012: an outlet override above 3 x the radius its zone resolves to needs an approver (C3).
                 if (pr.def.key == "cfg.geo.radius_m" && node.type == "outlet" && pr.item.value !is JsonNull) {
