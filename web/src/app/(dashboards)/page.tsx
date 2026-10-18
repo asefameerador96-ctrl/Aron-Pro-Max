@@ -47,7 +47,7 @@ function Err({ locale, code }: { locale: Locale; code: string | undefined }) {
 function DrillLink({ href, msg, testId }: { href: string; msg: string; testId: string }) {
   return (
     <Link href={href} data-testid={testId} className="no-print inline-flex min-h-(--ctl-h) items-center gap-1 text-label text-accent hover:underline focus-visible:outline-(length:--focus-w) focus-visible:outline-offset-2 outline-focus">
-      {msg}
+      <span className="@max-[17rem]/tile:sr-only">{msg}</span>
       <Icon name="chevron-right" size={16} />
     </Link>
   );
@@ -273,6 +273,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
             {channels.length > 0 ? (
               <Donut
                 testId="channel-calls-donut"
+                radial
                 label={t(locale, "dashboard.channels.calls")}
                 centerText={formatLakhCrore(locale, callsTotal, lw)}
                 slices={channels.map((c) => ({ key: c.code, label: c.name ?? c.code, value: c.successful_calls, valueText: formatLakhCrore(locale, c.successful_calls, lw), shareText: callsTotal > 0 ? pctText(locale, (c.successful_calls / callsTotal) * 100) : "—", href: dl("channel", { code: c.code }) }))}
@@ -290,7 +291,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
             {ls ? (
               <dl className="flex flex-col gap-2" data-testid="login-submit">
                 <div>
-                  <dt className="text-caption text-secondary">{t(locale, "dashboard.login_pct")}</dt>
+                  <dt className="flex items-center gap-1 text-caption text-secondary"><Icon name="download" size={16} className="text-accent" />{t(locale, "dashboard.login_pct")}</dt>
                   <dd className="fit-number whitespace-nowrap text-numeral text-primary tabular-nums" data-testid="login-pct">
                     {pctText(locale, ls.kpis.login_pct)}
                   </dd>
@@ -300,7 +301,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
                   <dd className="text-caption text-secondary">{t(locale, "dashboard.kpi.login_basis", { logged: n(locale, ls.kpis.logged_in_routes), target: n(locale, ls.kpis.target_routes) })}</dd>
                 </div>
                 <div>
-                  <dt className="text-caption text-secondary">{t(locale, "finalsubmit.submit_pct")}</dt>
+                  <dt className="flex items-center gap-1 text-caption text-secondary"><Icon name="upload" size={16} className="text-accent" />{t(locale, "finalsubmit.submit_pct")}</dt>
                   <dd className="fit-number whitespace-nowrap text-numeral text-primary tabular-nums" data-testid="submit-pct-ls">
                     {pctText(locale, ls.kpis.submit_pct_of_logged_in)}
                   </dd>
@@ -349,7 +350,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
             }
           >
             {brands.length >= 4 ? (
-              <ColumnChart testId="brand-chart" label={t(locale, "dashboard.brand.heading")} rows={brandRows} />
+              <ColumnChart testId="brand-chart" label={t(locale, "dashboard.brand.heading")} rows={brandRows} axisText={(v) => (brandMode === "memo" ? n(locale, v) : formatLakhCrore(locale, mtkToTaka(v), lw))} />
             ) : brands.length > 0 ? (
               // Two or three brands read better as ranked bars than as a few wide columns (design review).
               <RankedBars testId="brand-chart" label={t(locale, "dashboard.brand.heading")} rows={brandRows} />
