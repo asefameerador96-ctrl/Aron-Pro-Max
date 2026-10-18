@@ -1,6 +1,9 @@
 package com.aktcl.aron.uiscreenshots
 
+import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import com.aktcl.aron.core.ui.aron.AronPrinterBadge
@@ -13,7 +16,7 @@ import com.aktcl.aron.core.ui.aron.AronTopBar
  * moved to the parity look; the older `Frame` replicas stay for the screens that have not moved yet.
  */
 @Composable
-internal fun ParityFrame(title: String, icon: Int?, printerConnected: Boolean? = null, content: @Composable () -> Unit) {
+internal fun ParityFrame(title: String, icon: Int?, printerConnected: Boolean? = null, subtitle: String? = null, content: @Composable () -> Unit) {
     AronScaffold(
         topBar = {
             AronTopBar(
@@ -22,5 +25,10 @@ internal fun ParityFrame(title: String, icon: Int?, printerConnected: Boolean? =
                 hanging = printerConnected?.let { c -> { AronPrinterBadge(connected = c, label = "printer", onClick = {}) } },
             )
         },
-    ) { content() }
+    ) {
+        androidx.compose.foundation.layout.Column {
+            subtitle?.let { androidx.compose.material3.Text(it, Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) }
+            content()
+        }
+    }
 }

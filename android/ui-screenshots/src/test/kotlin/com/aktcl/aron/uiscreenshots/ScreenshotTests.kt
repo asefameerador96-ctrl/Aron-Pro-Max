@@ -255,7 +255,7 @@ class ScreenshotTests {
         StockContent(stockRows, stockTotals, StockMessage.SAVED, slipNotPrinted = true, onIssue = { _, _ -> }, onSave = {}, onPrint = {})
     }
 
-    @Composable private fun Picker() = Frame(stringResource(HomeR.string.hm_tile_sale)) {
+    @Composable private fun Picker() = ParityFrame(stringResource(HomeR.string.hm_tile_sale), com.aktcl.aron.core.ui.R.drawable.aron_art_sale) {
         val rows = OutletPicker.rows(outlets)
         OutletPickerContent(rows, OutletPicker.chips(rows), OutletPicker.ALL_CHIP, {}, {}, marks = marks)
     }
@@ -274,11 +274,11 @@ class ScreenshotTests {
         )
     }
 
-    @Composable private fun Sale() = Frame(stringResource(SaleR.string.sale_title), subtitle = card.name) {
+    @Composable private fun Sale() = ParityFrame(stringResource(SaleR.string.sale_title), com.aktcl.aron.core.ui.R.drawable.aron_art_sale, subtitle = card.name) {
         SaleEntryScreen(skus, saleReview, { id -> saleDraft.lines.firstOrNull { it.skuId == id }?.qtyEntered ?: 0 }, { _, _ -> }, {}, {}, recentSkuIds = setOf(100L), onPreviousSales = {})
     }
 
-    @Composable private fun Review() = Frame(stringResource(SaleR.string.review_title)) {
+    @Composable private fun Review() = ParityFrame(stringResource(SaleR.string.review_title), com.aktcl.aron.core.ui.R.drawable.aron_art_sale) {
         ReviewScreen(reviewReview, {}, outletLine = "Banani Store (DHK-344-001) · Apsis RouteDaily · Apsis Cluster", onCreditToggle = {}, onQc = {})
     }
 
