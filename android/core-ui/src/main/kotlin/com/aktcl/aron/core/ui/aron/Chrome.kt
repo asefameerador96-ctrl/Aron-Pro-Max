@@ -32,6 +32,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -63,6 +66,10 @@ import com.aktcl.aron.core.ui.aron.Glyph.save
 fun AronLookColors.barBrush(reverse: Boolean = false): Brush =
     if (sunlight) SolidColor(barStart) else Brush.horizontalGradient(if (reverse) listOf(barEnd, barMid, barStart) else listOf(barStart, barMid, barEnd))
 
+/** Sunlight bars are solid white: a 2 dp ink rule under them keeps the edge visible (the gradient does it otherwise). */
+internal fun Modifier.sunlightRule(look: AronLookColors): Modifier =
+    if (!look.sunlight) this else drawBehind { drawRect(look.ink, Offset(0f, size.height - 2.dp.toPx()), Size(size.width, 2.dp.toPx())) }
+
 /** The vertical gradient of the selected letter pill. */
 fun AronLookColors.verticalBrush(): Brush = if (sunlight) SolidColor(purple) else Brush.verticalGradient(listOf(barStart, barEnd))
 
@@ -90,6 +97,7 @@ fun AronTopBar(
         modifier
             .fillMaxWidth()
             .background(look.barBrush())
+            .sunlightRule(look)
             .windowInsetsPadding(WindowInsets.statusBars)
             .heightIn(min = AronLook.BarHeight),
         contentAlignment = Alignment.Center,
@@ -192,6 +200,7 @@ fun AronHomeHeader(
         modifier
             .fillMaxWidth()
             .background(look.barBrush())
+            .sunlightRule(look)
             .windowInsetsPadding(WindowInsets.statusBars)
             .padding(start = 12.dp, end = 4.dp, top = 20.dp, bottom = 24.dp),
         verticalAlignment = Alignment.CenterVertically,
