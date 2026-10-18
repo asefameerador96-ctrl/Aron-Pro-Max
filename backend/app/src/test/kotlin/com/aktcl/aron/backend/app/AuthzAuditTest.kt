@@ -443,7 +443,7 @@ class AuthzAuditTest {
     private val reportKeys = mutableListOf<String>()
     /**
      * F-AMO-032 and F-AMO-033 (F-API-017b): the reports the AMO app shows; route-memo and route-std opened to the AMO, zone
-     * scoped by the token (D-AMO-REPORT-01, docs/requests/android-amo-report-access.md).
+     * scoped by the token; every other report refused (lead ruling 2026-10-18 04:23, DECISIONS D-AMO-REPORT-02).
      */
     private val amoReports = setOf("std-memo", "sales-summary", "route-memo", "route-std")
 

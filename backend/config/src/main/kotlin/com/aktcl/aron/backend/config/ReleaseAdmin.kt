@@ -75,10 +75,10 @@ class ReleaseAdmin(
         }
     }
 
-    /** Registers a draft. A repeat of the same registration (CI retry: same APK hash and fields) answers the existing draft. */
     /** The role check of the write routes, run before the body or a header is read (a refused role never sees a 400). */
     fun requireWriter(p: AronPrincipal) { if (p.role !in WRITERS) throw forbidden() }
 
+    /** Registers a draft. A repeat of the same registration (CI retry: same APK hash and fields) answers the existing draft. */
     fun create(p: AronPrincipal, w: AppReleaseWriteIn, requestId: String?): AppReleaseDto {
         if (p.role !in WRITERS) throw forbidden()
         if (w.flavour !in FLAVOURS) bad("/flavour")
