@@ -24,6 +24,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import com.aktcl.aron.core.ui.LocalAronLook
 import com.aktcl.aron.core.ui.SyncChipState
+import com.aktcl.aron.core.ui.aron.AronCard
 import com.aktcl.aron.core.ui.aron.AronHomeHeader
 import com.aktcl.aron.core.ui.aron.AronScaffold
 import com.aktcl.aron.core.ui.aron.AronTile
@@ -125,7 +126,7 @@ private fun SyncLine(sync: SyncChipState, onSync: (() -> Unit)?) {
 private fun TsoZonesCard(hero: RoleHero) {
     val look = LocalAronLook.current
     if (hero !is RoleHero.Tso) return
-    TsoCard(Modifier.testTag(RoleHomeTags.HERO)) {
+    AronCard(Modifier.testTag(RoleHomeTags.HERO)) {
         Text(stringResource(R.string.rh_hero_tso_zones), style = MaterialTheme.typography.titleSmall, color = look.purple)
         Text(localizedNumber(hero.zonesSubmitted.toLong()), style = MaterialTheme.typography.headlineMedium, color = look.ink)
         Text(stringResource(R.string.rh_hero_tso_zones_of, localizedNumber(hero.zonesTotal.toLong())), style = MaterialTheme.typography.bodySmall, color = look.inkMuted)

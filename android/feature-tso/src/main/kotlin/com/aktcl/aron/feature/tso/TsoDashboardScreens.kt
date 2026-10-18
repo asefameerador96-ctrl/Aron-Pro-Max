@@ -10,8 +10,10 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -20,28 +22,23 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
-import com.aktcl.aron.core.ui.AronBanner
-import com.aktcl.aron.core.ui.AronCard
-import com.aktcl.aron.core.ui.AronEmptyState
-import com.aktcl.aron.core.ui.AronListRow
-import com.aktcl.aron.core.ui.AronSecondaryButton
-import com.aktcl.aron.core.ui.AronSectionLabel
-import com.aktcl.aron.core.ui.AronTextButton
-import com.aktcl.aron.core.ui.AronTokens
-import com.aktcl.aron.core.ui.BannerKind
-import com.aktcl.aron.core.ui.LocalAronColors
-import com.aktcl.aron.core.ui.RowPosition
+import com.aktcl.aron.core.ui.LocalAronLook
+import com.aktcl.aron.core.ui.aron.AronCard
+import com.aktcl.aron.core.ui.aron.AronListRow
+import com.aktcl.aron.core.ui.aron.AronPrimaryButton
+import com.aktcl.aron.core.ui.aron.AronSecondaryButton
 import com.aktcl.aron.core.ui.localizedDigits
 import com.aktcl.aron.core.ui.localizedNumber
-
-private fun pos(i: Int, n: Int) = if (n == 1) RowPosition.Only else if (i == 0) RowPosition.First else if (i == n - 1) RowPosition.Last else RowPosition.Middle
 
 @Composable private fun pct1(v: Double?): String = v?.let { localizedDigits(TsoDashboards.oneDecimal(it)) + " %" } ?: stringResource(R.string.tso_dash_dash)
 
@@ -78,16 +75,19 @@ fun TsoDashboardContent(
     modifier: Modifier = Modifier,
 ) {
     val d = state.dash
-    Column(modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = AronTokens.Space.Screen), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
+    Column(modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         FailureBanner(state.failure, state.stale, d != null)
-        AronListRow(zoneLabel, subtitle = AsOfLine(state.businessDate, d?.asOf), flat = true)
-        Row(horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
-            if (state.zones.isNotEmpty() || state.zoneChosen) AronSecondaryButton(stringResource(R.string.tso_dash_filter), onFilter, Modifier.weight(1f))
-            AronSecondaryButton(stringResource(R.string.tso_dash_refresh), onRefresh, Modifier.weight(1f))
+        AronCard {
+            Text(zoneLabel, style = MaterialTheme.typography.titleMedium, color = LocalAronLook.current.purple)
+            AsOfLine(state.businessDate, d?.asOf)?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = LocalAronLook.current.inkMuted) }
+            Row(Modifier.padding(top = 10.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                if (state.zones.isNotEmpty() || state.zoneChosen) AronSecondaryButton(stringResource(R.string.tso_dash_filter), onFilter, Modifier.weight(1f))
+                AronPrimaryButton(stringResource(R.string.tso_dash_refresh), onRefresh, Modifier.weight(1f))
+            }
         }
         if (d == null) {
-            // The banner above already says why; the open-me hint is for a plain empty answer only.
-            if (state.failure == TsoFailure.NONE) AronEmptyState(stringResource(R.string.tso_dash_none), Modifier.fillMaxWidth(), hint = stringResource(R.string.tso_dash_none_hint))
+            // The note above already says why; the open-me hint is for a plain empty answer only.
+            if (state.failure == TsoFailure.NONE) TsoNote(stringResource(R.string.tso_dash_none) + "\n" + stringResource(R.string.tso_dash_none_hint))
         } else {
             SalesTiles(d.categories)
             CprCard(d)
@@ -103,9 +103,9 @@ fun TsoDashboardContent(
 @Composable
 internal fun FailureBanner(failure: TsoFailure, stale: Boolean, hasData: Boolean) {
     when {
-        failure == TsoFailure.REFUSED -> AronBanner(stringResource(R.string.tso_dash_refused), kind = BannerKind.Error)
-        failure == TsoFailure.OFFLINE -> AronBanner(stringResource(if (hasData) R.string.tso_dash_offline_kept else R.string.tso_dash_offline_none), kind = BannerKind.Warning)
-        stale -> AronBanner(stringResource(R.string.tso_dash_kept), kind = BannerKind.Info)
+        failure == TsoFailure.REFUSED -> TsoNote(stringResource(R.string.tso_dash_refused))
+        failure == TsoFailure.OFFLINE -> TsoNote(stringResource(if (hasData) R.string.tso_dash_offline_kept else R.string.tso_dash_offline_none))
+        stale -> TsoNote(stringResource(R.string.tso_dash_kept))
     }
 }
 
@@ -118,31 +118,31 @@ internal fun AsOfLine(businessDate: String, asOf: String?): String? {
 
 @Composable
 private fun CardTitle(text: String, asOf: String?) {
-    val c = LocalAronColors.current
-    Text(text, style = MaterialTheme.typography.titleSmall, color = c.textPrimary)
-    if (asOf != null) Text(stringResource(R.string.tso_dash_as_of, localizedDigits(asOf)), style = MaterialTheme.typography.labelSmall, color = c.textSecondary)
+    val look = LocalAronLook.current
+    Text(text, style = MaterialTheme.typography.titleMedium, color = look.purple)
+    if (asOf != null) Text(stringResource(R.string.tso_dash_as_of, localizedDigits(asOf)), style = MaterialTheme.typography.labelSmall, color = look.inkMuted)
 }
 
-/** F-TSO-002: four sales tiles; one decimal, lakh/crore for big quantities; no achievement ring (docs/27). */
+/** F-TSO-002: the purple sales card of the manual (S-04): one row per category; one decimal, lakh/crore for big quantities; no achievement ring (docs/27). */
 @Composable
 private fun SalesTiles(categories: List<CategorySales>) {
+    val look = LocalAronLook.current
     val order = listOf("cigarette", "bidi", "lighter", "match")
     val rows = order.map { code -> categories.firstOrNull { it.code == code } ?: CategorySales(code, TsoDashboards.defaultUnit(code), 0, null, null, 0) } + categories.filter { it.code !in order }
-    rows.chunked(2).forEach { pair ->
-        Row(horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
-            pair.forEach { cat ->
-                val c = LocalAronColors.current
-                val qty = cat.qtyReport ?: cat.qtyBase.toDouble()
-                val unit = unitName(cat.reportUnit ?: cat.baseUnit.ifBlank { TsoDashboards.defaultUnit(cat.code) })
-                AronCard(Modifier.weight(1f)) {
-                    Column(Modifier.fillMaxWidth().padding(AronTokens.Space.M), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.Xs)) {
-                        Text(stringResource(R.string.tso_dash_sales_of, categoryName(cat.code)), style = MaterialTheme.typography.labelMedium, color = c.textSecondary)
-                        Text(quantity(qty, cat.qtyReport != null), style = MaterialTheme.typography.headlineSmall, color = c.textPrimary, maxLines = 1)
-                        Text(unit, style = MaterialTheme.typography.bodySmall, color = c.textSecondary)
-                    }
+    Column(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(Brush.verticalGradient(listOf(look.targetTop, look.targetBottom))).padding(horizontal = 16.dp, vertical = 8.dp),
+    ) {
+        rows.forEachIndexed { i, cat ->
+            val qty = cat.qtyReport ?: cat.qtyBase.toDouble()
+            val unit = unitName(cat.reportUnit ?: cat.baseUnit.ifBlank { TsoDashboards.defaultUnit(cat.code) })
+            Row(Modifier.fillMaxWidth().padding(vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text(stringResource(R.string.tso_dash_sales_of, categoryName(cat.code)), style = MaterialTheme.typography.bodyMedium, color = look.onPanel)
+                    Text(unit, style = MaterialTheme.typography.bodySmall, color = look.onPanelMuted)
                 }
+                Text(quantity(qty, cat.qtyReport != null), style = MaterialTheme.typography.headlineSmall, color = look.onPanel, maxLines = 1)
             }
-            if (pair.size == 1) Box(Modifier.weight(1f))
+            if (i < rows.lastIndex) Box(Modifier.fillMaxWidth().height(1.dp).background(look.onPanelMuted.copy(alpha = 0.35f)))
         }
     }
 }
@@ -163,31 +163,31 @@ private fun quantity(v: Double, fractional: Boolean): String {
 /** F-TSO-004: target outlets, successful calls and the call rate (2 of 44 is 4.5 percent). */
 @Composable
 private fun CprCard(d: TsoDash) {
-    val c = LocalAronColors.current
-    AronCard(Modifier.fillMaxWidth()) {
-        Column(Modifier.fillMaxWidth().padding(AronTokens.Space.M), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.Xs)) {
+    val c = LocalAronLook.current
+    AronCard {
+        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
             CardTitle(stringResource(R.string.tso_dash_cpr), d.asOf.let { TsoDashboards.asOfClock(it) })
-            Text(pct1(TsoDashboards.strikeRate(d.successfulCalls, d.targetOutlets)), style = MaterialTheme.typography.headlineMedium, color = c.textPrimary)
-            Text(stringResource(R.string.tso_dash_x_of_y, localizedNumber(d.successfulCalls), localizedNumber(d.targetOutlets)), style = MaterialTheme.typography.bodyMedium, color = c.textSecondary)
-            Text(stringResource(R.string.tso_dash_cpr_labels), style = MaterialTheme.typography.labelSmall, color = c.textSecondary)
+            Text(pct1(TsoDashboards.strikeRate(d.successfulCalls, d.targetOutlets)), style = MaterialTheme.typography.headlineMedium, color = c.ink)
+            Text(stringResource(R.string.tso_dash_x_of_y, localizedNumber(d.successfulCalls), localizedNumber(d.targetOutlets)), style = MaterialTheme.typography.bodyMedium, color = c.inkMuted)
+            Text(stringResource(R.string.tso_dash_cpr_labels), style = MaterialTheme.typography.labelSmall, color = c.inkMuted)
         }
     }
 }
 
 @Composable
-private fun palette(): List<Color> { val c = LocalAronColors.current; return listOf(c.accent, c.success, c.warning, c.danger, c.accentHi, c.textSecondary) }
+private fun palette(): List<Color> { val c = LocalAronLook.current; return listOf(c.purple, c.red, c.barMid, c.inkMuted, c.panelDark, c.silhouetteInk) }
 
 /** F-TSO-003: By Channel STD as a donut with a legend that carries every number (the colour is never the only signal). */
 @Composable
 private fun ChannelCard(channels: List<SliceRow>, money: (Long) -> String) {
-    val c = LocalAronColors.current
+    val c = LocalAronLook.current
     val colors = palette()
     val shares = TsoDashboards.shares(channels.map { it.netMtk })
-    AronCard(Modifier.fillMaxWidth()) {
-        Column(Modifier.fillMaxWidth().padding(AronTokens.Space.M), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
+    AronCard {
+        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
             CardTitle(stringResource(R.string.tso_dash_channel_std), null)
-            if (channels.isEmpty() || shares.sum() <= 0.0) { Text(stringResource(R.string.tso_dash_no_sales), style = MaterialTheme.typography.bodyMedium, color = c.textSecondary); return@Column }
-            Row(horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.M), verticalAlignment = Alignment.CenterVertically) {
+            if (channels.isEmpty() || shares.sum() <= 0.0) { Text(stringResource(R.string.tso_dash_no_sales), style = MaterialTheme.typography.bodyMedium, color = c.inkMuted); return@Column }
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
                 Canvas(Modifier.size(112.dp)) {
                     val stroke = Stroke(width = 22.dp.toPx(), cap = StrokeCap.Butt)
                     var start = -90f
@@ -197,11 +197,11 @@ private fun ChannelCard(channels: List<SliceRow>, money: (Long) -> String) {
                         start += sweep
                     }
                 }
-                Column(verticalArrangement = Arrangement.spacedBy(AronTokens.Space.Xs)) {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     channels.forEachIndexed { i, ch ->
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             Box(Modifier.size(10.dp).background(colors[i % colors.size], RoundedCornerShape(3.dp)))
-                            Text(ch.name.ifBlank { ch.code } + " " + pct1(shares[i]) + " · " + money(ch.netMtk), style = MaterialTheme.typography.bodySmall, color = c.textPrimary)
+                            Text(ch.name.ifBlank { ch.code } + " " + pct1(shares[i]) + " · " + money(ch.netMtk), style = MaterialTheme.typography.bodySmall, color = c.ink)
                         }
                     }
                 }
@@ -213,16 +213,16 @@ private fun ChannelCard(channels: List<SliceRow>, money: (Long) -> String) {
 /** F-TSO-005: value (net) against volume per segment, both as shares of the territory. */
 @Composable
 private fun SegmentCard(segments: List<SliceRow>, money: (Long) -> String) {
-    val c = LocalAronColors.current
+    val c = LocalAronLook.current
     val value = TsoDashboards.shares(segments.map { it.netMtk }); val volume = TsoDashboards.shares(segments.map { it.qtyBase ?: 0 })
-    AronCard(Modifier.fillMaxWidth()) {
-        Column(Modifier.fillMaxWidth().padding(AronTokens.Space.M), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
+    AronCard {
+        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
             CardTitle(stringResource(R.string.tso_dash_segment), null)
-            if (segments.isEmpty()) { Text(stringResource(R.string.tso_dash_no_sales), style = MaterialTheme.typography.bodyMedium, color = c.textSecondary); return@Column }
+            if (segments.isEmpty()) { Text(stringResource(R.string.tso_dash_no_sales), style = MaterialTheme.typography.bodyMedium, color = c.inkMuted); return@Column }
             segments.forEachIndexed { i, sg ->
-                Text(sg.name.ifBlank { sg.code } + " · " + money(sg.netMtk), style = MaterialTheme.typography.bodyMedium, color = c.textPrimary)
-                Bar(value[i], c.accent, stringResource(R.string.tso_dash_value) + " " + pct1(value[i]))
-                Bar(volume[i], c.success, stringResource(R.string.tso_dash_volume) + " " + pct1(volume[i]))
+                Text(sg.name.ifBlank { sg.code } + " · " + money(sg.netMtk), style = MaterialTheme.typography.bodyMedium, color = c.ink)
+                Bar(value[i], c.purple, stringResource(R.string.tso_dash_value) + " " + pct1(value[i]))
+                Bar(volume[i], c.red, stringResource(R.string.tso_dash_volume) + " " + pct1(volume[i]))
             }
         }
     }
@@ -230,27 +230,27 @@ private fun SegmentCard(segments: List<SliceRow>, money: (Long) -> String) {
 
 @Composable
 private fun Bar(pct: Double, color: Color, label: String) {
-    val c = LocalAronColors.current
+    val c = LocalAronLook.current
     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-        Box(Modifier.fillMaxWidth().height(10.dp).background(c.accentContainer, RoundedCornerShape(5.dp))) {
+        Box(Modifier.fillMaxWidth().height(10.dp).background(c.track, RoundedCornerShape(5.dp))) {
             Box(Modifier.fillMaxHeight().fillMaxWidth((pct / 100.0).coerceIn(0.0, 1.0).toFloat()).background(color, RoundedCornerShape(5.dp)))
         }
-        Text(label, style = MaterialTheme.typography.labelSmall, color = c.textSecondary)
+        Text(label, style = MaterialTheme.typography.labelSmall, color = c.inkMuted)
     }
 }
 
 /** F-TSO-006: memos containing the brand over the territory's active memos, per brand. */
 @Composable
 private fun BrandCard(brands: List<SliceRow>, activeMemos: Long) {
-    val c = LocalAronColors.current
-    AronCard(Modifier.fillMaxWidth()) {
-        Column(Modifier.fillMaxWidth().padding(AronTokens.Space.M), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
+    val c = LocalAronLook.current
+    AronCard {
+        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
             CardTitle(stringResource(R.string.tso_dash_brand_ratio), null)
-            if (brands.isEmpty()) { Text(stringResource(R.string.tso_dash_no_sales), style = MaterialTheme.typography.bodyMedium, color = c.textSecondary); return@Column }
+            if (brands.isEmpty()) { Text(stringResource(R.string.tso_dash_no_sales), style = MaterialTheme.typography.bodyMedium, color = c.inkMuted); return@Column }
             brands.sortedByDescending { it.memos }.forEach { b ->
                 val ratio = TsoDashboards.brandRatio(b, activeMemos)
-                Text(b.name.ifBlank { b.code } + " · " + stringResource(R.string.tso_dash_x_of_y, localizedNumber(b.memos), localizedNumber(activeMemos)), style = MaterialTheme.typography.bodyMedium, color = c.textPrimary)
-                Bar(ratio ?: 0.0, c.accent, pct1(ratio))
+                Text(b.name.ifBlank { b.code } + " · " + stringResource(R.string.tso_dash_x_of_y, localizedNumber(b.memos), localizedNumber(activeMemos)), style = MaterialTheme.typography.bodyMedium, color = c.ink)
+                Bar(ratio ?: 0.0, c.purple, pct1(ratio))
             }
         }
     }
@@ -259,19 +259,19 @@ private fun BrandCard(brands: List<SliceRow>, activeMemos: Long) {
 /** F-TSO-007: Login Status and Bikroy Joma (submit) status with the two drill-down lists. */
 @Composable
 private fun LoginCard(login: LoginSubmit?, stale: Boolean, failure: TsoFailure, onNotLoggedIn: () -> Unit, onNotUploaded: () -> Unit) {
-    val c = LocalAronColors.current
-    AronCard(Modifier.fillMaxWidth()) {
-        Column(Modifier.fillMaxWidth().padding(AronTokens.Space.M), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
+    val c = LocalAronLook.current
+    AronCard {
+        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
             CardTitle(stringResource(R.string.tso_dash_login_submit), login?.asOf?.let { TsoDashboards.asOfClock(it) })
-            if (failure == TsoFailure.REFUSED) { AronBanner(stringResource(R.string.tso_dash_refused), kind = BannerKind.Error); return@Column }
-            if (login == null) { Text(stringResource(if (failure == TsoFailure.OFFLINE) R.string.tso_dash_offline_none else R.string.tso_dash_no_login), style = MaterialTheme.typography.bodyMedium, color = c.textSecondary); return@Column }
-            if (stale || failure == TsoFailure.OFFLINE) AronBanner(stringResource(R.string.tso_dash_kept), kind = BannerKind.Info)
-            Text(stringResource(R.string.tso_dash_login_status) + " " + pct1(login.loginPct), style = MaterialTheme.typography.bodyMedium, color = c.textPrimary)
-            Bar(login.loginPct ?: 0.0, c.accent, stringResource(R.string.tso_dash_x_of_y, localizedNumber(login.loggedIn), localizedNumber(login.targetRoutes)))
-            Text(stringResource(R.string.tso_dash_submit_status) + " " + pct1(login.submitPct), style = MaterialTheme.typography.bodyMedium, color = c.textPrimary)
-            Bar(login.submitPct ?: 0.0, c.success, stringResource(R.string.tso_dash_x_of_y, localizedNumber(login.submitted), localizedNumber(login.loggedIn)))
-            AronTextButton(stringResource(R.string.tso_dash_not_logged_in, localizedNumber(login.notLoggedIn.size.toLong())), onNotLoggedIn)
-            AronTextButton(stringResource(R.string.tso_dash_not_uploaded, localizedNumber(login.loggedInNotSubmitted.size.toLong())), onNotUploaded)
+            if (failure == TsoFailure.REFUSED) { TsoNote(stringResource(R.string.tso_dash_refused)); return@Column }
+            if (login == null) { Text(stringResource(if (failure == TsoFailure.OFFLINE) R.string.tso_dash_offline_none else R.string.tso_dash_no_login), style = MaterialTheme.typography.bodyMedium, color = c.inkMuted); return@Column }
+            if (stale || failure == TsoFailure.OFFLINE) TsoNote(stringResource(R.string.tso_dash_kept))
+            Text(stringResource(R.string.tso_dash_login_status) + " " + pct1(login.loginPct), style = MaterialTheme.typography.bodyMedium, color = c.ink)
+            Bar(login.loginPct ?: 0.0, c.purple, stringResource(R.string.tso_dash_x_of_y, localizedNumber(login.loggedIn), localizedNumber(login.targetRoutes)))
+            Text(stringResource(R.string.tso_dash_submit_status) + " " + pct1(login.submitPct), style = MaterialTheme.typography.bodyMedium, color = c.ink)
+            Bar(login.submitPct ?: 0.0, c.red, stringResource(R.string.tso_dash_x_of_y, localizedNumber(login.submitted), localizedNumber(login.loggedIn)))
+            AronSecondaryButton(stringResource(R.string.tso_dash_not_logged_in, localizedNumber(login.notLoggedIn.size.toLong())), onNotLoggedIn, Modifier.fillMaxWidth())
+            AronSecondaryButton(stringResource(R.string.tso_dash_not_uploaded, localizedNumber(login.loggedInNotSubmitted.size.toLong())), onNotUploaded, Modifier.fillMaxWidth())
         }
     }
 }
@@ -279,16 +279,15 @@ private fun LoginCard(login: LoginSubmit?, stale: Boolean, failure: TsoFailure, 
 /** The drill-down: the routes behind a count with their stamp. The server names the route (code and name); it sends no SR name yet (request filed). */
 @Composable
 fun TsoRouteListContent(rows: List<RouteDayRow>, businessDate: String, asOf: String?, stale: Boolean, failure: TsoFailure, modifier: Modifier = Modifier) {
-    Column(modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = AronTokens.Space.Screen)) {
+    Column(modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         FailureBanner(failure, stale, rows.isNotEmpty() || asOf != null)
-        AronListRow(AsOfLine(businessDate, asOf) ?: stringResource(R.string.tso_dash_dash), flat = true)
-        if (rows.isEmpty()) { AronEmptyState(stringResource(R.string.tso_dash_list_empty), Modifier.fillMaxWidth()); return@Column }
-        AronSectionLabel(stringResource(R.string.tso_dash_routes))
-        rows.forEachIndexed { i, r ->
+        AronListRow(AsOfLine(businessDate, asOf) ?: stringResource(R.string.tso_dash_dash))
+        if (rows.isEmpty()) { TsoNote(stringResource(R.string.tso_dash_list_empty)); return@Column }
+        TsoSectionTitle(stringResource(R.string.tso_dash_routes))
+        rows.forEach { r ->
             AronListRow(
                 listOfNotNull(r.routeCode, r.routeName).joinToString(stringResource(R.string.tso_dash_sep)).ifBlank { stringResource(R.string.tso_dash_route_unnamed) },
                 subtitle = r.srName?.let { sr -> stringResource(R.string.tso_dash_sr_of_route, sr) },
-                position = pos(i, rows.size), divider = i < rows.lastIndex, flat = true,
             )
         }
     }
@@ -298,8 +297,8 @@ fun TsoRouteListContent(rows: List<RouteDayRow>, businessDate: String, asOf: Str
 @Composable
 fun TsoZoneFilterContent(zones: List<ZoneRef>, selected: Long?, onSelect: (Long?) -> Unit, modifier: Modifier = Modifier) {
     val all = listOf<Pair<Long?, String>>(null to stringResource(R.string.tso_dash_all_zones)) + zones.map { it.id to it.name }
-    Column(modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = AronTokens.Space.Screen)) {
-        AronSectionLabel(stringResource(R.string.tso_dash_zone))
-        all.forEachIndexed { i, (id, name) -> AronListRow(name, onClick = { onSelect(id) }, trailing = if (id == selected) stringResource(R.string.tso_dash_selected) else null, position = pos(i, all.size), divider = i < all.lastIndex, flat = true) }
+    Column(modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        TsoSectionTitle(stringResource(R.string.tso_dash_zone))
+        all.forEach { (id, name) -> AronListRow(name, onClick = { onSelect(id) }, trailing = if (id == selected) stringResource(R.string.tso_dash_selected) else null) }
     }
 }
