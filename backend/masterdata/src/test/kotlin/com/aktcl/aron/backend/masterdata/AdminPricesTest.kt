@@ -17,6 +17,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import io.ktor.http.isSuccess
 
 /** F-API-080 and F-ADM-081: preview, idempotent publish, back-dating, and the second-approver rail above cfg.price.max_change_pct. */
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
@@ -149,6 +150,11 @@ class AdminPricesTest {
         val withPerm = t.tok("admin1001", Role.ADMIN, "finance.backdate")
         val ok = previewAndPublish(withPerm, body)
         assertEquals(HttpStatusCode.Created, ok.status)
+        assertEquals("10000@2026-01-01>$today 10100@$today>open", rows(sku, "outlet"))
+        // Replay first: the same batch retried once the date check would refuse it (here the permission was withdrawn;
+        // in the field a 23:55 publish for tomorrow retried at 00:05) answers the first publish, nothing doubles.
+        val replay = publish(t.admin, body)
+        assertTrue(replay.status.isSuccess(), "${replay.status} ${replay.obj()}")
         assertEquals("10000@2026-01-01>$today 10100@$today>open", rows(sku, "outlet"))
 
         // A price already scheduled from that date or later cannot be overwritten silently.

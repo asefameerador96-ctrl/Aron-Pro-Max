@@ -131,6 +131,10 @@ private suspend fun submit(call: ApplicationCall, d: FeedbackDeps): Pair<Boolean
     val today = AdminSupport.today(d.clock)
     val cfgVersion = d.config.configVersion()
     return d.db.jdbi.inTransaction<Pair<Boolean, FeedbackDto>, Exception> { h ->
+        fun same(row: FeedbackDto) = row.user_id == p.userId && row.category_code == req.category_code && row.title == title && row.description == desc && row.photo_uuid == photo?.toString()
+        // Replay first: a stored feedback_uuid answers the stored row as it is, before any rule is re-judged (a category
+        // retired since the first send must not turn a late replay into a 400).
+        readOne(h, id)?.let { row -> if (same(row)) return@inTransaction false to row else throw ApiProblem(ProblemCode.ERR_CONFLICT, "feedback_uuid already stores different feedback") }
         val known = h.createQuery("SELECT count(*) FROM app.code_list_item WHERE list_key = 'feedback_category'").mapTo(Int::class.java).one()
         if (known > 0 && h.createQuery("SELECT count(*) FROM app.code_list_item WHERE list_key = 'feedback_category' AND code = :c AND valid_from <= :d AND (valid_to IS NULL OR valid_to > :d)")
                 .bind("c", req.category_code).bind("d", today).mapTo(Int::class.java).one() == 0
@@ -139,7 +143,7 @@ private suspend fun submit(call: ApplicationCall, d: FeedbackDeps): Pair<Boolean
             "INSERT INTO app.feedback (client_uuid, family_uuid, business_date, user_id, captured_at, config_version, category_code, title, description, photo_uuid) VALUES (:u, :u, :bd, :uid, :at, :cv, :c, :t, :d, CAST(:ph AS uuid)) ON CONFLICT (client_uuid) DO NOTHING",
         ).bind("u", id).bind("bd", today).bind("uid", p.userId).bind("at", now).bind("cv", cfgVersion).bind("c", req.category_code).bind("t", title).bind("d", desc).bind("ph", photo).execute()
         val row = readOne(h, id) ?: throw ApiProblem(ProblemCode.ERR_CONFLICT, "feedback_uuid is not available")
-        if (row.user_id != p.userId || row.category_code != req.category_code || row.title != title || row.description != desc || row.photo_uuid != photo?.toString()) {
+        if (!same(row)) {
             throw ApiProblem(ProblemCode.ERR_CONFLICT, "feedback_uuid already stores different feedback")
         }
         (inserted > 0) to row

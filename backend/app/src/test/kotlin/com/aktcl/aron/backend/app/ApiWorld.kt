@@ -96,6 +96,12 @@ class ApiWorld(
                 into["zone"] = into["zones"] ?: 0
             }
             load(ids, "Z-MIR", "MIR", "qa9001", THROWAWAY_PHONE)
+            // A draft release by admin1001 (version 1, matching the harness If-Match) for PATCH /v1/admin/releases/{release_id}.
+            ids["releases"] = h.createQuery(
+                // id far from 1 and flavour tso, so neither the sample release_id of an enrolment token nor its latest published sr release (the harness PATCH may publish this one) is it
+                "INSERT INTO app.app_release (id, flavour, version_name, version_code, abi, sha256, size_bytes, download_url, signing_cert_sha256, created_by) OVERRIDING SYSTEM VALUE " +
+                    "SELECT 900001, 'tso', '9.9.9', 999999, 'universal', sha256(CAST('qa-harness-release' AS bytea)), 1000, 'https://example.invalid/tso.apk', sha256(CAST('qa-cert' AS bytea)), id FROM app.app_user WHERE username = 'admin1001' RETURNING id",
+            ).mapTo(Long::class.java).one()
             if (conformance) conformanceSeed(h)
             mirrors.firstOrNull()?.let { tag -> load(otherIds, "Z-$tag", tag, "${tag.lowercase()}sr1001", null) }
         }
@@ -381,7 +387,7 @@ class ApiWorld(
         /** Parameter names that carry a resource id, and the [ids] key of that resource. */
         val PARAM_RESOURCE = mapOf(
             "outlet_id" to "outlets", "route_id" to "routes", "zone_id" to "zones", "cluster_id" to "clusters", "territory_id" to "territories",
-            "division_id" to "divisions", "user_id" to "users", "sr_user_id" to "users", "device_id" to "devices",
+            "division_id" to "divisions", "user_id" to "users", "sr_user_id" to "users", "device_id" to "devices", "release_id" to "releases",
         )
         /** Body fields the scope probes fill even when optional (single ids and id lists). */
         val ID_FIELD = Regex("^[a-z_]*_ids?$")

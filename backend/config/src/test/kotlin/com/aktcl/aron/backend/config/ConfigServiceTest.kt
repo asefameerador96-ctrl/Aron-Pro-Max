@@ -176,6 +176,18 @@ class ConfigServiceTest {
         assertEquals(a.change_id, b.change_id); assertEquals(v, svc.currentVersion())
     }
 
+    /** Replay-first: a retry after the effective_from passed answers the stored change; the same key with other content is 409. */
+    @Test
+    fun aLateReplayOfAFutureDatedChangeAnswersTheStoredChange() {
+        val key = UUID.randomUUID()
+        val from = clock.now().plusSeconds(30).toString()
+        val body = req(item("cfg.sys.schedule_horizon_days", "global", 0, 9).copy(effective_from = from))
+        val a = svc.create(admin, body, key, null)
+        clock.advance(120)                                                     // the first answer was lost; the retry comes two minutes later
+        assertEquals(a.change_id, svc.create(admin, body, key, null).change_id)
+        assertEquals(ProblemCode.ERR_CONFLICT, assertFailsWith<ApiProblem> { svc.create(admin, req(item("cfg.sys.schedule_horizon_days", "global", 0, 10)), key, null) }.code)
+    }
+
     @Test
     fun everyWriteIsAuditedAndTheChainVerifies() {
         assertTrue(env.one("SELECT count(*) FROM app.audit_log WHERE entity IN ('cfg_change','cfg_version')")!!.toInt() >= 4)

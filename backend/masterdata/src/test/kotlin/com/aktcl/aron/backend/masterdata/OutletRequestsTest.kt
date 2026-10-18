@@ -38,15 +38,15 @@ class OutletRequestsTest {
     private val sub get() = id("SELECT id FROM app.sub_channel WHERE code = 'GT-TEA'")
 
     /** An app request as ingest stores it (outlet_change_request record of sr1001). */
-    private fun appRequest(type: String, outletId: Long?, proposed: String, ageDays: Int = 0): UUID {
+    private fun appRequest(type: String, outletId: Long?, proposed: String, ageDays: Int = 0, mock: Boolean = false): UUID {
         val u = UUID.randomUUID()
         env.db.fresh.db.jdbi.useHandle<Exception> { h ->
             h.createUpdate(
                 """
                 INSERT INTO app.outlet_change_request (client_uuid, family_uuid, business_date, user_id, route_id, captured_at, config_version, request_type, outlet_id, proposed, fix_status, fix_lat, fix_lng, fix_accuracy_m, fix_is_mock)
-                VALUES (:u, :u, current_date, (SELECT id FROM app.app_user WHERE username = 'sr1001'), :r, now() - make_interval(days => :age), 1, :t, :o, CAST(:p AS jsonb), 'ok', 23.81, 90.41, 12, false)
+                VALUES (:u, :u, current_date, (SELECT id FROM app.app_user WHERE username = 'sr1001'), :r, now() - make_interval(days => :age), 1, :t, :o, CAST(:p AS jsonb), 'ok', 23.81, 90.41, 12, :mock)
                 """.trimIndent(),
-            ).bind("age", ageDays).bind("u", u).bind("r", route).bind("t", type).bind("o", outletId).bind("p", proposed).execute()
+            ).bind("age", ageDays).bind("mock", mock).bind("u", u).bind("r", route).bind("t", type).bind("o", outletId).bind("p", proposed).execute()
         }
         return u
     }
@@ -111,13 +111,34 @@ class OutletRequestsTest {
         assertEquals("active", env.sql("SELECT status FROM app.outlet WHERE id = $outlet"), "a rejected close changes nothing")
     }
 
+    /** Replay first: the TSO's retry of its own web request answers it after the outlet moved out of the TSO's reach (not 404). */
+    @Test
+    fun aWebRequestReplayAnswersAfterTheOutletLeavesTheReach() = env.app {
+        val outlet = id("SELECT id FROM app.outlet WHERE route_id = $route AND status = 'active' ORDER BY id DESC OFFSET 1 LIMIT 1")
+        val u = UUID.randomUUID()
+        val body = """{"request_uuid":"$u","request_type":"info","outlet_id":$outlet,"proposed":{"name":"Renamed Store"}}"""
+        val c = sendA1(HttpMethod.Post, "/outlet-requests", tso, body)
+        assertEquals(HttpStatusCode.Created, c.status, c.objA1().toString())
+        val home = env.sql("SELECT zone_id FROM app.outlet WHERE id = $outlet")!!
+        env.db.fresh.db.jdbi.useHandle<Exception> { it.execute("UPDATE app.outlet SET zone_id = (SELECT id FROM app.zone WHERE code <> 'Z-MIR' ORDER BY id LIMIT 1) WHERE id = $outlet") }
+        try {
+            val r = sendA1(HttpMethod.Post, "/outlet-requests", tso, body)
+            assertEquals(HttpStatusCode.Created, r.status, r.objA1().toString())
+            assertEquals(u.toString(), r.objA1().strA1("request_uuid"))
+            assertEquals(HttpStatusCode.Forbidden, sendA1(HttpMethod.Post, "/outlet-requests", tso, body.replace("$u", UUID.randomUUID().toString())).status, "a new request there is refused")
+        } finally {
+            env.db.fresh.db.jdbi.useHandle<Exception> { it.execute("UPDATE app.outlet SET zone_id = $home WHERE id = $outlet") }
+        }
+    }
+
     @Test
     fun aLargeMoveOfAConfirmedPinIsApprovedByTheTsoAndTheVerifierCannotDecide() = env.app {
         val outlet = id("SELECT id FROM app.outlet WHERE route_id = $route AND status = 'active' AND location_confirmed ORDER BY id LIMIT 1")
-        env.db.fresh.db.jdbi.useHandle<Exception> { it.execute("UPDATE app.outlet SET lat = 23.8000, lng = 90.4000 WHERE id = $outlet") }
-        val u = appRequest("location", outlet, """{"lat":23.8100,"lng":90.4000}""") // about 1.1 km north
+        env.db.fresh.db.jdbi.useHandle<Exception> { it.execute("UPDATE app.outlet SET lat = 23.8055, lng = 90.4100 WHERE id = $outlet") }
+        // about 500 m north, at the request's own fix: above the TSO alert (300 m), within the Update Base move cap (1000 m)
+        val u = appRequest("location", outlet, """{"lat":23.8100,"lng":90.4100}""")
         val v = sendA1(HttpMethod.Post, "/outlet-requests/$u/verify", amo, """{"sub_channel_id":$sub}""").objA1()
-        assertEquals(true, v.getValue("requires_tso").toString().toBoolean()); assertTrue(v.getValue("moved_m").toString().toDouble() > 1000)
+        assertEquals(true, v.getValue("requires_tso").toString().toBoolean()); assertTrue(v.getValue("moved_m").toString().toDouble() in 300.0..1000.0)
         assertEquals(HttpStatusCode.Forbidden, sendA1(HttpMethod.Post, "/outlet-requests/$u/approve", dmo, """{"change_reason":"Pin moved after a visit"}""").status)
         val a = sendA1(HttpMethod.Post, "/outlet-requests/$u/approve", tso, """{"change_reason":"Pin moved after a visit"}""")
         assertEquals(HttpStatusCode.OK, a.status, a.objA1().toString())
@@ -128,6 +149,36 @@ class OutletRequestsTest {
         assertEquals("verified", sendA1(HttpMethod.Post, "/outlet-requests/$u2/verify", admin, """{"sub_channel_id":$sub}""").objA1().strA1("status"))
         assertEquals("ERR_SEPARATION_OF_DUTIES", sendA1(HttpMethod.Post, "/outlet-requests/$u2/approve", admin, """{"change_reason":"Approving my own check"}""").code())
         assertNotNull(sendA1(HttpMethod.Get, "/outlet-requests/$u2", sr).objA1().strA1("request_uuid"), "the requester reads its own request")
+    }
+
+    /** docs/requests/android-amo-update-base-server-guards.md: the server enforces the Update Base limits when a location change is approved. */
+    @Test
+    fun updateBaseLimitsAreEnforcedOnApproval() = env.app {
+        val outlet = id("SELECT id FROM app.outlet WHERE route_id = $route AND status = 'active' ORDER BY id DESC LIMIT 1")
+        env.db.fresh.db.jdbi.useHandle<Exception> { it.execute("UPDATE app.outlet SET lat = 23.8095, lng = 90.4100, location_confirmed = false WHERE id = $outlet") }
+        suspend fun tryApprove(u: UUID): io.ktor.client.statement.HttpResponse {
+            assertEquals("verified", sendA1(HttpMethod.Post, "/outlet-requests/$u/verify", amo, """{"sub_channel_id":$sub}""").objA1().strA1("status"))
+            return sendA1(HttpMethod.Post, "/outlet-requests/$u/approve", dmo, """{"change_reason":"Update Base checked on site"}""")
+        }
+        suspend fun guardOf(u: UUID): String {
+            val r = tryApprove(u)
+            assertEquals(HttpStatusCode.Conflict, r.status, r.objA1().toString())
+            return r.objA1()["context"]!!.let { it as kotlinx.serialization.json.JsonObject }.strA1("guard")!!
+        }
+        // A mocked request fix never moves the outlet.
+        assertEquals("mocked_fix", guardOf(appRequest("location", outlet, """{"lat":23.8100,"lng":90.4100}""", mock = true)))
+        // The chosen point about 220 m from where the AMO stood (limit 100 m).
+        assertEquals("update_base_distance", guardOf(appRequest("location", outlet, """{"lat":23.8120,"lng":90.4100}""")))
+        // A move of about 1.5 km from the stored point (limit 1000 m), the point at the fix.
+        env.db.fresh.db.jdbi.useHandle<Exception> { it.execute("UPDATE app.outlet SET lat = 23.7965 WHERE id = $outlet") }
+        assertEquals("update_base_move", guardOf(appRequest("location", outlet, """{"lat":23.8100,"lng":90.4100}""")))
+        env.db.fresh.db.jdbi.useHandle<Exception> { it.execute("UPDATE app.outlet SET lat = 23.8095 WHERE id = $outlet") }
+        assertEquals("23.8095", env.sql("SELECT lat FROM app.outlet WHERE id = $outlet"))                   // nothing above moved it
+        // Within every limit: applied once; a second change of the same outlet in the month is refused.
+        val ok = tryApprove(appRequest("location", outlet, """{"lat":23.8100,"lng":90.4100}"""))
+        assertEquals(HttpStatusCode.OK, ok.status, ok.objA1().toString())
+        assertEquals("23.81", env.sql("SELECT lat FROM app.outlet WHERE id = $outlet"))
+        assertEquals("update_base_monthly_cap", guardOf(appRequest("location", outlet, """{"lat":23.8101,"lng":90.4100}""")))
     }
 
     @Test

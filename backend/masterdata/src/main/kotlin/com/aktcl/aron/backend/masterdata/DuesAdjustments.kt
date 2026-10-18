@@ -127,6 +127,15 @@ private suspend fun createAdjustment(call: ApplicationCall, d: DuesAdjustmentDep
     val reason = AdminSupport.reason(req.reason, "body.reason")
     val reach = AdminSupport.reach(d.reach, call, d.clock)
     return d.db.jdbi.inTransaction<DuesAdjustmentDto, Exception> { h ->
+        // Replay first: the maker's stored proposal answers before reach is re-judged (an outlet re-zoned since the first
+        // send must not turn a retry into 403); it shows only the caller's own proposal, never a live row.
+        fun same(row: DuesAdjustmentDto) = row.created_by_user_id == p.userId && row.outlet_id == req.outlet_id && row.kind == req.kind &&
+            row.amount_mtk == req.amount_mtk && row.reason == reason && row.memo_client_uuid == memo?.toString()
+        lock(h, "dues-adj-create:$uuid")
+        h.createQuery("SELECT $COLS FROM app.dues_adjustment a WHERE a.client_uuid = :u").bind("u", uuid).map { rs, _ -> map(rs) }.findOne().orElse(null)?.let { row ->
+            if (same(row)) return@inTransaction row
+            throw ApiProblem(ProblemCode.ERR_CONFLICT, "client_uuid was already used for a different proposal")
+        }
         // Unknown and out-of-reach outlets answer alike: the server never confirms an outlet outside the caller's reach.
         val zone = outletZone(h, req.outlet_id)
         if (zone == null || !reach.coversZone(zone)) throw AdminSupport.outOfScope("the outlet does not exist or is outside your reach")
@@ -134,7 +143,6 @@ private suspend fun createAdjustment(call: ApplicationCall, d: DuesAdjustmentDep
             val ok = h.createQuery("SELECT EXISTS (SELECT 1 FROM app.memo WHERE client_uuid = :m AND outlet_id = :o)").bind("m", memo).bind("o", req.outlet_id).mapTo(Boolean::class.java).one()
             if (!ok) bad("body.memo_client_uuid", "not_an_outlet_memo")
         }
-        lock(h, "dues-adj-create:$uuid")
         // The uuid becomes the ledger row's source: it must not already be the source of another record (memo, collection, ledger row).
         val adjExists = h.createQuery("SELECT EXISTS (SELECT 1 FROM app.dues_adjustment WHERE client_uuid = :u)").bind("u", uuid).mapTo(Boolean::class.java).one()
         if (!adjExists && h.createQuery(
@@ -154,9 +162,7 @@ private suspend fun createAdjustment(call: ApplicationCall, d: DuesAdjustmentDep
         }
         // A replay of the same proposal by the same maker answers the stored row; the same uuid with other content is a conflict.
         val row = h.createQuery("SELECT $COLS FROM app.dues_adjustment a WHERE a.client_uuid = :u").bind("u", uuid).map { rs, _ -> map(rs) }.one()
-        val same = row.created_by_user_id == p.userId && row.outlet_id == req.outlet_id && row.kind == req.kind && row.amount_mtk == req.amount_mtk &&
-            row.reason == reason && row.memo_client_uuid == memo?.toString()
-        if (!same) throw ApiProblem(ProblemCode.ERR_CONFLICT, "client_uuid was already used for a different proposal")
+        if (!same(row)) throw ApiProblem(ProblemCode.ERR_CONFLICT, "client_uuid was already used for a different proposal")
         row
     }
 }

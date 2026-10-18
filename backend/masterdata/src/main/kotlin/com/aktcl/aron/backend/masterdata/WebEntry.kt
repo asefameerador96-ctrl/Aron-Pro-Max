@@ -159,14 +159,9 @@ private suspend fun saveRouteDay(call: ApplicationCall, d: WebEntryDeps): WebEnt
     val reason = req.change_reason?.trim()?.also { if (it.length !in 10..500) bad("body.change_reason", "length") }
     val now = AdminSupport.utc(d.clock)
     return uniqueAsConflict { d.db.jdbi.inTransaction<WebEntryRouteDayOut, Exception> { h ->
-        val zone = requireRouteReach(d, call, h, req.route_id)
         h.createQuery("SELECT pg_advisory_xact_lock(hashtextextended(:k, 0))").bind("k", "webentry-uuid:$cu").mapTo(String::class.java).findOne()
-        h.createQuery("SELECT pg_advisory_xact_lock(hashtextextended(:k, 0))").bind("k", "webentry:${req.route_id}:$date").mapTo(String::class.java).findOne()
-        // Shared with Final Submit's exclusive lock (DayApi): an entry in flight finishes before the zone-day is submitted, and one after sees it.
-        h.createQuery("SELECT pg_advisory_xact_lock_shared(hashtextextended(:k, 3))").bind("k", "final:$zone:$date").mapTo(String::class.java).findOne()
-        // Shared with the data void's exclusive lock: a void of this route-day waits for an entry in flight, and an entry after it sees the tombstones.
-        h.createQuery("SELECT pg_advisory_xact_lock_shared(hashtextextended(:k, 0))").bind("k", "voidday:${req.route_id}:$date").mapTo(String::class.java).findOne()
-        validateLines(h, req.lines)
+        // Replay first: a stored entry answers before reach and the lines are re-judged (a route moved out of reach or a
+        // SKU retired since the first save must not turn a retry into 403 or 400); other content is a 409.
         val prior = h.createQuery("SELECT route_id, business_date, successful_calls, entered_by FROM app.web_entry_route_day WHERE client_uuid = :u").bind("u", cu)
             .map { rs, _ -> arrayOf<Any?>(rs.getLong(1), rs.getObject(2, LocalDate::class.java), rs.getInt(3), rs.getLong(4)) }.findOne().orElse(null)
         if (prior != null) {
@@ -176,6 +171,13 @@ private suspend fun saveRouteDay(call: ApplicationCall, d: WebEntryDeps): WebEnt
             return@inTransaction WebEntryRouteDayOut(req.route_id, date.toString(), linesOf(h, cu), req.successful_calls, h.createQuery("SELECT target_outlets FROM app.web_entry_route_day WHERE client_uuid = :u").bind("u", cu).mapTo(Int::class.java).one(),
                 h.createQuery("SELECT app_overlap FROM app.web_entry_route_day WHERE client_uuid = :u").bind("u", cu).mapTo(Boolean::class.java).one(), client_uuid = cu.toString(), saved_at = null, saved_by_user_id = p.userId)
         }
+        val zone = requireRouteReach(d, call, h, req.route_id)
+        h.createQuery("SELECT pg_advisory_xact_lock(hashtextextended(:k, 0))").bind("k", "webentry:${req.route_id}:$date").mapTo(String::class.java).findOne()
+        // Shared with Final Submit's exclusive lock (DayApi): an entry in flight finishes before the zone-day is submitted, and one after sees it.
+        h.createQuery("SELECT pg_advisory_xact_lock_shared(hashtextextended(:k, 3))").bind("k", "final:$zone:$date").mapTo(String::class.java).findOne()
+        // Shared with the data void's exclusive lock: a void of this route-day waits for an entry in flight, and an entry after it sees the tombstones.
+        h.createQuery("SELECT pg_advisory_xact_lock_shared(hashtextextended(:k, 0))").bind("k", "voidday:${req.route_id}:$date").mapTo(String::class.java).findOne()
+        validateLines(h, req.lines)
         if (finalSubmitted(h, zone, date)) throw ApiProblem(ProblemCode.ERR_DAY_ALREADY_FINAL_SUBMITTED, "the zone-day is Final Submitted")
         requireWindow(d, h, req.route_id, zone, date, now)
         val target = targetOutlets(h, req.route_id, date)
@@ -225,13 +227,7 @@ private suspend fun saveQc(call: ApplicationCall, d: WebEntryDeps): QcEntryOut {
     val now = AdminSupport.utc(d.clock)
     return uniqueAsConflict { d.db.jdbi.inTransaction<QcEntryOut, Exception> { h ->
         h.createQuery("SELECT pg_advisory_xact_lock(hashtextextended(:k, 0))").bind("k", "qcentry:$cu").mapTo(String::class.java).findOne()
-        val reach = AdminSupport.reach(d.reach, call, d.clock)
-        if (!reach.coversZone(req.zone_id) || h.createQuery("SELECT count(*) FROM app.zone WHERE id = :z").bind("z", req.zone_id).mapTo(Int::class.java).one() == 0) throw AdminSupport.outOfScope("zone outside your reach")
-        if (req.route_id != null) {
-            val rz = routeZone(h, req.route_id)
-            if (rz == null || rz != req.zone_id) bad("body.route_id", "not_in_zone")
-            h.createQuery("SELECT pg_advisory_xact_lock_shared(hashtextextended(:k, 0))").bind("k", "voidday:${req.route_id}:$date").mapTo(String::class.java).findOne()
-        }
+        // Replay first: a stored entry answers before reach and the route's zone are re-judged; other content is a 409.
         val prior = h.createQuery("SELECT qc_source, zone_id, route_id, business_date, (SELECT count(*) FROM app.qc_summary_entry_line l WHERE l.entry_client_uuid = e.client_uuid) AS n, entered_by FROM app.qc_summary_entry e WHERE client_uuid = :u").bind("u", cu)
             .map { rs, _ -> arrayOf<Any?>(rs.getString(1), rs.getLong(2), rs.getObject(3) as Long?, rs.getObject(4, LocalDate::class.java), rs.getInt(5), rs.getLong(6)) }.findOne().orElse(null)
         if (prior != null) {
@@ -240,6 +236,13 @@ private suspend fun saveQc(call: ApplicationCall, d: WebEntryDeps): QcEntryOut {
             if (prior[0] != req.source || prior[1] != req.zone_id || prior[2] != req.route_id || prior[3] != date || prior[4] != req.rows.size || prior[5] != p.userId ||
                 storedRows != req.rows.map { Triple(it.sku_id, it.fault_type_code, it.qty_base) }.toSet() || storedReason != reason) throw ApiProblem(ProblemCode.ERR_CONFLICT, "client_uuid already stores a different QC entry")
             return@inTransaction QcEntryOut(cu.toString(), req.rows.size, true)
+        }
+        val reach = AdminSupport.reach(d.reach, call, d.clock)
+        if (!reach.coversZone(req.zone_id) || h.createQuery("SELECT count(*) FROM app.zone WHERE id = :z").bind("z", req.zone_id).mapTo(Int::class.java).one() == 0) throw AdminSupport.outOfScope("zone outside your reach")
+        if (req.route_id != null) {
+            val rz = routeZone(h, req.route_id)
+            if (rz == null || rz != req.zone_id) bad("body.route_id", "not_in_zone")
+            h.createQuery("SELECT pg_advisory_xact_lock_shared(hashtextextended(:k, 0))").bind("k", "voidday:${req.route_id}:$date").mapTo(String::class.java).findOne()
         }
         h.createQuery("SELECT pg_advisory_xact_lock_shared(hashtextextended(:k, 3))").bind("k", "final:${req.zone_id}:$date").mapTo(String::class.java).findOne()
         if (finalSubmitted(h, req.zone_id, date)) throw ApiProblem(ProblemCode.ERR_DAY_ALREADY_FINAL_SUBMITTED, "the zone-day is Final Submitted")
