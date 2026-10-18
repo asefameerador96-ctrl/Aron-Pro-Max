@@ -189,19 +189,19 @@ class SrStateScreenshotTests {
     private val filledReview = SaleReviewCalculator.review(filled, catalog)
     private val emptyReview = SaleReviewCalculator.review(draft(), catalog)
 
-    @Composable private fun SaleFull() = Frame(stringResource(SaleR.string.sale_title), subtitle = "Banani Store") {
+    @Composable private fun SaleFull() = ParityFrame(stringResource(SaleR.string.sale_title), com.aktcl.aron.core.ui.R.drawable.aron_art_sale, subtitle = "Banani Store") {
         SaleEntryScreen(skus, filledReview, { id -> filled.lines.firstOrNull { it.skuId == id }?.qtyEntered ?: 0 }, { _, _ -> }, {}, {}, recentSkuIds = setOf(100L), onPreviousSales = {})
     }
-    @Composable private fun SaleEmptyCatalog() = Frame(stringResource(SaleR.string.sale_title), subtitle = "Banani Store") {
+    @Composable private fun SaleEmptyCatalog() = ParityFrame(stringResource(SaleR.string.sale_title), com.aktcl.aron.core.ui.R.drawable.aron_art_sale, subtitle = "Banani Store") {
         SaleEntryScreen(emptyList(), null, { 0 }, { _, _ -> }, {}, {})
     }
-    @Composable private fun SaleEmptyCart() = Frame(stringResource(SaleR.string.sale_title), subtitle = "Banani Store") {
+    @Composable private fun SaleEmptyCart() = ParityFrame(stringResource(SaleR.string.sale_title), com.aktcl.aron.core.ui.R.drawable.aron_art_sale, subtitle = "Banani Store") {
         SaleEntryScreen(skus, emptyReview, { 0 }, { _, _ -> }, {}, {})
     }
-    @Composable private fun ReviewEmpty() = Frame(stringResource(SaleR.string.review_title)) {
+    @Composable private fun ReviewEmpty() = ParityFrame(stringResource(SaleR.string.review_title), com.aktcl.aron.core.ui.R.drawable.aron_art_sale) {
         ReviewScreen(emptyReview, {}, outletLine = "Banani Store (DHK-344-001) · Apsis RouteDaily · Apsis Cluster", onCreditToggle = {}, onQc = {})
     }
-    @Composable private fun ReviewFull() = Frame(stringResource(SaleR.string.review_title)) {
+    @Composable private fun ReviewFull() = ParityFrame(stringResource(SaleR.string.review_title), com.aktcl.aron.core.ui.R.drawable.aron_art_sale) {
         ReviewScreen(filledReview, {}, outletLine = "Banani Store (DHK-344-001) · Apsis RouteDaily · Apsis Cluster", onCreditToggle = {}, onQc = {})
     }
 
@@ -240,7 +240,7 @@ class SrStateScreenshotTests {
     @Composable private fun QcOnly() = Frame(stringResource(SaleR.string.qc_title)) {
         QcScreen(listOf(maxr), qcOnlyReview, { id, code -> qcOnlyDraft.qc.firstOrNull { it.skuId == id && it.faultTypeCode == code }?.defectQty ?: 0L }, { _, _, _ -> }, false, {}, onCancel = {}, collapsible = true)
     }
-    @Composable private fun ReviewCredit() = Frame(stringResource(SaleR.string.review_title)) { ReviewScreen(qcOnlyReview, onSave = {}, onQc = {}) }
+    @Composable private fun ReviewCredit() = ParityFrame(stringResource(SaleR.string.review_title), com.aktcl.aron.core.ui.R.drawable.aron_art_sale) { ReviewScreen(qcOnlyReview, onSave = {}, onQc = {}) }
 
     // ---- Sale history (manual SR-S-20: pick a date, per-SKU table, exact total) ----
     private fun histMemo(id: String, date: String, vararg l: com.aktcl.aron.feature.memo.domain.MemoItem) =

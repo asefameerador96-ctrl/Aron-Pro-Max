@@ -59,27 +59,13 @@ class HomeScreenTest {
     private val kpis = HomeKpis("10%", 54, 0, listOf(HomeStockLine("Lighter", 400, 25, "pieces"), HomeStockLine("Match", 0, 0, "dozen")))
     private val money = HomeMoneyLines(listOf(HomeMoneyLine("Lighter", "4,687.50 ৳")), "4,828.50 ৳", null, "−437.50 ৳", "4,391.00 ৳")
 
-    @Test fun dockLabelFollowsTheDayStateTable() {
+    @Test fun noDockButtonIsDrawnTheTilesAreTheEntry() {
+        // the reference Home has no bottom button: the Sale tile is the entry, whatever the day state says
         var got: HomeTile? = null
-        val dock = androidx.compose.runtime.mutableStateOf<HomeDock?>(HomeDock.CHECK_IN)
-        val ctx = AppLocale.wrap(ApplicationProvider.getApplicationContext<Context>(), AppLanguage.EN)
-        compose.setContent {
-            CompositionLocalProvider(LocalContext provides ctx) {
-                AronTheme(AppLanguage.EN) { HomeContent(header, HomeTiles.resolve(emptySet(), 0), BundleFreshness.Fresh, false, null, { got = it }, dock = dock.value) }
-            }
-        }
-        val expected = mapOf(
-            HomeDock.CHECK_IN to "Check in", HomeDock.TAKE_STOCK to "Take stock", HomeDock.START_SELLING to "Start selling",
-            HomeDock.SUBMIT to "Sales submit", HomeDock.CHECK_OUT to "Check out",
-        )
-        expected.forEach { (d, label) ->
-            compose.runOnIdle { dock.value = d }
-            compose.onNodeWithTag(HomeScreenTags.DOCK).assertExists()
-            compose.onNodeWithText(label).performClick()
-            assertEquals(d.target, got)
-        }
-        compose.runOnIdle { dock.value = null }
+        show(AppLanguage.EN, onTile = { got = it }, dock = HomeDock.START_SELLING)
         compose.onNodeWithTag(HomeScreenTags.DOCK).assertDoesNotExist()
+        compose.onNodeWithTag(HomeScreenTags.tile(HomeTile.SALE)).performClick()
+        assertEquals(HomeTile.SALE, got)
     }
 
     @Test fun heroKpiAndMoneyCardsShowTheirFigures() {
@@ -106,18 +92,6 @@ class HomeScreenTest {
             assertFalse("$qty overflows its column", results.single().didOverflowWidth)
             assertEquals(1, results.single().lineCount)
         }
-    }
-
-    @Test fun expiredBundleDisablesADockThatWouldSell() {
-        show(AppLanguage.EN, freshness = BundleFreshness.Expired(3), dock = HomeDock.START_SELLING)
-        compose.onNodeWithTag(HomeScreenTags.DOCK).assertExists()
-        compose.onNodeWithText("Start selling").assertIsNotEnabled()
-        compose.onNodeWithText("This needs a fresh route bundle.").assertExists()
-    }
-
-    @Test fun missingBundleKeepsTheCheckInDockEnabled() {
-        show(AppLanguage.EN, freshness = BundleFreshness.Missing, dock = HomeDock.CHECK_IN)
-        compose.onNodeWithText("Check in").assertIsEnabled()
     }
 
     @Test fun completeDayShowsTheSuccessChipAndNoDock() {

@@ -222,30 +222,8 @@ fun HomeContent(
                 )
             }
         },
-        bottomButtons = if (dock != null) {
-            {
-                val fade = tween<Float>(if (reduced) AronTokens.Motion.Reduced else AronTokens.Motion.Fast, easing = LinearEasing)
-                AnimatedContent(targetState = dock, transitionSpec = { fadeIn(fade) togetherWith fadeOut(fade) }, modifier = Modifier.weight(1f)) { d ->
-                    AronPrimaryButton(
-                        dockLabel(d), onClick = { onTile(d.target) }, enabled = !dockBlocked,
-                        modifier = Modifier.fillMaxWidth().testTag(HomeScreenTags.DOCK).traversal(Traversal.DOCK),
-                    )
-                }
-            }
-        } else null,
     ) {
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(bottom = AronTokens.Space.Xl)) {
-            if (sync != null || onSunlight != null) {
-                Row(
-                    Modifier.fillMaxWidth().padding(horizontal = AronTokens.Space.Screen, vertical = AronTokens.Space.Xs).traversal(Traversal.STATUS),
-                    verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.S),
-                ) {
-                    if (sync != null) AronStatusChip(sync, Modifier.testTag(HomeScreenTags.CHIP), ChipForm.Full, onClick = onSync)
-                    Spacer(Modifier.weight(1f))
-                    // the optional Sunlight theme stays one tap away (docs/32 s2a); it is not the default look
-                    if (onSunlight != null) SunlightToggle(sunlight, onSunlight, Modifier.testTag(HomeScreenTags.SUNLIGHT))
-                }
-            }
             when (freshness) {
                 BundleFreshness.Fresh -> Unit
                 is BundleFreshness.Stale -> HomeBanner(stringResource(R.string.hm_banner_stale, localizedNumber(freshness.ageDays.toLong())), BannerKind.Warning, Modifier.testTag(HomeScreenTags.BANNER))
@@ -257,7 +235,6 @@ fun HomeContent(
             if (offline) HomeBanner(stringResource(R.string.hm_banner_offline), BannerKind.Offline)
             if (reauthRequired) HomeBanner(stringResource(R.string.home_reauth_required), BannerKind.Warning)
             if (updateRequired) HomeBanner(stringResource(R.string.home_update_required), BannerKind.Warning)
-            if (dockBlocked) HomeBanner(stringResource(R.string.hm_blocked_by_bundle), BannerKind.Warning)
             if (hero?.dayState == HomeDayState.COMPLETE) HomeBanner(stringResource(R.string.hm_day_complete), BannerKind.Success, Modifier.testTag(HomeScreenTags.DAY_DONE))
             // the tile grid of the reference: 4 columns, one list, the order of the screenshot; Astha and Loyalty have no tile (docs/27)
             Column(Modifier.fillMaxWidth().padding(horizontal = HOME_GUTTER, vertical = AronTokens.Space.S).traversal(Traversal.TILES)) {
@@ -290,6 +267,18 @@ fun HomeContent(
                         .traversal(Traversal.HERO).semantics { stateDescription = spoken }
                         .skeleton(hero == null),
                 )
+            }
+            // the sync state and the Sunlight switch sit below the reference's first screen (tiles and target card)
+            if (sync != null || onSunlight != null) {
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = AronTokens.Space.Screen, vertical = AronTokens.Space.Xs).traversal(Traversal.STATUS),
+                    verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.S),
+                ) {
+                    if (sync != null) AronStatusChip(sync, Modifier.testTag(HomeScreenTags.CHIP), ChipForm.Full, onClick = onSync)
+                    Spacer(Modifier.weight(1f))
+                    // the optional Sunlight theme stays one tap away (docs/32 s2a); it is not the default look
+                    if (onSunlight != null) SunlightToggle(sunlight, onSunlight, Modifier.testTag(HomeScreenTags.SUNLIGHT))
+                }
             }
             // KPI row, stock card, money card (sr/home-2-kpis.webp): white cards, zero categories hidden
             Column(Modifier.fillMaxWidth().traversal(Traversal.CARDS)) {
