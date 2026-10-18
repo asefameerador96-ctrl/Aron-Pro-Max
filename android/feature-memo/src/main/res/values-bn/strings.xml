@@ -5,7 +5,6 @@
     <string name="memo_banner_dismiss">বন্ধ করুন</string>
     <string name="memo_section_today">আজকের মেমো</string>
     <string name="memo_row_meta">মেমো %1$s · %2$s</string>
-    <string name="memo_due_chip">বাকি</string>
     <string name="memo_col_sku">এসকেইউ</string>
     <string name="memo_col_qty">পরিমাণ</string>
     <string name="memo_col_price">দাম (৳)</string>
@@ -80,4 +79,5 @@
     <string name="memo_cat_lighter">লাইটার</string>
     <string name="memo_cat_match">ম্যাচ</string>
     <string name="memo_total_category">মোট %1$s</string>
+    <string name="memo_due_chip_amount">বাকি %1$s</string>
 </resources>

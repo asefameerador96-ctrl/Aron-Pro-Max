@@ -135,16 +135,19 @@ class DeviceService(
                 .map { rs, _ -> TokenRow(rs.getLong("id"), rs.getString("flavour"), rs.getString("lockdown_level"), rs.getInt("max_uses"), rs.getInt("used_count"), rs.getObject("zone_id") as Long?,
                     rs.getObject("expires_at", OffsetDateTime::class.java).toInstant(), rs.getObject("revoked_at") != null) }.findOne().orElse(null)
                 ?: throw ApiProblem(ProblemCode.ERR_ENROLMENT_TOKEN_INVALID, "unknown enrolment token")
-            if (tok.revoked) throw ApiProblem(ProblemCode.ERR_ENROLMENT_TOKEN_INVALID, "enrolment token revoked")
-            // The same phone repeating a successful enrolment (a lost response) gets the same device back and uses no further slot of the token.
+            // The same phone repeating a successful enrolment (a lost response) gets the same device back and uses no further slot of the token,
+            // also after the token was revoked or expired: the device was enrolled while it was valid (a revoked device is still refused).
             val existing = h.createQuery("SELECT id, public_key_thumbprint, enrolment_token_id, lockdown_level, trust_level, enrolled_at FROM app.device WHERE device_uuid = :u").bind("u", uuid)
                 .map { rs, _ -> listOf(rs.getLong(1), rs.getString(2), rs.getObject(3), rs.getString(4), rs.getString(5), rs.getObject(6, OffsetDateTime::class.java)) }.findOne().orElse(null)
             if (existing != null) {
+                // A revoked token answers only its own phone's replay: anything else gets the revoked-token answer, no device oracle.
+                if (tok.revoked && (existing[1] != thumb || existing[2] != tok.id)) throw ApiProblem(ProblemCode.ERR_ENROLMENT_TOKEN_INVALID, "enrolment token revoked")
                 val st = h.createQuery("SELECT status FROM app.device WHERE id = :i").bind("i", existing[0] as Long).mapTo(String::class.java).one()
                 if (st == "revoked" || st == "replaced") throw ApiProblem(ProblemCode.ERR_DEVICE_REVOKED, "device revoked")
                 if (existing[1] != thumb || existing[2] != tok.id) throw ApiProblem(ProblemCode.ERR_CONFLICT, "device already enrolled")
                 return@inTransaction EnrolDeviceResponse(existing[0] as Long, req.device_uuid, (existing[5] as OffsetDateTime).toInstant().wire(), existing[3] as String, existing[4] as String, policy.render(existing[3] as String), now.wire())
             }
+            if (tok.revoked) throw ApiProblem(ProblemCode.ERR_ENROLMENT_TOKEN_INVALID, "enrolment token revoked")
             if (h.createQuery("SELECT EXISTS (SELECT 1 FROM app.device WHERE public_key_thumbprint = :t)").bind("t", thumb).mapTo(Boolean::class.java).one()) throw ApiProblem(ProblemCode.ERR_CONFLICT, "this key is already enrolled")
             if (!now.isBefore(tok.expiresAt)) throw ApiProblem(ProblemCode.ERR_ENROLMENT_TOKEN_EXPIRED, "enrolment token expired")
             if (tok.used >= tok.maxUses) throw ApiProblem(ProblemCode.ERR_ENROLMENT_TOKEN_EXHAUSTED, "enrolment token used up")

@@ -24,7 +24,8 @@ import java.io.File
  * `localizedNumber` calls) and LocaleDigits.localize (what `localizedDigits` calls), and the words from the module's
  * strings.xml (values and values-bn). Only the Compose glue of `quantity()` is re-assembled here.
  *
- * KNOWN findings (qa 2026-10-18; exactly KNOWN_CEILING entries, the list only shrinks):
+ * KNOWN findings (qa 2026-10-18; exactly KNOWN_CEILING entries, the list only shrinks). FIXED by android-tso (d124df7) and
+ * removed from the list, history kept here:
  * - CRORE_UNGROUPED (QA-MNY-08): from 1,000 crore up the crore figure is not grouped ("1234.57" against "1,234.57";
  *   F-SYS-051 Western grouping; the web groups it).
  * - CRORE_WORD_EN: the English crore word is "Crore" here and "Cr" on the web (unit.crore).
@@ -35,8 +36,8 @@ class TsoCompactCorpusTest {
     private val repo = corpusFile.parentFile.parentFile.parentFile
     private val corpus = Json.parseToJsonElement(corpusFile.readText()).jsonObject
 
-    private val known = mapOf("CRORE_UNGROUPED" to 6, "CRORE_WORD_EN" to 50) // finding -> most (entry, language) pairs it may explain, measured 2026-10-18
-    private val knownCeiling = 2
+    private val known = emptyMap<String, Int>() // finding -> most (entry, language) pairs it may explain; both findings were fixed on 2026-10-18 (d124df7), the list is empty
+    private val knownCeiling = 0
 
     private fun word(values: String, name: String): String =
         Regex("<string name=\"$name\">([^<]*)</string>").find(File(repo, "android/feature-tso/src/main/res/$values/strings.xml").readText())!!.groupValues[1]

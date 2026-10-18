@@ -562,7 +562,6 @@ class DayCloseRaceTest {
      */
     @Test
     @Order(3)
-    @org.junit.jupiter.api.Disabled("KD-2, product defect: a Final Submit replay can differ by 1 ms from the first answer (sub-microsecond rounding); docs/requests/qa-backend-dayclose-late-rows.md; enable with the fix")
     fun aReplayAnswersTheFirstSuccessToTheMillisecond() = withApi {
         val tso = "${tag.lowercase()}tso1001"
         val date = allocDate()

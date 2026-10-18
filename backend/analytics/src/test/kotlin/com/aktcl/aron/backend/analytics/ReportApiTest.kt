@@ -184,6 +184,25 @@ class ReportApiTest {
         for (s in listOf("Route 1", "12", "রুট", "a=b", "")) assertEquals(s, ReportOutputs.sanitize(s))
     }
 
+    @Test
+    fun anMtkCellAbove2Pow53OrNotAnIntegerIsTextNeverADouble() {
+        // QA-MNY-03: an xlsx number is a double, exact only up to 2^53.
+        val out = java.io.ByteArrayOutputStream()
+        val wb = org.dhatim.fastexcel.Workbook(out, "t", "1.0"); val ws = wb.newWorksheet("s")
+        ReportOutputs.cell(ws, 0, 0, kotlinx.serialization.json.JsonPrimitive(9_007_199_254_740_992L), "mtk")
+        ReportOutputs.cell(ws, 0, 1, kotlinx.serialization.json.JsonPrimitive(9_007_199_254_740_993L), "mtk")
+        ReportOutputs.cell(ws, 0, 2, kotlinx.serialization.json.JsonPrimitive(12.5), "mtk")
+        ReportOutputs.cell(ws, 0, 3, kotlinx.serialization.json.JsonPrimitive(-9_007_199_254_740_993L), "integer")
+        wb.finish()
+        val tmp = java.io.File.createTempFile("mtk", ".xlsx").also { it.deleteOnExit(); it.writeBytes(out.toByteArray()) }
+        val files = java.util.zip.ZipFile(tmp).use { z -> z.entries().asSequence().associate { it.name to z.getInputStream(it).readBytes().decodeToString() } }
+        val sheet = files.getValue("xl/worksheets/sheet1.xml")
+        assertTrue(Regex("<c r=\"A1\"[^>]*><v>9007199254740992</v>").containsMatchIn(sheet), sheet)
+        for (col in listOf("B1", "C1", "D1")) assertTrue(Regex("<c r=\"$col\"[^>]*t=\"s\"").containsMatchIn(sheet), "$col is text: $sheet")
+        val strings = files.getValue("xl/sharedStrings.xml")
+        for (v in listOf("9007199254740993", "12.5", "-9007199254740993")) assertTrue(strings.contains(">$v<"), strings)
+    }
+
     // ---------------- checker_ tests (independent checker, F-API-017) ----------------
 
     private object PiiReport : ReportHandler {

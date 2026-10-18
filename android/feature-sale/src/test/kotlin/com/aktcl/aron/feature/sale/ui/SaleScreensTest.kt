@@ -108,12 +108,12 @@ class SaleExtraScreensTest {
         val d = SaleDraftOps.setQuantity(Fx.draft(), 100, 10, QtyUnit.STICK) // net 80.00
         var applied: Long? = -1
         compose.setContent { AronTheme(AppLanguage.EN) { CreditPrompt(SaleReviewCalculator.review(d, Fx.catalog), { applied = it }) } }
-        compose.onNodeWithText("Confirm").assertIsNotEnabled()
+        compose.onNodeWithTag(CreditTags.YES).assertIsNotEnabled()
         // the bar says what to do while the field is empty; the field is found by its label (placeholder while empty)
         compose.onNodeWithText("Enter the amount collected").assertExists()
         compose.onNodeWithText("Amount collected").performTextInput("30.5")
         compose.onNodeWithText("Due: 49.50 ৳").assertExists()
-        compose.onNodeWithText("Confirm").assertIsEnabled().performClick()
+        compose.onNodeWithTag(CreditTags.YES).assertIsEnabled().performClick()
         assertEquals(30_500L, applied)
     }
 
@@ -121,7 +121,7 @@ class SaleExtraScreensTest {
         val d = SaleDraftOps.setQuantity(Fx.draft(), 100, 10, QtyUnit.STICK)
         compose.setContent { AronTheme(AppLanguage.EN) { CreditPrompt(SaleReviewCalculator.review(d, Fx.catalog), {}) } }
         compose.onNodeWithText("Amount collected").performTextInput("80")
-        compose.onNodeWithText("Confirm").assertIsNotEnabled()
+        compose.onNodeWithTag(CreditTags.YES).assertIsNotEnabled()
         // a wrong value gets the inline error once, not the same sentence twice (the bar reason is gone)
         compose.onAllNodesWithText("The amount collected must be less than the total.").assertCountEquals(1)
     }
