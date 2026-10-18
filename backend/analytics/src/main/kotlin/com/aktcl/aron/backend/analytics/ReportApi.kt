@@ -49,6 +49,8 @@ class ReportDeps(
 
 private val XLSX = ContentType.parse("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 private val ADMIN_VIEWERS = setOf(Role.ADMIN, Role.SUPERADMIN, Role.SUPPORT)
+/** Who may open someone else's export job, whose download URL carries the report rows: not SUPPORT, which runs no business report (AZ-2). */
+private val JOB_VIEWERS = setOf(Role.ADMIN, Role.SUPERADMIN)
 
 fun Route.reportRoutes(d: ReportDeps) {
     authenticated(d.guard) {
@@ -143,7 +145,7 @@ fun Route.reportRoutes(d: ReportDeps) {
 
         get("/report-exports/{export_id}") {
             val p = call.principal
-            val job = d.exportService?.job(call.parameters["export_id"].orEmpty(), p, p.role in ADMIN_VIEWERS)
+            val job = d.exportService?.job(call.parameters["export_id"].orEmpty(), p, p.role in JOB_VIEWERS)
                 ?: throw ApiProblem(ProblemCode.ERR_NOT_FOUND, "no such export job")
             call.respond(job)
         }

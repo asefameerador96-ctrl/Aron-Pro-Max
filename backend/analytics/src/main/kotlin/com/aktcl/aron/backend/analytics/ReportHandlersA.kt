@@ -40,7 +40,7 @@ internal fun productClause(ctx: ReportContext, p: String): Pair<String, Map<Stri
 
 /** `std-memo`: one row per active sales memo (status active, at least one line): the same population as every total on the dashboards. Voids and number gaps are in `memo-number-gaps`. */
 object StdMemoReport : ReportHandler {
-    override val roles = WEB_ROLES + com.aktcl.aron.contract.Role.AMO   // the AMO app reads it for its zone (F-API-017b)
+    override val roles = REPORT_ROLES + com.aktcl.aron.contract.Role.AMO   // the AMO app reads it for its zone (F-API-017b)
     override val definition = definition(
         "std-memo", "STD Memo", "sales", "memo",
         listOf(

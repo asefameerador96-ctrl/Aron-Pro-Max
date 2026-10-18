@@ -23,7 +23,8 @@ import java.time.LocalDate
 import java.time.OffsetDateTime
 import java.time.YearMonth
 
-val WEB_ROLES: Set<com.aktcl.aron.contract.Role> = com.aktcl.aron.contract.Role.entries.toSet() - com.aktcl.aron.contract.Role.SR - com.aktcl.aron.contract.Role.AMO
+/** Roles that run business reports: the web dashboard roles less SUPPORT, which sees sync health only (docs/24 s8.5, AZ-2; sync health is `/v1/dashboards/sync-health`). */
+val REPORT_ROLES: Set<com.aktcl.aron.contract.Role> = com.aktcl.aron.contract.Role.entries.toSet() - com.aktcl.aron.contract.Role.SR - com.aktcl.aron.contract.Role.AMO - com.aktcl.aron.contract.Role.SUPPORT
 
 /** One SELECT per report: the engine adds scope, ordering, paging, totals, masking and the output format. */
 class SqlSpec(val sql: String, val binds: Map<String, Any?> = emptyMap(), val totalColumns: List<String> = emptyList())
@@ -31,7 +32,7 @@ class SqlSpec(val sql: String, val binds: Map<String, Any?> = emptyMap(), val to
 interface ReportHandler {
     val definition: ReportDefinition
     /** Roles that may run it (the server decides; the client never does). Default: the web dashboard roles. */
-    val roles: Set<com.aktcl.aron.contract.Role> get() = WEB_ROLES
+    val roles: Set<com.aktcl.aron.contract.Role> get() = REPORT_ROLES
     /** The rows as one SELECT whose output columns are exactly the definition's column keys. Use [ReportContext] clauses for scope and dates. */
     fun spec(ctx: ReportContext): SqlSpec
 }
