@@ -3,7 +3,7 @@
 // journeys and the accessibility/tier specs; it implements only what the config console reads and writes.
 import { randomUUID } from "node:crypto";
 import type { Problem, ProblemCode, Role } from "../src/contract/types";
-import type { ConfigChange, ConfigKey, ConfigVersion, ResolvedConfigValue, PermissionMatrix, WebEntryRouteDay, DeviceOtp } from "../src/lib/admin/types";
+import type { ConfigChange, ConfigKey, ConfigVersion, ResolvedConfigValue, PermissionMatrix, WebEntryRouteDay, DeviceOtp, Holiday, HolidayList } from "../src/lib/admin/types";
 
 type Json = number | boolean | string | unknown[] | Record<string, unknown>;
 
@@ -31,6 +31,7 @@ export const KEYS: ConfigKey[] = [
   K("cfg.sync.batch_max", "sync", "int", 200, 1, { bounds: { min: 10, max: 1000 }, description_en: "Largest sync batch" }),
   K("cfg.flag.web_entry", "flags", "bool", true, 1, { description_en: "Web Entry enabled" }),
   K("cfg.print.footer", "print", "text", "Thank you", 0, { description_en: "Memo footer line" }),
+  K("cfg.calendar.weekend_days", "calendar", "list", [5], 2, { bounds: { max_items: 3 }, scope_levels: ["global", "wing", "division"], description_en: "Weekend days (ISO weekday, 5 = Friday)" }),
   K("cfg.web.entry_classes", "web", "list", [11, 12], 1, { scope_levels: ["global", "zone"], description_en: "Web Entry classes" }),
 ];
 
@@ -65,6 +66,10 @@ export interface CfgCtx {
   audit: (entity: string, id: number | string, action: string, before: Record<string, string | number | boolean | null>, after: Record<string, string | number | boolean | null>, reason: string | null) => void;
 }
 
+const HOLIDAYS: Holiday[] = [
+  { id: 1, date: "2026-12-16", scope_type: "global", scope_id: 0, kind: "holiday", selling_day: false, name_en: "Victory Day", name_bn: "বিজয় দিবস" },
+  { id: 2, date: "2027-02-21", scope_type: "global", scope_id: 0, kind: "holiday", selling_day: false, name_en: "Language Martyrs' Day", name_bn: "শহীদ দিবস" },
+];
 const ADMINS: Role[] = ["ADMIN", "SUPERADMIN"];
 const ADMIN_READ: Role[] = ["ADMIN", "SUPERADMIN", "SUPPORT", "ANALYST"];
 const bad = (c: CfgCtx, pointer: string, code: string) => c.send(400, c.problem(400, "ERR_VALIDATION", { errors: [{ pointer, code }] }));
@@ -102,6 +107,14 @@ export async function handleConfig(c: CfgCtx): Promise<boolean> {
     if (!grant) return c.send(403, c.problem(403, "ERR_FORBIDDEN")), true;
   }
   const lastVersion = () => store.versions[store.versions.length - 1]!;
+
+  // F-ADM-033 holiday table (read only here; master data, so SUPPORT reads it too).
+  if (path === "/v1/admin/calendar/holidays" && method === "GET") {
+    const from = q.get("from") ?? "0000-01-01";
+    const to = q.get("to") ?? "9999-12-31";
+    const items = HOLIDAYS.filter((h) => h.date >= from && h.date <= to);
+    return c.send(200, { items } satisfies HolidayList), true;
+  }
 
   if (path === "/v1/admin/config/keys" && method === "GET") {
     const area = q.get("area");
