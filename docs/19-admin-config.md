@@ -563,7 +563,7 @@ Restrictive direction (D-432) is registered for every key where a direction exis
 | `cfg.memo.rounding_mode` | S | enum(half_up_paisa, floor_paisa, half_even_paisa) | half_up_paisa (A) | enum | G | O | S | both | C3 | FD. Totals are summed unrounded and rounded once; must equal Apsis to the paisa (T-2-41). Stamped on memo | D-19 | 1a |
 | `cfg.memo.show_due_balance_on_print` | S | bool | true (A) | n/a | G | F | B | dev | C0 | Previous-due line on the memo | docs/06 | 2b |
 | `cfg.memo.due_balance_staleness_marker` | S | bool | true | n/a | G | F | B | dev | C0 | Marker "<date> পর্যন্ত" on a stale balance | G-field-09 | 2b |
-| `cfg.memo.allow_negative_net` | S | bool | true | n/a | G | F | B | both | C2 | Zero sale plus QC can make the net negative; stored as a credit. unknown; confirm: MQ-04 | D-18 | 2a |
+| `cfg.memo.allow_negative_net` | S | bool | true | n/a | G | F | B | both | C2 | Zero sale plus QC can make the net negative; stored as a credit. unknown; confirm: MQ-04. Fixed by D-18, not a runtime switch; no code reads it (DECISIONS D-18-FIXED-KEY) | D-18 | 2a |
 | `cfg.credit.enabled` | S | bool | true | n/a | G W D T Z O | F+TSO | B | both | C2 | `false` at outlet is a credit stop; TSO inside own territory; the DMO sees the count | docs/06 | 2a |
 | `cfg.credit.max_due_mtk` | S | money_mtk | 0 = no limit (Apsis shows none) | 0 to 10,000,000,000 | G W T Z O | F+TSO | B | both | C2 | unknown; confirm: any business limit (D-320) | D-320 | 2a |
 | `cfg.credit.max_days` | S | int | 0 = no limit | 0 to 180 | G W T Z O | F | B | both | C2 | | D-320 | 2a |

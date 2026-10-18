@@ -690,7 +690,7 @@ paid_mtk + due_mtk = net_mtk;  is_credit = due_mtk > 0
 line_count, discount_line_count, qc_line_count = the number of child records
 ```
 
-Sums are taken over unrounded integer line values and rounded **once** (`cfg.memo.rounding_mode` = `half_up_paisa`). `net_mtk` and `due_mtk` may be negative only when a zero sale with QC settlement leaves a credit (`cfg.memo.allow_negative_net` = true). Fixtures (in `shared/rules` tests): 116,416 mtk → net 116,420; 20 sticks × 7,935 mtk = 158,700 mtk; 5 mtk rounds away from zero.
+Sums are taken over unrounded integer line values and rounded **once** (`cfg.memo.rounding_mode` = `half_up_paisa`). `net_mtk` and `due_mtk` may be negative only when a zero sale with QC settlement leaves a credit (`cfg.memo.allow_negative_net` = true, fixed by D-18: not a runtime switch, no code reads it; DECISIONS D-18-FIXED-KEY). Fixtures (in `shared/rules` tests): 116,416 mtk → net 116,420; 20 sticks × 7,935 mtk = 158,700 mtk; 5 mtk rounds away from zero.
 
 ### 7.5 Memo number
 
