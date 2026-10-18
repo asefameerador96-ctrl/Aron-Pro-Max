@@ -61,6 +61,22 @@ class ExportJobsTest : ReportFixture() {
         assertEquals(listOf(id), log.map { it.str("export_id") }); assertEquals("xlsx", log.single().str("format")); assertEquals(n, log.single().str("rows")!!.toInt())
     }
 
+    /** D-AUTHZ-PII (checker B1): another user's export with personal columns gets a link only inside the viewer's own reveal. */
+    @Test
+    fun anAdminGetsTheLinkOfSomeoneElsesPiiExportOnlyWhileTheirOwnRevealHolds() = app {
+        val id = run(10, Role.ANALYST, "route-memo", body(format = "xlsx")).result().str("export_id")!!
+        assertEquals(1, exports.runUntilIdle())
+        fresh.db.jdbi.useHandle<Exception> { it.execute("UPDATE app.report_export SET pii_included = true WHERE export_id = '$id'") }
+        fun url(r: String) = Json.parseToJsonElement(r).jsonObject.str("download_url")
+        assertTrue(url(job(10, Role.ANALYST, id).bodyAsText()) != null, "the owner keeps the link of their own export")
+        val masked = job(13, Role.ADMIN, id)
+        assertEquals(HttpStatusCode.OK, masked.status)
+        assertNull(url(masked.bodyAsText()), "an admin without a reveal gets no link")
+        val revealed = client.get("/v1/report-exports/$id") { bearerAuth(TestTokens.web(13, Role.ADMIN, pii = true)) }
+        assertTrue(url(revealed.bodyAsText()) != null, "an admin inside a reveal (audited by the guard) gets it")
+        assertTrue(TestTokens.reveals.contains("GET /v1/report-exports/$id"))
+    }
+
     @Test
     fun theJobRunsWithTheRequestersCurrentReachNotWhatTheClientSent() = app {
         // Zone 1's TSO asks for a job: the file holds zone 1 rows only, even though the stored filters carry no scope.

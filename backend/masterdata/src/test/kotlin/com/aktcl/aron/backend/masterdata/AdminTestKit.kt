@@ -42,7 +42,7 @@ class AdminEnv : AutoCloseable {
         val cfg = RegistryDefaults(overrides = mapOf("cfg.api.rl.user_per_min" to JsonPrimitive(5000)))
         application {
             installAronPlatform(PlatformContext(AronClock.SYSTEM, cfg, { "00000000-0000-0000-0000-000000000000" }))
-            val guard = AuthGuardDeps(AccessTokenVerifier(TestTokens.keys), ScopeVersionLookup { 1 }, cfg)
+            val guard = TestTokens.guard(cfg)
             val geo = GeoRepository(db.fresh.db)
             val deps = AdminMasterDeps(db.fresh.db, geo, SqlReachResolver(db.fresh.db, geo), guard, { "argon2id\$test\$" + it.reversed() }, requireReason = requireReason)
             routing { route("/v1") { adminMasterRoutes(deps) } }

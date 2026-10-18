@@ -232,6 +232,7 @@ internal class OutletRequests(private val d: AdminMasterDeps) {
 
     fun get(call: ApplicationCall, p: AronPrincipal, u: UUID): OutletRequestDto =
         d.db.readJdbi.withHandle<OutletRequestDto, Exception> { h -> one(h, u, reachOf(p), lock = false)?.let { dto(h, it, p) } ?: admNotFound("request not found") }
+            .also { com.aktcl.aron.backend.platform.PiiReadBudget.chargeRevealed(d.db, d.guard.config, d.clock, p, 1) }
 
     /** The request row when it is in reach (out of reach and unknown are the same 404). */
     private fun one(h: Handle, u: UUID, reach: Reach, lock: Boolean): Map<String, Any?>? {

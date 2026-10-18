@@ -38,7 +38,7 @@ class SkuImageCheckerTest {
         application {
             val base = RegistryDefaults(overrides = mapOf("cfg.api.rl.user_per_min" to JsonPrimitive(5000)))
             installAronPlatform(PlatformContext(AronClock.SYSTEM, base, { "00000000-0000-0000-0000-000000000000" }))
-            val guard = AuthGuardDeps(AccessTokenVerifier(TestTokens.keys), ScopeVersionLookup { 1 }, base)
+            val guard = TestTokens.guard(base)
             routing { route("/v1") { adminProductsRoutes(AdminProductsDeps(t.env.fresh.db, guard, blob = blob)) } }
         }
         block()

@@ -142,6 +142,7 @@ private suspend fun getOutlet(call: ApplicationCall, d: AdminMasterDeps) {
             h.createQuery("SELECT lat, lng, accuracy_m, source, valid_from FROM app.outlet_location_history WHERE outlet_id = :o AND lat IS NOT NULL ORDER BY valid_from, id").bind("o", id).mapToMap().list(),
         )
     }
+    com.aktcl.aron.backend.platform.PiiReadBudget.chargeRevealed(d.db, d.guard.config, d.clock, p, 1)
     val body = JsonObject(outletJson(row, p.pii) + mapOf(
         "placement_history" to JsonArray(place.map { JsonObject(mapOf("route_id" to jv(it["route_id"]), "cluster_id" to jv(it["cluster_id"]), "valid_from" to jv(it["valid_from"]), "valid_to" to jv(it["valid_to"]))) }),
         "location_history" to JsonArray(loc.map { JsonObject(mapOf("lat" to jv(it["lat"]), "lng" to jv(it["lng"]), "accuracy_m" to jv(it["accuracy_m"]), "source" to jv(it["source"]), "valid_from" to jv(it["valid_from"]))) }),

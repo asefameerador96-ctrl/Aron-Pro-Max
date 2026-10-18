@@ -61,11 +61,12 @@ class AuthGuardConfig {
 val AuthGuard = createRouteScopedPlugin("AronAuthGuard", ::AuthGuardConfig) {
     val cfg = pluginConfig
     onCall { call ->
-        val p = revealGate(call, authenticate(call, cfg), cfg.deps)
-        call.attributes.put(PrincipalKey, p)
-        val decision = if (p.isPhone && p.deviceUuid != null) cfg.deps.perDevice.tryAcquire("d:" + p.deviceUuid)
-        else cfg.deps.perUser.tryAcquire("u:" + p.userId)
+        val authed = authenticate(call, cfg)
+        val decision = if (authed.isPhone && authed.deviceUuid != null) cfg.deps.perDevice.tryAcquire("d:" + authed.deviceUuid)
+        else cfg.deps.perUser.tryAcquire("u:" + authed.userId)
         if (!decision.allowed) throw decision.toProblem()
+        // After the rate limit, so a refused call writes no reveal row (checker N2).
+        call.attributes.put(PrincipalKey, revealGate(call, authed, cfg.deps))
     }
 }
 

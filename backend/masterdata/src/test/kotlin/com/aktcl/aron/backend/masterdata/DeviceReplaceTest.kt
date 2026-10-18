@@ -40,7 +40,7 @@ class DeviceReplaceTest {
         val cfg = RegistryDefaults(overrides = mapOf("cfg.api.rl.user_per_min" to JsonPrimitive(2000)))
         application {
             installAronPlatform(PlatformContext(com.aktcl.aron.backend.platform.AronClock.SYSTEM, cfg, { "00000000-0000-0000-0000-000000000000" }))
-            val guard = AuthGuardDeps(AccessTokenVerifier(TestTokens.keys), ScopeVersionLookup { 1 }, cfg)
+            val guard = TestTokens.guard(cfg)
             val geo = GeoRepository(env.fresh.db)
             routing { route("/v1") { deviceReplaceRoutes(DeviceOtpDeps(env.fresh.db, SqlReachResolver(env.fresh.db, geo), OtpCipher("k".toByteArray()), com.aktcl.aron.backend.platform.DbServerConfig(env.fresh.db, cfg), guard)) } }
         }

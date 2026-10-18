@@ -166,8 +166,12 @@ class PiiRevealTest {
         client.reauth(access, """{"password":"$password","code":"${Totp.code(secret, Totp.step(now.get()))}"}""").let { assertEquals(HttpStatusCode.Unauthorized, it.status) }
 
         me(revealed).let { assertTrue(it["pii"]!!.jsonPrimitive.boolean); assertEquals(until, Instant.parse(it["pii_until"]!!.jsonPrimitive.content)) }
+        fun budget() = fresh.db.jdbi.withHandle<Int, Exception> { h -> h.createQuery("SELECT coalesce(sum(rows_read), 0)::int FROM app.pii_read_budget WHERE user_id = :u").bind("u", adminId).mapTo(Int::class.java).one() }
+        val before = budget()
         assertEquals(phone, phoneOf(revealed)!!.jsonPrimitive.content)
+        assertEquals(before + 1, budget(), "an unmasked read counts against cfg.pii.list_rows_per_hour (checker B2)")
         assertEquals(JsonNull, phoneOf(access), "the old token still reveals nothing")
+        assertEquals(before + 1, budget(), "a masked read costs nothing")
         val rows = revealRows(adminId)
         assertEquals(2, rows.size, rows.toString())
         assertTrue(rows[0].startsWith("step_up "), rows.toString())
@@ -188,7 +192,8 @@ class PiiRevealTest {
 
         // The window ends at pii_until (cfg.pii.reauth_min = 1 for the next step-up).
         fresh.db.jdbi.useHandle<Exception> { h ->
-            h.execute("INSERT INTO app.cfg_value (key, scope_type, scope_id, value, effective_from, config_version, reason) SELECT 'cfg.pii.reauth_min', 'global', 0, '1'::jsonb, TIMESTAMPTZ '2026-01-01T00:00:00Z', max(config_version), 'test' FROM app.cfg_version")
+            // Closed again 10 minutes on, so the other tests of the class keep the default (checker N6).
+            h.execute("INSERT INTO app.cfg_value (key, scope_type, scope_id, value, effective_from, effective_to, config_version, reason) SELECT 'cfg.pii.reauth_min', 'global', 0, '1'::jsonb, TIMESTAMPTZ '2026-01-01T00:00:00Z', TIMESTAMPTZ '${now.get().plusSeconds(600)}', max(config_version), 'test' FROM app.cfg_version")
         }
         now.set(now.get().plusSeconds(120))
         val short = json(client.reauth(access, """{"password":"$password","code":"${nextCode(secret)}"}""").bodyAsText())

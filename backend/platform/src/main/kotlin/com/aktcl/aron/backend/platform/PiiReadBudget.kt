@@ -27,6 +27,14 @@ object PiiReadBudget {
         ).bind("role", role.wire).bind("now", OffsetDateTime.ofInstant(now, ZoneOffset.UTC)).mapTo(Int::class.java).findOne().orElse(null)
             ?: runCatching { config.int("cfg.pii.list_rows_per_hour") }.getOrDefault(2000)
 
+    /**
+     * D-AUTHZ-PII (checker B2): every read a PII reveal serves unmasked counts its rows here, list or single record, so
+     * one step-up cannot harvest the retailer list. No-op for a masked read.
+     */
+    fun chargeRevealed(db: Database, config: ServerConfig, clock: AronClock, p: AronPrincipal, rows: Int) {
+        if (p.pii) charge(db, config, clock, p.userId, p.role, rows)
+    }
+
     fun charge(db: Database, config: ServerConfig, clock: AronClock, userId: Long, role: Role, rows: Int) {
         if (rows <= 0) return
         val now = clock.now(); val hour = OffsetDateTime.ofInstant(now.truncatedTo(ChronoUnit.HOURS), ZoneOffset.UTC)

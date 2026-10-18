@@ -81,7 +81,7 @@ class AuditReadTest {
         val cfg = RegistryDefaults(overrides = mapOf("cfg.api.rl.user_per_min" to JsonPrimitive(5000)))
         application {
             installAronPlatform(PlatformContext(com.aktcl.aron.backend.platform.AronClock.SYSTEM, cfg, { "00000000-0000-0000-0000-000000000000" }))
-            val guard = AuthGuardDeps(AccessTokenVerifier(TestTokens.keys), ScopeVersionLookup { 1 }, cfg)
+            val guard = TestTokens.guard(cfg)
             routing { route("/v1") { auditReadRoutes(AuditReadDeps(env.fresh.db, guard)) } }
         }
         block()

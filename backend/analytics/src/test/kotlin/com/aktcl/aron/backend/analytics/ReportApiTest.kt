@@ -88,7 +88,7 @@ class ReportApiTest {
         val reach = ReachResolver { uid, _, _, _ -> reaches.getValue(uid) }
         val deps = ReportDeps(
             fresh.db, ReportEngine(fresh.db, config, clock, listOf(RouteMemoReport)), reach,
-            AuthGuardDeps(AccessTokenVerifier(TestTokens.keys), ScopeVersionLookup { 1 }, config), clock,
+            TestTokens.guard(config), clock,
             ExportJobs { key, fmt, _, rows -> queued += "$key/$fmt/$rows"; ExportJob("11111111-1111-4111-8111-111111111111", key, "queued", null, "2026-10-04T12:00:00.000Z") },
         )
         application {
@@ -221,7 +221,7 @@ class ReportApiTest {
     private fun appWith(handlers: List<ReportHandler>, jobs: ExportJobs = ExportJobs.UNAVAILABLE, block: suspend ApplicationTestBuilder.() -> Unit) = testApplication {
         val clock = AronClock { Instant.parse("2026-10-04T12:00:00Z") }
         val reach = ReachResolver { uid, _, _, _ -> reaches.getValue(uid) }
-        val deps = ReportDeps(fresh.db, ReportEngine(fresh.db, config, clock, handlers), reach, AuthGuardDeps(AccessTokenVerifier(TestTokens.keys), ScopeVersionLookup { 1 }, config), clock, jobs)
+        val deps = ReportDeps(fresh.db, ReportEngine(fresh.db, config, clock, handlers), reach, TestTokens.guard(config), clock, jobs)
         application {
             installAronPlatform(PlatformContext(config = RegistryDefaults(), generation = { "6f1c2b0e-8d1a-4c5e-9f3a-2b7d4e6a8c10" }))
             routing { route("/v1") { reportRoutes(deps) } }
