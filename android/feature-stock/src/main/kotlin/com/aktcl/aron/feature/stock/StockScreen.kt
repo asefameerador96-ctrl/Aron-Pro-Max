@@ -5,7 +5,9 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBars
@@ -103,6 +105,8 @@ fun StockContent(
     val ordered = rows.sortedBy { categoryRank(it.sku.categoryCode) }
     Column(modifier.fillMaxSize()) {
         Column(Modifier.weight(1f).fillMaxWidth()) {
+            // the printer badge hangs half below the bar (sr/stock.webp): keep its band clear of the banners
+            Spacer(Modifier.height(24.dp))
             Column(Modifier.padding(horizontal = AronTokens.Space.Screen, vertical = AronTokens.Space.S), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
                 when (message) {
                     StockMessage.SAVED -> AronBanner(
@@ -125,7 +129,7 @@ fun StockContent(
             } else {
                 PackListHeader(
                     sku = stringResource(R.string.stk_col_sku), quantity = stringResource(R.string.stk_col_issue),
-                    stock = stringResource(if (hasStock) R.string.stk_col_stock else R.string.stk_col_loaded),
+                    stock = stringResource(if (hasStock) R.string.stk_col_stock else R.string.stk_col_loaded_short),
                 )
                 LazyColumn(
                     Modifier.weight(1f).testTag(StockTags.LIST),
