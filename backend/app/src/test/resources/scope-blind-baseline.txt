@@ -1,5 +1,6 @@
 # N-014 / N-061: reads where even the national admin shows nothing of the other division, so a leak there cannot be seen.
 # Each line carries its reason. May only SHRINK: seed other-division data for a debt line, then remove it.
+GET /v1/admin/audit  # global by design: national readers only (docs/24 s8.5), the log carries no reach and no scoped role reads it
 GET /v1/admin/calendar/holidays  # global by design: catalogue, configuration or calendar shared by every division
 GET /v1/admin/code-lists  # global by design: catalogue, configuration or calendar shared by every division
 GET /v1/admin/config/changes  # global by design: catalogue, configuration or calendar shared by every division

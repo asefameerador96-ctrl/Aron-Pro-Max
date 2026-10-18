@@ -5,6 +5,7 @@
 # scope-gaps-baseline.txt, frozen 2026-10-07, so the gap set may only shrink). A case must name the route's path. Cases were matched 2026-10-07 by test name and the route path in its body;
 # a reviewer who finds a case that does not assert scope for that route turns it back into a gap.
 # Role denial (which roles may call a route) is not recorded here: the contract carries no per-operation roles.
+GET /v1/admin/audit -> exempt: national readers only (docs/24 s8.5 Audit log: ANALYST, SUPPORT, ADMIN, SUPERADMIN), no scoped role reads it; role refusal in AuditReadTest#onlyAnalystSupportAdminAndSuperadminRead
 GET /v1/admin/calendar/holidays -> gap: backend-admin
 GET /v1/admin/clusters -> case AdminMasterTest#readersSeeOnlyTheirReachAndOnlyAdminsWrite
 GET /v1/admin/code-lists -> exempt: company-wide reference data, identical for every reach; role-gated, no geography rows
