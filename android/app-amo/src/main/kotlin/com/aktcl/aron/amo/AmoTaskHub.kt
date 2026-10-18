@@ -69,7 +69,7 @@ fun AmoTaskHub(day: AmoDay, onBack: () -> Unit) {
     }
     BackHandler(onBack = back)
     val sr = team.firstOrNull { it.userId == srId }
-    AmoFrame(stringResource(AmoR.string.amo_task_title), back, icon = com.aktcl.aron.core.ui.R.drawable.aron_ic_task_delegation) {
+    AmoFrame(stringResource(AmoR.string.amo_task_title), back, icon = com.aktcl.aron.core.ui.R.drawable.aron_art_task_delegation) {
         when (leaf) {
             TaskLeaf.LIST -> AmoTaskList(day, team, days.orEmpty(), onAssign = { srId = null; routeId = null; outletId = null; leaf = TaskLeaf.PICK_ROUTE })
             TaskLeaf.PICK_ROUTE -> {

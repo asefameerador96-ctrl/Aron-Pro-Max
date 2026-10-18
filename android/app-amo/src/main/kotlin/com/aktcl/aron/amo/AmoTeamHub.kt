@@ -65,16 +65,24 @@ fun AmoTeamHub(day: AmoDay, reach: AmoReach, onBack: () -> Unit) {
     BackHandler(onBack = back)
     val leaves = AmoMenu.hub(RoleHomes.AmoTile.TEAM, reach)
     when (leaf) {
-        TeamLeaf.HUB -> AmoFrame(stringResource(HomeR.string.rh_amo_team), back, icon = com.aktcl.aron.core.ui.R.drawable.aron_ic_task_delegation) {
-            val rows = leaves.map { l -> HubRow(stringResource(leafLabel(l)), onClick = { open = l; leaf = TeamLeaf.LEAF }, icon = if (l == AmoLeaf.TASK_DELEGATION) com.aktcl.aron.core.ui.R.drawable.aron_ic_task_delegation else null) } +
-                HubRow(stringResource(AmoR.string.amo_exc_title), onClick = { leaf = TeamLeaf.EXCEPTIONS })
+        TeamLeaf.HUB -> AmoFrame(stringResource(HomeR.string.rh_amo_team), back, icon = com.aktcl.aron.core.ui.R.drawable.aron_ic_team) {
+            val rows = leaves.map { l -> HubRow(stringResource(leafLabel(l)), onClick = { open = l; leaf = TeamLeaf.LEAF }, icon = teamIcon(l)) } +
+                HubRow(stringResource(AmoR.string.amo_exc_title), onClick = { leaf = TeamLeaf.EXCEPTIONS }, icon = com.aktcl.aron.core.ui.R.drawable.aron_ic_exceptions)
             HubListContent(listOf(HubSection(null, rows)))
         }
-        TeamLeaf.LEAF -> if (open == AmoLeaf.TASK_DELEGATION) AmoTaskHub(day, back) else if (open == AmoLeaf.TEAM_PERFORMANCE) AmoFrame(stringResource(AmoR.string.amo_leaf_team_performance), back) { AmoTeamPerformance(day) } else if (open == AmoLeaf.LIVE_DASHBOARD) AmoFrame(stringResource(AmoR.string.amo_live_title), back) { AmoLiveDashboard(day, liveFilter, { liveFilter = it }) } else if (open == AmoLeaf.SR_STOCK) AmoFrame(stringResource(AmoR.string.amo_leaf_sr_stock), back) { AmoTeamStock(day, stockSr, { stockSr = it }) } else if (open == AmoLeaf.TEAM_LOCATION) AmoFrame(stringResource(AmoR.string.amo_leaf_team_location), back) { AmoTeamLocation(day) } else RoleSectionPlaceholder(stringResource(open?.let { leafLabel(it) } ?: HomeR.string.rh_amo_team), AronIcons.Info, onBack = back)
-        TeamLeaf.EXCEPTIONS, TeamLeaf.EXCEPTION_DETAIL -> AmoFrame(stringResource(AmoR.string.amo_exc_title), back) {
+        TeamLeaf.LEAF -> if (open == AmoLeaf.TASK_DELEGATION) AmoTaskHub(day, back) else if (open == AmoLeaf.TEAM_PERFORMANCE) AmoFrame(stringResource(AmoR.string.amo_leaf_team_performance), back, icon = com.aktcl.aron.core.ui.R.drawable.aron_ic_team_performance) { AmoTeamPerformance(day) } else if (open == AmoLeaf.LIVE_DASHBOARD) AmoFrame(stringResource(AmoR.string.amo_live_title), back, icon = com.aktcl.aron.core.ui.R.drawable.aron_ic_live_dashboard) { AmoLiveDashboard(day, liveFilter, { liveFilter = it }) } else if (open == AmoLeaf.SR_STOCK) AmoFrame(stringResource(AmoR.string.amo_leaf_sr_stock), back, icon = com.aktcl.aron.core.ui.R.drawable.aron_ic_sr_stock) { AmoTeamStock(day, stockSr, { stockSr = it }) } else if (open == AmoLeaf.TEAM_LOCATION) AmoFrame(stringResource(AmoR.string.amo_leaf_team_location), back, icon = com.aktcl.aron.core.ui.R.drawable.aron_ic_team_location) { AmoTeamLocation(day) } else RoleSectionPlaceholder(stringResource(open?.let { leafLabel(it) } ?: HomeR.string.rh_amo_team), AronIcons.Info, onBack = back)
+        TeamLeaf.EXCEPTIONS, TeamLeaf.EXCEPTION_DETAIL -> AmoFrame(stringResource(AmoR.string.amo_exc_title), back, icon = com.aktcl.aron.core.ui.R.drawable.aron_ic_exceptions) {
             AmoExceptions(day, leaf == TeamLeaf.EXCEPTION_DETAIL, signalId, onOpen = { signalId = it.id; leaf = TeamLeaf.EXCEPTION_DETAIL }, onDone = { leaf = TeamLeaf.EXCEPTIONS })
         }
     }
+}
+
+private fun teamIcon(l: AmoLeaf): Int = when (l) {
+    AmoLeaf.TEAM_LOCATION -> com.aktcl.aron.core.ui.R.drawable.aron_ic_team_location
+    AmoLeaf.TEAM_PERFORMANCE -> com.aktcl.aron.core.ui.R.drawable.aron_ic_team_performance
+    AmoLeaf.TASK_DELEGATION -> com.aktcl.aron.core.ui.R.drawable.aron_art_task_delegation
+    AmoLeaf.LIVE_DASHBOARD -> com.aktcl.aron.core.ui.R.drawable.aron_ic_live_dashboard
+    else -> com.aktcl.aron.core.ui.R.drawable.aron_ic_sr_stock
 }
 
 private fun leafLabel(l: AmoLeaf): Int = when (l) {

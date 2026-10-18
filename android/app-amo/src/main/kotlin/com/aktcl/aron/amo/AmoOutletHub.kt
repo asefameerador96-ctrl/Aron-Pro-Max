@@ -82,27 +82,27 @@ fun AmoOutletHub(day: AmoDay, onBack: () -> Unit, extra: @Composable (OutletHubE
         }
     }
     BackHandler(onBack = back)
-    AmoFrame(stringResource(HomeR.string.hm_tile_outlet), back, icon = com.aktcl.aron.core.ui.R.drawable.aron_ic_outlet) {
+    AmoFrame(stringResource(HomeR.string.hm_tile_outlet), back, icon = com.aktcl.aron.core.ui.R.drawable.aron_art_outlet) {
         when (leaf) {
             OutletLeaf.LIST -> {
                 // docs/07 + manual: first the verification of the SRs' requests (three rows with their counts), then the AMO's own shop operations.
                 var pending by remember { mutableStateOf<List<com.aktcl.aron.feature.amo.PendingRequest>>(emptyList()) }
                 LaunchedEffect(day) { pending = runCatching { day.pendingVerifications() }.getOrDefault(emptyList()) }
                 val verify = listOf(
-                    HubRow(stringResource(AmoR.string.amo_verify_new), countText(pending.count { it.type == "new" }), { verifyGroup = "new"; leaf = OutletLeaf.VERIFY_LIST }, com.aktcl.aron.core.ui.R.drawable.aron_ic_outlet_new, pending.count { it.type == "new" }),
-                    HubRow(stringResource(AmoR.string.amo_verify_closure), countText(pending.count { it.type == "close" }), { verifyGroup = "close"; leaf = OutletLeaf.VERIFY_LIST }, com.aktcl.aron.core.ui.R.drawable.aron_ic_outlet_close, pending.count { it.type == "close" }),
-                    HubRow(stringResource(AmoR.string.amo_verify_change), countText(pending.count { it.type != "new" && it.type != "close" }), { verifyGroup = "info"; leaf = OutletLeaf.VERIFY_LIST }, com.aktcl.aron.core.ui.R.drawable.aron_ic_outlet_edit, pending.count { it.type != "new" && it.type != "close" }),
+                    HubRow(stringResource(AmoR.string.amo_verify_new), countText(pending.count { it.type == "new" }), { verifyGroup = "new"; leaf = OutletLeaf.VERIFY_LIST }, com.aktcl.aron.core.ui.R.drawable.aron_art_outlet_new, pending.count { it.type == "new" }),
+                    HubRow(stringResource(AmoR.string.amo_verify_closure), countText(pending.count { it.type == "close" }), { verifyGroup = "close"; leaf = OutletLeaf.VERIFY_LIST }, com.aktcl.aron.core.ui.R.drawable.aron_art_outlet_close, pending.count { it.type == "close" }),
+                    HubRow(stringResource(AmoR.string.amo_verify_change), countText(pending.count { it.type != "new" && it.type != "close" }), { verifyGroup = "info"; leaf = OutletLeaf.VERIFY_LIST }, com.aktcl.aron.core.ui.R.drawable.aron_art_outlet_edit, pending.count { it.type != "new" && it.type != "close" }),
                 )
                 fun request(kind: OutletRequestKind): () -> Unit = {
                     day.requestKind = kind; savedKind = kind.name; day.requestOutlet = null
                     leaf = if (kind == OutletRequestKind.NEW) OutletLeaf.FORM else OutletLeaf.PICK_ROUTE
                 }
                 val ops = listOf(
-                    HubRow(stringResource(OutR.string.out_req_new), onClick = request(OutletRequestKind.NEW), icon = com.aktcl.aron.core.ui.R.drawable.aron_ic_outlet_new),
-                    HubRow(stringResource(OutR.string.out_req_close), onClick = request(OutletRequestKind.CLOSE), icon = com.aktcl.aron.core.ui.R.drawable.aron_ic_outlet_close),
-                    HubRow(stringResource(OutR.string.out_req_info), onClick = request(OutletRequestKind.INFO), icon = com.aktcl.aron.core.ui.R.drawable.aron_ic_outlet_edit),
-                    HubRow(stringResource(AmoR.string.amo_leaf_update_base), onClick = request(OutletRequestKind.LOCATION)),
-                    HubRow(stringResource(OutR.string.out_own_open), onClick = { leaf = OutletLeaf.OWN_LIST }),
+                    HubRow(stringResource(OutR.string.out_req_new), onClick = request(OutletRequestKind.NEW), icon = com.aktcl.aron.core.ui.R.drawable.aron_art_outlet_new),
+                    HubRow(stringResource(OutR.string.out_req_close), onClick = request(OutletRequestKind.CLOSE), icon = com.aktcl.aron.core.ui.R.drawable.aron_art_outlet_close),
+                    HubRow(stringResource(OutR.string.out_req_info), onClick = request(OutletRequestKind.INFO), icon = com.aktcl.aron.core.ui.R.drawable.aron_art_outlet_edit),
+                    HubRow(stringResource(AmoR.string.amo_leaf_update_base), onClick = request(OutletRequestKind.LOCATION), icon = com.aktcl.aron.core.ui.R.drawable.aron_ic_update_base),
+                    HubRow(stringResource(OutR.string.out_own_open), onClick = { leaf = OutletLeaf.OWN_LIST }, icon = com.aktcl.aron.core.ui.R.drawable.aron_ic_verify),
                 )
                 HubListContent(listOf(HubSection(stringResource(AmoR.string.amo_verify_section), verify), HubSection(stringResource(AmoR.string.amo_ops_section), ops)), redLabels = true)
             }

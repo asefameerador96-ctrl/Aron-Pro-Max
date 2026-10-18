@@ -59,10 +59,10 @@ fun AmoSaleHub(day: AmoDay, onBack: () -> Unit) {
                 ),
                 back,
                 icon = when (leaf) {
-                    SaleLeaf.STOCK, SaleLeaf.CORRECT -> com.aktcl.aron.core.ui.R.drawable.aron_ic_stock
-                    SaleLeaf.MEMO, SaleLeaf.EDIT -> com.aktcl.aron.core.ui.R.drawable.aron_ic_memo
-                    SaleLeaf.SUMMARY -> com.aktcl.aron.core.ui.R.drawable.aron_ic_summary
-                    else -> com.aktcl.aron.core.ui.R.drawable.aron_ic_sale
+                    SaleLeaf.STOCK, SaleLeaf.CORRECT -> com.aktcl.aron.core.ui.R.drawable.aron_art_stock
+                    SaleLeaf.MEMO, SaleLeaf.EDIT -> com.aktcl.aron.core.ui.R.drawable.aron_art_memo
+                    SaleLeaf.SUMMARY -> com.aktcl.aron.core.ui.R.drawable.aron_art_summary
+                    else -> com.aktcl.aron.core.ui.R.drawable.aron_art_sale
                 },
                 trailing = if (printed) ({ com.aktcl.aron.core.printing.ui.PrinterIcon(day.printerManager) }) else null,
             ) {
@@ -81,8 +81,8 @@ private fun SaleLeafBody(day: AmoDay, leaf: SaleLeaf, setLeaf: (SaleLeaf) -> Uni
         SaleLeaf.LIST -> {
             // Manual order: Stock, Sale, Memo, Summary.
             val rows = listOf(
-                Triple(SaleLeaf.STOCK, HomeR.string.hm_tile_stock, com.aktcl.aron.core.ui.R.drawable.aron_ic_stock), Triple(SaleLeaf.SALE, HomeR.string.hm_tile_sale, com.aktcl.aron.core.ui.R.drawable.aron_ic_sale),
-                Triple(SaleLeaf.MEMO, HomeR.string.hm_tile_memo, com.aktcl.aron.core.ui.R.drawable.aron_ic_memo), Triple(SaleLeaf.SUMMARY, HomeR.string.hm_tile_summary, com.aktcl.aron.core.ui.R.drawable.aron_ic_summary),
+                Triple(SaleLeaf.STOCK, HomeR.string.hm_tile_stock, com.aktcl.aron.core.ui.R.drawable.aron_art_stock), Triple(SaleLeaf.SALE, HomeR.string.hm_tile_sale, com.aktcl.aron.core.ui.R.drawable.aron_art_sale),
+                Triple(SaleLeaf.MEMO, HomeR.string.hm_tile_memo, com.aktcl.aron.core.ui.R.drawable.aron_art_memo), Triple(SaleLeaf.SUMMARY, HomeR.string.hm_tile_summary, com.aktcl.aron.core.ui.R.drawable.aron_art_summary),
             ).map { (l, label, icon) -> com.aktcl.aron.feature.amo.HubRow(stringResource(label), onClick = { setLeaf(l) }, icon = icon) }
             com.aktcl.aron.feature.amo.HubListContent(listOf(com.aktcl.aron.feature.amo.HubSection(null, rows)))
         }

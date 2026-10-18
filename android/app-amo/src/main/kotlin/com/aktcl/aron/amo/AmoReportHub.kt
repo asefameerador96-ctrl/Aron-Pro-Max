@@ -43,7 +43,7 @@ fun AmoReportHub(day: AmoDay, onBack: () -> Unit) {
     val bangla = LocalAppLanguage.current == AppLanguage.BN
     val money: (Long) -> String = { Formats.money(it, if (bangla) UiLocale.BN else UiLocale.EN) }
     val title = when (leaf) { ReportLeaf.STD -> AmoR.string.amo_rep_std; ReportLeaf.SUMMARY, ReportLeaf.ROUTE -> AmoR.string.amo_rep_summary; else -> AmoR.string.amo_rep_title }
-    AmoFrame(stringResource(title), back) {
+    AmoFrame(stringResource(title), back, icon = com.aktcl.aron.core.ui.R.drawable.aron_ic_report) {
         when (leaf) {
             ReportLeaf.MENU -> ReportMenuContent({ leaf = ReportLeaf.STD }, { leaf = ReportLeaf.SUMMARY })
             ReportLeaf.STD -> {
