@@ -51,4 +51,9 @@ tasks.withType<Test>().configureEach {
     // Test.environment is not an up-to-date input: declare the values, or a changed size reuses the last result.
     listOf("ARON_SYNC_FUZZ_SCHEDULES", "ARON_SYNC_FUZZ_SEED", "ARON_SYNC_FUZZ_PHONES").forEach { k -> System.getenv(k)?.let { environment(k, it); inputs.property(k, it) } }
     systemProperty("aron.repoRoot", rootProject.layout.projectDirectory.asFile.absolutePath)
+    // N-014: ContractConformanceTest, RouteInventoryTest and ScopeLeakAcrossEndpointsTest read the contract through
+    // aron.repoRoot, which is not a file input: declare it and the conformance baselines, or a contract-only change
+    // reuses the cached verdict.
+    inputs.file(rootProject.layout.projectDirectory.file("contract/openapi.yaml")).withPropertyName("openapi").withPathSensitivity(PathSensitivity.RELATIVE)
+    inputs.files(fileTree("src/test/resources") { include("contract-*-baseline.txt") }).withPropertyName("contractBaselines").withPathSensitivity(PathSensitivity.RELATIVE)
 }

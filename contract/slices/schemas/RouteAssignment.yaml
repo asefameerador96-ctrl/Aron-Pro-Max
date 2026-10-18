@@ -1,4 +1,6 @@
 RouteAssignment:
+  description: Open on purpose (N-014). `RouteAssignment` is the `allOf` base of `RouteAssignee`, which closes the
+    combined object, so `RouteAssignment` carries no closing keyword.
   type: object
   required:
   - id
@@ -7,7 +9,6 @@ RouteAssignment:
   - kind
   - valid_from
   - created_at
-  additionalProperties: false
   properties:
     id:
       $ref: '#/components/schemas/Id'
