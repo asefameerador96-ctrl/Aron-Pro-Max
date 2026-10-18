@@ -19,7 +19,7 @@ export interface ReleasesViewProps {
   adoption: Adoption[];
   policyKeys: ConfigKey[];
   policyValues: Record<string, ResolvedConfigValue>;
-  apkMaxMb: number;
+  apkMaxMb?: number;
   canWrite: boolean;
   canPublish: boolean;
 }
@@ -56,7 +56,7 @@ export function ReleasesView({ locale, releases, policy, adoption, policyKeys, p
     { name: "abi", label: t(locale, "rel.field.abi"), kind: "enum", required: true, options: ABIS.map((a) => ({ value: a, label: a })) },
     { name: "sha256", label: t(locale, "rel.field.sha256"), kind: "text", required: true, pattern: "^[0-9a-f]{64}$", lowercase: true, maxLength: 64 },
     { name: "signing_cert_sha256", label: t(locale, "rel.field.signing"), kind: "text", required: true, pattern: "^[0-9a-f]{64}$", lowercase: true, maxLength: 64 },
-    { name: "size_bytes", label: t(locale, "rel.field.size"), kind: "int", required: true, min: 1, max: Math.min(apkMaxMb * MB, 104_857_600), hint: t(locale, "rel.size_gate", { mb: apkMaxMb }) },
+    { name: "size_bytes", label: t(locale, "rel.field.size"), kind: "int", required: true, min: 1, max: Math.min((apkMaxMb ?? 100) * MB, 104_857_600), hint: apkMaxMb === undefined ? undefined : t(locale, "rel.size_gate", { mb: apkMaxMb }) },
     { name: "download_url", label: t(locale, "rel.field.url"), kind: "text", required: true, pattern: "^https://\\S+$", maxLength: 1000 },
     { name: "notes_en", label: t(locale, "rel.field.notes_en"), kind: "textarea", nullable: true, maxLength: 2000 },
     { name: "notes_bn", label: t(locale, "rel.field.notes_bn"), kind: "textarea", nullable: true, maxLength: 2000 },
