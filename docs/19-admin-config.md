@@ -1805,7 +1805,7 @@ Every key with a direction carries `restrictive_dir` in the registry seed (`up`:
 | `cfg.credit.max_due_mtk`, `max_days`, `cfg.memo.reprint_max`, `edit_window_min`, `edit_chain_max` | down | |
 | `cfg.auth.lockout_attempts`, `access_ttl_min`, `refresh_ttl_days`, `offline_unlock_max_days`, `otp_ttl_min`, `max_devices_per_user`, `max_users_per_device` | down | |
 | `cfg.auth.password_min_len` | up | |
-| `cfg.pii.export_rows_per_day`, `list_rows_per_hour`, `cfg.web.entry_backdate_days`, `entry_unlock_max_days` | down | |
+| `cfg.pii.export_rows_per_day`, `list_rows_per_hour`, `reauth_min`, `cfg.web.entry_backdate_days`, `entry_unlock_max_days` | down | |
 | `cfg.sec.record_signature_mode` | enum_order | off < record < enforce |
 | `cfg.ops.kill_switch`, `read_only_mode`, `sync_hold_s`, `bundle_hold` | enum_order or up | engaged is stricter; allowed under break-glass for at most `break_glass_max_h` |
 | BRAKE-lane keys (D-588, s7.6c): `cfg.release.blocked_versions` | `list_add` | adding a build to the list is the restrictive move |
