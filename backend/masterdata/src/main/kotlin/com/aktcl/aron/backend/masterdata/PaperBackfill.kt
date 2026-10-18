@@ -103,9 +103,10 @@ private fun createBackfill(p: AronPrincipal, req: PaperBackfillIn, requestId: St
 
     // Replay first: the stored entry answers before anything is looked up again, so a retry after a back-dated price
     // change (a new price on the date) or a renamed user gets the stored answer, never payload_conflict or
-    // no_price_on_date. Other content under the same uuid is a conflict, as the ingest would answer.
-    storedEntry(d, entry)?.let { s ->
-        val asked = StoredEntry(req.memo_no, bd, req.user_id, req.route_id, req.outlet_id, req.paid_mtk, req.lines.map { Triple(it.sku_id, it.qty_base, it.line_kind) }, s.net)
+    // no_price_on_date. Other content under the same uuid is a conflict, as the ingest would answer. Only for the user who
+    // keyed it (their own row): anyone else goes through the ingest and its reach check, as before.
+    storedEntry(d, entry)?.takeIf { it.enteredBy == p.userId }?.let { s ->
+        val asked = StoredEntry(req.memo_no, bd, req.user_id, req.route_id, req.outlet_id, req.paid_mtk, req.lines.map { Triple(it.sku_id, it.qty_base, it.line_kind) }, s.net, s.enteredBy)
         if (asked != s) throw ApiProblem(ProblemCode.ERR_CONFLICT, "another entry is stored under this client_uuid")
         auditOnce(d, p, entry, req, bd, s.net, s.lines.size, reason, requestId)
         return PaperBackfillOut(entry, "replayed", s.net)
@@ -187,14 +188,14 @@ private fun createBackfill(p: AronPrincipal, req: PaperBackfillIn, requestId: St
 }
 
 /** What a stored paper entry was keyed with: the memo of the entry's uuid (entry_source manual) and its lines in order. */
-private data class StoredEntry(val memoNo: String, val bd: LocalDate, val userId: Long, val routeId: Long?, val outletId: Long, val paid: Long, val lines: List<Triple<Long, Long, String>>, val net: Long)
+private data class StoredEntry(val memoNo: String, val bd: LocalDate, val userId: Long, val routeId: Long?, val outletId: Long, val paid: Long, val lines: List<Triple<Long, Long, String>>, val net: Long, val enteredBy: Long?)
 
 private fun storedEntry(d: PaperBackfillDeps, entry: String): StoredEntry? = d.db.jdbi.withHandle<StoredEntry?, Exception> { h ->
     val lines = h.createQuery("SELECT sku_id, qty_base, line_kind FROM app.memo_line WHERE memo_client_uuid = CAST(:m AS uuid) ORDER BY line_no")
         .bind("m", entry).map { rs, _ -> Triple(rs.getLong(1), rs.getLong(2), rs.getString(3)) }.list()
-    h.createQuery("SELECT memo_no, business_date, user_id, route_id, outlet_id, paid_mtk, net_mtk FROM app.memo WHERE client_uuid = CAST(:m AS uuid) AND entry_source = 'manual'")
+    h.createQuery("SELECT memo_no, business_date, user_id, route_id, outlet_id, paid_mtk, net_mtk, entered_by_user_id FROM app.memo WHERE client_uuid = CAST(:m AS uuid) AND entry_source = 'manual'")
         .bind("m", entry).map { rs, _ ->
-            StoredEntry(rs.getString(1), rs.getObject(2, LocalDate::class.java), rs.getLong(3), rs.getObject(4) as Long?, rs.getLong(5), rs.getLong(6), lines, rs.getLong(7))
+            StoredEntry(rs.getString(1), rs.getObject(2, LocalDate::class.java), rs.getLong(3), rs.getObject(4) as Long?, rs.getLong(5), rs.getLong(6), lines, rs.getLong(7), rs.getObject(8) as Long?)
         }.findOne().orElse(null)
 }
 

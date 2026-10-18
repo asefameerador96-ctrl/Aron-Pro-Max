@@ -130,10 +130,10 @@ class PaperBackfillTest {
         assertEquals(HttpStatusCode.OK, first.status, first.bodyAsText())
         val net = js(first.bodyAsText())["net_mtk"]!!.jsonPrimitive.content
         val sku = skus[0].first
-        fun price(sql: String) = fresh.db.jdbi.useHandle<Exception> { h -> h.createUpdate(sql).bind("s", sku).bind("d", java.time.LocalDate.parse(day)).execute() }
+        fun price(sql: String) = fresh.db.jdbi.withHandle<List<Long>, Exception> { h -> h.createQuery(sql).bind("s", sku).bind("d", java.time.LocalDate.parse(day)).mapTo(Long::class.java).list() }
         // A price published today, valid from before the memo's business date (the old row is closed at that date).
-        price("UPDATE app.sku_price SET valid_to = :d WHERE sku_id = :s AND price_type = 'outlet' AND valid_from < :d AND (valid_to IS NULL OR valid_to > :d)")
-        price("INSERT INTO app.sku_price (sku_id, price_type, amount_mtk, valid_from) VALUES (:s, 'outlet', ${skus[0].second + 1_000}, :d)")
+        val closed = price("UPDATE app.sku_price SET valid_to = :d WHERE sku_id = :s AND price_type = 'outlet' AND valid_from < :d AND (valid_to IS NULL OR valid_to > :d) RETURNING id")
+        val added = price("INSERT INTO app.sku_price (sku_id, price_type, amount_mtk, valid_from) VALUES (:s, 'outlet', ${skus[0].second + 1_000}, :d) RETURNING id")
         try {
             val again = client.entry(admin, body(cu, no))
             assertEquals(HttpStatusCode.OK, again.status, again.bodyAsText())
@@ -142,9 +142,13 @@ class PaperBackfillTest {
             assertEquals(1, count("SELECT count(*) FROM app.audit_log WHERE entity = 'paper_backfill' AND entity_id = '$cu' AND action = 'create'"))
             // Other content under the same uuid is still a conflict.
             assertEquals(HttpStatusCode.Conflict, client.entry(admin, body(cu, no, qty2 = 11)).status)
+            // Another keyer gets no stored answer: the ingest path with its reach check (re-priced, so a conflict, as before).
+            assertEquals(HttpStatusCode.Conflict, client.entry(client.webToken("support1001"), body(cu, no)).status)
         } finally {
-            price("DELETE FROM app.sku_price WHERE sku_id = :s AND price_type = 'outlet' AND valid_from = :d")
-            price("UPDATE app.sku_price SET valid_to = NULL WHERE sku_id = :s AND price_type = 'outlet' AND valid_to = :d")
+            fresh.db.jdbi.useHandle<Exception> { h ->
+                h.createUpdate("DELETE FROM app.sku_price WHERE id = ANY(:a)").bindArray("a", Long::class.javaObjectType, added).execute()
+                h.createUpdate("UPDATE app.sku_price SET valid_to = NULL WHERE id = ANY(:c)").bindArray("c", Long::class.javaObjectType, closed).execute()
+            }
         }
     }
 
