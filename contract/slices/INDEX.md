@@ -3,7 +3,7 @@
 Source: contract/openapi.yaml, version 1.3.3.
 
 
-## Schemas (503)
+## Schemas (505)
 
 - `schemas/Uuid.yaml` (273 B)
 - `schemas/Id.yaml` (104 B)
@@ -94,9 +94,11 @@ Source: contract/openapi.yaml, version 1.3.3.
 - `schemas/BindDeviceRequest.yaml` (322 B)
 - `schemas/MfaEnrolment.yaml` (362 B)
 - `schemas/MfaVerifyRequest.yaml` (249 B)
+- `schemas/ReauthRequest.yaml` (446 B)
+- `schemas/ReauthResponse.yaml` (327 B)
 - `schemas/Jwks.yaml` (212 B)
 - `schemas/JwkEcPublic.yaml` (465 B)
-- `schemas/Me.yaml` (736 B)
+- `schemas/Me.yaml` (985 B)
 - `schemas/JwkEcPublicDevice.yaml` (394 B)
 - `schemas/DeviceInfo.yaml` (680 B)
 - `schemas/EnrolDeviceRequest.yaml` (2083 B)
@@ -509,7 +511,7 @@ Source: contract/openapi.yaml, version 1.3.3.
 - `schemas/ChannelVolume.yaml` (751 B)
 - `schemas/SuggestedQty.yaml` (234 B)
 
-## Operations (214)
+## Operations (215)
 
 - `operations/getHealth.yaml`  GET /v1/health (770 B)
 - `operations/headHealth.yaml`  HEAD /v1/health (483 B)
@@ -522,6 +524,7 @@ Source: contract/openapi.yaml, version 1.3.3.
 - `operations/bindDevice.yaml`  POST /v1/auth/bind-device (1046 B)
 - `operations/enrolMfa.yaml`  POST /v1/auth/mfa/enrol (546 B)
 - `operations/verifyMfa.yaml`  POST /v1/auth/mfa/verify (677 B)
+- `operations/reauth.yaml`  POST /v1/auth/reauth (1781 B)
 - `operations/getJwks.yaml`  GET /v1/auth/jwks (505 B)
 - `operations/getMe.yaml`  GET /v1/me (363 B)
 - `operations/enrolDevice.yaml`  POST /v1/devices/enrol (1146 B)

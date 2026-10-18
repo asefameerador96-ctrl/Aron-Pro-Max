@@ -32,6 +32,11 @@ data class AronPrincipal(
     val amr: List<String>,
     val jti: String,
     val expiresAt: Instant,
+    /**
+     * End of the PII reveal window (`pii_until`, D-AUTHZ-PII): only a `POST /v1/auth/reauth` token carries it. [pii] is
+     * true only before this instant; the guard then also requires the role's live `pii.reveal` grant and an audit row.
+     */
+    val piiUntil: Instant? = null,
 ) {
     val isPhone: Boolean get() = flavour != "web"
 }
@@ -54,6 +59,7 @@ class AccessTokenVerifier(private val keys: JwtKeys, private val clock: AronCloc
         c.notBeforeTime?.toInstant()?.let { if (now.plusSeconds(5).isBefore(it)) throw unauth("not yet valid") }
         if (!now.isBefore(exp.plusSeconds(expiredGraceS))) throw ApiProblem(ProblemCode.ERR_TOKEN_EXPIRED, "access token expired")
         val principal = try {
+            val piiUntil = c.getLongClaim("pii_until")?.let(Instant::ofEpochSecond)
             AronPrincipal(
                 userId = c.subject.toLong(),
                 username = c.getStringClaim("uname"),
@@ -64,10 +70,12 @@ class AccessTokenVerifier(private val keys: JwtKeys, private val clock: AronCloc
                 deviceUuid = c.getStringClaim("dvu"),
                 flavour = c.getStringClaim("flv"),
                 permissions = c.getStringListClaim("perm") ?: emptyList(),
-                pii = c.getBooleanClaim("pii") ?: false,
+                // A pii claim without a live pii_until window is ignored (fail closed).
+                pii = c.getBooleanClaim("pii") == true && piiUntil != null && now.isBefore(piiUntil),
                 amr = c.getStringListClaim("amr") ?: emptyList(),
                 jti = c.jwtid ?: throw unauth("no jti"),
                 expiresAt = exp,
+                piiUntil = piiUntil,
             )
         } catch (e: ApiProblem) {
             throw e

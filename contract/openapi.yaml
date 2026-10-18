@@ -356,6 +356,37 @@ paths:
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '429': { $ref: '#/components/responses/TooManyRequests' }
+  /v1/auth/reauth:
+    post:
+      tags: [auth]
+      operationId: reauth
+      summary: Step-up before a PII reveal (web sessions of a role that holds pii.reveal).
+      description: |
+        A web API session re-enters its password and, for an MFA user, a fresh 6-digit TOTP code (docs/21 s4.5). The
+        role must hold the `pii.reveal` grant (`app.role_grant_map`, read per request; ADMIN and SUPERADMIN by default),
+        else 403. Wrong answers share one 401 `ERR_AUTH_INVALID_CREDENTIALS` and count towards the lockout
+        (`cfg.auth.lockout_attempts`, then 403 `ERR_AUTH_ACCOUNT_LOCKED`). Success returns a new web access token whose
+        reveal holds until `pii_until` (now + `cfg.pii.reauth_min`, at most the token's life); the refresh token is
+        unchanged and a refresh mints a token without the reveal. While it holds, `Me.pii` is true and the masked
+        personal columns (phone, owner, report `pii` columns, ADMIN audit-log personal members) are served; every such
+        request writes an audit row (entity `pii_reveal`, no personal value). ANALYST and SUPPORT audit-log masking
+        never changes.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ReauthRequest' }
+      responses:
+        '200':
+          description: Reveal window opened; use the returned access token.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ReauthResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
   /v1/auth/jwks:
     get:
       tags: [auth]
@@ -5726,6 +5757,21 @@ components:
       properties:
         mfa_token: { type: string, maxLength: 4096 }
         code: { type: string, pattern: '^([0-9]{6}|[A-Z0-9]{4}-[A-Z0-9]{4})$' }
+    ReauthRequest:
+      type: object
+      required: [password]
+      additionalProperties: false
+      properties:
+        password: { type: string, minLength: 1, maxLength: 128, writeOnly: true }
+        code: { type: [string, 'null'], pattern: '^[0-9]{6}$', writeOnly: true, description: 'TOTP code; required for an MFA user (cfg.auth.mfa_required_roles or an own enrolment). Recovery codes are not accepted here.' }
+    ReauthResponse:
+      type: object
+      required: [access_token, access_expires_at, pii_until]
+      additionalProperties: false
+      properties:
+        access_token: { type: string, maxLength: 4096 }
+        access_expires_at: { $ref: '#/components/schemas/Timestamp' }
+        pii_until: { $ref: '#/components/schemas/Timestamp' }
     Jwks:
       type: object
       required: [keys]
@@ -5759,7 +5805,8 @@ components:
           maxItems: 200
           items: { type: string, pattern: '^[a-z_]+(\.[a-z_]+)*$' }
         scope: { $ref: '#/components/schemas/ScopeSummary' }
-        pii: { type: boolean, description: Whether the caller may see outlet phone and owner columns. }
+        pii: { type: boolean, description: 'Whether the caller may see outlet phone and owner columns now: true only inside a reveal window opened by POST /v1/auth/reauth.' }
+        pii_until: { oneOf: [{ $ref: '#/components/schemas/Timestamp' }, { type: 'null' }], description: 'End of the reveal window while pii is true, else null.' }
         mfa_enabled: { type: boolean }
         menus:
           type: array

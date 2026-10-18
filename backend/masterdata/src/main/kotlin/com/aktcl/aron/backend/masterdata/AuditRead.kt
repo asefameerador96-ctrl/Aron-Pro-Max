@@ -99,8 +99,9 @@ private fun obj(text: String): JsonObject = when (val e = Json.parseToJsonElemen
  * What a reader may see of an audit row's `before` and `after` (D-AUTHZ-AUDIT, docs/status/backend-authz.md "never-show list").
  * - Never shown to anyone: the members in [NEVER_SHOW] (token, secret, hash and OTP material) and any member whose name
  *   looks like one ([SECRETISH]), at any depth.
- * - Personal data ([PII]) is shown only to a token that carries the PII grant (docs/21 s4.5; no token carries it until the
- *   reveal flow is built), so ADMIN and SUPERADMIN see every other value.
+ * - Personal data is masked for ADMIN and SUPERADMIN too, except while their token's PII reveal holds (docs/21 s4.5,
+ *   D-AUTHZ-PII: step-up, `pii.reveal` grant, the request audited); a reveal unmasks only the members named in [PII], never
+ *   a member that merely looks personal ([PII_LIKE]). ADMIN and SUPERADMIN see every other value.
  * - ANALYST and SUPPORT: default deny. Only members that changed are listed, and a value is shown only when its
  *   entity's allowlist ([PLAIN]) names it and it is a scalar; every other changed member (a new key nobody listed
  *   included) is listed by name with [MASK] as its value. The free-text `reason` is masked for them too.
@@ -205,10 +206,10 @@ internal object AuditMask {
         return if (SECRET_CFG_KEY.containsMatchIn(key)) JsonObject(o.mapValues { (k, v) -> if (k == "value" || k == "old_value") JsonPrimitive(MASK) else v }) else o
     }
 
-    /** Masks never-show members at any depth, and personal data unless the token carries the PII grant. */
+    /** Masks never-show members at any depth, and personal data unless a reveal holds and [PII] names the member. */
     private fun clean(p: AronPrincipal, key: String, v: JsonElement): JsonElement = when {
         neverShow(key) -> JsonPrimitive(MASK)
-        personal(key) && !p.pii -> JsonPrimitive(MASK)
+        personal(key) && !(p.pii && key.lowercase() in PII) -> JsonPrimitive(MASK)
         v is JsonObject -> JsonObject(cfgValues(v).mapValues { (k, x) -> clean(p, k, x) })
         v is JsonArray -> JsonArray(v.map { clean(p, key, it) })
         else -> v

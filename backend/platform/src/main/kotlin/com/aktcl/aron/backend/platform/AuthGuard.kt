@@ -10,6 +10,8 @@ import io.ktor.server.routing.Route
 import io.ktor.server.routing.RouteSelector
 import io.ktor.server.routing.RouteSelectorEvaluation
 import io.ktor.server.routing.RoutingResolveContext
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 /** Current scope_version of a user, or null when the user does not exist (docs/24 s8.4). Implemented by auth. */
 fun interface ScopeVersionLookup {
@@ -34,6 +36,8 @@ class AuthGuardDeps(
     val scopeVersions: ScopeVersionLookup,
     val config: ServerConfig,
     clock: AronClock = AronClock.SYSTEM,
+    /** Reveal audit rows (D-AUTHZ-PII); without it no request is ever served unmasked. */
+    val piiReveals: PiiRevealLog? = null,
 ) {
     val perDevice = RateLimiter(config.int("cfg.api.rl.device_per_min"), 60, clock)
     val perUser = RateLimiter(config.int("cfg.api.rl.user_per_min"), 60, clock)
@@ -57,7 +61,7 @@ class AuthGuardConfig {
 val AuthGuard = createRouteScopedPlugin("AronAuthGuard", ::AuthGuardConfig) {
     val cfg = pluginConfig
     onCall { call ->
-        val p = authenticate(call, cfg)
+        val p = revealGate(call, authenticate(call, cfg), cfg.deps)
         call.attributes.put(PrincipalKey, p)
         val decision = if (p.isPhone && p.deviceUuid != null) cfg.deps.perDevice.tryAcquire("d:" + p.deviceUuid)
         else cfg.deps.perUser.tryAcquire("u:" + p.userId)
@@ -94,6 +98,24 @@ private fun authenticate(call: ApplicationCall, cfg: AuthGuardConfig): AronPrinc
     if (p.audience != Audience.API) return p
     val granted = cfg.deps.scopeVersions.rolePermissions(p.role.wire)
     return if (granted.isEmpty()) p else p.copy(permissions = (p.permissions + granted).distinct())
+}
+
+/**
+ * D-AUTHZ-PII: a token's `pii` (already limited to its `pii_until` window by the verifier) holds only for a web API
+ * token whose role holds [PiiReveal.PERMISSION] now, and only once the request is in the audit log; otherwise the
+ * request is served masked. GET /v1/me reports the window and serves no personal value, so it writes no row.
+ */
+private suspend fun revealGate(call: ApplicationCall, p: AronPrincipal, deps: AuthGuardDeps): AronPrincipal {
+    if (!p.pii) return p
+    val log = deps.piiReveals
+    if (log == null || p.isPhone || p.audience != Audience.API || p.piiUntil == null) return p.copy(pii = false)
+    if (PiiReveal.PERMISSION !in deps.scopeVersions.rolePermissions(p.role.wire)) return p.copy(pii = false)
+    val path = call.request.path()
+    if (path == "/v1/me") return p
+    val written = runCatching {
+        withContext(Dispatchers.IO) { log.read(p, call.request.httpMethod.value, path, call.attributes.getOrNull(RequestIdKey)) }
+    }.isSuccess
+    return if (written) p else p.copy(pii = false)
 }
 
 /**

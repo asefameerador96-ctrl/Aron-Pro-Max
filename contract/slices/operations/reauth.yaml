@@ -1,0 +1,50 @@
+path: /v1/auth/reauth
+method: post
+operation:
+  tags:
+  - auth
+  operationId: reauth
+  summary: Step-up before a PII reveal (web sessions of a role that holds pii.reveal).
+  description: 'A web API session re-enters its password and, for an MFA user, a fresh 6-digit TOTP code (docs/21
+    s4.5). The
+
+    role must hold the `pii.reveal` grant (`app.role_grant_map`, read per request; ADMIN and SUPERADMIN by default),
+
+    else 403. Wrong answers share one 401 `ERR_AUTH_INVALID_CREDENTIALS` and count towards the lockout
+
+    (`cfg.auth.lockout_attempts`, then 403 `ERR_AUTH_ACCOUNT_LOCKED`). Success returns a new web access token whose
+
+    reveal holds until `pii_until` (now + `cfg.pii.reauth_min`, at most the token''s life); the refresh token is
+
+    unchanged and a refresh mints a token without the reveal. While it holds, `Me.pii` is true and the masked
+
+    personal columns (phone, owner, report `pii` columns, ADMIN audit-log personal members) are served; every such
+
+    request writes an audit row (entity `pii_reveal`, no personal value). ANALYST and SUPPORT audit-log masking
+
+    never changes.
+
+    '
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          $ref: '#/components/schemas/ReauthRequest'
+  responses:
+    '200':
+      description: Reveal window opened; use the returned access token.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ReauthResponse'
+    '400':
+      $ref: '#/components/responses/BadRequest'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'
+    '429':
+      $ref: '#/components/responses/TooManyRequests'
+    '503':
+      $ref: '#/components/responses/ServiceUnavailable'

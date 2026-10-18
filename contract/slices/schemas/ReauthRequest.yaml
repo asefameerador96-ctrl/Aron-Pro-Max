@@ -1,0 +1,19 @@
+ReauthRequest:
+  type: object
+  required:
+  - password
+  additionalProperties: false
+  properties:
+    password:
+      type: string
+      minLength: 1
+      maxLength: 128
+      writeOnly: true
+    code:
+      type:
+      - string
+      - 'null'
+      pattern: ^[0-9]{6}$
+      writeOnly: true
+      description: TOTP code; required for an MFA user (cfg.auth.mfa_required_roles or an own enrolment). Recovery
+        codes are not accepted here.

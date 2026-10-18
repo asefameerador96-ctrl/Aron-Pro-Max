@@ -18,7 +18,13 @@ Me:
       $ref: '#/components/schemas/ScopeSummary'
     pii:
       type: boolean
-      description: Whether the caller may see outlet phone and owner columns.
+      description: 'Whether the caller may see outlet phone and owner columns now: true only inside a reveal window
+        opened by POST /v1/auth/reauth.'
+    pii_until:
+      oneOf:
+      - $ref: '#/components/schemas/Timestamp'
+      - type: 'null'
+      description: End of the reveal window while pii is true, else null.
     mfa_enabled:
       type: boolean
     menus:

@@ -175,7 +175,8 @@ class Wiring(
             val config = DbServerConfig(db, RegistryDefaults(s.env), clock)
             val keys = JwtKeys.fromSettings(s)
             val users = JdbiUserStore(db, clock)
-            val guard = AuthGuardDeps(AccessTokenVerifier(keys, clock), users, config, clock)
+            val piiReveals = com.aktcl.aron.backend.platform.JdbiPiiRevealLog(db)
+            val guard = AuthGuardDeps(AccessTokenVerifier(keys, clock), users, config, clock, piiReveals)
             val geo = GeoRepository(db, clock)
             val reach = SqlReachResolver(db, geo, clock)
             val issuer = TokenIssuer(keys, config, clock)
@@ -236,6 +237,7 @@ class Wiring(
                 passwords = com.aktcl.aron.backend.auth.JdbiPasswordStore(db), minPasswordLen = minPasswordLen,
                 binds = com.aktcl.aron.backend.auth.JdbiBindStore(db), otpSealer = otpSealer, securityEvents = securityEvents,
                 mfa = com.aktcl.aron.backend.auth.JdbiMfaStore(db), mfaCipher = com.aktcl.aron.backend.auth.MfaCipher(mfaKeyRing(s, keys)),
+                piiReveals = piiReveals,
             )
             val permDeps = ConfigPermissionsDeps(permissions, guard)
             val auth = AuthDeps(

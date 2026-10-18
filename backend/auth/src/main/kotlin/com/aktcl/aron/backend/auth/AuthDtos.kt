@@ -77,7 +77,25 @@ data class JwkEcPublic(val kty: String, val crv: String, val x: String, val y: S
 data class Jwks(val keys: List<JwkEcPublic>)
 
 @Serializable
-data class Me(val user: UserSummary, val permissions: List<String>, val scope: ScopeSummary, val pii: Boolean, val mfa_enabled: Boolean, val menus: List<kotlinx.serialization.json.JsonElement>? = null)
+data class Me(val user: UserSummary, val permissions: List<String>, val scope: ScopeSummary, val pii: Boolean, val mfa_enabled: Boolean, val menus: List<kotlinx.serialization.json.JsonElement>? = null,
+    /** End of the caller's PII reveal window while [pii] is true, else null (D-AUTHZ-PII). */
+    val pii_until: String? = null,
+)
+
+/** POST /v1/auth/reauth (contract ReauthRequest; never logged): the password, and a TOTP code for an MFA user. */
+@Serializable
+data class ReauthRequest(val password: String, val code: String? = null) {
+    init {
+        require(password.length in 1..128) { "/password: length" }
+        require(code == null || Regex("^[0-9]{6}$").matches(code)) { "/code: pattern" }
+    }
+
+    override fun toString() = "ReauthRequest(***)"
+}
+
+/** Contract ReauthResponse: a web access token whose `pii` claim holds until [pii_until]. */
+@Serializable
+data class ReauthResponse(val access_token: String, val access_expires_at: String, val pii_until: String)
 
 /** POST /v1/auth/change-password (contract ChangePasswordRequest; never logged). */
 @Serializable

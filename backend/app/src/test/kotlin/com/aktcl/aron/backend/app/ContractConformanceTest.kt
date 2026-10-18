@@ -436,6 +436,8 @@ class ContractConformanceTest {
                 n.put("grant", "full"); n.put("refresh_token", x.world.logins["sr1001"]?.path("refresh_token")?.asText().orEmpty()); n.put("device_uuid", ApiWorld.SR_PHONE)
             }),
             "POST /v1/auth/change-password" to Fx(body = { n, _, x -> n.put("current_password", x.world.password); n.put("new_password", "Qz7-Kestrel-Lagoon-91") }),
+            // PII step-up (D-AUTHZ-PII): the password only; ADMIN and SUPERADMIN hold pii.reveal (V0086) and are not MFA roles in this world.
+            "POST /v1/auth/reauth" to Fx(body = { n, _, x -> n.put("password", x.world.password); n.putNull("code") }),
             "GET /v1/media/{}/read-url" to Fx(path = { _, _ -> mapOf("media_uuid" to ApiWorld.STORED_PHOTO) }),
             "POST /v1/media/upload" to Fx(raw = { c, _ -> photoUpload(ApiWorld.v4("upload/${c.user}")) }),
             "POST /v1/day/final-submit" to Fx(after = listOf("POST /v1/web-entry/qc", "POST /v1/web-entry/route-day")),
