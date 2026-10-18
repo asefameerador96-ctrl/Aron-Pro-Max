@@ -16,6 +16,8 @@ GET /v1/admin/enrolment-tokens  # national roles only (ADMIN, SUPERADMIN, SUPPOR
 GET /v1/admin/prices  # global by design: catalogue, configuration or calendar shared by every division
 GET /v1/admin/print-templates  # global by design: catalogue, configuration or calendar shared by every division
 GET /v1/admin/product-nodes/{}  # global by design: catalogue, configuration or calendar shared by every division
+GET /v1/admin/releases  # global by design: catalogue, configuration or calendar shared by every division
+GET /v1/admin/releases/policy  # global by design: catalogue, configuration or calendar shared by every division
 GET /v1/admin/rubrics  # global by design: catalogue, configuration or calendar shared by every division
 GET /v1/admin/skus  # global by design: catalogue, configuration or calendar shared by every division
 GET /v1/admin/surveys  # global by design: catalogue, configuration or calendar shared by every division

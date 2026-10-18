@@ -55,7 +55,8 @@ object SkuListReport : ReportHandler {
 
 /**
  * `geofence-calibration` (F-WEB-067): the distance histogram of in-period SR visits per geo class and territory, with the force-sale share
- * (docs/24 s12: the evidence for the radius an admin sets). Bands in metres; a visit without a distance is not counted.
+ * (docs/24 s12: the evidence for the radius an admin sets). Bands in metres; a visit without a distance is not counted. The smallest and
+ * largest geofence radius the phones and the server applied to the row's visits (`app.visit` stamps; N-050 evidence) keep the grain.
  */
 object GeofenceCalibrationReport : ReportHandler {
     override val definition = definition(
@@ -63,6 +64,8 @@ object GeofenceCalibrationReport : ReportHandler {
         listOf(
             col("distance_band_m", "Distance band (m)", "string"), col("geo_class", "Geo class", "string"), col("territory", "Territory", "string"),
             col("visits", "Visits", "integer"), col("force_sale_share", "Force-sale share", "decimal", unit = "%"),
+            col("radius_used_min_m", "Phone radius min (m)", "integer", unit = "m"), col("radius_used_max_m", "Phone radius max (m)", "integer", unit = "m"),
+            col("server_radius_min_m", "Server radius min (m)", "integer", unit = "m"), col("server_radius_max_m", "Server radius max (m)", "integer", unit = "m"),
         ),
         listOf("period", "geo"),
     )
@@ -72,8 +75,11 @@ object GeofenceCalibrationReport : ReportHandler {
         SELECT CASE WHEN v.distance_m < 25 THEN '000-025' WHEN v.distance_m < 50 THEN '025-050' WHEN v.distance_m < 100 THEN '050-100'
                     WHEN v.distance_m < 200 THEN '100-200' WHEN v.distance_m < 500 THEN '200-500' ELSE '500+' END AS distance_band_m,
                coalesce(o.geo_class, 'unclassified') AS geo_class, g.territory_name AS territory, count(*)::int AS visits,
-               round(100.0 * count(*) FILTER (WHERE v.geo_action = 'force_sale') / count(*), 2) AS force_sale_share
+               round(100.0 * count(*) FILTER (WHERE v.geo_action = 'force_sale') / count(*), 2) AS force_sale_share,
+               min(av.radius_m_used) AS radius_used_min_m, max(av.radius_m_used) AS radius_used_max_m,
+               min(av.server_radius_m) AS server_radius_min_m, max(av.server_radius_m) AS server_radius_max_m
           FROM dw.fact_visit v JOIN dw.dim_geo g ON g.route_id = v.route_id LEFT JOIN dw.dim_outlet o ON o.outlet_id = v.outlet_id
+          LEFT JOIN app.visit av ON av.client_uuid = v.visit_client_uuid AND av.business_date = v.business_date
          WHERE ${ctx.dateClause("v.business_date")} AND v.visit_kind = 'sr_call' AND NOT v.voided AND v.distance_m IS NOT NULL
            AND ${ctx.zoneClause("g.zone_id")} AND ${ctx.routeClause("v.route_id")}
          GROUP BY 1, 2, 3

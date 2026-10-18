@@ -40,6 +40,9 @@ import com.aktcl.aron.backend.config.ConfigPublic
 import com.aktcl.aron.backend.config.ConfigPublicDeps
 import com.aktcl.aron.backend.config.configPermissionRoutes
 import com.aktcl.aron.backend.config.configPublicRoutes
+import com.aktcl.aron.backend.config.ReleaseAdmin
+import com.aktcl.aron.backend.config.ReleaseAdminDeps
+import com.aktcl.aron.backend.config.releaseAdminRoutes
 import com.aktcl.aron.backend.config.ConfigService
 import com.aktcl.aron.backend.config.ConfigTools
 import com.aktcl.aron.backend.config.ConfigToolsDeps
@@ -321,6 +324,7 @@ class Wiring(
                 configToolRoutes(toolsDeps)
                 configPermissionRoutes(permDeps)
                 configPublicRoutes(publicDeps)
+                releaseAdminRoutes(ReleaseAdminDeps(ReleaseAdmin(db, configResolver, clock), guard))
                 syncRoutes(sync)
                 taskRoutes(com.aktcl.aron.backend.sync.TaskDeps(com.aktcl.aron.backend.sync.TaskService(db, reach, clock, push), guard))
                 dayRoutes(com.aktcl.aron.backend.sync.DayDeps(guard, com.aktcl.aron.backend.sync.DayService(db, config, reach, sync.ingest!!, clock)))

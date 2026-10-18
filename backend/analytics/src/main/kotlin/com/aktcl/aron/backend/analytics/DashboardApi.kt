@@ -42,7 +42,9 @@ data class DashboardKpis(
 )
 
 @Serializable
-data class CategoryVolume(val category_code: String, val base_unit: String, val qty_base: Long, val net_mtk: Long)
+data class CategoryVolume(
+    val category_code: String, val base_unit: String, val qty_base: Long, val net_mtk: Long, val report_unit: String? = null, val qty_report: String? = null,
+)
 
 @Serializable
 data class ChannelVolume(
@@ -68,6 +70,7 @@ data class DashboardChild(val node: NodeRefDto, val kpis: DashboardKpis)
 data class DashboardSummary(
     val as_of: String, val from: String, val to: String, val node: NodeRefDto, val kpis: DashboardKpis,
     val by_category: List<CategoryVolume>, val by_channel: List<ChannelVolume>, val by_brand: List<ChannelVolume>, val children: List<DashboardChild>,
+    val by_segment: List<ChannelVolume> = emptyList(),
 )
 
 /** Percentage with two decimals (half up), null when the denominator is 0. */
@@ -94,7 +97,7 @@ private val LEVELS = mapOf(
 )
 
 /**
- * GET /v1/dashboards/summary (F-API-014). Reads `dw` aggregates only (never the transaction log), from the read replica
+ * GET /v1/dashboards/summary (F-API-014). Reads `dw` aggregates only (never the transaction log; the SKU master for report units), from the read replica
  * when configured, scoped by the caller's server-side reach; cached 30 s per scope hash, node and date range.
  */
 class DashboardService(
@@ -113,7 +116,7 @@ class DashboardService(
         val key = "${scope.hash}|${node.first}|${node.second}|$from|$to"
         val now = clock.now()
         cache[key]?.let { (at, v) -> if (Duration.between(at, now) < ttl) return v }
-        val multi = level == null && nodeId == null && !reach.national && reach.topNodes.size > 1
+        val multi = level == null && nodeId == null && !reach.national && reach.topNodes.count { it.type in LEVELS } > 1
         val v = db.readJdbi.withHandle<DashboardSummary, Exception> { h -> compute(h, reach, scope, node, from, to, multi) }
         if (cache.size > 2_000) { cache.entries.removeIf { Duration.between(it.value.first, now) >= ttl }; if (cache.size > 2_000) cache.clear() }
         cache[key] = now to v
@@ -137,7 +140,7 @@ class DashboardService(
         val key = "${scope.hash}|${node.first}|${node.second}|$from|$to"
         val now = clock.now()
         geoCache[key]?.let { (at, v) -> if (Duration.between(at, now) < ttl) return v }
-        val multi = level == null && nodeId == null && !reach.national && reach.topNodes.size > 1
+        val multi = level == null && nodeId == null && !reach.national && reach.topNodes.count { it.type in LEVELS } > 1
         val v = db.readJdbi.withHandle<GeoValidationSummary, Exception> { h -> computeGeo(h, nodeScope(h, reach, scope, node, multi), from, to) }
         if (geoCache.size > 2_000) { geoCache.entries.removeIf { Duration.between(it.value.first, now) >= ttl }; if (geoCache.size > 2_000) geoCache.clear() }
         geoCache[key] = now to v
@@ -202,7 +205,8 @@ class DashboardService(
         val out = ApiProblem(ProblemCode.ERR_FORBIDDEN, "node is outside your reach")
         if (level == null && nodeId == null) {
             if (reach.national) return "national" to 0L
-            val top = reach.topNodes.firstOrNull() ?: throw out
+            // Cover routes outside the caller's zones are reach nodes too, but not a dashboard level: label with a geo node.
+            val top = reach.topNodes.firstOrNull { it.type in LEVELS } ?: throw out
             return top.type to top.id
         }
         val lv = level ?: throw ApiProblem(ProblemCode.ERR_VALIDATION, "node_id needs level", errors = listOf(FieldError("query.level", "required")))
@@ -258,13 +262,42 @@ class DashboardService(
             it.map { rs, _ -> rs.getObject(1, java.time.OffsetDateTime::class.java)?.toInstant() }.one()
         } ?: clock.now()
 
+        // Report unit and quantity (contract CategoryVolume) only when every SKU of the group has the same report unit; the
+        // quantity is the exact sum of qty_base / report_factor (base units per report unit) rounded once to 3 decimals, half up.
+        // net_mtk is the sale-line value: free, DRP and offer lines are offset by their discounts, and memo-level QC
+        // settlements and rounding are not attributed to a SKU (the same basis as by_brand and by_segment).
         val byCategory = h.q(
             """
-            SELECT p.category_code, p.base_unit, sum(a.sold_qty_base + a.free_qty_base) qty, sum(a.gross_mtk) gross
-              FROM dw.agg_daily_route_sku a JOIN dw.dim_product p ON p.sku_id = a.sku_id JOIN dw.dim_geo g ON g.route_id = a.route_id
-             WHERE a.business_date BETWEEN :f AND :t AND ${eff.clause("g.zone_id")} GROUP BY 1, 2 ORDER BY 1, 2
+            WITH k AS (
+              SELECT p.category_code, p.base_unit, s.report_unit, s.report_factor, sum(a.sold_qty_base + a.free_qty_base) qty, sum(a.gross_mtk) gross
+                FROM dw.agg_daily_route_sku a JOIN dw.dim_product p ON p.sku_id = a.sku_id JOIN dw.dim_geo g ON g.route_id = a.route_id
+                JOIN app.sku s ON s.id = a.sku_id
+               WHERE a.business_date BETWEEN :f AND :t AND ${eff.clause("g.zone_id")} GROUP BY 1, 2, 3, 4)
+            SELECT category_code, base_unit, sum(qty) qty, sum(gross) gross,
+                   CASE WHEN count(*) = count(report_unit) AND count(DISTINCT report_unit) = 1 THEN min(report_unit) END ru,
+                   CASE WHEN count(*) = count(report_unit) AND count(DISTINCT report_unit) = 1 THEN round(sum(qty / report_factor), 3) END qr
+              FROM k GROUP BY 1, 2 ORDER BY 1, 2
             """,
-        ) { it.map { rs, _ -> CategoryVolume(rs.getString(1), rs.getString(2), rs.getLong(3), rs.getLong(4)) }.list() }
+        ) {
+            it.map { rs, _ ->
+                CategoryVolume(rs.getString(1), rs.getString(2), rs.getLong(3), rs.getLong(4), rs.getString(5), rs.getBigDecimal(6)?.setScale(3, RoundingMode.HALF_UP)?.toPlainString())
+            }.list()
+        }
+
+        val bySegment = h.q(
+            """
+            SELECT a.segment_id, p.segment_name, sum(a.gross_mtk) net, sum(a.sold_qty_base) qty, sum(a.memo_count) memos
+              FROM dw.agg_daily_route_segment a JOIN dw.dim_geo g ON g.route_id = a.route_id
+              JOIN LATERAL (SELECT segment_name FROM dw.dim_product WHERE segment_id = a.segment_id ORDER BY segment_name LIMIT 1) p ON true
+             WHERE a.business_date BETWEEN :f AND :t AND ${eff.clause("g.zone_id")} GROUP BY 1, 2 ORDER BY 1
+            """,
+        ) {
+            it.map { rs, _ ->
+                val memos = rs.getInt(5)
+                // As for brands, one memo is one successful call of the segment.
+                ChannelVolume(rs.getLong(1).toString(), rs.getString(2), rs.getLong(3), rs.getLong(4), memos, memos, pct(memos.toLong(), kpis.active_memo_count.toLong()))
+            }.list()
+        }
 
         val byChannel = h.q(
             """
@@ -317,7 +350,7 @@ class DashboardService(
                 """,
             ) { it.map { rs, _ -> DashboardChild(NodeRefDto("route", rs.getLong("cid"), rs.getString("ccode"), rs.getString("cname")), kpisOf(rs, zones = false)) }.list() }
         }
-        return DashboardSummary(asOf.wire(), from.toString(), to.toString(), nodeRef, kpis, byCategory, byChannel, byBrand, children)
+        return DashboardSummary(asOf.wire(), from.toString(), to.toString(), nodeRef, kpis, byCategory, byChannel, byBrand, children, bySegment)
     }
 
     private fun kpisOf(rs: java.sql.ResultSet, zones: Boolean = true): DashboardKpis {

@@ -1,3 +1,10 @@
+> **lead-backend, 2026-10-17 (lane/lead-backend):** done in the smallest non-breaking shape. A new report key would be a new
+> value of the `ReportKey` response enum (breaking for old clients, docs/30), so the existing visit evidence report
+> `geofence-calibration` (TSO in reach and above) gained four columns from the `app.visit` stamps, keeping its grain:
+> `radius_used_min_m`, `radius_used_max_m` (the radius the phones applied) and `server_radius_min_m`,
+> `server_radius_max_m` (the server re-check). For the owner's one visit of the day, min = max = the stamped radius,
+> which is what check 7 needs (filter the period to that date and the route).
+
 # qa → backend-reports (and lead for the contract): a visit read that shows the geofence radius used (N-050), 2026-10-17
 
 **Need.** N-050's acceptance is "the next visit on the phone is stamped with 50 m and judged by it". The stamp is
