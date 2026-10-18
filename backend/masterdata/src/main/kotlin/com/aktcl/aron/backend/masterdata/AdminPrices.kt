@@ -356,7 +356,6 @@ private fun currentListVersion(h: Handle): Long = h.createQuery(
 private suspend fun publish(call: ApplicationCall, d: AdminPricesDeps) {
     val p = call.masterWriter()
     val (req, from) = parseRequest(call, call.receiveText())
-    val backdated = checkDate(p, from, d)
     val uuid = UUID.fromString(req.batch_uuid)
     val fp = fingerprint(from, req.prices)
     val reason = req.change_reason.trim()
@@ -373,6 +372,9 @@ private suspend fun publish(call: ApplicationCall, d: AdminPricesDeps) {
                 else emptyList()
                 return@inTransaction SkuPriceListOut(items, existing.listVersion ?: currentListVersion(h)) to existing.status
             }
+            // After the replay: a batch published at 23:55 for tomorrow and retried at 00:05 answers the first publish,
+            // only a new publish is judged back-dated against today.
+            val backdated = checkDate(p, from, d)
             if (d.requirePreview && (existing == null || existing.fingerprint != fp)) throw ApiProblem(
                 ProblemCode.ERR_REQUEST_STATE, "preview these prices first (POST /v1/admin/prices/preview with the same batch_uuid and rows)", errors = listOf(FieldError("body.batch_uuid", "preview_required")),
             )
