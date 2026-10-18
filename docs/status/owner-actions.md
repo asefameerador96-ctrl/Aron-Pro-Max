@@ -12,6 +12,7 @@ Only what needs the owner's account, approval or hands (CLAUDE.md rule 7). Newes
 | D | Confirm or change the proposed target (feature-complete on dev 2026-10-20, buffer 2026-10-22) | forecast |
 | E | Tell the lead the weekly usage percentage; turn ultracode off for the lead session | pacing of the released lanes |
 | F | Policy (low priority, not blocking): may an **approved negative dues correction** take an outlet balance below zero (a credit)? | backend-admin built dues corrections (ADMIN proposes, SUPERADMIN decides) with no balance floor. Default until you answer: allowed, and the approval response flags it when the balance goes negative. |
+| G | 2026-10-18 | **Approve the APK size baseline refresh** (`tools/ci/apk-size-baseline.json`, new values from the next green Release APKs table; the +15% gate stays) or tell the Android lanes to cut size instead | the harness refused the integrator the file edit (CI gate change); nobody worked around it. Release APKs are ~5 MB per ABI against the 30 MB budget (target 22), but amo + tso together are +15.3% over the 4.37 MiB baseline of 2026-10-17. amo lands first; android-tso is trimming size meanwhile. Lead recommends the refresh. |
 
 
 Older items below still stand unless a row above replaces them (rows 4, 5, 6, 11, 12 become live once the laptop session exists).
