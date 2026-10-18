@@ -37,12 +37,20 @@ AronInfoCard(text, trailing = { AronPrinterBadge(...) })            // summary.p
 AronStatusDot(label, state, online)                                 // sales-submit.png device status
 AronNoticeCard(text)                                                // sales-submit.png pink notice
 AronDataTable(headers, rows: List<List<String>>, weights = null)     // purple rounded header + ruled rows (submit table)
+AronCard(modifier, onClick = null) { ... }                           // white 12 dp card, soft shadow, 16 dp padding
+AronListRow(title, subtitle = null, trailing = null, leading: Painter? = null, onClick = null)
+AronField(value, onValueChange, label, placeholder = null, errorText = null, keyboardType = Text, singleLine = true, password = false, enabled = true)
+AronTabs(tabs: List<String>, selected: Int, onSelect: (Int) -> Unit)   // gradient pill = selected
+AronDialog(title, text, confirmText, onConfirm, onDismiss, dismissText = null)
+AronSwitchRow(label, checked, onCheckedChange, subtitle = null)
+AronLogoutButton(text, onClick)                                       // solid red
 // ButtonGlyph: Save, Print, Sync, Submit. Disabled AronPrimaryButton = solid #B8B8B8, white label (sales-submit.png)
 AronTargetCard(title, label, value = daySales, percent = null)       // Home target card shell; targets deferred (docs/27)
-SummaryTable(headers: List<String>, rows: List<SummaryRow(title, values)>, subtotals: List<TotalsLine> = empty, totals: List<SummaryTotal(label, value)> = empty)
+SummaryTable(headers: List<String>, rows: List<SummaryRow(title, values)>, subtotals: List<TotalsLine> = empty, totals: List<SummaryTotal(label, value)> = empty,
+             weights: List<Float>? = null /* 6 columns default 0.7,0.9,1.4,1.2,1.4,0.8 */)   // cells shrink, never break inside a word or number
 // then AronPrimaryButton(print, onPrint, Modifier.fillMaxWidth(), glyph = ButtonGlyph.Print, reverse = true)
 ```
-Gallery: `AronLookGallery()` (tests `AronLookGalleryTest`: bn/en, font scale 1.0/1.3, sunlight, 48 dp targets, TalkBack names, no clipped text). Capture: `./gradlew :android:ui-screenshots:testDebugUnitTest --tests '*KitGalleryShot*look*'` -> `android/ui-screenshots/build/kitshots/look_*.png`. Icons (lead ruling 2026-10-18: the owner's original art): `com.aktcl.aron.core.ui.R.drawable.aron_art_{attendance,stock,sale,memo,summary,sales_submit,outlet,tutorial,task_delegation,photo_capture,sales_journey,kpi,outlet_new,outlet_close,outlet_edit,cluster}` (WebP crops of sr/home-1-tiles.webp and sr/outlet-menu.png, 168 px, drawable-nodpi) for tiles and title bars; no Astha or loyalty art (deferred). Redrawn vectors stay as fallback and for glyphs with no reference: `aron_ic_{attendance,stock,sale,memo,summary,sales_submit,outlet,tutorial,task_delegation,photo_capture,sales_journey,kpi,outlet_new,outlet_close,outlet_edit,cluster,back,gear,printer,printer_off}` (`painterResource(...)`); the top bar icon of a screen is its tile icon. `icon = null` draws a gradient placeholder square.
+Gallery: `AronLookGallery()` (tests `AronLookGalleryTest`: bn/en, font scale 1.0/1.3, sunlight, 48 dp targets, TalkBack names, no clipped text). Capture: `./gradlew :android:ui-screenshots:testDebugUnitTest --tests '*KitGalleryShot*look*'` -> `android/ui-screenshots/build/kitshots/look_*.png`. Icons (lead ruling 2026-10-18: the owner's original art): `com.aktcl.aron.core.ui.R.drawable.aron_art_{attendance,stock,sale,memo,summary,sales_submit,outlet,tutorial,task_delegation,photo_capture,sales_journey,kpi,outlet_new,outlet_close,outlet_edit,cluster}` (WebP crops of sr/home-1-tiles.webp and sr/outlet-menu.png, 168 px, drawable-nodpi) for tiles and title bars; no Astha or loyalty art (deferred). AMO/TSO icons with no reference (redrawn in the same gradient style): `aron_ic_{joint_call,control_call,team,team_location,team_performance,live_dashboard,sr_stock,exceptions,report,price_compliance,assessment,survey,verify,update_base}`. Redrawn vectors stay as fallback and for glyphs with no reference: `aron_ic_{attendance,stock,sale,memo,summary,sales_submit,outlet,tutorial,task_delegation,photo_capture,sales_journey,kpi,outlet_new,outlet_close,outlet_edit,cluster,back,gear,printer,printer_off}` (`painterResource(...)`); the top bar icon of a screen is its tile icon. `icon = null` draws a gradient placeholder square.
 Local build works in this container: Android SDK at /opt/android-sdk (`local.properties` sdk.dir, git-ignored), Gradle resolves through the mirror.
 
 

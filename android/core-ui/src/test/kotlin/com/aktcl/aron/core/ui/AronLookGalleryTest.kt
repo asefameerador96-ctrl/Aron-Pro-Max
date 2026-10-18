@@ -10,6 +10,7 @@ import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -149,6 +150,29 @@ class AronLookGalleryTest {
         rule.onNodeWithContentDescription("pack has").assertExists()
         rule.onNodeWithContentDescription("pack none").assertExists()
         assertTrue(asked.containsAll(listOf("has", "none")))
+    }
+
+    @Test @Config(qualifiers = "bn-w360dp-h800dp") fun dialogInBanglaAtLargeText() {
+        var confirmed = false
+        rule.setContent {
+            CompositionLocalProvider(LocalDensity provides Density(LocalDensity.current.density, fontScale = 1.3f)) {
+                AronTheme(AppLanguage.BN) {
+                    com.aktcl.aron.core.ui.aron.AronDialog(
+                        title = "বিক্রয় জমা দেবেন?", text = "জমা দেওয়ার পর আজকের বিক্রয় আর পরিবর্তন করা যাবে না।",
+                        confirmText = "হ্যাঁ", onConfirm = { confirmed = true }, onDismiss = {}, dismissText = "না",
+                    )
+                }
+            }
+        }
+        rule.onNodeWithText("হ্যাঁ").performClick()
+        assertTrue(confirmed)
+    }
+
+    @Test fun fieldReportsItsError() {
+        rule.setContent {
+            AronTheme(AppLanguage.EN) { com.aktcl.aron.core.ui.aron.AronField("", {}, "Shop name", errorText = "Required") }
+        }
+        rule.onNodeWithContentDescription("Shop name").assert(SemanticsMatcher.expectValue(SemanticsProperties.Error, "Required"))
     }
 
     @Test fun tileColumns() {

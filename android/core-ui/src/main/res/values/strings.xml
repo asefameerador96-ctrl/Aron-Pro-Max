@@ -128,4 +128,16 @@
     <string name="core_ui_look_server">Server</string>
     <string name="core_ui_look_notice">Before you finish today, sync all data and submit the sales from here.</string>
     <string name="core_ui_look_sync">Sync data</string>
+    <string name="core_ui_look_discount">Discount</string>
+    <string name="core_ui_look_net_value">Discounted value</string>
+    <string name="core_ui_look_tab_team">Team</string>
+    <string name="core_ui_look_tab_retailer">Retailer</string>
+    <string name="core_ui_look_field_label">Shop name</string>
+    <string name="core_ui_look_field_hint">Type the name</string>
+    <string name="core_ui_look_sunlight">Sunlight mode</string>
+    <string name="core_ui_look_logout">Log out</string>
+    <string name="core_ui_look_dialog_title">Submit sales?</string>
+    <string name="core_ui_look_dialog_text">After submitting you cannot change today\'s sales.</string>
+    <string name="core_ui_look_yes">Yes</string>
+    <string name="core_ui_look_no">No</string>
 </resources>
