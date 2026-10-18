@@ -52,8 +52,9 @@ fun AmoReportHub(day: AmoDay, onBack: () -> Unit) {
                 else StdMemoReportContent(range, loaded.data, loaded.data?.let { Reports.stdByRoute(it) }.orEmpty(), bangla, money, loaded.stale, loaded.failed)
             }
             ReportLeaf.SUMMARY, ReportLeaf.ROUTE -> {
-                val today = remember { day.businessDate() }
-                val loaded = rememberReport(day, "sales-summary", today, today)
+                // F-AMO-033: month to date over the trading days up to yesterday (today on the 1st), the same range as the STD report.
+                val range = remember { Reports.stdMemoRange(day.businessDate()) }
+                val loaded = rememberReport(day, "sales-summary", range.first, range.second)
                 if (loaded == null) Box(Modifier.fillMaxSize(), Alignment.Center) { CircularProgressIndicator() }
                 else {
                     val cards = loaded.data?.let { Reports.routeCards(it) }.orEmpty()

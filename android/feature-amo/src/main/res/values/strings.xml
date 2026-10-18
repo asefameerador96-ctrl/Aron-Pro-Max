@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="amo_cc_title">Control Call</string>
+    <string name="amo_cc_title">Control Call Activity</string>
     <string name="amo_cc_pick_route">Choose a route</string>
     <string name="amo_cc_pick_outlet">Choose a retailer</string>
     <string name="amo_cc_routes_empty">No routes in your zone yet</string>
@@ -69,7 +69,7 @@
     <string name="amo_sc_r_other">Other</string>
     <string name="amo_sale_done">A sale is already recorded for this call. To change it, use Memo.</string>
     <string name="amo_sale_done_back">Back to the call</string>
-    <string name="amo_rec_distribution_check">Distribution &amp; OOS performance</string>
+    <string name="amo_rec_distribution_check">Distribution and OOS performance</string>
     <string name="amo_rec_distribution_check_line">Distribution brand lines</string>
     <string name="amo_rec_price_compliance_check">Price compliance</string>
     <string name="amo_rec_call_assessment">Joint call</string>
@@ -102,10 +102,10 @@
     <string name="amo_verify_was">was %1$s</string>
     <string name="amo_verify_details_offline">The details need a connection. You can still decide from the summary.</string>
     <string name="amo_verify_details_kept">Details from the last time you were online.</string>
-    <string name="amo_verify_sub_channel">Sub-channel</string>
+    <string name="amo_verify_sub_channel">Sub-Channel</string>
     <string name="amo_verify_no_sub_channels">No sub-channels on this phone yet.</string>
     <string name="amo_verify_sub_channel_required">Choose the sub-channel.</string>
-    <string name="amo_verify_geo_class">Geo classification</string>
+    <string name="amo_verify_geo_class">Geo Classification</string>
     <string name="amo_verify_geo_hill">Hill</string>
     <string name="amo_verify_geo_urban">Urban</string>
     <string name="amo_verify_geo_semiurban">Semi-urban</string>
@@ -113,7 +113,7 @@
     <string name="amo_verify_geo_required">Choose the geo classification.</string>
     <string name="amo_verify_note">Note (optional)</string>
     <string name="amo_verify_no_fix">A good location is needed to save. Go outside and try again; a fake location cannot be used.</string>
-    <string name="amo_verify_save">Save (verify)</string>
+    <string name="amo_verify_save">Save</string>
     <string name="amo_verify_cancel">Cancel</string>
     <string name="amo_verify_reject">Hold to reject this request</string>
     <string name="amo_verify_saved">Saved on this phone. It will be sent.</string>
@@ -164,10 +164,10 @@
     <string name="amo_exc_severity">Level %1$d</string>
     <string name="amo_leaf_update_base">Update Base</string>
     <string name="amo_base_title">Update Base</string>
-    <string name="amo_base_confirm_title">Update this shop\'s location?</string>
+    <string name="amo_base_confirm_title">Are you sure you want to update the retailer\'s location?</string>
     <string name="amo_base_confirm_message">You will take a photo of the shop and set its exact point. The change goes for approval.</string>
-    <string name="amo_base_confirm_yes">Yes, continue</string>
-    <string name="amo_base_confirm_no">No</string>
+    <string name="amo_base_confirm_yes">Update</string>
+    <string name="amo_base_confirm_no">Cancel</string>
     <string name="amo_base_point_title">Exact point of the shop</string>
     <string name="amo_base_point_offset">The pin is %1$s m from where you stand (at most %2$s m).</string>
     <string name="amo_base_point_nofix">Take the photo first: the pin starts where you stand.</string>
@@ -176,7 +176,7 @@
     <string name="amo_base_west">%1$s m west</string>
     <string name="amo_base_east">%1$s m east</string>
     <string name="amo_base_reset">Back to where I stand</string>
-    <string name="amo_base_save">Send for approval</string>
+    <string name="amo_base_save">Confirm</string>
     <string name="amo_base_saved">Saved on this phone. It will be sent for approval.</string>
     <string name="amo_base_moved">The new point is %1$s m from the shop\'s current point.</string>
     <string name="amo_task_title">Task Delegation</string>
@@ -212,7 +212,7 @@
     <string name="amo_stock_empty">No SR stock yet</string>
     <string name="amo_stock_empty_hint">The stock your SRs lifted today shows up here.</string>
     <string name="amo_stock_none_today">This SR has no stock today.</string>
-    <string name="amo_stock_by_sku">Lifted today</string>
+    <string name="amo_stock_by_sku">Lifted stock</string>
     <string name="amo_stock_line">Sold %1$s · Left %2$s</string>
     <string name="amo_stock_totals">Lifted per category</string>
     <string name="amo_stock_other">Other</string>
@@ -280,4 +280,11 @@
     <string name="amo_verify_reject_title">Reject this request?</string>
     <string name="amo_verify_reject_message">The request goes back as rejected. The SR will not get it approved.</string>
     <string name="amo_verify_reject_yes">Yes, reject</string>
+    <string name="amo_verify_section">Verify the requests that came from the SRs</string>
+    <string name="amo_verify_new">New outlet verification</string>
+    <string name="amo_verify_closure">Outlet closure verification</string>
+    <string name="amo_verify_change">Outlet info-change verification</string>
+    <string name="amo_ops_section">Shop operations</string>
+    <string name="amo_mo_note">Take the outlet photo. Its location goes for approval as a request to correct the outlet\'s position.</string>
+    <string name="amo_mo_continue">Continue</string>
 </resources>
