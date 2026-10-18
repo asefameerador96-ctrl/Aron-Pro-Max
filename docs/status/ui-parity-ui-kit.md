@@ -1,7 +1,8 @@
 # UI parity: lane ui-kit (android/core-ui)
 
 Reference: docs/ui-reference/PARITY-SPEC.md s1 and s2, images in docs/ui-reference/sr/. Kit API: top of docs/status/android-core-ui.md.
-Evidence (left reference, right ours): docs/evidence/ui-parity/kit-home-tiles.png, kit-outlet-menu.png, kit-stock-packcard-totals.png, kit-retailer-letters.png, kit-summary-table.png; whole gallery kit-gallery-bn.png and -sunlight.
+Evidence (left: the owner's screenshot; right: the same screen built only from the kit with the screenshot's data, 411 dp Bangla, `KitParityShot`): docs/evidence/ui-parity/kit-home.png, kit-stock.png, kit-sale-select.png, kit-summary.png, kit-sales-submit.png, kit-outlet-menu.png. All icons: kit-icons-sheet.png. Whole gallery at 360 dp: kit-gallery-bn.png (and -sunlight).
+What still differs (kit level): packshots show the grey silhouette until ui-packshots provides images; the Home target card shows the day's sales and no target bar (targets deferred, docs/27); Astha and Loyalty tiles are absent (deferred); our Bangla is Noto Sans Bengali, the reference uses a different Bangla face (slightly narrower), so line breaks can differ.
 
 | Component | Reference | Status | sha |
 |---|---|---|---|
@@ -19,4 +20,12 @@ Evidence (left reference, right ours): docs/evidence/ui-parity/kit-home-tiles.pn
 | Icons Home: attendance, stock, sale, memo, summary, sales_submit, outlet, tutorial, task_delegation, photo_capture, sales_journey, kpi (`R.drawable.aron_ic_*`) | home-1-tiles.webp | DONE as redrawn line art with the pink-purple-blue gradient; PARTIAL against the photo-real camera and the hands-with-stars art (Astha and loyalty tiles are deferred, docs/27: no icon) | icons push |
 | Icons Outlet menu: outlet_new, outlet_close, outlet_edit, cluster | outlet-menu.png | DONE; PARTIAL: the close sign has an X, not the word CLOSE (no text in art: Bangla-first); cluster is pink-blue, the reference is flat blue | icons push |
 | Shared: aron_ic_back, aron_ic_gear, aron_ic_printer, aron_ic_printer_off | stock.webp, home-1-tiles.webp | DONE (the kit itself draws these on Canvas; drawables are for screens) | icons push |
+| Original art crops `aron_art_*` (16) | home-1-tiles.webp, outlet-menu.png | DONE: the owner's own icons (lead ruling), 3 to 12 KB each, 125 KB total WebP | art push |
+| AronTopBar hanging printer badge, 22 sp title; tile labels medium weight | stock.webp, home-1-tiles.webp | DONE | art push |
+| AronInfoCard, AronTargetCard | summary.png, home-1-tiles.webp | DONE (target bar hidden while targets are deferred) | art push |
+| AronStatusDot, AronNoticeCard, AronDataTable, Sync/Submit glyphs, grey disabled primary | sales-submit.png | DONE | submit push |
+| AMO icons (14, requested by ui-amo): joint_call, control_call, team, team_location, team_performance, live_dashboard, sr_stock, exceptions, report, price_compliance, assessment, survey, verify, update_base | no screenshot (noref) | DONE in the set's style; needs owner screenshots | amo icons push |
+| SummaryTable weights + shrink-to-fit cells | summary.png | DONE (six columns at 360 dp, nothing breaks inside a word) | 8591ffb |
+| AronCard, AronListRow, AronField, AronTabs, AronDialog, AronSwitchRow, AronLogoutButton | no screenshot (manual layouts; AMO/TSO) | DONE in the reference language (white cards, gradient selection, purple ink) | forms push |
+| TSO icons (7, requested by ui-tso): tso_leave, tso_periphery, tso_my_call, tso_feedback, tso_team, tso_set_plan, lock | no screenshot (noref) | DONE in the set's style; needs owner screenshots | tso icons push |
 | Sizes | APK budget | 19 vectors, 44 KB source total, largest 4.5 KB | icons push |
