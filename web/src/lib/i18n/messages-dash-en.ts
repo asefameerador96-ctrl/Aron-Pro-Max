@@ -379,5 +379,5 @@ export const dashEn = {
   "error.ERR_WEB_MFA_RESIGNIN": "Sign in again with your authenticator code.",
   "admin.cfgread.unavailable": "{what} is not available for your role (configuration reads are limited to administrators).",
   "admin.cfgread.weekend": "The weekend days setting",
-  "admin.cfgread.policy": "The release policy",
+  "admin.audit.unavailable": "The audit log is not available yet. It will appear here once the server serves it.",
 } as const;

@@ -9,8 +9,6 @@ import type { AppReleasePage, Device, DevicePage, ReleasePolicyList, ResolvedCon
 import { ADMIN_PORTAL_ROLES, hasRole } from "@/lib/auth/roles";
 import { requireSession } from "@/lib/auth/require";
 import { getLocale } from "@/lib/auth/service";
-import { Banner } from "@/components/kit/banner";
-import { t } from "@/lib/i18n";
 
 const POLICY_KEYS = ["cfg.release.min_version_code", "cfg.release.blocked_version_codes"];
 
@@ -41,9 +39,7 @@ export default async function ReleasesPage() {
     cursor = r.data.next_cursor;
   }
   return (
-    <div className="space-y-4">
-      {!keys.ok && keys.status === 403 ? <Banner tone="info" role="note" testId="policy-unavailable">{t(locale, "admin.cfgread.unavailable", { what: t(locale, "admin.cfgread.policy") })}</Banner> : null}
-      <ReleasesView
+    <ReleasesView
       locale={locale}
       releases={rel.data.items}
       policy={policy.ok ? policy.data.items : []}
@@ -54,6 +50,5 @@ export default async function ReleasesPage() {
       canWrite={canOp("release.update", session.user.role)}
       canPublish={canOp("release.publish", session.user.role)}
     />
-    </div>
   );
 }
