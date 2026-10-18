@@ -19,7 +19,9 @@ export function formatLakhCrore(locale: Locale, value: number, words: LakhWords)
 
 /** Milli-taka to whole taka (half up on the magnitude) for the lakh/crore card figures. */
 export function mtkToTaka(mtk: number): number {
-  return Math.sign(mtk) * Math.round(Math.abs(mtk) / 1000);
+  if (!Number.isSafeInteger(mtk)) return Math.sign(mtk) * Math.round(Math.abs(mtk) / 1000);
+  const abs = BigInt(Math.abs(mtk)); // integer maths: (abs + 500) / 1000 is half up with no float rounding
+  return Math.sign(mtk) * Number((abs + 500n) / 1000n);
 }
 
 /** Percent change between two non-negative figures; null when the base is 0 or missing (never a fake comparison). */
