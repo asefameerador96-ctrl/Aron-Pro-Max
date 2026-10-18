@@ -483,9 +483,9 @@ fun SummaryScreen(
                     val unit = unitLabel(cat.categoryCode)
                     val name = categoryLabel(cat.categoryCode)
                     TotalsLine(
-                        if (unit.isEmpty()) name else stringResource(R.string.summary_group_head, name, unit),
+                        name,
                         listOf(
-                            localizedNumber(cat.qtyBase), amount(cat.valueMtk), amount(cat.discountMtk),
+                            qtyText(cat.qtyBase, unit), amount(cat.valueMtk), amount(cat.discountMtk),
                             amount(cat.discountedValueMtk), localizedNumber(cat.returnQtyBase),
                         ),
                     )
