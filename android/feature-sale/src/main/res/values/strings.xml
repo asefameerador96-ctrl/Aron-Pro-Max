@@ -44,7 +44,8 @@
     <string name="review_gross">Total</string>
     <string name="review_offer_discount">Discount</string>
     <string name="review_drp_discount">Slide</string>
-    <string name="review_qc">QC</string>
+    <string name="review_qc">Total QC</string>
+    <string name="review_credit_note">This will be saved as a credit.</string>
     <string name="review_net">Grand total</string>
     <string name="review_paid">Paid</string>
     <string name="review_due">Due</string>
@@ -75,7 +76,6 @@
     <string name="qc_pick">Choose the product you want to add QC for.</string>
     <string name="qc_empty">No product for QC.</string>
     <string name="qc_summary">QC summary</string>
-    <string name="qc_col_type">QC type</string>
     <string name="qc_production">Production fault</string>
     <string name="qc_transport">Transport fault</string>
     <string name="qc_deduction">Settlement amount: %1$s</string>
@@ -104,4 +104,9 @@
     <string name="edit_denied_outside">You can edit a sale only at the shop, inside the geofence.</string>
     <string name="edit_denied_qc">QC is done at this outlet; the sale cannot be edited.</string>
     <string name="edit_denied_superseded">This memo was already replaced by a newer one.</string>
+    <string name="qc_col_mfc">MFC Fault</string>
+    <string name="qc_col_mkt">MKT Fault</string>
+    <string name="qc_col_total">Total</string>
+    <string name="qc_typed_max">Most you can enter: %1$s</string>
+    <string name="sale_qc_only">Product QC without a sale</string>
 </resources>

@@ -23,6 +23,11 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import com.aktcl.aron.core.ui.AronQtyField
+import androidx.compose.ui.semantics.Role
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.platform.testTag
+import androidx.compose.foundation.clickable
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -138,6 +143,13 @@ fun SlideScreen(skus: List<SaleSku>, review: SaleReview, emptyOf: (Long) -> Long
  * the same function as the Review). The bar's primary asks "submit QC?" (green Yes, red No) before it completes QC.
  * Renders its own bottom bar.
  */
+/** Test tags of the QC screen. */
+object QcTags {
+    const val CARD = "qc_card"
+    const val QTY_FIELD = "qc_qty_field"
+    const val SUMMARY_ROW = "qc_summary_row"
+}
+
 @Composable
 fun QcScreen(
     skus: List<SaleSku>,
@@ -151,6 +163,8 @@ fun QcScreen(
     /** The per-SKU taka cap of the bundle, or null: the basis of the maximum is not known yet (MQ-03). */
     capMtkOf: (skuId: Long) -> Long? = { null },
     onClearSku: (skuId: Long) -> Unit = {},
+    /** True for the QC-only path (every SKU of the catalog is offered): a card opens on a tap so the list stays light. */
+    collapsible: Boolean = false,
 ) {
     val c = LocalAronColors.current
     var askSubmit by remember { mutableStateOf(false) }
@@ -164,12 +178,18 @@ fun QcScreen(
             skus.forEach { sku ->
                 val cap = capMtkOf(sku.skuId)
                 val done = QcEntryModel.doneMtk(sku, entries)
+                var open by rememberSaveable(sku.skuId, collapsible) { mutableStateOf(!collapsible) }
+                val shown = open || done > 0
                 AronCard(Modifier.fillMaxWidth()) {
                     Column(Modifier.fillMaxWidth().padding(AronTokens.Space.L), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.M)) {
+                        Row(
+                            (if (collapsible) Modifier.clickable(role = Role.Button) { open = !open } else Modifier).heightIn(min = AronTokens.Touch.Min).testTag(QcTags.CARD),
+                            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.M),
+                        ) {
                             SkuThumb(sku.name)
                             Text(skuDisplayName(sku), style = MaterialTheme.typography.titleSmall, color = c.textPrimary, modifier = Modifier.weight(1f))
                         }
+                        if (shown) {
                         if (cap != null) QcAmountLine(stringResource(R.string.qc_max), money(cap))
                         QcAmountLine(stringResource(R.string.qc_done_amount), money(done))
                         QcEntryModel.remainingMtk(cap, done)?.let { QcAmountLine(stringResource(R.string.qc_remaining), money(it)) }
@@ -179,7 +199,7 @@ fun QcScreen(
                                 Text(qcTypeLabel(type.code), style = MaterialTheme.typography.bodyMedium, color = c.textPrimary)
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     val otherQc = review.qc.filterNot { it.entry.skuId == sku.skuId && it.entry.faultTypeCode == type.code }.sumOf { it.settlementMtk }
-                                    val memoRoom = (review.totals.grossMtk - review.totals.offerDiscountMtk - review.totals.drpDiscountMtk - otherQc).coerceAtLeast(0)
+                                    val memoRoom = QcEntryModel.memoRoomMtk(review.totals.grossMtk, review.totals.offerDiscountMtk + review.totals.drpDiscountMtk, otherQc)
                                     val max = if (locked) 0 else QcEntryModel.maxQty(sku, entries, type.code, cap, memoRoom).coerceAtMost(QcEntryModel.MAX_QTY).toInt()
                                     AronStepper(
                                         qtyOf(sku.skuId, type.code).toInt(), { if (!locked) onQty(sku.skuId, type.code, it.toLong()) },
@@ -187,28 +207,40 @@ fun QcScreen(
                                     )
                                     Spacer(Modifier.width(AronTokens.Space.S))
                                     Text(unitLabel(sku.baseUnit), style = MaterialTheme.typography.bodySmall, color = c.textSecondary)
+                                    Spacer(Modifier.width(AronTokens.Space.S))
+                                    // D-17: a rep may type the count; a number above what is left is accepted down to it and flagged
+                                    AronQtyField(
+                                        qtyOf(sku.skuId, type.code).toInt(), { if (!locked) onQty(sku.skuId, type.code, it.toLong()) },
+                                        name = qcTypeLabel(type.code) + " " + skuDisplayName(sku), max = max, enabled = !locked,
+                                        clampedText = { stringResource(R.string.qc_typed_max, localizedNumber(it.toLong())) },
+                                        modifier = Modifier.testTag(QcTags.QTY_FIELD),
+                                    )
                                 }
                             }
                         }
                         if (!locked && done > 0) AronTextButton(stringResource(R.string.qc_clear), { onClearSku(sku.skuId) })
+                        }
                     }
                 }
             }
             if (review.qc.isNotEmpty()) {
                 Text(stringResource(R.string.qc_summary), style = MaterialTheme.typography.labelMedium, color = c.textSecondary, modifier = Modifier.padding(top = AronTokens.Space.S))
+                // the manual's summary: one row per SKU, a column for each fault group and a total (p37)
                 AronCard(Modifier.fillMaxWidth()) {
                     Column(Modifier.fillMaxWidth().padding(AronTokens.Space.L)) {
                         Row(Modifier.fillMaxWidth()) {
-                            Text(stringResource(R.string.review_col_sku), Modifier.weight(1f), style = MaterialTheme.typography.labelMedium, color = c.textSecondary)
-                            Text(stringResource(R.string.qc_col_type), Modifier.weight(1f), style = MaterialTheme.typography.labelMedium, color = c.textSecondary)
-                            Text(stringResource(R.string.review_col_qty), Modifier.weight(0.6f), style = MaterialTheme.typography.labelMedium, color = c.textSecondary, textAlign = TextAlign.End)
+                            Text(stringResource(R.string.review_col_sku), Modifier.weight(1.4f), style = MaterialTheme.typography.labelMedium, color = c.textSecondary)
+                            Text(stringResource(R.string.qc_col_mfc), Modifier.weight(0.8f), style = MaterialTheme.typography.labelMedium, color = c.textSecondary, textAlign = TextAlign.End)
+                            Text(stringResource(R.string.qc_col_mkt), Modifier.weight(0.8f), style = MaterialTheme.typography.labelMedium, color = c.textSecondary, textAlign = TextAlign.End)
+                            Text(stringResource(R.string.qc_col_total), Modifier.weight(0.8f), style = MaterialTheme.typography.labelMedium, color = c.textSecondary, textAlign = TextAlign.End)
                         }
-                        review.qc.forEach { d ->
-                            val sku = skus.firstOrNull { it.skuId == d.entry.skuId }
-                            Row(Modifier.fillMaxWidth().heightIn(min = AronTokens.Touch.Min), verticalAlignment = Alignment.CenterVertically) {
-                                Text(sku?.let { skuDisplayName(it) } ?: d.entry.skuId.toString(), Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge, color = c.textPrimary, maxLines = 2)
-                                Text(qcTypeLabel(d.entry.faultTypeCode), Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge, color = c.textPrimary, maxLines = 3)
-                                Text(localizedNumber(d.entry.defectQty), Modifier.weight(0.6f), style = MaterialTheme.typography.titleSmall, color = c.textPrimary, textAlign = TextAlign.End)
+                        QcEntryModel.summary(entries).forEach { r ->
+                            val sku = skus.firstOrNull { it.skuId == r.skuId }
+                            Row(Modifier.fillMaxWidth().heightIn(min = AronTokens.Touch.Min).testTag(QcTags.SUMMARY_ROW), verticalAlignment = Alignment.CenterVertically) {
+                                Text(sku?.let { skuDisplayName(it) } ?: r.skuId.toString(), Modifier.weight(1.4f), style = MaterialTheme.typography.bodyLarge, color = c.textPrimary, maxLines = 3)
+                                Text(localizedNumber(r.mfcQty), Modifier.weight(0.8f), style = MaterialTheme.typography.bodyLarge, color = c.textPrimary, textAlign = TextAlign.End)
+                                Text(localizedNumber(r.mktQty), Modifier.weight(0.8f), style = MaterialTheme.typography.bodyLarge, color = c.textPrimary, textAlign = TextAlign.End)
+                                Text(localizedNumber(r.totalQty), Modifier.weight(0.8f), style = MaterialTheme.typography.titleSmall, color = c.textPrimary, textAlign = TextAlign.End)
                             }
                         }
                     }

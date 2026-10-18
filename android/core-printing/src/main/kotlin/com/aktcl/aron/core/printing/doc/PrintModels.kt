@@ -14,7 +14,7 @@ import kotlinx.datetime.LocalDate
  * it against the shared memo oracle, `MemoMath`). Quantities are in the SKU's base unit (sticks, pieces, dozens).
  */
 
-data class MemoPrintLine(val sku: String, val qtyBase: Long, val grossMtk: Long)
+data class MemoPrintLine(val sku: String, val qtyBase: Long, val grossMtk: Long, val category: String = "")
 
 data class MemoPrintDiscount(val sku: String, val qtyBase: Long, val valueMtk: Long)
 
@@ -121,7 +121,11 @@ class DocumentBuilder(private val digits: DigitStyle) {
         if (m.supersedesMemoNo != null) flags.add("supersedes")
         if (m.discounts.isNotEmpty()) flags.add("has_discounts")
         if (m.roundAdjMtk != 0L) flags.add("has_rounding")
-        if (m.isCredit || m.dueMtk != 0L) flags.add("credit")
+        // M3: one "মোট <category>" money row per category, in first-seen order; a memo whose lines carry no category label prints none
+        val categoryTotals = m.lines.filter { it.category.isNotBlank() }.groupBy { it.category }
+            .map { (cat, ls) -> mapOf("category" to cat, "value" to money(ls.sumOf { it.grossMtk })) }
+        if (categoryTotals.isNotEmpty()) flags.add("has_categories")
+        if (m.isCredit || m.dueMtk > 0L) flags.add("credit") // a negative due is a QC credit note, not money the outlet owes
         val totalDiscount = m.offerDiscountMtk + m.drpDiscountMtk
         return PrintDocument(
             fields = mapOf(
@@ -143,6 +147,7 @@ class DocumentBuilder(private val digits: DigitStyle) {
             tables = mapOf(
                 "lines" to m.lines.map { mapOf("sku" to it.sku, "qty" to qty(it.qtyBase), "value" to money(it.grossMtk)) },
                 // Quantities of different units (sticks, pieces, dozens) are never added up; totals are money only.
+                "category_totals" to categoryTotals,
                 "line_total" to listOf(mapOf("value" to money(m.grossMtk))),
                 "discounts" to m.discounts.map { mapOf("sku" to it.sku, "qty" to qty(it.qtyBase), "value" to money(it.valueMtk)) },
                 "discount_total" to listOf(mapOf("value" to money(m.discounts.sumOf { it.valueMtk }))),

@@ -12,7 +12,9 @@ object SaleDraftOps {
         val rest = d.lines.filterNot { it.skuId == skuId }
         val lines = if (qtyEntered == 0L) rest else (rest + DraftLine(skuId, qtyEntered, unit.wire)).sortedBy { it.skuId }
         // QC belongs to a SKU on the memo: removing the line removes its QC rows, so no deduction is left that no screen shows
-        val qc = if (qtyEntered == 0L) d.qc.filterNot { it.skuId == skuId } else d.qc
+        var qc = if (qtyEntered == 0L) d.qc.filterNot { it.skuId == skuId } else d.qc
+        // a QC-only sale (D-18) had QC on SKUs with no line; once a line is sold the rows follow the lines again
+        if (d.zeroSale && lines.isNotEmpty()) qc = qc.filter { q -> lines.any { it.skuId == q.skuId } }
         return d.copy(lines = lines, qc = qc, zeroSale = if (lines.isNotEmpty()) false else d.zeroSale)
     }
 
@@ -44,6 +46,13 @@ object SaleDraftOps {
         check(d.lines.isEmpty()) { "a zero sale has no lines" }
         return d.copy(zeroSale = true, paidMtk = null)
     }
+
+    /**
+     * QC on a zero sale (D-18, owner ruling 2026-10-18): the memo has no sale lines and the QC rows are its only content. It is
+     * a zero sale that the SR confirmed by choosing Product QC; the rows may name any SKU of the catalog, and the net may go
+     * negative (a credit) only while the gross is zero (the review enforces that).
+     */
+    fun startQcOnly(d: SaleDraft): SaleDraft = confirmZeroSale(d)
 
     /** Puts back the QC rows saved when the QC screen opened (Cancel discards what was typed since). */
     fun replaceQc(d: SaleDraft, entries: List<QcEntry>): SaleDraft {

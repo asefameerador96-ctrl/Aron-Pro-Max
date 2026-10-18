@@ -43,7 +43,8 @@
     <string name="review_gross">মোট</string>
     <string name="review_offer_discount">ডিসকাউন্ট</string>
     <string name="review_drp_discount">স্লাইড</string>
-    <string name="review_qc">QC</string>
+    <string name="review_qc">মোট QC</string>
+    <string name="review_credit_note">এটি একটি ক্রেডিট হিসেবে সংরক্ষিত হবে</string>
     <string name="review_net">সর্বমোট</string>
     <string name="review_paid">পরিশোধ</string>
     <string name="review_due">বাকি</string>
@@ -74,7 +75,6 @@
     <string name="qc_pick">QC এ প্রবেশ করতে, আপনি যে পণ্যটি যোগ করতে চান সেটি নির্বাচন করুন।</string>
     <string name="qc_empty">QC করার জন্য কোনো পণ্য নেই।</string>
     <string name="qc_summary">QC সারাংশ</string>
-    <string name="qc_col_type">QC ধরন</string>
     <string name="qc_production">উৎপাদন ত্রুটি</string>
     <string name="qc_transport">পরিবহন ত্রুটি</string>
     <string name="qc_deduction">সেটেলমেন্ট পরিমাণ: %1$s</string>
@@ -103,4 +103,9 @@
     <string name="edit_denied_outside">বিক্রয় এডিট করা যায় শুধু দোকানে, জিওফেন্সের ভিতরে।</string>
     <string name="edit_denied_qc">এই আউটলেটে QC সম্পন্ন; বিক্রয় এডিট করা যাবে না।</string>
     <string name="edit_denied_superseded">এই মেমোর জায়গায় নতুন মেমো এসেছে।</string>
+    <string name="qc_col_mfc">MFC ত্রুটি</string>
+    <string name="qc_col_mkt">MKT ত্রুটি</string>
+    <string name="qc_col_total">মোট</string>
+    <string name="qc_typed_max">সর্বোচ্চ এখানে %1$s পর্যন্ত লেখা যায়</string>
+    <string name="sale_qc_only">বিক্রয় ছাড়া প্রোডাক্ট QC</string>
 </resources>

@@ -75,4 +75,9 @@
     <string name="history_pick_date">তারিখ বেছে নিন</string>
     <string name="history_footer">মোট</string>
     <string name="history_empty">এই আউটলেটের কোনো বিক্রয় নেই।</string>
+    <string name="memo_cat_cigarette">সিগারেট</string>
+    <string name="memo_cat_bidi">বিড়ি</string>
+    <string name="memo_cat_lighter">লাইটার</string>
+    <string name="memo_cat_match">ম্যাচ</string>
+    <string name="memo_total_category">মোট %1$s</string>
 </resources>

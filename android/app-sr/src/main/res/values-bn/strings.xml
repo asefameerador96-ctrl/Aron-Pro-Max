@@ -27,11 +27,11 @@
     <string name="sr_outcome_competitor">শুধু প্রতিযোগীর পণ্য বিক্রি করে</string>
     <string name="sr_outcome_not_reached">দোকানে পৌঁছানো যায়নি</string>
     <string name="sr_sale_history">এই দোকানের বিক্রয় ইতিহাস</string>
-    <string name="sr_rec_visit">ভিজিট</string>
-    <string name="sr_rec_memo">মেমো</string>
+    <string name="sr_rec_visit">আউটলেট</string>
+    <string name="sr_rec_memo">বিক্রয়</string>
     <string name="sr_rec_stock_movement">স্টক</string>
-    <string name="sr_rec_qc_line">পণ্য কিউসি</string>
-    <string name="sr_rec_memo_discount">ছাড়</string>
+    <string name="sr_rec_qc_line">কিউসি</string>
+    <string name="sr_rec_memo_discount">প্রমোশন</string>
     <string name="sr_rec_visit_close">ভিজিট শেষ</string>
     <string name="sr_rec_due_collection">বাকি আদায়</string>
     <string name="sr_rec_attendance_event">হাজিরা</string>

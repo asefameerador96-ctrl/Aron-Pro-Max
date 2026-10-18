@@ -204,9 +204,7 @@ fun SaveAndPrintDialogs(flow: SaveAndPrint, scope: CoroutineScope, onFinished: (
         SaveAndPrint.Step.LimitReached -> Info(R.string.ui_print_limit_reached) { flow.onLater() }
         SaveAndPrint.Step.TooLong -> Info(R.string.ui_print_too_long) { flow.onLater() }
         SaveAndPrint.Step.AskReadable -> YesNo(null, R.string.ui_print_readable_question, { scope.launch { flow.onReadableAnswer(it) } })
-        is SaveAndPrint.Step.Done -> Info(R.string.sale_saved) {
-            if (!finished) { finished = true; onFinished(s.printed) }
-        }
+        is SaveAndPrint.Step.Done -> Info(R.string.sale_saved, R.string.dialog_success) { if (!finished) { finished = true; onFinished(s.printed) } }
     }
 }
 
@@ -240,11 +238,15 @@ private fun YesNo(@StringRes title: Int?, @StringRes text: Int, answer: (Boolean
 }
 
 @Composable
-private fun Info(@StringRes text: Int, ok: () -> Unit) {
+private fun Info(@StringRes text: Int, ok: () -> Unit) = Info(text, null, ok)
+
+@Composable
+private fun Info(@StringRes text: Int, @StringRes title: Int?, ok: () -> Unit) {
     AlertDialog(
         onDismissRequest = ok,
+        title = title?.let { { Text(stringResource(it)) } },
         text = { Text(stringResource(text)) },
-        confirmButton = { TextButton(onClick = ok) { Text(stringResource(R.string.dialog_ok)) } },
+        confirmButton = { AronYesButton(stringResource(R.string.dialog_ok), ok) },    // the manual's green "ওকে" (R9)
     )
 }
 

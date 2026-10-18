@@ -50,17 +50,21 @@ fun SaleRoute(vm: SaleViewModel, printer: PrinterManager, skuNameOf: (Long) -> S
                         skus = skus, review = review,
                         qtyOf = { id -> draft?.lines?.firstOrNull { it.skuId == id }?.qtyEntered ?: 0L },
                         onQuantity = { id, q -> vm.setQuantity(id, q, QtyUnit.entries.first { it.wire == ui.catalog[id]?.baseUnit }) },
-                        onReview = { stage = SaleStage.Review }, onZeroSaleConfirmed = { vm.confirmZeroSale(); stage = SaleStage.Review },
+                        onReview = { stage = SaleStage.Review },
+                        onQcOnly = { qcBefore = emptyList(); vm.confirmZeroSale(); stage = SaleStage.Qc },
+                        onZeroSaleConfirmed = { vm.confirmZeroSale(); stage = SaleStage.Review },
                     )
                     SaleStage.Slide -> if (review != null) SlideScreen(skus, review, { id -> draft?.slide?.firstOrNull { it.skuId == id }?.emptyPackets ?: 0L }, { id, n -> vm.setSlide(id, n) })
                     SaleStage.Qc -> if (review != null) QcScreen(
-                        skus.filter { s -> draft?.lines?.any { it.skuId == s.skuId } == true }, review,
+                        // the memo's SKUs; with no sale line the whole catalog is offered (QC-only sale, D-18)
+                        if (draft?.lines.isNullOrEmpty()) skus else skus.filter { s -> draft?.lines?.any { it.skuId == s.skuId } == true }, review,
                         qtyOf = { id, code -> draft?.qc?.firstOrNull { it.skuId == id && it.faultTypeCode == code }?.defectQty ?: 0L },
                         onQty = { id, code, q -> QcEntryModel.groupOf(code)?.let { g -> vm.setQc(QcEntry(id, code, g, q)) } },
                         capMtkOf = { id -> ui.qcCapMtkBySku[id] },
                         onClearSku = { id -> QcEntryModel.APP_TYPES.forEach { t -> vm.setQc(QcEntry(id, t.code, t.group, 0)) } },
                         locked = draft?.qcCompleted == true, onDone = { vm.completeQc(); stage = SaleStage.Review },
                         onCancel = { vm.restoreQc(qcBefore); stage = SaleStage.Review }, // Cancel discards what was typed since the screen opened
+                        collapsible = draft?.lines.isNullOrEmpty(),
                     )
                     SaleStage.Credit -> if (review != null) CreditPrompt(
                         review, { vm.setPaid(it); stage = SaleStage.Review },

@@ -32,6 +32,10 @@
     <string name="submit_note_rejected">%1$s টি রেকর্ড সার্ভার গ্রহণ করেনি।</string>
     <string name="submit_note_quarantined">%1$s টি রেকর্ড পর্যালোচনার জন্য রাখা হয়েছে।</string>
     <string name="submit_dues_warning">%1$s জন খুচরা বিক্রেতার কাছে %2$s বাকি আছে। তবুও জমা দিতে পারবেন।</string>
+    <string name="submit_dues_title">আপনি কি নিশ্চিত?</string>
+    <string name="submit_dues_ask">আপনার এখনো %1$s টি রিটেইলারের কাছে বাকি রয়েছে। আপনি আপনার বিক্রয় জমা দিতে চান?</string>
+    <string name="submit_yes">হ্যাঁ</string>
+    <string name="submit_no">না</string>
     <string name="submit_queued">জমা সংরক্ষিত হয়েছে; অনলাইনে এলে পাঠানো হবে।</string>
     <string name="submit_success">বিক্রয় সফলভাবে জমা হয়েছে।</string>
     <string name="submit_success_records">%1$s টি রেকর্ড সার্ভারে পৌঁছেছে।</string>

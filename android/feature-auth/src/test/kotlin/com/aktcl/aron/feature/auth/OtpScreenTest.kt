@@ -39,7 +39,7 @@ class OtpScreenTest {
     @Test fun fourDigitsEnableVerify() { show(AppLanguage.EN, OtpState("1234")); compose.onNodeWithTag(OtpTags.VERIFY).assertIsEnabled() }
 
     @Test fun wrongExpiredAndTooManyShowInBangla() {
-        show(AppLanguage.BN, OtpState("", OtpError.INVALID)); compose.onNodeWithText("কোডটি ভুল। আবার চেষ্টা করুন।").assertExists()
+        show(AppLanguage.BN, OtpState("", OtpError.INVALID)); compose.onNodeWithText("OTP ভুল। আবার চেষ্টা করুন।").assertExists()
     }
 
     @Test fun expiredAndAttemptsTextsEnglish() {

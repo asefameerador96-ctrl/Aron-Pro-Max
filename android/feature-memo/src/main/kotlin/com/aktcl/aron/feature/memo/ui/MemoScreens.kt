@@ -180,6 +180,8 @@ fun MemoDetailView(
     paidBanner: Boolean = false,
     onHistory: (() -> Unit)? = null,
     skuUnit: (Long) -> String = { "" },
+    /** The category code of a SKU ("cigarette", "bidi", "lighter", "match"); drives the "মোট <category>" subtotal rows (M3). */
+    skuCategory: (Long) -> String? = { null },
 ) {
     val c = LocalAronColors.current
     var confirm by remember { mutableStateOf(false) }
@@ -222,6 +224,10 @@ fun MemoDetailView(
                 Column(Modifier.fillMaxWidth().padding(AronTokens.Space.L), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
                     TableHeader(stringResource(R.string.memo_col_sku), stringResource(R.string.memo_col_qty), stringResource(R.string.memo_col_price))
                     detail.items.forEach { i -> TableRow(skuName(i.skuId), qtyText(i.qtyBase, skuUnit(i.skuId)), amount(i.grossMtk)) }
+                    // M3: a money subtotal per category, in first-seen order (quantities of different units are never added)
+                    detail.items.filter { MemoCategories.label(skuCategory(it.skuId)).isNotBlank() }.groupBy { skuCategory(it.skuId) }.forEach { (code, items) ->
+                        TableRow2(stringResource(R.string.memo_total_category, MemoCategories.label(code)), amount(items.sumOf { it.grossMtk }))
+                    }
                     if (detail.discountTable.isNotEmpty()) {
                         CardDivider()
                         Text(stringResource(R.string.memo_discount_section), style = MaterialTheme.typography.labelMedium, color = c.textSecondary)

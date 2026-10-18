@@ -233,6 +233,14 @@ class SrStateScreenshotTests {
         QcScreen(listOf(maxr), qcReview, { id, code -> qcDraft.qc.firstOrNull { it.skuId == id && it.faultTypeCode == code }?.defectQty ?: 0L }, { _, _, _ -> }, false, {}, onCancel = {}, capMtkOf = { cap })
     }
 
+    // ---- QC on a zero sale (D-18): the whole catalog as closed cards, one open with a typed count, the credit Review ----
+    private val qcOnlyDraft = SaleDraftOps.setQc(SaleDraftOps.setQc(SaleDraftOps.startQcOnly(draft()), QcEntry(100, "damaged_crushed", "MFC", 7)), QcEntry(100, "expired_stock", "MKT", 3))
+    private val qcOnlyReview = SaleReviewCalculator.review(qcOnlyDraft, catalog)
+    @Composable private fun QcOnly() = Frame(stringResource(SaleR.string.qc_title)) {
+        QcScreen(listOf(maxr), qcOnlyReview, { id, code -> qcOnlyDraft.qc.firstOrNull { it.skuId == id && it.faultTypeCode == code }?.defectQty ?: 0L }, { _, _, _ -> }, false, {}, onCancel = {}, collapsible = true)
+    }
+    @Composable private fun ReviewCredit() = Frame(stringResource(SaleR.string.review_title)) { ReviewScreen(qcOnlyReview, onSave = {}, onQc = {}) }
+
     // ---- Sale history (manual SR-S-20: pick a date, per-SKU table, exact total) ----
     private fun histMemo(id: String, date: String, vararg l: com.aktcl.aron.feature.memo.domain.MemoItem) =
         StoredMemo(id, "sr334001-261005-$id", 1, date, "${date}T04:00:00.000Z", null, l.toList(), emptyList(), emptyList(), 0, 0, 0, 0, 0, 0, 0)
@@ -269,6 +277,9 @@ class SrStateScreenshotTests {
     @Test fun qc_bn_no_cap() = shot("qc_bn_no_cap") { Qc(null) }
     @Test fun qc_bn_sunlight() = shot("qc_bn_sunlight", sunlight = true) { Qc(594_500L) }
     @Test fun qc_bn_font20() = shot("qc_bn_font20", fontScale = 2.0f) { Qc(594_500L) }
+    @Test fun qc_bn_only_summary() = shot("qc_bn_only_summary") { QcOnly() }
+    @Test fun qc_bn_only_sunlight() = shot("qc_bn_only_sunlight", sunlight = true) { QcOnly() }
+    @Test fun review_bn_qc_credit() = shot("review_bn_qc_credit") { ReviewCredit() }
     @Test fun qc_en_with_cap() = shot("qc_en_with_cap", AppLanguage.EN) { Qc(594_500L) }
 
     // ---- Sale history ----

@@ -14,6 +14,8 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -206,5 +208,58 @@ class CallPromptsTest {
         compose.setContent { AronTheme(AppLanguage.EN) { EditReasonScreen(com.aktcl.aron.feature.sale.domain.EditDenied.OutsideGeofence, {}) } }
         compose.onNodeWithText("You can edit a sale only at the shop, inside the geofence.").assertExists()
         compose.onNodeWithText("Wrong SKU").assertDoesNotExist()
+    }
+}
+
+@RunWith(AndroidJUnit4::class)
+@Config(sdk = [36])
+class QcOnlyScreensTest {
+    @get:Rule val compose = createComposeRule()
+    private val skus = listOf(Fx.maxr, Fx.aster)
+
+    @Test fun qcOnlyIsOfferedOnlyWithoutALineAndOnlyAsksNothing() {
+        var qcOnly = 0
+        val none = SaleReviewCalculator.review(Fx.draft(), Fx.catalog)
+        compose.setContent { AronTheme(AppLanguage.EN) { SaleEntryScreen(skus, none, { 0 }, { _, _ -> }, {}, {}, onQcOnly = { qcOnly++ }) } }
+        compose.onNodeWithTag(SaleTags.QC_ONLY).assertIsEnabled().performClick()
+        assertEquals(1, qcOnly)
+    }
+
+    @Test fun qcOnlyIsHiddenOnceAThereIsASaleLine() {
+        val d = SaleDraftOps.setQuantity(Fx.draft(), 100, 20, QtyUnit.STICK)
+        val review = SaleReviewCalculator.review(d, Fx.catalog)
+        compose.setContent { AronTheme(AppLanguage.EN) { SaleEntryScreen(skus, review, { id -> d.lines.firstOrNull { it.skuId == id }?.qtyEntered ?: 0 }, { _, _ -> }, {}, {}, onQcOnly = {}) } }
+        compose.onNodeWithTag(SaleTags.QC_ONLY).assertDoesNotExist()
+    }
+
+    @Test fun qcOnlyScreenOffersEverySkuClosedAndOpensOneOnATap() {
+        val d = SaleDraftOps.startQcOnly(Fx.draft())
+        compose.setContent { AronTheme(AppLanguage.EN) { QcScreen(skus, SaleReviewCalculator.review(d, Fx.catalog), { _, _ -> 0 }, { _, _, _ -> }, false, {}, collapsible = true) } }
+        compose.onAllNodesWithTag(QcTags.CARD).assertCountEquals(2)
+        compose.onAllNodesWithTag(QcTags.QTY_FIELD).assertCountEquals(0) // closed cards hold no steppers: the list stays light
+        compose.onAllNodesWithTag(QcTags.CARD)[0].performClick()
+        compose.onAllNodesWithTag(QcTags.QTY_FIELD).assertCountEquals(6)
+    }
+
+    @Test fun aTypedQuantityIsAcceptedAndANumberAboveWhatIsLeftIsPulledDownAndFlagged() {
+        val got = mutableListOf<Long>()
+        val d = SaleDraftOps.setQuantity(Fx.draft(), 100, 20, QtyUnit.STICK) // gross 160.00: room for 20 sticks of QC at 8.00
+        compose.setContent { AronTheme(AppLanguage.EN) { QcScreen(listOf(Fx.maxr), SaleReviewCalculator.review(d, Fx.catalog), { _, _ -> 0 }, { _, _, q -> got += q }, false, {}) } }
+        val field = compose.onAllNodesWithTag(QcTags.QTY_FIELD)[0]
+        field.performTextInput("7")
+        assertEquals(listOf(7L), got)
+        compose.onAllNodesWithTag(QcTags.QTY_FIELD)[1].performTextInput("99")
+        assertEquals("pulled down to the most that fits", 20L, got.last())
+        compose.onNodeWithText("Most you can enter: 20").assertExists()
+    }
+
+    @Test fun summaryHasOneRowPerSkuWithMfcMktAndTotal() {
+        var d = SaleDraftOps.startQcOnly(Fx.draft())
+        d = SaleDraftOps.setQc(d, com.aktcl.aron.feature.sale.domain.QcEntry(100, "damaged_crushed", "MFC", 3))
+        d = SaleDraftOps.setQc(d, com.aktcl.aron.feature.sale.domain.QcEntry(100, "taste", "MKT", 2))
+        d = SaleDraftOps.setQc(d, com.aktcl.aron.feature.sale.domain.QcEntry(103, "taste", "MKT", 1))
+        compose.setContent { AronTheme(AppLanguage.EN) { QcScreen(skus, SaleReviewCalculator.review(d, Fx.catalog), { _, _ -> 0 }, { _, _, _ -> }, false, {}, collapsible = true) } }
+        compose.onAllNodesWithTag(QcTags.SUMMARY_ROW).assertCountEquals(2)
+        compose.onNodeWithText("MFC Fault").assertExists(); compose.onNodeWithText("MKT Fault").assertExists()
     }
 }

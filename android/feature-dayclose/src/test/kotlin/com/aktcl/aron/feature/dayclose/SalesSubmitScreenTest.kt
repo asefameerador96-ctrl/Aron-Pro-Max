@@ -39,6 +39,12 @@ class SalesSubmitScreenTest {
         // the tap opens the hold step (screens-sr s11); only the press-and-hold commits
         compose.onNodeWithText("Submit sales").assertIsEnabled().performClick()
         compose.waitForIdle()
+        // SS4: with dues the manual asks first in a Yes / No dialog; No leaves the day open, Yes opens the hold step
+        compose.onNodeWithText("2 retailers still owe you. Do you want to submit your sales?").assertExists()
+        compose.onNodeWithText("No").performClick(); compose.waitForIdle()
+        compose.onNodeWithTag(SalesSubmitTags.HOLD).assertDoesNotExist()
+        compose.onNodeWithText("Submit sales").performClick(); compose.waitForIdle()
+        compose.onNodeWithText("Yes").performClick(); compose.waitForIdle()
         assertEquals(0, submitted)
         compose.onNodeWithTag(SalesSubmitTags.HOLD).performSemanticsAction(SemanticsActions.OnLongClick)
         compose.waitForIdle()
