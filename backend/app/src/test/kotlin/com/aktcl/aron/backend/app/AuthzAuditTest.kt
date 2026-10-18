@@ -179,12 +179,12 @@ class AuthzAuditTest {
         h.execute("INSERT INTO app.cfg_change (status, items, reason, risk_class, requested_by) SELECT 'cancelled', '[]'::jsonb, 'qa page row ' || g, 0, $adminId FROM generate_series(1, 60) g")
         h.execute(
             "INSERT INTO app.cfg_value (key, scope_type, scope_id, value, effective_from, config_version, reason) " +
-                "SELECT 'cfg.geo.radius_m', 'outlet', o.id, '100'::jsonb, now() - interval '1 day', $ownVersion + 1, 'qa page row' FROM app.outlet o WHERE o.code LIKE 'MIR-%' AND o.id <> $outlet",
+                "SELECT 'cfg.geo.radius_m', 'outlet', o.id, '100'::jsonb, TIMESTAMPTZ '${ApiWorld.CFG_FROM}', $ownVersion + 1, 'qa page row' FROM app.outlet o WHERE o.code LIKE 'MIR-%' AND o.id <> $outlet",
         )
         // An applied radius of the other division's zone (its own version), so the config reads have something of LKX to show.
         lkxVersion = ownVersion + 61
         h.execute("INSERT INTO app.cfg_version (config_version, kind, committed_by, summary) VALUES ($lkxVersion, 'change', $adminId, 'LKX zone radius for the audit')")
-        h.execute("INSERT INTO app.cfg_value (key, scope_type, scope_id, value, effective_from, config_version, reason) VALUES ('cfg.geo.radius_m', 'zone', $oZone, '137'::jsonb, now() - interval '1 day', $lkxVersion, 'LKX radius for the audit')")
+        h.execute("INSERT INTO app.cfg_value (key, scope_type, scope_id, value, effective_from, config_version, reason) VALUES ('cfg.geo.radius_m', 'zone', $oZone, '137'::jsonb, TIMESTAMPTZ '${ApiWorld.CFG_FROM}', $lkxVersion, 'LKX radius for the audit')")
         ownVersion = id("SELECT max(config_version) FROM app.cfg_version")
         // Export jobs of two scoped users (queued: no file, so no signed URL is minted in the test).
         tsoExport = UUID.randomUUID().toString(); dmoExport = UUID.randomUUID().toString()
