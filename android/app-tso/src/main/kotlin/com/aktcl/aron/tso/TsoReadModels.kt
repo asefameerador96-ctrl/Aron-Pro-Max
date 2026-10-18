@@ -398,6 +398,11 @@ class TsoReadModels(private val env: TsoEnv, private val databases: UserDatabase
 
         override suspend fun zones(): List<Long>? = runCatching { plan.routes() }.getOrNull()?.let { com.aktcl.aron.feature.tso.mycall.zonesOf(it) }
 
+        override suspend fun geo(level: String, parentId: Long?): List<com.aktcl.aron.feature.tso.finalsubmit.FsGeoNode>? {
+            if (level !in com.aktcl.aron.feature.tso.finalsubmit.FsGeo.LEVELS) return null
+            return com.aktcl.aron.feature.tso.finalsubmit.FsGeo.parse(get("/v1/admin/geo/$level?limit=500" + (parentId?.let { "&parent_id=$it" } ?: "")))
+        }
+
         override suspend fun preview(zoneId: Long, date: String): com.aktcl.aron.feature.tso.finalsubmit.FsPreviewOutcome {
             val r = client.call(path = "/v1/day/final-submit/preview", auth = CallAuth.Grant(Grant.FULL), build = {
                 url(client.origin.path("/v1/day/final-submit/preview").newBuilder().addQueryParameter("zone_id", zoneId.toString()).addQueryParameter("business_date", date).build()); get()
