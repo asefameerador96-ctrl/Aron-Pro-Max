@@ -1,7 +1,7 @@
 // Completion pass: screenshots of the dashboard home in light and dark at office and tablet widths, attached to the test report
 // (no golden comparison yet; the web-snapshots workflow can record goldens from these once the owner signs the look off).
 import { expect, test } from "@playwright/test";
-import { loginOk, resetMock } from "./helpers";
+import { MOCK, loginOk, resetMock } from "./helpers";
 
 test.beforeEach(async () => {
   await resetMock();
@@ -61,4 +61,24 @@ for (const [theme, who, pass, lang] of [["light", "tso334", "tso-pass-1", "Engli
       }
     });
   }
+}
+
+// Empty and error states of the home (design review leftover): a TSO outside every seeded scope gets empty tiles; with every
+// dashboard read answering 500 the page renders its alert with Retry (no error page).
+for (const [state, w, h] of [["empty", 360, 740], ["empty", 1366, 900], ["error", 360, 740], ["error", 1366, 900]] as const) {
+  test(`home ${state} state ${w}`, async ({ page }, info) => {
+    await page.emulateMedia({ colorScheme: "light", reducedMotion: "reduce" });
+    if (state === "error") await fetch(`${MOCK}/__mock/fail`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prefix: "/v1/dashboards/" }) });
+    const [who, pass] = state === "empty" ? ["tso999", "tso-pass-3"] : ["tso334", "tso-pass-1"];
+    await loginOk(page, who, pass);
+    await page.getByRole("link", { name: "English" }).click();
+    await page.setViewportSize({ width: w, height: h });
+    // Error: without the summary the home shows one alert with Retry in place of the tiles (no error page).
+    if (state === "error") await expect(page.getByRole("alert").getByTestId("retry")).toBeVisible();
+    else await expect(page.getByTestId("dashboard-tiles")).toBeVisible();
+    await page.waitForLoadState("networkidle");
+    const file = info.outputPath(`home-${state}-${w}.png`);
+    await page.screenshot({ path: file, fullPage: true });
+    await info.attach(`home-${state}-${w}`, { path: file, contentType: "image/png" });
+  });
 }
