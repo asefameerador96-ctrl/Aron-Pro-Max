@@ -46,6 +46,13 @@ import com.aktcl.aron.core.ui.aron.SummaryTable
 import com.aktcl.aron.core.ui.aron.SummaryTotal
 import com.aktcl.aron.core.ui.aron.TotalsLine
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.semantics.Role
+import com.aktcl.aron.core.ui.aron.AronPrinterBadge
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.draw.clip
 import com.aktcl.aron.core.ui.AronBarAction
@@ -109,10 +116,34 @@ private val PriceColumn = 96.dp
 @Composable
 internal fun tablesStacked(): Boolean = LocalDensity.current.fontScale >= AronTokens.Size.VerticalFontScale
 
+/** The white 12 dp card of the parity look (PARITY-SPEC `aron.card`). */
+@Composable
+internal fun WhiteCard(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
+    Column(modifier.fillMaxWidth().clip(RoundedCornerShape(AronLook.CardRadius)).background(LocalAronLook.current.card), content = content)
+}
+
+/** A filled, rounded action button in one solid colour (the amber Edit and the green Mark paid of the manual); the gradient primary is [AronPrimaryButton]. */
+@Composable
+internal fun SolidButton(text: String, color: Color, onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true) {
+    val look = LocalAronLook.current
+    Box(
+        modifier
+            .heightIn(min = AronLook.ButtonHeight)
+            .clip(RoundedCornerShape(AronLook.ButtonRadius))
+            .background(if (enabled) color else look.disabledFill)
+            .clickable(enabled = enabled, role = Role.Button, onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) { Text(text, style = MaterialTheme.typography.titleMedium, color = if (enabled) Color.White else look.disabledText, textAlign = TextAlign.Center, modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) }
+}
+
+private val EditAmber = Color(0xFFC77700)
+private val PaidGreen = Color(0xFF2E7D32)
+
 /**
- * The Memo menu (F-SR-030; screens-sr s9): the info banner (dismissible per day: [onDismissBanner] fires and the host
- * remembers the business date, [bannerDismissed] hides it), then today's live memos as flat rows (outlet, memo number and
- * time, the total and a due chip); selecting one shows [MemoDetailView]. A query on local memos: offline, always.
+ * The Memo menu (F-SR-030; PARITY-SPEC memo.md): the info card (dismissible per day: [onDismissBanner] fires and the host
+ * remembers the business date, [bannerDismissed] hides it; [printerBadge] is the host's printer state), then today's live memos
+ * as white rows (outlet, memo number and time, the total and the due); selecting one shows [MemoDetailView]. A query on local
+ * memos: offline, always.
  */
 @Composable
 fun MemoMenuScreen(
@@ -122,38 +153,44 @@ fun MemoMenuScreen(
     modifier: Modifier = Modifier,
     bannerDismissed: Boolean = false,
     onDismissBanner: (() -> Unit)? = null,
+    printerBadge: (@Composable () -> Unit)? = null,
 ) {
-    val c = LocalAronColors.current
-    ScrollColumn(modifier) {
+    val look = LocalAronLook.current
+    ScrollColumn(modifier.background(look.page), contentPadding = PaddingValues(AronTokens.Space.Screen), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.M)) {
         if (!bannerDismissed) {
-            AronBanner(
-                stringResource(R.string.memo_banner), Modifier.padding(horizontal = AronTokens.Space.Screen, vertical = AronTokens.Space.M), BannerKind.Info,
-                dismissLabel = if (onDismissBanner != null) stringResource(R.string.memo_banner_dismiss) else null, onDismiss = onDismissBanner,
-            )
+            AronInfoCard(stringResource(R.string.memo_banner), trailing = printerBadge)
+            if (onDismissBanner != null) {
+                Text(
+                    stringResource(R.string.memo_banner_dismiss), style = MaterialTheme.typography.bodyMedium, color = look.purple,
+                    modifier = Modifier.align(Alignment.End).heightIn(min = AronLook.Touch).clickable(role = Role.Button, onClick = onDismissBanner).padding(horizontal = AronTokens.Space.M, vertical = AronTokens.Space.M),
+                )
+            }
         }
         if (rows.isEmpty()) {
-            AronEmptyState(stringResource(R.string.memo_empty), icon = AronIcons.Memo)
+            Text(
+                stringResource(R.string.memo_empty), style = MaterialTheme.typography.bodyLarge, color = look.inkMuted, textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth().padding(vertical = AronTokens.Space.Xl),
+            )
         } else {
-            AronSectionLabel(stringResource(R.string.memo_section_today))
-            Column(Modifier.fillMaxWidth().padding(horizontal = AronTokens.Space.Screen)) {
+            Text(stringResource(R.string.memo_section_today), style = MaterialTheme.typography.titleMedium, color = look.purple)
+            WhiteCard {
                 rows.forEachIndexed { i, r ->
-                    AronListRow(
-                        outletName(r.outletId),
-                        subtitle = stringResource(R.string.memo_row_meta, localizedDigits(shortMemoNo(r.memoNo)), dhakaTime(r.committedAtIso)),
-                        onClick = { onOpen(r) },
-                        flat = true,
-                        position = rowPosition(i, rows.size),
-                        divider = i < rows.lastIndex,
-                        trailingContent = {
-                            Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(AronTokens.Space.Xs)) {
-                                MoneyText(money(r.totalMtk), style = MaterialTheme.typography.titleMedium, textAlign = TextAlign.End)
-                                if (r.dueMtk > 0) Pill(c.warningContainer, c.warningOnContainer, AronIcons.Warning, stringResource(R.string.memo_due_chip_amount, money(r.dueMtk)))
-                            }
-                        },
-                    )
+                    if (i > 0) Box(Modifier.fillMaxWidth().height(1.dp).background(look.tileHairline))
+                    Row(
+                        Modifier.fillMaxWidth().heightIn(min = AronLook.Touch).clickable(role = Role.Button) { onOpen(r) }.padding(AronTokens.Space.L),
+                        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.M),
+                    ) {
+                        Column(Modifier.weight(1f)) {
+                            Text(outletName(r.outletId), style = MaterialTheme.typography.titleSmall, color = look.purple, maxLines = 2)
+                            Text(stringResource(R.string.memo_row_meta, localizedDigits(shortMemoNo(r.memoNo)), dhakaTime(r.committedAtIso)), style = MaterialTheme.typography.bodySmall, color = look.inkMuted)
+                        }
+                        Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(AronTokens.Space.Xs)) {
+                            MoneyText(money(r.totalMtk), style = MaterialTheme.typography.titleMedium, color = look.ink, textAlign = TextAlign.End)
+                            if (r.dueMtk > 0) Text(stringResource(R.string.memo_due_chip_amount, money(r.dueMtk)), style = MaterialTheme.typography.labelMedium, color = look.red)
+                        }
+                    }
                 }
             }
-            Spacer(Modifier.height(AronTokens.Space.L))
         }
     }
 }
@@ -166,14 +203,13 @@ internal fun rowPosition(i: Int, n: Int): RowPosition = when {
 }
 
 /**
- * Memo detail (F-SR-030/031/032/033; screens-sr s9): the header card, the lines table (no per-row sign, "(৳)" in the
- * header), the discount and QC sections only when non-zero, the totals with a true minus, the credit box as a warning
- * container with the opaque "Mark paid" secondary, the reprint marker, and the bar with Print (primary) and Edit
- * (secondary). [canMarkPaid] must come from `DueLedger.markPaid(...) != null` (not the stored due), so the button
- * disappears after the collection. [editDisabledReason] disables Edit and says why (outside the geofence, QC done);
- * [printDisabledReason] does the same for Print (the reprint limit); [onHistory] adds the outlet's sale history link.
- * [skuUnit] names the unit word of a SKU (stick, piece, dozen): it sits beside every quantity (screens-sr s0), the bare
- * number only when the unit is unknown.
+ * Memo detail (F-SR-030/031/032/033; PARITY-SPEC memo.md): the header card, the lines table (dark header, no per-row sign, "(৳)"
+ * in the header), the discount and QC sections only when non-zero, the totals with a true minus and the purple grand total, the
+ * credit box with the green "Mark paid", the reprint marker, and the buttons: Print (gradient) and the amber Edit.
+ * [canMarkPaid] must come from `DueLedger.markPaid(...) != null` (not the stored due), so the button disappears after the
+ * collection. [editDisabledReason] disables Edit and says why (outside the geofence, QC done); [printDisabledReason] does the
+ * same for Print (the reprint limit); [onHistory] adds the outlet's sale history link. [skuUnit] names the unit word of a SKU
+ * (stick, piece, dozen): it sits beside every quantity, the bare number only when the unit is unknown.
  */
 @Composable
 fun MemoDetailView(
@@ -195,80 +231,61 @@ fun MemoDetailView(
     /** The category code of a SKU ("cigarette", "bidi", "lighter", "match"); drives the "মোট <category>" subtotal rows (M3). */
     skuCategory: (Long) -> String? = { null },
 ) {
-    val c = LocalAronColors.current
+    val look = LocalAronLook.current
     var confirm by remember { mutableStateOf(false) }
     val memo = detail.memo
-    ScreenWithBar(modifier, bar = {
-        Column(Modifier.fillMaxWidth()) {
-            // a disabled action always says why above the bar (android-glass s6.1): the bar carries the primary's reason (both
-            // reasons when both are disabled); when only Edit is disabled its reason is the caption above the bar
-            if (printDisabledReason == null && editDisabledReason != null) {
-                Text(
-                    editDisabledReason, style = MaterialTheme.typography.bodySmall, color = c.textSecondary,
-                    modifier = Modifier.padding(horizontal = AronTokens.Space.Screen, vertical = AronTokens.Space.S),
-                )
+    ScrollColumn(modifier.background(look.page), contentPadding = PaddingValues(AronTokens.Space.Screen), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.M)) {
+        if (paidBanner) AronInfoCard(stringResource(R.string.memo_paid_done))
+        // header: the outlet (or the memo number), the memo number and time, the reprint and supersede markers
+        WhiteCard {
+            Column(Modifier.fillMaxWidth().padding(AronTokens.Space.L), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.Xs)) {
+                Text(outletName ?: memo.memoNo, style = MaterialTheme.typography.titleSmall, color = look.purple, maxLines = 2)
+                Text(stringResource(R.string.memo_row_meta, memo.memoNo, dhakaTime(memo.committedAtIso)), style = MaterialTheme.typography.bodySmall, color = look.inkMuted)
+                if (detail.reprintIsDuplicate) MarkerLine(AronIcons.Print, stringResource(R.string.memo_duplicate))
+                memo.supersedesMemoNo?.let { MarkerLine(AronIcons.Edit, stringResource(R.string.memo_replaces, localizedDigits(it))) }
             }
-            AronBottomBar(
-                secondary = AronBarAction(stringResource(R.string.memo_edit), onEdit, enabled = editDisabledReason == null, icon = AronIcons.Edit),
-                primary = AronBarAction(stringResource(R.string.memo_print), onPrint, enabled = printDisabledReason == null, icon = AronIcons.Print, busy = printing),
-                reasonWhenDisabled = printDisabledReason?.let { p -> listOfNotNull(p, editDisabledReason).joinToString(" ") },
-            )
         }
-    }) {
-        ScrollColumn(contentPadding = PaddingValues(AronTokens.Space.Screen), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.M)) {
-            if (paidBanner) AronBanner(stringResource(R.string.memo_paid_done), kind = BannerKind.Success)
-            // header: the outlet (or the memo number), the memo number and time, the reprint and supersede markers
-            AronCard(Modifier.fillMaxWidth()) {
-                Column(Modifier.fillMaxWidth().padding(AronTokens.Space.L), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.Xs)) {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.M)) {
-                        IconWell(AronIcons.Memo)
-                        Column(Modifier.weight(1f)) {
-                            Text(outletName ?: memo.memoNo, style = MaterialTheme.typography.titleSmall, color = c.textPrimary, maxLines = 2)
-                            Text(stringResource(R.string.memo_row_meta, memo.memoNo, dhakaTime(memo.committedAtIso)), style = MaterialTheme.typography.bodySmall, color = c.textSecondary)
-                        }
-                    }
-                    if (detail.reprintIsDuplicate) MarkerLine(AronIcons.Print, stringResource(R.string.memo_duplicate))
-                    memo.supersedesMemoNo?.let { MarkerLine(AronIcons.Edit, stringResource(R.string.memo_replaces, localizedDigits(it))) }
+        // the lines table: SKU, quantity in its own unit, price (৳)
+        WhiteCard {
+            Column(Modifier.fillMaxWidth().padding(AronTokens.Space.M), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
+                TableHeader(stringResource(R.string.memo_col_sku), stringResource(R.string.memo_col_qty), stringResource(R.string.memo_col_price))
+                detail.items.forEach { i -> TableRow(skuName(i.skuId), qtyText(i.qtyBase, skuUnit(i.skuId)), amount(i.grossMtk)) }
+                // M3: a money subtotal per category, in first-seen order (quantities of different units are never added)
+                detail.items.filter { MemoCategories.label(skuCategory(it.skuId)).isNotBlank() }.groupBy { skuCategory(it.skuId) }.forEach { (code, items) ->
+                    TableRow2(stringResource(R.string.memo_total_category, MemoCategories.label(code)), amount(items.sumOf { it.grossMtk }))
                 }
-            }
-            // the lines table: SKU, quantity in its own unit, price (৳)
-            AronCard(Modifier.fillMaxWidth()) {
-                Column(Modifier.fillMaxWidth().padding(AronTokens.Space.L), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
-                    TableHeader(stringResource(R.string.memo_col_sku), stringResource(R.string.memo_col_qty), stringResource(R.string.memo_col_price))
-                    detail.items.forEach { i -> TableRow(skuName(i.skuId), qtyText(i.qtyBase, skuUnit(i.skuId)), amount(i.grossMtk)) }
-                    // M3: a money subtotal per category, in first-seen order (quantities of different units are never added)
-                    detail.items.filter { MemoCategories.label(skuCategory(it.skuId)).isNotBlank() }.groupBy { skuCategory(it.skuId) }.forEach { (code, items) ->
-                        TableRow2(stringResource(R.string.memo_total_category, MemoCategories.label(code)), amount(items.sumOf { it.grossMtk }))
-                    }
-                    if (detail.discountTable.isNotEmpty()) {
-                        CardDivider()
-                        Text(stringResource(R.string.memo_discount_section), style = MaterialTheme.typography.labelMedium, color = c.textSecondary)
-                        detail.discountTable.forEach { d ->
-                            TableRow(d.skuId?.let(skuName) ?: stringResource(R.string.memo_discount_memo_level), qtyText(d.qtyBase, d.skuId?.let(skuUnit).orEmpty()), amount(d.valueMtk))
-                        }
-                    }
-                    if (detail.totalQcMtk != 0L) {
-                        CardDivider()
-                        TableRow(stringResource(R.string.memo_total_qc), "", amount(detail.totalQcMtk))
-                    }
-                }
-            }
-            // totals: gross, the discount and QC lines (zero too, as the manual p44 and the print show them) and net, each with its word and a true minus
-            AronCard(Modifier.fillMaxWidth()) {
-                Column(Modifier.fillMaxWidth().padding(AronTokens.Space.L), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
-                    TotalLine(stringResource(R.string.memo_total), money(memo.grossMtk))
-                    DeductionLine(stringResource(R.string.memo_total_discount), minusMoney(detail.totalDiscountMtk))
-                    DeductionLine(stringResource(R.string.memo_total_qc), minusMoney(detail.totalQcMtk))
+                if (detail.discountTable.isNotEmpty()) {
                     CardDivider()
-                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        Text(stringResource(R.string.memo_grand_total), style = MaterialTheme.typography.titleSmall, color = c.textPrimary, modifier = Modifier.weight(1f))
-                        MoneyText(money(detail.grandTotalMtk), style = MaterialTheme.typography.headlineMedium, textAlign = TextAlign.End)
+                    TableHeader(stringResource(R.string.memo_discount_section), stringResource(R.string.memo_col_qty), stringResource(R.string.summary_col_value))
+                    detail.discountTable.forEach { d ->
+                        TableRow(d.skuId?.let(skuName) ?: stringResource(R.string.memo_discount_memo_level), qtyText(d.qtyBase, d.skuId?.let(skuUnit).orEmpty()), amount(d.valueMtk))
                     }
                 }
+                if (detail.totalQcMtk != 0L) {
+                    CardDivider()
+                    TableRow(stringResource(R.string.memo_total_qc), "", amount(detail.totalQcMtk))
+                }
             }
-            if (dueMtk > 0) CreditBox(money(dueMtk), canMarkPaid) { confirm = true }
-            if (onHistory != null) AronTextButton(stringResource(R.string.history_title), onHistory, Modifier.fillMaxWidth(), icon = AronIcons.Calendar)
         }
+        // totals: gross, the discount and QC lines (zero too, as the manual p44 and the print show them) and net, each with its word and a true minus
+        WhiteCard {
+            Column(Modifier.fillMaxWidth().padding(AronTokens.Space.L), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
+                TotalLine(stringResource(R.string.memo_total), money(memo.grossMtk))
+                DeductionLine(stringResource(R.string.memo_total_discount), minusMoney(detail.totalDiscountMtk))
+                DeductionLine(stringResource(R.string.memo_total_qc), minusMoney(detail.totalQcMtk))
+                CardDivider()
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Text(stringResource(R.string.memo_grand_total), style = MaterialTheme.typography.titleMedium, color = look.purple, modifier = Modifier.weight(1f))
+                    MoneyText(money(detail.grandTotalMtk), style = MaterialTheme.typography.headlineMedium, color = look.purple, textAlign = TextAlign.End)
+                }
+            }
+        }
+        if (dueMtk > 0) CreditBox(money(dueMtk), canMarkPaid) { confirm = true }
+        // a disabled action always says why, above the buttons
+        listOfNotNull(printDisabledReason, editDisabledReason).forEach { Text(it, style = MaterialTheme.typography.bodySmall, color = look.inkMuted) }
+        AronPrimaryButton(stringResource(R.string.memo_print), onPrint, Modifier.fillMaxWidth(), enabled = printDisabledReason == null && !printing, glyph = ButtonGlyph.Print)
+        SolidButton(stringResource(R.string.memo_edit), EditAmber, onEdit, Modifier.fillMaxWidth(), enabled = editDisabledReason == null)
+        if (onHistory != null) AronTextButton(stringResource(R.string.history_title), onHistory, Modifier.fillMaxWidth(), icon = AronIcons.Calendar)
     }
     if (confirm) {
         AronConfirmDialog(
@@ -278,53 +295,39 @@ fun MemoDetailView(
     }
 }
 
-/** The credit box: a `warning.container` card (icon plus words), the due, and the OPAQUE "Mark paid" secondary inside it. */
+/** The credit box: the pink notice card with the red edge, the due, and the green "Mark paid" inside it. */
 @Composable
 private fun CreditBox(dueText: String, canMarkPaid: Boolean, onMarkPaid: () -> Unit) {
-    val c = LocalAronColors.current
-    val bg = c.warningContainer; val ink = c.warningOnContainer; val edge = c.warning.copy(alpha = AronTokens.Alpha.BannerEdge)
-    val stroke = if (c.sunlight) AronTokens.Stroke.SunlightHairline else AronTokens.Stroke.Hairline
-    Column(
-        Modifier
-            .fillMaxWidth()
-            .drawBehind {
-                val r = CornerRadius(AronTokens.Radius.Card.toPx())
-                drawRoundRect(bg, cornerRadius = r)
-                val w = stroke.toPx()
-                drawRoundRect(edge, Offset(w / 2, w / 2), Size(size.width - w, size.height - w), CornerRadius(r.x - w / 2), style = Stroke(w))
-            }
-            .padding(AronTokens.Space.L),
-        verticalArrangement = Arrangement.spacedBy(AronTokens.Space.M),
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.M)) {
-            Icon(AronIcons.Warning, contentDescription = null, tint = ink, modifier = Modifier.size(AronTokens.Size.Icon))
-            Text(stringResource(R.string.memo_credit_title), style = MaterialTheme.typography.titleSmall, color = ink, modifier = Modifier.weight(1f))
+    val look = LocalAronLook.current
+    Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min).clip(RoundedCornerShape(AronLook.CardRadius)).background(Color(0xFFE6C8CA))) {
+        Box(Modifier.width(5.dp).fillMaxHeight().background(look.red))
+        Column(Modifier.weight(1f).padding(AronTokens.Space.L), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.M)) {
+            Text(stringResource(R.string.memo_credit_title), style = MaterialTheme.typography.titleSmall, color = look.ink)
+            Text(stringResource(R.string.memo_due, dueText), style = MaterialTheme.typography.bodyLarge, color = look.ink)
+            if (canMarkPaid) SolidButton(stringResource(R.string.memo_mark_paid), PaidGreen, onMarkPaid, Modifier.fillMaxWidth()) // the manual's green "পরিশোধিত করুন" (M6)
         }
-        Text(stringResource(R.string.memo_due, dueText), style = MaterialTheme.typography.bodyLarge, color = ink)
-        if (canMarkPaid) AronYesButton(stringResource(R.string.memo_mark_paid), onMarkPaid, Modifier.fillMaxWidth()) // the manual's green "পরিশোধিত করুন" (M6)
     }
 }
 
 @Composable
 private fun MarkerLine(icon: ImageVector, text: String) {
-    val c = LocalAronColors.current
+    val look = LocalAronLook.current
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
-        Icon(icon, contentDescription = null, tint = c.textSecondary, modifier = Modifier.size(AronTokens.Size.IconSmall))
-        Text(text, style = MaterialTheme.typography.bodySmall, color = c.textSecondary)
+        Icon(icon, contentDescription = null, tint = look.inkMuted, modifier = Modifier.size(AronTokens.Size.IconSmall))
+        Text(text, style = MaterialTheme.typography.bodySmall, color = look.inkMuted)
     }
 }
 
-/** A 44 dp squircle well in `accent.container` with a 24 dp glyph (android-glass s6.4). */
+/** A 44 dp round well in `aron.purple` with a white 24 dp glyph. */
 @Composable
 internal fun IconWell(icon: ImageVector) {
-    val c = LocalAronColors.current
-    val fill = c.accentContainer
-    Box(Modifier.size(AronTokens.Size.Well).drawBehind { drawRoundRect(fill, cornerRadius = CornerRadius(AronTokens.Radius.Well.toPx())) }, contentAlignment = Alignment.Center) {
-        Icon(icon, contentDescription = null, tint = c.accentOnContainer, modifier = Modifier.size(AronTokens.Size.Icon))
+    val look = LocalAronLook.current
+    Box(Modifier.size(AronTokens.Size.Well).clip(CircleShape).background(look.purple), contentAlignment = Alignment.Center) {
+        Icon(icon, contentDescription = null, tint = Color.White, modifier = Modifier.size(AronTokens.Size.Icon))
     }
 }
 
-/** A 28 dp pill with an icon and a word in opaque container colours (status never by colour alone). */
+/** A word with an icon in plain ink (status never by colour alone); [container] is kept for the callers that still pass one. */
 @Composable
 internal fun Pill(container: Color?, ink: Color, icon: ImageVector, label: String) {
     Row(
@@ -343,96 +346,100 @@ internal fun Pill(container: Color?, ink: Color, icon: ImageVector, label: Strin
 /** A hairline divider inside a card. */
 @Composable
 internal fun CardDivider() {
-    val c = LocalAronColors.current
-    val color = c.borderDivider
-    val h = if (c.sunlight) AronTokens.Stroke.SunlightHairline else AronTokens.Stroke.Hairline
-    Spacer(Modifier.fillMaxWidth().height(h).drawBehind { drawRect(color) })
+    val c = LocalAronLook.current.tileHairline
+    Spacer(Modifier.fillMaxWidth().height(1.dp).drawBehind { drawRect(c) })
 }
 
 /**
- * The dense table header: `type.label` in `text.secondary`, numbers right-aligned under their heads. Below
+ * The dense table header: the dark `#4D4D4D` strip with white 12 sp heads (PARITY-SPEC s1), numbers right-aligned under their heads. Below
  * `fontScale.vertical` the number columns have their least widths (a wider number grows its column, the name gives way);
  * from it the heads sit at the end of one line and every row stacks its numbers under the name ([tablesStacked]).
  */
 @Composable
 internal fun TableHeader(name: String, qty: String, value: String) {
-    val c = LocalAronColors.current
+    val look = LocalAronLook.current
     val stacked = tablesStacked()
-    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
-        Text(name, style = MaterialTheme.typography.labelMedium, color = c.textSecondary, modifier = Modifier.weight(1f))
-        Text(qty, style = MaterialTheme.typography.labelMedium, color = c.textSecondary, textAlign = TextAlign.End, modifier = if (stacked) Modifier else Modifier.widthIn(min = QtyColumn))
-        Text(value, style = MaterialTheme.typography.labelMedium, color = c.textSecondary, textAlign = TextAlign.End, modifier = if (stacked) Modifier else Modifier.widthIn(min = PriceColumn))
+    Row(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).background(look.tableHeader).padding(horizontal = AronTokens.Space.M, vertical = AronTokens.Space.M),
+        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.S),
+    ) {
+        Text(name, style = MaterialTheme.typography.labelMedium, color = Color.White, modifier = Modifier.weight(1f))
+        Text(qty, style = MaterialTheme.typography.labelMedium, color = Color.White, textAlign = TextAlign.End, modifier = if (stacked) Modifier else Modifier.widthIn(min = QtyColumn))
+        Text(value, style = MaterialTheme.typography.labelMedium, color = Color.White, textAlign = TextAlign.End, modifier = if (stacked) Modifier else Modifier.widthIn(min = PriceColumn))
     }
 }
 
 /** One table line: the name wraps to two lines, the quantity and the amount never wrap or clip (they stack under the name from `fontScale.vertical`). */
 @Composable
 internal fun TableRow(name: String, qty: String, value: String) {
-    val c = LocalAronColors.current
+    val look = LocalAronLook.current
     if (tablesStacked()) {
-        Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.Xs)) {
-            Text(name, style = MaterialTheme.typography.bodyLarge, color = c.textPrimary, maxLines = 2)
+        Column(Modifier.fillMaxWidth().padding(horizontal = AronTokens.Space.M), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.Xs)) {
+            Text(name, style = MaterialTheme.typography.bodyLarge, color = look.purple, maxLines = 2)
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.M)) {
-                if (qty.isNotEmpty()) MoneyText(qty, Modifier.weight(1f), style = MaterialTheme.typography.titleSmall) else Spacer(Modifier.weight(1f))
-                MoneyText(value, style = MaterialTheme.typography.titleSmall, textAlign = TextAlign.End)
+                if (qty.isNotEmpty()) MoneyText(qty, Modifier.weight(1f), style = MaterialTheme.typography.titleSmall, color = look.ink) else Spacer(Modifier.weight(1f))
+                MoneyText(value, style = MaterialTheme.typography.titleSmall, color = look.ink, textAlign = TextAlign.End)
             }
         }
         return
     }
-    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
-        Text(name, style = MaterialTheme.typography.bodyLarge, color = c.textPrimary, maxLines = 2, modifier = Modifier.weight(1f))
-        MoneyText(qty, Modifier.widthIn(min = QtyColumn), style = MaterialTheme.typography.titleSmall, textAlign = TextAlign.End)
-        MoneyText(value, Modifier.widthIn(min = PriceColumn), style = MaterialTheme.typography.titleSmall, textAlign = TextAlign.End)
+    Row(Modifier.fillMaxWidth().padding(horizontal = AronTokens.Space.M), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
+        Text(name, style = MaterialTheme.typography.bodyLarge, color = look.purple, maxLines = 2, modifier = Modifier.weight(1f))
+        MoneyText(qty, Modifier.widthIn(min = QtyColumn), style = MaterialTheme.typography.titleSmall, color = look.ink, textAlign = TextAlign.End)
+        MoneyText(value, Modifier.widthIn(min = PriceColumn), style = MaterialTheme.typography.titleSmall, color = look.ink, textAlign = TextAlign.End)
     }
 }
 
 /** The two-column table header (name and amount) of the sale history: no empty quantity column. */
 @Composable
 internal fun TableHeader2(name: String, value: String) {
-    val c = LocalAronColors.current
-    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
-        Text(name, style = MaterialTheme.typography.labelMedium, color = c.textSecondary, modifier = Modifier.weight(1f))
-        Text(value, style = MaterialTheme.typography.labelMedium, color = c.textSecondary, textAlign = TextAlign.End, modifier = if (tablesStacked()) Modifier else Modifier.widthIn(min = PriceColumn))
+    val look = LocalAronLook.current
+    Row(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).background(look.tableHeader).padding(horizontal = AronTokens.Space.M, vertical = AronTokens.Space.M),
+        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.S),
+    ) {
+        Text(name, style = MaterialTheme.typography.labelMedium, color = Color.White, modifier = Modifier.weight(1f))
+        Text(value, style = MaterialTheme.typography.labelMedium, color = Color.White, textAlign = TextAlign.End, modifier = if (tablesStacked()) Modifier else Modifier.widthIn(min = PriceColumn))
     }
 }
 
 /** One two-column line (name and amount): the amount takes the width it needs, the name wraps to two lines. */
 @Composable
 internal fun TableRow2(name: String, value: String) {
-    val c = LocalAronColors.current
-    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
-        Text(name, style = MaterialTheme.typography.bodyLarge, color = c.textPrimary, maxLines = 2, modifier = Modifier.weight(1f))
-        MoneyText(value, if (tablesStacked()) Modifier else Modifier.widthIn(min = PriceColumn), style = MaterialTheme.typography.titleSmall, textAlign = TextAlign.End)
+    val look = LocalAronLook.current
+    Row(Modifier.fillMaxWidth().padding(horizontal = AronTokens.Space.M), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
+        Text(name, style = MaterialTheme.typography.bodyLarge, color = look.purple, maxLines = 2, modifier = Modifier.weight(1f))
+        MoneyText(value, if (tablesStacked()) Modifier else Modifier.widthIn(min = PriceColumn), style = MaterialTheme.typography.titleSmall, color = look.purple, textAlign = TextAlign.End)
     }
 }
 
 /** A total line: the word and the amount with its sign. */
 @Composable
 internal fun TotalLine(label: String, value: String) {
-    val c = LocalAronColors.current
+    val look = LocalAronLook.current
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        Text(label, style = MaterialTheme.typography.bodyLarge, color = c.textPrimary, modifier = Modifier.weight(1f))
-        MoneyText(value, style = MaterialTheme.typography.titleSmall, textAlign = TextAlign.End)
+        Text(label, style = MaterialTheme.typography.bodyLarge, color = look.ink, modifier = Modifier.weight(1f))
+        MoneyText(value, style = MaterialTheme.typography.titleSmall, color = look.ink, textAlign = TextAlign.End)
     }
 }
 
 /** A deduction line: the word and "− 437.50 ৳" (the true minus is part of the text, so it is never colour alone). */
 @Composable
 internal fun DeductionLine(label: String, value: String) {
-    val c = LocalAronColors.current
+    val look = LocalAronLook.current
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        Text(label, style = MaterialTheme.typography.bodyLarge, color = c.textPrimary, modifier = Modifier.weight(1f))
-        Text(value, style = MaterialTheme.typography.titleSmall, color = c.textPrimary, textAlign = TextAlign.End, maxLines = 1, softWrap = false)
+        Text(label, style = MaterialTheme.typography.bodyLarge, color = look.ink, modifier = Modifier.weight(1f))
+        Text(value, style = MaterialTheme.typography.titleSmall, color = look.ink, textAlign = TextAlign.End, maxLines = 1, softWrap = false)
     }
 }
 
 /** A caption over a value (the group foot pairs of screens-sr s10). */
 @Composable
 internal fun CaptionValue(caption: String, value: String, modifier: Modifier = Modifier) {
-    val c = LocalAronColors.current
+    val look = LocalAronLook.current
     Column(modifier) {
-        Text(caption, style = MaterialTheme.typography.bodySmall, color = c.textSecondary, maxLines = 1)
-        MoneyText(value, style = MaterialTheme.typography.titleSmall)
+        Text(caption, style = MaterialTheme.typography.bodySmall, color = look.inkMuted, maxLines = 1)
+        MoneyText(value, style = MaterialTheme.typography.titleSmall, color = look.ink)
     }
 }
 
