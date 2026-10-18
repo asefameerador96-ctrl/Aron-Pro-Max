@@ -47,3 +47,35 @@ Traps found tonight: run only one Gradle build at a time on this box (a checker'
 under a running test JVM: 74 NoClassDefFoundError failures that were not real); a contract edit needs
 `npm run gen:contract` in web/ (CI checks web/src/contract/openapi.d.ts); a local `gitleaks git .` scans every
 remote ref, so pass `--log-opts=HEAD` to match CI.
+
+## Handover for the next session (recycled 2026-10-18 ~01:45 UTC)
+
+Branch tip: 2cc82215 (pushed). CI: ae11b20e green and checked. 45755543 and ab1a7e9c red: openapi.d.ts was stale and
+INT's gitleaks hunk was missing; both are fixed in f7425e97. f7425e97, d7c82910 and 2cc82215 still have no green run
+of their own. The lead sends 'checked <sha>' when one does, so watch the runs and fix any red one.
+
+Ownership split (lead 01:10): backend-authz (session_01LaW5TQ87wr3m8HBjQVjcZG, lane/backend-authz) owns the remaining
+config scope (changes, changes/{id}, versions/{v}, reach pending), CONFIG_READERS, config list limits, per-request MFA,
+finance.backdate, SUPPORT reports. Do not do those. It builds on 8a571fa1/faae41f7/45755543.
+
+Next items, in the lead's order (messages 01:08-01:18):
+1. **QA-MNY-01 (T1 money, Opus checker):** MemoChecks checks the net's sign only when the memo and its children arrive
+   in one batch. A header first and children later (gross 9,200, net -30,480) is accepted with no flag. Run the same
+   check when the late children land (replay-safe). Rule D-18: a ZERO sale + QC may be a credit; gross > 0 with
+   net < 0 is flagged or quarantined as today. Repro: an @Disabled test on lane/qa dcacec1a; request file
+   docs/requests/qa-money-gate-findings.md (from qa). Merge INT first. Send the lead the sha when it is green.
+2. QA-MNY-02 is DROPPED (parked until MQ-03).
+3. Rest of the replay sweep, money first: paper backfill (PaperBackfill.kt:105-116, prices re-looked up before ingest),
+   then daily-tracking actions, PDA upload cap, device enrol after the token is revoked. Risk-signal review stays as is
+   (see above).
+4. KD-1/KD-2 (docs/requests/qa-backend-dayclose-late-rows.md, read it with `git show origin/lane/qa:...`):
+   `SELECT ... FROM app.route_day ... ORDER BY route_id FOR NO KEY UPDATE` before the late check in finalSubmit (not
+   FOR SHARE); truncate the clock to micros once in finalSubmit. Run qa's DayCloseRaceTest without the tolerance, then
+   tell qa.
+5. TSO bundle follow-ups: none open beyond the fleet note (rulings logged in DECISIONS D-TSO-BUNDLE-OUTLETS).
+6. Last and low: ReportOutputs.kt:50, an xlsx mtk cell falls back to toDouble(). Keep it numeric, but write text
+   above 2^53.
+
+Discipline: before any push that touches contract/openapi.yaml, run `python3 tools/slice-contract.py`,
+`cd web && npm run gen:contract` and `bash web/scripts/ci.sh generate`. Merge INT before each push. Do not edit lane/qa's
+@Disabled repros or the shrink-only baselines. The ApiWorld release fixture is accepted (the lead, 23:31).
