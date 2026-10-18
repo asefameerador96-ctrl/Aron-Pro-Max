@@ -73,12 +73,12 @@ fun AmoApp(
     val header = remember(user, businessDate) { RoleHomes.header(RoleHomes.AMO_PREFIX, user, businessDate) }
     AronScreenTransition(screen, forward = { _, to -> to != AmoScreen.HOME }, modifier) { s ->
         when (s) {
-            AmoScreen.HOME -> RoleHomeContent(
-                header, user, bundle, tiles, sync,
+            AmoScreen.HOME -> AmoHomeContent(
+                header, user, bundle, tiles,
                 onTile = { screen = AmoScreen.of(it) }, onSettings = { screen = AmoScreen.SETTINGS },
-                hero = hero, health = health, sunlight = sunlight, onSunlight = onSunlight, banners = banners, onSync = onSync,
+                hero = hero, health = health, banners = banners, sync = sync, onSync = onSync,
             )
-            AmoScreen.SETTINGS -> RoleSettingsContent(
+            AmoScreen.SETTINGS -> AmoSettingsContent(
                 versionText, stringResource(R.string.set_logout_message), onLanguageSelect, onLogout, onBack = { screen = AmoScreen.HOME },
                 sunlight = sunlight, onSunlight = onSunlight, onUpdate = onUpdate, updateAvailable = updateAvailable,
                 onSupport = screens[AmoScreen.SUPPORT]?.let { { screen = AmoScreen.SUPPORT } },

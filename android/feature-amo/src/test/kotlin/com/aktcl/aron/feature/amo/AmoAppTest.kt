@@ -107,7 +107,8 @@ class AmoAppTest {
         compose.onNodeWithTag(HomeTags.HEADER).assertIsDisplayed()
         compose.onNodeWithText("AMO - Testing Banani (amo5001)").assertIsDisplayed()
         // the bare ISO date on its own caption line (screens-sr s2); TalkBack reads the full sentence
-        compose.onNodeWithTag(HomeTags.DATE).assertIsDisplayed().assertTextEquals("২০২৬-১০-০৫").assertContentDescriptionEquals("ব্যবসায়িক তারিখ: ২০২৬-১০-০৫")
+        compose.onNodeWithText("২০২৬-১০-০৫").assertIsDisplayed()
+        compose.onNodeWithTag(HomeTags.HEADER).assertContentDescriptionEquals("AMO - Testing Banani (amo5001), ব্যবসায়িক তারিখ: ২০২৬-১০-০৫")
         compose.onNodeWithTag(HomeTags.MODE).assertIsDisplayed()
         // offline unlock with an offline bundle check: the chip and the banner already say it, the bundle line is not repeated
         compose.onNodeWithTag(HomeTags.BUNDLE).assertDoesNotExist()
@@ -143,7 +144,7 @@ class AmoAppTest {
     fun chipOpensTheSyncSheetOnlyWhenTheHostHasOne() {
         var opened = 0
         show(AppLanguage.BN, onSync = { opened++ })
-        compose.onNodeWithTag(RoleHomeTags.SYNC).assertHasClickAction().performClick()
+        compose.onNodeWithTag(RoleHomeTags.SYNC).performScrollTo().assertHasClickAction().performClick()
         compose.waitForIdle()
         assertEquals(1, opened)
     }
@@ -151,14 +152,14 @@ class AmoAppTest {
     @Test
     fun chipIsNotTappableWithoutASyncSheet() {
         show(AppLanguage.BN)
-        compose.onNodeWithTag(RoleHomeTags.SYNC).assertIsDisplayed().assertHasNoClickAction()
+        compose.onNodeWithTag(RoleHomeTags.SYNC).performScrollTo().assertIsDisplayed().assertHasNoClickAction()
     }
 
     @Test
     fun settingsSunlightRowTogglesAsOneRow() {
         var on: Boolean? = null
-        show(AppLanguage.BN, onSunlight = { on = it })
-        compose.onNodeWithTag(RoleHomeTags.SETTINGS).performClick()
+        val context = show(AppLanguage.BN, onSunlight = { on = it })
+        compose.onNodeWithContentDescription(context.getString(HomeR.string.set_open)).performClick()
         compose.waitForIdle()
         // the row announces itself as a switch with its state (UI-SR-6), not as a plain button
         compose.onNodeWithTag(RoleHomeTags.SET_SUNLIGHT).performScrollTo().assertIsOff().assertHasClickAction().performClick()
@@ -171,9 +172,9 @@ class AmoAppTest {
         var loggedOut = false
         val context = show(AppLanguage.EN, user = user.copy(offline = false), onLogout = { loggedOut = true })
         compose.onNodeWithTag(HomeTags.MODE).assertDoesNotExist()
-        compose.onNodeWithTag(HomeTags.BUNDLE).assertIsDisplayed()
+        compose.onNodeWithTag(HomeTags.BUNDLE).performScrollTo().assertIsDisplayed()
         compose.onNodeWithText(context.getString(HomeR.string.home_bundle_offline)).assertIsDisplayed()
-        compose.onNodeWithTag(RoleHomeTags.SETTINGS).performClick()
+        compose.onNodeWithContentDescription(context.getString(HomeR.string.set_open)).performClick()
         compose.waitForIdle()
         compose.onNodeWithTag(RoleHomeTags.SET_VERSION).assertExists()
         compose.onNodeWithText("Version 0.1.0 (1)").assertExists()
