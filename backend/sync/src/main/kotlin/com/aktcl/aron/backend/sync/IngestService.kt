@@ -269,7 +269,7 @@ class IngestService(
         val ctx = Ctx(up, entryUuid, now, manual = Manual(actor.userId, window))
         val ordered = recs.sortedBy { MANUAL_TYPES.indexOf(it.type) }
         val all = ordered.map { it.json }
-        ctx.arith = MemoChecks.familyMismatches(all, allowNegativeNet()) + db.jdbi.withHandle<Map<String, String>, Exception> { h -> MemoChecks.unknownSkuSiblings(h, all) }
+        ctx.arith = MemoChecks.familyMismatches(all) + db.jdbi.withHandle<Map<String, String>, Exception> { h -> MemoChecks.unknownSkuSiblings(h, all) }
         ctx.memoFps = emptyMap()
         val outcomes = arrayOfNulls<Outcome>(recs.size)
         var taken: Long? = null
@@ -368,7 +368,7 @@ class IngestService(
             // The children held with it, parents before children, so a memo's equations see its lines (s7.4).
             val children = heldChildren(h, item.clientUuid, item.code)
             val family = listOf(rec.json) + children.map { it.payload }
-            val arith = MemoChecks.familyMismatches(family, allowNegativeNet()) + MemoChecks.unknownSkuSiblings(h, family)
+            val arith = MemoChecks.familyMismatches(family) + MemoChecks.unknownSkuSiblings(h, family)
             val fps = MemoChecks.memoFingerprints(family)
             // Every held record runs as its own uploader and device (a TSO's collection on an SR's memo stays the TSO's).
             // The reviewer judged the item's own record: a child of another uploader gets no override of its own checks
@@ -654,7 +654,7 @@ class IngestService(
         val ordered = families.filter { f -> f.all { it.type == "config_ack" } } + families.filterNot { f -> f.all { it.type == "config_ack" } }
         for (family in ordered) {
             val i = family.first().index
-            ctx.arith = MemoChecks.familyMismatches(family.map { it.json }, allowNegativeNet()) + db.jdbi.withHandle<Map<String, String>, Exception> { h -> MemoChecks.unknownSkuSiblings(h, family.map { it.json }) }
+            ctx.arith = MemoChecks.familyMismatches(family.map { it.json }) + db.jdbi.withHandle<Map<String, String>, Exception> { h -> MemoChecks.unknownSkuSiblings(h, family.map { it.json }) }
             ctx.memoFps = MemoChecks.memoFingerprints(family.map { it.json })
             try {
                 // AUD-REL-02: a transient failure (deadlock, serialization, failover, pool timeout) retries the family
@@ -940,7 +940,7 @@ class IngestService(
         }
 
         // 8. Money (F-SYS-062, s7.4): a memo family whose equations fail is quarantined whole, before anything is stored.
-        (ctx.arith[r.clientUuid] ?: MemoChecks.recordMismatch(r.type, payload, allowNegativeNet()))?.let { why ->
+        (ctx.arith[r.clientUuid] ?: MemoChecks.recordMismatch(r.type, payload))?.let { why ->
             return quarantine(h, ctx, r, bd, RecordOutcomeCode.ARITHMETIC_MISMATCH, why)
         }
 
@@ -1187,9 +1187,6 @@ class IngestService(
     }
 
     /** The device row's standing for the N-027 gate; a device row that vanished counts as not enrolled. */
-    /** `cfg.memo.allow_negative_net` (D-18): false also refuses the zero-gross QC credit; unreadable keeps the default true. */
-    private fun allowNegativeNet(): Boolean = runCatching { config.bool("cfg.memo.allow_negative_net") }.getOrDefault(true)
-
     private fun deviceGate(up: Uploader): DeviceGate {
         val row = db.jdbi.withHandle<Pair<Boolean, String>?, Exception> { h ->
             h.createQuery("SELECT enrolment_token_id IS NOT NULL, integrity_verdict FROM app.device WHERE id = :d").bind("d", up.deviceId)
