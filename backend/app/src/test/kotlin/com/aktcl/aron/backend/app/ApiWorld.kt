@@ -152,8 +152,7 @@ class ApiWorld(
         // keeps GET /v1/app/update-check answering "no update" for the sample version.
         h.execute(
             "INSERT INTO app.app_release (flavour, version_name, version_code, abi, sha256, size_bytes, download_url, signing_cert_sha256, status, rollout_pct, created_by, published_at, published_by) " +
-                // arm64-v8a, not universal: the harness's sample POST /v1/admin/releases is (sr, 1, universal) and must not collide with it
-                "SELECT 'sr', '1.0.0', 1, 'arm64-v8a', sha256('qa-release-sr'::bytea), 1000000, 'https://example.com/qa/aron-sr.apk', sha256('qa-signing-cert'::bytea), 'published', 100, a.id, now(), s.id " +
+                "SELECT 'sr', '1.0.0', 1, 'universal', sha256('qa-release-sr'::bytea), 1000000, 'https://example.com/qa/aron-sr.apk', sha256('qa-signing-cert'::bytea), 'published', 100, a.id, now(), s.id " +
                 "FROM app.app_user a, app.app_user s WHERE a.username = 'admin1001' AND s.username = 'superadmin1001'",
         )
         // A throwaway AMO with a zone scope for the scope write (an SR's reach comes from its routes, so it is refused).
