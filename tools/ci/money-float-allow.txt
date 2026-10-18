@@ -21,7 +21,4 @@ android/feature-tso/src/main/kotlin/com/aktcl/aron/feature/tso/TsoDashboard.kt |
 android/feature-tso/src/main/kotlin/com/aktcl/aron/feature/tso/TsoDashboard.kt | qty_report")?.toDoubleOrNull() | ok | parses the report-unit quantity, not money
 android/feature-tso/src/main/kotlin/com/aktcl/aron/feature/tso/TsoDashboard.kt | pos.map { it * 100.0 / total } | ok | donut shares in percent of the total (display only); the amounts stay Long
 web/src/lib/admin/taka.ts | Math.round(Math.log10(scale)) | ok | the decimal count of a power-of-ten scale, not an amount
-web/src/lib/dash/lakh.ts | abs / 1e7 | finding | QA-MNY-04 (web): formatLakhCrore passes taka / 1e7 (a double) to Intl for rounding; compute the hundredths with integer maths
-web/src/lib/dash/lakh.ts | abs / 1e5 | finding | QA-MNY-04 (web): the lakh branch of formatLakhCrore, same fix
-web/src/lib/dash/lakh.ts | Math.sign(mtk) * Math.round(Math.abs(mtk) / 1000) | finding | QA-MNY-04 (web): mtkToTaka rounds mtk / 1000 as a double; use integer maths
 web/src/app/(dashboards)/reports/[slug]/page.tsx | Math.ceil(result.data.total_rows / size) | ok | page count of a report ("total" is rows), not money
