@@ -1,88 +1,9 @@
 # AuthzAuditTest (qa, 2026-10-18): confirmed authorisation findings, one line per `CHECK route role variant`.
 # May only SHRINK; every line is a defect routed to lead-backend (evidence in build/authz-audit.txt).
 # AZ-1 (MFA per request), AZ-2 (SUPPORT reports) and AZ-6 (SUPPORT exports): fixed on lane/backend-authz, lines removed.
-# AZ-3 (low, contract): the config lists and the device-OTP panel cap limit at 200 with a default page of 50; the contract Limit is
-# 1..500, default 100. A contract-valid limit 201..500 is refused 400, and the default page is 50. Never unbounded.
+# AZ-3 limits, AZ-4 (config reach) and AZ-5 (CONFIG_READERS): fixed on lane/backend-authz, lines removed. The three
+# `default` lines below stay until the probe compares with min(100, rows seeded): the server answers its contract default of
+# 100, and these lists hold fewer than 100 rows (backend-authz to qa, 2026-10-18).
 LIMIT-CONTRACT GET /v1/admin/config/changes ADMIN default
-LIMIT-CONTRACT GET /v1/admin/config/changes ADMIN limit=500
-LIMIT-CONTRACT GET /v1/admin/config/reach/{}/pending ADMIN limit=500
 LIMIT-CONTRACT GET /v1/admin/config/values ADMIN default
-LIMIT-CONTRACT GET /v1/admin/config/values ADMIN limit=500
 LIMIT-CONTRACT GET /v1/admin/config/versions ADMIN default
-LIMIT-CONTRACT GET /v1/admin/config/versions ADMIN limit=500
-LIMIT-CONTRACT GET /v1/admin/device-otps ADMIN limit=500
-# AZ-4 (medium): config reads have no reach filter. A TSO or DMO reads the other division's zone values (values, resolve), its
-# change sets (the list and by id) and its versions (by id). ConfigService.values/changes/change/resolve and ConfigTools.versionDetail.
-IDOR GET /v1/admin/config/changes DMO list
-IDOR GET /v1/admin/config/changes TSO list
-IDOR GET /v1/admin/config/changes/{} DMO other-division-change
-IDOR GET /v1/admin/config/changes/{} TSO other-division-change
-IDOR GET /v1/admin/config/versions/{} DMO other-division-version
-IDOR GET /v1/admin/config/versions/{} TSO other-division-version
-# AZ-5 (medium): ConfigApi.CONFIG_READERS lets DMO, WM, TOP, ANALYST and SUPPORT read keys, values, changes, versions and the
-# tools; docs/24 s8.5 'Config changes' is - for them (TSO radius proposals, ADMIN, SUPERADMIN only).
-ROLE GET /v1/admin/config/blast-radius ANALYST denied
-ROLE GET /v1/admin/config/blast-radius DMO denied
-ROLE GET /v1/admin/config/blast-radius SUPPORT denied
-ROLE GET /v1/admin/config/blast-radius TOP denied
-ROLE GET /v1/admin/config/blast-radius WM denied
-ROLE GET /v1/admin/config/calibration ANALYST denied
-ROLE GET /v1/admin/config/calibration DMO denied
-ROLE GET /v1/admin/config/calibration SUPPORT denied
-ROLE GET /v1/admin/config/calibration TOP denied
-ROLE GET /v1/admin/config/calibration WM denied
-ROLE GET /v1/admin/config/changes ANALYST denied
-ROLE GET /v1/admin/config/changes DMO denied
-ROLE GET /v1/admin/config/changes SUPPORT denied
-ROLE GET /v1/admin/config/changes TOP denied
-ROLE GET /v1/admin/config/changes WM denied
-ROLE GET /v1/admin/config/changes/{} ANALYST denied
-ROLE GET /v1/admin/config/changes/{} DMO denied
-ROLE GET /v1/admin/config/changes/{} SUPPORT denied
-ROLE GET /v1/admin/config/changes/{} TOP denied
-ROLE GET /v1/admin/config/changes/{} WM denied
-ROLE GET /v1/admin/config/density ANALYST denied
-ROLE GET /v1/admin/config/density DMO denied
-ROLE GET /v1/admin/config/density SUPPORT denied
-ROLE GET /v1/admin/config/density TOP denied
-ROLE GET /v1/admin/config/density WM denied
-ROLE GET /v1/admin/config/keys ANALYST denied
-ROLE GET /v1/admin/config/keys DMO denied
-ROLE GET /v1/admin/config/keys SUPPORT denied
-ROLE GET /v1/admin/config/keys TOP denied
-ROLE GET /v1/admin/config/keys WM denied
-ROLE GET /v1/admin/config/reach/{} ANALYST denied
-ROLE GET /v1/admin/config/reach/{} DMO denied
-ROLE GET /v1/admin/config/reach/{} SUPPORT denied
-ROLE GET /v1/admin/config/reach/{} TOP denied
-ROLE GET /v1/admin/config/reach/{} WM denied
-ROLE GET /v1/admin/config/reach/{}/pending ANALYST denied
-ROLE GET /v1/admin/config/reach/{}/pending DMO denied
-ROLE GET /v1/admin/config/reach/{}/pending SUPPORT denied
-ROLE GET /v1/admin/config/reach/{}/pending TOP denied
-ROLE GET /v1/admin/config/reach/{}/pending WM denied
-ROLE GET /v1/admin/config/resolve ANALYST denied
-ROLE GET /v1/admin/config/resolve DMO denied
-ROLE GET /v1/admin/config/resolve SUPPORT denied
-ROLE GET /v1/admin/config/resolve TOP denied
-ROLE GET /v1/admin/config/resolve WM denied
-ROLE GET /v1/admin/config/values ANALYST denied
-ROLE GET /v1/admin/config/values DMO denied
-ROLE GET /v1/admin/config/values SUPPORT denied
-ROLE GET /v1/admin/config/values TOP denied
-ROLE GET /v1/admin/config/values WM denied
-ROLE GET /v1/admin/config/versions ANALYST denied
-ROLE GET /v1/admin/config/versions DMO denied
-ROLE GET /v1/admin/config/versions SUPPORT denied
-ROLE GET /v1/admin/config/versions TOP denied
-ROLE GET /v1/admin/config/versions WM denied
-ROLE GET /v1/admin/config/versions/{} ANALYST denied
-ROLE GET /v1/admin/config/versions/{} DMO denied
-ROLE GET /v1/admin/config/versions/{} SUPPORT denied
-ROLE GET /v1/admin/config/versions/{} TOP denied
-ROLE GET /v1/admin/config/versions/{} WM denied
-ROLE GET /v1/admin/config/whatif ANALYST denied
-ROLE GET /v1/admin/config/whatif DMO denied
-ROLE GET /v1/admin/config/whatif SUPPORT denied
-ROLE GET /v1/admin/config/whatif TOP denied
-ROLE GET /v1/admin/config/whatif WM denied
