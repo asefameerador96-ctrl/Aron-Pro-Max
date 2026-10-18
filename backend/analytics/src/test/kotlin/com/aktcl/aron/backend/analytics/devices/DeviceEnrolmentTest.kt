@@ -134,6 +134,14 @@ class DeviceEnrolmentTest : ReportFixture() {
         val used = enrol(enrolBody(secret, other, goodChain(other, secret)))
         assertEquals(HttpStatusCode.Forbidden, used.status); assertTrue(used.bodyAsText().contains("ERR_ENROLMENT_TOKEN_EXHAUSTED"))
         assertEquals(1, count("SELECT count(*) FROM app.device"))
+        // Replay first: the token revoked after the enrolment, the same phone's lost response is still answered with its device;
+        // a new phone on the revoked token is refused.
+        assertEquals(HttpStatusCode.OK, client.post("/v1/admin/enrolment-tokens/${t["token"]!!.jsonObject.s("token_id")}/revoke") { bearerAuth(TestTokens.web(13, Role.ADMIN)) }.status)
+        val afterRevoke = enrol(enrolBody(secret, phone, goodChain(phone, secret)))
+        assertEquals(HttpStatusCode.Created, afterRevoke.status, afterRevoke.bodyAsText())
+        assertEquals(res.s("device_id"), Json.parseToJsonElement(afterRevoke.bodyAsText()).jsonObject.s("device_id"))
+        assertTrue(enrol(enrolBody(secret, other, goodChain(other, secret))).bodyAsText().contains("ERR_ENROLMENT_TOKEN_INVALID"))
+        assertEquals(1, count("SELECT count(*) FROM app.device"))
         // The registry: model, Android version, app version, policy version, last status report.
         val dev = Json.parseToJsonElement(client.get("/v1/admin/devices/${deviceId(phone)}") { bearerAuth(TestTokens.web(13, Role.ADMIN)) }.bodyAsText()).jsonObject
         assertEquals("A70", dev["device_info"]!!.jsonObject.s("model")); assertEquals("13", dev["device_info"]!!.jsonObject.s("os_version")); assertEquals("1.0.0+1", dev.s("app_version"))
