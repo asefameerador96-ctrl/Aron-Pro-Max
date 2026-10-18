@@ -132,7 +132,17 @@ def amounts():
         out.append({"mtk": m, "note": "seeded"})
     for o in out:
         o["expect"] = expected(o["mtk"])
+        if o["mtk"] in QUESTIONS:
+            o["question"] = QUESTIONS[o["mtk"]]
     return out
+
+
+# Recorded questions (qa 2026-10-18, Opus checker): the expectation is what the web and the TSO app do today, pinned so a
+# change is visible, NOT a confirmed rule. The scale (lakh or crore) is chosen BEFORE the 2-decimal rounding, so
+# 99,99,999.5 taka shows "100.00 Lakh" rather than "1.00 Cr". Open until the owner (or the design spec) says which.
+_SCALE_Q = ("scale chosen before rounding: shows 100.00 Lakh, not 1.00 Cr; kept as today's web and TSO behaviour, "
+            "not confirmed correct (open question, qa money gate 2026-10-18)")
+QUESTIONS = {9_999_499_999: _SCALE_Q, 9_999_999_499: _SCALE_Q}
 
 
 def build():

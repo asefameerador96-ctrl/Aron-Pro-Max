@@ -4,8 +4,8 @@
 // show the same figure for the same milli-taka.
 //
 // KNOWN lists the formatter/format pairs that disagree with the corpus today (findings routed to the owning lane). It may
-// only shrink: a pair listed here must still disagree (so a fix fails this test until its line is deleted), and a pair
-// not listed must agree on all 200 amounts.
+// only shrink (KNOWN_CEILING is its exact size): a pair listed here must still disagree, on no more amounts than
+// recorded (so a fix fails this test until its line is deleted), and a pair not listed must agree on all 200 amounts.
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -53,14 +53,17 @@ const CHECKS: Record<string, (e: Entry, l: Locale) => [string, string]> = {
  *   3-digit grouping in both locales (১,২৩৪,৫৬৭.০০): every bn amount from 1 lakh taka up differs between the web and
  *   the phone.
  */
-const KNOWN: Record<string, Locale[]> = {
-  "reports/format.formatTakaDisplay+sign:money2": ["bn"],
-  "reports/format.formatTakaDisplay:amount2": ["bn"],
-  "admin/money.formatMtk:amount2": ["bn"],
-  "reports/format.formatTaka:money3": ["bn"],
-  "admin/money.formatMtkExact:money3": ["bn"],
-  "dash/lakh.formatLakhCrore:lakh_crore": ["bn"],
+const KNOWN: Record<string, Partial<Record<Locale, number>>> = {
+  // formatter/format -> locale -> the most corpus amounts that may differ (measured 2026-10-18; may only go down)
+  "reports/format.formatTakaDisplay+sign:money2": { bn: 95 },
+  "reports/format.formatTakaDisplay:amount2": { bn: 95 },
+  "admin/money.formatMtk:amount2": { bn: 95 },
+  "reports/format.formatTaka:money3": { bn: 95 },
+  "admin/money.formatMtkExact:money3": { bn: 95 },
+  "dash/lakh.formatLakhCrore:lakh_crore": { bn: 3 },
 };
+/** The exact number of known (formatter, locale) pairs, like CEILING in tools/ci/money-float-scan.py: lower it with each fix. */
+const KNOWN_CEILING = 6;
 
 /** Mismatches of [id]; with [ignoreGrouping] the separators are dropped first (a known grouping finding hides nothing else). */
 function mismatches(id: string, locale: Locale, ignoreGrouping = false): string[] {
@@ -81,13 +84,15 @@ describe("money format corpus (contract/fixtures/money-format-corpus.json)", () 
 
   for (const id of Object.keys(CHECKS)) {
     for (const locale of LOCALES) {
-      const known = KNOWN[id]?.includes(locale) ?? false;
+      const limit = KNOWN[id]?.[locale];
+      const known = limit !== undefined;
       it(`${id} [${locale}] ${known ? "still disagrees (known finding)" : "matches every amount"}`, () => {
         const bad = mismatches(id, locale);
         if (known) {
           // A fixed finding must leave KNOWN (the list only shrinks).
           console.info(`known finding ${id} [${locale}]: ${bad.length}/${corpus.amounts.length} differ, e.g. ${bad[bad.length - 1]}`);
-          expect(bad.length, `${id} [${locale}] now matches: delete it from KNOWN`).toBeGreaterThan(0);
+          expect(bad.length, `${id} [${locale}] now matches: delete it from KNOWN and lower KNOWN_CEILING`).toBeGreaterThan(0);
+          expect(bad.length, `${id} [${locale}]: more amounts differ than recorded`).toBeLessThanOrEqual(limit);
           // The known finding is grouping only: digits, decimals, rounding and sign still match on every amount.
           expect(mismatches(id, locale, true).slice(0, 10)).toEqual([]);
         } else {
@@ -97,8 +102,9 @@ describe("money format corpus (contract/fixtures/money-format-corpus.json)", () 
     }
   }
 
-  it("KNOWN names only formatters that exist (no stale entries)", () => {
+  it("KNOWN names only formatters that exist (no stale entries) and holds exactly KNOWN_CEILING pairs", () => {
     for (const id of Object.keys(KNOWN)) expect(Object.keys(CHECKS)).toContain(id);
+    expect(Object.values(KNOWN).reduce((n, byLocale) => n + Object.keys(byLocale).length, 0)).toBe(KNOWN_CEILING);
   });
 
   it("parsing the shown amount gives back the same milli-taka (no float on the way in)", () => {

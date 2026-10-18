@@ -3,7 +3,11 @@
 
   money-float-scan.py      a Double on a Kotlin money line, parseFloat and a division by 1000 on a TS money line fail;
                            a comment, a non-money line and a listed line pass; a stale entry and an allow-list over
-                           CEILING fail; the real checkout passes
+                           CEILING fail; a new float line in an allow-listed file is caught (an entry is an exact
+                           fragment covering its line's float uses and matches exactly one line, or N with xN);
+                           only `*` block-comment continuations are skipped; 1e3/1.5E6 (Kotlin) and 1_000 (TS)
+                           divisors are caught; `//` inside a string does not end the code; paid/total/cash/collect
+                           are money words; the real checkout passes
   money-format-corpus.py   the committed corpus is what the generator produces; 200 distinct amounts; the oracle
                            rounds half away from zero; a hand edit is caught
 Run: python3 tools/ci/test_money_gates.py
@@ -95,6 +99,73 @@ class MoneyFloatScanTest(unittest.TestCase):
         self.assertEqual(1, r.returncode)
         self.assertIn("only shrinks", r.stdout)
 
+    def test_a_new_float_line_in_an_allow_listed_file_is_caught(self):
+        # The checker's mutation: an allowed file gains a new float line; a broad entry must not absorb it.
+        allowed = "data class Row(val ratioPct: Double?, val netMtk: Long)\n"
+        entry = "backend/x/src/main/kotlin/A.kt | val ratioPct: Double? | ok | a percentage"
+        root = self.tree({"backend/x/src/main/kotlin/A.kt": allowed + "val leak = netMtk.toDouble() / 1000\n"})
+        r = self.scan(root, [entry])
+        self.assertEqual(1, r.returncode, r.stdout)
+        self.assertIn("A.kt,line=2", r.stdout)
+        # A new line that copies the allowed fragment makes the entry match two lines: fails too.
+        root = self.tree({"backend/x/src/main/kotlin/A.kt": allowed + allowed})
+        r = self.scan(root, [entry])
+        self.assertEqual(1, r.returncode, r.stdout)
+        self.assertIn("matches 2 lines", r.stdout)
+        # Same for TS: Math.round(mtk / 1000) added to a file whose other Math line is listed.
+        root = self.tree({"web/src/lib/admin/money.ts": "const abs = Math.abs(Math.trunc(mtk));\nconst t = Math.round(mtk / 1000);\n"})
+        r = self.scan(root, ["web/src/lib/admin/money.ts | const abs = Math.abs(Math.trunc(mtk)); | ok | integer"])
+        self.assertEqual(1, r.returncode, r.stdout)
+        self.assertIn("money.ts,line=2", r.stdout)
+
+    def test_a_fragment_must_cover_every_float_use_on_its_line(self):
+        root = self.tree({"backend/x/src/main/kotlin/A.kt": "val ratioPct: Double? = netMtk.toDouble()\n"})
+        r = self.scan(root, ["backend/x/src/main/kotlin/A.kt | val ratioPct: Double? | ok | pct"])
+        self.assertEqual(1, r.returncode, r.stdout)
+        r = self.scan(root, ["backend/x/src/main/kotlin/A.kt | val ratioPct: Double? = netMtk.toDouble() | finding | both"])
+        self.assertEqual(0, r.returncode, r.stdout)
+
+    def test_a_count_suffix_needs_exactly_that_many_identical_lines(self):
+        line = "const abs = Math.abs(Math.trunc(mtk));\n"
+        entry = "web/src/lib/m.ts | const abs = Math.abs(Math.trunc(mtk)); | ok x2 | integer"
+        self.assertEqual(0, self.scan(self.tree({"web/src/lib/m.ts": line * 2}), [entry]).returncode)
+        r = self.scan(self.tree({"web/src/lib/m.ts": line * 3}), [entry])
+        self.assertEqual(1, r.returncode)
+        self.assertIn("want exactly 2", r.stdout)
+
+    def test_only_block_comment_continuations_are_skipped(self):
+        root = self.tree({"backend/x/src/main/kotlin/A.kt": " * netMtk.toDouble() in a KDoc\n *\n */\n"})
+        self.assertEqual(0, self.scan(root).returncode)
+        root = self.tree({"backend/x/src/main/kotlin/A.kt": "    *amounts.map { it.toDouble() }.toTypedArray()\n"})
+        self.assertEqual(1, self.scan(root).returncode, "a spread operator line is code, not a comment")
+        root = self.tree({"backend/x/src/main/kotlin/A.kt": "/* x */ val t = netMtk.toDouble()\n"})
+        self.assertEqual(1, self.scan(root).returncode, "code after a closed block comment")
+
+    def test_exponent_and_underscore_divisors_are_caught(self):
+        for rel, text in [
+            ("backend/x/src/main/kotlin/A.kt", "val taka = netMtk / 1e3\n"),
+            ("backend/x/src/main/kotlin/A.kt", "val lakh = 1e5; val n = grossMtk / lakh\n"),
+            ("backend/x/src/main/kotlin/A.kt", "val c = netMtk / 1.5E6\n"),
+            ("web/src/lib/x.ts", "const t = net_mtk / 1_000;\n"),
+            ("web/src/lib/x.ts", "const t = net_mtk / 1e3;\n"),
+        ]:
+            with self.subTest(text=text):
+                self.assertEqual(1, self.scan(self.tree({rel: text})).returncode, text)
+        self.assertEqual(0, self.scan(self.tree({"web/src/lib/x.ts": "const t = net_mtk / 1_000n;\n"})).returncode, "BigInt")
+
+    def test_a_double_slash_inside_a_string_does_not_end_the_code(self):
+        root = self.tree({"backend/x/src/main/kotlin/A.kt": 'val u = "http://x"; val t = netMtk.toDouble()\n'})
+        self.assertEqual(1, self.scan(root).returncode)
+        root = self.tree({"web/src/lib/x.ts": "const u = `https://x/${id}`; const t = parseFloat(amount);\n"})
+        self.assertEqual(1, self.scan(root).returncode)
+        root = self.tree({"backend/x/src/main/kotlin/A.kt": "val ok = 1L // netMtk.toDouble() is forbidden\n"})
+        self.assertEqual(0, self.scan(root).returncode, "a real trailing comment is skipped")
+
+    def test_paid_total_cash_and_collect_are_money_words(self):
+        for text in ["val paid = x.toDouble()\n", "val totalDay = y.toDouble()\n", "val cash = z.toFloat()\n", "val collected: Double = 0.0\n"]:
+            with self.subTest(text=text):
+                self.assertEqual(1, self.scan(self.tree({"backend/x/src/main/kotlin/A.kt": text})).returncode, text)
+
     def test_the_checkout_passes(self):
         r = run(SCAN)
         self.assertEqual(0, r.returncode, r.stdout)
@@ -113,6 +184,8 @@ class MoneyFormatCorpusTest(unittest.TestCase):
         for edge in (0, 10, 5, -5, 10_000_000_000, 9_007_199_254_740_991):
             self.assertIn(edge, mtk)
         self.assertTrue(any(m < 0 for m in mtk))
+        questions = {a["mtk"] for a in data["amounts"] if "question" in a}
+        self.assertEqual({9_999_499_999, 9_999_999_499}, questions, "the scale-before-rounding cases are recorded questions")
         self.assertTrue(sum(1 for m in mtk if m % 10 == 5 or m % 10 == -5) >= 20, "half-paisa amounts")
 
     def test_the_oracle(self):

@@ -747,7 +747,8 @@
      "en": "100.00 Lakh",
      "bn": "১০০.০০ লাখ"
     }
-   }
+   },
+   "question": "scale chosen before rounding: shows 100.00 Lakh, not 1.00 Cr; kept as today's web and TSO behaviour, not confirmed correct (open question, qa money gate 2026-10-18)"
   },
   {
    "mtk": 9999999499,
@@ -770,7 +771,8 @@
      "en": "100.00 Lakh",
      "bn": "১০০.০০ লাখ"
     }
-   }
+   },
+   "question": "scale chosen before rounding: shows 100.00 Lakh, not 1.00 Cr; kept as today's web and TSO behaviour, not confirmed correct (open question, qa money gate 2026-10-18)"
   },
   {
    "mtk": 9999999500,

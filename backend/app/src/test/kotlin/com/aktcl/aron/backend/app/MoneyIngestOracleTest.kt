@@ -314,13 +314,15 @@ class MoneyIngestOracleTest {
         val e = oracle(lines, listOf(1_005), qcs) { net -> net / 2 / 10 * 10 }
         val (records, memo) = family(lines, listOf(1_005), qcs, e)
         val batchUuid = uuid()
-        assertTrue(client.send(records, batchUuid).values.all { it == "accepted" })
+        val first = client.send(records, batchUuid)
+        records.forEach { r -> assertEquals("accepted", first[r.s("client_uuid")], "first upload ${r.s("type")}") }
         val ledger = "SELECT count(*) FROM app.due_ledger WHERE memo_client_uuid = CAST(:m AS uuid)"
         val ledgerSum = "SELECT COALESCE(sum(amount_mtk), 0) FROM app.due_ledger WHERE memo_client_uuid = CAST(:m AS uuid)"
         val before = Triple(stored(memo), count(ledger, memo), count(ledgerSum, memo))
         assertEquals(e, before.first)
         // The same batch again (a retried upload), then the same records in a new batch (a re-sent outbox).
-        client.send(records, batchUuid)
+        val sameBatch = client.send(records, batchUuid)
+        assertEquals(first, sameBatch, "the same batch_uuid replays the stored response, record for record")
         val again = client.send(records)
         records.forEach { r -> assertEquals("duplicate", again[r.s("client_uuid")], "replayed ${r.s("type")}") }
         assertEquals(before, Triple(stored(memo), count(ledger, memo), count(ledgerSum, memo)), "a replay changes no amount and no dues entry")
@@ -331,7 +333,8 @@ class MoneyIngestOracleTest {
                 mapOf("paid_mtk" to JsonPrimitive(e.net), "due_mtk" to JsonPrimitive(0), "is_credit" to JsonPrimitive(false)))))
         }
         val conflict = client.send(changed)
-        assertTrue(conflict[memo] != "accepted", "a changed copy under the same client_uuid is not accepted: ${conflict[memo]}")
+        assertEquals("quarantined:payload_conflict", conflict[memo], "a changed copy under the same client_uuid (docs/24 s3.3)")
+        records.filter { it.s("type") != "memo" }.forEach { r -> assertEquals("duplicate", conflict[r.s("client_uuid")], "unchanged ${r.s("type")}") }
         assertEquals(before, Triple(stored(memo), count(ledger, memo), count(ledgerSum, memo)), "the original amounts stay")
     }
 

@@ -162,10 +162,16 @@ class MoneyGatePropertyTest {
             val defect = rnd.nextLong(1, 100_000); val price = rnd.nextLong(0, 50_000); val per = listOf(1L, 10L, 20L).random(rnd)
             val settlement = Money.lineGrossMtk(defect, price, per)
             assertEquals(oracleLineGross(defect, price, per).toLong(), settlement)
-            // The price snapshot decides: a later price change does not move a stored settlement.
-            val later = Money.lineGrossMtk(defect, price + rnd.nextLong(1, 1_000), per)
-            assertTrue(later >= settlement)
-            assertEquals(settlement, QcLine(settlement, true).settlementMtk)
+            // Within half a milli-taka of the exact defect x price / per; exact when the price is per base unit.
+            val err = big(settlement) * big(per) - big(defect) * big(price)
+            assertTrue(err.abs() * BigInteger.TWO <= big(per), "|settlement - exact| <= 0.5 mtk: $defect x $price / $per")
+            if (per == 1L) assertEquals(defect * price, settlement)
+            // Only applied QC lines reduce the memo, by exactly their settlement.
+            val gross = MemoLine(1, 1, settlement + rnd.nextLong(0, 1_000_000))
+            val other = rnd.nextLong(0, 100_000)
+            val t = MemoMath.totals(listOf(gross), emptyList(), listOf(QcLine(settlement, true), QcLine(other, false)))
+            assertEquals(settlement, t.qcDeductionMtk)
+            assertEquals(gross.grossMtk - settlement, t.rawMtk)
         }
         // docs/16: the only evidence, 10 sticks x 8.00 = 80.00.
         assertEquals(80_000L, Money.lineGrossMtk(10, 8_000))
