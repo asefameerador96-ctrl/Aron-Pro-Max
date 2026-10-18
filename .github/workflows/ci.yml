@@ -109,7 +109,8 @@ jobs:
             # db's DataDictionaryTest compares docs/data-dictionary.md with the migrated schema.
             echo "jvm=$(has "${common}|^(contract/|shared/|db/|backend/|docs/24-build-spec\.md|docs/data-dictionary\.md)")"
             echo "android=$(has "${common}|^(contract/|shared/|android/|tools/android-sdk\.sh)")"
-            echo "web=$(has '^(web/|contract/openapi\.yaml|\.github/workflows/ci\.yml)')"
+            # web/tests/money-format-corpus.test.ts reads contract/fixtures/, so a corpus change re-runs the web tests.
+            echo "web=$(has '^(web/|contract/openapi\.yaml|contract/fixtures/|\.github/workflows/ci\.yml)')"
             echo "infra=$(has '^(infra/|\.github/|tools/ci/)')"
             # What ends up in Azure: the backend image (shared, db, backend), the web image, the Bicep, the deploy.
             echo "deploy=$(has "${common}|^(shared/|db/|backend/|web/|infra/|\.github/workflows/deploy\.yml)")"
