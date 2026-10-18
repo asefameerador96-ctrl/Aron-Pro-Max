@@ -27,6 +27,10 @@ flight, and reopen races, under a strict oracle of 17 clauses. Each clause is pr
     silently drop the late count.
   - A zone-day advisory lock also works, but ingest must take it in shared mode so the SRs of one zone do not
     serialise.
+- **Third shape:** a one-record family (`due_collection`, `memo_void`) never takes the route-day lock, because it has
+  no state UPDATE. A close can commit between its route-day late check and its close-row late check. The close row
+  then counts the row and the route-day does not, so the two counters differ by one. The fix above (lock the
+  route-day for every record type before the late checks) removes this shape too.
 - **Severity:** a reporting miscount (one late row per affected close), not a lost or doubled sale. The qa checker
   reproduced it deterministically in both shapes.
 - **Proof:** with the fix, `ARON_DAYCLOSE_TOLERATE=none ARON_DAYCLOSE_FUZZ_ROUNDS=200 ./gradlew :backend:app:test
@@ -39,7 +43,7 @@ flight, and reopen races, under a strict oracle of 17 clauses. Each clause is pr
   microsecond. JDK 21's `Instant.now()` carries nanoseconds, so a time in the last 500 ns of a millisecond is stored
   as the next millisecond.
 - Repro: `aReplayAnswersTheFirstSuccessToTheMillisecond`, `@Disabled` with this request's name. The clock is fixed at
-  `06:00:00.9999997`; the first answer is `.999Z` and the replay is `06:00:01.000Z`.
+  `…:00.1239996`; the first answer is `.123Z` and the replay is `.124Z`.
 - **Fix, verified by the qa checker:** `val now = clock.now().truncatedTo(ChronoUnit.MICROS)` in `finalSubmit`
   (`DayApi.kt`). The repro then passes; remove the `@Disabled`.
 
