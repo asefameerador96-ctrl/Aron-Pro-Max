@@ -1,3 +1,5 @@
+> **SUPERSEDED FOR THE LOOK (owner directive 2026-10-18): the apps and the web follow the existing Aron screenshots, see `docs/ui-reference/PARITY-SPEC.md`. Calm Glass tokens and glass tiers below no longer define the look; sections on legibility, Sunlight mode, performance and accessibility still apply.**
+
 # 32 — Design direction: "Calm Glass" (binding, 2026-10-07; tokens v0 by the lead, v1 in docs/design/)
 
 **Sponsor ask:** the UI must look fantastic and modern, in the spirit of Apple's interfaces: clean, spacious, glassy (glassmorphism), with smooth motion, in all four front ends (SR, AMO, TSO apps; web dashboard; admin portal). **Constraint that comes with it:** the SR app runs a full day on a shared 2 GB phone in sunlight on a 2 GB data pack, so the look must never cost speed, legibility or battery (docs/04, docs/31 s1).
