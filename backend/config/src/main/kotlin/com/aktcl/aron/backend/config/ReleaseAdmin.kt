@@ -75,7 +75,6 @@ class ReleaseAdmin(
         }
     }
 
-    /** The writer gate on its own, for the routes to run before they read a body: a refused role learns nothing about validation. */
     fun requireWriter(p: AronPrincipal) { if (p.role !in WRITERS) throw forbidden() }
 
     /** Registers a draft. A repeat of the same registration (CI retry: same APK hash and fields) answers the existing draft. */
@@ -236,7 +235,7 @@ fun Route.releaseAdminRoutes(d: ReleaseAdminDeps) {
         }
         get("/admin/releases/policy") { call.respond(d.releases.policy(call.principal)) }
         post("/admin/releases") {
-            d.releases.requireWriter(call.principal)   // role first, then the body (AuthzAuditTest: SR got 400, not 403)
+            d.releases.requireWriter(call.principal)
             val out = d.releases.create(call.principal, call.receiveStrict(AppReleaseWriteIn.serializer()), call.requestId)
             call.response.header("ETag", "\"${out.version}\"")
             call.respond(HttpStatusCode.Created, out)
