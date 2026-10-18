@@ -381,7 +381,11 @@ fun SrApp(
         }
         SrScreen.ATTENDANCE -> SrFrame(stringResource(HomeR.string.hm_tile_attendance), goBack, sync, openSync, icon = CoreR.drawable.aron_art_attendance) {
             PermissionGate(GatedFeature.ATTENDANCE, onBack = goBack) {
-                AttendanceContent(attendance, "17:00", onCheckIn = { scope.launch { day.attendance.checkIn(); resumeTick++ } }, onCheckOut = { scope.launch { day.attendance.checkOut(); resumeTick++ } })
+                val who = HomeModel.header("SR", user.fullName, user.username, data.route?.name, data.route?.visitKind, data.businessDate)
+                AttendanceContent(
+                    attendance, "17:00", onCheckIn = { scope.launch { day.attendance.checkIn(); resumeTick++ } }, onCheckOut = { scope.launch { day.attendance.checkOut(); resumeTick++ } },
+                    userTitle = who.title, userSubtitle = com.aktcl.aron.core.ui.localizedDigits(who.subtitle),
+                )
             }
         }
         SrScreen.SETTINGS -> {

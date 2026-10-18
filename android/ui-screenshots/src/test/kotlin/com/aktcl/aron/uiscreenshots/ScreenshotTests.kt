@@ -288,8 +288,11 @@ class ScreenshotTests {
         MemoDetailView(MemoMenu.detail(memo), true, 57_500, ::skuName, {}, {}, {}, outletName = "Banani Store", onHistory = {}, skuUnit = { id -> if (id == 100L) stick else piece })
     }
 
-    @Composable private fun Attendance() = Frame(stringResource(HomeR.string.hm_tile_attendance)) {
-        AttendanceContent(notCheckedIn, "17:00", {}, {}, onRefreshFix = {}, nowIso = now)
+    @Composable private fun Attendance() = ParityFrame(stringResource(HomeR.string.hm_tile_attendance), com.aktcl.aron.core.ui.R.drawable.aron_art_attendance) {
+        AttendanceContent(
+            notCheckedIn, "17:00", {}, {}, onRefreshFix = {}, nowIso = now,
+            userTitle = "SR - Testing Banani (sr334001)", userSubtitle = localizedDigits("Apsis RouteDaily, 2026-10-05"),
+        )
     }
 
     @Composable private fun Summary() = Frame(stringResource(HomeR.string.hm_tile_summary)) {
