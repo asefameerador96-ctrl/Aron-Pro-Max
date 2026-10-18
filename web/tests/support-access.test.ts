@@ -18,14 +18,13 @@ describe("SUPPORT on the dashboards", () => {
     for (const p of ["/daily-tracking", "/tso-daily-tracking", "/final-submit", "/leave", "/routes", "/products/brand", "/reports/retailers", "/api/bff/reports/retailers/export"]) expect(accessFor("SUPPORT", p), p).toBe("forbidden");
     for (const p of ["/", "/sync-health", "/credentials", "/tutorial", "/exceptions", "/device-otp", "/api/bff/password", "/api/bff/maps/load", "/admin/devices", "/_next/static/x.js"]) expect(accessFor("SUPPORT", p), p).toBe("ok");
   });
-  it("the audit log page is closed to SUPPORT (no read route), the config audit page is not", () => {
-    expect(accessFor("SUPPORT", "/admin/audit")).toBe("forbidden");
-    expect(accessFor("ADMIN", "/admin/audit")).toBe("ok");
-    expect(accessFor("SUPPORT", "/admin/config/audit")).toBe("ok");
-    expect(menuFor("SUPPORT").flatMap((x) => x.items.map((i) => i.href))).not.toContain("/admin/audit");
+  it("pages the role matrix lets SUPPORT read stay open: audit log, calendar (master data), releases, enrolment (docs/24 s8.5)", () => {
+    for (const p of ["/admin/audit", "/admin/calendar", "/admin/releases", "/admin/enrolment", "/admin/devices", "/admin/device-otps", "/admin/team"]) expect(accessFor("SUPPORT", p), p).toBe("ok");
+    const all = menuFor("SUPPORT").flatMap((x) => x.items.map((i) => i.href));
+    for (const h of ["/admin/audit", "/admin/calendar", "/admin/releases", "/admin/enrolment"]) expect(all, h).toContain(h);
   });
   it("the config pages that read /v1/admin/config* are ADMIN only; the ones on other endpoints stay for SUPPORT", () => {
-    for (const p of ["/admin/config", "/admin/config/keys", "/admin/config/rules", "/admin/config/switches", "/admin/config/changes", "/admin/config/history", "/admin/config/reach", "/admin/config/geofence", "/admin/config/app-block", "/admin/config/day", "/admin/config/flags", "/admin/calendar"]) {
+    for (const p of ["/admin/config", "/admin/config/keys", "/admin/config/rules", "/admin/config/switches", "/admin/config/changes", "/admin/config/history", "/admin/config/reach", "/admin/config/geofence", "/admin/config/app-block", "/admin/config/day", "/admin/config/flags"]) {
       expect(accessFor("SUPPORT", p), p).toBe("forbidden");
       expect(accessFor("ADMIN", p), p).toBe("ok");
     }
