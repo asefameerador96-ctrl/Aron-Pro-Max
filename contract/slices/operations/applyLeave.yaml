@@ -1,0 +1,52 @@
+path: /v1/leave
+method: post
+operation:
+  tags:
+  - people
+  operationId: applyLeave
+  summary: Apply for leave from the TSO app (online path of the `leave_application` sync record).
+  description: 'TSO only (other roles get 403 `ERR_FORBIDDEN`); the applicant is the token''s user and the application
+    starts
+
+    `pending`. Idempotent by `leave_uuid`: the first call stores it (201), a replay with the same content returns
+    it
+
+    unchanged (200), and the same uuid with different content, or another user''s uuid, is 409 `ERR_CONFLICT`.
+
+    `to_date` = `from_date` + `days` - 1. A second pending or approved application over any of the same days is
+    409
+
+    `ERR_CONFLICT` (`body.from_date` `overlap`); a `leave_type_code` that is not a `leave_type` code valid on
+
+    `from_date` is 400 `unknown_code` when that list has items. The type and overlap checks run on every call, a
+
+    replay included.
+
+    '
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          $ref: '#/components/schemas/LeaveApply'
+  responses:
+    '200':
+      description: Replay of a stored application; nothing changed.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/LeaveApplication'
+    '201':
+      description: Stored as pending.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/LeaveApplication'
+    '400':
+      $ref: '#/components/responses/BadRequest'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'
+    '409':
+      $ref: '#/components/responses/Conflict'

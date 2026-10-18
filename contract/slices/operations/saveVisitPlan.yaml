@@ -1,0 +1,53 @@
+path: /v1/visit-plans
+method: post
+operation:
+  tags:
+  - people
+  operationId: saveVisitPlan
+  summary: Save a TSO visit plan for one route and date (online path of the `visit_plan` and `visit_plan_outlet`
+    sync records).
+  description: 'TSO only (other roles get 403 `ERR_FORBIDDEN`); the planner is the token''s user. The outlets are
+    added to the
+
+    plan as a union (an outlet already in the plan stays once; none is removed). Every outlet must be in the caller''s
+
+    reach (403 `ERR_OUT_OF_SCOPE` otherwise, the same answer as an unknown outlet) and on `route_id` (400
+
+    `not_on_route`); reach and route are checked on every call, a replay included. A `plan_uuid` not stored yet
+
+    needs `plan_date` today or later (400 `in_past`). When the planner already has a plan for that route and date
+
+    under another uuid, the outlets join it, the posted `plan_uuid` is not stored and the answer is that plan (its
+
+    own `plan_uuid`). Idempotent by `plan_uuid`: 201 when anything was stored, 200 when nothing changed; a
+
+    `plan_uuid` that already stores another user''s, another date''s or another route''s plan is 409 `ERR_CONFLICT`.
+
+    '
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          $ref: '#/components/schemas/VisitPlanSave'
+  responses:
+    '200':
+      description: Nothing changed (replay); the stored plan.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/VisitPlan'
+    '201':
+      description: Saved; the plan with all its outlets.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/VisitPlan'
+    '400':
+      $ref: '#/components/responses/BadRequest'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'
+    '409':
+      $ref: '#/components/responses/Conflict'

@@ -1,11 +1,13 @@
 ConfigChangeItem:
+  description: Open on purpose (N-014). `ConfigChangeItem` is the `allOf` base of the `ConfigChange.changes` items,
+    which close the combined object; the server refuses an unknown member of a request item with 400 `ERR_VALIDATION`
+    all the same.
   type: object
   required:
   - key
   - scope_type
   - scope_id
   - value
-  additionalProperties: false
   properties:
     key:
       $ref: '#/components/schemas/ConfigKeyName'

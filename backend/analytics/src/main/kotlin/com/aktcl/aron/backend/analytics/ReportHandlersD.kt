@@ -6,7 +6,7 @@ package com.aktcl.aron.backend.analytics
  */
 object RetailerListReport : ReportHandler {
     override val definition = definition(
-        "retailer-list", "Retailer List", "master", "outlet",
+        "retailer-list", "Retailer List", "outlet", "outlet",
         listOf(
             col("code", "Code", "string"), col("name", "Name", "string"), col("owner_name", "Owner", "string", pii = true), col("phone", "Phone", "string", pii = true),
             col("sub_channel", "Sub-channel", "string"), col("status", "Status", "string"), col("zone_name", "Zone", "string"), col("route_code", "Route", "string"),
@@ -31,7 +31,7 @@ object RetailerListReport : ReportHandler {
  */
 object SkuListReport : ReportHandler {
     override val definition = definition(
-        "sku-list", "SKU List", "master", "sku",
+        "sku-list", "SKU List", "sales", "sku",
         listOf(
             col("code", "Code", "string"), col("name", "Name", "string"), col("category", "Category", "string"), col("base_unit", "Unit", "string"),
             col("retail_price_mtk", "Retail price", "mtk", unit = "mtk"), col("trade_price_mtk", "Trade price", "mtk", pii = true, unit = "mtk"),

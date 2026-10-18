@@ -179,6 +179,7 @@ class ApiWorld(
     private fun paramValue(name: String, pathIds: Map<String, Long>): String? = when (name) {
         "business_date", "date" -> BUSINESS_DATE
         "node_type" -> "zone"
+        "radius_m" -> "100" // one of cfg.tso.periphery_radius_options_m (50, 100, 300), as the contract says
         "node_id" -> pathIds["zones"]?.toString()
         else -> PARAM_RESOURCE[name]?.let { pathIds[it]?.toString() }
     }
