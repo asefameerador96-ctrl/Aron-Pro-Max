@@ -47,7 +47,7 @@ Questions with the lead: owner phone unmasked to the TSO in the bundle; fleet-si
 
 Open for others: db + lead register `cfg.geo.update_base_*` (3 keys, docs/24 s9.5 rows); infra adds the Gradle OSV
 and APK security CI steps; lead decides a TSO outlet bundle section and whether submit void comes back.
-Traps: V0084-V0087 are taken by lane/lead-hardening (not on INT): do not number a migration in that range or after it
+Traps (updated 2026-10-18 05:30): D-MIG-RANGE-01 (lead, lane/lead-docs-night 2e962851) lifted the V0084-V0087 hold: INT stops at V0083, lead-hardening renumbers its V0084-V0087 at promotion; lead-backend took V0084, V0085 is backend-authz's. Before this ruling: do not number a migration in that range or after it
 until it lands. backend:app tests take about 15 minutes locally.
 
 Traps found tonight: run only one Gradle build at a time on this box (a checker's concurrent build recompiled classes
@@ -113,6 +113,6 @@ ARON_TEST_PG_URL=jdbc:postgresql://localhost:5432/postgres?user=postgres&passwor
   Result: not run yet.
 - (a) PDA stored-upload age limit: ruled OK (refused with a visible reason, never partial, config key with a generous
   default agreed in a decision line). Blocked on a config key: registering `cfg.support.upload_replay_max_h` needs a
-  migration, and V0084-V0087 are held by lead-hardening. Do it when the range lands.
+  migration. DONE in ac70e42 as V0084 (D-MIG-RANGE-01; hardening renumbers its own V0084-V0087 at promotion).
 - (d) `cfg.memo.allow_negative_net`: fixed by D-18, read by no code (DECISIONS D-18-FIXED-KEY); 5edcace (a switch)
   reverted in cf16c05. A later migration marks it read-only or removes it.
