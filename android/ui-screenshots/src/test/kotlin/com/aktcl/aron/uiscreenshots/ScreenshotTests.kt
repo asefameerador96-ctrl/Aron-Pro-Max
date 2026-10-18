@@ -308,10 +308,10 @@ class ScreenshotTests {
     @Composable private fun Login(sunlight: Boolean) =
         LoginContent(LoginUiState(username = "sr334001", password = "secret", message = LoginMessage.InvalidCredentials), "ARON SR", "1.0.25 (12)", {}, {}, {}, {}, {}, sunlight = sunlight, onSunlight = {})
 
-    @Composable private fun AmoHome(sunlight: Boolean) = RoleHomeContent(
+    @Composable private fun AmoHome(sunlight: Boolean) = com.aktcl.aron.feature.amo.AmoHomeContent(
         RoleHomes.header(RoleHomes.AMO_PREFIX, amo, "2026-10-05"), amo, BundleStatus.Ready("b-17", "2026-10-05"),
-        RoleHomes.amoTiles(mapOf(RoleHomes.AmoTile.OUTLET to 3)), SyncChipState.SyncedAt(localizedDigits("10:42")), onTile = {}, onSettings = {},
-        hero = RoleHero.Amo(4_391_000, 6, 60), health = health, sunlight = sunlight,
+        RoleHomes.amoTiles(mapOf(RoleHomes.AmoTile.OUTLET to 3)), onTile = {}, onSettings = {},
+        hero = RoleHero.Amo(4_391_000, 6, 60), health = health,
     )
 
     @Composable private fun TsoHome(sunlight: Boolean) = RoleHomeContent(
