@@ -24,6 +24,9 @@ describe("diffLines", () => {
   it("lists only changed members with old and new value", () => {
     expect(diffLines({ a: 1, b: "x" }, { a: 1, b: "y", c: true })).toEqual([{ key: "b", from: "x", to: "y" }, { key: "c", from: "", to: "true" }]);
     expect(diffLines(null, null)).toEqual([]);
+    // ANALYST/SUPPORT: the server lists changed members only, so a masked pair is shown, not dropped as unchanged.
+    expect(diffLines({ full_name: "[masked]" }, { full_name: "[masked]" }, true)).toEqual([{ key: "full_name", from: "[masked]", to: "[masked]" }]);
+    expect(diffLines({ full_name: "[masked]" }, { full_name: "[masked]" })).toEqual([]);
   });
 });
 

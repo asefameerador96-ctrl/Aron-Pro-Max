@@ -6,6 +6,7 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import { pathToFileURL } from "node:url";
 import { handleTable, type Ctx, type Row } from "./tables";
 import { seedCodeLists, seedTables, tableDefs } from "./master-seed";
+import { maskAudit } from "./audit-mask";
 import { freshConfigStore, handleConfig, type ConfigStore } from "./config";
 import { handleCustom, seedCustom, type CustomState } from "./custom";
 import { freshDashStore, handleDash, hasPii, type DashStore } from "./dash";
@@ -188,6 +189,7 @@ function authed(state: State, req: IncomingMessage): { user: MockUser } | { erro
 // docs/24 s8.5: master data is readable by DMO, WM and TOP as well (the approval panel reads zones and users).
 const ADMIN_READ: Role[] = ["ADMIN", "SUPERADMIN", "SUPPORT", "ANALYST", "DMO", "WM", "TOP"];
 const ADMIN_WRITE: Role[] = ["ADMIN", "SUPERADMIN"];
+const AUDIT_READERS: Role[] = ["ANALYST", "SUPPORT", "ADMIN", "SUPERADMIN"];
 
 function audit(state: State, user: MockUser, entity: string, entity_id: number | string, action: string, before: AuditEntry["before"], after: AuditEntry["after"], reason: string | null): void {
   const prev = state.audit[state.audit.length - 1]?.row_hash ?? "0".repeat(64);
@@ -218,6 +220,14 @@ async function handle(state: State, reset: () => void, req: IncomingMessage, res
   if (path === "/__mock/state") return send(res, 200, { refreshCount: state.refreshCount, audit: state.audit, clusters: state.clusters, tables: state.tables, custom: state.custom, webEntries: [...state.cfg.entries.values()], otps: state.cfg.otps, exports: state.dash.exports, actions: state.dash.actions, leave: state.dash.leave });
   if (path === "/__mock/now" && method === "POST") {
     state.dash.now = ((await readJson(req)) as { now?: string | null } | undefined)?.now ?? null;
+    return send(res, 204, undefined);
+  }
+  if (path === "/__mock/audit" && method === "POST") {
+    // Test seed: one audit row written as the given user (e2e of listAudit's per-role masking).
+    const b = (await readJson(req)) as { as: string; entity: string; entity_id: string; action: string; before: AuditEntry["before"]; after: AuditEntry["after"]; reason: string | null };
+    const as = state.users[b.as];
+    if (!as) return send(res, 400, problem(400, "ERR_VALIDATION"));
+    audit(state, as, b.entity, b.entity_id, b.action, b.before, b.after, b.reason);
     return send(res, 204, undefined);
   }
   if (path === "/__mock/tutorial" && method === "POST") {
@@ -576,10 +586,33 @@ async function handle(state: State, reset: () => void, req: IncomingMessage, res
     if (await handleTable(tableDefs(state), ctx, method, url, req, res, ADMIN_WRITE.includes(user.summary.role), user.summary.role, user.summary.user_id)) return;
   }
 
+  // listAudit (backend AuditRead.kt): ANALYST, SUPPORT, ADMIN, SUPERADMIN nationally; filters checked (400); keyset on id desc; masked per role.
   if (path === "/v1/admin/audit" && method === "GET") {
+    if (!AUDIT_READERS.includes(user.summary.role)) return send(res, 403, problem(403, "ERR_FORBIDDEN"));
     const q = url.searchParams;
-    const items = state.audit.filter((e) => (!q.get("entity") || e.entity === q.get("entity")) && (!q.get("entity_id") || e.entity_id === q.get("entity_id")) && (!q.get("action") || e.action === q.get("action"))).reverse();
-    return send(res, 200, { items, next_cursor: null });
+    const errors: NonNullable<Problem["errors"]> = [];
+    const entity = q.get("entity"), entityId = q.get("entity_id"), action = q.get("action"), actor = q.get("actor_user_id");
+    const from = q.get("from"), to = q.get("to"), lim = q.get("limit"), cursor = q.get("cursor");
+    const isDate = (d: string) => /^\d{4}-\d{2}-\d{2}$/.test(d) && new Date(`${d}T00:00:00Z`).toISOString().slice(0, 10) === d;
+    if (entity !== null && !/^[a-z_]{2,40}$/.test(entity)) errors.push({ pointer: "query.entity", code: "invalid_value" });
+    if (entityId !== null && (entityId.length === 0 || entityId.length > 64)) errors.push({ pointer: "query.entity_id", code: "invalid_value" });
+    if (action !== null && !/^[a-z_.]{2,60}$/.test(action)) errors.push({ pointer: "query.action", code: "invalid_value" });
+    if (actor !== null && !/^[1-9]\d{0,17}$/.test(actor)) errors.push({ pointer: "query.actor_user_id", code: "invalid_value" });
+    if (from !== null && !isDate(from)) errors.push({ pointer: "query.from", code: "invalid_value" });
+    if (to !== null && !isDate(to)) errors.push({ pointer: "query.to", code: "invalid_value" });
+    if (from && to && isDate(from) && isDate(to) && (to < from || (Date.parse(to) - Date.parse(from)) / 86_400_000 > 92)) errors.push({ pointer: "query.to", code: "out_of_range" });
+    const limit = lim === null ? 100 : Number(lim);
+    if (!Number.isInteger(limit) || limit < 1 || limit > 500) errors.push({ pointer: "query.limit", code: "out_of_range" });
+    if (cursor !== null && !/^[1-9]\d{0,17}$/.test(cursor)) errors.push({ pointer: "query.cursor", code: "invalid_value" });
+    if (errors.length) return send(res, 400, problem(400, "ERR_VALIDATION", { errors }));
+    const day = (at: string) => new Date(Date.parse(at) + 6 * 3_600_000).toISOString().slice(0, 10); // Asia/Dhaka business date
+    const rows = state.audit
+      .filter((e) => (!entity || e.entity === entity) && (!entityId || e.entity_id === entityId) && (!action || e.action === action) && (!actor || e.actor_user_id === Number(actor)))
+      .filter((e) => (!from || day(e.at) >= from) && (!to || day(e.at) <= to) && (!cursor || e.id < Number(cursor)))
+      .sort((a, b) => b.id - a.id)
+      .slice(0, limit + 1);
+    const page = rows.slice(0, limit).map((e) => maskAudit(e, user.summary.role));
+    return send(res, 200, { items: page, next_cursor: rows.length > limit ? String(page[page.length - 1]!.id) : null });
   }
 
   return send(res, 404, problem(404, "ERR_NOT_FOUND"));

@@ -377,5 +377,5 @@ export const dashEn = {
   "drill.title.login": "Login and upload status",
   "table.more": "Show {n} more rows",
   "error.ERR_WEB_MFA_RESIGNIN": "Sign in again with your authenticator code.",
-  "admin.audit.unavailable": "The audit log is not available yet. It will appear here once the server serves it.",
+  "admin.history.failed": "The history could not be loaded. Reload the page to try again.",
 } as const;
