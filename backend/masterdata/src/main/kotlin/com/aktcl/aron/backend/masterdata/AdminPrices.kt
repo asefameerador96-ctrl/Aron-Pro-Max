@@ -431,8 +431,12 @@ private suspend fun decide(call: ApplicationCall, d: AdminPricesDeps): PriceBatc
                     .bind("by", p.userId).bind("n", note).bind("b", uuid).execute()
                 AuditWriter.write(h, p, "price_batch", uuid.toString(), "reject", auditObj("status" to "pending_approval"), auditObj("status" to "rejected", "submitted_by" to b.submittedBy), why, call.requestId)
             } else {
-                // A back-dated batch stays valid only if its submitter had the permission; a forward-dated one that has since come due is refused as past.
-                if (!b.validFrom.isAfter(today(d)) && !b.backdate) throw ApiProblem(ProblemCode.ERR_MASTER_EFFECTIVE_DATE_PAST, "the start date has passed; submit the prices again with a later date", errors = listOf(FieldError("valid_from", "past")))
+                // The approval is where a back-date takes effect, so the APPROVER's finance.backdate grant is judged now, per request
+                // (lead 2026-10-18; Q5): a batch submitted back-dated, or one that came due while pending, needs it; a revoke in between holds.
+                if (!b.validFrom.isAfter(today(d)) && BACKDATE_PERMISSION !in p.permissions) throw ApiProblem(
+                    ProblemCode.ERR_MASTER_EFFECTIVE_DATE_PAST, "the start date has passed; approving it back-dates the prices and needs the $BACKDATE_PERMISSION permission, or submit again with a later date",
+                    errors = listOf(FieldError("valid_from", "past")),
+                )
                 val items = applyRows(h, p, call, uuid, b.validFrom, b.rows, why)
                 val version = bumpListVersion(h, p, d, uuid, why)
                 h.createUpdate("UPDATE app.price_batch SET status = 'published', decided_by = :by, decided_at = now(), decision_note = :n, price_list_version = :v, updated_at = now() WHERE batch_uuid = :b")

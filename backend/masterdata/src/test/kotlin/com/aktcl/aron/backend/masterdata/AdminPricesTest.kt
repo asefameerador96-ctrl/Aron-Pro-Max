@@ -354,12 +354,25 @@ class AdminPricesTest {
         val late = decide(t.sup1, bu, "approve")
         assertEquals(HttpStatusCode.BadRequest, late.status); assertEquals("ERR_MASTER_EFFECTIVE_DATE_PAST", late.obj()["code"]!!.jsonPrimitive.content)
         assertEquals("pending_approval", t.scalar("SELECT status FROM app.price_batch WHERE batch_uuid = '$bu'")); assertEquals("10000@2026-01-01>open", rows(a, "outlet"))
-        // A batch whose submitter held finance.backdate may be approved for a past date.
+        // The approval is where the back-date takes effect: the approver's grant decides, judged at approval time.
         val b = t.newSku("PRC-G2", outlet = 10000)
         val bu2 = uuid()
         assertEquals("pending_approval", previewAndPublish(t.tok("admin1001", Role.ADMIN, "finance.backdate"), req(bu2, t.today.toString(), row(b, "outlet", 15000))).headers[BATCH_STATUS_HEADER])
-        assertEquals(HttpStatusCode.OK, decide(t.sup1, bu2, "approve").status)
-        assertEquals("10000@2026-01-01>${t.today} 15000@${t.today}>open", rows(b, "outlet"))
+        // A submitter's grant alone (the stored backdate flag) is not enough.
+        assertEquals("ERR_MASTER_EFFECTIVE_DATE_PAST", decide(t.sup1, bu2, "approve").obj()["code"]!!.jsonPrimitive.content)
+        assertEquals("pending_approval", t.scalar("SELECT status FROM app.price_batch WHERE batch_uuid = '$bu2'"))
+        try {
+            t.grants["SUPERADMIN"] = setOf("finance.backdate")
+            assertEquals(HttpStatusCode.OK, decide(t.sup1, bu2, "approve").status)
+            assertEquals("10000@2026-01-01>${t.today} 15000@${t.today}>open", rows(b, "outlet"))
+            // The approver's grant is revoked; the same approval again is a replay and answers the stored result first.
+            t.grants.clear()
+            assertEquals(HttpStatusCode.OK, decide(t.sup1, bu2, "approve").status)
+            // The batch that came due while pending is approved too once the approver holds the grant.
+            t.grants["SUPERADMIN"] = setOf("finance.backdate")
+            assertEquals(HttpStatusCode.OK, decide(t.sup1, bu, "approve").status)
+            assertEquals("10000@2026-01-01>${t.today} 15000@${t.today}>open", rows(a, "outlet"))
+        } finally { t.grants.clear() }
     }
 
     @Test
