@@ -10,7 +10,8 @@ import java.io.File
 
 /**
  * Pack pictures of the Stock and Sale rows (PARITY-SPEC s2.6, stock.md UI-SR-19, docs/04): resolves a SKU to a small
- * decoded bitmap from what is already on the phone, in this order:
+ * decoded bitmap from what is already on the phone. The key is the kit's `PackshotImage(skuId)` string: the server SKU id
+ * (looked up in the user's local catalogue with [lookup]) or, when it is not a number, the SKU code itself. In this order:
  *  1. the admin-managed thumbnail in the bounded [ImageCache], under the stable key [cacheKey] (image asset id and
  *     version, never the signed URL, which changes while the picture does not);
  *  2. DEV builds only ([devAssets] non-null, set when BuildConfig.DEV_PACKSHOTS): a picture cropped from the owner's
@@ -21,13 +22,16 @@ import java.io.File
 class SkuPackshots(
     private val images: ImageCache?,
     private val devAssets: AssetManager?,
-    /** The SKU's thumbnail reference from the local bundle, or null (no picture uploaded yet). */
-    private val imageRef: suspend (skuId: Long) -> SkuImageRef? = { null },
+    /** The SKU as the local bundle has it (its code and thumbnail reference), or null (unknown SKU, no user signed in). */
+    private val lookup: suspend (skuId: Long) -> SkuInfo? = { null },
     memoryBytes: Int = DEFAULT_MEMORY_BYTES,
     private val maxHeightPx: Int = DEFAULT_MAX_HEIGHT_PX,
 ) {
     /** The admin image of a SKU as the bundle carries it: where to fetch it and which version it is. */
     data class SkuImageRef(val url: String, val assetId: String, val version: Int)
+
+    /** What the picture needs of a SKU: its code (the dev art) and its admin image, if any. */
+    data class SkuInfo(val code: String, val image: SkuImageRef? = null)
 
     private val memory = object : LruCache<String, Bitmap>(memoryBytes) {
         override fun sizeOf(key: String, value: Bitmap): Int = value.byteCount
@@ -36,29 +40,29 @@ class SkuPackshots(
     private val devIndex: Map<String, String> by lazy { readDevIndex() }
 
     /** From memory only (no disk, no suspension): the row's first frame. */
-    fun cached(skuId: Long, code: String): Bitmap? = memory.get(memKey(skuId, code))
+    fun cached(skuId: String): Bitmap? = memory.get(skuId)
 
     /** The picture of the SKU from disk or the dev assets, or null. */
-    suspend fun bitmap(skuId: Long, code: String): Bitmap? {
-        val mk = memKey(skuId, code)
-        memory.get(mk)?.let { return it }
+    suspend fun bitmap(skuId: String): Bitmap? {
+        memory.get(skuId)?.let { return it }
         val decoded = try {
-            fromCache(skuId) ?: fromDevAssets(code)
+            val info = skuId.toLongOrNull()?.let { lookup(it) } ?: SkuInfo(skuId).takeIf { skuId.toLongOrNull() == null }
+            info?.let { fromCache(it.image) ?: fromDevAssets(it.code) }
         } catch (e: kotlinx.coroutines.CancellationException) {
             throw e
         } catch (_: Exception) {
             null // a broken or evicted file is the silhouette, never an error
         } ?: return null
-        memory.put(mk, decoded)
+        memory.put(skuId, decoded)
         return decoded
     }
 
     /** Drops the decoded pictures (a new bundle brought new versions). */
     fun invalidate() = memory.evictAll()
 
-    private suspend fun fromCache(skuId: Long): Bitmap? {
+    private suspend fun fromCache(ref: SkuImageRef?): Bitmap? {
         val cache = images ?: return null
-        val ref = imageRef(skuId) ?: return null
+        if (ref == null) return null
         val file = cache.get(ref.url, cacheKey(ref.assetId, ref.version)) ?: return null
         return withContext(Dispatchers.IO) { decodeFile(file) }
     }
@@ -87,8 +91,6 @@ class SkuPackshots(
             assets.open("$DEV_DIR/index.txt").bufferedReader().useLines { lines -> parseDevIndex(lines.toList()) }
         }.getOrDefault(emptyMap())
     }
-
-    private fun memKey(skuId: Long, code: String) = "$skuId|$code"
 
     companion object {
         /** About 60 pack pictures at 146 x 237 RGB_565 (about 70 KB each). */

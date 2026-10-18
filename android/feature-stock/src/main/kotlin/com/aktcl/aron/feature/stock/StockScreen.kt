@@ -55,8 +55,8 @@ import com.aktcl.aron.core.ui.AronSecondaryButton
 import com.aktcl.aron.core.ui.AronStepper
 import com.aktcl.aron.core.ui.AronTokens
 import com.aktcl.aron.core.ui.BannerKind
-import com.aktcl.aron.core.ui.PackshotImage
-import com.aktcl.aron.core.ui.PackshotSku
+import com.aktcl.aron.core.ui.aron.PackshotImage
+import com.aktcl.aron.core.ui.aron.packCategoryOf
 import com.aktcl.aron.core.ui.GlassKind
 import com.aktcl.aron.core.ui.GlassSurface
 import com.aktcl.aron.core.ui.GlassTier
@@ -316,7 +316,7 @@ private fun SkuThumb(sku: SkuEntity, packs: Long?) {
     val pillInk = if (c.sunlight) c.textOnAccent else c.accentOnContainer
     val pillEdge = c.surfaceSolid
     Box(Modifier.size(PackshotWidth, PackshotHeight).clearAndSetSemantics { }) {
-        PackshotImage(PackshotSku(sku.skuId, sku.code, sku.categoryCode), Modifier.size(PackshotWidth, PackshotHeight))
+        PackshotImage(sku.skuId.toString(), Modifier.size(PackshotWidth, PackshotHeight), category = packCategoryOf(sku.categoryCode))
         if (packs != null) {
             Box(
                 Modifier

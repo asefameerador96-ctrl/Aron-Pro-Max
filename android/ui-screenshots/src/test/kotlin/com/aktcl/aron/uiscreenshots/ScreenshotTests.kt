@@ -1,6 +1,6 @@
 package com.aktcl.aron.uiscreenshots
 
-import com.aktcl.aron.core.ui.LocalPackshotProvider
+import com.aktcl.aron.core.ui.aron.LocalPackshotProvider
 import android.content.Context
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider

@@ -28,8 +28,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
-import com.aktcl.aron.core.ui.PackshotImage
-import com.aktcl.aron.core.ui.PackshotSku
+import com.aktcl.aron.core.ui.aron.PackshotImage
+import com.aktcl.aron.core.ui.aron.packCategoryOf
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -167,7 +167,7 @@ internal fun positionOf(index: Int, size: Int): RowPosition = when {
  */
 @Composable
 internal fun SkuThumb(sku: SaleSku) {
-    PackshotImage(PackshotSku(sku.skuId, sku.code, sku.categoryCode), Modifier.size(PackshotWidth, PackshotHeight))
+    PackshotImage(sku.skuId.toString(), Modifier.size(PackshotWidth, PackshotHeight), category = packCategoryOf(sku.categoryCode))
 }
 
 /** The pack's own shape (about 0.62 wide to 1 high, PARITY-SPEC s2.5). */

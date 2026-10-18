@@ -39,15 +39,22 @@ WebP, 6.8 to 7.4 KB each (22 KB total in a dev APK), made by `tools/packshots/cr
 
 ## 3. How it works (phone)
 
-- `core-ui` `PackshotProvider` / `LocalPackshotProvider` / `PackshotImage(PackshotSku)` / `PackSilhouette`. The kit's
-  PackCard (lane ui-kit) should call `PackshotImage` for its picture slot.
-- `core-sync` `SkuPackshots`: (1) the admin thumbnail in the bounded `ImageCache` under the stable key
-  `sku-image:<asset id>:v<version>` (never the signed URL); (2) the dev crops, only when `BuildConfig.DEV_PACKSHOTS`.
-  Disk and assets only, never the network; decoded bitmaps in a 4 MB memory LRU (RGB_565, downsampled to 400 px high).
+- `core-ui` (lane ui-kit's API, `core.ui.aron`): `PackshotProvider` / `LocalPackshotProvider` / `PackshotImage(skuId)`
+  with the kit's silhouette. This lane adds `BitmapPackshotProvider` (memory hit on the first frame, else a load off the
+  main thread; a throw is the silhouette) and `packCategoryOf(category_code)`. Key: the SKU's server id as a string
+  (`sku.skuId.toString()`); a non-numeric key is taken as the SKU code. **Feature lanes: pass the id, not the code.**
+- `core-sync` `SkuPackshots`: looks the id up in the signed-in user's local Room catalogue (`ReferenceDao.sku`), then
+  (1) the admin thumbnail in the bounded `ImageCache` under the stable key `sku-image:<asset id>:v<version>` (never the
+  signed URL); (2) the dev crops, only when `BuildConfig.DEV_PACKSHOTS`. Disk and assets only, never the network;
+  decoded bitmaps in a 4 MB memory LRU (RGB_565, downsampled to 400 px high).
+- The three apps set `LocalPackshotProvider` once around `setContent` (MainActivity) from a Hilt singleton.
 - `-Paron.devPackshots=true` (root `build.gradle.kts`) adds `android/dev-packshots` to the APK assets and sets
   `BuildConfig.DEV_PACKSHOTS`. Only the ci.yml `android-release` job (dev origin) passes it; `infra/tests/check_infra.py`
   fails if any other workflow (release-app.yml, production) mentions it.
-- Step (1) has no data yet: the bundle does not carry a SKU image reference (item 2 of this lane).
+- Source (1) has no data yet: the bundle does not carry a SKU image reference (item 2 of this lane).
+- Today's Stock and Sale screens are still the Calm Glass rows; their 48 x 78 dp picture slot calls the kit's
+  `PackshotImage`. When feature-stock / feature-sale move to the kit `PackCard`, pass `skuId = sku.skuId.toString()` and
+  the pictures come along with no further wiring.
 
 ## 4. Proof
 
@@ -56,8 +63,8 @@ WebP, 6.8 to 7.4 KB each (22 KB total in a dev APK), made by `tools/packshots/cr
 - Goldens: `stock_bn_packshots` (new), and the re-recorded Stock, Sale and QC goldens (the letter disc became the
   picture or the silhouette); the screenshot harness serves the same dev crops (`TestPackshots`).
 - Tests: `SkuPackshotsTest` (dev mapping, no art in production, cache key stability, admin thumbnail wins and is read
-  from disk without a download, broken or missing is null, downsampling), `PackshotImageTest` (silhouette, picture,
-  first-frame memory hit, a throwing provider is the silhouette).
+  from disk without a download, broken or missing is null, downsampling), the kit's `AronLookGalleryTest` covers `PackshotImage` with and
+  without a provider.
 
 | Item | sha | CI |
 |---|---|---|

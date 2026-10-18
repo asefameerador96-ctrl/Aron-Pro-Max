@@ -60,12 +60,7 @@ class MainActivity : ComponentActivity() {
     @Inject lateinit var telemetry: com.aktcl.aron.core.sync.DeviceTelemetry
     @Inject lateinit var imageCache: com.aktcl.aron.core.sync.ImageCache
     @Inject lateinit var skuPackshots: com.aktcl.aron.core.sync.SkuPackshots
-    private val packshotProvider by lazy {
-        object : com.aktcl.aron.core.ui.PackshotProvider {
-            override suspend fun load(sku: com.aktcl.aron.core.ui.PackshotSku) = skuPackshots.bitmap(sku.skuId, sku.code)
-            override fun cached(sku: com.aktcl.aron.core.ui.PackshotSku) = skuPackshots.cached(sku.skuId, sku.code)
-        }
-    }
+    private val packshotProvider by lazy { com.aktcl.aron.core.ui.aron.BitmapPackshotProvider(skuPackshots::bitmap, skuPackshots::cached) }
     @Inject lateinit var databases: com.aktcl.aron.core.database.UserDatabases
     @Inject lateinit var scheduler: com.aktcl.aron.core.sync.SyncScheduler
     @Inject lateinit var mediaShell: MediaShell
@@ -114,7 +109,7 @@ class MainActivity : ComponentActivity() {
         val versionName = BuildConfig.VERSION_NAME + " (" + BuildConfig.VERSION_CODE + ")"
         setContent {
             // PARITY-SPEC s2.6: pack pictures of the Stock and Sale rows (thumbnail cache, then the dev-only bundled art).
-            androidx.compose.runtime.CompositionLocalProvider(com.aktcl.aron.core.ui.LocalPackshotProvider provides packshotProvider) {
+            androidx.compose.runtime.CompositionLocalProvider(com.aktcl.aron.core.ui.aron.LocalPackshotProvider provides packshotProvider) {
             var sunlight by remember { mutableStateOf(false) }
             AronTheme(language, sunlight = sunlight) {
                 Box(Modifier.fillMaxSize().aronPageBackground()) {

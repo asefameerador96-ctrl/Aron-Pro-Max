@@ -51,28 +51,28 @@ class SkuPackshotsTest {
 
     @Test fun theDevArtMapsTheSeedCodesAndLeavesTheRestToTheSilhouette() = runBlocking {
         val p = SkuPackshots(images = null, devAssets = devAssets())
-        listOf("MaxR-10S", "MaxR-20S", "MaxB-10S", "MaxB-20S", "MaxWB-10S", "MaxWB-20S").forEachIndexed { i, code ->
-            val b = p.bitmap(i.toLong(), code)
+        listOf("MaxR-10S", "MaxR-20S", "MaxB-10S", "MaxB-20S", "MaxWB-10S", "MaxWB-20S").forEach { code ->
+            val b = p.bitmap(code)
             assertNotNull(code, b)
             assertEquals(146, b!!.width)
             assertEquals(237, b.height)
         }
-        assertNull(p.bitmap(100, "Aster")) // no art: the silhouette
-        assertNull(p.bitmap(101, "FB"))
-        assertNotNull(p.bitmap(102, "maxr-10s")) // codes match case-insensitively
+        assertNull(p.bitmap("Aster")) // no art: the silhouette
+        assertNull(p.bitmap("FB"))
+        assertNotNull(p.bitmap("maxr-10s")) // codes match case-insensitively
     }
 
     @Test fun aProductionBuildHasNoDevArt() = runBlocking {
-        assertNull(SkuPackshots(images = null, devAssets = null).bitmap(1, "MaxR-10S"))
+        assertNull(SkuPackshots(images = null, devAssets = null).bitmap("MaxR-10S"))
     }
 
     @Test fun aDecodedPictureIsServedFromMemoryOnTheFirstFrame() = runBlocking {
         val p = SkuPackshots(images = null, devAssets = devAssets())
-        assertNull(p.cached(1, "MaxB-10S"))
-        val b = p.bitmap(1, "MaxB-10S")
-        assertSame(b, p.cached(1, "MaxB-10S"))
+        assertNull(p.cached("MaxB-10S"))
+        val b = p.bitmap("MaxB-10S")
+        assertSame(b, p.cached("MaxB-10S"))
         p.invalidate()
-        assertNull(p.cached(1, "MaxB-10S"))
+        assertNull(p.cached("MaxB-10S"))
     }
 
     @Test fun theAdminThumbnailWinsAndIsKeyedByAssetAndVersionNotByTheSignedUrl() = runBlocking {
@@ -82,25 +82,32 @@ class SkuPackshotsTest {
         val first = server.url("/sku/7.webp?sig=one").toString()
         assertNotNull(cache.fetch(first, ImageCache.Kind.THUMBNAIL, cacheKey = SkuPackshots.cacheKey("a7", 3)))
         var ref = SkuPackshots.SkuImageRef(server.url("/sku/7.webp?sig=two").toString(), "a7", 3) // a new signature, the same picture
-        val p = SkuPackshots(cache, devAssets(), imageRef = { ref })
-        val b = p.bitmap(7, "MaxR-10S")
+        val p = SkuPackshots(cache, devAssets(), lookup = { id -> if (id == 7L) SkuPackshots.SkuInfo("MaxR-10S", ref) else null })
+        val b = p.bitmap("7")
         assertNotNull(b)
         assertEquals(1, server.requestCount) // read from disk: no second download, no network in the row
         assertTrue(b!!.getPixel(73, 60) != webpPixel("maxim-regular")) // the admin (Bolt) picture, not the dev Regular art
 
         ref = ref.copy(version = 4) // a new version not fetched yet: the dev art until the preload brings it
         p.invalidate()
-        assertNotNull(p.bitmap(7, "MaxR-10S"))
+        assertNotNull(p.bitmap("7"))
         assertEquals(1, server.requestCount)
     }
 
     @Test fun aMissingOrBrokenPictureIsNullNeverAnError() = runBlocking {
         val broken = File(tmp.newFolder("img"), "x").also { it.writeText("not an image") }
         val cache = ImageCache(broken.parentFile!!, OkHttpClient(), { false })
-        val p = SkuPackshots(cache, devAssets = null, imageRef = { SkuPackshots.SkuImageRef("https://x.invalid/a.png", "a", 1) })
-        assertNull(p.bitmap(1, "MaxR-10S"))
-        val throwing = SkuPackshots(cache, devAssets = null, imageRef = { error("bundle not open") })
-        assertNull(throwing.bitmap(1, "MaxR-10S"))
+        val p = SkuPackshots(cache, devAssets = null, lookup = { SkuPackshots.SkuInfo("MaxR-10S", SkuPackshots.SkuImageRef("https://x.invalid/a.png", "a", 1)) })
+        assertNull(p.bitmap("1"))
+        val throwing = SkuPackshots(cache, devAssets(), lookup = { error("bundle not open") })
+        assertNull(throwing.bitmap("1"))
+    }
+
+    @Test fun aServerIdIsResolvedInTheLocalCatalogue() = runBlocking {
+        val p = SkuPackshots(images = null, devAssets = devAssets(), lookup = { id -> mapOf(11L to "MaxWB-20S", 12L to "Aster")[id]?.let { SkuPackshots.SkuInfo(it) } })
+        assertNotNull(p.bitmap("11"))
+        assertNull(p.bitmap("12")) // known SKU without art: the silhouette
+        assertNull(p.bitmap("13")) // unknown id: never guessed as a code
     }
 
     @Test fun theCacheKeyIsStable() {

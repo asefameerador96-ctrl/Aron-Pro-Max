@@ -178,8 +178,12 @@ object SessionModule {
     /** PARITY-SPEC s2.6: the pack pictures of the SKU rows; the dev-only bundled art only when BuildConfig.DEV_PACKSHOTS. */
     @Provides
     @Singleton
-    fun skuPackshots(@ApplicationContext context: Context, imageCache: com.aktcl.aron.core.sync.ImageCache): com.aktcl.aron.core.sync.SkuPackshots =
-        com.aktcl.aron.core.sync.SkuPackshots(imageCache, if (BuildConfig.DEV_PACKSHOTS) context.assets else null)
+    fun skuPackshots(@ApplicationContext context: Context, imageCache: com.aktcl.aron.core.sync.ImageCache, components: SessionComponents, databases: UserDatabases): com.aktcl.aron.core.sync.SkuPackshots =
+        com.aktcl.aron.core.sync.SkuPackshots(imageCache, if (BuildConfig.DEV_PACKSHOTS) context.assets else null, lookup = { id ->
+            // the signed-in user's own catalogue (local Room only, never the network)
+            (components.session.state.value as? com.aktcl.aron.core.session.SessionState.Active)?.user?.userId
+                ?.let { databases.of(it).referenceDao().sku(id) }?.let { com.aktcl.aron.core.sync.SkuPackshots.SkuInfo(it.code) }
+        })
 
     /** F-SYS-029: pack thumbnails and AV/KV assets, bounded LRU on disk (AV only on unmetered networks). */
     @Provides
