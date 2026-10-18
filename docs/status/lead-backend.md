@@ -116,3 +116,22 @@ ARON_TEST_PG_URL=jdbc:postgresql://localhost:5432/postgres?user=postgres&passwor
   migration. DONE in ac70e42 as V0084 (D-MIG-RANGE-01; hardening renumbers its own V0084-V0087 at promotion).
 - (d) `cfg.memo.allow_negative_net`: fixed by D-18, read by no code (DECISIONS D-18-FIXED-KEY); 5edcace (a switch)
   reverted in cf16c05. A later migration marks it read-only or removes it.
+
+## Handover for the next session (session 2 recycled 2026-10-18 ~07:15 UTC)
+
+Branch lane/lead-backend tip: dbfdbfca (pushed 06:43; run pending at handover, the lead gets 'ready dbfdbfca' when
+green). On INT already: f13adb3 (QA-MNY-01, replay sweep, KD-1/KD-2, QA-MNY-03, releases requireWriter) and 8a13fe8.
+In dbfdbfca, not yet on INT: V0084 cfg.support.upload_replay_max_h (D-PDA-REPLAY-AGE), the dev seed fixed
+effective_from, D-18-FIXED-KEY docs (cfg.memo.allow_negative_net is read by no code), follow-up notes above.
+
+Queue: empty. Open, low, all logged above: (b) multi-record route-day lock order, (c) dev-only read query not run
+(no dev credentials), (e) reopen endpoint lock order. Tell qa when dbfdbfca is on INT (seed fix: it moves
+DeviceGateTest/BindDeviceCheckerTest to its CFG_SWITCH).
+
+Rules that held this session: one push per green run (a push cancels the lane's run); full backend build +
+:backend:app:test locally before every code push; qa owns AuthzAuditTest and its baseline (take its versions on
+merge); V0085 is backend-authz's; lead-hardening renumbers its V0084-V0087 at promotion (D-MIG-RANGE-01). Local
+PostgreSQL stops when the container cycles: `pg_ctlcluster 16 main start`, then
+ARON_TEST_PG_URL=jdbc:postgresql://localhost:5432/postgres?user=postgres&password=postgres. Never `git checkout -- .`
+with uncommitted work (lost the KD edits once; re-applied). A background `&` inside a foreground Bash call dies with
+the shell: use run_in_background.
