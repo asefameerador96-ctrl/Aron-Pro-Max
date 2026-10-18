@@ -137,4 +137,6 @@
     <string name="core_ui_look_dialog_text">জমা দেওয়ার পর আজকের বিক্রয় আর পরিবর্তন করা যাবে না।</string>
     <string name="core_ui_look_yes">হ্যাঁ</string>
     <string name="core_ui_look_no">না</string>
+    <string name="core_ui_look_sticks">স্টিক</string>
+    <string name="core_ui_look_long_sku">Prime Gold 10S</string>
 </resources>
