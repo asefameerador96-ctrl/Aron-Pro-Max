@@ -36,6 +36,13 @@ row needs updating:** prices R, route assignments R, device OTP issue.
 - Scope must still hold, and is kept as positive controls: a TSO issues OTPs only for SRs in its own reach, and reads
   prices read-only.
 
+**Note, contract (not a finding yet):** several reach refusals answer 403 `ERR_FORBIDDEN` instead of the contract's
+`ERR_OUT_OF_SCOPE`. They are refused correctly; only the code differs. Affected:
+- the five dashboards (summary, geo-validation, daily-tracking, login-submit, sync-health);
+- daily-tracking actions;
+- report queries with geo selectors;
+- config rollback.
+
 **Questions still open** (they never fail the test):
 - C2 → C3 for `cfg.auth.mfa_required_roles` and `cfg.price.max_change_pct`: agreed in principle, but it needs a
   registry migration (a final-account item; `docs/requests/backend-authz-c3-keys.md`).
