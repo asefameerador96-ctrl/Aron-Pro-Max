@@ -31,9 +31,10 @@ enum class SaleStage { Entry, Credit, Slide, Qc, Review }
  * the stage lists an unbounded height).
  */
 @Composable
-fun SaleRoute(vm: SaleViewModel, printer: PrinterManager, skuNameOf: (Long) -> String, onFinished: (printed: Boolean) -> Unit, modifier: Modifier = Modifier, qcCapMtkOf: (skuId: Long) -> Long? = { null }) {
+fun SaleRoute(vm: SaleViewModel, printer: PrinterManager, skuNameOf: (Long) -> String, onFinished: (printed: Boolean) -> Unit, modifier: Modifier = Modifier) {
     val ui by vm.state.collectAsState()
     var stage by remember { mutableStateOf(SaleStage.Entry) }
+    var qcBefore by remember { mutableStateOf(emptyList<QcEntry>()) }
     val draft = ui.draft
     val review = ui.review
     val skus = ui.catalog.values.toList()
@@ -56,10 +57,10 @@ fun SaleRoute(vm: SaleViewModel, printer: PrinterManager, skuNameOf: (Long) -> S
                         skus.filter { s -> draft?.lines?.any { it.skuId == s.skuId } == true }, review,
                         qtyOf = { id, code -> draft?.qc?.firstOrNull { it.skuId == id && it.faultTypeCode == code }?.defectQty ?: 0L },
                         onQty = { id, code, q -> QcEntryModel.groupOf(code)?.let { g -> vm.setQc(QcEntry(id, code, g, q)) } },
-                        capMtkOf = qcCapMtkOf,
+                        capMtkOf = { id -> ui.qcCapMtkBySku[id] },
                         onClearSku = { id -> QcEntryModel.APP_TYPES.forEach { t -> vm.setQc(QcEntry(id, t.code, t.group, 0)) } },
                         locked = draft?.qcCompleted == true, onDone = { vm.completeQc(); stage = SaleStage.Review },
-                        onCancel = { stage = SaleStage.Review },
+                        onCancel = { vm.restoreQc(qcBefore); stage = SaleStage.Review }, // Cancel discards what was typed since the screen opened
                     )
                     SaleStage.Credit -> if (review != null) CreditPrompt(
                         review, { vm.setPaid(it); stage = SaleStage.Review },
@@ -70,7 +71,7 @@ fun SaleRoute(vm: SaleViewModel, printer: PrinterManager, skuNameOf: (Long) -> S
                         ReviewScreen(
                             review, onSave = vm::onPrintTapped,
                             onCreditToggle = { on -> if (on) stage = SaleStage.Credit else vm.setPaid(null) },
-                            onQc = { stage = SaleStage.Qc },
+                            onQc = { qcBefore = draft?.qc.orEmpty(); stage = SaleStage.Qc },
                             // the Slide step exists only while a SKU carries an active offer (docs/27: offers deferred)
                             onSlide = if (skus.any { it.drp != null }) ({ stage = SaleStage.Slide }) else null,
                         )

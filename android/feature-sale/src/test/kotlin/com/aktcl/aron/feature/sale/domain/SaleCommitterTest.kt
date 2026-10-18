@@ -86,7 +86,7 @@ class SaleCommitterTest {
     }
 
     @Test fun sixQcTypesCommitAsSixLinesWithContractGroupsAndTheMemoDeductionIsTheirSum() = runTest {
-        var d = SaleDraftOps.setQuantity(Fx.draft(visitUuid), 100, 20, QtyUnit.STICK)
+        var d = SaleDraftOps.setQuantity(Fx.draft(visitUuid), 100, 40, QtyUnit.STICK) // 320.00 sold: the 21 sticks of QC (168.00) leave the net positive
         QcEntryModel.APP_TYPES.forEachIndexed { i, t -> d = SaleDraftOps.setQc(d, QcEntry(100, t.code, t.group, i + 1L)) } // 1..6 sticks at 8.00
         val out = committer.commit(d, Fx.catalog)
         assertEquals(6, count("qc_line"))
@@ -94,7 +94,7 @@ class SaleCommitterTest {
             generateSequence { if (c.moveToNext()) listOf(c.getString(0), c.getString(1), c.getLong(2), c.getLong(3), c.getLong(4)) else null }.toList()
         }
         assertEquals(QcEntryModel.APP_TYPES.map { it.code }.toSet(), rows.map { it[0] as String }.toSet())
-        assertTrue(rows.all { (it[1] as String) in setOf("MFC", "MKT") })
+        assertEquals(QcEntryModel.APP_TYPES.associate { it.code to it.group }, rows.associate { (it[0] as String) to (it[1] as String) }) // every code with its own group
         assertTrue(rows.all { it[4] == (it[2] as Long) * (it[3] as Long) }) // settlement = quantity x price at capture
         assertEquals(21L * 8_000, rows.sumOf { it[4] as Long })
         assertEquals(21L * 8_000, db.captureDao().memo(out.memoUuid)!!.qcDeductionMtk)

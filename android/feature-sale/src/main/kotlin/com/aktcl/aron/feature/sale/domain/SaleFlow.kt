@@ -32,6 +32,8 @@ data class SaleUiState(
     val catalog: Map<Long, SaleSku> = emptyMap(),
     val review: SaleReview? = null,
     val committed: CommittedSale? = null,
+    /** The one per-SKU QC cap (taka) the review, the commit and the QC screen all read; empty while the basis is unknown (MQ-03). */
+    val qcCapMtkBySku: Map<Long, Long> = emptyMap(),
 )
 
 /**
@@ -53,10 +55,11 @@ class SaleFlow(
     suspend fun start(visit: SaleVisit) = lock.withLock {
         check(visit.canSell) { "this visit cannot sell" }
         val catalog = catalogSource.skus(visit.businessDate, visit.priceType).associateBy { it.skuId }
-        val draft = store.load(visit.visitUuid) ?: SaleDraft(
+        val loaded = store.load(visit.visitUuid) ?: SaleDraft(
             visitUuid = visit.visitUuid, outletId = visit.outletId, routeId = visit.routeId, businessDate = visit.businessDate,
             priceType = visit.priceType, memoUuid = ClientIds.newUuid(),
         ).also(store::save)
+        val draft = SaleDraftOps.sanitizeQc(loaded).also { if (it != loaded) store.save(it) }
         val landed = committer.existing(draft.memoUuid)
         if (landed != null) store.clear(visit.visitUuid) // the commit landed and the kill came before the draft was cleared
         publish(visit, draft, catalog, landed)
@@ -69,7 +72,15 @@ class SaleFlow(
     suspend fun confirmZeroSale() = edit { SaleDraftOps.confirmZeroSale(it) }
     suspend fun withEdit(edit: EditContext) = edit { check(!it.qcCompleted) { "a sale cannot be edited after QC" }; it.copy(edit = edit) }
     /** Completing QC locks the sale at this outlet (F-SR-027). */
-    suspend fun completeQc() = edit { SaleDraftOps.completeQc(it) }
+    suspend fun completeQc() = lock.withLock {
+        val s = ui.value
+        val d = checkNotNull(s.draft) { "no sale in progress" }
+        // a QC the review would refuse (above the cap, or taking the sale below zero) is never locked in: the rep could not undo it
+        val r = SaleReviewCalculator.review(d, s.catalog, qcCapMtkBySku())
+        if (r.problems.any { it is ReviewProblem.QcAboveCap || it is ReviewProblem.NetNegative }) return@withLock
+        editLocked { SaleDraftOps.completeQc(it) }
+    }
+    suspend fun restoreQc(entries: List<QcEntry>) = edit { SaleDraftOps.replaceQc(it, entries) }
 
     /** Commits the sale; [editFix] is required (and only allowed) for an edit. Returns the same result on a repeat call. */
     suspend fun commit(editFix: GeoFixEntity? = null): CommittedSale = lock.withLock {
@@ -82,16 +93,18 @@ class SaleFlow(
         result
     }
 
-    private suspend fun edit(change: (SaleDraft) -> SaleDraft) = lock.withLock {
+    private suspend fun edit(change: (SaleDraft) -> SaleDraft) = lock.withLock { editLocked(change) }
+
+    private suspend fun editLocked(change: (SaleDraft) -> SaleDraft) {
         val s = ui.value
         check(s.committed == null) { "sale already committed" }
         val next = change(checkNotNull(s.draft) { "no sale in progress" })
         val review = SaleReviewCalculator.review(next, s.catalog, qcCapMtkBySku()) // computed before saving: a failure is never persisted
         store.save(next)
-        ui.value = SaleUiState(s.visit, next, s.catalog, review, null)
+        ui.value = SaleUiState(s.visit, next, s.catalog, review, null, qcCapMtkBySku())
     }
 
     private fun publish(visit: SaleVisit, draft: SaleDraft, catalog: Map<Long, SaleSku>, committed: CommittedSale?) {
-        ui.value = SaleUiState(visit, draft, catalog, SaleReviewCalculator.review(draft, catalog, qcCapMtkBySku()), committed)
+        ui.value = SaleUiState(visit, draft, catalog, SaleReviewCalculator.review(draft, catalog, qcCapMtkBySku()), committed, qcCapMtkBySku())
     }
 }

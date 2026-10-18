@@ -13,8 +13,8 @@ that reads that migration.
 
 ## 2. Defect fixed: the app was sending values the server would reject
 Before this change the app sent `fault_group` = `TFC` (not in the enum MFC or MKT) and `fault_type_code` = `production_fault` or
-`transport_fault` (not in the closed list), and allowed a quantity up to 1,000,000 (the contract caps `qty_base` at 100,000).
-A memo with QC would have failed server validation. `SaleDraftOps.setQc` now refuses an unknown code, a group that does not
+`transport_fault` (not in the closed list; note the server checks only the code's pattern and the MFC or MKT enum, so only the `TFC` group would have been refused, the codes would have been stored), and allowed a quantity up to 1,000,000 (the contract caps `qty_base` at 100,000).
+A memo with QC would have been refused by the server on the group value. `SaleDraftOps.setQc` now refuses an unknown code, a group that does not
 belong to the code, and a quantity above 100,000. Drafts saved by an earlier build with a QC row would fail on reload only if a
 rep had a QC row in an unfinished draft; none existed in the field (QC was never wired to the server).
 
@@ -25,3 +25,19 @@ The manual shows "সর্বোচ্চ QC" per SKU (594.50 ৳ for MaxR-10S)
 Request: when MQ-03 is answered, the TSO/SR bundle should carry `max_qc_mtk` per SKU (or the basis fields to compute it) and the
 SR host (`SrSaleHosts`) should pass it to both parameters. Until then no maximum or remaining line is shown; the screen is
 correct either way (golden `qc_bn_no_cap`).
+
+## 4. Opus checker findings (all four majors fixed with tests; the rest filed here)
+Fixed: (1) QC can no longer take a sale below zero (`ReviewProblem.NetNegative`, the same rule as the server's `net_negative`; the
+stepper's room is also limited by gross less discounts less the other QC); (2) Cancel restores the QC rows from before the screen
+opened, and QC that was never submitted does not survive a relaunch (`SaleDraftOps.sanitizeQc`); (3) the cap is one source (it
+rides in `SaleUiState` from the flow, the screen reads it there) and `completeQc` refuses while the review has `QcAboveCap` or
+`NetNegative`, so a sale can no longer be locked into an uncommittable state; (4) removing a SKU line removes its QC rows, and a
+relaunch drops rows of unknown type or group (drafts from older builds).
+Open, for the lead (not presentation, not mine to decide):
+- **QC on a zero sale**: the manual observes it and `allow_negative_net` exists for it (D-18), but the app shows no SKU to QC when
+  the memo has no lines, and the server rule `net_negative` refuses gross above zero only. Needs a ruling before it is built.
+- **Typed quantity** per row (the manual shows a typed number): the kit stepper is plus/minus one only; a typed field needs a kit component.
+- **`price_per_qty` is not in `QcLinePayload`**: settlement cannot be rebuilt from qty x unit price when per-quantity pricing is above 1
+  (harmless at the normal 1); a contract addition if DQ-52 ever recomputes it.
+- **Summary table**: the manual has one row per SKU ("MFC Fault, MKT Fault", total); the app lists one row per fault type.
+- `web/mock/master-seed.ts` carries an invented 11-code QC list that disagrees with the closed list; old fixtures use `torn_pack`.

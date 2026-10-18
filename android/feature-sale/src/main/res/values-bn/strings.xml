@@ -56,6 +56,8 @@
     <string name="review_problem_unit">%1$s এর জন্য এই একক অনুমোদিত নয়।</string>
     <string name="review_problem_paid">পরিশোধ ০ বা তার বেশি এবং মোটের কম হতে হবে, পুরো পয়সায়।</string>
     <string name="review_problem_nothing">বিক্রির কিছু নেই।</string>
+    <string name="review_problem_net_negative">QC এর কারণে মোট শূন্যের নিচে যাচ্ছে। QC কমান।</string>
+    <string name="review_problem_qc_cap">একটি পণ্যের QC সর্বোচ্চ সীমার বেশি।</string>
     <string name="review_problem_other">অনুগ্রহ করে বিক্রয়টি দেখুন।</string>
     <string name="credit_title">পরিশোধিত টাকার পরিমাণ লিখুন</string>
     <string name="credit_body">এখন আপনি রিটেইলার থেকে কত টাকা সংগ্রহ করছেন?</string>
@@ -75,14 +77,14 @@
     <string name="qc_col_type">QC ধরন</string>
     <string name="qc_production">উৎপাদন ত্রুটি</string>
     <string name="qc_transport">পরিবহন ত্রুটি</string>
-    <string name="qc_deduction">কর্তন: %1$s</string>
+    <string name="qc_deduction">সেটেলমেন্ট পরিমাণ: %1$s</string>
     <string name="qc_cancel">বাতিল</string>
     <string name="qc_done">QC জমা দিন</string>
     <string name="qc_max">সর্বোচ্চ QC</string>
     <string name="qc_done_amount">QC হয়ে গেছে</string>
     <string name="qc_remaining">বাকি আছে</string>
     <string name="qc_clear">ডিলিট</string>
-    <string name="qc_total_qty">মোট QC নিষ্পত্তি %1$s</string>
+    <string name="qc_total_qty">মোট QC নিষ্পত্তি: %1$s</string>
     <string name="qc_confirm_title">ইনফর্মেশন</string>
     <string name="qc_confirm_message">আপনি কি QC জমা দিতে চান?</string>
     <string name="qc_type_damaged_crushed">ড্যামেজড ও ক্রাশড – প্যাক / আউটার CBC</string>

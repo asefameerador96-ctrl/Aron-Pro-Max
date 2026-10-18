@@ -8,6 +8,8 @@ import com.aktcl.aron.core.ui.AppLocale
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.onAllNodesWithContentDescription
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.onAllNodesWithText
@@ -130,12 +132,46 @@ class SaleExtraScreensTest {
         compose.onNodeWithText("1 reward packs = − 80.00 ৳").assertExists()
     }
 
+    private fun qcDraft(vararg e: com.aktcl.aron.feature.sale.domain.QcEntry): com.aktcl.aron.feature.sale.domain.SaleDraft {
+        var d = SaleDraftOps.setQuantity(Fx.draft(), 100, 20, QtyUnit.STICK)
+        e.forEach { d = SaleDraftOps.setQc(d, it) }
+        return d
+    }
+
+    @Test fun theQcStepperStopsAtWhatIsLeftUnderTheCap() {
+        val d = qcDraft(com.aktcl.aron.feature.sale.domain.QcEntry(100, "damaged_crushed", "MFC", 2)) // 16.00 of a 16.00 cap used
+        compose.setContent {
+            AronTheme(AppLanguage.EN) {
+                QcScreen(listOf(Fx.maxr), SaleReviewCalculator.review(d, Fx.catalog), { _, c -> if (c == "damaged_crushed") 2L else 0L }, { _, _, _ -> }, false, {}, capMtkOf = { 16_000L })
+            }
+        }
+        compose.onNodeWithText("Remaining").assertExists()
+        // every More button is disabled: nothing is left under the cap (the six rows)
+        compose.onAllNodesWithContentDescription("More").assertCountEquals(6)
+        for (i in 0 until 6) compose.onAllNodesWithContentDescription("More")[i].assertIsNotEnabled()
+    }
+
+    @Test fun deleteClearsTheSkuAndIsHiddenWhenLocked() {
+        var cleared = -1L
+        val d = qcDraft(com.aktcl.aron.feature.sale.domain.QcEntry(100, "taste", "MKT", 1))
+        compose.setContent { AronTheme(AppLanguage.EN) { QcScreen(listOf(Fx.maxr), SaleReviewCalculator.review(d, Fx.catalog), { _, _ -> 0 }, { _, _, _ -> }, false, {}, onClearSku = { cleared = it }) } }
+        compose.onNodeWithText("Delete").performScrollTo().performClick()
+        assertEquals(100L, cleared)
+    }
+
+    @Test fun lockedQcShowsNoDeleteAndNoEnabledStepper() {
+        val d = qcDraft(com.aktcl.aron.feature.sale.domain.QcEntry(100, "taste", "MKT", 1))
+        compose.setContent { AronTheme(AppLanguage.EN) { QcScreen(listOf(Fx.maxr), SaleReviewCalculator.review(d, Fx.catalog), { _, _ -> 0 }, { _, _, _ -> }, true, {}) } }
+        compose.onNodeWithText("Delete").assertDoesNotExist()
+        for (i in 0 until 6) compose.onAllNodesWithContentDescription("More")[i].assertIsNotEnabled()
+    }
+
     @Test fun qcShowsTheDeductionAndLocksWhenDone() {
         var d = SaleDraftOps.setQuantity(Fx.draft(), 103, 10, QtyUnit.PIECE)
         d = SaleDraftOps.setQc(d, com.aktcl.aron.feature.sale.domain.QcEntry(103, "damaged_crushed", com.aktcl.aron.feature.sale.domain.QcEntryModel.PRODUCTION, 2))
         var done = 0
         compose.setContent { AronTheme(AppLanguage.EN) { QcScreen(listOf(Fx.aster), SaleReviewCalculator.review(d, Fx.catalog), { _, _ -> 0 }, { _, _, _ -> }, false, { done++ }) } }
-        compose.onNodeWithText("Deduction: − 25.00 ৳").assertExists()
+        compose.onNodeWithText("Settlement amount: − 25.00 ৳").assertExists()
         compose.onNodeWithText("Submit QC").performClick()
         assertEquals("QC is not submitted before the confirm", 0, done)
         compose.onNodeWithText("No").performClick()

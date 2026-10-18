@@ -113,4 +113,22 @@ class QcEntryModelTest {
         d = SaleDraftOps.setQc(d, QcEntry(100, "taste", "MKT", 0))
         assertEquals(5, d.qc.size)
     }
+
+    @Test fun capBoundaryIsExactAndRoundingAnchorsHold() {
+        val s = sku(8_000)
+        assertEquals(3, QcEntryModel.maxQty(s, emptyList(), "taste", 24_000)) // 3 x 8.00 = the cap exactly
+        assertEquals(2, QcEntryModel.maxQty(s, emptyList(), "taste", 23_999))
+        assertEquals(1, QcEntryModel.maxQty(s, listOf(QcEntry(100, "other_mfc", "MFC", 2)), "taste", 24_000)) // 2 already used elsewhere
+        // price per quantity above 1: divHalfUp(qty x price, perQty)
+        val p3 = sku(1_000, 3)
+        assertEquals(333, QcEntryModel.settlementMtk(p3, 1)); assertEquals(667, QcEntryModel.settlementMtk(p3, 2)); assertEquals(1_000, QcEntryModel.settlementMtk(p3, 3))
+    }
+
+    @Test fun theMemoRoomLimitsARowSoTheNetCannotGoNegative() {
+        val s = sku(8_000)
+        assertEquals(5, QcEntryModel.maxQty(s, emptyList(), "taste", null, memoRoomMtk = 40_000))
+        assertEquals(4, QcEntryModel.maxQty(s, emptyList(), "taste", null, memoRoomMtk = 39_999))
+        assertEquals(2, QcEntryModel.maxQty(s, emptyList(), "taste", 16_000, memoRoomMtk = 40_000)) // the smaller of the two rooms wins
+        assertEquals(0, QcEntryModel.maxQty(s, emptyList(), "taste", null, memoRoomMtk = 0))
+    }
 }

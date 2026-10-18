@@ -57,6 +57,8 @@
     <string name="review_problem_unit">This unit is not allowed for %1$s.</string>
     <string name="review_problem_paid">Paid must be 0 or more and less than the total, in whole paisa.</string>
     <string name="review_problem_nothing">Nothing to sell.</string>
+    <string name="review_problem_net_negative">QC takes the total below zero. Reduce the QC.</string>
+    <string name="review_problem_qc_cap">QC is above the maximum for a product.</string>
     <string name="review_problem_other">Please check the sale.</string>
     <string name="credit_title">Enter the amount paid</string>
     <string name="credit_body">How much are you collecting from the retailer now?</string>
@@ -76,14 +78,14 @@
     <string name="qc_col_type">QC type</string>
     <string name="qc_production">Production fault</string>
     <string name="qc_transport">Transport fault</string>
-    <string name="qc_deduction">Deduction: %1$s</string>
+    <string name="qc_deduction">Settlement amount: %1$s</string>
     <string name="qc_cancel">Cancel</string>
     <string name="qc_done">Submit QC</string>
     <string name="qc_max">Maximum QC</string>
     <string name="qc_done_amount">QC done</string>
     <string name="qc_remaining">Remaining</string>
     <string name="qc_clear">Delete</string>
-    <string name="qc_total_qty">Total QC settled: %1$s</string>
+    <string name="qc_total_qty">Total QC quantity: %1$s</string>
     <string name="qc_confirm_title">Information</string>
     <string name="qc_confirm_message">Do you want to submit QC?</string>
     <string name="qc_type_damaged_crushed">Damaged &amp; Crushed Pack/Outer CBC</string>

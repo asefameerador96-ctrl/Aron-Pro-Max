@@ -178,7 +178,9 @@ fun QcScreen(
                             QcEntryModel.typesOf(group).forEach { type ->
                                 Text(qcTypeLabel(type.code), style = MaterialTheme.typography.bodyMedium, color = c.textPrimary)
                                 Row(verticalAlignment = Alignment.CenterVertically) {
-                                    val max = if (locked) 0 else QcEntryModel.maxQty(sku, entries, type.code, cap).coerceAtMost(QcEntryModel.MAX_QTY).toInt()
+                                    val otherQc = review.qc.filterNot { it.entry.skuId == sku.skuId && it.entry.faultTypeCode == type.code }.sumOf { it.settlementMtk }
+                                    val memoRoom = (review.totals.grossMtk - review.totals.offerDiscountMtk - review.totals.drpDiscountMtk - otherQc).coerceAtLeast(0)
+                                    val max = if (locked) 0 else QcEntryModel.maxQty(sku, entries, type.code, cap, memoRoom).coerceAtMost(QcEntryModel.MAX_QTY).toInt()
                                     AronStepper(
                                         qtyOf(sku.skuId, type.code).toInt(), { if (!locked) onQty(sku.skuId, type.code, it.toLong()) },
                                         stringResource(R.string.sale_less), stringResource(R.string.sale_more), min = 0, max = max,

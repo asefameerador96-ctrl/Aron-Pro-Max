@@ -670,5 +670,7 @@ private fun problemText(p: ReviewProblem): String = when (p) {
     is ReviewProblem.UnitNotAllowed -> stringResource(R.string.review_problem_unit, p.skuId.toString())
     is ReviewProblem.PaidOutOfRange, is ReviewProblem.PaidNotPaisa, ReviewProblem.PaidNegative -> stringResource(R.string.review_problem_paid)
     ReviewProblem.NothingToSell -> stringResource(R.string.review_problem_nothing)
+    is ReviewProblem.NetNegative -> stringResource(R.string.review_problem_net_negative)
+    is ReviewProblem.QcAboveCap -> stringResource(R.string.review_problem_qc_cap)
     else -> stringResource(R.string.review_problem_other)
 }

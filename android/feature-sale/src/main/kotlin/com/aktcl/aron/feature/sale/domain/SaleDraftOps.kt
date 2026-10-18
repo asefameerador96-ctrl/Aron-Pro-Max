@@ -11,7 +11,9 @@ object SaleDraftOps {
         check(!d.qcCompleted) { "sale is locked after QC" }
         val rest = d.lines.filterNot { it.skuId == skuId }
         val lines = if (qtyEntered == 0L) rest else (rest + DraftLine(skuId, qtyEntered, unit.wire)).sortedBy { it.skuId }
-        return d.copy(lines = lines, zeroSale = if (lines.isNotEmpty()) false else d.zeroSale)
+        // QC belongs to a SKU on the memo: removing the line removes its QC rows, so no deduction is left that no screen shows
+        val qc = if (qtyEntered == 0L) d.qc.filterNot { it.skuId == skuId } else d.qc
+        return d.copy(lines = lines, qc = qc, zeroSale = if (lines.isNotEmpty()) false else d.zeroSale)
     }
 
     fun setSlide(d: SaleDraft, skuId: Long, emptyPackets: Long): SaleDraft {
@@ -41,6 +43,20 @@ object SaleDraftOps {
     fun confirmZeroSale(d: SaleDraft): SaleDraft {
         check(d.lines.isEmpty()) { "a zero sale has no lines" }
         return d.copy(zeroSale = true, paidMtk = null)
+    }
+
+    /** Puts back the QC rows saved when the QC screen opened (Cancel discards what was typed since). */
+    fun replaceQc(d: SaleDraft, entries: List<QcEntry>): SaleDraft {
+        check(!d.qcCompleted) { "QC is locked once completed" }
+        return d.copy(qc = entries)
+    }
+
+    /** What survives a restart: QC that was never submitted is dropped; a submitted one keeps only rows of the six app types. */
+    fun sanitizeQc(d: SaleDraft): SaleDraft {
+        if (d.qc.isEmpty()) return d
+        if (!d.qcCompleted) return d.copy(qc = emptyList())
+        val valid = d.qc.filter { QcEntryModel.groupOf(it.faultTypeCode) == it.faultGroup && it.defectQty in 1..QcEntryModel.MAX_QTY }
+        return if (valid.size == d.qc.size) d else d.copy(qc = valid)
     }
 
     /** Completing QC locks further edits at this outlet. */

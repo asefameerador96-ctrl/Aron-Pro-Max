@@ -39,6 +39,8 @@ sealed interface ReviewProblem {
     data class PaidOutOfRange(val paidMtk: Long, val netMtk: Long) : ReviewProblem
     data class PaidNotPaisa(val paidMtk: Long) : ReviewProblem
     data class NoDrpOffer(val skuId: Long) : ReviewProblem
+    /** The server rejects a memo with gross above zero and a negative net (`net_negative`): QC may not take the sale below zero. */
+    data class NetNegative(val netMtk: Long) : ReviewProblem
     data class QcAboveCap(val skuId: Long, val settlementMtk: Long, val capMtk: Long) : ReviewProblem
     /** `cfg.sale.max_lines_per_memo`: the server rejects a longer memo with `lines_exceed_max`, not retryable (docs/24 s4.5). */
     data class TooManyLines(val count: Int, val max: Int) : ReviewProblem
@@ -108,6 +110,7 @@ object SaleReviewCalculator {
         val discounts = drp.map { DiscountLine(it.skuId, it.rewardQtyBase, it.valueMtk, DiscountKind.DRP) }
         val totals = MemoMath.totals(lines.map { it.memoLine }, discounts, qc.map { QcLine(it.settlementMtk, true) })
 
+        if (totals.grossMtk != 0L && totals.netMtk < 0) problems += ReviewProblem.NetNegative(totals.netMtk)
         if (draft.lines.size > maxLines) problems += ReviewProblem.TooManyLines(draft.lines.size, maxLines)
         if (lines.isEmpty() && !draft.zeroSale && problems.none { it is ReviewProblem.UnitNotAllowed || it is ReviewProblem.UnknownSku }) problems += ReviewProblem.NothingToSell
         val paid = draft.paidMtk ?: totals.netMtk

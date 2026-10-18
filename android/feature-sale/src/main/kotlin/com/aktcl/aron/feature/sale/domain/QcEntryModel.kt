@@ -34,11 +34,14 @@ object QcEntryModel {
     /** What is left under [capMtk]; null when there is no cap. */
     fun remainingMtk(capMtk: Long?, doneMtk: Long): Long? = capMtk?.let { (it - doneMtk).coerceAtLeast(0) }
 
-    /** The largest quantity the row ([sku], [faultCode]) may hold so the SKU's total stays within [capMtk] (any size when there is no cap). */
-    fun maxQty(sku: SaleSku, entries: List<QcEntry>, faultCode: String, capMtk: Long?): Long {
-        if (capMtk == null) return MAX_QTY
-        val others = entries.filter { it.skuId == sku.skuId && it.faultTypeCode != faultCode }.sumOf { settlementMtk(sku, it.defectQty) }
-        val room = capMtk - others
+    /**
+     * The largest quantity the row ([sku], [faultCode]) may hold so that the SKU's total stays within [capMtk] (no cap: no limit
+     * from it) and the whole memo stays at or above zero: [memoRoomMtk] is gross less discounts less the QC of every other row
+     * (the server refuses a memo with a negative net, `net_negative`). Both null: the contract quantity limit only.
+     */
+    fun maxQty(sku: SaleSku, entries: List<QcEntry>, faultCode: String, capMtk: Long?, memoRoomMtk: Long? = null): Long {
+        val capRoom = capMtk?.let { cap -> cap - entries.filter { it.skuId == sku.skuId && it.faultTypeCode != faultCode }.sumOf { settlementMtk(sku, it.defectQty) } }
+        val room = listOfNotNull(capRoom, memoRoomMtk).minOrNull() ?: return MAX_QTY
         if (room <= 0) return 0
         var lo = 0L
         var hi = MAX_QTY
