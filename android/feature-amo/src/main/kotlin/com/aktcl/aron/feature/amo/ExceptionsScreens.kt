@@ -10,14 +10,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
-import com.aktcl.aron.core.ui.AronBanner
 import com.aktcl.aron.core.ui.BannerKind
-import com.aktcl.aron.core.ui.AronEmptyState
 import com.aktcl.aron.core.ui.localizedDigits
-import com.aktcl.aron.core.ui.AronListRow
-import com.aktcl.aron.core.ui.AronNoButton
-import com.aktcl.aron.core.ui.AronSecondaryButton
-import com.aktcl.aron.core.ui.AronSectionLabel
 import com.aktcl.aron.core.ui.AronTokens
 import com.aktcl.aron.core.ui.RowPosition
 import com.aktcl.aron.feature.outlet.KitTextField
@@ -59,12 +53,12 @@ private fun groupLabel(g: ExceptionGroup) = stringResource(
 @Composable
 fun ExceptionsListContent(rows: List<RiskSignalRow>, names: Map<Long, String>, onOpen: (RiskSignalRow) -> Unit, modifier: Modifier = Modifier) {
     if (rows.isEmpty()) {
-        AronEmptyState(stringResource(R.string.amo_exc_empty), modifier.fillMaxSize(), hint = stringResource(R.string.amo_exc_empty_hint))
+        AmoEmptyState(stringResource(R.string.amo_exc_empty), modifier.fillMaxSize(), hint = stringResource(R.string.amo_exc_empty_hint))
         return
     }
     Column(modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = AronTokens.Space.Screen)) {
         rows.forEachIndexed { i, r ->
-            AronListRow(
+            AmoListRow(
                 codeLabel(r.code), subtitle = listOfNotNull(groupLabel(Exceptions.group(r.code)), r.userId?.let { names[it] }).joinToString(stringResource(R.string.amo_verify_sep)),
                 trailing = stringResource(R.string.amo_exc_severity, r.severity.coerceIn(1, 4)), onClick = { onOpen(r) },
                 position = if (rows.size == 1) RowPosition.Only else if (i == 0) RowPosition.First else if (i == rows.lastIndex) RowPosition.Last else RowPosition.Middle,
@@ -84,16 +78,16 @@ fun ExceptionDetailContent(
             Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = AronTokens.Space.Screen, vertical = AronTokens.Space.S),
             verticalArrangement = Arrangement.spacedBy(AronTokens.Space.S),
         ) {
-            AronListRow(codeLabel(row.code), subtitle = listOfNotNull(groupLabel(Exceptions.group(row.code)), userName).joinToString(stringResource(R.string.amo_verify_sep)), flat = true)
-            if (failed) AronBanner(stringResource(R.string.amo_exc_failed), kind = BannerKind.Error)
-            AronSectionLabel(stringResource(R.string.amo_exc_evidence))
-            row.evidence.forEach { (k, v) -> AronListRow(localizedDigits(v), subtitle = k, flat = true) }
+            AmoListRow(codeLabel(row.code), subtitle = listOfNotNull(groupLabel(Exceptions.group(row.code)), userName).joinToString(stringResource(R.string.amo_verify_sep)), flat = true)
+            if (failed) AmoBanner(stringResource(R.string.amo_exc_failed), kind = BannerKind.Error)
+            AmoSection(stringResource(R.string.amo_exc_evidence))
+            row.evidence.forEach { (k, v) -> AmoListRow(localizedDigits(v), subtitle = k, flat = true) }
             KitTextField(note, onNote, stringResource(R.string.amo_verify_note), Modifier.fillMaxWidth(), singleLine = false)
         }
         Column(Modifier.fillMaxWidth().padding(AronTokens.Space.Screen), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
-            AronSecondaryButton(stringResource(R.string.amo_exc_review), { onAction("reviewed") }, Modifier.fillMaxWidth(), enabled = !busy)
-            AronSecondaryButton(stringResource(R.string.amo_exc_dismiss), { onAction("dismissed") }, Modifier.fillMaxWidth(), enabled = !busy)
-            AronNoButton(stringResource(R.string.amo_exc_confirm), { onAction("confirmed") }, Modifier.fillMaxWidth(), enabled = !busy)
+            AmoSecondary(stringResource(R.string.amo_exc_review), { onAction("reviewed") }, Modifier.fillMaxWidth(), enabled = !busy)
+            AmoSecondary(stringResource(R.string.amo_exc_dismiss), { onAction("dismissed") }, Modifier.fillMaxWidth(), enabled = !busy)
+            AmoNo(stringResource(R.string.amo_exc_confirm), { onAction("confirmed") }, Modifier.fillMaxWidth(), enabled = !busy)
         }
     }
 }

@@ -1,5 +1,7 @@
 package com.aktcl.aron.amo
 
+import com.aktcl.aron.feature.amo.AmoEmptyState
+import com.aktcl.aron.feature.amo.AmoSecondary
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -19,9 +21,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.aktcl.aron.core.ui.AronEmptyState
-import com.aktcl.aron.core.ui.AronListRow
-import com.aktcl.aron.core.ui.AronSecondaryButton
 import com.aktcl.aron.core.ui.AronTokens
 import com.aktcl.aron.feature.dayclose.SalesSubmitScreen
 import com.aktcl.aron.feature.memo.domain.SaleHistoryBuilder
@@ -64,7 +63,7 @@ fun AmoSaleHost(day: AmoDay, onDone: () -> Unit) {
         null -> Unit
         true -> Column(Modifier.fillMaxSize().padding(AronTokens.Space.Screen), verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(AronTokens.Space.M)) {
             androidx.compose.material3.Text(stringResource(AmoR.string.amo_sale_done), style = androidx.compose.material3.MaterialTheme.typography.bodyLarge)
-            AronSecondaryButton(stringResource(AmoR.string.amo_sale_done_back), onDone, Modifier.fillMaxWidth())
+            AmoSecondary(stringResource(AmoR.string.amo_sale_done_back), onDone, Modifier.fillMaxWidth())
         }
         false -> {
             val vm = viewModel(key = "sale-" + v.visitUuid) { kit.newSaleViewModel() }
@@ -94,7 +93,7 @@ fun AmoMemoHost(day: AmoDay, onEdit: (String) -> Unit) {
             sel == null -> MemoMenuScreen(st.rows, kit::outletName, onOpen = { vm.open(it.memoUuid) })
             else -> {
                 MemoDetailView(sel, st.canMarkPaid, st.remainingDueMtk, kit::skuName, onPrint = vm::reprint, onEdit = { onEdit(sel.memo.memoUuid) }, onMarkPaid = vm::markPaid, skuCategory = kit::skuCategoryCode)
-                AronSecondaryButton(
+                AmoSecondary(
                     stringResource(AmoR.string.amo_sale_history),
                     { scope.launch { history = SaleHistoryBuilder.build(kit.history(), sel.memo.outletId) } },
                     Modifier.fillMaxWidth().padding(horizontal = AronTokens.Space.L),
@@ -160,7 +159,7 @@ fun AmoEditHost(day: AmoDay, memoUuid: String, onDone: () -> Unit) {
     LaunchedEffect(memoUuid) { kit.prepare(); denied = kit.prepareEdit(memoUuid); checked = true }
     val r = reason
     when {
-        !checked -> AronEmptyState(stringResource(AmoR.string.amo_edit_checking))
+        !checked -> AmoEmptyState(stringResource(AmoR.string.amo_edit_checking))
         denied != null || r == null -> EditReasonScreen(denied, onReason = { reason = it })
         else -> {
             LaunchedEffect(r) { kit.beginEdit(memoUuid, r); ready = true }

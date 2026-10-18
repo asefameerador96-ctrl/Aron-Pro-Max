@@ -1,5 +1,6 @@
 package com.aktcl.aron.amo
 
+import com.aktcl.aron.feature.amo.AmoFrame
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -42,7 +43,7 @@ fun AmoReportHub(day: AmoDay, onBack: () -> Unit) {
     val bangla = LocalAppLanguage.current == AppLanguage.BN
     val money: (Long) -> String = { Formats.money(it, if (bangla) UiLocale.BN else UiLocale.EN) }
     val title = when (leaf) { ReportLeaf.STD -> AmoR.string.amo_rep_std; ReportLeaf.SUMMARY, ReportLeaf.ROUTE -> AmoR.string.amo_rep_summary; else -> AmoR.string.amo_rep_title }
-    AronScreen(topBar = { AronTopBar(stringResource(title), onBack = back) }) {
+    AmoFrame(stringResource(title), back) {
         when (leaf) {
             ReportLeaf.MENU -> ReportMenuContent({ leaf = ReportLeaf.STD }, { leaf = ReportLeaf.SUMMARY })
             ReportLeaf.STD -> {

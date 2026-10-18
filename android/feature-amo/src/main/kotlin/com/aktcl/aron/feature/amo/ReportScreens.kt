@@ -20,10 +20,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.aktcl.aron.core.ui.AronBanner
-import com.aktcl.aron.core.ui.AronEmptyState
-import com.aktcl.aron.core.ui.AronListRow
-import com.aktcl.aron.core.ui.AronSectionLabel
 import com.aktcl.aron.core.ui.AronTokens
 import com.aktcl.aron.core.ui.BannerKind
 import com.aktcl.aron.core.ui.LocalAronColors
@@ -40,16 +36,16 @@ private fun pos(i: Int, n: Int) = if (n == 1) RowPosition.Only else if (i == 0) 
 
 @Composable
 private fun Notes(stale: Boolean, failed: Boolean, truncated: Boolean) {
-    if (failed) AronBanner(stringResource(R.string.amo_task_list_offline), kind = BannerKind.Warning)
-    else if (stale) AronBanner(stringResource(R.string.amo_task_list_kept), kind = BannerKind.Info)
-    if (truncated) AronBanner(stringResource(R.string.amo_rep_truncated), kind = BannerKind.Info)
+    if (failed) AmoBanner(stringResource(R.string.amo_task_list_offline), kind = BannerKind.Warning)
+    else if (stale) AmoBanner(stringResource(R.string.amo_task_list_kept), kind = BannerKind.Info)
+    if (truncated) AmoBanner(stringResource(R.string.amo_rep_truncated), kind = BannerKind.Info)
 }
 
 @Composable
 fun ReportMenuContent(onStd: () -> Unit, onSummary: () -> Unit, modifier: Modifier = Modifier) {
     Column(modifier.fillMaxSize().padding(horizontal = AronTokens.Space.Screen)) {
-        AronListRow(stringResource(R.string.amo_rep_std), onClick = onStd, position = RowPosition.First, divider = true, flat = true)
-        AronListRow(stringResource(R.string.amo_rep_summary), onClick = onSummary, position = RowPosition.Last, flat = true)
+        AmoListRow(stringResource(R.string.amo_rep_std), onClick = onStd, position = RowPosition.First, divider = true, flat = true)
+        AmoListRow(stringResource(R.string.amo_rep_summary), onClick = onSummary, position = RowPosition.Last, flat = true)
     }
 }
 
@@ -87,10 +83,10 @@ fun StdMemoReportContent(
     Column(modifier.fillMaxSize()) {
         Column(Modifier.padding(horizontal = AronTokens.Space.Screen)) {
             Notes(stale, failed, data?.truncated == true)
-            AronListRow(stringResource(R.string.amo_rep_range, localizedDigits(range.first), localizedDigits(range.second)), flat = true)
+            AmoListRow(stringResource(R.string.amo_rep_range, localizedDigits(range.first), localizedDigits(range.second)), flat = true)
         }
         if (data == null || data.rows.isEmpty()) {
-            AronEmptyState(stringResource(R.string.amo_rep_empty), Modifier.fillMaxSize(), hint = stringResource(R.string.amo_rep_empty_hint))
+            AmoEmptyState(stringResource(R.string.amo_rep_empty), Modifier.fillMaxSize(), hint = stringResource(R.string.amo_rep_empty_hint))
             return@Column
         }
         val cols = Reports.STD_COLUMNS.mapNotNull { k -> data.columns.firstOrNull { it.key == k } }
@@ -100,20 +96,20 @@ fun StdMemoReportContent(
             item {
                 Column(Modifier.padding(horizontal = AronTokens.Space.Screen)) {
                     // The route totals are only true for a complete report: a truncated one shows the memos below and its note instead.
-                    if (!totalsShown) AronBanner(stringResource(R.string.amo_rep_totals_hidden), kind = BannerKind.Info)
-                    else AronSectionLabel(stringResource(R.string.amo_rep_by_route))
+                    if (!totalsShown) AmoBanner(stringResource(R.string.amo_rep_totals_hidden), kind = BannerKind.Info)
+                    else AmoSection(stringResource(R.string.amo_rep_by_route))
                     if (totalsShown) byRoute.forEachIndexed { i, r ->
-                        AronListRow(
+                        AmoListRow(
                             r.code.ifBlank { stringResource(R.string.amo_live_dash) }, subtitle = stringResource(R.string.amo_rep_route_line, localizedNumber(r.memos.toLong()), money(r.grossMtk)),
                             trailing = money(r.netMtk), position = pos(i, byRoute.size), divider = i < byRoute.lastIndex, flat = true,
                         )
                     }
                     val cats = categories.groupBy { it.route }
                     if (totalsShown && cats.isNotEmpty()) {
-                        AronSectionLabel(stringResource(R.string.amo_rep_by_category))
+                        AmoSection(stringResource(R.string.amo_rep_by_category))
                         cats.entries.forEach { (route, list) ->
                             list.forEachIndexed { i, c ->
-                                AronListRow(
+                                AmoListRow(
                                     "${route.ifBlank { stringResource(R.string.amo_live_dash) }} · ${c.category.ifBlank { stringResource(R.string.amo_live_dash) }}",
                                     subtitle = c.qty?.let { q -> stringResource(R.string.amo_rep_cat_qty, localizedNumber(q), reportUnit(c.unit)) },
                                     trailing = money(c.grossMtk), position = pos(i, list.size), divider = i < list.lastIndex, flat = true,
@@ -121,7 +117,7 @@ fun StdMemoReportContent(
                             }
                         }
                     }
-                    AronSectionLabel(stringResource(R.string.amo_rep_memos))
+                    AmoSection(stringResource(R.string.amo_rep_memos))
                 }
             }
             stickyHeader(cols, bangla, h)
@@ -157,9 +153,9 @@ private fun androidx.compose.foundation.lazy.LazyListScope.stickyHeader(cols: Li
 fun SalesSummaryContent(cards: List<RouteCard>, money: (Long) -> String, stale: Boolean, failed: Boolean, onOpen: (RouteCard) -> Unit, modifier: Modifier = Modifier) {
     Column(modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = AronTokens.Space.Screen)) {
         Notes(stale, failed, false)
-        if (cards.isEmpty()) AronEmptyState(stringResource(R.string.amo_rep_empty), Modifier.fillMaxWidth(), hint = stringResource(R.string.amo_rep_empty_hint))
+        if (cards.isEmpty()) AmoEmptyState(stringResource(R.string.amo_rep_empty), Modifier.fillMaxWidth(), hint = stringResource(R.string.amo_rep_empty_hint))
         cards.forEachIndexed { i, r ->
-            AronListRow(
+            AmoListRow(
                 listOf(r.code, r.name).filter { it.isNotBlank() }.joinToString(" - "),
                 subtitle = stringResource(R.string.amo_rep_cpr, pctText(r.cprPct)?.let { localizedDigits(it) } ?: stringResource(R.string.amo_live_dash)) + stringResource(R.string.amo_verify_sep) + stringResource(R.string.amo_rep_memos_n, localizedNumber(r.memos)),
                 trailing = money(r.netMtk), onClick = { onOpen(r) }, position = pos(i, cards.size), divider = i < cards.lastIndex, flat = true,
@@ -173,16 +169,16 @@ fun SalesSummaryContent(cards: List<RouteCard>, money: (Long) -> String, stale: 
 fun SalesSummaryRouteContent(card: RouteCard, money: (Long) -> String, modifier: Modifier = Modifier) {
     Column(modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = AronTokens.Space.Screen)) {
         val dash = stringResource(R.string.amo_live_dash)
-        AronListRow(listOf(card.code, card.name).filter { it.isNotBlank() }.joinToString(" - "), flat = true)
+        AmoListRow(listOf(card.code, card.name).filter { it.isNotBlank() }.joinToString(" - "), flat = true)
         val head = listOf(
             stringResource(R.string.amo_rep_target) to localizedNumber(card.targetOutlets), stringResource(R.string.amo_rep_calls) to localizedNumber(card.successfulCalls),
             stringResource(R.string.amo_rep_cpr_label) to (pctText(card.cprPct)?.let { localizedDigits(it) } ?: dash), stringResource(R.string.amo_rep_memos_label) to localizedNumber(card.memos), stringResource(R.string.amo_rep_net) to money(card.netMtk),
         )
-        head.forEachIndexed { i, (k, v) -> AronListRow(v, subtitle = k, position = pos(i, head.size), divider = i < head.lastIndex, flat = true) }
-        AronSectionLabel(stringResource(R.string.amo_rep_brands))
+        head.forEachIndexed { i, (k, v) -> AmoListRow(v, subtitle = k, position = pos(i, head.size), divider = i < head.lastIndex, flat = true) }
+        AmoSection(stringResource(R.string.amo_rep_brands))
         if (card.brands.isEmpty()) Text(stringResource(R.string.amo_rep_no_brands), style = MaterialTheme.typography.bodyMedium, color = LocalAronColors.current.textSecondary)
         card.brands.forEachIndexed { i, b ->
-            AronListRow(
+            AmoListRow(
                 b.name, subtitle = stringResource(R.string.amo_rep_memos_n, localizedNumber(b.memos)), trailing = pctText(b.bsrPct)?.let { localizedDigits(it) } ?: dash,
                 position = pos(i, card.brands.size), divider = i < card.brands.lastIndex, flat = true,
             )

@@ -181,10 +181,10 @@ class MainActivity : ComponentActivity() {
                             val screens: Map<AmoScreen, @Composable (() -> Unit) -> Unit> = day?.let { d ->
                                 mapOf<AmoScreen, @Composable (() -> Unit) -> Unit>(
                                     AmoScreen.SALES_SUBMIT to { back ->
-                                        com.aktcl.aron.core.ui.AronScreen(topBar = { com.aktcl.aron.core.ui.AronTopBar(stringResource(com.aktcl.aron.feature.home.R.string.hm_tile_sales_submit), onBack = back) }) { AmoSubmitHost(d) }
+                                        com.aktcl.aron.feature.amo.AmoFrame(stringResource(com.aktcl.aron.feature.home.R.string.hm_tile_sales_submit), back, icon = com.aktcl.aron.core.ui.R.drawable.aron_ic_sales_submit) { AmoSubmitHost(d) }
                                     },
                                     AmoScreen.SUPPORT to { back ->
-                                        com.aktcl.aron.core.ui.AronScreen(topBar = { com.aktcl.aron.core.ui.AronTopBar(stringResource(com.aktcl.aron.feature.home.R.string.set_support), onBack = back) }) { SupportHost(systemShell, d.userId, versionName) }
+                                        com.aktcl.aron.feature.amo.AmoFrame(stringResource(com.aktcl.aron.feature.home.R.string.set_support), back, icon = com.aktcl.aron.core.ui.R.drawable.aron_ic_gear) { SupportHost(systemShell, d.userId, versionName) }
                                     },
                                     AmoScreen.OUTLET to { back -> AmoOutletHub(d, back) },
                                     AmoScreen.REPORT to { back -> AmoReportHub(d, back) },

@@ -1,8 +1,8 @@
 package com.aktcl.aron.amo
 
+import com.aktcl.aron.feature.amo.AmoBanner
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import com.aktcl.aron.core.ui.AronBanner
 import com.aktcl.aron.core.ui.BannerKind
 import androidx.compose.ui.res.stringResource
 import com.aktcl.aron.feature.amo.R as AmoR
@@ -51,8 +51,8 @@ fun AmoTeamLocation(day: AmoDay, modifier: Modifier = Modifier) {
     }
     val list = points ?: run { Box(modifier.fillMaxSize(), Alignment.Center) { CircularProgressIndicator() }; return }
     Column(modifier.fillMaxSize()) {
-        if (failed) AronBanner(stringResource(AmoR.string.amo_task_list_offline), kind = BannerKind.Warning)
-        else if (kept) AronBanner(stringResource(AmoR.string.amo_task_list_kept), kind = BannerKind.Info)
+        if (failed) AmoBanner(stringResource(AmoR.string.amo_task_list_offline), kind = BannerKind.Warning)
+        else if (kept) AmoBanner(stringResource(AmoR.string.amo_task_list_kept), kind = BannerKind.Info)
         LiteMapScreen(list, settings, day.online(), MapsKey.present(context), day.currentMs(), cache, "team_" + day.userId + "_" + day.businessDate(), Modifier.weight(1f))
     }
 }

@@ -103,7 +103,7 @@ private fun inkStyle(size: Int, bold: Boolean = false, color: Color = LocalAronL
 
 /** A notice on the grey or white page: a white card with a red or purple edge. Replaces the glass banners on the parity screens. */
 @Composable
-internal fun AmoNotice(text: String, modifier: Modifier = Modifier, warning: Boolean = false) {
+fun AmoNotice(text: String, modifier: Modifier = Modifier, warning: Boolean = false) {
     val look = LocalAronLook.current
     Row(modifier.fillMaxWidth().shadow(2.dp, RoundedCornerShape(12.dp)).clip(RoundedCornerShape(12.dp)).background(look.card), verticalAlignment = Alignment.CenterVertically) {
         Box(Modifier.size(width = 6.dp, height = 48.dp).background(if (warning) look.red else look.purple))

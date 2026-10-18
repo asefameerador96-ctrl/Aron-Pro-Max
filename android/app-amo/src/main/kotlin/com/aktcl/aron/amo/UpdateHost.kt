@@ -1,5 +1,6 @@
 package com.aktcl.aron.amo
 
+import com.aktcl.aron.feature.amo.AmoSecondary
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -17,7 +18,6 @@ import com.aktcl.aron.core.sync.shell.UpdateShell
 import com.aktcl.aron.core.system.update.DayGate
 import com.aktcl.aron.core.system.update.DayGateBanner
 import com.aktcl.aron.core.system.update.UpdateContent
-import com.aktcl.aron.core.ui.AronSecondaryButton
 import com.aktcl.aron.core.ui.AronTokens
 
 /**
@@ -55,7 +55,7 @@ fun UpdateHost(
         }
         UpdateScreen.Blocked -> Column(Modifier.padding(AronTokens.Space.L), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.M)) {
             DayGateBanner(DayGate.BLOCKED_UPDATE_REQUIRED, onUpdate = { shell.startCheck() })
-            AronSecondaryButton(stringResource(com.aktcl.aron.feature.home.R.string.set_logout), onLogout, Modifier.fillMaxWidth())
+            AmoSecondary(stringResource(com.aktcl.aron.feature.home.R.string.set_logout), onLogout, Modifier.fillMaxWidth())
         }
     }
 }
