@@ -181,7 +181,6 @@ fun TsoApp(
         }
     }
     }
-    }
 }
 
 @Composable
