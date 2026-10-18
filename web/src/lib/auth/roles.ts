@@ -52,6 +52,11 @@ export function routeGroup(pathname: string): RouteGroup {
   return "dashboards";
 }
 
+/** Dashboard pages SUPPORT keeps (docs/24 s8.5: "SUPPORT: R (sync health)"): the server refuses SUPPORT on every other dashboard and
+ *  report endpoint, so the web never offers or serves those pages to it. Access only ever narrows here. */
+export const SUPPORT_DASHBOARD_PATHS = ["/sync-health", "/credentials", "/api/bff/password", "/api/bff/locale"] as const;
+const SUPPORT_DENIED_API = ["/api/bff/reports", "/api/bff/maps"];
+
 export type Access = "ok" | "unauthenticated" | "forbidden";
 
 /** Pure policy used by the proxy, server layouts and route handlers, so all three agree. */
@@ -63,5 +68,11 @@ export function accessFor(role: Role | undefined, pathname: string): Access {
     const override = ADMIN_PATH_ROLES.find((o) => pathname === o.prefix || pathname.startsWith(`${o.prefix}/`));
     return hasRole(role, override ? override.roles : ADMIN_PORTAL_ROLES) ? "ok" : "forbidden";
   }
-  return hasRole(role, WEB_ROLES) ? "ok" : "forbidden";
+  if (!hasRole(role, WEB_ROLES)) return "forbidden";
+  if (role === "SUPPORT") {
+    if (SUPPORT_DENIED_API.some((p) => pathname === p || pathname.startsWith(`${p}/`))) return "forbidden";
+    const isPage = !pathname.startsWith("/api/") && !pathname.startsWith("/_next/");
+    if (isPage && pathname !== "/" && !SUPPORT_DASHBOARD_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`))) return "forbidden";
+  }
+  return "ok";
 }
