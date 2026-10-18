@@ -37,6 +37,13 @@ AronInfoCard(text, trailing = { AronPrinterBadge(...) })            // summary.p
 AronStatusDot(label, state, online)                                 // sales-submit.png device status
 AronNoticeCard(text)                                                // sales-submit.png pink notice
 AronDataTable(headers, rows: List<List<String>>, weights = null)     // purple rounded header + ruled rows (submit table)
+AronCard(modifier, onClick = null) { ... }                           // white 12 dp card, soft shadow, 16 dp padding
+AronListRow(title, subtitle = null, trailing = null, leading: Painter? = null, onClick = null)
+AronField(value, onValueChange, label, placeholder = null, errorText = null, keyboardType = Text, singleLine = true, password = false, enabled = true)
+AronTabs(tabs: List<String>, selected: Int, onSelect: (Int) -> Unit)   // gradient pill = selected
+AronDialog(title, text, confirmText, onConfirm, onDismiss, dismissText = null)
+AronSwitchRow(label, checked, onCheckedChange, subtitle = null)
+AronLogoutButton(text, onClick)                                       // solid red
 // ButtonGlyph: Save, Print, Sync, Submit. Disabled AronPrimaryButton = solid #B8B8B8, white label (sales-submit.png)
 AronTargetCard(title, label, value = daySales, percent = null)       // Home target card shell; targets deferred (docs/27)
 SummaryTable(headers: List<String>, rows: List<SummaryRow(title, values)>, subtotals: List<TotalsLine> = empty, totals: List<SummaryTotal(label, value)> = empty,

@@ -34,6 +34,9 @@ fun AronLookGallery(modifier: Modifier = Modifier) {
     var qty by remember { mutableStateOf("0") }
     var letter by remember { mutableStateOf("") }
     var retailer by remember { mutableStateOf<String?>(null) }
+    var tab by remember { mutableStateOf(0) }
+    var name by remember { mutableStateOf("") }
+    var switch by remember { mutableStateOf(false) }
     val all = stringResource(R.string.core_ui_look_all)
     val tiles = listOf(
         R.string.core_ui_look_tile_attendance to R.drawable.aron_art_attendance, R.string.core_ui_look_tile_stock to R.drawable.aron_art_stock,
@@ -96,6 +99,11 @@ fun AronLookGallery(modifier: Modifier = Modifier) {
                 totals = listOf(SummaryTotal(stringResource(R.string.core_ui_look_grand_total), localizedDigits("4,771.50"))),
             )
             AronPrimaryButton(stringResource(R.string.core_ui_look_print), onClick = {}, modifier = Modifier.fillMaxWidth(), glyph = ButtonGlyph.Print, reverse = true)
+            AronTabs(listOf(stringResource(R.string.core_ui_look_tab_team), stringResource(R.string.core_ui_look_tab_retailer)), selected = tab, onSelect = { tab = it })
+            AronCard { AronField(name, { name = it }, stringResource(R.string.core_ui_look_field_label), placeholder = stringResource(R.string.core_ui_look_field_hint)) }
+            AronListRow(stringResource(R.string.core_ui_look_tile_outlet), subtitle = stringResource(R.string.core_ui_look_field_label), trailing = localizedNumber(1250), onClick = {})
+            AronSwitchRow(stringResource(R.string.core_ui_look_sunlight), checked = switch, onCheckedChange = { switch = it })
+            AronLogoutButton(stringResource(R.string.core_ui_look_logout), onClick = {}, modifier = Modifier.fillMaxWidth())
             AronStatusDot(stringResource(R.string.core_ui_look_device_status), stringResource(R.string.core_ui_look_online), online = true)
             AronDataTable(
                 headers = listOf(stringResource(R.string.core_ui_look_subject), stringResource(R.string.core_ui_look_device), stringResource(R.string.core_ui_look_server)),
