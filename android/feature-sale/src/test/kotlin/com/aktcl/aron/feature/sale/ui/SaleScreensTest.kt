@@ -63,7 +63,7 @@ class SaleScreensTest {
         assertEquals(1, zero)
     }
 
-    @Test fun recentSkuIsListedFirstOnceAndNotAgainInItsCategory() {
+    @Test @Config(sdk = [36], qualifiers = "w360dp-h1000dp") fun recentSkuIsListedFirstOnceAndNotAgainInItsCategory() {
         val d = SaleDraftOps.setQuantity(Fx.draft(), 100, 20, QtyUnit.STICK)
         val review = SaleReviewCalculator.review(d, Fx.catalog)
         compose.setContent { AronTheme(AppLanguage.EN) { SaleEntryScreen(skus, review, { id -> d.lines.firstOrNull { it.skuId == id }?.qtyEntered ?: 0 }, { _, _ -> }, {}, {}, recentSkuIds = setOf(100L)) } }

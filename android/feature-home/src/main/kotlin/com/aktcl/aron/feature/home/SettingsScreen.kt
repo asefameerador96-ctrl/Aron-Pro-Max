@@ -1,5 +1,18 @@
 package com.aktcl.aron.feature.home
 
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.material3.Text
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.aktcl.aron.core.ui.LocalAronLook
+import com.aktcl.aron.core.ui.aron.AronListRow
+import com.aktcl.aron.core.ui.aron.AronLogoutButton
+import com.aktcl.aron.core.ui.aron.AronScaffold as ParityScaffold
+import com.aktcl.aron.core.ui.aron.AronSwitchRow
+import com.aktcl.aron.core.ui.aron.AronTabs
+import com.aktcl.aron.core.ui.aron.AronTopBar as ParityTopBar
+import com.aktcl.aron.core.ui.R as CoreR
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -28,14 +41,11 @@ import com.aktcl.aron.core.common.AppLanguage
 import com.aktcl.aron.core.ui.AronCard
 import com.aktcl.aron.core.ui.AronConfirmDialog
 import com.aktcl.aron.core.ui.AronIcons
-import com.aktcl.aron.core.ui.AronListRow
-import com.aktcl.aron.core.ui.AronScreen
 import com.aktcl.aron.core.ui.AronSectionLabel
 import com.aktcl.aron.core.ui.AronSegmented
 import com.aktcl.aron.core.ui.AronStatusChip
 import com.aktcl.aron.core.ui.AronTextButton
 import com.aktcl.aron.core.ui.AronTokens
-import com.aktcl.aron.core.ui.AronTopBar
 import com.aktcl.aron.core.ui.ChipForm
 import com.aktcl.aron.core.ui.LocalAppLanguage
 import com.aktcl.aron.core.ui.LocalAronColors
@@ -83,68 +93,58 @@ fun SettingsContent(
     sync: SyncChipState? = null,
     onSync: (() -> Unit)? = null,
 ) {
-    val c = LocalAronColors.current
+    val look = LocalAronLook.current
     var confirm by rememberSaveable { mutableStateOf(false) }
     val language = LocalAppLanguage.current
-    AronScreen(
+    ParityScaffold(
         modifier = modifier,
         topBar = {
-            AronTopBar(stringResource(R.string.set_title), onBack = onBack, trailing = { if (sync != null) AronStatusChip(sync, form = ChipForm.Compact, onClick = onSync) })
+            ParityTopBar(
+                stringResource(R.string.set_title), onBack = onBack, backLabel = stringResource(CoreR.string.core_ui_back),
+                trailing = { if (sync != null) AronStatusChip(sync, form = ChipForm.Compact, onClick = onSync) },
+            )
         },
     ) {
-        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(bottom = AronTokens.Space.Xl)) {
-            // language: one segmented control, the current language selected
-            AronSectionLabel(stringResource(R.string.set_language))
-            val options = listOf(stringResource(com.aktcl.aron.core.ui.R.string.core_ui_language_bangla), stringResource(com.aktcl.aron.core.ui.R.string.core_ui_language_english))
-            AronSegmented(
+        Column(
+            Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            // language: the kit tabs, the current language selected
+            GroupLabel(stringResource(R.string.set_language))
+            val options = listOf(stringResource(CoreR.string.core_ui_language_bangla), stringResource(CoreR.string.core_ui_language_english))
+            AronTabs(
                 options, selected = if (language == AppLanguage.BN) 0 else 1,
                 onSelect = { i -> val target = if (i == 0) AppLanguage.BN else AppLanguage.EN; if (target != language) onLanguageSelect(target) },
-                modifier = Modifier.padding(horizontal = AronTokens.Space.Screen).testTag(SettingsTags.LANGUAGE),
+                modifier = Modifier.testTag(SettingsTags.LANGUAGE),
             )
             // display: the sun switch and the photo rule
             if (sunlight != null || photosWifiOnly != null) {
-                AronSectionLabel(stringResource(R.string.set_group_display))
-                SettingsGroup {
-                    val rows = listOfNotNull(
-                        sunlight?.let { on -> SwitchRow(stringResource(R.string.hm_sunlight), stringResource(R.string.set_sunlight_hint), on, onSunlight, SettingsTags.SUNLIGHT) },
-                        photosWifiOnly?.let { on -> SwitchRow(stringResource(R.string.set_photos_wifi_only), null, on, onPhotosWifiOnly, SettingsTags.PHOTOS_WIFI) },
-                    )
-                    rows.forEachIndexed { i, r -> SettingsSwitchRow(r, positionOf(i, rows.size)) }
+                GroupLabel(stringResource(R.string.set_group_display))
+                sunlight?.let { on ->
+                    AronSwitchRow(stringResource(R.string.hm_sunlight), on, onSunlight, Modifier.testTag(SettingsTags.SUNLIGHT), subtitle = stringResource(R.string.set_sunlight_hint))
+                }
+                photosWifiOnly?.let { on ->
+                    AronSwitchRow(stringResource(R.string.set_photos_wifi_only), on, onPhotosWifiOnly, Modifier.testTag(SettingsTags.PHOTOS_WIFI))
                 }
             }
             // device: PDA to Support
             if (onSupport != null) {
-                AronSectionLabel(stringResource(R.string.set_group_device))
-                SettingsGroup {
-                    AronListRow(
-                        stringResource(R.string.set_support), Modifier.testTag(SettingsTags.SUPPORT), onClick = onSupport,
-                        leading = { Icon(AronIcons.CloudUpload, contentDescription = null, tint = c.accent, modifier = Modifier.size(AronTokens.Size.Icon)) },
-                        trailingContent = { Chevron() }, position = RowPosition.Only,
-                    )
-                }
+                GroupLabel(stringResource(R.string.set_group_device))
+                AronListRow(stringResource(R.string.set_support), Modifier.testTag(SettingsTags.SUPPORT), onClick = onSupport, trailing = "›")
             }
             // account: version, update, logout
-            AronSectionLabel(stringResource(R.string.set_group_account))
-            SettingsGroup {
-                AronListRow(
-                    stringResource(R.string.set_version, localizedDigits(versionText)), Modifier.testTag(SettingsTags.VERSION),
-                    subtitle = if (onUpdate != null) stringResource(if (updateAvailable) R.string.set_update_hint else R.string.set_update_current) else null,
-                    leading = { Icon(AronIcons.Verified, contentDescription = null, tint = c.accent, modifier = Modifier.size(AronTokens.Size.Icon)) },
-                    position = if (onUpdate != null) RowPosition.First else RowPosition.Only, divider = onUpdate != null,
-                )
-                if (onUpdate != null) {
-                    AronListRow(
-                        stringResource(if (updateAvailable) R.string.set_update_available else R.string.set_update), Modifier.testTag(SettingsTags.UPDATE), onClick = onUpdate,
-                        leading = { Icon(AronIcons.Refresh, contentDescription = null, tint = c.accent, modifier = Modifier.size(AronTokens.Size.Icon)) },
-                        trailingContent = { Chevron() }, position = RowPosition.Last,
-                    )
-                }
-            }
-            AronTextButton(
-                stringResource(R.string.set_logout), { confirm = true },
-                Modifier.fillMaxWidth().padding(horizontal = AronTokens.Space.Screen, vertical = AronTokens.Space.M).testTag(SettingsTags.LOGOUT),
-                icon = AronIcons.Logout, color = c.dangerOnContainer,
+            GroupLabel(stringResource(R.string.set_group_account))
+            AronListRow(
+                stringResource(R.string.set_version, localizedDigits(versionText)), Modifier.testTag(SettingsTags.VERSION),
+                subtitle = if (onUpdate != null) stringResource(if (updateAvailable) R.string.set_update_hint else R.string.set_update_current) else null,
             )
+            if (onUpdate != null) {
+                AronListRow(
+                    stringResource(if (updateAvailable) R.string.set_update_available else R.string.set_update), Modifier.testTag(SettingsTags.UPDATE),
+                    onClick = onUpdate, trailing = "›",
+                )
+            }
+            AronLogoutButton(stringResource(R.string.set_logout), { confirm = true }, Modifier.fillMaxWidth().padding(top = 8.dp).testTag(SettingsTags.LOGOUT))
         }
     }
     if (confirm) {
@@ -156,43 +156,8 @@ fun SettingsContent(
     }
 }
 
-private class SwitchRow(val title: String, val hint: String?, val on: Boolean, val onChange: (Boolean) -> Unit, val tag: String)
-
-private fun positionOf(i: Int, n: Int): RowPosition = when {
-    n == 1 -> RowPosition.Only
-    i == 0 -> RowPosition.First
-    i == n - 1 -> RowPosition.Last
-    else -> RowPosition.Middle
-}
-
-/** One grouped field card (screens-sr s14 "iOS-style grouped list"): opaque, `radius.card`, rows with inset dividers. */
+/** A small grey group label above a block of rows. */
 @Composable
-private fun SettingsGroup(content: @Composable () -> Unit) {
-    AronCard(Modifier.fillMaxWidth().padding(horizontal = AronTokens.Space.Screen)) { Column(Modifier.fillMaxWidth()) { content() } }
-}
-
-/**
- * A 56 dp switch row: the whole row toggles and is announced as a switch with its on/off state (docs/32 s2a item 3,
- * screens-sr s2); the Material switch itself is decorative for TalkBack so the state is spoken once.
- */
-@Composable
-private fun SettingsSwitchRow(r: SwitchRow, position: RowPosition) {
-    val c = LocalAronColors.current
-    AronListRow(
-        r.title, Modifier.testTag(r.tag).semantics { role = Role.Switch; toggleableState = ToggleableState(r.on) }, subtitle = r.hint, onClick = { r.onChange(!r.on) },
-        leading = { Icon(if (r.tag == SettingsTags.SUNLIGHT) AronIcons.Sun else AronIcons.Camera, contentDescription = null, tint = c.accent, modifier = Modifier.size(AronTokens.Size.Icon)) },
-        trailingContent = {
-            Switch(
-                r.on, onCheckedChange = r.onChange, modifier = Modifier.clearAndSetSemantics { },
-                colors = SwitchDefaults.colors(checkedTrackColor = c.accent, checkedThumbColor = c.textOnAccent, uncheckedTrackColor = c.stateDisabledFill, uncheckedThumbColor = c.textSecondary, uncheckedBorderColor = c.borderSolid),
-            )
-        },
-        position = position, divider = position == RowPosition.First || position == RowPosition.Middle,
-    )
-}
-
-@Composable
-private fun Chevron() {
-    val c = LocalAronColors.current
-    Icon(AronIcons.ChevronRight, contentDescription = null, tint = c.textSecondary, modifier = Modifier.size(AronTokens.Size.Icon))
+private fun GroupLabel(text: String) {
+    Text(text, color = LocalAronLook.current.inkMuted, fontSize = 14.sp, modifier = Modifier.padding(start = 6.dp, top = 6.dp).semantics { heading() })
 }
