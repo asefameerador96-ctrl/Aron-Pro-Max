@@ -38,7 +38,7 @@ import org.robolectric.annotation.GraphicsMode
 /** The parity kit (OWNER DIRECTIVE 2026-10-18): every component renders in Bangla and English at font scale 1.0 and 1.3 on 360 dp. */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
-@Config(sdk = [34], qualifiers = "w360dp-h3200dp")
+@Config(sdk = [34], qualifiers = "w360dp-h3800dp")
 class AronLookGalleryTest {
     @get:Rule val rule = createComposeRule()
 
@@ -75,24 +75,24 @@ class AronLookGalleryTest {
         assertTrue("controls without a name: $unnamed", unnamed.isEmpty())
     }
 
-    @Test @Config(qualifiers = "bn-w360dp-h3200dp") fun bangla() {
+    @Test @Config(qualifiers = "bn-w360dp-h3800dp") fun bangla() {
         render(AppLanguage.BN, 1f)
         rule.onNodeWithText("সংরক্ষণ", useUnmergedTree = true).assertExists()
         rule.onNodeWithText("Apsis RouteDaily, ২০২৬-১০-০৫", useUnmergedTree = true).assertExists()
         sweep()
     }
 
-    @Test @Config(qualifiers = "bn-w360dp-h3200dp") fun banglaLargeText() {
+    @Test @Config(qualifiers = "bn-w360dp-h3800dp") fun banglaLargeText() {
         render(AppLanguage.BN, 1.3f)
         sweep()
     }
 
-    @Test @Config(qualifiers = "bn-w360dp-h5200dp") fun banglaFontScaleTwo() {
+    @Test @Config(qualifiers = "bn-w360dp-h6200dp") fun banglaFontScaleTwo() {
         render(AppLanguage.BN, 2f)
         sweep()
     }
 
-    @Test @Config(qualifiers = "bn-w411dp-h3200dp") fun banglaWidePhone() {
+    @Test @Config(qualifiers = "bn-w411dp-h3800dp") fun banglaWidePhone() {
         render(AppLanguage.BN, 1f)
         sweep()
     }
@@ -103,7 +103,7 @@ class AronLookGalleryTest {
         sweep()
     }
 
-    @Test @Config(qualifiers = "bn-w360dp-h3200dp") fun banglaSunlight() {
+    @Test @Config(qualifiers = "bn-w360dp-h3800dp") fun banglaSunlight() {
         render(AppLanguage.BN, 1f, sunlight = true)
         sweep()
     }

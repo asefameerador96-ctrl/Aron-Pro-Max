@@ -22,4 +22,5 @@ Evidence (left reference, right ours): docs/evidence/ui-parity/kit-home-tiles.pn
 | Original art crops `aron_art_*` (16) | home-1-tiles.webp, outlet-menu.png | DONE: the owner's own icons (lead ruling), 3 to 12 KB each, 125 KB total WebP | art push |
 | AronTopBar hanging printer badge, 22 sp title; tile labels medium weight | stock.webp, home-1-tiles.webp | DONE | art push |
 | AronInfoCard, AronTargetCard | summary.png, home-1-tiles.webp | DONE (target bar hidden while targets are deferred) | art push |
+| AronStatusDot, AronNoticeCard, AronDataTable, Sync/Submit glyphs, grey disabled primary | sales-submit.png | DONE | submit push |
 | Sizes | APK budget | 19 vectors, 44 KB source total, largest 4.5 KB | icons push |

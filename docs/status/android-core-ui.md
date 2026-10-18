@@ -34,6 +34,10 @@ RetailerPickerField(value: String?, placeholder, onClick)                       
 LetterFilterBar(letters = listOf(all, "A", "B", ...), selected, onSelect, letterDescription = null)
 
 AronInfoCard(text, trailing = { AronPrinterBadge(...) })            // summary.png info card
+AronStatusDot(label, state, online)                                 // sales-submit.png device status
+AronNoticeCard(text)                                                // sales-submit.png pink notice
+AronDataTable(headers, rows: List<List<String>>, weights = null)     // purple rounded header + ruled rows (submit table)
+// ButtonGlyph: Save, Print, Sync, Submit. Disabled AronPrimaryButton = solid #B8B8B8, white label (sales-submit.png)
 AronTargetCard(title, label, value = daySales, percent = null)       // Home target card shell; targets deferred (docs/27)
 SummaryTable(headers: List<String>, rows: List<SummaryRow(title, values)>, subtotals: List<TotalsLine> = empty, totals: List<SummaryTotal(label, value)> = empty)
 // then AronPrimaryButton(print, onPrint, Modifier.fillMaxWidth(), glyph = ButtonGlyph.Print, reverse = true)

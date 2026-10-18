@@ -94,6 +94,16 @@ internal object Glyph {
         drawLine(color, Offset(center.x, center.y - s * 0.04f), Offset(center.x, center.y + s * 0.26f), s * 0.14f, StrokeCap.Round)
     }
 
+    /** Two opposed arrows of the "sync data" button (sr/sales-submit.png). */
+    fun DrawScope.sync(color: Color) {
+        val s = min(size.width, size.height)
+        val w = s * 0.12f
+        drawLine(color, Offset(center.x - s * 0.30f, center.y - s * 0.14f), Offset(center.x + s * 0.28f, center.y - s * 0.14f), w, StrokeCap.Round)
+        drawLine(color, Offset(center.x + s * 0.12f, center.y - s * 0.32f), Offset(center.x + s * 0.30f, center.y - s * 0.14f), w, StrokeCap.Round)
+        drawLine(color, Offset(center.x + s * 0.30f, center.y + s * 0.14f), Offset(center.x - s * 0.28f, center.y + s * 0.14f), w, StrokeCap.Round)
+        drawLine(color, Offset(center.x - s * 0.12f, center.y + s * 0.32f), Offset(center.x - s * 0.30f, center.y + s * 0.14f), w, StrokeCap.Round)
+    }
+
     /** Floppy-disk "save" glyph of the reference Save button. */
     fun DrawScope.save(color: Color, gap: Color) {
         val s = min(size.width, size.height)

@@ -54,8 +54,8 @@ class KitGalleryShot {
     @Test @Config(qualifiers = "bn-w360dp-h3800dp") fun kit_bn_dark() = shot("kit_bn_dark", AppLanguage.BN, dark = true)
 
     // the parity kit in the existing-Aron look (OWNER DIRECTIVE 2026-10-18, docs/ui-reference/PARITY-SPEC.md)
-    @Test @Config(qualifiers = "bn-w360dp-h3000dp") fun look_bn() = shot("look_bn", AppLanguage.BN, look = true)
-    @Test @Config(qualifiers = "w360dp-h3000dp") fun look_en() = shot("look_en", AppLanguage.EN, look = true)
-    @Test @Config(qualifiers = "bn-w360dp-h3000dp") fun look_bn_sunlight() = shot("look_bn_sunlight", AppLanguage.BN, sunlight = true, look = true)
-    @Test @Config(qualifiers = "bn-w411dp-h3000dp", fontScale = 1.3f) fun look_bn_411_fs13() = shot("look_bn_411_fs13", AppLanguage.BN, look = true)
+    @Test @Config(qualifiers = "bn-w360dp-h3600dp") fun look_bn() = shot("look_bn", AppLanguage.BN, look = true)
+    @Test @Config(qualifiers = "w360dp-h3600dp") fun look_en() = shot("look_en", AppLanguage.EN, look = true)
+    @Test @Config(qualifiers = "bn-w360dp-h3600dp") fun look_bn_sunlight() = shot("look_bn_sunlight", AppLanguage.BN, sunlight = true, look = true)
+    @Test @Config(qualifiers = "bn-w411dp-h3600dp", fontScale = 1.3f) fun look_bn_411_fs13() = shot("look_bn_411_fs13", AppLanguage.BN, look = true)
 }

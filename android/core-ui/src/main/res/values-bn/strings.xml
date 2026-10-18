@@ -118,4 +118,11 @@
     <string name="core_ui_look_target_label">আজকের বিক্রয়</string>
     <string name="core_ui_look_info">আপনার পুরো দিনের বিক্রয় বিবরণ এখানে থাকবে</string>
     <string name="core_ui_look_printer_on">প্রিন্টার সংযুক্ত</string>
+    <string name="core_ui_look_device_status">ডিভাইস স্ট্যাটাস</string>
+    <string name="core_ui_look_online">অনলাইন</string>
+    <string name="core_ui_look_subject">বিষয়</string>
+    <string name="core_ui_look_device">ডিভাইস</string>
+    <string name="core_ui_look_server">সার্ভার</string>
+    <string name="core_ui_look_notice">আজকের কাজ শেষ করার আগে, অবশ্যই সব অপারেশন ডাটা সিঙ্ক করুন এবং এই অপশন থেকে বিক্রয় জমা সাবমিট করুন।</string>
+    <string name="core_ui_look_sync">ডাটা সিঙ্ক করুন</string>
 </resources>
