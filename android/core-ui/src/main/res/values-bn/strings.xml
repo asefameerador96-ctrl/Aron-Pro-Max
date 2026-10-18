@@ -118,4 +118,23 @@
     <string name="core_ui_look_target_label">আজকের বিক্রয়</string>
     <string name="core_ui_look_info">আপনার পুরো দিনের বিক্রয় বিবরণ এখানে থাকবে</string>
     <string name="core_ui_look_printer_on">প্রিন্টার সংযুক্ত</string>
+    <string name="core_ui_look_device_status">ডিভাইস স্ট্যাটাস</string>
+    <string name="core_ui_look_online">অনলাইন</string>
+    <string name="core_ui_look_subject">বিষয়</string>
+    <string name="core_ui_look_device">ডিভাইস</string>
+    <string name="core_ui_look_server">সার্ভার</string>
+    <string name="core_ui_look_notice">আজকের কাজ শেষ করার আগে, অবশ্যই সব অপারেশন ডাটা সিঙ্ক করুন এবং এই অপশন থেকে বিক্রয় জমা সাবমিট করুন।</string>
+    <string name="core_ui_look_sync">ডাটা সিঙ্ক করুন</string>
+    <string name="core_ui_look_discount">ডিসকাউন্ট</string>
+    <string name="core_ui_look_net_value">ডিসকাউন্ট মূল্য</string>
+    <string name="core_ui_look_tab_team">টিম</string>
+    <string name="core_ui_look_tab_retailer">রিটেইলার</string>
+    <string name="core_ui_look_field_label">দোকানের নাম</string>
+    <string name="core_ui_look_field_hint">নাম লিখুন</string>
+    <string name="core_ui_look_sunlight">রোদ মোড</string>
+    <string name="core_ui_look_logout">লগআউট</string>
+    <string name="core_ui_look_dialog_title">বিক্রয় জমা দেবেন?</string>
+    <string name="core_ui_look_dialog_text">জমা দেওয়ার পর আজকের বিক্রয় আর পরিবর্তন করা যাবে না।</string>
+    <string name="core_ui_look_yes">হ্যাঁ</string>
+    <string name="core_ui_look_no">না</string>
 </resources>
