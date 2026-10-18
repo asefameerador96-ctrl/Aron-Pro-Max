@@ -1,0 +1,45 @@
+path: /v1/feedback
+method: post
+operation:
+  tags:
+  - people
+  operationId: submitFeedback
+  summary: Send one feedback item from the TSO app (online path of the `feedback` sync record).
+  description: 'TSO only (other roles get 403 `ERR_FORBIDDEN`); the author is the token''s user. Idempotent by `feedback_uuid`:
+
+    the first call stores the item (201), a replay with the same content returns it unchanged (200), and the same
+
+    uuid with different content, or another user''s uuid, is 409 `ERR_CONFLICT`. `category_code` must be a current
+
+    `feedback_category` code when that list has items (400 `unknown_code` otherwise); the code is checked on every
+
+    call, so a replay after its category has ended is 400 too.
+
+    '
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          $ref: '#/components/schemas/FeedbackSubmit'
+  responses:
+    '200':
+      description: Replay of a stored item; nothing changed.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Feedback'
+    '201':
+      description: Stored.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Feedback'
+    '400':
+      $ref: '#/components/responses/BadRequest'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'
+    '409':
+      $ref: '#/components/responses/Conflict'

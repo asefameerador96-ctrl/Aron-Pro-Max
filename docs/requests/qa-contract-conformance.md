@@ -64,3 +64,28 @@ export ARON_TEST_PG_URL='jdbc:postgresql://localhost:5432/aron_test?user=aron&pa
 ./gradlew :backend:app:test --tests '*ContractConformanceTest'
 cat backend/app/build/contract-conformance.txt
 ```
+
+## Status 2026-10-17 22:00 UTC (lead-contract, lane/lead-contract)
+
+- **A, B, C, D: done.** `contract-conformance-baseline.txt` and `contract-unsatisfiable-baseline.txt` are empty. A: the
+  four routes are contract operations (`submitFeedback`, `applyLeave`, `saveVisitPlan`, `listRouteAssignees`). C: the
+  report area was a code fix (backend-reports); attrs, config role maps and the null `default_value` are contract
+  widenings approved by the lead (contract 1.3.3, `docs/requests/contract-conformance-widening.md`).
+- **E: 63 -> 55.** New fixtures: feedback, leave (and so the leave decision), holidays, config change, price preview
+  and publish, product-node patch, client errors (sample timestamps carry milliseconds), nearby outlets. The report
+  (`backend/app/build/contract-conformance.txt`) now lists every caller's refusal under each operation without a 2xx.
+- **E, what the remaining 55 need** (none is a one-line body fix):
+  - *An id the run creates first* (create, then use the id): config changes, versions, reach, decision, rollback;
+    admin content, rubric, survey and tutorial PATCH; feedback PATCH; outlet requests (create needs a valid
+    `proposed`, then get, verify, approve and reject); tasks and cancel; report exports; quarantine items; price batch
+    decision; risk-signal review; enrolment token revoke.
+  - *A device proof* (signed request headers): devices/me/policy, devices/me/status, devices/nonce; and a P-256 key
+    for devices/enrol.
+  - *Blob storage* (503 by design in the harness): admin assets, admin content create, media SAS, PDA upload, and
+    media read-url (needs a stored photo).
+  - *Auth state*: a refresh token, an MFA challenge, the current password for change-password, a bind-capable token.
+  - *Seed data*: a published release (enrolment tokens), a variant node (SKU create), an active non-SR user (route
+    assignment, device OTP, user scope), a cluster without outlets, an open zone-day (web-entry route-day), a valid
+    print template and memo number, an AMO route for the daily-tracking action.
+  - *Harness*: `POST /v1/media/upload` is multipart; the harness sends JSON. Delta answers 304 when nothing changed;
+    the seeded SR bundle has no paged section.
