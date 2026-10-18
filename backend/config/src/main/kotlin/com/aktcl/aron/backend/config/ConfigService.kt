@@ -165,14 +165,42 @@ class ConfigService(private val db: Database, val resolver: ConfigResolver, priv
                     return@inTransaction loadChange(h, id)!!
                 }
             }
+            // Q3/Q4 checker B2: a C2-looking change of a loosening-guarded key must not undo a change that is still waiting
+            // (scheduled or pending): its risk was judged against the value before that one applies. One waiting change per key.
+            for (k in items.map { it.def.key }.filter { it in RiskClassifier.LOOSENING_GUARDED }.distinct().sorted()) {
+                h.createQuery("SELECT pg_advisory_xact_lock(hashtext(:k))").bind("k", "cfg_guard:$k").mapTo(String::class.java).findOne()
+                h.createQuery("SELECT change_id FROM app.cfg_change c WHERE c.status IN ('scheduled', 'pending_approval') AND EXISTS (SELECT 1 FROM jsonb_array_elements(c.items) i WHERE i->>'key' = :k) LIMIT 1")
+                    .bind("k", k).mapTo(Long::class.java).findOne().orElse(null)?.let {
+                        throw ApiProblem(ProblemCode.ERR_REQUEST_STATE, "change $it of $k is still waiting; it is decided, applied or cancelled first")
+                    }
+            }
             val outItems = items.map { it.withOld(oldValueAt(h, it)) }
             val risk = outItems.maxOf { pr ->
                 val node = ScopeNode(pr.item.scope_type, pr.item.scope_id)
                 val chain = resolver.chainOf(h, node.type, node.id)
                 val at = pr.from ?: now
                 val before = resolver.resolve(pr.def.key, chain, at).value
-                val after = if (pr.item.value !is JsonNull) pr.item.value else resolver.resolve(pr.def.key, chain.filterNot { it == node }, at).value
+                // What the node resolves to without its own rows; a global node has nothing above it but the registry default.
+                fun without(t: Instant) = chain.filterNot { it == node }.let { rest -> if (rest.isEmpty()) pr.def.default else resolver.resolve(pr.def.key, rest, t).value }
+                val after = if (pr.item.value !is JsonNull) pr.item.value else without(at)
                 var c = RiskClassifier.classify(pr.def, node.type, pr.item.value.takeUnless { v -> v is JsonNull }, before, after)
+                if (pr.def.key in RiskClassifier.LOOSENING_GUARDED) {
+                    // Q3/Q4 checkers B1, B3: when a window ends the node falls back to what resolves without it, judged against
+                    // rows that may only start after create (the C2 delay); rather than chase every tail, a guarded change WITH
+                    // an end is C3: a temporary change of these controls always takes two SUPERADMINs.
+                    if (pr.to != null) c = 3
+                    // The resolver reads on its own connection: safe because the cfg_guard lock above serialises every write of the key.
+                    // Checker N1: the item replaces the timeline over [from, to); at every boundary of an existing row of this
+                    // node inside it (a windowed loosening ending, a scheduled row starting) the value it overrides changes,
+                    // so a 'same value, no end' change cannot make an approved temporary loosening permanent.
+                    val bounds = h.createQuery(
+                        "SELECT t FROM (SELECT effective_to AS t FROM app.cfg_value WHERE key = :k AND scope_type = :st AND scope_id = :si AND effective_to IS NOT NULL " +
+                            "UNION SELECT effective_from FROM app.cfg_value WHERE key = :k AND scope_type = :st AND scope_id = :si) b WHERE t > :from" + if (pr.to != null) " AND t < :to" else "",
+                    ).bind("k", pr.def.key).bind("st", node.type).bind("si", node.id).bind("from", java.time.OffsetDateTime.ofInstant(at, java.time.ZoneOffset.UTC))
+                        .also { q -> pr.to?.let { q.bind("to", java.time.OffsetDateTime.ofInstant(it, java.time.ZoneOffset.UTC)) } }
+                        .mapTo(java.time.OffsetDateTime::class.java).list()
+                    for (t in bounds) c = maxOf(c, RiskClassifier.classify(pr.def, node.type, pr.item.value.takeUnless { v -> v is JsonNull }, resolver.resolve(pr.def.key, chain, t.toInstant()).value, after))
+                }
                 // F-ADM-012: an outlet override above 3 x the radius its zone resolves to needs an approver (C3).
                 if (pr.def.key == "cfg.geo.radius_m" && node.type == "outlet" && pr.item.value !is JsonNull) {
                     val zoneValue = (resolver.resolve(pr.def.key, chain.filterNot { it == node }, at).value as? JsonPrimitive)?.doubleOrNull

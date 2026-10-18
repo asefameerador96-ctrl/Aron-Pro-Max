@@ -1,6 +1,6 @@
 # backend-authz: two security keys one ADMIN can loosen alone (Q3, Q4)
 
-Status: proposed, not built (lead 2026-10-18: report, do not change; waits on the hardening decision). Owner when approved: backend-authz.
+Status: option B approved by the lead 2026-10-18 (V0085 released, no migration) and built on lane/backend-authz (RiskClassifier; ConfigServiceTest loosenedSecurityControlsNeedASecondApproverAndTightenedOnesDoNot).
 
 ## Finding
 - `cfg.auth.mfa_required_roles` (docs/24 s9.5 row, risk C2) and `cfg.price.max_change_pct` (C2, bounds 1..100) are registry class 2 (`app.cfg_key.risk_class = 2`, `restrictive_dir = none`).

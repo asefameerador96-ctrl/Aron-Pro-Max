@@ -1005,7 +1005,7 @@ Legend. **Levels:** G global, ROLE, W wing, D division, T territory, GC geo_clas
 | `cfg.auth.otp_ttl_min` | int | 120 | 5..1440 | G | S | S | srv | C2 |
 | `cfg.auth.otp_max_attempts` | int | 5 | 3..10 | G | S | S | srv | C2 |
 | `cfg.auth.bind_otp_required` (**new**) | bool | true | — | G W D T Z | S | S | srv | C3 |
-| `cfg.auth.mfa_required_roles` (**changed**, D24-33) | list<role> | [ADMIN, SUPERADMIN, SUPPORT] | subset of web roles | G | S | S | srv | C2 |
+| `cfg.auth.mfa_required_roles` (**changed**, D24-33) | list<role> | [ADMIN, SUPERADMIN, SUPPORT] | subset of web roles | G | S | S | srv | C2; C3 when loosened or windowed |
 | **Release** |||||||||
 | `cfg.release.min_version_code` (**new**, replaces semver `min_version`, D24-22) | json {sr, amo, tso → int} | {sr: 1, amo: 1, tso: 1} | may only increase; ≤ latest published | G | R | B | both | C3 |
 | `cfg.release.blocked_version_codes` (**new**, replaces `blocked_versions`) | json {sr, amo, tso → list<int>} | {sr: [], amo: [], tso: []} | published codes only | G | R | B | both | C3 |
@@ -1093,7 +1093,7 @@ Legend. **Levels:** G global, ROLE, W wing, D division, T territory, GC geo_clas
 | `cfg.target.lock_after_month_start` | bool | true | — | G | S | S | srv | C3 |
 | `cfg.target.template_version` | int | 1 | 1..999 | G | P | S | srv | C1 |
 | `cfg.target.upload_max_rows` | int | 12000 | 100..50000 | G | P | S | srv | C1 |
-| `cfg.price.max_change_pct` | pct | 15 | 1..100 | G | FIN | B | srv | C2 |
+| `cfg.price.max_change_pct` | pct | 15 | 1..100 | G | FIN | B | srv | C2; C3 when loosened or windowed |
 | `cfg.geo.density_neighbour_radii_m` | list<int> | [25, 50, 100, 150, 300] | 1..8 values, 10..1000 | G | O | B | srv | C1 |
 | `cfg.geo.calibration_min_visits` | int | 500 | 100..5000 | G | F | B | srv | C1 |
 | `cfg.sys.break_glass_mode` | enum(restore_or_restrict_only, restore_only, off) | restore_or_restrict_only | — | G | S | B | srv | C3 |
