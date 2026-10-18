@@ -84,8 +84,18 @@
   clauses, each proven by a seeded fault. The Opus checker passed it; 1,000 schedules found no defect.
 - **N-055 (T2)**: `tools/checks/day5-check.ps1` (SR request, AMO verify, web approve, TSO Final Submit). The Sonnet
   checker's two majors are fixed. DEVICE-PENDING D-QA-6.
-- **Supervisor scope ledger**: `docs/status/qa-scope-ledger-supervisors.md`: 60 routes, 0 leaks. Open question: TSO
-  and DMO can read another zone's config through `config/resolve` and `config/values`.
+- **Supervisor scope ledger**: `docs/status/qa-scope-ledger-supervisors.md`: 60 routes, 0 leaks. The TSO/DMO cross-zone
+  config read is closed (lead-backend 8a13fe8; D-AUTHZ-Q2 then made config reads ADMIN/SUPERADMIN only).
+- **Money gates (docs/31, T1)**: oracle property tests, `MoneyIngestOracleTest`, the 200-amount format corpus (web,
+  shared, backend, TSO) and the no-float scan (CEILING 17). QA-MNY-01/03/04/05(lane)/06/08(lane) fixed; 02 and 07 open
+  (`docs/requests/qa-money-gate-findings.md`).
+- **Authorisation audit (T1)**: `AuthzAuditTest`, 1,646 probes. AZ-1..AZ-7 all fixed (backend-authz 31ede218,
+  lead-backend f13adb3): 0 findings, 6 open questions; the oracle follows docs/24 s8.5 plus the lead's rulings
+  (D-AMO-REPORT-02, D-AUTHZ-Q2) (`docs/requests/qa-authz-audit-findings.md`).
+- **Day-close race (T1)**: `DayCloseRaceTest` is strict by default since lead-backend fixed KD-1 and KD-2 (f13adb3).
+- **Date bomb**: every test config row starts at `ApiWorld.CFG_FROM` / switches at `CFG_SWITCH`, not the wall clock
+  (33 test files; the dev seed's device overrides fixed by lead-backend dbfdbfca), so the suite keeps passing after
+  the API test clock date (2027-01-03).
 - **Honor device-lab sheet**: `docs/status/qa-device-lab-honor.md`.
 
 ## Next rows
