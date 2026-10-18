@@ -1,5 +1,7 @@
 package com.aktcl.aron.backend.analytics.devices
 
+import kotlinx.serialization.EncodeDefault
+import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonElement
@@ -71,22 +73,29 @@ data class EnrolmentTokenDto(
     val created_by: Long, val created_at: String, val revoked_at: String? = null, val note: String? = null,
 )
 
+/**
+ * The provisioning extras of the QR (and of its `qr_text`): an optional extra that is not set is left out, never sent as
+ * JSON null. The Android setup wizard reads the QR text as provisioning properties, where a null could be taken as the
+ * text "null" (a Wi-Fi network named "null"); the contract has these members optional, not nullable (N-014).
+ */
+@OptIn(ExperimentalSerializationApi::class)
 @Serializable
 data class AdminExtras(
     @SerialName("aron.enrolment_token") val token: String, @SerialName("aron.api_base_url") val apiBaseUrl: String, @SerialName("aron.env") val env: String,
-    @SerialName("aron.flavour") val flavour: String, @SerialName("aron.lockdown_level") val lockdown: String, @SerialName("aron.zone_code") val zoneCode: String? = null,
+    @SerialName("aron.flavour") val flavour: String, @SerialName("aron.lockdown_level") val lockdown: String, @EncodeDefault(EncodeDefault.Mode.NEVER) @SerialName("aron.zone_code") val zoneCode: String? = null,
 )
 
+@OptIn(ExperimentalSerializationApi::class)
 @Serializable
 data class ProvisioningQrPayload(
     @SerialName("android.app.extra.PROVISIONING_DEVICE_ADMIN_COMPONENT_NAME") val component: String,
     @SerialName("android.app.extra.PROVISIONING_DEVICE_ADMIN_PACKAGE_DOWNLOAD_LOCATION") val downloadLocation: String,
     @SerialName("android.app.extra.PROVISIONING_DEVICE_ADMIN_SIGNATURE_CHECKSUM") val signatureChecksum: String,
     @SerialName("android.app.extra.PROVISIONING_LEAVE_ALL_SYSTEM_APPS_ENABLED") val leaveSystemApps: Boolean = true,
-    @SerialName("android.app.extra.PROVISIONING_SKIP_ENCRYPTION") val skipEncryption: Boolean? = null,
-    @SerialName("android.app.extra.PROVISIONING_WIFI_SSID") val wifiSsid: String? = null,
-    @SerialName("android.app.extra.PROVISIONING_WIFI_SECURITY_TYPE") val wifiSecurity: String? = null,
-    @SerialName("android.app.extra.PROVISIONING_WIFI_PASSWORD") val wifiPassword: String? = null,
+    @EncodeDefault(EncodeDefault.Mode.NEVER) @SerialName("android.app.extra.PROVISIONING_SKIP_ENCRYPTION") val skipEncryption: Boolean? = null,
+    @EncodeDefault(EncodeDefault.Mode.NEVER) @SerialName("android.app.extra.PROVISIONING_WIFI_SSID") val wifiSsid: String? = null,
+    @EncodeDefault(EncodeDefault.Mode.NEVER) @SerialName("android.app.extra.PROVISIONING_WIFI_SECURITY_TYPE") val wifiSecurity: String? = null,
+    @EncodeDefault(EncodeDefault.Mode.NEVER) @SerialName("android.app.extra.PROVISIONING_WIFI_PASSWORD") val wifiPassword: String? = null,
     @SerialName("android.app.extra.PROVISIONING_ADMIN_EXTRAS_BUNDLE") val extras: AdminExtras,
 )
 
