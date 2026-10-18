@@ -116,6 +116,8 @@ class SyncFaultScheduleFuzzTest {
     private suspend fun HttpClient.send(p: SyncPhone, body: ByteArray): Pair<Int, JsonObject?> = try {
         val r = post("/v1/sync/batch") {
             bearerAuth(p.token); header("X-Device-Id", p.deviceUuid); header("X-App-Version", ApiWorld.APP_VERSION); header("Content-Encoding", "gzip")
+            // The mirrored phones are copies of the seeded one and hold the harness key (ApiWorld.phoneKey).
+            header("X-Device-Proof", world.batchProof(p.deviceUuid, body))
             setBody(ByteArrayContent(body, ContentType.Application.Json))
         }
         val text = r.bodyAsText()
