@@ -87,10 +87,17 @@ internal fun AmoRowCard(title: String, modifier: Modifier = Modifier, subtitle: 
     }
 }
 
-/** A figure inside a card: the label on the left, the big number at the end. */
+/** A figure inside a card: the label on the left, the big number at the end; at large text sizes the label sits above the number so neither is squeezed. */
 @Composable
 internal fun AmoFigure(label: String, value: String, modifier: Modifier = Modifier) {
     val look = LocalAronLook.current
+    if (androidx.compose.ui.platform.LocalDensity.current.fontScale >= 1.3f) {
+        Column(modifier.fillMaxWidth()) {
+            Text(label, style = amoText(14, color = look.inkMuted))
+            Text(value, style = amoText(22, bold = true, color = look.purple))
+        }
+        return
+    }
     Row(modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         Text(label, style = amoText(14, color = look.inkMuted), modifier = Modifier.weight(1f))
         Text(value, style = amoText(22, bold = true, color = look.purple), textAlign = TextAlign.End)
