@@ -16,8 +16,8 @@ GET /v1/admin/config/density -> gap: backend-admin
 GET /v1/admin/config/keys -> gap: backend-admin
 GET /v1/admin/config/reach/{version} -> gap: backend-admin
 GET /v1/admin/config/reach/{version}/pending -> gap: backend-admin
-GET /v1/admin/config/resolve -> case ConfigScopeTest#aTsoAndADmoReadOnlyTheirOwnNodesAndAncestors
-GET /v1/admin/config/values -> case ConfigScopeTest#aTsoAndADmoReadOnlyTheirOwnNodesAndAncestors
+GET /v1/admin/config/resolve -> case ConfigScopeTest#aTsoResolvesOnlyItsOwnNodesAndAncestorsAndNoOtherNonNationalRoleReadsConfig
+GET /v1/admin/config/values -> case ConfigScopeTest#aTsoResolvesOnlyItsOwnNodesAndAncestorsAndNoOtherNonNationalRoleReadsConfig
 GET /v1/admin/config/versions -> gap: backend-admin
 GET /v1/admin/config/versions/{version} -> gap: backend-admin
 GET /v1/admin/config/whatif -> gap: backend-admin

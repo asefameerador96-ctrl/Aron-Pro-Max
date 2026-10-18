@@ -32,6 +32,8 @@ class ConfigDeps(val service: ConfigService, val guard: AuthGuardDeps, val clock
 private val CONFIG_READERS = setOf(Role.ADMIN, Role.SUPERADMIN)
 /** The one exception (DECISIONS D-AUTHZ-Q2): the TSO web entry screen resolves `cfg.web.entry_classes` for its own zone, reach-scoped. */
 private val RESOLVE_READERS = CONFIG_READERS + Role.TSO
+/** What that exception covers: one key, at a zone, now. Any other key (server-only thresholds, security settings) stays ADMIN's. */
+private const val TSO_RESOLVE_KEY = "cfg.web.entry_classes"
 
 internal fun ApplicationCall.reader(roles: Set<Role> = CONFIG_READERS) = principal.also {
     if (it.role !in roles) throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "config is not available to this role")
@@ -76,6 +78,9 @@ fun Route.configAdminRoutes(d: ConfigDeps) {
             val id = q["node_id"]?.let { it.toLongOrNull()?.takeIf { v -> v >= 0 } ?: bad("query.node_id") } ?: bad("query.node_id", "required")
             val at = q["at"]?.let { runCatching { Instant.parse(it) }.getOrNull() ?: bad("query.at") } ?: d.clock.now()
             val key = call.keyParam()
+            if (p.role == Role.TSO && (key != TSO_RESOLVE_KEY || type != "zone" || q["at"] != null)) {
+                throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "a TSO resolves only $TSO_RESOLVE_KEY for a zone, now")
+            }
             d.reach?.reach(p.userId, p.role, p.scopeVersion, Dhaka.today(d.clock))?.let { r ->
                 scope.require(r, type, id)
                 scope.requireChain(r, s.resolver.chainOf(type, id))
