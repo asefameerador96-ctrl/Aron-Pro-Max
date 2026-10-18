@@ -162,6 +162,12 @@ class ConfigServiceTest {
         }
     }
 
+    /** The loosening rules read only the node's own rows; that is complete only while both keys are global-only. */
+    @Test
+    fun theLooseningGuardedKeysStayGlobalOnly() {
+        for (k in RiskClassifier.LOOSENING_GUARDED) assertEquals(listOf("global"), svc.resolver.registry().getValue(k).scopeLevels, k)
+    }
+
     /** Checker B1 and B2 on option B: a window that ends on a looser value is C3; a change cannot undo one that is still waiting. */
     @Test
     fun aWindowThatEndsLooserIsC3AndAWaitingChangeCannotBeUndone() {

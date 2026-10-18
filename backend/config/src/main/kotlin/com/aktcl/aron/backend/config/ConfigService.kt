@@ -189,6 +189,7 @@ class ConfigService(private val db: Database, val resolver: ConfigResolver, priv
                     // rows that may only start after create (the C2 delay); rather than chase every tail, a guarded change WITH
                     // an end is C3: a temporary change of these controls always takes two SUPERADMINs.
                     if (pr.to != null) c = 3
+                    // The resolver reads on its own connection: safe because the cfg_guard lock above serialises every write of the key.
                     // Checker N1: the item replaces the timeline over [from, to); at every boundary of an existing row of this
                     // node inside it (a windowed loosening ending, a scheduled row starting) the value it overrides changes,
                     // so a 'same value, no end' change cannot make an approved temporary loosening permanent.
