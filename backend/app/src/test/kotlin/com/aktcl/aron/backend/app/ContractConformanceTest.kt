@@ -280,6 +280,8 @@ class ContractConformanceTest {
             }),
             "GET /v1/sync/delta" to Fx(after = listOf("GET /v1/sync/bundle"), query = { c, x -> x.bundles[c.user]?.let { mapOf("since" to it.path("meta").path("cursor").asText()) }.orEmpty() }),
             // Seeded codes (V0027): a generated code is unknown to the code list and refused with 400 unknown_code.
+            // The sample (sr, version_code 1, universal) is the seeded published SR release: its own code and APK hash.
+            "POST /v1/admin/releases" to Fx(body = { n, _, _ -> n.put("version_code", 2); n.put("sha256", "c0".repeat(32)) }),
             "POST /v1/feedback" to Fx(body = { n, _, _ -> n.put("category_code", "suggestion") }),
             "POST /v1/leave" to Fx(body = { n, _, _ -> n.put("leave_type_code", "casual") }),
             // Calendar and price writes take effect in the future only (ERR_MASTER_EFFECTIVE_DATE_PAST, finance.back_date).
