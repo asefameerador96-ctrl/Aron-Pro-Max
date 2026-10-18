@@ -85,6 +85,20 @@ private suspend fun voidDay(call: ApplicationCall, d: DataVoidDeps): DataVoidOut
         // One void per client_uuid, and no ingest of this route-day in flight while the barrier is written (shared lock in the barrier handler).
         h.createQuery("SELECT pg_advisory_xact_lock(hashtextextended(:k, 0))").bind("k", "void:" + req.client_uuid).mapTo(String::class.java).findOne()
         h.createQuery("SELECT pg_advisory_xact_lock(hashtextextended(:k, 0))").bind("k", "voidday:${req.route_id}:$date").mapTo(String::class.java).findOne()
+        // Replay first: the caller's own stored void answers before reach is re-judged (a route moved out of the caller's
+        // reach since must not turn a retry into 403). It reports no live pending rows when the route is out of reach now.
+        val own = h.createQuery("SELECT route_id, business_date, barrier_at, affected FROM app.route_day_void_barrier WHERE client_uuid = :u AND voided_by = :me")
+            .bind("u", id).bind("me", p.userId)
+            .map { rs, _ -> Triple(rs.getLong(1), rs.getObject(2, java.time.LocalDate::class.java), rs.getObject(3, OffsetDateTime::class.java)) to rs.getString(4) }.findOne().orElse(null)
+        if (own != null) {
+            val (key, affected) = own
+            if (key.first != req.route_id || key.second != date) throw ApiProblem(ProblemCode.ERR_CONFLICT, "client_uuid already voids a different route-day")
+            val o = kotlinx.serialization.json.Json.parseToJsonElement(affected) as kotlinx.serialization.json.JsonObject
+            if (o["scope"]?.let { (it as JsonPrimitive).content } != req.scope) throw ApiProblem(ProblemCode.ERR_CONFLICT, "client_uuid already voided another scope")
+            val z = h.createQuery("SELECT zone_id FROM app.route WHERE id = :r").bind("r", req.route_id).mapTo(Long::class.java).findOne().orElse(null)
+            val pendingNow = if (z != null && reach.coversRoute(req.route_id, z)) pendingRows(h, req.route_id) else null
+            return@inTransaction DataVoidOut(req.route_id, date.toString(), req.scope, key.third.toInstant().wire(), (o["total"] as JsonPrimitive).content.toInt(), pendingNow)
+        }
         // One void per route at a time: the route row is the lock.
         val zone = h.createQuery("SELECT zone_id FROM app.route WHERE id = :r FOR UPDATE").bind("r", req.route_id).mapTo(Long::class.java).findOne().orElse(null)
         if (zone == null || !reach.coversRoute(req.route_id, zone)) throw AdminSupport.outOfScope("route outside your reach")
