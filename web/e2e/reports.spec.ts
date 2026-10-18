@@ -19,7 +19,9 @@ test("SKU shows prices to three decimals and only the price types the role may s
   await context.clearCookies();
   await start(page, "analyst1", "analyst-pass-1");
   await page.goto("/reports/skus");
-  await expect(page.locator('th[data-col="trade_price_mtk"]')).toBeVisible();
+  // An analyst holds no pii.reveal, so the server (and the mock) keep the trade price out for it too.
+  await expect(page.locator('th[data-col="retail_price_mtk"]')).toBeVisible();
+  await expect(page.locator('th[data-col="trade_price_mtk"]')).toHaveCount(0);
 });
 
 test("DSS is zone-level (docs/24 s12): its rows carry no route drill", async ({ page }) => {
