@@ -209,8 +209,8 @@ fun MemoDetailView(
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.M)) {
                         IconWell(AronIcons.Memo)
                         Column(Modifier.weight(1f)) {
-                            Text(outletName ?: localizedDigits(memo.memoNo), style = MaterialTheme.typography.titleSmall, color = c.textPrimary, maxLines = 2)
-                            Text(stringResource(R.string.memo_row_meta, localizedDigits(memo.memoNo), dhakaTime(memo.committedAtIso)), style = MaterialTheme.typography.bodySmall, color = c.textSecondary)
+                            Text(outletName ?: memo.memoNo, style = MaterialTheme.typography.titleSmall, color = c.textPrimary, maxLines = 2)
+                            Text(stringResource(R.string.memo_row_meta, memo.memoNo, dhakaTime(memo.committedAtIso)), style = MaterialTheme.typography.bodySmall, color = c.textSecondary)
                         }
                     }
                     if (detail.reprintIsDuplicate) MarkerLine(AronIcons.Print, stringResource(R.string.memo_duplicate))

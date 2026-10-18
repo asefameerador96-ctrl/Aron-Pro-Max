@@ -16,6 +16,7 @@ dependencies {
     implementation(project(":android:core-ui"))
     implementation(project(":android:core-common"))
     implementation(project(":android:feature-home"))
+    implementation(project(":android:core-map")) // LiteMapScreen (N-053): My Team and Retailer maps
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.maps.compose)
     testImplementation(libs.junit4)

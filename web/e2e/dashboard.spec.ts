@@ -112,3 +112,16 @@ test("the orange Filter narrows the home to a zone: bound levels are read-only, 
   await expect(page.getByTestId("dashboard-tiles")).toBeVisible();
   await expect(page.getByTestId("date-yesterday")).toHaveAttribute("href", /zone=3341/);
 });
+
+test("the Filter popover works from the keyboard: Enter opens it, Escape closes it and returns focus", async ({ page }) => {
+  await loginOk(page, "tso334", "tso-pass-1");
+  await page.getByRole("link", { name: "English" }).click();
+  const summary = page.getByTestId("home-filter").locator("summary");
+  await summary.focus();
+  await page.keyboard.press("Enter");
+  await expect(page.getByTestId("scope-select-zone")).toBeVisible();
+  await page.getByTestId("scope-select-zone").focus();
+  await page.keyboard.press("Escape");
+  await expect(page.getByTestId("scope-select-zone")).toBeHidden();
+  await expect(summary).toBeFocused();
+});

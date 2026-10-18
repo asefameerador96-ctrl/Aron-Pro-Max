@@ -80,7 +80,7 @@
     <string name="out_menu_title">আউটলেট</string>
     <string name="out_pick_outlet">আউটলেট বেছে নিন</string>
     <string name="out_visited_meter">%1$s/%2$s ভিজিট হয়েছে</string>
-    <string name="out_seg_remaining">বাকি %1$s</string>
+    <string name="out_seg_remaining">অবশিষ্ট %1$s</string>
     <string name="out_seg_visited">ভিজিট হয়েছে %1$s</string>
     <string name="out_seg_all">সব %1$s</string>
     <string name="out_row_visited">ভিজিট হয়েছে</string>

@@ -103,9 +103,10 @@ object SessionModule {
     fun workerFactory(
         telemetry: com.aktcl.aron.core.sync.DeviceTelemetry,
         databases: UserDatabases, components: SessionComponents, scheduler: WorkManagerSyncScheduler, runtime: DeviceRuntime, bundles: BundleDownloaders,
+        media: MediaShell,
         resumeConfigCheck: ResumeConfigCheck, push: com.aktcl.aron.core.sync.shell.PushShell,
         activityLog: com.aktcl.aron.core.sync.ActivityLog,
-    ): AronWorkerFactory = AronWorkerFactory({ SessionSyncRunner(databases, components, runtime::beforeBatch, bundles, config = resumeConfigCheck, activityLog = activityLog, telemetry = telemetry) }, { scheduler },
+    ): AronWorkerFactory = AronWorkerFactory({ SessionSyncRunner(databases, components, runtime::beforeBatch, bundles, afterRun = { _, report -> media.afterSync(report) }, config = resumeConfigCheck, activityLog = activityLog, telemetry = telemetry) }, { scheduler },
         // N-038: the pull a push asks for; it never gets the upload runner.
         { com.aktcl.aron.core.sync.push.SessionPushPull(push::settledActiveUser, bundles, resumeConfigCheck) },
     )
@@ -120,6 +121,18 @@ object SessionModule {
             bangla = { com.aktcl.aron.core.ui.AppLocale.current(it) == com.aktcl.aron.core.common.AppLanguage.BN },
         )
 
+    /** Photos (F-SYS-010/030/037): the media worker's wiring, the per-user camera and the Wi-Fi-only switch (the feedback photo, F-TSO-018). */
+    @Provides
+    @Singleton
+    fun mediaShell(@ApplicationContext context: Context, components: SessionComponents, databases: UserDatabases): MediaShell =
+        MediaShell(context, components, databases)
+
+    /** PDA to Support (F-TSO-024; same wiring as the SR and AMO apps). */
+    @Provides
+    @Singleton
+    fun systemShell(@ApplicationContext context: Context, components: SessionComponents, databases: UserDatabases): SystemShell =
+        SystemShell(context, components, databases)
+
     /** F-SYS-020 updater: update check, download, install (android-sys). */
     @Provides
     @Singleton
@@ -129,8 +142,8 @@ object SessionModule {
     /** F-SYS-022 logout (docs/requests/android-sys-logout-wiring.md). */
     @Provides
     @Singleton
-    fun shellLogout(@ApplicationContext context: Context, components: SessionComponents, databases: UserDatabases, scheduler: WorkManagerSyncScheduler): ShellLogout =
-        ShellLogout(context, components, databases, scheduler) // no camera in this app yet: no photos to count
+    fun shellLogout(@ApplicationContext context: Context, components: SessionComponents, databases: UserDatabases, scheduler: WorkManagerSyncScheduler, media: MediaShell): ShellLogout =
+        ShellLogout(context, components, databases, scheduler, media::unsentPhotos) { media.scheduler.requestUpload() } // the logout wipe also waits for unsent photos
 
     /** Connectivity trigger (F-SYS-046): uploads for every user on the phone with rows waiting, after a 5 s quiet period. */
     @Provides

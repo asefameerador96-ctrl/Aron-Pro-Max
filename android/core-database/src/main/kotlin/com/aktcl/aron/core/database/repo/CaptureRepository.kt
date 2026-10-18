@@ -53,6 +53,7 @@ class CaptureRepository(
     private val outbox = db.outboxDao()
 
     suspend fun recordAttendance(event: AttendanceEventEntity, fix: GeoFixEntity) = db.withTransaction {
+        if (purged(event.clientUuid)) return@withTransaction emptyList()
         requireUuids(event.clientUuid, fix.clientUuid)
         requireFixOf(fix, event.clientUuid, event.fixClientUuid)
         capture.insertFix(fix)
@@ -65,13 +66,16 @@ class CaptureRepository(
         require(movements.isNotEmpty()) { "nothing to save" }
         requireUuids(*movements.map { it.clientUuid }.toTypedArray())
         db.withTransaction {
-            capture.insertStock(movements)
+            val fresh = movements.filterNot { purged(it.clientUuid) } // a purged movement replayed is not captured again
+            if (fresh.isEmpty()) return@withTransaction emptyList()
+            capture.insertStock(fresh)
             val at = nowIso()
-            outbox.insert(movements.map { RecordMapping.stock(it, at) })
+            outbox.insert(fresh.map { RecordMapping.stock(it, at) })
         }
     }
 
     suspend fun recordVisitOpen(visit: VisitEntity, fix: GeoFixEntity) = db.withTransaction {
+        if (purged(visit.clientUuid)) return@withTransaction emptyList()
         requireUuids(visit.clientUuid, fix.clientUuid)
         requireRoute(visit.meta)
         requireOpenRouteDay(visit.meta)
@@ -108,6 +112,7 @@ class CaptureRepository(
             "memo counts must match the lines committed with it"
         }
         db.withTransaction {
+            if (purged(m.clientUuid)) return@withTransaction emptyList()
             requireOpenRouteDay(m.meta)
             val visit = checkNotNull(capture.visit(m.visitClientUuid)) { "memo ${m.memoNo} has no visit on this phone" }
             require(visit.outletId == m.outletId) { "memo ${m.memoNo} is for another outlet than its visit" }
@@ -131,6 +136,7 @@ class CaptureRepository(
     }
 
     suspend fun recordVisitClose(close: VisitCloseEntity) = db.withTransaction {
+        if (purged(close.clientUuid)) return@withTransaction emptyList()
         requireUuids(close.clientUuid, close.visitClientUuid)
         requireRoute(close.meta)
         requireOpenRouteDay(close.meta)
@@ -144,6 +150,8 @@ class CaptureRepository(
      * with it in one transaction. Returns the memo number. If the save fails the number is burned, never reused.
      */
     suspend fun recordNumberedSale(sale: SaleCapture, numbering: MemoNumbering): String {
+        // A replay of a sale that was already sent and purged must not burn a memo number or look saved: it fails loudly, as a missing visit would.
+        check(!purged(sale.memo.clientUuid)) { "memo ${sale.memo.clientUuid} was already saved and sent from this phone" }
         val memoNo = MemoNumbers(db).reserve(sale.memo.meta.businessDate, numbering)
         recordSale(sale.copy(memo = sale.memo.copy(memoNo = memoNo)))
         return memoNo
@@ -159,6 +167,7 @@ class CaptureRepository(
         require(due.isFullSettlement == (due.amountMtk == due.outstandingBeforeMtk)) { "full settlement means the whole outstanding" }
         require((fix == null) == (due.fixClientUuid == null)) { "the record references its fix, and only then" }
         db.withTransaction {
+            if (purged(due.clientUuid)) return@withTransaction emptyList()
             due.visitClientUuid?.let { checkNotNull(capture.visit(it)) { "due collection for a visit not on this phone" } }
             if (due.meta.routeId != null) requireOpenRouteDay(due.meta)
             fix?.let { requireFixOf(it, due.clientUuid, due.fixClientUuid); capture.insertFix(it) }
@@ -172,6 +181,7 @@ class CaptureRepository(
      * changes nothing and returns false, so a retried tap or replay never doubles it. Only the AMO record types are accepted.
      */
     suspend fun recordAmo(record: com.aktcl.aron.core.database.entity.AmoRecordEntity): Boolean = db.withTransaction {
+        if (purged(record.clientUuid) || (record.familyUuid != record.clientUuid && purged(record.familyUuid))) return@withTransaction false // a child of a purged family is stale too
         requireUuids(record.clientUuid, record.familyUuid)
         require(record.recordType in AMO_RECORD_TYPES) { "not an AMO record type: ${record.recordType}" }
         val payload = runCatching { Json.parseToJsonElement(record.payloadJson) as? JsonObject }.getOrNull()
@@ -198,6 +208,7 @@ class CaptureRepository(
 
     /** An outlet skipped without a visit: no fix (F-SR-057). */
     suspend fun recordVisitSkip(skip: VisitSkipEntity) = db.withTransaction {
+        if (purged(skip.clientUuid)) return@withTransaction emptyList()
         requireUuids(skip.clientUuid)
         requireRoute(skip.meta)
         require(REASON_CODE.matches(skip.reasonCode)) { "reason_code must match ${REASON_CODE.pattern}" }
@@ -212,6 +223,7 @@ class CaptureRepository(
      * SR calls only: AMO and TSO visits never carry content (and no points are earned from it here; loyalty is deferred).
      */
     suspend fun recordContentView(view: com.aktcl.aron.core.database.entity.ContentViewEntity): Boolean = db.withTransaction {
+        if (purged(view.clientUuid)) return@withTransaction false
         requireUuids(view.clientUuid, view.visitClientUuid)
         requireRoute(view.meta)
         require(com.aktcl.aron.contract.ContentKind.entries.any { it.wire == view.kind }) { "kind ${view.kind} is not in the contract" }
@@ -233,6 +245,7 @@ class CaptureRepository(
      * answer carries the photo's media uuid, any other may carry one. SR calls and AMO control calls; no points ledger (docs/27).
      */
     suspend fun recordSurveyResponse(answer: com.aktcl.aron.core.database.entity.SurveyResponseEntity) = db.withTransaction {
+        if (purged(answer.clientUuid)) return@withTransaction emptyList()
         requireUuids(answer.clientUuid, answer.visitClientUuid)
         answer.photoUuid?.let { requireUuids(it) }
         requireRoute(answer.meta)
@@ -274,6 +287,7 @@ class CaptureRepository(
      * after it until the server reopens the day ([reopenRouteDay]); one submit per cycle.
      */
     suspend fun recordDaySubmit(submit: DaySubmitEntity) = db.withTransaction {
+        if (purged(submit.clientUuid)) return@withTransaction emptyList()
         requireUuids(submit.clientUuid)
         require(submit.scope in setOf("route_day", "supervisor_day")) { "scope is route_day or supervisor_day" }
         if (submit.scope == "route_day") requireRoute(submit.meta)
@@ -290,6 +304,7 @@ class CaptureRepository(
 
     /** A new-outlet, edit, relocation or closure request with the fix taken for it. */
     suspend fun recordOutletRequest(request: OutletChangeRequestEntity, fix: GeoFixEntity) = db.withTransaction {
+        if (purged(request.clientUuid)) return@withTransaction emptyList()
         requireUuids(request.clientUuid, fix.clientUuid)
         require(OutletRequestType.entries.any { it.wire == request.requestType }) { "request_type ${request.requestType} is not in the contract" }
         require((request.requestType == OutletRequestType.NEW.wire) == (request.outletId == null)) { "outlet_id is null exactly for a new outlet" }
@@ -305,6 +320,7 @@ class CaptureRepository(
 
     /** Resolves a task: the local task turns `completed` and its `task_event` is queued, in one transaction. */
     suspend fun resolveTask(event: TaskEventEntity, resolvedAt: String) = db.withTransaction {
+        if (purged(event.clientUuid)) return@withTransaction emptyList()
         requireUuids(event.clientUuid, event.taskUuid)
         require(event.event == "resolved") { "resolveTask writes a resolved event" }
         check(db.referenceDao().completeTask(event.taskUuid, resolvedAt) == 1) { "task ${event.taskUuid} is not on this phone" }
@@ -328,7 +344,7 @@ class CaptureRepository(
         require(m.width in 1..4096 && m.height in 1..4096) { "size out of range: ${m.width}x${m.height}" }
         require(BLOB_PATH.matches(m.blobPath)) { "blob_path is not photos/<date>/<uuid>/<uuid>.jpg: ${m.blobPath}" }
         return db.withTransaction {
-            if (outbox.byClientUuid(m.mediaUuid) != null) return@withTransaction false
+            if (outbox.byClientUuid(m.mediaUuid) != null || purged(m.mediaUuid)) return@withTransaction false
             val fix = m.fixClientUuid?.let { checkNotNull(capture.fix(it)) { "geo_fix ${m.fixClientUuid} is not stored" } }
             outbox.insert(listOf(RecordMapping.mediaMeta(m, fix, nowIso())))
             true
@@ -340,6 +356,7 @@ class CaptureRepository(
      * Sales Submit never refuses it.
      */
     suspend fun recordDeviceStatus(clientUuid: String, meta: CaptureMeta, report: com.aktcl.aron.contract.DeviceStatusReport) = db.withTransaction {
+        if (purged(clientUuid)) return@withTransaction emptyList()
         requireUuids(clientUuid)
         outbox.insert(listOf(RecordMapping.deviceStatus(clientUuid, meta, report, nowIso())))
     }
@@ -352,6 +369,9 @@ class CaptureRepository(
 
     /** True while a Sales Submit of the date stands (a server void of its cycle reopens the day). */
     suspend fun submitStands(businessDate: String): Boolean = RouteDayLock.submitStands(db, businessDate)
+
+    /** True when [uuids] holds one that was acked and purged earlier: the record is a replay and is not captured again. */
+    private suspend fun purged(vararg uuids: String): Boolean = outbox.anyPurged(uuids.toList())
 
     /** Refuses a route-day capture after its Sales Submit (docs/24 s4.2 rule 2: day_submit is the route-day's last record). */
     private suspend fun requireOpenRouteDay(meta: CaptureMeta) {
