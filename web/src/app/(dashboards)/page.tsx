@@ -265,7 +265,6 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
               <span className="text-body text-secondary">/{n(locale, k.target_outlets)}</span>
             </p>
             <Meter pct={k.target_outlets > 0 ? (k.visited_outlets / k.target_outlets) * 100 : null} valueText={`${n(locale, k.visited_outlets)}/${n(locale, k.target_outlets)}`} label={t(locale, "dashboard.kpi.outlets_visited")} />
-            <p className="text-caption text-secondary">{t(locale, "dashboard.kpi.visits_basis", { visited: n(locale, k.visited_outlets), target: n(locale, k.target_outlets) })}</p>
             {meta()}
           </section>
 
@@ -368,9 +367,9 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
                 <dd className="flex items-center gap-3">
                   <Ring pct={geo.data.geo_valid_pct} valueText={pctText(locale, geo.data.geo_valid_pct)} label={t(locale, "dashboard.geo_valid")} size={96} hue={2} testId="geo-ring" />
                   <span className="text-caption text-secondary">
-                    <span className="block text-body-strong text-primary tabular-nums" data-testid="geo-valid">{pctText(locale, geo.data.geo_valid_pct)}</span>
+                    {/* The ring prints the percent; the side shows the count it is taken over (the contract has no validated count). */}
                     {t(locale, "dashboard.geo.validated")}
-                    <span className="block tabular-nums">{t(locale, "dashboard.geo.visits", { n: geo.data.visits })}</span>
+                    <span className="block text-body-strong text-primary tabular-nums" data-testid="geo-visits">{t(locale, "dashboard.geo.visits", { n: geo.data.visits })}</span>
                   </span>
                 </dd>
                 <dd className="flex flex-wrap gap-1.5">

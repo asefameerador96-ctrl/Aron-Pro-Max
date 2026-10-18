@@ -282,7 +282,6 @@ export const dashEn = {
   "dashboard.refresh": "Refresh",
   "dashboard.kpi.net": "Net sales",
   "dashboard.kpi.outlets_visited": "Outlets visited",
-  "dashboard.kpi.visits_basis": "{visited} of {target} target outlets",
   "dashboard.kpi.login_basis": "{logged} of {target} routes logged in",
   "dashboard.kpi.submit_basis": "{submitted} of {logged} logged-in routes",
   "dashboard.delta.vs_yesterday": "vs yesterday",
