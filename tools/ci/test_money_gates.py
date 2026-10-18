@@ -153,6 +153,20 @@ class MoneyFloatScanTest(unittest.TestCase):
                 self.assertEqual(1, self.scan(self.tree({rel: text})).returncode, text)
         self.assertEqual(0, self.scan(self.tree({"web/src/lib/x.ts": "const t = net_mtk / 1_000n;\n"})).returncode, "BigInt")
 
+    def test_kotlin_float_literals_in_money_arithmetic_are_caught(self):
+        for text in ["val a = netMtk / 1000f\n", "val b = netMtk / 1_000.0\n", "val c = netMtk * 1e-3f\n", "val d = 0.5F * grossMtk\n"]:
+            with self.subTest(text=text):
+                self.assertEqual(1, self.scan(self.tree({"backend/x/src/main/kotlin/A.kt": text})).returncode, text)
+        # UI sizes in a money-named file (core-ui Money.kt) are not money arithmetic.
+        ui = "val r = CornerRadius(size.height / 2f)\nval s = if (big) 24f else 18f\n"
+        self.assertEqual(0, self.scan(self.tree({"android/core-ui/src/main/kotlin/Money.kt": ui})).returncode)
+
+    def test_a_ts_line_starting_with_a_star_is_code_outside_a_block_comment(self):
+        code = "const taka = netMtk\n  * 0.001;\n"
+        self.assertEqual(1, self.scan(self.tree({"web/src/lib/money.ts": code})).returncode, "a continued expression")
+        comment = "/* how it works\n * netMtk / 1000 in prose\n */\nconst x = 1;\n"
+        self.assertEqual(0, self.scan(self.tree({"web/src/lib/money.ts": comment})).returncode, "inside a block comment")
+
     def test_a_double_slash_inside_a_string_does_not_end_the_code(self):
         root = self.tree({"backend/x/src/main/kotlin/A.kt": 'val u = "http://x"; val t = netMtk.toDouble()\n'})
         self.assertEqual(1, self.scan(root).returncode)

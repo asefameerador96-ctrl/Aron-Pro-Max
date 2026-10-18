@@ -36,8 +36,11 @@ ALLOW = Path(__file__).resolve().parent / "money-float-allow.txt"
 
 MONEY = re.compile(r"mtk|amount|price|money|net_|gross|due|qc|taka|paisa|settlement|discount|paid|total|cash|collect", re.IGNORECASE)
 MONEY_FILE = re.compile(r"money|memo|price|taka|lakh|dues|mtk|amount|settle|discount|qc", re.IGNORECASE)
-DEC_ARITH = r"[*/]\s*\d+\.\d+|\d+\.\d+\s*[*/]"
-KT_FLOAT = re.compile(r"\bDouble\b|\bFloat\b|\.toDouble(OrNull)?\(|\.toFloat(OrNull)?\(|\b\d+(\.\d+)?[eE][+-]?\d+\b|" + DEC_ARITH)
+DEC_ARITH = r"[*/]\s*\d[\d_]*\.\d[\d_]*|\d[\d_]*\.\d[\d_]*\s*[*/]"
+KT_FLOAT = re.compile(r"\bDouble\b|\bFloat\b|\.toDouble(OrNull)?\(|\.toFloat(OrNull)?\(|\b\d[\d_]*(\.[\d_]+)?[eE][+-]?\d+[fF]?\b|" + DEC_ARITH)
+# A Kotlin Float literal in `*` or `/` arithmetic (`mtk / 1000f`): counted only on a line that names money, because UI
+# code in money-named files divides sizes by `2f` and the like.
+KT_FLOAT_LIT = re.compile(r"[*/]\s*\d[\d_]*(\.[\d_]+)?[fF]\b|\b\d[\d_]*(\.[\d_]+)?[fF]\s*[*/]")
 TS_FLOAT = re.compile(r"parseFloat\(|\.toFixed\(|Math\.(round|floor|ceil|trunc)\(|/\s*(1e\d+|10+|1(_?000)+)\b(?!n)|" + DEC_ARITH)
 KT_GLOBS = ["backend/*/src/main/**/*.kt", "shared/*/src/commonMain/**/*.kt", "android/*/src/main/**/*.kt"]
 TS_GLOBS = ["web/src/**/*.ts", "web/src/**/*.tsx"]
@@ -86,11 +89,31 @@ def scan(root):
     hits = []
     for rel, f, rx in sources(root):
         whole = bool(MONEY_FILE.search(Path(rel).name))
+        in_block = False  # inside a /* ... */ block comment
         for i, line in enumerate(f.read_text(encoding="utf-8", errors="replace").splitlines(), 1):
-            if is_comment(line):
+            text = line
+            if in_block:
+                if "*/" not in text:
+                    continue
+                in_block, text = False, text.split("*/", 1)[1]
+            stripped = text.lstrip()
+            if stripped.startswith("/*"):
+                if "*/" not in stripped:
+                    in_block = True
+                    continue
+                text = stripped.split("*/", 1)[1]
+                stripped = text.lstrip()
+            if not stripped or stripped.startswith("//"):
                 continue
+            # A Kotlin line cannot start with `*`: it is a KDoc continuation. A TS line can (a continued expression),
+            # so outside a block comment it is scanned.
+            if rx is KT_FLOAT and COMMENT.match(text):
+                continue
+            line = text
             code = code_part(line)
             spans = [m.span() for m in rx.finditer(code)]
+            if rx is KT_FLOAT and MONEY.search(code):
+                spans += [m.span() for m in KT_FLOAT_LIT.finditer(code)]
             if spans and (whole or MONEY.search(code)):
                 hits.append((rel, i, line, spans))
     return hits
