@@ -162,6 +162,32 @@ class ConfigServiceTest {
         }
     }
 
+    /** Checker B1 and B2 on option B: a window that ends on a looser value is C3; a change cannot undo one that is still waiting. */
+    @Test
+    fun aWindowThatEndsLooserIsC3AndAWaitingChangeCannotBeUndone() {
+        fun pct(v: Int, to: String? = null) = req(item("cfg.price.max_change_pct", "global", 0, v, to = to), reason = "Review of the price change rail threshold")
+        // B2: an ADMIN's tightening (15 -> 10) is scheduled; nobody can queue another change of the key behind it.
+        val tight = svc.create(admin, pct(10), null, null)
+        assertEquals("scheduled", tight.status); assertEquals(2, tight.risk_class)
+        assertEquals(ProblemCode.ERR_REQUEST_STATE, code { svc.create(admin, pct(15), null, null) })
+        assertEquals(ProblemCode.ERR_REQUEST_STATE, code { svc.create(sa1, pct(20), null, null) })
+        clock.advance(11 * 60); svc.applyDue()
+        assertEquals("applied", svc.change(tight.change_id).status)
+        assertEquals(10, svc.resolve("cfg.price.max_change_pct", "global", 0, clock.now()).value.jsonPrimitive.int)
+        // B1: the same value (or a tighter one) for a window falls back to the default 15 when the window ends: C3, so one ADMIN cannot.
+        val end = clock.now().plusSeconds(3 * 3600).toString()
+        assertEquals(ProblemCode.ERR_FORBIDDEN, code { svc.create(admin, pct(10, to = end), null, null) })
+        assertEquals(ProblemCode.ERR_FORBIDDEN, code { svc.create(admin, pct(5, to = end), null, null) })
+        val windowed = svc.create(sa1, pct(5, to = end), null, null)
+        assertEquals(3, windowed.risk_class); assertEquals("pending_approval", windowed.status)
+        svc.decide(sa1, windowed.change_id, ConfigDecisionIn("cancel"), null)
+        // Back to the default, which is a loosening (10 -> 15): C3, two SUPERADMINs.
+        val back = svc.create(sa1, pct(15), null, null)
+        assertEquals(3, back.risk_class)
+        clock.setDhaka(12, 0)
+        assertEquals("applied", svc.decide(sa2, back.change_id, ConfigDecisionIn("approve"), null).status)
+    }
+
     @Test
     fun radiusAbove150ThatGrowsTheValueEscalatesToC3AtAnyLevel() {
         val outlet = freshOutlet()

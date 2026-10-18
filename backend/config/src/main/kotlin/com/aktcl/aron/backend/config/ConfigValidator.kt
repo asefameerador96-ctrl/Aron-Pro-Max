@@ -82,6 +82,9 @@ object ConfigValidator {
  * that ends above 150 m and grows the resolved value, "C3 at D and wider", and the value-triggered C3 keys.
  */
 object RiskClassifier {
+    /** Keys whose loosening is C3 (Q3/Q4 option B): the windowed and waiting-change rules in ConfigService.create apply to them. */
+    val LOOSENING_GUARDED = setOf("cfg.auth.mfa_required_roles", "cfg.price.max_change_pct")
+
     /** [newValue] is the item's own value (null for a removal); [before] and [after] are the value the node resolves to without and with the change. */
     fun classify(def: KeyDef, scopeType: String, newValue: JsonElement?, before: JsonElement?, after: JsonElement?): Int {
         var c = def.riskClass
