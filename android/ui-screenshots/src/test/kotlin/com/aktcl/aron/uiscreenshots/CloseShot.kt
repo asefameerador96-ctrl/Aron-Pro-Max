@@ -13,6 +13,9 @@ import com.aktcl.aron.core.common.AppLanguage
 import com.aktcl.aron.core.ui.AppLocale
 import com.aktcl.aron.core.ui.AronTheme
 import com.aktcl.aron.core.ui.GlassTier
+import com.aktcl.aron.core.ui.aron.AronScaffold
+import com.aktcl.aron.core.ui.aron.AronTopBar
+import androidx.compose.ui.res.painterResource
 import com.aktcl.aron.feature.attendance.AttendanceContent
 import com.aktcl.aron.feature.attendance.AttendanceState
 import com.aktcl.aron.feature.auth.LoginContent
@@ -138,6 +141,14 @@ class CloseShot {
     @Composable private fun Journey() = JourneyScreen(journey)
     @Composable private fun Login() = LoginContent(LoginUiState(username = "sr334001", password = "secret", message = LoginMessage.InvalidCredentials), "ARON SR", "1.0.25 (12)", {}, {}, {}, {}, {}, sunlight = false, onSunlight = {})
     @Composable private fun Otp() = OtpContent(OtpState("12"), {}, {}, onBack = {}, appTitle = "ARON SR", onLanguageSelect = {}, onSunlight = {})
+
+    /** The host frame of the parity apps (app-sr wiring): the gradient top bar with the tile icon and the title, on the grey page. */
+    @Composable
+    private fun Parity(title: String, icon: Int, content: @Composable () -> Unit) {
+        AronScaffold(topBar = { AronTopBar(title, icon = painterResource(icon), onBack = {}, backLabel = "back") }) { content() }
+    }
+
+    @Test fun parity_summary_bn() = shot("parity_summary_bn") { Parity("বিক্রয় সারসংক্ষেপ", com.aktcl.aron.core.ui.R.drawable.aron_ic_summary) { Summary() } }
 
     @Test fun attendance_a_bn_light() = shot("close_attendance_a_bn_light") { AttendanceA() }
     @Test fun attendance_a_bn_sunlight() = shot("close_attendance_a_bn_sunlight", sunlight = true) { AttendanceA() }

@@ -36,6 +36,17 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.aktcl.aron.core.common.AppLanguage
 import com.aktcl.aron.core.ui.AronBanner
+import com.aktcl.aron.core.ui.AronLook
+import com.aktcl.aron.core.ui.LocalAronLook
+import com.aktcl.aron.core.ui.aron.AronPrimaryButton
+import com.aktcl.aron.core.ui.aron.ButtonGlyph
+import com.aktcl.aron.core.ui.aron.SummaryRow
+import com.aktcl.aron.core.ui.aron.SummaryTable
+import com.aktcl.aron.core.ui.aron.SummaryTotal
+import com.aktcl.aron.core.ui.aron.TotalsLine
+import androidx.compose.foundation.background
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
 import com.aktcl.aron.core.ui.AronBarAction
 import com.aktcl.aron.core.ui.AronBottomBar
 import com.aktcl.aron.core.ui.AronCard
@@ -425,10 +436,11 @@ internal fun CaptionValue(caption: String, value: String, modifier: Modifier = M
 }
 
 /**
- * Day summary (F-SR-036; screens-sr s10): the info banner, then per category a group head (category and unit), the SKU
- * rows (value, memos, quantity, return, the discount pair when non-zero) and the group foot (four caption-over-value
- * pairs), the totals card with "discount and others (−)", and the bar with the grand total in its summary slot beside
- * Print. [unitLabel] names the unit word of a category code (stick, piece, dozen); quantities are never summed across units.
+ * Day summary (F-SR-036; PARITY-SPEC sr/summary.png): the info card, then the [SummaryTable] (dark header, per SKU a purple name over
+ * its memo count, quantity, value, discount, discounted value and return; one subtotal row per category with its unit in the label,
+ * so quantities are never summed across units; "discount and others (-)" and the grand total) and the full-width Print button.
+ * [unitLabel] names the unit word of a category code (stick, piece, dozen). The discount line stays zero while the discount
+ * programmes are deferred (docs/27).
  */
 @Composable
 fun SummaryScreen(
@@ -440,76 +452,66 @@ fun SummaryScreen(
     unitLabel: (String) -> String = { "" },
     printing: Boolean = false,
 ) {
-    val c = LocalAronColors.current
+    val look = LocalAronLook.current
     val empty = summary.skus.isEmpty()
-    ScreenWithBar(modifier, bar = {
-        Column(Modifier.fillMaxWidth()) {
-            AronBottomBar(
-                summaryLabel = stringResource(R.string.summary_grand_total),
-                summaryValue = money(summary.grandTotalMtk),
-                primary = AronBarAction(stringResource(R.string.summary_print), onPrint, enabled = !empty, icon = AronIcons.Print, busy = printing),
-                reasonWhenDisabled = stringResource(R.string.summary_print_reason),
+    ScrollColumn(modifier.background(look.page), contentPadding = PaddingValues(AronTokens.Space.Screen), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.M)) {
+        SummaryInfoCard(stringResource(R.string.summary_banner))
+        if (empty) {
+            Text(
+                stringResource(R.string.summary_empty), style = MaterialTheme.typography.bodyLarge, color = look.inkMuted, textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth().padding(vertical = AronTokens.Space.Xl),
             )
-        }
-    }) {
-        ScrollColumn {
-            AronBanner(stringResource(R.string.summary_banner), Modifier.padding(horizontal = AronTokens.Space.Screen, vertical = AronTokens.Space.M), BannerKind.Info)
-            if (empty) {
-                AronEmptyState(stringResource(R.string.summary_empty), icon = AronIcons.Summary)
-            } else {
-                summary.categories.forEach { cat ->
+        } else {
+            SummaryTable(
+                headers = listOf(
+                    stringResource(R.string.summary_col_memos), stringResource(R.string.summary_col_qty), stringResource(R.string.summary_col_value),
+                    stringResource(R.string.summary_col_discount), stringResource(R.string.summary_col_after), stringResource(R.string.summary_col_return),
+                ),
+                rows = summary.skus.map { r ->
+                    SummaryRow(
+                        skuName(r.skuId),
+                        listOf(
+                            localizedNumber(r.memoCount.toLong()), localizedNumber(r.qtyBase), amount(r.valueMtk),
+                            amount(r.discountMtk), amount(r.discountedValueMtk), localizedNumber(r.returnQtyBase),
+                        ),
+                    )
+                },
+                subtotals = summary.categories.map { cat ->
                     val unit = unitLabel(cat.categoryCode)
-                    val catName = categoryLabel(cat.categoryCode)
-                    AronSectionLabel(if (unit.isEmpty()) catName else stringResource(R.string.summary_group_head, catName, unit))
-                    AronCard(Modifier.fillMaxWidth().padding(horizontal = AronTokens.Space.Screen)) {
-                        Column(Modifier.fillMaxWidth().padding(AronTokens.Space.L), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.M)) {
-                            summary.skus.filter { it.categoryCode == cat.categoryCode }.forEach { r ->
-                                Column(verticalArrangement = Arrangement.spacedBy(AronTokens.Space.Xs)) {
-                                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                                        Text(skuName(r.skuId), style = MaterialTheme.typography.titleSmall, color = c.textPrimary, maxLines = 2, modifier = Modifier.weight(1f))
-                                        MoneyText(money(r.valueMtk), style = MaterialTheme.typography.titleSmall, textAlign = TextAlign.End)
-                                    }
-                                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.M)) {
-                                        CaptionValue(stringResource(R.string.summary_col_memos), localizedNumber(r.memoCount.toLong()), Modifier.weight(0.8f))
-                                        CaptionValue(stringResource(R.string.summary_col_qty), qtyText(r.qtyBase, unit), Modifier.weight(1.2f))
-                                        CaptionValue(stringResource(R.string.summary_col_return), qtyText(r.returnQtyBase, unit), Modifier.weight(1.2f))
-                                    }
-                                    if (r.discountMtk != 0L) {
-                                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.M)) {
-                                            Column(Modifier.weight(1f)) {
-                                                Text(stringResource(R.string.summary_col_discount), style = MaterialTheme.typography.bodySmall, color = c.textSecondary)
-                                                Text(minusMoney(r.discountMtk), style = MaterialTheme.typography.titleSmall, color = c.textPrimary, maxLines = 1, softWrap = false)
-                                            }
-                                            CaptionValue(stringResource(R.string.summary_col_after), money(r.discountedValueMtk), Modifier.weight(1f))
-                                        }
-                                    }
-                                }
-                                CardDivider()
-                            }
-                            // the group foot: four caption-over-value pairs, each in its own unit
-                            Text(stringResource(R.string.summary_group_total, catName), style = MaterialTheme.typography.labelMedium, color = c.textSecondary)
-                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.M)) {
-                                CaptionValue(stringResource(R.string.summary_col_qty), qtyText(cat.qtyBase, unit), Modifier.weight(1f))
-                                CaptionValue(stringResource(R.string.summary_col_value), money(cat.valueMtk), Modifier.weight(1f))
-                            }
-                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.M)) {
-                                CaptionValue(stringResource(R.string.summary_col_after), money(cat.discountedValueMtk), Modifier.weight(1f))
-                                CaptionValue(stringResource(R.string.summary_col_return), qtyText(cat.returnQtyBase, unit), Modifier.weight(1f))
-                            }
-                        }
-                    }
-                }
-                AronSectionLabel(stringResource(R.string.summary_totals))
-                AronCard(Modifier.fillMaxWidth().padding(horizontal = AronTokens.Space.Screen)) {
-                    Column(Modifier.fillMaxWidth().padding(AronTokens.Space.L), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
-                        TotalLine(stringResource(R.string.memo_total), money(summary.grossMtk))
-                        DeductionLine(stringResource(R.string.summary_discount_and_others), minusMoney(summary.discountAndOthersMtk))
-                        Text(stringResource(R.string.summary_memo_count, localizedNumber(summary.memoCount.toLong())), style = MaterialTheme.typography.bodySmall, color = c.textSecondary)
-                    }
-                }
-                Spacer(Modifier.height(AronTokens.Space.L))
-            }
+                    val name = categoryLabel(cat.categoryCode)
+                    TotalsLine(
+                        if (unit.isEmpty()) name else stringResource(R.string.summary_group_head, name, unit),
+                        listOf(
+                            localizedNumber(cat.qtyBase), amount(cat.valueMtk), amount(cat.discountMtk),
+                            amount(cat.discountedValueMtk), localizedNumber(cat.returnQtyBase),
+                        ),
+                    )
+                },
+                totals = listOf(
+                    SummaryTotal(stringResource(R.string.summary_discount_and_others), minusMoney(summary.discountAndOthersMtk)),
+                    SummaryTotal(stringResource(R.string.summary_grand_total), money(summary.grandTotalMtk)),
+                ),
+            )
+            Text(stringResource(R.string.summary_memo_count, localizedNumber(summary.memoCount.toLong())), style = MaterialTheme.typography.bodySmall, color = look.inkMuted)
         }
+        AronPrimaryButton(
+            stringResource(R.string.summary_print), onPrint, Modifier.fillMaxWidth(),
+            enabled = !empty && !printing, glyph = ButtonGlyph.Print, reverse = true,
+        )
+        if (empty) Text(stringResource(R.string.summary_print_reason), style = MaterialTheme.typography.bodySmall, color = look.inkMuted, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
+    }
+}
+
+/** The white info card of the summary (sr/summary.png). Private until the kit has its own info card. */
+@Composable
+private fun SummaryInfoCard(text: String) {
+    val look = LocalAronLook.current
+    Row(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(AronLook.CardRadius)).background(look.card).padding(AronTokens.Space.L),
+        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.M),
+    ) {
+        Icon(AronIcons.Info, contentDescription = null, tint = look.ink, modifier = Modifier.size(AronTokens.Size.Icon))
+        Text(text, style = MaterialTheme.typography.bodyLarge, color = look.ink, modifier = Modifier.weight(1f))
     }
 }
 
