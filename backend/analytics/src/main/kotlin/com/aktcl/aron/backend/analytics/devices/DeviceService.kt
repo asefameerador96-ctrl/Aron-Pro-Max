@@ -92,13 +92,25 @@ class DeviceService(
         }
     }
 
-    fun listTokens(activeOnly: Boolean, limit: Int, after: Long?): EnrolmentTokenPage = db.readJdbi.withHandle<EnrolmentTokenPage, Exception> { h ->
-        val where = buildList { if (activeOnly) add("revoked_at IS NULL AND expires_at > now() AND used_count < max_uses"); if (after != null) add("id < :after") }.joinToString(" AND ").ifEmpty { "true" }
+    /**
+     * A [readerReach] (DMO, WM) limits the list to tokens of zones in that reach (a token with no zone is national, shown
+     * to a national reach only) and strips it to ids, status and expiry: the secret's prefix becomes [MASKED_PREFIX]
+     * (the contract requires six characters) and the free-text note is left out.
+     */
+    fun listTokens(activeOnly: Boolean, limit: Int, after: Long?, readerReach: Reach? = null): EnrolmentTokenPage = db.readJdbi.withHandle<EnrolmentTokenPage, Exception> { h ->
+        if (readerReach != null && !readerReach.national && readerReach.zoneIds.isEmpty()) return@withHandle EnrolmentTokenPage(emptyList(), null)
+        val where = buildList {
+            if (activeOnly) add("revoked_at IS NULL AND expires_at > now() AND used_count < max_uses"); if (after != null) add("id < :after")
+            if (readerReach != null && !readerReach.national) add("zone_id = ANY(:zones)")
+        }.joinToString(" AND ").ifEmpty { "true" }
         val q = h.createQuery("SELECT * FROM app.enrolment_token WHERE $where ORDER BY id DESC LIMIT :lim").bind("lim", limit + 1)
         if (after != null) q.bind("after", after)
-        val rows = q.map { rs, _ -> tokenDto(rs) }.list()
+        if (readerReach != null && !readerReach.national) q.bindArray("zones", Long::class.javaObjectType, readerReach.zoneIds.toList())
+        val rows = q.map { rs, _ -> tokenDto(rs).let { if (readerReach != null) it.copy(token_prefix = MASKED_PREFIX, note = null) else it } }.list()
         EnrolmentTokenPage(rows.take(limit), if (rows.size > limit) rows[limit - 1].token_id.toString() else null)
     }
+
+    private val MASKED_PREFIX = "------"
 
     private fun tokenDto(rs: java.sql.ResultSet) = EnrolmentTokenDto(
         rs.getLong("id"), rs.getString("token_prefix"), rs.getString("flavour"), rs.getString("lockdown_level"), rs.getInt("max_uses"), rs.getInt("used_count"), rs.getObject("zone_id") as Long?,
