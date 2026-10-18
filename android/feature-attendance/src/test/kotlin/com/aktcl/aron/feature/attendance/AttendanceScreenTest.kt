@@ -58,7 +58,7 @@ class AttendanceScreenTest {
         // the tap never commits (parity SR-S-13): the hold sheet opens with its time chip from the corrected Dhaka clock
         assertEquals(0, n)
         compose.onNodeWithText("Checking in").assertExists()
-        compose.onNodeWithText("09:05").assertExists()
+        compose.onNodeWithText("09:05 AM").assertExists()
         compose.onNodeWithTag(AttendanceTags.HOLD).performSemanticsAction(SemanticsActions.OnLongClick)
         compose.waitForIdle()
         assertEquals(1, n)
@@ -80,8 +80,8 @@ class AttendanceScreenTest {
         render(AppLanguage.EN, AttendanceState(checkedInAt = "2026-10-07T03:05:00.000Z", showCheckInPrompt = false, checkInEnabled = false, addressText = "23.793812, 90.404112", fixAccuracyM = 18))
         compose.onNodeWithTag(AttendanceTags.CHECK_IN).assertDoesNotExist()
         compose.onNodeWithTag(AttendanceTags.CHECK_OUT).assertIsNotEnabled()
-        compose.onAllNodesWithText("Check-out opens at 17:00.").assertCountEquals(2) // the day-card row and the bar reason
-        compose.onNodeWithText("Checked in at 09:05").assertExists()
+        compose.onAllNodesWithText("Check-out opens at 05:00 PM.").assertCountEquals(2) // the day-card row and the bar reason
+        compose.onNodeWithText("Checked in at 09:05 AM").assertExists()
         compose.onNodeWithText("23.793812, 90.404112").assertExists()
         compose.onNodeWithText("Good · ±18 m").assertExists()
     }
@@ -102,7 +102,7 @@ class AttendanceScreenTest {
         compose.onNodeWithText("আপনি আজকের জন্য চেক ইন এবং চেক আউট সম্পন্ন করেছেন। সহযোগিতার জন্য ধন্যবাদ।").assertExists()
         compose.onNodeWithTag(AttendanceTags.CHECK_IN).assertDoesNotExist()
         compose.onNodeWithTag(AttendanceTags.CHECK_OUT).assertDoesNotExist()
-        compose.onNodeWithText("চেক আউট সম্পন্ন হয়েছে ১৭:১০").assertExists()
+        compose.onNodeWithText("চেক আউট সম্পন্ন হয়েছে ০৫:১০ PM").assertExists()
     }
 
     @Test fun mockLocationShowsTheWarningAndWeakFixTheWarningChip() {
@@ -115,6 +115,7 @@ class AttendanceScreenTest {
         assertEquals("09:05", dhakaClock("2026-10-07T03:05:00.000Z"))
         assertEquals("01:30", dhakaClock("2026-10-07T19:30:00.000Z"))
         assertFalse(dhakaClock("bad").isEmpty())
+        assertEquals("04:47 PM", clock12("16:47")); assertEquals("12:05 AM", clock12("00:05")); assertEquals("12:00 PM", clock12("12:00")); assertEquals("bad", clock12("bad"))
     }
 
     @Test fun fixQualityThresholds() {
