@@ -128,7 +128,7 @@ internal object AuditMask {
     /** A config value (`cfg_version` images carry raw values) is never shown when its key name looks secret; none does today. */
     private val SECRET_CFG_KEY = Regex("(secret|password|passwd|private|signing|credential|seed|api_key|apikey)", RegexOption.IGNORE_CASE)
 
-    /** Personal data in the images (docs/21 s4.5); `AdminCtx.audit` already writes some of it as "[redacted]". */
+    /** Personal data in the images (docs/21 s4.5). Since D-AUDIT-PII-01 the writer stores these as "[redacted]" (`AuditLog.PII`, and `AuditLog.GEO` outside an outlet pin); older rows hold them in clear. */
     val PII: Set<String> = setOf(
         "full_name", "phone", "email", "contact_number", "owner_name", "address", "pda_contact_no", "dep_name", "nid", "tin", "trade_license",
         "lat", "lng", "provisional_lat", "provisional_lng",
