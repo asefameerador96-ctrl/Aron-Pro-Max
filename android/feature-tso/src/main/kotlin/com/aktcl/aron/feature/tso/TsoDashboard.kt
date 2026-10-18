@@ -105,9 +105,17 @@ object TsoDashboards {
 
     /** Lakh and crore display of a large count with the digits the caller localises: 36,100,000 is "3.61" crore; below a lakh the number stays whole with thousands grouping. */
     fun compact(n: Long): Compact = when {
-        n >= 10_000_000 -> Compact(BigDecimal(n).divide(BigDecimal(10_000_000), 2, RoundingMode.HALF_UP).toPlainString(), Scale.CRORE)
+        // grouped in threes like every other figure (F-SYS-051): 12,345,000,000 is "1,234.50" crore, never "1234.50"
+        n >= 10_000_000 -> Compact(group3(BigDecimal(n).divide(BigDecimal(10_000_000), 2, RoundingMode.HALF_UP).toPlainString()), Scale.CRORE)
         n >= 100_000 -> Compact(BigDecimal(n).divide(BigDecimal(100_000), 2, RoundingMode.HALF_UP).toPlainString(), Scale.LAKH)
         else -> Compact(n.toString(), Scale.NONE)
+    }
+
+    /** Western 3-digit grouping of the integer part of a plain decimal text ("1234.50" -> "1,234.50"). */
+    private fun group3(plain: String): String {
+        val whole = plain.substringBefore('.'); val frac = plain.substringAfter('.', "")
+        val grouped = whole.reversed().chunked(3).joinToString(",").reversed()
+        return if (frac.isEmpty()) grouped else "$grouped.$frac"
     }
 
     /** "as of hh:mm" in Dhaka time from the server's stamp; null when the stamp is missing or unreadable. */
