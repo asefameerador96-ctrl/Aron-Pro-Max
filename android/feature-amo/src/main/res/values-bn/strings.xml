@@ -258,6 +258,8 @@
     <string name="amo_rep_by_route">রুট অনুযায়ী</string>
     <string name="amo_rep_route_line">%1$s মেমো · মোট %2$s</string>
     <string name="amo_rep_memos">মেমো</string>
+    <string name="amo_rep_by_category">ক্যাটাগরি অনুযায়ী</string>
+    <string name="amo_rep_cat_qty">%1$s %2$s বিক্রি</string>
     <string name="amo_rep_cpr">সিপিআর %1$s</string>
     <string name="amo_rep_memos_n">%1$s মেমো</string>
     <string name="amo_rep_target">টার্গেট আউটলেট</string>

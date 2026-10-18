@@ -52,4 +52,23 @@ class ReportsTest {
         val r = Reports.parse(Reports.combine(listOf(p), setOf("a")))!!
         assertEquals(listOf("a"), r.columns.map { it.key }); assertEquals(setOf("a"), r.rows[0].keys)
     }
+
+    @Test fun routeMemoTotalsAddThePeriodsOfARoute() {
+        val r = Reports.parse(page("""{"route_code":"R1","period":"2026-10-01","memos":3,"gross_mtk":100,"net_mtk":90}""", """{"route_code":"R1","period":"2026-10-02","memos":2,"gross_mtk":50,"net_mtk":45}""", """{"route_code":"R2","memos":null,"gross_mtk":10,"net_mtk":9}"""))!!
+        assertEquals(listOf(RouteStd("R1", 5, 150, 135), RouteStd("R2", 0, 10, 9)), Reports.routeMemoTotals(r))
+    }
+
+    @Test fun routeStdGroupsByCategoryAndNeverAddsDifferentUnits() {
+        val r = Reports.parse(page(
+            """{"route_code":"R1","category_name":"Cigarette","base_unit":"stick","sold_qty_base":100,"gross_mtk":1000}""",
+            """{"route_code":"R1","category_name":"Cigarette","base_unit":"stick","sold_qty_base":50,"gross_mtk":500}""",
+            """{"route_code":"R1","category_name":"Other","base_unit":"stick","sold_qty_base":5,"gross_mtk":10}""",
+            """{"route_code":"R1","category_name":"Other","base_unit":"piece","sold_qty_base":2,"gross_mtk":20}""",
+            """{"route_code":"R2","category_name":null,"base_unit":null,"sold_qty_base":null,"gross_mtk":7}""",
+        ))!!
+        assertEquals(
+            listOf(RouteCategory("R1", "Cigarette", 150, "stick", 1500), RouteCategory("R1", "Other", null, null, 30), RouteCategory("R2", "", null, null, 7)),
+            Reports.routeCategories(r),
+        )
+    }
 }
