@@ -70,6 +70,24 @@ class WebEntryTest {
         assertEquals(0, sendA3(HttpMethod.Get, "/v1/web-entry/route-day?route_id=$route&business_date=${today.minusDays(30)}", tso).objA3().getValue("lines").jsonArray.size)
     }
 
+    /** Replay first: a retry of a stored entry answers it after its route moved out of the TSO's reach; a new entry there is refused. */
+    @Test
+    fun aReplayAnswersAfterTheRouteLeavesTheReach() = env.app {
+        val tso = env.tok("tso3001"); val s1 = skus[0]
+        val rid = env.routeIds.getValue("FAR-SR-1")
+        val cu = uuid()
+        val body = entry(cu, listOf(line(s1, 40, 2, 3)), calls = 0, routeId = rid)
+        sendA3(HttpMethod.Post, "/v1/web-entry/route-day", tso, body).let { r -> assertEquals(HttpStatusCode.OK, r.status, r.objA3().toString()) }
+        val home = env.scalar("SELECT zone_id FROM app.route WHERE id = $rid")!!
+        env.exec("UPDATE app.route SET zone_id = (SELECT id FROM app.zone WHERE code = 'Z-MIR') WHERE id = $rid")
+        try {
+            sendA3(HttpMethod.Post, "/v1/web-entry/route-day", tso, body).let { r -> assertEquals(HttpStatusCode.OK, r.status, r.objA3().toString()) }
+            assertEquals(HttpStatusCode.Forbidden, sendA3(HttpMethod.Post, "/v1/web-entry/route-day", tso, entry(uuid(), listOf(line(s1)), calls = 0, routeId = rid, why = "A new entry after the move")).status)
+        } finally {
+            env.exec("UPDATE app.route SET zone_id = $home WHERE id = $rid")
+        }
+    }
+
     @Test
     fun theWindowTheUnlockAndFinalSubmitDecideBackDatedEntry() = env.app {
         val tso = env.tok("tso1001"); val admin = env.tok("admin1001"); val s1 = skus[0]
