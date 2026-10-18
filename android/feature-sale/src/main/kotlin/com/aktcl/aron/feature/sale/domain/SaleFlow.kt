@@ -70,6 +70,8 @@ class SaleFlow(
     suspend fun setQc(entry: QcEntry) = edit { SaleDraftOps.setQc(it, entry) }
     suspend fun setPaid(paidMtk: Long?) = edit { SaleDraftOps.setPaid(it, paidMtk) }
     suspend fun confirmZeroSale() = edit { SaleDraftOps.confirmZeroSale(it) }
+    suspend fun startQcOnly() = edit { SaleDraftOps.startQcOnly(it) }
+    suspend fun cancelQcOnly() = edit { SaleDraftOps.cancelQcOnly(it) }
     suspend fun withEdit(edit: EditContext) = edit { check(!it.qcCompleted) { "a sale cannot be edited after QC" }; it.copy(edit = edit) }
     /** Completing QC locks the sale at this outlet (F-SR-027). */
     suspend fun completeQc() = lock.withLock {
@@ -77,7 +79,7 @@ class SaleFlow(
         val d = checkNotNull(s.draft) { "no sale in progress" }
         // a QC the review would refuse (above the cap, or taking the sale below zero) is never locked in: the rep could not undo it
         val r = SaleReviewCalculator.review(d, s.catalog, qcCapMtkBySku())
-        if (r.problems.any { it is ReviewProblem.QcAboveCap || it is ReviewProblem.NetNegative }) return@withLock
+        if (r.problems.any { it is ReviewProblem.QcAboveCap || it is ReviewProblem.NetNegative || it is ReviewProblem.TooManyQcRows }) return@withLock
         editLocked { SaleDraftOps.completeQc(it) }
     }
     suspend fun restoreQc(entries: List<QcEntry>) = edit { SaleDraftOps.replaceQc(it, entries) }

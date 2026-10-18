@@ -54,6 +54,12 @@ object SaleDraftOps {
      */
     fun startQcOnly(d: SaleDraft): SaleDraft = confirmZeroSale(d)
 
+    /** Cancel on the QC-only path: back to an untouched entry, the zero sale the rep never confirmed is not left behind. */
+    fun cancelQcOnly(d: SaleDraft): SaleDraft {
+        check(!d.qcCompleted) { "QC is locked once completed" }
+        return if (d.lines.isEmpty()) d.copy(zeroSale = false, qc = emptyList()) else d
+    }
+
     /** Puts back the QC rows saved when the QC screen opened (Cancel discards what was typed since). */
     fun replaceQc(d: SaleDraft, entries: List<QcEntry>): SaleDraft {
         check(!d.qcCompleted) { "QC is locked once completed" }

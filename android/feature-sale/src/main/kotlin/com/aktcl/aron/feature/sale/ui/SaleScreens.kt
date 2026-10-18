@@ -683,5 +683,6 @@ private fun problemText(p: ReviewProblem): String = when (p) {
     ReviewProblem.NothingToSell -> stringResource(R.string.review_problem_nothing)
     is ReviewProblem.NetNegative -> stringResource(R.string.review_problem_net_negative)
     is ReviewProblem.QcAboveCap -> stringResource(R.string.review_problem_qc_cap)
+    is ReviewProblem.TooManyQcRows -> localizedDigits(stringResource(R.string.review_problem_qc_rows, p.max.toString()))
     else -> stringResource(R.string.review_problem_other)
 }

@@ -141,4 +141,21 @@ class QcOnlySaleTest {
             assertEquals(entries.filter { it.faultGroup == "MKT" }.sumOf { it.defectQty }, rows.sumOf { it.mktQty })
         }
     }
+
+    @Test fun cancelOnTheQcOnlyPathLeavesNoUnconfirmedZeroSale() = runTest {
+        val store = QcMemStore(); val v = visit(); val f = flow(store); f.start(v)
+        f.startQcOnly(); f.setQc(QcEntry(105, "taste", "MKT", 2)); f.cancelQcOnly()
+        assertEquals(false, f.state.value.draft!!.zeroSale); assertEquals(emptyList<QcEntry>(), f.state.value.draft!!.qc)
+        assertTrue("nothing to sell again", f.state.value.review!!.problems.any { it is ReviewProblem.NothingToSell })
+    }
+
+    @Test fun moreQcRowsThanTheDatabaseKeepsIsAProblemAndQcIsNeverLockedIn() = runTest {
+        val store = QcMemStore(); val v = visit(); val f = flow(store); f.start(v)
+        f.startQcOnly()
+        var n = 0
+        for (s in Fx.catalog.keys) for (t in QcEntryModel.APP_TYPES) if (n < 61) { f.setQc(QcEntry(s, t.code, t.group, 1)); n++ }
+        assertTrue(n >= 24)
+        val big = SaleReviewCalculator.review(Fx.draft().copy(zeroSale = true, qc = List(61) { QcEntry(100, "damaged_crushed", "MFC", 1L + it) }), Fx.catalog)
+        assertTrue(big.problems.any { it is ReviewProblem.TooManyQcRows }); assertEquals(false, big.canCommit)
+    }
 }

@@ -21,6 +21,9 @@ object QcEntryModel {
     /** `qty_base` of a QC line is 1..100000 in the contract (QcLinePayload). */
     const val MAX_QTY: Long = 100_000L
 
+    /** QC lines per memo: the database check is 0..60. */
+    const val MAX_ROWS: Int = 60
+
     val APP_TYPES: List<QcFaultType> = listOf(
         QcFaultType("damaged_crushed", PRODUCTION), QcFaultType("short_outer_pack_stick", PRODUCTION), QcFaultType("other_mfc", PRODUCTION),
         QcFaultType("expired_stock", TRANSPORT), QcFaultType("damaged_in_transit", TRANSPORT), QcFaultType("taste", TRANSPORT),
