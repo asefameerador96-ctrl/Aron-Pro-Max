@@ -13,6 +13,7 @@ import com.aktcl.aron.core.common.AppLanguage
 import com.aktcl.aron.core.ui.AppLocale
 import com.aktcl.aron.core.ui.AronTheme
 import com.aktcl.aron.core.ui.GlassTier
+import com.aktcl.aron.core.ui.aron.AronPrinterBadge
 import com.aktcl.aron.core.ui.aron.AronScaffold
 import com.aktcl.aron.core.ui.aron.AronTopBar
 import androidx.compose.ui.res.painterResource
@@ -133,7 +134,7 @@ class CloseShot {
     private fun skuUnit(id: Long) = if (id == 100L) "স্টিক" else "পিস"
     @Composable private fun Memo() = MemoDetailView(MemoMenu.detail(memo), true, 57_500, ::skuName, {}, {}, {}, outletName = "Banani Store", onHistory = {}, skuUnit = ::skuUnit)
     @Composable private fun Menu() = MemoMenuScreen(MemoMenu.rows(listOf(memo, memo2)), ::outletName, {})
-    @Composable private fun Summary() = SummaryScreen(summary, ::skuName, {}, categoryLabel = { cats[it] ?: it }, unitLabel = { units[it] ?: "" })
+    @Composable private fun Summary() = SummaryScreen(summary, ::skuName, {}, categoryLabel = { cats[it] ?: it }, unitLabel = { units[it] ?: "" }, printerBadge = { AronPrinterBadge(false, "printer", {}) })
     @Composable private fun Submit() = SalesSubmitScreen(true, counts, gate, SubmitProgress.Idle, { labels[it] ?: it }, {}, {}, lastContactText = "১০:৪২")
     @Composable private fun SubmitClean() = SalesSubmitScreen(true, cleanCounts, cleanGate, SubmitProgress.Idle, { labels[it] ?: it }, {}, {}, lastContactText = "১০:৪২")
     @Composable private fun Tasks() = TaskContent(tasks, {})
@@ -148,7 +149,7 @@ class CloseShot {
         AronScaffold(topBar = { AronTopBar(title, icon = painterResource(icon), onBack = {}, backLabel = "back") }) { content() }
     }
 
-    @Test fun parity_summary_bn() = shot("parity_summary_bn") { Parity("বিক্রয় সারসংক্ষেপ", com.aktcl.aron.core.ui.R.drawable.aron_ic_summary) { Summary() } }
+    @Test fun parity_summary_bn() = shot("parity_summary_bn") { Parity("বিক্রয় সারসংক্ষেপ", com.aktcl.aron.core.ui.R.drawable.aron_art_summary) { Summary() } }
 
     @Test fun attendance_a_bn_light() = shot("close_attendance_a_bn_light") { AttendanceA() }
     @Test fun attendance_a_bn_sunlight() = shot("close_attendance_a_bn_sunlight", sunlight = true) { AttendanceA() }

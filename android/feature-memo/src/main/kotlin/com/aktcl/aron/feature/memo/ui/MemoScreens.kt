@@ -38,6 +38,7 @@ import com.aktcl.aron.core.common.AppLanguage
 import com.aktcl.aron.core.ui.AronBanner
 import com.aktcl.aron.core.ui.AronLook
 import com.aktcl.aron.core.ui.LocalAronLook
+import com.aktcl.aron.core.ui.aron.AronInfoCard
 import com.aktcl.aron.core.ui.aron.AronPrimaryButton
 import com.aktcl.aron.core.ui.aron.ButtonGlyph
 import com.aktcl.aron.core.ui.aron.SummaryRow
@@ -451,11 +452,13 @@ fun SummaryScreen(
     categoryLabel: (String) -> String = { it },
     unitLabel: (String) -> String = { "" },
     printing: Boolean = false,
+    /** The printer state of the info card (the host passes `AronPrinterBadge`); null shows none. */
+    printerBadge: (@Composable () -> Unit)? = null,
 ) {
     val look = LocalAronLook.current
     val empty = summary.skus.isEmpty()
     ScrollColumn(modifier.background(look.page), contentPadding = PaddingValues(AronTokens.Space.Screen), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.M)) {
-        SummaryInfoCard(stringResource(R.string.summary_banner))
+        AronInfoCard(stringResource(R.string.summary_banner), trailing = printerBadge)
         if (empty) {
             Text(
                 stringResource(R.string.summary_empty), style = MaterialTheme.typography.bodyLarge, color = look.inkMuted, textAlign = TextAlign.Center,
@@ -499,19 +502,6 @@ fun SummaryScreen(
             enabled = !empty && !printing, glyph = ButtonGlyph.Print, reverse = true,
         )
         if (empty) Text(stringResource(R.string.summary_print_reason), style = MaterialTheme.typography.bodySmall, color = look.inkMuted, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
-    }
-}
-
-/** The white info card of the summary (sr/summary.png). Private until the kit has its own info card. */
-@Composable
-private fun SummaryInfoCard(text: String) {
-    val look = LocalAronLook.current
-    Row(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(AronLook.CardRadius)).background(look.card).padding(AronTokens.Space.L),
-        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.M),
-    ) {
-        Icon(AronIcons.Info, contentDescription = null, tint = look.ink, modifier = Modifier.size(AronTokens.Size.Icon))
-        Text(text, style = MaterialTheme.typography.bodyLarge, color = look.ink, modifier = Modifier.weight(1f))
     }
 }
 
