@@ -1,0 +1,14 @@
+# AuthzAuditTest (qa, 2026-10-18): confirmed authorisation findings, one line per `CHECK route role variant`.
+# May only SHRINK; every line is a defect routed to lead-backend (evidence in build/authz-audit.txt).
+# AZ-1 (low): no route checks the access token's amr; MFA is enforced at login and refresh only, so a password-only ADMIN
+# token minted before cfg.auth.mfa_required_roles applied keeps writing until it expires (web: 15 min).
+STEPUP admin-writes ADMIN amr-pwd-token-under-mfa-policy
+# AZ-2 (medium): SUPPORT runs every business report (retailer-list, settlement, sales-summary, ...); docs/24 s8.5 gives SUPPORT
+# 'R (sync health)' only and DASHBOARD_ROLES already excludes SUPPORT; ReportEngine.WEB_ROLES includes it.
+ROLE POST /v1/reports/{}/query SUPPORT business-reports
+# AZ-3 (low, contract): the config lists cap limit at 200 (default 50); the contract Limit is 1..500, default 100, so a
+# contract-valid limit=201..500 is refused 400. Not unbounded.
+LIMIT-CONTRACT GET /v1/admin/config/changes ADMIN limit=500
+LIMIT-CONTRACT GET /v1/admin/config/reach/{}/pending ADMIN limit=500
+LIMIT-CONTRACT GET /v1/admin/config/values ADMIN limit=500
+LIMIT-CONTRACT GET /v1/admin/config/versions ADMIN limit=500
