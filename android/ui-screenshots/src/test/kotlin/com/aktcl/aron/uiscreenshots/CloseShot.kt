@@ -163,6 +163,30 @@ class CloseShot {
     @Test fun parity_login_bn() = shot("parity_login_bn") { Login() }
     @Test fun parity_otp_bn() = shot("parity_otp_bn") { Otp() }
 
+    private val photo = com.aktcl.aron.feature.outlet.GeoPhotoState(
+        com.aktcl.aron.feature.outlet.CapturedPhoto("p", "/t", 1), com.aktcl.aron.feature.outlet.FixReading("ok", 1.0, 1.0, 11.6, false), 12, 1,
+    )
+    @Test fun parity_outlet_new_bn() = shot("parity_outlet_new_bn") {
+        Parity("নতুন দোকান", com.aktcl.aron.core.ui.R.drawable.aron_art_outlet_new) {
+            com.aktcl.aron.feature.outlet.OutletRequestContent(
+                com.aktcl.aron.feature.outlet.OutletRequestForm(com.aktcl.aron.feature.outlet.OutletRequestKind.NEW, name = "Rahim Store", clusterId = 7),
+                emptySet(), listOf(com.aktcl.aron.feature.outlet.ClusterOption(7, "Apsis Cluster"), com.aktcl.aron.feature.outlet.ClusterOption(8, "Gulshan")),
+                photo, false, false, {}, {}, {},
+            )
+        }
+    }
+    @Test fun parity_outlet_close_bn() = shot("parity_outlet_close_bn") {
+        Parity("স্থায়ী বন্ধ", com.aktcl.aron.core.ui.R.drawable.aron_art_outlet_close) {
+            com.aktcl.aron.feature.outlet.OutletRequestContent(
+                com.aktcl.aron.feature.outlet.OutletRequestForm(com.aktcl.aron.feature.outlet.OutletRequestKind.CLOSE, outletId = 5, openDueMtk = 100),
+                emptySet(), emptyList(), com.aktcl.aron.feature.outlet.GeoPhotoState(), false, true, {}, {}, {},
+            )
+        }
+    }
+    @Test fun parity_force_sale_bn() = shot("parity_force_sale_bn") {
+        Parity("সেল", null) { com.aktcl.aron.feature.outlet.ForceSaleContent(com.aktcl.aron.feature.outlet.ForceReason.INTERNET_PROBLEM, photo, emptySet(), false, {}, {}, {}) }
+    }
+
     @Test fun parity_summary_bn() = shot("parity_summary_bn") { Parity("বিক্রয় সারসংক্ষেপ", com.aktcl.aron.core.ui.R.drawable.aron_art_summary) { Summary() } }
 
     @Test fun attendance_a_bn_light() = shot("close_attendance_a_bn_light") { AttendanceA() }
