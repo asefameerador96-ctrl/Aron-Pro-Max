@@ -28,9 +28,13 @@ one guard taken (legacy stars_1_5).
 | TSO outlet bundle (F-TSO-027) | AMO zone-wide builder for TSO | 3f3184bd |
 | replay sweep | final submit, data void, web-entry route-day and QC | f29d6892, e4cdb414 |
 | web contract types | regenerated after the additive contract hunks | f7425e97 |
+| outlet-request replay | caller's own request, not today's reach | 09071414 |
 
-Sweep items still open (Opus list): outlet-request and risk-signal replays read through reach-filtered rows (404),
-daily-tracking actions (reach), PDA upload cap, device enrol after token revoke, paper backfill (prices re-looked up).
+Outlet-request replay: done (09071414, reads the caller's own request). Risk-signal review replay: kept as 404 out of
+reach on purpose; its answer is the live signal row, and returning it would leak current state outside the reach.
+Sweep items still open (Opus list, lower risk): daily-tracking actions (reach before the audit lookup), PDA upload cap
+(cfg.support.max_upload_mb lowered), device enrol after the token is revoked, paper backfill (prices re-looked up
+before ingest, money: replay gets payload_conflict or no_price_on_date after a back-dated price change).
 Also open: config changes, changes/{id} and versions/{v} return every zone's items to a TSO (gaps baseline).
 Questions with the lead: owner phone unmasked to the TSO in the bundle; fleet-size TSO territories.
 
@@ -38,3 +42,8 @@ Open for others: db + lead register `cfg.geo.update_base_*` (3 keys, docs/24 s9.
 and APK security CI steps; lead decides a TSO outlet bundle section and whether submit void comes back.
 Traps: V0084-V0087 are taken by lane/lead-hardening (not on INT): do not number a migration in that range or after it
 until it lands. backend:app tests take about 15 minutes locally.
+
+Traps found tonight: run only one Gradle build at a time on this box (a checker's concurrent build recompiled classes
+under a running test JVM: 74 NoClassDefFoundError failures that were not real); a contract edit needs
+`npm run gen:contract` in web/ (CI checks web/src/contract/openapi.d.ts); a local `gitleaks git .` scans every
+remote ref, so pass `--log-opts=HEAD` to match CI.
