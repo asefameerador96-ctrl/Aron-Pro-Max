@@ -25,6 +25,7 @@ import com.aktcl.aron.core.ui.LocalAronLook
 import com.aktcl.aron.core.ui.aron.AronHomeHeader
 import com.aktcl.aron.core.ui.aron.AronPrimaryButton
 import com.aktcl.aron.core.ui.aron.AronScaffold
+import com.aktcl.aron.core.ui.aron.AronTargetCard
 import com.aktcl.aron.core.ui.aron.AronTile
 import com.aktcl.aron.core.ui.aron.AronTileGrid
 import com.aktcl.aron.core.ui.R as CoreR
@@ -268,10 +269,20 @@ fun HomeContent(
                 val planned = hero?.target ?: 1
                 val meterText = stringResource(R.string.hm_meter_value, localizedNumber(visited.toLong()), localizedNumber(planned.toLong()))
                 val spoken = stringResource(R.string.hm_meter_spoken, localizedNumber(visited.toLong()), localizedNumber(planned.toLong()))
-                TargetCard(
-                    total = hero?.grandTotalText ?: localizedNumber(0L), visited = visited, planned = planned, meterText = meterText,
-                    checkIn = hero?.let { h -> h.checkInText?.let { stringResource(R.string.hm_checkin_at, localizedDigits(it)) } ?: stringResource(R.string.hm_checkin_due) },
-                    onDetails = onHero ?: { onTile(HomeTile.SUMMARY) },
+                hero?.let { h ->
+                    Text(
+                        listOf(
+                            h.checkInText?.let { stringResource(R.string.hm_checkin_at, localizedDigits(it)) } ?: stringResource(R.string.hm_checkin_due),
+                            stringResource(R.string.hm_hero_meter) + " " + meterText,
+                        ).joinToString(" · "),
+                        color = look.inkMuted, fontSize = 12.sp, modifier = Modifier.padding(horizontal = HOME_GUTTER + 4.dp),
+                    )
+                }
+                AronTargetCard(
+                    title = stringResource(R.string.hm_target_title), label = stringResource(R.string.hm_hero_total),
+                    value = hero?.grandTotalText ?: localizedNumber(0L),
+                    percent = if (planned > 0) (visited * 100 / planned).coerceAtLeast(1) else null,
+                    detailsLabel = stringResource(R.string.hm_target_details), onDetails = onHero ?: { onTile(HomeTile.SUMMARY) },
                     modifier = Modifier
                         .padding(horizontal = HOME_GUTTER, vertical = AronTokens.Space.S)
                         .testTag(if (hero != null) HomeScreenTags.HERO else HomeScreenTags.HERO_SKELETON)
@@ -320,36 +331,6 @@ private fun KpiTile(label: String, value: String, modifier: Modifier) {
     }
 }
 
-/**
- * The home bottom card (`aron.target`: vertical gradient, white text, progress track `#EFEFEF`, fill `#FF0100`). Target and
- * achievement percentages are deferred (docs/27), so it carries what is real today: the day's sales total and the outlets
- * visited of the planned count; "Details" opens Summary.
- */
-@Composable
-private fun TargetCard(total: String, visited: Int, planned: Int, meterText: String, checkIn: String?, onDetails: () -> Unit, modifier: Modifier = Modifier) {
-    val look = LocalAronLook.current
-    val shape = RoundedCornerShape(12.dp)
-    val ink = Color.White
-    val fraction = if (planned > 0) (visited.toFloat() / planned).coerceIn(0f, 1f) else 0f
-    Column(
-        modifier.fillMaxWidth().clip(shape).background(Brush.verticalGradient(listOf(look.targetTop, look.targetBottom))).padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        Text(stringResource(R.string.hm_target_title), color = ink, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-        Text(stringResource(R.string.hm_hero_total), color = ink, fontSize = 14.sp)
-        Text(total, color = ink, fontSize = 28.sp, fontWeight = FontWeight.Bold)
-        Text(stringResource(R.string.hm_hero_meter), color = ink, fontSize = 14.sp)
-        Box(Modifier.fillMaxWidth().height(22.dp).clip(RoundedCornerShape(11.dp)).background(look.track)) {
-            if (fraction > 0f) Box(Modifier.fillMaxWidth(fraction).fillMaxHeight().background(look.trackFill, RoundedCornerShape(11.dp)))
-            Text(meterText, color = look.ink, fontSize = 13.sp, fontWeight = FontWeight.Bold, modifier = Modifier.align(Alignment.CenterEnd).padding(end = 12.dp))
-        }
-        checkIn?.let { Text(it, color = ink, fontSize = 12.sp) }
-        Box(Modifier.fillMaxWidth().heightIn(min = 48.dp).clickable(role = Role.Button, onClick = onDetails), contentAlignment = Alignment.Center) {
-            Text(stringResource(R.string.hm_target_details), color = ink, fontSize = 14.sp, textDecoration = TextDecoration.Underline)
-        }
-    }
-}
-
 @Composable
 private fun HomeBanner(text: String, kind: BannerKind, modifier: Modifier = Modifier) =
     AronBanner(text, modifier.padding(horizontal = AronTokens.Space.Screen, vertical = AronTokens.Space.Xs), kind)
@@ -367,18 +348,18 @@ private fun HomeTileItem(rt: ResolvedTile, freshness: BundleFreshness, dock: Hom
 
 /** The redrawn reference icon of each tile (`core-ui` drawables `aron_ic_*`, PARITY-SPEC s2.11). */
 private fun tilePainterRes(t: HomeTile): Int = when (t) {
-    HomeTile.ATTENDANCE -> CoreR.drawable.aron_ic_attendance
-    HomeTile.STOCK -> CoreR.drawable.aron_ic_stock
-    HomeTile.SALE -> CoreR.drawable.aron_ic_sale
-    HomeTile.MEMO -> CoreR.drawable.aron_ic_memo
-    HomeTile.SUMMARY -> CoreR.drawable.aron_ic_summary
-    HomeTile.SALES_SUBMIT -> CoreR.drawable.aron_ic_sales_submit
-    HomeTile.OUTLET -> CoreR.drawable.aron_ic_outlet
-    HomeTile.TUTORIAL -> CoreR.drawable.aron_ic_tutorial
-    HomeTile.TASKS -> CoreR.drawable.aron_ic_task_delegation
-    HomeTile.PHOTO_CAPTURE -> CoreR.drawable.aron_ic_photo_capture
-    HomeTile.SALES_JOURNEY -> CoreR.drawable.aron_ic_sales_journey
-    HomeTile.KPI -> CoreR.drawable.aron_ic_kpi
+    HomeTile.ATTENDANCE -> CoreR.drawable.aron_art_attendance
+    HomeTile.STOCK -> CoreR.drawable.aron_art_stock
+    HomeTile.SALE -> CoreR.drawable.aron_art_sale
+    HomeTile.MEMO -> CoreR.drawable.aron_art_memo
+    HomeTile.SUMMARY -> CoreR.drawable.aron_art_summary
+    HomeTile.SALES_SUBMIT -> CoreR.drawable.aron_art_sales_submit
+    HomeTile.OUTLET -> CoreR.drawable.aron_art_outlet
+    HomeTile.TUTORIAL -> CoreR.drawable.aron_art_tutorial
+    HomeTile.TASKS -> CoreR.drawable.aron_art_task_delegation
+    HomeTile.PHOTO_CAPTURE -> CoreR.drawable.aron_art_photo_capture
+    HomeTile.SALES_JOURNEY -> CoreR.drawable.aron_art_sales_journey
+    HomeTile.KPI -> CoreR.drawable.aron_art_kpi
 }
 
 /**
