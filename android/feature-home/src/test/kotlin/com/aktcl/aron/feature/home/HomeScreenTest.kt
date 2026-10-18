@@ -86,7 +86,7 @@ class HomeScreenTest {
         show(AppLanguage.EN, hero = hero, kpis = kpis, money = money, dock = HomeDock.START_SELLING, sync = SyncChipState.Waiting(3))
         compose.onNodeWithTag(HomeScreenTags.HERO).assertExists()
         compose.onNodeWithText("Today's total").assertExists()
-        compose.onNodeWithText("Checked in 08:52 · Daily").assertExists()
+        compose.onNodeWithText("Checked in 08:52").assertExists()
         compose.onNodeWithTag(HomeScreenTags.CHIP).assertExists()
         compose.onNodeWithTag(HomeScreenTags.KPI).assertExists()
         compose.onNodeWithText("Strike rate").assertExists(); compose.onNodeWithText("Non-visit").assertExists()
@@ -128,7 +128,7 @@ class HomeScreenTest {
 
     @Test fun tilesRenderInTwoGroupsWithTheTaskBadge() {
         show(AppLanguage.EN, tasks = 2, dock = HomeDock.START_SELLING)
-        compose.onNodeWithText("Today's work").assertExists(); compose.onNodeWithText("Others").assertExists()
+        compose.onNodeWithText("Today's work").assertDoesNotExist() // the reference has one grid, no group labels
         compose.onNodeWithTag(HomeScreenTags.tile(HomeTile.TASKS)).assertExists()
         compose.onNodeWithContentDescription("2 open items", useUnmergedTree = true).assertExists()
         compose.onNodeWithTag(HomeScreenTags.SETTINGS).assertExists()
