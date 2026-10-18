@@ -28,7 +28,7 @@ GET /v1/admin/devices -> gap: backend-reports
 GET /v1/admin/devices/{device_id} -> gap: backend-reports
 GET /v1/admin/devices/{device_id}/directives -> gap: backend-reports
 GET /v1/admin/devices/{device_id}/status-history -> gap: backend-reports
-GET /v1/admin/enrolment-tokens -> gap: backend-reports
+GET /v1/admin/enrolment-tokens -> case DeviceEnrolmentTest#dmoAndWmListTheTokensOfTheirZonesWithoutTheSecretPrefixOrNote
 GET /v1/admin/geo/{level} -> case AdminMasterTest#readersSeeOnlyTheirReachAndOnlyAdminsWrite
 GET /v1/admin/geo/{level}/{id} -> case AdminMasterTest#readersSeeOnlyTheirReachAndOnlyAdminsWrite
 GET /v1/admin/outlets -> case ScopeLeakHttpTest#twoHundredRandomisedHttpQueriesFindZeroCrossScopeRows

@@ -228,6 +228,8 @@ class ScopeLeakAcrossEndpointsTest {
             )
             h.execute("INSERT INTO app.dues_adjustment (client_uuid, outlet_id, kind, amount_mtk, reason, created_by) VALUES ('$adjustment'::uuid, $outlet, 'correction', 1000, 'LKX seeded adjustment', ${p.userId})")
             h.execute("INSERT INTO app.entry_unlock (scope_type, scope_id, from_date, to_date, reason, expires_at, created_by) VALUES ('zone', $zone, '$day'::date, '$day'::date, 'LKX seeded unlock', now() + interval '1 day', ${p.userId})")
+            // DMO and WM read enrolment tokens of their zones (D-AUTHZ-ENROL-READ): one of the other division's zone.
+            h.execute("INSERT INTO app.enrolment_token (token_sha256, token_prefix, flavour, lockdown_level, max_uses, zone_id, expires_at, created_by) VALUES (sha256(convert_to('$entry', 'UTF8')), 'LKXtok', 'sr', 'dev', 1, $zone, now() + interval '1 day', ${p.userId})")
         } finally {
             h.execute("SET session_replication_role = origin")
         }
