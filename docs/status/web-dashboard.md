@@ -1,5 +1,32 @@
 # Web-dashboard lane status
 
+## Self-review against the owner's reference screenshot (2026-10-18 evening, session 5)
+Compared card by card with `docs/evidence/web-dashboard-reference-2026-10-17.md`, using the attached Playwright screenshots of the home (1366, 820, 360; light, dark, sunlight; Bangla; empty and error). **All data in these checks is the contract-typed mock; the home has not been exercised against the live dev API from this lane (no credentials here).**
+
+**Matches the reference (layout and function):** four sales cards (cigarette sticks, bidi sticks, lighter pieces, match dozens; totals in lakh/crore, Bengali digits in Bangla); Live CPR (ring, planned outlets, successful calls); successful calls by channel; final submit status; login/submit status with two progress bars; net sales by channel with its legend; brand breakdown with the STD (net) / Memo toggle; geo fencing ring with "N of M visits" from `geo_valid_visits`; FF Geo Location map with "Filter by colour"; the orange Filter (scope) button; blue card titles with a rule.
+
+**Differs on purpose (rulings):**
+1. Sales rings show *share of net sales* and a chip *vs same weekday last week*, not achievement against target (target deferred, docs/27). Same for any target wording: Live CPR says "Planned outlets", not "Target Outlet".
+2. No Target, Astha Gift Panel or Superstar menu entries, and no Astha programme channel (docs/27). An "Astha" channel code still shows if the server sends one.
+3. Shell is the Calm Glass web shell (light glass sidebar, sign-out top right, theme toggle), not the crimson-purple gradient sidebar with a red Logout at the bottom (lead ruling: Calm Glass tokens).
+4. The map loads on "Show map", not on page open (Maps daily cap, N-047); with no pins there is no button.
+5. Charts are flat (donut, not 3D pie; ranked bars, not gradient columns); colours come from the shared palette, and rings use only hues at 3:1 or better.
+
+**Still differs (not done, smallest first):**
+1. Card titles wrap to three lines at 1366 px on the lighter and match cards because the "Details" link and the (i) button share the title row; the reference keeps one line.
+2. Final submit: the reference shows Total Zone / Total Service Zone / Remaining plus a 100% ring and "Total Final Submit"; ours shows submitted/remaining zones, Submit %, Day completion % and per-zone chips, with no ring and no "service zone" count (the contract has no service-zone figure; a request would be needed).
+3. Successful calls by channel: a donut instead of the reference's concentric radial chart; channel shares print beside it.
+4. Brand breakdown: no y axis in lakh and no gear menu (values are printed on each bar); with 2-3 brands it renders as ranked bars.
+5. Login/submit: no download/upload icons beside the pairs.
+6. Map clustering with count bubbles, fullscreen and zoom controls are Google's defaults; not checked with a real Maps key in this lane.
+7. Phone (360 px) card order: Needs attention and Net sales sit far down; left for the owner (handover).
+8. Long Bangla names in tables are checked only with mock names.
+
+**Beyond the reference (added):** net sales hero, strike rate, needs attention, zone ranking or SR performance by role, drill-downs from every card with CSV and print, empty/loading/error states per tile, 60 s auto-refresh, axe A/AA and keyboard checks on every dashboard route.
+
+**Waiting on backend:** PII reveal (backend-authz #3: re-auth step-up and unmask display, per-role e2e) once its contract lands.
+
+
 ## Session 5 (2026-10-18, recycled)
 - 8c26350b (run 1111 green, ready sent): Releases page hides the APK size hint when config reads are refused (SUPPORT).
 - Calendar for SUPPORT (INT ef7974b2 carries backend-authz c081c78c, `RESOLVE_GRANTS` SUPPORT -> `cfg.calendar.weekend_days` at global, now): `admin/calendar/page.tsx` shows the resolved weekend days to SUPPORT, reads the config registry (edit form) only for ADMIN/SUPERADMIN, `admin.cfgread.*` note and keys removed. Mock mirrors the grant: SUPPORT gets 403 on every other `/v1/admin/config*` call; the mock gained `cfg.calendar.weekend_days` (default [5]) and a read-only `GET /v1/admin/calendar/holidays` (the calendar page rendered "not found" in the mock for every role before). e2e `support-menu.spec.ts` case added. Open item 1(b) of the handover below is done; 1(a) audit read still waits for listAudit.
