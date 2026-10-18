@@ -125,7 +125,12 @@ class BundlePreGenerationTest {
             c.createStatement().use { it.execute("SELECT pg_advisory_lock(hashtextextended('bundle-pregen:d1:2027-01-05', 7))") }
             assertNull(gen.generate(LocalDate.parse("2027-01-05")))
         }
-        assertNotNull(gen.generate(LocalDate.parse("2027-01-05")), "the lock goes with its session")
+        // Postgres frees a closed session's advisory lock once its backend notices the closed socket (asynchronous), so
+        // retry for a bounded time; generate returns null with no side effects while the lock is still held.
+        val deadline = System.nanoTime() + 5_000_000_000L
+        var done = gen.generate(LocalDate.parse("2027-01-05"))
+        while (done == null && System.nanoTime() < deadline) { Thread.sleep(50); done = gen.generate(LocalDate.parse("2027-01-05")) }
+        assertNotNull(done, "the lock goes with its session")
     }
 
     private fun tickAt(iso: String) { now.set(Instant.parse(iso)); gen.tick(now.get()) }
