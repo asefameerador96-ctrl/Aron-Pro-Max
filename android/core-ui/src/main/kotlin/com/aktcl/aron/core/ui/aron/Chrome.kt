@@ -196,7 +196,7 @@ fun AronScaffold(
 
 /**
  * The Home header (PARITY-SPEC s2.3, sr/home-1-tiles.webp): the gradient, a white round avatar with the person glyph (or [avatar]),
- * [title] = "Role - Name (login)" in white bold 16 sp, [subtitle] = route and date in 12 sp, and the white settings gear at the end
+ * [title] = "Role - Name (login)" in white bold 15 sp, [subtitle] = route and date in 11 sp (measured on the reference), and the white settings gear at the end
  * ([settingsLabel] is its TalkBack label).
  */
 @Composable
@@ -223,8 +223,8 @@ fun AronHomeHeader(
             else GlyphCanvas(Modifier.size(40.dp)) { person(look.purple) }
         }
         Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
-            Text(title, style = lookStyle(16.sp, bold = true, color = look.onBar))
-            Text(subtitle, style = lookStyle(12.sp, color = look.onBar))
+            Text(title, style = lookStyle(15.sp, bold = true, color = look.onBar))
+            Text(subtitle, style = lookStyle(11.sp, color = look.onBar))
         }
         Box(
             Modifier.size(AronLook.Touch).clickable(role = Role.Button, onClick = onSettings).semantics { contentDescription = settingsLabel },
@@ -344,7 +344,7 @@ fun AronInfoCard(text: String, modifier: Modifier = Modifier, trailing: (@Compos
         Box(Modifier.size(24.dp).clip(CircleShape).background(look.inkMuted), contentAlignment = Alignment.Center) {
             GlyphCanvas(Modifier.size(24.dp)) { info(Color.White) }
         }
-        Text(text, style = lookStyle(17.sp, color = look.ink), modifier = Modifier.weight(1f).padding(horizontal = 12.dp))
+        Text(text, style = lookStyle(15.sp, color = look.ink), modifier = Modifier.weight(1f).padding(horizontal = 12.dp))
         trailing?.invoke()
     }
 }
