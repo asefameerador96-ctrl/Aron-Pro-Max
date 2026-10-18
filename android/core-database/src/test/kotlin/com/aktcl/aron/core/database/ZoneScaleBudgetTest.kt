@@ -90,16 +90,7 @@ class ZoneScaleBudgetTest {
         System.gc(); Thread.sleep(200)
         val rt = Runtime.getRuntime(); val baseline = rt.totalMemory() - rt.freeMemory()
         val peakRef = java.util.concurrent.atomic.AtomicLong(baseline); val sampling = java.util.concurrent.atomic.AtomicBoolean(true)
-        val livePeak = java.util.concurrent.atomic.AtomicLong(baseline)
-        val sampler = Thread {
-            var n = 0
-            while (sampling.get()) {
-                peakRef.accumulateAndGet(rt.totalMemory() - rt.freeMemory()) { a, b -> maxOf(a, b) }
-                // every 25 ms a collection, then the heap in use: what the apply really holds (ART collects on demand, so garbage is not "used")
-                if (++n % 12 == 0) { System.gc(); livePeak.accumulateAndGet(rt.totalMemory() - rt.freeMemory()) { a, b -> maxOf(a, b) } }
-                Thread.sleep(2)
-            }
-        }.also { it.isDaemon = true; it.start() }
+        val sampler = Thread { while (sampling.get()) { peakRef.accumulateAndGet(rt.totalMemory() - rt.freeMemory()) { a, b -> maxOf(a, b) }; Thread.sleep(2) } }.also { it.isDaemon = true; it.start() }
 
         val t0 = System.nanoTime()
         // pages of 2,000 rows staged as files, then streamed into Room one page at a time (BundleDownloader does the same): the
@@ -114,7 +105,21 @@ class ZoneScaleBudgetTest {
         val ingestMs = (System.nanoTime() - t0) / 1_000_000
         sampling.set(false); sampler.join(500)
         val peakMb = (peakRef.get() - baseline) / 1_048_576
-        val liveMb = (livePeak.get() - baseline) / 1_048_576
+
+        // Second pass on a fresh database, NOT timed: a collection every 25 ms, then the heap in use, i.e. what the apply really holds
+        // (ART collects on demand, so garbage is not "used"). The forced collections would distort the timed pass above.
+        context.deleteDatabase("zone-scale-live.db")
+        val liveDb = Room.databaseBuilder(context, AronDatabase::class.java, "zone-scale-live.db").build()
+        liveDb.openHelper.writableDatabase
+        System.gc(); Thread.sleep(200)
+        val liveBase = rt.totalMemory() - rt.freeMemory()
+        val livePeak = java.util.concurrent.atomic.AtomicLong(liveBase); val liveRunning = java.util.concurrent.atomic.AtomicBoolean(true)
+        val liveSampler = Thread { while (liveRunning.get()) { System.gc(); livePeak.accumulateAndGet(rt.totalMemory() - rt.freeMemory()) { a, b -> maxOf(a, b) }; Thread.sleep(25) } }.also { it.isDaemon = true; it.start() }
+        ReferenceRepository(liveDb).apply(parsed, head, outletPages = FileOutletPages(pages))
+        liveRunning.set(false); liveSampler.join(2_000)
+        val liveMb = (livePeak.get() - liveBase) / 1_048_576
+        assertEquals(outletsTotal, liveDb.referenceDao().outletCount())
+        liveDb.close(); context.deleteDatabase("zone-scale-live.db")
 
         assertEquals(outletsTotal, db.referenceDao().outletCount())
         fun <T> timed(block: () -> T): Pair<T, Long> { val s = System.nanoTime(); val r = block(); return r to (System.nanoTime() - s) / 1_000_000 }
