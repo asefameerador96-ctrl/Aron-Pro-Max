@@ -184,9 +184,11 @@ class ScopeLeakAcrossEndpointsTest {
                    "captured_elapsed_ms":18330000,"boot_count":412,"clock_offset_ms":0,"captured_offline":true,"route_id":${p.routeId},"bundle_version":"$day:3",
                    "bundle_stale":false,"config_version":1,"payload":${ContractModel.json.writeValueAsString(payload)}}""",
             ).jsonObject
+            val body = gz(p.batch(listOf(env)))
             val r = post("/v1/sync/batch") {
                 bearerAuth(p.token); header("X-Device-Id", p.deviceUuid); header("X-App-Version", ApiWorld.APP_VERSION); header("Content-Encoding", "gzip")
-                setBody(ByteArrayContent(gz(p.batch(listOf(env))), ContentType.Application.Json))
+                header("X-Device-Proof", world.batchProof(p.deviceUuid, body)) // the phones hold the harness key (ApiWorld.phoneKey)
+                setBody(ByteArrayContent(body, ContentType.Application.Json))
             }
             val ack = runCatching { Json.parseToJsonElement(r.bodyAsText()).jsonObject["acks"]!!.jsonArray.single().jsonObject }.getOrNull()
             if (ack?.get("status")?.jsonPrimitive?.content == "accepted") generatedUuids[type] = cu
@@ -243,11 +245,14 @@ class ScopeLeakAcrossEndpointsTest {
         var pending = p.captureDay(Random(seed))
         repeat(5) {
             if (pending.isEmpty()) return
+            val body = gz(p.batch(pending))
             val r = post("/v1/sync/batch") {
                 bearerAuth(p.token); header("X-Device-Id", p.deviceUuid); header("X-App-Version", ApiWorld.APP_VERSION); header("Content-Encoding", "gzip")
-                setBody(ByteArrayContent(gz(p.batch(pending)), ContentType.Application.Json))
+                // The phones hold the harness key (ApiWorld.phoneKey; the mirrored phone is a copy of the seeded one), so a batch carries its proof.
+                header("X-Device-Proof", world.batchProof(p.deviceUuid, body))
+                setBody(ByteArrayContent(body, ContentType.Application.Json))
             }
-            val acked = Json.parseToJsonElement(r.bodyAsText()).jsonObject["acks"]!!.jsonArray.map { it.jsonObject }
+            val acked = (Json.parseToJsonElement(r.bodyAsText()).jsonObject["acks"] ?: error("${p.username}: ${r.status} ${r.bodyAsText().take(300)}")).jsonArray.map { it.jsonObject }
                 .filter { it["status"]!!.jsonPrimitive.content in setOf("accepted", "duplicate") }.map { it["client_uuid"]!!.jsonPrimitive.content }.toSet()
             pending = pending.filter { it.uuid() !in acked }
         }

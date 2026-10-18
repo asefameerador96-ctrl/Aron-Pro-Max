@@ -224,9 +224,11 @@ class RestoreDrillReconciliationTest {
         var generation: String? = null
         repeat(5) {
             if (pending.isEmpty()) return generation
+            val gzBody = gz(ph.p.batch(pending, trigger = if (resend) "resync" else "manual"))
             val r = post("/v1/sync/batch") {
                 bearerAuth(ph.p.token); header("X-Device-Id", ph.p.deviceUuid); header("X-App-Version", ApiWorld.APP_VERSION); header("Content-Encoding", "gzip")
-                setBody(ByteArrayContent(gz(ph.p.batch(pending, trigger = if (resend) "resync" else "manual")), ContentType.Application.Json))
+                header("X-Device-Proof", world.batchProof(ph.p.deviceUuid, gzBody)) // the phones hold the harness key (ApiWorld.phoneKey)
+                setBody(ByteArrayContent(gzBody, ContentType.Application.Json))
             }
             assertEquals(HttpStatusCode.OK, r.status, r.bodyAsText())
             generation = r.headers["X-Server-Generation"]
