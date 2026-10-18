@@ -23,7 +23,7 @@ import java.time.OffsetDateTime
 
 @Serializable
 data class AuditEntryDto(
-    val id: String, val at: String, val actor_user_id: Long?, val actor_username: String?, val actor_role: String?, val via: String,
+    val id: Long, val at: String, val actor_user_id: Long?, val actor_username: String?, val actor_role: String?, val via: String,
     val entity: String, val entity_id: String, val action: String, val before: JsonObject?, val after: JsonObject?,
     val reason: String?, val request_id: String?, val row_hash: String,
 )
@@ -77,7 +77,7 @@ private fun listAudit(call: ApplicationCall, d: AuditReadDeps): AuditPageDto {
             val e = rs.getString("entity")
             val view = AuditMask.view(p, e, rs.getString("before")?.let(::obj), rs.getString("after")?.let(::obj))
             AuditEntryDto(
-                rs.getLong("id").toString(), rs.getObject("at", OffsetDateTime::class.java).toInstant().wire(), rs.getObject("actor_user_id") as Long?,
+                rs.getLong("id"), rs.getObject("at", OffsetDateTime::class.java).toInstant().wire(), rs.getObject("actor_user_id") as Long?,
                 rs.getString("actor_username"), rs.getString("actor_role"), rs.getString("via"), e,
                 rs.getString("entity_id"), rs.getString("action"), view.first, view.second,
                 if (full) rs.getString("reason") else rs.getString("reason")?.let { AuditMask.MASK }, rs.getString("request_id"), rs.getString("row_hash"),
@@ -85,7 +85,7 @@ private fun listAudit(call: ApplicationCall, d: AuditReadDeps): AuditPageDto {
         }.list()
     }
     val page = rows.take(limit)
-    return AuditPageDto(page, if (rows.size > limit) page.last().id else null)
+    return AuditPageDto(page, if (rows.size > limit) page.last().id.toString() else null)
 }
 
 /** A stored image that is not an object (never written today) is shown as one masked member, never as raw text. */
