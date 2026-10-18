@@ -29,6 +29,13 @@ one guard taken (legacy stars_1_5).
 | replay sweep | final submit, data void, web-entry route-day and QC | f29d6892, e4cdb414 |
 | web contract types | regenerated after the additive contract hunks | f7425e97 |
 | outlet-request replay | caller's own request, not today's reach | 09071414 |
+| QA-MNY-01 (D-18 split family) | header with gross and negative net quarantined arithmetic_mismatch; stored one flagged when a child lands (Opus PASS, nits applied) | f58e18a, c0ec85c |
+| replay: paper backfill | stored manual entry answers first, only for its keyer; no re-pricing on a retry (Opus PASS, nits applied) | 1e13f64, 1c262f8 |
+| replay: daily-tracking actions | caller's own action before the reach check; others 403/409 as before (Opus PASS, nits applied) | 2a0394a, follow-up |
+| replay: PDA upload cap | stored upload before the cap; new files hold the current cap (Opus PASS) | 34ac151 |
+| replay: device enrol after revoke | own phone's lost response answered; anything else on a revoked token is TOKEN_INVALID (Opus PASS, nit applied) | 88658a0, 2aad44e |
+| KD-1/KD-2 day close | ordered FOR NO KEY UPDATE on route-days (ingest + Final Submit); clock after the lock, micros; qa DayCloseRaceTest strict 200 rounds green locally (Opus PASS w/ nits: afterBatch sorted, transient failure retries the family, routeIds sorted) | f52bd40, follow-up |
+| QA-MNY-03 xlsx mtk cell | numeric up to 2^53, text above or non-integer | see log |
 
 Outlet-request replay: done (09071414, reads the caller's own request). Risk-signal review replay: kept as 404 out of
 reach on purpose; its answer is the live signal row, and returning it would leak current state outside the reach.
@@ -79,3 +86,14 @@ Next items, in the lead's order (messages 01:08-01:18):
 Discipline: before any push that touches contract/openapi.yaml, run `python3 tools/slice-contract.py`,
 `cd web && npm run gen:contract` and `bash web/scripts/ci.sh generate`. Merge INT before each push. Do not edit lane/qa's
 @Disabled repros or the shrink-only baselines. The ApiWorld release fixture is accepted (the lead, 23:31).
+
+## Session 2 (2026-10-18 from ~01:45 UTC)
+
+Open notes from the checkers (not done, low): a stored PDA upload replays with no age limit (older than this work);
+multi-record transactions (acceptQuarantined, backfill match, BundleService plans) still lock route-days record by record,
+a deadlock there now retries/fails instead of dropping a count; a header with gross and negative net stored before
+f58e18a whose children were all stored is never flagged (one-off query on dev: net_mtk < 0 AND gross_mtk <> 0);
+cfg.memo.allow_negative_net is not read on the server (both paths assume true); a future reopen endpoint must lock
+route-days (route_id order) before final_submit. The paper backfill replay for another keyer still re-prices (409 as
+before). Local trap: start PostgreSQL with `pg_ctlcluster 16 main start` and export
+ARON_TEST_PG_URL=jdbc:postgresql://localhost:5432/postgres?user=postgres&password=postgres.
