@@ -367,9 +367,9 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
                 <dd className="flex items-center gap-3">
                   <Ring pct={geo.data.geo_valid_pct} valueText={pctText(locale, geo.data.geo_valid_pct)} label={t(locale, "dashboard.geo_valid")} size={96} hue={2} testId="geo-ring" />
                   <span className="text-caption text-secondary">
-                    {/* The ring prints the percent; the side shows the count it is taken over (the contract has no validated count). */}
+                    {/* The ring prints the percent; the side shows the server's counts behind it (geo_valid_visits of visits). */}
                     {t(locale, "dashboard.geo.validated")}
-                    <span className="block text-body-strong text-primary tabular-nums" data-testid="geo-visits">{t(locale, "dashboard.geo.visits", { n: geo.data.visits })}</span>
+                    <span className="block text-body-strong text-primary tabular-nums" data-testid="geo-visits">{t(locale, "dashboard.geo.validated_of", { n: n(locale, geo.data.geo_valid_visits), m: n(locale, geo.data.visits) })}</span>
                   </span>
                 </dd>
                 <dd className="flex flex-wrap gap-1.5">

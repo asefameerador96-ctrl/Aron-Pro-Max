@@ -321,7 +321,7 @@ export const dashEn = {
   "dashboard.brand.mode": "Breakdown measure",
   "dashboard.brand.empty": "No brand figures yet",
   "dashboard.geo.validated": "Geo validated",
-  "dashboard.geo.visits": "{n} visits checked",
+  "dashboard.geo.validated_of": "{n} of {m} visits",
   "dashboard.map.filter": "Filter by colour",
   "dashboard.map.filter.all": "All colours",
   "dashboard.map.filter.outlets": "Outlets (blue)",

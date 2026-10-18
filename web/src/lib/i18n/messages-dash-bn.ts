@@ -323,7 +323,7 @@ export const dashBn: Record<keyof typeof dashEn, string> = {
   "dashboard.brand.mode": "বিশ্লেষণের মাপকাঠি",
   "dashboard.brand.empty": "ব্র্যান্ডের সংখ্যা এখনো নেই",
   "dashboard.geo.validated": "জিও যাচাইকৃত",
-  "dashboard.geo.visits": "{n}টি ভিজিট যাচাই",
+  "dashboard.geo.validated_of": "{m}টি ভিজিটের মধ্যে {n}টি",
   "dashboard.map.filter": "রঙ অনুযায়ী ফিল্টার",
   "dashboard.map.filter.all": "সব রঙ",
   "dashboard.map.filter.outlets": "আউটলেট (নীল)",

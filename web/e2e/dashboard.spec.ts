@@ -26,6 +26,7 @@ test("the TSO dashboard loads without a button press and shows every tile with i
   await expect(page.getByTestId("sales-net")).toHaveText("543,435.00");
   await expect(page.getByTestId("tile-channels-std").getByTestId("channel-std-donut")).toContainText("Grocery");
   await expect(page.getByTestId("geo-fencing")).toBeVisible();
+  await expect(page.getByTestId("geo-visits")).toHaveText(/^\d+ of \d+ visits$/); // geo_valid_visits of visits, as the server sends them
 });
 
 test("the live strike rate of one route: 1 of 43 is 2.3 percent", async ({ page }) => {
