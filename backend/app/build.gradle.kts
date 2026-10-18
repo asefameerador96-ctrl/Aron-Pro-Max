@@ -39,6 +39,8 @@ dependencies {
     // N-014 (qa): ContractConformanceTest validates live answers against contract/openapi.yaml (JSON Schema 2020-12).
     testImplementation(libs.json.schema.validator)
     testImplementation(libs.snakeyaml.engine)
+    // N-014: the conformance run enrols a phone with a self-built key-attestation chain (dev token, no Google root).
+    testImplementation(libs.bouncycastle.bcpkix)
     testRuntimeOnly(libs.junit.platform.launcher)
 }
 
