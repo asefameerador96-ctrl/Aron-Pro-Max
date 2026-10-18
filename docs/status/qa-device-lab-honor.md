@@ -127,6 +127,8 @@ zone; for step 5 one SR must have sent a request (New outlet, Outlet closure or 
 gives the 4-digit bind code. Passwords and tokens come from the owner's vault, never typed into chat. Printer steps are not part of this
 walkthrough (the AMO sale uses the SR sale screens, covered in the SR walkthrough).
 
+**Honest note:** written from the code and the string files of the lane, NOT yet run on a phone (the AMO app has never been on a device); a step that does not match what you see is a finding, not your mistake: write what you saw.
+
 ## D. AMO (about 10 minutes)
 | # | Step | You should see | OK |
 |---|---|---|---|
