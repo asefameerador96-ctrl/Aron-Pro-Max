@@ -9,7 +9,7 @@ import { seedCodeLists, seedTables, tableDefs } from "./master-seed";
 import { maskAudit } from "./audit-mask";
 import { freshConfigStore, handleConfig, type ConfigStore } from "./config";
 import { handleCustom, seedCustom, type CustomState } from "./custom";
-import { freshDashStore, handleDash, hasPii, type DashStore } from "./dash";
+import { freshDashStore, handleDash, type DashStore } from "./dash";
 import type { AuditEntry, Cluster, LoginResponse, Me, Problem, ProblemCode, Role, ScopeSummary, TokenPair, UserSummary } from "../src/contract/types";
 
 interface MockUser {
@@ -336,7 +336,7 @@ async function handle(state: State, reset: () => void, req: IncomingMessage, res
   const user = a.user;
 
   // PII reveal (backend-authz, V0086): ADMIN and SUPERADMIN hold pii.reveal; their Me.pii is true only inside the window.
-  // Known gap: ANALYST and SUPPORT keep the mock's older always-on PII (the server never reveals to them).
+  // Every other role (ANALYST, SUPPORT, TSO...) is masked always; the dashboards and reports follow Me.pii.
   const revealer = user.summary.role === "ADMIN" || user.summary.role === "SUPERADMIN";
   if (path === "/v1/auth/reauth" && method === "POST") {
     if (!revealer) return send(res, 403, problem(403, "ERR_FORBIDDEN"));
@@ -356,7 +356,7 @@ async function handle(state: State, reset: () => void, req: IncomingMessage, res
   }
 
   if (path === "/v1/me") {
-    const pii = revealer ? a.piiUntil !== null : hasPii(user.summary.role);
+    const pii = revealer && a.piiUntil !== null;
     const perms = user.summary.role === "ADMIN" ? ["admin.master.write", "admin.audit.read"] : ["dashboards.read"];
     const me: Me = { user: user.summary, permissions: revealer ? [...perms, "pii.reveal"] : perms, scope: user.scope, pii, pii_until: revealer && a.piiUntil !== null ? new Date(a.piiUntil).toISOString() : null, mfa_enabled: user.mfa, ...(user.summary.role === "TSO" ? { menus: [{ menu_id: "dashboard", actions: ["view"] as ("view")[] }] } : {}) };
     return send(res, 200, me);
@@ -383,6 +383,7 @@ async function handle(state: State, reset: () => void, req: IncomingMessage, res
   if (state.failPrefix && path.startsWith(state.failPrefix)) return send(res, 500, problem(500, "ERR_INTERNAL"));
 
   if (!user.master && await handleDash({
+    piiOpen: revealer && a.piiUntil !== null,
     user: { role: user.summary.role, scope: user.scope, id: user.summary.user_id, name: user.summary.full_name, password: state.dash.passwords[user.summary.user_id] ?? user.password },
     method, path, url, store: state.dash, problem,
     body: () => readJson(req),
