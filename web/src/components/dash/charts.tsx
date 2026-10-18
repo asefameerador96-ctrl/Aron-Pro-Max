@@ -88,7 +88,7 @@ export interface Column {
 export function ColumnChart({ rows, label, testId, height = 200 }: { rows: readonly Column[]; label: string; testId?: string; height?: number }) {
   const max = Math.max(1, ...rows.map((r) => r.value));
   return (
-    <div className="overflow-x-auto" data-testid={testId}>
+    <div tabIndex={0} className="overflow-x-auto focus-visible:outline-(length:--focus-w) focus-visible:outline-offset-2 outline-focus" data-testid={testId}>
       <ul aria-label={label} className="flex items-end gap-3 pt-2" style={{ minWidth: Math.max(rows.length * 64, 0) }}>
         {rows.map((r, i) => (
           <li key={r.key} data-label={r.label} data-value={r.value} className="flex w-16 min-w-0 flex-1 flex-col items-center justify-end gap-1" style={{ height: height + 56 }}>

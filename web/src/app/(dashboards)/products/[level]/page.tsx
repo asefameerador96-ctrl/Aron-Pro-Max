@@ -37,7 +37,7 @@ export default async function ProductLevelPage({ params }: { params: Promise<{ l
           {t(locale, "report.empty")}
         </p>
       ) : (
-        <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white shadow-sm">
+        <div tabIndex={0} className="overflow-x-auto rounded-lg border border-slate-200 bg-white shadow-sm focus-visible:outline-(length:--focus-w) focus-visible:outline-offset-2 outline-focus">
           <table className="min-w-full divide-y divide-slate-200 text-sm" data-testid="products-table">
             <thead className="bg-slate-50 text-left">
               <tr>
