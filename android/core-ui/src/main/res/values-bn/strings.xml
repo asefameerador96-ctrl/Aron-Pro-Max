@@ -125,4 +125,6 @@
     <string name="core_ui_look_server">সার্ভার</string>
     <string name="core_ui_look_notice">আজকের কাজ শেষ করার আগে, অবশ্যই সব অপারেশন ডাটা সিঙ্ক করুন এবং এই অপশন থেকে বিক্রয় জমা সাবমিট করুন।</string>
     <string name="core_ui_look_sync">ডাটা সিঙ্ক করুন</string>
+    <string name="core_ui_look_discount">ডিসকাউন্ট</string>
+    <string name="core_ui_look_net_value">ডিসকাউন্ট মূল্য</string>
 </resources>

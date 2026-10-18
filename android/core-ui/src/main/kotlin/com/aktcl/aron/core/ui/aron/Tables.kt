@@ -1,6 +1,9 @@
 package com.aktcl.aron.core.ui.aron
 
 import androidx.compose.foundation.background
+import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -195,10 +198,33 @@ private fun cellAlign(index: Int, count: Int): TextAlign = when (index) {
 }
 
 /**
- * The day summary table (PARITY-SPEC s2.10, sr/summary.png): a dark `#4D4D4D` header row of [headers] (white 12 sp, rounded top), one
- * block per [rows] item (the SKU name in purple 20 sp over its figures) on alternating white and `#F0F0F0`, then the category
- * [subtotals] in purple (the label takes the first column, its values the rest), then the [totals] block. Not lazy (one day's SKUs);
- * put it in a scrolling column and the full-width `AronPrimaryButton(reverse = true, glyph = Print)` under it.
+ * A cell text that never breaks inside a word: it shrinks from the style's size (down to [minSize]) until its longest word fits the
+ * cell, then wraps only between words (sr/summary.png keeps "৪,৬৮৭.৫০৳" and "ডিসকাউন্ট" whole on 360 dp).
+ */
+@Composable
+internal fun FitText(text: String, style: TextStyle, minSize: TextUnit, modifier: Modifier = Modifier, maxLines: Int = Int.MAX_VALUE) {
+    BoxWithConstraints(modifier) {
+        val measurer = rememberTextMeasurer()
+        val maxPx = constraints.maxWidth
+        val size = remember(text, style, maxPx, minSize) {
+            val words = text.split(' ').filter { it.isNotEmpty() }
+            var sp = style.fontSize.value
+            while (sp > minSize.value && words.any { measurer.measure(it, style.copy(fontSize = sp.sp), softWrap = false, maxLines = 1).size.width > maxPx }) sp -= 0.5f
+            sp
+        }
+        Text(text, style = style.copy(fontSize = size.sp), maxLines = maxLines, modifier = Modifier.fillMaxWidth())
+    }
+}
+
+/** Column weights of the six-column day summary at 360 dp (memo, quantity, value, discount, net value, return). */
+private val SummaryWeights6 = listOf(0.7f, 0.9f, 1.4f, 1.2f, 1.4f, 0.8f)
+
+/**
+ * The day summary table (PARITY-SPEC s2.10, sr/summary.png): a dark `#4D4D4D` header row of [headers] (white bold 11 sp, at most two
+ * lines, rounded top), one block per [rows] item (the SKU name in purple 20 sp over its figures, 14 sp) on alternating white and
+ * `#F0F0F0`, then the category [subtotals] in purple (the label takes the first column, its values the rest), then the [totals] block.
+ * [weights] set the column widths (default: the six-column summary weights, else equal); no cell breaks inside a word or a number, it
+ * shrinks instead. Not lazy (one day's SKUs); put it in a scrolling column with `AronPrimaryButton(reverse = true, glyph = Print)` under it.
  */
 @Composable
 fun SummaryTable(
@@ -207,27 +233,33 @@ fun SummaryTable(
     modifier: Modifier = Modifier,
     subtotals: List<TotalsLine> = emptyList(),
     totals: List<SummaryTotal> = emptyList(),
+    weights: List<Float>? = null,
 ) {
     val look = LocalAronLook.current
     val n = headers.size
+    val w = weights ?: if (n == SummaryWeights6.size) SummaryWeights6 else List(n) { 1f }
     Column(modifier.fillMaxWidth().clip(RoundedCornerShape(AronLook.CardRadius)).background(look.card)) {
-        Row(Modifier.fillMaxWidth().background(look.tableHeader).padding(horizontal = 12.dp, vertical = 14.dp)) {
-            headers.forEachIndexed { i, h -> Text(h, style = lookStyle(12.sp, bold = true, color = Color.White, align = cellAlign(i, n)), modifier = Modifier.weight(1f)) }
+        Row(Modifier.fillMaxWidth().background(look.tableHeader).padding(horizontal = 10.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+            headers.forEachIndexed { i, h ->
+                FitText(h, lookStyle(11.sp, bold = true, color = Color.White, align = cellAlign(i, n)), 7.sp, Modifier.weight(w[i]).padding(horizontal = 1.dp), maxLines = 2)
+            }
         }
         rows.forEachIndexed { r, row ->
-            Column(Modifier.fillMaxWidth().background(if (r % 2 == 0) look.card else look.rowAlt).padding(horizontal = 12.dp, vertical = 10.dp)) {
+            Column(Modifier.fillMaxWidth().background(if (r % 2 == 0) look.card else look.rowAlt).padding(horizontal = 10.dp, vertical = 10.dp)) {
                 Text(row.title, style = lookStyle(20.sp, color = look.purple))
                 Row(Modifier.fillMaxWidth().padding(top = 6.dp)) {
-                    row.values.forEachIndexed { i, v -> Text(v, style = lookStyle(14.sp, color = look.ink, align = cellAlign(i, n)), modifier = Modifier.weight(1f)) }
+                    row.values.forEachIndexed { i, v -> FitText(v, lookStyle(14.sp, color = look.ink, align = cellAlign(i, n)), 7.sp, Modifier.weight(w[i]).padding(horizontal = 1.dp)) }
                 }
             }
         }
         if (subtotals.isNotEmpty()) {
-            Column(Modifier.fillMaxWidth().background(look.rowAlt).padding(horizontal = 12.dp, vertical = 8.dp)) {
+            Column(Modifier.fillMaxWidth().background(look.rowAlt).padding(horizontal = 10.dp, vertical = 8.dp)) {
                 subtotals.forEach { line ->
-                    Row(Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
-                        Text(line.label, style = lookStyle(16.sp, color = look.purple), modifier = Modifier.weight(1f))
-                        line.values.forEachIndexed { i, v -> Text(v, style = lookStyle(14.sp, color = look.purple, align = cellAlign(i + 1, n)), modifier = Modifier.weight(1f)) }
+                    Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                        FitText(line.label, lookStyle(16.sp, color = look.purple), 9.sp, Modifier.weight(w[0]).padding(horizontal = 1.dp))
+                        line.values.forEachIndexed { i, v ->
+                            FitText(v, lookStyle(14.sp, color = look.purple, align = cellAlign(i + 1, n)), 7.sp, Modifier.weight(w.getOrElse(i + 1) { 1f }).padding(horizontal = 1.dp))
+                        }
                     }
                 }
             }
