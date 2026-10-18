@@ -31,6 +31,9 @@ class TsoDashboardsTest {
 
     @Test fun compactUsesLakhAndCrore() {
         assertEquals(TsoDashboards.Compact("3.61", TsoDashboards.Scale.CRORE), TsoDashboards.compact(36_100_000))
+        assertEquals("1,000.00 crore and up is grouped in threes", TsoDashboards.Compact("1,000.00", TsoDashboards.Scale.CRORE), TsoDashboards.compact(10_000_000_000))
+        assertEquals(TsoDashboards.Compact("12,345.68", TsoDashboards.Scale.CRORE), TsoDashboards.compact(123_456_789_000))
+        assertEquals(TsoDashboards.Compact("999.99", TsoDashboards.Scale.CRORE), TsoDashboards.compact(9_999_900_000))
         assertEquals(TsoDashboards.Compact("1.11", TsoDashboards.Scale.LAKH), TsoDashboards.compact(111_000))
         assertEquals(TsoDashboards.Compact("28067", TsoDashboards.Scale.NONE), TsoDashboards.compact(28_067))
     }

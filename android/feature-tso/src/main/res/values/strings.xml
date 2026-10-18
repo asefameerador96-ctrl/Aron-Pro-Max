@@ -145,7 +145,7 @@
     <string name="tso_unit_piece">pieces</string>
     <string name="tso_dash_sales_of">Sales (%1$s)</string>
     <string name="tso_dash_lakh">Lakh</string>
-    <string name="tso_dash_crore">Crore</string>
+    <string name="tso_dash_crore">Cr</string>
     <string name="tso_dash_cpr">Live CPR</string>
     <string name="tso_dash_x_of_y">%1$s of %2$s</string>
     <string name="tso_dash_cpr_labels">Successful calls of target outlets</string>

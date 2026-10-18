@@ -43,7 +43,7 @@ import com.aktcl.aron.core.ui.AronConfirmDialog
 import com.aktcl.aron.core.ui.AronEmptyState
 import com.aktcl.aron.core.ui.AronIcons
 import com.aktcl.aron.core.ui.AronListRow
-import com.aktcl.aron.core.ui.AronSecondaryButton
+import com.aktcl.aron.core.ui.AronYesButton
 import com.aktcl.aron.core.ui.AronSectionLabel
 import com.aktcl.aron.core.ui.AronTextButton
 import com.aktcl.aron.core.ui.AronTokens
@@ -135,7 +135,7 @@ fun MemoMenuScreen(
                         trailingContent = {
                             Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(AronTokens.Space.Xs)) {
                                 MoneyText(money(r.totalMtk), style = MaterialTheme.typography.titleMedium, textAlign = TextAlign.End)
-                                if (r.dueMtk > 0) Pill(c.warningContainer, c.warningOnContainer, AronIcons.Warning, stringResource(R.string.memo_due_chip))
+                                if (r.dueMtk > 0) Pill(c.warningContainer, c.warningOnContainer, AronIcons.Warning, stringResource(R.string.memo_due_chip_amount, money(r.dueMtk)))
                             }
                         },
                     )
@@ -289,7 +289,7 @@ private fun CreditBox(dueText: String, canMarkPaid: Boolean, onMarkPaid: () -> U
             Text(stringResource(R.string.memo_credit_title), style = MaterialTheme.typography.titleSmall, color = ink, modifier = Modifier.weight(1f))
         }
         Text(stringResource(R.string.memo_due, dueText), style = MaterialTheme.typography.bodyLarge, color = ink)
-        if (canMarkPaid) AronSecondaryButton(stringResource(R.string.memo_mark_paid), onMarkPaid, Modifier.fillMaxWidth())
+        if (canMarkPaid) AronYesButton(stringResource(R.string.memo_mark_paid), onMarkPaid, Modifier.fillMaxWidth()) // the manual's green "পরিশোধিত করুন" (M6)
     }
 }
 
