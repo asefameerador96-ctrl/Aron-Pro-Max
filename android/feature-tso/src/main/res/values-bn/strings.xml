@@ -183,6 +183,10 @@
     <string name="tso_fs_forbidden">এই জোন আপনার এলাকায় নয়।</string>
     <string name="tso_fs_refused">সার্ভার এটি গ্রহণ করেনি। জোন ও তারিখ দেখুন।</string>
     <string name="tso_fs_server">কিছু একটা ভুল হয়েছে। আবার চেষ্টা করুন।</string>
+    <string name="tso_fs_level_wing">উইং</string>
+    <string name="tso_fs_level_division">ডিভিশন</string>
+    <string name="tso_fs_level_territory">টেরিটরি</string>
+    <string name="tso_fs_level_house">হাউস</string>
     <string name="tso_fs_err_zone">একটি জোন বাছাই করুন</string>
     <string name="tso_fs_err_future">বিক্রয়ের তারিখ ভবিষ্যতের হতে পারে না</string>
     <string name="tso_fs_warn_not_submitted">কিছু রুট বিক্রয় জমা দেয়নি।</string>
@@ -250,4 +254,5 @@
         <item>নভেম্বর</item>
         <item>ডিসেম্বর</item>
     </string-array>
+    <string name="tso_dash_sr_of_route">এসআর: %1$s</string>
 </resources>

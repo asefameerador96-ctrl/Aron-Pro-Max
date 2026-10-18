@@ -74,8 +74,16 @@ private suspend fun create(call: ApplicationCall, d: SupportUploadDeps): Support
             .map { rs, _ -> arrayOf(rs.getLong(1), rs.getLong(2), rs.getBytes(3), rs.getString(4)) }.findOne().orElse(null)
         // Another user's uuid or a different file under the same uuid is a conflict, never a second blob path.
         fun same(r: Array<out Any?>) = r[0] == p.userId && r[1] == req.bytes && (r[2] as ByteArray).contentEquals(sha)
-        // Replay first: a stored upload answers before the cap, so a retry after cfg.support.max_upload_mb was lowered gets its SAS.
-        row()?.let { r -> if (!same(r)) throw ApiProblem(ProblemCode.ERR_CONFLICT, "upload_uuid already stores a different file"); return@inTransaction (r[3] as String) to false }
+        // Replay first: a stored upload answers before the cap, so a retry after cfg.support.max_upload_mb was lowered gets its SAS,
+        // while it is younger than cfg.support.upload_replay_max_h (D-PDA-REPLAY-AGE); an older one is refused, nothing is written.
+        row()?.let { r ->
+            if (!same(r)) throw ApiProblem(ProblemCode.ERR_CONFLICT, "upload_uuid already stores a different file")
+            val maxH = AdminSupport.intConfig(d.config, "cfg.support.upload_replay_max_h", 168).coerceIn(1, 720)
+            val expired = h.createQuery("SELECT created_at < now() - make_interval(hours => :h) FROM app.support_upload WHERE upload_uuid = :u")
+                .bind("h", maxH).bind("u", id).mapTo(Boolean::class.java).one()
+            if (expired) throw ApiProblem(ProblemCode.ERR_VALIDATION, "the upload under this upload_uuid is older than $maxH h: start a new upload", errors = listOf(FieldError("body.upload_uuid", "replay_expired")))
+            return@inTransaction (r[3] as String) to false
+        }
         val maxMb = AdminSupport.intConfig(d.config, "cfg.support.max_upload_mb", 20)
         if (req.bytes > maxMb * 1_048_576L) throw ApiProblem(ProblemCode.ERR_PAYLOAD_TOO_LARGE, "the file is above $maxMb MB", errors = listOf(FieldError("body.bytes", "above_cap")))
         val path = "support/${now.atOffset(ZoneOffset.UTC).year}/${p.userId}/$id.zip.enc"

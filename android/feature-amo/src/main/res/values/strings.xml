@@ -258,6 +258,8 @@
     <string name="amo_rep_by_route">By route</string>
     <string name="amo_rep_route_line">%1$s memos · gross %2$s</string>
     <string name="amo_rep_memos">Memos</string>
+    <string name="amo_rep_by_category">By category</string>
+    <string name="amo_rep_cat_qty">%1$s %2$s sold</string>
     <string name="amo_rep_cpr">CPR %1$s</string>
     <string name="amo_rep_memos_n">%1$s memos</string>
     <string name="amo_rep_target">Target outlets</string>
@@ -287,4 +289,6 @@
     <string name="amo_ops_section">Shop operations</string>
     <string name="amo_mo_note">Take the outlet photo. Its location goes for approval as a request to correct the outlet\'s position.</string>
     <string name="amo_mo_continue">Continue</string>
+    <string name="amo_success_title">Success</string>
+    <string name="amo_ok">OK</string>
 </resources>

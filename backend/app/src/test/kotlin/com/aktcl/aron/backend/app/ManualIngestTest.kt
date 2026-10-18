@@ -80,7 +80,7 @@ class ManualIngestTest {
             h.execute("INSERT INTO app.user_scope (user_id, node_type, node_id, valid_from, reason) SELECT $narrowAdmin, 'territory', id, DATE '2026-01-01', 'test' FROM app.territory WHERE code = 'T-OTHER'")
             // Working-day windows (F-SYS-090): the paper window counts them like the phone path (lead ruling 2026-10-15).
             h.execute("INSERT INTO app.cfg_version (config_version, kind, committed_by, summary) SELECT max(config_version) + 1, 'change', (SELECT id FROM app.app_user WHERE username = 'aron.system'), 'working days' FROM app.cfg_version")
-            h.execute("INSERT INTO app.cfg_value (key, scope_type, scope_id, value, effective_from, config_version, reason) SELECT 'cfg.calendar.window_unit', 'global', 0, '\"working_days\"'::jsonb, now() - interval '1 day', max(config_version), 'test' FROM app.cfg_version")
+            h.execute("INSERT INTO app.cfg_value (key, scope_type, scope_id, value, effective_from, config_version, reason) SELECT 'cfg.calendar.window_unit', 'global', 0, '\"working_days\"'::jsonb, TIMESTAMPTZ '${ApiWorld.CFG_FROM}', max(config_version), 'test' FROM app.cfg_version")
             // entry_source, entered_by_user_id, the manual_entry flag and MEMO_DUPLICATE_SUSPECT come from db V0077/V0078.
         }
         RecordWriter.forgetColumns()

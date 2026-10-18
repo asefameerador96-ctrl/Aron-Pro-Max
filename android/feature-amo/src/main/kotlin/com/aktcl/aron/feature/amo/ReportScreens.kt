@@ -78,7 +78,12 @@ private fun cell(v: JsonPrimitive?, type: String, money: (Long) -> String): Stri
 fun StdMemoReportContent(
     range: Pair<String, String>, data: ReportData?, byRoute: List<RouteStd>, bangla: Boolean, money: (Long) -> String,
     stale: Boolean, failed: Boolean, modifier: Modifier = Modifier,
+    /** True when [byRoute] comes from the server's route totals (`route-memo`, any range); null: exact only if the memo list is complete. */
+    exactTotals: Boolean? = null,
+    /** The per-route STD by category (`route-std`), shown under its route; empty while it is missing or too long to be true. */
+    categories: List<RouteCategory> = emptyList(),
 ) {
+    val totalsShown = exactTotals ?: (data?.truncated != true)
     Column(modifier.fillMaxSize()) {
         Column(Modifier.padding(horizontal = AronTokens.Space.Screen)) {
             Notes(stale, failed, data?.truncated == true)
@@ -95,13 +100,26 @@ fun StdMemoReportContent(
             item {
                 Column(Modifier.padding(horizontal = AronTokens.Space.Screen)) {
                     // The route totals are only true for a complete report: a truncated one shows the memos below and its note instead.
-                    if (data.truncated) AronBanner(stringResource(R.string.amo_rep_totals_hidden), kind = BannerKind.Info)
+                    if (!totalsShown) AronBanner(stringResource(R.string.amo_rep_totals_hidden), kind = BannerKind.Info)
                     else AronSectionLabel(stringResource(R.string.amo_rep_by_route))
-                    if (!data.truncated) byRoute.forEachIndexed { i, r ->
+                    if (totalsShown) byRoute.forEachIndexed { i, r ->
                         AronListRow(
                             r.code.ifBlank { stringResource(R.string.amo_live_dash) }, subtitle = stringResource(R.string.amo_rep_route_line, localizedNumber(r.memos.toLong()), money(r.grossMtk)),
                             trailing = money(r.netMtk), position = pos(i, byRoute.size), divider = i < byRoute.lastIndex, flat = true,
                         )
+                    }
+                    val cats = categories.groupBy { it.route }
+                    if (totalsShown && cats.isNotEmpty()) {
+                        AronSectionLabel(stringResource(R.string.amo_rep_by_category))
+                        cats.entries.forEach { (route, list) ->
+                            list.forEachIndexed { i, c ->
+                                AronListRow(
+                                    "${route.ifBlank { stringResource(R.string.amo_live_dash) }} · ${c.category.ifBlank { stringResource(R.string.amo_live_dash) }}",
+                                    subtitle = c.qty?.let { q -> stringResource(R.string.amo_rep_cat_qty, localizedNumber(q), reportUnit(c.unit)) },
+                                    trailing = money(c.grossMtk), position = pos(i, list.size), divider = i < list.lastIndex, flat = true,
+                                )
+                            }
+                        }
                     }
                     AronSectionLabel(stringResource(R.string.amo_rep_memos))
                 }
@@ -170,4 +188,9 @@ fun SalesSummaryRouteContent(card: RouteCard, money: (Long) -> String, modifier:
             )
         }
     }
+}
+
+@Composable
+private fun reportUnit(unit: String?) = when (unit) {
+    "stick" -> stringResource(R.string.amo_unit_stick); "dozen" -> stringResource(R.string.amo_unit_dozen); "piece" -> stringResource(R.string.amo_unit_piece); else -> unit.orEmpty()
 }

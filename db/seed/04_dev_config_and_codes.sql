@@ -1,6 +1,8 @@
 -- Dev database overrides of docs/24 s9.4 (D24-17): enrolment, lockdown and integrity are relaxed so test phones work
 -- before enrolment. Production never loads this file. The overrides get their own, new config version (the next
 -- number), found again by its summary on a re-run, so phones that already hold a later version still receive them.
+-- effective_from is a fixed instant (as V0006/V0030), not now(): a reader on a test or API clock before the seeding
+-- moment would otherwise see no override. A dev database seeded earlier keeps its rows (the NOT EXISTS guards).
 
 INSERT INTO app.cfg_version (config_version, kind, committed_by, summary, max_risk_class)
   SELECT coalesce((SELECT max(config_version) FROM app.cfg_version), 0) + 1, 'change', u.id,
@@ -9,7 +11,7 @@ INSERT INTO app.cfg_version (config_version, kind, committed_by, summary, max_ri
    WHERE u.username = 'aron.system'
      AND NOT EXISTS (SELECT 1 FROM app.cfg_version WHERE summary = 'Dev database overrides (docs/24 s9.4, seed)');
 INSERT INTO app.cfg_value (key, scope_type, scope_id, value, effective_from, config_version, created_by, reason)
-  SELECT v.key, 'global', 0, v.value, now(), cv.config_version, u.id, 'dev database override (D24-17)'
+  SELECT v.key, 'global', 0, v.value, TIMESTAMPTZ '2026-01-01T00:00:00Z', cv.config_version, u.id, 'dev database override (D24-17)'
     FROM (VALUES ('cfg.device.require_enrolled', 'false'::jsonb), ('cfg.device.lockdown_level', '"dev"'::jsonb),
                  ('cfg.device.require_integrity', 'false'::jsonb)) AS v(key, value)
     JOIN app.app_user u ON u.username = 'aron.system'

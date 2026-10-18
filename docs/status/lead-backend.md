@@ -47,7 +47,7 @@ Questions with the lead: owner phone unmasked to the TSO in the bundle; fleet-si
 
 Open for others: db + lead register `cfg.geo.update_base_*` (3 keys, docs/24 s9.5 rows); infra adds the Gradle OSV
 and APK security CI steps; lead decides a TSO outlet bundle section and whether submit void comes back.
-Traps: V0084-V0087 are taken by lane/lead-hardening (not on INT): do not number a migration in that range or after it
+Traps (updated 2026-10-18 05:30): D-MIG-RANGE-01 (lead, lane/lead-docs-night 2e962851) lifted the V0084-V0087 hold: INT stops at V0083, lead-hardening renumbers its V0084-V0087 at promotion; lead-backend took V0084, V0085 is backend-authz's. Before this ruling: do not number a migration in that range or after it
 until it lands. backend:app tests take about 15 minutes locally.
 
 Traps found tonight: run only one Gradle build at a time on this box (a checker's concurrent build recompiled classes
@@ -97,3 +97,22 @@ cfg.memo.allow_negative_net is not read on the server (both paths assume true); 
 route-days (route_id order) before final_submit. The paper backfill replay for another keyer still re-prices (409 as
 before). Local trap: start PostgreSQL with `pg_ctlcluster 16 main start` and export
 ARON_TEST_PG_URL=jdbc:postgresql://localhost:5432/postgres?user=postgres&password=postgres.
+
+### Known backend follow-ups (lead rulings 2026-10-18 04:58 UTC)
+
+- (b) Multi-record transactions (IngestService acceptQuarantined, the backfill match, BundleService plans) still take
+  route-day row locks record by record, not in (date, route_id) order. A deadlock there now aborts and retries the
+  family (afterStored rethrows transient failures) instead of silently dropping a late count. No code now.
+- (e) When `POST /v1/day/reopen` is built: lock the zone's route-days (`ORDER BY route_id FOR NO KEY UPDATE`) BEFORE
+  updating app.final_submit, the order ingest uses (route_day, then final_submit), and read the clock after the
+  zone-day lock (KD-2). Otherwise a reopen deadlocks against a late row.
+- (c) One-off, read-only, dev data only (not run from a lane container: no dev credentials here; whoever runs it
+  writes the count here, no data change):
+  `SELECT client_uuid, business_date, gross_mtk, net_mtk, server_flags FROM app.memo WHERE net_mtk < 0 AND gross_mtk <> 0 ORDER BY business_date;`
+  Rows are pre-f58e18a headers with a gross and a negative net that never got a later child (so never flagged).
+  Result: not run yet.
+- (a) PDA stored-upload age limit: ruled OK (refused with a visible reason, never partial, config key with a generous
+  default agreed in a decision line). Blocked on a config key: registering `cfg.support.upload_replay_max_h` needs a
+  migration. DONE in ac70e42 as V0084 (D-MIG-RANGE-01; hardening renumbers its own V0084-V0087 at promotion).
+- (d) `cfg.memo.allow_negative_net`: fixed by D-18, read by no code (DECISIONS D-18-FIXED-KEY); 5edcace (a switch)
+  reverted in cf16c05. A later migration marks it read-only or removes it.

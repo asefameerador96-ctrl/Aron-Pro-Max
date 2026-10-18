@@ -194,7 +194,7 @@ class AdminNotificationTest {
         application { aronApi(wiring) }
         val admin = client.login("admin1001")
         fresh.db.jdbi.useHandle<Exception> { h ->
-            h.execute("INSERT INTO app.cfg_value (key, scope_type, scope_id, value, effective_from, config_version, reason) SELECT 'cfg.ops.push_enabled', 'global', 0, 'false'::jsonb, now() - interval '1 second', max(config_version), 'test' FROM app.cfg_version")
+            h.execute("INSERT INTO app.cfg_value (key, scope_type, scope_id, value, effective_from, config_version, reason) SELECT 'cfg.ops.push_enabled', 'global', 0, 'false'::jsonb, TIMESTAMPTZ '${ApiWorld.CFG_FROM}', max(config_version), 'test' FROM app.cfg_version")
         }
         val audits = count("SELECT count(*) FROM app.audit_log WHERE entity = 'notification'")
         try {
@@ -205,7 +205,7 @@ class AdminNotificationTest {
             assertEquals(audits, count("SELECT count(*) FROM app.audit_log WHERE entity = 'notification'"))
         } finally {
             fresh.db.jdbi.useHandle<Exception> { h ->
-                h.execute("UPDATE app.cfg_value SET effective_to = now() WHERE key = 'cfg.ops.push_enabled' AND scope_type = 'global' AND effective_to IS NULL")
+                h.execute("UPDATE app.cfg_value SET effective_to = TIMESTAMPTZ '${ApiWorld.CFG_SWITCH}' WHERE key = 'cfg.ops.push_enabled' AND scope_type = 'global' AND effective_to IS NULL")
             }
             now.updateAndGet { it.plusSeconds(31) }
         }
