@@ -477,7 +477,7 @@ class AmoDay(
         val refused = state == com.aktcl.aron.core.database.entity.OutboxState.REJECTED || state == com.aktcl.aron.core.database.entity.OutboxState.QUARANTINED
         com.aktcl.aron.feature.amo.AssignedTask(
             r.clientUuid, s("task_type_code").orEmpty(), s("title").orEmpty(), s("outlet_id")?.toLongOrNull(), s("assignee_user_id")?.toLongOrNull() ?: return@mapNotNull null,
-            "ongoing", s("due_date"), null, null, r.meta.capturedAt,
+            "ongoing", s("due_date"), null, null, r.meta.capturedAt, description = s("description")?.takeIf { it.isNotBlank() },
             waiting = state == com.aktcl.aron.core.database.entity.OutboxState.PENDING || state == com.aktcl.aron.core.database.entity.OutboxState.IN_FLIGHT, rejected = refused,
         )
     }

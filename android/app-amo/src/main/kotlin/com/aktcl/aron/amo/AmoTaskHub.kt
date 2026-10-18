@@ -34,9 +34,12 @@ import com.aktcl.aron.feature.outlet.OutletPickerContent
 import com.aktcl.aron.feature.amo.R as AmoR
 import kotlinx.coroutines.launch
 
-private enum class TaskLeaf { LIST, PICK_SR, PICK_ROUTE, PICK_OUTLET, FORM }
+private enum class TaskLeaf { LIST, PICK_ROUTE, PICK_OUTLET, PICK_SR, FORM }
 
-/** The Team hub's Task Delegation (F-AMO-018 list, F-AMO-019 assign): SR, route, outlet, then type, date and text. Assigning queues a `task` record offline. */
+/**
+ * The Team hub's Task Delegation (F-AMO-018 list, F-AMO-019 assign), in the manual's order: route, then outlet, then the SR (derived
+ * from the route: asked only when more than one SR covers it), then type, date and text. Assigning queues a `task` record offline.
+ */
 @Composable
 fun AmoTaskHub(day: AmoDay, onBack: () -> Unit) {
     var leaf by rememberSaveable { mutableStateOf(TaskLeaf.LIST) }
@@ -49,35 +52,41 @@ fun AmoTaskHub(day: AmoDay, onBack: () -> Unit) {
         team = runCatching { day.teamSrs() }.getOrDefault(emptyList())
         days = runCatching { day.routes() }.getOrDefault(emptyList())
     }
-    // After process death the picks that need a loaded list start over from the list.
-    if (leaf != TaskLeaf.LIST && leaf != TaskLeaf.PICK_SR && srId == null) leaf = TaskLeaf.PICK_SR
+    // After process death the picks that need an earlier pick start over from the route.
+    if ((leaf == TaskLeaf.PICK_OUTLET && routeId == null) || (leaf == TaskLeaf.PICK_SR && (routeId == null || outletId == null)) ||
+        (leaf == TaskLeaf.FORM && (srId == null || outletId == null))
+    ) leaf = TaskLeaf.PICK_ROUTE
+    val candidates = TaskDelegation.srsOfRoute(team, routeId ?: -1L)
     val back: () -> Unit = {
         when (leaf) {
             TaskLeaf.LIST -> onBack()
-            TaskLeaf.PICK_SR -> leaf = TaskLeaf.LIST
-            TaskLeaf.PICK_ROUTE -> leaf = TaskLeaf.PICK_SR
+            TaskLeaf.PICK_ROUTE -> leaf = TaskLeaf.LIST
             TaskLeaf.PICK_OUTLET -> leaf = TaskLeaf.PICK_ROUTE
-            TaskLeaf.FORM -> leaf = TaskLeaf.PICK_OUTLET
+            TaskLeaf.PICK_SR -> leaf = TaskLeaf.PICK_OUTLET
+            TaskLeaf.FORM -> leaf = if (candidates.size > 1) TaskLeaf.PICK_SR else TaskLeaf.PICK_OUTLET
         }
     }
     BackHandler(onBack = back)
     val sr = team.firstOrNull { it.userId == srId }
     AronScreen(topBar = { AronTopBar(stringResource(AmoR.string.amo_task_title), onBack = back) }) {
         when (leaf) {
-            TaskLeaf.LIST -> AmoTaskList(day, team, days.orEmpty(), onAssign = { leaf = TaskLeaf.PICK_SR })
-            TaskLeaf.PICK_SR -> TaskSrPickContent(team, { srId = it.userId; leaf = TaskLeaf.PICK_ROUTE })
+            TaskLeaf.LIST -> AmoTaskList(day, team, days.orEmpty(), onAssign = { srId = null; routeId = null; outletId = null; leaf = TaskLeaf.PICK_ROUTE })
             TaskLeaf.PICK_ROUTE -> {
                 val all = days ?: run { Box(Modifier.fillMaxSize(), Alignment.Center) { CircularProgressIndicator() }; return@AronScreen }
-                // An SR with no known route of their own (or none in today's list) falls back to the zone's routes: the server accepts any outlet in reach.
-                val mine = all.filter { sr == null || it.route.routeId in sr.routeIds }.ifEmpty { all }
-                AmoRoutePick(ControlCall.routes(mine), { routeId = it.routeId; leaf = TaskLeaf.PICK_OUTLET })
+                AmoRoutePick(ControlCall.routes(all), { routeId = it.routeId; leaf = TaskLeaf.PICK_OUTLET })
             }
             TaskLeaf.PICK_OUTLET -> {
                 var chip by rememberSaveable { mutableStateOf(OutletPicker.ALL_CHIP) }
                 val outlets = ControlCall.outlets(days.orEmpty(), routeId ?: -1L)
                 val all = OutletPicker.rows(outlets)
-                OutletPickerContent(OutletPicker.rows(outlets, chip), OutletPicker.chips(all), chip, { chip = it }, { r -> outletId = r.outlet.outletId; leaf = TaskLeaf.FORM })
+                OutletPickerContent(OutletPicker.rows(outlets, chip), OutletPicker.chips(all), chip, { chip = it }, { r ->
+                    outletId = r.outlet.outletId
+                    // One SR covers the route: that SR gets the task, no question asked.
+                    val one = TaskDelegation.srsOfRoute(team, routeId ?: -1L).singleOrNull()
+                    if (one != null) { srId = one.userId; leaf = TaskLeaf.FORM } else { srId = null; leaf = TaskLeaf.PICK_SR }
+                })
             }
+            TaskLeaf.PICK_SR -> TaskSrPickContent(candidates, { srId = it.userId; leaf = TaskLeaf.FORM })
             TaskLeaf.FORM -> {
                 val outlet = days.orEmpty().flatMap { it.outlets }.firstOrNull { it.outletId == outletId }
                 if (sr == null || outlet == null) Box(Modifier.fillMaxSize(), Alignment.Center) { CircularProgressIndicator() }

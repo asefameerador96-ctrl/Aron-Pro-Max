@@ -50,7 +50,7 @@ fun AssignedTasksContent(
             tasks.forEachIndexed { i, t ->
                 val lines = listOfNotNull(
                     t.outletId?.let { outletNames[it] }, srNames[t.assigneeId], t.dueDate?.let { stringResource(R.string.amo_task_due, localizedDigits(it)) },
-                    t.resolvedAt?.take(10)?.let { stringResource(R.string.amo_task_done_on, localizedDigits(it)) }, t.resolutionNote,
+                    t.resolvedAt?.take(10)?.let { stringResource(R.string.amo_task_done_on, localizedDigits(it)) }, t.resolutionNote, t.description,
                 )
                 AronListRow(
                     typeLabel(t.typeCode).ifBlank { t.title }, subtitle = lines.joinToString(stringResource(R.string.amo_verify_sep)),
