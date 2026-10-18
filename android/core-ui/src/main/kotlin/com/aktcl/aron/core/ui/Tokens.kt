@@ -228,6 +228,9 @@ data class AronLookColors(
     val disabledFill: Color, val disabledText: Color, val secondaryText: Color,
     val ink: Color, val inkMuted: Color, val columnHeader: Color, val underline: Color, val silhouette: Color, val silhouetteInk: Color,
     val badge: Color, val printerOff: Color, val printerOn: Color,
+    /** sr/sales-submit.png: the pink notice card, the online/offline dot, the row rule of the submit table, the disabled primary. */
+    val noticeFill: Color = hex(0xE6C8CA), val online: Color = hex(0x4CAF50), val offlineDot: Color = hex(0x9E9E9E),
+    val rowRule: Color = hex(0xF5E6E8), val primaryDisabled: Color = hex(0xB8B8B8),
 )
 
 object AronLook {
@@ -253,6 +256,7 @@ object AronLook {
         page = hex(0xF4F4F4), tileLabel = hex(0x1B0F5C), tileLabelOutlet = hex(0x8A0016), panelDark = hex(0x202020), tableHeader = hex(0x202020),
         targetTop = hex(0x2A0A6B), targetBottom = hex(0x2A0A6B), disabledText = hex(0x505050), secondaryText = hex(0x000000),
         ink = hex(0x000000), inkMuted = hex(0x202020), columnHeader = hex(0x202020), underline = hex(0x202020), silhouetteInk = hex(0x404040),
+        noticeFill = hex(0xFFFFFF), online = hex(0x00642F), offlineDot = hex(0x404040), rowRule = hex(0x202020), primaryDisabled = hex(0x8A8A8A),
     )
 
     /** Card and tile radius 12 dp, button radius 8 dp, the plus/minus square 36 dp drawn inside a 48 dp hit area. */

@@ -63,6 +63,7 @@ import com.aktcl.aron.core.ui.aron.Glyph.gear
 import com.aktcl.aron.core.ui.aron.Glyph.person
 import com.aktcl.aron.core.ui.aron.Glyph.printer
 import com.aktcl.aron.core.ui.aron.Glyph.save
+import com.aktcl.aron.core.ui.aron.Glyph.sync
 
 /** The horizontal `aron.gradient.bar` (red, plum, purple); solid in sunlight. [reverse] runs purple to red (the Summary Print button). */
 fun AronLookColors.barBrush(reverse: Boolean = false): Brush =
@@ -233,7 +234,7 @@ fun AronHomeHeader(
 }
 
 /** The leading glyph of a button (sr/stock.webp: Save has a disk, Print a printer). */
-enum class ButtonGlyph { Save, Print }
+enum class ButtonGlyph { Save, Print, Sync, Submit }
 
 @Composable
 private fun ButtonContent(text: String, glyph: ButtonGlyph?, icon: Painter?, ink: Color, gap: Color) {
@@ -242,6 +243,8 @@ private fun ButtonContent(text: String, glyph: ButtonGlyph?, icon: Painter?, ink
             icon != null -> Image(icon, contentDescription = null, modifier = Modifier.size(20.dp))
             glyph == ButtonGlyph.Save -> GlyphCanvas(Modifier.size(18.dp)) { save(ink, gap) }
             glyph == ButtonGlyph.Print -> GlyphCanvas(Modifier.size(20.dp)) { printer(ink, crossed = false, gap = gap) }
+            glyph == ButtonGlyph.Sync -> GlyphCanvas(Modifier.size(20.dp)) { sync(ink) }
+            glyph == ButtonGlyph.Submit -> GlyphCanvas(Modifier.size(18.dp)) { save(ink, gap) }
         }
         if (icon != null || glyph != null) Spacer(Modifier.width(8.dp))
         Text(text, style = lookStyle(18.sp, bold = true, color = ink, align = TextAlign.Center))
@@ -250,7 +253,8 @@ private fun ButtonContent(text: String, glyph: ButtonGlyph?, icon: Painter?, ink
 
 /**
  * The big action button (PARITY-SPEC s2.8): red-to-purple gradient ([reverse]: purple to red, as the Summary Print), 8 dp radius,
- * white bold label with an optional leading [glyph] or [icon], at least 52 dp tall. Disabled: grey `#E8E8E8` with `#A5A5A5` text.
+ * white bold label with an optional leading [glyph] or [icon], at least 52 dp tall. Disabled: solid grey `#B8B8B8` with a white label
+ * (the Sales-submit button before the sync, sr/sales-submit.png); the grey Print of Stock is [AronSecondaryButton].
  */
 @Composable
 fun AronPrimaryButton(
@@ -264,8 +268,8 @@ fun AronPrimaryButton(
 ) {
     val look = LocalAronLook.current
     val shape = RoundedCornerShape(AronLook.ButtonRadius)
-    val fill: Brush = if (enabled) (if (look.sunlight) SolidColor(look.purple) else look.barBrush(reverse)) else SolidColor(look.disabledFill)
-    val ink = if (enabled) Color.White else look.disabledText
+    val fill: Brush = if (enabled) (if (look.sunlight) SolidColor(look.purple) else look.barBrush(reverse)) else SolidColor(look.primaryDisabled)
+    val ink = Color.White
     Box(
         modifier
             .heightIn(min = AronLook.ButtonHeight)
@@ -273,7 +277,7 @@ fun AronPrimaryButton(
             .background(fill)
             .clickable(enabled = enabled, role = Role.Button, onClick = onClick),
         contentAlignment = Alignment.Center,
-    ) { ButtonContent(text, glyph, icon, ink, if (enabled) look.purple else look.disabledFill) }
+    ) { ButtonContent(text, glyph, icon, ink, if (enabled) look.purple else look.primaryDisabled) }
 }
 
 /** The grey button (PARITY-SPEC s2.8, the Stock Print before a printer is connected): `#E8E8E8`, dark label, `#A5A5A5` when disabled. */
@@ -383,4 +387,29 @@ fun AronTargetCard(
             }
         }
     }
+}
+
+/**
+ * The device status line of Sales submit (sr/sales-submit.png): [label] (`ডিভাইস স্ট্যাটাস`), a 20 dp dot, green when [online] and grey
+ * otherwise, then [state] (`অনলাইন` / `অফলাইন`) in the dot's colour. End-aligned.
+ */
+@Composable
+fun AronStatusDot(label: String, state: String, online: Boolean, modifier: Modifier = Modifier) {
+    val look = LocalAronLook.current
+    val tone = if (online) look.online else look.offlineDot
+    Row(modifier.fillMaxWidth().padding(vertical = 8.dp), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
+        Text(label, style = lookStyle(15.sp, color = look.ink))
+        Box(Modifier.padding(horizontal = 8.dp).size(20.dp).clip(CircleShape).background(tone))
+        Text(state, style = lookStyle(15.sp, color = tone, medium = true))
+    }
+}
+
+/** The pink notice card of Sales submit (sr/sales-submit.png): `#E6C8CA`, red 4 dp edges left and right, 14 sp text. */
+@Composable
+fun AronNoticeCard(text: String, modifier: Modifier = Modifier) {
+    val look = LocalAronLook.current
+    val shape = RoundedCornerShape(AronLook.ButtonRadius)
+    Box(
+        modifier.fillMaxWidth().clip(shape).background(look.red).padding(horizontal = 4.dp).background(look.noticeFill).padding(horizontal = 12.dp, vertical = 12.dp),
+    ) { Text(text, style = lookStyle(14.sp, color = look.ink)) }
 }

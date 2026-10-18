@@ -93,6 +93,17 @@ fun AronLookGallery(modifier: Modifier = Modifier) {
                 totals = listOf(SummaryTotal(stringResource(R.string.core_ui_look_grand_total), localizedDigits("4,771.50"))),
             )
             AronPrimaryButton(stringResource(R.string.core_ui_look_print), onClick = {}, modifier = Modifier.fillMaxWidth(), glyph = ButtonGlyph.Print, reverse = true)
+            AronStatusDot(stringResource(R.string.core_ui_look_device_status), stringResource(R.string.core_ui_look_online), online = true)
+            AronDataTable(
+                headers = listOf(stringResource(R.string.core_ui_look_subject), stringResource(R.string.core_ui_look_device), stringResource(R.string.core_ui_look_server)),
+                rows = listOf(
+                    listOf(stringResource(R.string.core_ui_look_tile_outlet), localizedNumber(6), localizedNumber(0)),
+                    listOf(stringResource(R.string.core_ui_look_tile_sale), localizedNumber(381), localizedNumber(0)),
+                ),
+            )
+            AronNoticeCard(stringResource(R.string.core_ui_look_notice))
+            AronPrimaryButton(stringResource(R.string.core_ui_look_sync), onClick = {}, modifier = Modifier.fillMaxWidth(), glyph = ButtonGlyph.Sync)
+            AronPrimaryButton(stringResource(R.string.core_ui_look_tile_submit), onClick = {}, modifier = Modifier.fillMaxWidth(), glyph = ButtonGlyph.Submit, enabled = false)
         }
     }
 }

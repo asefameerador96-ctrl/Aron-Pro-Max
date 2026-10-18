@@ -23,6 +23,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.Placeable
@@ -237,6 +240,31 @@ fun SummaryTable(
                         Text(t.value, style = lookStyle(22.sp, bold = true, color = look.purple, align = TextAlign.End), modifier = Modifier.padding(start = 12.dp))
                     }
                 }
+            }
+        }
+    }
+}
+
+/**
+ * A plain data table (sr/sales-submit.png): a solid purple header with rounded corners ([headers], white bold 22 sp), then white rows
+ * with a thin rule, 18 sp. The first column is start-aligned, the others centred; [weights] (one per column, default first 2, rest 1)
+ * set the column widths. Not lazy: for short tables such as the five submit rows.
+ */
+@Composable
+fun AronDataTable(headers: List<String>, rows: List<List<String>>, modifier: Modifier = Modifier, weights: List<Float>? = null) {
+    val look = LocalAronLook.current
+    val w = weights ?: List(headers.size) { if (it == 0) 2f else 1f }
+    val align = { i: Int -> if (i == 0) TextAlign.Start else TextAlign.Center }
+    Column(modifier.fillMaxWidth()) {
+        Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(AronLook.CardRadius)).background(look.panel).padding(horizontal = 12.dp, vertical = 16.dp)) {
+            headers.forEachIndexed { i, h -> Text(h, style = lookStyle(22.sp, bold = true, color = look.onPanel, align = align(i)), modifier = Modifier.weight(w[i])) }
+        }
+        rows.forEach { row ->
+            Row(
+                Modifier.fillMaxWidth().background(look.card).drawBehind { drawRect(look.rowRule, Offset(0f, size.height - 1.dp.toPx()), Size(size.width, 1.dp.toPx())) }
+                    .padding(horizontal = 12.dp, vertical = 12.dp),
+            ) {
+                row.forEachIndexed { i, cell -> Text(cell, style = lookStyle(18.sp, color = look.ink, align = align(i)), modifier = Modifier.weight(w[i])) }
             }
         }
     }
