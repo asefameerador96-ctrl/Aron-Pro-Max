@@ -72,7 +72,7 @@ class AuditReadTest {
                 null, null,
             )
             // An entity nobody listed: ANALYST and SUPPORT see member names only.
-            AuditLog.write(h, actor, "zz_unknown", "t-audit-4", "make", null, buildJsonObject { put("count", 3) }, null, null)
+            AuditLog.write(h, actor, "zz_unknown", "t-audit-4", "make", null, buildJsonObject { put("count", 3); put("Owner_Phone", "01712345678"); put("PREFIX", "AbC123"); put("home_lat", 23.7) }, null, null)
         }
     }
     @AfterAll fun tearDown() = env.close()
@@ -120,6 +120,9 @@ class AuditReadTest {
             val items = Json.parseToJsonElement(one("t-audit-3", role).side("after").s("items")).jsonArray.map { it.jsonObject }
             assertEquals(AuditMask.MASK, items[0].s("value")); assertEquals(AuditMask.MASK, items[0].s("old_value")); assertEquals("cfg.int.signing_secret", items[0].s("key"))
             assertEquals("60", items[1].s("value"))
+            // Case and suffix variants of personal and secret names are caught too.
+            val u = one("t-audit-4", role).side("after")
+            assertEquals("3", u.s("count")); for (k in listOf("Owner_Phone", "PREFIX", "home_lat")) assertEquals(AuditMask.MASK, u.s(k), k)
         }
         // The PII grant of docs/21 s4.5 (no login sets it yet) shows personal data, never secrets.
         val withPii = one("t-audit-1", Role.ADMIN, pii = true)

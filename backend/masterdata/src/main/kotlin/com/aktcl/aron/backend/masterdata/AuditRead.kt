@@ -186,7 +186,12 @@ internal object AuditMask {
         "calendar_holiday" to setOf("id", "date", "scope_type", "scope_id", "kind", "selling_day", "name_en", "name_bn"),
     )
 
-    fun neverShow(key: String) = key in NEVER_SHOW || SECRETISH.containsMatchIn(key)
+    /** Names a writer might use for personal data besides the listed ones (case and suffixes vary: `Phone`, `owner_phone`, `owner_name_bn`). */
+    private val PII_LIKE = Regex("(phone|e_?mail|contact|owner_name|full_name|address|dep_name|trade_license|(^|_)nid($|_)|(^|_)tin($|_)|(^|_)(lat|lng|latitude|longitude)$)", RegexOption.IGNORE_CASE)
+
+    fun neverShow(key: String) = key.lowercase() in NEVER_SHOW || SECRETISH.containsMatchIn(key)
+
+    fun personal(key: String) = key.lowercase() in PII || PII_LIKE.containsMatchIn(key)
 
     fun view(p: AronPrincipal, entity: String, before: JsonObject?, after: JsonObject?): Pair<JsonObject?, JsonObject?> =
         if (p.role == Role.ADMIN || p.role == Role.SUPERADMIN) full(p, before) to full(p, after) else restricted(entity, before, after)
@@ -202,7 +207,7 @@ internal object AuditMask {
     /** Masks never-show members at any depth, and personal data unless the token carries the PII grant. */
     private fun clean(p: AronPrincipal, key: String, v: JsonElement): JsonElement = when {
         neverShow(key) -> JsonPrimitive(MASK)
-        key in PII && !p.pii -> JsonPrimitive(MASK)
+        personal(key) && !p.pii -> JsonPrimitive(MASK)
         v is JsonObject -> JsonObject(cfgValues(v).mapValues { (k, x) -> clean(p, k, x) })
         v is JsonArray -> JsonArray(v.map { clean(p, key, it) })
         else -> v
@@ -218,7 +223,7 @@ internal object AuditMask {
         val changed = (before.orEmpty().keys + after.orEmpty().keys).filter { before?.get(it) != after?.get(it) }.toSet()
         fun side(o: JsonObject?): JsonObject? = o?.let {
             JsonObject(it.filterKeys { k -> k in changed }.mapValues { (k, v) ->
-                if (k in allowed && !neverShow(k) && k !in PII && v is JsonPrimitive) scalar(v) else JsonPrimitive(MASK)
+                if (k in allowed && !neverShow(k) && !personal(k) && v is JsonPrimitive) scalar(v) else JsonPrimitive(MASK)
             })
         }
         return side(before) to side(after)

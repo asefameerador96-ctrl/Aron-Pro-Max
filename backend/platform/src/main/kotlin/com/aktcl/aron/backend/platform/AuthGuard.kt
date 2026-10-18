@@ -99,7 +99,7 @@ private fun authenticate(call: ApplicationCall, cfg: AuthGuardConfig): AronPrinc
 /**
  * AZ-1: `cfg.auth.mfa_required_roles` holds per request, not only at login and refresh. A web API token of a role in
  * the list whose `amr` lacks "mfa" (issued before the flag turned on) may still read, but every write and every read of
- * config or enrolment tokens answers 401 ERR_AUTH_MFA_INVALID: the web refresh refuses that family too (BC-89), so the
+ * config, enrolment tokens or the audit log (it carries committed config values) answers 401 ERR_AUTH_MFA_INVALID: the web refresh refuses that family too (BC-89), so the
  * next step is a login with the code. Phones never carry the second factor (web only, s6.5) and the /v1/auth paths
  * (logout, change-password, MFA enrolment) stay open so the user can get out or finish the step.
  */
@@ -111,7 +111,7 @@ private fun requireMfaWhereNeeded(call: ApplicationCall, p: AronPrincipal, confi
     if (path.startsWith("/v1/auth/") && segments.none { it == "." || it == ".." }) return
     val method = call.request.httpMethod.value
     val write = method != "GET" && method != "HEAD" && method != "OPTIONS"
-    val sensitiveRead = path.startsWith("/v1/admin/config") || path.startsWith("/v1/admin/enrolment-tokens")
+    val sensitiveRead = path.startsWith("/v1/admin/config") || path.startsWith("/v1/admin/enrolment-tokens") || path.startsWith("/v1/admin/audit")
     if (!write && !sensitiveRead) return
     // A value that is not a list fails closed to the registry default, never open.
     val roles = (config.value("cfg.auth.mfa_required_roles") as? kotlinx.serialization.json.JsonArray)
