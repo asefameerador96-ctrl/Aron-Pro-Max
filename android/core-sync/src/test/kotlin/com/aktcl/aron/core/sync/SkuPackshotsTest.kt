@@ -75,45 +75,35 @@ class SkuPackshotsTest {
         assertNull(p.cached("MaxB-10S"))
     }
 
-    private fun imageServer(art: String) {
-        server.dispatcher = object : mockwebserver3.Dispatcher() {
-            override fun dispatch(request: mockwebserver3.RecordedRequest): MockResponse =
-                MockResponse.Builder().code(200).addHeader("Content-Type", "image/webp").body(Buffer().write(webp(art))).build()
-        }
-        server.start()
-    }
-
-    @Test fun thePreloadFetchesOncePerAssetAndTheAdminPictureThenWins() = runBlocking {
-        imageServer("maxim-bolt")
+    @Test fun thePreloadStoresOncePerAssetAndTheAdminPictureThenWins() = runBlocking {
         val cache = ImageCache(tmp.newFolder("img"), OkHttpClient(), { false }) // a metered network: thumbnails still come
         var asset = "a7"
         val p = SkuPackshots(cache, devAssets(), lookup = { id -> if (id == 7L) SkuPackshots.SkuInfo("MaxR-10S", SkuPackshots.SkuImageRef(asset)) else null })
-        val dev = p.bitmap("7")!! // nothing cached yet: the dev Regular art stands in, no network on the row's path
-        assertEquals(0, server.requestCount)
+        val dev = p.bitmap("7")!! // nothing cached yet: the dev Regular art stands in, nothing is downloaded on the row's path
         assertEquals(webpPixel("maxim-regular"), dev.getPixel(73, 60))
 
-        var asked = 0
-        val readUrl: suspend (String) -> String? = { id -> asked++; server.url("/sku/$id.webp?sig=" + asked).toString() }
-        assertEquals(1, p.preload(listOf(7L to "a7"), readUrl))
+        var downloads = 0
+        val download: suspend (String) -> ByteArray? = { downloads++; webp("maxim-bolt") }
+        assertEquals(1, p.preload(listOf(7L to "a7"), download))
         val admin = p.bitmap("7")!!
         assertTrue(admin.getPixel(73, 60) != webpPixel("maxim-regular")) // the preload dropped the stand-in: the Bolt picture
-        assertEquals("cached under the asset id: a new signed URL is not fetched again", 0, p.preload(listOf(7L to "a7"), readUrl))
-        assertEquals(1, asked)
-        assertEquals(1, server.requestCount)
+        assertEquals("cached under the asset id: never downloaded again", 0, p.preload(listOf(7L to "a7"), download))
+        assertEquals(1, downloads)
 
         asset = "a8" // a new upload is a new asset: the stand-in until the next preload
         p.invalidate()
         assertEquals(webpPixel("maxim-regular"), p.bitmap("7")!!.getPixel(73, 60))
-        assertEquals(1, p.preload(listOf(7L to "a8"), readUrl))
+        assertEquals(1, p.preload(listOf(7L to "a8"), download))
+        assertEquals(2, downloads)
     }
 
-    @Test fun aRefusedOrFailingReadUrlIsSkippedNeverThrown() = runBlocking {
-        imageServer("maxim-bolt")
+    @Test fun aRefusedFailingOrNonImageDownloadIsSkippedNeverThrown() = runBlocking {
         val cache = ImageCache(tmp.newFolder("img"), OkHttpClient(), { false })
         val p = SkuPackshots(cache, devAssets = null)
-        assertEquals(0, p.preload(listOf(1L to "x1", 2L to "x2"), { id -> if (id == "x1") null else error("offline") }))
-        assertEquals(0, server.requestCount)
-        assertEquals(0, SkuPackshots(images = null, devAssets = null).preload(listOf(1L to "x1"), { "https://x.invalid/" }))
+        val bodies = mapOf("x1" to null, "x3" to "<html>captive portal</html>".toByteArray(), "x4" to ByteArray(300 * 1024 + 1) { 0xFF.toByte() })
+        assertEquals(0, p.preload(listOf(1L to "x1", 2L to "x2", 3L to "x3", 4L to "x4")) { id -> if (id == "x2") error("offline") else bodies[id] })
+        assertEquals(0L, cache.sizeBytes())
+        assertEquals(0, SkuPackshots(images = null, devAssets = null).preload(listOf(1L to "x1")) { webp("maxim-bolt") })
     }
 
     @Test fun aMissingOrBrokenPictureIsNullNeverAnError() = runBlocking {

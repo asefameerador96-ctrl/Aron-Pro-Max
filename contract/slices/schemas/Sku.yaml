@@ -88,8 +88,9 @@ Sku:
         null when the SKU has none (docs/24 s14a R20). The phone bundle leaves it null (a signed URL would change
         the bundle fingerprint) and carries `image_asset_id` instead.
     image_asset_id:
-      description: 'The admin asset of the pack picture (purpose `sku_image`), fetched by phones through `GET /v1/sku-images/{asset_id}/read-url`;
-        a new upload is a new id. Null or absent: no picture (the app shows the pack silhouette).'
+      description: 'The admin asset of the pack picture (purpose `sku_image`), fetched by phones from `GET /v1/sku-images/{asset_id}`
+        (the phone builds the path on its own API origin); a new upload is a new id. Null or absent: no picture
+        (the app shows the pack silhouette).'
       oneOf:
       - $ref: '#/components/schemas/Uuid'
       - type: 'null'

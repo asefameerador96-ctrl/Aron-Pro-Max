@@ -18,6 +18,8 @@ import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.response.header
 import io.ktor.server.response.respond
+import io.ktor.http.ContentType
+import io.ktor.server.response.respondBytes
 import io.ktor.server.routing.Route
 import io.ktor.server.routing.get
 import io.ktor.server.routing.post
@@ -63,6 +65,8 @@ class MediaDeps(
     /** Caller reach for photo reads; null answers the read 503 (fail closed). */
     val reach: ReachResolver? = null,
     val reader: PhotoReadIssuer = UnconfiguredPhotoReadIssuer,
+    /** Pack picture bytes (GET /v1/sku-images/{asset_id}); unconfigured answers 503. */
+    val images: BlobBytesReader = UnconfiguredBlobBytesReader,
 )
 
 /**
@@ -96,11 +100,16 @@ fun Route.mediaRoutes(d: MediaDeps) {
             call.response.header(HttpHeaders.CacheControl, "no-store")
             call.respond(answer)
         }
-        // PARITY-SPEC s2.6: the pack picture by its stable asset id (the bundle never carries a signed URL)
-        get("/sku-images/{asset_id}/read-url") {
-            val answer = withContext(Dispatchers.IO) { SkuImageRead(d).readUrl(call.parameters["asset_id"]) }
-            call.response.header(HttpHeaders.CacheControl, "no-store")
-            call.respond(answer)
+        // PARITY-SPEC s2.6: the pack picture's bytes by its stable asset id (no signed URL leaves the API)
+        get("/sku-images/{asset_id}") {
+            val img = withContext(Dispatchers.IO) { SkuImageRead(d).image(call.parameters["asset_id"]) }
+            call.response.header(HttpHeaders.CacheControl, SkuImageRead.CACHE_CONTROL)
+            call.response.header(HttpHeaders.ETag, img.etag)
+            if (call.request.headers[HttpHeaders.IfNoneMatch]?.split(',')?.any { it.trim() == img.etag } == true) {
+                call.respond(HttpStatusCode.NotModified)
+            } else {
+                call.respondBytes(img.bytes, ContentType.parse(img.mime))
+            }
         }
     }
 }

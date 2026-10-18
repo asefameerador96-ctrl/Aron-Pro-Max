@@ -82,16 +82,21 @@ class SyncApi(private val client: AronApiClient) {
     }
 
     /**
-     * `GET /v1/sku-images/{asset_id}/read-url` (contract getSkuImageReadUrl, PARITY-SPEC s2.6): a 5-minute read URL of a
-     * SKU's pack picture. The URL is a bearer secret: download it at once, cache the bytes under the asset id, never log it.
+     * `GET /v1/sku-images/{asset_id}` (contract getSkuImage, PARITY-SPEC s2.6): the bytes of a SKU's pack picture, read
+     * straight from the API (no signed URL), at most [maxBytes]; a bigger body is a failure, never a partial picture.
      */
-    suspend fun skuImageReadUrl(assetId: String): ApiResult<String> {
-        val path = "/v1/sku-images/" + assetId + "/read-url"
-        return client.call(
+    suspend fun skuImage(assetId: String, maxBytes: Long = 300L * 1024L): ApiResult<ByteArray> {
+        val path = "/v1/sku-images/" + assetId
+        return client.callStreaming(
             path = path,
             auth = CallAuth.Grant(Grant.FULL),
             build = { url(client.origin.path(path)); get() },
-            decode = { body, _ -> kotlinx.serialization.json.Json.parseToJsonElement(body).let { (it as kotlinx.serialization.json.JsonObject)["url"]!!.let { u -> (u as kotlinx.serialization.json.JsonPrimitive).content } } },
+            decode = { body, _ ->
+                val buf = okio.Buffer()
+                while (buf.size <= maxBytes && body.read(buf, 16 * 1024) != -1L) Unit
+                require(buf.size <= maxBytes) { "pack picture over $maxBytes bytes" }
+                buf.readByteArray()
+            },
         )
     }
 

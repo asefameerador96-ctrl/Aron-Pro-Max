@@ -1,42 +1,56 @@
 package com.aktcl.aron.backend.media
 
 import com.aktcl.aron.backend.platform.ApiProblem
-import com.aktcl.aron.backend.platform.FieldError
-import com.aktcl.aron.backend.platform.wire
 import com.aktcl.aron.contract.ProblemCode
 import java.util.UUID
 
+/** Reads one small blob with the API's own identity; null when it is missing or bigger than [maxBytes]. Never a URL. */
+fun interface BlobBytesReader {
+    fun read(blobPath: String, maxBytes: Long): ByteArray?
+}
+
+/** Where blob storage is not configured (local runs, CI image smoke): 503, as the other blob endpoints. */
+val UnconfiguredBlobBytesReader = BlobBytesReader { _, _ ->
+    throw ApiProblem(ProblemCode.ERR_SERVICE_UNAVAILABLE, "blob storage is not configured in this environment")
+}
+
 /**
- * GET /v1/sku-images/{asset_id}/read-url (contract getSkuImageReadUrl, PARITY-SPEC s2.6): the pack picture of a SKU for the phones. The
- * bundle carries the stable `image_asset_id`, never a signed URL (the bundle fingerprint must not move per build); the
- * phone asks here for a 5-minute read URL and downloads at once, then keeps the bytes in its bounded cache
- * under the asset id. Only an asset of purpose `sku_image` that a SKU binds right now is served, to any signed-in user
- * (pack art is the same for every role and scope); anything else is 404. The URL is a bearer secret: never logged.
+ * GET /v1/sku-images/{asset_id} (contract getSkuImage, PARITY-SPEC s2.6; lead ruling 2026-10-18): the bytes of a SKU's
+ * pack picture, streamed by the API so no signed URL ever leaves it. The bundle carries the stable `image_asset_id`; an
+ * asset never changes (a new file is a new asset), so the answer is cacheable for a year and its ETag is the asset id.
+ * Served only when the asset exists, is of purpose `sku_image`, is at most [MAX_BYTES] and a SKU binds it; anything else
+ * (a malformed id included) is a bare 404, so the endpoint cannot be used to probe other assets. Any signed-in caller:
+ * pack art is the same for every role and reach.
  */
 internal class SkuImageRead(private val d: MediaDeps) {
-    fun readUrl(rawId: String?): MediaReadUrl {
-        val id = rawId?.takeIf { UUID_RE.matches(it) }
-            ?: throw ApiProblem(ProblemCode.ERR_VALIDATION, "asset_id is not a UUID", errors = listOf(FieldError("path.asset_id", "invalid_value")))
-        val path = d.db.readJdbi.withHandle<String?, Exception> { h ->
+    class Image(val bytes: ByteArray, val mime: String, val etag: String)
+
+    fun image(rawId: String?): Image {
+        val id = rawId?.takeIf { UUID_RE.matches(it) }?.lowercase() ?: throw notFound()
+        data class Row(val path: String, val mime: String)
+        val row = d.db.readJdbi.withHandle<Row?, Exception> { h ->
             h.createQuery(
-                "SELECT a.blob_path FROM app.admin_asset a WHERE a.asset_id = :id AND a.purpose = 'sku_image' " +
-                    "AND EXISTS (SELECT 1 FROM app.sku s WHERE s.image_asset_id = a.asset_id)",
-            ).bind("id", UUID.fromString(id)).mapTo(String::class.java).findOne().orElse(null)
-        } ?: throw ApiProblem(ProblemCode.ERR_NOT_FOUND, "no such pack picture")
-        val expires = d.clock.now().plusSeconds(VALID_S)
-        val url = try {
-            d.reader.readSas(path, expires)
+                "SELECT a.blob_path, a.mime FROM app.admin_asset a WHERE a.asset_id = :id AND a.purpose = 'sku_image' AND a.bytes <= :max " +
+                    "AND a.mime IN ('image/jpeg', 'image/png') AND EXISTS (SELECT 1 FROM app.sku s WHERE s.image_asset_id = a.asset_id)",
+            ).bind("id", UUID.fromString(id)).bind("max", MAX_BYTES)
+                .map { rs, _ -> Row(rs.getString(1), rs.getString(2)) }.findOne().orElse(null)
+        } ?: throw notFound()
+        val bytes = try {
+            d.images.read(row.path, MAX_BYTES)
         } catch (e: ApiProblem) {
             throw e
         } catch (e: Exception) {
             throw ApiProblem(ProblemCode.ERR_SERVICE_UNAVAILABLE, "image storage unavailable (${e.javaClass.simpleName})")
-        }
-        return MediaReadUrl(url, expires.wire())
+        } ?: throw notFound()
+        return Image(bytes, row.mime, "\"" + id + "\"")
     }
 
+    private fun notFound() = ApiProblem(ProblemCode.ERR_NOT_FOUND, "not found")
+
     companion object {
-        /** Long enough for the phone to download at once; the bytes are cached, never the URL. */
-        const val VALID_S = 300L
+        /** One compressed thumbnail per SKU (docs/15, the admin upload cap). */
+        const val MAX_BYTES = 300L * 1024L
+        const val CACHE_CONTROL = "private, max-age=31536000, immutable"
         private val UUID_RE = Regex("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
     }
 }

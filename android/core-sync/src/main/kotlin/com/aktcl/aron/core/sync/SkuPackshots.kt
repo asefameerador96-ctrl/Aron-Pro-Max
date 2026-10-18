@@ -20,7 +20,7 @@ import java.io.File
  * [bitmap] never touches the network and never throws; null means "no picture" and the row shows the silhouette. Decoded
  * bitmaps sit in a small memory LRU ([memoryBytes], RGB_565, downsampled to [maxHeightPx]) so scrolling does not decode
  * again. The thumbnails reach the cache through [preload], which the sync runner starts after each run (never from a
- * screen): one read URL and one download per picture not cached yet, mobile data allowed (300 KB cap, docs/04).
+ * screen): one download per picture not cached yet, straight from the API, mobile data allowed (300 KB cap, docs/04).
  */
 class SkuPackshots(
     private val images: ImageCache?,
@@ -66,12 +66,12 @@ class SkuPackshots(
     private val preloading = kotlinx.coroutines.sync.Mutex()
 
     /**
-     * Downloads the pictures of [pictured] (SKU id to asset id) that are not cached yet: [readUrl] asks the API for a
-     * 5-minute URL (null: refused or offline, tried again after the next sync), then one bounded thumbnail download keyed
-     * by the asset id. At most [MAX_PRELOAD] per run; one run at a time. Returns the pictures fetched; never throws. A
-     * fetched SKU's decoded picture is dropped so the dev stand-in gives way to the real one.
+     * Downloads the pictures of [pictured] (SKU id to asset id) that are not cached yet: [download] reads the bytes from
+     * the API (`GET /v1/sku-images/{asset_id}`; null: refused or offline, tried again after the next sync), stored under
+     * the asset id. At most [MAX_PRELOAD] per run; one run at a time. Returns the pictures stored; never throws. A stored
+     * SKU's decoded picture is dropped so the dev stand-in gives way to the real one.
      */
-    suspend fun preload(pictured: List<Pair<Long, String>>, readUrl: suspend (assetId: String) -> String?): Int {
+    suspend fun preload(pictured: List<Pair<Long, String>>, download: suspend (assetId: String) -> ByteArray?): Int {
         val cache = images ?: return 0
         if (!preloading.tryLock()) return 0
         return try {
@@ -79,8 +79,8 @@ class SkuPackshots(
             for ((skuId, assetId) in pictured.distinctBy { it.second }.take(MAX_PRELOAD)) {
                 val key = cacheKey(assetId)
                 if (cache.get(key, key) != null) continue
-                val url = try { readUrl(assetId) } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) { null } ?: continue
-                if (cache.fetch(url, ImageCache.Kind.THUMBNAIL, allowMetered = true, cacheKey = key) != null) {
+                val bytes = try { download(assetId) } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) { null } ?: continue
+                if (cache.store(key, bytes) != null) {
                     fetched++
                     pictured.filter { it.second == assetId }.forEach { memory.remove(it.first.toString()) }
                 }
@@ -167,7 +167,7 @@ class PackshotPreload(
             try {
                 if (!databases.exists(userId)) return@launch
                 val pictured = databases.of(userId).referenceDao().skuImages().map { it.skuId to it.assetId }
-                packshots.preload(pictured) { id -> (syncApi.skuImageReadUrl(id) as? com.aktcl.aron.core.network.ApiResult.Success)?.value }
+                packshots.preload(pictured) { id -> (syncApi.skuImage(id) as? com.aktcl.aron.core.network.ApiResult.Success)?.value }
             } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) { }
         }
     }

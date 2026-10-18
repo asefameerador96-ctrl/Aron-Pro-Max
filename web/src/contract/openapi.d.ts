@@ -542,7 +542,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/v1/sku-images/{asset_id}/read-url": {
+    "/v1/sku-images/{asset_id}": {
         parameters: {
             query?: never;
             header?: never;
@@ -550,13 +550,14 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Short-lived read URL of a SKU's pack picture (PARITY-SPEC s2.6), by the stable `Sku.image_asset_id` of the bundle.
-         * @description Any signed-in user (pack art is the same for every role and reach). The URL is valid for 5 minutes; the phone
-         *     downloads at once and caches the bytes under the asset id, so a new upload (a new asset id) is the only refetch.
-         *     Only an asset of purpose `sku_image` that a SKU currently binds is served; anything else is 404. The bundle
-         *     carries the asset id, never a signed URL, so the bundle fingerprint stays stable. The answer is `no-store`.
+         * The bytes of a SKU's pack picture (PARITY-SPEC s2.6), by the stable `Sku.image_asset_id` of the bundle.
+         * @description Any signed-in user (pack art is the same for every role and reach). The API streams the bytes itself: no signed
+         *     URL leaves it. An asset never changes (a new file is a new asset id), so the answer is cacheable for a year and
+         *     its ETag is the asset id; the phone keeps the bytes in its bounded cache under the asset id and fetches once per
+         *     new id. Served only when the asset exists, has purpose `sku_image`, is at most 300 KB and a SKU binds it;
+         *     anything else, a malformed id included, is 404 without detail.
          */
-        get: operations["getSkuImageReadUrl"];
+        get: operations["getSkuImage"];
         put?: never;
         post?: never;
         delete?: never;
@@ -6533,7 +6534,7 @@ export interface components {
              * @description Pack image (the asset bound by `image_asset_id`) as a short-lived signed URL in admin answers; null when the SKU has none (docs/24 s14a R20). The phone bundle leaves it null (a signed URL would change the bundle fingerprint) and carries `image_asset_id` instead.
              */
             image_url?: string | null;
-            /** @description The admin asset of the pack picture (purpose `sku_image`), fetched by phones through `GET /v1/sku-images/{asset_id}/read-url`; a new upload is a new id. Null or absent: no picture (the app shows the pack silhouette). */
+            /** @description The admin asset of the pack picture (purpose `sku_image`), fetched by phones from `GET /v1/sku-images/{asset_id}` (the phone builds the path on its own API origin); a new upload is a new id. Null or absent: no picture (the app shows the pack silhouette). */
             image_asset_id?: components["schemas"]["Uuid"] | null;
             updated_at?: components["schemas"]["Timestamp"];
             version?: number;
@@ -9414,27 +9415,32 @@ export interface operations {
             503: components["responses"]["ServiceUnavailable"];
         };
     };
-    getSkuImageReadUrl: {
+    getSkuImage: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "If-None-Match"?: string;
+            };
             path: {
-                asset_id: components["schemas"]["Uuid"];
+                asset_id: string;
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description Read URL valid for 5 minutes (a JPEG or PNG of at most 300 KB). */
+            /** @description The picture (JPEG or PNG, at most 300 KB). */
             200: {
                 headers: {
+                    ETag: string;
+                    "Cache-Control": "private, max-age=31536000, immutable";
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["MediaReadUrl"];
+                    "image/jpeg": string;
+                    "image/png": string;
                 };
             };
-            400: components["responses"]["BadRequest"];
+            304: components["responses"]["NotModified"];
             401: components["responses"]["Unauthorized"];
             404: components["responses"]["NotFound"];
             503: components["responses"]["ServiceUnavailable"];

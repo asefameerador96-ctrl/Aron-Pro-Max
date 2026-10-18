@@ -72,24 +72,31 @@ WebP, 6.8 to 7.4 KB each (22 KB total in a dev APK), made by `tools/packshots/cr
 | 1 fast path | 564c5c3e52803f3f747095036b4104b7a04b64fb | run 39175158082 |
 | 2 server path + 3 admin runbook | (next push) | pending; Opus checker asked |
 
-## 5. Server path (item 2)
+## 5. Server path (item 2; lead rulings 2026-10-18)
 
 - **Contract (additive, no version bump):** `Sku.image_asset_id` (nullable uuid). The bundle fills it from
-  `app.sku.image_asset_id`, only while that asset is a `sku_image`, and **never** sends a signed `image_url`: a SAS
-  signed per build would move the bundle fingerprint and expire after a day. New operation
-  `GET /v1/sku-images/{asset_id}/read-url` (`getSkuImageReadUrl`) answers `MediaReadUrl` with a 5-minute read URL.
-  Any signed-in user may call it, because pack art is the same for every reach. Only an asset that a SKU binds is
-  served; anything else is 404. Slices, `WireDtos`, `web/src/contract/openapi.d.ts` and docs/24 Appendix A are
-  regenerated or updated in the same push.
-- **Backend:** `backend/media` `SkuImageRead` + route; `BundleService.products` selects the asset id;
-  `SkuImageReadTest`; a `BundleAcceptanceTest` assertion (the asset id is carried, no SKU carries an `image_url`); a
-  conformance fixture; scope registry `exempt` (global pack art); one `scope-blind-baseline.txt` line ("global by
-  design", like the code lists and tutorials). That line is flagged to the checker because the file says it may only
-  shrink.
+  `app.sku.image_asset_id`, only while that asset is a `sku_image`. The bundle **never** sends `image_url`: a SAS signed
+  per build would move the bundle fingerprint and expire after a day. The phone builds the path on its own API
+  origin, because the server has no public-origin setting and pre-generates bundles off-request (lead informed; the
+  lead's ruling had asked for a baked `image_url`). New operation `GET /v1/sku-images/{asset_id}` (`getSkuImage`): the
+  API **streams the bytes itself** (no signed URL leaves it), with `Cache-Control: private, max-age=31536000, immutable`,
+  `ETag` = the asset id, and 304 on `If-None-Match`. It is served only when the asset exists, has purpose `sku_image`, is
+  at most 300 KB, is JPEG or PNG, and a SKU binds it; anything else, a malformed id included, is a bare 404. Any
+  signed-in user may call it, because pack art is the same for every reach. Slices, `WireDtos`,
+  `web/src/contract/openapi.d.ts` and docs/24 Appendix A are updated in the same push.
+- **Backend:** `backend/media` `SkuImageRead` + route, `BlobBytesReader` port (Azure: `AzureBlobSasIssuer.readBytes`,
+  which checks the size on the properties before downloading), `BlobPorts.imageRead`. `BundleService.products` selects
+  the asset id. Tests: `SkuImageReadTest`; `BundleImageStabilityTest` (two independent builds of the same catalogue
+  give the same bundle hash, and binding a picture changes it once); a `BundleAcceptanceTest` assertion; a conformance
+  fixture (200); scope registry `exempt` (global pack art). One `scope-blind-baseline.txt` line ("global by design",
+  like the code lists and tutorials) is flagged to the checker, because the file says it may only shrink.
 - **Phone:** Room **v8** (`AutoMigration(7, 8)`, `sku.image_asset_id`, exported `schemas/8.json`, `Migration78Test`);
   `ReferenceRepository.skuRow` maps it (`SeededDayLoadTest.aSkuImageAssetIsStoredFromTheBundle`).
-  `SyncApi.skuImageReadUrl`. `PackshotPreload.afterSync` runs from each app's sync runner `afterRun`: it lists the
-  pictured SKUs from Room, asks for one read URL per uncached asset, and downloads one bounded thumbnail (300 KB, mobile
-  data allowed) keyed `sku-image:<asset id>`, at most 100 per run, one run at a time. The fetched SKU's stand-in is then
-  dropped from memory. The screens only read disk.
+  `SyncApi.skuImage` reads the bytes through `AronApiClient` (the token is added; the body is capped at 300 KB:
+  `SkuImageApiTest`). `ImageCache.store` accepts only JPEG, PNG or WebP magic within the cap, writes atomically and
+  evicts. `PackshotPreload.afterSync` runs from each app's sync runner `afterRun`: it lists the pictured SKUs from Room
+  and downloads each uncached asset once (mobile data allowed, at most 100 per run, one run at a time). The fetched
+  SKU's stand-in is then dropped from memory. The screens only read disk.
 - **No Postgres migration** (the column exists since V0075): V0087 is not used.
+- **Not yet proven on the dev account:** the end-to-end run (admin upload, then phone sync, then picture) needs this
+  push deployed to dev and one picture uploaded (docs/runbooks/sku-pack-pictures.md).

@@ -101,6 +101,38 @@ class ImageCache(
         }
     }
 
+    /**
+     * Stores [bytes] fetched elsewhere (the API's own pack picture endpoint, PARITY-SPEC s2.6) under [cacheKey], with the
+     * same rules as [fetch]: a thumbnail over [THUMBNAIL_MAX_BYTES] (or a quarter of the cap), or bytes that are not a
+     * JPEG, PNG or WebP image, are refused. Atomic (temp file, rename) and evicts down to the cap. Null when refused.
+     */
+    suspend fun store(cacheKey: String, bytes: ByteArray): File? = lock.withLock {
+        withContext(Dispatchers.IO) {
+            try {
+                if (bytes.isEmpty() || bytes.size > minOf(THUMBNAIL_MAX_BYTES, capBytes / 4) || !isImage(bytes)) return@withContext null
+                dir.mkdirs()
+                val target = fileFor(cacheKey)
+                val tmp = File(dir, target.name + ".part")
+                tmp.writeBytes(bytes)
+                if (!tmp.renameTo(target)) { tmp.delete(); return@withContext null }
+                target.setLastModified(nextStamp())
+                evict(keep = target)
+                target
+            } catch (_: Exception) {
+                null
+            }
+        }
+    }
+
+    /** JPEG, PNG or WebP by their magic bytes: a captive portal page or an error body is never stored as a picture. */
+    private fun isImage(b: ByteArray): Boolean {
+        fun at(i: Int) = b.getOrNull(i)?.toInt()?.and(0xFF)
+        val jpeg = at(0) == 0xFF && at(1) == 0xD8
+        val png = at(0) == 0x89 && at(1) == 0x50 && at(2) == 0x4E && at(3) == 0x47
+        val webp = b.size > 12 && String(b, 0, 4, Charsets.US_ASCII) == "RIFF" && String(b, 8, 4, Charsets.US_ASCII) == "WEBP"
+        return jpeg || png || webp
+    }
+
     /** Bytes on disk now. */
     fun sizeBytes(): Long = files().sumOf { it.length() }
 
