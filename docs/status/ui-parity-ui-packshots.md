@@ -133,5 +133,12 @@ WebP, 6.8 to 7.4 KB each (22 KB total in a dev APK), made by `tools/packshots/cr
   and downloads each uncached asset once (mobile data allowed, at most 100 per run, one run at a time). The fetched
   SKU's stand-in is then dropped from memory. The screens only read disk.
 - **No Postgres migration** (the column exists since V0075): V0087 is not used.
+- **Dev deploy implication** (backend + contract only, additive; lead note 2026-10-19): a new phone against an old
+  server gets bundles without `image_asset_id` (parsed with `ignoreUnknownKeys`, the field defaults to null), so it runs
+  no preload and shows the dev crops or the silhouette. A 404 from a missing endpoint is remembered per process, so
+  there is no retry storm. An old phone against the new server ignores the extra field. **The first deploy changes
+  every bundle hash once** (every SKU gains `"image_asset_id": null`), so **each phone downloads its full bundle one
+  time** (a few hundred KB at pilot size). To see real pictures on dev: deploy, upload one pack picture in the admin
+  portal (docs/runbooks/sku-pack-pictures.md), then sync a phone.
 - **Not yet proven on the dev account:** the end-to-end run (admin upload, then phone sync, then picture) needs this
   push deployed to dev and one picture uploaded (docs/runbooks/sku-pack-pictures.md).
