@@ -45,3 +45,13 @@ Proofs: `docs/evidence/ui-parity/sr-<screen>.png` (left reference, right ours, B
 | Tutorial list | sr/ (none) | NOT MINE | Lives in app-sr TutorialHost and feature-home OnboardingScreens (ui-sr-a). | |
 | Settings gear page | sr/ (none) | NOT FOUND in my modules | Asked ui-sr-a; no composable in feature-memo, dayclose, outlet, tasks or auth. | |
 | Photo capture | -noref | DONE | The capture block (`GeoPhotoBlock`) is restyled; the camera itself is the system camera. | see git log |
+
+## Kit requests (for the kit window; nothing here blocks my screens)
+
+My modules carry private copies of these until the kit has them (then I delete the copies):
+1. **Form field, choice chip, radio row, error line, notice-with-action** (feature-outlet `ParityKit.kt`: FormField, FormChip, FormRadio, FormError; feature-auth `AuthKit.kt`: AuthField, AuthBanner, AuthLink).
+2. **Solid action buttons** (amber Edit, green Mark paid, `SolidButton` in feature-memo `MemoScreens.kt`) and a text link button in `aron.purple`.
+3. **Tab pair** (ongoing / completed, `TaskTabs` in feature-tasks) with the tab role.
+4. **Press-and-hold confirm button and bottom sheet** in the parity look (Sales submit hold step still uses the old kit `AronPressAndHoldButton` and `AronConfirmDialog`; so do the memo Mark paid and the outlet request confirm dialogs).
+5. **SummaryTable**: category subtotal labels shrink to a few sp in the first column at 360 dp; a wider first column for labels (or the label on its own row) would keep them readable.
+6. **Language and sun toggles** (old kit look) on the logged-out screens in the parity look.
