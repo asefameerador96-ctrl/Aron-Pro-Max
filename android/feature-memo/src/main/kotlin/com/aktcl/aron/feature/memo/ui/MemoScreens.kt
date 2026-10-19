@@ -472,36 +472,68 @@ fun SummaryScreen(
                 modifier = Modifier.fillMaxWidth().padding(vertical = AronTokens.Space.Xl),
             )
         } else {
-            SummaryTable(
-                headers = listOf(
-                    stringResource(R.string.summary_col_memos), stringResource(R.string.summary_col_qty), stringResource(R.string.summary_col_value),
-                    stringResource(R.string.summary_col_discount), stringResource(R.string.summary_col_after), stringResource(R.string.summary_col_return),
-                ),
-                rows = summary.skus.map { r ->
-                    SummaryRow(
-                        skuName(r.skuId),
-                        listOf(
-                            localizedNumber(r.memoCount.toLong()), localizedNumber(r.qtyBase), amount(r.valueMtk),
-                            amount(r.discountMtk), amount(r.discountedValueMtk), localizedNumber(r.returnQtyBase),
-                        ),
-                    )
-                },
-                subtotals = summary.categories.map { cat ->
-                    val unit = unitLabel(cat.categoryCode)
-                    val name = categoryLabel(cat.categoryCode)
-                    TotalsLine(
-                        name,
-                        listOf(
-                            qtyText(cat.qtyBase, unit), amount(cat.valueMtk), amount(cat.discountMtk),
-                            amount(cat.discountedValueMtk), localizedNumber(cat.returnQtyBase),
-                        ),
-                    )
-                },
-                totals = listOf(
-                    SummaryTotal(stringResource(R.string.summary_discount_and_others), minusMoney(summary.discountAndOthersMtk)),
-                    SummaryTotal(stringResource(R.string.summary_grand_total), money(summary.grandTotalMtk)),
-                ),
-            )
+            if (tablesStacked()) {
+                // large text: the six columns cannot hold their numbers, so each SKU stacks its figures as caption-over-value pairs
+                WhiteCard {
+                    Column(Modifier.fillMaxWidth().padding(AronTokens.Space.L), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.M)) {
+                        summary.skus.forEach { r ->
+                            Text(skuName(r.skuId), style = MaterialTheme.typography.titleMedium, color = look.purple)
+                            SummaryPairs(
+                                stringResource(R.string.summary_col_memos) to localizedNumber(r.memoCount.toLong()), stringResource(R.string.summary_col_qty) to localizedNumber(r.qtyBase),
+                                stringResource(R.string.summary_col_value) to amount(r.valueMtk), stringResource(R.string.summary_col_discount) to amount(r.discountMtk),
+                                stringResource(R.string.summary_col_after) to amount(r.discountedValueMtk), stringResource(R.string.summary_col_return) to localizedNumber(r.returnQtyBase),
+                            )
+                            CardDivider()
+                        }
+                        summary.categories.forEach { cat ->
+                            val unit = unitLabel(cat.categoryCode)
+                            val name = categoryLabel(cat.categoryCode)
+                            Text(if (unit.isEmpty()) name else stringResource(R.string.summary_group_head, name, unit), style = MaterialTheme.typography.titleSmall, color = look.purple)
+                            SummaryPairs(
+                                stringResource(R.string.summary_col_qty) to qtyText(cat.qtyBase, unit), stringResource(R.string.summary_col_value) to amount(cat.valueMtk),
+                                stringResource(R.string.summary_col_discount) to amount(cat.discountMtk), stringResource(R.string.summary_col_after) to amount(cat.discountedValueMtk),
+                                stringResource(R.string.summary_col_return) to localizedNumber(cat.returnQtyBase),
+                            )
+                        }
+                        CardDivider()
+                        Text(stringResource(R.string.summary_discount_and_others), style = MaterialTheme.typography.titleMedium, color = look.purple)
+                        MoneyText(minusMoney(summary.discountAndOthersMtk), style = MaterialTheme.typography.titleMedium, color = look.purple)
+                        Text(stringResource(R.string.summary_grand_total), style = MaterialTheme.typography.titleMedium, color = look.purple)
+                        MoneyText(money(summary.grandTotalMtk), style = MaterialTheme.typography.headlineMedium, color = look.purple)
+                    }
+                }
+            } else {
+                SummaryTable(
+                    headers = listOf(
+                        stringResource(R.string.summary_col_memos), stringResource(R.string.summary_col_qty), stringResource(R.string.summary_col_value),
+                        stringResource(R.string.summary_col_discount), stringResource(R.string.summary_col_after), stringResource(R.string.summary_col_return),
+                    ),
+                    rows = summary.skus.map { r ->
+                        SummaryRow(
+                            skuName(r.skuId),
+                            listOf(
+                                localizedNumber(r.memoCount.toLong()), localizedNumber(r.qtyBase), amount(r.valueMtk),
+                                amount(r.discountMtk), amount(r.discountedValueMtk), localizedNumber(r.returnQtyBase),
+                            ),
+                        )
+                    },
+                    subtotals = summary.categories.map { cat ->
+                        val unit = unitLabel(cat.categoryCode)
+                        val name = categoryLabel(cat.categoryCode)
+                        TotalsLine(
+                            name,
+                            listOf(
+                                qtyText(cat.qtyBase, unit), amount(cat.valueMtk), amount(cat.discountMtk),
+                                amount(cat.discountedValueMtk), localizedNumber(cat.returnQtyBase),
+                            ),
+                        )
+                    },
+                    totals = listOf(
+                        SummaryTotal(stringResource(R.string.summary_discount_and_others), minusMoney(summary.discountAndOthersMtk)),
+                        SummaryTotal(stringResource(R.string.summary_grand_total), money(summary.grandTotalMtk)),
+                    ),
+                )
+            }
             Text(stringResource(R.string.summary_memo_count, localizedNumber(summary.memoCount.toLong())), style = MaterialTheme.typography.bodySmall, color = look.inkMuted)
         }
         AronPrimaryButton(
@@ -509,6 +541,17 @@ fun SummaryScreen(
             enabled = !empty && !printing, glyph = ButtonGlyph.Print, reverse = true,
         )
         if (empty) Text(stringResource(R.string.summary_print_reason), style = MaterialTheme.typography.bodySmall, color = look.inkMuted, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
+    }
+}
+
+/** Caption-over-value cells two to a row (the stacked Summary at large text); an odd last cell takes a row's half. */
+@Composable
+private fun SummaryPairs(vararg cells: Pair<String, String>) {
+    cells.toList().chunked(2).forEach { row ->
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.M)) {
+            row.forEach { (caption, value) -> CaptionValue(caption, value, Modifier.weight(1f)) }
+            if (row.size == 1) Spacer(Modifier.weight(1f))
+        }
     }
 }
 

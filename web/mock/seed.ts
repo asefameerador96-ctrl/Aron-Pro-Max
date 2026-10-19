@@ -126,3 +126,18 @@ export function controlTotals(rows: readonly SeedRoute[]) {
     net_mtk: sum(rows, (x) => x.net_mtk),
   };
 }
+
+/** Long Bangla names for the long-text check (POST /__mock/long-names): real-length outlet, route and user names, swapped into
+ *  every JSON body at send time so no fixture row changes for the other tests. */
+export const LONG_BANGLA: ReadonlyArray<readonly [string, string]> = [
+  ["Banani North", "বনানী উত্তর বাজার মোড় সংলগ্ন কাঁচাবাজার ও পাইকারি এলাকা"],
+  ["Banani South", "বনানী দক্ষিণ আবাসিক এলাকা ব্লক সি রোড নম্বর এগারো"],
+  ["Gulshan East", "গুলশান পূর্ব সার্কেল দুই নম্বর সংলগ্ন বাণিজ্যিক এলাকা"],
+  ["Gulshan West", "গুলশান পশ্চিম বাড্ডা লিংক রোড সংলগ্ন আবাসিক এলাকা"],
+  ["Kamal Hossain", "মোহাম্মদ কামরুল হাসান চৌধুরী (সিনিয়র সেলস রিপ্রেজেন্টেটিভ)"],
+  ["Jamal Uddin", "আবু সাঈদ মোহাম্মদ জামাল উদ্দিন খন্দকার"],
+  ["Rafiq Amin", "মোহাম্মদ রফিকুল ইসলাম আমিন সরকার"],
+  ["Selim Reza", "সৈয়দ সেলিম রেজা আল মাহমুদ ভূঁইয়া"],
+  ["Tariq Aziz", "তারিক আজিজ উল্লাহ আল ফারুক মোল্লা"],
+  ["Outlet ", "মেসার্স "],
+];
