@@ -6,7 +6,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
@@ -21,7 +20,6 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import com.aktcl.aron.core.ui.AronTokens
 import com.aktcl.aron.core.ui.LocalAronLook
-import com.aktcl.aron.core.ui.aron.AronPrimaryButton
 import com.aktcl.aron.core.ui.aron.AronTile
 import com.aktcl.aron.core.ui.aron.AronTileGrid
 
@@ -30,10 +28,10 @@ object OutletMenuTags { fun kind(k: OutletRequestKind) = "menu_${k.wire}"; const
 /**
  * The Outlet menu (N-040; PARITY-SPEC sr/outlet-menu.png): four tiles in the reference order (new shop, permanent close, change
  * information, cluster), three to a row on the `#F5F5F5` menu tiles with the original art over red labels, then the "add to my route"
- * request (F-SR-076) and "my requests" as grey buttons under them.
+ * request (F-SR-076) moved into the change-information form and "my requests" onto the Tasks screen: the screen is the four tiles on the grey page.
  */
 @Composable
-fun OutletMenuContent(onKind: (OutletRequestKind) -> Unit, modifier: Modifier = Modifier, onOwnRequests: (() -> Unit)? = null) {
+fun OutletMenuContent(onKind: (OutletRequestKind) -> Unit, modifier: Modifier = Modifier) {
     val look = LocalAronLook.current
     val tiles = listOf(OutletRequestKind.NEW, OutletRequestKind.CLOSE, OutletRequestKind.INFO, OutletRequestKind.CLUSTER)
     // the scrolling content ends above the navigation bar (edge-to-edge): the inset pads the content, after the scroll
@@ -60,7 +58,5 @@ fun OutletMenuContent(onKind: (OutletRequestKind) -> Unit, modifier: Modifier = 
                 onClick = { onKind(k) }, modifier = mod.testTag(OutletMenuTags.kind(k)), menu = true, labelColor = look.tileLabelOutlet,
             )
         }
-        AronPrimaryButton(stringResource(R.string.out_req_route_add), { onKind(OutletRequestKind.ROUTE_ADD) }, Modifier.fillMaxWidth().testTag(OutletMenuTags.kind(OutletRequestKind.ROUTE_ADD)))
-        onOwnRequests?.let { AronPrimaryButton(stringResource(R.string.out_own_open), it, Modifier.fillMaxWidth().testTag(OutletMenuTags.OWN)) }
     }
 }

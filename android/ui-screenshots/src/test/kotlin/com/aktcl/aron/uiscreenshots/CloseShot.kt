@@ -113,9 +113,9 @@ class CloseShot {
     private val units = mapOf("lighter" to "পিস", "cigarette" to "স্টিক")
     private val counts = listOf(CountRow("visit", 6, 6), CountRow("memo", 6, 5), CountRow("stock_movement", 2, null), CountRow("qc_line", 0, 0))
     private val gate = SalesSubmitRules.gate(OutboxStates(1, 0, 40, 0, 0), counts, DuesAtSubmit(1, 84_000), false)
-    private val cleanCounts = listOf(CountRow("visit", 6, 6), CountRow("memo", 6, 6), CountRow("stock_movement", 2, 2), CountRow("qc_line", 0, 0))
+    private val cleanCounts = listOf(CountRow("visit", 6, 6), CountRow("memo", 6, 6), CountRow("stock_movement", 2, 2), CountRow("qc_line", 0, 0), CountRow("memo_discount", 0, 0))
     private val cleanGate = SalesSubmitRules.gate(OutboxStates(0, 0, 40, 0, 0), cleanCounts, DuesAtSubmit(0, 0), false)
-    private val labels = mapOf("visit" to "আউটলেট", "memo" to "মেমো", "stock_movement" to "স্টক", "qc_line" to "কিউসি")
+    private val labels = mapOf("visit" to "আউটলেট", "memo" to "বিক্রয়", "stock_movement" to "স্টক", "qc_line" to "কিউসি", "memo_discount" to "প্রমোশন")
     private val tasks = TaskListState(
         listOf(
             TaskItem("t1", "visit_outlet", "Babu Store", "Babu Store দোকানে Maxim এ OOS আছে। আজকের মধ্যে স্টক দিন।", 5, "Babu Store", "2026-11-30", "ongoing", null),
@@ -152,7 +152,7 @@ class CloseShot {
     @Test fun parity_submit_bn() = shot("parity_submit_bn") { Parity("বিক্রয় জমা", com.aktcl.aron.core.ui.R.drawable.aron_art_sales_submit) { Submit() } }
     @Test fun parity_submit_clean_bn() = shot("parity_submit_clean_bn") { Parity("বিক্রয় জমা", com.aktcl.aron.core.ui.R.drawable.aron_art_sales_submit) { SubmitClean() } }
 
-    @Test fun parity_outlet_menu_bn() = shot("parity_outlet_menu_bn") { Parity("আউটলেট", com.aktcl.aron.core.ui.R.drawable.aron_art_outlet) { com.aktcl.aron.feature.outlet.OutletMenuContent({}, onOwnRequests = {}) } }
+    @Test fun parity_outlet_menu_bn() = shot("parity_outlet_menu_bn") { Parity("আউটলেট", com.aktcl.aron.core.ui.R.drawable.aron_art_outlet) { com.aktcl.aron.feature.outlet.OutletMenuContent({}) } }
 
     @Test fun parity_memo_bn() = shot("parity_memo_bn") { Parity("মেমো", com.aktcl.aron.core.ui.R.drawable.aron_art_memo) { Memo() } }
     @Test fun parity_memo_menu_bn() = shot("parity_memo_menu_bn") { Parity("মেমো", com.aktcl.aron.core.ui.R.drawable.aron_art_memo) { Menu() } }
@@ -160,6 +160,7 @@ class CloseShot {
     @Test fun parity_tasks_bn() = shot("parity_tasks_bn") { Parity("টাস্ক", null) { Tasks() } }
     @Test fun parity_tasks_empty_bn() = shot("parity_tasks_empty_bn") { Parity("টাস্ক", null) { TasksEmpty() } }
 
+    @Test fun parity_tasks_my_requests_bn() = shot("parity_tasks_my_requests_bn") { Parity("টাস্ক", null) { TaskContent(tasks, {}, onMyRequests = {}) } }
     @Test fun parity_login_bn() = shot("parity_login_bn") { Login() }
     @Test fun parity_otp_bn() = shot("parity_otp_bn") { Otp() }
 
@@ -193,7 +194,7 @@ class CloseShot {
     @Test fun parity_fs2_memo() = shot("parity_fs2_memo", fontScale = 2f) { Parity("মেমো", com.aktcl.aron.core.ui.R.drawable.aron_art_memo) { Memo() } }
     @Test fun parity_fs2_tasks() = shot("parity_fs2_tasks", fontScale = 2f) { Parity("টাস্ক", null) { Tasks() } }
     @Test fun parity_fs2_login() = shot("parity_fs2_login", fontScale = 2f) { Login() }
-    @Test fun parity_fs2_outlet_menu() = shot("parity_fs2_outlet_menu", fontScale = 2f) { Parity("আউটলেট", com.aktcl.aron.core.ui.R.drawable.aron_art_outlet) { com.aktcl.aron.feature.outlet.OutletMenuContent({}, onOwnRequests = {}) } }
+    @Test fun parity_fs2_outlet_menu() = shot("parity_fs2_outlet_menu", fontScale = 2f) { Parity("আউটলেট", com.aktcl.aron.core.ui.R.drawable.aron_art_outlet) { com.aktcl.aron.feature.outlet.OutletMenuContent({}) } }
 
     @Test fun parity_summary_bn() = shot("parity_summary_bn") { Parity("বিক্রয় সারসংক্ষেপ", com.aktcl.aron.core.ui.R.drawable.aron_art_summary) { Summary() } }
 
