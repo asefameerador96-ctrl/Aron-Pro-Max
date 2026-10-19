@@ -3,7 +3,6 @@ package com.aktcl.aron.tso
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -74,7 +73,7 @@ fun TsoDashboardHost(api: TsoApi, businessDate: String, onBack: () -> Unit, modi
     ) {
         val st = state
         when {
-            st == null -> Box(Modifier.fillMaxSize(), Alignment.Center) { CircularProgressIndicator() }
+            st == null -> com.aktcl.aron.feature.tso.TsoLoading()
             leaf == DashLeaf.FILTER -> TsoZoneFilterContent(st.zones, zone, { zone = it; leaf = DashLeaf.MAIN })
             leaf == DashLeaf.NOT_LOGGED_IN -> TsoRouteListContent(st.login?.notLoggedIn.orEmpty(), st.businessDate, st.login?.asOf, st.loginStale, st.loginFailure)
             leaf == DashLeaf.NOT_UPLOADED -> TsoRouteListContent(st.login?.loggedInNotSubmitted.orEmpty(), st.businessDate, st.login?.asOf, st.loginStale, st.loginFailure)

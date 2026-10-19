@@ -80,7 +80,7 @@ fun FeedbackListScreen(state: FeedbackListState, categories: List<FeedbackCatego
     TsoFrame(stringResource(R.string.tso_fb_title), onBack, modifier, tile = com.aktcl.aron.feature.home.RoleHomes.TsoTile.FEEDBACK, bottomBar = { if (onNew != null) TsoBottomBar(primary = TsoAction(stringResource(R.string.tso_fb_new), onNew), modifier = Modifier.testTag(FeedbackTags.NEW)) },
     ) {
         when (val u = ui) {
-            FeedbackListUi.Loading -> Column(Modifier.fillMaxSize()) {}
+            FeedbackListUi.Loading -> com.aktcl.aron.feature.tso.TsoLoading()
             FeedbackListUi.Empty -> TsoEmpty(stringResource(R.string.tso_fb_empty), Modifier.testTag(FeedbackTags.EMPTY), hint = stringResource(R.string.tso_fb_empty_hint))
             FeedbackListUi.Error -> TsoError(stringResource(R.string.tso_fb_error), stringResource(R.string.tso_retry), { scope.launch { state.load() } }, Modifier.testTag(FeedbackTags.ERROR))
             is FeedbackListUi.Content -> Column(Modifier.fillMaxSize()) {
