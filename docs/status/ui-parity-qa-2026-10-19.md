@@ -489,3 +489,499 @@ VERDICT: Shell, palette and card grid are recognisably the existing Aron dashboa
     ref: Sidebar full height.
     built: The gradient sidebar ends at the first 910 px of a 2642 px page and the grey page shows below it. Cannot tell if the sidebar is position-sticky to the viewport in a real browser.
     fix: Confirm the sidebar is fixed or sticky at 100vh. If it is only the first viewport, make it span the full document height or stay pinned while scrolling.
+
+---
+
+# ROUND 2 (INT 3375f0a0 evidence, 2026-10-19 03:15 UTC): what still differs
+
+Same method as round 1 (reviewers per group, skeptic on high items). Pure scale differences are NOT reported (documented choice, docs/status/ui-parity-ui-kit.md). 69 round-1 items are fixed; 93 remain (mostly medium/low). Caveat found afterwards: some lane evidence PNGs (sr-stock.png, sr-sale-list.png) were captured before the kit window and render pack pictures as silhouettes because the generic screenshot hosts install no packshot provider (by ruling, to keep goldens disjoint); INT goldens stock_bn_light/sale_bn_light show red minus at zero, compact totals and inline units. Real pack pictures must still be seen on a phone (dev APK, -Paron.devPackshots).
+
+##### SR Home
+VERDICT: Yes, mostly: the header, 4-column tile grid with redrawn icons, outlined KPI tiles, red-to-purple sales panel and mauve discount panel now read as the existing Aron; what is left is polish (Latin Match/Lighter labels, wrapped and lighter tile labels, tall KPI tiles, the deferred target card wording), and nothing rises to high.
+
+FIXED SINCE ROUND 1:
+- KPI strip: all six tiles now present in a 4-column grid (৬/৬০ আউটলেট ভ্রমণ, ১০% স্ট্রাইক রেট, ইস্যু, বর্তমান স্টক, ৫৪ নন ভিজিট, ০ বিক্রি নেই), white cards with a thin indigo outline, black Bengali numerals, indigo labels, inside a pale lavender container; the 
+- Sales summary panel: now a vertical red-to-purple gradient panel with white text, 'বিক্রয় (স্টিক)' headline with the ০ stick count, a thin white rule above সর্বমোট, no ৳ on the rows, and the spaced hyphen minus ('- ৪৩৭.৫০').
+- Deduction rows (money correctness): two separate rows ডিসকাউন্ট - ৪৩৭.৫০ and QC - ০.০০, net সর্বমোট ৪,৩৯১.০০; matches the reference and the arithmetic (4,828.50 - 437.50 - 0.00).
+- Second summary panel added below the sales panel on white: মোট ডিসকাউন্ট ৪৩৭.৫০ / DRP ডিসকাউন্ট ০.০০ / মোট QC ০.০০, white rule, সর্ব মোট ৪,৮২৮.৫০৳ (large), মোট টাকা ৪,৩৯১.০০৳, mauve vertical gradient as in the reference.
+- Extra status rows removed: no check-in line, no sync row with the sun toggle, no battery/data footer (the Apsis credit line is dropped by design).
+- Header subtitle now reads 'Apsis RouteDaily, 2026-10-05' on one line with ASCII digits and no '· Daily' suffix.
+- Photo Capture tile added with the exact English label and the camera-with-photographer icon; with Astha and Loyalty hidden the grid is now four full rows-of-four-or-fewer in the right order (Task Delegation, Photo Capture, Sales Journey, KPI).
+- Home tile icons (attendance, stock, sale, memo, summary, sales submit, outlet, tutorial, task delegation, photo capture, sales journey, KPI) and the avatar and gear match the reference drawing and gradient colours.
+
+STILL DIFFERS:
+- (medium, ui-sr-a) Sales panel category row labels (Match, Lighter)
+    ref: Bangla labels ম্যাচ and লাইটার on the first two rows, in a lighter weight than মোট/ডিসকাউন্ট/QC/সর্বমোট.
+    built: Latin 'Match' and 'Lighter' (the only Latin words in the panel except QC), same weight as the other rows.
+    fix: Use the Bangla category names ম্যাচ and লাইটার (and the same Bangla names for any other category row that appears) from the localisation layer, keeping the English reading for the English locale only.
+- (medium, ui-kit) Tile labels: wrapping
+    ref: Every tile label on one line, including টাস্ক ডেলিগেশন and the English 'Photo Capture'; icons and labels share one baseline across the row.
+    built: 'টাস্ক ডেলিগেশন' and 'Photo Capture' each wrap to two lines while the other labels in that row sit on one line, so the third row looks ragged and its tiles are taller than needed (the 360 dp width contributes, but the shrink-to-fit asked for in round 1 is not in effect).
+    fix: AronTile label: maxLines 1 with auto-shrink to a floor (or a slightly smaller label size) so these two labels fit on one line at 360 dp; keep a fixed label slot.
+- (medium, ui-kit) Tile labels: weight and colour
+    ref: Semi-bold labels in a deep purple-indigo (darkest sampled stroke about #3D2073).
+    built: Regular-weight labels in a lighter, bluer indigo (sampled #3E2C9A), so the whole grid reads thinner and paler than the reference.
+    fix: Set the AronTile label to Medium or SemiBold weight; consider moving the label colour toward the sampled deep purple (about #3D2073) instead of #3F2D9B, the screenshot wins over the token table.
+- (medium, ui-sr-a) KPI tile proportions and content layout
+    ref: Each KPI tile wider than tall (about 1.1 : 1), numeral centred in the upper half at one uniform large size, a single-line label near the bottom, all six labels on one line.
+    built: Tiles tall and narrow (about 0.65 : 1); numerals pinned to the top with a large empty gap above the label; the numerals in the ইস্যু and বর্তমান স্টক tiles are auto-shrunk smaller than the ৬/৬০ and ১০% numerals and crowd the tile edges; 'আউটলেট ভ্রমণ' wraps to two lines while the others are on one l
+    fix: Make the KPI tile aspect close to square or slightly landscape (reserve one label line, not two), centre the numeral vertically in the space above the label, use one numeral size for all six (reduce the font for all rather than per tile), and shrink the label to one line.
+- (medium, ui-kit) Home header title
+    ref: 'SR - Testing Banani (sr334001)' on one line in a medium weight, subtitle on the next line.
+    built: Title is bold and wraps to two lines ('SR - Testing Banani' / '(sr334001)'), so the header grows a line taller than the reference; the subtitle line itself is now correct. Whether it still wraps at 411 dp: cannot tell, but the weight difference is real.
+    fix: AronHomeHeader: Medium weight instead of bold, maxLines 1 with shrink-to-fit so the whole 'Role - Name (login)' stays on one line at 360 dp.
+- (low, ui-sr-a) Target and achievement card wording
+    ref: Title 'টার্গেট ও অ্যাচিভমেন্ট (SKU List)', sub-label 'এস টি ডি', bar with '১%', 'বিস্তারিত' link, on a vertical red-to-purple gradient.
+    built: Same gradient, bar and 'বিস্তারিত' link, but title 'আজকের অগ্রগতি', a 'আজকের সর্বমোট ৪,৩৯১.০০ ৳' line (with a space before ৳) and a '৬/৬০' outlets-visited bar instead of the STD percentage.
+    fix: This follows PARITY-SPEC and the docs/27 deferral of targets (card shell with the day's sales, no target %), so it is a documented choice; if the owner asks, keep the shell but consider the reference title wording and drop the space before ৳ to match the second panel.
+- (low, ui-kit) Tile grid geometry
+    ref: Tiles about 0.87 wide to 1 tall with modestly rounded corners.
+    built: Tiles still about 0.70 : 1 (taller and narrower), with noticeably rounder corners; the reserved two-line label slot adds to the height.
+    fix: Reduce tile height once labels are single-line; tile aspect about 0.87 and corner radius 8 to 10 dp unless the owner confirms 12 dp.
+- (low, ui-sr-a) ইস্যু and বর্তমান স্টক values
+    ref: ৮০০ and ৪১৯ (lighters and match dozens added together, see home.md UI-SR-10).
+    built: ১২,৮০০ and ১০,২১৯, which are wider than the tile can show at the normal numeral size.
+    fix: Cannot tell whether this is different seed data or a different unit basis (sticks versus pieces/dozens); confirm the figures follow the unit rules in docs/10 and show per-category or no combined number if they mix units.
+- (low, ui-sr-a) Astha and Loyalty Point tiles
+    ref: Row 3 holds Task Delegation, Astha, Loyalty Point, Photo Capture; row 4 holds Sales Journey and KPI.
+    built: Astha and Loyalty tiles are absent; Photo Capture moves up to column 2 and the grid is 4 + 4 + 4 tiles.
+    fix: None needed while docs/27 defers Astha and loyalty (hidden by design); only mention it to the owner so the missing tiles are expected.
+
+##### SR Stock and pack pictures
+VERDICT: Not yet: the packshots-stock.png render now looks like the owner's Stock (gradient bar, grey page, one-row white cards, real MAXIM art with purple badges, purple totals panel), but the ui-sr-a render (sr-stock.png) still shows grey silhouettes, no single render has real art together with the right wording and controls, and the Sale list evidence is split between an old-structure render with art and a new-structure render without art.
+
+FIXED SINCE ROUND 1:
+- Stock shell: packshots-stock.png is no longer the old Calm Glass screen. It has a gradient red-to-purple bar, a light grey page, one-row white cards with the code/minus/field/plus/stock on one line, and the check-time chip and category sub-headers are gone.
+- Real pack pictures on every Stock row in packshots-stock.png: MaxR-10S and MaxR-20S (red), MaxB-10S and MaxB-20S (blue), MaxWB-10S and MaxWB-20S (green) all show the MAXIM art with the pictorial warning, at nearly full card height.
+- Pack badge: in packshots-stock.png and sr-stock.png it is a solid purple circle with a white bold digit overlapping the packshot's bottom-right corner and sticking out past it, as in the reference. The pale lavender pill is gone.
+- SKU label now binds to the hyphenated code (MaxR-10S, MaxB-20S) instead of 'MaxR 10S'. It still wraps, see below.
+- Printer chip in sr-stock.png and packshots-stock.png: fill (#F0F0F0 vs reference #E8E8E8) and glyph red (#E53D39 vs #EB4239) now match the reference, with the same position straddling the bar's bottom edge. The remaining difference is scale only.
+- Sale list in packshots-sale.png has moved off the pastel Calm Glass shell: gradient bar, #E8E8E8 page, white cards, solid purple badge style, and the real MaxR/MaxB/MaxWB art now renders (it was silhouettes in round 1).
+- Sale retailer picker (sr-sale-picker.png): the first letter chip now reads 'All' as in sale-select.png, with the gradient rounded-square selected state and the dark #505050 letter panel. The hint wording matches the reference exactly.
+- Sale list in the newer evidence sr-sale-list.png (outside the three assigned files): the retailer dropdown and the green 'পূর্বের সেল ডাটা দেখুন' button are now present, and the caption lines under the cards and the chip row are gone.
+
+STILL DIFFERS:
+- (high, ui-packshots) Pack pictures in the ui-sr-a Stock render (sr-stock.png) [OVERSTATED: What I can see is true. In the built right panel of sr-stock.png, MaxR-10S, Prime-Gold-10S and Aster all show a flat grey tile with a generic silhouette, and th]
+    ref: Real full-colour MAXIM art on every row (red MaxR, blue MaxB, green MaxWB) with the pictorial warning.
+    built: sr-stock.png (right panel, the ui-sr-a render) still draws a flat grey tile with a generic box silhouette on MaxR-10S, Prime-Gold-10S and Aster. Real art appears only in the separate ui-packshots render (packshots-stock.png). The main Stock path therefore still does not show packshots, and sr-sale-l
+    fix: Wire the main Stock and Sale PackCard to PackshotImage resolved by SKU code and seed the thumbnails so MaxR/MaxB/MaxWB render art. Regenerate sr-stock.png and the sale evidence from that one build, with art present on those rows. Keep the silhouette only for SKUs with no art (lighters, matches).
+- (high, ui-sr-a) Sale product list: no render has art plus the new structure [REAL: The core claim holds. sr-sale-list.png has the new structure: a white pill retailer dropdown, a green 'পূর্বের সেল ডাটা দেখুন' button, no chips and no price cap]
+    ref: PARITY-SPEC section 3: the Sale list uses the Stock card (packshot, code, minus, field, plus, number) under the retailer dropdown and letter strip, packshots on every cigarette SKU. The reference does not show the list itself, so only this structure can be compared.
+    built: packshots-sale.png has the art but the old structure. sr-sale-list.png has the new structure but only silhouettes and different, shortened uppercase codes ('MAXR10', 'PRIME1/0', 'ASTER', 'FB') where Stock and packshots-sale use 'MaxR-10S'. The owner cannot see a Sale list that has both. I cannot tel
+    fix: Produce one Sale evidence render from the current build that shows the dropdown, the green history button, no chips or captions, real packshots and the same hyphenated code as Stock. The code shown must be sku.code on every screen.
+- (medium, ui-sr-a) Old-structure leftovers in packshots-sale.png
+    ref: No bare retailer text, no underlined link, no chip row and no captions between cards: the Stock card is the whole row. The SR manual puts a green full-width history button under the letter strip.
+    built: Plain black 'Banani Store' text jammed under the bar; an underlined purple link 'পূর্বের বিক্রয় দেখুন' (different wording from the manual's 'পূর্বের সেল ডাটা দেখুন'); a clipped row of white pills খুঁজুন / সব / সিগারেট / লাইটার / ম্যাচ; and a caption under every card ('৮.০০ ৳ / স্টিক · স্টকে ২০০'), 
+    fix: Retire this layout. sr-sale-list.png already shows the corrected one, so regenerate packshots-sale.png from it.
+- (medium, ui-sr-a) Third column header and totals header wording (packshots-stock.png)
+    ref: Row header এসকেইউ / ইস্যু / স্টক and totals header ক্যাটাগরি / মোট ইস্যু / স্টক.
+    built: packshots-stock.png shows এসকেইউ / ইস্যু / লোড and totals ক্যাটাগরি / মোট ইস্যু / মোট লোড. sr-stock.png (right) correctly shows স্টক in both places, so the two renders disagree. I cannot tell which is the shipping build.
+    fix: Make the third column and totals column read স্টক in every build (the round-1 request to drop 'মোট লোড'). Regenerate packshots-stock.png.
+- (medium, ui-kit) Minus button at quantity 0
+    ref: Solid red #D84A4A rounded square with a white bar on every row, even at 0 (all five visible rows are at 0).
+    built: All six minus buttons in packshots-stock.png are pale grey (#ADACAC bar on a light grey square). In sr-stock.png the Prime-Gold-10S row (quantity 0) is grey while MaxR-10S (20) is red, so the column flips colour. Sale rows at 0 are grey too (about #ABABAC).
+    fix: AronMinus stays solid #D84A4A at all times and ignores the tap at 0, with no disabled or alpha styling. Keep the TalkBack description.
+- (medium, ui-kit) Stepper proportions in the pack card
+    ref: Small rounded-square minus and plus (58 px on a 257 px card, about 0.23 of card height) with a wide underlined field between them, about 5.7 button widths and about 29 percent of screen width.
+    built: Buttons are about 0.35 of card height and the field is only about 1.4 button widths, about 13 percent of screen width. The cluster looks chunky and squeezed in both packshots-stock.png and sr-stock.png.
+    fix: Shrink the visible minus and plus (about 0.4 of the packshot width, thin glyphs, 48 dp touch target kept) and give the underlined field weight(1f) so it fills the space between the buttons.
+- (medium, ui-sr-a) SKU label wrapping and size
+    ref: 'MaxR-10S', 'MaxB-20S', 'MaxWB-10S' each on one line, purple bold, same size on every row.
+    built: The hyphenated code is used but still wraps: 'MaxR-10' / 'S', 'MaxB-20' / 'S', 'MaxWB-' / '10S' (packshots-stock.png and packshots-sale.png), and in sr-stock.png 'Prime-G' / 'old-10S' (broken mid-word). 'Aster' fits on one line and is drawn about 1.5x larger, so sizes are inconsistent across rows.
+    fix: maxLines 1 at one fixed size. Give the label column a fixed share of the row, which frees up once the steppers shrink. Use the short SKU code, not the full product name.
+- (medium, ui-kit) Totals panel unit lines and height
+    ref: Compact panel (about 26 percent of screen height), four single-line rows: সিগারেট / বিড়ি / লাইটার / ম্যাচ with their two numbers, no unit text.
+    built: Each category has an extra small unit line below it (স্টিক / স্টিক / পিস / ডজন), so rows are about 1.7x taller. The panel is about 38 percent of screen height in sr-stock.png and takes about 25 percent in packshots-stock.png, leaving only 2 to 3 card rows visible in sr-stock.png.
+    fix: Put the unit inline on the same line as the category, in 12 sp (for example 'লাইটার · পিস'), at one row pitch. The unit rule (UI-SR-15) stays.
+- (medium, ui-kit) Save button gradient edge
+    ref: Save runs red to mauve only: sampled left (213,72,72) and right (122,43,124) on the panel (72,27,154), so its right edge is visible.
+    built: In sr-stock.png the Save gradient ends at (83,31,147) against the panel (72,27,154), so the right end and corner melt into the panel. The Sale 'এগিয়ে যান' button does the same: right end (79,29,148) on a (72,27,154) cart panel.
+    fix: AronPrimaryButton on a purple panel: draw only the first 55 to 60 percent of the ramp so the right end is about #7D2B7B.
+- (medium, ui-sr-a) Save state and 'no change' line (packshots-stock.png)
+    ref: Save is the active red-to-mauve button in the initial state (all quantities 0). Nothing sits between the last category row and the buttons.
+    built: Save is flat grey (#B8B8B8) with white text, and an extra line 'কোনো পরিবর্তন নেই' sits above the buttons. The reference shows neither.
+    fix: Keep Save in the gradient state, as in sr-stock.png. Show 'nothing to save' by ignoring the tap or with a snackbar, not a new line in the panel.
+- (low, ui-sr-a) Pack badge on Sale rows
+    ref: Stock card shows the purple badge '০' on every row, including at 0. PARITY-SPEC makes the badge part of PackCard. The reference does not show the Sale list itself.
+    built: packshots-sale.png has no badge on any Sale row (round 1 had one on MaxR). sr-sale-list.png shows the badge only on the row with quantity above 0 ('8').
+    fix: Show the badge on every packshot row, including at 0, to match the Stock card. Confirm with the owner whether Sale should hide it at 0.
+- (low, ui-kit) Print button label
+    ref: Grey #E8E8E8 button with a regular-weight dark grey label (darkest pixel about #5A5A5A) and a small icon. It reads as disabled next to the crossed-out printer.
+    built: Same fill, but the label is bold near-black (#0C0C0C) and the icon larger, so it reads as enabled while the printer is crossed out.
+    fix: AronSecondaryButton disabled: label about #595959, regular weight, smaller icon.
+- (low, ui-sr-a) Quantity and stock numerals weight
+    ref: Bold, heavy black Bengali digits in the field and the stock column.
+    built: Regular-weight digits (২০, ৪০০, ১৯০, ০), visibly lighter than the reference.
+    fix: Set the PackCard field and stock text to Noto Sans Bengali Bold at the current size. Leave the white digits in the totals panel as they are, which match.
+- (low, ui-kit) Header icon drawing
+    ref: Clipboard with checked list and two boxes: solid filled magenta-to-cyan gradient shapes.
+    built: Same motif, but drawn as hollow outline strokes with white edges (sr-stock.png). In packshots-stock.png it is faded with teal and green patches.
+    fix: Fill the shapes with the pink-to-blue gradient as in the reference. Check whether the teal patches are the real asset or only the evidence PNG being palette-reduced.
+- (low, ui-packshots) Pack art colour fidelity
+    ref: Saturated red MaxR, deep blue MaxB.
+    built: In packshots-stock.png the art shows posterised banding and speckle (blue MaxB). In packshots-sale.png MaxR looks washed pink and MaxB purple-grey. The same palette-style patches appear in the header icon, so this may come from the evidence file and not from the app. I cannot tell.
+    fix: Re-export the evidence as 24-bit PNG. If the speckle persists, re-encode the thumbnails at higher quality, still about 150x240 WebP.
+
+##### SR Sale
+VERDICT: Not yet for the product list: the picker screen now reads as the existing Aron and the list and review are much closer in structure (green previous-sales button, no chip row, single-row footer, yellow QC, checkbox), but the owner would still say the list is not their app because every row shows a grey silhouette instead of the pack picture, the letter strip is gone, the SKU codes wrap and change case, and the minus buttons flip between red and grey.
+
+FIXED SINCE ROUND 1:
+- Picker first chip now reads 'All' (English) and the selected chip is the vertical red-to-purple gradient rounded square, as in sale-select.png (ev/sr-sale-picker.png; the picker hint wording, white pill, dark #505050 panel and page #E8E8E8 sample identical).
+- Retailer pill is back on the list screen and shows the selected retailer as 'name (code-phone-cluster)': 'Banani Store (DHK-344-001-01711000000-Apsis Cluster)'. The bare 'Banani Store' text line is gone.
+- The underlined purple link 'পূর্বের বিক্রয় দেখুন' is now a full-width green rounded button with a history icon and the manual's wording 'পূর্বের সেল ডাটা দেখুন'.
+- The white category chip row (খুঁজুন, সব, সিগারেট, লাইটার, ম্যাচ) and the sub-header 'এই আউটলেটে আগে বিক্রি' are removed from the list.
+- The captions between cards (price per stick, 'স্টকে ৪০০', '= 8 প্যাকেট + ০', purple line totals) are removed; cards now follow each other like the Stock reference with column headers এসকেইউ / বিক্রয় / স্টক in grey.
+- The pack-count badge is now a solid purple round badge with a white digit overlapping the packshot's bottom-right corner, as in the Stock reference (it was a pale lavender pill).
+- The list footer is a single purple row: cart icon, total '৬৪৫.০০' without a ৳ suffix, and 'এগিয়ে যান →' at the right (it was two stacked rows).
+- An over-stock state now exists: a red line 'Aster এর স্টক আছে মাত্র ২৫।' under the Aster card (qty 26 against stock 25).
+- Review header is now three lines: bold 'Banani Store (DHK-344-001)', 'রুট: Apsis RouteDaily', 'ক্লাস্টার: Apsis Cluster' (it was one wrapped grey line).
+- Review credit option is now an unchecked purple-outline checkbox, and 'প্রোডাক্ট QC' is a full-width yellow rounded button (#FFC107) instead of a white chevron row and a Material switch.
+- Review shows the grand total 'সর্বমোট ১১৭.৫০৳' once, inside the table card; the purple footer panel is gone and the Print button sits on the page, running purple (#511E94) to crimson (#D1474D) like the Summary reference.
+- Review money cells now carry the ৳ glued to the number ('১৬০.০০৳', '৩৭.৫০৳').
+
+STILL DIFFERS:
+- (high, ui-packshots (wiring) with ui-sr-a) Pack pictures (packshots) on the Sale list rows [REAL: Confirmed in a zoomed crop of the Sale list (right panel of ev/sr-sale-list.png). All four rows (MAXR10, PRIME10, ASTER, FB) show a flat grey tile with a generi]
+    ref: Stock reference (the card the Sale list must reuse, PARITY-SPEC 3 and 2.5) has the full-colour MAXIM pack art (red MaxR, blue MaxB, green MaxWB) filling the card height at the left of every row. Owner directive: packshots in Stock and Sale.
+    built: ev/sr-sale-list.png: every row (MAXR10, PRIME10, ASTER, FB) has a flat grey tile with a generic silhouette (a two-tab pack for both MAXR10 and PRIME10, a bottle for ASTER, a box with a stick for FB). No row shows real art. The art does exist: ev/packshots-sale.png renders real MaxR/MaxB/MaxWB art, b
+    fix: Wire PackshotImage(skuId) in the parity-shell Sale list to the cached thumbnails and seed the approved thumbnails for the evidence and pilot data so MAXR10 and the other cigarette SKUs render real art; keep the silhouette only for SKUs with no art; re-render sr-sale-list.png from the parity shell to
+- (medium, ui-sr-a) Alphabet filter strip on the Sale list screen
+    ref: sale-select.png has the white retailer pill and the dark #505050 letter panel (All plus letters) together at the top. SR manual SR-S-32 (text only, no list screenshot) says the strip stays above the SKU cards after a retailer is chosen.
+    built: On the list screen only the pill and the green button are above the column headers. The dark letter panel is gone, so there is no letter filter on the list.
+    fix: Keep the dark RetailerPicker letter panel (All plus letters, selected chip as the vertical gradient square) between the pill and the green previous-sales button on the list screen.
+- (medium, ui-sr-a) Retailer pill on the list screen (wrapping, size, type)
+    ref: A one-line white pill about 65 px tall (in the 360 dp render) with a caret; the picker screen in the same build shows it as one line.
+    built: The selected label wraps to three lines ('Banani Store' / '(DHK-344-001-01711000000-Apsis' / 'Cluster)') in black Latin text, so the pill is about twice as tall as on the picker screen and pushes the SKU rows down by one card.
+    fix: Render the label on one line (maxLines 1, ellipsis, 14 to 16 sp), or show the name on line 1 and 'code-phone-cluster' smaller on line 2 inside a fixed-height pill, so the pill height matches the picker screen.
+- (medium, ui-sr-a) SKU label in the pack card (and review table)
+    ref: Stock reference: the code on one line in purple, mixed case with hyphen ('MaxR-10S', 'MaxR-20S', 'MaxB-10S'), same size on every row. The built Stock screen (ev/sr-stock.png) also uses 'MaxR-10S'.
+    built: Sale list: 'MAXR10', 'PRIME10' (broken mid-code onto two lines as 'PRIME1' / '0'), 'ASTER' drawn noticeably larger, and 'FB'. All upper case without the hyphen, so one SKU has different names on Stock, Sale and Review ('MAXR10', 'ASTER' in the Review table too).
+    fix: Bind the label to the same display code field Stock uses (MaxR-10S, Prime-Gold-10S, Aster), fixed size, maxLines 1 with ellipsis, in a label column wide enough that no code wraps; use the same field in the Review table.
+- (medium, ui-kit) Quantity stepper proportions
+    ref: Stock reference: small rounded-square minus and plus (about 0.38 of the packshot width) at the ends of a wide underlined quantity field (several button widths).
+    built: Buttons are about 0.65 of the packshot width and chunky, with heavy glyphs; the underlined field is only about 1.3 button widths, so the cluster is squeezed and takes the space the SKU label needs.
+    fix: Shrink the visible buttons to about 0.4 of the packshot width with thinner glyphs (keep a 48 dp hit area) and let the underlined field take weight(1f) between them.
+- (medium, ui-kit) Minus button at quantity 0
+    ref: Solid red #D84A4A rounded square with a white bar on every row, including rows at 0.
+    built: PRIME10 and FB (quantity 0) show a pale grey #E6E6E6-style minus with a grey bar (sampled #A7A7A7 bar); rows above 0 are solid red, so the column flips between grey and red.
+    fix: Keep AronMinus solid red at all times; ignore the tap at 0 with no disabled styling.
+- (medium, ui-kit) Gradient action button on the purple panel (Sale footer)
+    ref: Stock reference Save button on the purple panel shows only the red-to-mauve part of the gradient (left about #D0464B, right about #7A2B7C), so its right edge and corners stay visible against #481B9A.
+    built: 'এগিয়ে যান' runs red (#CE464E) through #913170 to #511E94 on a #481B9A panel: the right end and corners disappear into the panel. The leading arrow icon is drawn black while the label is white.
+    fix: For AronPrimaryButton placed on the purple panel clip the gradient to about 0 to 55 percent (red to #903171); tint the leading icon white like the label.
+- (medium, ui-sr-a) Printer-state slot in the Review top bar
+    ref: Printing screens show the red circle with a crossed-out printer at the right of the bar (Stock reference) or in the info card (Summary reference); manual SR-S-33 puts a printer icon (green connected, red slashed disconnected) beside the outlet name.
+    built: The right side of the 'নিরীক্ষণ' bar is empty and there is no printer icon anywhere on the screen, although it has a Print button.
+    fix: Add the printer-state slot (red crossed circle when not connected, tap to connect) to the Review bar or beside the outlet name.
+- (medium, ui-kit) Retailer picker hint colour and caret
+    ref: Placeholder 'রিটেইলার নির্বাচন করুন' in mid grey (darkest sampled pixel 158,158,158) and a mid-grey caret (97,97,97).
+    built: Placeholder is dark (darkest sampled 30,30,30) and reads like a chosen value; caret darkest 67,67,67.
+    fix: Render the empty hint in #9E9E9E and the caret in #616161; use dark text only once a retailer is selected.
+- (low, ui-kit) Latin typeface
+    ref: Roboto: the capital J in the letter strip sits on the baseline with a curved hook.
+    built: The J in the letter panel still drops below the baseline (Noto Sans style) and 'Banani Store', 'Apsis RouteDaily' and the other Latin text on the list and review have the wider humanist forms.
+    fix: Make Roboto the first font family for Latin glyphs in the shared Typography, with Noto Sans Bengali as the Bengali fallback.
+- (low, ui-kit) Sale icon rendering in the top bar
+    ref: A clean sale icon: solid blue clock ring with clear hands and a smooth pink-to-blue box.
+    built: Same artwork, but the clock ring is dashed and aliased with a white fringe on the box outline and thin hands, like a down-scaled bitmap (visible in the zoomed crop on the picker, list and review bars).
+    fix: Re-export the icon as a vector drawable or a 3x bitmap with no white matte so the ring stays solid at 36 dp.
+- (low, ui-sr-a) Pack badge at quantity 0
+    ref: Stock reference: the purple round badge with a white '০' sits on every row, including rows at 0.
+    built: Rows at quantity 0 (PRIME10, FB) have no badge; only MAXR10 (badge ৪) has one.
+    fix: Show the badge on every pack-counted row, including at 0, as in the Stock reference (omit only for rows with no pack size, such as lighters).
+- (low, ui-sr-b) Review table header and money cells
+    ref: Summary reference header 'মূল্য' without a currency mark, and the ৳ glued to each figure.
+    built: Header reads 'মূল্য (৳)' and every cell also ends in ৳ ('১৬০.০০৳'), so the symbol appears twice.
+    fix: Make the header 'মূল্য' (the manual's wording) and keep the ৳ glued to the cell figures.
+- (low, ui-sr-a) Green 'পূর্বের সেল ডাটা দেখুন' button fill
+    ref: Manual SR-S-32 only says 'green full-width' (no screenshot).
+    built: A horizontal gradient from solid green (#02A651) to pale mint (#5ABA89) at the right end, so the right half looks washed out next to the saturated pills.
+    fix: Cannot tell the true colour from the evidence; use a flat or near-flat green (about #02A651) unless the owner supplies the list screenshot.
+- (low, ui-sr-a) Slide collection button and Slide line
+    ref: Manual SR-S-32 footer lists a yellow 'স্লাইড সংগ্রহ' button beside the 'এগিয়ে যান' button (text only, no screenshot).
+    built: The footer has no 'স্লাইড সংগ্রহ' button, yet the Review table shows a non-zero 'স্লাইড − ৮০.০০৳' deduction. I cannot tell whether the missing button is the intended docs/27 deferral or whether the Slide line should also be hidden or zero.
+    fix: Confirm against docs/27 (every discount programme deferred) and make the list footer and Review consistent: either both show the slide feature or the Review line stays zero.
+
+##### SR Attendance and Tasks
+VERDICT: Yes for both screens: Attendance and Tasks now read as the owner's existing Aron in colours, structure, wording and element order. The visible leftovers are the speckled Attendance bar icon, typeface and weight differences, and one extra 'synced' line in the Tasks evidence.
+
+FIXED SINCE ROUND 1:
+- Attendance location card surface: fill is now #D7D7D7 (pixel-sampled, same as the reference), darker than the #E8E8E8 page, no border or outline, rounded, compact (no longer a near-white outlined card).
+- Attendance location card content: the mint-green 'ভালো ±১৮ মি' pill and Bengali-digit coordinates are gone. It now shows Latin digits '23.792580, 90.407830' on one line in grey, with a small grey '±18 m' suffix line.
+- Attendance refresh icon: now red (same colour) and the same circular-arrow glyph, size and position as the reference at the right of the location card (crop-compared). It is no longer near-black.
+- Attendance leading tiles: user and location tiles are small rounded squares with exactly the reference tints (#D7D3DF user, #C7C3CF location, sampled) and a purple glyph; they are no longer large grey tiles.
+- Attendance user header: 'Apsis RouteDaily, 2026-10-05' is now in Latin digits like the reference. The red divider line under it also matches.
+- Attendance footer: the permanent 'ফোনে সংরক্ষিত হয়েছে...' line under the buttons is gone; the lower part of the screen is empty grey as in the reference.
+- Attendance Check in / Check out: the glyph is now small (about 16 to 20 dp) and the label smaller, so the buttons are no longer crowded. Green and grey gradients, the login and logout glyphs and the wording 'চেক ইন' / 'চেক আউট' match.
+- Attendance message wording matches the reference: 'আপনি এখনো চেক ইন করেননি। কাজ শুরু করার আগে অনুগ্রহ করে চেক ইন করুন।'. The title 'অ্যাটেনডেন্স' also matches.
+- Tasks empty-state wording: now 'করেননি' with two ন, same as the reference (zoomed on all three renders). The INT branch strings.xml and tasks-and-astha.md carry it. The local working-tree checkout at /home/user/Aron-Pro-Max is still on the old one-ন spelling, 
+- Tasks empty-state layout: the sentence is centred with balanced breaks and no one-word widow 'করেনি।'. Page, bar gradient and absence of any list chrome match the reference.
+- Tasks synced-at line: INT TaskScreen.kt now shows it only when stale (never synced, or older than 6 hours). The kit-tasks mock-up shows the clean single sentence like the reference. See the remaining item about the evidence render.
+
+STILL DIFFERS:
+- (medium, ui-kit shared components (icon asset)) Attendance top-bar icon (calendar with clock)
+    ref: Clean calendar-clock icon: three red tabs, a 3 by 2 grid of outlined squares, a ringed clock with a visible hand and a blue edge, smooth gradient pink to blue.
+    built: Same drawing, but the grid squares, tabs and clock face are speckled with white and pink fringe pixels (aliased low-resolution bitmap), and the clock hand is illegible. The same noise appears in the kit-attendance mock-up, so it is the asset or its sampling, not only the screenshot. Cannot tell how 
+    fix: Re-export the attendance bar icon as a vector drawable (or a properly mipmapped, filtered bitmap with no white edge pixels) and check it at 1.25 and 3 px per dp. Same check for the other bar icons (stock, sale and so on).
+- (low, ui-kit shared components) Top bar title weight and back chevron (Attendance and Tasks)
+    ref: Semi-bold, narrower Bangla title: on Tasks the title glyphs are 32 percent of bar height. Back chevron small and thin: about 17 percent of bar height, 3.3 percent of the width from the left edge.
+    built: Title is Bold and heavier: 37 percent of bar height on Tasks, and visibly thicker strokes on Attendance. Chevron is larger and thicker: about 24 percent of bar height, 5.6 percent of the width from the edge. Unchanged from round 1; measured on the Tasks bars.
+    fix: In AronTopBar use a SemiBold (600) title (the bundled Bengali set has only Regular, Medium and Bold, so use Medium or add SemiBold), shrink the chevron to about 20 percent of bar height and move it about 2 dp closer to the edge.
+- (low, ui-sr-b Summary/Submit/Outlet/Memo/Tasks/Auth) Tasks: 'synced at' caption in the evidence render
+    ref: One single-line sentence and nothing else on the grey page.
+    built: sr-tasks.png still shows a second smaller grey line 'সিঙ্ক হয়েছে ২০২৬-১০-০৫ ১০:৪২' in Bengali digits under the sentence. INT code shows it only when stale, and the fixture date 2026-10-05 is older than 6 hours, so it is probably just the stale fixture. Cannot tell how the default fresh-sync state r
+    fix: Re-record the sr-tasks golden with a fresh syncedAt (and a second golden for the stale case) so the evidence shows the single-sentence default; when the line does show, use Latin digits as in the other reference screens.
+- (low, ui-kit shared components) Tasks empty-state sentence typeface and weight
+    ref: Thin, light, narrow serif-style Bangla face in dark grey, with the Latin 'AMO' drawn in a serif.
+    built: Noto Sans Bengali Regular, visibly heavier and darker, with sans 'AMO'. The text is the same words. The bundled-font choice is documented, so this is polish only.
+    fix: Keep the bundled font, but use a lighter weight (Light, if bundled) or a slightly lighter ink for empty-state sentences on Tasks and the Attendance message. Otherwise accept the difference as a documented font choice.
+- (low, ui-sr-b Summary/Submit/Outlet/Memo/Tasks/Auth) Tasks sentence vertical position
+    ref: The sentence sits low on the page, about 70 percent of the way down (y 1147 of 1606).
+    built: The sentence is vertically centred, about 50 to 55 percent down (also in the kit-tasks mock-up). Cannot tell whether the reference offset scales with screen height or is a fixed offset, because the capture aspect differs.
+    fix: Check how the original places it (for example centred in a region below a hidden header). If it is a fixed offset, bias the empty-state block to about 60 to 70 percent of the content height; otherwise leave it.
+- (low, ui-sr-a Home/Attendance/Stock/Sale) Attendance message typeface and wrap
+    ref: One centred line in a thin, light Bangla face.
+    built: Same wording in Noto Sans Bengali Regular, heavier, wrapping onto two lines at 360 dp (the kit mock-up also wraps). The wrap is probably only the narrower viewport; the weight difference is real.
+    fix: Same as the Tasks sentence: lighter weight for body prose. Do not change the width handling on this evidence.
+- (low, ui-sr-a Home/Attendance/Stock/Sale) Attendance user header text weight
+    ref: 'SR - Testing Banani (sr334001)' and 'Apsis RouteDaily, 2026-10-05' in Roboto Medium (clearly semi-bold).
+    built: Same text and layout in a lighter regular weight (crop-compared at 3x).
+    fix: Set the user header name and route line to Medium (500), as in the Home header.
+- (low, ui-sr-a Home/Attendance/Stock/Sale) Attendance location card edges and extra accuracy line
+    ref: Borderless card with feathered edges and a soft wide shadow; the text is the reverse-geocoded address on two lines; no accuracy text.
+    built: Correct fill (#D7D7D7), but the edges are crisp rounded with a very faint shadow. The offline evidence render shows coordinates plus a second '±18 m' line (an UI-SR-12 addition); the kit mock-up shows the address, so online looks like the reference. Cannot tell the shipped online state from the evid
+    fix: Add a more diffuse, low-alpha shadow of about 24 dp blur to the card. Keep the accuracy suffix, and add a golden of the online address state to the evidence set.
+- (low, ui-sr-a Home/Attendance/Stock/Sale) Attendance Check in / Check out label weight
+    ref: Light-weight white label under a small glyph; generous empty space; soft feathered shadow under the green button.
+    built: Label is semi-bold or bold white (visibly heavier); the shadow under the buttons is tighter and harder.
+    fix: Use a regular or Medium weight label at 14 sp and a softer, wider shadow.
+- (low, ui-kit shared components) Attendance refresh glyph in the kit-attendance mock-up
+    ref: Bold red circular arrow with the arrowhead at the top right.
+    built: The kit mock-up draws a different glyph (open ring with the arrowhead at the top) than the real screen render, which matches the reference. Cannot tell which one ships in the app.
+    fix: Make the kit component use the same refresh vector as the Attendance screen, and re-render the kit mock-up.
+
+##### SR Summary, Submit and Outlet menu
+VERDICT: Mostly yes: the Outlet menu is now essentially the owner's screen (four tiles, no extra buttons), and the Summary and Submit have the right wording, ৳ placement, five legacy rows and verbatim red notice, but the Submit still shows the wrong small crest-style shield, collides its 'ডিভাইস' and 'সার্ভার' headers, and shows the second button in active look with a floppy glyph, and the Summary table header is still oversized and wraps, so a side-by-side look would still catch those.
+
+FIXED SINCE ROUND 1:
+- Outlet menu: the two extra full-width gradient buttons under the tiles are gone; the screen is exactly four tiles (three in row 1, Cluster alone in row 2), same order and artwork as the reference.
+- Outlet menu: tile label colour is now the crimson #D0444B (reference #D74848), no longer an off-token red.
+- Outlet menu: tile icons (new shop with plus, CLOSE sign circle, edit shop with cursor, cluster) now match the reference drawing and gradients; bar icon is now a solid purple shop like the reference.
+- Summary: ৳ is now glued to the Value and Discounted-value cells (৪,৬৮৭.৫০৳, ৪৮০.০০৳) and removed from the discount line and grand total, as in the reference.
+- Summary: 'ডিসকাউন্ট এবং অন্যান্য (-)' now fits on one line with ASCII '(-)' and '-৪৩৭.৫০' (no space, no typographic minus).
+- Summary: category subtotal rows (সিগারেট, লাইটার) are now single-line rows with the same column positions as SKU rows; they no longer double in height.
+- Summary: the extra caption 'আজ ২ টি মেমো' above Print is removed; nothing sits between the totals block and the Print button.
+- Summary: Print button gradient now runs purple on the left to crimson on the right, the reference direction.
+- Summary: the info banner now has a thin grey outline (sampled #D7D7D7; reference #BBBBBB to #C8C8C8).
+- Summary and Submit: title icon redrawn as solid pink-to-blue slabs with the blue network node (Summary rack), close to the reference and larger than before.
+- Submit: table now has the five legacy rows with the reference labels (আউটলেট, বিক্রয়, স্টক, কিউসি, প্রমোশন).
+- Submit: the extra white 'সব তথ্য মিলেছে' card and the 'শেষ যোগাযোগ' line are removed; only the device-status row sits above the table.
+- Submit: the red notice is now the original sentence verbatim ('আজকের কাজ শেষ করার আগে, অবশ্যই সব অপারেশন ডাটা সিঙ্ক করুন এবং এই অপশন থেকে বিক্রয় জমা সাবমিট করুন।') with red left and right edges like the reference.
+- Submit: vertical gaps and the Device/Server column positions are closer than in round 1 (columns now at about 66 and 84 percent, reference 69 and 88).
+
+STILL DIFFERS:
+- (medium, ui-kit) Submit: title shield icon
+    ref: A large clean outline shield (nearly the full bar height, overflowing the top), with an inner circle and a check mark, pink at the top fading to blue at the bottom.
+    built: Still a small crest about half the bar height, with a dotted ornamental ring, a tiny emblem inside and no visible check mark (crops/sr-summary-submit-outlet/sub-title.png).
+    fix: Redraw the sales-submit vector exactly as the reference: single outline shield, inner circle, check mark, pink-to-blue vertical gradient, drawn at about 80 to 90 percent of the bar height. Do not reuse the crest drawable.
+- (medium, ui-sr-b) Submit: table header 'ডিভাইস' and 'সার্ভার' collide
+    ref: Device and Server headers are well apart, centred over their columns at about 71 and 90 percent of the width.
+    built: The two header words touch and read as one word ('ডিভাইসসার্ভার'); the header font is bold and large for the narrow column pair (crops/sr-summary-submit-outlet/sub-hdr-built.png). Data columns sit at about 66 and 84 percent.
+    fix: Reduce the header text to about 16 sp or less and give the two numeric columns equal weights with a minimum gap of about 12 dp (for example weights 5:2:1.6) so the headers cannot touch at 360 dp; push the data columns to about 70 and 88 percent.
+- (medium, ui-kit) Submit: 'বিক্রয় জমা' button style and glyph
+    ref: Grey #BABABA fill, white bold label and a small inbox-with-down-arrow glyph (disabled, so only the red Sync button looks active).
+    built: Rendered in the all-synced state: same red-to-purple gradient as Sync, with a solid floppy-disk glyph. The disabled look is still not in the evidence, so I cannot tell whether it is #BABABA with white text.
+    fix: Swap the floppy-disk glyph for the inbox-with-down-arrow glyph, and add a not-synced render (Server column 0, Submit disabled) as evidence so the grey #BABABA, white-label state can be checked.
+- (low, ui-kit) Submit: Sync button gradient end and glyph
+    ref: Red #D44749 to a mid purple ending near #792A7D, with a small loop-arrows sync glyph at label height.
+    built: Gradient still ends in deep indigo (about #4F1D94, sampled at the right edge); glyph is a bolder left-right double arrow.
+    fix: End the Sync (and the Submit) gradient near #792A7D and use the small circular sync glyph at cap height.
+- (low, ui-sr-b) Submit: row values and server state
+    ref: বিক্রয় 381 (sale quantity), স্টক 800 (issued quantity), প্রমোশন ৪৩৭.৫ on the Device side, with the Server column all ০ before upload.
+    built: বিক্রয় ৬ (equals the outlet count), স্টক ২, প্রমোশন ০, and the Server column mirrors the Device column (6, 6, 2, 0, 0) because the render is the synced state. The Summary in the same build shows a discount of ৪৩৭.৫০, so the Submit promotion of ০ does not agree with it.
+    fix: Cannot tell whether বিক্রয় and স্টক hold quantities or record counts (the fixtures differ between screens). Confirm they show sale quantity and issued quantity as in the reference, and use one fixture for Summary and Submit so the numbers agree.
+- (low, ui-sr-b) Submit: vertical spacing
+    ref: Roomy: table to notice about 0.9 top-bar heights, notice to Sync about 0.6, Sync to Submit about 0.45.
+    built: Better than round 1 but still compact: about 0.7, 0.2 and 0.2 top-bar heights.
+    fix: Add about 24 dp between table and notice, about 16 dp between notice and Sync, and about 16 dp between the two buttons.
+- (medium, ui-kit) Summary: table header label size and wrapping
+    ref: Small white header labels on one line (width of 'ডিসকাউন্ট' about 0.63 of the width of ৪৩৭.৫০), including 'ডিসকাউন্ট মূল্য' on one line; header row about two thirds of the top-bar height.
+    built: Header labels are bold and as wide as the figures (about 1.09 of the figure width); 'ডিসকাউন্ট মূল্য' still wraps onto two lines and the header row is about as tall as the whole top bar (crops/sr-summary-submit-outlet/sum-built-mid.png).
+    fix: Set SummaryTable header text to regular weight at roughly 60 percent of the figure size (about 9 to 10 sp), maxLines=1, and weight the six columns so 'ডিসকাউন্ট মূল্য' fits at 360 dp; cap the header row near two thirds of the top-bar height.
+- (medium, ui-sr-b) Summary: unit suffix in category rows
+    ref: Bare quantity numbers in the category rows (৩৭৫, ৬) with no unit text.
+    built: The quantity carries a tiny unit ('৬০ স্টিক', '৩৭৫ পিস'); on the লাইটার row the unit is clipped to 'পি' and touches the next column ('৩৭৫ পি৪,৬৮৭.৫০৳') (crops/sr-summary-submit-outlet/sum-built-bot.png).
+    fix: Either show the bare number in the table (print the unit on the slip) or give the quantity column enough width for the unit with softWrap=false and no clipping; the unit must never overlap the Value column.
+- (low, ui-kit) Summary: table header fill and corner shape
+    ref: Horizontal grey gradient from about #505050 on the left to #2D2D2D on the right, square top-left corner, only the top-right corner rounded.
+    built: Flat #4D4D4D with both top corners rounded.
+    fix: Draw the SummaryTable header with a left-to-right gradient #505050, #3F3F3F, #2D2D2D; top-left radius 0, top-right radius about 8 dp.
+- (low, ui-kit) Summary: Print button gradient end stop
+    ref: Left #4A1B98 to right #A63863 (dusty crimson, never full red).
+    built: Direction is now right, but the right end is full red #D2474B.
+    fix: Use stops #4A1C99 to #A73964 for the Print button.
+- (low, ui-sr-b) Summary: info banner details
+    ref: Text on one line at the top of the card, about 16 px (0.15 of the bar height) gap under the bar, a grey circle that overflows and is clipped by the card's bottom edge, holding a small all-red crossed side-view printer.
+    built: Text wraps to two lines and is vertically centred (partly viewport-induced), gap under the bar is about 0.3 of the bar height, the circle sits fully inside the card with a drop shadow, and the glyph is a stacked-boxes printer with a white slash (crops/sr-summary-submit-outlet/sum-printer.png).
+    fix: Top-align the text, tighten the gap under the bar to about 6 dp, clip the printer circle at the card's bottom edge with no shadow, and use the side-view Material print-disabled glyph in solid red with a red slash.
+- (low, ui-sr-b) Summary: SKU list versus docked totals
+    ref: The white SKU list fills the height (blank white space below the last SKU); category rows, discount line and grand total form a separate #F0F0F0 block pinned above the Print button.
+    built: Category rows and totals follow the last SKU row directly inside one card, so the grey Aster row merges with the grey category block; no blank white area. I cannot tell how a long list behaves from this one render.
+    fix: Make the SKU list a weight(1f) scrolling region and dock the category, discount and total block as its own #F0F0F0 panel above Print.
+- (low, ui-sr-b) Summary: discount and grand-total typography
+    ref: Medium-weight purple label and a medium-weight numeral for '-৪৩৭.৫০' and '৪,৩৯১.০০'.
+    built: Heavier bold label, and a visibly bolder, wider numeral for the grand total ('৪,৭৩০.০০').
+    fix: Use Medium or SemiBold for the label and the same numeral weight as the table figures for both values.
+- (low, ui-kit) Top bar on all three screens: title weight and chevron
+    ref: Medium-weight title and a thin small back chevron.
+    built: Heavier bold title ('বিক্রয় সারসংক্ষেপ', 'বিক্রয় জমা', 'আউটলেট') and a thicker, bolder chevron.
+    fix: AronTopBar: title SemiBold or Medium, back chevron thinner stroke (about 2 dp).
+- (low, ui-kit) Outlet menu: label placement and row heights
+    ref: Every label sits at the bottom of its tile on one common baseline, all four tiles the same height, no wrapped label.
+    built: Labels sit right under the icon (not bottom-anchored), leaving an empty band under one-line labels; 'তথ্য পরিবর্তন করুন' wraps onto two lines, so row 1 is taller than the Cluster row (about 430 versus 370 px). The wrap may be viewport-induced at 360 dp.
+    fix: Anchor the label to the bottom of the tile, keep a fixed tile height with a 2-line label allowance (or shrink the label to fit one line), so the rows have equal height and labels share a baseline.
+- (low, ui-kit) Outlet menu: tile spacing, shadow and icon proportion
+    ref: Column gap about 2.3 times the row gap; a soft shadow with a white hairline edge around each tile (about 15 px at 1258 px width); the icon fills about 85 percent of the tile width.
+    built: Column gap (10 px) and row gap (13 px) about equal; flat tiles with no visible shadow; icons about 70 percent of the tile width.
+    fix: Give AronTile the 2 dp soft elevation shadow and a hairline edge, make the column gap about twice the row gap (for example 16 dp and 8 dp), and enlarge the tile icon to about 80 percent of the tile width.
+- (low, ui-kit) Evidence render viewport
+    ref: Screenshots at aspects 0.63 (Summary), 0.85 (Submit), 1.02 (Outlet menu).
+    built: Built renders are still 540 px wide (360 dp at 1.5x, aspect 0.45), so the Summary banner wrap, the Submit header collision and the Outlet label wrap cannot be judged at the reference proportions. No second golden render was added.
+    fix: Add a second golden render at about 412 dp and the reference aspect for each of the three screens, plus a Submit render in the not-synced (disabled) state.
+
+##### AMO and TSO (Home x2, TSO Dashboard)
+VERDICT: Nearly the same family as SR Home but not yet an exact sibling: the header, tile grid, indigo labels and gradient card are right, but TSO still has a white card, flat solid icons and edge-to-edge labels, and both roles keep plain-text footers and a date-only header subtitle, so the owner would notice the odd-one-out parts side by side, though not within 2 seconds.
+
+FIXED SINCE ROUND 1:
+- TSO ছুটি badge no longer covers the calendar: the '১' circle now only touches the top-right corner and the binder rings are clear (crop crops/amo-tso/badges.png). Round 1 said it covered the top-right ring.
+- No other round-1 item for this group is fixed. Header wrap, date-only subtitle, TSO white card, TSO flat icons, the AMO footer, the dangling '·', the ASCII '10:42', and the tile label edge-to-edge are all unchanged in the latest renders.
+
+STILL DIFFERS:
+- (medium, ui-kit shared components) Home header title (AMO and TSO; same on built SR)
+    ref: One line 'SR - Testing Banani (sr334001)' in a medium-weight Roboto-like face, about the size of a tile label.
+    built: Bold, wraps to two lines on both screens: 'AMO - Testing Banani / (amo5001)' and 'TSO - টেস্টিং ঢাকা নর্থ / (tso1001)'. The Latin letters are a Noto-style sans. The built SR Home header wraps the same way (crops/amo-tso/headers.png), so the family is consistent with itself but not with the reference
+    fix: In AronHomeHeader use Roboto Medium (not bold) at 14 to 16 sp, maxLines 1, autosize down to 12 sp. This also fixes SR.
+- (medium, ui-amo and ui-tso (header subtitle input), ui-kit shared components) Home header second line (AMO and TSO)
+    ref: 'Apsis RouteDaily, 2026-10-05': route name, comma, date in ASCII digits, directly under the title.
+    built: AMO and TSO show only '২০২৬-১০-০৫' in Bengali digits, tiny, with no area or route name. The built SR Home header does show 'Apsis RouteDaily, 2026-10-05' in ASCII, so the two role homes differ from the SR header pattern.
+    fix: Use '<area or zone name>, 2026-10-05' with ASCII digits for AMO and TSO, matching SR. docs/status/android-core-ui.md says the AMO/TSO header deliberately uses localized digits; the reference shows ASCII, so the reference wins.
+- (medium, ui-tso) TSO bottom card 'জোন জমা হয়েছে'
+    ref: The slot under the tile grid is the vertical red-to-purple gradient card with white text (SR Target card, and AMO 'আজ টিমের বিক্রয়' in the built render).
+    built: A white card with a soft shadow on a white page, purple title, large black '৩', grey line 'আজ ১২ টি জোনের মধ্যে'. It barely separates from the page and is the odd one out against AMO.
+    fix: Render it as the gradient card shell (#C74350 to #561F91, white title and number), the same component as AMO.
+- (medium, ui-tso, ui-kit shared components (icon set)) TSO tile icons (ছুটি, ফাইনাল সাবমিট, আমার পরিধি, আমার কল, আমার মতামত)
+    ref: The SR and AMO versions of the same ideas are outlined line art with a pink to purple to cyan gradient and inner detail: the shield has a gradient outline and an inner ring on a light fill, the shop has an awning, the calendar has a gradient outline and a clock face.
+    built: TSO draws solid-filled, flatter versions. The shield is a solid magenta-to-blue fill with a white ring (AMO's is outlined). The shop is a solid purple block with a white awning slot. The calendar is a solid magenta-violet with a plain blue clock. 'আমার মতামত' reuses the banknote-and-phone memo icon 
+    fix: Reuse the SR and AMO vector drawables for the shield, shop and calendar, in the reference gradient and stroke weight. Do not keep a second flat set.
+- (medium, ui-tso, ui-kit shared components (AronTile)) TSO tile labels and tile height
+    ref: Single-line labels with clear side padding, label anchored near the bottom, tiles about 1.15 times as tall as wide.
+    built: 'আমার পরিধি' runs edge to edge in its tile with the final vowel sign touching the border. 'ফাইনাল সাবমিট' and 'আমার মতামত' wrap to two lines. TSO tiles are about 1.6 times as tall as wide (126 by 78 px), against about 1.4 on built SR and AMO. One-line labels sit right under the icon and leave empty 
+    fix: Add 4 dp horizontal label padding and autosize 14 to 11 sp. Use the same tile height as AMO and SR instead of reserving two lines. Consider shorter wording such as 'পরিধি' if the manual allows.
+- (medium, ui-amo, ui-kit shared components) AMO sync and status footer
+    ref: The SR family uses grey or black ink with purple accents only. The built SR Home has no loose status paragraph.
+    built: 'সিঙ্ক হয়েছে' is bold slate navy (outside the token set) with a thin grey-navy check. Below it are two plain grey lines, and the second breaks with a dangling '·' at the end of line one ('...অপেক্ষায় ·'). The text is indented slightly further than the card edge.
+    fix: Use one shared sync-status footer with token colours: grey ink, aron.purple check, same on AMO and TSO. Break lines between items, not at a '·'.
+- (low, ui-tso) TSO footer lines and digit style
+    ref: Bengali digits for figures in Bangla mode throughout the SR family.
+    built: 'সিঙ্ক হয়েছে 10:42' uses ASCII digits next to Bengali '৩', '১২', '২০২৬-১০-০৫'. TSO shows the same information as two plain grey lines with no check, while AMO shows a bold line with a check, so the two role homes differ.
+    fix: Format the time with the locale digit helper ('১০:৪২') and use the same footer component as AMO.
+- (low, ui-amo, ui-tso, ui-kit shared components (icon set)) AMO and TSO-only icons (জয়েন্ট কল, টিম, রিপোর্ট, কন্ট্রোল কল, ড্যাশবোর্ড)
+    ref: No reference for these concepts. The SR icons are outlined line art with an inner detail and a gradient that runs pink-red at the top to blue-cyan at the bottom.
+    built: Solid flat purple-magenta glyphs with no outline and almost no blue: two heads over arcs, three heads over a bar, three bars plus a pie, a phone with a check badge. They read as chunkier than the redrawn SR icons next to them (crops/amo-tso/amo-top.png).
+    fix: Redraw on the SR icon grid with a thin outline, rounded caps, one inner detail, and the same pink to purple to cyan gradient direction.
+- (low, ui-kit shared components (badge slot)) Count badge on tiles (AMO outlet '৩', TSO ছুটি '১')
+    ref: No badge in the owner's Home screenshot. The built SR badge sits at the tile corner and also overlaps its icon ('২' covers the task-delegation arrow).
+    built: The AMO badge '৩' covers the top-right end of the shop awning. The TSO badge is cleaner and only touches the calendar corner. The digit is small and thin (about 8 to 9 sp) in a roughly 20 dp circle.
+    fix: Move the badge 4 dp further out to the tile corner and make the digit 11 sp bold, so it does not hide icon detail.
+- (low, ui-tso) TSO Dashboard wording and units vs SR
+    ref: The SR family uses 'বিক্রয়' for sales ('বিক্রয়', 'বিক্রয় জমা', 'বিক্রয় সারসংক্ষেপ') and the Home sales card says 'বিক্রয় (স্টিক)' (docs/ui-reference/sr/home.md).
+    built: The TSO Dashboard card rows read 'বিক্রি (সিগারেট)' with unit 'শলাকা', 'বিক্রি (লাইটার)' with unit 'বক্স', and 'বিক্রি (ম্যাচ)' with unit 'ডজন'. The words 'বিক্রি' and 'শলাকা' differ from the SR wording 'বিক্রয়' and 'স্টিক'. The lighter unit 'বক্স' follows the TSO manual ('Lighter in Box') but spon
+    fix: Align labels with the SR vocabulary ('বিক্রয়', 'স্টিক'). Confirm the lighter unit label with the owner against rule 5 before shipping.
+- (low, ui-tso, ui-kit shared components) TSO Dashboard card details vs the SR summary family
+    ref: Info card with a dark round 'i' icon at the left. The primary button carries a leading icon (the Print button has a printer glyph).
+    built: The top card 'শেষবার অনলাইনে থাকার সময়ের তথ্য।' is plain text with no 'i' icon. The gradient 'রিফ্রেশ' button has no leading icon. Percent formatting is inconsistent: '৪.৫ %' with a space on the Dashboard against '৬২%' without one on the AMO footer. The channel card legend starts 'General Trade ৬৬.
+    fix: Add the 'i' glyph to the info card, a refresh glyph on the button, drop the space before '%', translate or localise 'General Trade' and break the legend between items.
+- (low, ui-kit shared components) Tile corner radius and label weight (AMO and TSO Home)
+    ref: Small tile corners (about 4 percent of tile width) and strong medium-weight indigo labels.
+    built: Tile corners are about 12 percent of tile width, visibly rounder than the reference. Label weight looks close to Medium, so I cannot tell whether the weight differs from the reference at this resolution.
+    fix: Use about 6 dp radius on Home tiles (the screenshot wins over the 12 dp in the spec). Leave the label weight unless a crop at the same dp width shows a difference.
+
+##### Web dashboard home
+VERDICT: Mostly yes: the crimson-purple-crimson sidebar with grouped sub-menus and Logout, the blue-title cards and the four-row grid in the owner's order now read as his dashboard, but the FF Geo Location card is still a grey 'Show map' placeholder, which the owner would notice immediately.
+
+FIXED SINCE ROUND 1:
+- Sidebar menu is now grouped with collapsible sub-menus (Retailer, Products, Route Planning, Reports) in the owner's order, replacing the flat 'Dashboards'/'Reports' lists. Dashboard is the highlighted top entry, and Target/Astha/Superstar stay out.
+- Sidebar footer button now reads 'Logout' (red, log-out icon) and the collapse control is a double chevron '<<' at the top right, next to the round logo. Sidebar gradient sampled as #D3484B at the top, #4B1C96 in the middle and crimson again at the bottom, whic
+- Sidebar icons are white line icons and each Products and Route Planning entry now has a distinct glyph, not one bar-chart for all.
+- Duplicate page title is gone: only the blue 'Dashboard' in the top bar remains, with one date line under it.
+- Filter button is now solid orange (#C2570C) with a white label and a list icon, next to Today/Yesterday and Refresh.
+- Sales cards: the ring percentage is now captioned 'Share of net sales'. Ring size and stroke are uniform across the four cards and the headline no longer touches the ring. 'Total sales · Stick/Piece/Dozen' stays on one line. The info (i) button is at the botto
+- Live CPR labels 'Planned outlets' and 'Successful calls' no longer wrap, and the ring is green.
+- By Channel Successful Call now shows the full title 'By Channel Successful Call' (two lines). The legend sits on the left and the concentric ring on the right, with an outer blue ring and an inner grey track.
+- By Channel STD is retitled 'By Channel STD' with the legend on the left and the pie on the right on one row.
+- Breakdown card is retitled 'Breakdown - STD / Memo', with the STD/Memo toggle beside the title and a gear icon at the far right. Bars use clean blue and orange gradients, with no grey-brown fade.
+- Final Submit Status now uses the reference labels 'Total Zone / Total Service Zone / Remaining' and a 'Total Final Submit 0' caption under the ring.
+- Login/Submit Status now uses the labels 'Login Status' and 'Submit Status' with download and upload icons and progress bars.
+- Net sales is now in Lakh format ('5.43 Lakh'), not '543,435.00 ৳'.
+- Per-card date footers are removed, except one left on the SR performance card (see below).
+
+STILL DIFFERS:
+- (high, web-dashboard) FF Geo Location card (row 4, right) [OVERSTATED: The core difference is real and visible: in /qa4/ev/web-home-1366-noref.png (crop: crops/verify-web-home/ffgeo.png) the card shows a grey plate, map icon, '3 SR]
+    ref: A wide Google map with clustered red and magenta count markers, a 'Filter by Color' select (All Colors), a fullscreen button and zoom controls (web-dashboard-reference note, row 4).
+    built: A grey plate with a map icon, '3 SRs · 4 outlets', the line 'The map loads only when you ask, so a visit costs no map load.' and a 'Show map' button. No map, no markers, no colour select, no fullscreen and no zoom control. Unchanged from round 1; the card is also the one with a header rule but an em
+    fix: Render the map in the card on desktop web: lazy-load it when the card scrolls into view or on first paint, since web users are not on the 2 GB field pack. Show clustered red and magenta count markers. Add the 'Filter by Color' select (All Colors) plus fullscreen and zoom controls. If the lazy button
+- (medium, web-dashboard) Sidebar menu tree: items below the fold
+    ref: Top-level order: Dashboard, Retailer, Products, Route Planning, Reports, Outlet (sub), Credentials, Tutorial, Performance Leaderboard, Daily Tracking Dashboard.
+    built: The first four groups match the reference order. The viewport ends inside 'Reports' ('TSO Daily Tracking', 'Final Submit status'), where the Logout button sits. 'Daily Tracking Dashboard', 'Outlet', 'Credentials', 'Tutorial' and 'Performance Leaderboard' are not visible. 'TSO Daily Tracking' and 'Fi
+    fix: Confirm the nav includes Outlet (sub-menu), Credentials, Tutorial, Performance Leaderboard and Daily Tracking Dashboard as top-level entries. Add a scroll or fade cue above the Logout button so a clipped list is obvious. Keep the extra pages (Sync health, Exceptions and so on) inside the groups.
+- (medium, web-dashboard) Final Submit Status card (row 2, third)
+    ref: Left column Total Zone / Total Service Zone / Remaining, a green ring at 100.0% on the right with 'Total Final Submit N'. A quiet card with no extra blocks.
+    built: Labels are right, but 'Total Service Zone' wraps onto three lines ('Total / Service / Zone'). The ring reads 0.0% in grey while the same card shows 'Submit % 66.7%' and 'Day completion % 25.0%', which contradict each other. 'Day completion %' runs to the card's right edge with no padding. Two orange
+    fix: Widen the left label column or use a smaller label size so each label stays on one line. Make the ring and the Submit % use the same figure, or drop one of them. Add right padding so 'Day completion %' fits inside the content area. Move the Pending pills behind 'Details' to keep the card quiet.
+- (medium, web-dashboard) Sales cards 'Net:' line and quantity unit
+    ref: Total in Lakh or Crore with 'Total Sales' in cyan beneath. No second figure.
+    built: Under 'Total sales · Stick' there is a 'Net: 4.35 Lakh' (cigarette), 'Net: 54,344', 'Net: 32,606' and 'Net: 21,737' line with no currency sign or unit. Cigarette reads Total 20,000 sticks with Net 4.35 Lakh, so net looks bigger than total, and Bidi reads 65.00 Lakh sticks with Net 54,344. It is a di
+    fix: Prefix the net with the taka sign ('Net ৳4.35 Lakh') or label it 'Net sales (taka)'. Check that the seed data for Total sales per unit is plausible.
+- (low, web-dashboard) Sales ring meaning (row 1)
+    ref: The ring shows an achievement percentage (60.8%, 82.2%, ...). Target is deferred, so the lead's ruling is to show the trend against the same weekday last week in the ring.
+    built: Rings show 80.0%, 10.0%, 6.0% and 4.0%, captioned 'Share of net sales', so they are the mix of the four products. The trend is a separate line, '0.0% vs same day last week', which wraps onto two lines next to the (i) button. It is honest but not what the lead ruled, and it looks unlike the reference
+    fix: Either keep the share ring and say so in the docs, or move the trend into the ring as the lead's ruling states. Keep the (i) button and make the trend line one line.
+- (low, web-dashboard) Login/Submit Status card
+    ref: 'Login Status 99.9%' and 'Submit Status 99.8%' with paired counts 'Target Route / Successful Login' and 'Login successfully / Submitted successfully', each with a small download or upload icon.
+    built: Labels, bars and icons match. Each bar has a single caption ('3 of 4 routes logged in', '2 of 3 logged-in routes') instead of the paired counts. The title wraps onto two lines ('Login/Submit / Status') with 'Details >' beside it, so its rule sits 6 px lower than Live CPR and Final Submit.
+    fix: Show the two paired counts under each bar in the reference wording. Shorten the title or the Details link so the title stays on one line.
+- (low, web-dashboard) Row 2 headers and Details links
+    ref: Four status cards with a uniform header.
+    built: Two header heights now (rule at about 85 px in Live CPR and Final Submit, 91 px in By Channel and Login/Submit, because two titles wrap). 'Details >' appears on Live CPR and Login/Submit, a bare '>' on By Channel Successful Call, and nothing on Final Submit Status.
+    fix: Use a fixed single-line header height and show the same link style on all four cards.
+- (low, web-dashboard) By Channel STD pie style and legend layout
+    ref: A 3D-style pie with a colour-coded legend of values and shares at its left. In By Channel Successful Call the list is one line per channel, for example '2.15 Lakh (78.3%) GT Channel'.
+    built: A flat 2D pie. By Channel Successful Call stacks name, count and share on three lines per channel, and the card is two-thirds empty below the ring.
+    fix: Add a subtle bevel or shadow to the pie. Put each legend row on one line ('37 (100.0%) Grocery').
+- (low, web-dashboard) Ring size and stroke consistency
+    ref: A family of ring gauges.
+    built: Sales rings are about 82 px, Live CPR about 80 px with a thinner stroke, Final Submit about 66 px, Geo fencing about 100 px with a thicker green stroke. In the first Sales ring '80.0%' touches the stroke on both sides.
+    fix: Use one shared ring size and stroke token for the status and Geo rings, and a slightly smaller number font in the sales rings.
+- (low, web-dashboard) Dates shown on the page
+    ref: No per-card date; none described.
+    built: The header reads '19 October 2026 · As of 7 Oct 2026, 17:00', and the same two dates repeat as a footer on the SR performance card, so the page looks stale. The two dates are 12 days apart.
+    fix: Show the 'As of' stamp once in the header, with a stale badge if the data really is old, and drop the SR performance footer.
+- (low, web-dashboard) Number formats in Zone ranking and SR performance
+    ref: Values in Lakh and Crore elsewhere (reference note).
+    built: Zone ranking shows '325,500.00' and '217,935.00' with no taka sign. SR performance shows full values ('325,500.00', '210,000.00') under 'Net sales (taka)', while the top cards use '5.43 Lakh' and '3.80 Lakh'. The formats are mixed on one page.
+    fix: Use the same Lakh rule on Zone ranking, or label it, and keep full figures only in the CSV and the table where exact values matter.
+- (low, web-dashboard) Sidebar icon reuse
+    ref: White line icons.
+    built: Browse Routes and Route-wise STD share one S-curve icon. Products: SKU and Variant share one cube. Category and Product Tree share one layers icon.
+    fix: Give each entry its own line icon.
+- (low, web-dashboard) Net sales card (row 5)
+    ref: Cards with a blue title and a thin rule.
+    built: 'Net sales' is a small dark label with no blue title or rule, and the card is two-thirds empty below '5.43 Lakh'.
+    fix: Use the standard blue title and rule, and shrink the card or add a trend sparkline.
+- (low, web-dashboard) Title capitalisation
+    ref: 'Sales (Lighter in Pcs)', 'Sales (Match in Dozen)', 'Geo Fencing', 'Total Sales'.
+    built: 'Sales (Lighter in pcs)', 'Sales (Match in dozen)', 'Geo fencing', 'Total sales · Stick'.
+    fix: Title-case these labels to match the owner's wording, in English only.
+- (low, web-dashboard) Sidebar height in the full-page capture
+    ref: Full-height sidebar.
+    built: The gradient ends at about 910 px and the grey page shows below it in the 2489 px capture. I cannot tell whether it is sticky in a real browser.
+    fix: Confirm with a viewport-height capture while scrolling, or make the sidebar fixed to the viewport.
