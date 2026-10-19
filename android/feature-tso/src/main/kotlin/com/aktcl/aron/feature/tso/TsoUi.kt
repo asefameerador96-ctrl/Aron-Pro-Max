@@ -22,13 +22,10 @@ internal fun TsoNote(text: String, modifier: Modifier = Modifier) {
     AronCard(modifier) { Text(text, style = MaterialTheme.typography.bodyMedium, color = LocalAronLook.current.ink) }
 }
 
-/** Section title in purple (PARITY-SPEC s1: section titles `aron.purple`). */
+/** Section title: the kit's purple header with the short red rule (PARITY-SPEC s1). */
 @Composable
 internal fun TsoSectionTitle(text: String, modifier: Modifier = Modifier) {
-    Text(
-        text, modifier.fillMaxWidth().padding(top = 8.dp, bottom = 2.dp).semantics { heading() },
-        style = MaterialTheme.typography.titleMedium, color = LocalAronLook.current.purple,
-    )
+    com.aktcl.aron.core.ui.aron.AronSectionHeader(text, modifier)
 }
 
 /**

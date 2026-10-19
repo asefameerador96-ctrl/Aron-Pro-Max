@@ -83,6 +83,12 @@ fun TsoMenuGrid(tiles: List<TsoMenuTile>, modifier: Modifier = Modifier) {
     }
 }
 
+/** The quiet loading state (no spinner): grey placeholder lines on a white card, announced as "Loading". */
+@Composable
+fun TsoLoading(modifier: Modifier = Modifier) {
+    Box(modifier.fillMaxSize().padding(12.dp)) { com.aktcl.aron.core.ui.aron.AronLoadingCard(stringResource(R.string.tso_loading)) }
+}
+
 enum class TsoBannerKind { Info, Warning, Error, Success, Offline }
 
 /** A status line on a white card; the words carry the meaning, the colour only backs them (error red, success purple). */

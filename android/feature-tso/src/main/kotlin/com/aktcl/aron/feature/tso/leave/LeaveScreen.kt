@@ -56,7 +56,7 @@ fun LeaveListScreen(state: LeaveListState, onBack: () -> Unit, modifier: Modifie
     TsoFrame(stringResource(R.string.tso_leave_title), onBack, modifier, tile = com.aktcl.aron.feature.home.RoleHomes.TsoTile.LEAVE, bottomBar = { if (onApply != null) TsoBottomBar(primary = TsoAction(stringResource(R.string.tso_leave_apply), onApply), modifier = Modifier.testTag(LeaveTags.APPLY)) },
     ) {
         when (val u = ui) {
-            LeaveListUi.Loading -> Column(Modifier.fillMaxSize()) { }
+            LeaveListUi.Loading -> com.aktcl.aron.feature.tso.TsoLoading()
             LeaveListUi.Empty -> TsoEmpty(stringResource(R.string.tso_leave_empty), Modifier.testTag(LeaveTags.EMPTY), hint = stringResource(R.string.tso_leave_empty_hint))
             LeaveListUi.Error -> TsoError(stringResource(R.string.tso_leave_error), stringResource(R.string.tso_retry), onRetry = { scope.launch { state.load() } }, modifier = Modifier.testTag(LeaveTags.ERROR))
             is LeaveListUi.Content -> LeaveContent(u)

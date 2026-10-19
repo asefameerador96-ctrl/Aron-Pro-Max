@@ -94,7 +94,7 @@ fun TeamScreen(state: TeamState, online: () -> Boolean, nowMs: () -> Long, userK
         Column(Modifier.fillMaxSize()) {
             if (ui.zones.size > 1) Column(Modifier.padding(horizontal = AronTokens.Space.Screen)) { ZonePicker(ui.zones, ui.zoneId) { state.pickZone(it); scope.launch { state.refresh() } } }
             when (val p = ui.phase) {
-                TeamUi.Loading -> Unit
+                TeamUi.Loading -> com.aktcl.aron.feature.tso.TsoLoading()
                 TeamUi.Unavailable -> TsoBanner(stringResource(R.string.tso_mc_unavailable), Modifier.testTag(PeripheryTags.STATUS), kind = TsoBannerKind.Offline)
                 is TeamUi.Shown -> {
                     if (p.result.fromCache) TsoBanner(stringResource(R.string.tso_offline_cached), Modifier.testTag(PeripheryTags.CACHED), kind = TsoBannerKind.Offline)

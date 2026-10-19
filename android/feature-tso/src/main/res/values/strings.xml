@@ -127,6 +127,7 @@
     <string name="tso_dash_as_of">As of %1$s</string>
     <string name="tso_dash_offline">Could not load. Showing what this phone has.</string>
     <string name="tso_dash_kept">Figures from the last time you were online.</string>
+    <string name="tso_loading">Loading</string>
     <string name="tso_dash_none">No figures yet</string>
     <string name="tso_dash_none_hint">Open this when you are online. It never refreshes by itself.</string>
     <string name="tso_dash_filter">Filter</string>

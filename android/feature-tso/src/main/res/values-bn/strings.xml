@@ -127,6 +127,7 @@
     <string name="tso_dash_as_of">%1$s পর্যন্ত</string>
     <string name="tso_dash_offline">আনা যায়নি। এই ফোনে যা আছে তা দেখাচ্ছে।</string>
     <string name="tso_dash_kept">শেষবার অনলাইনে থাকার সময়ের তথ্য।</string>
+    <string name="tso_loading">লোড হচ্ছে</string>
     <string name="tso_dash_none">এখনও কোনো তথ্য নেই</string>
     <string name="tso_dash_none_hint">অনলাইনে থাকলে এটি খুলুন। এটি নিজে থেকে হালনাগাদ হয় না।</string>
     <string name="tso_dash_filter">ফিল্টার</string>
