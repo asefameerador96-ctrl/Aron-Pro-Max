@@ -464,7 +464,7 @@ fun SrApp(
         }
         SrScreen.TASKS -> SrFrame(stringResource(R.string.sr_tasks_title), goBack, sync, openSync) {
             LaunchedEffect(Unit) { day.taskBoard.load() }
-            TaskContent(tasks, onResolve = { id -> scope.launch { day.taskBoard.resolve(id) } })
+            TaskContent(tasks, onResolve = { id -> scope.launch { day.taskBoard.resolve(id) } }, onMyRequests = { screen = SrScreen.OWN_REQUESTS })
         }
         SrScreen.OWN_REQUESTS -> SrFrame(stringResource(HomeR.string.hm_tile_outlet), goBack, sync, openSync) {
             var rows by remember { mutableStateOf<List<com.aktcl.aron.feature.outlet.OwnRequestRow>?>(null) }
@@ -472,7 +472,7 @@ fun SrApp(
             rows?.let { com.aktcl.aron.feature.outlet.OwnRequestsContent(it) }
         }
         SrScreen.OUTLET_MENU -> SrFrame(stringResource(HomeR.string.hm_tile_outlet), goBack, sync, openSync) {
-            OutletMenuContent(onOwnRequests = { screen = SrScreen.OWN_REQUESTS }, onKind = { k ->
+            OutletMenuContent(onKind = { k ->
                 day.requestKind = k
                 screen = if (k == OutletRequestKind.NEW) SrScreen.REQUEST_FORM.also { day.requestOutlet = null } else SrScreen.REQUEST_OUTLET
             })
@@ -556,7 +556,7 @@ private fun SrSyncSheet(snapshot: SrSyncSnapshot?, chip: SyncChipState?, sunligh
 @Composable
 private fun RequestHost(day: SrDay, outlets: List<OutletEntity>, onDone: () -> Unit) {
     val scope = rememberCoroutineScope()
-    val kind = day.requestKind
+    var kind by remember { mutableStateOf(day.requestKind) }
     val outlet = day.requestOutlet
     var form by remember(kind, outlet?.outletId) {
         mutableStateOf(
@@ -575,6 +575,7 @@ private fun RequestHost(day: SrDay, outlets: List<OutletEntity>, onDone: () -> U
     OutletRequestContent(
         form = form, errors = errors, clusters = clusters, capture = cap, saved = saved, warnOpenDues = form.openDueMtk > 0,
         onChange = { form = it }, onShutter = { scope.launch { capture.shutter() } },
+        onAddToRoute = { kind = OutletRequestKind.ROUTE_ADD; day.requestKind = OutletRequestKind.ROUTE_ADD },
         onSave = {
             scope.launch {
                 val toSend = form.copy(fix = cap.fix, photoUuids = listOfNotNull(cap.photo?.photoUuid))

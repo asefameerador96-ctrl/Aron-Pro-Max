@@ -132,6 +132,8 @@ fun SalesSubmitScreen(
     lastContactText: String? = null,
     /** DISPLAY ONLY: record types shown as one table row (see [SubmitDisplay]); null keeps one row per type. The gate and the submit never see it. */
     rowGroups: List<List<String>>? = null,
+    /** DISPLAY ONLY: without [rowGroups], show the legacy five rows (outlet, sale, stock, QC, promotion) instead of one row per record type; the gate never sees it. */
+    legacyFiveRows: Boolean = true,
 ) {
     val look = LocalAronLook.current
     val bn = LocalAppLanguage.current == AppLanguage.BN
@@ -140,7 +142,6 @@ fun SalesSubmitScreen(
     val canSubmit = gate.enabled && progress == SubmitProgress.Idle
     // the hold step closes itself once the submit is no longer possible (an effect, not a write during composition)
     LaunchedEffect(canSubmit) { if (!canSubmit) { hold = false; duesAsk = false } }
-    val allMatched = counts.isNotEmpty() && counts.all { it.matches }
     val reason = when {
         progress == SubmitProgress.Queued -> stringResource(R.string.submit_reason_queued)
         progress == SubmitProgress.Settled || gate.blocks.any { it == SubmitBlock.AlreadySubmitted } -> stringResource(R.string.submit_blocked_done)
@@ -160,7 +161,6 @@ fun SalesSubmitScreen(
                 stringResource(R.string.submit_status_title), stringResource(if (online) R.string.submit_status_online else R.string.submit_status_offline), online,
                 Modifier.fillMaxWidth(),
             )
-            lastContactText?.let { Text(stringResource(R.string.submit_last_contact, it), style = MaterialTheme.typography.bodySmall, color = look.inkMuted, modifier = Modifier.align(Alignment.End)) }
             if (progress == SubmitProgress.Settled) {
                 // the day is closed: the success state replaces the table (screens-sr s11)
                 SettledState(counts.sumOf { it.device })
@@ -182,9 +182,8 @@ fun SalesSubmitScreen(
                     val money = Formats.money(d.outstandingMtk, if (bn) UiLocale.BN else UiLocale.EN)
                     NoticeCard(stringResource(R.string.submit_dues_warning, localizedNumber(d.retailersWithDues.toLong()), money), Notice.Warning)
                 }
-                if (allMatched && gate.blocks.isEmpty() && progress == SubmitProgress.Idle) NoticeCard(stringResource(R.string.submit_all_matched), Notice.Success)
-                CountsTable(SubmitDisplay.views(counts, rowGroups), typeLabel)
-                if (progress == SubmitProgress.Idle) NoticeCard(stringResource(R.string.submit_info), Notice.Warning)
+                CountsTable(if (rowGroups == null && legacyFiveRows) SubmitDisplay.legacyFive(counts).ifEmpty { SubmitDisplay.views(counts, null) } else SubmitDisplay.views(counts, rowGroups), typeLabel)
+                if (progress == SubmitProgress.Idle) { Spacer(Modifier.height(AronTokens.Space.M)); NoticeCard(stringResource(R.string.submit_info), Notice.Warning) }
             }
             AronPrimaryButton(
                 stringResource(R.string.submit_sync), onSync, Modifier.fillMaxWidth(),
@@ -256,6 +255,7 @@ private fun CountsTable(counts: List<CountView>, typeLabel: (String) -> String) 
         val mismatchWord = stringResource(R.string.submit_row_mismatch)
         val blank = stringResource(R.string.submit_server_blank)
         AronDataTable(
+            weights = listOf(5f, 2f, 1.6f),
             headers = listOf(stringResource(R.string.submit_col_item), stringResource(R.string.submit_col_device), stringResource(R.string.submit_col_server)),
             rows = counts.map { row ->
                 val word = when { row.server == null -> waitingWord; !row.matches -> mismatchWord; else -> null }

@@ -30,6 +30,7 @@ import com.aktcl.aron.core.ui.LocalAronLook
 data class ClusterOption(val clusterId: Long, val name: String)
 
 object RequestTags {
+    const val ROUTE_ADD = "rq_route_add"
     const val NAME = "rq_name"
     const val OWNER = "rq_owner"
     const val MOBILE = "rq_mobile"
@@ -80,6 +81,8 @@ fun OutletRequestContent(
      * reason until the form is valid). Null keeps the older behaviour: Submit is enabled and the errors show after the tap.
      */
     blockingReason: String? = null,
+    /** Change-information form only: switches the same outlet to an "add to my route" request (F-SR-076); null hides the link. */
+    onAddToRoute: (() -> Unit)? = null,
 ) {
     val look = LocalAronLook.current
     var confirm by rememberSaveable { mutableStateOf(false) }
@@ -137,6 +140,9 @@ fun OutletRequestContent(
             }
             if (kind.needsGeoPhoto) GeoPhotoBlock(capture, onShutter, note = stringResource(R.string.out_req_photo_note))
             fieldErrors.forEach { FormError(errorText(it)) }
+            if (kind == OutletRequestKind.INFO && onAddToRoute != null) {
+                FormLink(stringResource(R.string.out_req_route_add), onAddToRoute, Modifier.fillMaxWidth().testTag(RequestTags.ROUTE_ADD))
+            }
         }
         FormBar(
             BarAction(stringResource(R.string.out_req_save), { if (kind.needsConfirmation && !form.confirmed) confirm = true else onSave() }, RequestTags.SAVE, enabled = blockingReason == null, icon = AronIcons.Submit),
