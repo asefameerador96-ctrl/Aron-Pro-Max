@@ -100,3 +100,16 @@ Dev checked 06:04 UTC: `GET /v1/health` 200, build 1852c8ed (last code promotion
 Newest release-signed APK: CI run 722 (id 37736394003), artifact `aron-release-signed-dev-722`, not expired; no Android file changed on INT since.
 
 Usage state read 2026-10-15 06:09 UTC from the archived integrator's live turn: `five_hour` status `allowed`, resets 2026-10-15 11:00 UTC (1792062000). The seven-day window reset on 2026-10-13 18:00 UTC; its live status is not yet read (stored records older than 2026-10-13 are stale).
+
+## Wave 3: UI parity (owner directive 2026-10-18 ~22:10 UTC, D-UI-REF-01, docs/ui-reference/PARITY-SPEC.md). Started 22:27 to 22:35 UTC from lane/lead-docs-night 3bd3aa53.
+| lane | session | model | branch | scope |
+|---|---|---|---|---|
+| ui-kit | session_01VBLkPE4hpaTd6ELz8HPAez (#1; #2 session_012DWzsWtYJkEcYzFUUfg1sn took over 2026-10-18 ~23:30 UTC) | Opus | lane/ui-kit | android/core-ui: Aron look tokens, components, icons; first job: kit skeleton within ~35 min |
+| ui-sr-a | session_01Cd6RMH6UoLJmTmx3KUSQmH | Sonnet | lane/ui-sr-a | SR Home, Attendance, Stock, Sale + app-sr wiring |
+| ui-sr-b | session_01EHeHAieyr3TW5u24uDCqDU | Sonnet | lane/ui-sr-b | SR Summary, Submit, Outlet, Memo, Tasks, Auth, Settings, Tutorial, Photo capture |
+| ui-amo | session_01RoMpAwHckGMbH3osVtndc9 | Sonnet | lane/ui-amo | AMO app, all screens (layouts from manual; no screenshots in git) |
+| ui-tso | session_01NJuafY2duD7bTGyhRfh8ae | Sonnet | lane/ui-tso | TSO app, all screens (layouts from manual; no screenshots in git) |
+| ui-packshots | session_01P2zXc4NJ6VRE8SfkBxCPJv | Opus | lane/ui-packshots | pack pictures: PackshotProvider, dev images, bundle + contract + Room chain, admin upload note; V0087 reserved |
+| web-dashboard | session_0134TFVfLnrg912BLs9WzfkV (#6) | Sonnet | lane/web-dashboard | web shell (crimson-purple sidebar) and dashboard cards per the reference; old queue after it |
+**UI wave rules (lead, 2026-10-19 00:05 UTC, after INT run 1220 went red on stale goldens):** (1) the kit goes LAST in each wave: a kit change that alters rendering stales every lane's goldens, so lanes do not merge lane/ui-kit beyond what INT holds and do not re-record for a newer kit; (2) feature heads go to INT first, in batches of one push per CI cycle; (3) then the KIT WINDOW opens: ui-kit merges INT, re-records every golden its change moves, and pushes ONE head that the integrator fast-forwards; feature lanes hold pushes during the window and merge INT afterwards; (4) each lane re-records only its own goldens (amo_*, tso_*, sr_*/stock_*/sale_* by ui-sr-a/ui-sr-b, kit_* by the kit); ui-packshots pictures appear only in its own dedicated goldens; (5) golden PNG conflicts are never hand-resolved by the integrator: stop and report. Vision QA list: docs/status/ui-parity-qa-2026-10-19.md.
+Dependents merge origin/lane/ui-kit (not wait for INT). Parity proof per lane: docs/status/ui-parity-<lane>.md and docs/evidence/ui-parity/*.png. Integrator promotes each head on the lead's 'checked <sha>'.
