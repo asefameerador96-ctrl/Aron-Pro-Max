@@ -29,10 +29,11 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.layout.Box
 import androidx.compose.ui.res.stringResource
-import com.aktcl.aron.core.ui.AronTextButton
-import com.aktcl.aron.core.ui.AronTokens
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.ButtonDefaults
+import com.aktcl.aron.core.ui.AronLook
 import com.aktcl.aron.core.ui.LocalAppLanguage
-import com.aktcl.aron.core.ui.LocalAronColors
+import com.aktcl.aron.core.ui.LocalAronLook
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneOffset
@@ -45,14 +46,14 @@ import java.time.ZoneOffset
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TsoDateField(value: String, onChange: (String) -> Unit, modifier: Modifier = Modifier, min: String? = null, max: String? = null, enabled: Boolean = true) {
-    val c = LocalAronColors.current
+    val c = LocalAronLook.current
     val language = LocalAppLanguage.current
     var open by rememberSaveable { mutableStateOf(false) }
     Box(
-        modifier.fillMaxWidth().heightIn(min = AronTokens.Touch.Min).clip(RoundedCornerShape(4.dp)).background(c.surfaceSolid).border(1.dp, c.borderInput, RoundedCornerShape(4.dp))
+        modifier.fillMaxWidth().heightIn(min = AronLook.Touch).clip(RoundedCornerShape(AronLook.ButtonRadius)).background(c.card).border(1.dp, c.underline, RoundedCornerShape(AronLook.ButtonRadius))
             .clickable(enabled = enabled, role = Role.Button) { open = true }.padding(horizontal = 16.dp, vertical = 14.dp),
         contentAlignment = Alignment.CenterStart,
-    ) { Text(TsoDates.long(value, language), style = MaterialTheme.typography.bodyLarge, color = c.textPrimary) }
+    ) { Text(TsoDates.long(value, language), style = MaterialTheme.typography.bodyLarge, color = c.ink) }
     if (open) {
         val minMs = min?.let { runCatching { LocalDate.parse(it).atStartOfDay().toInstant(ZoneOffset.UTC).toEpochMilli() }.getOrNull() }
         val maxMs = max?.let { runCatching { LocalDate.parse(it).atStartOfDay().toInstant(ZoneOffset.UTC).toEpochMilli() }.getOrNull() }
@@ -65,8 +66,8 @@ fun TsoDateField(value: String, onChange: (String) -> Unit, modifier: Modifier =
         )
         DatePickerDialog(
             onDismissRequest = { open = false },
-            confirmButton = { AronTextButton(stringResource(R.string.tso_date_ok), { state.selectedDateMillis?.let { onChange(Instant.ofEpochMilli(it).atZone(ZoneOffset.UTC).toLocalDate().toString()) }; open = false }) },
-            dismissButton = { AronTextButton(stringResource(R.string.tso_fs_cancel), { open = false }) },
+            confirmButton = { TextButton({ state.selectedDateMillis?.let { onChange(Instant.ofEpochMilli(it).atZone(ZoneOffset.UTC).toLocalDate().toString()) }; open = false }, colors = ButtonDefaults.textButtonColors(contentColor = c.purple)) { Text(stringResource(R.string.tso_date_ok)) } },
+            dismissButton = { TextButton({ open = false }, colors = ButtonDefaults.textButtonColors(contentColor = c.purple)) { Text(stringResource(R.string.tso_fs_cancel)) } },
         ) { DatePicker(state) }
     }
 }
