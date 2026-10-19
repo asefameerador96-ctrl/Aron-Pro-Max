@@ -21,6 +21,8 @@ type Row = Record<string, Cell>;
 type Col = Schemas["ReportColumn"];
 
 export interface DashCtx {
+  /** The server reveals personal data only to a role holding pii.reveal while its re-auth window is open. */
+  piiOpen: boolean;
   user: { role: Role; scope: ScopeSummary; id: number; name: string; password: string };
   method: string;
   path: string;
@@ -140,11 +142,9 @@ function inScope(user: DashCtx["user"], q: Schemas["ReportQuery"] | null): SeedR
 }
 
 const ADMIN_READ: Role[] = ["ADMIN", "SUPERADMIN", "SUPPORT", "ANALYST"];
-const PII_ROLES: Role[] = ["ANALYST", "ADMIN", "SUPERADMIN", "SUPPORT"];
-export const hasPii = (role: Role): boolean => PII_ROLES.includes(role);
 
-function build(key: Schemas["ReportKey"], user: DashCtx["user"], q: Schemas["ReportQuery"]): { columns: Col[]; rows: Row[]; totals: Row | null } | null {
-  const pii = hasPii(user.role);
+function build(key: Schemas["ReportKey"], user: DashCtx["user"], q: Schemas["ReportQuery"], piiOpen: boolean): { columns: Col[]; rows: Row[]; totals: Row | null } | null {
+  const pii = piiOpen;
   if (key === "retailer-list" || key === "by-outlet") {
     const reach = new Set(inScope(user, q).map((x) => x.route_id));
     let rows = OUTLETS.filter((o) => reach.has(o.route_id));
@@ -184,7 +184,7 @@ const XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 const sanitise = (v: Cell): Cell => (typeof v === "string" && /^[=+\-@\t\r]/.test(v) ? `'${v}` : v);
 
 export async function handleDash(x: DashCtx): Promise<boolean> {
-  const { path, method, user, send, problem, store } = x;
+  const { path, method, user, send, problem, store, piiOpen } = x;
   const nowIso = store.now ?? new Date().toISOString();
   // docs/24 s8.5 (AZ-2): SUPPORT reads sync health only; every other dashboard and every report answers 403.
   if (user.role === "SUPPORT" && ((path.startsWith("/v1/dashboards/") && path !== "/v1/dashboards/sync-health") || path === "/v1/reports" || path.startsWith("/v1/reports/"))) return send(403, problem(403, "ERR_FORBIDDEN")), true;
@@ -210,7 +210,7 @@ export async function handleDash(x: DashCtx): Promise<boolean> {
     const key = rq[1]! as Schemas["ReportKey"];
     const q = (await x.body()) as Schemas["ReportQuery"] | undefined;
     if (!q || typeof q !== "object" || !q.output) return send(400, problem(400, "ERR_VALIDATION")), true;
-    const built = build(key, user, q);
+    const built = build(key, user, q, piiOpen);
     if (!built) return send(404, problem(404, "ERR_NOT_FOUND")), true;
     const total_rows = built.rows.length;
     const page = q.output.page ?? 1;
@@ -401,7 +401,7 @@ export async function handleDash(x: DashCtx): Promise<boolean> {
   if (path === "/v1/admin/outlets" && method === "GET") {
     const zone = x.url.searchParams.get("zone_id");
     const reach = new Map(routesInScope(user.scope.nodes).map((r) => [r.route_id, r]));
-    const items = OUTLETS.filter((o) => reach.has(o.route_id) && (!zone || reach.get(o.route_id)!.zone_id === Number(zone))).map((o) => ({ id: o.outlet_id, code: o.code, name: o.name, owner_name: hasPii(user.role) ? o.owner_name : "", zone_id: reach.get(o.route_id)!.zone_id, route_id: o.route_id, cluster_id: 1, channel: "GT", location_confirmed: o.lat !== null, outlet_kind: "retail", price_type: "retail", status: o.status, lat: o.lat, lng: o.lng }));
+    const items = OUTLETS.filter((o) => reach.has(o.route_id) && (!zone || reach.get(o.route_id)!.zone_id === Number(zone))).map((o) => ({ id: o.outlet_id, code: o.code, name: o.name, owner_name: piiOpen ? o.owner_name : "", zone_id: reach.get(o.route_id)!.zone_id, route_id: o.route_id, cluster_id: 1, channel: "GT", location_confirmed: o.lat !== null, outlet_kind: "retail", price_type: "retail", status: o.status, lat: o.lat, lng: o.lng }));
     return send(200, { items, next_cursor: null }), true;
   }
   if (path.startsWith("/v1/admin/config/") || path === "/v1/admin/devices") {

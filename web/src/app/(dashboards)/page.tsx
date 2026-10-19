@@ -47,7 +47,7 @@ function Err({ locale, code }: { locale: Locale; code: string | undefined }) {
 function DrillLink({ href, msg, testId }: { href: string; msg: string; testId: string }) {
   return (
     <Link href={href} data-testid={testId} className="no-print inline-flex min-h-(--ctl-h) items-center gap-1 text-label text-accent hover:underline focus-visible:outline-(length:--focus-w) focus-visible:outline-offset-2 outline-focus">
-      {msg}
+      <span className="@max-[17rem]/tile:sr-only">{msg}</span>
       <Icon name="chevron-right" size={16} />
     </Link>
   );
@@ -213,24 +213,20 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
               const change = pctChange(c.qty_base, prev?.qty_base);
               const share = catTotalNet > 0 ? (Math.max(0, c.net_mtk) / catTotalNet) * 100 : null;
               return (
-                <Tile key={c.category_code} id={`cat-${c.category_code}`} locale={locale} titleKey="dashboard.cat.heading" heading={catTitle(c.category_code)} date={d()} data actions={<DrillLink href={dl("category", { code: c.category_code })} msg={detailsMsg} testId={`drill-cat-${c.category_code}`} />} tip={<InfoTip msg={t(locale, "dashboard.cat.info")} openMsg={t(locale, "dashboard.info.open")} />} className="col-span-full min-[480px]:col-span-1 md:col-span-3 lg:col-span-6 xl:col-span-3">
-                  <p className="fit-number whitespace-nowrap text-display block text-primary tabular-nums" data-testid={`cat-qty-${c.category_code}`}>
-                        {formatLakhCrore(locale, c.qty_base, lw)}
-                      </p>
+                <Tile tipAtBottom key={c.category_code} id={`cat-${c.category_code}`} locale={locale} titleKey="dashboard.cat.heading" heading={catTitle(c.category_code)} date={d()} data actions={<DrillLink href={dl("category", { code: c.category_code })} msg={detailsMsg} testId={`drill-cat-${c.category_code}`} />} tip={<InfoTip msg={t(locale, "dashboard.cat.info")} openMsg={t(locale, "dashboard.info.open")} />} className="col-span-full min-[480px]:col-span-1 md:col-span-3 lg:col-span-6 xl:col-span-3">
                   <div className="flex items-center justify-between gap-3">
                     <div className="min-w-0 flex-1">
-                      
-                      <p className="text-caption text-secondary">
+                      <p className="fit-number whitespace-nowrap text-numeral block text-primary tabular-nums" data-testid={`cat-qty-${c.category_code}`}>
+                        {formatLakhCrore(locale, c.qty_base, lw)}
+                      </p>
+                      <p className="text-caption font-semibold text-cyan">
                         {t(locale, "dashboard.cat.total")} · {unitWord(c.base_unit)}
                       </p>
                       <p className="text-caption text-secondary tabular-nums" data-testid={`cat-net-${c.category_code}`}>
                         {t(locale, "dashboard.cat.net", { amount: formatLakhCrore(locale, mtkToTaka(c.net_mtk), lw) })}
                       </p>
-
                     </div>
-                    <Ring pct={share} valueText={pctText(locale, share)} label={t(locale, "dashboard.cat.share")} size={104} hue={CATS.includes(c.category_code) ? CATS.indexOf(c.category_code) : 4} testId={`cat-ring-${c.category_code}`}>
-                      <span className="text-caption text-secondary">{t(locale, "dashboard.cat.share")}</span>
-                    </Ring>
+                    <Ring pct={share} valueText={pctText(locale, share)} label={t(locale, "dashboard.cat.share")} size={92} gradient hue={CATS.includes(c.category_code) ? CATS.indexOf(c.category_code) : 4} testId={`cat-ring-${c.category_code}`} />
                   </div>
                   <div className="mt-2">
                     {change !== null ? (
@@ -252,13 +248,13 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
           <section data-testid="tile-visits" className={`${STAT} min-[480px]:col-span-1 md:col-span-3 lg:col-span-6 xl:col-span-3`}>
             <SectionHead msg={t(locale, "dashboard.cpr")} link={<DrillLink href={dl("calls")} msg={detailsMsg} testId="drill-calls" />} />
             <div className="flex items-center gap-3" data-testid="cpr">
-              <Ring pct={cprPct} valueText={pctText(locale, cprPct)} label={t(locale, "dashboard.cpr.basis")} size={88} hue={2} testId="cpr-ring" />
-              <dl className="min-w-0 text-caption text-secondary">
+              <dl className="min-w-0 flex-1 text-caption text-secondary">
                 <dt>{t(locale, "dashboard.cpr.planned")}</dt>
                 <dd className="text-body-strong text-primary tabular-nums" data-testid="cpr-planned">{formatLakhCrore(locale, k.target_outlets, lw)}</dd>
                 <dt>{t(locale, "dashboard.cpr.calls")}</dt>
                 <dd className="text-body-strong text-primary tabular-nums" data-testid="cpr-calls">{formatLakhCrore(locale, k.successful_calls, lw)}</dd>
               </dl>
+              <Ring pct={cprPct} valueText={pctText(locale, cprPct)} label={t(locale, "dashboard.cpr.basis")} size={96} hue={4} testId="cpr-ring" />
             </div>
             <h3 className="text-label text-secondary">{t(locale, "dashboard.kpi.outlets_visited")}</h3>
             <p className="fit-number whitespace-nowrap text-numeral text-primary tabular-nums">
@@ -273,6 +269,8 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
             {channels.length > 0 ? (
               <Donut
                 testId="channel-calls-donut"
+                radial
+                legendFirst
                 label={t(locale, "dashboard.channels.calls")}
                 centerText={formatLakhCrore(locale, callsTotal, lw)}
                 slices={channels.map((c) => ({ key: c.code, label: c.name ?? c.code, value: c.successful_calls, valueText: formatLakhCrore(locale, c.successful_calls, lw), shareText: callsTotal > 0 ? pctText(locale, (c.successful_calls / callsTotal) * 100) : "—", href: dl("channel", { code: c.code }) }))}
@@ -290,7 +288,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
             {ls ? (
               <dl className="flex flex-col gap-2" data-testid="login-submit">
                 <div>
-                  <dt className="text-caption text-secondary">{t(locale, "dashboard.login_pct")}</dt>
+                  <dt className="flex items-center gap-1 text-caption text-secondary"><Icon name="download" size={16} className="text-accent" />{t(locale, "dashboard.login_pct")}</dt>
                   <dd className="fit-number whitespace-nowrap text-numeral text-primary tabular-nums" data-testid="login-pct">
                     {pctText(locale, ls.kpis.login_pct)}
                   </dd>
@@ -300,7 +298,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
                   <dd className="text-caption text-secondary">{t(locale, "dashboard.kpi.login_basis", { logged: n(locale, ls.kpis.logged_in_routes), target: n(locale, ls.kpis.target_routes) })}</dd>
                 </div>
                 <div>
-                  <dt className="text-caption text-secondary">{t(locale, "finalsubmit.submit_pct")}</dt>
+                  <dt className="flex items-center gap-1 text-caption text-secondary"><Icon name="upload" size={16} className="text-accent" />{t(locale, "finalsubmit.submit_pct")}</dt>
                   <dd className="fit-number whitespace-nowrap text-numeral text-primary tabular-nums" data-testid="submit-pct-ls">
                     {pctText(locale, ls.kpis.submit_pct_of_logged_in)}
                   </dd>
@@ -319,7 +317,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
           <Tile id="channels-std" locale={locale} titleKey="dashboard.channels.net" date={d()} data actions={<DrillLink href={dl("channel")} msg={detailsMsg} testId="drill-channels-std" />} className="col-span-full md:col-span-6 lg:col-span-12 xl:col-span-4">
             {channels.length > 0 ? (
               <div className="space-y-4">
-              <Donut
+              <Donut legendFirst
                 testId="channel-std-donut"
                 label={t(locale, "dashboard.channels.net")}
                 centerText={formatLakhCrore(locale, mtkToTaka(channelNetTotal), lw)}
@@ -348,8 +346,8 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
               />
             }
           >
-            {brands.length >= 4 ? (
-              <ColumnChart testId="brand-chart" label={t(locale, "dashboard.brand.heading")} rows={brandRows} />
+            {brands.length >= 1 ? (
+              <ColumnChart testId="brand-chart" label={t(locale, "dashboard.brand.heading")} rows={brandRows} axisText={(v) => (brandMode === "memo" ? n(locale, v) : formatLakhCrore(locale, mtkToTaka(v), lw))} />
             ) : brands.length > 0 ? (
               // Two or three brands read better as ranked bars than as a few wide columns (design review).
               <RankedBars testId="brand-chart" label={t(locale, "dashboard.brand.heading")} rows={brandRows} />
@@ -364,13 +362,13 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
             {geo.ok ? (
               <dl data-testid="geo-fencing" className="contents">
                 <dt className="sr-only">{t(locale, "dashboard.geo_valid")}</dt>
-                <dd className="flex items-center gap-3">
-                  <Ring pct={geo.data.geo_valid_pct} valueText={pctText(locale, geo.data.geo_valid_pct)} label={t(locale, "dashboard.geo_valid")} size={96} hue={2} testId="geo-ring" />
-                  <span className="text-caption text-secondary">
+                <dd className="flex items-center justify-between gap-3">
+                  <span className="min-w-0 flex-1 text-caption text-secondary">
                     {/* The ring prints the percent; the side shows the server's counts behind it (geo_valid_visits of visits). */}
                     {t(locale, "dashboard.geo.validated")}
                     <span className="block text-body-strong text-primary tabular-nums" data-testid="geo-visits">{t(locale, "dashboard.geo.validated_of", { n: n(locale, geo.data.geo_valid_visits), m: n(locale, geo.data.visits) })}</span>
                   </span>
+                  <Ring pct={geo.data.geo_valid_pct} valueText={pctText(locale, geo.data.geo_valid_pct)} label={t(locale, "dashboard.geo_valid")} size={104} hue={4} testId="geo-ring" />
                 </dd>
                 <dd className="flex flex-wrap gap-1.5">
                   <StatusChip tone="warning" icon="location">

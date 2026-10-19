@@ -197,7 +197,7 @@ test("products: brand lists 17 brands read-only and the tree expands to SKU", as
   await expect(sku).toBeVisible();
 });
 
-test("reports: filters, Get Excel link, PII masked for a TSO and shown to an analyst, menu lists the reports", async ({ page, context }) => {
+test("reports: filters, Get Excel link, PII masked for a TSO and for an analyst (no pii.reveal; only an admin inside the reveal window sees it), menu lists the reports", async ({ page, context }) => {
   await loginOk(page, "tso334", "tso-pass-1");
   await english(page);
   await expect(page.getByRole("link", { name: "Browse Retailer" })).toBeVisible();
@@ -212,7 +212,8 @@ test("reports: filters, Get Excel link, PII masked for a TSO and shown to an ana
   await loginOk(page, "analyst1", "analyst-pass-1");
   await english(page);
   await page.goto("/reports/retailers");
-  await expect(page.locator('td[data-col="phone"]').first()).not.toHaveText("••••");
+  await expect(page.locator('td[data-col="phone"]').first()).toHaveText("••••");
+  await expect(page.locator('td[data-col="phone"]').first()).toHaveAttribute("data-pii", "masked");
   await expect(page.getByTestId("scope-select-wing")).toBeVisible();
 });
 
