@@ -20,6 +20,7 @@ import com.aktcl.aron.core.ui.AppLocale
 import com.aktcl.aron.core.ui.AronTheme
 import com.aktcl.aron.feature.home.BundleStatus
 import com.aktcl.aron.feature.home.HomeUser
+import com.aktcl.aron.feature.home.HomeTags
 import com.aktcl.aron.feature.home.RoleHomeTags
 import com.aktcl.aron.feature.home.RoleHomes
 import com.aktcl.aron.feature.tso.feedback.FeedbackCategory
@@ -96,11 +97,17 @@ class TsoNavigationTest {
         override suspend fun submit(clientUuid: String, zoneId: Long, date: String): FsSubmitOutcome = FsSubmitOutcome.AlreadySubmitted
     }
 
+    private var back: androidx.activity.OnBackPressedDispatcher? = null
+
+    /** The system back: every screen but Home returns to Home (the top-bar chevron calls the same path). */
+    private fun goHome() { compose.runOnUiThread { back!!.onBackPressed() }; compose.waitForIdle() }
+
     private fun show() {
         val context = AppLocale.wrap(ApplicationProvider.getApplicationContext<Context>(), AppLanguage.EN)
         compose.setContent {
             CompositionLocalProvider(LocalContext provides context) {
                 AronTheme(AppLanguage.EN) {
+                    back = androidx.activity.compose.LocalOnBackPressedDispatcherOwner.current?.onBackPressedDispatcher
                     TsoApp(
                         user, "2026-10-17", BundleStatus.Ready("b-1", "2026-10-17"), "0.1.0 (1)", {}, {},
                         leave = leave, leaveQueue = { _, _ -> true }, today = { "2026-10-17" },
@@ -138,25 +145,9 @@ class TsoNavigationTest {
             val screen = TsoScreen.of(tile)
             compose.onNodeWithTag(RoleHomeTags.tile(tile.id)).performScrollTo().performClick()
             assertRealScreen(screen)
-            compose.onNodeWithTag(TsoChromeTags.HOME_BUTTON).performClick(); compose.waitForIdle()
-            compose.onNodeWithTag(TsoChromeTags.GREETING).assertIsDisplayed()
+            goHome()
+            compose.onNodeWithTag(HomeTags.HEADER).assertIsDisplayed()
         }
-    }
-
-    @Test fun everyDrawerEntryOpensARealScreen() {
-        show()
-        for (e in tsoDrawerEntries()) {
-            compose.onNodeWithTag(TsoChromeTags.MENU).performClick(); compose.waitForIdle()
-            compose.onNodeWithTag(TsoChromeTags.entry(e.screen)).performScrollTo().performClick()
-            assertRealScreen(e.screen)
-            compose.onNodeWithTag(TsoChromeTags.HOME_BUTTON).performClick(); compose.waitForIdle()
-        }
-    }
-
-    @Test fun theDrawerAndTheTilesReachTheSameSet() {
-        val tiles = RoleHomes.tsoTiles().filter { it.id != RoleHomes.TsoTile.DEVICE_OTP }.map { TsoScreen.of(it) }.toSet()
-        val drawer = tsoDrawerEntries().map { it.screen }.toSet() - TsoScreen.SETTINGS
-        assertEquals(tiles, drawer)
     }
 
     @Test fun everyTsoScreenIsAccessible() {
@@ -169,9 +160,8 @@ class TsoNavigationTest {
             compose.onNodeWithTag(RoleHomeTags.tile(tile.id)).performScrollTo().performClick()
             assertRealScreen(screen)
             sweep(screen.name)
-            compose.onNodeWithTag(TsoChromeTags.HOME_BUTTON).performClick(); compose.waitForIdle()
+            goHome()
         }
-        compose.onNodeWithTag(TsoChromeTags.MENU).performClick(); sweep("drawer")
         assertEquals("accessibility problems:\n" + problems.joinToString("\n"), emptyList<String>(), problems)
     }
 }

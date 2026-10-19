@@ -1,5 +1,8 @@
 package com.aktcl.aron.feature.tasks
 
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.ui.text.style.LineBreak
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -60,11 +63,15 @@ object TaskTags {
     const val EMPTY = "tsk_empty"
     const val LIST = "tsk_list"
     const val TABS = "tsk_tabs"
+    const val MY_REQUESTS = "tsk_my_requests"
     fun item(uuid: String) = "tsk_item_$uuid"
     fun resolve(uuid: String) = "tsk_resolve_$uuid"
 }
 
 private const val ONGOING = "ongoing"
+
+/** A synced-at older than this is shown under the empty state, so an empty list is not mistaken for a stale one. */
+private const val STALE_AFTER_MS = 6 * 60 * 60 * 1000L
 
 /** screens-sr s12: a swipe to the end past this share of the card width resolves the task (F-SR-047). */
 private const val SWIPE_RESOLVE_FRACTION = 0.4f
@@ -78,51 +85,62 @@ private const val SWIPE_RESOLVE_FRACTION = 0.4f
  * place under "Completed".
  */
 @Composable
-fun TaskContent(state: TaskListState, onResolve: (String) -> Unit, modifier: Modifier = Modifier) {
+fun TaskContent(state: TaskListState, onResolve: (String) -> Unit, modifier: Modifier = Modifier, onMyRequests: (() -> Unit)? = null, nowMs: Long = System.currentTimeMillis()) {
     val open = state.items.filter { it.status == ONGOING }
     val done = state.items.filter { it.status != ONGOING }
     val synced = state.syncedAt?.let { stringResource(R.string.tsk_synced_at, localizedDigits(dhakaStamp(it))) } ?: stringResource(R.string.tsk_never_synced)
     // the completed tab opens first only when nothing is ongoing (the usual case is the open work)
     var tab by rememberSaveable { mutableIntStateOf(if (open.isEmpty() && done.isNotEmpty()) 1 else 0) }
     val look = LocalAronLook.current
+    // the synced-at line shows only when the list may be stale: never synced, or the last sync is older than [STALE_AFTER_MS]
+    val stale = state.syncedAt?.let { runCatching { nowMs - java.time.Instant.parse(it).toEpochMilli() > STALE_AFTER_MS }.getOrDefault(true) } ?: true
     Column(modifier.fillMaxSize().background(look.page)) {
-        if (state.showEmptyState) {
-            EmptyTasks(stringResource(R.string.tsk_empty), synced, Modifier.testTag(TaskTags.EMPTY))
-        } else {
-            TaskTabs(
-                listOf(
-                    stringResource(R.string.tsk_tab_open, localizedNumber(open.size.toLong())),
-                    stringResource(R.string.tsk_tab_done, localizedNumber(done.size.toLong())),
-                ),
-                tab, { tab = it },
-                Modifier.padding(horizontal = AronTokens.Space.Screen, vertical = AronTokens.Space.M).testTag(TaskTags.TABS),
-            )
-            val shown = if (tab == 0) open else done
-            if (shown.isEmpty()) {
-                EmptyTasks(stringResource(if (tab == 0) R.string.tsk_none_open else R.string.tsk_none_done), synced)
+        Column(Modifier.weight(1f).fillMaxWidth()) {
+            if (state.showEmptyState) {
+                EmptyTasks(stringResource(R.string.tsk_empty), synced.takeIf { stale }, Modifier.testTag(TaskTags.EMPTY))
             } else {
-                LazyColumn(
-                    Modifier.weight(1f).fillMaxWidth().testTag(TaskTags.LIST),
-                    contentPadding = PaddingValues(start = AronTokens.Space.Screen, end = AronTokens.Space.Screen, bottom = AronTokens.Space.L),
-                    verticalArrangement = Arrangement.spacedBy(AronTokens.Space.M),
-                ) {
-                    itemsIndexed(shown, key = { _, t -> t.taskUuid }) { _, t ->
-                        if (t.status == ONGOING) SwipeToResolve(t.taskUuid, onResolve, Modifier.testTag(TaskTags.item(t.taskUuid))) { TaskCard(t, onResolve) }
-                        else TaskCard(t, onResolve, Modifier.testTag(TaskTags.item(t.taskUuid)))
+                TaskTabs(
+                    listOf(
+                        stringResource(R.string.tsk_tab_open, localizedNumber(open.size.toLong())),
+                        stringResource(R.string.tsk_tab_done, localizedNumber(done.size.toLong())),
+                    ),
+                    tab, { tab = it },
+                    Modifier.padding(horizontal = AronTokens.Space.Screen, vertical = AronTokens.Space.M).testTag(TaskTags.TABS),
+                )
+                val shown = if (tab == 0) open else done
+                if (shown.isEmpty()) {
+                    EmptyTasks(stringResource(if (tab == 0) R.string.tsk_none_open else R.string.tsk_none_done), synced.takeIf { stale })
+                } else {
+                    LazyColumn(
+                        Modifier.weight(1f).fillMaxWidth().testTag(TaskTags.LIST),
+                        contentPadding = PaddingValues(start = AronTokens.Space.Screen, end = AronTokens.Space.Screen, bottom = AronTokens.Space.L),
+                        verticalArrangement = Arrangement.spacedBy(AronTokens.Space.M),
+                    ) {
+                        itemsIndexed(shown, key = { _, t -> t.taskUuid }) { _, t ->
+                            if (t.status == ONGOING) SwipeToResolve(t.taskUuid, onResolve, Modifier.testTag(TaskTags.item(t.taskUuid))) { TaskCard(t, onResolve) }
+                            else TaskCard(t, onResolve, Modifier.testTag(TaskTags.item(t.taskUuid)))
+                        }
                     }
                 }
             }
         }
+        // "my outlet requests" (F-SR-040) has no place on the outlet menu of sr/outlet-menu.png, so it lives here
+        if (onMyRequests != null) {
+            Text(
+                stringResource(R.string.tsk_my_requests), style = MaterialTheme.typography.titleSmall, color = look.purple, textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth().heightIn(min = AronLook.Touch).testTag(TaskTags.MY_REQUESTS).clickable(role = Role.Button, onClick = onMyRequests).padding(AronTokens.Space.M),
+            )
+        }
     }
 }
 
-/** The empty state of sr/tasks.png: the grey page with the plain sentence centred, and the synced-at line so an empty list is not mistaken for a stale one. */
+/** The empty state of sr/tasks.png: the grey page with the plain sentence centred (balanced breaks), and the synced-at line only when the list may be stale. */
 @Composable
-private fun EmptyTasks(text: String, synced: String, modifier: Modifier = Modifier) {
+private fun EmptyTasks(text: String, synced: String?, modifier: Modifier = Modifier) {
     val look = LocalAronLook.current
     Column(modifier.fillMaxSize().padding(AronTokens.Space.Screen), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-        Text(text, style = MaterialTheme.typography.bodyLarge, color = look.ink, textAlign = TextAlign.Center)
-        Text(synced, style = MaterialTheme.typography.bodySmall, color = look.inkMuted, textAlign = TextAlign.Center, modifier = Modifier.padding(top = AronTokens.Space.S))
+        Text(text, style = MaterialTheme.typography.bodyLarge.copy(lineBreak = LineBreak.Paragraph), color = look.ink, textAlign = TextAlign.Center, modifier = Modifier.widthIn(max = 240.dp))
+        if (synced != null) Text(synced, style = MaterialTheme.typography.bodySmall, color = look.inkMuted, textAlign = TextAlign.Center, modifier = Modifier.padding(top = AronTokens.Space.S))
     }
 }
 

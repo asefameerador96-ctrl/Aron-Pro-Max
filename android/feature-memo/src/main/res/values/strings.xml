@@ -43,7 +43,7 @@
     <string name="summary_qty_unit">%1$s %2$s</string>
     <string name="summary_totals">Totals</string>
     <string name="summary_memo_count">%1$s memos today</string>
-    <string name="summary_discount_and_others">Discount and others (−)</string>
+    <string name="summary_discount_and_others">Discount and others (-)</string>
     <string name="summary_grand_total">Grand total</string>
     <string name="summary_print">Print</string>
     <string name="journey_title">Sales journey</string>

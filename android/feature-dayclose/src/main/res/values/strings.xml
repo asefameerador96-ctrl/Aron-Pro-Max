@@ -15,7 +15,7 @@
     <string name="submit_row_waiting">Waiting</string>
     <string name="submit_row_mismatch">Not matching</string>
     <string name="submit_all_matched">All data matched</string>
-    <string name="submit_info">Submit is possible once all of today\'s data has synced. Sync runs by itself.</string>
+    <string name="submit_info">Before finishing today\'s work, be sure to sync all operation data and submit the sales deposit from this option.</string>
     <string name="submit_sync">Sync data</string>
     <string name="submit_button">Submit sales</string>
     <string name="submit_button_offline">Submit sales (sends when connected)</string>
