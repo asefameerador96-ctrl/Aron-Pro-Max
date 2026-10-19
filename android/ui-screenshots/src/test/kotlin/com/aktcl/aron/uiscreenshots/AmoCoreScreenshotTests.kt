@@ -56,7 +56,7 @@ class AmoCoreScreenshotTests {
         rule.setContent {
             CompositionLocalProvider(LocalContext provides ctx, LocalDensity provides Density(LocalDensity.current.density, fontScale = fontScale)) {
                 AronTheme(language, dark = false, sunlight = sunlight, tier = GlassTier.B, reducedMotion = true) {
-                    AronScreen(topBar = { AronTopBar(title = title, onBack = {}) }) { content() }
+                    com.aktcl.aron.feature.amo.AmoFrame(title, onBack = {}) { content() }
                 }
             }
         }

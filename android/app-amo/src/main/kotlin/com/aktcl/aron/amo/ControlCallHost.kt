@@ -1,5 +1,6 @@
 package com.aktcl.aron.amo
 
+import com.aktcl.aron.feature.amo.AmoFrame
 import android.Manifest
 import android.content.pm.PackageManager
 import androidx.compose.runtime.Composable
@@ -78,7 +79,7 @@ fun ControlCallHost(
         }
     }
     androidx.activity.compose.BackHandler(onBack = goBack)
-    AronScreen(topBar = { AronTopBar(stringResource(if (joint) AmoR.string.amo_jc_title else AmoR.string.amo_cc_title), onBack = goBack) }) {
+    AmoFrame(stringResource(if (joint) AmoR.string.amo_jc_title else AmoR.string.amo_cc_title), goBack, icon = if (joint) com.aktcl.aron.core.ui.R.drawable.aron_ic_joint_call else com.aktcl.aron.core.ui.R.drawable.aron_ic_control_call) {
         PermissionGate(GatedFeature.SALE, onBack = onBack) {
             val list = days
             when (step) {

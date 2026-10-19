@@ -5,11 +5,12 @@ import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { pathToFileURL } from "node:url";
 import { handleTable, type Ctx, type Row } from "./tables";
+import { LONG_BANGLA } from "./seed";
 import { seedCodeLists, seedTables, tableDefs } from "./master-seed";
 import { maskAudit } from "./audit-mask";
 import { freshConfigStore, handleConfig, type ConfigStore } from "./config";
 import { handleCustom, seedCustom, type CustomState } from "./custom";
-import { freshDashStore, handleDash, hasPii, type DashStore } from "./dash";
+import { freshDashStore, handleDash, type DashStore } from "./dash";
 import type { AuditEntry, Cluster, LoginResponse, Me, Problem, ProblemCode, Role, ScopeSummary, TokenPair, UserSummary } from "../src/contract/types";
 
 interface MockUser {
@@ -115,9 +116,14 @@ function problem(status: number, code: ProblemCode, extra: Partial<Problem> = {}
   return { type: `urn:aron:problem:${code.toLowerCase()}`, title: code, status, code, request_id: randomUUID(), server_time: new Date().toISOString(), ...extra };
 }
 
+/** Set by POST /__mock/long-names: the seeded route, user and outlet names come back as real-length Bangla names. */
+let longNames = false;
+const longify = (text: string): string => LONG_BANGLA.reduce((acc, [from, to]) => acc.split(from).join(to), text);
+
 function send(res: ServerResponse, status: number, body: unknown, headers: Record<string, string | string[]> = {}): void {
   const isProblem = status >= 400;
-  const text = body === undefined ? "" : JSON.stringify(body);
+  const json = body === undefined ? "" : JSON.stringify(body);
+  const text = longNames && !isProblem ? longify(json) : json;
   res.writeHead(status, {
     "Content-Type": isProblem ? "application/problem+json" : "application/json; charset=utf-8",
     "X-Aron-Api": "1",
@@ -235,6 +241,10 @@ async function handle(state: State, reset: () => void, req: IncomingMessage, res
     audit(state, as, b.entity, b.entity_id, b.action, b.before, b.after, b.reason);
     return send(res, 204, undefined);
   }
+  if (path === "/__mock/long-names" && method === "POST") {
+    longNames = ((await readJson(req)) as { on?: boolean } | undefined)?.on !== false;
+    return send(res, 204, undefined);
+  }
   if (path === "/__mock/pii-window" && method === "POST") {
     state.piiWindowS = ((await readJson(req)) as { seconds?: number } | undefined)?.seconds ?? 900;
     return send(res, 204, undefined);
@@ -336,7 +346,7 @@ async function handle(state: State, reset: () => void, req: IncomingMessage, res
   const user = a.user;
 
   // PII reveal (backend-authz, V0086): ADMIN and SUPERADMIN hold pii.reveal; their Me.pii is true only inside the window.
-  // Known gap: ANALYST and SUPPORT keep the mock's older always-on PII (the server never reveals to them).
+  // Every other role (ANALYST, SUPPORT, TSO...) is masked always; the dashboards and reports follow Me.pii.
   const revealer = user.summary.role === "ADMIN" || user.summary.role === "SUPERADMIN";
   if (path === "/v1/auth/reauth" && method === "POST") {
     if (!revealer) return send(res, 403, problem(403, "ERR_FORBIDDEN"));
@@ -356,7 +366,7 @@ async function handle(state: State, reset: () => void, req: IncomingMessage, res
   }
 
   if (path === "/v1/me") {
-    const pii = revealer ? a.piiUntil !== null : hasPii(user.summary.role);
+    const pii = revealer && a.piiUntil !== null;
     const perms = user.summary.role === "ADMIN" ? ["admin.master.write", "admin.audit.read"] : ["dashboards.read"];
     const me: Me = { user: user.summary, permissions: revealer ? [...perms, "pii.reveal"] : perms, scope: user.scope, pii, pii_until: revealer && a.piiUntil !== null ? new Date(a.piiUntil).toISOString() : null, mfa_enabled: user.mfa, ...(user.summary.role === "TSO" ? { menus: [{ menu_id: "dashboard", actions: ["view"] as ("view")[] }] } : {}) };
     return send(res, 200, me);
@@ -383,6 +393,7 @@ async function handle(state: State, reset: () => void, req: IncomingMessage, res
   if (state.failPrefix && path.startsWith(state.failPrefix)) return send(res, 500, problem(500, "ERR_INTERNAL"));
 
   if (!user.master && await handleDash({
+    piiOpen: revealer && a.piiUntil !== null,
     user: { role: user.summary.role, scope: user.scope, id: user.summary.user_id, name: user.summary.full_name, password: state.dash.passwords[user.summary.user_id] ?? user.password },
     method, path, url, store: state.dash, problem,
     body: () => readJson(req),
