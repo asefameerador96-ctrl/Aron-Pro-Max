@@ -23,7 +23,7 @@
     <string name="hm_tile_outlet">আউটলেট</string>
     <string name="hm_tile_tutorial">টিউটোরিয়াল</string>
     <string name="hm_tile_tasks">টাস্ক ডেলিগেশন</string>
-    <string name="hm_tile_photo_capture">ফটো ক্যাপচার</string>
+    <string name="hm_tile_photo_capture">Photo Capture</string>
     <string name="hm_tile_sales_journey">বিক্রয় যাত্রা</string>
     <string name="hm_tile_kpi">কেপিআই</string>
     <string name="hm_banner_offline">আপনি অফলাইনে আছেন। আপনার কাজ এই ফোনে সংরক্ষিত আছে।</string>
@@ -119,4 +119,12 @@
     <string name="tut_minutes">%1$d মিনিট</string>
     <string name="hm_target_title">আজকের অগ্রগতি</string>
     <string name="hm_target_details">বিস্তারিত</string>
+    <string name="hm_sales_title">বিক্রয়</string>
+    <string name="hm_sales_unit">(স্টিক)</string>
+    <string name="hm_total_discount">মোট ডিসকাউন্ট</string>
+    <string name="hm_drp_discount">DRP ডিসকাউন্ট</string>
+    <string name="hm_total_qc">মোট QC</string>
+    <string name="hm_gross_total">সর্ব মোট</string>
+    <string name="hm_total_taka">মোট টাকা</string>
+    <string name="set_group_status">ফোনের অবস্থা</string>
 </resources>

@@ -28,4 +28,5 @@
     <string name="att_hold_hint">নিশ্চিত করতে বোতামটি কিছুক্ষণ চেপে ধরে রাখুন।</string>
     <string name="att_cancel">বাতিল</string>
     <string name="att_offline_saved">ফোনে সংরক্ষিত হয়েছে। নেটওয়ার্ক এলে আপলোড হবে।</string>
+    <string name="att_accuracy_short">±%1$s m</string>
 </resources>

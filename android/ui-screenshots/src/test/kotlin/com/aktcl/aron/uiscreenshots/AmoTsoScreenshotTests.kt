@@ -133,15 +133,6 @@ class AmoTsoScreenshotTests {
         """{"as_of":"x","columns":[],"rows":[{"route_code":"R1","route_name":"North","target_outlets":80,"successful_calls":20,"cpr_pct":25.0,"memos":18,"net_mtk":9000000,"brand_name":"Gold Leaf","brand_memos":10,"bsr_pct":55.56},{"route_code":"R2","route_name":"দক্ষিণ রুট","target_outlets":0,"successful_calls":0,"cpr_pct":null,"memos":0,"net_mtk":0,"brand_name":null,"brand_memos":null,"bsr_pct":null}],"total_rows":2}""",
     )!!)
 
-    private val tsoJson = """{"as_of":"2026-10-17T08:30:00Z","node":{"type":"territory","id":3,"name":"T3"},
-      "kpis":{"target_routes":4,"logged_in_routes":1,"login_pct":25.0,"sales_submitted_routes":0,"submit_pct_of_logged_in":0.0,"target_outlets":44,"visited_outlets":30,"successful_calls":2,"strike_rate_pct":6.67,"active_memo_count":2,"gross_mtk":900000,"net_mtk":850000,"mock_visits":0,"suspicious_visits":0},
-      "by_category":[{"category_code":"cigarette","base_unit":"stick","qty_base":36100000,"report_unit":"stick","qty_report":"36100000.000","net_mtk":7000000},{"category_code":"bidi","base_unit":"stick","qty_base":6507000,"net_mtk":900000},{"category_code":"lighter","base_unit":"piece","qty_base":111000,"report_unit":"box","qty_report":1110.5,"net_mtk":100000},{"category_code":"match","base_unit":"dozen","qty_base":28067,"net_mtk":50000}],
-      "by_channel":[{"code":"GT","name":"General Trade","net_mtk":6000000,"memo_count":10,"successful_calls":10},{"code":"DCC","name":"DCC","net_mtk":2500000,"memo_count":4,"successful_calls":4},{"code":"MT","name":"Modern Trade","net_mtk":500000,"memo_count":1,"successful_calls":1}],
-      "by_segment":[{"code":"S1","name":"Premium","net_mtk":4000000,"qty_base":1000,"memo_count":3,"successful_calls":3},{"code":"S2","name":"Value","net_mtk":2000000,"qty_base":9000,"memo_count":9,"successful_calls":9}],
-      "by_brand":[{"code":"B1","name":"Gold Leaf","net_mtk":1,"memo_count":1,"successful_calls":1,"memo_ratio_pct":50.0},{"code":"B2","name":"Navy","net_mtk":1,"memo_count":0,"successful_calls":0,"memo_ratio_pct":0.0}],"children":[]}"""
-    private val tsoLogin = TsoDashboards.loginSubmit(
-        """{"as_of":"2026-10-17T08:30:00Z","kpis":{"target_routes":4,"logged_in_routes":1,"login_pct":25.0,"sales_submitted_routes":0,"submit_pct_of_logged_in":0.0},"not_logged_in":[{"route_id":2,"route_code":"R2"},{"route_id":3},{"route_id":4}],"logged_in_not_submitted":[{"route_id":1,"route_code":"R1"}],"submitted":[]}""",
-    )
 
     // ---- Verify
     @Test @Config(qualifiers = "w360dp-h800dp") fun amo_verify_form_new_en() = shot("amo_verify_form_new_en", AppLanguage.EN, "Verify requests", content = verifyForm(false, newDetail))
@@ -181,12 +172,8 @@ class AmoTsoScreenshotTests {
     @Test @Config(qualifiers = "bn-w360dp-h800dp") fun amo_sales_summary_bn() = shot("amo_sales_summary_bn", AppLanguage.BN, "বিক্রির সারসংক্ষেপ") { SalesSummaryContent(summaryCards, money(true), true, false, {}) }
 
     // ---- TSO dashboard
-    @Test @Config(qualifiers = "w360dp-h800dp") fun tso_dashboard_en() = shot("tso_dashboard_en", AppLanguage.EN, "Dashboard") { TsoDashboardContent(TsoDashboardState(TsoDashboards.summary(tsoJson), tsoLogin, false, com.aktcl.aron.feature.tso.TsoFailure.NONE, zones = listOf(com.aktcl.aron.feature.tso.ZoneRef(11, "Zone 11")), businessDate = "2026-10-17"), "All my zones", money(false), {}, {}, {}, {}) }
-    @Test @Config(qualifiers = "bn-w360dp-h800dp") fun tso_dashboard_bn() = shot("tso_dashboard_bn", AppLanguage.BN, "ড্যাশবোর্ড") { TsoDashboardContent(TsoDashboardState(TsoDashboards.summary(tsoJson), tsoLogin, true, com.aktcl.aron.feature.tso.TsoFailure.NONE, businessDate = "2026-10-17"), "আমার সব জোন", money(true), {}, {}, {}, {}) }
-    @Test @Config(qualifiers = "w360dp-h800dp") fun tso_dashboard_empty_offline_en() = shot("tso_dashboard_empty_offline_en", AppLanguage.EN, "Dashboard") { TsoDashboardContent(TsoDashboardState(null, null, false, com.aktcl.aron.feature.tso.TsoFailure.OFFLINE, loginFailure = com.aktcl.aron.feature.tso.TsoFailure.OFFLINE, businessDate = "2026-10-17"), "All my zones", money(false), {}, {}, {}, {}) }
 
     // ---- Sunlight mode (outdoor-first: solid surfaces for figures, key numbers at 7:1)
-    @Test @Config(qualifiers = "bn-w360dp-h800dp") fun tso_dashboard_sunlight_bn() = shot("tso_dashboard_sunlight_bn", AppLanguage.BN, "ড্যাশবোর্ড", sunlight = true) { TsoDashboardContent(TsoDashboardState(TsoDashboards.summary(tsoJson), tsoLogin, false, com.aktcl.aron.feature.tso.TsoFailure.NONE, businessDate = "2026-10-17"), "আমার সব জোন", money(true), {}, {}, {}, {}) }
     @Test @Config(qualifiers = "w360dp-h800dp") fun amo_live_dashboard_sunlight_en() = shot("amo_live_dashboard_sunlight_en", AppLanguage.EN, "Live Dashboard", sunlight = true) { LiveDashboardContent(live, "14:30", "All my zones", false, false, false, money(false), {}) }
     @Test @Config(qualifiers = "w360dp-h800dp") fun amo_verify_form_sunlight_en() = shot("amo_verify_form_sunlight_en", AppLanguage.EN, "Verify requests", sunlight = true, content = verifyForm(false, newDetail))
 

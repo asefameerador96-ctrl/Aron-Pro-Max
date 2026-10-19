@@ -16,8 +16,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import com.aktcl.aron.core.common.AppLanguage
-import com.aktcl.aron.core.ui.AronScreen
-import com.aktcl.aron.core.ui.AronTopBar
+import com.aktcl.aron.core.ui.aron.AronScaffold
+import com.aktcl.aron.core.ui.aron.AronTopBar
+import androidx.compose.ui.res.painterResource
+import com.aktcl.aron.core.ui.R as CoreR
 import com.aktcl.aron.core.ui.LocalAppLanguage
 import com.aktcl.aron.feature.tso.R as TsoR
 import com.aktcl.aron.feature.tso.TsoDashboardContent
@@ -66,7 +68,10 @@ fun TsoDashboardHost(api: TsoApi, businessDate: String, onBack: () -> Unit, modi
     BackHandler(onBack = back)
     val bangla = LocalAppLanguage.current == AppLanguage.BN
     val money: (Long) -> String = { Formats.money(it, if (bangla) UiLocale.BN else UiLocale.EN) }
-    AronScreen(topBar = { AronTopBar(stringResource(TsoR.string.tso_dash_title), onBack = back) }, modifier = modifier) {
+    AronScaffold(
+        topBar = { AronTopBar(stringResource(TsoR.string.tso_dash_title), icon = painterResource(CoreR.drawable.aron_art_kpi), onBack = back, backLabel = stringResource(CoreR.string.core_ui_back)) },
+        modifier = modifier,
+    ) {
         val st = state
         when {
             st == null -> Box(Modifier.fillMaxSize(), Alignment.Center) { CircularProgressIndicator() }
