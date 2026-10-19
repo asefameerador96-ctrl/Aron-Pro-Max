@@ -526,7 +526,6 @@ fun SummaryScreen(
     }
     // sr/summary.png: the info card, the dark-headed SKU list (it scrolls), the category and total block docked below it on its own
     // #F0F0F0 panel, then Print. Under an unbounded host (a screen that still scrolls) the list takes its full height.
-    val columns = remember { listOf(1.1f, 0.85f, 1.35f, 1.1f, 1.4f, 0.7f) }
     BoxWithConstraints(modifier.background(look.page)) {
         val bounded = constraints.hasBoundedHeight
         Column(Modifier.then(if (bounded) Modifier.fillMaxSize() else Modifier).padding(AronTokens.Space.Screen), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.M)) {
@@ -547,10 +546,10 @@ fun SummaryScreen(
                                 ),
                             )
                         },
-                        weights = columns,
+                        weights = SummaryColumns.shares,
                     )
                 }
-                SummaryDock(summary, categoryLabel, unitLabel, columns)
+                SummaryDock(summary, categoryLabel, unitLabel)
             }
             printButton()
         }
@@ -559,7 +558,8 @@ fun SummaryScreen(
 
 /** The docked block of sr/summary.png on its own `#F0F0F0` panel: a purple row per category (quantity with its unit as a small suffix), "discount and others (-)" and the grand total. */
 @Composable
-private fun SummaryDock(summary: DaySummary, categoryLabel: (String) -> String, unitLabel: (String) -> String, weights: List<Float>) {
+private fun SummaryDock(summary: DaySummary, categoryLabel: (String) -> String, unitLabel: (String) -> String) {
+    val weights = SummaryColumns.shares
     val look = LocalAronLook.current
     val figure = TextStyle(fontSize = 13.sp, color = look.purple, textAlign = TextAlign.End)
     Column(Modifier.fillMaxWidth().background(look.rowAlt).padding(horizontal = 12.dp, vertical = 8.dp)) {
