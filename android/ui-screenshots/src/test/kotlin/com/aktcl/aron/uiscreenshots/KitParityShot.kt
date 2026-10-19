@@ -3,6 +3,9 @@ package com.aktcl.aron.uiscreenshots
 import android.content.Context
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Row
+import androidx.compose.material3.Text
+import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -37,6 +40,12 @@ import com.aktcl.aron.core.ui.aron.AronSecondaryButton
 import com.aktcl.aron.core.ui.aron.AronStatusDot
 import com.aktcl.aron.core.ui.aron.AronTargetCard
 import com.aktcl.aron.core.ui.aron.AronTile
+import com.aktcl.aron.core.ui.aron.ActionGlyph
+import com.aktcl.aron.core.ui.aron.ActionTone
+import com.aktcl.aron.core.ui.aron.AronActionTile
+import com.aktcl.aron.core.ui.aron.AronEmptyMessage
+import com.aktcl.aron.core.ui.aron.AronIdentityRow
+import com.aktcl.aron.core.ui.aron.AronLocationCard
 import com.aktcl.aron.core.ui.aron.AronMenuGap
 import com.aktcl.aron.core.ui.aron.AronTileGrid
 import com.aktcl.aron.core.ui.aron.AronTopBar
@@ -96,7 +105,14 @@ class KitParityShot {
         }
     }
 
-    @Test @Config(qualifiers = "bn-w411dp-h717dp") fun stock() = shot("stock") {
+    @Test @Config(qualifiers = "bn-w411dp-h717dp") fun stock() = shot("stock") { StockMock() }
+
+    /** The same Stock at a 360 dp and a 320 dp phone: SKU codes stay on one line at 360, the plus stays on the card at 320. */
+    @Test @Config(qualifiers = "bn-w360dp-h640dp") fun stock_360() = shot("stock_360") { StockMock() }
+    @Test @Config(qualifiers = "bn-w320dp-h640dp") fun stock_320() = shot("stock_320") { StockMock() }
+
+    @Composable
+    private fun StockMock() {
         val packs = listOf("MaxR-10S", "MaxR-20S", "MaxB-10S", "MaxB-20S", "MaxWB-10S")
         AronScaffold(
             topBar = {
@@ -181,6 +197,32 @@ class KitParityShot {
             Box(Modifier.padding(AronMenuGap)) {
                 AronTileGrid(items, columns = 3, gap = AronMenuGap) { (label, icon), m -> AronTile(label, painterResource(icon), {}, m, menu = true, labelColor = look.tileLabelOutlet) }
             }
+        }
+    }
+
+    @Test @Config(qualifiers = "bn-w411dp-h440dp") fun attendance() = shot("attendance") {
+        Column(Modifier.fillMaxSize().background(LocalAronLook.current.page)) {
+            AronTopBar("অ্যাটেনডেন্স", icon = painterResource(R.drawable.aron_art_attendance), onBack = {}, backLabel = "পেছনে")
+            AronIdentityRow("SR - Testing Banani (sr334001)", "Apsis RouteDaily, 2026-10-05")
+            Column(Modifier.padding(horizontal = 12.dp, vertical = 12.dp)) {
+                AronLocationCard("RC38+J3Q, RC38+J3Q, Gulshan, Dhaka, Dhaka District, Dhaka Division, 1212, Bangladesh", onRefresh = {}, refreshLabel = "অবস্থান আবার নিন")
+                Text(
+                    "আপনি এখনো চেক ইন করেননি। কাজ শুরু করার আগে অনুগ্রহ করে চেক ইন করুন।",
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 18.dp),
+                    style = androidx.compose.ui.text.TextStyle(fontSize = 14.sp, textAlign = androidx.compose.ui.text.style.TextAlign.Center),
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    AronActionTile("চেক ইন", ActionGlyph.CheckIn, onClick = {}, modifier = Modifier.weight(1f))
+                    AronActionTile("চেক আউট", ActionGlyph.CheckOut, onClick = {}, modifier = Modifier.weight(1f), tone = ActionTone.Neutral)
+                }
+            }
+        }
+    }
+
+    @Test @Config(qualifiers = "bn-w411dp-h531dp") fun tasks() = shot("tasks") {
+        Column(Modifier.fillMaxSize().background(LocalAronLook.current.page)) {
+            AronTopBar("টাস্ক", onBack = {}, backLabel = "পেছনে")
+            AronEmptyMessage("আপনার এএমও (AMO) কোনো কাজ বরাদ্দ করেননি।", Modifier.weight(1f))
         }
     }
 }

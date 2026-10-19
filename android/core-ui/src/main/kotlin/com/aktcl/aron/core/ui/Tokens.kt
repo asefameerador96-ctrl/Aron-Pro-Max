@@ -231,6 +231,9 @@ data class AronLookColors(
     /** sr/sales-submit.png: the pink notice card, the online/offline dot, the row rule of the submit table, the disabled primary. */
     val noticeFill: Color = hex(0xE6C8CA), val online: Color = hex(0x4CAF50), val offlineDot: Color = hex(0x9E9E9E),
     val rowRule: Color = hex(0xF5E6E8), val primaryDisabled: Color = hex(0xB8B8B8),
+    /** sr/attendance.png (sampled): the avatar and pin squares, the location card, the green check-in and grey check-out gradients. */
+    val avatarSquare: Color = hex(0xD7D3DF), val pinSquare: Color = hex(0xC7C3CF), val locationCard: Color = hex(0xD9D9D9),
+    val goStart: Color = hex(0x02A652), val goEnd: Color = hex(0x56BA87), val neutralStart: Color = hex(0x515151), val neutralEnd: Color = hex(0xB8B8B8),
 )
 
 object AronLook {
@@ -257,6 +260,7 @@ object AronLook {
         targetTop = hex(0x2A0A6B), targetBottom = hex(0x2A0A6B), disabledText = hex(0x505050), secondaryText = hex(0x000000),
         ink = hex(0x000000), inkMuted = hex(0x202020), columnHeader = hex(0x202020), underline = hex(0x202020), silhouetteInk = hex(0x404040),
         noticeFill = hex(0xFFFFFF), online = hex(0x00642F), offlineDot = hex(0x404040), rowRule = hex(0x202020), primaryDisabled = hex(0x8A8A8A),
+        locationCard = hex(0xFFFFFF), goStart = hex(0x00642F), goEnd = hex(0x00642F), neutralStart = hex(0x303030), neutralEnd = hex(0x303030),
     )
 
     /** Card and tile radius 12 dp, button radius 8 dp, the plus/minus square 36 dp drawn inside a 48 dp hit area. */

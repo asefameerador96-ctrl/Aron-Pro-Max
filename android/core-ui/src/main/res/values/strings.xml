@@ -142,4 +142,11 @@
     <string name="core_ui_look_no">No</string>
     <string name="core_ui_look_sticks">Sticks</string>
     <string name="core_ui_look_long_sku">Prime Gold 10S</string>
+    <string name="core_ui_look_identity">SR - Testing Banani (sr334001)</string>
+    <string name="core_ui_look_route">Apsis Route 3F, 2026-10-05</string>
+    <string name="core_ui_look_address">Gulshan, Dhaka, Dhaka Division, 1212, Bangladesh</string>
+    <string name="core_ui_look_refresh">Refresh location</string>
+    <string name="core_ui_look_check_in">Check in</string>
+    <string name="core_ui_look_check_out">Check out</string>
+    <string name="core_ui_look_no_tasks">Your AMO has not assigned any task.</string>
 </resources>

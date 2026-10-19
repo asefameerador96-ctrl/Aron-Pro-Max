@@ -46,6 +46,10 @@ AronDialog(title, text, confirmText, onConfirm, onDismiss, dismissText = null)
 AronSwitchRow(label, checked, onCheckedChange, subtitle = null)
 AronLogoutButton(text, onClick)                                       // solid red
 // ButtonGlyph: Save, Print, Sync, Submit. Disabled AronPrimaryButton = solid #B8B8B8, white label (sales-submit.png)
+AronIdentityRow(title, subtitle, avatar = null)                    // attendance.png: lavender square avatar, dark name, red rule
+AronLocationCard(address, onRefresh, refreshLabel, refreshEnabled = true)   // grey raised card, pin, red refresh (ONE balanced fix per tap)
+AronActionTile(text, ActionGlyph.CheckIn | CheckOut, onClick, modifier, tone = ActionTone.Go | Neutral, enabled = true)   // green / grey gradient
+AronEmptyMessage(text)                                               // tasks.png: centred message filling the remaining space
 AronTargetCard(title, label, value = daySales, percent = null)       // Home target card shell; targets deferred (docs/27)
 SummaryTable(headers: List<String>, rows: List<SummaryRow(title, values)>, subtotals: List<TotalsLine> = empty, totals: List<SummaryTotal(label, value)> = empty,
              weights: List<Float>? = null /* 6 columns default 0.7,0.9,1.4,1.2,1.4,0.8 */)   // cells shrink, never break inside a word or number

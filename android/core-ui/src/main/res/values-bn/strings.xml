@@ -139,4 +139,11 @@
     <string name="core_ui_look_no">না</string>
     <string name="core_ui_look_sticks">স্টিক</string>
     <string name="core_ui_look_long_sku">Prime Gold 10S</string>
+    <string name="core_ui_look_identity">SR - টেস্টিং বনানী (sr334001)</string>
+    <string name="core_ui_look_route">Apsis Route 3F, ২০২৬-১০-০৫</string>
+    <string name="core_ui_look_address">গুলশান, ঢাকা, ঢাকা বিভাগ, ১২১২, বাংলাদেশ</string>
+    <string name="core_ui_look_refresh">অবস্থান আবার নিন</string>
+    <string name="core_ui_look_check_in">চেক ইন</string>
+    <string name="core_ui_look_check_out">চেক আউট</string>
+    <string name="core_ui_look_no_tasks">আপনার এএমও (AMO) কোনো কাজ বরাদ্দ করেননি।</string>
 </resources>

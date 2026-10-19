@@ -105,6 +105,63 @@ internal object Glyph {
     }
 
     /** Floppy-disk "save" glyph of the reference Save button. */
+    /** Map pin (sr/attendance.png location card). */
+    fun DrawScope.pin(color: Color, hole: Color) {
+        val s = min(size.width, size.height)
+        val r = s * 0.26f
+        val c = Offset(center.x, center.y - s * 0.08f)
+        val p = Path().apply {
+            moveTo(c.x - r * 0.92f, c.y + r * 0.40f)
+            lineTo(center.x, center.y + s * 0.40f)
+            lineTo(c.x + r * 0.92f, c.y + r * 0.40f)
+            close()
+        }
+        drawCircle(color, r, c)
+        drawPath(p, color)
+        drawCircle(hole, r * 0.36f, c)
+    }
+
+    /** Circular refresh arrow (sr/attendance.png, red, end of the location card). */
+    fun DrawScope.refresh(color: Color) {
+        val s = min(size.width, size.height)
+        val w = s * 0.11f
+        val r = s * 0.30f
+        drawArc(color, -60f, 300f, false, Offset(center.x - r, center.y - r), Size(r * 2, r * 2), style = Stroke(w, cap = StrokeCap.Round))
+        val tip = Offset(center.x + r * 0.5f, center.y - r * 0.866f)
+        val head = Path().apply {
+            moveTo(tip.x + s * 0.17f, tip.y - s * 0.02f)
+            lineTo(tip.x - s * 0.03f, tip.y - s * 0.17f)
+            lineTo(tip.x - s * 0.01f, tip.y + s * 0.12f)
+            close()
+        }
+        drawPath(head, color)
+    }
+
+    /** Arrow into (check-in) or out of (check-out) an open bracket (sr/attendance.png action buttons). */
+    fun DrawScope.doorArrow(color: Color, out: Boolean) {
+        val s = min(size.width, size.height)
+        val w = s * 0.09f
+        val style = Stroke(w, cap = StrokeCap.Round, join = StrokeJoin.Round)
+        val bx = if (out) center.x - s * 0.30f else center.x + s * 0.30f
+        val dir = if (out) 1f else -1f
+        val bracket = Path().apply {
+            moveTo(bx + dir * s * 0.16f, center.y - s * 0.34f)
+            lineTo(bx, center.y - s * 0.34f)
+            lineTo(bx, center.y + s * 0.34f)
+            lineTo(bx + dir * s * 0.16f, center.y + s * 0.34f)
+        }
+        drawPath(bracket, color, style = style)
+        val from = if (out) center.x - s * 0.08f else center.x - s * 0.40f
+        val to = if (out) center.x + s * 0.40f else center.x + s * 0.12f
+        drawLine(color, Offset(from, center.y), Offset(to, center.y), w, StrokeCap.Round)
+        val arrow = Path().apply {
+            moveTo(to - s * 0.14f, center.y - s * 0.14f)
+            lineTo(to, center.y)
+            lineTo(to - s * 0.14f, center.y + s * 0.14f)
+        }
+        drawPath(arrow, color, style = style)
+    }
+
     fun DrawScope.save(color: Color, gap: Color) {
         val s = min(size.width, size.height)
         drawRoundRect(color, Offset(center.x - s * 0.36f, center.y - s * 0.36f), Size(s * 0.72f, s * 0.72f), CornerRadius(s * 0.10f))

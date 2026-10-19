@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -115,6 +116,13 @@ fun AronLookGallery(modifier: Modifier = Modifier) {
             AronNoticeCard(stringResource(R.string.core_ui_look_notice))
             AronPrimaryButton(stringResource(R.string.core_ui_look_sync), onClick = {}, modifier = Modifier.fillMaxWidth(), glyph = ButtonGlyph.Sync)
             AronPrimaryButton(stringResource(R.string.core_ui_look_tile_submit), onClick = {}, modifier = Modifier.fillMaxWidth(), glyph = ButtonGlyph.Submit, enabled = false)
+            AronIdentityRow(stringResource(R.string.core_ui_look_identity), stringResource(R.string.core_ui_look_route))
+            AronLocationCard(stringResource(R.string.core_ui_look_address), onRefresh = {}, refreshLabel = stringResource(R.string.core_ui_look_refresh))
+            androidx.compose.foundation.layout.Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                AronActionTile(stringResource(R.string.core_ui_look_check_in), ActionGlyph.CheckIn, onClick = {}, modifier = Modifier.weight(1f))
+                AronActionTile(stringResource(R.string.core_ui_look_check_out), ActionGlyph.CheckOut, onClick = {}, modifier = Modifier.weight(1f), tone = ActionTone.Neutral)
+            }
+            Box(Modifier.fillMaxWidth().heightIn(min = 120.dp)) { AronEmptyMessage(stringResource(R.string.core_ui_look_no_tasks)) }
         }
     }
 }

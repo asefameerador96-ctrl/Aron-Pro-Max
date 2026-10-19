@@ -4,7 +4,6 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -34,6 +33,7 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.KeyboardType
@@ -119,11 +119,22 @@ private val StockColumn = 52.dp
 private val QtyField = 48.dp
 
 /**
- * The quantity field grows with the row (sr/stock.webp: the underline fills the space between minus and plus): 48 dp at 360 dp, up to
- * 96 dp on wider phones, leaving an 18 sp SKU code (about 80 dp) its room. [rowWidth] is the full width of the header or the card;
- * both compute the same, so the header stays over its column.
+ * Column widths follow the SCREEN width (not the row's), so [PackListHeader] and [PackCard] agree whatever padding the caller puts
+ * around either. The quantity field grows (sr/stock.webp: the underline fills the space between minus and plus): 48 dp on a 360 dp
+ * phone, 75 dp at 411 dp, at most 96 dp, leaving an 18 sp SKU code (about 80 dp) its room.
  */
-private fun qtyFieldFor(rowWidth: Dp): Dp = (rowWidth - 316.dp).coerceIn(QtyField, 96.dp)
+private fun qtyFieldFor(screen: Dp): Dp = (screen - 336.dp).coerceIn(QtyField, 96.dp)
+
+/**
+ * Below 400 dp of screen (360 dp phones) the packshot and the stock column give up 12 and 8 dp so an 18 sp SKU code such as
+ * `MaxR-10S` stays on one line as on sr/stock.webp (it shrinks a little, wrapping is only the fallback); 320 dp still fits the plus.
+ */
+private fun isNarrowScreen(screen: Dp): Boolean = screen < 400.dp
+private fun stockColumnFor(screen: Dp): Dp = if (isNarrowScreen(screen)) 44.dp else StockColumn
+private fun packshotWidthFor(screen: Dp): Dp = if (isNarrowScreen(screen)) 44.dp else AronLook.PackshotWidth
+
+@Composable
+private fun screenWidth(): Dp = LocalConfiguration.current.screenWidthDp.dp
 
 /**
  * The column headers above a pack list (sr/stock.webp: `এসকেইউ` / `ইস্যু` / `স্টক`, grey 20 sp). [quantity] is the issue column on
@@ -132,13 +143,11 @@ private fun qtyFieldFor(rowWidth: Dp): Dp = (rowWidth - 316.dp).coerceIn(QtyFiel
 @Composable
 fun PackListHeader(sku: String, quantity: String, stock: String, modifier: Modifier = Modifier) {
     val look = LocalAronLook.current
-    BoxWithConstraints(modifier.fillMaxWidth()) {
-        val qtyColumn = AronLook.Touch * 2 + qtyFieldFor(maxWidth)
-        Row(Modifier.fillMaxWidth().padding(start = 12.dp, end = 16.dp, top = 12.dp, bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-            FitText(sku, lookStyle(20.sp, color = look.columnHeader), 12.sp, Modifier.weight(1f).padding(start = 16.dp), oneLineDown = 12.sp)
-            FitText(quantity, lookStyle(20.sp, color = look.columnHeader, align = TextAlign.Center), 12.sp, Modifier.width(qtyColumn), oneLineDown = 12.sp)
-            FitText(stock, lookStyle(20.sp, color = look.columnHeader, align = TextAlign.End), 12.sp, Modifier.width(StockColumn), oneLineDown = 12.sp)
-        }
+    val screen = screenWidth()
+    Row(modifier.fillMaxWidth().padding(start = 12.dp, end = 16.dp, top = 12.dp, bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+        FitText(sku, lookStyle(20.sp, color = look.columnHeader), 12.sp, Modifier.weight(1f).padding(start = 16.dp), oneLineDown = 12.sp)
+        FitText(quantity, lookStyle(20.sp, color = look.columnHeader, align = TextAlign.Center), 12.sp, Modifier.width(AronLook.Touch * 2 + qtyFieldFor(screen)), oneLineDown = 12.sp)
+        FitText(stock, lookStyle(20.sp, color = look.columnHeader, align = TextAlign.End), 12.sp, Modifier.width(stockColumnFor(screen)), oneLineDown = 12.sp)
     }
 }
 
@@ -170,60 +179,60 @@ fun PackCard(
 ) {
     val look = LocalAronLook.current
     val shape = RoundedCornerShape(AronLook.CardRadius)
-    BoxWithConstraints(modifier.fillMaxWidth()) {
-        val qtyField = qtyFieldFor(maxWidth)
-        Row(
-            Modifier
-                .fillMaxWidth()
-                .shadow(2.dp, shape)
-                .clip(shape)
-                .background(look.card)
-                .padding(start = 6.dp, top = 6.dp, bottom = 6.dp, end = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Box(Modifier.padding(end = AronLook.PackBadge / 2)) {
-                PackshotImage(skuId, Modifier.size(AronLook.PackshotWidth, AronLook.PackshotHeight), packshotDescription, category)
-                if (packBadge != null) {
-                    Box(
-                        Modifier
-                            .align(Alignment.BottomEnd)
-                            .offset(x = AronLook.PackBadge / 2, y = (-6).dp)
-                            .sizeIn(minWidth = AronLook.PackBadge, minHeight = AronLook.PackBadge)
-                            .clip(CircleShape)
-                            .background(look.purple),
-                        contentAlignment = Alignment.Center,
-                    ) { Text(packBadge, style = lookStyle(12.sp, bold = true, color = Color.White), modifier = Modifier.padding(horizontal = 4.dp)) }
-                }
+    val screen = screenWidth()
+    val qtyField = qtyFieldFor(screen)
+    val narrow = isNarrowScreen(screen)
+    Row(
+        modifier
+            .fillMaxWidth()
+            .shadow(2.dp, shape)
+            .clip(shape)
+            .background(look.card)
+            .padding(start = 6.dp, top = 6.dp, bottom = 6.dp, end = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(Modifier.padding(end = AronLook.PackBadge / 2)) {
+            PackshotImage(skuId, Modifier.size(packshotWidthFor(screen), AronLook.PackshotHeight), packshotDescription, category)
+            if (packBadge != null) {
+                Box(
+                    Modifier
+                        .align(Alignment.BottomEnd)
+                        .offset(x = AronLook.PackBadge / 2, y = (-6).dp)
+                        .sizeIn(minWidth = AronLook.PackBadge, minHeight = AronLook.PackBadge)
+                        .clip(CircleShape)
+                        .background(look.purple),
+                    contentAlignment = Alignment.Center,
+                ) { Text(packBadge, style = lookStyle(12.sp, bold = true, color = Color.White), modifier = Modifier.padding(horizontal = 4.dp)) }
             }
-            Spacer(Modifier.width(6.dp))
-            // one line, shrinking from 18 sp down to 14 sp (sr/stock.webp shows the code on one line); a longer name such as "Prime Gold
-            // 10S" then wraps between words, each word shrinking to at most 12 sp: no code is ever cut
-            FitText(skuCode, lookStyle(18.sp, medium = true, color = look.purple), 12.sp, Modifier.weight(1f), oneLineDown = 14.sp)
-            AronMinus(onMinus, minusLabel, enabled = minusEnabled)
-            BasicTextField(
-                value = quantity,
-                onValueChange = { typed -> onQuantityChange(typed.filter(Char::isDigit).take(6)) },
-                enabled = editable,
-                singleLine = true,
-                textStyle = lookStyle(20.sp, bold = true, color = look.ink, align = TextAlign.Center),
-                cursorBrush = SolidColor(look.purple),
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                modifier = Modifier
-                    .width(qtyField)
-                    .heightIn(min = AronLook.Touch)
-                    .semantics { contentDescription = quantityLabel },
-                decorationBox = { inner ->
-                    Box(
-                        Modifier.fillMaxWidth().heightIn(min = AronLook.Touch).drawBehind {
-                            val y = size.height - 4.dp.toPx()
-                            drawLine(look.underline, Offset(0f, y), Offset(size.width, y), 1.5.dp.toPx())
-                        },
-                        contentAlignment = Alignment.Center,
-                    ) { inner() }
-                },
-            )
-            AronPlus(onPlus, plusLabel, enabled = plusEnabled)
-            FitText(stock, lookStyle(18.sp, bold = true, color = look.ink, align = TextAlign.End), 12.sp, Modifier.width(StockColumn), oneLineDown = 12.sp)
         }
+        Spacer(Modifier.width(if (narrow) 2.dp else 6.dp))
+        // one line, shrinking from 18 sp down to 14 sp (sr/stock.webp shows the code on one line); a longer name such as "Prime Gold
+        // 10S" then wraps between words, each word shrinking to at most 12 sp: no code is ever cut
+        FitText(skuCode, lookStyle(18.sp, medium = true, color = look.purple), 12.sp, Modifier.weight(1f), oneLineDown = 14.sp)
+        AronMinus(onMinus, minusLabel, enabled = minusEnabled)
+        BasicTextField(
+            value = quantity,
+            onValueChange = { typed -> onQuantityChange(typed.filter(Char::isDigit).take(6)) },
+            enabled = editable,
+            singleLine = true,
+            textStyle = lookStyle(20.sp, bold = true, color = look.ink, align = TextAlign.Center),
+            cursorBrush = SolidColor(look.purple),
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+            modifier = Modifier
+                .width(qtyField)
+                .heightIn(min = AronLook.Touch)
+                .semantics { contentDescription = quantityLabel },
+            decorationBox = { inner ->
+                Box(
+                    Modifier.fillMaxWidth().heightIn(min = AronLook.Touch).drawBehind {
+                        val y = size.height - 4.dp.toPx()
+                        drawLine(look.underline, Offset(0f, y), Offset(size.width, y), 1.5.dp.toPx())
+                    },
+                    contentAlignment = Alignment.Center,
+                ) { inner() }
+            },
+        )
+        AronPlus(onPlus, plusLabel, enabled = plusEnabled)
+        FitText(stock, lookStyle(18.sp, bold = true, color = look.ink, align = TextAlign.End), 12.sp, Modifier.width(stockColumnFor(screen)), oneLineDown = 12.sp)
     }
 }

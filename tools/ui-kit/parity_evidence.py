@@ -16,6 +16,8 @@ PAIRS = {
     "summary": "summary.png",
     "sales-submit": "sales-submit.png",
     "outlet-menu": "outlet-menu.png",
+    "attendance": "attendance.png",
+    "tasks": "tasks.png",
 }
 H, GAP = 1000, 24
 
