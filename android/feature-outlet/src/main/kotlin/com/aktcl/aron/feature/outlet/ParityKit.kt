@@ -46,6 +46,7 @@ import com.aktcl.aron.core.ui.BannerKind
 import com.aktcl.aron.core.ui.LocalAronLook
 import com.aktcl.aron.core.ui.aron.AronChoiceChip
 import com.aktcl.aron.core.ui.aron.AronErrorText
+import com.aktcl.aron.core.ui.aron.AronField
 import com.aktcl.aron.core.ui.aron.AronInfoCard
 import com.aktcl.aron.core.ui.aron.AronRadioRow
 import com.aktcl.aron.core.ui.aron.AronTextButton
@@ -71,7 +72,7 @@ internal fun FormNotice(text: String, modifier: Modifier = Modifier, kind: Banne
     }
 }
 
-/** The label above the field (decorative: the field carries it as its name), then the 56 dp field on the grey fill with a purple focus edge. */
+/** A request-form text field: the kit's [AronField]; [fieldModifier] (the test tag) goes on the editable node, [isError] turns the underline red. */
 @Composable
 internal fun FormField(
     value: String,
@@ -82,28 +83,10 @@ internal fun FormField(
     keyboardType: KeyboardType = KeyboardType.Text,
     singleLine: Boolean = true,
     fieldModifier: Modifier = Modifier,
-) {
-    val look = LocalAronLook.current
-    Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.Xs)) {
-        Text(label, Modifier.clearAndSetSemantics { }, style = MaterialTheme.typography.bodySmall, color = look.inkMuted)
-        OutlinedTextField(
-            value = value, onValueChange = onValueChange,
-            placeholder = { Text(label, style = MaterialTheme.typography.bodyLarge, color = look.inkMuted) },
-            modifier = fieldModifier.fillMaxWidth().heightIn(min = AronTokens.Touch.Primary).semantics { contentDescription = label },
-            singleLine = singleLine, isError = isError,
-            keyboardOptions = KeyboardOptions(keyboardType = keyboardType),
-            shape = RoundedCornerShape(AronLook.CardRadius),
-            textStyle = MaterialTheme.typography.bodyLarge,
-            colors = OutlinedTextFieldDefaults.colors(
-                focusedContainerColor = look.page, unfocusedContainerColor = look.page, errorContainerColor = look.page,
-                focusedBorderColor = look.purple, unfocusedBorderColor = look.underline, errorBorderColor = look.red,
-                focusedTextColor = look.ink, unfocusedTextColor = look.ink, errorTextColor = look.ink,
-                focusedPlaceholderColor = look.inkMuted, unfocusedPlaceholderColor = look.inkMuted, errorPlaceholderColor = look.inkMuted,
-                cursorColor = look.purple,
-            ),
-        )
-    }
-}
+) = AronField(
+    value, onValueChange, label, modifier, errorText = if (isError) " " else null, keyboardType = keyboardType, singleLine = singleLine,
+    minLines = if (singleLine) 1 else 3, fieldModifier = fieldModifier,
+)
 
 /** A choice chip: the kit's gradient pill when selected (the cluster choices of the request forms). */
 @Composable

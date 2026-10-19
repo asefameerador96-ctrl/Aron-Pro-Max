@@ -1,5 +1,7 @@
 package com.aktcl.aron.feature.auth
 
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
@@ -51,6 +53,7 @@ import com.aktcl.aron.core.ui.AronLook
 import com.aktcl.aron.core.ui.AronTokens
 import com.aktcl.aron.core.ui.BannerKind
 import com.aktcl.aron.core.ui.LocalAronLook
+import com.aktcl.aron.core.ui.aron.AronField
 import com.aktcl.aron.core.ui.aron.AronInfoCard
 import com.aktcl.aron.core.ui.aron.AronLanguageToggle
 import com.aktcl.aron.core.ui.aron.AronSunToggle
@@ -152,11 +155,10 @@ internal fun AuthBanner(text: String, modifier: Modifier = Modifier, kind: Banne
 internal fun AuthLink(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true) = AronTextButton(text, onClick, modifier, enabled)
 
 /**
- * The kit-styled text field (android-glass s6.12): 56 dp, `radius.chip`, `surface.solid.raised`, a 1 dp `border.input`
- * (2 dp `border.focus` when focused, `danger` on [error]), label above in `type.caption`, placeholder in `text.placeholder`,
- * an optional 48 dp trailing text action, and a helper or error line below. No floating label. [modifier] (and its test
- * tag) goes on the field itself, which also carries [label] as its accessible name, so TalkBack never meets an unnamed
- * edit box (docs/32 s4) and `performTextInput` on the tag reaches the field.
+ * A text field of the logged-out screens: the kit's [AronField] (label above, value over a purple underline, red with [error]).
+ * [modifier] (and its test tag) goes on the editable node, which also carries [label] as its accessible name, so `performTextInput` on
+ * the tag reaches the field. [imeAction] with [onImeAction] is the keyboard action (Done on the password submits the login); [trailing]
+ * is an end slot inside the field (the show or hide password text button).
  */
 @Composable
 internal fun AuthField(
@@ -166,66 +168,18 @@ internal fun AuthField(
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
     error: Boolean = false,
-    placeholder: String? = null,
-    helper: String? = null,
     singleLine: Boolean = true,
     minLines: Int = 1,
-    visualTransformation: VisualTransformation = VisualTransformation.None,
-    keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
-    keyboardActions: KeyboardActions = KeyboardActions.Default,
+    password: Boolean = false,
+    keyboardType: KeyboardType = KeyboardType.Text,
+    imeAction: ImeAction = ImeAction.Default,
+    onImeAction: (() -> Unit)? = null,
     trailing: (@Composable () -> Unit)? = null,
 ) {
-    val look = LocalAronLook.current
-    val interaction = remember { MutableInteractionSource() }
-    val focused by interaction.collectIsFocusedAsState()
-    val fill = if (enabled) look.page else look.disabledFill
-    val border = when { error -> look.red; focused -> look.purple; else -> look.underline }
-    val borderWidth = when {
-        focused || error -> if (look.sunlight) 3.dp else 2.dp
-        look.sunlight -> 2.dp
-        else -> 1.dp
-    }
-    val textStyle = MaterialTheme.typography.bodyLarge.copy(color = if (enabled) look.ink else look.disabledText)
-    val placeholderColor = look.inkMuted
-    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.Xs)) {
-        Text(label, style = MaterialTheme.typography.bodySmall, color = look.inkMuted)
-        BasicTextField(
-            value = value,
-            onValueChange = onValueChange,
-            modifier = modifier.fillMaxWidth().semantics { contentDescription = label },
-            enabled = enabled,
-            textStyle = textStyle,
-            keyboardOptions = keyboardOptions,
-            keyboardActions = keyboardActions,
-            singleLine = singleLine,
-            minLines = minLines,
-            visualTransformation = visualTransformation,
-            interactionSource = interaction,
-            cursorBrush = SolidColor(look.purple),
-            decorationBox = { inner ->
-                Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .heightIn(min = FieldHeight)
-                        .drawBehind {
-                            val r = CornerRadius(AronTokens.Radius.Chip.toPx())
-                            drawRoundRect(fill, cornerRadius = r)
-                            val w = borderWidth.toPx()
-                            drawRoundRect(border, Offset(w / 2, w / 2), Size(size.width - w, size.height - w), CornerRadius(r.x - w / 2), style = Stroke(w))
-                        }
-                        .padding(start = AronTokens.Space.L, end = if (trailing != null) AronTokens.Space.Xs else AronTokens.Space.L, top = AronTokens.Space.S, bottom = AronTokens.Space.S),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
-                        if (value.isEmpty() && placeholder != null) Text(placeholder, style = MaterialTheme.typography.bodyLarge, color = placeholderColor)
-                        inner()
-                    }
-                    if (trailing != null) trailing()
-                }
-            },
-        )
-        if (helper != null) Text(helper, style = MaterialTheme.typography.bodySmall, color = if (error) look.red else look.inkMuted)
-    }
+    AronField(
+        value, onValueChange, label, errorText = if (error) " " else null, keyboardType = keyboardType, singleLine = singleLine, password = password,
+        enabled = enabled, imeAction = imeAction, onImeAction = onImeAction, trailing = trailing, minLines = minLines, fieldModifier = modifier,
+    )
 }
 
 /**
