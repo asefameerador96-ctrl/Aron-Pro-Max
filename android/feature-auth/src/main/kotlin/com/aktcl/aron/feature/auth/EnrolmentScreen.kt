@@ -142,7 +142,7 @@ fun EnrolmentContent(
                     AuthField(
                         value = state.input, onValueChange = onInput, label = stringResource(R.string.enrol_token_label),
                         modifier = Modifier.testTag(EnrolTags.INPUT), enabled = !state.busy, singleLine = false, minLines = 2,
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Ascii, imeAction = ImeAction.Done, autoCorrectEnabled = false),
+                        keyboardType = KeyboardType.Ascii, imeAction = ImeAction.Done,
                     )
                     if (state.pending && onScan != null) {
                         AronSecondaryButton(stringResource(R.string.enrol_scan), onScan, Modifier.fillMaxWidth().testTag(EnrolTags.SCAN), enabled = !state.busy)

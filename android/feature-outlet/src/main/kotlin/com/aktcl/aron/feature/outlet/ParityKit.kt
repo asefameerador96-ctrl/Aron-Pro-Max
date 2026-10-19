@@ -44,7 +44,12 @@ import com.aktcl.aron.core.ui.AronLook
 import com.aktcl.aron.core.ui.AronTokens
 import com.aktcl.aron.core.ui.BannerKind
 import com.aktcl.aron.core.ui.LocalAronLook
+import com.aktcl.aron.core.ui.aron.AronChoiceChip
+import com.aktcl.aron.core.ui.aron.AronErrorText
+import com.aktcl.aron.core.ui.aron.AronField
 import com.aktcl.aron.core.ui.aron.AronInfoCard
+import com.aktcl.aron.core.ui.aron.AronRadioRow
+import com.aktcl.aron.core.ui.aron.AronTextButton
 import com.aktcl.aron.core.ui.aron.AronNoticeCard
 import com.aktcl.aron.core.ui.aron.AronPrimaryButton
 import com.aktcl.aron.core.ui.aron.AronSecondaryButton
@@ -67,7 +72,7 @@ internal fun FormNotice(text: String, modifier: Modifier = Modifier, kind: Banne
     }
 }
 
-/** The label above the field (decorative: the field carries it as its name), then the 56 dp field on the grey fill with a purple focus edge. */
+/** A request-form text field: the kit's [AronField]; [fieldModifier] (the test tag) goes on the editable node, [isError] turns the underline red. */
 @Composable
 internal fun FormField(
     value: String,
@@ -78,73 +83,22 @@ internal fun FormField(
     keyboardType: KeyboardType = KeyboardType.Text,
     singleLine: Boolean = true,
     fieldModifier: Modifier = Modifier,
-) {
-    val look = LocalAronLook.current
-    Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.Xs)) {
-        Text(label, Modifier.clearAndSetSemantics { }, style = MaterialTheme.typography.bodySmall, color = look.inkMuted)
-        OutlinedTextField(
-            value = value, onValueChange = onValueChange,
-            placeholder = { Text(label, style = MaterialTheme.typography.bodyLarge, color = look.inkMuted) },
-            modifier = fieldModifier.fillMaxWidth().heightIn(min = AronTokens.Touch.Primary).semantics { contentDescription = label },
-            singleLine = singleLine, isError = isError,
-            keyboardOptions = KeyboardOptions(keyboardType = keyboardType),
-            shape = RoundedCornerShape(AronLook.CardRadius),
-            textStyle = MaterialTheme.typography.bodyLarge,
-            colors = OutlinedTextFieldDefaults.colors(
-                focusedContainerColor = look.page, unfocusedContainerColor = look.page, errorContainerColor = look.page,
-                focusedBorderColor = look.purple, unfocusedBorderColor = look.underline, errorBorderColor = look.red,
-                focusedTextColor = look.ink, unfocusedTextColor = look.ink, errorTextColor = look.ink,
-                focusedPlaceholderColor = look.inkMuted, unfocusedPlaceholderColor = look.inkMuted, errorPlaceholderColor = look.inkMuted,
-                cursorColor = look.purple,
-            ),
-        )
-    }
-}
+) = AronField(
+    value, onValueChange, label, modifier, errorText = if (isError) " " else null, keyboardType = keyboardType, singleLine = singleLine,
+    minLines = if (singleLine) 1 else 3, fieldModifier = fieldModifier,
+)
 
-/** A choice chip: the selected one filled `aron.purple` with a check, the others grey with purple words; 48 dp target, tab role. */
+/** A choice chip: the kit's gradient pill when selected (the cluster choices of the request forms). */
 @Composable
-internal fun FormChip(label: String, selected: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
-    val look = LocalAronLook.current
-    Box(
-        modifier.heightIn(min = AronLook.Touch).clip(RoundedCornerShape(AronLook.CardRadius))
-            .background(if (selected) look.purple else look.page)
-            .selectable(selected = selected, role = Role.Tab, onClick = onClick),
-        contentAlignment = Alignment.Center,
-    ) {
-        Row(Modifier.padding(horizontal = AronTokens.Space.L), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.Xs)) {
-            if (selected) Icon(AronIcons.Check, contentDescription = null, tint = Color.White, modifier = Modifier.size(AronTokens.Space.L))
-            Text(label, style = MaterialTheme.typography.labelLarge, color = if (selected) Color.White else look.purple, maxLines = 1)
-        }
-    }
-}
+internal fun FormChip(label: String, selected: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) = AronChoiceChip(label, selected, onClick, modifier)
 
-/** A radio row: a white card, a purple dot (checked inside when selected) and the label; the whole row is the target with radio semantics. */
+/** A radio row (the Force Sale reasons): the kit's purple ring row. */
 @Composable
-internal fun FormRadio(label: String, selected: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
-    val look = LocalAronLook.current
-    Row(
-        modifier.fillMaxWidth().heightIn(min = AronTokens.Touch.Primary).clip(RoundedCornerShape(AronLook.CardRadius)).background(look.card)
-            .selectable(selected = selected, role = Role.RadioButton, onClick = onClick).padding(horizontal = AronTokens.Space.L),
-        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.M),
-    ) {
-        Box(Modifier.size(24.dp).clip(CircleShape).background(if (selected) look.purple else look.underline), contentAlignment = Alignment.Center) {
-            Box(Modifier.size(20.dp).clip(CircleShape).background(if (selected) look.purple else look.card), contentAlignment = Alignment.Center) {
-                if (selected) Icon(AronIcons.Check, contentDescription = null, tint = Color.White, modifier = Modifier.size(14.dp))
-            }
-        }
-        Text(label, style = MaterialTheme.typography.bodyLarge, color = look.ink)
-    }
-}
+internal fun FormRadio(label: String, selected: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) = AronRadioRow(label, selected, onClick, modifier)
 
-/** An error line under a field or a form: a warning glyph and the words in `aron.red`. */
+/** An error line under a field or a form: the kit's red 13 sp line with its warning glyph kept out (words carry the meaning). */
 @Composable
-internal fun FormError(text: String, modifier: Modifier = Modifier) {
-    val look = LocalAronLook.current
-    Row(modifier, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
-        Icon(AronIcons.Warning, contentDescription = null, tint = look.red, modifier = Modifier.size(AronTokens.Space.L))
-        Text(text, style = MaterialTheme.typography.bodySmall, color = look.red)
-    }
-}
+internal fun FormError(text: String, modifier: Modifier = Modifier) = AronErrorText(text, modifier)
 
 /** The action row of the forms: the gradient primary (and the grey secondary at 40 percent) on the grey page, above the keyboard; the reason shows while the primary is disabled. */
 @Composable
@@ -170,11 +124,6 @@ internal fun FormBar(primary: BarAction, secondary: BarAction? = null, reason: S
     }
 }
 
-/** A text action in `aron.purple` (48 dp target). */
+/** A text action in `aron.purple`: the kit's underlined text button. */
 @Composable
-internal fun FormLink(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true) {
-    val look = LocalAronLook.current
-    Box(modifier.heightIn(min = AronLook.Touch).clickable(enabled = enabled, role = Role.Button, onClick = onClick), contentAlignment = Alignment.Center) {
-        Text(text, style = MaterialTheme.typography.titleSmall, color = if (enabled) look.purple else look.disabledText, textAlign = TextAlign.Center, modifier = Modifier.padding(horizontal = AronTokens.Space.M))
-    }
-}
+internal fun FormLink(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true) = AronTextButton(text, onClick, modifier, enabled)

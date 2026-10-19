@@ -123,14 +123,13 @@ fun LoginContent(
                     AuthField(
                         value = state.username, onValueChange = onUsernameChange, label = stringResource(R.string.auth_username),
                         modifier = Modifier.testTag(LoginTags.USERNAME), enabled = !state.busy, error = wrong,
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Ascii, imeAction = ImeAction.Next, autoCorrectEnabled = false),
+                        keyboardType = KeyboardType.Ascii, imeAction = ImeAction.Next,
                     )
                     AuthField(
                         value = state.password, onValueChange = onPasswordChange, label = stringResource(R.string.auth_password),
                         modifier = Modifier.testTag(LoginTags.PASSWORD), enabled = !state.busy, error = wrong,
-                        visualTransformation = if (state.passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done, autoCorrectEnabled = false),
-                        keyboardActions = KeyboardActions(onDone = { if (filled && !state.busy) onSubmit() }),
+                        password = !state.passwordVisible, imeAction = ImeAction.Done,
+                        onImeAction = { if (filled && !state.busy) onSubmit() },
                         trailing = {
                             AuthLink(stringResource(if (state.passwordVisible) R.string.auth_password_hide else R.string.auth_password_show), onTogglePasswordVisible)
                         },

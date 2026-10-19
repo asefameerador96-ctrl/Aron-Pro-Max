@@ -46,13 +46,16 @@ Proofs: `docs/evidence/ui-parity/sr-<screen>.png` (left reference, right ours, B
 | Settings gear page | sr/ (none) | NOT FOUND in my modules | Asked ui-sr-a; no composable in feature-memo, dayclose, outlet, tasks or auth. | |
 | Photo capture | -noref | DONE | The capture block (`GeoPhotoBlock`) is restyled; the camera itself is the system camera. | see git log |
 
-## Kit requests (for the kit window; nothing here blocks my screens)
+## Kit components now used (cycle 2, 2026-10-19)
 
-My modules carry private copies of these until the kit has them (then I delete the copies):
-1. **Form field, choice chip, radio row, error line, notice-with-action** (feature-outlet `ParityKit.kt`: FormField, FormChip, FormRadio, FormError; feature-auth `AuthKit.kt`: AuthField, AuthBanner, AuthLink).
-2. **Solid action buttons** (amber Edit, green Mark paid, `SolidButton` in feature-memo `MemoScreens.kt`) and a text link button in `aron.purple`.
-3. **Tab pair** (ongoing / completed, `TaskTabs` in feature-tasks) with the tab role.
-4. **Press-and-hold confirm button and bottom sheet** in the parity look (Sales submit hold step still uses the old kit `AronPressAndHoldButton` and `AronConfirmDialog`; so do the memo Mark paid and the outlet request confirm dialogs).
-5. **SummaryTable**: category subtotal labels shrink to a few sp in the first column at 360 dp; a wider first column for labels (or the label on its own row) would keep them readable.
-6. **Language and sun toggles** (old kit look) on the logged-out screens in the parity look.
-7. **Info card** (Summary): 1 dp #C0C0C0 border, no shadow, text top-aligned, ~6 dp under the bar, printer circle clipped at the card's bottom edge; table header size, gradient and corner; tile label wrapping; top bar weights; button gradients; shield and rack icons; disabled primary button (all from the 2026-10-19 vision QA, kit-owned).
+On the kit (no private copies left for these): text field (`AronField`: Login, enrolment, outlet request forms; needs kit 89da3bf), choice chip (cluster choices), radio row (Force Sale reasons), error text, solid buttons (amber Edit, green Mark paid), purple text link (memo history, banner dismiss, notice actions, auth links), tabs (Tasks ongoing/completed), bottom sheet and press-and-hold confirm (Sales submit hold step), notice card with action (Sales submit mismatch), info and notice cards, section header (memo today, history dates), language and Sunlight toggles (Login, OTP, enrolment, location notice).
+
+Still private, nothing in the kit yet: `FormCard`/`WhiteCard`/`AuthCard` (white 12 dp card), `FormBar`/`AuthBar` (the primary and grey secondary row above the keyboard with test tags), `OtpBoxes` (four-digit boxes), the memo and task rows. The dues `AronConfirmDialog` (Sales submit, memo Mark paid, outlet request confirm) is still the old dialog; the kit has `AronDialog` in Forms.kt for a later cycle.
+
+## Kit requests (still open)
+
+1. A white card container (`AronCard`) for the grey page.
+2. An action row with test tags (primary and secondary at 60/40 above the keyboard).
+3. A four-digit OTP box row.
+4. **SummaryTable**: category subtotal labels shrink to a few sp in the first column at 360 dp.
+5. Memo selector: a retailer drop-down with the A-Z letter filter (memo.md), if the owner wants the memo screen to select an outlet before showing its memo.
