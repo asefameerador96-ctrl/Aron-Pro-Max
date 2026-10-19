@@ -14,6 +14,9 @@ Binding: CLAUDE.md rule 14a, `docs/ui-reference/PARITY-SPEC.md`. The TSO app has
 ## Status (2026-10-19)
 Built and merged with INT 2ededd53; the full CI command (three assembleDebug, all unit tests incl. screenshot verify, lint) passed locally on this head before the push. Screens covered: Home, Settings, Dashboard (+ route list and zone filter, no golden yet), Leave list/apply, Final Submit, My Periphery hub/Team/Retailer, My Call hub/Set Plan/Visit Plan/Visit Query/Assign Task, My Feedback list/form, Change Password. Row shas below name the commit that first built each screen; the head sha is in the lead's message. QA items from the vision review done: SR/AMO vector icons (no second set), gradient zones card, Bangla digits in the sync line. Open (kit side, see Kit requests): tile label autosize, shared sync footer, loading skeleton, date field.
 
+## Update 2026-10-19 (after the kit window, INT 186279f4)
+Merged INT (kit 56916d13). Done since: Home uses the kit sync footer (`AronSyncFooter`: purple check, status, details; bundle line last), tile label fits (kit fix, 'আমার পরিধি'), text and date fields on kit tokens, Visit Query Yes/No on kit buttons, goldens for the dashboard route list and zone filter. Kit requests 1 (sync footer) and 6 (tile label) are closed; still open: loading skeleton (screens show an empty column or spinner), `SummaryTable` on Final Submit (rows stay white route cards), AronConfirmDialog/InfoDialog twins. Full CI command (three assembleDebug, all unit tests incl. screenshot verify, lint) passed locally on the pushed head.
+
 ## Handover block
 (empty: lane started 2026-10-18; no recycle yet)
 
