@@ -231,6 +231,16 @@ data class AronLookColors(
     /** sr/sales-submit.png: the pink notice card, the online/offline dot, the row rule of the submit table, the disabled primary. */
     val noticeFill: Color = hex(0xE6C8CA), val online: Color = hex(0x4CAF50), val offlineDot: Color = hex(0x9E9E9E),
     val rowRule: Color = hex(0xF5E6E8), val primaryDisabled: Color = hex(0xB8B8B8),
+    /** sr/attendance.png (sampled): the avatar and pin squares, the location card, the green check-in and grey check-out gradients. */
+    val avatarSquare: Color = hex(0xD7D3DF), val pinSquare: Color = hex(0xC7C3CF), val locationCard: Color = hex(0xD9D9D9),
+    val goStart: Color = hex(0x02A652), val goEnd: Color = hex(0x56BA87), val neutralStart: Color = hex(0x515151), val neutralEnd: Color = hex(0xB8B8B8),
+    /** Vision QA 2026-10-19 (sampled on stock, summary, sale-select): the disabled Print label, the picker hint and caret, the summary
+     *  header ramp, the end of the Save gradient on the purple panel, and the Summary Print stops. */
+    val secondaryDisabledText: Color = hex(0x595959), val hint: Color = hex(0x9E9E9E), val caret: Color = hex(0x616161),
+    val tableHeaderStart: Color = hex(0x4F4F4F), val tableHeaderMid: Color = hex(0x3F3F3F), val tableHeaderEnd: Color = hex(0x2D2D2D),
+    val panelButtonEnd: Color = hex(0x7D2B7B), val printStart: Color = hex(0x4A1C99), val printEnd: Color = hex(0xA73964),
+    /** Lane kit requests 2026-10-19: amber (memo Edit), gold (rating stars), the quiet loading bars, the info-card border (summary.png). */
+    val amber: Color = hex(0xE08A00), val gold: Color = hex(0xF5B301), val skeleton: Color = hex(0xE3E3E3), val infoBorder: Color = hex(0xC0C0C0),
 )
 
 object AronLook {
@@ -257,6 +267,10 @@ object AronLook {
         targetTop = hex(0x2A0A6B), targetBottom = hex(0x2A0A6B), disabledText = hex(0x505050), secondaryText = hex(0x000000),
         ink = hex(0x000000), inkMuted = hex(0x202020), columnHeader = hex(0x202020), underline = hex(0x202020), silhouetteInk = hex(0x404040),
         noticeFill = hex(0xFFFFFF), online = hex(0x00642F), offlineDot = hex(0x404040), rowRule = hex(0x202020), primaryDisabled = hex(0x8A8A8A),
+        locationCard = hex(0xFFFFFF), goStart = hex(0x00642F), goEnd = hex(0x00642F), neutralStart = hex(0x303030), neutralEnd = hex(0x303030),
+        secondaryDisabledText = hex(0x303030), hint = hex(0x505050), caret = hex(0x202020),
+        tableHeaderStart = hex(0x202020), tableHeaderMid = hex(0x202020), tableHeaderEnd = hex(0x202020),
+        amber = hex(0x8A4B00), infoBorder = hex(0x202020),
     )
 
     /** Card and tile radius 12 dp, button radius 8 dp, the plus/minus square 36 dp drawn inside a 48 dp hit area. */

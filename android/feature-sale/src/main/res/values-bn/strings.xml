@@ -3,7 +3,7 @@
     <string name="sale_title">বিক্রয়</string>
     <string name="sale_total">মোট</string>
     <string name="sale_review">এগিয়ে যান</string>
-    <string name="sale_history">পূর্বের বিক্রয় দেখুন</string>
+    <string name="sale_history">পূর্বের সেল ডাটা দেখুন</string>
     <string name="sale_group_recent">এই আউটলেটে আগে বিক্রি</string>
     <string name="sale_group">%1$s · %2$s</string>
     <string name="sale_cat_cigarette">সিগারেট</string>

@@ -28,6 +28,12 @@ object SubmitDisplay {
      * server count is unknown), and `matches` only when EVERY member matches (a +1 and a -1 never cancel). Types in no group follow
      * as their own rows, in their original order, so no count is hidden.
      */
+    /** The five rows of the legacy screen (sr/sales-submit.png): outlet, sale, stock, QC, promotion, in that order, those the phone counts. Display only; the gate still reads every per-type row. */
+    val LEGACY_FIVE = listOf("visit", "memo", "stock_movement", "qc_line", "memo_discount")
+
+    fun legacyFive(counts: List<CountRow>): List<CountView> =
+        LEGACY_FIVE.mapNotNull { key -> counts.firstOrNull { it.recordType == key }?.let { CountView(it.recordType, it.device, it.server, it.matches) } }
+
     fun views(counts: List<CountRow>, groups: List<List<String>>?): List<CountView> {
         if (groups == null) return counts.map { CountView(it.recordType, it.device, it.server, it.matches) }
         val grouped = groups.flatten().toSet()

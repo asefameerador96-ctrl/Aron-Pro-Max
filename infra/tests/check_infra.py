@@ -784,6 +784,11 @@ class Workflows(unittest.TestCase):
         self.assertNotIn("ARON_VERSION_NAME: ", c, "no workflow-level value that the step could fail to override")
         self.assertIn('release-manifest.py signed "${ARON_VERSION_NAME}" "${ARON_VERSION_CODE}" "${GITHUB_SHA}"', block)
         self.assertIn("python3 tools/ci/apk-size-gate.py", block)
+        # PARITY-SPEC s2.6: the dev pack pictures ride only in the dev-origin release APKs, never in a production build.
+        self.assertIn("-Paron.devPackshots=true", block)
+        for wf in (ROOT / ".github" / "workflows").glob("*.yml"):
+            if wf.name != "ci.yml":
+                self.assertNotIn("devPackshots", wf.read_text(encoding="utf-8"), f"{wf.name} must not bundle the dev pack pictures")
         gate = (ROOT / "tools" / "ci" / "apk-size-gate.py").read_text(encoding="utf-8")
         self.assertIn("ABS_DOWNLOAD_MB, ABS_INSTALLED_MB = 30, 70", gate)
         self.assertIn("WARN_PCT, FAIL_PCT = 5, 15", gate)

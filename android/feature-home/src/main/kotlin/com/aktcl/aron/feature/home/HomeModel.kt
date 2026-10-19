@@ -30,7 +30,7 @@ object HomeModel {
 enum class HomeTile(val key: String, val alwaysShown: Boolean) {
     ATTENDANCE("attendance", true), STOCK("stock", true), SALE("sale", true), MEMO("memo", true),
     SUMMARY("summary", true), SALES_SUBMIT("sales_submit", true), OUTLET("outlet", true), TUTORIAL("tutorial", true),
-    TASKS("tasks", true), PHOTO_CAPTURE("photo_capture", false), SALES_JOURNEY("sales_journey", true), KPI("kpi", true),
+    TASKS("tasks", true), PHOTO_CAPTURE("photo_capture", true), SALES_JOURNEY("sales_journey", true), KPI("kpi", true),
 }
 
 data class ResolvedTile(val tile: HomeTile, val badge: Int?)
@@ -135,10 +135,26 @@ data class HomeStockLine(val categoryLabel: String, val issueBase: Long, val cur
 data class HomeKpis(val strikeRateText: String?, val nonVisit: Int, val noSale: Int, val stock: List<HomeStockLine>)
 
 /** One category line of the money card: label and its pre-formatted net amount (zero categories are not passed). */
-data class HomeMoneyLine(val label: String, val amountText: String)
+/** [amountBare] is the same amount without the ৳ sign (the reference's rows carry none). */
+data class HomeMoneyLine(val label: String, val amountText: String, val amountBare: String = amountText)
 
 /**
  * The Home money card (F-SR-069) with canonical words: category lines, gross (`মোট`), the deductions only when non-zero
  * (pre-formatted with a true minus by the caller) and the grand total (`সর্বমোট`).
  */
-data class HomeMoneyLines(val categories: List<HomeMoneyLine>, val grossText: String, val discountText: String?, val qcText: String?, val grandTotalText: String)
+data class HomeMoneyLines(
+    val categories: List<HomeMoneyLine>,
+    val grossText: String,
+    val discountText: String?,
+    val qcText: String?,
+    val grandTotalText: String,
+    /** Cigarette and bidi sticks sold today: the sales panel's headline figure. */
+    val sticksSold: Long = 0L,
+    /**
+     * The bare figures of the two reference panels, EACH bound to its own field (a discount can never render under the QC label):
+     * the gross, the offer discount (zero while docs/27 defers programmes), the QC deduction, the net, then the second panel's
+     * total discount, DRP discount and total QC. Pre-formatted by the caller, no ৳, no sign (the panel adds the "- ").
+     */
+    val grossBare: String = grossText, val offerDiscountBare: String = "0.00", val qcBare: String = "0.00", val netBare: String = grandTotalText,
+    val totalDiscountBare: String = "0.00", val drpDiscountBare: String = "0.00", val totalQcBare: String = "0.00",
+)

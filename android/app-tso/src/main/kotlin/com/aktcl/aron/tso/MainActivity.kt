@@ -58,6 +58,8 @@ class MainActivity : ComponentActivity() {
     @Inject lateinit var activityLog: com.aktcl.aron.core.sync.ActivityLog
     @Inject lateinit var telemetry: com.aktcl.aron.core.sync.DeviceTelemetry
     @Inject lateinit var imageCache: com.aktcl.aron.core.sync.ImageCache
+    @Inject lateinit var skuPackshots: com.aktcl.aron.core.sync.SkuPackshots
+    private val packshotProvider by lazy { com.aktcl.aron.core.ui.aron.BitmapPackshotProvider(skuPackshots::bitmap, skuPackshots::cached) }
     @Inject lateinit var databases: com.aktcl.aron.core.database.UserDatabases
     @Inject lateinit var scheduler: com.aktcl.aron.core.sync.SyncScheduler
     private val readModels by lazy { TsoReadModels(components, databases, TsoOutbox(applicationContext, components, databases, scheduler)) }
@@ -110,6 +112,8 @@ class MainActivity : ComponentActivity() {
         val onLanguageSelect: (AppLanguage) -> Unit = { if (AppLocale.set(this, it)) recreate() }
         val versionName = BuildConfig.VERSION_NAME + " (" + BuildConfig.VERSION_CODE + ")"
         setContent {
+            // PARITY-SPEC s2.6: pack pictures of the Stock and Sale rows (thumbnail cache, then the dev-only bundled art).
+            androidx.compose.runtime.CompositionLocalProvider(com.aktcl.aron.core.ui.aron.LocalPackshotProvider provides packshotProvider) {
             // Before sign-in the sun switch is a device-level choice (no user yet); a signed-in user has their own.
             val devicePref = remember { SunlightPreference(applicationContext, "device") }
             var sunlight by remember { mutableStateOf(devicePref.enabled) }
@@ -250,6 +254,7 @@ class MainActivity : ComponentActivity() {
                     }
                 }
             }
+        }
         }
     }
 }

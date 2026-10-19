@@ -452,9 +452,12 @@ jobs:
         run: tools/android-sdk.sh
       - uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
       - name: Assemble the three release APKs against the dev origin (R8, resource shrinking, https-only guard)
+        # aron.devPackshots: the DEV ONLY pack pictures cropped from the owner's screenshot (android/dev-packshots, about
+        # 22 KB); release-app.yml (production) never sets it.
         run: >-
           ./gradlew --console=plain
           -Paron.apiBaseUrl="${ARON_API_BASE_URL}" -Paron.versionCode="${ARON_VERSION_CODE}" -Paron.versionName="${ARON_VERSION_NAME}"
+          -Paron.devPackshots=true
           :android:app-sr:assembleRelease :android:app-amo:assembleRelease :android:app-tso:assembleRelease
       - name: APK size gate (30 MB per ABI, installed 70 MB, warn +5 %, fail +15 % against the baseline)
         # One universal APK per app today; per-ABI splits too once android-core enables them (tools/ci/release-apks.py

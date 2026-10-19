@@ -162,7 +162,7 @@ class SalesSubmitScreenTest {
             AronTheme(AppLanguage.EN) {
                 val vm = if (useGrouped) grouped else ungrouped
                 val st by vm.state.collectAsState()
-                SalesSubmitScreen(true, st.counts, st.gate, st.progress, { it }, {}, vm::submit, rowGroups = if (useGrouped) groups else null)
+                SalesSubmitScreen(true, st.counts, st.gate, st.progress, { it }, {}, vm::submit, rowGroups = if (useGrouped) groups else null, legacyFiveRows = false)
             }
         }
         fun holdSubmit() {

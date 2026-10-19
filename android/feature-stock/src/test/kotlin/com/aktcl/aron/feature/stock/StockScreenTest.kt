@@ -35,7 +35,7 @@ import org.robolectric.annotation.Config
 class StockScreenTest {
     @get:Rule val compose = createComposeRule()
 
-    private fun sku(id: Long, cat: String, unit: String) = SkuEntity(id, "S$id", id, cat, "n$id", "Aster$id", null, unit, 1, "base", null, "1.000", id.toInt(), "active", 1)
+    private fun sku(id: Long, cat: String, unit: String, code: String = "S$id") = SkuEntity(id, code, id, cat, "n$id", "Aster$id", null, unit, 1, "base", null, "1.000", id.toInt(), "active", 1)
     private val rows = listOf(StockRow(sku(1, "lighter", "piece"), 400, 0), StockRow(sku(2, "match", "dozen"), 400, 0))
     /** The same rows with one Issue entered: Save is enabled only when an increment is non-zero (screens-sr s4). */
     private val rowsWithEntry = listOf(StockRow(sku(1, "lighter", "piece"), 400, 1), StockRow(sku(2, "match", "dozen"), 400, 0))
@@ -109,11 +109,17 @@ class StockScreenTest {
         compose.onNodeWithTag(StockTags.PRINT).performClick(); assertEquals(1, printed)
     }
 
-    @Test fun savedBannerOffersPrintAndRowsShowLoadedTodayWithTheUnit() {
+    @Test fun afterASaveTheButtonsShowTheStateAndNoBannerPushesTheList() {
         var printed = 0
         show(AppLanguage.BN, StockMessage.SAVED, onPrint = { printed++ })
-        compose.onNodeWithTag(StockTags.MESSAGE).assertExists()
-        // the banner's text action and the bar's secondary both say Print; the first is the banner's
-        compose.onAllNodesWithText("প্রিন্ট")[0].performClick(); assertEquals(1, printed)
+        // no mint banner between the bar and the column heads (sr/stock.webp): the Save button says "Saved" and Print is active
+        compose.onNodeWithTag(StockTags.MESSAGE).assertDoesNotExist()
+        compose.onNodeWithText("সংরক্ষিত").assertExists()
+        compose.onNodeWithTag(StockTags.PRINT).assertIsEnabled().performClick(); assertEquals(1, printed)
+    }
+
+    @Test fun theSkuLabelIsTheHyphenatedCodeOnOneLine() {
+        show(AppLanguage.EN, rows = listOf(StockRow(sku(1, "cigarette", "stick", "MaxR-10S"), 400, 0)))
+        compose.onNodeWithText("MaxR-10S").assertExists()
     }
 }

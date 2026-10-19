@@ -109,10 +109,8 @@ fun StockContent(
             Spacer(Modifier.height(24.dp))
             Column(Modifier.padding(horizontal = AronTokens.Space.Screen, vertical = AronTokens.Space.S), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
                 when (message) {
-                    StockMessage.SAVED -> AronBanner(
-                        stringResource(R.string.stk_saved), Modifier.testTag(StockTags.MESSAGE), BannerKind.Success,
-                        actionLabel = if (onPrint != null) stringResource(R.string.stk_print_short) else null, onAction = onPrint,
-                    )
+                    // the saved state is the Save button ("Saved") and the Print button turning active: no banner pushes the list down
+                    StockMessage.SAVED -> Unit
                     StockMessage.REFUSED_SAME_VALUES -> AronBanner(stringResource(R.string.stk_refused), Modifier.testTag(StockTags.MESSAGE), BannerKind.Warning)
                     StockMessage.NOTHING_ENTERED -> AronBanner(stringResource(R.string.stk_nothing), Modifier.testTag(StockTags.MESSAGE), BannerKind.Warning)
                     StockMessage.SAVE_FAILED -> AronBanner(stringResource(R.string.stk_save_failed), Modifier.testTag(StockTags.MESSAGE), BannerKind.Error)
@@ -154,7 +152,7 @@ fun StockContent(
             if (reason != null) Text(reason, color = look.onPanelMuted, fontSize = 12.sp, modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 4.dp))
             Row(Modifier.fillMaxWidth().padding(12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
                 AronPrimaryButton(
-                    stringResource(R.string.stk_save), onSave, Modifier.weight(1f).testTag(StockTags.SAVE), enabled = hasChange, glyph = ButtonGlyph.Save,
+                    stringResource(if (message == StockMessage.SAVED && !hasChange) R.string.stk_saved_short else R.string.stk_save), onSave, Modifier.weight(1f).testTag(StockTags.SAVE), enabled = hasChange, glyph = ButtonGlyph.Save,
                 )
                 AronSecondaryButton(
                     stringResource(R.string.stk_print_short), { onPrint?.invoke() }, Modifier.weight(1f).testTag(StockTags.PRINT),
@@ -193,7 +191,7 @@ private fun StockSkuRow(r: StockRow, softCeiling: Long, onIssue: (Long, Int) -> 
     val entered = r.entered.toInt()
     Column(Modifier.testTag(StockTags.row(r.sku.skuId))) {
         PackCard(
-            skuId = r.sku.skuId.toString(), skuCode = name,
+            skuId = r.sku.skuId.toString(), skuCode = r.sku.code,
             quantity = localizedNumber(r.entered), onQuantityChange = { onIssue(r.sku.skuId, parseQty(it).coerceIn(0, max)) },
             onMinus = { onIssue(r.sku.skuId, (entered - 1).coerceAtLeast(0)) }, onPlus = { onIssue(r.sku.skuId, (entered + 1).coerceAtMost(max)) },
             stock = localizedNumber(figure),

@@ -53,4 +53,8 @@
     <string name="sr_sync_last">শেষ সিঙ্ক %1$s</string>
     <string name="sr_sync_offline_reason">ইন্টারনেট নেই, কিন্তু বিক্রয় চলবে। সংযোগ পেলে নিজে থেকেই সিঙ্ক হবে।</string>
     <string name="sr_sync_now">এখন সিঙ্ক করুন</string>
+    <string name="sr_photo_title">Photo Capture</string>
+    <string name="sr_photo_body">গিফট ও ক্যাম্পেইন কর্মসূচির ছবি তোলার জন্য এই অংশ, যা পরে চালু হবে। আজ তোলার মতো কিছু নেই।</string>
+    <string name="sr_review_route">রুট: %1$s</string>
+    <string name="sr_review_cluster">ক্লাস্টার: %1$s</string>
 </resources>

@@ -42,7 +42,7 @@
     <string name="summary_qty_unit">%1$s %2$s</string>
     <string name="summary_totals">মোট হিসাব</string>
     <string name="summary_memo_count">আজ %1$s টি মেমো</string>
-    <string name="summary_discount_and_others">ডিসকাউন্ট এবং অন্যান্য (−)</string>
+    <string name="summary_discount_and_others">ডিসকাউন্ট এবং অন্যান্য (-)</string>
     <string name="summary_grand_total">সর্বমোট</string>
     <string name="summary_print">প্রিন্ট</string>
     <string name="journey_title">বিক্রয় যাত্রা</string>

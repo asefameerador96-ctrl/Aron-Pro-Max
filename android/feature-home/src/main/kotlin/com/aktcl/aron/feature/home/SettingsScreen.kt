@@ -92,6 +92,8 @@ fun SettingsContent(
     /** The status chip of the top bar; shown when non-null. */
     sync: SyncChipState? = null,
     onSync: (() -> Unit)? = null,
+    /** The device line (battery, free storage, pending uploads, last sync; moved here from Home): shown when non-null. */
+    health: DeviceHealth? = null,
 ) {
     val look = LocalAronLook.current
     var confirm by rememberSaveable { mutableStateOf(false) }
@@ -131,6 +133,11 @@ fun SettingsContent(
             if (onSupport != null) {
                 GroupLabel(stringResource(R.string.set_group_device))
                 AronListRow(stringResource(R.string.set_support), Modifier.testTag(SettingsTags.SUPPORT), onClick = onSupport, trailing = "›")
+            }
+            // device status: the line Home no longer carries (battery, free storage, waiting uploads, last sync)
+            health?.let { h ->
+                GroupLabel(stringResource(R.string.set_group_status))
+                SrDeviceLine(h)
             }
             // account: version, update, logout
             GroupLabel(stringResource(R.string.set_group_account))
