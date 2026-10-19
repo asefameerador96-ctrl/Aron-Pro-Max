@@ -1,5 +1,11 @@
 package com.aktcl.aron.feature.outlet
 
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.material3.Icon
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -22,11 +28,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
-import com.aktcl.aron.core.ui.AronEmptyState
 import com.aktcl.aron.core.ui.AronIcons
-import com.aktcl.aron.core.ui.AronListRow
 import com.aktcl.aron.core.ui.AronTokens
-import com.aktcl.aron.core.ui.LocalAronColors
+import com.aktcl.aron.core.ui.LocalAronLook
 import com.aktcl.aron.core.ui.RowPosition
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
@@ -110,44 +114,44 @@ object OwnRequestTags {
 }
 
 /**
- * The "My requests" list (F-SR-040, screens-sr s15): flat rows with the request type, the outlet, a status pill (word
- * plus icon, in its container colour) and, for a rejected one, the AMO's reason. Local data only.
+ * The "My requests" list (F-SR-040, screens-sr s15; PARITY-SPEC): one white card per request with the type in purple, the outlet,
+ * the status as an icon and a word and, for a rejected one, the AMO's reason in red. Local data only.
  */
 @Composable
 fun OwnRequestsContent(rows: List<OwnRequestRow>, modifier: Modifier = Modifier, syncedAt: String? = null) {
-    val c = LocalAronColors.current
+    val look = LocalAronLook.current
     if (rows.isEmpty()) {
-        Box(modifier.fillMaxSize().testTag(OwnRequestTags.EMPTY), contentAlignment = Alignment.Center) {
-            AronEmptyState(stringResource(R.string.out_own_empty), icon = AronIcons.Document, syncedAt = syncedAt)
+        Column(
+            modifier.fillMaxSize().background(look.page).padding(AronTokens.Space.Screen).testTag(OwnRequestTags.EMPTY),
+            horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center,
+        ) {
+            Text(stringResource(R.string.out_own_empty), style = MaterialTheme.typography.bodyLarge, color = look.ink, textAlign = TextAlign.Center)
+            syncedAt?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = look.inkMuted, textAlign = TextAlign.Center, modifier = Modifier.padding(top = AronTokens.Space.S)) }
         }
         return
     }
     // the list ends above the navigation bar (edge-to-edge): the inset joins the content padding, not the viewport
     val navBottom = WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom).asPaddingValues().calculateBottomPadding()
-    val dividerColor = c.borderDivider
-    val dividerWidth = if (c.sunlight) AronTokens.Stroke.SunlightHairline else AronTokens.Stroke.Hairline
     LazyColumn(
-        modifier.fillMaxSize().testTag(OwnRequestTags.LIST),
-        contentPadding = PaddingValues(start = AronTokens.Space.Screen, end = AronTokens.Space.Screen, top = AronTokens.Space.S, bottom = AronTokens.Space.S + navBottom),
+        modifier.fillMaxSize().background(look.page).testTag(OwnRequestTags.LIST),
+        contentPadding = PaddingValues(start = AronTokens.Space.Screen, end = AronTokens.Space.Screen, top = AronTokens.Space.M, bottom = AronTokens.Space.M + navBottom),
+        verticalArrangement = Arrangement.spacedBy(AronTokens.Space.S),
     ) {
-        rows.forEachIndexed { i, r ->
+        rows.forEach { r ->
             item(key = r.requestUuid, contentType = "request") {
-                val position = when { rows.size == 1 -> RowPosition.Only; i == 0 -> RowPosition.First; i == rows.lastIndex -> RowPosition.Last; else -> RowPosition.Middle }
-                // the row and its reason share one flat-row paint, so the rejected row stays inside the rounded group
-                val divider = i != rows.lastIndex
-                Column(Modifier.fillMaxWidth().flatRow(position).testTag(OwnRequestTags.row(r.requestUuid))) {
-                    AronListRow(
-                        title = stringResource(typeLabel(r.requestType)), subtitle = r.outletName, divider = divider && r.rejectionReason == null,
-                        trailingContent = { StatusPillFor(r.status) },
-                    )
+                FormCard(Modifier.fillMaxWidth().testTag(OwnRequestTags.row(r.requestUuid))) {
+                    Row(Modifier.fillMaxWidth().padding(AronTokens.Space.L), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.M)) {
+                        Column(Modifier.weight(1f)) {
+                            Text(stringResource(typeLabel(r.requestType)), style = MaterialTheme.typography.titleSmall, color = look.purple)
+                            r.outletName?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = look.inkMuted) }
+                        }
+                        StatusWordFor(r.status)
+                    }
                     r.rejectionReason?.let {
                         Text(
                             stringResource(R.string.out_own_reason, it), Modifier.fillMaxWidth().padding(horizontal = AronTokens.Space.L).padding(bottom = AronTokens.Space.M).testTag(OwnRequestTags.reason(r.requestUuid)),
-                            style = MaterialTheme.typography.bodySmall, color = c.textSecondary,
+                            style = MaterialTheme.typography.bodySmall, color = look.red,
                         )
-                        if (divider) {
-                            Spacer(Modifier.fillMaxWidth().padding(start = AronTokens.Space.L).height(dividerWidth).drawBehind { drawRect(dividerColor) })
-                        }
                     }
                 }
             }
@@ -155,17 +159,20 @@ fun OwnRequestsContent(rows: List<OwnRequestRow>, modifier: Modifier = Modifier,
     }
 }
 
-/** Status chips of screens-sr s15: submitted (accent), with the AMO (warning), approved (success), the rest neutral. */
+/** The status as an icon and a word (never colour alone). */
 @Composable
-private fun StatusPillFor(s: OwnRequestStatus) {
-    val c = LocalAronColors.current
-    val label = stringResource(statusLabel(s))
-    when (s) {
-        OwnRequestStatus.WAITING -> StatusPill(label, AronIcons.CloudUpload, c.offlineContainer, c.offlineOnContainer)
-        OwnRequestStatus.PENDING -> StatusPill(label, AronIcons.Clock, c.accentContainer, c.accentOnContainer)
-        OwnRequestStatus.VERIFIED -> StatusPill(label, AronIcons.Verified, c.warningContainer, c.warningOnContainer)
-        OwnRequestStatus.APPROVED -> StatusPill(label, AronIcons.CheckCircle, c.successContainer, c.successOnContainer)
-        OwnRequestStatus.REJECTED, OwnRequestStatus.LAPSED, OwnRequestStatus.DISCARDED -> StatusPill(label, AronIcons.Close, c.offlineContainer, c.offlineOnContainer)
+private fun StatusWordFor(s: OwnRequestStatus) {
+    val look = LocalAronLook.current
+    val icon = when (s) {
+        OwnRequestStatus.WAITING -> AronIcons.CloudUpload
+        OwnRequestStatus.PENDING -> AronIcons.Clock
+        OwnRequestStatus.VERIFIED -> AronIcons.Verified
+        OwnRequestStatus.APPROVED -> AronIcons.CheckCircle
+        OwnRequestStatus.REJECTED, OwnRequestStatus.LAPSED, OwnRequestStatus.DISCARDED -> AronIcons.Close
+    }
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.Xs)) {
+        Icon(icon, contentDescription = null, tint = look.inkMuted, modifier = Modifier.size(AronTokens.Size.IconSmall))
+        Text(stringResource(statusLabel(s)), style = MaterialTheme.typography.labelMedium, color = look.inkMuted)
     }
 }
 

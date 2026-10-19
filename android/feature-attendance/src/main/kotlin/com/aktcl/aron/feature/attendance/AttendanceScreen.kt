@@ -61,6 +61,16 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.testTag
+import androidx.compose.foundation.background
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.sp
+import com.aktcl.aron.core.ui.LocalAronLook
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
@@ -138,8 +148,12 @@ fun AttendanceContent(
     modifier: Modifier = Modifier,
     onRefreshFix: (() -> Unit)? = null,
     nowIso: () -> String = { Instant.now().toString() },
+    /** The user card of the reference (`SR - Name (login)` over `route, date`); null leaves the card out (tests, AMO/TSO hosts). */
+    userTitle: String? = null,
+    userSubtitle: String? = null,
 ) {
     val c = LocalAronColors.current
+    val look = LocalAronLook.current
     var hold by rememberSaveable { mutableStateOf<String?>(null) }
     val checkOutPhase = state.checkedInAt != null
     val dayComplete = state.checkedInAt != null && state.checkedOutAt != null
@@ -150,50 +164,42 @@ fun AttendanceContent(
         if (hold == HOLD_OUT && dayComplete) hold = null
     }
     Box(modifier.fillMaxSize()) {
-        ScreenWithBar(Modifier.fillMaxSize(), bar = {
-            Column(Modifier.fillMaxWidth()) {
-                // the reference message once, as the caption above the bar (screens-sr s3)
-                val prompt = when {
-                    !checkOutPhase && state.showCheckInPrompt -> stringResource(R.string.att_prompt_checkin)
-                    checkOutPhase && !dayComplete && state.checkOutEnabled -> stringResource(R.string.att_prompt_checkout)
-                    else -> null
-                }
-                if (prompt != null) {
-                    Text(
-                        prompt, style = MaterialTheme.typography.bodySmall, color = c.textSecondary,
-                        modifier = Modifier.testTag(AttendanceTags.PROMPT).padding(horizontal = AronTokens.Space.Screen, vertical = AronTokens.Space.S),
-                    )
-                }
-                if (!dayComplete) {
-                    // one bar geometry for both phases: the reason slot is reserved on Attendance, so the bar never jumps at check-in
-                    if (!checkOutPhase) {
-                        AttendanceBar(
-                            stringResource(R.string.att_check_in), { hold = HOLD_IN }, AttendanceTags.CHECK_IN,
-                            enabled = state.checkInEnabled && !state.busy, busy = state.busy, reason = null,
-                        )
-                    } else {
-                        AttendanceBar(
-                            stringResource(R.string.att_check_out), { hold = HOLD_OUT }, AttendanceTags.CHECK_OUT,
-                            enabled = state.checkOutEnabled && !state.busy, busy = state.busy,
-                            reason = stringResource(R.string.att_check_out_hint, localizedDigits(clock12(checkoutAtLabel))),
-                        )
-                    }
-                }
+        ScrollColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 20.dp, bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            if (userTitle != null) UserCard(userTitle, userSubtitle)
+            if (state.lastFixMock) AronBanner(stringResource(R.string.att_mock_warning), kind = BannerKind.Warning)
+            if (dayComplete) AronBanner(stringResource(R.string.att_day_complete_message), kind = BannerKind.Success)
+            if (state.fixFailed && !state.readingFix && !state.busy) {
+                AronBanner(
+                    stringResource(R.string.att_fix_none), kind = BannerKind.Warning,
+                    actionLabel = if (onRefreshFix != null) stringResource(R.string.att_fix_retry) else null, onAction = onRefreshFix,
+                )
             }
-        }) {
-            ScrollColumn(contentPadding = PaddingValues(AronTokens.Space.Screen), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.M)) {
-                if (state.lastFixMock) AronBanner(stringResource(R.string.att_mock_warning), kind = BannerKind.Warning)
-                if (dayComplete) AronBanner(stringResource(R.string.att_day_complete_message), kind = BannerKind.Success)
-                if (state.fixFailed && !state.readingFix && !state.busy) {
-                    AronBanner(
-                        stringResource(R.string.att_fix_none), kind = BannerKind.Warning,
-                        actionLabel = if (onRefreshFix != null) stringResource(R.string.att_fix_retry) else null, onAction = onRefreshFix,
-                    )
-                }
-                LocationCard(state, onRefreshFix)
-                DayCard(state, checkoutAtLabel)
-                Text(stringResource(R.string.att_offline_saved), style = MaterialTheme.typography.bodySmall, color = c.textSecondary)
+            LocationCard(state, onRefreshFix)
+            DayLines(state, checkoutAtLabel)
+            // the reference message once, centred above the two big buttons (screens-sr s3)
+            val prompt = when {
+                !checkOutPhase && state.showCheckInPrompt -> stringResource(R.string.att_prompt_checkin)
+                checkOutPhase && !dayComplete && state.checkOutEnabled -> stringResource(R.string.att_prompt_checkout)
+                else -> null
             }
+            if (prompt != null) {
+                Text(
+                    prompt, color = look.ink, fontSize = 16.sp, textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth().testTag(AttendanceTags.PROMPT).padding(vertical = 8.dp),
+                )
+            }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                // green in, red out once open, grey while not available (sr/attendance.png); a tap opens the hold sheet, never commits
+                BigAction(
+                    stringResource(R.string.att_check_in), AronIcons.Login, { hold = HOLD_IN }, AttendanceTags.CHECK_IN,
+                    enabled = !checkOutPhase && state.checkInEnabled && !state.busy, enabledColors = GreenStops, modifier = Modifier.weight(1f),
+                )
+                BigAction(
+                    stringResource(R.string.att_check_out), AronIcons.Logout, { hold = HOLD_OUT }, AttendanceTags.CHECK_OUT,
+                    enabled = checkOutPhase && !dayComplete && state.checkOutEnabled && !state.busy, enabledColors = RedStops, modifier = Modifier.weight(1f),
+                )
+            }
+            Text(stringResource(R.string.att_offline_saved), color = look.inkMuted, fontSize = 13.sp)
         }
         // the sheet keeps its last kind while it slides out, so the words do not change mid-exit
         var lastHold by remember { mutableStateOf(HOLD_IN) }
@@ -215,10 +221,32 @@ fun AttendanceContent(
 private const val HOLD_IN = "in"
 private const val HOLD_OUT = "out"
 
-/** The location card: a Place well, the coordinates (offline, always), the address line when known, the fix-quality chip and the refresh icon. */
+private val GreenStops = listOf(Color(0xFF00A650), Color(0xFF5CBB8A))
+private val RedStops = listOf(Color(0xFFD5484A), Color(0xFFE79B9C))
+
+/** The user card (sr/attendance.png): a soft purple tile with the person glyph, the name line and the route line. */
+@Composable
+private fun UserCard(title: String, subtitle: String?) {
+    val look = LocalAronLook.current
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+            Box(Modifier.size(56.dp).clip(RoundedCornerShape(12.dp)).background(look.silhouette), contentAlignment = Alignment.Center) {
+                Icon(AronIcons.Person, contentDescription = null, tint = look.purple, modifier = Modifier.size(32.dp))
+            }
+            Column(Modifier.weight(1f)) {
+                Text(title, color = look.ink, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                if (subtitle != null) Text(subtitle, color = look.ink, fontSize = 13.sp)
+            }
+        }
+        Box(Modifier.fillMaxWidth().height(1.dp).background(look.red))
+    }
+}
+
+/** The location card (sr/attendance.png): a pin tile, the coordinates or address, the fix-quality chip and the red refresh icon. */
 @Composable
 private fun LocationCard(state: AttendanceState, onRefreshFix: (() -> Unit)?) {
     val c = LocalAronColors.current
+    val look = LocalAronLook.current
     val reduced = LocalReducedMotion.current
     // one 1,200 ms linear turn of the refresh glyph per read (screens-sr s3 Motion); static under reduced motion
     val spin = remember { Animatable(0f) }
@@ -226,35 +254,38 @@ private fun LocationCard(state: AttendanceState, onRefreshFix: (() -> Unit)?) {
         spin.snapTo(0f)
         if (state.readingFix && !reduced) spin.animateTo(360f, tween(AronTokens.Motion.SyncTurnMillis, easing = LinearEasing))
     }
-    AronCard(Modifier.fillMaxWidth()) {
-        Column(Modifier.fillMaxWidth().padding(AronTokens.Space.L), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.M)) {
-                IconWell(AronIcons.Place)
-                Text(stringResource(R.string.att_location_title), style = MaterialTheme.typography.titleSmall, color = c.textPrimary, modifier = Modifier.weight(1f))
-                if (onRefreshFix != null) {
-                    AronIconButton(
-                        AronIcons.Refresh, stringResource(R.string.att_refresh), onRefreshFix,
-                        Modifier.testTag(AttendanceTags.REFRESH).graphicsLayer { rotationZ = spin.value },
-                        enabled = !state.readingFix && !state.busy,
-                    )
-                }
-            }
+    val shape = RoundedCornerShape(12.dp)
+    Row(
+        Modifier.fillMaxWidth().shadow(2.dp, shape).clip(shape).background(look.card.copy(alpha = 0.6f)).padding(12.dp),
+        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Box(Modifier.size(56.dp).clip(RoundedCornerShape(12.dp)).background(look.silhouette), contentAlignment = Alignment.Center) {
+            Icon(AronIcons.Place, contentDescription = null, tint = look.purple, modifier = Modifier.size(32.dp))
+        }
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
             val coords = state.coordinatesText ?: state.addressText
             if (state.readingFix) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
                     ReadingArc(c.textSecondary)
-                    Text(stringResource(R.string.att_reading_fix), style = MaterialTheme.typography.bodyLarge, color = c.textSecondary, modifier = Modifier.testTag(AttendanceTags.ADDRESS))
+                    Text(stringResource(R.string.att_reading_fix), color = look.inkMuted, fontSize = 16.sp, modifier = Modifier.testTag(AttendanceTags.ADDRESS))
                 }
             } else {
                 Text(
                     coords?.let { localizedDigits(it) } ?: stringResource(R.string.att_location_none),
-                    style = MaterialTheme.typography.bodyLarge, color = if (coords != null) c.textPrimary else c.textSecondary,
+                    color = if (coords != null) look.ink else look.inkMuted, fontSize = 16.sp,
                     modifier = Modifier.testTag(AttendanceTags.ADDRESS),
                 )
             }
             val address = state.addressText
-            if (address != null && address != coords) Text(address, style = MaterialTheme.typography.bodySmall, color = c.textSecondary)
+            if (address != null && address != coords) Text(address, color = look.inkMuted, fontSize = 13.sp)
             state.fixAccuracyM?.let { if (!state.readingFix) FixQualityChip(it) }
+        }
+        if (onRefreshFix != null) {
+            AronIconButton(
+                AronIcons.Refresh, stringResource(R.string.att_refresh), onRefreshFix,
+                Modifier.testTag(AttendanceTags.REFRESH).graphicsLayer { rotationZ = spin.value },
+                enabled = !state.readingFix && !state.busy,
+            )
         }
     }
 }
@@ -277,38 +308,34 @@ private fun ReadingArc(color: Color) {
     }
 }
 
-/** The day card: the check-in row and the check-out row, each a dot (done: check circle; open: hollow) with its words. */
+/** The day's two lines: when the rep checked in and out (a dot per line: done = check circle, open = hollow), the check-out hint when it is not open yet. */
 @Composable
-private fun DayCard(state: AttendanceState, checkoutAtLabel: String) {
-    val c = LocalAronColors.current
-    val divider = c.borderDivider
-    val hairline = if (c.sunlight) AronTokens.Stroke.SunlightHairline else AronTokens.Stroke.Hairline
-    AronCard(Modifier.fillMaxWidth()) {
-        Column(Modifier.fillMaxWidth().padding(horizontal = AronTokens.Space.L, vertical = AronTokens.Space.S)) {
-            val inAt = state.checkedInAt
-            DayRow(
-                done = inAt != null,
-                title = if (inAt != null) stringResource(R.string.att_checked_in, localizedDigits(clock12(dhakaClock(inAt)))) else stringResource(R.string.att_check_in),
-                caption = null, dim = false, tag = if (inAt != null) AttendanceTags.STATUS else null,
-            )
-            Box(Modifier.fillMaxWidth().height(hairline).drawBehind { drawRect(divider) })
-            val outAt = state.checkedOutAt
-            DayRow(
-                done = outAt != null,
-                title = if (outAt != null) stringResource(R.string.att_checked_out, localizedDigits(clock12(dhakaClock(outAt)))) else stringResource(R.string.att_check_out),
-                caption = if (outAt == null && inAt != null && !state.checkOutEnabled) stringResource(R.string.att_check_out_hint, localizedDigits(clock12(checkoutAtLabel))) else null,
-                dim = inAt == null, tag = null,
-            )
-        }
+private fun DayLines(state: AttendanceState, checkoutAtLabel: String) {
+    val inAt = state.checkedInAt
+    val outAt = state.checkedOutAt
+    if (inAt == null && outAt == null) return
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        DayRow(
+            done = inAt != null,
+            title = if (inAt != null) stringResource(R.string.att_checked_in, localizedDigits(clock12(dhakaClock(inAt)))) else stringResource(R.string.att_check_in),
+            caption = null, dim = false, tag = if (inAt != null) AttendanceTags.STATUS else null,
+        )
+        DayRow(
+            done = outAt != null,
+            title = if (outAt != null) stringResource(R.string.att_checked_out, localizedDigits(clock12(dhakaClock(outAt)))) else stringResource(R.string.att_check_out),
+            caption = if (outAt == null && inAt != null && !state.checkOutEnabled) stringResource(R.string.att_check_out_hint, localizedDigits(clock12(checkoutAtLabel))) else null,
+            dim = inAt == null, tag = null,
+        )
     }
 }
 
 @Composable
 private fun DayRow(done: Boolean, title: String, caption: String?, dim: Boolean, tag: String?) {
     val c = LocalAronColors.current
-    val ring = if (dim) c.textDisabled else c.textSecondary
+    val look = LocalAronLook.current
+    val ring = if (dim) look.disabledText else look.inkMuted
     Row(
-        Modifier.fillMaxWidth().heightIn(min = 56.dp).padding(vertical = AronTokens.Space.S),
+        Modifier.fillMaxWidth().heightIn(min = 40.dp),
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.M),
     ) {
         if (done) {
@@ -321,10 +348,10 @@ private fun DayRow(done: Boolean, title: String, caption: String?, dim: Boolean,
         }
         Column(Modifier.weight(1f)) {
             Text(
-                title, style = MaterialTheme.typography.titleSmall, color = if (dim) c.textDisabled else c.textPrimary,
+                title, color = if (dim) look.disabledText else look.ink, fontSize = 16.sp, fontWeight = FontWeight.Medium,
                 modifier = if (tag != null) Modifier.testTag(tag) else Modifier,
             )
-            if (caption != null) Text(caption, style = MaterialTheme.typography.bodySmall, color = c.textSecondary)
+            if (caption != null) Text(caption, color = look.inkMuted, fontSize = 13.sp)
         }
     }
 }
@@ -368,29 +395,31 @@ private fun IconWell(icon: ImageVector, size: Dp = AronTokens.Size.Well) {
 }
 
 /**
- * The action bar of this screen (the `AronBottomBar` geometry of android-glass s6.7 with a tagged primary): the ActionBar
- * recipe at the 104 dp reason height plus the navigation inset (the reason slot is reserved on Attendance so the bar
- * never animates between check-in and check-out, screens-sr s0), riding above the keyboard; a disabled primary shows
- * its reason as a caption above it, never while busy.
+ * One of the two big buttons of the reference (sr/attendance.png): a 100 dp rounded gradient block with the glyph over the label.
+ * [enabledColors] are the gradient stops when the action is open; otherwise a grey gradient (solid in Sunlight).
  */
 @Composable
-private fun AttendanceBar(text: String, onClick: () -> Unit, tag: String, enabled: Boolean, busy: Boolean, reason: String?) {
-    val c = LocalAronColors.current
-    val reserve = AronTokens.Size.BottomBarWithReason
-    GlassSurface(modifier = Modifier.fillMaxWidth(), kind = GlassKind.ActionBar) {
-        Column(
-            Modifier
-                .fillMaxWidth()
-                .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal))
-                .imePadding()
-                .heightIn(min = reserve)
-                .padding(horizontal = AronTokens.Space.Screen, vertical = AronTokens.Space.M),
-            verticalArrangement = Arrangement.spacedBy(AronTokens.Space.S),
-        ) {
-            if (reason != null && !enabled && !busy) Text(reason, style = MaterialTheme.typography.bodySmall, color = c.textSecondary)
-            val m = Modifier.fillMaxWidth().testTag(tag)
-            // green in, red out: the colour cue the rep uses daily (A3); busy disables the button, the label already says "checking in"
-            if (tag == AttendanceTags.CHECK_OUT) AronNoButton(text, onClick, m, enabled = enabled && !busy) else AronYesButton(text, onClick, m, enabled = enabled && !busy)
+private fun BigAction(label: String, glyph: ImageVector, onClick: () -> Unit, tag: String, enabled: Boolean, enabledColors: List<Color>, modifier: Modifier = Modifier) {
+    val look = LocalAronLook.current
+    val shape = RoundedCornerShape(12.dp)
+    val brush = when {
+        look.sunlight -> SolidColor(if (enabled) look.purple else look.disabledFill)
+        enabled -> Brush.horizontalGradient(enabledColors)
+        else -> Brush.horizontalGradient(listOf(Color(0xFF4F4F4F), Color(0xFFBBBBBB)))
+    }
+    Box(
+        modifier
+            .heightIn(min = 100.dp)
+            .shadow(if (enabled) 3.dp else 1.dp, shape)
+            .clip(shape)
+            .background(brush)
+            .testTag(tag)
+            .clickable(enabled = enabled, role = Role.Button, onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.padding(8.dp)) {
+            Icon(glyph, contentDescription = null, tint = if (look.sunlight && !enabled) look.disabledText else Color.White, modifier = Modifier.size(34.dp))
+            Text(label, color = if (look.sunlight && !enabled) look.disabledText else Color.White, fontSize = 16.sp, textAlign = TextAlign.Center)
         }
     }
 }
