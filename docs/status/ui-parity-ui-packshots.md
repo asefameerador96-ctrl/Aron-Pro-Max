@@ -58,11 +58,13 @@ WebP, 6.8 to 7.4 KB each (22 KB total in a dev APK), made by `tools/packshots/cr
 
 ## 4. Proof
 
-- `docs/evidence/ui-parity/packshots-stock.png` and `packshots-sale.png`: the reference on the left, ours on the right
-  (kit PackCard rows with the dev pictures).
+- `docs/evidence/ui-parity/packshots-stock.png` and `packshots-sale.png`: the reference on the left, ours on the right,
+  parity shell only (kit PackCard rows). Every seeded Maxim SKU (MaxR, MaxB, MaxWB, each 10S and 20S) shows its picture;
+  in Sale, Aster and Flame Box show the silhouette (no art). Goldens `stock_bn_packshots` and `sale_bn_packshots` (tall
+  captures, so every row is in the picture).
 - `PackshotWiringTest` (ui-screenshots): the kit PackCard rows of the new Stock and Sale screens ask the provider by the
   server SKU id, and the picture it returns is drawn; rows without a picture keep the silhouette.
-- Goldens: `stock_bn_packshots` (the five reference SKUs). The Stock and Sale goldens whose fixture has MaxR 10S are
+- Goldens: `stock_bn_packshots` and `sale_bn_packshots` (all six seeded Maxim SKUs). The Stock and Sale goldens whose fixture has MaxR 10S are
   re-recorded (they now show its picture); no other golden changes. The harness serves the dev crops (`TestPackshots`).
 - `SkuPackshotsTest` (dev mapping, no art in production, id lookup, cache key, admin thumbnail wins, broken or missing
   is null, downsampling) and `BitmapPackshotProviderTest` (first-frame memory hit, load, a failing source is the
