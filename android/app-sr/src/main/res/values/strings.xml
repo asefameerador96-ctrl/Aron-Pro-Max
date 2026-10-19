@@ -29,11 +29,11 @@
     <string name="sr_outcome_competitor">Sells a competitor only</string>
     <string name="sr_outcome_not_reached">Could not reach the shop</string>
     <string name="sr_sale_history">Sale history of this shop</string>
-    <string name="sr_rec_visit">Visits</string>
-    <string name="sr_rec_memo">Memos</string>
+    <string name="sr_rec_visit">Outlet</string>
+    <string name="sr_rec_memo">Sale</string>
     <string name="sr_rec_stock_movement">Stock</string>
     <string name="sr_rec_qc_line">Product QC</string>
-    <string name="sr_rec_memo_discount">Discounts</string>
+    <string name="sr_rec_memo_discount">Promotion</string>
     <string name="sr_rec_visit_close">Visit ends</string>
     <string name="sr_rec_due_collection">Dues collected</string>
     <string name="sr_rec_attendance_event">Attendance</string>
