@@ -7,6 +7,8 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
@@ -34,13 +36,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.Placeable
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.AnnotatedString
-import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.buildAnnotatedString
-import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
@@ -70,18 +69,23 @@ fun TotalsPanel(header: TotalsLine, lines: List<TotalsLine>, modifier: Modifier 
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun TotalsRow(line: TotalsLine, size: TextUnit, color: Color) {
     // rows as tight as sr/stock.webp (pitch about 1.6 x the glyph height; the Bangla face's own line box is about 1.8)
     val lineHeight = size * 1.25f
     Row(Modifier.fillMaxWidth().padding(vertical = 1.dp), verticalAlignment = Alignment.CenterVertically) {
         // the unit sits inline after the category (`লাইটার · পিস`, Vision QA), keeping the panel compact
-        val muted = LocalAronLook.current.onPanelMuted
-        val text = if (line.caption == null) AnnotatedString(line.label) else buildAnnotatedString {
-            append(line.label)
-            withStyle(SpanStyle(fontSize = 12.sp, color = muted)) { append(" · " + line.caption) }
+        // label and unit stay separate text nodes (screens and tests find the category by its own text); the unit wraps under it
+        // only when large text leaves no room
+        FlowRow(Modifier.weight(1.3f)) {
+            Text(line.label, style = lookStyle(size, color = color).copy(lineHeight = lineHeight), modifier = Modifier.alignByBaseline())
+            if (line.caption != null) {
+                val unit = lookStyle(12.sp, color = LocalAronLook.current.onPanelMuted)
+                Text(" · ", style = unit, modifier = Modifier.alignByBaseline().clearAndSetSemantics { })
+                Text(line.caption, style = unit, modifier = Modifier.alignByBaseline())
+            }
         }
-        Text(text, style = lookStyle(size, color = color).copy(lineHeight = lineHeight), modifier = Modifier.weight(1.3f))
         line.values.forEach { Text(it, style = lookStyle(size, color = color, align = TextAlign.End).copy(lineHeight = lineHeight), modifier = Modifier.weight(1f)) }
     }
 }
