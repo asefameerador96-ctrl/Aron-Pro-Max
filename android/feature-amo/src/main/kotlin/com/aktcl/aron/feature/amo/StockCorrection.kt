@@ -17,7 +17,6 @@ import androidx.compose.ui.text.input.KeyboardType
 import com.aktcl.aron.core.ui.localizedNumber
 import com.aktcl.aron.core.ui.AronTokens
 import com.aktcl.aron.core.ui.LocalAronColors
-import com.aktcl.aron.feature.outlet.KitTextField
 
 /** One SKU with the stock the app believes is in the bag, in the SKU's base unit (sticks, pieces, dozens). */
 data class CorrectionRow(val skuId: Long, val name: String, val unit: String, val currentBase: Long)
@@ -66,10 +65,9 @@ fun StockCorrectionContent(
         }
         if (sel != null) {
             Column(Modifier.padding(AronTokens.Space.Screen), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
-                KitTextField(
-                    text, { if (!saving && !saved) onText(it) }, stringResource(R.string.amo_sc_total, unitWord(sel.unit)),
-                    isError = text.isNotBlank() && StockCorrection.parseTotal(text) == null, keyboardType = KeyboardType.Number,
-                    fieldModifier = Modifier.testTag(CorrectionTags.TOTAL),
+                AmoField(
+                    text, { if (!saving && !saved) onText(it) }, stringResource(R.string.amo_sc_total, unitWord(sel.unit)), Modifier.testTag(CorrectionTags.TOTAL),
+                    error = text.isNotBlank() && StockCorrection.parseTotal(text) == null, keyboardType = KeyboardType.Number,
                 )
                 if (delta != null) Text(stringResource(R.string.amo_sc_delta, (if (delta > 0) "+" else "") + localizedNumber(delta), unitWord(sel.unit)), style = MaterialTheme.typography.labelLarge, color = c.textPrimary)
                 else if (text.isNotBlank() && StockCorrection.parseTotal(text) != null) Text(stringResource(R.string.amo_sc_same), style = MaterialTheme.typography.labelLarge, color = c.textSecondary)

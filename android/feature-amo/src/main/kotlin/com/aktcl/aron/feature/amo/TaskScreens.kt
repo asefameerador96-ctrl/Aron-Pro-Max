@@ -14,7 +14,6 @@ import com.aktcl.aron.core.ui.localizedDigits
 import com.aktcl.aron.core.ui.AronTokens
 import com.aktcl.aron.core.ui.BannerKind
 import com.aktcl.aron.core.ui.RowPosition
-import com.aktcl.aron.feature.outlet.KitTextField
 
 private fun pos(i: Int, n: Int) = if (n == 1) RowPosition.Only else if (i == 0) RowPosition.First else if (i == n - 1) RowPosition.Last else RowPosition.Middle
 
@@ -97,7 +96,7 @@ fun TaskAssignContent(
                 AmoListRow(localizedDigits(d), onClick = { onDue(d) }, trailing = if (d == due) stringResource(R.string.amo_verify_selected) else null, position = pos(i, dueChoices.size), divider = i < dueChoices.lastIndex, flat = true)
             }
             if (AssignError.DATE_INVALID in errors) AmoBanner(stringResource(R.string.amo_task_date_invalid), kind = BannerKind.Error)
-            KitTextField(description, onDescription, stringResource(R.string.amo_task_description), Modifier.fillMaxWidth(), singleLine = false, isError = AssignError.TEXT_TOO_LONG in errors)
+            AmoField(description, onDescription, stringResource(R.string.amo_task_description), error = AssignError.TEXT_TOO_LONG in errors, singleLine = false)
         }
         Column(Modifier.fillMaxWidth().padding(AronTokens.Space.Screen)) {
             AmoPrimary(stringResource(R.string.amo_task_save), onSave, Modifier.fillMaxWidth(), enabled = !busy, busy = busy)

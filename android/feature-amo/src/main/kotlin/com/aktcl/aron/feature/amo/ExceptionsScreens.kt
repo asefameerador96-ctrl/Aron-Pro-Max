@@ -14,7 +14,6 @@ import com.aktcl.aron.core.ui.BannerKind
 import com.aktcl.aron.core.ui.localizedDigits
 import com.aktcl.aron.core.ui.AronTokens
 import com.aktcl.aron.core.ui.RowPosition
-import com.aktcl.aron.feature.outlet.KitTextField
 
 @Composable
 private fun codeLabel(code: String): String {
@@ -82,7 +81,7 @@ fun ExceptionDetailContent(
             if (failed) AmoBanner(stringResource(R.string.amo_exc_failed), kind = BannerKind.Error)
             AmoSection(stringResource(R.string.amo_exc_evidence))
             row.evidence.forEach { (k, v) -> AmoListRow(localizedDigits(v), subtitle = k, flat = true) }
-            KitTextField(note, onNote, stringResource(R.string.amo_verify_note), Modifier.fillMaxWidth(), singleLine = false)
+            AmoField(note, onNote, stringResource(R.string.amo_verify_note), singleLine = false)
         }
         Column(Modifier.fillMaxWidth().padding(AronTokens.Space.Screen), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
             AmoSecondary(stringResource(R.string.amo_exc_review), { onAction("reviewed") }, Modifier.fillMaxWidth(), enabled = !busy)

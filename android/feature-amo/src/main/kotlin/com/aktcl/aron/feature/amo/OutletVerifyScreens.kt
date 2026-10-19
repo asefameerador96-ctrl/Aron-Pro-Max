@@ -18,7 +18,6 @@ import androidx.compose.ui.res.stringResource
 import com.aktcl.aron.core.ui.AronTokens
 import com.aktcl.aron.core.ui.BannerKind
 import com.aktcl.aron.core.ui.RowPosition
-import com.aktcl.aron.feature.outlet.KitTextField
 
 /** What the form knows about the request's details: loading, the server's answer (fresh or kept), or nothing (offline, never seen). */
 sealed interface VerifyDetailState {
@@ -124,7 +123,7 @@ fun VerifyFormContent(
             facts.forEach { (k, v) -> AmoListRow(v, subtitle = k, flat = true) }
             if (!decidable) AmoBanner(stringResource(R.string.amo_verify_not_pending), kind = BannerKind.Warning)
             when (detail) {
-                VerifyDetailState.Loading -> Box(Modifier.fillMaxWidth().padding(AronTokens.Space.L), Alignment.Center) { CircularProgressIndicator() }
+                VerifyDetailState.Loading -> Box(Modifier.fillMaxWidth().padding(AronTokens.Space.L), Alignment.Center) { com.aktcl.aron.core.ui.aron.AronLoadingCard(stringResource(R.string.amo_verify_loading)) }
                 VerifyDetailState.Unavailable -> AmoBanner(stringResource(R.string.amo_verify_details_offline), kind = BannerKind.Warning)
                 VerifyDetailState.Gone -> Unit // the not-pending banner above says it
                 is VerifyDetailState.Loaded -> {
@@ -161,7 +160,7 @@ fun VerifyFormContent(
                 )
                 if (VerifyError.GEO_CLASS_REQUIRED in errors) AmoBanner(stringResource(R.string.amo_verify_geo_required), kind = BannerKind.Error)
             }
-            KitTextField(note, onNote, stringResource(R.string.amo_verify_note), Modifier.fillMaxWidth(), singleLine = false)
+            AmoField(note, onNote, stringResource(R.string.amo_verify_note), singleLine = false)
             if (noFix) AmoBanner(stringResource(R.string.amo_verify_no_fix), kind = BannerKind.Error)
             if (saveFailed) AmoBanner(stringResource(R.string.amo_task_failed), kind = BannerKind.Error)
         }

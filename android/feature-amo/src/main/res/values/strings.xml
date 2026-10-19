@@ -291,4 +291,6 @@
     <string name="amo_mo_continue">Continue</string>
     <string name="amo_success_title">Success</string>
     <string name="amo_ok">OK</string>
+    <string name="amo_field_invalid">Check this value</string>
+    <string name="amo_verify_loading">Loading details…</string>
 </resources>

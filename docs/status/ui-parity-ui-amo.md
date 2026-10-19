@@ -57,3 +57,7 @@ Rows: 1 Home PARTIAL (icons now owner art + kit line icons); 2 Shell PARTIAL; 3 
 - Goldens: INT's amo_* goldens taken; re-recorded only amo_home_bn_light and amo_home_bn_sunlight (changed by the footer).
 - NOT DONE: AMO-only icon redraw (joint call, team, report, live dashboard, control call): no approach yet that reuses the SR icon grid and the owner art crops without hand-drawing new art; left with ui-kit (Kit requests).
 - Still PARTIAL as listed in the table above; every row "layout from manual, needs owner screenshot".
+
+## Kit controls swap (cycle ~02:30 UTC)
+Moved to kit components (`core/ui/aron/Controls.kt`, `Forms.kt`): text fields -> `AronField` (Verify note, Exceptions note, Task description, Price compliance, Stock correction; via `AmoField`), choice chips -> `AronChoiceChip` (geo class, Team Performance tabs), outlined buttons -> `AronOutlinedButton` (`AmoSecondary`), checkboxes -> `AronCheckboxRow` (SR Perf. Assessment), rating stars -> `AronRatingStars` (Joint Call; per-star test tags replaced by one row tag `JointTags.rating`), read-only pack rows -> `AronPackRow` (Team Stock detail, Price compliance now shows the packshot), section headers -> `AronSectionHeader`, loading -> `AronLoadingCard` (Verify details).
+Kept local on purpose: Yes/No pair (`AmoYes`/`AmoNo`: two separate test tags per question in Survey/Assessment; the kit `AronYesNo` is one control), `AmoCard` purple-strip cards, `AmoListRow` (needs trailing content), `AmoNotice`.
