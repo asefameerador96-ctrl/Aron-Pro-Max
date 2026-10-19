@@ -48,3 +48,6 @@ Rows: 1 Home PARTIAL (icons now owner art + kit line icons); 2 Shell PARTIAL; 3 
 - A Yes/No pair (purple/red) and an outlined secondary button for grey pages (AMO has local `AmoYes`/`AmoNo`/`AmoSecondary`; the kit `AronSecondaryButton` is `#E8E8E8` and vanishes on the grey page).
 - A read-only pack row with PackshotImage (no stepper) for Team Stock detail and Price compliance (AMO has local `AmoPackRow`).
 - A settings tag hook on `AronHomeHeader` (gear) so tests can find it by tag.
+- (QA 2026-10-19, kit) AMO-only icons (joint call, team, report, live dashboard, control call) are chunkier than the SR set: redraw with the SR stroke weight, rounded caps, thin outline + pink-to-blue gradient fill and an inner detail.
+- (QA 2026-10-19, kit) Tile count badge covers the awning: top-right corner, 4 dp outside the icon box, 11 sp bold, 20 dp circle.
+- (QA 2026-10-19, kit) One shared sync-status footer for AMO and TSO; AMO Home will adopt it via INT (AMO now has a token-colour local line: purple check, grey ink, one device figure per line).
