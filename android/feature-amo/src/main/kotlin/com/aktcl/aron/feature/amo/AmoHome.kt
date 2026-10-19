@@ -85,12 +85,14 @@ import com.aktcl.aron.core.ui.R as CoreR
  */
 @DrawableRes
 internal fun amoTileIcon(tileId: String): Int? = when (tileId) {
-    com.aktcl.aron.feature.home.RoleHomes.AmoTile.ATTENDANCE -> CoreR.drawable.aron_ic_attendance
-    com.aktcl.aron.feature.home.RoleHomes.AmoTile.SALE -> CoreR.drawable.aron_ic_sale
-    com.aktcl.aron.feature.home.RoleHomes.AmoTile.OUTLET -> CoreR.drawable.aron_ic_outlet
-    com.aktcl.aron.feature.home.RoleHomes.AmoTile.SALES_SUBMIT -> CoreR.drawable.aron_ic_sales_submit
-    com.aktcl.aron.feature.home.RoleHomes.AmoTile.TEAM -> CoreR.drawable.aron_ic_task_delegation
-    com.aktcl.aron.feature.home.RoleHomes.AmoTile.REPORT -> CoreR.drawable.aron_ic_kpi
+    com.aktcl.aron.feature.home.RoleHomes.AmoTile.ATTENDANCE -> CoreR.drawable.aron_art_attendance
+    com.aktcl.aron.feature.home.RoleHomes.AmoTile.SALE -> CoreR.drawable.aron_art_sale
+    com.aktcl.aron.feature.home.RoleHomes.AmoTile.OUTLET -> CoreR.drawable.aron_art_outlet
+    com.aktcl.aron.feature.home.RoleHomes.AmoTile.SALES_SUBMIT -> CoreR.drawable.aron_art_sales_submit
+    com.aktcl.aron.feature.home.RoleHomes.AmoTile.TEAM -> CoreR.drawable.aron_ic_team
+    com.aktcl.aron.feature.home.RoleHomes.AmoTile.REPORT -> CoreR.drawable.aron_ic_report
+    com.aktcl.aron.feature.home.RoleHomes.AmoTile.JOINT_CALL -> CoreR.drawable.aron_ic_joint_call
+    com.aktcl.aron.feature.home.RoleHomes.AmoTile.CONTROL_CALL -> CoreR.drawable.aron_ic_control_call
     else -> null
 }
 
@@ -103,7 +105,7 @@ private fun inkStyle(size: Int, bold: Boolean = false, color: Color = LocalAronL
 
 /** A notice on the grey or white page: a white card with a red or purple edge. Replaces the glass banners on the parity screens. */
 @Composable
-internal fun AmoNotice(text: String, modifier: Modifier = Modifier, warning: Boolean = false) {
+fun AmoNotice(text: String, modifier: Modifier = Modifier, warning: Boolean = false) {
     val look = LocalAronLook.current
     Row(modifier.fillMaxWidth().shadow(2.dp, RoundedCornerShape(12.dp)).clip(RoundedCornerShape(12.dp)).background(look.card), verticalAlignment = Alignment.CenterVertically) {
         Box(Modifier.size(width = 6.dp, height = 48.dp).background(if (warning) look.red else look.purple))

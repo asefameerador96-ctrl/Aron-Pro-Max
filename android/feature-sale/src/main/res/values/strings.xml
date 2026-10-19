@@ -108,4 +108,7 @@
     <string name="qc_typed_max">Most you can enter: %1$s</string>
     <string name="sale_qc_only">Product QC without a sale</string>
     <string name="review_problem_qc_rows">At most %1$s QC rows fit on one memo. Clear some.</string>
+    <string name="sale_col_sku">SKU</string>
+    <string name="sale_col_sale">Sale</string>
+    <string name="sale_col_stock">Stock</string>
 </resources>

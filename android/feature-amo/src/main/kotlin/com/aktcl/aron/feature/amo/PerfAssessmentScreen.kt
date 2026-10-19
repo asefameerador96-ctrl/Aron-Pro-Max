@@ -19,11 +19,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import com.aktcl.aron.core.common.AppLanguage
-import com.aktcl.aron.core.ui.AronEmptyState
-import com.aktcl.aron.core.ui.AronNoButton
-import com.aktcl.aron.core.ui.AronPrimaryButton
 import com.aktcl.aron.core.ui.AronTokens
-import com.aktcl.aron.core.ui.AronYesButton
 import com.aktcl.aron.core.ui.LocalAppLanguage
 import com.aktcl.aron.core.ui.LocalAronColors
 
@@ -41,7 +37,7 @@ fun PerfAssessmentContent(
     modifier: Modifier = Modifier,
 ) {
     if (brands.isEmpty()) {
-        AronEmptyState(stringResource(R.string.amo_pa_no_brands), modifier.fillMaxSize().testTag(PerfTags.EMPTY))
+        AmoEmptyState(stringResource(R.string.amo_pa_no_brands), modifier.fillMaxSize().testTag(PerfTags.EMPTY))
         return
     }
     val c = LocalAronColors.current
@@ -64,12 +60,12 @@ fun PerfAssessmentContent(
             Text(stringResource(R.string.amo_pa_posm), style = MaterialTheme.typography.titleMedium, color = c.textPrimary, modifier = Modifier.padding(top = AronTokens.Space.M))
             Row(horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
                 // tapping the chosen answer again clears it: POSM is tri-state (unanswered, yes, no)
-                AronYesButton(stringResource(R.string.amo_pa_yes), { onPosm(if (state.posm == true) null else true) }, Modifier.weight(1f).testTag(PerfTags.POSM_YES), enabled = editable && state.posm != false)
-                AronNoButton(stringResource(R.string.amo_pa_no), { onPosm(if (state.posm == false) null else false) }, Modifier.weight(1f).testTag(PerfTags.POSM_NO), enabled = editable && state.posm != true)
+                AmoYes(stringResource(R.string.amo_pa_yes), { onPosm(if (state.posm == true) null else true) }, Modifier.weight(1f).testTag(PerfTags.POSM_YES), enabled = editable && state.posm != false)
+                AmoNo(stringResource(R.string.amo_pa_no), { onPosm(if (state.posm == false) null else false) }, Modifier.weight(1f).testTag(PerfTags.POSM_NO), enabled = editable && state.posm != true)
             }
         }
         if (saved) Text(stringResource(R.string.amo_pa_saved), style = MaterialTheme.typography.titleMedium, color = c.textPrimary, modifier = Modifier.padding(AronTokens.Space.Screen).testTag(PerfTags.SAVED))
-        AronPrimaryButton(stringResource(R.string.amo_pa_save), onSave, Modifier.fillMaxWidth().padding(AronTokens.Space.Screen).testTag(PerfTags.SAVE), enabled = editable, busy = saving)
+        AmoPrimary(stringResource(R.string.amo_pa_save), onSave, Modifier.fillMaxWidth().padding(AronTokens.Space.Screen).testTag(PerfTags.SAVE), enabled = editable, busy = saving)
     }
 }
 

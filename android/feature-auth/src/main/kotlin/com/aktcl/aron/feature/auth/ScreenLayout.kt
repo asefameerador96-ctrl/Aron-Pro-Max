@@ -1,6 +1,8 @@
 package com.aktcl.aron.feature.auth
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import com.aktcl.aron.core.ui.LocalAronLook
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
@@ -24,7 +26,7 @@ import androidx.compose.ui.unit.dp
  */
 @Composable
 internal fun ScreenWithBar(modifier: Modifier = Modifier, bar: @Composable () -> Unit, content: @Composable () -> Unit) {
-    Layout({ Box { content() }; Box { bar() } }, modifier) { measurables, constraints ->
+    Layout({ Box { content() }; Box { bar() } }, modifier.background(LocalAronLook.current.page)) { measurables, constraints ->
         val barPlaceable = measurables[1].measure(constraints.copy(minHeight = 0))
         val contentMax = if (constraints.hasBoundedHeight) (constraints.maxHeight - barPlaceable.height).coerceAtLeast(0) else Constraints.Infinity
         val contentPlaceable = measurables[0].measure(constraints.copy(minHeight = 0, maxHeight = contentMax))

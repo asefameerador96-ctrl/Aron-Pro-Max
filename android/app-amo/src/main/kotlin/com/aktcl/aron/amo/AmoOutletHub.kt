@@ -1,5 +1,9 @@
 package com.aktcl.aron.amo
 
+import com.aktcl.aron.feature.amo.AmoBanner
+import com.aktcl.aron.feature.amo.AmoListRow
+import com.aktcl.aron.feature.amo.AmoPrimary
+import com.aktcl.aron.feature.amo.AmoFrame
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -25,9 +29,7 @@ import androidx.compose.ui.res.stringResource
 import com.aktcl.aron.core.database.entity.OutletEntity
 import com.aktcl.aron.core.system.permission.GatedFeature
 import com.aktcl.aron.core.system.permission.PermissionGate
-import com.aktcl.aron.core.ui.AronListRow
 import com.aktcl.aron.core.ui.AronScreen
-import com.aktcl.aron.core.ui.AronSectionLabel
 import com.aktcl.aron.core.ui.AronTokens
 import com.aktcl.aron.core.ui.AronTopBar
 import com.aktcl.aron.core.ui.RowPosition
@@ -80,29 +82,29 @@ fun AmoOutletHub(day: AmoDay, onBack: () -> Unit, extra: @Composable (OutletHubE
         }
     }
     BackHandler(onBack = back)
-    AronScreen(topBar = { AronTopBar(stringResource(HomeR.string.hm_tile_outlet), onBack = back) }) {
+    AmoFrame(stringResource(HomeR.string.hm_tile_outlet), back, icon = com.aktcl.aron.core.ui.R.drawable.aron_art_outlet) {
         when (leaf) {
             OutletLeaf.LIST -> {
                 // docs/07 + manual: first the verification of the SRs' requests (three rows with their counts), then the AMO's own shop operations.
                 var pending by remember { mutableStateOf<List<com.aktcl.aron.feature.amo.PendingRequest>>(emptyList()) }
                 LaunchedEffect(day) { pending = runCatching { day.pendingVerifications() }.getOrDefault(emptyList()) }
                 val verify = listOf(
-                    HubRow(stringResource(AmoR.string.amo_verify_new), countText(pending.count { it.type == "new" }), { verifyGroup = "new"; leaf = OutletLeaf.VERIFY_LIST }),
-                    HubRow(stringResource(AmoR.string.amo_verify_closure), countText(pending.count { it.type == "close" }), { verifyGroup = "close"; leaf = OutletLeaf.VERIFY_LIST }),
-                    HubRow(stringResource(AmoR.string.amo_verify_change), countText(pending.count { it.type != "new" && it.type != "close" }), { verifyGroup = "info"; leaf = OutletLeaf.VERIFY_LIST }),
+                    HubRow(stringResource(AmoR.string.amo_verify_new), countText(pending.count { it.type == "new" }), { verifyGroup = "new"; leaf = OutletLeaf.VERIFY_LIST }, com.aktcl.aron.core.ui.R.drawable.aron_art_outlet_new, pending.count { it.type == "new" }),
+                    HubRow(stringResource(AmoR.string.amo_verify_closure), countText(pending.count { it.type == "close" }), { verifyGroup = "close"; leaf = OutletLeaf.VERIFY_LIST }, com.aktcl.aron.core.ui.R.drawable.aron_art_outlet_close, pending.count { it.type == "close" }),
+                    HubRow(stringResource(AmoR.string.amo_verify_change), countText(pending.count { it.type != "new" && it.type != "close" }), { verifyGroup = "info"; leaf = OutletLeaf.VERIFY_LIST }, com.aktcl.aron.core.ui.R.drawable.aron_art_outlet_edit, pending.count { it.type != "new" && it.type != "close" }),
                 )
                 fun request(kind: OutletRequestKind): () -> Unit = {
                     day.requestKind = kind; savedKind = kind.name; day.requestOutlet = null
                     leaf = if (kind == OutletRequestKind.NEW) OutletLeaf.FORM else OutletLeaf.PICK_ROUTE
                 }
                 val ops = listOf(
-                    HubRow(stringResource(OutR.string.out_req_new), onClick = request(OutletRequestKind.NEW)),
-                    HubRow(stringResource(OutR.string.out_req_close), onClick = request(OutletRequestKind.CLOSE)),
-                    HubRow(stringResource(OutR.string.out_req_info), onClick = request(OutletRequestKind.INFO)),
-                    HubRow(stringResource(AmoR.string.amo_leaf_update_base), onClick = request(OutletRequestKind.LOCATION)),
-                    HubRow(stringResource(OutR.string.out_own_open), onClick = { leaf = OutletLeaf.OWN_LIST }),
+                    HubRow(stringResource(OutR.string.out_req_new), onClick = request(OutletRequestKind.NEW), icon = com.aktcl.aron.core.ui.R.drawable.aron_art_outlet_new),
+                    HubRow(stringResource(OutR.string.out_req_close), onClick = request(OutletRequestKind.CLOSE), icon = com.aktcl.aron.core.ui.R.drawable.aron_art_outlet_close),
+                    HubRow(stringResource(OutR.string.out_req_info), onClick = request(OutletRequestKind.INFO), icon = com.aktcl.aron.core.ui.R.drawable.aron_art_outlet_edit),
+                    HubRow(stringResource(AmoR.string.amo_leaf_update_base), onClick = request(OutletRequestKind.LOCATION), icon = com.aktcl.aron.core.ui.R.drawable.aron_ic_update_base),
+                    HubRow(stringResource(OutR.string.out_own_open), onClick = { leaf = OutletLeaf.OWN_LIST }, icon = com.aktcl.aron.core.ui.R.drawable.aron_ic_verify),
                 )
-                HubListContent(listOf(HubSection(stringResource(AmoR.string.amo_verify_section), verify), HubSection(stringResource(AmoR.string.amo_ops_section), ops)))
+                HubListContent(listOf(HubSection(stringResource(AmoR.string.amo_verify_section), verify), HubSection(stringResource(AmoR.string.amo_ops_section), ops)), redLabels = true)
             }
             OutletLeaf.OWN_LIST -> {
                 var list by remember { mutableStateOf<List<OwnRequestRow>?>(null) }
@@ -114,7 +116,7 @@ fun AmoOutletHub(day: AmoDay, onBack: () -> Unit, extra: @Composable (OutletHubE
                 }
                 when {
                     failed -> Column(Modifier.fillMaxSize().padding(AronTokens.Space.Screen)) {
-                        AronListRow(stringResource(AmoR.string.amo_load_failed_retry), onClick = { reload++ }, position = RowPosition.Only, divider = false, flat = true)
+                        AmoListRow(stringResource(AmoR.string.amo_load_failed_retry), onClick = { reload++ }, position = RowPosition.Only, divider = false, flat = true)
                     }
                     list == null -> Box(Modifier.fillMaxSize(), Alignment.Center) { CircularProgressIndicator() }
                     else -> OwnRequestsContent(list.orEmpty())
@@ -311,7 +313,7 @@ private fun AmoUpdateBaseHost(day: AmoDay, onDone: () -> Unit) {
             Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = AronTokens.Space.Screen, vertical = AronTokens.Space.S),
             verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(AronTokens.Space.M),
         ) {
-            AronListRow(outlet.name, subtitle = stringResource(AmoR.string.amo_base_title), flat = true)
+            AmoListRow(outlet.name, subtitle = stringResource(AmoR.string.amo_base_title), flat = true)
             com.aktcl.aron.feature.outlet.GeoPhotoBlock(cap, onShutter = { scope.launch { val before = cap.fix; val after = capture.shutter(); if (after.fix !== before) { north = 0; east = 0 } } }, note = stringResource(OutR.string.out_req_photo_note))
             com.aktcl.aron.feature.amo.UpdateBasePointContent(north, east, day.updateBaseMaxM, fix != null, { dn, de -> north += dn; east += de }, { north = 0; east = 0 })
             val oldLat = outlet.lat; val oldLng = outlet.lng
@@ -320,7 +322,7 @@ private fun AmoUpdateBaseHost(day: AmoDay, onDone: () -> Unit) {
                 Text(stringResource(AmoR.string.amo_base_moved, com.aktcl.aron.core.ui.localizedNumber(moved)), style = androidx.compose.material3.MaterialTheme.typography.bodySmall)
             }
             errors.forEach { e ->
-                com.aktcl.aron.core.ui.AronBanner(
+                AmoBanner(
                     stringResource(when (e) {
                         RequestError.POINT_TOO_FAR -> OutR.string.out_req_err_point_far
                         RequestError.MOCK_FIX -> OutR.string.out_req_err_mock
@@ -333,7 +335,7 @@ private fun AmoUpdateBaseHost(day: AmoDay, onDone: () -> Unit) {
             }
         }
         Box(Modifier.fillMaxWidth().padding(AronTokens.Space.Screen)) {
-            com.aktcl.aron.core.ui.AronPrimaryButton(
+            AmoPrimary(
                 stringResource(AmoR.string.amo_base_save),
                 {
                     if (!busy) {

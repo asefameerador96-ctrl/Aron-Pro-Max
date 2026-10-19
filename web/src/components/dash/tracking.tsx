@@ -56,8 +56,8 @@ export function TrackingTable({ locale, items, businessDate, canAct }: { locale:
         <tbody className="divide-y divide-slate-100">
           {items.map((r) => (
             <tr key={r.route_id} data-route={r.route_id} data-bucket={r.bucket}>
-              <td className="whitespace-nowrap px-3 py-2">{r.route_name}</td>
-              <td className="whitespace-nowrap px-3 py-2">{r.user_name ?? "—"}</td>
+              <td className="max-w-[18rem] truncate whitespace-nowrap px-3 py-2" title={r.route_name}>{r.route_name}</td>
+              <td className="max-w-[18rem] truncate whitespace-nowrap px-3 py-2" title={r.user_name ?? undefined}>{r.user_name ?? "—"}</td>
               <td className="whitespace-nowrap px-3 py-2">{t(locale, BUCKET_KEY[r.bucket])}</td>
               <td className="px-3 py-2 text-right tabular-nums">{n(locale, r.target_outlets)}</td>
               <td className="px-3 py-2 text-right tabular-nums">{n(locale, r.visited_outlets)}</td>

@@ -1,10 +1,10 @@
 # UI parity: pack pictures (packshots) in Stock and Sale (lane ui-packshots)
 
 <!-- HANDOVER (for a recycled session): read this block first. Lane branch lane/ui-packshots; lead session_01MbUQSxrP7AB9tbyANjUTPS.
-Items: (1) FAST PATH dev pack pictures: pushed 564c5c3e. (2) SERVER PATH: built (section 5): additive contract
-(Sku.image_asset_id + getSkuImageReadUrl), Room v8, preload after sync. T1: the lead's Opus checker is asked before
-'ready'; no Postgres migration (V0087 released). (3) ADMIN PATH: the web upload exists; runbook
-docs/runbooks/sku-pack-pictures.md. Open: AMO/TSO-only SKU tables have no picture slot; owner screenshots needed. -->
+Items: (1) FAST PATH dev pack pictures, reworked on the kit PackCard of ui-sr-a (lead ruling 2026-10-18), this push;
+(2) SERVER PATH (built, Opus checker PASS, held locally on branch local/packshots-item2 until the lead says push) bundle image_url/asset/version
++ Room column + preload = NOT STARTED (T1: contract + Room migration; ask the lead for the Opus checker; V0087 reserved
+if a db migration is needed); (3) ADMIN PATH check + runbook = NOT STARTED. -->
 
 Owner question (2026-10-18): "why is there no packshot in the Stock and Sale menus". Reference: `docs/ui-reference/sr/stock.webp`,
 `stock.md` UI-SR-18..20, PARITY-SPEC s2.5 and s2.6.
@@ -17,14 +17,13 @@ SKUs that screenshot shows. Every other SKU shows the neutral pack silhouette. N
 
 | Screen / row | Reference | Status | Notes |
 |---|---|---|---|
-| SR Stock, every SKU row | `sr/stock.webp` | PARTIAL | Pack picture (48 x 78 dp, 4 dp corners) with the packs pill at its bottom-right, in place of the letter disc. Still differs: the card layout (68 x 120 dp picture, purple SKU code, red/purple square steppers, totals panel) is the PackCard of lane ui-kit / feature-stock. |
-| SR Sale, product list (collapsed and expanded rows) | `sr/stock.webp` layout, `sr/sale-select.png` | PARTIAL | Same picture in each row; same layout caveat. |
-| SR Sale, Slide (DRP) and QC cards | none | PARTIAL | Same picture; no reference screenshot. |
-| AMO (control call Stock and Sale, via feature-stock / feature-sale) | none (`-noref`) | PARTIAL | The provider is set in app-amo, so the shared rows show pictures. AMO-only SKU tables (team stock, stock correction, price compliance) are text tables with no picture slot. Layout from manual, needs owner screenshot. |
-| TSO | none | n/a | No SKU rows with a picture slot in the TSO app today; the provider is set in app-tso so any future row gets pictures. |
+| SR Stock, every SKU row (kit `PackCard`, lane ui-sr-a) | `sr/stock.webp` | DONE (picture) | The 56 x 90 dp picture slot of the kit card is drawn by this lane's provider; the purple packs badge sits on it. Evidence: `docs/evidence/ui-parity/packshots-stock.png`. The card layout is ui-sr-a's (the SKU code wraps on 360 dp; reported to ui-sr-a). |
+| SR Sale, product list (kit `PackCard`) | `sr/sale-select.png` (list layout = Stock) | DONE (picture) | Same provider. Evidence: `docs/evidence/ui-parity/packshots-sale.png` (MaxR with its picture; Prime Gold and Aster with the silhouette, no art for them). |
+| AMO control call Stock and Sale (shared feature modules) | none (`-noref`) | DONE (picture) | The provider is set in app-amo. AMO-only SKU tables (team stock, stock correction, price compliance) are text tables with no picture slot. Layout from the manual; needs an owner screenshot. |
+| TSO | none | n/a | No SKU picture slot in the TSO app today; the provider is set in app-tso. |
 
-Silhouette (no picture yet): grey pack with a lid line and a category glyph (cigarette, bidi, lighter, matchbox); never a
-letter circle, never a spinner; decorative for TalkBack (the row text names the SKU).
+Silhouette (no picture yet): the kit's grey pack per category (cigarette, bidi, lighter, match), never a letter circle and
+never a spinner.
 
 ## 2. Dev SKU to picture mapping (dev seed `db/seed/02_products.sql`)
 
@@ -52,25 +51,30 @@ WebP, 6.8 to 7.4 KB each (22 KB total in a dev APK), made by `tools/packshots/cr
 - `-Paron.devPackshots=true` (root `build.gradle.kts`) adds `android/dev-packshots` to the APK assets and sets
   `BuildConfig.DEV_PACKSHOTS`. Only the ci.yml `android-release` job (dev origin) passes it; `infra/tests/check_infra.py`
   fails if any other workflow (release-app.yml, production) mentions it.
-- Source (1) is fed by the server path (section 5) once the admin uploads the pictures.
+- Source (1) has no data yet: the bundle does not carry a SKU image reference (item 2 of this lane).
 - Today's Stock and Sale screens are still the Calm Glass rows; their 48 x 78 dp picture slot calls the kit's
   `PackshotImage`. When feature-stock / feature-sale move to the kit `PackCard`, pass `skuId = sku.skuId.toString()` and
   the pictures come along with no further wiring.
 
 ## 4. Proof
 
-- Side by side: `docs/evidence/ui-parity/sr-stock-sale-packshots.png` (left: the reference; middle: our Stock with the
-  five reference SKUs; right: our Sale list, MaxR with its picture, Prime Gold and Aster with the silhouette).
-- Goldens: `stock_bn_packshots` (new), and the re-recorded Stock, Sale and QC goldens (the letter disc became the
-  picture or the silhouette); the screenshot harness serves the same dev crops (`TestPackshots`).
-- Tests: `SkuPackshotsTest` (dev mapping, no art in production, cache key stability, admin thumbnail wins and is read
-  from disk without a download, broken or missing is null, downsampling), the kit's `AronLookGalleryTest` covers `PackshotImage` with and
-  without a provider.
+- `docs/evidence/ui-parity/packshots-stock.png` and `packshots-sale.png`: the reference on the left, ours on the right,
+  parity shell only (kit PackCard rows). Every seeded Maxim SKU (MaxR, MaxB, MaxWB, each 10S and 20S) shows its picture;
+  in Sale, Aster and Flame Box show the silhouette (no art). Goldens `stock_bn_packshots` and `sale_bn_packshots` (tall
+  captures, so every row is in the picture).
+- `PackshotWiringTest` (ui-screenshots): the kit PackCard rows of the new Stock and Sale screens ask the provider by the
+  server SKU id, and the picture it returns is drawn; rows without a picture keep the silhouette.
+- Goldens: only this lane's own `stock_bn_packshots` and `sale_bn_packshots` (all six seeded Maxim SKUs, the provider
+  installed around those two captures only). Every other Stock and Sale golden is ui-sr-a's, untouched: the generic
+  screenshot hosts install no provider, so they show the silhouette, as on INT (lead ruling 2026-10-19).
+- `SkuPackshotsTest` (dev mapping, no art in production, id lookup, cache key, admin thumbnail wins, broken or missing
+  is null, downsampling) and `BitmapPackshotProviderTest` (first-frame memory hit, load, a failing source is the
+  silhouette).
 
 | Item | sha | CI |
 |---|---|---|
-| 1 fast path | 564c5c3e52803f3f747095036b4104b7a04b64fb | run 39175158082 |
-| 2 server path + 3 admin runbook | (next push) | pending; Opus checker asked |
+| 1 fast path (withdrawn) | 564c5c3e | run 39175158082 green |
+| 1 fast path on the kit PackCard | (this push) | pending |
 
 ## 5. Server path (item 2; lead rulings 2026-10-18)
 

@@ -1,5 +1,7 @@
 package com.aktcl.aron.amo
 
+import com.aktcl.aron.feature.amo.AmoListRow
+import com.aktcl.aron.feature.amo.AmoSecondary
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -16,10 +18,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxWidth
-import com.aktcl.aron.core.ui.AronListRow
-import com.aktcl.aron.core.ui.AronSecondaryButton
 import com.aktcl.aron.feature.amo.R as AmoR
-import com.aktcl.aron.core.ui.AronScreen
+import com.aktcl.aron.feature.amo.AmoFrame
 import com.aktcl.aron.core.ui.AronTokens
 import com.aktcl.aron.core.ui.AronTopBar
 import com.aktcl.aron.core.ui.RowPosition
@@ -50,18 +50,22 @@ fun AmoSaleHub(day: AmoDay, onBack: () -> Unit) {
             // Stock, Memo and Summary show the printer status (manual: icon and "printer connected" banner), as the SR screens do.
             val printed = leaf == SaleLeaf.STOCK || leaf == SaleLeaf.MEMO || leaf == SaleLeaf.SUMMARY
             if (printed) com.aktcl.aron.core.printing.ui.HoldPrinter(day.printerManager)
-            AronScreen(topBar = {
-                AronTopBar(
-                    stringResource(
-                        when (leaf) {
-                            SaleLeaf.STOCK -> HomeR.string.hm_tile_stock; SaleLeaf.CORRECT -> AmoR.string.amo_sc_title; SaleLeaf.MEMO, SaleLeaf.EDIT -> HomeR.string.hm_tile_memo
-                            SaleLeaf.SUMMARY -> HomeR.string.hm_tile_summary; else -> HomeR.string.hm_tile_sale
-                        },
-                    ),
-                    onBack = back,
-                    trailing = { if (printed) com.aktcl.aron.core.printing.ui.PrinterIcon(day.printerManager) },
-                )
-            }) {
+            AmoFrame(
+                stringResource(
+                    when (leaf) {
+                        SaleLeaf.STOCK -> HomeR.string.hm_tile_stock; SaleLeaf.CORRECT -> AmoR.string.amo_sc_title; SaleLeaf.MEMO, SaleLeaf.EDIT -> HomeR.string.hm_tile_memo
+                        SaleLeaf.SUMMARY -> HomeR.string.hm_tile_summary; else -> HomeR.string.hm_tile_sale
+                    },
+                ),
+                back,
+                icon = when (leaf) {
+                    SaleLeaf.STOCK, SaleLeaf.CORRECT -> com.aktcl.aron.core.ui.R.drawable.aron_art_stock
+                    SaleLeaf.MEMO, SaleLeaf.EDIT -> com.aktcl.aron.core.ui.R.drawable.aron_art_memo
+                    SaleLeaf.SUMMARY -> com.aktcl.aron.core.ui.R.drawable.aron_art_summary
+                    else -> com.aktcl.aron.core.ui.R.drawable.aron_art_sale
+                },
+                trailing = if (printed) ({ com.aktcl.aron.core.printing.ui.PrinterIcon(day.printerManager) }) else null,
+            ) {
                 if (printed) Column(Modifier.fillMaxSize()) {
                     com.aktcl.aron.core.printing.ui.PrinterBanner(day.printerManager)
                     Box(Modifier.weight(1f).fillMaxWidth()) { SaleLeafBody(day, leaf, { leaf = it }, editing, { editing = it }) }
@@ -74,19 +78,17 @@ fun AmoSaleHub(day: AmoDay, onBack: () -> Unit) {
 @Composable
 private fun SaleLeafBody(day: AmoDay, leaf: SaleLeaf, setLeaf: (SaleLeaf) -> Unit, editing: String?, setEditing: (String?) -> Unit) {
     when (leaf) {
-        SaleLeaf.LIST -> Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = AronTokens.Space.Screen)) {
+        SaleLeaf.LIST -> {
             // Manual order: Stock, Sale, Memo, Summary.
-            val rows = listOf(SaleLeaf.STOCK to HomeR.string.hm_tile_stock, SaleLeaf.SALE to HomeR.string.hm_tile_sale, SaleLeaf.MEMO to HomeR.string.hm_tile_memo, SaleLeaf.SUMMARY to HomeR.string.hm_tile_summary)
-            rows.forEachIndexed { i, (l, label) ->
-                AronListRow(
-                    stringResource(label), onClick = { setLeaf(l) },
-                    position = when (i) { 0 -> RowPosition.First; rows.lastIndex -> RowPosition.Last; else -> RowPosition.Middle }, divider = i != rows.lastIndex, flat = true,
-                )
-            }
+            val rows = listOf(
+                Triple(SaleLeaf.STOCK, HomeR.string.hm_tile_stock, com.aktcl.aron.core.ui.R.drawable.aron_art_stock), Triple(SaleLeaf.SALE, HomeR.string.hm_tile_sale, com.aktcl.aron.core.ui.R.drawable.aron_art_sale),
+                Triple(SaleLeaf.MEMO, HomeR.string.hm_tile_memo, com.aktcl.aron.core.ui.R.drawable.aron_art_memo), Triple(SaleLeaf.SUMMARY, HomeR.string.hm_tile_summary, com.aktcl.aron.core.ui.R.drawable.aron_art_summary),
+            ).map { (l, label, icon) -> com.aktcl.aron.feature.amo.HubRow(stringResource(label), onClick = { setLeaf(l) }, icon = icon) }
+            com.aktcl.aron.feature.amo.HubListContent(listOf(com.aktcl.aron.feature.amo.HubSection(null, rows)))
         }
         SaleLeaf.STOCK -> Column(Modifier.fillMaxSize()) {
             Box(Modifier.weight(1f)) { AmoStockHost(day) }
-            AronSecondaryButton(stringResource(AmoR.string.amo_sc_title), { setLeaf(SaleLeaf.CORRECT) }, Modifier.fillMaxWidth().padding(AronTokens.Space.Screen))
+            AmoSecondary(stringResource(AmoR.string.amo_sc_title), { setLeaf(SaleLeaf.CORRECT) }, Modifier.fillMaxWidth().padding(AronTokens.Space.Screen))
         }
         SaleLeaf.CORRECT -> AmoStockCorrectHost(day, onDone = { setLeaf(SaleLeaf.STOCK) })
         SaleLeaf.MEMO -> AmoMemoHost(day, onEdit = { setEditing(it); setLeaf(SaleLeaf.EDIT) })
