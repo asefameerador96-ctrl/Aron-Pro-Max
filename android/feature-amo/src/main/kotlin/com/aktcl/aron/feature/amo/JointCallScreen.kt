@@ -19,9 +19,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import com.aktcl.aron.core.common.AppLanguage
-import com.aktcl.aron.core.ui.AronEmptyState
 import com.aktcl.aron.core.ui.localizedNumber
-import com.aktcl.aron.core.ui.AronPrimaryButton
 import com.aktcl.aron.core.ui.AronTokens
 import com.aktcl.aron.core.ui.LocalAppLanguage
 import com.aktcl.aron.core.ui.LocalAronColors
@@ -38,7 +36,7 @@ fun JointCallContent(
     onStar: (criterionId: Long, stars: Int) -> Unit, onSave: () -> Unit, modifier: Modifier = Modifier,
 ) {
     if (rubric == null || rubric.criteria.isEmpty()) {
-        AronEmptyState(stringResource(R.string.amo_jc_no_rubric), modifier.fillMaxSize().testTag(JointTags.EMPTY))
+        AmoEmptyState(stringResource(R.string.amo_jc_no_rubric), modifier.fillMaxSize().testTag(JointTags.EMPTY))
         return
     }
     val c = LocalAronColors.current
@@ -70,6 +68,6 @@ fun JointCallContent(
             }
         }
         if (saved) Text(stringResource(R.string.amo_pa_saved), style = MaterialTheme.typography.titleMedium, color = c.textPrimary, modifier = Modifier.padding(AronTokens.Space.Screen).testTag(JointTags.SAVED))
-        AronPrimaryButton(stringResource(R.string.amo_pa_save), onSave, Modifier.fillMaxWidth().padding(AronTokens.Space.Screen).testTag(JointTags.SAVE), enabled = editable, busy = saving)
+        AmoPrimary(stringResource(R.string.amo_pa_save), onSave, Modifier.fillMaxWidth().padding(AronTokens.Space.Screen).testTag(JointTags.SAVE), enabled = editable, busy = saving)
     }
 }
