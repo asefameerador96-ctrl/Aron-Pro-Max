@@ -111,7 +111,7 @@ class AmoAppTest {
         compose.onNodeWithTag(HomeTags.HEADER).assertContentDescriptionEquals("AMO - Testing Banani (amo5001), ব্যবসায়িক তারিখ: ২০২৬-১০-০৫")
         compose.onNodeWithTag(HomeTags.MODE).assertIsDisplayed()
         // offline unlock with an offline bundle check: the chip and the banner already say it, the bundle line is not repeated
-        compose.onNodeWithTag(HomeTags.BUNDLE).assertDoesNotExist()
+        compose.onNodeWithText(context.getString(HomeR.string.home_bundle_offline)).assertDoesNotExist()
         compose.onNodeWithTag(RoleHomeTags.HERO).assertExists()
         RoleHomes.amoTiles().forEach { compose.onNodeWithTag(RoleHomeTags.tile(it.id)).assertExists() }
         compose.onNodeWithTag(RoleHomeTags.tile("astha")).assertDoesNotExist()
@@ -172,8 +172,7 @@ class AmoAppTest {
         var loggedOut = false
         val context = show(AppLanguage.EN, user = user.copy(offline = false), onLogout = { loggedOut = true })
         compose.onNodeWithTag(HomeTags.MODE).assertDoesNotExist()
-        compose.onNodeWithTag(HomeTags.BUNDLE).performScrollTo().assertIsDisplayed()
-        compose.onNodeWithText(context.getString(HomeR.string.home_bundle_offline)).assertIsDisplayed()
+        compose.onNodeWithText(context.getString(HomeR.string.home_bundle_offline)).performScrollTo().assertIsDisplayed()
         compose.onNodeWithContentDescription(context.getString(HomeR.string.set_open)).performClick()
         compose.waitForIdle()
         compose.onNodeWithTag(RoleHomeTags.SET_VERSION).assertExists()

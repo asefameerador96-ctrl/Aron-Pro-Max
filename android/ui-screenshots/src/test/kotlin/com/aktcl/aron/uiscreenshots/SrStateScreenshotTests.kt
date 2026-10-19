@@ -243,6 +243,14 @@ class SrStateScreenshotTests {
     }
     @Composable private fun ReviewCredit() = ParityFrame(stringResource(SaleR.string.review_title), com.aktcl.aron.core.ui.R.drawable.aron_art_sale) { ReviewScreen(qcOnlyReview, onSave = {}, onQc = {}) }
 
+    // ---- Credit prompt and Slide (sale-flow extras) ----
+    @Composable private fun CreditFrame() = ParityFrame(stringResource(SaleR.string.review_title), com.aktcl.aron.core.ui.R.drawable.aron_art_sale) {
+        com.aktcl.aron.feature.sale.ui.CreditPrompt(qcReview, onPaid = {})
+    }
+    @Composable private fun SlideFrame() = ParityFrame(stringResource(SaleR.string.review_title), com.aktcl.aron.core.ui.R.drawable.aron_art_sale) {
+        com.aktcl.aron.feature.sale.ui.SlideScreen(skus, qcReview, { 0L }, { _, _ -> })
+    }
+
     // ---- Sale history (manual SR-S-20: pick a date, per-SKU table, exact total) ----
     private fun histMemo(id: String, date: String, vararg l: com.aktcl.aron.feature.memo.domain.MemoItem) =
         StoredMemo(id, "sr334001-261005-$id", 1, date, "${date}T04:00:00.000Z", null, l.toList(), emptyList(), emptyList(), 0, 0, 0, 0, 0, 0, 0)
@@ -275,6 +283,8 @@ class SrStateScreenshotTests {
     @Test fun review_bn_font20() = shot("review_bn_font20", fontScale = 2.0f) { ReviewFull() }
 
     // ---- QC ----
+    @Test fun credit_bn_prompt() = shot("credit_bn_prompt") { CreditFrame() }
+    @Test fun slide_bn_offer() = shot("slide_bn_offer") { SlideFrame() }
     @Test fun qc_bn_with_cap() = shot("qc_bn_with_cap") { Qc(594_500L) }
     @Test fun qc_bn_no_cap() = shot("qc_bn_no_cap") { Qc(null) }
     @Test fun qc_bn_sunlight() = shot("qc_bn_sunlight", sunlight = true) { Qc(594_500L) }

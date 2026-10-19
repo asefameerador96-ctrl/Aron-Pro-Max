@@ -51,3 +51,9 @@ Rows: 1 Home PARTIAL (icons now owner art + kit line icons); 2 Shell PARTIAL; 3 
 - (QA 2026-10-19, kit) AMO-only icons (joint call, team, report, live dashboard, control call) are chunkier than the SR set: redraw with the SR stroke weight, rounded caps, thin outline + pink-to-blue gradient fill and an inner detail.
 - (QA 2026-10-19, kit) Tile count badge covers the awning: top-right corner, 4 dp outside the icon box, 11 sp bold, 20 dp circle.
 - (QA 2026-10-19, kit) One shared sync-status footer for AMO and TSO; AMO Home will adopt it via INT (AMO now has a token-colour local line: purple check, grey ink, one device figure per line).
+
+## Status after the kit window (INT 186279f4)
+- AMO Home now uses the shared `AronSyncFooter` (sync state + bundle line + device figures, token colours); tap still opens the sync sheet. Gear has `AronHomeSettingsTag` and the 20 dp badge from the kit (INT).
+- Goldens: INT's amo_* goldens taken; re-recorded only amo_home_bn_light and amo_home_bn_sunlight (changed by the footer).
+- NOT DONE: AMO-only icon redraw (joint call, team, report, live dashboard, control call): no approach yet that reuses the SR icon grid and the owner art crops without hand-drawing new art; left with ui-kit (Kit requests).
+- Still PARTIAL as listed in the table above; every row "layout from manual, needs owner screenshot".

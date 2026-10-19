@@ -15,3 +15,11 @@ describe("TeamMapPlate", () => {
     expect(out).not.toContain('data-testid="map-empty"');
   });
 });
+
+describe("TeamMapPlate with a Maps key", () => {
+  it("renders the plate (and the button as the fallback) on the server; the map mounts when the card scrolls into view", () => {
+    const out = html(<TeamMapPlate summary="2 SRs · 5 outlets" hint="hint" showLabel="Show map" map={null} autoLoad />);
+    expect(out).toContain('data-testid="map-plate"');
+    expect(out).toContain('data-testid="map-show"');
+  });
+});
