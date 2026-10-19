@@ -37,7 +37,7 @@ LetterFilterBar(letters = listOf(all, "A", "B", ...), selected, onSelect, letter
 AronInfoCard(text, trailing = { AronPrinterBadge(...) })            // summary.png info card
 AronStatusDot(label, state, online)                                 // sales-submit.png device status
 AronNoticeCard(text)                                                // sales-submit.png pink notice
-AronDataTable(headers, rows: List<List<String>>, weights = null)     // purple rounded header + ruled rows (submit table)
+AronDataTable(headers, rows: List<List<String>>, weights = null /* first 2.75, rest 1 */)     // purple top-rounded header + ruled rows (submit table)
 AronCard(modifier, onClick = null) { ... }                           // white 12 dp card, soft shadow, 16 dp padding
 AronListRow(title, subtitle = null, trailing = null, leading: Painter? = null, onClick = null)
 AronField(value, onValueChange, label, placeholder = null, errorText = null, keyboardType = Text, singleLine = true, password = false, enabled = true)

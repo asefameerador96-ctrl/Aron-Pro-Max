@@ -154,7 +154,7 @@ class KitParityShot {
         }
     }
 
-    @Test @Config(qualifiers = "bn-w411dp-h481dp") fun sales_submit() = shot("sales_submit") {
+    @Test @Config(qualifiers = "bn-w411dp-h560dp") fun sales_submit() = shot("sales_submit") {
         Column(Modifier.fillMaxSize().background(LocalAronLook.current.page)) {
             AronTopBar("বিক্রয় জমা", icon = painterResource(R.drawable.aron_art_sales_submit), onBack = {}, backLabel = "পেছনে")
             Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
