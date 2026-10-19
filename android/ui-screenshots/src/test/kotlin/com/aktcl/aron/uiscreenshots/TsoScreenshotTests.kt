@@ -209,4 +209,19 @@ class TsoScreenshotTests {
     // ---- menu hubs (sr/outlet-menu.png look)
     @Test fun my_call_hub_bn() = shot("tso_my_call_hub_bn", AppLanguage.BN) { com.aktcl.aron.feature.tso.mycall.MyCallHub({}, {}, {}) }
     @Test fun periphery_hub_en() = shot("tso_periphery_hub_en", AppLanguage.EN) { com.aktcl.aron.feature.tso.periphery.PeripheryHub({}, {}, {}) }
+
+    // ---- dashboard drill-downs (route list behind a count, zone filter)
+    private val routeRows = listOf(
+        com.aktcl.aron.feature.tso.RouteDayRow(1, "DHK-R1", "ঢাকা উত্তর রুট এক", "not_logged_in", srName = "রহিম উদ্দিন"),
+        com.aktcl.aron.feature.tso.RouteDayRow(2, "DHK-R2", "Route Two", "not_logged_in"),
+    )
+    @Test fun dash_route_list_bn() = kitShot("tso_dashboard_routes_bn", AppLanguage.BN, "ড্যাশবোর্ড") {
+        com.aktcl.aron.feature.tso.TsoRouteListContent(routeRows, "2026-10-17", "2026-10-17T08:30:00Z", stale = false, failure = TsoFailure.NONE)
+    }
+    @Test fun dash_route_list_empty_en() = kitShot("tso_dashboard_routes_empty_en", AppLanguage.EN, "Dashboard") {
+        com.aktcl.aron.feature.tso.TsoRouteListContent(emptyList(), "2026-10-17", null, stale = false, failure = TsoFailure.OFFLINE)
+    }
+    @Test fun dash_zone_filter_en() = kitShot("tso_dashboard_zones_en", AppLanguage.EN, "Dashboard") {
+        com.aktcl.aron.feature.tso.TsoZoneFilterContent(listOf(ZoneRef(10, "Zone 10"), ZoneRef(11, "Zone 11")), 11L, {})
+    }
 }
