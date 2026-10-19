@@ -20,8 +20,8 @@ export function Ring({ pct, valueText, label, size = 112, hue = 0, gradient = fa
         {gradient ? (
           <defs>
             <linearGradient id={gid} x1="0" y1="0" x2="1" y2="1">
-              <stop offset="0%" stopColor="var(--accent)" />
-              <stop offset="100%" stopColor="var(--cyan)" />
+              <stop offset="0%" stopColor="var(--ring-from)" />
+              <stop offset="100%" stopColor="var(--ring-to)" />
             </linearGradient>
           </defs>
         ) : null}
@@ -30,7 +30,7 @@ export function Ring({ pct, valueText, label, size = 112, hue = 0, gradient = fa
         {v > 0 ? <circle cx="50" cy="50" r={r} fill="none" stroke={gradient ? `url(#${gid})` : RING_HUES[hue % RING_HUES.length]} strokeWidth="11" strokeLinecap="round" strokeDasharray={`${(v / 100) * c} ${c}`} /> : null}
       </svg>
       <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
-        <span className="text-heading text-primary tabular-nums">{valueText}</span>
+        <span className={`${size < 90 ? "text-body-strong" : "text-heading"} text-primary tabular-nums`}>{valueText}</span>
         {children}
       </div>
     </div>
@@ -48,22 +48,23 @@ export interface Slice {
 }
 
 /** Donut with a printed legend (value and share per slice). Zero and negative slices are dropped from the arc but stay in the legend. */
-export function Donut({ slices, label, centerText, testId, size = 140, radial = false, legendFirst = false }: { slices: readonly Slice[]; label: string; centerText?: string; testId?: string; size?: number; radial?: boolean; /** legend at the start, chart at the end (the existing dashboard puts the list at the left) */ legendFirst?: boolean }) {
+export function Donut({ slices, label, centerText, testId, size = 140, radial = false, pie = false, legendFirst = false }: { slices: readonly Slice[]; label: string; centerText?: string; testId?: string; size?: number; radial?: boolean; /** a solid pie with thin separators instead of a ring (the existing dashboard's "By Channel STD") */ pie?: boolean; /** legend at the start, chart at the end (the existing dashboard puts the list at the left) */ legendFirst?: boolean }) {
   const total = slices.reduce((s, x) => s + Math.max(0, x.value), 0);
-  const r = 40;
+  const r = pie ? 25 : 40;
+  const sw = pie ? 50 : 16;
   const c = 2 * Math.PI * r;
   let acc = 0;
   return (
-    <div className="flex flex-wrap items-center gap-4" data-testid={testId}>
+    <div className="flex flex-wrap items-center gap-3" data-testid={testId}>
       <div className={`relative shrink-0 ${legendFirst ? "order-last ms-auto" : ""}`} style={{ width: size, height: size }} role="img" aria-label={label}>
         {radial ? <RadialRings slices={slices} total={total} size={size} /> : null}
         <svg viewBox="0 0 100 100" width={size} height={size} aria-hidden="true" className={`-rotate-90 ${radial ? "min-[480px]:hidden" : ""}`}>
-          <circle cx="50" cy="50" r={r} fill="none" stroke="var(--state-skeleton)" strokeWidth="16" />
+          <circle cx="50" cy="50" r={r} fill="none" stroke="var(--state-skeleton)" strokeWidth={sw} />
           {total > 0
             ? slices.map((s, i) => {
                 const len = (Math.max(0, s.value) / total) * c;
                 const dash = Math.max(0, len - (slices.length > 1 ? 0.8 : 0));
-                const el = <circle key={s.key} cx="50" cy="50" r={r} fill="none" stroke={VIZ[i % VIZ.length]} strokeWidth="16" strokeDasharray={`${dash} ${c}`} strokeDashoffset={-acc} />;
+                const el = <circle key={s.key} cx="50" cy="50" r={r} fill="none" stroke={VIZ[i % VIZ.length]} strokeWidth={sw} strokeDasharray={`${dash} ${c}`} strokeDashoffset={-acc} />;
                 acc += len;
                 return el;
               })
@@ -71,9 +72,9 @@ export function Donut({ slices, label, centerText, testId, size = 140, radial = 
         </svg>
         {centerText ? <span className={`absolute inset-0 flex items-center justify-center px-[22%] ${radial ? "min-[480px]:px-[26%]" : ""} text-center tabular-nums text-primary ${centerText.length > 7 ? "text-caption font-semibold" : "text-body-strong"}`}>{centerText}</span> : null}
       </div>
-      <ul aria-label={label} className="min-w-40 flex-[1_1_10rem] space-y-1.5">
+      <ul aria-label={label} className="min-w-24 flex-[1_1_6rem] space-y-1">
         {slices.map((s, i) => (
-          <li key={s.key} data-label={s.label} data-value={s.value} className="flex items-center gap-2 text-body">
+          <li key={s.key} data-label={s.label} data-value={s.value} className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-2 text-body">
             <span className={`size-3 shrink-0 rounded-full ${radial ? "min-[480px]:hidden" : ""}`} style={{ background: VIZ[i % VIZ.length] }} aria-hidden="true" />
             {radial ? <span className="hidden size-3 shrink-0 rounded-full min-[480px]:block" style={{ background: RING_HUES[i % RING_HUES.length] }} aria-hidden="true" /> : null}
             {s.href ? (
@@ -83,8 +84,10 @@ export function Donut({ slices, label, centerText, testId, size = 140, radial = 
             ) : (
               <span className="min-w-0 flex-1 truncate text-primary" title={s.label}>{s.label}</span>
             )}
-            <span className="whitespace-nowrap text-body-strong text-primary tabular-nums">{s.valueText}</span>
-            <span className="w-14 shrink-0 whitespace-nowrap text-end text-caption text-secondary tabular-nums">{s.shareText}</span>
+            <span className="col-start-2 flex flex-wrap items-baseline gap-x-2 whitespace-nowrap">
+              <span className="text-body-strong text-primary tabular-nums">{s.valueText}</span>
+              <span className="text-caption text-secondary tabular-nums">{s.shareText}</span>
+            </span>
           </li>
         ))}
       </ul>
@@ -152,7 +155,7 @@ export function ColumnChart({ rows, label, testId, height = 200, axisText }: { r
             {rows.map((r) => (
               <li key={r.key} data-label={r.label} data-value={r.value} className="flex w-16 min-w-0 flex-1 flex-col items-center justify-end gap-1" style={{ height: height + 56 }}>
                 <span className="text-caption text-primary tabular-nums">{r.valueText}</span>
-                <span className="w-full max-w-12 rounded-t-chip" style={{ height: Math.max(r.value > 0 ? 3 : 0, (r.value / top) * height), background: `linear-gradient(180deg, ${VIZ[rows.indexOf(r) % VIZ.length]}, color-mix(in srgb, ${VIZ[rows.indexOf(r) % VIZ.length]} 55%, var(--cyan)))` }} aria-hidden="true" />
+                <span className="w-full max-w-12 rounded-t-chip" style={{ height: Math.max(r.value > 0 ? 3 : 0, (r.value / top) * height), background: `linear-gradient(180deg, ${VIZ[rows.indexOf(r) % VIZ.length]}, color-mix(in srgb, ${VIZ[rows.indexOf(r) % VIZ.length]} 60%, white))` }} aria-hidden="true" />
                 <span className="line-clamp-2 h-10 w-full text-center text-caption text-secondary [overflow-wrap:anywhere]" title={r.label}>{r.label}</span>
               </li>
             ))}

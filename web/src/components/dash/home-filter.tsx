@@ -25,10 +25,10 @@ export function HomeFilter({ msg, applyMsg, resetMsg, resetHref, active, childre
   };
   return (
     <details ref={box} onKeyDown={onKey} className="relative" open={active} data-testid="home-filter">
-      <summary className="inline-flex min-h-(--ctl-h) cursor-pointer list-none items-center gap-2 rounded-full border border-warning bg-warning-container px-4 text-body-strong text-warning-on-container hover:brightness-95 focus-visible:outline-(length:--focus-w) focus-visible:outline-offset-2 outline-focus [&::-webkit-details-marker]:hidden">
+      <summary className="inline-flex min-h-(--ctl-h) cursor-pointer list-none items-center gap-2 rounded-full bg-filter-fill px-4 text-body-strong text-on-accent hover:brightness-110 focus-visible:outline-(length:--focus-w) focus-visible:outline-offset-2 outline-focus [&::-webkit-details-marker]:hidden">
         <Icon name="filter" size={18} />
         {msg}
-        {active ? <span className="size-2 rounded-full bg-warning" aria-hidden="true" /> : null}
+        {active ? <span className="size-2 rounded-full bg-on-rail" aria-hidden="true" /> : null}
       </summary>
       <form ref={form} method="get" onChange={onChange} className="glass-pop absolute end-0 top-12 z-40 flex w-[min(92vw,44rem)] flex-col gap-3 p-4">
         {children}

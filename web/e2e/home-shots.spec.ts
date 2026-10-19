@@ -7,7 +7,7 @@ test.beforeEach(async () => {
   await resetMock();
 });
 
-for (const [scheme, w, h, lang] of [["light", 1366, 900, "English"], ["dark", 1366, 900, "English"], ["light", 820, 1180, "English"], ["light", 1366, 900, "বাংলা"], ["sunlight", 1366, 900, "English"]] as const) {
+for (const [scheme, w, h, lang] of [["light", 1366, 900, "English"], ["dark", 1366, 900, "English"], ["light", 820, 1180, "English"], ["light", 1920, 1080, "English"], ["light", 1366, 900, "বাংলা"], ["sunlight", 1366, 900, "English"]] as const) {
   test(`home screenshot ${scheme} ${w}x${h} ${lang}`, async ({ page }, info) => {
     await page.emulateMedia({ colorScheme: scheme === "dark" ? "dark" : "light", reducedMotion: "reduce" });
     await page.addInitScript((th) => { try { localStorage.setItem("aron.theme", th); } catch {} }, scheme);

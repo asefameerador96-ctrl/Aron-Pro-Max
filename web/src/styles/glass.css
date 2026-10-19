@@ -46,6 +46,7 @@
   --color-disabled-label: var(--state-disabled-label);
   --color-skeleton: var(--state-skeleton);
   --color-cyan: var(--cyan); /* "Total sales" words and the ring gradient end (reference) */
+  --color-filter-fill: var(--filter-fill); /* the solid orange Filter button of the existing dashboard */
   --color-on-rail: #ffffff; /* labels on the crimson-purple sidebar (PARITY-SPEC s4) */
   --color-rail-danger: #b71c2c;
   --color-rail-danger-hover: #9d1725;
