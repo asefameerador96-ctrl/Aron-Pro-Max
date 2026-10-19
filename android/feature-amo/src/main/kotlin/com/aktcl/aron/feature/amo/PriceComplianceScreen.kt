@@ -17,7 +17,6 @@ import androidx.compose.ui.text.input.KeyboardType
 import com.aktcl.aron.core.ui.localizedDigits
 import com.aktcl.aron.core.ui.AronTokens
 import com.aktcl.aron.core.ui.LocalAronColors
-import com.aktcl.aron.feature.outlet.KitTextField
 
 object PriceTags {
     const val EMPTY = "amo_pc_empty"; const val SAVE = "amo_pc_save"; const val SAVED = "amo_pc_saved"
@@ -42,11 +41,13 @@ fun PriceComplianceContent(
                 val text = typed[r.skuId].orEmpty()
                 val observed = PriceCompliance.parseTakaToMtk(text)
                 Column(verticalArrangement = Arrangement.spacedBy(AronTokens.Space.Xs)) {
-                    Text(r.name, style = MaterialTheme.typography.titleMedium, color = c.textPrimary)
-                    Text(stringResource(R.string.amo_pc_list, localizedDigits(PriceCompliance.formatTaka(r.referenceMtk)), packText(r.packLabel)), style = MaterialTheme.typography.bodyMedium, color = c.textSecondary)
-                    KitTextField(
-                        text, { if (editable) onType(r.skuId, it) }, stringResource(R.string.amo_pc_field), isError = text.isNotBlank() && observed == null,
-                        keyboardType = KeyboardType.Decimal, fieldModifier = Modifier.testTag(PriceTags.field(r.skuId)),
+                    com.aktcl.aron.core.ui.aron.AronPackRow(
+                        r.skuId.toString(), r.name, listOf(localizedDigits(PriceCompliance.formatTaka(r.referenceMtk))),
+                        subtitle = stringResource(R.string.amo_pc_list, localizedDigits(PriceCompliance.formatTaka(r.referenceMtk)), packText(r.packLabel)),
+                    )
+                    AmoField(
+                        text, { if (editable) onType(r.skuId, it) }, stringResource(R.string.amo_pc_field), Modifier.testTag(PriceTags.field(r.skuId)),
+                        error = text.isNotBlank() && observed == null, keyboardType = KeyboardType.Decimal,
                     )
                     val verdict = when {
                         text.isBlank() -> null

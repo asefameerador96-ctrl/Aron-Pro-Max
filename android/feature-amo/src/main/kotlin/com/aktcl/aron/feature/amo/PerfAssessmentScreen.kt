@@ -70,12 +70,5 @@ fun PerfAssessmentContent(
 }
 
 @Composable
-private fun BrandRow(label: String, checked: Boolean, enabled: Boolean, tag: String, onClick: () -> Unit) {
-    Row(
-        Modifier.fillMaxWidth().clickable(enabled = enabled, role = Role.Checkbox, onClick = onClick).testTag(tag),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Checkbox(checked, onCheckedChange = null, enabled = enabled)
-        Text(label, style = MaterialTheme.typography.bodyLarge, color = LocalAronColors.current.textPrimary, modifier = Modifier.padding(start = AronTokens.Space.S))
-    }
-}
+private fun BrandRow(label: String, checked: Boolean, enabled: Boolean, tag: String, onClick: () -> Unit) =
+    com.aktcl.aron.core.ui.aron.AronCheckboxRow(label, checked, { onClick() }, Modifier.testTag(tag), enabled = enabled)

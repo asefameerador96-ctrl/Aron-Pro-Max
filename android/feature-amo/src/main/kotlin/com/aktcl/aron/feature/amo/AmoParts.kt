@@ -154,20 +154,10 @@ fun AmoFrame(
     ) { content() }
 }
 
-/** A read-only pack row (manual S-31): the packshot, the SKU name in purple, a second line, the figure at the end. */
+/** A read-only pack row (manual S-31): the kit's pack row with the packshot, the SKU name, a second line and the figure at the end. */
 @Composable
-internal fun AmoPackRow(skuId: String, name: String, modifier: Modifier = Modifier, subtitle: String? = null, figure: String, category: com.aktcl.aron.core.ui.aron.PackCategory = com.aktcl.aron.core.ui.aron.PackCategory.Cigarette) {
-    val look = LocalAronLook.current
-    val shape = RoundedCornerShape(12.dp)
-    Row(modifier.fillMaxWidth().shadow(2.dp, shape).clip(shape).background(look.card).padding(10.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        com.aktcl.aron.core.ui.aron.PackshotImage(skuId, Modifier.size(width = 44.dp, height = 70.dp), category = category)
-        Column(Modifier.weight(1f)) {
-            Text(name, style = amoText(18, bold = true, color = look.purple))
-            if (subtitle != null) Text(subtitle, style = amoText(13, color = look.inkMuted))
-        }
-        Text(figure, style = amoText(20, bold = true), textAlign = TextAlign.End)
-    }
-}
+internal fun AmoPackRow(skuId: String, name: String, modifier: Modifier = Modifier, subtitle: String? = null, figure: String, category: com.aktcl.aron.core.ui.aron.PackCategory = com.aktcl.aron.core.ui.aron.PackCategory.Cigarette) =
+    com.aktcl.aron.core.ui.aron.AronPackRow(skuId, name, listOf(figure), modifier.padding(vertical = 3.dp), subtitle, category)
 
 /** The purple totals panel (PARITY-SPEC s2.7) as an inline block: [header] columns, then one line per row, values right-aligned. */
 @Composable
@@ -219,7 +209,7 @@ fun AmoBanner(text: String, modifier: Modifier = Modifier, kind: com.aktcl.aron.
     AmoNotice(text, modifier, warning = kind == com.aktcl.aron.core.ui.BannerKind.Warning || kind == com.aktcl.aron.core.ui.BannerKind.Error)
 
 @Composable
-fun AmoSection(text: String, modifier: Modifier = Modifier) = AmoHeading(text, modifier)
+fun AmoSection(text: String, modifier: Modifier = Modifier) = com.aktcl.aron.core.ui.aron.AronSectionHeader(text, modifier)
 
 @Composable
 fun AmoEmptyState(title: String, modifier: Modifier = Modifier, hint: String? = null) = AmoEmpty(title, modifier, hint)
@@ -229,18 +219,10 @@ fun AmoEmptyState(title: String, modifier: Modifier = Modifier, hint: String? = 
 fun AmoPrimary(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true, busy: Boolean = false) =
     com.aktcl.aron.core.ui.aron.AronPrimaryButton(text, onClick, modifier, enabled = enabled && !busy)
 
-/** The outlined action button: white with a purple edge and label, a grey ghost when disabled. [busy] disables it while a save runs. */
+/** The outlined action button of the kit; [busy] disables it while a save runs. */
 @Composable
-fun AmoSecondary(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true, busy: Boolean = false) {
-    val look = LocalAronLook.current
-    val on = enabled && !busy
-    val shape = RoundedCornerShape(8.dp)
-    Box(
-        modifier.heightIn(min = 52.dp).clip(shape).background(if (on) look.card else look.disabledFill)
-            .border(1.5.dp, if (on) look.purple else look.disabledText, shape).clickable(enabled = on, role = Role.Button, onClick = onClick),
-        contentAlignment = Alignment.Center,
-    ) { Text(text, style = amoText(18, bold = true, color = if (on) look.purple else look.disabledText, align = TextAlign.Center), modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) }
-}
+fun AmoSecondary(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true, busy: Boolean = false) =
+    com.aktcl.aron.core.ui.aron.AronOutlinedButton(text, onClick, modifier, enabled = enabled && !busy)
 
 /** Yes (purple, like the plus square) and No / confirm-negative (red, like the minus square); a dimmed fill once chosen or disabled. */
 @Composable
@@ -258,18 +240,20 @@ fun AmoYes(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, ena
 @Composable
 fun AmoNo(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true) = AmoChoice(text, onClick, modifier, enabled, LocalAronLook.current.minus)
 
-/** A row of choice chips (replaces the old segmented control); the selected one is the purple gradient square of the A-Z filter. */
+/** A row of the kit's choice chips (one per option, equal widths). */
 @Composable
 internal fun AmoChips(labels: List<String>, selected: Int, onSelect: (Int) -> Unit, modifier: Modifier = Modifier) {
-    val look = LocalAronLook.current
     Row(modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        labels.forEachIndexed { i, l ->
-            val on = i == selected
-            Box(
-                Modifier.weight(1f).heightIn(min = 48.dp).clip(RoundedCornerShape(8.dp))
-                    .background(if (on) look.purple else look.card).clickable(role = Role.RadioButton) { onSelect(i) }.padding(horizontal = 6.dp, vertical = 8.dp),
-                contentAlignment = Alignment.Center,
-            ) { Text(l, style = amoText(14, bold = on, color = if (on) look.onBar else look.purple, align = TextAlign.Center)) }
-        }
+        labels.forEachIndexed { i, l -> com.aktcl.aron.core.ui.aron.AronChoiceChip(l, i == selected, { onSelect(i) }, Modifier.weight(1f)) }
     }
 }
+
+/** The kit text field with the AMO error convention: [error] shows the localised "check this value" line under it; [tag] marks the field for tests. */
+@Composable
+fun AmoField(
+    value: String, onValueChange: (String) -> Unit, label: String, modifier: Modifier = Modifier, error: Boolean = false,
+    keyboardType: androidx.compose.ui.text.input.KeyboardType = androidx.compose.ui.text.input.KeyboardType.Text, singleLine: Boolean = true,
+) = com.aktcl.aron.core.ui.aron.AronField(
+    value, onValueChange, label, modifier.padding(vertical = 4.dp),
+    errorText = if (error) androidx.compose.ui.res.stringResource(R.string.amo_field_invalid) else null, keyboardType = keyboardType, singleLine = singleLine,
+)
