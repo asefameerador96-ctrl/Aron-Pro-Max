@@ -229,14 +229,14 @@ class SrStateScreenshotTests {
     // ---- QC entry (manual p36-38: MaxR-10S, 5 + 5 sticks, settlement 80.00) ----
     private val qcDraft = SaleDraftOps.setQc(SaleDraftOps.setQc(SaleDraftOps.setQuantity(draft(), 100, 40, QtyUnit.STICK), QcEntry(100, "damaged_crushed", "MFC", 5)), QcEntry(100, "expired_stock", "MKT", 5))
     private val qcReview = SaleReviewCalculator.review(qcDraft, catalog)
-    @Composable private fun Qc(cap: Long?) = Frame(stringResource(SaleR.string.qc_title)) {
+    @Composable private fun Qc(cap: Long?) = ParityFrame(stringResource(SaleR.string.qc_title), com.aktcl.aron.core.ui.R.drawable.aron_art_sale) {
         QcScreen(listOf(maxr), qcReview, { id, code -> qcDraft.qc.firstOrNull { it.skuId == id && it.faultTypeCode == code }?.defectQty ?: 0L }, { _, _, _ -> }, false, {}, onCancel = {}, capMtkOf = { cap })
     }
 
     // ---- QC on a zero sale (D-18): the whole catalog as closed cards, one open with a typed count, the credit Review ----
     private val qcOnlyDraft = SaleDraftOps.setQc(SaleDraftOps.setQc(SaleDraftOps.startQcOnly(draft()), QcEntry(100, "damaged_crushed", "MFC", 7)), QcEntry(100, "expired_stock", "MKT", 3))
     private val qcOnlyReview = SaleReviewCalculator.review(qcOnlyDraft, catalog)
-    @Composable private fun QcOnly() = Frame(stringResource(SaleR.string.qc_title)) {
+    @Composable private fun QcOnly() = ParityFrame(stringResource(SaleR.string.qc_title), com.aktcl.aron.core.ui.R.drawable.aron_art_sale) {
         QcScreen(listOf(maxr), qcOnlyReview, { id, code -> qcOnlyDraft.qc.firstOrNull { it.skuId == id && it.faultTypeCode == code }?.defectQty ?: 0L }, { _, _, _ -> }, false, {}, onCancel = {}, collapsible = true)
     }
     @Composable private fun ReviewCredit() = ParityFrame(stringResource(SaleR.string.review_title), com.aktcl.aron.core.ui.R.drawable.aron_art_sale) { ReviewScreen(qcOnlyReview, onSave = {}, onQc = {}) }
