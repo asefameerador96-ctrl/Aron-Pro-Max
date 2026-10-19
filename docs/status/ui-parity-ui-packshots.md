@@ -25,8 +25,11 @@ lead session_01MbUQSxrP7AB9tbyANjUTPS; never message the integrator.
     dropped when the pictured set changes. NITs fixed: weak If-None-Match incl. W/ and *, asset id validated on the
     phone, the scope-cases test name, a one-time bundle refresh note in the runbook. Not done (NIT): a single ranged
     blob read instead of properties + download.
-    Verified locally 2026-10-19 on the e8a24fd2 base: Android unit + lint + release green; backend sync/media/
-    masterdata/app + shared contract green.
+    Verified locally 2026-10-19 on INT 186279f4 (the kit included): Android unit + lint + 3 debug + release green;
+    backend sync/media/masterdata/app + shared contract green (Migration78Test, BundleImageStabilityTest,
+    SkuImageReadTest, ContractConformance, ScopeLeak, RouteInventory); slices current, oasdiff 0 breaking, web tsc,
+    test_gates, money-float green. The goldens are INT's (the kit re-recorded the two packshot goldens). Lead ruling
+    2026-10-19 01:38: push only after the lead says the UI batch is on INT (about 02:30 to 03:00 UTC).
     Open risks: not run end to end on the dev account yet (needs deploy + one admin upload); the one
     scope-blind-baseline line grows a "may only shrink" file (justified as global by design; the checker suggests the
     harness skip exempt routes instead); the first deploy makes every phone fetch its full bundle once (every SKU
