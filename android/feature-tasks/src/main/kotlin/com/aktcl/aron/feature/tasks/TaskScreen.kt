@@ -194,8 +194,8 @@ private fun TaskCard(t: TaskItem, onResolve: (String) -> Unit, modifier: Modifie
             // T2: the task type code as a red tag ("OOS") ahead of the title, as on the manual's card
             if (t.taskTypeCode.isNotBlank()) Text(t.taskTypeCode.uppercase(java.util.Locale.ROOT), style = MaterialTheme.typography.labelLarge, color = look.red)
             Text(t.title, style = MaterialTheme.typography.titleSmall, color = look.purple, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-            StatusWord(if (ongoing) AronIcons.Clock else AronIcons.Check, stringResource(if (ongoing) R.string.tsk_status_ongoing else R.string.tsk_status_completed))
         }
+        StatusWord(if (ongoing) AronIcons.Clock else AronIcons.Check, stringResource(if (ongoing) R.string.tsk_status_ongoing else R.string.tsk_status_completed))
         t.description?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = look.ink, maxLines = 4, overflow = TextOverflow.Ellipsis) }
         t.outletName?.let { MetaLine(AronIcons.Outlet, stringResource(R.string.tsk_outlet, it)) }
         t.dueDate?.let { MetaLine(AronIcons.Flag, stringResource(R.string.tsk_due, dueDateText(it))) }

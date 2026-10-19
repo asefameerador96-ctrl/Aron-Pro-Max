@@ -15,12 +15,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
-import com.aktcl.aron.core.ui.AronEmptyState
 import com.aktcl.aron.core.ui.localizedNumber
 import com.aktcl.aron.core.ui.AronIcons
-import com.aktcl.aron.core.ui.AronListRow
-import com.aktcl.aron.core.ui.AronPrimaryButton
-import com.aktcl.aron.core.ui.AronSecondaryButton
 import com.aktcl.aron.core.ui.AronTokens
 import com.aktcl.aron.core.ui.LocalAronColors
 import com.aktcl.aron.core.ui.RowPosition
@@ -32,7 +28,7 @@ object AmoCallTags { const val ROUTE_LIST = "amo_cc_routes"; const val EMPTY = "
 @Composable
 fun AmoRoutePick(rows: List<AmoRouteRow>, onPick: (AmoRouteRow) -> Unit, modifier: Modifier = Modifier) {
     if (rows.isEmpty()) {
-        AronEmptyState(stringResource(R.string.amo_cc_routes_empty), modifier.fillMaxSize().testTag(AmoCallTags.EMPTY), hint = stringResource(R.string.amo_cc_routes_empty_hint), icon = AronIcons.Place)
+        AmoEmptyState(stringResource(R.string.amo_cc_routes_empty), modifier.fillMaxSize().testTag(AmoCallTags.EMPTY), hint = stringResource(R.string.amo_cc_routes_empty_hint))
         return
     }
     Column(modifier.fillMaxSize()) {
@@ -43,7 +39,7 @@ fun AmoRoutePick(rows: List<AmoRouteRow>, onPick: (AmoRouteRow) -> Unit, modifie
         LazyColumn(Modifier.fillMaxWidth().testTag(AmoCallTags.ROUTE_LIST).padding(horizontal = AronTokens.Space.Screen)) {
             itemsIndexed(rows, key = { _, r -> r.routeId }) { i, r ->
                 val pos = when { rows.size == 1 -> RowPosition.Only; i == 0 -> RowPosition.First; i == rows.lastIndex -> RowPosition.Last; else -> RowPosition.Middle }
-                AronListRow(
+                AmoListRow(
                     r.title, subtitle = stringResource(R.string.amo_cc_route_outlets, localizedNumber(r.outletCount.toLong())), onClick = { onPick(r) },
                     position = pos, divider = i != rows.lastIndex, flat = true,
                 )
@@ -61,7 +57,7 @@ fun amoVisitCheckTexts(): VisitCheckTexts = VisitCheckTexts(stringResource(R.str
 fun ManualOverrideLimit(max: Int, onBack: () -> Unit, modifier: Modifier = Modifier) {
     Column(modifier.fillMaxSize().padding(AronTokens.Space.Screen), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.M)) {
         Text(stringResource(R.string.amo_cc_override_limit, max.toString()), style = MaterialTheme.typography.bodyLarge, color = LocalAronColors.current.textPrimary, modifier = Modifier.testTag(AmoCallTags.OVERRIDE_LIMIT))
-        AronSecondaryButton(stringResource(R.string.amo_cc_back_to_picker), onBack, Modifier.fillMaxWidth())
+        AmoSecondary(stringResource(R.string.amo_cc_back_to_picker), onBack, Modifier.fillMaxWidth())
     }
 }
 
@@ -73,11 +69,11 @@ fun ControlCallMenu(onSale: () -> Unit, onAssessment: () -> Unit, onSurvey: (() 
         verticalArrangement = Arrangement.spacedBy(AronTokens.Space.M),
     ) {
         Text(stringResource(R.string.amo_cc_menu_title), style = MaterialTheme.typography.titleMedium, color = LocalAronColors.current.textPrimary)
-        AronPrimaryButton(stringResource(R.string.amo_cc_menu_sale), onSale, Modifier.fillMaxWidth().testTag(AmoCallTags.MENU_SALE))
-        AronPrimaryButton(stringResource(R.string.amo_cc_menu_assessment), onAssessment, Modifier.fillMaxWidth().testTag(AmoCallTags.MENU_ASSESS))
-        if (onSurvey != null) AronPrimaryButton(stringResource(R.string.amo_cc_menu_survey), onSurvey, Modifier.fillMaxWidth().testTag(AmoCallTags.MENU_SURVEY))
-        if (onPrice != null) AronPrimaryButton(stringResource(R.string.amo_cc_menu_price), onPrice, Modifier.fillMaxWidth().testTag(AmoCallTags.MENU_PRICE))
-        AronSecondaryButton(stringResource(R.string.amo_cc_back_to_picker), onDone, Modifier.fillMaxWidth())
+        AmoPrimary(stringResource(R.string.amo_cc_menu_sale), onSale, Modifier.fillMaxWidth().testTag(AmoCallTags.MENU_SALE))
+        AmoPrimary(stringResource(R.string.amo_cc_menu_assessment), onAssessment, Modifier.fillMaxWidth().testTag(AmoCallTags.MENU_ASSESS))
+        if (onSurvey != null) AmoPrimary(stringResource(R.string.amo_cc_menu_survey), onSurvey, Modifier.fillMaxWidth().testTag(AmoCallTags.MENU_SURVEY))
+        if (onPrice != null) AmoPrimary(stringResource(R.string.amo_cc_menu_price), onPrice, Modifier.fillMaxWidth().testTag(AmoCallTags.MENU_PRICE))
+        AmoSecondary(stringResource(R.string.amo_cc_back_to_picker), onDone, Modifier.fillMaxWidth())
     }
 }
 
@@ -86,6 +82,6 @@ fun ControlCallMenu(onSale: () -> Unit, onAssessment: () -> Unit, onSurvey: (() 
 fun DaySubmittedNotice(onBack: () -> Unit, modifier: Modifier = Modifier) {
     Column(modifier.fillMaxSize().padding(AronTokens.Space.Screen), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.M)) {
         Text(stringResource(R.string.amo_day_submitted), style = MaterialTheme.typography.bodyLarge, color = LocalAronColors.current.textPrimary, modifier = Modifier.testTag(AmoCallTags.DAY_SUBMITTED))
-        AronSecondaryButton(stringResource(R.string.amo_sale_done_back), onBack, Modifier.fillMaxWidth())
+        AmoSecondary(stringResource(R.string.amo_sale_done_back), onBack, Modifier.fillMaxWidth())
     }
 }

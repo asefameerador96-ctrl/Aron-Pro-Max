@@ -14,10 +14,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
-import com.aktcl.aron.core.ui.AronEmptyState
-import com.aktcl.aron.core.ui.AronPrimaryButton
 import com.aktcl.aron.core.ui.localizedNumber
-import com.aktcl.aron.core.ui.AronSecondaryButton
 import com.aktcl.aron.core.ui.AronTokens
 import com.aktcl.aron.core.ui.LocalAronColors
 import com.aktcl.aron.feature.outlet.KitTextField
@@ -52,7 +49,7 @@ fun StockCorrectionContent(
     modifier: Modifier = Modifier,
 ) {
     if (rows.isEmpty()) {
-        AronEmptyState(stringResource(R.string.amo_sc_empty), modifier.fillMaxSize().testTag(CorrectionTags.EMPTY), hint = stringResource(R.string.amo_sc_empty_hint))
+        AmoEmptyState(stringResource(R.string.amo_sc_empty), modifier.fillMaxSize().testTag(CorrectionTags.EMPTY), hint = stringResource(R.string.amo_sc_empty_hint))
         return
     }
     val c = LocalAronColors.current
@@ -64,7 +61,7 @@ fun StockCorrectionContent(
                 val chosen = r.skuId == selected
                 val rowModifier = Modifier.fillMaxWidth().testTag(CorrectionTags.row(r.skuId))
                 val label = r.name + "  " + localizedNumber(r.currentBase) + " " + unitWord(r.unit)
-                if (chosen) AronPrimaryButton(label, { onSelect(r.skuId) }, rowModifier) else AronSecondaryButton(label, { onSelect(r.skuId) }, rowModifier, enabled = !saving)
+                if (chosen) AmoPrimary(label, { onSelect(r.skuId) }, rowModifier) else AmoSecondary(label, { onSelect(r.skuId) }, rowModifier, enabled = !saving)
             }
         }
         if (sel != null) {
@@ -79,10 +76,10 @@ fun StockCorrectionContent(
                 CorrectionReason.entries.forEach { r ->
                     val label = stringResource(when (r) { CorrectionReason.COUNT_ERROR -> R.string.amo_sc_r_count; CorrectionReason.DAMAGED -> R.string.amo_sc_r_damaged; CorrectionReason.LOST -> R.string.amo_sc_r_lost; CorrectionReason.OTHER -> R.string.amo_sc_r_other })
                     val m = Modifier.fillMaxWidth().testTag(CorrectionTags.reason(r))
-                    if (reason == r) AronPrimaryButton(label, { onReason(r) }, m) else AronSecondaryButton(label, { onReason(r) }, m, enabled = !saving && !saved)
+                    if (reason == r) AmoPrimary(label, { onReason(r) }, m) else AmoSecondary(label, { onReason(r) }, m, enabled = !saving && !saved)
                 }
                 if (saved) Text(stringResource(R.string.amo_pa_saved), style = MaterialTheme.typography.titleMedium, color = c.textPrimary, modifier = Modifier.testTag(CorrectionTags.SAVED))
-                AronPrimaryButton(
+                AmoPrimary(
                     stringResource(R.string.amo_pa_save), onSave, Modifier.fillMaxWidth().testTag(CorrectionTags.SAVE),
                     enabled = !saving && !saved && delta != null && reason != null, busy = saving,
                 )

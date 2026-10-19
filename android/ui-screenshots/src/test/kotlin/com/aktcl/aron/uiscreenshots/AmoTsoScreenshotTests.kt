@@ -73,7 +73,7 @@ class AmoTsoScreenshotTests {
         rule.setContent {
             CompositionLocalProvider(LocalContext provides ctx, LocalDensity provides Density(LocalDensity.current.density, fontScale = fontScale)) {
                 AronTheme(language, dark = false, sunlight = sunlight, tier = GlassTier.B, reducedMotion = true) {
-                    AronScreen(topBar = { AronTopBar(title = title, onBack = {}) }) { content() }
+                    com.aktcl.aron.feature.amo.AmoFrame(title, onBack = {}) { content() }
                 }
             }
         }
@@ -184,18 +184,18 @@ class AmoTsoScreenshotTests {
     )
     private fun teamHub(sunlight: Boolean = false) = @Composable {
         com.aktcl.aron.feature.amo.HubListContent(listOf(com.aktcl.aron.feature.amo.HubSection(null, listOf(
-            com.aktcl.aron.feature.amo.HubRow("টিম লোকেশন"), com.aktcl.aron.feature.amo.HubRow("টিম পারফর্মেন্স"), com.aktcl.aron.feature.amo.HubRow("টাস্ক ডেলিগেশন"),
-            com.aktcl.aron.feature.amo.HubRow("লাইভ ডেটা"), com.aktcl.aron.feature.amo.HubRow("এসআর স্টক"), com.aktcl.aron.feature.amo.HubRow("ব্যতিক্রম"),
+            com.aktcl.aron.feature.amo.HubRow("টিম লোকেশন", icon = com.aktcl.aron.core.ui.R.drawable.aron_ic_team_location), com.aktcl.aron.feature.amo.HubRow("টিম পারফর্মেন্স", icon = com.aktcl.aron.core.ui.R.drawable.aron_ic_team_performance), com.aktcl.aron.feature.amo.HubRow("টাস্ক ডেলিগেশন", icon = com.aktcl.aron.core.ui.R.drawable.aron_art_task_delegation),
+            com.aktcl.aron.feature.amo.HubRow("লাইভ ডেটা", icon = com.aktcl.aron.core.ui.R.drawable.aron_ic_live_dashboard), com.aktcl.aron.feature.amo.HubRow("এসআর স্টক", icon = com.aktcl.aron.core.ui.R.drawable.aron_ic_sr_stock), com.aktcl.aron.feature.amo.HubRow("ব্যতিক্রম", icon = com.aktcl.aron.core.ui.R.drawable.aron_ic_exceptions),
         ))))
     }
     private fun outletHub() = @Composable {
         com.aktcl.aron.feature.amo.HubListContent(listOf(
             com.aktcl.aron.feature.amo.HubSection("এসআর থেকে আসা অনুরোধগুলো যাচাই করুন", listOf(
-                com.aktcl.aron.feature.amo.HubRow("নতুন আউটলেট যাচাইকরণ", "৩"), com.aktcl.aron.feature.amo.HubRow("আউটলেট বন্ধের যাচাইকরণ", "১"), com.aktcl.aron.feature.amo.HubRow("আউটলেট সংশোধনের যাচাইকরণ"),
+                com.aktcl.aron.feature.amo.HubRow("নতুন আউটলেট যাচাইকরণ", "৩", icon = com.aktcl.aron.core.ui.R.drawable.aron_art_outlet_new, badge = 3), com.aktcl.aron.feature.amo.HubRow("আউটলেট বন্ধের যাচাইকরণ", "১", icon = com.aktcl.aron.core.ui.R.drawable.aron_art_outlet_close, badge = 1), com.aktcl.aron.feature.amo.HubRow("আউটলেট সংশোধনের যাচাইকরণ", icon = com.aktcl.aron.core.ui.R.drawable.aron_art_outlet_edit),
             )),
             com.aktcl.aron.feature.amo.HubSection("দোকান সংক্রান্ত অপারেশন্স", listOf(
-                com.aktcl.aron.feature.amo.HubRow("নতুন দোকান"), com.aktcl.aron.feature.amo.HubRow("স্থায়ী বন্ধ"), com.aktcl.aron.feature.amo.HubRow("তথ্য পরিবর্তন করুন"),
-                com.aktcl.aron.feature.amo.HubRow("আপডেট বেস"), com.aktcl.aron.feature.amo.HubRow("আমার অনুরোধ"),
+                com.aktcl.aron.feature.amo.HubRow("নতুন দোকান", icon = com.aktcl.aron.core.ui.R.drawable.aron_art_outlet_new), com.aktcl.aron.feature.amo.HubRow("স্থায়ী বন্ধ", icon = com.aktcl.aron.core.ui.R.drawable.aron_art_outlet_close), com.aktcl.aron.feature.amo.HubRow("তথ্য পরিবর্তন করুন", icon = com.aktcl.aron.core.ui.R.drawable.aron_art_outlet_edit),
+                com.aktcl.aron.feature.amo.HubRow("আপডেট বেস", icon = com.aktcl.aron.core.ui.R.drawable.aron_ic_update_base), com.aktcl.aron.feature.amo.HubRow("আমার অনুরোধ", icon = com.aktcl.aron.core.ui.R.drawable.aron_ic_verify),
             )),
         ))
     }

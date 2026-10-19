@@ -10,9 +10,6 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
-import com.aktcl.aron.core.ui.AronCard
-import com.aktcl.aron.core.ui.AronSecondaryButton
-import com.aktcl.aron.core.ui.AronTextButton
 import com.aktcl.aron.core.ui.AronTokens
 import com.aktcl.aron.core.ui.LocalAronColors
 import com.aktcl.aron.core.ui.localizedNumber
@@ -47,7 +44,7 @@ fun UpdateBasePointContent(
     val c = LocalAronColors.current
     val step = UpdateBasePoint.STEP_M
     fun can(dn: Int, de: Int) = hasFix && UpdateBasePoint.canMove(northM, eastM, dn, de, maxM)
-    AronCard(modifier.fillMaxWidth()) {
+    AmoCard(modifier) {
         Column(Modifier.fillMaxWidth().padding(AronTokens.Space.L), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.M)) {
             Text(stringResource(R.string.amo_base_point_title), style = MaterialTheme.typography.titleSmall, color = c.textPrimary)
             Text(
@@ -56,14 +53,14 @@ fun UpdateBasePointContent(
                 style = MaterialTheme.typography.bodyMedium, color = c.textSecondary,
             )
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
-                AronSecondaryButton(stringResource(R.string.amo_base_north, localizedNumber(step.toLong())), { onMove(step, 0) }, Modifier.weight(1f), enabled = can(step, 0))
-                AronSecondaryButton(stringResource(R.string.amo_base_south, localizedNumber(step.toLong())), { onMove(-step, 0) }, Modifier.weight(1f), enabled = can(-step, 0))
+                AmoSecondary(stringResource(R.string.amo_base_north, localizedNumber(step.toLong())), { onMove(step, 0) }, Modifier.weight(1f), enabled = can(step, 0))
+                AmoSecondary(stringResource(R.string.amo_base_south, localizedNumber(step.toLong())), { onMove(-step, 0) }, Modifier.weight(1f), enabled = can(-step, 0))
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
-                AronSecondaryButton(stringResource(R.string.amo_base_west, localizedNumber(step.toLong())), { onMove(0, -step) }, Modifier.weight(1f), enabled = can(0, -step))
-                AronSecondaryButton(stringResource(R.string.amo_base_east, localizedNumber(step.toLong())), { onMove(0, step) }, Modifier.weight(1f), enabled = can(0, step))
+                AmoSecondary(stringResource(R.string.amo_base_west, localizedNumber(step.toLong())), { onMove(0, -step) }, Modifier.weight(1f), enabled = can(0, -step))
+                AmoSecondary(stringResource(R.string.amo_base_east, localizedNumber(step.toLong())), { onMove(0, step) }, Modifier.weight(1f), enabled = can(0, step))
             }
-            AronTextButton(stringResource(R.string.amo_base_reset), onReset, enabled = hasFix && (northM != 0 || eastM != 0))
+            AmoSecondary(stringResource(R.string.amo_base_reset), onReset, Modifier.fillMaxWidth(), enabled = hasFix && (northM != 0 || eastM != 0))
         }
     }
 }

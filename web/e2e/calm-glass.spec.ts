@@ -26,7 +26,7 @@ function pixel(png: Buffer): [number, number, number] {
 
 const hex = (v: string): [number, number, number] => [1, 3, 5].map((i) => parseInt(v.trim().slice(i, i + 2), 16)) as [number, number, number];
 
-test("the page gradient and glows paint behind the content (body transparent over the fixed layer)", async ({ page }) => {
+test("the page is the flat light grey of the existing dashboard: no gradient, no glow (owner directive 2026-10-18)", async ({ page }) => {
   await page.setViewportSize({ width: 1366, height: 768 });
   await page.emulateMedia({ colorScheme: "light", reducedMotion: "reduce" });
   await page.goto("/login");
@@ -37,9 +37,10 @@ test("the page gradient and glows paint behind the content (body transparent ove
     layer: getComputedStyle(document.querySelector(".bg-page")!).backgroundImage,
   }));
   expect(probe.body).toBe("rgba(0, 0, 0, 0)");
-  expect(probe.layer).toContain("gradient");
+  expect(probe.layer).not.toContain("gradient");
+  expect(probe.solid.trim().toLowerCase()).toBe("#e8e8e8");
   const corner = pixel(await page.screenshot({ clip: { x: 0, y: 0, width: 1, height: 1 }, animations: "disabled" }));
-  expect(corner, `corner pixel ${corner} must not be the flat --bg-solid ${probe.solid}`).not.toEqual(hex(probe.solid));
+  expect(corner, `corner pixel ${corner} is the flat --bg-solid ${probe.solid}`).toEqual(hex(probe.solid));
 });
 
 test("the top bar shows its divider after 8 px of scroll, not after the bar's own height", async ({ page }) => {
