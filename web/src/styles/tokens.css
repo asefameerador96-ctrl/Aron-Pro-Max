@@ -62,6 +62,9 @@
   --elev-dialog: 0 4px 8px rgb(11 27 51 / 0.1), 0 8px 32px rgb(11 27 51 / 0.18);
   --chart-baseline: rgb(11 27 51 / 0.22);
   --cyan: #0a7d9c;
+  --ring-from: #1565c0;
+  --ring-to: #00b8d9;
+  --filter-fill: #c2570c;
   --viz-1: #2a78d6;
   --viz-2: #eb6834;
   --viz-3: #1baf7a;
@@ -129,6 +132,9 @@
   --elev-dialog: 0 4px 8px rgb(0 0 0 / 0.45), 0 8px 32px rgb(0 0 0 / 0.55);
   --chart-baseline: rgb(255 255 255 / 0.2);
   --cyan: #5ad1ee;
+  --ring-from: #4f9bf2;
+  --ring-to: #22d3ee;
+  --filter-fill: #e8742a;
   --viz-1: #3987e5;
   --viz-2: #d95926;
   --viz-3: #199e70;
@@ -195,6 +201,9 @@
     --elev-dialog: 0 4px 8px rgb(0 0 0 / 0.45), 0 8px 32px rgb(0 0 0 / 0.55);
     --chart-baseline: rgb(255 255 255 / 0.2);
     --cyan: #5ad1ee;
+  --ring-from: #4f9bf2;
+  --ring-to: #22d3ee;
+  --filter-fill: #e8742a;
   --viz-1: #3987e5;
     --viz-2: #d95926;
     --viz-3: #199e70;

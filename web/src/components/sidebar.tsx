@@ -5,7 +5,8 @@
 import { useRef, useSyncExternalStore } from "react";
 import { NAV_KEY } from "@/lib/ui/theme";
 import { useI18n } from "./i18n-provider";
-import { Icon, menuIcon } from "./kit/icons";
+import { Icon } from "./kit/icons";
+import { navIconFor } from "./nav-icons";
 import { IconButton } from "./kit/button";
 import { LocaleSwitch } from "./locale-switch";
 import { LogoutButton } from "./logout-button";
@@ -13,7 +14,8 @@ import { NavLink } from "./nav-link";
 
 export interface NavSection {
   id: string;
-  label: string;
+  /** null = a single entry shown as a plain link, not a collapsible parent. */
+  label: string | null;
   items: { id: string; href: string; label: string }[];
 }
 
@@ -37,7 +39,12 @@ function subscribeNav(cb: () => void): () => void {
 function Groups({ sections, onNavigate }: { sections: NavSection[]; onNavigate?: () => void }) {
   return (
     <>
-      {sections.map((s) => (
+      {sections.map((s) =>
+        s.label === null ? (
+          <div key={s.id} className="mb-1">
+            <NavLink href={s.items[0]!.href} icon={navIconFor(s.items[0]!.id)} label={s.items[0]!.label} onNavigate={onNavigate} />
+          </div>
+        ) : (
         <details key={s.id} open className="group/nav mb-2">
           <summary className="rail-group flex min-h-8 cursor-pointer list-none items-center justify-between rounded-chip px-3 text-label text-on-rail/85 hover:bg-on-rail/15 [&::-webkit-details-marker]:hidden">
             <span>{s.label}</span>
@@ -46,12 +53,13 @@ function Groups({ sections, onNavigate }: { sections: NavSection[]; onNavigate?:
           <ul className="space-y-0.5">
             {s.items.map((i) => (
               <li key={i.id}>
-                <NavLink href={i.href} icon={menuIcon(i.id)} label={i.label} onNavigate={onNavigate} />
+                <NavLink href={i.href} icon={navIconFor(i.id)} label={i.label} onNavigate={onNavigate} />
               </li>
             ))}
           </ul>
         </details>
-      ))}
+        ),
+      )}
     </>
   );
 }
@@ -79,7 +87,7 @@ export function Sidebar({ sections, appName, tagline }: { sections: NavSection[]
           <p className="truncate text-heading text-on-rail">{appName}</p>
           <p className="truncate text-caption text-on-rail/85">{tagline}</p>
         </div>
-        <IconButton icon={rail ? "chevron-right" : "chevron-left"} label={t(rail ? "nav.expand" : "nav.collapse")} aria-expanded={!rail} onClick={toggle} data-testid="nav-collapse" className="hidden !text-on-rail hover:!bg-on-rail/15 lg:inline-flex" />
+        <IconButton icon={rail ? "chevrons-right" : "chevrons-left"} label={t(rail ? "nav.expand" : "nav.collapse")} aria-expanded={!rail} onClick={toggle} data-testid="nav-collapse" className="hidden !text-on-rail hover:!bg-on-rail/15 lg:inline-flex" />
       </div>
       <nav aria-label={t("nav.sidebar")} className="min-h-0 flex-1 overflow-y-auto px-3 py-2 [scrollbar-width:thin]">
         <Groups sections={sections} />

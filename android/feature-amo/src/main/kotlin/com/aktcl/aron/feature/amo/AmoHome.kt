@@ -62,6 +62,7 @@ import com.aktcl.aron.core.ui.localizedNumber
 import com.aktcl.aron.core.ui.aron.AronHomeHeader
 import com.aktcl.aron.core.ui.aron.AronPrimaryButton
 import com.aktcl.aron.core.ui.aron.AronScaffold
+import com.aktcl.aron.core.ui.aron.AronSyncFooter
 import com.aktcl.aron.core.ui.aron.AronTile
 import com.aktcl.aron.core.ui.aron.AronTileGrid
 import com.aktcl.aron.core.ui.aron.AronTopBar
@@ -178,46 +179,34 @@ fun AmoHomeContent(
                 )
             }
             (hero as? RoleHero.Amo)?.let { h -> AmoDayCard(h, money(h.teamSalesMtk), Modifier.padding(horizontal = 4.dp)) }
-            // the quiet status lines: the sync state, what today's data check found, and the device figures (F-SR-064)
-            AmoStatusLine(sync, onSync, Modifier.padding(horizontal = 4.dp).testTag(RoleHomeTags.SYNC))
-            if (!(user.offline && bundle == BundleStatus.Offline)) {
-                Text(amoBundleLine(bundle), style = inkStyle(12, color = look.inkMuted), modifier = Modifier.padding(horizontal = 8.dp).testTag(HomeTags.BUNDLE))
-            }
-            health?.let { h ->
-                Column(Modifier.padding(horizontal = 8.dp).testTag(RoleHomeTags.DEVICE), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    listOf(
-                        stringResource(HomeR.string.hm_health_battery, localizedNumber(h.batteryPct.toLong())),
-                        stringResource(HomeR.string.hm_health_storage, localizedNumber(h.freeStorageMb)),
-                        stringResource(HomeR.string.hm_health_pending, localizedNumber(h.pendingRows.toLong())),
-                        h.lastSyncAgeMin?.let { stringResource(HomeR.string.hm_health_sync, localizedNumber(it)) } ?: stringResource(HomeR.string.hm_health_never_synced),
-                    ).forEach { Text(it, style = inkStyle(12, color = look.inkMuted)) }
+            // the shared sync-status footer of the AMO and TSO homes: the sync state, then what today's data check found and the device figures (F-SR-064)
+            val status = amoSyncText(sync)
+            val details = buildList {
+                if (!(user.offline && bundle == BundleStatus.Offline)) add(amoBundleLine(bundle))
+                health?.let { h ->
+                    add(stringResource(HomeR.string.hm_health_battery, localizedNumber(h.batteryPct.toLong())))
+                    add(stringResource(HomeR.string.hm_health_storage, localizedNumber(h.freeStorageMb)))
+                    add(stringResource(HomeR.string.hm_health_pending, localizedNumber(h.pendingRows.toLong())))
+                    add(h.lastSyncAgeMin?.let { stringResource(HomeR.string.hm_health_sync, localizedNumber(it)) } ?: stringResource(HomeR.string.hm_health_never_synced))
                 }
-                if (h.anyWarning) AmoNotice(stringResource(HomeR.string.hm_health_warning), Modifier.padding(horizontal = 4.dp), warning = true)
             }
+            val tap = if (onSync != null) Modifier.clickable(role = Role.Button, onClickLabel = stringResource(CoreR.string.core_ui_chip_open_sync), onClick = onSync) else Modifier
+            AronSyncFooter(
+                status, details, Modifier.testTag(RoleHomeTags.SYNC).then(tap),
+                synced = sync is SyncChipState.Synced || sync is SyncChipState.SyncedAt,
+            )
+            if (health?.anyWarning == true) AmoNotice(stringResource(HomeR.string.hm_health_warning), Modifier.padding(horizontal = 4.dp), warning = true)
         }
     }
 }
 
-/** The sync state as one quiet line in token colours only: a purple check and grey ink (a warning state uses the red token); taps open the sync sheet when the host has one. */
 @Composable
-private fun AmoStatusLine(state: SyncChipState, onClick: (() -> Unit)?, modifier: Modifier = Modifier) {
-    val look = LocalAronLook.current
-    val text = when (state) {
-        SyncChipState.Offline -> stringResource(CoreR.string.core_ui_chip_offline)
-        SyncChipState.Syncing -> stringResource(CoreR.string.core_ui_chip_syncing)
-        SyncChipState.Synced -> stringResource(CoreR.string.core_ui_chip_synced)
-        is SyncChipState.SyncedAt -> stringResource(CoreR.string.core_ui_chip_synced_at, state.timeText)
-        is SyncChipState.Waiting -> stringResource(CoreR.string.core_ui_chip_waiting, localizedNumber(state.count.toLong()))
-    }
-    val bad = state is SyncChipState.Offline || state is SyncChipState.Waiting
-    val glyph = when (state) { SyncChipState.Offline -> "!"; is SyncChipState.Waiting -> "!"; SyncChipState.Syncing -> "…"; else -> "✓" }
-    Row(
-        modifier.heightIn(min = 48.dp).let { if (onClick != null) it.clickable(role = Role.Button, onClickLabel = stringResource(CoreR.string.core_ui_chip_open_sync), onClick = onClick) else it },
-        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        Text(glyph, style = inkStyle(16, bold = true, color = if (bad) look.red else look.purple), modifier = Modifier.clearAndSetSemantics { })
-        Text(text, style = inkStyle(14, bold = bad, color = if (bad) look.red else look.inkMuted))
-    }
+private fun amoSyncText(state: SyncChipState): String = when (state) {
+    SyncChipState.Offline -> stringResource(CoreR.string.core_ui_chip_offline)
+    SyncChipState.Syncing -> stringResource(CoreR.string.core_ui_chip_syncing)
+    SyncChipState.Synced -> stringResource(CoreR.string.core_ui_chip_synced)
+    is SyncChipState.SyncedAt -> stringResource(CoreR.string.core_ui_chip_synced_at, state.timeText)
+    is SyncChipState.Waiting -> stringResource(CoreR.string.core_ui_chip_waiting, localizedNumber(state.count.toLong()))
 }
 
 @Composable

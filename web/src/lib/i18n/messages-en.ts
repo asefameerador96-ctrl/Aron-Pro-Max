@@ -30,7 +30,7 @@ export const en = {
   "auth.username": "User ID",
   "auth.password": "Password",
   "auth.submit": "Sign in",
-  "auth.logout": "Sign out",
+  "auth.logout": "Logout",
   "auth.mfa.title": "Second step",
   "auth.mfa.hint": "Enter the 6-digit code from your authenticator app, or a recovery code.",
   "auth.mfa.code": "Code",
