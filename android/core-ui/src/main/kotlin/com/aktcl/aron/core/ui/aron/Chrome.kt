@@ -31,6 +31,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -143,24 +145,31 @@ fun AronTopBar(
 
 /**
  * The printer state at the end of the top bar (sr/stock.webp): a light round badge with a red crossed printer while no printer is
- * connected, a purple printer once one is. [label] is the TalkBack text of the state; tapping it opens the connect flow.
+ * connected, a purple printer once one is. [label] is the TalkBack text of the state; tapping it opens the connect flow. Inside an
+ * [AronInfoCard] it is drawn flat, grey and with a smaller printer, as on sr/summary.png.
  */
 @Composable
 fun AronPrinterBadge(connected: Boolean, label: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
     val look = LocalAronLook.current
+    val inCard = LocalBadgeInCard.current
     Box(
         modifier
             .size(AronLook.Touch + 4.dp)
-            .shadow(3.dp, CircleShape)
+            .then(if (inCard) Modifier else Modifier.shadow(3.dp, CircleShape))
             .clip(CircleShape)
-            .background(look.rowAlt)
+            .background(if (inCard) look.page else look.rowAlt)
             .clickable(role = Role.Button, onClick = onClick)
             .semantics { contentDescription = label },
         contentAlignment = Alignment.Center,
     ) {
-        GlyphCanvas(Modifier.size(28.dp)) { printer(if (connected) look.printerOn else look.printerOff, crossed = !connected, gap = look.card) }
+        GlyphCanvas(Modifier.size(if (inCard) 20.dp else 28.dp)) {
+            printer(if (connected) look.printerOn else look.printerOff, crossed = !connected, gap = if (inCard) look.page else look.card)
+        }
     }
 }
+
+/** True inside [AronInfoCard]'s trailing slot: [AronPrinterBadge] draws its flat in-card form there. */
+private val LocalBadgeInCard = staticCompositionLocalOf { false }
 
 /**
  * The screen frame (PARITY-SPEC s2.2): the [topBar], the content on the light grey `aron.page` (white for the Home grid: [home]),
@@ -344,11 +353,11 @@ fun AronInfoCard(text: String, modifier: Modifier = Modifier, trailing: (@Compos
         modifier.fillMaxWidth().clip(shape).background(look.card).border(1.dp, look.underline.copy(alpha = 0.4f), shape).padding(16.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Box(Modifier.size(24.dp).clip(CircleShape).background(look.inkMuted), contentAlignment = Alignment.Center) {
-            GlyphCanvas(Modifier.size(24.dp)) { info(Color.White) }
+        Box(Modifier.size(20.dp).clip(CircleShape).background(look.inkMuted), contentAlignment = Alignment.Center) {
+            GlyphCanvas(Modifier.size(20.dp)) { info(Color.White) }
         }
         Text(text, style = lookStyle(15.sp, color = look.ink), modifier = Modifier.weight(1f).padding(horizontal = 12.dp))
-        trailing?.invoke()
+        if (trailing != null) CompositionLocalProvider(LocalBadgeInCard provides true) { trailing() }
     }
 }
 

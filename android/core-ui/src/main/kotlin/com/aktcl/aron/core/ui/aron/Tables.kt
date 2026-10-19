@@ -255,7 +255,8 @@ fun SummaryTable(
     val n = headers.size
     val w = weights ?: if (n == SummaryWeights6.size) SummaryWeights6 else List(n) { 1f }
     Column(modifier.fillMaxWidth().clip(RoundedCornerShape(AronLook.CardRadius)).background(look.card)) {
-        Row(Modifier.fillMaxWidth().background(look.tableHeader).padding(horizontal = 10.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+        // header row about 25 units tall on sr/summary.png: 7 dp padding keeps two-line headers inside 48 dp
+        Row(Modifier.fillMaxWidth().background(look.tableHeader).padding(horizontal = 10.dp, vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
             headers.forEachIndexed { i, h ->
                 FitText(h, lookStyle(11.sp, bold = true, color = Color.White, align = cellAlign(i, n)), 7.sp, Modifier.weight(w[i]).padding(horizontal = 1.dp), maxLines = 2)
             }
