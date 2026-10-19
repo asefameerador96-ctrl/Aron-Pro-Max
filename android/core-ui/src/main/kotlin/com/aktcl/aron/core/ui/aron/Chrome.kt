@@ -88,8 +88,8 @@ internal fun lookStyle(
     size: TextUnit, bold: Boolean = false, color: Color = Color.Unspecified, align: TextAlign = TextAlign.Unspecified, medium: Boolean = false,
     semibold: Boolean = false,
 ) = TextStyle(
-    // Bangla: the bundled Noto Sans Bengali, which carries no ASCII glyphs, so Latin letters and ASCII digits inside Bangla text fall
-    // back to the system Roboto as in the reference app (tools/ui-kit/aron_fonts.py); English: the system Roboto
+    // Bangla: the bundled Noto Sans Bengali (its Latin glyphs stay: core-printing shares the files); English: the system Roboto,
+    // the reference app's Latin face
     fontFamily = if (LocalAppLanguage.current == AppLanguage.BN) AronFonts.Bengali else FontFamily.Default,
     fontSize = size, color = color, textAlign = align,
     fontWeight = when {
