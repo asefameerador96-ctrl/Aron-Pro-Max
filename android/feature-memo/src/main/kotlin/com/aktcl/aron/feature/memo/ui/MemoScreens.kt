@@ -39,6 +39,10 @@ import com.aktcl.aron.core.ui.AronBanner
 import com.aktcl.aron.core.ui.AronLook
 import com.aktcl.aron.core.ui.LocalAronLook
 import com.aktcl.aron.core.ui.aron.AronInfoCard
+import com.aktcl.aron.core.ui.aron.AronSectionHeader
+import com.aktcl.aron.core.ui.aron.AronSolidButton
+import com.aktcl.aron.core.ui.aron.AronTextButton
+import com.aktcl.aron.core.ui.aron.SolidTone
 import com.aktcl.aron.core.ui.aron.AronPrimaryButton
 import com.aktcl.aron.core.ui.aron.ButtonGlyph
 import com.aktcl.aron.core.ui.aron.SummaryRow
@@ -74,7 +78,6 @@ import com.aktcl.aron.core.ui.AronIcons
 import com.aktcl.aron.core.ui.AronListRow
 import com.aktcl.aron.core.ui.AronYesButton
 import com.aktcl.aron.core.ui.AronSectionLabel
-import com.aktcl.aron.core.ui.AronTextButton
 import com.aktcl.aron.core.ui.AronTokens
 import com.aktcl.aron.core.ui.BannerKind
 import com.aktcl.aron.core.ui.LocalAppLanguage
@@ -132,23 +135,6 @@ internal fun WhiteCard(modifier: Modifier = Modifier, content: @Composable Colum
     Column(modifier.fillMaxWidth().clip(RoundedCornerShape(AronLook.CardRadius)).background(LocalAronLook.current.card), content = content)
 }
 
-/** A filled, rounded action button in one solid colour (the amber Edit and the green Mark paid of the manual); the gradient primary is [AronPrimaryButton]. */
-@Composable
-internal fun SolidButton(text: String, color: Color, onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true) {
-    val look = LocalAronLook.current
-    Box(
-        modifier
-            .heightIn(min = AronLook.ButtonHeight)
-            .clip(RoundedCornerShape(AronLook.ButtonRadius))
-            .background(if (enabled) color else look.disabledFill)
-            .clickable(enabled = enabled, role = Role.Button, onClick = onClick),
-        contentAlignment = Alignment.Center,
-    ) { Text(text, style = MaterialTheme.typography.titleMedium, color = if (enabled) Color.White else look.disabledText, textAlign = TextAlign.Center, modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) }
-}
-
-private val EditAmber = Color(0xFFC77700)
-private val PaidGreen = Color(0xFF2E7D32)
-
 /**
  * The Memo menu (F-SR-030; PARITY-SPEC memo.md): the info card (dismissible per day: [onDismissBanner] fires and the host
  * remembers the business date, [bannerDismissed] hides it; [printerBadge] is the host's printer state), then today's live memos
@@ -169,12 +155,7 @@ fun MemoMenuScreen(
     ScrollColumn(modifier.background(look.page), contentPadding = PaddingValues(AronTokens.Space.Screen), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.M)) {
         if (!bannerDismissed) {
             AronInfoCard(stringResource(R.string.memo_banner), trailing = printerBadge)
-            if (onDismissBanner != null) {
-                Text(
-                    stringResource(R.string.memo_banner_dismiss), style = MaterialTheme.typography.bodyMedium, color = look.purple,
-                    modifier = Modifier.align(Alignment.End).heightIn(min = AronLook.Touch).clickable(role = Role.Button, onClick = onDismissBanner).padding(horizontal = AronTokens.Space.M, vertical = AronTokens.Space.M),
-                )
-            }
+            if (onDismissBanner != null) AronTextButton(stringResource(R.string.memo_banner_dismiss), onDismissBanner, Modifier.align(Alignment.End))
         }
         if (rows.isEmpty()) {
             Text(
@@ -182,7 +163,7 @@ fun MemoMenuScreen(
                 modifier = Modifier.fillMaxWidth().padding(vertical = AronTokens.Space.Xl),
             )
         } else {
-            Text(stringResource(R.string.memo_section_today), style = MaterialTheme.typography.titleMedium, color = look.purple)
+            AronSectionHeader(stringResource(R.string.memo_section_today))
             WhiteCard {
                 rows.forEachIndexed { i, r ->
                     if (i > 0) Box(Modifier.fillMaxWidth().height(1.dp).background(look.tileHairline))
@@ -294,8 +275,8 @@ fun MemoDetailView(
         // a disabled action always says why, above the buttons
         listOfNotNull(printDisabledReason, editDisabledReason).forEach { Text(it, style = MaterialTheme.typography.bodySmall, color = look.inkMuted) }
         AronPrimaryButton(stringResource(R.string.memo_print), onPrint, Modifier.fillMaxWidth(), enabled = printDisabledReason == null && !printing, glyph = ButtonGlyph.Print)
-        SolidButton(stringResource(R.string.memo_edit), EditAmber, onEdit, Modifier.fillMaxWidth(), enabled = editDisabledReason == null)
-        if (onHistory != null) AronTextButton(stringResource(R.string.history_title), onHistory, Modifier.fillMaxWidth(), icon = AronIcons.Calendar)
+        AronSolidButton(stringResource(R.string.memo_edit), onEdit, Modifier.fillMaxWidth(), tone = SolidTone.Amber, enabled = editDisabledReason == null)
+        if (onHistory != null) AronTextButton(stringResource(R.string.history_title), onHistory, Modifier.fillMaxWidth())
     }
     if (confirm) {
         AronConfirmDialog(
@@ -314,7 +295,7 @@ private fun CreditBox(dueText: String, canMarkPaid: Boolean, onMarkPaid: () -> U
         Column(Modifier.weight(1f).padding(AronTokens.Space.L), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.M)) {
             Text(stringResource(R.string.memo_credit_title), style = MaterialTheme.typography.titleSmall, color = look.ink)
             Text(stringResource(R.string.memo_due, dueText), style = MaterialTheme.typography.bodyLarge, color = look.ink)
-            if (canMarkPaid) SolidButton(stringResource(R.string.memo_mark_paid), PaidGreen, onMarkPaid, Modifier.fillMaxWidth()) // the manual's green "পরিশোধিত করুন" (M6)
+            if (canMarkPaid) AronSolidButton(stringResource(R.string.memo_mark_paid), onMarkPaid, Modifier.fillMaxWidth(), tone = SolidTone.Green) // the manual's green "পরিশোধিত করুন" (M6)
         }
     }
 }

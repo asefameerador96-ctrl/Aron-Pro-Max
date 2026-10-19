@@ -1,5 +1,6 @@
 package com.aktcl.aron.feature.auth
 
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.Arrangement
@@ -51,6 +52,9 @@ import com.aktcl.aron.core.ui.AronTokens
 import com.aktcl.aron.core.ui.BannerKind
 import com.aktcl.aron.core.ui.LocalAronLook
 import com.aktcl.aron.core.ui.aron.AronInfoCard
+import com.aktcl.aron.core.ui.aron.AronLanguageToggle
+import com.aktcl.aron.core.ui.aron.AronSunToggle
+import com.aktcl.aron.core.ui.aron.AronTextButton
 import com.aktcl.aron.core.ui.aron.AronNoticeCard
 import com.aktcl.aron.core.ui.aron.AronPrimaryButton
 import com.aktcl.aron.core.ui.aron.AronSecondaryButton
@@ -62,10 +66,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.Role
-import com.aktcl.aron.core.ui.LanguageToggle
 import com.aktcl.aron.core.ui.LocalAppLanguage
 import com.aktcl.aron.core.ui.LocalAronColors
-import com.aktcl.aron.core.ui.SunlightToggle
 import com.aktcl.aron.core.ui.aronFocusRing
 
 /** The 56 dp field of android-glass s6.12. */
@@ -85,8 +87,15 @@ internal fun AuthTopRow(onLanguageSelect: (AppLanguage) -> Unit, sunlight: Boole
         Modifier.fillMaxWidth().windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top)).heightIn(min = AronTokens.Touch.Min),
         horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically,
     ) {
-        LanguageToggle(current = LocalAppLanguage.current, onSelect = onLanguageSelect)
-        if (onSunlight != null) SunlightToggle(sunlight, onSunlight)
+        AronLanguageToggle(
+            stringResource(com.aktcl.aron.core.ui.R.string.core_ui_language_bangla), stringResource(com.aktcl.aron.core.ui.R.string.core_ui_language_english),
+            banglaSelected = LocalAppLanguage.current == AppLanguage.BN,
+            onSelect = { bangla -> onLanguageSelect(if (bangla) AppLanguage.BN else AppLanguage.EN) },
+        )
+        if (onSunlight != null) {
+            Spacer(Modifier.width(AronTokens.Space.S))
+            AronSunToggle(sunlight, onSunlight, stringResource(com.aktcl.aron.core.ui.R.string.core_ui_sunlight_toggle))
+        }
     }
 }
 
@@ -138,14 +147,9 @@ internal fun AuthBanner(text: String, modifier: Modifier = Modifier, kind: Banne
     }
 }
 
-/** A text action in `aron.purple` (48 dp target). */
+/** A text action in `aron.purple`: the kit's underlined text button. */
 @Composable
-internal fun AuthLink(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true) {
-    val look = LocalAronLook.current
-    Box(modifier.heightIn(min = AronLook.Touch).clickable(enabled = enabled, role = Role.Button, onClick = onClick), contentAlignment = Alignment.Center) {
-        Text(text, style = MaterialTheme.typography.titleSmall, color = if (enabled) look.purple else look.disabledText, textAlign = TextAlign.Center, modifier = Modifier.padding(horizontal = AronTokens.Space.M))
-    }
-}
+internal fun AuthLink(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true) = AronTextButton(text, onClick, modifier, enabled)
 
 /**
  * The kit-styled text field (android-glass s6.12): 56 dp, `radius.chip`, `surface.solid.raised`, a 1 dp `border.input`

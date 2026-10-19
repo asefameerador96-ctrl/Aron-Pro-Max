@@ -56,6 +56,7 @@ import com.aktcl.aron.core.ui.AronTokens
 import com.aktcl.aron.core.ui.LocalAronColors
 import com.aktcl.aron.core.ui.LocalAronLook
 import com.aktcl.aron.core.ui.aron.AronPrimaryButton
+import com.aktcl.aron.core.ui.aron.AronTabs
 import com.aktcl.aron.core.ui.localizedDigits
 import com.aktcl.aron.core.ui.localizedNumber
 
@@ -99,7 +100,7 @@ fun TaskContent(state: TaskListState, onResolve: (String) -> Unit, modifier: Mod
             if (state.showEmptyState) {
                 EmptyTasks(stringResource(R.string.tsk_empty), synced.takeIf { stale }, Modifier.testTag(TaskTags.EMPTY))
             } else {
-                TaskTabs(
+                AronTabs(
                     listOf(
                         stringResource(R.string.tsk_tab_open, localizedNumber(open.size.toLong())),
                         stringResource(R.string.tsk_tab_done, localizedNumber(done.size.toLong())),
@@ -141,23 +142,6 @@ private fun EmptyTasks(text: String, synced: String?, modifier: Modifier = Modif
     Column(modifier.fillMaxSize().padding(AronTokens.Space.Screen), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
         Text(text, style = MaterialTheme.typography.bodyLarge.copy(lineBreak = LineBreak.Paragraph), color = look.ink, textAlign = TextAlign.Center, modifier = Modifier.widthIn(max = 240.dp))
         if (synced != null) Text(synced, style = MaterialTheme.typography.bodySmall, color = look.inkMuted, textAlign = TextAlign.Center, modifier = Modifier.padding(top = AronTokens.Space.S))
-    }
-}
-
-/** The ongoing / completed tabs: the selected one filled `aron.purple`, the other white; each carries its count and the tab role. */
-@Composable
-private fun TaskTabs(labels: List<String>, selected: Int, onSelect: (Int) -> Unit, modifier: Modifier = Modifier) {
-    val look = LocalAronLook.current
-    Row(modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
-        labels.forEachIndexed { i, label ->
-            val on = i == selected
-            Box(
-                Modifier.weight(1f).heightIn(min = AronLook.Touch).clip(RoundedCornerShape(AronLook.CardRadius))
-                    .background(if (on) look.purple else look.card)
-                    .selectable(selected = on, role = Role.Tab, onClick = { onSelect(i) }),
-                contentAlignment = Alignment.Center,
-            ) { Text(label, style = MaterialTheme.typography.titleSmall, color = if (on) Color.White else look.purple, textAlign = TextAlign.Center, modifier = Modifier.padding(AronTokens.Space.S)) }
-        }
     }
 }
 

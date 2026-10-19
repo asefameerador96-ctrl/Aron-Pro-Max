@@ -28,6 +28,7 @@ import com.aktcl.aron.core.ui.AronLook
 import com.aktcl.aron.core.ui.AronTokens
 import com.aktcl.aron.core.ui.LocalAronLook
 import com.aktcl.aron.core.ui.aron.AronInfoCard
+import com.aktcl.aron.core.ui.aron.AronSectionHeader
 import com.aktcl.aron.core.ui.MoneyText
 import com.aktcl.aron.core.ui.localizedDigits
 import com.aktcl.aron.feature.memo.R
@@ -55,7 +56,7 @@ fun SaleHistoryScreen(
             )
         }
         if (h.days.isNotEmpty()) {
-            Text(stringResource(R.string.history_pick_date), style = MaterialTheme.typography.titleMedium, color = look.purple)
+            AronSectionHeader(stringResource(R.string.history_pick_date))
             WhiteCard {
                 h.days.forEachIndexed { i, d ->
                     if (i > 0) CardDivider()

@@ -63,13 +63,14 @@ import com.aktcl.aron.core.common.AppLanguage
 import com.aktcl.aron.core.ui.AronConfirmDialog
 import com.aktcl.aron.core.ui.AronEasing
 import com.aktcl.aron.core.ui.AronIcons
-import com.aktcl.aron.core.ui.AronPressAndHoldButton
-import com.aktcl.aron.core.ui.AronTextButton
 import com.aktcl.aron.core.ui.AronLook
 import com.aktcl.aron.core.ui.AronTokens
 import com.aktcl.aron.core.ui.LocalAronLook
 import com.aktcl.aron.core.ui.aron.AronDataTable
+import com.aktcl.aron.core.ui.aron.AronHoldButton
 import com.aktcl.aron.core.ui.aron.AronNoticeCard
+import com.aktcl.aron.core.ui.aron.AronSheet
+import com.aktcl.aron.core.ui.aron.AronTextButton as AronLinkButton
 import com.aktcl.aron.core.ui.aron.AronPrimaryButton
 import com.aktcl.aron.core.ui.aron.AronStatusDot
 import com.aktcl.aron.core.ui.aron.ButtonGlyph
@@ -172,9 +173,9 @@ fun SalesSubmitScreen(
                 if (mismatches.isNotEmpty()) {
                     // one notice names every mismatch (never silent) and offers the sync again; the table row carries the same word
                     val lines = mismatches.map { blockText(it, typeLabel) }
-                    NoticeCard(
-                        lines.joinToString(separator = "\n"), Notice.Warning, title = stringResource(R.string.submit_row_mismatch),
-                        actionLabel = if (SalesSubmitRules.syncButtonEnabled(online, syncing)) stringResource(R.string.submit_sync_again) else null, onAction = onSync,
+                    AronNoticeCard(
+                        lines.joinToString(separator = "\n"),
+                        action = if (SalesSubmitRules.syncButtonEnabled(online, syncing)) stringResource(R.string.submit_sync_again) else null, onAction = onSync,
                     )
                 }
                 gate.notes.forEach { n -> NoticeCard(blockText(n, typeLabel), Notice.Info) }
@@ -204,8 +205,17 @@ fun SalesSubmitScreen(
                 onConfirm = { duesAsk = false; hold = true }, onDismiss = { duesAsk = false },
             )
         }
-        val summary = stringResource(R.string.submit_hold_summary, localizedNumber(counts.sumOf { it.device }.toLong()))
-        HoldSheet(hold, stringResource(R.string.submit_hold_title), AronIcons.Submit, summary, onCancel = { hold = false }, onConfirmed = { hold = false; onSubmit() })
+        if (hold) {
+            // the hold step (screens-sr s11, the irreversible close of the day): the kit sheet with the press-and-hold confirm; Back, a tap outside or "Cancel" close it without committing
+            AronSheet(stringResource(R.string.submit_hold_title), onDismiss = { hold = false }) {
+                Text(stringResource(R.string.submit_hold_summary, localizedNumber(counts.sumOf { it.device }.toLong())), style = MaterialTheme.typography.bodyMedium, color = look.inkMuted, modifier = Modifier.fillMaxWidth())
+                Spacer(Modifier.height(AronTokens.Space.M))
+                AronHoldButton(stringResource(R.string.submit_hold_label), { hold = false; onSubmit() }, Modifier.testTag(SalesSubmitTags.HOLD))
+                Text(stringResource(R.string.submit_hold_hint), style = MaterialTheme.typography.bodySmall, color = look.inkMuted, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth().padding(vertical = AronTokens.Space.S))
+                AronLinkButton(stringResource(R.string.submit_cancel), { hold = false }, Modifier.fillMaxWidth())
+                Spacer(Modifier.height(AronTokens.Space.M))
+            }
+        }
     }
 }
 
@@ -223,7 +233,7 @@ private fun NoticeCard(text: String, kind: Notice, title: String? = null, action
         Column(Modifier.weight(1f).padding(AronTokens.Space.L), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
             if (title != null) Text(title, style = MaterialTheme.typography.titleSmall, color = look.ink)
             Text(text, style = MaterialTheme.typography.bodyMedium, color = if (kind == Notice.Success) OkInk else look.ink)
-            if (actionLabel != null) AronTextButton(actionLabel, onAction)
+            if (actionLabel != null) AronLinkButton(actionLabel, onAction)
         }
     }
 }
@@ -255,7 +265,6 @@ private fun CountsTable(counts: List<CountView>, typeLabel: (String) -> String) 
         val mismatchWord = stringResource(R.string.submit_row_mismatch)
         val blank = stringResource(R.string.submit_server_blank)
         AronDataTable(
-            weights = listOf(5f, 2f, 1.6f),
             headers = listOf(stringResource(R.string.submit_col_item), stringResource(R.string.submit_col_device), stringResource(R.string.submit_col_server)),
             rows = counts.map { row ->
                 val word = when { row.server == null -> waitingWord; !row.matches -> mismatchWord; else -> null }
@@ -326,76 +335,3 @@ private fun blockText(b: SubmitBlock, typeLabel: (String) -> String): String = w
     is SubmitBlock.Quarantined -> stringResource(R.string.submit_note_quarantined, localizedNumber(b.count.toLong()))
 }
 
-/** A 44 dp round well in `aron.purple` with a white 24 dp glyph. */
-@Composable
-private fun IconWell(icon: ImageVector) {
-    val look = LocalAronLook.current
-    Box(Modifier.size(AronTokens.Size.Well).clip(CircleShape).background(look.purple), contentAlignment = Alignment.Center) {
-        Icon(icon, contentDescription = null, tint = Color.White, modifier = Modifier.size(AronTokens.Size.Icon))
-    }
-}
-
-/**
- * The hold step (screens-sr s11, the irreversible close of the day): an in-tree solid Sheet surface over a scrim with the
- * title, the record count and the press-and-hold button; the scrim, Back or "Cancel" close it without committing.
- * TalkBack users confirm with the long-click action. Motion (android-glass s6.8): the sheet translates up on a spring
- * and down over `motion.base` on exit while the scrim fades in the draw phase (no offscreen layer); reduced motion: a
- * 120 ms fade. Until an overlay host exists the sheet lives in the content slot, so the scrim stops under the host top
- * bar (open issue for core-ui).
- */
-@Composable
-private fun HoldSheet(visible: Boolean, title: String, icon: ImageVector, summary: String, onCancel: () -> Unit, onConfirmed: () -> Unit) {
-    val c = LocalAronColors.current
-    val sheetFill = LocalAronLook.current.card
-    val reduced = LocalReducedMotion.current
-    val scrim = c.surfaceScrim
-    val handle = c.textSecondary.copy(alpha = 0.7f)
-    BackHandler(enabled = visible, onBack = onCancel)
-    val scrimT by animateFloatAsState(if (visible) 1f else 0f, tween(if (reduced) AronTokens.Motion.Reduced else AronTokens.Motion.Base, easing = LinearEasing))
-    AnimatedVisibility(
-        visible,
-        enter = if (reduced) fadeIn(tween(AronTokens.Motion.Reduced, easing = LinearEasing)) else EnterTransition.None,
-        exit = if (reduced) fadeOut(tween(AronTokens.Motion.Reduced, easing = LinearEasing)) else ExitTransition.None,
-    ) {
-        // the sheet's own enter and exit inside the overlay: a spring translation up, a `motion.base` ease-in down
-        val sheetMotion = if (reduced) Modifier else Modifier.animateEnterExit(
-            enter = slideInVertically(spring(stiffness = Spring.StiffnessMediumLow, visibilityThreshold = IntOffset.VisibilityThreshold)) { it },
-            exit = slideOutVertically(tween(AronTokens.Motion.Base, easing = AronEasing.In)) { it },
-        )
-        Box(
-            Modifier
-                .fillMaxSize()
-                .drawBehind { drawRect(scrim.copy(alpha = scrim.alpha * scrimT)) }
-                .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = onCancel),
-        ) {
-            Box(
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .fillMaxWidth()
-                    .then(sheetMotion)
-                    .clip(RoundedCornerShape(topStart = AronTokens.Radius.Card, topEnd = AronTokens.Radius.Card))
-                    .background(sheetFill)
-                    .pointerInput(Unit) { detectTapGestures { } }, // the sheet swallows taps without an actionable node for TalkBack
-            ) {
-                Column(
-                    Modifier
-                        .fillMaxWidth()
-                        .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal))
-                        .padding(start = AronTokens.Space.L, end = AronTokens.Space.L, bottom = AronTokens.Space.L),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(AronTokens.Space.M),
-                ) {
-                    Box(Modifier.padding(top = AronTokens.Space.S, bottom = AronTokens.Space.S).size(36.dp, 4.dp).drawBehind { drawRoundRect(handle, cornerRadius = CornerRadius(2.dp.toPx())) })
-                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.M)) {
-                        IconWell(icon)
-                        Text(title, style = MaterialTheme.typography.titleLarge, color = c.textPrimary, modifier = Modifier.weight(1f))
-                    }
-                    Text(summary, style = MaterialTheme.typography.bodyMedium, color = c.textSecondary, modifier = Modifier.fillMaxWidth())
-                    AronPressAndHoldButton(stringResource(R.string.submit_hold_label), onConfirmed, Modifier.testTag(SalesSubmitTags.HOLD))
-                    Text(stringResource(R.string.submit_hold_hint), style = MaterialTheme.typography.bodySmall, color = c.textSecondary, textAlign = TextAlign.Center)
-                    AronTextButton(stringResource(R.string.submit_cancel), onCancel, Modifier.fillMaxWidth())
-                }
-            }
-        }
-    }
-}
