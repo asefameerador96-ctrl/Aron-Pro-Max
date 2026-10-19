@@ -209,9 +209,16 @@ fun VisitQueryScreen(state: VisitQueryState, outletTitle: String, onDone: (deleg
 private fun YesNo(value: Boolean?, onPick: (Boolean) -> Unit, yesTag: String, noTag: String) {
     // two equal, full-width targets: easy to hit with a thumb outdoors; the chosen one also says so with a tick, never by colour alone
     androidx.compose.foundation.layout.Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.M)) {
-        com.aktcl.aron.core.ui.AronYesButton(stringResource(R.string.tso_mc_yes) + if (value == true) " ✓" else "", { onPick(true) }, Modifier.weight(1f).testTag(yesTag))
-        com.aktcl.aron.core.ui.AronNoButton(stringResource(R.string.tso_mc_no) + if (value == false) " ✓" else "", { onPick(false) }, Modifier.weight(1f).testTag(noTag))
+        // the chosen answer is the gradient button (and carries the tick), the other one is the grey button
+        YesNoButton(stringResource(R.string.tso_mc_yes) + if (value == true) " ✓" else "", value == true, { onPick(true) }, Modifier.weight(1f).testTag(yesTag))
+        YesNoButton(stringResource(R.string.tso_mc_no) + if (value == false) " ✓" else "", value == false, { onPick(false) }, Modifier.weight(1f).testTag(noTag))
     }
+}
+
+@Composable
+private fun YesNoButton(text: String, chosen: Boolean, onClick: () -> Unit, modifier: Modifier) {
+    if (chosen) com.aktcl.aron.core.ui.aron.AronPrimaryButton(text, onClick, modifier)
+    else com.aktcl.aron.core.ui.aron.AronSecondaryButton(text, onClick, modifier)
 }
 
 /** F-TSO-016 Assign Task. */
