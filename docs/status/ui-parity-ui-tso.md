@@ -51,3 +51,5 @@ Target Status (S-21, S-22) stays hidden: deferred (docs/27).
 
 ## Local state (2026-10-19)
 `android/core-ui` in `lane/ui-tso` equals ui-kit `abac6ba4` (diff empty); the extra ui-kit commits merged are scripts and a handover note only. 704183d5 (PackCard) is NOT merged, per the lead's kit rule.
+6. **Home tile label autosize** (QA, ui-kit): the kit tile pads its label 2 dp each side, so 'আমার পরিধি' runs edge to edge at 360 dp; shrink-to-fit or 4 dp padding in `AronTile`. The term 'আমার পরিধি' (My Periphery) is the manual's drawer title.
+7. **Shared sync-status footer** with token colours (QA): TSO keeps a plain grey line until the kit has the component.

@@ -1,5 +1,6 @@
 package com.aktcl.aron.feature.tso
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -13,18 +14,22 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import com.aktcl.aron.core.ui.LocalAronLook
 import com.aktcl.aron.core.ui.SyncChipState
-import com.aktcl.aron.core.ui.aron.AronCard
 import com.aktcl.aron.core.ui.aron.AronHomeHeader
 import com.aktcl.aron.core.ui.aron.AronScaffold
 import com.aktcl.aron.core.ui.aron.AronTile
@@ -111,7 +116,7 @@ private fun SyncLine(sync: SyncChipState, onSync: (() -> Unit)?) {
         SyncChipState.Offline -> stringResource(CoreR.string.core_ui_chip_offline)
         SyncChipState.Syncing -> stringResource(CoreR.string.core_ui_chip_syncing)
         SyncChipState.Synced -> stringResource(CoreR.string.core_ui_chip_synced)
-        is SyncChipState.SyncedAt -> stringResource(CoreR.string.core_ui_chip_synced_at, sync.timeText)
+        is SyncChipState.SyncedAt -> stringResource(CoreR.string.core_ui_chip_synced_at, localizedDigits(sync.timeText))
         is SyncChipState.Waiting -> stringResource(CoreR.string.core_ui_chip_waiting, localizedNumber(sync.count.toLong()))
     }
     val open = stringResource(CoreR.string.core_ui_chip_open_sync)
@@ -126,10 +131,15 @@ private fun SyncLine(sync: SyncChipState, onSync: (() -> Unit)?) {
 private fun TsoZonesCard(hero: RoleHero) {
     val look = LocalAronLook.current
     if (hero !is RoleHero.Tso) return
-    AronCard(Modifier.testTag(RoleHomeTags.HERO)) {
-        Text(stringResource(R.string.rh_hero_tso_zones), style = MaterialTheme.typography.titleSmall, color = look.purple)
-        Text(localizedNumber(hero.zonesSubmitted.toLong()), style = MaterialTheme.typography.headlineMedium, color = look.ink)
-        Text(stringResource(R.string.rh_hero_tso_zones_of, localizedNumber(hero.zonesTotal.toLong())), style = MaterialTheme.typography.bodySmall, color = look.inkMuted)
+    // the gradient shell of the SR Target card and the AMO hero (#C74350 to #561F91): white title, 28 sp bold number, 14 sp caption
+    Column(
+        Modifier.fillMaxWidth().testTag(RoleHomeTags.HERO).clip(RoundedCornerShape(12.dp))
+            .background(Brush.verticalGradient(listOf(look.targetTop, look.targetBottom))).padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        Text(stringResource(R.string.rh_hero_tso_zones), style = MaterialTheme.typography.titleSmall, color = look.onPanel)
+        Text(localizedNumber(hero.zonesSubmitted.toLong()), style = MaterialTheme.typography.headlineMedium.copy(fontSize = 28.sp, fontWeight = FontWeight.Bold), color = look.onPanel)
+        Text(stringResource(R.string.rh_hero_tso_zones_of, localizedNumber(hero.zonesTotal.toLong())), style = MaterialTheme.typography.bodyMedium.copy(fontSize = 14.sp), color = look.onPanel)
     }
 }
 
