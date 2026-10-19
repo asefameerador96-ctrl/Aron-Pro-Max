@@ -187,6 +187,14 @@ class CloseShot {
         Parity("সেল", null) { com.aktcl.aron.feature.outlet.ForceSaleContent(com.aktcl.aron.feature.outlet.ForceReason.INTERNET_PROBLEM, photo, emptySet(), false, {}, {}, {}) }
     }
 
+    // font scale 2.0 review of the parity screens (labels wrap, numbers never clip)
+    @Test fun parity_fs2_summary() = shot("parity_fs2_summary", fontScale = 2f) { Parity("বিক্রয় সারসংক্ষেপ", com.aktcl.aron.core.ui.R.drawable.aron_art_summary) { Summary() } }
+    @Test fun parity_fs2_submit() = shot("parity_fs2_submit", fontScale = 2f) { Parity("বিক্রয় জমা", com.aktcl.aron.core.ui.R.drawable.aron_art_sales_submit) { SubmitClean() } }
+    @Test fun parity_fs2_memo() = shot("parity_fs2_memo", fontScale = 2f) { Parity("মেমো", com.aktcl.aron.core.ui.R.drawable.aron_art_memo) { Memo() } }
+    @Test fun parity_fs2_tasks() = shot("parity_fs2_tasks", fontScale = 2f) { Parity("টাস্ক", null) { Tasks() } }
+    @Test fun parity_fs2_login() = shot("parity_fs2_login", fontScale = 2f) { Login() }
+    @Test fun parity_fs2_outlet_menu() = shot("parity_fs2_outlet_menu", fontScale = 2f) { Parity("আউটলেট", com.aktcl.aron.core.ui.R.drawable.aron_art_outlet) { com.aktcl.aron.feature.outlet.OutletMenuContent({}, onOwnRequests = {}) } }
+
     @Test fun parity_summary_bn() = shot("parity_summary_bn") { Parity("বিক্রয় সারসংক্ষেপ", com.aktcl.aron.core.ui.R.drawable.aron_art_summary) { Summary() } }
 
     @Test fun attendance_a_bn_light() = shot("close_attendance_a_bn_light") { AttendanceA() }
