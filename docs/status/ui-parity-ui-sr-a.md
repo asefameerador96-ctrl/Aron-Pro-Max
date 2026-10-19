@@ -3,7 +3,7 @@
 Branch `lane/ui-sr-a`. Binding spec: `docs/ui-reference/PARITY-SPEC.md` (CLAUDE.md rule 14a). Kit: `android/core-ui` (lane ui-kit owns it).
 
 ## HANDOVER
-(empty: session 1 of the lane, started 2026-10-18). State: Home, Stock (11433dbf, CHECKED), then fda4ed67 (Home fixes, Sale, Attendance, Settings, Tutorial). Open: restyle QC, Credit and Slide screens of the sale flow; permission onboarding and route picker in OnboardingScreens; kit tip 704183d (PackCard weights) needs a golden re-record when merged; `RoleSettingsContent` (AMO/TSO) is ui-amo/ui-tso scope.
+(session 1 of the lane, 2026-10-18/19). State: Home, Stock, Sale (picker/list/review/QC/Credit/Slide), Attendance, Settings, Tutorial, permission onboarding and route picker are all on the parity kit and on INT or in the push after INT 186279f4. Open: letter strip on the product list (no function decided), PackCard line-total/price caption (kit slot exists now, not yet used), SubmitHost labels (ui-sr-b), `RoleSettingsContent` (ui-amo/ui-tso). Lint cannot run offline in the lane container (lint-gradle not cached): CI is the lint proof.
 
 ## Parity table
 | Screen | Reference | Status | What differs | sha |
