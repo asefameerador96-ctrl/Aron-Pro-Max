@@ -46,10 +46,20 @@ import com.aktcl.aron.core.ui.aron.SummaryTable
 import com.aktcl.aron.core.ui.aron.SummaryTotal
 import com.aktcl.aron.core.ui.aron.TotalsLine
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.semantics.Role
 import com.aktcl.aron.core.ui.aron.AronPrinterBadge
@@ -464,24 +474,30 @@ fun SummaryScreen(
 ) {
     val look = LocalAronLook.current
     val empty = summary.skus.isEmpty()
-    ScrollColumn(modifier.background(look.page), contentPadding = PaddingValues(AronTokens.Space.Screen), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.M)) {
-        AronInfoCard(stringResource(R.string.summary_banner), trailing = printerBadge)
-        if (empty) {
-            Text(
-                stringResource(R.string.summary_empty), style = MaterialTheme.typography.bodyLarge, color = look.inkMuted, textAlign = TextAlign.Center,
-                modifier = Modifier.fillMaxWidth().padding(vertical = AronTokens.Space.Xl),
-            )
-        } else {
-            if (tablesStacked()) {
-                // large text: the six columns cannot hold their numbers, so each SKU stacks its figures as caption-over-value pairs
+    val printButton: @Composable () -> Unit = {
+        AronPrimaryButton(
+            stringResource(R.string.summary_print), onPrint, Modifier.fillMaxWidth(),
+            enabled = !empty && !printing, glyph = ButtonGlyph.Print, reverse = true,
+        )
+    }
+    if (empty || tablesStacked()) {
+        // an empty day, or large text: the page scrolls as one and each SKU stacks its figures as caption-over-value pairs
+        ScrollColumn(modifier.background(look.page), contentPadding = PaddingValues(AronTokens.Space.Screen), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.M)) {
+            AronInfoCard(stringResource(R.string.summary_banner), trailing = printerBadge)
+            if (empty) {
+                Text(
+                    stringResource(R.string.summary_empty), style = MaterialTheme.typography.bodyLarge, color = look.inkMuted, textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth().padding(vertical = AronTokens.Space.Xl),
+                )
+            } else {
                 WhiteCard {
                     Column(Modifier.fillMaxWidth().padding(AronTokens.Space.L), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.M)) {
                         summary.skus.forEach { r ->
                             Text(skuName(r.skuId), style = MaterialTheme.typography.titleMedium, color = look.purple)
                             SummaryPairs(
                                 stringResource(R.string.summary_col_memos) to localizedNumber(r.memoCount.toLong()), stringResource(R.string.summary_col_qty) to localizedNumber(r.qtyBase),
-                                stringResource(R.string.summary_col_value) to amount(r.valueMtk), stringResource(R.string.summary_col_discount) to amount(r.discountMtk),
-                                stringResource(R.string.summary_col_after) to amount(r.discountedValueMtk), stringResource(R.string.summary_col_return) to localizedNumber(r.returnQtyBase),
+                                stringResource(R.string.summary_col_value) to takaAmount(r.valueMtk), stringResource(R.string.summary_col_discount) to amount(r.discountMtk),
+                                stringResource(R.string.summary_col_after) to takaAmount(r.discountedValueMtk), stringResource(R.string.summary_col_return) to localizedNumber(r.returnQtyBase),
                             )
                             CardDivider()
                         }
@@ -490,59 +506,101 @@ fun SummaryScreen(
                             val name = categoryLabel(cat.categoryCode)
                             Text(if (unit.isEmpty()) name else stringResource(R.string.summary_group_head, name, unit), style = MaterialTheme.typography.titleSmall, color = look.purple)
                             SummaryPairs(
-                                stringResource(R.string.summary_col_qty) to qtyText(cat.qtyBase, unit), stringResource(R.string.summary_col_value) to amount(cat.valueMtk),
-                                stringResource(R.string.summary_col_discount) to amount(cat.discountMtk), stringResource(R.string.summary_col_after) to amount(cat.discountedValueMtk),
+                                stringResource(R.string.summary_col_qty) to qtyText(cat.qtyBase, unit), stringResource(R.string.summary_col_value) to takaAmount(cat.valueMtk),
+                                stringResource(R.string.summary_col_discount) to amount(cat.discountMtk), stringResource(R.string.summary_col_after) to takaAmount(cat.discountedValueMtk),
                                 stringResource(R.string.summary_col_return) to localizedNumber(cat.returnQtyBase),
                             )
                         }
                         CardDivider()
                         Text(stringResource(R.string.summary_discount_and_others), style = MaterialTheme.typography.titleMedium, color = look.purple)
-                        MoneyText(minusMoney(summary.discountAndOthersMtk), style = MaterialTheme.typography.titleMedium, color = look.purple)
+                        MoneyText(discountLine(summary.discountAndOthersMtk), style = MaterialTheme.typography.titleMedium, color = look.purple)
                         Text(stringResource(R.string.summary_grand_total), style = MaterialTheme.typography.titleMedium, color = look.purple)
-                        MoneyText(money(summary.grandTotalMtk), style = MaterialTheme.typography.headlineMedium, color = look.purple)
+                        MoneyText(amount(summary.grandTotalMtk), style = MaterialTheme.typography.headlineMedium, color = look.purple)
                     }
                 }
-            } else {
-                SummaryTable(
-                    headers = listOf(
-                        stringResource(R.string.summary_col_memos), stringResource(R.string.summary_col_qty), stringResource(R.string.summary_col_value),
-                        stringResource(R.string.summary_col_discount), stringResource(R.string.summary_col_after), stringResource(R.string.summary_col_return),
-                    ),
-                    rows = summary.skus.map { r ->
-                        SummaryRow(
-                            skuName(r.skuId),
-                            listOf(
-                                localizedNumber(r.memoCount.toLong()), localizedNumber(r.qtyBase), amount(r.valueMtk),
-                                amount(r.discountMtk), amount(r.discountedValueMtk), localizedNumber(r.returnQtyBase),
-                            ),
-                        )
-                    },
-                    subtotals = summary.categories.map { cat ->
-                        val unit = unitLabel(cat.categoryCode)
-                        val name = categoryLabel(cat.categoryCode)
-                        TotalsLine(
-                            name,
-                            listOf(
-                                qtyText(cat.qtyBase, unit), amount(cat.valueMtk), amount(cat.discountMtk),
-                                amount(cat.discountedValueMtk), localizedNumber(cat.returnQtyBase),
-                            ),
-                        )
-                    },
-                    totals = listOf(
-                        SummaryTotal(stringResource(R.string.summary_discount_and_others), minusMoney(summary.discountAndOthersMtk)),
-                        SummaryTotal(stringResource(R.string.summary_grand_total), money(summary.grandTotalMtk)),
-                    ),
-                )
             }
-            Text(stringResource(R.string.summary_memo_count, localizedNumber(summary.memoCount.toLong())), style = MaterialTheme.typography.bodySmall, color = look.inkMuted)
+            printButton()
+            if (empty) Text(stringResource(R.string.summary_print_reason), style = MaterialTheme.typography.bodySmall, color = look.inkMuted, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
         }
-        AronPrimaryButton(
-            stringResource(R.string.summary_print), onPrint, Modifier.fillMaxWidth(),
-            enabled = !empty && !printing, glyph = ButtonGlyph.Print, reverse = true,
-        )
-        if (empty) Text(stringResource(R.string.summary_print_reason), style = MaterialTheme.typography.bodySmall, color = look.inkMuted, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
+        return
+    }
+    // sr/summary.png: the info card, the dark-headed SKU list (it scrolls), the category and total block docked below it on its own
+    // #F0F0F0 panel, then Print. Under an unbounded host (a screen that still scrolls) the list takes its full height.
+    BoxWithConstraints(modifier.background(look.page)) {
+        val bounded = constraints.hasBoundedHeight
+        Column(Modifier.then(if (bounded) Modifier.fillMaxSize() else Modifier).padding(AronTokens.Space.Screen), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.M)) {
+            AronInfoCard(stringResource(R.string.summary_banner), trailing = printerBadge)
+            Column(Modifier.then(if (bounded) Modifier.weight(1f, fill = false) else Modifier).clip(RoundedCornerShape(AronLook.CardRadius))) {
+                Column(Modifier.then(if (bounded) Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()) else Modifier)) {
+                    SummaryTable(
+                        headers = listOf(
+                            stringResource(R.string.summary_col_memos), stringResource(R.string.summary_col_qty), stringResource(R.string.summary_col_value),
+                            stringResource(R.string.summary_col_discount), stringResource(R.string.summary_col_after), stringResource(R.string.summary_col_return),
+                        ),
+                        rows = summary.skus.map { r ->
+                            SummaryRow(
+                                skuName(r.skuId),
+                                listOf(
+                                    localizedNumber(r.memoCount.toLong()), localizedNumber(r.qtyBase), takaAmount(r.valueMtk),
+                                    amount(r.discountMtk), takaAmount(r.discountedValueMtk), localizedNumber(r.returnQtyBase),
+                                ),
+                            )
+                        },
+                        weights = SummaryColumns.shares,
+                    )
+                }
+                SummaryDock(summary, categoryLabel, unitLabel)
+            }
+            printButton()
+        }
     }
 }
+
+/** The docked block of sr/summary.png on its own `#F0F0F0` panel: a purple row per category (quantity with its unit as a small suffix), "discount and others (-)" and the grand total. */
+@Composable
+private fun SummaryDock(summary: DaySummary, categoryLabel: (String) -> String, unitLabel: (String) -> String) {
+    val weights = SummaryColumns.shares
+    val look = LocalAronLook.current
+    val figure = TextStyle(fontSize = 13.sp, color = look.purple, textAlign = TextAlign.End)
+    Column(Modifier.fillMaxWidth().background(look.rowAlt).padding(horizontal = 12.dp, vertical = 8.dp)) {
+        summary.categories.forEach { cat ->
+            val unit = unitLabel(cat.categoryCode)
+            Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text(categoryLabel(cat.categoryCode), style = TextStyle(fontSize = 13.sp, color = look.purple), softWrap = false, modifier = Modifier.weight(weights[0]))
+                Text(
+                    buildAnnotatedString {
+                        append(localizedNumber(cat.qtyBase))
+                        if (unit.isNotEmpty()) withStyle(SpanStyle(fontSize = 10.sp)) { append(" "); append(unit) }
+                    },
+                    style = figure, softWrap = false, modifier = Modifier.weight(weights[1]),
+                )
+                Text(takaAmount(cat.valueMtk), style = figure, softWrap = false, modifier = Modifier.weight(weights[2]))
+                Text(amount(cat.discountMtk), style = figure, softWrap = false, modifier = Modifier.weight(weights[3]))
+                Text(takaAmount(cat.discountedValueMtk), style = figure, softWrap = false, modifier = Modifier.weight(weights[4]))
+                Text(localizedNumber(cat.returnQtyBase), style = figure, modifier = Modifier.weight(weights[5]))
+            }
+        }
+        val big = TextStyle(fontSize = 18.sp, fontWeight = FontWeight.Bold, color = look.purple)
+        Row(Modifier.fillMaxWidth().padding(top = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(stringResource(R.string.summary_discount_and_others), style = big, maxLines = 1, softWrap = false, modifier = Modifier.weight(1f))
+            Text(discountLine(summary.discountAndOthersMtk), style = big.copy(textAlign = TextAlign.End), maxLines = 1, softWrap = false, modifier = Modifier.padding(start = 8.dp))
+        }
+        Row(Modifier.fillMaxWidth().padding(top = 10.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(stringResource(R.string.summary_grand_total), style = big.copy(fontSize = 22.sp), maxLines = 1, modifier = Modifier.weight(1f))
+            Text(amount(summary.grandTotalMtk), style = big.copy(fontSize = 22.sp, textAlign = TextAlign.End), maxLines = 1, softWrap = false)
+        }
+    }
+}
+
+/** "4,687.50৳": the taka sign glued to the figure, as the value cells of sr/summary.png. */
+@Composable
+private fun takaAmount(mtk: Long): String = amount(mtk) + TAKA
+
+/** "-437.50": the deduction line of sr/summary.png, an ASCII hyphen and no sign or space. */
+@Composable
+private fun discountLine(mtk: Long): String = "-" + amount(kotlin.math.abs(mtk))
+
+private const val TAKA = "\u09F3"
 
 /** Caption-over-value cells two to a row (the stacked Summary at large text); an odd last cell takes a row's half. */
 @Composable

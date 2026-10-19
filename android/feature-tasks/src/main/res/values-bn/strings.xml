@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="tsk_title">টাস্ক ডেলিগেশন</string>
-    <string name="tsk_empty">আপনার এএমও (AMO) কোনো কাজ বরাদ্দ করেনি।</string>
+    <string name="tsk_empty">আপনার এএমও (AMO) কোনো কাজ বরাদ্দ করেননি।</string>
     <string name="tsk_synced_at">সিঙ্ক হয়েছে %1$s</string>
     <string name="tsk_never_synced">এখনো সিঙ্ক হয়নি</string>
     <string name="tsk_tab_open">চলমান %1$s</string>
@@ -14,4 +14,5 @@
     <string name="tsk_outlet">আউটলেট: %1$s</string>
     <string name="tsk_resolve">সমাধান করুন</string>
     <string name="tsk_badge_open">%1$s টি চলমান</string>
+    <string name="tsk_my_requests">আমার অনুরোধ</string>
 </resources>

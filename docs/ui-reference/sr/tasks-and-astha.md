@@ -12,7 +12,7 @@ Images: `tasks.png`, `astha.png`. Manual references and existing gaps: G-man-049
 | Element | Shown | Reading |
 |---|---|---|
 | Title | `টাস্ক` | Task (the Home tile says `টাস্ক ডেলিগেশন`, Task Delegation) |
-| Empty state | `আপনার এএমও (AMO) কোনো কাজ বরাদ্দ করেনি।` | "Your AMO has not assigned any task." |
+| Empty state | `আপনার এএমও (AMO) কোনো কাজ বরাদ্দ করেননি।` | "Your AMO has not assigned any task." |
 
 | ID | Observation | Consequence | Where |
 |---|---|---|---|

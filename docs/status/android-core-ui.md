@@ -13,7 +13,7 @@ AronScaffold(
 ) { /* BoxScope content: LazyColumn of PackCard ... */ }
 
 AronHomeHeader(title = "SR - Name (login)", subtitle = routeAndDate, onSettings = openSettings, settingsLabel = settings, avatar = null)
-AronTileGrid(tiles /*, columns = null -> aronTileColumns(widthDp, fontScale): 4 / 3 / 2 */) { t, m ->
+AronTileGrid(tiles /*, columns = null -> aronTileColumns(widthDp, fontScale): 4 / 3 / 2; gap = 6.dp (Home) or AronMenuGap (16 dp, Outlet-type menus) */) { t, m ->
     AronTile(label, icon = painterResource(t.icon), onClick = t.go, modifier = m, badge = n, badgeDescription = text, menu = false, labelColor = null) }
     // Outlet menu: menu = true, labelColor = LocalAronLook.current.tileLabelOutlet. Deferred/locked tiles: leave them out.
 
@@ -21,6 +21,7 @@ PackListHeader(sku = "এসকেইউ", quantity = "ইস্যু", stock =
 PackCard(skuId, skuCode, quantity: String, onQuantityChange: (String) -> Unit /* digits only, max 6 */, onMinus, onPlus, stock: String,
          minusLabel, plusLabel, quantityLabel, packBadge: String? = null, packshotDescription: String? = null,
          category = PackCategory.Cigarette /* Bidi, Lighter, Match */, minusEnabled = true, plusEnabled = true, editable = true)
+// SKU code purple 18 sp medium; quantity and stock bold; the quantity field is 48 dp at 360 dp and grows to 96 dp on wider rows (header follows)
 PackshotImage(skuId, modifier, contentDescription = null, category)       // provider thumbnail or the grey pack silhouette; never a letter or spinner
 interface PackshotProvider { @Composable fun painter(skuId: String): Painter? }   // ui-packshots implements over ImageCache
 CompositionLocalProvider(LocalPackshotProvider provides yourProvider) { ... }    // default NoPackshots
@@ -36,7 +37,7 @@ LetterFilterBar(letters = listOf(all, "A", "B", ...), selected, onSelect, letter
 AronInfoCard(text, trailing = { AronPrinterBadge(...) })            // summary.png info card
 AronStatusDot(label, state, online)                                 // sales-submit.png device status
 AronNoticeCard(text)                                                // sales-submit.png pink notice
-AronDataTable(headers, rows: List<List<String>>, weights = null)     // purple rounded header + ruled rows (submit table)
+AronDataTable(headers, rows: List<List<String>>, weights = null /* first 2.75, rest 1 */)     // purple top-rounded header + ruled rows (submit table)
 AronCard(modifier, onClick = null) { ... }                           // white 12 dp card, soft shadow, 16 dp padding
 AronListRow(title, subtitle = null, trailing = null, leading: Painter? = null, onClick = null)
 AronField(value, onValueChange, label, placeholder = null, errorText = null, keyboardType = Text, singleLine = true, password = false, enabled = true)
@@ -45,6 +46,18 @@ AronDialog(title, text, confirmText, onConfirm, onDismiss, dismissText = null)
 AronSwitchRow(label, checked, onCheckedChange, subtitle = null)
 AronLogoutButton(text, onClick)                                       // solid red
 // ButtonGlyph: Save, Print, Sync, Submit. Disabled AronPrimaryButton = solid #B8B8B8, white label (sales-submit.png)
+AronIdentityRow(title, subtitle, avatar = null)                    // attendance.png: lavender square avatar, dark name, red rule
+AronLocationCard(address, onRefresh, refreshLabel, refreshEnabled = true)   // grey raised card, pin, red refresh (ONE balanced fix per tap)
+AronActionTile(text, ActionGlyph.CheckIn | CheckOut, onClick, modifier, tone = ActionTone.Go | Neutral, enabled = true)   // green / grey gradient
+AronEmptyMessage(text)                                               // tasks.png: centred message filling the remaining space
+AronSyncFooter(status, details: List<String>, synced = true)       // AMO/TSO home footer: purple check, grey details, breaks between details
+PackBadge(text)                                                      // the one purple pack badge (PackCard places it)
+// Controls.kt (lane requests): AronChoiceChip(text, selected, onClick), AronRadioRow(text, selected, onClick), AronCheckboxRow(text, checked, onCheckedChange),
+// AronErrorText(text), AronSolidButton(text, onClick, tone = SolidTone.Amber|Green|Red|Purple), AronOutlinedButton(text, onClick), AronTextButton(text, onClick),
+// AronYesNo(yes, no, value: Boolean?, onChange), AronRatingStars(value, onChange, starLabel), AronHoldButton(text, onConfirmed, holdMillis = 1200),
+// AronSheet(title, onDismiss) { }, AronLanguageToggle(bangla, english, banglaSelected, onSelect), AronSunToggle(on, onToggle, label),
+// AronLoadingCard(label, lines = 3), AronSectionHeader(text), AronDateField(value, label, onClick, placeholder), AronPackRow(skuId, skuCode, values, subtitle)
+// PackCard(..., caption = "price / line total"); AronNoticeCard(text, action = null, onAction = null); AronHomeSettingsTag = "aron_home_settings"
 AronTargetCard(title, label, value = daySales, percent = null)       // Home target card shell; targets deferred (docs/27)
 SummaryTable(headers: List<String>, rows: List<SummaryRow(title, values)>, subtotals: List<TotalsLine> = empty, totals: List<SummaryTotal(label, value)> = empty,
              weights: List<Float>? = null /* 6 columns default 0.7,0.9,1.4,1.2,1.4,0.8 */)   // cells shrink, never break inside a word or number
