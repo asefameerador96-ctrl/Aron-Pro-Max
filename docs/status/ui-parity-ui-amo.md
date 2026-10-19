@@ -41,3 +41,13 @@ Every row: layout from manual, needs owner screenshot.
 ## Status at push 2026-10-19 00:00 UTC
 Merged INT 970662c1 + ui-sr-a fda4ed67; AMO goldens re-recorded (no pixel change vs the merged render); full local verify, lint, tests and the three debug APKs green. Run ids: d8e41a41 -> 39175027598 green; b52a117b -> 39176138483 green; f6adde08 -> 39177067752 green.
 Rows: 1 Home PARTIAL (icons now owner art + kit line icons); 2 Shell PARTIAL; 3 Live dashboard PARTIAL (fs2 stacks); 4 Verify PARTIAL; 5 Team stock PARTIAL; 6 Control-call PARTIAL; 7 Manual override PARTIAL (GeoPhotoBlock restyled by ui-sr-b); 8 Joint call PARTIAL; 9 Exceptions PARTIAL; 10 Tasks PARTIAL; 11 Hubs DONE for look (icons wired); 12-14 PARTIAL; 15 Reports PARTIAL (dark-header memo table); 16 shared SR bodies: ui-sr-a/b; 17 Settings PARTIAL (no golden yet).
+
+## Kit requests (ui-kit reads this section; no merge of lane/ui-kit beyond abac6ba4 until the kit window)
+- AronField (kit text field) in the parity look to replace feature-outlet `KitTextField` (lavender fill) in Verify note, Exceptions note, Task description, Price compliance, Stock correction.
+- Rating stars and checkbox in the parity look (Joint Call, SR Perf. Assessment checkboxes).
+- A Yes/No pair (purple/red) and an outlined secondary button for grey pages (AMO has local `AmoYes`/`AmoNo`/`AmoSecondary`; the kit `AronSecondaryButton` is `#E8E8E8` and vanishes on the grey page).
+- A read-only pack row with PackshotImage (no stepper) for Team Stock detail and Price compliance (AMO has local `AmoPackRow`).
+- A settings tag hook on `AronHomeHeader` (gear) so tests can find it by tag.
+- (QA 2026-10-19, kit) AMO-only icons (joint call, team, report, live dashboard, control call) are chunkier than the SR set: redraw with the SR stroke weight, rounded caps, thin outline + pink-to-blue gradient fill and an inner detail.
+- (QA 2026-10-19, kit) Tile count badge covers the awning: top-right corner, 4 dp outside the icon box, 11 sp bold, 20 dp circle.
+- (QA 2026-10-19, kit) One shared sync-status footer for AMO and TSO; AMO Home will adopt it via INT (AMO now has a token-colour local line: purple check, grey ink, one device figure per line).
