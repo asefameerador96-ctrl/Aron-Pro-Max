@@ -3,6 +3,17 @@
 // location), only after the BFF has counted the load against the daily cap, and never at build time. Without a key (tests, the
 // test account) it renders the same pins as an accessible list, so the figures are visible either way.
 import { useEffect, useRef, useState } from "react";
+import { clusterPins } from "@/lib/maps/cluster";
+
+// Red for outlets and magenta for SR positions, as on the existing dashboard map; a cluster of both is purple.
+const COLOUR = { outlet: "#d5484a", fix: "#b3228f", mixed: "#6a2c91" } as const;
+
+/** A round marker with a white count (cluster), as an inline SVG data URL: no image request and no extra library. */
+function countIcon(count: number, fill: string): string {
+  const r = count > 99 ? 20 : count > 9 ? 17 : 14;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${r * 2 + 4}" height="${r * 2 + 4}"><circle cx="${r + 2}" cy="${r + 2}" r="${r}" fill="${fill}" stroke="#ffffff" stroke-width="2"/><text x="50%" y="50%" text-anchor="middle" dominant-baseline="central" font-family="Roboto,Arial,sans-serif" font-size="13" font-weight="700" fill="#ffffff">${count}</text></svg>`;
+  return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
+}
 
 export interface MapPin {
   id: string;
@@ -26,7 +37,7 @@ type Phase = "idle" | "ready" | "no_key" | "capped" | "failed";
 // Minimal structural types for the pieces of the Maps API used here (no @types/google.maps dependency).
 interface GMaps {
   maps: {
-    Map: new (el: HTMLElement, opts: Record<string, unknown>) => { fitBounds: (b: unknown) => void };
+    Map: new (el: HTMLElement, opts: Record<string, unknown>) => { fitBounds: (b: unknown) => void; addListener: (ev: string, cb: () => void) => unknown; getZoom: () => number | undefined };
     Marker: new (opts: Record<string, unknown>) => unknown;
     LatLngBounds: new () => { extend: (p: { lat: number; lng: number }) => void };
   };
@@ -71,6 +82,8 @@ export function MapPanel({ pins, labels }: { pins: MapPin[]; labels: MapLabels }
   const [phase, setPhase] = useState<Phase>("idle");
   const loaded = useRef<{ g: GMaps; map: InstanceType<GMaps["maps"]["Map"]> } | null>(null);
   const drawn = useRef<{ setMap: (m: unknown) => void }[]>([]);
+  const [zoom, setZoom] = useState(11);
+  const fitted = useRef(false);
 
   // One Maps load per mount (it counts against the daily cap); a change of pins only redraws the markers.
   useEffect(() => {
@@ -81,7 +94,8 @@ export function MapPanel({ pins, labels }: { pins: MapPin[]; labels: MapLabels }
         if (r.status !== "ready") return void (!dead && setPhase(r.status));
         const g = r.g;
         if (dead || !el.current) return;
-        loaded.current = { g, map: new g.maps.Map(el.current, { center: { lat: 23.78, lng: 90.4 }, zoom: 11, mapTypeControl: false, streetViewControl: false, fullscreenControl: true }) };
+        loaded.current = { g, map: new g.maps.Map(el.current, { center: { lat: 23.78, lng: 90.4 }, zoom: 11, mapTypeControl: false, streetViewControl: false, fullscreenControl: true, zoomControl: true }) };
+        loaded.current.map.addListener("zoom_changed", () => setZoom(loaded.current?.map.getZoom() ?? 11));
         setPhase("ready");
       } catch {
         if (!dead) setPhase("failed");
@@ -97,19 +111,29 @@ export function MapPanel({ pins, labels }: { pins: MapPin[]; labels: MapLabels }
     if (phase !== "ready" || !l) return;
     for (const m of drawn.current) m.setMap(null);
     const bounds = new l.g.maps.LatLngBounds();
-    drawn.current = pins.map((p) => {
-      bounds.extend({ lat: p.lat, lng: p.lng });
-      // SymbolPath.CIRCLE is 0; outlets blue, SR positions orange (the colour filter of the dashboard map).
-      return new l.g.maps.Marker({ map: l.map, position: { lat: p.lat, lng: p.lng }, title: p.label, icon: { path: 0, scale: 7, fillColor: p.kind === "outlet" ? "#2a78d6" : "#eb6834", fillOpacity: 1, strokeColor: "#ffffff", strokeWeight: 2 } }) as { setMap: (m: unknown) => void };
+    for (const p of pins) bounds.extend({ lat: p.lat, lng: p.lng });
+    drawn.current = clusterPins(pins, zoom).map((c) => {
+      const base = { map: l.map, position: { lat: c.lat, lng: c.lng } };
+      if (c.count > 1) return new l.g.maps.Marker({ ...base, title: c.pins.map((p) => p.label).join(", "), icon: { url: countIcon(c.count, COLOUR[c.kind]) } }) as { setMap: (m: unknown) => void };
+      // SymbolPath.CIRCLE is 0; outlets red, SR positions magenta (the colour filter of the dashboard map).
+      return new l.g.maps.Marker({ ...base, title: c.pins[0]!.label, icon: { path: 0, scale: 8, fillColor: COLOUR[c.pins[0]!.kind], fillOpacity: 1, strokeColor: "#ffffff", strokeWeight: 2 } }) as { setMap: (m: unknown) => void };
     });
-    if (pins.length > 0) l.map.fitBounds(bounds);
-  }, [pins, phase]);
+    // Fit once per pin set; a zoom by the user only regroups the markers.
+    if (pins.length > 0 && !fitted.current) {
+      fitted.current = true;
+      l.map.fitBounds(bounds);
+    }
+  }, [pins, phase, zoom]);
+
+  useEffect(() => {
+    fitted.current = false;
+  }, [pins]);
 
   const outlets = pins.filter((p) => p.kind === "outlet").length;
   const fixes = pins.length - outlets;
   return (
     <div data-testid="map-panel" data-phase={phase} data-pin-count={pins.length}>
-      {phase === "ready" ? <div ref={el} data-testid="map-root" className="h-72 rounded bg-slate-100" /> : <div ref={el} className="hidden" />}
+      {phase === "ready" ? <div ref={el} data-testid="map-root" className="h-96 rounded bg-slate-100" /> : <div ref={el} className="hidden" />}
       {phase !== "ready" ? (
         <div className="rounded border border-dashed border-slate-300 bg-slate-100 p-3 text-sm text-slate-700">
           {phase === "capped" ? <p data-testid="map-capped">{labels.capped}</p> : phase === "failed" ? <p data-testid="map-failed">{labels.failed}</p> : <p data-testid="map-placeholder">{labels.placeholder}</p>}

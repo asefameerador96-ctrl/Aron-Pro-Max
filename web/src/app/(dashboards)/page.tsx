@@ -23,6 +23,7 @@ import { rankRows, srRows } from "@/lib/dash/rows";
 import { zonesUnder } from "@/lib/dash/scope-zones";
 import { formatLakhCrore, mtkToTaka, pctChange } from "@/lib/dash/lakh";
 import { InfoTip } from "@/components/dash/info-tip";
+import { mapsKey } from "@/lib/maps/guard";
 import { HomeFilter } from "@/components/dash/home-filter";
 import { ScopeFilter } from "@/components/reports/scope-filter";
 import { GEO_LEVELS, boundGeo, geoFromParams } from "@/lib/reports/query";
@@ -56,8 +57,8 @@ function DrillLink({ href, msg, testId }: { href: string; msg: string; testId: s
 /** Card heading row with the drill-down link (same look as the Tile heading). */
 function SectionHead({ msg, link }: { msg: string; link: React.ReactNode }) {
   return (
-    <div className="flex items-start justify-between gap-2 border-b border-accent-graphic/40 pb-2">
-      <h2 className="min-w-0 flex-1 text-body-strong text-accent">{msg}</h2>
+    <div className="flex min-h-[3.25rem] items-start justify-between gap-2 border-b border-accent-graphic/40 pb-2">
+      <h2 className="min-w-0 flex-1 line-clamp-2 text-body-strong text-accent" title={msg}>{msg}</h2>
       <div className="shrink-0">{link}</div>
     </div>
   );
@@ -108,7 +109,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
   const empty = k !== null && k.target_routes === 0;
   const reasonFor = (live: boolean): StaleReason | undefined => (empty ? "no_data" : live ? undefined : "not_live_today");
   const d = (a: string | null = asOf) => ({ businessDate: date, asOf: a, today, reason: reasonFor(date === today) });
-  const meta = (a: string | null = asOf) => <TileMeta locale={locale} businessDate={date} asOf={a} today={today} reason={reasonFor(date === today)} />;
+  const meta = (a: string | null = asOf) => <TileMeta locale={locale} businessDate={date} asOf={a} today={today} reason={reasonFor(date === today)} quiet />;
 
   // Delta against the previous day, only when both days have a figure (never a fake comparison); the label says "vs yesterday"
   // only when the page shows today, otherwise "vs previous day".
@@ -163,7 +164,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
     <div className="space-y-6">
       <header className="flex flex-wrap items-end justify-between gap-3">
         <div className="min-w-0">
-          <h1 className="text-display text-primary">{t(locale, "dashboard.title")}</h1>
+          <h1 className="sr-only">{t(locale, "dashboard.title")}</h1>
           <p className="text-caption text-secondary">
             <time data-testid="business-date" dateTime={date}>
               {formatBusinessDate(locale, date)}
@@ -216,19 +217,22 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
                 <Tile tipAtBottom key={c.category_code} id={`cat-${c.category_code}`} locale={locale} titleKey="dashboard.cat.heading" heading={catTitle(c.category_code)} date={d()} data actions={<DrillLink href={dl("category", { code: c.category_code })} msg={detailsMsg} testId={`drill-cat-${c.category_code}`} />} tip={<InfoTip msg={t(locale, "dashboard.cat.info")} openMsg={t(locale, "dashboard.info.open")} />} className="col-span-full min-[480px]:col-span-1 md:col-span-3 lg:col-span-6 xl:col-span-3">
                   <div className="flex items-center justify-between gap-3">
                     <div className="min-w-0 flex-1">
-                      <p className="fit-number whitespace-nowrap text-numeral block text-primary tabular-nums" data-testid={`cat-qty-${c.category_code}`}>
+                      <p className="fit-number whitespace-nowrap text-title block text-primary tabular-nums" data-testid={`cat-qty-${c.category_code}`}>
                         {formatLakhCrore(locale, c.qty_base, lw)}
                       </p>
-                      <p className="text-caption font-semibold text-cyan">
+                      <p className="whitespace-nowrap text-caption font-semibold text-cyan">
                         {t(locale, "dashboard.cat.total")} · {unitWord(c.base_unit)}
                       </p>
                       <p className="text-caption text-secondary tabular-nums" data-testid={`cat-net-${c.category_code}`}>
                         {t(locale, "dashboard.cat.net", { amount: formatLakhCrore(locale, mtkToTaka(c.net_mtk), lw) })}
                       </p>
                     </div>
-                    <Ring pct={share} valueText={pctText(locale, share)} label={t(locale, "dashboard.cat.share")} size={92} gradient hue={CATS.includes(c.category_code) ? CATS.indexOf(c.category_code) : 4} testId={`cat-ring-${c.category_code}`} />
+                    <div className="flex shrink-0 flex-col items-center gap-1">
+                      <Ring pct={share} valueText={pctText(locale, share)} label={t(locale, "dashboard.cat.share")} size={76} gradient hue={CATS.includes(c.category_code) ? CATS.indexOf(c.category_code) : 4} testId={`cat-ring-${c.category_code}`} />
+                      <span className="max-w-20 text-center text-caption text-secondary">{t(locale, "dashboard.cat.share")}</span>
+                    </div>
                   </div>
-                  <div className="mt-2">
+                  <div className="mt-2 pe-10">
                     {change !== null ? (
                   <StatusChip tone={Math.abs(change) < 0.05 ? "quiet" : change > 0 ? "success" : "warning"} icon={Math.abs(change) < 0.05 ? null : change > 0 ? "arrow-up" : "arrow-down"} testId={`cat-delta-${c.category_code}`}>
                         {Math.abs(change) < 0.05 ? "" : change > 0 ? "+" : "−"}
@@ -248,13 +252,13 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
           <section data-testid="tile-visits" className={`${STAT} min-[480px]:col-span-1 md:col-span-3 lg:col-span-6 xl:col-span-3`}>
             <SectionHead msg={t(locale, "dashboard.cpr")} link={<DrillLink href={dl("calls")} msg={detailsMsg} testId="drill-calls" />} />
             <div className="flex items-center gap-3" data-testid="cpr">
-              <dl className="min-w-0 flex-1 text-caption text-secondary">
+              <dl className="min-w-0 flex-1 whitespace-nowrap text-caption text-secondary">
                 <dt>{t(locale, "dashboard.cpr.planned")}</dt>
                 <dd className="text-body-strong text-primary tabular-nums" data-testid="cpr-planned">{formatLakhCrore(locale, k.target_outlets, lw)}</dd>
                 <dt>{t(locale, "dashboard.cpr.calls")}</dt>
                 <dd className="text-body-strong text-primary tabular-nums" data-testid="cpr-calls">{formatLakhCrore(locale, k.successful_calls, lw)}</dd>
               </dl>
-              <Ring pct={cprPct} valueText={pctText(locale, cprPct)} label={t(locale, "dashboard.cpr.basis")} size={96} hue={4} testId="cpr-ring" />
+              <Ring pct={cprPct} valueText={pctText(locale, cprPct)} label={t(locale, "dashboard.cpr.basis")} size={84} hue={4} testId="cpr-ring" />
             </div>
             <h3 className="text-label text-secondary">{t(locale, "dashboard.kpi.outlets_visited")}</h3>
             <p className="fit-number whitespace-nowrap text-numeral text-primary tabular-nums">
@@ -274,7 +278,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
                 label={t(locale, "dashboard.channels.calls")}
                 centerText={formatLakhCrore(locale, callsTotal, lw)}
                 slices={channels.map((c) => ({ key: c.code, label: c.name ?? c.code, value: c.successful_calls, valueText: formatLakhCrore(locale, c.successful_calls, lw), shareText: callsTotal > 0 ? pctText(locale, (c.successful_calls / callsTotal) * 100) : "—", href: dl("channel", { code: c.code }) }))}
-                size={120}
+                size={92}
               />
             ) : (
               <p className="text-body text-secondary">{t(locale, "dashboard.channels.empty")}</p>
@@ -298,7 +302,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
                   <dd className="text-caption text-secondary">{t(locale, "dashboard.kpi.login_basis", { logged: n(locale, ls.kpis.logged_in_routes), target: n(locale, ls.kpis.target_routes) })}</dd>
                 </div>
                 <div>
-                  <dt className="flex items-center gap-1 text-caption text-secondary"><Icon name="upload" size={16} className="text-accent" />{t(locale, "finalsubmit.submit_pct")}</dt>
+                  <dt className="flex items-center gap-1 text-caption text-secondary"><Icon name="upload" size={16} className="text-accent" />{t(locale, "dashboard.submit_status")}</dt>
                   <dd className="fit-number whitespace-nowrap text-numeral text-primary tabular-nums" data-testid="submit-pct-ls">
                     {pctText(locale, ls.kpis.submit_pct_of_logged_in)}
                   </dd>
@@ -317,10 +321,10 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
           <Tile id="channels-std" locale={locale} titleKey="dashboard.channels.net" date={d()} data actions={<DrillLink href={dl("channel")} msg={detailsMsg} testId="drill-channels-std" />} className="col-span-full md:col-span-6 lg:col-span-12 xl:col-span-4">
             {channels.length > 0 ? (
               <div className="space-y-4">
-              <Donut legendFirst
+              <Donut pie legendFirst
+                size={96}
                 testId="channel-std-donut"
                 label={t(locale, "dashboard.channels.net")}
-                centerText={formatLakhCrore(locale, mtkToTaka(channelNetTotal), lw)}
                 slices={channels.map((c) => ({ key: c.code, label: c.name ?? c.code, value: Math.max(0, c.net_mtk), valueText: formatLakhCrore(locale, mtkToTaka(c.net_mtk), lw), shareText: channelNetTotal > 0 ? pctText(locale, (Math.max(0, c.net_mtk) / channelNetTotal) * 100) : "—", href: dl("channel", { code: c.code }) }))}
               />
               </div>
@@ -336,7 +340,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
             date={d()}
             data
             className="col-span-full lg:col-span-12 xl:col-span-8"
-            actions={
+            titleSlot={
               <SegmentedLinks
                 label={t(locale, "dashboard.brand.mode")}
                 items={[
@@ -344,6 +348,11 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
                   { href: sameQs({ ...(date === today ? {} : { date }), bm: "memo" }), label: t(locale, "dashboard.brand.memo"), current: brandMode === "memo", testId: "brand-mode-memo" },
                 ]}
               />
+            }
+            actions={
+              <Link href="/reports/std-memo" aria-label={t(locale, "dashboard.brand.gear")} title={t(locale, "dashboard.brand.gear")} data-testid="brand-gear" className="no-print inline-flex size-(--ctl-h) items-center justify-center rounded-full text-secondary hover:bg-pressed focus-visible:outline-(length:--focus-w) focus-visible:outline-offset-2 outline-focus">
+                <Icon name="config" size={20} />
+              </Link>
             }
           >
             {brands.length >= 1 ? (
@@ -396,6 +405,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
           {/* Row D: team map plate, map loads on click only */}
           <Tile id="ffgeo" locale={locale} titleKey="dashboard.ff_geo" date={d(team.ok ? team.data.as_of : null)} className="col-span-full lg:col-span-12 xl:col-span-8">
             <TeamMapPlate
+              autoLoad={mapsKey() !== null}
               summary={t(locale, "dashboard.map.summary", { srs: n(locale, srCount), outlets: n(locale, outletCount) })}
               hint={t(locale, "dashboard.map.hint")}
               showLabel={t(locale, "dashboard.map.show")}
@@ -417,13 +427,14 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
           <HeroCard
             testId="tile-sales"
             valueTestId="sales-net"
+            plain
             className="col-span-full md:col-span-6 lg:col-span-12 xl:col-span-6"
             label={t(locale, "dashboard.kpi.net")}
-            amount={takaText(locale, k.net_mtk)}
+            amount={formatLakhCrore(locale, mtkToTaka(k.net_mtk), lw)}
             href="/reports/summary"
             sub={
               <>
-                {t(locale, "dashboard.kpi.gross")}: {takaText(locale, k.gross_mtk)} · {t(locale, "dashboard.kpi.memos")}: {n(locale, k.active_memo_count)}
+                {t(locale, "dashboard.kpi.gross")}: {formatLakhCrore(locale, mtkToTaka(k.gross_mtk), lw)} · {t(locale, "dashboard.kpi.memos")}: {n(locale, k.active_memo_count)}
               </>
             }
             delta={

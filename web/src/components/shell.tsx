@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import type { SessionData } from "@/lib/auth/session";
 import { t, type Locale } from "@/lib/i18n";
 import { menuFor } from "@/lib/menu/menu";
+import { arrangeNav } from "@/lib/menu/nav-tree";
 import { ConnectionChip } from "./connection-chip";
 import { Icon } from "./kit/icons";
 import { LocaleSwitch } from "./locale-switch";
@@ -17,7 +18,7 @@ import { TopBarTitle } from "./top-bar-title";
  *  (page title in blue, scope, search, connection, language, theme, avatar and name), white cards on a light grey page. Shared by the dashboards and the admin portal.
  *  Below md the scope badge wraps to a second line of the same bar (one node, so tests and screen readers see it once). */
 export function Shell({ session, locale, children, allowedMenus = null }: { session: SessionData; locale: Locale; children: ReactNode; allowedMenus?: ReadonlySet<string> | null }) {
-  const sections: NavSection[] = menuFor(session.user.role, undefined, allowedMenus).map((s) => ({ id: s.group, label: t(locale, s.labelKey), items: s.items.map((i) => ({ id: i.id, href: i.href, label: t(locale, i.labelKey) })) }));
+  const sections: NavSection[] = arrangeNav(menuFor(session.user.role, undefined, allowedMenus)).map((n) => ({ id: n.id, label: n.labelKey ? t(locale, n.labelKey) : null, items: n.items.map((i) => ({ id: i.id, href: i.href, label: t(locale, i.labelKey) })) }));
   const appName = t(locale, "app.name");
   const who = `${session.user.full_name} · ${t(locale, `role.${session.user.role}`)}`;
   return (
