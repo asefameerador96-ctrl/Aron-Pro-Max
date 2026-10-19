@@ -2,6 +2,9 @@
 
 Binding: CLAUDE.md rule 14a, `docs/ui-reference/PARITY-SPEC.md`. The TSO app has **no screenshots in git**, so every row is "layout from manual, needs owner screenshot". Style bible: `docs/ui-reference/sr/` (home-1-tiles, stock, summary, outlet-menu, sale-select). Presentation only; behaviour, domain logic, tags and tests stay.
 
+## Status (2026-10-19)
+Built and merged with INT 2ededd53; the full CI command (three assembleDebug, all unit tests incl. screenshot verify, lint) passed locally on this head before the push. Screens covered: Home, Settings, Dashboard (+ route list and zone filter, no golden yet), Leave list/apply, Final Submit, My Periphery hub/Team/Retailer, My Call hub/Set Plan/Visit Plan/Visit Query/Assign Task, My Feedback list/form, Change Password. Row shas below name the commit that first built each screen; the head sha is in the lead's message. QA items from the vision review done: SR/AMO vector icons (no second set), gradient zones card, Bangla digits in the sync line. Open (kit side, see Kit requests): tile label autosize, shared sync footer, loading skeleton, date field.
+
 ## Handover block
 (empty: lane started 2026-10-18; no recycle yet)
 
