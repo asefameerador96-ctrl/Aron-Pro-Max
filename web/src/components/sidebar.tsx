@@ -4,6 +4,7 @@
 // source of items; this file only lays it out.
 import { useRef, useSyncExternalStore } from "react";
 import { NAV_KEY } from "@/lib/ui/theme";
+import { BrandMark } from "./brand-mark";
 import { useI18n } from "./i18n-provider";
 import { Icon } from "./kit/icons";
 import { navIconFor } from "./nav-icons";
@@ -18,17 +19,6 @@ export interface NavSection {
   label: string | null;
   items: { id: string; href: string; label: string }[];
 }
-
-function BrandMark({ size = 36 }: { size?: number }) {
-  // A simple round monogram, not the vendor logo (CLAUDE.md: no vendor artwork).
-  return (
-    <svg width={size} height={size} viewBox="0 0 32 32" aria-hidden="true" focusable="false" className="shrink-0">
-      <circle cx="16" cy="16" r="16" className="fill-on-rail" />
-      <path d="M16 7 25 25h-4.2l-1.9-4.1h-5.8L11.2 25H7Zm0 6.6-2 4.8h4Z" className="fill-rail-danger" />
-    </svg>
-  );
-}
-export { BrandMark };
 
 function subscribeNav(cb: () => void): () => void {
   const mo = new MutationObserver(cb);

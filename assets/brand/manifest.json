@@ -1,0 +1,297 @@
+{
+  "schema": 1,
+  "generator": "tools/brand/build_brand_assets.py",
+  "pillow": "12.3.0",
+  "note": "Generated. Do not edit. Regenerate with the generator; verify with --check.",
+  "master": {
+    "path": "assets/brand/aron-logo-original.png",
+    "bytes": 124053,
+    "sha256": "93e7bc7282e1d081a46989763c8dd585bf1e7ed8d4269b0e71f9c4257781100e",
+    "pixels": [
+      500,
+      499
+    ],
+    "glyph_bbox": [
+      107,
+      67,
+      344,
+      428
+    ],
+    "provenance": "owner-supplied 2026-10-18; ownership per the owner"
+  },
+  "parameters": {
+    "launcher": {
+      "layer_dp": 108,
+      "glyph_dp": 60,
+      "safe_radius_dp": 33.0,
+      "safe_margin_dp": 0.25,
+      "bbox_centre_px": [
+        118.5,
+        180.5
+      ],
+      "centroid_px": [
+        138.9,
+        189.38
+      ],
+      "min_enclosing_circle_px": [
+        121.84,
+        190.2,
+        194.4
+      ],
+      "anchor_px": [
+        126.84,
+        189.96
+      ],
+      "toward_centroid": 0.2933,
+      "max_radius_dp": 32.75,
+      "alpha_floor_of_255": 16,
+      "farthest_visible_pixel_dp": {
+        "xhdpi": 32.932,
+        "xxhdpi": 32.704,
+        "xxxhdpi": 32.807
+      },
+      "farthest_any_alpha_pixel_dp": {
+        "xhdpi": 33.444,
+        "xxhdpi": 33.042,
+        "xxxhdpi": 33.058
+      }
+    },
+    "monochrome": {
+      "ice_alpha_min": 0.35,
+      "ice_alpha_span": 0.65,
+      "counter_seed_px": [
+        149,
+        171
+      ]
+    },
+    "glyph_px": [
+      237,
+      361
+    ]
+  },
+  "files": [
+    {
+      "path": "android/core-ui/src/main/res/mipmap-xhdpi/aron_launcher_foreground.webp",
+      "bytes": 4914,
+      "sha256": "b3771a38460ef8a3cd1b2654a9a8fc0b4189d0d137173aa7f82a348fe7f7b920",
+      "pixels": [
+        216,
+        216
+      ],
+      "role": "adaptive-icon foreground layer (108 dp)",
+      "params": {
+        "density": "xhdpi",
+        "glyph_px": 120,
+        "quality": 85,
+        "method": 6
+      }
+    },
+    {
+      "path": "android/core-ui/src/main/res/mipmap-xxhdpi/aron_launcher_foreground.webp",
+      "bytes": 8060,
+      "sha256": "1c4c867d2ba00d0cf74aef8ade0c2cfafc7133e45c41ea169e926b4bf9811ded",
+      "pixels": [
+        324,
+        324
+      ],
+      "role": "adaptive-icon foreground layer (108 dp)",
+      "params": {
+        "density": "xxhdpi",
+        "glyph_px": 180,
+        "quality": 85,
+        "method": 6
+      }
+    },
+    {
+      "path": "android/core-ui/src/main/res/mipmap-xxxhdpi/aron_launcher_foreground.webp",
+      "bytes": 11308,
+      "sha256": "6ceda63b61cad4a5aae910e655dbd3788e18411ed2d1d8a20907297ad1acdbc7",
+      "pixels": [
+        432,
+        432
+      ],
+      "role": "adaptive-icon foreground layer (108 dp)",
+      "params": {
+        "density": "xxxhdpi",
+        "glyph_px": 240,
+        "quality": 85,
+        "method": 6
+      }
+    },
+    {
+      "path": "android/core-ui/src/main/res/mipmap-xhdpi/aron_launcher_monochrome.webp",
+      "bytes": 1932,
+      "sha256": "c556cff1b789d21d5705c6ecf701947d3f4f1fcbc05def90542605b66a93f8cc",
+      "pixels": [
+        216,
+        216
+      ],
+      "role": "Android 13 themed-icon layer (single colour, alpha only)",
+      "params": {
+        "density": "xhdpi",
+        "glyph_px": 120,
+        "quality": 75,
+        "method": 6,
+        "alpha_quality": 70
+      }
+    },
+    {
+      "path": "android/core-ui/src/main/res/mipmap-xxhdpi/aron_launcher_monochrome.webp",
+      "bytes": 3454,
+      "sha256": "665b3bcc0f5de45d15c85dbb7aea146cfad20e7985dd3369df9cc4d6416435fe",
+      "pixels": [
+        324,
+        324
+      ],
+      "role": "Android 13 themed-icon layer (single colour, alpha only)",
+      "params": {
+        "density": "xxhdpi",
+        "glyph_px": 180,
+        "quality": 75,
+        "method": 6,
+        "alpha_quality": 70
+      }
+    },
+    {
+      "path": "android/core-ui/src/main/res/mipmap-xxxhdpi/aron_launcher_monochrome.webp",
+      "bytes": 5078,
+      "sha256": "3e1717694db265c240d09c4f14190b8a8fb0c0ebc7ea91f85265305e995bd89e",
+      "pixels": [
+        432,
+        432
+      ],
+      "role": "Android 13 themed-icon layer (single colour, alpha only)",
+      "params": {
+        "density": "xxxhdpi",
+        "glyph_px": 240,
+        "quality": 75,
+        "method": 6,
+        "alpha_quality": 70
+      }
+    },
+    {
+      "path": "android/core-ui/src/main/res/drawable-nodpi/aron_brand_mark.png",
+      "bytes": 49544,
+      "sha256": "a7bf65eb22dbda1fafd5ed85f86c5c0185b5af5e8f44eb212430180f5dc96e57",
+      "pixels": [
+        256,
+        256
+      ],
+      "role": "in-app mark, drawn on a solid plate",
+      "params": {
+        "glyph_px": 236,
+        "lossless": true
+      }
+    },
+    {
+      "path": "web/public/brand/aron-mark-64.png",
+      "bytes": 4545,
+      "sha256": "738e3895b61d5d3571e077ac8d440ccd56666ae7e808f6d005907c79b2d87558",
+      "pixels": [
+        64,
+        64
+      ],
+      "role": "web BrandMark",
+      "params": {
+        "glyph_px": 56,
+        "padding": 0.06
+      }
+    },
+    {
+      "path": "web/public/brand/aron-mark-128.png",
+      "bytes": 14129,
+      "sha256": "c72c2750c22369425fcb6176b0e5aff95a7a229dc5b82f04a8f5e6dd2b060b84",
+      "pixels": [
+        128,
+        128
+      ],
+      "role": "web BrandMark",
+      "params": {
+        "glyph_px": 113,
+        "padding": 0.06
+      }
+    },
+    {
+      "path": "web/public/brand/aron-mark-256.png",
+      "bytes": 45903,
+      "sha256": "5753d7c9f2e7a85ad35706f675d3eb51dc8b895c88236e679b50e94e7952b306",
+      "pixels": [
+        256,
+        256
+      ],
+      "role": "web BrandMark",
+      "params": {
+        "glyph_px": 225,
+        "padding": 0.06
+      }
+    },
+    {
+      "path": "web/src/app/icon.png",
+      "bytes": 28066,
+      "sha256": "74cc471f9aefde52627e64aa04f6d3bf88c2d92b007dd368f0103d1cfc4f9bf5",
+      "pixels": [
+        192,
+        192
+      ],
+      "role": "Next app icon",
+      "params": {
+        "glyph_px": 169,
+        "padding": 0.06
+      }
+    },
+    {
+      "path": "web/src/app/apple-icon.png",
+      "bytes": 15275,
+      "sha256": "63668a5fbacf39bc8bdf03c783a349adb146213ad4d1d0c0e5d298b5db57b575",
+      "pixels": [
+        180,
+        180
+      ],
+      "role": "Next apple icon (opaque, on the calm page plate)",
+      "params": {
+        "glyph_px": 130,
+        "plate": "#E8EFFA"
+      }
+    },
+    {
+      "path": "web/src/app/favicon.ico",
+      "bytes": 5571,
+      "sha256": "1f3a5a0eeb8b3f88484114b77ee1e7d4ce3c407e8701237b6c52493ad953bb3c",
+      "pixels": [
+        48,
+        48
+      ],
+      "role": "Next favicon",
+      "params": {
+        "frames": [
+          {
+            "canvas_px": 16,
+            "glyph_px": 16
+          },
+          {
+            "canvas_px": 32,
+            "glyph_px": 30
+          },
+          {
+            "canvas_px": 48,
+            "glyph_px": 44
+          }
+        ]
+      }
+    },
+    {
+      "path": "backend/analytics/src/main/resources/brand/aron-mark-64.png",
+      "bytes": 4545,
+      "sha256": "738e3895b61d5d3571e077ac8d440ccd56666ae7e808f6d005907c79b2d87558",
+      "pixels": [
+        64,
+        64
+      ],
+      "role": "printed/PDF report header mark (data: URI, white paper)",
+      "params": {
+        "glyph_px": 56,
+        "padding": 0.06
+      }
+    }
+  ]
+}

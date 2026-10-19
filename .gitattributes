@@ -1,0 +1,6 @@
+*.png binary
+*.webp binary
+*.jpg binary
+*.jpeg binary
+*.ico binary
+assets/**/manifest.* text eol=lf

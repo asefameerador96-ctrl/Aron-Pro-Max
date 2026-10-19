@@ -29,3 +29,23 @@ node_modules/
 # Python build output (tools/)
 __pycache__/
 *.pyc
+
+# The operator's local drop folder for CI-built dev APKs (with their SHA256SUMS, release-manifest.json and the apksigner .idsig
+# files): release builds come from CI, never from git. Anchored to the repo root on purpose, so a future test fixture or sample
+# APK elsewhere in the tree is not hidden by a global *.apk rule. This block ships in the same commit as the brand change
+# (DECISIONS D-BP-A-apks) and the owner may drop it; while it is here it also keeps ./apks out of a `git add -A`.
+/apks/
+# Output of the operator's device-check scripts (tools/checks): signed dev APKs and PowerShell transcripts (they name the laptop).
+/tools/checks/*/apk/
+/tools/checks/*/transcript.log
+
+# Pack pictures (assets/packshots, assets/README.md): the repository is public until the product is complete
+# (CLAUDE.md rule 13) and history cannot be retracted, so no real pack picture may be staged by accident. An ALLOWLIST, not an
+# extension list: everything directly under assets/packshots/ is ignored (any picture or archive format, any case, and the
+# whole processed/ folder, because git does not descend into an ignored directory) except the two files that carry no pixels,
+# manifest.csv (hashes and sizes) and README.md. This only keeps a pack picture from being staged by accident under
+# assets/packshots/ (`git add -A`, `git add assets`); it does not stop `git add -f`, nor a picture copied to another folder.
+# Nothing stops a forced add yet: a CI guard against it is proposed in docs/requests/brand-infra-ci-gates.md; not built yet.
+assets/packshots/*
+!assets/packshots/manifest.csv
+!assets/packshots/README.md

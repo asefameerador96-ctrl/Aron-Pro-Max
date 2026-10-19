@@ -3,8 +3,8 @@ import type { SessionData } from "@/lib/auth/session";
 import { t, type Locale } from "@/lib/i18n";
 import { menuFor } from "@/lib/menu/menu";
 import { arrangeNav } from "@/lib/menu/nav-tree";
+import { BrandMark } from "./brand-mark";
 import { ConnectionChip } from "./connection-chip";
-import { Icon } from "./kit/icons";
 import { LocaleSwitch } from "./locale-switch";
 import { LogoutButton } from "./logout-button";
 import { ScopeBadge } from "./scope-badge";
@@ -31,7 +31,7 @@ export function Shell({ session, locale, children, allowedMenus = null }: { sess
         <header className="glass-bar sticky top-0 z-30 flex min-h-(--topbar-h) flex-wrap items-center gap-x-2 gap-y-1 border-b border-transparent px-3 py-1 data-[scrolled]:border-divider data-[scrolled]:shadow-card sm:gap-x-3 sm:px-4" data-testid="top-bar">
           <NavDrawer sections={sections} appName={appName} who={who} />
           <span className="flex items-center gap-2 md:hidden">
-            <Icon name="dashboard" className="text-accent-graphic" />
+            <BrandMark size={32} />
             <span className="text-heading text-primary">{appName}</span>
           </span>
           <TopBarTitle sections={sections} />
