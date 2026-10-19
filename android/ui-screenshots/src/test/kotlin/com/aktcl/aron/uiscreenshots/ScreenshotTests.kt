@@ -167,8 +167,10 @@ class ScreenshotTests {
             onSettings = {}, hero = HomeHero(Formats.money(4_391_000, locale), 6, 60, "08:52", HomeDayState.IN_FIELD),
             kpis = HomeKpis("10%", 54, 0, listOf(HomeStockLine(cigarette, 12_000, 9_800, stick), HomeStockLine(lighter, 400, 25, piece), HomeStockLine(match, 400, 394, dozen))),
             money = HomeMoneyLines(
-                listOf(HomeMoneyLine(match, Formats.money(141_000, locale)), HomeMoneyLine(lighter, Formats.money(4_687_500, locale))),
-                Formats.money(4_828_500, locale), null, "−" + Formats.money(437_500, locale), Formats.money(4_391_000, locale),
+                listOf(HomeMoneyLine(match, Formats.money(141_000, locale), bare(141_000, locale)), HomeMoneyLine(lighter, Formats.money(4_687_500, locale), bare(4_687_500, locale))),
+                Formats.money(4_828_500, locale), "−" + Formats.money(437_500, locale), null, Formats.money(4_391_000, locale),
+                sticksSold = 0, grossBare = bare(4_828_500, locale), offerDiscountBare = bare(437_500, locale), qcBare = bare(0, locale), netBare = bare(4_391_000, locale),
+                totalDiscountBare = bare(437_500, locale), drpDiscountBare = bare(0, locale), totalQcBare = bare(0, locale),
             ),
             sync = SyncChipState.SyncedAt(Formats.digits("10:42", locale)), onSync = {}, sunlight = false, onSunlight = {},
             dock = HomeDock.START_SELLING, routeKindLabel = "Daily",
@@ -177,7 +179,7 @@ class ScreenshotTests {
 
     // ---- selling fixtures (SellShot) ----
     private fun sku(id: Long, cat: String, name: String, unit: String, perPack: Int) =
-        SkuEntity(id, "S$id", id, cat, name, name, null, unit, perPack, if (perPack > 1) "pack" else "base", null, "1.000", id.toInt(), "active", 1)
+        SkuEntity(id, name.replace(' ', '-'), id, cat, name, name, null, unit, perPack, if (perPack > 1) "pack" else "base", null, "1.000", id.toInt(), "active", 1)
     private val stockRows = listOf(
         StockRow(sku(1, "cigarette", "MaxR 10S", "stick", 10), 400, 20, stockBase = 380),
         StockRow(sku(2, "cigarette", "Prime Gold 10S", "stick", 10), 200, 0, stockBase = 190),
@@ -297,12 +299,12 @@ class ScreenshotTests {
         )
     }
 
-    @Composable private fun Sale() = ParityFrame(stringResource(SaleR.string.sale_title), com.aktcl.aron.core.ui.R.drawable.aron_art_sale, subtitle = card.name) {
-        SaleEntryScreen(skus, saleReview, { id -> saleDraft.lines.firstOrNull { it.skuId == id }?.qtyEntered ?: 0 }, { _, _ -> }, {}, {}, recentSkuIds = setOf(100L), onPreviousSales = {})
+    @Composable private fun Sale() = ParityFrame(stringResource(SaleR.string.sale_title), com.aktcl.aron.core.ui.R.drawable.aron_art_sale) {
+        SaleEntryScreen(skus, saleReview, { id -> saleDraft.lines.firstOrNull { it.skuId == id }?.qtyEntered ?: 0 }, { _, _ -> }, {}, {}, recentSkuIds = setOf(100L), onPreviousSales = {}, retailerLabel = "Banani Store (DHK-344-001-01711000000-Apsis Cluster)")
     }
 
     @Composable private fun Review() = ParityFrame(stringResource(SaleR.string.review_title), com.aktcl.aron.core.ui.R.drawable.aron_art_sale) {
-        ReviewScreen(reviewReview, {}, outletLine = "Banani Store (DHK-344-001) · Apsis RouteDaily · Apsis Cluster", onCreditToggle = {}, onQc = {})
+        ReviewScreen(reviewReview, {}, outletLine = "Banani Store (DHK-344-001)\nরুট: Apsis RouteDaily\nক্লাস্টার: Apsis Cluster", onCreditToggle = {}, onQc = {})
     }
 
     @Composable private fun Memo() = Frame(stringResource(HomeR.string.hm_tile_memo)) {
@@ -314,7 +316,7 @@ class ScreenshotTests {
     @Composable private fun Attendance() = ParityFrame(stringResource(HomeR.string.hm_tile_attendance), com.aktcl.aron.core.ui.R.drawable.aron_art_attendance) {
         AttendanceContent(
             notCheckedIn, "17:00", {}, {}, onRefreshFix = {}, nowIso = now,
-            userTitle = "SR - Testing Banani (sr334001)", userSubtitle = localizedDigits("Apsis RouteDaily, 2026-10-05"),
+            userTitle = "SR - Testing Banani (sr334001)", userSubtitle = "Apsis RouteDaily, 2026-10-05",
         )
     }
 
@@ -412,4 +414,5 @@ class ScreenshotTests {
     @Test fun recordingRunNeverPasses() {
         if (recordTo != null) fail("Goldens recorded to $recordTo: download the artifact, copy the PNGs into android/ui-screenshots/src/test/screenshots and turn the record switch off.")
     }
+    private fun bare(mtk: Long, locale: UiLocale) = Formats.digits(com.aktcl.aron.rules.Money.formatTaka(mtk, 2), locale)
 }

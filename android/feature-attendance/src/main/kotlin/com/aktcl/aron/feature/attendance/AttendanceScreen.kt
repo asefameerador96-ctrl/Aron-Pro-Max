@@ -61,7 +61,11 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.foundation.background
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
@@ -176,6 +180,7 @@ fun AttendanceContent(
             }
             LocationCard(state, onRefreshFix)
             DayLines(state, checkoutAtLabel)
+            Spacer(Modifier.height(32.dp)) // with the column gap, about 56 to 64 dp between the location card and the message (sr/attendance.png)
             // the reference message once, centred above the two big buttons (screens-sr s3)
             val prompt = when {
                 !checkOutPhase && state.showCheckInPrompt -> stringResource(R.string.att_prompt_checkin)
@@ -199,7 +204,6 @@ fun AttendanceContent(
                     enabled = checkOutPhase && !dayComplete && state.checkOutEnabled && !state.busy, enabledColors = RedStops, modifier = Modifier.weight(1f),
                 )
             }
-            Text(stringResource(R.string.att_offline_saved), color = look.inkMuted, fontSize = 13.sp)
         }
         // the sheet keeps its last kind while it slides out, so the words do not change mid-exit
         var lastHold by remember { mutableStateOf(HOLD_IN) }
@@ -224,18 +228,25 @@ private const val HOLD_OUT = "out"
 private val GreenStops = listOf(Color(0xFF00A650), Color(0xFF5CBB8A))
 private val RedStops = listOf(Color(0xFFD5484A), Color(0xFFE79B9C))
 
-/** The user card (sr/attendance.png): a soft purple tile with the person glyph, the name line and the route line. */
+/** A 32 dp lavender rounded-square tile with a purple 18 dp glyph (sr/attendance.png: user tile #D7D3DF, location tile #C7C3CF). */
+@Composable
+private fun LeadingTile(glyph: ImageVector, fill: Color) {
+    val look = LocalAronLook.current
+    Box(Modifier.size(32.dp).clip(RoundedCornerShape(8.dp)).background(if (look.sunlight) look.silhouette else fill), contentAlignment = Alignment.Center) {
+        Icon(glyph, contentDescription = null, tint = look.purple, modifier = Modifier.size(18.dp))
+    }
+}
+
+/** The user card (sr/attendance.png): a lavender tile with the person glyph, the name line and the route line, over a red rule. */
 @Composable
 private fun UserCard(title: String, subtitle: String?) {
     val look = LocalAronLook.current
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-            Box(Modifier.size(56.dp).clip(RoundedCornerShape(12.dp)).background(look.silhouette), contentAlignment = Alignment.Center) {
-                Icon(AronIcons.Person, contentDescription = null, tint = look.purple, modifier = Modifier.size(32.dp))
-            }
+            LeadingTile(AronIcons.Person, Color(0xFFD7D3DF))
             Column(Modifier.weight(1f)) {
-                Text(title, color = look.ink, fontSize = 18.sp, fontWeight = FontWeight.Bold)
-                if (subtitle != null) Text(subtitle, color = look.ink, fontSize = 13.sp)
+                Text(title, color = look.ink, fontSize = 16.sp, fontWeight = FontWeight.Medium)
+                if (subtitle != null) Text(subtitle, color = look.ink, fontSize = 12.sp)
             }
         }
         Box(Modifier.fillMaxWidth().height(1.dp).background(look.red))
@@ -254,38 +265,41 @@ private fun LocationCard(state: AttendanceState, onRefreshFix: (() -> Unit)?) {
         spin.snapTo(0f)
         if (state.readingFix && !reduced) spin.animateTo(360f, tween(AronTokens.Motion.SyncTurnMillis, easing = LinearEasing))
     }
+    val refreshLabel = stringResource(R.string.att_refresh)
     val shape = RoundedCornerShape(12.dp)
+    // a compact, borderless #D7D7D7 block with a wide soft shadow, one text block of at most two lines (sr/attendance.png)
     Row(
-        Modifier.fillMaxWidth().shadow(2.dp, shape).clip(shape).background(look.card.copy(alpha = 0.6f)).padding(12.dp),
+        Modifier.fillMaxWidth().heightIn(min = 64.dp).shadow(12.dp, shape, ambientColor = Color(0x33000000), spotColor = Color(0x33000000)).clip(shape)
+            .background(if (look.sunlight) look.card else Color(0xFFD7D7D7)).padding(horizontal = 12.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Box(Modifier.size(56.dp).clip(RoundedCornerShape(12.dp)).background(look.silhouette), contentAlignment = Alignment.Center) {
-            Icon(AronIcons.Place, contentDescription = null, tint = look.purple, modifier = Modifier.size(32.dp))
-        }
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
-            val coords = state.coordinatesText ?: state.addressText
+        LeadingTile(AronIcons.Place, Color(0xFFC7C3CF))
+        Column(Modifier.weight(1f)) {
+            // the address when it is known, else the coordinates in Latin digits on one line (UI-SR-11); the accuracy is a small grey suffix
+            val line = state.addressText ?: state.coordinatesText
             if (state.readingFix) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
                     ReadingArc(c.textSecondary)
-                    Text(stringResource(R.string.att_reading_fix), color = look.inkMuted, fontSize = 16.sp, modifier = Modifier.testTag(AttendanceTags.ADDRESS))
+                    Text(stringResource(R.string.att_reading_fix), color = Color(0xFF444444), fontSize = 16.sp, modifier = Modifier.testTag(AttendanceTags.ADDRESS))
                 }
             } else {
                 Text(
-                    coords?.let { localizedDigits(it) } ?: stringResource(R.string.att_location_none),
-                    color = if (coords != null) look.ink else look.inkMuted, fontSize = 16.sp,
+                    line ?: stringResource(R.string.att_location_none),
+                    color = if (line != null) Color(0xFF444444) else look.inkMuted, fontSize = 16.sp,
                     modifier = Modifier.testTag(AttendanceTags.ADDRESS),
                 )
             }
-            val address = state.addressText
-            if (address != null && address != coords) Text(address, color = look.inkMuted, fontSize = 13.sp)
-            state.fixAccuracyM?.let { if (!state.readingFix) FixQualityChip(it) }
+            state.fixAccuracyM?.let { if (!state.readingFix) Text(stringResource(R.string.att_accuracy_short, it.toString()), color = look.inkMuted, fontSize = 12.sp) }
         }
         if (onRefreshFix != null) {
-            AronIconButton(
-                AronIcons.Refresh, stringResource(R.string.att_refresh), onRefreshFix,
-                Modifier.testTag(AttendanceTags.REFRESH).graphicsLayer { rotationZ = spin.value },
-                enabled = !state.readingFix && !state.busy,
-            )
+            // the re-sample icon in aron.red, as in the reference
+            Box(
+                Modifier.size(48.dp).clip(CircleShape).clickable(enabled = !state.readingFix && !state.busy, role = Role.Button, onClick = onRefreshFix)
+                    .semantics { contentDescription = refreshLabel }.testTag(AttendanceTags.REFRESH),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(AronIcons.Refresh, contentDescription = null, tint = if (state.readingFix || state.busy) look.disabledText else look.red, modifier = Modifier.size(24.dp).graphicsLayer { rotationZ = spin.value })
+            }
         }
     }
 }
@@ -326,6 +340,8 @@ private fun DayLines(state: AttendanceState, checkoutAtLabel: String) {
             caption = if (outAt == null && inAt != null && !state.checkOutEnabled) stringResource(R.string.att_check_out_hint, localizedDigits(clock12(checkoutAtLabel))) else null,
             dim = inAt == null, tag = null,
         )
+        // the saved-offline notice appears only once a check-in or check-out is actually stored (not on the idle screen)
+        Text(stringResource(R.string.att_offline_saved), color = LocalAronLook.current.inkMuted, fontSize = 13.sp, modifier = Modifier.padding(top = 4.dp))
     }
 }
 
@@ -417,9 +433,9 @@ private fun BigAction(label: String, glyph: ImageVector, onClick: () -> Unit, ta
             .clickable(enabled = enabled, role = Role.Button, onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.padding(8.dp)) {
-            Icon(glyph, contentDescription = null, tint = if (look.sunlight && !enabled) look.disabledText else Color.White, modifier = Modifier.size(34.dp))
-            Text(label, color = if (look.sunlight && !enabled) look.disabledText else Color.White, fontSize = 16.sp, textAlign = TextAlign.Center)
+        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(8.dp)) {
+            Icon(glyph, contentDescription = null, tint = if (look.sunlight && !enabled) look.disabledText else Color.White, modifier = Modifier.size(20.dp))
+            Text(label, color = if (look.sunlight && !enabled) look.disabledText else Color.White, fontSize = 14.sp, textAlign = TextAlign.Center)
         }
     }
 }

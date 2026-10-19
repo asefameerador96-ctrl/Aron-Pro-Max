@@ -67,17 +67,18 @@ fun SaleHost(day: SrDay, sunlight: Boolean, onSunlight: (Boolean) -> Unit, onNoS
     val vm = viewModel(key = "sale-" + v.visitUuid) { kit.newSaleViewModel() }
     LaunchedEffect(v.visitUuid) { kit.prepare(); vm.start(kit.saleVisit(v)) }
     val outlet = day.dayData.collectAsState().value.outlets.firstOrNull { it.outletId == v.outletId }
+    val route = day.dayData.collectAsState().value.route
     Column(Modifier.fillMaxSize()) {
-        // the outlet stays on screen from quantity entry to the commit-and-print tap (parity audit E1/R1)
-        if (outlet != null) {
-            androidx.compose.material3.Text(
-                "${outlet.name} (${com.aktcl.aron.core.ui.localizedDigits(outlet.code)})", maxLines = 2, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-                style = androidx.compose.material3.MaterialTheme.typography.titleSmall, color = com.aktcl.aron.core.ui.LocalAronColors.current.textPrimary,
-                modifier = Modifier.fillMaxWidth().padding(horizontal = AronTokens.Space.Screen, vertical = AronTokens.Space.S),
-            )
-        }
+        // the outlet stays on screen from quantity entry to the commit-and-print tap (parity audit E1/R1): as the retailer pill on the list
+        // and as the three header lines of the review (outlet and code, route, cluster)
         SaleRoute(
             vm, day.printerManager, kit::skuName, modifier = Modifier.weight(1f),
+            retailerLabel = outlet?.let { com.aktcl.aron.core.ui.localizedDigits(com.aktcl.aron.feature.outlet.OutletPicker.label(it)) },
+            outletLines = listOfNotNull(
+                outlet?.let { "${it.name} (${com.aktcl.aron.core.ui.localizedDigits(it.code)})" },
+                route?.name?.let { stringResource(R.string.sr_review_route, it) },
+                outlet?.clusterName?.let { stringResource(R.string.sr_review_cluster, it) },
+            ),
             onFinished = {
                 scope.launch {
                     val zero = vm.state.value.draft?.zeroSale == true

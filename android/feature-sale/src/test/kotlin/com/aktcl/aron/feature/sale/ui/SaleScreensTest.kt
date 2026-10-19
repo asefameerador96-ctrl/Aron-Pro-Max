@@ -46,7 +46,7 @@ class SaleScreensTest {
         compose.setContent {
             AronTheme(AppLanguage.EN) { SaleEntryScreen(skus, review, { id -> d.lines.firstOrNull { it.skuId == id }?.qtyEntered ?: 0 }, { _, _ -> }, { reviewed = true }, {}) }
         }
-        compose.onNodeWithText("= 4 packs + 0").assertExists()
+        // the packs figure is the badge of the card, the over-stock state is named under it; nothing else is printed between cards
         compose.onNodeWithText("Only 25 in stock for Aster.").assertExists()
         compose.onNodeWithText("Proceed").assertIsEnabled().performClick()
         assertEquals(true, reviewed)
@@ -68,9 +68,10 @@ class SaleScreensTest {
         val review = SaleReviewCalculator.review(d, Fx.catalog)
         compose.setContent { AronTheme(AppLanguage.EN) { SaleEntryScreen(skus, review, { id -> d.lines.firstOrNull { it.skuId == id }?.qtyEntered ?: 0 }, { _, _ -> }, {}, {}, recentSkuIds = setOf(100L)) } }
         // one row and one stepper per SKU: the recent group owns the row, the category group does not repeat it (screens-sr s7)
-        compose.onNodeWithText("Sold here before").assertExists()
-        compose.onAllNodesWithText("MaxR 10S").assertCountEquals(1)
-        compose.onAllNodesWithText("Aster").assertCountEquals(1)
+        // the label is the SKU code; the list has no sub-header; the recent SKU is first and listed once
+        compose.onNodeWithText("Sold here before").assertDoesNotExist()
+        compose.onAllNodesWithText(Fx.maxr.code).assertCountEquals(1)
+        compose.onAllNodesWithText(Fx.aster.code).assertCountEquals(1)
     }
 
     @Test fun banglaDigitsAndMoney() {
@@ -78,9 +79,9 @@ class SaleScreensTest {
         val review = SaleReviewCalculator.review(d, Fx.catalog)
         val context = AppLocale.wrap(ApplicationProvider.getApplicationContext<Context>(), AppLanguage.BN)
         compose.setContent { CompositionLocalProvider(LocalContext provides context) { AronTheme(AppLanguage.BN) { SaleEntryScreen(skus, review, { 40 }, { _, _ -> }, {}, {}) } } }
-        // MoneyText joins the amount and the sign with a no-break space (tokens s7.1); the line total and the bar total both show it
-        compose.onAllNodesWithText("৩২০.০০ ৳").assertCountEquals(2)
-        compose.onNodeWithText("= ৪ প্যাকেট + ০").assertExists()
+        // the footer total is the bare amount in Bengali digits (no ৳: the manual's footer row); the packs figure is the card's badge
+        compose.onNodeWithText("৩২০.০০").assertExists()
+        compose.onNodeWithText("৪").assertExists()
     }
 
     @Test fun reviewShowsNonZeroComponentsAndBlocksSaveOnProblems() {

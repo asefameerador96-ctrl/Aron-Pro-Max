@@ -21,15 +21,11 @@ class HomeModelTest {
 
     @Test fun headerWithoutARouteShowsOnlyTheDate() = assertEquals("2026-10-05", HomeModel.header("SR", "A", "a", null, null, "2026-10-05").subtitle)
 
-    @Test fun tilesInScreenshotOrderWithoutLoyaltyOrPhotoCaptureByDefault() {
+    @Test fun tilesInScreenshotOrderWithPhotoCaptureAndWithoutLoyalty() {
+        // sr/home-1-tiles.webp: Photo Capture is in the grid after Task Delegation; Astha and Loyalty stay out (docs/27)
         val keys = HomeTiles.resolve(emptySet(), 0).map { it.tile.key }
-        assertEquals(listOf("attendance", "stock", "sale", "memo", "summary", "sales_submit", "outlet", "tutorial", "tasks", "sales_journey", "kpi"), keys)
+        assertEquals(listOf("attendance", "stock", "sale", "memo", "summary", "sales_submit", "outlet", "tutorial", "tasks", "photo_capture", "sales_journey", "kpi"), keys)
         assertFalse("loyalty" in keys)
-    }
-
-    @Test fun photoCaptureAppearsOnlyWhenEnabledForTheUserAndKeepsItsPlace() {
-        val keys = HomeTiles.resolve(setOf("photo_capture"), 0).map { it.tile.key }
-        assertEquals(keys.indexOf("tasks") + 1, keys.indexOf("photo_capture"))
         assertTrue(HomeTiles.resolve(setOf("loyalty"), 0).none { it.tile.key == "loyalty" })
     }
 

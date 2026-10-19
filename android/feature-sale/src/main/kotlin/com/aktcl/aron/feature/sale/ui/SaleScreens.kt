@@ -14,6 +14,15 @@ import com.aktcl.aron.core.ui.aron.AronSwitchRow
 import com.aktcl.aron.core.ui.aron.ButtonGlyph
 import com.aktcl.aron.core.ui.aron.PackCard
 import com.aktcl.aron.core.ui.aron.PackCategory
+import com.aktcl.aron.core.ui.aron.RetailerPickerField
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CheckboxDefaults
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.foundation.layout.widthIn
+import com.aktcl.aron.core.ui.AronLook
 import com.aktcl.aron.core.ui.aron.PackListHeader
 import com.aktcl.aron.core.ui.aron.SummaryRow
 import com.aktcl.aron.core.ui.aron.SummaryTable
@@ -294,55 +303,23 @@ fun SaleEntryScreen(
     onPreviousSales: (() -> Unit)? = null,
     /** Product QC with no sale lines (D-18): offered only while the memo has no line; null hides it (AMO, tests). */
     onQcOnly: (() -> Unit)? = null,
+    /** The retailer of this visit as `name (code-phone-cluster)`: the pill at the top of the list (sr/sale-select.png, the manual's SR-S-32). */
+    retailerLabel: String? = null,
 ) {
     val look = LocalAronLook.current
     var askZero by remember { mutableStateOf(false) }
-    var category by rememberSaveable { mutableStateOf<String?>(null) }
-    var searching by rememberSaveable { mutableStateOf(false) }
-    var query by rememberSaveable { mutableStateOf("") }
     val lines = review?.lines.orEmpty().associateBy { it.sku.skuId }
-    val q = query.trim()
-    val visible = skus.filter { s ->
-        (category == null || s.categoryCode == category) &&
-            (q.isEmpty() || s.name.contains(q, ignoreCase = true) || s.code.contains(q, ignoreCase = true) || s.nameBn?.contains(q, ignoreCase = true) == true)
-    }
-    // a recent SKU is listed first, once: it leaves its category order (one row, one control set, per SKU)
-    val recent = visible.filter { it.skuId in recentSkuIds }
-    val rest = visible.filterNot { it.skuId in recentSkuIds }.sortedBy { categoryRank(it.categoryCode) }
-    val categories = skus.map { it.categoryCode }.distinct().sortedBy { categoryRank(it) }
+    // a recent SKU is listed first, once: it leaves its category order (one row, one control set, per SKU); the list has no filter row
+    val ordered = skus.sortedWith(compareBy({ it.skuId !in recentSkuIds }, { categoryRank(it.categoryCode) }))
     val hasLines = review?.lines?.isNotEmpty() == true
-    val dock: @Composable () -> Unit = {
-        if (searching) {
-            Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = AronTokens.Space.Xs), verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
-                KitTextField(query, { query = it }, stringResource(R.string.sale_search), Modifier.weight(1f))
-                FilterPill(stringResource(R.string.sale_search_close), selected = false, onClick = { searching = false; query = "" })
-            }
-        } else {
-            Row(
-                Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = AronTokens.Space.Xs),
-                horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.S),
-            ) {
-                FilterPill(stringResource(R.string.sale_search), selected = false, onClick = { searching = true })
-                FilterPill(stringResource(R.string.sale_filter_all), selected = category == null, onClick = { category = null })
-                categories.forEach { code -> FilterPill(categoryLabel(code), selected = category == code, onClick = { category = code }) }
-            }
-        }
-    }
     Column(modifier.fillMaxSize()) {
         Column(Modifier.weight(1f).fillMaxWidth()) {
-            if (onPreviousSales != null) LinkText(stringResource(R.string.sale_history), onPreviousSales)
+            if (retailerLabel != null) RetailerPickerField(value = retailerLabel, placeholder = "", onClick = {}, modifier = Modifier.padding(start = 12.dp, end = 12.dp, top = AronTokens.Space.S))
+            if (onPreviousSales != null) GreenButton(stringResource(R.string.sale_history), onPreviousSales, Modifier.padding(horizontal = 12.dp, vertical = AronTokens.Space.S))
             if (onQcOnly != null && !hasLines && skus.isNotEmpty()) LinkText(stringResource(R.string.sale_qc_only), onQcOnly, Modifier.testTag(SaleTags.QC_ONLY))
             when {
                 skus.isEmpty() || review == null -> AronEmptyState(stringResource(R.string.sale_empty), icon = AronIcons.Sale)
-                visible.isEmpty() -> {
-                    dock()
-                    AronEmptyState(
-                        stringResource(R.string.sale_search_none), icon = AronIcons.Search,
-                        actionLabel = stringResource(R.string.sale_clear), onAction = { query = ""; category = null },
-                    )
-                }
                 else -> {
-                    dock()
                     PackListHeader(
                         sku = stringResource(R.string.sale_col_sku), quantity = stringResource(R.string.sale_col_sale), stock = stringResource(R.string.sale_col_stock),
                     )
@@ -350,27 +327,22 @@ fun SaleEntryScreen(
                         Modifier.weight(1f),
                         contentPadding = PaddingValues(start = 12.dp, end = 12.dp, bottom = 12.dp), verticalArrangement = Arrangement.spacedBy(10.dp),
                     ) {
-                        if (recent.isNotEmpty()) item(key = "recent_head", contentType = "head") {
-                            Text(stringResource(R.string.sale_group_recent), color = look.inkMuted, fontSize = 14.sp, modifier = Modifier.padding(start = 4.dp, top = 4.dp).semantics { heading() })
-                        }
-                        items(recent, key = { "r_${it.skuId}" }, contentType = { "sku" }) { sku -> SaleSkuRow(sku, qtyOf(sku.skuId), lines[sku.skuId], onQuantity) }
-                        items(rest, key = { it.skuId }, contentType = { "sku" }) { sku -> SaleSkuRow(sku, qtyOf(sku.skuId), lines[sku.skuId], onQuantity) }
+                        items(ordered, key = { it.skuId }, contentType = { "sku" }) { sku -> SaleSkuRow(sku, qtyOf(sku.skuId), lines[sku.skuId], onQuantity) }
                     }
                 }
             }
         }
-        // the purple bottom panel: the running total and the gradient Proceed button
-        Column(Modifier.fillMaxWidth().background(look.panel).windowInsetsPadding(WindowInsets.navigationBars)) {
-            Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text(stringResource(R.string.sale_total), color = look.onPanel, fontSize = 18.sp, modifier = Modifier.weight(1f))
-                MoneyText(money(review?.totals?.grossMtk ?: 0), style = MaterialTheme.typography.headlineMedium, color = look.onPanel, textAlign = TextAlign.End)
-            }
-            Row(Modifier.fillMaxWidth().padding(12.dp)) {
-                AronPrimaryButton(
-                    stringResource(R.string.sale_review), onClick = { if (hasLines) onReview() else askZero = true },
-                    modifier = Modifier.fillMaxWidth(), icon = rememberVectorPainter(AronIcons.ArrowForward),
-                )
-            }
+        // the single purple footer row of the manual (SR-S-32): the cart, the running total and the Proceed button beside it
+        Row(
+            Modifier.fillMaxWidth().background(look.panel).windowInsetsPadding(WindowInsets.navigationBars).padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Icon(AronIcons.Sale, contentDescription = null, tint = look.onPanel, modifier = Modifier.size(28.dp))
+            MoneyText(moneyBare(review?.totals?.grossMtk ?: 0), style = MaterialTheme.typography.headlineMedium, color = look.onPanel, modifier = Modifier.weight(1f))
+            AronPrimaryButton(
+                stringResource(R.string.sale_review), onClick = { if (hasLines) onReview() else askZero = true },
+                modifier = Modifier.widthIn(min = 140.dp), icon = rememberVectorPainter(AronIcons.ArrowForward),
+            )
         }
     }
     if (askZero) {
@@ -382,18 +354,21 @@ fun SaleEntryScreen(
     }
 }
 
-/** A filter pill of the list (white; the selected one on the bar gradient with white text). */
+/** The full-width green button of the manual (SR-S-32: "পূর্বের সেল ডাটা দেখুন", a history glyph and the label). */
 @Composable
-private fun FilterPill(label: String, selected: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
+private fun GreenButton(label: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
     val look = LocalAronLook.current
-    val shape = RoundedCornerShape(50)
-    Box(
-        modifier.heightIn(min = 48.dp).padding(vertical = 4.dp).clip(shape)
-            .then(if (selected) Modifier.background(look.barBrush()) else Modifier.background(look.card))
-            .selectable(selected = selected, role = Role.Tab, onClick = onClick)
-            .padding(horizontal = 16.dp),
-        contentAlignment = Alignment.Center,
-    ) { Text(label, color = if (selected) look.onBar else look.ink, fontSize = 15.sp, maxLines = 1) }
+    val shape = RoundedCornerShape(AronLook.ButtonRadius)
+    Row(
+        modifier.fillMaxWidth().heightIn(min = AronLook.ButtonHeight).clip(shape)
+            .background(if (look.sunlight) SolidColor(look.purple) else Brush.horizontalGradient(listOf(Color(0xFF00A650), Color(0xFF5CBB8A))))
+            .clickable(role = Role.Button, onClick = onClick).padding(horizontal = 16.dp),
+        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center,
+    ) {
+        Icon(AronIcons.Clock, contentDescription = null, tint = Color.White, modifier = Modifier.size(22.dp))
+        Spacer(Modifier.width(8.dp))
+        Text(label, color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.Medium)
+    }
 }
 
 /** A purple underlined text link of the list header (previous sales, QC only); 48 dp tall. */
@@ -413,14 +388,12 @@ private fun LinkText(label: String, onClick: () -> Unit, modifier: Modifier = Mo
 private fun SaleSkuRow(sku: SaleSku, qty: Long, line: ReviewLine?, onQuantity: (Long, Long) -> Unit) {
     val look = LocalAronLook.current
     val unit = unitLabel(sku.baseUnit)
-    val price = if (sku.pricePerQty == 1) money(sku.unitPriceMtk) else stringResource(R.string.sale_price_per, money(sku.unitPriceMtk), localizedNumber(sku.pricePerQty.toLong()))
-    val caption = sku.stockBase?.let { stringResource(R.string.sale_row_caption_stock, price, unit, stringResource(R.string.sale_in_stock, localizedNumber(it))) }
-        ?: stringResource(R.string.sale_row_caption, price, unit)
     val name = skuDisplayName(sku)
     val max = MaxLineQty
     Column {
+        // the label is the hyphenated SKU code on one line (sr/stock.webp); nothing is printed between the cards
         PackCard(
-            skuId = sku.skuId.toString(), skuCode = name,
+            skuId = sku.skuId.toString(), skuCode = sku.code,
             quantity = localizedNumber(qty), onQuantityChange = { onQuantity(sku.skuId, parseQty(it).coerceIn(0L, max)) },
             onMinus = { onQuantity(sku.skuId, (qty - 1).coerceAtLeast(0)) }, onPlus = { onQuantity(sku.skuId, (qty + 1).coerceAtMost(max)) },
             stock = sku.stockBase?.let { localizedNumber(it) } ?: "–",
@@ -430,20 +403,11 @@ private fun SaleSkuRow(sku: SaleSku, qty: Long, line: ReviewLine?, onQuantity: (
             category = packCategoryOf(sku.categoryCode),
             minusEnabled = qty > 0, plusEnabled = qty < max,
         )
-        Text(caption, color = look.inkMuted, fontSize = 13.sp, modifier = Modifier.padding(start = 6.dp, top = 4.dp, end = 6.dp))
-        if (line != null && qty > 0) {
-            Row(Modifier.fillMaxWidth().padding(start = 6.dp, end = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                val packs = if (sku.packFactor > 1 && line.packBadge.first > 0) {
-                    localizedDigits(stringResource(R.string.sale_pack_badge, line.packBadge.first.toString(), line.packBadge.second.toString()))
-                } else null
-                Text(packs.orEmpty(), color = look.inkMuted, fontSize = 13.sp, modifier = Modifier.weight(1f))
-                MoneyText(money(line.memoLine.grossMtk), style = MaterialTheme.typography.titleSmall, color = look.purple, textAlign = TextAlign.End)
-            }
-        }
+        // the over-stock state stays visible (a warning, never a block): the stock figure is named in red under the card
         if (line?.exceedsStock == true) {
             Text(
                 localizedDigits(stringResource(R.string.sale_stock_warning, (sku.stockBase ?: 0L).toString(), sku.name)),
-                color = look.red, fontSize = 13.sp, modifier = Modifier.padding(start = 6.dp, top = 2.dp, end = 6.dp),
+                color = look.red, fontSize = 13.sp, modifier = Modifier.padding(start = 16.dp, top = 4.dp, end = 16.dp),
             )
         }
     }
@@ -479,7 +443,7 @@ fun ReviewScreen(
     review: SaleReview,
     onSave: () -> Unit,
     modifier: Modifier = Modifier,
-    /** "Outlet (code) · route · cluster" under the top bar, when the host knows it. */
+    /** The review header, one line per row: `Outlet (code)`, `Route: …`, `Cluster: …` (newline separated), when the host knows it. */
     outletLine: String? = null,
     onCreditToggle: ((Boolean) -> Unit)? = null,
     onQc: (() -> Unit)? = null,
@@ -492,58 +456,79 @@ fun ReviewScreen(
             Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = AronTokens.Space.S),
             verticalArrangement = Arrangement.spacedBy(AronTokens.Space.M),
         ) {
-            if (outletLine != null) Text(outletLine, color = look.inkMuted, fontSize = 14.sp)
+            // the review header of the manual (SR-S-33): the outlet with its code, then the route and the cluster on their own lines
+            outletLine?.lines()?.filter { it.isNotBlank() }?.forEachIndexed { i, l ->
+                Text(l, color = look.ink, fontSize = if (i == 0) 17.sp else 14.sp, fontWeight = if (i == 0) FontWeight.Bold else FontWeight.Normal)
+            }
             val byCategory = review.lines.groupBy { it.sku.categoryCode }.toList().sortedBy { categoryRank(it.first) }
+            // the net is printed once, at the bottom of the table card (the Summary reference); the Print button sits on the grey page
             val totals = buildList {
-                add(SummaryTotal(stringResource(R.string.review_gross), money(t.grossMtk)))
-                if (t.offerDiscountMtk != 0L) add(SummaryTotal(stringResource(R.string.review_offer_discount), negMoney(money(t.offerDiscountMtk))))
-                if (t.drpDiscountMtk != 0L) add(SummaryTotal(stringResource(R.string.review_drp_discount), negMoney(money(t.drpDiscountMtk))))
-                if (t.qcDeductionMtk != 0L) add(SummaryTotal(stringResource(R.string.review_qc), negMoney(money(t.qcDeductionMtk))))
-                add(SummaryTotal(stringResource(R.string.review_net), money(t.netMtk)))
+                add(SummaryTotal(stringResource(R.string.review_gross), moneyGlued(t.grossMtk)))
+                if (t.offerDiscountMtk != 0L) add(SummaryTotal(stringResource(R.string.review_offer_discount), negMoney(moneyGlued(t.offerDiscountMtk))))
+                if (t.drpDiscountMtk != 0L) add(SummaryTotal(stringResource(R.string.review_drp_discount), negMoney(moneyGlued(t.drpDiscountMtk))))
+                if (t.qcDeductionMtk != 0L) add(SummaryTotal(stringResource(R.string.review_qc), negMoney(moneyGlued(t.qcDeductionMtk))))
+                add(SummaryTotal(stringResource(R.string.review_net), moneyGlued(t.netMtk)))
                 if (review.settlement.isCredit) {
-                    add(SummaryTotal(stringResource(R.string.review_paid), money(review.settlement.paidMtk)))
-                    add(SummaryTotal(stringResource(R.string.review_due), money(review.settlement.dueMtk)))
+                    add(SummaryTotal(stringResource(R.string.review_paid), moneyGlued(review.settlement.paidMtk)))
+                    add(SummaryTotal(stringResource(R.string.review_due), moneyGlued(review.settlement.dueMtk)))
                 }
             }
             SummaryTable(
                 headers = listOf(stringResource(R.string.review_col_sku), stringResource(R.string.review_col_qty), stringResource(R.string.review_col_value)),
                 rows = byCategory.flatMap { (_, ls) ->
-                    ls.map { l -> SummaryRow(skuDisplayName(l.sku), listOf(unitLabel(l.sku.baseUnit), localizedNumber(l.qtyBase), moneyBare(l.memoLine.grossMtk))) }
+                    ls.map { l -> SummaryRow(l.sku.code, listOf(unitLabel(l.sku.baseUnit), localizedNumber(l.qtyBase), moneyGlued(l.memoLine.grossMtk))) }
                 },
                 subtotals = byCategory.mapNotNull { (code, ls) ->
                     review.categories.firstOrNull { it.categoryCode == code }?.let { sub ->
-                        TotalsLine(stringResource(R.string.review_subtotal, categoryLabel(code)), listOf(stringResource(R.string.review_qty_unit, localizedNumber(sub.qtyBase), unitLabel(ls.first().sku.baseUnit)), moneyBare(sub.grossMtk)))
+                        TotalsLine(stringResource(R.string.review_subtotal, categoryLabel(code)), listOf(stringResource(R.string.review_qty_unit, localizedNumber(sub.qtyBase), unitLabel(ls.first().sku.baseUnit)), moneyGlued(sub.grossMtk)))
                     }
                 },
                 totals = totals,
                 weights = listOf(1.2f, 1f, 1f),
             )
             val showCredit = onCreditToggle != null && review.lines.isNotEmpty()
+            // credit: the purple checkbox of the manual, unchecked by default; Product QC: the yellow button
             if (showCredit) {
-                AronSwitchRow(
-                    label = if (review.settlement.isCredit) stringResource(R.string.review_credit_due, money(review.settlement.dueMtk)) else stringResource(R.string.review_credit_switch),
-                    checked = review.settlement.isCredit, onCheckedChange = onCreditToggle!!,
-                )
+                Row(
+                    Modifier.fillMaxWidth().heightIn(min = 56.dp).toggleable(value = review.settlement.isCredit, role = Role.Checkbox, onValueChange = onCreditToggle!!)
+                        .clip(RoundedCornerShape(AronLook.CardRadius)).background(look.card).padding(horizontal = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Checkbox(checked = review.settlement.isCredit, onCheckedChange = null, colors = CheckboxDefaults.colors(checkedColor = look.purple, uncheckedColor = look.purple, checkmarkColor = Color.White))
+                    Text(
+                        if (review.settlement.isCredit) stringResource(R.string.review_credit_due, money(review.settlement.dueMtk)) else stringResource(R.string.review_credit_switch),
+                        color = look.ink, fontSize = 16.sp, modifier = Modifier.weight(1f),
+                    )
+                }
             }
-            if (onQc != null) AronListRow(stringResource(R.string.qc_title), onClick = onQc, trailing = "›")
+            if (onQc != null) YellowButton(stringResource(R.string.qc_title), onQc)
             if (onSlide != null) AronListRow(stringResource(R.string.slide_title), onClick = onSlide, trailing = "›")
             // a QC-only sale (D-18): the net is below zero and is stored as a credit; the sign is shown, never hidden
             if (t.netMtk < 0) AronBanner(stringResource(R.string.review_credit_note), kind = BannerKind.Warning)
             review.problems.forEach { p -> AronBanner(problemText(p), kind = BannerKind.Error) }
             Text(stringResource(R.string.review_print_later), color = look.inkMuted, fontSize = 13.sp)
         }
-        Column(Modifier.fillMaxWidth().background(look.panel).windowInsetsPadding(WindowInsets.navigationBars)) {
-            Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text(stringResource(R.string.review_net), color = look.onPanel, fontSize = 18.sp, modifier = Modifier.weight(1f))
-                MoneyText(money(t.netMtk), style = MaterialTheme.typography.headlineMedium, color = look.onPanel, textAlign = TextAlign.End)
-            }
-            if (!review.canCommit) Text(stringResource(R.string.review_problem_other), color = look.onPanelMuted, fontSize = 12.sp, modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 2.dp))
-            Row(Modifier.fillMaxWidth().padding(12.dp)) {
-                AronPrimaryButton(stringResource(R.string.review_save), onSave, Modifier.fillMaxWidth(), enabled = review.canCommit, glyph = ButtonGlyph.Print)
-            }
+        if (!review.canCommit) Text(stringResource(R.string.review_problem_other), color = look.red, fontSize = 13.sp, modifier = Modifier.padding(horizontal = 16.dp))
+        Row(Modifier.fillMaxWidth().windowInsetsPadding(WindowInsets.navigationBars).padding(12.dp)) {
+            // on the grey page the gradient runs purple to crimson, as on the Summary screen
+            AronPrimaryButton(stringResource(R.string.review_save), onSave, Modifier.fillMaxWidth(), enabled = review.canCommit, glyph = ButtonGlyph.Print, reverse = true)
         }
     }
 }
+
+/** The yellow "Product QC" button of the manual (SR-S-33): a full-width rounded block, dark label. */
+@Composable
+private fun YellowButton(label: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    val shape = RoundedCornerShape(AronLook.ButtonRadius)
+    Box(
+        modifier.fillMaxWidth().heightIn(min = AronLook.ButtonHeight).clip(shape).background(Color(0xFFFFC107)).clickable(role = Role.Button, onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) { Text(label, color = Color(0xFF1B1B1B), fontSize = 17.sp, fontWeight = FontWeight.Medium) }
+}
+
+/** Money with the ৳ glued to the digits and grouping as on the Summary screen ("4,687.50৳"). */
+@Composable
+internal fun moneyGlued(mtk: Long): String = moneyBare(mtk) + "৳"
 
 /** A deduction with a true minus (never colour alone): "− 80.00 ৳". */
 private fun negMoney(moneyText: String): String = "− $moneyText"
