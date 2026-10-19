@@ -124,4 +124,12 @@
     <string name="tut_minutes">%1$d min</string>
     <string name="hm_target_title">Today\'s progress</string>
     <string name="hm_target_details">Details</string>
+    <string name="hm_sales_title">Sales</string>
+    <string name="hm_sales_unit">(sticks)</string>
+    <string name="hm_total_discount">Total discount</string>
+    <string name="hm_drp_discount">DRP discount</string>
+    <string name="hm_total_qc">Total QC</string>
+    <string name="hm_gross_total">Gross total</string>
+    <string name="hm_total_taka">Net payable</string>
+    <string name="set_group_status">Phone status</string>
 </resources>

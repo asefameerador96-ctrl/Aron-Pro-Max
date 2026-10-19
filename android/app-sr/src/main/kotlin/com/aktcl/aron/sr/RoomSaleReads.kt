@@ -62,6 +62,12 @@ class RoomSaleReads(private val db: AronDatabase, private val reference: Referen
         return JourneyBuilder.build(planned, visits)
     }
 
+    /** Cigarette and bidi sticks sold today (the Home sales panel headline "বিক্রয় (স্টিক)"): sold quantities of the same tracker as the sale warning. */
+    suspend fun sticksSold(date: String): Long {
+        val categoryOf = reference.skus().associate { it.skuId to it.categoryCode }
+        return StockTracker.of(db, date).values.filter { categoryOf[it.skuId] in STICK_CATEGORIES }.sumOf { it.sold }
+    }
+
     /** The KPI strip and the two money cards, all from Room (airplane mode safe, F-SR-010/069). */
     suspend fun kpi(date: String, outlets: List<OutletEntity>): Pair<KpiStrip, HomeMoney> {
         val j = journey(date, outlets)
@@ -74,4 +80,6 @@ class RoomSaleReads(private val db: AronDatabase, private val reference: Referen
         val unitByCat = skus.groupBy { it.categoryCode }.mapValues { (_, v) -> v.first().baseUnit }
         return KpiStripBuilder.build(j.planned, j.visited, j.sold, issue, current, cats) { unitByCat[it].orEmpty() } to HomeMoneyBuilder.build(memos, cats)
     }
+
+    private companion object { val STICK_CATEGORIES = setOf("cigarette", "bidi") }
 }

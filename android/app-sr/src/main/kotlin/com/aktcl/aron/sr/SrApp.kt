@@ -350,6 +350,13 @@ fun SrApp(
         } else {
             val header = HomeModel.header("SR", user.fullName, user.username, data.route?.name, data.route?.visitKind, data.businessDate)
             val snap = homeSnap
+            var photoNotice by rememberSaveable { mutableStateOf(false) }
+            if (photoNotice) {
+                com.aktcl.aron.core.ui.aron.AronDialog(
+                    stringResource(R.string.sr_photo_title), stringResource(R.string.sr_photo_body), stringResource(R.string.sr_ok),
+                    onConfirm = { photoNotice = false }, onDismiss = { photoNotice = false },
+                )
+            }
             HomeContent(
                 header, HomeTiles.resolve(emptySet(), tasks.openCount), data.freshness, user.offline, health ?: deviceHealth,
                 onTile = { t ->
@@ -365,6 +372,8 @@ fun SrApp(
                         HomeTile.SALES_JOURNEY -> screen = SrScreen.JOURNEY
                         HomeTile.KPI -> screen = SrScreen.KPI
                         HomeTile.TUTORIAL -> screen = SrScreen.TUTORIAL
+                        // Photo Capture belongs to the gift and campaign programmes docs/27 defers: the tile shows, the tap says so
+                        HomeTile.PHOTO_CAPTURE -> photoNotice = true
                         else -> onOtherTile(t)
                     }
                 },
@@ -384,7 +393,7 @@ fun SrApp(
                 val who = HomeModel.header("SR", user.fullName, user.username, data.route?.name, data.route?.visitKind, data.businessDate)
                 AttendanceContent(
                     attendance, "17:00", onCheckIn = { scope.launch { day.attendance.checkIn(); resumeTick++ } }, onCheckOut = { scope.launch { day.attendance.checkOut(); resumeTick++ } },
-                    userTitle = who.title, userSubtitle = com.aktcl.aron.core.ui.localizedDigits(who.subtitle),
+                    userTitle = who.title, userSubtitle = who.subtitle, // Latin digits, as in the reference
                 )
             }
         }
@@ -400,7 +409,7 @@ fun SrApp(
                 photosWifiOnly = wifiOnly,
                 onPhotosWifiOnly = { on -> wifiOnly = on; mediaShell?.setWifiOnly(on) },
                 onSupport = shell?.let { { screen = SrScreen.SUPPORT } },
-                onBack = goBack, sunlight = sunlight, onSunlight = onSunlight, sync = sync, onSync = openSync,
+                onBack = goBack, sunlight = sunlight, onSunlight = onSunlight, sync = sync, onSync = openSync, health = health ?: deviceHealth,
             )
         }
         SrScreen.SUPPORT -> SrFrame(stringResource(HomeR.string.set_support), goBack, sync, openSync) { shell?.let { SupportHost(it, day.userId, versionText) } }
@@ -430,7 +439,7 @@ fun SrApp(
                 }
             }
         }
-        SrScreen.VISIT -> SrFrame(stringResource(HomeR.string.hm_tile_sale), goBack, sync, openSync, icon = CoreR.drawable.aron_art_sale) {
+        SrScreen.VISIT -> SrFrame(stringResource(HomeR.string.hm_tile_sale), goBack, sync, openSync, printer = day.printerManager, icon = CoreR.drawable.aron_art_sale) {
             PermissionGate(GatedFeature.SALE, onBack = goBack) {
                 val st by day.visitFlow.state.collectAsState()
                 val open by day.visitSession.current.collectAsState()
