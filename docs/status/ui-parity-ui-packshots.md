@@ -17,7 +17,7 @@ SKUs that screenshot shows. Every other SKU shows the neutral pack silhouette. N
 
 | Screen / row | Reference | Status | Notes |
 |---|---|---|---|
-| SR Stock, every SKU row (kit `PackCard`, lane ui-sr-a) | `sr/stock.webp` | DONE (picture) | The 56 x 90 dp picture slot of the kit card is drawn by this lane's provider; the purple packs badge sits on it. Evidence: `docs/evidence/ui-parity/packshots-stock.png`. The card layout is ui-sr-a's (the SKU code wraps on 360 dp: reported to ui-sr-a). |
+| SR Stock, every SKU row (kit `PackCard`, lane ui-sr-a) | `sr/stock.webp` | DONE (picture) | The 56 x 90 dp picture slot of the kit card is drawn by this lane's provider; the purple packs badge sits on it. Evidence: `docs/evidence/ui-parity/packshots-stock.png`. The card layout is ui-sr-a's (the SKU code wraps on 360 dp; reported to ui-sr-a). |
 | SR Sale, product list (kit `PackCard`) | `sr/sale-select.png` (list layout = Stock) | DONE (picture) | Same provider. Evidence: `docs/evidence/ui-parity/packshots-sale.png` (MaxR with its picture; Prime Gold and Aster with the silhouette, no art for them). |
 | AMO control call Stock and Sale (shared feature modules) | none (`-noref`) | DONE (picture) | The provider is set in app-amo. AMO-only SKU tables (team stock, stock correction, price compliance) are text tables with no picture slot. Layout from the manual; needs an owner screenshot. |
 | TSO | none | n/a | No SKU picture slot in the TSO app today; the provider is set in app-tso. |
@@ -64,8 +64,9 @@ WebP, 6.8 to 7.4 KB each (22 KB total in a dev APK), made by `tools/packshots/cr
   captures, so every row is in the picture).
 - `PackshotWiringTest` (ui-screenshots): the kit PackCard rows of the new Stock and Sale screens ask the provider by the
   server SKU id, and the picture it returns is drawn; rows without a picture keep the silhouette.
-- Goldens: `stock_bn_packshots` and `sale_bn_packshots` (all six seeded Maxim SKUs). The Stock and Sale goldens whose fixture has MaxR 10S are
-  re-recorded (they now show its picture); no other golden changes. The harness serves the dev crops (`TestPackshots`).
+- Goldens: only this lane's own `stock_bn_packshots` and `sale_bn_packshots` (all six seeded Maxim SKUs, the provider
+  installed around those two captures only). Every other Stock and Sale golden is ui-sr-a's, untouched: the generic
+  screenshot hosts install no provider, so they show the silhouette, as on INT (lead ruling 2026-10-19).
 - `SkuPackshotsTest` (dev mapping, no art in production, id lookup, cache key, admin thumbnail wins, broken or missing
   is null, downsampling) and `BitmapPackshotProviderTest` (first-frame memory hit, load, a failing source is the
   silhouette).

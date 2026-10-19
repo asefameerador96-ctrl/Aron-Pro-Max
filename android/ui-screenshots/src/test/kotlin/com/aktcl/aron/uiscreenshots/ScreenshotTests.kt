@@ -131,7 +131,7 @@ class ScreenshotTests {
             CompositionLocalProvider(
                 LocalContext provides ctx,
                 LocalDensity provides Density(LocalDensity.current.density, fontScale = fontScale),
-            ) { AronTheme(language, dark = false, sunlight = sunlight, tier = GlassTier.B, reducedMotion = true) { CompositionLocalProvider(LocalPackshotProvider provides TestPackshots) { content() } } }
+            ) { AronTheme(language, dark = false, sunlight = sunlight, tier = GlassTier.B, reducedMotion = true) { content() } }
         }
         rule.waitForIdle()
         if (recordTo == null && System.getProperty("roborazzi.test.record") != "true") {
@@ -259,23 +259,24 @@ class ScreenshotTests {
     /** The six Maxim SKUs of the dev seed (db/seed/02_products.sql): every one has dev art (android/dev-packshots). */
     private val maximSeed = listOf("MaxR-10S" to 10, "MaxR-20S" to 20, "MaxB-10S" to 10, "MaxB-20S" to 20, "MaxWB-10S" to 10, "MaxWB-20S" to 20)
 
+    // Only these two captures install the pack picture provider; every other host renders the silhouette (as on INT).
     /** PARITY-SPEC s2.6 evidence: every seeded Maxim SKU (the SKUs of docs/ui-reference/sr/stock.webp) with its dev pack picture. */
-    @Composable private fun StockPackshots() = ParityFrame(stringResource(HomeR.string.hm_tile_stock), com.aktcl.aron.core.ui.R.drawable.aron_art_stock, printerConnected = false) {
+    @Composable private fun StockPackshots() = ParityFrame(stringResource(HomeR.string.hm_tile_stock), com.aktcl.aron.core.ui.R.drawable.aron_art_stock, printerConnected = false) { CompositionLocalProvider(LocalPackshotProvider provides TestPackshots) {
         val rows = maximSeed.mapIndexed { i, (code, per) ->
             val id = 200L + i
             StockRow(SkuEntity(id, code, id, "cigarette", code, code, null, "stick", per, "pack", null, "1.000", i, "active", 1), 0, 0)
         }
         StockContent(rows, emptyList(), null, slipNotPrinted = false, onIssue = { _, _ -> }, onSave = {}, onPrint = {})
-    }
+    } }
 
     /** PARITY-SPEC s2.6 evidence: the Sale list with every seeded Maxim SKU (pictures) and a lighter and a match without art (silhouettes). */
-    @Composable private fun SalePackshots() = ParityFrame(stringResource(SaleR.string.sale_title), com.aktcl.aron.core.ui.R.drawable.aron_art_sale, subtitle = card.name) {
+    @Composable private fun SalePackshots() = ParityFrame(stringResource(SaleR.string.sale_title), com.aktcl.aron.core.ui.R.drawable.aron_art_sale, subtitle = card.name) { CompositionLocalProvider(LocalPackshotProvider provides TestPackshots) {
         val list = maximSeed.mapIndexed { i, (code, per) ->
             SaleSku(300L + i, code, "cigarette", code, null, "stick", per, if (per == 10) 8_000 else 7_900, 1, "2026-09-01", stockBase = 200L * (i + 1))
         } + listOf(aster, match)
         val review = SaleReviewCalculator.review(draft(), list.associateBy { it.skuId })
         SaleEntryScreen(list, review, { 0 }, { _, _ -> }, {}, {}, onPreviousSales = {})
-    }
+    } }
 
     @Composable private fun Picker() = ParityFrame(stringResource(HomeR.string.hm_tile_sale), com.aktcl.aron.core.ui.R.drawable.aron_art_sale) {
         val rows = OutletPicker.rows(outlets)
