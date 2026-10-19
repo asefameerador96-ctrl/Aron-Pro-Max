@@ -14,6 +14,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -38,6 +39,9 @@ fun AronLookGallery(modifier: Modifier = Modifier) {
     var tab by remember { mutableStateOf(0) }
     var name by remember { mutableStateOf("") }
     var switch by remember { mutableStateOf(false) }
+    var chip by remember { mutableStateOf(0) }
+    var yes by remember { mutableStateOf<Boolean?>(true) }
+    var stars by remember { mutableStateOf(3) }
     val all = stringResource(R.string.core_ui_look_all)
     val tiles = listOf(
         R.string.core_ui_look_tile_attendance to R.drawable.aron_art_attendance, R.string.core_ui_look_tile_stock to R.drawable.aron_art_stock,
@@ -78,6 +82,7 @@ fun AronLookGallery(modifier: Modifier = Modifier) {
                     minusLabel = stringResource(R.string.core_ui_look_less), plusLabel = stringResource(R.string.core_ui_look_more),
                     quantityLabel = stringResource(R.string.core_ui_look_quantity),
                     packBadge = localizedNumber(0), category = category,
+                    caption = if (i == 0) stringResource(R.string.core_ui_look_price) else null,
                 )
             }
         }
@@ -124,6 +129,34 @@ fun AronLookGallery(modifier: Modifier = Modifier) {
             }
             Box(Modifier.fillMaxWidth().heightIn(min = 120.dp)) { AronEmptyMessage(stringResource(R.string.core_ui_look_no_tasks)) }
             AronSyncFooter(stringResource(R.string.core_ui_look_synced), listOf(stringResource(R.string.core_ui_look_sync_d1), stringResource(R.string.core_ui_look_sync_d2), stringResource(R.string.core_ui_look_sync_d3)))
+            AronSectionHeader(stringResource(R.string.core_ui_look_section))
+            androidx.compose.foundation.layout.Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                AronChoiceChip(stringResource(R.string.core_ui_look_chip_daily), selected = chip == 0, onClick = { chip = 0 })
+                AronChoiceChip(stringResource(R.string.core_ui_look_chip_weekly), selected = chip == 1, onClick = { chip = 1 })
+            }
+            AronRadioRow(stringResource(R.string.core_ui_look_radio_cash), selected = chip == 0, onClick = { chip = 0 })
+            AronRadioRow(stringResource(R.string.core_ui_look_radio_due), selected = chip == 1, onClick = { chip = 1 })
+            AronCheckboxRow(stringResource(R.string.core_ui_look_check_shelf), checked = switch, onCheckedChange = { switch = it })
+            AronErrorText(stringResource(R.string.core_ui_look_error))
+            androidx.compose.foundation.layout.Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                AronSolidButton(stringResource(R.string.core_ui_look_edit), onClick = {}, modifier = Modifier.weight(1f), tone = SolidTone.Amber)
+                AronSolidButton(stringResource(R.string.core_ui_look_mark_paid), onClick = {}, modifier = Modifier.weight(1f), tone = SolidTone.Green)
+            }
+            AronOutlinedButton(stringResource(R.string.core_ui_look_new_request), onClick = {}, modifier = Modifier.fillMaxWidth())
+            AronTextButton(stringResource(R.string.core_ui_look_details), onClick = {})
+            AronYesNo(stringResource(R.string.core_ui_look_yes), stringResource(R.string.core_ui_look_no), value = yes, onChange = { yes = it })
+            val starText = stringResource(R.string.core_ui_look_star)
+            val starNames = (1..5).map { starText.format(localizedNumber(it.toLong())) }
+            AronRatingStars(stars, onChange = { stars = it }, starLabel = { starNames[it - 1] })
+            AronHoldButton(stringResource(R.string.core_ui_look_hold), onConfirmed = {})
+            AronLoadingCard(stringResource(R.string.core_ui_look_loading))
+            AronDateField(null, stringResource(R.string.core_ui_look_date_label), onClick = {}, placeholder = stringResource(R.string.core_ui_look_date_hint))
+            AronNoticeCard(stringResource(R.string.core_ui_look_notice), action = stringResource(R.string.core_ui_look_retry), onAction = {})
+            androidx.compose.foundation.layout.Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                AronLanguageToggle(stringResource(R.string.core_ui_look_bangla), stringResource(R.string.core_ui_look_english), banglaSelected = true, onSelect = {})
+                AronSunToggle(switch, onToggle = { switch = it }, label = stringResource(R.string.core_ui_look_sun))
+            }
+            AronPackRow("FB-M10", "FB-M10", listOf(localizedNumber(12), localizedNumber(394)), subtitle = stringResource(R.string.core_ui_look_price), category = PackCategory.Match)
         }
     }
 }

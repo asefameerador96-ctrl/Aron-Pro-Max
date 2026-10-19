@@ -4,6 +4,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -167,7 +168,8 @@ fun PackListHeader(sku: String, quantity: String, stock: String, modifier: Modif
  * One pack row of Stock, Sale and the review (PARITY-SPEC s2.5, sr/stock.webp): a white 12 dp card with the [PackshotImage] at the
  * start and the purple round [packBadge] overlapping its bottom end, the [skuCode] in purple 18 sp medium (the reference weight), the red [AronMinus], the
  * underlined [quantity] field (tap to type; [onQuantityChange] gets digits only, Bangla digits included, at most 6), the purple
- * [AronPlus], and the [stock] figure at the end. Strings come resolved and localised (digits too) from the caller.
+ * [AronPlus], and the [stock] figure at the end; an optional [caption] (price, line total) sits under the code. Strings come resolved and
+ * localised (digits too) from the caller.
  */
 @Composable
 fun PackCard(
@@ -188,6 +190,7 @@ fun PackCard(
     minusEnabled: Boolean = true,
     plusEnabled: Boolean = true,
     editable: Boolean = true,
+    caption: String? = null,
 ) {
     val look = LocalAronLook.current
     val shape = RoundedCornerShape(AronLook.CardRadius)
@@ -210,7 +213,11 @@ fun PackCard(
         Spacer(Modifier.width(if (narrow) 2.dp else 6.dp))
         // one line, shrinking from 18 sp down to 14 sp (sr/stock.webp shows the code on one line); a longer name such as "Prime Gold
         // 10S" then wraps between words, each word shrinking to at most 12 sp: no code is ever cut
-        FitText(skuCode, lookStyle(18.sp, medium = true, color = look.purple), 12.sp, Modifier.weight(1f), oneLineDown = 14.sp)
+        Column(Modifier.weight(1f)) {
+            FitText(skuCode, lookStyle(18.sp, medium = true, color = look.purple), 12.sp, oneLineDown = 14.sp)
+            // [caption]: price per unit and, once the quantity is set, the line total (ui-sr-a), inside the card under the code
+            if (caption != null) Text(caption, style = lookStyle(12.sp, color = look.inkMuted))
+        }
         AronMinus(onMinus, minusLabel, enabled = minusEnabled)
         BasicTextField(
             value = quantity,

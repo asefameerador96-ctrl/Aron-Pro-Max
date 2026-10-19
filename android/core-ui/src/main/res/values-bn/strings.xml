@@ -150,4 +150,25 @@
     <string name="core_ui_look_sync_d1">২০২৬-১০-০৫ তারিখের তথ্য পাওয়া গেছে</string>
     <string name="core_ui_look_sync_d2">৩ টি আপলোডের অপেক্ষায়</string>
     <string name="core_ui_look_sync_d3">সর্বশেষ সিঙ্ক ১৫ মিনিট আগে</string>
+    <string name="core_ui_look_chip_daily">দৈনিক</string>
+    <string name="core_ui_look_chip_weekly">সাপ্তাহিক</string>
+    <string name="core_ui_look_radio_cash">নগদ</string>
+    <string name="core_ui_look_radio_due">বাকি</string>
+    <string name="core_ui_look_check_shelf">শেলফ সাজানো আছে</string>
+    <string name="core_ui_look_error">মোবাইল নম্বর ১১ সংখ্যার হতে হবে</string>
+    <string name="core_ui_look_edit">এডিট</string>
+    <string name="core_ui_look_mark_paid">পরিশোধিত</string>
+    <string name="core_ui_look_details">বিস্তারিত</string>
+    <string name="core_ui_look_new_request">নতুন অনুরোধ</string>
+    <string name="core_ui_look_star">%1$s / ৫</string>
+    <string name="core_ui_look_hold">চেপে ধরে জমা দিন</string>
+    <string name="core_ui_look_loading">লোড হচ্ছে</string>
+    <string name="core_ui_look_section">আমার টিম</string>
+    <string name="core_ui_look_date_label">ছুটির তারিখ</string>
+    <string name="core_ui_look_date_hint">তারিখ বাছুন</string>
+    <string name="core_ui_look_bangla">বাংলা</string>
+    <string name="core_ui_look_english">English</string>
+    <string name="core_ui_look_sun">সানলাইট মোড</string>
+    <string name="core_ui_look_price">৳১২.৫০ / পিস · মোট ৳৫০.০০</string>
+    <string name="core_ui_look_retry">আবার চেষ্টা</string>
 </resources>

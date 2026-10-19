@@ -52,6 +52,12 @@ AronActionTile(text, ActionGlyph.CheckIn | CheckOut, onClick, modifier, tone = A
 AronEmptyMessage(text)                                               // tasks.png: centred message filling the remaining space
 AronSyncFooter(status, details: List<String>, synced = true)       // AMO/TSO home footer: purple check, grey details, breaks between details
 PackBadge(text)                                                      // the one purple pack badge (PackCard places it)
+// Controls.kt (lane requests): AronChoiceChip(text, selected, onClick), AronRadioRow(text, selected, onClick), AronCheckboxRow(text, checked, onCheckedChange),
+// AronErrorText(text), AronSolidButton(text, onClick, tone = SolidTone.Amber|Green|Red|Purple), AronOutlinedButton(text, onClick), AronTextButton(text, onClick),
+// AronYesNo(yes, no, value: Boolean?, onChange), AronRatingStars(value, onChange, starLabel), AronHoldButton(text, onConfirmed, holdMillis = 1200),
+// AronSheet(title, onDismiss) { }, AronLanguageToggle(bangla, english, banglaSelected, onSelect), AronSunToggle(on, onToggle, label),
+// AronLoadingCard(label, lines = 3), AronSectionHeader(text), AronDateField(value, label, onClick, placeholder), AronPackRow(skuId, skuCode, values, subtitle)
+// PackCard(..., caption = "price / line total"); AronNoticeCard(text, action = null, onAction = null); AronHomeSettingsTag = "aron_home_settings"
 AronTargetCard(title, label, value = daySales, percent = null)       // Home target card shell; targets deferred (docs/27)
 SummaryTable(headers: List<String>, rows: List<SummaryRow(title, values)>, subtotals: List<TotalsLine> = empty, totals: List<SummaryTotal(label, value)> = empty,
              weights: List<Float>? = null /* 6 columns default 0.7,0.9,1.4,1.2,1.4,0.8 */)   // cells shrink, never break inside a word or number

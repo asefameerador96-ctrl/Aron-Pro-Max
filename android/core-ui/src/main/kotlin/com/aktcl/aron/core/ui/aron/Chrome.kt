@@ -46,6 +46,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.painter.Painter
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
@@ -260,11 +261,14 @@ fun AronHomeHeader(
             FitText(subtitle, lookStyle(12.sp, medium = true, color = look.onBar), 10.sp, maxLines = 2, oneLineDown = 10.sp)
         }
         Box(
-            Modifier.size(AronLook.Touch).clickable(role = Role.Button, onClick = onSettings).semantics { contentDescription = settingsLabel },
+            Modifier.size(AronLook.Touch).testTag(AronHomeSettingsTag).clickable(role = Role.Button, onClick = onSettings).semantics { contentDescription = settingsLabel },
             contentAlignment = Alignment.Center,
         ) { GlyphCanvas(Modifier.size(28.dp)) { gear(look.onBar, hole = if (look.sunlight) look.card else look.barEnd) } }
     }
 }
+
+/** Test tag of the [AronHomeHeader] settings gear (lanes find it with `onNodeWithTag(AronHomeSettingsTag)`). */
+const val AronHomeSettingsTag = "aron_home_settings"
 
 /** The leading glyph of a button (sr/stock.webp: Save has a disk, Print a printer). */
 enum class ButtonGlyph { Save, Print, Sync, Submit }
@@ -374,22 +378,25 @@ fun AronPlus(onClick: () -> Unit, contentDescription: String, modifier: Modifier
     StepSquare(LocalAronLook.current.purple, plus = true, onClick, contentDescription, enabled, modifier)
 
 /**
- * The white info card at the top of Summary (sr/summary.png): a dark round "i", the [text] in 17 sp, and an optional [trailing]
+ * The white info card at the top of Summary (sr/summary.png): a dark round "i", the [text] at the top, and an optional [trailing]
  * slot (the light printer circle, [AronPrinterBadge]).
  */
 @Composable
 fun AronInfoCard(text: String, modifier: Modifier = Modifier, trailing: (@Composable () -> Unit)? = null) {
     val look = LocalAronLook.current
     val shape = RoundedCornerShape(AronLook.CardRadius)
+    // sr/summary.png: 1 dp #C0C0C0 border, no shadow, the text at the top, the printer circle cut by the card's bottom edge
     Row(
-        modifier.fillMaxWidth().clip(shape).background(look.card).border(1.dp, look.underline.copy(alpha = 0.4f), shape).padding(16.dp),
-        verticalAlignment = Alignment.CenterVertically,
+        modifier.fillMaxWidth().clip(shape).background(look.card).border(1.dp, look.infoBorder, shape).padding(start = 16.dp, end = 16.dp, top = 14.dp),
+        verticalAlignment = Alignment.Top,
     ) {
-        Box(Modifier.size(20.dp).clip(CircleShape).background(look.inkMuted), contentAlignment = Alignment.Center) {
+        Box(Modifier.padding(top = 2.dp).size(20.dp).clip(CircleShape).background(look.inkMuted), contentAlignment = Alignment.Center) {
             GlyphCanvas(Modifier.size(20.dp)) { info(Color.White) }
         }
-        Text(text, style = lookStyle(15.sp, color = look.ink), modifier = Modifier.weight(1f).padding(horizontal = 12.dp))
-        if (trailing != null) CompositionLocalProvider(LocalBadgeInCard provides true) { trailing() }
+        Text(text, style = lookStyle(15.sp, color = look.ink), modifier = Modifier.weight(1f).padding(start = 12.dp, end = 12.dp, bottom = 16.dp))
+        if (trailing != null) {
+            Box(Modifier.padding(top = 10.dp).offset(y = 12.dp)) { CompositionLocalProvider(LocalBadgeInCard provides true) { trailing() } }
+        }
     }
 }
 
@@ -459,12 +466,19 @@ fun AronStatusDot(label: String, state: String, online: Boolean, modifier: Modif
     }
 }
 
-/** The pink notice card of Sales submit (sr/sales-submit.png): `#E6C8CA`, red 4 dp edges left and right, 14 sp text. */
+/**
+ * The pink notice card of Sales submit (sr/sales-submit.png): `#E6C8CA`, red 4 dp edges left and right, 14 sp text. With [action] and
+ * [onAction] it ends in a purple text button (a notice with an action, e.g. "retry").
+ */
 @Composable
-fun AronNoticeCard(text: String, modifier: Modifier = Modifier) {
+fun AronNoticeCard(text: String, modifier: Modifier = Modifier, action: String? = null, onAction: (() -> Unit)? = null) {
     val look = LocalAronLook.current
     val shape = RoundedCornerShape(AronLook.ButtonRadius)
-    Box(
-        modifier.fillMaxWidth().clip(shape).background(look.red).padding(horizontal = 4.dp).background(look.noticeFill).padding(horizontal = 12.dp, vertical = 12.dp),
-    ) { Text(text, style = lookStyle(14.sp, color = look.ink)) }
+    Row(
+        modifier.fillMaxWidth().clip(shape).background(look.red).padding(horizontal = 4.dp).background(look.noticeFill).padding(start = 12.dp, end = 4.dp, top = 12.dp, bottom = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(text, style = lookStyle(14.sp, color = look.ink), modifier = Modifier.weight(1f).padding(end = 8.dp))
+        if (action != null && onAction != null) AronTextButton(action, onAction)
+    }
 }

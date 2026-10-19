@@ -287,7 +287,8 @@ fun SummaryTable(
             Column(Modifier.fillMaxWidth().background(look.rowAlt).padding(horizontal = 10.dp, vertical = 8.dp)) {
                 subtotals.forEach { line ->
                     Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                        FitText(line.label, lookStyle(16.sp, color = look.purple), 9.sp, Modifier.weight(w[0]).padding(horizontal = 1.dp))
+                        // never below 11 sp (ui-sr-b: labels shrank to a few sp at 360 dp); a longer label wraps between words instead
+                        FitText(line.label, lookStyle(16.sp, color = look.purple), 11.sp, Modifier.weight(w[0]).padding(horizontal = 1.dp), oneLineDown = 11.sp)
                         line.values.forEachIndexed { i, v ->
                             FitText(v, lookStyle(14.sp, color = look.purple, align = cellAlign(i + 1, n)), 7.sp, Modifier.weight(w.getOrElse(i + 1) { 1f }).padding(horizontal = 1.dp))
                         }

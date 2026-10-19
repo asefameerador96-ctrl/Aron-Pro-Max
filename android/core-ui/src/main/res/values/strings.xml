@@ -153,4 +153,25 @@
     <string name="core_ui_look_sync_d1">Data for 2026-10-05 received</string>
     <string name="core_ui_look_sync_d2">3 uploads waiting</string>
     <string name="core_ui_look_sync_d3">Last sync 15 minutes ago</string>
+    <string name="core_ui_look_chip_daily">Daily</string>
+    <string name="core_ui_look_chip_weekly">Weekly</string>
+    <string name="core_ui_look_radio_cash">Cash</string>
+    <string name="core_ui_look_radio_due">Due</string>
+    <string name="core_ui_look_check_shelf">Shelf arranged</string>
+    <string name="core_ui_look_error">The mobile number must have 11 digits</string>
+    <string name="core_ui_look_edit">Edit</string>
+    <string name="core_ui_look_mark_paid">Mark paid</string>
+    <string name="core_ui_look_details">Details</string>
+    <string name="core_ui_look_new_request">New request</string>
+    <string name="core_ui_look_star">%1$s of 5</string>
+    <string name="core_ui_look_hold">Hold to submit</string>
+    <string name="core_ui_look_loading">Loading</string>
+    <string name="core_ui_look_section">My team</string>
+    <string name="core_ui_look_date_label">Leave date</string>
+    <string name="core_ui_look_date_hint">Pick a date</string>
+    <string name="core_ui_look_bangla">বাংলা</string>
+    <string name="core_ui_look_english">English</string>
+    <string name="core_ui_look_sun">Sunlight mode</string>
+    <string name="core_ui_look_price">Tk 12.50 / pc · total Tk 50.00</string>
+    <string name="core_ui_look_retry">Retry</string>
 </resources>

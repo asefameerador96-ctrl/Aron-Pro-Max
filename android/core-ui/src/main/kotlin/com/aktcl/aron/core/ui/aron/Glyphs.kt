@@ -162,6 +162,43 @@ internal object Glyph {
         drawPath(arrow, color, style = style)
     }
 
+    /** A five-point star with an outline (rating). */
+    fun DrawScope.star(fill: Color, outline: Color) {
+        val s = min(size.width, size.height)
+        val p = Path()
+        for (i in 0 until 10) {
+            val r = if (i % 2 == 0) s * 0.46f else s * 0.19f
+            val a = Math.toRadians(-90.0 + i * 36.0)
+            val x = center.x + (r * kotlin.math.cos(a)).toFloat()
+            val y = center.y + s * 0.03f + (r * kotlin.math.sin(a)).toFloat()
+            if (i == 0) p.moveTo(x, y) else p.lineTo(x, y)
+        }
+        p.close()
+        drawPath(p, fill)
+        drawPath(p, outline, style = Stroke(s * 0.04f, join = StrokeJoin.Round))
+    }
+
+    /** A sun: disc and eight rays (the Sunlight toggle). */
+    fun DrawScope.sun(color: Color) {
+        val s = min(size.width, size.height)
+        drawCircle(color, s * 0.18f, center)
+        repeat(8) { i ->
+            rotate(i * 45f, center) {
+                drawLine(color, Offset(center.x, center.y - s * 0.30f), Offset(center.x, center.y - s * 0.44f), s * 0.08f, StrokeCap.Round)
+            }
+        }
+    }
+
+    /** A calendar page with two rings (the date field). */
+    fun DrawScope.calendar(color: Color) {
+        val s = min(size.width, size.height)
+        val w = s * 0.08f
+        drawRoundRect(color, Offset(center.x - s * 0.36f, center.y - s * 0.28f), Size(s * 0.72f, s * 0.64f), CornerRadius(s * 0.08f), style = Stroke(w))
+        drawLine(color, Offset(center.x - s * 0.36f, center.y - s * 0.08f), Offset(center.x + s * 0.36f, center.y - s * 0.08f), w)
+        drawLine(color, Offset(center.x - s * 0.16f, center.y - s * 0.40f), Offset(center.x - s * 0.16f, center.y - s * 0.20f), w, StrokeCap.Round)
+        drawLine(color, Offset(center.x + s * 0.16f, center.y - s * 0.40f), Offset(center.x + s * 0.16f, center.y - s * 0.20f), w, StrokeCap.Round)
+    }
+
     /** A check mark (the sync footer). */
     fun DrawScope.check(color: Color) {
         val s = min(size.width, size.height)

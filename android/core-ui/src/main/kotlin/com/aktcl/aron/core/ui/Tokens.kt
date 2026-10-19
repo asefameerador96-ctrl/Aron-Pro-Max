@@ -239,6 +239,8 @@ data class AronLookColors(
     val secondaryDisabledText: Color = hex(0x595959), val hint: Color = hex(0x9E9E9E), val caret: Color = hex(0x616161),
     val tableHeaderStart: Color = hex(0x4F4F4F), val tableHeaderMid: Color = hex(0x3F3F3F), val tableHeaderEnd: Color = hex(0x2D2D2D),
     val panelButtonEnd: Color = hex(0x7D2B7B), val printStart: Color = hex(0x4A1C99), val printEnd: Color = hex(0xA73964),
+    /** Lane kit requests 2026-10-19: amber (memo Edit), gold (rating stars), the quiet loading bars, the info-card border (summary.png). */
+    val amber: Color = hex(0xE08A00), val gold: Color = hex(0xF5B301), val skeleton: Color = hex(0xE3E3E3), val infoBorder: Color = hex(0xC0C0C0),
 )
 
 object AronLook {
@@ -268,6 +270,7 @@ object AronLook {
         locationCard = hex(0xFFFFFF), goStart = hex(0x00642F), goEnd = hex(0x00642F), neutralStart = hex(0x303030), neutralEnd = hex(0x303030),
         secondaryDisabledText = hex(0x303030), hint = hex(0x505050), caret = hex(0x202020),
         tableHeaderStart = hex(0x202020), tableHeaderMid = hex(0x202020), tableHeaderEnd = hex(0x202020),
+        amber = hex(0x8A4B00), infoBorder = hex(0x202020),
     )
 
     /** Card and tile radius 12 dp, button radius 8 dp, the plus/minus square 36 dp drawn inside a 48 dp hit area. */
