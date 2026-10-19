@@ -59,6 +59,8 @@ class MainActivity : ComponentActivity() {
     @Inject lateinit var activityLog: com.aktcl.aron.core.sync.ActivityLog
     @Inject lateinit var telemetry: com.aktcl.aron.core.sync.DeviceTelemetry
     @Inject lateinit var imageCache: com.aktcl.aron.core.sync.ImageCache
+    @Inject lateinit var skuPackshots: com.aktcl.aron.core.sync.SkuPackshots
+    private val packshotProvider by lazy { com.aktcl.aron.core.ui.aron.BitmapPackshotProvider(skuPackshots::bitmap, skuPackshots::cached) }
     @Inject lateinit var databases: com.aktcl.aron.core.database.UserDatabases
     @Inject lateinit var scheduler: com.aktcl.aron.core.sync.SyncScheduler
     @Inject lateinit var mediaShell: MediaShell
@@ -106,6 +108,8 @@ class MainActivity : ComponentActivity() {
         val onLanguageSelect: (AppLanguage) -> Unit = { if (AppLocale.set(this, it)) recreate() }
         val versionName = BuildConfig.VERSION_NAME + " (" + BuildConfig.VERSION_CODE + ")"
         setContent {
+            // PARITY-SPEC s2.6: pack pictures of the Stock and Sale rows (thumbnail cache, then the dev-only bundled art).
+            androidx.compose.runtime.CompositionLocalProvider(com.aktcl.aron.core.ui.aron.LocalPackshotProvider provides packshotProvider) {
             var sunlight by remember { mutableStateOf(false) }
             AronTheme(language, sunlight = sunlight) {
                 Box(Modifier.fillMaxSize().aronPageBackground()) {
@@ -181,10 +185,10 @@ class MainActivity : ComponentActivity() {
                             val screens: Map<AmoScreen, @Composable (() -> Unit) -> Unit> = day?.let { d ->
                                 mapOf<AmoScreen, @Composable (() -> Unit) -> Unit>(
                                     AmoScreen.SALES_SUBMIT to { back ->
-                                        com.aktcl.aron.core.ui.AronScreen(topBar = { com.aktcl.aron.core.ui.AronTopBar(stringResource(com.aktcl.aron.feature.home.R.string.hm_tile_sales_submit), onBack = back) }) { AmoSubmitHost(d) }
+                                        com.aktcl.aron.feature.amo.AmoFrame(stringResource(com.aktcl.aron.feature.home.R.string.hm_tile_sales_submit), back, icon = com.aktcl.aron.core.ui.R.drawable.aron_art_sales_submit) { AmoSubmitHost(d) }
                                     },
                                     AmoScreen.SUPPORT to { back ->
-                                        com.aktcl.aron.core.ui.AronScreen(topBar = { com.aktcl.aron.core.ui.AronTopBar(stringResource(com.aktcl.aron.feature.home.R.string.set_support), onBack = back) }) { SupportHost(systemShell, d.userId, versionName) }
+                                        com.aktcl.aron.feature.amo.AmoFrame(stringResource(com.aktcl.aron.feature.home.R.string.set_support), back, icon = com.aktcl.aron.core.ui.R.drawable.aron_ic_gear) { SupportHost(systemShell, d.userId, versionName) }
                                     },
                                     AmoScreen.OUTLET to { back -> AmoOutletHub(d, back) },
                                     AmoScreen.REPORT to { back -> AmoReportHub(d, back) },
@@ -236,6 +240,7 @@ class MainActivity : ComponentActivity() {
                     }
                 }
             }
+        }
         }
     }
 }

@@ -176,6 +176,7 @@ class SrSaleKit(private val day: SrDay, private val context: Context, private va
 
     suspend fun summary(): SummaryBundle { prepare(); return reads.summary(day.businessDate()) }
     suspend fun journey(): Journey = reads.journey(day.businessDate(), day.dayData.value.outlets)
+    suspend fun sticksSold(): Long { prepare(); return reads.sticksSold(day.businessDate()) }
     suspend fun kpi(): Pair<KpiStrip, HomeMoney> { prepare(); return reads.kpi(day.businessDate(), day.dayData.value.outlets) }
 
     /** One stable v4 UUID per user and business date, so every print of the day is one document (docs/requests/android-print-integration.md). */

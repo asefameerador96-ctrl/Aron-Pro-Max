@@ -14,9 +14,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
-import com.aktcl.aron.core.ui.AronEmptyState
 import com.aktcl.aron.core.ui.localizedDigits
-import com.aktcl.aron.core.ui.AronPrimaryButton
 import com.aktcl.aron.core.ui.AronTokens
 import com.aktcl.aron.core.ui.LocalAronColors
 import com.aktcl.aron.feature.outlet.KitTextField
@@ -33,7 +31,7 @@ fun PriceComplianceContent(
     onType: (Long, String) -> Unit, onSave: () -> Unit, modifier: Modifier = Modifier,
 ) {
     if (rows.isEmpty()) {
-        AronEmptyState(stringResource(R.string.amo_pc_empty), modifier.fillMaxSize().testTag(PriceTags.EMPTY), hint = stringResource(R.string.amo_pc_empty_hint))
+        AmoEmptyState(stringResource(R.string.amo_pc_empty), modifier.fillMaxSize().testTag(PriceTags.EMPTY), hint = stringResource(R.string.amo_pc_empty_hint))
         return
     }
     val c = LocalAronColors.current
@@ -61,7 +59,7 @@ fun PriceComplianceContent(
             }
         }
         if (saved) Text(stringResource(R.string.amo_pa_saved), style = MaterialTheme.typography.titleMedium, color = c.textPrimary, modifier = Modifier.padding(AronTokens.Space.Screen).testTag(PriceTags.SAVED))
-        AronPrimaryButton(stringResource(R.string.amo_pa_save), onSave, Modifier.fillMaxWidth().padding(AronTokens.Space.Screen).testTag(PriceTags.SAVE), enabled = editable && PriceCompliance.canSave(rows, typed), busy = saving)
+        AmoPrimary(stringResource(R.string.amo_pa_save), onSave, Modifier.fillMaxWidth().padding(AronTokens.Space.Screen).testTag(PriceTags.SAVE), enabled = editable && PriceCompliance.canSave(rows, typed), busy = saving)
     }
 }
 

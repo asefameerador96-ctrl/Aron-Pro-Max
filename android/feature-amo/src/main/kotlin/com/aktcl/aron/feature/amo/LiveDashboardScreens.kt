@@ -1,26 +1,20 @@
 package com.aktcl.aron.feature.amo
 
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
-import com.aktcl.aron.core.ui.AronBanner
-import com.aktcl.aron.core.ui.AronListRow
-import com.aktcl.aron.core.ui.AronPrimaryButton
-import com.aktcl.aron.core.ui.AronSecondaryButton
-import com.aktcl.aron.core.ui.AronSectionLabel
-import com.aktcl.aron.core.ui.AronTokens
-import com.aktcl.aron.core.ui.BannerKind
-import com.aktcl.aron.core.ui.RowPosition
+import androidx.compose.ui.unit.dp
+import com.aktcl.aron.core.ui.aron.AronPrimaryButton
+import com.aktcl.aron.core.ui.aron.AronSecondaryButton
 import com.aktcl.aron.core.ui.localizedDigits
 import com.aktcl.aron.core.ui.localizedNumber
-
-private fun pos(i: Int, n: Int) = if (n == 1) RowPosition.Only else if (i == 0) RowPosition.First else if (i == n - 1) RowPosition.Last else RowPosition.Middle
 
 @Composable
 private fun pctText(v: Double?): String = LiveDashboard.pct(v)?.let { localizedDigits("$it %") } ?: stringResource(R.string.amo_live_dash)
@@ -32,38 +26,43 @@ fun LiveDashboardContent(
     onFilter: () -> Unit, modifier: Modifier = Modifier,
 ) {
     Column(modifier.fillMaxSize()) {
-        Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = AronTokens.Space.Screen)) {
-            if (failed) AronBanner(stringResource(R.string.amo_task_list_offline), kind = BannerKind.Warning)
-            else if (stale) AronBanner(stringResource(R.string.amo_task_list_kept), kind = BannerKind.Info)
-            AronListRow(scopeLabel, subtitle = asOfLabel?.let { stringResource(R.string.amo_live_as_of, localizedDigits(it)) }, flat = true)
+        AmoPage(Modifier.weight(1f)) {
+            if (failed) AmoNotice(stringResource(R.string.amo_task_list_offline), warning = true)
+            else if (stale) AmoNotice(stringResource(R.string.amo_task_list_kept))
+            AmoRowCard(scopeLabel, subtitle = asOfLabel?.let { stringResource(R.string.amo_live_as_of, localizedDigits(it)) })
             if (f == null) {
-                AronBanner(stringResource(R.string.amo_live_none), kind = BannerKind.Info)
+                AmoNotice(stringResource(R.string.amo_live_none))
             } else {
-                if (routeFilter) AronBanner(stringResource(R.string.amo_live_route_note), kind = BannerKind.Info)
-                AronSectionLabel(stringResource(R.string.amo_live_sales))
-                val sales = listOf(
-                    stringResource(R.string.amo_live_gross) to money(f.grossMtk), stringResource(R.string.amo_live_net) to money(f.netMtk),
-                    stringResource(R.string.amo_live_visited) to stringResource(R.string.amo_live_x_of_y, localizedNumber(f.visitedOutlets), localizedNumber(f.targetOutlets)),
-                    stringResource(R.string.amo_live_strike) to (LiveDashboard.pct(f.strikeRatePct)?.let { localizedDigits("$it %") + " (" + stringResource(R.string.amo_live_x_of_y, localizedNumber(f.successfulCalls), localizedNumber(f.targetOutlets)) + ")" } ?: stringResource(R.string.amo_live_dash)),
-                )
-                sales.forEachIndexed { i, (k, v) -> AronListRow(v, subtitle = k, position = pos(i, sales.size), divider = i < sales.lastIndex, flat = true) }
-                AronSectionLabel(stringResource(R.string.amo_live_geo))
-                val geo = listOf(
-                    stringResource(R.string.amo_live_geo_valid) to pctText(f.geoValidPct), stringResource(R.string.amo_live_force) to pctText(f.forceSalePct),
-                    stringResource(R.string.amo_live_mock) to localizedNumber(f.mockVisits), stringResource(R.string.amo_live_suspicious) to localizedNumber(f.suspiciousVisits),
-                )
-                geo.forEachIndexed { i, (k, v) -> AronListRow(v, subtitle = k, position = pos(i, geo.size), divider = i < geo.lastIndex, flat = true) }
-                AronSectionLabel(stringResource(R.string.amo_live_login))
-                val login = listOf(
-                    stringResource(R.string.amo_live_logged_in) to (stringResource(R.string.amo_live_x_of_y, localizedNumber(f.loggedInRoutes), localizedNumber(f.targetRoutes)) + " (" + pctText(f.loginPct) + ")"),
-                    stringResource(R.string.amo_live_submitted) to (stringResource(R.string.amo_live_x_of_y, localizedNumber(f.submittedRoutes), localizedNumber(f.loggedInRoutes)) + " (" + pctText(f.submitPct) + ")"),
-                    stringResource(R.string.amo_live_not_logged_in) to localizedNumber(f.notLoggedIn.size.toLong()),
-                    stringResource(R.string.amo_live_not_submitted) to localizedNumber(f.loggedInNotSubmitted.size.toLong()),
-                )
-                login.forEachIndexed { i, (k, v) -> AronListRow(v, subtitle = k, position = pos(i, login.size), divider = i < login.lastIndex, flat = true) }
+                if (routeFilter) AmoNotice(stringResource(R.string.amo_live_route_note))
+                AmoCard(title = stringResource(R.string.amo_live_sales)) {
+                    AmoFigure(stringResource(R.string.amo_live_gross), money(f.grossMtk))
+                    AmoFigure(stringResource(R.string.amo_live_net), money(f.netMtk))
+                }
+                AmoCard(title = stringResource(R.string.amo_live_strike)) {
+                    AmoFigure(stringResource(R.string.amo_live_visited), stringResource(R.string.amo_live_x_of_y, localizedNumber(f.visitedOutlets), localizedNumber(f.targetOutlets)))
+                    AmoFigure(
+                        stringResource(R.string.amo_live_strike),
+                        LiveDashboard.pct(f.strikeRatePct)?.let { localizedDigits("$it %") + " (" + stringResource(R.string.amo_live_x_of_y, localizedNumber(f.successfulCalls), localizedNumber(f.targetOutlets)) + ")" } ?: stringResource(R.string.amo_live_dash),
+                    )
+                    AmoBar(((f.strikeRatePct ?: 0.0) / 100.0).toFloat())
+                }
+                AmoCard(title = stringResource(R.string.amo_live_geo)) {
+                    AmoFigure(stringResource(R.string.amo_live_geo_valid), pctText(f.geoValidPct))
+                    AmoFigure(stringResource(R.string.amo_live_force), pctText(f.forceSalePct))
+                    AmoFigure(stringResource(R.string.amo_live_mock), localizedNumber(f.mockVisits))
+                    AmoFigure(stringResource(R.string.amo_live_suspicious), localizedNumber(f.suspiciousVisits))
+                }
+                AmoCard(title = stringResource(R.string.amo_live_login)) {
+                    AmoFigure(stringResource(R.string.amo_live_logged_in), stringResource(R.string.amo_live_x_of_y, localizedNumber(f.loggedInRoutes), localizedNumber(f.targetRoutes)) + " (" + pctText(f.loginPct) + ")")
+                    AmoBar(((f.loginPct ?: 0.0) / 100.0).toFloat())
+                    AmoFigure(stringResource(R.string.amo_live_submitted), stringResource(R.string.amo_live_x_of_y, localizedNumber(f.submittedRoutes), localizedNumber(f.loggedInRoutes)) + " (" + pctText(f.submitPct) + ")")
+                    AmoBar(((f.submitPct ?: 0.0) / 100.0).toFloat())
+                    AmoFigure(stringResource(R.string.amo_live_not_logged_in), localizedNumber(f.notLoggedIn.size.toLong()))
+                    AmoFigure(stringResource(R.string.amo_live_not_submitted), localizedNumber(f.loggedInNotSubmitted.size.toLong()))
+                }
             }
         }
-        Column(Modifier.fillMaxWidth().padding(AronTokens.Space.Screen)) { AronSecondaryButton(stringResource(R.string.amo_live_filter), onFilter, Modifier.fillMaxWidth()) }
+        Row(Modifier.fillMaxWidth().padding(12.dp)) { AronPrimaryButton(stringResource(R.string.amo_live_filter), onFilter, Modifier.weight(1f)) }
     }
 }
 
@@ -74,14 +73,14 @@ fun LiveFilterContent(
     modifier: Modifier = Modifier,
 ) {
     Column(modifier.fillMaxSize()) {
-        Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = AronTokens.Space.Screen)) {
-            AronSectionLabel(stringResource(R.string.amo_live_zone))
+        AmoPage(Modifier.weight(1f)) {
+            AmoHeading(stringResource(R.string.amo_live_zone))
             val z = listOf<Pair<Long?, String>>(null to stringResource(R.string.amo_live_all_zones)) + zones
-            z.forEachIndexed { i, (id, name) -> AronListRow(name, onClick = { onZone(id) }, trailing = if (id == zone) stringResource(R.string.amo_verify_selected) else null, position = pos(i, z.size), divider = i < z.lastIndex, flat = true) }
-            AronSectionLabel(stringResource(R.string.amo_live_route))
+            z.forEach { (id, name) -> AmoRowCard(name, selected = id == zone, trailing = if (id == zone) stringResource(R.string.amo_verify_selected) else null, onClick = { onZone(id) }) }
+            AmoHeading(stringResource(R.string.amo_live_route))
             val r = listOf<Pair<Long?, String>>(null to stringResource(R.string.amo_live_all_routes)) + routes
-            r.forEachIndexed { i, (id, name) -> AronListRow(name, onClick = { onRoute(id) }, trailing = if (id == route) stringResource(R.string.amo_verify_selected) else null, position = pos(i, r.size), divider = i < r.lastIndex, flat = true) }
+            r.forEach { (id, name) -> AmoRowCard(name, selected = id == route, trailing = if (id == route) stringResource(R.string.amo_verify_selected) else null, onClick = { onRoute(id) }) }
         }
-        Column(Modifier.fillMaxWidth().padding(AronTokens.Space.Screen)) { AronPrimaryButton(stringResource(R.string.amo_live_apply), onApply, Modifier.fillMaxWidth()) }
+        Row(Modifier.fillMaxWidth().padding(12.dp)) { AronPrimaryButton(stringResource(R.string.amo_live_apply), onApply, Modifier.weight(1f)) }
     }
 }

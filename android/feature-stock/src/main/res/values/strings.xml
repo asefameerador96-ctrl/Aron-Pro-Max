@@ -38,4 +38,6 @@
     <string name="stk_packs">%1$s packs</string>
     <string name="stk_reason_join">" · "</string>
     <string name="stk_empty">No SKU for your zone</string>
+    <string name="stk_col_loaded_short">Load</string>
+    <string name="stk_saved_short">Saved</string>
 </resources>

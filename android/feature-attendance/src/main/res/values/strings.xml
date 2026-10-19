@@ -29,4 +29,5 @@
     <string name="att_hold_hint">Keep the button pressed for a moment to confirm.</string>
     <string name="att_cancel">Cancel</string>
     <string name="att_offline_saved">Saved on this phone. It will upload when the network is back.</string>
+    <string name="att_accuracy_short">±%1$s m</string>
 </resources>

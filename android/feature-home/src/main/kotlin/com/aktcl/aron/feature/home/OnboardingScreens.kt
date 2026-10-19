@@ -1,5 +1,13 @@
 package com.aktcl.aron.feature.home
 
+import androidx.compose.foundation.lazy.items
+import androidx.compose.ui.res.painterResource
+import com.aktcl.aron.core.ui.AronListRow
+import com.aktcl.aron.core.ui.aron.AronListRow as ParityRow
+import androidx.compose.ui.unit.dp
+import com.aktcl.aron.core.ui.aron.AronScaffold as ParityScaffold
+import com.aktcl.aron.core.ui.aron.AronTopBar as ParityTopBar
+import com.aktcl.aron.core.ui.R as CoreR
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -27,7 +35,6 @@ import com.aktcl.aron.core.ui.AronBanner
 import com.aktcl.aron.core.ui.AronCard
 import com.aktcl.aron.core.ui.AronEmptyState
 import com.aktcl.aron.core.ui.AronIcons
-import com.aktcl.aron.core.ui.AronListRow
 import com.aktcl.aron.core.ui.AronPrimaryButton
 import com.aktcl.aron.core.ui.AronScreen
 import com.aktcl.aron.core.ui.AronSecondaryButton
@@ -168,20 +175,29 @@ object TutorialJson {
  */
 @Composable
 fun TutorialListContent(items: List<TutorialItem>, online: Boolean, onPlay: (TutorialItem) -> Unit, modifier: Modifier = Modifier, onBack: (() -> Unit)? = null) {
-    val c = LocalAronColors.current
-    AronScreen(modifier = modifier, topBar = { AronTopBar(stringResource(R.string.tut_title), onBack = onBack) }) {
+    ParityScaffold(
+        modifier = modifier,
+        topBar = {
+            ParityTopBar(
+                stringResource(R.string.tut_title), icon = painterResource(CoreR.drawable.aron_art_tutorial),
+                onBack = onBack, backLabel = stringResource(CoreR.string.core_ui_back),
+            )
+        },
+    ) {
         Column(Modifier.fillMaxSize()) {
-            if (!online) AronBanner(stringResource(R.string.tut_online_only), Modifier.padding(horizontal = AronTokens.Space.Screen, vertical = AronTokens.Space.S), BannerKind.Info)
+            if (!online) AronBanner(stringResource(R.string.tut_online_only), Modifier.padding(horizontal = 12.dp, vertical = AronTokens.Space.S), BannerKind.Info)
             if (items.isEmpty()) AronEmptyState(stringResource(R.string.tut_empty), Modifier.testTag(OnboardingTags.TUTORIAL_EMPTY), icon = AronIcons.Tutorial)
-            else LazyColumn(contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = AronTokens.Space.Screen, vertical = AronTokens.Space.S)) {
-                itemsIndexed(items, key = { _, t -> t.id }) { i, t ->
-                    AronListRow(
+            else LazyColumn(
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp, vertical = AronTokens.Space.S),
+                verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp),
+            ) {
+                items(items, key = { it.id }) { t ->
+                    ParityRow(
                         t.title, Modifier.testTag(OnboardingTags.tutorial(t.id)),
                         subtitle = tutorialSubtitle(t, online),
-                        trailing = stringResource(if (t.manual) R.string.tut_open else R.string.tut_play), onClick = if (online) ({ onPlay(t) }) else null,
-                        leading = { IconWell(AronIcons.Tutorial) },
-                        trailingContent = { Icon(AronIcons.ChevronRight, contentDescription = null, tint = if (online) c.textSecondary else c.textDisabled, modifier = Modifier.size(AronTokens.Size.Icon)) },
-                        position = positionOf(i, items.size), divider = i < items.size - 1, flat = true,
+                        trailing = stringResource(if (t.manual) R.string.tut_open else R.string.tut_play),
+                        leading = painterResource(CoreR.drawable.aron_art_tutorial),
+                        onClick = if (online) ({ onPlay(t) }) else null,
                     )
                 }
             }

@@ -17,9 +17,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
-import com.aktcl.aron.core.ui.AronBanner
-import com.aktcl.aron.core.ui.AronEmptyState
-import com.aktcl.aron.core.ui.AronSegmented
 import com.aktcl.aron.core.ui.AronTokens
 import com.aktcl.aron.core.ui.BannerKind
 import com.aktcl.aron.core.ui.LocalAronColors
@@ -31,9 +28,9 @@ import com.aktcl.aron.core.ui.localizedNumber
 fun TeamPerformanceContent(bars: List<PerfBar>, tillDate: Boolean, onTab: (Boolean) -> Unit, stale: Boolean, failed: Boolean, modifier: Modifier = Modifier) {
     val c = LocalAronColors.current
     Column(modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = AronTokens.Space.Screen), verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(AronTokens.Space.S)) {
-        if (failed) AronBanner(stringResource(R.string.amo_perf_offline), kind = BannerKind.Warning) else if (stale) AronBanner(stringResource(R.string.amo_task_list_kept), kind = BannerKind.Info)
-        AronSegmented(listOf(stringResource(R.string.amo_perf_monthly), stringResource(R.string.amo_perf_till_date)), if (tillDate) 1 else 0, { onTab(it == 1) })
-        if (bars.isEmpty()) AronEmptyState(stringResource(R.string.amo_perf_empty), Modifier.fillMaxWidth(), hint = stringResource(R.string.amo_perf_empty_hint))
+        if (failed) AmoBanner(stringResource(R.string.amo_perf_offline), kind = BannerKind.Warning) else if (stale) AmoBanner(stringResource(R.string.amo_task_list_kept), kind = BannerKind.Info)
+        AmoChips(listOf(stringResource(R.string.amo_perf_monthly), stringResource(R.string.amo_perf_till_date)), if (tillDate) 1 else 0, { onTab(it == 1) })
+        if (bars.isEmpty()) AmoEmptyState(stringResource(R.string.amo_perf_empty), Modifier.fillMaxWidth(), hint = stringResource(R.string.amo_perf_empty_hint))
         bars.forEach { b ->
             val band = b.pct?.let { TeamPerformance.band(it) }
             val color = when (band) { PerfBand.GREEN -> c.success; PerfBand.AMBER -> c.warning; PerfBand.RED -> c.danger; null -> c.textSecondary }
