@@ -6,6 +6,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.onAllNodesWithText
@@ -19,7 +21,9 @@ import com.aktcl.aron.core.common.AppLanguage
 import com.aktcl.aron.core.ui.AppLocale
 import com.aktcl.aron.core.ui.AronTheme
 import com.aktcl.aron.feature.home.BundleStatus
+import com.aktcl.aron.feature.home.HomeTags
 import com.aktcl.aron.feature.home.HomeUser
+import com.aktcl.aron.feature.home.RoleHomes
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -44,49 +48,29 @@ class TsoChromeTest {
         compose.waitForIdle(); return context
     }
 
-    @Test fun sevenEntriesInTheManualOrderAndNoTargetStatus() {
-        val e = tsoDrawerEntries()
-        assertEquals(listOf(TsoScreen.DASHBOARD, TsoScreen.LEAVE, TsoScreen.FINAL_SUBMIT, TsoScreen.PERIPHERY, TsoScreen.MY_CALL, TsoScreen.FEEDBACK, TsoScreen.SETTINGS), e.map { it.screen })
-        assertEquals(7, e.size)
+    @Test fun homeTilesKeepTheManualOrderAndNoTargetStatus() {
+        // the drawer of the manual (S-06) is now the tile grid: the same six destinations in the same order, Settings behind the gear
+        val tiles = RoleHomes.tsoTiles().filter { it.id != RoleHomes.TsoTile.DEVICE_OTP }
+        assertEquals(listOf(TsoScreen.DASHBOARD, TsoScreen.LEAVE, TsoScreen.FINAL_SUBMIT, TsoScreen.PERIPHERY, TsoScreen.MY_CALL, TsoScreen.FEEDBACK), tiles.map { TsoScreen.of(it) })
+        assertFalse(tiles.any { it.id.contains("target") })
     }
 
-    @Test fun homeShowsHamburgerGreetingAndLogoutIcon() {
-        show(AppLanguage.EN)
-        compose.onNodeWithTag(TsoChromeTags.MENU).assertIsDisplayed()
-        compose.onNodeWithTag(TsoChromeTags.GREETING).assertIsDisplayed()
-        compose.onNodeWithText("Good day, Testing Dhaka North").assertIsDisplayed()
-        compose.onNodeWithTag(TsoChromeTags.LOGOUT).assertIsDisplayed()
+    @Test fun homeShowsTheGradientHeaderLineAndTheGear() {
+        val ctx = show(AppLanguage.EN)
+        compose.onNodeWithTag(HomeTags.HEADER).assertIsDisplayed()
+        compose.onNodeWithText("TSO - Testing Dhaka North (tso1001)").assertIsDisplayed()
+        compose.onNodeWithContentDescription(ctx.getString(com.aktcl.aron.feature.home.R.string.set_open)).assertIsDisplayed()
     }
 
-    @Test fun banglaGreeting() { show(AppLanguage.BN); compose.onNodeWithText("শুভ দিন, Testing Dhaka North").assertIsDisplayed() }
+    @Test fun banglaHeaderLine() { show(AppLanguage.BN); compose.onNodeWithText("TSO - Testing Dhaka North (tso1001)").assertIsDisplayed() }
 
-    @Test fun drawerListsAllSevenEntriesWithTheirSubtitles() {
-        show(AppLanguage.EN)
-        compose.onNodeWithTag(TsoChromeTags.MENU).performClick(); compose.waitForIdle()
-        compose.onNodeWithTag(TsoChromeTags.DRAWER_HEADER).assertExists()
-        val subs = mapOf(
-            TsoScreen.DASHBOARD to "View Dashboard", TsoScreen.LEAVE to "Manage your leaves", TsoScreen.FINAL_SUBMIT to "Submit Sales Data",
-            TsoScreen.PERIPHERY to "Check your team and outlet", TsoScreen.MY_CALL to "Create and manage plans", TsoScreen.FEEDBACK to "Manage your feedbacks",
-        )
-        subs.forEach { (screen, text) -> compose.onNodeWithTag(TsoChromeTags.subtitle(screen), useUnmergedTree = true).assertExists(); compose.onNodeWithText(text, useUnmergedTree = true).assertExists() }
-        compose.onNodeWithTag(TsoChromeTags.entry(TsoScreen.SETTINGS)).assertExists()
-    }
-
-    @Test fun drawerEntryOpensTheScreenAndTheHomeButtonReturns() {
-        show(AppLanguage.EN)
-        compose.onNodeWithTag(TsoChromeTags.MENU).performClick(); compose.waitForIdle()
-        compose.onNodeWithTag(TsoChromeTags.entry(TsoScreen.FINAL_SUBMIT)).performClick(); compose.waitForIdle()
-        compose.onNodeWithTag(TsoChromeTags.HOME_BUTTON).assertIsDisplayed()
-        compose.onNodeWithTag(TsoChromeTags.HOME_BUTTON).performClick(); compose.waitForIdle()
-        compose.onNodeWithTag(TsoChromeTags.GREETING).assertIsDisplayed()
-    }
-
-    @Test fun logoutIconAsksBeforeLoggingOut() {
+    @Test fun logoutInSettingsAsksBeforeLoggingOut() {
         var out = false
         val ctx = show(AppLanguage.EN) { out = true }
-        compose.onNodeWithTag(TsoChromeTags.LOGOUT).performClick(); compose.waitForIdle()
+        compose.onNodeWithContentDescription(ctx.getString(com.aktcl.aron.feature.home.R.string.set_open)).performClick(); compose.waitForIdle()
+        compose.onNodeWithTag(HomeTags.LOGOUT).performScrollTo().performClick(); compose.waitForIdle()
         assertFalse(out)
-        compose.onAllNodesWithText(ctx.getString(com.aktcl.aron.feature.home.R.string.set_logout_confirm)).filter(hasClickAction() and !hasTestTag(TsoChromeTags.LOGOUT)).onFirst().performClick(); compose.waitForIdle()
+        compose.onAllNodesWithText(ctx.getString(com.aktcl.aron.feature.home.R.string.set_logout_confirm)).filter(hasClickAction() and !hasTestTag(HomeTags.LOGOUT)).onFirst().performClick(); compose.waitForIdle()
         assertTrue(out)
     }
 

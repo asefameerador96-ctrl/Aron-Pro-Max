@@ -81,11 +81,14 @@ describe("themes and tiers", () => {
     expect(css).toMatch(/@supports not \(\(backdrop-filter: blur\(1px\)\) or \(-webkit-backdrop-filter: blur\(1px\)\)\) \{\n\s*:root:root \{[^}]*--bf-bar: none;/);
     expect(css).toMatch(/@media \(prefers-reduced-transparency: reduce\), \(prefers-contrast: more\), \(forced-colors: active\) \{\n\s*:root:root \{[^}]*--glass-fill-strong: var\(--surface-solid\);/);
   });
-  it("blur only on tier A bars and sheets (glass.css): cards never blur, the top bar and sheets read --bf-bar / --bf-sheet", () => {
+  it("nothing blurs in the Aron look (owner directive 2026-10-18): no utility but the sheets and panels reads a backdrop filter, and those read variables that default to none", () => {
     const glass = readFileSync(new URL("../src/styles/glass.css", import.meta.url), "utf8");
     const util = (n: string) => block(glass, new RegExp(`@utility ${n} \\{`));
-    for (const n of ["glass-card", "glass-data", "glass-rail", "glass-dialog", "glass-pop"]) expect(util(n), n).not.toMatch(/backdrop-filter/);
-    expect(util("glass-bar")).toMatch(/backdrop-filter: var\(--bf-bar\)/);
+    for (const n of ["glass-card", "glass-data", "aron-rail", "glass-dialog", "glass-pop", "glass-bar"]) expect(util(n), n).not.toMatch(/backdrop-filter/);
+    const tokens = readFileSync(new URL("../src/styles/tokens.css", import.meta.url), "utf8");
+    expect(tokens).toMatch(/--bf-bar: none;/);
+    expect(tokens).toMatch(/--bf-sheet: none;/);
+    expect(tokens).not.toMatch(/--bf-(bar|sheet): blur/);
     expect(util("glass-sheet")).toMatch(/backdrop-filter: var\(--bf-sheet\)/);
     expect(util("glass-panel")).toMatch(/backdrop-filter: var\(--bf-bar\)/);
   });

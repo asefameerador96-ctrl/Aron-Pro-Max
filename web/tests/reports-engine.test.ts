@@ -129,13 +129,20 @@ describe("reports against the seeded day", () => {
     const r = await runReportJson(me.at, "route-std", buildReportQuery(reportBySlug("route-std")!, {}, me.scope));
     expect(r.ok && r.data.rows).toEqual([]);
   });
-  it("PII columns are empty for a role without the permission and present for one with it", async () => {
+  it("PII columns are empty for a role without pii.reveal, and for one that holds it until its window is open", async () => {
     const tso = await login("tso334", "tso-pass-1");
     const analyst = await login("analyst1", "analyst-pass-1");
+    const post = async (path: string, body: unknown, at?: string) => (await fetch(`${base}${path}`, { method: "POST", headers: { "content-type": "application/json", ...(at ? { authorization: `Bearer ${at}` } : {}) }, body: JSON.stringify(body) })).json();
+    const l = await post("/v1/auth/login", { username: "admin1", password: "admin-pass-1", client: "web" });
+    const admin = await post("/v1/auth/mfa/verify", { mfa_token: l.mfa_token, code: "123456" });
     const q = (s: ScopeSummary) => buildReportQuery(reportBySlug("retailers")!, {}, s);
-    const a = await runReportJson(tso.at, "retailer-list", q(tso.scope));
-    const b = await runReportJson(analyst.at, "retailer-list", q(analyst.scope));
-    expect(a.ok && a.data.rows.every((x) => x.owner_name === null && x.phone === null)).toBe(true);
+    const run = (at: string, s: ScopeSummary) => runReportJson(at, "retailer-list", q(s));
+    const masked = (r: Awaited<ReturnType<typeof run>>) => r.ok && r.data.rows.length > 0 && r.data.rows.every((x) => x.owner_name === null && x.phone === null);
+    expect(masked(await run(tso.at, tso.scope))).toBe(true);
+    expect(masked(await run(analyst.at, analyst.scope))).toBe(true);
+    expect(masked(await run(admin.access_token, admin.scope))).toBe(true);
+    const re = await post("/v1/auth/reauth", { password: "admin-pass-1", code: "123456" }, admin.access_token);
+    const b = await run(re.access_token, admin.scope);
     expect(b.ok && b.data.rows.some((x) => typeof x.phone === "string")).toBe(true);
   });
 });

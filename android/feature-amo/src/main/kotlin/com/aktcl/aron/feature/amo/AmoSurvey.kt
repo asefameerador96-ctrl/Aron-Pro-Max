@@ -16,12 +16,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import com.aktcl.aron.core.database.entity.SurveyQuestionEntity
 import com.aktcl.aron.core.ui.AronConfirmDialog
-import com.aktcl.aron.core.ui.AronEmptyState
-import com.aktcl.aron.core.ui.AronNoButton
-import com.aktcl.aron.core.ui.AronPrimaryButton
-import com.aktcl.aron.core.ui.AronSecondaryButton
 import com.aktcl.aron.core.ui.AronTokens
-import com.aktcl.aron.core.ui.AronYesButton
 import com.aktcl.aron.core.ui.LocalAronColors
 import com.aktcl.aron.feature.outlet.AnswerType
 import com.aktcl.aron.feature.outlet.PosmSurvey
@@ -73,9 +68,9 @@ fun AmoSurveyContent(
 ) {
     if (all.isEmpty()) {
         Column(modifier.fillMaxSize()) {
-            AronEmptyState(stringResource(R.string.amo_sv_empty), Modifier.weight(1f).fillMaxWidth().testTag(AmoSurveyTags.EMPTY), hint = stringResource(R.string.amo_sv_empty_hint))
+            AmoEmptyState(stringResource(R.string.amo_sv_empty), Modifier.weight(1f).fillMaxWidth().testTag(AmoSurveyTags.EMPTY), hint = stringResource(R.string.amo_sv_empty_hint))
             // already submitted for this call (or none downloaded): a way back to the menu
-            AronSecondaryButton(stringResource(R.string.amo_sv_skip), onSkip, Modifier.fillMaxWidth().padding(AronTokens.Space.Screen).testTag(AmoSurveyTags.SKIP))
+            AmoSecondary(stringResource(R.string.amo_sv_skip), onSkip, Modifier.fillMaxWidth().padding(AronTokens.Space.Screen).testTag(AmoSurveyTags.SKIP))
         }
         return
     }
@@ -89,22 +84,22 @@ fun AmoSurveyContent(
             Text(label, style = MaterialTheme.typography.titleMedium, color = c.textPrimary)
             if (q.answerType == AnswerType.BOOL) {
                 Row(horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
-                    AronYesButton(stringResource(R.string.amo_pa_yes), { onYes(q.key) }, Modifier.weight(1f).testTag(AmoSurveyTags.yes(q.key)), enabled = !saving && cur?.bool != true)
-                    AronNoButton(stringResource(R.string.amo_pa_no), { onNo(q.key) }, Modifier.weight(1f).testTag(AmoSurveyTags.no(q.key)), enabled = !saving && cur?.bool != false)
+                    AmoYes(stringResource(R.string.amo_pa_yes), { onYes(q.key) }, Modifier.weight(1f).testTag(AmoSurveyTags.yes(q.key)), enabled = !saving && cur?.bool != true)
+                    AmoNo(stringResource(R.string.amo_pa_no), { onNo(q.key) }, Modifier.weight(1f).testTag(AmoSurveyTags.no(q.key)), enabled = !saving && cur?.bool != false)
                 }
             }
             if (q.requiresPhoto) {
                 val taken = cur?.photoUuid != null
-                AronSecondaryButton(
+                AmoSecondary(
                     stringResource(if (taken) R.string.amo_sv_photo_retake else R.string.amo_sv_photo), { onPhoto(q.key) },
                     Modifier.fillMaxWidth().testTag(AmoSurveyTags.photo(q.key)), enabled = !saving,
                 )
                 if (taken) Text(stringResource(R.string.amo_sv_photo_taken), style = MaterialTheme.typography.labelLarge, color = c.textSecondary)
             }
         }
-        AronPrimaryButton(stringResource(R.string.amo_sv_submit), onSubmit, Modifier.fillMaxWidth().testTag(AmoSurveyTags.SUBMIT), enabled = !saving && AmoSurvey.canSubmit(all, answers), busy = saving)
+        AmoPrimary(stringResource(R.string.amo_sv_submit), onSubmit, Modifier.fillMaxWidth().testTag(AmoSurveyTags.SUBMIT), enabled = !saving && AmoSurvey.canSubmit(all, answers), busy = saving)
         // The call is never blocked: with no camera or no light the AMO can leave without saving the survey.
-        AronSecondaryButton(stringResource(R.string.amo_sv_skip), { if (!saving) onSkip() }, Modifier.fillMaxWidth().testTag(AmoSurveyTags.SKIP))
+        AmoSecondary(stringResource(R.string.amo_sv_skip), { if (!saving) onSkip() }, Modifier.fillMaxWidth().testTag(AmoSurveyTags.SKIP))
     }
     if (confirming) {
         AronConfirmDialog(

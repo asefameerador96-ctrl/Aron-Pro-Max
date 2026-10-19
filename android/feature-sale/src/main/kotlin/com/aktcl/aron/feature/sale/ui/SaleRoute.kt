@@ -31,7 +31,11 @@ enum class SaleStage { Entry, Credit, Slide, Qc, Review }
  * the stage lists an unbounded height).
  */
 @Composable
-fun SaleRoute(vm: SaleViewModel, printer: PrinterManager, skuNameOf: (Long) -> String, onFinished: (printed: Boolean) -> Unit, modifier: Modifier = Modifier) {
+fun SaleRoute(
+    vm: SaleViewModel, printer: PrinterManager, skuNameOf: (Long) -> String, onFinished: (printed: Boolean) -> Unit, modifier: Modifier = Modifier,
+    /** The retailer pill of the list screen (`name (code-phone-cluster)`) and the review header lines; null/empty leave them out. */
+    retailerLabel: String? = null, outletLines: List<String> = emptyList(),
+) {
     val ui by vm.state.collectAsState()
     var stage by remember { mutableStateOf(SaleStage.Entry) }
     var qcOnlyStarted by remember { mutableStateOf(false) }
@@ -41,8 +45,7 @@ fun SaleRoute(vm: SaleViewModel, printer: PrinterManager, skuNameOf: (Long) -> S
     val skus = ui.catalog.values.toList()
     HoldPrinter(printer)
     Column(modifier.fillMaxSize()) {
-        Row(Modifier.fillMaxWidth()) { PrinterIcon(printer) }
-        PrinterBanner(printer)
+        // the printer state hangs on the host's top bar (the kit badge); nothing printer-shaped is drawn in here any more
         Box(Modifier.weight(1f).fillMaxWidth()) {
             // forward: Entry to Review, and Review into a sub-screen (Credit, QC, Slide); back: a sub-screen returning to Review
             AronScreenTransition(stage, forward = { from, to -> from == SaleStage.Entry || to != SaleStage.Review }) { s ->
@@ -55,6 +58,7 @@ fun SaleRoute(vm: SaleViewModel, printer: PrinterManager, skuNameOf: (Long) -> S
                         // an edit never starts a QC-only sale: completed QC would lock the edit for good (F-SR-033)
                         onQcOnly = if (draft?.edit == null) ({ qcBefore = emptyList(); qcOnlyStarted = true; vm.startQcOnly(); stage = SaleStage.Qc }) else null,
                         onZeroSaleConfirmed = { vm.confirmZeroSale(); stage = SaleStage.Review },
+                        retailerLabel = retailerLabel,
                     )
                     SaleStage.Slide -> if (review != null) SlideScreen(skus, review, { id -> draft?.slide?.firstOrNull { it.skuId == id }?.emptyPackets ?: 0L }, { id, n -> vm.setSlide(id, n) })
                     SaleStage.Qc -> if (review != null) QcScreen(
@@ -75,7 +79,7 @@ fun SaleRoute(vm: SaleViewModel, printer: PrinterManager, skuNameOf: (Long) -> S
                     )
                     SaleStage.Review -> if (review != null) {
                         ReviewScreen(
-                            review, onSave = vm::onPrintTapped,
+                            review, onSave = vm::onPrintTapped, outletLine = outletLines.joinToString("\n").takeIf { it.isNotBlank() },
                             onCreditToggle = { on -> if (on) stage = SaleStage.Credit else vm.setPaid(null) },
                             onQc = if (draft?.edit == null) ({ qcBefore = draft?.qc.orEmpty(); stage = SaleStage.Qc }) else null,
                             // the Slide step exists only while a SKU carries an active offer (docs/27: offers deferred)

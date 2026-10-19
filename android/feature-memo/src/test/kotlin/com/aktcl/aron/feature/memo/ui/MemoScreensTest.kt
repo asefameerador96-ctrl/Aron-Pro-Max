@@ -69,7 +69,7 @@ class MemoScreensTest {
 
     @Test fun editReasonShowsAboveTheBarWhenOnlyEditIsDisabled() {
         compose.setContent { AronTheme(AppLanguage.EN) { MemoDetailView(MemoMenu.detail(memo), false, 0, { "FB" }, {}, {}, {}, editDisabledReason = "Outside the outlet's area") } }
-        compose.onNodeWithText("Outside the outlet's area").assertIsDisplayed()
+        compose.onNodeWithText("Outside the outlet's area").performScrollTo().assertIsDisplayed() // the reason sits above the in-flow buttons
     }
 
     @Test fun denseTableStacksTheAmountUnderTheNameAtLargeFontScale() {

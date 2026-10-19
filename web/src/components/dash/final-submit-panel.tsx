@@ -2,6 +2,7 @@ import type { Schemas } from "@/contract/types";
 import type { Kpis, Summary } from "@/lib/dash/server";
 import { t, type Locale } from "@/lib/i18n";
 import { Icon } from "@/components/kit/icons";
+import { Ring } from "./charts";
 import { n, pctText } from "./tiles";
 
 /** A zone is Done only when every target zone-route is FINAL-submitted (not merely sales-submitted: day_completion_pct is sales-based). */
@@ -22,9 +23,20 @@ export function FinalSubmitPanel({ locale, kpis, zones, zoneFinal }: { locale: L
   const done = kpis.zones_final_submitted ?? 0;
   return (
     <div data-testid="final-submit-panel" className="flex flex-col gap-2">
-      <p className="text-body-strong text-primary tabular-nums" data-testid="final-submit-counts">
+      <p className="sr-only" data-testid="final-submit-counts">
         {t(locale, "finalsubmit.zones_counts", { done: n(locale, done), remaining: n(locale, Math.max(0, total - done)) })}
       </p>
+      <div className="flex items-center justify-between gap-3" data-testid="final-submit-ring-row">
+        <dl className="min-w-0 flex-1 text-caption text-secondary">
+          <dt>{t(locale, "finalsubmit.total_zones")}</dt>
+          <dd className="text-body-strong text-primary tabular-nums" data-testid="fs-total">{n(locale, total)}</dd>
+          <dt>{t(locale, "finalsubmit.submitted")}</dt>
+          <dd className="text-body-strong text-primary tabular-nums" data-testid="fs-done">{n(locale, done)}</dd>
+          <dt>{t(locale, "finalsubmit.remaining")}</dt>
+          <dd className="text-body-strong text-primary tabular-nums" data-testid="fs-remaining">{n(locale, Math.max(0, total - done))}</dd>
+        </dl>
+        <Ring pct={total > 0 ? (done / total) * 100 : null} valueText={pctText(locale, total > 0 ? (done / total) * 100 : null)} label={t(locale, "finalsubmit.ring")} size={96} hue={4} testId="final-submit-ring" />
+      </div>
       <dl className="grid grid-cols-2 gap-2">
         <div>
           <dt className="text-caption text-secondary">{t(locale, "finalsubmit.submit_pct")}</dt>

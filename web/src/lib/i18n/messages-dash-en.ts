@@ -128,6 +128,10 @@ export const dashEn = {
   "finalsubmit.zones_counts": "{done} zones submitted, {remaining} remaining",
   "finalsubmit.submit_pct": "Submit %",
   "finalsubmit.completion_pct": "Day completion %",
+  "finalsubmit.total_zones": "Total zones",
+  "finalsubmit.submitted": "Submitted",
+  "finalsubmit.remaining": "Remaining",
+  "finalsubmit.ring": "Zones final-submitted of zones with routes today",
   "finalsubmit.done": "Done",
   "finalsubmit.pending": "Pending",
 

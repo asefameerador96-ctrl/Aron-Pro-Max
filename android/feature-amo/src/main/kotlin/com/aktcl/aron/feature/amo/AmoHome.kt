@@ -54,8 +54,6 @@ import androidx.compose.ui.unit.sp
 import com.aktcl.aron.core.common.AppLanguage
 import com.aktcl.aron.core.ui.AronConfirmDialog
 import com.aktcl.aron.core.ui.AronFonts
-import com.aktcl.aron.core.ui.AronStatusChip
-import com.aktcl.aron.core.ui.ChipForm
 import com.aktcl.aron.core.ui.SyncChipState
 import com.aktcl.aron.core.ui.LocalAppLanguage
 import com.aktcl.aron.core.ui.LocalAronLook
@@ -85,12 +83,14 @@ import com.aktcl.aron.core.ui.R as CoreR
  */
 @DrawableRes
 internal fun amoTileIcon(tileId: String): Int? = when (tileId) {
-    com.aktcl.aron.feature.home.RoleHomes.AmoTile.ATTENDANCE -> CoreR.drawable.aron_ic_attendance
-    com.aktcl.aron.feature.home.RoleHomes.AmoTile.SALE -> CoreR.drawable.aron_ic_sale
-    com.aktcl.aron.feature.home.RoleHomes.AmoTile.OUTLET -> CoreR.drawable.aron_ic_outlet
-    com.aktcl.aron.feature.home.RoleHomes.AmoTile.SALES_SUBMIT -> CoreR.drawable.aron_ic_sales_submit
-    com.aktcl.aron.feature.home.RoleHomes.AmoTile.TEAM -> CoreR.drawable.aron_ic_task_delegation
-    com.aktcl.aron.feature.home.RoleHomes.AmoTile.REPORT -> CoreR.drawable.aron_ic_kpi
+    com.aktcl.aron.feature.home.RoleHomes.AmoTile.ATTENDANCE -> CoreR.drawable.aron_art_attendance
+    com.aktcl.aron.feature.home.RoleHomes.AmoTile.SALE -> CoreR.drawable.aron_art_sale
+    com.aktcl.aron.feature.home.RoleHomes.AmoTile.OUTLET -> CoreR.drawable.aron_art_outlet
+    com.aktcl.aron.feature.home.RoleHomes.AmoTile.SALES_SUBMIT -> CoreR.drawable.aron_art_sales_submit
+    com.aktcl.aron.feature.home.RoleHomes.AmoTile.TEAM -> CoreR.drawable.aron_ic_team
+    com.aktcl.aron.feature.home.RoleHomes.AmoTile.REPORT -> CoreR.drawable.aron_ic_report
+    com.aktcl.aron.feature.home.RoleHomes.AmoTile.JOINT_CALL -> CoreR.drawable.aron_ic_joint_call
+    com.aktcl.aron.feature.home.RoleHomes.AmoTile.CONTROL_CALL -> CoreR.drawable.aron_ic_control_call
     else -> null
 }
 
@@ -103,7 +103,7 @@ private fun inkStyle(size: Int, bold: Boolean = false, color: Color = LocalAronL
 
 /** A notice on the grey or white page: a white card with a red or purple edge. Replaces the glass banners on the parity screens. */
 @Composable
-internal fun AmoNotice(text: String, modifier: Modifier = Modifier, warning: Boolean = false) {
+fun AmoNotice(text: String, modifier: Modifier = Modifier, warning: Boolean = false) {
     val look = LocalAronLook.current
     Row(modifier.fillMaxWidth().shadow(2.dp, RoundedCornerShape(12.dp)).clip(RoundedCornerShape(12.dp)).background(look.card), verticalAlignment = Alignment.CenterVertically) {
         Box(Modifier.size(width = 6.dp, height = 48.dp).background(if (warning) look.red else look.purple))
@@ -179,23 +179,44 @@ fun AmoHomeContent(
             }
             (hero as? RoleHero.Amo)?.let { h -> AmoDayCard(h, money(h.teamSalesMtk), Modifier.padding(horizontal = 4.dp)) }
             // the quiet status lines: the sync state, what today's data check found, and the device figures (F-SR-064)
-            AronStatusChip(sync, Modifier.padding(horizontal = 4.dp).testTag(RoleHomeTags.SYNC), form = ChipForm.Full, onClick = onSync)
+            AmoStatusLine(sync, onSync, Modifier.padding(horizontal = 4.dp).testTag(RoleHomeTags.SYNC))
             if (!(user.offline && bundle == BundleStatus.Offline)) {
                 Text(amoBundleLine(bundle), style = inkStyle(12, color = look.inkMuted), modifier = Modifier.padding(horizontal = 8.dp).testTag(HomeTags.BUNDLE))
             }
             health?.let { h ->
-                Text(
+                Column(Modifier.padding(horizontal = 8.dp).testTag(RoleHomeTags.DEVICE), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     listOf(
                         stringResource(HomeR.string.hm_health_battery, localizedNumber(h.batteryPct.toLong())),
                         stringResource(HomeR.string.hm_health_storage, localizedNumber(h.freeStorageMb)),
                         stringResource(HomeR.string.hm_health_pending, localizedNumber(h.pendingRows.toLong())),
                         h.lastSyncAgeMin?.let { stringResource(HomeR.string.hm_health_sync, localizedNumber(it)) } ?: stringResource(HomeR.string.hm_health_never_synced),
-                    ).joinToString("  ·  "),
-                    style = inkStyle(12, color = look.inkMuted), modifier = Modifier.padding(horizontal = 8.dp).testTag(RoleHomeTags.DEVICE),
-                )
+                    ).forEach { Text(it, style = inkStyle(12, color = look.inkMuted)) }
+                }
                 if (h.anyWarning) AmoNotice(stringResource(HomeR.string.hm_health_warning), Modifier.padding(horizontal = 4.dp), warning = true)
             }
         }
+    }
+}
+
+/** The sync state as one quiet line in token colours only: a purple check and grey ink (a warning state uses the red token); taps open the sync sheet when the host has one. */
+@Composable
+private fun AmoStatusLine(state: SyncChipState, onClick: (() -> Unit)?, modifier: Modifier = Modifier) {
+    val look = LocalAronLook.current
+    val text = when (state) {
+        SyncChipState.Offline -> stringResource(CoreR.string.core_ui_chip_offline)
+        SyncChipState.Syncing -> stringResource(CoreR.string.core_ui_chip_syncing)
+        SyncChipState.Synced -> stringResource(CoreR.string.core_ui_chip_synced)
+        is SyncChipState.SyncedAt -> stringResource(CoreR.string.core_ui_chip_synced_at, state.timeText)
+        is SyncChipState.Waiting -> stringResource(CoreR.string.core_ui_chip_waiting, localizedNumber(state.count.toLong()))
+    }
+    val bad = state is SyncChipState.Offline || state is SyncChipState.Waiting
+    val glyph = when (state) { SyncChipState.Offline -> "!"; is SyncChipState.Waiting -> "!"; SyncChipState.Syncing -> "…"; else -> "✓" }
+    Row(
+        modifier.heightIn(min = 48.dp).let { if (onClick != null) it.clickable(role = Role.Button, onClickLabel = stringResource(CoreR.string.core_ui_chip_open_sync), onClick = onClick) else it },
+        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Text(glyph, style = inkStyle(16, bold = true, color = if (bad) look.red else look.purple), modifier = Modifier.clearAndSetSemantics { })
+        Text(text, style = inkStyle(14, bold = bad, color = if (bad) look.red else look.inkMuted))
     }
 }
 

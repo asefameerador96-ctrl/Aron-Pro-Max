@@ -12,9 +12,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
-import com.aktcl.aron.core.ui.AronBanner
 import com.aktcl.aron.core.ui.AronIcons
-import com.aktcl.aron.core.ui.AronPrimaryButton
 import com.aktcl.aron.core.ui.AronTokens
 import com.aktcl.aron.core.ui.BannerKind
 import com.aktcl.aron.core.ui.LocalAronColors
@@ -43,11 +41,11 @@ fun ManualOverrideContent(
         ) {
             Text(stringResource(R.string.amo_cc_manual_override), style = MaterialTheme.typography.titleLarge, color = LocalAronColors.current.textPrimary)
             GeoPhotoBlock(capture, onShutter, note = stringResource(R.string.amo_mo_note))
-            if (ForceSaleMissing.PHOTO in missing) AronBanner(stringResource(OutR.string.out_err_photo), kind = BannerKind.Error)
-            if (ForceSaleMissing.LOCATION_PERMISSION in missing) AronBanner(stringResource(OutR.string.out_err_permission), kind = BannerKind.Error)
+            if (ForceSaleMissing.PHOTO in missing) AmoBanner(stringResource(OutR.string.out_err_photo), kind = BannerKind.Error)
+            if (ForceSaleMissing.LOCATION_PERMISSION in missing) AmoBanner(stringResource(OutR.string.out_err_permission), kind = BannerKind.Error)
         }
         Column(Modifier.fillMaxWidth().padding(AronTokens.Space.Screen)) {
-            AronPrimaryButton(stringResource(R.string.amo_mo_continue), onConfirm, Modifier.fillMaxWidth(), icon = AronIcons.ArrowForward)
+            AmoPrimary(stringResource(R.string.amo_mo_continue), onConfirm, Modifier.fillMaxWidth())
         }
     }
 }

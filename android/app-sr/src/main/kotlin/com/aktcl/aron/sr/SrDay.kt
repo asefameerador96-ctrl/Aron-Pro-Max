@@ -465,7 +465,9 @@ class SrDay(
     private var stock: StockLoad? = null
     suspend fun stockLoad(): StockLoad = stock ?: run {
         val loaded = db.captureDao().stockBalanceOn(businessDate()).associate { it.skuId to it.qtyBase }
-        StockLoad(reference.skus(), loaded, guardStore = PrefsGuardStore(context, userId)).also { stock = it }
+        // the on-hand figure (display only) from the same tracker the sale warning, the KPI strip and the Summary use
+        val onHand = com.aktcl.aron.feature.stock.StockTracker.of(db, businessDate()).mapValues { it.value.current }
+        StockLoad(reference.skus(), loaded, guardStore = PrefsGuardStore(context, userId), currentBaseBySku = onHand).also { stock = it }
     }
     fun forgetStock() { stock = null }
 

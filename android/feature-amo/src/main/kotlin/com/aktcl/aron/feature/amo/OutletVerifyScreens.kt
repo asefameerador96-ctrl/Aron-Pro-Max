@@ -15,13 +15,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
-import com.aktcl.aron.core.ui.AronBanner
-import com.aktcl.aron.core.ui.AronEmptyState
-import com.aktcl.aron.core.ui.AronListRow
-import com.aktcl.aron.core.ui.AronPrimaryButton
-import com.aktcl.aron.core.ui.AronSectionLabel
-import com.aktcl.aron.core.ui.AronSecondaryButton
-import com.aktcl.aron.core.ui.AronSegmented
 import com.aktcl.aron.core.ui.AronTokens
 import com.aktcl.aron.core.ui.BannerKind
 import com.aktcl.aron.core.ui.RowPosition
@@ -66,12 +59,12 @@ private fun flagLabel(flag: String): String = stringResource(
 @Composable
 fun VerifyListContent(rows: List<PendingRequest>, names: Map<Long, String>, onOpen: (PendingRequest) -> Unit, modifier: Modifier = Modifier) {
     if (rows.isEmpty()) {
-        AronEmptyState(stringResource(R.string.amo_verify_empty), modifier.fillMaxSize(), hint = stringResource(R.string.amo_verify_empty_hint))
+        AmoEmptyState(stringResource(R.string.amo_verify_empty), modifier.fillMaxSize(), hint = stringResource(R.string.amo_verify_empty_hint))
         return
     }
     Column(modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = AronTokens.Space.Screen)) {
         rows.forEachIndexed { i, r ->
-            AronListRow(
+            AmoListRow(
                 r.outletName ?: typeLabel(r.type), subtitle = listOfNotNull(typeLabel(r.type), names[r.requestedBy]).joinToString(stringResource(R.string.amo_verify_sep)),
                 onClick = { onOpen(r) },
                 position = if (rows.size == 1) RowPosition.Only else if (i == 0) RowPosition.First else if (i == rows.lastIndex) RowPosition.Last else RowPosition.Middle,
@@ -127,31 +120,31 @@ fun VerifyFormContent(
             Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = AronTokens.Space.Screen, vertical = AronTokens.Space.S),
             verticalArrangement = Arrangement.spacedBy(AronTokens.Space.M),
         ) {
-            AronListRow(request.outletName ?: typeLabel(request.type), subtitle = typeLabel(request.type), flat = true)
-            facts.forEach { (k, v) -> AronListRow(v, subtitle = k, flat = true) }
-            if (!decidable) AronBanner(stringResource(R.string.amo_verify_not_pending), kind = BannerKind.Warning)
+            AmoListRow(request.outletName ?: typeLabel(request.type), subtitle = typeLabel(request.type), flat = true)
+            facts.forEach { (k, v) -> AmoListRow(v, subtitle = k, flat = true) }
+            if (!decidable) AmoBanner(stringResource(R.string.amo_verify_not_pending), kind = BannerKind.Warning)
             when (detail) {
                 VerifyDetailState.Loading -> Box(Modifier.fillMaxWidth().padding(AronTokens.Space.L), Alignment.Center) { CircularProgressIndicator() }
-                VerifyDetailState.Unavailable -> AronBanner(stringResource(R.string.amo_verify_details_offline), kind = BannerKind.Warning)
+                VerifyDetailState.Unavailable -> AmoBanner(stringResource(R.string.amo_verify_details_offline), kind = BannerKind.Warning)
                 VerifyDetailState.Gone -> Unit // the not-pending banner above says it
                 is VerifyDetailState.Loaded -> {
-                    if (!detail.fresh) AronBanner(stringResource(R.string.amo_verify_details_kept), kind = BannerKind.Info)
-                    detail.detail.flags.forEach { AronBanner(flagLabel(it), kind = BannerKind.Warning) }
+                    if (!detail.fresh) AmoBanner(stringResource(R.string.amo_verify_details_kept), kind = BannerKind.Info)
+                    detail.detail.flags.forEach { AmoBanner(flagLabel(it), kind = BannerKind.Warning) }
                     val shown = if (request.type == "info") changes else detail.detail.proposed.map { (k, v) -> FieldChange(k, null, v) }
                     shown.forEach { c ->
-                        AronListRow(
+                        AmoListRow(
                             c.new, subtitle = fieldLabel(c.field) + (c.old?.let { " · " + stringResource(R.string.amo_verify_was, it) } ?: ""), flat = true,
                         )
                     }
                 }
             }
             if (askClassification) {
-                AronSectionLabel(stringResource(R.string.amo_verify_sub_channel))
+                AmoSection(stringResource(R.string.amo_verify_sub_channel))
                 if (subChannels.isEmpty()) {
-                    AronBanner(stringResource(R.string.amo_verify_no_sub_channels), kind = BannerKind.Info)
+                    AmoBanner(stringResource(R.string.amo_verify_no_sub_channels), kind = BannerKind.Info)
                 } else {
                     subChannels.forEachIndexed { i, s ->
-                        AronListRow(
+                        AmoListRow(
                             if (bangla) s.labelBn ?: s.labelEn else s.labelEn, onClick = { onSubChannel(s.id) },
                             trailing = if (s.id == subChannelId) stringResource(R.string.amo_verify_selected) else null,
                             position = if (subChannels.size == 1) RowPosition.Only else if (i == 0) RowPosition.First else if (i == subChannels.lastIndex) RowPosition.Last else RowPosition.Middle,
@@ -159,23 +152,23 @@ fun VerifyFormContent(
                         )
                     }
                 }
-                if (VerifyError.SUB_CHANNEL_REQUIRED in errors) AronBanner(stringResource(R.string.amo_verify_sub_channel_required), kind = BannerKind.Error)
-                AronSectionLabel(stringResource(R.string.amo_verify_geo_class))
+                if (VerifyError.SUB_CHANNEL_REQUIRED in errors) AmoBanner(stringResource(R.string.amo_verify_sub_channel_required), kind = BannerKind.Error)
+                AmoSection(stringResource(R.string.amo_verify_geo_class))
                 val classes = OutletVerify.GEO_CLASSES
-                AronSegmented(
+                AmoChips(
                     listOf(R.string.amo_verify_geo_hill, R.string.amo_verify_geo_urban, R.string.amo_verify_geo_semiurban, R.string.amo_verify_geo_rural).map { stringResource(it) },
                     classes.indexOf(geoClass), { onGeoClass(classes[it]) },
                 )
-                if (VerifyError.GEO_CLASS_REQUIRED in errors) AronBanner(stringResource(R.string.amo_verify_geo_required), kind = BannerKind.Error)
+                if (VerifyError.GEO_CLASS_REQUIRED in errors) AmoBanner(stringResource(R.string.amo_verify_geo_required), kind = BannerKind.Error)
             }
             KitTextField(note, onNote, stringResource(R.string.amo_verify_note), Modifier.fillMaxWidth(), singleLine = false)
-            if (noFix) AronBanner(stringResource(R.string.amo_verify_no_fix), kind = BannerKind.Error)
-            if (saveFailed) AronBanner(stringResource(R.string.amo_task_failed), kind = BannerKind.Error)
+            if (noFix) AmoBanner(stringResource(R.string.amo_verify_no_fix), kind = BannerKind.Error)
+            if (saveFailed) AmoBanner(stringResource(R.string.amo_task_failed), kind = BannerKind.Error)
         }
         Column(Modifier.fillMaxWidth().padding(AronTokens.Space.Screen), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
-            AronPrimaryButton(stringResource(R.string.amo_verify_save), onSave, Modifier.fillMaxWidth(), enabled = !busy && decidable, busy = busy)
+            AmoPrimary(stringResource(R.string.amo_verify_save), onSave, Modifier.fillMaxWidth(), enabled = !busy && decidable, busy = busy)
             // docs/07: Cancel rejects the request (a `discarded` decision), after a confirmation; leaving with Back queues nothing.
-            AronSecondaryButton(stringResource(R.string.amo_verify_cancel), { confirmReject = true }, Modifier.fillMaxWidth(), enabled = !busy && decidable)
+            AmoSecondary(stringResource(R.string.amo_verify_cancel), { confirmReject = true }, Modifier.fillMaxWidth(), enabled = !busy && decidable)
         }
     }
 }

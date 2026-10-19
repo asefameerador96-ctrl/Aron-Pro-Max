@@ -6,6 +6,35 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.width
+import androidx.compose.ui.graphics.SolidColor
+import com.aktcl.aron.core.ui.aron.aronTileColumns
+import com.aktcl.aron.core.ui.aron.verticalBrush
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.unit.dp
+import com.aktcl.aron.core.ui.LocalAronLook
+import com.aktcl.aron.core.ui.aron.AronHomeHeader
+import com.aktcl.aron.core.ui.aron.AronPrimaryButton
+import com.aktcl.aron.core.ui.aron.AronScaffold
+import com.aktcl.aron.core.ui.aron.AronTargetCard
+import com.aktcl.aron.core.ui.aron.AronTile
+import com.aktcl.aron.core.ui.aron.AronTileGrid
+import com.aktcl.aron.core.ui.R as CoreR
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.IntrinsicSize
@@ -38,25 +67,13 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.sp
 import com.aktcl.aron.core.ui.AronBanner
-import com.aktcl.aron.core.ui.AronBarAction
-import com.aktcl.aron.core.ui.AronBottomBar
-import com.aktcl.aron.core.ui.AronCard
-import com.aktcl.aron.core.ui.AronHeroCard
-import com.aktcl.aron.core.ui.AronIconButton
 import com.aktcl.aron.core.ui.AronIcons
-import com.aktcl.aron.core.ui.AronScreen
-import com.aktcl.aron.core.ui.AronSectionLabel
-import com.aktcl.aron.core.ui.AronStatCard
 import com.aktcl.aron.core.ui.AronStatusChip
-import com.aktcl.aron.core.ui.AronTile
-import com.aktcl.aron.core.ui.AronTileGrid
 import com.aktcl.aron.core.ui.AronTokens
-import com.aktcl.aron.core.ui.AronTopBar
 import com.aktcl.aron.core.ui.BannerKind
 import com.aktcl.aron.core.ui.ChipForm
 import com.aktcl.aron.core.ui.LocalAronColors
 import com.aktcl.aron.core.ui.LocalReducedMotion
-import com.aktcl.aron.core.ui.MoneyText
 import com.aktcl.aron.core.ui.SunlightToggle
 import com.aktcl.aron.core.ui.SyncChipState
 import com.aktcl.aron.core.ui.localizedDigits
@@ -82,6 +99,8 @@ object HomeScreenTags {
     const val KPI = "hm_kpi"
     const val STOCK = "hm_stock"
     const val MONEY = "hm_money"
+    const val DISCOUNT = "hm_money_discount"
+    const val QC = "hm_money_qc"
     const val SUNLIGHT = "hm_sunlight"
     fun tile(t: HomeTile) = "hm_tile_${t.key}"
 }
@@ -135,9 +154,6 @@ fun dockLabel(dock: HomeDock): String = stringResource(
 private fun routeKindLabel(k: RouteKind?): String? = k?.let {
     stringResource(when (it) { RouteKind.DAILY -> R.string.hm_route_daily; RouteKind.THREE_F -> R.string.hm_route_3f; RouteKind.TWO_F -> R.string.hm_route_2f })
 }
-
-/** The first group of tiles ("আজকের কাজ"); every other tile is "অন্যান্য" (screens-sr s2, reference order kept). */
-private val TODAY_TILES = listOf(HomeTile.ATTENDANCE, HomeTile.STOCK, HomeTile.SALE, HomeTile.MEMO, HomeTile.SUMMARY, HomeTile.SALES_SUBMIT)
 
 /** Below this window height the compact variant applies (screens-sr s0): one-line hero meta dropped, device line hidden. */
 private const val COMPACT_WINDOW_HEIGHT_DP = 700
@@ -195,49 +211,25 @@ fun HomeContent(
     val kind = routeKindLabel ?: routeKindLabel(header.routeKind)
     val compact = LocalConfiguration.current.screenHeightDp < COMPACT_WINDOW_HEIGHT_DP
     val reduced = LocalReducedMotion.current
-    // the two caption lines of s2: the route name, then "<ISO date> · <route kind>"; earlier callers without the parts keep their one line
-    val subtitle = if (header.isoDate != null) {
-        listOfNotNull(header.routeName, listOfNotNull(localizedDigits(header.isoDate), kind).joinToString(" · ")).joinToString("\n")
-    } else header.subtitle
+    // the reference subtitle: `<route name>, <yyyy-MM-dd>` with Latin digits, nothing else (sr/home.md)
+    val subtitle = header.subtitle
     val dockBlocked = dock != null && dock.target in SELLING_TILES && !freshness.canSell
-    AronScreen(
+    val look = LocalAronLook.current
+    // the reference header (sr/home-1-tiles.webp): the title and the two caption lines are one gradient block with the gear
+    AronScaffold(
         modifier = modifier,
+        home = true,
         topBar = {
-            AronTopBar(
-                title = header.title,
-                subtitle = subtitle,
-                modifier = Modifier.testTag(HomeScreenTags.TITLE).traversal(Traversal.HEADER),
-                trailing = {
-                    if (onSunlight != null) SunlightToggle(sunlight, onSunlight, Modifier.testTag(HomeScreenTags.SUNLIGHT))
-                    if (onSettings != null) AronIconButton(AronIcons.Settings, stringResource(R.string.set_open), onSettings, Modifier.testTag(HomeScreenTags.SETTINGS))
-                },
-            )
-        },
-        bottomBar = {
-            // the dock cross-fades (150 ms, 120 ms linear under reduced motion) when the day state changes; no slide, it is a bar
-            val fade = tween<Float>(if (reduced) AronTokens.Motion.Reduced else AronTokens.Motion.Fast, easing = LinearEasing)
-            AnimatedContent(targetState = dock, transitionSpec = { fadeIn(fade) togetherWith fadeOut(fade) }) { d ->
-                if (d != null) {
-                    AronBottomBar(
-                        primary = AronBarAction(dockLabel(d), onClick = { onTile(d.target) }, icon = tileIcon(d.target), enabled = !dockBlocked),
-                        reasonWhenDisabled = if (dockBlocked) stringResource(R.string.hm_blocked_by_bundle) else null,
-                        modifier = Modifier.testTag(HomeScreenTags.DOCK).traversal(Traversal.DOCK),
-                    )
-                }
+            Column(Modifier.testTag(HomeScreenTags.TITLE).traversal(Traversal.HEADER)) {
+                AronHomeHeader(
+                    title = header.title, subtitle = subtitle,
+                    onSettings = { onSettings?.invoke() }, settingsLabel = stringResource(R.string.set_open),
+                    modifier = Modifier.testTag(HomeScreenTags.SETTINGS),
+                )
             }
         },
     ) {
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(bottom = AronTokens.Space.Xl)) {
-            // status row: the chip is quiet when synced
-            if (sync != null) {
-                Row(
-                    Modifier.fillMaxWidth().padding(horizontal = AronTokens.Space.Screen, vertical = AronTokens.Space.S).traversal(Traversal.STATUS),
-                    verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.S),
-                ) {
-                    AronStatusChip(sync, Modifier.testTag(HomeScreenTags.CHIP), ChipForm.Full, onClick = onSync)
-                }
-            }
-            // banners: stale and expired are warnings (selling continues, or memos stay readable); danger is kept for storage
             when (freshness) {
                 BundleFreshness.Fresh -> Unit
                 is BundleFreshness.Stale -> HomeBanner(stringResource(R.string.hm_banner_stale, localizedNumber(freshness.ageDays.toLong())), BannerKind.Warning, Modifier.testTag(HomeScreenTags.BANNER))
@@ -249,65 +241,168 @@ fun HomeContent(
             if (offline) HomeBanner(stringResource(R.string.hm_banner_offline), BannerKind.Offline)
             if (reauthRequired) HomeBanner(stringResource(R.string.home_reauth_required), BannerKind.Warning)
             if (updateRequired) HomeBanner(stringResource(R.string.home_update_required), BannerKind.Warning)
-            // hero: the whole card opens Summary; the meter has a printed value, a spoken range and a spoken sentence
-            val heroModifier = Modifier.padding(horizontal = AronTokens.Space.Screen, vertical = AronTokens.Space.S)
-            if (hero != null) {
-                val meterText = stringResource(R.string.hm_meter_value, localizedNumber(hero.visited.toLong()), localizedNumber(hero.target.toLong()))
-                val spoken = stringResource(R.string.hm_meter_spoken, localizedNumber(hero.visited.toLong()), localizedNumber(hero.target.toLong()))
-                val checkIn = hero.checkInText?.let { stringResource(R.string.hm_checkin_at, localizedDigits(it)) } ?: stringResource(R.string.hm_checkin_due)
-                AronHeroCard(
-                    label = stringResource(R.string.hm_hero_total),
-                    moneyText = hero.grandTotalText,
-                    modifier = heroModifier.testTag(HomeScreenTags.HERO).traversal(Traversal.HERO).semantics { stateDescription = spoken },
-                    meterLabel = stringResource(R.string.hm_hero_meter),
-                    meterValue = hero.visited, meterMax = hero.target, meterValueText = meterText,
-                    metaText = if (compact) null else listOfNotNull(checkIn, kind).joinToString(" · "),
-                    onClick = onHero ?: { onTile(HomeTile.SUMMARY) },
-                )
-                if (hero.dayState == HomeDayState.COMPLETE) {
-                    HomeBanner(stringResource(R.string.hm_day_complete), BannerKind.Success, Modifier.testTag(HomeScreenTags.DAY_DONE))
-                }
-            } else if (loading) {
-                // the skeleton has the geometry of the real hero (a placeholder card under the skeleton paint), never a guessed height
-                AronHeroCard(
-                    label = stringResource(R.string.hm_hero_total), moneyText = localizedNumber(0L),
-                    modifier = heroModifier.testTag(HomeScreenTags.HERO_SKELETON).skeleton(true),
-                    meterLabel = stringResource(R.string.hm_hero_meter), meterValue = 0, meterMax = 1, meterValueText = localizedNumber(0L),
-                    metaText = if (compact) null else stringResource(R.string.hm_checkin_due),
+            if (hero?.dayState == HomeDayState.COMPLETE) HomeBanner(stringResource(R.string.hm_day_complete), BannerKind.Success, Modifier.testTag(HomeScreenTags.DAY_DONE))
+            // the tile grid of the reference: 4 columns, one list, the order of the screenshot; Astha and Loyalty have no tile (docs/27)
+            Column(Modifier.fillMaxWidth().padding(horizontal = HOME_GUTTER, vertical = AronTokens.Space.S).traversal(Traversal.TILES)) {
+                AronTileGrid(tiles) { rt, mod -> HomeTileItem(rt, freshness, dock, mod, onTile) }
+            }
+            // the "Target and achievement" card shell: the day's sales and the outlet progress; no target percentage (deferred, docs/27)
+            if (hero != null || loading) {
+                val visited = hero?.visited ?: 0
+                val planned = hero?.target ?: 1
+                val meterText = stringResource(R.string.hm_meter_value, localizedNumber(visited.toLong()), localizedNumber(planned.toLong()))
+                val spoken = stringResource(R.string.hm_meter_spoken, localizedNumber(visited.toLong()), localizedNumber(planned.toLong()))
+                AronTargetCard(
+                    title = stringResource(R.string.hm_target_title), label = stringResource(R.string.hm_hero_total),
+                    value = hero?.grandTotalText ?: localizedNumber(0L),
+                    percentText = meterText,
+                    percent = if (planned > 0) (visited * 100 / planned).coerceAtLeast(1) else null,
+                    detailsLabel = stringResource(R.string.hm_target_details), onDetails = onHero ?: { onTile(HomeTile.SUMMARY) },
+                    modifier = Modifier
+                        .padding(horizontal = HOME_GUTTER, vertical = AronTokens.Space.S)
+                        .testTag(if (hero != null) HomeScreenTags.HERO else HomeScreenTags.HERO_SKELETON)
+                        .traversal(Traversal.HERO).semantics { stateDescription = spoken }
+                        .skeleton(hero == null),
                 )
             }
-            // tiles in two labelled groups, reference order kept; the dock's target carries the ring
-            val today = tiles.filter { it.tile in TODAY_TILES }
-            val others = tiles.filter { it.tile !in TODAY_TILES }
-            Column(Modifier.fillMaxWidth().traversal(Traversal.TILES)) {
-                if (today.isNotEmpty()) {
-                    AronSectionLabel(stringResource(R.string.hm_group_today))
-                    AronTileGrid(today) { rt, mod -> HomeTileItem(rt, freshness, dock, compact = false, mod, onTile) }
-                }
-                if (others.isNotEmpty()) {
-                    AronSectionLabel(stringResource(R.string.hm_group_others))
-                    AronTileGrid(others) { rt, mod -> HomeTileItem(rt, freshness, dock, compact = true, mod, onTile) }
-                }
-            }
-            // KPI row, stock card, money card: field cards, zero categories hidden
+            // the lavender container of the reference: the six KPI tiles, then the gradient sales panel (sr/home-2-kpis.webp)
             Column(Modifier.fillMaxWidth().traversal(Traversal.CARDS)) {
-                kpis?.let { k ->
-                    // the three cards share the tallest label's height (a one-line and a two-line Bangla label never misalign)
-                    Row(
-                        Modifier.fillMaxWidth().padding(horizontal = AronTokens.Space.Screen, vertical = AronTokens.Space.S).height(IntrinsicSize.Max).testTag(HomeScreenTags.KPI),
-                        horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.M),
+                if (kpis != null || money != null) {
+                    Column(
+                        Modifier.fillMaxWidth().padding(horizontal = HOME_GUTTER, vertical = AronTokens.Space.S).clip(RoundedCornerShape(16.dp)).background(KpiContainer).padding(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        AronStatCard(stringResource(R.string.hm_kpi_strike), k.strikeRateText?.let { localizedDigits(it) } ?: stringResource(R.string.hm_kpi_none), Modifier.weight(1f).fillMaxHeight())
-                        AronStatCard(stringResource(R.string.hm_kpi_non_visit), localizedNumber(k.nonVisit.toLong()), Modifier.weight(1f).fillMaxHeight())
-                        AronStatCard(stringResource(R.string.hm_kpi_no_sale), localizedNumber(k.noSale.toLong()), Modifier.weight(1f).fillMaxHeight())
+                        if (kpis != null) KpiGrid(hero, kpis)
+                        if (money != null) SalesPanel(money)
                     }
-                    val stock = k.stock.filter { !it.zero }
-                    if (stock.isNotEmpty()) StockCard(stock)
                 }
-                money?.let { MoneyCard(it) }
-                // device line: caption text, a warning only under the thresholds, danger only when storage is under 200 MB; hidden in the compact variant
-                if (!compact) health?.let { h -> DeviceLine(h) }
+                money?.let { DiscountPanel(it) }
             }
+        }
+    }
+}
+
+private val HOME_GUTTER = 12.dp
+
+private val KpiContainer = Color(0xFFF7F4FA)
+private val KpiOutline = Color(0xFF5C3DA8)
+
+/**
+ * The six KPI tiles of the reference (sr/home-2-kpis.webp): four to a row, each a white 12 dp tile with a 1 dp indigo outline, a
+ * big black numeral over a small indigo label. Order: outlets visited of planned, strike rate, issue, current stock, non-visit,
+ * no sale. Issue and current stock add the categories exactly as the existing app does (the per-category split is in Summary).
+ */
+@Composable
+private fun KpiGrid(hero: HomeHero?, k: HomeKpis) {
+    val visited = hero?.visited ?: 0
+    val planned = hero?.target ?: 0
+    val cells = listOf(
+        stringResource(R.string.hm_meter_value, localizedNumber(visited.toLong()), localizedNumber(planned.toLong())) to stringResource(R.string.hm_hero_meter),
+        (k.strikeRateText?.let { localizedDigits(it) } ?: stringResource(R.string.hm_kpi_none)) to stringResource(R.string.hm_kpi_strike),
+        localizedNumber(k.stock.sumOf { it.issueBase }) to stringResource(R.string.hm_stock_issue),
+        localizedNumber(k.stock.sumOf { it.currentBase }) to stringResource(R.string.hm_stock_current),
+        localizedNumber(k.nonVisit.toLong()) to stringResource(R.string.hm_kpi_non_visit),
+        localizedNumber(k.noSale.toLong()) to stringResource(R.string.hm_kpi_no_sale),
+    )
+    val columns = aronTileColumns(LocalConfiguration.current.screenWidthDp.toFloat(), LocalDensity.current.fontScale)
+    Column(Modifier.fillMaxWidth().testTag(HomeScreenTags.KPI), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        cells.chunked(columns).forEach { row ->
+            Row(Modifier.fillMaxWidth().height(IntrinsicSize.Max), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                row.forEach { (value, label) -> KpiTile(label, value, Modifier.weight(1f).fillMaxHeight()) }
+                repeat(columns - row.size) { Spacer(Modifier.weight(1f)) }
+            }
+        }
+    }
+}
+
+@Composable
+private fun KpiTile(label: String, value: String, modifier: Modifier) {
+    val shape = RoundedCornerShape(12.dp)
+    val look = LocalAronLook.current
+    Column(
+        modifier.heightIn(min = 84.dp).clip(shape).background(look.card).border(1.dp, if (look.sunlight) look.purple else KpiOutline, shape).padding(horizontal = 4.dp, vertical = 10.dp),
+        horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.SpaceBetween,
+    ) {
+        // one line that shrinks from 26 sp down to 12 sp before it would clip (a 5-digit stick count must stay whole)
+        Text(
+            value, color = look.ink, fontSize = 26.sp, textAlign = TextAlign.Center, maxLines = 1, softWrap = false,
+            autoSize = TextAutoSize.StepBased(minFontSize = 12.sp, maxFontSize = 26.sp, stepSize = 1.sp),
+        )
+        Text(label, color = look.tileLabel, fontSize = 12.sp, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 6.dp))
+    }
+}
+
+/**
+ * The sales panel (sr/home-2-kpis.webp): a vertical red-to-purple gradient with white text. Left: the headline "বিক্রয় (স্টিক)"
+ * over the sticks sold. Right: one row per category with a sale, then gross (`মোট`), the offer discount (`ডিসকাউন্ট`, zero while
+ * docs/27 defers programmes) and `QC`, each bound to its OWN field, a rule, and the net `সর্বমোট`. Rows carry no ৳ sign.
+ */
+@Composable
+private fun SalesPanel(m: HomeMoneyLines) {
+    val look = LocalAronLook.current
+    val white = look.onBar
+    Row(
+        Modifier.fillMaxWidth().testTag(HomeScreenTags.MONEY).clip(RoundedCornerShape(16.dp)).background(look.verticalBrush()).padding(16.dp),
+        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Column(Modifier.weight(0.8f)) {
+            Row(verticalAlignment = Alignment.Bottom) {
+                Text(stringResource(R.string.hm_sales_title), color = white, fontSize = 24.sp)
+                Spacer(Modifier.width(4.dp))
+                Text(stringResource(R.string.hm_sales_unit), color = white, fontSize = 12.sp, modifier = Modifier.padding(bottom = 4.dp))
+            }
+            Spacer(Modifier.height(10.dp))
+            Text(localizedNumber(m.sticksSold), color = white, fontSize = 26.sp)
+        }
+        Column(Modifier.weight(1.2f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            m.categories.forEach { PanelRow(it.label, it.amountBare, white, 15) }
+            PanelRow(stringResource(R.string.hm_money_gross), m.grossBare, white, 17)
+            PanelRow(stringResource(R.string.hm_money_discount), "- " + m.offerDiscountBare, white, 17, tag = HomeScreenTags.DISCOUNT)
+            PanelRow(stringResource(R.string.hm_money_qc), "- " + m.qcBare, white, 17, tag = HomeScreenTags.QC)
+            Box(Modifier.fillMaxWidth().padding(vertical = 4.dp).height(1.dp).background(white))
+            PanelRow(stringResource(R.string.hm_money_grand), m.netBare, white, 20, bold = true)
+        }
+    }
+}
+
+@Composable
+private fun PanelRow(label: String, value: String, color: Color, sp: Int, bold: Boolean = false, tag: String? = null) {
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Text(label, color = color, fontSize = sp.sp, modifier = Modifier.weight(1f))
+        Text(
+            value, color = color, fontSize = sp.sp, textAlign = TextAlign.End, maxLines = 1, softWrap = false,
+            fontWeight = if (bold) FontWeight.Bold else FontWeight.Normal,
+            modifier = if (tag != null) Modifier.testTag(tag) else Modifier,
+        )
+    }
+}
+
+/**
+ * The second panel (sr/home-2-kpis.webp): total discount, DRP discount and total QC in three columns, a rule, `সর্ব মোট` (the
+ * gross) very large and `মোট টাকা` (the net payable) large, each with a glued ৳. Discount cells show 0.00 while docs/27 defers.
+ */
+@Composable
+private fun DiscountPanel(m: HomeMoneyLines) {
+    val look = LocalAronLook.current
+    val white = look.onBar
+    val brush = if (look.sunlight) SolidColor(look.purple) else Brush.verticalGradient(listOf(Color(0xFF6A3F6E), Color(0xFFA06FA1)))
+    Column(
+        Modifier.fillMaxWidth().padding(horizontal = HOME_GUTTER, vertical = AronTokens.Space.S).clip(RoundedCornerShape(16.dp)).background(brush).padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Row(Modifier.fillMaxWidth()) {
+            Column(Modifier.weight(1f)) { Text(stringResource(R.string.hm_total_discount), color = white, fontSize = 14.sp); Text(m.totalDiscountBare, color = white, fontSize = 22.sp, modifier = Modifier.padding(top = 6.dp)) }
+            Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) { Text(stringResource(R.string.hm_drp_discount), color = white, fontSize = 14.sp); Text(m.drpDiscountBare, color = white, fontSize = 22.sp, modifier = Modifier.padding(top = 6.dp)) }
+            Column(Modifier.weight(1f), horizontalAlignment = Alignment.End) { Text(stringResource(R.string.hm_total_qc), color = white, fontSize = 14.sp); Text(m.totalQcBare, color = white, fontSize = 22.sp, modifier = Modifier.padding(top = 6.dp)) }
+        }
+        Box(Modifier.fillMaxWidth().height(1.dp).background(white))
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text(stringResource(R.string.hm_gross_total), color = white, fontSize = 18.sp, modifier = Modifier.weight(1f))
+            Text(m.grossBare + "৳", color = white, fontSize = 28.sp, maxLines = 1, softWrap = false)
+        }
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text(stringResource(R.string.hm_total_taka), color = white, fontSize = 18.sp, modifier = Modifier.weight(1f))
+            Text(m.netBare + "৳", color = white, fontSize = 24.sp, maxLines = 1, softWrap = false)
         }
     }
 }
@@ -317,99 +412,30 @@ private fun HomeBanner(text: String, kind: BannerKind, modifier: Modifier = Modi
     AronBanner(text, modifier.padding(horizontal = AronTokens.Space.Screen, vertical = AronTokens.Space.Xs), kind)
 
 @Composable
-private fun HomeTileItem(rt: ResolvedTile, freshness: BundleFreshness, dock: HomeDock?, compact: Boolean, modifier: Modifier, onTile: (HomeTile) -> Unit) {
+private fun HomeTileItem(rt: ResolvedTile, freshness: BundleFreshness, dock: HomeDock?, modifier: Modifier, onTile: (HomeTile) -> Unit) {
     val needsSelling = rt.tile in SELLING_TILES
+    val open = rt.badge?.let { stringResource(CoreR.string.core_ui_tile_badge, localizedNumber(it.toLong())) }
     AronTile(
-        label = tileLabel(rt.tile), icon = tileIcon(rt.tile), onClick = { onTile(rt.tile) }, badge = rt.badge ?: 0,
+        label = tileLabel(rt.tile), icon = painterResource(tilePainterRes(rt.tile)), onClick = { onTile(rt.tile) }, badge = rt.badge ?: 0,
+        badgeDescription = open,
         modifier = modifier.testTag(HomeScreenTags.tile(rt.tile)), enabled = !(needsSelling && !freshness.canSell),
-        target = dock?.target == rt.tile, compact = compact,
     )
 }
 
-/**
- * The stock card: "ইস্যু | বর্তমান স্টক" per category in its own unit, never summed across units. Quantities are one line
- * that shrinks to fit (never wraps or clips, tokens s7.3); from font scale 1.3 each category stacks its label over one
- * "ইস্যু … · বর্তমান স্টক …" line (the s0 reflow rule).
- */
-@Composable
-private fun StockCard(lines: List<HomeStockLine>) {
-    val c = LocalAronColors.current
-    val reflow = LocalDensity.current.fontScale >= AronTokens.Size.ReflowFontScale
-    AronCard(Modifier.fillMaxWidth().padding(horizontal = AronTokens.Space.Screen, vertical = AronTokens.Space.S).testTag(HomeScreenTags.STOCK)) {
-        Column(Modifier.fillMaxWidth().padding(AronTokens.Space.L), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
-                Icon(AronIcons.Stock, contentDescription = null, tint = c.accent, modifier = Modifier.size(AronTokens.Size.IconSmall))
-                Text(stringResource(R.string.hm_stock_title), style = MaterialTheme.typography.titleSmall, color = c.textPrimary, modifier = Modifier.weight(LABEL_WEIGHT))
-                if (!reflow) {
-                    Text(stringResource(R.string.hm_stock_issue), style = MaterialTheme.typography.bodySmall, color = c.textSecondary, modifier = Modifier.weight(VALUE_WEIGHT), textAlign = TextAlign.End)
-                    Text(stringResource(R.string.hm_stock_current), style = MaterialTheme.typography.bodySmall, color = c.textSecondary, modifier = Modifier.weight(VALUE_WEIGHT), textAlign = TextAlign.End)
-                }
-            }
-            lines.forEach { l ->
-                val issue = stringResource(R.string.hm_qty_unit, localizedNumber(l.issueBase), l.unitLabel)
-                val current = stringResource(R.string.hm_qty_unit, localizedNumber(l.currentBase), l.unitLabel)
-                if (reflow) {
-                    // label over "ইস্যু …" over "বর্তমান স্টক …": a line may wrap at the label's space, never between a number and its unit
-                    Column(Modifier.fillMaxWidth()) {
-                        Text(l.categoryLabel, style = MaterialTheme.typography.bodyLarge, color = c.textPrimary, maxLines = 2)
-                        Text(stringResource(R.string.hm_stock_issue) + NBSP + issue.replace(' ', NBSP), style = MaterialTheme.typography.titleSmall, color = c.textPrimary)
-                        Text(stringResource(R.string.hm_stock_current) + NBSP + current.replace(' ', NBSP), style = MaterialTheme.typography.titleSmall, color = c.textPrimary)
-                    }
-                } else {
-                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
-                        Text(l.categoryLabel, style = MaterialTheme.typography.bodyLarge, color = c.textPrimary, modifier = Modifier.weight(LABEL_WEIGHT), maxLines = 2)
-                        QuantityText(issue, Modifier.weight(VALUE_WEIGHT))
-                        QuantityText(current, Modifier.weight(VALUE_WEIGHT))
-                    }
-                }
-            }
-        }
-    }
-}
-
-/** A quantity with its unit on one line, right-aligned, shrinking to the 12 sp floor before anything would clip. */
-@Composable
-private fun QuantityText(text: String, modifier: Modifier) {
-    val c = LocalAronColors.current
-    val style = MaterialTheme.typography.titleSmall
-    val shrink = if (style.fontSize.isSp && style.fontSize > QuantityFloorSp) TextAutoSize.StepBased(minFontSize = QuantityFloorSp, maxFontSize = style.fontSize, stepSize = 1.sp) else null
-    Text(text, modifier, style = style, color = c.textPrimary, textAlign = TextAlign.End, maxLines = 1, softWrap = false, overflow = TextOverflow.Clip, autoSize = shrink)
-}
-
-/** The label column of the stock card against each value column: the value columns get the room a Bangla quantity needs. */
-private const val LABEL_WEIGHT = 0.8f
-private const val VALUE_WEIGHT = 1.1f
-private const val NBSP = ' '
-
-/** The money card with the canonical words (মোট, ডিসকাউন্ট, QC, সর্বমোট); deductions only when non-zero. */
-@Composable
-private fun MoneyCard(m: HomeMoneyLines) {
-    val c = LocalAronColors.current
-    AronCard(Modifier.fillMaxWidth().padding(horizontal = AronTokens.Space.Screen, vertical = AronTokens.Space.S).testTag(HomeScreenTags.MONEY)) {
-        Column(Modifier.fillMaxWidth().padding(AronTokens.Space.L), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
-                Icon(AronIcons.Wallet, contentDescription = null, tint = c.accent, modifier = Modifier.size(AronTokens.Size.IconSmall))
-                Text(stringResource(R.string.hm_money_title), style = MaterialTheme.typography.titleSmall, color = c.textPrimary)
-            }
-            m.categories.forEach { MoneyLine(it.label, it.amountText) }
-            MoneyLine(stringResource(R.string.hm_money_gross), m.grossText)
-            m.discountText?.let { MoneyLine(stringResource(R.string.hm_money_discount), it) }
-            m.qcText?.let { MoneyLine(stringResource(R.string.hm_money_qc), it) }
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
-                Text(stringResource(R.string.hm_money_grand), style = MaterialTheme.typography.titleSmall, color = c.textPrimary, modifier = Modifier.weight(1f))
-                MoneyText(m.grandTotalText, style = MaterialTheme.typography.headlineMedium, textAlign = TextAlign.End)
-            }
-        }
-    }
-}
-
-@Composable
-private fun MoneyLine(label: String, amount: String) {
-    val c = LocalAronColors.current
-    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
-        Text(label, style = MaterialTheme.typography.bodyLarge, color = c.textPrimary, modifier = Modifier.weight(1f), maxLines = 2)
-        MoneyText(amount, style = MaterialTheme.typography.titleSmall, textAlign = TextAlign.End)
-    }
+/** The redrawn reference icon of each tile (`core-ui` drawables `aron_ic_*`, PARITY-SPEC s2.11). */
+private fun tilePainterRes(t: HomeTile): Int = when (t) {
+    HomeTile.ATTENDANCE -> CoreR.drawable.aron_art_attendance
+    HomeTile.STOCK -> CoreR.drawable.aron_art_stock
+    HomeTile.SALE -> CoreR.drawable.aron_art_sale
+    HomeTile.MEMO -> CoreR.drawable.aron_art_memo
+    HomeTile.SUMMARY -> CoreR.drawable.aron_art_summary
+    HomeTile.SALES_SUBMIT -> CoreR.drawable.aron_art_sales_submit
+    HomeTile.OUTLET -> CoreR.drawable.aron_art_outlet
+    HomeTile.TUTORIAL -> CoreR.drawable.aron_art_tutorial
+    HomeTile.TASKS -> CoreR.drawable.aron_art_task_delegation
+    HomeTile.PHOTO_CAPTURE -> CoreR.drawable.aron_art_photo_capture
+    HomeTile.SALES_JOURNEY -> CoreR.drawable.aron_art_sales_journey
+    HomeTile.KPI -> CoreR.drawable.aron_art_kpi
 }
 
 /** Danger only under this much free storage (screens-sr s2 "the one danger case"). */
@@ -421,7 +447,7 @@ private const val STORAGE_DANGER_MB = 200L
  * banner because the SR must act before the next sale.
  */
 @Composable
-private fun DeviceLine(h: DeviceHealth) {
+internal fun SrDeviceLine(h: DeviceHealth) {
     val c = LocalAronColors.current
     val danger = h.freeStorageMb < STORAGE_DANGER_MB
     Column(Modifier.padding(horizontal = AronTokens.Space.Screen, vertical = AronTokens.Space.S).testTag(HomeScreenTags.HEALTH), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {

@@ -130,6 +130,10 @@ export const dashBn: Record<keyof typeof dashEn, string> = {
   "finalsubmit.zones_counts": "{done}টি জোন সাবমিট, {remaining}টি বাকি",
   "finalsubmit.submit_pct": "সাবমিট %",
   "finalsubmit.completion_pct": "দিন সম্পন্ন %",
+  "finalsubmit.total_zones": "মোট জোন",
+  "finalsubmit.submitted": "সাবমিট হয়েছে",
+  "finalsubmit.remaining": "বাকি",
+  "finalsubmit.ring": "আজ রুট আছে এমন জোনের মধ্যে ফাইনাল সাবমিট হওয়া জোন",
   "finalsubmit.done": "সম্পন্ন",
   "finalsubmit.pending": "বাকি",
 
