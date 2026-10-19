@@ -178,10 +178,10 @@ class ScreenshotTests {
     private fun sku(id: Long, cat: String, name: String, unit: String, perPack: Int) =
         SkuEntity(id, "S$id", id, cat, name, name, null, unit, perPack, if (perPack > 1) "pack" else "base", null, "1.000", id.toInt(), "active", 1)
     private val stockRows = listOf(
-        StockRow(sku(1, "cigarette", "MaxR 10S", "stick", 10), 400, 20),
-        StockRow(sku(2, "cigarette", "Prime Gold 10S", "stick", 10), 200, 0),
-        StockRow(sku(3, "lighter", "Aster", "piece", 1), 400, 0),
-        StockRow(sku(4, "match", "Flame Box", "dozen", 1), 400, 0),
+        StockRow(sku(1, "cigarette", "MaxR 10S", "stick", 10), 400, 20, stockBase = 380),
+        StockRow(sku(2, "cigarette", "Prime Gold 10S", "stick", 10), 200, 0, stockBase = 190),
+        StockRow(sku(3, "lighter", "Aster", "piece", 1), 400, 0, stockBase = 25),
+        StockRow(sku(4, "match", "Flame Box", "dozen", 1), 400, 0, stockBase = 394),
     )
     private val stockTotals = listOf(CategoryTotal("cigarette", 600), CategoryTotal("lighter", 400), CategoryTotal("match", 400))
 
@@ -255,7 +255,7 @@ class ScreenshotTests {
         StockContent(stockRows, stockTotals, StockMessage.SAVED, slipNotPrinted = true, onIssue = { _, _ -> }, onSave = {}, onPrint = {})
     }
 
-    @Composable private fun Picker() = Frame(stringResource(HomeR.string.hm_tile_sale)) {
+    @Composable private fun Picker() = ParityFrame(stringResource(HomeR.string.hm_tile_sale), com.aktcl.aron.core.ui.R.drawable.aron_art_sale) {
         val rows = OutletPicker.rows(outlets)
         OutletPickerContent(rows, OutletPicker.chips(rows), OutletPicker.ALL_CHIP, {}, {}, marks = marks)
     }
@@ -274,11 +274,11 @@ class ScreenshotTests {
         )
     }
 
-    @Composable private fun Sale() = Frame(stringResource(SaleR.string.sale_title), subtitle = card.name) {
+    @Composable private fun Sale() = ParityFrame(stringResource(SaleR.string.sale_title), com.aktcl.aron.core.ui.R.drawable.aron_art_sale, subtitle = card.name) {
         SaleEntryScreen(skus, saleReview, { id -> saleDraft.lines.firstOrNull { it.skuId == id }?.qtyEntered ?: 0 }, { _, _ -> }, {}, {}, recentSkuIds = setOf(100L), onPreviousSales = {})
     }
 
-    @Composable private fun Review() = Frame(stringResource(SaleR.string.review_title)) {
+    @Composable private fun Review() = ParityFrame(stringResource(SaleR.string.review_title), com.aktcl.aron.core.ui.R.drawable.aron_art_sale) {
         ReviewScreen(reviewReview, {}, outletLine = "Banani Store (DHK-344-001) · Apsis RouteDaily · Apsis Cluster", onCreditToggle = {}, onQc = {})
     }
 
@@ -288,8 +288,11 @@ class ScreenshotTests {
         MemoDetailView(MemoMenu.detail(memo), true, 57_500, ::skuName, {}, {}, {}, outletName = "Banani Store", onHistory = {}, skuUnit = { id -> if (id == 100L) stick else piece })
     }
 
-    @Composable private fun Attendance() = Frame(stringResource(HomeR.string.hm_tile_attendance)) {
-        AttendanceContent(notCheckedIn, "17:00", {}, {}, onRefreshFix = {}, nowIso = now)
+    @Composable private fun Attendance() = ParityFrame(stringResource(HomeR.string.hm_tile_attendance), com.aktcl.aron.core.ui.R.drawable.aron_art_attendance) {
+        AttendanceContent(
+            notCheckedIn, "17:00", {}, {}, onRefreshFix = {}, nowIso = now,
+            userTitle = "SR - Testing Banani (sr334001)", userSubtitle = localizedDigits("Apsis RouteDaily, 2026-10-05"),
+        )
     }
 
     @Composable private fun Summary() = Frame(stringResource(HomeR.string.hm_tile_summary)) {

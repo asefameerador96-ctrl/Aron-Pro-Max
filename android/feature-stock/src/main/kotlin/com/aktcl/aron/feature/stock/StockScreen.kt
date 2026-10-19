@@ -77,7 +77,7 @@ private fun categoryRank(code: String): Int = when (code) { "cigarette" -> 0; "b
 /**
  * The Stock screen content (F-SR-014, sr/stock.webp): the column head (SKU, Issue, Stock), one kit [PackCard] per SKU (packshot with
  * the packs badge, SKU code, red minus, underlined Issue field, purple plus, the stock figure), the purple totals panel by category
- * (the unit in each category's label) and the Save and Print buttons. The host frame supplies the top bar and the printer badge.
+ * (the unit as a caption under each category) and the Save and Print buttons. The host frame supplies the top bar and the printer badge.
  * Save never waits for the printer or the network (Q-UI-03); Print is grey until a printer is connected and the slip is saved.
  */
 @Composable
@@ -221,7 +221,7 @@ private fun StockTotals(rows: List<StockRow>, totals: List<CategoryTotal>, hasSt
     val lines = cats.map { code ->
         val unit = unitLabel(rows.firstOrNull { it.sku.categoryCode == code }?.sku?.baseUnit ?: unitOf.getValue(code))
         val stock = rows.filter { it.sku.categoryCode == code }.sumOf { (it.stockBase ?: it.loadedBase) + it.entered }
-        TotalsLine(categoryLabel(code) + " (" + unit + ")", listOf(localizedNumber(issued[code] ?: 0L), localizedNumber(stock)))
+        TotalsLine(categoryLabel(code), listOf(localizedNumber(issued[code] ?: 0L), localizedNumber(stock)), caption = unit)
     }
     TotalsPanel(
         header = TotalsLine(

@@ -31,6 +31,14 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.foundation.background
+import androidx.compose.foundation.lazy.items
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.sp
+import com.aktcl.aron.core.ui.LocalAronLook
+import com.aktcl.aron.core.ui.aron.LetterFilterBar
+import com.aktcl.aron.core.ui.aron.RetailerPickerField
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -127,36 +135,23 @@ fun OutletPickerContent(
      */
     allRows: List<PickerRow>? = null,
 ) {
-    val c = LocalAronColors.current
-    var segment by rememberSaveable { mutableIntStateOf(0) }
+    val look = LocalAronLook.current
+    // sr/sale-select.png: the pill field and the A-Z panel first; the route list opens when the SR taps the field or a letter
+    var open by rememberSaveable { mutableStateOf(false) }
     var searching by rememberSaveable { mutableStateOf(false) }
     var query by rememberSaveable { mutableStateOf("") }
-    val route = allRows ?: rows
-    val routeSize = route.size
-    val visitedCount = route.count { marks[it.outlet.outletId]?.visited == true }
     val q = query.trim()
     val visible = rows.filter { r ->
-        val visited = marks[r.outlet.outletId]?.visited == true
-        (segment == 2 || (segment == 1) == visited) &&
-            (q.isEmpty() || r.outlet.name.contains(q, ignoreCase = true) || r.outlet.nameBn?.contains(q, ignoreCase = true) == true || r.outlet.code.contains(q, ignoreCase = true))
+        q.isEmpty() || r.outlet.name.contains(q, ignoreCase = true) || r.outlet.nameBn?.contains(q, ignoreCase = true) == true || r.outlet.code.contains(q, ignoreCase = true)
     }
+    val allLabel = stringResource(R.string.out_chip_all)
     Column(modifier.fillMaxSize()) {
-        Column(Modifier.padding(horizontal = AronTokens.Space.Screen, vertical = AronTokens.Space.S), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.M)) {
-                Text(stringResource(R.string.out_picker_select), Modifier.weight(1f), style = MaterialTheme.typography.titleMedium, color = c.textPrimary)
-                Text(
-                    stringResource(R.string.out_visited_meter, localizedNumber(visitedCount.toLong()), localizedNumber(routeSize.toLong())),
-                    style = MaterialTheme.typography.labelMedium, color = c.textSecondary, maxLines = 1,
-                )
-            }
-            AronMeter(visitedCount, routeSize)
-            AronSegmented(
-                listOf(
-                    stringResource(R.string.out_seg_remaining, localizedNumber((routeSize - visitedCount).toLong())),
-                    stringResource(R.string.out_seg_visited, localizedNumber(visitedCount.toLong())),
-                    stringResource(R.string.out_seg_all, localizedNumber(routeSize.toLong())),
-                ),
-                selected = segment, onSelect = { segment = it },
+        Column(Modifier.padding(horizontal = 12.dp, vertical = AronTokens.Space.S), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.M)) {
+            RetailerPickerField(value = null, placeholder = stringResource(R.string.out_picker_select), onClick = { open = true; searching = true })
+            LetterFilterBar(
+                letters = listOf(allLabel) + chips,
+                selected = if (selectedChip == OutletPicker.ALL_CHIP) allLabel else selectedChip,
+                onSelect = { l -> open = true; onChip(if (l == allLabel) OutletPicker.ALL_CHIP else l) },
             )
         }
         Box(Modifier.weight(1f).fillMaxWidth()) {
@@ -165,41 +160,31 @@ fun OutletPickerContent(
                     stringResource(R.string.out_picker_none), hint = stringResource(R.string.out_picker_none_hint), icon = AronIcons.Outlet,
                     actionLabel = onReloadRoute?.let { stringResource(R.string.out_picker_reload) }, onAction = onReloadRoute, syncedAt = syncedAt,
                 )
-                visible.isEmpty() -> AronEmptyState(
-                    stringResource(R.string.out_filtered_none), icon = AronIcons.Search,
-                    actionLabel = stringResource(R.string.out_show_all), onAction = { onChip(OutletPicker.ALL_CHIP); segment = 2; query = "" },
+                !open -> Text(
+                    stringResource(R.string.out_picker_empty), color = look.ink, fontSize = 20.sp, textAlign = TextAlign.Center,
+                    modifier = Modifier.align(Alignment.Center).padding(horizontal = 24.dp),
                 )
-                else -> LazyColumn(Modifier.fillMaxSize().testTag(OutletTags.LIST), contentPadding = PaddingValues(horizontal = AronTokens.Space.Screen, vertical = AronTokens.Space.S)) {
-                    visible.forEachIndexed { i, r ->
-                        item(key = r.outlet.outletId, contentType = "outlet") {
-                            val position = when { visible.size == 1 -> RowPosition.Only; i == 0 -> RowPosition.First; i == visible.lastIndex -> RowPosition.Last; else -> RowPosition.Middle }
-                            PickerRowView(r, marks[r.outlet.outletId], showDistance, position, divider = i != visible.lastIndex, onPick = { onPick(r) })
+                else -> Column(Modifier.fillMaxSize()) {
+                    if (searching) {
+                        Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = AronTokens.Space.Xs), verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
+                            KitTextField(query, { query = it }, stringResource(R.string.out_search), Modifier.weight(1f))
                         }
                     }
-                }
-            }
-        }
-        // the alphabet dock (android-glass s6.17): search, All, one chip per first letter. It is the screen's bottom chrome,
-        // so it sits above the navigation bar (edge-to-edge) and rides above the keyboard when the search field is open.
-        Column(
-            Modifier
-                .fillMaxWidth()
-                .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal))
-                .imePadding(),
-        ) {
-            if (searching) {
-                Row(Modifier.fillMaxWidth().padding(horizontal = AronTokens.Space.Screen, vertical = AronTokens.Space.Xs), verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
-                    KitTextField(query, { query = it }, stringResource(R.string.out_search), Modifier.weight(1f))
-                    DockChip(stringResource(R.string.out_search_close), selected = false, onClick = { searching = false; query = "" }, icon = AronIcons.Close)
-                }
-            } else {
-                Row(
-                    Modifier.fillMaxWidth().testTag(OutletTags.CHIPS).horizontalScroll(rememberScrollState()).padding(horizontal = AronTokens.Space.Screen, vertical = AronTokens.Space.Xs),
-                    horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.S),
-                ) {
-                    DockChip(stringResource(R.string.out_search), selected = false, onClick = { searching = true }, icon = AronIcons.Search)
-                    DockChip(stringResource(R.string.out_chip_all), selected = selectedChip == OutletPicker.ALL_CHIP, onClick = { onChip(OutletPicker.ALL_CHIP) })
-                    chips.forEach { ch -> DockChip(ch, selected = selectedChip == ch, onClick = { onChip(ch) }) }
+                    if (visible.isEmpty()) {
+                        AronEmptyState(
+                            stringResource(R.string.out_filtered_none), icon = AronIcons.Search,
+                            actionLabel = stringResource(R.string.out_show_all), onAction = { onChip(OutletPicker.ALL_CHIP); query = "" },
+                        )
+                    } else {
+                        LazyColumn(
+                            Modifier.fillMaxSize().testTag(OutletTags.LIST),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = AronTokens.Space.S), verticalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            items(visible, key = { it.outlet.outletId }, contentType = { "outlet" }) { r ->
+                                PickerRowView(r, marks[r.outlet.outletId], showDistance, onPick = { onPick(r) })
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -212,18 +197,17 @@ fun OutletPickerContent(
  * or the outcome word. The whole row (72 dp or more) is the target, painted like the kit's flat row.
  */
 @Composable
-private fun PickerRowView(r: PickerRow, mark: PickerMark?, showDistance: Boolean, position: RowPosition, divider: Boolean, onPick: () -> Unit) {
+private fun PickerRowView(r: PickerRow, mark: PickerMark?, showDistance: Boolean, onPick: () -> Unit) {
     val c = LocalAronColors.current
+    val look = LocalAronLook.current
     val outcome = mark?.outcomeCode?.let { outcomeWord(it) }
-    val dividerColor = c.borderDivider
-    val dividerWidth = if (c.sunlight) AronTokens.Stroke.SunlightHairline else AronTokens.Stroke.Hairline
-    val inset = AronTokens.Space.L
+    val shape = RoundedCornerShape(12.dp)
     Row(
         Modifier
             .fillMaxWidth()
-            .flatRow(position)
-            .drawBehind { if (divider) drawRect(dividerColor, Offset(inset.toPx(), size.height - dividerWidth.toPx()), Size(size.width - inset.toPx(), dividerWidth.toPx())) }
-            .clip(rowShape(position))
+            .shadow(1.dp, shape)
+            .clip(shape)
+            .background(look.card)
             .clickable(role = Role.Button, onClick = onPick)
             .heightIn(min = PickerRowMin)
             .padding(horizontal = AronTokens.Space.L, vertical = AronTokens.Space.M),
@@ -231,12 +215,12 @@ private fun PickerRowView(r: PickerRow, mark: PickerMark?, showDistance: Boolean
         horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.M),
     ) {
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.Xs)) {
-            Text(r.outlet.name, style = MaterialTheme.typography.titleSmall, color = c.textPrimary, maxLines = 2, overflow = TextOverflow.Ellipsis)
-            Text(captionOf(r.outlet), style = MaterialTheme.typography.bodySmall, color = c.textSecondary)
+            Text(r.outlet.name, style = MaterialTheme.typography.titleSmall, color = look.ink, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Text(captionOf(r.outlet), style = MaterialTheme.typography.bodySmall, color = look.inkMuted)
             if (r.outlet.openDueMtk > 0) {
                 StatusPill(stringResource(R.string.out_due_chip, outletMoney(r.outlet.openDueMtk)), AronIcons.Wallet, c.warningContainer, c.warningOnContainer, Modifier.padding(top = AronTokens.Space.Xs))
             }
-            if (showDistance) r.distanceM?.let { Text(stringResource(R.string.out_distance_m, localizedNumber(Math.round(it))), style = MaterialTheme.typography.bodySmall, color = c.textSecondary, maxLines = 1) }
+            if (showDistance) r.distanceM?.let { Text(stringResource(R.string.out_distance_m, localizedNumber(Math.round(it))), style = MaterialTheme.typography.bodySmall, color = look.inkMuted, maxLines = 1) }
         }
         when {
             mark?.visited == true && outcome == null -> Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(AronTokens.Space.Xs)) {
@@ -244,9 +228,9 @@ private fun PickerRowView(r: PickerRow, mark: PickerMark?, showDistance: Boolean
                     Icon(AronIcons.Check, contentDescription = null, tint = c.successOnContainer, modifier = Modifier.size(AronTokens.Space.L))
                     Text(stringResource(R.string.out_row_visited), style = MaterialTheme.typography.labelMedium, color = c.successOnContainer, maxLines = 1)
                 }
-                mark.memoTotalMtk?.let { Text(outletMoney(it), style = MaterialTheme.typography.bodySmall, color = c.textSecondary, maxLines = 1) }
+                mark.memoTotalMtk?.let { Text(outletMoney(it), style = MaterialTheme.typography.bodySmall, color = look.inkMuted, maxLines = 1) }
             }
-            outcome != null -> Text(outcome, style = MaterialTheme.typography.labelMedium, color = c.textSecondary, maxLines = 2)
+            outcome != null -> Text(outcome, style = MaterialTheme.typography.labelMedium, color = look.inkMuted, maxLines = 2)
         }
     }
 }
