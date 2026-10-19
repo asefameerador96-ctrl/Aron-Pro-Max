@@ -12,12 +12,12 @@ export interface TileDate {
 
 /** One dashboard tile on a glass card (web-glass s7.3): title, body, and the business date / as-of / reason chip under it
  *  (F-WEB-068). `data` puts the body on the near-opaque data surface (tables, charts). */
-export function Tile({ id, locale, titleKey, date, children, wide, className = "", actions, heading, tip }: { id: string; tip?: ReactNode; locale: Locale; titleKey: MessageKey; heading?: string; date: TileDate; children: ReactNode; wide?: boolean; data?: boolean; className?: string; actions?: ReactNode }) {
+export function Tile({ id, locale, titleKey, date, children, wide, className = "", actions, heading, tip, tipAtBottom }: { tipAtBottom?: boolean; id: string; tip?: ReactNode; locale: Locale; titleKey: MessageKey; heading?: string; date: TileDate; children: ReactNode; wide?: boolean; data?: boolean; className?: string; actions?: ReactNode }) {
   return (
-    <section data-testid={`tile-${id}`} className={`glass-data relative flex min-h-32 flex-col gap-2 p-(--card-pad) text-primary ${wide ? "md:col-span-2" : ""} ${className}`}>
-      {tip ? <div className="absolute end-3 top-2">{tip}</div> : null}
-      <div className={`flex items-start justify-between gap-2 border-b border-accent-graphic/40 pb-2 ${tip ? "pe-11" : ""}`}>
-        <h2 className="min-w-0 flex-1 text-body-strong text-accent">{heading ?? t(locale, titleKey)}</h2>
+    <section data-testid={`tile-${id}`} className={`glass-data @container/tile relative flex min-h-32 flex-col gap-2 p-(--card-pad) text-primary ${wide ? "md:col-span-2" : ""} ${className}`}>
+      {tip ? <div className={`absolute end-3 ${tipAtBottom ? "bottom-2" : "top-2"}`}>{tip}</div> : null}
+      <div className={`flex items-start justify-between gap-2 border-b border-accent-graphic/40 pb-2 ${tip && !tipAtBottom ? "pe-11" : ""}`}>
+        <h2 className="min-w-0 flex-1 truncate text-body-strong text-accent" title={heading ?? t(locale, titleKey)}>{heading ?? t(locale, titleKey)}</h2>
         {actions ? <div className="shrink-0">{actions}</div> : null}
       </div>
       <div className="min-w-0 flex-1 [overflow-wrap:anywhere]">{children}</div>

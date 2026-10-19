@@ -59,34 +59,20 @@ class HomeScreenTest {
     private val kpis = HomeKpis("10%", 54, 0, listOf(HomeStockLine("Lighter", 400, 25, "pieces"), HomeStockLine("Match", 0, 0, "dozen")))
     private val money = HomeMoneyLines(listOf(HomeMoneyLine("Lighter", "4,687.50 ৳")), "4,828.50 ৳", null, "−437.50 ৳", "4,391.00 ৳")
 
-    @Test fun dockLabelFollowsTheDayStateTable() {
+    @Test fun noDockButtonIsDrawnTheTilesAreTheEntry() {
+        // the reference Home has no bottom button: the Sale tile is the entry, whatever the day state says
         var got: HomeTile? = null
-        val dock = androidx.compose.runtime.mutableStateOf<HomeDock?>(HomeDock.CHECK_IN)
-        val ctx = AppLocale.wrap(ApplicationProvider.getApplicationContext<Context>(), AppLanguage.EN)
-        compose.setContent {
-            CompositionLocalProvider(LocalContext provides ctx) {
-                AronTheme(AppLanguage.EN) { HomeContent(header, HomeTiles.resolve(emptySet(), 0), BundleFreshness.Fresh, false, null, { got = it }, dock = dock.value) }
-            }
-        }
-        val expected = mapOf(
-            HomeDock.CHECK_IN to "Check in", HomeDock.TAKE_STOCK to "Take stock", HomeDock.START_SELLING to "Start selling",
-            HomeDock.SUBMIT to "Sales submit", HomeDock.CHECK_OUT to "Check out",
-        )
-        expected.forEach { (d, label) ->
-            compose.runOnIdle { dock.value = d }
-            compose.onNodeWithTag(HomeScreenTags.DOCK).assertExists()
-            compose.onNodeWithText(label).performClick()
-            assertEquals(d.target, got)
-        }
-        compose.runOnIdle { dock.value = null }
+        show(AppLanguage.EN, onTile = { got = it }, dock = HomeDock.START_SELLING)
         compose.onNodeWithTag(HomeScreenTags.DOCK).assertDoesNotExist()
+        compose.onNodeWithTag(HomeScreenTags.tile(HomeTile.SALE)).performClick()
+        assertEquals(HomeTile.SALE, got)
     }
 
     @Test fun heroKpiAndMoneyCardsShowTheirFigures() {
         show(AppLanguage.EN, hero = hero, kpis = kpis, money = money, dock = HomeDock.START_SELLING, sync = SyncChipState.Waiting(3))
         compose.onNodeWithTag(HomeScreenTags.HERO).assertExists()
         compose.onNodeWithText("Today's total").assertExists()
-        compose.onNodeWithText("Checked in 08:52 · Daily").assertExists()
+        compose.onNodeWithText("Checked in 08:52", substring = true).assertExists(); compose.onAllNodesWithText("6/60", substring = true)[0].assertExists() // the caption and the bar
         compose.onNodeWithTag(HomeScreenTags.CHIP).assertExists()
         compose.onNodeWithTag(HomeScreenTags.KPI).assertExists()
         compose.onNodeWithText("Strike rate").assertExists(); compose.onNodeWithText("Non-visit").assertExists()
@@ -108,18 +94,6 @@ class HomeScreenTest {
         }
     }
 
-    @Test fun expiredBundleDisablesADockThatWouldSell() {
-        show(AppLanguage.EN, freshness = BundleFreshness.Expired(3), dock = HomeDock.START_SELLING)
-        compose.onNodeWithTag(HomeScreenTags.DOCK).assertExists()
-        compose.onNodeWithText("Start selling").assertIsNotEnabled()
-        compose.onNodeWithText("This needs a fresh route bundle.").assertExists()
-    }
-
-    @Test fun missingBundleKeepsTheCheckInDockEnabled() {
-        show(AppLanguage.EN, freshness = BundleFreshness.Missing, dock = HomeDock.CHECK_IN)
-        compose.onNodeWithText("Check in").assertIsEnabled()
-    }
-
     @Test fun completeDayShowsTheSuccessChipAndNoDock() {
         show(AppLanguage.BN, hero = hero.copy(dayState = HomeDayState.COMPLETE), dock = null)
         compose.onNodeWithTag(HomeScreenTags.DAY_DONE).assertExists()
@@ -128,7 +102,7 @@ class HomeScreenTest {
 
     @Test fun tilesRenderInTwoGroupsWithTheTaskBadge() {
         show(AppLanguage.EN, tasks = 2, dock = HomeDock.START_SELLING)
-        compose.onNodeWithText("Today's work").assertExists(); compose.onNodeWithText("Others").assertExists()
+        compose.onNodeWithText("Today's work").assertDoesNotExist() // the reference has one grid, no group labels
         compose.onNodeWithTag(HomeScreenTags.tile(HomeTile.TASKS)).assertExists()
         compose.onNodeWithContentDescription("2 open items", useUnmergedTree = true).assertExists()
         compose.onNodeWithTag(HomeScreenTags.SETTINGS).assertExists()

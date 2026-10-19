@@ -122,4 +122,6 @@
     <string name="tut_kind_video">Video</string>
     <string name="tut_kind_manual">Manual</string>
     <string name="tut_minutes">%1$d min</string>
+    <string name="hm_target_title">Today\'s progress</string>
+    <string name="hm_target_details">Details</string>
 </resources>

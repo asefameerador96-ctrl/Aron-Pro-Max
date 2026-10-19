@@ -45,8 +45,8 @@ class AttendanceScreenTest {
         render(AppLanguage.BN, AttendanceState())
         compose.onNodeWithText("আপনি এখনো চেক ইন করেননি। কাজ শুরু করার আগে অনুগ্রহ করে চেক ইন করুন।").assertExists()
         compose.onNodeWithTag(AttendanceTags.CHECK_IN).assertIsEnabled()
-        // one primary per screen: check-out only appears in the bar once the rep has checked in
-        compose.onNodeWithTag(AttendanceTags.CHECK_OUT).assertDoesNotExist()
+        // the reference shows both big buttons: check-out is there but grey (not open) until the rep has checked in
+        compose.onNodeWithTag(AttendanceTags.CHECK_OUT).assertIsNotEnabled()
         compose.onNodeWithTag(AttendanceTags.HOLD).assertDoesNotExist()
     }
 
@@ -78,9 +78,9 @@ class AttendanceScreenTest {
 
     @Test fun afterCheckInTheBarIsCheckOutDisabledWithItsReasonAndTheDhakaTimeShows() {
         render(AppLanguage.EN, AttendanceState(checkedInAt = "2026-10-07T03:05:00.000Z", showCheckInPrompt = false, checkInEnabled = false, addressText = "23.793812, 90.404112", fixAccuracyM = 18))
-        compose.onNodeWithTag(AttendanceTags.CHECK_IN).assertDoesNotExist()
+        compose.onNodeWithTag(AttendanceTags.CHECK_IN).assertIsNotEnabled()
         compose.onNodeWithTag(AttendanceTags.CHECK_OUT).assertIsNotEnabled()
-        compose.onAllNodesWithText("Check-out opens at 05:00 PM.").assertCountEquals(2) // the day-card row and the bar reason
+        compose.onAllNodesWithText("Check-out opens at 05:00 PM.").assertCountEquals(1) // the day line says when check-out opens
         compose.onNodeWithText("Checked in at 09:05 AM").assertExists()
         compose.onNodeWithText("23.793812, 90.404112").assertExists()
         compose.onNodeWithText("Good · ±18 m").assertExists()
@@ -100,8 +100,8 @@ class AttendanceScreenTest {
     @Test fun dayCompleteShowsTheSuccessBannerAndNoBar() {
         render(AppLanguage.BN, AttendanceState(checkedInAt = "2026-10-07T03:05:00.000Z", checkedOutAt = "2026-10-07T11:10:00.000Z", showCheckInPrompt = false, checkInEnabled = false))
         compose.onNodeWithText("আপনি আজকের জন্য চেক ইন এবং চেক আউট সম্পন্ন করেছেন। সহযোগিতার জন্য ধন্যবাদ।").assertExists()
-        compose.onNodeWithTag(AttendanceTags.CHECK_IN).assertDoesNotExist()
-        compose.onNodeWithTag(AttendanceTags.CHECK_OUT).assertDoesNotExist()
+        compose.onNodeWithTag(AttendanceTags.CHECK_IN).assertIsNotEnabled()
+        compose.onNodeWithTag(AttendanceTags.CHECK_OUT).assertIsNotEnabled()
         compose.onNodeWithText("চেক আউট সম্পন্ন হয়েছে ০৫:১০ PM").assertExists()
     }
 
