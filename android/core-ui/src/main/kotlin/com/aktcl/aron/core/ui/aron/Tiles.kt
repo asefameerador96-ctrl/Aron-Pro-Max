@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -35,6 +36,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.aktcl.aron.core.ui.AronLook
@@ -44,7 +46,7 @@ import com.aktcl.aron.core.ui.localizedNumber
 
 /**
  * One tile of a tile grid (PARITY-SPEC s2.4, sr/home-1-tiles.webp, sr/outlet-menu.png): a white card (Home, hairline `#EEEEEE`) or a
- * `#F5F5F5` card ([menu] screens), radius 12 dp, the 56 dp gradient [icon] over the [label] in 14 sp indigo (pass [labelColor] =
+ * `#F5F5F5` card ([menu] screens), radius 6 dp (measured on both references), the 56 dp gradient [icon] (menu: 78 % of the tile width, at most 96 dp) over the [label] in 14 sp indigo (pass [labelColor] =
  * `LocalAronLook.current.tileLabelOutlet` for the red Outlet-menu labels). [badge] > 0 shows a red count at the top end
  * ([badgeDescription] is its TalkBack text). Locked or deferred tiles are left out of the grid, never greyed (pass [enabled] = false
  * only for a tile that is visible but momentarily unavailable).
@@ -62,7 +64,7 @@ fun AronTile(
     enabled: Boolean = true,
 ) {
     val look = LocalAronLook.current
-    val shape = RoundedCornerShape(AronLook.CardRadius)
+    val shape = RoundedCornerShape(TileRadius)
     Box(
         modifier
             .heightIn(min = 112.dp)
@@ -77,10 +79,10 @@ fun AronTile(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center,
         ) {
-            // menu tiles (sr/outlet-menu.png, three per row) carry a larger picture than the Home grid
-            val iconSize = if (menu) AronLook.MenuTileIcon else AronLook.TileIcon
-            if (icon != null) Image(icon, contentDescription = null, modifier = Modifier.size(iconSize))
-            else Box(Modifier.size(iconSize).clip(RoundedCornerShape(14.dp)).background(look.verticalBrush()))
+            // menu tiles (sr/outlet-menu.png, three per row) carry a picture of about 78 % of the tile width; Home a fixed 56 dp
+            val iconModifier = if (menu) Modifier.fillMaxWidth(MenuIconFraction).sizeIn(maxWidth = MenuIconMax).aspectRatio(1f) else Modifier.size(AronLook.TileIcon)
+            if (icon != null) Image(icon, contentDescription = null, modifier = iconModifier)
+            else Box(iconModifier.clip(RoundedCornerShape(14.dp)).background(look.verticalBrush()))
             Spacer(Modifier.height(10.dp))
             Text(label, style = lookStyle(14.sp, color = labelColor ?: look.tileLabel, align = TextAlign.Center, medium = true))
         }
@@ -100,6 +102,14 @@ fun AronTile(
     }
 }
 
+/** Tile corner radius: about 5 units on sr/home-1-tiles.webp and sr/outlet-menu.png (the 12 dp of the cards is too round here). */
+private val TileRadius = 6.dp
+private const val MenuIconFraction = 0.78f
+private val MenuIconMax = 96.dp
+
+/** Grid gap of the Outlet-type menus (sr/outlet-menu.png: 17 units between tiles and at the edges): `AronTileGrid(gap = AronMenuGap)`. */
+val AronMenuGap = 16.dp
+
 /**
  * Columns of the tile grid: 4 on a phone (PARITY-SPEC s2.4), 3 when large text leaves less than 330 dp of "1x" width, 2 below 240
  * (font scale 2.0 on a 360 dp phone gives 180, so 2).
@@ -114,17 +124,18 @@ fun aronTileColumns(widthDp: Float, fontScale: Float): Int {
 }
 
 /**
- * The tile grid (PARITY-SPEC s2.4): [columns] or [aronTileColumns], 8 dp gaps, every tile in a row as tall as the tallest. Not lazy:
- * a Home has at most about 16 tiles. Gaps 6 dp: four Bangla labels such as `টিউটোরিয়াল` fit one line at 360 dp. The [tile] lambda gets the modifier that sizes the cell; pass it to [AronTile].
+ * The tile grid (PARITY-SPEC s2.4): [columns] or [aronTileColumns], every tile in a row as tall as the tallest. Not lazy: a Home has
+ * at most about 16 tiles. [gap] 6 dp (Home): four Bangla labels such as `টিউটোরিয়াল` fit one line at 360 dp; menus pass [AronMenuGap].
+ * The [tile] lambda gets the modifier that sizes the cell; pass it to [AronTile].
  */
 @Composable
-fun <T> AronTileGrid(items: List<T>, modifier: Modifier = Modifier, columns: Int? = null, tile: @Composable (T, Modifier) -> Unit) {
+fun <T> AronTileGrid(items: List<T>, modifier: Modifier = Modifier, columns: Int? = null, gap: Dp = 6.dp, tile: @Composable (T, Modifier) -> Unit) {
     val fontScale = LocalDensity.current.fontScale
     BoxWithConstraints(modifier.fillMaxWidth()) {
         val n = columns ?: aronTileColumns(maxWidth.value, fontScale)
-        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Column(verticalArrangement = Arrangement.spacedBy(gap)) {
             items.chunked(n).forEach { row ->
-                Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(gap)) {
                     row.forEach { item -> tile(item, Modifier.weight(1f).fillMaxHeight()) }
                     repeat(n - row.size) { Spacer(Modifier.weight(1f)) }
                 }

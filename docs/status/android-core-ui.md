@@ -13,7 +13,7 @@ AronScaffold(
 ) { /* BoxScope content: LazyColumn of PackCard ... */ }
 
 AronHomeHeader(title = "SR - Name (login)", subtitle = routeAndDate, onSettings = openSettings, settingsLabel = settings, avatar = null)
-AronTileGrid(tiles /*, columns = null -> aronTileColumns(widthDp, fontScale): 4 / 3 / 2 */) { t, m ->
+AronTileGrid(tiles /*, columns = null -> aronTileColumns(widthDp, fontScale): 4 / 3 / 2; gap = 6.dp (Home) or AronMenuGap (16 dp, Outlet-type menus) */) { t, m ->
     AronTile(label, icon = painterResource(t.icon), onClick = t.go, modifier = m, badge = n, badgeDescription = text, menu = false, labelColor = null) }
     // Outlet menu: menu = true, labelColor = LocalAronLook.current.tileLabelOutlet. Deferred/locked tiles: leave them out.
 

@@ -5,7 +5,8 @@
 - **Container:** the SDK is not baked in; install it with `sdkmanager --sdk_root=/opt/android-sdk "platforms;android-37.0" "build-tools;37.0.0" "platform-tools"` (cmdline-tools zip from dl.google.com), `local.properties` sdk.dir=/opt/android-sdk.
 - **Evidence:** `python3 tools/ui-kit/parity_evidence.py [stock ...]` rebuilds docs/evidence/ui-parity/kit-*.png from the KitParityShot captures (reference left, kit right, 1000 px high).
 - **Scale note (fidelity):** measured on sr/stock.webp scaled to 411 units, the reference's elements are about 0.6 to 0.75 of the PARITY-SPEC dp values (minus 21 units vs 36 dp, top bar 36 vs 56): the reference phone runs a smaller display size. The kit keeps the spec's dp sizes (48 dp targets, legible Bangla on 360 dp phones) and matches proportions, weights and layout within them.
-- **Fidelity log:** PackCard: SKU code medium weight (reference stroke/cap 0.12 = Medium, was Bold), quantity and stock figures bold, quantity field grows from 48 dp (360 dp phones, unchanged) to 96 dp at 411 dp so the underline fills minus-to-plus as on the reference; PackListHeader follows.
+- **Fidelity log:** PackCard: SKU code medium weight (reference stroke/cap 0.12 = Medium, was Bold), quantity and stock figures bold, quantity field grows from 48 dp (360 dp phones, unchanged) to 96 dp at 411 dp so the underline fills minus-to-plus as on the reference; PackListHeader follows. TotalsPanel rows tighter (line height 1.25 x size); button Save/Print glyphs 13/15 dp (0.6 of the label as on stock.webp). Tiles: radius 6 dp (measured about 5 units on home-1-tiles and outlet-menu, the 12 dp was too round); menu tiles (outlet-menu.png): picture 78 % of the tile width (max 96 dp), new optional `AronTileGrid(gap = AronMenuGap)` = 16 dp (17 units on the reference). AronHomeHeader: title and subtitle medium (not bold), avatar 44 dp, gear 30 dp, padding 12/22 dp (the avatar sits above the middle as on the reference).
+- **Told the screens:** ui-sr-b: use `gap = AronMenuGap` and `Modifier.padding(AronMenuGap)` on Outlet-type menus. ui-sr-a: on sr/stock.webp the Print button is grey with a DARK label while the printer is off (AronSecondaryButton enabled = true, tap to connect), and the Home subtitle date shows Latin digits.
 
 ## HANDOVER from session 1 (2026-10-18 23:20 UTC)
 - **State:** branch `lane/ui-kit`; candidate run 1211 on abac6ba46385 (pushed 23:13). Lead rule: never push while a run of this branch is running or queued (a push cancels it); push at most once per CI cycle; after a green run send the lead `ready <full sha>` with the parity PNG list (docs/evidence/ui-parity/kit-*.png). Every earlier run was cancelled except 69e77e2 (red: money-float scan, fixed) and 8bb3d86 (Android, lint, size gate green before cancel).
@@ -24,11 +25,11 @@ What still differs (kit level): packshots show the grey silhouette until ui-pack
 | Tokens (`AronLook`, `LocalAronLook`) | PARITY-SPEC s1 | DONE (exact values; Sunlight optional) | kit skeleton |
 | AronTopBar + AronPrinterBadge | stock.webp, sale-select.png, summary.png | PARTIAL: drawn printer glyph; screen icon needs the vector set | kit skeleton |
 | AronScaffold | stock.webp | DONE | kit skeleton |
-| AronHomeHeader | home-1-tiles.webp | DONE (drawn gear and avatar) | kit skeleton |
-| AronTile + AronTileGrid | home-1-tiles.webp, outlet-menu.png | DONE (menu tiles 72 dp icon, red labels) | icons push |
+| AronHomeHeader | home-1-tiles.webp | DONE (drawn gear and avatar); medium title, 44 dp avatar, 30 dp gear (session 2) | kit skeleton |
+| AronTile + AronTileGrid | home-1-tiles.webp, outlet-menu.png | DONE; radius 6 dp, menu picture 78 % of the tile, `gap` (AronMenuGap 16 dp for menus) (session 2) | icons push |
 | PackCard + PackListHeader | stock.webp | DONE; SKU medium, figures bold, quantity field 48 to 96 dp with the row (session 2); packshot 56 x 90 dp (measured 51 x 83 on the screenshot; spec text says about 68 x 120, screenshot wins) | kit skeleton |
 | PackshotImage + PackshotProvider | stock.webp | DONE (silhouette fallback per category); real images: ui-packshots lane | kit skeleton |
-| TotalsPanel | stock.webp | DONE | kit skeleton |
+| TotalsPanel | stock.webp | DONE; rows tightened to the reference pitch (session 2) | kit skeleton |
 | AronPrimaryButton / AronSecondaryButton / AronPlus / AronMinus | stock.webp, summary.png | DONE | kit skeleton |
 | RetailerPicker + LetterFilterBar | sale-select.png | DONE | kit skeleton |
 | SummaryTable | summary.png | DONE | kit skeleton |

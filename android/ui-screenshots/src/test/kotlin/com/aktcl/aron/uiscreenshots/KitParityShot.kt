@@ -37,6 +37,7 @@ import com.aktcl.aron.core.ui.aron.AronSecondaryButton
 import com.aktcl.aron.core.ui.aron.AronStatusDot
 import com.aktcl.aron.core.ui.aron.AronTargetCard
 import com.aktcl.aron.core.ui.aron.AronTile
+import com.aktcl.aron.core.ui.aron.AronMenuGap
 import com.aktcl.aron.core.ui.aron.AronTileGrid
 import com.aktcl.aron.core.ui.aron.AronTopBar
 import com.aktcl.aron.core.ui.aron.ButtonGlyph
@@ -177,8 +178,8 @@ class KitParityShot {
         )
         Column(Modifier.fillMaxSize().background(look.page)) {
             AronTopBar("আউটলেট", icon = painterResource(R.drawable.aron_art_outlet), onBack = {}, backLabel = "পেছনে")
-            Box(Modifier.padding(12.dp)) {
-                AronTileGrid(items, columns = 3) { (label, icon), m -> AronTile(label, painterResource(icon), {}, m, menu = true, labelColor = look.tileLabelOutlet) }
+            Box(Modifier.padding(AronMenuGap)) {
+                AronTileGrid(items, columns = 3, gap = AronMenuGap) { (label, icon), m -> AronTile(label, painterResource(icon), {}, m, menu = true, labelColor = look.tileLabelOutlet) }
             }
         }
     }

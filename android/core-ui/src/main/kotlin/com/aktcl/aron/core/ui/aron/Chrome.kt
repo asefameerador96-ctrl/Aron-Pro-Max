@@ -198,7 +198,8 @@ fun AronScaffold(
 
 /**
  * The Home header (PARITY-SPEC s2.3, sr/home-1-tiles.webp): the gradient, a white round avatar with the person glyph (or [avatar]),
- * [title] = "Role - Name (login)" in white bold 15 sp, [subtitle] = route and date in 11 sp (measured on the reference), and the white settings gear at the end
+ * [title] = "Role - Name (login)" in white medium 15 sp, [subtitle] = route and date in medium 11 sp, a 44 dp avatar and a 30 dp gear
+ * (all measured on the reference), the avatar sitting above the middle of the bar as there, and the white settings gear at the end
  * ([settingsLabel] is its TalkBack label).
  */
 @Composable
@@ -217,21 +218,21 @@ fun AronHomeHeader(
             .background(look.barBrush())
             .sunlightRule(look)
             .windowInsetsPadding(WindowInsets.statusBars)
-            .padding(start = 12.dp, end = 4.dp, top = 20.dp, bottom = 24.dp),
+            .padding(start = 12.dp, end = 4.dp, top = 12.dp, bottom = 22.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Box(Modifier.size(56.dp).shadow(2.dp, CircleShape).clip(CircleShape).background(look.card), contentAlignment = Alignment.Center) {
-            if (avatar != null) Image(avatar, contentDescription = null, modifier = Modifier.size(56.dp))
-            else GlyphCanvas(Modifier.size(40.dp)) { person(look.purple) }
+        Box(Modifier.size(44.dp).shadow(2.dp, CircleShape).clip(CircleShape).background(look.card), contentAlignment = Alignment.Center) {
+            if (avatar != null) Image(avatar, contentDescription = null, modifier = Modifier.size(44.dp))
+            else GlyphCanvas(Modifier.size(32.dp)) { person(look.purple) }
         }
         Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
-            Text(title, style = lookStyle(15.sp, bold = true, color = look.onBar))
-            Text(subtitle, style = lookStyle(11.sp, color = look.onBar))
+            Text(title, style = lookStyle(15.sp, medium = true, color = look.onBar))
+            Text(subtitle, style = lookStyle(11.sp, medium = true, color = look.onBar))
         }
         Box(
             Modifier.size(AronLook.Touch).clickable(role = Role.Button, onClick = onSettings).semantics { contentDescription = settingsLabel },
             contentAlignment = Alignment.Center,
-        ) { GlyphCanvas(Modifier.size(34.dp)) { gear(look.onBar, hole = if (look.sunlight) look.card else look.barEnd) } }
+        ) { GlyphCanvas(Modifier.size(30.dp)) { gear(look.onBar, hole = if (look.sunlight) look.card else look.barEnd) } }
     }
 }
 
@@ -243,12 +244,12 @@ private fun ButtonContent(text: String, glyph: ButtonGlyph?, icon: Painter?, ink
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center, modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
         when {
             icon != null -> Image(icon, contentDescription = null, modifier = Modifier.size(20.dp))
-            glyph == ButtonGlyph.Save -> GlyphCanvas(Modifier.size(18.dp)) { save(ink, gap) }
-            glyph == ButtonGlyph.Print -> GlyphCanvas(Modifier.size(20.dp)) { printer(ink, crossed = false, gap = gap) }
+            glyph == ButtonGlyph.Save -> GlyphCanvas(Modifier.size(13.dp)) { save(ink, gap) }  // about 0.6 of the label (sr/stock.webp)
+            glyph == ButtonGlyph.Print -> GlyphCanvas(Modifier.size(15.dp)) { printer(ink, crossed = false, gap = gap) }
             glyph == ButtonGlyph.Sync -> GlyphCanvas(Modifier.size(20.dp)) { sync(ink) }
             glyph == ButtonGlyph.Submit -> GlyphCanvas(Modifier.size(18.dp)) { save(ink, gap) }
         }
-        if (icon != null || glyph != null) Spacer(Modifier.width(8.dp))
+        if (icon != null || glyph != null) Spacer(Modifier.width(6.dp))
         Text(text, style = lookStyle(18.sp, bold = true, color = ink, align = TextAlign.Center))
     }
 }

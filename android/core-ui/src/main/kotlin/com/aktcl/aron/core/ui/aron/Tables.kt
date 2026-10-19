@@ -67,12 +67,14 @@ fun TotalsPanel(header: TotalsLine, lines: List<TotalsLine>, modifier: Modifier 
 
 @Composable
 private fun TotalsRow(line: TotalsLine, size: TextUnit, color: Color) {
-    Row(Modifier.fillMaxWidth().padding(vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+    // rows as tight as sr/stock.webp (pitch about 1.6 x the glyph height; the Bangla face's own line box is about 1.8)
+    val lineHeight = size * 1.25f
+    Row(Modifier.fillMaxWidth().padding(vertical = 1.dp), verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1.3f)) {
-            Text(line.label, style = lookStyle(size, color = color))
+            Text(line.label, style = lookStyle(size, color = color).copy(lineHeight = lineHeight))
             if (line.caption != null) Text(line.caption, style = lookStyle(12.sp, color = LocalAronLook.current.onPanelMuted))
         }
-        line.values.forEach { Text(it, style = lookStyle(size, color = color, align = TextAlign.End), modifier = Modifier.weight(1f)) }
+        line.values.forEach { Text(it, style = lookStyle(size, color = color, align = TextAlign.End).copy(lineHeight = lineHeight), modifier = Modifier.weight(1f)) }
     }
 }
 
