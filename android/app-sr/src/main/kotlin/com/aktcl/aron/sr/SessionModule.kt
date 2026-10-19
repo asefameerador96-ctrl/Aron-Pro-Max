@@ -104,14 +104,17 @@ object SessionModule {
         telemetry: com.aktcl.aron.core.sync.DeviceTelemetry,
         databases: UserDatabases, components: SessionComponents, scheduler: WorkManagerSyncScheduler, runtime: DeviceRuntime, bundles: BundleDownloaders,
         media: MediaShell,
+        packshots: com.aktcl.aron.core.sync.SkuPackshots,
         resumeConfigCheck: ResumeConfigCheck, push: com.aktcl.aron.core.sync.shell.PushShell,
         activityLog: com.aktcl.aron.core.sync.ActivityLog,
         content: com.aktcl.aron.core.sync.ContentShell,
-    ): AronWorkerFactory = AronWorkerFactory(
+    ): AronWorkerFactory = run {
+        val packshotPreload = com.aktcl.aron.core.sync.PackshotPreload(packshots, databases, components.syncApi) // PARITY-SPEC s2.6
+        AronWorkerFactory(
         {
             SessionSyncRunner(
                 databases, components, runtime::beforeBatch, bundles,
-                afterRun = { userId, report -> media.afterSync(report); content.afterSync(userId) },
+                afterRun = { userId, report -> media.afterSync(report); content.afterSync(userId); packshotPreload.afterSync(userId) },
                 config = resumeConfigCheck, activityLog = activityLog, telemetry = telemetry,
             )
         },
@@ -119,7 +122,8 @@ object SessionModule {
         // N-038: the pull a push asks for; it never gets the upload runner.
         { com.aktcl.aron.core.sync.push.SessionPushPull(push::settledActiveUser, bundles, resumeConfigCheck) },
         contentPrefetch = content::prefetch, // F-SR-020: AV/KV assets ahead of the call, Wi-Fi by policy
-    )
+        )
+    }
 
     /** F-SR-020/F-SYS-029: AV/KV assets in their own bounded cache; the screens read [com.aktcl.aron.core.sync.ContentAssets.file]. */
     @Provides
@@ -199,7 +203,8 @@ object SessionModule {
         com.aktcl.aron.core.sync.SkuPackshots(imageCache, if (BuildConfig.DEV_PACKSHOTS) context.assets else null, lookup = { id ->
             // the signed-in user's own catalogue (local Room only, never the network)
             (components.session.state.value as? com.aktcl.aron.core.session.SessionState.Active)?.user?.userId
-                ?.let { databases.of(it).referenceDao().sku(id) }?.let { com.aktcl.aron.core.sync.SkuPackshots.SkuInfo(it.code) }
+                ?.let { databases.of(it).referenceDao().sku(id) }
+                ?.let { com.aktcl.aron.core.sync.SkuPackshots.SkuInfo(it.code, it.imageAssetId?.let { a -> com.aktcl.aron.core.sync.SkuPackshots.SkuImageRef(a) }) }
         })
 
     /** F-SYS-029: pack thumbnails and AV/KV assets, bounded LRU on disk (AV only on unmetered networks). */

@@ -447,6 +447,9 @@ class ApiWorld(
  * bytes are kept by path. It lets the blob operations answer 2xx so their success bodies are validated too.
  */
 class FakeBlobs {
+    /** A 1 x 1 PNG standing in for any uploaded pack picture. */
+    private val PNG_1PX = java.util.Base64.getDecoder().decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==")
+
     val stored = java.util.concurrent.ConcurrentHashMap<String, ByteArray>()
 
     fun ports() = BlobPorts(
@@ -456,6 +459,7 @@ class FakeBlobs {
         },
         com.aktcl.aron.backend.media.PhotoBlobWriter { path, bytes -> stored[path] = bytes },
         com.aktcl.aron.backend.media.PhotoReadIssuer { path, until -> "https://blob.test/$path?sp=r&se=${until.epochSecond}" },
+        com.aktcl.aron.backend.media.BlobBytesReader { path, max -> (stored[path] ?: if (path.startsWith("assets/sku_image/")) PNG_1PX else null)?.takeIf { it.size <= max } },
     )
 }
 

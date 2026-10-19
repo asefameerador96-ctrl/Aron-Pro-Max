@@ -1,10 +1,41 @@
 # UI parity: pack pictures (packshots) in Stock and Sale (lane ui-packshots)
 
-<!-- HANDOVER (for a recycled session): read this block first. Lane branch lane/ui-packshots; lead session_01MbUQSxrP7AB9tbyANjUTPS.
-Items: (1) FAST PATH dev pack pictures, reworked on the kit PackCard of ui-sr-a (lead ruling 2026-10-18), this push;
-(2) SERVER PATH (built, Opus checker PASS, held locally on branch local/packshots-item2 until the lead says push) bundle image_url/asset/version
-+ Room column + preload = NOT STARTED (T1: contract + Room migration; ask the lead for the Opus checker; V0087 reserved
-if a db migration is needed); (3) ADMIN PATH check + runbook = NOT STARTED. -->
+<!-- HANDOVER (for a recycled session): read this block first. Lane branch lane/ui-packshots (push ONLY there);
+lead session_01MbUQSxrP7AB9tbyANjUTPS; never message the integrator.
+(1) FAST PATH: DONE and on INT a038cddd (head e8a24fd2, run 39180733264 green). The kit PackCard rows of Stock and
+    Sale draw this lane's provider; dev crops are bundled only via -Paron.devPackshots=true (ci.yml android-release);
+    pictures appear only in this lane's own goldens stock_bn_packshots / sale_bn_packshots.
+(2) SERVER PATH: built, local only, on branch local/packshots-item2 (merged INT a038cddd). Lead ruling: push it ONCE to
+    lane/ui-packshots only AFTER the lead says INT contains the kit (kit window, about 01:45 UTC). Then: merge INT,
+    re-record stock_bn_packshots / sale_bn_packshots if the kit moved them, full verify (Android unit + lint + release;
+    backend sync, media, masterdata, app; shared contract; ARON_TEST_PG_URL to a local PG 16), push, send the lead
+    'ready <sha>' with this scope list and the checker verdict.
+    Scope (41 files vs INT): contract/openapi.yaml (Sku.image_asset_id; GET /v1/sku-images/{asset_id} getSkuImage),
+    contract/slices regenerated (tools/slice-contract.py), shared/contract WireDtos regenerated, web/src/contract/openapi.d.ts
+    regenerated (cd web && npm run gen:contract), docs/24 Appendix A row; backend/media SkuImageRead + route + tests,
+    BlobBytesReader port, AzureBlobSasIssuer.readBytes, BlobPorts/Wiring, BundleService/BundleDtos image_asset_id,
+    ApiWorld fake, BundleAcceptanceTest, BundleImageStabilityTest (bundle hash stable), ContractConformanceTest fixture,
+    scope-cases.txt exempt line, scope-blind-baseline.txt global-by-design line; android Room v8 AutoMigration(7,8) +
+    schemas/8.json + Migration78Test, SkuEntity.imageAssetId, ReferenceRepository mapping + SeededDayLoadTest,
+    ReferenceDao.skuImages, SyncApi.skuImage + SkuImageApiTest, ImageCache.store, SkuPackshots preload + tests,
+    PackshotPreload wired in app-sr/amo/tso SessionModule afterRun; docs runbook sku-pack-pictures.md, the content-asset
+    request, DECISIONS D-PACKSHOT-01. No Postgres migration (V0087 released).
+    Opus checker (independent subagent, 2026-10-18): VERDICT PASS, no blocking finding. Its SHOULD-FIX items are fixed
+    in 712fea00: failed downloads no longer retried on every sync; a 304 never reads the blob; decoded pictures
+    dropped when the pictured set changes. NITs fixed: weak If-None-Match incl. W/ and *, asset id validated on the
+    phone, the scope-cases test name, a one-time bundle refresh note in the runbook. Not done (NIT): a single ranged
+    blob read instead of properties + download.
+    Verified locally 2026-10-19 on INT 186279f4 (the kit included): Android unit + lint + 3 debug + release green;
+    backend sync/media/masterdata/app + shared contract green (Migration78Test, BundleImageStabilityTest,
+    SkuImageReadTest, ContractConformance, ScopeLeak, RouteInventory); slices current, oasdiff 0 breaking, web tsc,
+    test_gates, money-float green. The goldens are INT's (the kit re-recorded the two packshot goldens). Lead ruling
+    2026-10-19 01:38: push only after the lead says the UI batch is on INT (about 02:30 to 03:00 UTC).
+    Open risks: not run end to end on the dev account yet (needs deploy + one admin upload); the one
+    scope-blind-baseline line grows a "may only shrink" file (justified as global by design; the checker suggests the
+    harness skip exempt routes instead); the first deploy makes every phone fetch its full bundle once (every SKU
+    gains image_asset_id: null).
+(3) ADMIN PATH: the web upload exists (SKU form, asset field, purpose sku_image); runbook docs/runbooks/sku-pack-pictures.md
+    (in item 2's push). Open: the AMO/TSO-only SKU tables have no picture slot; owner screenshots needed. -->
 
 Owner question (2026-10-18): "why is there no packshot in the Stock and Sale menus". Reference: `docs/ui-reference/sr/stock.webp`,
 `stock.md` UI-SR-18..20, PARITY-SPEC s2.5 and s2.6.
@@ -75,3 +106,39 @@ WebP, 6.8 to 7.4 KB each (22 KB total in a dev APK), made by `tools/packshots/cr
 |---|---|---|
 | 1 fast path (withdrawn) | 564c5c3e | run 39175158082 green |
 | 1 fast path on the kit PackCard | (this push) | pending |
+
+## 5. Server path (item 2; lead rulings 2026-10-18)
+
+- **Contract (additive, no version bump):** `Sku.image_asset_id` (nullable uuid). The bundle fills it from
+  `app.sku.image_asset_id`, only while that asset is a `sku_image`. The bundle **never** sends `image_url`: a SAS signed
+  per build would move the bundle fingerprint and expire after a day. The phone builds the path on its own API
+  origin, because the server has no public-origin setting and pre-generates bundles off-request (lead informed; the
+  lead's ruling had asked for a baked `image_url`). New operation `GET /v1/sku-images/{asset_id}` (`getSkuImage`): the
+  API **streams the bytes itself** (no signed URL leaves it), with `Cache-Control: private, max-age=31536000, immutable`,
+  `ETag` = the asset id, and 304 on `If-None-Match`. It is served only when the asset exists, has purpose `sku_image`, is
+  at most 300 KB, is JPEG or PNG, and a SKU binds it; anything else, a malformed id included, is a bare 404. Any
+  signed-in user may call it, because pack art is the same for every reach. Slices, `WireDtos`,
+  `web/src/contract/openapi.d.ts` and docs/24 Appendix A are updated in the same push.
+- **Backend:** `backend/media` `SkuImageRead` + route, `BlobBytesReader` port (Azure: `AzureBlobSasIssuer.readBytes`,
+  which checks the size on the properties before downloading), `BlobPorts.imageRead`. `BundleService.products` selects
+  the asset id. Tests: `SkuImageReadTest`; `BundleImageStabilityTest` (two independent builds of the same catalogue
+  give the same bundle hash, and binding a picture changes it once); a `BundleAcceptanceTest` assertion; a conformance
+  fixture (200); scope registry `exempt` (global pack art). One `scope-blind-baseline.txt` line ("global by design",
+  like the code lists and tutorials) is flagged to the checker, because the file says it may only shrink.
+- **Phone:** Room **v8** (`AutoMigration(7, 8)`, `sku.image_asset_id`, exported `schemas/8.json`, `Migration78Test`);
+  `ReferenceRepository.skuRow` maps it (`SeededDayLoadTest.aSkuImageAssetIsStoredFromTheBundle`).
+  `SyncApi.skuImage` reads the bytes through `AronApiClient` (the token is added; the body is capped at 300 KB:
+  `SkuImageApiTest`). `ImageCache.store` accepts only JPEG, PNG or WebP magic within the cap, writes atomically and
+  evicts. `PackshotPreload.afterSync` runs from each app's sync runner `afterRun`: it lists the pictured SKUs from Room
+  and downloads each uncached asset once (mobile data allowed, at most 100 per run, one run at a time). The fetched
+  SKU's stand-in is then dropped from memory. The screens only read disk.
+- **No Postgres migration** (the column exists since V0075): V0087 is not used.
+- **Dev deploy implication** (backend + contract only, additive; lead note 2026-10-19): a new phone against an old
+  server gets bundles without `image_asset_id` (parsed with `ignoreUnknownKeys`, the field defaults to null), so it runs
+  no preload and shows the dev crops or the silhouette. A 404 from a missing endpoint is remembered per process, so
+  there is no retry storm. An old phone against the new server ignores the extra field. **The first deploy changes
+  every bundle hash once** (every SKU gains `"image_asset_id": null`), so **each phone downloads its full bundle one
+  time** (a few hundred KB at pilot size). To see real pictures on dev: deploy, upload one pack picture in the admin
+  portal (docs/runbooks/sku-pack-pictures.md), then sync a phone.
+- **Not yet proven on the dev account:** the end-to-end run (admin upload, then phone sync, then picture) needs this
+  push deployed to dev and one picture uploaded (docs/runbooks/sku-pack-pictures.md).

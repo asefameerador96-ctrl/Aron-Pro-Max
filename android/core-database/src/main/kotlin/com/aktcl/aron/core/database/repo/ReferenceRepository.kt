@@ -634,6 +634,7 @@ class ReferenceRepository(private val db: AronDatabase) {
             skuId = k.id, code = k.code, variantId = k.variantId, categoryCode = k.categoryCode, name = k.name, shortName = k.shortName,
             nameBn = k.nameBn, baseUnit = k.baseUnit, basePerPack = k.basePerPack, entryUnitDefault = k.entryUnitDefault,
             reportUnit = k.reportUnit, reportFactor = k.reportFactor, sort = k.sort, status = k.status, version = k.version,
+            imageAssetId = k.imageAssetId,
         )
 
         internal fun priceRow(p: SkuPrice) = PriceEntity(p.id, p.skuId, p.priceType, p.amountMtk, p.perBaseQty, p.validFrom, p.validTo)

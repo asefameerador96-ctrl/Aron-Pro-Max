@@ -248,6 +248,8 @@ class ContractConformanceTest {
     }
 
     companion object {
+        /** The pack picture asset of the getSkuImage fixture. */
+        const val SKU_IMAGE = "5e1d2c3b-4a59-4f68-8b7a-c9d0e1f2a3b4"
         /** A business date 30 days after the harness day, for writes that refuse today or the past. */
         private val FUTURE: String = java.time.LocalDate.parse(ApiWorld.BUSINESS_DATE).plusDays(30).toString()
 
@@ -439,6 +441,19 @@ class ContractConformanceTest {
             // PII step-up (D-AUTHZ-PII): the password only; ADMIN and SUPERADMIN hold pii.reveal (V0086) and are not MFA roles in this world.
             "POST /v1/auth/reauth" to Fx(body = { n, _, x -> n.put("password", x.world.password); n.putNull("code") }),
             "GET /v1/media/{}/read-url" to Fx(path = { _, _ -> mapOf("media_uuid" to ApiWorld.STORED_PHOTO) }),
+            // PARITY-SPEC s2.6: a pack picture bound to SL (not the SKU the admin PATCH fixture edits: binding moves its version).
+            "GET /v1/sku-images/{}" to Fx(
+                prepare = { _, x ->
+                    x.world.fresh.db.jdbi.useHandle<Exception> { h ->
+                        h.execute(
+                            "INSERT INTO app.admin_asset (asset_id, purpose, mime, bytes, sha256, blob_path) VALUES (CAST(? AS uuid), 'sku_image', 'image/png', 1000, decode(repeat('ab', 32), 'hex'), 'assets/sku_image/conformance.png') ON CONFLICT DO NOTHING",
+                            SKU_IMAGE,
+                        )
+                        h.execute("UPDATE app.sku SET image_asset_id = CAST(? AS uuid) WHERE code = 'SL'", SKU_IMAGE)
+                    }
+                },
+                path = { _, _ -> mapOf("asset_id" to SKU_IMAGE) },
+            ),
             "POST /v1/media/upload" to Fx(raw = { c, _ -> photoUpload(ApiWorld.v4("upload/${c.user}")) }),
             "POST /v1/day/final-submit" to Fx(after = listOf("POST /v1/web-entry/qc", "POST /v1/web-entry/route-day")),
         )

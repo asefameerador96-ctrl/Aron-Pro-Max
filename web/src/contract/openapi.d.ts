@@ -542,6 +542,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/sku-images/{asset_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The bytes of a SKU's pack picture (PARITY-SPEC s2.6), by the stable `Sku.image_asset_id` of the bundle.
+         * @description Any signed-in user (pack art is the same for every role and reach). The API streams the bytes itself: no signed
+         *     URL leaves it. An asset never changes (a new file is a new asset id), so the answer is cacheable for a year and
+         *     its ETag is the asset id; the phone keeps the bytes in its bounded cache under the asset id and fetches once per
+         *     new id. Served only when the asset exists, has purpose `sku_image`, is at most 300 KB and a SKU binds it;
+         *     anything else, a malformed id included, is 404 without detail.
+         */
+        get: operations["getSkuImage"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/config/delta": {
         parameters: {
             query?: never;
@@ -6507,9 +6531,11 @@ export interface components {
             thumbnail_media_uuid?: components["schemas"]["Uuid"] | null;
             /**
              * Format: uri
-             * @description Pack image (the asset bound by `image_asset_id`); null when the SKU has none (docs/24 s14a R20).
+             * @description Pack image (the asset bound by `image_asset_id`) as a short-lived signed URL in admin answers; null when the SKU has none (docs/24 s14a R20). The phone bundle leaves it null (a signed URL would change the bundle fingerprint) and carries `image_asset_id` instead.
              */
             image_url?: string | null;
+            /** @description The admin asset of the pack picture (purpose `sku_image`), fetched by phones from `GET /v1/sku-images/{asset_id}` (the phone builds the path on its own API origin); a new upload is a new id. Null or absent: no picture (the app shows the pack silhouette). */
+            image_asset_id?: components["schemas"]["Uuid"] | null;
             updated_at?: components["schemas"]["Timestamp"];
             version?: number;
         };
@@ -9385,6 +9411,37 @@ export interface operations {
             };
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    getSkuImage: {
+        parameters: {
+            query?: never;
+            header?: {
+                "If-None-Match"?: string;
+            };
+            path: {
+                asset_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The picture (JPEG or PNG, at most 300 KB). */
+            200: {
+                headers: {
+                    ETag: string;
+                    "Cache-Control": "private, max-age=31536000, immutable";
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/jpeg": string;
+                    "image/png": string;
+                };
+            };
+            304: components["responses"]["NotModified"];
+            401: components["responses"]["Unauthorized"];
             404: components["responses"]["NotFound"];
             503: components["responses"]["ServiceUnavailable"];
         };

@@ -29,6 +29,8 @@ import java.io.FileNotFoundException
 @Config(sdk = [34])
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class SkuPackshotsTest {
+    private val A7 = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa7"
+    private val A8 = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa8"
     @get:Rule val tmp = TemporaryFolder()
     private val server = MockWebServer()
 
@@ -75,29 +77,52 @@ class SkuPackshotsTest {
         assertNull(p.cached("MaxB-10S"))
     }
 
-    @Test fun theAdminThumbnailWinsAndIsKeyedByAssetAndVersionNotByTheSignedUrl() = runBlocking {
-        server.enqueue(MockResponse.Builder().code(200).addHeader("Content-Type", "image/webp").body(Buffer().write(webp("maxim-bolt"))).build())
-        server.start()
-        val cache = ImageCache(tmp.newFolder("img"), OkHttpClient(), { false })
-        val first = server.url("/sku/7.webp?sig=one").toString()
-        assertNotNull(cache.fetch(first, ImageCache.Kind.THUMBNAIL, cacheKey = SkuPackshots.cacheKey("a7", 3)))
-        var ref = SkuPackshots.SkuImageRef(server.url("/sku/7.webp?sig=two").toString(), "a7", 3) // a new signature, the same picture
-        val p = SkuPackshots(cache, devAssets(), lookup = { id -> if (id == 7L) SkuPackshots.SkuInfo("MaxR-10S", ref) else null })
-        val b = p.bitmap("7")
-        assertNotNull(b)
-        assertEquals(1, server.requestCount) // read from disk: no second download, no network in the row
-        assertTrue(b!!.getPixel(73, 60) != webpPixel("maxim-regular")) // the admin (Bolt) picture, not the dev Regular art
+    @Test fun thePreloadStoresOncePerAssetAndTheAdminPictureThenWins() = runBlocking {
+        val cache = ImageCache(tmp.newFolder("img"), OkHttpClient(), { false }) // a metered network: thumbnails still come
+        var asset = A7
+        val p = SkuPackshots(cache, devAssets(), lookup = { id -> if (id == 7L) SkuPackshots.SkuInfo("MaxR-10S", SkuPackshots.SkuImageRef(asset)) else null })
+        val dev = p.bitmap("7")!! // nothing cached yet: the dev Regular art stands in, nothing is downloaded on the row's path
+        assertEquals(webpPixel("maxim-regular"), dev.getPixel(73, 60))
 
-        ref = ref.copy(version = 4) // a new version not fetched yet: the dev art until the preload brings it
+        var downloads = 0
+        val download: suspend (String) -> ByteArray? = { downloads++; webp("maxim-bolt") }
+        assertEquals(1, p.preload(listOf(7L to A7), download))
+        val admin = p.bitmap("7")!!
+        assertTrue(admin.getPixel(73, 60) != webpPixel("maxim-regular")) // the preload dropped the stand-in: the Bolt picture
+        assertEquals("cached under the asset id: never downloaded again", 0, p.preload(listOf(7L to A7), download))
+        assertEquals(1, downloads)
+
+        asset = A8 // a new upload is a new asset: the stand-in until the next preload
         p.invalidate()
-        assertNotNull(p.bitmap("7"))
-        assertEquals(1, server.requestCount)
+        assertEquals(webpPixel("maxim-regular"), p.bitmap("7")!!.getPixel(73, 60))
+        assertEquals(1, p.preload(listOf(7L to A8), download))
+        assertEquals(2, downloads)
+        p.bitmap("7")
+        assertNotNull(p.cached("7"))
+        assertEquals(0, p.preload(emptyList(), download)) // the picture was removed in the admin portal
+        assertNull("a changed pictured set drops the decoded pictures", p.cached("7"))
+    }
+
+    @Test fun aRefusedFailingOrNonImageDownloadIsSkippedNeverThrown() = runBlocking {
+        val cache = ImageCache(tmp.newFolder("img"), OkHttpClient(), { false })
+        val p = SkuPackshots(cache, devAssets = null)
+        val x = (1..4).map { "0000000$it-0000-4000-8000-000000000000" }
+        val bodies = mapOf(x[0] to null, x[2] to "<html>captive portal</html>".toByteArray(), x[3] to ByteArray(300 * 1024 + 1) { 0xFF.toByte() })
+        var asked = 0
+        val download: suspend (String) -> ByteArray? = { id -> asked++; if (id == x[1]) error("offline") else bodies[id] }
+        val pictured = x.mapIndexed { i, id -> i.toLong() to id } + (9L to "../../etc/passwd")
+        assertEquals(0, p.preload(pictured, download))
+        assertEquals(0L, cache.sizeBytes())
+        assertEquals("a malformed asset id is never asked for", 4, asked)
+        assertEquals(0, p.preload(pictured, download))
+        assertEquals("a failed asset is not asked again in this process (no retry storm)", 4, asked)
+        assertEquals(0, SkuPackshots(images = null, devAssets = null).preload(listOf(1L to x[0])) { webp("maxim-bolt") })
     }
 
     @Test fun aMissingOrBrokenPictureIsNullNeverAnError() = runBlocking {
         val broken = File(tmp.newFolder("img"), "x").also { it.writeText("not an image") }
         val cache = ImageCache(broken.parentFile!!, OkHttpClient(), { false })
-        val p = SkuPackshots(cache, devAssets = null, lookup = { SkuPackshots.SkuInfo("MaxR-10S", SkuPackshots.SkuImageRef("https://x.invalid/a.png", "a", 1)) })
+        val p = SkuPackshots(cache, devAssets = null, lookup = { SkuPackshots.SkuInfo("MaxR-10S", SkuPackshots.SkuImageRef("a")) })
         assertNull(p.bitmap("1"))
         val throwing = SkuPackshots(cache, devAssets(), lookup = { error("bundle not open") })
         assertNull(throwing.bitmap("1"))
@@ -111,9 +136,9 @@ class SkuPackshotsTest {
     }
 
     @Test fun theCacheKeyIsStable() {
-        assertEquals("sku-image:a7:v3", SkuPackshots.cacheKey("a7", 3))
-        assertEquals(SkuPackshots.cacheKey("a7", 3), SkuPackshots.cacheKey("a7", 3))
-        assertTrue(SkuPackshots.cacheKey("a7", 3) != SkuPackshots.cacheKey("a7", 4))
+        assertEquals("sku-image:aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", SkuPackshots.cacheKey("AAAAAAAA-aaaa-4aaa-8aaa-aaaaaaaaaaaa"))
+        assertEquals(SkuPackshots.cacheKey("a7"), SkuPackshots.cacheKey("a7"))
+        assertTrue(SkuPackshots.cacheKey("a7") != SkuPackshots.cacheKey("a8"))
     }
 
     @Test fun bigUploadsAreDownsampledOnDecode() {
@@ -128,5 +153,5 @@ class SkuPackshotsTest {
     }
 
     private fun webpPixel(art: String): Int =
-        android.graphics.BitmapFactory.decodeByteArray(webp(art), 0, webp(art).size).getPixel(73, 60)
+        android.graphics.BitmapFactory.decodeByteArray(webp(art), 0, webp(art).size, android.graphics.BitmapFactory.Options().apply { inPreferredConfig = android.graphics.Bitmap.Config.RGB_565 }).getPixel(73, 60) // decoded as the provider does
 }

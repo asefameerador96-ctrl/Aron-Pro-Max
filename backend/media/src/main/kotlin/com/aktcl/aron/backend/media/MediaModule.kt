@@ -18,6 +18,8 @@ import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.response.header
 import io.ktor.server.response.respond
+import io.ktor.http.ContentType
+import io.ktor.server.response.respondBytes
 import io.ktor.server.routing.Route
 import io.ktor.server.routing.get
 import io.ktor.server.routing.post
@@ -63,6 +65,8 @@ class MediaDeps(
     /** Caller reach for photo reads; null answers the read 503 (fail closed). */
     val reach: ReachResolver? = null,
     val reader: PhotoReadIssuer = UnconfiguredPhotoReadIssuer,
+    /** Pack picture bytes (GET /v1/sku-images/{asset_id}); unconfigured answers 503. */
+    val images: BlobBytesReader = UnconfiguredBlobBytesReader,
 )
 
 /**
@@ -95,6 +99,18 @@ fun Route.mediaRoutes(d: MediaDeps) {
             val answer = withContext(Dispatchers.IO) { MediaRead(d).readUrl(call.principal, call.parameters["media_uuid"]) }
             call.response.header(HttpHeaders.CacheControl, "no-store")
             call.respond(answer)
+        }
+        // PARITY-SPEC s2.6: the pack picture's bytes by its stable asset id (no signed URL leaves the API)
+        get("/sku-images/{asset_id}") {
+            val read = SkuImageRead(d)
+            val meta = withContext(Dispatchers.IO) { read.meta(call.parameters["asset_id"]) }
+            call.response.header(HttpHeaders.CacheControl, SkuImageRead.CACHE_CONTROL)
+            call.response.header(HttpHeaders.ETag, meta.etag)
+            if (SkuImageRead.notModified(call.request.headers[HttpHeaders.IfNoneMatch], meta.etag)) {
+                call.respond(HttpStatusCode.NotModified)
+            } else {
+                call.respondBytes(withContext(Dispatchers.IO) { read.bytes(meta) }, ContentType.parse(meta.mime))
+            }
         }
     }
 }

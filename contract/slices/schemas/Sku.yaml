@@ -84,7 +84,16 @@ Sku:
       - 'null'
       format: uri
       maxLength: 1000
-      description: Pack image (the asset bound by `image_asset_id`); null when the SKU has none (docs/24 s14a R20).
+      description: Pack image (the asset bound by `image_asset_id`) as a short-lived signed URL in admin answers;
+        null when the SKU has none (docs/24 s14a R20). The phone bundle leaves it null (a signed URL would change
+        the bundle fingerprint) and carries `image_asset_id` instead.
+    image_asset_id:
+      description: 'The admin asset of the pack picture (purpose `sku_image`), fetched by phones from `GET /v1/sku-images/{asset_id}`
+        (the phone builds the path on its own API origin); a new upload is a new id. Null or absent: no picture
+        (the app shows the pack silhouette).'
+      oneOf:
+      - $ref: '#/components/schemas/Uuid'
+      - type: 'null'
     updated_at:
       $ref: '#/components/schemas/Timestamp'
     version:

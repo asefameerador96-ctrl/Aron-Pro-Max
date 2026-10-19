@@ -72,6 +72,20 @@ class AzureBlobSasIssuer internal constructor(
         blob.uploadWithResponse(options, Duration.ofSeconds(30), com.azure.core.util.Context.NONE)
     }
 
+    /**
+     * The bytes of one small blob read with the api's managed identity (GET /v1/sku-images/{asset_id}, PARITY-SPEC
+     * s2.6); null when the blob is missing or larger than [maxBytes] (checked on the properties before any download).
+     */
+    fun readBytes(blobPath: String, maxBytes: Long): ByteArray? {
+        require(blobPath.isNotBlank() && !blobPath.startsWith("/") && ".." !in blobPath.split('/')) { "invalid blob path" }
+        val blob = service.getBlobContainerClient(container).getBlobClient(blobPath)
+        val size = try { blob.properties.blobSize } catch (e: com.azure.storage.blob.models.BlobStorageException) {
+            if (e.statusCode == 404) return null else throw e
+        }
+        if (size > maxBytes) return null
+        return blob.downloadContent().toBytes().takeIf { it.size <= maxBytes }
+    }
+
     /** Read on that one blob until `expiresAt` (supervisor photo reads, GET /v1/media/{media_uuid}/read-url: 5 min). */
     fun readSas(blobPath: String, expiresAt: Instant): String {
         require(expiresAt.isAfter(now())) { "expiresAt must be in the future" }
