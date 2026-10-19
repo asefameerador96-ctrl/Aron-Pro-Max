@@ -20,6 +20,8 @@ import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
@@ -110,6 +112,9 @@ fun AronListRow(
 /**
  * A text field in the existing app's style: the [label] above in grey 14 sp, the value in 18 sp over a grey underline (purple while
  * focused, red with [errorText]). [password] hides the characters. The field is at least 48 dp tall and reads [label] to TalkBack.
+ * [imeAction] / [onImeAction]: the keyboard action (Done on the password submits the login); [trailing]: an end slot inside the field
+ * (the show/hide password text button); [minLines]: a taller box (the enrolment token); [fieldModifier] goes on the editable node
+ * itself (test tags, performTextInput), [modifier] on the whole block.
  */
 @Composable
 fun AronField(
@@ -123,6 +128,11 @@ fun AronField(
     singleLine: Boolean = true,
     password: Boolean = false,
     enabled: Boolean = true,
+    imeAction: ImeAction = ImeAction.Default,
+    onImeAction: (() -> Unit)? = null,
+    trailing: (@Composable () -> Unit)? = null,
+    minLines: Int = 1,
+    fieldModifier: Modifier = Modifier,
 ) {
     val look = LocalAronLook.current
     var focused by remember { mutableStateOf(false) }
@@ -138,11 +148,13 @@ fun AronField(
             onValueChange = onValueChange,
             enabled = enabled,
             singleLine = singleLine,
+            minLines = if (singleLine) 1 else minLines,
             textStyle = lookStyle(18.sp, color = look.ink),
             cursorBrush = SolidColor(look.purple),
-            keyboardOptions = KeyboardOptions(keyboardType = if (password) KeyboardType.Password else keyboardType),
+            keyboardOptions = KeyboardOptions(keyboardType = if (password) KeyboardType.Password else keyboardType, imeAction = imeAction),
+            keyboardActions = if (onImeAction != null) KeyboardActions(onAny = { onImeAction() }) else KeyboardActions.Default,
             visualTransformation = if (password) PasswordVisualTransformation() else VisualTransformation.None,
-            modifier = Modifier
+            modifier = fieldModifier
                 .fillMaxWidth()
                 .heightIn(min = AronLook.Touch)
                 .onFocusChanged { focused = it.isFocused }
@@ -158,8 +170,13 @@ fun AronField(
                     },
                     contentAlignment = Alignment.CenterStart,
                 ) {
-                    if (value.isEmpty() && placeholder != null) Text(placeholder, style = lookStyle(18.sp, color = look.underline))
-                    inner()
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
+                            if (value.isEmpty() && placeholder != null) Text(placeholder, style = lookStyle(18.sp, color = look.underline))
+                            inner()
+                        }
+                        if (trailing != null) trailing()
+                    }
                 }
             },
         )

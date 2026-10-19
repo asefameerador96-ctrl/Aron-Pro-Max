@@ -6,6 +6,7 @@
 - **Never touch the bundled Noto Sans Bengali regular/medium/bold files:** core-printing rasterises the memo with them (stripping their Latin moved 10 print goldens). Only the SemiBold file is the kit's (`tools/ui-kit/aron_fonts.py`).
 - **Container:** the SDK is not baked in: cmdline-tools zip from dl.google.com, `sdkmanager --sdk_root=/opt/android-sdk "platforms;android-37.0" "build-tools;37.0.0" "platform-tools"`, `local.properties` sdk.dir=/opt/android-sdk. fonttools via pip for the font script.
 - **Open:** AMO-only icon redraw (art, QA); clean vector re-exports of the attendance, sale, rack and shield art; owner option (lead's morning report): kit-only Bengali fonts without Latin (+370 KB) for Roboto inside Bangla text.
+- **After the window (local until the lead allows a push):** AronField options for ui-sr-b: imeAction/onImeAction, trailing slot, minLines, fieldModifier on the editable node (defaults keep every render identical).
 - **Dependents:** ui-sr-a session_01Cd6RMH6UoLJmTmx3KUSQmH, ui-sr-b session_01EHeHAieyr3TW5u24uDCqDU, ui-amo session_01RoMpAwHckGMbH3osVtndc9, ui-tso session_01NJuafY2duD7bTGyhRfh8ae, ui-packshots session_01P2zXc4NJ6VRE8SfkBxCPJv; lead session_01MbUQSxrP7AB9tbyANjUTPS. Their "Kit requests" sections live in docs/status/ui-parity-ui-<lane>.md on their heads.
 
 ## SCALE OF THE REFERENCE SCREENSHOTS (conclusion, 2026-10-19; lead decision: keep the PARITY-SPEC dp sizes)
