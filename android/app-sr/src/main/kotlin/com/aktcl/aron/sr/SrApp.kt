@@ -350,6 +350,13 @@ fun SrApp(
         } else {
             val header = HomeModel.header("SR", user.fullName, user.username, data.route?.name, data.route?.visitKind, data.businessDate)
             val snap = homeSnap
+            var photoNotice by rememberSaveable { mutableStateOf(false) }
+            if (photoNotice) {
+                com.aktcl.aron.core.ui.aron.AronDialog(
+                    stringResource(R.string.sr_photo_title), stringResource(R.string.sr_photo_body), stringResource(R.string.sr_ok),
+                    onConfirm = { photoNotice = false }, onDismiss = { photoNotice = false },
+                )
+            }
             HomeContent(
                 header, HomeTiles.resolve(emptySet(), tasks.openCount), data.freshness, user.offline, health ?: deviceHealth,
                 onTile = { t ->
@@ -365,6 +372,8 @@ fun SrApp(
                         HomeTile.SALES_JOURNEY -> screen = SrScreen.JOURNEY
                         HomeTile.KPI -> screen = SrScreen.KPI
                         HomeTile.TUTORIAL -> screen = SrScreen.TUTORIAL
+                        // Photo Capture belongs to the gift and campaign programmes docs/27 defers: the tile shows, the tap says so
+                        HomeTile.PHOTO_CAPTURE -> photoNotice = true
                         else -> onOtherTile(t)
                     }
                 },
@@ -400,7 +409,7 @@ fun SrApp(
                 photosWifiOnly = wifiOnly,
                 onPhotosWifiOnly = { on -> wifiOnly = on; mediaShell?.setWifiOnly(on) },
                 onSupport = shell?.let { { screen = SrScreen.SUPPORT } },
-                onBack = goBack, sunlight = sunlight, onSunlight = onSunlight, sync = sync, onSync = openSync,
+                onBack = goBack, sunlight = sunlight, onSunlight = onSunlight, sync = sync, onSync = openSync, health = health ?: deviceHealth,
             )
         }
         SrScreen.SUPPORT -> SrFrame(stringResource(HomeR.string.set_support), goBack, sync, openSync) { shell?.let { SupportHost(it, day.userId, versionText) } }

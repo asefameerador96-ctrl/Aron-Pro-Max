@@ -159,7 +159,9 @@ class SrStateScreenshotTests {
             kpis = HomeKpis("10%", 54, 0, listOf(HomeStockLine("Cigarette", 12_000, 9_800, stick), HomeStockLine("Lighter", 400, 25, piece), HomeStockLine("Match", 400, 394, dozen))),
             money = HomeMoneyLines(
                 listOf(HomeMoneyLine("Match", Formats.money(141_000, locale)), HomeMoneyLine("Lighter", Formats.money(4_687_500, locale))),
-                Formats.money(4_828_500, locale), null, "−" + Formats.money(437_500, locale), Formats.money(4_391_000, locale),
+                Formats.money(4_828_500, locale), "−" + Formats.money(437_500, locale), null, Formats.money(4_391_000, locale),
+                sticksSold = 0, grossBare = bare(4_828_500, locale), offerDiscountBare = bare(437_500, locale), qcBare = bare(0, locale), netBare = bare(4_391_000, locale),
+                totalDiscountBare = bare(437_500, locale), drpDiscountBare = bare(0, locale), totalQcBare = bare(0, locale),
             ),
             sync = SyncChipState.SyncedAt(Formats.digits("10:42", locale)), onSync = {}, sunlight = false, onSunlight = {},
             dock = dock, routeKindLabel = "Daily",
@@ -297,4 +299,5 @@ class SrStateScreenshotTests {
     @Test fun memo_bn_menu_list_font20() = shot("memo_bn_menu_list_font20", fontScale = 2.0f) { MenuList() }
     @Test fun memo_bn_detail_reprint_limit() = shot("memo_bn_detail_reprint_limit") { DetailReprintLimit() }
     @Test fun memo_bn_detail_font20() = shot("memo_bn_detail_font20", fontScale = 2.0f) { DetailReprintLimit() }
+    private fun bare(mtk: Long, locale: UiLocale) = Formats.digits(com.aktcl.aron.rules.Money.formatTaka(mtk, 2), locale)
 }

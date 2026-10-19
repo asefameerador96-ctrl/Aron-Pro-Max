@@ -166,8 +166,10 @@ class ScreenshotTests {
             onSettings = {}, hero = HomeHero(Formats.money(4_391_000, locale), 6, 60, "08:52", HomeDayState.IN_FIELD),
             kpis = HomeKpis("10%", 54, 0, listOf(HomeStockLine(cigarette, 12_000, 9_800, stick), HomeStockLine(lighter, 400, 25, piece), HomeStockLine(match, 400, 394, dozen))),
             money = HomeMoneyLines(
-                listOf(HomeMoneyLine(match, Formats.money(141_000, locale)), HomeMoneyLine(lighter, Formats.money(4_687_500, locale))),
-                Formats.money(4_828_500, locale), null, "−" + Formats.money(437_500, locale), Formats.money(4_391_000, locale),
+                listOf(HomeMoneyLine(match, Formats.money(141_000, locale), bare(141_000, locale)), HomeMoneyLine(lighter, Formats.money(4_687_500, locale), bare(4_687_500, locale))),
+                Formats.money(4_828_500, locale), "−" + Formats.money(437_500, locale), null, Formats.money(4_391_000, locale),
+                sticksSold = 0, grossBare = bare(4_828_500, locale), offerDiscountBare = bare(437_500, locale), qcBare = bare(0, locale), netBare = bare(4_391_000, locale),
+                totalDiscountBare = bare(437_500, locale), drpDiscountBare = bare(0, locale), totalQcBare = bare(0, locale),
             ),
             sync = SyncChipState.SyncedAt(Formats.digits("10:42", locale)), onSync = {}, sunlight = false, onSunlight = {},
             dock = HomeDock.START_SELLING, routeKindLabel = "Daily",
@@ -386,4 +388,5 @@ class ScreenshotTests {
     @Test fun recordingRunNeverPasses() {
         if (recordTo != null) fail("Goldens recorded to $recordTo: download the artifact, copy the PNGs into android/ui-screenshots/src/test/screenshots and turn the record switch off.")
     }
+    private fun bare(mtk: Long, locale: UiLocale) = Formats.digits(com.aktcl.aron.rules.Money.formatTaka(mtk, 2), locale)
 }
