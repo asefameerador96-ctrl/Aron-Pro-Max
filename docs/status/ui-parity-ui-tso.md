@@ -41,3 +41,13 @@ Target Status (S-21, S-22) stays hidden: deferred (docs/27).
 
 ## Evidence
 `docs/evidence/ui-parity/tso-<group>-noref.png` (left: closest SR reference, right: ours). None yet.
+
+## Kit requests (for the kit window after INT; nothing blocks the TSO screens)
+1. **Yes/No pill pair** in the SR look (purple selected, grey unselected) to replace the green/red AronYes/AronNo buttons in Visit Query (old kit `AronYesButton`/`AronNoButton`).
+2. **Loading state**: a skeleton or quiet "loading" card in the aron package (TSO shows an empty column or a spinner today: `TsoDashboardHost`, leave and feedback lists).
+3. **Tile icon size**: the Home tile icon draws smaller than the SR original art at 360 dp (compare `docs/evidence/ui-parity/tso-home-noref.png`).
+4. **Labelled switch/section header** (`TsoSectionTitle` is TSO-local) and **AronDateField** (`TsoDateField` is TSO-local, old Calm Glass styling).
+5. **Dialogs**: `AronConfirmDialog` and `AronInfoDialog` (old kit, used by Final Submit) have no aron-package twin besides `AronDialog`; confirm whether to move them.
+
+## Local state (2026-10-19)
+`android/core-ui` in `lane/ui-tso` equals ui-kit `abac6ba4` (diff empty); the extra ui-kit commits merged are scripts and a handover note only. 704183d5 (PackCard) is NOT merged, per the lead's kit rule.
