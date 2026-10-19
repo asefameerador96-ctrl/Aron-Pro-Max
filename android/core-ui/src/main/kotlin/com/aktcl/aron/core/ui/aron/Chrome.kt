@@ -52,6 +52,8 @@ import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import com.aktcl.aron.core.common.AppLanguage
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
@@ -82,11 +84,21 @@ fun AronLookColors.verticalBrush(): Brush = if (sunlight) SolidColor(purple) els
 
 /** A text style in the bundled font of the current language. */
 @Composable
-internal fun lookStyle(size: TextUnit, bold: Boolean = false, color: Color = Color.Unspecified, align: TextAlign = TextAlign.Unspecified, medium: Boolean = false) =
-    TextStyle(
-        fontFamily = AronFonts.forLanguage(LocalAppLanguage.current), fontSize = size, color = color, textAlign = align,
-        fontWeight = if (bold) FontWeight.Bold else if (medium) FontWeight.Medium else FontWeight.Normal,
-    )
+internal fun lookStyle(
+    size: TextUnit, bold: Boolean = false, color: Color = Color.Unspecified, align: TextAlign = TextAlign.Unspecified, medium: Boolean = false,
+    semibold: Boolean = false,
+) = TextStyle(
+    // Bangla: the bundled Noto Sans Bengali, which carries no ASCII glyphs, so Latin letters and ASCII digits inside Bangla text fall
+    // back to the system Roboto as in the reference app (tools/ui-kit/aron_fonts.py); English: the system Roboto
+    fontFamily = if (LocalAppLanguage.current == AppLanguage.BN) AronFonts.Bengali else FontFamily.Default,
+    fontSize = size, color = color, textAlign = align,
+    fontWeight = when {
+        bold -> FontWeight.Bold
+        semibold -> FontWeight.SemiBold
+        medium -> FontWeight.Medium
+        else -> FontWeight.Normal
+    },
+)
 
 /**
  * The top bar of every non-Home screen (PARITY-SPEC s2.1, sr/stock.webp, sr/sale-select.png, sr/summary.png): full-width gradient, a white
@@ -135,7 +147,7 @@ fun AronTopBar(
                     Image(icon, contentDescription = null, modifier = Modifier.size(AronLook.BarIcon))
                     Spacer(Modifier.width(10.dp))
                 }
-                Text(title, style = lookStyle(22.sp, bold = true, color = look.onBar, align = TextAlign.Center), modifier = Modifier.semantics { heading() })
+                Text(title, style = lookStyle(22.sp, semibold = true, color = look.onBar, align = TextAlign.Center), modifier = Modifier.semantics { heading() })
             }
             if (trailing != null) Box(Modifier.align(Alignment.CenterEnd).padding(end = 4.dp)) { trailing() }
         }
@@ -152,21 +164,28 @@ fun AronTopBar(
 fun AronPrinterBadge(connected: Boolean, label: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
     val look = LocalAronLook.current
     val inCard = LocalBadgeInCard.current
+    val chip = if (inCard) AronLook.Touch + 4.dp else 40.dp
     Box(
         modifier
-            .size(AronLook.Touch + 4.dp)
-            .then(if (inCard) Modifier else Modifier.shadow(3.dp, CircleShape))
-            .clip(CircleShape)
-            .background(if (inCard) look.page else look.rowAlt)
+            .size(maxOf(chip, AronLook.Touch))
             .clickable(role = Role.Button, onClick = onClick)
             .semantics { contentDescription = label },
         contentAlignment = Alignment.Center,
     ) {
-        GlyphCanvas(Modifier.size(if (inCard) 20.dp else 28.dp)) {
-            printer(if (connected) look.printerOn else look.printerOff, crossed = !connected, gap = if (inCard) look.page else look.card)
+        // the bar chip is white with a soft shadow (Vision QA: smaller and white); in a card it is flat grey (sr/summary.png)
+        Box(
+            Modifier.size(chip).then(if (inCard) Modifier else Modifier.shadow(3.dp, CircleShape)).clip(CircleShape).background(if (inCard) look.page else look.card),
+            contentAlignment = Alignment.Center,
+        ) {
+            GlyphCanvas(Modifier.size(20.dp)) {
+                printer(if (connected) look.printerOn else look.printerOff, crossed = !connected, gap = if (inCard) look.page else look.card)
+            }
         }
     }
 }
+
+/** True for the buttons of [AronScaffold] that sit on the purple panel: [AronPrimaryButton] then ends its ramp at `panelButtonEnd`. */
+private val LocalOnPanel = staticCompositionLocalOf { false }
 
 /** True inside [AronInfoCard]'s trailing slot: [AronPrinterBadge] draws its flat in-card form there. */
 private val LocalBadgeInCard = staticCompositionLocalOf { false }
@@ -198,7 +217,9 @@ fun AronScaffold(
             ) {
                 bottomPanel?.invoke(this)
                 if (bottomButtons != null) {
-                    Row(Modifier.fillMaxWidth().padding(12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), content = bottomButtons)
+                    CompositionLocalProvider(LocalOnPanel provides (bottomPanel != null)) {
+                        Row(Modifier.fillMaxWidth().padding(12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), content = bottomButtons)
+                    }
                 }
             }
         }
@@ -207,8 +228,8 @@ fun AronScaffold(
 
 /**
  * The Home header (PARITY-SPEC s2.3, sr/home-1-tiles.webp): the gradient, a white round avatar with the person glyph (or [avatar]),
- * [title] = "Role - Name (login)" in white medium 15 sp, [subtitle] = route and date in medium 11 sp, a 44 dp avatar and a 30 dp gear
- * (all measured on the reference), the avatar sitting above the middle of the bar as there, and the white settings gear at the end
+ * [title] = "Role - Name (login)" in white medium 15 sp and [subtitle] = route and date in medium 12 sp, each on ONE line (shrinking to
+ * 12 / 10 sp to fit, as on the reference), a 40 dp avatar and a 28 dp gear (Vision QA), and the white settings gear at the end
  * ([settingsLabel] is its TalkBack label).
  */
 @Composable
@@ -230,18 +251,18 @@ fun AronHomeHeader(
             .padding(start = 12.dp, end = 4.dp, top = 12.dp, bottom = 22.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Box(Modifier.size(44.dp).shadow(2.dp, CircleShape).clip(CircleShape).background(look.card), contentAlignment = Alignment.Center) {
-            if (avatar != null) Image(avatar, contentDescription = null, modifier = Modifier.size(44.dp))
-            else GlyphCanvas(Modifier.size(32.dp)) { person(look.purple) }
+        Box(Modifier.size(40.dp).shadow(2.dp, CircleShape).clip(CircleShape).background(look.card), contentAlignment = Alignment.Center) {
+            if (avatar != null) Image(avatar, contentDescription = null, modifier = Modifier.size(40.dp))
+            else GlyphCanvas(Modifier.size(30.dp)) { person(look.purple) }
         }
         Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
-            Text(title, style = lookStyle(15.sp, medium = true, color = look.onBar))
-            Text(subtitle, style = lookStyle(11.sp, medium = true, color = look.onBar))
+            FitText(title, lookStyle(15.sp, medium = true, color = look.onBar), 12.sp, maxLines = 2, oneLineDown = 12.sp)
+            FitText(subtitle, lookStyle(12.sp, medium = true, color = look.onBar), 10.sp, maxLines = 2, oneLineDown = 10.sp)
         }
         Box(
             Modifier.size(AronLook.Touch).clickable(role = Role.Button, onClick = onSettings).semantics { contentDescription = settingsLabel },
             contentAlignment = Alignment.Center,
-        ) { GlyphCanvas(Modifier.size(30.dp)) { gear(look.onBar, hole = if (look.sunlight) look.card else look.barEnd) } }
+        ) { GlyphCanvas(Modifier.size(28.dp)) { gear(look.onBar, hole = if (look.sunlight) look.card else look.barEnd) } }
     }
 }
 
@@ -249,7 +270,7 @@ fun AronHomeHeader(
 enum class ButtonGlyph { Save, Print, Sync, Submit }
 
 @Composable
-private fun ButtonContent(text: String, glyph: ButtonGlyph?, icon: Painter?, ink: Color, gap: Color) {
+private fun ButtonContent(text: String, glyph: ButtonGlyph?, icon: Painter?, ink: Color, gap: Color, bold: Boolean = true) {
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center, modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
         when {
             icon != null -> Image(icon, contentDescription = null, modifier = Modifier.size(20.dp))
@@ -259,13 +280,14 @@ private fun ButtonContent(text: String, glyph: ButtonGlyph?, icon: Painter?, ink
             glyph == ButtonGlyph.Submit -> GlyphCanvas(Modifier.size(18.dp)) { save(ink, gap) }
         }
         if (icon != null || glyph != null) Spacer(Modifier.width(6.dp))
-        Text(text, style = lookStyle(18.sp, bold = true, color = ink, align = TextAlign.Center))
+        Text(text, style = lookStyle(18.sp, bold = bold, color = ink, align = TextAlign.Center))
     }
 }
 
 /**
  * The big action button (PARITY-SPEC s2.8): red-to-purple gradient ([reverse]: purple to red, as the Summary Print), 8 dp radius,
- * white bold label with an optional leading [glyph] or [icon], at least 52 dp tall. Disabled: solid grey `#B8B8B8` with a white label
+ * white bold label with an optional leading [glyph] or [icon], at least 52 dp tall. On the purple panel of [AronScaffold] the ramp ends
+ * at about `#7D2B7B` (sr/stock.webp); [reverse] uses the Summary Print stops `#4A1C99` to `#A73964`. Disabled: solid grey `#B8B8B8` with a white label
  * (the Sales-submit button before the sync, sr/sales-submit.png); the grey Print of Stock is [AronSecondaryButton].
  */
 @Composable
@@ -280,7 +302,16 @@ fun AronPrimaryButton(
 ) {
     val look = LocalAronLook.current
     val shape = RoundedCornerShape(AronLook.ButtonRadius)
-    val fill: Brush = if (enabled) (if (look.sunlight) SolidColor(look.purple) else look.barBrush(reverse)) else SolidColor(look.primaryDisabled)
+    val onPanel = LocalOnPanel.current
+    val fill: Brush = when {
+        !enabled -> SolidColor(look.primaryDisabled)
+        look.sunlight -> SolidColor(look.purple)
+        // sr/summary.png Print: #4A1C99 to #A73964
+        reverse -> Brush.horizontalGradient(listOf(look.printStart, look.printEnd))
+        // sr/stock.webp Save on the purple panel: only the first part of the ramp, ending about #7D2B7B, so the edge stays visible
+        onPanel -> Brush.horizontalGradient(listOf(look.barStart, look.panelButtonEnd))
+        else -> look.barBrush()
+    }
     val ink = Color.White
     Box(
         modifier
@@ -292,7 +323,7 @@ fun AronPrimaryButton(
     ) { ButtonContent(text, glyph, icon, ink, if (enabled) look.purple else look.primaryDisabled) }
 }
 
-/** The grey button (PARITY-SPEC s2.8, the Stock Print before a printer is connected): `#E8E8E8`, dark label, `#A5A5A5` when disabled. */
+/** The grey button (PARITY-SPEC s2.8, the Stock Print before a printer is connected): `#E8E8E8`, dark bold label; disabled `#595959` regular (sr/stock.webp). */
 @Composable
 fun AronSecondaryButton(
     text: String,
@@ -304,7 +335,7 @@ fun AronSecondaryButton(
 ) {
     val look = LocalAronLook.current
     val shape = RoundedCornerShape(AronLook.ButtonRadius)
-    val ink = if (enabled) look.secondaryText else look.disabledText
+    val ink = if (enabled) look.secondaryText else look.secondaryDisabledText
     Box(
         modifier
             .heightIn(min = AronLook.ButtonHeight)
@@ -312,11 +343,11 @@ fun AronSecondaryButton(
             .background(look.disabledFill)
             .clickable(enabled = enabled, role = Role.Button, onClick = onClick),
         contentAlignment = Alignment.Center,
-    ) { ButtonContent(text, glyph, icon, ink, look.disabledFill) }
+    ) { ButtonContent(text, glyph, icon, ink, look.disabledFill, bold = enabled) }
 }
 
 @Composable
-private fun StepSquare(fill: Color, plus: Boolean, onClick: () -> Unit, contentDescription: String, enabled: Boolean, modifier: Modifier) {
+private fun StepSquare(fill: Color, plus: Boolean, onClick: () -> Unit, contentDescription: String, enabled: Boolean, modifier: Modifier, keepColour: Boolean = false) {
     val look = LocalAronLook.current
     Box(
         modifier
@@ -325,16 +356,17 @@ private fun StepSquare(fill: Color, plus: Boolean, onClick: () -> Unit, contentD
             .semantics { this.contentDescription = contentDescription },
         contentAlignment = Alignment.Center,
     ) {
-        Box(Modifier.size(AronLook.Step).clip(RoundedCornerShape(AronLook.StepRadius)).background(if (enabled) fill else look.disabledFill), contentAlignment = Alignment.Center) {
-            GlyphCanvas(Modifier.size(26.dp)) { bar(if (enabled) Color.White else look.disabledText, vertical = plus) }
+        val live = enabled || keepColour
+        Box(Modifier.size(AronLook.Step).clip(RoundedCornerShape(AronLook.StepRadius)).background(if (live) fill else look.disabledFill), contentAlignment = Alignment.Center) {
+            GlyphCanvas(Modifier.size(26.dp)) { bar(if (live) Color.White else look.disabledText, vertical = plus) }
         }
     }
 }
 
-/** The red rounded-square minus (36 dp drawn, 48 dp touch target; PARITY-SPEC s2.5). */
+/** The red rounded-square minus (36 dp drawn, 48 dp touch target; PARITY-SPEC s2.5). It stays red at zero ([enabled] = false: no-op, TalkBack says disabled), as on sr/stock.webp. */
 @Composable
 fun AronMinus(onClick: () -> Unit, contentDescription: String, modifier: Modifier = Modifier, enabled: Boolean = true) =
-    StepSquare(LocalAronLook.current.minus, plus = false, onClick, contentDescription, enabled, modifier)
+    StepSquare(LocalAronLook.current.minus, plus = false, onClick, contentDescription, enabled, modifier, keepColour = true)
 
 /** The purple rounded-square plus (36 dp drawn, 48 dp touch target; PARITY-SPEC s2.5). */
 @Composable

@@ -234,6 +234,11 @@ data class AronLookColors(
     /** sr/attendance.png (sampled): the avatar and pin squares, the location card, the green check-in and grey check-out gradients. */
     val avatarSquare: Color = hex(0xD7D3DF), val pinSquare: Color = hex(0xC7C3CF), val locationCard: Color = hex(0xD9D9D9),
     val goStart: Color = hex(0x02A652), val goEnd: Color = hex(0x56BA87), val neutralStart: Color = hex(0x515151), val neutralEnd: Color = hex(0xB8B8B8),
+    /** Vision QA 2026-10-19 (sampled on stock, summary, sale-select): the disabled Print label, the picker hint and caret, the summary
+     *  header ramp, the end of the Save gradient on the purple panel, and the Summary Print stops. */
+    val secondaryDisabledText: Color = hex(0x595959), val hint: Color = hex(0x9E9E9E), val caret: Color = hex(0x616161),
+    val tableHeaderStart: Color = hex(0x4F4F4F), val tableHeaderMid: Color = hex(0x3F3F3F), val tableHeaderEnd: Color = hex(0x2D2D2D),
+    val panelButtonEnd: Color = hex(0x7D2B7B), val printStart: Color = hex(0x4A1C99), val printEnd: Color = hex(0xA73964),
 )
 
 object AronLook {
@@ -261,6 +266,8 @@ object AronLook {
         ink = hex(0x000000), inkMuted = hex(0x202020), columnHeader = hex(0x202020), underline = hex(0x202020), silhouetteInk = hex(0x404040),
         noticeFill = hex(0xFFFFFF), online = hex(0x00642F), offlineDot = hex(0x404040), rowRule = hex(0x202020), primaryDisabled = hex(0x8A8A8A),
         locationCard = hex(0xFFFFFF), goStart = hex(0x00642F), goEnd = hex(0x00642F), neutralStart = hex(0x303030), neutralEnd = hex(0x303030),
+        secondaryDisabledText = hex(0x303030), hint = hex(0x505050), caret = hex(0x202020),
+        tableHeaderStart = hex(0x202020), tableHeaderMid = hex(0x202020), tableHeaderEnd = hex(0x202020),
     )
 
     /** Card and tile radius 12 dp, button radius 8 dp, the plus/minus square 36 dp drawn inside a 48 dp hit area. */

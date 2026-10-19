@@ -22,7 +22,7 @@ import kotlin.math.min
 internal object Glyph {
     fun DrawScope.chevronBack(color: Color) {
         val s = min(size.width, size.height)
-        val w = s * 0.11f
+        val w = s * 0.085f  // thinner, as the reference chevron
         val p = Path().apply {
             moveTo(center.x + s * 0.12f, center.y - s * 0.24f)
             lineTo(center.x - s * 0.12f, center.y)
@@ -160,6 +160,17 @@ internal object Glyph {
             lineTo(to - s * 0.14f, center.y + s * 0.14f)
         }
         drawPath(arrow, color, style = style)
+    }
+
+    /** A check mark (the sync footer). */
+    fun DrawScope.check(color: Color) {
+        val s = min(size.width, size.height)
+        val p = Path().apply {
+            moveTo(center.x - s * 0.30f, center.y + s * 0.02f)
+            lineTo(center.x - s * 0.08f, center.y + s * 0.24f)
+            lineTo(center.x + s * 0.32f, center.y - s * 0.22f)
+        }
+        drawPath(p, color, style = Stroke(s * 0.11f, cap = StrokeCap.Round, join = StrokeJoin.Round))
     }
 
     fun DrawScope.save(color: Color, gap: Color) {

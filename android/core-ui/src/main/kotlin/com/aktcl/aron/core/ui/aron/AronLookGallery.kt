@@ -123,6 +123,7 @@ fun AronLookGallery(modifier: Modifier = Modifier) {
                 AronActionTile(stringResource(R.string.core_ui_look_check_out), ActionGlyph.CheckOut, onClick = {}, modifier = Modifier.weight(1f), tone = ActionTone.Neutral)
             }
             Box(Modifier.fillMaxWidth().heightIn(min = 120.dp)) { AronEmptyMessage(stringResource(R.string.core_ui_look_no_tasks)) }
+            AronSyncFooter(stringResource(R.string.core_ui_look_synced), listOf(stringResource(R.string.core_ui_look_sync_d1), stringResource(R.string.core_ui_look_sync_d2), stringResource(R.string.core_ui_look_sync_d3)))
         }
     }
 }

@@ -29,6 +29,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.Placeable
@@ -36,6 +37,10 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
@@ -46,7 +51,7 @@ import com.aktcl.aron.core.ui.aron.Glyph.caretDown
 
 /**
  * One row of a [TotalsPanel] or a [SummaryTable] subtotal: a [label] and its figures, already localised; [caption] is an optional
- * small line under the label in the totals panel (the unit: `স্টিক`, `পিস`, `ডজন`).
+ * small unit shown inline after the label in the totals panel (`লাইটার · পিস`; `স্টিক`, `পিস`, `ডজন`).
  */
 @Immutable
 data class TotalsLine(val label: String, val values: List<String>, val caption: String? = null)
@@ -70,10 +75,13 @@ private fun TotalsRow(line: TotalsLine, size: TextUnit, color: Color) {
     // rows as tight as sr/stock.webp (pitch about 1.6 x the glyph height; the Bangla face's own line box is about 1.8)
     val lineHeight = size * 1.25f
     Row(Modifier.fillMaxWidth().padding(vertical = 1.dp), verticalAlignment = Alignment.CenterVertically) {
-        Column(Modifier.weight(1.3f)) {
-            Text(line.label, style = lookStyle(size, color = color).copy(lineHeight = lineHeight))
-            if (line.caption != null) Text(line.caption, style = lookStyle(12.sp, color = LocalAronLook.current.onPanelMuted))
+        // the unit sits inline after the category (`লাইটার · পিস`, Vision QA), keeping the panel compact
+        val muted = LocalAronLook.current.onPanelMuted
+        val text = if (line.caption == null) AnnotatedString(line.label) else buildAnnotatedString {
+            append(line.label)
+            withStyle(SpanStyle(fontSize = 12.sp, color = muted)) { append(" · " + line.caption) }
         }
+        Text(text, style = lookStyle(size, color = color).copy(lineHeight = lineHeight), modifier = Modifier.weight(1.3f))
         line.values.forEach { Text(it, style = lookStyle(size, color = color, align = TextAlign.End).copy(lineHeight = lineHeight), modifier = Modifier.weight(1f)) }
     }
 }
@@ -95,8 +103,8 @@ fun RetailerPickerField(value: String?, placeholder: String, onClick: () -> Unit
             .padding(start = 20.dp, end = 12.dp, top = 8.dp, bottom = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(value ?: placeholder, style = lookStyle(17.sp, color = if (value == null) look.inkMuted else look.ink), modifier = Modifier.weight(1f))
-        GlyphCanvas(Modifier.size(24.dp)) { caretDown(look.inkMuted) }
+        Text(value ?: placeholder, style = lookStyle(17.sp, color = if (value == null) look.hint else look.ink), modifier = Modifier.weight(1f))
+        GlyphCanvas(Modifier.size(24.dp)) { caretDown(look.caret) }
     }
 }
 
@@ -236,8 +244,8 @@ internal fun FitText(text: String, style: TextStyle, minSize: TextUnit, modifier
 private val SummaryWeights6 = listOf(0.7f, 0.9f, 1.4f, 1.2f, 1.4f, 0.8f)
 
 /**
- * The day summary table (PARITY-SPEC s2.10, sr/summary.png): a dark `#4D4D4D` header row of [headers] (white bold 11 sp, at most two
- * lines, rounded top), one block per [rows] item (the SKU name in purple 20 sp over its figures, 14 sp) on alternating white and
+ * The day summary table (PARITY-SPEC s2.10, sr/summary.png): a dark grey ramp header row of [headers] (white medium 11 sp on one line,
+ * shrinking to 8 sp; square top-left, rounded top-right), one block per [rows] item (the SKU name in purple 20 sp over its figures, 14 sp) on alternating white and
  * `#F0F0F0`, then the category [subtotals] in purple (the label takes the first column, its values the rest), then the [totals] block.
  * [weights] set the column widths (default: the six-column summary weights, else equal); no cell breaks inside a word or a number, it
  * shrinks instead. Not lazy (one day's SKUs); put it in a scrolling column with `AronPrimaryButton(reverse = true, glyph = Print)` under it.
@@ -254,11 +262,17 @@ fun SummaryTable(
     val look = LocalAronLook.current
     val n = headers.size
     val w = weights ?: if (n == SummaryWeights6.size) SummaryWeights6 else List(n) { 1f }
-    Column(modifier.fillMaxWidth().clip(RoundedCornerShape(AronLook.CardRadius)).background(look.card)) {
-        // header row about 25 units tall on sr/summary.png: 7 dp padding keeps two-line headers inside 48 dp
-        Row(Modifier.fillMaxWidth().background(look.tableHeader).padding(horizontal = 10.dp, vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
+    // sr/summary.png: the table's top-left corner is square, the top-right rounded
+    val tableShape = RoundedCornerShape(topStart = 0.dp, topEnd = AronLook.CardRadius, bottomEnd = AronLook.CardRadius, bottomStart = AronLook.CardRadius)
+    Column(modifier.fillMaxWidth().clip(tableShape).background(look.card)) {
+        // header row about 25 units tall, a left-to-right grey ramp, small one-line labels (about 0.75 of the figures)
+        Row(
+            Modifier.fillMaxWidth().background(Brush.horizontalGradient(listOf(look.tableHeaderStart, look.tableHeaderMid, look.tableHeaderEnd)))
+                .padding(horizontal = 10.dp, vertical = 9.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
             headers.forEachIndexed { i, h ->
-                FitText(h, lookStyle(11.sp, bold = true, color = Color.White, align = cellAlign(i, n)), 7.sp, Modifier.weight(w[i]).padding(horizontal = 1.dp), maxLines = 2)
+                FitText(h, lookStyle(11.sp, medium = true, color = Color.White, align = cellAlign(i, n)), 7.sp, Modifier.weight(w[i]).padding(horizontal = 1.dp), maxLines = 2, oneLineDown = 8.sp)
             }
         }
         rows.forEachIndexed { r, row ->

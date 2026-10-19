@@ -149,4 +149,8 @@
     <string name="core_ui_look_check_in">Check in</string>
     <string name="core_ui_look_check_out">Check out</string>
     <string name="core_ui_look_no_tasks">Your AMO has not assigned any task.</string>
+    <string name="core_ui_look_synced">Synced</string>
+    <string name="core_ui_look_sync_d1">Data for 2026-10-05 received</string>
+    <string name="core_ui_look_sync_d2">3 uploads waiting</string>
+    <string name="core_ui_look_sync_d3">Last sync 15 minutes ago</string>
 </resources>

@@ -113,6 +113,18 @@ private fun DrawScope.silhouette(category: PackCategory, ink: Color) {
     }
 }
 
+/**
+ * The ONE pack badge (sr/stock.webp, UI-SR-18): a solid `aron.purple` circle with a white bold figure, overlapping the packshot's
+ * bottom-end corner. [PackCard] places it; use it wherever a packshot carries the packs figure, never a tinted or pill badge.
+ */
+@Composable
+fun PackBadge(text: String, modifier: Modifier = Modifier) {
+    Box(
+        modifier.sizeIn(minWidth = AronLook.PackBadge, minHeight = AronLook.PackBadge).clip(CircleShape).background(LocalAronLook.current.purple),
+        contentAlignment = Alignment.Center,
+    ) { Text(text, style = lookStyle(12.sp, bold = true, color = Color.White), modifier = Modifier.padding(horizontal = 4.dp)) }
+}
+
 /** Widths shared by [PackCard] and [PackListHeader] so the column headers sit over their columns. */
 /** 52 dp: a 5-digit stick count with its separator (`১২,০০০`) and the `স্টক` header fit on one line, shrinking to 12 sp at most. */
 private val StockColumn = 52.dp
@@ -193,17 +205,7 @@ fun PackCard(
     ) {
         Box(Modifier.padding(end = AronLook.PackBadge / 2)) {
             PackshotImage(skuId, Modifier.size(packshotWidthFor(screen), AronLook.PackshotHeight), packshotDescription, category)
-            if (packBadge != null) {
-                Box(
-                    Modifier
-                        .align(Alignment.BottomEnd)
-                        .offset(x = AronLook.PackBadge / 2, y = (-6).dp)
-                        .sizeIn(minWidth = AronLook.PackBadge, minHeight = AronLook.PackBadge)
-                        .clip(CircleShape)
-                        .background(look.purple),
-                    contentAlignment = Alignment.Center,
-                ) { Text(packBadge, style = lookStyle(12.sp, bold = true, color = Color.White), modifier = Modifier.padding(horizontal = 4.dp)) }
-            }
+            if (packBadge != null) PackBadge(packBadge, Modifier.align(Alignment.BottomEnd).offset(x = AronLook.PackBadge / 2, y = (-6).dp))
         }
         Spacer(Modifier.width(if (narrow) 2.dp else 6.dp))
         // one line, shrinking from 18 sp down to 14 sp (sr/stock.webp shows the code on one line); a longer name such as "Prime Gold

@@ -15,6 +15,10 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.shape.CircleShape
+import com.aktcl.aron.core.ui.aron.Glyph.check
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -134,4 +138,29 @@ fun AronEmptyMessage(text: String, modifier: Modifier = Modifier) {
 @Composable
 private fun InfoSquare(fill: Color, content: @Composable () -> Unit) {
     Box(Modifier.size(40.dp).clip(RoundedCornerShape(8.dp)).background(fill), contentAlignment = Alignment.Center) { content() }
+}
+
+/**
+ * The one sync-status footer of the AMO and TSO homes (Vision QA: token colours only, the same on both roles): a purple check (or a grey
+ * dot while not synced) with the [status] in dark medium 14 sp, then the [details] in grey 12 sp. Each detail stays whole: the line
+ * breaks BETWEEN details, never at a `·`. Strings and digits come localised from the caller.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+fun AronSyncFooter(status: String, details: List<String>, modifier: Modifier = Modifier, synced: Boolean = true) {
+    val look = LocalAronLook.current
+    Column(modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            if (synced) GlyphCanvas(Modifier.size(18.dp)) { check(look.purple) }
+            else Box(Modifier.size(18.dp), contentAlignment = Alignment.Center) { Box(Modifier.size(8.dp).clip(CircleShape).background(look.offlineDot)) }
+            Text(status, style = lookStyle(14.sp, medium = true, color = look.ink), modifier = Modifier.padding(start = 8.dp))
+        }
+        if (details.isNotEmpty()) {
+            FlowRow(Modifier.padding(start = 26.dp, top = 4.dp)) {
+                details.forEachIndexed { i, d ->
+                    Text(if (i < details.lastIndex) "$d · " else d, style = lookStyle(12.sp, color = look.inkMuted))
+                }
+            }
+        }
+    }
 }

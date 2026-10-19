@@ -146,4 +146,8 @@
     <string name="core_ui_look_check_in">চেক ইন</string>
     <string name="core_ui_look_check_out">চেক আউট</string>
     <string name="core_ui_look_no_tasks">আপনার এএমও (AMO) কোনো কাজ বরাদ্দ করেননি।</string>
+    <string name="core_ui_look_synced">সিঙ্ক হয়েছে</string>
+    <string name="core_ui_look_sync_d1">২০২৬-১০-০৫ তারিখের তথ্য পাওয়া গেছে</string>
+    <string name="core_ui_look_sync_d2">৩ টি আপলোডের অপেক্ষায়</string>
+    <string name="core_ui_look_sync_d3">সর্বশেষ সিঙ্ক ১৫ মিনিট আগে</string>
 </resources>
