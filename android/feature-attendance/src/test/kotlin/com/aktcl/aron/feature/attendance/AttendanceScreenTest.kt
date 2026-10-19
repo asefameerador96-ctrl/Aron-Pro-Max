@@ -83,7 +83,7 @@ class AttendanceScreenTest {
         compose.onAllNodesWithText("Check-out opens at 05:00 PM.").assertCountEquals(1) // the day line says when check-out opens
         compose.onNodeWithText("Checked in at 09:05 AM").assertExists()
         compose.onNodeWithText("23.793812, 90.404112").assertExists()
-        compose.onNodeWithText("Good · ±18 m").assertExists()
+        compose.onNodeWithText("±18 m").assertExists() // a small grey suffix now, not a green pill
     }
 
     @Test fun checkOutHoldCallsBackOnceAndTheDayCompleteBannerHidesTheBar() {
@@ -108,7 +108,7 @@ class AttendanceScreenTest {
     @Test fun mockLocationShowsTheWarningAndWeakFixTheWarningChip() {
         render(AppLanguage.EN, AttendanceState(lastFixMock = true, fixAccuracyM = 140, coordinatesText = "23.792580, 90.407830"))
         compose.onNodeWithText("Mock location found. Turn it off.").assertExists()
-        compose.onNodeWithText("Weak · ±140 m").assertExists()
+        compose.onNodeWithText("±140 m").assertExists()
     }
 
     @Test fun dhakaClockAddsSixHoursAndWrapsPastMidnight() {

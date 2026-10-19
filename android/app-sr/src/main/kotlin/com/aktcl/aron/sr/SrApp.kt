@@ -393,7 +393,7 @@ fun SrApp(
                 val who = HomeModel.header("SR", user.fullName, user.username, data.route?.name, data.route?.visitKind, data.businessDate)
                 AttendanceContent(
                     attendance, "17:00", onCheckIn = { scope.launch { day.attendance.checkIn(); resumeTick++ } }, onCheckOut = { scope.launch { day.attendance.checkOut(); resumeTick++ } },
-                    userTitle = who.title, userSubtitle = com.aktcl.aron.core.ui.localizedDigits(who.subtitle),
+                    userTitle = who.title, userSubtitle = who.subtitle, // Latin digits, as in the reference
                 )
             }
         }
@@ -439,7 +439,7 @@ fun SrApp(
                 }
             }
         }
-        SrScreen.VISIT -> SrFrame(stringResource(HomeR.string.hm_tile_sale), goBack, sync, openSync, icon = CoreR.drawable.aron_art_sale) {
+        SrScreen.VISIT -> SrFrame(stringResource(HomeR.string.hm_tile_sale), goBack, sync, openSync, printer = day.printerManager, icon = CoreR.drawable.aron_art_sale) {
             PermissionGate(GatedFeature.SALE, onBack = goBack) {
                 val st by day.visitFlow.state.collectAsState()
                 val open by day.visitSession.current.collectAsState()

@@ -178,7 +178,7 @@ class ScreenshotTests {
 
     // ---- selling fixtures (SellShot) ----
     private fun sku(id: Long, cat: String, name: String, unit: String, perPack: Int) =
-        SkuEntity(id, "S$id", id, cat, name, name, null, unit, perPack, if (perPack > 1) "pack" else "base", null, "1.000", id.toInt(), "active", 1)
+        SkuEntity(id, name.replace(' ', '-'), id, cat, name, name, null, unit, perPack, if (perPack > 1) "pack" else "base", null, "1.000", id.toInt(), "active", 1)
     private val stockRows = listOf(
         StockRow(sku(1, "cigarette", "MaxR 10S", "stick", 10), 400, 20, stockBase = 380),
         StockRow(sku(2, "cigarette", "Prime Gold 10S", "stick", 10), 200, 0, stockBase = 190),
@@ -276,12 +276,12 @@ class ScreenshotTests {
         )
     }
 
-    @Composable private fun Sale() = ParityFrame(stringResource(SaleR.string.sale_title), com.aktcl.aron.core.ui.R.drawable.aron_art_sale, subtitle = card.name) {
-        SaleEntryScreen(skus, saleReview, { id -> saleDraft.lines.firstOrNull { it.skuId == id }?.qtyEntered ?: 0 }, { _, _ -> }, {}, {}, recentSkuIds = setOf(100L), onPreviousSales = {})
+    @Composable private fun Sale() = ParityFrame(stringResource(SaleR.string.sale_title), com.aktcl.aron.core.ui.R.drawable.aron_art_sale) {
+        SaleEntryScreen(skus, saleReview, { id -> saleDraft.lines.firstOrNull { it.skuId == id }?.qtyEntered ?: 0 }, { _, _ -> }, {}, {}, recentSkuIds = setOf(100L), onPreviousSales = {}, retailerLabel = "Banani Store (DHK-344-001-01711000000-Apsis Cluster)")
     }
 
     @Composable private fun Review() = ParityFrame(stringResource(SaleR.string.review_title), com.aktcl.aron.core.ui.R.drawable.aron_art_sale) {
-        ReviewScreen(reviewReview, {}, outletLine = "Banani Store (DHK-344-001) · Apsis RouteDaily · Apsis Cluster", onCreditToggle = {}, onQc = {})
+        ReviewScreen(reviewReview, {}, outletLine = "Banani Store (DHK-344-001)\nরুট: Apsis RouteDaily\nক্লাস্টার: Apsis Cluster", onCreditToggle = {}, onQc = {})
     }
 
     @Composable private fun Memo() = Frame(stringResource(HomeR.string.hm_tile_memo)) {
@@ -293,7 +293,7 @@ class ScreenshotTests {
     @Composable private fun Attendance() = ParityFrame(stringResource(HomeR.string.hm_tile_attendance), com.aktcl.aron.core.ui.R.drawable.aron_art_attendance) {
         AttendanceContent(
             notCheckedIn, "17:00", {}, {}, onRefreshFix = {}, nowIso = now,
-            userTitle = "SR - Testing Banani (sr334001)", userSubtitle = localizedDigits("Apsis RouteDaily, 2026-10-05"),
+            userTitle = "SR - Testing Banani (sr334001)", userSubtitle = "Apsis RouteDaily, 2026-10-05",
         )
     }
 

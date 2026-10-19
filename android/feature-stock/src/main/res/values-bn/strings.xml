@@ -39,4 +39,5 @@
     <string name="stk_reason_join">" · "</string>
     <string name="stk_empty">আপনার জোনের জন্য কোনো SKU নেই</string>
     <string name="stk_col_loaded_short">লোড</string>
+    <string name="stk_saved_short">সংরক্ষিত</string>
 </resources>

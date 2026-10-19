@@ -52,3 +52,28 @@ Step 1 `RetailerPicker` (pill dropdown, dark A-Z panel, All = gradient square, e
 - 2026-10-18: Sale step 3 is the kit SummaryTable (SKU over its unit, quantity, value; category subtotals; the totals block with gross, deductions, net, paid, due) with the purple net panel and the gradient Print button.
 - 2026-10-18: Stock now shows the on-hand figure ("স্টক") because `SrDay.stockLoad` passes `StockTracker` balances to `StockLoad(currentBaseBySku)`; display only, a Save still posts only the entered increments; the figure moves with a committed save.
 - 2026-10-18: Attendance gets the user card through two optional parameters (`userTitle`, `userSubtitle`) filled by app-sr from `HomeModel.header`.
+
+## Vision QA round (lead, 2026-10-19 00:05 UTC): what changed, what did not
+Done on the clean line (INT + my commits, kit abac6ba):
+- HOME: tiles directly under the header; six outlined KPI tiles in the lavender container (visited/planned, strike rate, issue, current stock, non-visit, no sale; issue and current stock add the categories as the existing app does); gradient sales panel "বিক্রয় (স্টিক)" with the sticks sold from `StockTracker` (sold, cigarette and bidi), category rows, মোট, ডিসকাউন্ট and QC as separate rows each bound to its own field (`SrHomeMoneyBindingTest` proves a discount never renders under QC; the earlier mislabel was the screenshot fixture, the real binding was correct), rule, সর্বমোট, no ৳ on rows; second panel (মোট ডিসকাউন্ট, DRP ডিসকাউন্ট, মোট QC, সর্ব মোট, মোট টাকা); the check-in line, the sync/sun row and the battery footer are gone (device line, sync chip and Sunlight toggle are in Settings; the check-in time shows on Attendance); Photo Capture tile after Task Delegation (its tap says the programmes it belongs to start later: docs/27); subtitle `route, yyyy-MM-dd` with Latin digits, no `· Daily`.
+- STOCK: the label is `sku.code` (hyphenated); no mint banner after Save (the Save button says "Saved" and Print becomes active).
+- SALE list: retailer pill with `name (code-phone-cluster)` (the host no longer prints a bare title); previous sales is the full-width green button "পূর্বের সেল ডাটা দেখুন"; no category chip row, no sub-header, no captions between cards; label is `sku.code`; single footer row (cart icon, total without ৳, "এগিয়ে যান"); the over-stock state is a red warning line under the card.
+- SALE review: three header lines (outlet with code, রুট:, ক্লাস্টার:), purple checkbox for credit, yellow "প্রোডাক্ট QC" button, ৳ glued to money cells, the net once (no purple duplicate), Print on the grey page with the Summary gradient direction, printer badge on the visit bar (all sale-flow steps).
+- PICKER: first chip "All" in Bangla too.
+- ATTENDANCE: location card #D7D7D7 compact, no border, address or Latin coordinates on one line, "±18 m" grey suffix instead of the pill, red refresh icon, 32 dp lavender tiles, Latin date, the saved-offline line only once a check-in is stored, 20 dp glyph and 14 sp label, bigger gap before the message.
+
+NOT done, and why:
+- Letter strip (All + letters) on the product list screen: the pill is there, the strip is not, because it has no function on that step (the retailer is already chosen). Say if you want it as decoration.
+- Category filter and search on the product list: removed as the QA asks; a 40-SKU route now scrolls without a filter.
+- Line total / price / unit inside the card: needs a kit slot (below); until then the card shows quantity, stock and the packs badge only, and the price is visible on the review.
+- Printer badge only on the review step: the badge is on the whole visit bar (the bar is outside the sale route).
+
+## Kit requests (for the kit window)
+1. `PackCard`: an optional caption line INSIDE the card under the SKU code (price per unit, and the line total only when quantity > 0), so nothing has to be printed between cards.
+2. `PackCard`: field and stock digits Bold (done in kit 704183d, not on abac6ba); `AronMinus` solid red at zero (no grey); minus/plus about 22 to 26 dp with a 48 dp touch area; SKU code never wraps at 360 dp (packshot and stock column narrower below 400 dp) and the plus button must stay on the card at 320 dp.
+3. `TotalsPanel`: unit inline after the category in 12 sp (one row per category); the kit has `TotalsLine.caption`, on abac6ba it needs no more than that.
+4. `AronTopBar`: slimmer bar (about 36 to 40 dp), thin chevron, smaller printer badge circle (about 26 dp).
+5. `AronPrimaryButton` on the purple panel: end the gradient at about #7D2B7B so the right edge stays visible.
+6. `RetailerPickerField`: hint #9E9E9E regular, caret #616161.
+7. Latin typeface Roboto in the shared typography.
+8. `AronHomeHeader`: one-line title, 14 to 15 sp medium; tile label 12 sp medium on one line; tile aspect about 0.87 and 8 dp outer padding.

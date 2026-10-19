@@ -190,20 +190,20 @@ class SrStateScreenshotTests {
     private val filledReview = SaleReviewCalculator.review(filled, catalog)
     private val emptyReview = SaleReviewCalculator.review(draft(), catalog)
 
-    @Composable private fun SaleFull() = ParityFrame(stringResource(SaleR.string.sale_title), com.aktcl.aron.core.ui.R.drawable.aron_art_sale, subtitle = "Banani Store") {
-        SaleEntryScreen(skus, filledReview, { id -> filled.lines.firstOrNull { it.skuId == id }?.qtyEntered ?: 0 }, { _, _ -> }, {}, {}, recentSkuIds = setOf(100L), onPreviousSales = {})
+    @Composable private fun SaleFull() = ParityFrame(stringResource(SaleR.string.sale_title), com.aktcl.aron.core.ui.R.drawable.aron_art_sale) {
+        SaleEntryScreen(skus, filledReview, { id -> filled.lines.firstOrNull { it.skuId == id }?.qtyEntered ?: 0 }, { _, _ -> }, {}, {}, recentSkuIds = setOf(100L), onPreviousSales = {}, retailerLabel = "Banani Store (DHK-344-001-01711000000-Apsis Cluster)")
     }
-    @Composable private fun SaleEmptyCatalog() = ParityFrame(stringResource(SaleR.string.sale_title), com.aktcl.aron.core.ui.R.drawable.aron_art_sale, subtitle = "Banani Store") {
-        SaleEntryScreen(emptyList(), null, { 0 }, { _, _ -> }, {}, {})
+    @Composable private fun SaleEmptyCatalog() = ParityFrame(stringResource(SaleR.string.sale_title), com.aktcl.aron.core.ui.R.drawable.aron_art_sale) {
+        SaleEntryScreen(emptyList(), null, { 0 }, { _, _ -> }, {}, {}, retailerLabel = "Banani Store (DHK-344-001-01711000000-Apsis Cluster)")
     }
-    @Composable private fun SaleEmptyCart() = ParityFrame(stringResource(SaleR.string.sale_title), com.aktcl.aron.core.ui.R.drawable.aron_art_sale, subtitle = "Banani Store") {
-        SaleEntryScreen(skus, emptyReview, { 0 }, { _, _ -> }, {}, {})
+    @Composable private fun SaleEmptyCart() = ParityFrame(stringResource(SaleR.string.sale_title), com.aktcl.aron.core.ui.R.drawable.aron_art_sale) {
+        SaleEntryScreen(skus, emptyReview, { 0 }, { _, _ -> }, {}, {}, retailerLabel = "Banani Store (DHK-344-001-01711000000-Apsis Cluster)")
     }
     @Composable private fun ReviewEmpty() = ParityFrame(stringResource(SaleR.string.review_title), com.aktcl.aron.core.ui.R.drawable.aron_art_sale) {
-        ReviewScreen(emptyReview, {}, outletLine = "Banani Store (DHK-344-001) · Apsis RouteDaily · Apsis Cluster", onCreditToggle = {}, onQc = {})
+        ReviewScreen(emptyReview, {}, outletLine = "Banani Store (DHK-344-001)\nরুট: Apsis RouteDaily\nক্লাস্টার: Apsis Cluster", onCreditToggle = {}, onQc = {})
     }
     @Composable private fun ReviewFull() = ParityFrame(stringResource(SaleR.string.review_title), com.aktcl.aron.core.ui.R.drawable.aron_art_sale) {
-        ReviewScreen(filledReview, {}, outletLine = "Banani Store (DHK-344-001) · Apsis RouteDaily · Apsis Cluster", onCreditToggle = {}, onQc = {})
+        ReviewScreen(filledReview, {}, outletLine = "Banani Store (DHK-344-001)\nরুট: Apsis RouteDaily\nক্লাস্টার: Apsis Cluster", onCreditToggle = {}, onQc = {})
     }
 
     private val memo = StoredMemo(

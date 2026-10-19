@@ -4,7 +4,7 @@
     <string name="out_picker_select">রিটেইলার নির্বাচন করুন</string>
     <string name="out_picker_empty">বিক্রয় চালিয়ে যেতে একজন খুচরা বিক্রেতা নির্বাচন করুন</string>
     <string name="out_picker_none">আজকের রুটে কোনো আউটলেট নেই</string>
-    <string name="out_chip_all">সব</string>
+    <string name="out_chip_all">All</string>
     <string name="out_distance_m">%1$s মিটার দূরে</string>
     <string name="out_reading_fix">আপনার অবস্থান দেখা হচ্ছে…</string>
     <string name="out_out_of_range">আপনি নির্বাচিত খুচরা বিক্রেতার সীমার মধ্যে নেই।</string>
