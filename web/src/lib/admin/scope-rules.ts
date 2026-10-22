@@ -4,8 +4,8 @@ import type { Role } from "@/contract/types";
 
 export type NodeType = "national" | "wing" | "division" | "territory" | "zone";
 
-// NATIONAL and BRAND (docs/34 s1) are not in the contract's Role enum yet; both see all geography (BRAND is limited by brand instead).
-export const ALLOWED_SCOPE_TYPES: Record<Role | "NATIONAL" | "BRAND", readonly NodeType[]> = {
+// NATIONAL and BRAND (docs/34 s1) both see all geography (BRAND is limited by brand instead).
+export const ALLOWED_SCOPE_TYPES: Record<Role, readonly NodeType[]> = {
   SR: [],
   AMO: ["zone"],
   TSO: ["territory"],
@@ -20,6 +20,6 @@ export const ALLOWED_SCOPE_TYPES: Record<Role | "NATIONAL" | "BRAND", readonly N
   SUPERADMIN: ["national"],
 };
 
-export function scopeNodeAllowed(role: Role | "NATIONAL" | "BRAND", type: string): boolean {
+export function scopeNodeAllowed(role: Role, type: string): boolean {
   return ((ALLOWED_SCOPE_TYPES[role] ?? []) as readonly string[]).includes(type);
 }

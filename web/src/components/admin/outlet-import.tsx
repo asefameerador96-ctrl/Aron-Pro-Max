@@ -15,7 +15,7 @@ export function OutletImport() {
     templateFile: "outlets-template.xlsx",
     columnsText: `${t("oi.columns")} ${OUTLET_HEADERS.join(", ")}`,
     columnLabel: (c) => t(`oi.col.${c}` as "oi.col.name"),
-    problemLabel: (c) => t(`oi.problem.${c}` as "oi.problem.invalid"),
+    problemKey: (c) => `oi.problem.${c}`,
     summaryText: (p, number) => t("oi.summary", { rows: number(p.rows), creates: number(p.creates), updates: number(p.updates), channels: Object.entries(p.by_channel).map(([k, v]) => `${k} ${number(v)}`).join(", ") }),
     committedKey: "oi.committed",
   };

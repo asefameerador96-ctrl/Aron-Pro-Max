@@ -1,0 +1,17 @@
+HouseDuplicateGroup:
+  type: object
+  required:
+  - territory_id
+  - name_key
+  - houses
+  additionalProperties: false
+  properties:
+    territory_id:
+      $ref: '#/components/schemas/Id'
+    name_key:
+      type: string
+      description: Lower-case name with punctuation and spacing collapsed.
+    houses:
+      type: array
+      items:
+        $ref: '#/components/schemas/HouseDuplicateItem'

@@ -42,7 +42,7 @@ export function UserAccessEditor({ access, brands, canWrite }: { access: UserAcc
         setBanner({ ok: true, text: t("access.saved") });
         setReason("");
         router.refresh();
-      } else setBanner({ ok: false, text: res.status === 412 ? t("access.stale") : problem(data.code) });
+      } else setBanner({ ok: false, text: res.status === 412 ? t("access.stale") : res.status === 503 ? t("access.unavailable") : problem(data.code) });
     } catch {
       setBanner({ ok: false, text: t("error.network") });
     } finally {
@@ -87,6 +87,7 @@ export function UserAccessEditor({ access, brands, canWrite }: { access: UserAcc
               </tbody>
             </table>
           </div>
+          {levels.users === "w" && levels.credentials === "w" ? <p role="note" data-testid="access-creds-warning" className="rounded border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">{t("access.warn.users_credentials")}</p> : null}
         </section>
       ) : (
         <section className="space-y-2" aria-labelledby="brand-h">

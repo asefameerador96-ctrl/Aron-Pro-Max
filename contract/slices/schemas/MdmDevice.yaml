@@ -1,0 +1,74 @@
+MdmDevice:
+  type: object
+  required:
+  - device_id
+  - device_uuid
+  - flavour
+  - status
+  - device_owner
+  - users
+  - compliance_flags
+  - pending_commands
+  additionalProperties: false
+  properties:
+    device_id:
+      $ref: '#/components/schemas/Id'
+    device_uuid:
+      $ref: '#/components/schemas/Uuid'
+    flavour:
+      $ref: '#/components/schemas/AppFlavour'
+    status:
+      $ref: '#/components/schemas/DeviceState'
+    device_owner:
+      type: boolean
+    users:
+      type: array
+      maxItems: 4
+      items:
+        type: string
+        maxLength: 80
+    model:
+      type:
+      - string
+      - 'null'
+      maxLength: 120
+    app_version:
+      type:
+      - string
+      - 'null'
+    latest_app_version:
+      type:
+      - string
+      - 'null'
+    last_contact_at:
+      oneOf:
+      - $ref: '#/components/schemas/Timestamp'
+      - type: 'null'
+    battery_pct:
+      type:
+      - integer
+      - 'null'
+      minimum: 0
+      maximum: 100
+    network:
+      oneOf:
+      - $ref: '#/components/schemas/MdmNetwork'
+      - type: 'null'
+    policy_id:
+      type:
+      - integer
+      - 'null'
+      format: int64
+      minimum: 1
+    policy_name:
+      type:
+      - string
+      - 'null'
+      maxLength: 80
+    compliance_flags:
+      type: array
+      items:
+        $ref: '#/components/schemas/MdmComplianceFlag'
+    pending_commands:
+      type: integer
+      minimum: 0

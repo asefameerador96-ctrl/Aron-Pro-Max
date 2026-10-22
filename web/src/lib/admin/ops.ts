@@ -55,6 +55,14 @@ export const OPS = {
   // N-045 enrolment QR: tokens carry a note, not a reason; the secret is shown once
   "enrolment.create": { method: "POST", path: "/v1/admin/enrolment-tokens", roles: SUPPORT_UP, reason: null },
   "enrolment.revoke": { method: "POST", path: "/v1/admin/enrolment-tokens/{token_id}/revoke", roles: SUPPORT_UP, reason: null, noBody: true },
+  // D-MDM-01 MDM section (docs/34 s5): commands carry a client UUID (idempotent), a factory reset waits for a second approver
+  "mdm.command": { method: "POST", path: "/v1/admin/mdm/devices/{device_id}/commands", roles: ADMINS, reason: "reason" },
+  "mdm.decide": { method: "POST", path: "/v1/admin/mdm/commands/{command_id}/decision", roles: ADMINS, reason: "reason" },
+  "mdm.assign": { method: "PUT", path: "/v1/admin/mdm/devices/{device_id}/policy", roles: ADMINS, reason: "reason" },
+  "mdm.policy.create": { method: "POST", path: "/v1/admin/mdm/policies", roles: ADMINS, reason: "reason" },
+  "mdm.policy.update": { method: "PUT", path: "/v1/admin/mdm/policies/{policy_id}", roles: ADMINS, reason: "reason" },
+  "mdm.enrolment.create": { method: "POST", path: "/v1/admin/mdm/enrolment-tokens", roles: ADMINS, reason: null },
+  "mdm.enrolment.revoke": { method: "POST", path: "/v1/admin/mdm/enrolment-tokens/{token_id}/revoke", roles: ADMINS, reason: null, noBody: true },
   // F-ADM-029 / F-ADM-052 reopen a final-submitted zone-day (cfg.day.reopen_roles: admin)
   "day.reopen": { method: "POST", path: "/v1/day/reopen", roles: ADMINS, reason: "reason" },
   // F-ADM-057 entry unlock grants replace "call support" for back-dated web entry
@@ -67,7 +75,9 @@ export const OPS = {
   // F-ADM-036 dues adjustment: maker proposes, a different checker (SUPERADMIN, docs/24 s8.5) decides
   "dues.create": { method: "POST", path: "/v1/admin/dues-adjustments", roles: ADMINS, reason: "reason" },
   "dues.decide": { method: "POST", path: "/v1/admin/dues-adjustments/{adjustment_id}/decision", roles: SUPERS, reason: "note" },
-  // Wave 4 (docs/34 s1): module grants of an ADMIN or brand scope of a BRAND user; Super Admin only. REQUEST: docs/requests/backend-admin-user-access.md
+  // Wave 4 (docs/34 s1): module grants of an ADMIN or brand scope of a BRAND user; Super Admin only (contract putUserAccess).
+  // Fold duplicate houses into one (contract mergeHouses): zones move to the kept house, merged ones become inactive; If-Match is the kept house version.
+  "house.merge": { method: "POST", path: "/v1/admin/geo/house/merge", roles: ADMINS, reason: "change_reason", ifMatch: true },
   "user-access.put": { method: "PUT", path: "/v1/admin/users/{id}/access", roles: SUPERS, reason: "change_reason", ifMatch: true },
   // Wave 4 route monthly targets (D-TARGET-MIN-01): preview (dry run, no reason, writes nothing) then commit; idempotent by batch_uuid. REQUEST: docs/requests/backend-admin-route-targets.md
   "route-targets.validate": { method: "PUT", path: "/v1/admin/route-targets", roles: ADMINS, reason: null },

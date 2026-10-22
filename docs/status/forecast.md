@@ -125,3 +125,22 @@ Honest per-item dates (test account, dev):
 
 Risk: ten lanes push many short-lived heads; red lane runs are now gated (a candidate is declared only on a
 green run of the exact sha). Usage stays `allowed` on the five-hour window.
+
+## Update 2026-10-22 14:55 UTC (wave 4, lead lane check): honest date per directive item (docs/34)
+- On dev now (INT 2c10a157, deploy of batch 6 pending): portal user levels and token claims (backend-authz 8ed44597), admin APIs for route targets, calendar, house de-dup, outlet import, user access and SKU pack fields (backend-admin 98651d47), web-admin users/grants, target upload, calendar, house, channel and pack preview (d0b92230, c60ad04b, d43e58f7), inline Sale map SR + AMO (android-map), MP-58N diagnostics (android-print, build 1331), packets / boxes / dozens in the apps (android-units, build 1346).
+- Today, 2026-10-22, before 18:00 UTC: db V0087 to V0106 plus the Gulshan-Banani seed (a60d941e in CI; lands with the gate fix after batch 6 deploys; the dev deploy then runs 20 migrations), backend-reports dashboard contract 1.5.0 and summaries (re-merge then one CI cycle), mdm portal section + dpc command channel (candidate after the gate fix), backend-authz checker rounds and the two auth test fixes.
+- 2026-10-23: national dashboard screen for screen on dev (web-dashboard, held behind backend-reports; Linux goldens to record), web-admin outlet-import and user-access UI (#5), AMO/TSO entry-unit aggregates (backend-reports, then android-units restart), qa data-flow trace (Gulshan-Banani) once db + backend-reports + units are on INT, backend-admin follow-ups (#6).
+- Owner-dependent, date open: printer fix (needs the diagnostics export from build 1331), reports (needs the report docs upload), MDM look (needs the Aron MDM screenshots), packshots (loader or admin upload), Q1-Q4 answers, `promote hardening`. Nothing in the directive is blocked by lanes; these four wait on uploads or a decision.
+- Risk: five sessions are past the 450k recycle line (web-admin, backend-admin, mdm, android-units, android-print); each is being handed over at its next natural stop, which costs about 20 minutes per lane; the integrator is handed over after batch 6. Rate limits: five_hour allowed on every session.
+
+## Update 2026-10-22 17:25 UTC (wave 4, lead): one cycle lost to the OSV incident
+- The Next.js advisories cost one CI+deploy cycle (about 75 minutes): train 8's deploy was skipped and train 8.1 (next 16.4.2 + two test fixes) is deploying now. Everything that was due "today before 18:00" moves to about 20:00 UTC: backend-reports 1.5.0 dashboard contract and summaries (train 9 or 10), backend-authz module grants + Opus rounds (the other train), web-admin's house/working-days/SKU-pack UI (train 9), db N3 + seed 07 (its own train). mdm 1.6.0 is on INT (train 8, redeployed with 8.1).
+- 2026-10-23 unchanged: national dashboard on dev (web-dashboard #8 after 1.5.0), web-admin outlet-import and user-access UI, android-units AMO/TSO aggregates (server slice done by backend-reports), qa data-flow trace, backend-admin follow-ups. Owner-dependent items unchanged.
+
+## Update 2026-10-22 18:20 UTC (wave 4, lead)
+- Train 9 (web-admin house / working-days / SKU-pack UI and the Users+Credentials warning; backend-reports 1.5.0 dashboard contract, national summaries, active-house filter; db V0107 + seed 07) pushes when its two remaining lane runs are green, about 18:45 UTC, on dev about 19:40 UTC. Train 10 (backend-authz module grants, Me.modules) on dev about 20:30 UTC. Then web-dashboard #8 starts (national dashboard on dev 2026-10-23 morning), backend-admin #6 and qa's data-flow trace (2026-10-23).
+- Owner-dependent items unchanged (printer export from build 1331, report docs, MDM screenshots, Q1-Q4, packshots, `promote hardening`).
+
+## Update 2026-10-22 19:20 UTC (wave 4, lead)
+- Train 9 (web-admin UI, backend-reports 1.5.0 dashboard contract and national summaries, db V0107 + seed 07) is in INT CI since 18:37; dev deploy about 19:35 UTC. Train 10 (backend-authz module grants, brand and house scope) about 20:30 UTC; train 11 (mdm: token-based MDM grants, breadcrumb install, sampling seam; plus db V0108 checked_in_at and backend-reports F-DASH-010) about 21:30 UTC.
+- Tonight after train 9's deploy: web-dashboard #8 and qa (Gulshan-Banani data-flow trace) start. 2026-10-23 unchanged: national dashboard on dev, web-admin outlet-import and user-access UI, android-units AMO/TSO aggregates, backend-admin #6 follow-ups (after train 10). Owner-dependent items unchanged.

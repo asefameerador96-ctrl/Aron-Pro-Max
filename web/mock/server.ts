@@ -10,6 +10,7 @@ import { seedCodeLists, seedTables, tableDefs } from "./master-seed";
 import { maskAudit } from "./audit-mask";
 import { freshConfigStore, handleConfig, type ConfigStore } from "./config";
 import { handleCustom, seedCustom, type CustomState } from "./custom";
+import { freshMdmStore, handleMdm, type MdmStore } from "./mdm";
 import { freshDashStore, handleDash, type DashStore } from "./dash";
 import type { AuditEntry, Cluster, LoginResponse, Me, Problem, ProblemCode, Role, ScopeSummary, TokenPair, UserSummary } from "../src/contract/types";
 
@@ -74,6 +75,7 @@ interface State {
   blobs: Map<string, number>;
   codeLists: Record<string, unknown[]>;
   custom: CustomState;
+  mdm: MdmStore;
   bulkBatches: Map<string, { batch_uuid: string; updated: number; unchanged: number; replayed: boolean }>;
   /** Alias of tables.clusters (used by tests). */
   clusters: Cluster[];
@@ -112,7 +114,7 @@ export function createMock(opts: MockOptions = {}): { server: Server; state: Sta
 
 function freshState(accessTtlS = Number(process.env.MOCK_ACCESS_TTL_S ?? 900)): State {
   const tables = seedTables();
-  return { failPrefix: null, reauthFails: new Map(), piiWindowS: 900, stubs: [], calls: [], users: users(), tables, blobs: new Map(), custom: { tables, ...seedCustom() }, codeLists: seedCodeLists(), bulkBatches: new Map(), clusters: tables.clusters as unknown as Cluster[], audit: [], access: new Map(), refresh: new Map(), mfaTokens: new Map(), mfaEnrolled: new Set(["admin1", "madmin1", "msuper1", "msupport1", "support1", "pwmfa1"]), pwcTokens: new Map(), refreshCount: 0, nextId: 100, accessTtlS, dash: freshDashStore(), cfg: freshConfigStore() };
+  return { failPrefix: null, reauthFails: new Map(), piiWindowS: 900, stubs: [], calls: [], users: users(), tables, blobs: new Map(), custom: { tables, ...seedCustom() }, mdm: freshMdmStore(), codeLists: seedCodeLists(), bulkBatches: new Map(), clusters: tables.clusters as unknown as Cluster[], audit: [], access: new Map(), refresh: new Map(), mfaTokens: new Map(), mfaEnrolled: new Set(["admin1", "madmin1", "msuper1", "msupport1", "support1", "pwmfa1"]), pwcTokens: new Map(), refreshCount: 0, nextId: 100, accessTtlS, dash: freshDashStore(), cfg: freshConfigStore() };
 }
 
 function problem(status: number, code: ProblemCode, extra: Partial<Problem> = {}): Problem {
@@ -493,6 +495,11 @@ async function handle(state: State, reset: () => void, req: IncomingMessage, res
     const result = { batch_uuid: b.batch_uuid, updated, unchanged, replayed: false };
     state.bulkBatches.set(b.batch_uuid, result);
     return send(res, 200, result);
+  }
+
+  if (path.startsWith("/v1/admin/mdm/")) {
+    const mctx: Ctx = { send, problem, readJson, audit: (entity, id, action, before, after, reason) => audit(state, user, entity, id, action, before, after, reason) };
+    if (await handleMdm(state.mdm, mctx, { role: user.summary.role, username: user.summary.username, user_id: user.summary.user_id }, method, url, req, res)) return;
   }
 
   if (path.startsWith("/v1/admin/") && user.master) {

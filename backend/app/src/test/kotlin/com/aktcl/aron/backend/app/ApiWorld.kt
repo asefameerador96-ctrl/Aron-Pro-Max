@@ -67,8 +67,12 @@ class ApiWorld(
         val seed = repoRoot.resolve("db/seed").listFiles { f -> f.name.matches(Regex("0\\d_.*\\.sql")) }!!.sortedBy { it.name }
         fresh.dataSource.connection.use { c ->
             seed.forEach { f -> c.createStatement().use { it.execute(f.readText()) } }
-            // Stand-in for the db lane's wave-4 summary tables until their migration is on INT (docs/requests/db-backend-reports-dashboard-summaries.md).
-            javaClass.classLoader.getResourceAsStream("dashboard_summaries_shim.sql")?.let { s -> c.createStatement().use { it.execute(s.bufferedReader().readText()) } }
+            // PENDING (db lane): tables the wave-4 admin routes need before db's migrations land; applied only while absent. Delete the
+            // files and these lines in the push that picks the migrations up (docs/requests/backend-admin-route-target-tables.md, db-backend-authz-roles.md).
+            for ((table, file) in listOf("app.route_monthly_target" to "route_monthly_target.sql", "app.user_module_grant" to "user-access.sql")) {
+                val missing = c.createStatement().use { st -> st.executeQuery("SELECT to_regclass('$table') IS NULL").use { rs -> rs.next(); rs.getBoolean(1) } }
+                if (missing) c.createStatement().use { it.execute(ApiWorld::class.java.getResource("/pending/$file")!!.readText()) }
+            }
             for (tag in mirrors) listOf("01_geography_people.sql", "03_outlets_and_plans.sql").forEach { n -> c.createStatement().use { it.execute(mirrored(repoRoot.resolve("db/seed/$n").readText(), tag)) } }
         }
         fresh.db.jdbi.useHandle<Exception> { h ->
@@ -161,6 +165,14 @@ class ApiWorld(
         h.execute("INSERT INTO app.app_user (username, full_name, role, designation, employee_code, locale, home_zone_id, pilot, must_change_password) SELECT 'qa9002', 'QA Throwaway AMO', role, designation, 'QA9002', locale, home_zone_id, false, false FROM app.app_user WHERE username = 'amo1001'")
         h.execute("INSERT INTO app.user_scope (user_id, node_type, node_id, valid_from, reason) SELECT u.id, 'zone', z.id, DATE '2026-01-01', 'qa harness' FROM app.app_user u, app.zone z WHERE u.username = 'qa9002' AND z.code = 'Z-MIR'")
         ids["scope_user"] = one("SELECT id FROM app.app_user WHERE username = 'qa9002'")
+        // Wave 4: an ADMIN user whose module grants the SUPERADMIN edits (PUT /v1/admin/users/{id}/access), and two houses of one territory
+        // that differ only in case, spacing and punctuation (POST /v1/admin/geo/house/merge).
+        h.execute("INSERT INTO app.app_user (username, full_name, role, locale, pilot, must_change_password) VALUES ('qa9010', 'QA Access Admin', 'ADMIN', 'en', false, false)")
+        ids["access_user"] = one("SELECT id FROM app.app_user WHERE username = 'qa9010'")
+        h.execute("INSERT INTO app.house (code, name, territory_id) SELECT 'QAH-KEEP', 'QA Dup House', territory_id FROM app.zone WHERE code = 'Z-MIR'")
+        h.execute("INSERT INTO app.house (code, name, territory_id) SELECT 'QAH-DUP', 'qa  dup-house', territory_id FROM app.zone WHERE code = 'Z-MIR'")
+        ids["dup_keep"] = one("SELECT id FROM app.house WHERE code = 'QAH-KEEP'")
+        ids["dup_merge"] = one("SELECT id FROM app.house WHERE code = 'QAH-DUP'")
         // Another SR route of Z-MIR for the route-assignment create (MIR-SR-D already carries qa9001's backfill cover).
         ids["cover_route"] = one("SELECT min(id) FROM app.route WHERE code LIKE 'MIR-SR-%' AND code <> 'MIR-SR-D' AND kind = 'sr' AND status = 'active'")
         // A proof phone with the harness key (device-proof calls: policy, nonce, status), so the SR phone's trust never moves;

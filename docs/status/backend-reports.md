@@ -1,5 +1,11 @@
 # backend-reports lane status
 
+## HANDOVER (2026-10-22 ~16:50, session 3 recycling at ~420k): head ac3a95e3 is the candidate, CI pending
+**State:** `ac3a95e3` already contains INT 16cab775 (mdm 5d7079ad, contract 1.6.0 with the 1.5.0 changelog block D-CONTRACT-DASH-01 kept in DECISIONS.md), Wiring.kt and PortalLevels.kt merged (mdm, authz and my dashboard lines all present), slices and web client regenerated, db's real migrations (no test shims left), the entry-unit slice for android-units (done), and the active-house filter on `filter-options` with its test (D-SCOPE-TREE-01). Local suites green on it: National*, Dashboard, ReportBatchA, app ContractConformance/RouteInventory/ScopeLeak/Portal, shared:contract.
+**#4 must do first:** (1) look at the lane CI run for `ac3a95e3` (id 39815311264). If it is red ONLY on Repository gates > Gate self-tests > OsvGate (next@16.3.8 advisories, the lead fixes `next` repo-wide), wait for the lead's bump on INT, then merge INT (keep info.version at INT's value, regenerate INDEX.md with `python3 tools/slice-contract.py` and openapi.d.ts with `cd web && npm run gen:contract`, never hand-merge them), run `RouteInventoryTest`, `ContractConformanceTest`, `NationalDashboardApiTest`, push once, declare "backend-reports candidate <full sha>" when the whole run is green on that sha. (2) Any other red job: read it (GitHub API `actions/runs/<id>/jobs`), fix, same loop.
+**Then:** reports from `docs/reports/*.md` when the lead files them (none yet). Open checker items (documented below): login needs attendance check-in as well as download; history is filed under a route's current zone; weekend days come from cfg.calendar.weekend_days, not Friday; outlets sold to by two routes count once per route.
+**Traps:** `pgrep -f gradlew` matches your own shell, use `pgrep -f "[g]radle-wrapper"`; local tests need `pg_ctlcluster 16 main start` and the aron_test role/db; run each gradle command in the background and poll, foreground calls time out at 10 minutes; `RouteInventoryTest` needs every route's scope-case line to name a test whose source contains the path.
+
 ## WAVE 4 (2026-10-22, session 3 again): national dashboard (docs/34 s2)
 Branch `lane/backend-reports`; contract 1.4.0 first (a18fc5fb, fixed in b2f2976a), then code.
 
@@ -9,14 +15,17 @@ Branch `lane/backend-reports`; contract 1.4.0 first (a18fc5fb, fixed in b2f2976a
 - **Eight card queries + filter options + freshness** (`NationalDashboard.kt`), **pins, popup, route map, sale position** (`NationalMaps.kt`), **HTTP routes** (`NationalDashboardApi.kt`, wired in `Wiring.kt`), scope from the token on every query, BRAND filter through `BrandScopeResolver` (default none until authz lands its `brands` claim).
 - Tests: `NationalDashboardTest` (brief arithmetic: channel STD = cigarette card, channel calls = CPR calls, brand memo counts not additive, daily target 2 500 + 1 250 over 25 working days, midnight job), `NationalMapsTest` (81.83 m, 3 470.55 m path, pin boundaries), `NationalDashboardApiTest` (HTTP, scope, roles, brand user). `ContractConformanceTest`, `RouteInventoryTest`, `shared:contract:jvmTest`, redocly lint green.
 
-### BLOCKED on db (request filed): `docs/requests/db-backend-reports-dashboard-summaries.md`
-Needs `dw.agg_daily_outlet_sku`, `dw.agg_daily_route_variant`, `dw.route_last_position`, `dw.summary_freshness`, the listed columns on `dw.dim_geo`, `dw.dim_product`, `dw.agg_daily_route`, `dw.agg_daily_zone`, `dw.fact_visit`, and route class (normal/manual/dummy). Until the migration is on INT the endpoints answer 503; tests use `dashboard_summaries_test.sql` (analytics) and `dashboard_summaries_shim.sql` (backend/app, loaded by ApiWorld). **Delete both the day the real migration lands.**
+### db delivered (V0093-V0101 on INT): test shims deleted
+The summary tables, route class, house dedupe, product codes and `app.route_monthly_target` are the real migrations now; the two test shims are gone and every test runs on them. Targets are read from `app.route_monthly_target` (not `app.target`).
+
+### Entry units (android-units request)
+`CategoryVolume` (TSO dashboard `by_category`) carries `entry_unit` (pack|dozen) and `qty_entered` (Decimal3, summed per SKU over `base_per_pack`); `route-std` rows (AMO report) carry `entry_unit` and `base_per_pack` per SKU. Default entry units only (pack, dozen); the `cfg.sale.qty_entry_unit` override is not read server-side. Tell android-units: shape pushed.
 
 ### Decisions (to log in DECISIONS.md by the lead)
 - D-DASH-03 completed call = sr_call visit with outcome not null and not abandoned/not_reached; geo-validated = server verdict (else phone) in_range; pin geo % = validated/completed of that route today, no call yet = green.
 - D-DASH-04 contact (SR and outlet phone) is returned null: the phone numbers are PII and only the step-up read path may show them; wire it with PiiReadBudget when the web asks.
 - D-DASH-05 route map path and sale position are point reads of one route-day / one outlet-day (`dw.fact_geo_fix`, `dw.fact_visit`, and `app.memo` for new/repeat/edited); the cards read summaries only.
-- D-DASH-06 targets are read from `app.target` (route scope, sku level) until db delivers `route_monthly_target`; working days come from Fridays + global `app.calendar_holiday` (zone-scoped holidays ignored for the national figure).
+- D-DASH-06 targets are read from `app.route_monthly_target`; working days come from Fridays + global `app.calendar_holiday` (zone-scoped holidays ignored for the national figure).
 - D-DASH-07 channel calls and CPR count normal planned routes only; sales, channel STD and geo fencing count all routes.
 - Contract: `SalePosition.radius_m` is 10..5000 (the stored radius), not the enum 20/50/100.
 

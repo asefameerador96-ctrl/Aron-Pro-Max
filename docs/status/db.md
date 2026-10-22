@@ -2,6 +2,119 @@
 
 Updated with every push. Rows of Day 1: N-005, N-006, N-007, N-008 (`python3 tools/my-rows.py db 1 --full`).
 
+## Session 8, 2026-10-22 (lane/db, INT 529b02f6 merged): in progress
+
+All edits below are in place in V0087-V0104 (none is on INT yet; INT stops at V0086), plus the new V0105/V0106.
+
+| Job | State | What |
+|---|---|---|
+| 1 CI on e1250831 | run 1335: gates, android, release APKs, images, infra green; backend/web running | local on e1250831's tree: `ContractConformanceTest` failed (`/admin/permissions` lists NATIONAL/BRAND, absent from the contract enum before INT 658f65d0); fixed by merging INT 658f65d0, which carries backend-authz's contract. Full JVM suite re-run on the new tree |
+| 1b CI run #1341 on 275438fb | red, fixed | `backend:platform` **PendingAuthzSchemaTest** (backend-authz's scaffold) asserts its schema is still missing; with V0087-V0090/V0105 it is not. Removed the scaffold as its comment orders ("delete with the push that picks the migrations up"): `PendingAuthzSchema` + its FreshDb call, the test, `resources/pending/authz-wave4.sql`; coverage in OwnerDirectiveV0087Test (+ NATIONAL holds TOP's role_grant_map). Local trap: parallel modules exhaust 100 Postgres connections when another client holds some; leftover `aron_be_*` databases kept connections open, so drop them before a run |
+| 1c merges (lead 14:00) | done | INT f6278fc6 and lane/backend-admin 98651d47 merged. **backend-authz files removed** (lead-approved, nothing else of theirs): `backend/platform/src/test/kotlin/com/aktcl/aron/backend/platform/PendingAuthzSchemaTest.kt`, `backend/platform/src/testFixtures/resources/pending/authz-wave4.sql`, the `PendingAuthzSchema` object and its `FreshDb` call in `backend/platform/src/testFixtures/kotlin/com/aktcl/aron/backend/platform/TestDatabases.kt`. **backend-admin's pending fixtures no-op:** `ApiWorld` applies `pending/route_monthly_target.sql` and `pending/user-access.sql` only when `to_regclass` finds the table absent; V0089/V0096 create both, so they are skipped. Proof: (a) the whole `:backend:app:test` suite on this tree (RouteTargets and UserAccess tests run on db's tables); (b) applying both files after V0001-V0106 changes nothing (`pg_dump -s` before/after identical apart from the dump's random restrict token). The files themselves are conditional and idempotent (IF NOT EXISTS): untouched, backend-admin deletes them |
+| candidate | **a60d941e declared** (CI #1352 green on all 9 jobs; local 1434 tests, 0 failed) | |
+| a60d941e | **landed** on INT 529b02f6; dev deploy #238 applied V0087-V0106, dev seed Succeeded, slice smoke PASS (all steps) | messages sent: backend-authz, backend-reports; mdm note at the top of `db-mdm-device-command-answer.md` (mdm #1 archived) |
+| relay N3 | in the next candidate | **V0107** copies TOP's role_grant_map rows to NATIONAL then deletes TOP's (idempotent); populated-DB test (a TOP-only grant ends on NATIONAL, TOP holds none) |
+| relay seed 07 | in the next candidate: taken from lane/backend-authz 3b7747b5 unchanged, README row, test (re-run keeps a narrowed grant) | `db/seed/07_admin_module_grants.sql` (lane/backend-authz 3b7747b5): 15 modules = V0089 CHECK = contract AdminModule; loaded by name order; overlaps seed 01's admin1001 block (fold when it arrives) |
+| 2 V0093 (lead ruling) | done | unique active-house index dropped (in place); `is_active`, the one-off dedupe and dim_geo house columns stay; test asserts duplicates are allowed and the index is absent; `db-wave4-tables.md` updated |
+| 3 TOP -> NATIONAL | done | backend-authz 8ed44597 reached INT (658f65d0): **V0105** TOP users -> NATIONAL (scope_version + 1) + `app_user_no_top` NOT VALID, **V0106** validates; held file deleted; tests: populated DB re-roles `qatop1` to NATIONAL\|2, a TOP insert is refused (23514) |
+| 6a BRAND menu | done (in place, V0087) | BRAND default of `cfg.web.menu_by_role` gains `credentials/change_password [write_own]` (backend-authz's fix) |
+| 4 Opus checker V0096/V0102 | round 3 FAIL, fixed; round 4 PASS (+3 should-fixes taken) | **blocker:** a pending factory reset that expires broke both device_command CHECKs, so mdm's pull UPDATE raised 23514 forever for that phone; fixed. Guard now polices UPDATE (forward-only states, fixed request columns, write-once approval/delivery/result), reset needs a requester. V0096: `batch_uuid` FK to `route_target_batch`, month CHECK `extract(day) = 1`. New test `v0102CommandsMoveForwardOnlyAndAPendingResetCanExpire`. Round 4 (PASS, V0105/V0106 safe): approver set only with pending -> queued/rejected and on resets only; sig only with the move to queued; result only with the move to acked/failed; sent_at/push_sent_at only in their states (refused cases tested). mdm told in `db-mdm-device-command-answer.md`. Approver role stays API-only (noted) |
+| 5 smoke outlet | done by db (no infra lane this wave) | `infra/sql/devseed-smoke-outlet.sql`: SMOKE-SR-001 (moved to GUL-SR-2 on dev, placement closed/reopened, location appended), -002 GUL-SR-1, -003 BAN-SR-11; on the test profile (no Gulshan seed) SMOKE-SR-001 stays on MIR-SR-D (BackendCoreAsksV0061Test loads the file). `infra/scripts/slice-smoke.py` takes the code list; Friday reported as "no route by design". Proved on a dev-profile and a test-profile database (second run changes nothing); infra SliceSmoke 5/6 locally (6th needs compiled Bicep) |
+| 6 seed | complete | Friday-aware schedule, 351 target rows Oct-Dec, three holidays already in seed 06; evidence doc gains the smoke outlets (21 outlets a route on dev) |
+
+## HANDOVER (session 7 -> session 8), 2026-10-22, lane/db e1250831 (INT 256572bb merged)
+
+**Pushed, CI to judge.** Local evidence before the push (lead stopped the run at 557k context): db 267/0, backend
+platform 79, auth 71, sync 34, masterdata 192, config 68, media 16, all green on lane/db alone; **analytics, notify,
+app and shared:contract were not run on the final tree.** squawk 0 on V0087-V0104. Opus checker: round 1 FAIL (fixed),
+round 2 PASS (it reviewed the tree before the backend-admin/mdm realignment of V0096/V0102; those two are unchecked).
+Consumers' contract and per-lane deltas: `docs/requests/db-wave4-tables.md`; mdm answer `db-mdm-device-command-answer.md`.
+
+| Migration | What it does | Source |
+|---|---|---|
+| V0087 / V0088 | role codes NATIONAL (11), BRAND (12); NATIONAL inherits TOP's role cfg values, BRAND the web-role defaults; `*_roles` lists naming TOP gain NATIONAL; menu_by_role NATIONAL = TOP, BRAND = dashboard + reports; role_grant_map TOP -> NATIONAL. V0088 validates role_def_role_check | backend-authz A1-A4 |
+| held | TOP users -> NATIONAL + `app_user_no_top`: `db/held/authz_retire_top.sql` (INT tests still insert TOP users). Ship as the next pair when backend-authz says its tests are ready | backend-authz A4/A5 |
+| V0089 | `app.user_module_grant` (15 fixed modules, r/w), admins seeded w; seed 01 grants admin1001 (guarded by to_regclass) | backend-authz B |
+| V0090 | `app.user_brand_scope` (brand nodes only) | backend-authz C |
+| V0091 / V0092 | `user_scope.node_type` += house | backend-authz D |
+| V0093 | `house.is_active` (generated from status), one-off dedupe, unique active (territory, name) index, dim_geo house_id/name | brief s1 |
+| V0094 / V0095 | `route.route_class` normal/manual/dummy_br/dummy_institutional (+ dim_geo, version) | backend-reports A1 |
+| V0096 | `app.route_monthly_target` PK (route, sku, month) + `app.route_target_batch` | backend-admin DDL |
+| V0097 | `dw.v_calendar`, `v_calendar_month`, `v_working_day`, `v_route_monthly_target` | brief s2 / reports A5 |
+| V0098 | dim_product segment/brand/variant codes | reports A4 |
+| V0099 | agg_daily_outlet_sku (partitioned), agg_daily_route_variant, route_last_position, agg_daily_route/zone columns, summary_freshness | reports B1-B5, B7 |
+| V0100 | fact_visit radius_m, outlet/fix lat/lng, force_photo_uuid, completed, server_distance_m, within_fence (generated) | reports B6 |
+| V0101 | `dw.v_final_submit_log` (first submit wins) | brief s3.3 |
+| V0102 / V0103 | `mdm_policy`, `device.mdm_policy_id/version`, `device_command` + guard trigger, `dw.v_device_command`; V0103 validates the device constraints | mdm DDL |
+| V0104 | lighters 25/box, entry units pack/pack/pack/dozen, cfg.sale.qty_entry_unit default, `cfg.sale.allow_loose_base_units` | docs/34 s4.2 |
+| outlet.channel | nothing: NOT NULL with the six channels since V0004 | |
+| seed 06 | Gulshan/Banani dev geography (built, tested in SeedGulshanBananiTest): dev profile only (no 04 config version); replaces 06_dev_real_route.sql; map `docs/evidence/seed-gulshan-banani.md` | D-SEED-02 |
+
+**Session 8, in order:**
+1. Watch CI on e1250831; fix forward. Not yet run here on the final tree: `:backend:analytics:test`, `:backend:notify:test`,
+   `:backend:app:test`, `:shared:contract:jvmTest`.
+2. **Known clash for backend-reports' branch:** their fixtures (NationalDashboardTest x11, NationalMapsTest x6,
+   NationalDashboardApiTest x5) insert duplicate ACTIVE houses on purpose; V0093's unique index `house_active_name_once`
+   refuses them (they called the index optional). Either drop the index in a new migration (V0105) or ask them to adapt.
+   Lead's call; my recommendation: drop it (their query de-duplicates; the one-off dedupe stays).
+3. Combined tree (lane/db with the re-role + backend-authz e449edb7 + reports ec0976ed): 68/1325 failed, list sent to
+   backend-authz (TOP inserts, grant-less test admins -> 403, portal-login refusal, password rules). Their work.
+4. Checker the realigned V0096 and V0102 (T1, Opus).
+5. Infra: the dev smoke outlet sits on MIR-SR-D, which the dev seed closes (`db-infra-smoke-gulshan.md`); promote the seed
+   with that change. Checker follow-up before the final account: retention of `route_last_position` (unpartitioned,
+   personal) and `fact_visit.fix_lat/lng` (event_fact horizon > fix class).
+6a. **backend-authz (12:28 UTC): lane/backend-authz 8ed44597 (lane CI run 1328 green) creates no TOP users and logs
+   AMO/SR in only from phones: ship `db/held/authz_retire_top.sql` now** as the next pair (V0105 + V0106 validate, or
+   after the house-index migration), and mirror their BRAND menu fix in a new migration: the BRAND default of
+   `cfg.web.menu_by_role` also gets `{"menu":"credentials","page":"change_password","actions":["write_own"]}` (V0087 is
+   pushed: fix forward). Message backend-authz the INT sha once these are on INT (they then delete their pending fixture).
+6. Replies owed: candidate sha to backend-authz (session_019B2UpUbUmdw1wR25U3zPMj), backend-reports
+   (session_01KfUFry6iMtXCCgfCCjZUCi), mdm (session_01DVRkAnyU5vkAm8vSEydVoa), backend-admin's next session; route.kind stays
+   sr/amo, the API rule becomes `kind = 'sr' AND route_class IN ('normal','manual')`.
+
+## Session 7, 2026-10-22 (Wave 4, docs/34): detail
+
+**Built on lane/db:** V0087-V0103 (one test per migration, `OwnerDirectiveV0087Test`), the Gulshan/Banani dev seed
+(`SeedGulshanBananiTest`), data dictionary regenerated, squawk 0. Realigned the same day to the two lane requests that
+arrived mid-build (backend-authz `db-backend-authz-roles.md` e449edb7, backend-reports
+`db-backend-reports-dashboard-summaries.md` ec0976ed). Consumers' contract: `docs/requests/db-wave4-tables.md`.
+Opus checker: round 1 FAIL (1 blocker: factory-reset approval could ride in with the insert; 3 should-fix), all fixed.
+
+| Row (docs/lanes/db.md Wave 4) | Migration | Note |
+|---|---|---|
+| NATIONAL, BRAND + TOP migration | V0087/V0088 | backend-authz's A1-A5 as written; TOP users -> NATIONAL (scope_version+1), `*_roles` lists gain NATIONAL, `app_user_no_top`. **Promote with or after lane/backend-authz** (INT tests insert TOP users) |
+| user_module_grant | V0089 | 15 fixed modules (contract AdminModule), admins seeded w; seed 01 grants admin1001 |
+| user_brand_scope | V0090 | brand nodes only |
+| user_scope house | V0091/V0092 | backend-authz's D |
+| house.is_active + dedupe | V0093 | generated from status; one active house per (territory, normalised name); dim_geo house columns |
+| route.kind | V0094/V0095 | `route_class` (route.kind is sr/amo since V0002; backend-reports' name) |
+| outlet.channel NOT NULL | none | NOT NULL with the six channels since V0004 (test) |
+| route_monthly_target | V0096 | upload table + live/superseded rows (only a later upload of the same month supersedes), base units. backend-reports assumed `app.target`: told |
+| calendar | V0097 | `dw.v_calendar`, `v_calendar_month`, `v_working_day`, `v_route_monthly_target` over dim_date + calendar_holiday |
+| dim_product codes | V0098 | backend-reports A4 |
+| summary tables | V0099 | backend-reports B1-B5, B7 as written (B1 prefix index dropped) |
+| call distance/within_fence/completed | V0100 | backend-reports B6 + server_distance_m, within_fence generated |
+| final_submit_log | V0101 | view, first submit wins |
+| device_command | V0102 | two-person factory reset (approver SUPERADMIN or ADMIN mdm=w, never requester), forward-only, write-once delivery, support_ro without result |
+| SKU pack sizes | V0103 | lighters 25, entry pack/pack/pack/dozen, qty_entry_unit default, `cfg.sale.allow_loose_base_units` |
+| Seed Gulshan/Banani | seed 06 | dev profile only (no 04 config version); Mirpur fixture kept for CI/backend tests; map `docs/evidence/seed-gulshan-banani.md` |
+
+**Open / for the lead:**
+- infra: the dev slice smoke's outlet is on MIR-SR-D, which the dev seed closes: `docs/requests/db-infra-smoke-gulshan.md`;
+  promote the seed together with that change (or keep the dev seed off).
+- backend-reports: targets are `app.route_monthly_target` / `dw.v_route_monthly_target`, not `app.target`.
+- Owner/AKTCL: Durga Puja 2026 date in the dev seed is 2026-10-21 (lunar; confirm).
+- Decisions for DECISIONS.md (lead copies): D-DB-W4-01 `route_class` not `route.kind` (name taken); D-DB-W4-02 the
+  calendar is views over dim_date + calendar_holiday, national holidays only; D-DB-W4-03 the Gulshan seed is gated to the
+  dev profile by the absence of 04's config version, because ~250 backend assertions key on the Mirpur fixture;
+  D-DB-W4-04 lighter catalogue pack size 25 (owner's "box of 25"), prices stay per piece; D-DB-W4-05 targets in a new
+  `route_monthly_target`, the docs/27 `app.target` hook stays empty.
+
+**Traps (new):** Maven Central 429 locally: copy the mirror init script of docs/24-build-spec-verification s9 to
+`~/.gradle/init.d/` (never commit). PL/pgSQL `IF x <> CASE ... THEN ... END THEN` does not parse (IF stops at the first
+THEN). A seed statement on a table newer than some test's Flyway target needs a `to_regclass` guard (BackendCoreAsksV0061Test
+migrates to V0060 and loads the seed).
+
 ## Done
 
 - **N-005 schema v1a** (`db/migrations/V0001`–`V0006`): schemas `app`, `dw`, `stg`; helpers `app.dhaka_date`,

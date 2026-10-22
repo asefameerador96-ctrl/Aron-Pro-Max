@@ -1,0 +1,24 @@
+path: /v1/admin/mdm/devices/{device_id}/commands
+method: get
+operation:
+  tags:
+  - admin-mdm
+  operationId: listMdmDeviceCommands
+  summary: Commands sent to one device and their state.
+  parameters:
+  - $ref: '#/components/parameters/DeviceIdPath'
+  - $ref: '#/components/parameters/Limit'
+  - $ref: '#/components/parameters/Cursor'
+  responses:
+    '200':
+      description: Page of commands.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/MdmCommandPage'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'
+    '404':
+      $ref: '#/components/responses/NotFound'

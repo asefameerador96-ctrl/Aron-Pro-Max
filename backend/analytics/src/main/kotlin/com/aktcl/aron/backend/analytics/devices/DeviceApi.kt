@@ -113,7 +113,7 @@ fun Route.deviceRoutes(d: DeviceDeps) {
 }
 
 /** The wire bytes decompressed when the request was sent `Content-Encoding: gzip` (capped at [MAX_BODY]); the proof is over the wire bytes. */
-private fun ApplicationCall.unzip(b: ByteArray): ByteArray {
+internal fun ApplicationCall.unzip(b: ByteArray): ByteArray {
     if (request.header(HttpHeaders.ContentEncoding)?.lowercase() != "gzip") return b
     return try {
         GZIPInputStream(java.io.ByteArrayInputStream(b)).use { gz ->
@@ -125,7 +125,7 @@ private fun ApplicationCall.unzip(b: ByteArray): ByteArray {
 }
 
 /** The body as sent, size-capped, gunzipped when sent gzip (the proof hashes the bytes on the wire, so callers pass what they read before decoding). */
-private suspend fun ApplicationCall.rawBody(): ByteArray {
+internal suspend fun ApplicationCall.rawBody(): ByteArray {
     request.header(HttpHeaders.ContentLength)?.toLongOrNull()?.let { if (it > MAX_BODY) throw ApiProblem(ProblemCode.ERR_PAYLOAD_TOO_LARGE, "body above $MAX_BODY bytes") }
     val raw = receiveChannel().readRemaining(MAX_BODY + 1).readByteArray()
     if (raw.size > MAX_BODY) throw ApiProblem(ProblemCode.ERR_PAYLOAD_TOO_LARGE, "body above $MAX_BODY bytes")
@@ -136,7 +136,7 @@ private suspend fun ApplicationCall.rawBody(): ByteArray {
  * `X-Device-Proof` of the phone itself: ES256 over `aron-proof-v1`, `device`, uuid, `METHOD path`, sha256 hex of the body (empty for none), nonce bucket.
  * A missing or bad proof, or an unknown phone, is 401 `ERR_DEVICE_PROOF_INVALID` (the same answer, so the endpoint does not tell who is enrolled).
  */
-private fun ApplicationCall.authDevice(d: DeviceDeps, body: ByteArray): DeviceService.DeviceRow {
+internal fun ApplicationCall.authDevice(d: DeviceDeps, body: ByteArray): DeviceService.DeviceRow {
     val bad = ApiProblem(ProblemCode.ERR_DEVICE_PROOF_INVALID, "device proof invalid")
     val uuid = request.header("X-Device-Id")?.lowercase()?.takeIf { runCatching { java.util.UUID.fromString(it).toString() == it }.getOrDefault(false) } ?: throw bad
     val proof = request.header("X-Device-Proof") ?: throw bad

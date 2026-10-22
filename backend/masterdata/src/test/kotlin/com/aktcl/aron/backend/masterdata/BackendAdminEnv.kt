@@ -63,6 +63,9 @@ class BackendAdminEnv : AutoCloseable {
     init {
         val ddl = BackendAdminEnv::class.java.getResource("/proposed_V0014_backend_admin.sql")!!.readText()
         seeded.fresh.dataSource.connection.use { c -> c.createStatement().use { it.execute(ddl) } }
+        // Pending db migration (docs/requests/backend-admin-route-target-tables.md): delete this and the resource when it lands.
+        val targetDdl = BackendAdminEnv::class.java.getResource("/proposed_route_monthly_target.sql")!!.readText()
+        seeded.fresh.dataSource.connection.use { c -> c.createStatement().use { it.execute(targetDdl) } }
         db.jdbi.useHandle<Exception> { h ->
             h.execute("INSERT INTO app.division (code, name, wing_id) SELECT 'D-FAR', 'Far division', wing_id FROM app.division WHERE code = 'D-DHK'")
             h.execute("INSERT INTO app.territory (code, name, division_id) SELECT 'T-FAR', 'Far territory', id FROM app.division WHERE code = 'D-FAR'")
@@ -132,6 +135,7 @@ class BackendAdminEnv : AutoCloseable {
                     feedbackRoutes(FeedbackDeps(db, reach, cfg, guard))
                     entryUnlockRoutes(EntryUnlockDeps(db, reach, cfg, guard))
                     duesAdjustmentRoutes(DuesAdjustmentDeps(db, reach, guard))
+                    routeTargetRoutes(RouteTargetDeps(db, guard))
                     webEntryRoutes(WebEntryDeps(db, reach, cfg, guard))
                     adminContentRoutes(AdminContentDeps(db, blob, cfg, guard))
                 }

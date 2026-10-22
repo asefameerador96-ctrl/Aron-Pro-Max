@@ -1,0 +1,22 @@
+path: /v1/admin/mdm/devices/{device_id}
+method: get
+operation:
+  tags:
+  - admin-mdm
+  operationId: getMdmDevice
+  summary: One device with its latest status report, policy and recent commands.
+  parameters:
+  - $ref: '#/components/parameters/DeviceIdPath'
+  responses:
+    '200':
+      description: Device detail.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/MdmDeviceDetail'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'
+    '404':
+      $ref: '#/components/responses/NotFound'

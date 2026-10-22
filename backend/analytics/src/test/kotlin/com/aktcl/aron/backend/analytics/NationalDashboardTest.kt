@@ -39,7 +39,6 @@ class NationalDashboardTest {
         fresh = FreshDb.create()
         fresh.dataSource.connection.use { c ->
             c.createStatement().use { it.execute(resource("seed_day.sql")) }
-            c.createStatement().use { it.execute(resource("dashboard_summaries_test.sql")) }
             c.createStatement().use { it.execute(resource("national_day_extra.sql")) }
             for (u in listOf("a1", "a2", "a4", "a5")) c.createStatement().use {
                 it.execute("INSERT INTO app.domain_event (event_type, aggregate_type, aggregate_id, business_date, source_client_uuid) VALUES ('memo.created','memo','x','2026-10-04','00000000-0000-4000-8000-0000000000$u')")
@@ -146,6 +145,15 @@ class NationalDashboardTest {
         assertEquals(3, svc.geoFencing(zones(z1), all).total_calls)
         assertEquals(listOf(45L), svc.breakdown(zones(z1), NationalBreakdownRequest(all, "std", "segment")).items.map { it.value })
         assertEquals(3, svc.breakdown(zones(z1), NationalBreakdownRequest(all, "memo", "segment")).items.single().value)
+    }
+
+    @Test
+    fun checker_filterOptionsListOnlyActiveHousesAndTheirZones() {
+        sql("UPDATE app.house SET status = 'inactive' WHERE code = 'H1D'")                 // a merged duplicate: inactive (D-SCOPE-TREE-01)
+        fresh.db.jdbi.useHandle<Exception> { Aggregator.refreshDimensions(it) }
+        val o = svc.filterOptions(national())
+        assertEquals(listOf("H1"), o.houses.map { it.code })
+        assertEquals(listOf("Z1"), o.zones.map { it.code })                                // zone 2 still names the inactive duplicate
     }
 
     @Test

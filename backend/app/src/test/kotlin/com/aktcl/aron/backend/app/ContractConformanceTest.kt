@@ -259,6 +259,18 @@ class ContractConformanceTest {
         /** Rank of an operation in the run: 0 without a producer, else one more than its deepest producer. */
         fun depth(key: String): Int = FX[key]?.after?.maxOfOrNull { depth(it) + 1 } ?: 0
 
+        private const val MDM_PENDING = "7d1c0a52-3b6e-4f08-9a4d-0c2e5b8f1a63"
+        /** The id of the proof phone, the target of the MDM fixtures. */
+        private fun mdmPhoneId(x: Ctx): String = x.world.fresh.db.jdbi.withHandle<Long, Exception> { h ->
+            h.createQuery("SELECT id FROM app.device WHERE device_uuid = CAST(:u AS uuid)").bind("u", ApiWorld.PROOF_PHONE).mapTo(Long::class.java).one()
+        }.toString()
+        private fun mdmPolicy(n: com.fasterxml.jackson.databind.node.ObjectNode, name: String) {
+            n.put("name", name); n.putArray("allowed_packages").add("com.whatsapp")
+            n.putArray("block_windows").addObject().apply { putArray("days").add(1).add(2); put("start", "09:00"); put("end", "18:00"); putArray("packages").add("com.facebook.katana") }
+            n.putObject("kiosk").put("enabled", false); n.putObject("location_sampling").put("mode", "on_demand")
+            n.remove("version"); n.remove("reason"); n.remove("description")
+        }
+
         private fun obj(n: com.fasterxml.jackson.databind.JsonNode?) = n as? com.fasterxml.jackson.databind.node.ObjectNode
 
         /**
@@ -287,7 +299,22 @@ class ContractConformanceTest {
             "POST /v1/feedback" to Fx(body = { n, _, _ -> n.put("category_code", "suggestion") }),
             "POST /v1/leave" to Fx(body = { n, _, _ -> n.put("leave_type_code", "casual") }),
             // Calendar and price writes take effect in the future only (ERR_MASTER_EFFECTIVE_DATE_PAST, finance.back_date).
-            "POST /v1/admin/calendar/holidays" to Fx(body = { n, _, _ -> n.put("date", FUTURE) }),
+            // Wave 4 (docs/34): the route target upload previews (dry run) a row of the throwaway month; the outlet import previews one new outlet;
+            // a holiday is revoked after it is declared; the duplicate houses merge on the kept house's version; the ADMIN user's grants change.
+            "PUT /v1/admin/route-targets" to Fx(body = { n, _, _ ->
+                n.put("dry_run", true); n.remove("change_reason")
+                n.putArray("rows").addObject().put("route_code", "MIR-SR-D").put("sku_code", "MaxR-10S").put("month", FUTURE.substring(0, 7)).put("qty_base", 100)
+            }),
+            "POST /v1/admin/outlets/import" to Fx(body = { n, _, x ->
+                val cluster = x.world.fresh.db.jdbi.withHandle<String, Exception> { h -> h.createQuery("SELECT c.name FROM app.cluster c JOIN app.zone z ON z.id = c.zone_id WHERE z.code = 'Z-MIR' ORDER BY c.id LIMIT 1").mapTo(String::class.java).one() }
+                n.put("dry_run", true); n.remove("change_reason")
+                n.putArray("rows").addObject().put("name", "QA Import Outlet").put("owner_name", "QA Owner").put("zone_code", "Z-MIR").put("cluster", cluster).put("channel", "GT").put("outlet_kind", "retail")
+            }),
+            "POST /v1/admin/calendar/holidays" to Fx(body = { n, _, _ -> n.put("date", FUTURE) }, capture = { _, b, x -> if (x["holiday_id"] == null) x["holiday_id"] = b.path("id").asText() }),
+            "POST /v1/admin/calendar/holidays/{}/revoke" to Fx(after = listOf("POST /v1/admin/calendar/holidays"), path = { _, x -> mapOf("holiday_id" to x.need("holiday_id")) }),
+            "POST /v1/admin/geo/house/merge" to Fx(body = { n, _, x -> n.put("keep_id", x.id("dup_keep")); n.putArray("merge_ids").add(x.id("dup_merge")) }),
+            "GET /v1/admin/users/{}/access" to Fx(path = { _, x -> mapOf("id" to x.id("access_user").toString()) }),
+            "PUT /v1/admin/users/{}/access" to Fx(path = { _, x -> mapOf("id" to x.id("access_user").toString()) }, body = { n, _, _ -> n.remove("brand_ids"); n.putObject("modules").put("outlets", "r") }),
             "POST /v1/admin/prices/preview" to Fx(body = { n, _, _ -> n.put("valid_from", FUTURE) }),
             // Publishing prices needs the preview of the same batch first (ERR_REQUEST_STATE otherwise).
             "POST /v1/admin/prices" to Fx(after = listOf("POST /v1/admin/prices/preview"), body = { n, _, _ -> n.put("valid_from", FUTURE) }),
@@ -464,6 +491,45 @@ class ContractConformanceTest {
             ),
             "POST /v1/media/upload" to Fx(raw = { c, _ -> photoUpload(ApiWorld.v4("upload/${c.user}")) }),
             "POST /v1/day/final-submit" to Fx(after = listOf("POST /v1/web-entry/qc", "POST /v1/web-entry/route-day")),
+            // MDM (lane mdm): the proof phone is the target, so the SR phone's state never moves.
+            "GET /v1/devices/me/commands" to Fx(headers = { _, _ -> mapOf("X-Device-Id" to ApiWorld.PROOF_PHONE) }, proof = deviceProof(ApiWorld.PROOF_PHONE)),
+            "POST /v1/admin/mdm/devices/{}/commands" to Fx(
+                path = { _, x -> mapOf("device_id" to mdmPhoneId(x)) },
+                body = { n, c, _ -> n.put("command_id", ApiWorld.v4("mdmcmd/${c.user}")); n.put("type", "lock"); n.put("reason", "conformance lock"); n.remove("params"); n.remove("ttl_h") },
+                capture = { c, b, x -> if (c.user == "admin1001") x["mdm_cmd"] = b.path("command_id").asText() },
+            ),
+            "POST /v1/devices/me/commands/{}/ack" to Fx(
+                after = listOf("POST /v1/admin/mdm/devices/{}/commands"),
+                path = { _, x -> mapOf("command_id" to x.need("mdm_cmd")) },
+                headers = { _, _ -> mapOf("X-Device-Id" to ApiWorld.PROOF_PHONE) }, proof = deviceProof(ApiWorld.PROOF_PHONE),
+                body = { n, _, _ -> n.put("state", "acked"); n.remove("result") },
+            ),
+            // A factory reset waiting for a second person (requested by amo1001's row); the web admins decide.
+            "POST /v1/admin/mdm/commands/{}/decision" to Fx(
+                prepare = { _, x ->
+                    val now = x.world.clock.now()
+                    x.world.fresh.db.jdbi.useHandle<Exception> { h ->
+                        h.createUpdate("INSERT INTO app.device_command (command_id, device_id, type, state, reason, request_sha256, created_by, created_at, expires_at) VALUES (CAST(:id AS uuid), :d, 'factory_reset', 'pending_approval', 'conformance fixture', decode(repeat('00', 32), 'hex'), (SELECT id FROM app.app_user WHERE username = 'amo1001'), :c, :e)")
+                            .bind("id", MDM_PENDING).bind("d", mdmPhoneId(x).toLong())
+                            .bind("c", java.time.OffsetDateTime.ofInstant(now.minusSeconds(60), java.time.ZoneOffset.UTC)).bind("e", java.time.OffsetDateTime.ofInstant(now.plusSeconds(3600), java.time.ZoneOffset.UTC)).execute()
+                    }
+                },
+                path = { _, _ -> mapOf("command_id" to MDM_PENDING) },
+                body = { n, _, _ -> n.put("decision", "reject"); n.put("reason", "conformance decision") },
+            ),
+            "POST /v1/admin/mdm/policies" to Fx(
+                body = { n, c, _ -> mdmPolicy(n, "Conformance ${c.user}") },
+                capture = { c, b, x -> if (c.user == "admin1001") x["mdm_policy"] = b.path("policy_id").asText() },
+            ),
+            "GET /v1/admin/mdm/policies/{}" to Fx(after = listOf("POST /v1/admin/mdm/policies"), path = { _, x -> mapOf("policy_id" to x.need("mdm_policy")) }),
+            "PUT /v1/admin/mdm/policies/{}" to Fx(
+                after = listOf("POST /v1/admin/mdm/policies"), path = { _, x -> mapOf("policy_id" to x.need("mdm_policy")) },
+                body = { n, c, _ -> mdmPolicy(n, "Conformance ${c.user}"); n.put("version", 1) },
+            ),
+            "PUT /v1/admin/mdm/devices/{}/policy" to Fx(
+                after = listOf("POST /v1/admin/mdm/policies"), path = { _, x -> mapOf("device_id" to mdmPhoneId(x)) },
+                body = { n, _, x -> n.put("policy_id", x.need("mdm_policy").toLong()); n.put("reason", "conformance assign") },
+            ),
         )
     }
 

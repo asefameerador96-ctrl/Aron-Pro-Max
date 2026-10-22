@@ -1,9 +1,10 @@
 import Link from "next/link";
 import { HouseDedupe } from "@/components/admin/house-dedupe";
 import { loadAllRows } from "@/components/admin/crud/server";
-import { one, PageHeading, type SearchParams } from "@/components/admin/kit/page";
+import { apiGet, one, PageHeading, type SearchParams } from "@/components/admin/kit/page";
 import { Forbidden } from "@/components/forbidden";
-import { houseGroups, type HouseRow } from "@/lib/admin/house-dedupe";
+import type { Schemas } from "@/contract/types";
+import { serverGroups, type HouseRow } from "@/lib/admin/house-dedupe";
 import { ADMIN_PORTAL_ROLES, hasRole } from "@/lib/auth/roles";
 import { requireSession } from "@/lib/auth/require";
 import { getLocale } from "@/lib/auth/service";
@@ -14,9 +15,10 @@ export default async function HouseDedupePage({ searchParams }: { searchParams: 
   const [session, locale, sp] = await Promise.all([requireSession(), getLocale(), searchParams]);
   if (!hasRole(session.user.role, ADMIN_PORTAL_ROLES)) return <Forbidden locale={locale} />;
   const showAll = one(sp.all, 1) === "1";
-  const [houses, territories] = await Promise.all([loadAllRows("/v1/admin/geo/house", session.at), loadAllRows("/v1/admin/geo/territory", session.at)]);
-  if (houses.failed || territories.failed) return <p role="alert" data-testid="hd-load-failed" className="rounded border border-red-200 bg-red-50 p-3 text-red-800">{t(locale, "hd.load_failed")}</p>;
-  const groups = houseGroups(houses.rows as unknown as HouseRow[], !showAll);
+  // The server names the duplicate groups; the ordinary list adds each house's version (the merge needs the kept house's If-Match).
+  const [dups, houses, territories] = await Promise.all([apiGet<Schemas["HouseDuplicateList"]>("/v1/admin/geo/house/duplicates", session.at), loadAllRows("/v1/admin/geo/house", session.at), loadAllRows("/v1/admin/geo/territory", session.at)]);
+  if (!dups.ok || houses.failed || territories.failed) return <p role="alert" data-testid="hd-load-failed" className="rounded border border-red-200 bg-red-50 p-3 text-red-800">{t(locale, "hd.load_failed")}</p>;
+  const groups = serverGroups(dups.data, houses.rows as unknown as HouseRow[], !showAll);
   const names = Object.fromEntries(territories.rows.map((r) => [String(r.id), `${String(r.code)} · ${String(r.name)}`]));
   return (
     <div className="space-y-4">

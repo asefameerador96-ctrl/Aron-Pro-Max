@@ -120,11 +120,14 @@ internal class Fields(val obj: JsonObject, allowed: Set<String>) {
 
     fun has(name: String) = name in obj
 
+    /** " (one of A, B)" for an enumerated column, so the portal can show the allowed values with the error. */
+    private fun oneOf(c: Col) = c.values?.takeIf { c.kind == Kind.ENUM }?.let { " (one of ${it.joinToString(", ")})" }.orEmpty()
+
     /** The validated value of [c] (null for JSON null); call only when [has]. */
     fun value(c: Col): Any? {
         val el = obj.getValue(c.name)
         val ptr = "body.${c.name}"
-        if (el is JsonNull) { if (!c.nullable) admBad(ptr, "required", "$ptr must not be null"); return null }
+        if (el is JsonNull) { if (!c.nullable) admBad(ptr, "required", "$ptr must not be null" + oneOf(c)); return null }
         if (el !is JsonPrimitive) admBad(ptr, "invalid_type")
         return when (c.kind) {
             Kind.TEXT -> {
@@ -135,7 +138,7 @@ internal class Fields(val obj: JsonObject, allowed: Set<String>) {
                 if (c.pattern != null && !c.pattern.matches(s)) admBad(ptr, "pattern")
                 s
             }
-            Kind.ENUM -> el.takeIf { it.isString }?.content?.takeIf { it in c.values!! } ?: admBad(ptr, "invalid_value")
+            Kind.ENUM -> el.takeIf { it.isString }?.content?.takeIf { it in c.values!! } ?: admBad(ptr, "invalid_value", "$ptr is not a valid value" + oneOf(c))
             Kind.LONG -> (if (el.isString) null else el.longOrNull)?.takeIf { it in c.min..c.max } ?: admBad(ptr, "out_of_range")
             Kind.INT -> (if (el.isString) null else el.longOrNull)?.takeIf { it in c.min..c.max }?.toInt() ?: admBad(ptr, "out_of_range")
             Kind.DOUBLE -> (if (el.isString) null else el.doubleOrNull)?.takeIf { it.isFinite() && it in c.minD..c.maxD } ?: admBad(ptr, "out_of_range")
@@ -149,7 +152,7 @@ internal class Fields(val obj: JsonObject, allowed: Set<String>) {
         for (c in cols) {
             if (create && !c.onCreate || !create && !c.onPatch) { if (has(c.name)) admBad("body.${c.name}", "unknown_member", "${c.name} cannot be set here"); continue }
             if (has(c.name)) out[c.sqlName] = value(c)
-            else if (create && c.required) admBad("body.${c.name}", "required", "${c.name} is required")
+            else if (create && c.required) admBad("body.${c.name}", "required", "${c.name} is required" + oneOf(c))
         }
         return out
     }

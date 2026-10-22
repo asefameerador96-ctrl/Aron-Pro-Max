@@ -1,0 +1,23 @@
+MdmComplianceFlag:
+  type: string
+  enum:
+  - rooted
+  - mock_location
+  - outdated_app
+  - developer_options
+  - adb_enabled
+  - not_device_owner
+  - location_off
+  - auto_time_off
+  - policy_drift
+  - stale_contact
+  description: 'Derived from the device row and its latest status report. rooted = integrity verdict fail; mock_location
+    =
+
+    mock-location apps present; outdated_app = app_version below the newest published release of the flavour;
+
+    developer_options = developer options on; policy_drift = applied policy older than the rendered one;
+
+    stale_contact = no contact for more than 48 hours.
+
+    '

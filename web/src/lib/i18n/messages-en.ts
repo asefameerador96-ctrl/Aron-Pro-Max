@@ -2,6 +2,7 @@ import { nationalEn } from "./messages-national-en";
 import { w4En } from "./messages-wave4";
 import { dashEn } from "./messages-dash-en";
 import { cfgEn } from "./messages-config";
+import { mdmEn } from "./messages-mdm";
 // English catalogue. Keys must equal messages-bn.ts (tests/i18n.test.ts). {name} placeholders are interpolated by t().
 export const en = {
   "app.name": "Aron",
@@ -432,6 +433,7 @@ export const en = {
   ...dashEn,
   ...nationalEn,
   ...cfgEn,
+  ...mdmEn,
   ...w4En,
   "menu.admin.sr_lifecycle": "SR lifecycle",
   "lifecycle.create.title": "Create the SR",

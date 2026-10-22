@@ -2,4 +2,6 @@
 <resources>
     <string name="aron_dpc_label">আরন ডিভাইস নীতি</string>
     <string name="aron_dpc_description">এই AKTCL ফিল্ড ফোনটি আরনের জন্য সেট করে রাখে।</string>
+    <string name="mdm_notice_title">অ্যারন</string>
+    <string name="mdm_notice_channel">অ্যারন</string>
 </resources>

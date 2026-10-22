@@ -157,9 +157,9 @@ class NationalDashboardService(
             val wd = WorkingCalendar.workingDays(h, month)
             val targets = sql.bind(h.createQuery(
                 """
-                SELECT p.category_code, sum(t.std_target) AS total, count(DISTINCT t.scope_id) AS routes
-                  FROM app.target t JOIN app.target_set ts ON ts.id = t.target_set_id AND ts.status = 'active' JOIN dw.dim_geo g ON g.route_id = t.scope_id JOIN dw.dim_product p ON p.sku_id = t.product_id
-                 WHERE t.month = :m AND t.scope_type = 'route' AND t.product_level = 'sku' AND t.superseded_by_revision_id IS NULL ${sql.geo} ${sql.product}
+                SELECT p.category_code, sum(t.qty_base) AS total, count(DISTINCT t.route_id) AS routes
+                  FROM app.route_monthly_target t JOIN dw.dim_geo g ON g.route_id = t.route_id JOIN dw.dim_product p ON p.sku_id = t.sku_id
+                 WHERE t.month = :m ${sql.geo} ${sql.product}
                  GROUP BY 1
                 """,
             ).bind("m", month.atDay(1))).map { rs, _ -> rs.getString(1) to (rs.getBigDecimal(2) to rs.getInt(3)) }.list().toMap()
@@ -377,8 +377,8 @@ class NationalDashboardService(
             val wings = nodes("SELECT DISTINCT w.id, w.code, w.name FROM dw.dim_geo g JOIN app.wing w ON w.id = g.wing_id WHERE true ${sql.geo} ORDER BY 3") { OptionNode(it.getLong(1), it.getString(2), it.getString(3)) }
             val divisions = nodes("SELECT DISTINCT d.id, d.code, d.name, d.wing_id FROM dw.dim_geo g JOIN app.division d ON d.id = g.division_id WHERE true ${sql.geo} ORDER BY 3") { OptionNode(it.getLong(1), it.getString(2), it.getString(3), wing_id = it.getLong(4)) }
             val territories = nodes("SELECT DISTINCT t.id, t.code, t.name, t.division_id FROM dw.dim_geo g JOIN app.territory t ON t.id = g.territory_id WHERE true ${sql.geo} ORDER BY 3") { OptionNode(it.getLong(1), it.getString(2), it.getString(3), division_id = it.getLong(4)) }
-            val houses = nodes("SELECT DISTINCT hs.id, hs.code, hs.name, hs.territory_id FROM dw.dim_geo g JOIN app.house hs ON hs.id = g.house_id WHERE true ${sql.geo} ORDER BY 3") { OptionNode(it.getLong(1), it.getString(2), it.getString(3), territory_id = it.getLong(4)) }
-            val zones = nodes("SELECT DISTINCT z.id, z.code, z.name, g.house_id, z.territory_id FROM dw.dim_geo g JOIN app.zone z ON z.id = g.zone_id WHERE true ${sql.geo} ORDER BY 3") {
+            val houses = nodes("SELECT DISTINCT hs.id, hs.code, hs.name, hs.territory_id FROM dw.dim_geo g JOIN app.house hs ON hs.id = g.house_id WHERE hs.is_active ${sql.geo} ORDER BY 3") { OptionNode(it.getLong(1), it.getString(2), it.getString(3), territory_id = it.getLong(4)) }
+            val zones = nodes("SELECT DISTINCT z.id, z.code, z.name, g.house_id, z.territory_id FROM dw.dim_geo g JOIN app.zone z ON z.id = g.zone_id LEFT JOIN app.house hz ON hz.id = z.house_id WHERE (z.house_id IS NULL OR hz.is_active) ${sql.geo} ORDER BY 3") {
                 OptionNode(it.getLong(1), it.getString(2), it.getString(3), house_id = it.getObject(4) as Long?, territory_id = it.getLong(5))
             }
             fun codes(q: String, map: (java.sql.ResultSet) -> OptionCode) = sql.bind(h.createQuery(q)).map { rs, _ -> map(rs) }.list()

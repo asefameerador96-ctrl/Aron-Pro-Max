@@ -50,6 +50,11 @@ SkuWrite:
       maximum: 1000
     entry_unit_default:
       $ref: '#/components/schemas/QtyUnit'
+    pack_type:
+      type:
+      - string
+      - 'null'
+      maxLength: 40
     report_unit:
       type:
       - string

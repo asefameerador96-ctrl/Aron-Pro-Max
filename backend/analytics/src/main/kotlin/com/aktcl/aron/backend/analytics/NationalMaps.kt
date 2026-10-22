@@ -172,8 +172,8 @@ fun NationalDashboardService.routeMap(caller: NationalCaller, routeId: Long, dat
         val month = YearMonth.from(date); val wd = WorkingCalendar.workingDays(h, month)
         val targets = h.createQuery(
             """
-            SELECT p.category_code, sum(t.std_target) FROM app.target t JOIN dw.dim_product p ON p.sku_id = t.product_id
-             WHERE t.month = :m AND t.scope_type = 'route' AND t.scope_id = :r AND t.product_level = 'sku' AND t.superseded_by_revision_id IS NULL GROUP BY 1
+            SELECT p.category_code, sum(t.qty_base) FROM app.route_monthly_target t JOIN dw.dim_product p ON p.sku_id = t.sku_id
+             WHERE t.month = :m AND t.route_id = :r GROUP BY 1
             """,
         ).bind("m", month.atDay(1)).bind("r", routeId).map { rs, _ -> rs.getString(1) to rs.getBigDecimal(2) }.list().toMap()
         val sold = h.createQuery(

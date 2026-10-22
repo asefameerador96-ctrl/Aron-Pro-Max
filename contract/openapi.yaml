@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Aron API
-  version: 1.5.0
+  version: 1.6.0
   summary: The one API of the Aron rebuild (SR, AMO and TSO apps, web dashboards and admin portal).
   description: |
     Binding contract for every lane of the seven-day build. Rules that apply to every operation are in
@@ -21,6 +21,7 @@ info:
       dates are `YYYY-MM-DD` in Asia/Dhaka.
     - Scope is never sent by the client: reach is derived on the server from the token. Narrowing
       selectors outside the caller's reach return 403 `ERR_OUT_OF_SCOPE`.
+    - 1.6.0 (lane mdm, additive): tag `admin-mdm` (`/v1/admin/mdm/*`) and the phone's `GET /v1/devices/me/commands`, `POST /v1/devices/me/commands/{command_id}/ack`.
     - Lists use cursor pagination (`limit`, `cursor`, response `next_cursor`) and master data also accept
       `updated_since`.
   contact:
@@ -89,6 +90,8 @@ tags:
     description: Working-day calendar and code lists.
   - name: admin-config
     description: Config registry, change requests with reason, approval, history, rollback and reach.
+  - name: admin-mdm
+    description: MDM section of the web portal (D-MDM-01, docs/34 s5). Devices, policies, commands, enrolment, alerts, activity. Needs the mdm module grant.
   - name: admin-devices
     description: Device fleet, enrolment QR tokens, device OTPs, policy preview and remote directives.
   - name: admin-releases
@@ -2401,6 +2404,43 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '409': { $ref: '#/components/responses/Conflict' }
 
+  /v1/admin/geo/house/duplicates:
+    get:
+      tags: [admin-geography]
+      operationId: listHouseDuplicates
+      summary: Groups of distribution houses of one territory whose names match after case, spacing and punctuation.
+      responses:
+        '200':
+          description: Duplicate groups (at most 200).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/HouseDuplicateList' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /v1/admin/geo/house/merge:
+    post:
+      tags: [admin-geography]
+      operationId: mergeHouses
+      summary: Fold duplicate houses into one - zones move to the kept house, merged houses become inactive.
+      parameters:
+        - $ref: '#/components/parameters/IfMatch'
+      description: '`If-Match` is the version of the kept house. Merged houses must be in the same territory with the same normalised name, otherwise 400 `not_duplicates`.'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/HouseMergeRequest' }
+      responses:
+        '200':
+          description: Merged.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/HouseMergeResult' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '412': { $ref: '#/components/responses/PreconditionFailed' }
   /v1/admin/geo/{level}:
     get:
       tags: [admin-geography]
@@ -3116,6 +3156,51 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
+  /v1/admin/users/{id}/access:
+    get:
+      tags: [admin-users]
+      operationId: getUserAccess
+      summary: An ADMIN user's module grants or a BRAND user's brands (docs/34 s1); the ETag is the access version.
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '200':
+          description: The access of the user.
+          headers:
+            ETag: { $ref: '#/components/headers/ETag' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/UserAccess' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+    put:
+      tags: [admin-users]
+      operationId: putUserAccess
+      summary: Replace the module grants of an ADMIN user or the brands of a BRAND user (SUPERADMIN; bumps the version, so tokens refresh with 401 ERR_SCOPE_CHANGED).
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+        - $ref: '#/components/parameters/IfMatch'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UserAccessWrite' }
+      responses:
+        '200':
+          description: The new access.
+          headers:
+            ETag: { $ref: '#/components/headers/ETag' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/UserAccess' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '412': { $ref: '#/components/responses/PreconditionFailed' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
   /v1/admin/users/{id}/credentials:
     post:
       tags: [admin-users]
@@ -3278,6 +3363,46 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '409': { $ref: '#/components/responses/Conflict' }
 
+  /v1/admin/calendar/holidays/{holiday_id}/revoke:
+    post:
+      tags: [admin-calendar]
+      operationId: revokeHoliday
+      summary: Withdraw a holiday, make-up day or off-day declaration that has not started (its date is after today).
+      parameters:
+        - { name: holiday_id, in: path, required: true, schema: { $ref: '#/components/schemas/Id' }, description: Calendar entry id. }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/HolidayRevoke' }
+      responses:
+        '200':
+          description: The revoked entry.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Holiday' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /v1/admin/calendar/working-days:
+    get:
+      tags: [admin-calendar]
+      operationId: getWorkingDays
+      summary: Every date of a month with Friday, weekend and national holiday flags and the working-day count (Fridays and holidays excluded).
+      description: 'Weekend days come from `cfg.calendar.weekend_days` (ISO weekdays, default Friday = 5). Only global declarations count; a global make-up day is a working day.'
+      parameters:
+        - { name: month, in: query, required: false, schema: { $ref: '#/components/schemas/RouteTargetMonth' }, description: 'YYYY-MM; default the current Dhaka month.' }
+      responses:
+        '200':
+          description: The month.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/WorkingDays' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
   /v1/admin/calendar/holidays:
     get:
       tags: [admin-calendar]
@@ -4630,6 +4755,34 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
 
+  /v1/admin/outlets/import:
+    post:
+      tags: [admin-outlets]
+      operationId: importOutlets
+      summary: Bulk create-or-update outlets from a sheet; the channel is mandatory on every row (preview with dry_run, commit with a reason).
+      description: >
+        A missing or unknown channel refuses the request (400 at body.rows/<i>/channel), preview included. `dry_run: true` writes nothing and returns the report;
+        `dry_run: false` needs `change_reason`, refuses the whole batch on any row error and is idempotent by `batch_uuid` (same content replays, other content is 409
+        ERR_SYNC_BATCH_UUID_REUSED). A row whose `code` names an outlet of the same zone updates it (never its status; a blank route, pin, phone or address keeps the stored one).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/OutletImportWrite' }
+      responses:
+        '200':
+          description: The preview report (dry_run) or the commit result.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - { $ref: '#/components/schemas/OutletImportPreview' }
+                  - { $ref: '#/components/schemas/OutletImportResult' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
   /v1/admin/dues-adjustments:
     get:
       tags: [admin-finance]
@@ -4691,6 +4844,56 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
+
+  /v1/admin/route-targets:
+    get:
+      tags: [admin-targets]
+      operationId: listRouteTargets
+      summary: Route x SKU monthly sales targets of one month (base units), sorted by route then SKU.
+      parameters:
+        - { name: month, in: query, required: false, schema: { $ref: '#/components/schemas/RouteTargetMonth' }, description: 'Month as YYYY-MM; default the current Dhaka month.' }
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Page of targets.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RouteTargetPage' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+    put:
+      tags: [admin-targets]
+      operationId: putRouteTargets
+      summary: Validate (dry_run) or commit a route x SKU monthly target batch (upsert by route, SKU and month).
+      description: >-
+        The portal reads the Excel sheet in the browser and sends JSON rows. `dry_run: true` validates and writes nothing (no reason needed) and answers a
+        `RouteTargetPreview` with every row error. `dry_run: false` needs `change_reason`; any row error refuses the whole batch with 400 `ERR_VALIDATION`
+        (`errors[].pointer` `body.rows/<0-based index>/<member>`). Idempotent by `batch_uuid`: the same content replays (`replayed: true`), other content under
+        the same uuid is 409. Quantities are base units (sticks, pieces, dozens), integers 0 to 1,000,000,000. A month before the current Dhaka month is never
+        rewritten. Audited as entity `route_target`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RouteTargetBatchWrite' }
+      responses:
+        '200':
+          description: Preview (dry_run) or commit result.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - { $ref: '#/components/schemas/RouteTargetPreview' }
+                  - { $ref: '#/components/schemas/RouteTargetCommitResult' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '413': { $ref: '#/components/responses/PayloadTooLarge' }
 
   /v1/admin/devices/{device_id}/replace:
     post:
@@ -5328,6 +5531,385 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
+  /v1/admin/mdm/devices:
+    get:
+      tags: [admin-mdm]
+      operationId: listMdmDevices
+      summary: MDM device list with owner mode, user, app version, last seen, battery, network, policy and compliance flags.
+      description: Needs the mdm module (r), or SUPERADMIN. Filters combine with AND.
+      parameters:
+        - name: status
+          in: query
+          required: false
+          schema: { $ref: '#/components/schemas/DeviceState' }
+        - $ref: '#/components/parameters/FlavourQueryOptional'
+        - name: flag
+          in: query
+          required: false
+          description: Only devices carrying this compliance flag.
+          schema: { $ref: '#/components/schemas/MdmComplianceFlag' }
+        - name: policy_id
+          in: query
+          required: false
+          schema: { $ref: '#/components/schemas/Id' }
+        - $ref: '#/components/parameters/Search'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Page of devices.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MdmDevicePage' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /v1/admin/mdm/devices/{device_id}:
+    get:
+      tags: [admin-mdm]
+      operationId: getMdmDevice
+      summary: One device with its latest status report, policy and recent commands.
+      parameters:
+        - $ref: '#/components/parameters/DeviceIdPath'
+      responses:
+        '200':
+          description: Device detail.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MdmDeviceDetail' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /v1/admin/mdm/devices/{device_id}/activity:
+    get:
+      tags: [admin-mdm]
+      operationId: listMdmDeviceActivity
+      summary: Activity log of one device (commands, state changes, policy changes, enrolment, alerts), newest first.
+      parameters:
+        - $ref: '#/components/parameters/DeviceIdPath'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Page of activity.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MdmActivityPage' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /v1/admin/mdm/devices/{device_id}/commands:
+    get:
+      tags: [admin-mdm]
+      operationId: listMdmDeviceCommands
+      summary: Commands sent to one device and their state.
+      parameters:
+        - $ref: '#/components/parameters/DeviceIdPath'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Page of commands.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MdmCommandPage' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    post:
+      tags: [admin-mdm]
+      operationId: createMdmCommand
+      summary: Queue a command (lock, unlock, message, locate, reboot, factory reset) for one device.
+      description: |
+        Needs the mdm module (w), or SUPERADMIN, and a reason; audited. Idempotent by `command_id`: a repeat with the
+        same body returns the stored command (200), a different body 409. `factory_reset` is created in state
+        `pending_approval` and needs a second approver (POST /admin/mdm/commands/{command_id}/decision) who is not
+        the requester. Delivered by FCM data message when the phone is online and pulled by the DPC on every sync.
+      parameters:
+        - $ref: '#/components/parameters/DeviceIdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MdmCommandCreateRequest' }
+      responses:
+        '200':
+          description: Same command already stored.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MdmCommand' }
+        '201':
+          description: Command queued.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MdmCommand' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /v1/admin/mdm/commands/{command_id}/decision:
+    post:
+      tags: [admin-mdm]
+      operationId: decideMdmCommand
+      summary: Approve or reject a command waiting for a second approver (factory reset).
+      description: The approver must differ from the requester; audited with the reason.
+      parameters:
+        - name: command_id
+          in: path
+          required: true
+          schema: { $ref: '#/components/schemas/Uuid' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MdmCommandDecisionRequest' }
+      responses:
+        '200':
+          description: Command after the decision.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MdmCommand' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /v1/admin/mdm/devices/{device_id}/policy:
+    put:
+      tags: [admin-mdm]
+      operationId: assignMdmPolicy
+      summary: Assign an MDM policy to a device (or clear it); queues an apply_policy command.
+      parameters:
+        - $ref: '#/components/parameters/DeviceIdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MdmPolicyAssignRequest' }
+      responses:
+        '200':
+          description: Device after assignment.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MdmDeviceDetail' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /v1/admin/mdm/policies:
+    get:
+      tags: [admin-mdm]
+      operationId: listMdmPolicies
+      summary: MDM policies with the number of devices on each.
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Page of policies.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MdmPolicyPage' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [admin-mdm]
+      operationId: createMdmPolicy
+      summary: Create an MDM policy.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MdmPolicyWrite' }
+      responses:
+        '201':
+          description: Policy created.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MdmPolicy' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /v1/admin/mdm/policies/{policy_id}:
+    get:
+      tags: [admin-mdm]
+      operationId: getMdmPolicy
+      summary: One MDM policy.
+      parameters:
+        - $ref: '#/components/parameters/MdmPolicyIdPath'
+      responses:
+        '200':
+          description: Policy.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MdmPolicy' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    put:
+      tags: [admin-mdm]
+      operationId: updateMdmPolicy
+      summary: Replace an MDM policy (optimistic version); devices on it get an apply_policy command.
+      parameters:
+        - $ref: '#/components/parameters/MdmPolicyIdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MdmPolicyWrite' }
+      responses:
+        '200':
+          description: Policy after the update.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MdmPolicy' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /v1/admin/mdm/enrolment-tokens:
+    get:
+      tags: [admin-mdm]
+      operationId: listMdmEnrolmentTokens
+      summary: Enrolment tokens of the device-owner DPC (same data as listEnrolmentTokens, gated by the mdm module).
+      parameters:
+        - name: active_only
+          in: query
+          required: false
+          schema: { type: boolean, default: true }
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Page of tokens.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EnrolmentTokenPage' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [admin-mdm]
+      operationId: createMdmEnrolmentToken
+      summary: Create an enrolment token and its provisioning QR payload (shown once).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/EnrolmentTokenCreateRequest' }
+      responses:
+        '201':
+          description: Token with the QR payload.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EnrolmentTokenCreated' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /v1/admin/mdm/enrolment-tokens/{token_id}/revoke:
+    post:
+      tags: [admin-mdm]
+      operationId: revokeMdmEnrolmentToken
+      summary: Revoke an enrolment token.
+      parameters:
+        - name: token_id
+          in: path
+          required: true
+          schema: { $ref: '#/components/schemas/Id' }
+      responses:
+        '200':
+          description: Token after revocation.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EnrolmentToken' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /v1/admin/mdm/alerts:
+    get:
+      tags: [admin-mdm]
+      operationId: listMdmAlerts
+      summary: Open compliance alerts, one row per device and flag, derived from the latest status report.
+      parameters:
+        - name: flag
+          in: query
+          required: false
+          schema: { $ref: '#/components/schemas/MdmComplianceFlag' }
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Page of alerts.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MdmAlertPage' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /v1/admin/mdm/activity:
+    get:
+      tags: [admin-mdm]
+      operationId: listMdmActivity
+      summary: Activity log of the whole fleet, newest first.
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Page of activity.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MdmActivityPage' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /v1/devices/me/commands:
+    get:
+      tags: [devices]
+      operationId: pullDeviceCommands
+      summary: Commands waiting for this phone (the DPC polls on every sync; FCM only nudges).
+      description: Authenticated by X-Device-Proof. Returns queued and sent, unexpired commands, oldest first, marks them sent. Each carries an ES256 signature bound to the device.
+      security:
+        - bearerAuth: []
+        - {}
+      parameters:
+        - $ref: '#/components/parameters/XDeviceIdRequired'
+        - $ref: '#/components/parameters/XDeviceProof'
+      responses:
+        '200':
+          description: Commands.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DeviceCommandList' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /v1/devices/me/commands/{command_id}/ack:
+    post:
+      tags: [devices]
+      operationId: ackDeviceCommand
+      summary: Report the result of a command (acked or failed). Idempotent.
+      security:
+        - bearerAuth: []
+        - {}
+      parameters:
+        - $ref: '#/components/parameters/XDeviceIdRequired'
+        - $ref: '#/components/parameters/XDeviceProof'
+        - name: command_id
+          in: path
+          required: true
+          schema: { $ref: '#/components/schemas/Uuid' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DeviceCommandAck' }
+      responses:
+        '200':
+          description: Final state recorded.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DeviceCommandAckResult' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
 
 components:
   securitySchemes:
@@ -5529,6 +6111,11 @@ components:
       schema: { $ref: '#/components/schemas/Id' }
     DeviceIdPath:
       name: device_id
+      in: path
+      required: true
+      schema: { $ref: '#/components/schemas/Id' }
+    MdmPolicyIdPath:
+      name: policy_id
       in: path
       required: true
       schema: { $ref: '#/components/schemas/Id' }
@@ -9475,6 +10062,13 @@ components:
         qty_base: { type: integer, format: int64, minimum: 0 }
         report_unit: { type: [string, 'null'], enum: [stick, piece, dozen, box, pack, null] }
         qty_report: { oneOf: [ { $ref: '#/components/schemas/Decimal3' }, { type: 'null' } ] }
+        entry_unit:
+          type: string
+          enum: [pack, dozen]
+          description: 'The unit the field apps count this category in (docs/34 s4.2): pack (packet or box, per SKU `base_per_pack`) or dozen (matches).'
+        qty_entered:
+          $ref: '#/components/schemas/Decimal3'
+          description: 'Quantity in `entry_unit`, summed per SKU first (each SKU''s qty_base over its base_per_pack): 10s and 20s of one category convert correctly. Sold plus free, like qty_base.'
         net_mtk: { $ref: '#/components/schemas/Mtk' }
     NationalDashboardFilter:
       type: object
@@ -11349,7 +11943,7 @@ components:
       allOf:
         - { $ref: '#/components/schemas/MasterAudit' }
         - type: object
-          required: [id, level, code, name, status]
+          required: [id, level, code, name, status, is_active]
           properties:
             id: { $ref: '#/components/schemas/Id' }
             level: { $ref: '#/components/schemas/GeoLevel' }
@@ -11358,6 +11952,7 @@ components:
             name_bn: { type: [string, 'null'], maxLength: 120 }
             parent_id: { type: [integer, 'null'], format: int64, minimum: 1, description: Null only for wings. }
             status: { $ref: '#/components/schemas/ActiveStatus' }
+            is_active: { type: boolean, description: 'status = active; the distribution-house filter lists each active house once.' }
             dep_name: { type: [string, 'null'], maxLength: 120, description: Zones only. }
             email: { type: [string, 'null'], format: email, maxLength: 120 }
             address: { type: [string, 'null'], maxLength: 300 }
@@ -11687,7 +12282,8 @@ components:
         short_name: { type: string, maxLength: 20, description: Printed on the 58 mm memo. }
         name_bn: { type: [string, 'null'], maxLength: 120 }
         base_unit: { type: string, enum: [stick, piece, dozen] }
-        base_per_pack: { type: integer, minimum: 1, maximum: 1000, description: 'Sticks per pack (10, 20, 25); 1 for lighter and match. The read-only pack badge is qty_base / base_per_pack.' }
+        base_per_pack: { type: integer, minimum: 1, maximum: 1000, description: 'Base units per pack: 10 or 20 sticks for cigarettes, the stick count for bidi, 25 pieces for a lighter box, 1 for matches (the dozen is the base unit). The pack badge is qty_base / base_per_pack (docs/34 s4.2).' }
+        pack_type: { type: [string, 'null'], maxLength: 40, description: 'Free pack label (HLP, Soft Pack, Box, Dozen). The entry-unit word (packet / box / dozen) comes from the category.' }
         entry_unit_default: { $ref: '#/components/schemas/QtyUnit' }
         report_unit: { type: [string, 'null'], enum: [stick, piece, dozen, box, pack, null] }
         report_factor: { $ref: '#/components/schemas/Decimal3' }
@@ -11719,6 +12315,7 @@ components:
         base_unit: { type: string, enum: [stick, piece, dozen] }
         base_per_pack: { type: integer, minimum: 1, maximum: 1000 }
         entry_unit_default: { $ref: '#/components/schemas/QtyUnit' }
+        pack_type: { type: [string, 'null'], maxLength: 40 }
         report_unit: { type: [string, 'null'], enum: [stick, piece, dozen, box, pack, null] }
         report_factor: { $ref: '#/components/schemas/Decimal3' }
         sort: { type: integer }
@@ -11731,6 +12328,9 @@ components:
         name: { type: string, minLength: 1, maxLength: 120 }
         short_name: { type: string, minLength: 1, maxLength: 20 }
         name_bn: { type: [string, 'null'], maxLength: 120 }
+        base_per_pack: { type: integer, minimum: 1, maximum: 1000, description: 'A change needs `change_reason`; a match pack stays 1.' }
+        entry_unit_default: { $ref: '#/components/schemas/QtyUnit' }
+        pack_type: { type: [string, 'null'], maxLength: 40 }
         report_unit: { type: [string, 'null'], enum: [stick, piece, dozen, box, pack, null] }
         report_factor: { $ref: '#/components/schemas/Decimal3' }
         sort: { type: integer }
@@ -12311,6 +12911,95 @@ components:
         name_en: { type: string, minLength: 2, maxLength: 120 }
         name_bn: { type: [string, 'null'], maxLength: 120 }
         reason: { $ref: '#/components/schemas/ChangeReason' }
+    HolidayRevoke:
+      type: object
+      required: [change_reason]
+      additionalProperties: false
+      properties:
+        change_reason: { $ref: '#/components/schemas/ChangeReason' }
+    WorkingDay:
+      type: object
+      required: [date, weekday, is_friday, is_weekend, is_holiday, name_en, name_bn, is_working_day]
+      additionalProperties: false
+      properties:
+        date: { $ref: '#/components/schemas/BusinessDate' }
+        weekday: { type: integer, minimum: 1, maximum: 7, description: 'ISO weekday (Monday is 1).' }
+        is_friday: { type: boolean }
+        is_weekend: { type: boolean }
+        is_holiday: { type: boolean, description: A global holiday or emergency off-day. }
+        name_en: { type: [string, 'null'] }
+        name_bn: { type: [string, 'null'] }
+        is_working_day: { type: boolean }
+    WorkingDays:
+      type: object
+      required: [month, working_days, weekend_days, days]
+      additionalProperties: false
+      properties:
+        month: { $ref: '#/components/schemas/RouteTargetMonth' }
+        working_days: { type: integer, minimum: 0, maximum: 31 }
+        weekend_days:
+          type: array
+          items: { type: integer, minimum: 1, maximum: 7 }
+        days:
+          type: array
+          items: { $ref: '#/components/schemas/WorkingDay' }
+    HouseDuplicateItem:
+      type: object
+      required: [id, code, name, status, is_active, zone_count]
+      additionalProperties: false
+      properties:
+        id: { $ref: '#/components/schemas/Id' }
+        code: { type: string }
+        name: { type: string }
+        status: { $ref: '#/components/schemas/ActiveStatus' }
+        is_active: { type: boolean }
+        zone_count: { type: integer, minimum: 0 }
+    HouseDuplicateGroup:
+      type: object
+      required: [territory_id, name_key, houses]
+      additionalProperties: false
+      properties:
+        territory_id: { $ref: '#/components/schemas/Id' }
+        name_key: { type: string, description: Lower-case name with punctuation and spacing collapsed. }
+        houses:
+          type: array
+          items: { $ref: '#/components/schemas/HouseDuplicateItem' }
+    HouseDuplicateList:
+      type: object
+      required: [groups]
+      additionalProperties: false
+      properties:
+        groups:
+          type: array
+          items: { $ref: '#/components/schemas/HouseDuplicateGroup' }
+    HouseMergeRequest:
+      type: object
+      required: [keep_id, merge_ids, change_reason]
+      additionalProperties: false
+      properties:
+        keep_id: { $ref: '#/components/schemas/Id' }
+        merge_ids:
+          type: array
+          minItems: 1
+          maxItems: 20
+          uniqueItems: true
+          items: { $ref: '#/components/schemas/Id' }
+        change_reason: { $ref: '#/components/schemas/ChangeReason' }
+    HouseMergeResult:
+      type: object
+      required: [kept, merged]
+      additionalProperties: false
+      properties:
+        kept: { $ref: '#/components/schemas/HouseDuplicateItem' }
+        merged:
+          type: array
+          items:
+            type: object
+            required: [house_id, zones_moved]
+            additionalProperties: false
+            properties:
+              house_id: { $ref: '#/components/schemas/Id' }
+              zones_moved: { type: integer, minimum: 0 }
     HolidayList:
       type: object
       required: [items]
@@ -14091,6 +14780,93 @@ components:
         outlet_kind: { type: string, enum: [retail, wholesale] }
         outlet_ids: { type: array, minItems: 1, maxItems: 5000, items: { $ref: '#/components/schemas/Id' } }
         reason: { $ref: '#/components/schemas/ChangeReason' }
+    AdminModule:
+      type: string
+      enum: [masterdata, routes, outlets, products, prices, users, targets, credentials, mdm, reports, config, data_entry, indent, leaderboard, daily_tracking]
+      description: The fixed module list of an ADMIN user's grants (docs/34 s1).
+    UserAccess:
+      type: object
+      required: [user_id, role, version, modules, brand_ids]
+      additionalProperties: false
+      properties:
+        user_id: { $ref: '#/components/schemas/Id' }
+        role: { $ref: '#/components/schemas/Role' }
+        version: { type: integer, minimum: 1, description: Also the ETag; the user's scope_version. }
+        modules:
+          type: object
+          propertyNames: { $ref: '#/components/schemas/AdminModule' }
+          additionalProperties: { type: string, enum: [r, w] }
+          description: ADMIN users only; only granted modules appear.
+        brand_ids:
+          type: array
+          items: { $ref: '#/components/schemas/Id' }
+          description: BRAND users only; product-tree brand nodes.
+    UserAccessWrite:
+      type: object
+      required: [change_reason]
+      additionalProperties: false
+      description: Exactly one of modules (ADMIN user) and brand_ids (BRAND user, not empty).
+      properties:
+        modules:
+          type: object
+          propertyNames: { $ref: '#/components/schemas/AdminModule' }
+          additionalProperties: { type: string, enum: [r, w] }
+        brand_ids: { type: array, minItems: 1, maxItems: 200, items: { $ref: '#/components/schemas/Id' } }
+        change_reason: { $ref: '#/components/schemas/ChangeReason' }
+    OutletImportRow:
+      type: object
+      required: [name, owner_name, zone_code, cluster, channel, outlet_kind]
+      additionalProperties: false
+      properties:
+        code: { type: [string, 'null'], maxLength: 32 }
+        name: { type: string, minLength: 2, maxLength: 120 }
+        owner_name: { type: string, minLength: 2, maxLength: 120 }
+        zone_code: { type: string, maxLength: 40 }
+        cluster: { type: string, maxLength: 120, description: Cluster name inside the zone. }
+        channel: { type: string, enum: [GT, DCC, Astha, RCC, MT, HoReCa] }
+        outlet_kind: { type: string, enum: [retail, wholesale] }
+        route_code: { type: [string, 'null'], maxLength: 40 }
+        lat: { type: [number, 'null'], minimum: -90, maximum: 90 }
+        lng: { type: [number, 'null'], minimum: -180, maximum: 180 }
+        contact_number: { type: [string, 'null'] }
+        address: { type: [string, 'null'], maxLength: 300 }
+    OutletImportWrite:
+      type: object
+      required: [batch_uuid, rows, dry_run]
+      additionalProperties: false
+      properties:
+        batch_uuid: { $ref: '#/components/schemas/Uuid' }
+        rows: { type: array, minItems: 1, maxItems: 5000, items: { $ref: '#/components/schemas/OutletImportRow' } }
+        dry_run: { type: boolean }
+        change_reason: { $ref: '#/components/schemas/ChangeReason' }
+    OutletImportRowError:
+      type: object
+      required: [row, column, code]
+      additionalProperties: false
+      properties:
+        row: { type: integer, minimum: 1, description: 1-based position in rows. }
+        column: { type: string }
+        code: { type: string, enum: [required, invalid, unknown_zone, unknown_cluster, unknown_route, code_taken, duplicate, outlet_merged] }
+    OutletImportPreview:
+      type: object
+      required: [batch_uuid, rows, creates, updates, by_channel, errors, errors_truncated]
+      additionalProperties: false
+      properties:
+        batch_uuid: { $ref: '#/components/schemas/Uuid' }
+        rows: { type: integer, minimum: 1 }
+        creates: { type: integer, minimum: 0 }
+        updates: { type: integer, minimum: 0 }
+        by_channel: { type: object, additionalProperties: { type: integer, minimum: 0 }, description: Valid rows per channel. }
+        errors: { type: array, maxItems: 1000, items: { $ref: '#/components/schemas/OutletImportRowError' } }
+        errors_truncated: { type: boolean }
+    OutletImportResult:
+      type: object
+      required: [batch_uuid, rows, replayed]
+      additionalProperties: false
+      properties:
+        batch_uuid: { $ref: '#/components/schemas/Uuid' }
+        rows: { type: integer, minimum: 1 }
+        replayed: { type: boolean }
     BulkResult:
       type: object
       required: [batch_uuid, updated, unchanged, replayed]
@@ -14136,6 +14912,91 @@ components:
         items:
           type: array
           items: { $ref: '#/components/schemas/DuesAdjustment' }
+        next_cursor:
+          oneOf:
+            - { $ref: '#/components/schemas/PageCursor' }
+            - type: 'null'
+    RouteTargetMonth:
+      type: string
+      pattern: '^[0-9]{4}-(0[1-9]|1[0-2])$'
+      examples: ['2026-11']
+    RouteTargetRow:
+      type: object
+      required: [route_code, sku_code, month, qty_base]
+      additionalProperties: false
+      properties:
+        route_code: { type: string, minLength: 1, maxLength: 40, description: Surrounding spaces are ignored. }
+        sku_code: { type: string, minLength: 1, maxLength: 40, description: Surrounding spaces are ignored. }
+        month: { $ref: '#/components/schemas/RouteTargetMonth' }
+        qty_base: { type: integer, format: int64, minimum: 0, maximum: 1000000000, description: 'Base units: sticks, pieces or dozens.' }
+    RouteTargetBatchWrite:
+      type: object
+      required: [batch_uuid, rows, dry_run]
+      additionalProperties: false
+      properties:
+        batch_uuid: { $ref: '#/components/schemas/Uuid' }
+        rows:
+          type: array
+          minItems: 1
+          maxItems: 20000
+          items: { $ref: '#/components/schemas/RouteTargetRow' }
+        dry_run: { type: boolean }
+        change_reason: { $ref: '#/components/schemas/ChangeReason' }
+    RouteTargetRowError:
+      type: object
+      required: [row, column, code]
+      additionalProperties: false
+      properties:
+        row: { type: integer, minimum: 1, description: 1-based position in `rows`. }
+        column: { type: string, enum: [route, sku, month, quantity] }
+        code:
+          type: string
+          enum: [unknown_route, not_selling_route, unknown_sku, invalid_month, past_month, invalid_quantity, duplicate_row]
+    RouteTargetPreview:
+      type: object
+      required: [batch_uuid, rows, routes, skus, months, total_qty_base, replaces, errors, errors_truncated]
+      additionalProperties: false
+      properties:
+        batch_uuid: { $ref: '#/components/schemas/Uuid' }
+        rows: { type: integer, minimum: 0 }
+        routes: { type: integer, minimum: 0, description: Distinct valid routes. }
+        skus: { type: integer, minimum: 0, description: Distinct valid SKUs. }
+        months:
+          type: array
+          items: { $ref: '#/components/schemas/RouteTargetMonth' }
+        total_qty_base: { type: integer, format: int64, minimum: 0, description: Sum of the quantities of the rows without an error. }
+        replaces: { type: integer, minimum: 0, description: 'Existing (route, SKU, month) targets the batch would overwrite.' }
+        errors:
+          type: array
+          maxItems: 1000
+          items: { $ref: '#/components/schemas/RouteTargetRowError' }
+        errors_truncated: { type: boolean, description: True when more than 1000 errors exist. }
+    RouteTargetCommitResult:
+      type: object
+      required: [batch_uuid, rows, replayed]
+      additionalProperties: false
+      properties:
+        batch_uuid: { $ref: '#/components/schemas/Uuid' }
+        rows: { type: integer, minimum: 1 }
+        replayed: { type: boolean }
+    RouteTargetItem:
+      type: object
+      required: [route_code, route_name, sku_code, month, qty_base]
+      additionalProperties: false
+      properties:
+        route_code: { type: string }
+        route_name: { type: string }
+        sku_code: { type: string }
+        month: { $ref: '#/components/schemas/RouteTargetMonth' }
+        qty_base: { type: integer, format: int64, minimum: 0 }
+    RouteTargetPage:
+      type: object
+      required: [items, next_cursor]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/RouteTargetItem' }
         next_cursor:
           oneOf:
             - { $ref: '#/components/schemas/PageCursor' }
@@ -14339,6 +15200,247 @@ components:
       properties:
         sku_id: { $ref: '#/components/schemas/Id' }
         qty_base: { type: integer, minimum: 0, maximum: 10000000 }
+    MdmComplianceFlag:
+      type: string
+      enum: [rooted, mock_location, outdated_app, developer_options, adb_enabled, not_device_owner, location_off, auto_time_off, policy_drift, stale_contact]
+      description: |
+        Derived from the device row and its latest status report. rooted = integrity verdict fail; mock_location =
+        mock-location apps present; outdated_app = app_version below the newest published release of the flavour;
+        developer_options = developer options on; policy_drift = applied policy older than the rendered one;
+        stale_contact = no contact for more than 48 hours.
+    MdmNetwork:
+      type: string
+      enum: [wifi, mobile, offline, unknown]
+    MdmCommandType:
+      type: string
+      enum: [lock, unlock, message, locate, reboot, factory_reset, apply_policy]
+    MdmCommandState:
+      type: string
+      enum: [pending_approval, queued, sent, acked, failed, expired, rejected]
+    MdmDevice:
+      type: object
+      required: [device_id, device_uuid, flavour, status, device_owner, users, compliance_flags, pending_commands]
+      additionalProperties: false
+      properties:
+        device_id: { $ref: '#/components/schemas/Id' }
+        device_uuid: { $ref: '#/components/schemas/Uuid' }
+        flavour: { $ref: '#/components/schemas/AppFlavour' }
+        status: { $ref: '#/components/schemas/DeviceState' }
+        device_owner: { type: boolean }
+        users: { type: array, maxItems: 4, items: { type: string, maxLength: 80 } }
+        model: { type: [string, 'null'], maxLength: 120 }
+        app_version: { type: [string, 'null'] }
+        latest_app_version: { type: [string, 'null'] }
+        last_contact_at: { oneOf: [{ $ref: '#/components/schemas/Timestamp' }, { type: 'null' }] }
+        battery_pct: { type: [integer, 'null'], minimum: 0, maximum: 100 }
+        network: { oneOf: [{ $ref: '#/components/schemas/MdmNetwork' }, { type: 'null' }] }
+        policy_id: { type: [integer, 'null'], format: int64, minimum: 1 }
+        policy_name: { type: [string, 'null'], maxLength: 80 }
+        compliance_flags: { type: array, items: { $ref: '#/components/schemas/MdmComplianceFlag' } }
+        pending_commands: { type: integer, minimum: 0 }
+    MdmDevicePage:
+      type: object
+      required: [items, next_cursor]
+      additionalProperties: false
+      properties:
+        items: { type: array, items: { $ref: '#/components/schemas/MdmDevice' } }
+        next_cursor: { type: [string, 'null'] }
+    MdmDeviceDetail:
+      type: object
+      required: [device, enrolled_at, trust_level, integrity_verdict, recent_commands]
+      additionalProperties: false
+      properties:
+        device: { $ref: '#/components/schemas/MdmDevice' }
+        enrolled_at: { $ref: '#/components/schemas/Timestamp' }
+        trust_level: { $ref: '#/components/schemas/TrustLevel' }
+        integrity_verdict: { type: string, enum: [pass, fail, unevaluated, stale] }
+        lockdown_level: { $ref: '#/components/schemas/LockdownLevel' }
+        zone_id: { type: [integer, 'null'], format: int64, minimum: 1 }
+        last_report: { oneOf: [{ $ref: '#/components/schemas/DeviceStatusReport' }, { type: 'null' }] }
+        policy: { oneOf: [{ $ref: '#/components/schemas/MdmPolicy' }, { type: 'null' }] }
+        recent_commands: { type: array, maxItems: 20, items: { $ref: '#/components/schemas/MdmCommand' } }
+    MdmActivityEntry:
+      type: object
+      required: [at, kind, summary]
+      additionalProperties: false
+      properties:
+        at: { $ref: '#/components/schemas/Timestamp' }
+        kind: { type: string, enum: [command, state, policy, enrolment, status, alert] }
+        device_id: { type: [integer, 'null'], format: int64, minimum: 1 }
+        summary: { type: string, maxLength: 300 }
+        actor: { type: [string, 'null'], maxLength: 80 }
+        reason: { type: [string, 'null'], maxLength: 300 }
+        ref: { type: [string, 'null'], maxLength: 80 }
+    MdmActivityPage:
+      type: object
+      required: [items, next_cursor]
+      additionalProperties: false
+      properties:
+        items: { type: array, items: { $ref: '#/components/schemas/MdmActivityEntry' } }
+        next_cursor: { type: [string, 'null'] }
+    MdmAlert:
+      type: object
+      required: [device_id, flag, since]
+      additionalProperties: false
+      properties:
+        device_id: { $ref: '#/components/schemas/Id' }
+        device_uuid: { $ref: '#/components/schemas/Uuid' }
+        users: { type: array, maxItems: 4, items: { type: string, maxLength: 80 } }
+        flavour: { $ref: '#/components/schemas/AppFlavour' }
+        flag: { $ref: '#/components/schemas/MdmComplianceFlag' }
+        since: { $ref: '#/components/schemas/Timestamp' }
+        detail: { type: [string, 'null'], maxLength: 200 }
+    MdmAlertPage:
+      type: object
+      required: [items, next_cursor]
+      additionalProperties: false
+      properties:
+        items: { type: array, items: { $ref: '#/components/schemas/MdmAlert' } }
+        next_cursor: { type: [string, 'null'] }
+    MdmBlockWindow:
+      type: object
+      description: Apps in `packages` (or every non-allowed app when empty) are suspended on these weekdays between start and end, Dhaka time. A window with end <= start runs past midnight into the next day.
+      required: [days, start, end]
+      additionalProperties: false
+      properties:
+        days: { type: array, minItems: 1, maxItems: 7, uniqueItems: true, items: { type: integer, minimum: 1, maximum: 7, description: 'ISO weekday, 1 = Monday.' } }
+        start: { type: string, pattern: '^([01][0-9]|2[0-3]):[0-5][0-9]$' }
+        end: { type: string, pattern: '^([01][0-9]|2[0-3]):[0-5][0-9]$' }
+        packages: { type: array, maxItems: 200, items: { $ref: '#/components/schemas/PackageName' } }
+    MdmKiosk:
+      type: object
+      required: [enabled]
+      additionalProperties: false
+      properties:
+        enabled: { type: boolean }
+        packages: { type: array, maxItems: 10, items: { $ref: '#/components/schemas/PackageName' }, description: Lock-task packages; the first is started. }
+    MdmLocationSampling:
+      type: object
+      required: [mode]
+      additionalProperties: false
+      properties:
+        mode: { type: string, enum: [off, on_demand, interval], description: 'on_demand = fix only at check-in, sale and when a locate command arrives; interval = also batched breadcrumbs.' }
+        interval_min: { type: [integer, 'null'], minimum: 5, maximum: 120 }
+    MdmPolicyWrite:
+      type: object
+      required: [name, allowed_packages, block_windows, kiosk, location_sampling]
+      additionalProperties: false
+      properties:
+        name: { type: string, minLength: 2, maxLength: 80 }
+        description: { type: [string, 'null'], maxLength: 300 }
+        allowed_packages: { type: array, maxItems: 300, items: { $ref: '#/components/schemas/PackageName' }, description: Apps never suspended by a block window (the Aron apps are always allowed). }
+        block_windows: { type: array, maxItems: 14, items: { $ref: '#/components/schemas/MdmBlockWindow' } }
+        kiosk: { $ref: '#/components/schemas/MdmKiosk' }
+        location_sampling: { $ref: '#/components/schemas/MdmLocationSampling' }
+        version: { type: [integer, 'null'], minimum: 1, description: Required on update; must equal the stored version. }
+        reason: { type: [string, 'null'], minLength: 3, maxLength: 300 }
+    MdmPolicy:
+      type: object
+      required: [policy_id, name, allowed_packages, block_windows, kiosk, location_sampling, version, device_count, updated_at]
+      additionalProperties: false
+      properties:
+        policy_id: { $ref: '#/components/schemas/Id' }
+        name: { type: string, maxLength: 80 }
+        description: { type: [string, 'null'], maxLength: 300 }
+        allowed_packages: { type: array, items: { $ref: '#/components/schemas/PackageName' } }
+        block_windows: { type: array, items: { $ref: '#/components/schemas/MdmBlockWindow' } }
+        kiosk: { $ref: '#/components/schemas/MdmKiosk' }
+        location_sampling: { $ref: '#/components/schemas/MdmLocationSampling' }
+        version: { type: integer, minimum: 1 }
+        device_count: { type: integer, minimum: 0 }
+        updated_at: { $ref: '#/components/schemas/Timestamp' }
+    MdmPolicyPage:
+      type: object
+      required: [items, next_cursor]
+      additionalProperties: false
+      properties:
+        items: { type: array, items: { $ref: '#/components/schemas/MdmPolicy' } }
+        next_cursor: { type: [string, 'null'] }
+    MdmPolicyAssignRequest:
+      type: object
+      required: [policy_id, reason]
+      additionalProperties: false
+      properties:
+        policy_id: { type: [integer, 'null'], format: int64, minimum: 1 }
+        reason: { type: string, minLength: 3, maxLength: 300 }
+    MdmCommandCreateRequest:
+      type: object
+      required: [command_id, type, reason]
+      additionalProperties: false
+      properties:
+        command_id: { $ref: '#/components/schemas/Uuid' }
+        type: { type: string, enum: [lock, unlock, message, locate, reboot, factory_reset] }
+        params:
+          type: object
+          description: 'message: {text_bn, text_en} (one required, 300 chars each); lock: {message}; others none.'
+          additionalProperties: { $ref: '#/components/schemas/JsonScalar' }
+        reason: { type: string, minLength: 3, maxLength: 300 }
+        ttl_h: { type: integer, minimum: 1, maximum: 72, default: 24 }
+    MdmCommandDecisionRequest:
+      type: object
+      required: [decision, reason]
+      additionalProperties: false
+      properties:
+        decision: { type: string, enum: [approve, reject] }
+        reason: { type: string, minLength: 3, maxLength: 300 }
+    MdmCommand:
+      type: object
+      required: [command_id, device_id, type, state, created_at, expires_at, reason]
+      additionalProperties: false
+      properties:
+        command_id: { $ref: '#/components/schemas/Uuid' }
+        device_id: { $ref: '#/components/schemas/Id' }
+        type: { $ref: '#/components/schemas/MdmCommandType' }
+        params: { type: object, additionalProperties: true }
+        state: { $ref: '#/components/schemas/MdmCommandState' }
+        reason: { type: string, maxLength: 300 }
+        created_at: { $ref: '#/components/schemas/Timestamp' }
+        created_by: { type: [string, 'null'], maxLength: 80 }
+        approved_by: { type: [string, 'null'], maxLength: 80 }
+        approved_at: { oneOf: [{ $ref: '#/components/schemas/Timestamp' }, { type: 'null' }] }
+        sent_at: { oneOf: [{ $ref: '#/components/schemas/Timestamp' }, { type: 'null' }] }
+        acked_at: { oneOf: [{ $ref: '#/components/schemas/Timestamp' }, { type: 'null' }] }
+        expires_at: { $ref: '#/components/schemas/Timestamp' }
+        result: { type: [object, 'null'], additionalProperties: true }
+    MdmCommandPage:
+      type: object
+      required: [items, next_cursor]
+      additionalProperties: false
+      properties:
+        items: { type: array, items: { $ref: '#/components/schemas/MdmCommand' } }
+        next_cursor: { type: [string, 'null'] }
+    DeviceCommand:
+      type: object
+      description: Signed instruction pulled by the DPC. Same signature rule as Directive with the prefix aron-command-v1.
+      required: [command_id, type, created_at, expires_at, sig]
+      additionalProperties: false
+      properties:
+        command_id: { $ref: '#/components/schemas/Uuid' }
+        type: { $ref: '#/components/schemas/MdmCommandType' }
+        params: { type: object, additionalProperties: true }
+        created_at: { $ref: '#/components/schemas/Timestamp' }
+        expires_at: { $ref: '#/components/schemas/Timestamp' }
+        sig: { type: string, pattern: '^[A-Za-z0-9_-]{86}$' }
+    DeviceCommandList:
+      type: object
+      required: [items]
+      additionalProperties: false
+      properties:
+        items: { type: array, maxItems: 50, items: { $ref: '#/components/schemas/DeviceCommand' } }
+    DeviceCommandAck:
+      type: object
+      required: [state]
+      additionalProperties: false
+      properties:
+        state: { type: string, enum: [acked, failed] }
+        result: { type: [object, 'null'], additionalProperties: true, description: 'At most 2 KB serialised: error code, locate fix, policy version applied.' }
+    DeviceCommandAckResult:
+      type: object
+      required: [command_id, state]
+      additionalProperties: false
+      properties:
+        command_id: { $ref: '#/components/schemas/Uuid' }
+        state: { $ref: '#/components/schemas/MdmCommandState' }
 
   examples:
     SyncBatchRequestExample:

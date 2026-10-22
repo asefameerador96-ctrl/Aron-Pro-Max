@@ -60,6 +60,8 @@ data class SkuOut(
     val id: Long, val code: String, val variant_id: Long, val category_code: String, val name: String, val short_name: String, val name_bn: String?,
     val base_unit: String, val base_per_pack: Int, val entry_unit_default: String, val report_unit: String?, val report_factor: String, val sort: Int,
     val status: String, val thumbnail_media_uuid: String?, val image_url: String?, val updated_at: String, val version: Int,
+    /** Free pack label (HLP, Soft Pack, Box, Dozen ...); the packet / box / dozen word of the entry unit comes from the category (docs/34 s4.2). */
+    val pack_type: String? = null,
 )
 
 @Serializable
@@ -152,7 +154,7 @@ private fun ts(rs: ResultSet, col: String): String = rs.getObject(col, OffsetDat
 internal fun OffsetDateTime.wireTs(): String = toInstant().wire()
 
 private const val NODE_COLS = "id, level, parent_id, code, name, name_bn, sort, status, created_at, updated_at, version"
-private const val SKU_COLS = "id, code, variant_id, category_code, name, short_name, name_bn, base_unit, base_per_pack, entry_unit_default, report_unit, report_factor, sort, status, thumbnail_media_uuid, updated_at, version, (SELECT a.blob_path FROM app.admin_asset a WHERE a.asset_id = sku.image_asset_id) AS image_blob_path"
+private const val SKU_COLS = "id, code, variant_id, category_code, name, short_name, name_bn, base_unit, base_per_pack, entry_unit_default, report_unit, report_factor, sort, status, thumbnail_media_uuid, updated_at, version, pack_type, (SELECT a.blob_path FROM app.admin_asset a WHERE a.asset_id = sku.image_asset_id) AS image_blob_path"
 private val LEVELS = listOf("category", "segment", "brand", "variant")
 private val PARENT_LEVEL = mapOf("segment" to "category", "brand" to "segment", "variant" to "brand")
 private val STATUSES = setOf("active", "inactive")
@@ -173,7 +175,7 @@ private fun skuOf(rs: ResultSet, blob: BlobSasIssuer) = SkuOut(
     rs.getLong("id"), rs.getString("code"), rs.getLong("variant_id"), rs.getString("category_code"), rs.getString("name"), rs.getString("short_name"), rs.getString("name_bn"),
     rs.getString("base_unit"), rs.getInt("base_per_pack"), rs.getString("entry_unit_default"), rs.getString("report_unit"), rs.getBigDecimal("report_factor").toPlainString(),
     rs.getInt("sort"), rs.getString("status"), rs.getString("thumbnail_media_uuid"),
-    rs.getString("image_blob_path")?.let { runCatching { blob.readUrl(it) }.getOrNull() }, ts(rs, "updated_at"), rs.getInt("version"),
+    rs.getString("image_blob_path")?.let { runCatching { blob.readUrl(it) }.getOrNull() }, ts(rs, "updated_at"), rs.getInt("version"), rs.getString("pack_type"),
 )
 
 private fun json(o: Any): JsonElement = when (o) {
@@ -311,6 +313,15 @@ private fun listSkus(call: ApplicationCall, d: AdminProductsDeps): SkuPageOut {
     return SkuPageOut(page, if (rows.size > limit) page.last().id.toString() else null)
 }
 
+/**
+ * Pack size and entry unit of a SKU (docs/34 s4.2): cigarettes and bidi pack N sticks (10, 20 or the bidi count), a lighter box holds 25 pieces, a match dozen is the base unit itself
+ * (one dozen per pack). The default entry unit is the base unit or `pack`, nothing else.
+ */
+private fun checkPacking(category: String, baseUnit: String, perPack: Int, entry: String) {
+    if (category == "match" && perPack != 1) adminBad("body.base_per_pack", "must_be_1")
+    if (entry != "pack" && entry != baseUnit) adminBad("body.entry_unit_default", "wrong_unit_for_category")
+}
+
 private fun decimal3(b: JsonObject, k: String, required: Boolean): BigDecimal? {
     val v = b[k] ?: run { if (required) adminBad("body.$k", "required"); return null }
     if (v !is JsonPrimitive || !v.isString || !DECIMAL3.matches(v.content)) adminBad("body.$k", "not_decimal3")
@@ -320,7 +331,7 @@ private fun decimal3(b: JsonObject, k: String, required: Boolean): BigDecimal? {
 private suspend fun createSku(call: ApplicationCall, d: AdminProductsDeps) {
     val p = call.masterWriter()
     val b = call.bodyObject()
-    b.only(setOf("code", "variant_id", "category_code", "name", "short_name", "name_bn", "base_unit", "base_per_pack", "entry_unit_default", "report_unit", "report_factor", "sort", "image_asset_id"))
+    b.only(setOf("code", "variant_id", "category_code", "name", "short_name", "name_bn", "base_unit", "base_per_pack", "entry_unit_default", "report_unit", "report_factor", "sort", "image_asset_id", "pack_type"))
     val code = b.str("code", 1, 40, required = true)!!.also { if (!SKU_CODE.matches(it)) adminBad("body.code", "pattern") }
     val variant = b.id("variant_id", required = true)!!
     val category = b.enum("category_code", CATEGORY_UNIT.keys, required = true)!!
@@ -334,18 +345,19 @@ private suspend fun createSku(call: ApplicationCall, d: AdminProductsDeps) {
     val factor = decimal3(b, "report_factor", required = true)!!
     val sort = b.int("sort", -1_000_000, 1_000_000, required = true)!!
     val imageAsset = imageAssetId(b)
+    val packType = b.str("pack_type", 0, 40, required = false, nullable = true)?.trim()?.takeIf { it.isNotEmpty() }
     // Cigarettes and bidi count in sticks, lighters in pieces and matches in dozens (CLAUDE.md rule 5); lighter and match have no pack of sticks.
     if (CATEGORY_UNIT.getValue(category) != baseUnit) adminBad("body.base_unit", "wrong_unit_for_category")
-    if (category in setOf("lighter", "match") && perPack != 1) adminBad("body.base_per_pack", "must_be_1")
+    checkPacking(category, baseUnit, perPack, entry)
     val out = mapDb {
         d.db.jdbi.inTransaction<SkuOut, Exception> { h ->
             val isVariant = h.createQuery("SELECT EXISTS (SELECT 1 FROM app.product_node WHERE id = :v AND level = 'variant')").bind("v", variant).mapTo(Boolean::class.java).one()
             if (!isVariant) adminBad("body.variant_id", "not_a_variant")
             if (imageAsset != null) checkSkuImage(h, imageAsset)
             val s = h.createQuery(
-                "INSERT INTO app.sku (code, variant_id, category_code, name, short_name, name_bn, base_unit, base_per_pack, entry_unit_default, report_unit, report_factor, sort, image_asset_id, created_by, updated_by) " +
-                    "VALUES (:code, :v, :cat, :n, :sn, :nb, :bu, :pp, :eu, :ru, :rf, :s, CAST(:img AS uuid), :by, :by) RETURNING $SKU_COLS",
-            ).bind("img", imageAsset).bind("code", code).bind("v", variant).bind("cat", category).bind("n", name).bind("sn", shortName).bind("nb", nameBn).bind("bu", baseUnit).bind("pp", perPack)
+                "INSERT INTO app.sku (code, variant_id, category_code, name, short_name, name_bn, base_unit, base_per_pack, entry_unit_default, report_unit, report_factor, sort, image_asset_id, pack_type, created_by, updated_by) " +
+                    "VALUES (:code, :v, :cat, :n, :sn, :nb, :bu, :pp, :eu, :ru, :rf, :s, CAST(:img AS uuid), :pt, :by, :by) RETURNING $SKU_COLS",
+            ).bind("img", imageAsset).bindAny("pt", packType).bind("code", code).bind("v", variant).bind("cat", category).bind("n", name).bind("sn", shortName).bind("nb", nameBn).bind("bu", baseUnit).bind("pp", perPack)
                 .bind("eu", entry).bind("ru", reportUnit).bind("rf", factor).bind("s", sort).bind("by", p.userId).map { rs, _ -> skuOf(rs, d.blob) }.one()
             AuditWriter.write(h, p, "sku", s.id.toString(), "create", null, skuAudit(h, s), null, call.requestId)
             s
@@ -359,13 +371,16 @@ private suspend fun updateSku(call: ApplicationCall, d: AdminProductsDeps) {
     val p = call.masterWriter()
     val id = call.pathId(); val expected = call.ifMatch()
     val b = call.bodyObject()
-    b.only(setOf("name", "short_name", "name_bn", "report_unit", "report_factor", "sort", "status", "thumbnail_media_uuid", "image_asset_id", "change_reason"))
+    b.only(setOf("name", "short_name", "name_bn", "base_per_pack", "entry_unit_default", "pack_type", "report_unit", "report_factor", "sort", "status", "thumbnail_media_uuid", "image_asset_id", "change_reason"))
     if (b.isEmpty()) adminBad("body", "empty_patch")
     val imageAsset = imageAssetId(b)
     val name = b.str("name", 1, 120, required = false)?.trim()
     val shortName = b.str("short_name", 1, 20, required = false)?.trim()
     val nameBn = b.str("name_bn", 0, 120, required = false, nullable = true)
     val reportUnit = b.enum("report_unit", REPORT_UNITS, required = false, nullable = true)
+    val perPackNew = b.int("base_per_pack", 1, 1000, required = false)
+    val entryNew = b.enum("entry_unit_default", UNITS + "pack", required = false)
+    val packType = b.str("pack_type", 0, 40, required = false, nullable = true)?.trim()?.takeIf { it.isNotEmpty() }
     val factor = decimal3(b, "report_factor", required = false)
     val sort = b.int("sort", -1_000_000, 1_000_000, required = false)
     val status = b.enum("status", STATUSES, required = false)
@@ -378,6 +393,16 @@ private suspend fun updateSku(call: ApplicationCall, d: AdminProductsDeps) {
             if (cur.version != expected) preconditionFailed(cur.version)
             val curAudit = skuAudit(h, cur)
             val set = mutableListOf<String>(); val args = mutableMapOf<String, Any?>()
+            val perPackChanges = perPackNew != null && perPackNew != cur.base_per_pack
+            val entryChanges = entryNew != null && entryNew != cur.entry_unit_default
+            if (perPackChanges || entryChanges) {
+                // A packing change alters what every phone shows and enters from its next bundle: it needs a reason, and the new pair must still make sense for the category.
+                if (reason == null) adminBad("body.change_reason", "required")
+                checkPacking(cur.category_code, cur.base_unit, perPackNew ?: cur.base_per_pack, entryNew ?: cur.entry_unit_default)
+                if (perPackChanges) { set += "base_per_pack = :pp"; args["pp"] = perPackNew }
+                if (entryChanges) { set += "entry_unit_default = :eu"; args["eu"] = entryNew }
+            }
+            if (b.containsKey("pack_type") && packType != cur.pack_type) { set += "pack_type = :pt"; args["pt"] = packType }
             if (name != null && name != cur.name) { set += "name = :name"; args["name"] = name }
             if (shortName != null && shortName != cur.short_name) { set += "short_name = :sn"; args["sn"] = shortName }
             if (b.containsKey("name_bn") && nameBn != cur.name_bn) { set += "name_bn = :nb"; args["nb"] = nameBn }

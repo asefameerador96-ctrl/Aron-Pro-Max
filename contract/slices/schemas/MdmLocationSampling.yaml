@@ -1,0 +1,20 @@
+MdmLocationSampling:
+  type: object
+  required:
+  - mode
+  additionalProperties: false
+  properties:
+    mode:
+      type: string
+      enum:
+      - false
+      - on_demand
+      - interval
+      description: on_demand = fix only at check-in, sale and when a locate command arrives; interval = also batched
+        breadcrumbs.
+    interval_min:
+      type:
+      - integer
+      - 'null'
+      minimum: 5
+      maximum: 120
