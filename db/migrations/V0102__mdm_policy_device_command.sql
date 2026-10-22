@@ -8,6 +8,9 @@
 --   sent/acked/failed/expired, sent -> acked/failed/expired), the request columns are fixed, signature, approval,
 --   delivery and result are written once, a factory reset names its requester, and a pending reset may expire
 --   unsigned and unapproved (mdm's pull expires it; before this fix the CHECKs refused that and broke the pull).
+--   Round 4: the approver is set exactly with the move pending_approval -> queued/rejected and on a factory reset
+--   only; a signature only with the move to queued; result only with the move to acked/failed; sent_at only in
+--   sent/acked/failed; push_sent_at only in queued/sent.
 -- - grants: api_rw reads, inserts and updates both tables through its app rows (no DELETE: commands are the activity
 --   log); support_ro reads commands without result (a locate answer is personal data);
 -- - dw.v_device_command: the stable read view for the portal and BI, without sig and result.
@@ -113,6 +116,18 @@ BEGIN
      OR (OLD.acked_at IS NOT NULL AND NEW.acked_at IS DISTINCT FROM OLD.acked_at)
      OR (OLD.result IS NOT NULL AND NEW.result IS DISTINCT FROM OLD.result) THEN
     RAISE EXCEPTION 'device_command %: signature, approval, delivery and result are written once', OLD.command_id USING ERRCODE = 'check_violation';
+  END IF;
+  -- The second person's decision and the move out of pending_approval are one step, on a factory reset only; a
+  -- signature only with the move to queued; delivery and result only with the states they report.
+  IF (OLD.approved_by IS NULL AND NEW.approved_by IS NOT NULL)
+       <> (OLD.state = 'pending_approval' AND NEW.state IN ('queued','rejected'))
+     OR (NEW.approved_by IS NOT NULL AND NEW.type <> 'factory_reset')
+     OR (OLD.sig IS NULL AND NEW.sig IS NOT NULL AND NEW.state <> 'queued')
+     OR (OLD.result IS NULL AND NEW.result IS NOT NULL AND NOT (NEW.state IN ('acked','failed') AND OLD.state NOT IN ('acked','failed')))
+     OR (OLD.sent_at IS NULL AND NEW.sent_at IS NOT NULL AND NEW.state NOT IN ('sent','acked','failed'))
+     OR (OLD.push_sent_at IS NULL AND NEW.push_sent_at IS NOT NULL AND NEW.state NOT IN ('queued','sent')) THEN
+    RAISE EXCEPTION 'device_command %: approval, signature, delivery or result does not fit the move % -> %', OLD.command_id, OLD.state, NEW.state
+      USING ERRCODE = 'check_violation';
   END IF;
   IF NEW.approved_by IS NOT NULL AND OLD.approved_by IS NULL THEN
     NEW.approved_at := now();   -- the decision time is the server's, never the caller's

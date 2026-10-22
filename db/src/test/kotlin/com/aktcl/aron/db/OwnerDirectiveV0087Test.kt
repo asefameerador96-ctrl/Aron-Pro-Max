@@ -321,6 +321,12 @@ class OwnerDirectiveV0087Test {
             // A rejected reset stays rejected; a reset names its requester.
             val r2 = UUID.randomUUID()
             cmd("$r2", "factory_reset", "pending_approval")
+            // Round 4: the decision and the move are one step; no signature on a rejection; no delivery while pending.
+            assertEquals("23514", refused("UPDATE app.device_command SET approved_by = $superadmin, sig = $sig WHERE command_id = '$r2'"))
+            assertEquals("23514", refused("UPDATE app.device_command SET state = 'queued', sig = $sig WHERE command_id = '$r2'"))
+            assertEquals("23514", refused("UPDATE app.device_command SET state = 'rejected', approved_by = $superadmin, sig = $sig WHERE command_id = '$r2'"))
+            assertEquals("23514", refused("UPDATE app.device_command SET sent_at = now() WHERE command_id = '$r2'"))
+            assertEquals("23514", refused("UPDATE app.device_command SET push_sent_at = now() WHERE command_id = '$r2'"))
             exec("UPDATE app.device_command SET state = 'rejected', approved_by = $superadmin, decision_reason = 'not this phone' WHERE command_id = '$r2'")
             assertEquals("23514", refused("UPDATE app.device_command SET state = 'queued', sig = $sig WHERE command_id = '$r2'"))
             assertEquals("23514", refused("UPDATE app.device_command SET approved_by = $admin WHERE command_id = '$r2'"))
@@ -329,6 +335,9 @@ class OwnerDirectiveV0087Test {
             // queued -> sent -> acked; never back, the request fixed, delivery and result written once.
             val l = UUID.randomUUID()
             cmd("$l", "lock", "queued")
+            assertEquals("23514", refused("UPDATE app.device_command SET approved_by = $superadmin WHERE command_id = '$l'"))
+            assertEquals("23514", refused("UPDATE app.device_command SET result = '{\"ok\": true}' WHERE command_id = '$l'"))
+            exec("UPDATE app.device_command SET push_sent_at = now() WHERE command_id = '$l'")
             assertEquals("23514", refused("UPDATE app.device_command SET type = 'factory_reset' WHERE command_id = '$l'"))
             assertEquals("23514", refused("UPDATE app.device_command SET params = '{\"x\": 1}' WHERE command_id = '$l'"))
             assertEquals("23514", refused("UPDATE app.device_command SET expires_at = now() + interval '2 days' WHERE command_id = '$l'"))
