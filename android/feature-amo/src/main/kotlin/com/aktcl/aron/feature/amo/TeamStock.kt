@@ -1,5 +1,7 @@
 package com.aktcl.aron.feature.amo
 
+import com.aktcl.aron.rules.EntrySpec
+import com.aktcl.aron.rules.EntryUnits
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
@@ -7,11 +9,12 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.longOrNull
 
-data class SkuInfo(val name: String, val nameBn: String?, val categoryCode: String)
+/** [entry] is how the SKU is counted in the field (packets, boxes, dozens; docs/34 s4.2); null shows the server's base quantity as it is. */
+data class SkuInfo(val name: String, val nameBn: String?, val categoryCode: String, val entry: EntrySpec? = null)
 data class StockLine(val skuId: Long, val unit: String, val lifted: Long, val sold: Long, val returned: Long, val current: Long)
 data class SrStock(val userId: Long, val name: String, val lines: List<StockLine>)
 /** The lifted quantity of one category in one unit (units are never added across each other: sticks, pieces and dozens stay apart). */
-data class CategoryTotal(val categoryCode: String, val unit: String, val lifted: Long)
+data class CategoryTotal(val categoryCode: String, val unit: String, val lifted: Long, val unitKey: String = "")
 
 /** Pure model of SR Stock (F-AMO-021): `GET /v1/team/stock` for the day, the SRs' phones masked by the server. */
 object TeamStock {
@@ -45,7 +48,14 @@ object TeamStock {
 
     /** Lifted stock per category and unit, categories in code order; a SKU the phone does not know falls under `""`. */
     fun totals(lines: List<StockLine>, skus: Map<Long, SkuInfo>): List<CategoryTotal> =
-        lines.groupBy { (skus[it.skuId]?.categoryCode.orEmpty()) to it.unit }
-            .map { (k, v) -> CategoryTotal(k.first, k.second, v.sumOf { it.lifted }) }
+        lines.groupBy { (skus[it.skuId]?.categoryCode.orEmpty()) to unitKeyOf(it, skus).ifEmpty { it.unit } }
+            .map { (k, v) -> CategoryTotal(k.first, v.first().unit, v.sumOf { entered(it.lifted, it, skus) }, unitKeyOf(v.first(), skus)) }
             .sortedWith(compareBy({ it.categoryCode }, { it.unit }))
+
+    /** The unit word key of a line: the SKU's entry unit when known (`packet`, `box`, `dozen`), else blank (the server's base unit is shown). */
+    fun unitKeyOf(l: StockLine, skus: Map<Long, SkuInfo>): String =
+        skus[l.skuId]?.let { s -> s.entry?.let { EntryUnits.labelKey(s.categoryCode, it.unit) } }.orEmpty()
+
+    /** A server base quantity in the SKU's entry unit (whole units; the base figure when the entry unit is unknown). */
+    fun entered(base: Long, l: StockLine, skus: Map<Long, SkuInfo>): Long = skus[l.skuId]?.entry?.fromBase(base.coerceAtLeast(0L)) ?: base
 }

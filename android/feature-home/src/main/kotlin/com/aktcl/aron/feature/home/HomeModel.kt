@@ -127,8 +127,12 @@ object HomeDayModel {
 data class HomeHero(val grandTotalText: String, val visited: Int, val target: Int, val checkInText: String?, val dayState: HomeDayState)
 
 /** One stock line of the Home stock card: issue and current stock in the category's own unit; hidden when both are zero. */
-data class HomeStockLine(val categoryLabel: String, val issueBase: Long, val currentBase: Long, val unitLabel: String) {
-    val zero: Boolean get() = issueBase == 0L && currentBase == 0L
+data class HomeStockLine(
+    val categoryLabel: String, val issueBase: Long, val currentBase: Long, val unitLabel: String,
+    /** Base units left over after whole entry units, with the word of the base unit (stick, piece); shown small, never dropped. */
+    val issueRemBase: Long = 0L, val currentRemBase: Long = 0L, val baseUnitLabel: String = "",
+) {
+    val zero: Boolean get() = issueBase == 0L && currentBase == 0L && issueRemBase == 0L && currentRemBase == 0L
 }
 
 /** The KPI row and the stock card (F-SR-010). [strikeRateText] is pre-formatted ("10%"); null when nothing is planned. */
@@ -148,8 +152,8 @@ data class HomeMoneyLines(
     val discountText: String?,
     val qcText: String?,
     val grandTotalText: String,
-    /** Cigarette and bidi sticks sold today: the sales panel's headline figure. */
-    val sticksSold: Long = 0L,
+    /** Cigarette and bidi packets sold today (entry unit, docs/34 s4.2): the sales panel's headline figure. */
+    val packetsSold: Long = 0L,
     /**
      * The bare figures of the two reference panels, EACH bound to its own field (a discount can never render under the QC label):
      * the gross, the offer discount (zero while docs/27 defers programmes), the QC deduction, the net, then the second panel's

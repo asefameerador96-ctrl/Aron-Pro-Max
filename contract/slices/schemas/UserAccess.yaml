@@ -1,0 +1,33 @@
+UserAccess:
+  type: object
+  required:
+  - user_id
+  - role
+  - version
+  - modules
+  - brand_ids
+  additionalProperties: false
+  properties:
+    user_id:
+      $ref: '#/components/schemas/Id'
+    role:
+      $ref: '#/components/schemas/Role'
+    version:
+      type: integer
+      minimum: 1
+      description: Also the ETag; the user's scope_version.
+    modules:
+      type: object
+      propertyNames:
+        $ref: '#/components/schemas/AdminModule'
+      additionalProperties:
+        type: string
+        enum:
+        - r
+        - w
+      description: ADMIN users only; only granted modules appear.
+    brand_ids:
+      type: array
+      items:
+        $ref: '#/components/schemas/Id'
+      description: BRAND users only; product-tree brand nodes.

@@ -1,0 +1,20 @@
+RouteTargetBatchWrite:
+  type: object
+  required:
+  - batch_uuid
+  - rows
+  - dry_run
+  additionalProperties: false
+  properties:
+    batch_uuid:
+      $ref: '#/components/schemas/Uuid'
+    rows:
+      type: array
+      minItems: 1
+      maxItems: 20000
+      items:
+        $ref: '#/components/schemas/RouteTargetRow'
+    dry_run:
+      type: boolean
+    change_reason:
+      $ref: '#/components/schemas/ChangeReason'

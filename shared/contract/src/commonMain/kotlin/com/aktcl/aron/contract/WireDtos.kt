@@ -252,6 +252,7 @@ data class Sku(
     @SerialName("name_bn") val nameBn: String? = null,
     @SerialName("base_unit") val baseUnit: String,
     @SerialName("base_per_pack") val basePerPack: Int,
+    @SerialName("pack_type") val packType: String? = null,
     @SerialName("entry_unit_default") val entryUnitDefault: String,
     @SerialName("report_unit") val reportUnit: String? = null,
     @SerialName("report_factor") val reportFactor: String,
@@ -263,7 +264,7 @@ data class Sku(
     @SerialName("updated_at") val updatedAt: String? = null,
     @SerialName("version") val version: Int? = null,
 ) {
-    override fun toString(): String = "Sku(id=${id}, code=***, variantId=${variantId}, categoryCode=${categoryCode}, name=${name}, shortName=${shortName}, nameBn=${nameBn}, baseUnit=${baseUnit}, basePerPack=${basePerPack}, entryUnitDefault=${entryUnitDefault}, reportUnit=${reportUnit}, reportFactor=${reportFactor}, sort=${sort}, status=${status}, thumbnailMediaUuid=${thumbnailMediaUuid}, imageUrl=${imageUrl}, imageAssetId=${imageAssetId}, updatedAt=${updatedAt}, version=${version})"
+    override fun toString(): String = "Sku(id=${id}, code=***, variantId=${variantId}, categoryCode=${categoryCode}, name=${name}, shortName=${shortName}, nameBn=${nameBn}, baseUnit=${baseUnit}, basePerPack=${basePerPack}, packType=${packType}, entryUnitDefault=${entryUnitDefault}, reportUnit=${reportUnit}, reportFactor=${reportFactor}, sort=${sort}, status=${status}, thumbnailMediaUuid=${thumbnailMediaUuid}, imageUrl=${imageUrl}, imageAssetId=${imageAssetId}, updatedAt=${updatedAt}, version=${version})"
 }
 
 @Serializable

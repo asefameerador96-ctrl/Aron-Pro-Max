@@ -1,0 +1,24 @@
+UserAccessWrite:
+  type: object
+  required:
+  - change_reason
+  additionalProperties: false
+  description: Exactly one of modules (ADMIN user) and brand_ids (BRAND user, not empty).
+  properties:
+    modules:
+      type: object
+      propertyNames:
+        $ref: '#/components/schemas/AdminModule'
+      additionalProperties:
+        type: string
+        enum:
+        - r
+        - w
+    brand_ids:
+      type: array
+      minItems: 1
+      maxItems: 200
+      items:
+        $ref: '#/components/schemas/Id'
+    change_reason:
+      $ref: '#/components/schemas/ChangeReason'

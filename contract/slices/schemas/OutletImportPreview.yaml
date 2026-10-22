@@ -1,0 +1,36 @@
+OutletImportPreview:
+  type: object
+  required:
+  - batch_uuid
+  - rows
+  - creates
+  - updates
+  - by_channel
+  - errors
+  - errors_truncated
+  additionalProperties: false
+  properties:
+    batch_uuid:
+      $ref: '#/components/schemas/Uuid'
+    rows:
+      type: integer
+      minimum: 1
+    creates:
+      type: integer
+      minimum: 0
+    updates:
+      type: integer
+      minimum: 0
+    by_channel:
+      type: object
+      additionalProperties:
+        type: integer
+        minimum: 0
+      description: Valid rows per channel.
+    errors:
+      type: array
+      maxItems: 1000
+      items:
+        $ref: '#/components/schemas/OutletImportRowError'
+    errors_truncated:
+      type: boolean

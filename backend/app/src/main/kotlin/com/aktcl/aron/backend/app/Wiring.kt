@@ -65,6 +65,8 @@ import com.aktcl.aron.backend.masterdata.BackfillMatchOut
 import com.aktcl.aron.backend.masterdata.BackfillMatcher
 import com.aktcl.aron.backend.masterdata.backfillMatchRoutes
 import com.aktcl.aron.backend.masterdata.DuesAdjustmentDeps
+import com.aktcl.aron.backend.masterdata.RouteTargetDeps
+import com.aktcl.aron.backend.masterdata.routeTargetRoutes
 import com.aktcl.aron.backend.masterdata.duesAdjustmentRoutes
 import com.aktcl.aron.backend.masterdata.WebEntryDeps
 import com.aktcl.aron.backend.masterdata.webEntryRoutes
@@ -312,6 +314,7 @@ class Wiring(
                 dataVoidRoutes(DataVoidDeps(db, reach, guard, clock))
                 entryUnlockRoutes(EntryUnlockDeps(db, reach, config, guard, clock))
                 duesAdjustmentRoutes(DuesAdjustmentDeps(db, reach, guard, clock))
+                routeTargetRoutes(RouteTargetDeps(db, guard, clock))
                 backfillMatchRoutes(BackfillMatchDeps(db, reach, guard, sync.ingest?.let { svc ->
                     BackfillMatcher { qid, resolver, why ->
                         val m = svc.matchBackfill(qid, resolver, why)

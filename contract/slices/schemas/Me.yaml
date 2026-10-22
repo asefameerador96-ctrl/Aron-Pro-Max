@@ -40,23 +40,7 @@ Me:
       oneOf:
       - type: object
         propertyNames:
-          type: string
-          enum:
-          - masterdata
-          - routes
-          - outlets
-          - products
-          - prices
-          - users
-          - targets
-          - credentials
-          - mdm
-          - reports
-          - config
-          - data_entry
-          - indent
-          - leaderboard
-          - daily_tracking
+          $ref: '#/components/schemas/AdminModule'
         additionalProperties:
           type: string
           enum:

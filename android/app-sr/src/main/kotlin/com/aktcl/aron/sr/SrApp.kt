@@ -308,7 +308,7 @@ fun SrApp(
         "cigarette" to stringResource(R.string.sr_cat_cigarette), "bidi" to stringResource(R.string.sr_cat_bidi),
         "lighter" to stringResource(R.string.sr_cat_lighter), "match" to stringResource(R.string.sr_cat_match),
     )
-    val unitLabels = mapOf("stick" to stringResource(R.string.sr_unit_stick), "piece" to stringResource(R.string.sr_unit_piece), "dozen" to stringResource(R.string.sr_unit_dozen))
+    val unitLabels = listOf("packet", "box", "dozen", "stick", "piece").associateWith { com.aktcl.aron.core.ui.entryUnitLabel(it) }
     var homeSnap by remember { mutableStateOf<SrHomeSnapshot?>(null) }
     val onHome = screen == SrScreen.HOME
     LaunchedEffect(data, attendance, resumeTick, onHome, loaded) {

@@ -85,9 +85,12 @@ import com.aktcl.aron.core.ui.LocalAronColors
 import com.aktcl.aron.core.ui.MoneyText
 import com.aktcl.aron.core.ui.RowPosition
 import com.aktcl.aron.core.ui.localizedDigits
+import com.aktcl.aron.core.ui.entryUnitLabel
 import com.aktcl.aron.core.ui.localizedNumber
 import com.aktcl.aron.feature.memo.R
 import com.aktcl.aron.feature.memo.domain.DaySummary
+import com.aktcl.aron.feature.memo.domain.SkuSummaryRow
+import com.aktcl.aron.feature.memo.domain.CategorySummaryRow
 import com.aktcl.aron.feature.memo.domain.MemoDetail
 import com.aktcl.aron.feature.memo.domain.MemoMenuRow
 import com.aktcl.aron.rules.Formats
@@ -240,7 +243,7 @@ fun MemoDetailView(
         WhiteCard {
             Column(Modifier.fillMaxWidth().padding(AronTokens.Space.M), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
                 TableHeader(stringResource(R.string.memo_col_sku), stringResource(R.string.memo_col_qty), stringResource(R.string.memo_col_price))
-                detail.items.forEach { i -> TableRow(skuName(i.skuId), qtyText(i.qtyBase, skuUnit(i.skuId)), amount(i.grossMtk)) }
+                detail.items.forEach { i -> TableRow(skuName(i.skuId), lineQtyText(i.qtyEntered, i.unitEntered, skuCategory(i.skuId), i.qtyBase, skuUnit(i.skuId)), amount(i.grossMtk)) }
                 // M3: a money subtotal per category, in first-seen order (quantities of different units are never added)
                 detail.items.filter { MemoCategories.label(skuCategory(it.skuId)).isNotBlank() }.groupBy { skuCategory(it.skuId) }.forEach { (code, items) ->
                     TableRow2(stringResource(R.string.memo_total_category, MemoCategories.label(code)), amount(items.sumOf { it.grossMtk }))
@@ -449,12 +452,20 @@ fun SummaryScreen(
     modifier: Modifier = Modifier,
     categoryLabel: (String) -> String = { it },
     unitLabel: (String) -> String = { "" },
+    /** The unit word of a SKU's counted figures when the summary does not carry one itself (older callers). */
+    skuUnit: (Long) -> String = { "" },
     printing: Boolean = false,
     /** The printer state of the info card (the host passes `AronPrinterBadge`); null shows none. */
     printerBadge: (@Composable () -> Unit)? = null,
 ) {
     val look = LocalAronLook.current
     val empty = summary.skus.isEmpty()
+    // the SKU name with the word its figures are counted in: "MaxR-10S (প্যাকেট)"; every quantity of the row carries it (docs/34 s4.2)
+    @Composable fun skuTitle(r: SkuSummaryRow): String {
+        val word = if (r.unitKey.isNotEmpty()) entryUnitLabel(r.unitKey) else skuUnit(r.skuId)
+        return if (word.isEmpty()) skuName(r.skuId) else skuName(r.skuId) + " (" + word + ")"
+    }
+    @Composable fun categoryUnit(c: CategorySummaryRow): String = if (c.unitKey.isNotEmpty()) entryUnitLabel(c.unitKey) else unitLabel(c.categoryCode)
     val printButton: @Composable () -> Unit = {
         AronPrimaryButton(
             stringResource(R.string.summary_print), onPrint, Modifier.fillMaxWidth(),
@@ -474,22 +485,24 @@ fun SummaryScreen(
                 WhiteCard {
                     Column(Modifier.fillMaxWidth().padding(AronTokens.Space.L), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.M)) {
                         summary.skus.forEach { r ->
-                            Text(skuName(r.skuId), style = MaterialTheme.typography.titleMedium, color = look.purple)
+                            Text(skuTitle(r), style = MaterialTheme.typography.titleMedium, color = look.purple)
                             SummaryPairs(
-                                stringResource(R.string.summary_col_memos) to localizedNumber(r.memoCount.toLong()), stringResource(R.string.summary_col_qty) to localizedNumber(r.qtyBase),
+                                stringResource(R.string.summary_col_memos) to localizedNumber(r.memoCount.toLong()), stringResource(R.string.summary_col_qty) to remFigure(r.qtyEntered, r.qtyRemBase),
                                 stringResource(R.string.summary_col_value) to takaAmount(r.valueMtk), stringResource(R.string.summary_col_discount) to amount(r.discountMtk),
-                                stringResource(R.string.summary_col_after) to takaAmount(r.discountedValueMtk), stringResource(R.string.summary_col_return) to localizedNumber(r.returnQtyBase),
+                                stringResource(R.string.summary_col_after) to takaAmount(r.discountedValueMtk), stringResource(R.string.summary_col_return) to remFigure(r.returnEntered, r.returnRemBase),
                             )
                             CardDivider()
                         }
                         summary.categories.forEach { cat ->
-                            val unit = unitLabel(cat.categoryCode)
+                            val unit = categoryUnit(cat)
                             val name = categoryLabel(cat.categoryCode)
                             Text(if (unit.isEmpty()) name else stringResource(R.string.summary_group_head, name, unit), style = MaterialTheme.typography.titleSmall, color = look.purple)
+                            // the whole quantity on its own full-width line: "3 packets + 5 sticks (65 sticks)" never gets cut
+                            Text(stringResource(R.string.summary_col_qty) + ": " + catQtyText(cat, unit), style = MaterialTheme.typography.bodyMedium, color = look.ink)
                             SummaryPairs(
-                                stringResource(R.string.summary_col_qty) to qtyText(cat.qtyBase, unit), stringResource(R.string.summary_col_value) to takaAmount(cat.valueMtk),
+                                stringResource(R.string.summary_col_value) to takaAmount(cat.valueMtk),
                                 stringResource(R.string.summary_col_discount) to amount(cat.discountMtk), stringResource(R.string.summary_col_after) to takaAmount(cat.discountedValueMtk),
-                                stringResource(R.string.summary_col_return) to localizedNumber(cat.returnQtyBase),
+                                stringResource(R.string.summary_col_return) to remFigure(cat.returnEntered, cat.returnRemBase),
                             )
                         }
                         CardDivider()
@@ -520,17 +533,17 @@ fun SummaryScreen(
                         ),
                         rows = summary.skus.map { r ->
                             SummaryRow(
-                                skuName(r.skuId),
+                                skuTitle(r),
                                 listOf(
-                                    localizedNumber(r.memoCount.toLong()), localizedNumber(r.qtyBase), takaAmount(r.valueMtk),
-                                    amount(r.discountMtk), takaAmount(r.discountedValueMtk), localizedNumber(r.returnQtyBase),
+                                    localizedNumber(r.memoCount.toLong()), remFigure(r.qtyEntered, r.qtyRemBase), takaAmount(r.valueMtk),
+                                    amount(r.discountMtk), takaAmount(r.discountedValueMtk), remFigure(r.returnEntered, r.returnRemBase),
                                 ),
                             )
                         },
                         weights = SummaryColumns.shares,
                     )
                 }
-                SummaryDock(summary, categoryLabel, unitLabel)
+                SummaryDock(summary, categoryLabel) { categoryUnit(it) }
             }
             printButton()
         }
@@ -539,26 +552,37 @@ fun SummaryScreen(
 
 /** The docked block of sr/summary.png on its own `#F0F0F0` panel: a purple row per category (quantity with its unit as a small suffix), "discount and others (-)" and the grand total. */
 @Composable
-private fun SummaryDock(summary: DaySummary, categoryLabel: (String) -> String, unitLabel: (String) -> String) {
+private fun SummaryDock(summary: DaySummary, categoryLabel: (String) -> String, unitOf: @Composable (CategorySummaryRow) -> String) {
     val weights = SummaryColumns.shares
     val look = LocalAronLook.current
     val figure = TextStyle(fontSize = 13.sp, color = look.purple, textAlign = TextAlign.End)
     Column(Modifier.fillMaxWidth().background(look.rowAlt).padding(horizontal = 12.dp, vertical = 8.dp)) {
         summary.categories.forEach { cat ->
-            val unit = unitLabel(cat.categoryCode)
-            Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text(categoryLabel(cat.categoryCode), style = TextStyle(fontSize = 13.sp, color = look.purple), softWrap = false, modifier = Modifier.weight(weights[0]))
-                Text(
-                    buildAnnotatedString {
-                        append(localizedNumber(cat.qtyBase))
-                        if (unit.isNotEmpty()) withStyle(SpanStyle(fontSize = 10.sp)) { append(" "); append(unit) }
-                    },
-                    style = figure, softWrap = false, modifier = Modifier.weight(weights[1]),
-                )
-                Text(takaAmount(cat.valueMtk), style = figure, softWrap = false, modifier = Modifier.weight(weights[2]))
-                Text(amount(cat.discountMtk), style = figure, softWrap = false, modifier = Modifier.weight(weights[3]))
-                Text(takaAmount(cat.discountedValueMtk), style = figure, softWrap = false, modifier = Modifier.weight(weights[4]))
-                Text(localizedNumber(cat.returnQtyBase), style = figure, modifier = Modifier.weight(weights[5]))
+            val unit = unitOf(cat)
+            Column(Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
+                // line 1: the category and its whole quantity, free to wrap: "3 packets + 5 sticks (65 sticks)" is never cut
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
+                    Text(categoryLabel(cat.categoryCode), style = TextStyle(fontSize = 13.sp, color = look.purple), modifier = Modifier.weight(1f))
+                    Text(
+                        buildAnnotatedString {
+                            append(localizedNumber(cat.qtyEntered))
+                            if (unit.isNotEmpty()) withStyle(SpanStyle(fontSize = 12.sp)) {
+                                append(" "); append(unit)
+                                if (cat.qtyRemBase != 0L) { append(" "); append(com.aktcl.aron.core.ui.remWithUnit(cat.qtyRemBase, entryUnitLabel(com.aktcl.aron.rules.EntryUnits.baseLabelKey(cat.categoryCode)))) }
+                                baseBracket(cat)?.let { append(" "); append(it) }
+                            } else if (cat.qtyRemBase != 0L) append(com.aktcl.aron.core.ui.remSuffix(cat.qtyRemBase))
+                        },
+                        style = figure, modifier = Modifier.weight(2f),
+                    )
+                }
+                // line 2: the money and return figures in the table's columns
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
+                    Spacer(Modifier.weight(weights[0] + weights[1]))
+                    Text(takaAmount(cat.valueMtk), style = figure, softWrap = false, modifier = Modifier.weight(weights[2]))
+                    Text(amount(cat.discountMtk), style = figure, softWrap = false, modifier = Modifier.weight(weights[3]))
+                    Text(takaAmount(cat.discountedValueMtk), style = figure, softWrap = false, modifier = Modifier.weight(weights[4]))
+                    Text(remFigure(cat.returnEntered, cat.returnRemBase), style = figure, modifier = Modifier.weight(weights[5]))
+                }
             }
         }
         val big = TextStyle(fontSize = 18.sp, fontWeight = FontWeight.Bold, color = look.purple)
@@ -593,6 +617,34 @@ private fun SummaryPairs(vararg cells: Pair<String, String>) {
         }
     }
 }
+
+/** `12` or `12+5`: whole entry units, then the base units left over (never floored away; the unit word sits in the row title). */
+@Composable
+internal fun remFigure(whole: Long, remBase: Long): String = localizedNumber(whole) + com.aktcl.aron.core.ui.remSuffix(remBase)
+
+/** `(70 sticks)`: the base figure of a category line in brackets, only when the entry unit is not the base unit; null otherwise. */
+@Composable
+internal fun baseBracket(cat: CategorySummaryRow): String? {
+    val base = com.aktcl.aron.rules.EntryUnits.baseLabelKey(cat.categoryCode)
+    return if (cat.unitKey.isEmpty() || cat.unitKey == base) null else "(" + localizedNumber(cat.qtyBase) + " " + entryUnitLabel(base) + ")"
+}
+
+/** A category's quantity: `3 packets (70 sticks)`, with `+ 5 sticks` when it is not whole entry units; the base figure alone when its SKUs share no unit. */
+@Composable
+internal fun catQtyText(cat: CategorySummaryRow, unit: String): String {
+    val base = com.aktcl.aron.rules.EntryUnits.baseLabelKey(cat.categoryCode)
+    val main = if (cat.qtyRemBase == 0L) qtyText(cat.qtyEntered, unit)
+    else stringResource(R.string.summary_qty_rem, localizedNumber(cat.qtyEntered), unit, com.aktcl.aron.core.ui.remWithUnit(cat.qtyRemBase, entryUnitLabel(base)))
+    return main + (baseBracket(cat)?.let { " $it" } ?: "")
+}
+
+/**
+ * A stored line's quantity as the rep counted it, with its unit word ("3 packets", "2 boxes", "5 dozen"; docs/34 s4.2). Lines
+ * with no stored unit show the base quantity with the host's base-unit word.
+ */
+@Composable
+internal fun lineQtyText(qtyEntered: Long, unitEntered: String, category: String?, qtyBase: Long, baseUnitWord: String): String =
+    if (unitEntered.isNotEmpty()) qtyText(qtyEntered, entryUnitLabel(category.orEmpty(), unitEntered)) else qtyText(qtyBase, baseUnitWord)
 
 /** "375 piece": a quantity in its own unit, or the bare number when the unit is unknown. */
 @Composable
