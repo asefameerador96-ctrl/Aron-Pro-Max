@@ -1,3 +1,10 @@
+# Session 2 (2026-10-22) — progress
+- Merged INT b561b267. FreshDb DDL shim, `mdm_ddl.sql` and `MdmDdlSyncTest` deleted; mdm suites run on db's V0102/V0103 (13 MdmApiTest green).
+- `DbGrants` (reads `app.user_module_grant`, `mdm` r/w; SUPERADMIN always write) wired in `Wiring.kt` instead of `RoleGrants`, until the token carries `modules`. Tests: read-only ADMIN cannot act or decide, revoked grant closes the door, ADMIN with write approves a factory reset (requester cannot), pending reset that expired does not break the pull (db's request). Expiry tests move the service clock, never UPDATE rows.
+- Geo seam: `BreadcrumbSettings.withMdmSampling(mode, intervalMin)` in core-geo (off / interval / on_demand) with `MdmSamplingTest`. `BreadcrumbController` is not constructed in production code yet; whoever wires it passes `{ cfg.withMdmSampling(applier.locationMode(), applier.locationIntervalMin()) }`. Sale and check-in fixes are NOT affected by the policy (geo-validation must keep working).
+- Device-lab steps D-MDM-01 added to `docs/status/device-checks.md` (DEVICE-PENDING).
+- Still waiting: owner's MDM screenshots (`docs/ui-reference/web/mdm-*.webp`); network_type in the status report (contract queue); packages catalogue endpoint.
+
 # HANDOFF (lane mdm session 1 -> session 2, 2026-10-22)
 
 **Where things are.** Branch `lane/mdm`; contract 1.6.0 (tag `admin-mdm`, 16 operations `/v1/admin/mdm/*`, plus `GET /v1/devices/me/commands`, `POST /v1/devices/me/commands/{id}/ack`). Merged with INT 2c10a157. The candidate is the head named in the lead's message; check `docs/status/lane-sessions.md` and the last CI run on the branch.
