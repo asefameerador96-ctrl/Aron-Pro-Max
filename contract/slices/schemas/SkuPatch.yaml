@@ -16,6 +16,18 @@ SkuPatch:
       - string
       - 'null'
       maxLength: 120
+    base_per_pack:
+      type: integer
+      minimum: 1
+      maximum: 1000
+      description: A change needs `change_reason`; a match pack stays 1.
+    entry_unit_default:
+      $ref: '#/components/schemas/QtyUnit'
+    pack_type:
+      type:
+      - string
+      - 'null'
+      maxLength: 40
     report_unit:
       type:
       - string

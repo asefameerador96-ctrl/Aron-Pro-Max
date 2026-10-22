@@ -1,0 +1,24 @@
+HouseDuplicateItem:
+  type: object
+  required:
+  - id
+  - code
+  - name
+  - status
+  - is_active
+  - zone_count
+  additionalProperties: false
+  properties:
+    id:
+      $ref: '#/components/schemas/Id'
+    code:
+      type: string
+    name:
+      type: string
+    status:
+      $ref: '#/components/schemas/ActiveStatus'
+    is_active:
+      type: boolean
+    zone_count:
+      type: integer
+      minimum: 0

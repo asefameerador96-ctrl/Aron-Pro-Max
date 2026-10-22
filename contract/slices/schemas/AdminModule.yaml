@@ -1,0 +1,19 @@
+AdminModule:
+  type: string
+  enum:
+  - masterdata
+  - routes
+  - outlets
+  - products
+  - prices
+  - users
+  - targets
+  - credentials
+  - mdm
+  - reports
+  - config
+  - data_entry
+  - indent
+  - leaderboard
+  - daily_tracking
+  description: The fixed module list of an ADMIN user's grants (docs/34 s1).

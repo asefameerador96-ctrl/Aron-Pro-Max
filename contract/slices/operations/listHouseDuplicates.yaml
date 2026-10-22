@@ -1,0 +1,18 @@
+path: /v1/admin/geo/house/duplicates
+method: get
+operation:
+  tags:
+  - admin-geography
+  operationId: listHouseDuplicates
+  summary: Groups of distribution houses of one territory whose names match after case, spacing and punctuation.
+  responses:
+    '200':
+      description: Duplicate groups (at most 200).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/HouseDuplicateList'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'

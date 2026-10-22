@@ -17,6 +17,8 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.doubleOrNull
 import org.jdbi.v3.core.Handle
+import com.aktcl.aron.rules.BusinessDate
+import kotlinx.datetime.toJavaLocalDate
 import java.time.LocalDate
 
 private val HOLIDAY_KINDS = setOf("holiday", "makeup_day", "emergency_off")
@@ -97,6 +99,74 @@ private suspend fun createHoliday(call: ApplicationCall, d: AdminMasterDeps) {
         }
     }
     call.admRespond(HttpStatusCode.Created, holidayJson(row))
+}
+
+// ---- working days -------------------------------------------------------------------------------------------------
+
+private val MONTH_Q = Regex("^[0-9]{4}-(0[1-9]|1[0-2])$")
+
+/** Weekend weekdays, ISO 1 (Monday) to 7 (Sunday): `cfg.calendar.weekend_days`, default Friday (docs/34 s2, D-28). */
+private fun weekendDays(d: AdminMasterDeps): Set<Int> = runCatching {
+    (d.config!!.value("cfg.calendar.weekend_days") as JsonArray).map { (it as JsonPrimitive).content.toInt() }.filter { it in 1..7 }.toSet()
+}.getOrDefault(setOf(5))
+
+/**
+ * `GET /admin/calendar/working-days?month=YYYY-MM`: every date of the month with its Friday/weekend flag and the national (global-scope)
+ * holiday on it, and the count of working days. A working day is a date that is not a weekend day and not a global holiday or emergency off-day,
+ * or a global make-up day. Wing, division, territory and zone declarations do not change the national count.
+ */
+private fun workingDays(call: ApplicationCall, d: AdminMasterDeps): JsonObject {
+    call.admPrincipal(MASTER_READERS, "the calendar")
+    val ym = call.request.queryParameters["month"]
+    val first = if (ym == null) BusinessDate.of(d.clock.now().toEpochMilli()).toJavaLocalDate().withDayOfMonth(1)
+    else (ym.takeIf { MONTH_Q.matches(it) } ?: admBad("query.month")).let { java.time.YearMonth.parse(it).atDay(1) }
+    val last = first.plusMonths(1).minusDays(1)
+    val weekend = weekendDays(d)
+    val entries = d.db.jdbi.withHandle<Map<LocalDate, Map<String, Any?>>, Exception> { h ->
+        h.createQuery("SELECT * FROM app.calendar_holiday WHERE scope_type = 'global' AND revoked_at IS NULL AND date BETWEEN :f AND :t").bind("f", first).bind("t", last)
+            .mapToMap().list().associateBy { (it["date"] as java.sql.Date).toLocalDate() }
+    }
+    var working = 0
+    val days = (0 until last.dayOfMonth).map { i ->
+        val date = first.plusDays(i.toLong())
+        val dow = date.dayOfWeek.value
+        val e = entries[date]
+        val isWeekend = dow in weekend
+        val isHoliday = e != null && e["kind"] != "makeup_day"
+        val isWorking = if (e != null && e["kind"] == "makeup_day") true else !isWeekend && !isHoliday
+        if (isWorking) working++
+        JsonObject(mapOf(
+            "date" to JsonPrimitive(date.toString()), "weekday" to JsonPrimitive(dow), "is_friday" to JsonPrimitive(dow == 5), "is_weekend" to JsonPrimitive(isWeekend),
+            "is_holiday" to JsonPrimitive(isHoliday), "name_en" to jv(e?.get("name_en")), "name_bn" to jv(e?.get("name_bn")), "is_working_day" to JsonPrimitive(isWorking),
+        ))
+    }
+    return JsonObject(mapOf("month" to JsonPrimitive(first.toString().take(7)), "working_days" to JsonPrimitive(working), "weekend_days" to JsonArray(weekend.sorted().map { JsonPrimitive(it) }), "days" to JsonArray(days)))
+}
+
+/** `POST /admin/calendar/holidays/{id}/revoke`: withdraws a declaration that has not started (the date is after today); reach as for create. Rows have no version, so no If-Match. */
+private suspend fun revokeHoliday(call: ApplicationCall, d: AdminMasterDeps) {
+    val p = call.admPrincipal(MASTER_WRITERS, "calendar changes")
+    val id = call.admId()
+    val f = call.admBody(setOf("change_reason"))
+    val reason = f.reason(true)
+    val ctx = d.ctx(call, p)
+    val row = admWrite {
+        d.db.jdbi.inTransaction<Map<String, Any?>, Exception> { h ->
+            val cur = h.row("SELECT * FROM app.calendar_holiday WHERE id = :i FOR UPDATE", "i" to id) ?: admNotFound()
+            val scopeType = cur["scope_type"] as String
+            val scopeId = (cur["scope_id"] as Number).toLong()
+            val vis = scopeIds(ctx)
+            if (scopeType == "global") { if (!ctx.reach.national) throw ApiProblem(ProblemCode.ERR_OUT_OF_SCOPE, "a global entry needs national reach") }
+            else if (vis != null && scopeId !in vis.getValue(scopeType)) admNotFound()
+            if (cur["revoked_at"] != null) throw ApiProblem(ProblemCode.ERR_CONFLICT, "the entry is already revoked")
+            val date = (cur["date"] as java.sql.Date).toLocalDate()
+            if (!date.isAfter(ctx.today)) throw ApiProblem(ProblemCode.ERR_MASTER_EFFECTIVE_DATE_PAST, "an entry that has started cannot be revoked", errors = listOf(com.aktcl.aron.backend.platform.FieldError("path.id", "past")))
+            h.createUpdate("UPDATE app.calendar_holiday SET revoked_at = :at, revoked_by = :by WHERE id = :i").bind("at", odt(ctx.now)).bind("by", p.userId).bind("i", id).execute()
+            ctx.audit(h, "calendar_holiday", id.toString(), "revoke", holidayJson(cur), null, reason)
+            cur
+        }
+    }
+    call.admRespond(HttpStatusCode.OK, holidayJson(row))
 }
 
 // ---- code lists ---------------------------------------------------------------------------------------------------
@@ -229,6 +299,8 @@ fun Route.adminCalendarRoutes(d: AdminMasterDeps) {
     authenticated(d.guard) {
         get("/admin/calendar/holidays") { call.admRespond(HttpStatusCode.OK, listHolidays(call, d)) }
         post("/admin/calendar/holidays") { createHoliday(call, d) }
+        post("/admin/calendar/holidays/{id}/revoke") { revokeHoliday(call, d) }
+        get("/admin/calendar/working-days") { call.admRespond(HttpStatusCode.OK, workingDays(call, d)) }
         get("/admin/code-lists") { call.admRespond(HttpStatusCode.OK, listCodeLists(call, d)) }
         put("/admin/code-lists/{list_key}") { putCodeList(call, d) }
     }

@@ -1946,6 +1946,43 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '409': { $ref: '#/components/responses/Conflict' }
 
+  /v1/admin/geo/house/duplicates:
+    get:
+      tags: [admin-geography]
+      operationId: listHouseDuplicates
+      summary: Groups of distribution houses of one territory whose names match after case, spacing and punctuation.
+      responses:
+        '200':
+          description: Duplicate groups (at most 200).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/HouseDuplicateList' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /v1/admin/geo/house/merge:
+    post:
+      tags: [admin-geography]
+      operationId: mergeHouses
+      summary: Fold duplicate houses into one - zones move to the kept house, merged houses become inactive.
+      parameters:
+        - $ref: '#/components/parameters/IfMatch'
+      description: '`If-Match` is the version of the kept house. Merged houses must be in the same territory with the same normalised name, otherwise 400 `not_duplicates`.'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/HouseMergeRequest' }
+      responses:
+        '200':
+          description: Merged.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/HouseMergeResult' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '412': { $ref: '#/components/responses/PreconditionFailed' }
   /v1/admin/geo/{level}:
     get:
       tags: [admin-geography]
@@ -2661,6 +2698,51 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
+  /v1/admin/users/{id}/access:
+    get:
+      tags: [admin-users]
+      operationId: getUserAccess
+      summary: An ADMIN user's module grants or a BRAND user's brands (docs/34 s1); the ETag is the access version.
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '200':
+          description: The access of the user.
+          headers:
+            ETag: { $ref: '#/components/headers/ETag' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/UserAccess' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+    put:
+      tags: [admin-users]
+      operationId: putUserAccess
+      summary: Replace the module grants of an ADMIN user or the brands of a BRAND user (SUPERADMIN; bumps the version, so tokens refresh with 401 ERR_SCOPE_CHANGED).
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+        - $ref: '#/components/parameters/IfMatch'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UserAccessWrite' }
+      responses:
+        '200':
+          description: The new access.
+          headers:
+            ETag: { $ref: '#/components/headers/ETag' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/UserAccess' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '412': { $ref: '#/components/responses/PreconditionFailed' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
   /v1/admin/users/{id}/credentials:
     post:
       tags: [admin-users]
@@ -2823,6 +2905,46 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '409': { $ref: '#/components/responses/Conflict' }
 
+  /v1/admin/calendar/holidays/{holiday_id}/revoke:
+    post:
+      tags: [admin-calendar]
+      operationId: revokeHoliday
+      summary: Withdraw a holiday, make-up day or off-day declaration that has not started (its date is after today).
+      parameters:
+        - { name: holiday_id, in: path, required: true, schema: { $ref: '#/components/schemas/Id' }, description: Calendar entry id. }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/HolidayRevoke' }
+      responses:
+        '200':
+          description: The revoked entry.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Holiday' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /v1/admin/calendar/working-days:
+    get:
+      tags: [admin-calendar]
+      operationId: getWorkingDays
+      summary: Every date of a month with Friday, weekend and national holiday flags and the working-day count (Fridays and holidays excluded).
+      description: 'Weekend days come from `cfg.calendar.weekend_days` (ISO weekdays, default Friday = 5). Only global declarations count; a global make-up day is a working day.'
+      parameters:
+        - { name: month, in: query, required: false, schema: { $ref: '#/components/schemas/RouteTargetMonth' }, description: 'YYYY-MM; default the current Dhaka month.' }
+      responses:
+        '200':
+          description: The month.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/WorkingDays' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
   /v1/admin/calendar/holidays:
     get:
       tags: [admin-calendar]
@@ -4175,6 +4297,34 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
 
+  /v1/admin/outlets/import:
+    post:
+      tags: [admin-outlets]
+      operationId: importOutlets
+      summary: Bulk create-or-update outlets from a sheet; the channel is mandatory on every row (preview with dry_run, commit with a reason).
+      description: >
+        A missing or unknown channel refuses the request (400 at body.rows/<i>/channel), preview included. `dry_run: true` writes nothing and returns the report;
+        `dry_run: false` needs `change_reason`, refuses the whole batch on any row error and is idempotent by `batch_uuid` (same content replays, other content is 409
+        ERR_SYNC_BATCH_UUID_REUSED). A row whose `code` names an outlet of the same zone updates it (never its status; a blank route, pin, phone or address keeps the stored one).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/OutletImportWrite' }
+      responses:
+        '200':
+          description: The preview report (dry_run) or the commit result.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - { $ref: '#/components/schemas/OutletImportPreview' }
+                  - { $ref: '#/components/schemas/OutletImportResult' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
   /v1/admin/dues-adjustments:
     get:
       tags: [admin-finance]
@@ -4236,6 +4386,56 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
+
+  /v1/admin/route-targets:
+    get:
+      tags: [admin-targets]
+      operationId: listRouteTargets
+      summary: Route x SKU monthly sales targets of one month (base units), sorted by route then SKU.
+      parameters:
+        - { name: month, in: query, required: false, schema: { $ref: '#/components/schemas/RouteTargetMonth' }, description: 'Month as YYYY-MM; default the current Dhaka month.' }
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Page of targets.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RouteTargetPage' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+    put:
+      tags: [admin-targets]
+      operationId: putRouteTargets
+      summary: Validate (dry_run) or commit a route x SKU monthly target batch (upsert by route, SKU and month).
+      description: >-
+        The portal reads the Excel sheet in the browser and sends JSON rows. `dry_run: true` validates and writes nothing (no reason needed) and answers a
+        `RouteTargetPreview` with every row error. `dry_run: false` needs `change_reason`; any row error refuses the whole batch with 400 `ERR_VALIDATION`
+        (`errors[].pointer` `body.rows/<0-based index>/<member>`). Idempotent by `batch_uuid`: the same content replays (`replayed: true`), other content under
+        the same uuid is 409. Quantities are base units (sticks, pieces, dozens), integers 0 to 1,000,000,000. A month before the current Dhaka month is never
+        rewritten. Audited as entity `route_target`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RouteTargetBatchWrite' }
+      responses:
+        '200':
+          description: Preview (dry_run) or commit result.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - { $ref: '#/components/schemas/RouteTargetPreview' }
+                  - { $ref: '#/components/schemas/RouteTargetCommitResult' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '413': { $ref: '#/components/responses/PayloadTooLarge' }
 
   /v1/admin/devices/{device_id}/replace:
     post:
@@ -9543,7 +9743,7 @@ components:
       allOf:
         - { $ref: '#/components/schemas/MasterAudit' }
         - type: object
-          required: [id, level, code, name, status]
+          required: [id, level, code, name, status, is_active]
           properties:
             id: { $ref: '#/components/schemas/Id' }
             level: { $ref: '#/components/schemas/GeoLevel' }
@@ -9552,6 +9752,7 @@ components:
             name_bn: { type: [string, 'null'], maxLength: 120 }
             parent_id: { type: [integer, 'null'], format: int64, minimum: 1, description: Null only for wings. }
             status: { $ref: '#/components/schemas/ActiveStatus' }
+            is_active: { type: boolean, description: 'status = active; the distribution-house filter lists each active house once.' }
             dep_name: { type: [string, 'null'], maxLength: 120, description: Zones only. }
             email: { type: [string, 'null'], format: email, maxLength: 120 }
             address: { type: [string, 'null'], maxLength: 300 }
@@ -9881,7 +10082,8 @@ components:
         short_name: { type: string, maxLength: 20, description: Printed on the 58 mm memo. }
         name_bn: { type: [string, 'null'], maxLength: 120 }
         base_unit: { type: string, enum: [stick, piece, dozen] }
-        base_per_pack: { type: integer, minimum: 1, maximum: 1000, description: 'Sticks per pack (10, 20, 25); 1 for lighter and match. The read-only pack badge is qty_base / base_per_pack.' }
+        base_per_pack: { type: integer, minimum: 1, maximum: 1000, description: 'Base units per pack: 10 or 20 sticks for cigarettes, the stick count for bidi, 25 pieces for a lighter box, 1 for matches (the dozen is the base unit). The pack badge is qty_base / base_per_pack (docs/34 s4.2).' }
+        pack_type: { type: [string, 'null'], maxLength: 40, description: 'Free pack label (HLP, Soft Pack, Box, Dozen). The entry-unit word (packet / box / dozen) comes from the category.' }
         entry_unit_default: { $ref: '#/components/schemas/QtyUnit' }
         report_unit: { type: [string, 'null'], enum: [stick, piece, dozen, box, pack, null] }
         report_factor: { $ref: '#/components/schemas/Decimal3' }
@@ -9913,6 +10115,7 @@ components:
         base_unit: { type: string, enum: [stick, piece, dozen] }
         base_per_pack: { type: integer, minimum: 1, maximum: 1000 }
         entry_unit_default: { $ref: '#/components/schemas/QtyUnit' }
+        pack_type: { type: [string, 'null'], maxLength: 40 }
         report_unit: { type: [string, 'null'], enum: [stick, piece, dozen, box, pack, null] }
         report_factor: { $ref: '#/components/schemas/Decimal3' }
         sort: { type: integer }
@@ -9925,6 +10128,9 @@ components:
         name: { type: string, minLength: 1, maxLength: 120 }
         short_name: { type: string, minLength: 1, maxLength: 20 }
         name_bn: { type: [string, 'null'], maxLength: 120 }
+        base_per_pack: { type: integer, minimum: 1, maximum: 1000, description: 'A change needs `change_reason`; a match pack stays 1.' }
+        entry_unit_default: { $ref: '#/components/schemas/QtyUnit' }
+        pack_type: { type: [string, 'null'], maxLength: 40 }
         report_unit: { type: [string, 'null'], enum: [stick, piece, dozen, box, pack, null] }
         report_factor: { $ref: '#/components/schemas/Decimal3' }
         sort: { type: integer }
@@ -10505,6 +10711,95 @@ components:
         name_en: { type: string, minLength: 2, maxLength: 120 }
         name_bn: { type: [string, 'null'], maxLength: 120 }
         reason: { $ref: '#/components/schemas/ChangeReason' }
+    HolidayRevoke:
+      type: object
+      required: [change_reason]
+      additionalProperties: false
+      properties:
+        change_reason: { $ref: '#/components/schemas/ChangeReason' }
+    WorkingDay:
+      type: object
+      required: [date, weekday, is_friday, is_weekend, is_holiday, name_en, name_bn, is_working_day]
+      additionalProperties: false
+      properties:
+        date: { $ref: '#/components/schemas/BusinessDate' }
+        weekday: { type: integer, minimum: 1, maximum: 7, description: 'ISO weekday (Monday is 1).' }
+        is_friday: { type: boolean }
+        is_weekend: { type: boolean }
+        is_holiday: { type: boolean, description: A global holiday or emergency off-day. }
+        name_en: { type: [string, 'null'] }
+        name_bn: { type: [string, 'null'] }
+        is_working_day: { type: boolean }
+    WorkingDays:
+      type: object
+      required: [month, working_days, weekend_days, days]
+      additionalProperties: false
+      properties:
+        month: { $ref: '#/components/schemas/RouteTargetMonth' }
+        working_days: { type: integer, minimum: 0, maximum: 31 }
+        weekend_days:
+          type: array
+          items: { type: integer, minimum: 1, maximum: 7 }
+        days:
+          type: array
+          items: { $ref: '#/components/schemas/WorkingDay' }
+    HouseDuplicateItem:
+      type: object
+      required: [id, code, name, status, is_active, zone_count]
+      additionalProperties: false
+      properties:
+        id: { $ref: '#/components/schemas/Id' }
+        code: { type: string }
+        name: { type: string }
+        status: { $ref: '#/components/schemas/ActiveStatus' }
+        is_active: { type: boolean }
+        zone_count: { type: integer, minimum: 0 }
+    HouseDuplicateGroup:
+      type: object
+      required: [territory_id, name_key, houses]
+      additionalProperties: false
+      properties:
+        territory_id: { $ref: '#/components/schemas/Id' }
+        name_key: { type: string, description: Lower-case name with punctuation and spacing collapsed. }
+        houses:
+          type: array
+          items: { $ref: '#/components/schemas/HouseDuplicateItem' }
+    HouseDuplicateList:
+      type: object
+      required: [groups]
+      additionalProperties: false
+      properties:
+        groups:
+          type: array
+          items: { $ref: '#/components/schemas/HouseDuplicateGroup' }
+    HouseMergeRequest:
+      type: object
+      required: [keep_id, merge_ids, change_reason]
+      additionalProperties: false
+      properties:
+        keep_id: { $ref: '#/components/schemas/Id' }
+        merge_ids:
+          type: array
+          minItems: 1
+          maxItems: 20
+          uniqueItems: true
+          items: { $ref: '#/components/schemas/Id' }
+        change_reason: { $ref: '#/components/schemas/ChangeReason' }
+    HouseMergeResult:
+      type: object
+      required: [kept, merged]
+      additionalProperties: false
+      properties:
+        kept: { $ref: '#/components/schemas/HouseDuplicateItem' }
+        merged:
+          type: array
+          items:
+            type: object
+            required: [house_id, zones_moved]
+            additionalProperties: false
+            properties:
+              house_id: { $ref: '#/components/schemas/Id' }
+              zones_moved: { type: integer, minimum: 0 }
     HolidayList:
       type: object
       required: [items]
@@ -12285,6 +12580,93 @@ components:
         outlet_kind: { type: string, enum: [retail, wholesale] }
         outlet_ids: { type: array, minItems: 1, maxItems: 5000, items: { $ref: '#/components/schemas/Id' } }
         reason: { $ref: '#/components/schemas/ChangeReason' }
+    AdminModule:
+      type: string
+      enum: [masterdata, routes, outlets, products, prices, users, targets, credentials, mdm, reports, config, data_entry, indent, leaderboard, daily_tracking]
+      description: The fixed module list of an ADMIN user's grants (docs/34 s1).
+    UserAccess:
+      type: object
+      required: [user_id, role, version, modules, brand_ids]
+      additionalProperties: false
+      properties:
+        user_id: { $ref: '#/components/schemas/Id' }
+        role: { $ref: '#/components/schemas/Role' }
+        version: { type: integer, minimum: 1, description: Also the ETag; the user's scope_version. }
+        modules:
+          type: object
+          propertyNames: { $ref: '#/components/schemas/AdminModule' }
+          additionalProperties: { type: string, enum: [r, w] }
+          description: ADMIN users only; only granted modules appear.
+        brand_ids:
+          type: array
+          items: { $ref: '#/components/schemas/Id' }
+          description: BRAND users only; product-tree brand nodes.
+    UserAccessWrite:
+      type: object
+      required: [change_reason]
+      additionalProperties: false
+      description: Exactly one of modules (ADMIN user) and brand_ids (BRAND user, not empty).
+      properties:
+        modules:
+          type: object
+          propertyNames: { $ref: '#/components/schemas/AdminModule' }
+          additionalProperties: { type: string, enum: [r, w] }
+        brand_ids: { type: array, minItems: 1, maxItems: 200, items: { $ref: '#/components/schemas/Id' } }
+        change_reason: { $ref: '#/components/schemas/ChangeReason' }
+    OutletImportRow:
+      type: object
+      required: [name, owner_name, zone_code, cluster, channel, outlet_kind]
+      additionalProperties: false
+      properties:
+        code: { type: [string, 'null'], maxLength: 32 }
+        name: { type: string, minLength: 2, maxLength: 120 }
+        owner_name: { type: string, minLength: 2, maxLength: 120 }
+        zone_code: { type: string, maxLength: 40 }
+        cluster: { type: string, maxLength: 120, description: Cluster name inside the zone. }
+        channel: { type: string, enum: [GT, DCC, Astha, RCC, MT, HoReCa] }
+        outlet_kind: { type: string, enum: [retail, wholesale] }
+        route_code: { type: [string, 'null'], maxLength: 40 }
+        lat: { type: [number, 'null'], minimum: -90, maximum: 90 }
+        lng: { type: [number, 'null'], minimum: -180, maximum: 180 }
+        contact_number: { type: [string, 'null'] }
+        address: { type: [string, 'null'], maxLength: 300 }
+    OutletImportWrite:
+      type: object
+      required: [batch_uuid, rows, dry_run]
+      additionalProperties: false
+      properties:
+        batch_uuid: { $ref: '#/components/schemas/Uuid' }
+        rows: { type: array, minItems: 1, maxItems: 5000, items: { $ref: '#/components/schemas/OutletImportRow' } }
+        dry_run: { type: boolean }
+        change_reason: { $ref: '#/components/schemas/ChangeReason' }
+    OutletImportRowError:
+      type: object
+      required: [row, column, code]
+      additionalProperties: false
+      properties:
+        row: { type: integer, minimum: 1, description: 1-based position in rows. }
+        column: { type: string }
+        code: { type: string, enum: [required, invalid, unknown_zone, unknown_cluster, unknown_route, code_taken, duplicate, outlet_merged] }
+    OutletImportPreview:
+      type: object
+      required: [batch_uuid, rows, creates, updates, by_channel, errors, errors_truncated]
+      additionalProperties: false
+      properties:
+        batch_uuid: { $ref: '#/components/schemas/Uuid' }
+        rows: { type: integer, minimum: 1 }
+        creates: { type: integer, minimum: 0 }
+        updates: { type: integer, minimum: 0 }
+        by_channel: { type: object, additionalProperties: { type: integer, minimum: 0 }, description: Valid rows per channel. }
+        errors: { type: array, maxItems: 1000, items: { $ref: '#/components/schemas/OutletImportRowError' } }
+        errors_truncated: { type: boolean }
+    OutletImportResult:
+      type: object
+      required: [batch_uuid, rows, replayed]
+      additionalProperties: false
+      properties:
+        batch_uuid: { $ref: '#/components/schemas/Uuid' }
+        rows: { type: integer, minimum: 1 }
+        replayed: { type: boolean }
     BulkResult:
       type: object
       required: [batch_uuid, updated, unchanged, replayed]
@@ -12330,6 +12712,91 @@ components:
         items:
           type: array
           items: { $ref: '#/components/schemas/DuesAdjustment' }
+        next_cursor:
+          oneOf:
+            - { $ref: '#/components/schemas/PageCursor' }
+            - type: 'null'
+    RouteTargetMonth:
+      type: string
+      pattern: '^[0-9]{4}-(0[1-9]|1[0-2])$'
+      examples: ['2026-11']
+    RouteTargetRow:
+      type: object
+      required: [route_code, sku_code, month, qty_base]
+      additionalProperties: false
+      properties:
+        route_code: { type: string, minLength: 1, maxLength: 40, description: Surrounding spaces are ignored. }
+        sku_code: { type: string, minLength: 1, maxLength: 40, description: Surrounding spaces are ignored. }
+        month: { $ref: '#/components/schemas/RouteTargetMonth' }
+        qty_base: { type: integer, format: int64, minimum: 0, maximum: 1000000000, description: 'Base units: sticks, pieces or dozens.' }
+    RouteTargetBatchWrite:
+      type: object
+      required: [batch_uuid, rows, dry_run]
+      additionalProperties: false
+      properties:
+        batch_uuid: { $ref: '#/components/schemas/Uuid' }
+        rows:
+          type: array
+          minItems: 1
+          maxItems: 20000
+          items: { $ref: '#/components/schemas/RouteTargetRow' }
+        dry_run: { type: boolean }
+        change_reason: { $ref: '#/components/schemas/ChangeReason' }
+    RouteTargetRowError:
+      type: object
+      required: [row, column, code]
+      additionalProperties: false
+      properties:
+        row: { type: integer, minimum: 1, description: 1-based position in `rows`. }
+        column: { type: string, enum: [route, sku, month, quantity] }
+        code:
+          type: string
+          enum: [unknown_route, not_selling_route, unknown_sku, invalid_month, past_month, invalid_quantity, duplicate_row]
+    RouteTargetPreview:
+      type: object
+      required: [batch_uuid, rows, routes, skus, months, total_qty_base, replaces, errors, errors_truncated]
+      additionalProperties: false
+      properties:
+        batch_uuid: { $ref: '#/components/schemas/Uuid' }
+        rows: { type: integer, minimum: 0 }
+        routes: { type: integer, minimum: 0, description: Distinct valid routes. }
+        skus: { type: integer, minimum: 0, description: Distinct valid SKUs. }
+        months:
+          type: array
+          items: { $ref: '#/components/schemas/RouteTargetMonth' }
+        total_qty_base: { type: integer, format: int64, minimum: 0, description: Sum of the quantities of the rows without an error. }
+        replaces: { type: integer, minimum: 0, description: 'Existing (route, SKU, month) targets the batch would overwrite.' }
+        errors:
+          type: array
+          maxItems: 1000
+          items: { $ref: '#/components/schemas/RouteTargetRowError' }
+        errors_truncated: { type: boolean, description: True when more than 1000 errors exist. }
+    RouteTargetCommitResult:
+      type: object
+      required: [batch_uuid, rows, replayed]
+      additionalProperties: false
+      properties:
+        batch_uuid: { $ref: '#/components/schemas/Uuid' }
+        rows: { type: integer, minimum: 1 }
+        replayed: { type: boolean }
+    RouteTargetItem:
+      type: object
+      required: [route_code, route_name, sku_code, month, qty_base]
+      additionalProperties: false
+      properties:
+        route_code: { type: string }
+        route_name: { type: string }
+        sku_code: { type: string }
+        month: { $ref: '#/components/schemas/RouteTargetMonth' }
+        qty_base: { type: integer, format: int64, minimum: 0 }
+    RouteTargetPage:
+      type: object
+      required: [items, next_cursor]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/RouteTargetItem' }
         next_cursor:
           oneOf:
             - { $ref: '#/components/schemas/PageCursor' }

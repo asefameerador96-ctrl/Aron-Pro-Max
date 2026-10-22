@@ -1,0 +1,22 @@
+RouteTargetItem:
+  type: object
+  required:
+  - route_code
+  - route_name
+  - sku_code
+  - month
+  - qty_base
+  additionalProperties: false
+  properties:
+    route_code:
+      type: string
+    route_name:
+      type: string
+    sku_code:
+      type: string
+    month:
+      $ref: '#/components/schemas/RouteTargetMonth'
+    qty_base:
+      type: integer
+      format: int64
+      minimum: 0

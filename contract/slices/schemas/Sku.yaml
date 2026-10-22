@@ -53,8 +53,16 @@ Sku:
       type: integer
       minimum: 1
       maximum: 1000
-      description: Sticks per pack (10, 20, 25); 1 for lighter and match. The read-only pack badge is qty_base /
-        base_per_pack.
+      description: 'Base units per pack: 10 or 20 sticks for cigarettes, the stick count for bidi, 25 pieces for
+        a lighter box, 1 for matches (the dozen is the base unit). The pack badge is qty_base / base_per_pack (docs/34
+        s4.2).'
+    pack_type:
+      type:
+      - string
+      - 'null'
+      maxLength: 40
+      description: Free pack label (HLP, Soft Pack, Box, Dozen). The entry-unit word (packet / box / dozen) comes
+        from the category.
     entry_unit_default:
       $ref: '#/components/schemas/QtyUnit'
     report_unit:
