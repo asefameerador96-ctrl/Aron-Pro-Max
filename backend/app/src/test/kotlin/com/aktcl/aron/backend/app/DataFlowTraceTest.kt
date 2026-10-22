@@ -253,7 +253,6 @@ class DataFlowTraceTest : DataFlowTraceSupport() {
         hop("dw.agg_daily_outlet net_mtk summed over the route (equals gross: no discounts)", "dw" to sqlLong("SELECT coalesce(sum(net_mtk), 0) FROM dw.agg_daily_outlet WHERE business_date = DATE '$day' AND route_id = $gulRouteId"), "device" to sr.truthGross)
         hop("dw.v_daily_route and v_daily_sr agree with the table", "v_daily_route.gross" to sqlLong("SELECT gross_mtk FROM dw.v_daily_route WHERE business_date = DATE '$day' AND route_id = $gulRouteId"),
             "v_daily_sr.gross" to sqlLong("SELECT coalesce(sum(s.gross_mtk), 0) FROM dw.v_daily_sr s JOIN app.app_user u ON u.id = s.user_id WHERE s.business_date = DATE '$day' AND u.username = 'sr1001'"), "device" to sr.truthGross)
-        observe("dw.agg_daily_outlet_category exists (named in docs/evidence/seed-gulshan-banani.md)", "to_regclass" to (sql("SELECT coalesce(to_regclass('dw.agg_daily_outlet_category')::text, 'absent')")), "expected" to "dw.agg_daily_outlet_category", hard = false)
     }
 
     // ---- 7 the other division sells a smaller day ---------------------------------------------------------------------
@@ -333,7 +332,7 @@ class DataFlowTraceTest : DataFlowTraceSupport() {
             val national = role in setOf("SUPERADMIN", "ADMIN", "NATIONAL")
             val t = tokens.getValue(u)
             note("$role web token claim names", json.readTree(Base64.getUrlDecoder().decode(t.split('.')[1])).fieldNames().asSequence().toList().sorted())
-            if (role == "TSO") observe("TSO web token carries the scope claims of docs/34 s1 (geo)", "claims geo/brands/modules" to json.readTree(Base64.getUrlDecoder().decode(t.split('.')[1])).fieldNames().asSequence().any { it in setOf("geo", "brands", "modules", "mods") }, "expected" to true, hard = false)
+            if (role == "TSO") hop("TSO web token carries the scope claims of docs/34 s1 (geo)", "claims geo/brands/modules" to json.readTree(Base64.getUrlDecoder().decode(t.split('.')[1])).fieldNames().asSequence().any { it in setOf("geo", "brands", "modules", "mods") }, "expected" to true, hard = false)
             val expectSold = if (national) all else gul
             fun op(path: String, b: String = body): JsonNode { val r = postJson("/v1/dashboards/national/$path", t, b); assertEquals(HttpStatusCode.OK, r.status, "$u $path: ${runBlocking { r.bodyAsText() }.take(200)}"); return jsonOf(r) }
             val sales = op("sales")
@@ -404,7 +403,7 @@ class DataFlowTraceTest : DataFlowTraceSupport() {
             val r = postJson("/v1/dashboards/national/$path", brandToken, if (path == "breakdown") """{"filter":{"date":"$day"},"measure":"std","dimension":"brand"}""" else """{"date":"$day"}""")
             note("BRAND qabrand1001 POST national/$path", "${r.status.value} ${jsonOf(r).path("code").asText("")}")
         }
-        observe("BRAND user can read the product cards of its brands (docs/34 s1, level 4)", "sales status" to postJson("/v1/dashboards/national/sales", brandToken, """{"date":"$day"}""").status.value, "expected" to 200, hard = false)
+        hop("BRAND user can read the product cards of its brands (docs/34 s1, level 4)", "sales status" to postJson("/v1/dashboards/national/sales", brandToken, """{"date":"$day"}""").status.value, "expected" to 200, hard = false)
         val srT = lkx.token
         val srStatus = postJson("/v1/dashboards/national/sales", srT, """{"date":"$day"}""").status.value
         hop("SR app token on the dashboard is refused (401 or 403)", "status" to (if (srStatus in setOf(401, 403)) "refused" else srStatus.toString()), "expected" to "refused", hard = false)
@@ -487,7 +486,7 @@ class DataFlowTraceTest : DataFlowTraceSupport() {
         val pv = jsonOf(get("/v1/day/final-submit/preview?zone_id=$zGul&business_date=$day", tso))
         note("Final Submit preview (routes)", pv.path("routes").joinToString("; ") { "${it.path("route_code").asText()}: ${it.path("state").asText()}, had_data ${it.path("had_data").asBoolean()}, memos ${it.path("memo_count").asInt()}, net ${it.path("net_mtk").asLong()}" })
         note("Final Submit preview warnings", pv.path("warnings").toString())
-        observe("Final Submit preview lists the routes planned (or with data) on the day (question: is the unplanned GUL-SR-1 listing intended? F-TSO-010 says every active route)", "routes" to pv.path("routes").map { it.path("route_code").asText() }, "planned or with data" to listOf("GUL-SR-2"), hard = false)
+        hop("Final Submit preview lists the routes planned (or with data) on the day (question: is the unplanned GUL-SR-1 listing intended? F-TSO-010 says every active route)", "routes" to pv.path("routes").map { it.path("route_code").asText() }, "planned or with data" to listOf("GUL-SR-2"), hard = false)
         val fu = uuid()
         val fr = postJson("/v1/day/final-submit", tso, """{"client_uuid":"$fu","zone_id":$zGul,"business_date":"$day"}""")
         hop("TSO Final Submit", "status" to fr.status.value, "expected" to 200)
@@ -565,7 +564,7 @@ class DataFlowTraceTest : DataFlowTraceSupport() {
             val node = runCatching { json.readTree(body) }.getOrNull()
             if (key == "by-outlet" && node != null) {
             val cols = node.path("columns").map { it.path("key").asText() }
-            observe("by-outlet separates units (sold_qty_base would add sticks, pieces and dozens)", "unit or category column" to cols.any { it in setOf("base_unit", "unit", "category", "category_code", "category_name") }, "expected" to true, hard = false)
+            hop("by-outlet separates units (sold_qty_base would add sticks, pieces and dozens)", "unit or category column" to cols.any { it in setOf("base_unit", "unit", "category", "category_code", "category_name") }, "expected" to true, hard = false)
         }
         note("report $key (columns_known=$known)", "HTTP ${r.status.value}, rows ${node?.path("total_rows")?.asText("-")}, totals ${node?.path("totals")?.toString()?.take(160)}")
             if (node != null) dump.set<JsonNode>(key, node)
@@ -598,7 +597,7 @@ class DataFlowTraceTest : DataFlowTraceSupport() {
             note("memo_no \"$no\" ($what)", "${memoAck?.path("status")?.asText() ?: "HTTP ${a.status}"} ${memoAck?.path("code")?.asText("") ?: ""}")
             if (i == 0) hop("a number in the phone's block is accepted", "status" to memoAck?.path("status")?.asText(), "expected" to "accepted", hard = false)
             else if (what == "not the format") hop("memo_no $what is rejected", "status" to memoAck?.path("status")?.asText(), "expected" to "rejected", hard = false)
-            else observe("memo_no $what is refused as memo_no_invalid", "answer" to "${memoAck?.path("status")?.asText()} ${memoAck?.path("code")?.asText("")}".trim(), "expected" to "rejected memo_no_invalid", hard = false)
+            else hop("memo_no $what is refused as memo_no_invalid", "answer" to "${memoAck?.path("status")?.asText()} ${memoAck?.path("code")?.asText("")}".trim(), "expected" to "rejected memo_no_invalid", hard = false)
         }
     }
 
@@ -629,7 +628,17 @@ class DataFlowTraceTest : DataFlowTraceSupport() {
         // (d) a wrong pack size: a 20s SKU sold as packs of 10
         val wa = send(sr, oneSale("GUL2-013", 360, Line(c20, 2), "sr1001-261024-062", packFactorOverride = 10), uuid())
         note("2 packets of a 20s SKU sent with pack_factor 10", "memo ${ackOf(wa)}; line ${ackOf(wa, "memo_line")}")
-        observe("a pack_factor that differs from the SKU's base_per_pack is refused (docs/34 s4.2: re-checked on the server)", "line" to ackOf(wa, "memo_line"), "expected" to "rejected qty_invalid", hard = false)
+        hop("a pack_factor that differs from the SKU's base_per_pack is refused (docs/34 s4.2: re-checked on the server)", "line" to ackOf(wa, "memo_line"), "expected" to "rejected qty_invalid", hard = false)
     }
 
+    @Test
+    @Order(99)
+    fun everyFindingIsKnownAndEveryKnownFindingStillHappens() {
+        val known = (javaClass.classLoader.getResourceAsStream("data-flow-trace-known-findings.txt")?.bufferedReader()?.readLines() ?: emptyList())
+            .map { it.trim() }.filter { it.isNotEmpty() && !it.startsWith("#") }
+        val fresh = findings.filter { f -> known.none { f.contains(it) } }
+        val gone = known.filter { k -> findings.none { it.contains(k) } }
+        assertTrue(fresh.isEmpty(), "new findings (not in data-flow-trace-known-findings.txt):\n" + fresh.joinToString("\n"))
+        assertTrue(gone.isEmpty(), "known findings that no longer happen; delete them from data-flow-trace-known-findings.txt (the list only shrinks):\n" + gone.joinToString("\n"))
+    }
 }

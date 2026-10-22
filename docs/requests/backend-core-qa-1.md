@@ -21,7 +21,7 @@ Repro (sr1001, ordinal 0, block 500, Saturday 2026-10-24; request shape, redacte
 
 Worse than it looks: the duplicate check (`IngestService.kt:286`) is global, so a forged `lkxsr1001-...` memo from
 sr1001 would make the real lkxsr1001 memo with that number `quarantined memo_no_duplicate`. The paper-backfill path
-already refuses another login's number (`PaperBackfillCheckerTest`). Failing test: `MemoNumberRuleTest`, attached below.
+already refuses another login's number (`PaperBackfillCheckerTest`). Failing test: the four `memo_no ... is refused as memo_no_invalid` rows in `DataFlowTraceTest` hop 14 (listed in `data-flow-trace-known-findings.txt`; delete the row with the fix).
 
 ## 2. `pack_factor` is not compared with `sku.base_per_pack` (docs/34 s4.2 line 114: "re-checked on the server")
 Repro: a `memo_line` for `MaxR-20S` (base_per_pack 20), `qty_entered` 2, `unit_entered` pack, `pack_factor` 10,
@@ -40,7 +40,3 @@ nothing was due. Cause: the first bundle of the day marks every route-day of the
 F-TSO-010 "routes with FF name or SR Not Set"). The login card and `final-submit-status` count planned routes only (1),
 so the preview and the cards disagree (2 routes vs 1). Please say whether the listing is intended; if so add `planned`
 to the preview route so the app can grey it and not warn.
-
-## Attached tests (add them with the fix; they fail on INT today, so they are not in qa's head)
-`docs/requests/attachments/MemoNumberRuleTest.kt.txt` (s1: 1 passes, 3 fail today) and `docs/requests/attachments/PackFactorRecheckTest.kt.txt`
-(s2: the right pack size passes, the wrong one fails today). Drop the `.txt`, put them under `backend/app/src/test/kotlin/com/aktcl/aron/backend/app/`; they extend `DataFlowTraceSupport` (on INT with qa's head).

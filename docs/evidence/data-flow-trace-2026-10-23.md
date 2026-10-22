@@ -26,7 +26,7 @@ Business day: Saturday 2026-10-24 (route `GUL-SR-2`, clock 10:30Z = 16:30 Dhaka)
 - **Dev (test account):** `/v1/health` 200, build 384ecee2, ready 200; unauthenticated calls 401. Deploy #243: seed Succeeded; the slice smoke FAILED (non-blocking) on Friday at step 2b (see `infra-qa-1`). Seed 06 is applied on dev (inference from that Friday result:
   the bundle had no planned route, which would not hold if Mirpur's daily route were active). Route 22636 is **not confirmed**: inferred `BAN-SR-11` (Thursday), outlet 28201 `SMOKE-SR-003`; the next deploy that prints codes settles it. No dev login was used or needed.
 
-## Findings (7 open). `DataFlowTraceTest` holds only checks that pass on INT; each defect is recorded below as an `open finding` row (an observation, not a check) and has its failing test attached to the owner's request in `docs/requests/attachments/` for the owner to add with the fix
+## Findings (open rows of `backend/app/src/test/resources/data-flow-trace-known-findings.txt`; the owner deletes a row with the fix; QA-FLOW-05 and the Friday smoke were fixed by db on lane/db 6ce7e368, train 11)
 | Id | Owner | What | Request |
 |---|---|---|---|
 | QA-FLOW-01 | backend-authz | BRAND user: 403 on every national dashboard operation (NationalDeps built without a brand resolver) | `backend-authz-qa-1.md` |
@@ -38,7 +38,7 @@ Business day: Saturday 2026-10-24 (route `GUL-SR-2`, clock 10:30Z = 16:30 Dhaka)
 | QA-FLOW-07 | backend-authz | web tokens have no `geo`/`brands`/`modules` claims (scope is resolved server-side; docs/34 s1 says claims) | `backend-authz-qa-1.md` s2 |
 Infra: the Friday smoke is red instead of skipped (`infra-qa-1.md`). Scope rules that held: see hop 9.
 
-# Trace (generated; PASS = every listed value equal; `open finding` = an observation of a defect listed above)
+# Trace (generated; PASS = every listed value equal; FINDING = a listed open defect)
 
 ### 1 Seed (dev profile: db/seed without 04_*, plus the smoke outlets)
 

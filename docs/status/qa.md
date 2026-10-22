@@ -1,7 +1,7 @@
 # Status: lane qa (wave 4, session 2: data-flow trace)
 
 ## Wave 4 handover (2026-10-23)
-- **Done:** `DataFlowTraceTest` (15 ordered hops, only checks that pass on INT; the 7 open defects are `open finding` rows, with failing tests attached to the owners' requests in `docs/requests/attachments/`, per the lead's rule), `DataFlowTraceSupport` (shared world), `ApiWorld(devProfile = true)` (seed as dev loads it),
+- **Done:** `DataFlowTraceTest` (15 ordered hops; the open defects are rows of the shrink-only list `data-flow-trace-known-findings.txt` (each cites its request; the owning lane deletes its row with the fix; the lead accepted this pattern), `DataFlowTraceSupport` (shared world), `ApiWorld(devProfile = true)` (seed as dev loads it),
   evidence `docs/evidence/data-flow-trace-2026-10-23.md`, requests `backend-core-qa-1`, `backend-authz-qa-1`, `backend-reports-qa-1`, `db-qa-1`, `infra-qa-1`.
   Opus checker (T1 money and idempotency) ran; its label corrections and its missing edge cases (changed payload, content duplicate, memo_no duplicate, wrong pack size) are in. Local run: `:backend:app:test --tests '*DataFlowTraceTest*'` green; the rest of the lane suites were not re-run locally (the only product-test change is an optional `ApiWorld` constructor parameter): CI decides, so this head is **not** declared a candidate.
 - **Local setup in a fresh container:** `service postgresql start`; `ALTER ROLE postgres PASSWORD 'pg'`; `ARON_TEST_PG_URL=jdbc:postgresql://localhost:5432/postgres?user=postgres&password=pg`; first Gradle sync takes about 6 minutes (online, not `--offline`).

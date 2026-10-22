@@ -65,7 +65,10 @@ abstract class DataFlowTraceSupport {
         val shown = values.joinToString("; ") { "${it.first} = ${it.second}" }
         val ok = values.map { it.second.toString() }.distinct().size == 1
         trace.append("| $name | ${shown.replace("|", "/")} | ${if (ok) "PASS" else "**FINDING**"} |\n")
-        if (!ok) throw AssertionError("[$section] $name differs: $shown")
+        if (!ok) {
+            findings += "[$section] $name: $shown"
+            if (hard) throw AssertionError("[$section] $name differs: $shown")
+        }
     }
 
     protected fun note(name: String, value: Any?) { trace.append("| $name | ${value.toString().replace("|", "/")} | info |\n") }
@@ -317,9 +320,4 @@ abstract class DataFlowTraceSupport {
 
     /** `status code` of the first ack of [type] (or the HTTP status). */
     protected fun ackOf(a: Answer, type: String = "memo") = a.body?.path("acks")?.firstOrNull { it.path("type").asText() == type }?.let { it.path("status").asText() + " " + it.path("code").asText("") }?.trim() ?: "HTTP ${a.status}"
-
-    /** A recorded observation of a defect that is open (its test is attached to the owner's request): never a check. */
-    protected fun observe(name: String, vararg values: Pair<String, Any?>, hard: Boolean = false) {
-        trace.append("| $name | ${values.joinToString("; ") { "${it.first} = ${it.second}" }.replace("|", "/")} | open finding (see the request) |\n")
-    }
 }

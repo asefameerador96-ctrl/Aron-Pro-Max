@@ -9,7 +9,7 @@ channel-calls, channel-std, breakdown, filter-options, freshness, but `Wiring.kt
 `NationalDeps(NationalDashboardService(db, clock), reach, guard, clock = clock)` with no `brands` resolver, so
 `NationalDashboardApi.kt:33` refuses with "no brand scope" (default resolver returns null). Known to backend-reports
 (`backend-reports.md`: "default none until authz lands its brands claim"). Row 3 (brand scope) is the owner. Failing test:
-`BrandDashboardTest`, attached below.
+`DataFlowTraceTest` hop 9 `BRAND user can read ...` (listed in `data-flow-trace-known-findings.txt`; delete the row with the fix).
 
 ## 2. Web tokens carry no `geo`, `brands`, `modules` claims (docs/34 s1)
 TSO web token claim names: `amr, aud, exp, flv, iat, iss, jti, nbf, perm, pii, role, sub, sv, uname` (values not
@@ -21,6 +21,3 @@ docs/34. The trace asserts only the TSO case (hop 8).
 Data points that are fine: WM, DMO and TSO callers asking for another division's ids get figures cut to their own reach
 (`200` with zero units, never the other division); other-division route-map, ff-geo popup and sale-position answer 404;
 NATIONAL cannot Final Submit (403); SR on the web login `403 ERR_AUTH_PORTAL_NOT_ALLOWED`; SR app token on the dashboard 401.
-
-## Attached test (add it with the fix)
-`docs/requests/attachments/BrandDashboardTest.kt.txt` (s1): BRAND reads the sales cards as a slice of the national figures and is refused the cards without a brand dimension (the second check passes today, the first fails with 403). Drop the `.txt`, add under `backend/app/src/test/kotlin/com/aktcl/aron/backend/app/`; extends `DataFlowTraceSupport`.
