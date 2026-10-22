@@ -1361,6 +1361,43 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/admin/geo/house/duplicates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Groups of distribution houses of one territory whose names match after case, spacing and punctuation. */
+        get: operations["listHouseDuplicates"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/geo/house/merge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Fold duplicate houses into one - zones move to the kept house, merged houses become inactive.
+         * @description `If-Match` is the version of the kept house. Merged houses must be in the same territory with the same normalised name, otherwise 400 `not_duplicates`.
+         */
+        post: operations["mergeHouses"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/admin/geo/{level}": {
         parameters: {
             query?: never;
@@ -6351,6 +6388,8 @@ export interface components {
              */
             parent_id?: number | null;
             status: components["schemas"]["ActiveStatus"];
+            /** @description status = active; the distribution-house filter lists each active house once. */
+            is_active: boolean;
             /** @description Zones only. */
             dep_name?: string | null;
             /** Format: email */
@@ -7051,6 +7090,35 @@ export interface components {
             working_days: number;
             weekend_days: number[];
             days: components["schemas"]["WorkingDay"][];
+        };
+        HouseDuplicateItem: {
+            id: components["schemas"]["Id"];
+            code: string;
+            name: string;
+            status: components["schemas"]["ActiveStatus"];
+            is_active: boolean;
+            zone_count: number;
+        };
+        HouseDuplicateGroup: {
+            territory_id: components["schemas"]["Id"];
+            /** @description Lower-case name with punctuation and spacing collapsed. */
+            name_key: string;
+            houses: components["schemas"]["HouseDuplicateItem"][];
+        };
+        HouseDuplicateList: {
+            groups: components["schemas"]["HouseDuplicateGroup"][];
+        };
+        HouseMergeRequest: {
+            keep_id: components["schemas"]["Id"];
+            merge_ids: components["schemas"]["Id"][];
+            change_reason: components["schemas"]["ChangeReason"];
+        };
+        HouseMergeResult: {
+            kept: components["schemas"]["HouseDuplicateItem"];
+            merged: {
+                house_id: components["schemas"]["Id"];
+                zones_moved: number;
+            }[];
         };
         HolidayList: {
             items: components["schemas"]["Holiday"][];
@@ -11031,6 +11099,60 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             409: components["responses"]["Conflict"];
+        };
+    };
+    listHouseDuplicates: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Duplicate groups (at most 200). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HouseDuplicateList"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    mergeHouses: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description ETag (the row `version` as a quoted string) of the representation being changed; mismatch is 412. */
+                "If-Match": components["parameters"]["IfMatch"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HouseMergeRequest"];
+            };
+        };
+        responses: {
+            /** @description Merged. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HouseMergeResult"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            412: components["responses"]["PreconditionFailed"];
         };
     };
     listGeoNodes: {

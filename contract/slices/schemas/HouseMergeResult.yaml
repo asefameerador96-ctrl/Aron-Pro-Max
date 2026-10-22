@@ -1,0 +1,23 @@
+HouseMergeResult:
+  type: object
+  required:
+  - kept
+  - merged
+  additionalProperties: false
+  properties:
+    kept:
+      $ref: '#/components/schemas/HouseDuplicateItem'
+    merged:
+      type: array
+      items:
+        type: object
+        required:
+        - house_id
+        - zones_moved
+        additionalProperties: false
+        properties:
+          house_id:
+            $ref: '#/components/schemas/Id'
+          zones_moved:
+            type: integer
+            minimum: 0

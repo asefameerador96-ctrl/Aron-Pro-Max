@@ -3,7 +3,7 @@
 Source: contract/openapi.yaml, version 1.3.3.
 
 
-## Schemas (516)
+## Schemas (521)
 
 - `schemas/Uuid.yaml` (273 B)
 - `schemas/Id.yaml` (104 B)
@@ -309,7 +309,7 @@ Source: contract/openapi.yaml, version 1.3.3.
 - `schemas/QuarantinePage.yaml` (306 B)
 - `schemas/QuarantineResolveRequest.yaml` (621 B)
 - `schemas/MasterAudit.yaml` (348 B)
-- `schemas/GeoNode.yaml` (1160 B)
+- `schemas/GeoNode.yaml` (1313 B)
 - `schemas/GeoNodeWrite.yaml` (864 B)
 - `schemas/GeoNodePatch.yaml` (813 B)
 - `schemas/GeoNodePage.yaml` (296 B)
@@ -372,6 +372,11 @@ Source: contract/openapi.yaml, version 1.3.3.
 - `schemas/HolidayRevoke.yaml` (171 B)
 - `schemas/WorkingDay.yaml` (684 B)
 - `schemas/WorkingDays.yaml` (471 B)
+- `schemas/HouseDuplicateItem.yaml` (408 B)
+- `schemas/HouseDuplicateGroup.yaml` (396 B)
+- `schemas/HouseDuplicateList.yaml` (202 B)
+- `schemas/HouseMergeRequest.yaml` (399 B)
+- `schemas/HouseMergeResult.yaml` (488 B)
 - `schemas/HolidayList.yaml` (181 B)
 - `schemas/ConfigKeyName.yaml` (131 B)
 - `schemas/ConfigBounds.yaml` (557 B)
@@ -522,7 +527,7 @@ Source: contract/openapi.yaml, version 1.3.3.
 - `schemas/ChannelVolume.yaml` (751 B)
 - `schemas/SuggestedQty.yaml` (234 B)
 
-## Operations (220)
+## Operations (222)
 
 - `operations/getHealth.yaml`  GET /v1/health (770 B)
 - `operations/headHealth.yaml`  HEAD /v1/health (483 B)
@@ -600,6 +605,8 @@ Source: contract/openapi.yaml, version 1.3.3.
 - `operations/resolveQuarantine.yaml`  POST /v1/admin/quarantine/{quarantine_id}/resolve (1156 B)
 - `operations/matchQuarantineBackfill.yaml`  POST /v1/admin/quarantine/{quarantine_id}/match-backfill (1531 B)
 - `operations/postDataVoid.yaml`  POST /v1/admin/data-void (1011 B)
+- `operations/listHouseDuplicates.yaml`  GET /v1/admin/geo/house/duplicates (549 B)
+- `operations/mergeHouses.yaml`  POST /v1/admin/geo/house/merge (1061 B)
 - `operations/listGeoNodes.yaml`  GET /v1/admin/geo/{level} (861 B)
 - `operations/createGeoNode.yaml`  POST /v1/admin/geo/{level} (742 B)
 - `operations/getGeoNode.yaml`  GET /v1/admin/geo/{level}/{id} (653 B)

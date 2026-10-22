@@ -1,0 +1,10 @@
+HouseDuplicateList:
+  type: object
+  required:
+  - groups
+  additionalProperties: false
+  properties:
+    groups:
+      type: array
+      items:
+        $ref: '#/components/schemas/HouseDuplicateGroup'
