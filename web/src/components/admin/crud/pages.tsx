@@ -134,7 +134,7 @@ function toFormField(locale: Locale, f: AnyField, refs: RefOptions = {}, meta?: 
     f.kind === "ref" ? refs[f.name]
     : f.kind === "bool" ? [{ value: "true", label: t(locale, "common.yes") }, { value: "false", label: t(locale, "common.no") }]
     : f.options?.filter((o) => !hidden(meta, role, f.name, o)).map((o) => ({ value: o, label: optionLabel(locale, f, o) }));
-  return { name: f.name, label: t(locale, f.labelKey), section: f.section ? t(locale, f.section) : undefined, kind, required: Boolean(f.required), nullable: Boolean(f.nullable), maxLength: f.maxLength, options, maskBits, assetPurpose: f.kind === "asset" ? f.asset?.purpose : undefined, previewUrl: f.kind === "asset" && f.asset && typeof row?.[f.asset.previewKey] === "string" ? (row[f.asset.previewKey] as string) : undefined };
+  return { name: f.name, label: t(locale, f.labelKey), section: f.section ? t(locale, f.section) : undefined, kind, required: Boolean(f.required), noDefault: f.noDefault, nullable: Boolean(f.nullable), maxLength: f.maxLength, options, maskBits, assetPurpose: f.kind === "asset" ? f.asset?.purpose : undefined, previewUrl: f.kind === "asset" && f.asset && typeof row?.[f.asset.previewKey] === "string" ? (row[f.asset.previewKey] as string) : undefined };
 }
 
 export async function EntityListPage({ meta, searchParams }: { meta: AnyEntity; searchParams: SearchParams }) {
@@ -230,7 +230,7 @@ export async function EntityCreatePage({ meta }: { meta: AnyEntity }) {
   if (!canWrite(meta, session.user.role) || meta.canCreate === false) return <Forbidden locale={locale} />;
   const { refs, failed } = await loadAllRefs(meta, session.at, "create");
   const fields = meta.fields.filter((f) => isWritable(f, "create")).map((f) => toFormField(locale, f, refs, meta, session.user.role));
-  const initial = Object.fromEntries(fields.map((f) => [f.name, f.kind === "enum" && f.required ? (f.options?.[0]?.value ?? "") : ""]));
+  const initial = Object.fromEntries(fields.map((f) => [f.name, f.kind === "enum" && f.required && !f.noDefault ? (f.options?.[0]?.value ?? "") : ""]));
   return (
     <div className="space-y-4">
       <h1 className="text-2xl font-bold">{t(locale, "admin.new", { entity: t(locale, meta.singularKey) })}</h1>

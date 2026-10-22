@@ -20,6 +20,8 @@ export interface FormFieldDef {
   /** Labels of the bits of a `mask` field, bit 0 first. */
   maskBits?: string[];
   required: boolean;
+  /** Required enum with no preselected option: the user must choose. */
+  noDefault?: boolean;
   nullable: boolean;
   maxLength?: number;
   options?: { value: string; label: string }[];
@@ -194,6 +196,8 @@ export function EntityForm({ mode, slug, action, submitLabel, reasonStored = tru
           {f.kind === "enum" ? (
             <select id={`f-${f.name}`} name={f.name} aria-required={f.required || undefined} value={values[f.name] ?? ""} onChange={(e) => setValues({ ...values, [f.name]: e.target.value })} className={inputClass}>
               {f.nullable || !f.required ? <option value="">{t("common.none")}</option> : null}
+              {/* A required choice with no value yet shows an unselectable prompt: without it the browser displays the first option while the value is still empty. */}
+              {!f.nullable && f.required && (values[f.name] ?? "") === "" ? <option value="" disabled>{t("common.choose")}</option> : null}
               {f.options?.map((o) => (
                 <option key={o.value} value={o.value}>
                   {o.label}

@@ -48,6 +48,8 @@ interface FieldBase {
   normalizeDigits?: boolean;
   /** Required when creating. */
   required?: boolean;
+  /** Required enum with no preselected option: the user must choose (outlet channel, docs/34 s2). */
+  noDefault?: boolean;
   /** Empty input is sent as null. */
   nullable?: boolean;
   maxLength?: number;
