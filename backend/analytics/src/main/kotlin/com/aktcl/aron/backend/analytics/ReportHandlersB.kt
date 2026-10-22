@@ -169,7 +169,7 @@ object DsRrsReport : ReportHandler {
              WHERE ${ctx.dateClause("a.business_date")} AND ${ctx.zoneClause("g.zone_id")} AND ${ctx.routeClause("a.route_id")} AND $prod
              GROUP BY 1, 2, 3, 4
             """,
-            binds, listOf("issued_qty_base", "sold_qty_base", "free_qty_base", "returned_qty_base", "closing_qty_base"),
+            binds,   // no totals row: every column is a quantity, and quantities of different categories (stick, piece, dozen) are never added
         )
     }
 }

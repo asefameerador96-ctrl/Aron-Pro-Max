@@ -1,5 +1,6 @@
 package com.aktcl.aron.backend.masterdata
 
+import com.aktcl.aron.backend.platform.AdminModules
 import com.aktcl.aron.backend.platform.ApiProblem
 import com.aktcl.aron.backend.platform.authenticated
 import com.aktcl.aron.contract.ProblemCode
@@ -14,11 +15,6 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import org.jdbi.v3.core.Handle
 
-/**
- * The fixed module list of an ADMIN's grants (docs/34 s1, D-ROLES-02): the route gate's own list, so PUT never stores a module
- * the token minting would drop (checker row 2 round 3, N3); the db CHECK on `user_module_grant.module` carries the same list.
- */
-internal val ADMIN_MODULES: List<String> = com.aktcl.aron.backend.platform.AdminModules.ALL
 private val SENIOR_ROLES = setOf("ADMIN", "SUPERADMIN")
 
 /** The tables are db's (docs/requests/db-backend-authz-roles.md, migrations B and C); until they land the routes answer 503. */
@@ -40,7 +36,7 @@ private fun accessJson(h: Handle, u: Map<String, Any?>): JsonObject {
     val brands = h.createQuery("SELECT brand_id FROM app.user_brand_scope WHERE user_id = :u ORDER BY brand_id").bind("u", id).mapTo(Long::class.java).list()
     return JsonObject(mapOf(
         "user_id" to JsonPrimitive(id), "role" to JsonPrimitive(u["role"] as String), "version" to JsonPrimitive((u["scope_version"] as Number).toLong()),
-        "modules" to JsonObject(ADMIN_MODULES.filter { it in modules }.associateWith { JsonPrimitive(modules.getValue(it)) }),
+        "modules" to JsonObject(AdminModules.ALL.filter { it in modules }.associateWith { JsonPrimitive(modules.getValue(it)) }),
         "brand_ids" to JsonArray(brands.map { JsonPrimitive(it) }),
     ))
 }
@@ -72,7 +68,7 @@ private suspend fun putAccess(call: ApplicationCall, d: AdminMasterDeps) {
     val modules: Map<String, String>? = if (hasModules) {
         val o = f.obj["modules"] as? JsonObject ?: admBad("body.modules", "invalid_type")
         o.entries.associate { (k, v) ->
-            if (k !in ADMIN_MODULES) admBad("body.modules/$k", "unknown_member", "unknown module $k")
+            if (k !in AdminModules.ALL) admBad("body.modules/$k", "unknown_member", "unknown module $k")
             val lvl = (v as? JsonPrimitive)?.takeIf { it.isString }?.content
             if (lvl != "r" && lvl != "w") admBad("body.modules/$k", "invalid", "the level is r or w")
             k to lvl

@@ -151,3 +151,12 @@ green run of the exact sha). Usage stays `allowed` on the five-hour window.
 
 ## Update 2026-10-22 20:50 UTC (wave 4, lead)
 - Train 9 content is on dev (20:27 UTC). Train 10 (backend-authz module grants, brand and house scope; db V0108) pushed about 20:55, on dev about 21:50 UTC. Train 11 (mdm token grants + breadcrumb install, or backend-reports F-DASH-010; db smoke fallback) about 23:00 UTC; the other re-merges and lands 2026-10-23 morning with web-dashboard #8's first candidate and qa's findings.
+
+## Update 2026-10-22 22:15 UTC (wave 4, lead)
+- Train 11 (web-dashboard national cards on 1.5.0, mdm token grants + breadcrumb install, db smoke fallback) on dev about 23:10 UTC. Train 12 (backend-admin module-list fix, backend-reports dashboard unit fixes, web-admin menu per module) about 00:30 UTC 2026-10-23. Train 13 (web-dashboard no-access note, qa trace test, backend-core sync fixes, db V0109) about 01:45 UTC. Morning report to the owner about 06:30 UTC with what is on dev and the owner-dependent rows J-P.
+
+## Update 2026-10-22 22:40 UTC (wave 4, lead)
+- Unchanged: train 11 on dev about 23:10 UTC; train 12 (backend-admin fixes, backend-reports unit fixes, web-admin menu per module, mdm status) about 00:30 UTC 2026-10-23; train 13 (backend-authz round 3, qa trace test, web-dashboard long-Bangla pass, backend-core sync fixes, db V0109 last) about 01:45 UTC, each after a re-merge of train 12. Morning report to the owner about 06:30 UTC.
+
+## Update 2026-10-22 22:50 UTC (wave 4, lead): dates hold
+- Train 11 on dev about 23:15 UTC (INT CI slowed by seven concurrent lane runs). Train 12 about 00:30 UTC, train 13 about 01:45 UTC 2026-10-23 (backend-core's sync fixes join 13 only if its run is green by then, else 14 in the morning). backend-reports' V0109 fill and db's V0110 follow in the morning trains. Owner report about 06:30 UTC.

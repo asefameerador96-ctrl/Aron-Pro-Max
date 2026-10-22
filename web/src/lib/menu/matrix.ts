@@ -4,6 +4,7 @@
 import { rawRequest } from "@/lib/api/raw";
 import type { Role } from "@/contract/types";
 import type { MenuPermission } from "@/lib/admin/types";
+import { grantsOf, type ModuleGrants } from "@/lib/admin/modules";
 
 /** Menu ids with at least `view` granted; null when the API sent no menus (no filter: the static role lists decide). */
 export function allowedFromMenus(menus: readonly MenuPermission[] | undefined | null): Set<string> | null {
@@ -14,4 +15,10 @@ export function allowedFromMenus(menus: readonly MenuPermission[] | undefined | 
 export async function loadAllowedMenus(token: string, _role: Role): Promise<Set<string> | null> {
   const r = await rawRequest<{ menus?: MenuPermission[] }>({ method: "GET", path: "/v1/me", token });
   return r.ok ? allowedFromMenus(r.data.menus) : null;
+}
+
+/** The role x menu matrix and an ADMIN's module claim from ONE /v1/me call (the shell needs both). */
+export async function loadMenuAccess(token: string, role: Role): Promise<{ allowed: Set<string> | null; grants: ModuleGrants | null }> {
+  const r = await rawRequest<{ menus?: MenuPermission[]; modules?: Record<string, "r" | "w"> | null }>({ method: "GET", path: "/v1/me", token });
+  return r.ok ? { allowed: allowedFromMenus(r.data.menus), grants: grantsOf(role, r.data.modules) } : { allowed: null, grants: null };
 }

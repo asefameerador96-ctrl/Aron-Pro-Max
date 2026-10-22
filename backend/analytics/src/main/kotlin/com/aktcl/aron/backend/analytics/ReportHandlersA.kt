@@ -125,7 +125,7 @@ object RouteStdReport : ReportHandler {
              WHERE ${ctx.dateClause("a.business_date")} AND ${ctx.zoneClause("g.zone_id")} AND ${ctx.routeClause("a.route_id")} AND $prod
              GROUP BY 1, 2, 3, 4, 5, 6, 7, 8
             """,
-            binds, listOf("sold_qty_base", "free_qty_base", "gross_mtk"),
+            binds, listOf("gross_mtk"),   // quantities are in different base units per category (stick, piece, dozen): never summed across SKUs
         )
     }
 }
@@ -165,7 +165,10 @@ object RouteBsrCprReport : ReportHandler {
 
 private val OUTLET_COLS = listOf(
     col("outlet_code", "Outlet code", "string"), col("outlet_name", "Outlet", "string"), col("route_code", "Route", "string"), col("channel", "Channel", "string"),
-    col("memos", "Memos", "integer"), col("sold_qty_base", "Sold", "integer"), col("net_mtk", "Net", "mtk", unit = "mtk"), col("due_mtk", "Due", "mtk", unit = "mtk"),
+    col("memos", "Memos", "integer"),
+    col("sold_cigarette_base", "Cigarette sold", "integer", unit = "stick"), col("sold_bidi_base", "Bidi sold", "integer", unit = "stick"),
+    col("sold_lighter_base", "Lighter sold", "integer", unit = "piece"), col("sold_match_base", "Match sold", "integer", unit = "dozen"),
+    col("net_mtk", "Net", "mtk", unit = "mtk"), col("due_mtk", "Due", "mtk", unit = "mtk"),
     col("dues_collected_mtk", "Dues collected", "mtk", unit = "mtk"),
 )
 
@@ -182,7 +185,10 @@ private fun outletSpec(ctx: ReportContext, byDay: Boolean): SqlSpec {
         WITH memo AS (SELECT m.outlet_id, $d AS d, count(*) AS n, sum(m.net_mtk) AS net, sum(m.due_mtk) AS due FROM dw.fact_memo m
                        WHERE ${ctx.dateClause("m.business_date")} AND ${ctx.zoneClause("m.zone_id")} AND ${ctx.routeClause("m.route_id")} AND m.status = 'active' AND m.line_count > 0
                        GROUP BY 1, 2),
-        qty AS (SELECT m.outlet_id, ${if (byDay) "m.business_date" else "NULL::date"} AS d, sum(ml.qty_base) AS q FROM app.memo_line ml
+        qty AS (SELECT m.outlet_id, ${if (byDay) "m.business_date" else "NULL::date"} AS d,
+                       sum(ml.qty_base) FILTER (WHERE s.category_code = 'cigarette') AS cig, sum(ml.qty_base) FILTER (WHERE s.category_code = 'bidi') AS bidi,
+                       sum(ml.qty_base) FILTER (WHERE s.category_code = 'lighter') AS lighter, sum(ml.qty_base) FILTER (WHERE s.category_code = 'match') AS match
+                  FROM app.memo_line ml JOIN app.sku s ON s.id = ml.sku_id   -- the category from the master, not from the 10-minute dimension copy
                   JOIN dw.fact_memo m ON m.memo_client_uuid = ml.memo_client_uuid AND m.business_date = ml.business_date
                  WHERE ${ctx.dateClause("m.business_date")} AND ${ctx.zoneClause("m.zone_id")} AND ${ctx.routeClause("m.route_id")} AND m.status = 'active' AND m.line_count > 0
                    AND ml.voided_at IS NULL AND ml.line_kind = 'sale' GROUP BY 1, 2),
@@ -191,7 +197,9 @@ private fun outletSpec(ctx: ReportContext, byDay: Boolean): SqlSpec {
         vis AS (SELECT v.outlet_id, ${if (byDay) "v.business_date" else "NULL::date"} AS d FROM dw.fact_visit v
                  WHERE ${ctx.dateClause("v.business_date")} AND ${ctx.zoneClause("v.zone_id")} AND ${ctx.routeClause("v.route_id")} AND NOT v.voided AND v.visit_kind = 'sr_call' GROUP BY 1, 2),
         keys AS (SELECT outlet_id, d FROM memo UNION SELECT outlet_id, d FROM dues UNION SELECT outlet_id, d FROM vis)
-        SELECT ${if (byDay) "k.d AS business_date, " else ""}o.outlet_code, o.outlet_name, g.route_code, o.channel, coalesce(m.n, 0)::int AS memos, coalesce(q.q, 0)::bigint AS sold_qty_base,
+        SELECT ${if (byDay) "k.d AS business_date, " else ""}o.outlet_code, o.outlet_name, g.route_code, o.channel, coalesce(m.n, 0)::int AS memos,
+               coalesce(q.cig, 0)::bigint AS sold_cigarette_base, coalesce(q.bidi, 0)::bigint AS sold_bidi_base, coalesce(q.lighter, 0)::bigint AS sold_lighter_base,
+               coalesce(q.match, 0)::bigint AS sold_match_base,
                coalesce(m.net, 0)::bigint AS net_mtk, coalesce(m.due, 0)::bigint AS due_mtk, coalesce(u.amt, 0)::bigint AS dues_collected_mtk
           FROM keys k JOIN dw.dim_outlet o ON o.outlet_id = k.outlet_id LEFT JOIN dw.dim_geo g ON g.route_id = o.route_id
           LEFT JOIN memo m ON m.outlet_id = k.outlet_id AND m.d IS NOT DISTINCT FROM k.d LEFT JOIN qty q ON q.outlet_id = k.outlet_id AND q.d IS NOT DISTINCT FROM k.d
@@ -199,7 +207,7 @@ private fun outletSpec(ctx: ReportContext, byDay: Boolean): SqlSpec {
          WHERE (CAST(:ocode AS text) IS NULL OR o.outlet_code = :ocode) $status $sub
         """,
         mapOf("ocode" to ctx.query.outlet_code?.takeIf { it.isNotBlank() }) + (if (sub.isEmpty()) emptyMap() else mapOf("subs" to ctx.query.sub_channels.toTypedArray())),
-        listOf("memos", "sold_qty_base", "net_mtk", "due_mtk", "dues_collected_mtk"),
+        listOf("memos", "sold_cigarette_base", "sold_bidi_base", "sold_lighter_base", "sold_match_base", "net_mtk", "due_mtk", "dues_collected_mtk"),   // each category total is in its own unit
     )
 }
 
