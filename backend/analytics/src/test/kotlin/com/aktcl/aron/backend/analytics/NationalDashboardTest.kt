@@ -5,12 +5,18 @@ import com.aktcl.aron.backend.platform.AronClock
 import com.aktcl.aron.backend.platform.FreshDb
 import com.aktcl.aron.backend.platform.Reach
 import com.aktcl.aron.backend.platform.ReachNode
+import com.aktcl.aron.backend.platform.ServerConfig
 import com.aktcl.aron.contract.ProblemCode
 import com.aktcl.aron.contract.Role
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import java.time.Instant
 import java.time.LocalDate
+import java.time.YearMonth
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonNull
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonPrimitive
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -261,5 +267,26 @@ class NationalDashboardTest {
         fresh.db.jdbi.useHandle<Exception> { DashboardSummaries.touchFreshness(it, later) }
         val last = Instant.parse(svc.freshness().last_updated_at!!)
         assertTrue(last.isBefore(later))                   // the queue still holds a change: not "fresh now"
+    }
+
+    private fun weekendConfig(v: JsonElement) = object : ServerConfig {
+        override fun value(key: String): JsonElement = if (key == "cfg.calendar.weekend_days") v else JsonNull
+        override fun configVersion(): Long = 1
+    }
+
+    @Test
+    fun workingDaysFollowTheConfiguredWeekend() {
+        val october = YearMonth.of(2026, 10)   // 5 Fridays, 5 Saturdays, 4 Sundays, one global holiday on a Tuesday
+        fun days(cfg: ServerConfig?): Int {
+            val s = NationalDashboardService(fresh.db, AronClock { now }, cfg)
+            return fresh.db.jdbi.withHandle<Int, Exception> { WorkingCalendar.workingDays(it, october, s.weekendDays()) }
+        }
+        assertEquals(25, days(null), "no config: the Friday default")
+        assertEquals(25, days(weekendConfig(JsonArray(listOf(JsonPrimitive(5))))))
+        assertEquals(20, days(weekendConfig(JsonArray(listOf(JsonPrimitive(5), JsonPrimitive(6))))), "Friday and Saturday off")
+        assertEquals(26, days(weekendConfig(JsonArray(listOf(JsonPrimitive(7))))), "Sunday only")
+        assertEquals(25, days(weekendConfig(JsonArray(emptyList()))), "an empty list falls back to the default")
+        assertEquals(25, days(weekendConfig(JsonArray(listOf(JsonPrimitive(0), JsonPrimitive(9))))), "out-of-range days are ignored")
+        assertEquals(25, days(weekendConfig(JsonPrimitive("junk"))), "a malformed value falls back to the default")
     }
 }

@@ -200,7 +200,7 @@ class Wiring(
             val outlets = OutletsDeps(db, geo, reach, guard, clock)
             val dashboardService = DashboardService(db, clock)
             val dashboards = DashboardDeps(dashboardService, reach, guard, clock)
-            val national = NationalDeps(NationalDashboardService(db, clock), reach, guard, clock = clock)
+            val national = NationalDeps(NationalDashboardService(db, clock, config), reach, guard, clock = clock)
             // Enrolment (N-031): the public API URL the QR carries and the SHA-256 of the Google attestation roots to trust in production (new environment values, docs/requests/backend-reports-device-env.md).
             val enrolment = EnrolmentSettings(
                 System.getenv("ARON_PUBLIC_API_URL") ?: "https://localhost:8080", s.env.name.lowercase(),

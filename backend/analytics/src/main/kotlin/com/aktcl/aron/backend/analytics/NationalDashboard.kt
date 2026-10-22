@@ -5,9 +5,12 @@ import com.aktcl.aron.backend.platform.AronClock
 import com.aktcl.aron.backend.platform.Database
 import com.aktcl.aron.backend.platform.FieldError
 import com.aktcl.aron.backend.platform.Reach
+import com.aktcl.aron.backend.platform.ServerConfig
 import com.aktcl.aron.contract.ProblemCode
 import com.aktcl.aron.rules.BusinessDate
 import kotlinx.datetime.toJavaLocalDate
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonPrimitive
 import org.jdbi.v3.core.Handle
 import org.jdbi.v3.core.statement.SqlStatement
 import java.math.BigDecimal
@@ -73,9 +76,14 @@ internal class NationalSql(private val caller: NationalCaller, private val f: Na
     }
 }
 
-/** Working days of a month: not a Friday, not a global holiday or emergency day, plus declared make-up days (brief s2, D-TARGET-MIN-01). */
+/**
+ * Working days of a month: not a weekend day (`cfg.calendar.weekend_days`, ISO 1..7, default Friday), not a global holiday or
+ * emergency day, plus declared make-up days (brief s2, D-TARGET-MIN-01).
+ */
 internal object WorkingCalendar {
-    fun workingDays(h: Handle, month: YearMonth): Int {
+    val DEFAULT_WEEKEND: Set<Int> = setOf(DayOfWeek.FRIDAY.value)
+
+    fun workingDays(h: Handle, month: YearMonth, weekend: Set<Int> = DEFAULT_WEEKEND): Int {
         val first = month.atDay(1); val last = month.atEndOfMonth()
         val special = h.createQuery(
             "SELECT date, kind FROM app.calendar_holiday WHERE scope_type = 'global' AND revoked_at IS NULL AND date BETWEEN :f AND :l",
@@ -84,7 +92,7 @@ internal object WorkingCalendar {
         var d = first
         while (!d.isAfter(last)) {
             val kind = special[d]
-            val off = d.dayOfWeek == DayOfWeek.FRIDAY || kind == "holiday" || kind == "emergency_off"
+            val off = d.dayOfWeek.value in weekend || kind == "holiday" || kind == "emergency_off"
             if (!off || kind == "makeup_day") n++
             d = d.plusDays(1)
         }
@@ -100,7 +108,13 @@ internal object WorkingCalendar {
 class NationalDashboardService(
     internal val db: Database,
     internal val clock: AronClock = AronClock.SYSTEM,
+    private val config: ServerConfig? = null,
 ) {
+    /** The global `cfg.calendar.weekend_days` (the national figure has no zone; zone-scoped overrides are ignored, D-DASH-06). */
+    internal fun weekendDays(): Set<Int> = runCatching {
+        config?.value("cfg.calendar.weekend_days")?.jsonArray?.mapNotNull { it.jsonPrimitive.content.toIntOrNull() }?.filter { it in 1..7 }?.toSet()
+    }.getOrNull()?.takeIf { it.isNotEmpty() } ?: WorkingCalendar.DEFAULT_WEEKEND
+
     internal fun today(): LocalDate = BusinessDate.of(clock.now().toEpochMilli()).toJavaLocalDate()
 
     internal fun dateOf(f: NationalDashboardFilter): LocalDate =
@@ -154,7 +168,7 @@ class NationalDashboardService(
             ).bind("d", date)).map { rs, _ -> Triple(rs.getString(1), rs.getString(2), rs.getLong(3)) }.list()
             val cats = sql.bind(h.createQuery("SELECT DISTINCT p.category_code, p.base_unit FROM dw.dim_product p WHERE true ${sql.product}")).map { rs, _ -> rs.getString(1) to rs.getString(2) }.list()
             val month = YearMonth.from(date)
-            val wd = WorkingCalendar.workingDays(h, month)
+            val wd = WorkingCalendar.workingDays(h, month, weekendDays())
             val targets = sql.bind(h.createQuery(
                 """
                 SELECT p.category_code, sum(t.qty_base) AS total, count(DISTINCT t.route_id) AS routes
