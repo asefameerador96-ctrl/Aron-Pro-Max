@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Aron API
-  version: 1.4.0
+  version: 1.6.0
   summary: The one API of the Aron rebuild (SR, AMO and TSO apps, web dashboards and admin portal).
   description: |
     Binding contract for every lane of the seven-day build. Rules that apply to every operation are in
@@ -21,6 +21,7 @@ info:
       dates are `YYYY-MM-DD` in Asia/Dhaka.
     - Scope is never sent by the client: reach is derived on the server from the token. Narrowing
       selectors outside the caller's reach return 403 `ERR_OUT_OF_SCOPE`.
+    - 1.6.0 (lane mdm, additive): tag `admin-mdm` (`/v1/admin/mdm/*`) and the phone's `GET /v1/devices/me/commands`, `POST /v1/devices/me/commands/{command_id}/ack`.
     - Lists use cursor pagination (`limit`, `cursor`, response `next_cursor`) and master data also accept
       `updated_since`.
   contact:

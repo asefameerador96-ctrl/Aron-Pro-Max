@@ -9,9 +9,11 @@ Branch `lane/mdm` (from INT + lead-directive docs). Brief: `docs/lanes/mdm.md`; 
 - **DPC** `android/dpc/.../mdm` (see `docs/status/mdm-dpc.md`): poll, verify, dedupe ledger, executors, policy applier with weekday/time windows (Dhaka), kiosk, location mode; 14 unit tests.
 - **Web** `web/src/app/admin/mdm/**` (see `docs/status/mdm-web.md`): list, detail with actions, policy editor with schedule grid, enrolment/QR, alerts, activity; bn+en; vitest + Playwright (list, detail).
 
+- **App wiring** (core-sync, SR/AMO/TSO): command poll on every sync run and on `mdm_nudge`, key from `/v1/auth/jwks`, `MdmCommandRunnerTest`. Contract version set to 1.6.0 (lead's numbering).
+
 ## Not done / waiting
 - Owner's MDM console screenshots (`docs/ui-reference/web/mdm-*.webp`): look not matched yet.
-- Real `mdm` module grant: `docs/requests/mdm-authz-module-grant.md`. App wiring of the command channel: `docs/requests/mdm-android-core-wiring.md`. Network type: `docs/requests/mdm-contract-network-type.md`. Migration: db request above.
+- Geo layer reading `mdmApplier?.locationMode()` (see `docs/requests/mdm-android-core-wiring.md`). Real `mdm` module grant: `docs/requests/mdm-authz-module-grant.md`. Network type: `docs/requests/mdm-contract-network-type.md`. Migration: db request above.
 - Device proof run on a phone (lock, locate, factory reset, kiosk): DEVICE-PENDING, steps to be added to `docs/status/device-checks.md` once the app wiring lands.
 
 ## Next three

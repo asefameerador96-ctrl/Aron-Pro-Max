@@ -1,11 +1,11 @@
-# Request (mdm → android-core / android-geo-dpc, 2026-10-22): wire the DPC command channel into the app
+# mdm app wiring (was a request to android-core; done by lane mdm on the lead's instruction, 2026-10-22)
 
-The DPC half is on lane/mdm (`android/dpc/.../mdm`, `docs/status/mdm-dpc.md`); the server half is `GET /v1/devices/me/commands`
-and `POST /v1/devices/me/commands/{id}/ack` (contract 1.4.0, behind `ARON_MDM_ENABLED=1` until db lands the migration).
-Not done by this lane because it lives outside `android/dpc`:
+No android-core lane runs in wave 4, so lane mdm wired the DPC command channel itself, additive only:
 
-1. `CommandApi` over the app's device-proof HTTP client (same `X-Device-Id` / `X-Device-Proof` as `GET /v1/devices/me/policy`; the ack body is signed like the status POST).
-2. The server's command-signing public key for `CommandVerifier.fromJwk`: take it from `GET /v1/auth/jwks` (the ES256 key that signs access tokens also signs commands, kid in the token header); cache it with the policy, refresh on a verify failure once.
-3. Call `CommandProcessor.sync()` from the sync worker (every sync, as the brief says) and from the FCM data message `kind=mdm_nudge` (no payload; one pull).
-4. The geo layer reads `mdmApplier?.locationMode()` (`off | on_demand | interval`) and the interval; `off` means no fix except a `locate` command.
-5. Status report: add the optional `network_type` (`wifi|mobile|offline`) to `DeviceStatusReport` when the contract owner agrees (see mdm-contract-network-type.md); the MDM list shows `unknown` until then.
+- `android/dpc/.../mdm/MdmChannel.kt`: builds the `CommandProcessor` over the device-owner policy's own directory.
+- `android/core-sync/.../mdm/MdmCommandShell.kt`: `DeviceMdmCommandHttp` (pull, ack, `GET /v1/auth/jwks` under the phone's own `X-Device-Proof`, no user needed; a 4xx ack is not owed forever), `MdmCommandRunner` (cached server keys, one refresh when a signature fails, never throws), `MdmCommandShell` (one per app, `afterSync()` and `pullAndApplyIo()`).
+- Push: `PushPullKind.MDM` and FCM data message `kind=mdm_nudge` (no payload) -> one pull job; `SessionPushPull` takes the MDM pull before the signed-in-user check.
+- Sync: each app's `SessionModule` calls `mdm.afterSync()` at the end of every sync run and provides `MdmCommandShell` (SR, AMO, TSO).
+- Test: `core-sync/.../MdmCommandRunnerTest` (a queued command is pulled, verified, executed and acked once; a rotated key is refreshed once; a forged command never runs; offline and not-enrolled are quiet; `mdm_nudge` parses). The wiring is identical in the three apps because it lives in `core-sync`; compile of all three is part of the lane check.
+
+Still open (belongs to the geo layer, android-geo-dpc / android-sr-a): read `DeviceOwnerPolicy.mdmApplier?.locationMode()` (`off | on_demand | interval`, and `locationIntervalMin()`) where location samples are decided; `off` means no fix except a `locate` command. And the optional `network_type` in the status report (mdm-contract-network-type.md).
