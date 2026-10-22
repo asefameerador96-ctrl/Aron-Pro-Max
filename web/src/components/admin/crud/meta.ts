@@ -128,6 +128,8 @@ export interface EntityMeta<Row, Write, Patch> {
   /** `entity` value of this table's rows in /v1/admin/audit. */
   auditEntity: string;
   idField: Name<Row>;
+  /** A live preview under the form fields: the SKU pack sentence ("1 packet = 20 sticks"). */
+  preview?: "sku-pack";
   /** "uuid" for tables keyed by a client UUID (outlet requests); default "int". */
   idKind?: "int" | "uuid";
   fields: readonly FieldMeta<Row, Write, Patch>[];

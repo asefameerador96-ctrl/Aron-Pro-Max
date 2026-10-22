@@ -42,6 +42,10 @@ const pairs = {
   "grant.module.mdm": ["MDM", "এমডিএম"],
   "grant.module.reports": ["Reports and exports", "রিপোর্ট ও এক্সপোর্ট"],
   "grant.module.config": ["Configuration", "কনফিগারেশন"],
+  "grant.module.data_entry": ["Data entry", "ডেটা এন্ট্রি"],
+  "grant.module.indent": ["Indent", "ইনডেন্ট"],
+  "grant.module.leaderboard": ["Performance leaderboard", "পারফরম্যান্স লিডারবোর্ড"],
+  "grant.module.daily_tracking": ["Daily tracking dashboard", "দৈনিক ট্র্যাকিং ড্যাশবোর্ড"],
   // --- route monthly targets (D-TARGET-MIN-01) ---
   "menu.admin.route_targets": ["Route targets", "রুট টার্গেট"],
   "rt.title": ["Route monthly targets", "রুট মাসিক টার্গেট"],
@@ -150,6 +154,23 @@ const pairs = {
   "oi.problem.code_taken": ["This outlet code belongs to an outlet of another zone", "এই আউটলেট কোড অন্য জোনের আউটলেটের"],
   "oi.read_only": ["You cannot import outlets; this needs an Administrator.", "আপনি আউটলেট ইমপোর্ট করতে পারেন না; অ্যাডমিন লাগবে।"],
   "common.choose": ["Choose…", "বাছাই করুন…"],
+  // --- SKU pack sizes (docs/34 s4.2) ---
+  "skupack.label": ["Pack label", "প্যাক লেবেল"],
+  "skupack.label.packet": ["Packet", "প্যাকেট"],
+  "skupack.label.box": ["Box", "বক্স"],
+  "skupack.label.dozen": ["Dozen", "ডজন"],
+  "skupack.preview.title": ["What the field sees", "ফিল্ডে যা দেখা যাবে"],
+  "skupack.preview.packet": ["1 packet = {n} sticks", "১ প্যাকেট = {n} স্টিক"],
+  "skupack.preview.box": ["1 box = {n} pieces", "১ বক্স = {n} পিস"],
+  "skupack.preview.match": ["Counted in dozens: the base unit is the dozen", "ডজনে গোনা হয়: বেস একক ডজন"],
+  "skupack.preview.pending": ["Choose the category and enter the number per pack to see the preview.", "প্রিভিউ দেখতে ক্যাটাগরি বাছাই করুন ও প্রতি প্যাকে সংখ্যা লিখুন।"],
+  "skupack.warn.base_unit": ["The base unit usually follows the category: stick for cigarettes and bidi, piece for lighters, dozen for matches.", "বেস একক সাধারণত ক্যাটাগরি অনুযায়ী: সিগারেট ও বিড়ির স্টিক, লাইটারের পিস, ম্যাচের ডজন।"],
+  "skupack.warn.entry_unit": ["The field apps count in packs: the default entry unit is normally Pack.", "ফিল্ড অ্যাপ প্যাকে গোনে: ডিফল্ট এন্ট্রি একক সাধারণত প্যাক।"],
+  "skupack.warn.cigarette_size": ["Cigarette packets are 10 or 20 sticks.", "সিগারেটের প্যাকেট ১০ বা ২০ স্টিকের।"],
+  "skupack.warn.lighter_size": ["A lighter box holds 25 pieces.", "লাইটারের বক্সে ২৫টি পিস।"],
+  "skupack.warn.match_size": ["For matches the base unit is the dozen: use 1.", "ম্যাচের বেস একক ডজন: ১ দিন।"],
+  "skupack.per_pack_hint": ["Sticks per packet (20 or 10; bidi: its own count), pieces per box (25), 1 for matches.", "প্রতি প্যাকেটে স্টিক (২০ বা ১০; বিড়ি: নিজস্ব সংখ্যা), প্রতি বক্সে পিস (২৫), ম্যাচের জন্য ১।"],
+  "skupack.edit_note": ["The pack size is fixed once the SKU exists: stored memo lines keep the pack size they were entered with.", "এসকেইউ তৈরি হলে প্যাকের আকার স্থির: সংরক্ষিত মেমো লাইন যে আকারে এন্ট্রি হয়েছিল সেটাই থাকে।"],
 } as const satisfies Record<string, readonly [string, string]>;
 
 export type Wave4MessageKey = keyof typeof pairs;
