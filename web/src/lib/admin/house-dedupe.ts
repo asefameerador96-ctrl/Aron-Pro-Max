@@ -1,6 +1,8 @@
 // House de-duplication (docs/34 s2 "House level"): the dashboard filter lists each ACTIVE house once, so two active houses with the
-// same name in one territory must be resolved. Two houses are the same when their names match after trimming, case folding and
-// removing spaces and punctuation, within one territory (parent). The rule is deliberately simple and shown to the user.
+// same name in one territory must be resolved. The SERVER decides what a duplicate is (contract listHouseDuplicates: one territory,
+// same name after case, spacing and punctuation) and performs the merge (mergeHouses); the client rule below is kept only for the
+// dashboard filter listing and as the reference of the rule.
+import type { Schemas } from "@/contract/types";
 
 export interface HouseRow {
   id: number;
@@ -11,6 +13,8 @@ export interface HouseRow {
   status: "active" | "inactive";
   version: number;
   created_at?: string;
+  /** Zones under the house (server list only). */
+  zone_count?: number;
 }
 
 export interface HouseGroup {
@@ -57,4 +61,19 @@ export function filterListing(rows: readonly HouseRow[]): HouseRow[] {
     out.push(r);
   }
   return out;
+}
+
+/** Groups of the server's duplicate list joined with the ordinary house rows (version and creation time, which the list lacks). `onlyOpen` keeps groups with 2+ ACTIVE members. */
+export function serverGroups(list: Schemas["HouseDuplicateList"], rows: readonly HouseRow[], onlyOpen: boolean): HouseGroup[] {
+  const byId = new Map(rows.map((r) => [r.id, r]));
+  const out: HouseGroup[] = [];
+  for (const g of list.groups) {
+    const members: HouseRow[] = g.houses
+      .map((h) => ({ ...(byId.get(h.id) ?? { version: 0 }), id: h.id, code: h.code, name: h.name, parent_id: g.territory_id, status: h.is_active ? ("active" as const) : ("inactive" as const), zone_count: h.zone_count }))
+      .sort((a, b) => a.id - b.id);
+    const activeCount = members.filter((m) => m.status === "active").length;
+    if (onlyOpen && activeCount < 2) continue;
+    out.push({ parentId: g.territory_id, key: g.name_key, members, activeCount });
+  }
+  return out.sort((a, b) => (a.parentId ?? 0) - (b.parentId ?? 0) || a.key.localeCompare(b.key));
 }

@@ -123,6 +123,11 @@ const pairs = {
   "hd.activate": ["Activate", "সক্রিয় করুন"],
   "hd.confirm_deactivate": ["Deactivate {code}", "{code} নিষ্ক্রিয় করুন"],
   "hd.confirm_activate": ["Activate {code}", "{code} সক্রিয় করুন"],
+  "hd.merge_start": ["Merge these houses…", "এই হাউসগুলো একত্র করুন…"],
+  "hd.merge_keep": ["House to keep", "যে হাউস থাকবে"],
+  "hd.merge_note": ["The other houses become inactive and their zones move to the kept house.", "অন্য হাউসগুলো নিষ্ক্রিয় হবে এবং তাদের জোন রাখা হাউসে যাবে।"],
+  "hd.merge": ["Merge", "একত্র করুন"],
+  "hd.done_merge": ["Merged into {code}.", "{code}-এ একত্র করা হয়েছে।"],
   "hd.cancel": ["Cancel", "বাতিল"],
   "hd.done_deactivate": ["{code} is inactive now and leaves the dashboard filter.", "{code} এখন নিষ্ক্রিয়; ড্যাশবোর্ড ফিল্টার থেকে বাদ।"],
   "hd.done_activate": ["{code} is active again.", "{code} আবার সক্রিয়।"],
@@ -177,7 +182,6 @@ const pairs = {
   "skupack.warn.lighter_size": ["A lighter box holds 25 pieces.", "লাইটারের বক্সে ২৫টি পিস।"],
   "skupack.warn.match_size": ["For matches the base unit is the dozen: use 1.", "ম্যাচের বেস একক ডজন: ১ দিন।"],
   "skupack.per_pack_hint": ["Sticks per packet (20 or 10; bidi: its own count), pieces per box (25), 1 for matches.", "প্রতি প্যাকেটে স্টিক (২০ বা ১০; বিড়ি: নিজস্ব সংখ্যা), প্রতি বক্সে পিস (২৫), ম্যাচের জন্য ১।"],
-  "skupack.edit_note": ["The pack size is fixed once the SKU exists: stored memo lines keep the pack size they were entered with.", "এসকেইউ তৈরি হলে প্যাকের আকার স্থির: সংরক্ষিত মেমো লাইন যে আকারে এন্ট্রি হয়েছিল সেটাই থাকে।"],
 } as const satisfies Record<string, readonly [string, string]>;
 
 export type Wave4MessageKey = keyof typeof pairs;

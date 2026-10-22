@@ -126,6 +126,48 @@ export async function handleCustom(st: CustomState, ctx: Ctx, canWrite: boolean,
     }
   }
 
+  // Houses of one territory whose names match after case, spacing and punctuation (listHouseDuplicates) and their merge (mergeHouses).
+  if (path === "/v1/admin/geo/house/duplicates" && method === "GET") {
+    const key = (n: string) => n.normalize("NFKC").toLowerCase().replace(/[^\p{L}\p{M}\p{N}]+/gu, "");
+    const by = new Map<string, Row[]>();
+    for (const r of st.tables.geo!.filter((g) => g.level === "house")) {
+      const k = `${r.parent_id}\u0000${key(String(r.name))}`;
+      if (key(String(r.name)) !== "") by.set(k, [...(by.get(k) ?? []), r]);
+    }
+    const groups = [...by.values()].filter((m) => m.length > 1).map((m) => {
+      const houses = [...m].sort((a, b) => Number(a.id) - Number(b.id));
+      return {
+        territory_id: Number(houses[0]!.parent_id),
+        name_key: key(String(houses[0]!.name)),
+        houses: houses.map((h) => ({ id: Number(h.id), code: String(h.code), name: String(h.name), status: h.status, is_active: h.status === "active", zone_count: st.tables.geo!.filter((z) => z.level === "zone" && z.parent_id === h.id).length })),
+      };
+    });
+    return ctx.send(res, 200, { groups }), true;
+  }
+  if (path === "/v1/admin/geo/house/merge" && method === "POST") {
+    if (!canWrite) return ctx.send(res, 403, ctx.problem(403, "ERR_FORBIDDEN")), true;
+    const b = (await ctx.readJson(req)) as { keep_id?: number; merge_ids?: number[]; change_reason?: string } | undefined;
+    if (!b || !Number.isSafeInteger(b.keep_id) || !Array.isArray(b.merge_ids) || b.merge_ids.length < 1 || b.merge_ids.length > 20 || !reasonOk(b.change_reason)) return ctx.send(res, 400, ctx.problem(400, "ERR_VALIDATION")), true;
+    const houses = st.tables.geo!.filter((g) => g.level === "house");
+    const keep = houses.find((h) => h.id === b.keep_id);
+    const others = b.merge_ids.map((id) => houses.find((h) => h.id === id));
+    if (!keep || others.some((h) => !h)) return ctx.send(res, 404, ctx.problem(404, "ERR_NOT_FOUND")), true;
+    if (String(req.headers["if-match"] ?? "").replace(/"/g, "") !== String(keep.version)) return ctx.send(res, 412, ctx.problem(412, "ERR_PRECONDITION_FAILED")), true;
+    const key = (n: string) => n.normalize("NFKC").toLowerCase().replace(/[^\p{L}\p{M}\p{N}]+/gu, "");
+    if (b.merge_ids.includes(keep.id as number) || others.some((h) => h!.parent_id !== keep.parent_id || key(String(h!.name)) !== key(String(keep.name)))) return ctx.send(res, 400, ctx.problem(400, "ERR_VALIDATION", { errors: [{ pointer: "/merge_ids", code: "not_duplicates" }] })), true;
+    const item = (h: Row) => ({ id: Number(h.id), code: String(h.code), name: String(h.name), status: h.status, is_active: h.status === "active", zone_count: st.tables.geo!.filter((z) => z.level === "zone" && z.parent_id === h.id).length });
+    const merged = others.map((h) => {
+      const zones = st.tables.geo!.filter((z) => z.level === "zone" && z.parent_id === h!.id);
+      for (const z of zones) z.parent_id = keep.id;
+      h!.status = "inactive";
+      h!.version = Number(h!.version) + 1;
+      return { house_id: Number(h!.id), zones_moved: zones.length };
+    });
+    keep.version = Number(keep.version) + 1;
+    ctx.audit("geo_house", Number(keep.id), "geo_house.merge", { merged: b.merge_ids.join(",") }, { kept: String(keep.id) }, b.change_reason!);
+    return ctx.send(res, 200, { kept: item(keep), merged }), true;
+  }
+
   if (path === "/v1/admin/outlets/import" && method === "POST") {
     if (!canWrite) return ctx.send(res, 403, ctx.problem(403, "ERR_FORBIDDEN")), true;
     type R = { code: string | null; name: string; owner_name: string; zone_code: string; cluster: string; channel: string; outlet_kind: string; route_code: string | null; lat: number | null; lng: number | null; contact_number: string | null; address: string | null };

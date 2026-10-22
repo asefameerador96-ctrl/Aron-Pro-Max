@@ -68,6 +68,8 @@ export const OPS = {
   "dues.create": { method: "POST", path: "/v1/admin/dues-adjustments", roles: ADMINS, reason: "reason" },
   "dues.decide": { method: "POST", path: "/v1/admin/dues-adjustments/{adjustment_id}/decision", roles: SUPERS, reason: "note" },
   // Wave 4 (docs/34 s1): module grants of an ADMIN or brand scope of a BRAND user; Super Admin only (contract putUserAccess).
+  // Fold duplicate houses into one (contract mergeHouses): zones move to the kept house, merged ones become inactive; If-Match is the kept house version.
+  "house.merge": { method: "POST", path: "/v1/admin/geo/house/merge", roles: ADMINS, reason: "change_reason", ifMatch: true },
   "user-access.put": { method: "PUT", path: "/v1/admin/users/{id}/access", roles: SUPERS, reason: "change_reason", ifMatch: true },
   // Wave 4 route monthly targets (D-TARGET-MIN-01): preview (dry run, no reason, writes nothing) then commit; idempotent by batch_uuid. REQUEST: docs/requests/backend-admin-route-targets.md
   "route-targets.validate": { method: "PUT", path: "/v1/admin/route-targets", roles: ADMINS, reason: null },
