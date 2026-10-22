@@ -1,9 +1,15 @@
 // Screenshot goldens of the national dashboard pages (docs/34 s2). A fixed past date makes the mock figures and stamps deterministic.
 // Goldens are recorded on the Linux runner by the web-snapshots workflow (default spec list), never locally.
 import { expect, test } from "@playwright/test";
+import { existsSync } from "node:fs";
 import { loginOk, resetMock } from "./helpers";
 
 const DAY = "2026-10-01";
+// Until the web-snapshots workflow has recorded the Linux goldens and they are committed, this spec only runs when it is recording them
+// (a missing golden would otherwise fail the whole e2e job).
+const recording = process.argv.includes("--update-snapshots");
+const recorded = existsSync(new URL("./national-shots.spec.ts-snapshots", import.meta.url));
+test.skip(!recording && !recorded, "goldens not recorded yet (web-snapshots workflow)");
 
 test.beforeEach(async ({ page }) => {
   await resetMock();
