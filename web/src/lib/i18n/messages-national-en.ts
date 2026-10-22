@@ -27,6 +27,8 @@ export const nationalEn = {
   "nat.final_day": "Final figures of the day",
   "nat.card_hidden_note": "Your account sees the product cards only.",
   "nat.no_access": "Your account has no access to the dashboard. Ask a Super Admin to grant it.",
+  "nat.unit.m": "m",
+  "nat.unit.km": "km",
   "nat.card_error": "This card could not be loaded.",
   "nat.card_retry": "Try again",
   "nat.empty": "No data for this selection.",

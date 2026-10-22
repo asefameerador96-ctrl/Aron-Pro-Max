@@ -29,7 +29,7 @@ export function hoursBetween(a: string | null, b: string | null): number | null 
 
 /** Distance covered: metres with two decimals below 1,000 m, kilometres with one decimal from 1,000 m (docs/34 s6 Q1). */
 export function distance(locale: Locale, m: number): string {
-  return m < 1000 ? `${formatNumber(locale, m, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} m` : `${formatNumber(locale, m / 1000, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} km`;
+  return m < 1000 ? `${formatNumber(locale, m, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${t(locale, "nat.unit.m")}` : `${formatNumber(locale, m / 1000, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} ${t(locale, "nat.unit.km")}`;
 }
 
 /** A percentage from integer basis points (0 to 10000 is 0 to 100%), divided only here, at display, with integer arithmetic: 9796 -> 97.96%.
