@@ -75,7 +75,7 @@ UPDATE app.cfg_key
    SET default_value = default_value || jsonb_build_object('NATIONAL', default_value -> 'TOP')
  WHERE key = 'cfg.web.menu_by_role' AND default_value ? 'TOP' AND NOT default_value ? 'NATIONAL';
 UPDATE app.cfg_key
-   SET default_value = default_value || '{"BRAND": [{"menu": "dashboard", "page": "dashboard", "actions": ["read", "filter"]}, {"menu": "reports", "page": "reports", "actions": ["read", "export"]}]}'::jsonb
+   SET default_value = default_value || '{"BRAND": [{"menu": "dashboard", "page": "dashboard", "actions": ["read", "filter"]}, {"menu": "reports", "page": "reports", "actions": ["read", "export"]}, {"menu": "credentials", "page": "change_password", "actions": ["write_own"]}]}'::jsonb
  WHERE key = 'cfg.web.menu_by_role' AND NOT default_value ? 'BRAND';
 
 -- A4. Admin permissions of TOP (app.role_grant_map) go to NATIONAL; TOP users become NATIONAL. scope_version is bumped
