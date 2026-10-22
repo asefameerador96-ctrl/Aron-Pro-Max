@@ -35,7 +35,7 @@ test("home on Fast 3G with 4x CPU: JS, LCP and layout shift stay in budget", asy
   cdp.on("Network.responseReceived", (e: { requestId: string; type: string }) => { if (e.type === "Script") sizes.set(e.requestId, e.requestId); });
   cdp.on("Network.loadingFinished", (e: { requestId: string; encodedDataLength: number }) => { if (sizes.has(e.requestId)) jsBytes += e.encodedDataLength; });
   await page.goto("/", { waitUntil: "load" });
-  await expect(page.getByTestId("dashboard-tiles")).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByTestId("national-dashboard")).toBeVisible({ timeout: 60_000 });
   await page.waitForLoadState("networkidle");
   const cold = await page.evaluate(() => { const w = window as unknown as { __lcp: number; __cls: number }; return { lcp: w.__lcp, cls: w.__cls }; });
   // an in-place refresh must not move anything
