@@ -257,6 +257,8 @@ fun AmoSettingsContent(
     onUpdate: (() -> Unit)? = null,
     updateAvailable: Boolean = false,
     onSupport: (() -> Unit)? = null,
+    /** "Printer diagnostics" (D-PRINT-02); shown when non-null. */
+    onPrinter: (() -> Unit)? = null,
 ) {
     val look = LocalAronLook.current
     val language = LocalAppLanguage.current
@@ -292,6 +294,11 @@ fun AmoSettingsContent(
                 SettingRow(
                     stringResource(if (updateAvailable) HomeR.string.set_update_available else HomeR.string.set_update), Modifier.testTag(RoleHomeTags.SET_UPDATE), onClick = onUpdate,
                 ) { Text("›", style = inkStyle(24, color = look.inkMuted), modifier = Modifier.clearAndSetSemantics { }) }
+            }
+            if (onPrinter != null) {
+                SettingRow(stringResource(HomeR.string.set_printer), Modifier.testTag(RoleHomeTags.SET_PRINTER), onClick = onPrinter) {
+                    Text("›", style = inkStyle(24, color = look.inkMuted), modifier = Modifier.clearAndSetSemantics { })
+                }
             }
             if (onSupport != null) {
                 SettingRow(stringResource(HomeR.string.set_support), Modifier.testTag(RoleHomeTags.SET_SUPPORT), onClick = onSupport) {

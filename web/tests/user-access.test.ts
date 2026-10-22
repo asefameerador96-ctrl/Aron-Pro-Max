@@ -27,6 +27,13 @@ describe("portal levels", () => {
   });
 });
 
+describe("modules", () => {
+  it("fifteen modules including data entry, indent, leaderboard and daily tracking", () => {
+    expect(GRANT_MODULES).toHaveLength(15);
+    for (const m of ["data_entry", "indent", "leaderboard", "daily_tracking"]) expect(GRANT_MODULES as readonly string[]).toContain(m);
+  });
+});
+
 describe("access rules", () => {
   it("accepts a module write for ADMIN and a brand write for BRAND", () => {
     expect(accessRules("ADMIN", { modules: { outlets: "w" }, change_reason: REASON })).toEqual([]);

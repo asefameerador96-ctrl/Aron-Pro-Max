@@ -437,6 +437,17 @@ Notes:
 - **Reach:** dmo1001 and amo1001 must reach the request's zone, otherwise they get a 404. `-Zone` must be the zone of
   the SR's route; the preview step checks that the request's route is listed.
 
+### D-PRINT-02 printer diagnostics with the MP-58N (android-print, wave 4, 2026-10-22)
+Needs: the owner's phone with the SR app built from lane/android-print (or INT once promoted), the Thermal Crest MP-58N charged, with paper, switched on.
+1. Android Bluetooth settings: pair the printer (PIN 0000 or 1234) if it is not paired yet.
+2. SR app: Home → Settings (gear) → Device → **Printer diagnostics**.
+3. Permissions card: if anything says "not allowed", tap **Allow** (and, if nothing appears, **Open app settings** → Permissions → Nearby devices → Allow).
+4. Paired devices card: tap the printer's row (every paired device is listed, whatever its name).
+5. Tests card: tap **Run all tests**. Keep the printer next to the phone; it takes about 30 s. Up to three short pages come out.
+6. For each page the screen asks "Did the ... page print clearly?": answer Yes or No (No if nothing came out or it is garbage).
+7. Tap **Share report** (or **Copy report** and paste it) and send the text to the lead. It has no phone numbers and no secrets.
+Pass: the report shows a CONNECT line with OK and the GS v 0 raster page PRINTED OK. Anything else: the report says where it stops.
+
 ## D-MAP-02 inline map on the Sale confirm step (android-map) — DEVICE-PENDING
 Needs a build with the Maps key (GitHub secret `MAPS_API_KEY`, restricted by package and SHA) and a phone with Play services.
 1. Online, in the Gulshan–Banani test geography: Sale → pick an outlet within its radius. Without any tap the confirm step

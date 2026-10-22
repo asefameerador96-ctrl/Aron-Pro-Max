@@ -8,6 +8,7 @@ import type { Problem } from "@/contract/types";
 import type { AssetPurpose } from "@/lib/admin/tutorials";
 import { fileProblem, uploadAsset } from "../asset-upload";
 import { Field, inputClass } from "../kit/field";
+import { packPreview } from "@/lib/admin/sku-pack";
 import { ReasonField, REASON_MIN_LENGTH } from "../kit/reason-field";
 import type { FieldError, WriteRequest } from "./types";
 
@@ -20,6 +21,8 @@ export interface FormFieldDef {
   /** Labels of the bits of a `mask` field, bit 0 first. */
   maskBits?: string[];
   required: boolean;
+  /** Required enum with no preselected option: the user must choose. */
+  noDefault?: boolean;
   nullable: boolean;
   maxLength?: number;
   options?: { value: string; label: string }[];
@@ -42,6 +45,8 @@ interface Props {
   fields: FormFieldDef[];
   initial: Record<string, string>;
   listHref: string;
+  /** A live preview under the fields. `base` holds the stored values of members that are not in the form (create-only on an edit page). */
+  preview?: { kind: "sku-pack"; base: Record<string, string> };
 }
 
 /** Value of an asset field the user removed: sent as "" (null) even when the stored value is not in the row. */
@@ -53,7 +58,7 @@ function fieldMessage(t: ReturnType<typeof useI18n>["t"], code: string): string 
 }
 
 /** The form of the CRUD generator: one input per writable field of the metadata, plus the mandatory reason. */
-export function EntityForm({ mode, slug, action, submitLabel, reasonStored = true, id, version: initialVersion, fields, initial, listHref }: Props) {
+export function EntityForm({ mode, slug, action, submitLabel, reasonStored = true, id, version: initialVersion, fields, initial, listHref, preview }: Props) {
   const { t, problem, dateTime } = useI18n();
   const router = useRouter();
   const [values, setValues] = useState<Record<string, string>>(initial);
@@ -194,6 +199,8 @@ export function EntityForm({ mode, slug, action, submitLabel, reasonStored = tru
           {f.kind === "enum" ? (
             <select id={`f-${f.name}`} name={f.name} aria-required={f.required || undefined} value={values[f.name] ?? ""} onChange={(e) => setValues({ ...values, [f.name]: e.target.value })} className={inputClass}>
               {f.nullable || !f.required ? <option value="">{t("common.none")}</option> : null}
+              {/* A required choice with no value yet shows an unselectable prompt: without it the browser displays the first option while the value is still empty. */}
+              {!f.nullable && f.required && (values[f.name] ?? "") === "" ? <option value="" disabled>{t("common.choose")}</option> : null}
               {f.options?.map((o) => (
                 <option key={o.value} value={o.value}>
                   {o.label}
@@ -266,6 +273,7 @@ export function EntityForm({ mode, slug, action, submitLabel, reasonStored = tru
         </Field>
         </div>
       ))}
+      {preview?.kind === "sku-pack" ? <SkuPackPreview values={{ ...preview.base, ...values }} editing={mode === "update"} /> : null}
       <ReasonField value={reason} onChange={setReason} error={errors.reason} />
       {!reasonStored && mode !== "action" ? (
         <p data-testid="reason-not-stored" className="text-xs text-amber-800">
@@ -286,5 +294,20 @@ export function EntityForm({ mode, slug, action, submitLabel, reasonStored = tru
         </a>
       </div>
     </form>
+  );
+}
+
+/** "1 packet = 20 sticks": what the field apps will show for the pack size being entered (docs/34 s4.2), with non-blocking warnings. */
+function SkuPackPreview({ values, editing }: { values: Record<string, string>; editing: boolean }) {
+  const { t } = useI18n();
+  const p = packPreview({ category: values.category_code ?? "", baseUnit: values.base_unit ?? "", basePerPack: values.base_per_pack ?? "", entryUnit: values.entry_unit_default ?? "" });
+  return (
+    <section data-testid="sku-pack" aria-live="polite" className="space-y-1 rounded-lg border border-slate-200 bg-slate-50 p-3">
+      <h2 className="text-sm font-semibold text-slate-700">{t("skupack.preview.title")}</h2>
+      {p.sentence ? <p data-testid="sku-pack-preview" className="text-base font-medium">{t(p.sentence.key, p.sentence.vars)}</p> : <p data-testid="sku-pack-pending" className="text-sm text-slate-600">{t("skupack.preview.pending")}</p>}
+      {p.label ? <p className="text-sm text-slate-700">{t("skupack.label")}: <strong data-testid="sku-pack-label">{t(`skupack.label.${p.label}` as "skupack.label.packet")}</strong></p> : null}
+      {p.warnings.map((w) => (<p key={w} role="note" data-testid="sku-pack-warning" className="text-sm text-amber-800">{t(w)}</p>))}
+      {editing ? <p className="text-xs text-slate-600">{t("skupack.edit_note")}</p> : null}
+    </section>
   );
 }

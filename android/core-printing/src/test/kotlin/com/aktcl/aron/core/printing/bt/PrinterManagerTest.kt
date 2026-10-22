@@ -51,10 +51,10 @@ class PrinterManagerTest {
         assertEquals(PrinterState.Connected, m.state.value)
     }
 
-    @Test fun switchedOffMidPrintFailsThenRetryPrintsTheWholeMemoOnce() = runTest {
+    @Test fun switchedOffMidPrintIsUnconfirmedThenRetryPrintsTheWholeMemoOnce() = runTest {
         val (sim, m) = setup()
         sim.switchOffAtByte = 30_000
-        assertEquals(PrintOutcome.Failed(PrintFailure.DISCONNECTED), m.print(PrintJob("m1", memo)))
+        assertEquals("ink had started: the seller decides (D-PRINT-02)", PrintOutcome.Unconfirmed(), m.print(PrintJob("m1", memo)))
         assertEquals(PrinterState.Off, m.state.value)
         assertFalse(m.canPrint)
         val partial = sim.sessions[0].size
@@ -92,10 +92,13 @@ class PrinterManagerTest {
         assertWhole(sim.sessions.last(), memo)
     }
 
-    @Test fun rollRunningOutMidPrintFailsAndRetryPrintsWhole() = runTest {
+    @Test fun rollRunningOutMidPrintIsUnconfirmedAndRetryPrintsWhole() = runTest {
         val (sim, m) = setup()
         sim.paperRows = 500
-        assertEquals(PrintOutcome.Failed(PrintFailure.PAPER_OUT), m.print(PrintJob("m1", memo)))
+        // the top 500 rows are out: the seller is asked (D-PRINT-02); the link stays up and Print stays enabled
+        assertEquals(PrintOutcome.Unconfirmed(paperOut = true), m.print(PrintJob("m1", memo)))
+        assertEquals(PrinterState.PaperOut, m.state.value)
+        assertTrue(m.canPrint)
         sim.paperRows = Int.MAX_VALUE
         val before = sim.sessions.single().size
         assertEquals(PrintOutcome.Printed, m.print(PrintJob("m1", memo)))
@@ -110,10 +113,251 @@ class PrinterManagerTest {
         assertWhole(sim.sessions.single(), memo)
     }
 
+    /**
+     * D-PRINT-02: cheap firmware answers DLE EOT only after printing what it holds. A printer slower than the pacing
+     * model answered the closing query about a second late; before the fix that was "printer stopped answering",
+     * the memo came out but the seller saw "print failed", and Retry printed it twice.
+     */
+    @Test fun slowPrinterThatAnswersStatusOnlyAfterPrintingIsPrintedNotFailed() = runTest {
+        val sim = SimPrinter({ testScheduler.currentTime }, bufferBytes = 16_384, rowsPerSecond = 120)
+        sim.statusAfterDrain = true
+        val m = PrinterManager(sim.factory(), Store(), backgroundScope, nowMs = { testScheduler.currentTime })
+        val short = memo.rows(0, 200)
+        val t0 = testScheduler.currentTime
+        assertEquals(PrintOutcome.Printed, m.print(PrintJob("m1", short)))
+        assertTrue("waited for the slow answer: ${testScheduler.currentTime - t0} ms", testScheduler.currentTime - t0 > 1_200)
+        assertWhole(sim.sessions.single(), short)
+        assertEquals(PrinterState.Connected, m.state.value)
+        // and a second job on the same link still works
+        assertEquals(PrintOutcome.Printed, m.print(PrintJob("m2", short)))
+    }
+
+    /**
+     * The grace is only for a late answer. A printer switched off while the closing answer is awaited had every byte:
+     * the paper may be out, so it is Unconfirmed (the caller asks the seller), never a silent-retry failure.
+     */
+    @Test fun printerGoneDuringTheClosingGraceIsUnconfirmed() = runTest {
+        val sim = SimPrinter({ testScheduler.currentTime }, bufferBytes = 16_384, rowsPerSecond = 120)
+        sim.statusAfterDrain = true
+        val m = PrinterManager(sim.factory(), Store(), backgroundScope, nowMs = { testScheduler.currentTime })
+        val short = memo.rows(0, 200)
+        val job = async { m.print(PrintJob("m1", short)) }
+        // the data is out after about 0.7 s; the answer would come at about 1.7 s
+        advanceTimeBy(1_000)
+        runCurrent()
+        sim.switchOff()
+        assertEquals(PrintOutcome.Unconfirmed(), job.await())
+        assertEquals(PrinterState.Off, m.state.value)
+    }
+
+    /** D-PRINT-02: a printer that ignores GS v 0 gets the memo as ESC * bit image once diagnostics chose it. */
+    @Test fun bitImageModePrintsTheWholeMemoWithoutOverflowAndSurvivesTheStore() = runTest {
+        val store = Store()
+        val (sim, m) = setup(store)
+        m.setImageMode(ImageMode.BIT_IMAGE)
+        assertEquals(ImageMode.BIT_IMAGE, store.p!!.imageMode)
+        assertEquals(PrintOutcome.Printed, m.print(PrintJob("m1", memo)))
+        assertFalse(sim.overflowed)
+        assertFalse("bands must touch: line spacing 24", sim.badSpacing)
+        val want = expectedRows(memo)
+        val got = sim.sessions.single()
+        assertEquals(0, got.size % 24)
+        assertTrue(got.size - want.size in 0 until 24)
+        want.indices.forEach { assertArrayEquals("row $it", want[it], got[it]) }
+        got.drop(want.size).forEach { r -> assertTrue("padding rows are white", r.all { it.toInt() == 0 }) }
+    }
+
+    @Test fun pickingTheSamePrinterAgainKeepsItsImageModeAnotherPrinterStartsRaster() = runTest {
+        val store = Store()
+        val (_, m) = setup(store)
+        m.setImageMode(ImageMode.BIT_IMAGE)
+        m.select(SavedPrinter("00:11:22:33:44:55", "MP-58N"))
+        assertEquals(ImageMode.BIT_IMAGE, store.p!!.imageMode)
+        m.select(SavedPrinter("AA:BB:CC:DD:EE:FF", "Other"))
+        assertEquals(ImageMode.RASTER, store.p!!.imageMode)
+    }
+
+    @Test fun bitImageModeRetryAfterADropFinishesTheStrandedBandAndPrintsWhole() = runTest {
+        val (sim, m) = setup()
+        m.setImageMode(ImageMode.BIT_IMAGE)
+        sim.switchOffAtByte = 20_000
+        assertEquals("ink had started: the seller decides (D-PRINT-02)", PrintOutcome.Unconfirmed(), m.print(PrintJob("m1", memo)))
+        sim.on = true
+        sim.switchOffAtByte = Long.MAX_VALUE
+        assertEquals(PrintOutcome.Printed, m.print(PrintJob("m1", memo)))
+        val want = expectedRows(memo)
+        val last = sim.sessions.last()
+        want.indices.forEach { assertArrayEquals("row $it", want[it], last[it]) }
+    }
+
+    /**
+     * Checker T1 (9d02bf22) #1/#2: a printer that stayed on keeps the half-received ESC * band. The padding must end
+     * with the LF so that band prints and empties the line buffer; with cheap firmware whose ESC @ keeps the line
+     * buffer, an all-zero padding left the band waiting and the retry's first band joined it on one line.
+     */
+    @Test fun bitImageRetryOnAPrinterThatStayedOnPrintsTheStrandedBandThenTheWholeMemo() = runTest {
+        val (sim, m) = setup()
+        sim.stayedOn = true
+        sim.initClearsLineBuffer = false
+        m.setImageMode(ImageMode.BIT_IMAGE)
+        sim.switchOffAtByte = 3L + 5 + 1158 * 3 + 600 // in the middle of the fourth band
+        assertEquals("ink had started: the seller decides (D-PRINT-02)", PrintOutcome.Unconfirmed(), m.print(PrintJob("m1", memo)))
+        sim.on = true
+        sim.switchOffAtByte = Long.MAX_VALUE
+        assertEquals(PrintOutcome.Printed, m.print(PrintJob("m1", memo)))
+        assertFalse("two bands on one line", sim.mergedLine)
+        assertFalse(sim.badSpacing)
+        val want = expectedRows(memo)
+        val last = sim.sessions.last()
+        assertEquals("the stranded band, then the memo", 24, last.size - (want.size + 23) / 24 * 24)
+        want.indices.forEach { assertArrayEquals("row $it", want[it], last[24 + it]) }
+    }
+
+    @Test fun rasterRetryOnAPrinterThatStayedOnFinishesTheStrandedBandThenPrintsTheWholeMemo() = runTest {
+        val (sim, m) = setup()
+        sim.stayedOn = true
+        sim.switchOffAtByte = 3L + 5 + 1160 * 4 + 500 // in the middle of the fifth band
+        assertEquals("ink had started: the seller decides (D-PRINT-02)", PrintOutcome.Unconfirmed(), m.print(PrintJob("m1", memo)))
+        sim.on = true
+        sim.switchOffAtByte = Long.MAX_VALUE
+        assertEquals(PrintOutcome.Printed, m.print(PrintJob("m1", memo)))
+        val want = expectedRows(memo)
+        val last = sim.sessions.last()
+        val head = last.size - want.size
+        assertTrue("the stranded band's rows come first: $head", head in 1..24)
+        want.indices.forEach { assertArrayEquals("row $it", want[it], last[head + it]) }
+        assertFalse(sim.overflowed)
+    }
+
+    /**
+     * A pause inside the job (here a slow ledger write when ink starts; on a phone also a GC or a stalled write) must
+     * earn no credit: the old pacing counted the idle time as drained buffer and sent the next ~28 KB as one burst.
+     */
+    @Test fun aPauseMidJobEarnsNoCreditSoTheBufferNeverOverflows() = runTest {
+        val (sim, m) = setup()
+        var calls = 0
+        assertEquals(PrintOutcome.Printed, m.print(PrintJob("m1", memo)) { calls++; kotlinx.coroutines.delay(2_000); true })
+        assertEquals(1, calls)
+        assertFalse("receive buffer overflowed (garbage on paper)", sim.overflowed)
+        assertWhole(sim.sessions.single(), memo)
+    }
+
+    /** Checker T1 (3adf7b81) #2: a blocking stream write ignores cancellation; the watchdog's close ends it. */
+    @Test fun aWriteThatBlocksUncancellablyBeforeInkIsAFailureAtTheBound() = runTest {
+        val (sim, m) = setup()
+        sim.blockFromByte = 0
+        val t0 = testScheduler.currentTime
+        assertEquals(PrintOutcome.Failed(PrintFailure.DISCONNECTED), m.print(PrintJob("m1", memo)))
+        assertTrue("ended by the watchdog: ${testScheduler.currentTime - t0} ms", testScheduler.currentTime - t0 in 8_000..9_000)
+        assertEquals(PrinterState.Off, m.state.value)
+    }
+
+    @Test fun aWriteThatBlocksUncancellablyAfterInkIsUnconfirmed() = runTest {
+        val (sim, m) = setup()
+        sim.blockFromByte = 20_000
+        assertEquals(PrintOutcome.Unconfirmed(), m.print(PrintJob("m1", memo)))
+        assertEquals(PrinterState.Off, m.state.value)
+    }
+
+    /** #3: an OEM RuntimeException from the stream never escapes print() and never leaves the icon on Printing. */
+    @Test fun aRuntimeExceptionFromTheStreamIsUnconfirmedAfterInkAndAFailureBefore() = runTest {
+        val (sim, m) = setup()
+        sim.runtimeErrorAtByte = 20_000
+        assertEquals(PrintOutcome.Unconfirmed(), m.print(PrintJob("m1", memo)))
+        assertEquals(PrinterState.Off, m.state.value)
+        val (sim2, m2) = setup()
+        sim2.runtimeErrorAtByte = 0
+        assertEquals(PrintOutcome.Failed(PrintFailure.DISCONNECTED), m2.print(PrintJob("m2", memo)))
+    }
+
+    /** #1: when the paper mark cannot be stored, the job stops before the first band: nothing on paper, a plain failure. */
+    @Test fun anUnstoredPaperMarkStopsBeforeAnyInk() = runTest {
+        val (sim, m) = setup()
+        assertEquals(PrintOutcome.Failed(PrintFailure.DISCONNECTED), m.print(PrintJob("m1", memo)) { false })
+        assertTrue(sim.sessions.single().isEmpty())
+        assertEquals(PrintOutcome.Printed, m.print(PrintJob("m1", memo)))
+        assertWhole(sim.sessions.last(), memo)
+    }
+
+    /** #5: a print cancelled mid-job closes the link and, while a screen holds it, reconnects by itself. */
+    @Test fun aCancelledPrintReconnectsWhileAScreenHoldsTheLink() = runTest {
+        val (sim, m) = setup()
+        val release = m.hold()
+        runCurrent()
+        assertEquals(PrinterState.Connected, m.state.value)
+        val job = async { m.print(PrintJob("m1", memo)) }
+        advanceTimeBy(500)
+        runCurrent()
+        job.cancel()
+        runCurrent()
+        assertEquals(PrinterState.Off, m.state.value)
+        advanceTimeBy(3_000)
+        runCurrent()
+        assertEquals(PrinterState.Connected, m.state.value)
+        assertEquals(PrintOutcome.Printed, m.print(PrintJob("m2", memo)))
+        assertFalse(sim.overflowed)
+        release()
+    }
+
+    /** #4: the pacing keeps the configured speed (no lost fractions): 300 rows/s, so the whole memo takes about rows/300 s. */
+    @Test fun pacingRunsAtTheConfiguredSpeed() = runTest {
+        val (_, m) = setup()
+        val t0 = testScheduler.currentTime
+        assertEquals(PrintOutcome.Printed, m.print(PrintJob("m1", memo)))
+        val rows = expectedRows(memo).size
+        val ideal = rows * 1000L / 300
+        val took = testScheduler.currentTime - t0
+        assertTrue("took $took ms for an ideal $ideal ms", took < ideal * 105 / 100 + 1_500)
+    }
+
+    @Test fun aNewlyPickedPrinterStartsWithItsModelDefaultAndTheSameOneKeepsItsChoice() = runTest {
+        val store = Store(null)
+        val sim = SimPrinter({ testScheduler.currentTime })
+        val m = PrinterManager(sim.factory(), store, backgroundScope, nowMs = { testScheduler.currentTime },
+            defaultMode = { if (it == "OLD-58") ImageMode.BIT_IMAGE else ImageMode.RASTER })
+        m.select(SavedPrinter("AA:00:00:00:00:01", "OLD-58"))
+        assertEquals(ImageMode.BIT_IMAGE, store.p!!.imageMode)
+        m.setImageMode(ImageMode.RASTER) // the diagnostics proved raster works on this one
+        m.select(SavedPrinter("AA:00:00:00:00:01", "OLD-58"))
+        assertEquals(ImageMode.RASTER, store.p!!.imageMode)
+        m.select(SavedPrinter("AA:00:00:00:00:02", "MP-58N"))
+        assertEquals(ImageMode.RASTER, store.p!!.imageMode)
+    }
+
+    @Test fun theDefaultsListNamesTheFieldPrintersAndNothingElse() {
+        for (n in listOf("MP-58N", "mp58n", "Thermal Crest MP58N_1A2B", "MP-58N-BT")) assertTrue(n, PrinterDefaults.sourceFor(n).contains("MP-58N"))
+        for (n in listOf("RPP02N", "RPP-02", "rpp02n_ab")) assertTrue(n, PrinterDefaults.sourceFor(n).contains("RPP02N"))
+        for (n in listOf("MP-58NX", "SMP58N", "RPP200", "RPP2", "RPP-02B", "MTP-II", "PT-210", "Galaxy Buds", null)) {
+            assertEquals("$n", "no entry: raster", PrinterDefaults.sourceFor(n))
+            assertEquals(ImageMode.RASTER, PrinterDefaults.modeFor(n))
+        }
+    }
+
+    /** Checker T1 (224d429a) #3: the diagnostics' choice survives using another printer in between. */
+    @Test fun theChoiceForAPrinterSurvivesPickingAnotherOneInBetween() = runTest {
+        val modes = HashMap<String, ImageMode>()
+        val store = object : SavedPrinterStore {
+            var p: SavedPrinter? = null
+            override fun load() = p
+            override fun save(printer: SavedPrinter?) { p = printer; printer?.let { modes[it.address] = it.imageMode } }
+            override fun rememberedMode(address: String) = modes[address]
+        }
+        val m = PrinterManager(SimPrinter({ testScheduler.currentTime }).factory(), store, backgroundScope, nowMs = { testScheduler.currentTime })
+        m.select(SavedPrinter("AA:00:00:00:00:01", "MP-58N"))
+        m.setImageMode(ImageMode.BIT_IMAGE)
+        m.select(SavedPrinter("AA:00:00:00:00:02", "MP-58N"))
+        assertEquals(ImageMode.RASTER, store.p!!.imageMode)
+        m.select(SavedPrinter("AA:00:00:00:00:01", "MP-58N"))
+        assertEquals(ImageMode.BIT_IMAGE, store.p!!.imageMode)
+        // an explicit mode from the caller wins over the remembered one
+        m.select(SavedPrinter("AA:00:00:00:00:02", "MP-58N", ImageMode.BIT_IMAGE))
+        assertEquals(ImageMode.BIT_IMAGE, store.p!!.imageMode)
+    }
+
     @Test fun stuckWriteTimesOutAsDisconnected() = runTest {
         val (sim, m) = setup()
         sim.hangWrites = true
-        assertEquals(PrintOutcome.Failed(PrintFailure.DISCONNECTED), m.print(PrintJob("m1", memo)))
+        assertEquals("stuck from the first write: nothing on paper", PrintOutcome.Failed(PrintFailure.DISCONNECTED), m.print(PrintJob("m1", memo)))
         assertEquals(PrinterState.Off, m.state.value)
     }
 

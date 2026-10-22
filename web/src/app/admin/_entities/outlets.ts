@@ -37,7 +37,7 @@ export const outlets = defineEntity<Outlet, OutletWrite, OutletPatch>({
     { name: "lat", labelKey: "entity.field.lat", kind: "number", min: -90, max: 90, section: "outlet.section.address" },
     { name: "lng", labelKey: "entity.field.lng", kind: "number", min: -180, max: 180, section: "outlet.section.address" },
     { name: "geo_class", labelKey: "entity.field.geo_class", kind: "enum", nullable: true, ...GEO, section: "outlet.section.address" },
-    { name: "channel", labelKey: "entity.field.channel", kind: "enum", required: true, ...CHANNELS, column: true, section: "outlet.section.business" },
+    { name: "channel", labelKey: "entity.field.channel", kind: "enum", required: true, noDefault: true, ...CHANNELS, column: true, section: "outlet.section.business" },
     { name: "sub_channel_id", labelKey: "entity.field.sub_channel_id", kind: "ref", nullable: true, min: 1, ref: SUB_CHANNEL_REF, section: "outlet.section.business" },
     { name: "outlet_kind", labelKey: "entity.field.outlet_kind", kind: "enum", required: true, ...KINDS, column: true, section: "outlet.section.business" },
     { name: "price_type", labelKey: "entity.field.price_type", kind: "text", mode: "readonly", section: "outlet.section.business" },

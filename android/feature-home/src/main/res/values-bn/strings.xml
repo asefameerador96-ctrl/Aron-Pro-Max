@@ -128,4 +128,5 @@
     <string name="hm_total_taka">মোট টাকা</string>
     <string name="set_group_status">ফোনের অবস্থা</string>
     <string name="hm_qty_unit_rem">%1$s %2$s + %3$s %4$s</string>
+    <string name="set_printer">প্রিন্টার পরীক্ষা</string>
 </resources>
