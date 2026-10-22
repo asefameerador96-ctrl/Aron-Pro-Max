@@ -70,7 +70,7 @@ describe("geography entities (one factory, five levels)", () => {
     const parent = entityBySlug("zones")!.fields.find((f) => f.name === "parent_id")!;
     const opts = await loadRefOptions(parent.ref!, token);
     expect(opts.map((o) => o.label)).toContain("H-1 · Banani House");
-    expect(opts).toHaveLength(4);
+    expect(opts).toHaveLength(5); // H-1..H-4 and the seeded duplicate H-5 (de-duplication view)
   });
   it("create sends the reason to the API (change_reason) and the audit row keeps it; code is unique", async () => {
     const reason = "New division for the Sylhet expansion";
