@@ -1,3 +1,29 @@
+# HANDOFF (lane mdm session 1 -> session 2, 2026-10-22)
+
+**Where things are.** Branch `lane/mdm`; contract 1.6.0 (tag `admin-mdm`, 16 operations `/v1/admin/mdm/*`, plus `GET /v1/devices/me/commands`, `POST /v1/devices/me/commands/{id}/ack`). Merged with INT 2c10a157. The candidate is the head named in the lead's message; check `docs/status/lane-sessions.md` and the last CI run on the branch.
+
+**Rows done**
+- Contract and slices; Appendix A rows in docs/24; public-operation pin (`RouteInventoryTest`), scope registry lines and blind-read line for `/admin/mdm`, conformance fixtures in `ContractConformanceTest`.
+- Backend `backend/analytics/.../mdm` (service, routes, grants seam `MdmGrants`/`RoleGrants`), `MdmApiTest` (10), `MdmDdlSyncTest`; wiring in `Wiring.kt` (always mounted, 503 until `ARON_MDM_ENABLED=1`; app tests set it).
+- DPC `android/dpc/.../mdm` (poll, verify, ledger, executors, MdmPolicyApplier with Dhaka weekday/time windows, kiosk, location mode, clear policy) with `MdmTest` (14); app wiring in `android/core-sync/.../mdm` (HTTP, runner, shell, `mdm_nudge` push, jwks key cache, per-sync pull) and the three `SessionModule`s; `MdmCommandRunnerTest`.
+- Web `web/src/app/admin/mdm/**` (list, detail with actions and second approver, policies with schedule grid, enrolment/QR, alerts, activity), bn+en, vitest, `e2e/mdm.spec.ts`.
+
+**device_command wiring state.** Tables are NOT in db yet: `docs/requests/db-mdm-device-command.md` (DDL incl. `seq`). Until db lands the migration, `FreshDb.create` (backend/platform testFixtures) applies `mdm_ddl.sql` when `app.device_command` is absent; delete that shim and the resource when the migration exists. In production the endpoints answer 503 until the flag is on and the tables exist. Commands are signed ES256 (`aron-command-v1`) over params as read back from jsonb; the phone verifies with the key from `/v1/auth/jwks`.
+
+**Open vs docs/34 s5**
+1. Match the look to the owner's MDM console screenshots (`docs/ui-reference/web/mdm-*.webp`, not filed yet); today the pages use the plain admin kit.
+2. Real `mdm` module grant (request `mdm-authz-module-grant.md`): replace `RoleGrants` when backend-authz exposes the `modules` claim; add a read-only ADMIN route test.
+3. Geo layer must read `DeviceOwnerPolicy.mdmApplier?.locationMode()` (request `mdm-android-core-wiring.md`, last paragraph).
+4. Status report `network_type` (request `mdm-contract-network-type.md`): the list shows `unknown` until it exists.
+5. Device-lab steps for lock, locate, reboot, factory reset (second approver), kiosk and a block window, to add to `docs/status/device-checks.md` (DEVICE-PENDING): nothing was run on a phone.
+6. Polish: device detail activity log paging, policy editor packages picker from a catalogue endpoint (the contract has none; free text plus suggestions today).
+
+**Traps.** Order commands by `seq`, never `created_at`. Search parameter is `q` (the API also takes `search`). Never commit a `web/node_modules` symlink. The lint scanners reject literal UI strings in `dpc` (use `strings.xml` bn/en) and AlarmManager outside `dpc/blocking` and `dpc/mdm/AndroidMdm.kt`. Intermittent, not ours: `RefreshTest.concurrentUseOfOneTokenRotatesOnce`, `BindDeviceTest.anUnboundPhoneBindsOnceWithTheTsoOtp`.
+
+**Open questions for the owner.** None blocking; the screenshots and the module-grant model are the two inputs waiting.
+
+---
+
 # Status: lane mdm (session 1, 2026-10-22)
 
 Head 6c5a51c8 (INT 658f65d0 merged, contract 1.6.0). CI #1343: Android debug/release, size gate, backend app tests, web incl. e2e, images green. Red: the contract oasdiff gate (false red, lead's fix 28b22517 pending on INT) and backend:auth RefreshTest#concurrentUseOfOneTokenRotatesOnce (intermittent, backend-authz's). Not declared until the whole run is green after INT carries 28b22517.
