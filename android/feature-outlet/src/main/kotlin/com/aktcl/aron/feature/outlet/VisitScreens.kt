@@ -301,6 +301,10 @@ fun VisitCheckContent(
     onBack: (() -> Unit)? = null,
     /** Role wording over the defaults (the AMO's "not within retailer range" and "Manual Override"); null keeps the SR text. */
     texts: VisitCheckTexts? = null,
+    /** The fix of the committed visit (in range), so the confirm step shows the distance and map without a tap (D-MAP-02). */
+    geo: VisitGeoInfo? = null,
+    /** The host's lite map drawn over the offline range picture; null keeps the picture alone (AMO, tests, no Maps key). */
+    mapSlot: GeoMapSlot? = null,
 ) {
     val c = LocalAronColors.current
     val startLabel = stringResource(R.string.out_start_call)
@@ -328,10 +332,10 @@ fun VisitCheckContent(
                         },
                     )
                     val lines = buildList {
-                        // distance and radius show only when out of range: the rep needs to know how far to walk (screens-sr s6)
-                        if (state.result.verdict != GeoVerdict.IN_RANGE) {
-                            state.result.distanceM?.let { add(stringResource(R.string.out_distance_line, localizedNumber(Math.round(it)), localizedNumber(state.outlet.radiusM.toLong()))) }
-                        }
+                        // distance and radius always show (D-MAP-02); with a located outlet and a fix the panel below carries them instead
+                        val o = state.outlet
+                        val panelShows = o.lat != null && o.lng != null && state.phoneLat != null && state.phoneLng != null
+                        if (!panelShows) state.result.distanceM?.let { add(stringResource(R.string.out_distance_line, localizedNumber(Math.round(it)), localizedNumber(o.radiusM.toLong()))) }
                         if (state.mockWarning) add(stringResource(R.string.out_mocked_refresh))
                         // a refresh cannot give an outlet its coordinates (Geo.kt always answers FORCE_SALE), so no refresh line there
                         if (!noCoordinates) {
@@ -341,12 +345,10 @@ fun VisitCheckContent(
                     }
                     val kind = if (state.result.verdict == GeoVerdict.IN_RANGE) GeoKind.InRange else GeoKind.Warning
                     GeoCard(kind, headline, lines, Modifier.testTag(OutletTags.MESSAGE)) {
-                        val o = state.outlet
-                        if (o.lat != null && o.lng != null && state.phoneLat != null && state.phoneLng != null) {
-                            RangeView(o.lat, o.lng, o.radiusM, state.phoneLat, state.phoneLng, inRange = kind == GeoKind.InRange)
-                        }
-                        // The Maps app loads only on tap and never blocks Force Sale (N-041).
-                        if (onMap != null) AronTextButton(stringResource(R.string.out_open_maps), onMap, Modifier.testTag(OutletTags.MAP), icon = AronIcons.Map, color = c.textPrimary)
+                        val info = VisitGeoInfo.of(state.outlet, state.result.verdict, state.result.distanceM, state.phoneLat, state.phoneLng)
+                        if (info != null && info.hasFix) VisitGeoPanel(info, mapSlot = mapSlot, onOpenMaps = onMap)
+                        // no fix: the Maps app still opens on tap, and never blocks Force Sale (N-041)
+                        else if (onMap != null) AronTextButton(stringResource(R.string.out_open_maps), onMap, Modifier.testTag(OutletTags.MAP), icon = AronIcons.Map, color = c.textPrimary)
                     }
                 }
                 is VisitUiState.Blocked -> GeoCard(GeoKind.Warning, stringResource(R.string.out_blocked_mock), emptyList(), Modifier.testTag(OutletTags.MESSAGE))
@@ -354,7 +356,9 @@ fun VisitCheckContent(
                     GeoKind.Warning, stringResource(if (state.reason == "location_off") R.string.out_location_off else R.string.out_location_denied), emptyList(), Modifier.testTag(OutletTags.MESSAGE),
                 )
                 is VisitUiState.CommitFailed -> GeoCard(GeoKind.Danger, stringResource(R.string.out_commit_failed), emptyList(), Modifier.testTag(OutletTags.MESSAGE))
-                is VisitUiState.Open -> GeoCard(GeoKind.InRange, stringResource(R.string.out_in_range), emptyList(), Modifier.testTag(OutletTags.MESSAGE))
+                is VisitUiState.Open -> GeoCard(GeoKind.InRange, stringResource(R.string.out_in_range), emptyList(), Modifier.testTag(OutletTags.MESSAGE)) {
+                    if (geo != null) VisitGeoPanel(geo, mapSlot = mapSlot, onOpenMaps = onMap)
+                }
             }
             if (onPreviousSales != null || onNoSale != null) {
                 // the two text buttons share a line when both fit (English) and wrap one under the other otherwise (Bangla on 360 dp)
@@ -417,7 +421,7 @@ private fun OutletCardView(card: OutletCard?, visit: VisitOutlet?) {
  * never blocks Force Sale.
  */
 @Composable
-fun RangeView(outletLat: Double, outletLng: Double, radiusM: Int, phoneLat: Double, phoneLng: Double, modifier: Modifier = Modifier, inRange: Boolean = false) {
+fun RangeView(outletLat: Double, outletLng: Double, radiusM: Int, phoneLat: Double, phoneLng: Double, modifier: Modifier = Modifier, inRange: Boolean = false, showScale: Boolean = true) {
     val c = LocalAronColors.current
     val ring = c.accent; val fill = c.accentContainer; val pin = c.textPrimary; val pinHole = c.surfaceSolid
     val dot = if (inRange) c.success else c.warning; val bar = c.textPrimary
@@ -466,12 +470,12 @@ fun RangeView(outletLat: Double, outletLng: Double, radiusM: Int, phoneLat: Doub
                 drawLine(bar, Offset(x0, y - 4.dp.toPx()), Offset(x0, y), strokeWidth = w)
                 drawLine(bar, Offset(x0 + barW, y - 4.dp.toPx()), Offset(x0 + barW, y), strokeWidth = w)
             }
-            Text(stringResource(R.string.out_scale, localizedNumber(scaleM.toLong())), style = MaterialTheme.typography.bodySmall, color = c.textSecondary)
+            if (showScale) Text(stringResource(R.string.out_scale, localizedNumber(scaleM.toLong())), style = MaterialTheme.typography.bodySmall, color = c.textSecondary)
         }
     }
 }
 
-private val RangeViewHeight = 180.dp
+internal val RangeViewHeight = 180.dp
 
 /** A round scale-bar length at or under [m]: 10, 20, 50, 100, 200, 500, ... metres. */
 private fun niceScale(m: Double): Double {
