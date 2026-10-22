@@ -1,7 +1,7 @@
 package com.aktcl.aron.feature.memo.domain
 
 /** One SKU of one business date: the quantity in base units and the line values (gross) summed over the date's live memos. */
-data class HistorySkuRow(val skuId: Long, val qtyBase: Long, val valueMtk: Long)
+data class HistorySkuRow(val skuId: Long, val qtyBase: Long, val valueMtk: Long, val qtyEntered: Long = qtyBase, val unitEntered: String = "")
 
 /**
  * [subtotalMtk] is the sum of the memos' totals (net). [skuRows] is the per-SKU table of the manual (SKU, quantity, value) and
@@ -21,7 +21,12 @@ object SaleHistoryBuilder {
         val days = mine.groupBy { it.businessDate }.toSortedMap(reverseOrder()).map { (d, ms) ->
             val rows = MemoMenu.rows(ms)
             val skuRows = ms.flatMap { it.lines }.groupBy { it.skuId }
-                .map { (sku, ls) -> HistorySkuRow(sku, ls.sumOf { it.qtyBase }, ls.sumOf { it.grossMtk }) }.sortedBy { it.skuId }
+                .map { (sku, ls) ->
+                    // the rep's own unit when every line of the SKU was counted in one (always so since docs/34 s4.2), else the base figure
+                    val unit = ls.map { it.unitEntered }.distinct().singleOrNull().orEmpty()
+                    if (unit.isNotEmpty()) HistorySkuRow(sku, ls.sumOf { it.qtyBase }, ls.sumOf { it.grossMtk }, ls.sumOf { it.qtyEntered }, unit)
+                    else HistorySkuRow(sku, ls.sumOf { it.qtyBase }, ls.sumOf { it.grossMtk })
+                }.sortedBy { it.skuId }
             HistoryDay(d, rows, rows.sumOf { it.totalMtk }, skuRows)
         }
         return SaleHistory(days, days.sumOf { it.subtotalMtk }, fromServer)

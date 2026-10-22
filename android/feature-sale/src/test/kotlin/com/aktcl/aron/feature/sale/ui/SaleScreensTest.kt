@@ -13,6 +13,7 @@ import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onAllNodesWithTag
@@ -47,7 +48,7 @@ class SaleScreensTest {
             AronTheme(AppLanguage.EN) { SaleEntryScreen(skus, review, { id -> d.lines.firstOrNull { it.skuId == id }?.qtyEntered ?: 0 }, { _, _ -> }, { reviewed = true }, {}) }
         }
         // the packs figure is the badge of the card, the over-stock state is named under it; nothing else is printed between cards
-        compose.onNodeWithText("Only 25 in stock for Aster.").assertExists()
+        compose.onNodeWithText("Only 25 pieces in stock for Aster.").assertExists()
         compose.onNodeWithText("Proceed").assertIsEnabled().performClick()
         assertEquals(true, reviewed)
     }
@@ -75,13 +76,15 @@ class SaleScreensTest {
     }
 
     @Test fun banglaDigitsAndMoney() {
-        val d = SaleDraftOps.setQuantity(Fx.draft(), 100, 40, QtyUnit.STICK)
+        // 4 packets of the 10s SKU: the field holds the packet count, the unit is প্যাকেট and the price is per packet (docs/34 s4.2)
+        val d = SaleDraftOps.setQuantity(Fx.draft(), 100, 4, QtyUnit.PACK)
         val review = SaleReviewCalculator.review(d, Fx.catalog)
         val context = AppLocale.wrap(ApplicationProvider.getApplicationContext<Context>(), AppLanguage.BN)
-        compose.setContent { CompositionLocalProvider(LocalContext provides context) { AronTheme(AppLanguage.BN) { SaleEntryScreen(skus, review, { 40 }, { _, _ -> }, {}, {}) } } }
-        // the footer total is the bare amount in Bengali digits (no ৳: the manual's footer row); the packs figure is the card's badge
+        compose.setContent { CompositionLocalProvider(LocalContext provides context) { AronTheme(AppLanguage.BN) { SaleEntryScreen(skus, review, { 4 }, { _, _ -> }, {}, {}) } } }
+        // the footer total is the bare amount in Bengali digits (no ৳: the manual's footer row)
         compose.onNodeWithText("৩২০.০০").assertExists()
-        compose.onNodeWithText("৪").assertExists()
+        compose.onNodeWithContentDescription("পরিমাণ ৪ প্যাকেট, MaxR 10S").assertExists()
+        compose.onNodeWithText("৳ ৮০.০০ / প্যাকেট").assertExists()
     }
 
     @Test fun reviewShowsNonZeroComponentsAndBlocksSaveOnProblems() {

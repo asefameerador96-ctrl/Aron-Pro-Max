@@ -350,12 +350,12 @@ class AmoDay(
         runCatching { printing.recover() }
     }
 
-    /** The stock slip of one Save, from the stored rows only (quantities as entered in the base unit). */
+    /** The stock slip of one Save, from the stored rows only (quantities as counted: packets, boxes, dozens, with their unit word). */
     suspend fun stockSlip(movements: List<com.aktcl.aron.core.database.entity.StockMovementEntity>): com.aktcl.aron.core.printing.doc.StockSlipPrint {
         val skus = reference.skus().associateBy { it.skuId }
         return com.aktcl.aron.core.printing.doc.StockSlipPrint(
             printedAtEpochMs = clock.nowMs(), sr = userName, route = routeName(), distributor = "",
-            lines = movements.sortedBy { it.skuId }.map { com.aktcl.aron.core.printing.doc.StockSlipLine(skus[it.skuId]?.categoryCode.orEmpty(), skus[it.skuId]?.shortName ?: it.skuId.toString(), it.qtyBase) },
+            lines = movements.sortedBy { it.skuId }.map { com.aktcl.aron.core.printing.doc.StockSlipLine(skus[it.skuId]?.categoryCode.orEmpty(), skus[it.skuId]?.shortName ?: it.skuId.toString(), it.qtyBase, it.qtyEntered, com.aktcl.aron.feature.memo.domain.PrintMapping.unitKeyOf(skus[it.skuId]?.categoryCode.orEmpty(), it.unitEntered), com.aktcl.aron.rules.EntryUnits.baseLabelKey(skus[it.skuId]?.categoryCode.orEmpty())) },
         )
     }
 
@@ -463,7 +463,7 @@ class AmoDay(
     }
 
     suspend fun skuInfo(): Map<Long, com.aktcl.aron.feature.amo.SkuInfo> =
-        db.referenceDao().activeSkus().associate { it.skuId to com.aktcl.aron.feature.amo.SkuInfo(it.name, it.nameBn, it.categoryCode) }
+        db.referenceDao().activeSkus().associate { it.skuId to com.aktcl.aron.feature.amo.SkuInfo(it.name, it.nameBn, it.categoryCode, com.aktcl.aron.rules.EntryUnits.resolve(it.baseUnit, it.basePerPack, it.entryUnitDefault)) }
 
     // ---- Task Delegation (F-AMO-018/019)
 

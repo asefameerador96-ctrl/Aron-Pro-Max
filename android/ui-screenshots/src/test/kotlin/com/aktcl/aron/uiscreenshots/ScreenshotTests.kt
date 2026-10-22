@@ -169,7 +169,7 @@ class ScreenshotTests {
             money = HomeMoneyLines(
                 listOf(HomeMoneyLine(match, Formats.money(141_000, locale), bare(141_000, locale)), HomeMoneyLine(lighter, Formats.money(4_687_500, locale), bare(4_687_500, locale))),
                 Formats.money(4_828_500, locale), "−" + Formats.money(437_500, locale), null, Formats.money(4_391_000, locale),
-                sticksSold = 0, grossBare = bare(4_828_500, locale), offerDiscountBare = bare(437_500, locale), qcBare = bare(0, locale), netBare = bare(4_391_000, locale),
+                packetsSold = 0, grossBare = bare(4_828_500, locale), offerDiscountBare = bare(437_500, locale), qcBare = bare(0, locale), netBare = bare(4_391_000, locale),
                 totalDiscountBare = bare(437_500, locale), drpDiscountBare = bare(0, locale), totalQcBare = bare(0, locale),
             ),
             sync = SyncChipState.SyncedAt(Formats.digits("10:42", locale)), onSync = {}, sunlight = false, onSunlight = {},
@@ -208,14 +208,14 @@ class ScreenshotTests {
 
     private val maxr = SaleSku(100, "MAXR10", "cigarette", "MaxR 10S", null, "stick", 10, 8_000, 1, "2026-09-01", stockBase = 400, drp = DrpRule(10))
     private val prime = SaleSku(101, "PRIME10", "cigarette", "Prime Gold 10S", null, "stick", 10, 6_500, 1, "2026-09-01", stockBase = 610)
-    private val aster = SaleSku(103, "ASTER", "lighter", "Aster", null, "piece", 1, 12_500, 1, "2026-09-01", stockBase = 25)
+    private val aster = SaleSku(103, "ASTER", "lighter", "Aster", null, "piece", 25, 12_500, 1, "2026-09-01", stockBase = 25)
     private val match = SaleSku(105, "FB", "match", "Flame Box", null, "dozen", 1, 28_000, 1, "2026-09-01", stockBase = 40)
     private val skus = listOf(maxr, prime, aster, match)
     private val catalog = skus.associateBy { it.skuId }
     private fun draft() = SaleDraft("v1", 50001, 10231, "2026-10-05", memoUuid = "m1")
-    private val saleDraft = SaleDraftOps.setQuantity(SaleDraftOps.setQuantity(draft(), 103, 26, QtyUnit.PIECE), 100, 40, QtyUnit.STICK) // stock warning on Aster
+    private val saleDraft = SaleDraftOps.setQuantity(SaleDraftOps.setQuantity(draft(), 103, 2, QtyUnit.PACK), 100, 4, QtyUnit.PACK) // stock warning on Aster
     private val saleReview = SaleReviewCalculator.review(saleDraft, catalog)
-    private val reviewReview = SaleReviewCalculator.review(SaleDraftOps.setSlide(SaleDraftOps.setQuantity(SaleDraftOps.setQuantity(draft(), 100, 20, QtyUnit.STICK), 103, 3, QtyUnit.PIECE), 100, 10), catalog)
+    private val reviewReview = SaleReviewCalculator.review(SaleDraftOps.setSlide(SaleDraftOps.setQuantity(SaleDraftOps.setQuantity(draft(), 100, 2, QtyUnit.PACK), 103, 1, QtyUnit.PACK), 100, 10), catalog)
 
     // ---- closing fixtures (CloseShot) ----
     private val now = { "2026-10-05T04:42:00.000Z" }
