@@ -246,4 +246,25 @@ class MdmTest {
         assertEquals("failed", api.acks.single().second)
         assertTrue(gw.log.isEmpty())
     }
+
+    @Test fun nullPolicyIdClearsAndIsIdempotent() {
+        val dir = Files.createTempDirectory("cmd").toFile()
+        val store = MdmPolicyStore(dir)
+        store.save(4, 2, MdmPolicyDoc(blockWindows = listOf(weekdays), kiosk = MdmKiosk(true, listOf("com.aktcl.aron.sr")), locationSampling = MdmLocationSampling("off")))
+        val phone = Phone(); val kiosk = Kiosk()
+        val applier = MdmPolicyApplier(phone, kiosk, store, dir, { ms("2026-10-07T05:00:00Z") }, { null }, { setOf("com.whatsapp") })
+        applier.evaluate()
+        assertEquals(3, phone.suspended.size) // whatsapp too: the attendance engine also holds it
+        val clear = buildJsonObject { put("policy_id", kotlinx.serialization.json.JsonNull) }
+        val api = Api(listOf(cmd("g1", "apply_policy", clear), cmd("g2", "apply_policy", clear)))
+        proc(api, Gw(), dir) { applier.evaluate() }.sync()
+        assertNull(store.load())
+        assertEquals(setOf("com.whatsapp"), phone.suspended)
+        assertEquals("clear", kiosk.log.last())
+        assertEquals("on_demand", applier.locationMode())
+        assertNull(applier.evaluate().nextBoundaryMs)
+        assertEquals(listOf("acked", "acked"), api.acks.map { it.second })
+        assertEquals("true", api.acks[0].third!!["cleared"].toString())
+        assertEquals("true", api.acks[1].third!!["cleared"].toString()) // nothing stored: still acked
+    }
 }

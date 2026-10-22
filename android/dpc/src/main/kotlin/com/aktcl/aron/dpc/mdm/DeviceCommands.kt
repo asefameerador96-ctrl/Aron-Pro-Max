@@ -208,6 +208,12 @@ class CommandProcessor(
         .let { (s, r) -> s to capped(r) }
 
     private fun applyPolicy(c: DeviceCommand): Pair<String, JsonObject> {
+        // {"policy_id": null} unassigns: drop the stored doc, then re-evaluate (releases what MDM suspended, clears kiosk, cancels the alarm).
+        if (c.params["policy_id"] is kotlinx.serialization.json.JsonNull) {
+            mdm.clear()
+            onPolicyChanged()
+            return "acked" to buildJsonObject { put("cleared", true) }
+        }
         val id = c.params["policy_id"]?.jsonPrimitive?.longOrNull ?: return fail("no_policy_id")
         val ver = c.params["version"]?.jsonPrimitive?.longOrNull?.toInt() ?: return fail("no_version")
         val doc = runCatching { Json { ignoreUnknownKeys = true }.decodeFromJsonElement(MdmPolicyDoc.serializer(), c.params["policy"] ?: return fail("no_policy")) }.getOrNull() ?: return fail("bad_policy")

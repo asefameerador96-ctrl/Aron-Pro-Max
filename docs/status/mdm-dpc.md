@@ -10,7 +10,7 @@ Branch `lane/mdm-dpc`. Code: `android/dpc/.../dpc/mdm/`. Tests: `MdmTest` (13, g
 - `MdmPolicyApplier`: allowed apps, weekday/time windows in Dhaka from the trusted clock (overnight windows, ISO 1 = Monday), kiosk via `setLockTaskPackages` + lock-task launch, location mode flag (`DeviceOwnerPolicy.mdmApplier?.locationMode()` = off|on_demand|interval). Packages the attendance BlockingEngine holds are never released by it. Window-boundary alarm `MdmAlarm` (inexact) re-runs `reevaluateBlocking()`, which also runs at start and boot.
 
 ## Contract the backend must follow (apply_policy)
-`DeviceCommand.params` = `{"policy_id": <int>, "version": <int>, "policy": {allowed_packages, block_windows, kiosk, location_sampling}}`. An older version of the same policy_id is ignored (acked with `applied:false`). `message` params: `text_bn` / `text_en`; `lock`: optional `message`.
+`{"policy_id": null}` clears the policy (acked `{"cleared":true}`, idempotent). Otherwise `DeviceCommand.params` = `{"policy_id": <int>, "version": <int>, "policy": {allowed_packages, block_windows, kiosk, location_sampling}}`. An older version of the same policy_id is ignored (acked with `applied:false`). `message` params: `text_bn` / `text_en`; `lock`: optional `message`.
 
 ## Left for the app wiring (not in android/dpc)
 1. A `CommandApi` over the app's device-proof HTTP client (`GET /v1/devices/me/commands`, `POST .../{id}/ack`); it throws on any network error.
