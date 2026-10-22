@@ -1,0 +1,38 @@
+path: /v1/admin/outlets/import
+method: post
+operation:
+  tags:
+  - admin-outlets
+  operationId: importOutlets
+  summary: Bulk create-or-update outlets from a sheet; the channel is mandatory on every row (preview with dry_run,
+    commit with a reason).
+  description: 'A missing or unknown channel refuses the request (400 at body.rows/<i>/channel), preview included.
+    `dry_run: true` writes nothing and returns the report; `dry_run: false` needs `change_reason`, refuses the whole
+    batch on any row error and is idempotent by `batch_uuid` (same content replays, other content is 409 ERR_SYNC_BATCH_UUID_REUSED).
+    A row whose `code` names an outlet of the same zone updates it (never its status; a blank route, pin, phone
+    or address keeps the stored one).
+
+    '
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          $ref: '#/components/schemas/OutletImportWrite'
+  responses:
+    '200':
+      description: The preview report (dry_run) or the commit result.
+      content:
+        application/json:
+          schema:
+            oneOf:
+            - $ref: '#/components/schemas/OutletImportPreview'
+            - $ref: '#/components/schemas/OutletImportResult'
+    '400':
+      $ref: '#/components/responses/BadRequest'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'
+    '409':
+      $ref: '#/components/responses/Conflict'

@@ -1,0 +1,34 @@
+path: /v1/admin/geo/house/merge
+method: post
+operation:
+  tags:
+  - admin-geography
+  operationId: mergeHouses
+  summary: Fold duplicate houses into one - zones move to the kept house, merged houses become inactive.
+  parameters:
+  - $ref: '#/components/parameters/IfMatch'
+  description: '`If-Match` is the version of the kept house. Merged houses must be in the same territory with the
+    same normalised name, otherwise 400 `not_duplicates`.'
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          $ref: '#/components/schemas/HouseMergeRequest'
+  responses:
+    '200':
+      description: Merged.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/HouseMergeResult'
+    '400':
+      $ref: '#/components/responses/BadRequest'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'
+    '404':
+      $ref: '#/components/responses/NotFound'
+    '412':
+      $ref: '#/components/responses/PreconditionFailed'

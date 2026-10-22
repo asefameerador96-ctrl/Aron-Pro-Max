@@ -1,0 +1,40 @@
+path: /v1/admin/route-targets
+method: put
+operation:
+  tags:
+  - admin-targets
+  operationId: putRouteTargets
+  summary: Validate (dry_run) or commit a route x SKU monthly target batch (upsert by route, SKU and month).
+  description: 'The portal reads the Excel sheet in the browser and sends JSON rows. `dry_run: true` validates and
+    writes nothing (no reason needed) and answers a `RouteTargetPreview` with every row error. `dry_run: false`
+    needs `change_reason`; any row error refuses the whole batch with 400 `ERR_VALIDATION` (`errors[].pointer` `body.rows/<0-based
+    index>/<member>`). Idempotent by `batch_uuid`: the same content replays (`replayed: true`), other content under
+    the same uuid is 409. Quantities are base units (sticks, pieces, dozens), integers 0 to 1,000,000,000. A month
+    before the current Dhaka month is never rewritten. Audited as entity `route_target`.'
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          $ref: '#/components/schemas/RouteTargetBatchWrite'
+  responses:
+    '200':
+      description: Preview (dry_run) or commit result.
+      content:
+        application/json:
+          schema:
+            oneOf:
+            - $ref: '#/components/schemas/RouteTargetPreview'
+            - $ref: '#/components/schemas/RouteTargetCommitResult'
+    '400':
+      $ref: '#/components/responses/BadRequest'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'
+    '503':
+      $ref: '#/components/responses/ServiceUnavailable'
+    '409':
+      $ref: '#/components/responses/Conflict'
+    '413':
+      $ref: '#/components/responses/PayloadTooLarge'

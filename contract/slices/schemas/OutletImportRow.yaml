@@ -1,0 +1,71 @@
+OutletImportRow:
+  type: object
+  required:
+  - name
+  - owner_name
+  - zone_code
+  - cluster
+  - channel
+  - outlet_kind
+  additionalProperties: false
+  properties:
+    code:
+      type:
+      - string
+      - 'null'
+      maxLength: 32
+    name:
+      type: string
+      minLength: 2
+      maxLength: 120
+    owner_name:
+      type: string
+      minLength: 2
+      maxLength: 120
+    zone_code:
+      type: string
+      maxLength: 40
+    cluster:
+      type: string
+      maxLength: 120
+      description: Cluster name inside the zone.
+    channel:
+      type: string
+      enum:
+      - GT
+      - DCC
+      - Astha
+      - RCC
+      - MT
+      - HoReCa
+    outlet_kind:
+      type: string
+      enum:
+      - retail
+      - wholesale
+    route_code:
+      type:
+      - string
+      - 'null'
+      maxLength: 40
+    lat:
+      type:
+      - number
+      - 'null'
+      minimum: -90
+      maximum: 90
+    lng:
+      type:
+      - number
+      - 'null'
+      minimum: -180
+      maximum: 180
+    contact_number:
+      type:
+      - string
+      - 'null'
+    address:
+      type:
+      - string
+      - 'null'
+      maxLength: 300

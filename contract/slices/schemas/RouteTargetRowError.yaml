@@ -1,0 +1,29 @@
+RouteTargetRowError:
+  type: object
+  required:
+  - row
+  - column
+  - code
+  additionalProperties: false
+  properties:
+    row:
+      type: integer
+      minimum: 1
+      description: 1-based position in `rows`.
+    column:
+      type: string
+      enum:
+      - route
+      - sku
+      - month
+      - quantity
+    code:
+      type: string
+      enum:
+      - unknown_route
+      - not_selling_route
+      - unknown_sku
+      - invalid_month
+      - past_month
+      - invalid_quantity
+      - duplicate_row
