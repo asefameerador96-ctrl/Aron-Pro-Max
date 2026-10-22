@@ -169,7 +169,7 @@ export async function EntityListPage({ meta, searchParams }: { meta: AnyEntity; 
                 {t(locale, "common.edit")}
               </Link>
             ) : null}
-            {rowLinks.map((l) => (
+            {rowLinks.filter((l) => !l.when || l.when(row)).map((l) => (
               <Link key={l.key} className="text-brand-700 underline" data-testid={`link-${l.key}`} href={l.href(String(row[meta.idField]))}>
                 {t(locale, l.labelKey)}
               </Link>

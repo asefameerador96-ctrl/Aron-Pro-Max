@@ -25,7 +25,17 @@ import com.aktcl.aron.feature.outlet.OutletCard
 import com.aktcl.aron.feature.outlet.OutletPicker
 import com.aktcl.aron.feature.outlet.OutletPickerContent
 import com.aktcl.aron.feature.outlet.PickerMark
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.Text
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.dp
+import com.aktcl.aron.feature.outlet.GeoMapSlot
 import com.aktcl.aron.feature.outlet.VisitCheckContent
+import com.aktcl.aron.feature.outlet.VisitGeoInfo
 import com.aktcl.aron.feature.outlet.VisitOutlet
 import com.aktcl.aron.feature.outlet.VisitUiState
 import com.aktcl.aron.feature.sale.domain.SaleDraft
@@ -148,12 +158,23 @@ class SellShot {
         )
     }
 
-    @Composable private fun VisitOutOfRange() = Frame(card.name) {
+    @Composable private fun VisitOutOfRange(mapSlot: GeoMapSlot? = null) = Frame(card.name) {
         VisitCheckContent(
             VisitUiState.NeedsDecision(visitOutlet, GeoVerdictResult(GeoVerdict.OUT_OF_RANGE, GeoAction.REFRESH_OFFERED, 180.0), 1, true, 3, false, false, phoneLat = 23.7912, phoneLng = 90.4009),
-            onRefresh = {}, onForceSale = {}, onRetry = {}, onMap = {}, outlet = card, onPreviousSales = {}, onNoSale = {},
+            onRefresh = {}, onForceSale = {}, onRetry = {}, onMap = {}, outlet = card, onPreviousSales = {}, onNoSale = {}, mapSlot = mapSlot,
         )
     }
+
+    /** D-MAP-02: the confirm step in range, with the distance, radius and the map (a stand-in tile here; the real one needs the Maps key). */
+    @Composable private fun VisitConfirmInRange(mapSlot: GeoMapSlot?) = Frame(card.name) {
+        val geo = VisitGeoInfo.of(visitOutlet, GeoVerdict.IN_RANGE, 42.0, 23.7903, 90.4002)
+        VisitCheckContent(
+            VisitUiState.Open(OpenVisit("v1", 1, 1, "in_range", "sale_allowed", true, false, null, "2026-10-05T04:31:07Z")),
+            onRefresh = {}, onForceSale = {}, onRetry = {}, onMap = {}, outlet = card, onStartCall = {}, onNoSale = {}, geo = geo, mapSlot = mapSlot,
+        )
+    }
+
+    private val tileStandIn: GeoMapSlot = { _, m -> Box(m.background(Color(0xFFE8EADF))) { Text("[map tiles]", Modifier.align(Alignment.TopEnd).padding(6.dp), color = Color(0xFF5F6368)) } }
 
     /** The outlet has no coordinates: the card says so and the bar's primary is Force Sale, no refresh (screens-sr s6 table). */
     @Composable private fun VisitNoCoordinates() = Frame(card.name) {
@@ -179,6 +200,10 @@ class SellShot {
     @Test fun visit_in_bn_sunlight() = shot("sell_visit_in_bn_sunlight", sunlight = true) { VisitInRange() }
     @Test fun visit_out_bn_light() = shot("sell_visit_out_bn_light") { VisitOutOfRange() }
     @Test fun visit_out_bn_sunlight() = shot("sell_visit_out_bn_sunlight", sunlight = true) { VisitOutOfRange() }
+    @Test fun confirm_in_offline_bn_light() = shot("sell_confirm_in_offline_bn_light") { VisitConfirmInRange(null) }
+    @Test fun confirm_in_online_bn_light() = shot("sell_confirm_in_online_bn_light") { VisitConfirmInRange(tileStandIn) }
+    @Test fun confirm_in_offline_bn_sunlight() = shot("sell_confirm_in_offline_bn_sunlight", sunlight = true) { VisitConfirmInRange(null) }
+    @Test fun confirm_out_online_bn_light() = shot("sell_confirm_out_online_bn_light") { VisitOutOfRange(tileStandIn) }
     @Test fun visit_nocoords_bn_light() = shot("sell_visit_nocoords_bn_light") { VisitNoCoordinates() }
     @Test fun sale_bn_light() = shot("sell_sale_bn_light") { Sale() }
     @Test fun sale_bn_sunlight() = shot("sell_sale_bn_sunlight", sunlight = true) { Sale() }
