@@ -190,6 +190,12 @@ class MainActivity : ComponentActivity() {
                                     AmoScreen.SUPPORT to { back ->
                                         com.aktcl.aron.feature.amo.AmoFrame(stringResource(com.aktcl.aron.feature.home.R.string.set_support), back, icon = com.aktcl.aron.core.ui.R.drawable.aron_ic_gear) { SupportHost(systemShell, d.userId, versionName) }
                                     },
+                                    // D-PRINT-02: the same diagnostics as the SR app; no HoldPrinter, the screen opens its own link
+                                    AmoScreen.PRINTER to { back ->
+                                        com.aktcl.aron.feature.amo.AmoFrame(stringResource(com.aktcl.aron.feature.home.R.string.set_printer), back, icon = com.aktcl.aron.core.ui.R.drawable.aron_ic_gear) {
+                                            com.aktcl.aron.core.printing.ui.PrinterDiagnosticsScreen(printerManager, versionName)
+                                        }
+                                    },
                                     AmoScreen.OUTLET to { back -> AmoOutletHub(d, back) },
                                     AmoScreen.REPORT to { back -> AmoReportHub(d, back) },
                                     AmoScreen.TEAM to { back -> AmoTeamHub(d, reach, back) },

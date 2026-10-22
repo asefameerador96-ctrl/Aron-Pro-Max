@@ -21,5 +21,8 @@ D-MAP-02 built: the Sale outlet-confirm step shows distance, radius and verdict 
 ## Checker (Sonnet, T2) and what came of it
 Fixed: the start step lost the "No" path that abandoned the visit (now a "Go back" link that abandons, F-SR-060); a force-sold visit read "in range" over "outside" (card follows the verdict); the inside/outside wording follows distance against radius; the AMO keeps its earlier range view and wording (`geoPanel` is on for the SR only). Left as is: the map also loads on the out-of-range step (same Sale confirm step, where the owner's complaint is); the scale label is hidden whenever a map slot exists, so with a key but no tiles the picture has no scale (cosmetic).
 
+## AMO (lead's follow-up)
+AMO showed a distance only out of range (Control Call check step, no map). It now uses the same panel and rules there (`geoPanel = true`, lite map via `AmoGeoMap.kt`; AMO tests green). In range the AMO has no confirm step: the check step advances at once to the call menu, so no distance shows there. Not changed, because a held step would alter the Control Call flow; say if you want it. The AMO's "Open in Maps" stays off (`OutletMapActivity` is SR-only).
+
 ## Next
 Nothing planned. If the owner wants the map on the picker rows or on in-range outlets only after the call starts, say so.

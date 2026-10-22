@@ -184,16 +184,18 @@ class MemoPrinting(
         }
     }
 
-    private suspend fun markPaperOut(event: PrintEvent) {
+    /** Stores paper_out on the pending job, three tries; false when it could not be stored. */
+    private suspend fun markPaperOut(event: PrintEvent): Boolean {
         repeat(3) {
             try {
                 ledger.savePending(PendingPrint(event, paperOut = true))
-                return
+                return true
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
             } catch (_: Exception) {
             }
         }
+        return false
     }
 
     private suspend fun print(
@@ -218,10 +220,20 @@ class MemoPrinting(
         var awaiting = false
         try {
             ledger.savePending(PendingPrint(base, paperOut = false))
-            return when (val r = printer.print(PrintJob(eventUuid, paper.bitmap))) {
+            return when (val r = printer.print(PrintJob(eventUuid, paper.bitmap)) { markPaperOut(base) }) {
                 is PrintOutcome.Failed -> {
                     ledger.record(base.copy(outcome = PrintEvent.FAILED))
                     PrintAttempt.Failed(r.reason)
+                }
+                is PrintOutcome.Unconfirmed -> {
+                    // Ink had started, then no confirmation (link lost, printer silent, roll out on the way; D-PRINT-02):
+                    // paper may be out. Always ask the seller, whatever cfg.print.confirm_after_print says: Yes counts
+                    // the copy, No lets the next print be this same copy again. The paper was marked out when the
+                    // first band went (onInkStarted), so a process killed before the answer recovers it as printed: a
+                    // later print is then a marked reprint, never a second unmarked original.
+                    markPaperOut(base)
+                    awaiting = true
+                    PrintAttempt.AwaitingConfirmation(base)
                 }
                 PrintOutcome.Printed, PrintOutcome.AlreadyPrinted -> {
                     // The paper is out whatever storage says next: a failed save here never turns it into a
