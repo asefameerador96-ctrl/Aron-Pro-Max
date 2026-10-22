@@ -1,6 +1,7 @@
 // Per-operation consistency rules the proxy applies before calling the API (the API validates again).
 import { isRealDate } from "@/components/admin/crud/validation";
 import { businessDate } from "@/lib/i18n";
+import { accessShapeRules } from "./access-grants";
 import { containsMask } from "./mask";
 
 export type FieldProblem = { pointer: string; code: string };
@@ -13,6 +14,7 @@ const shiftDate = (d: string, days: number): string => new Date(Date.parse(`${d}
 const isId = (v: unknown) => typeof v === "number" && Number.isSafeInteger(v) && v >= 1;
 
 export function opRules(op: string, body: Record<string, unknown>): FieldProblem[] {
+  if (op === "user-access.put") return accessShapeRules(body);
   if (op === "quarantine.resolve") {
     const out: FieldProblem[] = [];
     const fix = body.fixed_record;
