@@ -23,7 +23,7 @@ internal object DashboardSummaries {
     private val tables = listOf("agg_daily_outlet_sku", "agg_daily_route_variant", "route_last_position", "summary_freshness")
 
     /** Summary tables a card response may name in `last_updated_at`. */
-    val FRESHNESS_TABLES = listOf("agg_daily_route_sku", "agg_daily_route_variant", "agg_daily_outlet_sku", "agg_daily_route", "agg_daily_zone", "route_last_position", "fact_visit")
+    val FRESHNESS_TABLES = listOf("agg_daily_route_sku", "agg_daily_route_variant", "agg_daily_route_segment", "agg_daily_route_brand", "agg_daily_outlet_sku", "agg_daily_route", "agg_daily_zone", "route_last_position", "fact_visit")
 
     /** True when every table and column of the request exists. Cheap catalog query; not cached because test databases differ. */
     fun ready(h: Handle): Boolean {

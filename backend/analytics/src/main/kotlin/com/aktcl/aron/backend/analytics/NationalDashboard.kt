@@ -340,7 +340,7 @@ class NationalDashboardService(
                      WHERE a.business_date = :d ${sql.geo} ${sql.product} GROUP BY 1 ORDER BY sum(a.sold_qty_base) DESC, 1 LIMIT 1
                     """,
                 ).bind("d", date)).mapTo(String::class.java).findOne().orElse(null)
-                unit = category?.let { c -> h.createQuery("SELECT min(base_unit) FROM dw.dim_product WHERE category_code = :c").bind("c", c).mapTo(String::class.java).findOne().orElse(null) }
+                unit = category?.let { c -> sql.bind(h.createQuery("SELECT min(p.base_unit) FROM dw.dim_product p WHERE p.category_code = :c ${sql.product}").bind("c", c)).mapTo(String::class.java).findOne().orElse(null) }
                 items = if (category == null) emptyList() else sql.bind(h.createQuery(
                     """
                     SELECT $nodeCols, sum(a.sold_qty_base) AS v
@@ -360,7 +360,8 @@ class NationalDashboardService(
                     """,
                 ).bind("d", date)).map { rs, _ -> BreakdownItem(rs.getString(2), rs.getString(3), rs.getLong(4)) }.list()
             }
-            val tables = when (req.measure) { "std" -> listOf("agg_daily_route_sku"); else -> listOf(if (req.dimension == "variant") "agg_daily_route_variant" else "agg_daily_route_sku") }
+            // Freshness comes from the table the figures are read from.
+            val tables = when (req.measure) { "std" -> listOf("agg_daily_route_sku"); else -> listOf("agg_daily_route_${req.dimension}") }
             val m = meta(h, date, tables)
             NationalBreakdown(m.date, m.till, m.asOf, m.last, req.measure, req.dimension, category, unit, items)
         }

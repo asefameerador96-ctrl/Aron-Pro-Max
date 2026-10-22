@@ -300,4 +300,16 @@ class NationalDashboardTest {
         val none = NationalDashboardService(fresh.db, AronClock { now }, weekendConfig(JsonArray(emptyList())))
         assertEquals(30, none.sales(national(), all).working_days)
     }
+
+    @Test
+    fun theBreakdownFreshnessComesFromTheTableTheFiguresAreReadFrom() {
+        fun stamp(table: String, at: String) = sql("UPDATE dw.summary_freshness SET last_updated_at = '$at' WHERE table_name = '$table'")
+        stamp("agg_daily_route_sku", "2026-10-04T01:00:00Z"); stamp("agg_daily_route_segment", "2026-10-04T02:00:00Z")
+        stamp("agg_daily_route_brand", "2026-10-04T03:00:00Z"); stamp("agg_daily_route_variant", "2026-10-04T04:00:00Z")
+        fun last(measure: String, dim: String) = svc.breakdown(national(), NationalBreakdownRequest(all, measure, dim)).last_updated_at
+        assertEquals("2026-10-04T02:00:00Z", last("memo", "segment"))
+        assertEquals("2026-10-04T03:00:00Z", last("memo", "brand"))
+        assertEquals("2026-10-04T04:00:00Z", last("memo", "variant"))
+        assertEquals("2026-10-04T01:00:00Z", last("std", "brand"), "STD figures come from the SKU table")
+    }
 }
