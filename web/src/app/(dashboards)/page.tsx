@@ -29,7 +29,8 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
   const stamps = [sales, cpr, chCalls, final, login, chStd, breakdown, geo].flatMap((s) => (s.ok && s.data.as_of ? [s.data.as_of] : []));
   const asOf = stamps.length > 0 ? stamps.reduce((a, b) => (a > b ? a : b)) : null;
   const live = q.date === today;
-  const productOnly = filters.ok && filters.data.view.product_only;
+  // A BRAND token is refused (403) on every card without a brand dimension: that is how the page knows to show product cards only.
+  const productOnly = !cpr.ok && cpr.status === 403;
   const hrefFor = (m: typeof measure, b: typeof by) => `/?${toSearch(q, { bm: m === "std" ? undefined : m, bb: b === "brand" ? undefined : b }).toString()}`;
 
   return (

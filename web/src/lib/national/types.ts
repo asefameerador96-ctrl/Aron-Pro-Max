@@ -1,6 +1,8 @@
 // The national dashboard slices (docs/ui-reference/web/dashboard-brief.md, D-DASH-02), typed by hand until backend-reports publishes
 // them in the contract (docs/34 s2). One shape per card; every figure is a base unit (sticks, pieces, dozens) or a count, never a
 // formatted string. Scope (geography, brands) is decided by the server from the token; the client only sends the filter the user picked.
+import type { PinColor } from "./query";
+
 export const CATEGORIES = ["cigarette", "bidi", "lighter", "match"] as const;
 export type CategoryCode = (typeof CATEGORIES)[number];
 export type UnitCode = "stick" | "piece" | "dozen";
@@ -60,6 +62,10 @@ export interface SalesCard {
   total: number;
   /** Full-day target of the selected routes (monthly target / working days); null when no target is loaded. */
   daily_target: number | null;
+  /** Total against the daily target, as the server computes it (null without a target). */
+  pct: number | null;
+  /** Target minus sales, never below 0 (null without a target). */
+  remaining: number | null;
 }
 export interface SalesSlice extends Stamp {
   cards: SalesCard[];
@@ -108,16 +114,23 @@ export interface FfPin {
   route_id: number;
   lat: number;
   lng: number;
-  /** Today's share of calls inside the geo-fence, 0 to 100. */
-  geo_pct: number;
-  sr_name: string;
-  contact: string | null;
-  territory_id: number;
-  territory_name: string;
-  zone: string;
-  route: string;
+  /** Today's share of calls inside the geo-fence, 0 to 100 (null: no call yet). */
+  geo_pct: number | null;
+  /** The server's colour of the pin (Red below 70, Amber 70 to 90, Green above 90). */
+  color: PinColor;
   /** Time of the latest position. */
   at: string;
+}
+/** The pop-up of one route pin, read on click (the server decides who sees the name and the phone). */
+export interface FfPopup {
+  sr_name: string | null;
+  contact: string | null;
+  territory: string;
+  territory_code: string;
+  zone: string;
+  route: string;
+  position_at: string | null;
+  miss_pct: number | null;
 }
 export interface FfGeoSlice extends Stamp {
   pins: FfPin[];
@@ -139,7 +152,7 @@ export interface RouteOutlet {
 }
 export interface RouteMapSlice extends Stamp {
   sr_name: string;
-  territory_id: number;
+  territory_code: string;
   territory_name: string;
   zone: string;
   route: string;
@@ -150,7 +163,7 @@ export interface RouteMapSlice extends Stamp {
   target_vs_achievement: { category: CategoryCode; pct: number | null }[];
   last_sale_place: string | null;
   cpr: { target_outlets: number; successful_calls: number; geo_validation: number };
-  time: { first_sale: string | null; last_sale: string | null; distance_m: number };
+  time: { first_sale: string | null; last_sale: string | null; total_hours: number | null; avg_hours: number | null; distance_m: number };
 }
 
 export type SaleKind = "new" | "repeat" | "edited";
@@ -169,6 +182,8 @@ export interface SalePositionSlice extends Stamp {
   route: string;
   outlet_code: string;
   radius_m: number;
+  /** Distance of the header line (base to the first sale position), null with no sale. */
+  header_distance_m: number | null;
   base: { lat: number; lng: number };
   sales: SalePoint[];
 }

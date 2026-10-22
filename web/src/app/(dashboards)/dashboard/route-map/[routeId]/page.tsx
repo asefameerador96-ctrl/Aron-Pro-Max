@@ -40,8 +40,8 @@ export default async function RouteMapPage({ params, searchParams }: { params: P
   }
   const d = r.data;
   const calls = d.cpr.successful_calls;
-  const total = hoursBetween(d.time.first_sale, d.time.last_sale);
-  const avg = total !== null && calls > 0 ? Math.round((total / calls) * 100) / 100 : null;
+  const total = d.time.total_hours ?? hoursBetween(d.time.first_sale, d.time.last_sale);
+  const avg = d.time.avg_hours ?? (total !== null && calls > 0 ? Math.round((total / calls) * 100) / 100 : null);
   const hours = (h: number | null) => (h === null ? "—" : `${formatNumber(locale, h, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${t(locale, "nat.rm.hour")}`);
   const legend = [
     { src: flagIcon(), label: "nat.rm.legend.start" }, { src: pinIcon(PIN_FILL.black), label: "nat.rm.legend.base" }, { src: pinIcon(PIN_FILL.green), label: "nat.rm.legend.geo" }, { src: pinIcon(PIN_FILL.red), label: "nat.rm.legend.photo" }, { src: personIcon(), label: "nat.rm.legend.sr" },
@@ -52,7 +52,7 @@ export default async function RouteMapPage({ params, searchParams }: { params: P
       <div className="flex items-center gap-3">{back}<h1 className="text-title text-accent">{t(locale, "nat.rm.title")}</h1></div>
       <p className="text-body text-primary" data-testid="route-map-header">
         <span className="text-heading text-secondary">{t(locale, "nat.rm.header")} » </span>
-        <span data-testid="route-map-sr">{d.sr_name}</span>, {t(locale, "nat.rm.territory")}: {d.territory_name} ({formatNumber(locale, d.territory_id, { useGrouping: false })}), {t(locale, "nat.rm.zone")}: {d.zone}, {t(locale, "nat.rm.route")}: {d.route}, {t(locale, "nat.rm.date")}: {d.business_date}
+        <span data-testid="route-map-sr">{d.sr_name}</span>, {t(locale, "nat.rm.territory")}: {d.territory_name} ({d.territory_code}), {t(locale, "nat.rm.zone")}: {d.zone}, {t(locale, "nat.rm.route")}: {d.route}, {t(locale, "nat.rm.date")}: {d.business_date}
       </p>
       <RouteMapView slice={d} date={date} mapsEnabled={mapsKey() !== null} />
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">

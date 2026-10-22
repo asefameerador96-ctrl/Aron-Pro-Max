@@ -37,14 +37,14 @@ export default async function SalePositionPage({ params, searchParams }: { param
     );
   }
   const d = r.data;
-  // The header distance is the first sale's (the brief's "81.83 Meter"); with no sale there is none to show.
-  const first = d.sales[0];
+  // The header distance comes from the server, else it is the first sale's (the brief's "81.83 Meter"); with no sale there is none to show.
+  const headerM = d.header_distance_m ?? d.sales[0]?.distance_m ?? null;
   const legend = [{ src: pinIcon(PIN_FILL.blue, "B"), label: "nat.sp.base" }, { src: pinIcon(PIN_FILL.yellow), label: "nat.sp.repeat" }, { src: pinIcon(PIN_FILL.teal), label: "nat.sp.edited" }] as const;
   return (
     <div className="space-y-4" data-testid="sale-position-page">
       <div className="flex items-center gap-3">{back}<h1 className="text-title text-accent">{t(locale, "nat.sp.title")}</h1></div>
       <p className="text-body" data-testid="sale-position-header">
-        <span className="text-heading text-secondary">{t(locale, "nat.sp.header", { distance: first ? distance(locale, first.distance_m) : "—" })} » </span>
+        <span className="text-heading text-secondary">{t(locale, "nat.sp.header", { distance: headerM !== null ? distance(locale, headerM) : "—" })} » </span>
         {t(locale, "nat.sp.zone")}: {d.zone}, {t(locale, "nat.sp.route")}: {d.route}, {t(locale, "nat.sp.outlet")}: {d.outlet_code}, {t(locale, "nat.sp.date")}: {d.business_date}
       </p>
       <SalePositionView slice={d} mapsEnabled={mapsKey() !== null} />

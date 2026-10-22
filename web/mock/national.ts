@@ -96,129 +96,162 @@ function pinsFor(zs: typeof ZONES) {
 }
 const r2 = (n: number) => Math.round(n * 100) / 100;
 
+const PHOTO = `data:image/svg+xml;charset=UTF-8,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="160" height="120"><rect width="160" height="120" fill="#8b5a2b"/><path d="M0 100L60 30l40 40 60-50v100z" fill="#c9a36b"/></svg>')}`;
+
+/** The filter of a POST body as the comma-list parameters the helpers above read. */
+function filterParams(b: Record<string, unknown> | null): URLSearchParams {
+  const f = ((b && typeof b.filter === "object" ? b.filter : b) ?? {}) as Record<string, unknown>;
+  const q = new URLSearchParams();
+  for (const [from, to] of [["wing_ids", "wing"], ["division_ids", "division"], ["territory_ids", "territory"], ["house_ids", "house"], ["zone_ids", "zone"], ["category_codes", "category"], ["segment_codes", "segment"], ["brand_codes", "brand"], ["variant_codes", "variant"]] as const) {
+    const v = f[from];
+    if (Array.isArray(v) && v.length) q.set(to, v.join(","));
+  }
+  if (typeof f.date === "string") q.set("date", f.date);
+  return q;
+}
+const colorOf = (g: number) => (g < 70 ? "red" : g <= 90 ? "amber" : "green");
+
+/** The national dashboard operations of contract 1.4.0 (lane backend-reports): POST cards, GET filter options, route map, sale position. */
 export async function handleNational(x: DashCtx): Promise<boolean> {
   const { path, method, user, send, problem, url } = x;
-  if (!path.startsWith("/v1/dashboards/national/") || method !== "GET") return false;
-  const q = url.searchParams;
+  const media = /^\/v1\/media\/([0-9a-f-]{36})\/read-url$/.exec(path);
+  if (media && method === "GET") return send(200, { url: PHOTO, expires_at: new Date(Date.now() + 300_000).toISOString() }), true;
+  const national = path.startsWith("/v1/dashboards/national/");
+  const mapPage = /^\/v1\/dashboards\/(route-map|sale-position)\/(\d+)$/.exec(path);
+  if (!national && !mapPage) return false;
+  const body = method === "POST" ? ((await x.body()) as Record<string, unknown> | null) : null;
+  const q = method === "POST" ? filterParams(body) : url.searchParams;
   const date = q.get("date") ?? new Date().toISOString().slice(0, 10);
   const today = new Date().toISOString().slice(0, 10);
-  const stamp = { business_date: date, as_of: AS_OF(date, today) };
+  const asOf = AS_OF(date, today);
+  const common = { date, till_time: date === today, as_of: asOf, last_updated_at: asOf };
   const brand = view === "brand";
-  const hidden = () => send(403, problem(403, "ERR_FORBIDDEN"));
+  const forbidden = () => (send(403, problem(403, "ERR_FORBIDDEN")), true);
   const zs = scopeZones(user.role, q);
-  const f = (zs.reduce((s, z) => s + z.weight, 0) / TOTAL_W) * dayFactor(date, today);
+  const dayless = zs.reduce((s, z) => s + z.weight, 0) / TOTAL_W;
+  const f = dayless * dayFactor(date, today);
   const bs = brandsIn(q);
   const pf = brand || list(q.get("category")).length || list(q.get("segment")).length || list(q.get("brand")).length || list(q.get("variant")).length ? bs.reduce((s, b) => s + b[3], 0) / BRAND_TOTAL : 1;
   const sc = (n: number, extra = 1) => Math.round(n * f * extra);
-  const name = path.slice("/v1/dashboards/national/".length);
+  const name = national ? path.slice("/v1/dashboards/national/".length) : "";
+  const productCards = ["sales", "channel-std", "breakdown", "filter-options"];
+  // BRAND: cards without a brand dimension are refused (docs/34 s1).
+  if (brand && ((national && !productCards.includes(name)) || mapPage)) return forbidden();
 
-  if (name === "filters") {
-    const wingIds = [...new Set(zs.map((z) => DIVS[TERRS.find((t) => t.id === z.territory)!.division - 1]![1] + 1))];
-    const divIds = [...new Set(zs.map((z) => TERRS.find((t) => t.id === z.territory)!.division))];
+  if (name === "filter-options" && method === "GET") {
+    const div = (zid: number) => TERRS.find((t) => t.id === zid)!.division;
+    const wingOf = (d: number) => DIVS[d - 1]![1] + 1;
+    const divIds = [...new Set(zs.map((z) => div(z.territory)))];
     const terIds = new Set(zs.map((z) => z.territory));
     const houseIds = new Set(zs.map((z) => z.house));
+    const bsAll = BRANDS.filter((b) => !brand || OWN_BRANDS.includes(b[0]));
     return send(200, {
-      wings: wingIds.map((id) => ({ id, name: WINGS[id - 1], parent: null })),
-      divisions: DIVS.map((d, i) => ({ id: i + 1, name: d[0], parent: d[1] + 1 })).filter((d) => divIds.includes(d.id)),
-      territories: TERRS.filter((t) => terIds.has(t.id)).map((t) => ({ id: t.id, name: t.name, parent: t.division })),
-      houses: HOUSES.filter((h) => houseIds.has(h.id)).map((h) => ({ id: h.id, name: h.name, parent: h.territory })),
-      zones: zs.map((z) => ({ id: z.id, name: z.name, parent: z.territory })),
-      categories: CATS.map((c) => ({ code: c[0], name: c[1], parent: null })),
-      segments: SEGS.map((s) => ({ code: s[0], name: s[1], parent: s[2] })),
-      brands: BRANDS.filter((b) => !brand || OWN_BRANDS.includes(b[0])).map((b) => ({ code: b[0], name: b[1], parent: b[2] })),
-      variants: BRANDS.filter((b) => !brand || OWN_BRANDS.includes(b[0])).flatMap((b) => [{ code: `${b[0]}-std`, name: `${b[1]} Standard`, parent: b[0] }, { code: `${b[0]}-lt`, name: `${b[1]} Light`, parent: b[0] }]),
-      view: { product_only: brand },
+      ...common,
+      wings: [...new Set(divIds.map(wingOf))].map((id) => ({ id, code: `W${id}`, name: WINGS[id - 1] })),
+      divisions: DIVS.map((d, i) => ({ id: i + 1, code: `D${i + 1}`, name: d[0], wing_id: d[1] + 1 })).filter((d) => divIds.includes(d.id)),
+      territories: TERRS.filter((t) => terIds.has(t.id)).map((t) => ({ id: t.id, code: String(1300 + t.id), name: t.name, wing_id: wingOf(t.division), division_id: t.division })),
+      houses: HOUSES.filter((h) => houseIds.has(h.id)).map((h) => ({ id: h.id, code: `H${h.id}`, name: h.name, territory_id: h.territory })),
+      zones: zs.map((z) => ({ id: z.id, code: `Z${z.id}`, name: z.name, territory_id: z.territory, house_id: z.house })),
+      categories: CATS.map((c) => ({ code: c[0], name: c[1] })),
+      segments: SEGS.map((s) => ({ code: s[0], name: s[1], category_code: s[2] })),
+      brands: bsAll.map((b) => ({ code: b[0], name: b[1], category_code: catOfSeg(b[2]), segment_code: b[2] })),
+      variants: bsAll.flatMap((b) => [{ code: `${b[0]}-std`, name: `${b[1]} Standard`, brand_code: b[0] }, { code: `${b[0]}-lt`, name: `${b[1]} Light`, brand_code: b[0] }]),
     }), true;
   }
-
-  const productCards = ["sales", "channel-std", "breakdown"].includes(name);
-  if (brand && !productCards) {
-    if (["cpr", "channel-calls", "final-submit", "login-submit", "geo-fencing", "ff-geo"].includes(name) || name.startsWith("route-map/") || name.startsWith("sale-position/")) return hidden(), true;
-  }
+  if (name === "freshness" && method === "GET") return send(200, { ...common, tables: [{ table: "summary_sales", last_updated_at: asOf }] }), true;
 
   if (name === "sales") {
     const cats = brandsIn(q);
     return send(200, {
-      ...stamp,
+      ...common, working_days: 26,
       cards: (Object.keys(C) as (keyof typeof C)[]).map((c) => {
-        const share = (() => {
-          const all = BRANDS.filter((b) => catOfSeg(b[2]) === c).reduce((s, b) => s + b[3], 0);
-          const sel = cats.filter((b) => catOfSeg(b[2]) === c).reduce((s, b) => s + b[3], 0);
-          return all > 0 ? sel / all : 0;
-        })();
-        return { category: c, unit: C[c], total: sc(SALES_TOTAL[c], share), daily_target: r2(Math.round(SALES_TARGET[c] * (f / dayFactor(date, today)) * share)) || null };
+        const all = BRANDS.filter((b) => catOfSeg(b[2]) === c).reduce((s, b) => s + b[3], 0);
+        const sel = cats.filter((b) => catOfSeg(b[2]) === c).reduce((s, b) => s + b[3], 0);
+        const share = all > 0 ? sel / all : 0;
+        const total = sc(SALES_TOTAL[c], share);
+        const target = Math.round(SALES_TARGET[c] * dayless * share);
+        return { category_code: c, base_unit: C[c], total_sales: total, daily_target: target > 0 ? `${target}.000` : null, sales_so_far: total, remaining: target > 0 ? `${Math.max(0, target - total)}.000` : null, achievement_pct: target > 0 ? r2((total / target) * 100) : null, target_routes: zs.length * 4 };
       }),
     }), true;
   }
-  if (name === "cpr") return send(200, { ...stamp, target_outlets: Math.round(460_000 * (f / dayFactor(date, today)) * pf), successful_calls: sc(174_000, pf) }), true;
-  if (name === "channel-calls") return send(200, { ...stamp, channels: Object.entries(CH).map(([code, v]) => ({ code, value: sc(v[0], pf) })) }), true;
-  if (name === "channel-std") return send(200, { ...stamp, channels: Object.entries(CH).map(([code, v]) => ({ code, value: sc(v[1], pf) })) }), true;
+  if (name === "cpr") {
+    const target = Math.round(460_000 * dayless * pf), calls = sc(174_000, pf);
+    return send(200, { ...common, target_outlets: target, successful_calls: calls, cpr_pct: target > 0 ? r2((calls / target) * 100) : null }), true;
+  }
+  const channelBody = (col: 0 | 1) => {
+    const rows = Object.entries(CH).map(([channel, v]) => ({ channel, value: sc(v[col], pf) }));
+    const total = rows.reduce((s, r) => s + r.value, 0);
+    return { rows: rows.map((r) => ({ ...r, share_pct: total > 0 ? r2((r.value / total) * 100) : null })), total };
+  };
+  if (name === "channel-calls") { const c = channelBody(0); return send(200, { ...common, channels: c.rows, total: c.total, unclassified: 0 }), true; }
+  if (name === "channel-std") { const c = channelBody(1); return send(200, { ...common, channels: c.rows, total: c.total, unit: "stick" }), true; }
   if (name === "final-submit") {
-    const total = Math.round(1051 * (zs.length / ZONES.length));
-    const service = Math.round(1046 * (zs.length / ZONES.length));
-    return send(200, { ...stamp, total_zone: total, service_zone: service, submitted: date === today ? 0 : service }), true;
+    const total = Math.round(1051 * (zs.length / ZONES.length)), service = Math.round(1046 * (zs.length / ZONES.length)), done = date === today ? 0 : service;
+    return send(200, { ...common, total_zones: total, service_zones: service, final_submitted: done, remaining: service - done, submit_pct: service > 0 ? r2((done / service) * 100) : null }), true;
   }
   if (name === "login-submit") {
-    const routes = Math.round(6933 * (zs.length / ZONES.length));
-    const logged = Math.round(routes * 0.998);
-    return send(200, { ...stamp, target_routes: routes, logged_in: logged, submitted: date === today ? Math.round(logged * 0.0009) : Math.round(logged * 0.97) }), true;
+    const routes = Math.round(6933 * (zs.length / ZONES.length)), logged = Math.round(routes * 0.998), sub = date === today ? Math.round(logged * 0.0009) : Math.round(logged * 0.97);
+    return send(200, { ...common, target_routes: routes, successful_login: logged, login_pct: routes > 0 ? r2((logged / routes) * 100) : null, submitted: sub, submit_pct: logged > 0 ? r2((sub / logged) * 100) : null }), true;
   }
   if (name === "geo-fencing") {
-    const total = sc(200_000);
-    return send(200, { ...stamp, total_calls: total, geo_validation: Math.round(total * 0.9796) }), true;
+    const total = sc(200_000), ok = Math.round(total * 0.9796);
+    return send(200, { ...common, total_calls: total, geo_validated: ok, geo_pct: total > 0 ? r2((ok / total) * 100) : null }), true;
   }
   if (name === "breakdown") {
-    const measure = q.get("measure") === "memo" ? "memo" : "std";
-    const by = q.get("by") === "segment" ? "segment" : q.get("by") === "variant" ? "variant" : "brand";
-    const rows =
-      by === "brand"
-        ? bs.map((b) => ({ key: b[0], label: b[1], value: Math.round((measure === "std" ? b[3] : b[4]) * f), unit: measure === "std" ? C[catOfSeg(b[2]) as keyof typeof C] : null }))
-        : by === "segment"
-          ? SEGS.filter((s) => bs.some((b) => b[2] === s[0])).map((s) => ({ key: s[0], label: s[1], value: Math.round(bs.filter((b) => b[2] === s[0]).reduce((a, b) => a + (measure === "std" ? b[3] : b[4]), 0) * f), unit: measure === "std" ? C[s[2] as keyof typeof C] : null }))
-          : bs.flatMap((b) => [["std", "Standard", 0.62], ["lt", "Light", 0.38]].map(([k, l, sh]) => ({ key: `${b[0]}-${k}`, label: `${b[1]} ${l}`, value: Math.round((measure === "std" ? b[3] : b[4]) * f * (sh as number)), unit: measure === "std" ? C[catOfSeg(b[2]) as keyof typeof C] : null })));
-    return send(200, { ...stamp, measure, by, rows }), true;
+    const measure = body?.measure === "memo" ? "memo" : "std";
+    const by = body?.dimension === "segment" ? "segment" : body?.dimension === "variant" ? "variant" : "brand";
+    const onlyCat = typeof body?.category_code === "string" ? body.category_code : measure === "std" ? "cigarette" : null; // STD is limited to one category (UI-WEB-09)
+    const pool = bs.filter((b) => !onlyCat || measure === "memo" ? true : catOfSeg(b[2]) === onlyCat);
+    const val = (b: (typeof BRANDS)[number]) => Math.round((measure === "std" ? b[3] : b[4]) * f);
+    const items =
+      by === "brand" ? pool.map((b) => ({ code: b[0], name: b[1], value: val(b) }))
+      : by === "segment" ? SEGS.filter((s) => pool.some((b) => b[2] === s[0])).map((s) => ({ code: s[0], name: s[1], value: pool.filter((b) => b[2] === s[0]).reduce((a, b) => a + val(b), 0) }))
+      : pool.flatMap((b) => [["std", "Standard", 0.62], ["lt", "Light", 0.38]].map(([k, l, sh]) => ({ code: `${b[0]}-${k}`, name: `${b[1]} ${l}`, value: Math.round(val(b) * (sh as number)) })));
+    return send(200, { ...common, measure, dimension: by, ...(measure === "std" ? { category_code: onlyCat, unit: C[onlyCat as keyof typeof C] ?? "stick" } : {}), items }), true;
   }
-  if (name === "ff-geo") {
-    const pins = pinsFor(zs).map((p) => {
-      const t = TERRS.find((tt) => tt.id === p.zone.territory)!;
-      return { route_id: p.route_id, lat: Math.round(p.lat * 1e5) / 1e5, lng: Math.round(p.lng * 1e5) / 1e5, geo_pct: r2(p.geo_pct), sr_name: `SR ${p.route_id}`, contact: x.piiOpen ? `01700${String(p.route_id).padStart(6, "0")}` : null, territory_id: t.id, territory_name: t.name, zone: p.zone.name, route: `Route ${p.n + 1}`, at: `${date}T0${6 + (p.n % 3)}:${10 + p.n}:00.000Z` };
-    });
-    return send(200, { ...stamp, pins }), true;
+  if (name === "ff-geo/pins") {
+    const pins = pinsFor(zs).map((p) => ({ route_id: p.route_id, lat: Math.round(p.lat * 1e5) / 1e5, lng: Math.round(p.lng * 1e5) / 1e5, color: colorOf(p.geo_pct), geo_pct: r2(p.geo_pct), position_at: `${date}T0${6 + (p.n % 3)}:${10 + p.n}:00.000Z` }));
+    const count = (c: string) => pins.filter((p) => p.color === c).length;
+    return send(200, { ...common, pins, counts: { red: count("red"), amber: count("amber"), green: count("green") }, routes_without_position: 0 }), true;
   }
-  const rm = /^route-map\/(\d+)$/.exec(name);
-  if (rm) {
-    const id = Number(rm[1]);
+  const pop = /^ff-geo\/routes\/(\d+)$/.exec(name);
+  if (pop) {
+    const id = Number(pop[1]);
     const pin = pinsFor(ZONES).find((p) => p.route_id === id);
     if (!pin) return send(404, problem(404, "ERR_NOT_FOUND")), true;
-    const r = rng(id);
+    const t = TERRS.find((tt) => tt.id === pin.zone.territory)!;
+    return send(200, { ...common, route: { id, code: `R${id}`, name: `Route ${pin.n + 1}` }, sr_name: `SR ${id}`, contact: x.piiOpen ? `01700${String(id).padStart(6, "0")}` : null, territory: { id: t.id, code: String(1300 + t.id), name: t.name }, zone: { id: pin.zone.id, code: `Z${pin.zone.id}`, name: pin.zone.name }, position_at: `${date}T0${6 + (pin.n % 3)}:${10 + pin.n}:00.000Z`, miss_pct: r2(100 - pin.geo_pct) }), true;
+  }
+  const rm = mapPage?.[1] === "route-map" ? Number(mapPage[2]) : null;
+  if (rm !== null) {
+    const pin = pinsFor(ZONES).find((p) => p.route_id === rm);
+    if (!pin) return send(404, problem(404, "ERR_NOT_FOUND")), true;
+    const r = rng(rm);
     const t = TERRS.find((tt) => tt.id === pin.zone.territory)!;
     const outlets = Array.from({ length: 50 }, (_, i) => {
       const called = i < 15;
-      const state = !called ? "not_called" : i % 5 === 4 ? "photo" : "geo";
-      return { id: id * 1000 + i, code: String(3_000_000 + id * 10 + i), name: `Outlet ${i + 1}`, contact: x.piiOpen ? `0171${String(id * 100 + i).padStart(7, "0")}` : null, cluster: `Cluster ${1 + (i % 4)}`, lat: pin.lat + (r() - 0.5) * 0.02, lng: pin.lng + (r() - 0.5) * 0.02, state, at: called ? `${date}T0${3 + Math.floor(i / 6)}:${String(10 + i * 3).padStart(2, "0")}:00.000Z` : null, sales: called ? { cigarette: 120 + i * 7, bidi: i % 3 === 0 ? 200 : 0, lighter: i % 4 === 0 ? 2 : 0, match: i % 2 ? 1 : 0 } : null };
+      return { outlet_id: rm * 1000 + i, code: String(3_000_000 + rm * 10 + i), name: `Outlet ${i + 1}`, contact: x.piiOpen ? `0171${String(rm * 100 + i).padStart(7, "0")}` : null, cluster_name: `Cluster ${1 + (i % 4)}`, lat: pin.lat + (r() - 0.5) * 0.02, lng: pin.lng + (r() - 0.5) * 0.02, state: !called ? "not_called" : i % 5 === 4 ? "photo_validation" : "geo_validated", call_time: called ? `${date}T0${3 + Math.floor(i / 6)}:${String(10 + i * 3).padStart(2, "0")}:00.000Z` : null, sales: called ? [{ category_code: "cigarette", base_unit: "stick", qty: 120 + i * 7 }, { category_code: "bidi", base_unit: "stick", qty: i % 3 === 0 ? 200 : 0 }, { category_code: "lighter", base_unit: "piece", qty: i % 4 === 0 ? 2 : 0 }, { category_code: "match", base_unit: "dozen", qty: i % 2 ? 1 : 0 }] : [] };
     });
-    const called = outlets.filter((o) => o.at);
-    const path = called.map((o) => ({ lat: o.lat, lng: o.lng, at: o.at! }));
-    const last = path[path.length - 1];
+    const called = outlets.filter((o) => o.call_time);
+    const path = called.map((o) => ({ lat: o.lat, lng: o.lng, at: o.call_time! }));
+    const secs = 9180;
     return send(200, {
-      ...stamp, sr_name: `SR ${id}`, territory_id: t.id, territory_name: t.name, zone: pin.zone.name, route: `Route ${pin.n + 1}`,
-      start: path[0] ?? null, last_position: last ?? null, path, outlets,
-      target_vs_achievement: [{ category: "cigarette", pct: 26 }, { category: "bidi", pct: 0 }, { category: "lighter", pct: 60 }, { category: "match", pct: 68 }],
+      ...common, route: { id: rm, code: `R${rm}`, name: `Route ${pin.n + 1}` }, sr_name: `SR ${rm}`, territory: { id: t.id, code: String(1300 + t.id), name: t.name }, zone: { id: pin.zone.id, code: `Z${pin.zone.id}`, name: pin.zone.name },
+      sale_start: path[0] ?? null, sr_last_position: path[path.length - 1] ?? null, outlets, path,
+      target_vs_achievement: [["cigarette", 26], ["bidi", 0], ["lighter", 60], ["match", 68]].map(([c, p]) => ({ category_code: c, base_unit: C[c as keyof typeof C], daily_target: "1000.000", sales: Number(p) * 10, achievement_pct: p })),
       last_sale_place: "Rampasha Bazar",
-      cpr: { target_outlets: 50, successful_calls: called.length, geo_validation: called.filter((o) => o.state === "geo").length },
-      time: { first_sale: called[0]?.at ?? null, last_sale: called[called.length - 1]?.at ?? null, distance_m: 1196.97 },
+      cpr: { target_outlets: 50, successful_calls: called.length, geo_validated: called.filter((o) => o.state === "geo_validated").length, cpr_pct: r2((called.length / 50) * 100) },
+      time_card: { first_sale_time: called[0]?.call_time ?? null, last_sale_time: called[called.length - 1]?.call_time ?? null, total_sale_seconds: secs, average_sale_seconds: Math.round(secs / called.length), distance_covered_m: 1196.97 },
     }), true;
   }
-  const sp = /^sale-position\/(\d+)$/.exec(name);
-  if (sp) {
-    const id = Number(sp[1]);
-    const r = rng(id);
+  const spId = mapPage?.[1] === "sale-position" ? Number(mapPage[2]) : null;
+  if (spId !== null) {
+    const r = rng(spId);
     const baseLat = 23.76 + r() * 0.1, baseLng = 90.35 + r() * 0.1;
-    const photo = `data:image/svg+xml;charset=UTF-8,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="160" height="120"><rect width="160" height="120" fill="#8b5a2b"/><path d="M0 100L60 30l40 40 60-50v100z" fill="#c9a36b"/></svg>')}`;
-    return send(200, { ...stamp, zone: "Kuakata", route: "Mohepur", outlet_code: String(3_000_000 + id), radius_m: 50, base: { lat: baseLat, lng: baseLng }, sales: [
-      { id: `${id}-1`, kind: "new", lat: baseLat - 0.0004, lng: baseLng - 0.0007, distance_m: 81.83, at: `${date}T05:41:01.000Z`, photo_url: photo },
-      { id: `${id}-2`, kind: "repeat", lat: baseLat + 0.0001, lng: baseLng + 0.0001, distance_m: 15.4, at: `${date}T07:02:11.000Z`, photo_url: null },
-      { id: `${id}-3`, kind: "edited", lat: baseLat + 0.0001, lng: baseLng - 0.0001, distance_m: 17.2, at: `${date}T08:12:40.000Z`, photo_url: null },
+    return send(200, { ...common, zone: { id: 1, code: "Z1", name: "Kuakata" }, route: { id: 1, code: "R1", name: "Mohepur" }, outlet_code: String(3_000_000 + spId), radius_m: 50, base: { lat: baseLat, lng: baseLng }, header_distance_m: 81.83, sales: [
+      { memo_uuid: "00000000-0000-4000-8000-000000000001", kind: "new", lat: baseLat - 0.0004, lng: baseLng - 0.0007, at: `${date}T05:41:01.000Z`, distance_m: 81.83, within_fence: false, status: "New Sale", photo_media_uuid: "00000000-0000-4000-8000-0000000000a1" },
+      { memo_uuid: "00000000-0000-4000-8000-000000000002", kind: "repeat", lat: baseLat + 0.0001, lng: baseLng + 0.0001, at: `${date}T07:02:11.000Z`, distance_m: 15.4, within_fence: true, status: "Repeat Sale", photo_media_uuid: null },
+      { memo_uuid: "00000000-0000-4000-8000-000000000003", kind: "edited", lat: baseLat + 0.0001, lng: baseLng - 0.0001, at: `${date}T08:12:40.000Z`, distance_m: 17.2, within_fence: true, status: "Edited Sale", photo_media_uuid: null },
     ] }), true;
   }
   return send(404, problem(404, "ERR_NOT_FOUND")), true;

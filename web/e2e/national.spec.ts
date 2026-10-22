@@ -1,7 +1,7 @@
 // The national dashboard (docs/34 s2, D-DASH-02): filter panel, the twelve cards, "i" pop-ups, gear, FF Geo, Route map and Sale Position
 // pages, role views. Figures at "everything selected" are the owner's screenshot of 2026-10-22 (docs/ui-reference/web/dashboard.md).
 // Screenshots go to the test report (and to the web-snapshots workflow); no golden is recorded locally.
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page, type TestInfo } from "@playwright/test";
 import { MOCK, loginOk, resetMock } from "./helpers";
 
 test.beforeEach(async () => {
@@ -16,7 +16,7 @@ async function open(page: Page, path = "/", user: [string, string] = ["analyst1"
   await page.goto(path);
   await expect(page.getByTestId("national-dashboard")).toBeVisible();
 }
-async function shot(page: Page, info: import("@playwright/test").TestInfo, name: string) {
+async function shot(page: Page, info: TestInfo, name: string) {
   await page.waitForLoadState("networkidle");
   const path = info.outputPath(`${name}.png`);
   await page.screenshot({ path, fullPage: true });

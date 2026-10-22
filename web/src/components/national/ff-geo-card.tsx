@@ -9,8 +9,8 @@ import { useI18n } from "@/components/i18n-provider";
 import { clusterPins } from "@/lib/maps/cluster";
 import { clock, pct } from "@/lib/national/fmt";
 import { clusterIcon, PIN_FILL, pinIcon } from "@/lib/national/marker-icons";
-import { missPct, pinColor, type PinColor } from "@/lib/national/query";
-import type { FfGeoSlice, FfPin } from "@/lib/national/types";
+import type { PinColor } from "@/lib/national/query";
+import type { FfGeoSlice, FfPin, FfPopup } from "@/lib/national/types";
 import { infoNode, useGoogleMap, type GmInfo, type GmMarker, type Phase } from "./gmap";
 import { MultiSelect } from "./multi-select";
 
@@ -46,7 +46,7 @@ function FfGeoInner({ search, date, mapsEnabled, onRetry }: { search: string; da
 
   const pins = useMemo(() => (load.s === "ok" ? load.pins : []), [load]);
   const active = colors.length === 0 || colors.length === COLORS.length ? COLORS : (colors as PinColor[]);
-  const shown = useMemo(() => pins.filter((p) => active.includes(pinColor(p.geo_pct))), [pins, active]);
+  const shown = useMemo(() => pins.filter((p) => active.includes(p.color)), [pins, active]);
 
   const { phase: loaded, g, map } = useGoogleMap(el, mapsEnabled && load.s === "ok" && pins.length > 0, { zoomControl: true });
   const phase: Phase = mapsEnabled ? loaded : "no_key"; // no key configured: say so at once, without spending a Maps load
@@ -60,16 +60,17 @@ function FfGeoInner({ search, date, mapsEnabled, onRetry }: { search: string; da
     return () => void l;
   }, [map]);
 
+  // The pop-up is read when a pin is clicked (the server decides who sees the name and the phone); "—" shows while it loads or when refused.
   const popup = useCallback(
-    (p: FfPin) => infoNode(
+    (p: FfPin, d: FfPopup | null) => infoNode(
       [
-        { label: t("nat.pop.sr"), value: p.sr_name },
-        { label: t("nat.pop.contact"), value: p.contact ?? "—" },
-        { label: t("nat.pop.territory"), value: `${p.territory_id} ${p.territory_name}` },
-        { label: t("nat.pop.zone"), value: p.zone },
-        { label: t("nat.pop.route"), value: p.route },
-        { label: t("nat.pop.time"), value: `${date} ${clock(locale, p.at)}` },
-        { label: t("nat.pop.miss"), value: pct(locale, missPct(p.geo_pct), 2) },
+        { label: t("nat.pop.sr"), value: d?.sr_name ?? "—" },
+        { label: t("nat.pop.contact"), value: d?.contact ?? "—" },
+        { label: t("nat.pop.territory"), value: d ? `${d.territory} (${d.territory_code})` : "—" },
+        { label: t("nat.pop.zone"), value: d?.zone ?? "—" },
+        { label: t("nat.pop.route"), value: d?.route ?? String(p.route_id) },
+        { label: t("nat.pop.time"), value: `${date} ${clock(locale, d?.position_at ?? p.at)}` },
+        { label: t("nat.pop.miss"), value: d?.miss_pct !== null && d?.miss_pct !== undefined ? pct(locale, d.miss_pct, 2) : "—" },
       ],
       { href: `/dashboard/route-map/${p.route_id}?date=${date}`, text: t("nat.pop.open") },
     ),
@@ -89,7 +90,7 @@ function FfGeoInner({ search, date, mapsEnabled, onRetry }: { search: string; da
       map.fitBounds(bounds, 40);
     }
     const byId = new Map(shown.map((p) => [String(p.route_id), p]));
-    drawn.current = clusterPins(shown.map((p) => ({ id: String(p.route_id), lat: p.lat, lng: p.lng, label: p.sr_name, kind: "outlet" as const })), zoom).map((c) => {
+    drawn.current = clusterPins(shown.map((p) => ({ id: String(p.route_id), lat: p.lat, lng: p.lng, label: String(p.route_id), kind: "outlet" as const })), zoom).map((c) => {
       const base = { map, position: { lat: c.lat, lng: c.lng } };
       if (c.count > 1) {
         const m = new g.maps.Marker({ ...base, title: String(c.count), icon: { url: clusterIcon(c.count) } });
@@ -100,14 +101,18 @@ function FfGeoInner({ search, date, mapsEnabled, onRetry }: { search: string; da
         return m;
       }
       const p = byId.get(c.pins[0]!.id)!;
-      const m = new g.maps.Marker({ ...base, title: p.sr_name, icon: { url: pinIcon(PIN_FILL[pinColor(p.geo_pct)]), scaledSize: new g.maps.Size(28, 38), anchor: new g.maps.Point(14, 38) } });
+      const m = new g.maps.Marker({ ...base, title: `${t("nat.pop.route")} ${p.route_id}`, icon: { url: pinIcon(PIN_FILL[p.color]), scaledSize: new g.maps.Size(28, 38), anchor: new g.maps.Point(14, 38) } });
       m.addListener("click", () => {
-        info.current?.setContent(popup(p));
+        info.current?.setContent(popup(p, null));
         info.current?.open({ map, anchor: m });
+        fetch(`/api/bff/national/ff-popup?route_id=${p.route_id}&date=${date}`, { credentials: "same-origin" })
+          .then((r) => (r.ok ? (r.json() as Promise<FfPopup>) : null))
+          .then((d) => d && info.current?.setContent(popup(p, d)))
+          .catch(() => undefined);
       });
       return m;
     });
-  }, [g, map, shown, zoom, search, active, popup]);
+  }, [g, map, shown, zoom, search, active, popup, date, t]);
 
   const colorOptions = COLORS.map((c) => ({ id: c, name: t(`nat.ff.${c}`) }));
   const placeholder = phase === "no_key" ? t("nat.ff.placeholder") : phase === "capped" ? t("nat.ff.capped") : phase === "failed" ? t("nat.ff.failed") : null;
@@ -141,13 +146,13 @@ function FfGeoInner({ search, date, mapsEnabled, onRetry }: { search: string; da
               <p className="mb-1 text-caption text-secondary" data-testid="ff-count">{t("nat.ff.count", { n: shown.length })}</p>
               <ul aria-label={t("nat.ff.pins")} className="max-h-72 divide-y divide-divider overflow-auto rounded-card bg-raised" data-testid="ff-list">
                 {shown.slice(0, 100).map((p) => {
-                  const c = pinColor(p.geo_pct);
+                  const c = p.color;
                   return (
                     <li key={p.route_id} data-color={c} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2 text-body">
                       <span className="size-3 shrink-0 rounded-full" style={{ background: PIN_FILL[c] }} aria-hidden="true" />
                       <span className="sr-only">{t(`nat.ff.${c}`)}</span>
-                      <span className="min-w-0 flex-1 truncate">{p.sr_name} · {p.territory_name} · {p.zone} · {p.route}</span>
-                      <span className="tabular-nums text-secondary">{pct(locale, p.geo_pct, 2)}</span>
+                      <span className="min-w-0 flex-1 truncate">{t("nat.pop.route")} {p.route_id} · {clock(locale, p.at)}</span>
+                      <span className="tabular-nums text-secondary">{p.geo_pct === null ? "—" : pct(locale, p.geo_pct, 2)}</span>
                       <Link href={`/dashboard/route-map/${p.route_id}?date=${date}`} className="text-body-strong text-accent hover:underline">{t("nat.pop.open")}</Link>
                     </li>
                   );

@@ -39,11 +39,11 @@ export function SalesCards({ slot, locale }: { slot: Slot<SalesSlice>; locale: L
               {(d) => {
                 const c = d.cards.find((x) => x.category === cat);
                 if (!c) return <p className="text-center text-body text-secondary">{t(locale, "nat.empty")}</p>;
-                const p = achievementPct(c.total, c.daily_target);
+                const p = c.pct ?? achievementPct(c.total, c.daily_target);
                 const rows = c.daily_target === null ? null : [
                   { label: t(locale, "nat.info.daily_target"), value: qty(locale, c.daily_target) },
                   { label: t(locale, "nat.info.sales_so_far"), value: qty(locale, c.total) },
-                  { label: t(locale, "nat.info.remaining"), value: qty(locale, Math.max(0, c.daily_target - c.total)) },
+                  { label: t(locale, "nat.info.remaining"), value: qty(locale, c.remaining ?? Math.max(0, c.daily_target - c.total)) },
                 ];
                 return (
                   <>
