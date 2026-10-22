@@ -56,8 +56,6 @@ export const en = {
   "role.DMO": "Division manager",
   "role.WM": "Wing manager",
   "role.TOP": "Top management",
-  "role.NATIONAL": "National user",
-  "role.BRAND": "Brand user",
   "role.ANALYST": "Analyst (read-only)",
   "role.SUPPORT": "Support",
   "role.ADMIN": "Administrator",

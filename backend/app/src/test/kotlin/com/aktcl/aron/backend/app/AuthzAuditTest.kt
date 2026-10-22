@@ -79,11 +79,11 @@ class AuthzAuditTest {
 
     private val callers = linkedMapOf(
         "SR" to ApiWorld.Caller("sr1001", "app_sr", ApiWorld.SR_PHONE),
-        "AMO" to ApiWorld.Caller("amo1001", "web", null),
+        "AMO" to ApiWorld.Caller("amo1001", "app_amo", ApiWorld.AMO_PHONE),
         "TSO" to ApiWorld.Caller("tso1001", "web", null),
         "DMO" to ApiWorld.Caller("dmo1001", "web", null),
         "WM" to ApiWorld.Caller("qawm1001", "web", null),
-        "TOP" to ApiWorld.Caller("qatop1001", "web", null),
+        "NATIONAL" to ApiWorld.Caller("qanational1001", "web", null),
         "ANALYST" to ApiWorld.Caller("qaanalyst1001", "web", null),
         "SUPPORT" to ApiWorld.Caller("support1001", "web", null),
         "ADMIN" to ApiWorld.Caller("admin1001", "web", null),
@@ -143,8 +143,8 @@ class AuthzAuditTest {
         h.createQuery("SELECT s.id, p.amount_mtk FROM app.sku s JOIN app.sku_price p ON p.sku_id = s.id AND p.price_type = 'outlet' AND p.valid_to IS NULL WHERE p.amount_mtk > 0 ORDER BY s.id LIMIT 1")
             .map { rs, _ -> rs.getLong(1) to rs.getLong(2) }.one().let { sku = it.first; skuPrice = it.second }
         faultCode = h.createQuery("SELECT min(code) FROM app.code_list_item WHERE list_key = 'qc_fault_type' AND valid_from <= DATE '$day' AND (valid_to IS NULL OR valid_to > DATE '$day')").mapTo(String::class.java).one()
-        // The roles db/seed does not have: WM (the wing both divisions share), TOP and ANALYST (national), a second SUPERADMIN (checker).
-        for ((u, role) in listOf("qawm1001" to "WM", "qatop1001" to "TOP", "qaanalyst1001" to "ANALYST", "qasuper2" to "SUPERADMIN")) {
+        // The roles db/seed does not have: WM (the wing both divisions share), NATIONAL (TOP retired, D-ROLES-02) and ANALYST (national), a second SUPERADMIN (checker).
+        for ((u, role) in listOf("qawm1001" to "WM", "qanational1001" to "NATIONAL", "qaanalyst1001" to "ANALYST", "qasuper2" to "SUPERADMIN")) {
             h.execute(
                 "INSERT INTO app.app_user (username, full_name, role, designation, employee_code, locale, home_zone_id, pilot, must_change_password, password_hash) " +
                     "SELECT '$u', 'QA $role', '$role', 'QA', upper('$u'), 'en', home_zone_id, true, false, password_hash FROM app.app_user WHERE username = 'admin1001'",
@@ -349,7 +349,7 @@ class AuthzAuditTest {
      */
     class RouteSpec(val name: String, val method: HttpMethod, val path: () -> String, val body: (() -> String)?, val docs: Set<String>, val open: Set<String> = emptySet(), val rule: Set<String> = emptySet(), val headers: Map<String, String> = emptyMap())
 
-    private val all = setOf("SR", "AMO", "TSO", "DMO", "WM", "TOP", "ANALYST", "SUPPORT", "ADMIN", "SUPERADMIN")
+    private val all = setOf("SR", "AMO", "TSO", "DMO", "WM", "NATIONAL", "ANALYST", "SUPPORT", "ADMIN", "SUPERADMIN")
     private val writers = setOf("ADMIN", "SUPERADMIN")
     /** docs/24 s8.5 "Config changes": TSO (radius proposals), ADMIN, SUPERADMIN; — for everyone else. */
     private val cfgDocs = setOf("TSO", "ADMIN", "SUPERADMIN")
@@ -360,14 +360,14 @@ class AuthzAuditTest {
      */
     private val cfgReaders = writers
     /** docs/24 s8.5 "Master data": R for DMO, WM, TOP, ANALYST, SUPPORT; W for ADMIN, SUPERADMIN (the TSO reads are an open point). */
-    private val masterDocs = setOf("DMO", "WM", "TOP", "ANALYST", "SUPPORT", "ADMIN", "SUPERADMIN")
+    private val masterDocs = setOf("DMO", "WM", "NATIONAL", "ANALYST", "SUPPORT", "ADMIN", "SUPERADMIN")
     /**
      * Lead's ruling (2026-10-18): the TSO reads prices (read only) and route assignments and issues SR device OTPs, as the
      * current Aron does (docs/14 3b/4c, docs/15, docs/19); docs/24 s8.5's "R (OTP view)" cell is stale
      * (docs/requests/qa-authz-audit-findings.md). Those three TSO rows are allowed; the scope probes stay as controls.
      */
     /** "Dashboards, reports, team map": TSO and above on the web (AMO reads its app home; SUPPORT sync health only). */
-    private val dashDocs = setOf("TSO", "DMO", "WM", "TOP", "ANALYST", "ADMIN", "SUPERADMIN")
+    private val dashDocs = setOf("TSO", "DMO", "WM", "NATIONAL", "ANALYST", "ADMIN", "SUPERADMIN")
     /** docs/24 s8.5 "App releases": R for SUPPORT, W (draft) for ADMIN, W and publish for SUPERADMIN. */
     private val releaseReaders = setOf("SUPPORT", "ADMIN", "SUPERADMIN")
 
@@ -932,7 +932,7 @@ class AuthzAuditTest {
         "phone number" to Regex("(?<![0-9A-Za-z-])01[3-9][0-9]{8}(?![0-9A-Za-z])"), "NID" to Regex("\"nid(_enc)?\"\\s*:\\s*\"[^\"]+"),
         "owner name" to Regex("Owner [A-Z0-9]+-\\d+"), "address" to Regex("Road \\d+, "),
     )
-    private val fullName = Regex("Test (SR|AMO|TSO|DMO|Admin|Super Admin|Support) ?(\\(|\")|QA (WM|TOP|ANALYST|SUPERADMIN)\"")
+    private val fullName = Regex("Test (SR|AMO|TSO|DMO|Admin|Super Admin|Support) ?(\\(|\")|QA (WM|NATIONAL|ANALYST|SUPERADMIN)\"")
 
     private fun piiHits(text: String, reportPii: Boolean): List<String> =
         piiMarkers.mapNotNull { (what, rx) -> rx.find(text)?.let { "$what '${it.value.take(4)}…'" } } + (if (reportPii && fullName.containsMatchIn(text)) listOf("full name (a pii column in the reports)") else emptyList())

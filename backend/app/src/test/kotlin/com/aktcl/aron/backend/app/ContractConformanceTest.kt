@@ -48,7 +48,7 @@ class ContractConformanceTest {
 
     private val callers = listOf(
         ApiWorld.Caller("sr1001", "app_sr", ApiWorld.SR_PHONE),
-        ApiWorld.Caller("amo1001", "web", null),
+        ApiWorld.Caller("amo1001", "app_amo", ApiWorld.AMO_PHONE),
         ApiWorld.Caller("tso1001", "web", null),
         ApiWorld.Caller("admin1001", "web", null),
         ApiWorld.Caller("superadmin1001", "web", null),

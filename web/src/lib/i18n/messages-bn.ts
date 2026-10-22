@@ -59,8 +59,6 @@ export const bn: Record<MessageKey, string> = {
   "role.DMO": "ডিভিশন ম্যানেজার",
   "role.WM": "উইং ম্যানেজার",
   "role.TOP": "শীর্ষ ব্যবস্থাপনা",
-  "role.NATIONAL": "ন্যাশনাল ইউজার",
-  "role.BRAND": "ব্র্যান্ড ইউজার",
   "role.ANALYST": "বিশ্লেষক (শুধু দেখা)",
   "role.SUPPORT": "সাপোর্ট",
   "role.ADMIN": "অ্যাডমিনিস্ট্রেটর",

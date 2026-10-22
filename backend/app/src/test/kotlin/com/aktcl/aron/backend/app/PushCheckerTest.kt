@@ -211,7 +211,7 @@ class PushCheckerTest {
         assertEquals(HttpStatusCode.NoContent, ok.status, ok.bodyAsText())
         assertEquals("", ok.bodyAsText(), "the token is never echoed")
         // A web (non-phone) session cannot register.
-        val web = client.login("amo1001", "web")
+        val web = client.login("tso1001", "web")  // D-ROLES-02: the AMO has no web login; the TSO assigns from the web
         assertEquals(HttpStatusCode.Forbidden, client.put("/v1/devices/me/push-token") { bearerAuth(web); contentType(ContentType.Application.Json); setBody(body(tok("w"))) }.status)
     }
 
@@ -249,7 +249,7 @@ class PushCheckerTest {
         val phone = client.login("sr1001", "app_sr", devPhone)
         val fcm = tok("revoked")
         assertEquals(HttpStatusCode.NoContent, client.register(phone, fcm).status)
-        val web = client.login("amo1001", "web")
+        val web = client.login("tso1001", "web")  // D-ROLES-02: the AMO has no web login; the TSO assigns from the web
         // What POST /v1/admin/devices/{id}/replace does to the old phone (DeviceReplace.kt:55-56).
         exec("UPDATE app.device SET status = 'revoked', status_reason = 'stolen' WHERE device_uuid = '$devPhone'")
         try {
@@ -273,7 +273,7 @@ class PushCheckerTest {
             bearerAuth(phone); header("X-Device-Id", devPhone); header("X-App-Version", "1.0.9+9"); contentType(ContentType.Application.Json); setBody("""{"scope":"all"}""")
         }
         assertTrue(out.status.isSuccess(), "logout ${out.status} ${out.bodyAsText()}")
-        val web = client.login("amo1001", "web")
+        val web = client.login("tso1001", "web")  // D-ROLES-02: the AMO has no web login; the TSO assigns from the web
         settle(); sent.clear()
         assertEquals(HttpStatusCode.OK, client.assign(web).status)
         settle()
@@ -291,7 +291,7 @@ class PushCheckerTest {
         exec("INSERT INTO app.cfg_version (config_version, kind, committed_by, summary) SELECT max(config_version) + 1, 'change', (SELECT id FROM app.app_user WHERE username = 'aron.system'), 'chk zone push off' FROM app.cfg_version")
         exec("INSERT INTO app.cfg_value (key, scope_type, scope_id, value, effective_from, config_version, reason) SELECT 'cfg.notify.task_push_enabled', 'zone', $zone, 'false'::jsonb, TIMESTAMPTZ '${ApiWorld.CFG_FROM}', max(config_version), 'chk' FROM app.cfg_version")
         now.updateAndGet { it.plusSeconds(61) } // past every config cache
-        val web = client.login("amo1001", "web")
+        val web = client.login("tso1001", "web")  // D-ROLES-02: the AMO has no web login; the TSO assigns from the web
         settle(); sent.clear()
         assertEquals(HttpStatusCode.OK, client.assign(web).status)
         settle()
