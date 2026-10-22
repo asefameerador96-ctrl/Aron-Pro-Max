@@ -51,7 +51,7 @@ data class LeaveDecisionIn(val decision: String, val note: String? = null)
 
 class LeaveDeps(val db: Database, val reach: ReachResolver, val config: ServerConfig, val guard: AuthGuardDeps, val clock: AronClock = AronClock.SYSTEM)
 
-private val LEAVE_READERS = setOf(Role.TSO, Role.DMO, Role.WM, Role.TOP, Role.ANALYST, Role.ADMIN, Role.SUPERADMIN)
+private val LEAVE_READERS = setOf(Role.TSO, Role.DMO, Role.WM, Role.TOP, Role.NATIONAL, Role.ANALYST, Role.ADMIN, Role.SUPERADMIN)
 /** Matrix of docs/24 s8.5: leave decisions are A for DMO, WM, ADMIN and SUPERADMIN (the DMO is the TSO's manager, D24-55). */
 private val LEAVE_DECIDERS = setOf(Role.DMO, Role.WM, Role.ADMIN, Role.SUPERADMIN)
 

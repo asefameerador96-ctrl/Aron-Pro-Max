@@ -96,6 +96,7 @@ object RoleHomeTags {
     const val SET_SUNLIGHT = "rh_set_sunlight"
     const val SET_UPDATE = "rh_set_update"
     const val SET_SUPPORT = "rh_set_support"
+    const val SET_PRINTER = "rh_set_printer"
     fun tile(id: String) = "rh_tile_$id"
 }
 

@@ -40,7 +40,8 @@ class ScopeWorld(seed: Long) {
             }
         }
         var uid = 1_001L // id 1 is the migration-seeded system user
-        val roles = Role.entries
+        // TOP is retired (no user may hold it, D-ROLES-02); BRAND reads only brand-filtered products, never these routes.
+        val roles = Role.entries - Role.TOP - Role.BRAND
         repeat(60) {
             val role = roles[rnd.nextInt(roles.size)]
             val scope = List(rnd.nextInt(0, 3)) { randomScopeRow() }
@@ -77,14 +78,14 @@ class ScopeWorld(seed: Long) {
     fun visible(u: User, o: OutletRef, date: LocalDate): Boolean {
         val assigned = o.routeId != null && u.assignments.any { it.routeId == o.routeId && inDates(it.validFrom, it.validTo, date) }
         return when (u.role) {
-            Role.TOP, Role.ANALYST, Role.SUPPORT, Role.ADMIN, Role.SUPERADMIN -> true
+            Role.TOP, Role.NATIONAL, Role.ANALYST, Role.SUPPORT, Role.ADMIN, Role.SUPERADMIN -> true
             Role.SR -> assigned
             else -> assigned || u.scope.any { s -> inDates(s.validFrom, s.validTo, date) && ancestors(o.zoneId)[s.nodeType] == s.nodeId }
         }
     }
 
     private fun assigned(u: User, route: Long, date: LocalDate) = u.assignments.any { it.routeId == route && inDates(it.validFrom, it.validTo, date) }
-    private fun nationalRole(u: User) = u.role in setOf(Role.TOP, Role.ANALYST, Role.SUPPORT, Role.ADMIN, Role.SUPERADMIN)
+    private fun nationalRole(u: User) = u.role in setOf(Role.TOP, Role.NATIONAL, Role.ANALYST, Role.SUPPORT, Role.ADMIN, Role.SUPERADMIN)
     private fun scopeCovers(u: User, zone: Long, date: LocalDate) =
         u.scope.any { s -> inDates(s.validFrom, s.validTo, date) && ancestors(zone)[s.nodeType] == s.nodeId }
 

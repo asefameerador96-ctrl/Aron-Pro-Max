@@ -132,4 +132,5 @@
     <string name="hm_gross_total">Gross total</string>
     <string name="hm_total_taka">Net payable</string>
     <string name="set_group_status">Phone status</string>
+    <string name="set_printer">Printer diagnostics</string>
 </resources>

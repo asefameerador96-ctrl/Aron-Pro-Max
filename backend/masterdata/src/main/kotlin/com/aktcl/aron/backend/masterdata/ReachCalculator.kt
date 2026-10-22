@@ -39,11 +39,11 @@ data class AssignmentRow(val routeId: Long, val kind: String, val validFrom: Loc
  * Reach of a user on a business date (docs/24 s8.4), a pure function of role, scope rows, assignments and geography:
  * - SR: the routes assigned on the date (primary or cover) and their outlets, own records only;
  * - AMO, TSO, DMO, WM: the zones under the scope nodes valid on the date, plus any route assigned to them;
- * - TOP, ANALYST, SUPPORT, ADMIN, SUPERADMIN: national.
+ * - TOP (retired), NATIONAL, BRAND (its brands filter products, not geography), ANALYST, SUPPORT, ADMIN, SUPERADMIN: national.
  * Nothing the client sends is an input.
  */
 object ReachCalculator {
-    private val nationalRoles = setOf(Role.TOP, Role.ANALYST, Role.SUPPORT, Role.ADMIN, Role.SUPERADMIN)
+    private val nationalRoles = setOf(Role.TOP, Role.NATIONAL, Role.BRAND, Role.ANALYST, Role.SUPPORT, Role.ADMIN, Role.SUPERADMIN)
 
     fun compute(userId: Long, role: Role, date: LocalDate, scope: List<ScopeRow>, assignments: List<AssignmentRow>, geo: Geo): Reach {
         val routes = assignments.filter { it.validOn(date) }.map { it.routeId }.filter { it in geo.routeZone }.toSet()

@@ -2,6 +2,7 @@
 import { isRealDate } from "@/components/admin/crud/validation";
 import { businessDate } from "@/lib/i18n";
 import { accessShapeRules } from "./access-grants";
+import { outletImportRules } from "./outlet-import";
 import { routeTargetRules } from "./route-targets";
 import { containsMask } from "./mask";
 
@@ -16,6 +17,7 @@ const isId = (v: unknown) => typeof v === "number" && Number.isSafeInteger(v) &&
 
 export function opRules(op: string, body: Record<string, unknown>): FieldProblem[] {
   if (op === "user-access.put") return accessShapeRules(body);
+  if (op === "outlet-import.validate" || op === "outlet-import.commit") return outletImportRules(op === "outlet-import.validate" ? "validate" : "commit", body);
   if (op === "route-targets.validate" || op === "route-targets.commit") return routeTargetRules(op === "route-targets.validate" ? "validate" : "commit", body);
   if (op === "quarantine.resolve") {
     const out: FieldProblem[] = [];

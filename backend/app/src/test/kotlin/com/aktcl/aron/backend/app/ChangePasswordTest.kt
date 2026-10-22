@@ -88,8 +88,26 @@ class ChangePasswordTest {
         contentType(ContentType.Application.Json); setBody("""{"username":"$name","password":"$password","client":"web"}""")
     }
 
-    private suspend fun HttpClient.change(token: String, current: String, new: String): HttpResponse = post("/v1/auth/change-password") {
+    /** D-ROLES-02: no portal login for SR/AMO; an enrolled SR phone with an active binding of [userId] (ordinal 0). */
+    private fun boundPhone(userId: Long): String {
+        val uuid = java.util.UUID.randomUUID().toString()
+        fresh.db.jdbi.useHandle<Exception> { h ->
+            val did = h.createQuery(
+                """INSERT INTO app.device (device_uuid, flavour, app_package, status, device_owner, lockdown_level, public_key_jwk, public_key_thumbprint, app_signing_cert_sha256)
+                   VALUES (CAST(:u AS uuid), 'sr', 'com.aktcl.aron.sr', 'active', true, 'dev', '{"kty":"none"}'::jsonb, :t, decode(repeat('ab', 32), 'hex')) RETURNING id""",
+            ).bind("u", uuid).bind("t", "thumb-$uuid").mapTo(Long::class.java).one()
+            h.execute("INSERT INTO app.device_binding (device_id, user_id, bind_ordinal) VALUES ($did, $userId, 0)")
+        }
+        return uuid
+    }
+
+    private suspend fun HttpClient.phoneLogin(name: String, phone: String, password: String = temp): HttpResponse = post("/v1/auth/login") {
+        contentType(ContentType.Application.Json); setBody("""{"username":"$name","password":"$password","client":"app_sr","device_uuid":"$phone"}""")
+    }
+
+    private suspend fun HttpClient.change(token: String, current: String, new: String, phone: String? = null): HttpResponse = post("/v1/auth/change-password") {
         bearerAuth(token); contentType(ContentType.Application.Json)
+        phone?.let { header("X-Device-Id", it) }
         setBody("""{"current_password":"$current","new_password":"$new"}""")
     }
 
@@ -158,13 +176,15 @@ class ChangePasswordTest {
 
         // Field roles: 8+ and the deny-list (product names, common passwords, the username); no case rules.
         val (sid, field) = user("SR", mustChange = false)
-        val access = json(client.webLogin(field).bodyAsText()).let { it["access_token"]?.jsonPrimitive?.content ?: error(it.toString()) }
-        assertEquals(listOf("too_common"), client.change(access, temp, "aron2027x").problemCodes())
-        assertEquals(listOf("too_common"), client.change(access, temp, "x${field}-river").problemCodes())
-        assertEquals(listOf("too_common"), client.change(access, temp, "password").problemCodes())
-        assertEquals(HttpStatusCode.NoContent, client.change(access, temp, "mango river 7").status, "an ordinary access token answers 204")
+        val phone = boundPhone(sid) // D-ROLES-02: no portal login for SR/AMO; the SR changes it from its phone.
+        assertEquals("ERR_AUTH_PORTAL_NOT_ALLOWED", json(client.webLogin(field).bodyAsText())["code"]?.jsonPrimitive?.content)
+        val access = json(client.phoneLogin(field, phone).bodyAsText()).let { it["access_token"]?.jsonPrimitive?.content ?: error(it.toString()) }
+        assertEquals(listOf("too_common"), client.change(access, temp, "aron2027x", phone).problemCodes())
+        assertEquals(listOf("too_common"), client.change(access, temp, "x${field}-river", phone).problemCodes())
+        assertEquals(listOf("too_common"), client.change(access, temp, "password", phone).problemCodes())
+        assertEquals(HttpStatusCode.NoContent, client.change(access, temp, "mango river 7", phone).status, "an ordinary access token answers 204")
         // At most one change in 24 h, then allowed again.
-        val again = client.change(access, "mango river 7", "blue tiger 88")
+        val again = client.change(access, "mango river 7", "blue tiger 88", phone)
         assertTrue("min_age" in again.problemCodes(), again.bodyAsText())
         assertEquals(1, count("SELECT count(*) FROM app.app_user WHERE id = $sid AND password_changed_at = '${now.get()}'"))
     }
@@ -215,17 +235,18 @@ class ChangePasswordTest {
         val hasTable = count("SELECT count(*) FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = 'app' AND c.relname = 'password_history'") == 1L
         assumeTrue(hasTable, "app.password_history is not migrated yet")
         application { aronApi(wiring) }
-        val (_, name) = user("SR", mustChange = false)
-        suspend fun access(pw: String) = json(client.webLogin(name, pw).bodyAsText())["access_token"]!!.jsonPrimitive.content
+        val (id, name) = user("SR", mustChange = false)
+        val phone = boundPhone(id) // D-ROLES-02: no portal login for SR/AMO
+        suspend fun access(pw: String) = json(client.phoneLogin(name, phone, pw).bodyAsText())["access_token"]!!.jsonPrimitive.content
         var current = temp
         val used = (1..10).map { "history pass $it" }
         for (p in used) {
             now.updateAndGet { it.plus(Duration.ofHours(25)) } // past the minimum age; a fresh token each time
-            assertEquals(HttpStatusCode.NoContent, client.change(access(current), current, p).status)
+            assertEquals(HttpStatusCode.NoContent, client.change(access(current), current, p, phone).status)
             current = p
         }
         now.updateAndGet { it.plus(Duration.ofHours(25)) }
-        assertEquals(listOf("reused"), client.change(access(current), current, used[1]).problemCodes(), "the 9th-last password")
-        assertEquals(HttpStatusCode.NoContent, client.change(access(current), current, temp).status, "the 11th-last is allowed again")
+        assertEquals(listOf("reused"), client.change(access(current), current, used[1], phone).problemCodes(), "the 9th-last password")
+        assertEquals(HttpStatusCode.NoContent, client.change(access(current), current, temp, phone).status, "the 11th-last is allowed again")
     }
 }

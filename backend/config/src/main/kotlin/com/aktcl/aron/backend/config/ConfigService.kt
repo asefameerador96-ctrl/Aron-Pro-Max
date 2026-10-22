@@ -39,7 +39,7 @@ import java.util.UUID
 fun interface NodeReach {
     fun coversZone(p: AronPrincipal, zoneId: Long): Boolean
     /** National roles see every zone (docs/24 s8.4). */
-    fun national(p: AronPrincipal): Boolean = p.role in setOf(Role.TOP, Role.ANALYST, Role.SUPPORT, Role.ADMIN, Role.SUPERADMIN)
+    fun national(p: AronPrincipal): Boolean = p.role in setOf(Role.TOP, Role.NATIONAL, Role.ANALYST, Role.SUPPORT, Role.ADMIN, Role.SUPERADMIN)
 }
 
 class ConfigService(private val db: Database, val resolver: ConfigResolver, private val clock: AronClock = AronClock.SYSTEM, private val nodeReach: NodeReach? = null) {

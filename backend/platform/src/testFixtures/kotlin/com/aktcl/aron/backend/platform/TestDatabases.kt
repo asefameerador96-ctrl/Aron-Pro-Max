@@ -34,7 +34,7 @@ class FreshDb private constructor(val name: String, val url: String, private val
             // taken in the shared base database (docs/requests/db-role-ddl-lock.md).
             if (migrate) DriverManager.getConnection(base).use { lock ->
                 lock.createStatement().use { it.execute("SELECT pg_advisory_lock($ROLE_DDL_LOCK)") }
-                try { Migrator.migrate(fresh.dataSource) } finally { lock.createStatement().use { it.execute("SELECT pg_advisory_unlock($ROLE_DDL_LOCK)") } }
+                try { Migrator.migrate(fresh.dataSource); PendingAuthzSchema.apply(fresh.dataSource) } finally { lock.createStatement().use { it.execute("SELECT pg_advisory_unlock($ROLE_DDL_LOCK)") } }
             }
             // Pending migration of lane mdm (docs/requests/db-mdm-device-command.md): applied here only while db has not landed it, so every
             // backend test sees the tables; once the real migration exists the table is there and this does nothing. Delete with the request.
@@ -43,6 +43,36 @@ class FreshDb private constructor(val name: String, val url: String, private val
                 if (!have) Companion::class.java.classLoader.getResourceAsStream("mdm_ddl.sql")?.bufferedReader()?.readText()?.let { sql -> c.createStatement().use { it.execute(sql) } }
             }
             return fresh
+        }
+    }
+}
+
+/**
+ * PENDING (backend-authz, D-ROLES-02): the role codes, module grants, brand scopes and the house scope level requested
+ * from lane db in docs/requests/db-backend-authz-roles.md, applied to a test database only while db's migrations have
+ * not landed (any piece missing). Delete this object and resources/pending/authz-wave4.sql with the push that picks
+ * the migrations up; the API itself needs no change (it probes the schema at start-up).
+ */
+object PendingAuthzSchema {
+    private val sql: String by lazy {
+        PendingAuthzSchema::class.java.getResourceAsStream("/pending/authz-wave4.sql")!!.bufferedReader().readText()
+    }
+
+    fun missing(ds: javax.sql.DataSource): Boolean = ds.connection.use { c ->
+        c.createStatement().use { st ->
+            st.executeQuery(
+                "SELECT to_regclass('app.user_module_grant') IS NULL OR to_regclass('app.user_brand_scope') IS NULL " +
+                    "OR NOT EXISTS (SELECT 1 FROM app.role_def WHERE role = 'NATIONAL')",
+            ).use { rs -> rs.next(); rs.getBoolean(1) }
+        }
+    }
+
+    /** Applies the script in one transaction when a piece is missing; [force] runs it regardless (idempotence test). */
+    fun apply(ds: javax.sql.DataSource, force: Boolean = false) {
+        if (!force && !missing(ds)) return
+        ds.connection.use { c ->
+            c.autoCommit = false
+            try { c.createStatement().use { it.execute(sql) }; c.commit() } catch (e: Exception) { c.rollback(); throw e }
         }
     }
 }

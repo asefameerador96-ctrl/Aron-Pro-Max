@@ -59,11 +59,11 @@ class AdminMasterDeps(
 internal fun AdminMasterDeps.tempPasswordTtlH(): Long = runCatching { config?.int("cfg.auth.temp_password_ttl_h")?.toLong() }.getOrNull()?.takeIf { it in 1..720 } ?: 24L
 
 /** Roles that read master data on the web (docs/24 s8.5). */
-internal val MASTER_READERS = setOf(Role.TSO, Role.DMO, Role.WM, Role.TOP, Role.ANALYST, Role.SUPPORT, Role.ADMIN, Role.SUPERADMIN)
+internal val MASTER_READERS = setOf(Role.TSO, Role.DMO, Role.WM, Role.TOP, Role.NATIONAL, Role.ANALYST, Role.SUPPORT, Role.ADMIN, Role.SUPERADMIN)
 /** Master data writers (docs/24 s8.5: W for ADMIN and SUPERADMIN; a TSO only proposes radii, not in this surface). */
 internal val MASTER_WRITERS = setOf(Role.ADMIN, Role.SUPERADMIN)
 /** Users and scope: readers (ANALYST has none). */
-internal val USER_READERS = setOf(Role.TSO, Role.DMO, Role.WM, Role.TOP, Role.SUPPORT, Role.ADMIN, Role.SUPERADMIN)
+internal val USER_READERS = setOf(Role.TSO, Role.DMO, Role.WM, Role.TOP, Role.NATIONAL, Role.SUPPORT, Role.ADMIN, Role.SUPERADMIN)
 
 /** Per-request context handed to the entity hooks. */
 internal class AdminCtx(val d: AdminMasterDeps, val p: AronPrincipal, val reach: Reach, val today: LocalDate, val requestId: String, val now: Instant)

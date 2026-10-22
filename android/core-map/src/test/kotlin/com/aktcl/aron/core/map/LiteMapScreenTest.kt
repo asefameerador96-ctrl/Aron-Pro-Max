@@ -2,6 +2,7 @@ package com.aktcl.aron.core.map
 
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -55,6 +56,8 @@ class LiteMapScreenTest {
         val bytes = java.io.ByteArrayOutputStream().also { bmp.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }.toByteArray()
         cache.put("team-zone-3", bytes)
         show(online = false, cache = cache)
+        // the image is read and decoded on Dispatchers.IO, which compose's idling does not track: wait for it, never race it
+        rule.waitUntil(timeoutMillis = 10_000) { rule.onAllNodesWithTag(LiteMapTags.SNAPSHOT).fetchSemanticsNodes().isNotEmpty() }
         rule.onNodeWithTag(LiteMapTags.SNAPSHOT).assertIsDisplayed()
         rule.onNodeWithTag(LiteMapTags.MAP).assertDoesNotExist()
     }
