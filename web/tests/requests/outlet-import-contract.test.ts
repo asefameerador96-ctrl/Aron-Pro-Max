@@ -7,7 +7,7 @@ import { describe, expect, it } from "vitest";
 const yaml = readFileSync(resolve(__dirname, "../../../contract/openapi.yaml"), "utf8");
 
 describe("contract carries the outlet import (not yet: backend-admin)", () => {
-  it.fails("POST /v1/admin/outlets/import exists in contract/openapi.yaml", () => {
+  it("POST /v1/admin/outlets/import exists in contract/openapi.yaml", () => {
     expect(yaml).toContain("/v1/admin/outlets/import:");
   });
 });

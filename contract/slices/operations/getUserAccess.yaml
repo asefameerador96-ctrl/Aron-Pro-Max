@@ -1,0 +1,27 @@
+path: /v1/admin/users/{id}/access
+method: get
+operation:
+  tags:
+  - admin-users
+  operationId: getUserAccess
+  summary: An ADMIN user's module grants or a BRAND user's brands (docs/34 s1); the ETag is the access version.
+  parameters:
+  - $ref: '#/components/parameters/IdPath'
+  responses:
+    '200':
+      description: The access of the user.
+      headers:
+        ETag:
+          $ref: '#/components/headers/ETag'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/UserAccess'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'
+    '404':
+      $ref: '#/components/responses/NotFound'
+    '503':
+      $ref: '#/components/responses/ServiceUnavailable'

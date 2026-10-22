@@ -1,0 +1,8 @@
+HolidayRevoke:
+  type: object
+  required:
+  - change_reason
+  additionalProperties: false
+  properties:
+    change_reason:
+      $ref: '#/components/schemas/ChangeReason'

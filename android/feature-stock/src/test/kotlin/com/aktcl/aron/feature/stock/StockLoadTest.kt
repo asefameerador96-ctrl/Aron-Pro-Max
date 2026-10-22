@@ -59,6 +59,31 @@ class StockLoadTest {
         assertEquals(600L, m.qtyBase); assertEquals("pack", m.unitEntered); assertEquals(200, m.packFactor); assertEquals(3L, m.qtyEntered)
     }
 
+    // D-UNITS-02 (docs/34 s4.2): packets of 10 and 20, a lighter box of 25 and a match dozen, derived from the bundle row only
+    @Test fun issueIsEnteredInPacketsBoxesAndDozensAndStoredWithBaseQuantities() {
+        val kinds = listOf(sku(1, "cigarette", "stick", "pack", 10), sku(2, "cigarette", "stick", "pack", 20), sku(3, "lighter", "piece", "pack", 25), sku(4, "match", "dozen", "dozen", 1))
+        val l = StockLoad(kinds, emptyMap(), newUuid = { "00000000-0000-4000-8000-%012d".format(++n) })
+        l.setEntered(1, 3); l.setEntered(2, 3); l.setEntered(3, 2); l.setEntered(4, 7)
+        val ms = (l.save(0, meta) as SaveOutcome.Saved).movements.sortedBy { it.skuId }
+        assertEquals(listOf(30L, 60L, 50L, 7L), ms.map { it.qtyBase })
+        assertEquals(listOf("pack", "pack", "pack", "dozen"), ms.map { it.unitEntered })
+        assertEquals(listOf(10, 20, 25, 1), ms.map { it.packFactor })
+        ms.forEach { assertEquals(it.qtyEntered * (if (it.unitEntered == "pack") it.packFactor else 1), it.qtyBase) }
+        l.committed(SaveOutcome.Saved(ms), 0)
+        val rows = l.rows.associateBy { it.sku.skuId }
+        assertEquals(listOf(3L, 3L, 2L, 7L), listOf(1L, 2L, 3L, 4L).map { rows.getValue(it).loadedEntry })
+        assertEquals(mapOf("cigarette" to 6L), l.totals.filter { it.categoryCode == "cigarette" }.associate { it.categoryCode to it.issuedEntry })
+        assertEquals(90L, l.totals.first { it.categoryCode == "cigarette" }.issuedBase)
+    }
+
+    @Test fun aLegacyStickDefaultNeverTakesLooseSticks() {
+        // a bundle that still has entry_unit_default = stick for a 20s SKU counts packets of 20
+        val l = StockLoad(listOf(sku(1, "cigarette", "stick", "stick", 20)), emptyMap(), newUuid = { "00000000-0000-4000-8000-000000000009" })
+        l.setEntered(1, 2)
+        val m = (l.save(0, meta) as SaveOutcome.Saved).movements.single()
+        assertEquals(40L, m.qtyBase); assertEquals("pack", m.unitEntered)
+    }
+
     @Test fun badEntriesNeverCrashAndAreClamped() {
         val l = load()
         l.setEntered(1, -1); assertEquals(0L, l.rows.first { it.sku.skuId == 1L }.entered)

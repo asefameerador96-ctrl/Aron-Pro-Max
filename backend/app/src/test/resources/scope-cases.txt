@@ -125,6 +125,9 @@ POST /v1/admin/geo/{level} -> gap: backend-admin
 POST /v1/admin/notifications -> case AdminNotificationTest#aNodeOutsideTheCallersReachIsRefused
 POST /v1/admin/outlets -> case AdminOutletsTest#outletScopeAndRoles
 POST /v1/admin/outlets/outlet-kind -> case AdminOutletsTest#bulkOutletKindValidationRolesAndScope
+POST /v1/admin/outlets/import -> case OutletImportTest#commitNeedsAReasonAndRoleAndCreatesWithHistoryAndAudit
+GET /v1/admin/users/{id}/access -> case UserAccessTest#roleMatrix
+PUT /v1/admin/users/{id}/access -> case UserAccessTest#roleMatrix
 POST /v1/admin/prices -> gap: backend-admin
 POST /v1/admin/prices/batches/{batch_uuid}/decision -> gap: backend-admin
 POST /v1/admin/prices/preview -> gap: backend-admin
@@ -168,6 +171,12 @@ POST /v1/admin/entry-unlocks/{unlock_id}/expire -> case EntryUnlockTest#grantsAr
 GET /v1/admin/dues-adjustments -> case DuesAdjustmentTest#validationRolesScopeAndListing
 POST /v1/admin/dues-adjustments -> case DuesAdjustmentTest#validationRolesScopeAndListing
 POST /v1/admin/dues-adjustments/{adjustment_id}/decision -> case DuesAdjustmentTest#theMakerCannotDecideAndRejectionMovesNothing
+GET /v1/admin/calendar/working-days -> case CalendarWorkingDaysTest#revokeRulesAndRoles
+POST /v1/admin/calendar/holidays/{id}/revoke -> case CalendarWorkingDaysTest#revokeRulesAndRoles
+GET /v1/admin/geo/house/duplicates -> case HouseDedupTest#duplicatesAreFoundMergedAndTheZonesMove
+POST /v1/admin/geo/house/merge -> case HouseDedupTest#duplicatesAreFoundMergedAndTheZonesMove
+GET /v1/admin/route-targets -> case RouteTargetsTest#roleMatrix
+PUT /v1/admin/route-targets -> case RouteTargetsTest#roleMatrix
 GET /v1/web-entry/route-day -> case WebEntryTest#saveReplayResaveAndReadWithAuditAndTheRouteDayRules
 POST /v1/web-entry/route-day -> case WebEntryTest#saveReplayResaveAndReadWithAuditAndTheRouteDayRules
 POST /v1/web-entry/qc -> case WebEntryTest#qcEntriesAreIdempotentSeparateAndWarehouseNeedsAnAdminAndAReason

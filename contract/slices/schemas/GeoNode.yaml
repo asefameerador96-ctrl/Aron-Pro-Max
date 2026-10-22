@@ -8,6 +8,7 @@ GeoNode:
     - code
     - name
     - status
+    - is_active
     properties:
       id:
         $ref: '#/components/schemas/Id'
@@ -33,6 +34,9 @@ GeoNode:
         description: Null only for wings.
       status:
         $ref: '#/components/schemas/ActiveStatus'
+      is_active:
+        type: boolean
+        description: status = active; the distribution-house filter lists each active house once.
       dep_name:
         type:
         - string

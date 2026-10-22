@@ -59,7 +59,7 @@ private fun geoEntity(def: GeoDef): MasterEntity {
         out = { r, _ ->
             JsonObject(buildMap {
                 put("id", jv(r["id"])); put("level", jv(def.level)); put("code", jv(r["code"])); put("name", jv(r["name"])); put("name_bn", jv(r["name_bn"]))
-                put("parent_id", jv(def.parentCol?.let { r[it] })); put("status", jv(r["status"]))
+                put("parent_id", jv(def.parentCol?.let { r[it] })); put("status", jv(r["status"])); put("is_active", jv(r["status"] == "active"))
                 if (zone) put("dep_name", jv(r["dep_name"]))
                 put("email", jv(r["email"])); put("address", jv(r["address"])); put("pda_contact_no", jv(r["pda_contact_no"]))
                 put("created_at", jv(r["created_at"])); put("updated_at", jv(r["updated_at"])); put("version", jv(r["version"]))
@@ -139,6 +139,7 @@ private fun io.ktor.server.application.ApplicationCall.geoEntity(): MasterEntity
 
 /** `GET/POST /v1/admin/geo/{level}`, `GET/PATCH /v1/admin/geo/{level}/{id}`, `GET/POST /v1/admin/clusters`, `PATCH /v1/admin/clusters/{id}` (tag admin-geography). */
 fun Route.adminGeographyRoutes(d: AdminMasterDeps) {
+    houseDedupRoutes(d) // before the {level}/{id} routes is not needed (constant segments win), listed first for readability
     authenticated(d.guard) {
         get("/admin/geo/{level}") { val p = call.admPrincipal(MASTER_READERS, "geography"); call.admRespond(HttpStatusCode.OK, adminList(call, d, p, call.geoEntity())) }
         post("/admin/geo/{level}") { val p = call.admPrincipal(MASTER_WRITERS, "geography changes"); adminCreate(call, d, p, call.geoEntity()) }

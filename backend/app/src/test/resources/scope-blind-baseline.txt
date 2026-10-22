@@ -41,3 +41,6 @@ GET /v1/admin/mdm/devices/{}/activity  # global by design: the national MDM modu
 GET /v1/admin/mdm/devices/{}/commands  # global by design: the national MDM module, no geography rows
 GET /v1/admin/mdm/policies  # global by design: MDM policies are catalogue data shared by every division
 GET /v1/admin/mdm/policies/{}  # global by design: MDM policies are catalogue data shared by every division
+GET /v1/admin/calendar/working-days  # global by design: the national calendar and weekend config are shared by every division
+GET /v1/admin/geo/house/duplicates  # debt: seed duplicate houses in the other division (houses are national master data read by national roles)
+GET /v1/admin/route-targets  # debt: seed route targets of the other division (the tables are pending in db, docs/requests/backend-admin-route-target-tables.md)

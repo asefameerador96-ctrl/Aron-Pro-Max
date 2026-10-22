@@ -37,7 +37,9 @@ import com.aktcl.aron.core.ui.aron.PackCategory
 import com.aktcl.aron.core.ui.aron.PackListHeader
 import com.aktcl.aron.core.ui.aron.TotalsLine
 import com.aktcl.aron.core.ui.aron.TotalsPanel
+import com.aktcl.aron.core.ui.entryUnitLabel
 import com.aktcl.aron.core.ui.localizedNumber
+import com.aktcl.aron.rules.QtyUnit
 
 object StockTags {
     const val SAVE = "stk_save"
@@ -64,12 +66,8 @@ private fun categoryLabel(code: String): String = when (code) {
     else -> code
 }
 
-@Composable
-private fun unitLabel(unit: String): String = when (unit) {
-    "piece" -> stringResource(R.string.stk_unit_piece)
-    "dozen" -> stringResource(R.string.stk_unit_dozen)
-    else -> stringResource(R.string.stk_unit_stick)
-}
+/** The unit word a category is counted in when no row of it is on screen (docs/34 s4.2). */
+private fun fieldUnitKey(code: String): String = when (code) { "lighter" -> "box"; "match" -> "dozen"; else -> "packet" }
 
 /** The order the groups appear in (screens-sr s4): cigarette, bidi, lighter, match, then anything else by code. */
 private fun categoryRank(code: String): Int = when (code) { "cigarette" -> 0; "bidi" -> 1; "lighter" -> 2; "match" -> 3; else -> 4 }
@@ -182,10 +180,10 @@ internal fun parseQty(text: String): Int =
 @Composable
 private fun StockSkuRow(r: StockRow, softCeiling: Long, onIssue: (Long, Int) -> Unit) {
     val look = LocalAronLook.current
-    val unit = unitLabel(r.sku.baseUnit)
-    val stock = r.stockBase
-    val figure = (stock ?: r.loadedBase) + r.entered
-    val packs = if (r.sku.basePerPack > 1) figure / r.sku.basePerPack else null
+    val unit = entryUnitLabel(r.labelKey)
+    val figure = r.figureEntry
+    // the badge counted packs while quantities were sticks; with packets entered the quantity IS the packs, so only a loose-entry SKU shows it
+    val packs = if (r.entry.unit != QtyUnit.PACK && r.sku.basePerPack > 1) figure / r.sku.basePerPack else null
     val max = StockLoad.MAX_ENTRY.toInt()
     val name = r.sku.shortName
     val entered = r.entered.toInt()
@@ -194,10 +192,11 @@ private fun StockSkuRow(r: StockRow, softCeiling: Long, onIssue: (Long, Int) -> 
             skuId = r.sku.skuId.toString(), skuCode = r.sku.code,
             quantity = localizedNumber(r.entered), onQuantityChange = { onIssue(r.sku.skuId, parseQty(it).coerceIn(0, max)) },
             onMinus = { onIssue(r.sku.skuId, (entered - 1).coerceAtLeast(0)) }, onPlus = { onIssue(r.sku.skuId, (entered + 1).coerceAtMost(max)) },
-            stock = localizedNumber(figure),
+            stock = localizedNumber(figure) + com.aktcl.aron.core.ui.remSuffix(r.figureRemainderBase),
             minusLabel = stringResource(R.string.stk_less) + ", " + name, plusLabel = stringResource(R.string.stk_more) + ", " + name,
             quantityLabel = name + ", " + stringResource(R.string.stk_col_issue) + ", " + unit,
             packBadge = packs?.let { localizedNumber(it) },
+            caption = unit,
             category = packCategoryOf(r.sku.categoryCode),
             minusEnabled = entered > 0, plusEnabled = entered < max,
         )
@@ -213,13 +212,22 @@ private fun StockSkuRow(r: StockRow, softCeiling: Long, onIssue: (Long, Int) -> 
  */
 @Composable
 private fun StockTotals(rows: List<StockRow>, totals: List<CategoryTotal>, hasStock: Boolean) {
-    val issued = totals.associate { it.categoryCode to it.issuedBase }
-    val unitOf = mapOf("cigarette" to "stick", "bidi" to "stick", "lighter" to "piece", "match" to "dozen")
+    // one line per category and unit (a category with SKUs in different units is never added together); issued and stock keep
+    // the base remainder: "6+10". A category with no row shows a zero line in its field unit.
     val cats = listOf("cigarette", "bidi", "lighter", "match")
-    val lines = cats.map { code ->
-        val unit = unitLabel(rows.firstOrNull { it.sku.categoryCode == code }?.sku?.baseUnit ?: unitOf.getValue(code))
-        val stock = rows.filter { it.sku.categoryCode == code }.sumOf { (it.stockBase ?: it.loadedBase) + it.entered }
-        TotalsLine(categoryLabel(code), listOf(localizedNumber(issued[code] ?: 0L), localizedNumber(stock)), caption = unit)
+    val lines = cats.flatMap { code ->
+        val of = rows.filter { it.sku.categoryCode == code }
+        if (of.isEmpty()) listOf(TotalsLine(categoryLabel(code), listOf(localizedNumber(0), localizedNumber(0)), caption = entryUnitLabel(fieldUnitKey(code))))
+        else of.groupBy { it.labelKey }.map { (key, rs) ->
+            TotalsLine(
+                categoryLabel(code),
+                listOf(
+                    localizedNumber(rs.sumOf { it.loadedEntry }) + com.aktcl.aron.core.ui.remSuffix(rs.sumOf { it.loadedRemainderBase }),
+                    localizedNumber(rs.sumOf { it.figureEntry }) + com.aktcl.aron.core.ui.remSuffix(rs.sumOf { it.figureRemainderBase }),
+                ),
+                caption = entryUnitLabel(key),
+            )
+        }
     }
     TotalsPanel(
         header = TotalsLine(

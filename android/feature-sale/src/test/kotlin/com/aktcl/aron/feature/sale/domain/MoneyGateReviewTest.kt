@@ -18,8 +18,8 @@ import kotlin.random.Random
 class MoneyGateReviewTest {
     private val skus = listOf(
         Fx.maxr, Fx.aster, Fx.match, Fx.odd,
-        SaleSku(107, "PACK20", "cigarette", "Pack priced", null, "stick", 20, 158_705, 20, "2026-09-01"), // 158.705 per 20 sticks
-        SaleSku(108, "DOZ", "match", "Dozen priced", null, "dozen", 1, 92_005, 12, "2026-09-01"),
+        SaleSku(107, "PACK20", "cigarette", "Pack priced", null, "stick", 20, 158_705, 20, "2026-09-01", allowLoose = true), // 158.705 per 20 sticks
+        SaleSku(108, "DOZ", "match", "Dozen priced", null, "dozen", 1, 92_005, 12, "2026-09-01", allowLoose = true),
     )
     private val catalog = skus.associateBy { it.skuId }
 
