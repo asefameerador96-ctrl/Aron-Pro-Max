@@ -182,11 +182,11 @@ class SrStateScreenshotTests {
     )
 
     private val maxr = SaleSku(100, "MAXR10", "cigarette", "MaxR 10S", "ম্যাক্সআর ১০এস (লম্বা নামের একটি পণ্য যা দুই লাইনে ভেঙে যায়)", "stick", 10, 8_000, 1, "2026-09-01", stockBase = 400, drp = DrpRule(10))
-    private val aster = SaleSku(103, "ASTER", "lighter", "Aster", null, "piece", 1, 12_500, 1, "2026-09-01", stockBase = 25)
+    private val aster = SaleSku(103, "ASTER", "lighter", "Aster", null, "piece", 25, 12_500, 1, "2026-09-01", stockBase = 25)
     private val skus = listOf(maxr, aster)
     private val catalog = skus.associateBy { it.skuId }
     private fun draft() = SaleDraft("v1", 50001, 10231, "2026-10-05", memoUuid = "m1")
-    private val filled = SaleDraftOps.setQuantity(SaleDraftOps.setQuantity(draft(), 100, 40, QtyUnit.STICK), 103, 3, QtyUnit.PIECE)
+    private val filled = SaleDraftOps.setQuantity(SaleDraftOps.setQuantity(draft(), 100, 4, QtyUnit.PACK), 103, 1, QtyUnit.PACK)
     private val filledReview = SaleReviewCalculator.review(filled, catalog)
     private val emptyReview = SaleReviewCalculator.review(draft(), catalog)
 
@@ -229,7 +229,7 @@ class SrStateScreenshotTests {
     }
 
     // ---- QC entry (manual p36-38: MaxR-10S, 5 + 5 sticks, settlement 80.00) ----
-    private val qcDraft = SaleDraftOps.setQc(SaleDraftOps.setQc(SaleDraftOps.setQuantity(draft(), 100, 40, QtyUnit.STICK), QcEntry(100, "damaged_crushed", "MFC", 5)), QcEntry(100, "expired_stock", "MKT", 5))
+    private val qcDraft = SaleDraftOps.setQc(SaleDraftOps.setQc(SaleDraftOps.setQuantity(draft(), 100, 4, QtyUnit.PACK), QcEntry(100, "damaged_crushed", "MFC", 5)), QcEntry(100, "expired_stock", "MKT", 5))
     private val qcReview = SaleReviewCalculator.review(qcDraft, catalog)
     @Composable private fun Qc(cap: Long?) = ParityFrame(stringResource(SaleR.string.qc_title), com.aktcl.aron.core.ui.R.drawable.aron_art_sale) {
         QcScreen(listOf(maxr), qcReview, { id, code -> qcDraft.qc.firstOrNull { it.skuId == id && it.faultTypeCode == code }?.defectQty ?: 0L }, { _, _, _ -> }, false, {}, onCancel = {}, capMtkOf = { cap })

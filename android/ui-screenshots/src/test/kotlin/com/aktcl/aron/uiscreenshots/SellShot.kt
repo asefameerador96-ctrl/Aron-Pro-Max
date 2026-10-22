@@ -121,14 +121,14 @@ class SellShot {
 
     private val maxr = SaleSku(100, "MAXR10", "cigarette", "MaxR 10S", null, "stick", 10, 8_000, 1, "2026-09-01", stockBase = 394)
     private val prime = SaleSku(101, "PRIME10", "cigarette", "Prime Gold 10S", null, "stick", 10, 6_500, 1, "2026-09-01", stockBase = 610)
-    private val aster = SaleSku(103, "ASTER", "lighter", "Aster", null, "piece", 1, 12_500, 1, "2026-09-01", stockBase = 25)
+    private val aster = SaleSku(103, "ASTER", "lighter", "Aster", null, "piece", 25, 12_500, 1, "2026-09-01", stockBase = 25)
     private val match = SaleSku(105, "FB", "match", "Flame Box", null, "dozen", 1, 28_000, 1, "2026-09-01", stockBase = 40)
     private val skus = listOf(maxr, prime, aster, match)
     private val catalog = skus.associateBy { it.skuId }
     private fun draft() = SaleDraft("v1", 50001, 10231, "2026-10-05", memoUuid = "m1")
-    private val saleDraft = SaleDraftOps.setQuantity(draft(), 100, 20, QtyUnit.STICK)
+    private val saleDraft = SaleDraftOps.setQuantity(draft(), 100, 2, QtyUnit.PACK)
     private val saleReview = SaleReviewCalculator.review(saleDraft, catalog)
-    private val reviewDraft = SaleDraftOps.setQuantity(SaleDraftOps.setQuantity(draft(), 100, 20, QtyUnit.STICK), 103, 3, QtyUnit.PIECE)
+    private val reviewDraft = SaleDraftOps.setQuantity(SaleDraftOps.setQuantity(draft(), 100, 2, QtyUnit.PACK), 103, 1, QtyUnit.PACK)
     private val reviewReview = SaleReviewCalculator.review(reviewDraft, catalog)
 
     // ---- screens ----
