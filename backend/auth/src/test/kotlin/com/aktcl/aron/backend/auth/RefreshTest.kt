@@ -108,10 +108,14 @@ open class RefreshTest {
         val f = fixture()
         testApplication {
             application { f.application(this) }
-            val (rt, _) = client.loginTokens(f)
-            val got = coroutineScope { (1..20).map { async { client.refresh(rt, f.srDevice) } }.awaitAll() }
-            assertTrue(got.all { it.status == HttpStatusCode.OK }, got.map { it.status }.toString())
-            assertEquals(1, got.map { json(it.bodyAsText())["refresh_token"]!!.jsonPrimitive.content }.toSet().size)
+            // Ten bursts: the race this guards (a reader seeing the parent used before its child existed, fixed in the
+            // in-memory store's locking, 2026-10-22) failed one CI run with a single burst.
+            repeat(10) { round ->
+                val (rt, _) = client.loginTokens(f)
+                val got = coroutineScope { (1..20).map { async { client.refresh(rt, f.srDevice) } }.awaitAll() }
+                assertTrue(got.all { it.status == HttpStatusCode.OK }, "round $round: " + got.map { it.status }.toString())
+                assertEquals(1, got.map { json(it.bodyAsText())["refresh_token"]!!.jsonPrimitive.content }.toSet().size, "round $round")
+            }
         }
     }
 
