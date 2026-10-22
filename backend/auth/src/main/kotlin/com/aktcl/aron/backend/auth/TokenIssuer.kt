@@ -3,8 +3,10 @@ package com.aktcl.aron.backend.auth
 import com.aktcl.aron.backend.platform.AronClock
 import com.aktcl.aron.backend.platform.Audience
 import com.aktcl.aron.backend.platform.JwtKeys
+import com.aktcl.aron.backend.platform.PortalGrants
 import com.aktcl.aron.backend.platform.ServerConfig
 
+import com.aktcl.aron.contract.Role
 import com.nimbusds.jose.JOSEObjectType
 import com.nimbusds.jose.JWSAlgorithm
 import com.nimbusds.jose.JWSHeader
@@ -43,6 +45,8 @@ class TokenIssuer(
     private val config: ServerConfig,
     private val clock: AronClock = AronClock.SYSTEM,
     private val random: SecureRandom = SecureRandom(),
+    /** D-ROLES-02: an ADMIN web token carries `modules`, a BRAND web token `brands`, read here at every mint once [PortalGrants.live]. */
+    private val grants: PortalGrants = PortalGrants.None,
 ) {
     fun access(subject: TokenSubject, audience: String = Audience.API): IssuedAccess {
         val ttl = when {
@@ -77,6 +81,15 @@ class TokenIssuer(
             .claim("pii", subject.pii && subject.piiUntil != null)
             .apply { if (subject.pii) subject.piiUntil?.let { claim("pii_until", it.epochSecond) } }
             .claim("amr", subject.amr)
+            .apply {
+                // Read after the caller loaded the user (its `sv`): a grant change between the two leaves a token whose sv
+                // is already stale, so the guard answers 401 ERR_SCOPE_CHANGED and the refresh mints the new grants.
+                if (subject.flavour == "web" && grants.live()) when (subject.user.role) {
+                    Role.ADMIN -> claim("modules", grants.modules(subject.user.id))
+                    Role.BRAND -> claim("brands", grants.brands(subject.user.id))
+                    else -> Unit
+                }
+            }
             .issueTime(Date.from(now))
             .notBeforeTime(Date.from(now))
             .expirationTime(Date.from(exp))

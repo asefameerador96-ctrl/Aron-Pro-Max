@@ -80,6 +80,22 @@ class AdminUsersRoutesTest {
         // An ADMIN cannot create ADMIN or SUPERADMIN users; a SUPERADMIN can.
         assertEquals(HttpStatusCode.Forbidden, post(userBody("newadmin1", "ADMIN")).status)
         assertEquals(HttpStatusCode.Created, post(userBody("newadmin1", "ADMIN"), superadmin).status)
+        // D-AUTHZ-ADMIN-CREDS-01: an ADMIN manages every portal level below ADMIN (NATIONAL and BRAND included), never
+        // the internal service roles: it neither creates them, nor moves a user into or out of them, nor resets them.
+        for (r in listOf("SUPPORT", "ANALYST")) assertEquals(HttpStatusCode.Forbidden, post(userBody("new${r.lowercase()}1", r)).status, r)
+        assertEquals(HttpStatusCode.Created, post(userBody("newsupport2", "SUPPORT"), superadmin).status)
+        assertEquals(HttpStatusCode.Created, post(userBody("newnational1", "NATIONAL")).status)
+        assertEquals(HttpStatusCode.Created, post(userBody("newbrand1", "BRAND")).status)
+        val tso = (post(userBody("newtso9", "TSO")).objA1()["user"] as JsonObject).lng("id")
+        val toSupport = sendA1(HttpMethod.Patch, "/admin/users/$tso", admin, """{"role":"SUPPORT","change_reason":"Moved to the helpdesk"}""", ifMatch = 1)
+        assertEquals(HttpStatusCode.Forbidden, toSupport.status, toSupport.objA1().toString())
+        val support = uid("support1001")
+        val reset = sendA1(HttpMethod.Post, "/admin/users/$support/credentials", admin, """{"action":"reset_password","reason":"Forgot the password"}""")
+        assertEquals(HttpStatusCode.Forbidden, reset.status)
+        // A reset of a lower level works and its audit row names the target's role.
+        val tsoReset = sendA1(HttpMethod.Post, "/admin/users/$tso/credentials", admin, """{"action":"reset_password","reason":"Forgot the password"}""")
+        assertEquals(HttpStatusCode.OK, tsoReset.status, tsoReset.objA1().toString())
+        assertEquals("TSO", env.sql("SELECT after->>'target_role' FROM app.audit_log WHERE entity = 'user' AND entity_id = '$tso' AND action = 'credentials.reset_password'"))
         // TSO, SUPPORT and field roles never write users.
         assertEquals(HttpStatusCode.Forbidden, post(userBody("newtso2"), env.token("tso1001", Role.TSO)).status)
         assertEquals(HttpStatusCode.Forbidden, post(userBody("newtso2"), env.token("support1001", Role.SUPPORT)).status)
@@ -153,6 +169,12 @@ class AdminUsersRoutesTest {
         assertEquals("$moved", (sendA1(HttpMethod.Put, "/admin/users/$u/scope", admin, body("\"$moved\"")).objA1().arr("nodes").single() as JsonObject).strA1("valid_to"))
         assertNull((sendA1(HttpMethod.Put, "/admin/users/$u/scope", admin, body(null)).objA1().arr("nodes").single() as JsonObject).strA1("valid_to"))
         assertEquals("1", env.sql("SELECT count(*) FROM app.user_scope WHERE user_id = $u"))
+        // D-ROLES-02 (checker row 2, round 2): only a SUPERADMIN gives a national node.
+        val national = """{"valid_from":"${env.today}","nodes":[{"node_type":"national","node_id":0}],"change_reason":"National desk from today"}"""
+        assertEquals(HttpStatusCode.Forbidden, sendA1(HttpMethod.Put, "/admin/users/$u/scope", admin, national).status)
+        assertEquals("0", env.sql("SELECT count(*) FROM app.user_scope WHERE user_id = $u AND node_type = 'national'"))
+        assertEquals(HttpStatusCode.OK, sendA1(HttpMethod.Put, "/admin/users/$u/scope", superadmin, national).status)
+        sendA1(HttpMethod.Put, "/admin/users/$u/scope", superadmin, body(null))
         // valid_to must be after valid_from.
         assertEquals(HttpStatusCode.BadRequest, sendA1(HttpMethod.Put, "/admin/users/$u/scope", admin, body("\"${env.today}\"")).status)
         assertEquals(HttpStatusCode.BadRequest, sendA1(HttpMethod.Put, "/admin/users/$u/scope", admin, body("\"nope\"")).status)

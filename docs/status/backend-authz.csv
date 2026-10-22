@@ -1,0 +1,6 @@
+row_id,size,started_utc,finished_utc,minutes,review_findings,notes
+W4-AUTHZ-1,L,2026-10-22T07:30Z,2026-10-22T13:30Z,~240,"round 1: B1 + N2-N4 fixed; round 2: B1-bis + N2/N3 fixed, N1/N4/N5/N6 logged (D-AUTHZ-ROLES-01)",roles NATIONAL/BRAND; SR/AMO no portal login; PortalLevels guard
+W4-AUTHZ-2,L,2026-10-22T13:00Z,2026-10-22T15:45Z,~150,"Opus rounds 1+2; fixes in D-AUTHZ-MODULES-01; round-2 fixes not re-checked by a third round",ADMIN module grants (AdminModules route map + guard; modules/brands claims); candidate 2c3caf4b run 1368 green
+W4-AUTHZ-5,S,2026-10-22T14:00Z,2026-10-22T14:30Z,~20,n/a (adopted backend-admin's code),GET/PUT /v1/admin/users/{id}/access adopted
+W4-AUTHZ-3,M,2026-10-22T18:24Z,2026-10-22T19:20Z,~50,"Opus checker: 0 blockers; N1 (resolver not wired) fixed here; N2/N6 (backend-reports code, no leak) relayed to the lead",BRAND scope wired from app.user_brand_scope read live; NationalScopeLeakTest (mutation-checked)
+W4-AUTHZ-4,M,2026-10-22T16:00Z,2026-10-22T19:20Z,~40,covered by the row-3 checker (filter-options) + mutation check,house nodes in the reach resolver; filter-options scope-leak test for TSO (territory and house) DMO WM NATIONAL BRAND SUPERADMIN

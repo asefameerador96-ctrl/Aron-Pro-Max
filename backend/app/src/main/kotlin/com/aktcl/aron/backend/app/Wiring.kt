@@ -23,6 +23,7 @@ import com.aktcl.aron.backend.analytics.mdm.MdmService
 import com.aktcl.aron.backend.analytics.mdm.mdmRoutes
 import com.aktcl.aron.backend.analytics.dashboardRoutes
 import com.aktcl.aron.backend.analytics.NationalDashboardService
+import com.aktcl.aron.backend.analytics.BrandScopeResolver
 import com.aktcl.aron.backend.analytics.NationalDeps
 import com.aktcl.aron.backend.analytics.nationalDashboardRoutes
 import com.aktcl.aron.backend.analytics.appTeamRoutes
@@ -188,7 +189,7 @@ class Wiring(
             val guard = AuthGuardDeps(AccessTokenVerifier(keys, clock), users, config, clock, piiReveals)
             val geo = GeoRepository(db, clock)
             val reach = SqlReachResolver(db, geo, clock)
-            val issuer = TokenIssuer(keys, config, clock)
+            val issuer = TokenIssuer(keys, config, clock, grants = users)
             // Its own one-connection pool: the writer never takes a request connection, and never counts as a pool
             // waiter (admission control sheds reads when the write pool has waiters).
             val securityDb = Database(Database.pool(s.dbUrl, s.dbUser, s.dbPassword, 1, "aron-security"))
@@ -200,7 +201,9 @@ class Wiring(
             val outlets = OutletsDeps(db, geo, reach, guard, clock)
             val dashboardService = DashboardService(db, clock)
             val dashboards = DashboardDeps(dashboardService, reach, guard, clock)
-            val national = NationalDeps(NationalDashboardService(db, clock), reach, guard, clock = clock)
+            // Row 3 (D-ROLES-02): a BRAND user's brands are read from app.user_brand_scope on every call, not from the token,
+            // so a grant change narrows the next card at once; no brand row answers 403 (fail closed), every other level null.
+            val national = NationalDeps(NationalDashboardService(db, clock), reach, guard, brandScope(users), clock = clock)
             // Enrolment (N-031): the public API URL the QR carries and the SHA-256 of the Google attestation roots to trust in production (new environment values, docs/requests/backend-reports-device-env.md).
             val enrolment = EnrolmentSettings(
                 System.getenv("ARON_PUBLIC_API_URL") ?: "https://localhost:8080", s.env.name.lowercase(),
@@ -307,7 +310,7 @@ class Wiring(
                     }
                     push.broadcast(tokens) { mapOf("kind" to "mdm_nudge") }   // no business data; the phone pulls the command itself
                 }),
-                deviceEnrolment, guard, enabled = System.getenv("ARON_MDM_ENABLED") == "1",
+                deviceEnrolment, guard, grants = com.aktcl.aron.backend.analytics.mdm.ModuleGrants, enabled = System.getenv("ARON_MDM_ENABLED") == "1",
             )
             return Wiring(clock, config, db, generation::current, s.build, mount = {
                 authRoutes(auth)
@@ -384,4 +387,13 @@ internal fun mfaKeyRing(s: Settings, keys: com.aktcl.aron.backend.platform.JwtKe
         b
     }
     return listOfNotNull(decode("ARON_MFA_KEY", s.mfaKey), decode("ARON_MFA_KEY_PREVIOUS", s.mfaKeyPrevious), keys.derivedSecret("aron-mfa-totp-v1"))
+}
+
+/**
+ * Row 3 brand scope (D-ROLES-02, docs/34 s1): the brand node ids of a BRAND caller from `app.user_brand_scope`, read live
+ * so a revoked brand stops at the next request; null (the dashboard answers 403) for a BRAND user with no brand or before
+ * the table is deployed, and null for every other level (no product restriction).
+ */
+internal fun brandScope(grants: com.aktcl.aron.backend.platform.PortalGrants): BrandScopeResolver = BrandScopeResolver { userId, role ->
+    if (role != com.aktcl.aron.contract.Role.BRAND || !grants.live()) null else grants.brands(userId).toSet().ifEmpty { null }
 }

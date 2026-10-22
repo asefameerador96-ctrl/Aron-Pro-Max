@@ -62,28 +62,28 @@ BEGIN
 END $$;
 
 -- A2b. Role lists in config values (`cfg.auth.mfa_required_roles`, `cfg.day.reopen_roles`, `cfg.web.entry_unlock_roles`,
---      ... every key named `*_roles`): a value in effect now that names TOP and not NATIONAL is closed at now and
---      replaced by the same list plus NATIONAL until the old row's end, so a migrated user keeps every right TOP had
+--      ... every key named `*_roles`): a value in effect now that names TOP is closed at now and replaced by the
+--      same list with NATIONAL in place of TOP until the old row's end (a second run finds no TOP: nothing re-added), so a migrated user keeps every right TOP had
 --      (above all `mfa_required_roles`: dropping it would loosen MFA). A row that starts in the future cannot be closed
 --      (effective_to must exceed effective_from); none exists in the test account (logged; the API refuses new TOP).
 DO $$
 DECLARE v bigint; sys bigint; r record;
 BEGIN
   IF EXISTS (SELECT 1 FROM app.cfg_value c
-              WHERE c.key LIKE '%\_roles' AND jsonb_typeof(c.value) = 'array' AND c.value ? 'TOP' AND NOT c.value ? 'NATIONAL'
+              WHERE c.key LIKE '%\_roles' AND jsonb_typeof(c.value) = 'array' AND c.value ? 'TOP'
                 AND c.superseded_in_version IS NULL AND c.effective_from <= now() AND (c.effective_to IS NULL OR c.effective_to > now()))
   THEN
     SELECT id INTO sys FROM app.app_user WHERE username = 'aron.system';
     SELECT coalesce(max(config_version), 0) + 1 INTO v FROM app.cfg_version;
     INSERT INTO app.cfg_version (config_version, kind, committed_by, summary, max_risk_class)
-    VALUES (v, 'change', sys, 'D-ROLES-02: role lists that name TOP also name NATIONAL', 2);
+    VALUES (v, 'change', sys, 'D-ROLES-02: role lists name NATIONAL in place of TOP', 2);
     FOR r IN SELECT * FROM app.cfg_value c
-              WHERE c.key LIKE '%\_roles' AND jsonb_typeof(c.value) = 'array' AND c.value ? 'TOP' AND NOT c.value ? 'NATIONAL'
+              WHERE c.key LIKE '%\_roles' AND jsonb_typeof(c.value) = 'array' AND c.value ? 'TOP'
                 AND c.superseded_in_version IS NULL AND c.effective_from <= now() AND (c.effective_to IS NULL OR c.effective_to > now())
     LOOP
       UPDATE app.cfg_value SET effective_to = now(), superseded_in_version = v WHERE id = r.id;
       INSERT INTO app.cfg_value (key, scope_type, scope_id, value, effective_from, effective_to, config_version, created_by, reason)
-      VALUES (r.key, r.scope_type, r.scope_id, r.value || '"NATIONAL"'::jsonb, now(), r.effective_to, v, sys, 'D-ROLES-02: NATIONAL added beside TOP');
+      VALUES (r.key, r.scope_type, r.scope_id, CASE WHEN r.value ? 'NATIONAL' THEN r.value - 'TOP' ELSE (r.value - 'TOP') || '"NATIONAL"'::jsonb END, now(), r.effective_to, v, sys, 'D-ROLES-02: NATIONAL in place of TOP');
     END LOOP;
   END IF;
 END $$;
@@ -102,6 +102,8 @@ UPDATE app.cfg_key
 INSERT INTO app.role_grant_map (role, permission)
 SELECT 'NATIONAL', permission FROM app.role_grant_map WHERE role = 'TOP'
 ON CONFLICT DO NOTHING;
+-- Moved, not copied: a second run finds nothing of TOP to copy, so a grant narrowed on NATIONAL is never put back.
+DELETE FROM app.role_grant_map WHERE role = 'TOP';
 UPDATE app.app_user SET role = 'NATIONAL', scope_version = scope_version + 1 WHERE role = 'TOP';
 
 -- A5. No user may hold TOP again (the API refuses it too). NOT VALID then VALIDATE (squawk; db may move the VALIDATE
@@ -139,6 +141,13 @@ SELECT u.id, m.module, 'w'
  WHERE u.role = 'ADMIN' AND NOT EXISTS (SELECT 1 FROM app.user_module_grant)
 ON CONFLICT (user_id, module) DO NOTHING;
 ```
+
+Dev/test seed: `db/seed/07_admin_module_grants.sql` (backend-authz, 2026-10-22, a no-op until this table exists) gives the
+seeded pilot admins every module, because on a fresh database the seed loads after this migration; db may take the file
+over as its own.
+
+Round 2 checker (2026-10-22, session 6): A2b now puts NATIONAL in place of TOP and A4 deletes TOP's grants after the copy
+(the SQL above is current), so a second run never re-adds what a SUPERADMIN removed.
 
 No scope_version bump is needed here: once the probe is true the API answers an ADMIN token without a `modules` claim
 with 401 ERR_SCOPE_CHANGED, so the web refreshes and the new token carries the grants.
