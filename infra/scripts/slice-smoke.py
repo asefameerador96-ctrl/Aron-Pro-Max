@@ -168,7 +168,8 @@ def run():
     step("2b route, outlet, SKU", pick is not None,
          (f"no planned route with a smoke outlet ({OUTLET_CODE}) and a priced plan SKU"
           + (" (Friday: no selling route by design)" if today.weekday() == 4 else "")) if pick is None
-         else f"route {pick[0]['route_id']}, outlet {pick[1]['outlet_id']}, sku {pick[2]['code']}")
+         else f"route {(pick[0].get('route') or {}).get('code', '?')} ({pick[0]['route_id']}), "
+         f"outlet {pick[1].get('code', '?')} ({pick[1]['outlet_id']}), sku {pick[2]['code']}")
     route, outlet, sku, price = pick
 
     # 3 baseline
