@@ -67,7 +67,7 @@ data class PrintPacing(
     val bandRows: Int = 24,
     val statusTimeoutMs: Long = 400,
     val writeTimeoutMs: Long = 8_000,
-    val connectTimeoutMs: Long = 12_000,
+    val connectTimeoutMs: Long = 20_000,
 ) {
     /** Values a bad configuration could give are clamped, so pacing never divides by zero or stalls. */
     internal val safeRowsPerSecond get() = rowsPerSecond.coerceIn(20, 2_000)
@@ -297,18 +297,29 @@ class PrinterManager(
     /**
      * Asks the paper sensor (DLE EOT 4): true = roll out, false = paper present, null = no answer from a printer
      * that never answers. The first query on a link waits longer (the printer may be waking up). A printer that
-     * answered before and now stays silent is gone: that throws, so the job fails instead of reporting Printed.
+     * answered before and now stays silent for [graceMs] (longer than the normal wait) is gone: that throws, so the
+     * job fails instead of reporting Printed. The closing query passes a grace as long as the job could take at a
+     * slow printer's speed: cheap firmware answers DLE EOT only after it has printed what it holds, and a late
+     * answer must not turn a printed memo into "failed" (a retry would print a second copy, D-PRINT-02).
      */
-    private suspend fun queryPaper(t: PrinterTransport): Boolean? {
+    private suspend fun queryPaper(t: PrinterTransport, graceMs: Long = 0): Boolean? {
         if (statusSupported == false) return null
         while (statusBytes.tryReceive().isSuccess) Unit
         guardedWrite(t, EscPos.statusQuery(4))
-        val wait = if (statusSupported == null) pacing.statusTimeoutMs * 3 else pacing.statusTimeoutMs * 2
-        val b = withTimeoutOrNull(wait) {
-            var v: Int
-            do { v = statusBytes.receive() } while (!EscPos.isStatusByte(v))
-            v
+        val wait = if (statusSupported == null) pacing.statusTimeoutMs * 3 else maxOf(pacing.statusTimeoutMs * 2, graceMs)
+        val until = nowMs() + wait
+        var b: Int? = null
+        while (b == null) {
+            val left = until - nowMs()
+            if (left <= 0 || linkLost) break
+            // short slices, so a link that drops during a long grace ends the wait at once
+            b = withTimeoutOrNull(minOf(left, 200L)) {
+                var v: Int
+                do { v = statusBytes.receive() } while (!EscPos.isStatusByte(v))
+                v
+            }
         }
+        if (linkLost) throw IOException("link lost")
         if (b == null) {
             if (statusSupported == true) throw IOException("printer stopped answering")
             // Never answered on this link: a printer without DLE EOT; stop asking on this link.
@@ -368,9 +379,16 @@ class PrinterManager(
         val remainingMs = (sent * 1000 / bytesPerSecond) - (nowMs() - start)
         if (remainingMs > 0) delay(remainingMs)
         if (linkLost) throw IOException("link lost")
-        if (queryPaper(t) == true) return PrintOutcome.Failed(PrintFailure.PAPER_OUT)
+        val slowMs = (sent * 1000 / (SLOW_ROWS_PER_SECOND * job.bitmap.bytesPerRow)).coerceAtMost(MAX_CLOSING_GRACE_MS)
+        if (queryPaper(t, graceMs = slowMs) == true) return PrintOutcome.Failed(PrintFailure.PAPER_OUT)
         if (linkLost) throw IOException("link lost")
         return PrintOutcome.Printed
+    }
+
+    private companion object {
+        /** A slow printer's speed (about 12 mm/s: low battery, dense black) for the closing status grace. */
+        const val SLOW_ROWS_PER_SECOND = 100L
+        const val MAX_CLOSING_GRACE_MS = 20_000L
     }
 
     /** Closes the link now (app going to the background for good). */

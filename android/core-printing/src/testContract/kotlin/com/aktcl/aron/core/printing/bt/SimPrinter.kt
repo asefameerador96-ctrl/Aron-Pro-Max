@@ -19,6 +19,8 @@ class SimPrinter(
 ) {
     var on = true
     var answersStatus = true
+    /** Cheap firmware: answers DLE EOT only once everything before it has printed (not in real time). */
+    var statusAfterDrain = false
     var hangWrites = false
     /** Turn off once this many bytes have arrived in total (across sessions). */
     var switchOffAtByte: Long = Long.MAX_VALUE
@@ -45,6 +47,8 @@ class SimPrinter(
 
     inner class Link : PrinterTransport {
         private val replies = Channel<Int>(Channel.UNLIMITED)
+        /** When each queued reply may be read (the same order as [replies]). */
+        private val readyAt = java.util.concurrent.ConcurrentLinkedQueue<Long>()
         private var open = false
         private val pending = ByteArrayOutputStream()
         private var parsed = 0
@@ -89,7 +93,11 @@ class SimPrinter(
         }
 
         override suspend fun read(): Int = try {
-            replies.receive()
+            val v = replies.receive()
+            val at = readyAt.poll() ?: 0L
+            if (at > now()) kotlinx.coroutines.delay(at - now())
+            if (!open) throw IOException("closed")
+            v
         } catch (e: IOException) {
             throw e
         } catch (e: kotlinx.coroutines.channels.ClosedReceiveChannelException) {
@@ -112,7 +120,11 @@ class SimPrinter(
                     b == 0x1B && i + 2 < d.size && d[i + 1].toInt() == 0x33 -> i += 3
                     b == 0x1B && i + 2 < d.size && d[i + 1].toInt() == 0x64 -> i += 3
                     b == 0x10 && i + 2 < d.size && d[i + 1].toInt() == 0x04 -> {
-                        if (answersStatus) replies.trySend(if (paperRows <= 0) 0x72 else 0x12)
+                        if (answersStatus) {
+                            // the backlog at this moment drains at print speed before a sequential firmware answers
+                            readyAt.add(if (statusAfterDrain) now() + level * 1000 / (rowsPerSecond.toLong() * bytesPerRow) else 0L)
+                            replies.trySend(if (paperRows <= 0) 0x72 else 0x12)
+                        }
                         i += 3
                     }
                     b == 0x1D && i + 7 < d.size && d[i + 1].toInt() == 0x76 -> {

@@ -110,6 +110,39 @@ class PrinterManagerTest {
         assertWhole(sim.sessions.single(), memo)
     }
 
+    /**
+     * D-PRINT-02: cheap firmware answers DLE EOT only after printing what it holds. A printer slower than the pacing
+     * model answered the closing query about a second late; before the fix that was "printer stopped answering",
+     * the memo came out but the seller saw "print failed", and Retry printed it twice.
+     */
+    @Test fun slowPrinterThatAnswersStatusOnlyAfterPrintingIsPrintedNotFailed() = runTest {
+        val sim = SimPrinter({ testScheduler.currentTime }, bufferBytes = 16_384, rowsPerSecond = 120)
+        sim.statusAfterDrain = true
+        val m = PrinterManager(sim.factory(), Store(), backgroundScope, nowMs = { testScheduler.currentTime })
+        val short = memo.rows(0, 200)
+        val t0 = testScheduler.currentTime
+        assertEquals(PrintOutcome.Printed, m.print(PrintJob("m1", short)))
+        assertTrue("waited for the slow answer: ${testScheduler.currentTime - t0} ms", testScheduler.currentTime - t0 > 1_200)
+        assertWhole(sim.sessions.single(), short)
+        assertEquals(PrinterState.Connected, m.state.value)
+        // and a second job on the same link still works
+        assertEquals(PrintOutcome.Printed, m.print(PrintJob("m2", short)))
+    }
+
+    /** The grace is only for a late answer: a printer switched off while the closing answer is awaited still fails. */
+    @Test fun printerGoneDuringTheClosingGraceFailsAsDisconnected() = runTest {
+        val sim = SimPrinter({ testScheduler.currentTime }, bufferBytes = 16_384, rowsPerSecond = 120)
+        sim.statusAfterDrain = true
+        val m = PrinterManager(sim.factory(), Store(), backgroundScope, nowMs = { testScheduler.currentTime })
+        val short = memo.rows(0, 200)
+        val job = async { m.print(PrintJob("m1", short)) }
+        // the data is out after about 0.7 s; the answer would come at about 1.7 s
+        advanceTimeBy(1_000)
+        runCurrent()
+        sim.switchOff()
+        assertEquals(PrintOutcome.Failed(PrintFailure.DISCONNECTED), job.await())
+    }
+
     @Test fun stuckWriteTimesOutAsDisconnected() = runTest {
         val (sim, m) = setup()
         sim.hangWrites = true
