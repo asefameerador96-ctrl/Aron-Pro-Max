@@ -33,10 +33,11 @@ describe("SkuWrite / SkuPatch members", () => {
     expect(s.safeParse({ ...sku, report_factor: "12345678901234" }).success).toBe(false);
     expect(s.safeParse({ ...sku, report_factor: "১২.৫" }).success).toBe(true);
   });
-  it("AD2-17: code, variant, category, units and pack size are create-only; patch accepts nothing else", () => {
+  it("AD2-17: code, variant, category and base unit are create-only; the pack size and entry unit are editable (contract SkuPatch)", () => {
     const u = valuesSchema(skus, "update");
-    for (const k of ["code", "variant_id", "category_code", "base_unit", "base_per_pack", "entry_unit_default"]) expect(u.safeParse({ [k]: "1" }).success, k).toBe(false);
+    for (const k of ["code", "variant_id", "category_code", "base_unit"]) expect(u.safeParse({ [k]: "1" }).success, k).toBe(false);
     expect(u.safeParse({ name: "n", short_name: "s", name_bn: null, report_unit: null, report_factor: "2", sort: "2", status: "inactive" }).success).toBe(true);
+    expect(u.safeParse({ base_per_pack: "10", entry_unit_default: "pack" }).success).toBe(true);
   });
   it("AD2-18: a short_name of 21 code points is refused, 20 Bengali letters are accepted", () => {
     const s = valuesSchema(skus, "create");

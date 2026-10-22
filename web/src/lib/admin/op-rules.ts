@@ -16,6 +16,15 @@ const shiftDate = (d: string, days: number): string => new Date(Date.parse(`${d}
 const isId = (v: unknown) => typeof v === "number" && Number.isSafeInteger(v) && v >= 1;
 
 export function opRules(op: string, body: Record<string, unknown>): FieldProblem[] {
+  if (op === "house.merge") {
+    const out: FieldProblem[] = [];
+    const ids = body.merge_ids;
+    if (!isId(body.keep_id)) out.push({ pointer: "/keep_id", code: "invalid" });
+    if (!Array.isArray(ids) || ids.length < 1 || ids.length > 20 || !ids.every(isId) || new Set(ids).size !== ids.length) out.push({ pointer: "/merge_ids", code: "invalid" });
+    else if (ids.includes(body.keep_id)) out.push({ pointer: "/merge_ids", code: "not_duplicates" });
+    for (const k of Object.keys(body)) if (!["keep_id", "merge_ids", "change_reason"].includes(k)) out.push({ pointer: `/${k}`, code: "unknown_member" });
+    return out;
+  }
   if (op === "user-access.put") return accessShapeRules(body);
   if (op === "outlet-import.validate" || op === "outlet-import.commit") return outletImportRules(op === "outlet-import.validate" ? "validate" : "commit", body);
   if (op === "route-targets.validate" || op === "route-targets.commit") return routeTargetRules(op === "route-targets.validate" ? "validate" : "commit", body);

@@ -158,7 +158,7 @@ export function tableDefs(h: Holder): TableDef[] {
       item: /^\/v1\/admin\/skus\/(\d+)$/,
       rows: () => h.tables.skus!,
       create: { allowed: ["code", "variant_id", "category_code", "name", "short_name", "name_bn", "base_unit", "base_per_pack", "entry_unit_default", "report_unit", "report_factor", "sort", "image_asset_id"], required: ["code", "variant_id", "category_code", "name", "short_name", "base_unit", "base_per_pack", "entry_unit_default", "report_factor", "sort"], reason: false },
-      patch: { allowed: ["name", "short_name", "name_bn", "report_unit", "report_factor", "sort", "status", "thumbnail_media_uuid", "image_asset_id"] },
+      patch: { allowed: ["name", "short_name", "name_bn", "base_per_pack", "entry_unit_default", "report_unit", "report_factor", "sort", "status", "thumbnail_media_uuid", "image_asset_id"] },
       unique: [["code"]],
       maxLength: { name: 120, short_name: 20 },
       patterns: { code: /^[A-Za-z0-9][A-Za-z0-9._-]{0,39}$/, report_factor: /^-?\d{1,13}(\.\d{1,3})?$/ },
