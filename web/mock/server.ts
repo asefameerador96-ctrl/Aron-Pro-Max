@@ -11,6 +11,7 @@ import { maskAudit } from "./audit-mask";
 import { freshConfigStore, handleConfig, type ConfigStore } from "./config";
 import { handleCustom, seedCustom, type CustomState } from "./custom";
 import { freshDashStore, handleDash, type DashStore } from "./dash";
+import { setNationalView } from "./national";
 import type { AuditEntry, Cluster, LoginResponse, Me, Problem, ProblemCode, Role, ScopeSummary, TokenPair, UserSummary } from "../src/contract/types";
 
 interface MockUser {
@@ -243,6 +244,11 @@ async function handle(state: State, reset: () => void, req: IncomingMessage, res
   }
   if (path === "/__mock/long-names" && method === "POST") {
     longNames = ((await readJson(req)) as { on?: boolean } | undefined)?.on !== false;
+    return send(res, 204, undefined);
+  }
+  if (path === "/__mock/national-view" && method === "POST") {
+    // Dev knob: the real API derives the product-only view of a BRAND user from the token (docs/34 s1); the mock has no such user yet.
+    setNationalView(((await readJson(req)) as { view?: string } | undefined)?.view === "brand" ? "brand" : "national");
     return send(res, 204, undefined);
   }
   if (path === "/__mock/pii-window" && method === "POST") {

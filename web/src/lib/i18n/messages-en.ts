@@ -1,3 +1,4 @@
+import { nationalEn } from "./messages-national-en";
 import { dashEn } from "./messages-dash-en";
 import { cfgEn } from "./messages-config";
 // English catalogue. Keys must equal messages-bn.ts (tests/i18n.test.ts). {name} placeholders are interpolated by t().
@@ -427,6 +428,7 @@ export const en = {
   "error.ERR_SERVICE_UNAVAILABLE": "The service is busy. Try again in a moment.",
   "error.ERR_READ_ONLY_MODE": "The system is read-only right now. Try again later.",
   ...dashEn,
+  ...nationalEn,
   ...cfgEn,
   "menu.admin.sr_lifecycle": "SR lifecycle",
   "lifecycle.create.title": "Create the SR",
