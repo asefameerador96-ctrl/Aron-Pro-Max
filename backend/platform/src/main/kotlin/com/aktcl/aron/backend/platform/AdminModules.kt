@@ -17,6 +17,13 @@ interface PortalGrants {
     /** The BRAND user's brand node ids, ascending. */
     fun brands(userId: Long): List<Long>
 
+    /**
+     * The `geo` claim of a web token (docs/34 s1 "claims `geo` (level + ids)", D-AUTHZ-GEO-CLAIM-01): `{level: [ids]}` of the
+     * user's scope on [onDate], `{"national": []}` for a national level. Informational for the portal only: the server never
+     * reads scope from a token (reach is resolved from the rows, keyed by `sv`). Empty = no claim.
+     */
+    fun geo(userId: Long, role: Role, onDate: java.time.LocalDate): Map<String, List<Long>> = emptyMap()
+
     object None : PortalGrants {
         override fun live() = false
         override fun modules(userId: Long) = emptyMap<String, String>()

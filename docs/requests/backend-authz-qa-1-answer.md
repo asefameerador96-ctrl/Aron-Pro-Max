@@ -31,10 +31,10 @@ plan ("figures equal the brand's slice") matches the 100-of-107 assertion above.
 - `modules` (ADMIN) and `brands` (BRAND): minted from train 10. The 384ecee2 trace predates it. `TokenIssuer` mints them on
   web tokens once the grant tables exist (they do on dev: V0089, V0090). `ModuleGrantsTest` asserts the ADMIN token carries
   `modules` and the BRAND token carries `brands`.
-- `geo` (level + ids, docs/34 s1): minted on every web token from the next backend-authz push (D-AUTHZ-GEO-CLAIM-01). It is
+- `geo` (level + ids, docs/34 s1): minted on every web token from the next backend-authz push (D-AUTHZ-GEO-CLAIM-01; tests TokenVerifierTest.theGeoClaimIsMintedOnWebTokensOnly and NationalScopeLeakTest.webTokensCarryTheGeoClaimOfTheCallersScope for TSO by territory and by house, DMO, WM, NATIONAL, BRAND, ADMIN, SUPERADMIN). It is
   an object `{level: [ids]}` from the user's scope rows valid on the Dhaka business date, for example `{"territory":[12]}`.
   National levels (NATIONAL, BRAND, ADMIN, SUPERADMIN, ANALYST, SUPPORT, or a `national` scope row) get `{"national":[]}`.
-  Routes assigned outside the scope nodes are listed under `route`.
+  Routes assigned to the user on that date are listed under `route`.
 - The claims are informational for the portal (menus, labels). The server never reads scope from the token. Reach is
   resolved on the server from the user's rows, keyed by `sv`, so a scope change answers 401 ERR_SCOPE_CHANGED and the refresh
   mints the new claim (CLAUDE.md constraint 4).

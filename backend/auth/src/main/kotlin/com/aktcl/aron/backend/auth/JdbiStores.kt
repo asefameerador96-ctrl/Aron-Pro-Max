@@ -10,6 +10,7 @@ import org.jdbi.v3.core.Handle
 import java.sql.ResultSet
 import java.time.Duration
 import java.time.Instant
+import java.time.LocalDate
 import java.time.OffsetDateTime
 import java.time.ZoneOffset
 import java.util.HexFormat
@@ -126,6 +127,22 @@ class JdbiUserStore(private val db: Database, private val clock: AronClock = Aro
 
     override fun brands(userId: Long): List<Long> = db.jdbi.withHandle<List<Long>, Exception> { h ->
         h.createQuery("SELECT brand_id FROM app.user_brand_scope WHERE user_id = :u ORDER BY brand_id").bind("u", userId).mapTo(Long::class.java).list()
+    }
+
+    /**
+     * D-AUTHZ-GEO-CLAIM-01: the scope rows valid on [onDate] by level, plus the routes assigned to the user on that date; the
+     * national levels of ReachCalculator (by role, or a `national` row) are `{"national": []}`. Keep [GEO_NATIONAL_ROLES] in
+     * step with ReachCalculator's national roles; the claim is informational, reach is still resolved on the server.
+     */
+    override fun geo(userId: Long, role: Role, onDate: LocalDate): Map<String, List<Long>> {
+        if (role in GEO_NATIONAL_ROLES) return mapOf("national" to emptyList())
+        val valid = "valid_from <= :d AND (valid_to IS NULL OR valid_to > :d)"
+        val rows = db.jdbi.withHandle<List<Pair<String, Long>>, Exception> { h ->
+            h.createQuery("SELECT node_type, node_id FROM app.user_scope WHERE user_id = :u AND $valid UNION SELECT 'route', route_id FROM app.route_assignment WHERE user_id = :u AND $valid")
+                .bind("u", userId).bind("d", onDate).map { rs, _ -> rs.getString(1) to rs.getLong(2) }.list()
+        }
+        if (rows.any { it.first == "national" }) return mapOf("national" to emptyList())
+        return rows.groupBy({ it.first }, { it.second }).mapValues { (_, ids) -> ids.distinct().sorted() }.toSortedMap()
     }
 }
 
@@ -293,3 +310,6 @@ object NoDevices : DeviceStore {
     override fun findByUuid(uuid: String): DeviceRecord? = null
     override fun bindOrdinal(userId: Long, deviceId: Long): Int? = null
 }
+
+/** The levels whose reach is national by role (ReachCalculator.nationalRoles, backend:masterdata): their `geo` claim is `{"national": []}`. */
+internal val GEO_NATIONAL_ROLES = setOf(Role.TOP, Role.NATIONAL, Role.BRAND, Role.ANALYST, Role.SUPPORT, Role.ADMIN, Role.SUPERADMIN)
