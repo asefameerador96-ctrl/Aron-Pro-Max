@@ -10,6 +10,7 @@
 - Opus T1 check done (4 defects fixed: cold-start install, user/day window, MDM interval needs the background grant, `captured_offline`; remarks: stop() churn, MDM callback). Open: Android 8+ limits background deliveries to a few per hour, so the 5 min floor is a request, not a promise; no reconcile on battery/boot broadcasts (next app start or sync restores it).
 - Tests: `BreadcrumbWiringTest` (core-sync; shared by SR and AMO because both use `DeviceRuntime`): not started when off, MDM interval/off/on_demand, floor, low battery, mock flag kept, sink; `CaptureRepositoryTest.aBreadcrumbIsOneStandaloneRecordWithItsOwnFix`.
 
+- OPEN ROW: reconcile of the breadcrumb request on boot and battery-low/okay broadcasts (wiring doc row 18) is not built; the next app start or sync restores the controller meanwhile. Battery and data figures stay estimates until the device rows run.
 - Still waiting: owner's MDM screenshots (`docs/ui-reference/web/mdm-*.webp`); network_type in the status report (contract queue); packages catalogue endpoint.
 
 # HANDOFF (lane mdm session 1 -> session 2, 2026-10-22)
