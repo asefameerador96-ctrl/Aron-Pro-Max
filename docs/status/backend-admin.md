@@ -1,5 +1,10 @@
 # backend-admin lane status
 
+## SESSION 6 (2026-10-22 evening, wave 4)
+- **Candidate 7b44110d** (lane CI #1419 green, all 9 jobs ran): INT d698f8d4 merged; `UserAccessApi` reads `AdminModules.ALL` (test `theModuleListIsAdminModulesAll`); pending-table fixtures deleted (`pending/*.sql`, `pending-user-access.sql`, `proposed_route_monthly_target.sql`, and `proposed_V0014_backend_admin.sql`, superseded by V0023): the suites run on the real migrations. Route-targets: `/v1/admin/route-targets/**` maps to module `targets` (GET read, PUT write) in `AdminModules.ROUTES`, covered by `AdminModulesTest`; handler roles agree.
+- Row 2b (grants dropped on role change in PATCH user) was already on INT (`AdminUsers.kt`, audit `drop_on_role_change`); added the missing test `roleChangeDropsGrantsAndBrandScope`.
+- Trap: with two gradle invocations the second dies on the configuration-cache lock; wait for the first. `pkill -f gradlew` kills the tool shell.
+
 ## HANDOFF (2026-10-22, session 5 ends; session 6 starts when db and backend-authz land)
 On INT: 98651d47 (INT 2c10a157): outlet import `POST /v1/admin/outlets/import`, user access `GET/PUT /v1/admin/users/{id}/access`, and the lane CI fixes. Follow-on checked by the lead: eb31d736 (CI #1351 green; bundle SKU pack fields asserted against the SKU master, status).
 Half-done: nothing. Rows 1 to 4 of the session-5 brief are finished; row 3 (web-admin requests) had no new files on lane/web-admin (checked 13:55 UTC).

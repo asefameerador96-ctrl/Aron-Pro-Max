@@ -57,6 +57,26 @@ class UserAccessTest {
         assertEquals(HttpStatusCode.OK, put("adminx2", """{"modules":{},"change_reason":"$reason"}""").status)
     }
 
+    /** A role change drops the grants given for the old role in the same transaction (fail closed: a later change back starts from nothing). */
+    @Test
+    fun roleChangeDropsGrantsAndBrandScope() = env.app {
+        env.exec("INSERT INTO app.app_user (username, full_name, role, locale, pilot, must_change_password) VALUES ('adminx3', 'Admin Z', 'ADMIN', 'en', true, false), ('brandx3', 'Brand Z', 'BRAND', 'en', true, false)")
+        assertEquals(HttpStatusCode.OK, put("adminx3", """{"modules":{"outlets":"w"},"change_reason":"$reason"}""").status)
+        assertEquals(HttpStatusCode.OK, put("brandx3", """{"brand_ids":[${brand(1)}],"change_reason":"$reason"}""").status)
+        val a = sendA1(HttpMethod.Patch, "/admin/users/${uid("adminx3")}", super_, """{"role":"SUPPORT","change_reason":"$reason"}""", ifMatch = env.sql("SELECT version FROM app.app_user WHERE username = 'adminx3'")!!.toInt())
+        assertEquals(HttpStatusCode.OK, a.status, a.bodyAsText())
+        assertEquals("0", env.sql("SELECT count(*) FROM app.user_module_grant WHERE user_id = ${uid("adminx3")}"))
+        assertEquals(1, env.audit("user_module_grant", uid("adminx3"), "drop_on_role_change"))
+        val b = sendA1(HttpMethod.Patch, "/admin/users/${uid("brandx3")}", super_, """{"role":"SUPPORT","change_reason":"$reason"}""", ifMatch = env.sql("SELECT version FROM app.app_user WHERE username = 'brandx3'")!!.toInt())
+        assertEquals(HttpStatusCode.OK, b.status, b.bodyAsText())
+        assertEquals("0", env.sql("SELECT count(*) FROM app.user_brand_scope WHERE user_id = ${uid("brandx3")}"))
+        assertEquals(1, env.audit("user_brand_scope", uid("brandx3"), "drop_on_role_change"))
+        // Back to ADMIN: no modules until a SUPERADMIN grants them.
+        val c = sendA1(HttpMethod.Patch, "/admin/users/${uid("adminx3")}", super_, """{"role":"ADMIN","change_reason":"$reason"}""", ifMatch = env.sql("SELECT version FROM app.app_user WHERE username = 'adminx3'")!!.toInt())
+        assertEquals(HttpStatusCode.OK, c.status, c.bodyAsText())
+        assertEquals("0", env.sql("SELECT count(*) FROM app.user_module_grant WHERE user_id = ${uid("adminx3")}"))
+    }
+
     @Test
     fun superadminSetsModulesWithIfMatchAuditAndVersionBump() = env.app {
         val v0 = version("adminx1")
