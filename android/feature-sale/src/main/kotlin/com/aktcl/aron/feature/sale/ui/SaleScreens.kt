@@ -118,6 +118,7 @@ import com.aktcl.aron.core.ui.LocalGlassTier
 import com.aktcl.aron.core.ui.LocalReducedMotion
 import com.aktcl.aron.core.ui.MoneyText
 import com.aktcl.aron.core.ui.RowPosition
+import com.aktcl.aron.core.ui.entryUnitLabel
 import com.aktcl.aron.core.ui.localizedDigits
 import com.aktcl.aron.core.ui.localizedNumber
 import com.aktcl.aron.feature.sale.R
@@ -125,6 +126,7 @@ import com.aktcl.aron.feature.sale.domain.ReviewLine
 import com.aktcl.aron.feature.sale.domain.ReviewProblem
 import com.aktcl.aron.feature.sale.domain.SaleReview
 import com.aktcl.aron.feature.sale.domain.SaleSku
+import com.aktcl.aron.rules.EntrySpec
 import com.aktcl.aron.rules.Formats
 import com.aktcl.aron.rules.Money
 import com.aktcl.aron.rules.QtyUnit
@@ -387,8 +389,9 @@ private fun LinkText(label: String, onClick: () -> Unit, modifier: Modifier = Mo
 @Composable
 private fun SaleSkuRow(sku: SaleSku, qty: Long, line: ReviewLine?, onQuantity: (Long, Long) -> Unit) {
     val look = LocalAronLook.current
-    val unit = unitLabel(sku.baseUnit)
+    val unit = entryUnitLabel(sku.entryLabelKey)
     val name = skuDisplayName(sku)
+    val entry = sku.entry
     val max = MaxLineQty
     Column {
         // the label is the hyphenated SKU code on one line (sr/stock.webp); nothing is printed between the cards
@@ -396,21 +399,29 @@ private fun SaleSkuRow(sku: SaleSku, qty: Long, line: ReviewLine?, onQuantity: (
             skuId = sku.skuId.toString(), skuCode = sku.code,
             quantity = localizedNumber(qty), onQuantityChange = { onQuantity(sku.skuId, parseQty(it).coerceIn(0L, max)) },
             onMinus = { onQuantity(sku.skuId, (qty - 1).coerceAtLeast(0)) }, onPlus = { onQuantity(sku.skuId, (qty + 1).coerceAtMost(max)) },
-            stock = sku.stockBase?.let { localizedNumber(it) } ?: "–",
+            stock = sku.stockBase?.let { entryStockText(entry, it) } ?: "–",
+            caption = sku.entryPriceMtk?.let { stringResource(R.string.sale_price_per_unit, moneyBare(it), unit) },
             minusLabel = stringResource(R.string.sale_less) + ", " + name, plusLabel = stringResource(R.string.sale_more) + ", " + name,
             quantityLabel = stringResource(R.string.sale_qty_a11y, localizedNumber(qty), unit) + ", " + name,
-            packBadge = line?.takeIf { sku.packFactor > 1 && it.packBadge.first > 0 }?.let { localizedNumber(it.packBadge.first.toLong()) },
+            packBadge = line?.takeIf { entry.unit != QtyUnit.PACK && sku.packFactor > 1 && it.packBadge.first > 0 }?.let { localizedNumber(it.packBadge.first.toLong()) },
             category = packCategoryOf(sku.categoryCode),
             minusEnabled = qty > 0, plusEnabled = qty < max,
         )
         // the over-stock state stays visible (a warning, never a block): the stock figure is named in red under the card
         if (line?.exceedsStock == true) {
             Text(
-                localizedDigits(stringResource(R.string.sale_stock_warning, (sku.stockBase ?: 0L).toString(), sku.name)),
+                localizedDigits(stringResource(R.string.sale_stock_warning, entry.fromBase(sku.stockBase ?: 0L).toString(), sku.name, unit)),
                 color = look.red, fontSize = 13.sp, modifier = Modifier.padding(start = 16.dp, top = 4.dp, end = 16.dp),
             )
         }
     }
+}
+
+/** Stock in the entry unit, e.g. `12`; stock that is not a whole number of entry units (older rows) appends `+n` base units. */
+@Composable
+private fun entryStockText(entry: EntrySpec, stockBase: Long): String {
+    val whole = entry.fromBase(stockBase); val rest = entry.remainderBase(stockBase)
+    return localizedNumber(whole) + if (rest > 0) "+" + localizedNumber(rest) else ""
 }
 
 /** Typed digits (Latin or Bangla) to a quantity; empty reads as zero. */
@@ -476,11 +487,11 @@ fun ReviewScreen(
             SummaryTable(
                 headers = listOf(stringResource(R.string.review_col_sku), stringResource(R.string.review_col_qty), stringResource(R.string.review_col_value)),
                 rows = byCategory.flatMap { (_, ls) ->
-                    ls.map { l -> SummaryRow(l.sku.code, listOf(unitLabel(l.sku.baseUnit), localizedNumber(l.qtyBase), moneyGlued(l.memoLine.grossMtk))) }
+                    ls.map { l -> SummaryRow(l.sku.code, listOf(entryUnitLabel(l.sku.entryLabelKey), localizedNumber(l.entry.qtyEntered), moneyGlued(l.memoLine.grossMtk))) }
                 },
                 subtotals = byCategory.mapNotNull { (code, ls) ->
                     review.categories.firstOrNull { it.categoryCode == code }?.let { sub ->
-                        TotalsLine(stringResource(R.string.review_subtotal, categoryLabel(code)), listOf(stringResource(R.string.review_qty_unit, localizedNumber(sub.qtyBase), unitLabel(ls.first().sku.baseUnit)), moneyGlued(sub.grossMtk)))
+                        TotalsLine(stringResource(R.string.review_subtotal, categoryLabel(code)), listOf(stringResource(R.string.review_qty_unit, localizedNumber(sub.qtyEntered), entryUnitLabel(ls.first().sku.entryLabelKey)), moneyGlued(sub.grossMtk)))
                     }
                 },
                 totals = totals,

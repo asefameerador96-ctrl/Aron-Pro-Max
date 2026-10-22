@@ -28,7 +28,7 @@
     <string name="sale_unit_dozen">dozen</string>
     <string name="sale_unit_pack">packs</string>
     <string name="sale_pack_badge">= %1$s packs + %2$s</string>
-    <string name="sale_stock_warning">Only %1$s in stock for %2$s.</string>
+    <string name="sale_stock_warning">Only %1$s %3$s in stock for %2$s.</string>
     <string name="sale_empty">Add a quantity to start the sale.</string>
     <string name="sale_zero_confirm_title">No SKU selected for sale</string>
     <string name="sale_zero_confirm_message">Do you want to make a zero (0) sale?</string>
@@ -111,4 +111,5 @@
     <string name="sale_col_sku">SKU</string>
     <string name="sale_col_sale">Sale</string>
     <string name="sale_col_stock">Stock</string>
+    <string name="sale_price_per_unit">৳ %1$s / %2$s</string>
 </resources>

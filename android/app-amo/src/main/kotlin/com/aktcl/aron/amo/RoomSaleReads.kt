@@ -35,7 +35,7 @@ class RoomSaleReads(private val db: AronDatabase, private val reference: Referen
             val p = db.referenceDao().priceOn(s.skuId, priceType, date) ?: return@mapNotNull null
             SaleSku(
                 skuId = s.skuId, code = s.code, categoryCode = s.categoryCode, name = s.shortName, nameBn = s.nameBn, baseUnit = s.baseUnit,
-                packFactor = s.basePerPack, unitPriceMtk = p.amountMtk, pricePerQty = p.perBaseQty, priceValidFrom = p.validFrom,
+                packFactor = s.basePerPack, unitPriceMtk = p.amountMtk, pricePerQty = p.perBaseQty, priceValidFrom = p.validFrom, entryUnitDefault = s.entryUnitDefault,
                 stockBase = stock[s.skuId]?.takeIf { it.hasStockRow }?.current,
             )
         }

@@ -198,6 +198,14 @@ object EntryUnits {
         return if (num % pricePerQty == 0L) num / pricePerQty else null
     }
 
+    /**
+     * The (quantity, unit) to put in an edit draft for a stored line: its entry-unit quantity when [qtyBase] is a whole number of
+     * entry units, otherwise the line as it was typed in the base unit (the review then asks the rep to re-enter it; nothing is rounded).
+     */
+    fun restore(spec: EntrySpec, baseUnit: String, qtyBase: Long): Pair<Long, QtyUnit> =
+        if (qtyBase % spec.factor == 0L) spec.fromBase(qtyBase) to spec.unit
+        else qtyBase to QtyUnit.entries.first { it.wire == baseUnit && it != QtyUnit.PACK }
+
     /** Report label key of a unit by category: cigarettes and bidi `packet`, lighters `box`, matches `dozen`; base units `stick`/`piece`. */
     fun labelKey(categoryCode: String, unit: QtyUnit): String = when (unit) {
         QtyUnit.PACK -> when (categoryCode) { "lighter" -> "box"; "match" -> "dozen"; else -> "packet" }

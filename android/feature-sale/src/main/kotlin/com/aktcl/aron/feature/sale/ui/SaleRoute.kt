@@ -20,7 +20,6 @@ import com.aktcl.aron.core.printing.ui.SaveAndPrintDialogs
 import com.aktcl.aron.core.ui.AronScreenTransition
 import com.aktcl.aron.feature.sale.domain.QcEntry
 import com.aktcl.aron.feature.sale.domain.QcEntryModel
-import com.aktcl.aron.rules.QtyUnit
 
 enum class SaleStage { Entry, Credit, Slide, Qc, Review }
 
@@ -53,7 +52,7 @@ fun SaleRoute(
                     SaleStage.Entry -> SaleEntryScreen(
                         skus = skus, review = review,
                         qtyOf = { id -> draft?.lines?.firstOrNull { it.skuId == id }?.qtyEntered ?: 0L },
-                        onQuantity = { id, q -> vm.setQuantity(id, q, QtyUnit.entries.first { it.wire == ui.catalog[id]?.baseUnit }) },
+                        onQuantity = { id, q -> vm.setQuantity(id, q, checkNotNull(ui.catalog[id]) { "unknown SKU" }.entry.unit) },
                         onReview = { stage = SaleStage.Review },
                         // an edit never starts a QC-only sale: completed QC would lock the edit for good (F-SR-033)
                         onQcOnly = if (draft?.edit == null) ({ qcBefore = emptyList(); qcOnlyStarted = true; vm.startQcOnly(); stage = SaleStage.Qc }) else null,

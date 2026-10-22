@@ -56,7 +56,7 @@ import com.aktcl.aron.rules.GeoVerdict
 import com.aktcl.aron.rules.GeoVerdicts
 import com.aktcl.aron.rules.OutletGeo
 import com.aktcl.aron.rules.PriceType
-import com.aktcl.aron.rules.QtyUnit
+import com.aktcl.aron.rules.EntryUnits
 import java.io.File
 
 /** What the Summary screen shows and prints: the day's aggregate with the QC and due figures the print needs. */
@@ -154,7 +154,7 @@ class AmoSaleKit(private val day: AmoDay, private val context: Context, private 
         val old = checkNotNull(dao.memo(memoUuid)) { "memo not on this phone" }
         flow.start(SaleVisit(old.visitClientUuid, old.outletId, old.meta.routeId, old.meta.businessDate, PriceType.OUTLET.wire))
         val catalog = flow.state.value.catalog
-        dao.linesOf(memoUuid).forEach { l -> catalog[l.skuId]?.let { flow.setQuantity(l.skuId, l.qtyBase, QtyUnit.entries.first { u -> u.wire == it.baseUnit }) } }
+        dao.linesOf(memoUuid).forEach { l -> catalog[l.skuId]?.let { sku -> EntryUnits.restore(sku.entry, sku.baseUnit, l.qtyBase).let { (q, u) -> flow.setQuantity(l.skuId, q, u) } } }
         if (old.paidMtk > 0) flow.setPaid(old.paidMtk)
         flow.withEdit(EditContext(memoUuid, reason.wire))
     }
