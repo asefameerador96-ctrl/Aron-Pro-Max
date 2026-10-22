@@ -1,3 +1,11 @@
+# HANDOFF (lane mdm session 2 -> next, 2026-10-23)
+**State.** lane/mdm = INT 52bdd477 merged; train 11 carried 3c9522f1 (ModuleGrants in production, breadcrumb install SR/AMO, tests green, on dev). Idle: nothing buildable without input.
+**Waiting on the owner:** MDM console screenshots (`docs/ui-reference/web/mdm-*.webp`) to match the portal look; the lead calls this lane when they arrive.
+**Waiting on a phone (DEVICE-PENDING in `docs/status/device-checks.md`):** D-MDM-01 (lock, message, locate, reboot, factory reset with a second approver, block window, kiosk, sampling) and D-MDM-BREADCRUMB-01 (battery and data; the figures in this file are estimates).
+**Waiting on the lead's contract batch:** `network_type` in DeviceStatusReport (`docs/requests/mdm-contract-v1.7-queue-line.md`), then the app side in `DeviceStatusReporter`; a packages catalogue endpoint for the policy editor (not queued yet).
+**Done this session:** shim removed (db V0102/V0103), ModuleGrants (the table grant survives only as a test seam in MdmApiTest), approval/expiry/read-only tests, `withMdmSampling`, breadcrumb install with Opus T1 fixes. Context used: about 330k tokens.
+**Traps.** Expiry tests move the MDM service clock, never UPDATE device_command (db's guard). `BreadcrumbPayload` is local to core-database until the contract batch adds the DTO. TSO has no background location (D-GEO-BG-01). Merge INT before any push.
+
 # Session 2 (2026-10-22) — progress
 - Train 11 candidate: 3c9522f1 (run #1410 green, lead integrating). Context used so far: about 300k tokens.
 - Open rows now: boot/battery reconcile (needs a boot receiver + RECEIVE_BOOT_COMPLETED in the SR/AMO manifests and a runtime battery receiver; the manifest permission audit must be extended; low value while app start/sync restores it), packages catalogue endpoint (contract change: goes through the v1.7 queue), D-MDM-01 and D-MDM-BREADCRUMB-01 device rows (DEVICE-PENDING), portal look (owner's screenshots).
@@ -12,7 +20,7 @@
 - Opus T1 check done (4 defects fixed: cold-start install, user/day window, MDM interval needs the background grant, `captured_offline`; remarks: stop() churn, MDM callback). Open: Android 8+ limits background deliveries to a few per hour, so the 5 min floor is a request, not a promise; no reconcile on battery/boot broadcasts (next app start or sync restores it).
 - Tests: `BreadcrumbWiringTest` (core-sync; shared by SR and AMO because both use `DeviceRuntime`): not started when off, MDM interval/off/on_demand, floor, low battery, mock flag kept, sink; `CaptureRepositoryTest.aBreadcrumbIsOneStandaloneRecordWithItsOwnFix`.
 
-- OPEN ROW: reconcile of the breadcrumb request on boot and battery-low/okay broadcasts (wiring doc row 18) is not built; the next app start or sync restores the controller meanwhile. Battery and data figures stay estimates until the device rows run.
+- DECIDED (lead, 2026-10-23 00:02 UTC): NO boot/battery reconcile for the breadcrumb controller (wiring doc row 18). Reason: it would add RECEIVE_BOOT_COMPLETED to two manifests for a controller that app start or the next sync already restores, breadcrumbs are off by default (D-MDM-BREADCRUMB-01), and the manifest permission audit stays as it is. Battery and data figures stay estimates until the device rows run.
 - Still waiting: owner's MDM screenshots (`docs/ui-reference/web/mdm-*.webp`); network_type in the status report (contract queue); packages catalogue endpoint.
 
 # HANDOFF (lane mdm session 1 -> session 2, 2026-10-22)
