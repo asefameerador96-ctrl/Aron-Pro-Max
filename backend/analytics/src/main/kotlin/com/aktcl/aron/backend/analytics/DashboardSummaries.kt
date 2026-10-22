@@ -23,7 +23,15 @@ internal object DashboardSummaries {
     private val tables = listOf("agg_daily_outlet_sku", "agg_daily_route_variant", "route_last_position", "summary_freshness")
 
     /** Summary tables a card response may name in `last_updated_at`. */
-    val FRESHNESS_TABLES = listOf("agg_daily_route_sku", "agg_daily_route_variant", "agg_daily_outlet_sku", "agg_daily_route", "agg_daily_zone", "route_last_position", "fact_visit")
+    val FRESHNESS_TABLES = listOf("agg_daily_route_sku", "agg_daily_route_variant", "agg_daily_route_segment", "agg_daily_route_brand", "agg_daily_outlet_sku", "agg_daily_route", "agg_daily_zone", "route_last_position", "fact_visit")
+
+    /**
+     * True when `dw.agg_daily_route.checked_in_at` exists (db migration V0108). Probed on its own so that the worker and the cards keep working on
+     * either side of that migration: without the column nothing is filled and the login card keeps the older rule (download only).
+     */
+    fun hasCheckedIn(h: Handle): Boolean = h.createQuery(
+        "SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'dw' AND table_name = 'agg_daily_route' AND column_name = 'checked_in_at')",
+    ).mapTo(Boolean::class.java).one()
 
     /** True when every table and column of the request exists. Cheap catalog query; not cached because test databases differ. */
     fun ready(h: Handle): Boolean {
@@ -135,6 +143,19 @@ internal object DashboardSummaries {
             """,
         ).bind("r", routeId).bind("d", date).execute()
 
+        // The first non-voided attendance check-in of the route's SR that day: the event's own route, else (no route on the event) a user assigned
+        // to the route that day. The same rule as the V0108 backfill, so rebuilt and backfilled days agree.
+        if (hasCheckedIn(h)) h.createUpdate(
+            """
+            WITH ci AS (SELECT min(e.captured_at) AS at FROM app.attendance_event e
+                         WHERE e.kind = 'check_in' AND e.voided_at IS NULL AND e.business_date = :d
+                           AND (e.route_id = :r OR (e.route_id IS NULL AND e.user_id IN (
+                                  SELECT ra.user_id FROM app.route_assignment ra
+                                   WHERE ra.route_id = :r AND ra.valid_from <= :d AND (ra.valid_to IS NULL OR ra.valid_to > :d)))))
+            UPDATE dw.agg_daily_route a SET checked_in_at = (SELECT at FROM ci) WHERE a.route_id = :r AND a.business_date = :d
+            """,
+        ).bind("r", routeId).bind("d", date).execute()
+
         h.createUpdate(
             """
             UPDATE dw.fact_visit f SET radius_m = v.radius_m_used, outlet_lat = v.outlet_lat, outlet_lng = v.outlet_lng, fix_lat = v.fix_lat,
@@ -179,7 +200,7 @@ internal object DashboardSummaries {
 
     /**
      * Route-days the outbox does not announce: planned ones with no aggregate row yet (nobody opened the app) and ones whose positions
-     * arrived since [since] (geo fixes emit no event). Marks them dirty; the next drain rebuilds them.
+     * or check-ins arrived since [since] (neither emits an event). Marks them dirty; the next drain rebuilds them.
      */
     fun dirtyStale(h: Handle, since: Instant, today: LocalDate): Int = h.createQuery(
         """
@@ -189,6 +210,14 @@ internal object DashboardSummaries {
              AND NOT EXISTS (SELECT 1 FROM dw.agg_daily_route a WHERE a.route_id = rd.route_id AND a.business_date = rd.business_date)
           UNION ALL
           SELECT g.route_id, g.business_date FROM app.geo_fix g WHERE g.received_at > :since AND g.route_id IS NOT NULL AND g.business_date >= :today - 1
+          UNION ALL
+          -- A check-in emits no event either: the route it names, else the routes its user is assigned to that day (the V0108 rule); a late sync can land days after the date, so the last 7 days.
+          SELECT e.route_id, e.business_date FROM app.attendance_event e
+           WHERE e.received_at > :since AND e.kind = 'check_in' AND e.route_id IS NOT NULL AND e.business_date >= :today - 7
+          UNION ALL
+          SELECT ra.route_id, e.business_date FROM app.attendance_event e
+            JOIN app.route_assignment ra ON ra.user_id = e.user_id AND ra.valid_from <= e.business_date AND (ra.valid_to IS NULL OR ra.valid_to > e.business_date)
+           WHERE e.received_at > :since AND e.kind = 'check_in' AND e.route_id IS NULL AND e.business_date >= :today - 7
         ) s
         """,
     ).bind("today", today).bind("since", since).map { rs, _ -> rs.getLong(1) to rs.getObject(2, LocalDate::class.java) }.list()

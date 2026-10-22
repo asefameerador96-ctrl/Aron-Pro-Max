@@ -70,6 +70,7 @@ class DashboardTest {
         // BSR of brand 1: 3 memos contain it (R1 two, R3 one) of 4 active memos = 75 %.
         assertEquals(75.0, s.by_brand.first { it.name == "BrandOne" }.memo_ratio_pct)
         assertEquals("GT", s.by_channel.single().code); assertEquals(4, s.by_channel.single().successful_calls)
+        assertNull(s.by_channel.single().qty_base, "base units differ per category: no channel quantity is added up")
         assertEquals("2026-10-04", s.from)
     }
 
