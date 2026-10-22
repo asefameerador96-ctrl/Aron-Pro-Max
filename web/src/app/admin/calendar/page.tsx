@@ -8,6 +8,7 @@ import { ADMIN_ONLY_ROLES, ADMIN_PORTAL_ROLES, hasRole } from "@/lib/auth/roles"
 import { requireSession } from "@/lib/auth/require";
 import { getLocale } from "@/lib/auth/service";
 import { isRealDate } from "@/lib/admin/time";
+import { daysInMonth, workingDays } from "@/lib/admin/calendar-days";
 import { businessDate } from "@/lib/i18n";
 
 const DAY = 86_400_000;
@@ -21,17 +22,24 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
   const f = one(sp.from, 10);
   const from = isRealDate(f) ? f : addDays(today, -7);
   const to = addDays(from, 83);
-  const [list, weekend, keys] = await Promise.all([
+  // Working days of this month and the next two (national entries): the bases of the route monthly targets.
+  const m0 = today.slice(0, 7);
+  const monthAfter = (m: string, n: number) => { const d = new Date(Date.parse(`${m}-01T00:00:00Z`)); d.setUTCMonth(d.getUTCMonth() + n); return d.toISOString().slice(0, 7); };
+  const months = [m0, monthAfter(m0, 1), monthAfter(m0, 2)];
+  const [list, weekend, keys, monthList] = await Promise.all([
     apiGet<{ items: Holiday[] }>("/v1/admin/calendar/holidays", session.at, { from, to }),
     apiGet<ResolvedConfigValue>("/v1/admin/config/resolve", session.at, { key: "cfg.calendar.weekend_days", node_type: "global", node_id: 0 }),
     // The registry (for the edit form) is ADMIN/SUPERADMIN only; SUPPORT reads the weekend days through its resolve grant (D-AUTHZ-Q2).
     hasRole(session.user.role, ADMIN_ONLY_ROLES) ? apiGet<{ items: ConfigKey[] }>("/v1/admin/config/keys", session.at, { area: "calendar" }) : null,
+    apiGet<{ items: Holiday[] }>("/v1/admin/calendar/holidays", session.at, { from: `${months[0]}-01`, to: `${months[2]}-${String(daysInMonth(months[2]!)).padStart(2, "0")}` }),
   ]);
   if (!list.ok) return onApiFailure(list.status, list.problem, locale);
+  const weekendDays = weekend.ok && Array.isArray(weekend.data.value) ? (weekend.data.value as unknown[]).map(Number) : null;
+  const monthDays = monthList.ok && weekendDays ? months.map((m) => workingDays(m, weekendDays, monthList.data.items)) : null;
   const weekendKey = keys?.ok ? (keys.data.items.find((k) => k.key === "cfg.calendar.weekend_days") ?? null) : null;
   return (
     <div className="space-y-4">
-      <CalendarView locale={locale} holidays={list.data.items} weekend={weekend.ok ? weekend.data : null} weekendKey={weekendKey} from={from} to={to} canWrite={canOp("holiday.create", session.user.role)} />
+      <CalendarView locale={locale} holidays={list.data.items} weekend={weekend.ok ? weekend.data : null} weekendKey={weekendKey} from={from} to={to} canWrite={canOp("holiday.create", session.user.role)} monthDays={monthDays} />
     </div>
   );
 }

@@ -147,3 +147,18 @@
 2026-10-19 11:05 UTC (lead check 11): the owner's laptop session fast-forwarded INT to 5526fb2d at about 10:12 UTC (lane/lead-brand: Aron logo, packshot prepare/load tools, report header mark, two re-recorded login goldens; the lane's own run #1257 was green on that sha). INT CI #1258 green, signed artifact aron-release-signed-dev-1258, dev deploy #229 green at 10:55. No cloud session active; integrator #15 idle (~140k) and told to hold INT until the docs head is checked. Hardening heads HELD. No agents or workflows.
 
 2026-10-20 18:47 UTC (lead lane check, light): the weekly window reset at 18:00 UTC. This session now reports `five_hour` status `allowed` (no seven_day warning). Nothing has moved on INT or any lane since 2026-10-19 11:06 UTC: INT 513d7984, last green CI #1258 and dev deploy #229, all UI lanes and integrator #15 idle at clean heads, hardening heads HELD, lane/lead-brand merged (5526fb2d). Still waiting on the owner: AMO/TSO/web screenshots, phone check of aron-release-signed-dev-1258 and the compact-scale decision, the pack-picture loader run with the owner's admin login. This session is at ~588k context (compacts automatically). No nudges, no agents or workflows.
+
+## 2026-10-22 10:30 UTC lane check (wave 4, lead)
+- lead session_01MbUQSxrP7AB9tbyANjUTPS: ~140k of 1M used after the owner directive, 10 lane starts, 2 docs promotions and 3 code heads checked; five_hour allowed.
+- integrator 15: ~170k; batch 1 on INT 1d41233d (android-map 87e085a, web-admin d0b92230), CI #1282 green on attempt 2 (LiteMapScreenTest flake), artifact aron-release-signed-dev-1282, deploy #231 in progress.
+- backend-authz #5 (Opus): 26 commits, contract-portal-levels + db-backend-authz-roles requests filed; no candidate yet.
+- db #7 (Opus): 0 pushes; rebuilding V0096/V0102 to backend-admin and mdm DDL, suites + checker round 2 running, push after green.
+- backend-reports #3 (Sonnet): contract 1.4.0 (14 ops) + card/map code at ec0976ed; lane CI red on #1265/#1283, told to fix; DDL request relayed to db.
+- web-dashboard #7 (Sonnet): national dashboard at / on typed mock, then adapters on the generated contract (a8f91493, #1290 running); #1279/#1281 red, told to fix; budgets JS 217 KB, LCP 1.74 s.
+- web-admin #4 (Sonnet): d0b92230 (users/grants/brand) on INT; c60ad04b (targets upload, calendar, house de-dup) checked; later heads red (#1287), told to fix.
+- android-print #4 (Opus): diagnostics screen, image modes, "printed, unconfirmed", AMO diagnostics, per-printer defaults at 0d77552c; #1261 failure root-caused (HardcodedStringScanTest); pushes next only on a locally green CI command.
+- android-units #1 (Sonnet, Opus checker): entry units across SR/AMO at bd042729 (#1300 pending); checker proved printed = stored = oracle for 42 SKUs; leftovers fixed in F-UNITS-009/010.
+- android-map #1 (Sonnet): done (913e357 incl. AMO out-of-range step); asked to make LiteMapScreenTest deterministic.
+- mdm #1 (Sonnet): contract 1.6.0, backend behind ARON_MDM_ENABLED, DPC channel, web section, app wiring at 3e3a76e5 (#1299 running); 4 requests filed.
+- backend-admin #4 (Sonnet): READY TO RECYCLE at 317k after 1be69cc6 (route targets, calendar, house, channel errors, SKU pack fields; #1293 running); archived; #5 session_01LUGtEwYewTSxgWsr1b9RKq started 10:12 on outlet import + user access.
+- dev: GET /v1/health 200 (1.2 s through Front Door), web login 200.

@@ -101,3 +101,27 @@ The 8,500-user proof needs the final account and stays DESIGNED, not proven (doc
 - 2026-10-18 23:40 UTC: INT 0a8523b0. On INT since 20:47 UTC: PII reveal backend and web UX, audit write-time redaction, ui-amo Home and Settings. Owner directive 22:10 UTC: apps and web must look like the existing Aron; seven UI parity lanes working overnight; one batched INT push per deploy cycle. Target for the morning: signed dev APK with SR (Home, Attendance, Stock, Sale, Summary, Submit, Outlet, Memo, Tasks, Auth, Settings), AMO and packshot support on INT, TSO and web shell/dashboard as soon as their runs are green. Owner target unchanged (feature-complete on dev 2026-10-20, buffer 2026-10-22, still awaiting the owner's yes).
 - 2026-10-19 02:50 UTC: INT 9f1b58d7. On INT since 00:47 UTC: UI parity kit window (all lanes re-recorded), SR Home/Stock/Sale/Attendance/Summary/Submit/Outlet/Tasks on the Aron look, AMO and TSO homes and forms on the kit, web dashboard shell and cards, dev pack pictures (dev-only). Next: batch 6 (ui-sr-b, ui-tso), batch 7 (pack-picture server path), second vision QA, owner screenshots for AMO/TSO/web. Owner target unchanged (feature-complete on dev 2026-10-20, buffer 2026-10-22, still awaiting the owner's yes).
 - 2026-10-19 04:46 UTC: INT 0675990b. On INT since 02:50 UTC: batches 6 and 7 (SR Memo/Summary/Submit/Outlet/Tasks/Auth on the kit, TSO screens, pack-picture server path with Room 7 to 8), morning report and QA round 2. Latest signed dev APK aron-release-signed-dev-1255 (CI #1255 and dev deploy #228 green). Waiting on the owner: AMO/TSO/web screenshots, phone check of 1255 (pack pictures), compact-scale decision. No new UI wave until then; polish backlog is the 93-item round-2 list. Owner target unchanged (feature-complete on dev 2026-10-20, buffer 2026-10-22, still awaiting the owner's yes).
+
+## 2026-10-22 10:30 UTC — after the owner directive (docs/34), wave 4
+
+The owner's original dates (feature-complete on dev 2026-10-20, buffer 2026-10-22) are superseded by the
+2026-10-22 directive, which adds the seven portal levels, the national dashboard screen for screen, the
+field counting units, the printer fix, the Gulshan/Banani seed, the inline Sale map, MDM and the reports.
+Honest per-item dates (test account, dev):
+
+| Item | State 10:30 UTC | Expected on dev |
+|---|---|---|
+| Inline Sale map and distance (SR, AMO out-of-range) | on INT (batch 1), artifact aron-release-signed-dev-1282 | today; owner phone check pending (needs the Maps key in the build) |
+| Portal users/grants/brand pages | on INT (web); backend-authz API in progress | API today; end to end once db's role tables land (today) |
+| Counting units (packets, boxes, dozens) in the apps | lane head bd042729, CI running | next signed build today; pack sizes from the server after db's migration and backend-admin's SKU fields |
+| Printer MP-58N | diagnostics + fixes built, awaiting a green lane CI | signed build today; root cause needs the owner's export (owner-actions row M) |
+| National dashboard (web) | built on the real contract, lane CI red to fix | web today; live numbers once db's summary tables and backend-reports land (today/tomorrow morning) |
+| Dashboard backend (summaries, 14 endpoints) | code at ec0976ed, CI red to fix, blocked on db DDL | today evening to 2026-10-23 morning |
+| Route targets, calendar, house de-dup, outlet channel, SKU pack sizes (admin API + pages) | API at 1be69cc6, pages on lane/web-admin | today |
+| MDM section | first candidate 3e3a76e5 (behind a flag) | data layer and plain pages today; the look after the owner's screenshots |
+| Gulshan/Banani seed | queued after db's migrations | 2026-10-23 (dev re-seed via CI) |
+| Data-flow trace (qa) | not started | 2026-10-23 after the seed and summaries |
+| Reports (100% from the explanation docs) | blocked on the owner's uploads (row J) | 2 days after the uploads arrive |
+
+Risk: ten lanes push many short-lived heads; red lane runs are now gated (a candidate is declared only on a
+green run of the exact sha). Usage stays `allowed` on the five-hour window.
