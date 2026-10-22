@@ -12,8 +12,8 @@ the class of docs/16 s13.1. **PII**: none, personal, sensitive, secret. Other pr
 
 | Schema | Relations | Columns |
 |---|---|---|
-| `app` | 149 | 2582 |
-| `dw` | 34 | 528 |
+| `app` | 155 | 2636 |
+| `dw` | 44 | 631 |
 
 ## Index
 
@@ -50,6 +50,7 @@ the class of docs/16 s13.1. **PII**: none, personal, sensitive, secret. Other pr
 | [`app.db_role_limit`](#appdb_role_limit) | table | db | REFERENCE | master | none | Session limits per privilege role (docs/18 s2.6); app.apply_login_limits() writes them onto the login identities. |
 | [`app.device`](#appdevice) | table | backend:auth | ONLINE | master | none | One enrolled phone with its status, trust level, key, integrity verdict and last contact. |
 | [`app.device_binding`](#appdevice_binding) | table | backend:auth | ONLINE | audit | none | Link of a user to a phone, with the binding ordinal that fixes the memo-number block. |
+| [`app.device_command`](#appdevice_command) | table | backend:mdm | ONLINE | audit | personal | MDM command to one device (lock, unlock, message, locate, reboot, factory reset, apply policy): idempotent by command_id, pushed by FCM and pulled by the DPC; a factory reset needs a second person (D-MDM-01). |
 | [`app.device_directive`](#appdevice_directive) | table | backend:config | ONLINE | ops | none | A signed remote directive sent to a phone, with delivery and acknowledgement times. |
 | [`app.device_nonce`](#appdevice_nonce) | table | backend:auth | SERVER | session | none | Single-use server nonce for a Play Integrity request or key attestation. |
 | [`app.device_otp`](#appdevice_otp) | table | backend:auth | ONLINE | session | secret | One-time code a TSO issues to bind a phone to a user, stored as hash and encrypted for display. |
@@ -81,6 +82,7 @@ the class of docs/16 s13.1. **PII**: none, personal, sensitive, secret. Other pr
 | [`app.ingest_registry`](#appingest_registry) | partitioned table | backend:sync | SERVER | ops | none | Global register of every device record's client_uuid and payload hash; the uniqueness point for idempotent sync. |
 | [`app.leave_application`](#appleave_application) | table | backend:masterdata | OFFLINE | transaction | personal | A TSO leave application with dates and reason, decided on the web. |
 | [`app.loyalty_ledger`](#apployalty_ledger) | table | backend:analytics | SERVER | transaction | none | Append-only points ledger derived on the server, idempotent per source record. |
+| [`app.mdm_policy`](#appmdm_policy) | table | backend:mdm | ONLINE | master | none | Editable MDM policy the device-owner DPC enforces on top of app.device_policy: allowed apps, blocking windows, kiosk, location sampling (D-MDM-01). |
 | [`app.media`](#appmedia) | table | backend:media | OFFLINE | transaction | personal | Metadata of a photo taken in the field with its location fix and Blob Storage path; the image itself is in Blob Storage. |
 | [`app.media_upload`](#appmedia_upload) | table | backend:media | ONLINE | transaction | none | One row is a photo whose bytes arrived through the multipart fallback POST /v1/media/upload (feedback or support); the idempotency ledger of that endpoint (F-API-007). |
 | [`app.memo`](#appmemo) | partitioned table | backend:sync | OFFLINE | transaction | none | One sales memo header (or zero-sale record) for an outlet visit, with gross, discount, net, paid and due amounts. |
@@ -129,7 +131,9 @@ the class of docs/16 s13.1. **PII**: none, personal, sensitive, secret. Other pr
 | [`app.route_day`](#approute_day) | table | backend:sync | SERVER | transaction | none | One row per route and business date holding the day state and submit timestamps; created by the server from assignments. |
 | [`app.route_day_event`](#approute_day_event) | table | backend:sync | OFFLINE | transaction | none | A day_open or day_submit record from a phone or the online Sales Submit. |
 | [`app.route_day_void_barrier`](#approute_day_void_barrier) | table | backend:sync | ONLINE | audit | none | Admin data void of a route-day: rows captured before the barrier are voided, later rows accepted. |
+| [`app.route_monthly_target`](#approute_monthly_target) | table | backend:admin | ONLINE | master | none | Monthly sales target of a route for a SKU in base units (D-TARGET-MIN-01); one row per route, SKU and month, rewritten by a later upload. |
 | [`app.route_planned`](#approute_planned) | table | backend:masterdata | ONLINE | master | none | Planned visit days of a route, effective-dated. |
+| [`app.route_target_batch`](#approute_target_batch) | table | backend:admin | ONLINE | master | none | One committed route-target upload: the idempotency record (same uuid and content replays, other content conflicts). |
 | [`app.route_zone_history`](#approute_zone_history) | table | db | SERVER | master | none | One row is a period in which a route belonged to a zone; written by triggers on app.route. |
 | [`app.rubric`](#apprubric) | table | backend:masterdata | ONLINE | master | none | One row is a scoring rubric (joint call or retailer questionnaire); its current version is in rubric_version. |
 | [`app.rubric_version`](#apprubric_version) | table | backend:masterdata | ONLINE | master | none | One row is an immutable published version of a rubric: its scored criteria; assessments reference it. |
@@ -157,7 +161,9 @@ the class of docs/16 s13.1. **PII**: none, personal, sensitive, secret. Other pr
 | [`app.task_event`](#apptask_event) | table | backend:notify | OFFLINE | transaction | personal | Resolve or reopen of a task by its assignee. |
 | [`app.territory`](#appterritory) | table | backend:masterdata | ONLINE | master | none | Geography level below a division; groups zones. |
 | [`app.tutorial`](#apptutorial) | table | backend:masterdata | ONLINE | master | none | One row is a tutorial video or manual shown to the listed roles in the apps and on the web. |
+| [`app.user_brand_scope`](#appuser_brand_scope) | table | backend:authz | ONLINE | master | none | Brands a BRAND user may see (D-ROLES-02, docs/34 s1); carried in the web token as the brands claim; product-based reports and dashboard cards are filtered to them on the server. |
 | [`app.user_consent`](#appuser_consent) | table | backend:auth | OFFLINE | audit | none | Acceptance of a notice such as the location notice by a user on a phone. |
+| [`app.user_module_grant`](#appuser_module_grant) | table | backend:authz | ONLINE | master | none | Per-module access of an ADMIN user (D-ROLES-02, docs/34 s1): r = read, w = read and write. Carried in the web token as the modules claim; changed only through the admin grants API, which audits and bumps app_user.scope_version. |
 | [`app.user_scope`](#appuser_scope) | table | backend:masterdata | ONLINE | master | none | Supervisory reach of a user: a geography node, effective-dated. |
 | [`app.v_dirty_key_dead`](#appv_dirty_key_dead) | view | db | SERVER | ops | none | Dead rebuild keys per kind, for the sync-health page and alerting. |
 | [`app.visit`](#appvisit) | partitioned table | backend:sync | OFFLINE | transaction | personal | One outlet visit with the phone's and the server's geo verdicts, distance, outcome and close data. |
@@ -169,10 +175,12 @@ the class of docs/16 s13.1. **PII**: none, personal, sensitive, secret. Other pr
 | [`app.wing`](#appwing) | table | backend:masterdata | ONLINE | master | none | Top level of the sales geography. |
 | [`app.zone`](#appzone) | table | backend:masterdata | ONLINE | master | none | Geography level below a territory; the unit of Final Submit and day rollups. |
 | [`dw.agg_daily_outlet`](#dwagg_daily_outlet) | table | worker | SERVER | event_fact | none | Per outlet and business date: whether visited, geo-valid, and sales totals. |
+| [`dw.agg_daily_outlet_sku`](#dwagg_daily_outlet_sku) | partitioned table | worker | SERVER | event_fact | none | Sales per outlet, SKU and business date of the latest memo versions (calling outlets and channel STD under any product filter). |
 | [`dw.agg_daily_route`](#dwagg_daily_route) | table | worker | SERVER | event_fact | none | Per route and business date: day state, visit counts, sales, discounts, paid and due money. |
 | [`dw.agg_daily_route_brand`](#dwagg_daily_route_brand) | table | worker | SERVER | event_fact | none | Per route, brand and date: memo count containing the brand and its sales. |
 | [`dw.agg_daily_route_segment`](#dwagg_daily_route_segment) | table | backend:analytics | SERVER | event_fact | none | Per route, product segment and date: memo count containing the segment (each memo once) and its sales. |
 | [`dw.agg_daily_route_sku`](#dwagg_daily_route_sku) | table | worker | SERVER | event_fact | none | Per route, SKU and date: sold, free, issued and returned quantities and sales. |
+| [`dw.agg_daily_route_variant`](#dwagg_daily_route_variant) | table | worker | SERVER | event_fact | none | Distinct memos and sales per route, business date and product variant (Breakdown by variant; a variant has several SKUs, so SKU memo counts cannot be summed). |
 | [`dw.agg_daily_screen_use`](#dwagg_daily_screen_use) | table | backend:analytics | SERVER | event_fact | none | One row is the use of one screen action by one role on one day, rolled up from fact_activity and kept for ever. |
 | [`dw.agg_daily_zone`](#dwagg_daily_zone) | table | worker | SERVER | event_fact | none | Per zone and business date: route and visit counts, geo and risk counts, and sales totals. |
 | [`dw.agg_hourly_zone`](#dwagg_hourly_zone) | table | worker | SERVER | event_fact | none | Per zone and hour: records received and sales, for the live dashboard. |
@@ -193,15 +201,23 @@ the class of docs/16 s13.1. **PII**: none, personal, sensitive, secret. Other pr
 | [`dw.fact_geo_fix`](#dwfact_geo_fix) | partitioned table | worker | SERVER | event_fact | personal | One row per location fix copied for analysis, with slot and satellite count. |
 | [`dw.fact_memo`](#dwfact_memo) | partitioned table | worker | SERVER | event_fact | none | One row per memo with its money totals, for reports. |
 | [`dw.fact_supervisor_day`](#dwfact_supervisor_day) | table | worker | SERVER | event_fact | none | One row per AMO or TSO and business date with the day's check-in, check-out and Sales Submit, filled by the worker from app.supervisor_day (F-AMO-039). |
-| [`dw.fact_visit`](#dwfact_visit) | partitioned table | worker | SERVER | event_fact | none | One row per visit with device and server verdicts, distance and void flag. |
+| [`dw.fact_visit`](#dwfact_visit) | partitioned table | worker | SERVER | event_fact | personal | One row per visit with device and server verdicts, distances, the outlet base and call positions, the Force Sale photo, the void flag and the completed and within_fence flags. |
+| [`dw.route_last_position`](#dwroute_last_position) | table | worker | SERVER | event_fact | personal | Latest position of each route's SR on a business date (FF Geo pins), upserted from geo fixes in capture-time order. |
+| [`dw.summary_freshness`](#dwsummary_freshness) | table | worker | SERVER | master | none | Freshness of each dashboard summary table: the projector's last pass and its outbox position (the "last updated" time). |
 | [`dw.v_attendance`](#dwv_attendance) | view | worker | SERVER | event_fact | none | Stable view: per user and business date, check-in and check-out times, hours in field and mock-location flags (no coordinates or accuracy). |
+| [`dw.v_calendar`](#dwv_calendar) | view | worker | SERVER | master | none | Stable view: one row per date with Friday, national holiday, make-up day and working-day flags (dim_date plus the live global app.calendar_holiday rows). |
+| [`dw.v_calendar_month`](#dwv_calendar_month) | view | worker | SERVER | master | none | Stable view: per month the number of days, Fridays, national holidays and working days (divisor of the daily target). |
 | [`dw.v_collections`](#dwv_collections) | view | worker | SERVER | event_fact | none | Stable view: outlet-days with new credit or dues collected (credit and collection movements). |
 | [`dw.v_daily_outlet`](#dwv_daily_outlet) | view | worker | SERVER | event_fact | none | Stable view: per outlet and business date, visit, geo validity, sales and dues, with the outlet's classification. |
 | [`dw.v_daily_route`](#dwv_daily_route) | view | worker | SERVER | event_fact | none | Stable view (contract for BI and other products): KPIs, money and day state per route and business date, with its geography. |
 | [`dw.v_daily_sku`](#dwv_daily_sku) | view | worker | SERVER | event_fact | none | Stable view: per route, SKU and business date, quantities sold, free, issued and returned and the gross value. |
 | [`dw.v_daily_sr`](#dwv_daily_sr) | view | worker | SERVER | event_fact | none | Stable view: per field user and business date, SR calls, successful calls, geo validity and memo money from the dw facts (active memos with lines); a user-day with neither an SR call nor such a memo has no row. |
+| [`dw.v_device_command`](#dwv_device_command) | view | backend:mdm | ONLINE | audit | none | Stable view: MDM commands for the activity log, without signature and result. |
+| [`dw.v_final_submit_log`](#dwv_final_submit_log) | view | worker | SERVER | audit | none | Stable view: per zone and business date the first Final Submit (second submits ignored, Brief 07), the number of submits and the reopen state. |
 | [`dw.v_geo_integrity`](#dwv_geo_integrity) | view | worker | SERVER | event_fact | none | Stable view: per user and business date, geo-validation outcomes of visits and mock-location evidence of fixes. |
 | [`dw.v_outlet_masked`](#dwv_outlet_masked) | view | backend:masterdata | ONLINE | master | none | Stable view: outlets without owner name, address or national ids; the phone masked to 01*****NNN (D-107). |
+| [`dw.v_route_monthly_target`](#dwv_route_monthly_target) | view | worker | SERVER | master | none | Stable view: route x SKU monthly targets in base units with the month's working days and the derived daily target (D-TARGET-MIN-01). |
+| [`dw.v_working_day`](#dwv_working_day) | view | worker | SERVER | master | none | Stable view: one row per date, working = the national working-day flag of dw.v_calendar (Fridays and national holidays off, make-up days on). |
 
 ## app.activity_log
 
@@ -1095,10 +1111,12 @@ One enrolled phone with its status, trust level, key, integrity verdict and last
 | `integrity_unavailable_reason` | text | null |  | Reason of the last Play Integrity unavailable marker (contract v1.2 play_integrity_unavailable.reason); NULL = never reported. Kept when a later report has a verdict; compare integrity_unavailable_at with integrity_checked_at for the newer one. |
 | `integrity_unavailable_at` | timestamp with time zone | null |  | UTC time of the report that carried the last Play Integrity unavailable marker; NULL = never reported. |
 | `last_sync_error` | text | null |  | Last sync transport or problem code the phone reported (X-Last-Sync-Error); null when none was reported. |
+| `mdm_policy_id` | bigint | null |  | MDM policy assigned to the device (app.mdm_policy); null when none. |
+| `mdm_policy_version` | integer | null |  | Version of that policy last assigned; set exactly when mdm_policy_id is. |
 
 Keys: `UNIQUE (device_uuid)`; `UNIQUE (external_ref)`; `UNIQUE (public_key_thumbprint)`; `PRIMARY KEY (id)`
 
-References: `FOREIGN KEY (enrolment_token_id) REFERENCES app.enrolment_token(id)`; `FOREIGN KEY (replaced_by_device_id) REFERENCES app.device(id)`; `FOREIGN KEY (zone_id) REFERENCES app.zone(id)`
+References: `FOREIGN KEY (enrolment_token_id) REFERENCES app.enrolment_token(id)`; `FOREIGN KEY (mdm_policy_id) REFERENCES app.mdm_policy(id)`; `FOREIGN KEY (replaced_by_device_id) REFERENCES app.device(id)`; `FOREIGN KEY (zone_id) REFERENCES app.zone(id)`
 
 ## app.device_binding
 
@@ -1121,6 +1139,38 @@ Link of a user to a phone, with the binding ordinal that fixes the memo-number b
 Keys: `PRIMARY KEY (id)`
 
 References: `FOREIGN KEY (device_id) REFERENCES app.device(id)`; `FOREIGN KEY (unbound_by) REFERENCES app.app_user(id)`; `FOREIGN KEY (user_id) REFERENCES app.app_user(id)`
+
+## app.device_command
+
+MDM command to one device (lock, unlock, message, locate, reboot, factory reset, apply policy): idempotent by command_id, pushed by FCM and pulled by the DPC; a factory reset needs a second person (D-MDM-01).
+
+`owner: backend:mdm | capture: ONLINE | retention: audit | pii: personal` · table
+
+| Column | Type | Null | PII | Description |
+|---|---|---|---|---|
+| `seq` | bigint | not null |  | Delivery and listing order (created_at can tie). |
+| `command_id` | uuid | not null |  | UUID generated by the admin client; the idempotency key. |
+| `device_id` | bigint | not null |  | Target device (app.device). |
+| `type` | text | not null |  | lock, unlock, message, locate, reboot, factory_reset or apply_policy. |
+| `params` | jsonb | not null |  | Type-specific parameters (message text, policy id); no secrets. |
+| `state` | text | not null |  | pending_approval (factory reset), queued, sent, acked, failed, expired or rejected. |
+| `reason` | text | not null |  | Reason typed by the requester. |
+| `request_sha256` | bytea | not null |  | SHA-256 of the create body: the same id with the same body is the same command. |
+| `sig` | text | null |  | ES256 signature (prefix aron-command-v1) the DPC verifies; null while pending_approval or rejected. |
+| `created_by` | bigint | null |  | Portal user who requested the command. |
+| `created_at` | timestamp with time zone | not null |  | UTC instant the command was requested. |
+| `expires_at` | timestamp with time zone | not null |  | UTC instant after which the device must not act on it (at most 72 hours after the request). |
+| `approved_by` | bigint | null |  | Second user who approved or rejected a factory reset; never the requester. |
+| `approved_at` | timestamp with time zone | null |  | UTC instant of that decision. |
+| `decision_reason` | text | null |  | Reason given with the approval or rejection. |
+| `push_sent_at` | timestamp with time zone | null |  | UTC instant FCM accepted the data message. |
+| `sent_at` | timestamp with time zone | null |  | UTC instant of the first pull by the device. |
+| `acked_at` | timestamp with time zone | null |  | UTC instant the device reported done (acked) or failed. |
+| `result` | jsonb | null | personal | Result the device reported (e.g. the position of a locate). |
+
+Keys: `UNIQUE (seq)`; `PRIMARY KEY (command_id)`
+
+References: `FOREIGN KEY (approved_by) REFERENCES app.app_user(id)`; `FOREIGN KEY (created_by) REFERENCES app.app_user(id)`; `FOREIGN KEY (device_id) REFERENCES app.device(id)`
 
 ## app.device_directive
 
@@ -1901,13 +1951,14 @@ Distribution house that a zone may belong to; it carries no rules in Phase 1.
 | `email` | text | null |  | Business e-mail of the distribution house. |
 | `address` | text | null |  | Address of the distribution house. |
 | `pda_contact_no` | text | null |  | Business contact number of the office or zone phone. |
-| `status` | text | not null |  | Lifecycle status; allowed values are listed under constraints. |
+| `status` | text | not null |  | active or inactive; the one source of truth for the active flag (is_active is generated from it, V0093). |
 | `external_ref` | character varying(64) | null |  | Stable external reference for cross-walks with other systems (Apsis, ERP); unique when set. |
 | `created_at` | timestamp with time zone | not null |  | UTC instant the row was inserted on the server. |
 | `updated_at` | timestamp with time zone | not null |  | UTC instant of the last update. |
 | `version` | integer | not null |  | Optimistic-concurrency version; increases by one on every update. |
 | `created_by` | bigint | null |  | User who created the row (null for migrations and jobs). |
 | `updated_by` | bigint | null |  | User who last updated the row. |
+| `is_active` | boolean | null |  | True when status is active (generated, V0093); the dashboard House filter lists active houses only. |
 
 Keys: `UNIQUE (code)`; `UNIQUE (external_ref)`; `PRIMARY KEY (id)`
 
@@ -2053,6 +2104,28 @@ Append-only points ledger derived on the server, idempotent per source record.
 Keys: `UNIQUE (source_type, source_id)`; `PRIMARY KEY (id)`
 
 References: `FOREIGN KEY (outlet_id) REFERENCES app.outlet(id)`; `FOREIGN KEY (programme_id) REFERENCES app.programme(id)`
+
+## app.mdm_policy
+
+Editable MDM policy the device-owner DPC enforces on top of app.device_policy: allowed apps, blocking windows, kiosk, location sampling (D-MDM-01).
+
+`owner: backend:mdm | capture: ONLINE | retention: master | pii: none` · table
+
+| Column | Type | Null | PII | Description |
+|---|---|---|---|---|
+| `id` | bigint | not null |  | Server surrogate key. |
+| `name` | text | not null |  | Policy name, unique case-insensitively. |
+| `description` | text | null |  | Free description for the admin. |
+| `doc` | jsonb | not null |  | Policy document: allowed_packages, block_windows (days, start, end, packages), kiosk, location_sampling. |
+| `version` | integer | not null |  | Row version, moved forward on every update (If-Match). |
+| `created_by` | bigint | null |  | User who created the policy. |
+| `created_at` | timestamp with time zone | not null |  | UTC instant the row was inserted. |
+| `updated_by` | bigint | null |  | User who last changed the policy. |
+| `updated_at` | timestamp with time zone | not null |  | UTC instant of the last change. |
+
+Keys: `PRIMARY KEY (id)`
+
+References: `FOREIGN KEY (created_by) REFERENCES app.app_user(id)`; `FOREIGN KEY (updated_by) REFERENCES app.app_user(id)`
 
 ## app.media
 
@@ -3346,7 +3419,7 @@ Lookup giving each role an integer ordinal for config scoping.
 
 | Column | Type | Null | PII | Description |
 |---|---|---|---|---|
-| `role` | text | not null |  | User role (contract Role). |
+| `role` | text | not null |  | User role code (contract Role); NATIONAL and BRAND are web-only portal levels (V0087, docs/34 s1); TOP is being retired (its users move to NATIONAL; kept for audit_log.actor_role and history). |
 | `ordinal` | smallint | not null |  | Integer used as scope id for the role in config values. |
 | `field_role` | boolean | not null |  | Whether the role is a field role (SR, AMO or TSO) whose records arrive through sync. |
 
@@ -3392,6 +3465,7 @@ A sales route in a zone with its code, kind, visit days and label.
 | `version` | integer | not null |  | Optimistic-concurrency version; increases by one on every update. |
 | `created_by` | bigint | null |  | User who created the row (null for migrations and jobs). |
 | `updated_by` | bigint | null |  | User who last updated the row. |
+| `route_class` | text | not null |  | normal, manual (no-internet, keyed on the web), dummy_br or dummy_institutional; Live CPR, Target Route and Login count normal routes only (V0094). |
 
 Keys: `UNIQUE (code)`; `UNIQUE (external_ref)`; `PRIMARY KEY (id)`
 
@@ -3541,6 +3615,27 @@ Keys: `UNIQUE (client_uuid)`; `PRIMARY KEY (id)`
 
 References: `FOREIGN KEY (approved_by) REFERENCES app.app_user(id)`; `FOREIGN KEY (route_id) REFERENCES app.route(id)`; `FOREIGN KEY (voided_by) REFERENCES app.app_user(id)`
 
+## app.route_monthly_target
+
+Monthly sales target of a route for a SKU in base units (D-TARGET-MIN-01); one row per route, SKU and month, rewritten by a later upload.
+
+`owner: backend:admin | capture: ONLINE | retention: master | pii: none` · table
+
+| Column | Type | Null | PII | Description |
+|---|---|---|---|---|
+| `route_id` | bigint | not null |  | Route (app.route). |
+| `sku_id` | bigint | not null |  | SKU (app.sku). |
+| `month` | date | not null |  | Target month: the first day of the Asia/Dhaka month. |
+| `qty_base` | bigint | not null |  | Target quantity for the month in the SKU's base unit (sticks, pieces or dozens). |
+| `batch_uuid` | uuid | not null |  | Upload batch that last wrote the row (app.route_target_batch). |
+| `created_at` | timestamp with time zone | not null |  | UTC instant the row was first inserted. |
+| `updated_at` | timestamp with time zone | not null |  | UTC instant of the last upload that wrote the row. |
+| `updated_by` | bigint | null |  | User whose upload last wrote the row. |
+
+Keys: `PRIMARY KEY (route_id, sku_id, month)`
+
+References: `FOREIGN KEY (batch_uuid) REFERENCES app.route_target_batch(batch_uuid)`; `FOREIGN KEY (route_id) REFERENCES app.route(id)`; `FOREIGN KEY (sku_id) REFERENCES app.sku(id)`; `FOREIGN KEY (updated_by) REFERENCES app.app_user(id)`
+
 ## app.route_planned
 
 Planned visit days of a route, effective-dated.
@@ -3561,6 +3656,24 @@ Planned visit days of a route, effective-dated.
 Keys: `PRIMARY KEY (id)`
 
 References: `FOREIGN KEY (route_id) REFERENCES app.route(id)`
+
+## app.route_target_batch
+
+One committed route-target upload: the idempotency record (same uuid and content replays, other content conflicts).
+
+`owner: backend:admin | capture: ONLINE | retention: master | pii: none` · table
+
+| Column | Type | Null | PII | Description |
+|---|---|---|---|---|
+| `batch_uuid` | uuid | not null |  | Client-generated UUID of the upload. |
+| `content_sha256` | bytea | not null |  | SHA-256 of the upload content, to tell a replay from a conflicting reuse of the uuid. |
+| `row_count` | integer | not null |  | Number of target rows in the upload. |
+| `committed_by` | bigint | not null |  | User who committed the upload, from the token. |
+| `committed_at` | timestamp with time zone | not null |  | UTC instant the upload was committed. |
+
+Keys: `PRIMARY KEY (batch_uuid)`
+
+References: `FOREIGN KEY (committed_by) REFERENCES app.app_user(id)`
 
 ## app.route_zone_history
 
@@ -3730,9 +3843,9 @@ A sellable product with unit, pack size, names and category.
 | `short_name` | text | not null |  | Short product name printed on the 58 mm memo. |
 | `name_bn` | text | null |  | Display name in Bangla. |
 | `base_unit` | text | not null |  | Unit in which quantities are counted: stick, piece or dozen. |
-| `base_per_pack` | integer | not null |  | Number of base units in one pack. |
+| `base_per_pack` | integer | not null |  | Base units in one pack: 20 or 10 sticks per cigarette packet, the stick count of a bidi packet, 25 pieces per lighter box, 1 for matches (dozen is the base unit; V0104). |
 | `pack_type` | text | null |  | Pack type label such as HLP, Soft Pack, Box or Dozen. |
-| `entry_unit_default` | text | not null |  | Unit the memo screen enters quantities in by default. |
+| `entry_unit_default` | text | not null |  | Unit the apps enter, show and print: pack for cigarettes, bidi and lighters (box), dozen for matches (V0104, D-UNITS-02). |
 | `report_unit` | text | null |  | Unit shown in reports; null when the base unit is used. |
 | `report_factor` | numeric(16,3) | not null |  | Base units per report unit, with three decimals. |
 | `sort` | integer | not null |  | Display order among siblings. |
@@ -4302,6 +4415,23 @@ Keys: `PRIMARY KEY (id)`
 
 References: `FOREIGN KEY (asset_id) REFERENCES app.admin_asset(asset_id)`
 
+## app.user_brand_scope
+
+Brands a BRAND user may see (D-ROLES-02, docs/34 s1); carried in the web token as the brands claim; product-based reports and dashboard cards are filtered to them on the server.
+
+`owner: backend:authz | capture: ONLINE | retention: master | pii: none` · table
+
+| Column | Type | Null | PII | Description |
+|---|---|---|---|---|
+| `user_id` | bigint | not null |  | BRAND user (app.app_user). |
+| `brand_id` | bigint | not null |  | Brand node of the product tree (app.product_node, level brand). |
+| `granted_at` | timestamp with time zone | not null |  | UTC instant the row was inserted. |
+| `granted_by` | bigint | null |  | SUPERADMIN who granted the brand. |
+
+Keys: `PRIMARY KEY (user_id, brand_id)`
+
+References: `FOREIGN KEY (brand_id) REFERENCES app.product_node(id)`; `FOREIGN KEY (granted_by) REFERENCES app.app_user(id)`; `FOREIGN KEY (user_id) REFERENCES app.app_user(id)`
+
 ## app.user_consent
 
 Acceptance of a notice such as the location notice by a user on a phone.
@@ -4342,6 +4472,24 @@ Keys: `UNIQUE (client_uuid)`; `UNIQUE (external_ref)`; `PRIMARY KEY (id)`
 
 References: `FOREIGN KEY (acting_for_user_id) REFERENCES app.app_user(id)`; `FOREIGN KEY (device_id) REFERENCES app.device(id)`; `FOREIGN KEY (user_id) REFERENCES app.app_user(id)`
 
+## app.user_module_grant
+
+Per-module access of an ADMIN user (D-ROLES-02, docs/34 s1): r = read, w = read and write. Carried in the web token as the modules claim; changed only through the admin grants API, which audits and bumps app_user.scope_version.
+
+`owner: backend:authz | capture: ONLINE | retention: master | pii: none` · table
+
+| Column | Type | Null | PII | Description |
+|---|---|---|---|---|
+| `user_id` | bigint | not null |  | ADMIN user holding the grant (app.app_user). |
+| `module` | text | not null |  | Admin-portal module (contract AdminModule): masterdata, routes, outlets, products, prices, users, targets, credentials, mdm, reports, config, data_entry, indent, leaderboard or daily_tracking. |
+| `access` | text | not null |  | r = read only, w = read and write. |
+| `granted_at` | timestamp with time zone | not null |  | UTC instant the grant was set or last changed. |
+| `granted_by` | bigint | null |  | SUPERADMIN who set the grant; null for the V0089 seed of existing admins. |
+
+Keys: `PRIMARY KEY (user_id, module)`
+
+References: `FOREIGN KEY (granted_by) REFERENCES app.app_user(id)`; `FOREIGN KEY (user_id) REFERENCES app.app_user(id)`
+
 ## app.user_scope
 
 Supervisory reach of a user: a geography node, effective-dated.
@@ -4352,7 +4500,7 @@ Supervisory reach of a user: a geography node, effective-dated.
 |---|---|---|---|---|
 | `id` | bigint | not null |  | Server surrogate key. |
 | `user_id` | bigint | not null |  | User (app.app_user); for device records the capturing user from the token. |
-| `node_type` | text | not null |  | Type of the scope node: national, wing, division, territory or zone. |
+| `node_type` | text | not null |  | Type of the scope node: national, wing, division, territory, house (V0091) or zone. |
 | `node_id` | bigint | not null |  | Id of the scope node; 0 for national. |
 | `valid_from` | date | not null |  | First day the row is in effect. |
 | `valid_to` | date | null |  | First date the scope no longer applies; null means open. |
@@ -4695,6 +4843,25 @@ Per outlet and business date: whether visited, geo-valid, and sales totals.
 
 Keys: `PRIMARY KEY (business_date, outlet_id)`
 
+## dw.agg_daily_outlet_sku
+
+Sales per outlet, SKU and business date of the latest memo versions (calling outlets and channel STD under any product filter).
+
+`owner: worker | capture: SERVER | retention: event_fact | pii: none` · partitioned table
+
+| Column | Type | Null | PII | Description |
+|---|---|---|---|---|
+| `business_date` | date | not null |  | Asia/Dhaka business date of the sales. |
+| `outlet_id` | bigint | not null |  | Outlet (app.outlet). |
+| `route_id` | bigint | not null |  | Route the memos were made on. |
+| `sku_id` | bigint | not null |  | SKU (app.sku). |
+| `sold_qty_base` | bigint | not null |  | Quantity sold in the SKU's base unit (sticks, pieces or dozens). |
+| `memo_count` | integer | not null |  | Memos of the outlet-day with a line of the SKU. |
+| `last_event_id` | bigint | not null |  | Domain event id the projection last applied (watermark). |
+| `updated_at` | timestamp with time zone | not null |  | UTC time the row was last rebuilt. |
+
+Keys: `PRIMARY KEY (business_date, route_id, outlet_id, sku_id)`
+
 ## dw.agg_daily_route
 
 Per route and business date: day state, visit counts, sales, discounts, paid and due money.
@@ -4732,6 +4899,11 @@ Per route and business date: day state, visit counts, sales, discounts, paid and
 | `late_rows_after_final` | integer | not null |  | Rows that arrived after the Final Submit. |
 | `last_event_id` | bigint | not null |  | Highest app.domain_event id folded into this row by the projector (replays are ignored). |
 | `updated_at` | timestamp with time zone | not null |  | UTC instant of the last update. |
+| `downloaded_at` | timestamp with time zone | null |  | First full bundle download of the route-day (app.route_day.target_frozen_at when bundle_count > 0); Login = check-in and download. |
+| `completed_calls` | integer | not null |  | SR calls closed with an outcome other than abandoned or not_reached, with or without a memo (Total Calls). |
+| `completed_geo_valid_calls` | integer | not null |  | Completed calls whose server verdict, else device verdict, is in_range (Geo Validation). |
+| `first_sale_at` | timestamp with time zone | null |  | UTC time of the route-day's first memo (First Sale Time). |
+| `last_sale_at` | timestamp with time zone | null |  | UTC time of the route-day's last memo (Last Sale Time). |
 
 Keys: `PRIMARY KEY (business_date, route_id)`
 
@@ -4795,6 +4967,24 @@ Per route, SKU and date: sold, free, issued and returned quantities and sales.
 
 Keys: `PRIMARY KEY (business_date, route_id, sku_id)`
 
+## dw.agg_daily_route_variant
+
+Distinct memos and sales per route, business date and product variant (Breakdown by variant; a variant has several SKUs, so SKU memo counts cannot be summed).
+
+`owner: worker | capture: SERVER | retention: event_fact | pii: none` · table
+
+| Column | Type | Null | PII | Description |
+|---|---|---|---|---|
+| `business_date` | date | not null |  | Asia/Dhaka business date of the sales. |
+| `route_id` | bigint | not null |  | Route (app.route). |
+| `variant_id` | bigint | not null |  | Variant node of the product tree (app.product_node, level variant). |
+| `memo_count` | integer | not null |  | Distinct memos with at least one line of the variant. |
+| `sold_qty_base` | bigint | not null |  | Quantity sold in base units. |
+| `last_event_id` | bigint | not null |  | Domain event id the projection last applied (watermark). |
+| `updated_at` | timestamp with time zone | not null |  | UTC time the row was last rebuilt. |
+
+Keys: `PRIMARY KEY (business_date, route_id, variant_id)`
+
 ## dw.agg_daily_screen_use
 
 One row is the use of one screen action by one role on one day, rolled up from fact_activity and kept for ever.
@@ -4842,6 +5032,8 @@ Per zone and business date: route and visit counts, geo and risk counts, and sal
 | `dues_collected_mtk` | bigint | not null |  | Dues collected against earlier credit memos, in milli-taka. |
 | `last_event_id` | bigint | not null |  | Highest app.domain_event id folded into this row by the projector (replays are ignored). |
 | `updated_at` | timestamp with time zone | not null |  | UTC instant of the last update. |
+| `final_submitted_at` | timestamp with time zone | null |  | UTC time of the zone-day's first Final Submit, or of the midnight auto-submit. |
+| `auto_submitted` | boolean | not null |  | True when the midnight job auto-submitted the zone-day (dw only; app.final_submit is not written). |
 
 Keys: `PRIMARY KEY (business_date, zone_id)`
 
@@ -4908,6 +5100,9 @@ Route-level geography dimension flattened through zone, territory, division and 
 | `wing_name` | text | not null |  | Name of the wing. |
 | `status` | text | not null |  | Lifecycle status; allowed values are listed under constraints. |
 | `updated_at` | timestamp with time zone | not null |  | UTC instant of the last update. |
+| `house_id` | bigint | null |  | Distribution house of the route's zone (app.zone.house_id); null when the zone names none. |
+| `house_name` | text | null |  | Name of that house. |
+| `route_class` | text | not null |  | Route class copied from app.route.route_class (normal, manual, dummy_br, dummy_institutional). |
 
 Keys: `PRIMARY KEY (route_id)`
 
@@ -4938,6 +5133,9 @@ One row is a version of geo valid over [valid_from, valid_to) (SCD2), kept by a 
 | `valid_from` | date | null |  | First Asia/Dhaka business date of the version (null = since ever). |
 | `valid_to` | date | null |  | Asia/Dhaka business date the version ended, exclusive (null = current). |
 | `is_current` | boolean | null |  | True for the current version (valid_to is null). |
+| `house_id` | bigint | null |  | Distribution house of the route's zone in this version; null when the zone named none. |
+| `house_name` | text | null |  | Name of that house in this version. |
+| `route_class` | text | not null |  | Route class in this version. |
 
 Keys: `PRIMARY KEY (geo_key)`
 
@@ -5016,6 +5214,9 @@ SKU dimension flattened through variant, brand, segment and category.
 | `category_name` | text | not null |  | Name of the category. |
 | `category_code` | text | not null |  | Product category: cigarette, bidi, lighter or match. |
 | `updated_at` | timestamp with time zone | not null |  | UTC instant of the last update. |
+| `segment_code` | text | null |  | Code of the SKU's segment node (app.product_node.code); null when the node has none. |
+| `brand_code` | text | null |  | Code of the SKU's brand node; null when the node has none. |
+| `variant_code` | text | null |  | Code of the SKU's variant node; null when the node has none. |
 
 Keys: `PRIMARY KEY (sku_id)`
 
@@ -5046,6 +5247,9 @@ One row is a version of product valid over [valid_from, valid_to) (SCD2), kept b
 | `valid_from` | date | null |  | First Asia/Dhaka business date of the version (null = since ever). |
 | `valid_to` | date | null |  | Asia/Dhaka business date the version ended, exclusive (null = current). |
 | `is_current` | boolean | null |  | True for the current version (valid_to is null). |
+| `segment_code` | text | null |  | Segment code in this version. |
+| `brand_code` | text | null |  | Brand code in this version. |
+| `variant_code` | text | null |  | Variant code in this version. |
 
 Keys: `PRIMARY KEY (product_key)`
 
@@ -5303,9 +5507,9 @@ Keys: `PRIMARY KEY (user_id, business_date)`
 
 ## dw.fact_visit
 
-One row per visit with device and server verdicts, distance and void flag.
+One row per visit with device and server verdicts, distances, the outlet base and call positions, the Force Sale photo, the void flag and the completed and within_fence flags.
 
-`owner: worker | capture: SERVER | retention: event_fact | pii: none` · partitioned table
+`owner: worker | capture: SERVER | retention: event_fact | pii: personal` · partitioned table
 
 | Column | Type | Null | PII | Description |
 |---|---|---|---|---|
@@ -5334,8 +5538,50 @@ One row per visit with device and server verdicts, distance and void flag.
 | `user_key` | bigint | null |  | dim_user_version key valid on the business date (dw.user_key_on). |
 | `entry_source` | text | not null |  | device or manual (keyed on the web for a dead-phone day), copied from app.visit. |
 | `entered_by_user_id` | bigint | null |  | Web user who keyed the visit (entry_source manual), copied from app.visit; null for device rows. |
+| `radius_m` | smallint | null |  | Geo-fence radius used at the call, metres (app.visit.radius_m_used). |
+| `outlet_lat` | double precision | null |  | Latitude of the outlet base position used at the call (WGS84; a business location). |
+| `outlet_lng` | double precision | null |  | Longitude of the outlet base position used at the call. |
+| `fix_lat` | double precision | null | personal | Latitude of the SR's fix at the call (WGS84); never in a dw.v_* view. |
+| `fix_lng` | double precision | null | personal | Longitude of the SR's fix at the call (WGS84); never in a dw.v_* view. |
+| `force_photo_uuid` | uuid | null |  | media_uuid of the Force Sale photo; null for a call inside the fence. |
+| `completed` | boolean | not null |  | True for a call closed with an outcome other than abandoned or not_reached (set by the rebuild, D-DASH-03). |
+| `server_distance_m` | double precision | null |  | Server re-check of the distance between the call fix and the outlet location, metres; null until checked or not copied. |
+| `within_fence` | boolean | null |  | Generated: true when the server verdict, else the device verdict, is in_range (geo-valid call). |
 
 Keys: `PRIMARY KEY (visit_client_uuid, business_date)`
+
+## dw.route_last_position
+
+Latest position of each route's SR on a business date (FF Geo pins), upserted from geo fixes in capture-time order.
+
+`owner: worker | capture: SERVER | retention: event_fact | pii: personal` · table
+
+| Column | Type | Null | PII | Description |
+|---|---|---|---|---|
+| `business_date` | date | not null |  | Asia/Dhaka business date. |
+| `route_id` | bigint | not null |  | Route (app.route). |
+| `user_id` | bigint | not null |  | SR whose position it is (app.app_user). |
+| `lat` | double precision | not null | personal | Latitude of the latest fix (WGS84); never in a dw.v_* view. |
+| `lng` | double precision | not null | personal | Longitude of the latest fix (WGS84); never in a dw.v_* view. |
+| `captured_at` | timestamp with time zone | not null |  | UTC capture time of that fix. |
+| `last_event_id` | bigint | not null |  | Domain event id the projection last applied (watermark). |
+| `updated_at` | timestamp with time zone | not null |  | UTC time the row was last rebuilt. |
+
+Keys: `PRIMARY KEY (business_date, route_id)`
+
+## dw.summary_freshness
+
+Freshness of each dashboard summary table: the projector's last pass and its outbox position (the "last updated" time).
+
+`owner: worker | capture: SERVER | retention: master | pii: none` · table
+
+| Column | Type | Null | PII | Description |
+|---|---|---|---|---|
+| `table_name` | text | not null |  | Summary table name, e.g. agg_daily_route. |
+| `last_updated_at` | timestamp with time zone | not null |  | Projector wall-clock time when it last finished a pass over the table. |
+| `last_event_id` | bigint | not null |  | Outbox position (domain event id) the pass reached. |
+
+Keys: `PRIMARY KEY (table_name)`
 
 ## dw.v_attendance
 
@@ -5355,6 +5601,38 @@ Stable view: per user and business date, check-in and check-out times, hours in 
 | `check_in_is_mock` | boolean | null |  | True when the check-in fix came from a mock location provider. |
 | `check_out_is_mock` | boolean | null |  | True when the check-out fix came from a mock location provider. |
 | `updated_at` | timestamp with time zone | null |  | UTC instant of the last update. |
+
+## dw.v_calendar
+
+Stable view: one row per date with Friday, national holiday, make-up day and working-day flags (dim_date plus the live global app.calendar_holiday rows).
+
+`owner: worker | capture: SERVER | retention: master | pii: none` · view
+
+| Column | Type | Null | PII | Description |
+|---|---|---|---|---|
+| `business_date` | date | null |  | Calendar date (Asia/Dhaka business date). |
+| `month` | date | null |  | First day of the date's month. |
+| `iso_weekday` | smallint | null |  | ISO weekday, 1 = Monday ... 5 = Friday ... 7 = Sunday. |
+| `is_friday` | boolean | null |  | True on Fridays. |
+| `is_weekend` | boolean | null |  | True on the weekly off day (Friday, dw.dim_date.is_weekend). |
+| `is_holiday` | boolean | null |  | True when a live national holiday or emergency off day is declared for the date. |
+| `holiday_name` | text | null |  | English name of the declared holiday or make-up day; null on ordinary days. |
+| `is_makeup_day` | boolean | null |  | True when the date is declared a selling (make-up) day. |
+| `is_working_day` | boolean | null |  | True when the date counts as a working day: a make-up day, or neither weekend nor holiday. |
+
+## dw.v_calendar_month
+
+Stable view: per month the number of days, Fridays, national holidays and working days (divisor of the daily target).
+
+`owner: worker | capture: SERVER | retention: master | pii: none` · view
+
+| Column | Type | Null | PII | Description |
+|---|---|---|---|---|
+| `month` | date | null |  | First day of the month. |
+| `days` | integer | null |  | Days in the month. |
+| `fridays` | integer | null |  | Fridays in the month. |
+| `holidays` | integer | null |  | Dates in the month with a live national holiday or emergency off day. |
+| `working_days` | integer | null |  | Working days in the month (dw.v_calendar.is_working_day). |
 
 ## dw.v_collections
 
@@ -5509,6 +5787,47 @@ Stable view: per field user and business date, SR calls, successful calls, geo v
 | `last_visit_end_at` | timestamp with time zone | null |  | UTC instant the last call ended. |
 | `memos_entered_manually` | bigint | null |  | Active memos keyed on the web from paper (entry_source manual). |
 
+## dw.v_device_command
+
+Stable view: MDM commands for the activity log, without signature and result.
+
+`owner: backend:mdm | capture: ONLINE | retention: audit | pii: none` · view
+
+| Column | Type | Null | PII | Description |
+|---|---|---|---|---|
+| `seq` | bigint | null |  | Delivery and listing order. |
+| `command_id` | uuid | null |  | UUID of the command. |
+| `device_id` | bigint | null |  | Target device (app.device). |
+| `type` | text | null |  | Command type. |
+| `state` | text | null |  | Command state. |
+| `reason` | text | null |  | Reason typed by the requester. |
+| `created_by` | bigint | null |  | Requester (app.app_user id). |
+| `created_at` | timestamp with time zone | null |  | UTC instant of the request. |
+| `expires_at` | timestamp with time zone | null |  | UTC instant the command expires. |
+| `approved_by` | bigint | null |  | Second person of a factory reset (app.app_user id). |
+| `approved_at` | timestamp with time zone | null |  | UTC instant of the approval or rejection. |
+| `decision_reason` | text | null |  | Reason given with the decision. |
+| `push_sent_at` | timestamp with time zone | null |  | UTC instant FCM accepted the push. |
+| `sent_at` | timestamp with time zone | null |  | UTC instant of the first pull by the device. |
+| `acked_at` | timestamp with time zone | null |  | UTC instant the device reported done or failed. |
+
+## dw.v_final_submit_log
+
+Stable view: per zone and business date the first Final Submit (second submits ignored, Brief 07), the number of submits and the reopen state.
+
+`owner: worker | capture: SERVER | retention: audit | pii: none` · view
+
+| Column | Type | Null | PII | Description |
+|---|---|---|---|---|
+| `zone_id` | bigint | null |  | Zone (app.zone). |
+| `business_date` | date | null |  | Asia/Dhaka business date that was final-submitted. |
+| `first_submitted_at` | timestamp with time zone | null |  | UTC time of the first Final Submit of the zone-day. |
+| `first_submitted_by` | bigint | null |  | User who made the first Final Submit (app.app_user id). |
+| `first_via` | text | null |  | Channel of the first Final Submit: app or web. |
+| `submits` | bigint | null |  | Number of Final Submits of the zone-day (a reopen and a resubmit add one). |
+| `last_submitted_at` | timestamp with time zone | null |  | UTC time of the latest Final Submit of the zone-day. |
+| `reopened_now` | boolean | null |  | True when every submit of the zone-day is reopened (no live Final Submit). |
+
 ## dw.v_geo_integrity
 
 Stable view: per user and business date, geo-validation outcomes of visits and mock-location evidence of fixes.
@@ -5557,3 +5876,33 @@ Stable view: outlets without owner name, address or national ids; the phone mask
 | `location_confirmed` | boolean | null |  | True when the master location is confirmed. |
 | `contact_number_masked` | text | null |  | Phone masked as 01*****NNN (last three digits); null when not a Bangladeshi mobile number. |
 | `updated_at` | timestamp with time zone | null |  | UTC instant of the last update. |
+
+## dw.v_route_monthly_target
+
+Stable view: route x SKU monthly targets in base units with the month's working days and the derived daily target (D-TARGET-MIN-01).
+
+`owner: worker | capture: SERVER | retention: master | pii: none` · view
+
+| Column | Type | Null | PII | Description |
+|---|---|---|---|---|
+| `month` | date | null |  | Target month (first day of the month). |
+| `route_id` | bigint | null |  | Route (app.route). |
+| `sku_id` | bigint | null |  | SKU (app.sku). |
+| `category_code` | text | null |  | Product category of the SKU: cigarette, bidi, lighter or match. |
+| `base_unit` | text | null |  | Base unit of the quantities: stick, piece or dozen. |
+| `monthly_qty_base` | bigint | null |  | Target quantity for the month in base units. |
+| `working_days` | integer | null |  | Working days of the month (dw.v_calendar_month). |
+| `daily_qty_base` | numeric | null |  | Daily target in base units = monthly_qty_base / working_days, unrounded; null when the month has no working day. |
+| `batch_uuid` | uuid | null |  | Upload batch that last wrote the target (app.route_target_batch). |
+| `updated_at` | timestamp with time zone | null |  | UTC instant of the last upload that wrote the target. |
+
+## dw.v_working_day
+
+Stable view: one row per date, working = the national working-day flag of dw.v_calendar (Fridays and national holidays off, make-up days on).
+
+`owner: worker | capture: SERVER | retention: master | pii: none` · view
+
+| Column | Type | Null | PII | Description |
+|---|---|---|---|---|
+| `day` | date | null |  | Calendar date (Asia/Dhaka business date). |
+| `working` | boolean | null |  | True when the date counts as a national working day. |
