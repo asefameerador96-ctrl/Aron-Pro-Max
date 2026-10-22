@@ -6617,8 +6617,10 @@ export interface components {
             name_bn?: string | null;
             /** @enum {string} */
             base_unit: "stick" | "piece" | "dozen";
-            /** @description Sticks per pack (10, 20, 25); 1 for lighter and match. The read-only pack badge is qty_base / base_per_pack. */
+            /** @description Base units per pack: 10 or 20 sticks for cigarettes, the stick count for bidi, 25 pieces for a lighter box, 1 for matches (the dozen is the base unit). The pack badge is qty_base / base_per_pack (docs/34 s4.2). */
             base_per_pack: number;
+            /** @description Free pack label (HLP, Soft Pack, Box, Dozen). The entry-unit word (packet / box / dozen) comes from the category. */
+            pack_type?: string | null;
             entry_unit_default: components["schemas"]["QtyUnit"];
             /** @enum {string|null} */
             report_unit?: "stick" | "piece" | "dozen" | "box" | "pack" | null;
@@ -6648,6 +6650,7 @@ export interface components {
             base_unit: "stick" | "piece" | "dozen";
             base_per_pack: number;
             entry_unit_default: components["schemas"]["QtyUnit"];
+            pack_type?: string | null;
             /** @enum {string|null} */
             report_unit?: "stick" | "piece" | "dozen" | "box" | "pack" | null;
             report_factor: components["schemas"]["Decimal3"];
@@ -6659,6 +6662,10 @@ export interface components {
             name?: string;
             short_name?: string;
             name_bn?: string | null;
+            /** @description A change needs `change_reason`; a match pack stays 1. */
+            base_per_pack?: number;
+            entry_unit_default?: components["schemas"]["QtyUnit"];
+            pack_type?: string | null;
             /** @enum {string|null} */
             report_unit?: "stick" | "piece" | "dozen" | "box" | "pack" | null;
             report_factor?: components["schemas"]["Decimal3"];
@@ -8354,7 +8361,9 @@ export interface components {
         /** @example 2026-11 */
         RouteTargetMonth: string;
         RouteTargetRow: {
+            /** @description Surrounding spaces are ignored. */
             route_code: string;
+            /** @description Surrounding spaces are ignored. */
             sku_code: string;
             month: components["schemas"]["RouteTargetMonth"];
             /**
@@ -8390,7 +8399,7 @@ export interface components {
              * @description Sum of the quantities of the rows without an error.
              */
             total_qty_base: number;
-            /** @description Existing (route */
+            /** @description Existing (route, SKU, month) targets the batch would overwrite. */
             replaces: number;
             errors: components["schemas"]["RouteTargetRowError"][];
             /** @description True when more than 1000 errors exist. */

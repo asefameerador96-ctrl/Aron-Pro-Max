@@ -1,5 +1,15 @@
 # backend-admin lane status
 
+## SESSION 4 (2026-10-22, wave 4): D-TARGET-MIN-01 and docs/34 rows
+Built and checked (masterdata suite 223 tests, 0 failures; RouteInventoryTest green):
+1. **Route monthly targets** `PUT/GET /v1/admin/route-targets` (`RouteTargetsApi.kt`), built to web-admin's shapes (dry_run preview with row errors; commit all-or-none with reason, idempotent by `batch_uuid`, audit `route_target`). Opus checker (T1): 20 tests in `RouteTargetsCheckerTest`; defects fixed: leading-zero quantity, padded month, broken YAML. NOT the lead's `POST .../preview|commit` paths: web-admin's page is already built on `PUT` with `dry_run`; no If-Match (a batch has no single version; `batch_uuid` is the idempotency key). Needs db: `docs/requests/backend-admin-route-target-tables.md` (503 until deployed; tests apply `proposed_route_monthly_target.sql`). Route kinds accepted: `sr`, `normal`, `manual`.
+2. **Calendar**: `GET /v1/admin/calendar/working-days?month=` (weekend days from `cfg.calendar.weekend_days`, global holidays only, global make-up day works), `POST .../holidays/{id}/revoke` (future entries, reason, audit). Holiday create/list already existed. No `calendar` table needed: it uses `app.calendar_holiday`.
+3. **House**: `is_active` on every geo node (derived from `status`; no new column needed, db should not add a separate one), `GET /v1/admin/geo/house/duplicates`, `POST /v1/admin/geo/house/merge` (If-Match = kept house version, reason, zones move, merged houses inactive, audit per house).
+4. **Outlet channel**: was already required on create and not clearable on update (DB NOT NULL); enum errors now list the allowed values ("one of GT, DCC, ...") for every enumerated field. No outlet import endpoint exists (Apsis import is out of scope).
+5. **SKU packing**: `pack_type` (label), `base_per_pack` and `entry_unit_default` are now patchable (reason required for the first two) and `pack_type` is in create/read; a lighter box may hold any count (25), a match pack stays 1; entry unit must be `pack` or the base unit. The bundle already carries `base_per_pack`, `entry_unit_default`, `category_code`; `pack_type` is NOT in the bundle (the words packet/box/dozen come from the category).
+Not done: user access API `/v1/admin/users/{id}/access` (backend-authz owns it; its branch had not taken it, to build to web-admin's shapes in the next session after coordinating with session_019B2UpUbUmdw1wR25U3zPMj; needs db tables `user_module_grant`, `user_brand_scope`). Seed still has `entry_unit_default = 'stick'` (db's seed change).
+
+
 ## HANDOVER (2026-10-15, session 3, about 300k tokens; next session starts here)
 Lane head 91e385b5 on lane/backend-admin (backend-core 025e0ed and INT merged). Full :backend:app/:masterdata/:config suite: 541 tests, 0 failures. Every row below had its checker (keep the checkers' regression tests).
 

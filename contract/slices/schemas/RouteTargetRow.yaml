@@ -11,10 +11,12 @@ RouteTargetRow:
       type: string
       minLength: 1
       maxLength: 40
+      description: Surrounding spaces are ignored.
     sku_code:
       type: string
       minLength: 1
       maxLength: 40
+      description: Surrounding spaces are ignored.
     month:
       $ref: '#/components/schemas/RouteTargetMonth'
     qty_base:

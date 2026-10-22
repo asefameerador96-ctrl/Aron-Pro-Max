@@ -10000,7 +10000,8 @@ components:
         short_name: { type: string, maxLength: 20, description: Printed on the 58 mm memo. }
         name_bn: { type: [string, 'null'], maxLength: 120 }
         base_unit: { type: string, enum: [stick, piece, dozen] }
-        base_per_pack: { type: integer, minimum: 1, maximum: 1000, description: 'Sticks per pack (10, 20, 25); 1 for lighter and match. The read-only pack badge is qty_base / base_per_pack.' }
+        base_per_pack: { type: integer, minimum: 1, maximum: 1000, description: 'Base units per pack: 10 or 20 sticks for cigarettes, the stick count for bidi, 25 pieces for a lighter box, 1 for matches (the dozen is the base unit). The pack badge is qty_base / base_per_pack (docs/34 s4.2).' }
+        pack_type: { type: [string, 'null'], maxLength: 40, description: 'Free pack label (HLP, Soft Pack, Box, Dozen). The entry-unit word (packet / box / dozen) comes from the category.' }
         entry_unit_default: { $ref: '#/components/schemas/QtyUnit' }
         report_unit: { type: [string, 'null'], enum: [stick, piece, dozen, box, pack, null] }
         report_factor: { $ref: '#/components/schemas/Decimal3' }
@@ -10032,6 +10033,7 @@ components:
         base_unit: { type: string, enum: [stick, piece, dozen] }
         base_per_pack: { type: integer, minimum: 1, maximum: 1000 }
         entry_unit_default: { $ref: '#/components/schemas/QtyUnit' }
+        pack_type: { type: [string, 'null'], maxLength: 40 }
         report_unit: { type: [string, 'null'], enum: [stick, piece, dozen, box, pack, null] }
         report_factor: { $ref: '#/components/schemas/Decimal3' }
         sort: { type: integer }
@@ -10044,6 +10046,9 @@ components:
         name: { type: string, minLength: 1, maxLength: 120 }
         short_name: { type: string, minLength: 1, maxLength: 20 }
         name_bn: { type: [string, 'null'], maxLength: 120 }
+        base_per_pack: { type: integer, minimum: 1, maximum: 1000, description: 'A change needs `change_reason`; a match pack stays 1.' }
+        entry_unit_default: { $ref: '#/components/schemas/QtyUnit' }
+        pack_type: { type: [string, 'null'], maxLength: 40 }
         report_unit: { type: [string, 'null'], enum: [stick, piece, dozen, box, pack, null] }
         report_factor: { $ref: '#/components/schemas/Decimal3' }
         sort: { type: integer }
@@ -12551,8 +12556,8 @@ components:
       required: [route_code, sku_code, month, qty_base]
       additionalProperties: false
       properties:
-        route_code: { type: string, minLength: 1, maxLength: 40 }
-        sku_code: { type: string, minLength: 1, maxLength: 40 }
+        route_code: { type: string, minLength: 1, maxLength: 40, description: Surrounding spaces are ignored. }
+        sku_code: { type: string, minLength: 1, maxLength: 40, description: Surrounding spaces are ignored. }
         month: { $ref: '#/components/schemas/RouteTargetMonth' }
         qty_base: { type: integer, format: int64, minimum: 0, maximum: 1000000000, description: 'Base units: sticks, pieces or dozens.' }
     RouteTargetBatchWrite:
@@ -12591,7 +12596,7 @@ components:
           type: array
           items: { $ref: '#/components/schemas/RouteTargetMonth' }
         total_qty_base: { type: integer, format: int64, minimum: 0, description: Sum of the quantities of the rows without an error. }
-        replaces: { type: integer, minimum: 0, description: Existing (route, SKU, month) targets the batch would overwrite. }
+        replaces: { type: integer, minimum: 0, description: 'Existing (route, SKU, month) targets the batch would overwrite.' }
         errors:
           type: array
           maxItems: 1000

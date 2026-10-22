@@ -66,10 +66,10 @@ private fun parseRows(arr: JsonArray): List<ParsedRow> = arr.mapIndexed { i, el 
     val o = el as? JsonObject ?: bad("body.rows/$i", "invalid_type")
     o.keys.firstOrNull { it !in setOf("route_code", "sku_code", "month", "qty_base") }?.let { bad("body.rows/$i/$it", "unknown_member") }
     fun text(k: String): String? = (o[k] as? JsonPrimitive)?.takeIf { it.isString }?.content?.trim()?.takeIf { it.isNotEmpty() && it.length <= 40 && '\u0000' !in it }
-    val monthRaw = (o["month"] as? JsonPrimitive)?.takeIf { it.isString }?.content?.trim()
+    val monthRaw = (o["month"] as? JsonPrimitive)?.takeIf { it.isString }?.content
     val month = monthRaw?.takeIf { MONTH_RE.matches(it) }?.let { YearMonth.parse(it).atDay(1) }
     // An integer in range only: 12.5, "12", true, null and 1e3 are not quantities.
-    val q = o["qty_base"]?.let { it as? JsonPrimitive }?.takeIf { !it.isString && it !is JsonNull }?.let { p -> p.content.takeIf { c -> c.matches(Regex("^[0-9]{1,12}$")) }?.toLongOrNull() }?.takeIf { it in 0..MAX_QTY }
+    val q = o["qty_base"]?.let { it as? JsonPrimitive }?.takeIf { !it.isString && it !is JsonNull }?.let { p -> p.content.takeIf { c -> c.matches(Regex("^(0|[1-9][0-9]{0,11})$")) }?.toLongOrNull() }?.takeIf { it in 0..MAX_QTY }
     ParsedRow(i, text("route_code"), text("sku_code"), month, month != null, q, monthRaw)
 }
 

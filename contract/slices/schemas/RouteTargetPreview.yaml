@@ -37,9 +37,7 @@ RouteTargetPreview:
     replaces:
       type: integer
       minimum: 0
-      description: Existing (route
-      SKU: null
-      month) targets the batch would overwrite.: null
+      description: Existing (route, SKU, month) targets the batch would overwrite.
     errors:
       type: array
       maxItems: 1000
