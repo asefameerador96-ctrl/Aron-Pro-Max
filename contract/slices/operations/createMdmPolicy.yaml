@@ -1,0 +1,28 @@
+path: /v1/admin/mdm/policies
+method: post
+operation:
+  tags:
+  - admin-mdm
+  operationId: createMdmPolicy
+  summary: Create an MDM policy.
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          $ref: '#/components/schemas/MdmPolicyWrite'
+  responses:
+    '201':
+      description: Policy created.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/MdmPolicy'
+    '400':
+      $ref: '#/components/responses/BadRequest'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'
+    '409':
+      $ref: '#/components/responses/Conflict'

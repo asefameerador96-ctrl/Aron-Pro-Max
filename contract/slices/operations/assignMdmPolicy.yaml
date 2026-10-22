@@ -1,0 +1,30 @@
+path: /v1/admin/mdm/devices/{device_id}/policy
+method: put
+operation:
+  tags:
+  - admin-mdm
+  operationId: assignMdmPolicy
+  summary: Assign an MDM policy to a device (or clear it); queues an apply_policy command.
+  parameters:
+  - $ref: '#/components/parameters/DeviceIdPath'
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          $ref: '#/components/schemas/MdmPolicyAssignRequest'
+  responses:
+    '200':
+      description: Device after assignment.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/MdmDeviceDetail'
+    '400':
+      $ref: '#/components/responses/BadRequest'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'
+    '404':
+      $ref: '#/components/responses/NotFound'

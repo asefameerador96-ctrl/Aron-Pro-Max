@@ -182,3 +182,19 @@ POST /v1/web-entry/route-day -> case WebEntryTest#saveReplayResaveAndReadWithAud
 POST /v1/web-entry/qc -> case WebEntryTest#qcEntriesAreIdempotentSeparateAndWarehouseNeedsAnAdminAndAReason
 POST /v1/admin/data-entry -> case PaperBackfillTest#rolesValidationAndTheWindow
 POST /v1/admin/quarantine/{quarantine_id}/match-backfill -> case BackfillMatchTest#aHeldPhoneMemoIsMatchedToThePaperBackfillOnceAndItsEvidenceIsKept
+GET /v1/admin/mdm/activity -> exempt: national module (mdm grant), no geography rows; role gate proven by MdmApiTest#roleMatrixOnlyAdminAndSuperadminEnter
+GET /v1/admin/mdm/alerts -> exempt: national module (mdm grant), no geography rows; role gate proven by MdmApiTest#roleMatrixOnlyAdminAndSuperadminEnter
+GET /v1/admin/mdm/devices -> exempt: national module (mdm grant), no geography rows; role gate proven by MdmApiTest#roleMatrixOnlyAdminAndSuperadminEnter
+GET /v1/admin/mdm/devices/{device_id} -> exempt: national module (mdm grant), no geography rows; role gate proven by MdmApiTest#roleMatrixOnlyAdminAndSuperadminEnter
+GET /v1/admin/mdm/devices/{device_id}/activity -> exempt: national module (mdm grant), no geography rows; role gate proven by MdmApiTest#roleMatrixOnlyAdminAndSuperadminEnter
+GET /v1/admin/mdm/devices/{device_id}/commands -> exempt: national module (mdm grant), no geography rows; role gate proven by MdmApiTest#roleMatrixOnlyAdminAndSuperadminEnter
+GET /v1/admin/mdm/enrolment-tokens -> exempt: national module (mdm grant), no geography rows; role gate proven by MdmApiTest#roleMatrixOnlyAdminAndSuperadminEnter
+GET /v1/admin/mdm/policies -> exempt: national module (mdm grant), no geography rows; role gate proven by MdmApiTest#roleMatrixOnlyAdminAndSuperadminEnter
+GET /v1/admin/mdm/policies/{policy_id} -> exempt: national module (mdm grant), no geography rows; role gate proven by MdmApiTest#roleMatrixOnlyAdminAndSuperadminEnter
+POST /v1/admin/mdm/commands/{command_id}/decision -> exempt: national module (mdm grant), no geography rows; role gate proven by MdmApiTest#roleMatrixOnlyAdminAndSuperadminEnter
+POST /v1/admin/mdm/devices/{device_id}/commands -> exempt: national module (mdm grant), no geography rows; role gate proven by MdmApiTest#roleMatrixOnlyAdminAndSuperadminEnter
+POST /v1/admin/mdm/enrolment-tokens -> exempt: national module (mdm grant), no geography rows; role gate proven by MdmApiTest#roleMatrixOnlyAdminAndSuperadminEnter
+POST /v1/admin/mdm/enrolment-tokens/{token_id}/revoke -> exempt: national module (mdm grant), no geography rows; role gate proven by MdmApiTest#roleMatrixOnlyAdminAndSuperadminEnter
+POST /v1/admin/mdm/policies -> exempt: national module (mdm grant), no geography rows; role gate proven by MdmApiTest#roleMatrixOnlyAdminAndSuperadminEnter
+PUT /v1/admin/mdm/devices/{device_id}/policy -> exempt: national module (mdm grant), no geography rows; role gate proven by MdmApiTest#roleMatrixOnlyAdminAndSuperadminEnter
+PUT /v1/admin/mdm/policies/{policy_id} -> exempt: national module (mdm grant), no geography rows; role gate proven by MdmApiTest#roleMatrixOnlyAdminAndSuperadminEnter

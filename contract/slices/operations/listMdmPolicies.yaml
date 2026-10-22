@@ -1,0 +1,21 @@
+path: /v1/admin/mdm/policies
+method: get
+operation:
+  tags:
+  - admin-mdm
+  operationId: listMdmPolicies
+  summary: MDM policies with the number of devices on each.
+  parameters:
+  - $ref: '#/components/parameters/Limit'
+  - $ref: '#/components/parameters/Cursor'
+  responses:
+    '200':
+      description: Page of policies.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/MdmPolicyPage'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'

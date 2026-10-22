@@ -105,7 +105,7 @@ object SessionModule {
         databases: UserDatabases, components: SessionComponents, scheduler: WorkManagerSyncScheduler, runtime: DeviceRuntime, bundles: BundleDownloaders,
         media: MediaShell,
         packshots: com.aktcl.aron.core.sync.SkuPackshots,
-        resumeConfigCheck: ResumeConfigCheck, push: com.aktcl.aron.core.sync.shell.PushShell,
+        resumeConfigCheck: ResumeConfigCheck, push: com.aktcl.aron.core.sync.shell.PushShell, mdm: com.aktcl.aron.core.sync.mdm.MdmCommandShell,
         activityLog: com.aktcl.aron.core.sync.ActivityLog,
         content: com.aktcl.aron.core.sync.ContentShell,
     ): AronWorkerFactory = run {
@@ -114,13 +114,13 @@ object SessionModule {
         {
             SessionSyncRunner(
                 databases, components, runtime::beforeBatch, bundles,
-                afterRun = { userId, report -> media.afterSync(report); content.afterSync(userId); packshotPreload.afterSync(userId) },
+                afterRun = { userId, report -> mdm.afterSync(); media.afterSync(report); content.afterSync(userId); packshotPreload.afterSync(userId) },
                 config = resumeConfigCheck, activityLog = activityLog, telemetry = telemetry,
             )
         },
         { scheduler },
         // N-038: the pull a push asks for; it never gets the upload runner.
-        { com.aktcl.aron.core.sync.push.SessionPushPull(push::settledActiveUser, bundles, resumeConfigCheck) },
+        { com.aktcl.aron.core.sync.push.SessionPushPull(push::settledActiveUser, bundles, resumeConfigCheck, mdm::pullAndApplyIo) },
         contentPrefetch = content::prefetch, // F-SR-020: AV/KV assets ahead of the call, Wi-Fi by policy
         )
     }
@@ -136,6 +136,12 @@ object SessionModule {
     @Singleton
     fun mediaShell(@ApplicationContext context: Context, components: SessionComponents, databases: UserDatabases): MediaShell =
         MediaShell(context, components, databases)
+
+    /** Lane mdm: pulls and applies the MDM commands of this phone (device owner only does anything). */
+    @Provides
+    @Singleton
+    fun mdmCommandShell(@ApplicationContext context: Context, components: SessionComponents): com.aktcl.aron.core.sync.mdm.MdmCommandShell =
+        com.aktcl.aron.core.sync.mdm.MdmCommandShell(context, components)
 
     /** N-038 push: the FCM token for the signed-in user, the Bangla/English notice and the jittered pull (never an upload). */
     @Provides

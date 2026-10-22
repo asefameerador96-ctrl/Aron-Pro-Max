@@ -48,6 +48,9 @@ describe("ADM-10 held: purpose binding, replay, CSRF, method, leaks", () => {
     expect((await enrol({ [MFA_COOKIE]: seal({ mfaToken: tok }, MFA_PURPOSE, 60, "another-secret-0123456789-0123456789") })).status).toBe(401);
     const flipped = c[MFA_COOKIE]!.slice(0, -2) + (c[MFA_COOKIE]!.endsWith("A") ? "BB" : "AA");
     expect((await enrol({ [MFA_COOKIE]: flipped })).status).toBe(401);
+    // a flip inside the ciphertext (the tag check), not only at the tail (the canonical-encoding check)
+    const mid = c[MFA_COOKIE]!.slice(0, 40) + (c[MFA_COOKIE]![40] === "A" ? "B" : "A") + c[MFA_COOKIE]!.slice(41);
+    expect((await enrol({ [MFA_COOKIE]: mid })).status).toBe(401);
     // spend it at verify (mock: newadmin1 accepts 123456 even before enrolment), then replay the cookie at enrol
     expect((await verifyPost(req("/api/bff/mfa/verify", "POST", { code: "123456" }, { [MFA_COOKIE]: c[MFA_COOKIE]! }))).status).toBe(200);
     const replay = await enrol({ [MFA_COOKIE]: c[MFA_COOKIE]! });

@@ -1,0 +1,11 @@
+DeviceCommandAckResult:
+  type: object
+  required:
+  - command_id
+  - state
+  additionalProperties: false
+  properties:
+    command_id:
+      $ref: '#/components/schemas/Uuid'
+    state:
+      $ref: '#/components/schemas/MdmCommandState'

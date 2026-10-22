@@ -1,0 +1,33 @@
+MdmCommandCreateRequest:
+  type: object
+  required:
+  - command_id
+  - type
+  - reason
+  additionalProperties: false
+  properties:
+    command_id:
+      $ref: '#/components/schemas/Uuid'
+    type:
+      type: string
+      enum:
+      - lock
+      - unlock
+      - message
+      - locate
+      - reboot
+      - factory_reset
+    params:
+      type: object
+      description: 'message: {text_bn, text_en} (one required, 300 chars each); lock: {message}; others none.'
+      additionalProperties:
+        $ref: '#/components/schemas/JsonScalar'
+    reason:
+      type: string
+      minLength: 3
+      maxLength: 300
+    ttl_h:
+      type: integer
+      minimum: 1
+      maximum: 72
+      default: 24
