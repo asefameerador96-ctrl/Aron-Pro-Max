@@ -126,4 +126,5 @@ Dependents merge origin/lane/ui-kit (not wait for INT). Parity proof per lane: d
 | android-units | session_01Nd8dEfvfeLSDqpvGzzT2SW (started 09:08 UTC) | Sonnet (Opus checker) | lane/android-units | packets / boxes / dozens across the apps |
 | android-map | session_013nUUnEq5JwDtmgn5PXSYFv (started 09:08 UTC) | Sonnet | lane/android-map | inline map and distance on Sale |
 | mdm | session_01DVRkAnyU5vkAm8vSEydVoa (started 09:08 UTC) | Sonnet | lane/mdm | MDM portal section, API, dpc command channel |
+| backend-admin | session_01VEs4VxiF8QedFU5ewKizmq (started 09:31 UTC) | Sonnet (Opus checker for targets) | lane/backend-admin | admin APIs for web-admin's wave-4 requests: route targets, calendar, house de-dup, outlet channel, SKU pack sizes |
 | qa | (later) | Sonnet | lane/qa | data-flow trace after db, backend-reports and android-units land |
