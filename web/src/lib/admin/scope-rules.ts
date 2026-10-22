@@ -11,6 +11,8 @@ export const ALLOWED_SCOPE_TYPES: Record<Role, readonly NodeType[]> = {
   DMO: ["division"],
   WM: ["wing"],
   TOP: ["national"],
+  NATIONAL: ["national"],
+  BRAND: ["national"],
   ANALYST: ["national"],
   SUPPORT: ["national"],
   ADMIN: ["national"],

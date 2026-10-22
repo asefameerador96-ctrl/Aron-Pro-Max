@@ -76,6 +76,12 @@ internal val USER = MasterEntity(
             throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "only a SUPERADMIN manages ADMIN and SUPERADMIN users")
         if (cur != null && cur["id"] == ctx.p.userId && ("role" in changes && changes["role"] != cur["role"] || changes["status"] == "disabled"))
             throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "you cannot change your own role or disable yourself")
+        if (cur == null || "role" in changes && changes["role"] != cur["role"]) {
+            // D-ROLES-02: TOP is retired (NATIONAL replaces it); a new role code is usable once its migration landed.
+            if (newRole == Role.TOP) admBad("body.role", "retired", "TOP is retired; use NATIONAL")
+            if (h.count("SELECT count(*) FROM app.role_def WHERE role = :r", "r" to newRole.wire) == 0L)
+                admBad("body.role", "not_available", "${newRole.wire} is not available yet (its migration has not landed)")
+        }
         if (newRole in setOf(Role.SR, Role.AMO) && !MEMO_USERNAME_RE.matches(merged["username"] as String))
             admBad("body.username", "memo_username", "SR and AMO usernames are 4 to 32 lower-case letters and digits (memo numbers embed them)")
         if (merged["home_zone_id"] != null && (cur == null || "home_zone_id" in changes)) {

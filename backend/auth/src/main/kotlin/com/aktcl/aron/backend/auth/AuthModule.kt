@@ -7,6 +7,7 @@ import com.aktcl.aron.backend.platform.AuthGuardDeps
 import com.aktcl.aron.backend.platform.DeviceProof
 import com.aktcl.aron.backend.platform.FieldError
 import com.aktcl.aron.backend.platform.JwtKeys
+import com.aktcl.aron.backend.platform.PortalLevels
 import com.aktcl.aron.backend.platform.ReachResolver
 import com.aktcl.aron.backend.platform.ServerConfig
 import com.aktcl.aron.backend.platform.authenticated
@@ -213,6 +214,8 @@ private fun refresh(call: ApplicationCall, req: RefreshRequest, d: AuthDeps, pro
     val user = d.users.findById(fam.userId) ?: throw ApiProblem(ProblemCode.ERR_AUTH_REFRESH_INVALID)
     // The upload grant survives user disable so captured rows always reach the server (docs/24 s8.1, D24-57).
     if (grant == Grant.FULL && user.status != "active") throw ApiProblem(ProblemCode.ERR_AUTH_USER_DISABLED)
+    // D-ROLES-02: a web family of an SR or AMO (opened before the rule, or after a role change) never refreshes.
+    if (fam.flavour == "web" && user.role in PortalLevels.NO_PORTAL) throw ApiProblem(ProblemCode.ERR_AUTH_PORTAL_NOT_ALLOWED, "this account uses the field app only")
     // A web family opened without TOTP never refreshes for a user who needs it now (promoted into an MFA role, or
     // enrolled since): the next login asks for the code (BC-89). Only where the store knows the family's amr.
     if (fam.flavour == "web" && fam.amr != null && "mfa" !in fam.amr && (user.role.wire in d.login.mfaRoles() || user.mfaEnabled)) {

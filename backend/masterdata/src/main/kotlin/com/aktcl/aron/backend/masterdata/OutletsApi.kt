@@ -39,7 +39,7 @@ data class OutletPage(val items: List<OutletDto>, val next_cursor: String?)
 class OutletsDeps(val db: Database, val geo: GeoRepository, val reach: ReachResolver, val guard: AuthGuardDeps, val clock: AronClock = AronClock.SYSTEM)
 
 /** Roles that read outlet master data on the web (docs/24 s8.5); field roles get outlets through the bundle. */
-private val OUTLET_READERS = setOf(Role.TSO, Role.DMO, Role.WM, Role.TOP, Role.ANALYST, Role.SUPPORT, Role.ADMIN, Role.SUPERADMIN)
+private val OUTLET_READERS = setOf(Role.TSO, Role.DMO, Role.WM, Role.TOP, Role.NATIONAL, Role.ANALYST, Role.SUPPORT, Role.ADMIN, Role.SUPERADMIN)
 
 /**
  * GET /v1/admin/outlets (contract listOutlets) and GET /v1/outlets (listOutletsInReach, every role): outlets in the caller's server-side reach, narrowed by `zone_id`,
