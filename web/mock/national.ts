@@ -118,8 +118,8 @@ export async function handleNational(x: DashCtx): Promise<boolean> {
   if (!national && !mapPage) return false;
   const body = method === "POST" ? ((await x.body()) as Record<string, unknown> | null) : null;
   const q = method === "POST" ? filterParams(body) : url.searchParams;
-  const date = q.get("date") ?? new Date().toISOString().slice(0, 10);
-  const today = new Date().toISOString().slice(0, 10);
+  const today = new Date(Date.now() + 6 * 3_600_000).toISOString().slice(0, 10); // Asia/Dhaka business date, like the server
+  const date = q.get("date") ?? today;
   const asOf = AS_OF(date, today);
   const common = { date, till_time: date === today, as_of: asOf, last_updated_at: asOf };
   const brand = user.role === "BRAND";
