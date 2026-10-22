@@ -9,7 +9,7 @@
 --    days; such scoped days are read from app.calendar_holiday by the API where it needs them.
 -- 2. dw.v_calendar_month: per month the count of days, Fridays, holidays and working days.
 -- 2b. dw.v_working_day (day, working): the shape backend-reports reads (db-backend-reports-dashboard-summaries.md A5).
--- 3. dw.v_route_monthly_target: the live route x SKU targets of V0096 with category, base unit, the month's working days
+-- 3. dw.v_route_monthly_target: the route x SKU targets of V0096 with category, base unit, the month's working days
 --    and the daily target (numeric, base units; rounding is the caller's, the dashboard shows two decimals).
 
 SET lock_timeout = '5s';
@@ -39,11 +39,10 @@ SELECT business_date AS day, is_working_day AS working FROM dw.v_calendar;
 CREATE VIEW dw.v_route_monthly_target AS
 SELECT t.month, t.route_id, t.sku_id, s.category_code, s.base_unit, t.qty_base AS monthly_qty_base, cm.working_days,
        CASE WHEN cm.working_days > 0 THEN t.qty_base::numeric / cm.working_days END AS daily_qty_base,
-       t.upload_id, t.created_at
+       t.batch_uuid, t.updated_at
   FROM app.route_monthly_target t
   JOIN app.sku s ON s.id = t.sku_id
-  LEFT JOIN dw.v_calendar_month cm ON cm.month = t.month
- WHERE t.superseded_by_upload_id IS NULL;
+  LEFT JOIN dw.v_calendar_month cm ON cm.month = t.month;
 
 COMMENT ON VIEW dw.v_calendar IS 'Stable view: one row per date with Friday, national holiday, make-up day and working-day flags (dim_date plus the live global app.calendar_holiday rows).
 owner: worker | capture: SERVER | retention: master | pii: none';
@@ -67,7 +66,7 @@ COMMENT ON VIEW dw.v_working_day IS 'Stable view: one row per date, working = th
 owner: worker | capture: SERVER | retention: master | pii: none';
 COMMENT ON COLUMN dw.v_working_day.day IS 'Calendar date (Asia/Dhaka business date).';
 COMMENT ON COLUMN dw.v_working_day.working IS 'True when the date counts as a national working day.';
-COMMENT ON VIEW dw.v_route_monthly_target IS 'Stable view: live route x SKU monthly targets in base units with the month''s working days and the derived daily target (D-TARGET-MIN-01).
+COMMENT ON VIEW dw.v_route_monthly_target IS 'Stable view: route x SKU monthly targets in base units with the month''s working days and the derived daily target (D-TARGET-MIN-01).
 owner: worker | capture: SERVER | retention: master | pii: none';
 COMMENT ON COLUMN dw.v_route_monthly_target.month IS 'Target month (first day of the month).';
 COMMENT ON COLUMN dw.v_route_monthly_target.route_id IS 'Route (app.route).';
@@ -77,7 +76,7 @@ COMMENT ON COLUMN dw.v_route_monthly_target.base_unit IS 'Base unit of the quant
 COMMENT ON COLUMN dw.v_route_monthly_target.monthly_qty_base IS 'Target quantity for the month in base units.';
 COMMENT ON COLUMN dw.v_route_monthly_target.working_days IS 'Working days of the month (dw.v_calendar_month).';
 COMMENT ON COLUMN dw.v_route_monthly_target.daily_qty_base IS 'Daily target in base units = monthly_qty_base / working_days, unrounded; null when the month has no working day.';
-COMMENT ON COLUMN dw.v_route_monthly_target.upload_id IS 'Upload that set the live row (app.route_monthly_target_upload).';
-COMMENT ON COLUMN dw.v_route_monthly_target.created_at IS 'UTC instant the live row was inserted.';
+COMMENT ON COLUMN dw.v_route_monthly_target.batch_uuid IS 'Upload batch that last wrote the target (app.route_target_batch).';
+COMMENT ON COLUMN dw.v_route_monthly_target.updated_at IS 'UTC instant of the last upload that wrote the target.';
 
 SELECT app.apply_db_role_grants();

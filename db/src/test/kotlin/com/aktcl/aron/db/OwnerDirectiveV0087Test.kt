@@ -11,7 +11,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 
-/** V0087-V0103 (owner directive 2026-10-22, docs/34 s1, s2, s4.2, s5): one test per migration. */
+/** V0087-V0104 (owner directive 2026-10-22, docs/34 s1, s2, s4.2, s5): one test per migration. */
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class OwnerDirectiveV0087Test {
     private lateinit var db: TestDatabase
@@ -168,31 +168,20 @@ class OwnerDirectiveV0087Test {
     }
 
     @Test
-    fun v0096TargetsKeepHistoryAndOneLiveRow() = db.connect().use { c ->
+    fun v0096TargetsAreOneRowPerRouteSkuMonthWithABatch() = db.connect().use { c ->
         c.tx {
             val route = "(SELECT min(id) FROM app.route)"
             val sku = "(SELECT id FROM app.sku WHERE code = 'MaxR-20S')"
-            fun upload(month: String): String {
-                val u = UUID.randomUUID()
-                exec("INSERT INTO app.route_monthly_target_upload (upload_uuid, month, source, row_count, created_by) VALUES ('$u', DATE '$month', 'excel', 1, $superadmin)")
-                return "(SELECT id FROM app.route_monthly_target_upload WHERE upload_uuid = '$u')"
-            }
-            val u1 = upload("2026-10-01")
-            exec("INSERT INTO app.route_monthly_target (month, route_id, sku_id, qty_base, upload_id) VALUES (DATE '2026-10-01', $route, $sku, 26000, $u1)")
-            assertEquals("23505", refused("INSERT INTO app.route_monthly_target (month, route_id, sku_id, qty_base, upload_id) VALUES (DATE '2026-10-01', $route, $sku, 1, $u1)"))
-            assertEquals("23514", refused("INSERT INTO app.route_monthly_target (month, route_id, sku_id, qty_base, upload_id) VALUES (DATE '2026-11-01', $route, $sku, 1, $u1)"))
-            assertEquals("23514", refused("INSERT INTO app.route_monthly_target (month, route_id, sku_id, qty_base, upload_id) VALUES (DATE '2026-10-01', $route, $sku, -1, $u1)"))
-            val u2 = upload("2026-10-01")
-            val other = upload("2027-05-01")
-            assertEquals("23514", refused("UPDATE app.route_monthly_target SET superseded_by_upload_id = $other WHERE upload_id = $u1"))
-            exec("UPDATE app.route_monthly_target SET superseded_by_upload_id = $u2 WHERE upload_id = $u1")
-            exec("INSERT INTO app.route_monthly_target (month, route_id, sku_id, qty_base, upload_id) VALUES (DATE '2026-10-01', $route, $sku, 52000, $u2)")
-            assertEquals("42501", refused("UPDATE app.route_monthly_target SET qty_base = 1 WHERE upload_id = $u2"))
-            assertEquals("42501", refused("UPDATE app.route_monthly_target SET superseded_by_upload_id = $u2 WHERE upload_id = $u1"))
-            assertEquals("42501", refused("DELETE FROM app.route_monthly_target"))
-            assertEquals("42501", refused("UPDATE app.route_monthly_target_upload SET row_count = 2"))
-            assertEquals("23505", refused("INSERT INTO app.route_monthly_target_upload (upload_uuid, month, source, row_count, created_by) SELECT upload_uuid, month, source, 1, created_by FROM app.route_monthly_target_upload LIMIT 1"))
-            // V0097: the live row with October's 26 working days (31 days, 5 Fridays, no national holiday in the test data).
+            val b = UUID.randomUUID()
+            exec("INSERT INTO app.route_target_batch (batch_uuid, content_sha256, row_count, committed_by) VALUES ('$b', sha256('x'::bytea), 1, $superadmin)")
+            assertEquals("23505", refused("INSERT INTO app.route_target_batch (batch_uuid, content_sha256, row_count, committed_by) VALUES ('$b', sha256('y'::bytea), 1, $superadmin)"))
+            assertEquals("23514", refused("INSERT INTO app.route_target_batch (batch_uuid, content_sha256, row_count, committed_by) VALUES (gen_random_uuid(), sha256('y'::bytea), 0, $superadmin)"))
+            exec("INSERT INTO app.route_monthly_target (route_id, sku_id, month, qty_base, batch_uuid, updated_by) VALUES ($route, $sku, DATE '2026-10-01', 26000, '$b', $superadmin)")
+            assertEquals("23505", refused("INSERT INTO app.route_monthly_target (route_id, sku_id, month, qty_base, batch_uuid) VALUES ($route, $sku, DATE '2026-10-01', 1, '$b')"))
+            assertEquals("23514", refused("INSERT INTO app.route_monthly_target (route_id, sku_id, month, qty_base, batch_uuid) VALUES ($route, $sku, DATE '2026-11-02', 1, '$b')"))
+            assertEquals("23514", refused("INSERT INTO app.route_monthly_target (route_id, sku_id, month, qty_base, batch_uuid) VALUES ($route, $sku, DATE '2026-11-01', -1, '$b')"))
+            exec("UPDATE app.route_monthly_target SET qty_base = 52000, updated_at = now() WHERE route_id = $route AND sku_id = $sku")
+            // V0097: October has 26 working days (31 days, 5 Fridays, no national holiday in the test data).
             assertEquals("52000|26|2000.0000000000000000|cigarette", scalar("SELECT monthly_qty_base || '|' || working_days || '|' || daily_qty_base || '|' || category_code FROM dw.v_route_monthly_target"))
         }
     }
@@ -275,58 +264,41 @@ class OwnerDirectiveV0087Test {
     }
 
     @Test
-    fun v0102FactoryResetNeedsASecondPersonAndStatusMovesForward() = db.connect().use { c ->
+    fun v0102FactoryResetStartsPendingAndNeedsASecondPerson() = db.connect().use { c ->
         c.tx {
             val dev = "(SELECT min(id) FROM app.device)"
             val admin = user("admin1001")
-            fun cmd(type: String, status: String): String {
-                val u = UUID.randomUUID()
-                exec("INSERT INTO app.device_command (command_uuid, device_id, type, status, requested_by, expires_at) VALUES ('$u', $dev, '$type', '$status', $admin, now() + interval '1 day')")
-                return "'$u'"
-            }
-            val lock = cmd("lock", "queued")
-            assertEquals("23514", refused("INSERT INTO app.device_command (command_uuid, device_id, type, status, requested_by, expires_at) VALUES (gen_random_uuid(), $dev, 'factory_reset', 'queued', $admin, now() + interval '1 day')"))
-            assertEquals("23514", refused("INSERT INTO app.device_command (command_uuid, device_id, type, status, requested_by, expires_at) VALUES (gen_random_uuid(), $dev, 'lock', 'sent', $admin, now() + interval '1 day')"))
-            assertEquals("23514", refused("INSERT INTO app.device_command (command_uuid, device_id, type, status, requested_by, expires_at) VALUES (gen_random_uuid(), $dev, 'lock', 'queued', $admin, now() + interval '31 days')"))
-            exec("UPDATE app.device_command SET status = 'sent', sent_at = now(), sent_via = 'fcm' WHERE command_uuid = $lock")
-            assertEquals("42501", refused("UPDATE app.device_command SET sent_via = 'sync' WHERE command_uuid = $lock"))
-            exec("UPDATE app.device_command SET status = 'acked', acked_at = now() WHERE command_uuid = $lock")
-            exec("UPDATE app.device_command SET status = 'done', completed_at = now() WHERE command_uuid = $lock")
-            assertEquals("42501", refused("UPDATE app.device_command SET error = 'x' WHERE command_uuid = $lock"))
-            // An approval cannot ride in with the request (the checker's bypass), nor be given by a user without MDM write.
-            assertEquals("23514", refused("INSERT INTO app.device_command (command_uuid, device_id, type, status, requested_by, approved_by, approved_at, expires_at) VALUES (gen_random_uuid(), $dev, 'factory_reset', 'pending_approval', $superadmin, ${user("sr1001")}, now(), now() + interval '1 day')"))
-            val reset = cmd("factory_reset", "pending_approval")
-            assertEquals("23514", refused("UPDATE app.device_command SET approved_by = $superadmin, approved_at = now() WHERE command_uuid = $reset"))
-            assertEquals("42501", refused("UPDATE app.device_command SET status = 'queued', approved_by = ${user("sr1001")}, approved_at = now() WHERE command_uuid = $reset"))
-            exec("INSERT INTO app.app_user (username, full_name, role) VALUES ('qaadmin2', 'QA ADMIN', 'ADMIN')")
-            assertEquals("42501", refused("UPDATE app.device_command SET status = 'queued', approved_by = ${user("qaadmin2")}, approved_at = now() WHERE command_uuid = $reset"))
-            exec("INSERT INTO app.user_module_grant (user_id, module, access, granted_by) VALUES (${user("qaadmin2")}, 'mdm', 'r', $superadmin)")
-            assertEquals("42501", refused("UPDATE app.device_command SET status = 'queued', approved_by = ${user("qaadmin2")}, approved_at = now() WHERE command_uuid = $reset"))
-            val stale = UUID.randomUUID()
-            exec("INSERT INTO app.device_command (command_uuid, device_id, type, status, requested_by, requested_at, expires_at) VALUES ('$stale', $dev, 'factory_reset', 'pending_approval', $admin, now() - interval '2 days', now() - interval '1 day')")
-            assertEquals("23514", refused("UPDATE app.device_command SET status = 'queued', approved_by = $superadmin, approved_at = now() WHERE command_uuid = '$stale'"))
-            exec("UPDATE app.device_command SET status = 'expired' WHERE command_uuid = '$stale'")
-            // admin1001 holds mdm = w (seed) but requested the reset itself: the CHECK refuses.
-            assertEquals("23514", refused("UPDATE app.device_command SET status = 'queued', approved_by = $admin, approved_at = now() WHERE command_uuid = $reset"))
-            // The requester never approves its own reset, even as SUPERADMIN.
-            val own = UUID.randomUUID()
-            exec("INSERT INTO app.device_command (command_uuid, device_id, type, status, requested_by, expires_at) VALUES ('$own', $dev, 'factory_reset', 'pending_approval', $superadmin, now() + interval '1 day')")
-            assertEquals("23514", refused("UPDATE app.device_command SET status = 'queued', approved_by = $superadmin, approved_at = now() WHERE command_uuid = '$own'"))
-            assertEquals("23514", refused("UPDATE app.device_command SET status = 'queued' WHERE command_uuid = $reset"))
-            exec("UPDATE app.device_command SET status = 'queued', approved_by = $superadmin, approved_at = now() WHERE command_uuid = $reset")
-            assertEquals("42501", refused("UPDATE app.device_command SET approved_by = ${user("support1001")} WHERE command_uuid = $reset"))
-            assertEquals("23514", refused("UPDATE app.device_command SET status = 'done' WHERE command_uuid = $reset"))
-            assertEquals("42501", refused("UPDATE app.device_command SET params = '{\"x\": 1}' WHERE command_uuid = $reset"))
-            exec("UPDATE app.device_command SET status = 'cancelled', cancelled_by = $superadmin WHERE command_uuid = $reset")
-            assertEquals("42501", refused("DELETE FROM app.device_command"))
+            val sig = "'" + "A".repeat(86) + "'"
+            fun insert(type: String, state: String, extra: String = "", extraVal: String = "") =
+                "INSERT INTO app.device_command (command_id, device_id, type, state, reason, request_sha256, sig, created_by, expires_at$extra) " +
+                    "VALUES (gen_random_uuid(), $dev, '$type', '$state', 'qa test', sha256('x'::bytea), ${if (state == "pending_approval") "NULL" else sig}, $admin, now() + interval '1 day'$extraVal)"
+            exec(insert("lock", "queued"))
+            assertEquals("23514", refused(insert("factory_reset", "queued")))
+            assertEquals("23514", refused(insert("lock", "sent")))
+            // The checker's bypass: an approval cannot ride in with the request.
+            assertEquals("23514", refused(insert("factory_reset", "pending_approval", ", approved_by, approved_at", ", ${user("sr1001")}, now()")))
+            assertEquals("23514", refused("INSERT INTO app.device_command (command_id, device_id, type, state, reason, request_sha256, sig, created_by, expires_at) VALUES (gen_random_uuid(), $dev, 'lock', 'queued', 'qa test', sha256('x'::bytea), $sig, $admin, now() + interval '73 hours')"))
+            assertEquals("23514", refused("INSERT INTO app.device_command (command_id, device_id, type, state, reason, request_sha256, created_by, expires_at) VALUES (gen_random_uuid(), $dev, 'lock', 'queued', 'qa test', sha256('x'::bytea), $admin, now() + interval '1 day')"))
+            exec(insert("factory_reset", "pending_approval"))
+            val reset = "(SELECT command_id FROM app.device_command WHERE type = 'factory_reset')"
+            assertEquals("23514", refused("UPDATE app.device_command SET state = 'queued', sig = $sig WHERE command_id = $reset"))
+            assertEquals("23514", refused("UPDATE app.device_command SET state = 'queued', sig = $sig, approved_by = $admin, approved_at = now() WHERE command_id = $reset"))
+            exec("UPDATE app.device_command SET state = 'queued', sig = $sig, approved_by = $superadmin, approved_at = now() WHERE command_id = $reset")
+            assertEquals("23514", refused("UPDATE app.device_command SET state = 'acked' WHERE command_id = $reset"))
+            exec("UPDATE app.device_command SET state = 'acked', acked_at = now(), result = '{\"ok\": true}' WHERE command_id = $reset")
+            exec("INSERT INTO app.mdm_policy (name, doc) VALUES ('Field default', '{\"allowed_packages\": []}')")
+            assertEquals("23505", refused("INSERT INTO app.mdm_policy (name, doc) VALUES ('field DEFAULT', '{}')"))
+            assertEquals("23514", refused("UPDATE app.device SET mdm_policy_id = (SELECT id FROM app.mdm_policy) WHERE id = $dev"))
+            exec("UPDATE app.device SET mdm_policy_id = (SELECT id FROM app.mdm_policy), mdm_policy_version = 1 WHERE id = $dev")
         }
-        assertEquals("true", can(c, "api_rw", "app.device_command", "SELECT"))
-        assertEquals("false", can(c, "api_rw", "app.device_command", "DELETE"))
+        assertEquals("t|t|t", c.scalar("SELECT string_agg(convalidated::text::char, '|' ORDER BY conname) FROM pg_constraint WHERE conname IN ('device_mdm_policy_fkey', 'device_mdm_policy_version_check', 'device_mdm_policy_pair')"))
+        assertEquals("true|true|false", listOf("SELECT", "UPDATE", "DELETE").joinToString("|") { can(c, "api_rw", "app.device_command", it)!! })
         assertEquals("true|false", listOf("type", "result").joinToString("|") { c.scalar("SELECT has_column_privilege('support_ro', 'app.device_command', '$it', 'SELECT')::text")!! })
+        assertEquals("true|0", c.scalar("SELECT has_table_privilege('web_ro', 'dw.v_device_command', 'SELECT')::text || '|' || (SELECT count(*) FROM information_schema.columns WHERE table_schema = 'dw' AND table_name = 'v_device_command' AND column_name IN ('sig', 'result'))"))
     }
 
     @Test
-    fun v0103PackUnitsAndTheLooseUnitKey() = db.connect().use { c ->
+    fun v0104PackUnitsAndTheLooseUnitKey() = db.connect().use { c ->
         assertEquals(
             "bidi|pack|12,25;cigarette|pack|10,20;lighter|pack|25;match|dozen|1",
             c.scalar("SELECT string_agg(x, ';' ORDER BY x) FROM (SELECT category_code || '|' || string_agg(DISTINCT entry_unit_default, ',') || '|' || string_agg(DISTINCT base_per_pack::text, ',' ) AS x FROM app.sku GROUP BY category_code) t"),

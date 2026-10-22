@@ -159,26 +159,22 @@ BEGIN
   -- "September-like": per route and month 200,000 cigarette sticks (about 7,700 a working day, the brief's national
   -- daily target of 5.36 Cr sticks over 6,933 routes), 30,000 bidi sticks, 500 lighters (20 boxes) and 300 dozen matches,
   -- spread over the zone's plan SKUs with weights 1..3 by catalogue order, rounded to whole packs.
-  INSERT INTO app.route_monthly_target_upload (upload_uuid, month, source, file_name, row_count, note, created_by)
-    SELECT md5('gulshan-banani-target-' || m.month)::uuid, m.month, 'excel', 'dev-seed-gulshan-banani.xlsx',
+  INSERT INTO app.route_target_batch (batch_uuid, content_sha256, row_count, committed_by)
+    SELECT md5('gulshan-banani-target-' || m.month)::uuid, sha256(convert_to('dev seed D-SEED-02 ' || m.month, 'UTF8')),
            (SELECT count(*) FROM app.route r JOIN app.sales_plan p ON p.zone_id = r.zone_id AND p.valid_to IS NULL
-             WHERE r.code IN ('GUL-SR-2', 'GUL-SR-1', 'BAN-SR-11')),
-           'dev seed (D-SEED-02)', u.id
+             WHERE r.code IN ('GUL-SR-2', 'GUL-SR-1', 'BAN-SR-11')), u.id
       FROM (VALUES (DATE '2026-10-01'), (DATE '2026-11-01'), (DATE '2026-12-01')) AS m(month), app.app_user u
      WHERE u.username = 'superadmin1001'
-       AND NOT EXISTS (SELECT 1 FROM app.route_monthly_target_upload x WHERE x.upload_uuid = md5('gulshan-banani-target-' || m.month)::uuid);
-  INSERT INTO app.route_monthly_target (month, route_id, sku_id, qty_base, upload_id)
-    SELECT up.month, w.route_id, w.sku_id,
-           greatest(1, round(w.total::numeric * w.weight / sum(w.weight) OVER (PARTITION BY up.id, w.route_id, w.category_code) / w.base_per_pack))::bigint * w.base_per_pack,
-           up.id
+       AND NOT EXISTS (SELECT 1 FROM app.route_target_batch x WHERE x.batch_uuid = md5('gulshan-banani-target-' || m.month)::uuid);
+  INSERT INTO app.route_monthly_target (route_id, sku_id, month, qty_base, batch_uuid, updated_by)
+    SELECT w.route_id, w.sku_id, m.month,
+           greatest(1, round(w.total::numeric * w.weight / sum(w.weight) OVER (PARTITION BY m.month, w.route_id, w.category_code) / w.base_per_pack))::bigint * w.base_per_pack,
+           md5('gulshan-banani-target-' || m.month)::uuid, (SELECT id FROM app.app_user WHERE username = 'superadmin1001')
       FROM (SELECT r.id AS route_id, s.id AS sku_id, s.category_code, s.base_per_pack, 1 + (s.sort % 3) AS weight,
                    CASE s.category_code WHEN 'cigarette' THEN 200000 WHEN 'bidi' THEN 30000 WHEN 'lighter' THEN 500 ELSE 300 END AS total
               FROM app.route r JOIN app.sales_plan p ON p.zone_id = r.zone_id AND p.valid_to IS NULL JOIN app.sku s ON s.id = p.sku_id
              WHERE r.code IN ('GUL-SR-2', 'GUL-SR-1', 'BAN-SR-11')) w
-     CROSS JOIN app.route_monthly_target_upload up
-     WHERE up.upload_uuid IN (md5('gulshan-banani-target-2026-10-01')::uuid, md5('gulshan-banani-target-2026-11-01')::uuid,
-                              md5('gulshan-banani-target-2026-12-01')::uuid)
-       AND NOT EXISTS (SELECT 1 FROM app.route_monthly_target x WHERE x.month = up.month AND x.route_id = w.route_id
-                         AND x.sku_id = w.sku_id AND x.superseded_by_upload_id IS NULL);
+     CROSS JOIN (VALUES (DATE '2026-10-01'), (DATE '2026-11-01'), (DATE '2026-12-01')) AS m(month)
+    ON CONFLICT (route_id, sku_id, month) DO NOTHING;
 END
 $seed$;
