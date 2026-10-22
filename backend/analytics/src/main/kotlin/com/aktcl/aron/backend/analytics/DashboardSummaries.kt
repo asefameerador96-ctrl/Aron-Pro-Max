@@ -16,7 +16,7 @@ internal object DashboardSummaries {
     private val columns = mapOf(
         "dim_geo" to listOf("route_class", "house_id", "house_name"),
         "dim_product" to listOf("segment_code", "brand_code", "variant_code"),
-        "agg_daily_route" to listOf("downloaded_at", "completed_calls", "completed_geo_valid_calls", "first_sale_at", "last_sale_at", "checked_in_at"),
+        "agg_daily_route" to listOf("downloaded_at", "completed_calls", "completed_geo_valid_calls", "first_sale_at", "last_sale_at"),
         "agg_daily_zone" to listOf("final_submitted_at", "auto_submitted"),
         "fact_visit" to listOf("radius_m", "outlet_lat", "outlet_lng", "fix_lat", "fix_lng", "force_photo_uuid", "completed"),
     )
@@ -24,6 +24,14 @@ internal object DashboardSummaries {
 
     /** Summary tables a card response may name in `last_updated_at`. */
     val FRESHNESS_TABLES = listOf("agg_daily_route_sku", "agg_daily_route_variant", "agg_daily_route_segment", "agg_daily_route_brand", "agg_daily_outlet_sku", "agg_daily_route", "agg_daily_zone", "route_last_position", "fact_visit")
+
+    /**
+     * True when `dw.agg_daily_route.checked_in_at` exists (db migration V0108). Probed on its own so that the worker and the cards keep working on
+     * either side of that migration: without the column nothing is filled and the login card keeps the older rule (download only).
+     */
+    fun hasCheckedIn(h: Handle): Boolean = h.createQuery(
+        "SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'dw' AND table_name = 'agg_daily_route' AND column_name = 'checked_in_at')",
+    ).mapTo(Boolean::class.java).one()
 
     /** True when every table and column of the request exists. Cheap catalog query; not cached because test databases differ. */
     fun ready(h: Handle): Boolean {
@@ -126,20 +134,25 @@ internal object DashboardSummaries {
             WITH done AS (SELECT * FROM app.visit v WHERE v.route_id = :r AND v.business_date = :d AND v.visit_kind = 'sr_call' AND v.voided_at IS NULL
                              AND v.outcome_code IS NOT NULL AND v.outcome_code NOT IN ('abandoned', 'not_reached')),
             memo AS (SELECT min(m.committed_at) AS f, max(m.committed_at) AS l FROM app.memo m WHERE m.route_id = :r AND m.business_date = :d AND $ACTIVE_MEMO),
-            rd AS (SELECT CASE WHEN bundle_count > 0 THEN coalesce(target_frozen_at, last_bundle_at) END AS dl FROM app.route_day WHERE route_id = :r AND business_date = :d),
-            -- The first non-voided attendance check-in of the route's SR that day: the event's own route, else (no route on the event) a user assigned
-            -- to the route that day. The same rule as the V0108 backfill, so rebuilt and backfilled days agree.
-            ci AS (SELECT min(e.captured_at) AS at FROM app.attendance_event e
-                    WHERE e.kind = 'check_in' AND e.voided_at IS NULL AND e.business_date = :d
-                      AND (e.route_id = :r OR (e.route_id IS NULL AND e.user_id IN (
-                             SELECT ra.user_id FROM app.route_assignment ra
-                              WHERE ra.route_id = :r AND ra.valid_from <= :d AND (ra.valid_to IS NULL OR ra.valid_to > :d)))))
+            rd AS (SELECT CASE WHEN bundle_count > 0 THEN coalesce(target_frozen_at, last_bundle_at) END AS dl FROM app.route_day WHERE route_id = :r AND business_date = :d)
             UPDATE dw.agg_daily_route a SET
               completed_calls = (SELECT count(*) FROM done),
               completed_geo_valid_calls = (SELECT count(*) FROM done WHERE coalesce(server_verdict, verdict) = 'in_range'),
-              first_sale_at = (SELECT f FROM memo), last_sale_at = (SELECT l FROM memo), downloaded_at = (SELECT dl FROM rd),
-              checked_in_at = (SELECT at FROM ci)
+              first_sale_at = (SELECT f FROM memo), last_sale_at = (SELECT l FROM memo), downloaded_at = (SELECT dl FROM rd)
              WHERE a.route_id = :r AND a.business_date = :d
+            """,
+        ).bind("r", routeId).bind("d", date).execute()
+
+        // The first non-voided attendance check-in of the route's SR that day: the event's own route, else (no route on the event) a user assigned
+        // to the route that day. The same rule as the V0108 backfill, so rebuilt and backfilled days agree.
+        if (hasCheckedIn(h)) h.createUpdate(
+            """
+            WITH ci AS (SELECT min(e.captured_at) AS at FROM app.attendance_event e
+                         WHERE e.kind = 'check_in' AND e.voided_at IS NULL AND e.business_date = :d
+                           AND (e.route_id = :r OR (e.route_id IS NULL AND e.user_id IN (
+                                  SELECT ra.user_id FROM app.route_assignment ra
+                                   WHERE ra.route_id = :r AND ra.valid_from <= :d AND (ra.valid_to IS NULL OR ra.valid_to > :d)))))
+            UPDATE dw.agg_daily_route a SET checked_in_at = (SELECT at FROM ci) WHERE a.route_id = :r AND a.business_date = :d
             """,
         ).bind("r", routeId).bind("d", date).execute()
 
@@ -198,13 +211,13 @@ internal object DashboardSummaries {
           UNION ALL
           SELECT g.route_id, g.business_date FROM app.geo_fix g WHERE g.received_at > :since AND g.route_id IS NOT NULL AND g.business_date >= :today - 1
           UNION ALL
-          -- A check-in emits no event either: the route it names, else the routes its user is assigned to that day (the V0108 rule).
+          -- A check-in emits no event either: the route it names, else the routes its user is assigned to that day (the V0108 rule); a late sync can land days after the date, so the last 7 days.
           SELECT e.route_id, e.business_date FROM app.attendance_event e
-           WHERE e.received_at > :since AND e.kind = 'check_in' AND e.route_id IS NOT NULL AND e.business_date >= :today - 1
+           WHERE e.received_at > :since AND e.kind = 'check_in' AND e.route_id IS NOT NULL AND e.business_date >= :today - 7
           UNION ALL
           SELECT ra.route_id, e.business_date FROM app.attendance_event e
             JOIN app.route_assignment ra ON ra.user_id = e.user_id AND ra.valid_from <= e.business_date AND (ra.valid_to IS NULL OR ra.valid_to > e.business_date)
-           WHERE e.received_at > :since AND e.kind = 'check_in' AND e.route_id IS NULL AND e.business_date >= :today - 1
+           WHERE e.received_at > :since AND e.kind = 'check_in' AND e.route_id IS NULL AND e.business_date >= :today - 7
         ) s
         """,
     ).bind("today", today).bind("since", since).map { rs, _ -> rs.getLong(1) to rs.getObject(2, LocalDate::class.java) }.list()
