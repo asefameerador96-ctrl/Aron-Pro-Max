@@ -1,6 +1,7 @@
 // Dashboard and report endpoints of the mock API. Typed with the generated contract types; every figure comes from mock/seed.ts.
 import { randomUUID } from "node:crypto";
 import type { Problem, ProblemCode, Role, ScopeSummary, Schemas } from "../src/contract/types";
+import { handleNational } from "./national";
 import { GEO, OUTLETS, PRODUCT_NODES, SEED_DATE, SKUS, controlTotals, pct, routesInScope, sum, type SeedRoute } from "./seed";
 
 
@@ -188,6 +189,7 @@ export async function handleDash(x: DashCtx): Promise<boolean> {
   const nowIso = store.now ?? new Date().toISOString();
   // docs/24 s8.5 (AZ-2): SUPPORT reads sync health only; every other dashboard and every report answers 403.
   if (user.role === "SUPPORT" && ((path.startsWith("/v1/dashboards/") && path !== "/v1/dashboards/sync-health") || path === "/v1/reports" || path.startsWith("/v1/reports/"))) return send(403, problem(403, "ERR_FORBIDDEN")), true;
+  if (await handleNational(x)) return true;
   const kp = (rows: SeedRoute[]) => {
     const d = controlTotals(rows);
     const logged = rows.filter((r) => r.state !== "not_started").length;

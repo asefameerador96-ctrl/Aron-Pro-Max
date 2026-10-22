@@ -260,7 +260,10 @@ jobs:
     needs: changes
     if: needs.changes.outputs.jvm == 'true'
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    # 75: the train that carried db's V0087-V0107 plus the dashboard tests ran past the old 45-minute limit
+    # (INT run #1395 cancelled by the job timeout, no test failed); splitting db from backend is tracked in
+    # docs/requests/ci-jvm-job-split.md.
+    timeout-minutes: 75
     services:
       postgres:
         image: postgres:16

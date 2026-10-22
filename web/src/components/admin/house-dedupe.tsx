@@ -1,6 +1,7 @@
 "use client";
 // De-duplication of houses: groups of the same name in one territory, with activate and deactivate per member. A change is the
-// ordinary house update (PATCH status with If-Match and a reason) through the CRUD proxy, so it is audited like any other.
+// ordinary house update (PATCH status with If-Match and a reason) through the CRUD proxy, so it is audited like any other. A merge
+// (contract mergeHouses) folds the others into a kept house: zones move, the merged houses become inactive.
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useI18n } from "@/components/i18n-provider";
@@ -15,10 +16,16 @@ interface Pending {
   to: "active" | "inactive";
 }
 
+interface MergePlan {
+  groupKey: string;
+  keepId: number;
+}
+
 export function HouseDedupe({ groups, territories, canWrite }: { groups: HouseGroup[]; territories: Record<string, string>; canWrite: boolean }) {
   const { t, problem, number, dateTime } = useI18n();
   const router = useRouter();
   const [pending, setPending] = useState<Pending | null>(null);
+  const [merge, setMerge] = useState<MergePlan | null>(null);
   const [reason, setReason] = useState("");
   const [reasonError, setReasonError] = useState<string | undefined>();
   const [busy, setBusy] = useState(false);
@@ -39,6 +46,30 @@ export function HouseDedupe({ groups, territories, canWrite }: { groups: HouseGr
         setReason("");
         router.refresh();
       } else setBanner({ ok: false, text: problem(data.code) });
+    } catch {
+      setBanner({ ok: false, text: t("error.network") });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function applyMerge(g: HouseGroup) {
+    if (!merge) return;
+    const keep = g.members.find((m) => m.id === merge.keepId);
+    if (!keep) return;
+    if (Array.from(reason.trim()).length < REASON_MIN_LENGTH) return setReasonError(t("admin.reason.too_short"));
+    setReasonError(undefined);
+    setBusy(true);
+    setBanner(null);
+    try {
+      const res = await fetch("/api/bff/admin-op", { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "same-origin", body: JSON.stringify({ op: "house.merge", body: { keep_id: keep.id, merge_ids: g.members.filter((m) => m.id !== keep.id).map((m) => m.id) }, reason: reason.trim(), version: keep.version }) });
+      const data = (await res.json().catch(() => ({}))) as Partial<Problem>;
+      if (res.ok) {
+        setBanner({ ok: true, text: t("hd.done_merge", { code: keep.code }) });
+        setMerge(null);
+        setReason("");
+        router.refresh();
+      } else setBanner({ ok: false, text: res.status === 412 ? t("access.stale") : problem(data.code) });
     } catch {
       setBanner({ ok: false, text: t("error.network") });
     } finally {
@@ -81,6 +112,26 @@ export function HouseDedupe({ groups, territories, canWrite }: { groups: HouseGr
                 </tbody>
               </table>
             </div>
+            {canWrite && open ? (
+              merge?.groupKey === `${g.parentId}|${g.key}` ? (
+                <div data-testid="hd-merge-form" className="space-y-2 rounded border border-slate-200 bg-slate-50 p-3">
+                  <label className="block text-sm">
+                    <span className="mb-1 block font-medium">{t("hd.merge_keep")}</span>
+                    <select data-testid="hd-merge-keep" value={merge.keepId} onChange={(e) => setMerge({ groupKey: merge.groupKey, keepId: Number(e.target.value) })} className="min-h-11 rounded border border-slate-300 px-2">
+                      {g.members.filter((m) => m.status === "active").map((m) => (<option key={m.id} value={m.id}>{m.code} · {m.name}</option>))}
+                    </select>
+                  </label>
+                  <p className="text-sm text-slate-700">{t("hd.merge_note")}</p>
+                  <ReasonField value={reason} onChange={setReason} error={reasonError} />
+                  <div className="flex gap-2">
+                    <button type="button" data-testid="hd-merge-apply" disabled={busy || g.members.find((m) => m.id === merge.keepId)?.version === 0} onClick={() => void applyMerge(g)} className="min-h-11 rounded bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-50">{t("hd.merge")}</button>
+                    <button type="button" onClick={() => setMerge(null)} className="min-h-11 rounded border border-slate-300 px-3 py-2 text-sm hover:bg-slate-100">{t("hd.cancel")}</button>
+                  </div>
+                </div>
+              ) : (
+                <button type="button" data-testid="hd-merge-start" onClick={() => { setMerge({ groupKey: `${g.parentId}|${g.key}`, keepId: keeperId! }); setPending(null); setReason(""); setReasonError(undefined); setBanner(null); }} className="min-h-11 rounded border border-slate-300 px-3 py-2 text-sm hover:bg-slate-100">{t("hd.merge_start")}</button>
+              )
+            ) : null}
             {pending && g.members.some((m) => m.id === pending.id) ? (
               <div data-testid="hd-confirm" className="space-y-2 rounded border border-slate-200 bg-slate-50 p-3">
                 <p className="font-medium">{t(pending.to === "inactive" ? "hd.confirm_deactivate" : "hd.confirm_activate", { code: pending.code })}</p>

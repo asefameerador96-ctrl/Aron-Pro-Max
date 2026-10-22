@@ -264,7 +264,7 @@ data class Sku(
     @SerialName("updated_at") val updatedAt: String? = null,
     @SerialName("version") val version: Int? = null,
 ) {
-    override fun toString(): String = "Sku(id=${id}, code=***, variantId=${variantId}, categoryCode=${categoryCode}, name=${name}, shortName=${shortName}, nameBn=${nameBn}, baseUnit=${baseUnit}, basePerPack=${basePerPack}, entryUnitDefault=${entryUnitDefault}, reportUnit=${reportUnit}, reportFactor=${reportFactor}, sort=${sort}, status=${status}, thumbnailMediaUuid=${thumbnailMediaUuid}, imageUrl=${imageUrl}, imageAssetId=${imageAssetId}, updatedAt=${updatedAt}, version=${version})"
+    override fun toString(): String = "Sku(id=${id}, code=***, variantId=${variantId}, categoryCode=${categoryCode}, name=${name}, shortName=${shortName}, nameBn=${nameBn}, baseUnit=${baseUnit}, basePerPack=${basePerPack}, packType=${packType}, entryUnitDefault=${entryUnitDefault}, reportUnit=${reportUnit}, reportFactor=${reportFactor}, sort=${sort}, status=${status}, thumbnailMediaUuid=${thumbnailMediaUuid}, imageUrl=${imageUrl}, imageAssetId=${imageAssetId}, updatedAt=${updatedAt}, version=${version})"
 }
 
 @Serializable
@@ -608,6 +608,8 @@ data class Me(
     @SerialName("pii_until") val piiUntil: String? = null,
     @SerialName("mfa_enabled") val mfaEnabled: Boolean? = null,
     @SerialName("menus") val menus: List<JsonElement>? = null,
+    @SerialName("modules") val modules: Map<String, String>? = null,
+    @SerialName("brands") val brands: List<Long>? = null,
 )
 
 @Serializable

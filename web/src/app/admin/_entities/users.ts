@@ -6,8 +6,7 @@ import { accessKind, USER_ROLE_OPTIONS } from "@/lib/admin/access-grants";
 import { ADMIN_PORTAL_ROLES, ALL_ROLES } from "@/lib/auth/roles";
 import type { MessageKey } from "@/lib/i18n";
 
-// The owner's seven portal levels first (docs/34 s1), then the app-only roles (marked), then the internal service roles. NATIONAL and BRAND
-// are not in the contract's Role enum yet (REQUEST: docs/requests/backend-admin-user-access.md).
+// The owner's seven portal levels first (docs/34 s1), then the app-only roles (marked), then the internal service roles. 
 const ROLE_KEYS = Object.fromEntries(USER_ROLE_OPTIONS.map((r) => [r, (r === "SR" || r === "AMO" ? `role.opt.${r}` : `role.${r}`) as MessageKey]));
 const ZONE_REF = { path: "/v1/admin/geo/{level}", params: { level: "zone" }, label: ["code", "name"] } as const;
 const CRED_ROLES = ["SUPPORT", "ADMIN", "SUPERADMIN"] as const;
@@ -59,7 +58,6 @@ export const users = defineEntity<User, UserWrite, UserPatch>({
   ],
   filters: [
     { param: "q", kind: "search", labelKey: "common.search" },
-    // The list filter takes the contract's Role values only; NATIONAL and BRAND join it with the contract change (REQUEST).
     { param: "role", kind: "enum", labelKey: "entity.field.role", options: ALL_ROLES, optionKeys: ROLE_KEYS },
     { param: "zone_id", kind: "ref", labelKey: "entity.field.zone_id", ref: ZONE_REF },
     // The list parameter is the contract's ActiveStatus (active | inactive); "inactive" is how a disabled user is filtered.

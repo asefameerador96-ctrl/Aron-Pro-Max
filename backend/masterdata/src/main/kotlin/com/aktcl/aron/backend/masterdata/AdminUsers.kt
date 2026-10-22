@@ -28,6 +28,12 @@ private val USERNAME_RE = Regex("^[A-Za-z][A-Za-z0-9._-]{2,39}$")
 private val MEMO_USERNAME_RE = Regex("^[a-z][a-z0-9]{3,31}$")
 private val ROLE_VALUES = Role.entries.map { it.wire }.toSet()
 private val SENIOR = setOf(Role.ADMIN, Role.SUPERADMIN)
+/**
+ * Internal service roles (docs/34 s1: not portal levels) and the retired TOP: only a SUPERADMIN creates, re-roles or
+ * resets them. An ADMIN holding users:w and credentials:w manages every portal level below ADMIN, NATIONAL and BRAND
+ * included (lead ruling D-AUTHZ-ADMIN-CREDS-01); ADMIN and SUPERADMIN logins stay SUPERADMIN-only ([SENIOR]).
+ */
+private val SUPERADMIN_MANAGED = setOf(Role.ANALYST, Role.SUPPORT, Role.TOP)
 
 /** Users in reach: the home zone or a live route assignment lies in a zone of the caller's reach. */
 private val userReach: (Reach, Geo) -> Pred? = { reach, _ ->
@@ -74,6 +80,10 @@ internal val USER = MasterEntity(
         val curRole = cur?.let { roleOf(it["role"]) }
         if (ctx.p.role == Role.ADMIN && (newRole in SENIOR || curRole in SENIOR))
             throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "only a SUPERADMIN manages ADMIN and SUPERADMIN users")
+        // D-AUTHZ-ADMIN-CREDS-01: the internal service roles are the Super Admin's (an ADMIN would otherwise mint itself
+        // a SUPPORT login with reach outside its module grants).
+        if (ctx.p.role == Role.ADMIN && (newRole in SUPERADMIN_MANAGED || curRole in SUPERADMIN_MANAGED))
+            throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "only a SUPERADMIN manages ANALYST and SUPPORT users")
         if (cur != null && cur["id"] == ctx.p.userId && ("role" in changes && changes["role"] != cur["role"] || changes["status"] == "disabled"))
             throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "you cannot change your own role or disable yourself")
         if (cur == null || "role" in changes && changes["role"] != cur["role"]) {
@@ -100,6 +110,17 @@ internal val USER = MasterEntity(
         if (cur != null && changes["status"] == "disabled") h.revokeFull(row["id"], "user_disabled", ctx.now)
         // D-ROLES-02: a new role starts with a new login; no session of the old role refreshes into it.
         else if (cur != null && "role" in changes && changes["role"] != cur["role"]) h.revokeFull(row["id"], "admin_force_logout", ctx.now)
+        // Checker row 2 (N3): module grants and brand scopes belong to the role they were given for; a role change drops
+        // them (the user row's audit image records the change), so a later change back starts from nothing (fail closed).
+        if (cur != null && "role" in changes && changes["role"] != cur["role"]) {
+            // Each dropped set has its own audit row (round 2, N-c: every grant change is audited, docs/34 s1).
+            for ((t, col) in listOf("user_module_grant" to "module || ':' || access", "user_brand_scope" to "brand_id::text")) {
+                if (h.count("SELECT count(*) FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = 'app' AND c.relname = :t", "t" to t) == 0L) continue
+                val dropped = h.createQuery("DELETE FROM app.$t WHERE user_id = :u RETURNING $col").bind("u", row["id"]).mapTo(String::class.java).list().sorted()
+                if (dropped.isNotEmpty()) ctx.audit(h, t, row["id"].toString(), "drop_on_role_change", JsonArray(dropped.map { JsonPrimitive(it) }), null,
+                    "role changed from ${cur["role"]} to ${changes["role"]}")
+            }
+        }
     },
 )
 
@@ -156,6 +177,8 @@ private suspend fun credentials(call: ApplicationCall, d: AdminMasterDeps) {
             val role = roleOf(u["role"])!!
             if (p.role == Role.TSO && role !in setOf(Role.SR, Role.AMO)) throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "a TSO acts on SR and AMO users only")
             if (role in SENIOR && p.role != Role.SUPERADMIN) throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "only a SUPERADMIN acts on ADMIN and SUPERADMIN users")
+            // D-AUTHZ-ADMIN-CREDS-01: a reset hands over the account; the internal service roles are the Super Admin's.
+            if (role in SUPERADMIN_MANAGED && p.role != Role.SUPERADMIN) throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "only a SUPERADMIN acts on ANALYST and SUPPORT users")
             when (action) {
                 "reset_password" -> {
                     h.createUpdate("UPDATE app.app_user SET password_hash = :h, must_change_password = true, password_changed_at = NULL, scope_version = scope_version + 1 WHERE id = :id")
@@ -175,7 +198,8 @@ private suspend fun credentials(call: ApplicationCall, d: AdminMasterDeps) {
                     h.revokeFull(id, "admin_force_logout", ctx.now)
                 }
             }
-            ctx.audit(h, "user", id.toString(), "credentials.$action", null, JsonObject(mapOf("action" to JsonPrimitive(action))), reason)
+            // D-AUTHZ-ADMIN-CREDS-01: every reset names the target's role (the actor and the reason are the row's own).
+            ctx.audit(h, "user", id.toString(), "credentials.$action", null, JsonObject(mapOf("action" to JsonPrimitive(action), "target_role" to JsonPrimitive(role.wire))), reason)
             JsonObject(buildMap {
                 put("action", JsonPrimitive(action)); put("done_at", jv(ctx.now))
                 if (temp != null) { put("temporary_password", JsonPrimitive(temp)); put("temporary_password_expires_at", jv(ctx.now.plusSeconds(d.tempPasswordTtlH() * 3600))) }
@@ -261,7 +285,12 @@ private suspend fun putScope(call: ApplicationCall, d: AdminMasterDeps) {
             val geo = d.geo.geoCovering()
             for ((i, n) in wanted.withIndex()) {
                 val (type, nid) = n
-                if (type == "national") { if (!ctx.reach.national) throw ApiProblem(ProblemCode.ERR_OUT_OF_SCOPE, "national scope needs national reach"); continue }
+                if (type == "national") {
+                    if (!ctx.reach.national) throw ApiProblem(ProblemCode.ERR_OUT_OF_SCOPE, "national scope needs national reach")
+                    // D-ROLES-02 (checker row 2, round 2): a national login is the Super Admin's to give (docs/34 s1).
+                    if (p.role != Role.SUPERADMIN) throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "only a SUPERADMIN gives national scope")
+                    continue
+                }
                 val exists = h.count("SELECT count(*) FROM ${SCOPE_TABLES.getValue(type)} WHERE id = :i", "i" to nid) > 0
                 if (!exists || (!ctx.reach.national && geo.zonesUnder(type, nid).none { it in ctx.reach.zoneIds })) admBad("body.nodes/$i/node_id", "unknown_node", "the node does not exist or is outside your reach")
             }

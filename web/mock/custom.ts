@@ -109,9 +109,9 @@ export async function handleCustom(st: CustomState, ctx: Ctx, canWrite: boolean,
       });
       const months = [...new Set(b.rows.map((r) => r.month))].sort();
       const replaces = st.routeTargets.filter((t) => months.includes(t.month) && b.rows!.some((r) => r.route_code === t.route_code && r.sku_code === t.sku_code && r.month === t.month)).length;
-      const summary = { batch_uuid: b.batch_uuid, rows: b.rows.length, routes: new Set(b.rows.map((r) => r.route_code)).size, skus: new Set(b.rows.map((r) => r.sku_code)).size, months, total_qty_base: b.rows.reduce((a, r) => a + r.qty_base, 0), replaces, errors };
+      const summary = { batch_uuid: b.batch_uuid, rows: b.rows.length, routes: new Set(b.rows.map((r) => r.route_code)).size, skus: new Set(b.rows.map((r) => r.sku_code)).size, months, total_qty_base: b.rows.reduce((a, r) => a + r.qty_base, 0), replaces, errors, errors_truncated: false };
       if (b.dry_run) return ctx.send(res, 200, summary), true;
-      if (errors.length) return ctx.send(res, 400, ctx.problem(400, "ERR_VALIDATION", { errors: errors.map((e) => ({ pointer: `/rows/${e.row - 1}`, code: e.code })) })), true;
+      if (errors.length) return ctx.send(res, 400, ctx.problem(400, "ERR_VALIDATION", { errors: errors.map((e) => ({ pointer: `body.rows/${e.row - 1}/${({ route: "route_code", sku: "sku_code", month: "month", quantity: "qty_base" } as Record<string, string>)[e.column] ?? e.column}`, code: e.code })) })), true;
       const hash = JSON.stringify(b.rows);
       const seen = st.routeTargetBatches.get(b.batch_uuid);
       if (seen) return seen.hash === hash ? (ctx.send(res, 200, { batch_uuid: b.batch_uuid, rows: seen.rows, replayed: true }), true) : (ctx.send(res, 409, ctx.problem(409, "ERR_CONFLICT")), true);
@@ -124,6 +124,48 @@ export async function handleCustom(st: CustomState, ctx: Ctx, canWrite: boolean,
       ctx.audit("route_target", b.batch_uuid, "route_target.commit", { replaced: replaces }, { rows: b.rows.length, total_qty_base: summary.total_qty_base }, b.change_reason!);
       return ctx.send(res, 200, { batch_uuid: b.batch_uuid, rows: b.rows.length, replayed: false }), true;
     }
+  }
+
+  // Houses of one territory whose names match after case, spacing and punctuation (listHouseDuplicates) and their merge (mergeHouses).
+  if (path === "/v1/admin/geo/house/duplicates" && method === "GET") {
+    const key = (n: string) => n.normalize("NFKC").toLowerCase().replace(/[^\p{L}\p{M}\p{N}]+/gu, "");
+    const by = new Map<string, Row[]>();
+    for (const r of st.tables.geo!.filter((g) => g.level === "house")) {
+      const k = `${r.parent_id}\u0000${key(String(r.name))}`;
+      if (key(String(r.name)) !== "") by.set(k, [...(by.get(k) ?? []), r]);
+    }
+    const groups = [...by.values()].filter((m) => m.length > 1).map((m) => {
+      const houses = [...m].sort((a, b) => Number(a.id) - Number(b.id));
+      return {
+        territory_id: Number(houses[0]!.parent_id),
+        name_key: key(String(houses[0]!.name)),
+        houses: houses.map((h) => ({ id: Number(h.id), code: String(h.code), name: String(h.name), status: h.status, is_active: h.status === "active", zone_count: st.tables.geo!.filter((z) => z.level === "zone" && z.parent_id === h.id).length })),
+      };
+    });
+    return ctx.send(res, 200, { groups }), true;
+  }
+  if (path === "/v1/admin/geo/house/merge" && method === "POST") {
+    if (!canWrite) return ctx.send(res, 403, ctx.problem(403, "ERR_FORBIDDEN")), true;
+    const b = (await ctx.readJson(req)) as { keep_id?: number; merge_ids?: number[]; change_reason?: string } | undefined;
+    if (!b || !Number.isSafeInteger(b.keep_id) || !Array.isArray(b.merge_ids) || b.merge_ids.length < 1 || b.merge_ids.length > 20 || !reasonOk(b.change_reason)) return ctx.send(res, 400, ctx.problem(400, "ERR_VALIDATION")), true;
+    const houses = st.tables.geo!.filter((g) => g.level === "house");
+    const keep = houses.find((h) => h.id === b.keep_id);
+    const others = b.merge_ids.map((id) => houses.find((h) => h.id === id));
+    if (!keep || others.some((h) => !h)) return ctx.send(res, 404, ctx.problem(404, "ERR_NOT_FOUND")), true;
+    if (String(req.headers["if-match"] ?? "").replace(/"/g, "") !== String(keep.version)) return ctx.send(res, 412, ctx.problem(412, "ERR_PRECONDITION_FAILED")), true;
+    const key = (n: string) => n.normalize("NFKC").toLowerCase().replace(/[^\p{L}\p{M}\p{N}]+/gu, "");
+    if (b.merge_ids.includes(keep.id as number) || others.some((h) => h!.parent_id !== keep.parent_id || key(String(h!.name)) !== key(String(keep.name)))) return ctx.send(res, 400, ctx.problem(400, "ERR_VALIDATION", { errors: [{ pointer: "/merge_ids", code: "not_duplicates" }] })), true;
+    const item = (h: Row) => ({ id: Number(h.id), code: String(h.code), name: String(h.name), status: h.status, is_active: h.status === "active", zone_count: st.tables.geo!.filter((z) => z.level === "zone" && z.parent_id === h.id).length });
+    const merged = others.map((h) => {
+      const zones = st.tables.geo!.filter((z) => z.level === "zone" && z.parent_id === h!.id);
+      for (const z of zones) z.parent_id = keep.id;
+      h!.status = "inactive";
+      h!.version = Number(h!.version) + 1;
+      return { house_id: Number(h!.id), zones_moved: zones.length };
+    });
+    keep.version = Number(keep.version) + 1;
+    ctx.audit("geo_house", Number(keep.id), "geo_house.merge", { merged: b.merge_ids.join(",") }, { kept: String(keep.id) }, b.change_reason!);
+    return ctx.send(res, 200, { kept: item(keep), merged }), true;
   }
 
   if (path === "/v1/admin/outlets/import" && method === "POST") {
@@ -150,9 +192,9 @@ export async function handleCustom(st: CustomState, ctx: Ctx, canWrite: boolean,
     const by_channel: Record<string, number> = {};
     for (const r of b.rows) by_channel[r.channel] = (by_channel[r.channel] ?? 0) + 1;
     const updates = resolved.filter((x) => x.existing).length;
-    const summary = { batch_uuid: b.batch_uuid, rows: b.rows.length, creates: b.rows.length - updates, updates, by_channel, errors };
+    const summary = { batch_uuid: b.batch_uuid, rows: b.rows.length, creates: b.rows.length - updates, updates, by_channel, errors, errors_truncated: false };
     if (b.dry_run) return ctx.send(res, 200, summary), true;
-    if (errors.length) return ctx.send(res, 400, ctx.problem(400, "ERR_VALIDATION", { errors: errors.map((e) => ({ pointer: `/rows/${e.row - 1}/${e.column}`, code: e.code })) })), true;
+    if (errors.length) return ctx.send(res, 400, ctx.problem(400, "ERR_VALIDATION", { errors: errors.map((e) => ({ pointer: `body.rows/${e.row - 1}/${e.column}`, code: e.code })) })), true;
     const hash = JSON.stringify(b.rows);
     const seen = st.outletImportBatches.get(b.batch_uuid);
     if (seen) return seen.hash === hash ? (ctx.send(res, 200, { batch_uuid: b.batch_uuid, rows: seen.rows, replayed: true }), true) : (ctx.send(res, 409, ctx.problem(409, "ERR_CONFLICT")), true);

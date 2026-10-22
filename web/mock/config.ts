@@ -116,6 +116,24 @@ export async function handleConfig(c: CfgCtx): Promise<boolean> {
     return c.send(200, { items } satisfies HolidayList), true;
   }
 
+  // Contract getWorkingDays: every date of a month with weekend and national holiday flags (global entries only; a global make-up day works).
+  if (path === "/v1/admin/calendar/working-days" && method === "GET") {
+    const month = q.get("month") ?? new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Dhaka", year: "numeric", month: "2-digit" }).format(new Date()).slice(0, 7);
+    if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) return c.send(400, c.problem(400, "ERR_VALIDATION", { errors: [{ pointer: "query.month", code: "pattern" }] })), true;
+    const weekendRow = c.store.values.find((v) => v.key === "cfg.calendar.weekend_days" && v.scope_type === "global");
+    const weekendDays = Array.isArray(weekendRow?.value) ? (weekendRow.value as unknown[]).map(Number) : [5];
+    const n = new Date(Date.UTC(Number(month.slice(0, 4)), Number(month.slice(5, 7)), 0)).getUTCDate();
+    const days = Array.from({ length: n }, (_, i) => {
+      const date = `${month}-${String(i + 1).padStart(2, "0")}`;
+      const wd = new Date(`${date}T00:00:00Z`).getUTCDay() || 7;
+      const h = HOLIDAYS.find((x) => x.date === date && x.scope_type === "global");
+      const is_weekend = weekendDays.includes(wd);
+      const is_holiday = !!h && !h.selling_day;
+      return { date, weekday: wd, is_friday: wd === 5, is_weekend, is_holiday, name_en: h?.name_en ?? null, name_bn: h?.name_bn ?? null, is_working_day: h ? h.selling_day || (!is_weekend && !is_holiday) : !is_weekend };
+    });
+    return c.send(200, { month, working_days: days.filter((d) => d.is_working_day).length, weekend_days: weekendDays, days }), true;
+  }
+
   if (path === "/v1/admin/config/keys" && method === "GET") {
     const area = q.get("area");
     return c.send(200, { items: KEYS.filter((k) => !area || k.area === area) }), true;

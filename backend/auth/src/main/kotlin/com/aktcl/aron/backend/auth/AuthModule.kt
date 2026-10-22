@@ -1,5 +1,6 @@
 package com.aktcl.aron.backend.auth
 
+import com.aktcl.aron.backend.platform.AdminModules
 import com.aktcl.aron.backend.platform.ApiProblem
 import com.aktcl.aron.backend.platform.AronClock
 import com.aktcl.aron.backend.platform.Audience
@@ -17,6 +18,7 @@ import com.aktcl.aron.backend.platform.toProblem
 import com.aktcl.aron.backend.platform.receiveStrict
 import com.aktcl.aron.backend.platform.wire
 import com.aktcl.aron.contract.ProblemCode
+import com.aktcl.aron.contract.Role
 import com.aktcl.aron.rules.BusinessDate
 import io.ktor.server.application.ApplicationCall
 import io.ktor.server.response.respond
@@ -155,6 +157,12 @@ private fun me(call: ApplicationCall, d: AuthDeps): Me {
                 pii_until = if (p.pii) p.piiUntil?.wire() else null,
                 mfa_enabled = user.mfaEnabled,
                 menus = d.menusForRole(user.role.wire)?.take(200),
+                modules = when (p.role) {
+                    Role.SUPERADMIN -> AdminModules.ALL.associateWith { "w" }
+                    Role.ADMIN -> p.modules
+                    else -> null
+                },
+                brands = if (p.role == Role.BRAND) p.brands else null,
             )
 }
 
@@ -225,8 +233,12 @@ private fun refresh(call: ApplicationCall, req: RefreshRequest, d: AuthDeps, pro
         throw ApiProblem(ProblemCode.ERR_AUTH_REFRESH_INVALID, "a login with the second factor is required")
     }
     val rotated = d.refresh.rotate(token, grant)
+    // Checker round 2 (B1-bis): the upload grant of a phone whose user changed role (TSO made NATIONAL, SR made BRAND) keeps
+    // its flavour's field role, so the captured rows still arrive (D24-57) but ingest judges them by the field role's
+    // assignment, never by the new role's national reach; the guard refuses an upload token of any other role.
+    val minted = if (fam.flavour != "web" && grant == Grant.UPLOAD) PortalLevels.PHONE_ROLE[fam.flavour]?.let { user.copy(role = it) } ?: user else user
     val access = d.issuer.access(
-        TokenSubject(user, fam.deviceId, deviceUuid, fam.flavour, amr = fam.amr ?: listOf("pwd")),
+        TokenSubject(minted, fam.deviceId, deviceUuid, fam.flavour, amr = fam.amr ?: listOf("pwd")),
         if (grant == Grant.UPLOAD) Audience.UPLOAD else Audience.API,
     )
     return TokenPair(

@@ -1,6 +1,7 @@
 // Route monthly targets (D-TARGET-MIN-01, docs/34 s2): one Excel sheet with route, SKU, month and quantity in BASE units (sticks,
 // pieces, dozens). The browser reads the sheet and checks its shape; the server checks codes and states (preview, then commit).
-// The API is PROVISIONAL: docs/requests/backend-admin-route-targets.md, served by mock/custom.ts.
+// Wire types come from the contract (putRouteTargets, listRouteTargets).
+import type { Schemas } from "@/contract/types";
 import { latinDigits } from "./taka";
 
 export interface TargetRow {
@@ -142,15 +143,5 @@ export function routeTargetRules(op: "validate" | "commit", body: Record<string,
   return out;
 }
 
-/** Wire shape of the preview answer (REQUEST: backend-admin-route-targets). */
-export interface TargetPreview {
-  batch_uuid: string;
-  rows: number;
-  routes: number;
-  skus: number;
-  months: string[];
-  total_qty_base: number;
-  replaces: number;
-  /** `row` is the 1-based position in the submitted `rows`. */
-  errors: { row: number; column: string; code: string }[];
-}
+/** Preview answer of a dry run (contract `RouteTargetPreview`). */
+export type TargetPreview = Schemas["RouteTargetPreview"];

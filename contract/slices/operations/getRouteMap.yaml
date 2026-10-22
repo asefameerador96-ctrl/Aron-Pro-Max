@@ -1,0 +1,40 @@
+path: /v1/dashboards/route-map/{route_id}
+method: get
+operation:
+  tags:
+  - dashboards
+  operationId: getRouteMap
+  summary: Route map ("Map Details")
+  description: 'Markers, SR path and the Target vs Achievement, CPR and time cards of one route and day (brief s5.3).
+    BRAND users get 403 (docs/34 s1: cards without a brand dimension are hidden).'
+  parameters:
+  - name: route_id
+    in: path
+    required: true
+    schema:
+      $ref: '#/components/schemas/Id'
+  - name: date
+    in: query
+    required: false
+    description: Business day; default today (Dhaka).
+    schema:
+      $ref: '#/components/schemas/BusinessDate'
+  responses:
+    '200':
+      description: Route map ("Map Details")
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/RouteMap'
+    '404':
+      $ref: '#/components/responses/NotFound'
+    '400':
+      $ref: '#/components/responses/BadRequest'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'
+    '429':
+      $ref: '#/components/responses/TooManyRequests'
+    '503':
+      $ref: '#/components/responses/ServiceUnavailable'

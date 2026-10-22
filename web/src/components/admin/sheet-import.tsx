@@ -6,7 +6,8 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useI18n } from "@/components/i18n-provider";
 import type { Problem } from "@/contract/types";
-import type { MessageKey } from "@/lib/i18n";
+import { en, type MessageKey } from "@/lib/i18n/messages-en";
+import { rowIssuesOf } from "@/lib/admin/row-pointer";
 import { inputClass } from "./kit/field";
 import { ReasonField, REASON_MIN_LENGTH } from "./kit/reason-field";
 
@@ -37,6 +38,8 @@ export interface PreviewBase {
   rows: number;
   replaces?: number;
   errors: SheetIssue[];
+  /** True when the server lists only the first errors (1000). */
+  errors_truncated?: boolean;
 }
 
 export interface SheetImportConfig<P extends PreviewBase> {
@@ -50,7 +53,10 @@ export interface SheetImportConfig<P extends PreviewBase> {
   /** Hint listing the sheet's columns. */
   columnsText: string;
   columnLabel: (column: string) => string;
-  problemLabel: (code: string) => string;
+  /** Message key of a problem code (`rt.problem.<code>`); a code without a message shows the generic text. */
+  problemKey: (code: string) => string;
+  /** Body member of a row (as in an error pointer) to the sheet column; identity when omitted. */
+  memberColumn?: (member: string) => string;
   summaryText: (p: P, number: (n: number) => string) => string;
   committedKey: MessageKey;
 }
@@ -65,12 +71,14 @@ export function SheetImport<P extends PreviewBase>({ cfg }: { cfg: SheetImportCo
   const [reason, setReason] = useState("");
   const [reasonError, setReasonError] = useState<string | undefined>();
   const [busy, setBusy] = useState(false);
+  const [refused, setRefused] = useState<SheetIssue[]>([]);
   const [banner, setBanner] = useState<{ ok: boolean; text: string } | null>(null);
   const [inputKey, setInputKey] = useState(0);
 
   function reset() {
     setParsed(null);
     setPreview(null);
+    setRefused([]);
     setFileError(null);
     setBatch(crypto.randomUUID());
     setReason("");
@@ -80,6 +88,7 @@ export function SheetImport<P extends PreviewBase>({ cfg }: { cfg: SheetImportCo
   async function onFile(file: File | undefined) {
     setBanner(null);
     setPreview(null);
+    setRefused([]);
     setParsed(null);
     setFileError(null);
     setBatch(crypto.randomUUID()); // a new file is a new batch
@@ -113,7 +122,10 @@ export function SheetImport<P extends PreviewBase>({ cfg }: { cfg: SheetImportCo
     const r = await callOp(cfg.validateOp, body(true));
     setBusy(false);
     if (r.ok) setPreview(r.data as P);
-    else setBanner({ ok: false, text: problem(r.problem.code) });
+    else {
+      setRefused(rowIssuesOf((r.problem as { errors?: unknown }).errors, cfg.memberColumn)); // e.g. a blank channel is a 400 even on preview
+      setBanner({ ok: false, text: problem(r.problem.code) });
+    }
   }
 
   async function commit() {
@@ -129,13 +141,20 @@ export function SheetImport<P extends PreviewBase>({ cfg }: { cfg: SheetImportCo
       setBanner({ ok: true, text: d?.replayed ? t("rt.replayed") : t(cfg.committedKey, { rows: d?.rows ?? parsed.rows.length }) });
       reset();
       router.refresh();
-    } else setBanner({ ok: false, text: problem(r.problem.code) });
+    } else {
+      // A refused batch (400) names its rows by pointer: show them like the preview's errors.
+      setRefused(rowIssuesOf((r.problem as { errors?: unknown }).errors, cfg.memberColumn));
+      setBanner({ ok: false, text: problem(r.problem.code) });
+    }
   }
 
-  const issueText = (i: SheetIssue) => cfg.problemLabel(i.code);
-  const colText = (c: string) => cfg.columnLabel(c);
+  const issueText = (i: SheetIssue) => {
+    const key = cfg.problemKey(i.code);
+    return t((key in en ? key : "rt.problem.generic") as MessageKey);
+  };
+  const colText = (c: string) => cfg.columnLabel(c) ?? c; // a column the catalogue does not know shows as the server named it
   const sheetRowOf = (n: number) => parsed?.sheetRows[n - 1] ?? n;
-  const serverIssues = preview?.errors ?? [];
+  const serverIssues = [...(preview?.errors ?? []), ...refused];
 
   return (
     <div className="space-y-4" data-testid={`${cfg.tid}-upload`}>
@@ -185,9 +204,10 @@ export function SheetImport<P extends PreviewBase>({ cfg }: { cfg: SheetImportCo
               <p role="alert" className="rounded bg-red-50 p-3 text-sm text-red-800">{t("rt.server_issues", { n: number(serverIssues.length) })}</p>
               <ul className="list-disc pl-5 text-sm">
                 {serverIssues.slice(0, SHOWN).map((e, k) => (
-                  <li key={k}>{t("rt.col.row")} {number(sheetRowOf(e.row))} · {colText(e.column)} · {cfg.problemLabel(e.code)}</li>
+                  <li key={k}>{t("rt.col.row")} {number(sheetRowOf(e.row))} · {colText(e.column)} · {issueText(e)}</li>
                 ))}
               </ul>
+              {preview?.errors_truncated ? <p data-testid={`${cfg.tid}-truncated`} className="text-sm text-slate-600">{t("rt.errors_truncated")}</p> : null}
             </div>
           ) : (
             <>
