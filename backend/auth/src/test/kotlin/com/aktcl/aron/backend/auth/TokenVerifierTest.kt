@@ -106,4 +106,20 @@ class TokenVerifierTest {
             { claim("modules", listOf("mdm")) }, { claim("brands", listOf("11")) }, { claim("brands", listOf(0)) }, { claim("brands", "11") },
         )) assertEquals(ProblemCode.ERR_UNAUTHENTICATED, code { f.verifier.verify(signed(bad), setOf(Audience.API)) })
     }
+
+    /** Lead 2026-10-22: a token whose signature string is a non-canonical encoding of the same bytes is refused. */
+    @Test
+    fun aNonCanonicalSignatureEncodingIsRefused() {
+        val t = f.issuer.access(TokenSubject(sr, 501, f.srDevice, "sr")).token
+        val alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
+        // 64 signature bytes in 86 characters: the last character's low 4 bits are padding; flipping one keeps the bytes.
+        val last = alphabet.indexOf(t.last())
+        val twin = t.dropLast(1) + alphabet[last xor 1]
+        assertEquals(
+            com.nimbusds.jwt.SignedJWT.parse(t).signature.decode().toList(), com.nimbusds.jwt.SignedJWT.parse(twin).signature.decode().toList(),
+            "the twin decodes to the same signature bytes",
+        )
+        assertEquals(1001, f.verifier.verify(t, setOf(Audience.API)).userId)
+        assertEquals(ProblemCode.ERR_UNAUTHENTICATED, code { f.verifier.verify(twin, setOf(Audience.API)) })
+    }
 }

@@ -50,6 +50,12 @@ class AccessTokenVerifier(private val keys: JwtKeys, private val clock: AronCloc
 
     fun verify(token: String, audiences: Set<String>, expiredGraceS: Long = 0): AronPrincipal {
         val jwt = try { SignedJWT.parse(token) } catch (e: ParseException) { throw unauth("malformed token") }
+        // Canonical encoding only (lead 2026-10-22, BindDeviceTest intermittent): an ES256 signature is 64 bytes, so the
+        // last base64url character carries 2 significant bits and a lenient decoder maps several strings to the same
+        // bytes. A token string we never minted is refused even when its decoded signature is valid. (Header and payload
+        // need no check: the signature covers their exact encoded characters.)
+        val sigPart = token.substringAfterLast('.')
+        if (com.nimbusds.jose.util.Base64URL.encode(jwt.signature.decode()).toString() != sigPart) throw unauth("non-canonical signature encoding")
         if (jwt.header.algorithm?.name != "ES256") throw unauth("wrong algorithm")
         val verifier = keys.verifier(jwt.header.keyID) ?: throw unauth("unknown key id")
         val ok = try { jwt.verify(verifier) } catch (e: JOSEException) { false }
