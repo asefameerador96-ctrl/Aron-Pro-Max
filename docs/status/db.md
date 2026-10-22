@@ -2,6 +2,45 @@
 
 Updated with every push. Rows of Day 1: N-005, N-006, N-007, N-008 (`python3 tools/my-rows.py db 1 --full`).
 
+## Session 7, 2026-10-22 (Wave 4, docs/34; handover at the top)
+
+**Built (lane/db, commits 7f6ae31e migrations, bf892579 seed):** V0087-V0101, one test per migration
+(`OwnerDirectiveV0087Test`), the Gulshan/Banani dev seed (`SeedGulshanBananiTest`), data dictionary regenerated, squawk 0.
+Consumers' contract: `docs/requests/db-wave4-tables.md` (backend-authz, backend-reports, web-admin, mdm, android-units).
+
+| Row (docs/lanes/db.md Wave 4) | Migration | Note |
+|---|---|---|
+| NATIONAL, BRAND | V0087/V0088 | expand only; web-role cfg defaults; menu NATIONAL = TOP, BRAND = dashboard + reports. **TOP migration waits for backend-authz** (`db-backend-authz-roles.md` not filed yet; contract enum still TOP) |
+| user_module_grant | V0089 | + `app.portal_module` (11 modules); ADMIN only (trigger); auth_rw SELECT |
+| user_brand_scope | V0090 | BRAND users, brand nodes only (trigger) |
+| house.is_active + dedupe | V0091 | generated from status; one active house per (territory, normalised name); dim_geo house columns |
+| route.kind | V0092/V0093 | named `route_type` (route.kind is sr/amo since V0002): normal, manual, dummy_br, dummy_institutional |
+| outlet.channel NOT NULL | none | already NOT NULL with the six channels since V0004; no backfill (test `outletChannelIsAlreadyMandatory`) |
+| route_monthly_target | V0094 | upload table (idempotent uuid) + live/superseded rows, base units, append-only |
+| calendar | V0095 | views `dw.v_calendar`, `v_calendar_month`, `v_route_monthly_target` over dim_date + app.calendar_holiday (no second truth) |
+| summary tables | V0096/V0097 | from the brief (backend-reports filed no shapes): agg_daily_route completed_calls, sale times, distance, last position; agg_daily_outlet_category; agg_daily_route_variant; summary_watermark |
+| call distance/within_fence/completed | V0098 | fact_visit server_distance_m, fix_lat/lng, force_photo_uuid (projector copies); within_fence, completed generated |
+| final_submit_log | V0099 | view `dw.v_final_submit_log` (first submit wins) over app.final_submit |
+| device_command | V0100 | MDM commands, two-person factory reset, forward-only status, no delete |
+| SKU pack sizes | V0101 | lighters 25, entry pack/pack/pack/dozen, qty_entry_unit default, new `cfg.sale.allow_loose_base_units` (docs/24 + docs/19 rows) |
+| Seed Gulshan/Banani | seed 06 | dev profile only (no 04 config version); Mirpur fixture kept for CI/backend tests; map `docs/evidence/seed-gulshan-banani.md` |
+
+**Open / for the lead:**
+- infra: the dev slice smoke's outlet is on MIR-SR-D, which the dev seed closes: `docs/requests/db-infra-smoke-gulshan.md`;
+  promote the seed commit together with that change (or keep the dev seed off).
+- backend-authz: TOP -> NATIONAL contract step on their request; `GET /v1/admin/permissions` now lists NATIONAL and BRAND.
+- backend-reports: fill the new dw columns/tables (list in db-wave4-tables.md).
+- Owner/AKTCL: Durga Puja 2026 date in the dev seed is 2026-10-21 (lunar; confirm).
+- Decisions for DECISIONS.md (lead copies): D-DB-W4-01 `route_type` not `route.kind` (name taken); D-DB-W4-02 the
+  calendar is views over dim_date + calendar_holiday, national holidays only; D-DB-W4-03 the Gulshan seed is gated to the
+  dev profile by the absence of 04's config version, because ~250 backend assertions key on the Mirpur fixture;
+  D-DB-W4-04 `completed` = closed with an outcome other than abandoned/not_reached and not voided; D-DB-W4-05 lighter
+  catalogue pack size 25 (owner's "box of 25"), prices stay per piece.
+
+**Traps (new):** local Maven Central 429: copy the mirror init script of docs/24-build-spec-verification s9 to
+`~/.gradle/init.d/` (never commit). PL/pgSQL `IF x <> CASE ... THEN ... END THEN` does not parse (IF stops at the first
+THEN): compute into a variable.
+
 ## Done
 
 - **N-005 schema v1a** (`db/migrations/V0001`–`V0006`): schemas `app`, `dw`, `stg`; helpers `app.dhaka_date`,
