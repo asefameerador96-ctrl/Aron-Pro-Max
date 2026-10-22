@@ -13,9 +13,14 @@ Source: `db/seed/06_dev_gulshan_banani.sql` (replaces `06_dev_real_route.sql`), 
   Check on dev before trusting the trace: `SELECT count(*) FROM app.cfg_version WHERE summary = 'Dev database
   overrides (docs/24 s9.4, seed)'` must be 0.
 - Reaches dev at the next CI deploy with the dev seed on (`ARON_DEV_SEED`). Not run against dev from this lane.
-- **The dev slice smoke** (infra) sells as sr1001 on `MIR-SR-D` at outlet `SMOKE-SR-001` (`infra/sql/devseed-smoke-outlet.sql`).
-  This seed closes sr1001's Mirpur routes and sets them inactive, so the smoke's outlet must move to a Gulshan route
-  in the same promotion (request: `docs/requests/db-infra-smoke-gulshan.md`).
+- **The dev slice smoke** (infra, changed by lane db 2026-10-22 because no infra lane runs this wave):
+  `infra/sql/devseed-smoke-outlet.sql` (loaded after this seed) puts one smoke outlet on each route: `SMOKE-SR-001`
+  on `GUL-SR-2` (moved from `MIR-SR-D` on a database that already had it: placement closed and reopened, location row
+  appended), `SMOKE-SR-002` on `GUL-SR-1`, `SMOKE-SR-003` on `BAN-SR-11` (GT, visit sequence 99, synthetic owner).
+  `infra/scripts/slice-smoke.py` takes the code list and sells on whichever is on today's planned route; on Friday
+  there is no route by design and the (non-blocking) smoke reports that. **For the trace: on dev each route has 21
+  outlets (20 seed + 1 smoke)**, and the smoke's sale is voided at the end of every run (no money left), but its
+  visit stays: exclude `SMOKE-SR-%` when matching outlet counts and calls.
 - Test profile proof: `SeedGulshanBananiTest` (dev profile loaded without 04; second run changes nothing; full seed
   leaves Mirpur untouched).
 
@@ -48,4 +53,4 @@ Source: `db/seed/06_dev_gulshan_banani.sql` (replaces `06_dev_real_route.sql`), 
 3. Sync: `app.memo`/`app.memo_line`, `app.visit` (distance, verdict) → outbox → `dw.fact_memo`, `dw.fact_visit`
    (`within_fence`, `completed` generated) → `dw.agg_daily_route`, `agg_daily_route_sku`, `agg_daily_outlet_category`.
 4. Dashboard: Sales (Cigarette) = Σ qty_base of cigarette lines; ring % = sales / Σ daily target of GUL-SR-2 cigarette SKUs;
-   CPR target outlets 20; channel cards sum to successful calls.
+   CPR target outlets 20 (21 on dev with the smoke outlet); channel cards sum to successful calls.

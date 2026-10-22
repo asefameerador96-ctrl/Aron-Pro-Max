@@ -7,8 +7,9 @@
 --    house. The survivor is the active one with the most zones, then the lowest id; the other rows' zones are moved to
 --    the survivor and the duplicates are set inactive (never deleted: their ids may sit in old exports and the audit).
 --    Every move and deactivation goes through the master touch trigger, so version and updated_at move forward.
--- 3. A unique index keeps it so: at most one ACTIVE house per territory and normalised name. Inactive duplicates are
---    allowed (history).
+-- 3. No unique index (lead ruling 2026-10-22): duplicate active houses exist in the real data and in backend-reports'
+--    fixtures by design. The dashboard filter lists DISTINCT active houses; the admin merge endpoint
+--    (GET /admin/geo/house/duplicates, POST /admin/geo/house/merge, backend-admin) is the de-duplication tool.
 -- 4. dw.dim_geo and its SCD2 history dw.dim_geo_version gain house_id and house_name (nullable: a zone may name no
 --    house) for the House filter; the projector (backend-reports) fills them from app.zone.house_id.
 
@@ -32,9 +33,7 @@ SELECT d.id AS dup_id, s.id AS keep_id
 UPDATE app.zone z SET house_id = d.keep_id FROM house_dup d WHERE z.house_id = d.dup_id;
 UPDATE app.house h SET status = 'inactive' FROM house_dup d WHERE h.id = d.dup_id AND h.status <> 'inactive';
 
--- squawk-ignore require-concurrent-index-creation
-CREATE UNIQUE INDEX house_active_name_once ON app.house (territory_id, lower(btrim(name))) WHERE status = 'active';
-
+-- end of the one-off de-duplication
 ALTER TABLE dw.dim_geo ADD COLUMN house_id bigint, ADD COLUMN house_name text;
 ALTER TABLE dw.dim_geo_version ADD COLUMN house_id bigint, ADD COLUMN house_name text;
 

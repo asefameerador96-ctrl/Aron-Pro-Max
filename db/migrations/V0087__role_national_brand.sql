@@ -8,7 +8,8 @@
 --     length, access TTL) at TOP's values. One config version by aron.system, only when there is something to copy.
 -- A2b. A config value in effect now of any `*_roles` key whose list names TOP and not NATIONAL (cfg.auth.mfa_required_roles
 --     above all, so MFA never loosens) is closed at now and replaced by the same list plus NATIONAL until the old end.
--- A3. cfg.web.menu_by_role default: NATIONAL = TOP's entry; BRAND = dashboard (read, filter) and reports (read, export).
+-- A3. cfg.web.menu_by_role default: NATIONAL = TOP's entry; BRAND = dashboard (read, filter), reports (read,
+--     export) and change_password (write_own), as every web role has.
 -- A4. TOP's admin permissions (role_grant_map) go to NATIONAL. Moving TOP users to NATIONAL and A5 (CHECK
 --     app_user_no_top) are held (db/held/authz_retire_top.sql; see the note at A4 below).
 
@@ -78,7 +79,7 @@ UPDATE app.cfg_key
    SET default_value = default_value || jsonb_build_object('NATIONAL', default_value -> 'TOP')
  WHERE key = 'cfg.web.menu_by_role' AND default_value ? 'TOP' AND NOT default_value ? 'NATIONAL';
 UPDATE app.cfg_key
-   SET default_value = default_value || '{"BRAND": [{"menu": "dashboard", "page": "dashboard", "actions": ["read", "filter"]}, {"menu": "reports", "page": "reports", "actions": ["read", "export"]}]}'::jsonb
+   SET default_value = default_value || '{"BRAND": [{"menu": "dashboard", "page": "dashboard", "actions": ["read", "filter"]}, {"menu": "reports", "page": "reports", "actions": ["read", "export"]}, {"menu": "credentials", "page": "change_password", "actions": ["write_own"]}]}'::jsonb
  WHERE key = 'cfg.web.menu_by_role' AND NOT default_value ? 'BRAND';
 
 -- A4

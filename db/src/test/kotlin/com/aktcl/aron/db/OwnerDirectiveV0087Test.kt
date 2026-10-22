@@ -57,7 +57,7 @@ class OwnerDirectiveV0087Test {
         assertEquals("cfg.auth.access_ttl_min=15,cfg.auth.password_min_len=12", roleValues("BRAND"))
         val menu = "(SELECT default_value FROM app.cfg_key WHERE key = 'cfg.web.menu_by_role')"
         assertEquals("t", c.scalar("SELECT ($menu -> 'NATIONAL' = $menu -> 'TOP')::text::char"))
-        assertEquals("dashboard/dashboard,reports/reports", c.scalar("SELECT string_agg(e ->> 'menu' || '/' || (e ->> 'page'), ',') FROM jsonb_array_elements($menu -> 'BRAND') e"))
+        assertEquals("dashboard/dashboard,reports/reports,credentials/change_password", c.scalar("SELECT string_agg(e ->> 'menu' || '/' || (e ->> 'page'), ',') FROM jsonb_array_elements($menu -> 'BRAND') e"))
         c.tx {
             newUser(this, "qanational1", "NATIONAL"); newUser(this, "qabrand1", "BRAND")
         }
@@ -122,12 +122,15 @@ class OwnerDirectiveV0087Test {
     }
 
     @Test
-    fun v0093OneActiveHousePerTerritoryAndName() = db.connect().use { c ->
+    fun v0093ActiveFlagIsGeneratedAndDuplicateActiveHousesAreAllowed() = db.connect().use { c ->
         c.tx {
             assertEquals("t", scalar("SELECT bool_and(is_active = (status = 'active'))::text::char FROM app.house"))
             val terr = "(SELECT territory_id FROM app.house ORDER BY id LIMIT 1)"
             exec("INSERT INTO app.house (code, name, territory_id) VALUES ('H-QA-1', 'QA House', $terr)")
-            assertEquals("23505", refused("INSERT INTO app.house (code, name, territory_id) VALUES ('H-QA-2', '  qa house ', $terr)"))
+            // Lead ruling: duplicates are real data; the admin merge endpoint de-duplicates, not a unique index.
+            exec("INSERT INTO app.house (code, name, territory_id) VALUES ('H-QA-2', '  qa house ', $terr)")
+            assertEquals("2", scalar("SELECT count(*) FROM app.house WHERE is_active AND lower(btrim(name)) = 'qa house'"))
+            assertEquals("0", scalar("SELECT count(*) FROM pg_indexes WHERE indexname = 'house_active_name_once'"))
             exec("INSERT INTO app.house (code, name, territory_id, status) VALUES ('H-QA-3', 'QA HOUSE', $terr, 'inactive')")
             assertEquals("f", scalar("SELECT is_active::text::char FROM app.house WHERE code = 'H-QA-3'"))
             assertEquals("428C9", refused("UPDATE app.house SET is_active = true WHERE code = 'H-QA-3'"))
@@ -138,12 +141,11 @@ class OwnerDirectiveV0087Test {
     @Test
     fun v0093TheOneOffDedupeKeepsTheBusiestActiveHouse() {
         // Re-run the de-duplication statements of V0093 on duplicates made after the migration, as on a database
-        // that held them before it (the unique index is dropped inside the transaction to let them exist).
+        // that held them before it.
         val sql = java.io.File(System.getProperty("aron.migrations")).listFiles()!!.single { it.name.startsWith("V0093__") }.readText()
-        val dedupe = sql.substring(sql.indexOf("CREATE TEMP TABLE house_dup"), sql.indexOf("-- squawk-ignore require-concurrent-index-creation"))
+        val dedupe = sql.substring(sql.indexOf("CREATE TEMP TABLE house_dup"), sql.indexOf("-- end of the one-off de-duplication"))
         db.connect().use { c ->
             c.tx {
-                exec("DROP INDEX app.house_active_name_once")
                 val terr = "(SELECT territory_id FROM app.house ORDER BY id LIMIT 1)"
                 exec("INSERT INTO app.house (code, name, territory_id) VALUES ('H-D1', 'Dup House', $terr), ('H-D2', 'dup house ', $terr), ('H-D3', 'DUP HOUSE', $terr)")
                 exec("INSERT INTO app.house (code, name, territory_id, status) VALUES ('H-D0', 'Dup House', $terr, 'inactive')")
@@ -179,6 +181,7 @@ class OwnerDirectiveV0087Test {
             assertEquals("23505", refused("INSERT INTO app.route_monthly_target (route_id, sku_id, month, qty_base, batch_uuid) VALUES ($route, $sku, DATE '2026-10-01', 1, '$b')"))
             assertEquals("23514", refused("INSERT INTO app.route_monthly_target (route_id, sku_id, month, qty_base, batch_uuid) VALUES ($route, $sku, DATE '2026-11-02', 1, '$b')"))
             assertEquals("23514", refused("INSERT INTO app.route_monthly_target (route_id, sku_id, month, qty_base, batch_uuid) VALUES ($route, $sku, DATE '2026-11-01', -1, '$b')"))
+            assertEquals("23503", refused("INSERT INTO app.route_monthly_target (route_id, sku_id, month, qty_base, batch_uuid) VALUES ($route, $sku, DATE '2026-12-01', 1, gen_random_uuid())"))
             exec("UPDATE app.route_monthly_target SET qty_base = 52000, updated_at = now() WHERE route_id = $route AND sku_id = $sku")
             // V0097: October has 26 working days (31 days, 5 Fridays, no national holiday in the test data).
             assertEquals("52000|26|2000.0000000000000000|cigarette", scalar("SELECT monthly_qty_base || '|' || working_days || '|' || daily_qty_base || '|' || category_code FROM dw.v_route_monthly_target"))
@@ -282,7 +285,9 @@ class OwnerDirectiveV0087Test {
             val reset = "(SELECT command_id FROM app.device_command WHERE type = 'factory_reset')"
             assertEquals("23514", refused("UPDATE app.device_command SET state = 'queued', sig = $sig WHERE command_id = $reset"))
             assertEquals("23514", refused("UPDATE app.device_command SET state = 'queued', sig = $sig, approved_by = $admin, approved_at = now() WHERE command_id = $reset"))
-            exec("UPDATE app.device_command SET state = 'queued', sig = $sig, approved_by = $superadmin, approved_at = now() WHERE command_id = $reset")
+            // approved_at is the server's: a caller value is replaced.
+            exec("UPDATE app.device_command SET state = 'queued', sig = $sig, approved_by = $superadmin, approved_at = TIMESTAMPTZ '2000-01-01 00:00Z' WHERE command_id = $reset")
+            assertEquals("t", scalar("SELECT (approved_at > now() - interval '1 hour')::text::char FROM app.device_command WHERE command_id = $reset"))
             assertEquals("23514", refused("UPDATE app.device_command SET state = 'acked' WHERE command_id = $reset"))
             exec("UPDATE app.device_command SET state = 'acked', acked_at = now(), result = '{\"ok\": true}' WHERE command_id = $reset")
             exec("INSERT INTO app.mdm_policy (name, doc) VALUES ('Field default', '{\"allowed_packages\": []}')")
@@ -294,6 +299,44 @@ class OwnerDirectiveV0087Test {
         assertEquals("true|true|false", listOf("SELECT", "UPDATE", "DELETE").joinToString("|") { can(c, "api_rw", "app.device_command", it)!! })
         assertEquals("true|false", listOf("type", "result").joinToString("|") { c.scalar("SELECT has_column_privilege('support_ro', 'app.device_command', '$it', 'SELECT')::text")!! })
         assertEquals("true|0", c.scalar("SELECT has_table_privilege('web_ro', 'dw.v_device_command', 'SELECT')::text || '|' || (SELECT count(*) FROM information_schema.columns WHERE table_schema = 'dw' AND table_name = 'v_device_command' AND column_name IN ('sig', 'result'))"))
+    }
+
+    @Test
+    fun v0102CommandsMoveForwardOnlyAndAPendingResetCanExpire() = db.connect().use { c ->
+        c.tx {
+            val dev = "(SELECT min(id) FROM app.device)"
+            val admin = user("admin1001")
+            val sig = "'" + "B".repeat(86) + "'"
+            fun cmd(id: String, type: String, state: String, by: String = admin, expires: String = "now() + interval '1 day'") = exec(
+                "INSERT INTO app.device_command (command_id, device_id, type, state, reason, request_sha256, sig, created_by, created_at, expires_at) " +
+                    "VALUES ('$id', $dev, '$type', '$state', 'qa test', sha256('x'::bytea), ${if (state == "pending_approval") "NULL" else sig}, $by, now() - interval '2 hours', $expires)")
+            // A pending reset past its expiry: mdm's pull expires it unsigned and unapproved (checker round 3 blocker).
+            val r1 = UUID.randomUUID()
+            cmd("$r1", "factory_reset", "pending_approval", expires = "now() - interval '1 hour'")
+            exec("UPDATE app.device_command SET state = 'expired' WHERE device_id = $dev AND state IN ('pending_approval','queued','sent') AND expires_at <= now()")
+            assertEquals("expired", scalar("SELECT state FROM app.device_command WHERE command_id = '$r1'"))
+            assertEquals("23514", refused("UPDATE app.device_command SET state = 'queued', sig = $sig, approved_by = $superadmin WHERE command_id = '$r1'"))
+            // A rejected reset stays rejected; a reset names its requester.
+            val r2 = UUID.randomUUID()
+            cmd("$r2", "factory_reset", "pending_approval")
+            exec("UPDATE app.device_command SET state = 'rejected', approved_by = $superadmin, decision_reason = 'not this phone' WHERE command_id = '$r2'")
+            assertEquals("23514", refused("UPDATE app.device_command SET state = 'queued', sig = $sig WHERE command_id = '$r2'"))
+            assertEquals("23514", refused("UPDATE app.device_command SET approved_by = $admin WHERE command_id = '$r2'"))
+            assertEquals("23514", refused("UPDATE app.device_command SET decision_reason = 'changed' WHERE command_id = '$r2'"))
+            assertEquals("23514", refused("INSERT INTO app.device_command (command_id, device_id, type, state, reason, request_sha256, expires_at) VALUES (gen_random_uuid(), $dev, 'factory_reset', 'pending_approval', 'qa test', sha256('x'::bytea), now() + interval '1 day')"))
+            // queued -> sent -> acked; never back, the request fixed, delivery and result written once.
+            val l = UUID.randomUUID()
+            cmd("$l", "lock", "queued")
+            assertEquals("23514", refused("UPDATE app.device_command SET type = 'factory_reset' WHERE command_id = '$l'"))
+            assertEquals("23514", refused("UPDATE app.device_command SET params = '{\"x\": 1}' WHERE command_id = '$l'"))
+            assertEquals("23514", refused("UPDATE app.device_command SET expires_at = now() + interval '2 days' WHERE command_id = '$l'"))
+            exec("UPDATE app.device_command SET state = 'sent', sent_at = now() WHERE command_id = '$l'")
+            assertEquals("23514", refused("UPDATE app.device_command SET sent_at = now() + interval '1 minute' WHERE command_id = '$l'"))
+            exec("UPDATE app.device_command SET state = 'acked', acked_at = now(), result = '{\"ok\": true}' WHERE command_id = '$l'")
+            assertEquals("23514", refused("UPDATE app.device_command SET state = 'queued', acked_at = NULL, result = NULL WHERE command_id = '$l'"))
+            assertEquals("23514", refused("UPDATE app.device_command SET result = '{\"ok\": false}' WHERE command_id = '$l'"))
+            assertEquals("23514", refused("UPDATE app.device_command SET state = 'failed' WHERE command_id = '$l'"))
+        }
     }
 
     @Test

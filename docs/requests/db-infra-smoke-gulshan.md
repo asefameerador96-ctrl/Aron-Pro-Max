@@ -1,6 +1,6 @@
 # db → infra (via the lead): move the dev slice smoke's outlet to the Gulshan route
 
-Status: open, 2026-10-22. Raised by lane db with the Gulshan/Banani dev seed (D-SEED-02, `db/seed/06_dev_gulshan_banani.sql`).
+Status: done by lane db itself, 2026-10-22 (no infra lane this wave; lead job 5): three smoke outlets SMOKE-SR-001..003, one per Gulshan/Banani route, and slice-smoke.py takes the code list. Raised by lane db with the Gulshan/Banani dev seed (D-SEED-02, `db/seed/06_dev_gulshan_banani.sql`).
 
 On the Azure dev database the new seed closes sr1001's Mirpur primaries and sets `MIR-SR-D`, `MIR-SR-3F`,
 `MIR-SR-2F` inactive (owner: "keep the locations of Gulshan and Banani, not Mirpur"). `infra/sql/devseed-smoke-outlet.sql`

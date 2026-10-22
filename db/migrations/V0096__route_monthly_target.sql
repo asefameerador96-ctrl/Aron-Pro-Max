@@ -12,21 +12,6 @@
 
 SET lock_timeout = '5s';
 
-CREATE TABLE app.route_monthly_target (
-  route_id    bigint NOT NULL REFERENCES app.route(id),
-  sku_id      bigint NOT NULL REFERENCES app.sku(id),
-  month       date   NOT NULL CHECK (month = date_trunc('month', month)::date),
-  qty_base    bigint NOT NULL CHECK (qty_base BETWEEN 0 AND 1000000000),
-  batch_uuid  uuid   NOT NULL,
-  created_at  timestamptz NOT NULL DEFAULT now(),
-  updated_at  timestamptz NOT NULL DEFAULT now(),
-  updated_by  bigint REFERENCES app.app_user(id),
-  PRIMARY KEY (route_id, sku_id, month)
-);
-CREATE INDEX route_monthly_target_month ON app.route_monthly_target (month, route_id);
-CREATE INDEX route_monthly_target_sku ON app.route_monthly_target (sku_id);
-CREATE INDEX route_monthly_target_updated_by ON app.route_monthly_target (updated_by);
-
 CREATE TABLE app.route_target_batch (
   batch_uuid     uuid PRIMARY KEY,
   content_sha256 bytea NOT NULL CHECK (length(content_sha256) = 32),
@@ -35,6 +20,22 @@ CREATE TABLE app.route_target_batch (
   committed_at   timestamptz NOT NULL DEFAULT now()
 );
 CREATE INDEX route_target_batch_committed_by ON app.route_target_batch (committed_by);
+
+CREATE TABLE app.route_monthly_target (
+  route_id    bigint NOT NULL REFERENCES app.route(id),
+  sku_id      bigint NOT NULL REFERENCES app.sku(id),
+  month       date   NOT NULL CHECK (extract(day FROM month) = 1),
+  qty_base    bigint NOT NULL CHECK (qty_base BETWEEN 0 AND 1000000000),
+  batch_uuid  uuid   NOT NULL REFERENCES app.route_target_batch(batch_uuid),   -- the API and the seed write the batch first
+  created_at  timestamptz NOT NULL DEFAULT now(),
+  updated_at  timestamptz NOT NULL DEFAULT now(),
+  updated_by  bigint REFERENCES app.app_user(id),
+  PRIMARY KEY (route_id, sku_id, month)
+);
+CREATE INDEX route_monthly_target_month ON app.route_monthly_target (month, route_id);
+CREATE INDEX route_monthly_target_sku ON app.route_monthly_target (sku_id);
+CREATE INDEX route_monthly_target_updated_by ON app.route_monthly_target (updated_by);
+CREATE INDEX route_monthly_target_batch ON app.route_monthly_target (batch_uuid);
 
 COMMENT ON TABLE app.route_monthly_target IS 'Monthly sales target of a route for a SKU in base units (D-TARGET-MIN-01); one row per route, SKU and month, rewritten by a later upload.
 owner: backend:admin | capture: ONLINE | retention: master | pii: none';

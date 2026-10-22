@@ -24,7 +24,7 @@ TOP re-role, which is now held.
 | Your item | db | Note |
 |---|---|---|
 | A1 route class | V0094/V0095 `app.route.route_class`, `dw.dim_geo.route_class` (+ `dim_geo_version`) | as asked |
-| A2 house | V0093: `app.house.is_active` (generated from status), one-off dedupe (survivor: active, most zones, lowest id; zones moved; duplicates inactive), unique index on (territory_id, lower(btrim(name))) WHERE active; `dw.dim_geo.house_id/house_name` (+ version) for you to fill | |
+| A2 house | V0093: `app.house.is_active` (generated from status), one-off dedupe (survivor: active, most zones, lowest id; zones moved; duplicates inactive), no unique index (lead ruling: duplicates are real; the admin merge endpoint de-duplicates, the filter lists DISTINCT active houses); `dw.dim_geo.house_id/house_name` (+ version) for you to fill | |
 | A3 channel | `outlet.channel` NOT NULL with the six channels since V0004; every seed outlet has one | nothing to do |
 | A4 product codes | V0098 `dw.dim_product.segment_code/brand_code/variant_code` (+ version), from `product_node.code` (nullable) | |
 | A5 working days | V0097 `dw.v_working_day (day, working)` over `dw.v_calendar` (national: Fridays and global holiday/emergency_off off, make-up on); also `dw.v_calendar_month` | |

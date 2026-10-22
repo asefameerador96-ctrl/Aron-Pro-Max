@@ -3,7 +3,11 @@
 -- - a guard (Opus checker, db rounds 1 and 2): a new command carries no approval, delivery or result, and a factory
 --   reset starts pending_approval (every other type queued), so the second person can only be added by a later UPDATE,
 --   where the CHECK keeps the approver apart from the requester; the approval time is set to now() by the server. Whether the approver may approve (SUPERADMIN, or ADMIN with mdm
---   = w) stays the API's check.
+--   = w) stays the API's check (mdm's request; test admins made after V0089 carry no module grant).
+--   Checker round 3 (session 8): states only move forward (pending_approval -> queued/rejected/expired, queued ->
+--   sent/acked/failed/expired, sent -> acked/failed/expired), the request columns are fixed, signature, approval,
+--   delivery and result are written once, a factory reset names its requester, and a pending reset may expire
+--   unsigned and unapproved (mdm's pull expires it; before this fix the CHECKs refused that and broke the pull).
 -- - grants: api_rw reads, inserts and updates both tables through its app rows (no DELETE: commands are the activity
 --   log); support_ro reads commands without result (a locate answer is personal data);
 -- - dw.v_device_command: the stable read view for the portal and BI, without sig and result.
@@ -58,11 +62,12 @@ CREATE TABLE app.device_command (
   acked_at       timestamptz,
   result         jsonb CHECK (jsonb_typeof(result) = 'object' AND pg_column_size(result) <= 4096),
   CHECK (expires_at > created_at AND expires_at <= created_at + interval '72 hours'),
-  CHECK (type <> 'factory_reset' OR state IN ('pending_approval') OR approved_by IS NOT NULL),
+  CHECK (type <> 'factory_reset' OR state IN ('pending_approval','expired') OR approved_by IS NOT NULL),
   CHECK (approved_by IS NULL OR created_by IS NULL OR approved_by <> created_by),
   CHECK ((state IN ('acked','failed')) = (acked_at IS NOT NULL))
 );
-ALTER TABLE app.device_command ADD CONSTRAINT device_command_state_sig CHECK (state IN ('pending_approval','rejected') OR sig IS NOT NULL);
+ALTER TABLE app.device_command ADD CONSTRAINT device_command_state_sig CHECK (state IN ('pending_approval','rejected') OR sig IS NOT NULL
+                                                                         OR (state = 'expired' AND approved_by IS NULL));
 CREATE INDEX device_command_pull_idx ON app.device_command (device_id, seq) WHERE state IN ('queued','sent');
 CREATE INDEX device_command_device_idx ON app.device_command (device_id, seq DESC);
 CREATE INDEX device_command_pending_idx ON app.device_command (created_at) WHERE state = 'pending_approval';
@@ -82,8 +87,37 @@ BEGIN
       RAISE EXCEPTION 'device_command %: a new % command starts % with no approval, delivery or result', NEW.command_id, NEW.type, first_state
         USING ERRCODE = 'check_violation';
     END IF;
-  ELSIF NEW.approved_by IS NOT NULL AND OLD.approved_by IS NULL THEN
+    IF NEW.type = 'factory_reset' AND NEW.created_by IS NULL THEN
+      RAISE EXCEPTION 'device_command %: a factory reset names its requester (the approver must be someone else)', NEW.command_id
+        USING ERRCODE = 'check_violation';
+    END IF;
+    RETURN NEW;
+  END IF;
+  -- UPDATE: states only move forward, the request is fixed, approval and delivery are written once.
+  IF NEW.state <> OLD.state AND NOT (
+       (OLD.state = 'pending_approval' AND NEW.state IN ('queued','rejected','expired'))
+    OR (OLD.state = 'queued' AND NEW.state IN ('sent','acked','failed','expired'))
+    OR (OLD.state = 'sent' AND NEW.state IN ('acked','failed','expired'))) THEN
+    RAISE EXCEPTION 'device_command %: state % cannot become %', OLD.command_id, OLD.state, NEW.state USING ERRCODE = 'check_violation';
+  END IF;
+  IF (NEW.command_id, NEW.device_id, NEW.type, NEW.params, NEW.reason, NEW.request_sha256, NEW.created_by, NEW.created_at, NEW.expires_at)
+     IS DISTINCT FROM (OLD.command_id, OLD.device_id, OLD.type, OLD.params, OLD.reason, OLD.request_sha256, OLD.created_by, OLD.created_at, OLD.expires_at)
+  THEN
+    RAISE EXCEPTION 'device_command %: the request (device, type, params, reason, requester, times) is fixed', OLD.command_id USING ERRCODE = 'check_violation';
+  END IF;
+  IF (OLD.sig IS NOT NULL AND NEW.sig IS DISTINCT FROM OLD.sig)
+     OR (OLD.approved_by IS NOT NULL AND (NEW.approved_by IS DISTINCT FROM OLD.approved_by OR NEW.approved_at IS DISTINCT FROM OLD.approved_at))
+     OR (OLD.decision_reason IS NOT NULL AND NEW.decision_reason IS DISTINCT FROM OLD.decision_reason)
+     OR (OLD.push_sent_at IS NOT NULL AND NEW.push_sent_at IS DISTINCT FROM OLD.push_sent_at)
+     OR (OLD.sent_at IS NOT NULL AND NEW.sent_at IS DISTINCT FROM OLD.sent_at)
+     OR (OLD.acked_at IS NOT NULL AND NEW.acked_at IS DISTINCT FROM OLD.acked_at)
+     OR (OLD.result IS NOT NULL AND NEW.result IS DISTINCT FROM OLD.result) THEN
+    RAISE EXCEPTION 'device_command %: signature, approval, delivery and result are written once', OLD.command_id USING ERRCODE = 'check_violation';
+  END IF;
+  IF NEW.approved_by IS NOT NULL AND OLD.approved_by IS NULL THEN
     NEW.approved_at := now();   -- the decision time is the server's, never the caller's
+  ELSIF NEW.approved_by IS NULL THEN
+    NEW.approved_at := NULL;
   END IF;
   RETURN NEW;
 END $$;
