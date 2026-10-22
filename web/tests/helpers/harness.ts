@@ -41,6 +41,8 @@ export async function signIn(username: string, password: string, mfa = false): P
   return { [SESSION_COOKIE]: c[SESSION_COOKIE]!, [RT_COOKIE]: c[RT_COOKIE]! };
 }
 export const admin = () => signIn("admin1", "admin-pass-1", true);
+export const superadmin = () => signIn("msuper1", "super-pass-1", true); // master mock user: serves /v1/admin/** of the master data
+export const madmin = () => signIn("madmin1", "admin-pass-1", true);
 export const support = () => signIn("support1", "support-pass-1", true);
 export const tso = () => signIn("tso334", "tso-pass-1");
 

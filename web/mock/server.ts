@@ -42,6 +42,7 @@ function users(): Record<string, MockUser> {
     wm1: u(2002, "wm1", "Karim Hossain", "WM", "wm-pass-1", { scope_version: 2, nodes: [{ type: "wing", id: 1, code: "W-1", name: "Dhaka Wing" }] }),
     analyst1: u(2003, "analyst1", "Nusrat Jahan", "ANALYST", "analyst-pass-1", nationalScope),
     madmin1: { ...u(3101, "madmin1", "Salma Akter", "ADMIN", "admin-pass-1", nationalScope, true), master: true },
+    msuper1: { ...u(3105, "msuper1", "Rafiq Chowdhury", "SUPERADMIN", "super-pass-1", nationalScope, true), master: true },
     msupport1: { ...u(3102, "msupport1", "Tanvir Ahmed", "SUPPORT", "support-pass-1", nationalScope, true), master: true },
     mdmo1: { ...u(3104, "mdmo1", "Habib Rahman", "DMO", "dmo-pass-2", { scope_version: 4, nodes: [{ type: "division", id: 10, code: "D-10", name: "Dhaka North" }] }), master: true },
     mtso1: { ...u(3103, "mtso1", "Rahim Uddin", "TSO", "tso-pass-1", { scope_version: 7, nodes: [{ type: "territory", id: 6, code: "T-334", name: "Banani" }] }), master: true },
@@ -111,7 +112,7 @@ export function createMock(opts: MockOptions = {}): { server: Server; state: Sta
 
 function freshState(accessTtlS = Number(process.env.MOCK_ACCESS_TTL_S ?? 900)): State {
   const tables = seedTables();
-  return { failPrefix: null, reauthFails: new Map(), piiWindowS: 900, stubs: [], calls: [], users: users(), tables, blobs: new Map(), custom: { tables, ...seedCustom() }, mdm: freshMdmStore(), codeLists: seedCodeLists(), bulkBatches: new Map(), clusters: tables.clusters as unknown as Cluster[], audit: [], access: new Map(), refresh: new Map(), mfaTokens: new Map(), mfaEnrolled: new Set(["admin1", "madmin1", "msupport1", "support1", "pwmfa1"]), pwcTokens: new Map(), refreshCount: 0, nextId: 100, accessTtlS, dash: freshDashStore(), cfg: freshConfigStore() };
+  return { failPrefix: null, reauthFails: new Map(), piiWindowS: 900, stubs: [], calls: [], users: users(), tables, blobs: new Map(), custom: { tables, ...seedCustom() }, mdm: freshMdmStore(), codeLists: seedCodeLists(), bulkBatches: new Map(), clusters: tables.clusters as unknown as Cluster[], audit: [], access: new Map(), refresh: new Map(), mfaTokens: new Map(), mfaEnrolled: new Set(["admin1", "madmin1", "msuper1", "msupport1", "support1", "pwmfa1"]), pwcTokens: new Map(), refreshCount: 0, nextId: 100, accessTtlS, dash: freshDashStore(), cfg: freshConfigStore() };
 }
 
 function problem(status: number, code: ProblemCode, extra: Partial<Problem> = {}): Problem {
