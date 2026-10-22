@@ -1,5 +1,6 @@
 package com.aktcl.aron.backend.masterdata
 
+import com.aktcl.aron.backend.platform.AdminModules
 import com.aktcl.aron.contract.Role
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.HttpMethod
@@ -19,18 +20,12 @@ class UserAccessTest {
 
     @BeforeAll fun setUp() {
         env = AdminEnv()
-        applyPending(env)
         env.exec("INSERT INTO app.app_user (username, full_name, role, locale, pilot, must_change_password) VALUES ('adminx1', 'Admin X', 'ADMIN', 'en', true, false), ('brandx1', 'Brand X', 'BRAND', 'en', true, false), ('adminx2', 'Admin Y', 'ADMIN', 'en', true, false)")
         env.exec("INSERT INTO app.product_node (level, name) VALUES ('category', 'UA Category')")
         env.exec("INSERT INTO app.product_node (level, parent_id, name) SELECT 'segment', id, 'UA Segment' FROM app.product_node WHERE name = 'UA Category'")
         env.exec("INSERT INTO app.product_node (level, parent_id, name) SELECT 'brand', id, n FROM app.product_node, (VALUES ('UA Brand 1'), ('UA Brand 2'), ('UA Brand 3')) AS b(n) WHERE name = 'UA Segment'")
     }
     @AfterAll fun tearDown() = env.close()
-
-    private fun applyPending(e: AdminEnv) {
-        val sql = UserAccessTest::class.java.getResourceAsStream("/pending-user-access.sql")!!.bufferedReader().readText()
-        e.db.fresh.dataSource.connection.use { c -> c.createStatement().use { it.execute(sql) } }
-    }
 
     private val super_ get() = env.token("superadmin1001", Role.SUPERADMIN)
     private fun uid(name: String) = env.sql("SELECT id FROM app.app_user WHERE username = '$name'")!!.toLong()
@@ -49,6 +44,17 @@ class UserAccessTest {
         val o = r.objA1()
         assertEquals("ADMIN", o.strA1("role")); assertEquals(0, (o.getValue("modules") as JsonObject).size); assertEquals(0, o.arr("brand_ids").size)
         assertEquals(HttpStatusCode.NotFound, sendA1(HttpMethod.Get, "/admin/users/9999999/access", super_).status)
+    }
+
+    /** The API has no module list of its own: it accepts and answers exactly [AdminModules.ALL], in that order. */
+    @Test
+    fun theModuleListIsAdminModulesAll() = env.app {
+        val body = AdminModules.ALL.joinToString(",") { "\"$it\":\"r\"" }
+        val r = put("adminx2", """{"modules":{$body},"change_reason":"$reason"}""")
+        assertEquals(HttpStatusCode.OK, r.status)
+        assertEquals(AdminModules.ALL, (r.objA1().getValue("modules") as JsonObject).keys.toList())
+        assertEquals(HttpStatusCode.BadRequest, put("adminx2", """{"modules":{"not_a_module":"r"},"change_reason":"$reason"}""").status)
+        assertEquals(HttpStatusCode.OK, put("adminx2", """{"modules":{},"change_reason":"$reason"}""").status)
     }
 
     @Test
