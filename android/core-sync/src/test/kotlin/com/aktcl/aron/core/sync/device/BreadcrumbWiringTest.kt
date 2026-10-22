@@ -81,6 +81,33 @@ class BreadcrumbWiringTest {
         assertEquals(1, client.starts)
     }
 
+    @Test fun mdmIntervalNeedsTheBackgroundGrantWhenTheConfigIsOff() {
+        val noGrant = BreadcrumbWiring.settings({ false }, { 30 }, { "interval" }, { 15 }, backgroundGranted = { false })()
+        assertFalse(noGrant.enabled)
+        val granted = BreadcrumbWiring.settings({ false }, { 30 }, { "interval" }, { 15 }, backgroundGranted = { true })()
+        assertTrue(granted.enabled); assertEquals(15, granted.intervalMin)
+        assertFalse(BreadcrumbWiring.settings({ true }, { 30 }, { "off" }, { null }, backgroundGranted = { false })().enabled)
+    }
+
+    @Test fun aWindowBelongsToOneUserAndOneDay() {
+        val o = BreadcrumbOwner("2026-10-22", 7)
+        assertTrue(BreadcrumbWiring.ownerStillValid(o, "2026-10-22", 7))
+        assertFalse(BreadcrumbWiring.ownerStillValid(o, "2026-10-23", 7))   // forgot to check out
+        assertFalse(BreadcrumbWiring.ownerStillValid(o, "2026-10-22", 8))   // shared phone, another rep signed in
+        assertFalse(BreadcrumbWiring.ownerStillValid(o, "2026-10-22", null)) // logged out
+        assertFalse(BreadcrumbWiring.ownerStillValid(null, "2026-10-22", 7))
+    }
+
+    @Test fun anOffControllerStopsAtMostOncePerProcess() {
+        controller.reconcile(80, false); controller.reconcile(80, false); controller.reconcile(80, false)
+        assertEquals(1, client.stops)
+        mdmMode = "interval"; mdmInterval = 10; controller.onCheckIn(80, false)
+        mdmMode = "off"; controller.reconcile(80, false)
+        assertEquals(2, client.stops)
+        controller.reconcile(80, false)
+        assertEquals(2, client.stops)
+    }
+
     @Test fun mdmIntervalDoesNothingBeforeCheckInOrAfterCheckOut() {
         mdmMode = "interval"; mdmInterval = 10
         controller.reconcile(80, false)

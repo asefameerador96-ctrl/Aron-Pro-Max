@@ -83,6 +83,9 @@ class BreadcrumbController(
     /** The interval and distance the running request was started with (null: not running). */
     private var runningWith: Pair<Long, Double>? = null
 
+    /** A request left by an earlier process is cleared once; after that `stop()` is only called for a request this process started. */
+    private var clearedOnce = false
+
     @Synchronized
     fun onCheckIn(batteryPct: Int? = null, charging: Boolean = false) {
         val now = clock.elapsedRealtimeMs()
@@ -107,7 +110,7 @@ class BreadcrumbController(
             if (runningWith != null) runCatching { client.stop() }
             runningWith = if (runCatching { client.start(target.first, target.second) }.isSuccess) target else null
         }
-        if (!want) { runCatching { client.stop() }; runningWith = null }
+        if (!want && (runningWith != null || !clearedOnce)) { runCatching { client.stop() }; runningWith = null; clearedOnce = true }
     }
 
     /** After a reboot elapsed realtime restarts: re-anchor the window at "now" (spacing from here, last place kept). */

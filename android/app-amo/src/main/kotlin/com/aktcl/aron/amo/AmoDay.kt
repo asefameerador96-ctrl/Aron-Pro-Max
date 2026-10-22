@@ -139,7 +139,7 @@ class AmoDay(
                 if (e.kind == "check_in") policy.onCheckInCommitted() else policy.onCheckOutCommitted()
             }
             // N-035 breadcrumbs (D-MDM-BREADCRUMB-01): starts or ends the day's window; a no-op while breadcrumbs are off.
-            runCatching { deviceRuntime?.onAttendanceCommitted(e.kind) }
+            runCatching { deviceRuntime?.onAttendanceCommitted(e.kind, userId) }
             if (e.kind == "check_in") runCatching { deviceRuntime?.wantEvidenceAtCheckIn() }
             runCatching { scheduler.requestSync(userId, if (e.kind == "check_in") SyncTrigger.WRITE_DEBOUNCE else SyncTrigger.CHECKOUT) }
         },

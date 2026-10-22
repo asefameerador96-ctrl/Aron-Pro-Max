@@ -16,7 +16,7 @@ object MdmChannel {
         val dir = File(app.noBackupFilesDir, "dpc")
         return CommandProcessor(
             api, AndroidMdmGateway(app), verifier, deviceUuid, CommandLedger(dir), MdmPolicyStore(dir),
-            nowMs = { policy.trustedNow() }, onPolicyChanged = { policy.reevaluateBlocking(); runCatching(afterPolicyChanged) },
+            nowMs = { policy.trustedNow() }, onPolicyChanged = { try { policy.reevaluateBlocking() } finally { runCatching(afterPolicyChanged) } },
         )
     }
 }
