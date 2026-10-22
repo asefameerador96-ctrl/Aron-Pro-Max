@@ -1110,6 +1110,286 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/dashboards/national/sales": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Sales cards with daily target
+         * @description Four category cards: total sales, ring % of the daily target and the "i" pop-up figures (brief s2). Reads summary tables only (never the transaction log); scope from the token.
+         */
+        post: operations["queryNationalSales"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/dashboards/national/cpr": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Live CPR card
+         * @description Target outlets, successful calls and CPR % for one day (brief s3.1). BRAND users get 403 (docs/34 s1: cards without a brand dimension are hidden). Reads summary tables only (never the transaction log); scope from the token.
+         */
+        post: operations["queryNationalCpr"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/dashboards/national/channel-calls": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * By Channel Successful Call card
+         * @description Distinct calling outlets by outlet-master channel (brief s3.2). Reads summary tables only (never the transaction log); scope from the token.
+         */
+        post: operations["queryNationalChannelCalls"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/dashboards/national/final-submit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Final Submit Status card
+         * @description Service zones and their Final Submit (brief s3.3). BRAND users get 403 (docs/34 s1: cards without a brand dimension are hidden). Reads summary tables only (never the transaction log); scope from the token.
+         */
+        post: operations["queryNationalFinalSubmit"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/dashboards/national/login-submit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Login / Submit Status card
+         * @description Target routes, logins and Bikroy Joma submits (brief s3.4). BRAND users get 403 (docs/34 s1: cards without a brand dimension are hidden). Reads summary tables only (never the transaction log); scope from the token.
+         */
+        post: operations["queryNationalLoginSubmit"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/dashboards/national/channel-std": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * By Channel STD card
+         * @description Cigarette sticks by outlet channel (brief s4.1). Reads summary tables only (never the transaction log); scope from the token.
+         */
+        post: operations["queryNationalChannelStd"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/dashboards/national/breakdown": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Breakdown STD / Memo card
+         * @description Bars by segment, brand or variant for STD or Memo (brief s4.2). Reads summary tables only (never the transaction log); scope from the token.
+         */
+        post: operations["queryNationalBreakdown"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/dashboards/national/geo-fencing": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Geo Fencing card
+         * @description Geo validation of completed calls (brief s5.1). BRAND users get 403 (docs/34 s1: cards without a brand dimension are hidden). Reads summary tables only (never the transaction log); scope from the token.
+         */
+        post: operations["queryNationalGeoFencing"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/dashboards/national/ff-geo/pins": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * FF Geo Location pins
+         * @description One pin per route, coloured by today's geo-fencing % (brief s5.2). Clustering is done by the map. BRAND users get 403 (docs/34 s1: cards without a brand dimension are hidden). Reads summary tables only (never the transaction log); scope from the token.
+         */
+        post: operations["queryFfGeoPins"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/dashboards/national/ff-geo/routes/{route_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * FF Geo route pop-up
+         * @description SR name, contact, territory, zone, route, latest position time and miss % (brief s5.2). The route must be inside the caller's scope, else 404. BRAND users get 403 (docs/34 s1: cards without a brand dimension are hidden).
+         */
+        get: operations["getFfGeoRoutePopup"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/dashboards/route-map/{route_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Route map ("Map Details")
+         * @description Markers, SR path and the Target vs Achievement, CPR and time cards of one route and day (brief s5.3). BRAND users get 403 (docs/34 s1: cards without a brand dimension are hidden).
+         */
+        get: operations["getRouteMap"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/dashboards/sale-position/{outlet_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Sale Position (SR hit / miss)
+         * @description Base position, sale positions with kind and the force-sale photo of one outlet and day (brief s5.4). BRAND users get 403 (docs/34 s1: cards without a brand dimension are hidden).
+         */
+        get: operations["getSalePosition"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/dashboards/national/filter-options": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Filter panel values
+         * @description Wings to zones inside the scope (active houses once, UI-WEB-14) and the category / segment / brand / variant tree.
+         */
+        get: operations["getNationalFilterOptions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/dashboards/national/freshness": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Summary table freshness
+         * @description `last_updated_at` per summary table.
+         */
+        get: operations["getNationalFreshness"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/dashboards/daily-tracking": {
         parameters: {
             query?: never;
@@ -3352,6 +3632,263 @@ export interface paths {
         patch: operations["updateFeedbackStatus"];
         trace?: never;
     };
+    "/v1/admin/mdm/devices": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * MDM device list with owner mode, user, app version, last seen, battery, network, policy and compliance flags.
+         * @description Needs the mdm module (r), or SUPERADMIN. Filters combine with AND.
+         */
+        get: operations["listMdmDevices"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/mdm/devices/{device_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** One device with its latest status report, policy and recent commands. */
+        get: operations["getMdmDevice"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/mdm/devices/{device_id}/activity": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Activity log of one device (commands, state changes, policy changes, enrolment, alerts), newest first. */
+        get: operations["listMdmDeviceActivity"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/mdm/devices/{device_id}/commands": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Commands sent to one device and their state. */
+        get: operations["listMdmDeviceCommands"];
+        put?: never;
+        /**
+         * Queue a command (lock, unlock, message, locate, reboot, factory reset) for one device.
+         * @description Needs the mdm module (w), or SUPERADMIN, and a reason; audited. Idempotent by `command_id`: a repeat with the
+         *     same body returns the stored command (200), a different body 409. `factory_reset` is created in state
+         *     `pending_approval` and needs a second approver (POST /admin/mdm/commands/{command_id}/decision) who is not
+         *     the requester. Delivered by FCM data message when the phone is online and pulled by the DPC on every sync.
+         */
+        post: operations["createMdmCommand"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/mdm/commands/{command_id}/decision": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Approve or reject a command waiting for a second approver (factory reset).
+         * @description The approver must differ from the requester; audited with the reason.
+         */
+        post: operations["decideMdmCommand"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/mdm/devices/{device_id}/policy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Assign an MDM policy to a device (or clear it); queues an apply_policy command. */
+        put: operations["assignMdmPolicy"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/mdm/policies": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** MDM policies with the number of devices on each. */
+        get: operations["listMdmPolicies"];
+        put?: never;
+        /** Create an MDM policy. */
+        post: operations["createMdmPolicy"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/mdm/policies/{policy_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** One MDM policy. */
+        get: operations["getMdmPolicy"];
+        /** Replace an MDM policy (optimistic version); devices on it get an apply_policy command. */
+        put: operations["updateMdmPolicy"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/mdm/enrolment-tokens": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Enrolment tokens of the device-owner DPC (same data as listEnrolmentTokens, gated by the mdm module). */
+        get: operations["listMdmEnrolmentTokens"];
+        put?: never;
+        /** Create an enrolment token and its provisioning QR payload (shown once). */
+        post: operations["createMdmEnrolmentToken"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/mdm/enrolment-tokens/{token_id}/revoke": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Revoke an enrolment token. */
+        post: operations["revokeMdmEnrolmentToken"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/mdm/alerts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Open compliance alerts, one row per device and flag, derived from the latest status report. */
+        get: operations["listMdmAlerts"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/mdm/activity": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Activity log of the whole fleet, newest first. */
+        get: operations["listMdmActivity"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/devices/me/commands": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Commands waiting for this phone (the DPC polls on every sync; FCM only nudges).
+         * @description Authenticated by X-Device-Proof. Returns queued and sent, unexpired commands, oldest first, marks them sent. Each carries an ES256 signature bound to the device.
+         */
+        get: operations["pullDeviceCommands"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/devices/me/commands/{command_id}/ack": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Report the result of a command (acked or failed). Idempotent. */
+        post: operations["ackDeviceCommand"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -3808,6 +4345,12 @@ export interface components {
             mfa_enabled?: boolean;
             /** @description The caller's role row of cfg.web.menu_by_role, resolved now (same mapping as GET /v1/admin/permissions). */
             menus?: components["schemas"]["MenuPermission"][];
+            /** @description D-ROLES-02 (docs/34 s1): ADMIN the module grants its token carries (r = read, w = read and write; a module not listed is refused with 403), SUPERADMIN every module at w; null for other roles and before the grants are deployed. The portal builds the ADMIN menu from it. */
+            modules?: {
+                [key: string]: "r" | "w";
+            } | null;
+            /** @description D-ROLES-02: a BRAND user's brands (product-tree brand node ids) its token carries; null for other roles. */
+            brands?: components["schemas"]["Id"][] | null;
         };
         /** @description Device public key (Android Keystore, EC P-256). */
         JwkEcPublicDevice: {
@@ -6056,7 +6599,472 @@ export interface components {
             /** @enum {string|null} */
             report_unit?: "stick" | "piece" | "dozen" | "box" | "pack" | null;
             qty_report?: components["schemas"]["Decimal3"] | null;
+            /**
+             * @description The unit the field apps count this category in (docs/34 s4.2): pack (packet or box, per SKU `base_per_pack`) or dozen (matches).
+             * @enum {string}
+             */
+            entry_unit?: "pack" | "dozen";
+            /** @description Quantity in `entry_unit`, summed per SKU first (each SKU's qty_base over its base_per_pack): 10s and 20s of one category convert correctly. Sold plus free, like qty_base. */
+            qty_entered?: components["schemas"]["Decimal3"];
             net_mtk: components["schemas"]["Mtk"];
+        };
+        /** @description The dashboard filter object (docs/34 s2, brief s1). Every list is optional; omitted or empty means everything the caller may see. The server intersects each list with the scope derived from the token (docs/34 s1, BRAND users also with their brands) and never widens it: ids outside the scope are ignored, and a list that leaves nothing yields zeros. Location ids are server surrogate keys; product codes are the product master codes. */
+        NationalDashboardFilter: {
+            wing_ids?: components["schemas"]["Id"][];
+            division_ids?: components["schemas"]["Id"][];
+            territory_ids?: components["schemas"]["Id"][];
+            house_ids?: components["schemas"]["Id"][];
+            zone_ids?: components["schemas"]["Id"][];
+            category_codes?: string[];
+            segment_codes?: string[];
+            brand_codes?: string[];
+            variant_codes?: string[];
+            /** @description One business day; default today (Dhaka). */
+            date?: components["schemas"]["BusinessDate"];
+        };
+        NationalSalesCard: {
+            category_code: string;
+            /** @enum {string} */
+            base_unit: "stick" | "piece" | "dozen";
+            /**
+             * Format: int64
+             * @description SUM(quantity) in base units (sticks, pieces, dozens) of the category's latest-version memo lines for the date, location and product filter.
+             */
+            total_sales: number;
+            /** @description Sum over the routes in the filter of route monthly target / working days of the month (Fridays and holidays excluded); null when no target is loaded for them. Always the full-day target. */
+            daily_target: components["schemas"]["Decimal3"] | null;
+            /**
+             * Format: int64
+             * @description Same as total_sales; repeated for the "i" pop-up.
+             */
+            sales_so_far: number;
+            /** @description max(daily_target - sales_so_far, 0); null without a target. */
+            remaining: components["schemas"]["Decimal3"] | null;
+            /** @description total_sales / daily_target in basis points (ring); null without a target. May exceed 10000. */
+            achievement_pct_bp: number | null;
+            /** @description Routes in the filter that carry a monthly target for the category. */
+            target_routes: number;
+        };
+        /** @description Four sales cards (Cigarette, Bidi, Lighter, Match) with the daily target of the "i" pop-up. */
+        NationalSales: {
+            date: components["schemas"]["BusinessDate"];
+            /** @description True when `date` is today (Dhaka): figures are till the time of `as_of`; false: final figures of a past day. */
+            till_time: boolean;
+            as_of: components["schemas"]["Timestamp"];
+            /**
+             * Format: date-time
+             * @description Oldest `last_updated_at` of the summary tables this card reads (null when none has been written yet). The page shows it as "last updated hh:mm" (Dhaka).
+             */
+            last_updated_at: string | null;
+            /** @description Working days of the date's month (calendar: Fridays and holidays excluded). */
+            working_days: number;
+            cards: components["schemas"]["NationalSalesCard"][];
+        };
+        /** @description Live CPR: target outlets, successful calls and the ratio. Hidden from BRAND users (403). */
+        NationalCpr: {
+            date: components["schemas"]["BusinessDate"];
+            /** @description True when `date` is today (Dhaka): figures are till the time of `as_of`; false: final figures of a past day. */
+            till_time: boolean;
+            as_of: components["schemas"]["Timestamp"];
+            /**
+             * Format: date-time
+             * @description Oldest `last_updated_at` of the summary tables this card reads (null when none has been written yet). The page shows it as "last updated hh:mm" (Dhaka).
+             */
+            last_updated_at: string | null;
+            /** @description Outlets on the normal routes scheduled for the date, each route counted once (manual and dummy routes excluded). */
+            target_outlets: number;
+            /** @description Distinct outlets with at least one latest-version memo that day on those routes. */
+            successful_calls: number;
+            /** @description Basis points: 10000 = 100 %. Integer arithmetic, rounded half up; null when the denominator is 0. */
+            cpr_pct_bp: number | null;
+        };
+        /** @description Successful calls split by the outlet-master channel (no "Other" group). `total` is the sum of the channels; `unclassified` counts calling outlets without a channel, which the mandatory channel keeps at 0. */
+        NationalChannelCalls: {
+            date: components["schemas"]["BusinessDate"];
+            /** @description True when `date` is today (Dhaka): figures are till the time of `as_of`; false: final figures of a past day. */
+            till_time: boolean;
+            as_of: components["schemas"]["Timestamp"];
+            /**
+             * Format: date-time
+             * @description Oldest `last_updated_at` of the summary tables this card reads (null when none has been written yet). The page shows it as "last updated hh:mm" (Dhaka).
+             */
+            last_updated_at: string | null;
+            channels: {
+                /** @enum {string} */
+                channel: "GT" | "DCC" | "Astha" | "RCC" | "MT" | "HoReCa";
+                /** Format: int64 */
+                value: number;
+                /** @description Basis points: 10000 = 100 %. Integer arithmetic, rounded half up; null when the denominator is 0. */
+                share_pct_bp: number | null;
+            }[];
+            total: number;
+            unclassified: number;
+        };
+        /** @description Cigarette sales (sticks) split by outlet channel. Cigarette only; `total` equals the Sales (Cigarette) card for the same filter. */
+        NationalChannelStd: {
+            date: components["schemas"]["BusinessDate"];
+            /** @description True when `date` is today (Dhaka): figures are till the time of `as_of`; false: final figures of a past day. */
+            till_time: boolean;
+            as_of: components["schemas"]["Timestamp"];
+            /**
+             * Format: date-time
+             * @description Oldest `last_updated_at` of the summary tables this card reads (null when none has been written yet). The page shows it as "last updated hh:mm" (Dhaka).
+             */
+            last_updated_at: string | null;
+            channels: {
+                /** @enum {string} */
+                channel: "GT" | "DCC" | "Astha" | "RCC" | "MT" | "HoReCa";
+                /** Format: int64 */
+                value: number;
+                /** @description Basis points: 10000 = 100 %. Integer arithmetic, rounded half up; null when the denominator is 0. */
+                share_pct_bp: number | null;
+            }[];
+            /** Format: int64 */
+            total: number;
+            /** @enum {string} */
+            unit: "stick";
+        };
+        /** @description Final Submit status by service zone; first submit per (zone, date) wins, unsubmitted zones are auto-submitted at midnight. Hidden from BRAND users (403). */
+        NationalFinalSubmit: {
+            date: components["schemas"]["BusinessDate"];
+            /** @description True when `date` is today (Dhaka): figures are till the time of `as_of`; false: final figures of a past day. */
+            till_time: boolean;
+            as_of: components["schemas"]["Timestamp"];
+            /**
+             * Format: date-time
+             * @description Oldest `last_updated_at` of the summary tables this card reads (null when none has been written yet). The page shows it as "last updated hh:mm" (Dhaka).
+             */
+            last_updated_at: string | null;
+            total_zones: number;
+            /** @description Zones with normal SR routes working that day. */
+            service_zones: number;
+            final_submitted: number;
+            /** @description service_zones - final_submitted. */
+            remaining: number;
+            /** @description Basis points: 10000 = 100 %. Integer arithmetic, rounded half up; null when the denominator is 0. */
+            submit_pct_bp: number | null;
+        };
+        /** @description Login (check-in and download) and Submit (Bikroy Joma) status per route. Hidden from BRAND users (403). */
+        NationalLoginSubmit: {
+            date: components["schemas"]["BusinessDate"];
+            /** @description True when `date` is today (Dhaka): figures are till the time of `as_of`; false: final figures of a past day. */
+            till_time: boolean;
+            as_of: components["schemas"]["Timestamp"];
+            /**
+             * Format: date-time
+             * @description Oldest `last_updated_at` of the summary tables this card reads (null when none has been written yet). The page shows it as "last updated hh:mm" (Dhaka).
+             */
+            last_updated_at: string | null;
+            /** @description Normal SR routes scheduled that day. */
+            target_routes: number;
+            /** @description Of those, routes whose SR checked in and downloaded. */
+            successful_login: number;
+            /** @description Basis points: 10000 = 100 %. Integer arithmetic, rounded half up; null when the denominator is 0. */
+            login_pct_bp: number | null;
+            /** @description Routes that completed Bikroy Joma (sales upload). */
+            submitted: number;
+            /** @description submitted / successful_login in basis points. */
+            submit_pct_bp: number | null;
+        };
+        /** @description The common filter plus the gear choice (six combinations, one active). */
+        NationalBreakdownRequest: {
+            filter?: components["schemas"]["NationalDashboardFilter"];
+            /** @enum {string} */
+            measure: "std" | "memo";
+            /** @enum {string} */
+            dimension: "segment" | "brand" | "variant";
+            /** @description STD mode mixes sticks, pieces and dozens, so the bars of an STD answer cover one category: this one, else the category with the most volume. Ignored for memo. */
+            category_code?: string | null;
+        };
+        /** @description One bar per segment, brand or variant. STD = SUM(quantity); Memo = COUNT(DISTINCT memo id) containing the item, recounted per item (never added across items). */
+        NationalBreakdown: {
+            date: components["schemas"]["BusinessDate"];
+            /** @description True when `date` is today (Dhaka): figures are till the time of `as_of`; false: final figures of a past day. */
+            till_time: boolean;
+            as_of: components["schemas"]["Timestamp"];
+            /**
+             * Format: date-time
+             * @description Oldest `last_updated_at` of the summary tables this card reads (null when none has been written yet). The page shows it as "last updated hh:mm" (Dhaka).
+             */
+            last_updated_at: string | null;
+            /** @enum {string} */
+            measure: "std" | "memo";
+            /** @enum {string} */
+            dimension: "segment" | "brand" | "variant";
+            category_code?: string | null;
+            /**
+             * @description Unit of every STD bar; null for memo.
+             * @enum {string|null}
+             */
+            unit?: "stick" | "piece" | "dozen" | null;
+            items: {
+                code: string;
+                name: string | null;
+                /** Format: int64 */
+                value: number;
+            }[];
+        };
+        /** @description Completed calls with or without a memo, and those inside the outlet radius. Hidden from BRAND users (403). */
+        NationalGeoFencing: {
+            date: components["schemas"]["BusinessDate"];
+            /** @description True when `date` is today (Dhaka): figures are till the time of `as_of`; false: final figures of a past day. */
+            till_time: boolean;
+            as_of: components["schemas"]["Timestamp"];
+            /**
+             * Format: date-time
+             * @description Oldest `last_updated_at` of the summary tables this card reads (null when none has been written yet). The page shows it as "last updated hh:mm" (Dhaka).
+             */
+            last_updated_at: string | null;
+            total_calls: number;
+            geo_validated: number;
+            /** @description Basis points: 10000 = 100 %. Integer arithmetic, rounded half up; null when the denominator is 0. */
+            geo_pct_bp: number | null;
+        };
+        FfGeoPinsRequest: {
+            filter?: components["schemas"]["NationalDashboardFilter"];
+            /** @description Filter by Color; omitted or empty = all. */
+            colors?: ("red" | "amber" | "green")[];
+        };
+        FfGeoPin: {
+            route_id: components["schemas"]["Id"];
+            lat: number;
+            lng: number;
+            /** @enum {string} */
+            color: "red" | "amber" | "green";
+            /** @description Today's geo-fencing % of the route (validated / completed calls); null before the first call, then green. */
+            geo_pct_bp: number | null;
+            position_at: components["schemas"]["Timestamp"];
+        };
+        /** @description One pin per route at the SR's latest position today. Red below 7000 bp, amber 7000 to 9000 bp inclusive, green above 9000 bp. Routes with no position today are not pinned. Hidden from BRAND users (403). */
+        FfGeoPins: {
+            date: components["schemas"]["BusinessDate"];
+            /** @description True when `date` is today (Dhaka): figures are till the time of `as_of`; false: final figures of a past day. */
+            till_time: boolean;
+            as_of: components["schemas"]["Timestamp"];
+            /**
+             * Format: date-time
+             * @description Oldest `last_updated_at` of the summary tables this card reads (null when none has been written yet). The page shows it as "last updated hh:mm" (Dhaka).
+             */
+            last_updated_at: string | null;
+            pins: components["schemas"]["FfGeoPin"][];
+            /** @description Pins per colour before the colour filter. */
+            counts: {
+                red: number;
+                amber: number;
+                green: number;
+            };
+            routes_without_position: number;
+        };
+        PlaceRef: {
+            id: components["schemas"]["Id"];
+            code: string;
+            name: string | null;
+        };
+        /** @description Pop-up of a pin. `contact` is masked (last three digits) unless the caller holds a valid `pii_until` claim; every read is charged to the PII read budget. */
+        FfGeoRoutePopup: {
+            date: components["schemas"]["BusinessDate"];
+            /** @description True when `date` is today (Dhaka): figures are till the time of `as_of`; false: final figures of a past day. */
+            till_time: boolean;
+            as_of: components["schemas"]["Timestamp"];
+            /**
+             * Format: date-time
+             * @description Oldest `last_updated_at` of the summary tables this card reads (null when none has been written yet). The page shows it as "last updated hh:mm" (Dhaka).
+             */
+            last_updated_at: string | null;
+            route: components["schemas"]["PlaceRef"];
+            sr_name: string | null;
+            contact: string | null;
+            territory: components["schemas"]["PlaceRef"];
+            zone: components["schemas"]["PlaceRef"];
+            /** Format: date-time */
+            position_at: string | null;
+            /** @description 10000 minus the route geo-fencing basis points today. */
+            miss_pct_bp: number | null;
+        };
+        CategoryQty: {
+            category_code: string;
+            /** @enum {string} */
+            base_unit: "stick" | "piece" | "dozen";
+            /** Format: int64 */
+            qty: number;
+        };
+        MapPosition: {
+            lat: number;
+            lng: number;
+            at: components["schemas"]["Timestamp"];
+        };
+        RouteMapOutlet: {
+            outlet_id: components["schemas"]["Id"];
+            code: string;
+            name: string | null;
+            /** @description Masked like FfGeoRoutePopup.contact. */
+            contact?: string | null;
+            cluster_name?: string | null;
+            lat: number;
+            lng: number;
+            /**
+             * @description Black / green / red marker: not called yet / called inside the radius / called outside (photo capture required).
+             * @enum {string}
+             */
+            state: "not_called" | "geo_validated" | "photo_validation";
+            /** Format: date-time */
+            call_time: string | null;
+            /** @description Category-wise sales of the call, own units; empty when not called or zero memo. */
+            sales: components["schemas"]["CategoryQty"][];
+        };
+        TargetVsAchievement: {
+            category_code: string;
+            /** @enum {string} */
+            base_unit: "stick" | "piece" | "dozen";
+            daily_target: components["schemas"]["Decimal3"] | null;
+            /** Format: int64 */
+            sales: number;
+            achievement_pct_bp: number | null;
+        };
+        /** @description The "Map Details" page of a route and day: header, markers, SR path and the cards under the map. Distance is metres (docs/34 s6 Q1 default). */
+        RouteMap: {
+            date: components["schemas"]["BusinessDate"];
+            /** @description True when `date` is today (Dhaka): figures are till the time of `as_of`; false: final figures of a past day. */
+            till_time: boolean;
+            as_of: components["schemas"]["Timestamp"];
+            /**
+             * Format: date-time
+             * @description Oldest `last_updated_at` of the summary tables this card reads (null when none has been written yet). The page shows it as "last updated hh:mm" (Dhaka).
+             */
+            last_updated_at: string | null;
+            route: components["schemas"]["PlaceRef"];
+            sr_name: string | null;
+            territory: components["schemas"]["PlaceRef"];
+            zone: components["schemas"]["PlaceRef"];
+            /** @description Where the first call of the day was made; null before the first call. */
+            sale_start: components["schemas"]["MapPosition"] | null;
+            sr_last_position: components["schemas"]["MapPosition"] | null;
+            outlets: components["schemas"]["RouteMapOutlet"][];
+            /** @description The SR's recorded positions in time order, thinned to at most 3000 points; the line the map draws. */
+            path: components["schemas"]["MapPosition"][];
+            target_vs_achievement: components["schemas"]["TargetVsAchievement"][];
+            last_sale_place?: string | null;
+            cpr: {
+                target_outlets: number;
+                successful_calls: number;
+                geo_validated: number;
+                /** @description Basis points: 10000 = 100 %. Integer arithmetic, rounded half up; null when the denominator is 0. */
+                cpr_pct_bp: number | null;
+            };
+            time_card: {
+                /** Format: date-time */
+                first_sale_time?: string | null;
+                /** Format: date-time */
+                last_sale_time?: string | null;
+                /** @description last sale time minus first sale time */
+                total_sale_seconds?: number | null;
+                /** @description total_sale_seconds / successful calls */
+                average_sale_seconds?: number | null;
+                /** @description Length in metres of the haversine polyline through the SR's recorded positions in time order (docs/34 D-DIST-01). */
+                distance_covered_m: number;
+            };
+        };
+        SalePositionSale: {
+            memo_uuid: components["schemas"]["Uuid"];
+            /**
+             * @description New sale, repeat sale (yellow marker), edited sale (teal marker).
+             * @enum {string}
+             */
+            kind: "new" | "repeat" | "edited";
+            lat: number;
+            lng: number;
+            at: components["schemas"]["Timestamp"];
+            /** @description Haversine distance base position to sale position, stored with the call. */
+            distance_m: number;
+            /** @description Hit when distance_m <= radius_m, else miss (force sale). */
+            within_fence: boolean;
+            status?: string;
+            /**
+             * Format: uuid
+             * @description Force-sale photo; open it through the media read-url of the same API.
+             */
+            photo_media_uuid?: string | null;
+        };
+        /** @description The "Sale Position" page of an outlet and day. */
+        SalePosition: {
+            date: components["schemas"]["BusinessDate"];
+            /** @description True when `date` is today (Dhaka): figures are till the time of `as_of`; false: final figures of a past day. */
+            till_time: boolean;
+            as_of: components["schemas"]["Timestamp"];
+            /**
+             * Format: date-time
+             * @description Oldest `last_updated_at` of the summary tables this card reads (null when none has been written yet). The page shows it as "last updated hh:mm" (Dhaka).
+             */
+            last_updated_at: string | null;
+            zone: components["schemas"]["PlaceRef"];
+            route: components["schemas"]["PlaceRef"];
+            outlet_code: string;
+            /** @description The outlet radius used at the call (20, 50 or 100 m by default; cfg may set 10 to 5000). */
+            radius_m: number;
+            /** @description The outlet's approved base location. */
+            base: {
+                lat: number;
+                lng: number;
+            };
+            /** @description Distance of the latest sale shown in the page header ("SR Hit / Miss Position (81.83 Meter)"). */
+            header_distance_m?: number | null;
+            sales: components["schemas"]["SalePositionSale"][];
+        };
+        /** @description A wing, division, territory, house or zone; the parent ids that apply to its level are set, the others are null. */
+        FilterNode: {
+            id: components["schemas"]["Id"];
+            code: string;
+            name: string | null;
+            wing_id?: number | null;
+            division_id?: number | null;
+            territory_id?: number | null;
+            house_id?: number | null;
+        };
+        /** @description A category, segment, brand or variant; the parent code that applies to its level is set, the others are null. */
+        FilterCode: {
+            code: string;
+            name: string | null;
+            category_code?: string | null;
+            segment_code?: string | null;
+            brand_code?: string | null;
+        };
+        /** @description Selectable values inside the scope of the caller. Houses are active only and listed once per (territory, name). Product lists carry their parent code for the cascading selects. */
+        NationalFilterOptions: {
+            date: components["schemas"]["BusinessDate"];
+            /** @description True when `date` is today (Dhaka): figures are till the time of `as_of`; false: final figures of a past day. */
+            till_time: boolean;
+            as_of: components["schemas"]["Timestamp"];
+            /**
+             * Format: date-time
+             * @description Oldest `last_updated_at` of the summary tables this card reads (null when none has been written yet). The page shows it as "last updated hh:mm" (Dhaka).
+             */
+            last_updated_at: string | null;
+            wings: components["schemas"]["FilterNode"][];
+            divisions: components["schemas"]["FilterNode"][];
+            territories: components["schemas"]["FilterNode"][];
+            houses: components["schemas"]["FilterNode"][];
+            zones: components["schemas"]["FilterNode"][];
+            categories: components["schemas"]["FilterCode"][];
+            segments: components["schemas"]["FilterCode"][];
+            brands: components["schemas"]["FilterCode"][];
+            variants: components["schemas"]["FilterCode"][];
+        };
+        /** @description `last_updated_at` per summary table (the card responses carry the oldest of those they read). */
+        NationalFreshness: {
+            date: components["schemas"]["BusinessDate"];
+            /** @description True when `date` is today (Dhaka): figures are till the time of `as_of`; false: final figures of a past day. */
+            till_time: boolean;
+            as_of: components["schemas"]["Timestamp"];
+            /**
+             * Format: date-time
+             * @description Oldest `last_updated_at` of the summary tables this card reads (null when none has been written yet). The page shows it as "last updated hh:mm" (Dhaka).
+             */
+            last_updated_at: string | null;
+            tables: {
+                table: string;
+                /** Format: date-time */
+                last_updated_at: string | null;
+            }[];
         };
         /** @description Dashboard of a node; `by_channel`, `by_segment` and `by_brand` feed the TSO cards (By Channel STD, By Segment Value Contribution, By Brand Call/Memo Ratio). */
         DashboardSummary: {
@@ -8660,6 +9668,204 @@ export interface components {
             sku_id: components["schemas"]["Id"];
             qty_base: number;
         };
+        /**
+         * @description Derived from the device row and its latest status report. rooted = integrity verdict fail; mock_location =
+         *     mock-location apps present; outdated_app = app_version below the newest published release of the flavour;
+         *     developer_options = developer options on; policy_drift = applied policy older than the rendered one;
+         *     stale_contact = no contact for more than 48 hours.
+         * @enum {string}
+         */
+        MdmComplianceFlag: "rooted" | "mock_location" | "outdated_app" | "developer_options" | "adb_enabled" | "not_device_owner" | "location_off" | "auto_time_off" | "policy_drift" | "stale_contact";
+        /** @enum {string} */
+        MdmNetwork: "wifi" | "mobile" | "offline" | "unknown";
+        /** @enum {string} */
+        MdmCommandType: "lock" | "unlock" | "message" | "locate" | "reboot" | "factory_reset" | "apply_policy";
+        /** @enum {string} */
+        MdmCommandState: "pending_approval" | "queued" | "sent" | "acked" | "failed" | "expired" | "rejected";
+        MdmDevice: {
+            device_id: components["schemas"]["Id"];
+            device_uuid: components["schemas"]["Uuid"];
+            flavour: components["schemas"]["AppFlavour"];
+            status: components["schemas"]["DeviceState"];
+            device_owner: boolean;
+            users: string[];
+            model?: string | null;
+            app_version?: string | null;
+            latest_app_version?: string | null;
+            last_contact_at?: components["schemas"]["Timestamp"] | null;
+            battery_pct?: number | null;
+            network?: components["schemas"]["MdmNetwork"] | null;
+            /** Format: int64 */
+            policy_id?: number | null;
+            policy_name?: string | null;
+            compliance_flags: components["schemas"]["MdmComplianceFlag"][];
+            pending_commands: number;
+        };
+        MdmDevicePage: {
+            items: components["schemas"]["MdmDevice"][];
+            next_cursor: string | null;
+        };
+        MdmDeviceDetail: {
+            device: components["schemas"]["MdmDevice"];
+            enrolled_at: components["schemas"]["Timestamp"];
+            trust_level: components["schemas"]["TrustLevel"];
+            /** @enum {string} */
+            integrity_verdict: "pass" | "fail" | "unevaluated" | "stale";
+            lockdown_level?: components["schemas"]["LockdownLevel"];
+            /** Format: int64 */
+            zone_id?: number | null;
+            last_report?: components["schemas"]["DeviceStatusReport"] | null;
+            policy?: components["schemas"]["MdmPolicy"] | null;
+            recent_commands: components["schemas"]["MdmCommand"][];
+        };
+        MdmActivityEntry: {
+            at: components["schemas"]["Timestamp"];
+            /** @enum {string} */
+            kind: "command" | "state" | "policy" | "enrolment" | "status" | "alert";
+            /** Format: int64 */
+            device_id?: number | null;
+            summary: string;
+            actor?: string | null;
+            reason?: string | null;
+            ref?: string | null;
+        };
+        MdmActivityPage: {
+            items: components["schemas"]["MdmActivityEntry"][];
+            next_cursor: string | null;
+        };
+        MdmAlert: {
+            device_id: components["schemas"]["Id"];
+            device_uuid?: components["schemas"]["Uuid"];
+            users?: string[];
+            flavour?: components["schemas"]["AppFlavour"];
+            flag: components["schemas"]["MdmComplianceFlag"];
+            since: components["schemas"]["Timestamp"];
+            detail?: string | null;
+        };
+        MdmAlertPage: {
+            items: components["schemas"]["MdmAlert"][];
+            next_cursor: string | null;
+        };
+        /** @description Apps in `packages` (or every non-allowed app when empty) are suspended on these weekdays between start and end, Dhaka time. A window with end <= start runs past midnight into the next day. */
+        MdmBlockWindow: {
+            days: number[];
+            start: string;
+            end: string;
+            packages?: components["schemas"]["PackageName"][];
+        };
+        MdmKiosk: {
+            enabled: boolean;
+            /** @description Lock-task packages; the first is started. */
+            packages?: components["schemas"]["PackageName"][];
+        };
+        MdmLocationSampling: {
+            /**
+             * @description on_demand = fix only at check-in, sale and when a locate command arrives; interval = also batched breadcrumbs.
+             * @enum {string}
+             */
+            mode: "off" | "on_demand" | "interval";
+            interval_min?: number | null;
+        };
+        MdmPolicyWrite: {
+            name: string;
+            description?: string | null;
+            /** @description Apps never suspended by a block window (the Aron apps are always allowed). */
+            allowed_packages: components["schemas"]["PackageName"][];
+            block_windows: components["schemas"]["MdmBlockWindow"][];
+            kiosk: components["schemas"]["MdmKiosk"];
+            location_sampling: components["schemas"]["MdmLocationSampling"];
+            /** @description Required on update; must equal the stored version. */
+            version?: number | null;
+            reason?: string | null;
+        };
+        MdmPolicy: {
+            policy_id: components["schemas"]["Id"];
+            name: string;
+            description?: string | null;
+            allowed_packages: components["schemas"]["PackageName"][];
+            block_windows: components["schemas"]["MdmBlockWindow"][];
+            kiosk: components["schemas"]["MdmKiosk"];
+            location_sampling: components["schemas"]["MdmLocationSampling"];
+            version: number;
+            device_count: number;
+            updated_at: components["schemas"]["Timestamp"];
+        };
+        MdmPolicyPage: {
+            items: components["schemas"]["MdmPolicy"][];
+            next_cursor: string | null;
+        };
+        MdmPolicyAssignRequest: {
+            /** Format: int64 */
+            policy_id: number | null;
+            reason: string;
+        };
+        MdmCommandCreateRequest: {
+            command_id: components["schemas"]["Uuid"];
+            /** @enum {string} */
+            type: "lock" | "unlock" | "message" | "locate" | "reboot" | "factory_reset";
+            /** @description message: {text_bn, text_en} (one required, 300 chars each); lock: {message}; others none. */
+            params?: {
+                [key: string]: components["schemas"]["JsonScalar"];
+            };
+            reason: string;
+            /** @default 24 */
+            ttl_h: number;
+        };
+        MdmCommandDecisionRequest: {
+            /** @enum {string} */
+            decision: "approve" | "reject";
+            reason: string;
+        };
+        MdmCommand: {
+            command_id: components["schemas"]["Uuid"];
+            device_id: components["schemas"]["Id"];
+            type: components["schemas"]["MdmCommandType"];
+            params?: {
+                [key: string]: unknown;
+            };
+            state: components["schemas"]["MdmCommandState"];
+            reason: string;
+            created_at: components["schemas"]["Timestamp"];
+            created_by?: string | null;
+            approved_by?: string | null;
+            approved_at?: components["schemas"]["Timestamp"] | null;
+            sent_at?: components["schemas"]["Timestamp"] | null;
+            acked_at?: components["schemas"]["Timestamp"] | null;
+            expires_at: components["schemas"]["Timestamp"];
+            result?: {
+                [key: string]: unknown;
+            } | null;
+        };
+        MdmCommandPage: {
+            items: components["schemas"]["MdmCommand"][];
+            next_cursor: string | null;
+        };
+        /** @description Signed instruction pulled by the DPC. Same signature rule as Directive with the prefix aron-command-v1. */
+        DeviceCommand: {
+            command_id: components["schemas"]["Uuid"];
+            type: components["schemas"]["MdmCommandType"];
+            params?: {
+                [key: string]: unknown;
+            };
+            created_at: components["schemas"]["Timestamp"];
+            expires_at: components["schemas"]["Timestamp"];
+            sig: string;
+        };
+        DeviceCommandList: {
+            items: components["schemas"]["DeviceCommand"][];
+        };
+        DeviceCommandAck: {
+            /** @enum {string} */
+            state: "acked" | "failed";
+            /** @description At most 2 KB serialised: error code, locate fix, policy version applied. */
+            result?: {
+                [key: string]: unknown;
+            } | null;
+        };
+        DeviceCommandAckResult: {
+            command_id: components["schemas"]["Uuid"];
+            state: components["schemas"]["MdmCommandState"];
+        };
     };
     responses: {
         /** @description Not modified (the ETag or version matches); empty body. */
@@ -8867,6 +10073,7 @@ export interface components {
         IdPath: components["schemas"]["Id"];
         ZoneIdPath: components["schemas"]["Id"];
         DeviceIdPath: components["schemas"]["Id"];
+        MdmPolicyIdPath: components["schemas"]["Id"];
         ChangeIdPath: components["schemas"]["Id"];
         ConfigVersionPath: components["schemas"]["ConfigVersionNumber"];
         MediaUuidPath: components["schemas"]["Uuid"];
@@ -10787,6 +11994,412 @@ export interface operations {
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
+            429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    queryNationalSales: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NationalDashboardFilter"];
+            };
+        };
+        responses: {
+            /** @description Sales cards with daily target */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NationalSales"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    queryNationalCpr: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NationalDashboardFilter"];
+            };
+        };
+        responses: {
+            /** @description Live CPR card */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NationalCpr"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    queryNationalChannelCalls: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NationalDashboardFilter"];
+            };
+        };
+        responses: {
+            /** @description By Channel Successful Call card */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NationalChannelCalls"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    queryNationalFinalSubmit: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NationalDashboardFilter"];
+            };
+        };
+        responses: {
+            /** @description Final Submit Status card */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NationalFinalSubmit"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    queryNationalLoginSubmit: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NationalDashboardFilter"];
+            };
+        };
+        responses: {
+            /** @description Login / Submit Status card */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NationalLoginSubmit"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    queryNationalChannelStd: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NationalDashboardFilter"];
+            };
+        };
+        responses: {
+            /** @description By Channel STD card */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NationalChannelStd"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    queryNationalBreakdown: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NationalBreakdownRequest"];
+            };
+        };
+        responses: {
+            /** @description Breakdown STD / Memo card */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NationalBreakdown"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    queryNationalGeoFencing: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NationalDashboardFilter"];
+            };
+        };
+        responses: {
+            /** @description Geo Fencing card */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NationalGeoFencing"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    queryFfGeoPins: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FfGeoPinsRequest"];
+            };
+        };
+        responses: {
+            /** @description FF Geo Location pins */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FfGeoPins"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    getFfGeoRoutePopup: {
+        parameters: {
+            query?: {
+                /** @description Business day; default today (Dhaka). */
+                date?: components["schemas"]["BusinessDate"];
+            };
+            header?: never;
+            path: {
+                route_id: components["schemas"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description FF Geo route pop-up */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FfGeoRoutePopup"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    getRouteMap: {
+        parameters: {
+            query?: {
+                /** @description Business day; default today (Dhaka). */
+                date?: components["schemas"]["BusinessDate"];
+            };
+            header?: never;
+            path: {
+                route_id: components["schemas"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Route map ("Map Details") */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RouteMap"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    getSalePosition: {
+        parameters: {
+            query?: {
+                /** @description Business day; default today (Dhaka). */
+                date?: components["schemas"]["BusinessDate"];
+            };
+            header?: never;
+            path: {
+                outlet_id: components["schemas"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Sale Position (SR hit / miss) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SalePosition"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    getNationalFilterOptions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Filter panel values */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NationalFilterOptions"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    getNationalFreshness: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Summary table freshness */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NationalFreshness"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
             429: components["responses"]["TooManyRequests"];
             503: components["responses"]["ServiceUnavailable"];
         };
@@ -15602,6 +17215,540 @@ export interface operations {
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    listMdmDevices: {
+        parameters: {
+            query?: {
+                status?: components["schemas"]["DeviceState"];
+                flavour?: components["parameters"]["FlavourQueryOptional"];
+                /** @description Only devices carrying this compliance flag. */
+                flag?: components["schemas"]["MdmComplianceFlag"];
+                policy_id?: components["schemas"]["Id"];
+                /** @description Case-insensitive search on code and name (trigram for outlets). */
+                q?: components["parameters"]["Search"];
+                /** @description Page size. */
+                limit?: components["parameters"]["Limit"];
+                /** @description Opaque cursor from `next_cursor` of the previous page. */
+                cursor?: components["parameters"]["Cursor"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Page of devices. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MdmDevicePage"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    getMdmDevice: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                device_id: components["parameters"]["DeviceIdPath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Device detail. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MdmDeviceDetail"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    listMdmDeviceActivity: {
+        parameters: {
+            query?: {
+                /** @description Page size. */
+                limit?: components["parameters"]["Limit"];
+                /** @description Opaque cursor from `next_cursor` of the previous page. */
+                cursor?: components["parameters"]["Cursor"];
+            };
+            header?: never;
+            path: {
+                device_id: components["parameters"]["DeviceIdPath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Page of activity. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MdmActivityPage"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    listMdmDeviceCommands: {
+        parameters: {
+            query?: {
+                /** @description Page size. */
+                limit?: components["parameters"]["Limit"];
+                /** @description Opaque cursor from `next_cursor` of the previous page. */
+                cursor?: components["parameters"]["Cursor"];
+            };
+            header?: never;
+            path: {
+                device_id: components["parameters"]["DeviceIdPath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Page of commands. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MdmCommandPage"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    createMdmCommand: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                device_id: components["parameters"]["DeviceIdPath"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MdmCommandCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Same command already stored. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MdmCommand"];
+                };
+            };
+            /** @description Command queued. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MdmCommand"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    decideMdmCommand: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                command_id: components["schemas"]["Uuid"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MdmCommandDecisionRequest"];
+            };
+        };
+        responses: {
+            /** @description Command after the decision. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MdmCommand"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    assignMdmPolicy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                device_id: components["parameters"]["DeviceIdPath"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MdmPolicyAssignRequest"];
+            };
+        };
+        responses: {
+            /** @description Device after assignment. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MdmDeviceDetail"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    listMdmPolicies: {
+        parameters: {
+            query?: {
+                /** @description Page size. */
+                limit?: components["parameters"]["Limit"];
+                /** @description Opaque cursor from `next_cursor` of the previous page. */
+                cursor?: components["parameters"]["Cursor"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Page of policies. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MdmPolicyPage"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    createMdmPolicy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MdmPolicyWrite"];
+            };
+        };
+        responses: {
+            /** @description Policy created. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MdmPolicy"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    getMdmPolicy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                policy_id: components["parameters"]["MdmPolicyIdPath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Policy. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MdmPolicy"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    updateMdmPolicy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                policy_id: components["parameters"]["MdmPolicyIdPath"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MdmPolicyWrite"];
+            };
+        };
+        responses: {
+            /** @description Policy after the update. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MdmPolicy"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    listMdmEnrolmentTokens: {
+        parameters: {
+            query?: {
+                active_only?: boolean;
+                /** @description Page size. */
+                limit?: components["parameters"]["Limit"];
+                /** @description Opaque cursor from `next_cursor` of the previous page. */
+                cursor?: components["parameters"]["Cursor"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Page of tokens. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EnrolmentTokenPage"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    createMdmEnrolmentToken: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EnrolmentTokenCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Token with the QR payload. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EnrolmentTokenCreated"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    revokeMdmEnrolmentToken: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token_id: components["schemas"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Token after revocation. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EnrolmentToken"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    listMdmAlerts: {
+        parameters: {
+            query?: {
+                flag?: components["schemas"]["MdmComplianceFlag"];
+                /** @description Page size. */
+                limit?: components["parameters"]["Limit"];
+                /** @description Opaque cursor from `next_cursor` of the previous page. */
+                cursor?: components["parameters"]["Cursor"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Page of alerts. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MdmAlertPage"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    listMdmActivity: {
+        parameters: {
+            query?: {
+                /** @description Page size. */
+                limit?: components["parameters"]["Limit"];
+                /** @description Opaque cursor from `next_cursor` of the previous page. */
+                cursor?: components["parameters"]["Cursor"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Page of activity. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MdmActivityPage"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    pullDeviceCommands: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description The phone's device UUID (set at enrolment). */
+                "X-Device-Id": components["parameters"]["XDeviceIdRequired"];
+                /**
+                 * @description base64url ES256 signature by the device key (Android Keystore) over the proof string of docs/24 s8.3
+                 *     (refresh and bind: sha256(token or otp) + nonce bucket + device_uuid; batch: sha256(body) + batch_uuid +
+                 *     X-Batch-Attempt). Required on phone calls to refresh, bind-device, batch, devices/me/*.
+                 */
+                "X-Device-Proof"?: components["parameters"]["XDeviceProof"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Commands. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeviceCommandList"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    ackDeviceCommand: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description The phone's device UUID (set at enrolment). */
+                "X-Device-Id": components["parameters"]["XDeviceIdRequired"];
+                /**
+                 * @description base64url ES256 signature by the device key (Android Keystore) over the proof string of docs/24 s8.3
+                 *     (refresh and bind: sha256(token or otp) + nonce bucket + device_uuid; batch: sha256(body) + batch_uuid +
+                 *     X-Batch-Attempt). Required on phone calls to refresh, bind-device, batch, devices/me/*.
+                 */
+                "X-Device-Proof"?: components["parameters"]["XDeviceProof"];
+            };
+            path: {
+                command_id: components["schemas"]["Uuid"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DeviceCommandAck"];
+            };
+        };
+        responses: {
+            /** @description Final state recorded. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeviceCommandAckResult"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
             404: components["responses"]["NotFound"];
         };
     };

@@ -36,6 +36,12 @@ GET /v1/sync/delta  # per-caller: answers only the caller's own data (bundle, to
 GET /v1/sync/generation  # global by design: catalogue, configuration or calendar shared by every division
 GET /v1/sync/totals  # per-caller: answers only the caller's own data (bundle, totals, exports, own media)
 GET /v1/tutorials  # global by design: catalogue, configuration or calendar shared by every division
+GET /v1/dashboards/national/freshness  # global by design: table names and last-updated times only, no geography or product rows
+GET /v1/admin/mdm/activity  # global by design: fleet activity of the national MDM module, no geography rows
+GET /v1/admin/mdm/devices/{}/activity  # global by design: the national MDM module, no geography rows
+GET /v1/admin/mdm/devices/{}/commands  # global by design: the national MDM module, no geography rows
+GET /v1/admin/mdm/policies  # global by design: MDM policies are catalogue data shared by every division
+GET /v1/admin/mdm/policies/{}  # global by design: MDM policies are catalogue data shared by every division
 GET /v1/admin/calendar/working-days  # global by design: the national calendar and weekend config are shared by every division
 GET /v1/admin/geo/house/duplicates  # debt: seed duplicate houses in the other division (houses are national master data read by national roles)
 GET /v1/admin/route-targets  # debt: seed route targets of the other division (the tables are pending in db, docs/requests/backend-admin-route-target-tables.md)

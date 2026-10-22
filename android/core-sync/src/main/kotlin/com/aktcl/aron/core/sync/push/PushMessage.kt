@@ -16,6 +16,9 @@ enum class PushPullKind(val wire: String) {
      * daily cap ([com.aktcl.aron.core.sync.ResumeConfigCheck.URGENT_RESERVE]).
      */
     CONFIG_URGENT("config_urgent"),
+
+    /** `GET /v1/devices/me/commands` and apply (lane mdm): needs no signed-in user. */
+    MDM("mdm"),
 }
 
 /** What the phone shows for a push; the push itself carries no business data (N-037). */
@@ -60,6 +63,7 @@ data class PushMessage(
         const val KIND_ANNOUNCEMENT = "announcement"
         const val KIND_CONFIG_PULL = "config_pull"
         const val KIND_BUNDLE_PULL = "bundle_pull"
+        const val KIND_MDM_NUDGE = "mdm_nudge"
         const val REASON_TASK_ASSIGNED = "task_assigned"
         const val ORDINARY_JITTER_S = 120
         const val URGENT_JITTER_S = 20
@@ -78,6 +82,7 @@ data class PushMessage(
                     if (reason == REASON_TASK_ASSIGNED) PushNotice.TaskAssigned else null, pullAfter, urgent,
                 )
                 KIND_BUNDLE_PULL -> PushMessage(kind, reason, setOf(PushPullKind.BUNDLE), null, pullAfter, urgent)
+                KIND_MDM_NUDGE -> PushMessage(kind, reason, setOf(PushPullKind.MDM), null, pullAfter, urgent = true)
                 KIND_CONFIG_PULL -> PushMessage(
                     kind, reason, setOf(if (urgent) PushPullKind.CONFIG_URGENT else PushPullKind.CONFIG), null, pullAfter, urgent,
                 )

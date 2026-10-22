@@ -56,6 +56,11 @@ GET /v1/config/delta -> gap: backend-admin
 GET /v1/dashboards/daily-tracking -> gap: backend-reports
 GET /v1/dashboards/geo-validation -> case GeoValidationTest#aZoneCallerSeesOnlyItsZone
 GET /v1/dashboards/login-submit -> case OpsApiTest#v12AdditionsAreScopedAndConsistent
+GET /v1/dashboards/national/ff-geo/routes/{route_id} -> case NationalDashboardApiTest#mapPagesAnswerAndAZoneCallerCannotOpenAnotherZonesRoute
+GET /v1/dashboards/national/filter-options -> case NationalDashboardApiTest#everyCardAnswersOverHttpWithTheContractsRequiredFields
+GET /v1/dashboards/national/freshness -> exempt: table names and times only, no geography rows
+GET /v1/dashboards/route-map/{route_id} -> case NationalDashboardApiTest#mapPagesAnswerAndAZoneCallerCannotOpenAnotherZonesRoute
+GET /v1/dashboards/sale-position/{outlet_id} -> case NationalDashboardApiTest#mapPagesAnswerAndAZoneCallerCannotOpenAnotherZonesRoute
 GET /v1/dashboards/summary -> gap: backend-reports
 GET /v1/dashboards/sync-health -> case OpsApiTest#checker_syncHealthCountsOnlyRowsInsideTheViewersReach
 GET /v1/day/final-submit/preview -> case DayApiTest#zoneDayOutsideReachAndFieldRolesAreRefused
@@ -149,6 +154,15 @@ POST /v1/auth/change-password -> exempt: the caller's own account, token or phon
 POST /v1/auth/logout -> exempt: the caller's own account, token or phone only; no geography rows
 POST /v1/auth/mfa/enrol -> exempt: the caller's own account, token or phone only; no geography rows
 POST /v1/auth/reauth -> exempt: the caller's own account, token or phone only; no geography rows
+POST /v1/dashboards/national/sales -> case NationalDashboardApiTest#theZoneCallersFiguresAreCutToItsReachAndTheClientCannotWidenThem
+POST /v1/dashboards/national/cpr -> case NationalDashboardApiTest#theZoneCallersFiguresAreCutToItsReachAndTheClientCannotWidenThem
+POST /v1/dashboards/national/channel-calls -> case NationalDashboardApiTest#theZoneCallersFiguresAreCutToItsReachAndTheClientCannotWidenThem
+POST /v1/dashboards/national/final-submit -> case NationalDashboardApiTest#theZoneCallersFiguresAreCutToItsReachAndTheClientCannotWidenThem
+POST /v1/dashboards/national/login-submit -> case NationalDashboardApiTest#theZoneCallersFiguresAreCutToItsReachAndTheClientCannotWidenThem
+POST /v1/dashboards/national/channel-std -> case NationalDashboardApiTest#theZoneCallersFiguresAreCutToItsReachAndTheClientCannotWidenThem
+POST /v1/dashboards/national/breakdown -> case NationalDashboardApiTest#theZoneCallersFiguresAreCutToItsReachAndTheClientCannotWidenThem
+POST /v1/dashboards/national/geo-fencing -> case NationalDashboardApiTest#theZoneCallersFiguresAreCutToItsReachAndTheClientCannotWidenThem
+POST /v1/dashboards/national/ff-geo/pins -> case NationalDashboardApiTest#theZoneCallersFiguresAreCutToItsReachAndTheClientCannotWidenThem
 POST /v1/dashboards/daily-tracking/actions -> case DailyTrackingTest#checker_sameUuidByAnotherUserIsAConflictAndNeverALeak
 POST /v1/day/final-submit -> case DayApiTest#zoneDayOutsideReachAndFieldRolesAreRefused
 POST /v1/day/sales-submit -> exempt: the caller's own route-day only; ingest re-checks the route against the uploader's assignment (BatchCheckerTest scope cases)
@@ -182,3 +196,19 @@ POST /v1/web-entry/route-day -> case WebEntryTest#saveReplayResaveAndReadWithAud
 POST /v1/web-entry/qc -> case WebEntryTest#qcEntriesAreIdempotentSeparateAndWarehouseNeedsAnAdminAndAReason
 POST /v1/admin/data-entry -> case PaperBackfillTest#rolesValidationAndTheWindow
 POST /v1/admin/quarantine/{quarantine_id}/match-backfill -> case BackfillMatchTest#aHeldPhoneMemoIsMatchedToThePaperBackfillOnceAndItsEvidenceIsKept
+GET /v1/admin/mdm/activity -> exempt: national module (mdm grant), no geography rows; role gate proven by MdmApiTest#roleMatrixOnlyAdminAndSuperadminEnter
+GET /v1/admin/mdm/alerts -> exempt: national module (mdm grant), no geography rows; role gate proven by MdmApiTest#roleMatrixOnlyAdminAndSuperadminEnter
+GET /v1/admin/mdm/devices -> exempt: national module (mdm grant), no geography rows; role gate proven by MdmApiTest#roleMatrixOnlyAdminAndSuperadminEnter
+GET /v1/admin/mdm/devices/{device_id} -> exempt: national module (mdm grant), no geography rows; role gate proven by MdmApiTest#roleMatrixOnlyAdminAndSuperadminEnter
+GET /v1/admin/mdm/devices/{device_id}/activity -> exempt: national module (mdm grant), no geography rows; role gate proven by MdmApiTest#roleMatrixOnlyAdminAndSuperadminEnter
+GET /v1/admin/mdm/devices/{device_id}/commands -> exempt: national module (mdm grant), no geography rows; role gate proven by MdmApiTest#roleMatrixOnlyAdminAndSuperadminEnter
+GET /v1/admin/mdm/enrolment-tokens -> exempt: national module (mdm grant), no geography rows; role gate proven by MdmApiTest#roleMatrixOnlyAdminAndSuperadminEnter
+GET /v1/admin/mdm/policies -> exempt: national module (mdm grant), no geography rows; role gate proven by MdmApiTest#roleMatrixOnlyAdminAndSuperadminEnter
+GET /v1/admin/mdm/policies/{policy_id} -> exempt: national module (mdm grant), no geography rows; role gate proven by MdmApiTest#roleMatrixOnlyAdminAndSuperadminEnter
+POST /v1/admin/mdm/commands/{command_id}/decision -> exempt: national module (mdm grant), no geography rows; role gate proven by MdmApiTest#roleMatrixOnlyAdminAndSuperadminEnter
+POST /v1/admin/mdm/devices/{device_id}/commands -> exempt: national module (mdm grant), no geography rows; role gate proven by MdmApiTest#roleMatrixOnlyAdminAndSuperadminEnter
+POST /v1/admin/mdm/enrolment-tokens -> exempt: national module (mdm grant), no geography rows; role gate proven by MdmApiTest#roleMatrixOnlyAdminAndSuperadminEnter
+POST /v1/admin/mdm/enrolment-tokens/{token_id}/revoke -> exempt: national module (mdm grant), no geography rows; role gate proven by MdmApiTest#roleMatrixOnlyAdminAndSuperadminEnter
+POST /v1/admin/mdm/policies -> exempt: national module (mdm grant), no geography rows; role gate proven by MdmApiTest#roleMatrixOnlyAdminAndSuperadminEnter
+PUT /v1/admin/mdm/devices/{device_id}/policy -> exempt: national module (mdm grant), no geography rows; role gate proven by MdmApiTest#roleMatrixOnlyAdminAndSuperadminEnter
+PUT /v1/admin/mdm/policies/{policy_id} -> exempt: national module (mdm grant), no geography rows; role gate proven by MdmApiTest#roleMatrixOnlyAdminAndSuperadminEnter

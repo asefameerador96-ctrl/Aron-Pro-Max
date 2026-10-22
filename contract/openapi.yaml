@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Aron API
-  version: 1.4.0
+  version: 1.6.0
   summary: The one API of the Aron rebuild (SR, AMO and TSO apps, web dashboards and admin portal).
   description: |
     Binding contract for every lane of the seven-day build. Rules that apply to every operation are in
@@ -21,6 +21,7 @@ info:
       dates are `YYYY-MM-DD` in Asia/Dhaka.
     - Scope is never sent by the client: reach is derived on the server from the token. Narrowing
       selectors outside the caller's reach return 403 `ERR_OUT_OF_SCOPE`.
+    - 1.6.0 (lane mdm, additive): tag `admin-mdm` (`/v1/admin/mdm/*`) and the phone's `GET /v1/devices/me/commands`, `POST /v1/devices/me/commands/{command_id}/ack`.
     - Lists use cursor pagination (`limit`, `cursor`, response `next_cursor`) and master data also accept
       `updated_since`.
   contact:
@@ -89,6 +90,8 @@ tags:
     description: Working-day calendar and code lists.
   - name: admin-config
     description: Config registry, change requests with reason, approval, history, rollback and reach.
+  - name: admin-mdm
+    description: MDM section of the web portal (D-MDM-01, docs/34 s5). Devices, policies, commands, enrolment, alerts, activity. Needs the mdm module grant.
   - name: admin-devices
     description: Device fleet, enrolment QR tokens, device OTPs, policy preview and remote directives.
   - name: admin-releases
@@ -1606,6 +1609,461 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '429': { $ref: '#/components/responses/TooManyRequests' }
         '503': { $ref: '#/components/responses/ServiceUnavailable' }
+  /v1/dashboards/national/sales:
+    post:
+      tags:
+      - dashboards
+      operationId: queryNationalSales
+      summary: Sales cards with daily target
+      description: 'Four category cards: total sales, ring % of the daily target and the "i" pop-up figures (brief
+        s2). Reads summary tables only (never the transaction log); scope from the token.'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NationalDashboardFilter'
+      responses:
+        '200':
+          description: Sales cards with daily target
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NationalSales'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /v1/dashboards/national/cpr:
+    post:
+      tags:
+      - dashboards
+      operationId: queryNationalCpr
+      summary: Live CPR card
+      description: 'Target outlets, successful calls and CPR % for one day (brief s3.1). BRAND users get 403 (docs/34
+        s1: cards without a brand dimension are hidden). Reads summary tables only (never the transaction log); scope
+        from the token.'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NationalDashboardFilter'
+      responses:
+        '200':
+          description: Live CPR card
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NationalCpr'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /v1/dashboards/national/channel-calls:
+    post:
+      tags:
+      - dashboards
+      operationId: queryNationalChannelCalls
+      summary: By Channel Successful Call card
+      description: Distinct calling outlets by outlet-master channel (brief s3.2). Reads summary tables only (never
+        the transaction log); scope from the token.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NationalDashboardFilter'
+      responses:
+        '200':
+          description: By Channel Successful Call card
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NationalChannelCalls'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /v1/dashboards/national/final-submit:
+    post:
+      tags:
+      - dashboards
+      operationId: queryNationalFinalSubmit
+      summary: Final Submit Status card
+      description: 'Service zones and their Final Submit (brief s3.3). BRAND users get 403 (docs/34 s1: cards without
+        a brand dimension are hidden). Reads summary tables only (never the transaction log); scope from the token.'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NationalDashboardFilter'
+      responses:
+        '200':
+          description: Final Submit Status card
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NationalFinalSubmit'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /v1/dashboards/national/login-submit:
+    post:
+      tags:
+      - dashboards
+      operationId: queryNationalLoginSubmit
+      summary: Login / Submit Status card
+      description: 'Target routes, logins and Bikroy Joma submits (brief s3.4). BRAND users get 403 (docs/34 s1: cards
+        without a brand dimension are hidden). Reads summary tables only (never the transaction log); scope from the
+        token.'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NationalDashboardFilter'
+      responses:
+        '200':
+          description: Login / Submit Status card
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NationalLoginSubmit'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /v1/dashboards/national/channel-std:
+    post:
+      tags:
+      - dashboards
+      operationId: queryNationalChannelStd
+      summary: By Channel STD card
+      description: Cigarette sticks by outlet channel (brief s4.1). Reads summary tables only (never the transaction
+        log); scope from the token.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NationalDashboardFilter'
+      responses:
+        '200':
+          description: By Channel STD card
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NationalChannelStd'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /v1/dashboards/national/breakdown:
+    post:
+      tags:
+      - dashboards
+      operationId: queryNationalBreakdown
+      summary: Breakdown STD / Memo card
+      description: Bars by segment, brand or variant for STD or Memo (brief s4.2). Reads summary tables only (never
+        the transaction log); scope from the token.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NationalBreakdownRequest'
+      responses:
+        '200':
+          description: Breakdown STD / Memo card
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NationalBreakdown'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /v1/dashboards/national/geo-fencing:
+    post:
+      tags:
+      - dashboards
+      operationId: queryNationalGeoFencing
+      summary: Geo Fencing card
+      description: 'Geo validation of completed calls (brief s5.1). BRAND users get 403 (docs/34 s1: cards without
+        a brand dimension are hidden). Reads summary tables only (never the transaction log); scope from the token.'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NationalDashboardFilter'
+      responses:
+        '200':
+          description: Geo Fencing card
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NationalGeoFencing'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /v1/dashboards/national/ff-geo/pins:
+    post:
+      tags:
+      - dashboards
+      operationId: queryFfGeoPins
+      summary: FF Geo Location pins
+      description: 'One pin per route, coloured by today''s geo-fencing % (brief s5.2). Clustering is done by the
+        map. BRAND users get 403 (docs/34 s1: cards without a brand dimension are hidden). Reads summary tables only
+        (never the transaction log); scope from the token.'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FfGeoPinsRequest'
+      responses:
+        '200':
+          description: FF Geo Location pins
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FfGeoPins'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /v1/dashboards/national/ff-geo/routes/{route_id}:
+    get:
+      tags:
+      - dashboards
+      operationId: getFfGeoRoutePopup
+      summary: FF Geo route pop-up
+      description: 'SR name, contact, territory, zone, route, latest position time and miss % (brief s5.2). The route
+        must be inside the caller''s scope, else 404. BRAND users get 403 (docs/34 s1: cards without a brand dimension
+        are hidden).'
+      parameters:
+      - name: route_id
+        in: path
+        required: true
+        schema:
+          $ref: '#/components/schemas/Id'
+      - name: date
+        in: query
+        required: false
+        description: Business day; default today (Dhaka).
+        schema:
+          $ref: '#/components/schemas/BusinessDate'
+      responses:
+        '200':
+          description: FF Geo route pop-up
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FfGeoRoutePopup'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /v1/dashboards/route-map/{route_id}:
+    get:
+      tags:
+      - dashboards
+      operationId: getRouteMap
+      summary: Route map ("Map Details")
+      description: 'Markers, SR path and the Target vs Achievement, CPR and time cards of one route and day (brief
+        s5.3). BRAND users get 403 (docs/34 s1: cards without a brand dimension are hidden).'
+      parameters:
+      - name: route_id
+        in: path
+        required: true
+        schema:
+          $ref: '#/components/schemas/Id'
+      - name: date
+        in: query
+        required: false
+        description: Business day; default today (Dhaka).
+        schema:
+          $ref: '#/components/schemas/BusinessDate'
+      responses:
+        '200':
+          description: Route map ("Map Details")
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RouteMap'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /v1/dashboards/sale-position/{outlet_id}:
+    get:
+      tags:
+      - dashboards
+      operationId: getSalePosition
+      summary: Sale Position (SR hit / miss)
+      description: 'Base position, sale positions with kind and the force-sale photo of one outlet and day (brief
+        s5.4). BRAND users get 403 (docs/34 s1: cards without a brand dimension are hidden).'
+      parameters:
+      - name: outlet_id
+        in: path
+        required: true
+        schema:
+          $ref: '#/components/schemas/Id'
+      - name: date
+        in: query
+        required: false
+        description: Business day; default today (Dhaka).
+        schema:
+          $ref: '#/components/schemas/BusinessDate'
+      responses:
+        '200':
+          description: Sale Position (SR hit / miss)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SalePosition'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /v1/dashboards/national/filter-options:
+    get:
+      tags:
+      - dashboards
+      operationId: getNationalFilterOptions
+      summary: Filter panel values
+      description: Wings to zones inside the scope (active houses once, UI-WEB-14) and the category / segment / brand
+        / variant tree.
+      parameters: []
+      responses:
+        '200':
+          description: Filter panel values
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NationalFilterOptions'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /v1/dashboards/national/freshness:
+    get:
+      tags:
+      - dashboards
+      operationId: getNationalFreshness
+      summary: Summary table freshness
+      description: '`last_updated_at` per summary table.'
+      parameters: []
+      responses:
+        '200':
+          description: Summary table freshness
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NationalFreshness'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
   /v1/dashboards/daily-tracking:
     get:
       tags: [dashboards]
@@ -5073,6 +5531,385 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
+  /v1/admin/mdm/devices:
+    get:
+      tags: [admin-mdm]
+      operationId: listMdmDevices
+      summary: MDM device list with owner mode, user, app version, last seen, battery, network, policy and compliance flags.
+      description: Needs the mdm module (r), or SUPERADMIN. Filters combine with AND.
+      parameters:
+        - name: status
+          in: query
+          required: false
+          schema: { $ref: '#/components/schemas/DeviceState' }
+        - $ref: '#/components/parameters/FlavourQueryOptional'
+        - name: flag
+          in: query
+          required: false
+          description: Only devices carrying this compliance flag.
+          schema: { $ref: '#/components/schemas/MdmComplianceFlag' }
+        - name: policy_id
+          in: query
+          required: false
+          schema: { $ref: '#/components/schemas/Id' }
+        - $ref: '#/components/parameters/Search'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Page of devices.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MdmDevicePage' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /v1/admin/mdm/devices/{device_id}:
+    get:
+      tags: [admin-mdm]
+      operationId: getMdmDevice
+      summary: One device with its latest status report, policy and recent commands.
+      parameters:
+        - $ref: '#/components/parameters/DeviceIdPath'
+      responses:
+        '200':
+          description: Device detail.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MdmDeviceDetail' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /v1/admin/mdm/devices/{device_id}/activity:
+    get:
+      tags: [admin-mdm]
+      operationId: listMdmDeviceActivity
+      summary: Activity log of one device (commands, state changes, policy changes, enrolment, alerts), newest first.
+      parameters:
+        - $ref: '#/components/parameters/DeviceIdPath'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Page of activity.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MdmActivityPage' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /v1/admin/mdm/devices/{device_id}/commands:
+    get:
+      tags: [admin-mdm]
+      operationId: listMdmDeviceCommands
+      summary: Commands sent to one device and their state.
+      parameters:
+        - $ref: '#/components/parameters/DeviceIdPath'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Page of commands.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MdmCommandPage' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    post:
+      tags: [admin-mdm]
+      operationId: createMdmCommand
+      summary: Queue a command (lock, unlock, message, locate, reboot, factory reset) for one device.
+      description: |
+        Needs the mdm module (w), or SUPERADMIN, and a reason; audited. Idempotent by `command_id`: a repeat with the
+        same body returns the stored command (200), a different body 409. `factory_reset` is created in state
+        `pending_approval` and needs a second approver (POST /admin/mdm/commands/{command_id}/decision) who is not
+        the requester. Delivered by FCM data message when the phone is online and pulled by the DPC on every sync.
+      parameters:
+        - $ref: '#/components/parameters/DeviceIdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MdmCommandCreateRequest' }
+      responses:
+        '200':
+          description: Same command already stored.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MdmCommand' }
+        '201':
+          description: Command queued.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MdmCommand' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /v1/admin/mdm/commands/{command_id}/decision:
+    post:
+      tags: [admin-mdm]
+      operationId: decideMdmCommand
+      summary: Approve or reject a command waiting for a second approver (factory reset).
+      description: The approver must differ from the requester; audited with the reason.
+      parameters:
+        - name: command_id
+          in: path
+          required: true
+          schema: { $ref: '#/components/schemas/Uuid' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MdmCommandDecisionRequest' }
+      responses:
+        '200':
+          description: Command after the decision.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MdmCommand' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /v1/admin/mdm/devices/{device_id}/policy:
+    put:
+      tags: [admin-mdm]
+      operationId: assignMdmPolicy
+      summary: Assign an MDM policy to a device (or clear it); queues an apply_policy command.
+      parameters:
+        - $ref: '#/components/parameters/DeviceIdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MdmPolicyAssignRequest' }
+      responses:
+        '200':
+          description: Device after assignment.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MdmDeviceDetail' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /v1/admin/mdm/policies:
+    get:
+      tags: [admin-mdm]
+      operationId: listMdmPolicies
+      summary: MDM policies with the number of devices on each.
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Page of policies.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MdmPolicyPage' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [admin-mdm]
+      operationId: createMdmPolicy
+      summary: Create an MDM policy.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MdmPolicyWrite' }
+      responses:
+        '201':
+          description: Policy created.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MdmPolicy' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /v1/admin/mdm/policies/{policy_id}:
+    get:
+      tags: [admin-mdm]
+      operationId: getMdmPolicy
+      summary: One MDM policy.
+      parameters:
+        - $ref: '#/components/parameters/MdmPolicyIdPath'
+      responses:
+        '200':
+          description: Policy.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MdmPolicy' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    put:
+      tags: [admin-mdm]
+      operationId: updateMdmPolicy
+      summary: Replace an MDM policy (optimistic version); devices on it get an apply_policy command.
+      parameters:
+        - $ref: '#/components/parameters/MdmPolicyIdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MdmPolicyWrite' }
+      responses:
+        '200':
+          description: Policy after the update.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MdmPolicy' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /v1/admin/mdm/enrolment-tokens:
+    get:
+      tags: [admin-mdm]
+      operationId: listMdmEnrolmentTokens
+      summary: Enrolment tokens of the device-owner DPC (same data as listEnrolmentTokens, gated by the mdm module).
+      parameters:
+        - name: active_only
+          in: query
+          required: false
+          schema: { type: boolean, default: true }
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Page of tokens.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EnrolmentTokenPage' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [admin-mdm]
+      operationId: createMdmEnrolmentToken
+      summary: Create an enrolment token and its provisioning QR payload (shown once).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/EnrolmentTokenCreateRequest' }
+      responses:
+        '201':
+          description: Token with the QR payload.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EnrolmentTokenCreated' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /v1/admin/mdm/enrolment-tokens/{token_id}/revoke:
+    post:
+      tags: [admin-mdm]
+      operationId: revokeMdmEnrolmentToken
+      summary: Revoke an enrolment token.
+      parameters:
+        - name: token_id
+          in: path
+          required: true
+          schema: { $ref: '#/components/schemas/Id' }
+      responses:
+        '200':
+          description: Token after revocation.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EnrolmentToken' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /v1/admin/mdm/alerts:
+    get:
+      tags: [admin-mdm]
+      operationId: listMdmAlerts
+      summary: Open compliance alerts, one row per device and flag, derived from the latest status report.
+      parameters:
+        - name: flag
+          in: query
+          required: false
+          schema: { $ref: '#/components/schemas/MdmComplianceFlag' }
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Page of alerts.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MdmAlertPage' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /v1/admin/mdm/activity:
+    get:
+      tags: [admin-mdm]
+      operationId: listMdmActivity
+      summary: Activity log of the whole fleet, newest first.
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Page of activity.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MdmActivityPage' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /v1/devices/me/commands:
+    get:
+      tags: [devices]
+      operationId: pullDeviceCommands
+      summary: Commands waiting for this phone (the DPC polls on every sync; FCM only nudges).
+      description: Authenticated by X-Device-Proof. Returns queued and sent, unexpired commands, oldest first, marks them sent. Each carries an ES256 signature bound to the device.
+      security:
+        - bearerAuth: []
+        - {}
+      parameters:
+        - $ref: '#/components/parameters/XDeviceIdRequired'
+        - $ref: '#/components/parameters/XDeviceProof'
+      responses:
+        '200':
+          description: Commands.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DeviceCommandList' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /v1/devices/me/commands/{command_id}/ack:
+    post:
+      tags: [devices]
+      operationId: ackDeviceCommand
+      summary: Report the result of a command (acked or failed). Idempotent.
+      security:
+        - bearerAuth: []
+        - {}
+      parameters:
+        - $ref: '#/components/parameters/XDeviceIdRequired'
+        - $ref: '#/components/parameters/XDeviceProof'
+        - name: command_id
+          in: path
+          required: true
+          schema: { $ref: '#/components/schemas/Uuid' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DeviceCommandAck' }
+      responses:
+        '200':
+          description: Final state recorded.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DeviceCommandAckResult' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
 
 components:
   securitySchemes:
@@ -5274,6 +6111,11 @@ components:
       schema: { $ref: '#/components/schemas/Id' }
     DeviceIdPath:
       name: device_id
+      in: path
+      required: true
+      schema: { $ref: '#/components/schemas/Id' }
+    MdmPolicyIdPath:
+      name: policy_id
       in: path
       required: true
       schema: { $ref: '#/components/schemas/Id' }
@@ -6060,6 +6902,20 @@ components:
           maxItems: 200
           description: The caller's role row of cfg.web.menu_by_role, resolved now (same mapping as GET /v1/admin/permissions).
           items: { $ref: '#/components/schemas/MenuPermission' }
+        modules:
+          description: 'D-ROLES-02 (docs/34 s1): ADMIN the module grants its token carries (r = read, w = read and write; a module not listed is refused with 403), SUPERADMIN every module at w; null for other roles and before the grants are deployed. The portal builds the ADMIN menu from it.'
+          oneOf:
+            - type: object
+              propertyNames: { $ref: '#/components/schemas/AdminModule' }
+              additionalProperties: { type: string, enum: [r, w] }
+            - type: 'null'
+        brands:
+          description: 'D-ROLES-02: a BRAND user''s brands (product-tree brand node ids) its token carries; null for other roles.'
+          oneOf:
+            - type: array
+              maxItems: 200
+              items: { $ref: '#/components/schemas/Id' }
+            - type: 'null'
 
     # ---------- devices ----------
     JwkEcPublicDevice:
@@ -9220,7 +10076,1365 @@ components:
         qty_base: { type: integer, format: int64, minimum: 0 }
         report_unit: { type: [string, 'null'], enum: [stick, piece, dozen, box, pack, null] }
         qty_report: { oneOf: [ { $ref: '#/components/schemas/Decimal3' }, { type: 'null' } ] }
+        entry_unit:
+          type: string
+          enum: [pack, dozen]
+          description: 'The unit the field apps count this category in (docs/34 s4.2): pack (packet or box, per SKU `base_per_pack`) or dozen (matches).'
+        qty_entered:
+          $ref: '#/components/schemas/Decimal3'
+          description: 'Quantity in `entry_unit`, summed per SKU first (each SKU''s qty_base over its base_per_pack): 10s and 20s of one category convert correctly. Sold plus free, like qty_base.'
         net_mtk: { $ref: '#/components/schemas/Mtk' }
+    NationalDashboardFilter:
+      type: object
+      additionalProperties: false
+      description: 'The dashboard filter object (docs/34 s2, brief s1). Every list is optional; omitted or empty means
+        everything the caller may see. The server intersects each list with the scope derived from the token (docs/34
+        s1, BRAND users also with their brands) and never widens it: ids outside the scope are ignored, and a list that
+        leaves nothing yields zeros. Location ids are server surrogate keys; product codes are the product master codes.'
+      properties:
+        wing_ids:
+          type: array
+          maxItems: 50
+          items:
+            $ref: '#/components/schemas/Id'
+        division_ids:
+          type: array
+          maxItems: 200
+          items:
+            $ref: '#/components/schemas/Id'
+        territory_ids:
+          type: array
+          maxItems: 400
+          items:
+            $ref: '#/components/schemas/Id'
+        house_ids:
+          type: array
+          maxItems: 400
+          items:
+            $ref: '#/components/schemas/Id'
+        zone_ids:
+          type: array
+          maxItems: 1200
+          items:
+            $ref: '#/components/schemas/Id'
+        category_codes:
+          type: array
+          maxItems: 20
+          items:
+            type: string
+            maxLength: 40
+        segment_codes:
+          type: array
+          maxItems: 100
+          items:
+            type: string
+            maxLength: 40
+        brand_codes:
+          type: array
+          maxItems: 200
+          items:
+            type: string
+            maxLength: 40
+        variant_codes:
+          type: array
+          maxItems: 500
+          items:
+            type: string
+            maxLength: 40
+        date:
+          $ref: '#/components/schemas/BusinessDate'
+          description: One business day; default today (Dhaka).
+    NationalSalesCard:
+      type: object
+      additionalProperties: false
+      required:
+      - category_code
+      - base_unit
+      - total_sales
+      - daily_target
+      - sales_so_far
+      - remaining
+      - achievement_pct_bp
+      - target_routes
+      properties:
+        category_code:
+          type: string
+          maxLength: 40
+        base_unit:
+          type: string
+          enum:
+          - stick
+          - piece
+          - dozen
+        total_sales:
+          type: integer
+          format: int64
+          minimum: 0
+          description: SUM(quantity) in base units (sticks, pieces, dozens) of the category's latest-version memo lines
+            for the date, location and product filter.
+        daily_target:
+          oneOf:
+          - $ref: '#/components/schemas/Decimal3'
+          - type: 'null'
+          description: Sum over the routes in the filter of route monthly target / working days of the month (Fridays
+            and holidays excluded); null when no target is loaded for them. Always the full-day target.
+        sales_so_far:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Same as total_sales; repeated for the "i" pop-up.
+        remaining:
+          oneOf:
+          - $ref: '#/components/schemas/Decimal3'
+          - type: 'null'
+          description: max(daily_target - sales_so_far, 0); null without a target.
+        achievement_pct_bp:
+          type:
+          - integer
+          - 'null'
+          minimum: 0
+          description: total_sales / daily_target in basis points (ring); null without a target. May exceed 10000.
+        target_routes:
+          type: integer
+          minimum: 0
+          description: Routes in the filter that carry a monthly target for the category.
+    NationalSales:
+      type: object
+      description: Four sales cards (Cigarette, Bidi, Lighter, Match) with the daily target of the "i" pop-up.
+      required:
+      - date
+      - till_time
+      - as_of
+      - last_updated_at
+      - working_days
+      - cards
+      additionalProperties: false
+      properties:
+        date:
+          $ref: '#/components/schemas/BusinessDate'
+        till_time:
+          type: boolean
+          description: 'True when `date` is today (Dhaka): figures are till the time of `as_of`; false: final figures
+            of a past day.'
+        as_of:
+          $ref: '#/components/schemas/Timestamp'
+        last_updated_at:
+          type:
+          - string
+          - 'null'
+          format: date-time
+          description: Oldest `last_updated_at` of the summary tables this card reads (null when none has been written
+            yet). The page shows it as "last updated hh:mm" (Dhaka).
+        working_days:
+          type: integer
+          minimum: 0
+          maximum: 31
+          description: 'Working days of the date''s month (calendar: Fridays and holidays excluded).'
+        cards:
+          type: array
+          maxItems: 10
+          items:
+            $ref: '#/components/schemas/NationalSalesCard'
+    NationalCpr:
+      type: object
+      description: 'Live CPR: target outlets, successful calls and the ratio. Hidden from BRAND users (403).'
+      required:
+      - date
+      - till_time
+      - as_of
+      - last_updated_at
+      - target_outlets
+      - successful_calls
+      - cpr_pct_bp
+      additionalProperties: false
+      properties:
+        date:
+          $ref: '#/components/schemas/BusinessDate'
+        till_time:
+          type: boolean
+          description: 'True when `date` is today (Dhaka): figures are till the time of `as_of`; false: final figures
+            of a past day.'
+        as_of:
+          $ref: '#/components/schemas/Timestamp'
+        last_updated_at:
+          type:
+          - string
+          - 'null'
+          format: date-time
+          description: Oldest `last_updated_at` of the summary tables this card reads (null when none has been written
+            yet). The page shows it as "last updated hh:mm" (Dhaka).
+        target_outlets:
+          type: integer
+          minimum: 0
+          description: Outlets on the normal routes scheduled for the date, each route counted once (manual and dummy
+            routes excluded).
+        successful_calls:
+          type: integer
+          minimum: 0
+          description: Distinct outlets with at least one latest-version memo that day on those routes.
+        cpr_pct_bp:
+          type:
+          - integer
+          - 'null'
+          minimum: 0
+          description: 'Basis points: 10000 = 100 %. Integer arithmetic, rounded half up; null when the denominator
+            is 0.'
+    NationalChannelCalls:
+      type: object
+      description: Successful calls split by the outlet-master channel (no "Other" group). `total` is the sum of the
+        channels; `unclassified` counts calling outlets without a channel, which the mandatory channel keeps at 0.
+      required:
+      - date
+      - till_time
+      - as_of
+      - last_updated_at
+      - channels
+      - total
+      - unclassified
+      additionalProperties: false
+      properties:
+        date:
+          $ref: '#/components/schemas/BusinessDate'
+        till_time:
+          type: boolean
+          description: 'True when `date` is today (Dhaka): figures are till the time of `as_of`; false: final figures
+            of a past day.'
+        as_of:
+          $ref: '#/components/schemas/Timestamp'
+        last_updated_at:
+          type:
+          - string
+          - 'null'
+          format: date-time
+          description: Oldest `last_updated_at` of the summary tables this card reads (null when none has been written
+            yet). The page shows it as "last updated hh:mm" (Dhaka).
+        channels:
+          type: array
+          maxItems: 6
+          items:
+            type: object
+            additionalProperties: false
+            required:
+            - channel
+            - value
+            - share_pct_bp
+            properties:
+              channel:
+                type: string
+                enum:
+                - GT
+                - DCC
+                - Astha
+                - RCC
+                - MT
+                - HoReCa
+              value:
+                type: integer
+                format: int64
+                minimum: 0
+              share_pct_bp:
+                type:
+                - integer
+                - 'null'
+                minimum: 0
+                description: 'Basis points: 10000 = 100 %. Integer arithmetic, rounded half up; null when the denominator
+                  is 0.'
+        total:
+          type: integer
+          minimum: 0
+        unclassified:
+          type: integer
+          minimum: 0
+    NationalChannelStd:
+      type: object
+      description: Cigarette sales (sticks) split by outlet channel. Cigarette only; `total` equals the Sales (Cigarette)
+        card for the same filter.
+      required:
+      - date
+      - till_time
+      - as_of
+      - last_updated_at
+      - channels
+      - total
+      - unit
+      additionalProperties: false
+      properties:
+        date:
+          $ref: '#/components/schemas/BusinessDate'
+        till_time:
+          type: boolean
+          description: 'True when `date` is today (Dhaka): figures are till the time of `as_of`; false: final figures
+            of a past day.'
+        as_of:
+          $ref: '#/components/schemas/Timestamp'
+        last_updated_at:
+          type:
+          - string
+          - 'null'
+          format: date-time
+          description: Oldest `last_updated_at` of the summary tables this card reads (null when none has been written
+            yet). The page shows it as "last updated hh:mm" (Dhaka).
+        channels:
+          type: array
+          maxItems: 6
+          items:
+            type: object
+            additionalProperties: false
+            required:
+            - channel
+            - value
+            - share_pct_bp
+            properties:
+              channel:
+                type: string
+                enum:
+                - GT
+                - DCC
+                - Astha
+                - RCC
+                - MT
+                - HoReCa
+              value:
+                type: integer
+                format: int64
+                minimum: 0
+              share_pct_bp:
+                type:
+                - integer
+                - 'null'
+                minimum: 0
+                description: 'Basis points: 10000 = 100 %. Integer arithmetic, rounded half up; null when the denominator
+                  is 0.'
+        total:
+          type: integer
+          format: int64
+          minimum: 0
+        unit:
+          type: string
+          enum:
+          - stick
+    NationalFinalSubmit:
+      type: object
+      description: Final Submit status by service zone; first submit per (zone, date) wins, unsubmitted zones are auto-submitted
+        at midnight. Hidden from BRAND users (403).
+      required:
+      - date
+      - till_time
+      - as_of
+      - last_updated_at
+      - total_zones
+      - service_zones
+      - final_submitted
+      - remaining
+      - submit_pct_bp
+      additionalProperties: false
+      properties:
+        date:
+          $ref: '#/components/schemas/BusinessDate'
+        till_time:
+          type: boolean
+          description: 'True when `date` is today (Dhaka): figures are till the time of `as_of`; false: final figures
+            of a past day.'
+        as_of:
+          $ref: '#/components/schemas/Timestamp'
+        last_updated_at:
+          type:
+          - string
+          - 'null'
+          format: date-time
+          description: Oldest `last_updated_at` of the summary tables this card reads (null when none has been written
+            yet). The page shows it as "last updated hh:mm" (Dhaka).
+        total_zones:
+          type: integer
+          minimum: 0
+        service_zones:
+          type: integer
+          minimum: 0
+          description: Zones with normal SR routes working that day.
+        final_submitted:
+          type: integer
+          minimum: 0
+        remaining:
+          type: integer
+          minimum: 0
+          description: service_zones - final_submitted.
+        submit_pct_bp:
+          type:
+          - integer
+          - 'null'
+          minimum: 0
+          description: 'Basis points: 10000 = 100 %. Integer arithmetic, rounded half up; null when the denominator
+            is 0.'
+    NationalLoginSubmit:
+      type: object
+      description: Login (check-in and download) and Submit (Bikroy Joma) status per route. Hidden from BRAND users
+        (403).
+      required:
+      - date
+      - till_time
+      - as_of
+      - last_updated_at
+      - target_routes
+      - successful_login
+      - login_pct_bp
+      - submitted
+      - submit_pct_bp
+      additionalProperties: false
+      properties:
+        date:
+          $ref: '#/components/schemas/BusinessDate'
+        till_time:
+          type: boolean
+          description: 'True when `date` is today (Dhaka): figures are till the time of `as_of`; false: final figures
+            of a past day.'
+        as_of:
+          $ref: '#/components/schemas/Timestamp'
+        last_updated_at:
+          type:
+          - string
+          - 'null'
+          format: date-time
+          description: Oldest `last_updated_at` of the summary tables this card reads (null when none has been written
+            yet). The page shows it as "last updated hh:mm" (Dhaka).
+        target_routes:
+          type: integer
+          minimum: 0
+          description: Normal SR routes scheduled that day.
+        successful_login:
+          type: integer
+          minimum: 0
+          description: Of those, routes whose SR checked in and downloaded.
+        login_pct_bp:
+          type:
+          - integer
+          - 'null'
+          minimum: 0
+          description: 'Basis points: 10000 = 100 %. Integer arithmetic, rounded half up; null when the denominator
+            is 0.'
+        submitted:
+          type: integer
+          minimum: 0
+          description: Routes that completed Bikroy Joma (sales upload).
+        submit_pct_bp:
+          type:
+          - integer
+          - 'null'
+          minimum: 0
+          description: submitted / successful_login in basis points.
+    NationalBreakdownRequest:
+      type: object
+      additionalProperties: false
+      required:
+      - measure
+      - dimension
+      description: The common filter plus the gear choice (six combinations, one active).
+      properties:
+        filter:
+          $ref: '#/components/schemas/NationalDashboardFilter'
+        measure:
+          type: string
+          enum:
+          - std
+          - memo
+        dimension:
+          type: string
+          enum:
+          - segment
+          - brand
+          - variant
+        category_code:
+          type:
+          - string
+          - 'null'
+          maxLength: 40
+          description: 'STD mode mixes sticks, pieces and dozens, so the bars of an STD answer cover one category: this
+            one, else the category with the most volume. Ignored for memo.'
+    NationalBreakdown:
+      type: object
+      description: One bar per segment, brand or variant. STD = SUM(quantity); Memo = COUNT(DISTINCT memo id) containing
+        the item, recounted per item (never added across items).
+      required:
+      - date
+      - till_time
+      - as_of
+      - last_updated_at
+      - measure
+      - dimension
+      - items
+      additionalProperties: false
+      properties:
+        date:
+          $ref: '#/components/schemas/BusinessDate'
+        till_time:
+          type: boolean
+          description: 'True when `date` is today (Dhaka): figures are till the time of `as_of`; false: final figures
+            of a past day.'
+        as_of:
+          $ref: '#/components/schemas/Timestamp'
+        last_updated_at:
+          type:
+          - string
+          - 'null'
+          format: date-time
+          description: Oldest `last_updated_at` of the summary tables this card reads (null when none has been written
+            yet). The page shows it as "last updated hh:mm" (Dhaka).
+        measure:
+          type: string
+          enum:
+          - std
+          - memo
+        dimension:
+          type: string
+          enum:
+          - segment
+          - brand
+          - variant
+        category_code:
+          type:
+          - string
+          - 'null'
+          maxLength: 40
+        unit:
+          type:
+          - string
+          - 'null'
+          enum:
+          - stick
+          - piece
+          - dozen
+          - null
+          description: Unit of every STD bar; null for memo.
+        items:
+          type: array
+          maxItems: 500
+          items:
+            type: object
+            additionalProperties: false
+            required:
+            - code
+            - name
+            - value
+            properties:
+              code:
+                type: string
+                maxLength: 40
+              name:
+                type:
+                - string
+                - 'null'
+                maxLength: 120
+              value:
+                type: integer
+                format: int64
+                minimum: 0
+    NationalGeoFencing:
+      type: object
+      description: Completed calls with or without a memo, and those inside the outlet radius. Hidden from BRAND users
+        (403).
+      required:
+      - date
+      - till_time
+      - as_of
+      - last_updated_at
+      - total_calls
+      - geo_validated
+      - geo_pct_bp
+      additionalProperties: false
+      properties:
+        date:
+          $ref: '#/components/schemas/BusinessDate'
+        till_time:
+          type: boolean
+          description: 'True when `date` is today (Dhaka): figures are till the time of `as_of`; false: final figures
+            of a past day.'
+        as_of:
+          $ref: '#/components/schemas/Timestamp'
+        last_updated_at:
+          type:
+          - string
+          - 'null'
+          format: date-time
+          description: Oldest `last_updated_at` of the summary tables this card reads (null when none has been written
+            yet). The page shows it as "last updated hh:mm" (Dhaka).
+        total_calls:
+          type: integer
+          minimum: 0
+        geo_validated:
+          type: integer
+          minimum: 0
+        geo_pct_bp:
+          type:
+          - integer
+          - 'null'
+          minimum: 0
+          description: 'Basis points: 10000 = 100 %. Integer arithmetic, rounded half up; null when the denominator
+            is 0.'
+    FfGeoPinsRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        filter:
+          $ref: '#/components/schemas/NationalDashboardFilter'
+        colors:
+          type: array
+          maxItems: 3
+          items:
+            type: string
+            enum:
+            - red
+            - amber
+            - green
+          description: Filter by Color; omitted or empty = all.
+    FfGeoPin:
+      type: object
+      additionalProperties: false
+      required:
+      - route_id
+      - lat
+      - lng
+      - color
+      - geo_pct_bp
+      - position_at
+      properties:
+        route_id:
+          $ref: '#/components/schemas/Id'
+        lat:
+          type: number
+          minimum: -90
+          maximum: 90
+        lng:
+          type: number
+          minimum: -180
+          maximum: 180
+        color:
+          type: string
+          enum:
+          - red
+          - amber
+          - green
+        geo_pct_bp:
+          type:
+          - integer
+          - 'null'
+          minimum: 0
+          description: Today's geo-fencing % of the route (validated / completed calls); null before the first call,
+            then green.
+        position_at:
+          $ref: '#/components/schemas/Timestamp'
+    FfGeoPins:
+      type: object
+      description: One pin per route at the SR's latest position today. Red below 7000 bp, amber 7000 to 9000 bp inclusive,
+        green above 9000 bp. Routes with no position today are not pinned. Hidden from BRAND users (403).
+      required:
+      - date
+      - till_time
+      - as_of
+      - last_updated_at
+      - pins
+      - counts
+      - routes_without_position
+      additionalProperties: false
+      properties:
+        date:
+          $ref: '#/components/schemas/BusinessDate'
+        till_time:
+          type: boolean
+          description: 'True when `date` is today (Dhaka): figures are till the time of `as_of`; false: final figures
+            of a past day.'
+        as_of:
+          $ref: '#/components/schemas/Timestamp'
+        last_updated_at:
+          type:
+          - string
+          - 'null'
+          format: date-time
+          description: Oldest `last_updated_at` of the summary tables this card reads (null when none has been written
+            yet). The page shows it as "last updated hh:mm" (Dhaka).
+        pins:
+          type: array
+          maxItems: 12000
+          items:
+            $ref: '#/components/schemas/FfGeoPin'
+        counts:
+          type: object
+          additionalProperties: false
+          required:
+          - red
+          - amber
+          - green
+          properties:
+            red:
+              type: integer
+              minimum: 0
+            amber:
+              type: integer
+              minimum: 0
+            green:
+              type: integer
+              minimum: 0
+          description: Pins per colour before the colour filter.
+        routes_without_position:
+          type: integer
+          minimum: 0
+    PlaceRef:
+      type: object
+      additionalProperties: false
+      required:
+      - id
+      - code
+      - name
+      properties:
+        id:
+          $ref: '#/components/schemas/Id'
+        code:
+          type: string
+          maxLength: 40
+        name:
+          type:
+          - string
+          - 'null'
+          maxLength: 120
+    FfGeoRoutePopup:
+      type: object
+      description: Pop-up of a pin. `contact` is masked (last three digits) unless the caller holds a valid `pii_until`
+        claim; every read is charged to the PII read budget.
+      required:
+      - date
+      - till_time
+      - as_of
+      - last_updated_at
+      - route
+      - sr_name
+      - contact
+      - territory
+      - zone
+      - position_at
+      - miss_pct_bp
+      additionalProperties: false
+      properties:
+        date:
+          $ref: '#/components/schemas/BusinessDate'
+        till_time:
+          type: boolean
+          description: 'True when `date` is today (Dhaka): figures are till the time of `as_of`; false: final figures
+            of a past day.'
+        as_of:
+          $ref: '#/components/schemas/Timestamp'
+        last_updated_at:
+          type:
+          - string
+          - 'null'
+          format: date-time
+          description: Oldest `last_updated_at` of the summary tables this card reads (null when none has been written
+            yet). The page shows it as "last updated hh:mm" (Dhaka).
+        route:
+          $ref: '#/components/schemas/PlaceRef'
+        sr_name:
+          type:
+          - string
+          - 'null'
+          maxLength: 120
+        contact:
+          type:
+          - string
+          - 'null'
+          maxLength: 30
+        territory:
+          $ref: '#/components/schemas/PlaceRef'
+        zone:
+          $ref: '#/components/schemas/PlaceRef'
+        position_at:
+          type:
+          - string
+          - 'null'
+          format: date-time
+        miss_pct_bp:
+          type:
+          - integer
+          - 'null'
+          minimum: 0
+          description: 10000 minus the route geo-fencing basis points today.
+    CategoryQty:
+      type: object
+      additionalProperties: false
+      required:
+      - category_code
+      - base_unit
+      - qty
+      properties:
+        category_code:
+          type: string
+          maxLength: 40
+        base_unit:
+          type: string
+          enum:
+          - stick
+          - piece
+          - dozen
+        qty:
+          type: integer
+          format: int64
+          minimum: 0
+    MapPosition:
+      type: object
+      additionalProperties: false
+      required:
+      - lat
+      - lng
+      - at
+      properties:
+        lat:
+          type: number
+          minimum: -90
+          maximum: 90
+        lng:
+          type: number
+          minimum: -180
+          maximum: 180
+        at:
+          $ref: '#/components/schemas/Timestamp'
+    RouteMapOutlet:
+      type: object
+      additionalProperties: false
+      required:
+      - outlet_id
+      - code
+      - name
+      - lat
+      - lng
+      - state
+      - call_time
+      - sales
+      properties:
+        outlet_id:
+          $ref: '#/components/schemas/Id'
+        code:
+          type: string
+          maxLength: 40
+        name:
+          type:
+          - string
+          - 'null'
+          maxLength: 160
+        contact:
+          type:
+          - string
+          - 'null'
+          maxLength: 30
+          description: Masked like FfGeoRoutePopup.contact.
+        cluster_name:
+          type:
+          - string
+          - 'null'
+          maxLength: 120
+        lat:
+          type: number
+          minimum: -90
+          maximum: 90
+        lng:
+          type: number
+          minimum: -180
+          maximum: 180
+        state:
+          type: string
+          enum:
+          - not_called
+          - geo_validated
+          - photo_validation
+          description: 'Black / green / red marker: not called yet / called inside the radius / called outside (photo
+            capture required).'
+        call_time:
+          type:
+          - string
+          - 'null'
+          format: date-time
+        sales:
+          type: array
+          maxItems: 10
+          items:
+            $ref: '#/components/schemas/CategoryQty'
+          description: Category-wise sales of the call, own units; empty when not called or zero memo.
+    TargetVsAchievement:
+      type: object
+      additionalProperties: false
+      required:
+      - category_code
+      - base_unit
+      - daily_target
+      - sales
+      - achievement_pct_bp
+      properties:
+        category_code:
+          type: string
+          maxLength: 40
+        base_unit:
+          type: string
+          enum:
+          - stick
+          - piece
+          - dozen
+        daily_target:
+          oneOf:
+          - $ref: '#/components/schemas/Decimal3'
+          - type: 'null'
+        sales:
+          type: integer
+          format: int64
+          minimum: 0
+        achievement_pct_bp:
+          type:
+          - integer
+          - 'null'
+          minimum: 0
+    RouteMap:
+      type: object
+      description: 'The "Map Details" page of a route and day: header, markers, SR path and the cards under the map.
+        Distance is metres (docs/34 s6 Q1 default).'
+      required:
+      - date
+      - till_time
+      - as_of
+      - last_updated_at
+      - route
+      - sr_name
+      - territory
+      - zone
+      - sale_start
+      - sr_last_position
+      - outlets
+      - path
+      - target_vs_achievement
+      - cpr
+      - time_card
+      additionalProperties: false
+      properties:
+        date:
+          $ref: '#/components/schemas/BusinessDate'
+        till_time:
+          type: boolean
+          description: 'True when `date` is today (Dhaka): figures are till the time of `as_of`; false: final figures
+            of a past day.'
+        as_of:
+          $ref: '#/components/schemas/Timestamp'
+        last_updated_at:
+          type:
+          - string
+          - 'null'
+          format: date-time
+          description: Oldest `last_updated_at` of the summary tables this card reads (null when none has been written
+            yet). The page shows it as "last updated hh:mm" (Dhaka).
+        route:
+          $ref: '#/components/schemas/PlaceRef'
+        sr_name:
+          type:
+          - string
+          - 'null'
+          maxLength: 120
+        territory:
+          $ref: '#/components/schemas/PlaceRef'
+        zone:
+          $ref: '#/components/schemas/PlaceRef'
+        sale_start:
+          oneOf:
+          - $ref: '#/components/schemas/MapPosition'
+          - type: 'null'
+          description: Where the first call of the day was made; null before the first call.
+        sr_last_position:
+          oneOf:
+          - $ref: '#/components/schemas/MapPosition'
+          - type: 'null'
+        outlets:
+          type: array
+          maxItems: 2000
+          items:
+            $ref: '#/components/schemas/RouteMapOutlet'
+        path:
+          type: array
+          maxItems: 3000
+          items:
+            $ref: '#/components/schemas/MapPosition'
+          description: The SR's recorded positions in time order, thinned to at most 3000 points; the line the map draws.
+        target_vs_achievement:
+          type: array
+          maxItems: 10
+          items:
+            $ref: '#/components/schemas/TargetVsAchievement'
+        last_sale_place:
+          type:
+          - string
+          - 'null'
+          maxLength: 160
+        cpr:
+          type: object
+          additionalProperties: false
+          required:
+          - target_outlets
+          - successful_calls
+          - geo_validated
+          - cpr_pct_bp
+          properties:
+            target_outlets:
+              type: integer
+              minimum: 0
+            successful_calls:
+              type: integer
+              minimum: 0
+            geo_validated:
+              type: integer
+              minimum: 0
+            cpr_pct_bp:
+              type:
+              - integer
+              - 'null'
+              minimum: 0
+              description: 'Basis points: 10000 = 100 %. Integer arithmetic, rounded half up; null when the denominator
+                is 0.'
+        time_card:
+          type: object
+          additionalProperties: false
+          required:
+          - distance_covered_m
+          properties:
+            first_sale_time:
+              type:
+              - string
+              - 'null'
+              format: date-time
+            last_sale_time:
+              type:
+              - string
+              - 'null'
+              format: date-time
+            total_sale_seconds:
+              type:
+              - integer
+              - 'null'
+              minimum: 0
+              description: last sale time minus first sale time
+            average_sale_seconds:
+              type:
+              - integer
+              - 'null'
+              minimum: 0
+              description: total_sale_seconds / successful calls
+            distance_covered_m:
+              type: number
+              minimum: 0
+              description: Length in metres of the haversine polyline through the SR's recorded positions in time order
+                (docs/34 D-DIST-01).
+    SalePositionSale:
+      type: object
+      additionalProperties: false
+      required:
+      - memo_uuid
+      - kind
+      - lat
+      - lng
+      - at
+      - distance_m
+      - within_fence
+      properties:
+        memo_uuid:
+          $ref: '#/components/schemas/Uuid'
+        kind:
+          type: string
+          enum:
+          - new
+          - repeat
+          - edited
+          description: New sale, repeat sale (yellow marker), edited sale (teal marker).
+        lat:
+          type: number
+          minimum: -90
+          maximum: 90
+        lng:
+          type: number
+          minimum: -180
+          maximum: 180
+        at:
+          $ref: '#/components/schemas/Timestamp'
+        distance_m:
+          type: number
+          minimum: 0
+          description: Haversine distance base position to sale position, stored with the call.
+        within_fence:
+          type: boolean
+          description: Hit when distance_m <= radius_m, else miss (force sale).
+        status:
+          type: string
+          maxLength: 40
+        photo_media_uuid:
+          type:
+          - string
+          - 'null'
+          format: uuid
+          description: Force-sale photo; open it through the media read-url of the same API.
+    SalePosition:
+      type: object
+      description: The "Sale Position" page of an outlet and day.
+      required:
+      - date
+      - till_time
+      - as_of
+      - last_updated_at
+      - zone
+      - route
+      - outlet_code
+      - radius_m
+      - base
+      - sales
+      additionalProperties: false
+      properties:
+        date:
+          $ref: '#/components/schemas/BusinessDate'
+        till_time:
+          type: boolean
+          description: 'True when `date` is today (Dhaka): figures are till the time of `as_of`; false: final figures
+            of a past day.'
+        as_of:
+          $ref: '#/components/schemas/Timestamp'
+        last_updated_at:
+          type:
+          - string
+          - 'null'
+          format: date-time
+          description: Oldest `last_updated_at` of the summary tables this card reads (null when none has been written
+            yet). The page shows it as "last updated hh:mm" (Dhaka).
+        zone:
+          $ref: '#/components/schemas/PlaceRef'
+        route:
+          $ref: '#/components/schemas/PlaceRef'
+        outlet_code:
+          type: string
+          maxLength: 40
+        radius_m:
+          type: integer
+          minimum: 10
+          maximum: 5000
+          description: The outlet radius used at the call (20, 50 or 100 m by default; cfg may set 10 to 5000).
+        base:
+          type: object
+          additionalProperties: false
+          required:
+          - lat
+          - lng
+          properties:
+            lat:
+              type: number
+              minimum: -90
+              maximum: 90
+            lng:
+              type: number
+              minimum: -180
+              maximum: 180
+          description: The outlet's approved base location.
+        header_distance_m:
+          type:
+          - number
+          - 'null'
+          minimum: 0
+          description: Distance of the latest sale shown in the page header ("SR Hit / Miss Position (81.83 Meter)").
+        sales:
+          type: array
+          maxItems: 200
+          items:
+            $ref: '#/components/schemas/SalePositionSale'
+    FilterNode:
+      type: object
+      additionalProperties: false
+      required:
+      - id
+      - code
+      - name
+      description: A wing, division, territory, house or zone; the parent ids that apply to its level are set, the others
+        are null.
+      properties:
+        id:
+          $ref: '#/components/schemas/Id'
+        code:
+          type: string
+          maxLength: 40
+        name:
+          type:
+          - string
+          - 'null'
+          maxLength: 120
+        wing_id:
+          type:
+          - integer
+          - 'null'
+          minimum: 1
+        division_id:
+          type:
+          - integer
+          - 'null'
+          minimum: 1
+        territory_id:
+          type:
+          - integer
+          - 'null'
+          minimum: 1
+        house_id:
+          type:
+          - integer
+          - 'null'
+          minimum: 1
+    FilterCode:
+      type: object
+      additionalProperties: false
+      required:
+      - code
+      - name
+      description: A category, segment, brand or variant; the parent code that applies to its level is set, the others
+        are null.
+      properties:
+        code:
+          type: string
+          maxLength: 40
+        name:
+          type:
+          - string
+          - 'null'
+          maxLength: 120
+        category_code:
+          type:
+          - string
+          - 'null'
+          maxLength: 40
+        segment_code:
+          type:
+          - string
+          - 'null'
+          maxLength: 40
+        brand_code:
+          type:
+          - string
+          - 'null'
+          maxLength: 40
+    NationalFilterOptions:
+      type: object
+      description: Selectable values inside the scope of the caller. Houses are active only and listed once per (territory,
+        name). Product lists carry their parent code for the cascading selects.
+      required:
+      - date
+      - till_time
+      - as_of
+      - last_updated_at
+      - wings
+      - divisions
+      - territories
+      - houses
+      - zones
+      - categories
+      - segments
+      - brands
+      - variants
+      additionalProperties: false
+      properties:
+        date:
+          $ref: '#/components/schemas/BusinessDate'
+        till_time:
+          type: boolean
+          description: 'True when `date` is today (Dhaka): figures are till the time of `as_of`; false: final figures
+            of a past day.'
+        as_of:
+          $ref: '#/components/schemas/Timestamp'
+        last_updated_at:
+          type:
+          - string
+          - 'null'
+          format: date-time
+          description: Oldest `last_updated_at` of the summary tables this card reads (null when none has been written
+            yet). The page shows it as "last updated hh:mm" (Dhaka).
+        wings:
+          type: array
+          maxItems: 50
+          items:
+            $ref: '#/components/schemas/FilterNode'
+        divisions:
+          type: array
+          maxItems: 200
+          items:
+            $ref: '#/components/schemas/FilterNode'
+        territories:
+          type: array
+          maxItems: 400
+          items:
+            $ref: '#/components/schemas/FilterNode'
+        houses:
+          type: array
+          maxItems: 400
+          items:
+            $ref: '#/components/schemas/FilterNode'
+        zones:
+          type: array
+          maxItems: 1200
+          items:
+            $ref: '#/components/schemas/FilterNode'
+        categories:
+          type: array
+          maxItems: 20
+          items:
+            $ref: '#/components/schemas/FilterCode'
+        segments:
+          type: array
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/FilterCode'
+        brands:
+          type: array
+          maxItems: 200
+          items:
+            $ref: '#/components/schemas/FilterCode'
+        variants:
+          type: array
+          maxItems: 500
+          items:
+            $ref: '#/components/schemas/FilterCode'
+    NationalFreshness:
+      type: object
+      description: '`last_updated_at` per summary table (the card responses carry the oldest of those they read).'
+      required:
+      - date
+      - till_time
+      - as_of
+      - last_updated_at
+      - tables
+      additionalProperties: false
+      properties:
+        date:
+          $ref: '#/components/schemas/BusinessDate'
+        till_time:
+          type: boolean
+          description: 'True when `date` is today (Dhaka): figures are till the time of `as_of`; false: final figures
+            of a past day.'
+        as_of:
+          $ref: '#/components/schemas/Timestamp'
+        last_updated_at:
+          type:
+          - string
+          - 'null'
+          format: date-time
+          description: Oldest `last_updated_at` of the summary tables this card reads (null when none has been written
+            yet). The page shows it as "last updated hh:mm" (Dhaka).
+        tables:
+          type: array
+          maxItems: 20
+          items:
+            type: object
+            additionalProperties: false
+            required:
+            - table
+            - last_updated_at
+            properties:
+              table:
+                type: string
+                maxLength: 60
+              last_updated_at:
+                type:
+                - string
+                - 'null'
+                format: date-time
     DashboardSummary:
       type: object
       required: [as_of, from, to, node, kpis, by_category, children]
@@ -13000,6 +15214,247 @@ components:
       properties:
         sku_id: { $ref: '#/components/schemas/Id' }
         qty_base: { type: integer, minimum: 0, maximum: 10000000 }
+    MdmComplianceFlag:
+      type: string
+      enum: [rooted, mock_location, outdated_app, developer_options, adb_enabled, not_device_owner, location_off, auto_time_off, policy_drift, stale_contact]
+      description: |
+        Derived from the device row and its latest status report. rooted = integrity verdict fail; mock_location =
+        mock-location apps present; outdated_app = app_version below the newest published release of the flavour;
+        developer_options = developer options on; policy_drift = applied policy older than the rendered one;
+        stale_contact = no contact for more than 48 hours.
+    MdmNetwork:
+      type: string
+      enum: [wifi, mobile, offline, unknown]
+    MdmCommandType:
+      type: string
+      enum: [lock, unlock, message, locate, reboot, factory_reset, apply_policy]
+    MdmCommandState:
+      type: string
+      enum: [pending_approval, queued, sent, acked, failed, expired, rejected]
+    MdmDevice:
+      type: object
+      required: [device_id, device_uuid, flavour, status, device_owner, users, compliance_flags, pending_commands]
+      additionalProperties: false
+      properties:
+        device_id: { $ref: '#/components/schemas/Id' }
+        device_uuid: { $ref: '#/components/schemas/Uuid' }
+        flavour: { $ref: '#/components/schemas/AppFlavour' }
+        status: { $ref: '#/components/schemas/DeviceState' }
+        device_owner: { type: boolean }
+        users: { type: array, maxItems: 4, items: { type: string, maxLength: 80 } }
+        model: { type: [string, 'null'], maxLength: 120 }
+        app_version: { type: [string, 'null'] }
+        latest_app_version: { type: [string, 'null'] }
+        last_contact_at: { oneOf: [{ $ref: '#/components/schemas/Timestamp' }, { type: 'null' }] }
+        battery_pct: { type: [integer, 'null'], minimum: 0, maximum: 100 }
+        network: { oneOf: [{ $ref: '#/components/schemas/MdmNetwork' }, { type: 'null' }] }
+        policy_id: { type: [integer, 'null'], format: int64, minimum: 1 }
+        policy_name: { type: [string, 'null'], maxLength: 80 }
+        compliance_flags: { type: array, items: { $ref: '#/components/schemas/MdmComplianceFlag' } }
+        pending_commands: { type: integer, minimum: 0 }
+    MdmDevicePage:
+      type: object
+      required: [items, next_cursor]
+      additionalProperties: false
+      properties:
+        items: { type: array, items: { $ref: '#/components/schemas/MdmDevice' } }
+        next_cursor: { type: [string, 'null'] }
+    MdmDeviceDetail:
+      type: object
+      required: [device, enrolled_at, trust_level, integrity_verdict, recent_commands]
+      additionalProperties: false
+      properties:
+        device: { $ref: '#/components/schemas/MdmDevice' }
+        enrolled_at: { $ref: '#/components/schemas/Timestamp' }
+        trust_level: { $ref: '#/components/schemas/TrustLevel' }
+        integrity_verdict: { type: string, enum: [pass, fail, unevaluated, stale] }
+        lockdown_level: { $ref: '#/components/schemas/LockdownLevel' }
+        zone_id: { type: [integer, 'null'], format: int64, minimum: 1 }
+        last_report: { oneOf: [{ $ref: '#/components/schemas/DeviceStatusReport' }, { type: 'null' }] }
+        policy: { oneOf: [{ $ref: '#/components/schemas/MdmPolicy' }, { type: 'null' }] }
+        recent_commands: { type: array, maxItems: 20, items: { $ref: '#/components/schemas/MdmCommand' } }
+    MdmActivityEntry:
+      type: object
+      required: [at, kind, summary]
+      additionalProperties: false
+      properties:
+        at: { $ref: '#/components/schemas/Timestamp' }
+        kind: { type: string, enum: [command, state, policy, enrolment, status, alert] }
+        device_id: { type: [integer, 'null'], format: int64, minimum: 1 }
+        summary: { type: string, maxLength: 300 }
+        actor: { type: [string, 'null'], maxLength: 80 }
+        reason: { type: [string, 'null'], maxLength: 300 }
+        ref: { type: [string, 'null'], maxLength: 80 }
+    MdmActivityPage:
+      type: object
+      required: [items, next_cursor]
+      additionalProperties: false
+      properties:
+        items: { type: array, items: { $ref: '#/components/schemas/MdmActivityEntry' } }
+        next_cursor: { type: [string, 'null'] }
+    MdmAlert:
+      type: object
+      required: [device_id, flag, since]
+      additionalProperties: false
+      properties:
+        device_id: { $ref: '#/components/schemas/Id' }
+        device_uuid: { $ref: '#/components/schemas/Uuid' }
+        users: { type: array, maxItems: 4, items: { type: string, maxLength: 80 } }
+        flavour: { $ref: '#/components/schemas/AppFlavour' }
+        flag: { $ref: '#/components/schemas/MdmComplianceFlag' }
+        since: { $ref: '#/components/schemas/Timestamp' }
+        detail: { type: [string, 'null'], maxLength: 200 }
+    MdmAlertPage:
+      type: object
+      required: [items, next_cursor]
+      additionalProperties: false
+      properties:
+        items: { type: array, items: { $ref: '#/components/schemas/MdmAlert' } }
+        next_cursor: { type: [string, 'null'] }
+    MdmBlockWindow:
+      type: object
+      description: Apps in `packages` (or every non-allowed app when empty) are suspended on these weekdays between start and end, Dhaka time. A window with end <= start runs past midnight into the next day.
+      required: [days, start, end]
+      additionalProperties: false
+      properties:
+        days: { type: array, minItems: 1, maxItems: 7, uniqueItems: true, items: { type: integer, minimum: 1, maximum: 7, description: 'ISO weekday, 1 = Monday.' } }
+        start: { type: string, pattern: '^([01][0-9]|2[0-3]):[0-5][0-9]$' }
+        end: { type: string, pattern: '^([01][0-9]|2[0-3]):[0-5][0-9]$' }
+        packages: { type: array, maxItems: 200, items: { $ref: '#/components/schemas/PackageName' } }
+    MdmKiosk:
+      type: object
+      required: [enabled]
+      additionalProperties: false
+      properties:
+        enabled: { type: boolean }
+        packages: { type: array, maxItems: 10, items: { $ref: '#/components/schemas/PackageName' }, description: Lock-task packages; the first is started. }
+    MdmLocationSampling:
+      type: object
+      required: [mode]
+      additionalProperties: false
+      properties:
+        mode: { type: string, enum: [off, on_demand, interval], description: 'on_demand = fix only at check-in, sale and when a locate command arrives; interval = also batched breadcrumbs.' }
+        interval_min: { type: [integer, 'null'], minimum: 5, maximum: 120 }
+    MdmPolicyWrite:
+      type: object
+      required: [name, allowed_packages, block_windows, kiosk, location_sampling]
+      additionalProperties: false
+      properties:
+        name: { type: string, minLength: 2, maxLength: 80 }
+        description: { type: [string, 'null'], maxLength: 300 }
+        allowed_packages: { type: array, maxItems: 300, items: { $ref: '#/components/schemas/PackageName' }, description: Apps never suspended by a block window (the Aron apps are always allowed). }
+        block_windows: { type: array, maxItems: 14, items: { $ref: '#/components/schemas/MdmBlockWindow' } }
+        kiosk: { $ref: '#/components/schemas/MdmKiosk' }
+        location_sampling: { $ref: '#/components/schemas/MdmLocationSampling' }
+        version: { type: [integer, 'null'], minimum: 1, description: Required on update; must equal the stored version. }
+        reason: { type: [string, 'null'], minLength: 3, maxLength: 300 }
+    MdmPolicy:
+      type: object
+      required: [policy_id, name, allowed_packages, block_windows, kiosk, location_sampling, version, device_count, updated_at]
+      additionalProperties: false
+      properties:
+        policy_id: { $ref: '#/components/schemas/Id' }
+        name: { type: string, maxLength: 80 }
+        description: { type: [string, 'null'], maxLength: 300 }
+        allowed_packages: { type: array, items: { $ref: '#/components/schemas/PackageName' } }
+        block_windows: { type: array, items: { $ref: '#/components/schemas/MdmBlockWindow' } }
+        kiosk: { $ref: '#/components/schemas/MdmKiosk' }
+        location_sampling: { $ref: '#/components/schemas/MdmLocationSampling' }
+        version: { type: integer, minimum: 1 }
+        device_count: { type: integer, minimum: 0 }
+        updated_at: { $ref: '#/components/schemas/Timestamp' }
+    MdmPolicyPage:
+      type: object
+      required: [items, next_cursor]
+      additionalProperties: false
+      properties:
+        items: { type: array, items: { $ref: '#/components/schemas/MdmPolicy' } }
+        next_cursor: { type: [string, 'null'] }
+    MdmPolicyAssignRequest:
+      type: object
+      required: [policy_id, reason]
+      additionalProperties: false
+      properties:
+        policy_id: { type: [integer, 'null'], format: int64, minimum: 1 }
+        reason: { type: string, minLength: 3, maxLength: 300 }
+    MdmCommandCreateRequest:
+      type: object
+      required: [command_id, type, reason]
+      additionalProperties: false
+      properties:
+        command_id: { $ref: '#/components/schemas/Uuid' }
+        type: { type: string, enum: [lock, unlock, message, locate, reboot, factory_reset] }
+        params:
+          type: object
+          description: 'message: {text_bn, text_en} (one required, 300 chars each); lock: {message}; others none.'
+          additionalProperties: { $ref: '#/components/schemas/JsonScalar' }
+        reason: { type: string, minLength: 3, maxLength: 300 }
+        ttl_h: { type: integer, minimum: 1, maximum: 72, default: 24 }
+    MdmCommandDecisionRequest:
+      type: object
+      required: [decision, reason]
+      additionalProperties: false
+      properties:
+        decision: { type: string, enum: [approve, reject] }
+        reason: { type: string, minLength: 3, maxLength: 300 }
+    MdmCommand:
+      type: object
+      required: [command_id, device_id, type, state, created_at, expires_at, reason]
+      additionalProperties: false
+      properties:
+        command_id: { $ref: '#/components/schemas/Uuid' }
+        device_id: { $ref: '#/components/schemas/Id' }
+        type: { $ref: '#/components/schemas/MdmCommandType' }
+        params: { type: object, additionalProperties: true }
+        state: { $ref: '#/components/schemas/MdmCommandState' }
+        reason: { type: string, maxLength: 300 }
+        created_at: { $ref: '#/components/schemas/Timestamp' }
+        created_by: { type: [string, 'null'], maxLength: 80 }
+        approved_by: { type: [string, 'null'], maxLength: 80 }
+        approved_at: { oneOf: [{ $ref: '#/components/schemas/Timestamp' }, { type: 'null' }] }
+        sent_at: { oneOf: [{ $ref: '#/components/schemas/Timestamp' }, { type: 'null' }] }
+        acked_at: { oneOf: [{ $ref: '#/components/schemas/Timestamp' }, { type: 'null' }] }
+        expires_at: { $ref: '#/components/schemas/Timestamp' }
+        result: { type: [object, 'null'], additionalProperties: true }
+    MdmCommandPage:
+      type: object
+      required: [items, next_cursor]
+      additionalProperties: false
+      properties:
+        items: { type: array, items: { $ref: '#/components/schemas/MdmCommand' } }
+        next_cursor: { type: [string, 'null'] }
+    DeviceCommand:
+      type: object
+      description: Signed instruction pulled by the DPC. Same signature rule as Directive with the prefix aron-command-v1.
+      required: [command_id, type, created_at, expires_at, sig]
+      additionalProperties: false
+      properties:
+        command_id: { $ref: '#/components/schemas/Uuid' }
+        type: { $ref: '#/components/schemas/MdmCommandType' }
+        params: { type: object, additionalProperties: true }
+        created_at: { $ref: '#/components/schemas/Timestamp' }
+        expires_at: { $ref: '#/components/schemas/Timestamp' }
+        sig: { type: string, pattern: '^[A-Za-z0-9_-]{86}$' }
+    DeviceCommandList:
+      type: object
+      required: [items]
+      additionalProperties: false
+      properties:
+        items: { type: array, maxItems: 50, items: { $ref: '#/components/schemas/DeviceCommand' } }
+    DeviceCommandAck:
+      type: object
+      required: [state]
+      additionalProperties: false
+      properties:
+        state: { type: string, enum: [acked, failed] }
+        result: { type: [object, 'null'], additionalProperties: true, description: 'At most 2 KB serialised: error code, locate fix, policy version applied.' }
+    DeviceCommandAckResult:
+      type: object
+      required: [command_id, state]
+      additionalProperties: false
+      properties:
+        command_id: { $ref: '#/components/schemas/Uuid' }
+        state: { $ref: '#/components/schemas/MdmCommandState' }
 
   examples:
     SyncBatchRequestExample:

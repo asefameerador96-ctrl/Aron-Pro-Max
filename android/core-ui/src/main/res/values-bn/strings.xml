@@ -171,4 +171,9 @@
     <string name="core_ui_look_sun">সানলাইট মোড</string>
     <string name="core_ui_look_price">৳১২.৫০ / পিস · মোট ৳৫০.০০</string>
     <string name="core_ui_look_retry">আবার চেষ্টা</string>
+    <string name="core_ui_unit_packet">প্যাকেট</string>
+    <string name="core_ui_unit_box">বক্স</string>
+    <string name="core_ui_unit_dozen">ডজন</string>
+    <string name="core_ui_unit_stick">স্টিক</string>
+    <string name="core_ui_unit_piece">পিস</string>
 </resources>

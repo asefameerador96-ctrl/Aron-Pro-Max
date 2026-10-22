@@ -23,7 +23,8 @@ data class ReviewLine(
     val exceedsStock: Boolean,
 )
 
-data class CategorySubtotal(val categoryCode: String, val qtyBase: Long, val grossMtk: Long)
+/** [qtyEntered] is the sum in the category's entry unit (packets, boxes or dozens: one category has one unit label); [qtyBase] the derived base total. */
+data class CategorySubtotal(val categoryCode: String, val qtyBase: Long, val grossMtk: Long, val qtyEntered: Long = 0L, val unitKey: String = "")
 
 /** One Product QC deduction: defect sticks x price at capture (F-SR-027). */
 data class QcDeduction(val entry: QcEntry, val unitPriceMtk: Long, val pricePerQty: Int, val settlementMtk: Long)
@@ -46,8 +47,10 @@ sealed interface ReviewProblem {
     data class QcAboveCap(val skuId: Long, val settlementMtk: Long, val capMtk: Long) : ReviewProblem
     /** `cfg.sale.max_lines_per_memo`: the server rejects a longer memo with `lines_exceed_max`, not retryable (docs/24 s4.5). */
     data class TooManyLines(val count: Int, val max: Int) : ReviewProblem
-    /** A unit that is neither the SKU's base unit nor `pack` (docs/24 s7.2), or not a known unit at all. */
+    /** A unit that is not the SKU's entry unit (docs/34 s4.2; loose base units only with `cfg.sale.allow_loose_base_units`), or not a known unit at all. */
     data class UnitNotAllowed(val skuId: Long, val unit: String) : ReviewProblem
+    /** `memo_line.qty_base` is at most 10,000,000: the server would refuse the memo for good after it was saved offline. */
+    data class QtyTooLarge(val skuId: Long, val qtyBase: Long) : ReviewProblem
 }
 
 data class SaleReview(
@@ -70,6 +73,7 @@ data class SaleReview(
 object SaleReviewCalculator {
     /** Maximum QC deduction per SKU in milli-taka; assumed cap (MQ-03/MQ-04 unknown): no cap when absent. */
     const val DEFAULT_MAX_LINES: Int = 60
+    const val MAX_QTY_BASE: Long = 10_000_000L
 
     fun review(draft: SaleDraft, catalog: Map<Long, SaleSku>, qcCapMtkBySku: Map<Long, Long> = emptyMap(), maxLines: Int = DEFAULT_MAX_LINES): SaleReview {
         val problems = ArrayList<ReviewProblem>()
@@ -78,17 +82,20 @@ object SaleReviewCalculator {
         val lines = draft.lines.mapNotNull { e ->
             val sku = catalog[e.skuId] ?: run { problems += ReviewProblem.UnknownSku(e.skuId); return@mapNotNull null }
             val unit = QtyUnit.entries.firstOrNull { it.wire == e.unit }
-            if (unit == null || (unit != QtyUnit.PACK && unit.wire != sku.baseUnit)) {
+            // the unit must be the SKU's entry unit; loose base units only when cfg.sale.allow_loose_base_units is on (docs/34 s4.2)
+            if (unit == null || (unit != sku.entry.unit && !(sku.allowLoose && unit.wire == sku.baseUnit))) {
                 problems += ReviewProblem.UnitNotAllowed(sku.skuId, e.unit); return@mapNotNull null
             }
             val base = Quantity.toBase(e.qtyEntered, unit, sku.packFactor.toLong())
+            if (base > MAX_QTY_BASE) problems += ReviewProblem.QtyTooLarge(sku.skuId, base)
             val line = MemoLine.priced(sku.skuId, base, sku.unitPriceMtk, sku.pricePerQty.toLong(), priceType)
             ReviewLine(sku, e, base, line, Quantity.packBadge(base, sku.packFactor.toLong()), sku.stockBase?.let { base > it } ?: false)
         }
 
-        val categories = lines.groupBy { it.sku.categoryCode }.map { (cat, ls) ->
-            CategorySubtotal(cat, ls.sumOf { it.qtyBase }, ls.sumOf { it.memoLine.grossMtk })
-        }.sortedBy { it.categoryCode }
+        // one subtotal per category and unit: quantities are never added across units
+        val categories = lines.groupBy { it.sku.categoryCode to it.sku.entryLabelKey }.map { (key, ls) ->
+            CategorySubtotal(key.first, ls.sumOf { it.qtyBase }, ls.sumOf { it.memoLine.grossMtk }, ls.sumOf { it.entry.qtyEntered }, key.second)
+        }.sortedWith(compareBy({ it.categoryCode }, { it.unitKey }))
 
         val drp = draft.slide.mapNotNull { s ->
             val sku = catalog[s.skuId]

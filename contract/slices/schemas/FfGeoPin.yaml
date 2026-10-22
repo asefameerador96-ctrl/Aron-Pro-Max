@@ -1,0 +1,36 @@
+FfGeoPin:
+  type: object
+  additionalProperties: false
+  required:
+  - route_id
+  - lat
+  - lng
+  - color
+  - geo_pct_bp
+  - position_at
+  properties:
+    route_id:
+      $ref: '#/components/schemas/Id'
+    lat:
+      type: number
+      minimum: -90
+      maximum: 90
+    lng:
+      type: number
+      minimum: -180
+      maximum: 180
+    color:
+      type: string
+      enum:
+      - red
+      - amber
+      - green
+    geo_pct_bp:
+      type:
+      - integer
+      - 'null'
+      minimum: 0
+      description: Today's geo-fencing % of the route (validated / completed calls); null before the first call,
+        then green.
+    position_at:
+      $ref: '#/components/schemas/Timestamp'

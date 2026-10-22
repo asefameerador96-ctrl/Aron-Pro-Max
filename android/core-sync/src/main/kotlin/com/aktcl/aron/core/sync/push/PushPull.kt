@@ -34,10 +34,14 @@ class SessionPushPull(
     private val activeUserId: suspend () -> Long?,
     private val bundles: BundleDownloaders,
     private val config: ResumeConfigCheck,
+    /** Lane mdm: pull and apply device commands; the phone's own proof, no user needed. */
+    private val mdm: (suspend () -> Boolean)? = null,
 ) : PushPull {
     override suspend fun pull(kind: PushPullKind): Boolean {
+        if (kind == PushPullKind.MDM) return mdm?.invoke() ?: false
         val userId = activeUserId() ?: return false
         return when (kind) {
+            PushPullKind.MDM -> false
             PushPullKind.BUNDLE -> bundles.of(userId).refreshDelta().outcome == BundleOutcome.APPLIED
             PushPullKind.CONFIG -> config.pullForPush(userId, urgent = false) == ConfigCheckResult.APPLIED
             PushPullKind.CONFIG_URGENT -> config.pullForPush(userId, urgent = true) == ConfigCheckResult.APPLIED

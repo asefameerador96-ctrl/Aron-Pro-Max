@@ -5,7 +5,7 @@ Three classes of data, three homes (audit AUD-DA-04):
 | Class | Examples | Where it lives | Reaches |
 |---|---|---|---|
 | System reference | code-list items (V0027), config defaults (V0006, V0012), role grants and limits, geo classes, event catalogue | `db/migrations` | every environment |
-| Synthetic test data | the Mirpur geography, test accounts, outlets, the dev device, dev config overrides | `db/seed` (this folder) | local, CI and dev only |
+| Synthetic test data | the Mirpur test fixture (CI and backend tests), the Gulshan/Banani dev geography (Azure dev only), test accounts, outlets, the dev device, dev config overrides | `db/seed` (this folder) | local, CI and dev only |
 | Customer master | AKTCL's hierarchy, people, routes, outlets, prices | admin import and admin pages | QA, staging, production |
 
 | File | Content |
@@ -16,6 +16,8 @@ Three classes of data, three homes (audit AUD-DA-04):
 | `03_outlets_and_plans.sql` | 60 outlets, 20 per route, fixed pins on a ~70 m grid around 23.8069 N, 90.3687 E (Mirpur 10, Dhaka); placement and location history; the zone's sales plan (SKUs with a non-zero outlet price) |
 | `05_dev_device.sql` | an active dev phone (`device_uuid` 00000000-0000-4000-8000-000000000001, placeholder key) bound to `sr1001` with `bind_ordinal` 0 |
 | `04_dev_config_and_codes.sql` | a new config version (next number, found again by its summary): the dev overrides of docs/24 s9.4 (`require_enrolled` false, `lockdown_level` dev, `require_integrity` false) and a test holiday |
+| `06_dev_gulshan_banani.sql` | **Azure dev only** (no-op when 04's config version exists, i.e. in CI, backend tests and a local load; the dev deploy skips `04_*`): house H-GUL, zones Z-GUL and Z-BAN, three Friday-aware 2F routes GUL-SR-2 (Sat, Tue), GUL-SR-1 (Sun, Wed), BAN-SR-11 (Mon, Thu), 60 outlets with every channel, sales plans, Oct-Dec 2026 route x SKU targets and holidays; moves sr1001 (and amo1001's scope) there and sets MIR-SR-* inactive (D-SEED-02). Map: `docs/evidence/seed-gulshan-banani.md` |
+| `07_admin_module_grants.sql` | the seeded (pilot) ADMIN accounts hold every one of the 15 modules at `w` (D-ROLES-02; the V0089 CHECK and the contract's AdminModule list), only once `app.user_module_grant` exists and only while the account has no grant row, so a narrowed grant stays narrowed; idempotent. From backend-authz (3b7747b5), owned by db since 2026-10-22; seed 01 already grants admin1001, this covers every pilot admin |
 
 Test accounts (all `pilot`, home zone Z-MIR): `sr1001` (SR, primary on the three routes), `amo1001` (AMO, zone),
 `tso1001` (TSO, territory T-DHK-N), `dmo1001` (DMO, division), `admin1001`, `superadmin1001`, `support1001` (national).

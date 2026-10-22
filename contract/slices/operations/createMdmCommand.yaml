@@ -1,0 +1,48 @@
+path: /v1/admin/mdm/devices/{device_id}/commands
+method: post
+operation:
+  tags:
+  - admin-mdm
+  operationId: createMdmCommand
+  summary: Queue a command (lock, unlock, message, locate, reboot, factory reset) for one device.
+  description: 'Needs the mdm module (w), or SUPERADMIN, and a reason; audited. Idempotent by `command_id`: a repeat
+    with the
+
+    same body returns the stored command (200), a different body 409. `factory_reset` is created in state
+
+    `pending_approval` and needs a second approver (POST /admin/mdm/commands/{command_id}/decision) who is not
+
+    the requester. Delivered by FCM data message when the phone is online and pulled by the DPC on every sync.
+
+    '
+  parameters:
+  - $ref: '#/components/parameters/DeviceIdPath'
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          $ref: '#/components/schemas/MdmCommandCreateRequest'
+  responses:
+    '200':
+      description: Same command already stored.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/MdmCommand'
+    '201':
+      description: Command queued.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/MdmCommand'
+    '400':
+      $ref: '#/components/responses/BadRequest'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'
+    '404':
+      $ref: '#/components/responses/NotFound'
+    '409':
+      $ref: '#/components/responses/Conflict'

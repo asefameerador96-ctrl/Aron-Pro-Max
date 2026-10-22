@@ -112,9 +112,61 @@ class MemoCategoryTotalsPrintTest {
         assertTrue("has_categories" in doc.flags)
     }
 
+    // D-UNITS-02: every quantity prints with its unit word, and a category total adds only quantities of one unit
+    @Test fun quantitiesCarryTheirUnitWordAndCategoryTotalsAreInTheEntryUnit() {
+        val words = mapOf("packet" to "packet", "box" to "box", "dozen" to "dozen", "stick" to "stick", "piece" to "piece", "total" to "Total")
+        val b = DocumentBuilder(DigitStyle.LATIN) { words[it].orEmpty() }
+        val doc = b.memo(Fixtures.seededSale)
+        assertEquals(listOf("3 dozen", "2 packet", "1 packet", "2 box"), doc.tables.getValue("lines").map { it.getValue("qty") })
+        // one line per category in its entry unit; the base figure in brackets in its own block (none for dozens: the base unit is the dozen)
+        assertEquals(listOf("3 dozen", "3 packet", "2 box"), doc.tables.getValue("category_totals").map { it.getValue("qty") })
+        assertEquals(listOf("সিগারেট" to "(50 stick)", "লাইটার" to "(50 piece)"), doc.tables.getValue("category_base").map { it.getValue("category") to it.getValue("qty") })
+        assertEquals(listOf("3 dozen", "1 packet"), doc.tables.getValue("discounts").map { it.getValue("qty") })
+        // the printed money is the stored money and equals the oracle
+        val oracle = com.aktcl.aron.rules.MemoMath.totals(
+            Fixtures.seededSale.lines.map { com.aktcl.aron.rules.MemoLine(1, it.qtyBase, it.grossMtk) },
+            listOf(com.aktcl.aron.rules.DiscountLine(null, 0, Fixtures.seededSale.drpDiscountMtk, com.aktcl.aron.rules.DiscountKind.DRP)),
+            listOf(com.aktcl.aron.rules.QcLine(Fixtures.seededSale.qcDeductionMtk, true)),
+        )
+        assertEquals(oracle.netMtk, Fixtures.seededSale.netMtk); assertEquals(oracle.grossMtk, Fixtures.seededSale.grossMtk)
+        assertEquals("937.05", doc.fields.getValue("grand_total"))
+        // mixed units in one category print one line per unit
+        val mixed = b.memo(Fixtures.seededSale.copy(lines = listOf(
+            MemoPrintLine("A", 20, 1, "x", 1, "packet"), MemoPrintLine("B", 25, 1, "x", 1, "box"),
+        )))
+        assertEquals(listOf("1 packet", "1 box"), mixed.tables.getValue("category_totals").map { it.getValue("qty") }) // one line per unit, never added across units
+    }
+
     @Test fun linesWithoutACategoryLabelPrintNoSubtotals() {
-        val doc = DocumentBuilder(DigitStyle.LATIN).memo(Fixtures.seededSale)
+        val doc = DocumentBuilder(DigitStyle.LATIN).memo(Fixtures.seededSale.copy(lines = Fixtures.seededSale.lines.map { it.copy(category = "") }))
         assertTrue(doc.tables.getValue("category_totals").isEmpty())
         assertTrue("has_categories" !in doc.flags)
+    }
+
+    // checker: three-digit quantities and the bracketed base total stay on one line at 384 dots
+    @Test fun threeDigitQuantitiesDoNotWrapOnPaper() {
+        val r = Fixtures.renderer()
+        fun memo(q: Long) = Fixtures.seededSale.copy(lines = listOf(
+            MemoPrintLine("Sheikh 20s", q * 20, 1, "সিগারেট", q, "packet", "stick"), MemoPrintLine("Navy 10s", q * 10, 1, "সিগারেট", q, "packet", "stick"),
+        ), discounts = emptyList(), drpDiscountMtk = 0)
+        for (digits in com.aktcl.aron.core.printing.template.DigitStyle.entries) {
+            val small = r.memo(memo(1), digits).bitmap.height
+            val big = r.memo(memo(150), digits).bitmap.height
+            assertEquals("a 3-digit packet count wrapped ($digits)", small, big)
+        }
+    }
+
+    // checker round 2: stock slip and day summary never add across units and never drop the base remainder
+    @Test fun stockSlipAndDaySummaryKeepUnitsAndRemainders() {
+        val words = mapOf("packet" to "packet", "stick" to "stick", "box" to "box")
+        val b = DocumentBuilder(DigitStyle.LATIN) { words[it].orEmpty() }
+        val slip = b.stockSlip(com.aktcl.aron.core.printing.doc.StockSlipPrint(0, "sr", "r", "d", listOf(
+            com.aktcl.aron.core.printing.doc.StockSlipLine("c", "A", 60, 3, "packet", "stick"), com.aktcl.aron.core.printing.doc.StockSlipLine("c", "B", 5, 5, "stick", "stick"),
+        )))
+        assertEquals(listOf("3 packet", "3 packet", "(60 stick)", "5 stick", "5 stick"), slip.tables.getValue("lines").map { it.getValue("qty") })
+        val sum = b.daySummary(com.aktcl.aron.core.printing.doc.DaySummaryPrint(0, "sr", "r", listOf(
+            com.aktcl.aron.core.printing.doc.DaySummaryLine("A", 1, 65, 1, 3, "packet", 5, "stick"),
+        ), 1, 0, 0, 1, 0, 1))
+        assertEquals("3 packet + 5 stick", sum.tables.getValue("lines").single().getValue("qty"))
     }
 }

@@ -1,0 +1,37 @@
+path: /v1/admin/mdm/commands/{command_id}/decision
+method: post
+operation:
+  tags:
+  - admin-mdm
+  operationId: decideMdmCommand
+  summary: Approve or reject a command waiting for a second approver (factory reset).
+  description: The approver must differ from the requester; audited with the reason.
+  parameters:
+  - name: command_id
+    in: path
+    required: true
+    schema:
+      $ref: '#/components/schemas/Uuid'
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          $ref: '#/components/schemas/MdmCommandDecisionRequest'
+  responses:
+    '200':
+      description: Command after the decision.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/MdmCommand'
+    '400':
+      $ref: '#/components/responses/BadRequest'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'
+    '404':
+      $ref: '#/components/responses/NotFound'
+    '409':
+      $ref: '#/components/responses/Conflict'

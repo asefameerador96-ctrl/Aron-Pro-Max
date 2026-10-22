@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { loginOk, resetMock } from "./helpers";
+import { MOCK, loginOk, resetMock } from "./helpers";
 
 test.beforeEach(async () => {
   await resetMock();
@@ -25,9 +25,14 @@ test("SKU form: the preview follows the pack size ('1 packet = 20 sticks' in Ban
   await expect(page.getByTestId("sku-pack-warning")).toHaveCount(0);
 });
 
-test("SKU edit page shows the stored pack size and says it is fixed", async ({ page }) => {
+test("SKU edit page shows the stored pack size and a pack-size edit is saved with a reason", async ({ page }) => {
   await loginOk(page, "madmin1", "admin-pass-1", "123456");
   await page.goto("/admin/skus/2");
   await expect(page.getByTestId("sku-pack-preview")).toHaveText("১ প্যাকেট = ২০ স্টিক");
-  await expect(page.getByTestId("sku-pack")).toContainText("স্থির");
+  await page.locator("#f-base_per_pack").fill("10");
+  await expect(page.getByTestId("sku-pack-preview")).toHaveText("১ প্যাকেট = ১০ স্টিক");
+  await page.locator("#reason").fill("Pack changed to ten sticks");
+  await page.locator('form[data-testid="entity-form"] button[type="submit"]').click();
+  const s = await (await fetch(`${MOCK}/__mock/state`)).json();
+  expect(s.audit.at(-1)).toMatchObject({ entity: "sku", reason: "Pack changed to ten sticks" });
 });

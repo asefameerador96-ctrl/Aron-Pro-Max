@@ -1,0 +1,31 @@
+MdmBlockWindow:
+  type: object
+  description: Apps in `packages` (or every non-allowed app when empty) are suspended on these weekdays between
+    start and end, Dhaka time. A window with end <= start runs past midnight into the next day.
+  required:
+  - days
+  - start
+  - end
+  additionalProperties: false
+  properties:
+    days:
+      type: array
+      minItems: 1
+      maxItems: 7
+      uniqueItems: true
+      items:
+        type: integer
+        minimum: 1
+        maximum: 7
+        description: ISO weekday, 1 = Monday.
+    start:
+      type: string
+      pattern: ^([01][0-9]|2[0-3]):[0-5][0-9]$
+    end:
+      type: string
+      pattern: ^([01][0-9]|2[0-3]):[0-5][0-9]$
+    packages:
+      type: array
+      maxItems: 200
+      items:
+        $ref: '#/components/schemas/PackageName'

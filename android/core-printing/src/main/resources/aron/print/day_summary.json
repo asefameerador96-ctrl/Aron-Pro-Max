@@ -7,9 +7,9 @@
   { "type": "text", "value": "{@print_route}: {route}" },
   { "type": "rule" },
   { "type": "table", "rows": "lines", "header_bold": true, "columns": [
-    { "header": "{@print_sku}", "value": "{sku}", "width": 34, "align": "left" },
-    { "header": "{@print_memo_count}", "value": "{memos}", "width": 16, "align": "right" },
-    { "header": "{@print_qty}", "value": "{qty}", "width": 22, "align": "right" },
+    { "header": "{@print_sku}", "value": "{sku}", "width": 30, "align": "left" },
+    { "header": "{@print_memo_count}", "value": "{memos}", "width": 14, "align": "right" },
+    { "header": "{@print_qty}", "value": "{qty}", "width": 28, "align": "right" },
     { "header": "{@print_value}", "value": "{value}", "width": 28, "align": "right" } ] },
   { "type": "rule" },
   { "type": "pair", "left": "{@print_total}", "right": "{gross}" },

@@ -155,3 +155,66 @@ object MemoMath {
         return out
     }
 }
+
+/**
+ * How one SKU is counted in the field (docs/34 s4.2, D-UNITS-02): the [unit] typed and shown, and [factor] base units per
+ * entered unit. `qty_base = qtyEntered x factor`. Nothing here knows 20, 10 or 25: both come from the SKU master through the bundle.
+ */
+data class EntrySpec(val unit: QtyUnit, val factor: Int) {
+    init { require(factor >= 1) { "factor must be >= 1" } }
+
+    /** Base units for [qtyEntered] entered units (the same maths as [Quantity.toBase]). */
+    fun toBase(qtyEntered: Long): Long = Quantity.toBase(qtyEntered, unit, factor.toLong())
+
+    /** Whole entered units in [qtyBase] (stock figures); a remainder only appears for stock that predates the rule. */
+    fun fromBase(qtyBase: Long): Long = qtyBase / factor // truncates toward zero; an oversold (negative) stock figure stays negative, never throws
+    fun remainderBase(qtyBase: Long): Long = qtyBase % factor
+}
+
+/** Entry-unit rules of docs/34 s4.2, shared by the SR, AMO and TSO apps so they cannot drift. */
+object EntryUnits {
+    /**
+     * Resolves the unit from the bundle row. `pack` (and a legacy base-unit default of a multi-stick pack, unless
+     * [allowLoose] is on) counts in packs of [basePerPack]; `dozen` is the base unit of matches (factor 1); a base unit with
+     * `basePerPack` 1 stays that base unit.
+     */
+    fun resolve(baseUnit: String, basePerPack: Int, entryUnitDefault: String, allowLoose: Boolean = false): EntrySpec {
+        require(basePerPack >= 1) { "basePerPack must be >= 1" }
+        val base = QtyUnit.entries.first { it.wire == baseUnit && it != QtyUnit.PACK }
+        return when (entryUnitDefault) {
+            // a "pack" of one stick or piece is not a packet or a box: it counts in the base unit
+            QtyUnit.PACK.wire -> if (basePerPack > 1) EntrySpec(QtyUnit.PACK, basePerPack) else EntrySpec(base, 1)
+            baseUnit -> if (basePerPack > 1 && !allowLoose && base != QtyUnit.DOZEN) EntrySpec(QtyUnit.PACK, basePerPack) else EntrySpec(base, 1)
+            else -> if (allowLoose) EntrySpec(base, 1) else if (basePerPack > 1 && base != QtyUnit.DOZEN) EntrySpec(QtyUnit.PACK, basePerPack) else EntrySpec(base, 1)
+        }
+    }
+
+    /**
+     * Price of one entered unit, `unitPriceMtk x factor / pricePerQty`, or null when that is not a whole number of milli-taka
+     * (the line amount then stays the oracle `divHalfUp(qtyBase x price, pricePerQty)`; a screen must not print an inexact packet price).
+     */
+    fun entryPriceMtk(spec: EntrySpec, unitPriceMtk: Long, pricePerQty: Long = 1L): Long? {
+        require(pricePerQty >= 1) { "pricePerQty must be >= 1" }
+        val num = checkedMul(unitPriceMtk, spec.factor.toLong())
+        return if (num % pricePerQty == 0L) num / pricePerQty else null
+    }
+
+    /**
+     * The (quantity, unit) to put in an edit draft for a stored line: its entry-unit quantity when [qtyBase] is a whole number of
+     * entry units, otherwise the line as it was typed in the base unit (the review then asks the rep to re-enter it; nothing is rounded).
+     */
+    fun restore(spec: EntrySpec, baseUnit: String, qtyBase: Long): Pair<Long, QtyUnit> =
+        if (qtyBase % spec.factor == 0L) spec.fromBase(qtyBase) to spec.unit
+        else qtyBase to QtyUnit.entries.first { it.wire == baseUnit && it != QtyUnit.PACK }
+
+    /** Label key of the stored base unit of a category (`stick` for cigarettes and bidi, `piece` for lighters, `dozen` for matches). */
+    fun baseLabelKey(categoryCode: String): String = when (categoryCode) { "lighter" -> "piece"; "match" -> "dozen"; else -> "stick" }
+
+    /** Report label key of a unit by category: cigarettes and bidi `packet`, lighters `box`, matches `dozen`; base units `stick`/`piece`. */
+    fun labelKey(categoryCode: String, unit: QtyUnit): String = when (unit) {
+        QtyUnit.PACK -> when (categoryCode) { "lighter" -> "box"; "match" -> "dozen"; else -> "packet" }
+        QtyUnit.DOZEN -> "dozen"
+        QtyUnit.PIECE -> "piece"
+        QtyUnit.STICK -> "stick"
+    }
+}

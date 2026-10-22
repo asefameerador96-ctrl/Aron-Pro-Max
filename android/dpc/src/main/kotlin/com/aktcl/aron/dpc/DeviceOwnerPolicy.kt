@@ -80,7 +80,13 @@ class DeviceOwnerPolicy(
     fun onCheckOutCommitted(): BlockingOutcome = synchronized(this) { blocking.onCheckOut().also(onBlockingChange) }
 
     /** [onBlockingChange] runs after every evaluation (it re-arms the hard-end alarm, which a reboot clears); report only `changed` ones. */
-    fun reevaluateBlocking(): BlockingOutcome = synchronized(this) { blocking.evaluate().also(onBlockingChange) }
+    fun reevaluateBlocking(): BlockingOutcome = synchronized(this) { blocking.evaluate().also(onBlockingChange).also { runCatching { mdmHook?.invoke() } } }
+
+    /** MDM block windows, kiosk and location mode (lane mdm): runs after every blocking evaluation, so start, boot and alarms cover it. */
+    @Volatile var mdmHook: (() -> Unit)? = null
+
+    /** Set by [get]; the geo layer reads `mdmApplier?.locationMode()`. */
+    @Volatile var mdmApplier: com.aktcl.aron.dpc.mdm.MdmPolicyApplier? = null
 
     fun current(): DevicePolicy? = store.load()
 
@@ -113,6 +119,15 @@ class DeviceOwnerPolicy(
                             runCatching { HardEndAlarm.schedule(app, if (outcome.active) end else null) }
                         },
                     )
+                    // MDM policy (additive): its own store, state and alarm; the attendance engine above is not changed.
+                    val mdmStore = com.aktcl.aron.dpc.mdm.MdmPolicyStore(dir)
+                    val kiosk = com.aktcl.aron.dpc.mdm.AndroidMdmGateway(app)
+                    val mdm = com.aktcl.aron.dpc.mdm.MdmPolicyApplier(
+                        AndroidSuspendGateway(app), kiosk, mdmStore, dir, { created.trustedNow() }, { store.load() },
+                        { BlockingStore(dir).load().suspended.toSet() },
+                    )
+                    created.mdmApplier = mdm
+                    created.mdmHook = { com.aktcl.aron.dpc.mdm.MdmAlarm.schedule(app, mdm.evaluate().nextBoundaryMs) }
                     created.also { instance = it }
                 }
             }

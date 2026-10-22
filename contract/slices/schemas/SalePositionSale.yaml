@@ -1,0 +1,47 @@
+SalePositionSale:
+  type: object
+  additionalProperties: false
+  required:
+  - memo_uuid
+  - kind
+  - lat
+  - lng
+  - at
+  - distance_m
+  - within_fence
+  properties:
+    memo_uuid:
+      $ref: '#/components/schemas/Uuid'
+    kind:
+      type: string
+      enum:
+      - new
+      - repeat
+      - edited
+      description: New sale, repeat sale (yellow marker), edited sale (teal marker).
+    lat:
+      type: number
+      minimum: -90
+      maximum: 90
+    lng:
+      type: number
+      minimum: -180
+      maximum: 180
+    at:
+      $ref: '#/components/schemas/Timestamp'
+    distance_m:
+      type: number
+      minimum: 0
+      description: Haversine distance base position to sale position, stored with the call.
+    within_fence:
+      type: boolean
+      description: Hit when distance_m <= radius_m, else miss (force sale).
+    status:
+      type: string
+      maxLength: 40
+    photo_media_uuid:
+      type:
+      - string
+      - 'null'
+      format: uuid
+      description: Force-sale photo; open it through the media read-url of the same API.

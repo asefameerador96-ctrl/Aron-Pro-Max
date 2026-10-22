@@ -20,7 +20,7 @@ through the public address (Front Door), as the seeded SR on the seeded dev phon
 Payload shapes follow backend/app/src/test/.../SyncConvergenceFuzzTest.kt (the server's own accepted records).
 Exit 0 when every step passed, 1 otherwise; one line per step, and with GITHUB_STEP_SUMMARY a table there.
 Environment: SLICE_API_HOST (host only), SLICE_PASSWORD (the seed password; never printed), optional SLICE_USER
-(sr1001), SLICE_DEVICE, SLICE_DEVICE_KEY (PEM file; signs X-Device-Proof), SLICE_OUTLET_CODE (SMOKE-SR-001), SLICE_APP_VERSION (1.0.9+9), SLICE_TILE_WAIT_S (300).
+(sr1001), SLICE_DEVICE, SLICE_DEVICE_KEY (PEM file; signs X-Device-Proof), SLICE_OUTLET_CODE (SMOKE-SR-001,SMOKE-SR-002,SMOKE-SR-003), SLICE_APP_VERSION (1.0.9+9), SLICE_TILE_WAIT_S (300).
 """
 import datetime
 import base64
@@ -42,7 +42,10 @@ PASSWORD = os.environ.get("SLICE_PASSWORD", "")
 DEVICE = os.environ.get("SLICE_DEVICE", "00000000-0000-4000-8000-000000000001")
 APP_VERSION = os.environ.get("SLICE_APP_VERSION", "1.0.9+9")
 TILE_WAIT_S = int(os.environ.get("SLICE_TILE_WAIT_S", "300"))
-OUTLET_CODE = os.environ.get("SLICE_OUTLET_CODE", "SMOKE-SR-001")  # the smoke's own outlet (infra/sql/devseed-smoke-outlet.sql)
+# The smoke's own outlets (infra/sql/devseed-smoke-outlet.sql), one per sr1001 dev route: the Gulshan/Banani routes
+# are 2F (Sat+Tue, Sun+Wed, Mon+Thu), so today's planned route holds one of them; Friday has no route by design.
+OUTLET_CODES = [c.strip() for c in os.environ.get("SLICE_OUTLET_CODE", "SMOKE-SR-001,SMOKE-SR-002,SMOKE-SR-003").split(",") if c.strip()]
+OUTLET_CODE = ",".join(OUTLET_CODES)
 DEVICE_KEY = os.environ.get("SLICE_DEVICE_KEY", "")  # PEM file of the smoke device's key (Key Vault aron-dev-smoke-device-key)
 TILE_POLL_S = float(os.environ.get("SLICE_TILE_POLL_S", "15"))
 SCHEME = os.environ.get("SLICE_SCHEME", "https")  # http only for the offline test against a local stub
@@ -157,14 +160,16 @@ def run():
     for r in bundle["routes"]:
         if not r.get("planned_today"):
             continue
-        outlet = next((o for o in r["outlets"] if o.get("code") == OUTLET_CODE and o.get("lat") is not None), None)
+        outlet = next((o for o in r["outlets"] if o.get("code") in OUTLET_CODES and o.get("lat") is not None), None)
         sku_id = next((i for i in r["sales_plan_sku_ids"] if i in skus and i in prices), None)
         if outlet and sku_id:
             pick = (r, outlet, skus[sku_id], prices[sku_id])
             break
     step("2b route, outlet, SKU", pick is not None,
-         f"no planned route with the smoke outlet {OUTLET_CODE} and a priced plan SKU" if pick is None
-         else f"route {pick[0]['route_id']}, outlet {pick[1]['outlet_id']}, sku {pick[2]['code']}")
+         (f"no planned route with a smoke outlet ({OUTLET_CODE}) and a priced plan SKU"
+          + (" (Friday: no selling route by design)" if today.weekday() == 4 else "")) if pick is None
+         else f"route {(pick[0].get('route') or {}).get('code', '?')} ({pick[0]['route_id']}), "
+         f"outlet {pick[1].get('code', '?')} ({pick[1]['outlet_id']}), sku {pick[2]['code']}")
     route, outlet, sku, price = pick
 
     # 3 baseline

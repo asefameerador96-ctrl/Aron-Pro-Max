@@ -1,0 +1,10 @@
+MdmCommandType:
+  type: string
+  enum:
+  - lock
+  - unlock
+  - message
+  - locate
+  - reboot
+  - factory_reset
+  - apply_policy

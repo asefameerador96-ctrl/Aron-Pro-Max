@@ -1,0 +1,32 @@
+path: /v1/dashboards/national/channel-calls
+method: post
+operation:
+  tags:
+  - dashboards
+  operationId: queryNationalChannelCalls
+  summary: By Channel Successful Call card
+  description: Distinct calling outlets by outlet-master channel (brief s3.2). Reads summary tables only (never
+    the transaction log); scope from the token.
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          $ref: '#/components/schemas/NationalDashboardFilter'
+  responses:
+    '200':
+      description: By Channel Successful Call card
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/NationalChannelCalls'
+    '400':
+      $ref: '#/components/responses/BadRequest'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'
+    '429':
+      $ref: '#/components/responses/TooManyRequests'
+    '503':
+      $ref: '#/components/responses/ServiceUnavailable'

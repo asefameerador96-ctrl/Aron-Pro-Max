@@ -1,0 +1,32 @@
+FilterCode:
+  type: object
+  additionalProperties: false
+  required:
+  - code
+  - name
+  description: A category, segment, brand or variant; the parent code that applies to its level is set, the others
+    are null.
+  properties:
+    code:
+      type: string
+      maxLength: 40
+    name:
+      type:
+      - string
+      - 'null'
+      maxLength: 120
+    category_code:
+      type:
+      - string
+      - 'null'
+      maxLength: 40
+    segment_code:
+      type:
+      - string
+      - 'null'
+      maxLength: 40
+    brand_code:
+      type:
+      - string
+      - 'null'
+      maxLength: 40

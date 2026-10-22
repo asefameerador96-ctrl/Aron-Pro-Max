@@ -150,7 +150,13 @@ class BindDeviceTest {
         // Only the bind token, the token's own phone and a valid proof.
         assertEquals("ERR_DEVICE_PROOF_INVALID", client.bind(p, bindToken, otp, proof = null).code())
         assertEquals("ERR_DEVICE_PROOF_INVALID", client.bind(p, bindToken, otp, proof = proof(p, "0000")).code())
-        assertEquals(HttpStatusCode.Unauthorized, client.bind(p, first["bind_token"]!!.jsonPrimitive.content.dropLast(2) + "xx", otp).status)
+        // A tampered token is refused: the last two characters replaced (the verifier refuses a non-canonical encoding even
+        // where the decoded signature bytes are unchanged, about 1 token in 256), and one character in the middle flipped.
+        val tail = bindToken.takeLast(2).let { if (it == "xx") "yy" else "xx" }
+        assertEquals(HttpStatusCode.Unauthorized, client.bind(p, bindToken.dropLast(2) + tail, otp).status)
+        val mid = bindToken.length / 2
+        val flipped = bindToken.substring(0, mid) + (if (bindToken[mid] == 'A') 'B' else 'A') + bindToken.substring(mid + 1)
+        assertEquals(HttpStatusCode.Unauthorized, client.bind(p, flipped, otp).status)
 
         val ok = client.bind(p, bindToken, otp)
         assertEquals(HttpStatusCode.OK, ok.status, ok.bodyAsText())

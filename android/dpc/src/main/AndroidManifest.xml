@@ -42,5 +42,9 @@
         <receiver
             android:name="com.aktcl.aron.dpc.blocking.HardEndReceiver"
             android:exported="false" />
+        <!-- Re-evaluates MDM block windows at the next boundary (lane mdm); only the app's own PendingIntent reaches it. -->
+        <receiver
+            android:name="com.aktcl.aron.dpc.mdm.MdmWindowReceiver"
+            android:exported="false" />
     </application>
 </manifest>

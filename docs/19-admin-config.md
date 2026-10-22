@@ -532,7 +532,8 @@ Restrictive direction (D-432) is registered for every key where a direction exis
 
 | Key | K | Type | Default | Bounds | Scope | Ed | Eff | Dl | Cls | Note and risk if mis-set | Ref | Ph |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `cfg.sale.qty_entry_unit` | S | json by category | {Cigarette stick, Bidi stick, Lighter piece, Match dozen} (A: Match unit unknown; confirm, MQ-01) | per category | G | O | S | both | C3 | FD. Every volume figure is wrong by the pack size if mis-set. Cigarette and bidi in sticks is proven by the stock badge (6,500 sticks = 650 packs) | D-16, D-17, D-248; G-man-001 | 2a |
+| `cfg.sale.qty_entry_unit` | S | json by category | {Cigarette pack, Bidi pack, Lighter pack (box of 25), Match dozen} (owner 2026-10-22, D-UNITS-02, V0104; was sticks and pieces) | per category | G | O | S | both | C3 | FD. Every volume figure is wrong by the pack size if mis-set. Cigarette and bidi in sticks is proven by the stock badge (6,500 sticks = 650 packs) | D-16, D-17, D-248; G-man-001 | 2a |
+| `cfg.sale.allow_loose_base_units` | S | bool | false | n/a | G | O | B | both | C2 | When false the apps take whole packets, boxes and dozens only; the server re-checks (docs/34 s4.2, V0104) | D-UNITS-02 | 2a |
 | `cfg.sale.max_line_qty_base` | S | json by outlet kind | {retail 20,000 sticks, wholesale 1,000,000} (A) | 1 to 10,000,000 | G Z | F | B | both | C1 | Soft ceiling plus anomaly flag, never a hard cap: 26,683 sample lines are 10,000 sticks or more, from wholesale buyers | D-260; G-feat-68 | 2a |
 | `cfg.sale.max_lines_per_memo` | S | int | 60 | 40 to 200 (D-547: the observed maximum is 40) | G | O | B | both | C1 | July average 1.95 lines, p99 4, maximum 40 | D-246 | 2a |
 | `cfg.sale.stock_check` | S | enum(off, warn, block) | warn | enum | G W Z | F | B | both | C2 | `block` with an unrecorded DH top-up stops selling; flagged `stock_negative` | D-321 | 2a |

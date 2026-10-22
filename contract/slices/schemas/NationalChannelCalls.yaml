@@ -1,0 +1,66 @@
+NationalChannelCalls:
+  type: object
+  description: Successful calls split by the outlet-master channel (no "Other" group). `total` is the sum of the
+    channels; `unclassified` counts calling outlets without a channel, which the mandatory channel keeps at 0.
+  required:
+  - date
+  - till_time
+  - as_of
+  - last_updated_at
+  - channels
+  - total
+  - unclassified
+  additionalProperties: false
+  properties:
+    date:
+      $ref: '#/components/schemas/BusinessDate'
+    till_time:
+      type: boolean
+      description: 'True when `date` is today (Dhaka): figures are till the time of `as_of`; false: final figures
+        of a past day.'
+    as_of:
+      $ref: '#/components/schemas/Timestamp'
+    last_updated_at:
+      type:
+      - string
+      - 'null'
+      format: date-time
+      description: Oldest `last_updated_at` of the summary tables this card reads (null when none has been written
+        yet). The page shows it as "last updated hh:mm" (Dhaka).
+    channels:
+      type: array
+      maxItems: 6
+      items:
+        type: object
+        additionalProperties: false
+        required:
+        - channel
+        - value
+        - share_pct_bp
+        properties:
+          channel:
+            type: string
+            enum:
+            - GT
+            - DCC
+            - Astha
+            - RCC
+            - MT
+            - HoReCa
+          value:
+            type: integer
+            format: int64
+            minimum: 0
+          share_pct_bp:
+            type:
+            - integer
+            - 'null'
+            minimum: 0
+            description: 'Basis points: 10000 = 100 %. Integer arithmetic, rounded half up; null when the denominator
+              is 0.'
+    total:
+      type: integer
+      minimum: 0
+    unclassified:
+      type: integer
+      minimum: 0

@@ -1,0 +1,16 @@
+MdmCommandDecisionRequest:
+  type: object
+  required:
+  - decision
+  - reason
+  additionalProperties: false
+  properties:
+    decision:
+      type: string
+      enum:
+      - approve
+      - reject
+    reason:
+      type: string
+      minLength: 3
+      maxLength: 300

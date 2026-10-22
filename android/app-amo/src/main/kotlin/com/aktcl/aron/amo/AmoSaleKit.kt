@@ -56,7 +56,7 @@ import com.aktcl.aron.rules.GeoVerdict
 import com.aktcl.aron.rules.GeoVerdicts
 import com.aktcl.aron.rules.OutletGeo
 import com.aktcl.aron.rules.PriceType
-import com.aktcl.aron.rules.QtyUnit
+import com.aktcl.aron.rules.EntryUnits
 import java.io.File
 
 /** What the Summary screen shows and prints: the day's aggregate with the QC and due figures the print needs. */
@@ -87,7 +87,7 @@ class AmoSaleKit(private val day: AmoDay, private val context: Context, private 
     fun skuName(id: Long): String = skuNames[id] ?: id.toString()
     fun outletName(id: Long): String = day.zoneOutlets.firstOrNull { it.outletId == id }?.let { it.name + " (" + it.code + ")" } ?: id.toString()
     fun skuCategoryCode(id: Long): String? = skuCategory[id]
-    fun names() = PrintNames(::skuName, ::outletName, day.userDisplayName, day.routeName(), category = { id -> com.aktcl.aron.feature.memo.ui.MemoCategories.label(context, skuCategory[id]) })
+    fun names() = PrintNames(::skuName, ::outletName, day.userDisplayName, day.routeName(), category = { id -> com.aktcl.aron.feature.memo.ui.MemoCategories.label(context, skuCategory[id]) }, categoryCode = { id -> skuCategory[id].orEmpty() })
 
     /** Prices of the bundle and the day's stock (docs/24 s7.2, F-SYS-045). */
     val catalog = SaleCatalog { date, priceType -> reads.catalog(date, priceType) }
@@ -154,7 +154,7 @@ class AmoSaleKit(private val day: AmoDay, private val context: Context, private 
         val old = checkNotNull(dao.memo(memoUuid)) { "memo not on this phone" }
         flow.start(SaleVisit(old.visitClientUuid, old.outletId, old.meta.routeId, old.meta.businessDate, PriceType.OUTLET.wire))
         val catalog = flow.state.value.catalog
-        dao.linesOf(memoUuid).forEach { l -> catalog[l.skuId]?.let { flow.setQuantity(l.skuId, l.qtyBase, QtyUnit.entries.first { u -> u.wire == it.baseUnit }) } }
+        dao.linesOf(memoUuid).forEach { l -> catalog[l.skuId]?.let { sku -> EntryUnits.restore(sku.entry, sku.baseUnit, l.qtyBase).let { (q, u) -> flow.setQuantity(l.skuId, q, u) } } }
         if (old.paidMtk > 0) flow.setPaid(old.paidMtk)
         flow.withEdit(EditContext(memoUuid, reason.wire))
     }
