@@ -90,3 +90,13 @@ class EntryUnitSaleTest {
         assertTrue(SaleReviewCalculator.review(d, catalog).lines.single().exceedsStock)
     }
 }
+
+/** Opus checker findings: a line too large for the server is refused on the phone; a non-whole-packet edit line is not shown as packets. */
+class EntryUnitReviewLimitsTest {
+    private val big = SaleSku(1, "SAB25", "cigarette", "SAB", null, "stick", 25, 8_000, 1, "2026-09-01", entryUnitDefault = "pack")
+    @Test fun aLineAboveTenMillionBaseUnitsIsNotCommittable() {
+        val d = SaleDraftOps.setQuantity(Fx.draft(), 1, 999_999, QtyUnit.PACK)
+        val r = SaleReviewCalculator.review(d, mapOf(1L to big))
+        assertTrue(r.problems.any { it is ReviewProblem.QtyTooLarge }); assertFalse(r.canCommit)
+    }
+}

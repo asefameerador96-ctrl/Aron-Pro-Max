@@ -51,7 +51,8 @@ fun SaleRoute(
                 when (s) {
                     SaleStage.Entry -> SaleEntryScreen(
                         skus = skus, review = review,
-                        qtyOf = { id -> draft?.lines?.firstOrNull { it.skuId == id }?.qtyEntered ?: 0L },
+                        // a line held in another unit (an old memo that is not whole packets) shows 0: the rep re-enters it, a tap never multiplies it
+                        qtyOf = { id -> draft?.lines?.firstOrNull { it.skuId == id && it.unit == ui.catalog[id]?.entry?.unit?.wire }?.qtyEntered ?: 0L },
                         onQuantity = { id, q -> vm.setQuantity(id, q, checkNotNull(ui.catalog[id]) { "unknown SKU" }.entry.unit) },
                         onReview = { stage = SaleStage.Review },
                         // an edit never starts a QC-only sale: completed QC would lock the edit for good (F-SR-033)

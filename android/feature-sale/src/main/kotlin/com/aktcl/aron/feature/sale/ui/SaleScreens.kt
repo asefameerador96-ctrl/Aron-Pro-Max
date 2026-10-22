@@ -400,7 +400,7 @@ private fun SaleSkuRow(sku: SaleSku, qty: Long, line: ReviewLine?, onQuantity: (
             quantity = localizedNumber(qty), onQuantityChange = { onQuantity(sku.skuId, parseQty(it).coerceIn(0L, max)) },
             onMinus = { onQuantity(sku.skuId, (qty - 1).coerceAtLeast(0)) }, onPlus = { onQuantity(sku.skuId, (qty + 1).coerceAtMost(max)) },
             stock = sku.stockBase?.let { entryStockText(entry, it) } ?: "–",
-            caption = sku.entryPriceMtk?.let { stringResource(R.string.sale_price_per_unit, moneyBare(it), unit) },
+            caption = sku.entryPriceMtk?.let { stringResource(R.string.sale_price_per_unit, moneyBare(it, if (it % 10L == 0L) 2 else 3), unit) },
             minusLabel = stringResource(R.string.sale_less) + ", " + name, plusLabel = stringResource(R.string.sale_more) + ", " + name,
             quantityLabel = stringResource(R.string.sale_qty_a11y, localizedNumber(qty), unit) + ", " + name,
             packBadge = line?.takeIf { entry.unit != QtyUnit.PACK && sku.packFactor > 1 && it.packBadge.first > 0 }?.let { localizedNumber(it.packBadge.first.toLong()) },
@@ -548,6 +548,7 @@ private fun negMoney(moneyText: String): String = "− $moneyText"
 private fun problemText(p: ReviewProblem): String = when (p) {
     is ReviewProblem.TooManyLines -> localizedDigits(stringResource(R.string.review_problem_too_many_lines, p.max.toString(), p.count.toString()))
     is ReviewProblem.UnitNotAllowed -> stringResource(R.string.review_problem_unit, p.skuId.toString())
+    is ReviewProblem.QtyTooLarge -> stringResource(R.string.review_problem_qty_large, p.skuId.toString())
     is ReviewProblem.PaidOutOfRange, is ReviewProblem.PaidNotPaisa, ReviewProblem.PaidNegative -> stringResource(R.string.review_problem_paid)
     ReviewProblem.NothingToSell -> stringResource(R.string.review_problem_nothing)
     is ReviewProblem.NetNegative -> stringResource(R.string.review_problem_net_negative)

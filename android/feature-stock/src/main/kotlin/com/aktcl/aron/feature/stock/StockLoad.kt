@@ -23,7 +23,10 @@ data class StockRow(val sku: SkuEntity, val loadedBase: Long, val entered: Long,
     val loadedEntry: Long get() = entry.fromBase(loadedBase)
 
     /** The stock figure of the row in entry units, plus the quantity being entered. */
-    val figureEntry: Long get() = entry.fromBase((stockBase ?: loadedBase).coerceAtLeast(0L)) + entered
+    val figureEntry: Long get() = entry.fromBase(stockBase ?: loadedBase) + entered
+
+    /** Base units left over after whole entry units (QC returns are counted in sticks); shown as `+n`, never dropped. */
+    val figureRemainderBase: Long get() = entry.remainderBase(stockBase ?: loadedBase)
 }
 
 /** Entry unit of a stock row, from the SKU master only (no 20, 10 or 25 in code). */

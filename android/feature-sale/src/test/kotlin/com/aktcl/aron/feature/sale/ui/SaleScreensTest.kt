@@ -48,7 +48,7 @@ class SaleScreensTest {
             AronTheme(AppLanguage.EN) { SaleEntryScreen(skus, review, { id -> d.lines.firstOrNull { it.skuId == id }?.qtyEntered ?: 0 }, { _, _ -> }, { reviewed = true }, {}) }
         }
         // the packs figure is the badge of the card, the over-stock state is named under it; nothing else is printed between cards
-        compose.onNodeWithText("Only 25 boxes in stock for Aster.").assertExists()
+        compose.onNodeWithText("Only 25 pieces in stock for Aster.").assertExists()
         compose.onNodeWithText("Proceed").assertIsEnabled().performClick()
         assertEquals(true, reviewed)
     }

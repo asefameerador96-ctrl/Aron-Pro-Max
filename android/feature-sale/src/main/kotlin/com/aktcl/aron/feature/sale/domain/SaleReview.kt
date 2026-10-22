@@ -49,6 +49,8 @@ sealed interface ReviewProblem {
     data class TooManyLines(val count: Int, val max: Int) : ReviewProblem
     /** A unit that is not the SKU's entry unit (docs/34 s4.2; loose base units only with `cfg.sale.allow_loose_base_units`), or not a known unit at all. */
     data class UnitNotAllowed(val skuId: Long, val unit: String) : ReviewProblem
+    /** `memo_line.qty_base` is at most 10,000,000: the server would refuse the memo for good after it was saved offline. */
+    data class QtyTooLarge(val skuId: Long, val qtyBase: Long) : ReviewProblem
 }
 
 data class SaleReview(
@@ -71,6 +73,7 @@ data class SaleReview(
 object SaleReviewCalculator {
     /** Maximum QC deduction per SKU in milli-taka; assumed cap (MQ-03/MQ-04 unknown): no cap when absent. */
     const val DEFAULT_MAX_LINES: Int = 60
+    const val MAX_QTY_BASE: Long = 10_000_000L
 
     fun review(draft: SaleDraft, catalog: Map<Long, SaleSku>, qcCapMtkBySku: Map<Long, Long> = emptyMap(), maxLines: Int = DEFAULT_MAX_LINES): SaleReview {
         val problems = ArrayList<ReviewProblem>()
@@ -84,6 +87,7 @@ object SaleReviewCalculator {
                 problems += ReviewProblem.UnitNotAllowed(sku.skuId, e.unit); return@mapNotNull null
             }
             val base = Quantity.toBase(e.qtyEntered, unit, sku.packFactor.toLong())
+            if (base > MAX_QTY_BASE) problems += ReviewProblem.QtyTooLarge(sku.skuId, base)
             val line = MemoLine.priced(sku.skuId, base, sku.unitPriceMtk, sku.pricePerQty.toLong(), priceType)
             ReviewLine(sku, e, base, line, Quantity.packBadge(base, sku.packFactor.toLong()), sku.stockBase?.let { base > it } ?: false)
         }

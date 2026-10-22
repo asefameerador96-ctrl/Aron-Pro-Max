@@ -62,3 +62,16 @@ class EntryUnitsTest {
         }
     }
 }
+
+/** Checker findings (android-units, Opus): oversold stock, a pack of one, restore. */
+class EntryUnitsCheckerTest {
+    @Test fun anOversoldStockFigureStaysNegativeInsteadOfThrowing() {
+        val s = EntryUnits.resolve("stick", 20, "pack")
+        assertEquals(-1L, s.fromBase(-20)); assertEquals(0L, s.fromBase(-19)); assertEquals(-3L, s.remainderBase(-23))
+    }
+    @Test fun aPackOfOneCountsInTheBaseUnit() {
+        assertEquals(EntrySpec(QtyUnit.PIECE, 1), EntryUnits.resolve("piece", 1, "pack"))
+        assertEquals(EntrySpec(QtyUnit.STICK, 1), EntryUnits.resolve("stick", 1, "pack"))
+        assertEquals(EntrySpec(QtyUnit.DOZEN, 1), EntryUnits.resolve("dozen", 1, "pack"))
+    }
+}

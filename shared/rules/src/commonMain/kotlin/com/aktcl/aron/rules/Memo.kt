@@ -167,7 +167,7 @@ data class EntrySpec(val unit: QtyUnit, val factor: Int) {
     fun toBase(qtyEntered: Long): Long = Quantity.toBase(qtyEntered, unit, factor.toLong())
 
     /** Whole entered units in [qtyBase] (stock figures); a remainder only appears for stock that predates the rule. */
-    fun fromBase(qtyBase: Long): Long { require(qtyBase >= 0) { "qtyBase must be >= 0" }; return qtyBase / factor }
+    fun fromBase(qtyBase: Long): Long = qtyBase / factor // truncates toward zero; an oversold (negative) stock figure stays negative, never throws
     fun remainderBase(qtyBase: Long): Long = qtyBase % factor
 }
 
@@ -182,7 +182,8 @@ object EntryUnits {
         require(basePerPack >= 1) { "basePerPack must be >= 1" }
         val base = QtyUnit.entries.first { it.wire == baseUnit && it != QtyUnit.PACK }
         return when (entryUnitDefault) {
-            QtyUnit.PACK.wire -> EntrySpec(QtyUnit.PACK, basePerPack)
+            // a "pack" of one stick or piece is not a packet or a box: it counts in the base unit
+            QtyUnit.PACK.wire -> if (basePerPack > 1) EntrySpec(QtyUnit.PACK, basePerPack) else EntrySpec(base, 1)
             baseUnit -> if (basePerPack > 1 && !allowLoose && base != QtyUnit.DOZEN) EntrySpec(QtyUnit.PACK, basePerPack) else EntrySpec(base, 1)
             else -> if (allowLoose) EntrySpec(base, 1) else if (basePerPack > 1 && base != QtyUnit.DOZEN) EntrySpec(QtyUnit.PACK, basePerPack) else EntrySpec(base, 1)
         }
