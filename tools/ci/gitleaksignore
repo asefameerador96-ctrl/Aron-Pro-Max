@@ -24,3 +24,7 @@ b1b02649f535fc4098286d5cdf9eb1b5956843d9:infra/lib/naming.bicep:generic-api-key:
 b1b02649f535fc4098286d5cdf9eb1b5956843d9:infra/lib/naming.bicep:generic-api-key:57
 # Test placeholder password literal for new_password in the change-password fixture (ContractConformanceTest), no secret; reviewed by lead 2026-10-18
 9ebcc23808cc2b87130f8c8997fd155b1d2a15ab:backend/app/src/test/kotlin/com/aktcl/aron/backend/app/ContractConformanceTest.kt:generic-api-key:432
+
+# 2026-10-22, lead review: web-dashboard request builder for the Breakdown card (the bearer argument followed by
+# the operation path literal matched generic-api-key); there is no credential on the line.
+a8f914931ceead107a17f74e9c547cb8ac9f6ddd:web/src/lib/national/server.ts:generic-api-key:58
