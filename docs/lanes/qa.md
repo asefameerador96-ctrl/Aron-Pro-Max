@@ -8,3 +8,11 @@ Session model: **Opus** (docs/29: sync, security and anti-spoofing rows are T1; 
 - Findings go to the owning lane as `docs/requests/<lane>-<name>.md` with a failing test; you do not fix feature code in another lane's area beyond the rule above.
 - Money, sync, geofence, security: never mark a row done on a green happy path alone. Seeded failures must turn the suite red (the acceptance of N-014).
 - Git: push to `lane/qa`. Status, time log and handover: `docs/status/qa.md` and `docs/status/qa.csv` (format of `android-sr-a`).
+
+## Wave 4: the data-flow trace (owner directive 2026-10-22, docs/34 s4.4)
+
+When db (Gulshan/Banani seed), backend-reports (summaries) and android-units are on INT: run seed → bundle →
+SR app (attendance, stock, sale in packets / boxes / dozens, memo, submit) → sync → summary tables → every
+dashboard card and the route map → the reports that exist, on dev with `sr1001`, and write
+`docs/evidence/data-flow-trace-<date>.md` with the numbers matching at each hop (device = server = dashboard),
+unit conversions shown (packets → sticks), and every mismatch filed as a request to the owning lane.
