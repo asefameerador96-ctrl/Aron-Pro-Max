@@ -31,8 +31,10 @@ const pairs = {
   "access.saved": ["Access saved. The user's next token carries the new grants.", "প্রবেশাধিকার সংরক্ষিত। ব্যবহারকারীর পরের টোকেনে নতুন অনুমতি থাকবে।"],
   "access.stale": ["Someone changed this user's access meanwhile. Reload and try again.", "ইতিমধ্যে কেউ এই ব্যবহারকারীর প্রবেশাধিকার বদলেছেন। পুনরায় লোড করে আবার চেষ্টা করুন।"],
   "access.warn.users_credentials": ["Write access to both Users and Credentials lets this admin create or reset the logins of lower portal roles and use their reach. You can still save.", "ব্যবহারকারী ও ক্রেডেনশিয়াল দুটোতেই লেখার অধিকার থাকলে এই অ্যাডমিন নিচের স্তরের পোর্টাল ব্যবহারকারীর লগইন তৈরি বা রিসেট করতে এবং তাদের এখতিয়ার ব্যবহার করতে পারবেন। তবু সংরক্ষণ করা যাবে।"],
+  "module.read_only": ["You have read-only access to this module: changes are refused.", "এই মডিউলে আপনার শুধু দেখার অনুমতি আছে: পরিবর্তন গ্রহণ করা হবে না।"],
   "access.unavailable": ["Access grants are not available on this server yet (the grant tables are missing). Try again later or tell support.", "এই সার্ভারে প্রবেশাধিকার এখনও চালু হয়নি (অনুমতির টেবিল নেই)। পরে চেষ্টা করুন বা সাপোর্টকে জানান।"],
   "access.load_failed": ["The grants could not be loaded.", "অনুমতি লোড করা যায়নি।"],
+  // PROVISIONAL labels (docs/34 s1 wording): to be replaced from the owner's portal screenshots (owner-actions row J). Do not ask the owner.
   "grant.module.masterdata": ["Master data", "মাস্টার ডেটা"],
   "grant.module.routes": ["Routes and assignment", "রুট ও দায়িত্ব"],
   "grant.module.outlets": ["Outlets", "আউটলেট"],
