@@ -20,7 +20,10 @@ import java.time.YearMonth
 /** Who is asking: the server-side reach and, for a BRAND user, the brand ids (null for every other level; docs/34 s1). */
 class NationalCaller(val reach: Reach, val brandIds: Set<Long>? = null)
 
-internal fun ratioPct(part: BigDecimal, whole: BigDecimal): Percent = part.multiply(BigDecimal(100)).divide(whole, 2, RoundingMode.HALF_UP).toDouble()
+/** Basis points (10000 = 100 %) by integer arithmetic, half up; null when the denominator is 0. Never a float (docs/31 money gate). */
+internal fun pctBp(n: Long, d: Long): Int? = if (d <= 0) null else ((n * 20_000 + d) / (2 * d)).toInt()
+
+internal fun ratioBp(part: BigDecimal, whole: BigDecimal): Long = part.multiply(BigDecimal(10_000)).divide(whole, 0, RoundingMode.HALF_UP).toLong()
 
 /** The day's channel order, as the brief lists it. */
 internal val CHANNELS = listOf("GT", "DCC", "Astha", "RCC", "MT", "HoReCa")
@@ -168,7 +171,7 @@ class NationalDashboardService(
                 NationalSalesCard(
                     category_code = cat, base_unit = unit, total_sales = total, daily_target = daily?.toPlainString(), sales_so_far = total,
                     remaining = daily?.let { (it - BigDecimal(total)).max(BigDecimal.ZERO).setScale(3, RoundingMode.HALF_UP).toPlainString() },
-                    achievement_pct = daily?.takeIf { it.signum() > 0 }?.let { ratioPct(BigDecimal(total), it) },
+                    achievement_pct_bp = daily?.takeIf { it.signum() > 0 }?.let { ratioBp(BigDecimal(total), it) },
                     target_routes = tgt?.second ?: 0,
                 )
             }
@@ -207,7 +210,7 @@ class NationalDashboardService(
                 ).bind("d", date)).mapTo(Long::class.java).one().toInt()
             }
             val m = meta(h, date, listOf("agg_daily_route", "agg_daily_outlet_sku"))
-            NationalCpr(m.date, m.till, m.asOf, m.last, targetOutlets, calls, pct(calls.toLong(), targetOutlets.toLong()))
+            NationalCpr(m.date, m.till, m.asOf, m.last, targetOutlets, calls, pctBp(calls.toLong(), targetOutlets.toLong()))
         }
     }
 
@@ -215,7 +218,7 @@ class NationalDashboardService(
 
     private fun shares(rows: Map<String, Long>): List<ChannelShare> {
         val total = rows.values.sum()
-        return CHANNELS.map { c -> ChannelShare(c, rows[c] ?: 0L, pct(rows[c] ?: 0L, total)) }
+        return CHANNELS.map { c -> ChannelShare(c, rows[c] ?: 0L, pctBp(rows[c] ?: 0L, total)) }
     }
 
     fun channelCalls(caller: NationalCaller, f: NationalDashboardFilter): NationalChannelCalls {
@@ -269,7 +272,7 @@ class NationalDashboardService(
                 """,
             ).bind("d", date)).map { rs, _ -> rs.getInt(1) to rs.getInt(2) }.one()
             val m = meta(h, date, listOf("agg_daily_zone", "agg_daily_route"))
-            NationalFinalSubmit(m.date, m.till, m.asOf, m.last, total, service, submitted, service - submitted, pct(submitted.toLong(), service.toLong()))
+            NationalFinalSubmit(m.date, m.till, m.asOf, m.last, total, service, submitted, service - submitted, pctBp(submitted.toLong(), service.toLong()))
         }
     }
 
@@ -287,7 +290,7 @@ class NationalDashboardService(
                 """,
             ).bind("d", date)).map { rs, _ -> Triple(rs.getInt(1), rs.getInt(2), rs.getInt(3)) }.one()
             val m = meta(h, date, listOf("agg_daily_route"))
-            NationalLoginSubmit(m.date, m.till, m.asOf, m.last, target, login, pct(login.toLong(), target.toLong()), submitted, pct(submitted.toLong(), login.toLong()))
+            NationalLoginSubmit(m.date, m.till, m.asOf, m.last, target, login, pctBp(login.toLong(), target.toLong()), submitted, pctBp(submitted.toLong(), login.toLong()))
         }
     }
 
@@ -359,7 +362,7 @@ class NationalDashboardService(
                 """,
             ).bind("d", date)).map { rs, _ -> rs.getInt(1) to rs.getInt(2) }.one()
             val m = meta(h, date, listOf("agg_daily_route"))
-            NationalGeoFencing(m.date, m.till, m.asOf, m.last, total, valid, pct(valid.toLong(), total.toLong()))
+            NationalGeoFencing(m.date, m.till, m.asOf, m.last, total, valid, pctBp(valid.toLong(), total.toLong()))
         }
     }
 

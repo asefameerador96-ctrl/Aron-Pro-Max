@@ -75,7 +75,7 @@ class NationalDashboardTest {
         val cig = s.cards.single { it.category_code == "cigarette" }
         assertEquals(75, cig.total_sales)
         // Monthly 2 500 + 1 250 over 25 working days = 150 a day; 75 / 150 = 50.0 %; remaining 75.
-        assertEquals("150.000", cig.daily_target); assertEquals(50.0, cig.achievement_pct); assertEquals("75.000", cig.remaining); assertEquals(2, cig.target_routes)
+        assertEquals("150.000", cig.daily_target); assertEquals(5000L, cig.achievement_pct_bp); assertEquals("75.000", cig.remaining); assertEquals(2, cig.target_routes)
         assertEquals(75, cig.sales_so_far); assertEquals("stick", cig.base_unit)
         assertEquals("2026-10-04", s.date); assertTrue(s.till_time)   // 06:00Z is 12:00 Dhaka on the same day: figures are "till time"
     }
@@ -87,13 +87,13 @@ class NationalDashboardTest {
         assertEquals(sales, std.total)                                         // brief s4.1: the channels add up to Sales (Cigarette)
         assertEquals(listOf("GT", "DCC", "Astha", "RCC", "MT", "HoReCa"), std.channels.map { it.channel })
         assertEquals(listOf(50L, 0L, 20L, 5L, 0L, 0L), std.channels.map { it.value })
-        assertEquals(listOf(66.67, 0.0, 26.67, 6.67, 0.0, 0.0), std.channels.map { it.share_pct })
+        assertEquals(listOf(6667, 0, 2667, 667, 0, 0), std.channels.map { it.share_pct_bp })
         val calls = svc.channelCalls(national(), all)
         val cpr = svc.cpr(national(), all)
         assertEquals(listOf(2L, 0L, 1L, 1L, 0L, 0L), calls.channels.map { it.value })
         assertEquals(cpr.successful_calls, calls.total)                        // brief s3.2: the channels add up to the successful calls
         assertEquals(0, calls.unclassified)
-        assertEquals(5, cpr.target_outlets); assertEquals(4, cpr.successful_calls); assertEquals(80.0, cpr.cpr_pct)
+        assertEquals(5, cpr.target_outlets); assertEquals(4, cpr.successful_calls); assertEquals(8000, cpr.cpr_pct_bp)
     }
 
     @Test
@@ -113,12 +113,12 @@ class NationalDashboardTest {
     @Test
     fun geoFencingLoginAndFinalSubmitFollowTheBrief() {
         val g = svc.geoFencing(national(), all)
-        assertEquals(4, g.total_calls); assertEquals(3, g.geo_validated); assertEquals(75.0, g.geo_pct)    // visit 3 was abandoned, visit 2 out of range
+        assertEquals(4, g.total_calls); assertEquals(3, g.geo_validated); assertEquals(7500, g.geo_pct_bp)    // visit 3 was abandoned, visit 2 out of range
         val l = svc.loginSubmit(national(), all)
-        assertEquals(3, l.target_routes); assertEquals(2, l.successful_login); assertEquals(66.67, l.login_pct)   // R3 never downloaded
-        assertEquals(1, l.submitted); assertEquals(50.0, l.submit_pct)
+        assertEquals(3, l.target_routes); assertEquals(2, l.successful_login); assertEquals(6667, l.login_pct_bp)   // R3 never downloaded
+        assertEquals(1, l.submitted); assertEquals(5000, l.submit_pct_bp)
         val f = svc.finalSubmit(national(), all)
-        assertEquals(2, f.total_zones); assertEquals(2, f.service_zones); assertEquals(1, f.final_submitted); assertEquals(1, f.remaining); assertEquals(50.0, f.submit_pct)
+        assertEquals(2, f.total_zones); assertEquals(2, f.service_zones); assertEquals(1, f.final_submitted); assertEquals(1, f.remaining); assertEquals(5000, f.submit_pct_bp)
     }
 
     @Test
@@ -127,7 +127,7 @@ class NationalDashboardTest {
         now = Instant.parse("2026-10-05T01:00:00Z")                                        // 07:00 Dhaka the next day
         AggregationWorker(fresh.db, AronClock { now }).runUntilIdle()
         val f = svc.finalSubmit(national(), all)
-        assertEquals(2, f.final_submitted); assertEquals(0, f.remaining); assertEquals(100.0, f.submit_pct)
+        assertEquals(2, f.final_submitted); assertEquals(0, f.remaining); assertEquals(10000, f.submit_pct_bp)
         val auto = fresh.db.jdbi.withHandle<List<Boolean>, Exception> { it.createQuery("SELECT auto_submitted FROM dw.agg_daily_zone WHERE business_date = '2026-10-04' ORDER BY zone_id").mapTo(Boolean::class.java).list() }
         assertEquals(listOf(true, false), auto)                                            // zone 2 was submitted by a TSO, zone 1 by the job
     }
@@ -182,7 +182,7 @@ class NationalDashboardTest {
         val f = all.copy(brand_codes = listOf("B2"))
         assertEquals(15, svc.sales(national(), f).cards.single { it.category_code == "cigarette" }.total_sales)
         val cpr = svc.cpr(national(), f)                                                   // outlets that bought BrandTwo: O2 (Astha) and O4 (RCC)
-        assertEquals(2, cpr.successful_calls); assertEquals(40.0, cpr.cpr_pct)
+        assertEquals(2, cpr.successful_calls); assertEquals(4000, cpr.cpr_pct_bp)
         assertEquals(listOf(0L, 0L, 1L, 1L, 0L, 0L), svc.channelCalls(national(), f).channels.map { it.value })
     }
 

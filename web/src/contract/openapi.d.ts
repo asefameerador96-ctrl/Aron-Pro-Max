@@ -6231,8 +6231,8 @@ export interface components {
             sales_so_far: number;
             /** @description max(daily_target - sales_so_far, 0); null without a target. */
             remaining: components["schemas"]["Decimal3"] | null;
-            /** @description total_sales / daily_target x 100 (ring); null without a target. May exceed 100. */
-            achievement_pct: number | null;
+            /** @description total_sales / daily_target in basis points (ring); null without a target. May exceed 10000. */
+            achievement_pct_bp: number | null;
             /** @description Routes in the filter that carry a monthly target for the category. */
             target_routes: number;
         };
@@ -6266,7 +6266,8 @@ export interface components {
             target_outlets: number;
             /** @description Distinct outlets with at least one latest-version memo that day on those routes. */
             successful_calls: number;
-            cpr_pct: number | null;
+            /** @description Basis points: 10000 = 100 %. Integer arithmetic, rounded half up; null when the denominator is 0. */
+            cpr_pct_bp: number | null;
         };
         /** @description Successful calls split by the outlet-master channel (no "Other" group). `total` is the sum of the channels; `unclassified` counts calling outlets without a channel, which the mandatory channel keeps at 0. */
         NationalChannelCalls: {
@@ -6284,7 +6285,8 @@ export interface components {
                 channel: "GT" | "DCC" | "Astha" | "RCC" | "MT" | "HoReCa";
                 /** Format: int64 */
                 value: number;
-                share_pct: number | null;
+                /** @description Basis points: 10000 = 100 %. Integer arithmetic, rounded half up; null when the denominator is 0. */
+                share_pct_bp: number | null;
             }[];
             total: number;
             unclassified: number;
@@ -6305,7 +6307,8 @@ export interface components {
                 channel: "GT" | "DCC" | "Astha" | "RCC" | "MT" | "HoReCa";
                 /** Format: int64 */
                 value: number;
-                share_pct: number | null;
+                /** @description Basis points: 10000 = 100 %. Integer arithmetic, rounded half up; null when the denominator is 0. */
+                share_pct_bp: number | null;
             }[];
             /** Format: int64 */
             total: number;
@@ -6329,7 +6332,8 @@ export interface components {
             final_submitted: number;
             /** @description service_zones - final_submitted. */
             remaining: number;
-            submit_pct: number | null;
+            /** @description Basis points: 10000 = 100 %. Integer arithmetic, rounded half up; null when the denominator is 0. */
+            submit_pct_bp: number | null;
         };
         /** @description Login (check-in and download) and Submit (Bikroy Joma) status per route. Hidden from BRAND users (403). */
         NationalLoginSubmit: {
@@ -6346,11 +6350,12 @@ export interface components {
             target_routes: number;
             /** @description Of those, routes whose SR checked in and downloaded. */
             successful_login: number;
-            login_pct: number | null;
+            /** @description Basis points: 10000 = 100 %. Integer arithmetic, rounded half up; null when the denominator is 0. */
+            login_pct_bp: number | null;
             /** @description Routes that completed Bikroy Joma (sales upload). */
             submitted: number;
-            /** @description submitted / successful_login x 100. */
-            submit_pct: number | null;
+            /** @description submitted / successful_login in basis points. */
+            submit_pct_bp: number | null;
         };
         /** @description The common filter plus the gear choice (six combinations, one active). */
         NationalBreakdownRequest: {
@@ -6403,7 +6408,8 @@ export interface components {
             last_updated_at: string | null;
             total_calls: number;
             geo_validated: number;
-            geo_pct: number | null;
+            /** @description Basis points: 10000 = 100 %. Integer arithmetic, rounded half up; null when the denominator is 0. */
+            geo_pct_bp: number | null;
         };
         FfGeoPinsRequest: {
             filter?: components["schemas"]["NationalDashboardFilter"];
@@ -6417,10 +6423,10 @@ export interface components {
             /** @enum {string} */
             color: "red" | "amber" | "green";
             /** @description Today's geo-fencing % of the route (validated / completed calls); null before the first call, then green. */
-            geo_pct: number | null;
+            geo_pct_bp: number | null;
             position_at: components["schemas"]["Timestamp"];
         };
-        /** @description One pin per route at the SR's latest position today. Red below 70 %, amber 70 to 90 % inclusive, green above 90 %. Routes with no position today are not pinned. Hidden from BRAND users (403). */
+        /** @description One pin per route at the SR's latest position today. Red below 7000 bp, amber 7000 to 9000 bp inclusive, green above 9000 bp. Routes with no position today are not pinned. Hidden from BRAND users (403). */
         FfGeoPins: {
             date: components["schemas"]["BusinessDate"];
             /** @description True when `date` is today (Dhaka): figures are till the time of `as_of`; false: final figures of a past day. */
@@ -6463,8 +6469,8 @@ export interface components {
             zone: components["schemas"]["PlaceRef"];
             /** Format: date-time */
             position_at: string | null;
-            /** @description 100 minus the route's geo-fencing % today. */
-            miss_pct: number | null;
+            /** @description 10000 minus the route geo-fencing basis points today. */
+            miss_pct_bp: number | null;
         };
         CategoryQty: {
             category_code: string;
@@ -6504,7 +6510,7 @@ export interface components {
             daily_target: components["schemas"]["Decimal3"] | null;
             /** Format: int64 */
             sales: number;
-            achievement_pct: number | null;
+            achievement_pct_bp: number | null;
         };
         /** @description The "Map Details" page of a route and day: header, markers, SR path and the cards under the map. Distance is metres (docs/34 s6 Q1 default). */
         RouteMap: {
@@ -6533,7 +6539,8 @@ export interface components {
                 target_outlets: number;
                 successful_calls: number;
                 geo_validated: number;
-                cpr_pct: number | null;
+                /** @description Basis points: 10000 = 100 %. Integer arithmetic, rounded half up; null when the denominator is 0. */
+                cpr_pct_bp: number | null;
             };
             time_card: {
                 /** Format: date-time */

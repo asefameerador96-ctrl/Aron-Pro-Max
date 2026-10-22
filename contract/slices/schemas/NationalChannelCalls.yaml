@@ -36,7 +36,7 @@ NationalChannelCalls:
         required:
         - channel
         - value
-        - share_pct
+        - share_pct_bp
         properties:
           channel:
             type: string
@@ -51,12 +51,13 @@ NationalChannelCalls:
             type: integer
             format: int64
             minimum: 0
-          share_pct:
+          share_pct_bp:
             type:
-            - number
+            - integer
             - 'null'
             minimum: 0
-            maximum: 100
+            description: 'Basis points: 10000 = 100 %. Integer arithmetic, rounded half up; null when the denominator
+              is 0.'
     total:
       type: integer
       minimum: 0

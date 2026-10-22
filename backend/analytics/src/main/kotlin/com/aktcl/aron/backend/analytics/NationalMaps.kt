@@ -49,7 +49,7 @@ fun NationalDashboardService.ffGeoPins(caller: NationalCaller, req: FfGeoPinsReq
             """,
         ).bind("d", date)).map { rs, _ ->
             val done = rs.getInt("done"); val ok = rs.getInt("ok")
-            FfGeoPin(rs.getLong("route_id"), rs.getDouble("lat"), rs.getDouble("lng"), pinColor(ok, done), pct(ok.toLong(), done.toLong()), rs.getTimestamp("captured_at").toInstant().toString())
+            FfGeoPin(rs.getLong("route_id"), rs.getDouble("lat"), rs.getDouble("lng"), pinColor(ok, done), pctBp(ok.toLong(), done.toLong()), rs.getTimestamp("captured_at").toInstant().toString())
         }.list()
         val without = sql.bind(h.createQuery(
             """
@@ -104,10 +104,10 @@ fun NationalDashboardService.ffGeoRoutePopup(caller: NationalCaller, routeId: Lo
             .map { rs, _ -> rs.getTimestamp(1).toInstant().toString() }.findOne().orElse(null)
         val (done, ok) = h.createQuery("SELECT completed_calls, completed_geo_valid_calls FROM dw.agg_daily_route WHERE route_id = :r AND business_date = :d")
             .bind("r", routeId).bind("d", date).map { rs, _ -> rs.getInt(1) to rs.getInt(2) }.findOne().orElse(0 to 0)
-        val geo = pct(ok.toLong(), done.toLong())
+        val geo = pctBp(ok.toLong(), done.toLong())
         val m = meta(h, date, listOf("route_last_position", "agg_daily_route"))
         // contact: the SR's phone is PII; it is returned only through the step-up read path (docs/34 s5 D-AUTHZ-PII), so null here.
-        FfGeoRoutePopup(m.date, m.till, m.asOf, m.last, head.route, userName(h, head.userId), null, head.territory, head.zone, pos, geo?.let { round2(100.0 - it) })
+        FfGeoRoutePopup(m.date, m.till, m.asOf, m.last, head.route, userName(h, head.userId), null, head.territory, head.zone, pos, geo?.let { 10_000 - it })
     }
 }
 
@@ -184,7 +184,7 @@ fun NationalDashboardService.routeMap(caller: NationalCaller, routeId: Long, dat
         val tva = cats.map { (cat, unit) ->
             val s = sold[cat]?.third ?: 0L
             val daily = targets[cat]?.takeIf { wd > 0 }?.divide(BigDecimal(wd), 3, RoundingMode.HALF_UP)
-            TargetVsAchievement(cat, unit, daily?.toPlainString(), s, daily?.takeIf { it.signum() > 0 }?.let { BigDecimal(s).multiply(BigDecimal(100)).divide(it, 2, RoundingMode.HALF_UP).toDouble() })
+            TargetVsAchievement(cat, unit, daily?.toPlainString(), s, daily?.takeIf { it.signum() > 0 }?.let { ratioBp(BigDecimal(s), it) })
         }
         val lastPlace = h.createQuery(
             """
@@ -197,7 +197,7 @@ fun NationalDashboardService.routeMap(caller: NationalCaller, routeId: Long, dat
             m.date, m.till, m.asOf, m.last, head.route, userName(h, head.userId), head.territory, head.zone,
             sale_start = first?.let { MapPosition(it.lat!!, it.lng!!, it.at.toString()) },
             sr_last_position = fixes.lastOrNull(), outlets = outlets, path = path, target_vs_achievement = tva, last_sale_place = lastPlace,
-            cpr = RouteMapCpr(targetOutlets, calls, geoOk, pct(calls.toLong(), targetOutlets.toLong())),
+            cpr = RouteMapCpr(targetOutlets, calls, geoOk, pctBp(calls.toLong(), targetOutlets.toLong())),
             time_card = RouteMapTimeCard(firstSale?.toString(), lastSale?.toString(), total, if (total != null && calls > 0) total / calls else null, round2(metres)),
         )
     }

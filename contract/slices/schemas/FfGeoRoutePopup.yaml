@@ -13,7 +13,7 @@ FfGeoRoutePopup:
   - territory
   - zone
   - position_at
-  - miss_pct
+  - miss_pct_bp
   additionalProperties: false
   properties:
     date:
@@ -52,10 +52,9 @@ FfGeoRoutePopup:
       - string
       - 'null'
       format: date-time
-    miss_pct:
+    miss_pct_bp:
       type:
-      - number
+      - integer
       - 'null'
       minimum: 0
-      maximum: 100
-      description: 100 minus the route's geo-fencing % today.
+      description: 10000 minus the route geo-fencing basis points today.

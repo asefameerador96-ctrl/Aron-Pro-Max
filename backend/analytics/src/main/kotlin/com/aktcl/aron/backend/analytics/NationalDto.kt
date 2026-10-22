@@ -2,9 +2,6 @@ package com.aktcl.aron.backend.analytics
 
 import kotlinx.serialization.Serializable
 
-/** A percentage with two decimals; an alias so the money-float scan reads the figure as the ratio it is. */
-typealias Percent = Double
-
 /** Wire types of the national dashboard (contract 1.4.0, the national dashboard operations). Names are the contract's. */
 
 @Serializable
@@ -25,7 +22,7 @@ data class FfGeoPinsRequest(val filter: NationalDashboardFilter = NationalDashbo
 @Serializable
 data class NationalSalesCard(
     val category_code: String, val base_unit: String, val total_sales: Long, val daily_target: String?, val sales_so_far: Long,
-    val remaining: String?, val achievement_pct: Double?, val target_routes: Int,
+    val remaining: String?, val achievement_pct_bp: Long?, val target_routes: Int,
 )
 
 @Serializable
@@ -36,11 +33,11 @@ data class NationalSales(
 @Serializable
 data class NationalCpr(
     val date: String, val till_time: Boolean, val as_of: String, val last_updated_at: String?,
-    val target_outlets: Int, val successful_calls: Int, val cpr_pct: Double?,
+    val target_outlets: Int, val successful_calls: Int, val cpr_pct_bp: Int?,
 )
 
 @Serializable
-data class ChannelShare(val channel: String, val value: Long, val share_pct: Double?)
+data class ChannelShare(val channel: String, val value: Long, val share_pct_bp: Int?)
 
 @Serializable
 data class NationalChannelCalls(
@@ -57,13 +54,13 @@ data class NationalChannelStd(
 @Serializable
 data class NationalFinalSubmit(
     val date: String, val till_time: Boolean, val as_of: String, val last_updated_at: String?,
-    val total_zones: Int, val service_zones: Int, val final_submitted: Int, val remaining: Int, val submit_pct: Percent?,
+    val total_zones: Int, val service_zones: Int, val final_submitted: Int, val remaining: Int, val submit_pct_bp: Int?,
 )
 
 @Serializable
 data class NationalLoginSubmit(
     val date: String, val till_time: Boolean, val as_of: String, val last_updated_at: String?,
-    val target_routes: Int, val successful_login: Int, val login_pct: Double?, val submitted: Int, val submit_pct: Percent?,
+    val target_routes: Int, val successful_login: Int, val login_pct_bp: Int?, val submitted: Int, val submit_pct_bp: Int?,
 )
 
 @Serializable
@@ -78,11 +75,11 @@ data class NationalBreakdown(
 @Serializable
 data class NationalGeoFencing(
     val date: String, val till_time: Boolean, val as_of: String, val last_updated_at: String?,
-    val total_calls: Int, val geo_validated: Int, val geo_pct: Percent?,
+    val total_calls: Int, val geo_validated: Int, val geo_pct_bp: Int?,
 )
 
 @Serializable
-data class FfGeoPin(val route_id: Long, val lat: Double, val lng: Double, val color: String, val geo_pct: Percent?, val position_at: String)
+data class FfGeoPin(val route_id: Long, val lat: Double, val lng: Double, val color: String, val geo_pct_bp: Int?, val position_at: String)
 
 @Serializable
 data class ColorCounts(val red: Int, val amber: Int, val green: Int)
@@ -100,7 +97,7 @@ data class PlaceRef(val id: Long, val code: String, val name: String? = null)
 data class FfGeoRoutePopup(
     val date: String, val till_time: Boolean, val as_of: String, val last_updated_at: String?,
     val route: PlaceRef, val sr_name: String? = null, val contact: String? = null, val territory: PlaceRef, val zone: PlaceRef,
-    val position_at: String? = null, val miss_pct: Double? = null,
+    val position_at: String? = null, val miss_pct_bp: Int? = null,
 )
 
 @Serializable
@@ -116,10 +113,10 @@ data class RouteMapOutlet(
 )
 
 @Serializable
-data class TargetVsAchievement(val category_code: String, val base_unit: String, val daily_target: String?, val sales: Long, val achievement_pct: Double?)
+data class TargetVsAchievement(val category_code: String, val base_unit: String, val daily_target: String?, val sales: Long, val achievement_pct_bp: Long?)
 
 @Serializable
-data class RouteMapCpr(val target_outlets: Int, val successful_calls: Int, val geo_validated: Int, val cpr_pct: Double?)
+data class RouteMapCpr(val target_outlets: Int, val successful_calls: Int, val geo_validated: Int, val cpr_pct_bp: Int?)
 
 @Serializable
 data class RouteMapTimeCard(

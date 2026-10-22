@@ -1,7 +1,7 @@
 FfGeoPins:
   type: object
-  description: One pin per route at the SR's latest position today. Red below 70 %, amber 70 to 90 % inclusive,
-    green above 90 %. Routes with no position today are not pinned. Hidden from BRAND users (403).
+  description: One pin per route at the SR's latest position today. Red below 7000 bp, amber 7000 to 9000 bp inclusive,
+    green above 9000 bp. Routes with no position today are not pinned. Hidden from BRAND users (403).
   required:
   - date
   - till_time

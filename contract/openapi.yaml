@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Aron API
-  version: 1.4.0
+  version: 1.5.0
   summary: The one API of the Aron rebuild (SR, AMO and TSO apps, web dashboards and admin portal).
   description: |
     Binding contract for every lane of the seven-day build. Rules that apply to every operation are in
@@ -9539,7 +9539,7 @@ components:
       - daily_target
       - sales_so_far
       - remaining
-      - achievement_pct
+      - achievement_pct_bp
       - target_routes
       properties:
         category_code:
@@ -9573,12 +9573,12 @@ components:
           - $ref: '#/components/schemas/Decimal3'
           - type: 'null'
           description: max(daily_target - sales_so_far, 0); null without a target.
-        achievement_pct:
+        achievement_pct_bp:
           type:
-          - number
+          - integer
           - 'null'
           minimum: 0
-          description: total_sales / daily_target x 100 (ring); null without a target. May exceed 100.
+          description: total_sales / daily_target in basis points (ring); null without a target. May exceed 10000.
         target_routes:
           type: integer
           minimum: 0
@@ -9630,7 +9630,7 @@ components:
       - last_updated_at
       - target_outlets
       - successful_calls
-      - cpr_pct
+      - cpr_pct_bp
       additionalProperties: false
       properties:
         date:
@@ -9657,12 +9657,13 @@ components:
           type: integer
           minimum: 0
           description: Distinct outlets with at least one latest-version memo that day on those routes.
-        cpr_pct:
+        cpr_pct_bp:
           type:
-          - number
+          - integer
           - 'null'
           minimum: 0
-          maximum: 100
+          description: 'Basis points: 10000 = 100 %. Integer arithmetic, rounded half up; null when the denominator
+            is 0.'
     NationalChannelCalls:
       type: object
       description: Successful calls split by the outlet-master channel (no "Other" group). `total` is the sum of the
@@ -9701,7 +9702,7 @@ components:
             required:
             - channel
             - value
-            - share_pct
+            - share_pct_bp
             properties:
               channel:
                 type: string
@@ -9716,12 +9717,13 @@ components:
                 type: integer
                 format: int64
                 minimum: 0
-              share_pct:
+              share_pct_bp:
                 type:
-                - number
+                - integer
                 - 'null'
                 minimum: 0
-                maximum: 100
+                description: 'Basis points: 10000 = 100 %. Integer arithmetic, rounded half up; null when the denominator
+                  is 0.'
         total:
           type: integer
           minimum: 0
@@ -9766,7 +9768,7 @@ components:
             required:
             - channel
             - value
-            - share_pct
+            - share_pct_bp
             properties:
               channel:
                 type: string
@@ -9781,12 +9783,13 @@ components:
                 type: integer
                 format: int64
                 minimum: 0
-              share_pct:
+              share_pct_bp:
                 type:
-                - number
+                - integer
                 - 'null'
                 minimum: 0
-                maximum: 100
+                description: 'Basis points: 10000 = 100 %. Integer arithmetic, rounded half up; null when the denominator
+                  is 0.'
         total:
           type: integer
           format: int64
@@ -9808,7 +9811,7 @@ components:
       - service_zones
       - final_submitted
       - remaining
-      - submit_pct
+      - submit_pct_bp
       additionalProperties: false
       properties:
         date:
@@ -9840,12 +9843,13 @@ components:
           type: integer
           minimum: 0
           description: service_zones - final_submitted.
-        submit_pct:
+        submit_pct_bp:
           type:
-          - number
+          - integer
           - 'null'
           minimum: 0
-          maximum: 100
+          description: 'Basis points: 10000 = 100 %. Integer arithmetic, rounded half up; null when the denominator
+            is 0.'
     NationalLoginSubmit:
       type: object
       description: Login (check-in and download) and Submit (Bikroy Joma) status per route. Hidden from BRAND users
@@ -9857,9 +9861,9 @@ components:
       - last_updated_at
       - target_routes
       - successful_login
-      - login_pct
+      - login_pct_bp
       - submitted
-      - submit_pct
+      - submit_pct_bp
       additionalProperties: false
       properties:
         date:
@@ -9885,23 +9889,23 @@ components:
           type: integer
           minimum: 0
           description: Of those, routes whose SR checked in and downloaded.
-        login_pct:
+        login_pct_bp:
           type:
-          - number
+          - integer
           - 'null'
           minimum: 0
-          maximum: 100
+          description: 'Basis points: 10000 = 100 %. Integer arithmetic, rounded half up; null when the denominator
+            is 0.'
         submitted:
           type: integer
           minimum: 0
           description: Routes that completed Bikroy Joma (sales upload).
-        submit_pct:
+        submit_pct_bp:
           type:
-          - number
+          - integer
           - 'null'
           minimum: 0
-          maximum: 100
-          description: submitted / successful_login x 100.
+          description: submitted / successful_login in basis points.
     NationalBreakdownRequest:
       type: object
       additionalProperties: false
@@ -10019,7 +10023,7 @@ components:
       - last_updated_at
       - total_calls
       - geo_validated
-      - geo_pct
+      - geo_pct_bp
       additionalProperties: false
       properties:
         date:
@@ -10043,12 +10047,13 @@ components:
         geo_validated:
           type: integer
           minimum: 0
-        geo_pct:
+        geo_pct_bp:
           type:
-          - number
+          - integer
           - 'null'
           minimum: 0
-          maximum: 100
+          description: 'Basis points: 10000 = 100 %. Integer arithmetic, rounded half up; null when the denominator
+            is 0.'
     FfGeoPinsRequest:
       type: object
       additionalProperties: false
@@ -10073,7 +10078,7 @@ components:
       - lat
       - lng
       - color
-      - geo_pct
+      - geo_pct_bp
       - position_at
       properties:
         route_id:
@@ -10092,20 +10097,19 @@ components:
           - red
           - amber
           - green
-        geo_pct:
+        geo_pct_bp:
           type:
-          - number
+          - integer
           - 'null'
           minimum: 0
-          maximum: 100
           description: Today's geo-fencing % of the route (validated / completed calls); null before the first call,
             then green.
         position_at:
           $ref: '#/components/schemas/Timestamp'
     FfGeoPins:
       type: object
-      description: One pin per route at the SR's latest position today. Red below 70 %, amber 70 to 90 % inclusive,
-        green above 90 %. Routes with no position today are not pinned. Hidden from BRAND users (403).
+      description: One pin per route at the SR's latest position today. Red below 7000 bp, amber 7000 to 9000 bp inclusive,
+        green above 9000 bp. Routes with no position today are not pinned. Hidden from BRAND users (403).
       required:
       - date
       - till_time
@@ -10190,7 +10194,7 @@ components:
       - territory
       - zone
       - position_at
-      - miss_pct
+      - miss_pct_bp
       additionalProperties: false
       properties:
         date:
@@ -10229,13 +10233,12 @@ components:
           - string
           - 'null'
           format: date-time
-        miss_pct:
+        miss_pct_bp:
           type:
-          - number
+          - integer
           - 'null'
           minimum: 0
-          maximum: 100
-          description: 100 minus the route's geo-fencing % today.
+          description: 10000 minus the route geo-fencing basis points today.
     CategoryQty:
       type: object
       additionalProperties: false
@@ -10344,7 +10347,7 @@ components:
       - base_unit
       - daily_target
       - sales
-      - achievement_pct
+      - achievement_pct_bp
       properties:
         category_code:
           type: string
@@ -10363,9 +10366,9 @@ components:
           type: integer
           format: int64
           minimum: 0
-        achievement_pct:
+        achievement_pct_bp:
           type:
-          - number
+          - integer
           - 'null'
           minimum: 0
     RouteMap:
@@ -10453,7 +10456,7 @@ components:
           - target_outlets
           - successful_calls
           - geo_validated
-          - cpr_pct
+          - cpr_pct_bp
           properties:
             target_outlets:
               type: integer
@@ -10464,12 +10467,13 @@ components:
             geo_validated:
               type: integer
               minimum: 0
-            cpr_pct:
+            cpr_pct_bp:
               type:
-              - number
+              - integer
               - 'null'
               minimum: 0
-              maximum: 100
+              description: 'Basis points: 10000 = 100 %. Integer arithmetic, rounded half up; null when the denominator
+                is 0.'
         time_card:
           type: object
           additionalProperties: false

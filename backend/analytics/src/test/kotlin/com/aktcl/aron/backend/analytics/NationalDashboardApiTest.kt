@@ -54,12 +54,12 @@ class NationalDashboardApiTest : ReportFixture() {
     fun everyCardAnswersOverHttpWithTheContractsRequiredFields() = app {
         val cards = mapOf(
             "/dashboards/national/sales" to listOf("working_days", "cards"),
-            "/dashboards/national/cpr" to listOf("target_outlets", "successful_calls", "cpr_pct"),
+            "/dashboards/national/cpr" to listOf("target_outlets", "successful_calls", "cpr_pct_bp"),
             "/dashboards/national/channel-calls" to listOf("channels", "total", "unclassified"),
-            "/dashboards/national/final-submit" to listOf("total_zones", "service_zones", "final_submitted", "remaining", "submit_pct"),
-            "/dashboards/national/login-submit" to listOf("target_routes", "successful_login", "login_pct", "submitted", "submit_pct"),
+            "/dashboards/national/final-submit" to listOf("total_zones", "service_zones", "final_submitted", "remaining", "submit_pct_bp"),
+            "/dashboards/national/login-submit" to listOf("target_routes", "successful_login", "login_pct_bp", "submitted", "submit_pct_bp"),
             "/dashboards/national/channel-std" to listOf("channels", "total", "unit"),
-            "/dashboards/national/geo-fencing" to listOf("total_calls", "geo_validated", "geo_pct"),
+            "/dashboards/national/geo-fencing" to listOf("total_calls", "geo_validated", "geo_pct_bp"),
             "/dashboards/national/ff-geo/pins" to listOf("pins", "counts", "routes_without_position"),
         )
         for ((path, fields) in cards) {

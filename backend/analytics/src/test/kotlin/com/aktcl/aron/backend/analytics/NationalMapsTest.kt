@@ -59,8 +59,8 @@ class NationalMapsTest {
         assertEquals(listOf(r1, r2), p.pins.map { it.route_id })
         val a = p.pins.first { it.route_id == r1 }; val b = p.pins.first { it.route_id == r2 }
         assertEquals(23.7937, a.lat); assertEquals(90.4043, a.lng)                      // the 06:30Z fix is the latest of R1
-        assertEquals("red", a.color); assertEquals(50.0, a.geo_pct)                      // 1 of 2 completed calls inside the radius
-        assertEquals("green", b.color); assertEquals(100.0, b.geo_pct); assertEquals(23.79375, b.lat)   // R2's latest is its 05:00Z edit position
+        assertEquals("red", a.color); assertEquals(5000, a.geo_pct_bp)                      // 1 of 2 completed calls inside the radius
+        assertEquals("green", b.color); assertEquals(10000, b.geo_pct_bp); assertEquals(23.79375, b.lat)   // R2's latest is its 05:00Z edit position
         assertEquals(ColorCounts(1, 0, 1), p.counts); assertEquals(1, p.routes_without_position)         // R3 sent no position yet
         val red = svc.ffGeoPins(national(), FfGeoPinsRequest(all, listOf("red")))
         assertEquals(listOf(r1), red.pins.map { it.route_id }); assertEquals(ColorCounts(1, 0, 1), red.counts)   // counts are before the colour filter
@@ -72,7 +72,7 @@ class NationalMapsTest {
     fun routePopupGivesTheHeaderTheMissPercentAndNoPhoneNumber() {
         val p = svc.ffGeoRoutePopup(national(), r1, "2026-10-04")
         assertEquals("R1", p.route.code); assertEquals("SR One", p.sr_name); assertNull(p.contact)
-        assertEquals("T1", p.territory.code); assertEquals("Z1", p.zone.code); assertEquals(50.0, p.miss_pct)
+        assertEquals("T1", p.territory.code); assertEquals("Z1", p.zone.code); assertEquals(5000, p.miss_pct_bp)
         assertEquals("2026-10-04T06:30:00Z", p.position_at)
         assertEquals(ProblemCode.ERR_NOT_FOUND, assertFailsWith<ApiProblem> { svc.ffGeoRoutePopup(zones(z2), r1, "2026-10-04") }.code)   // outside the reach: no existence leak
     }
@@ -86,9 +86,9 @@ class NationalMapsTest {
         assertEquals(23.79251, m.sale_start!!.lat)                                       // where the first call of the day was made
         assertEquals(23.7937, m.sr_last_position!!.lat); assertEquals(3, m.path.size)
         assertEquals(3470.55, m.time_card.distance_covered_m)                            // metres along the three fixes, independent haversine
-        assertEquals(RouteMapCpr(3, 2, 1, 66.67), m.cpr)
+        assertEquals(RouteMapCpr(3, 2, 1, 6667), m.cpr)
         val cig = m.target_vs_achievement.first { it.category_code == "cigarette" }
-        assertEquals("100.000", cig.daily_target); assertEquals(45, cig.sales); assertEquals(45.0, cig.achievement_pct)   // 2 500 / 25 working days
+        assertEquals("100.000", cig.daily_target); assertEquals(45, cig.sales); assertEquals(4500L, cig.achievement_pct_bp)   // 2 500 / 25 working days
         assertEquals("2026-10-04T04:10:00Z", m.time_card.first_sale_time); assertEquals("2026-10-04T08:00:00Z", m.time_card.last_sale_time)
         assertEquals(13_800L, m.time_card.total_sale_seconds); assertEquals(6_900L, m.time_card.average_sale_seconds)   // 3 h 50 min over 2 successful calls
         assertEquals("CZ1", m.last_sale_place)
