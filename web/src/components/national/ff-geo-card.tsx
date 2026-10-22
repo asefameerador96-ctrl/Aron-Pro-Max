@@ -10,7 +10,8 @@ import { clusterPins } from "@/lib/maps/cluster";
 import { clock, pctBp } from "@/lib/national/fmt";
 import { clusterIcon, PIN_FILL, pinIcon } from "@/lib/national/marker-icons";
 import type { PinColor } from "@/lib/national/query";
-import type { FfGeoSlice, FfPin, FfPopup } from "@/lib/national/types";
+import { unpackPins, type PackedFfGeo } from "@/lib/national/ff-pack";
+import type { FfPin, FfPopup } from "@/lib/national/types";
 import { infoNode, useGoogleMap, type GmInfo, type GmMarker, type Phase } from "./gmap";
 import { MultiSelect } from "./multi-select";
 
@@ -34,8 +35,8 @@ function FfGeoInner({ search, date, mapsEnabled, onRetry }: { search: string; da
     const ctl = new AbortController();
     fetch(`/api/bff/national/ff-geo?${search}`, { signal: ctl.signal, credentials: "same-origin" })
       .then(async (r) => {
-        const body = (await r.json().catch(() => null)) as (FfGeoSlice & { code?: string }) | null;
-        if (r.ok && body && Array.isArray(body.pins)) setLoad({ s: "ok", pins: body.pins, date: body.business_date });
+        const body = (await r.json().catch(() => null)) as (PackedFfGeo & { code?: string }) | null;
+        if (r.ok && body && Array.isArray(body.pins)) setLoad({ s: "ok", pins: unpackPins(body).pins, date: body.business_date });
         else setLoad({ s: "error", code: body?.code ?? "ERR_INTERNAL" });
       })
       .catch((e: unknown) => {
@@ -123,7 +124,6 @@ function FfGeoInner({ search, date, mapsEnabled, onRetry }: { search: string; da
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h2 id="nat-ffgeo-h" className="text-title text-accent">{t("nat.ff")}</h2>
         <div className="flex items-center gap-2">
-          <span className="text-body-strong text-accent">{t("nat.ff.filter_color")}:</span>
           <div className="w-52">
             <MultiSelect testId="ff-colors" label={t("nat.ff.filter_color")} options={colorOptions} value={colors} onChange={setColors} allText={t("nat.ff.all_colors")} someText={(n) => t("nat.f.some_selected", { n })} clearLabel={t("nat.f.clear")} searchLabel={t("nat.f.search")} noneText={t("nat.f.none_found")} />
           </div>
