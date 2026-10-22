@@ -312,4 +312,46 @@ class NationalDashboardTest {
         assertEquals("2026-10-04T04:00:00Z", last("memo", "variant"))
         assertEquals("2026-10-04T01:00:00Z", last("std", "brand"), "STD figures come from the SKU table")
     }
+
+    private fun checkIn(uuid: String, user: String, route: String?, at: String, voided: Boolean = false) = sql(
+        "INSERT INTO app.attendance_event (client_uuid, family_uuid, business_date, user_id, route_id, captured_at, config_version, kind, voided_at) " +
+            "SELECT '$uuid', '$uuid', DATE '2026-10-04', u.id, ${route?.let { "(SELECT id FROM app.route WHERE code = '$it')" } ?: "NULL"}, TIMESTAMPTZ '$at', 1, 'check_in', " +
+            "${if (voided) "now()" else "NULL"} FROM app.app_user u WHERE u.username = '$user'")
+
+    private fun checkedInAt(route: String): Instant? = fresh.db.jdbi.withHandle<Instant?, Exception> {
+        it.createQuery("SELECT a.checked_in_at FROM dw.agg_daily_route a JOIN app.route r ON r.id = a.route_id WHERE r.code = '$route' AND a.business_date = '2026-10-04'")
+            .map { rs, _ -> rs.getTimestamp(1)?.toInstant() }.findOne().orElse(null)
+    }
+
+    @Test
+    fun aSuccessfulLoginNeedsTheCheckInAsWellAsTheDownload() {
+        // R1 (event names the route) and R2 (event names none: the user's assignment) checked in and downloaded; R3 did neither.
+        assertNotNull(checkedInAt("R1")); assertNotNull(checkedInAt("R2")); assertNull(checkedInAt("R3"))
+        assertEquals(2, svc.loginSubmit(national(), all).successful_login)
+        // R2 downloads but its only check-in is voided (a data void tombstone): it no longer counts.
+        sql("ALTER TABLE app.attendance_event DISABLE TRIGGER attendance_event_immutable")
+        sql("UPDATE app.attendance_event SET voided_at = now() WHERE client_uuid = '00000000-0000-4000-8000-0000000000a2'")
+        sql("ALTER TABLE app.attendance_event ENABLE TRIGGER attendance_event_immutable")
+        sql("SELECT app.mark_dirty('route_day_agg', (SELECT id FROM app.route WHERE code = 'R2'), DATE '2026-10-04', 'test')")
+        AggregationWorker(fresh.db, AronClock { now }).runUntilIdle()
+        assertNull(checkedInAt("R2"))
+        val l = svc.loginSubmit(national(), all)
+        assertEquals(3, l.target_routes); assertEquals(1, l.successful_login); assertEquals(3333, l.login_pct_bp)
+        assertEquals(1, l.submitted); assertEquals(10000, l.submit_pct_bp)                 // R1 is the one that logged in and submitted
+        // A voided check-in (a data void tombstone) is ignored even when it is earlier than the live one (one live check-in per user and day).
+        checkIn("00000000-0000-4000-8000-0000000000a4", "sr001", "R1", "2026-10-04 01:10Z", voided = true)
+        sql("SELECT app.mark_dirty('route_day_agg', (SELECT id FROM app.route WHERE code = 'R1'), DATE '2026-10-04', 'test')")
+        AggregationWorker(fresh.db, AronClock { now }).runUntilIdle()
+        assertEquals(Instant.parse("2026-10-04T01:40:00Z"), checkedInAt("R1"))
+    }
+
+    @Test
+    fun aCheckInThatArrivesAfterTheLastRouteEventIsPickedUpByTheStaleScan() {
+        checkIn("00000000-0000-4000-8000-0000000000a5", "sr003", null, "2026-10-04 05:30Z")      // R3's SR checks in late, no route on the event
+        assertNull(checkedInAt("R3"))
+        val since = Instant.parse("2026-10-04T05:00:00Z")
+        fresh.db.jdbi.useHandle<Exception> { DashboardSummaries.dirtyStale(it, since, LocalDate.parse("2026-10-04")) }
+        AggregationWorker(fresh.db, AronClock { now }).runUntilIdle()
+        assertNotNull(checkedInAt("R3"))
+    }
 }

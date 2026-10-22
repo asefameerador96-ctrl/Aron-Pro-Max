@@ -301,8 +301,8 @@ class NationalDashboardService(
             ensureReady(h)
             val (target, login, submitted) = sql.bind(h.createQuery(
                 """
-                SELECT count(*), count(*) FILTER (WHERE a.logged_in_at IS NOT NULL AND a.downloaded_at IS NOT NULL),
-                       count(*) FILTER (WHERE a.logged_in_at IS NOT NULL AND a.downloaded_at IS NOT NULL AND a.sales_submitted_at IS NOT NULL)
+                SELECT count(*), count(*) FILTER (WHERE a.logged_in_at IS NOT NULL AND a.downloaded_at IS NOT NULL AND a.checked_in_at IS NOT NULL),
+                       count(*) FILTER (WHERE a.logged_in_at IS NOT NULL AND a.downloaded_at IS NOT NULL AND a.checked_in_at IS NOT NULL AND a.sales_submitted_at IS NOT NULL)
                   FROM dw.agg_daily_route a JOIN dw.dim_geo g ON g.route_id = a.route_id
                  WHERE a.business_date = :d AND a.planned AND NOT a.exception_approved AND g.route_class = 'normal' AND g.route_kind = 'sr' ${sql.geo}
                 """,
