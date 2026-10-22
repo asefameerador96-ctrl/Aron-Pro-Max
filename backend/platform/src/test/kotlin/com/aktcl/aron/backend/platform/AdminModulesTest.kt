@@ -88,8 +88,11 @@ class AdminModulesTest {
     @Test
     fun unmappedRoutesAreRefusedForAdmin() {
         val all = p(Role.ADMIN, AdminModules.ALL.associateWith { "w" })
-        listOf("GET /v1/sync/bundle", "POST /v1/sync/batch", "POST /v1/devices/enrol", "GET /v1/admin/brand-new-thing", "GET /v1/secret")
+        listOf("GET /v1/admin/brand-new-thing", "GET /v1/secret", "POST /v1/admin")
             .forEach { s -> val (m, path) = split(s); assertEquals(ProblemCode.ERR_FORBIDDEN, outcome(all, m, path), s) }
+        // Phone-side routes are left to their handlers (no module), even with no grant at all.
+        listOf("GET /v1/sync/totals", "POST /v1/sync/batch", "POST /v1/devices/enrol")
+            .forEach { s -> val (m, path) = split(s); assertEquals(null, outcome(p(Role.ADMIN, mapOf()), m, path), s) }
     }
 
     @Test

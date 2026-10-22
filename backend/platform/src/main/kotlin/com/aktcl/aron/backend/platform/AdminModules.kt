@@ -122,9 +122,9 @@ object AdminModules {
     )
 
     /**
-     * Guarded routes no ADMIN web token serves (phone sync and device paths, the phone-side auth steps): left unmapped
-     * on purpose, so an ADMIN call is refused here before the handler refuses it too. RouteInventoryTest checks that
-     * every guarded route is in [ROUTES], [OWN] or here.
+     * Guarded phone-side routes (sync and device paths, the phone-side auth steps) that belong to no module: the module
+     * gate leaves them to their handlers' role checks, as before. RouteInventoryTest checks that every guarded route is in
+     * [ROUTES], [OWN] or here; a route in none of them is refused for ADMIN.
      */
     val NOT_ADMIN: List<PortalLevels.Pattern> = listOf(
         p("/v1/sync/**"), p("/v1/devices/**"), p("/v1/auth/**"), p("/v1/client-errors"),
@@ -163,7 +163,8 @@ object AdminModules {
         val mods = p.modules ?: throw ApiProblem(ProblemCode.ERR_SCOPE_CHANGED, "access changed; refresh the session")
         val m = if (method == "HEAD") "GET" else method.uppercase()
         val path = PortalLevels.normalise(rawPath) ?: throw denied()
-        val module = moduleOf(m, path) ?: throw denied()
+        // Phone-side routes are no module's business: their handlers judge an ADMIN as before (contract-declared answers).
+        val module = moduleOf(m, path) ?: if (NOT_ADMIN.any { it.matches(m, path) }) return else throw denied()
         if (module == "own") return
         val access = mods[module] ?: throw denied(module)
         if (needsWrite(m, path) && access != "w") throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "read-only access to module $module")
