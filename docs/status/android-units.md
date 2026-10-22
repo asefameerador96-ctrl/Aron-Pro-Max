@@ -12,7 +12,7 @@
 ## Not done
 - AMO route-category report and TSO dashboards: need entry quantities from the server (docs/requests/android-units-server-entry-quantities.md).
 - QC defect counts stay in base units (sticks/pieces) with their label: a defect count is per stick; owner to confirm.
-- Home Issue/Current-stock tiles still add packets, boxes and dozens into one number (reference-parity quirk, UI-SR-15); summary "return" and Home KPI floor non-whole-packet stock (the Stock row shows `+n` sticks); discount rows (deferred programmes) print base quantities; mixed-unit category totals print the base number with no word.
+- Discount rows (deferred programme) stay base. Round 2 (lead, F-UNITS-009, Opus re-check pending): Home Issue/Stock tiles per category in the entry unit; Summary, Home KPI and Stock keep base remainders; category totals show the entry count with the base figure in brackets on Review, Summary and paper.
 
 ## Opus checker (9d3fee8)
 Printed total = stored total = independent oracle for all 42 seeded SKUs in both bundles (quantities 1, 7, 999; both digit styles; StockLoad movements meet the V0007 CHECK). Fixed from its 8 findings: (1) oversold stock crashed Sale (`fromBase` now truncates, negatives stay negative); (2) edit lines that are not whole packets show 0, never a stick figure under the packet label; (3) packet price shown with 3 decimals when not a whole paisa; (4) Stock row shows `+n` remainder; (5) `QtyTooLarge` review problem above 10,000,000 base; (6) a pack of 1 counts in the base unit; (7) print columns 40/30/30 and 30/14/28/28, goldens re-recorded. Not fixed: see the first line above.
