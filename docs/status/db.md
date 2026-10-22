@@ -43,6 +43,11 @@ Consumers' contract and per-lane deltas: `docs/requests/db-wave4-tables.md`; mdm
 5. Infra: the dev smoke outlet sits on MIR-SR-D, which the dev seed closes (`db-infra-smoke-gulshan.md`); promote the seed
    with that change. Checker follow-up before the final account: retention of `route_last_position` (unpartitioned,
    personal) and `fact_visit.fix_lat/lng` (event_fact horizon > fix class).
+6a. **backend-authz (12:28 UTC): lane/backend-authz 8ed44597 (lane CI run 1328 green) creates no TOP users and logs
+   AMO/SR in only from phones: ship `db/held/authz_retire_top.sql` now** as the next pair (V0105 + V0106 validate, or
+   after the house-index migration), and mirror their BRAND menu fix in a new migration: the BRAND default of
+   `cfg.web.menu_by_role` also gets `{"menu":"credentials","page":"change_password","actions":["write_own"]}` (V0087 is
+   pushed: fix forward). Message backend-authz the INT sha once these are on INT (they then delete their pending fixture).
 6. Replies owed: candidate sha to backend-authz (session_019B2UpUbUmdw1wR25U3zPMj), backend-reports
    (session_01KfUFry6iMtXCCgfCCjZUCi), mdm (session_01DVRkAnyU5vkAm8vSEydVoa), backend-admin's next session; route.kind stays
    sr/amo, the API rule becomes `kind = 'sr' AND route_class IN ('normal','manual')`.
