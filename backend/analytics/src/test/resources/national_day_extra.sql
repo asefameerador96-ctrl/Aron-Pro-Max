@@ -9,12 +9,11 @@ INSERT INTO app.house (code, name, territory_id) SELECT 'H1D', 'house a', id FRO
 UPDATE app.zone SET house_id = (SELECT id FROM app.house WHERE code = 'H1') WHERE code = 'Z1';
 UPDATE app.zone SET house_id = (SELECT id FROM app.house WHERE code = 'H1D') WHERE code = 'Z2';
 INSERT INTO app.calendar_holiday (date, scope_type, scope_id, kind, selling_day, name_en) VALUES ('2026-10-20', 'global', 0, 'holiday', false, 'Test holiday');
-INSERT INTO app.target_set (month) VALUES ('2026-10-01');
-INSERT INTO app.target_revision (target_set_id, revision_no, batch_uuid) SELECT id, 1, gen_random_uuid() FROM app.target_set;
-INSERT INTO app.target (target_set_id, revision_id, month, scope_type, scope_id, product_level, product_id, std_target, std_unit, memo_target)
-  SELECT ts.id, tr.id, DATE '2026-10-01', 'route', r.id, 'sku', s.id, d.q, 'stick', 0
-    FROM (VALUES ('R1', 'SKU1', 2500), ('R3', 'SKU1', 1250)) d(rc, sc, q)
-    JOIN app.route r ON r.code = d.rc JOIN app.sku s ON s.code = d.sc, app.target_set ts, app.target_revision tr;
+INSERT INTO app.route_target_batch (batch_uuid, content_sha256, row_count, committed_by)
+  SELECT '00000000-0000-4000-8000-0000000000c1', decode(repeat('ab', 32), 'hex'), 2, u.id FROM app.app_user u WHERE u.username = 'sr001';
+INSERT INTO app.route_monthly_target (route_id, sku_id, month, qty_base, batch_uuid)
+  SELECT r.id, s.id, DATE '2026-10-01', d.q, '00000000-0000-4000-8000-0000000000c1'
+    FROM (VALUES ('R1', 'SKU1', 2500), ('R3', 'SKU1', 1250)) d(rc, sc, q) JOIN app.route r ON r.code = d.rc JOIN app.sku s ON s.code = d.sc;
 UPDATE app.route_day SET bundle_count = 1, target_frozen_at = TIMESTAMPTZ '2026-10-04 01:30Z'
   WHERE business_date = DATE '2026-10-04' AND route_id IN (SELECT id FROM app.route WHERE code IN ('R1', 'R2'));
 INSERT INTO app.final_submit (client_uuid, zone_id, business_date, submitted_by, submitted_at, via)

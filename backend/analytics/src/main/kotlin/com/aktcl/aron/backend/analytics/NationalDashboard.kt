@@ -157,9 +157,9 @@ class NationalDashboardService(
             val wd = WorkingCalendar.workingDays(h, month)
             val targets = sql.bind(h.createQuery(
                 """
-                SELECT p.category_code, sum(t.std_target) AS total, count(DISTINCT t.scope_id) AS routes
-                  FROM app.target t JOIN app.target_set ts ON ts.id = t.target_set_id AND ts.status = 'active' JOIN dw.dim_geo g ON g.route_id = t.scope_id JOIN dw.dim_product p ON p.sku_id = t.product_id
-                 WHERE t.month = :m AND t.scope_type = 'route' AND t.product_level = 'sku' AND t.superseded_by_revision_id IS NULL ${sql.geo} ${sql.product}
+                SELECT p.category_code, sum(t.qty_base) AS total, count(DISTINCT t.route_id) AS routes
+                  FROM app.route_monthly_target t JOIN dw.dim_geo g ON g.route_id = t.route_id JOIN dw.dim_product p ON p.sku_id = t.sku_id
+                 WHERE t.month = :m ${sql.geo} ${sql.product}
                  GROUP BY 1
                 """,
             ).bind("m", month.atDay(1))).map { rs, _ -> rs.getString(1) to (rs.getBigDecimal(2) to rs.getInt(3)) }.list().toMap()

@@ -9,14 +9,17 @@ Branch `lane/backend-reports`; contract 1.4.0 first (a18fc5fb, fixed in b2f2976a
 - **Eight card queries + filter options + freshness** (`NationalDashboard.kt`), **pins, popup, route map, sale position** (`NationalMaps.kt`), **HTTP routes** (`NationalDashboardApi.kt`, wired in `Wiring.kt`), scope from the token on every query, BRAND filter through `BrandScopeResolver` (default none until authz lands its `brands` claim).
 - Tests: `NationalDashboardTest` (brief arithmetic: channel STD = cigarette card, channel calls = CPR calls, brand memo counts not additive, daily target 2 500 + 1 250 over 25 working days, midnight job), `NationalMapsTest` (81.83 m, 3 470.55 m path, pin boundaries), `NationalDashboardApiTest` (HTTP, scope, roles, brand user). `ContractConformanceTest`, `RouteInventoryTest`, `shared:contract:jvmTest`, redocly lint green.
 
-### BLOCKED on db (request filed): `docs/requests/db-backend-reports-dashboard-summaries.md`
-Needs `dw.agg_daily_outlet_sku`, `dw.agg_daily_route_variant`, `dw.route_last_position`, `dw.summary_freshness`, the listed columns on `dw.dim_geo`, `dw.dim_product`, `dw.agg_daily_route`, `dw.agg_daily_zone`, `dw.fact_visit`, and route class (normal/manual/dummy). Until the migration is on INT the endpoints answer 503; tests use `dashboard_summaries_test.sql` (analytics) and `dashboard_summaries_shim.sql` (backend/app, loaded by ApiWorld). **Delete both the day the real migration lands.**
+### db delivered (V0093-V0101 on INT): test shims deleted
+The summary tables, route class, house dedupe, product codes and `app.route_monthly_target` are the real migrations now; the two test shims are gone and every test runs on them. Targets are read from `app.route_monthly_target` (not `app.target`).
+
+### Entry units (android-units request)
+`CategoryVolume` (TSO dashboard `by_category`) carries `entry_unit` (pack|dozen) and `qty_entered` (Decimal3, summed per SKU over `base_per_pack`); `route-std` rows (AMO report) carry `entry_unit` and `base_per_pack` per SKU. Default entry units only (pack, dozen); the `cfg.sale.qty_entry_unit` override is not read server-side. Tell android-units: shape pushed.
 
 ### Decisions (to log in DECISIONS.md by the lead)
 - D-DASH-03 completed call = sr_call visit with outcome not null and not abandoned/not_reached; geo-validated = server verdict (else phone) in_range; pin geo % = validated/completed of that route today, no call yet = green.
 - D-DASH-04 contact (SR and outlet phone) is returned null: the phone numbers are PII and only the step-up read path may show them; wire it with PiiReadBudget when the web asks.
 - D-DASH-05 route map path and sale position are point reads of one route-day / one outlet-day (`dw.fact_geo_fix`, `dw.fact_visit`, and `app.memo` for new/repeat/edited); the cards read summaries only.
-- D-DASH-06 targets are read from `app.target` (route scope, sku level) until db delivers `route_monthly_target`; working days come from Fridays + global `app.calendar_holiday` (zone-scoped holidays ignored for the national figure).
+- D-DASH-06 targets are read from `app.route_monthly_target`; working days come from Fridays + global `app.calendar_holiday` (zone-scoped holidays ignored for the national figure).
 - D-DASH-07 channel calls and CPR count normal planned routes only; sales, channel STD and geo fencing count all routes.
 - Contract: `SalePosition.radius_m` is 10..5000 (the stored radius), not the enum 20/50/100.
 

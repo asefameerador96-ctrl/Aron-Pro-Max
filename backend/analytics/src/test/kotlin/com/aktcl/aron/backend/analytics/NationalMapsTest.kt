@@ -31,7 +31,7 @@ class NationalMapsTest {
     fun setUp() {
         fresh = FreshDb.create()
         fresh.dataSource.connection.use { c ->
-            for (f in listOf("seed_day.sql", "dashboard_summaries_test.sql", "national_day_extra.sql", "national_map_extra.sql")) c.createStatement().use { it.execute(resource(f)) }
+            for (f in listOf("seed_day.sql", "national_day_extra.sql", "national_map_extra.sql")) c.createStatement().use { it.execute(resource(f)) }
         }
         fresh.db.jdbi.useHandle<Exception> { Aggregator.refreshDimensions(it) }
         AggregationWorker(fresh.db, AronClock { now }).also { it.requestRebuild(day); it.runUntilIdle() }

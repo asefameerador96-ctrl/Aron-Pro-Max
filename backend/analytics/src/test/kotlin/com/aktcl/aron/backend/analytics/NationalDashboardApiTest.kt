@@ -33,7 +33,7 @@ import kotlin.test.assertTrue
  */
 class NationalDashboardApiTest : ReportFixture() {
     private fun res(n: String) = javaClass.classLoader.getResourceAsStream(n)!!.bufferedReader().readText()
-    override val extraSql: String by lazy { listOf("dashboard_summaries_test.sql", "national_day_extra.sql", "national_map_extra.sql").joinToString("\n") { res(it) } }
+    override val extraSql: String by lazy { listOf("national_day_extra.sql", "national_map_extra.sql").joinToString("\n") { res(it) } }
 
     override fun mount(r: Route, clock: AronClock, reach: ReachResolver, guard: AuthGuardDeps) {
         val brandOne = fresh.db.jdbi.withHandle<Long, Exception> { it.createQuery("SELECT id FROM app.product_node WHERE level = 'brand' AND code = 'B1'").mapTo(Long::class.java).one() }

@@ -67,8 +67,6 @@ class ApiWorld(
         val seed = repoRoot.resolve("db/seed").listFiles { f -> f.name.matches(Regex("0\\d_.*\\.sql")) }!!.sortedBy { it.name }
         fresh.dataSource.connection.use { c ->
             seed.forEach { f -> c.createStatement().use { it.execute(f.readText()) } }
-            // Stand-in for the db lane's wave-4 summary tables until their migration is on INT (docs/requests/db-backend-reports-dashboard-summaries.md).
-            javaClass.classLoader.getResourceAsStream("dashboard_summaries_shim.sql")?.let { s -> c.createStatement().use { it.execute(s.bufferedReader().readText()) } }
             // PENDING (db lane): tables the wave-4 admin routes need before db's migrations land; applied only while absent. Delete the
             // files and these lines in the push that picks the migrations up (docs/requests/backend-admin-route-target-tables.md, db-backend-authz-roles.md).
             for ((table, file) in listOf("app.route_monthly_target" to "route_monthly_target.sql", "app.user_module_grant" to "user-access.sql")) {
