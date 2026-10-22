@@ -83,12 +83,12 @@ private fun readRow(i: Int, el: kotlinx.serialization.json.JsonElement): ImportR
     return ImportRow(i, code, name, owner, zone, cluster, channel, kind, route, lat, lng, phone, address, shape)
 }
 
-private class Lookups(
+private class ImportLookups(
     val zones: Map<String, Long>, val clusters: Map<Pair<Long, String>, Long>, val routes: Map<String, Pair<Long, Long>>,
     val outlets: Map<String, Map<String, Any?>>,
 )
 
-private fun lookups(h: Handle, ctx: AdminCtx, rows: List<ImportRow>): Lookups {
+private fun importLookups(h: Handle, ctx: AdminCtx, rows: List<ImportRow>): ImportLookups {
     val zoneCodes = rows.mapNotNull { it.zone }.distinct()
     val zones = HashMap<String, Long>()
     if (zoneCodes.isNotEmpty()) h.createQuery("SELECT id, code FROM app.zone WHERE code IN (<c>) AND status = 'active'").bindList("c", zoneCodes)
@@ -103,12 +103,12 @@ private fun lookups(h: Handle, ctx: AdminCtx, rows: List<ImportRow>): Lookups {
     val codes = rows.mapNotNull { it.code }.distinct()
     val outlets = HashMap<String, Map<String, Any?>>()
     if (codes.isNotEmpty()) h.createQuery("SELECT id, code, zone_id, status FROM app.outlet WHERE code IN (<c>)").bindList("c", codes).mapToMap().list().forEach { outlets[it["code"] as String] = it }
-    return Lookups(zones, clusters, routes, outlets)
+    return ImportLookups(zones, clusters, routes, outlets)
 }
 
-private class Checked(val errors: List<ImportError>, val creates: Int, val updates: Int, val byChannel: Map<String, Int>)
+private class ImportChecked(val errors: List<ImportError>, val creates: Int, val updates: Int, val byChannel: Map<String, Int>)
 
-private fun check(rows: List<ImportRow>, l: Lookups): Checked {
+private fun checkImport(rows: List<ImportRow>, l: ImportLookups): ImportChecked {
     val errors = ArrayList<ImportError>()
     var creates = 0; var updates = 0
     val byChannel = LinkedHashMap<String, Int>().also { m -> OUTLET_CHANNELS.forEach { m[it] = 0 } }
@@ -135,10 +135,10 @@ private fun check(rows: List<ImportRow>, l: Lookups): Checked {
         }
         if (errors.size == before) { if (existing) updates++ else creates++; byChannel.merge(r.channel, 1, Int::plus) }
     }
-    return Checked(errors, creates, updates, byChannel)
+    return ImportChecked(errors, creates, updates, byChannel)
 }
 
-private fun fingerprint(rows: List<ImportRow>): String {
+private fun importFingerprint(rows: List<ImportRow>): String {
     val md = MessageDigest.getInstance("SHA-256")
     // Order-independent: the same rows in another order are the same batch.
     rows.map { listOf(it.code, it.name, it.owner, it.zone, it.cluster, it.channel, it.kind, it.route, it.lat, it.lng, it.phone, it.address).joinToString("\u001f") { v -> v?.toString() ?: "\u0000" } }
@@ -146,7 +146,7 @@ private fun fingerprint(rows: List<ImportRow>): String {
     return md.digest().joinToString("") { "%02x".format(it) }
 }
 
-private fun errorsJson(errors: List<ImportError>) = buildJsonArray {
+private fun importErrorsJson(errors: List<ImportError>) = buildJsonArray {
     errors.take(MAX_IMPORT_ERRORS).forEach { e -> add(buildJsonObject { put("row", e.row); put("column", e.column); put("code", e.code) }) }
 }
 
@@ -174,18 +174,18 @@ internal suspend fun importOutlets(call: ApplicationCall, d: AdminMasterDeps) {
     val ctx = d.ctx(call, p)
     if (dry) {
         val out = d.db.jdbi.withHandle<JsonObject, Exception> { h ->
-            val c = check(rows, lookups(h, ctx, rows))
+            val c = checkImport(rows, importLookups(h, ctx, rows))
             buildJsonObject {
                 put("batch_uuid", batch.toString()); put("rows", rows.size); put("creates", c.creates); put("updates", c.updates)
                 put("by_channel", buildJsonObject { c.byChannel.forEach { (k, v) -> put(k, v) } })
-                put("errors", errorsJson(c.errors)); put("errors_truncated", c.errors.size > MAX_IMPORT_ERRORS)
+                put("errors", importErrorsJson(c.errors)); put("errors_truncated", c.errors.size > MAX_IMPORT_ERRORS)
             }
         }
         call.admRespond(HttpStatusCode.OK, out)
         return
     }
     val reason = f.reason(true)!!
-    val fp = fingerprint(rows)
+    val fp = importFingerprint(rows)
     val result = admWrite {
         d.db.jdbi.inTransaction<JsonObject, Exception> { h ->
             h.execute("SELECT pg_advisory_xact_lock(hashtextextended(?, 0))", "outlet_import:$batch")
@@ -198,8 +198,8 @@ internal suspend fun importOutlets(call: ApplicationCall, d: AdminMasterDeps) {
             // Same lock order as other outlet writers: lock the existing outlets of the batch first.
             val codes = rows.mapNotNull { it.code }.distinct()
             if (codes.isNotEmpty()) h.createQuery("SELECT id FROM app.outlet WHERE code IN (<c>) ORDER BY id FOR UPDATE").bindList("c", codes).mapTo(Long::class.java).list()
-            val l = lookups(h, ctx, rows)
-            val c = check(rows, l)
+            val l = importLookups(h, ctx, rows)
+            val c = checkImport(rows, l)
             if (c.errors.isNotEmpty()) throw ApiProblem(ProblemCode.ERR_VALIDATION, "${c.errors.size} row errors", errors = c.errors.take(MAX_IMPORT_ERRORS).map { FieldError("body.rows/${it.row - 1}/${it.column}", it.code) })
             for (r in rows) applyRow(h, ctx, l, r, batch.toString(), reason)
             ctx.audit(h, "outlet_import", batch.toString(), "import", null, buildJsonObject {
@@ -212,7 +212,7 @@ internal suspend fun importOutlets(call: ApplicationCall, d: AdminMasterDeps) {
     call.admRespond(HttpStatusCode.OK, result)
 }
 
-private fun applyRow(h: Handle, ctx: AdminCtx, l: Lookups, r: ImportRow, batch: String, reason: String) {
+private fun applyRow(h: Handle, ctx: AdminCtx, l: ImportLookups, r: ImportRow, batch: String, reason: String) {
     val zone = l.zones.getValue(r.zone!!)
     val cluster = l.clusters.getValue(zone to r.cluster!!)
     val route = r.route?.let { l.routes.getValue(it).first }
@@ -221,7 +221,7 @@ private fun applyRow(h: Handle, ctx: AdminCtx, l: Lookups, r: ImportRow, batch: 
         val id = h.scalarLong("SELECT nextval(pg_get_serial_sequence('app.outlet', 'id'))")
         val code = r.code ?: "AD-$id"
         h.createUpdate(
-            "INSERT INTO app.outlet (id, code, name, owner_name, contact_number, address, zone_id, route_id, cluster_id, channel, lat, lng, location_basis, outlet_kind, created_by, updated_by) " +
+            "INSERT INTO app.outlet (id, code, name, owner_name, contact_number, address, zone_id, route_id, cluster_id, channel, lat, lng, location_basis, outlet_kind, created_by, updated_by) OVERRIDING SYSTEM VALUE " +
                 "VALUES (:id, :code, :name, :owner, :phone, :addr, :zone, :route, :cluster, :channel, :lat, :lng, :basis, :kind, :by, :by)",
         ).bind("id", id).bind("code", code).bind("name", r.name!!).bind("owner", r.owner!!).bindAny("phone", r.phone).bindAny("addr", r.address).bind("zone", zone)
             .bindAny("route", route).bind("cluster", cluster).bind("channel", r.channel).bindAny("lat", r.lat).bindAny("lng", r.lng)

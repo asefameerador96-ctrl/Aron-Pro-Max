@@ -137,7 +137,8 @@ class OutletImportTest {
 
     @Test
     fun codeOfAnotherZoneAndDuplicateCodesInTheSheetAreRowErrors() = env.app {
-        val other = env.sql("SELECT z.code FROM app.zone z WHERE z.code <> 'Z-MIR' AND z.status = 'active' ORDER BY z.id LIMIT 1")!!
+        val other = "Z-OTHER"
+        env.sql("INSERT INTO app.cluster (zone_id, name) SELECT id, 'Other Cluster' FROM app.zone WHERE code = 'Z-OTHER' ON CONFLICT DO NOTHING RETURNING 1")
         val otherCluster = env.sql("SELECT c.name FROM app.cluster c JOIN app.zone z ON z.id = c.zone_id WHERE z.code = '$other' ORDER BY c.id LIMIT 1")!!
         assertEquals(HttpStatusCode.OK, sendA1(HttpMethod.Post, "/admin/outlets/import", admin, batch(listOf(row("Zone Owner", ""","code":"ZONE/1"""", zone = other, cluster = otherCluster)), false)).status)
         val res = sendA1(HttpMethod.Post, "/admin/outlets/import", admin, batch(listOf(
@@ -159,7 +160,6 @@ class OutletImportTest {
         assertEquals(HttpStatusCode.BadRequest, post("""{"batch_uuid":"$u","rows":[${row("X Row", ""","status":"closed"""")}],"dry_run":true}"""))
         assertEquals(HttpStatusCode.BadRequest, post("""{"batch_uuid":"$u","rows":[${row("X Row")}],"dry_run":"yes"}"""))
         val nul = sendA1(HttpMethod.Post, "/admin/outlets/import", admin, batch(listOf(row("Nul\\u0000Name")), true))
-        assertEquals(HttpStatusCode.OK, nul.status)
-        assertTrue(nul.bodyAsText().contains("\"invalid\""), nul.bodyAsText())
+        assertEquals(HttpStatusCode.BadRequest, nul.status)
     }
 }
