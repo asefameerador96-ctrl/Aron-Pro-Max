@@ -1,0 +1,78 @@
+NationalBreakdown:
+  type: object
+  description: One bar per segment, brand or variant. STD = SUM(quantity); Memo = COUNT(DISTINCT memo id) containing
+    the item, recounted per item (never added across items).
+  required:
+  - date
+  - till_time
+  - as_of
+  - last_updated_at
+  - measure
+  - dimension
+  - items
+  additionalProperties: false
+  properties:
+    date:
+      $ref: '#/components/schemas/BusinessDate'
+    till_time:
+      type: boolean
+      description: 'True when `date` is today (Dhaka): figures are till the time of `as_of`; false: final figures
+        of a past day.'
+    as_of:
+      $ref: '#/components/schemas/Timestamp'
+    last_updated_at:
+      type:
+      - string
+      - 'null'
+      format: date-time
+      description: Oldest `last_updated_at` of the summary tables this card reads (null when none has been written
+        yet). The page shows it as "last updated hh:mm" (Dhaka).
+    measure:
+      type: string
+      enum:
+      - std
+      - memo
+    dimension:
+      type: string
+      enum:
+      - segment
+      - brand
+      - variant
+    category_code:
+      type:
+      - string
+      - 'null'
+      maxLength: 40
+    unit:
+      type:
+      - string
+      - 'null'
+      enum:
+      - stick
+      - piece
+      - dozen
+      - null
+      description: Unit of every STD bar; null for memo.
+    items:
+      type: array
+      maxItems: 500
+      items:
+        type: object
+        additionalProperties: false
+        required:
+        - code
+        - name
+        - value
+        properties:
+          code:
+            type: string
+            maxLength: 40
+          name:
+            type:
+            - string
+            - 'null'
+            maxLength: 120
+          value:
+            type: integer
+            format: int64
+            minimum: 0

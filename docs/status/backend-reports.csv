@@ -28,3 +28,6 @@ F-API-053,M,2026-10-15T10:30Z,2026-10-15T09:00Z,0,"done: print view + async expo
 F-SYS-058,M,2026-10-15T10:30Z,2026-10-15T09:00Z,~30,"done: hourly + daily PII budgets, export log in report_export; Opus checker pending","D-REP-07"
 WEB-GAPS,M,2026-10-15T10:30Z,2026-10-15T09:30Z,~40,"done: retailer-list, sku-list, geofence-calibration, qc-report source; dss route drill declined (zone-level per docs/24)","ReportBatchDTest"
 F-API-038-DW,S,2026-10-15T11:00Z,2026-10-15T10:25Z,~15,"done: entry_source copied to dw.fact_memo/fact_visit; online-offline shows manual_memos apart; EntrySourceTest; no money figure changes, checker not run (column copy)","db request entry-source"
+W4-CONTRACT,M,2026-10-22T10:00Z,2026-10-22T09:10Z,~50,"done: contract 1.4.0, 14 national dashboard operations, Appendix A","docs/34 s2"
+W4-SUMMARIES,L,2026-10-22T12:30Z,2026-10-22T10:00Z,~150,"done in code, blocked on db DDL (request filed); shim tests green; Opus checker running","D-DASH-03..07"
+W4-CARDS-MAPS,L,2026-10-22T13:30Z,2026-10-22T11:00Z,~150,"done: eight cards, pins, popup, route map, sale position, HTTP routes, scope, brand user; conformance green with shim","NationalDashboard*Test"

@@ -1609,6 +1609,461 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '429': { $ref: '#/components/responses/TooManyRequests' }
         '503': { $ref: '#/components/responses/ServiceUnavailable' }
+  /v1/dashboards/national/sales:
+    post:
+      tags:
+      - dashboards
+      operationId: queryNationalSales
+      summary: Sales cards with daily target
+      description: 'Four category cards: total sales, ring % of the daily target and the "i" pop-up figures (brief
+        s2). Reads summary tables only (never the transaction log); scope from the token.'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NationalDashboardFilter'
+      responses:
+        '200':
+          description: Sales cards with daily target
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NationalSales'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /v1/dashboards/national/cpr:
+    post:
+      tags:
+      - dashboards
+      operationId: queryNationalCpr
+      summary: Live CPR card
+      description: 'Target outlets, successful calls and CPR % for one day (brief s3.1). BRAND users get 403 (docs/34
+        s1: cards without a brand dimension are hidden). Reads summary tables only (never the transaction log); scope
+        from the token.'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NationalDashboardFilter'
+      responses:
+        '200':
+          description: Live CPR card
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NationalCpr'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /v1/dashboards/national/channel-calls:
+    post:
+      tags:
+      - dashboards
+      operationId: queryNationalChannelCalls
+      summary: By Channel Successful Call card
+      description: Distinct calling outlets by outlet-master channel (brief s3.2). Reads summary tables only (never
+        the transaction log); scope from the token.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NationalDashboardFilter'
+      responses:
+        '200':
+          description: By Channel Successful Call card
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NationalChannelCalls'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /v1/dashboards/national/final-submit:
+    post:
+      tags:
+      - dashboards
+      operationId: queryNationalFinalSubmit
+      summary: Final Submit Status card
+      description: 'Service zones and their Final Submit (brief s3.3). BRAND users get 403 (docs/34 s1: cards without
+        a brand dimension are hidden). Reads summary tables only (never the transaction log); scope from the token.'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NationalDashboardFilter'
+      responses:
+        '200':
+          description: Final Submit Status card
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NationalFinalSubmit'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /v1/dashboards/national/login-submit:
+    post:
+      tags:
+      - dashboards
+      operationId: queryNationalLoginSubmit
+      summary: Login / Submit Status card
+      description: 'Target routes, logins and Bikroy Joma submits (brief s3.4). BRAND users get 403 (docs/34 s1: cards
+        without a brand dimension are hidden). Reads summary tables only (never the transaction log); scope from the
+        token.'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NationalDashboardFilter'
+      responses:
+        '200':
+          description: Login / Submit Status card
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NationalLoginSubmit'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /v1/dashboards/national/channel-std:
+    post:
+      tags:
+      - dashboards
+      operationId: queryNationalChannelStd
+      summary: By Channel STD card
+      description: Cigarette sticks by outlet channel (brief s4.1). Reads summary tables only (never the transaction
+        log); scope from the token.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NationalDashboardFilter'
+      responses:
+        '200':
+          description: By Channel STD card
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NationalChannelStd'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /v1/dashboards/national/breakdown:
+    post:
+      tags:
+      - dashboards
+      operationId: queryNationalBreakdown
+      summary: Breakdown STD / Memo card
+      description: Bars by segment, brand or variant for STD or Memo (brief s4.2). Reads summary tables only (never
+        the transaction log); scope from the token.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NationalBreakdownRequest'
+      responses:
+        '200':
+          description: Breakdown STD / Memo card
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NationalBreakdown'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /v1/dashboards/national/geo-fencing:
+    post:
+      tags:
+      - dashboards
+      operationId: queryNationalGeoFencing
+      summary: Geo Fencing card
+      description: 'Geo validation of completed calls (brief s5.1). BRAND users get 403 (docs/34 s1: cards without
+        a brand dimension are hidden). Reads summary tables only (never the transaction log); scope from the token.'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NationalDashboardFilter'
+      responses:
+        '200':
+          description: Geo Fencing card
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NationalGeoFencing'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /v1/dashboards/national/ff-geo/pins:
+    post:
+      tags:
+      - dashboards
+      operationId: queryFfGeoPins
+      summary: FF Geo Location pins
+      description: 'One pin per route, coloured by today''s geo-fencing % (brief s5.2). Clustering is done by the
+        map. BRAND users get 403 (docs/34 s1: cards without a brand dimension are hidden). Reads summary tables only
+        (never the transaction log); scope from the token.'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FfGeoPinsRequest'
+      responses:
+        '200':
+          description: FF Geo Location pins
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FfGeoPins'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /v1/dashboards/national/ff-geo/routes/{route_id}:
+    get:
+      tags:
+      - dashboards
+      operationId: getFfGeoRoutePopup
+      summary: FF Geo route pop-up
+      description: 'SR name, contact, territory, zone, route, latest position time and miss % (brief s5.2). The route
+        must be inside the caller''s scope, else 404. BRAND users get 403 (docs/34 s1: cards without a brand dimension
+        are hidden).'
+      parameters:
+      - name: route_id
+        in: path
+        required: true
+        schema:
+          $ref: '#/components/schemas/Id'
+      - name: date
+        in: query
+        required: false
+        description: Business day; default today (Dhaka).
+        schema:
+          $ref: '#/components/schemas/BusinessDate'
+      responses:
+        '200':
+          description: FF Geo route pop-up
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FfGeoRoutePopup'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /v1/dashboards/route-map/{route_id}:
+    get:
+      tags:
+      - dashboards
+      operationId: getRouteMap
+      summary: Route map ("Map Details")
+      description: 'Markers, SR path and the Target vs Achievement, CPR and time cards of one route and day (brief
+        s5.3). BRAND users get 403 (docs/34 s1: cards without a brand dimension are hidden).'
+      parameters:
+      - name: route_id
+        in: path
+        required: true
+        schema:
+          $ref: '#/components/schemas/Id'
+      - name: date
+        in: query
+        required: false
+        description: Business day; default today (Dhaka).
+        schema:
+          $ref: '#/components/schemas/BusinessDate'
+      responses:
+        '200':
+          description: Route map ("Map Details")
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RouteMap'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /v1/dashboards/sale-position/{outlet_id}:
+    get:
+      tags:
+      - dashboards
+      operationId: getSalePosition
+      summary: Sale Position (SR hit / miss)
+      description: 'Base position, sale positions with kind and the force-sale photo of one outlet and day (brief
+        s5.4). BRAND users get 403 (docs/34 s1: cards without a brand dimension are hidden).'
+      parameters:
+      - name: outlet_id
+        in: path
+        required: true
+        schema:
+          $ref: '#/components/schemas/Id'
+      - name: date
+        in: query
+        required: false
+        description: Business day; default today (Dhaka).
+        schema:
+          $ref: '#/components/schemas/BusinessDate'
+      responses:
+        '200':
+          description: Sale Position (SR hit / miss)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SalePosition'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /v1/dashboards/national/filter-options:
+    get:
+      tags:
+      - dashboards
+      operationId: getNationalFilterOptions
+      summary: Filter panel values
+      description: Wings to zones inside the scope (active houses once, UI-WEB-14) and the category / segment / brand
+        / variant tree.
+      parameters: []
+      responses:
+        '200':
+          description: Filter panel values
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NationalFilterOptions'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /v1/dashboards/national/freshness:
+    get:
+      tags:
+      - dashboards
+      operationId: getNationalFreshness
+      summary: Summary table freshness
+      description: '`last_updated_at` per summary table.'
+      parameters: []
+      responses:
+        '200':
+          description: Summary table freshness
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NationalFreshness'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
   /v1/dashboards/daily-tracking:
     get:
       tags: [dashboards]
@@ -9607,7 +10062,1365 @@ components:
         qty_base: { type: integer, format: int64, minimum: 0 }
         report_unit: { type: [string, 'null'], enum: [stick, piece, dozen, box, pack, null] }
         qty_report: { oneOf: [ { $ref: '#/components/schemas/Decimal3' }, { type: 'null' } ] }
+        entry_unit:
+          type: string
+          enum: [pack, dozen]
+          description: 'The unit the field apps count this category in (docs/34 s4.2): pack (packet or box, per SKU `base_per_pack`) or dozen (matches).'
+        qty_entered:
+          $ref: '#/components/schemas/Decimal3'
+          description: 'Quantity in `entry_unit`, summed per SKU first (each SKU''s qty_base over its base_per_pack): 10s and 20s of one category convert correctly. Sold plus free, like qty_base.'
         net_mtk: { $ref: '#/components/schemas/Mtk' }
+    NationalDashboardFilter:
+      type: object
+      additionalProperties: false
+      description: 'The dashboard filter object (docs/34 s2, brief s1). Every list is optional; omitted or empty means
+        everything the caller may see. The server intersects each list with the scope derived from the token (docs/34
+        s1, BRAND users also with their brands) and never widens it: ids outside the scope are ignored, and a list that
+        leaves nothing yields zeros. Location ids are server surrogate keys; product codes are the product master codes.'
+      properties:
+        wing_ids:
+          type: array
+          maxItems: 50
+          items:
+            $ref: '#/components/schemas/Id'
+        division_ids:
+          type: array
+          maxItems: 200
+          items:
+            $ref: '#/components/schemas/Id'
+        territory_ids:
+          type: array
+          maxItems: 400
+          items:
+            $ref: '#/components/schemas/Id'
+        house_ids:
+          type: array
+          maxItems: 400
+          items:
+            $ref: '#/components/schemas/Id'
+        zone_ids:
+          type: array
+          maxItems: 1200
+          items:
+            $ref: '#/components/schemas/Id'
+        category_codes:
+          type: array
+          maxItems: 20
+          items:
+            type: string
+            maxLength: 40
+        segment_codes:
+          type: array
+          maxItems: 100
+          items:
+            type: string
+            maxLength: 40
+        brand_codes:
+          type: array
+          maxItems: 200
+          items:
+            type: string
+            maxLength: 40
+        variant_codes:
+          type: array
+          maxItems: 500
+          items:
+            type: string
+            maxLength: 40
+        date:
+          $ref: '#/components/schemas/BusinessDate'
+          description: One business day; default today (Dhaka).
+    NationalSalesCard:
+      type: object
+      additionalProperties: false
+      required:
+      - category_code
+      - base_unit
+      - total_sales
+      - daily_target
+      - sales_so_far
+      - remaining
+      - achievement_pct_bp
+      - target_routes
+      properties:
+        category_code:
+          type: string
+          maxLength: 40
+        base_unit:
+          type: string
+          enum:
+          - stick
+          - piece
+          - dozen
+        total_sales:
+          type: integer
+          format: int64
+          minimum: 0
+          description: SUM(quantity) in base units (sticks, pieces, dozens) of the category's latest-version memo lines
+            for the date, location and product filter.
+        daily_target:
+          oneOf:
+          - $ref: '#/components/schemas/Decimal3'
+          - type: 'null'
+          description: Sum over the routes in the filter of route monthly target / working days of the month (Fridays
+            and holidays excluded); null when no target is loaded for them. Always the full-day target.
+        sales_so_far:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Same as total_sales; repeated for the "i" pop-up.
+        remaining:
+          oneOf:
+          - $ref: '#/components/schemas/Decimal3'
+          - type: 'null'
+          description: max(daily_target - sales_so_far, 0); null without a target.
+        achievement_pct_bp:
+          type:
+          - integer
+          - 'null'
+          minimum: 0
+          description: total_sales / daily_target in basis points (ring); null without a target. May exceed 10000.
+        target_routes:
+          type: integer
+          minimum: 0
+          description: Routes in the filter that carry a monthly target for the category.
+    NationalSales:
+      type: object
+      description: Four sales cards (Cigarette, Bidi, Lighter, Match) with the daily target of the "i" pop-up.
+      required:
+      - date
+      - till_time
+      - as_of
+      - last_updated_at
+      - working_days
+      - cards
+      additionalProperties: false
+      properties:
+        date:
+          $ref: '#/components/schemas/BusinessDate'
+        till_time:
+          type: boolean
+          description: 'True when `date` is today (Dhaka): figures are till the time of `as_of`; false: final figures
+            of a past day.'
+        as_of:
+          $ref: '#/components/schemas/Timestamp'
+        last_updated_at:
+          type:
+          - string
+          - 'null'
+          format: date-time
+          description: Oldest `last_updated_at` of the summary tables this card reads (null when none has been written
+            yet). The page shows it as "last updated hh:mm" (Dhaka).
+        working_days:
+          type: integer
+          minimum: 0
+          maximum: 31
+          description: 'Working days of the date''s month (calendar: Fridays and holidays excluded).'
+        cards:
+          type: array
+          maxItems: 10
+          items:
+            $ref: '#/components/schemas/NationalSalesCard'
+    NationalCpr:
+      type: object
+      description: 'Live CPR: target outlets, successful calls and the ratio. Hidden from BRAND users (403).'
+      required:
+      - date
+      - till_time
+      - as_of
+      - last_updated_at
+      - target_outlets
+      - successful_calls
+      - cpr_pct_bp
+      additionalProperties: false
+      properties:
+        date:
+          $ref: '#/components/schemas/BusinessDate'
+        till_time:
+          type: boolean
+          description: 'True when `date` is today (Dhaka): figures are till the time of `as_of`; false: final figures
+            of a past day.'
+        as_of:
+          $ref: '#/components/schemas/Timestamp'
+        last_updated_at:
+          type:
+          - string
+          - 'null'
+          format: date-time
+          description: Oldest `last_updated_at` of the summary tables this card reads (null when none has been written
+            yet). The page shows it as "last updated hh:mm" (Dhaka).
+        target_outlets:
+          type: integer
+          minimum: 0
+          description: Outlets on the normal routes scheduled for the date, each route counted once (manual and dummy
+            routes excluded).
+        successful_calls:
+          type: integer
+          minimum: 0
+          description: Distinct outlets with at least one latest-version memo that day on those routes.
+        cpr_pct_bp:
+          type:
+          - integer
+          - 'null'
+          minimum: 0
+          description: 'Basis points: 10000 = 100 %. Integer arithmetic, rounded half up; null when the denominator
+            is 0.'
+    NationalChannelCalls:
+      type: object
+      description: Successful calls split by the outlet-master channel (no "Other" group). `total` is the sum of the
+        channels; `unclassified` counts calling outlets without a channel, which the mandatory channel keeps at 0.
+      required:
+      - date
+      - till_time
+      - as_of
+      - last_updated_at
+      - channels
+      - total
+      - unclassified
+      additionalProperties: false
+      properties:
+        date:
+          $ref: '#/components/schemas/BusinessDate'
+        till_time:
+          type: boolean
+          description: 'True when `date` is today (Dhaka): figures are till the time of `as_of`; false: final figures
+            of a past day.'
+        as_of:
+          $ref: '#/components/schemas/Timestamp'
+        last_updated_at:
+          type:
+          - string
+          - 'null'
+          format: date-time
+          description: Oldest `last_updated_at` of the summary tables this card reads (null when none has been written
+            yet). The page shows it as "last updated hh:mm" (Dhaka).
+        channels:
+          type: array
+          maxItems: 6
+          items:
+            type: object
+            additionalProperties: false
+            required:
+            - channel
+            - value
+            - share_pct_bp
+            properties:
+              channel:
+                type: string
+                enum:
+                - GT
+                - DCC
+                - Astha
+                - RCC
+                - MT
+                - HoReCa
+              value:
+                type: integer
+                format: int64
+                minimum: 0
+              share_pct_bp:
+                type:
+                - integer
+                - 'null'
+                minimum: 0
+                description: 'Basis points: 10000 = 100 %. Integer arithmetic, rounded half up; null when the denominator
+                  is 0.'
+        total:
+          type: integer
+          minimum: 0
+        unclassified:
+          type: integer
+          minimum: 0
+    NationalChannelStd:
+      type: object
+      description: Cigarette sales (sticks) split by outlet channel. Cigarette only; `total` equals the Sales (Cigarette)
+        card for the same filter.
+      required:
+      - date
+      - till_time
+      - as_of
+      - last_updated_at
+      - channels
+      - total
+      - unit
+      additionalProperties: false
+      properties:
+        date:
+          $ref: '#/components/schemas/BusinessDate'
+        till_time:
+          type: boolean
+          description: 'True when `date` is today (Dhaka): figures are till the time of `as_of`; false: final figures
+            of a past day.'
+        as_of:
+          $ref: '#/components/schemas/Timestamp'
+        last_updated_at:
+          type:
+          - string
+          - 'null'
+          format: date-time
+          description: Oldest `last_updated_at` of the summary tables this card reads (null when none has been written
+            yet). The page shows it as "last updated hh:mm" (Dhaka).
+        channels:
+          type: array
+          maxItems: 6
+          items:
+            type: object
+            additionalProperties: false
+            required:
+            - channel
+            - value
+            - share_pct_bp
+            properties:
+              channel:
+                type: string
+                enum:
+                - GT
+                - DCC
+                - Astha
+                - RCC
+                - MT
+                - HoReCa
+              value:
+                type: integer
+                format: int64
+                minimum: 0
+              share_pct_bp:
+                type:
+                - integer
+                - 'null'
+                minimum: 0
+                description: 'Basis points: 10000 = 100 %. Integer arithmetic, rounded half up; null when the denominator
+                  is 0.'
+        total:
+          type: integer
+          format: int64
+          minimum: 0
+        unit:
+          type: string
+          enum:
+          - stick
+    NationalFinalSubmit:
+      type: object
+      description: Final Submit status by service zone; first submit per (zone, date) wins, unsubmitted zones are auto-submitted
+        at midnight. Hidden from BRAND users (403).
+      required:
+      - date
+      - till_time
+      - as_of
+      - last_updated_at
+      - total_zones
+      - service_zones
+      - final_submitted
+      - remaining
+      - submit_pct_bp
+      additionalProperties: false
+      properties:
+        date:
+          $ref: '#/components/schemas/BusinessDate'
+        till_time:
+          type: boolean
+          description: 'True when `date` is today (Dhaka): figures are till the time of `as_of`; false: final figures
+            of a past day.'
+        as_of:
+          $ref: '#/components/schemas/Timestamp'
+        last_updated_at:
+          type:
+          - string
+          - 'null'
+          format: date-time
+          description: Oldest `last_updated_at` of the summary tables this card reads (null when none has been written
+            yet). The page shows it as "last updated hh:mm" (Dhaka).
+        total_zones:
+          type: integer
+          minimum: 0
+        service_zones:
+          type: integer
+          minimum: 0
+          description: Zones with normal SR routes working that day.
+        final_submitted:
+          type: integer
+          minimum: 0
+        remaining:
+          type: integer
+          minimum: 0
+          description: service_zones - final_submitted.
+        submit_pct_bp:
+          type:
+          - integer
+          - 'null'
+          minimum: 0
+          description: 'Basis points: 10000 = 100 %. Integer arithmetic, rounded half up; null when the denominator
+            is 0.'
+    NationalLoginSubmit:
+      type: object
+      description: Login (check-in and download) and Submit (Bikroy Joma) status per route. Hidden from BRAND users
+        (403).
+      required:
+      - date
+      - till_time
+      - as_of
+      - last_updated_at
+      - target_routes
+      - successful_login
+      - login_pct_bp
+      - submitted
+      - submit_pct_bp
+      additionalProperties: false
+      properties:
+        date:
+          $ref: '#/components/schemas/BusinessDate'
+        till_time:
+          type: boolean
+          description: 'True when `date` is today (Dhaka): figures are till the time of `as_of`; false: final figures
+            of a past day.'
+        as_of:
+          $ref: '#/components/schemas/Timestamp'
+        last_updated_at:
+          type:
+          - string
+          - 'null'
+          format: date-time
+          description: Oldest `last_updated_at` of the summary tables this card reads (null when none has been written
+            yet). The page shows it as "last updated hh:mm" (Dhaka).
+        target_routes:
+          type: integer
+          minimum: 0
+          description: Normal SR routes scheduled that day.
+        successful_login:
+          type: integer
+          minimum: 0
+          description: Of those, routes whose SR checked in and downloaded.
+        login_pct_bp:
+          type:
+          - integer
+          - 'null'
+          minimum: 0
+          description: 'Basis points: 10000 = 100 %. Integer arithmetic, rounded half up; null when the denominator
+            is 0.'
+        submitted:
+          type: integer
+          minimum: 0
+          description: Routes that completed Bikroy Joma (sales upload).
+        submit_pct_bp:
+          type:
+          - integer
+          - 'null'
+          minimum: 0
+          description: submitted / successful_login in basis points.
+    NationalBreakdownRequest:
+      type: object
+      additionalProperties: false
+      required:
+      - measure
+      - dimension
+      description: The common filter plus the gear choice (six combinations, one active).
+      properties:
+        filter:
+          $ref: '#/components/schemas/NationalDashboardFilter'
+        measure:
+          type: string
+          enum:
+          - std
+          - memo
+        dimension:
+          type: string
+          enum:
+          - segment
+          - brand
+          - variant
+        category_code:
+          type:
+          - string
+          - 'null'
+          maxLength: 40
+          description: 'STD mode mixes sticks, pieces and dozens, so the bars of an STD answer cover one category: this
+            one, else the category with the most volume. Ignored for memo.'
+    NationalBreakdown:
+      type: object
+      description: One bar per segment, brand or variant. STD = SUM(quantity); Memo = COUNT(DISTINCT memo id) containing
+        the item, recounted per item (never added across items).
+      required:
+      - date
+      - till_time
+      - as_of
+      - last_updated_at
+      - measure
+      - dimension
+      - items
+      additionalProperties: false
+      properties:
+        date:
+          $ref: '#/components/schemas/BusinessDate'
+        till_time:
+          type: boolean
+          description: 'True when `date` is today (Dhaka): figures are till the time of `as_of`; false: final figures
+            of a past day.'
+        as_of:
+          $ref: '#/components/schemas/Timestamp'
+        last_updated_at:
+          type:
+          - string
+          - 'null'
+          format: date-time
+          description: Oldest `last_updated_at` of the summary tables this card reads (null when none has been written
+            yet). The page shows it as "last updated hh:mm" (Dhaka).
+        measure:
+          type: string
+          enum:
+          - std
+          - memo
+        dimension:
+          type: string
+          enum:
+          - segment
+          - brand
+          - variant
+        category_code:
+          type:
+          - string
+          - 'null'
+          maxLength: 40
+        unit:
+          type:
+          - string
+          - 'null'
+          enum:
+          - stick
+          - piece
+          - dozen
+          - null
+          description: Unit of every STD bar; null for memo.
+        items:
+          type: array
+          maxItems: 500
+          items:
+            type: object
+            additionalProperties: false
+            required:
+            - code
+            - name
+            - value
+            properties:
+              code:
+                type: string
+                maxLength: 40
+              name:
+                type:
+                - string
+                - 'null'
+                maxLength: 120
+              value:
+                type: integer
+                format: int64
+                minimum: 0
+    NationalGeoFencing:
+      type: object
+      description: Completed calls with or without a memo, and those inside the outlet radius. Hidden from BRAND users
+        (403).
+      required:
+      - date
+      - till_time
+      - as_of
+      - last_updated_at
+      - total_calls
+      - geo_validated
+      - geo_pct_bp
+      additionalProperties: false
+      properties:
+        date:
+          $ref: '#/components/schemas/BusinessDate'
+        till_time:
+          type: boolean
+          description: 'True when `date` is today (Dhaka): figures are till the time of `as_of`; false: final figures
+            of a past day.'
+        as_of:
+          $ref: '#/components/schemas/Timestamp'
+        last_updated_at:
+          type:
+          - string
+          - 'null'
+          format: date-time
+          description: Oldest `last_updated_at` of the summary tables this card reads (null when none has been written
+            yet). The page shows it as "last updated hh:mm" (Dhaka).
+        total_calls:
+          type: integer
+          minimum: 0
+        geo_validated:
+          type: integer
+          minimum: 0
+        geo_pct_bp:
+          type:
+          - integer
+          - 'null'
+          minimum: 0
+          description: 'Basis points: 10000 = 100 %. Integer arithmetic, rounded half up; null when the denominator
+            is 0.'
+    FfGeoPinsRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        filter:
+          $ref: '#/components/schemas/NationalDashboardFilter'
+        colors:
+          type: array
+          maxItems: 3
+          items:
+            type: string
+            enum:
+            - red
+            - amber
+            - green
+          description: Filter by Color; omitted or empty = all.
+    FfGeoPin:
+      type: object
+      additionalProperties: false
+      required:
+      - route_id
+      - lat
+      - lng
+      - color
+      - geo_pct_bp
+      - position_at
+      properties:
+        route_id:
+          $ref: '#/components/schemas/Id'
+        lat:
+          type: number
+          minimum: -90
+          maximum: 90
+        lng:
+          type: number
+          minimum: -180
+          maximum: 180
+        color:
+          type: string
+          enum:
+          - red
+          - amber
+          - green
+        geo_pct_bp:
+          type:
+          - integer
+          - 'null'
+          minimum: 0
+          description: Today's geo-fencing % of the route (validated / completed calls); null before the first call,
+            then green.
+        position_at:
+          $ref: '#/components/schemas/Timestamp'
+    FfGeoPins:
+      type: object
+      description: One pin per route at the SR's latest position today. Red below 7000 bp, amber 7000 to 9000 bp inclusive,
+        green above 9000 bp. Routes with no position today are not pinned. Hidden from BRAND users (403).
+      required:
+      - date
+      - till_time
+      - as_of
+      - last_updated_at
+      - pins
+      - counts
+      - routes_without_position
+      additionalProperties: false
+      properties:
+        date:
+          $ref: '#/components/schemas/BusinessDate'
+        till_time:
+          type: boolean
+          description: 'True when `date` is today (Dhaka): figures are till the time of `as_of`; false: final figures
+            of a past day.'
+        as_of:
+          $ref: '#/components/schemas/Timestamp'
+        last_updated_at:
+          type:
+          - string
+          - 'null'
+          format: date-time
+          description: Oldest `last_updated_at` of the summary tables this card reads (null when none has been written
+            yet). The page shows it as "last updated hh:mm" (Dhaka).
+        pins:
+          type: array
+          maxItems: 12000
+          items:
+            $ref: '#/components/schemas/FfGeoPin'
+        counts:
+          type: object
+          additionalProperties: false
+          required:
+          - red
+          - amber
+          - green
+          properties:
+            red:
+              type: integer
+              minimum: 0
+            amber:
+              type: integer
+              minimum: 0
+            green:
+              type: integer
+              minimum: 0
+          description: Pins per colour before the colour filter.
+        routes_without_position:
+          type: integer
+          minimum: 0
+    PlaceRef:
+      type: object
+      additionalProperties: false
+      required:
+      - id
+      - code
+      - name
+      properties:
+        id:
+          $ref: '#/components/schemas/Id'
+        code:
+          type: string
+          maxLength: 40
+        name:
+          type:
+          - string
+          - 'null'
+          maxLength: 120
+    FfGeoRoutePopup:
+      type: object
+      description: Pop-up of a pin. `contact` is masked (last three digits) unless the caller holds a valid `pii_until`
+        claim; every read is charged to the PII read budget.
+      required:
+      - date
+      - till_time
+      - as_of
+      - last_updated_at
+      - route
+      - sr_name
+      - contact
+      - territory
+      - zone
+      - position_at
+      - miss_pct_bp
+      additionalProperties: false
+      properties:
+        date:
+          $ref: '#/components/schemas/BusinessDate'
+        till_time:
+          type: boolean
+          description: 'True when `date` is today (Dhaka): figures are till the time of `as_of`; false: final figures
+            of a past day.'
+        as_of:
+          $ref: '#/components/schemas/Timestamp'
+        last_updated_at:
+          type:
+          - string
+          - 'null'
+          format: date-time
+          description: Oldest `last_updated_at` of the summary tables this card reads (null when none has been written
+            yet). The page shows it as "last updated hh:mm" (Dhaka).
+        route:
+          $ref: '#/components/schemas/PlaceRef'
+        sr_name:
+          type:
+          - string
+          - 'null'
+          maxLength: 120
+        contact:
+          type:
+          - string
+          - 'null'
+          maxLength: 30
+        territory:
+          $ref: '#/components/schemas/PlaceRef'
+        zone:
+          $ref: '#/components/schemas/PlaceRef'
+        position_at:
+          type:
+          - string
+          - 'null'
+          format: date-time
+        miss_pct_bp:
+          type:
+          - integer
+          - 'null'
+          minimum: 0
+          description: 10000 minus the route geo-fencing basis points today.
+    CategoryQty:
+      type: object
+      additionalProperties: false
+      required:
+      - category_code
+      - base_unit
+      - qty
+      properties:
+        category_code:
+          type: string
+          maxLength: 40
+        base_unit:
+          type: string
+          enum:
+          - stick
+          - piece
+          - dozen
+        qty:
+          type: integer
+          format: int64
+          minimum: 0
+    MapPosition:
+      type: object
+      additionalProperties: false
+      required:
+      - lat
+      - lng
+      - at
+      properties:
+        lat:
+          type: number
+          minimum: -90
+          maximum: 90
+        lng:
+          type: number
+          minimum: -180
+          maximum: 180
+        at:
+          $ref: '#/components/schemas/Timestamp'
+    RouteMapOutlet:
+      type: object
+      additionalProperties: false
+      required:
+      - outlet_id
+      - code
+      - name
+      - lat
+      - lng
+      - state
+      - call_time
+      - sales
+      properties:
+        outlet_id:
+          $ref: '#/components/schemas/Id'
+        code:
+          type: string
+          maxLength: 40
+        name:
+          type:
+          - string
+          - 'null'
+          maxLength: 160
+        contact:
+          type:
+          - string
+          - 'null'
+          maxLength: 30
+          description: Masked like FfGeoRoutePopup.contact.
+        cluster_name:
+          type:
+          - string
+          - 'null'
+          maxLength: 120
+        lat:
+          type: number
+          minimum: -90
+          maximum: 90
+        lng:
+          type: number
+          minimum: -180
+          maximum: 180
+        state:
+          type: string
+          enum:
+          - not_called
+          - geo_validated
+          - photo_validation
+          description: 'Black / green / red marker: not called yet / called inside the radius / called outside (photo
+            capture required).'
+        call_time:
+          type:
+          - string
+          - 'null'
+          format: date-time
+        sales:
+          type: array
+          maxItems: 10
+          items:
+            $ref: '#/components/schemas/CategoryQty'
+          description: Category-wise sales of the call, own units; empty when not called or zero memo.
+    TargetVsAchievement:
+      type: object
+      additionalProperties: false
+      required:
+      - category_code
+      - base_unit
+      - daily_target
+      - sales
+      - achievement_pct_bp
+      properties:
+        category_code:
+          type: string
+          maxLength: 40
+        base_unit:
+          type: string
+          enum:
+          - stick
+          - piece
+          - dozen
+        daily_target:
+          oneOf:
+          - $ref: '#/components/schemas/Decimal3'
+          - type: 'null'
+        sales:
+          type: integer
+          format: int64
+          minimum: 0
+        achievement_pct_bp:
+          type:
+          - integer
+          - 'null'
+          minimum: 0
+    RouteMap:
+      type: object
+      description: 'The "Map Details" page of a route and day: header, markers, SR path and the cards under the map.
+        Distance is metres (docs/34 s6 Q1 default).'
+      required:
+      - date
+      - till_time
+      - as_of
+      - last_updated_at
+      - route
+      - sr_name
+      - territory
+      - zone
+      - sale_start
+      - sr_last_position
+      - outlets
+      - path
+      - target_vs_achievement
+      - cpr
+      - time_card
+      additionalProperties: false
+      properties:
+        date:
+          $ref: '#/components/schemas/BusinessDate'
+        till_time:
+          type: boolean
+          description: 'True when `date` is today (Dhaka): figures are till the time of `as_of`; false: final figures
+            of a past day.'
+        as_of:
+          $ref: '#/components/schemas/Timestamp'
+        last_updated_at:
+          type:
+          - string
+          - 'null'
+          format: date-time
+          description: Oldest `last_updated_at` of the summary tables this card reads (null when none has been written
+            yet). The page shows it as "last updated hh:mm" (Dhaka).
+        route:
+          $ref: '#/components/schemas/PlaceRef'
+        sr_name:
+          type:
+          - string
+          - 'null'
+          maxLength: 120
+        territory:
+          $ref: '#/components/schemas/PlaceRef'
+        zone:
+          $ref: '#/components/schemas/PlaceRef'
+        sale_start:
+          oneOf:
+          - $ref: '#/components/schemas/MapPosition'
+          - type: 'null'
+          description: Where the first call of the day was made; null before the first call.
+        sr_last_position:
+          oneOf:
+          - $ref: '#/components/schemas/MapPosition'
+          - type: 'null'
+        outlets:
+          type: array
+          maxItems: 2000
+          items:
+            $ref: '#/components/schemas/RouteMapOutlet'
+        path:
+          type: array
+          maxItems: 3000
+          items:
+            $ref: '#/components/schemas/MapPosition'
+          description: The SR's recorded positions in time order, thinned to at most 3000 points; the line the map draws.
+        target_vs_achievement:
+          type: array
+          maxItems: 10
+          items:
+            $ref: '#/components/schemas/TargetVsAchievement'
+        last_sale_place:
+          type:
+          - string
+          - 'null'
+          maxLength: 160
+        cpr:
+          type: object
+          additionalProperties: false
+          required:
+          - target_outlets
+          - successful_calls
+          - geo_validated
+          - cpr_pct_bp
+          properties:
+            target_outlets:
+              type: integer
+              minimum: 0
+            successful_calls:
+              type: integer
+              minimum: 0
+            geo_validated:
+              type: integer
+              minimum: 0
+            cpr_pct_bp:
+              type:
+              - integer
+              - 'null'
+              minimum: 0
+              description: 'Basis points: 10000 = 100 %. Integer arithmetic, rounded half up; null when the denominator
+                is 0.'
+        time_card:
+          type: object
+          additionalProperties: false
+          required:
+          - distance_covered_m
+          properties:
+            first_sale_time:
+              type:
+              - string
+              - 'null'
+              format: date-time
+            last_sale_time:
+              type:
+              - string
+              - 'null'
+              format: date-time
+            total_sale_seconds:
+              type:
+              - integer
+              - 'null'
+              minimum: 0
+              description: last sale time minus first sale time
+            average_sale_seconds:
+              type:
+              - integer
+              - 'null'
+              minimum: 0
+              description: total_sale_seconds / successful calls
+            distance_covered_m:
+              type: number
+              minimum: 0
+              description: Length in metres of the haversine polyline through the SR's recorded positions in time order
+                (docs/34 D-DIST-01).
+    SalePositionSale:
+      type: object
+      additionalProperties: false
+      required:
+      - memo_uuid
+      - kind
+      - lat
+      - lng
+      - at
+      - distance_m
+      - within_fence
+      properties:
+        memo_uuid:
+          $ref: '#/components/schemas/Uuid'
+        kind:
+          type: string
+          enum:
+          - new
+          - repeat
+          - edited
+          description: New sale, repeat sale (yellow marker), edited sale (teal marker).
+        lat:
+          type: number
+          minimum: -90
+          maximum: 90
+        lng:
+          type: number
+          minimum: -180
+          maximum: 180
+        at:
+          $ref: '#/components/schemas/Timestamp'
+        distance_m:
+          type: number
+          minimum: 0
+          description: Haversine distance base position to sale position, stored with the call.
+        within_fence:
+          type: boolean
+          description: Hit when distance_m <= radius_m, else miss (force sale).
+        status:
+          type: string
+          maxLength: 40
+        photo_media_uuid:
+          type:
+          - string
+          - 'null'
+          format: uuid
+          description: Force-sale photo; open it through the media read-url of the same API.
+    SalePosition:
+      type: object
+      description: The "Sale Position" page of an outlet and day.
+      required:
+      - date
+      - till_time
+      - as_of
+      - last_updated_at
+      - zone
+      - route
+      - outlet_code
+      - radius_m
+      - base
+      - sales
+      additionalProperties: false
+      properties:
+        date:
+          $ref: '#/components/schemas/BusinessDate'
+        till_time:
+          type: boolean
+          description: 'True when `date` is today (Dhaka): figures are till the time of `as_of`; false: final figures
+            of a past day.'
+        as_of:
+          $ref: '#/components/schemas/Timestamp'
+        last_updated_at:
+          type:
+          - string
+          - 'null'
+          format: date-time
+          description: Oldest `last_updated_at` of the summary tables this card reads (null when none has been written
+            yet). The page shows it as "last updated hh:mm" (Dhaka).
+        zone:
+          $ref: '#/components/schemas/PlaceRef'
+        route:
+          $ref: '#/components/schemas/PlaceRef'
+        outlet_code:
+          type: string
+          maxLength: 40
+        radius_m:
+          type: integer
+          minimum: 10
+          maximum: 5000
+          description: The outlet radius used at the call (20, 50 or 100 m by default; cfg may set 10 to 5000).
+        base:
+          type: object
+          additionalProperties: false
+          required:
+          - lat
+          - lng
+          properties:
+            lat:
+              type: number
+              minimum: -90
+              maximum: 90
+            lng:
+              type: number
+              minimum: -180
+              maximum: 180
+          description: The outlet's approved base location.
+        header_distance_m:
+          type:
+          - number
+          - 'null'
+          minimum: 0
+          description: Distance of the latest sale shown in the page header ("SR Hit / Miss Position (81.83 Meter)").
+        sales:
+          type: array
+          maxItems: 200
+          items:
+            $ref: '#/components/schemas/SalePositionSale'
+    FilterNode:
+      type: object
+      additionalProperties: false
+      required:
+      - id
+      - code
+      - name
+      description: A wing, division, territory, house or zone; the parent ids that apply to its level are set, the others
+        are null.
+      properties:
+        id:
+          $ref: '#/components/schemas/Id'
+        code:
+          type: string
+          maxLength: 40
+        name:
+          type:
+          - string
+          - 'null'
+          maxLength: 120
+        wing_id:
+          type:
+          - integer
+          - 'null'
+          minimum: 1
+        division_id:
+          type:
+          - integer
+          - 'null'
+          minimum: 1
+        territory_id:
+          type:
+          - integer
+          - 'null'
+          minimum: 1
+        house_id:
+          type:
+          - integer
+          - 'null'
+          minimum: 1
+    FilterCode:
+      type: object
+      additionalProperties: false
+      required:
+      - code
+      - name
+      description: A category, segment, brand or variant; the parent code that applies to its level is set, the others
+        are null.
+      properties:
+        code:
+          type: string
+          maxLength: 40
+        name:
+          type:
+          - string
+          - 'null'
+          maxLength: 120
+        category_code:
+          type:
+          - string
+          - 'null'
+          maxLength: 40
+        segment_code:
+          type:
+          - string
+          - 'null'
+          maxLength: 40
+        brand_code:
+          type:
+          - string
+          - 'null'
+          maxLength: 40
+    NationalFilterOptions:
+      type: object
+      description: Selectable values inside the scope of the caller. Houses are active only and listed once per (territory,
+        name). Product lists carry their parent code for the cascading selects.
+      required:
+      - date
+      - till_time
+      - as_of
+      - last_updated_at
+      - wings
+      - divisions
+      - territories
+      - houses
+      - zones
+      - categories
+      - segments
+      - brands
+      - variants
+      additionalProperties: false
+      properties:
+        date:
+          $ref: '#/components/schemas/BusinessDate'
+        till_time:
+          type: boolean
+          description: 'True when `date` is today (Dhaka): figures are till the time of `as_of`; false: final figures
+            of a past day.'
+        as_of:
+          $ref: '#/components/schemas/Timestamp'
+        last_updated_at:
+          type:
+          - string
+          - 'null'
+          format: date-time
+          description: Oldest `last_updated_at` of the summary tables this card reads (null when none has been written
+            yet). The page shows it as "last updated hh:mm" (Dhaka).
+        wings:
+          type: array
+          maxItems: 50
+          items:
+            $ref: '#/components/schemas/FilterNode'
+        divisions:
+          type: array
+          maxItems: 200
+          items:
+            $ref: '#/components/schemas/FilterNode'
+        territories:
+          type: array
+          maxItems: 400
+          items:
+            $ref: '#/components/schemas/FilterNode'
+        houses:
+          type: array
+          maxItems: 400
+          items:
+            $ref: '#/components/schemas/FilterNode'
+        zones:
+          type: array
+          maxItems: 1200
+          items:
+            $ref: '#/components/schemas/FilterNode'
+        categories:
+          type: array
+          maxItems: 20
+          items:
+            $ref: '#/components/schemas/FilterCode'
+        segments:
+          type: array
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/FilterCode'
+        brands:
+          type: array
+          maxItems: 200
+          items:
+            $ref: '#/components/schemas/FilterCode'
+        variants:
+          type: array
+          maxItems: 500
+          items:
+            $ref: '#/components/schemas/FilterCode'
+    NationalFreshness:
+      type: object
+      description: '`last_updated_at` per summary table (the card responses carry the oldest of those they read).'
+      required:
+      - date
+      - till_time
+      - as_of
+      - last_updated_at
+      - tables
+      additionalProperties: false
+      properties:
+        date:
+          $ref: '#/components/schemas/BusinessDate'
+        till_time:
+          type: boolean
+          description: 'True when `date` is today (Dhaka): figures are till the time of `as_of`; false: final figures
+            of a past day.'
+        as_of:
+          $ref: '#/components/schemas/Timestamp'
+        last_updated_at:
+          type:
+          - string
+          - 'null'
+          format: date-time
+          description: Oldest `last_updated_at` of the summary tables this card reads (null when none has been written
+            yet). The page shows it as "last updated hh:mm" (Dhaka).
+        tables:
+          type: array
+          maxItems: 20
+          items:
+            type: object
+            additionalProperties: false
+            required:
+            - table
+            - last_updated_at
+            properties:
+              table:
+                type: string
+                maxLength: 60
+              last_updated_at:
+                type:
+                - string
+                - 'null'
+                format: date-time
     DashboardSummary:
       type: object
       required: [as_of, from, to, node, kpis, by_category, children]

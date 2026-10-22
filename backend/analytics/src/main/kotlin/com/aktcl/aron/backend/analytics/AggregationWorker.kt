@@ -4,6 +4,7 @@ import com.aktcl.aron.backend.platform.AronClock
 import com.aktcl.aron.backend.platform.Database
 import org.jdbi.v3.core.Handle
 import org.slf4j.LoggerFactory
+import kotlinx.datetime.toJavaLocalDate
 import java.time.Duration
 import java.time.Instant
 import java.time.LocalDate
@@ -145,12 +146,35 @@ class AggregationWorker(
 
     /** Runs project and drain until both are idle: the synchronous form tests and the nightly rebuild use. */
     fun runUntilIdle(): Int {
+        scanStale()
         var total = 0
         while (true) {
             val p = project()
             val d = drain()
             total += d
-            if (p == 0 && d == 0) return total
+            if (p == 0 && d == 0) { markFresh(); return total }
+        }
+    }
+
+    private var staleScanAt: Instant = clock.now().minus(Duration.ofMinutes(10))
+
+    /** Route-days the outbox does not announce (no row yet, new positions): see [DashboardSummaries.dirtyStale]. */
+    private fun scanStale() {
+        val from = staleScanAt
+        staleScanAt = clock.now()
+        runCatching {
+            db.jdbi.useHandle<Exception> { h ->
+                if (DashboardSummaries.ready(h)) DashboardSummaries.dirtyStale(h, from, com.aktcl.aron.rules.BusinessDate.of(clock.now().toEpochMilli()).toJavaLocalDate())
+            }
+        }.onFailure { log.error("stale route-day scan failed", it) }
+    }
+
+    /** Nothing is left to project or rebuild: the national dashboard's summary tables are current as of now. */
+    private fun markFresh() = db.jdbi.useHandle<Exception> { h ->
+        if (DashboardSummaries.ready(h)) {
+            val today = com.aktcl.aron.rules.BusinessDate.of(clock.now().toEpochMilli()).toJavaLocalDate()
+            DashboardSummaries.autoSubmit(h, today)
+            DashboardSummaries.touchFreshness(h, clock.now())
         }
     }
 

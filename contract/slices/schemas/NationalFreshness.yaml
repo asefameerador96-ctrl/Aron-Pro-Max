@@ -1,0 +1,44 @@
+NationalFreshness:
+  type: object
+  description: '`last_updated_at` per summary table (the card responses carry the oldest of those they read).'
+  required:
+  - date
+  - till_time
+  - as_of
+  - last_updated_at
+  - tables
+  additionalProperties: false
+  properties:
+    date:
+      $ref: '#/components/schemas/BusinessDate'
+    till_time:
+      type: boolean
+      description: 'True when `date` is today (Dhaka): figures are till the time of `as_of`; false: final figures
+        of a past day.'
+    as_of:
+      $ref: '#/components/schemas/Timestamp'
+    last_updated_at:
+      type:
+      - string
+      - 'null'
+      format: date-time
+      description: Oldest `last_updated_at` of the summary tables this card reads (null when none has been written
+        yet). The page shows it as "last updated hh:mm" (Dhaka).
+    tables:
+      type: array
+      maxItems: 20
+      items:
+        type: object
+        additionalProperties: false
+        required:
+        - table
+        - last_updated_at
+        properties:
+          table:
+            type: string
+            maxLength: 60
+          last_updated_at:
+            type:
+            - string
+            - 'null'
+            format: date-time

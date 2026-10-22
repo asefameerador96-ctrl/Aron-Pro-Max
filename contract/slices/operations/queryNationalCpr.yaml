@@ -1,0 +1,33 @@
+path: /v1/dashboards/national/cpr
+method: post
+operation:
+  tags:
+  - dashboards
+  operationId: queryNationalCpr
+  summary: Live CPR card
+  description: 'Target outlets, successful calls and CPR % for one day (brief s3.1). BRAND users get 403 (docs/34
+    s1: cards without a brand dimension are hidden). Reads summary tables only (never the transaction log); scope
+    from the token.'
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          $ref: '#/components/schemas/NationalDashboardFilter'
+  responses:
+    '200':
+      description: Live CPR card
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/NationalCpr'
+    '400':
+      $ref: '#/components/responses/BadRequest'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'
+    '429':
+      $ref: '#/components/responses/TooManyRequests'
+    '503':
+      $ref: '#/components/responses/ServiceUnavailable'

@@ -1,0 +1,80 @@
+NationalFilterOptions:
+  type: object
+  description: Selectable values inside the scope of the caller. Houses are active only and listed once per (territory,
+    name). Product lists carry their parent code for the cascading selects.
+  required:
+  - date
+  - till_time
+  - as_of
+  - last_updated_at
+  - wings
+  - divisions
+  - territories
+  - houses
+  - zones
+  - categories
+  - segments
+  - brands
+  - variants
+  additionalProperties: false
+  properties:
+    date:
+      $ref: '#/components/schemas/BusinessDate'
+    till_time:
+      type: boolean
+      description: 'True when `date` is today (Dhaka): figures are till the time of `as_of`; false: final figures
+        of a past day.'
+    as_of:
+      $ref: '#/components/schemas/Timestamp'
+    last_updated_at:
+      type:
+      - string
+      - 'null'
+      format: date-time
+      description: Oldest `last_updated_at` of the summary tables this card reads (null when none has been written
+        yet). The page shows it as "last updated hh:mm" (Dhaka).
+    wings:
+      type: array
+      maxItems: 50
+      items:
+        $ref: '#/components/schemas/FilterNode'
+    divisions:
+      type: array
+      maxItems: 200
+      items:
+        $ref: '#/components/schemas/FilterNode'
+    territories:
+      type: array
+      maxItems: 400
+      items:
+        $ref: '#/components/schemas/FilterNode'
+    houses:
+      type: array
+      maxItems: 400
+      items:
+        $ref: '#/components/schemas/FilterNode'
+    zones:
+      type: array
+      maxItems: 1200
+      items:
+        $ref: '#/components/schemas/FilterNode'
+    categories:
+      type: array
+      maxItems: 20
+      items:
+        $ref: '#/components/schemas/FilterCode'
+    segments:
+      type: array
+      maxItems: 100
+      items:
+        $ref: '#/components/schemas/FilterCode'
+    brands:
+      type: array
+      maxItems: 200
+      items:
+        $ref: '#/components/schemas/FilterCode'
+    variants:
+      type: array
+      maxItems: 500
+      items:
+        $ref: '#/components/schemas/FilterCode'

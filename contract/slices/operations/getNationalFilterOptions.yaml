@@ -1,0 +1,29 @@
+path: /v1/dashboards/national/filter-options
+method: get
+operation:
+  tags:
+  - dashboards
+  operationId: getNationalFilterOptions
+  summary: Filter panel values
+  description: Wings to zones inside the scope (active houses once, UI-WEB-14) and the category / segment / brand
+    / variant tree.
+  parameters: []
+  responses:
+    '200':
+      description: Filter panel values
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/NationalFilterOptions'
+    '404':
+      $ref: '#/components/responses/NotFound'
+    '400':
+      $ref: '#/components/responses/BadRequest'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'
+    '429':
+      $ref: '#/components/responses/TooManyRequests'
+    '503':
+      $ref: '#/components/responses/ServiceUnavailable'
