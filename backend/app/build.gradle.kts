@@ -46,6 +46,7 @@ dependencies {
 
 tasks.withType<Test>().configureEach {
     environment("ARON_TEST_PG_URL", System.getenv("ARON_TEST_PG_URL") ?: "")
+    environment("ARON_MDM_ENABLED", "1")   // lane mdm: the pending DDL is applied by FreshDb (see TestDatabases.kt)
     // AUD-TP-1: the sync convergence harness reads its seed and run count (SyncConvergenceFuzzTest).
     System.getenv("ARON_FUZZ_SEED")?.let { environment("ARON_FUZZ_SEED", it); inputs.property("ARON_FUZZ_SEED", it) }
     System.getenv("ARON_FUZZ_RUNS")?.let { environment("ARON_FUZZ_RUNS", it); inputs.property("ARON_FUZZ_RUNS", it) }

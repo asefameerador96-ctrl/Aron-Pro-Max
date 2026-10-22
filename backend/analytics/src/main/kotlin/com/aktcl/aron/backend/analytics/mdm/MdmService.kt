@@ -113,9 +113,16 @@ class MdmService(
         val row = h.createQuery("$deviceSql WHERE id = :id").bind("id", id).bind("now", ts(clock.now())).bind("all", true)
             .map { rs, _ -> Triple(device(rs), listOf(rs.getString("trust_level"), rs.getString("integrity_verdict"), rs.getString("lockdown_level")), rs.getObject("enrolled_at", OffsetDateTime::class.java).wire()!! to (rs.getObject("zone_id") as Long?)) }
             .findOne().orElse(null) ?: throw ApiProblem(ProblemCode.ERR_NOT_FOUND, "no such device")
-        val report = h.createQuery("SELECT report::text FROM app.device_status_report WHERE device_id = :d ORDER BY reported_at DESC, id DESC LIMIT 1").bind("d", id).mapTo(String::class.java).findOne().orElse(null)?.let { JSON.parseToJsonElement(it) }
+        val report = h.createQuery("SELECT report::text FROM app.device_status_report WHERE device_id = :d ORDER BY reported_at DESC, id DESC LIMIT 1").bind("d", id).mapTo(String::class.java).findOne().orElse(null)?.let { withoutNulls(JSON.parseToJsonElement(it)) }
         val policy = row.first.policy_id?.let { policyById(h, it) }
         MdmDeviceDetail(row.first, row.third.first, row.second[0], row.second[1], row.second[2], row.third.second, report, policy, commandsOf(h, id, 20, null).map { it.first })
+    }
+
+    /** The stored report keeps explicit nulls for absent members; the contract's DeviceStatusReport has none, so they are dropped on the way out. */
+    private fun withoutNulls(e: JsonElement): JsonElement = when (e) {
+        is JsonObject -> JsonObject(e.filterValues { it !is kotlinx.serialization.json.JsonNull }.mapValues { withoutNulls(it.value) })
+        is kotlinx.serialization.json.JsonArray -> kotlinx.serialization.json.JsonArray(e.map { withoutNulls(it) })
+        else -> e
     }
 
     // ---------------- activity and alerts ----------------

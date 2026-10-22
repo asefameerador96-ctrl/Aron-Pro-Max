@@ -36,6 +36,12 @@ class FreshDb private constructor(val name: String, val url: String, private val
                 lock.createStatement().use { it.execute("SELECT pg_advisory_lock($ROLE_DDL_LOCK)") }
                 try { Migrator.migrate(fresh.dataSource) } finally { lock.createStatement().use { it.execute("SELECT pg_advisory_unlock($ROLE_DDL_LOCK)") } }
             }
+            // Pending migration of lane mdm (docs/requests/db-mdm-device-command.md): applied here only while db has not landed it, so every
+            // backend test sees the tables; once the real migration exists the table is there and this does nothing. Delete with the request.
+            if (migrate) fresh.dataSource.connection.use { c ->
+                val have = c.createStatement().use { s -> s.executeQuery("SELECT to_regclass('app.device_command') IS NOT NULL").use { r -> r.next() && r.getBoolean(1) } }
+                if (!have) Companion::class.java.classLoader.getResourceAsStream("mdm_ddl.sql")?.bufferedReader()?.readText()?.let { sql -> c.createStatement().use { it.execute(sql) } }
+            }
             return fresh
         }
     }

@@ -54,7 +54,7 @@ class MdmApiTest : ReportFixture() {
         return """{"kty":"EC","crv":"P-256","x":"${c(pub.w.affineX)}","y":"${c(pub.w.affineY)}"}"""
     }
 
-    override val extraSql: String get() = javaClass.classLoader.getResourceAsStream("mdm_ddl.sql")!!.bufferedReader().readText() + """
+    override val extraSql: String get() = """
         INSERT INTO app.app_release (flavour, version_name, version_code, abi, sha256, size_bytes, download_url, signing_cert_sha256, status, created_by, published_at, published_by)
           VALUES ('sr', '1.2.0', 5, 'universal', decode(repeat('11', 32), 'hex'), 1000, 'https://api.example.test/apk/sr.apk', decode(repeat('07', 32), 'hex'), 'published',
                  (SELECT id FROM app.app_user WHERE username = 'sr001'), now(), (SELECT id FROM app.app_user WHERE username = 'sr002'));
