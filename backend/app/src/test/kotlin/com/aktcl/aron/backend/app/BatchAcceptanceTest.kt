@@ -348,7 +348,8 @@ class BatchAcceptanceTest {
             val token = client.login()
             val t0 = System.nanoTime()
             // Yesterday: the login resolved today's reach, so this date is a cache miss inside the ingest.
-            val family = saleFamily().map { e ->
+            // The printed number carries the business date (docs/24 s7.5).
+            val family = saleFamily(memoNo = "sr1001-270102-${memoSeq.incrementAndGet()}").map { e ->
                 JsonObject(e + mapOf("business_date" to JsonPrimitive("2027-01-02"), "captured_at" to JsonPrimitive("2027-01-02T09:41:00.120Z")))
             }
             val r = client.send(token, batch(family))

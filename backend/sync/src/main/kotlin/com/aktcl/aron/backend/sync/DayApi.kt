@@ -236,7 +236,7 @@ class DayService(
         ).bind("z", zone).bind("d", date).map { rs, _ -> rs.getObject(1, OffsetDateTime::class.java).toInstant().wire() to rs.getString(2) }.findOne().orElse(null)
         val routes = h.createQuery(
             """
-            SELECT r.id, r.code, r.name, r.kind, rd.state, rd.rows_awaited, ff.id AS ff_id, ff.full_name AS ff_name,
+            SELECT r.id, r.code, r.name, r.kind, rd.state, rd.rows_awaited, ff.id AS ff_id, ff.full_name AS ff_name, rd.planned IS DISTINCT FROM false AS due_by_plan,
                    (SELECT count(*) FROM app.memo m WHERE m.route_id = r.id AND m.business_date = :d AND $ACTIVE_MEMO) AS memos,
                    (SELECT coalesce(sum(m.net_mtk), 0) FROM app.memo m WHERE m.route_id = r.id AND m.business_date = :d AND $ACTIVE_MEMO) AS net,
                    EXISTS (SELECT 1 FROM app.visit v WHERE v.route_id = r.id AND v.business_date = :d AND v.voided_at IS NULL)
@@ -254,14 +254,19 @@ class DayService(
             FinalSubmitPreviewRouteDto(
                 rs.getLong("id"), rs.getString("code"), rs.getString("name"), rs.getString("kind"), rs.getObject("ff_id") as Long?, rs.getString("ff_name"),
                 rs.getString("state") ?: "not_started", rs.getBoolean("had_data"), rs.getInt("memos"), rs.getLong("net"), rs.getObject("rows_awaited") as Int?,
-            )
+            ) to rs.getBoolean("due_by_plan")
         }.list()
+        // Every active route is listed (F-TSO-010), but only a route due that day warns: planned on the date or with data.
+        // An unplanned route the SR's first bundle marked logged in, with nothing on it, was not due (lead ruling
+        // 2026-10-22, docs/requests/backend-core-qa-1-answer.md). A route with no route-day yet (planner not run, SR Not
+        // Set), or one that moved past logged in or reports pending rows, still counts as due.
+        val due = routes.filter { (r, planned) -> planned || r.had_data || r.state !in setOf("not_started", "logged_in") || (r.pending_rows_reported ?: 0) > 0 }.map { it.first }
         val warnings = buildList {
-            if (routes.any { it.state !in SUBMITTED }) add("routes_not_sales_submitted")
-            if (routes.any { it.state == "submit_pending_rows" }) add("routes_with_pending_rows")
-            if (routes.any { it.state == "not_started" }) add("routes_not_logged_in")
+            if (due.any { it.state !in SUBMITTED }) add("routes_not_sales_submitted")
+            if (due.any { it.state == "submit_pending_rows" }) add("routes_with_pending_rows")
+            if (due.any { it.state == "not_started" }) add("routes_not_logged_in")
         }
-        return FinalSubmitPreviewDto(zone, date.toString(), fs != null, fs?.first, fs?.second, routes, warnings)
+        return FinalSubmitPreviewDto(zone, date.toString(), fs != null, fs?.first, fs?.second, routes.map { it.first }, warnings)
     }
 
     fun finalSubmit(p: AronPrincipal, req: FinalSubmitRequest): FinalSubmitResultDto {
