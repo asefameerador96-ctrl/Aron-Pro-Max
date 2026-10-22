@@ -13,6 +13,7 @@ for (const [scheme, w, h, lang] of [["light", 1366, 900, "English"], ["dark", 13
     await page.addInitScript((th) => { try { localStorage.setItem("aron.theme", th); } catch {} }, scheme);
     await loginOk(page, "tso334", "tso-pass-1"); // the helper expects the desktop shell
     await page.getByRole("link", { name: lang }).click();
+    await page.goto("/overview");
     await page.setViewportSize({ width: w, height: h });
     await expect(page.getByTestId("dashboard-tiles")).toBeVisible();
     await page.waitForLoadState("networkidle");

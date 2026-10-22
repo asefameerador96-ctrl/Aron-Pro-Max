@@ -7,7 +7,7 @@ import { FilterPanel } from "@/components/national/filter-panel";
 import { requireSession } from "@/lib/auth/require";
 import { getLocale } from "@/lib/auth/service";
 import { mapsKey } from "@/lib/maps/guard";
-import { businessDate, problemMessage, t } from "@/lib/i18n";
+import { businessDate, formatBusinessDate, problemMessage, t } from "@/lib/i18n";
 import { clock } from "@/lib/national/fmt";
 import { parseBreakdown, parseQuery, toSearch } from "@/lib/national/query";
 import { getBreakdown, getChannelCalls, getChannelStd, getCpr, getFilters, getFinalSubmit, getGeoFencing, getLoginSubmit, getSales } from "@/lib/national/server";
@@ -38,7 +38,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
       <h1 className="sr-only">{t(locale, "nat.title")}</h1>
       <div className="flex flex-wrap items-center justify-between gap-2 text-caption text-secondary" data-testid="nat-stamp">
         <p>
-          <time dateTime={q.date} data-testid="nat-date">{q.date}</time>
+          <time dateTime={q.date} data-testid="nat-date">{formatBusinessDate(locale, q.date)}</time>
           {asOf ? <span data-testid="nat-last-updated"> · {t(locale, "nat.last_updated", { time: clock(locale, asOf) })}</span> : null}
         </p>
         <p>{live ? t(locale, "nat.till_time", { time: clock(locale, asOf ?? new Date().toISOString()) }) : t(locale, "nat.final_day")}</p>
