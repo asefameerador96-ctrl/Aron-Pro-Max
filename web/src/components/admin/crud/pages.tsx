@@ -2,6 +2,7 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import type { ReactNode } from "react";
+import { canSee, canWriteModule, loadGrants, moduleOfApiPath } from "@/lib/admin/modules";
 import { Forbidden } from "@/components/forbidden";
 import { currentPath, requireSession } from "@/lib/auth/require";
 import { getLocale } from "@/lib/auth/service";
@@ -140,7 +141,10 @@ function toFormField(locale: Locale, f: AnyField, refs: RefOptions = {}, meta?: 
 export async function EntityListPage({ meta, searchParams }: { meta: AnyEntity; searchParams: SearchParams }) {
   const [session, locale] = await Promise.all([requireSession(), getLocale()]);
   if (!canRead(meta, session.user.role)) return <Forbidden locale={locale} />;
-  const writable = canWrite(meta, session.user.role);
+  const grants = await loadGrants(session.at, session.user.role);
+  const mod = moduleOfApiPath(meta.api.collection);
+  if (!canSee(grants, mod)) return <Forbidden locale={locale} />;
+  const writable = canWrite(meta, session.user.role) && canWriteModule(grants, mod); // an ADMIN with a read grant sees the table without actions
 
   const rawQuery: Record<string, string | undefined> = {};
   for (const f of meta.filters) rawQuery[f.param] = one(searchParams[f.param]);
@@ -227,7 +231,7 @@ export async function EntityListPage({ meta, searchParams }: { meta: AnyEntity; 
 
 export async function EntityCreatePage({ meta }: { meta: AnyEntity }) {
   const [session, locale] = await Promise.all([requireSession(), getLocale()]);
-  if (!canWrite(meta, session.user.role) || meta.canCreate === false) return <Forbidden locale={locale} />;
+  if (!canWrite(meta, session.user.role) || meta.canCreate === false || !canWriteModule(await loadGrants(session.at, session.user.role), moduleOfApiPath(meta.api.collection))) return <Forbidden locale={locale} />;
   const { refs, failed } = await loadAllRefs(meta, session.at, "create");
   const fields = meta.fields.filter((f) => isWritable(f, "create")).map((f) => toFormField(locale, f, refs, meta, session.user.role));
   const initial = Object.fromEntries(fields.map((f) => [f.name, f.kind === "enum" && f.required && !f.noDefault ? (f.options?.[0]?.value ?? "") : ""]));
@@ -244,7 +248,7 @@ export async function EntityEditPage({ meta, id, searchParams }: { meta: AnyEnti
   const [session, locale] = await Promise.all([requireSession(), getLocale()]);
   if (!canRead(meta, session.user.role)) return <Forbidden locale={locale} />;
   if (!entityCanEdit(meta)) notFound(); // an entity without an edit (assignments, holidays) has no edit URL
-  if (!canWrite(meta, session.user.role)) return <Forbidden locale={locale} />;
+  if (!canWrite(meta, session.user.role) || !canWriteModule(await loadGrants(session.at, session.user.role), moduleOfApiPath(meta.api.collection))) return <Forbidden locale={locale} />;
   const row = await getRow(meta, session.at, id, one(searchParams.c, CURSOR_MAX));
   if (!row.ok) return onApiFailure(row.status, row.problem, locale);
   if (!row.data) notFound();
