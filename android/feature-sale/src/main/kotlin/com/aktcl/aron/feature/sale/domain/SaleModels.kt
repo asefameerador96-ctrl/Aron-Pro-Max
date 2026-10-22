@@ -1,5 +1,7 @@
 package com.aktcl.aron.feature.sale.domain
 
+import com.aktcl.aron.rules.EntrySpec
+import com.aktcl.aron.rules.EntryUnits
 import com.aktcl.aron.rules.PriceType
 import com.aktcl.aron.rules.QtyUnit
 import kotlinx.serialization.Serializable
@@ -22,7 +24,20 @@ data class SaleSku(
     val stockBase: Long? = null,
     /** Active offer for the Slide screen: empty packets that earn one reward pack; null when no active offer (docs/27: offers deferred). */
     val drp: DrpRule? = null,
+    /** `entry_unit_default` of the bundle row: `pack` for cigarettes, bidi and lighters, `dozen` for matches (docs/34 s4.2). */
+    val entryUnitDefault: String = if (baseUnit == "dozen") "dozen" else "pack",
+    /** `cfg.sale.allow_loose_base_units` (default false): sticks and pieces are not typed, only whole packets, boxes and dozens. */
+    val allowLoose: Boolean = false,
 ) {
+    /** How this SKU is counted in the field: the unit typed, shown, totalled, printed and synced, and the base units per unit. */
+    val entry: EntrySpec get() = EntryUnits.resolve(baseUnit, packFactor, entryUnitDefault, allowLoose)
+
+    /** Price of one entered unit (the packet price), exact in milli-taka; null only when the bundle price is not a whole multiple. */
+    val entryPriceMtk: Long? get() = EntryUnits.entryPriceMtk(entry, unitPriceMtk, pricePerQty.toLong())
+
+    /** Wire label key (`packet`, `box`, `dozen`, `stick`, `piece`) of the entry unit, for the string tables. */
+    val entryLabelKey: String get() = EntryUnits.labelKey(categoryCode, entry.unit)
+
     init {
         require(packFactor >= 1) { "packFactor must be >= 1" }
         require(pricePerQty >= 1) { "pricePerQty must be >= 1" }

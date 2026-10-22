@@ -174,4 +174,9 @@
     <string name="core_ui_look_sun">Sunlight mode</string>
     <string name="core_ui_look_price">Tk 12.50 / pc · total Tk 50.00</string>
     <string name="core_ui_look_retry">Retry</string>
+    <string name="core_ui_unit_packet">packets</string>
+    <string name="core_ui_unit_box">boxes</string>
+    <string name="core_ui_unit_dozen">dozen</string>
+    <string name="core_ui_unit_stick">sticks</string>
+    <string name="core_ui_unit_piece">pieces</string>
 </resources>

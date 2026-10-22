@@ -11,7 +11,11 @@ data class KpiStrip(
     val categories: List<KpiCategory>,
 )
 
-data class KpiCategory(val categoryCode: String, val issueBase: Long, val currentStockBase: Long, val unit: String)
+/**
+ * [issueBase] and [currentStockBase] are whole entry units (packets, boxes, dozens; the names predate docs/34 s4.2); [unit] is the
+ * unit label key. [issueRemBase] and [currentRemBase] are the base units (sticks, pieces) left over after whole entry units, never dropped.
+ */
+data class KpiCategory(val categoryCode: String, val issueBase: Long, val currentStockBase: Long, val unit: String, val issueRemBase: Long = 0L, val currentRemBase: Long = 0L)
 
 object KpiStripBuilder {
     /** `strike = visited / planned`, half-up to hundredths from integers; 6 of 60 gives 10.00 %. */
@@ -25,10 +29,15 @@ object KpiStripBuilder {
         issueBySku: Map<Long, Long>,
         currentBySku: Map<Long, Long>,
         skus: Map<Long, SummarySku>,
+        issueRemBySku: Map<Long, Long> = emptyMap(),
+        currentRemBySku: Map<Long, Long> = emptyMap(),
+        /** The unit label key of a SKU; a category whose SKUs are counted in different units gets one line per unit (never added across units). */
+        skuUnit: (Long) -> String? = { null },
         unitOf: (String) -> String,
     ): KpiStrip {
-        val cats = (issueBySku.keys + currentBySku.keys).groupBy { skus[it]?.categoryCode ?: "" }.toSortedMap().map { (c, ids) ->
-            KpiCategory(c, ids.sumOf { issueBySku[it] ?: 0L }, ids.sumOf { currentBySku[it] ?: 0L }, unitOf(c))
+        val cats = (issueBySku.keys + currentBySku.keys).groupBy { (skus[it]?.categoryCode ?: "") to (skuUnit(it) ?: unitOf(skus[it]?.categoryCode ?: "")) }
+            .toSortedMap(compareBy({ it.first }, { it.second })).map { (key, ids) ->
+            KpiCategory(key.first, ids.sumOf { issueBySku[it] ?: 0L }, ids.sumOf { currentBySku[it] ?: 0L }, key.second, ids.sumOf { issueRemBySku[it] ?: 0L }, ids.sumOf { currentRemBySku[it] ?: 0L })
         }
         return KpiStrip(planned, visited, strikeRateHundredths(visited, planned), (planned - visited).coerceAtLeast(0), (visited - soldOutlets).coerceAtLeast(0), cats)
     }

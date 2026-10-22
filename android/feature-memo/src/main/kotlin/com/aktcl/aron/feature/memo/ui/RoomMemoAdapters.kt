@@ -33,7 +33,7 @@ class RoomMemoStore(private val db: AronDatabase) : MemoStore {
     private suspend fun toStored(m: MemoEntity): StoredMemo = StoredMemo(
         memoUuid = m.clientUuid, memoNo = m.memoNo, outletId = m.outletId, businessDate = m.meta.businessDate, committedAtIso = m.committedAt,
         supersedesUuid = m.supersedesClientUuid,
-        lines = dao.linesOf(m.clientUuid).map { MemoItem(it.skuId, it.qtyBase, it.basePriceMtk, it.grossMtk) },
+        lines = dao.linesOf(m.clientUuid).map { MemoItem(it.skuId, it.qtyBase, it.basePriceMtk, it.grossMtk, it.qtyEntered, it.unitEntered) },
         discounts = dao.discountsOf(m.clientUuid).map { MemoDiscountItem(it.skuId, it.qtyBase ?: 0L, it.valueMtk, it.kind) },
         qcLines = dao.qcLinesOf(m.clientUuid).map { MemoQcItem(it.skuId, it.qtyBase, it.settlementMtk) },
         grossMtk = m.grossMtk, offerDiscountMtk = m.offerDiscountMtk, drpDiscountMtk = m.drpDiscountMtk, qcDeductionMtk = m.qcDeductionMtk,

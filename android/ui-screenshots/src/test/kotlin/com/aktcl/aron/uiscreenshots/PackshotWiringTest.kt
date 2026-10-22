@@ -69,7 +69,7 @@ class PackshotWiringTest {
     @Test fun everySaleRowAsksTheProviderByTheServerSkuId() {
         val skus = listOf(
             SaleSku(100, "MAXR10", "cigarette", "MaxR 10S", null, "stick", 10, 8_000, 1, "2026-09-01", stockBase = 400),
-            SaleSku(103, "ASTER", "lighter", "Aster", null, "piece", 1, 12_500, 1, "2026-09-01", stockBase = 25),
+            SaleSku(103, "ASTER", "lighter", "Aster", null, "piece", 25, 12_500, 1, "2026-09-01", stockBase = 25),
         )
         val review = SaleReviewCalculator.review(SaleDraft("v1", 50001, 10231, "2026-10-05", memoUuid = "m1"), skus.associateBy { it.skuId })
         show { SaleEntryScreen(skus, review, { 0 }, { _, _ -> }, {}, {}, onPreviousSales = {}) }
