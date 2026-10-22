@@ -110,4 +110,5 @@
     <string name="diag_memo_mode_hint">শুধু বিট ইমেজ টেস্ট পেজ পরিষ্কার ছাপা হলে বিট ইমেজ বেছে নিন, নইলে রাস্টার রাখুন।</string>
     <string name="diag_mode_raster">রাস্টার (GS v 0), সাধারণ</string>
     <string name="diag_mode_bitimage">বিট ইমেজ (ESC *), পুরনো প্রিন্টারের জন্য</string>
+    <string name="diag_report_subject">অ্যারন প্রিন্টার পরীক্ষা</string>
 </resources>

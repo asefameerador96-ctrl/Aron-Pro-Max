@@ -83,7 +83,7 @@ class DiagnosticsSession(
             try {
                 while (true) {
                     val b = transport.read()
-                    if (b < 0) { dropped = "end of stream"; break }
+                    if (b < 0) { dropped = "end of stream"; break } // i18n-ignore: technical diagnostics text, English by design (D-PRINT-02 report for the lead)
                     replies.trySend(b)
                 }
             } catch (e: IOException) {
@@ -99,21 +99,21 @@ class DiagnosticsSession(
         for (n in listOf(1, 2, 4)) {
             while (replies.tryReceive().isSuccess) Unit
             val err = write(EscPos.statusQuery(n))
-            if (err != null) { log.add("STATUS DLE EOT $n", StepOutcome.FAIL, err); return }
+            if (err != null) { log.add("STATUS DLE EOT $n", StepOutcome.FAIL, err); return } // i18n-ignore: technical diagnostics text, English by design (D-PRINT-02 report for the lead)
             val got = ArrayList<Int>()
             withTimeoutOrNull(replyWaitMs) { while (true) got.add(replies.receive()) }
             if (got.isEmpty()) {
-                log.add("STATUS DLE EOT $n", StepOutcome.INFO, "no reply in $replyWaitMs ms")
+                log.add("STATUS DLE EOT $n", StepOutcome.INFO, "no reply in $replyWaitMs ms") // i18n-ignore: technical diagnostics text, English by design (D-PRINT-02 report for the lead)
             } else {
                 val b = got.first()
                 val meaning = when {
-                    !EscPos.isStatusByte(b) -> "not a status byte"
-                    n == 4 && EscPos.paperOut(b) -> "paper OUT"
-                    n == 4 && EscPos.paperNearEnd(b) -> "paper near end"
-                    n == 4 -> "paper present"
-                    else -> "status ok"
+                    !EscPos.isStatusByte(b) -> "not a status byte" // i18n-ignore: technical diagnostics text, English by design (D-PRINT-02 report for the lead)
+                    n == 4 && EscPos.paperOut(b) -> "paper OUT" // i18n-ignore: technical diagnostics text, English by design (D-PRINT-02 report for the lead)
+                    n == 4 && EscPos.paperNearEnd(b) -> "paper near end" // i18n-ignore: technical diagnostics text, English by design (D-PRINT-02 report for the lead)
+                    n == 4 -> "paper present" // i18n-ignore: technical diagnostics text, English by design (D-PRINT-02 report for the lead)
+                    else -> "status ok" // i18n-ignore: technical diagnostics text, English by design (D-PRINT-02 report for the lead)
                 }
-                log.add("STATUS DLE EOT $n", StepOutcome.OK, got.joinToString(" ") { "0x%02X".format(Locale.ROOT, it) } + " ($meaning)")
+                log.add("STATUS DLE EOT $n", StepOutcome.OK, got.joinToString(" ") { "0x%02X".format(Locale.ROOT, it) } + " ($meaning)") // i18n-ignore: technical diagnostics text, English by design (D-PRINT-02 report for the lead)
             }
         }
     }
@@ -145,16 +145,16 @@ class DiagnosticsSession(
         val result = TestPageResult(mode, sent, total, ms, error)
         log.add(
             "TEST ${mode.name}", if (error == null) StepOutcome.OK else StepOutcome.FAIL,
-            "${mode.label}: wrote $sent of $total bytes in $ms ms" + (error?.let { ", $it" } ?: ", all bytes accepted by the link"),
+            "${mode.label}: wrote $sent of $total bytes in $ms ms" + (error?.let { ", $it" } ?: ", all bytes accepted by the link"), // i18n-ignore: technical diagnostics text, English by design (D-PRINT-02 report for the lead)
         )
         return result
     }
 
     private suspend fun write(bytes: ByteArray): String? {
-        dropped?.let { return "link dropped: $it" }
+        dropped?.let { return "link dropped: $it" } // i18n-ignore: technical diagnostics text, English by design (D-PRINT-02 report for the lead)
         return try {
             val ok = withTimeoutOrNull(writeTimeoutMs) { transport.write(bytes); true }
-            if (ok == null) { transport.close(); "write timed out after $writeTimeoutMs ms" } else dropped?.let { "link dropped: $it" }
+            if (ok == null) { transport.close(); "write timed out after $writeTimeoutMs ms" } else dropped?.let { "link dropped: $it" } // i18n-ignore: technical diagnostics text, English by design (D-PRINT-02 report for the lead)
         } catch (e: kotlinx.coroutines.CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -192,43 +192,43 @@ object DiagnosticsReport {
         paper: Map<TestMode, Boolean>,
         generatedAt: String,
     ): String = buildString {
-        appendLine("ARON PRINTER DIAGNOSTICS (D-PRINT-02)")
+        appendLine("ARON PRINTER DIAGNOSTICS (D-PRINT-02)") // i18n-ignore: technical diagnostics text, English by design (D-PRINT-02 report for the lead)
         appendLine("Generated: $generatedAt")
         appendLine("App: ${env.appVersion}")
         appendLine("Phone: ${env.manufacturer} ${env.model}, Android ${env.androidRelease} (SDK ${env.sdkInt})")
-        appendLine("Bluetooth: " + if (!env.bluetoothSupported) "NOT SUPPORTED on this phone" else "adapter ${env.adapterState}")
-        appendLine("Permissions: " + if (env.permissions.isEmpty()) "none needed at runtime on this Android" else env.permissions.entries.joinToString(", ") { "${it.key}=${if (it.value) "granted" else "DENIED"}" })
-        appendLine("Saved printer in app: ${env.savedPrinter?.let(Redact::text) ?: "none"}")
+        appendLine("Bluetooth: " + if (!env.bluetoothSupported) "NOT SUPPORTED on this phone" else "adapter ${env.adapterState}") // i18n-ignore: technical diagnostics text, English by design (D-PRINT-02 report for the lead)
+        appendLine("Permissions: " + if (env.permissions.isEmpty()) "none needed at runtime on this Android" else env.permissions.entries.joinToString(", ") { "${it.key}=${if (it.value) "granted" else "DENIED"}" }) // i18n-ignore: technical diagnostics text, English by design (D-PRINT-02 report for the lead)
+        appendLine("Saved printer in app: ${env.savedPrinter?.let(Redact::text) ?: "none"}") // i18n-ignore: technical diagnostics text, English by design (D-PRINT-02 report for the lead)
         when (val b = env.bonded) {
-            null -> appendLine("Paired devices: not readable (${env.bondedError?.let(Redact::text) ?: "unknown reason"})")
+            null -> appendLine("Paired devices: not readable (${env.bondedError?.let(Redact::text) ?: "unknown reason"})") // i18n-ignore: technical diagnostics text, English by design (D-PRINT-02 report for the lead)
             else -> {
-                appendLine("Paired devices (${b.size}):")
+                appendLine("Paired devices (${b.size}):") // i18n-ignore: technical diagnostics text, English by design (D-PRINT-02 report for the lead)
                 b.forEachIndexed { i, d -> appendLine("  ${i + 1}. ${describe(d)}") }
             }
         }
-        appendLine("Printer under test: ${selected?.let { describe(it, full = true) } ?: "none chosen"}")
+        appendLine("Printer under test: ${selected?.let { describe(it, full = true) } ?: "none chosen"}") // i18n-ignore: technical diagnostics text, English by design (D-PRINT-02 report for the lead)
         appendLine("Steps:")
-        if (steps.isEmpty()) appendLine("  (none run)")
+        if (steps.isEmpty()) appendLine("  (none run)") // i18n-ignore: technical diagnostics text, English by design (D-PRINT-02 report for the lead)
         for (s in steps) appendLine("  [+%.1fs] %s: %s %s".format(Locale.ROOT, s.atMs / 1000.0, s.name, s.outcome, s.detail))
-        appendLine("Paper (as seen by the person holding the printer):")
-        for (m in TestMode.entries) appendLine("  ${m.label}: " + when (paper[m]) { true -> "PRINTED OK"; false -> "NOTHING OR GARBAGE"; null -> "not answered" })
+        appendLine("Paper (as seen by the person holding the printer):") // i18n-ignore: technical diagnostics text, English by design (D-PRINT-02 report for the lead)
+        for (m in TestMode.entries) appendLine("  ${m.label}: " + when (paper[m]) { true -> "PRINTED OK"; false -> "NOTHING OR GARBAGE"; null -> "not answered" }) // i18n-ignore: technical diagnostics text, English by design (D-PRINT-02 report for the lead)
     }
 
     /** [full] (the screen, the device under test) keeps every name: nothing is filtered or hidden there. */
     fun describe(d: BondedDevice, full: Boolean = false): String {
         val cls = when (d.majorClass) {
             null -> "class ?"
-            0x0600 -> "class IMAGING (printer)"
-            0x0200 -> "class PHONE"
-            0x0400 -> "class AUDIO_VIDEO"
-            0x1F00 -> "class UNCATEGORIZED"
+            0x0600 -> "class IMAGING (printer)" // i18n-ignore: technical diagnostics text, English by design (D-PRINT-02 report for the lead)
+            0x0200 -> "class PHONE" // i18n-ignore: technical diagnostics text, English by design (D-PRINT-02 report for the lead)
+            0x0400 -> "class AUDIO_VIDEO" // i18n-ignore: technical diagnostics text, English by design (D-PRINT-02 report for the lead)
+            0x1F00 -> "class UNCATEGORIZED" // i18n-ignore: technical diagnostics text, English by design (D-PRINT-02 report for the lead)
             else -> "class 0x%04X".format(Locale.ROOT, d.majorClass)
         }
         val type = when (d.type) { 1 -> "CLASSIC"; 2 -> "LE"; 3 -> "DUAL"; 0 -> "UNKNOWN"; else -> "?" }
         // a headset or someone's phone is not the printer: its name and full address stay off the report
         if (!full && d.majorClass != null && d.majorClass != 0x0600 && d.majorClass != 0x1F00 && d.majorClass != 0x0000) {
-            return "(other device, name hidden)  ${d.address.take(9)}XX:XX:XX  $cls  type $type"
+            return "(other device, name hidden)  ${d.address.take(9)}XX:XX:XX  $cls  type $type" // i18n-ignore: technical diagnostics text, English by design (D-PRINT-02 report for the lead)
         }
-        return "${Redact.text(d.name ?: "(no name)")}  ${d.address}  $cls  type $type"
+        return "${Redact.text(d.name ?: "(no name)")}  ${d.address}  $cls  type $type" // i18n-ignore: technical diagnostics text, English by design (D-PRINT-02 report for the lead)
     }
 }

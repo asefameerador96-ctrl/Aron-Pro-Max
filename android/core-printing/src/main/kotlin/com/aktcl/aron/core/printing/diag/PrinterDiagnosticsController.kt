@@ -85,7 +85,7 @@ class PrinterDiagnosticsController(
     private suspend fun withLink(body: suspend (PrinterTransport) -> Unit) {
         val target = state.value.selected
         if (target == null) {
-            log.add("CONNECT", StepOutcome.FAIL, "no paired device chosen")
+            log.add("CONNECT", StepOutcome.FAIL, "no paired device chosen") // i18n-ignore: technical diagnostics text, English by design (D-PRINT-02 report for the lead)
             publish()
             return
         }
@@ -111,7 +111,7 @@ class PrinterDiagnosticsController(
     /** The export text (copy to the clipboard or share). */
     fun report(generatedAt: String): String {
         val s = state.value
-        val env = s.env ?: DiagEnvironment("?", "?", "?", 0, "?", false, "UNKNOWN", emptyMap(), null, "not read yet")
+        val env = s.env ?: DiagEnvironment("?", "?", "?", 0, "?", false, "UNKNOWN", emptyMap(), null, "not read yet") // i18n-ignore: technical diagnostics text, English by design (D-PRINT-02 report for the lead)
         return DiagnosticsReport.render(env, s.selected, log.steps, s.paper, generatedAt)
     }
 }

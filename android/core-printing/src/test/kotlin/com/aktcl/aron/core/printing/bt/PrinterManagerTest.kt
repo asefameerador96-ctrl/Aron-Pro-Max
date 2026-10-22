@@ -324,13 +324,34 @@ class PrinterManagerTest {
         assertEquals(ImageMode.RASTER, store.p!!.imageMode)
     }
 
-    @Test fun theDefaultsListNamesTheFieldPrinters() {
-        assertEquals(ImageMode.RASTER, PrinterDefaults.modeFor("MP-58N"))
-        assertEquals(ImageMode.RASTER, PrinterDefaults.modeFor("Thermal Crest MP58N_1A2B"))
-        assertEquals(ImageMode.RASTER, PrinterDefaults.modeFor("RPP02N"))
-        assertEquals(ImageMode.RASTER, PrinterDefaults.modeFor(null))
-        assertTrue(PrinterDefaults.sourceFor("MP-58N").contains("MP-58N"))
-        assertEquals("no entry: raster", PrinterDefaults.sourceFor("MTP-II"))
+    @Test fun theDefaultsListNamesTheFieldPrintersAndNothingElse() {
+        for (n in listOf("MP-58N", "mp58n", "Thermal Crest MP58N_1A2B", "MP-58N-BT")) assertTrue(n, PrinterDefaults.sourceFor(n).contains("MP-58N"))
+        for (n in listOf("RPP02N", "RPP-02", "rpp02n_ab")) assertTrue(n, PrinterDefaults.sourceFor(n).contains("RPP02N"))
+        for (n in listOf("MP-58NX", "SMP58N", "RPP200", "RPP2", "RPP-02B", "MTP-II", "PT-210", "Galaxy Buds", null)) {
+            assertEquals("$n", "no entry: raster", PrinterDefaults.sourceFor(n))
+            assertEquals(ImageMode.RASTER, PrinterDefaults.modeFor(n))
+        }
+    }
+
+    /** Checker T1 (224d429a) #3: the diagnostics' choice survives using another printer in between. */
+    @Test fun theChoiceForAPrinterSurvivesPickingAnotherOneInBetween() = runTest {
+        val modes = HashMap<String, ImageMode>()
+        val store = object : SavedPrinterStore {
+            var p: SavedPrinter? = null
+            override fun load() = p
+            override fun save(printer: SavedPrinter?) { p = printer; printer?.let { modes[it.address] = it.imageMode } }
+            override fun rememberedMode(address: String) = modes[address]
+        }
+        val m = PrinterManager(SimPrinter({ testScheduler.currentTime }).factory(), store, backgroundScope, nowMs = { testScheduler.currentTime })
+        m.select(SavedPrinter("AA:00:00:00:00:01", "MP-58N"))
+        m.setImageMode(ImageMode.BIT_IMAGE)
+        m.select(SavedPrinter("AA:00:00:00:00:02", "MP-58N"))
+        assertEquals(ImageMode.RASTER, store.p!!.imageMode)
+        m.select(SavedPrinter("AA:00:00:00:00:01", "MP-58N"))
+        assertEquals(ImageMode.BIT_IMAGE, store.p!!.imageMode)
+        // an explicit mode from the caller wins over the remembered one
+        m.select(SavedPrinter("AA:00:00:00:00:02", "MP-58N", ImageMode.BIT_IMAGE))
+        assertEquals(ImageMode.BIT_IMAGE, store.p!!.imageMode)
     }
 
     @Test fun stuckWriteTimesOutAsDisconnected() = runTest {

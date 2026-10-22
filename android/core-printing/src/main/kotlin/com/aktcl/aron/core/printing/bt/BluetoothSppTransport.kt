@@ -51,7 +51,7 @@ class BluetoothSppTransport(
         withContext(Dispatchers.IO) { try { a.cancelDiscovery() } catch (_: SecurityException) {} }
         val result = connector.connect(address, methods) { m -> AndroidSppSocket(open(device, m)) }
         lastAttempts = result.attempts
-        socket = result.socket ?: throw IOException(result.attempts.joinToString("; ") { "${it.method}: ${it.error}" }.ifEmpty { "connect failed" })
+        socket = result.socket ?: throw IOException(result.attempts.joinToString("; ") { "${it.method}: ${it.error}" }.ifEmpty { "connect failed" }) // i18n-ignore: technical diagnostics text, English by design (D-PRINT-02 report for the lead)
     }
 
     @SuppressLint("MissingPermission")
@@ -131,13 +131,22 @@ class PrefsSavedPrinterStore(context: Context) : SavedPrinterStore {
 
     override fun save(printer: SavedPrinter?) {
         prefs.edit().apply {
-            if (printer == null) { remove(KEY_ADDRESS); remove(KEY_NAME); remove(KEY_MODE) } else { putString(KEY_ADDRESS, printer.address); putString(KEY_NAME, printer.name); putString(KEY_MODE, printer.imageMode.name) }
+            if (printer == null) {
+                remove(KEY_ADDRESS); remove(KEY_NAME); remove(KEY_MODE)
+            } else {
+                putString(KEY_ADDRESS, printer.address); putString(KEY_NAME, printer.name); putString(KEY_MODE, printer.imageMode.name)
+                putString(MODE_PREFIX + printer.address, printer.imageMode.name) // remembered per printer (D-PRINT-02)
+            }
         }.apply()
     }
+
+    override fun rememberedMode(address: String): ImageMode? =
+        prefs.getString(MODE_PREFIX + address, null)?.let { m -> ImageMode.entries.firstOrNull { it.name == m } }
 
     private companion object {
         const val KEY_ADDRESS = "address"
         const val KEY_NAME = "name"
         const val KEY_MODE = "image_mode"
+        const val MODE_PREFIX = "image_mode_"
     }
 }

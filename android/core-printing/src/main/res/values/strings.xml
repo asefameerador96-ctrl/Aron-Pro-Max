@@ -110,4 +110,5 @@
     <string name="diag_memo_mode_hint">Keep raster unless only the bit image test page printed clearly.</string>
     <string name="diag_mode_raster">Raster (GS v 0), normal</string>
     <string name="diag_mode_bitimage">Bit image (ESC *), for older printers</string>
+    <string name="diag_report_subject">Aron printer diagnostics</string>
 </resources>

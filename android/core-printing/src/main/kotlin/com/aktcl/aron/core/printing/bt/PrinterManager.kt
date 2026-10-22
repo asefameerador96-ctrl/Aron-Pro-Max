@@ -34,6 +34,8 @@ data class SavedPrinter(val address: String, val name: String, val imageMode: Im
 interface SavedPrinterStore {
     fun load(): SavedPrinter?
     fun save(printer: SavedPrinter?)
+    /** The image mode last saved for [address], kept after another printer was picked; null when never saved. */
+    fun rememberedMode(address: String): ImageMode? = load()?.takeIf { it.address == address }?.imageMode
 }
 
 /** What the printer icon and banner show (F-SR-013). */
@@ -156,13 +158,11 @@ class PrinterManager(
         lock.withLock {
             closeLink()
             strandedBytes = 0
-            // picking the same printer again keeps the image mode the diagnostics chose for it; a new one starts with its
-            // model's default (an explicit non-raster mode from the caller wins)
-            val same = store.load()?.takeIf { it.address == printer.address }
+            // a printer picked again keeps the image mode the diagnostics chose for it, even after another printer was
+            // used in between; a new one starts with its model's default (an explicit non-raster mode from the caller wins)
             val mode = when {
                 printer.imageMode != ImageMode.RASTER -> printer.imageMode
-                same != null -> same.imageMode
-                else -> defaultMode(printer.name)
+                else -> store.rememberedMode(printer.address) ?: defaultMode(printer.name)
             }
             store.save(printer.copy(imageMode = mode))
             _state.value = PrinterState.Off

@@ -6,11 +6,11 @@ import com.aktcl.aron.core.printing.raster.MonoBitmap
 /** The three ways the diagnostics screen talks to a printer (D-PRINT-02, docs/34 s4.1). */
 enum class TestMode(val label: String) {
     /** `GS v 0` raster bands: what every memo uses. */
-    RASTER("GS v 0 raster"),
+    RASTER("GS v 0 raster"), // i18n-ignore: printed test page / mode label: printer font is ASCII (D-PRINT-02)
     /** `ESC * 33` 24-dot bit image: older firmware without `GS v 0`. */
     BIT_IMAGE("ESC * 24-dot"),
     /** Plain ASCII in the printer's own font: no image command at all. */
-    ASCII("ASCII self-test"),
+    ASCII("ASCII self-test"), // i18n-ignore: printed test page / mode label: printer font is ASCII (D-PRINT-02)
 }
 
 /**
@@ -22,10 +22,10 @@ object TestPages {
     const val WIDTH_DOTS = 384
 
     fun commands(mode: TestMode, bandRows: Int = 24): List<ByteArray> = when (mode) {
-        TestMode.RASTER -> EscPos.job(pattern("ARON TEST GS V 0"), bandRows)
-        TestMode.BIT_IMAGE -> EscPos.bitImageJob(pattern("ARON TEST ESC * 24"))
+        TestMode.RASTER -> EscPos.job(pattern("ARON TEST GS V 0"), bandRows) // i18n-ignore: printed test page / mode label: printer font is ASCII (D-PRINT-02)
+        TestMode.BIT_IMAGE -> EscPos.bitImageJob(pattern("ARON TEST ESC * 24")) // i18n-ignore: printed test page / mode label: printer font is ASCII (D-PRINT-02)
         TestMode.ASCII -> EscPos.textJob(
-            listOf("ARON PRINTER TEST", "MODE: ASCII SELF-TEST", "0123456789", "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "-".repeat(32), "32 COLUMNS FIT ON 58 MM PAPER"),
+            listOf("ARON PRINTER TEST", "MODE: ASCII SELF-TEST", "0123456789", "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "-".repeat(32), "32 COLUMNS FIT ON 58 MM PAPER"), // i18n-ignore: printed test page / mode label: printer font is ASCII (D-PRINT-02)
         )
     }
 

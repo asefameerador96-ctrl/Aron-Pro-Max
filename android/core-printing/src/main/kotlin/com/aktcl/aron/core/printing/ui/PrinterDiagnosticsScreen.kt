@@ -41,6 +41,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.aktcl.aron.core.printing.R
 import com.aktcl.aron.core.printing.bt.BluetoothSppTransport
 import com.aktcl.aron.core.printing.bt.ImageMode
+import com.aktcl.aron.core.printing.bt.PrinterDefaults
 import com.aktcl.aron.core.printing.bt.PrinterManager
 import com.aktcl.aron.core.printing.bt.SavedPrinter
 import com.aktcl.aron.core.printing.bt.SppConnector
@@ -82,7 +83,7 @@ fun PrinterDiagnosticsScreen(manager: PrinterManager, appVersion: String, modifi
         )
     }
     val state by controller.state.collectAsState()
-    fun refresh() = controller.setEnvironment(AndroidDiagEnvironment.collect(context, appVersion, manager.savedPrinter?.let { "${it.name} ${it.address}, memo image ${it.imageMode} (model default: ${com.aktcl.aron.core.printing.bt.PrinterDefaults.modeFor(it.name)}, ${com.aktcl.aron.core.printing.bt.PrinterDefaults.sourceFor(it.name)})" }))
+    fun refresh() = controller.setEnvironment(AndroidDiagEnvironment.collect(context, appVersion, manager.savedPrinter?.let { "${it.name} ${it.address}, memo image ${it.imageMode} (model default: ${PrinterDefaults.modeFor(it.name)}, ${PrinterDefaults.sourceFor(it.name)})" })) // i18n-ignore: technical diagnostics text, English by design (D-PRINT-02 report for the lead)
     val ask = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { refresh() }
     // read again on every return to the screen (after Bluetooth or app settings)
     val owner = LocalLifecycleOwner.current
@@ -192,12 +193,12 @@ fun PrinterDiagnosticsScreen(manager: PrinterManager, appVersion: String, modifi
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             AronSolidButton(stringResource(R.string.diag_copy), {
                 val text = controller.report(now())
-                (context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager)?.setPrimaryClip(ClipData.newPlainText("Aron printer diagnostics", text))
+                (context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager)?.setPrimaryClip(ClipData.newPlainText(context.getString(R.string.diag_report_subject), text))
                 Toast.makeText(context, R.string.diag_copied, Toast.LENGTH_SHORT).show()
             }, Modifier.weight(1f), tone = SolidTone.Green)
             AronOutlinedButton(stringResource(R.string.diag_share), {
                 val send = Intent(Intent.ACTION_SEND).setType("text/plain")
-                    .putExtra(Intent.EXTRA_SUBJECT, "Aron printer diagnostics").putExtra(Intent.EXTRA_TEXT, controller.report(now()))
+                    .putExtra(Intent.EXTRA_SUBJECT, context.getString(R.string.diag_report_subject)).putExtra(Intent.EXTRA_TEXT, controller.report(now()))
                 open(context, Intent.createChooser(send, null))
             }, Modifier.weight(1f))
         }

@@ -70,7 +70,7 @@ class SppConnector(
             }
             val error = try {
                 val ok = withTimeoutOrNull(attemptTimeoutMs) { connectCancellable(s); true }
-                if (ok == null) "timeout after ${attemptTimeoutMs} ms" else null
+                if (ok == null) "timeout after ${attemptTimeoutMs} ms" else null // i18n-ignore: technical diagnostics text, English by design (D-PRINT-02 report for the lead)
             } catch (e: CancellationException) {
                 try { s.close() } catch (_: Exception) {}
                 throw e

@@ -37,9 +37,9 @@ object AndroidDiagEnvironment {
         var bonded: List<BondedDevice>? = null
         var error: String? = null
         when {
-            a == null -> error = "this phone has no Bluetooth adapter"
-            perms["BLUETOOTH_CONNECT"] == false -> error = "BLUETOOTH_CONNECT not granted: Android hides the paired list"
-            !a.isEnabled -> error = "Bluetooth is off"
+            a == null -> error = "this phone has no Bluetooth adapter" // i18n-ignore: technical diagnostics text, English by design (D-PRINT-02 report for the lead)
+            perms["BLUETOOTH_CONNECT"] == false -> error = "BLUETOOTH_CONNECT not granted: Android hides the paired list" // i18n-ignore: technical diagnostics text, English by design (D-PRINT-02 report for the lead)
+            !a.isEnabled -> error = "Bluetooth is off" // i18n-ignore: technical diagnostics text, English by design (D-PRINT-02 report for the lead)
             else -> try {
                 // every bonded device, no name or class filter: an "MTP-II" or unnamed printer must show
                 bonded = a.bondedDevices.orEmpty().map { BondedDevice(it.name, it.address, it.bluetoothClass?.majorDeviceClass, it.type) }
