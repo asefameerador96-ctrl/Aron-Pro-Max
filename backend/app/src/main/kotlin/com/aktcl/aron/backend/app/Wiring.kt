@@ -17,6 +17,10 @@ import com.aktcl.aron.backend.analytics.devices.DeviceDeps
 import com.aktcl.aron.backend.analytics.devices.DeviceService
 import com.aktcl.aron.backend.analytics.devices.EnrolmentSettings
 import com.aktcl.aron.backend.analytics.devices.deviceRoutes
+import com.aktcl.aron.backend.analytics.mdm.MdmDeps
+import com.aktcl.aron.backend.analytics.mdm.MdmPush
+import com.aktcl.aron.backend.analytics.mdm.MdmService
+import com.aktcl.aron.backend.analytics.mdm.mdmRoutes
 import com.aktcl.aron.backend.analytics.dashboardRoutes
 import com.aktcl.aron.backend.analytics.appTeamRoutes
 import com.aktcl.aron.backend.analytics.opsRoutes
@@ -289,6 +293,16 @@ class Wiring(
                 ingestCapacity = runCatching { config.int("cfg.api.inflight_batches_per_replica") }.getOrDefault(64),
                 dbWaiting = { hikari?.hikariPoolMXBean?.threadsAwaitingConnection ?: 0 },
             )
+            // D-MDM-01: the MDM section and the phone's command channel; off until the db migration for device_command lands (docs/requests/db-mdm-device-command.md).
+            val mdm = if (System.getenv("ARON_MDM_ENABLED") == "1") MdmDeps(
+                MdmService(db, keys, deviceEnrolment.service, clock, MdmPush { deviceId ->
+                    val tokens = db.jdbi.withHandle<List<Pair<Long, String>>, Exception> { h ->
+                        h.createQuery("SELECT id, token FROM app.push_token WHERE device_id = :d AND revoked_at IS NULL ORDER BY id").bind("d", deviceId).map { rs, _ -> rs.getLong(1) to rs.getString(2) }.list()
+                    }
+                    push.broadcast(tokens) { mapOf("kind" to "mdm_nudge") }   // no business data; the phone pulls the command itself
+                }),
+                deviceEnrolment, guard,
+            ) else null
             return Wiring(clock, config, db, generation::current, s.build, mount = {
                 authRoutes(auth)
                 outletRoutes(outlets)
@@ -297,6 +311,7 @@ class Wiring(
                 dailyTrackingRoutes(tracking)
                 opsRoutes(ops)
                 deviceRoutes(deviceEnrolment)
+                mdm?.let { mdmRoutes(it) }
                 reportRoutes(reports)
                 configAdminRoutes(configDeps)
                 configDeltaRoutes(deltaDeps)
