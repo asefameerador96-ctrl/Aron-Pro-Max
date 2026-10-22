@@ -57,7 +57,8 @@ function nodeEntity(level: ProductTreeLevel): AnyEntity {
 export const productNodeEntities: readonly AnyEntity[] = ORDER.map(nodeEntity);
 
 const UNITS = { options: ["stick", "piece", "dozen"], optionKeys: { stick: "unit.stick", piece: "unit.piece", dozen: "unit.dozen" } } as const;
-const ENTRY_UNITS = { options: ["stick", "piece", "dozen", "pack"], optionKeys: { stick: "unit.stick", piece: "unit.piece", dozen: "unit.dozen", pack: "unit.pack" } } as const;
+// "pack" first: the form preselects the first option and the field apps count in packs (docs/34 s4.2)
+const ENTRY_UNITS = { options: ["pack", "stick", "piece", "dozen"], optionKeys: { stick: "unit.stick", piece: "unit.piece", dozen: "unit.dozen", pack: "unit.pack" } } as const;
 const REPORT_UNITS = { options: ["stick", "piece", "dozen", "box", "pack"], optionKeys: { stick: "unit.stick", piece: "unit.piece", dozen: "unit.dozen", box: "unit.box", pack: "unit.pack" } } as const;
 const VARIANT_REF = { path: "/v1/admin/product-nodes/{level}", params: { level: "variant" }, label: ["name"] } as const;
 
@@ -68,6 +69,7 @@ export const skus = defineEntity<Sku, SkuWrite, SkuPatch>({
   singularKey: "entity.skus.singular",
   api: { collection: "/v1/admin/skus", item: "/v1/admin/skus/{id}" },
   auditEntity: "sku",
+  preview: "sku-pack",
   idField: "id",
   fields: [
     { name: "id", labelKey: "entity.field.id", kind: "int", mode: "readonly", column: true },
