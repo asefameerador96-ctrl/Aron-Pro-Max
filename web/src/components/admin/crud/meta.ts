@@ -142,7 +142,7 @@ export interface EntityMeta<Row, Write, Patch> {
   /** false = no create page (rows come from elsewhere). Default true. */
   canCreate?: boolean;
   /** Plain links per row to custom pages (user scope...). Shown in the actions column to `roles` (default: the write roles). */
-  links?: readonly { key: string; labelKey: MessageKey; href: (id: string) => string; roles?: RoleList }[];
+  links?: readonly { key: string; labelKey: MessageKey; href: (id: string) => string; roles?: RoleList; /** Show the link only for rows where this is true. */ when?: (row: Record<string, unknown>) => boolean }[];
   /** Extra row operations. */
   actions?: readonly ActionMeta[];
   /** Create returns a wrapper (e.g. { user, temporary_password }): the row is under this member and these members are shown once. */

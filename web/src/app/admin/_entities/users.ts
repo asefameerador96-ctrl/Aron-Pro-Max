@@ -2,10 +2,13 @@
 // server side (contract), so pending rows still upload.
 import { defineAction, defineEntity } from "@/components/admin/crud/meta";
 import type { CredentialActionRequest, User, UserPatch, UserWrite } from "@/contract/types";
+import { accessKind, USER_ROLE_OPTIONS } from "@/lib/admin/access-grants";
 import { ADMIN_PORTAL_ROLES, ALL_ROLES } from "@/lib/auth/roles";
 import type { MessageKey } from "@/lib/i18n";
 
-const ROLE_KEYS = Object.fromEntries(ALL_ROLES.map((r) => [r, `role.${r}` as MessageKey]));
+// The owner's seven portal levels first (docs/34 s1), then the app-only roles (marked), then the internal service roles. NATIONAL and BRAND
+// are not in the contract's Role enum yet (REQUEST: docs/requests/backend-admin-user-access.md).
+const ROLE_KEYS = Object.fromEntries(USER_ROLE_OPTIONS.map((r) => [r, (r === "SR" || r === "AMO" ? `role.opt.${r}` : `role.${r}`) as MessageKey]));
 const ZONE_REF = { path: "/v1/admin/geo/{level}", params: { level: "zone" }, label: ["code", "name"] } as const;
 const CRED_ROLES = ["SUPPORT", "ADMIN", "SUPERADMIN"] as const;
 const RESULT = ["temporary_password", "temporary_password_expires_at"] as const;
@@ -35,7 +38,7 @@ export const users = defineEntity<User, UserWrite, UserPatch>({
     { name: "id", labelKey: "entity.field.id", kind: "int", mode: "readonly", column: true },
     { name: "username", labelKey: "entity.field.username", kind: "text", mode: "create-only", required: true, maxLength: 40, pattern: "^[A-Za-z][A-Za-z0-9._-]{2,39}$", column: true },
     { name: "full_name", labelKey: "entity.field.full_name", kind: "text", required: true, maxLength: 120, column: true },
-    { name: "role", labelKey: "entity.field.role", kind: "enum", required: true, options: ALL_ROLES, optionKeys: ROLE_KEYS, column: true },
+    { name: "role", labelKey: "entity.field.role", kind: "enum", required: true, options: USER_ROLE_OPTIONS, optionKeys: ROLE_KEYS, column: true },
     { name: "designation", labelKey: "entity.field.designation", kind: "text", nullable: true, maxLength: 60, column: true },
     { name: "employee_code", labelKey: "entity.field.employee_code", kind: "text", nullable: true, maxLength: 40, column: true },
     { name: "phone", labelKey: "entity.field.phone", kind: "text", nullable: true, maxLength: 11, pattern: "^01[3-9]\\d{8}$", normalizeDigits: true },
@@ -56,6 +59,7 @@ export const users = defineEntity<User, UserWrite, UserPatch>({
   ],
   filters: [
     { param: "q", kind: "search", labelKey: "common.search" },
+    // The list filter takes the contract's Role values only; NATIONAL and BRAND join it with the contract change (REQUEST).
     { param: "role", kind: "enum", labelKey: "entity.field.role", options: ALL_ROLES, optionKeys: ROLE_KEYS },
     { param: "zone_id", kind: "ref", labelKey: "entity.field.zone_id", ref: ZONE_REF },
     // The list parameter is the contract's ActiveStatus (active | inactive); "inactive" is how a disabled user is filtered.
@@ -64,12 +68,16 @@ export const users = defineEntity<User, UserWrite, UserPatch>({
   readRoles: ADMIN_PORTAL_ROLES,
   writeRoles: ["ADMIN", "SUPERADMIN"],
   // docs/24 s8.5: only SUPERADMIN writes ADMIN-role users (and so creates or promotes admins).
-  restrictedValues: [{ field: "role", values: ["ADMIN", "SUPERADMIN"], unlessRoles: ["SUPERADMIN"] }],
+  restrictedValues: [{ field: "role", values: ["ADMIN", "SUPERADMIN", "NATIONAL", "BRAND"], unlessRoles: ["SUPERADMIN"] }],
   reasonOnUpdate: "change_reason",
   // REQUEST: docs/requests/web-admin-create-reason.md (UserWrite has no reason member).
   reasonOnCreate: null,
   // Create returns { user, temporary_password, temporary_password_expires_at }; the password is shown once.
   createResult: { rowKey: "user", show: RESULT },
-  links: [{ key: "scope", labelKey: "action.user_scope", href: (id) => `/admin/user-scope/${id}`, roles: ["ADMIN", "SUPERADMIN"] }],
+  links: [
+    { key: "scope", labelKey: "action.user_scope", href: (id) => `/admin/user-scope/${id}`, roles: ["ADMIN", "SUPERADMIN"] },
+    // Module grants (ADMIN) and brand scope (BRAND): Super Admin only (docs/34 s1).
+    { key: "access", labelKey: "action.user_access", href: (id) => `/admin/user-access/${id}`, roles: ["SUPERADMIN"], when: (row) => accessKind(String(row.role)) !== "none" },
+  ],
   actions: [credential("reset_password", "action.reset_password", true), credential("unlock", "action.unlock", false), credential("force_logout", "action.force_logout", false), credential("reset_mfa", "action.reset_mfa", false)],
 });

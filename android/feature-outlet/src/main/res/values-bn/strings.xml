@@ -118,4 +118,18 @@
     <string name="out_req_err_point_far">বেছে নেওয়া বিন্দু আপনার অবস্থান থেকে অনেক দূরে। কাছে আনুন বা দোকানের কাছে যান।</string>
     <string name="out_req_err_mock">ভুয়া অবস্থান ধরা পড়েছে। এটি বন্ধ করে আবার চেষ্টা করুন।</string>
     <string name="out_req_err_move_far">নতুন বিন্দু দোকানের আগের জায়গা থেকে অনেক দূরে। অফিসকে সরাতে বলুন।</string>
+    <string name="out_geo_inside">সীমার মধ্যে: আউটলেট থেকে %1$s মি · সীমা %2$s মি</string>
+    <string name="out_geo_outside">সীমার বাইরে: আউটলেট থেকে %1$s মি · সীমা %2$s মি</string>
+    <string name="out_geo_direction">আউটলেট %1$s দিকে</string>
+    <string name="out_geo_you">আপনি</string>
+    <string name="out_geo_map_cd">মানচিত্র: আউটলেট, তার সীমার বৃত্ত ও আপনার অবস্থান</string>
+    <string name="out_geo_arrow_cd">আউটলেটের দিক: %1$s</string>
+    <string name="out_compass_n">উত্তর</string>
+    <string name="out_compass_ne">উত্তর-পূর্ব</string>
+    <string name="out_compass_e">পূর্ব</string>
+    <string name="out_compass_se">দক্ষিণ-পূর্ব</string>
+    <string name="out_compass_s">দক্ষিণ</string>
+    <string name="out_compass_sw">দক্ষিণ-পশ্চিম</string>
+    <string name="out_compass_w">পশ্চিম</string>
+    <string name="out_compass_nw">উত্তর-পশ্চিম</string>
 </resources>

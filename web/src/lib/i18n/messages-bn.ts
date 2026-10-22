@@ -1,3 +1,4 @@
+import { w4Bn } from "./messages-wave4";
 // Bangla catalogue (the default locale). Same keys as messages-en.ts; tests/i18n.test.ts enforces parity and that
 // no Bangla value is empty or equal to its English text.
 import { dashBn } from "./messages-dash-bn";
@@ -431,6 +432,7 @@ export const bn: Record<MessageKey, string> = {
   "error.ERR_READ_ONLY_MODE": "সিস্টেম এখন শুধু পড়ার অবস্থায় আছে। পরে চেষ্টা করুন।",
   ...dashBn,
   ...cfgBn,
+  ...w4Bn,
   "menu.admin.sr_lifecycle": "এসআর জীবনচক্র",
   "lifecycle.create.title": "এসআর তৈরি করুন",
   "lifecycle.create.hint": "এসআর ভূমিকা, ফোন নম্বর ও হোম জোনসহ ব্যবহারকারী যোগ করুন। অস্থায়ী পাসওয়ার্ড একবার দেখানো হয়।",
