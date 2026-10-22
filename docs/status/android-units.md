@@ -1,5 +1,11 @@
 # Status: lane android-units (2026-10-22, session 1)
 
+## HANDOVER (lane done for now; restart when backend-reports entry-unit aggregates or db's pack-size seed land)
+**State:** everything is on `lane/android-units` (345d6dc plus this file). INT merged (b4421ac). Local Gradle works (`echo sdk.dir=/opt/android-sdk > local.properties`; Maven Central answered fine, no mirror needed).
+**Done:** F-UNITS-001..012 (below). Money check by three Opus passes: printed = stored = oracle for every seeded SKU, both bundles.
+**Next when restarted:** (1) AMO route-category report and TSO dashboards read the new `qty_entered`/`entry_unit` aggregates (docs/requests/android-units-server-entry-quantities.md; feature-amo ReportScreens/StockCorrection, feature-tso TsoDashboard*); (2) after db's pack-size seed (lighter `base_per_pack` 25, `entry_unit_default` pack, cfg.sale.allow_loose_base_units registered) drop the D-UNITS-LANE-01 bridge only if db confirms, and wire `allowLoose` from config; (3) owner confirmation: bidi pack sizes, QC defect counts in sticks.
+**Traps:** goldens (core-printing .pbm via `-Paron.updateGoldens=true`, ui-screenshots png via `-Proborazzi.record=true`) are re-recorded; conflicts: take theirs and re-record. Each push cancels the running CI run. `PrintSamples` is shared with the on-phone golden test. Cosmetic leftovers listed under Not done.
+
 ## Done (branch `lane/android-units`)
 - F-UNITS-001 `shared:rules` `EntryUnits`/`EntrySpec`: entry unit from `base_unit`, `base_per_pack`, `entry_unit_default`; exact packet price; label key (packet/box/dozen); restore for edits. Seed oracle test for every SKU of `db/seed/sku_catalog.csv`.
 - F-UNITS-002 Sale: quantity typed, stock column, line amount and review in the entry unit; per-packet price caption; loose sticks refused unless `allowLoose`.
