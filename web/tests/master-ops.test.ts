@@ -43,7 +43,7 @@ describe("role-node consistency", () => {
     expect(ALLOWED_SCOPE_TYPES.WM).toEqual(["wing"]);
     expect(ALLOWED_SCOPE_TYPES.SR).toEqual([]);
     for (const r of ["TOP", "ANALYST", "SUPPORT", "ADMIN", "SUPERADMIN"] as const) expect(ALLOWED_SCOPE_TYPES[r]).toEqual(["national"]);
-    expect(Object.keys(ALLOWED_SCOPE_TYPES).sort()).toEqual([...ALL_ROLES, "NATIONAL", "BRAND"].sort()); // the two owner levels of docs/34 s1 that the contract Role enum lacks
+    expect(Object.keys(ALLOWED_SCOPE_TYPES).sort()).toEqual([...ALL_ROLES].sort()); // contract 1.4.0 carries NATIONAL and BRAND (docs/34 s1)
     expect(ALLOWED_SCOPE_TYPES.NATIONAL).toEqual(["national"]);
     expect(ALLOWED_SCOPE_TYPES.BRAND).toEqual(["national"]);
     expect(scopeNodeAllowed("TSO", "zone")).toBe(false);

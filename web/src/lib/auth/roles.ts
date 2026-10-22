@@ -1,10 +1,10 @@
 // Roles and the role-gated route groups (docs/24 s8.5, docs/23 Q6). The role strings are typed from the contract.
 import type { Role } from "@/contract/types";
 
-export const ALL_ROLES = ["SR", "AMO", "TSO", "DMO", "WM", "TOP", "ANALYST", "SUPPORT", "ADMIN", "SUPERADMIN"] as const satisfies readonly Role[];
+export const ALL_ROLES = ["SR", "AMO", "TSO", "DMO", "WM", "TOP", "NATIONAL", "BRAND", "ANALYST", "SUPPORT", "ADMIN", "SUPERADMIN"] as const satisfies readonly Role[];
 
 /** Roles that may sign in to the web at all. SR and AMO work in the field apps (docs/23 Q6). */
-export const WEB_ROLES = ["TSO", "DMO", "WM", "TOP", "ANALYST", "SUPPORT", "ADMIN", "SUPERADMIN"] as const satisfies readonly Role[];
+export const WEB_ROLES = ["TSO", "DMO", "WM", "TOP", "NATIONAL", "BRAND", "ANALYST", "SUPPORT", "ADMIN", "SUPERADMIN"] as const satisfies readonly Role[];
 
 /** Roles that may open the admin portal route group. Everyone else gets 403 on /admin/**. */
 export const ADMIN_PORTAL_ROLES = ["SUPPORT", "ADMIN", "SUPERADMIN"] as const satisfies readonly Role[];
@@ -20,7 +20,7 @@ export const MFA_ROLES = ["SUPPORT", "ADMIN", "SUPERADMIN"] as const satisfies r
 export type RoleList = readonly Role[];
 
 /** Roles that read or act on outlet requests on the web (docs/24 s8.5): DMO and WM approve, TSO/TOP/ANALYST read. */
-export const OUTLET_REQUEST_READ_ROLES = ["TSO", "DMO", "WM", "TOP", "ANALYST", "ADMIN", "SUPERADMIN"] as const satisfies readonly Role[];
+export const OUTLET_REQUEST_READ_ROLES = ["TSO", "DMO", "WM", "TOP", "NATIONAL", "ANALYST", "ADMIN", "SUPERADMIN"] as const satisfies readonly Role[];
 export const OUTLET_REQUEST_ACT_ROLES = ["DMO", "WM", "ADMIN", "SUPERADMIN"] as const satisfies readonly Role[];
 
 /** Admin-group paths that roles outside the portal may open (longest prefix wins). Everything else under /admin is portal only. */

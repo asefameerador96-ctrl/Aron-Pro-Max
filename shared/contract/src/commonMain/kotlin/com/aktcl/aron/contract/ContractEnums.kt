@@ -68,7 +68,10 @@ enum class Role(val wire: String) {
     @SerialName("TSO") TSO("TSO"),
     @SerialName("DMO") DMO("DMO"),
     @SerialName("WM") WM("WM"),
+    /** Retired (D-ROLES-02): no user holds it after the migration; kept so historical rows stay readable. */
     @SerialName("TOP") TOP("TOP"),
+    @SerialName("NATIONAL") NATIONAL("NATIONAL"),
+    @SerialName("BRAND") BRAND("BRAND"),
     @SerialName("ANALYST") ANALYST("ANALYST"),
     @SerialName("SUPPORT") SUPPORT("SUPPORT"),
     @SerialName("ADMIN") ADMIN("ADMIN"),

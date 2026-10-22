@@ -29,7 +29,7 @@ data class RouteAssignmentsDto(val route_id: Long, val route_kind: String, val v
 
 class RouteAssignmentsDeps(val db: Database, val reach: ReachResolver, val guard: AuthGuardDeps, val clock: AronClock = AronClock.SYSTEM)
 
-private val ROUTE_READERS = setOf(Role.TSO, Role.DMO, Role.WM, Role.TOP, Role.ANALYST, Role.SUPPORT, Role.ADMIN, Role.SUPERADMIN)
+private val ROUTE_READERS = setOf(Role.TSO, Role.DMO, Role.WM, Role.TOP, Role.NATIONAL, Role.ANALYST, Role.SUPPORT, Role.ADMIN, Role.SUPERADMIN)
 
 /**
  * F-API-020b `GET /v1/routes/{id}/assignments?valid_on=` (backlog row; the contract's nearest operation is
