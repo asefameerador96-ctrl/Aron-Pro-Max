@@ -1,0 +1,40 @@
+FilterNode:
+  type: object
+  additionalProperties: false
+  required:
+  - id
+  - code
+  - name
+  description: A wing, division, territory, house or zone; the parent ids that apply to its level are set, the others
+    are null.
+  properties:
+    id:
+      $ref: '#/components/schemas/Id'
+    code:
+      type: string
+      maxLength: 40
+    name:
+      type:
+      - string
+      - 'null'
+      maxLength: 120
+    wing_id:
+      type:
+      - integer
+      - 'null'
+      minimum: 1
+    division_id:
+      type:
+      - integer
+      - 'null'
+      minimum: 1
+    territory_id:
+      type:
+      - integer
+      - 'null'
+      minimum: 1
+    house_id:
+      type:
+      - integer
+      - 'null'
+      minimum: 1

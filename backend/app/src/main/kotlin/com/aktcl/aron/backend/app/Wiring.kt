@@ -22,6 +22,9 @@ import com.aktcl.aron.backend.analytics.mdm.MdmPush
 import com.aktcl.aron.backend.analytics.mdm.MdmService
 import com.aktcl.aron.backend.analytics.mdm.mdmRoutes
 import com.aktcl.aron.backend.analytics.dashboardRoutes
+import com.aktcl.aron.backend.analytics.NationalDashboardService
+import com.aktcl.aron.backend.analytics.NationalDeps
+import com.aktcl.aron.backend.analytics.nationalDashboardRoutes
 import com.aktcl.aron.backend.analytics.appTeamRoutes
 import com.aktcl.aron.backend.analytics.opsRoutes
 import com.aktcl.aron.backend.analytics.reportRoutes
@@ -197,6 +200,7 @@ class Wiring(
             val outlets = OutletsDeps(db, geo, reach, guard, clock)
             val dashboardService = DashboardService(db, clock)
             val dashboards = DashboardDeps(dashboardService, reach, guard, clock)
+            val national = NationalDeps(NationalDashboardService(db, clock), reach, guard, clock = clock)
             // Enrolment (N-031): the public API URL the QR carries and the SHA-256 of the Google attestation roots to trust in production (new environment values, docs/requests/backend-reports-device-env.md).
             val enrolment = EnrolmentSettings(
                 System.getenv("ARON_PUBLIC_API_URL") ?: "https://localhost:8080", s.env.name.lowercase(),
@@ -309,6 +313,7 @@ class Wiring(
                 authRoutes(auth)
                 outletRoutes(outlets)
                 dashboardRoutes(dashboards)
+                nationalDashboardRoutes(national)
                 appTeamRoutes(team)
                 dailyTrackingRoutes(tracking)
                 opsRoutes(ops)

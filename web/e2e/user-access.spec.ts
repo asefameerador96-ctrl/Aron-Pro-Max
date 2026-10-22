@@ -73,3 +73,16 @@ test("access: a role without grants says so", async ({ page }) => {
   await page.goto("/admin/user-access/2001");
   await expect(page.getByTestId("access-none")).toBeVisible();
 });
+
+test("access: granting Users write and Credentials write shows a warning and still saves", async ({ page }) => {
+  await loginOk(page, "msuper1", "super-pass-1", "123456");
+  await page.goto("/admin/user-access/3001");
+  await expect(page.getByTestId("access-creds-warning")).toHaveCount(0);
+  await page.getByTestId("grant-users").locator('input[value="w"]').check();
+  await expect(page.getByTestId("access-creds-warning")).toHaveCount(0);
+  await page.getByTestId("grant-credentials").locator('input[value="w"]').check();
+  await expect(page.getByTestId("access-creds-warning")).toBeVisible();
+  await page.locator("#reason").fill("Support lead needs both for onboarding");
+  await page.getByTestId("access-save").click();
+  await expect(page.getByTestId("form-ok")).toBeVisible();
+});

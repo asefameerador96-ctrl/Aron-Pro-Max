@@ -43,10 +43,18 @@ object PortalLevels {
     val PHONE_ROLE: Map<String, Role> = mapOf("sr" to Role.SR, "amo" to Role.AMO, "tso" to Role.TSO)
 
     /** NATIONAL's non-read calls besides [OWN_SESSION]: a report query is a read sent as POST (it may queue an export). */
-    val NATIONAL_WRITES: List<Pattern> = OWN_SESSION + Pattern("POST", "/v1/reports/{report_key}/query")
+    val NATIONAL_WRITES: List<Pattern> = OWN_SESSION + Pattern("POST", "/v1/reports/{report_key}/query") +
+        Pattern("POST", "/v1/dashboards/national/**")   // the dashboard cards take their filter object as a POST body: reads
+
+    /** The national dashboard reads that carry a brand dimension; the cards without one (CPR, final submit, login, geo, FF Geo, maps) stay refused (docs/34 s1). */
+    private val BRAND_DASHBOARD: List<Pattern> = listOf(
+        Pattern("POST", "/v1/dashboards/national/sales"), Pattern("POST", "/v1/dashboards/national/channel-calls"),
+        Pattern("POST", "/v1/dashboards/national/channel-std"), Pattern("POST", "/v1/dashboards/national/breakdown"),
+        Pattern("GET", "/v1/dashboards/national/filter-options"), Pattern("GET", "/v1/dashboards/national/freshness"),
+    )
 
     /** BRAND's whole surface (row 3 adds the brand-filtered reads as they are built). */
-    val BRAND_ROUTES: List<Pattern> = OWN_SESSION + listOf(Pattern("GET", "/v1/me"))
+    val BRAND_ROUTES: List<Pattern> = OWN_SESSION + listOf(Pattern("GET", "/v1/me")) + BRAND_DASHBOARD
 
     /** The path the router matches: decoded segments, empty ones dropped (the same normalisation as the MFA check). */
     fun normalise(rawPath: String): String? {

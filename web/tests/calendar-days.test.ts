@@ -1,25 +1,19 @@
 import { describe, expect, it } from "vitest";
-import { daysInMonth, isoWeekday, workingDays } from "@/lib/admin/calendar-days";
+import { daysInMonth, monthDaysOf } from "@/lib/admin/calendar-days";
+import type { Schemas } from "@/contract/types";
 
-describe("workingDays", () => {
-  it("counts a 30-day month with Fridays off (November 2026 has four Fridays: 6, 13, 20, 27)", () => {
-    expect(isoWeekday("2026-11-06")).toBe(5);
-    expect(daysInMonth("2026-11")).toBe(30);
-    expect(workingDays("2026-11", [5], [])).toEqual({ month: "2026-11", working: 26, weekend: 4, holidays: 0 });
+const day = (date: string, o: Partial<Schemas["WorkingDay"]> = {}): Schemas["WorkingDay"] => ({ date, weekday: 1, is_friday: false, is_weekend: false, is_holiday: false, name_en: null, name_bn: null, is_working_day: true, ...o });
+
+describe("monthDaysOf (server getWorkingDays)", () => {
+  it("counts non-working days as weekend or holiday; a make-up weekend day is working", () => {
+    const w: Schemas["WorkingDays"] = {
+      month: "2026-11", working_days: 3, weekend_days: [5],
+      days: [day("2026-11-01"), day("2026-11-02", { is_holiday: true, is_working_day: false }), day("2026-11-06", { is_weekend: true, is_friday: true, is_working_day: false }), day("2026-11-13", { is_weekend: true, is_friday: true }), day("2026-11-14")],
+    };
+    expect(monthDaysOf(w)).toEqual({ month: "2026-11", working: 3, weekend: 1, holidays: 1 });
   });
-  it("removes a national holiday on a weekday, ignores one on a weekend, adds a make-up day on a Friday", () => {
-    const hol = [
-      { date: "2026-11-02", scope_type: "global" as const, selling_day: false }, // Monday
-      { date: "2026-11-06", scope_type: "global" as const, selling_day: false }, // Friday: already off
-      { date: "2026-11-13", scope_type: "global" as const, selling_day: true }, // make-up Friday
-    ];
-    expect(workingDays("2026-11", [5], hol)).toEqual({ month: "2026-11", working: 26, weekend: 3, holidays: 1 });
-  });
-  it("a zone-specific day off does not change the national count; other months' entries are ignored", () => {
-    expect(workingDays("2026-11", [5], [{ date: "2026-11-03", scope_type: "zone", selling_day: false }, { date: "2026-12-03", scope_type: "global", selling_day: false }]).working).toBe(26);
-  });
-  it("handles February of a leap year and two weekend days", () => {
+  it("daysInMonth knows leap years", () => {
     expect(daysInMonth("2028-02")).toBe(29);
-    expect(workingDays("2028-02", [5, 6], []).working).toBe(29 - 8); // Feb 2028 has four Fridays and four Saturdays
+    expect(daysInMonth("2026-11")).toBe(30);
   });
 });

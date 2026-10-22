@@ -65,6 +65,7 @@ class DashboardTest {
         assertEquals(listOf("wing"), s.children.map { it.node.type }.distinct())
         assertEquals(63_000, s.children.sumOf { it.kpis.net_mtk })
         assertEquals(63_000L, s.by_category.sumOf { it.net_mtk }); assertEquals("cigarette", s.by_category.single().category_code)
+        assertEquals("pack", s.by_category.single().entry_unit); assertEquals("7.500", s.by_category.single().qty_entered)   // 75 sticks of 10s, summed per SKU first
         assertEquals(2, s.by_brand.size)
         // BSR of brand 1: 3 memos contain it (R1 two, R3 one) of 4 active memos = 75 %.
         assertEquals(75.0, s.by_brand.first { it.name == "BrandOne" }.memo_ratio_pct)

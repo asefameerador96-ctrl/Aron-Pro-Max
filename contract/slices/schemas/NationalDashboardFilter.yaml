@@ -1,0 +1,60 @@
+NationalDashboardFilter:
+  type: object
+  additionalProperties: false
+  description: 'The dashboard filter object (docs/34 s2, brief s1). Every list is optional; omitted or empty means
+    everything the caller may see. The server intersects each list with the scope derived from the token (docs/34
+    s1, BRAND users also with their brands) and never widens it: ids outside the scope are ignored, and a list that
+    leaves nothing yields zeros. Location ids are server surrogate keys; product codes are the product master codes.'
+  properties:
+    wing_ids:
+      type: array
+      maxItems: 50
+      items:
+        $ref: '#/components/schemas/Id'
+    division_ids:
+      type: array
+      maxItems: 200
+      items:
+        $ref: '#/components/schemas/Id'
+    territory_ids:
+      type: array
+      maxItems: 400
+      items:
+        $ref: '#/components/schemas/Id'
+    house_ids:
+      type: array
+      maxItems: 400
+      items:
+        $ref: '#/components/schemas/Id'
+    zone_ids:
+      type: array
+      maxItems: 1200
+      items:
+        $ref: '#/components/schemas/Id'
+    category_codes:
+      type: array
+      maxItems: 20
+      items:
+        type: string
+        maxLength: 40
+    segment_codes:
+      type: array
+      maxItems: 100
+      items:
+        type: string
+        maxLength: 40
+    brand_codes:
+      type: array
+      maxItems: 200
+      items:
+        type: string
+        maxLength: 40
+    variant_codes:
+      type: array
+      maxItems: 500
+      items:
+        type: string
+        maxLength: 40
+    date:
+      $ref: '#/components/schemas/BusinessDate'
+      description: One business day; default today (Dhaka).

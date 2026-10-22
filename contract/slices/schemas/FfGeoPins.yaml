@@ -1,0 +1,55 @@
+FfGeoPins:
+  type: object
+  description: One pin per route at the SR's latest position today. Red below 7000 bp, amber 7000 to 9000 bp inclusive,
+    green above 9000 bp. Routes with no position today are not pinned. Hidden from BRAND users (403).
+  required:
+  - date
+  - till_time
+  - as_of
+  - last_updated_at
+  - pins
+  - counts
+  - routes_without_position
+  additionalProperties: false
+  properties:
+    date:
+      $ref: '#/components/schemas/BusinessDate'
+    till_time:
+      type: boolean
+      description: 'True when `date` is today (Dhaka): figures are till the time of `as_of`; false: final figures
+        of a past day.'
+    as_of:
+      $ref: '#/components/schemas/Timestamp'
+    last_updated_at:
+      type:
+      - string
+      - 'null'
+      format: date-time
+      description: Oldest `last_updated_at` of the summary tables this card reads (null when none has been written
+        yet). The page shows it as "last updated hh:mm" (Dhaka).
+    pins:
+      type: array
+      maxItems: 12000
+      items:
+        $ref: '#/components/schemas/FfGeoPin'
+    counts:
+      type: object
+      additionalProperties: false
+      required:
+      - red
+      - amber
+      - green
+      properties:
+        red:
+          type: integer
+          minimum: 0
+        amber:
+          type: integer
+          minimum: 0
+        green:
+          type: integer
+          minimum: 0
+      description: Pins per colour before the colour filter.
+    routes_without_position:
+      type: integer
+      minimum: 0
