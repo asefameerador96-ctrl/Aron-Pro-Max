@@ -82,7 +82,7 @@ fun PrinterDiagnosticsScreen(manager: PrinterManager, appVersion: String, modifi
         )
     }
     val state by controller.state.collectAsState()
-    fun refresh() = controller.setEnvironment(AndroidDiagEnvironment.collect(context, appVersion, manager.savedPrinter?.let { "${it.name} ${it.address}, memo image ${it.imageMode}" }))
+    fun refresh() = controller.setEnvironment(AndroidDiagEnvironment.collect(context, appVersion, manager.savedPrinter?.let { "${it.name} ${it.address}, memo image ${it.imageMode} (model default: ${com.aktcl.aron.core.printing.bt.PrinterDefaults.modeFor(it.name)}, ${com.aktcl.aron.core.printing.bt.PrinterDefaults.sourceFor(it.name)})" }))
     val ask = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { refresh() }
     // read again on every return to the screen (after Bluetooth or app settings)
     val owner = LocalLifecycleOwner.current

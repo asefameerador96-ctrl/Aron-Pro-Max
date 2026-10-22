@@ -109,6 +109,8 @@ class PrinterManager(
     private val nowMs: () -> Long = { System.nanoTime() / 1_000_000 },
     /** Waits between reconnect tries while a screen holds the link; the last one repeats until it is released. */
     private val reconnectBackoffMs: List<Long> = listOf(2_000, 5_000, 15_000, 30_000),
+    /** The image mode a newly picked printer starts with, by its name ([PrinterDefaults]). */
+    private val defaultMode: (String?) -> ImageMode = PrinterDefaults::modeFor,
 ) {
     private val _state = MutableStateFlow<PrinterState>(if (store.load() == null) PrinterState.NoPrinter else PrinterState.Off)
     val state: StateFlow<PrinterState> = _state.asStateFlow()
@@ -154,9 +156,15 @@ class PrinterManager(
         lock.withLock {
             closeLink()
             strandedBytes = 0
-            // picking the same printer again keeps the image mode the diagnostics chose for it
-            val same = store.load()?.takeIf { it.address == printer.address && printer.imageMode == ImageMode.RASTER }
-            store.save(if (same != null) printer.copy(imageMode = same.imageMode) else printer)
+            // picking the same printer again keeps the image mode the diagnostics chose for it; a new one starts with its
+            // model's default (an explicit non-raster mode from the caller wins)
+            val same = store.load()?.takeIf { it.address == printer.address }
+            val mode = when {
+                printer.imageMode != ImageMode.RASTER -> printer.imageMode
+                same != null -> same.imageMode
+                else -> defaultMode(printer.name)
+            }
+            store.save(printer.copy(imageMode = mode))
             _state.value = PrinterState.Off
         }
         return connect()

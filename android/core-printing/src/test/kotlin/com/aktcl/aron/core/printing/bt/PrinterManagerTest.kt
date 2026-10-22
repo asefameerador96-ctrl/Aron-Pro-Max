@@ -310,6 +310,29 @@ class PrinterManagerTest {
         assertTrue("took $took ms for an ideal $ideal ms", took < ideal * 105 / 100 + 1_500)
     }
 
+    @Test fun aNewlyPickedPrinterStartsWithItsModelDefaultAndTheSameOneKeepsItsChoice() = runTest {
+        val store = Store(null)
+        val sim = SimPrinter({ testScheduler.currentTime })
+        val m = PrinterManager(sim.factory(), store, backgroundScope, nowMs = { testScheduler.currentTime },
+            defaultMode = { if (it == "OLD-58") ImageMode.BIT_IMAGE else ImageMode.RASTER })
+        m.select(SavedPrinter("AA:00:00:00:00:01", "OLD-58"))
+        assertEquals(ImageMode.BIT_IMAGE, store.p!!.imageMode)
+        m.setImageMode(ImageMode.RASTER) // the diagnostics proved raster works on this one
+        m.select(SavedPrinter("AA:00:00:00:00:01", "OLD-58"))
+        assertEquals(ImageMode.RASTER, store.p!!.imageMode)
+        m.select(SavedPrinter("AA:00:00:00:00:02", "MP-58N"))
+        assertEquals(ImageMode.RASTER, store.p!!.imageMode)
+    }
+
+    @Test fun theDefaultsListNamesTheFieldPrinters() {
+        assertEquals(ImageMode.RASTER, PrinterDefaults.modeFor("MP-58N"))
+        assertEquals(ImageMode.RASTER, PrinterDefaults.modeFor("Thermal Crest MP58N_1A2B"))
+        assertEquals(ImageMode.RASTER, PrinterDefaults.modeFor("RPP02N"))
+        assertEquals(ImageMode.RASTER, PrinterDefaults.modeFor(null))
+        assertTrue(PrinterDefaults.sourceFor("MP-58N").contains("MP-58N"))
+        assertEquals("no entry: raster", PrinterDefaults.sourceFor("MTP-II"))
+    }
+
     @Test fun stuckWriteTimesOutAsDisconnected() = runTest {
         val (sim, m) = setup()
         sim.hangWrites = true
