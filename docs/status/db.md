@@ -2,6 +2,48 @@
 
 Updated with every push. Rows of Day 1: N-005, N-006, N-007, N-008 (`python3 tools/my-rows.py db 1 --full`).
 
+## Session 9, 2026-10-22 (lane/db; INT 384ecee2 = train 9.1)
+
+| Job | State | What |
+|---|---|---|
+| train 9.1 dev deploy | read (lead relay) | deploy #243 (run 39847052921) green 20:27 UTC: migrations incl. **V0107** applied, dev seed job ran (image `aron-devseed:384ecee2`), health 200 build 384ecee2, worker 0 restarts. Slice smoke: login and bundle passed; **2b skipped (non-blocking)** because the deploy ran at 02:14 Dhaka on **Friday 2026-10-23** (no selling route by design). So the route **could not be read from this deploy**: whether dev runs on Gulshan/Banani is still open |
+| when the codes print | recorded | 5be0a3e1's codes print from train 10's deploy only on a Dhaka selling day (Saturday 2026-10-24 06:00 Dhaka = 00:00 UTC onward), unless the fallback below is on dev |
+| smoke fallback (lead ask) | built, tested | `infra/scripts/slice-smoke.py`: when today has no smoke route, 2b fetches the bundle of the **next** selling day (the server's own pre-fetch: `for` up to the next working day; it never marks a login, and BundleService refuses past dates, so "last selling day" is not possible) and adds `; next selling day <date>: route <code> (<id>), outlet <code> (<id>), sku <code>` to the 2b line. No sale on such a day; 2b stays FAIL (non-blocking). Test `SliceSmoke.test_a_day_without_a_selling_route_names_the_next_selling_days_route_and_sells_nothing` (stub: 2 bundle calls, no batch); SliceSmoke stub tests 6/6 locally, the rest of check_infra needs compiled Bicep (same 38 errors before and after the change) |
+| 88b1c0ab | **candidate**, checked by the lead, LAST head of train 11 (after train 10's deploy, ~23:00 UTC) | CI #1406 green on the jobs that ran (gates, infra, images); web/android/backend skipped, unchanged since 5be0a3e1 |
+| qa db-qa-1 / infra-qa-1 | fixed, answered (`docs/requests/db-qa-1-answer.md`) | (1) evidence doc named a non-existent `dw.agg_daily_outlet_category`: now the real tables. (2) a non-selling day (bundle calendar, as DayPlan.isSellingDay) with no planned route makes 2b **SKIP** (exit 3; deploy.sh summary `SKIPPED (not a selling day ...)`, no warning) and still names the next selling day's route; a selling day without a route stays FAIL. Tests: SliceSmoke stubs 7/7 locally, the deploy wiring assertion before the Bicep-dependent part; same 38 Bicep-only errors as before |
+| requests | none open | no new `docs/requests/*db*` on any lane branch at 20:35 UTC (backend-reports' checked_in_at = V0108, answered). Next free migration **V0109** |
+
+## HANDOVER (session 8 -> session 9), 2026-10-22 evening, lane/db 5be0a3e1
+
+**State.** a60d941e is on INT 529b02f6 (dev deploy #238 applied V0087-V0106; dev seed Succeeded; slice smoke PASS).
+**fb59e0e9** (INT b561b267 + V0107 TOP grants -> NATIONAL + seed 07) rides train 9 last (CI #1388 green). **5be0a3e1**
+(seed visibility + V0108 `checked_in_at`) declared on top (CI #1399 + #1394 green). Next free migration: **V0109**.
+
+**Session 9, in order:**
+1. Watch train 9's dev deploy (V0107, seed 07) and then 5be0a3e1's. Read the slice smoke line `2b route ...`: it must
+   name a Gulshan/Banani route (Sat/Tue GUL-SR-2 + SMOKE-SR-001, Sun/Wed GUL-SR-1 + -002, Mon/Thu BAN-SR-11 + -003;
+   Friday fails by design, non-blocking). A MIR-* code means seed 06 skipped on dev (04's config version present): investigate.
+2. When backend-authz lands on INT, its `db/seed/07_admin_module_grants.sql` is byte-identical to ours; only the README
+   row differs, and the lead told backend-authz #7 to take db's line.
+3. Replies: mdm #2 reads the note at the top of `docs/requests/db-mdm-device-command-answer.md` (V0102 changes; their
+   `mdm_ddl.sql` fixture becomes redundant). backend-reports was told about V0093, targets, route_class and V0108.
+4. Open for the owner/AKTCL: Durga Puja 2026 date in seed 06 (2026-10-21, lunar; confirm). Checker follow-ups before
+   the final account: retention of `dw.route_last_position` (unpartitioned, personal) and `fact_visit.fix_lat/lng`.
+5. Decisions for DECISIONS.md (lead copies): D-DB-W4-01..05 (session 7 list below); session 8: V0093 has no unique
+   house index (lead ruling); device_command guard is forward-only/write-once in the DB, approver role API-only;
+   V0108 backfill in SQL (not dirty keys) so it cannot be lost before the consumer ships.
+
+**Traps (session 8).**
+- Local Gradle runs every module in parallel. Leftover `aron_be_*` test databases and stray runs exhaust Postgres
+  connections ("too many clients") and fail tests at random.
+  - Before a run: drop `aron_be_*` and `aron_test`, then recreate `aron_test`.
+  - Raise `max_connections` (400 here).
+  - Never start a second Gradle run while one is live, and never drop `aron_test` under a running build.
+- `pkill -f <pattern>` matches its own shell when the pattern appears in the command line: use `./gradlew --stop`.
+- The container can reboot mid-session: `service postgresql start` (the role and config survive).
+- Another lane's pending-schema scaffold (`to_regclass` guards) must go in the same promotion as the migrations that
+  replace it, or INT turns red. The lead approves the exact file list.
+
 ## Session 8, 2026-10-22 (lane/db, INT 529b02f6 merged): in progress
 
 All edits below are in place in V0087-V0104 (none is on INT yet; INT stops at V0086), plus the new V0105/V0106.

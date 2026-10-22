@@ -51,6 +51,7 @@ Source: `db/seed/06_dev_gulshan_banani.sql` (replaces `06_dev_real_route.sql`), 
 1. Login as sr1001 on a Saturday: bundle has `GUL-SR-2` planned, 20 outlets with pins, 39 SKUs with pack sizes.
 2. Sale at `GUL2-001` in packets: memo line `qty_entered` packets, `pack_factor` 20 or 10, `qty_base` sticks.
 3. Sync: `app.memo`/`app.memo_line`, `app.visit` (distance, verdict) → outbox → `dw.fact_memo`, `dw.fact_visit`
-   (`within_fence`, `completed` generated) → `dw.agg_daily_route`, `agg_daily_route_sku`, `agg_daily_outlet_category`.
+   (`within_fence`, `completed` generated) → `dw.agg_daily_route`, `agg_daily_route_sku` (category via `dw.dim_product.category_code`, view `dw.v_daily_sku`),
+   `agg_daily_outlet_sku`, `agg_daily_route_variant` (V0011, V0099; there is no `agg_daily_outlet_category`, qa db-qa-1).
 4. Dashboard: Sales (Cigarette) = Σ qty_base of cigarette lines; ring % = sales / Σ daily target of GUL-SR-2 cigarette SKUs;
    CPR target outlets 20 (21 on dev with the smoke outlet); channel cards sum to successful calls.
