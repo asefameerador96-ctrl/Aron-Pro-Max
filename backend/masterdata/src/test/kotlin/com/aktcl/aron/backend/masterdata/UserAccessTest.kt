@@ -129,6 +129,8 @@ class UserAccessTest {
     @Test
     fun answers503WhileTheTablesAreNotDeployed() {
         val bare = AdminEnv()
+        // backend-authz's fixture may already have created the tables in a fresh database: a bare world is one without them.
+        bare.exec("DROP TABLE IF EXISTS app.user_module_grant, app.user_brand_scope CASCADE")
         try {
             bare.app {
                 val id = bare.sql("SELECT id FROM app.app_user WHERE username = 'admin1001'")!!
