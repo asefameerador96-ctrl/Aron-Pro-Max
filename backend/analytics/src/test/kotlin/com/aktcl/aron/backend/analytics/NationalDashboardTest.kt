@@ -148,6 +148,15 @@ class NationalDashboardTest {
     }
 
     @Test
+    fun checker_filterOptionsListOnlyActiveHousesAndTheirZones() {
+        sql("UPDATE app.house SET status = 'inactive' WHERE code = 'H1D'")                 // a merged duplicate: inactive (D-SCOPE-TREE-01)
+        fresh.db.jdbi.useHandle<Exception> { Aggregator.refreshDimensions(it) }
+        val o = svc.filterOptions(national())
+        assertEquals(listOf("H1"), o.houses.map { it.code })
+        assertEquals(listOf("Z1"), o.zones.map { it.code })                                // zone 2 still names the inactive duplicate
+    }
+
+    @Test
     fun filterOptionsListOnlyTheCallersReach() {
         val o = svc.filterOptions(zones(z1))
         assertEquals(listOf("Z1"), o.zones.map { it.code }); assertEquals(1, o.wings.size); assertEquals(1, o.houses.size)

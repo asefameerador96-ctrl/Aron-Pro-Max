@@ -377,8 +377,8 @@ class NationalDashboardService(
             val wings = nodes("SELECT DISTINCT w.id, w.code, w.name FROM dw.dim_geo g JOIN app.wing w ON w.id = g.wing_id WHERE true ${sql.geo} ORDER BY 3") { OptionNode(it.getLong(1), it.getString(2), it.getString(3)) }
             val divisions = nodes("SELECT DISTINCT d.id, d.code, d.name, d.wing_id FROM dw.dim_geo g JOIN app.division d ON d.id = g.division_id WHERE true ${sql.geo} ORDER BY 3") { OptionNode(it.getLong(1), it.getString(2), it.getString(3), wing_id = it.getLong(4)) }
             val territories = nodes("SELECT DISTINCT t.id, t.code, t.name, t.division_id FROM dw.dim_geo g JOIN app.territory t ON t.id = g.territory_id WHERE true ${sql.geo} ORDER BY 3") { OptionNode(it.getLong(1), it.getString(2), it.getString(3), division_id = it.getLong(4)) }
-            val houses = nodes("SELECT DISTINCT hs.id, hs.code, hs.name, hs.territory_id FROM dw.dim_geo g JOIN app.house hs ON hs.id = g.house_id WHERE true ${sql.geo} ORDER BY 3") { OptionNode(it.getLong(1), it.getString(2), it.getString(3), territory_id = it.getLong(4)) }
-            val zones = nodes("SELECT DISTINCT z.id, z.code, z.name, g.house_id, z.territory_id FROM dw.dim_geo g JOIN app.zone z ON z.id = g.zone_id WHERE true ${sql.geo} ORDER BY 3") {
+            val houses = nodes("SELECT DISTINCT hs.id, hs.code, hs.name, hs.territory_id FROM dw.dim_geo g JOIN app.house hs ON hs.id = g.house_id WHERE hs.is_active ${sql.geo} ORDER BY 3") { OptionNode(it.getLong(1), it.getString(2), it.getString(3), territory_id = it.getLong(4)) }
+            val zones = nodes("SELECT DISTINCT z.id, z.code, z.name, g.house_id, z.territory_id FROM dw.dim_geo g JOIN app.zone z ON z.id = g.zone_id LEFT JOIN app.house hz ON hz.id = z.house_id WHERE (z.house_id IS NULL OR hz.is_active) ${sql.geo} ORDER BY 3") {
                 OptionNode(it.getLong(1), it.getString(2), it.getString(3), house_id = it.getObject(4) as Long?, territory_id = it.getLong(5))
             }
             fun codes(q: String, map: (java.sql.ResultSet) -> OptionCode) = sql.bind(h.createQuery(q)).map { rs, _ -> map(rs) }.list()
