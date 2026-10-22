@@ -436,3 +436,15 @@ Notes:
   verification refuses an unknown one. With `-WebVerify`, set `ARON_CHECK_PASSWORD_AMO1001` for an unattended run.
 - **Reach:** dmo1001 and amo1001 must reach the request's zone, otherwise they get a 404. `-Zone` must be the zone of
   the SR's route; the preview step checks that the request's route is listed.
+
+## D-MAP-02 inline map on the Sale confirm step (android-map) — DEVICE-PENDING
+Needs a build with the Maps key (GitHub secret `MAPS_API_KEY`, restricted by package and SHA) and a phone with Play services.
+1. Online, in the Gulshan–Banani test geography: Sale → pick an outlet within its radius. Without any tap the confirm step
+   shows "সীমার মধ্যে: আউটলেট থেকে N মি · সীমা R মি", the compass line and the lite map with the pin, the radius circle
+   and your position. Expect the map within 3 s on mobile data; `adb shell dumpsys netstats` / the Data usage screen shows
+   at most 1 MB for the session (docs/17 s10.5).
+2. Stand outside the radius: the same step reads "সীমার বাইরে: …", Refresh and Force Sale (with photo) behave as before.
+3. Airplane mode, then pick the outlet: the panel shows the distance, the bearing arrow and the offline range picture; no
+   blank grey box, Start call works at once.
+4. "Maps অ্যাপে খুলুন" still opens the full interactive `OutletMapActivity`; the Map tile is unchanged.
+5. Bangla mode: digits are Bengali throughout; English mode: ASCII.

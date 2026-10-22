@@ -44,6 +44,9 @@ export function seedTables(): Record<string, Row[]> {
       row(1003, { username: "sr335001", full_name: "Rahim Sheikh", role: "SR", designation: "SR", employee_code: "E1003", phone: null, email: null, locale: "bn", home_zone_id: 15, pilot: false, status: "active", mfa_enabled: false, last_login_at: null }),
       row(2001, { username: "tso334", full_name: "Rahim Uddin", role: "TSO", designation: "TSO", employee_code: "E2001", phone: null, email: null, locale: "bn", home_zone_id: null, pilot: false, status: "active", mfa_enabled: false, last_login_at: null }),
       row(3001, { username: "admin1", full_name: "Salma Akter", role: "ADMIN", designation: null, employee_code: null, phone: null, email: null, locale: "bn", home_zone_id: null, pilot: false, status: "active", mfa_enabled: true, last_login_at: null }),
+      row(3003, { username: "super1", full_name: "Rafiq Chowdhury", role: "SUPERADMIN", designation: null, employee_code: null, phone: null, email: null, locale: "bn", home_zone_id: null, pilot: false, status: "active", mfa_enabled: true, last_login_at: null }),
+      row(5001, { username: "nat1", full_name: "Nasrin National", role: "NATIONAL", designation: null, employee_code: null, phone: null, email: null, locale: "bn", home_zone_id: null, pilot: false, status: "active", mfa_enabled: false, last_login_at: null }),
+      row(5002, { username: "brand1", full_name: "Babul Brand", role: "BRAND", designation: null, employee_code: null, phone: null, email: null, locale: "bn", home_zone_id: null, pilot: false, status: "active", mfa_enabled: false, last_login_at: null }),
       row(4001, { username: "locked1", full_name: "Locked User", role: "TSO", designation: null, employee_code: null, phone: null, email: null, locale: "bn", home_zone_id: null, pilot: false, status: "disabled", mfa_enabled: false, last_login_at: null }),
     ],
     assignments: [
