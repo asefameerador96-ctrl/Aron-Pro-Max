@@ -10,6 +10,7 @@ import com.aktcl.aron.core.database.entity.OutboxEntity
 import com.aktcl.aron.core.database.entity.OutboxState
 import com.aktcl.aron.core.database.record.RecordMapping
 import com.aktcl.aron.core.database.repo.CaptureRepository
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
@@ -200,5 +201,23 @@ class CaptureRepositoryTest {
         val payload = Json.parseToJsonElement(db.outboxDao().byClientUuid(editUuid)!!.payloadJson).jsonObject["payload"]!!.jsonObject
         assertEquals(original.memo.clientUuid, payload["supersedes_client_uuid"]!!.jsonPrimitive.content)
         assertEquals("memo_edit", payload["edit_fix"]!!.jsonObject["purpose"]!!.jsonPrimitive.content)
+    }
+
+    @Test
+    fun aBreadcrumbIsOneStandaloneRecordWithItsOwnFix() = runTest {
+        val uuid = ClientIds.newUuid()
+        repo.recordBreadcrumb(uuid, TestRows.meta(routeId = 10231), TestRows.fix(uuid, "breadcrumb"))
+        val row = db.outboxDao().byClientUuid(uuid)!!
+        assertEquals("geo_breadcrumb", row.recordType)
+        assertEquals(uuid, row.familyUuid); assertEquals(0, row.rank)
+        val env = Json.parseToJsonElement(row.payloadJson).jsonObject
+        assertEquals("breadcrumb", env["payload"]!!.jsonObject["fix"]!!.jsonObject["purpose"]!!.jsonPrimitive.content)
+        assertTrue(env["route_id"] == null || env["route_id"].toString() == "null")   // no route-day: a Sales Submit never refuses it
+        assertEquals(1, count("geo_fix"))
+        // The same record twice never makes a second row; a foreign fix is refused before anything is written.
+        assertThrows(SQLiteConstraintException::class.java) { runBlocking { repo.recordBreadcrumb(uuid, TestRows.meta(), TestRows.fix(uuid, "breadcrumb")) } }
+        assertEquals(1, db.outboxDao().nextPending(10).size)
+        assertThrows(IllegalArgumentException::class.java) { runBlocking { repo.recordBreadcrumb(ClientIds.newUuid(), TestRows.meta(), TestRows.fix(uuid, "visit_open")) } }
+        assertEquals(1, count("geo_fix"))
     }
 }
