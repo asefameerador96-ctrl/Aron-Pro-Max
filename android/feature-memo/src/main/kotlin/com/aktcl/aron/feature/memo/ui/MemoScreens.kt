@@ -559,24 +559,30 @@ private fun SummaryDock(summary: DaySummary, categoryLabel: (String) -> String, 
     Column(Modifier.fillMaxWidth().background(look.rowAlt).padding(horizontal = 12.dp, vertical = 8.dp)) {
         summary.categories.forEach { cat ->
             val unit = unitOf(cat)
-            Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.Top) {
-                Text(categoryLabel(cat.categoryCode), style = TextStyle(fontSize = 13.sp, color = look.purple), softWrap = false, modifier = Modifier.weight(weights[0]))
-                Text(
-                    buildAnnotatedString {
-                        append(localizedNumber(cat.qtyEntered))
-                        // "3 packets + 5 sticks (65 sticks)": the remainder carries its own word, the bracket is the base total
-                        if (unit.isNotEmpty()) withStyle(SpanStyle(fontSize = 10.sp)) {
-                            append(" "); append(unit)
-                            if (cat.qtyRemBase != 0L) { append(" "); append(com.aktcl.aron.core.ui.remWithUnit(cat.qtyRemBase, entryUnitLabel(com.aktcl.aron.rules.EntryUnits.baseLabelKey(cat.categoryCode)))) }
-                            baseBracket(cat)?.let { append(" "); append(it) }
-                        } else if (cat.qtyRemBase != 0L) append(com.aktcl.aron.core.ui.remSuffix(cat.qtyRemBase))
-                    },
-                    style = figure, maxLines = 3, modifier = Modifier.weight(weights[1]),
-                )
-                Text(takaAmount(cat.valueMtk), style = figure, softWrap = false, modifier = Modifier.weight(weights[2]))
-                Text(amount(cat.discountMtk), style = figure, softWrap = false, modifier = Modifier.weight(weights[3]))
-                Text(takaAmount(cat.discountedValueMtk), style = figure, softWrap = false, modifier = Modifier.weight(weights[4]))
-                Text(remFigure(cat.returnEntered, cat.returnRemBase), style = figure, modifier = Modifier.weight(weights[5]))
+            Column(Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
+                // line 1: the category and its whole quantity, free to wrap: "3 packets + 5 sticks (65 sticks)" is never cut
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
+                    Text(categoryLabel(cat.categoryCode), style = TextStyle(fontSize = 13.sp, color = look.purple), modifier = Modifier.weight(1f))
+                    Text(
+                        buildAnnotatedString {
+                            append(localizedNumber(cat.qtyEntered))
+                            if (unit.isNotEmpty()) withStyle(SpanStyle(fontSize = 12.sp)) {
+                                append(" "); append(unit)
+                                if (cat.qtyRemBase != 0L) { append(" "); append(com.aktcl.aron.core.ui.remWithUnit(cat.qtyRemBase, entryUnitLabel(com.aktcl.aron.rules.EntryUnits.baseLabelKey(cat.categoryCode)))) }
+                                baseBracket(cat)?.let { append(" "); append(it) }
+                            } else if (cat.qtyRemBase != 0L) append(com.aktcl.aron.core.ui.remSuffix(cat.qtyRemBase))
+                        },
+                        style = figure, modifier = Modifier.weight(2f),
+                    )
+                }
+                // line 2: the money and return figures in the table's columns
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
+                    Spacer(Modifier.weight(weights[0] + weights[1]))
+                    Text(takaAmount(cat.valueMtk), style = figure, softWrap = false, modifier = Modifier.weight(weights[2]))
+                    Text(amount(cat.discountMtk), style = figure, softWrap = false, modifier = Modifier.weight(weights[3]))
+                    Text(takaAmount(cat.discountedValueMtk), style = figure, softWrap = false, modifier = Modifier.weight(weights[4]))
+                    Text(remFigure(cat.returnEntered, cat.returnRemBase), style = figure, modifier = Modifier.weight(weights[5]))
+                }
             }
         }
         val big = TextStyle(fontSize = 18.sp, fontWeight = FontWeight.Bold, color = look.purple)
