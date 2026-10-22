@@ -28,8 +28,12 @@ private val USERNAME_RE = Regex("^[A-Za-z][A-Za-z0-9._-]{2,39}$")
 private val MEMO_USERNAME_RE = Regex("^[a-z][a-z0-9]{3,31}$")
 private val ROLE_VALUES = Role.entries.map { it.wire }.toSet()
 private val SENIOR = setOf(Role.ADMIN, Role.SUPERADMIN)
-/** Roles with national reach besides ADMIN and SUPERADMIN: only a SUPERADMIN creates them or changes them (D-ROLES-02). */
-private val SUPERADMIN_MANAGED = setOf(Role.NATIONAL, Role.BRAND, Role.ANALYST, Role.SUPPORT, Role.TOP)
+/**
+ * Internal service roles (docs/34 s1: not portal levels) and the retired TOP: only a SUPERADMIN creates, re-roles or
+ * resets them. An ADMIN holding users:w and credentials:w manages every portal level below ADMIN, NATIONAL and BRAND
+ * included (lead ruling D-AUTHZ-ADMIN-CREDS-01); ADMIN and SUPERADMIN logins stay SUPERADMIN-only ([SENIOR]).
+ */
+private val SUPERADMIN_MANAGED = setOf(Role.ANALYST, Role.SUPPORT, Role.TOP)
 
 /** Users in reach: the home zone or a live route assignment lies in a zone of the caller's reach. */
 private val userReach: (Reach, Geo) -> Pred? = { reach, _ ->
@@ -76,10 +80,10 @@ internal val USER = MasterEntity(
         val curRole = cur?.let { roleOf(it["role"]) }
         if (ctx.p.role == Role.ADMIN && (newRole in SENIOR || curRole in SENIOR))
             throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "only a SUPERADMIN manages ADMIN and SUPERADMIN users")
-        // D-ROLES-02 (checker row 2, B1): national-reach accounts are the Super Admin's (docs/34 s1); otherwise an ADMIN
-        // with the users module mints itself a SUPPORT or NATIONAL login and leaves its own module grants behind.
+        // D-AUTHZ-ADMIN-CREDS-01: the internal service roles are the Super Admin's (an ADMIN would otherwise mint itself
+        // a SUPPORT login with reach outside its module grants).
         if (ctx.p.role == Role.ADMIN && (newRole in SUPERADMIN_MANAGED || curRole in SUPERADMIN_MANAGED))
-            throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "only a SUPERADMIN manages NATIONAL, BRAND, ANALYST and SUPPORT users")
+            throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "only a SUPERADMIN manages ANALYST and SUPPORT users")
         if (cur != null && cur["id"] == ctx.p.userId && ("role" in changes && changes["role"] != cur["role"] || changes["status"] == "disabled"))
             throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "you cannot change your own role or disable yourself")
         if (cur == null || "role" in changes && changes["role"] != cur["role"]) {
@@ -173,8 +177,8 @@ private suspend fun credentials(call: ApplicationCall, d: AdminMasterDeps) {
             val role = roleOf(u["role"])!!
             if (p.role == Role.TSO && role !in setOf(Role.SR, Role.AMO)) throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "a TSO acts on SR and AMO users only")
             if (role in SENIOR && p.role != Role.SUPERADMIN) throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "only a SUPERADMIN acts on ADMIN and SUPERADMIN users")
-            // D-ROLES-02 (checker row 2, N5): a reset hands over the account; national-reach accounts are the Super Admin's.
-            if (role in SUPERADMIN_MANAGED && p.role != Role.SUPERADMIN) throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "only a SUPERADMIN acts on NATIONAL, BRAND, ANALYST and SUPPORT users")
+            // D-AUTHZ-ADMIN-CREDS-01: a reset hands over the account; the internal service roles are the Super Admin's.
+            if (role in SUPERADMIN_MANAGED && p.role != Role.SUPERADMIN) throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "only a SUPERADMIN acts on ANALYST and SUPPORT users")
             when (action) {
                 "reset_password" -> {
                     h.createUpdate("UPDATE app.app_user SET password_hash = :h, must_change_password = true, password_changed_at = NULL, scope_version = scope_version + 1 WHERE id = :id")
@@ -194,7 +198,8 @@ private suspend fun credentials(call: ApplicationCall, d: AdminMasterDeps) {
                     h.revokeFull(id, "admin_force_logout", ctx.now)
                 }
             }
-            ctx.audit(h, "user", id.toString(), "credentials.$action", null, JsonObject(mapOf("action" to JsonPrimitive(action))), reason)
+            // D-AUTHZ-ADMIN-CREDS-01: every reset names the target's role (the actor and the reason are the row's own).
+            ctx.audit(h, "user", id.toString(), "credentials.$action", null, JsonObject(mapOf("action" to JsonPrimitive(action), "target_role" to JsonPrimitive(role.wire))), reason)
             JsonObject(buildMap {
                 put("action", JsonPrimitive(action)); put("done_at", jv(ctx.now))
                 if (temp != null) { put("temporary_password", JsonPrimitive(temp)); put("temporary_password_expires_at", jv(ctx.now.plusSeconds(d.tempPasswordTtlH() * 3600))) }
