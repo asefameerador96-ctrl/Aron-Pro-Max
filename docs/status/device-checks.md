@@ -472,3 +472,13 @@ Needs: a test-account backend with `ARON_MDM_ENABLED=1` (dev), a phone enrolled 
 8. **Kiosk**: policy with kiosk on and the SR app as the only package: the phone stays in the SR app, no home/recents; clearing the policy releases it.
 9. **Location sampling**: policy with mode `off`: no breadcrumb points are recorded that day (a Sale still gets its fix); `interval` 15: breadcrumbs about every 15 minutes while checked in.
 Pass: every step ends with the expected command state in the portal and an audit row naming who and why.
+
+## D-MDM-BREADCRUMB-01 breadcrumb battery and data on an SR phone (mdm) — DEVICE-PENDING
+Needs: an SR build from INT with breadcrumbs reachable, the A06-class phone fully charged, a GPS-spoof app installed (not selected) for step 5, a policy with location sampling `interval` 15 from the portal.
+1. Baseline: breadcrumbs off (no policy interval, config off). Check in, put the phone in a pocket for 2 h, walk 10 minutes. Note battery %, Settings → Battery → Aron SR usage, and Data usage. Expect no location icon, no points: `adb shell dumpsys location` shows no Aron request.
+2. Assign the policy (interval 15). Within a sync the DPC applies it; `dumpsys location` shows ONE Aron request, fused/balanced, with a batch delay of about 15 min.
+3. Same 2 h routine: battery within 1% of the baseline plus the request cost; points stored ≤ 8 per 2 h; Data usage rise under 20 KB.
+4. Check out: the request disappears at once. Switch the policy to `off` while checked in: the request disappears at the next policy pull. Low battery (below 20%, not charging): the request stops.
+5. Select the spoof app as mock location provider and walk with it: points still arrive with `is_mock=true` and the portal/risk list flags them; none is dropped or shown as genuine.
+6. Reboot mid-day while checked in: no crash; the request restarts at the next app start or sync (open the app once).
+Pass: steps 1–6 as written; report the battery numbers to the lead (they replace the estimate in `docs/status/mdm.md`).

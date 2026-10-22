@@ -3,6 +3,12 @@
 - `DbGrants` (reads `app.user_module_grant`, `mdm` r/w; SUPERADMIN always write) wired in `Wiring.kt` instead of `RoleGrants`, until the token carries `modules`. Tests: read-only ADMIN cannot act or decide, revoked grant closes the door, ADMIN with write approves a factory reset (requester cannot), pending reset that expired does not break the pull (db's request). Expiry tests move the service clock, never UPDATE rows.
 - Geo seam: `BreadcrumbSettings.withMdmSampling(mode, intervalMin)` in core-geo (off / interval / on_demand) with `MdmSamplingTest`. `BreadcrumbController` is not constructed in production code yet; whoever wires it passes `{ cfg.withMdmSampling(applier.locationMode(), applier.locationIntervalMin()) }`. Sale and check-in fixes are NOT affected by the policy (geo-validation must keep working).
 - Device-lab steps D-MDM-01 added to `docs/status/device-checks.md` (DEVICE-PENDING).
+## Breadcrumb install (D-MDM-BREADCRUMB-01) — expected cost, NOT yet measured on a phone
+- Off by default (`cfg.geo.breadcrumbs_enabled=false`); on only with config true or MDM `interval`, checked in, battery above `batteryFloorPct` (20%). Requests: fused, balanced power, batched, one request alive at a time.
+- Battery (estimate, to be measured in the device-lab row): a batched balanced request at 15–30 min costs on the order of 1–2% of a battery per 8 h day; at the 5 min floor 2–3%. The gate drops points that moved less than 50 m or arrive inside the interval, so the stored points are at most 16 (30 min), 32 (15 min), 96 (5 min) per 8 h day.
+- Data (estimate): a `geo_breadcrumb` record with its GeoFix is about 0.7 KB of JSON; 16 points ≈ 11 KB raw, ≈ 5 KB gzipped per day; 96 points ≈ 67 KB raw, ≈ 30 KB gzipped (under 0.002% of the 2 GB day pack). Rides the existing sync batches, no new upload.
+- Tests: `BreadcrumbWiringTest` (core-sync; shared by SR and AMO because both use `DeviceRuntime`): not started when off, MDM interval/off/on_demand, floor, low battery, mock flag kept, sink; `CaptureRepositoryTest.aBreadcrumbIsOneStandaloneRecordWithItsOwnFix`.
+
 - Still waiting: owner's MDM screenshots (`docs/ui-reference/web/mdm-*.webp`); network_type in the status report (contract queue); packages catalogue endpoint.
 
 # HANDOFF (lane mdm session 1 -> session 2, 2026-10-22)
