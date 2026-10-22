@@ -14,12 +14,15 @@ data class Geo(
     val divisionWing: Map<Long, Long>,
     val routeZone: Map<Long, Long>,
     val names: Map<Pair<String, Long>, Pair<String?, String?>> = emptyMap(),
+    /** Zone -> distribution house (`zone.house_id`; a zone may name none). D-ROLES-02 row 4: a `house` scope node reaches its zones. */
+    val zoneHouse: Map<Long, Long> = emptyMap(),
 ) {
     fun zonesUnder(type: String, id: Long): Set<Long> = when (type) {
         "national" -> zoneTerritory.keys
         "wing" -> zoneTerritory.filter { (_, t) -> territoryDivision[t]?.let { divisionWing[it] } == id }.keys
         "division" -> zoneTerritory.filter { (_, t) -> territoryDivision[t] == id }.keys
         "territory" -> zoneTerritory.filter { (_, t) -> t == id }.keys
+        "house" -> zoneHouse.filter { (z, h) -> h == id && z in zoneTerritory }.keys
         "zone" -> if (id in zoneTerritory) setOf(id) else emptySet()
         else -> emptySet()
     }

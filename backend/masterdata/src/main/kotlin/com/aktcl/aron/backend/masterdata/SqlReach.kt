@@ -32,7 +32,7 @@ class GeoRepository(private val db: Database, private val clock: AronClock = Aro
     private fun load(): Geo = db.jdbi.withHandle<Geo, Exception> { h ->
         fun pairs(sql: String) = h.createQuery(sql).map { rs, _ -> rs.getLong(1) to rs.getLong(2) }.list().toMap()
         val names = HashMap<Pair<String, Long>, Pair<String?, String?>>()
-        for (t in listOf("wing", "division", "territory", "zone", "route")) {
+        for (t in listOf("wing", "division", "territory", "house", "zone", "route")) {
             h.createQuery("SELECT id, code, name FROM app.$t").map { rs, _ -> (t to rs.getLong(1)) to (rs.getString(2) to rs.getString(3)) }
                 .list().forEach { names[it.first] = it.second }
         }
@@ -42,6 +42,7 @@ class GeoRepository(private val db: Database, private val clock: AronClock = Aro
             divisionWing = pairs("SELECT id, wing_id FROM app.division"),
             routeZone = pairs("SELECT id, zone_id FROM app.route"),
             names = names,
+            zoneHouse = pairs("SELECT id, house_id FROM app.zone WHERE house_id IS NOT NULL"),
         )
     }
 }
