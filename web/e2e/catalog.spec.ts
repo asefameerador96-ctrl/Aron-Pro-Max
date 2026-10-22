@@ -26,10 +26,10 @@ test("product tree: brand under a segment shows the parent label; SKU create wit
   await page.locator("#reason").fill("Launching the new 10s pack in October");
   await page.getByRole("button", { name: "তৈরি করুন" }).click();
   await expect(page.getByTestId("data-table")).toContainText("NEW-10S");
-  // the SKU's base unit is create-only: the edit form has no such control
+  // the SKU's base unit is create-only (no control on the edit form); the pack size is editable since the contract carries it
   await page.getByRole("row", { name: /NEW-10S/ }).getByRole("link", { name: "সম্পাদনা" }).click();
   await expect(page.locator("#f-base_unit")).toHaveCount(0);
-  await expect(page.locator("#f-base_per_pack")).toHaveCount(0);
+  await expect(page.locator("#f-base_per_pack")).toHaveCount(1);
 });
 
 test("classification lists: locked codes, add an item, retire another, audited with the reason", async ({ page }) => {
