@@ -1,4 +1,4 @@
--- V0101 field counting units (owner directive 2026-10-22, docs/34 s4.2, DECISIONS D-UNITS-02, supersedes the stick
+-- V0103 field counting units (owner directive 2026-10-22, docs/34 s4.2, DECISIONS D-UNITS-02, supersedes the stick
 -- entry default of D24-65): the apps enter, show, print and sync cigarettes and bidi in packets, lighters in boxes of
 -- 25 and matches in dozens; storage and every server aggregate stay in base units (qty_base = qty_entered x pack_factor).
 -- 1. Existing SKUs (dev and test: the seed catalogue; a new account has none yet, its SKUs arrive through the admin
@@ -25,5 +25,5 @@ INSERT INTO app.cfg_key (key, area, kind, value_type, default_value, bounds, bou
    ARRAY['global']::text[], 2, NULL, 'B', 'both', false, false, 'cfg.edit.ops',
    'When false, quantities are entered in whole packets, boxes and dozens only (no loose sticks or pieces); the server re-checks (docs/34 s4.2).');
 
-COMMENT ON COLUMN app.sku.base_per_pack IS 'Base units in one pack: 20 or 10 sticks per cigarette packet, the stick count of a bidi packet, 25 pieces per lighter box, 1 for matches (dozen is the base unit; V0101).';
-COMMENT ON COLUMN app.sku.entry_unit_default IS 'Unit the apps enter, show and print: pack for cigarettes, bidi and lighters (box), dozen for matches (V0101, D-UNITS-02).';
+COMMENT ON COLUMN app.sku.base_per_pack IS 'Base units in one pack: 20 or 10 sticks per cigarette packet, the stick count of a bidi packet, 25 pieces per lighter box, 1 for matches (dozen is the base unit; V0103).';
+COMMENT ON COLUMN app.sku.entry_unit_default IS 'Unit the apps enter, show and print: pack for cigarettes, bidi and lighters (box), dozen for matches (V0103, D-UNITS-02).';

@@ -35,7 +35,7 @@ BEGIN
      WHERE z.code = c.zone AND NOT EXISTS (SELECT 1 FROM app.cluster x WHERE x.zone_id = z.id AND x.name = c.name);
 
   -- Friday-aware: three 2F routes, Sat+Tue (1 + 8 = 9), Sun+Wed (2 + 16 = 18), Mon+Thu (4 + 32 = 36); bit0 Sat ... bit6 Fri.
-  INSERT INTO app.route (code, name, display_label, zone_id, kind, visit_kind, visit_days_mask, sequence_no, route_type)
+  INSERT INTO app.route (code, name, display_label, zone_id, kind, visit_kind, visit_days_mask, sequence_no, route_class)
     SELECT r.code, r.name, r.label, z.id, 'sr', '2f', r.mask, r.seq, 'normal'
       FROM app.zone z, (VALUES ('GUL-SR-2', 'Gulshan 2 (Sat, Tue)', '(Sat, Tue)', 'Z-GUL', 9, 1),
                                ('GUL-SR-1', 'Gulshan 1 (Sun, Wed)', '(Sun, Wed)', 'Z-GUL', 18, 2),
@@ -169,7 +169,7 @@ BEGIN
        AND NOT EXISTS (SELECT 1 FROM app.route_monthly_target_upload x WHERE x.upload_uuid = md5('gulshan-banani-target-' || m.month)::uuid);
   INSERT INTO app.route_monthly_target (month, route_id, sku_id, qty_base, upload_id)
     SELECT up.month, w.route_id, w.sku_id,
-           greatest(1, round(w.total * w.weight / sum(w.weight) OVER (PARTITION BY up.id, w.route_id, w.category_code) / w.base_per_pack))::bigint * w.base_per_pack,
+           greatest(1, round(w.total::numeric * w.weight / sum(w.weight) OVER (PARTITION BY up.id, w.route_id, w.category_code) / w.base_per_pack))::bigint * w.base_per_pack,
            up.id
       FROM (SELECT r.id AS route_id, s.id AS sku_id, s.category_code, s.base_per_pack, 1 + (s.sort % 3) AS weight,
                    CASE s.category_code WHEN 'cigarette' THEN 200000 WHEN 'bidi' THEN 30000 WHEN 'lighter' THEN 500 ELSE 300 END AS total

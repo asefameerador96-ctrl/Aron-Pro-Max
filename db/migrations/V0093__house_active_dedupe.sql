@@ -1,4 +1,4 @@
--- V0091 house active flag and de-duplication (owner directive 2026-10-22, docs/34 s2 "House level"; dashboard brief s1:
+-- V0093 house active flag and de-duplication (owner directive 2026-10-22, docs/34 s2 "House level"; dashboard brief s1:
 -- "the filter lists each active house once", 295 houses against 239 because some appear twice and some are deactivated).
 -- 1. app.house.is_active: a stored generated column, true exactly when status = 'active'. status (V0002) stays the one
 --    source of truth that the admin API writes; is_active is the name the dashboard filter and reports read. House is a
@@ -38,8 +38,8 @@ CREATE UNIQUE INDEX house_active_name_once ON app.house (territory_id, lower(btr
 ALTER TABLE dw.dim_geo ADD COLUMN house_id bigint, ADD COLUMN house_name text;
 ALTER TABLE dw.dim_geo_version ADD COLUMN house_id bigint, ADD COLUMN house_name text;
 
-COMMENT ON COLUMN app.house.status IS 'active or inactive; the one source of truth for the active flag (is_active is generated from it, V0091).';
-COMMENT ON COLUMN app.house.is_active IS 'True when status is active (generated, V0091); the dashboard House filter lists active houses only.';
+COMMENT ON COLUMN app.house.status IS 'active or inactive; the one source of truth for the active flag (is_active is generated from it, V0093).';
+COMMENT ON COLUMN app.house.is_active IS 'True when status is active (generated, V0093); the dashboard House filter lists active houses only.';
 COMMENT ON COLUMN dw.dim_geo.house_id IS 'Distribution house of the route''s zone (app.zone.house_id); null when the zone names none.';
 COMMENT ON COLUMN dw.dim_geo.house_name IS 'Name of that house.';
 COMMENT ON COLUMN dw.dim_geo_version.house_id IS 'Distribution house of the route''s zone in this version; null when the zone named none.';

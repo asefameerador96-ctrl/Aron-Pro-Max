@@ -1,7 +1,7 @@
 # Seed → table map: Gulshan and Banani dev geography (D-SEED-02, docs/34 s4.4)
 
 Source: `db/seed/06_dev_gulshan_banani.sql` (replaces `06_dev_real_route.sql`), with `db/seed/02_products.sql`
-(SKUs, units) and migrations V0087–V0101. Written for lane qa's data-flow trace
+(SKUs, units) and migrations V0087–V0103. Written for lane qa's data-flow trace
 (`docs/evidence/data-flow-trace-<date>.md`: seed → bundle → SR app → sync → summaries → dashboard → reports).
 
 ## Where it applies (read first)
@@ -26,7 +26,7 @@ Source: `db/seed/06_dev_gulshan_banani.sql` (replaces `06_dev_real_route.sql`), 
 | House `H-GUL` Gulshan Distribution House, under `T-DHK-N` (wing `W-CEN`, division `D-DHK`) | `app.house` (`is_active` true) | dashboard House filter; `dw.dim_geo.house_id` (projector) |
 | Zones `Z-GUL` Gulshan, `Z-BAN` Banani (house H-GUL) | `app.zone` | filters, Final Submit card (service zones), `dw.agg_daily_zone` |
 | Clusters Gulshan 2 Circle, Gulshan 1 Circle (Z-GUL), Banani Road 11 (Z-BAN) | `app.cluster` | outlet pop-up Cluster Name |
-| Routes `GUL-SR-2` Sat+Tue (mask 9), `GUL-SR-1` Sun+Wed (18), `BAN-SR-11` Mon+Thu (36); all `2f`, `route_type` normal | `app.route`, `app.route_planned` (from 2026-10-01) | bundle "today's route", Target Route, Live CPR (normal routes only) |
+| Routes `GUL-SR-2` Sat+Tue (mask 9), `GUL-SR-1` Sun+Wed (18), `BAN-SR-11` Mon+Thu (36); all `2f`, `route_class` normal | `app.route`, `app.route_planned` (from 2026-10-01) | bundle "today's route", Target Route, Live CPR (normal routes only) |
 | Friday | no route has bit 6 (Friday); masks sum to 63 = Sat..Thu, each selling day exactly one route | planner; Friday shows no planned route |
 | 60 outlets, codes `GUL2-001..020`, `GUL1-001..020`, `BAN11-001..020` | `app.outlet` (`location_basis` master, confirmed, accuracy 8 m, geo_class Urban), `app.outlet_placement_history`, `app.outlet_location_history` (from 2026-10-01) | bundle outlets with pins → on-device geofence; route map base positions; Sale Position base (B) |
 | Pins | n 1–10 south along the north–south street from the centre (≈ 65 m apart), n 11–20 east along the east–west street (≈ 62 m apart). Centres: Gulshan 2 circle 23.7925, 90.4078 (Gulshan Avenue, Road 90); Gulshan 1 circle 23.7808, 90.4165 (Gulshan Avenue south, Road 27); Banani 11 23.7937, 90.4043 (Kamal Ataturk Avenue, Road 11). Plausible street points, not surveyed shops | geofence radius `cfg.geo.radius_m` (100 m default) |
@@ -34,11 +34,11 @@ Source: `db/seed/06_dev_gulshan_banani.sql` (replaces `06_dev_real_route.sql`), 
 | Outlet n 20 of each route: wholesale, distributor price | `app.outlet.outlet_kind`, `price_type` | memo price type |
 | Names: invented Bangla/English shop names; owners `Owner GUL2-1` …; phones `0170700xxxx` synthetic | `app.outlet.name`, `name_bn`, `owner_name`, `contact_number` | outlet pop-up (PII: synthetic only) |
 | Sales plan: every active SKU with a non-zero outlet price (39 SKUs) for Z-GUL and Z-BAN, from 2026-10-01 | `app.sales_plan` | bundle SKU list (Stock, Sale) |
-| sr1001: primary on the three routes from the seeding date; its open Mirpur primaries (MIR-SR-*, real 16685/16686) closed that date; `MIR-SR-*` inactive; home zone Z-GUL | `app.route_assignment`, `app.route.status`, `app.app_user.home_zone_id` | login bundle, Login / Submit Status |
+| sr1001: primary on the three routes from the seeding date; its open Mirpur primaries (MIR-SR-*, real 16685/16686) closed that date; `MIR-SR-*` inactive; home zone Z-GUL | `app.route_assignment`, `app.route.status`, `app.app_user.home_zone_id` | login bundle, Login / Submit Status. The switch takes effect on the seeding date: a phone mid-day on a Mirpur bundle at re-seed loses that day's Mirpur scope on sync (accepted on dev; re-seed outside selling hours) |
 | amo1001: zone scope Z-GUL and Z-BAN (Z-MIR closed); home zone Z-GUL. tso1001 territory T-DHK-N already covers both zones; dmo1001 division D-DHK | `app.user_scope` | AMO/TSO apps and portal scope |
 | Holidays (global): 2026-10-21 Durga Puja (Bijoya Dashami, lunar date, **AKTCL to confirm**), 2026-12-16 Victory Day, 2026-12-25 Christmas Day (a Friday) | `app.calendar_holiday` → `dw.v_calendar`, `dw.v_calendar_month` | working days: Oct 25, Nov 26, Dec 26 |
 | Monthly targets Oct, Nov, Dec 2026: one upload per month (`upload_uuid` = md5('gulshan-banani-target-YYYY-MM-01'), source excel, by superadmin1001); per route and month ≈ 200,000 cigarette sticks, 30,000 bidi sticks, 500 lighters (20 boxes), 300 dozen matches, spread over the plan SKUs with weights 1–3 by catalogue order, whole packs | `app.route_monthly_target_upload`, `app.route_monthly_target` (351 rows) → `dw.v_route_monthly_target` | Sales cards' %, "i" daily target (e.g. GUL-SR-2 Oct cigarette ≈ 200,000 / 25 = 8,000 sticks a day) |
-| SKU units (all SKUs, 02_products.sql + V0101) | `app.sku.base_per_pack` cigarettes 20/10, bidi 25/12, lighters 25 (box), matches 1; `entry_unit_default` pack/pack/pack/dozen; `cfg.sale.qty_entry_unit`, `cfg.sale.allow_loose_base_units` false | SR app entry in packets → `qty_base` on memo lines → aggregates in sticks/pieces/dozens |
+| SKU units (all SKUs, 02_products.sql + V0103) | `app.sku.base_per_pack` cigarettes 20/10, bidi 25/12, lighters 25 (box), matches 1; `entry_unit_default` pack/pack/pack/dozen; `cfg.sale.qty_entry_unit`, `cfg.sale.allow_loose_base_units` false | SR app entry in packets → `qty_base` on memo lines → aggregates in sticks/pieces/dozens |
 | Prices | `app.sku_price` per base unit (e.g. MaxR-20S 9.200 Tk a stick → 184 Tk a packet) | memo line amount = packets × packet price |
 
 ## Expected hops for the trace (one SR day)

@@ -1,4 +1,4 @@
--- V0099 final submit log (owner directive 2026-10-22, docs/34 s2; dashboard brief s3.3 and Brief 07: a service zone
+-- V0101 final submit log (owner directive 2026-10-22, docs/34 s2; dashboard brief s3.3 and Brief 07: a service zone
 -- counts as final-submitted once its TSO has done the Final Submit for the date, and second submits are ignored).
 -- No new table: app.final_submit (V0007) already holds one row per submit with zone and business date, at most one
 -- live (not reopened) row per zone-day (final_submit_once). A reopen and a second submit add a row, so "first wins" is

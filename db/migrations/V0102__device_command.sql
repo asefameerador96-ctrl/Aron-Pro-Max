@@ -1,14 +1,17 @@
--- V0100 MDM device commands (owner directive 2026-10-22, docs/34 s5, DECISIONS D-MDM-01): the actions of the portal's
+-- V0102 MDM device commands (owner directive 2026-10-22, docs/34 s5, DECISIONS D-MDM-01): the actions of the portal's
 -- MDM section (lock, unlock, message, locate, reboot, factory reset) as idempotent rows, pushed by FCM and pulled on
 -- sync by the device-owner DPC (android/dpc). app.device_directive (V0010) stays the sync-diagnostics channel
 -- (send_status, redownload_bundle, ...); MDM commands are a separate table because they have a two-person rule, a
 -- longer life and a result.
 -- Rules held by the database:
 -- - command_uuid is the idempotency key (a replayed create returns the first row).
--- - factory_reset needs a second person: it is created pending_approval, and only a different user may approve it;
---   every other type is created queued. approved_by is never the requester.
--- - Status moves only forward: pending_approval -> queued | cancelled; queued -> sent | cancelled | expired;
---   sent -> acked | failed | expired; acked -> done | failed. The request columns are written once.
+-- - factory_reset needs a second person: it is created pending_approval with no approval; the approval is written
+--   only on the step to queued, before expires_at, by a SUPERADMIN or an ADMIN with write on the mdm module, never the
+--   requester. Every other type is created queued. A new row carries no approval, delivery or outcome.
+-- - Status moves only forward: pending_approval -> queued | cancelled | expired; queued -> sent | cancelled | expired;
+--   sent -> acked | failed | expired; acked -> done | failed. Request, approval and delivery columns are written once.
+--   Expiry is the API's (worker_rw cannot update the table).
+-- - support_ro reads the activity log without result (a locate answer is personal data).
 -- - Rows are never deleted (the MDM activity log reads them); every change is also audited by the API.
 
 SET lock_timeout = '5s';
@@ -59,6 +62,11 @@ BEGIN
       RAISE EXCEPTION 'device_command %: a % command starts %', NEW.command_uuid, NEW.type, first_status
         USING ERRCODE = 'check_violation';
     END IF;
+    IF NEW.approved_by IS NOT NULL OR NEW.approved_at IS NOT NULL OR NEW.cancelled_by IS NOT NULL
+       OR NEW.sent_at IS NOT NULL OR NEW.acked_at IS NOT NULL OR NEW.completed_at IS NOT NULL THEN
+      RAISE EXCEPTION 'device_command %: a new command carries no approval, delivery or outcome', NEW.command_uuid
+        USING ERRCODE = 'check_violation';
+    END IF;
     RETURN NEW;
   END IF;
   IF (NEW.command_uuid, NEW.device_id, NEW.type, NEW.params, NEW.requested_by, NEW.requested_at, NEW.reason, NEW.expires_at)
@@ -66,8 +74,33 @@ BEGIN
      OR (OLD.approved_by IS NOT NULL AND (NEW.approved_by, NEW.approved_at) IS DISTINCT FROM (OLD.approved_by, OLD.approved_at)) THEN
     RAISE EXCEPTION 'device_command %: request and approval columns are written once', OLD.command_uuid USING ERRCODE = 'insufficient_privilege';
   END IF;
+  -- The approval is given only on the step pending_approval -> queued, before expiry, by a SUPERADMIN or an ADMIN with
+  -- write on the mdm module (docs/34 s5); the CHECK keeps the approver apart from the requester.
+  IF OLD.approved_by IS NULL AND NEW.approved_by IS NOT NULL THEN
+    IF NOT (OLD.status = 'pending_approval' AND NEW.status = 'queued') THEN
+      RAISE EXCEPTION 'device_command %: an approval is given only when a pending command is queued', OLD.command_uuid
+        USING ERRCODE = 'check_violation';
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM app.app_user u WHERE u.id = NEW.approved_by AND u.status = 'active'
+                     AND (u.role = 'SUPERADMIN'
+                          OR (u.role = 'ADMIN' AND EXISTS (SELECT 1 FROM app.user_module_grant g
+                                                            WHERE g.user_id = u.id AND g.module = 'mdm' AND g.access = 'w')))) THEN
+      RAISE EXCEPTION 'device_command %: user % may not approve MDM commands', OLD.command_uuid, NEW.approved_by
+        USING ERRCODE = 'insufficient_privilege';
+    END IF;
+  END IF;
+  IF NEW.status = 'queued' AND OLD.status = 'pending_approval' AND now() >= OLD.expires_at THEN
+    RAISE EXCEPTION 'device_command %: expired before approval', OLD.command_uuid USING ERRCODE = 'check_violation';
+  END IF;
+  -- Delivery facts are written once.
+  IF (OLD.sig IS NOT NULL AND NEW.sig IS DISTINCT FROM OLD.sig)
+     OR (OLD.sent_at IS NOT NULL AND (NEW.sent_at, NEW.sent_via) IS DISTINCT FROM (OLD.sent_at, OLD.sent_via))
+     OR (OLD.acked_at IS NOT NULL AND NEW.acked_at IS DISTINCT FROM OLD.acked_at)
+     OR (OLD.completed_at IS NOT NULL AND NEW.completed_at IS DISTINCT FROM OLD.completed_at) THEN
+    RAISE EXCEPTION 'device_command %: delivery columns are written once', OLD.command_uuid USING ERRCODE = 'insufficient_privilege';
+  END IF;
   IF NEW.status <> OLD.status AND NOT (
-       (OLD.status = 'pending_approval' AND NEW.status IN ('queued', 'cancelled'))
+       (OLD.status = 'pending_approval' AND NEW.status IN ('queued', 'cancelled', 'expired'))
     OR (OLD.status = 'queued' AND NEW.status IN ('sent', 'cancelled', 'expired'))
     OR (OLD.status = 'sent' AND NEW.status IN ('acked', 'failed', 'expired'))
     OR (OLD.status = 'acked' AND NEW.status IN ('done', 'failed'))) THEN
@@ -87,7 +120,8 @@ CREATE TRIGGER device_command_no_truncate BEFORE TRUNCATE ON app.device_command
   FOR EACH STATEMENT EXECUTE FUNCTION app.deny_mutation();
 
 INSERT INTO app.db_role_grant (role, schema_name, object, privileges, note) VALUES
-  ('support_ro', 'app', 'device_command', 'SELECT', 'V0100: the support desk sees the MDM activity log');
+  ('support_ro', 'app', 'device_command', 'SELECT', 'V0102: the support desk sees the MDM activity log (not the result, personal)');
+UPDATE app.db_role_grant SET except_columns = '{result}' WHERE role = 'support_ro' AND object = 'device_command';
 
 COMMENT ON TABLE app.device_command IS 'MDM command to one device (lock, unlock, message, locate, reboot, factory reset): idempotent by command_uuid, pushed by FCM and pulled on sync; factory reset needs a second person (D-MDM-01).
 owner: backend:mdm | capture: ONLINE | retention: audit | pii: personal';

@@ -1,4 +1,4 @@
--- V0095 the working-day calendar of the minimum target slice (owner directive 2026-10-22, docs/34 s2, D-TARGET-MIN-01;
+-- V0097 the working-day calendar of the minimum target slice (owner directive 2026-10-22, docs/34 s2, D-TARGET-MIN-01;
 -- dashboard brief s2: daily target = monthly target / working days of the month, Fridays and holidays excluded).
 -- No new table: the days are dw.dim_date (V0011, extended by dw.build_dim_date) and the holidays are the admin's
 -- app.calendar_holiday rows (V0005; admin page "Calendar"), so there is one source of truth for each.
@@ -8,7 +8,8 @@
 --    National (global-scope) entries only: a division- or zone-scoped holiday does not change the national working
 --    days; such scoped days are read from app.calendar_holiday by the API where it needs them.
 -- 2. dw.v_calendar_month: per month the count of days, Fridays, holidays and working days.
--- 3. dw.v_route_monthly_target: the live route x SKU targets of V0094 with category, base unit, the month's working days
+-- 2b. dw.v_working_day (day, working): the shape backend-reports reads (db-backend-reports-dashboard-summaries.md A5).
+-- 3. dw.v_route_monthly_target: the live route x SKU targets of V0096 with category, base unit, the month's working days
 --    and the daily target (numeric, base units; rounding is the caller's, the dashboard shows two decimals).
 
 SET lock_timeout = '5s';
@@ -31,6 +32,9 @@ SELECT month, count(*)::int AS days, count(*) FILTER (WHERE is_friday)::int AS f
        count(*) FILTER (WHERE is_holiday)::int AS holidays, count(*) FILTER (WHERE is_working_day)::int AS working_days
   FROM dw.v_calendar
  GROUP BY month;
+
+CREATE VIEW dw.v_working_day AS
+SELECT business_date AS day, is_working_day AS working FROM dw.v_calendar;
 
 CREATE VIEW dw.v_route_monthly_target AS
 SELECT t.month, t.route_id, t.sku_id, s.category_code, s.base_unit, t.qty_base AS monthly_qty_base, cm.working_days,
@@ -59,6 +63,10 @@ COMMENT ON COLUMN dw.v_calendar_month.days IS 'Days in the month.';
 COMMENT ON COLUMN dw.v_calendar_month.fridays IS 'Fridays in the month.';
 COMMENT ON COLUMN dw.v_calendar_month.holidays IS 'Dates in the month with a live national holiday or emergency off day.';
 COMMENT ON COLUMN dw.v_calendar_month.working_days IS 'Working days in the month (dw.v_calendar.is_working_day).';
+COMMENT ON VIEW dw.v_working_day IS 'Stable view: one row per date, working = the national working-day flag of dw.v_calendar (Fridays and national holidays off, make-up days on).
+owner: worker | capture: SERVER | retention: master | pii: none';
+COMMENT ON COLUMN dw.v_working_day.day IS 'Calendar date (Asia/Dhaka business date).';
+COMMENT ON COLUMN dw.v_working_day.working IS 'True when the date counts as a national working day.';
 COMMENT ON VIEW dw.v_route_monthly_target IS 'Stable view: live route x SKU monthly targets in base units with the month''s working days and the derived daily target (D-TARGET-MIN-01).
 owner: worker | capture: SERVER | retention: master | pii: none';
 COMMENT ON COLUMN dw.v_route_monthly_target.month IS 'Target month (first day of the month).';

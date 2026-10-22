@@ -1,15 +1,16 @@
--- V0094 route x SKU monthly targets: the minimum target slice (owner directive 2026-10-22, docs/34 s2, DECISIONS
+-- V0096 route x SKU monthly targets: the minimum target slice (owner directive 2026-10-22, docs/34 s2, DECISIONS
 -- D-TARGET-MIN-01). The dashboard's sales rings and "i" pop-ups need a daily target = monthly target / working days of
--- the month (Fridays and holidays excluded, dw.v_calendar, V0095), summed over the routes and SKUs in the filter.
+-- the month (Fridays and holidays excluded, dw.v_calendar, V0097), summed over the routes and SKUs in the filter.
 -- Only this slice is built; target reports, approvals, SKU target screens and achievement programmes stay deferred
 -- (docs/27), and the older target hook tables of V0005 (app.target_set, target_revision, target) stay empty and unread.
 -- 1. app.route_monthly_target_upload: one row per upload (admin page or Excel import), idempotent by upload_uuid (a
 --    replayed upload returns the first result). An upload covers one month.
 -- 2. app.route_monthly_target: one live row per month, route and SKU, quantity in the SKU's base unit (sticks, pieces,
 --    dozens; docs/34 s4.2: storage stays in base units). A later upload that names the same month, route and SKU
---    supersedes the live row (superseded_by_upload_id is written once) and inserts the new one, so history is kept.
+--    supersedes the live row (superseded_by_upload_id is written once, only by a later upload of the same month)
+--    and inserts the new one, so history is kept.
 --    Rows are never updated otherwise and never deleted.
--- The stable read view with category and working days, dw.v_route_monthly_target, comes with the calendar view (V0095).
+-- The stable read view with category and working days, dw.v_route_monthly_target, comes with the calendar view (V0097).
 
 SET lock_timeout = '5s';
 
@@ -64,6 +65,13 @@ BEGIN
   IF OLD.superseded_by_upload_id IS NOT NULL
      OR (to_jsonb(NEW) - 'superseded_by_upload_id') <> (to_jsonb(OLD) - 'superseded_by_upload_id') THEN
     RAISE EXCEPTION 'route_monthly_target: only superseded_by_upload_id may be set, once' USING ERRCODE = 'insufficient_privilege';
+  END IF;
+  -- Only a later upload of the same month supersedes (an empty or other-month upload cannot erase targets).
+  IF NEW.superseded_by_upload_id IS NOT NULL AND NOT EXISTS (
+       SELECT 1 FROM app.route_monthly_target_upload u
+        WHERE u.id = NEW.superseded_by_upload_id AND u.month = OLD.month AND u.id > OLD.upload_id) THEN
+    RAISE EXCEPTION 'route_monthly_target: upload % is not a later upload of month %', NEW.superseded_by_upload_id, OLD.month
+      USING ERRCODE = 'check_violation';
   END IF;
   RETURN NEW;
 END $$;
