@@ -73,4 +73,9 @@
     <string name="ui_print_too_long">এই কাগজটি প্রিন্টের জন্য অনেক লম্বা</string>
     <string name="ui_sale_save_failed">বিক্রয় জমা করা যায়নি। আবার চেষ্টা করুন।</string>
     <string name="ui_print_saving">জমা হচ্ছে…</string>
+    <string name="print_unit_packet">প্যাকেট</string>
+    <string name="print_unit_box">বক্স</string>
+    <string name="print_unit_dozen">ডজন</string>
+    <string name="print_unit_stick">স্টিক</string>
+    <string name="print_unit_piece">পিস</string>
 </resources>

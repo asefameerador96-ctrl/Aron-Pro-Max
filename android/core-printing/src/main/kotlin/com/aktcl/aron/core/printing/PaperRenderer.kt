@@ -71,7 +71,7 @@ class PaperRenderer(fonts: PrintFonts, private val templates: TemplateSet, priva
 
     private fun render(kind: String, digits: DigitStyle?, build: (DocumentBuilder) -> PrintDocument): RenderedPaper {
         val r = templates.get(kind)
-        val doc = build(DocumentBuilder(digits ?: r.template.digits))
+        val doc = build(DocumentBuilder(digits ?: r.template.digits) { key -> labels.label("print_unit_$key").orEmpty() })
         val bmp = renderer.render(r.template, doc) { key -> labels.label(key) ?: "" }
         return RenderedPaper(bmp, r.version)
     }

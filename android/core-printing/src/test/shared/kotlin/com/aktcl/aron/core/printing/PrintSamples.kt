@@ -17,8 +17,9 @@ object PrintSamples {
 
     /**
      * The seeded sale: the on-screen memo of docs/ui-reference/sr/memo.md (FB 3 dozen at 28.00 = 84.00, SL Match
-     * 3 / 0.00 on the discount tab) plus cigarettes in sticks at 7.935, a lighter, a Bangla outlet name and a
-     * DRP deduction, so conjuncts, both digit styles, 3-decimal line values and the totals block all print.
+     * 3 / 0.00 on the discount tab) plus cigarettes counted in packets of 20 and 10 at 7.935 a stick, a lighter box of 25, a
+     * Bangla outlet name and a DRP deduction, so conjuncts, both digit styles, 3-decimal line values, the unit words
+     * (packet, box, dozen: docs/34 s4.2) and the totals block all print.
      */
     val seededSale = MemoPrint(
         kind = "credit_memo",
@@ -28,28 +29,28 @@ object PrintSamples {
         sr = "মোঃ করিম উদ্দিন",
         route = "মোহাম্মদপুর-২ (R-17)",
         lines = listOf(
-            MemoPrintLine("FB", 3, 84_000),
-            MemoPrintLine("Sheikh 20s", 12, 95_220),
-            MemoPrintLine("Navy Filter", 1, 7_935),
-            MemoPrintLine("SL Lighter", 35, 437_500),
+            MemoPrintLine("FB", 3, 84_000, "ম্যাচ", qtyEntered = 3, unit = "dozen"),
+            MemoPrintLine("Sheikh 20s", 40, 317_400, "সিগারেট", qtyEntered = 2, unit = "packet"),
+            MemoPrintLine("Navy Filter", 10, 79_350, "সিগারেট", qtyEntered = 1, unit = "packet"),
+            MemoPrintLine("SL Lighter", 50, 625_000, "লাইটার", qtyEntered = 2, unit = "box"),
         ),
-        discounts = listOf(MemoPrintDiscount("SL Match", 3, 0), MemoPrintDiscount("Sheikh 20s", 12, 2_400)),
-        grossMtk = 624_655,
+        discounts = listOf(MemoPrintDiscount("SL Match", 3, 0, qtyEntered = 3, unit = "dozen"), MemoPrintDiscount("Sheikh 20s", 20, 158_700, qtyEntered = 1, unit = "packet")),
+        grossMtk = 1_105_750,
         offerDiscountMtk = 0,
-        drpDiscountMtk = 2_400,
+        drpDiscountMtk = 158_700,
         qcDeductionMtk = 10_000,
-        roundAdjMtk = 5,
-        netMtk = 612_260,
-        paidMtk = 500_000,
-        dueMtk = 112_260,
+        roundAdjMtk = 0,
+        netMtk = 937_050,
+        paidMtk = 800_000,
+        dueMtk = 137_050,
         isCredit = true,
     )
 
     /** 40 item lines: the N-019 long-memo print. */
     val fortyLines = seededSale.copy(
-        lines = (1..40).map { MemoPrintLine(String.format(java.util.Locale.ROOT, "SKU-%02d স্টার ফিল্টার", it), it.toLong(), it * 7_935L) },
+        lines = (1..40).map { MemoPrintLine(String.format(java.util.Locale.ROOT, "SKU-%02d স্টার ফিল্টার", it), it * 10L, it * 79_350L, qtyEntered = it.toLong(), unit = "packet") },
         discounts = emptyList(),
-        grossMtk = (1..40).sumOf { it * 7_935L },
+        grossMtk = (1..40).sumOf { it * 79_350L },
         drpDiscountMtk = 0, qcDeductionMtk = 0,
         roundAdjMtk = 0, netMtk = 0, paidMtk = 0, dueMtk = 0, isCredit = false, kind = "cash_memo",
     ).let { m ->
@@ -60,14 +61,14 @@ object PrintSamples {
     val stockSlip = StockSlipPrint(
         printedAtEpochMs = T, sr = "মোঃ করিম উদ্দিন", route = "মোহাম্মদপুর-২", distributor = "এ কে ট্রেডার্স",
         lines = listOf(
-            StockSlipLine("সিগারেট", "Sheikh 20s", 2000), StockSlipLine("সিগারেট", "Navy Filter", 1000),
-            StockSlipLine("ম্যাচ", "FB", 50), StockSlipLine("লাইটার", "SL Lighter", 100),
+            StockSlipLine("সিগারেট", "Sheikh 20s", 2000, 100, "packet"), StockSlipLine("সিগারেট", "Navy Filter", 1000, 100, "packet"),
+            StockSlipLine("ম্যাচ", "FB", 50, 50, "dozen"), StockSlipLine("লাইটার", "SL Lighter", 100, 4, "box"),
         ),
     )
 
     val daySummary = DaySummaryPrint(
         printedAtEpochMs = T, sr = "মোঃ করিম উদ্দিন", route = "মোহাম্মদপুর-২",
-        lines = listOf(DaySummaryLine("FB", 4, 12, 336_000), DaySummaryLine("Sheikh 20s", 9, 640, 5_078_400)),
+        lines = listOf(DaySummaryLine("FB", 4, 12, 336_000, 12, "dozen"), DaySummaryLine("Sheikh 20s", 9, 640, 5_078_400, 32, "packet")),
         grossMtk = 5_414_400, discountMtk = 2_400, qcMtk = 10_000, netMtk = 5_402_000, dueMtk = 112_260, memoCount = 11,
     )
 
