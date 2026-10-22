@@ -45,7 +45,7 @@ data class VisitPlanIn(val plan_uuid: String, val plan_date: String, val route_i
 
 class VisitPlanDeps(val db: Database, val reach: ReachResolver, val config: ServerConfig, val guard: AuthGuardDeps, val clock: AronClock = AronClock.SYSTEM)
 
-private val PLAN_READERS = setOf(Role.TSO, Role.DMO, Role.WM, Role.TOP, Role.ANALYST, Role.SUPPORT, Role.ADMIN, Role.SUPERADMIN)
+private val PLAN_READERS = setOf(Role.TSO, Role.DMO, Role.WM, Role.TOP, Role.NATIONAL, Role.ANALYST, Role.SUPPORT, Role.ADMIN, Role.SUPERADMIN)
 
 /**
  * F-API-020. `GET /v1/visit-plans` (contract listVisitPlans): a TSO reads own plans, supervisors the plans of TSOs whose zone is

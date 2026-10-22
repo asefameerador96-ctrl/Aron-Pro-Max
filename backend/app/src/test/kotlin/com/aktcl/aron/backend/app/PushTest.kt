@@ -63,6 +63,9 @@ class PushTest {
         fresh.db.jdbi.useHandle<Exception> { h ->
             h.createUpdate("UPDATE app.app_user SET password_hash = :h WHERE pilot").bind("h", PasswordHasher().hash(password)).execute()
             sr = h.createQuery("SELECT id FROM app.app_user WHERE username = 'sr1001'").mapTo(Long::class.java).one()
+            // D-ROLES-02: no portal login for SR/AMO; amo1001 calls from an enrolled AMO phone bound to it (as ApiWorld.AMO_PHONE).
+            h.execute("INSERT INTO app.device (device_uuid, flavour, app_package, status, device_owner, lockdown_level, trust_level, public_key_jwk, public_key_thumbprint, attestation_summary, app_signing_cert_sha256, zone_id, device_info, app_version) SELECT '${ApiWorld.AMO_PHONE}', 'amo', 'com.aktcl.aron.amo', 'active', device_owner, lockdown_level, 'normal', public_key_jwk, 'qa-amo-000d', attestation_summary, app_signing_cert_sha256, zone_id, device_info, app_version FROM app.device WHERE device_uuid = '${ApiWorld.SR_PHONE}'")
+            h.execute("INSERT INTO app.device_binding (device_id, user_id, bind_ordinal, bound_via) SELECT d.id, u.id, 0, 'support' FROM app.device d, app.app_user u WHERE d.device_uuid = '${ApiWorld.AMO_PHONE}' AND u.username = 'amo1001'")
         }
         val key = File.createTempFile("aron-jwt", ".pem").apply {
             deleteOnExit()
@@ -81,7 +84,9 @@ class PushTest {
     private suspend fun HttpClient.login(user: String, phone: Boolean): String {
         val r = post("/v1/auth/login") {
             contentType(ContentType.Application.Json); header("X-App-Version", "1.0.9+9")
-            setBody(if (phone) """{"username":"$user","password":"$password","client":"app_sr","device_uuid":"$devPhone"}""" else """{"username":"$user","password":"$password","client":"web"}""")
+            // D-ROLES-02: no portal login for SR/AMO (amo1001 logs in from its AMO phone).
+            setBody(if (phone && user == "amo1001") """{"username":"$user","password":"$password","client":"app_amo","device_uuid":"${ApiWorld.AMO_PHONE}"}"""
+                else if (phone) """{"username":"$user","password":"$password","client":"app_sr","device_uuid":"$devPhone"}""" else """{"username":"$user","password":"$password","client":"web"}""")
         }
         assertEquals(HttpStatusCode.OK, r.status, r.bodyAsText())
         return Json.parseToJsonElement(r.bodyAsText()).jsonObject["access_token"]!!.jsonPrimitive.content
@@ -93,7 +98,7 @@ class PushTest {
     }
 
     private suspend fun HttpClient.assign(amo: String, taskUuid: String): HttpResponse = post("/v1/tasks") {
-        bearerAuth(amo); contentType(ContentType.Application.Json)
+        bearerAuth(amo); header("X-Device-Id", ApiWorld.AMO_PHONE); contentType(ContentType.Application.Json)
         setBody("""{"task_uuid":"$taskUuid","task_type_code":"display_check","assignee_user_id":$sr,"title":"Fix the display"}""")
     }
 
@@ -110,7 +115,7 @@ class PushTest {
         assertEquals(HttpStatusCode.NoContent, client.register(phone, token1).status)
         assertEquals(HttpStatusCode.NoContent, client.register(phone, token1).status, "the same token again is one row")
         assertEquals(1, count("SELECT count(*) FROM app.push_token WHERE user_id = $sr AND revoked_at IS NULL"))
-        val amo = client.login("amo1001", phone = false)
+        val amo = client.login("amo1001", phone = true) // D-ROLES-02: no portal login for SR/AMO
         val t = UUID.randomUUID().toString()
         sent.clear()
         assertEquals(HttpStatusCode.OK, client.assign(amo, t).status)

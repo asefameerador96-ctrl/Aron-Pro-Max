@@ -82,6 +82,9 @@ class BackfillMatchCheckerTest {
             h.execute("INSERT INTO app.user_scope (user_id, node_type, node_id, valid_from, reason) SELECT u.id, 'zone', z.id, DATE '2026-01-01', 'test' FROM app.app_user u, app.zone z WHERE u.username IN ('admin2002', 'support2002') AND z.code = 'Z-OTHER'")
             h.createUpdate("UPDATE app.app_user SET password_hash = :h WHERE pilot").bind("h", PasswordHasher().hash(password)).execute()
             routeId = h.createQuery("SELECT id FROM app.route WHERE code = 'MIR-SR-D'").mapTo(Long::class.java).one()
+            // D-ROLES-02: no portal login for SR/AMO; amo1001 calls from an enrolled AMO phone bound to it (as ApiWorld.AMO_PHONE).
+            h.execute("INSERT INTO app.device (device_uuid, flavour, app_package, status, device_owner, lockdown_level, trust_level, public_key_jwk, public_key_thumbprint, attestation_summary, app_signing_cert_sha256, zone_id, device_info, app_version) SELECT '${ApiWorld.AMO_PHONE}', 'amo', 'com.aktcl.aron.amo', 'active', device_owner, lockdown_level, 'normal', public_key_jwk, 'qa-amo-000d', attestation_summary, app_signing_cert_sha256, zone_id, device_info, app_version FROM app.device WHERE device_uuid = '${ApiWorld.SR_PHONE}'")
+            h.execute("INSERT INTO app.device_binding (device_id, user_id, bind_ordinal, bound_via) SELECT d.id, u.id, 0, 'support' FROM app.device d, app.app_user u WHERE d.device_uuid = '${ApiWorld.AMO_PHONE}' AND u.username = 'amo1001'")
             outletId = h.createQuery("SELECT min(id) FROM app.outlet WHERE route_id = :r").bind("r", routeId).mapTo(Long::class.java).one()
             skus += h.createQuery("SELECT s.id, p.amount_mtk FROM app.sku s JOIN app.sku_price p ON p.sku_id = s.id AND p.price_type = 'outlet' WHERE p.amount_mtk > 0 ORDER BY s.id LIMIT 2")
                 .map { rs, _ -> rs.getLong(1) to rs.getLong(2) }.list()
@@ -123,6 +126,16 @@ class BackfillMatchCheckerTest {
         val r = post("/v1/auth/login") { contentType(ContentType.Application.Json); setBody("""{"username":"$user","password":"$password","client":"web"}""") }
         assertEquals(HttpStatusCode.OK, r.status, r.bodyAsText())
         json(r.bodyAsText())["access_token"]!!.jsonPrimitive.content.also { webTokens[user] = it }
+    }
+
+    /** D-ROLES-02: no portal login for SR/AMO; the AMO's token comes from its AMO phone. */
+    private suspend fun HttpClient.amoPhoneToken(): String {
+        val r = post("/v1/auth/login") {
+            contentType(ContentType.Application.Json); header("X-App-Version", "1.0.9+9")
+            setBody("""{"username":"amo1001","password":"$password","client":"app_amo","device_uuid":"${ApiWorld.AMO_PHONE}"}""")
+        }
+        assertEquals(HttpStatusCode.OK, r.status, r.bodyAsText())
+        return json(r.bodyAsText())["access_token"]!!.jsonPrimitive.content
     }
 
     private fun gz(s: String): ByteArray = ByteArrayOutputStream().also { o -> GZIPOutputStream(o).use { it.write(s.toByteArray()) } }.toByteArray()
@@ -248,7 +261,13 @@ class BackfillMatchCheckerTest {
             contentType(ContentType.Application.Json); setBody("""{"reason":"Same printed memo, phone came back"}""")
         }
         assertEquals(HttpStatusCode.Forbidden, phone.status, "a phone token: ${phone.bodyAsText()}")
-        for (u in listOf("amo1001", "dmo1001", "tso1001")) assertEquals(HttpStatusCode.Forbidden, client.match(client.webToken(u), x.qid).status, u)
+        for (u in listOf("dmo1001", "tso1001")) assertEquals(HttpStatusCode.Forbidden, client.match(client.webToken(u), x.qid).status, u)
+        // D-ROLES-02: no portal login for SR/AMO; the AMO, from its phone, cannot match either.
+        val amo = client.post("/v1/admin/quarantine/${x.qid}/match-backfill") {
+            bearerAuth(client.amoPhoneToken()); header("X-Device-Id", ApiWorld.AMO_PHONE); header("X-App-Version", "1.0.9+9")
+            contentType(ContentType.Application.Json); setBody("""{"reason":"Same printed memo, phone came back"}""")
+        }
+        assertEquals(HttpStatusCode.Forbidden, amo.status, "amo1001 from its phone: ${amo.bodyAsText()}")
         assertEquals("open", status(x.qid))
         assertEquals(0, audits(x.phoneMemo))
         assertEquals(HttpStatusCode.OK, client.match(client.webToken("support1001"), x.qid).status, "national SUPPORT")

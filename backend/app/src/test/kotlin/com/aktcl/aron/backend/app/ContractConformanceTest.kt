@@ -48,7 +48,7 @@ class ContractConformanceTest {
 
     private val callers = listOf(
         ApiWorld.Caller("sr1001", "app_sr", ApiWorld.SR_PHONE),
-        ApiWorld.Caller("amo1001", "web", null),
+        ApiWorld.Caller("amo1001", "app_amo", ApiWorld.AMO_PHONE),
         ApiWorld.Caller("tso1001", "web", null),
         ApiWorld.Caller("admin1001", "web", null),
         ApiWorld.Caller("superadmin1001", "web", null),
@@ -309,6 +309,9 @@ class ContractConformanceTest {
             "PATCH /v1/feedback/{}" to Fx(after = listOf("POST /v1/feedback"), body = { n, _, _ -> n.put("status", "in_progress") }),
             // The seeded risk signal; each caller reviews with its own review_uuid (a reuse by another user is 409).
             "POST /v1/risk-signals/{}/review" to Fx(path = { _, x -> mapOf("signal_id" to x.id("risk-signals").toString()) }, body = { n, c, _ -> n.put("review_uuid", ApiWorld.v4("review/${c.user}")) }),
+            // Each phone caller uploads with its own upload_uuid (D-ROLES-02 made amo1001 a second phone caller; a uuid reused by
+            // another user for another file is 409, a case this conformance pass does not mean to exercise).
+            "POST /v1/support/pda-upload" to Fx(body = { n, c, _ -> if (n.has("upload_uuid")) n.put("upload_uuid", ApiWorld.v4("pda/${c.user}")) }),
             // Tasks for sr1001 (active, in every web caller's reach); amo1001 keeps the sample uuid so cancel targets its task.
             "POST /v1/tasks" to Fx(body = { n, c, x ->
                 n.put("assignee_user_id", x.id("sr_user")); n.put("task_type_code", "qa_check")

@@ -84,6 +84,9 @@ export interface paths {
          *     Web refresh token: `refresh_token` in the body is null. The web BFF (a server) receives the refresh token
          *     from the `Set-Cookie: aron_rt` header of the response and nowhere else; it re-issues its own `aron_rt`
          *     cookie on the web origin and replays it as `Cookie: aron_rt` on `POST /v1/auth/refresh` (docs/24 s14a R15).
+         *     Web, an SR or AMO account (D-ROLES-02: no portal login): 403 `ERR_AUTH_PORTAL_NOT_ALLOWED` after the password
+         *     matched, before any token; a wrong password stays 401 `ERR_AUTH_INVALID_CREDENTIALS`, so the code never tells
+         *     an outsider which usernames are field reps. The web refresh refuses such a family the same way.
          */
         post: operations["login"];
         delete?: never;
@@ -3600,10 +3603,13 @@ export interface components {
             [key: string]: components["schemas"]["JsonScalar"] | components["schemas"]["JsonScalar"][];
         };
         /**
-         * @description User role (docs/24 s8.5). One role per user; admin permission bundles are separate.
+         * @description User role (docs/24 s8.5, docs/34 s1 D-ROLES-02). One role per user; admin permission bundles are separate.
+         *     NATIONAL (national read, no writes) replaces TOP: TOP is retired, no user holds it after the migration and it
+         *     is kept only so historical rows stay readable. BRAND reads the product-based dashboard cards and reports of its
+         *     own brands (`brands` on Me). SR and AMO have no portal login (`ERR_AUTH_PORTAL_NOT_ALLOWED`).
          * @enum {string}
          */
-        Role: "SR" | "AMO" | "TSO" | "DMO" | "WM" | "TOP" | "ANALYST" | "SUPPORT" | "ADMIN" | "SUPERADMIN";
+        Role: "SR" | "AMO" | "TSO" | "DMO" | "WM" | "TOP" | "NATIONAL" | "BRAND" | "ANALYST" | "SUPPORT" | "ADMIN" | "SUPERADMIN";
         /**
          * @description Sync record types of Phase 1 (docs/24 s4.2). The server table of a type has the same name except where docs/24 s12 says otherwise.
          * @enum {string}
@@ -3626,7 +3632,7 @@ export interface components {
          * @description Stable problem codes (HTTP status in docs/24 s3.4).
          * @enum {string}
          */
-        ProblemCode: "ERR_VALIDATION" | "ERR_MALFORMED_JSON" | "ERR_UNSUPPORTED_SCHEMA_VERSION" | "ERR_UNAUTHENTICATED" | "ERR_TOKEN_EXPIRED" | "ERR_SCOPE_CHANGED" | "ERR_PASSWORD_CHANGED" | "ERR_FORBIDDEN" | "ERR_OUT_OF_SCOPE" | "ERR_NOT_FOUND" | "ERR_CONFLICT" | "ERR_PRECONDITION_FAILED" | "ERR_PAYLOAD_TOO_LARGE" | "ERR_UNSUPPORTED_MEDIA_TYPE" | "ERR_RATE_LIMITED" | "ERR_INTERNAL" | "ERR_SERVICE_UNAVAILABLE" | "ERR_READ_ONLY_MODE" | "ERR_AUTH_INVALID_CREDENTIALS" | "ERR_AUTH_ACCOUNT_LOCKED" | "ERR_AUTH_USER_DISABLED" | "ERR_AUTH_PASSWORD_POLICY" | "ERR_AUTH_PASSWORD_CHANGE_REQUIRED" | "ERR_AUTH_REFRESH_INVALID" | "ERR_AUTH_REFRESH_REUSED" | "ERR_AUTH_MFA_INVALID" | "ERR_AUTH_OTP_INVALID" | "ERR_AUTH_OTP_EXPIRED" | "ERR_AUTH_OTP_ATTEMPTS_EXCEEDED" | "ERR_AUTH_BIND_LOCKED" | "ERR_DEVICE_NOT_ENROLLED" | "ERR_DEVICE_UNBOUND" | "ERR_DEVICE_SUSPENDED" | "ERR_DEVICE_REVOKED" | "ERR_DEVICE_INTEGRITY_FAILED" | "ERR_DEVICE_PROOF_INVALID" | "ERR_DEVICE_LIMIT_REACHED" | "ERR_ENROLMENT_TOKEN_INVALID" | "ERR_ENROLMENT_TOKEN_EXPIRED" | "ERR_ENROLMENT_TOKEN_EXHAUSTED" | "ERR_ENROLMENT_ATTESTATION_FAILED" | "ERR_NONCE_INVALID" | "ERR_APP_VERSION_UNSUPPORTED" | "ERR_SYNC_BATCH_UUID_REUSED" | "ERR_SYNC_BATCH_TOO_LARGE" | "ERR_SYNC_DECOMPRESSION_LIMIT" | "ERR_SYNC_HOLD" | "ERR_BUNDLE_NEW_BUSINESS_DATE" | "ERR_BUNDLE_CURSOR_EXPIRED" | "ERR_BUNDLE_NOT_READY" | "ERR_DAY_ALREADY_FINAL_SUBMITTED" | "ERR_DAY_NOT_FINAL_SUBMITTED" | "ERR_DAY_SUBMIT_VOID_NOT_ALLOWED" | "ERR_DAY_DATA_VOID_NOT_ALLOWED" | "ERR_CFG_UNKNOWN_KEY" | "ERR_CFG_OUT_OF_BOUNDS" | "ERR_CFG_SCOPE_NOT_ALLOWED" | "ERR_CFG_DEPENDENCY" | "ERR_CFG_SELF_APPROVAL" | "ERR_CFG_REASON_REQUIRED" | "ERR_CFG_FREEZE_WINDOW" | "ERR_MASTER_DUPLICATE_CODE" | "ERR_MASTER_EFFECTIVE_DATE_PAST" | "ERR_MASTER_OVERLAP" | "ERR_MASTER_IN_USE" | "ERR_REQUEST_STATE" | "ERR_SEPARATION_OF_DUTIES" | "ERR_REPORT_INVALID_QUERY" | "ERR_REPORT_TOO_LARGE" | "ERR_PUSH_DISABLED" | "ERR_ENTRY_WINDOW_CLOSED" | "ERR_GIFT_CHOICE_LOCKED";
+        ProblemCode: "ERR_VALIDATION" | "ERR_MALFORMED_JSON" | "ERR_UNSUPPORTED_SCHEMA_VERSION" | "ERR_UNAUTHENTICATED" | "ERR_TOKEN_EXPIRED" | "ERR_SCOPE_CHANGED" | "ERR_PASSWORD_CHANGED" | "ERR_FORBIDDEN" | "ERR_OUT_OF_SCOPE" | "ERR_NOT_FOUND" | "ERR_CONFLICT" | "ERR_PRECONDITION_FAILED" | "ERR_PAYLOAD_TOO_LARGE" | "ERR_UNSUPPORTED_MEDIA_TYPE" | "ERR_RATE_LIMITED" | "ERR_INTERNAL" | "ERR_SERVICE_UNAVAILABLE" | "ERR_READ_ONLY_MODE" | "ERR_AUTH_INVALID_CREDENTIALS" | "ERR_AUTH_ACCOUNT_LOCKED" | "ERR_AUTH_USER_DISABLED" | "ERR_AUTH_PASSWORD_POLICY" | "ERR_AUTH_PASSWORD_CHANGE_REQUIRED" | "ERR_AUTH_REFRESH_INVALID" | "ERR_AUTH_REFRESH_REUSED" | "ERR_AUTH_MFA_INVALID" | "ERR_AUTH_OTP_INVALID" | "ERR_AUTH_OTP_EXPIRED" | "ERR_AUTH_OTP_ATTEMPTS_EXCEEDED" | "ERR_AUTH_BIND_LOCKED" | "ERR_AUTH_PORTAL_NOT_ALLOWED" | "ERR_DEVICE_NOT_ENROLLED" | "ERR_DEVICE_UNBOUND" | "ERR_DEVICE_SUSPENDED" | "ERR_DEVICE_REVOKED" | "ERR_DEVICE_INTEGRITY_FAILED" | "ERR_DEVICE_PROOF_INVALID" | "ERR_DEVICE_LIMIT_REACHED" | "ERR_ENROLMENT_TOKEN_INVALID" | "ERR_ENROLMENT_TOKEN_EXPIRED" | "ERR_ENROLMENT_TOKEN_EXHAUSTED" | "ERR_ENROLMENT_ATTESTATION_FAILED" | "ERR_NONCE_INVALID" | "ERR_APP_VERSION_UNSUPPORTED" | "ERR_SYNC_BATCH_UUID_REUSED" | "ERR_SYNC_BATCH_TOO_LARGE" | "ERR_SYNC_DECOMPRESSION_LIMIT" | "ERR_SYNC_HOLD" | "ERR_BUNDLE_NEW_BUSINESS_DATE" | "ERR_BUNDLE_CURSOR_EXPIRED" | "ERR_BUNDLE_NOT_READY" | "ERR_DAY_ALREADY_FINAL_SUBMITTED" | "ERR_DAY_NOT_FINAL_SUBMITTED" | "ERR_DAY_SUBMIT_VOID_NOT_ALLOWED" | "ERR_DAY_DATA_VOID_NOT_ALLOWED" | "ERR_CFG_UNKNOWN_KEY" | "ERR_CFG_OUT_OF_BOUNDS" | "ERR_CFG_SCOPE_NOT_ALLOWED" | "ERR_CFG_DEPENDENCY" | "ERR_CFG_SELF_APPROVAL" | "ERR_CFG_REASON_REQUIRED" | "ERR_CFG_FREEZE_WINDOW" | "ERR_MASTER_DUPLICATE_CODE" | "ERR_MASTER_EFFECTIVE_DATE_PAST" | "ERR_MASTER_OVERLAP" | "ERR_MASTER_IN_USE" | "ERR_REQUEST_STATE" | "ERR_SEPARATION_OF_DUTIES" | "ERR_REPORT_INVALID_QUERY" | "ERR_REPORT_TOO_LARGE" | "ERR_PUSH_DISABLED" | "ERR_ENTRY_WINDOW_CLOSED" | "ERR_GIFT_CHOICE_LOCKED";
         /**
          * @description Route-day state (docs/24 s4.9). Derived from timestamps on the server, so a retry never moves a route-day backwards.
          * @enum {string}

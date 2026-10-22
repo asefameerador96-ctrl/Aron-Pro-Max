@@ -68,6 +68,9 @@ class AdminNotificationTest {
         fresh.db.jdbi.useHandle<Exception> { h ->
             h.createUpdate("UPDATE app.app_user SET password_hash = :h WHERE pilot").bind("h", PasswordHasher().hash(password)).execute()
             sr = h.createQuery("SELECT id FROM app.app_user WHERE username = 'sr1001'").mapTo(Long::class.java).one()
+            // D-ROLES-02: no portal login for SR/AMO; amo1001 calls from an enrolled AMO phone bound to it (as ApiWorld.AMO_PHONE).
+            h.execute("INSERT INTO app.device (device_uuid, flavour, app_package, status, device_owner, lockdown_level, trust_level, public_key_jwk, public_key_thumbprint, attestation_summary, app_signing_cert_sha256, zone_id, device_info, app_version) SELECT '${ApiWorld.AMO_PHONE}', 'amo', 'com.aktcl.aron.amo', 'active', device_owner, lockdown_level, 'normal', public_key_jwk, 'qa-amo-000d', attestation_summary, app_signing_cert_sha256, zone_id, device_info, app_version FROM app.device WHERE device_uuid = '${ApiWorld.SR_PHONE}'")
+            h.execute("INSERT INTO app.device_binding (device_id, user_id, bind_ordinal, bound_via) SELECT d.id, u.id, 0, 'support' FROM app.device d, app.app_user u WHERE d.device_uuid = '${ApiWorld.AMO_PHONE}' AND u.username = 'amo1001'")
             mirZone = h.createQuery("SELECT id FROM app.zone WHERE code = 'Z-MIR'").mapTo(Long::class.java).one()
             division = h.createQuery("SELECT id FROM app.division WHERE code = 'D-DHK'").mapTo(Long::class.java).one()
             // TOTP is not what this test is about: no MFA role, so admin1001 logs in with a password.
@@ -99,7 +102,9 @@ class AdminNotificationTest {
     private suspend fun HttpClient.login(user: String, phone: Boolean = false): String = tokens.getOrPut("$user/$phone") {
         val r = post("/v1/auth/login") {
             contentType(ContentType.Application.Json); header("X-App-Version", "1.0.9+9")
-            setBody(if (phone) """{"username":"$user","password":"$password","client":"app_sr","device_uuid":"$devPhone"}""" else """{"username":"$user","password":"$password","client":"web"}""")
+            // D-ROLES-02: no portal login for SR/AMO (amo1001 logs in from its AMO phone).
+            setBody(if (phone && user == "amo1001") """{"username":"$user","password":"$password","client":"app_amo","device_uuid":"${ApiWorld.AMO_PHONE}"}"""
+                else if (phone) """{"username":"$user","password":"$password","client":"app_sr","device_uuid":"$devPhone"}""" else """{"username":"$user","password":"$password","client":"web"}""")
         }
         assertEquals(HttpStatusCode.OK, r.status, r.bodyAsText())
         Json.parseToJsonElement(r.bodyAsText()).jsonObject["access_token"]!!.jsonPrimitive.content
@@ -114,9 +119,9 @@ class AdminNotificationTest {
         assertEquals(HttpStatusCode.NoContent, r.status, r.bodyAsText())
     }
 
-    private suspend fun HttpClient.notify(token: String, scope: String, id: Long, kind: String = "announcement", extra: String = "", phone: Boolean = false): HttpResponse = post("/v1/admin/notifications") {
+    private suspend fun HttpClient.notify(token: String, scope: String, id: Long, kind: String = "announcement", extra: String = "", phone: Boolean = false, device: String = devPhone): HttpResponse = post("/v1/admin/notifications") {
         bearerAuth(token); contentType(ContentType.Application.Json)
-        if (phone) header("X-Device-Id", devPhone)
+        if (phone) header("X-Device-Id", device)
         setBody("""{"kind":"$kind","scope_type":"$scope","scope_id":$id,"title_en":"Stock update","title_bn":"স্টক আপডেট","body_en":"New price list from Sunday","body_bn":"রবিবার থেকে নতুন মূল্য"$extra}""")
     }
 
@@ -178,7 +183,11 @@ class AdminNotificationTest {
     fun aPhoneOrAnAmoCannotSendAndABadBodyIs400() = testApplication {
         application { aronApi(wiring) }
         assertEquals(HttpStatusCode.Forbidden, client.notify(client.login("sr1001", phone = true), "zone", mirZone, phone = true).status)
-        assertEquals(HttpStatusCode.Forbidden, client.notify(client.login("amo1001"), "zone", mirZone).status, "an AMO is not a sender")
+        // D-ROLES-02: no portal login for SR/AMO; the AMO's web login is refused and its phone token cannot send either.
+        val amoWeb = client.post("/v1/auth/login") { contentType(ContentType.Application.Json); setBody("""{"username":"amo1001","password":"$password","client":"web"}""") }
+        assertEquals(HttpStatusCode.Forbidden, amoWeb.status)
+        assertEquals("ERR_AUTH_PORTAL_NOT_ALLOWED", Json.parseToJsonElement(amoWeb.bodyAsText()).jsonObject["code"]!!.jsonPrimitive.content)
+        assertEquals(HttpStatusCode.Forbidden, client.notify(client.login("amo1001", phone = true), "zone", mirZone, phone = true, device = ApiWorld.AMO_PHONE).status, "an AMO is not a sender")
         val admin = client.login("admin1001")
         assertEquals(HttpStatusCode.BadRequest, client.notify(admin, "zone", mirZone, kind = "sms").status)
         assertEquals(HttpStatusCode.BadRequest, client.notify(admin, "global", 5).status)

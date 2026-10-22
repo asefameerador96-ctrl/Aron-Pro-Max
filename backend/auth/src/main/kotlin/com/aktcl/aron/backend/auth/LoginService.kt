@@ -10,6 +10,7 @@ import com.aktcl.aron.backend.platform.Audience
 import com.aktcl.aron.backend.platform.FieldError
 import com.aktcl.aron.backend.platform.RateLimiter
 import com.aktcl.aron.backend.platform.ReachResolver
+import com.aktcl.aron.backend.platform.PortalLevels
 import com.aktcl.aron.backend.platform.ServerConfig
 import com.aktcl.aron.backend.platform.toProblem
 import com.aktcl.aron.backend.platform.wire
@@ -127,6 +128,9 @@ class LoginService(
         // A phone app serves its own field role only: a web role (and so every MFA role) never logs in through a
         // phone client, where no TOTP step exists (checker finding, 2026-10-07).
         if (phone && PHONE_ROLE[flavour] != user.role) throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "this account cannot use this app")
+        // D-ROLES-02: SR and AMO have no portal login. Judged only after the password matched, so the code tells no
+        // outsider which usernames are field reps.
+        if (!phone && user.role in PortalLevels.NO_PORTAL) throw ApiProblem(ProblemCode.ERR_AUTH_PORTAL_NOT_ALLOWED, "this account uses the field app only")
 
         return complete(user, device, if (phone) req.device_uuid else null, flavour, minVersion, afterPasswordChange = false)
     }
@@ -393,6 +397,9 @@ class LoginService(
     ): LoginResponse {
         val now = clock.now()
         val phone = flavour != "web"
+        // Every way into a session ends here (login, change-password, MFA verify, bind): the portal levels hold for all.
+        if (!phone && user.role in PortalLevels.NO_PORTAL) throw ApiProblem(ProblemCode.ERR_AUTH_PORTAL_NOT_ALLOWED, "this account uses the field app only")
+        if (phone && PHONE_ROLE[flavour] != user.role) throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "this account cannot use this app")
         val summary = UserSummary(user.id, user.username, user.fullName, user.role, user.designation, user.locale)
         val scope = reach.reach(user.id, user.role, user.scopeVersion, BusinessDate.of(now.toEpochMilli()).toJavaLocalDate())
         val scopeSummary = ScopeSummary(user.scopeVersion, scope.topNodes.take(16).map { NodeRef(it.type, it.id, it.code, it.name) })
@@ -478,7 +485,7 @@ class LoginService(
         }
 
     companion object {
-        private val PHONE_ROLE = mapOf("sr" to Role.SR, "amo" to Role.AMO, "tso" to Role.TSO)
+        private val PHONE_ROLE = PortalLevels.PHONE_ROLE
         private val MFA_CODE = Regex("^([0-9]{6}|[A-Z0-9]{4}-[A-Z0-9]{4})$")
 
         /** IPv4 /24 or IPv6 /48 of the client (the lockout key's IP class); "-" when unknown. */

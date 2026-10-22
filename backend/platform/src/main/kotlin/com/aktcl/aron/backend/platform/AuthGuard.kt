@@ -76,6 +76,8 @@ private fun authenticate(call: ApplicationCall, cfg: AuthGuardConfig): AronPrinc
     val header = call.request.headers["Authorization"] ?: throw ApiProblem(ProblemCode.ERR_UNAUTHENTICATED, "missing bearer token")
     if (!header.startsWith("Bearer ", ignoreCase = true)) throw ApiProblem(ProblemCode.ERR_UNAUTHENTICATED, "missing bearer token")
     val p = cfg.deps.verifier.verify(header.substring(7).trim(), cfg.audiences, cfg.expiredGraceS)
+    // D-ROLES-02: the portal level is judged before anything else a handler might allow by an older deny-list.
+    PortalLevels.check(p, call.request.httpMethod.value, call.request.path())
     if (p.deviceUuid != null && call.request.headers["X-Device-Id"]?.lowercase() != p.deviceUuid) {
         throw ApiProblem(ProblemCode.ERR_DEVICE_PROOF_INVALID, "X-Device-Id does not match the token")
     }
