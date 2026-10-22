@@ -1,0 +1,31 @@
+path: /v1/admin/route-targets
+method: get
+operation:
+  tags:
+  - admin-targets
+  operationId: listRouteTargets
+  summary: Route x SKU monthly sales targets of one month (base units), sorted by route then SKU.
+  parameters:
+  - name: month
+    in: query
+    required: false
+    schema:
+      $ref: '#/components/schemas/RouteTargetMonth'
+    description: Month as YYYY-MM; default the current Dhaka month.
+  - $ref: '#/components/parameters/Limit'
+  - $ref: '#/components/parameters/Cursor'
+  responses:
+    '200':
+      description: Page of targets.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/RouteTargetPage'
+    '400':
+      $ref: '#/components/responses/BadRequest'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'
+    '503':
+      $ref: '#/components/responses/ServiceUnavailable'

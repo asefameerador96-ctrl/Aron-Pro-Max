@@ -1644,6 +1644,43 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/admin/geo/house/duplicates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Groups of distribution houses of one territory whose names match after case, spacing and punctuation. */
+        get: operations["listHouseDuplicates"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/geo/house/merge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Fold duplicate houses into one - zones move to the kept house, merged houses become inactive.
+         * @description `If-Match` is the version of the kept house. Merged houses must be in the same territory with the same normalised name, otherwise 400 `not_duplicates`.
+         */
+        post: operations["mergeHouses"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/admin/geo/{level}": {
         parameters: {
             query?: never;
@@ -1984,6 +2021,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/admin/users/{id}/access": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** An ADMIN user's module grants or a BRAND user's brands (docs/34 s1); the ETag is the access version. */
+        get: operations["getUserAccess"];
+        /** Replace the module grants of an ADMIN user or the brands of a BRAND user (SUPERADMIN; bumps the version, so tokens refresh with 401 ERR_SCOPE_CHANGED). */
+        put: operations["putUserAccess"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/admin/users/{id}/credentials": {
         parameters: {
             query?: never;
@@ -2054,6 +2109,43 @@ export interface paths {
          * @description Creates a target revision `pending_approval` that goes live after the approvals of cfg.target.approval_levels (docs/24 s12.6); idempotent by `batch_uuid`. After the month starts (cfg.target.lock_after_month_start) every change is a revision.
          */
         put: operations["putTargets"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/calendar/holidays/{holiday_id}/revoke": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Withdraw a holiday, make-up day or off-day declaration that has not started (its date is after today). */
+        post: operations["revokeHoliday"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/calendar/working-days": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Every date of a month with Friday, weekend and national holiday flags and the working-day count (Fridays and holidays excluded).
+         * @description Weekend days come from `cfg.calendar.weekend_days` (ISO weekdays, default Friday = 5). Only global declarations count; a global make-up day is a working day.
+         */
+        get: operations["getWorkingDays"];
+        put?: never;
         post?: never;
         delete?: never;
         options?: never;
@@ -3028,6 +3120,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/admin/outlets/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Bulk create-or-update outlets from a sheet; the channel is mandatory on every row (preview with dry_run, commit with a reason).
+         * @description A missing or unknown channel refuses the request (400 at body.rows/<i>/channel), preview included. `dry_run: true` writes nothing and returns the report; `dry_run: false` needs `change_reason`, refuses the whole batch on any row error and is idempotent by `batch_uuid` (same content replays, other content is 409 ERR_SYNC_BATCH_UUID_REUSED). A row whose `code` names an outlet of the same zone updates it (never its status; a blank route, pin, phone or address keeps the stored one).
+         */
+        post: operations["importOutlets"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/admin/dues-adjustments": {
         parameters: {
             query?: never;
@@ -3057,6 +3169,27 @@ export interface paths {
         put?: never;
         /** Approve or reject a dues adjustment (the checker is not the maker); approval adds a ledger row and changes the outlet balance. */
         post: operations["decideDuesAdjustment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/route-targets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Route x SKU monthly sales targets of one month (base units), sorted by route then SKU. */
+        get: operations["listRouteTargets"];
+        /**
+         * Validate (dry_run) or commit a route x SKU monthly target batch (upsert by route, SKU and month).
+         * @description The portal reads the Excel sheet in the browser and sends JSON rows. `dry_run: true` validates and writes nothing (no reason needed) and answers a `RouteTargetPreview` with every row error. `dry_run: false` needs `change_reason`; any row error refuses the whole batch with 400 `ERR_VALIDATION` (`errors[].pointer` `body.rows/<0-based index>/<member>`). Idempotent by `batch_uuid`: the same content replays (`replayed: true`), other content under the same uuid is 409. Quantities are base units (sticks, pieces, dozens), integers 0 to 1,000,000,000. A month before the current Dhaka month is never rewritten. Audited as entity `route_target`.
+         */
+        put: operations["putRouteTargets"];
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -7037,6 +7170,8 @@ export interface components {
              */
             parent_id?: number | null;
             status: components["schemas"]["ActiveStatus"];
+            /** @description status = active; the distribution-house filter lists each active house once. */
+            is_active: boolean;
             /** @description Zones only. */
             dep_name?: string | null;
             /** Format: email */
@@ -7264,8 +7399,10 @@ export interface components {
             name_bn?: string | null;
             /** @enum {string} */
             base_unit: "stick" | "piece" | "dozen";
-            /** @description Sticks per pack (10, 20, 25); 1 for lighter and match. The read-only pack badge is qty_base / base_per_pack. */
+            /** @description Base units per pack: 10 or 20 sticks for cigarettes, the stick count for bidi, 25 pieces for a lighter box, 1 for matches (the dozen is the base unit). The pack badge is qty_base / base_per_pack (docs/34 s4.2). */
             base_per_pack: number;
+            /** @description Free pack label (HLP, Soft Pack, Box, Dozen). The entry-unit word (packet / box / dozen) comes from the category. */
+            pack_type?: string | null;
             entry_unit_default: components["schemas"]["QtyUnit"];
             /** @enum {string|null} */
             report_unit?: "stick" | "piece" | "dozen" | "box" | "pack" | null;
@@ -7295,6 +7432,7 @@ export interface components {
             base_unit: "stick" | "piece" | "dozen";
             base_per_pack: number;
             entry_unit_default: components["schemas"]["QtyUnit"];
+            pack_type?: string | null;
             /** @enum {string|null} */
             report_unit?: "stick" | "piece" | "dozen" | "box" | "pack" | null;
             report_factor: components["schemas"]["Decimal3"];
@@ -7306,6 +7444,10 @@ export interface components {
             name?: string;
             short_name?: string;
             name_bn?: string | null;
+            /** @description A change needs `change_reason`; a match pack stays 1. */
+            base_per_pack?: number;
+            entry_unit_default?: components["schemas"]["QtyUnit"];
+            pack_type?: string | null;
             /** @enum {string|null} */
             report_unit?: "stick" | "piece" | "dozen" | "box" | "pack" | null;
             report_factor?: components["schemas"]["Decimal3"];
@@ -7716,6 +7858,56 @@ export interface components {
             name_en: string;
             name_bn?: string | null;
             reason: components["schemas"]["ChangeReason"];
+        };
+        HolidayRevoke: {
+            change_reason: components["schemas"]["ChangeReason"];
+        };
+        WorkingDay: {
+            date: components["schemas"]["BusinessDate"];
+            /** @description ISO weekday (Monday is 1). */
+            weekday: number;
+            is_friday: boolean;
+            is_weekend: boolean;
+            /** @description A global holiday or emergency off-day. */
+            is_holiday: boolean;
+            name_en: string | null;
+            name_bn: string | null;
+            is_working_day: boolean;
+        };
+        WorkingDays: {
+            month: components["schemas"]["RouteTargetMonth"];
+            working_days: number;
+            weekend_days: number[];
+            days: components["schemas"]["WorkingDay"][];
+        };
+        HouseDuplicateItem: {
+            id: components["schemas"]["Id"];
+            code: string;
+            name: string;
+            status: components["schemas"]["ActiveStatus"];
+            is_active: boolean;
+            zone_count: number;
+        };
+        HouseDuplicateGroup: {
+            territory_id: components["schemas"]["Id"];
+            /** @description Lower-case name with punctuation and spacing collapsed. */
+            name_key: string;
+            houses: components["schemas"]["HouseDuplicateItem"][];
+        };
+        HouseDuplicateList: {
+            groups: components["schemas"]["HouseDuplicateGroup"][];
+        };
+        HouseMergeRequest: {
+            keep_id: components["schemas"]["Id"];
+            merge_ids: components["schemas"]["Id"][];
+            change_reason: components["schemas"]["ChangeReason"];
+        };
+        HouseMergeResult: {
+            kept: components["schemas"]["HouseDuplicateItem"];
+            merged: {
+                house_id: components["schemas"]["Id"];
+                zones_moved: number;
+            }[];
         };
         HolidayList: {
             items: components["schemas"]["Holiday"][];
@@ -8913,6 +9105,78 @@ export interface components {
             outlet_ids: components["schemas"]["Id"][];
             reason: components["schemas"]["ChangeReason"];
         };
+        /**
+         * @description The fixed module list of an ADMIN user's grants (docs/34 s1).
+         * @enum {string}
+         */
+        AdminModule: "masterdata" | "routes" | "outlets" | "products" | "prices" | "users" | "targets" | "credentials" | "mdm" | "reports" | "config" | "data_entry" | "indent" | "leaderboard" | "daily_tracking";
+        UserAccess: {
+            user_id: components["schemas"]["Id"];
+            role: components["schemas"]["Role"];
+            /** @description Also the ETag; the user's scope_version. */
+            version: number;
+            /** @description ADMIN users only; only granted modules appear. */
+            modules: {
+                [key: string]: "r" | "w";
+            };
+            /** @description BRAND users only; product-tree brand nodes. */
+            brand_ids: components["schemas"]["Id"][];
+        };
+        /** @description Exactly one of modules (ADMIN user) and brand_ids (BRAND user, not empty). */
+        UserAccessWrite: {
+            modules?: {
+                [key: string]: "r" | "w";
+            };
+            brand_ids?: components["schemas"]["Id"][];
+            change_reason: components["schemas"]["ChangeReason"];
+        };
+        OutletImportRow: {
+            code?: string | null;
+            name: string;
+            owner_name: string;
+            zone_code: string;
+            /** @description Cluster name inside the zone. */
+            cluster: string;
+            /** @enum {string} */
+            channel: "GT" | "DCC" | "Astha" | "RCC" | "MT" | "HoReCa";
+            /** @enum {string} */
+            outlet_kind: "retail" | "wholesale";
+            route_code?: string | null;
+            lat?: number | null;
+            lng?: number | null;
+            contact_number?: string | null;
+            address?: string | null;
+        };
+        OutletImportWrite: {
+            batch_uuid: components["schemas"]["Uuid"];
+            rows: components["schemas"]["OutletImportRow"][];
+            dry_run: boolean;
+            change_reason?: components["schemas"]["ChangeReason"];
+        };
+        OutletImportRowError: {
+            /** @description 1-based position in rows. */
+            row: number;
+            column: string;
+            /** @enum {string} */
+            code: "required" | "invalid" | "unknown_zone" | "unknown_cluster" | "unknown_route" | "code_taken" | "duplicate" | "outlet_merged";
+        };
+        OutletImportPreview: {
+            batch_uuid: components["schemas"]["Uuid"];
+            rows: number;
+            creates: number;
+            updates: number;
+            /** @description Valid rows per channel. */
+            by_channel: {
+                [key: string]: number;
+            };
+            errors: components["schemas"]["OutletImportRowError"][];
+            errors_truncated: boolean;
+        };
+        OutletImportResult: {
+            batch_uuid: components["schemas"]["Uuid"];
+            rows: number;
+            replayed: boolean;
+        };
         BulkResult: {
             batch_uuid: components["schemas"]["Uuid"];
             updated: number;
@@ -8946,6 +9210,70 @@ export interface components {
         };
         DuesAdjustmentPage: {
             items: components["schemas"]["DuesAdjustment"][];
+            next_cursor: components["schemas"]["PageCursor"] | null;
+        };
+        /** @example 2026-11 */
+        RouteTargetMonth: string;
+        RouteTargetRow: {
+            /** @description Surrounding spaces are ignored. */
+            route_code: string;
+            /** @description Surrounding spaces are ignored. */
+            sku_code: string;
+            month: components["schemas"]["RouteTargetMonth"];
+            /**
+             * Format: int64
+             * @description Base units: sticks, pieces or dozens.
+             */
+            qty_base: number;
+        };
+        RouteTargetBatchWrite: {
+            batch_uuid: components["schemas"]["Uuid"];
+            rows: components["schemas"]["RouteTargetRow"][];
+            dry_run: boolean;
+            change_reason?: components["schemas"]["ChangeReason"];
+        };
+        RouteTargetRowError: {
+            /** @description 1-based position in `rows`. */
+            row: number;
+            /** @enum {string} */
+            column: "route" | "sku" | "month" | "quantity";
+            /** @enum {string} */
+            code: "unknown_route" | "not_selling_route" | "unknown_sku" | "invalid_month" | "past_month" | "invalid_quantity" | "duplicate_row";
+        };
+        RouteTargetPreview: {
+            batch_uuid: components["schemas"]["Uuid"];
+            rows: number;
+            /** @description Distinct valid routes. */
+            routes: number;
+            /** @description Distinct valid SKUs. */
+            skus: number;
+            months: components["schemas"]["RouteTargetMonth"][];
+            /**
+             * Format: int64
+             * @description Sum of the quantities of the rows without an error.
+             */
+            total_qty_base: number;
+            /** @description Existing (route, SKU, month) targets the batch would overwrite. */
+            replaces: number;
+            errors: components["schemas"]["RouteTargetRowError"][];
+            /** @description True when more than 1000 errors exist. */
+            errors_truncated: boolean;
+        };
+        RouteTargetCommitResult: {
+            batch_uuid: components["schemas"]["Uuid"];
+            rows: number;
+            replayed: boolean;
+        };
+        RouteTargetItem: {
+            route_code: string;
+            route_name: string;
+            sku_code: string;
+            month: components["schemas"]["RouteTargetMonth"];
+            /** Format: int64 */
+            qty_base: number;
+        };
+        RouteTargetPage: {
+            items: components["schemas"]["RouteTargetItem"][];
             next_cursor: components["schemas"]["PageCursor"] | null;
         };
         DeviceReplaceRequest: {
@@ -12042,6 +12370,60 @@ export interface operations {
             409: components["responses"]["Conflict"];
         };
     };
+    listHouseDuplicates: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Duplicate groups (at most 200). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HouseDuplicateList"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    mergeHouses: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description ETag (the row `version` as a quoted string) of the representation being changed; mismatch is 412. */
+                "If-Match": components["parameters"]["IfMatch"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HouseMergeRequest"];
+            };
+        };
+        responses: {
+            /** @description Merged. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HouseMergeResult"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            412: components["responses"]["PreconditionFailed"];
+        };
+    };
     listGeoNodes: {
         parameters: {
             query?: {
@@ -13057,6 +13439,69 @@ export interface operations {
             404: components["responses"]["NotFound"];
         };
     };
+    getUserAccess: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["IdPath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The access of the user. */
+            200: {
+                headers: {
+                    ETag: components["headers"]["ETag"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserAccess"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    putUserAccess: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description ETag (the row `version` as a quoted string) of the representation being changed; mismatch is 412. */
+                "If-Match": components["parameters"]["IfMatch"];
+            };
+            path: {
+                id: components["parameters"]["IdPath"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UserAccessWrite"];
+            };
+        };
+        responses: {
+            /** @description The new access. */
+            200: {
+                headers: {
+                    ETag: components["headers"]["ETag"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserAccess"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            412: components["responses"]["PreconditionFailed"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
     manageUserCredentials: {
         parameters: {
             query?: never;
@@ -13268,6 +13713,64 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             409: components["responses"]["Conflict"];
+        };
+    };
+    revokeHoliday: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Calendar entry id. */
+                holiday_id: components["schemas"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HolidayRevoke"];
+            };
+        };
+        responses: {
+            /** @description The revoked entry. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Holiday"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    getWorkingDays: {
+        parameters: {
+            query?: {
+                /** @description YYYY-MM; default the current Dhaka month. */
+                month?: components["schemas"]["RouteTargetMonth"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The month. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkingDays"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
         };
     };
     listHolidays: {
@@ -15116,6 +15619,34 @@ export interface operations {
             403: components["responses"]["Forbidden"];
         };
     };
+    importOutlets: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OutletImportWrite"];
+            };
+        };
+        responses: {
+            /** @description The preview report (dry_run) or the commit result. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OutletImportPreview"] | components["schemas"]["OutletImportResult"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+        };
+    };
     listDuesAdjustments: {
         parameters: {
             query?: {
@@ -15206,6 +15737,67 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
+        };
+    };
+    listRouteTargets: {
+        parameters: {
+            query?: {
+                /** @description Month as YYYY-MM; default the current Dhaka month. */
+                month?: components["schemas"]["RouteTargetMonth"];
+                /** @description Page size. */
+                limit?: components["parameters"]["Limit"];
+                /** @description Opaque cursor from `next_cursor` of the previous page. */
+                cursor?: components["parameters"]["Cursor"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Page of targets. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RouteTargetPage"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    putRouteTargets: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RouteTargetBatchWrite"];
+            };
+        };
+        responses: {
+            /** @description Preview (dry_run) or commit result. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RouteTargetPreview"] | components["schemas"]["RouteTargetCommitResult"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+            413: components["responses"]["PayloadTooLarge"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     replaceDevice: {

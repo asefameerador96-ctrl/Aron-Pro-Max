@@ -1,0 +1,39 @@
+path: /v1/admin/users/{id}/access
+method: put
+operation:
+  tags:
+  - admin-users
+  operationId: putUserAccess
+  summary: Replace the module grants of an ADMIN user or the brands of a BRAND user (SUPERADMIN; bumps the version,
+    so tokens refresh with 401 ERR_SCOPE_CHANGED).
+  parameters:
+  - $ref: '#/components/parameters/IdPath'
+  - $ref: '#/components/parameters/IfMatch'
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          $ref: '#/components/schemas/UserAccessWrite'
+  responses:
+    '200':
+      description: The new access.
+      headers:
+        ETag:
+          $ref: '#/components/headers/ETag'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/UserAccess'
+    '400':
+      $ref: '#/components/responses/BadRequest'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'
+    '404':
+      $ref: '#/components/responses/NotFound'
+    '412':
+      $ref: '#/components/responses/PreconditionFailed'
+    '503':
+      $ref: '#/components/responses/ServiceUnavailable'

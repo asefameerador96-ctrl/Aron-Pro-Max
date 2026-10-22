@@ -2,6 +2,7 @@ package com.aktcl.aron.backend.masterdata
 
 import com.aktcl.aron.contract.Role
 import io.ktor.client.request.get
+import io.ktor.client.statement.bodyAsText
 import io.ktor.http.HttpMethod
 import io.ktor.http.HttpStatusCode
 import kotlinx.serialization.json.contentOrNull
@@ -111,6 +112,31 @@ class AdminProductsTest {
         """{"code":"$code","variant_id":$variant,"category_code":"$category","name":"$code product","short_name":"$code","base_unit":"$unit","base_per_pack":$perPack,"entry_unit_default":"pack","report_unit":"pack","report_factor":"$factor","sort":3$extra}"""
 
     @Test
+    fun packingFieldsLighterBoxMatchDozenAndPackTypeWithReasonOnChange() = t.app {
+        val variant = t.scalar("SELECT id FROM app.product_node WHERE level = 'variant' ORDER BY id LIMIT 1").toLong()
+        suspend fun post(b: String) = send(HttpMethod.Post, "/v1/admin/skus", t.admin, b)
+        // A lighter box of 25 pieces is valid (docs/34 s4.2); a match pack stays one dozen; the entry unit is pack or the base unit.
+        val lighter = post(skuBody("PK-LGT", variant, "lighter", "piece", 25, extra = ""","pack_type":"Box""""))
+        assertEquals(HttpStatusCode.Created, lighter.status, lighter.bodyAsText())
+        assertEquals("25", lighter.obj().getValue("base_per_pack").toString()); assertEquals("\"Box\"", lighter.obj().getValue("pack_type").toString())
+        assertEquals(HttpStatusCode.BadRequest, post(skuBody("PK-MAT", variant, "match", "dozen", 12)).status)
+        assertEquals(HttpStatusCode.Created, post(skuBody("PK-MAT", variant, "match", "dozen", 1)).status)
+        assertEquals(HttpStatusCode.BadRequest, post(skuBody("PK-BAD", variant).replace("\"entry_unit_default\":\"pack\"", "\"entry_unit_default\":\"dozen\"")).status)
+        val id = lighter.obj().getValue("id").toString().toLong()
+        // Changing the pack size or the entry unit needs a reason and keeps the category rules; a label change does not need one.
+        assertEquals(HttpStatusCode.BadRequest, send(HttpMethod.Patch, "/v1/admin/skus/$id", t.admin, """{"base_per_pack":20}""", ifMatch = 1).status)
+        assertEquals(HttpStatusCode.BadRequest, send(HttpMethod.Patch, "/v1/admin/skus/$id", t.admin, """{"entry_unit_default":"stick","change_reason":"Entry unit by mistake"}""", ifMatch = 1).status)
+        val ok = send(HttpMethod.Patch, "/v1/admin/skus/$id", t.admin, """{"base_per_pack":20,"entry_unit_default":"piece","change_reason":"Box of 20 for the new lighter"}""", ifMatch = 1)
+        assertEquals(HttpStatusCode.OK, ok.status, ok.bodyAsText())
+        assertEquals("20", ok.obj().getValue("base_per_pack").toString()); assertEquals("\"piece\"", ok.obj().getValue("entry_unit_default").toString())
+        assertEquals(1, t.count("SELECT count(*) FROM app.audit_log WHERE entity = 'sku' AND entity_id = '$id' AND action = 'update' AND reason = 'Box of 20 for the new lighter' AND (before->>'base_per_pack') = '25' AND (after->>'base_per_pack') = '20'"))
+        val label = send(HttpMethod.Patch, "/v1/admin/skus/$id", t.admin, """{"pack_type":null}""", ifMatch = 2)
+        assertEquals(HttpStatusCode.OK, label.status, label.bodyAsText()); assertEquals("null", label.obj().getValue("pack_type").toString())
+        val matchId = t.scalar("SELECT id FROM app.sku WHERE code = 'PK-MAT'").toLong()
+        assertEquals(HttpStatusCode.BadRequest, send(HttpMethod.Patch, "/v1/admin/skus/$matchId", t.admin, """{"base_per_pack":12,"change_reason":"Match dozen mistake"}""", ifMatch = 1).status)
+    }
+
+    @Test
     fun skuCreateListPatchAuditAndRules() = t.app {
         val variant = t.scalar("SELECT id FROM app.product_node WHERE level = 'variant' ORDER BY id LIMIT 1").toLong()
         val before = audits("sku")
@@ -125,7 +151,7 @@ class AdminProductsTest {
         // Units follow the category; lighter and match have no pack of sticks; the parent must be a variant.
         suspend fun bad(b: String) = send(HttpMethod.Post, "/v1/admin/skus", t.admin, b).also { assertEquals(HttpStatusCode.BadRequest, it.status, b) }
         bad(skuBody("TST-B1", variant, category = "lighter", unit = "stick", perPack = 1))
-        bad(skuBody("TST-B2", variant, category = "lighter", unit = "piece", perPack = 5))
+        bad(skuBody("TST-B2", variant, category = "match", unit = "dozen", perPack = 5)) // a lighter box may hold any count (docs/34 s4.2); a match pack is one dozen
         bad(skuBody("TST-B3", variant, category = "match", unit = "piece", perPack = 1))
         bad(skuBody("TST-B4", t.scalar("SELECT id FROM app.product_node WHERE level = 'brand' ORDER BY id LIMIT 1").toLong()))
         bad(skuBody("bad code!", variant))

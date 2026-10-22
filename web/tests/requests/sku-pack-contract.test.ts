@@ -7,7 +7,7 @@ import { describe, expect, it } from "vitest";
 const slice = readFileSync(resolve(__dirname, "../../../contract/slices/schemas/SkuPatch.yaml"), "utf8");
 
 describe("SkuPatch carries the pack size (not yet: backend-admin)", () => {
-  it.fails("SkuPatch has base_per_pack and entry_unit_default", () => {
+  it("SkuPatch has base_per_pack and entry_unit_default", () => {
     expect(slice).toContain("base_per_pack:");
     expect(slice).toContain("entry_unit_default:");
   });
