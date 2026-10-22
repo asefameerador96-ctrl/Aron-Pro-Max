@@ -1,5 +1,6 @@
 package com.aktcl.aron.amo
 
+import com.aktcl.aron.feature.amo.AmoFrame
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -20,7 +21,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import com.aktcl.aron.core.ui.AronIcons
-import com.aktcl.aron.core.ui.AronListRow
 import com.aktcl.aron.core.ui.AronScreen
 import com.aktcl.aron.core.ui.AronTokens
 import com.aktcl.aron.core.ui.AronTopBar
@@ -65,16 +65,24 @@ fun AmoTeamHub(day: AmoDay, reach: AmoReach, onBack: () -> Unit) {
     BackHandler(onBack = back)
     val leaves = AmoMenu.hub(RoleHomes.AmoTile.TEAM, reach)
     when (leaf) {
-        TeamLeaf.HUB -> AronScreen(topBar = { AronTopBar(stringResource(HomeR.string.rh_amo_team), onBack = back) }) {
-            val rows = leaves.map { l -> HubRow(stringResource(leafLabel(l)), onClick = { open = l; leaf = TeamLeaf.LEAF }) } +
-                HubRow(stringResource(AmoR.string.amo_exc_title), onClick = { leaf = TeamLeaf.EXCEPTIONS })
+        TeamLeaf.HUB -> AmoFrame(stringResource(HomeR.string.rh_amo_team), back, icon = com.aktcl.aron.core.ui.R.drawable.aron_ic_team) {
+            val rows = leaves.map { l -> HubRow(stringResource(leafLabel(l)), onClick = { open = l; leaf = TeamLeaf.LEAF }, icon = teamIcon(l)) } +
+                HubRow(stringResource(AmoR.string.amo_exc_title), onClick = { leaf = TeamLeaf.EXCEPTIONS }, icon = com.aktcl.aron.core.ui.R.drawable.aron_ic_exceptions)
             HubListContent(listOf(HubSection(null, rows)))
         }
-        TeamLeaf.LEAF -> if (open == AmoLeaf.TASK_DELEGATION) AmoTaskHub(day, back) else if (open == AmoLeaf.TEAM_PERFORMANCE) AronScreen(topBar = { AronTopBar(stringResource(AmoR.string.amo_leaf_team_performance), onBack = back) }) { AmoTeamPerformance(day) } else if (open == AmoLeaf.LIVE_DASHBOARD) AronScreen(topBar = { AronTopBar(stringResource(AmoR.string.amo_live_title), onBack = back) }) { AmoLiveDashboard(day, liveFilter, { liveFilter = it }) } else if (open == AmoLeaf.SR_STOCK) AronScreen(topBar = { AronTopBar(stringResource(AmoR.string.amo_leaf_sr_stock), onBack = back) }) { AmoTeamStock(day, stockSr, { stockSr = it }) } else if (open == AmoLeaf.TEAM_LOCATION) AronScreen(topBar = { AronTopBar(stringResource(AmoR.string.amo_leaf_team_location), onBack = back) }) { AmoTeamLocation(day) } else RoleSectionPlaceholder(stringResource(open?.let { leafLabel(it) } ?: HomeR.string.rh_amo_team), AronIcons.Info, onBack = back)
-        TeamLeaf.EXCEPTIONS, TeamLeaf.EXCEPTION_DETAIL -> AronScreen(topBar = { AronTopBar(stringResource(AmoR.string.amo_exc_title), onBack = back) }) {
+        TeamLeaf.LEAF -> if (open == AmoLeaf.TASK_DELEGATION) AmoTaskHub(day, back) else if (open == AmoLeaf.TEAM_PERFORMANCE) AmoFrame(stringResource(AmoR.string.amo_leaf_team_performance), back, icon = com.aktcl.aron.core.ui.R.drawable.aron_ic_team_performance) { AmoTeamPerformance(day) } else if (open == AmoLeaf.LIVE_DASHBOARD) AmoFrame(stringResource(AmoR.string.amo_live_title), back, icon = com.aktcl.aron.core.ui.R.drawable.aron_ic_live_dashboard) { AmoLiveDashboard(day, liveFilter, { liveFilter = it }) } else if (open == AmoLeaf.SR_STOCK) AmoFrame(stringResource(AmoR.string.amo_leaf_sr_stock), back, icon = com.aktcl.aron.core.ui.R.drawable.aron_ic_sr_stock) { AmoTeamStock(day, stockSr, { stockSr = it }) } else if (open == AmoLeaf.TEAM_LOCATION) AmoFrame(stringResource(AmoR.string.amo_leaf_team_location), back, icon = com.aktcl.aron.core.ui.R.drawable.aron_ic_team_location) { AmoTeamLocation(day) } else RoleSectionPlaceholder(stringResource(open?.let { leafLabel(it) } ?: HomeR.string.rh_amo_team), AronIcons.Info, onBack = back)
+        TeamLeaf.EXCEPTIONS, TeamLeaf.EXCEPTION_DETAIL -> AmoFrame(stringResource(AmoR.string.amo_exc_title), back, icon = com.aktcl.aron.core.ui.R.drawable.aron_ic_exceptions) {
             AmoExceptions(day, leaf == TeamLeaf.EXCEPTION_DETAIL, signalId, onOpen = { signalId = it.id; leaf = TeamLeaf.EXCEPTION_DETAIL }, onDone = { leaf = TeamLeaf.EXCEPTIONS })
         }
     }
+}
+
+private fun teamIcon(l: AmoLeaf): Int = when (l) {
+    AmoLeaf.TEAM_LOCATION -> com.aktcl.aron.core.ui.R.drawable.aron_ic_team_location
+    AmoLeaf.TEAM_PERFORMANCE -> com.aktcl.aron.core.ui.R.drawable.aron_ic_team_performance
+    AmoLeaf.TASK_DELEGATION -> com.aktcl.aron.core.ui.R.drawable.aron_art_task_delegation
+    AmoLeaf.LIVE_DASHBOARD -> com.aktcl.aron.core.ui.R.drawable.aron_ic_live_dashboard
+    else -> com.aktcl.aron.core.ui.R.drawable.aron_ic_sr_stock
 }
 
 private fun leafLabel(l: AmoLeaf): Int = when (l) {

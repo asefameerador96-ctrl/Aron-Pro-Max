@@ -16,4 +16,5 @@
     <string name="tsk_resolve">Resolve</string>
     <string name="tsk_badge_open">%1$s open</string>
     <!-- "30 November": the due date as day and month name (screens-sr s12) -->
+    <string name="tsk_my_requests">My outlet requests</string>
 </resources>

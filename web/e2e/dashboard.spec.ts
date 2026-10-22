@@ -18,12 +18,12 @@ test("the TSO dashboard loads without a button press and shows every tile with i
     await expect(tile.getByTestId("tile-asof")).toContainText("As of");
   }
   // Control totals of the seeded territory 334 (mock/seed.ts): visited 43+35+30+0 = 108, successful 1+14+22+0 = 37, net 543,435,000 mtk,
-  // shown on the hero card with two decimals (docs/24 s7; report cells keep three).
+  // shown on the hero card in lakh like the other cards (reference: "5.43 Lakh"); report cells keep three decimals.
   const ct = controlTotals(routesInScope([{ type: "territory", id: 334 }]));
   expect(ct).toMatchObject({ visited: 108, successful: 37, net_mtk: 543_435_000 });
   await expect(page.getByTestId("strike-basis")).toContainText("37 successful of 108 visited");
   await expect(page.getByTestId("strike-rate")).toHaveText("34.3%");
-  await expect(page.getByTestId("sales-net")).toHaveText("543,435.00");
+  await expect(page.getByTestId("sales-net")).toHaveText("5.43 Lakh");
   await expect(page.getByTestId("tile-channels-std").getByTestId("channel-std-donut")).toContainText("Grocery");
   await expect(page.getByTestId("geo-fencing")).toBeVisible();
   await expect(page.getByTestId("geo-visits")).toHaveText(/^\d+ of \d+ visits$/); // geo_valid_visits of visits, as the server sends them

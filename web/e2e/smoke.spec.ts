@@ -1,9 +1,15 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Locator } from "@playwright/test";
 import { MOCK, login, loginOk, resetMock, hydrated } from "./helpers";
 
 test.beforeEach(async () => {
   await resetMock();
 });
+
+/** The whole-pixel size of an element (a sheet that is still sliding in reports fractions such as 36.0000019). */
+const px = async (l: Locator) => {
+  const b = (await l.boundingBox())!;
+  return { width: Math.round(b.width), height: Math.round(b.height) };
+};
 
 test("login page is Bangla first and switches to English", async ({ page }) => {
   await page.goto("/login");
@@ -12,6 +18,70 @@ test("login page is Bangla first and switches to English", async ({ page }) => {
   await page.getByRole("link", { name: "English" }).click();
   await expect(page.locator("html")).toHaveAttribute("lang", "en");
   await expect(page.getByRole("heading", { name: "Sign in" })).toBeVisible();
+});
+
+// D-BRAND-01. The sign-in gate must not swallow the logo or the icons: a redirect to the login HTML would show a broken logo and
+// hand the browser HTML as its favicon. The first half needs no cookie, so it runs against the real standalone server, proxy
+// included; the second half checks the logo in the signed-in shell (sidebar rail, mobile bar, drawer) without moving the layout.
+test("the Aron logo: public to a signed-out visitor, drawn on the login card, in the sidebar, the mobile bar and the drawer", async ({ page, request }) => {
+  await page.goto("/login");
+  const mark = page.locator('img[src*="aron-mark"]');
+  await expect(mark).toHaveCount(1);
+  await expect.poll(() => mark.evaluate((el: HTMLImageElement) => (el.complete ? el.naturalWidth : 0))).toBeGreaterThan(0);
+  expect(await mark.getAttribute("alt")).toBe("");
+  // The round plate keeps the 44 px slot of the old monogram; the logo sits inside it. The plate does not stretch the brand row:
+  // the row stays as tall as the name and tagline beside it (the card does not move).
+  const plate = mark.locator("xpath=..");
+  expect(await px(plate)).toEqual({ width: 44, height: 44 });
+  expect(await px(mark)).toEqual({ width: 39, height: 39 });
+  const rowH = (await plate.locator("xpath=..").boundingBox())!.height;
+  const textH = (await page.locator("#login-title").locator("xpath=..").boundingBox())!.height;
+  expect(rowH).toBeCloseTo(textH, 0);
+  // The login card keeps its 420 px width.
+  expect((await page.getByRole("heading", { name: "সাইন ইন" }).locator("xpath=ancestor::section[1]").boundingBox())!.width).toBeLessThanOrEqual(420);
+
+  // The icons exactly as Next linked them (the icon routes carry a hash query), plus the logo files and /favicon.ico.
+  const linked = await page.evaluate(() => [...document.querySelectorAll('link[rel~="icon"], link[rel="apple-touch-icon"]')].map((l) => l.getAttribute("href") ?? ""));
+  expect(linked.length).toBeGreaterThanOrEqual(2);
+  const urls = [...new Set(["/brand/aron-mark-64.png", "/brand/aron-mark-128.png", "/brand/aron-mark-256.png", "/favicon.ico", "/icon.png", "/apple-icon.png", ...linked])];
+  for (const u of urls) {
+    const res = await request.get(u, { maxRedirects: 0 });
+    expect(res.status(), u).toBe(200);
+    const h = res.headers();
+    expect(h["content-type"], u).toMatch(/^image\//);
+    // The exact day cache of next.config.ts (PUBLIC_STATIC_CACHE). A loose "public, max-age=N" would also pass Next's own icon
+    // header ("public, max-age=0, must-revalidate"), so it could not tell the config rule from the framework default.
+    expect(h["cache-control"], u).toBe("public, max-age=86400, stale-while-revalidate=604800");
+    // The security baseline of the catch-all rule still applies to these public images (only Cache-Control is overridden).
+    expect(h["x-content-type-options"], u).toBe("nosniff");
+    expect(h["x-frame-options"], u).toBe("DENY");
+    expect(h["strict-transport-security"], u).toMatch(/^max-age=\d+/);
+    expect((await res.body()).subarray(0, 4).toString("latin1"), u).not.toContain("<");
+  }
+
+  // Everything else is still behind the gate (and an ordinary page is still no-store).
+  const admin = await request.get("/admin", { maxRedirects: 0 });
+  expect(admin.status()).toBeGreaterThanOrEqual(300);
+  expect(admin.status()).toBeLessThan(400);
+  expect(admin.headers().location).toContain("/login");
+  expect((await request.get("/brand/other.png", { maxRedirects: 0 })).headers().location ?? "").toContain("/login");
+  expect((await request.get("/login", { maxRedirects: 0 })).headers()["cache-control"]).toContain("no-store");
+
+  // Signed in: the shell draws the logo in its brand slots. Only what the brand change owns is asserted (the picture loads and
+  // is visible); the shell's own geometry belongs to the web-dashboard lane and is not pinned here.
+  await loginOk(page, "tso334", "tso-pass-1");
+  const sidebar = page.getByTestId("sidebar");
+  const rail = sidebar.locator('img[src*="aron-mark"]');
+  await expect(rail).toBeVisible();
+  await expect.poll(() => rail.evaluate((el: HTMLImageElement) => (el.complete ? el.naturalWidth : 0))).toBeGreaterThan(0);
+
+  // Below md the bar shows the logo too; the drawer, a closed <dialog> inside the bar, carries its own and shows it when opened.
+  await page.setViewportSize({ width: 390, height: 844 });
+  const bar = page.getByTestId("top-bar").locator('img[src*="aron-mark"][width="28"]');
+  await expect(bar).toBeVisible();
+  await page.getByTestId("nav-open").click();
+  const drawerMark = page.getByTestId("nav-drawer").locator('img[src*="aron-mark"]');
+  await expect(drawerMark).toBeVisible();
 });
 
 test("TSO logs in and sees an empty dashboard scoped by the server, in Bangla then English", async ({ page }) => {

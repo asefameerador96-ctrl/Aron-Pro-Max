@@ -10,11 +10,10 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.text.input.VisualTransformation
-import com.aktcl.aron.core.ui.LocalAronColors
+import com.aktcl.aron.core.ui.LocalAronLook
 
 /**
- * Every TSO input sits on a SOLID surface (docs/32 s2a: a field is a figure the rep reads in sunlight, never text over the page
- * gradient), with the kit's text and border colours; the contrast of those pairs is the kit ledger's.
+ * Every TSO input sits on a SOLID surface (a field is a figure the rep reads in sunlight, never text over the page), in the existing-Aron look: white card fill, grey outline, purple while focused.
  */
 @Composable
 fun TsoTextField(
@@ -24,18 +23,18 @@ fun TsoTextField(
     /** What TalkBack says for the field: the visible label sits above it as separate text, so the field itself needs its own name. */
     name: String? = null,
 ) {
-    val c = LocalAronColors.current
+    val c = LocalAronLook.current
     // the label sits ABOVE the field (never in the outline notch, which would paint a patch over the page gradient and clip at large fonts)
     androidx.compose.foundation.layout.Column(androidx.compose.ui.Modifier.fillMaxWidth(), verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(4.dp)) {
-    if (label != null) androidx.compose.material3.ProvideTextStyle(androidx.compose.material3.MaterialTheme.typography.labelMedium.copy(color = c.textSecondary)) { label() }
+    if (label != null) androidx.compose.material3.ProvideTextStyle(androidx.compose.material3.MaterialTheme.typography.labelMedium.copy(color = c.inkMuted)) { label() }
     OutlinedTextField(
         value, onValueChange, if (name != null) modifier.semantics { contentDescription = name } else modifier, enabled = enabled, singleLine = singleLine, minLines = minLines, supportingText = supportingText,
         visualTransformation = visualTransformation, keyboardOptions = keyboardOptions,
         colors = OutlinedTextFieldDefaults.colors(
-            focusedContainerColor = c.surfaceSolid, unfocusedContainerColor = c.surfaceSolid, disabledContainerColor = c.surfaceSolid,
-            focusedTextColor = c.textPrimary, unfocusedTextColor = c.textPrimary, disabledTextColor = c.textSecondary,
-            focusedBorderColor = c.borderFocus, unfocusedBorderColor = c.borderInput, focusedLabelColor = c.accentText, unfocusedLabelColor = c.textSecondary,
-            cursorColor = c.accent,
+            focusedContainerColor = c.card, unfocusedContainerColor = c.card, disabledContainerColor = c.card,
+            focusedTextColor = c.ink, unfocusedTextColor = c.ink, disabledTextColor = c.inkMuted,
+            focusedBorderColor = c.purple, unfocusedBorderColor = c.underline, focusedLabelColor = c.purple, unfocusedLabelColor = c.inkMuted,
+            cursorColor = c.purple,
         ),
     )
     }

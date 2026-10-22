@@ -74,6 +74,9 @@ class VisitScreensTest {
         val rows = OutletPicker.rows(listOf(o(1, "Rahim Store"), o(2, "Karim")))
         var picked: Long? = null
         show(AppLanguage.EN) { OutletPickerContent(rows, OutletPicker.chips(rows), OutletPicker.ALL_CHIP, {}, { picked = it.outlet.outletId }) }
+        // the reference opens on the pill field, the A-Z panel and the hint; the list opens with a tap on the field
+        compose.onNodeWithText("Select a retailer to continue the sale").assertExists()
+        compose.onNodeWithText("Select retailer").performClick()
         // the row shows the name over "code · phone · cluster" (screens-sr s5); tapping the row is the pick
         compose.onNodeWithText("DHK-1 · 01712345678 · C").assertExists()
         compose.onNodeWithText("Rahim Store").performClick()

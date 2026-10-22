@@ -81,6 +81,25 @@ class SyncApi(private val client: AronApiClient) {
         )
     }
 
+    /**
+     * `GET /v1/sku-images/{asset_id}` (contract getSkuImage, PARITY-SPEC s2.6): the bytes of a SKU's pack picture, read
+     * straight from the API (no signed URL), at most [maxBytes]; a bigger body is a failure, never a partial picture.
+     */
+    suspend fun skuImage(assetId: String, maxBytes: Long = 300L * 1024L): ApiResult<ByteArray> {
+        val path = "/v1/sku-images/" + assetId
+        return client.callStreaming(
+            path = path,
+            auth = CallAuth.Grant(Grant.FULL),
+            build = { url(client.origin.path(path)); get() },
+            decode = { body, _ ->
+                val buf = okio.Buffer()
+                while (buf.size <= maxBytes && body.read(buf, 16 * 1024) != -1L) Unit
+                require(buf.size <= maxBytes) { "pack picture over $maxBytes bytes" }
+                buf.readByteArray()
+            },
+        )
+    }
+
     /** Connectivity validation: true only for an API answer (with `X-Aron-Api`) within 3 s. */
     suspend fun healthy(): Boolean {
         val result = client.call(

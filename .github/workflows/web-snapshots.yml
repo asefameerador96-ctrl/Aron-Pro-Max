@@ -69,3 +69,4 @@ jobs:
           path: web/e2e/**/*-snapshots/*.png
           if-no-files-found: error
           retention-days: 7
+# Re-recorded on lane/web-dashboard after the Aron shell restyle (2026-10-18).

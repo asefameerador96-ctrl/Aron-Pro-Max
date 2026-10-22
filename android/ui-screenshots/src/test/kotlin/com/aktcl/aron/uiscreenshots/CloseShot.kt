@@ -13,6 +13,10 @@ import com.aktcl.aron.core.common.AppLanguage
 import com.aktcl.aron.core.ui.AppLocale
 import com.aktcl.aron.core.ui.AronTheme
 import com.aktcl.aron.core.ui.GlassTier
+import com.aktcl.aron.core.ui.aron.AronPrinterBadge
+import com.aktcl.aron.core.ui.aron.AronScaffold
+import com.aktcl.aron.core.ui.aron.AronTopBar
+import androidx.compose.ui.res.painterResource
 import com.aktcl.aron.feature.attendance.AttendanceContent
 import com.aktcl.aron.feature.attendance.AttendanceState
 import com.aktcl.aron.feature.auth.LoginContent
@@ -109,9 +113,9 @@ class CloseShot {
     private val units = mapOf("lighter" to "পিস", "cigarette" to "স্টিক")
     private val counts = listOf(CountRow("visit", 6, 6), CountRow("memo", 6, 5), CountRow("stock_movement", 2, null), CountRow("qc_line", 0, 0))
     private val gate = SalesSubmitRules.gate(OutboxStates(1, 0, 40, 0, 0), counts, DuesAtSubmit(1, 84_000), false)
-    private val cleanCounts = listOf(CountRow("visit", 6, 6), CountRow("memo", 6, 6), CountRow("stock_movement", 2, 2), CountRow("qc_line", 0, 0))
+    private val cleanCounts = listOf(CountRow("visit", 6, 6), CountRow("memo", 6, 6), CountRow("stock_movement", 2, 2), CountRow("qc_line", 0, 0), CountRow("memo_discount", 0, 0))
     private val cleanGate = SalesSubmitRules.gate(OutboxStates(0, 0, 40, 0, 0), cleanCounts, DuesAtSubmit(0, 0), false)
-    private val labels = mapOf("visit" to "আউটলেট", "memo" to "মেমো", "stock_movement" to "স্টক", "qc_line" to "কিউসি")
+    private val labels = mapOf("visit" to "আউটলেট", "memo" to "বিক্রয়", "stock_movement" to "স্টক", "qc_line" to "কিউসি", "memo_discount" to "প্রমোশন")
     private val tasks = TaskListState(
         listOf(
             TaskItem("t1", "visit_outlet", "Babu Store", "Babu Store দোকানে Maxim এ OOS আছে। আজকের মধ্যে স্টক দিন।", 5, "Babu Store", "2026-11-30", "ongoing", null),
@@ -130,7 +134,7 @@ class CloseShot {
     private fun skuUnit(id: Long) = if (id == 100L) "স্টিক" else "পিস"
     @Composable private fun Memo() = MemoDetailView(MemoMenu.detail(memo), true, 57_500, ::skuName, {}, {}, {}, outletName = "Banani Store", onHistory = {}, skuUnit = ::skuUnit)
     @Composable private fun Menu() = MemoMenuScreen(MemoMenu.rows(listOf(memo, memo2)), ::outletName, {})
-    @Composable private fun Summary() = SummaryScreen(summary, ::skuName, {}, categoryLabel = { cats[it] ?: it }, unitLabel = { units[it] ?: "" })
+    @Composable private fun Summary() = SummaryScreen(summary, ::skuName, {}, categoryLabel = { cats[it] ?: it }, unitLabel = { units[it] ?: "" }, printerBadge = { AronPrinterBadge(false, "printer", {}) })
     @Composable private fun Submit() = SalesSubmitScreen(true, counts, gate, SubmitProgress.Idle, { labels[it] ?: it }, {}, {}, lastContactText = "১০:৪২")
     @Composable private fun SubmitClean() = SalesSubmitScreen(true, cleanCounts, cleanGate, SubmitProgress.Idle, { labels[it] ?: it }, {}, {}, lastContactText = "১০:৪২")
     @Composable private fun Tasks() = TaskContent(tasks, {})
@@ -138,6 +142,61 @@ class CloseShot {
     @Composable private fun Journey() = JourneyScreen(journey)
     @Composable private fun Login() = LoginContent(LoginUiState(username = "sr334001", password = "secret", message = LoginMessage.InvalidCredentials), "ARON SR", "1.0.25 (12)", {}, {}, {}, {}, {}, sunlight = false, onSunlight = {})
     @Composable private fun Otp() = OtpContent(OtpState("12"), {}, {}, onBack = {}, appTitle = "ARON SR", onLanguageSelect = {}, onSunlight = {})
+
+    /** The host frame of the parity apps (app-sr wiring): the gradient top bar with the tile icon and the title, on the grey page. */
+    @Composable
+    private fun Parity(title: String, icon: Int?, content: @Composable () -> Unit) {
+        AronScaffold(topBar = { AronTopBar(title, icon = icon?.let { painterResource(it) }, onBack = {}, backLabel = "back") }) { content() }
+    }
+
+    @Test fun parity_submit_bn() = shot("parity_submit_bn") { Parity("বিক্রয় জমা", com.aktcl.aron.core.ui.R.drawable.aron_art_sales_submit) { Submit() } }
+    @Test fun parity_submit_clean_bn() = shot("parity_submit_clean_bn") { Parity("বিক্রয় জমা", com.aktcl.aron.core.ui.R.drawable.aron_art_sales_submit) { SubmitClean() } }
+
+    @Test fun parity_outlet_menu_bn() = shot("parity_outlet_menu_bn") { Parity("আউটলেট", com.aktcl.aron.core.ui.R.drawable.aron_art_outlet) { com.aktcl.aron.feature.outlet.OutletMenuContent({}) } }
+
+    @Test fun parity_memo_bn() = shot("parity_memo_bn") { Parity("মেমো", com.aktcl.aron.core.ui.R.drawable.aron_art_memo) { Memo() } }
+    @Test fun parity_memo_menu_bn() = shot("parity_memo_menu_bn") { Parity("মেমো", com.aktcl.aron.core.ui.R.drawable.aron_art_memo) { Menu() } }
+
+    @Test fun parity_tasks_bn() = shot("parity_tasks_bn") { Parity("টাস্ক", null) { Tasks() } }
+    @Test fun parity_tasks_empty_bn() = shot("parity_tasks_empty_bn") { Parity("টাস্ক", null) { TasksEmpty() } }
+
+    @Test fun parity_tasks_my_requests_bn() = shot("parity_tasks_my_requests_bn") { Parity("টাস্ক", null) { TaskContent(tasks, {}, onMyRequests = {}) } }
+    @Test fun parity_login_bn() = shot("parity_login_bn") { Login() }
+    @Test fun parity_otp_bn() = shot("parity_otp_bn") { Otp() }
+
+    private val photo = com.aktcl.aron.feature.outlet.GeoPhotoState(
+        com.aktcl.aron.feature.outlet.CapturedPhoto("p", "/t", 1), com.aktcl.aron.feature.outlet.FixReading("ok", 1.0, 1.0, 11.6, false), 12, 1,
+    )
+    @Test fun parity_outlet_new_bn() = shot("parity_outlet_new_bn") {
+        Parity("নতুন দোকান", com.aktcl.aron.core.ui.R.drawable.aron_art_outlet_new) {
+            com.aktcl.aron.feature.outlet.OutletRequestContent(
+                com.aktcl.aron.feature.outlet.OutletRequestForm(com.aktcl.aron.feature.outlet.OutletRequestKind.NEW, name = "Rahim Store", clusterId = 7),
+                emptySet(), listOf(com.aktcl.aron.feature.outlet.ClusterOption(7, "Apsis Cluster"), com.aktcl.aron.feature.outlet.ClusterOption(8, "Gulshan")),
+                photo, false, false, {}, {}, {},
+            )
+        }
+    }
+    @Test fun parity_outlet_close_bn() = shot("parity_outlet_close_bn") {
+        Parity("স্থায়ী বন্ধ", com.aktcl.aron.core.ui.R.drawable.aron_art_outlet_close) {
+            com.aktcl.aron.feature.outlet.OutletRequestContent(
+                com.aktcl.aron.feature.outlet.OutletRequestForm(com.aktcl.aron.feature.outlet.OutletRequestKind.CLOSE, outletId = 5, openDueMtk = 100),
+                emptySet(), emptyList(), com.aktcl.aron.feature.outlet.GeoPhotoState(), false, true, {}, {}, {},
+            )
+        }
+    }
+    @Test fun parity_force_sale_bn() = shot("parity_force_sale_bn") {
+        Parity("সেল", null) { com.aktcl.aron.feature.outlet.ForceSaleContent(com.aktcl.aron.feature.outlet.ForceReason.INTERNET_PROBLEM, photo, emptySet(), false, {}, {}, {}) }
+    }
+
+    // font scale 2.0 review of the parity screens (labels wrap, numbers never clip)
+    @Test fun parity_fs2_summary() = shot("parity_fs2_summary", fontScale = 2f) { Parity("বিক্রয় সারসংক্ষেপ", com.aktcl.aron.core.ui.R.drawable.aron_art_summary) { Summary() } }
+    @Test fun parity_fs2_submit() = shot("parity_fs2_submit", fontScale = 2f) { Parity("বিক্রয় জমা", com.aktcl.aron.core.ui.R.drawable.aron_art_sales_submit) { SubmitClean() } }
+    @Test fun parity_fs2_memo() = shot("parity_fs2_memo", fontScale = 2f) { Parity("মেমো", com.aktcl.aron.core.ui.R.drawable.aron_art_memo) { Memo() } }
+    @Test fun parity_fs2_tasks() = shot("parity_fs2_tasks", fontScale = 2f) { Parity("টাস্ক", null) { Tasks() } }
+    @Test fun parity_fs2_login() = shot("parity_fs2_login", fontScale = 2f) { Login() }
+    @Test fun parity_fs2_outlet_menu() = shot("parity_fs2_outlet_menu", fontScale = 2f) { Parity("আউটলেট", com.aktcl.aron.core.ui.R.drawable.aron_art_outlet) { com.aktcl.aron.feature.outlet.OutletMenuContent({}) } }
+
+    @Test fun parity_summary_bn() = shot("parity_summary_bn") { Parity("বিক্রয় সারসংক্ষেপ", com.aktcl.aron.core.ui.R.drawable.aron_art_summary) { Summary() } }
 
     @Test fun attendance_a_bn_light() = shot("close_attendance_a_bn_light") { AttendanceA() }
     @Test fun attendance_a_bn_sunlight() = shot("close_attendance_a_bn_sunlight", sunlight = true) { AttendanceA() }

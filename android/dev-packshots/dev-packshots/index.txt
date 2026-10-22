@@ -1,0 +1,11 @@
+# DEV ONLY (test account): SKU code = picture cropped from the owner's reference screenshot docs/ui-reference/sr/stock.webp
+# by tools/packshots/crop_dev_packshots.py. Bundled only when the build sets -Paron.devPackshots=true (the dev-origin CI
+# build); production builds never carry these files. The real pack art comes from AKTCL through the admin portal
+# (docs/runbooks/sku-pack-pictures.md). Codes are the dev seed's (db/seed/02_products.sql); SKUs not listed show the
+# neutral pack silhouette. The 10- and 20-stick packs share one picture (the screenshot shows the same art for both).
+MaxR-10S=maxim-regular
+MaxR-20S=maxim-regular
+MaxB-10S=maxim-bolt
+MaxB-20S=maxim-bolt
+MaxWB-10S=maxim-wildberry
+MaxWB-20S=maxim-wildberry

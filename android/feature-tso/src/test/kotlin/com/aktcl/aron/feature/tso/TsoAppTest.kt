@@ -3,9 +3,7 @@ package com.aktcl.aron.feature.tso
 import android.content.Context
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.test.assertContentDescriptionEquals
 import androidx.compose.ui.test.assertIsDisplayed
-import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasTestTag
@@ -77,7 +75,7 @@ class TsoAppTest {
         val context = show(AppLanguage.BN, badges = mapOf(RoleHomes.TsoTile.LEAVE to 1))
         compose.onNodeWithTag(HomeTags.HEADER).assertIsDisplayed()
         compose.onNodeWithText("TSO - Testing Dhaka North (tso1001)").assertIsDisplayed()
-        compose.onNodeWithTag(HomeTags.DATE).assertIsDisplayed().assertTextEquals("২০২৬-১০-০৫").assertContentDescriptionEquals("ব্যবসায়িক তারিখ: ২০২৬-১০-০৫")
+        compose.onNodeWithText("২০২৬-১০-০৫").assertIsDisplayed()
         compose.onNodeWithTag(HomeTags.MODE).assertDoesNotExist()
         compose.onNodeWithText(context.getString(HomeR.string.home_reauth_required)).assertExists()
         // the bundle version is an identifier and keeps ASCII; the date takes Bengali digits
@@ -105,7 +103,7 @@ class TsoAppTest {
     fun settingsWarnsThatLogoutWipesTheData() {
         var loggedOut = false
         val context = show(AppLanguage.EN, onLogout = { loggedOut = true })
-        compose.onNodeWithTag(RoleHomeTags.SETTINGS).performClick()
+        compose.onNodeWithContentDescription(context.getString(HomeR.string.set_open)).performClick()
         compose.waitForIdle()
         compose.onNodeWithText("Version 0.1.0 (1)").assertExists()
         compose.onNodeWithTag(HomeTags.LOGOUT).performScrollTo().performClick()

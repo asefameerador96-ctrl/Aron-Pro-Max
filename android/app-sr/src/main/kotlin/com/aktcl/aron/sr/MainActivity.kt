@@ -57,6 +57,8 @@ class MainActivity : ComponentActivity() {
     @Inject lateinit var activityLog: com.aktcl.aron.core.sync.ActivityLog
     @Inject lateinit var telemetry: com.aktcl.aron.core.sync.DeviceTelemetry
     @Inject lateinit var imageCache: com.aktcl.aron.core.sync.ImageCache
+    @Inject lateinit var skuPackshots: com.aktcl.aron.core.sync.SkuPackshots
+    private val packshotProvider by lazy { com.aktcl.aron.core.ui.aron.BitmapPackshotProvider(skuPackshots::bitmap, skuPackshots::cached) }
     private val locationNotice by lazy { com.aktcl.aron.core.sync.LocationNotice({ databases.of(it) }, components.trustedClock, scheduler, com.aktcl.aron.core.sync.LocationNotice.offlineProbe(applicationContext)) }
     private var dayHolder: SrDayHolder? = null
     /** N-038: counts taps on a task notification; SrApp opens the task list on each new value. */
@@ -129,6 +131,8 @@ class MainActivity : ComponentActivity() {
         val onLanguageSelect: (AppLanguage) -> Unit = { if (AppLocale.set(this, it)) recreate() }
         val versionName = BuildConfig.VERSION_NAME + " (" + BuildConfig.VERSION_CODE + ")"
         setContent {
+            // PARITY-SPEC s2.6: pack pictures of the Stock and Sale rows (thumbnail cache, then the dev-only bundled art).
+            androidx.compose.runtime.CompositionLocalProvider(com.aktcl.aron.core.ui.aron.LocalPackshotProvider provides packshotProvider) {
             var sunlight by remember { mutableStateOf(false) }
             AronTheme(language, sunlight = sunlight) {
                 // The page (tokens s2.1): the calm gradient and glows behind every screen; no Surface colour may paint over it.
@@ -200,6 +204,7 @@ class MainActivity : ComponentActivity() {
                     }
                 }
             }
+        }
         }
     }
 }

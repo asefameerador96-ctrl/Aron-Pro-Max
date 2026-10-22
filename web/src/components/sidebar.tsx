@@ -4,28 +4,21 @@
 // source of items; this file only lays it out.
 import { useRef, useSyncExternalStore } from "react";
 import { NAV_KEY } from "@/lib/ui/theme";
+import { BrandMark } from "./brand-mark";
 import { useI18n } from "./i18n-provider";
-import { Icon, menuIcon } from "./kit/icons";
+import { Icon } from "./kit/icons";
+import { navIconFor } from "./nav-icons";
 import { IconButton } from "./kit/button";
 import { LocaleSwitch } from "./locale-switch";
+import { LogoutButton } from "./logout-button";
 import { NavLink } from "./nav-link";
 
 export interface NavSection {
   id: string;
-  label: string;
+  /** null = a single entry shown as a plain link, not a collapsible parent. */
+  label: string | null;
   items: { id: string; href: string; label: string }[];
 }
-
-function BrandMark({ size = 32 }: { size?: number }) {
-  // A simple monogram, not the vendor logo (CLAUDE.md: no vendor artwork).
-  return (
-    <svg width={size} height={size} viewBox="0 0 32 32" aria-hidden="true" focusable="false" className="shrink-0">
-      <rect width="32" height="32" rx="10" fill="var(--accent-container)" />
-      <path d="M16 7 25 25h-4.2l-1.9-4.1h-5.8L11.2 25H7Zm0 6.6-2 4.8h4Z" fill="var(--accent-on-container)" />
-    </svg>
-  );
-}
-export { BrandMark };
 
 function subscribeNav(cb: () => void): () => void {
   const mo = new MutationObserver(cb);
@@ -36,21 +29,27 @@ function subscribeNav(cb: () => void): () => void {
 function Groups({ sections, onNavigate }: { sections: NavSection[]; onNavigate?: () => void }) {
   return (
     <>
-      {sections.map((s) => (
+      {sections.map((s) =>
+        s.label === null ? (
+          <div key={s.id} className="mb-1">
+            <NavLink href={s.items[0]!.href} icon={navIconFor(s.items[0]!.id)} label={s.items[0]!.label} onNavigate={onNavigate} />
+          </div>
+        ) : (
         <details key={s.id} open className="group/nav mb-2">
-          <summary className="rail-group flex min-h-8 cursor-pointer list-none items-center justify-between rounded-chip px-3 text-label text-secondary hover:bg-pressed [&::-webkit-details-marker]:hidden">
+          <summary className="rail-group flex min-h-8 cursor-pointer list-none items-center justify-between rounded-chip px-3 text-label text-on-rail/85 hover:bg-on-rail/15 [&::-webkit-details-marker]:hidden">
             <span>{s.label}</span>
             <Icon name="chevron-down" size={16} className="transition-transform duration-fast group-open/nav:rotate-180" />
           </summary>
           <ul className="space-y-0.5">
             {s.items.map((i) => (
               <li key={i.id}>
-                <NavLink href={i.href} icon={menuIcon(i.id)} label={i.label} onNavigate={onNavigate} />
+                <NavLink href={i.href} icon={navIconFor(i.id)} label={i.label} onNavigate={onNavigate} />
               </li>
             ))}
           </ul>
         </details>
-      ))}
+        ),
+      )}
     </>
   );
 }
@@ -71,19 +70,20 @@ export function Sidebar({ sections, appName, tagline }: { sections: NavSection[]
     }
   }
   return (
-    <div className="shell-rail glass-rail fixed inset-y-0 start-0 z-30 hidden flex-col border-e border-divider md:flex" data-testid="sidebar">
-      <div className="flex h-14 shrink-0 items-center gap-3 px-4">
+    <div className="shell-rail aron-rail fixed inset-y-0 start-0 z-30 hidden flex-col md:flex" data-testid="sidebar">
+      <div className="rail-head flex min-h-16 shrink-0 items-center gap-3 px-4">
         <BrandMark />
-        <div className="rail-wordmark min-w-0">
-          <p className="truncate text-heading text-primary">{appName}</p>
-          <p className="truncate text-caption text-secondary">{tagline}</p>
+        <div className="rail-wordmark min-w-0 flex-1">
+          <p className="truncate text-heading text-on-rail">{appName}</p>
+          <p className="truncate text-caption text-on-rail/85">{tagline}</p>
         </div>
+        <IconButton icon={rail ? "chevrons-right" : "chevrons-left"} label={t(rail ? "nav.expand" : "nav.collapse")} aria-expanded={!rail} onClick={toggle} data-testid="nav-collapse" className="hidden !text-on-rail hover:!bg-on-rail/15 lg:inline-flex" />
       </div>
       <nav aria-label={t("nav.sidebar")} className="min-h-0 flex-1 overflow-y-auto px-3 py-2 [scrollbar-width:thin]">
         <Groups sections={sections} />
       </nav>
-      <div className="hidden shrink-0 border-t border-divider p-2 lg:block">
-        <IconButton icon={rail ? "chevron-right" : "chevron-left"} label={t(rail ? "nav.expand" : "nav.collapse")} aria-expanded={!rail} onClick={toggle} data-testid="nav-collapse" className="w-full rounded-chip" />
+      <div className="shrink-0 p-3">
+        <LogoutButton variant="rail" />
       </div>
     </div>
   );
@@ -103,19 +103,19 @@ export function NavDrawer({ sections, appName, who }: { sections: NavSection[]; 
   return (
     <>
       <IconButton icon="menu" label={t("nav.menu")} onClick={open} className="md:hidden" data-testid="nav-open" />
-      <dialog ref={ref} onClose={() => document.documentElement.removeAttribute("data-overlay")} className="sheet-start glass-sheet m-0 me-auto h-dvh max-h-dvh w-[min(320px,86vw)] max-w-none rounded-none rounded-e-sheet p-0 text-primary backdrop:bg-scrim" aria-label={t("nav.menu")} data-testid="nav-drawer">
+      <dialog ref={ref} onClose={() => document.documentElement.removeAttribute("data-overlay")} className="sheet-start aron-rail m-0 me-auto h-dvh max-h-dvh w-[min(320px,86vw)] max-w-none rounded-none rounded-e-sheet p-0 text-on-rail backdrop:bg-scrim" aria-label={t("nav.menu")} data-testid="nav-drawer">
         <div className="flex h-14 items-center justify-between gap-3 px-4">
           <div className="flex items-center gap-3">
             <BrandMark />
-            <span className="text-heading text-primary">{appName}</span>
+            <span className="text-heading text-on-rail">{appName}</span>
           </div>
-          <IconButton icon="close" label={t("nav.close")} onClick={close} />
+          <IconButton icon="close" label={t("nav.close")} onClick={close} className="!text-on-rail hover:!bg-on-rail/15" />
         </div>
         <nav aria-label={t("nav.main")} className="h-[calc(100dvh-3.5rem-4.5rem)] overflow-y-auto px-3 py-2">
           <Groups sections={sections} onNavigate={close} />
         </nav>
-        <div className="flex h-18 flex-wrap items-center justify-between gap-2 border-t border-divider px-4">
-          <span className="min-w-0 truncate text-caption text-secondary" title={who}>
+        <div className="flex h-18 flex-wrap items-center justify-between gap-2 border-t border-on-rail/25 px-4">
+          <span className="min-w-0 truncate text-caption text-on-rail/90" title={who}>
             {who}
           </span>
           <div className="sm:hidden">

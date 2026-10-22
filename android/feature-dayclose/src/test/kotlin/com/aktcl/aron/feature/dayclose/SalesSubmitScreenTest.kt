@@ -18,6 +18,7 @@ import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.aktcl.aron.core.common.AppLanguage
 import com.aktcl.aron.core.ui.AronTheme
@@ -42,13 +43,13 @@ class SalesSubmitScreenTest {
         compose.onNodeWithText("Online").assertExists()
         compose.onNodeWithText("2 retailers still owe 125.00 ৳. You can still submit.").assertExists()
         // the tap opens the hold step (screens-sr s11); only the press-and-hold commits
-        compose.onNodeWithText("Submit sales").assertIsEnabled().performClick()
+        compose.onNodeWithText("Submit sales").assertIsEnabled().performScrollTo().performClick()
         compose.waitForIdle()
         // SS4: with dues the manual asks first in a Yes / No dialog; No leaves the day open, Yes opens the hold step
         compose.onNodeWithText("2 retailers still owe you. Do you want to submit your sales?").assertExists()
         compose.onNodeWithText("No").performClick(); compose.waitForIdle()
         compose.onNodeWithTag(SalesSubmitTags.HOLD).assertDoesNotExist()
-        compose.onNodeWithText("Submit sales").performClick(); compose.waitForIdle()
+        compose.onNodeWithText("Submit sales").performScrollTo().performClick(); compose.waitForIdle()
         compose.onNodeWithText("Yes").performClick(); compose.waitForIdle()
         assertEquals(0, submitted)
         compose.onNodeWithTag(SalesSubmitTags.HOLD).performSemanticsAction(SemanticsActions.OnLongClick)
@@ -80,7 +81,7 @@ class SalesSubmitScreenTest {
         val counts = listOf(CountRow("memo", 6, 5))
         val gate = SalesSubmitRules.gate(clean, counts, DuesAtSubmit(0, 0), false)
         compose.setContent { AronTheme(AppLanguage.EN) { SalesSubmitScreen(true, counts, gate, SubmitProgress.Idle, { it }, { synced++ }, {}) } }
-        compose.onNodeWithText("Sync again").performClick()
+        compose.onNodeWithText("Sync again").performScrollTo().performClick()
         assertEquals(1, synced)
     }
 
@@ -125,7 +126,7 @@ class SalesSubmitScreenTest {
         compose.onNodeWithText("<distribution_check>").assertExists()
         compose.onNodeWithText("<distribution_check_line>").assertDoesNotExist() // folded into its group row
         compose.onAllNodesWithText("12").assertCountEquals(2) // 3 + 9 in the device column and in the server column
-        compose.onNodeWithText("Submit sales").assertIsEnabled().performClick()
+        compose.onNodeWithText("Submit sales").assertIsEnabled().performScrollTo().performClick()
         compose.waitForIdle()
         compose.onNodeWithTag(SalesSubmitTags.HOLD).performSemanticsAction(SemanticsActions.OnLongClick)
         compose.waitForIdle()
@@ -161,11 +162,11 @@ class SalesSubmitScreenTest {
             AronTheme(AppLanguage.EN) {
                 val vm = if (useGrouped) grouped else ungrouped
                 val st by vm.state.collectAsState()
-                SalesSubmitScreen(true, st.counts, st.gate, st.progress, { it }, {}, vm::submit, rowGroups = if (useGrouped) groups else null)
+                SalesSubmitScreen(true, st.counts, st.gate, st.progress, { it }, {}, vm::submit, rowGroups = if (useGrouped) groups else null, legacyFiveRows = false)
             }
         }
         fun holdSubmit() {
-            compose.onNodeWithText("Submit sales").assertIsEnabled().performClick(); compose.waitForIdle()
+            compose.onNodeWithText("Submit sales").assertIsEnabled().performScrollTo().performClick(); compose.waitForIdle()
             compose.onNodeWithTag(SalesSubmitTags.HOLD).performSemanticsAction(SemanticsActions.OnLongClick); compose.waitForIdle()
         }
         compose.onNodeWithText("distribution_check_line").assertExists()

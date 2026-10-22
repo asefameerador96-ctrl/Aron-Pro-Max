@@ -1,5 +1,16 @@
 package com.aktcl.aron.feature.home
 
+import androidx.compose.foundation.lazy.items
+import androidx.compose.ui.res.painterResource
+import com.aktcl.aron.core.ui.AronListRow
+import com.aktcl.aron.core.ui.aron.AronListRow as ParityRow
+import com.aktcl.aron.core.ui.aron.AronCard as ParityCard
+import com.aktcl.aron.core.ui.aron.AronPrimaryButton as ParityPrimary
+import com.aktcl.aron.core.ui.aron.AronSecondaryButton as ParitySecondary
+import androidx.compose.ui.unit.dp
+import com.aktcl.aron.core.ui.aron.AronScaffold as ParityScaffold
+import com.aktcl.aron.core.ui.aron.AronTopBar as ParityTopBar
+import com.aktcl.aron.core.ui.R as CoreR
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -27,7 +38,6 @@ import com.aktcl.aron.core.ui.AronBanner
 import com.aktcl.aron.core.ui.AronCard
 import com.aktcl.aron.core.ui.AronEmptyState
 import com.aktcl.aron.core.ui.AronIcons
-import com.aktcl.aron.core.ui.AronListRow
 import com.aktcl.aron.core.ui.AronPrimaryButton
 import com.aktcl.aron.core.ui.AronScreen
 import com.aktcl.aron.core.ui.AronSecondaryButton
@@ -80,14 +90,14 @@ private fun IconWell(icon: ImageVector, modifier: Modifier = Modifier) {
 @Composable
 fun PermissionOnboardingContent(state: PermissionState, onAllow: (AppPermission) -> Unit, onOpenSettings: () -> Unit, modifier: Modifier = Modifier) {
     val c = LocalAronColors.current
-    AronScreen(modifier = modifier, topBar = { AronTopBar(stringResource(R.string.perm_title)) }) {
+    ParityScaffold(modifier = modifier, topBar = { ParityTopBar(stringResource(R.string.perm_title), icon = painterResource(CoreR.drawable.aron_art_attendance)) }) {
         Column(
-            Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = AronTokens.Space.Screen, vertical = AronTokens.Space.S),
-            verticalArrangement = Arrangement.spacedBy(AronTokens.Space.M),
+            Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = AronTokens.Space.S),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             AppPermission.entries.forEach { p ->
-                AronCard(Modifier.fillMaxWidth()) {
-                    Column(Modifier.fillMaxWidth().padding(AronTokens.Space.L), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.M)) {
+                ParityCard(Modifier.fillMaxWidth()) {
+                    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.M)) {
                         Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.M)) {
                             IconWell(permissionIcon(p))
                             Text(whyText(p), style = MaterialTheme.typography.bodyLarge, color = c.textPrimary, modifier = Modifier.weight(1f))
@@ -98,36 +108,38 @@ fun PermissionOnboardingContent(state: PermissionState, onAllow: (AppPermission)
                                 Text(stringResource(R.string.perm_granted), style = MaterialTheme.typography.labelLarge, color = c.textSecondary)
                             }
                             PermissionStatus.DENIED_PERMANENTLY -> AronBanner(stringResource(R.string.perm_denied_forever), kind = BannerKind.Warning)
-                            else -> AronPrimaryButton(stringResource(R.string.perm_allow), { onAllow(p) }, Modifier.testTag(OnboardingTags.allow(p)))
+                            else -> ParityPrimary(stringResource(R.string.perm_allow), { onAllow(p) }, Modifier.fillMaxWidth().testTag(OnboardingTags.allow(p)))
                         }
                     }
                 }
             }
             if (!state.canOpenVisit) AronBanner(stringResource(R.string.perm_location_needed), kind = BannerKind.Warning)
-            if (state.needsSettings.isNotEmpty()) AronSecondaryButton(stringResource(R.string.perm_open_settings), onOpenSettings, Modifier.testTag(OnboardingTags.SETTINGS), icon = AronIcons.Settings)
+            if (state.needsSettings.isNotEmpty()) ParitySecondary(stringResource(R.string.perm_open_settings), onOpenSettings, Modifier.fillMaxWidth().testTag(OnboardingTags.SETTINGS))
         }
     }
 }
 
-/** Route picker for an SR with several routes (F-SR-065): radio rows in one flat group; the Home header names the route in use. */
+/** Route picker for an SR with several routes (F-SR-065): one kit row per route; the Home header names the route in use. */
 @Composable
 fun RoutePickerContent(routes: List<PlannedRoute>, inUse: PlannedRoute?, onPick: (PlannedRoute) -> Unit, modifier: Modifier = Modifier) {
-    val c = LocalAronColors.current
     val candidates = RoutePicker.candidates(routes)
-    AronScreen(modifier = modifier, topBar = { AronTopBar(stringResource(R.string.route_pick_title), subtitle = inUse?.let { stringResource(R.string.route_in_use, it.name) }) }) {
-        LazyColumn(Modifier.fillMaxSize(), contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = AronTokens.Space.Screen, vertical = AronTokens.Space.S)) {
-            itemsIndexed(candidates, key = { _, r -> r.routeId }) { i, r ->
+    ParityScaffold(
+        modifier = modifier,
+        topBar = { ParityTopBar(stringResource(R.string.route_pick_title), icon = painterResource(CoreR.drawable.aron_art_sales_journey)) },
+    ) {
+        LazyColumn(
+            Modifier.fillMaxSize(),
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp, vertical = AronTokens.Space.S),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            if (inUse != null) item { Text(stringResource(R.string.route_in_use, inUse.name), style = MaterialTheme.typography.bodyMedium, color = LocalAronColors.current.textSecondary) }
+            items(candidates, key = { it.routeId }) { r ->
                 val selected = inUse?.routeId == r.routeId
-                AronListRow(
-                    r.name, Modifier.testTag(OnboardingTags.route(r.routeId)), onClick = { onPick(r) },
-                    leading = { IconWell(AronIcons.Journey) },
-                    trailingContent = {
-                        Icon(
-                            if (selected) AronIcons.CheckCircle else AronIcons.ChevronRight, contentDescription = null,
-                            tint = if (selected) c.accent else c.textSecondary, modifier = Modifier.size(AronTokens.Size.Icon),
-                        )
-                    },
-                    position = positionOf(i, candidates.size), divider = i < candidates.size - 1, flat = true,
+                ParityRow(
+                    r.name, Modifier.testTag(OnboardingTags.route(r.routeId)),
+                    trailing = if (selected) "\u2713" else null,
+                    leading = painterResource(CoreR.drawable.aron_art_sales_journey),
+                    onClick = { onPick(r) },
                 )
             }
         }
@@ -168,20 +180,29 @@ object TutorialJson {
  */
 @Composable
 fun TutorialListContent(items: List<TutorialItem>, online: Boolean, onPlay: (TutorialItem) -> Unit, modifier: Modifier = Modifier, onBack: (() -> Unit)? = null) {
-    val c = LocalAronColors.current
-    AronScreen(modifier = modifier, topBar = { AronTopBar(stringResource(R.string.tut_title), onBack = onBack) }) {
+    ParityScaffold(
+        modifier = modifier,
+        topBar = {
+            ParityTopBar(
+                stringResource(R.string.tut_title), icon = painterResource(CoreR.drawable.aron_art_tutorial),
+                onBack = onBack, backLabel = stringResource(CoreR.string.core_ui_back),
+            )
+        },
+    ) {
         Column(Modifier.fillMaxSize()) {
-            if (!online) AronBanner(stringResource(R.string.tut_online_only), Modifier.padding(horizontal = AronTokens.Space.Screen, vertical = AronTokens.Space.S), BannerKind.Info)
+            if (!online) AronBanner(stringResource(R.string.tut_online_only), Modifier.padding(horizontal = 12.dp, vertical = AronTokens.Space.S), BannerKind.Info)
             if (items.isEmpty()) AronEmptyState(stringResource(R.string.tut_empty), Modifier.testTag(OnboardingTags.TUTORIAL_EMPTY), icon = AronIcons.Tutorial)
-            else LazyColumn(contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = AronTokens.Space.Screen, vertical = AronTokens.Space.S)) {
-                itemsIndexed(items, key = { _, t -> t.id }) { i, t ->
-                    AronListRow(
+            else LazyColumn(
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp, vertical = AronTokens.Space.S),
+                verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp),
+            ) {
+                items(items, key = { it.id }) { t ->
+                    ParityRow(
                         t.title, Modifier.testTag(OnboardingTags.tutorial(t.id)),
                         subtitle = tutorialSubtitle(t, online),
-                        trailing = stringResource(if (t.manual) R.string.tut_open else R.string.tut_play), onClick = if (online) ({ onPlay(t) }) else null,
-                        leading = { IconWell(AronIcons.Tutorial) },
-                        trailingContent = { Icon(AronIcons.ChevronRight, contentDescription = null, tint = if (online) c.textSecondary else c.textDisabled, modifier = Modifier.size(AronTokens.Size.Icon)) },
-                        position = positionOf(i, items.size), divider = i < items.size - 1, flat = true,
+                        trailing = stringResource(if (t.manual) R.string.tut_open else R.string.tut_play),
+                        leading = painterResource(CoreR.drawable.aron_art_tutorial),
+                        onClick = if (online) ({ onPlay(t) }) else null,
                     )
                 }
             }

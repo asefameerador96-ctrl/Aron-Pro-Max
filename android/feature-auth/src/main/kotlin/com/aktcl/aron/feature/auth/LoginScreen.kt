@@ -23,9 +23,6 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.aktcl.aron.core.common.AppLanguage
-import com.aktcl.aron.core.ui.AronBanner
-import com.aktcl.aron.core.ui.AronCard
-import com.aktcl.aron.core.ui.AronTextButton
 import com.aktcl.aron.core.ui.AronTokens
 import com.aktcl.aron.core.ui.BannerKind
 import com.aktcl.aron.core.ui.localizedDigits
@@ -121,28 +118,27 @@ fun LoginContent(
             Spacer(Modifier.height(AronTokens.Space.L))
             BrandBlock(appTitle)
             Spacer(Modifier.height(AronTokens.Space.L))
-            AronCard(Modifier.fillMaxWidth()) {
+            AuthCard(Modifier.fillMaxWidth()) {
                 Column(Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.L)) {
                     AuthField(
                         value = state.username, onValueChange = onUsernameChange, label = stringResource(R.string.auth_username),
                         modifier = Modifier.testTag(LoginTags.USERNAME), enabled = !state.busy, error = wrong,
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Ascii, imeAction = ImeAction.Next, autoCorrectEnabled = false),
+                        keyboardType = KeyboardType.Ascii, imeAction = ImeAction.Next,
                     )
                     AuthField(
                         value = state.password, onValueChange = onPasswordChange, label = stringResource(R.string.auth_password),
                         modifier = Modifier.testTag(LoginTags.PASSWORD), enabled = !state.busy, error = wrong,
-                        visualTransformation = if (state.passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done, autoCorrectEnabled = false),
-                        keyboardActions = KeyboardActions(onDone = { if (filled && !state.busy) onSubmit() }),
+                        password = !state.passwordVisible, imeAction = ImeAction.Done,
+                        onImeAction = { if (filled && !state.busy) onSubmit() },
                         trailing = {
-                            AronTextButton(stringResource(if (state.passwordVisible) R.string.auth_password_hide else R.string.auth_password_show), onTogglePasswordVisible)
+                            AuthLink(stringResource(if (state.passwordVisible) R.string.auth_password_hide else R.string.auth_password_show), onTogglePasswordVisible)
                         },
                     )
                     state.message?.let { message ->
                         // A solid banner (docs/32 s2a): readable in sun, never colour alone; the kind says how serious it is.
-                        AronBanner(messageText(message), Modifier.testTag(LoginTags.MESSAGE), kind = bannerKind(message))
+                        AuthBanner(messageText(message), Modifier.testTag(LoginTags.MESSAGE), kind = bannerKind(message))
                         if (message == LoginMessage.DeviceNotEnrolled && onEnrol != null) {
-                            AronTextButton(stringResource(R.string.enrol_title), onEnrol, Modifier.fillMaxWidth().testTag(LoginTags.ENROL))
+                            AuthLink(stringResource(R.string.enrol_title), onEnrol, Modifier.fillMaxWidth().testTag(LoginTags.ENROL))
                         }
                     }
                 }

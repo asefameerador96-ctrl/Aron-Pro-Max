@@ -86,6 +86,12 @@ class BundleAcceptanceTest {
                 FROM app.cfg_version
                 """.trimIndent(),
             )
+            // PARITY-SPEC s2.6: MaxR-10S has a pack picture; the bundle carries its asset id, never a signed URL.
+            h.execute(
+                "INSERT INTO app.admin_asset (asset_id, purpose, mime, bytes, sha256, blob_path) VALUES " +
+                    "('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'sku_image', 'image/jpeg', 1000, decode(repeat('ab', 32), 'hex'), 'assets/sku_image/a.jpg')",
+            )
+            h.execute("UPDATE app.sku SET image_asset_id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' WHERE code = 'MaxR-10S'")
             // A credit memo with an open due on the first Daily outlet (the due ledger is the source of open dues).
             h.execute(
                 """
@@ -189,6 +195,9 @@ class BundleAcceptanceTest {
         // Products and the selling price lists (outlet, cc, distributor).
         val skus = b["products"]!!.jsonObject["skus"]!!.jsonArray
         assertEquals(42, skus.size)
+        val pictured = skus.map { it.jsonObject }.filter { it["image_asset_id"]?.let { v -> v !is kotlinx.serialization.json.JsonNull } == true }
+        assertEquals(listOf("MaxR-10S" to "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"), pictured.map { it["code"]!!.jsonPrimitive.content to it["image_asset_id"]!!.jsonPrimitive.content })
+        assertTrue(skus.none { it.jsonObject["image_url"]?.let { v -> v !is kotlinx.serialization.json.JsonNull } == true }, "never a signed URL in the bundle")
         assertTrue(b["products"]!!.jsonObject["nodes"]!!.jsonArray.isNotEmpty())
         val prices = b["prices"]!!.jsonArray.map { it.jsonObject }
         assertEquals(setOf("outlet", "cc", "distributor"), prices.map { it["price_type"]!!.jsonPrimitive.content }.toSet())

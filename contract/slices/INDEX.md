@@ -334,7 +334,7 @@ Source: contract/openapi.yaml, version 1.3.3.
 - `schemas/ProductNodeWrite.yaml` (449 B)
 - `schemas/ProductNodePatch.yaml` (403 B)
 - `schemas/ProductNodePage.yaml` (304 B)
-- `schemas/Sku.yaml` (1888 B)
+- `schemas/Sku.yaml` (2458 B)
 - `schemas/SkuWrite.yaml` (1435 B)
 - `schemas/SkuPatch.yaml` (1100 B)
 - `schemas/SkuPage.yaml` (288 B)
@@ -511,7 +511,7 @@ Source: contract/openapi.yaml, version 1.3.3.
 - `schemas/ChannelVolume.yaml` (751 B)
 - `schemas/SuggestedQty.yaml` (234 B)
 
-## Operations (215)
+## Operations (216)
 
 - `operations/getHealth.yaml`  GET /v1/health (770 B)
 - `operations/headHealth.yaml`  HEAD /v1/health (483 B)
@@ -541,6 +541,7 @@ Source: contract/openapi.yaml, version 1.3.3.
 - `operations/getServerGeneration.yaml`  GET /v1/sync/generation (720 B)
 - `operations/createMediaUploadUrls.yaml`  POST /v1/media/sas (981 B)
 - `operations/getMediaReadUrl.yaml`  GET /v1/media/{media_uuid}/read-url (689 B)
+- `operations/getSkuImage.yaml`  GET /v1/sku-images/{asset_id} (1934 B)
 - `operations/getConfigDelta.yaml`  GET /v1/config/delta (950 B)
 - `operations/getAppHome.yaml`  GET /v1/app/home (621 B)
 - `operations/checkForUpdate.yaml`  GET /v1/app/update-check (781 B)

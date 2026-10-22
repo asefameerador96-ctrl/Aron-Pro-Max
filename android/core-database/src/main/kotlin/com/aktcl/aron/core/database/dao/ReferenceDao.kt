@@ -47,6 +47,11 @@ interface ReferenceDao {
 
     /** Every SKU of the bundle, inactive ones too (a memo line of an SKU since withdrawn still has a category). */
     @Query("SELECT sku_id AS skuId, category_code AS categoryCode FROM sku") suspend fun skuCategories(): List<SkuCategory>
+    /** The SKUs with a pack picture (PARITY-SPEC s2.6): id and asset, for the thumbnail preload after a sync. */
+    @Query("SELECT sku_id AS skuId, image_asset_id AS assetId FROM sku WHERE image_asset_id IS NOT NULL AND status = 'active'")
+    suspend fun skuImages(): List<SkuImage>
+    /** One SKU by id, inactive too (the pack picture of a row, PARITY-SPEC s2.6). */
+    @Query("SELECT * FROM sku WHERE sku_id = :skuId") suspend fun sku(skuId: Long): SkuEntity?
     @Query("SELECT * FROM sku WHERE status = 'active' ORDER BY sort, code")
     suspend fun activeSkus(): List<SkuEntity>
 
@@ -129,3 +134,4 @@ interface ReferenceDao {
 }
 
 data class SkuCategory(val skuId: Long, val categoryCode: String)
+data class SkuImage(val skuId: Long, val assetId: String)

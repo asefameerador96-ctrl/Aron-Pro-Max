@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- F-SYS-033: ARON SR, AMO and TSO are told apart side by side by this plate colour alone (SR green #0B5D3B, AMO blue
+         #1F4E8C, TSO red #8C1D18); the logo foreground is one shared file in core-ui. SR is green. -->
+    <color name="ic_launcher_background">#0B5D3B</color>
+</resources>

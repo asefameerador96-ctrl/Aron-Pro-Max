@@ -69,7 +69,7 @@ class MemoScreensTest {
 
     @Test fun editReasonShowsAboveTheBarWhenOnlyEditIsDisabled() {
         compose.setContent { AronTheme(AppLanguage.EN) { MemoDetailView(MemoMenu.detail(memo), false, 0, { "FB" }, {}, {}, {}, editDisabledReason = "Outside the outlet's area") } }
-        compose.onNodeWithText("Outside the outlet's area").assertIsDisplayed()
+        compose.onNodeWithText("Outside the outlet's area").performScrollTo().assertIsDisplayed() // the reason sits above the in-flow buttons
     }
 
     @Test fun denseTableStacksTheAmountUnderTheNameAtLargeFontScale() {
@@ -96,7 +96,7 @@ class MemoScreensTest {
         val s = DaySummaryCalculator.compute(listOf(m), mapOf(103L to SummarySku(103, "lighter")), mapOf(103L to 400L))
         compose.setContent { AronTheme(AppLanguage.EN) { SummaryScreen(s, { "Aster" }, {}) } }
         compose.onNodeWithText("4,391.00", substring = true).assertExists() // the grand total in the bar summary slot
-        compose.onNodeWithText("− 296.50 ৳").assertExists()
+        compose.onNodeWithText("-296.50").assertExists() // sr/summary.png: an ASCII hyphen, no taka sign, no space
     }
 }
 

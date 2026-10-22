@@ -104,12 +104,13 @@ object SessionModule {
         telemetry: com.aktcl.aron.core.sync.DeviceTelemetry,
         databases: UserDatabases, components: SessionComponents, scheduler: WorkManagerSyncScheduler, runtime: DeviceRuntime, bundles: BundleDownloaders,
         media: MediaShell,
+        packshots: com.aktcl.aron.core.sync.SkuPackshots,
         resumeConfigCheck: ResumeConfigCheck, push: com.aktcl.aron.core.sync.shell.PushShell,
         activityLog: com.aktcl.aron.core.sync.ActivityLog,
-    ): AronWorkerFactory = AronWorkerFactory({ SessionSyncRunner(databases, components, runtime::beforeBatch, bundles, afterRun = { _, report -> media.afterSync(report) }, config = resumeConfigCheck, activityLog = activityLog, telemetry = telemetry) }, { scheduler },
+    ): AronWorkerFactory = run { val packshotPreload = com.aktcl.aron.core.sync.PackshotPreload(packshots, databases, components.syncApi); AronWorkerFactory({ SessionSyncRunner(databases, components, runtime::beforeBatch, bundles, afterRun = { userId, report -> media.afterSync(report); packshotPreload.afterSync(userId) }, config = resumeConfigCheck, activityLog = activityLog, telemetry = telemetry) }, { scheduler },
         // N-038: the pull a push asks for; it never gets the upload runner.
         { com.aktcl.aron.core.sync.push.SessionPushPull(push::settledActiveUser, bundles, resumeConfigCheck) },
-    )
+    ) }
 
     /** N-038 push: the FCM token for the signed-in user, the Bangla/English notice and the jittered pull (never an upload). */
     @Provides
@@ -174,6 +175,17 @@ object SessionModule {
             activeUser = { (components.session.settled() as? com.aktcl.aron.core.session.SessionState.Active)?.user?.userId },
             currentUser = { (components.session.state.value as? com.aktcl.aron.core.session.SessionState.Active)?.user?.userId },
         )
+
+    /** PARITY-SPEC s2.6: the pack pictures of the SKU rows; the dev-only bundled art only when BuildConfig.DEV_PACKSHOTS. */
+    @Provides
+    @Singleton
+    fun skuPackshots(@ApplicationContext context: Context, imageCache: com.aktcl.aron.core.sync.ImageCache, components: SessionComponents, databases: UserDatabases): com.aktcl.aron.core.sync.SkuPackshots =
+        com.aktcl.aron.core.sync.SkuPackshots(imageCache, if (BuildConfig.DEV_PACKSHOTS) context.assets else null, lookup = { id ->
+            // the signed-in user's own catalogue (local Room only, never the network)
+            (components.session.state.value as? com.aktcl.aron.core.session.SessionState.Active)?.user?.userId
+                ?.let { databases.of(it).referenceDao().sku(id) }
+                ?.let { com.aktcl.aron.core.sync.SkuPackshots.SkuInfo(it.code, it.imageAssetId?.let { a -> com.aktcl.aron.core.sync.SkuPackshots.SkuImageRef(a) }) }
+        })
 
     /** F-SYS-029: pack thumbnails and AV/KV assets, bounded LRU on disk (AV only on unmetered networks). */
     @Provides

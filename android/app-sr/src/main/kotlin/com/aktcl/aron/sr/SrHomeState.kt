@@ -66,13 +66,28 @@ object SrHomeReads {
         stock = strip.categories.map { HomeStockLine(categoryLabel(it.categoryCode), it.issueBase, it.currentStockBase, unitLabel(it.unit)) },
     )
 
-    /** Zero categories and zero deductions are hidden (screens-sr s2); deductions carry a true minus. */
-    fun money(m: HomeMoney, categoryLabel: (String) -> String, locale: UiLocale) = HomeMoneyLines(
-        categories = m.categories.filter { it.netMtk != 0L }.map { HomeMoneyLine(categoryLabel(it.categoryCode), Formats.money(it.netMtk, locale)) },
+    /** A taka amount without the ৳ sign and without a minus (the reference's panel rows: "4,828.50"), digits per locale. */
+    fun bare(mtk: Long, locale: UiLocale): String = Formats.digits(com.aktcl.aron.rules.Money.formatTaka(mtk, 2), locale)
+
+    /**
+     * The two reference panels (sr/home-2-kpis.webp). Every figure comes from ITS OWN field: the offer discount is the total
+     * discount less the DRP part (zero while docs/27 defers the programmes), the QC deduction is `totalQcMtk`, and neither can
+     * land under the other's label. Deductions in the older one-line fields keep a true minus.
+     */
+    fun money(m: HomeMoney, categoryLabel: (String) -> String, locale: UiLocale, sticksSold: Long = 0L) = HomeMoneyLines(
+        categories = m.categories.filter { it.netMtk != 0L }.map { HomeMoneyLine(categoryLabel(it.categoryCode), Formats.money(it.netMtk, locale), bare(it.netMtk, locale)) },
         grossText = Formats.money(m.grossMtk, locale),
         discountText = m.totalDiscountMtk.takeIf { it != 0L }?.let { MINUS + Formats.money(it, locale) },
         qcText = m.totalQcMtk.takeIf { it != 0L }?.let { MINUS + Formats.money(it, locale) },
         grandTotalText = Formats.money(m.grandTotalMtk, locale),
+        sticksSold = sticksSold,
+        grossBare = bare(m.grossMtk, locale),
+        offerDiscountBare = bare(m.totalDiscountMtk - m.drpDiscountMtk, locale),
+        qcBare = bare(m.totalQcMtk, locale),
+        netBare = bare(m.grandTotalMtk, locale),
+        totalDiscountBare = bare(m.totalDiscountMtk, locale),
+        drpDiscountBare = bare(m.drpDiscountMtk, locale),
+        totalQcBare = bare(m.totalQcMtk, locale),
     )
 
     /**
@@ -88,10 +103,11 @@ object SrHomeReads {
     suspend fun snapshot(day: SrDay, attendance: AttendanceState, locale: UiLocale, categoryLabel: (String) -> String, unitLabel: (String) -> String): SrHomeSnapshot =
         withContext(Dispatchers.IO) {
             val (strip, money) = day.sale.kpi()
+            val sticks = day.sale.sticksSold()
             val date = day.businessDate()
             val dao = day.database.captureDao()
             val state = dayState(strip, attendance, stockIssued = dao.stockOn(date).isNotEmpty(), submitted = dao.daySubmitsOn(date).isNotEmpty())
-            SrHomeSnapshot(hero(strip, money, attendance, state, locale), kpis(strip, categoryLabel, unitLabel), money(money, categoryLabel, locale), state)
+            SrHomeSnapshot(hero(strip, money, attendance, state, locale), kpis(strip, categoryLabel, unitLabel), money(money, categoryLabel, locale, sticks), state)
         }
 
     /** The outbox counts, the newest ack and one connectivity read (a binder call), all off the main thread. */

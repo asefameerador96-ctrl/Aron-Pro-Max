@@ -17,21 +17,24 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.aktcl.aron.core.ui.AronBanner
-import com.aktcl.aron.core.ui.AronBarAction
-import com.aktcl.aron.core.ui.AronBottomBar
-import com.aktcl.aron.core.ui.AronScreen
-import com.aktcl.aron.core.ui.AronSectionLabel
-import com.aktcl.aron.core.ui.AronSegmented
-import com.aktcl.aron.core.ui.AronStepper
-import com.aktcl.aron.core.ui.AronTextButton
 import com.aktcl.aron.core.ui.AronTokens
-import com.aktcl.aron.core.ui.AronTopBar
-import com.aktcl.aron.core.ui.BannerKind
 import com.aktcl.aron.core.ui.localizedDigits
 import com.aktcl.aron.feature.tso.R
 import java.time.LocalDate
 import kotlinx.coroutines.launch
+import com.aktcl.aron.core.ui.aron.AronCard
+import com.aktcl.aron.core.ui.aron.AronListRow
+import com.aktcl.aron.feature.tso.TsoButton
+import com.aktcl.aron.core.ui.aron.AronTabs
+import com.aktcl.aron.feature.tso.TsoAction
+import com.aktcl.aron.feature.tso.TsoBanner
+import com.aktcl.aron.feature.tso.TsoBannerKind
+import com.aktcl.aron.feature.tso.TsoBottomBar
+import com.aktcl.aron.feature.tso.TsoEmpty
+import com.aktcl.aron.feature.tso.TsoError
+import com.aktcl.aron.feature.tso.TsoFrame
+import com.aktcl.aron.feature.tso.TsoSectionTitle
+import com.aktcl.aron.feature.tso.TsoStepper
 
 object LeaveApplyTags {
     const val DATE = "tso_leave_date"
@@ -69,13 +72,12 @@ fun LeaveApplyScreen(state: LeaveApplyState, onBack: () -> Unit, modifier: Modif
     val result by state.result.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
     val queued = result is LeaveApplyResult.Queued
-    AronScreen(
-        modifier,
-        topBar = { AronTopBar(stringResource(R.string.tso_leave_apply_title), onBack = onBack) },
+    TsoFrame(
+        stringResource(R.string.tso_leave_apply_title), onBack, modifier, tile = com.aktcl.aron.feature.home.RoleHomes.TsoTile.LEAVE,
         bottomBar = {
-            AronBottomBar(
-                primary = if (queued) AronBarAction(stringResource(R.string.tso_leave_done), onBack)
-                else AronBarAction(stringResource(R.string.tso_leave_send), { scope.launch { state.submit() } }),
+            TsoBottomBar(
+                primary = if (queued) TsoAction(stringResource(R.string.tso_leave_done), onBack)
+                else TsoAction(stringResource(R.string.tso_leave_send), { scope.launch { state.submit() } }),
                 modifier = Modifier.testTag(LeaveApplyTags.SEND),
             )
         },
@@ -85,30 +87,30 @@ fun LeaveApplyScreen(state: LeaveApplyState, onBack: () -> Unit, modifier: Modif
             verticalArrangement = Arrangement.spacedBy(AronTokens.Space.M),
         ) {
             if (queued) {
-                AronBanner(stringResource(R.string.tso_leave_queued), Modifier.testTag(LeaveApplyTags.QUEUED), kind = BannerKind.Success)
-                AronTextButton(stringResource(R.string.tso_leave_another), { state.startNew() })
+                TsoBanner(stringResource(R.string.tso_leave_queued), Modifier.testTag(LeaveApplyTags.QUEUED), kind = TsoBannerKind.Success)
+                TsoButton(stringResource(R.string.tso_leave_another), { state.startNew() })
             }
-            if (result is LeaveApplyResult.Failed) AronBanner(stringResource(R.string.tso_leave_failed), Modifier.testTag(LeaveApplyTags.FAILED), kind = BannerKind.Error)
-            AronSectionLabel(stringResource(R.string.tso_leave_type))
-            AronSegmented(LEAVE_TYPES.map { typeLabel(it) }, LEAVE_TYPES.indexOf(form.type).coerceAtLeast(0), { state.edit { f -> f.copy(type = LEAVE_TYPES[it]) } })
-            AronSectionLabel(stringResource(R.string.tso_leave_from))
+            if (result is LeaveApplyResult.Failed) TsoBanner(stringResource(R.string.tso_leave_failed), Modifier.testTag(LeaveApplyTags.FAILED), kind = TsoBannerKind.Error)
+            TsoSectionTitle(stringResource(R.string.tso_leave_type))
+            AronTabs(LEAVE_TYPES.map { typeLabel(it) }, LEAVE_TYPES.indexOf(form.type).coerceAtLeast(0), { state.edit { f -> f.copy(type = LEAVE_TYPES[it]) } })
+            TsoSectionTitle(stringResource(R.string.tso_leave_from))
             val today = state.todayIso()
             com.aktcl.aron.feature.tso.TsoDateField(
                 form.fromDate, { v -> state.edit { f -> f.copy(fromDate = v) } }, Modifier.testTag(LeaveApplyTags.DATE), enabled = !queued,
                 min = java.time.LocalDate.parse(today).minusDays(MAX_BACKDATE_DAYS).toString(), max = java.time.LocalDate.parse(today).plusDays(MAX_AHEAD_DAYS).toString(),
             )
-            AronSectionLabel(stringResource(R.string.tso_leave_days_label))
-            AronStepper(form.days, { v -> state.edit { f -> f.copy(days = v) } }, stringResource(R.string.tso_leave_days_minus), stringResource(R.string.tso_leave_days_plus), min = 1, max = MAX_DAYS)
+            TsoSectionTitle(stringResource(R.string.tso_leave_days_label))
+            TsoStepper(form.days, { v -> state.edit { f -> f.copy(days = v) } }, stringResource(R.string.tso_leave_days_minus), stringResource(R.string.tso_leave_days_plus), min = 1, max = MAX_DAYS)
             runCatching { leaveToDate(form.fromDate, form.days) }.getOrNull()?.let {
                 Text(stringResource(R.string.tso_leave_until, com.aktcl.aron.feature.tso.TsoDates.long(it, com.aktcl.aron.core.ui.LocalAppLanguage.current)), Modifier.testTag(LeaveApplyTags.TO_DATE), style = MaterialTheme.typography.bodyMedium)
             }
-            AronSectionLabel(stringResource(R.string.tso_leave_reason))
+            TsoSectionTitle(stringResource(R.string.tso_leave_reason))
             com.aktcl.aron.feature.tso.TsoTextField(
                 form.reason, { v -> state.edit { f -> f.copy(reason = v.take(MAX_REASON * 2)) } }, Modifier.fillMaxWidth().testTag(LeaveApplyTags.REASON),
                 minLines = 3, enabled = !queued, name = stringResource(R.string.tso_leave_reason),
             )
             (result as? LeaveApplyResult.Invalid)?.errors?.forEach { e ->
-                AronBanner(errorText(e), Modifier.testTag(LeaveApplyTags.ERRORS), kind = BannerKind.Error)
+                TsoBanner(errorText(e), Modifier.testTag(LeaveApplyTags.ERRORS), kind = TsoBannerKind.Error)
             }
         }
     }

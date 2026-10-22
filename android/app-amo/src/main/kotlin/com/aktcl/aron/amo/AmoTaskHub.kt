@@ -1,5 +1,6 @@
 package com.aktcl.aron.amo
 
+import com.aktcl.aron.feature.amo.AmoFrame
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -68,11 +69,11 @@ fun AmoTaskHub(day: AmoDay, onBack: () -> Unit) {
     }
     BackHandler(onBack = back)
     val sr = team.firstOrNull { it.userId == srId }
-    AronScreen(topBar = { AronTopBar(stringResource(AmoR.string.amo_task_title), onBack = back) }) {
+    AmoFrame(stringResource(AmoR.string.amo_task_title), back, icon = com.aktcl.aron.core.ui.R.drawable.aron_art_task_delegation) {
         when (leaf) {
             TaskLeaf.LIST -> AmoTaskList(day, team, days.orEmpty(), onAssign = { srId = null; routeId = null; outletId = null; leaf = TaskLeaf.PICK_ROUTE })
             TaskLeaf.PICK_ROUTE -> {
-                val all = days ?: run { Box(Modifier.fillMaxSize(), Alignment.Center) { CircularProgressIndicator() }; return@AronScreen }
+                val all = days ?: run { Box(Modifier.fillMaxSize(), Alignment.Center) { CircularProgressIndicator() }; return@AmoFrame }
                 AmoRoutePick(ControlCall.routes(all), { routeId = it.routeId; leaf = TaskLeaf.PICK_OUTLET })
             }
             TaskLeaf.PICK_OUTLET -> {

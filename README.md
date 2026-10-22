@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/brand/aron-logo-original.png" alt="Aron logo" width="120">
+</p>
+
 # Aron Rebuild — Build Package
 
 > **Status (2026-10-04):** the build plan now exists. Start at [`docs/00-start-here.md`](docs/00-start-here.md); the master plan is `docs/14-master-build-plan.md`, which supersedes `docs/12-phases.md`.

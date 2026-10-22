@@ -24,6 +24,7 @@ object AronFonts {
     val Bengali: FontFamily = FontFamily(
         Font(R.font.noto_sans_bengali_regular, FontWeight.Normal),
         Font(R.font.noto_sans_bengali_medium, FontWeight.Medium),
+        Font(R.font.noto_sans_bengali_semibold, FontWeight.SemiBold),
         Font(R.font.noto_sans_bengali_bold, FontWeight.Bold),
     )
     val Latin: FontFamily = FontFamily(
@@ -107,6 +108,7 @@ fun AronTheme(
         LocalAppLanguage provides language,
         LocalAronColors provides roles,
         LocalSunlight provides sunlight,
+        LocalAronLook provides (if (sunlight) AronLook.Sunlight else AronLook.Default),
         LocalGlassTier provides resolvedTier,
         LocalReducedMotion provides (reducedMotion || resolvedTier == GlassTier.C),
     ) {

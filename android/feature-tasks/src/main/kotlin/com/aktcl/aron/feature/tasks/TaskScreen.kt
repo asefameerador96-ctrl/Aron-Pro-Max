@@ -1,5 +1,8 @@
 package com.aktcl.aron.feature.tasks
 
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.ui.text.style.LineBreak
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -42,15 +45,18 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.aktcl.aron.core.ui.AronCard
-import com.aktcl.aron.core.ui.AronEmptyState
+import androidx.compose.foundation.background
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.style.TextAlign
 import com.aktcl.aron.core.ui.AronIcons
-import com.aktcl.aron.core.ui.AronSegmented
-import com.aktcl.aron.core.ui.AronTextButton
+import com.aktcl.aron.core.ui.AronLook
 import com.aktcl.aron.core.ui.AronTokens
-import com.aktcl.aron.core.ui.GlassKind
-import com.aktcl.aron.core.ui.GlassSurface
 import com.aktcl.aron.core.ui.LocalAronColors
+import com.aktcl.aron.core.ui.LocalAronLook
+import com.aktcl.aron.core.ui.aron.AronPrimaryButton
+import com.aktcl.aron.core.ui.aron.AronTabs
 import com.aktcl.aron.core.ui.localizedDigits
 import com.aktcl.aron.core.ui.localizedNumber
 
@@ -58,14 +64,15 @@ object TaskTags {
     const val EMPTY = "tsk_empty"
     const val LIST = "tsk_list"
     const val TABS = "tsk_tabs"
+    const val MY_REQUESTS = "tsk_my_requests"
     fun item(uuid: String) = "tsk_item_$uuid"
     fun resolve(uuid: String) = "tsk_resolve_$uuid"
 }
 
 private const val ONGOING = "ongoing"
 
-/** screens-sr s12: at most this many task cards carry a shadow; beyond it the cards turn flat (no shadow layer per row on the 2 GB phones). */
-private const val SHADOWED_CARDS = 8
+/** A synced-at older than this is shown under the empty state, so an empty list is not mistaken for a stale one. */
+private const val STALE_AFTER_MS = 6 * 60 * 60 * 1000L
 
 /** screens-sr s12: a swipe to the end past this share of the card width resolves the task (F-SR-047). */
 private const val SWIPE_RESOLVE_FRACTION = 0.4f
@@ -76,45 +83,65 @@ private const val SWIPE_RESOLVE_FRACTION = 0.4f
  * end: discoverable and TalkBack-friendly, no dialog and no note), and the empty state with the synced-at caption so an
  * empty list is not mistaken for a stale one. An ongoing card also resolves on a swipe to the end past 40 percent of its
  * width (F-SR-047 parity, a Confirm haptic; the card springs back, the task moves to "Completed"). Resolved tasks stay in
- * place under "Completed". Only the first eight cards cast a shadow; the rest are flat (same fill, edge and radius), so
- * a long list never draws a shadow layer per row.
+ * place under "Completed".
  */
 @Composable
-fun TaskContent(state: TaskListState, onResolve: (String) -> Unit, modifier: Modifier = Modifier) {
+fun TaskContent(state: TaskListState, onResolve: (String) -> Unit, modifier: Modifier = Modifier, onMyRequests: (() -> Unit)? = null, nowMs: Long = System.currentTimeMillis()) {
     val open = state.items.filter { it.status == ONGOING }
     val done = state.items.filter { it.status != ONGOING }
     val synced = state.syncedAt?.let { stringResource(R.string.tsk_synced_at, localizedDigits(dhakaStamp(it))) } ?: stringResource(R.string.tsk_never_synced)
     // the completed tab opens first only when nothing is ongoing (the usual case is the open work)
     var tab by rememberSaveable { mutableIntStateOf(if (open.isEmpty() && done.isNotEmpty()) 1 else 0) }
-    Column(modifier.fillMaxSize()) {
-        if (state.showEmptyState) {
-            AronEmptyState(stringResource(R.string.tsk_empty), Modifier.testTag(TaskTags.EMPTY), hint = synced, icon = AronIcons.Tasks)
-        } else {
-            AronSegmented(
-                listOf(
-                    stringResource(R.string.tsk_tab_open, localizedNumber(open.size.toLong())),
-                    stringResource(R.string.tsk_tab_done, localizedNumber(done.size.toLong())),
-                ),
-                tab, { tab = it },
-                Modifier.padding(horizontal = AronTokens.Space.Screen, vertical = AronTokens.Space.M).testTag(TaskTags.TABS),
-                role = Role.Tab,
-            )
-            val shown = if (tab == 0) open else done
-            if (shown.isEmpty()) {
-                AronEmptyState(stringResource(if (tab == 0) R.string.tsk_none_open else R.string.tsk_none_done), hint = synced, icon = AronIcons.Tasks)
+    val look = LocalAronLook.current
+    // the synced-at line shows only when the list may be stale: never synced, or the last sync is older than [STALE_AFTER_MS]
+    val stale = state.syncedAt?.let { runCatching { nowMs - java.time.Instant.parse(it).toEpochMilli() > STALE_AFTER_MS }.getOrDefault(true) } ?: true
+    Column(modifier.fillMaxSize().background(look.page)) {
+        Column(Modifier.weight(1f).fillMaxWidth()) {
+            if (state.showEmptyState) {
+                EmptyTasks(stringResource(R.string.tsk_empty), synced.takeIf { stale }, Modifier.testTag(TaskTags.EMPTY))
             } else {
-                LazyColumn(
-                    Modifier.weight(1f).fillMaxWidth().testTag(TaskTags.LIST),
-                    contentPadding = PaddingValues(start = AronTokens.Space.Screen, end = AronTokens.Space.Screen, bottom = AronTokens.Space.L),
-                    verticalArrangement = Arrangement.spacedBy(AronTokens.Space.M),
-                ) {
-                    itemsIndexed(shown, key = { _, t -> t.taskUuid }) { i, t ->
-                        if (t.status == ONGOING) SwipeToResolve(t.taskUuid, onResolve, Modifier.testTag(TaskTags.item(t.taskUuid))) { TaskCard(t, onResolve, flat = i >= SHADOWED_CARDS) }
-                        else TaskCard(t, onResolve, Modifier.testTag(TaskTags.item(t.taskUuid)), flat = i >= SHADOWED_CARDS)
+                AronTabs(
+                    listOf(
+                        stringResource(R.string.tsk_tab_open, localizedNumber(open.size.toLong())),
+                        stringResource(R.string.tsk_tab_done, localizedNumber(done.size.toLong())),
+                    ),
+                    tab, { tab = it },
+                    Modifier.padding(horizontal = AronTokens.Space.Screen, vertical = AronTokens.Space.M).testTag(TaskTags.TABS),
+                )
+                val shown = if (tab == 0) open else done
+                if (shown.isEmpty()) {
+                    EmptyTasks(stringResource(if (tab == 0) R.string.tsk_none_open else R.string.tsk_none_done), synced.takeIf { stale })
+                } else {
+                    LazyColumn(
+                        Modifier.weight(1f).fillMaxWidth().testTag(TaskTags.LIST),
+                        contentPadding = PaddingValues(start = AronTokens.Space.Screen, end = AronTokens.Space.Screen, bottom = AronTokens.Space.L),
+                        verticalArrangement = Arrangement.spacedBy(AronTokens.Space.M),
+                    ) {
+                        itemsIndexed(shown, key = { _, t -> t.taskUuid }) { _, t ->
+                            if (t.status == ONGOING) SwipeToResolve(t.taskUuid, onResolve, Modifier.testTag(TaskTags.item(t.taskUuid))) { TaskCard(t, onResolve) }
+                            else TaskCard(t, onResolve, Modifier.testTag(TaskTags.item(t.taskUuid)))
+                        }
                     }
                 }
             }
         }
+        // "my outlet requests" (F-SR-040) has no place on the outlet menu of sr/outlet-menu.png, so it lives here
+        if (onMyRequests != null) {
+            Text(
+                stringResource(R.string.tsk_my_requests), style = MaterialTheme.typography.titleSmall, color = look.purple, textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth().heightIn(min = AronLook.Touch).testTag(TaskTags.MY_REQUESTS).clickable(role = Role.Button, onClick = onMyRequests).padding(AronTokens.Space.M),
+            )
+        }
+    }
+}
+
+/** The empty state of sr/tasks.png: the grey page with the plain sentence centred (balanced breaks), and the synced-at line only when the list may be stale. */
+@Composable
+private fun EmptyTasks(text: String, synced: String?, modifier: Modifier = Modifier) {
+    val look = LocalAronLook.current
+    Column(modifier.fillMaxSize().padding(AronTokens.Space.Screen), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+        Text(text, style = MaterialTheme.typography.bodyLarge.copy(lineBreak = LineBreak.Paragraph), color = look.ink, textAlign = TextAlign.Center, modifier = Modifier.widthIn(max = 240.dp))
+        if (synced != null) Text(synced, style = MaterialTheme.typography.bodySmall, color = look.inkMuted, textAlign = TextAlign.Center, modifier = Modifier.padding(top = AronTokens.Space.S))
     }
 }
 
@@ -159,31 +186,24 @@ private fun SwipeToResolve(taskUuid: String, onResolve: (String) -> Unit, modifi
     )
 }
 
-/** One task on a field card: status chip, title, description (4 lines), the outlet and the due date with their icons, Resolve. [flat]: no shadow. */
+/** One task on a white card: the type code in red ahead of the purple title, description (4 lines), the outlet and the due date, the status word and a "Resolve" button. */
 @Composable
-private fun TaskCard(t: TaskItem, onResolve: (String) -> Unit, modifier: Modifier = Modifier, flat: Boolean = false) {
-    val c = LocalAronColors.current
+private fun TaskCard(t: TaskItem, onResolve: (String) -> Unit, modifier: Modifier = Modifier) {
+    val look = LocalAronLook.current
     val ongoing = t.status == ONGOING
-    val card: @Composable (@Composable () -> Unit) -> Unit = { body ->
-        if (flat) GlassSurface(modifier.fillMaxWidth(), kind = GlassKind.Field, elevation = AronTokens.Elevation.Page) { body() }
-        else AronCard(modifier.fillMaxWidth()) { body() }
-    }
-    card {
-        Column(Modifier.fillMaxWidth().padding(AronTokens.Space.L), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
-                // T2: the task type code as a red tag ("OOS") ahead of the title, as on the manual's card
-                if (t.taskTypeCode.isNotBlank()) Pill(c.dangerContainer, c.dangerOnContainer, AronIcons.Flag, t.taskTypeCode.uppercase(java.util.Locale.ROOT))
-                Text(t.title, style = MaterialTheme.typography.titleSmall, color = c.textPrimary, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-                if (ongoing) Pill(c.accentContainer, c.accentOnContainer, AronIcons.Clock, stringResource(R.string.tsk_status_ongoing))
-                else Pill(null, c.textSecondary, AronIcons.Check, stringResource(R.string.tsk_status_completed))
-            }
-            t.description?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = c.textPrimary, maxLines = 4, overflow = TextOverflow.Ellipsis) }
-            t.outletName?.let { MetaLine(AronIcons.Outlet, stringResource(R.string.tsk_outlet, it)) }
-            t.dueDate?.let { MetaLine(AronIcons.Flag, stringResource(R.string.tsk_due, dueDateText(it))) }
-            if (ongoing) {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                    AronTextButton(stringResource(R.string.tsk_resolve), { onResolve(t.taskUuid) }, Modifier.testTag(TaskTags.resolve(t.taskUuid)), icon = AronIcons.Check)
-                }
+    Column(modifier.fillMaxWidth().clip(RoundedCornerShape(AronLook.CardRadius)).background(look.card).padding(AronTokens.Space.L), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
+            // T2: the task type code as a red tag ("OOS") ahead of the title, as on the manual's card
+            if (t.taskTypeCode.isNotBlank()) Text(t.taskTypeCode.uppercase(java.util.Locale.ROOT), style = MaterialTheme.typography.labelLarge, color = look.red)
+            Text(t.title, style = MaterialTheme.typography.titleSmall, color = look.purple, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+        }
+        StatusWord(if (ongoing) AronIcons.Clock else AronIcons.Check, stringResource(if (ongoing) R.string.tsk_status_ongoing else R.string.tsk_status_completed))
+        t.description?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = look.ink, maxLines = 4, overflow = TextOverflow.Ellipsis) }
+        t.outletName?.let { MetaLine(AronIcons.Outlet, stringResource(R.string.tsk_outlet, it)) }
+        t.dueDate?.let { MetaLine(AronIcons.Flag, stringResource(R.string.tsk_due, dueDateText(it))) }
+        if (ongoing) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                AronPrimaryButton(stringResource(R.string.tsk_resolve), { onResolve(t.taskUuid) }, Modifier.testTag(TaskTags.resolve(t.taskUuid)))
             }
         }
     }
@@ -191,26 +211,20 @@ private fun TaskCard(t: TaskItem, onResolve: (String) -> Unit, modifier: Modifie
 
 @Composable
 private fun MetaLine(icon: ImageVector, text: String) {
-    val c = LocalAronColors.current
+    val look = LocalAronLook.current
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
-        Icon(icon, contentDescription = null, tint = c.textSecondary, modifier = Modifier.size(AronTokens.Size.IconSmall))
-        Text(text, style = MaterialTheme.typography.bodySmall, color = c.textSecondary)
+        Icon(icon, contentDescription = null, tint = look.inkMuted, modifier = Modifier.size(AronTokens.Size.IconSmall))
+        Text(text, style = MaterialTheme.typography.bodySmall, color = look.inkMuted)
     }
 }
 
-/** A 28 dp pill with an icon and a word in opaque container colours; [container] null is the quiet form. */
+/** The status as an icon and a word (never colour alone). */
 @Composable
-private fun Pill(container: Color?, ink: Color, icon: ImageVector, label: String) {
-    Row(
-        Modifier
-            .heightIn(min = AronTokens.Size.Chip)
-            .drawBehind { container?.let { drawRoundRect(it, cornerRadius = CornerRadius(AronTokens.Radius.Chip.toPx())) } }
-            .padding(horizontal = if (container != null) 10.dp else 0.dp, vertical = AronTokens.Space.Xs),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Icon(icon, contentDescription = null, tint = ink, modifier = Modifier.size(AronTokens.Space.L))
-        Spacer(Modifier.width(AronTokens.Space.S))
-        Text(label, style = MaterialTheme.typography.labelMedium, color = ink, maxLines = 1)
+private fun StatusWord(icon: ImageVector, label: String) {
+    val look = LocalAronLook.current
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.Xs)) {
+        Icon(icon, contentDescription = null, tint = look.inkMuted, modifier = Modifier.size(AronTokens.Size.IconSmall))
+        Text(label, style = MaterialTheme.typography.labelMedium, color = look.inkMuted, maxLines = 1)
     }
 }
 

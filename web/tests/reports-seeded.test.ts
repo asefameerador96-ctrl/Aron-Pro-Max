@@ -21,6 +21,14 @@ async function login(u: string, p: string) {
   return { at: b.access_token, scope: b.scope };
 }
 
+async function adminRevealed(open: boolean) {
+  const post = async (path: string, body: unknown, at?: string) => (await fetch(`${base}${path}`, { method: "POST", headers: { "content-type": "application/json", ...(at ? { authorization: `Bearer ${at}` } : {}) }, body: JSON.stringify(body) })).json();
+  const l = await post("/v1/auth/login", { username: "admin1", password: "admin-pass-1", client: "web" });
+  const v = await post("/v1/auth/mfa/verify", { mfa_token: l.mfa_token, code: "123456" });
+  const re = open ? await post("/v1/auth/reauth", { password: "admin-pass-1", code: "123456" }, v.access_token) : v;
+  return { at: re.access_token as string, scope: v.scope as ScopeSummary };
+}
+
 // Reports whose figures are a straight sum over the seeded route-days: column -> control total key.
 const SUMS: Record<string, [string, "visited" | "successful" | "memos" | "net_mtk" | "target_outlets"]> = {
   "route-std": ["visited", "visited"],
@@ -75,15 +83,17 @@ describe("every report page's figures equal the seeded day's control totals", ()
 });
 
 describe("price columns and PII by role", () => {
-  it("SKU prices are integer milli-taka (7.935 shown), and the trade price column is only for roles that may see it", async () => {
+  it("SKU prices are integer milli-taka (7.935 shown), and the trade price column is only for a role inside its reveal window", async () => {
     const tso = await login("tso334", "tso-pass-1");
     const analyst = await login("analyst1", "analyst-pass-1");
+    const closed = await adminRevealed(false);
+    const open = await adminRevealed(true);
     const q = (s: ScopeSummary) => buildReportQuery(WEB_REPORTS.find((r) => r.key === "sku-list")!, {}, s);
-    const a = await runReportJson(tso.at, "sku-list", q(tso.scope));
-    const b = await runReportJson(analyst.at, "sku-list", q(analyst.scope));
-    if (!a.ok || !b.ok) throw new Error("no data");
+    const run = (u: { at: string; scope: ScopeSummary }) => runReportJson(u.at, "sku-list", q(u.scope));
+    const [a, b, c, d] = await Promise.all([run(tso), run(analyst), run(closed), run(open)]);
+    if (!a.ok || !b.ok || !c.ok || !d.ok) throw new Error("no data");
     expect(a.data.rows[0]!.retail_price_mtk).toBe(7935);
-    expect(a.data.columns.map((c) => c.key)).not.toContain("trade_price_mtk");
-    expect(b.data.columns.map((c) => c.key)).toContain("trade_price_mtk");
+    for (const r of [a, b, c]) expect(r.data.columns.map((x) => x.key)).not.toContain("trade_price_mtk");
+    expect(d.data.columns.map((x) => x.key)).toContain("trade_price_mtk");
   });
 });

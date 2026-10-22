@@ -159,7 +159,9 @@ class SrStateScreenshotTests {
             kpis = HomeKpis("10%", 54, 0, listOf(HomeStockLine("Cigarette", 12_000, 9_800, stick), HomeStockLine("Lighter", 400, 25, piece), HomeStockLine("Match", 400, 394, dozen))),
             money = HomeMoneyLines(
                 listOf(HomeMoneyLine("Match", Formats.money(141_000, locale)), HomeMoneyLine("Lighter", Formats.money(4_687_500, locale))),
-                Formats.money(4_828_500, locale), null, "−" + Formats.money(437_500, locale), Formats.money(4_391_000, locale),
+                Formats.money(4_828_500, locale), "−" + Formats.money(437_500, locale), null, Formats.money(4_391_000, locale),
+                sticksSold = 0, grossBare = bare(4_828_500, locale), offerDiscountBare = bare(437_500, locale), qcBare = bare(0, locale), netBare = bare(4_391_000, locale),
+                totalDiscountBare = bare(437_500, locale), drpDiscountBare = bare(0, locale), totalQcBare = bare(0, locale),
             ),
             sync = SyncChipState.SyncedAt(Formats.digits("10:42", locale)), onSync = {}, sunlight = false, onSunlight = {},
             dock = dock, routeKindLabel = "Daily",
@@ -188,20 +190,20 @@ class SrStateScreenshotTests {
     private val filledReview = SaleReviewCalculator.review(filled, catalog)
     private val emptyReview = SaleReviewCalculator.review(draft(), catalog)
 
-    @Composable private fun SaleFull() = Frame(stringResource(SaleR.string.sale_title), subtitle = "Banani Store") {
-        SaleEntryScreen(skus, filledReview, { id -> filled.lines.firstOrNull { it.skuId == id }?.qtyEntered ?: 0 }, { _, _ -> }, {}, {}, recentSkuIds = setOf(100L), onPreviousSales = {})
+    @Composable private fun SaleFull() = ParityFrame(stringResource(SaleR.string.sale_title), com.aktcl.aron.core.ui.R.drawable.aron_art_sale) {
+        SaleEntryScreen(skus, filledReview, { id -> filled.lines.firstOrNull { it.skuId == id }?.qtyEntered ?: 0 }, { _, _ -> }, {}, {}, recentSkuIds = setOf(100L), onPreviousSales = {}, retailerLabel = "Banani Store (DHK-344-001-01711000000-Apsis Cluster)")
     }
-    @Composable private fun SaleEmptyCatalog() = Frame(stringResource(SaleR.string.sale_title), subtitle = "Banani Store") {
-        SaleEntryScreen(emptyList(), null, { 0 }, { _, _ -> }, {}, {})
+    @Composable private fun SaleEmptyCatalog() = ParityFrame(stringResource(SaleR.string.sale_title), com.aktcl.aron.core.ui.R.drawable.aron_art_sale) {
+        SaleEntryScreen(emptyList(), null, { 0 }, { _, _ -> }, {}, {}, retailerLabel = "Banani Store (DHK-344-001-01711000000-Apsis Cluster)")
     }
-    @Composable private fun SaleEmptyCart() = Frame(stringResource(SaleR.string.sale_title), subtitle = "Banani Store") {
-        SaleEntryScreen(skus, emptyReview, { 0 }, { _, _ -> }, {}, {})
+    @Composable private fun SaleEmptyCart() = ParityFrame(stringResource(SaleR.string.sale_title), com.aktcl.aron.core.ui.R.drawable.aron_art_sale) {
+        SaleEntryScreen(skus, emptyReview, { 0 }, { _, _ -> }, {}, {}, retailerLabel = "Banani Store (DHK-344-001-01711000000-Apsis Cluster)")
     }
-    @Composable private fun ReviewEmpty() = Frame(stringResource(SaleR.string.review_title)) {
-        ReviewScreen(emptyReview, {}, outletLine = "Banani Store (DHK-344-001) · Apsis RouteDaily · Apsis Cluster", onCreditToggle = {}, onQc = {})
+    @Composable private fun ReviewEmpty() = ParityFrame(stringResource(SaleR.string.review_title), com.aktcl.aron.core.ui.R.drawable.aron_art_sale) {
+        ReviewScreen(emptyReview, {}, outletLine = "Banani Store (DHK-344-001)\nরুট: Apsis RouteDaily\nক্লাস্টার: Apsis Cluster", onCreditToggle = {}, onQc = {})
     }
-    @Composable private fun ReviewFull() = Frame(stringResource(SaleR.string.review_title)) {
-        ReviewScreen(filledReview, {}, outletLine = "Banani Store (DHK-344-001) · Apsis RouteDaily · Apsis Cluster", onCreditToggle = {}, onQc = {})
+    @Composable private fun ReviewFull() = ParityFrame(stringResource(SaleR.string.review_title), com.aktcl.aron.core.ui.R.drawable.aron_art_sale) {
+        ReviewScreen(filledReview, {}, outletLine = "Banani Store (DHK-344-001)\nরুট: Apsis RouteDaily\nক্লাস্টার: Apsis Cluster", onCreditToggle = {}, onQc = {})
     }
 
     private val memo = StoredMemo(
@@ -229,17 +231,25 @@ class SrStateScreenshotTests {
     // ---- QC entry (manual p36-38: MaxR-10S, 5 + 5 sticks, settlement 80.00) ----
     private val qcDraft = SaleDraftOps.setQc(SaleDraftOps.setQc(SaleDraftOps.setQuantity(draft(), 100, 40, QtyUnit.STICK), QcEntry(100, "damaged_crushed", "MFC", 5)), QcEntry(100, "expired_stock", "MKT", 5))
     private val qcReview = SaleReviewCalculator.review(qcDraft, catalog)
-    @Composable private fun Qc(cap: Long?) = Frame(stringResource(SaleR.string.qc_title)) {
+    @Composable private fun Qc(cap: Long?) = ParityFrame(stringResource(SaleR.string.qc_title), com.aktcl.aron.core.ui.R.drawable.aron_art_sale) {
         QcScreen(listOf(maxr), qcReview, { id, code -> qcDraft.qc.firstOrNull { it.skuId == id && it.faultTypeCode == code }?.defectQty ?: 0L }, { _, _, _ -> }, false, {}, onCancel = {}, capMtkOf = { cap })
     }
 
     // ---- QC on a zero sale (D-18): the whole catalog as closed cards, one open with a typed count, the credit Review ----
     private val qcOnlyDraft = SaleDraftOps.setQc(SaleDraftOps.setQc(SaleDraftOps.startQcOnly(draft()), QcEntry(100, "damaged_crushed", "MFC", 7)), QcEntry(100, "expired_stock", "MKT", 3))
     private val qcOnlyReview = SaleReviewCalculator.review(qcOnlyDraft, catalog)
-    @Composable private fun QcOnly() = Frame(stringResource(SaleR.string.qc_title)) {
+    @Composable private fun QcOnly() = ParityFrame(stringResource(SaleR.string.qc_title), com.aktcl.aron.core.ui.R.drawable.aron_art_sale) {
         QcScreen(listOf(maxr), qcOnlyReview, { id, code -> qcOnlyDraft.qc.firstOrNull { it.skuId == id && it.faultTypeCode == code }?.defectQty ?: 0L }, { _, _, _ -> }, false, {}, onCancel = {}, collapsible = true)
     }
-    @Composable private fun ReviewCredit() = Frame(stringResource(SaleR.string.review_title)) { ReviewScreen(qcOnlyReview, onSave = {}, onQc = {}) }
+    @Composable private fun ReviewCredit() = ParityFrame(stringResource(SaleR.string.review_title), com.aktcl.aron.core.ui.R.drawable.aron_art_sale) { ReviewScreen(qcOnlyReview, onSave = {}, onQc = {}) }
+
+    // ---- Credit prompt and Slide (sale-flow extras) ----
+    @Composable private fun CreditFrame() = ParityFrame(stringResource(SaleR.string.review_title), com.aktcl.aron.core.ui.R.drawable.aron_art_sale) {
+        com.aktcl.aron.feature.sale.ui.CreditPrompt(qcReview, onPaid = {})
+    }
+    @Composable private fun SlideFrame() = ParityFrame(stringResource(SaleR.string.review_title), com.aktcl.aron.core.ui.R.drawable.aron_art_sale) {
+        com.aktcl.aron.feature.sale.ui.SlideScreen(skus, qcReview, { 0L }, { _, _ -> })
+    }
 
     // ---- Sale history (manual SR-S-20: pick a date, per-SKU table, exact total) ----
     private fun histMemo(id: String, date: String, vararg l: com.aktcl.aron.feature.memo.domain.MemoItem) =
@@ -273,6 +283,8 @@ class SrStateScreenshotTests {
     @Test fun review_bn_font20() = shot("review_bn_font20", fontScale = 2.0f) { ReviewFull() }
 
     // ---- QC ----
+    @Test fun credit_bn_prompt() = shot("credit_bn_prompt") { CreditFrame() }
+    @Test fun slide_bn_offer() = shot("slide_bn_offer") { SlideFrame() }
     @Test fun qc_bn_with_cap() = shot("qc_bn_with_cap") { Qc(594_500L) }
     @Test fun qc_bn_no_cap() = shot("qc_bn_no_cap") { Qc(null) }
     @Test fun qc_bn_sunlight() = shot("qc_bn_sunlight", sunlight = true) { Qc(594_500L) }
@@ -297,4 +309,5 @@ class SrStateScreenshotTests {
     @Test fun memo_bn_menu_list_font20() = shot("memo_bn_menu_list_font20", fontScale = 2.0f) { MenuList() }
     @Test fun memo_bn_detail_reprint_limit() = shot("memo_bn_detail_reprint_limit") { DetailReprintLimit() }
     @Test fun memo_bn_detail_font20() = shot("memo_bn_detail_font20", fontScale = 2.0f) { DetailReprintLimit() }
+    private fun bare(mtk: Long, locale: UiLocale) = Formats.digits(com.aktcl.aron.rules.Money.formatTaka(mtk, 2), locale)
 }

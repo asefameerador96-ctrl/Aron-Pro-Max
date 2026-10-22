@@ -25,7 +25,7 @@ fun AmoAttendance(
     modifier: Modifier = Modifier,
     onRefreshFix: (() -> Unit)? = null,
 ) {
-    AronScreen(modifier, topBar = { AronTopBar(stringResource(R.string.rh_amo_attendance), onBack = onBack) }) {
+    AmoFrame(stringResource(R.string.rh_amo_attendance), onBack, modifier, icon = com.aktcl.aron.core.ui.R.drawable.aron_art_attendance) {
         PermissionGate(GatedFeature.ATTENDANCE, onBack = onBack) {
             AttendanceContent(state, checkoutAtLabel, onCheckIn, onCheckOut, onRefreshFix = onRefreshFix)
         }

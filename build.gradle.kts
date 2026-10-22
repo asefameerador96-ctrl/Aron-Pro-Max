@@ -48,6 +48,9 @@ val robolectricMirror = if (System.getenv("GITHUB_ACTIONS") == null && System.ge
     null
 }
 
+// DEV ONLY: bundle the pack pictures cropped from the owner's reference screenshot (android/dev-packshots/README.md).
+val devPackshots = (findProperty("aron.devPackshots") as String?)?.trim() == "true"
+
 subprojects {
     group = "com.aktcl.aron"
     version = (findProperty("aron.version") as String?) ?: "0.1.0"
@@ -138,7 +141,11 @@ subprojects {
                 // MAPS_ANDROID_KEY environment variable (a GitHub secret in CI) or ~/.gradle/gradle.properties.
                 manifestPlaceholders["mapsApiKey"] =
                     (System.getenv("MAPS_ANDROID_KEY") ?: (findProperty("aron.mapsAndroidKey") as String?) ?: "")
+                // DEV ONLY pack pictures (android/dev-packshots, PARITY-SPEC s2.6): only the dev-origin CI build passes
+                // -Paron.devPackshots=true; release-app.yml (production) never does, so no production APK carries them.
+                buildConfigField("boolean", "DEV_PACKSHOTS", devPackshots.toString())
             }
+            if (devPackshots) sourceSets.getByName("main").assets.directories += rootProject.file("android/dev-packshots").path
             compileOptions {
                 sourceCompatibility = JavaVersion.toVersion(jvmTargetVersion)
                 targetCompatibility = JavaVersion.toVersion(jvmTargetVersion)

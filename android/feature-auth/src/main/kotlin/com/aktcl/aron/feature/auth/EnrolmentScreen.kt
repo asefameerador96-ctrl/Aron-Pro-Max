@@ -26,13 +26,11 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.aktcl.aron.contract.ProblemCode
 import com.aktcl.aron.core.common.AppLanguage
-import com.aktcl.aron.core.ui.AronBanner
-import com.aktcl.aron.core.ui.AronCard
-import com.aktcl.aron.core.ui.AronSecondaryButton
-import com.aktcl.aron.core.ui.AronTextButton
+import com.aktcl.aron.core.ui.aron.AronSecondaryButton
 import com.aktcl.aron.core.ui.AronTokens
 import com.aktcl.aron.core.ui.BannerKind
 import com.aktcl.aron.core.ui.LocalAronColors
+import com.aktcl.aron.core.ui.LocalAronLook
 
 /** Test tags of the enrolment screen. */
 object EnrolTags {
@@ -130,13 +128,13 @@ fun EnrolmentContent(
             Spacer(Modifier.height(AronTokens.Space.L))
             BrandBlock(appTitle)
             Spacer(Modifier.height(AronTokens.Space.L))
-            AronCard(Modifier.fillMaxWidth()) {
+            AuthCard(Modifier.fillMaxWidth()) {
                 Column(Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.L)) {
-                    Text(stringResource(R.string.enrol_title), style = MaterialTheme.typography.titleLarge, color = c.textPrimary)
-                    Text(stringResource(R.string.enrol_explain), style = MaterialTheme.typography.bodyLarge, color = c.textSecondary)
+                    Text(stringResource(R.string.enrol_title), style = MaterialTheme.typography.titleLarge, color = LocalAronLook.current.ink)
+                    Text(stringResource(R.string.enrol_explain), style = MaterialTheme.typography.bodyLarge, color = LocalAronLook.current.inkMuted)
                     state.message?.let { m ->
                         // A solid banner (docs/32 s2a): readable in sun, never colour alone.
-                        AronBanner(
+                        AuthBanner(
                             messageText(m), Modifier.testTag(EnrolTags.MESSAGE),
                             kind = when { m is EnrolMessage.Waiting && m.offline -> BannerKind.Offline; m is EnrolMessage.Waiting -> BannerKind.Warning; else -> BannerKind.Error },
                         )
@@ -144,7 +142,7 @@ fun EnrolmentContent(
                     AuthField(
                         value = state.input, onValueChange = onInput, label = stringResource(R.string.enrol_token_label),
                         modifier = Modifier.testTag(EnrolTags.INPUT), enabled = !state.busy, singleLine = false, minLines = 2,
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Ascii, imeAction = ImeAction.Done, autoCorrectEnabled = false),
+                        keyboardType = KeyboardType.Ascii, imeAction = ImeAction.Done,
                     )
                     if (state.pending && onScan != null) {
                         AronSecondaryButton(stringResource(R.string.enrol_scan), onScan, Modifier.fillMaxWidth().testTag(EnrolTags.SCAN), enabled = !state.busy)
@@ -152,7 +150,7 @@ fun EnrolmentContent(
                 }
             }
             // Never disabled: a slow network must not hold up the offline unlock at the start of a day.
-            AronTextButton(stringResource(R.string.enrol_skip), onSkip, Modifier.fillMaxWidth().testTag(EnrolTags.SKIP))
+            AuthLink(stringResource(R.string.enrol_skip), onSkip, Modifier.fillMaxWidth().testTag(EnrolTags.SKIP))
         }
     }
 }

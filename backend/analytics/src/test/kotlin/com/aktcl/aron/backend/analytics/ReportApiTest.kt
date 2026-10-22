@@ -148,6 +148,7 @@ class ReportApiTest {
         assertEquals(HttpStatusCode.OK, r.status); assertTrue(r.contentType()!!.match(ContentType.Text.Html))
         val html = r.bodyAsText()
         assertTrue(html.contains("<table>") && html.contains("Route-wise Memo") && html.contains("Exported by u10"))
+        assertTrue(html.contains("<img class=\"mark\" src=\"data:image/png;base64,") && html.contains("alt=\"\""), "the Aron mark rides in the header as a data: URI (CSP img-src data:)")
         assertTrue(html.contains("=HYPERLINK(&quot;http://x&quot;)"), "route name must be HTML-escaped, not raw")
         assertFalse(html.contains("HYPERLINK(\"http"))
         // Logged with filters, row count and the PII flag; users see their own, an admin sees all.

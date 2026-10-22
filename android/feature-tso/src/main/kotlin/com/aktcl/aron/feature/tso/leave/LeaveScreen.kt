@@ -16,19 +16,24 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.aktcl.aron.core.ui.AronBanner
-import com.aktcl.aron.core.ui.AronCard
-import com.aktcl.aron.core.ui.AronEmptyState
-import com.aktcl.aron.core.ui.AronErrorState
-import com.aktcl.aron.core.ui.AronIcons
-import com.aktcl.aron.core.ui.AronScreen
 import com.aktcl.aron.core.ui.AronTokens
-import com.aktcl.aron.core.ui.AronTopBar
-import com.aktcl.aron.core.ui.BannerKind
 import com.aktcl.aron.core.ui.localizedDigits
 import com.aktcl.aron.core.ui.localizedNumber
 import com.aktcl.aron.feature.tso.R
 import kotlinx.coroutines.launch
+import com.aktcl.aron.core.ui.aron.AronCard
+import com.aktcl.aron.core.ui.aron.AronListRow
+import com.aktcl.aron.core.ui.aron.AronSecondaryButton
+import com.aktcl.aron.core.ui.aron.AronTabs
+import com.aktcl.aron.feature.tso.TsoAction
+import com.aktcl.aron.feature.tso.TsoBanner
+import com.aktcl.aron.feature.tso.TsoBannerKind
+import com.aktcl.aron.feature.tso.TsoBottomBar
+import com.aktcl.aron.feature.tso.TsoEmpty
+import com.aktcl.aron.feature.tso.TsoError
+import com.aktcl.aron.feature.tso.TsoFrame
+import com.aktcl.aron.feature.tso.TsoSectionTitle
+import com.aktcl.aron.feature.tso.TsoStepper
 
 object LeaveTags {
     const val LIST = "tso_leave_list"
@@ -48,14 +53,12 @@ fun LeaveListScreen(state: LeaveListState, onBack: () -> Unit, modifier: Modifie
     val scope = androidx.compose.runtime.rememberCoroutineScope()
     val ui by state.ui.collectAsStateWithLifecycle()
     LaunchedEffect(state) { state.load() }
-    AronScreen(
-        modifier, topBar = { AronTopBar(stringResource(R.string.tso_leave_title), onBack = onBack) },
-        bottomBar = { if (onApply != null) com.aktcl.aron.core.ui.AronBottomBar(primary = com.aktcl.aron.core.ui.AronBarAction(stringResource(R.string.tso_leave_apply), onApply), modifier = Modifier.testTag(LeaveTags.APPLY)) },
+    TsoFrame(stringResource(R.string.tso_leave_title), onBack, modifier, tile = com.aktcl.aron.feature.home.RoleHomes.TsoTile.LEAVE, bottomBar = { if (onApply != null) TsoBottomBar(primary = TsoAction(stringResource(R.string.tso_leave_apply), onApply), modifier = Modifier.testTag(LeaveTags.APPLY)) },
     ) {
         when (val u = ui) {
-            LeaveListUi.Loading -> Column(Modifier.fillMaxSize()) { }
-            LeaveListUi.Empty -> AronEmptyState(stringResource(R.string.tso_leave_empty), Modifier.testTag(LeaveTags.EMPTY), hint = stringResource(R.string.tso_leave_empty_hint), icon = AronIcons.Leave)
-            LeaveListUi.Error -> AronErrorState(stringResource(R.string.tso_leave_error), stringResource(R.string.tso_retry), onRetry = { scope.launch { state.load() } }, modifier = Modifier.testTag(LeaveTags.ERROR))
+            LeaveListUi.Loading -> com.aktcl.aron.feature.tso.TsoLoading()
+            LeaveListUi.Empty -> TsoEmpty(stringResource(R.string.tso_leave_empty), Modifier.testTag(LeaveTags.EMPTY), hint = stringResource(R.string.tso_leave_empty_hint))
+            LeaveListUi.Error -> TsoError(stringResource(R.string.tso_leave_error), stringResource(R.string.tso_retry), onRetry = { scope.launch { state.load() } }, modifier = Modifier.testTag(LeaveTags.ERROR))
             is LeaveListUi.Content -> LeaveContent(u)
         }
     }
@@ -64,7 +67,7 @@ fun LeaveListScreen(state: LeaveListState, onBack: () -> Unit, modifier: Modifie
 @Composable
 private fun LeaveContent(u: LeaveListUi.Content) {
     Column(Modifier.fillMaxSize()) {
-        if (u.offlineCached) AronBanner(stringResource(R.string.tso_offline_cached), Modifier.testTag(LeaveTags.OFFLINE), kind = BannerKind.Offline)
+        if (u.offlineCached) TsoBanner(stringResource(R.string.tso_offline_cached), Modifier.testTag(LeaveTags.OFFLINE), kind = TsoBannerKind.Offline)
         LazyColumn(
             Modifier.weight(1f).fillMaxWidth().testTag(LeaveTags.LIST),
             contentPadding = androidx.compose.foundation.layout.PaddingValues(AronTokens.Space.Screen),
@@ -96,14 +99,17 @@ private fun LeaveCard(item: LeaveItem) {
         LeaveStatus.APPROVED -> stringResource(R.string.tso_leave_status_approved, stringResource(R.string.tso_role_dmo))
         LeaveStatus.REJECTED -> stringResource(R.string.tso_leave_status_rejected, stringResource(R.string.tso_role_dmo))
     }
-    val kind = when (item.status) { LeaveStatus.PENDING -> BannerKind.Warning; LeaveStatus.APPROVED -> BannerKind.Success; LeaveStatus.REJECTED -> BannerKind.Error }
     AronCard(Modifier.fillMaxWidth().testTag(LeaveTags.card(item.leaveUuid))) {
-        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
+        Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             androidx.compose.material3.Text(type, style = androidx.compose.material3.MaterialTheme.typography.titleSmall)
             androidx.compose.material3.Text("$period  ·  $days", style = androidx.compose.material3.MaterialTheme.typography.bodyMedium)
             androidx.compose.material3.Text(stringResource(R.string.tso_leave_reason_line, item.reason), style = androidx.compose.material3.MaterialTheme.typography.bodyMedium)
-            AronBanner(badge, Modifier.testTag(LeaveTags.badge(item.leaveUuid)), kind = kind)
-            if (!item.sent) AronBanner(stringResource(R.string.tso_leave_not_sent), Modifier.testTag(LeaveTags.unsent(item.leaveUuid)), kind = BannerKind.Offline)
+            val look = com.aktcl.aron.core.ui.LocalAronLook.current
+            androidx.compose.material3.Text(
+                badge, Modifier.testTag(LeaveTags.badge(item.leaveUuid)), style = androidx.compose.material3.MaterialTheme.typography.titleSmall,
+                color = when (item.status) { LeaveStatus.PENDING -> look.ink; LeaveStatus.APPROVED -> look.purple; LeaveStatus.REJECTED -> look.red },
+            )
+            if (!item.sent) androidx.compose.material3.Text(stringResource(R.string.tso_leave_not_sent), Modifier.testTag(LeaveTags.unsent(item.leaveUuid)), style = androidx.compose.material3.MaterialTheme.typography.bodySmall, color = look.inkMuted)
         }
     }
 }

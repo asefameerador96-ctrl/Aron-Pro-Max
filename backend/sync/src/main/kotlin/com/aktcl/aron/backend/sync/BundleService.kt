@@ -610,13 +610,18 @@ class BundleService(
         val nodes = h.createQuery("SELECT id, level, parent_id, code, name, name_bn, sort FROM app.product_node WHERE status = 'active' ORDER BY sort, id").map { rs, _ ->
             BundleProductNode(rs.getLong("id"), rs.getString("level"), rs.getObject("parent_id") as Long?, rs.getString("code"), rs.getString("name"), rs.getString("name_bn"), rs.getInt("sort"))
         }.list()
-        val skus = h.createQuery("SELECT * FROM app.sku ORDER BY sort, id").map { rs, _ ->
+        // the pack picture only while its asset is a stored sku_image (an unbound or other-purpose id is never sent)
+        val skus = h.createQuery(
+            "SELECT s.*, (SELECT a.asset_id::text FROM app.admin_asset a WHERE a.asset_id = s.image_asset_id AND a.purpose = 'sku_image') AS image_asset " +
+                "FROM app.sku s ORDER BY s.sort, s.id",
+        ).map { rs, _ ->
             SkuDto(
                 id = rs.getLong("id"), code = rs.getString("code"), variant_id = rs.getLong("variant_id"), category_code = rs.getString("category_code"),
                 name = rs.getString("name"), short_name = rs.getString("short_name"), name_bn = rs.getString("name_bn"), base_unit = rs.getString("base_unit"),
                 base_per_pack = rs.getInt("base_per_pack"), entry_unit_default = rs.getString("entry_unit_default"), report_unit = rs.getString("report_unit"),
                 report_factor = rs.getBigDecimal("report_factor").setScale(3).toPlainString(), sort = rs.getInt("sort"), status = rs.getString("status"),
                 thumbnail_media_uuid = rs.getString("thumbnail_media_uuid"), updated_at = rs.ts("updated_at")!!, version = rs.getInt("version"),
+                image_asset_id = rs.getString("image_asset"),
             )
         }.list()
         return BundleProducts(nodes, skus)

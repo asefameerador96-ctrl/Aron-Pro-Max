@@ -2,8 +2,9 @@ import type { ReactNode } from "react";
 import type { SessionData } from "@/lib/auth/session";
 import { t, type Locale } from "@/lib/i18n";
 import { menuFor } from "@/lib/menu/menu";
+import { arrangeNav } from "@/lib/menu/nav-tree";
+import { BrandMark } from "./brand-mark";
 import { ConnectionChip } from "./connection-chip";
-import { Icon } from "./kit/icons";
 import { LocaleSwitch } from "./locale-switch";
 import { LogoutButton } from "./logout-button";
 import { ScopeBadge } from "./scope-badge";
@@ -11,12 +12,13 @@ import { SearchField } from "./search-field";
 import { NavDrawer, Sidebar, type NavSection } from "./sidebar";
 import { ThemeMenu } from "./theme-menu";
 import { TopBarSentinel } from "./top-bar-sentinel";
+import { TopBarTitle } from "./top-bar-title";
 
-/** The Calm Glass shell (docs/design/web-glass.md s5, s6): glass sidebar, 56 px glass top bar (scope, search, connection,
- *  language, theme, user), content column over the page gradient. Shared by the dashboards and the admin portal.
+/** The Aron shell (PARITY-SPEC s4, owner directive 2026-10-18): crimson-purple gradient sidebar with the red Logout at its foot, a solid white top bar
+ *  (page title in blue, scope, search, connection, language, theme, avatar and name), white cards on a light grey page. Shared by the dashboards and the admin portal.
  *  Below md the scope badge wraps to a second line of the same bar (one node, so tests and screen readers see it once). */
 export function Shell({ session, locale, children, allowedMenus = null }: { session: SessionData; locale: Locale; children: ReactNode; allowedMenus?: ReadonlySet<string> | null }) {
-  const sections: NavSection[] = menuFor(session.user.role, undefined, allowedMenus).map((s) => ({ id: s.group, label: t(locale, s.labelKey), items: s.items.map((i) => ({ id: i.id, href: i.href, label: t(locale, i.labelKey) })) }));
+  const sections: NavSection[] = arrangeNav(menuFor(session.user.role, undefined, allowedMenus)).map((n) => ({ id: n.id, label: n.labelKey ? t(locale, n.labelKey) : null, items: n.items.map((i) => ({ id: i.id, href: i.href, label: t(locale, i.labelKey) })) }));
   const appName = t(locale, "app.name");
   const who = `${session.user.full_name} · ${t(locale, `role.${session.user.role}`)}`;
   return (
@@ -29,9 +31,10 @@ export function Shell({ session, locale, children, allowedMenus = null }: { sess
         <header className="glass-bar sticky top-0 z-30 flex min-h-(--topbar-h) flex-wrap items-center gap-x-2 gap-y-1 border-b border-transparent px-3 py-1 data-[scrolled]:border-divider data-[scrolled]:shadow-card sm:gap-x-3 sm:px-4" data-testid="top-bar">
           <NavDrawer sections={sections} appName={appName} who={who} />
           <span className="flex items-center gap-2 md:hidden">
-            <Icon name="dashboard" className="text-accent-graphic" />
+            <BrandMark size={32} />
             <span className="text-heading text-primary">{appName}</span>
           </span>
+          <TopBarTitle sections={sections} />
           <div className="order-last min-w-0 basis-full pb-1 md:order-none md:basis-auto md:pb-0">
             <ScopeBadge scope={session.scope} locale={locale} />
           </div>
@@ -42,10 +45,17 @@ export function Shell({ session, locale, children, allowedMenus = null }: { sess
               <LocaleSwitch />
             </div>
             <ThemeMenu />
-            <span className="hidden max-w-56 truncate text-caption text-secondary lg:inline" data-testid="who" title={who}>
-              {who}
+            <span className="flex items-center gap-2">
+              <span className="inline-flex size-9 shrink-0 items-center justify-center rounded-full bg-accent-container text-body-strong text-accent-on-container" aria-hidden="true">
+                {Array.from(session.user.full_name.trim())[0]?.toUpperCase() ?? "?"}
+              </span>
+              <span className="hidden max-w-56 truncate text-caption text-primary lg:inline" data-testid="who" title={who}>
+                {who}
+              </span>
             </span>
-            <LogoutButton />
+            <div className="md:hidden">
+              <LogoutButton />
+            </div>
           </div>
         </header>
         <TopBarSentinel />

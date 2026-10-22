@@ -7,18 +7,18 @@
 :root,
 :root[data-theme="light"] {
   color-scheme: light;
-  --bg-gradient: radial-gradient(circle 90vw at 12% 6%, rgb(156 194 255 / 0.5), rgb(156 194 255 / 0)), radial-gradient(circle 80vw at 95% 78%, rgb(201 184 255 / 0.3), rgb(201 184 255 / 0)), linear-gradient(168deg, #d8e7fb 0%, #e8effa 50%, #f3f5fb 100%);
-  --bg-solid: #e8effa;
-  --surface-glass: rgb(255 255 255 / 0.62);
-  --surface-glass-field: rgb(255 255 255 / 0.96);
+  --bg-gradient: none;
+  --bg-solid: #e8e8e8;
+  --surface-glass: #ffffff;
+  --surface-glass-field: #ffffff;
   --strong-rgb: 255 255 255;
   --surface-solid: #ffffff;
-  --surface-solid-raised: #f2f5fa;
+  --surface-solid-raised: #f3f3f3;
   --scrim-a: 0.32;
-  --border-hairline: rgb(255 255 255 / 0.45);
-  --border-hairline-top: rgb(255 255 255 / 0.75);
-  --border-hairline-bottom: rgb(11 27 51 / 0.1);
-  --border-divider: rgb(11 27 51 / 0.08);
+  --border-hairline: #e2e2e2;
+  --border-hairline-top: rgb(0 0 0 / 0);
+  --border-hairline-bottom: rgb(0 0 0 / 0.06);
+  --border-divider: rgb(0 0 0 / 0.1);
   --border-solid: rgb(11 27 51 / 0.3);
   --border-input: #66768f;
   --border-focus: #0a58cc;
@@ -27,13 +27,13 @@
   --text-disabled: #738097;
   --text-placeholder: #5f6d84;
   --text-on-accent: #ffffff;
-  --accent: #0a58cc;
-  --accent-text: #063b84;
+  --accent: #1b64b8;
+  --accent-text: #0f4684;
   --accent-hi: #052e6b;
   --accent-fill: #041f49;
   --accent-pressed: #031734;
-  --accent-container: #dce9fd;
-  --accent-on-container: #0a3f94;
+  --accent-container: #e3eefb;
+  --accent-on-container: #0b3a70;
   --success: #0b7a45;
   --success-container: #d6f0e1;
   --success-on-container: #0a5a33;
@@ -53,14 +53,18 @@
   --state-skeleton: rgb(11 27 51 / 0.07);
   --state-skeleton-sweep: rgb(255 255 255 / 0.45);
   /* +web */
-  --surface-data: rgb(255 255 255 / 0.92);
-  --card-fill: linear-gradient(180deg, rgb(255 255 255 / 0.3) 0, rgb(255 255 255 / 0) 45%), linear-gradient(180deg, rgb(255 255 255 / 0.66), rgb(255 255 255 / 0.58));
-  --vibrancy-tint: rgb(10 88 204 / 0.04);
-  --lit: 0 0 0 0.5px var(--border-hairline-bottom), inset 0 1px 0 var(--border-hairline-top);
-  --elev-card: 0 1px 3px rgb(11 27 51 / 0.06), 0 2px 10px rgb(11 27 51 / 0.1);
+  --surface-data: #ffffff;
+  --card-fill: #ffffff;
+  --vibrancy-tint: transparent;
+  --lit: 0 0 0 0.5px var(--border-hairline-bottom);
+  --elev-card: 0 1px 3px rgb(0 0 0 / 0.1), 0 1px 2px rgb(0 0 0 / 0.06);
   --elev-sheet: 0 2px 6px rgb(11 27 51 / 0.08), 0 8px 24px rgb(11 27 51 / 0.14);
   --elev-dialog: 0 4px 8px rgb(11 27 51 / 0.1), 0 8px 32px rgb(11 27 51 / 0.18);
   --chart-baseline: rgb(11 27 51 / 0.22);
+  --cyan: #0a7d9c;
+  --ring-from: #1565c0;
+  --ring-to: #00b8d9;
+  --filter-fill: #c2570c;
   --viz-1: #2a78d6;
   --viz-2: #eb6834;
   --viz-3: #1baf7a;
@@ -127,6 +131,10 @@
   --elev-sheet: 0 2px 6px rgb(0 0 0 / 0.4), 0 8px 24px rgb(0 0 0 / 0.5);
   --elev-dialog: 0 4px 8px rgb(0 0 0 / 0.45), 0 8px 32px rgb(0 0 0 / 0.55);
   --chart-baseline: rgb(255 255 255 / 0.2);
+  --cyan: #5ad1ee;
+  --ring-from: #4f9bf2;
+  --ring-to: #22d3ee;
+  --filter-fill: #e8742a;
   --viz-1: #3987e5;
   --viz-2: #d95926;
   --viz-3: #199e70;
@@ -192,7 +200,11 @@
     --elev-sheet: 0 2px 6px rgb(0 0 0 / 0.4), 0 8px 24px rgb(0 0 0 / 0.5);
     --elev-dialog: 0 4px 8px rgb(0 0 0 / 0.45), 0 8px 32px rgb(0 0 0 / 0.55);
     --chart-baseline: rgb(255 255 255 / 0.2);
-    --viz-1: #3987e5;
+    --cyan: #5ad1ee;
+  --ring-from: #4f9bf2;
+  --ring-to: #22d3ee;
+  --filter-fill: #e8742a;
+  --viz-1: #3987e5;
     --viz-2: #d95926;
     --viz-3: #199e70;
     --viz-4: #c98500;
@@ -263,22 +275,23 @@
   --focus-w: 3px;
 }
 
-/* Glass tiers (web-glass s3). Default is A (full); the pre-paint script stamps lite when backdrop-filter is missing or
+/* Aron look (owner directive 2026-10-18, PARITY-SPEC): no glass. Surfaces are solid and nothing blurs; the tier selectors below stay so
+   the stamped attributes keep working. Old note: Glass tiers (web-glass s3). Default was A (full); the pre-paint script stamps lite when backdrop-filter is missing or
    reduced transparency is set. Sunlight, prefers-contrast and forced-colors always give C. */
 :root {
-  --glass-flat: var(--surface-glass);
-  --strong-a: 0.86;
+  --glass-flat: var(--surface-solid);
+  --strong-a: 1;
   --dialog-a: 0.96;
   --scrim-k: 0.55;
   --card-edge: var(--border-hairline);
   --edge-w: 1px;
   --focus-w: 2px;
-  --glass-fill-strong: rgb(var(--strong-rgb) / var(--strong-a));
-  --glass-fill-dialog: rgb(var(--strong-rgb) / var(--dialog-a));
-  --glass-blur-bar: 16px;
-  --glass-blur-sheet: 28px;
-  --bf-bar: blur(var(--glass-blur-bar)) saturate(1.4);
-  --bf-sheet: blur(var(--glass-blur-sheet)) saturate(1.4);
+  --glass-fill-strong: var(--surface-solid);
+  --glass-fill-dialog: var(--surface-solid);
+  --glass-blur-bar: 0px;
+  --glass-blur-sheet: 0px;
+  --bf-bar: none;
+  --bf-sheet: none;
   --surface-scrim: rgb(0 0 0 / calc(var(--scrim-a) * var(--scrim-k)));
 }
 :root[data-glass="lite"],

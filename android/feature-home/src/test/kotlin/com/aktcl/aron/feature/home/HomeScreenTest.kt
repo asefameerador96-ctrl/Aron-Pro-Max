@@ -17,6 +17,7 @@ import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onLast
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.test.core.app.ApplicationProvider
@@ -59,65 +60,54 @@ class HomeScreenTest {
     private val kpis = HomeKpis("10%", 54, 0, listOf(HomeStockLine("Lighter", 400, 25, "pieces"), HomeStockLine("Match", 0, 0, "dozen")))
     private val money = HomeMoneyLines(listOf(HomeMoneyLine("Lighter", "4,687.50 ৳")), "4,828.50 ৳", null, "−437.50 ৳", "4,391.00 ৳")
 
-    @Test fun dockLabelFollowsTheDayStateTable() {
+    @Test fun noDockButtonIsDrawnTheTilesAreTheEntry() {
+        // the reference Home has no bottom button: the Sale tile is the entry, whatever the day state says
         var got: HomeTile? = null
-        val dock = androidx.compose.runtime.mutableStateOf<HomeDock?>(HomeDock.CHECK_IN)
-        val ctx = AppLocale.wrap(ApplicationProvider.getApplicationContext<Context>(), AppLanguage.EN)
-        compose.setContent {
-            CompositionLocalProvider(LocalContext provides ctx) {
-                AronTheme(AppLanguage.EN) { HomeContent(header, HomeTiles.resolve(emptySet(), 0), BundleFreshness.Fresh, false, null, { got = it }, dock = dock.value) }
-            }
-        }
-        val expected = mapOf(
-            HomeDock.CHECK_IN to "Check in", HomeDock.TAKE_STOCK to "Take stock", HomeDock.START_SELLING to "Start selling",
-            HomeDock.SUBMIT to "Sales submit", HomeDock.CHECK_OUT to "Check out",
-        )
-        expected.forEach { (d, label) ->
-            compose.runOnIdle { dock.value = d }
-            compose.onNodeWithTag(HomeScreenTags.DOCK).assertExists()
-            compose.onNodeWithText(label).performClick()
-            assertEquals(d.target, got)
-        }
-        compose.runOnIdle { dock.value = null }
+        show(AppLanguage.EN, onTile = { got = it }, dock = HomeDock.START_SELLING)
         compose.onNodeWithTag(HomeScreenTags.DOCK).assertDoesNotExist()
+        compose.onNodeWithTag(HomeScreenTags.tile(HomeTile.SALE)).performClick()
+        assertEquals(HomeTile.SALE, got)
     }
 
-    @Test fun heroKpiAndMoneyCardsShowTheirFigures() {
+    @Test fun heroKpiAndMoneyPanelsShowTheirFigures() {
         show(AppLanguage.EN, hero = hero, kpis = kpis, money = money, dock = HomeDock.START_SELLING, sync = SyncChipState.Waiting(3))
         compose.onNodeWithTag(HomeScreenTags.HERO).assertExists()
         compose.onNodeWithText("Today's total").assertExists()
-        compose.onNodeWithText("Checked in 08:52 · Daily").assertExists()
-        compose.onNodeWithTag(HomeScreenTags.CHIP).assertExists()
+        // the six KPI tiles of the reference: visited/planned, strike rate, issue, current stock, non-visit, no sale
         compose.onNodeWithTag(HomeScreenTags.KPI).assertExists()
-        compose.onNodeWithText("Strike rate").assertExists(); compose.onNodeWithText("Non-visit").assertExists()
-        compose.onNodeWithTag(HomeScreenTags.STOCK).assertExists()
-        compose.onAllNodesWithText("Lighter").assertCountEquals(2) // the stock card and the money card
-        compose.onNodeWithText("Match").assertDoesNotExist() // a zero category is hidden
+        compose.onAllNodesWithText("6/60", substring = true)[0].assertExists() // the tile and the target card bar
+        listOf("Strike rate", "Issue", "Current stock", "Non-visit", "No sale").forEach { compose.onNodeWithText(it).assertExists() }
+        compose.onNodeWithText("10%").assertExists(); compose.onNodeWithText("54").assertExists()
+        compose.onNodeWithText("400").assertExists() // issue 400 + 0; the per-category stock card is gone
+        compose.onNodeWithText("25").assertExists()   // current stock 25 + 0
+        // the sales panel and the second panel
         compose.onNodeWithTag(HomeScreenTags.MONEY).assertExists()
-        compose.onNodeWithText("Discount").assertDoesNotExist(); compose.onNodeWithText("QC").assertExists()
+        compose.onNodeWithText("Total").assertExists(); compose.onNodeWithText("Discount").assertExists(); compose.onNodeWithText("QC").assertExists()
+        compose.onNodeWithText("Total discount").assertExists(); compose.onNodeWithText("DRP discount").assertExists(); compose.onNodeWithText("Total QC").assertExists()
+        // the sync chip and the device line are not on Home any more (Settings carries them)
+        compose.onNodeWithTag(HomeScreenTags.CHIP).assertDoesNotExist()
     }
 
-    @Test fun stockQuantitiesNeverClip() {
-        // a cigarette line in sticks is the widest quantity of the card: it shrinks to fit its column, it never loses digits
-        show(AppLanguage.EN, kpis = HomeKpis("10%", 54, 0, listOf(HomeStockLine("Cigarette", 12_000, 9_800, "sticks"))))
-        listOf("12,000 sticks", "9,800 sticks").forEach { qty ->
+    @Test fun aDiscountCanNeverRenderUnderTheQcLabel() {
+        // each row of the panel is bound to its own field: a 437.50 discount with no QC reads discount 437.50 and QC 0.00
+        val m = HomeMoneyLines(
+            emptyList(), "4,828.50 ৳", null, null, "4,391.00 ৳", sticksSold = 0,
+            grossBare = "4,828.50", offerDiscountBare = "437.50", qcBare = "0.00", netBare = "4,391.00", totalDiscountBare = "437.50", drpDiscountBare = "0.00", totalQcBare = "0.00",
+        )
+        show(AppLanguage.EN, hero = hero, kpis = kpis, money = m)
+        compose.onNodeWithTag(HomeScreenTags.DISCOUNT).assertTextEquals("- 437.50")
+        compose.onNodeWithTag(HomeScreenTags.QC).assertTextEquals("- 0.00")
+    }
+
+    @Test fun kpiFiguresNeverClip() {
+        // a cigarette issue of 12,000 sticks is the widest KPI figure: it stays on one line inside its tile
+        show(AppLanguage.EN, hero = hero, kpis = HomeKpis("10%", 54, 0, listOf(HomeStockLine("Cigarette", 12_000, 9_800, "sticks"))))
+        listOf("12,000", "9,800").forEach { qty ->
             val results = mutableListOf<TextLayoutResult>()
             compose.onNodeWithText(qty).assertExists().performSemanticsAction(SemanticsActions.GetTextLayoutResult) { it(results) }
-            assertFalse("$qty overflows its column", results.single().didOverflowWidth)
+            assertFalse("$qty overflows its tile", results.single().didOverflowWidth)
             assertEquals(1, results.single().lineCount)
         }
-    }
-
-    @Test fun expiredBundleDisablesADockThatWouldSell() {
-        show(AppLanguage.EN, freshness = BundleFreshness.Expired(3), dock = HomeDock.START_SELLING)
-        compose.onNodeWithTag(HomeScreenTags.DOCK).assertExists()
-        compose.onNodeWithText("Start selling").assertIsNotEnabled()
-        compose.onNodeWithText("This needs a fresh route bundle.").assertExists()
-    }
-
-    @Test fun missingBundleKeepsTheCheckInDockEnabled() {
-        show(AppLanguage.EN, freshness = BundleFreshness.Missing, dock = HomeDock.CHECK_IN)
-        compose.onNodeWithText("Check in").assertIsEnabled()
     }
 
     @Test fun completeDayShowsTheSuccessChipAndNoDock() {
@@ -128,7 +118,7 @@ class HomeScreenTest {
 
     @Test fun tilesRenderInTwoGroupsWithTheTaskBadge() {
         show(AppLanguage.EN, tasks = 2, dock = HomeDock.START_SELLING)
-        compose.onNodeWithText("Today's work").assertExists(); compose.onNodeWithText("Others").assertExists()
+        compose.onNodeWithText("Today's work").assertDoesNotExist() // the reference has one grid, no group labels
         compose.onNodeWithTag(HomeScreenTags.tile(HomeTile.TASKS)).assertExists()
         compose.onNodeWithContentDescription("2 open items", useUnmergedTree = true).assertExists()
         compose.onNodeWithTag(HomeScreenTags.SETTINGS).assertExists()
@@ -144,9 +134,9 @@ class HomeScreenTest {
         show(AppLanguage.BN)
         compose.onNodeWithText("SR - Testing Banani (sr334001)").assertExists()
         // the two caption lines of screens-sr s2: the route name over "<ISO date> · <route kind>"
-        compose.onNodeWithText("Apsis RouteDaily\n২০২৬-১০-০৫ · প্রতিদিন").assertExists()   // the date is a number: Bengali digits in Bangla (UI-SR-08)
+        compose.onNodeWithText("Apsis RouteDaily, 2026-10-05").assertExists() // the reference subtitle: route, comma, Latin date (sr/home.md)
         compose.onNodeWithText("অ্যাটেনডেন্স").assertExists(); compose.onNodeWithText("টাস্ক ডেলিগেশন").assertExists()
-        compose.onNodeWithText("ফটো ক্যাপচার").assertDoesNotExist()
+        compose.onNodeWithText("Photo Capture").assertExists() // the one English tile label of the reference
     }
 
     @Test fun tileClickReportsTheTile() {
@@ -168,18 +158,6 @@ class HomeScreenTest {
         compose.onNodeWithTag(HomeScreenTags.tile(HomeTile.SALE)).assertIsEnabled(); compose.onNodeWithTag(HomeScreenTags.BANNER).assertExists()
     }
 
-    @Test fun healthLineShowsValuesAndWarns() {
-        show(AppLanguage.EN, health = DeviceHealthModel.of(35, 450, 3, 30))
-        // caption text with the warning word, no card; the icon speaks the full sentence
-        compose.onNodeWithText("Warning  ·  Battery 35%  ·  Free 450 MB  ·  3 waiting to upload  ·  Last sync 30 min ago").assertExists()
-        compose.onNodeWithContentDescription("Check this phone: low battery, low storage or no recent sync.").assertExists()
-        compose.onNodeWithText("Low storage on this phone. Free some space so your work can be saved.").assertDoesNotExist()
-    }
-
-    @Test fun storageUnder200MbIsTheOneDangerCase() {
-        show(AppLanguage.EN, health = DeviceHealthModel.of(80, 150, 0, 5))
-        compose.onNodeWithText("Low storage on this phone. Free some space so your work can be saved.").performScrollTo().assertExists()
-    }
 }
 
 /** F-SR-005, F-SR-007: Settings language and Logout with confirmation. */
@@ -235,5 +213,19 @@ class SettingsScreenTest {
         compose.onNodeWithTag(SettingsTags.SUPPORT).performScrollTo().performClick()
         compose.onNodeWithTag(SettingsTags.PHOTOS_WIFI).assertExists()
         assertEquals(1, update); assertEquals(1, support)
+    }
+
+    @Test fun settingsCarriesTheDeviceLineThatLeftHome() {
+        val ctx = AppLocale.wrap(ApplicationProvider.getApplicationContext<Context>(), AppLanguage.EN)
+        compose.setContent { CompositionLocalProvider(LocalContext provides ctx) { AronTheme(AppLanguage.EN) { SettingsContent("1", {}, {}, health = DeviceHealthModel.of(35, 450, 3, 30)) } } }
+        // caption text with the warning word; the icon speaks the full sentence
+        compose.onNodeWithText("Warning  ·  Battery 35%  ·  Free 450 MB  ·  3 waiting to upload  ·  Last sync 30 min ago").performScrollTo().assertExists()
+        compose.onNodeWithContentDescription("Check this phone: low battery, low storage or no recent sync.").assertExists()
+    }
+
+    @Test fun storageUnder200MbIsTheOneDangerCase() {
+        val ctx = AppLocale.wrap(ApplicationProvider.getApplicationContext<Context>(), AppLanguage.EN)
+        compose.setContent { CompositionLocalProvider(LocalContext provides ctx) { AronTheme(AppLanguage.EN) { SettingsContent("1", {}, {}, health = DeviceHealthModel.of(80, 150, 0, 5)) } } }
+        compose.onNodeWithText("Low storage on this phone. Free some space so your work can be saved.").performScrollTo().assertExists()
     }
 }

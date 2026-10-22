@@ -11,11 +11,11 @@ const REASON_KEY: Record<StaleReason, MessageKey> = {
 };
 
 /** Business date, as-of stamp and, when the figure is not live today, a reason chip (F-WEB-068; web-glass s7.3). Used under every tile. */
-export function TileMeta({ locale, businessDate, asOf, today, reason }: { locale: Locale; businessDate: string; asOf: string | null; today: string; reason?: StaleReason }) {
+export function TileMeta({ locale, businessDate, asOf, today, reason, quiet = false }: { locale: Locale; businessDate: string; asOf: string | null; today: string; reason?: StaleReason; /** the home shows one As-of stamp in its header: a live tile keeps its date and stamp for screen readers only and shows them when it is stale */ quiet?: boolean }) {
   const live = businessDate === today;
   const chip: StaleReason | undefined = reason ?? (live ? undefined : "not_live_today");
   return (
-    <p className="mt-auto flex flex-wrap items-center gap-x-2 gap-y-1 pt-1 text-caption text-secondary" data-testid="tile-meta">
+    <p className={quiet && !chip ? "sr-only" : "mt-auto flex flex-wrap items-center gap-x-2 gap-y-1 pt-1 text-caption text-secondary"} data-testid="tile-meta">
       <time dateTime={businessDate} data-testid="tile-date">
         {formatBusinessDate(locale, businessDate)}
       </time>

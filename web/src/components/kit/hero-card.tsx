@@ -7,7 +7,8 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import { STRETCHED_LINK } from "./stat-card";
 
-export function Money({ amount, testId, className = "" }: { amount: string; testId?: string; className?: string }) {
+export function Money({ amount, testId, className = "", plain = false }: { amount: string; testId?: string; className?: string; /** a lakh/crore figure ("5.43 Lakh"): printed as is, no decimal split and no taka sign */ plain?: boolean }) {
+  if (plain) return <span className={`money ${className}`}><span data-testid={testId}>{amount}</span></span>;
   const dot = amount.lastIndexOf(".");
   const whole = dot < 0 ? amount : amount.slice(0, dot);
   const frac = dot < 0 ? "" : amount.slice(dot);
@@ -42,13 +43,13 @@ export function Sparkline({ points, label }: { points: readonly number[]; label:
   );
 }
 
-export function HeroCard({ label, amount, sub, delta, sparkline, sparklineLabel, href, testId, valueTestId, caption, className = "" }: { label: string; amount: string; sub?: ReactNode; delta?: ReactNode; sparkline?: readonly number[]; sparklineLabel?: string; href?: string; testId?: string; valueTestId?: string; caption?: ReactNode; className?: string }) {
+export function HeroCard({ label, amount, sub, delta, sparkline, sparklineLabel, href, testId, valueTestId, caption, plain = false, className = "" }: { plain?: boolean; label: string; amount: string; sub?: ReactNode; delta?: ReactNode; sparkline?: readonly number[]; sparklineLabel?: string; href?: string; testId?: string; valueTestId?: string; caption?: ReactNode; className?: string }) {
   return (
     <section data-testid={testId} className={`glass-data @container relative flex min-h-42 flex-col gap-2 p-(--card-pad) text-primary ${className}`}>
       <h2 className="text-label text-secondary">{href ? <Link href={href} className={STRETCHED_LINK}>{label}</Link> : label}</h2>
       <div className="flex flex-wrap items-end justify-between gap-4">
         <p className="fit-number min-w-0 text-hero text-primary">
-          <Money amount={amount} testId={valueTestId} />
+          <Money amount={amount} testId={valueTestId} plain={plain} />
         </p>
         {sparkline && sparklineLabel ? <Sparkline points={sparkline} label={sparklineLabel} /> : null}
       </div>

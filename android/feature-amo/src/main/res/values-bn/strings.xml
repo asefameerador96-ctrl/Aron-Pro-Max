@@ -291,4 +291,6 @@
     <string name="amo_mo_continue">এগিয়ে যান</string>
     <string name="amo_success_title">সফল</string>
     <string name="amo_ok">ওকে</string>
+    <string name="amo_field_invalid">মানটি যাচাই করুন</string>
+    <string name="amo_verify_loading">বিস্তারিত লোড হচ্ছে…</string>
 </resources>

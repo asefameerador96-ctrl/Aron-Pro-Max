@@ -339,7 +339,7 @@ class Wiring(
                 memoRoutes(com.aktcl.aron.backend.sync.MemoDeps(db, reach, guard, clock))
                 nearbyRoutes(com.aktcl.aron.backend.sync.NearbyDeps(db, config, reach, guard, clock))
                 riskSignalRoutes(com.aktcl.aron.backend.sync.RiskSignalDeps(db, config, reach, guard, clock))
-                mediaRoutes(MediaDeps(db, { path, max, until -> blob.writeSas(path, max, until) }, guard, clock, blobs.photoWriter, reach, blobs.photoRead))
+                mediaRoutes(MediaDeps(db, { path, max, until -> blob.writeSas(path, max, until) }, guard, clock, blobs.photoWriter, reach, blobs.photoRead, blobs.imageRead))
                 pushRoutes(com.aktcl.aron.backend.notify.PushDeps(db, config, guard, clock))
                 notificationRoutes(com.aktcl.aron.backend.notify.NotificationDeps(db, config, reach, push, guard, clock))
             }, frontDoorId = s.frontDoorId, admission = admission, cachedGeneration = generation::cached,

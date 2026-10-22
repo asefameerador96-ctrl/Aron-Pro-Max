@@ -1,5 +1,6 @@
 package com.aktcl.aron.uiscreenshots
 
+import com.aktcl.aron.core.ui.aron.LocalPackshotProvider
 import android.content.Context
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -166,8 +167,10 @@ class ScreenshotTests {
             onSettings = {}, hero = HomeHero(Formats.money(4_391_000, locale), 6, 60, "08:52", HomeDayState.IN_FIELD),
             kpis = HomeKpis("10%", 54, 0, listOf(HomeStockLine(cigarette, 12_000, 9_800, stick), HomeStockLine(lighter, 400, 25, piece), HomeStockLine(match, 400, 394, dozen))),
             money = HomeMoneyLines(
-                listOf(HomeMoneyLine(match, Formats.money(141_000, locale)), HomeMoneyLine(lighter, Formats.money(4_687_500, locale))),
-                Formats.money(4_828_500, locale), null, "−" + Formats.money(437_500, locale), Formats.money(4_391_000, locale),
+                listOf(HomeMoneyLine(match, Formats.money(141_000, locale), bare(141_000, locale)), HomeMoneyLine(lighter, Formats.money(4_687_500, locale), bare(4_687_500, locale))),
+                Formats.money(4_828_500, locale), "−" + Formats.money(437_500, locale), null, Formats.money(4_391_000, locale),
+                sticksSold = 0, grossBare = bare(4_828_500, locale), offerDiscountBare = bare(437_500, locale), qcBare = bare(0, locale), netBare = bare(4_391_000, locale),
+                totalDiscountBare = bare(437_500, locale), drpDiscountBare = bare(0, locale), totalQcBare = bare(0, locale),
             ),
             sync = SyncChipState.SyncedAt(Formats.digits("10:42", locale)), onSync = {}, sunlight = false, onSunlight = {},
             dock = HomeDock.START_SELLING, routeKindLabel = "Daily",
@@ -176,12 +179,12 @@ class ScreenshotTests {
 
     // ---- selling fixtures (SellShot) ----
     private fun sku(id: Long, cat: String, name: String, unit: String, perPack: Int) =
-        SkuEntity(id, "S$id", id, cat, name, name, null, unit, perPack, if (perPack > 1) "pack" else "base", null, "1.000", id.toInt(), "active", 1)
+        SkuEntity(id, name.replace(' ', '-'), id, cat, name, name, null, unit, perPack, if (perPack > 1) "pack" else "base", null, "1.000", id.toInt(), "active", 1)
     private val stockRows = listOf(
-        StockRow(sku(1, "cigarette", "MaxR 10S", "stick", 10), 400, 20),
-        StockRow(sku(2, "cigarette", "Prime Gold 10S", "stick", 10), 200, 0),
-        StockRow(sku(3, "lighter", "Aster", "piece", 1), 400, 0),
-        StockRow(sku(4, "match", "Flame Box", "dozen", 1), 400, 0),
+        StockRow(sku(1, "cigarette", "MaxR 10S", "stick", 10), 400, 20, stockBase = 380),
+        StockRow(sku(2, "cigarette", "Prime Gold 10S", "stick", 10), 200, 0, stockBase = 190),
+        StockRow(sku(3, "lighter", "Aster", "piece", 1), 400, 0, stockBase = 25),
+        StockRow(sku(4, "match", "Flame Box", "dozen", 1), 400, 0, stockBase = 394),
     )
     private val stockTotals = listOf(CategoryTotal("cigarette", 600), CategoryTotal("lighter", 400), CategoryTotal("match", 400))
 
@@ -251,11 +254,33 @@ class ScreenshotTests {
     private val health = DeviceHealthModel.of(62, 1200, 3, 15)
 
     // ---- screens ----
-    @Composable private fun Stock() = Frame(stringResource(HomeR.string.hm_tile_stock)) {
+    @Composable private fun Stock() = ParityFrame(stringResource(HomeR.string.hm_tile_stock), com.aktcl.aron.core.ui.R.drawable.aron_art_stock, printerConnected = false) {
         StockContent(stockRows, stockTotals, StockMessage.SAVED, slipNotPrinted = true, onIssue = { _, _ -> }, onSave = {}, onPrint = {})
     }
 
-    @Composable private fun Picker() = Frame(stringResource(HomeR.string.hm_tile_sale)) {
+    /** The six Maxim SKUs of the dev seed (db/seed/02_products.sql): every one has dev art (android/dev-packshots). */
+    private val maximSeed = listOf("MaxR-10S" to 10, "MaxR-20S" to 20, "MaxB-10S" to 10, "MaxB-20S" to 20, "MaxWB-10S" to 10, "MaxWB-20S" to 20)
+
+    // Only these two captures install the pack picture provider; every other host renders the silhouette (as on INT).
+    /** PARITY-SPEC s2.6 evidence: every seeded Maxim SKU (the SKUs of docs/ui-reference/sr/stock.webp) with its dev pack picture. */
+    @Composable private fun StockPackshots() = ParityFrame(stringResource(HomeR.string.hm_tile_stock), com.aktcl.aron.core.ui.R.drawable.aron_art_stock, printerConnected = false) { CompositionLocalProvider(LocalPackshotProvider provides TestPackshots) {
+        val rows = maximSeed.mapIndexed { i, (code, per) ->
+            val id = 200L + i
+            StockRow(SkuEntity(id, code, id, "cigarette", code, code, null, "stick", per, "pack", null, "1.000", i, "active", 1), 0, 0)
+        }
+        StockContent(rows, emptyList(), null, slipNotPrinted = false, onIssue = { _, _ -> }, onSave = {}, onPrint = {})
+    } }
+
+    /** PARITY-SPEC s2.6 evidence: the Sale list with every seeded Maxim SKU (pictures) and a lighter and a match without art (silhouettes). */
+    @Composable private fun SalePackshots() = ParityFrame(stringResource(SaleR.string.sale_title), com.aktcl.aron.core.ui.R.drawable.aron_art_sale, subtitle = card.name) { CompositionLocalProvider(LocalPackshotProvider provides TestPackshots) {
+        val list = maximSeed.mapIndexed { i, (code, per) ->
+            SaleSku(300L + i, code, "cigarette", code, null, "stick", per, if (per == 10) 8_000 else 7_900, 1, "2026-09-01", stockBase = 200L * (i + 1))
+        } + listOf(aster, match)
+        val review = SaleReviewCalculator.review(draft(), list.associateBy { it.skuId })
+        SaleEntryScreen(list, review, { 0 }, { _, _ -> }, {}, {}, onPreviousSales = {})
+    } }
+
+    @Composable private fun Picker() = ParityFrame(stringResource(HomeR.string.hm_tile_sale), com.aktcl.aron.core.ui.R.drawable.aron_art_sale) {
         val rows = OutletPicker.rows(outlets)
         OutletPickerContent(rows, OutletPicker.chips(rows), OutletPicker.ALL_CHIP, {}, {}, marks = marks)
     }
@@ -274,12 +299,12 @@ class ScreenshotTests {
         )
     }
 
-    @Composable private fun Sale() = Frame(stringResource(SaleR.string.sale_title), subtitle = card.name) {
-        SaleEntryScreen(skus, saleReview, { id -> saleDraft.lines.firstOrNull { it.skuId == id }?.qtyEntered ?: 0 }, { _, _ -> }, {}, {}, recentSkuIds = setOf(100L), onPreviousSales = {})
+    @Composable private fun Sale() = ParityFrame(stringResource(SaleR.string.sale_title), com.aktcl.aron.core.ui.R.drawable.aron_art_sale) {
+        SaleEntryScreen(skus, saleReview, { id -> saleDraft.lines.firstOrNull { it.skuId == id }?.qtyEntered ?: 0 }, { _, _ -> }, {}, {}, recentSkuIds = setOf(100L), onPreviousSales = {}, retailerLabel = "Banani Store (DHK-344-001-01711000000-Apsis Cluster)")
     }
 
-    @Composable private fun Review() = Frame(stringResource(SaleR.string.review_title)) {
-        ReviewScreen(reviewReview, {}, outletLine = "Banani Store (DHK-344-001) · Apsis RouteDaily · Apsis Cluster", onCreditToggle = {}, onQc = {})
+    @Composable private fun Review() = ParityFrame(stringResource(SaleR.string.review_title), com.aktcl.aron.core.ui.R.drawable.aron_art_sale) {
+        ReviewScreen(reviewReview, {}, outletLine = "Banani Store (DHK-344-001)\nরুট: Apsis RouteDaily\nক্লাস্টার: Apsis Cluster", onCreditToggle = {}, onQc = {})
     }
 
     @Composable private fun Memo() = Frame(stringResource(HomeR.string.hm_tile_memo)) {
@@ -288,8 +313,11 @@ class ScreenshotTests {
         MemoDetailView(MemoMenu.detail(memo), true, 57_500, ::skuName, {}, {}, {}, outletName = "Banani Store", onHistory = {}, skuUnit = { id -> if (id == 100L) stick else piece })
     }
 
-    @Composable private fun Attendance() = Frame(stringResource(HomeR.string.hm_tile_attendance)) {
-        AttendanceContent(notCheckedIn, "17:00", {}, {}, onRefreshFix = {}, nowIso = now)
+    @Composable private fun Attendance() = ParityFrame(stringResource(HomeR.string.hm_tile_attendance), com.aktcl.aron.core.ui.R.drawable.aron_art_attendance) {
+        AttendanceContent(
+            notCheckedIn, "17:00", {}, {}, onRefreshFix = {}, nowIso = now,
+            userTitle = "SR - Testing Banani (sr334001)", userSubtitle = "Apsis RouteDaily, 2026-10-05",
+        )
     }
 
     @Composable private fun Summary() = Frame(stringResource(HomeR.string.hm_tile_summary)) {
@@ -305,10 +333,10 @@ class ScreenshotTests {
     @Composable private fun Login(sunlight: Boolean) =
         LoginContent(LoginUiState(username = "sr334001", password = "secret", message = LoginMessage.InvalidCredentials), "ARON SR", "1.0.25 (12)", {}, {}, {}, {}, {}, sunlight = sunlight, onSunlight = {})
 
-    @Composable private fun AmoHome(sunlight: Boolean) = RoleHomeContent(
+    @Composable private fun AmoHome(sunlight: Boolean) = com.aktcl.aron.feature.amo.AmoHomeContent(
         RoleHomes.header(RoleHomes.AMO_PREFIX, amo, "2026-10-05"), amo, BundleStatus.Ready("b-17", "2026-10-05"),
-        RoleHomes.amoTiles(mapOf(RoleHomes.AmoTile.OUTLET to 3)), SyncChipState.SyncedAt(localizedDigits("10:42")), onTile = {}, onSettings = {},
-        hero = RoleHero.Amo(4_391_000, 6, 60), health = health, sunlight = sunlight,
+        RoleHomes.amoTiles(mapOf(RoleHomes.AmoTile.OUTLET to 3)), onTile = {}, onSettings = {},
+        hero = RoleHero.Amo(4_391_000, 6, 60), health = health,
     )
 
     @Composable private fun TsoHome(sunlight: Boolean) = RoleHomeContent(
@@ -341,6 +369,9 @@ class ScreenshotTests {
 
     // ---- Stock ----
     @Test @Config(qualifiers = "bn-w360dp-h800dp") fun stock_bn_light() = shot("stock_bn_light", AppLanguage.BN) { Stock() }
+    // Tall captures so every seeded Maxim row is in the evidence (docs/evidence/ui-parity/packshots-*.png).
+    @Test @Config(qualifiers = "bn-w360dp-h1300dp") fun stock_bn_packshots() = shot("stock_bn_packshots", AppLanguage.BN) { StockPackshots() }
+    @Test @Config(qualifiers = "bn-w360dp-h1800dp") fun sale_bn_packshots() = shot("sale_bn_packshots", AppLanguage.BN) { SalePackshots() }
     @Test @Config(qualifiers = "bn-w360dp-h800dp") fun stock_bn_sunlight() = shot("stock_bn_sunlight", AppLanguage.BN, sunlight = true) { Stock() }
 
     // ---- Outlet picker ----
@@ -383,4 +414,5 @@ class ScreenshotTests {
     @Test fun recordingRunNeverPasses() {
         if (recordTo != null) fail("Goldens recorded to $recordTo: download the artifact, copy the PNGs into android/ui-screenshots/src/test/screenshots and turn the record switch off.")
     }
+    private fun bare(mtk: Long, locale: UiLocale) = Formats.digits(com.aktcl.aron.rules.Money.formatTaka(mtk, 2), locale)
 }

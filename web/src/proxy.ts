@@ -89,6 +89,12 @@ function route(req: NextRequest, session: ReturnType<typeof readSession>, nonce:
   return forbiddenPage(isLocale(l) ? l : DEFAULT_LOCALE);
 }
 
+// The paths the gate must NOT see: build assets, and the public static files a signed-out visitor needs (the sign-in page draws
+// the Aron logo and every tab asks for the icons; behind the gate they would be redirected to the login HTML). The icon, logo,
+// favicon and robots names are exact and $-anchored, so /icon.png.bak, /brand/x.png or /favicon.ico/ stay behind the gate;
+// _next/static and _next/image are plain prefixes, as they always were (build output only). Nothing else opens. The pattern
+// must be one literal (Next reads it at build time), so it cannot be built from a list; tests/brand-assets.test.ts holds it to a
+// table and to the files that actually sit in public/brand.
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|robots.txt).*)"],
+  matcher: ["/((?!_next/static|_next/image|robots\\.txt$|favicon\\.ico$|icon\\.png$|apple-icon\\.png$|brand/aron-mark-64\\.png$|brand/aron-mark-128\\.png$|brand/aron-mark-256\\.png$).*)"],
 };

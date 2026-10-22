@@ -13,7 +13,7 @@ const CALM_GLASS_FILES = [
   "src/app/admin/page.tsx",
   "src/app/admin/loading.tsx",
   "src/components/kit/**/*.{ts,tsx}",
-  "src/components/{shell,sidebar,nav-link,theme-menu,connection-chip,search-field,top-bar-sentinel,scope-badge,locale-switch,logout-button,login-form,i18n-provider}.tsx",
+  "src/components/{shell,sidebar,nav-link,theme-menu,connection-chip,search-field,top-bar-sentinel,scope-badge,locale-switch,logout-button,login-form,i18n-provider,brand-mark}.tsx",
   "src/components/admin/kit/{page,data-table,table-scroll}.tsx",
   "src/components/admin/config/config-home-view.tsx",
   "src/components/dash/{tiles,team-map-plate,final-submit-panel}.tsx",
