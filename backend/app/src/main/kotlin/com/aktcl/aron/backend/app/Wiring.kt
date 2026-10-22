@@ -303,7 +303,7 @@ class Wiring(
                     }
                     push.broadcast(tokens) { mapOf("kind" to "mdm_nudge") }   // no business data; the phone pulls the command itself
                 }),
-                deviceEnrolment, guard, enabled = System.getenv("ARON_MDM_ENABLED") == "1",
+                deviceEnrolment, guard, grants = com.aktcl.aron.backend.analytics.mdm.ModuleGrants, enabled = System.getenv("ARON_MDM_ENABLED") == "1",
             )
             return Wiring(clock, config, db, generation::current, s.build, mount = {
                 authRoutes(auth)

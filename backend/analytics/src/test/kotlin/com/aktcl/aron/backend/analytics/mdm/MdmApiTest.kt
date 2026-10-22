@@ -129,6 +129,21 @@ class MdmApiTest : ReportFixture() {
         assertEquals("ERR_FORBIDDEN", runCatching { ro.write(p) }.exceptionOrNull().let { (it as com.aktcl.aron.backend.platform.ApiProblem).code.wire })
     }
 
+    /** mdm's request to backend-authz: the production grants follow the token's `mdm` module (D-AUTHZ-MODULES-01). */
+    @Test
+    fun productionGrantsFollowTheMdmModule() {
+        fun p(role: Role, modules: Map<String, String>?) = com.aktcl.aron.backend.platform.AronPrincipal(1, "u", role, 1, "aron-api", null, null, "web", emptyList(), false, emptyList(), "j", Instant.now(), modules = modules)
+        assertEquals(MdmLevel.WRITE, ModuleGrants.level(p(Role.SUPERADMIN, null)))
+        assertEquals(MdmLevel.WRITE, ModuleGrants.level(p(Role.ADMIN, mapOf("mdm" to "w"))))
+        assertEquals(MdmLevel.READ, ModuleGrants.level(p(Role.ADMIN, mapOf("mdm" to "r", "users" to "w"))))
+        assertEquals(MdmLevel.NONE, ModuleGrants.level(p(Role.ADMIN, mapOf("users" to "w"))))
+        assertEquals(MdmLevel.WRITE, ModuleGrants.level(p(Role.ADMIN, null)), "before the grants are deployed: today's write")
+        for (r in Role.entries - Role.ADMIN - Role.SUPERADMIN) assertEquals(MdmLevel.NONE, ModuleGrants.level(p(r, mapOf("mdm" to "w"))), "$r")
+        val ro = p(Role.ADMIN, mapOf("mdm" to "r"))
+        ModuleGrants.read(ro)
+        assertEquals("ERR_FORBIDDEN", runCatching { ModuleGrants.write(ro) }.exceptionOrNull().let { (it as com.aktcl.aron.backend.platform.ApiProblem).code.wire })
+    }
+
     @Test
     fun listAndDetailCarryTheComplianceFlags() = app {
         val list = json(get("/admin/mdm/devices").bodyAsText()).o()
