@@ -79,7 +79,7 @@ fun KpiStripView(strip: KpiStrip, categoryLabel: (String) -> String, unitLabel: 
                     strip.categories.forEachIndexed { i, cat ->
                         AronListRow(
                             categoryLabel(cat.categoryCode),
-                            subtitle = stringResource(R.string.kpi_stock_line, localizedNumber(cat.issueBase), localizedNumber(cat.currentStockBase), unitLabel(cat.unit)),
+                            subtitle = stringResource(R.string.kpi_stock_line, kpiFigure(cat.issueBase, cat.issueRemBase, cat.categoryCode, cat.unit, unitLabel), kpiFigure(cat.currentStockBase, cat.currentRemBase, cat.categoryCode, cat.unit, unitLabel)),
                             divider = i < strip.categories.lastIndex,
                         )
                     }
@@ -157,3 +157,9 @@ fun JourneyScreen(j: Journey, modifier: Modifier = Modifier) {
         }
     }
 }
+
+/** `12 packets` or `12 packets + 5 sticks`: whole entry units with the base-unit remainder (signed, never dropped). */
+@Composable
+private fun kpiFigure(whole: Long, remBase: Long, categoryCode: String, unit: String, unitLabel: (String) -> String): String =
+    localizedNumber(whole) + " " + unitLabel(unit) +
+        if (remBase == 0L) "" else " " + com.aktcl.aron.core.ui.remWithUnit(remBase, unitLabel(com.aktcl.aron.rules.EntryUnits.baseLabelKey(categoryCode)))

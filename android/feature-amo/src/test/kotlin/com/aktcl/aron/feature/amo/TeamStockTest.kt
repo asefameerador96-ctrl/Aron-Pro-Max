@@ -30,3 +30,22 @@ class TeamStockTest {
         assertTrue(TeamStock.parse("[").isEmpty())
     }
 }
+
+/** D-UNITS-02: the AMO's SR stock shows packets, boxes and dozens (the server still sends base quantities). */
+class TeamStockUnitsTest {
+    private val pack10 = com.aktcl.aron.rules.EntrySpec(com.aktcl.aron.rules.QtyUnit.PACK, 10)
+    private val pack25 = com.aktcl.aron.rules.EntrySpec(com.aktcl.aron.rules.QtyUnit.PACK, 25)
+    private val dozen = com.aktcl.aron.rules.EntrySpec(com.aktcl.aron.rules.QtyUnit.DOZEN, 1)
+    private val skus = mapOf(
+        1L to SkuInfo("A", null, "cigarette", pack10), 2L to SkuInfo("B", null, "cigarette", com.aktcl.aron.rules.EntrySpec(com.aktcl.aron.rules.QtyUnit.PACK, 20)),
+        3L to SkuInfo("L", null, "lighter", pack25), 4L to SkuInfo("M", null, "match", dozen),
+    )
+    @org.junit.Test fun totalsAddEntryUnitsPerCategoryNeverBaseSticksOfDifferentPackSizes() {
+        val lines = listOf(StockLine(1, "stick", 100, 30, 0, 70), StockLine(2, "stick", 200, 0, 0, 200), StockLine(3, "piece", 75, 25, 0, 50), StockLine(4, "dozen", 9, 3, 0, 6))
+        val t = TeamStock.totals(lines, skus).associateBy { it.categoryCode }
+        org.junit.Assert.assertEquals(20L, t.getValue("cigarette").lifted) // 10 packets of 10s + 10 packets of 20s
+        org.junit.Assert.assertEquals("packet", t.getValue("cigarette").unitKey)
+        org.junit.Assert.assertEquals(3L, t.getValue("lighter").lifted); org.junit.Assert.assertEquals("box", t.getValue("lighter").unitKey)
+        org.junit.Assert.assertEquals(9L, t.getValue("match").lifted); org.junit.Assert.assertEquals("dozen", t.getValue("match").unitKey)
+    }
+}

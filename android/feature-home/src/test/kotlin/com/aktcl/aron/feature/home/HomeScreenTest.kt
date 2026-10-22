@@ -78,8 +78,9 @@ class HomeScreenTest {
         compose.onAllNodesWithText("6/60", substring = true)[0].assertExists() // the tile and the target card bar
         listOf("Strike rate", "Issue", "Current stock", "Non-visit", "No sale").forEach { compose.onNodeWithText(it).assertExists() }
         compose.onNodeWithText("10%").assertExists(); compose.onNodeWithText("54").assertExists()
-        compose.onNodeWithText("400").assertExists() // issue 400 + 0; the per-category stock card is gone
-        compose.onNodeWithText("25").assertExists()   // current stock 25 + 0
+        // issue and current stock are listed per category in the category's own unit, never added across units (docs/34 s4.2)
+        compose.onNodeWithText("400 pieces").assertExists(); compose.onNodeWithText("25 pieces").assertExists()
+        compose.onNodeWithText("Match").assertDoesNotExist() // nothing loaded: no line
         // the sales panel and the second panel
         compose.onNodeWithTag(HomeScreenTags.MONEY).assertExists()
         compose.onNodeWithText("Total").assertExists(); compose.onNodeWithText("Discount").assertExists(); compose.onNodeWithText("QC").assertExists()
@@ -91,7 +92,7 @@ class HomeScreenTest {
     @Test fun aDiscountCanNeverRenderUnderTheQcLabel() {
         // each row of the panel is bound to its own field: a 437.50 discount with no QC reads discount 437.50 and QC 0.00
         val m = HomeMoneyLines(
-            emptyList(), "4,828.50 ৳", null, null, "4,391.00 ৳", sticksSold = 0,
+            emptyList(), "4,828.50 ৳", null, null, "4,391.00 ৳", packetsSold = 0,
             grossBare = "4,828.50", offerDiscountBare = "437.50", qcBare = "0.00", netBare = "4,391.00", totalDiscountBare = "437.50", drpDiscountBare = "0.00", totalQcBare = "0.00",
         )
         show(AppLanguage.EN, hero = hero, kpis = kpis, money = m)
@@ -102,11 +103,22 @@ class HomeScreenTest {
     @Test fun kpiFiguresNeverClip() {
         // a cigarette issue of 12,000 sticks is the widest KPI figure: it stays on one line inside its tile
         show(AppLanguage.EN, hero = hero, kpis = HomeKpis("10%", 54, 0, listOf(HomeStockLine("Cigarette", 12_000, 9_800, "sticks"))))
-        listOf("12,000", "9,800").forEach { qty ->
+        listOf("12,000 sticks", "9,800 sticks").forEach { qty ->
             val results = mutableListOf<TextLayoutResult>()
             compose.onNodeWithText(qty).assertExists().performSemanticsAction(SemanticsActions.GetTextLayoutResult) { it(results) }
             assertFalse("$qty overflows its tile", results.single().didOverflowWidth)
             assertEquals(1, results.single().lineCount)
+        }
+    }
+
+    @Test fun aRemainderOfSticksShowsSmallAndNothingClips() {
+        // 6 packets and 17 sticks left over, and an oversold line: both fit their tile (the whole units and the remainder on their own lines)
+        show(AppLanguage.EN, hero = hero, kpis = HomeKpis("10%", 54, 0, listOf(HomeStockLine("Cigarette", 1_187, 6, "packets", 19, 17, "sticks"), HomeStockLine("Bidi", 0, -1, "packets", 0, -7, "sticks"))))
+        listOf("1,187 packets", "+ 19 sticks", "6 packets", "+ 17 sticks", "\u2212 7 sticks").forEach { text ->
+            val results = mutableListOf<TextLayoutResult>()
+            compose.onAllNodesWithText(text)[0].assertExists().performSemanticsAction(SemanticsActions.GetTextLayoutResult) { it(results) }
+            assertFalse("$text overflows its tile", results.first().didOverflowWidth)
+            assertEquals(1, results.first().lineCount)
         }
     }
 

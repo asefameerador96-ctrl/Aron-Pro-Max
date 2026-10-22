@@ -61,7 +61,7 @@
     <string name="kpi_non_visit">নন ভিজিট</string>
     <string name="kpi_no_sale">বিক্রি নেই</string>
     <string name="kpi_stock_title">ক্যাটাগরি অনুযায়ী ইস্যু ও স্টক</string>
-    <string name="kpi_stock_line">ইস্যু %1$s %3$s · স্টক %2$s %3$s</string>
+    <string name="kpi_stock_line">ইস্যু %1$s · স্টক %2$s</string>
     <string name="money_by_category">ক্যাটাগরি অনুযায়ী বিক্রয় (৳)</string>
     <string name="money_gross">মোট মূল্য</string>
     <string name="money_discount">মোট ডিসকাউন্ট</string>
@@ -80,4 +80,5 @@
     <string name="memo_cat_match">ম্যাচ</string>
     <string name="memo_total_category">মোট %1$s</string>
     <string name="memo_due_chip_amount">বাকি %1$s</string>
+    <string name="summary_qty_rem">%1$s %2$s %3$s</string>
 </resources>

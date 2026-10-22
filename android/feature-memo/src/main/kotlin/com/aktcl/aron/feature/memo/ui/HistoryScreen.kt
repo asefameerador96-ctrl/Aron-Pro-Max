@@ -43,6 +43,8 @@ import com.aktcl.aron.feature.memo.domain.SaleHistory
 fun SaleHistoryScreen(
     h: SaleHistory, offlineBanner: Boolean, modifier: Modifier = Modifier,
     skuName: (Long) -> String = { it.toString() }, skuUnit: (Long) -> String = { "" },
+    /** Category code of a SKU: with the stored unit it picks the word (packet, box, dozen). */
+    skuCategory: (Long) -> String? = { null },
 ) {
     val look = LocalAronLook.current
     var picked by rememberSaveable { mutableStateOf<String?>(null) }
@@ -77,7 +79,7 @@ fun SaleHistoryScreen(
                     Text(localizedDigits(day.businessDate), style = MaterialTheme.typography.titleSmall, color = look.purple, modifier = Modifier.padding(horizontal = AronTokens.Space.M))
                     TableHeader(stringResource(R.string.memo_col_sku), stringResource(R.string.memo_col_qty), stringResource(R.string.memo_col_price))
                     day.skuRows.forEach { r ->
-                        TableRow(skuName(r.skuId), qtyText(r.qtyBase, skuUnit(r.skuId)), amount(r.valueMtk))
+                        TableRow(skuName(r.skuId), lineQtyText(r.qtyEntered, r.unitEntered, skuCategory(r.skuId), r.qtyBase, skuUnit(r.skuId)), amount(r.valueMtk))
                     }
                     CardDivider()
                     Row(Modifier.fillMaxWidth().padding(horizontal = AronTokens.Space.M), verticalAlignment = Alignment.CenterVertically) {

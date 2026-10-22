@@ -120,12 +120,13 @@
     <string name="hm_target_title">আজকের অগ্রগতি</string>
     <string name="hm_target_details">বিস্তারিত</string>
     <string name="hm_sales_title">বিক্রয়</string>
-    <string name="hm_sales_unit">(স্টিক)</string>
+    <string name="hm_sales_unit">(প্যাকেট)</string>
     <string name="hm_total_discount">মোট ডিসকাউন্ট</string>
     <string name="hm_drp_discount">DRP ডিসকাউন্ট</string>
     <string name="hm_total_qc">মোট QC</string>
     <string name="hm_gross_total">সর্ব মোট</string>
     <string name="hm_total_taka">মোট টাকা</string>
     <string name="set_group_status">ফোনের অবস্থা</string>
+    <string name="hm_qty_unit_rem">%1$s %2$s + %3$s %4$s</string>
     <string name="set_printer">প্রিন্টার পরীক্ষা</string>
 </resources>

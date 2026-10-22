@@ -345,12 +345,12 @@ class SrDay(
         runCatching { printing.recover() }
     }
 
-    /** The stock slip of one Save, from the stored rows only (quantities as entered in the base unit). */
+    /** The stock slip of one Save, from the stored rows only (quantities as counted: packets, boxes, dozens, with their unit word). */
     suspend fun stockSlip(movements: List<com.aktcl.aron.core.database.entity.StockMovementEntity>): com.aktcl.aron.core.printing.doc.StockSlipPrint {
         val skus = reference.skus().associateBy { it.skuId }
         return com.aktcl.aron.core.printing.doc.StockSlipPrint(
             printedAtEpochMs = clock.nowMs(), sr = userName, route = data.value.route?.name.orEmpty(), distributor = "",
-            lines = movements.sortedBy { it.skuId }.map { com.aktcl.aron.core.printing.doc.StockSlipLine(skus[it.skuId]?.categoryCode.orEmpty(), skus[it.skuId]?.shortName ?: it.skuId.toString(), it.qtyBase) },
+            lines = movements.sortedBy { it.skuId }.map { com.aktcl.aron.core.printing.doc.StockSlipLine(skus[it.skuId]?.categoryCode.orEmpty(), skus[it.skuId]?.shortName ?: it.skuId.toString(), it.qtyBase, it.qtyEntered, com.aktcl.aron.feature.memo.domain.PrintMapping.unitKeyOf(skus[it.skuId]?.categoryCode.orEmpty(), it.unitEntered), com.aktcl.aron.rules.EntryUnits.baseLabelKey(skus[it.skuId]?.categoryCode.orEmpty())) },
         )
     }
 

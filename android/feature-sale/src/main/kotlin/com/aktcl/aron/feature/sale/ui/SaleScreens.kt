@@ -118,6 +118,7 @@ import com.aktcl.aron.core.ui.LocalGlassTier
 import com.aktcl.aron.core.ui.LocalReducedMotion
 import com.aktcl.aron.core.ui.MoneyText
 import com.aktcl.aron.core.ui.RowPosition
+import com.aktcl.aron.core.ui.entryUnitLabel
 import com.aktcl.aron.core.ui.localizedDigits
 import com.aktcl.aron.core.ui.localizedNumber
 import com.aktcl.aron.feature.sale.R
@@ -125,6 +126,7 @@ import com.aktcl.aron.feature.sale.domain.ReviewLine
 import com.aktcl.aron.feature.sale.domain.ReviewProblem
 import com.aktcl.aron.feature.sale.domain.SaleReview
 import com.aktcl.aron.feature.sale.domain.SaleSku
+import com.aktcl.aron.rules.EntrySpec
 import com.aktcl.aron.rules.Formats
 import com.aktcl.aron.rules.Money
 import com.aktcl.aron.rules.QtyUnit
@@ -387,8 +389,9 @@ private fun LinkText(label: String, onClick: () -> Unit, modifier: Modifier = Mo
 @Composable
 private fun SaleSkuRow(sku: SaleSku, qty: Long, line: ReviewLine?, onQuantity: (Long, Long) -> Unit) {
     val look = LocalAronLook.current
-    val unit = unitLabel(sku.baseUnit)
+    val unit = entryUnitLabel(sku.entryLabelKey)
     val name = skuDisplayName(sku)
+    val entry = sku.entry
     val max = MaxLineQty
     Column {
         // the label is the hyphenated SKU code on one line (sr/stock.webp); nothing is printed between the cards
@@ -396,21 +399,37 @@ private fun SaleSkuRow(sku: SaleSku, qty: Long, line: ReviewLine?, onQuantity: (
             skuId = sku.skuId.toString(), skuCode = sku.code,
             quantity = localizedNumber(qty), onQuantityChange = { onQuantity(sku.skuId, parseQty(it).coerceIn(0L, max)) },
             onMinus = { onQuantity(sku.skuId, (qty - 1).coerceAtLeast(0)) }, onPlus = { onQuantity(sku.skuId, (qty + 1).coerceAtMost(max)) },
-            stock = sku.stockBase?.let { localizedNumber(it) } ?: "–",
+            stock = sku.stockBase?.let { entryStockText(entry, it) } ?: "–",
+            caption = sku.entryPriceMtk?.let { stringResource(R.string.sale_price_per_unit, moneyBare(it, if (it % 10L == 0L) 2 else 3), unit) },
             minusLabel = stringResource(R.string.sale_less) + ", " + name, plusLabel = stringResource(R.string.sale_more) + ", " + name,
             quantityLabel = stringResource(R.string.sale_qty_a11y, localizedNumber(qty), unit) + ", " + name,
-            packBadge = line?.takeIf { sku.packFactor > 1 && it.packBadge.first > 0 }?.let { localizedNumber(it.packBadge.first.toLong()) },
+            packBadge = line?.takeIf { entry.unit != QtyUnit.PACK && sku.packFactor > 1 && it.packBadge.first > 0 }?.let { localizedNumber(it.packBadge.first.toLong()) },
             category = packCategoryOf(sku.categoryCode),
             minusEnabled = qty > 0, plusEnabled = qty < max,
         )
         // the over-stock state stays visible (a warning, never a block): the stock figure is named in red under the card
         if (line?.exceedsStock == true) {
             Text(
-                localizedDigits(stringResource(R.string.sale_stock_warning, (sku.stockBase ?: 0L).toString(), sku.name)),
+                localizedDigits(stringResource(R.string.sale_stock_warning, entryStockText(entry, sku.stockBase ?: 0L), sku.name, unit)),
                 color = look.red, fontSize = 13.sp, modifier = Modifier.padding(start = 16.dp, top = 4.dp, end = 16.dp),
             )
         }
     }
+}
+
+/** `5 packets (70 sticks)`: the category subtotal in its entry unit with the base figure in brackets (no brackets when they are the same unit). */
+@Composable
+private fun subtotalQty(sub: com.aktcl.aron.feature.sale.domain.CategorySubtotal, sku: SaleSku): String {
+    val main = stringResource(R.string.review_qty_unit, localizedNumber(sub.qtyEntered), entryUnitLabel(sku.entryLabelKey))
+    val baseKey = com.aktcl.aron.rules.EntryUnits.baseLabelKey(sku.categoryCode)
+    return if (sku.entryLabelKey == baseKey) main else main + " (" + localizedNumber(sub.qtyBase) + " " + entryUnitLabel(baseKey) + ")"
+}
+
+/** Stock in the entry unit, e.g. `12`; stock that is not a whole number of entry units (older rows) appends `+n` base units. */
+@Composable
+private fun entryStockText(entry: EntrySpec, stockBase: Long): String {
+    val whole = entry.fromBase(stockBase); val rest = entry.remainderBase(stockBase)
+    return localizedNumber(whole) + com.aktcl.aron.core.ui.remSuffix(rest)
 }
 
 /** Typed digits (Latin or Bangla) to a quantity; empty reads as zero. */
@@ -460,7 +479,7 @@ fun ReviewScreen(
             outletLine?.lines()?.filter { it.isNotBlank() }?.forEachIndexed { i, l ->
                 Text(l, color = look.ink, fontSize = if (i == 0) 17.sp else 14.sp, fontWeight = if (i == 0) FontWeight.Bold else FontWeight.Normal)
             }
-            val byCategory = review.lines.groupBy { it.sku.categoryCode }.toList().sortedBy { categoryRank(it.first) }
+            val byCategory = review.lines.groupBy { it.sku.categoryCode to it.sku.entryLabelKey }.toList().sortedWith(compareBy({ categoryRank(it.first.first) }, { it.first.second }))
             // the net is printed once, at the bottom of the table card (the Summary reference); the Print button sits on the grey page
             val totals = buildList {
                 add(SummaryTotal(stringResource(R.string.review_gross), moneyGlued(t.grossMtk)))
@@ -476,11 +495,12 @@ fun ReviewScreen(
             SummaryTable(
                 headers = listOf(stringResource(R.string.review_col_sku), stringResource(R.string.review_col_qty), stringResource(R.string.review_col_value)),
                 rows = byCategory.flatMap { (_, ls) ->
-                    ls.map { l -> SummaryRow(l.sku.code, listOf(unitLabel(l.sku.baseUnit), localizedNumber(l.qtyBase), moneyGlued(l.memoLine.grossMtk))) }
+                    ls.map { l -> SummaryRow(l.sku.code, listOf(entryUnitLabel(l.sku.entryLabelKey), localizedNumber(l.entry.qtyEntered), moneyGlued(l.memoLine.grossMtk))) }
                 },
-                subtotals = byCategory.mapNotNull { (code, ls) ->
-                    review.categories.firstOrNull { it.categoryCode == code }?.let { sub ->
-                        TotalsLine(stringResource(R.string.review_subtotal, categoryLabel(code)), listOf(stringResource(R.string.review_qty_unit, localizedNumber(sub.qtyBase), unitLabel(ls.first().sku.baseUnit)), moneyGlued(sub.grossMtk)))
+                subtotals = byCategory.mapNotNull { (key, ls) ->
+                    val code = key.first
+                    review.categories.firstOrNull { it.categoryCode == code && it.unitKey == key.second }?.let { sub ->
+                        TotalsLine(stringResource(R.string.review_subtotal, categoryLabel(code)), listOf(subtotalQty(sub, ls.first().sku), moneyGlued(sub.grossMtk)))
                     }
                 },
                 totals = totals,
@@ -537,6 +557,7 @@ private fun negMoney(moneyText: String): String = "− $moneyText"
 private fun problemText(p: ReviewProblem): String = when (p) {
     is ReviewProblem.TooManyLines -> localizedDigits(stringResource(R.string.review_problem_too_many_lines, p.max.toString(), p.count.toString()))
     is ReviewProblem.UnitNotAllowed -> stringResource(R.string.review_problem_unit, p.skuId.toString())
+    is ReviewProblem.QtyTooLarge -> stringResource(R.string.review_problem_qty_large, p.skuId.toString())
     is ReviewProblem.PaidOutOfRange, is ReviewProblem.PaidNotPaisa, ReviewProblem.PaidNegative -> stringResource(R.string.review_problem_paid)
     ReviewProblem.NothingToSell -> stringResource(R.string.review_problem_nothing)
     is ReviewProblem.NetNegative -> stringResource(R.string.review_problem_net_negative)

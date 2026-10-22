@@ -64,7 +64,7 @@ class CheckerTest {
 
     // docs/24 s4.5 `lines_exceed_max` (rejected, not retryable) and F-SR-023 "60-line memo": the phone must not commit a 61-line memo.
     @Test fun aMemoWithMoreThanSixtyLinesIsNotCommittable() {
-        val skus = (1L..61L).map { SaleSku(1000 + it, "S$it", "cigarette", "S$it", null, "stick", 10, 8_000, 1, "2026-09-01") }
+        val skus = (1L..61L).map { SaleSku(1000 + it, "S$it", "cigarette", "S$it", null, "stick", 10, 8_000, 1, "2026-09-01", allowLoose = true) }
         var d = Fx.draft(visitUuid)
         skus.forEach { d = SaleDraftOps.setQuantity(d, it.skuId, 10, QtyUnit.STICK) }
         val r = SaleReviewCalculator.review(d, skus.associateBy { it.skuId })
