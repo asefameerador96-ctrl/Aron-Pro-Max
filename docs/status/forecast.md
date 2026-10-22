@@ -148,3 +148,6 @@ green run of the exact sha). Usage stays `allowed` on the five-hour window.
 ## Update 2026-10-22 20:20 UTC (wave 4, lead): one more cycle lost to a CI job timeout
 - Train 9 content (web-admin UI, backend-reports 1.5.0 national summaries, db V0107 + seed 07) reaches dev with train 9.1's deploy at about 20:30 UTC (CI #1403 green 20:14; the first run was cancelled by the 45-minute job limit, raised to 75). Train 10 (backend-authz module grants, brand and house scope; db V0108) on dev about 22:10 UTC. Train 11 (mdm token grants + breadcrumb install, or backend-reports F-DASH-010, whichever is green first) about 23:30 UTC; the other on 2026-10-23 morning.
 - web-dashboard #8 and qa start right after train 9.1's deploy report (tonight); national dashboard on dev and the data-flow trace stay 2026-10-23 morning. Owner-dependent items unchanged, plus the two new rows O and P in owner-actions.
+
+## Update 2026-10-22 20:50 UTC (wave 4, lead)
+- Train 9 content is on dev (20:27 UTC). Train 10 (backend-authz module grants, brand and house scope; db V0108) pushed about 20:55, on dev about 21:50 UTC. Train 11 (mdm token grants + breadcrumb install, or backend-reports F-DASH-010; db smoke fallback) about 23:00 UTC; the other re-merges and lands 2026-10-23 morning with web-dashboard #8's first candidate and qa's findings.

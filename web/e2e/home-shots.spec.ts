@@ -13,6 +13,7 @@ for (const [scheme, w, h, lang] of [["light", 1366, 900, "English"], ["dark", 13
     await page.addInitScript((th) => { try { localStorage.setItem("aron.theme", th); } catch {} }, scheme);
     await loginOk(page, "tso334", "tso-pass-1"); // the helper expects the desktop shell
     await page.getByRole("link", { name: lang }).click();
+    await page.goto("/overview");
     await page.setViewportSize({ width: w, height: h });
     await expect(page.getByTestId("dashboard-tiles")).toBeVisible();
     await page.waitForLoadState("networkidle");
@@ -28,6 +29,7 @@ for (const [path, name] of [["/daily-tracking", "tracking"], ["/sync-health", "s
     await page.addInitScript(() => { try { localStorage.setItem("aron.theme", "dark"); } catch {} });
     await loginOk(page, "tso334", "tso-pass-1");
     await page.getByRole("link", { name: "English" }).click();
+  await page.goto("/overview");
     await page.goto(path);
     await page.waitForLoadState("networkidle");
     const file = info.outputPath(`${name}-dark.png`);
@@ -72,6 +74,7 @@ for (const [state, w, h] of [["empty", 360, 740], ["empty", 1366, 900], ["error"
     const [who, pass] = state === "empty" ? ["tso999", "tso-pass-3"] : ["tso334", "tso-pass-1"];
     await loginOk(page, who, pass);
     await page.getByRole("link", { name: "English" }).click();
+  await page.goto("/overview");
     await page.setViewportSize({ width: w, height: h });
     // Error: without the summary the home shows one alert with Retry in place of the tiles (no error page).
     if (state === "error") await expect(page.getByRole("alert").getByTestId("retry")).toBeVisible();

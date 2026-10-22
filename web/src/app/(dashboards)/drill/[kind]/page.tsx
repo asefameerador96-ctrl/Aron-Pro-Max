@@ -107,7 +107,7 @@ export default async function DrillPage({ params, searchParams }: { params: Prom
           </p>
         </div>
         <span className="no-print">
-          <ButtonLink href={backQs ? `/?${backQs}` : "/"} variant="secondary" icon="chevron-left" testId="drill-back">
+          <ButtonLink href={backQs ? `/overview?${backQs}` : "/overview"} variant="secondary" icon="chevron-left" testId="drill-back">
             {t(locale, "drill.back")}
           </ButtonLink>
         </span>

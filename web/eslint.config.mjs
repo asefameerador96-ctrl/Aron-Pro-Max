@@ -8,6 +8,7 @@ import colors from "./eslint-rules/no-raw-colors.mjs";
 const CALM_GLASS_FILES = [
   "src/app/layout.tsx",
   "src/app/(dashboards)/page.tsx",
+  "src/app/(dashboards)/overview/page.tsx",
   "src/app/(dashboards)/loading.tsx",
   "src/app/login/**/*.{ts,tsx}",
   "src/app/admin/page.tsx",

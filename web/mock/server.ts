@@ -40,6 +40,8 @@ function users(): Record<string, MockUser> {
     tso999: u(2006, "tso999", "Outside Scope", "TSO", "tso-pass-3", { scope_version: 7, nodes: [{ type: "territory", id: 999, code: "T-999", name: "Elsewhere" }] }),
     dmo1: u(2004, "dmo1", "Habib Rahman", "DMO", "dmo-pass-1", { scope_version: 4, nodes: [{ type: "division", id: 10, code: "D-10", name: "Dhaka North" }] }),
     wm1: u(2002, "wm1", "Karim Hossain", "WM", "wm-pass-1", { scope_version: 2, nodes: [{ type: "wing", id: 1, code: "W-1", name: "Dhaka Wing" }] }),
+    nat1: u(2007, "nat1", "Nasrin National", "NATIONAL", "nat-pass-1", nationalScope),
+    brand1: u(2008, "brand1", "Babul Brand", "BRAND", "brand-pass-1", nationalScope),
     analyst1: u(2003, "analyst1", "Nusrat Jahan", "ANALYST", "analyst-pass-1", nationalScope),
     // An ADMIN with module grants (D-ROLES-02): Me.modules lists targets and masterdata at r, outlets at w.
     mgrant1: { ...u(3106, "mgrant1", "Limited Admin", "ADMIN", "grant-pass-1", nationalScope, true), master: true },

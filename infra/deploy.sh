@@ -675,9 +675,13 @@ if [ "$ARON_DEV_SEED" = true ] && [ -z "$ROLLBACK_SHA" ]; then
      && [ -n "$slice_pw" ]; then
     echo "::add-mask::${slice_pw}"
     slice_key_dir="$(smoke_device_key || true)"
-    if SLICE_API_HOST="$API_HOST" SLICE_PASSWORD="$slice_pw" SLICE_DEVICE_KEY="${slice_key_dir:+$slice_key_dir/key.pem}" \
-       python3 infra/scripts/slice-smoke.py; then
+    slice_rc=0
+    SLICE_API_HOST="$API_HOST" SLICE_PASSWORD="$slice_pw" SLICE_DEVICE_KEY="${slice_key_dir:+$slice_key_dir/key.pem}" \
+      python3 infra/scripts/slice-smoke.py || slice_rc=$?
+    if [ "$slice_rc" -eq 0 ]; then
       slice_result="PASSED"
+    elif [ "$slice_rc" -eq 3 ]; then  # not a selling day in Dhaka (Friday, a holiday): nothing to sell; the table names the next day's route
+      slice_result="SKIPPED (not a selling day; see the slice smoke table)"
     else
       slice_result="FAILED (see the slice smoke table)"; echo "::warning::SR slice smoke failed (non-blocking)"
     fi

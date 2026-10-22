@@ -10,6 +10,7 @@ test.beforeEach(async () => {
 test("the TSO dashboard loads without a button press and shows every tile with its date and as-of stamp (F-WEB-001, F-WEB-068)", async ({ page }) => {
   await loginOk(page, "tso334", "tso-pass-1");
   await page.getByRole("link", { name: "English" }).click();
+  await page.goto("/overview");
   await expect(page.getByTestId("dashboard-tiles")).toBeVisible();
   for (const id of ["sales", "strike", "visits", "channels", "channels-std", "brands", "finalsubmit", "loginsubmit", "geo", "ffgeo"]) {
     const tile = page.getByTestId(`tile-${id}`);
@@ -33,6 +34,7 @@ test("the live strike rate of one route: 1 of 43 is 2.3 percent", async ({ page 
   // The figure is proven through the TSO's route report (SRs have no web access).
   await loginOk(page, "tso334", "tso-pass-1");
   await page.getByRole("link", { name: "English" }).click();
+  await page.goto("/overview");
   await page.goto("/reports/route-std");
   const row = page.locator("tbody tr", { hasText: "RouteDaily" });
   await expect(row.locator('[data-col="visited"]')).toHaveText("43");
@@ -42,13 +44,14 @@ test("the live strike rate of one route: 1 of 43 is 2.3 percent", async ({ page 
 
 test("a date that is not today carries a reason chip on every tile", async ({ page }) => {
   await loginOk(page, "tso334", "tso-pass-1");
-  await page.goto("/?date=2026-10-01");
+  await page.goto("/overview?date=2026-10-01");
   for (const id of ["sales", "geo", "ffgeo"]) await expect(page.getByTestId(`tile-${id}`).getByTestId("tile-reason")).toHaveAttribute("data-reason", "not_live_today");
 });
 
 test("final-submit panel: zones submitted versus remaining, Submit %, Day completion % and a badge per zone (F-WEB-047)", async ({ page }) => {
   await loginOk(page, "tso334", "tso-pass-1");
   await page.getByRole("link", { name: "English" }).click();
+  await page.goto("/overview");
   const panel = page.getByTestId("tile-finalsubmit");
   // Seed: R1 final-submitted, R2 sales-submitted, R3 in the field, R4 not started: no zone has every route final-submitted.
   await expect(panel.getByTestId("final-submit-counts")).toContainText("0 zones submitted, 2 remaining");
@@ -61,6 +64,7 @@ test("final-submit panel: zones submitted versus remaining, Submit %, Day comple
 test("map: without a Maps key the pins are listed; the BFF counts every load and refuses above the cap (N-047)", async ({ page }) => {
   await loginOk(page, "tso334", "tso-pass-1");
   await page.getByRole("link", { name: "English" }).click();
+  await page.goto("/overview");
   // Calm Glass (screens-web s1): the map loads only on "Show map", so a dashboard visit costs no Maps load.
   await expect(page.getByTestId("map-plate")).toBeVisible();
   expect(await page.evaluate(() => Array.from(document.scripts).some((s) => s.src.includes("maps.googleapis.com")))).toBe(false);
@@ -79,6 +83,7 @@ test("map: without a Maps key the pins are listed; the BFF counts every load and
 test("reports: filters, Get Excel and a user outside the scope sees no rows", async ({ page }) => {
   await loginOk(page, "tso999", "tso-pass-3");
   await page.getByRole("link", { name: "English" }).click();
+  await page.goto("/overview");
   await page.goto("/reports/route-std");
   await expect(page.getByTestId("table-empty")).toBeVisible();
   void MOCK;
@@ -87,6 +92,7 @@ test("reports: filters, Get Excel and a user outside the scope sees no rows", as
 test("home follows the portal layout: four category cards, Live CPR, channel donuts, brand chart with the STD/Memo toggle, geo ring (completion pass)", async ({ page }) => {
   await loginOk(page, "tso334", "tso-pass-1");
   await page.getByRole("link", { name: "English" }).click();
+  await page.goto("/overview");
   for (const c of ["cigarette", "bidi", "lighter", "match"]) {
     await expect(page.getByTestId(`tile-cat-${c}`)).toBeVisible();
     await expect(page.getByTestId(`cat-ring-${c}`)).toBeVisible();
@@ -106,6 +112,7 @@ test("home follows the portal layout: four category cards, Live CPR, channel don
 test("the orange Filter narrows the home to a zone: bound levels are read-only, the choice cascades and is kept in the links", async ({ page }) => {
   await loginOk(page, "tso334", "tso-pass-1");
   await page.getByRole("link", { name: "English" }).click();
+  await page.goto("/overview");
   await page.getByTestId("home-filter").locator("summary").click();
   await expect(page.getByTestId("scope-locked-territory")).toBeVisible();
   await page.getByTestId("scope-select-zone").selectOption("3341");
@@ -117,6 +124,7 @@ test("the orange Filter narrows the home to a zone: bound levels are read-only, 
 test("the Filter popover works from the keyboard: Enter opens it, Escape closes it and returns focus", async ({ page }) => {
   await loginOk(page, "tso334", "tso-pass-1");
   await page.getByRole("link", { name: "English" }).click();
+  await page.goto("/overview");
   await expect(page.getByTestId("home-filter")).toHaveAttribute("data-ready", ""); // a key pressed before React attaches is lost
   const summary = page.getByTestId("home-filter").locator("summary");
   await summary.focus();

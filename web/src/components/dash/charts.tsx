@@ -124,6 +124,8 @@ export interface Column {
   label: string;
   value: number;
   valueText: string;
+  /** Small second line under the label (the unit of a bar when units differ). */
+  sub?: string;
 }
 
 /** Round a maximum up to 1, 2, 2.5 or 5 times a power of ten so the axis ticks fall on readable numbers. */
@@ -138,11 +140,12 @@ export function niceMax(v: number): number {
  *  `axisText` adds a y axis (0, quarter steps, top) in the caller's unit, e.g. lakh. */
 export function ColumnChart({ rows, label, testId, height = 200, axisText }: { rows: readonly Column[]; label: string; testId?: string; height?: number; axisText?: (v: number) => string }) {
   const top = axisText ? niceMax(Math.max(0, ...rows.map((r) => r.value))) : Math.max(1, ...rows.map((r) => r.value));
-  const base = 44; // label block (h-10) plus one gap: where the bars start inside each column
+  const labH = rows.some((r) => r.sub) ? 56 : 40; // label block (h-10, or h-14 with a unit line) ...
+  const base = labH + 4; // ... plus one gap: where the bars start inside each column
   return (
     <div className="flex" data-testid={testId}>
       {axisText ? (
-        <div className="relative mt-3 w-20 shrink-0" style={{ height: height + 56 }} aria-hidden="true" data-testid="y-axis">
+        <div className="relative mt-3 w-20 shrink-0" style={{ height: height + labH + 16 }} aria-hidden="true" data-testid="y-axis">
           {[0, 0.25, 0.5, 0.75, 1].map((f) => (
             <span key={f} className="absolute end-2 -translate-y-1/2 whitespace-nowrap text-caption text-secondary tabular-nums" style={{ bottom: base + f * height }}>{axisText(top * f)}</span>
           ))}
@@ -153,10 +156,10 @@ export function ColumnChart({ rows, label, testId, height = 200, axisText }: { r
           {axisText ? [0, 0.25, 0.5, 0.75, 1].map((f) => <span key={f} className="pointer-events-none absolute inset-x-0 border-t border-divider" style={{ bottom: base + f * height }} aria-hidden="true" />) : null}
           <ul aria-label={label} className="relative flex items-end gap-3 pt-2">
             {rows.map((r) => (
-              <li key={r.key} data-label={r.label} data-value={r.value} className="flex w-16 min-w-0 flex-1 flex-col items-center justify-end gap-1" style={{ height: height + 56 }}>
+              <li key={r.key} data-label={r.label} data-value={r.value} className="flex w-16 min-w-0 flex-1 flex-col items-center justify-end gap-1" style={{ height: height + labH + 16 }}>
                 <span className="text-caption text-primary tabular-nums">{r.valueText}</span>
                 <span className="w-full max-w-12 rounded-t-chip" style={{ height: Math.max(r.value > 0 ? 3 : 0, (r.value / top) * height), background: `linear-gradient(180deg, ${VIZ[rows.indexOf(r) % VIZ.length]}, color-mix(in srgb, ${VIZ[rows.indexOf(r) % VIZ.length]} 60%, white))` }} aria-hidden="true" />
-                <span className="line-clamp-2 h-10 w-full text-center text-caption text-secondary [overflow-wrap:anywhere]" title={r.label}>{r.label}</span>
+                <span className={`${r.sub ? "line-clamp-3" : "line-clamp-2"} w-full text-center text-caption text-secondary [overflow-wrap:anywhere]`} style={{ height: labH }} title={r.sub ? `${r.label} (${r.sub})` : r.label}>{r.label}{r.sub ? <span className="block text-secondary opacity-80">{r.sub}</span> : null}</span>
               </li>
             ))}
           </ul>

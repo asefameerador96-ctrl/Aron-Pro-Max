@@ -51,9 +51,9 @@ class BreadcrumbReceiver : BroadcastReceiver() {
             try {
                 val controller = Breadcrumbs.controller
                 if (controller == null) {
-                    // Nobody to keep the points (process restarted before the app wired breadcrumbs): stop the request
-                    // rather than keep taking fixes; the app's next reconcile restarts it if breadcrumbs are on.
-                    runCatching { AndroidBreadcrumbClient(context).stop() }
+                    // The process was just started for this delivery and the app has not installed its controller yet:
+                    // drop this batch but KEEP the request (the app installs the controller in Application.onCreate and its
+                    // reconcile decides whether the request should run); stopping here would kill breadcrumbs for the day.
                 } else {
                     val bm = context.getSystemService(BatteryManager::class.java)
                     val pct = bm?.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)?.takeIf { it in 0..100 }
