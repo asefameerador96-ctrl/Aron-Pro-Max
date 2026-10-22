@@ -11,5 +11,6 @@ export const ADMIN_MENU: readonly MenuItem[] = [
   { id: "admin-team", labelKey: "menu.admin.team", href: "/admin/team", roles: TEAM_CREDENTIAL_ROLES, group: "admin" },
   { id: "admin-radius", labelKey: "menu.admin.radius", href: "/admin/radius", roles: ["TSO"], group: "admin" },
   { id: "admin-wholesale", labelKey: "menu.admin.wholesale", href: "/admin/wholesale-marking", roles: ["ADMIN", "SUPERADMIN"], group: "admin" },
+  { id: "admin-mdm", labelKey: "menu.admin.mdm", href: "/admin/mdm", roles: ["ADMIN", "SUPERADMIN"], group: "admin" },
   { id: "admin-audit", labelKey: "menu.admin.audit", href: "/admin/audit", roles: AUDIT_READ_ROLES, group: "admin" },
 ];

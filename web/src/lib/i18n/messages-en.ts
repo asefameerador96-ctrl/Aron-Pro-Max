@@ -1,5 +1,6 @@
 import { dashEn } from "./messages-dash-en";
 import { cfgEn } from "./messages-config";
+import { mdmEn } from "./messages-mdm";
 // English catalogue. Keys must equal messages-bn.ts (tests/i18n.test.ts). {name} placeholders are interpolated by t().
 export const en = {
   "app.name": "Aron",
@@ -428,6 +429,7 @@ export const en = {
   "error.ERR_READ_ONLY_MODE": "The system is read-only right now. Try again later.",
   ...dashEn,
   ...cfgEn,
+  ...mdmEn,
   "menu.admin.sr_lifecycle": "SR lifecycle",
   "lifecycle.create.title": "Create the SR",
   "lifecycle.create.hint": "Add the user with the SR role, a phone number and a home zone. A temporary password is shown once.",

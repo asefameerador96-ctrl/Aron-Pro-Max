@@ -3216,6 +3216,263 @@ export interface paths {
         patch: operations["updateFeedbackStatus"];
         trace?: never;
     };
+    "/v1/admin/mdm/devices": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * MDM device list with owner mode, user, app version, last seen, battery, network, policy and compliance flags.
+         * @description Needs the mdm module (r), or SUPERADMIN. Filters combine with AND.
+         */
+        get: operations["listMdmDevices"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/mdm/devices/{device_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** One device with its latest status report, policy and recent commands. */
+        get: operations["getMdmDevice"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/mdm/devices/{device_id}/activity": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Activity log of one device (commands, state changes, policy changes, enrolment, alerts), newest first. */
+        get: operations["listMdmDeviceActivity"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/mdm/devices/{device_id}/commands": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Commands sent to one device and their state. */
+        get: operations["listMdmDeviceCommands"];
+        put?: never;
+        /**
+         * Queue a command (lock, unlock, message, locate, reboot, factory reset) for one device.
+         * @description Needs the mdm module (w), or SUPERADMIN, and a reason; audited. Idempotent by `command_id`: a repeat with the
+         *     same body returns the stored command (200), a different body 409. `factory_reset` is created in state
+         *     `pending_approval` and needs a second approver (POST /admin/mdm/commands/{command_id}/decision) who is not
+         *     the requester. Delivered by FCM data message when the phone is online and pulled by the DPC on every sync.
+         */
+        post: operations["createMdmCommand"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/mdm/commands/{command_id}/decision": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Approve or reject a command waiting for a second approver (factory reset).
+         * @description The approver must differ from the requester; audited with the reason.
+         */
+        post: operations["decideMdmCommand"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/mdm/devices/{device_id}/policy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Assign an MDM policy to a device (or clear it); queues an apply_policy command. */
+        put: operations["assignMdmPolicy"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/mdm/policies": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** MDM policies with the number of devices on each. */
+        get: operations["listMdmPolicies"];
+        put?: never;
+        /** Create an MDM policy. */
+        post: operations["createMdmPolicy"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/mdm/policies/{policy_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** One MDM policy. */
+        get: operations["getMdmPolicy"];
+        /** Replace an MDM policy (optimistic version); devices on it get an apply_policy command. */
+        put: operations["updateMdmPolicy"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/mdm/enrolment-tokens": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Enrolment tokens of the device-owner DPC (same data as listEnrolmentTokens, gated by the mdm module). */
+        get: operations["listMdmEnrolmentTokens"];
+        put?: never;
+        /** Create an enrolment token and its provisioning QR payload (shown once). */
+        post: operations["createMdmEnrolmentToken"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/mdm/enrolment-tokens/{token_id}/revoke": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Revoke an enrolment token. */
+        post: operations["revokeMdmEnrolmentToken"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/mdm/alerts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Open compliance alerts, one row per device and flag, derived from the latest status report. */
+        get: operations["listMdmAlerts"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/mdm/activity": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Activity log of the whole fleet, newest first. */
+        get: operations["listMdmActivity"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/devices/me/commands": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Commands waiting for this phone (the DPC polls on every sync; FCM only nudges).
+         * @description Authenticated by X-Device-Proof. Returns queued and sent, unexpired commands, oldest first, marks them sent. Each carries an ES256 signature bound to the device.
+         */
+        get: operations["pullDeviceCommands"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/devices/me/commands/{command_id}/ack": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Report the result of a command (acked or failed). Idempotent. */
+        post: operations["ackDeviceCommand"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -8326,6 +8583,204 @@ export interface components {
             sku_id: components["schemas"]["Id"];
             qty_base: number;
         };
+        /**
+         * @description Derived from the device row and its latest status report. rooted = integrity verdict fail; mock_location =
+         *     mock-location apps present; outdated_app = app_version below the newest published release of the flavour;
+         *     developer_options = developer options on; policy_drift = applied policy older than the rendered one;
+         *     stale_contact = no contact for more than 48 hours.
+         * @enum {string}
+         */
+        MdmComplianceFlag: "rooted" | "mock_location" | "outdated_app" | "developer_options" | "adb_enabled" | "not_device_owner" | "location_off" | "auto_time_off" | "policy_drift" | "stale_contact";
+        /** @enum {string} */
+        MdmNetwork: "wifi" | "mobile" | "offline" | "unknown";
+        /** @enum {string} */
+        MdmCommandType: "lock" | "unlock" | "message" | "locate" | "reboot" | "factory_reset" | "apply_policy";
+        /** @enum {string} */
+        MdmCommandState: "pending_approval" | "queued" | "sent" | "acked" | "failed" | "expired" | "rejected";
+        MdmDevice: {
+            device_id: components["schemas"]["Id"];
+            device_uuid: components["schemas"]["Uuid"];
+            flavour: components["schemas"]["AppFlavour"];
+            status: components["schemas"]["DeviceState"];
+            device_owner: boolean;
+            users: string[];
+            model?: string | null;
+            app_version?: string | null;
+            latest_app_version?: string | null;
+            last_contact_at?: components["schemas"]["Timestamp"] | null;
+            battery_pct?: number | null;
+            network?: components["schemas"]["MdmNetwork"] | null;
+            /** Format: int64 */
+            policy_id?: number | null;
+            policy_name?: string | null;
+            compliance_flags: components["schemas"]["MdmComplianceFlag"][];
+            pending_commands: number;
+        };
+        MdmDevicePage: {
+            items: components["schemas"]["MdmDevice"][];
+            next_cursor: string | null;
+        };
+        MdmDeviceDetail: {
+            device: components["schemas"]["MdmDevice"];
+            enrolled_at: components["schemas"]["Timestamp"];
+            trust_level: components["schemas"]["TrustLevel"];
+            /** @enum {string} */
+            integrity_verdict: "pass" | "fail" | "unevaluated" | "stale";
+            lockdown_level?: components["schemas"]["LockdownLevel"];
+            /** Format: int64 */
+            zone_id?: number | null;
+            last_report?: components["schemas"]["DeviceStatusReport"] | null;
+            policy?: components["schemas"]["MdmPolicy"] | null;
+            recent_commands: components["schemas"]["MdmCommand"][];
+        };
+        MdmActivityEntry: {
+            at: components["schemas"]["Timestamp"];
+            /** @enum {string} */
+            kind: "command" | "state" | "policy" | "enrolment" | "status" | "alert";
+            /** Format: int64 */
+            device_id?: number | null;
+            summary: string;
+            actor?: string | null;
+            reason?: string | null;
+            ref?: string | null;
+        };
+        MdmActivityPage: {
+            items: components["schemas"]["MdmActivityEntry"][];
+            next_cursor: string | null;
+        };
+        MdmAlert: {
+            device_id: components["schemas"]["Id"];
+            device_uuid?: components["schemas"]["Uuid"];
+            users?: string[];
+            flavour?: components["schemas"]["AppFlavour"];
+            flag: components["schemas"]["MdmComplianceFlag"];
+            since: components["schemas"]["Timestamp"];
+            detail?: string | null;
+        };
+        MdmAlertPage: {
+            items: components["schemas"]["MdmAlert"][];
+            next_cursor: string | null;
+        };
+        /** @description Apps in `packages` (or every non-allowed app when empty) are suspended on these weekdays between start and end, Dhaka time. A window with end <= start runs past midnight into the next day. */
+        MdmBlockWindow: {
+            days: number[];
+            start: string;
+            end: string;
+            packages?: components["schemas"]["PackageName"][];
+        };
+        MdmKiosk: {
+            enabled: boolean;
+            /** @description Lock-task packages; the first is started. */
+            packages?: components["schemas"]["PackageName"][];
+        };
+        MdmLocationSampling: {
+            /**
+             * @description on_demand = fix only at check-in, sale and when a locate command arrives; interval = also batched breadcrumbs.
+             * @enum {string}
+             */
+            mode: "off" | "on_demand" | "interval";
+            interval_min?: number | null;
+        };
+        MdmPolicyWrite: {
+            name: string;
+            description?: string | null;
+            /** @description Apps never suspended by a block window (the Aron apps are always allowed). */
+            allowed_packages: components["schemas"]["PackageName"][];
+            block_windows: components["schemas"]["MdmBlockWindow"][];
+            kiosk: components["schemas"]["MdmKiosk"];
+            location_sampling: components["schemas"]["MdmLocationSampling"];
+            /** @description Required on update; must equal the stored version. */
+            version?: number | null;
+            reason?: string | null;
+        };
+        MdmPolicy: {
+            policy_id: components["schemas"]["Id"];
+            name: string;
+            description?: string | null;
+            allowed_packages: components["schemas"]["PackageName"][];
+            block_windows: components["schemas"]["MdmBlockWindow"][];
+            kiosk: components["schemas"]["MdmKiosk"];
+            location_sampling: components["schemas"]["MdmLocationSampling"];
+            version: number;
+            device_count: number;
+            updated_at: components["schemas"]["Timestamp"];
+        };
+        MdmPolicyPage: {
+            items: components["schemas"]["MdmPolicy"][];
+            next_cursor: string | null;
+        };
+        MdmPolicyAssignRequest: {
+            /** Format: int64 */
+            policy_id: number | null;
+            reason: string;
+        };
+        MdmCommandCreateRequest: {
+            command_id: components["schemas"]["Uuid"];
+            /** @enum {string} */
+            type: "lock" | "unlock" | "message" | "locate" | "reboot" | "factory_reset";
+            /** @description message: {text_bn, text_en} (one required, 300 chars each); lock: {message}; others none. */
+            params?: {
+                [key: string]: components["schemas"]["JsonScalar"];
+            };
+            reason: string;
+            /** @default 24 */
+            ttl_h: number;
+        };
+        MdmCommandDecisionRequest: {
+            /** @enum {string} */
+            decision: "approve" | "reject";
+            reason: string;
+        };
+        MdmCommand: {
+            command_id: components["schemas"]["Uuid"];
+            device_id: components["schemas"]["Id"];
+            type: components["schemas"]["MdmCommandType"];
+            params?: {
+                [key: string]: unknown;
+            };
+            state: components["schemas"]["MdmCommandState"];
+            reason: string;
+            created_at: components["schemas"]["Timestamp"];
+            created_by?: string | null;
+            approved_by?: string | null;
+            approved_at?: components["schemas"]["Timestamp"] | null;
+            sent_at?: components["schemas"]["Timestamp"] | null;
+            acked_at?: components["schemas"]["Timestamp"] | null;
+            expires_at: components["schemas"]["Timestamp"];
+            result?: {
+                [key: string]: unknown;
+            } | null;
+        };
+        MdmCommandPage: {
+            items: components["schemas"]["MdmCommand"][];
+            next_cursor: string | null;
+        };
+        /** @description Signed instruction pulled by the DPC. Same signature rule as Directive with the prefix aron-command-v1. */
+        DeviceCommand: {
+            command_id: components["schemas"]["Uuid"];
+            type: components["schemas"]["MdmCommandType"];
+            params?: {
+                [key: string]: unknown;
+            };
+            created_at: components["schemas"]["Timestamp"];
+            expires_at: components["schemas"]["Timestamp"];
+            sig: string;
+        };
+        DeviceCommandList: {
+            items: components["schemas"]["DeviceCommand"][];
+        };
+        DeviceCommandAck: {
+            /** @enum {string} */
+            state: "acked" | "failed";
+            /** @description At most 2 KB serialised: error code, locate fix, policy version applied. */
+            result?: {
+                [key: string]: unknown;
+            } | null;
+        };
+        DeviceCommandAckResult: {
+            command_id: components["schemas"]["Uuid"];
+            state: components["schemas"]["MdmCommandState"];
+        };
     };
     responses: {
         /** @description Not modified (the ETag or version matches); empty body. */
@@ -8533,6 +8988,7 @@ export interface components {
         IdPath: components["schemas"]["Id"];
         ZoneIdPath: components["schemas"]["Id"];
         DeviceIdPath: components["schemas"]["Id"];
+        MdmPolicyIdPath: components["schemas"]["Id"];
         ChangeIdPath: components["schemas"]["Id"];
         ConfigVersionPath: components["schemas"]["ConfigVersionNumber"];
         MediaUuidPath: components["schemas"]["Uuid"];
@@ -15004,6 +15460,540 @@ export interface operations {
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    listMdmDevices: {
+        parameters: {
+            query?: {
+                status?: components["schemas"]["DeviceState"];
+                flavour?: components["parameters"]["FlavourQueryOptional"];
+                /** @description Only devices carrying this compliance flag. */
+                flag?: components["schemas"]["MdmComplianceFlag"];
+                policy_id?: components["schemas"]["Id"];
+                /** @description Case-insensitive search on code and name (trigram for outlets). */
+                q?: components["parameters"]["Search"];
+                /** @description Page size. */
+                limit?: components["parameters"]["Limit"];
+                /** @description Opaque cursor from `next_cursor` of the previous page. */
+                cursor?: components["parameters"]["Cursor"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Page of devices. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MdmDevicePage"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    getMdmDevice: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                device_id: components["parameters"]["DeviceIdPath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Device detail. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MdmDeviceDetail"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    listMdmDeviceActivity: {
+        parameters: {
+            query?: {
+                /** @description Page size. */
+                limit?: components["parameters"]["Limit"];
+                /** @description Opaque cursor from `next_cursor` of the previous page. */
+                cursor?: components["parameters"]["Cursor"];
+            };
+            header?: never;
+            path: {
+                device_id: components["parameters"]["DeviceIdPath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Page of activity. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MdmActivityPage"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    listMdmDeviceCommands: {
+        parameters: {
+            query?: {
+                /** @description Page size. */
+                limit?: components["parameters"]["Limit"];
+                /** @description Opaque cursor from `next_cursor` of the previous page. */
+                cursor?: components["parameters"]["Cursor"];
+            };
+            header?: never;
+            path: {
+                device_id: components["parameters"]["DeviceIdPath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Page of commands. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MdmCommandPage"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    createMdmCommand: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                device_id: components["parameters"]["DeviceIdPath"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MdmCommandCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Same command already stored. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MdmCommand"];
+                };
+            };
+            /** @description Command queued. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MdmCommand"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    decideMdmCommand: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                command_id: components["schemas"]["Uuid"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MdmCommandDecisionRequest"];
+            };
+        };
+        responses: {
+            /** @description Command after the decision. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MdmCommand"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    assignMdmPolicy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                device_id: components["parameters"]["DeviceIdPath"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MdmPolicyAssignRequest"];
+            };
+        };
+        responses: {
+            /** @description Device after assignment. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MdmDeviceDetail"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    listMdmPolicies: {
+        parameters: {
+            query?: {
+                /** @description Page size. */
+                limit?: components["parameters"]["Limit"];
+                /** @description Opaque cursor from `next_cursor` of the previous page. */
+                cursor?: components["parameters"]["Cursor"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Page of policies. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MdmPolicyPage"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    createMdmPolicy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MdmPolicyWrite"];
+            };
+        };
+        responses: {
+            /** @description Policy created. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MdmPolicy"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    getMdmPolicy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                policy_id: components["parameters"]["MdmPolicyIdPath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Policy. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MdmPolicy"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    updateMdmPolicy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                policy_id: components["parameters"]["MdmPolicyIdPath"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MdmPolicyWrite"];
+            };
+        };
+        responses: {
+            /** @description Policy after the update. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MdmPolicy"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    listMdmEnrolmentTokens: {
+        parameters: {
+            query?: {
+                active_only?: boolean;
+                /** @description Page size. */
+                limit?: components["parameters"]["Limit"];
+                /** @description Opaque cursor from `next_cursor` of the previous page. */
+                cursor?: components["parameters"]["Cursor"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Page of tokens. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EnrolmentTokenPage"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    createMdmEnrolmentToken: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EnrolmentTokenCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Token with the QR payload. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EnrolmentTokenCreated"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    revokeMdmEnrolmentToken: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token_id: components["schemas"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Token after revocation. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EnrolmentToken"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    listMdmAlerts: {
+        parameters: {
+            query?: {
+                flag?: components["schemas"]["MdmComplianceFlag"];
+                /** @description Page size. */
+                limit?: components["parameters"]["Limit"];
+                /** @description Opaque cursor from `next_cursor` of the previous page. */
+                cursor?: components["parameters"]["Cursor"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Page of alerts. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MdmAlertPage"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    listMdmActivity: {
+        parameters: {
+            query?: {
+                /** @description Page size. */
+                limit?: components["parameters"]["Limit"];
+                /** @description Opaque cursor from `next_cursor` of the previous page. */
+                cursor?: components["parameters"]["Cursor"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Page of activity. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MdmActivityPage"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    pullDeviceCommands: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description The phone's device UUID (set at enrolment). */
+                "X-Device-Id": components["parameters"]["XDeviceIdRequired"];
+                /**
+                 * @description base64url ES256 signature by the device key (Android Keystore) over the proof string of docs/24 s8.3
+                 *     (refresh and bind: sha256(token or otp) + nonce bucket + device_uuid; batch: sha256(body) + batch_uuid +
+                 *     X-Batch-Attempt). Required on phone calls to refresh, bind-device, batch, devices/me/*.
+                 */
+                "X-Device-Proof"?: components["parameters"]["XDeviceProof"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Commands. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeviceCommandList"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    ackDeviceCommand: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description The phone's device UUID (set at enrolment). */
+                "X-Device-Id": components["parameters"]["XDeviceIdRequired"];
+                /**
+                 * @description base64url ES256 signature by the device key (Android Keystore) over the proof string of docs/24 s8.3
+                 *     (refresh and bind: sha256(token or otp) + nonce bucket + device_uuid; batch: sha256(body) + batch_uuid +
+                 *     X-Batch-Attempt). Required on phone calls to refresh, bind-device, batch, devices/me/*.
+                 */
+                "X-Device-Proof"?: components["parameters"]["XDeviceProof"];
+            };
+            path: {
+                command_id: components["schemas"]["Uuid"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DeviceCommandAck"];
+            };
+        };
+        responses: {
+            /** @description Final state recorded. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeviceCommandAckResult"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
             404: components["responses"]["NotFound"];
         };
     };
