@@ -6,6 +6,7 @@ import type { Role } from "@/contract/types";
 import type { MessageKey } from "@/lib/i18n";
 import { SUPPORT_DASHBOARD_PATHS, WEB_ROLES, type RoleList } from "@/lib/auth/roles";
 import { REPORT_ROLES, WEB_REPORTS } from "@/lib/reports/catalog";
+import { canSee, moduleOfPage, type ModuleGrants } from "@/lib/admin/modules";
 
 export type MenuGroup = "main" | "reports" | "products" | "admin" | "config";
 
@@ -50,10 +51,11 @@ export interface MenuSection {
 const GROUP_LABEL: Record<MenuGroup, MessageKey> = { main: "menu.group.main", reports: "menu.group.reports", products: "menu.group.products", admin: "menu.group.admin", config: "menu.group.config" };
 
 /** `allowed`: menu ids the matrix grants this user (view); null = no matrix known, the static role lists decide alone. */
-export function menuFor(role: Role, menu: readonly MenuItem[] = MENU, allowed: ReadonlySet<string> | null = null): MenuSection[] {
+/** `grants`: an ADMIN's module claim (D-WEB-ADMIN-MENU-01): an entry whose module has no grant is hidden, not greyed; null = no module filter. */
+export function menuFor(role: Role, menu: readonly MenuItem[] = MENU, allowed: ReadonlySet<string> | null = null, grants: ModuleGrants | null = null): MenuSection[] {
   const sections: MenuSection[] = [];
   for (const group of ["main", "reports", "products", "admin", "config"] as const) {
-    const items = menu.filter((m) => m.group === group && m.roles.includes(role) && (allowed === null || m.menuId === undefined || allowed.has(m.menuId)));
+    const items = menu.filter((m) => m.group === group && m.roles.includes(role) && (allowed === null || m.menuId === undefined || allowed.has(m.menuId)) && canSee(grants, moduleOfPage(m.href)));
     if (items.length) sections.push({ group, labelKey: GROUP_LABEL[group], items });
   }
   return sections;

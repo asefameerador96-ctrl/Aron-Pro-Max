@@ -2,6 +2,8 @@ package com.aktcl.aron.backend.analytics
 
 import com.aktcl.aron.contract.Role
 import io.ktor.http.HttpStatusCode
+import kotlinx.serialization.json.jsonObject
+import kotlin.test.assertFalse
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
@@ -25,7 +27,7 @@ class ReportBatchCTest : ReportFixture() {
     @Test
     fun qcReportsMatchTheHandComputedTotals() = app {
         val q = run(10, Role.ANALYST, "qc-report").result()
-        assertEquals(3, q.rows().size); assertEquals(6, q.total("qty_base")); assertEquals(4_800, q.total("settlement_mtk"))
+        assertEquals(3, q.rows().size); assertFalse(q["totals"]!!.jsonObject.containsKey("qty_base"), "no quantity total across SKUs of different base units"); assertEquals(4_800, q.total("settlement_mtk"))
         assertEquals("O1", q.rows().first().str("outlet_code")); assertEquals("sr001", q.rows().first().str("username"))
         val s = run(10, Role.ANALYST, "settlement").result()
         assertEquals(3, s.rows().size)

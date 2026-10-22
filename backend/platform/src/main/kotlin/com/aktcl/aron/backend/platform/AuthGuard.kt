@@ -28,6 +28,9 @@ fun interface ScopeVersionLookup {
      * version, so a grant or a revoke holds within seconds. Read per request, never carried in the token.
      */
     fun rolePermissions(role: String): Set<String> = emptySet()
+
+    /** True once the portal grants are deployed (D-ROLES-02, [PortalGrants.live]): ADMIN calls are then judged by [AdminModules]. */
+    fun portalGrantsLive(): Boolean = false
 }
 
 /** Dependencies of the bearer guard; one instance per application. */
@@ -98,6 +101,8 @@ private fun authenticate(call: ApplicationCall, cfg: AuthGuardConfig): AronPrinc
             }
         }
     }
+    // Row 2: after the scope check, so a token minted before a grant change answers 401 ERR_SCOPE_CHANGED (refresh), not 403.
+    AdminModules.check(p, call.request.httpMethod.value, call.request.path(), cfg.deps.scopeVersions.portalGrantsLive())
     requireMfaWhereNeeded(call, p, cfg.deps.config)
     // Q5: the role's current grants join whatever the token named (issued tokens name none), so p.permissions is live.
     if (p.audience != Audience.API) return p

@@ -93,6 +93,38 @@ class OwnerDirectiveV0087Test {
     }
 
     @Test
+    fun v0108CheckedInAtIsBackfilledForTheLastSevenDays() {
+        // Migrate to V0107 with the seed, add route-days and check-ins, then run V0108: the event's route wins; an event
+        // without a route counts for a route its user is assigned to that day; a route-day older than 7 days stays null.
+        TestPostgres.createDatabase().use { other ->
+            other.flyway().let { org.flywaydb.core.Flyway.configure().configuration(it.configuration).target("107").load() }.migrate()
+            other.connect().use { c ->
+                SeedLoader.load(c)
+                val d = "(app.dhaka_date(now()) - 1)"
+                val old = "(app.dhaka_date(now()) - 10)"
+                val route = { code: String -> "(SELECT id FROM app.route WHERE code = '$code')" }
+                for ((r, day) in listOf("MIR-SR-D" to d, "MIR-SR-3F" to d, "MIR-SR-D" to old)) {
+                    c.exec("INSERT INTO dw.agg_daily_route (business_date, route_id, zone_id) SELECT $day, id, zone_id FROM app.route WHERE code = '$r'")
+                }
+                fun checkIn(user: String, routeId: String, day: String, at: String) = c.exec(
+                    "INSERT INTO app.attendance_event (client_uuid, family_uuid, business_date, user_id, route_id, captured_at, config_version, kind) " +
+                        "SELECT gen_random_uuid(), gen_random_uuid(), $day, id, $routeId, $at, 0, 'check_in' FROM app.app_user WHERE username = '$user'")
+                // sr1001 holds MIR-SR-D in the fixture: its route-less check-in counts there.
+                checkIn("sr1001", "NULL", d, "($d + time '03:05') AT TIME ZONE 'Asia/Dhaka'")
+                checkIn("sr1001", "NULL", old, "($old + time '03:00') AT TIME ZONE 'Asia/Dhaka'")
+                // amo1001 names MIR-SR-3F on its event, earlier than sr1001 (who also holds MIR-SR-3F in the fixture).
+                checkIn("amo1001", route("MIR-SR-3F"), d, "($d + time '02:10') AT TIME ZONE 'Asia/Dhaka'")
+            }
+            other.flyway().migrate()
+            other.connect().use { c ->
+                assertEquals("MIR-SR-3F|02:10,MIR-SR-D|03:05,MIR-SR-D|-", c.scalar(
+                    "SELECT string_agg(r.code || '|' || coalesce(to_char(a.checked_in_at AT TIME ZONE 'Asia/Dhaka', 'HH24:MI'), '-'), ',' ORDER BY r.code, a.business_date DESC) " +
+                        "FROM dw.agg_daily_route a JOIN app.route r ON r.id = a.route_id"))
+            }
+        }
+    }
+
+    @Test
     fun v0089ModuleGrantsHoldFifteenModules() = db.connect().use { c ->
         // The seeded admin holds w on every module (seed 01, as V0089 does for admins present when it runs).
         assertEquals("15|w", c.scalar("SELECT count(*) || '|' || string_agg(DISTINCT access, ',') FROM app.user_module_grant WHERE user_id = ${user("admin1001")}"))

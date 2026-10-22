@@ -4345,6 +4345,12 @@ export interface components {
             mfa_enabled?: boolean;
             /** @description The caller's role row of cfg.web.menu_by_role, resolved now (same mapping as GET /v1/admin/permissions). */
             menus?: components["schemas"]["MenuPermission"][];
+            /** @description D-ROLES-02 (docs/34 s1): ADMIN the module grants its token carries (r = read, w = read and write; a module not listed is refused with 403), SUPERADMIN every module at w; null for other roles and before the grants are deployed. The portal builds the ADMIN menu from it. */
+            modules?: {
+                [key: string]: "r" | "w";
+            } | null;
+            /** @description D-ROLES-02: a BRAND user's brands (product-tree brand node ids) its token carries; null for other roles. */
+            brands?: components["schemas"]["Id"][] | null;
         };
         /** @description Device public key (Android Keystore, EC P-256). */
         JwkEcPublicDevice: {

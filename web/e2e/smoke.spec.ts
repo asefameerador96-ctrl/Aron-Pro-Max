@@ -16,6 +16,7 @@ test("login page is Bangla first and switches to English", async ({ page }) => {
   await expect(page.locator("html")).toHaveAttribute("lang", "bn");
   await expect(page.getByRole("heading", { name: "সাইন ইন" })).toBeVisible();
   await page.getByRole("link", { name: "English" }).click();
+  await page.goto("/overview");
   await expect(page.locator("html")).toHaveAttribute("lang", "en");
   await expect(page.getByRole("heading", { name: "Sign in" })).toBeVisible();
 });
@@ -89,12 +90,13 @@ test("TSO logs in and sees an empty dashboard scoped by the server, in Bangla th
   await expect(page).toHaveURL(/\/$/);
   await expect(page.getByRole("heading", { name: "ড্যাশবোর্ড", level: 1 })).toBeVisible();
   await expect(page.getByTestId("scope-node")).toContainText("Banani");
-  await expect(page.getByTestId("dashboard-tiles")).toBeVisible();
+  await expect(page.getByTestId("national-dashboard")).toBeVisible();
   // Bengali digits in the business date (Dhaka).
-  await expect(page.getByTestId("business-date")).toHaveText(/[০-৯]/);
+  await expect(page.getByTestId("nat-date")).toHaveText(/[০-৯]/);
   // The TSO has no admin menu.
   await expect(page.getByRole("link", { name: "মাস্টার ডেটা" })).toHaveCount(0);
   await page.getByRole("link", { name: "English" }).click();
+  await page.goto("/overview");
   await expect(page.getByRole("heading", { name: "Dashboard", level: 1 })).toBeVisible();
   await expect(page.getByTestId("business-date")).not.toHaveText(/[০-৯]/);
   await expect(page.getByTestId("who")).toContainText("Territory sales officer");
@@ -103,7 +105,7 @@ test("TSO logs in and sees an empty dashboard scoped by the server, in Bangla th
 test("wrong password shows a localised error and no session", async ({ page }) => {
   await login(page, "tso334", "wrong");
   await expect(page.getByTestId("login-error")).toHaveText("ইউজার আইডি বা পাসওয়ার্ড ভুল।");
-  await page.goto("/");
+  await page.goto("/overview");
   await expect(page).toHaveURL(/\/login/);
 });
 
@@ -229,6 +231,6 @@ test("logout clears the session", async ({ page }) => {
   await hydrated(signOut);
   await signOut.click();
   await expect(page).toHaveURL(/\/login/);
-  await page.goto("/");
+  await page.goto("/overview");
   await expect(page).toHaveURL(/\/login/);
 });

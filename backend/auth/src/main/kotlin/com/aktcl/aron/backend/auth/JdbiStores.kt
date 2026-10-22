@@ -1,7 +1,9 @@
 package com.aktcl.aron.backend.auth
 
 import com.aktcl.aron.backend.platform.AronClock
+import com.aktcl.aron.backend.platform.AdminModules
 import com.aktcl.aron.backend.platform.Database
+import com.aktcl.aron.backend.platform.PortalGrants
 import com.aktcl.aron.backend.platform.ScopeVersionLookup
 import com.aktcl.aron.contract.Role
 import org.jdbi.v3.core.Handle
@@ -22,7 +24,7 @@ private val HEX = HexFormat.of()
 
 /** `app_user` reads, plus a short per-replica cache of `scope_version` for the bearer guard. */
 class JdbiUserStore(private val db: Database, private val clock: AronClock = AronClock.SYSTEM, private val svCacheMs: Long = 10_000) :
-    UserStore, ScopeVersionLookup {
+    UserStore, ScopeVersionLookup, PortalGrants {
     private val cols = "id, username, full_name, role, status, locale, designation, password_hash, scope_version, must_change_password, mfa_enabled"
 
     private fun map(rs: ResultSet) = UserRecord(
@@ -89,6 +91,41 @@ class JdbiUserStore(private val db: Database, private val clock: AronClock = Aro
         }
         grantCache[role] = Grants(perms, now)
         return perms
+    }
+    /**
+     * D-ROLES-02: whether db's grant tables exist (docs/requests/db-backend-authz-roles.md B, C). Once true it stays true;
+     * while false it is probed again at most once a minute, so a replica that started before the migration still turns
+     * the gate on (checker row 2, N2).
+     */
+    @Volatile private var grantsLiveSeen = false
+    @Volatile private var grantsProbedAt = Long.MIN_VALUE
+
+    private val grantsLive: Boolean get() {
+        if (grantsLiveSeen) return true
+        val now = clock.now().toEpochMilli()
+        if (grantsProbedAt != Long.MIN_VALUE && now - grantsProbedAt < 60_000) return false
+        grantsProbedAt = now
+        val found = db.jdbi.withHandle<Boolean, Exception> { h ->
+            h.createQuery("SELECT to_regclass('app.user_module_grant') IS NOT NULL AND to_regclass('app.user_brand_scope') IS NOT NULL")
+                .mapTo(Boolean::class.java).one()
+        }
+        // One-way latch (round 2, N-b): a slower probe that saw the schema before the migration never turns it off again.
+        if (found) grantsLiveSeen = true
+        return found
+    }
+
+    override fun live(): Boolean = grantsLive
+
+    override fun portalGrantsLive(): Boolean = grantsLive
+
+    override fun modules(userId: Long): Map<String, String> = db.jdbi.withHandle<Map<String, String>, Exception> { h ->
+        h.createQuery("SELECT module, access FROM app.user_module_grant WHERE user_id = :u ORDER BY module").bind("u", userId)
+            .map { rs, _ -> rs.getString(1) to rs.getString(2) }.list()
+            .filter { (m, a) -> m in AdminModules.ALL && (a == "r" || a == "w") }.toMap()
+    }
+
+    override fun brands(userId: Long): List<Long> = db.jdbi.withHandle<List<Long>, Exception> { h ->
+        h.createQuery("SELECT brand_id FROM app.user_brand_scope WHERE user_id = :u ORDER BY brand_id").bind("u", userId).mapTo(Long::class.java).list()
     }
 }
 

@@ -74,6 +74,6 @@ describe("N-047 BFF", () => {
     expect(src.filter(([, s]) => /AIza[0-9A-Za-z_-]{20,}/.test(s)).map(([f]) => f)).toEqual([]); // (holds) no literal key
     expect(src.filter(([, s]) => s.includes("process.env.NEXT_PUBLIC_MAPS_WEB_KEY")).map(([f]) => f.replace(/.*\/src\//, ""))).toEqual([]);
     expect(src.filter(([, s]) => s.includes("maps.googleapis.com")).map(([f]) => f.replace(/.*\/src\//, ""))).toEqual(["components/map-panel.tsx", "lib/security-headers.ts"]); // the second is the CSP allow-list, not a load
-    expect(src.filter(([, s]) => /from "@\/components\/map-panel"/.test(s)).map(([f]) => f.replace(/.*\/src\//, ""))).toEqual(["app/(dashboards)/page.tsx", "components/admin/config/radius-map.tsx", "components/dash/filtered-map.tsx"]); // both load through requestMaps / MapPanel, never directly
+    expect(src.filter(([, s]) => /from "@\/components\/map-panel"/.test(s)).map(([f]) => f.replace(/.*\/src\//, ""))).toEqual(["app/(dashboards)/overview/page.tsx", "components/admin/config/radius-map.tsx", "components/dash/filtered-map.tsx", "components/national/gmap.tsx"]); // both load through requestMaps / MapPanel, never directly
   });
 });

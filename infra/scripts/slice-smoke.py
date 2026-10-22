@@ -49,6 +49,7 @@ OUTLET_CODE = ",".join(OUTLET_CODES)
 DEVICE_KEY = os.environ.get("SLICE_DEVICE_KEY", "")  # PEM file of the smoke device's key (Key Vault aron-dev-smoke-device-key)
 TILE_POLL_S = float(os.environ.get("SLICE_TILE_POLL_S", "15"))
 SCHEME = os.environ.get("SLICE_SCHEME", "https")  # http only for the offline test against a local stub
+SKIP_EXIT = 3  # deploy.sh: "SKIPPED" (not a selling day), distinct from a failure (1)
 DHAKA = datetime.timezone(datetime.timedelta(hours=6))
 
 results = []  # (step, ok, detail)
@@ -56,6 +57,16 @@ results = []  # (step, ok, detail)
 
 class StepFailed(Exception):
     pass
+
+
+class Skipped(Exception):
+    """Today is not a selling day (the bundle's own calendar) and no route is planned: nothing to sell, not a failure."""
+
+
+def skip(name, detail):
+    results.append((name, None, detail))
+    print(f"slice: SKIP {name}: {detail}", flush=True)
+    raise Skipped(name)
 
 
 def step(name, ok, detail=""):
@@ -151,24 +162,14 @@ def run():
     s, bundle = call("GET", f"/v1/sync/bundle?for={day}", token)
     step("2 bundle", s == 200 and isinstance(bundle, dict), brief(s, bundle) if s != 200 else f"bundle {bundle['meta']['bundle_version']}")
     meta = bundle["meta"]
-    skus = {k["id"]: k for k in bundle["products"]["skus"] if k.get("status", "active") == "active"}
-    prices = {}
-    for p in bundle["prices"]:
-        if p["price_type"] == "outlet" and p["valid_from"] <= day and (p.get("valid_to") in (None, "") or p["valid_to"] >= day):
-            prices[p["sku_id"]] = p
-    pick = None
-    for r in bundle["routes"]:
-        if not r.get("planned_today"):
-            continue
-        outlet = next((o for o in r["outlets"] if o.get("code") in OUTLET_CODES and o.get("lat") is not None), None)
-        sku_id = next((i for i in r["sales_plan_sku_ids"] if i in skus and i in prices), None)
-        if outlet and sku_id:
-            pick = (r, outlet, skus[sku_id], prices[sku_id])
-            break
+    pick = pick_route(bundle, day)
+    if pick is None and not any(r.get("planned_today") for r in bundle["routes"]) and not selling_day(bundle, today):
+        skip("2b route, outlet, SKU", f"{day} is not a selling day (bundle calendar) and no route is planned; steps 3-10 not run"
+             + next_selling_route(token, today))
     step("2b route, outlet, SKU", pick is not None,
          (f"no planned route with a smoke outlet ({OUTLET_CODE}) and a priced plan SKU"
-          + (" (Friday: no selling route by design)" if today.weekday() == 4 else "")) if pick is None
-         else f"route {pick[0]['route_id']}, outlet {pick[1]['outlet_id']}, sku {pick[2]['code']}")
+          + (" (Friday: no selling route by design)" if today.weekday() == 4 else "") + next_selling_route(token, today)) if pick is None
+         else describe(pick))
     route, outlet, sku, price = pick
 
     # 3 baseline
@@ -245,6 +246,54 @@ def run():
             step("10 cleanup: sale voided", s == 200 and st == ["accepted"], f"acks={st}" if s == 200 else brief(s, r4))
 
 
+def pick_route(bundle, day):
+    """(route, outlet, sku, price) of the first planned route of [bundle] holding a smoke outlet and a plan SKU priced on [day]."""
+    skus = {k["id"]: k for k in bundle["products"]["skus"] if k.get("status", "active") == "active"}
+    prices = {}
+    for p in bundle["prices"]:
+        if p["price_type"] == "outlet" and p["valid_from"] <= day and (p.get("valid_to") in (None, "") or p["valid_to"] >= day):
+            prices[p["sku_id"]] = p
+    for r in bundle["routes"]:
+        if not r.get("planned_today"):
+            continue
+        outlet = next((o for o in r["outlets"] if o.get("code") in OUTLET_CODES and o.get("lat") is not None), None)
+        sku_id = next((i for i in r["sales_plan_sku_ids"] if i in skus and i in prices), None)
+        if outlet and sku_id:
+            return r, outlet, skus[sku_id], prices[sku_id]
+    return None
+
+
+def selling_day(bundle, today):
+    """As DayPlan.isSellingDay on the bundle's calendar (already narrowed to the user's zones): a dated entry decides
+    (an off-day wins), else the ISO weekday must not be in weekend_days (Friday = 5 by default)."""
+    cal = bundle.get("calendar") or {}
+    entries = [e for e in cal.get("entries", []) if e.get("date") == today.isoformat()]
+    if entries:
+        return all(e.get("selling_day") for e in entries)
+    return today.isoweekday() not in cal.get("weekend_days", [5])
+
+
+def describe(pick):
+    return (f"route {(pick[0].get('route') or {}).get('code', '?')} ({pick[0]['route_id']}), "
+            f"outlet {pick[1].get('code', '?')} ({pick[1]['outlet_id']}), sku {pick[2]['code']}")
+
+
+def next_selling_route(token, today):
+    """When today has no selling route (Friday, a holiday): name the route of the next selling day, so a deploy on a
+    non-selling day still shows which seed dev runs on (a Gulshan/Banani code, or a Mirpur one if seed 06 skipped).
+    Only the server's own pre-fetch (for = a later day up to the next working day) is used: it never marks a login and
+    the server refuses past dates. No sale is made."""
+    for ahead in range(1, 8):
+        d = (today + datetime.timedelta(days=ahead)).isoformat()
+        s, b = call("GET", f"/v1/sync/bundle?for={d}", token)
+        if s != 200 or not isinstance(b, dict):
+            break  # past the next working day the server answers 400: nothing further to look at
+        pick = pick_route(b, d)
+        if pick is not None:
+            return f"; next selling day {d}: {describe(pick)}"
+    return "; no smoke route on the next selling day either"
+
+
 def day_totals(resp, day):
     """(memo accepted count, active memo count, gross) of [day] from a batch answer's server_totals."""
     for t in (resp or {}).get("server_totals", []) if isinstance(resp, dict) else []:
@@ -304,9 +353,12 @@ def after_sale(token, day, memo, gross, k0, records, first, batch, acks, r1):
          f"gross {k0.get('gross_mtk')} -> {k1.get('gross_mtk') if k1 else '?'} mtk")
 
 def main():
+    skipped = False
     try:
         run()
         passed = True
+    except Skipped:
+        passed, skipped = True, True
     except StepFailed:
         passed = False
     except Exception as e:  # an unexpected answer shape: report the step, never a token
@@ -316,10 +368,10 @@ def main():
     summary = os.environ.get("GITHUB_STEP_SUMMARY")
     if summary:
         with open(summary, "a", encoding="utf-8") as f:
-            f.write(f"### SR slice smoke: {'PASSED' if passed else 'FAILED'}\n| Step | Result | Detail |\n|---|---|---|\n")
+            f.write(f"### SR slice smoke: {'SKIPPED' if skipped else 'PASSED' if passed else 'FAILED'}\n| Step | Result | Detail |\n|---|---|---|\n")
             for n, ok, d in results:
-                f.write(f"| {n} | {'pass' if ok else 'FAIL'} | {d.replace('|', '/')} |\n")
-    return 0 if passed else 1
+                f.write(f"| {n} | {'skip' if ok is None else 'pass' if ok else 'FAIL'} | {d.replace('|', '/')} |\n")
+    return SKIP_EXIT if skipped else 0 if passed else 1
 
 
 if __name__ == "__main__":

@@ -169,7 +169,7 @@ fun NationalDashboardService.routeMap(caller: NationalCaller, routeId: Long, dat
         val firstSale = a.firstSale; val lastSale = a.lastSale
         val total = if (firstSale != null && lastSale != null) java.time.Duration.between(firstSale, lastSale).seconds else null
 
-        val month = YearMonth.from(date); val wd = WorkingCalendar.workingDays(h, month)
+        val month = YearMonth.from(date); val wd = WorkingCalendar.workingDays(h, month, weekendDays())
         val targets = h.createQuery(
             """
             SELECT p.category_code, sum(t.qty_base) FROM app.route_monthly_target t JOIN dw.dim_product p ON p.sku_id = t.sku_id

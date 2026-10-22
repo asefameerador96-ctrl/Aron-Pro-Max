@@ -52,6 +52,14 @@ class DayConfig {
     @Volatile var mapTileCacheMb: Int? = null
         private set
 
+    /** `cfg.geo.breadcrumbs_enabled` (default off, docs/24 s5.5): the MDM sampling policy can still turn breadcrumbs off or on. */
+    @Volatile var breadcrumbsEnabled: Boolean = false
+        private set
+
+    /** `cfg.geo.breadcrumb_interval_min` (default 30; BreadcrumbSettings clamps it to 5..120). */
+    @Volatile var breadcrumbIntervalMin: Int = 30
+        private set
+
     suspend fun refresh(db: AronDatabase, nowIso: String) {
         val ref = ReferenceRepository(db)
         suspend fun value(key: String) = runCatching { ref.config(key, nowIso)?.let { Json.parseToJsonElement(it) as? JsonPrimitive } }.getOrNull()
@@ -62,6 +70,8 @@ class DayConfig {
             reuseMaxAgeS = value("cfg.geo.fix_reuse_max_age_s")?.intOrNull ?: d.reuseMaxAgeS,
             requirePrecise = value("cfg.geo.require_precise")?.booleanOrNull ?: d.requirePrecise,
         )
+        breadcrumbsEnabled = value("cfg.geo.breadcrumbs_enabled")?.booleanOrNull ?: false
+        breadcrumbIntervalMin = value("cfg.geo.breadcrumb_interval_min")?.intOrNull ?: 30
         checkoutEarliestMinutes = minutesOf(value("cfg.day.checkout_earliest_time")?.contentOrNull) ?: DEFAULT_CHECKOUT_MINUTES
         offlineMaxDays = value("cfg.auth.offline_unlock_max_days")?.intOrNull
         offlineMaxAttempts = value("cfg.auth.offline_unlock_max_attempts")?.intOrNull

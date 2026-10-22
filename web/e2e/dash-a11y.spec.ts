@@ -12,6 +12,7 @@ test.beforeEach(async () => {
 
 async function english(page: Page) {
   await page.getByRole("link", { name: "English" }).click();
+  await page.goto("/overview");
 }
 
 // 1366 is the office laptop; 1024 and 360 make the tables overflow the way a CI runner's wider data or a phone does.
@@ -45,7 +46,7 @@ for (const [theme, width] of [["light", 1366], ["dark", 1366], ["sunlight", 1366
 test("axe: the DMO home (ranking table) has no violation", async ({ page }) => {
   await loginOk(page, "dmo1", "dmo-pass-1");
   await english(page);
-  await page.goto("/");
+  await page.goto("/overview");
   await expect(page.getByTestId("table-rank")).toBeVisible();
   const r = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"]).analyze();
   expect(r.violations.map((v) => `${v.id} x${v.nodes.length}`)).toEqual([]);
@@ -84,7 +85,7 @@ test("keyboard only: Filter opens, a zone is chosen, Escape closes; tables are r
 test("Bangla home: digits are Bengali in every key figure", async ({ page }) => {
   await loginOk(page, "tso334", "tso-pass-1");
   await page.getByRole("link", { name: "বাংলা" }).click();
-  await page.goto("/");
+  await page.goto("/overview");
   await expect(page.getByTestId("dashboard-tiles")).toBeVisible();
   for (const id of ["cat-qty-cigarette", "cat-qty-bidi", "cpr-planned", "cpr-calls", "login-pct", "strike-rate", "sales-net"]) {
     const text = (await page.getByTestId(id).first().innerText()).trim();

@@ -9,3 +9,6 @@ No android-core lane runs in wave 4, so lane mdm wired the DPC command channel i
 - Test: `core-sync/.../MdmCommandRunnerTest` (a queued command is pulled, verified, executed and acked once; a rotated key is refreshed once; a forged command never runs; offline and not-enrolled are quiet; `mdm_nudge` parses). The wiring is identical in the three apps because it lives in `core-sync`; compile of all three is part of the lane check.
 
 Still open (belongs to the geo layer, android-geo-dpc / android-sr-a): read `DeviceOwnerPolicy.mdmApplier?.locationMode()` (`off | on_demand | interval`, and `locationIntervalMin()`) where location samples are decided; `off` means no fix except a `locate` command. And the optional `network_type` in the status report (mdm-contract-network-type.md).
+
+## Breadcrumb call site (mdm #2, 2026-10-22)
+`BreadcrumbController` is constructed nowhere in production code (`Breadcrumbs.controller` is never set; the install, the `geo_breadcrumb` sink and the check-in/out calls are the open wiring of `android-geo-dpc-wiring.md`). So there is no call site to change yet. When it is built, its settings supplier is: `{ configured.withMdmSampling(applier?.locationMode(), applier?.locationIntervalMin()) }` (core-geo, tested in `MdmSamplingTest`), and `reconcile()` must also run when an MDM policy changes (the DPC policy store's change callback).

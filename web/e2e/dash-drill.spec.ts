@@ -9,6 +9,7 @@ test.beforeEach(async () => {
 
 async function english(page: Page) {
   await page.getByRole("link", { name: "English" }).click();
+  await page.goto("/overview");
 }
 
 test("TSO home has the SR table, DMO home the ranking table", async ({ page }) => {
@@ -46,7 +47,7 @@ test("channel slice, CPR, strike and login cards each open their drill-down", as
   await expect(page).toHaveURL(/\/drill\/channel\?code=grocery/);
   await expect(page.getByTestId("table-channels")).toBeVisible();
   for (const [id, table] of [["drill-calls", "table-calls"], ["drill-strike", "table-calls"], ["drill-login", "table-not-logged-in"]] as const) {
-    await page.goto("/");
+    await page.goto("/overview");
     await page.getByTestId(id).click();
     await expect(page.getByTestId(table)).toBeVisible();
   }
@@ -70,9 +71,10 @@ test("auto-refresh does not poll faster than 60 s", async ({ page }) => {
   await page.clock.install();
   await loginOk(page, "tso334", "tso-pass-1");
   await english(page);
+  await page.goto("/overview");
   let reads = 0;
   page.on("request", (r) => {
-    if (r.headers()["rsc"] === "1" && new URL(r.url()).pathname === "/") reads++;
+    if (r.headers()["rsc"] === "1" && new URL(r.url()).pathname === "/overview") reads++;
   });
   await page.clock.runFor(30_000);
   expect(reads).toBe(0);

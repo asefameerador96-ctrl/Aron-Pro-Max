@@ -68,12 +68,26 @@ class MdmApiTest : ReportFixture() {
           SELECT 'online', d.id, '2026-10-04', '2026-10-04T11:00:00Z', '1.0.0+1', true, 'prod', false, true, true, false, true, ARRAY['com.fake.gps'], 0, 64, 'periodic', '{"network_type":"wifi","battery_pct":64}'::jsonb FROM app.device d;
     """.trimIndent()
 
+    /**
+     * Route-level seam for the handler-side check: the grant row of the caller in app.user_module_grant (test tokens carry no
+     * `modules` claim). Production uses [ModuleGrants] over the token; its mapping is pinned in `ModuleGrantsTest`/the test above.
+     */
+    private val tableGrants = MdmGrants { p ->
+        when (p.role) {
+            com.aktcl.aron.contract.Role.SUPERADMIN -> MdmLevel.WRITE
+            com.aktcl.aron.contract.Role.ADMIN -> when (fresh.db.jdbi.withHandle<String?, Exception> { h ->
+                h.createQuery("SELECT access FROM app.user_module_grant WHERE user_id = :u AND module = 'mdm'").bind("u", p.userId).mapTo(String::class.java).findOne().orElse(null)
+            }) { "w" -> MdmLevel.WRITE; "r" -> MdmLevel.READ; else -> MdmLevel.NONE }
+            else -> MdmLevel.NONE
+        }
+    }
+
     private lateinit var service: MdmService
     override fun mount(r: Route, clock: AronClock, reach: ReachResolver, guard: AuthGuardDeps) {
         val devices = DeviceService(fresh.db, RegistryDefaults(), TestTokens.keys, EnrolmentSettings("https://api.example.test", "dev", AttestationTrust(mutableSetOf())), clock)
         // The MDM service clock can be moved forward by a test (expiry); the device and auth clocks stay fixed.
         service = MdmService(fresh.db, TestTokens.keys, devices, AronClock { clock.now().plus(skew) })
-        r.mdmRoutes(MdmDeps(service, DeviceDeps(devices, reach, guard, clock), guard))
+        r.mdmRoutes(MdmDeps(service, DeviceDeps(devices, reach, guard, clock), guard, grants = tableGrants))
     }
 
     private val admin get() = TestTokens.web(13, Role.ADMIN)
@@ -129,6 +143,21 @@ class MdmApiTest : ReportFixture() {
         val p = com.aktcl.aron.backend.platform.AronPrincipal(1, "u", Role.ADMIN, 1, "aron-api", null, null, "web", emptyList(), false, emptyList(), "j", Instant.now())
         ro.read(p)
         assertEquals("ERR_FORBIDDEN", runCatching { ro.write(p) }.exceptionOrNull().let { (it as com.aktcl.aron.backend.platform.ApiProblem).code.wire })
+    }
+
+    /** mdm's request to backend-authz: the production grants follow the token's `mdm` module (D-AUTHZ-MODULES-01). */
+    @Test
+    fun productionGrantsFollowTheMdmModule() {
+        fun p(role: Role, modules: Map<String, String>?) = com.aktcl.aron.backend.platform.AronPrincipal(1, "u", role, 1, "aron-api", null, null, "web", emptyList(), false, emptyList(), "j", Instant.now(), modules = modules)
+        assertEquals(MdmLevel.WRITE, ModuleGrants.level(p(Role.SUPERADMIN, null)))
+        assertEquals(MdmLevel.WRITE, ModuleGrants.level(p(Role.ADMIN, mapOf("mdm" to "w"))))
+        assertEquals(MdmLevel.READ, ModuleGrants.level(p(Role.ADMIN, mapOf("mdm" to "r", "users" to "w"))))
+        assertEquals(MdmLevel.NONE, ModuleGrants.level(p(Role.ADMIN, mapOf("users" to "w"))))
+        assertEquals(MdmLevel.WRITE, ModuleGrants.level(p(Role.ADMIN, null)), "before the grants are deployed: today's write")
+        for (r in Role.entries - Role.ADMIN - Role.SUPERADMIN) assertEquals(MdmLevel.NONE, ModuleGrants.level(p(r, mapOf("mdm" to "w"))), "$r")
+        val ro = p(Role.ADMIN, mapOf("mdm" to "r"))
+        ModuleGrants.read(ro)
+        assertEquals("ERR_FORBIDDEN", runCatching { ModuleGrants.write(ro) }.exceptionOrNull().let { (it as com.aktcl.aron.backend.platform.ApiProblem).code.wire })
     }
 
     @Test
@@ -195,6 +224,57 @@ class MdmApiTest : ReportFixture() {
         send("POST", path, cmd(id2, "factory_reset", "second try"))
         assertEquals("rejected", json(send("POST", "/admin/mdm/commands/$id2/decision", """{"decision":"reject","reason":"not needed"}""", root).bodyAsText()).o().s("state"))
         assertEquals("rejected", fresh.db.jdbi.withHandle<String, Exception> { it.createQuery("SELECT state FROM app.device_command WHERE command_id = CAST(:i AS uuid)").bind("i", id2).mapTo(String::class.java).one() })
+    }
+
+    // user 13 holds mdm 'w', user 15 (a second ADMIN) holds mdm 'r' (see grants()); app.user_module_grant is what DbGrants reads.
+    @org.junit.jupiter.api.BeforeEach
+    fun grants() {
+        fresh.db.jdbi.useHandle<Exception> { h ->
+            h.execute("INSERT INTO app.app_user (id, username, full_name, role, must_change_password) OVERRIDING SYSTEM VALUE VALUES (15, 'user15', 'User 15', 'ADMIN', false)")
+            h.execute("INSERT INTO app.user_module_grant (user_id, module, access) VALUES (13, 'mdm', 'w'), (15, 'mdm', 'r')")
+        }
+        reaches[15] = com.aktcl.aron.backend.platform.Reach(15, Role.ADMIN, day, true, emptySet(), emptySet(), false, emptyList())
+    }
+    private val reader get() = TestTokens.web(15, Role.ADMIN)
+
+    @Test
+    fun moduleGrantDecidesWhatAnAdminMayDo() = app {
+        val path = "/admin/mdm/devices/$deviceId/commands"
+        assertEquals(HttpStatusCode.OK, get("/admin/mdm/devices", reader).status)
+        assertEquals(HttpStatusCode.Forbidden, send("POST", path, cmd(UUID.randomUUID().toString()), reader).status)
+        assertEquals(HttpStatusCode.Forbidden, send("POST", "/admin/mdm/commands/${UUID.randomUUID()}/decision", """{"decision":"approve","reason":"read only"}""", reader).status)
+        assertEquals(HttpStatusCode.Forbidden, send("POST", "/admin/mdm/policies", policyBody.dropLast(1) + ""","reason":"x"}""", reader).status)
+        // A revoked grant is a closed door; a SUPERADMIN needs no row.
+        fresh.db.jdbi.useHandle<Exception> { it.execute("DELETE FROM app.user_module_grant WHERE user_id = 15") }
+        assertEquals(HttpStatusCode.Forbidden, get("/admin/mdm/devices", reader).status)
+        assertEquals(HttpStatusCode.OK, get("/admin/mdm/devices", root).status)
+    }
+
+    @Test
+    fun factoryResetApprovalNeedsAnotherPersonWithMdmWrite() = app {
+        val id = UUID.randomUUID().toString(); val path = "/admin/mdm/devices/$deviceId/commands"
+        // The requester is an ADMIN with write; the read-only admin and the requester himself cannot decide.
+        assertEquals("pending_approval", json(send("POST", path, cmd(id, "factory_reset", "stolen phone")).bodyAsText()).o().s("state"))
+        assertEquals(HttpStatusCode.Forbidden, send("POST", "/admin/mdm/commands/$id/decision", """{"decision":"approve","reason":"as reader"}""", reader).status)
+        assertEquals(HttpStatusCode.Forbidden, send("POST", "/admin/mdm/commands/$id/decision", """{"decision":"approve","reason":"as myself"}""", admin).status)
+        assertEquals(0, count("SELECT count(*) FROM app.device_command WHERE command_id = CAST('$id' AS uuid) AND (approved_by IS NOT NULL OR sig IS NOT NULL)"))
+        // Upgrade the second admin to write: now an ADMIN (not only a SUPERADMIN) may approve.
+        fresh.db.jdbi.useHandle<Exception> { it.execute("UPDATE app.user_module_grant SET access = 'w' WHERE user_id = 15") }
+        val ok = send("POST", "/admin/mdm/commands/$id/decision", """{"decision":"approve","reason":"checked with the TSO"}""", reader)
+        assertEquals(HttpStatusCode.OK, ok.status, ok.bodyAsText()); assertEquals("queued", json(ok.bodyAsText()).o().s("state"))
+        assertEquals(1, json(pull().bodyAsText()).o()["items"]!!.jsonArray.size)
+    }
+
+    @Test
+    fun aFactoryResetThatExpiredWhileWaitingDoesNotBreakThePull() = app {
+        val id = UUID.randomUUID().toString(); val other = UUID.randomUUID().toString()
+        send("POST", "/admin/mdm/devices/$deviceId/commands", cmd(id, "factory_reset", "never approved"))
+        send("POST", "/admin/mdm/devices/$deviceId/commands", cmd(other, "lock", "same phone"))
+        skew = java.time.Duration.ofDays(3)   // the service clock moves; the row is not touched (device_command_guard)
+        assertEquals(HttpStatusCode.OK, pull().status)
+        assertEquals("expired", fresh.db.jdbi.withHandle<String, Exception> { it.createQuery("SELECT state FROM app.device_command WHERE command_id = CAST(:i AS uuid)").bind("i", id).mapTo(String::class.java).one() })
+        assertEquals(HttpStatusCode.Conflict, send("POST", "/admin/mdm/commands/$id/decision", """{"decision":"approve","reason":"too late"}""", root).status)
+        assertEquals(HttpStatusCode.OK, pull().status)   // later pulls of the phone still work
     }
 
     @Test

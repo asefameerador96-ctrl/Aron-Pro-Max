@@ -70,12 +70,6 @@ class ApiWorld(
         fresh.dataSource.connection.use { c ->
             seed.forEach { f -> c.createStatement().use { it.execute(f.readText()) } }
             if (devProfile) c.createStatement().use { it.execute(repoRoot.resolve("infra/sql/devseed-smoke-outlet.sql").readText()) }
-            // PENDING (db lane): tables the wave-4 admin routes need before db's migrations land; applied only while absent. Delete the
-            // files and these lines in the push that picks the migrations up (docs/requests/backend-admin-route-target-tables.md, db-backend-authz-roles.md).
-            for ((table, file) in listOf("app.route_monthly_target" to "route_monthly_target.sql", "app.user_module_grant" to "user-access.sql")) {
-                val missing = c.createStatement().use { st -> st.executeQuery("SELECT to_regclass('$table') IS NULL").use { rs -> rs.next(); rs.getBoolean(1) } }
-                if (missing) c.createStatement().use { it.execute(ApiWorld::class.java.getResource("/pending/$file")!!.readText()) }
-            }
             for (tag in mirrors) listOf("01_geography_people.sql", "03_outlets_and_plans.sql").forEach { n -> c.createStatement().use { it.execute(mirrored(repoRoot.resolve("db/seed/$n").readText(), tag)) } }
         }
         fresh.db.jdbi.useHandle<Exception> { h ->

@@ -2,6 +2,48 @@
 
 Updated with every push. Rows of Day 1: N-005, N-006, N-007, N-008 (`python3 tools/my-rows.py db 1 --full`).
 
+## Session 9, 2026-10-22 (lane/db; INT 384ecee2 = train 9.1)
+
+| Job | State | What |
+|---|---|---|
+| train 9.1 dev deploy | read (lead relay) | deploy #243 (run 39847052921) green 20:27 UTC: migrations incl. **V0107** applied, dev seed job ran (image `aron-devseed:384ecee2`), health 200 build 384ecee2, worker 0 restarts. Slice smoke: login and bundle passed; **2b skipped (non-blocking)** because the deploy ran at 02:14 Dhaka on **Friday 2026-10-23** (no selling route by design). So the route **could not be read from this deploy**: whether dev runs on Gulshan/Banani is still open |
+| when the codes print | recorded | 5be0a3e1's codes print from train 10's deploy only on a Dhaka selling day (Saturday 2026-10-24 06:00 Dhaka = 00:00 UTC onward), unless the fallback below is on dev |
+| smoke fallback (lead ask) | built, tested | `infra/scripts/slice-smoke.py`: when today has no smoke route, 2b fetches the bundle of the **next** selling day (the server's own pre-fetch: `for` up to the next working day; it never marks a login, and BundleService refuses past dates, so "last selling day" is not possible) and adds `; next selling day <date>: route <code> (<id>), outlet <code> (<id>), sku <code>` to the 2b line. No sale on such a day; 2b stays FAIL (non-blocking). Test `SliceSmoke.test_a_day_without_a_selling_route_names_the_next_selling_days_route_and_sells_nothing` (stub: 2 bundle calls, no batch); SliceSmoke stub tests 6/6 locally, the rest of check_infra needs compiled Bicep (same 38 errors before and after the change) |
+| 88b1c0ab | **candidate**, checked by the lead, LAST head of train 11 (after train 10's deploy, ~23:00 UTC) | CI #1406 green on the jobs that ran (gates, infra, images); web/android/backend skipped, unchanged since 5be0a3e1 |
+| qa db-qa-1 / infra-qa-1 | fixed, answered (`docs/requests/db-qa-1-answer.md`) | (1) evidence doc named a non-existent `dw.agg_daily_outlet_category`: now the real tables. (2) a non-selling day (bundle calendar, as DayPlan.isSellingDay) with no planned route makes 2b **SKIP** (exit 3; deploy.sh summary `SKIPPED (not a selling day ...)`, no warning) and still names the next selling day's route; a selling day without a route stays FAIL. Tests: SliceSmoke stubs 7/7 locally, the deploy wiring assertion before the Bicep-dependent part; same 38 Bicep-only errors as before |
+| requests | none open | no new `docs/requests/*db*` on any lane branch at 20:35 UTC (backend-reports' checked_in_at = V0108, answered). Next free migration **V0109** |
+
+## HANDOVER (session 8 -> session 9), 2026-10-22 evening, lane/db 5be0a3e1
+
+**State.** a60d941e is on INT 529b02f6 (dev deploy #238 applied V0087-V0106; dev seed Succeeded; slice smoke PASS).
+**fb59e0e9** (INT b561b267 + V0107 TOP grants -> NATIONAL + seed 07) rides train 9 last (CI #1388 green). **5be0a3e1**
+(seed visibility + V0108 `checked_in_at`) declared on top (CI #1399 + #1394 green). Next free migration: **V0109**.
+
+**Session 9, in order:**
+1. Watch train 9's dev deploy (V0107, seed 07) and then 5be0a3e1's. Read the slice smoke line `2b route ...`: it must
+   name a Gulshan/Banani route (Sat/Tue GUL-SR-2 + SMOKE-SR-001, Sun/Wed GUL-SR-1 + -002, Mon/Thu BAN-SR-11 + -003;
+   Friday fails by design, non-blocking). A MIR-* code means seed 06 skipped on dev (04's config version present): investigate.
+2. When backend-authz lands on INT, its `db/seed/07_admin_module_grants.sql` is byte-identical to ours; only the README
+   row differs, and the lead told backend-authz #7 to take db's line.
+3. Replies: mdm #2 reads the note at the top of `docs/requests/db-mdm-device-command-answer.md` (V0102 changes; their
+   `mdm_ddl.sql` fixture becomes redundant). backend-reports was told about V0093, targets, route_class and V0108.
+4. Open for the owner/AKTCL: Durga Puja 2026 date in seed 06 (2026-10-21, lunar; confirm). Checker follow-ups before
+   the final account: retention of `dw.route_last_position` (unpartitioned, personal) and `fact_visit.fix_lat/lng`.
+5. Decisions for DECISIONS.md (lead copies): D-DB-W4-01..05 (session 7 list below); session 8: V0093 has no unique
+   house index (lead ruling); device_command guard is forward-only/write-once in the DB, approver role API-only;
+   V0108 backfill in SQL (not dirty keys) so it cannot be lost before the consumer ships.
+
+**Traps (session 8).**
+- Local Gradle runs every module in parallel. Leftover `aron_be_*` test databases and stray runs exhaust Postgres
+  connections ("too many clients") and fail tests at random.
+  - Before a run: drop `aron_be_*` and `aron_test`, then recreate `aron_test`.
+  - Raise `max_connections` (400 here).
+  - Never start a second Gradle run while one is live, and never drop `aron_test` under a running build.
+- `pkill -f <pattern>` matches its own shell when the pattern appears in the command line: use `./gradlew --stop`.
+- The container can reboot mid-session: `service postgresql start` (the role and config survive).
+- Another lane's pending-schema scaffold (`to_regclass` guards) must go in the same promotion as the migrations that
+  replace it, or INT turns red. The lead approves the exact file list.
+
 ## Session 8, 2026-10-22 (lane/db, INT 529b02f6 merged): in progress
 
 All edits below are in place in V0087-V0104 (none is on INT yet; INT stops at V0086), plus the new V0105/V0106.
@@ -15,6 +57,10 @@ All edits below are in place in V0087-V0104 (none is on INT yet; INT stops at V0
 | a60d941e | **landed** on INT 529b02f6; dev deploy #238 applied V0087-V0106, dev seed Succeeded, slice smoke PASS (all steps) | messages sent: backend-authz, backend-reports; mdm note at the top of `db-mdm-device-command-answer.md` (mdm #1 archived) |
 | relay N3 | in the next candidate | **V0107** copies TOP's role_grant_map rows to NATIONAL then deletes TOP's (idempotent); populated-DB test (a TOP-only grant ends on NATIONAL, TOP holds none) |
 | relay seed 07 | in the next candidate: taken from lane/backend-authz 3b7747b5 unchanged, README row, test (re-run keeps a narrowed grant) | `db/seed/07_admin_module_grants.sql` (lane/backend-authz 3b7747b5): 15 modules = V0089 CHECK = contract AdminModule; loaded by name order; overlaps seed 01's admin1001 block (fold when it arrives) |
+| candidate | **fb59e0e9 declared** (CI #1388 green, 9 jobs): INT b561b267, V0107, seed 07; rides train 9 last | |
+| dev seed visibility | done | **How to confirm dev runs on Gulshan/Banani:** (1) from the next deploy on, the slice smoke log names codes: `slice: PASS 2b route, outlet, SKU: route BAN-SR-11 (22636), outlet SMOKE-SR-003 (...)` (route code from the bundle; a Mirpur code means seed 06 skipped); (2) seed 06 raises NOTICE `seed 06 applied ...` or `seed 06 skipped (config version of 04 present ...)` in the dev-seed container log (deploy.sh prints its tail when the seed fails); (3) on dev: `SELECT code FROM app.route WHERE id = 22636` (deploy #238/#240 smoke route). Smoke outlet per day: Sat/Tue SMOKE-SR-001, Sun/Wed -002, Mon/Thu -003, Friday none |
+| backend-reports checked_in_at | built | **V0108** `dw.agg_daily_route.checked_in_at` (nullable) + 7-day SQL backfill with their rule (event route, else a user assigned to the route that day); test `v0108CheckedInAtIsBackfilledForTheLastSevenDays`; answer `docs/requests/db-backend-reports-checked-in-at-answer.md`, message sent (route_id only when the phone has a route loaded: keep the user fallback) |
+| 3cfcd0af | CI #1394 green (android/web skipped by change detection) | declared together with V0108's head |
 | 2 V0093 (lead ruling) | done | unique active-house index dropped (in place); `is_active`, the one-off dedupe and dim_geo house columns stay; test asserts duplicates are allowed and the index is absent; `db-wave4-tables.md` updated |
 | 3 TOP -> NATIONAL | done | backend-authz 8ed44597 reached INT (658f65d0): **V0105** TOP users -> NATIONAL (scope_version + 1) + `app_user_no_top` NOT VALID, **V0106** validates; held file deleted; tests: populated DB re-roles `qatop1` to NATIONAL\|2, a TOP insert is refused (23514) |
 | 6a BRAND menu | done (in place, V0087) | BRAND default of `cfg.web.menu_by_role` gains `credentials/change_password [write_own]` (backend-authz's fix) |
