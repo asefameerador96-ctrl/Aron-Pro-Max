@@ -218,19 +218,21 @@ class ChangePasswordCheckerTest {
     @Test
     fun fieldRoleDenyListCatchesProductNameAndUsername() = testApplication {
         application { aronApi(wiring) }
-        val (_, name) = user("SR", mustChange = false)
-        val access = json(client.login(name).bodyAsText())["access_token"]!!.jsonPrimitive.content
-        assertEquals(listOf("too_common"), client.change(access, temp, "ARON-field").errs(), "product name, any case")
-        assertEquals(listOf("too_common"), client.change(access, temp, "x" + name.uppercase() + "-9").errs(), "the username, any case")
+        val (id, name) = user("SR", mustChange = false)
+        val phone = boundPhone(id) // D-ROLES-02: no portal login for SR/AMO
+        val access = json(client.login(name, client = "app_sr", device = phone).bodyAsText())["access_token"]!!.jsonPrimitive.content
+        assertEquals(listOf("too_common"), client.change(access, temp, "ARON-field", phone).errs(), "product name, any case")
+        assertEquals(listOf("too_common"), client.change(access, temp, "x" + name.uppercase() + "-9", phone).errs(), "the username, any case")
     }
 
     /** docs/21 s4: the field deny-list is the top 10,000 common passwords; "password1" is on every such list. */
     @Test
     fun fieldRoleDenyListCatchesPassword1() = testApplication {
         application { aronApi(wiring) }
-        val (_, name) = user("SR", mustChange = false)
-        val access = json(client.login(name).bodyAsText())["access_token"]!!.jsonPrimitive.content
-        val r = client.change(access, temp, "password1")
+        val (id, name) = user("SR", mustChange = false)
+        val phone = boundPhone(id) // D-ROLES-02: no portal login for SR/AMO
+        val access = json(client.login(name, client = "app_sr", device = phone).bodyAsText())["access_token"]!!.jsonPrimitive.content
+        val r = client.change(access, temp, "password1", phone)
         assertEquals(HttpStatusCode.BadRequest, r.status, "password1 is accepted for a field role")
         assertEquals(listOf("too_common"), r.errs())
     }
@@ -300,9 +302,10 @@ class ChangePasswordCheckerTest {
         assertTrue(allowed.containsAll(body.keys), (body.keys - allowed).toString())
         assertFalse("argon2" in ok.bodyAsText())
 
-        val (_, f) = user("SR", mustChange = false)
-        val access = json(client.login(f).bodyAsText())["access_token"]!!.jsonPrimitive.content
-        val nc = client.change(access, temp, "mango river 7")
+        val (fid, f) = user("SR", mustChange = false)
+        val phone = boundPhone(fid) // D-ROLES-02: no portal login for SR/AMO
+        val access = json(client.login(f, client = "app_sr", device = phone).bodyAsText())["access_token"]!!.jsonPrimitive.content
+        val nc = client.change(access, temp, "mango river 7", phone)
         assertEquals(HttpStatusCode.NoContent, nc.status)
         assertEquals("", nc.bodyAsText())
     }

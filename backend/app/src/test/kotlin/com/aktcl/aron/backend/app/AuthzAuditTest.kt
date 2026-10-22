@@ -221,7 +221,7 @@ class AuthzAuditTest {
             headers.forEach { (k, v) -> header(k, v) }
             header("X-App-Version", ApiWorld.APP_VERSION)
             if (token != null) header("Authorization", "Bearer $token")
-            if (role == "SR") header("X-Device-Id", ApiWorld.SR_PHONE)
+            callers[role]?.device?.let { header("X-Device-Id", it) }   // SR and (D-ROLES-02) AMO call from their phones
             if (cookie != null) header("Cookie", cookie)
             if (body != null) { contentType(ContentType.Application.Json); setBody(body) }
         }
