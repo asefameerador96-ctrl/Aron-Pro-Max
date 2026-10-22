@@ -9,6 +9,7 @@ import android.app.admin.DevicePolicyManager
 import android.content.BroadcastReceiver
 import android.content.ComponentName
 import android.content.Context
+import com.aktcl.aron.dpc.R
 import android.content.Intent
 import android.location.Location
 import android.location.LocationManager
@@ -38,10 +39,10 @@ class AndroidMdmGateway(context: Context) : CommandGateway, KioskGateway {
 
     override fun showMessage(textBn: String?, textEn: String?) {
         val nm = app.getSystemService(NotificationManager::class.java) ?: return
-        if (Build.VERSION.SDK_INT >= 26) nm.createNotificationChannel(NotificationChannel(CHANNEL, "Aron", NotificationManager.IMPORTANCE_HIGH))
+        if (Build.VERSION.SDK_INT >= 26) nm.createNotificationChannel(NotificationChannel(CHANNEL, app.getString(R.string.mdm_notice_channel), NotificationManager.IMPORTANCE_HIGH))
         val text = if (Locale.getDefault().language == "bn") textBn ?: textEn else textEn ?: textBn
         val b = if (Build.VERSION.SDK_INT >= 26) android.app.Notification.Builder(app, CHANNEL) else @Suppress("DEPRECATION") android.app.Notification.Builder(app)
-        nm.notify(NOTIFICATION_ID, b.setSmallIcon(android.R.drawable.ic_dialog_info).setContentTitle("Aron").setContentText(text).setStyle(android.app.Notification.BigTextStyle().bigText(text)).setAutoCancel(true).build())
+        nm.notify(NOTIFICATION_ID, b.setSmallIcon(android.R.drawable.ic_dialog_info).setContentTitle(app.getString(R.string.mdm_notice_title)).setContentText(text).setStyle(android.app.Notification.BigTextStyle().bigText(text)).setAutoCancel(true).build())
     }
 
     /** One balanced-power fix: the network/fused provider first, GPS only when the network has none; 20 s cap, no updates kept. */
