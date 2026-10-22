@@ -153,11 +153,11 @@ class DocumentBuilder(private val digits: DigitStyle, private val unitWord: (Str
         if (m.roundAdjMtk != 0L) flags.add("has_rounding")
         // M3: one "মোট <category>" money row per category, in first-seen order; a memo whose lines carry no category label prints none
         // one line per category in its entry unit (packet, box, dozen), then the base figure in brackets on the next line
-        val totalWord = unitWord("total").ifBlank { "Total" }
+        val totalWord = unitWord("total")
         // a category whose lines are counted in different units gets one line per unit: quantities are never added across units
         val groups = m.lines.filter { it.category.isNotBlank() }.groupBy { it.category to it.unit }
         val categoryTotals = groups.map { (key, ls) ->
-            mapOf("category" to key.first, "label" to "$totalWord ${key.first}", "qty" to groupQty(ls.map { it.qtyEntered to it.unit }, ls.sumOf { it.qtyBase }, ls.map { it.baseUnit }.distinct().singleOrNull().orEmpty()), "value" to money(ls.sumOf { it.grossMtk }))
+            mapOf("category" to key.first, "label" to "$totalWord ${key.first}".trim(), "qty" to groupQty(ls.map { it.qtyEntered to it.unit }, ls.sumOf { it.qtyBase }, ls.map { it.baseUnit }.distinct().singleOrNull().orEmpty()), "value" to money(ls.sumOf { it.grossMtk }))
         }
         // the base figure of each category total in its own block (bundle templates that predate it simply do not print it)
         val unitsPerCategory = groups.keys.groupBy { it.first }.mapValues { it.value.size }
