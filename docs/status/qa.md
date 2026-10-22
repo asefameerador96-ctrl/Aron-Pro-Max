@@ -1,3 +1,12 @@
+# Status: lane qa (wave 4, session 2: data-flow trace)
+
+## Wave 4 handover (2026-10-23)
+- **Done:** `DataFlowTraceTest` (15 ordered hops, 155 PASS rows, 7 open findings in the shrink-only list `data-flow-trace-known-findings.txt`), `ApiWorld(devProfile = true)` (seed as dev loads it),
+  evidence `docs/evidence/data-flow-trace-2026-10-23.md`, requests `backend-core-qa-1`, `backend-authz-qa-1`, `backend-reports-qa-1`, `db-qa-1`, `infra-qa-1`.
+  Opus checker (T1 money and idempotency) ran; its label corrections and its missing edge cases (changed payload, content duplicate, memo_no duplicate, wrong pack size) are in. Local run: `:backend:app:test --tests '*DataFlowTraceTest*'` green; the rest of the lane suites were not re-run locally (the only product-test change is an optional `ApiWorld` constructor parameter): CI decides, so this head is **not** declared a candidate.
+- **Local setup in a fresh container:** `service postgresql start`; `ALTER ROLE postgres PASSWORD 'pg'`; `ARON_TEST_PG_URL=jdbc:postgresql://localhost:5432/postgres?user=postgres&password=pg`; first Gradle sync takes about 6 minutes (online, not `--offline`).
+- **Open for the next qa session:** extend the trace to Sunday (GUL-SR-1) and Monday (BAN-SR-11) and to a multi-month target reading; half-up and `round_adj` branches (a SKU with `per_base_qty` > 1, a discount); concurrency and batch_uuid reuse at trace level; rerun against dev on a Saturday with the deploy's secrets only if the lead provides them through the workflow (qa never reads them); the BRAND level once backend-authz wires it; route 22636's code from the next deploy that prints codes.
+
 # Status: lane qa (wave 2, session 1, started 2026-10-17 18:30Z)
 
 ## Done (pushed to `lane/qa`)
