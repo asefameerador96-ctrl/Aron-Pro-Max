@@ -1,7 +1,12 @@
 # Request (backend-authz → lead, contract 1.4.0; 2026-10-22): portal user levels (docs/34 s1, D-ROLES-02)
 
-Status: OPEN, needs the lead's approval (oasdiff counts new response enum values as breaking; `info.version` 1.3.3 →
-1.4.0 in the same push, as tools/ci/contract-breaking.sh requires).
+Status: OPEN for the lead's confirmation at review. A message from the lead session (session_01MbUQSxrP7AB9tbyANjUTPS,
+2026-10-22 09:16 UTC) stated approval of Part 1 and Part 2 with `info.version` 1.3.3 → 1.4.0, on the condition that old
+clients tolerate unknown enum values; the lead confirms it when checking this candidate. oasdiff counts the new values
+in the response enums `Role` and `ProblemCode` as breaking; tools/ci/contract-breaking.sh reads this file and the bump.
+Condition work in this candidate: the wire DTOs carry `role` and `code` as strings and the phones read responses
+leniently (shared/contract UnknownEnumToleranceTest); the web falls back to the generic error text for an unknown code
+and does not throw on an unknown role label (web/tests/role-tolerance.test.ts). Slices regenerated in the same candidate.
 
 ## Part 1 (row 1, in this push)
 
