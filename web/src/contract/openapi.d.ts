@@ -2819,6 +2819,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/admin/outlets/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Bulk create-or-update outlets from a sheet; the channel is mandatory on every row (preview with dry_run, commit with a reason).
+         * @description A missing or unknown channel refuses the request (400 at body.rows/<i>/channel), preview included. `dry_run: true` writes nothing and returns the report; `dry_run: false` needs `change_reason`, refuses the whole batch on any row error and is idempotent by `batch_uuid` (same content replays, other content is 409 ERR_SYNC_BATCH_UUID_REUSED). A row whose `code` names an outlet of the same zone updates it (never its status; a blank route, pin, phone or address keeps the stored one).
+         */
+        post: operations["importOutlets"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/admin/dues-adjustments": {
         parameters: {
             query?: never;
@@ -8322,6 +8342,53 @@ export interface components {
             outlet_kind: "retail" | "wholesale";
             outlet_ids: components["schemas"]["Id"][];
             reason: components["schemas"]["ChangeReason"];
+        };
+        OutletImportRow: {
+            code?: string | null;
+            name: string;
+            owner_name: string;
+            zone_code: string;
+            /** @description Cluster name inside the zone. */
+            cluster: string;
+            /** @enum {string} */
+            channel: "GT" | "DCC" | "Astha" | "RCC" | "MT" | "HoReCa";
+            /** @enum {string} */
+            outlet_kind: "retail" | "wholesale";
+            route_code?: string | null;
+            lat?: number | null;
+            lng?: number | null;
+            contact_number?: string | null;
+            address?: string | null;
+        };
+        OutletImportWrite: {
+            batch_uuid: components["schemas"]["Uuid"];
+            rows: components["schemas"]["OutletImportRow"][];
+            dry_run: boolean;
+            change_reason?: components["schemas"]["ChangeReason"];
+        };
+        OutletImportRowError: {
+            /** @description 1-based position in rows. */
+            row: number;
+            column: string;
+            /** @enum {string} */
+            code: "required" | "invalid" | "unknown_zone" | "unknown_cluster" | "unknown_route" | "code_taken" | "duplicate" | "outlet_merged";
+        };
+        OutletImportPreview: {
+            batch_uuid: components["schemas"]["Uuid"];
+            rows: number;
+            creates: number;
+            updates: number;
+            /** @description Valid rows per channel. */
+            by_channel: {
+                [key: string]: number;
+            };
+            errors: components["schemas"]["OutletImportRowError"][];
+            errors_truncated: boolean;
+        };
+        OutletImportResult: {
+            batch_uuid: components["schemas"]["Uuid"];
+            rows: number;
+            replayed: boolean;
         };
         BulkResult: {
             batch_uuid: components["schemas"]["Uuid"];
@@ -14294,6 +14361,34 @@ export interface operations {
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
+        };
+    };
+    importOutlets: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OutletImportWrite"];
+            };
+        };
+        responses: {
+            /** @description The preview report (dry_run) or the commit result. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OutletImportPreview"] | components["schemas"]["OutletImportResult"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
         };
     };
     listDuesAdjustments: {

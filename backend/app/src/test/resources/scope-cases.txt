@@ -125,6 +125,7 @@ POST /v1/admin/geo/{level} -> gap: backend-admin
 POST /v1/admin/notifications -> case AdminNotificationTest#aNodeOutsideTheCallersReachIsRefused
 POST /v1/admin/outlets -> case AdminOutletsTest#outletScopeAndRoles
 POST /v1/admin/outlets/outlet-kind -> case AdminOutletsTest#bulkOutletKindValidationRolesAndScope
+POST /v1/admin/outlets/import -> case OutletImportTest#commitNeedsAReasonAndRoleAndCreatesWithHistoryAndAudit
 POST /v1/admin/prices -> gap: backend-admin
 POST /v1/admin/prices/batches/{batch_uuid}/decision -> gap: backend-admin
 POST /v1/admin/prices/preview -> gap: backend-admin
