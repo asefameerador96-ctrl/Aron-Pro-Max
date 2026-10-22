@@ -112,8 +112,31 @@ class MemoCategoryTotalsPrintTest {
         assertTrue("has_categories" in doc.flags)
     }
 
+    // D-UNITS-02: every quantity prints with its unit word, and a category total adds only quantities of one unit
+    @Test fun quantitiesCarryTheirUnitWordAndCategoryTotalsAreInTheEntryUnit() {
+        val words = mapOf("packet" to "packet", "box" to "box", "dozen" to "dozen")
+        val b = DocumentBuilder(DigitStyle.LATIN) { words[it].orEmpty() }
+        val doc = b.memo(Fixtures.seededSale)
+        assertEquals(listOf("3 dozen", "2 packet", "1 packet", "2 box"), doc.tables.getValue("lines").map { it.getValue("qty") })
+        assertEquals(listOf("3 dozen", "3 packet", "2 box"), doc.tables.getValue("category_totals").map { it.getValue("qty") })
+        assertEquals(listOf("3 dozen", "1 packet"), doc.tables.getValue("discounts").map { it.getValue("qty") })
+        // the printed money is the stored money and equals the oracle
+        val oracle = com.aktcl.aron.rules.MemoMath.totals(
+            Fixtures.seededSale.lines.map { com.aktcl.aron.rules.MemoLine(1, it.qtyBase, it.grossMtk) },
+            listOf(com.aktcl.aron.rules.DiscountLine(null, 0, Fixtures.seededSale.drpDiscountMtk, com.aktcl.aron.rules.DiscountKind.DRP)),
+            listOf(com.aktcl.aron.rules.QcLine(Fixtures.seededSale.qcDeductionMtk, true)),
+        )
+        assertEquals(oracle.netMtk, Fixtures.seededSale.netMtk); assertEquals(oracle.grossMtk, Fixtures.seededSale.grossMtk)
+        assertEquals("937.05", doc.fields.getValue("grand_total"))
+        // mixed units in one category fall back to the base total with no word
+        val mixed = b.memo(Fixtures.seededSale.copy(lines = listOf(
+            MemoPrintLine("A", 20, 1, "x", 1, "packet"), MemoPrintLine("B", 25, 1, "x", 1, "box"),
+        )))
+        assertEquals("45", mixed.tables.getValue("category_totals").single().getValue("qty"))
+    }
+
     @Test fun linesWithoutACategoryLabelPrintNoSubtotals() {
-        val doc = DocumentBuilder(DigitStyle.LATIN).memo(Fixtures.seededSale)
+        val doc = DocumentBuilder(DigitStyle.LATIN).memo(Fixtures.seededSale.copy(lines = Fixtures.seededSale.lines.map { it.copy(category = "") }))
         assertTrue(doc.tables.getValue("category_totals").isEmpty())
         assertTrue("has_categories" !in doc.flags)
     }
