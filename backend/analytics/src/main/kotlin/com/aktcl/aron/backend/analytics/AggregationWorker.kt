@@ -4,6 +4,7 @@ import com.aktcl.aron.backend.platform.AronClock
 import com.aktcl.aron.backend.platform.Database
 import org.jdbi.v3.core.Handle
 import org.slf4j.LoggerFactory
+import kotlinx.datetime.toJavaLocalDate
 import java.time.Duration
 import java.time.Instant
 import java.time.LocalDate
@@ -150,7 +151,16 @@ class AggregationWorker(
             val p = project()
             val d = drain()
             total += d
-            if (p == 0 && d == 0) return total
+            if (p == 0 && d == 0) { markFresh(); return total }
+        }
+    }
+
+    /** Nothing is left to project or rebuild: the national dashboard's summary tables are current as of now. */
+    private fun markFresh() = db.jdbi.useHandle<Exception> { h ->
+        if (DashboardSummaries.ready(h)) {
+            val today = com.aktcl.aron.rules.BusinessDate.of(clock.now().toEpochMilli()).toJavaLocalDate()
+            DashboardSummaries.autoSubmit(h, today)
+            DashboardSummaries.touchFreshness(h, clock.now())
         }
     }
 

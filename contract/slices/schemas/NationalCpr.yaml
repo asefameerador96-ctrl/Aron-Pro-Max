@@ -1,0 +1,43 @@
+NationalCpr:
+  type: object
+  description: 'Live CPR: target outlets, successful calls and the ratio. Hidden from BRAND users (403).'
+  required:
+  - date
+  - till_time
+  - as_of
+  - last_updated_at
+  - target_outlets
+  - successful_calls
+  - cpr_pct
+  additionalProperties: false
+  properties:
+    date:
+      $ref: '#/components/schemas/BusinessDate'
+    till_time:
+      type: boolean
+      description: 'True when `date` is today (Dhaka): figures are till the time of `as_of`; false: final figures
+        of a past day.'
+    as_of:
+      $ref: '#/components/schemas/Timestamp'
+    last_updated_at:
+      type:
+      - string
+      - 'null'
+      format: date-time
+      description: Oldest `last_updated_at` of the summary tables this card reads (null when none has been written
+        yet). The page shows it as "last updated hh:mm" (Dhaka).
+    target_outlets:
+      type: integer
+      minimum: 0
+      description: Outlets on the normal routes scheduled for the date, each route counted once (manual and dummy
+        routes excluded).
+    successful_calls:
+      type: integer
+      minimum: 0
+      description: Distinct outlets with at least one latest-version memo that day on those routes.
+    cpr_pct:
+      type:
+      - number
+      - 'null'
+      minimum: 0
+      maximum: 100

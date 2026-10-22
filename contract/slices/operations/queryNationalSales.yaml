@@ -1,0 +1,32 @@
+path: /v1/dashboards/national/sales
+method: post
+operation:
+  tags:
+  - dashboards
+  operationId: queryNationalSales
+  summary: Sales cards with daily target
+  description: 'Four category cards: total sales, ring % of the daily target and the "i" pop-up figures (brief s2).
+    Reads summary tables only (never the transaction log); scope from the token.'
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          $ref: '#/components/schemas/NationalDashboardFilter'
+  responses:
+    '200':
+      description: Sales cards with daily target
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/NationalSales'
+    '400':
+      $ref: '#/components/responses/BadRequest'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'
+    '429':
+      $ref: '#/components/responses/TooManyRequests'
+    '503':
+      $ref: '#/components/responses/ServiceUnavailable'

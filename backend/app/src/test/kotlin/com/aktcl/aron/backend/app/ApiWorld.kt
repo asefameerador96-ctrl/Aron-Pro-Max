@@ -67,6 +67,8 @@ class ApiWorld(
         val seed = repoRoot.resolve("db/seed").listFiles { f -> f.name.matches(Regex("0\\d_.*\\.sql")) }!!.sortedBy { it.name }
         fresh.dataSource.connection.use { c ->
             seed.forEach { f -> c.createStatement().use { it.execute(f.readText()) } }
+            // Stand-in for the db lane's wave-4 summary tables until their migration is on INT (docs/requests/db-backend-reports-dashboard-summaries.md).
+            javaClass.classLoader.getResourceAsStream("dashboard_summaries_shim.sql")?.let { s -> c.createStatement().use { it.execute(s.bufferedReader().readText()) } }
             for (tag in mirrors) listOf("01_geography_people.sql", "03_outlets_and_plans.sql").forEach { n -> c.createStatement().use { it.execute(mirrored(repoRoot.resolve("db/seed/$n").readText(), tag)) } }
         }
         fresh.db.jdbi.useHandle<Exception> { h ->

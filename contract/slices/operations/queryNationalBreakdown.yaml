@@ -1,0 +1,32 @@
+path: /v1/dashboards/national/breakdown
+method: post
+operation:
+  tags:
+  - dashboards
+  operationId: queryNationalBreakdown
+  summary: Breakdown STD / Memo card
+  description: Bars by segment, brand or variant for STD or Memo (brief s4.2). Reads summary tables only (never
+    the transaction log); scope from the token.
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          $ref: '#/components/schemas/NationalBreakdownRequest'
+  responses:
+    '200':
+      description: Breakdown STD / Memo card
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/NationalBreakdown'
+    '400':
+      $ref: '#/components/responses/BadRequest'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'
+    '429':
+      $ref: '#/components/responses/TooManyRequests'
+    '503':
+      $ref: '#/components/responses/ServiceUnavailable'

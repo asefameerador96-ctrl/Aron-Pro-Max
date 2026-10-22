@@ -1,0 +1,32 @@
+TargetVsAchievement:
+  type: object
+  additionalProperties: false
+  required:
+  - category_code
+  - base_unit
+  - daily_target
+  - sales
+  - achievement_pct
+  properties:
+    category_code:
+      type: string
+      maxLength: 40
+    base_unit:
+      type: string
+      enum:
+      - stick
+      - piece
+      - dozen
+    daily_target:
+      oneOf:
+      - $ref: '#/components/schemas/Decimal3'
+      - type: 'null'
+    sales:
+      type: integer
+      format: int64
+      minimum: 0
+    achievement_pct:
+      type:
+      - number
+      - 'null'
+      minimum: 0

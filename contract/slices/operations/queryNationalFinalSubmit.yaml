@@ -1,0 +1,32 @@
+path: /v1/dashboards/national/final-submit
+method: post
+operation:
+  tags:
+  - dashboards
+  operationId: queryNationalFinalSubmit
+  summary: Final Submit Status card
+  description: 'Service zones and their Final Submit (brief s3.3). BRAND users get 403 (docs/34 s1: cards without
+    a brand dimension are hidden). Reads summary tables only (never the transaction log); scope from the token.'
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          $ref: '#/components/schemas/NationalDashboardFilter'
+  responses:
+    '200':
+      description: Final Submit Status card
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/NationalFinalSubmit'
+    '400':
+      $ref: '#/components/responses/BadRequest'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'
+    '429':
+      $ref: '#/components/responses/TooManyRequests'
+    '503':
+      $ref: '#/components/responses/ServiceUnavailable'

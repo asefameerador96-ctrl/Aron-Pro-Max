@@ -1,0 +1,28 @@
+NationalBreakdownRequest:
+  type: object
+  additionalProperties: false
+  required:
+  - measure
+  - dimension
+  description: The common filter plus the gear choice (six combinations, one active).
+  properties:
+    filter:
+      $ref: '#/components/schemas/NationalDashboardFilter'
+    measure:
+      type: string
+      enum:
+      - std
+      - memo
+    dimension:
+      type: string
+      enum:
+      - segment
+      - brand
+      - variant
+    category_code:
+      type:
+      - string
+      - 'null'
+      maxLength: 40
+      description: 'STD mode mixes sticks, pieces and dozens, so the bars of an STD answer cover one category: this
+        one, else the category with the most volume. Ignored for memo.'

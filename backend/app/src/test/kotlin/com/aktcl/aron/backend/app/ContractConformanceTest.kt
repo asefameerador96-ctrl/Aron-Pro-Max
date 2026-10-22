@@ -316,6 +316,11 @@ class ContractConformanceTest {
             }),
             "POST /v1/tasks/{}/cancel" to Fx(after = listOf("POST /v1/tasks")),
             // Actions open at cfg.day.take_action_after (17:00 Dhaka); the clock is 10:00, so the action is on yesterday's seeded route-day.
+            // The national dashboard: the seeded SR route and a seeded outlet; the breakdown names a valid measure and dimension.
+            "GET /v1/dashboards/national/ff-geo/routes/{}" to Fx(path = { _, x -> mapOf("route_id" to x.id("sr_route").toString()) }),
+            "GET /v1/dashboards/route-map/{}" to Fx(path = { _, x -> mapOf("route_id" to x.id("sr_route").toString()) }),
+            "GET /v1/dashboards/sale-position/{}" to Fx(path = { _, x -> mapOf("outlet_id" to x.id("paper_outlet").toString()) }),
+            "POST /v1/dashboards/national/breakdown" to Fx(body = { n, _, _ -> n.put("measure", "memo"); n.put("dimension", "brand"); n.remove("category_code") }),
             "POST /v1/dashboards/daily-tracking/actions" to Fx(body = { n, c, x ->
                 n.put("action_uuid", ApiWorld.v4("action/${c.user}")); n.put("route_id", x.id("sr_route")); n.put("business_date", ApiWorld.YESTERDAY)
             }),

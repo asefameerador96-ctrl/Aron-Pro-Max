@@ -1,0 +1,135 @@
+RouteMap:
+  type: object
+  description: 'The "Map Details" page of a route and day: header, markers, SR path and the cards under the map.
+    Distance is metres (docs/34 s6 Q1 default).'
+  required:
+  - date
+  - till_time
+  - as_of
+  - last_updated_at
+  - route
+  - sr_name
+  - territory
+  - zone
+  - sale_start
+  - sr_last_position
+  - outlets
+  - path
+  - target_vs_achievement
+  - cpr
+  - time_card
+  additionalProperties: false
+  properties:
+    date:
+      $ref: '#/components/schemas/BusinessDate'
+    till_time:
+      type: boolean
+      description: 'True when `date` is today (Dhaka): figures are till the time of `as_of`; false: final figures
+        of a past day.'
+    as_of:
+      $ref: '#/components/schemas/Timestamp'
+    last_updated_at:
+      type:
+      - string
+      - 'null'
+      format: date-time
+      description: Oldest `last_updated_at` of the summary tables this card reads (null when none has been written
+        yet). The page shows it as "last updated hh:mm" (Dhaka).
+    route:
+      $ref: '#/components/schemas/PlaceRef'
+    sr_name:
+      type:
+      - string
+      - 'null'
+      maxLength: 120
+    territory:
+      $ref: '#/components/schemas/PlaceRef'
+    zone:
+      $ref: '#/components/schemas/PlaceRef'
+    sale_start:
+      oneOf:
+      - $ref: '#/components/schemas/MapPosition'
+      - type: 'null'
+      description: Where the first call of the day was made; null before the first call.
+    sr_last_position:
+      oneOf:
+      - $ref: '#/components/schemas/MapPosition'
+      - type: 'null'
+    outlets:
+      type: array
+      maxItems: 2000
+      items:
+        $ref: '#/components/schemas/RouteMapOutlet'
+    path:
+      type: array
+      maxItems: 3000
+      items:
+        $ref: '#/components/schemas/MapPosition'
+      description: The SR's recorded positions in time order, thinned to at most 3000 points; the line the map draws.
+    target_vs_achievement:
+      type: array
+      maxItems: 10
+      items:
+        $ref: '#/components/schemas/TargetVsAchievement'
+    last_sale_place:
+      type:
+      - string
+      - 'null'
+      maxLength: 160
+    cpr:
+      type: object
+      additionalProperties: false
+      required:
+      - target_outlets
+      - successful_calls
+      - geo_validated
+      - cpr_pct
+      properties:
+        target_outlets:
+          type: integer
+          minimum: 0
+        successful_calls:
+          type: integer
+          minimum: 0
+        geo_validated:
+          type: integer
+          minimum: 0
+        cpr_pct:
+          type:
+          - number
+          - 'null'
+          minimum: 0
+          maximum: 100
+    time_card:
+      type: object
+      additionalProperties: false
+      required:
+      - distance_covered_m
+      properties:
+        first_sale_time:
+          type:
+          - string
+          - 'null'
+          format: date-time
+        last_sale_time:
+          type:
+          - string
+          - 'null'
+          format: date-time
+        total_sale_seconds:
+          type:
+          - integer
+          - 'null'
+          minimum: 0
+          description: last sale time minus first sale time
+        average_sale_seconds:
+          type:
+          - integer
+          - 'null'
+          minimum: 0
+          description: total_sale_seconds / successful calls
+        distance_covered_m:
+          type: number
+          minimum: 0
+          description: Length in metres of the haversine polyline through the SR's recorded positions in time order
+            (docs/34 D-DIST-01).
