@@ -33,6 +33,7 @@ test("user scope: an SR has none; support sees it read-only", async ({ page }) =
   await expect(page.getByTestId("no-scope")).toBeVisible();
   await page.context().clearCookies();
   await loginOk(page, "msupport1", "support-pass-1", "123456");
+  await page.waitForURL(/\/sync-health/); // SUPPORT's landing redirect must finish, or the goto below is aborted (net::ERR_ABORTED seen on CI)
   await page.goto("/admin/user-scope/2001");
   await expect(page.getByTestId("scope-save")).toHaveCount(0);
 });

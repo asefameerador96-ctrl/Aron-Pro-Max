@@ -21,7 +21,7 @@ UserAccess:
     version: {type: integer, minimum: 1}        # also the ETag ("<version>")
     modules:                                     # ADMIN only; only granted modules appear
       type: object
-      propertyNames: {enum: [masterdata, routes, outlets, products, prices, users, targets, credentials, mdm, reports, config]}
+      propertyNames: {enum: [masterdata, routes, outlets, products, prices, users, targets, credentials, mdm, reports, config, data_entry, indent, leaderboard, daily_tracking]}  # 15 modules (lead, 2026-10-22)
       additionalProperties: {type: string, enum: [r, w]}
     brand_ids: {type: array, items: {$ref: Id}}  # BRAND only; product-tree brand nodes
 ```
