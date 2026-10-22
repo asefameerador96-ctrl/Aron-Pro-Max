@@ -463,7 +463,7 @@ class AmoDay(
     }
 
     suspend fun skuInfo(): Map<Long, com.aktcl.aron.feature.amo.SkuInfo> =
-        db.referenceDao().activeSkus().associate { it.skuId to com.aktcl.aron.feature.amo.SkuInfo(it.name, it.nameBn, it.categoryCode) }
+        db.referenceDao().activeSkus().associate { it.skuId to com.aktcl.aron.feature.amo.SkuInfo(it.name, it.nameBn, it.categoryCode, com.aktcl.aron.rules.EntryUnits.resolve(it.baseUnit, it.basePerPack, it.entryUnitDefault)) }
 
     // ---- Task Delegation (F-AMO-018/019)
 
