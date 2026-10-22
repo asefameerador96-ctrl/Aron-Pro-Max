@@ -1,3 +1,4 @@
+import { w4En } from "./messages-wave4";
 import { dashEn } from "./messages-dash-en";
 import { cfgEn } from "./messages-config";
 // English catalogue. Keys must equal messages-bn.ts (tests/i18n.test.ts). {name} placeholders are interpolated by t().
@@ -431,6 +432,7 @@ export const en = {
   "error.ERR_READ_ONLY_MODE": "The system is read-only right now. Try again later.",
   ...dashEn,
   ...cfgEn,
+  ...w4En,
   "menu.admin.sr_lifecycle": "SR lifecycle",
   "lifecycle.create.title": "Create the SR",
   "lifecycle.create.hint": "Add the user with the SR role, a phone number and a home zone. A temporary password is shown once.",

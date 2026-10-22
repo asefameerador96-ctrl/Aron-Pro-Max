@@ -36,6 +36,8 @@ import com.aktcl.aron.feature.memo.ui.SummaryScreen
 import com.aktcl.aron.feature.sale.domain.EditDenied
 import com.aktcl.aron.feature.sale.domain.EditReason
 import com.aktcl.aron.feature.sale.domain.VisitOutcomeCode
+import com.aktcl.aron.feature.outlet.VisitCheckContent
+import com.aktcl.aron.feature.outlet.VisitUiState
 import com.aktcl.aron.feature.sale.ui.EditReasonScreen
 import com.aktcl.aron.feature.sale.ui.SaleRoute
 import com.aktcl.aron.feature.sale.ui.StartCallPrompt
@@ -55,7 +57,24 @@ fun SaleHost(day: SrDay, sunlight: Boolean, onSunlight: (Boolean) -> Unit, onNoS
     var started by rememberSaveable(v.visitUuid) { mutableStateOf(false) }
     if (!started) {
         val name = day.dayData.collectAsState().value.outlets.firstOrNull { it.outletId == v.outletId }?.name.orEmpty()
-        StartCallPrompt(name, onYes = { kit.callStarted[v.visitUuid] = day.iso(day.currentMs()); started = true }, onNo = { scope.launch { day.closeVisitAbandoned(); onDone() } })
+        val geo by day.visitSession.geo.collectAsState()
+        val g = geo
+        val start = { kit.callStarted[v.visitUuid] = day.iso(day.currentMs()); started = true }
+        if (g == null) {
+            // restored after a relaunch: no fix on the phone to show, so the plain prompt
+            StartCallPrompt(name, onYes = start, onNo = { scope.launch { day.closeVisitAbandoned(); onDone() } })
+        } else {
+            // the confirm step (D-MAP-02): distance, radius, verdict and the lite map from the fix the visit already took
+            val context = androidx.compose.ui.platform.LocalContext.current
+            val mapSlot = rememberOutletMapSlot(day.isOnline())
+            VisitCheckContent(
+                VisitUiState.Open(v), onRefresh = {}, onForceSale = {}, onRetry = {},
+                onMap =
+                    { context.startActivity(OutletMapActivity.intent(context, g.outletName, g.outletLat, g.outletLng, g.radiusM, g.phoneLat, g.phoneLng)) },
+                onStartCall = start, onNoSale = onNoSale, geo = g, mapSlot = mapSlot, geoPanel = true,
+                onBack = { scope.launch { day.closeVisitAbandoned(); onDone() } },
+            )
+        }
         return
     }
     // AV, then KV, then the POSM survey, then the sale (F-SR-020/021); every item reads local data and a missing one is skipped.

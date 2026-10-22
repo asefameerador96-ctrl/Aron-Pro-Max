@@ -64,11 +64,15 @@ data class OpenVisit(
 class VisitSession {
     private val state = MutableStateFlow<OpenVisit?>(null)
     val current: StateFlow<OpenVisit?> = state.asStateFlow()
-    internal fun set(v: OpenVisit?) { state.value = v }
+    private val geoState = MutableStateFlow<VisitGeoInfo?>(null)
+
+    /** The fix, distance and verdict of the open visit for the confirm step (D-MAP-02); null for a visit restored after a relaunch. */
+    val geo: StateFlow<VisitGeoInfo?> = geoState.asStateFlow()
+    internal fun set(v: OpenVisit?, geo: VisitGeoInfo? = null) { geoState.value = geo; state.value = v }
 
     /** Puts a visit that is already committed in the database (found after a relaunch) back as the call in progress. */
-    fun restore(v: OpenVisit) { state.value = v }
-    fun close() { state.value = null }
+    fun restore(v: OpenVisit) { geoState.value = null; state.value = v }
+    fun close() { geoState.value = null; state.value = null }
 }
 
 /**
@@ -232,7 +236,10 @@ class VisitFlow(
         )
         runCatching { openStore.clear(visitUuid) }
         val st = if (action == GeoAction.BLOCKED) VisitUiState.Blocked(open) else VisitUiState.Open(open)
-        if (action != GeoAction.BLOCKED) session.set(open)
+        if (action != GeoAction.BLOCKED) {
+            // the confirm step reads the fix the visit already took; no second sample (D-MAP-02)
+            session.set(open, VisitGeoInfo.of(o, result.verdict, result.distanceM, fix.lat.takeIf { fix.isOk }, fix.lng.takeIf { fix.isOk }))
+        }
         ui.value = st
         if (action == GeoAction.BLOCKED) onBlocked(open)
         return st

@@ -6,12 +6,15 @@ export interface CustomState {
   tables: Record<string, Row[]>;
   scopes: Record<number, { version: number; nodes: { node_type: string; node_id: number; valid_from: string; valid_to: string | null }[] }>;
   salesPlans: Record<number, { valid_from: string; sku_ids: number[] }>;
+  /** Wave 4 grants of a user: module levels (ADMIN) and brand ids (BRAND), with the If-Match version. */
+  access: Record<number, { version: number; modules: Record<string, string>; brand_ids: number[] }>;
   priceBatches: Map<string, { hash: string; status: "applied" | "pending_approval"; valid_from: string }>;
   prices: { id: number; sku_id: number; price_type: string; amount_mtk: number; per_base_qty: number; valid_from: string; valid_to: string | null }[];
 }
 
-export function seedCustom(): Pick<CustomState, "scopes" | "salesPlans" | "priceBatches" | "prices"> {
+export function seedCustom(): Pick<CustomState, "scopes" | "salesPlans" | "priceBatches" | "prices" | "access"> {
   return {
+    access: { 3001: { version: 2, modules: { outlets: "w", reports: "r" }, brand_ids: [] }, 5002: { version: 1, modules: {}, brand_ids: [5] } },
     scopes: { 2001: { version: 7, nodes: [{ node_type: "territory", node_id: 6, valid_from: "2026-09-01", valid_to: null }] }, 1001: { version: 1, nodes: [] } },
     salesPlans: { 14: { valid_from: "2026-09-01", sku_ids: [1] } },
     priceBatches: new Map(),
@@ -44,6 +47,32 @@ export async function handleCustom(st: CustomState, ctx: Ctx, canWrite: boolean,
       st.scopes[id] = { version: cur.version + 1, nodes: b.nodes.map((n) => ({ node_type: n.node_type, node_id: n.node_id, valid_from: b.valid_from!, valid_to: n.valid_to ?? null })) };
       ctx.audit("user_scope", id, "user_scope.put", { nodes: cur.nodes.length }, { nodes: b.nodes.length, valid_from: b.valid_from }, b.change_reason!);
       return ctx.send(res, 200, { user_id: id, scope_version: st.scopes[id]!.version, nodes: st.scopes[id]!.nodes }), true;
+    }
+  }
+
+  const acc = /^\/v1\/admin\/users\/(\d+)\/access$/.exec(path);
+  if (acc) {
+    const id = Number(acc[1]);
+    const user = st.tables.users!.find((u) => u.id === id);
+    if (!user) return ctx.send(res, 404, ctx.problem(404, "ERR_NOT_FOUND")), true;
+    const cur = st.access[id] ?? { version: 1, modules: {}, brand_ids: [] };
+    const role = String(user.role);
+    if (method === "GET") return ctx.send(res, 200, { user_id: id, role, version: cur.version, modules: cur.modules, brand_ids: cur.brand_ids }, { ETag: `"${cur.version}"` }), true;
+    if (method === "PUT") {
+      if (!canWrite) return ctx.send(res, 403, ctx.problem(403, "ERR_FORBIDDEN")), true;
+      if (req.headers["if-match"] !== `"${cur.version}"`) return ctx.send(res, 412, ctx.problem(412, "ERR_PRECONDITION_FAILED")), true;
+      const b = (await ctx.readJson(req)) as { modules?: Record<string, string>; brand_ids?: number[]; change_reason?: string } | undefined;
+      if (!b || !reasonOk(b.change_reason)) return ctx.send(res, 400, ctx.problem(400, "ERR_VALIDATION")), true;
+      // The server decides what a role may hold: modules for ADMIN, brands for BRAND, nothing else (and no write for SR and AMO).
+      const wantsModules = b.modules !== undefined;
+      const wantsBrands = b.brand_ids !== undefined;
+      if ((wantsModules && role !== "ADMIN") || (wantsBrands && role !== "BRAND") || wantsModules === wantsBrands) return ctx.send(res, 400, ctx.problem(400, "ERR_VALIDATION", { errors: [{ pointer: wantsModules ? "/modules" : "/brand_ids", code: "role_mismatch" }] })), true;
+      const brands = new Set(st.tables.product!.filter((n) => n.level === "brand").map((n) => Number(n.id)));
+      if (wantsBrands && (b.brand_ids!.length === 0 || b.brand_ids!.some((x) => !brands.has(x)))) return ctx.send(res, 400, ctx.problem(400, "ERR_VALIDATION", { errors: [{ pointer: "/brand_ids", code: b.brand_ids!.length === 0 ? "required" : "unknown" }] })), true;
+      const next = { version: cur.version + 1, modules: wantsModules ? { ...b.modules } : cur.modules, brand_ids: wantsBrands ? [...b.brand_ids!] : cur.brand_ids };
+      st.access[id] = next;
+      ctx.audit("user_access", id, "user_access.put", { modules: JSON.stringify(cur.modules), brand_ids: JSON.stringify(cur.brand_ids) }, { modules: JSON.stringify(next.modules), brand_ids: JSON.stringify(next.brand_ids) }, b.change_reason!);
+      return ctx.send(res, 200, { user_id: id, role, version: next.version, modules: next.modules, brand_ids: next.brand_ids }, { ETag: `"${next.version}"` }), true;
     }
   }
 
