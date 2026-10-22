@@ -107,6 +107,7 @@ fun ControlCallHost(
                         st, onRefresh = { scope.launch { day.visitFlow.refresh() } }, onForceSale = { step = CcStep.FORCE },
                         onRetry = { scope.launch { day.visitFlow.retryCommit() } }, onMap = null,
                         texts = amoVisitCheckTexts(), onBack = { step = CcStep.OUTLET },
+                        geoPanel = true, mapSlot = rememberAmoOutletMapSlot(day.online()),
                     )
                 }
                 CcStep.FORCE -> ManualOverrideStep(day, onStarted = { step = inCall }, onBack = { step = CcStep.CHECK })

@@ -11,7 +11,7 @@ NationalFinalSubmit:
   - service_zones
   - final_submitted
   - remaining
-  - submit_pct
+  - submit_pct_bp
   additionalProperties: false
   properties:
     date:
@@ -43,9 +43,10 @@ NationalFinalSubmit:
       type: integer
       minimum: 0
       description: service_zones - final_submitted.
-    submit_pct:
+    submit_pct_bp:
       type:
-      - number
+      - integer
       - 'null'
       minimum: 0
-      maximum: 100
+      description: 'Basis points: 10000 = 100 %. Integer arithmetic, rounded half up; null when the denominator
+        is 0.'

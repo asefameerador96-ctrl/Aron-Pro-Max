@@ -8,7 +8,7 @@ NationalSalesCard:
   - daily_target
   - sales_so_far
   - remaining
-  - achievement_pct
+  - achievement_pct_bp
   - target_routes
   properties:
     category_code:
@@ -42,12 +42,12 @@ NationalSalesCard:
       - $ref: '#/components/schemas/Decimal3'
       - type: 'null'
       description: max(daily_target - sales_so_far, 0); null without a target.
-    achievement_pct:
+    achievement_pct_bp:
       type:
-      - number
+      - integer
       - 'null'
       minimum: 0
-      description: total_sales / daily_target x 100 (ring); null without a target. May exceed 100.
+      description: total_sales / daily_target in basis points (ring); null without a target. May exceed 10000.
     target_routes:
       type: integer
       minimum: 0

@@ -6,7 +6,7 @@ FfGeoPin:
   - lat
   - lng
   - color
-  - geo_pct
+  - geo_pct_bp
   - position_at
   properties:
     route_id:
@@ -25,12 +25,11 @@ FfGeoPin:
       - red
       - amber
       - green
-    geo_pct:
+    geo_pct_bp:
       type:
-      - number
+      - integer
       - 'null'
       minimum: 0
-      maximum: 100
       description: Today's geo-fencing % of the route (validated / completed calls); null before the first call,
         then green.
     position_at:

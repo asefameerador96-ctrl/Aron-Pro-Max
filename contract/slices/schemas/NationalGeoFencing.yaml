@@ -9,7 +9,7 @@ NationalGeoFencing:
   - last_updated_at
   - total_calls
   - geo_validated
-  - geo_pct
+  - geo_pct_bp
   additionalProperties: false
   properties:
     date:
@@ -33,9 +33,10 @@ NationalGeoFencing:
     geo_validated:
       type: integer
       minimum: 0
-    geo_pct:
+    geo_pct_bp:
       type:
-      - number
+      - integer
       - 'null'
       minimum: 0
-      maximum: 100
+      description: 'Basis points: 10000 = 100 %. Integer arithmetic, rounded half up; null when the denominator
+        is 0.'

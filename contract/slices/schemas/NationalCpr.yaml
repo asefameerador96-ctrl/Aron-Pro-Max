@@ -8,7 +8,7 @@ NationalCpr:
   - last_updated_at
   - target_outlets
   - successful_calls
-  - cpr_pct
+  - cpr_pct_bp
   additionalProperties: false
   properties:
     date:
@@ -35,9 +35,10 @@ NationalCpr:
       type: integer
       minimum: 0
       description: Distinct outlets with at least one latest-version memo that day on those routes.
-    cpr_pct:
+    cpr_pct_bp:
       type:
-      - number
+      - integer
       - 'null'
       minimum: 0
-      maximum: 100
+      description: 'Basis points: 10000 = 100 %. Integer arithmetic, rounded half up; null when the denominator
+        is 0.'

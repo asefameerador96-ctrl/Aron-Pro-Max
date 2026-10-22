@@ -84,6 +84,9 @@ export interface paths {
          *     Web refresh token: `refresh_token` in the body is null. The web BFF (a server) receives the refresh token
          *     from the `Set-Cookie: aron_rt` header of the response and nowhere else; it re-issues its own `aron_rt`
          *     cookie on the web origin and replays it as `Cookie: aron_rt` on `POST /v1/auth/refresh` (docs/24 s14a R15).
+         *     Web, an SR or AMO account (D-ROLES-02: no portal login): 403 `ERR_AUTH_PORTAL_NOT_ALLOWED` after the password
+         *     matched, before any token; a wrong password stays 401 `ERR_AUTH_INVALID_CREDENTIALS`, so the code never tells
+         *     an outsider which usernames are field reps. The web refresh refuses such a family the same way.
          */
         post: operations["login"];
         delete?: never;
@@ -3600,10 +3603,13 @@ export interface components {
             [key: string]: components["schemas"]["JsonScalar"] | components["schemas"]["JsonScalar"][];
         };
         /**
-         * @description User role (docs/24 s8.5). One role per user; admin permission bundles are separate.
+         * @description User role (docs/24 s8.5, docs/34 s1 D-ROLES-02). One role per user; admin permission bundles are separate.
+         *     NATIONAL (national read, no writes) replaces TOP: TOP is retired, no user holds it after the migration and it
+         *     is kept only so historical rows stay readable. BRAND reads the product-based dashboard cards and reports of its
+         *     own brands (`brands` on Me). SR and AMO have no portal login (`ERR_AUTH_PORTAL_NOT_ALLOWED`).
          * @enum {string}
          */
-        Role: "SR" | "AMO" | "TSO" | "DMO" | "WM" | "TOP" | "ANALYST" | "SUPPORT" | "ADMIN" | "SUPERADMIN";
+        Role: "SR" | "AMO" | "TSO" | "DMO" | "WM" | "TOP" | "NATIONAL" | "BRAND" | "ANALYST" | "SUPPORT" | "ADMIN" | "SUPERADMIN";
         /**
          * @description Sync record types of Phase 1 (docs/24 s4.2). The server table of a type has the same name except where docs/24 s12 says otherwise.
          * @enum {string}
@@ -3626,7 +3632,7 @@ export interface components {
          * @description Stable problem codes (HTTP status in docs/24 s3.4).
          * @enum {string}
          */
-        ProblemCode: "ERR_VALIDATION" | "ERR_MALFORMED_JSON" | "ERR_UNSUPPORTED_SCHEMA_VERSION" | "ERR_UNAUTHENTICATED" | "ERR_TOKEN_EXPIRED" | "ERR_SCOPE_CHANGED" | "ERR_PASSWORD_CHANGED" | "ERR_FORBIDDEN" | "ERR_OUT_OF_SCOPE" | "ERR_NOT_FOUND" | "ERR_CONFLICT" | "ERR_PRECONDITION_FAILED" | "ERR_PAYLOAD_TOO_LARGE" | "ERR_UNSUPPORTED_MEDIA_TYPE" | "ERR_RATE_LIMITED" | "ERR_INTERNAL" | "ERR_SERVICE_UNAVAILABLE" | "ERR_READ_ONLY_MODE" | "ERR_AUTH_INVALID_CREDENTIALS" | "ERR_AUTH_ACCOUNT_LOCKED" | "ERR_AUTH_USER_DISABLED" | "ERR_AUTH_PASSWORD_POLICY" | "ERR_AUTH_PASSWORD_CHANGE_REQUIRED" | "ERR_AUTH_REFRESH_INVALID" | "ERR_AUTH_REFRESH_REUSED" | "ERR_AUTH_MFA_INVALID" | "ERR_AUTH_OTP_INVALID" | "ERR_AUTH_OTP_EXPIRED" | "ERR_AUTH_OTP_ATTEMPTS_EXCEEDED" | "ERR_AUTH_BIND_LOCKED" | "ERR_DEVICE_NOT_ENROLLED" | "ERR_DEVICE_UNBOUND" | "ERR_DEVICE_SUSPENDED" | "ERR_DEVICE_REVOKED" | "ERR_DEVICE_INTEGRITY_FAILED" | "ERR_DEVICE_PROOF_INVALID" | "ERR_DEVICE_LIMIT_REACHED" | "ERR_ENROLMENT_TOKEN_INVALID" | "ERR_ENROLMENT_TOKEN_EXPIRED" | "ERR_ENROLMENT_TOKEN_EXHAUSTED" | "ERR_ENROLMENT_ATTESTATION_FAILED" | "ERR_NONCE_INVALID" | "ERR_APP_VERSION_UNSUPPORTED" | "ERR_SYNC_BATCH_UUID_REUSED" | "ERR_SYNC_BATCH_TOO_LARGE" | "ERR_SYNC_DECOMPRESSION_LIMIT" | "ERR_SYNC_HOLD" | "ERR_BUNDLE_NEW_BUSINESS_DATE" | "ERR_BUNDLE_CURSOR_EXPIRED" | "ERR_BUNDLE_NOT_READY" | "ERR_DAY_ALREADY_FINAL_SUBMITTED" | "ERR_DAY_NOT_FINAL_SUBMITTED" | "ERR_DAY_SUBMIT_VOID_NOT_ALLOWED" | "ERR_DAY_DATA_VOID_NOT_ALLOWED" | "ERR_CFG_UNKNOWN_KEY" | "ERR_CFG_OUT_OF_BOUNDS" | "ERR_CFG_SCOPE_NOT_ALLOWED" | "ERR_CFG_DEPENDENCY" | "ERR_CFG_SELF_APPROVAL" | "ERR_CFG_REASON_REQUIRED" | "ERR_CFG_FREEZE_WINDOW" | "ERR_MASTER_DUPLICATE_CODE" | "ERR_MASTER_EFFECTIVE_DATE_PAST" | "ERR_MASTER_OVERLAP" | "ERR_MASTER_IN_USE" | "ERR_REQUEST_STATE" | "ERR_SEPARATION_OF_DUTIES" | "ERR_REPORT_INVALID_QUERY" | "ERR_REPORT_TOO_LARGE" | "ERR_PUSH_DISABLED" | "ERR_ENTRY_WINDOW_CLOSED" | "ERR_GIFT_CHOICE_LOCKED";
+        ProblemCode: "ERR_VALIDATION" | "ERR_MALFORMED_JSON" | "ERR_UNSUPPORTED_SCHEMA_VERSION" | "ERR_UNAUTHENTICATED" | "ERR_TOKEN_EXPIRED" | "ERR_SCOPE_CHANGED" | "ERR_PASSWORD_CHANGED" | "ERR_FORBIDDEN" | "ERR_OUT_OF_SCOPE" | "ERR_NOT_FOUND" | "ERR_CONFLICT" | "ERR_PRECONDITION_FAILED" | "ERR_PAYLOAD_TOO_LARGE" | "ERR_UNSUPPORTED_MEDIA_TYPE" | "ERR_RATE_LIMITED" | "ERR_INTERNAL" | "ERR_SERVICE_UNAVAILABLE" | "ERR_READ_ONLY_MODE" | "ERR_AUTH_INVALID_CREDENTIALS" | "ERR_AUTH_ACCOUNT_LOCKED" | "ERR_AUTH_USER_DISABLED" | "ERR_AUTH_PASSWORD_POLICY" | "ERR_AUTH_PASSWORD_CHANGE_REQUIRED" | "ERR_AUTH_REFRESH_INVALID" | "ERR_AUTH_REFRESH_REUSED" | "ERR_AUTH_MFA_INVALID" | "ERR_AUTH_OTP_INVALID" | "ERR_AUTH_OTP_EXPIRED" | "ERR_AUTH_OTP_ATTEMPTS_EXCEEDED" | "ERR_AUTH_BIND_LOCKED" | "ERR_AUTH_PORTAL_NOT_ALLOWED" | "ERR_DEVICE_NOT_ENROLLED" | "ERR_DEVICE_UNBOUND" | "ERR_DEVICE_SUSPENDED" | "ERR_DEVICE_REVOKED" | "ERR_DEVICE_INTEGRITY_FAILED" | "ERR_DEVICE_PROOF_INVALID" | "ERR_DEVICE_LIMIT_REACHED" | "ERR_ENROLMENT_TOKEN_INVALID" | "ERR_ENROLMENT_TOKEN_EXPIRED" | "ERR_ENROLMENT_TOKEN_EXHAUSTED" | "ERR_ENROLMENT_ATTESTATION_FAILED" | "ERR_NONCE_INVALID" | "ERR_APP_VERSION_UNSUPPORTED" | "ERR_SYNC_BATCH_UUID_REUSED" | "ERR_SYNC_BATCH_TOO_LARGE" | "ERR_SYNC_DECOMPRESSION_LIMIT" | "ERR_SYNC_HOLD" | "ERR_BUNDLE_NEW_BUSINESS_DATE" | "ERR_BUNDLE_CURSOR_EXPIRED" | "ERR_BUNDLE_NOT_READY" | "ERR_DAY_ALREADY_FINAL_SUBMITTED" | "ERR_DAY_NOT_FINAL_SUBMITTED" | "ERR_DAY_SUBMIT_VOID_NOT_ALLOWED" | "ERR_DAY_DATA_VOID_NOT_ALLOWED" | "ERR_CFG_UNKNOWN_KEY" | "ERR_CFG_OUT_OF_BOUNDS" | "ERR_CFG_SCOPE_NOT_ALLOWED" | "ERR_CFG_DEPENDENCY" | "ERR_CFG_SELF_APPROVAL" | "ERR_CFG_REASON_REQUIRED" | "ERR_CFG_FREEZE_WINDOW" | "ERR_MASTER_DUPLICATE_CODE" | "ERR_MASTER_EFFECTIVE_DATE_PAST" | "ERR_MASTER_OVERLAP" | "ERR_MASTER_IN_USE" | "ERR_REQUEST_STATE" | "ERR_SEPARATION_OF_DUTIES" | "ERR_REPORT_INVALID_QUERY" | "ERR_REPORT_TOO_LARGE" | "ERR_PUSH_DISABLED" | "ERR_ENTRY_WINDOW_CLOSED" | "ERR_GIFT_CHOICE_LOCKED";
         /**
          * @description Route-day state (docs/24 s4.9). Derived from timestamps on the server, so a retry never moves a route-day backwards.
          * @enum {string}
@@ -6231,8 +6237,8 @@ export interface components {
             sales_so_far: number;
             /** @description max(daily_target - sales_so_far, 0); null without a target. */
             remaining: components["schemas"]["Decimal3"] | null;
-            /** @description total_sales / daily_target x 100 (ring); null without a target. May exceed 100. */
-            achievement_pct: number | null;
+            /** @description total_sales / daily_target in basis points (ring); null without a target. May exceed 10000. */
+            achievement_pct_bp: number | null;
             /** @description Routes in the filter that carry a monthly target for the category. */
             target_routes: number;
         };
@@ -6266,7 +6272,8 @@ export interface components {
             target_outlets: number;
             /** @description Distinct outlets with at least one latest-version memo that day on those routes. */
             successful_calls: number;
-            cpr_pct: number | null;
+            /** @description Basis points: 10000 = 100 %. Integer arithmetic, rounded half up; null when the denominator is 0. */
+            cpr_pct_bp: number | null;
         };
         /** @description Successful calls split by the outlet-master channel (no "Other" group). `total` is the sum of the channels; `unclassified` counts calling outlets without a channel, which the mandatory channel keeps at 0. */
         NationalChannelCalls: {
@@ -6284,7 +6291,8 @@ export interface components {
                 channel: "GT" | "DCC" | "Astha" | "RCC" | "MT" | "HoReCa";
                 /** Format: int64 */
                 value: number;
-                share_pct: number | null;
+                /** @description Basis points: 10000 = 100 %. Integer arithmetic, rounded half up; null when the denominator is 0. */
+                share_pct_bp: number | null;
             }[];
             total: number;
             unclassified: number;
@@ -6305,7 +6313,8 @@ export interface components {
                 channel: "GT" | "DCC" | "Astha" | "RCC" | "MT" | "HoReCa";
                 /** Format: int64 */
                 value: number;
-                share_pct: number | null;
+                /** @description Basis points: 10000 = 100 %. Integer arithmetic, rounded half up; null when the denominator is 0. */
+                share_pct_bp: number | null;
             }[];
             /** Format: int64 */
             total: number;
@@ -6329,7 +6338,8 @@ export interface components {
             final_submitted: number;
             /** @description service_zones - final_submitted. */
             remaining: number;
-            submit_pct: number | null;
+            /** @description Basis points: 10000 = 100 %. Integer arithmetic, rounded half up; null when the denominator is 0. */
+            submit_pct_bp: number | null;
         };
         /** @description Login (check-in and download) and Submit (Bikroy Joma) status per route. Hidden from BRAND users (403). */
         NationalLoginSubmit: {
@@ -6346,11 +6356,12 @@ export interface components {
             target_routes: number;
             /** @description Of those, routes whose SR checked in and downloaded. */
             successful_login: number;
-            login_pct: number | null;
+            /** @description Basis points: 10000 = 100 %. Integer arithmetic, rounded half up; null when the denominator is 0. */
+            login_pct_bp: number | null;
             /** @description Routes that completed Bikroy Joma (sales upload). */
             submitted: number;
-            /** @description submitted / successful_login x 100. */
-            submit_pct: number | null;
+            /** @description submitted / successful_login in basis points. */
+            submit_pct_bp: number | null;
         };
         /** @description The common filter plus the gear choice (six combinations, one active). */
         NationalBreakdownRequest: {
@@ -6403,7 +6414,8 @@ export interface components {
             last_updated_at: string | null;
             total_calls: number;
             geo_validated: number;
-            geo_pct: number | null;
+            /** @description Basis points: 10000 = 100 %. Integer arithmetic, rounded half up; null when the denominator is 0. */
+            geo_pct_bp: number | null;
         };
         FfGeoPinsRequest: {
             filter?: components["schemas"]["NationalDashboardFilter"];
@@ -6417,10 +6429,10 @@ export interface components {
             /** @enum {string} */
             color: "red" | "amber" | "green";
             /** @description Today's geo-fencing % of the route (validated / completed calls); null before the first call, then green. */
-            geo_pct: number | null;
+            geo_pct_bp: number | null;
             position_at: components["schemas"]["Timestamp"];
         };
-        /** @description One pin per route at the SR's latest position today. Red below 70 %, amber 70 to 90 % inclusive, green above 90 %. Routes with no position today are not pinned. Hidden from BRAND users (403). */
+        /** @description One pin per route at the SR's latest position today. Red below 7000 bp, amber 7000 to 9000 bp inclusive, green above 9000 bp. Routes with no position today are not pinned. Hidden from BRAND users (403). */
         FfGeoPins: {
             date: components["schemas"]["BusinessDate"];
             /** @description True when `date` is today (Dhaka): figures are till the time of `as_of`; false: final figures of a past day. */
@@ -6463,8 +6475,8 @@ export interface components {
             zone: components["schemas"]["PlaceRef"];
             /** Format: date-time */
             position_at: string | null;
-            /** @description 100 minus the route's geo-fencing % today. */
-            miss_pct: number | null;
+            /** @description 10000 minus the route geo-fencing basis points today. */
+            miss_pct_bp: number | null;
         };
         CategoryQty: {
             category_code: string;
@@ -6504,7 +6516,7 @@ export interface components {
             daily_target: components["schemas"]["Decimal3"] | null;
             /** Format: int64 */
             sales: number;
-            achievement_pct: number | null;
+            achievement_pct_bp: number | null;
         };
         /** @description The "Map Details" page of a route and day: header, markers, SR path and the cards under the map. Distance is metres (docs/34 s6 Q1 default). */
         RouteMap: {
@@ -6533,7 +6545,8 @@ export interface components {
                 target_outlets: number;
                 successful_calls: number;
                 geo_validated: number;
-                cpr_pct: number | null;
+                /** @description Basis points: 10000 = 100 %. Integer arithmetic, rounded half up; null when the denominator is 0. */
+                cpr_pct_bp: number | null;
             };
             time_card: {
                 /** Format: date-time */

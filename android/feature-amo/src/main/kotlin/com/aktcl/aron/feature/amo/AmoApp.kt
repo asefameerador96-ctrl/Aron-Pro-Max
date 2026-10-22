@@ -27,12 +27,15 @@ import com.aktcl.aron.feature.home.RoleTile
 
 /** The AMO screens; every tile screen names its tile so the placeholder frame can show its label and icon. */
 enum class AmoScreen(val tileId: String?) {
-    HOME(null), SETTINGS(null), SUPPORT(null),
+    HOME(null), SETTINGS(null), SUPPORT(null), PRINTER(null),
     ATTENDANCE(RoleHomes.AmoTile.ATTENDANCE), CONTROL_CALL(RoleHomes.AmoTile.CONTROL_CALL), JOINT_CALL(RoleHomes.AmoTile.JOINT_CALL), SALE(RoleHomes.AmoTile.SALE),
     TEAM(RoleHomes.AmoTile.TEAM), OUTLET(RoleHomes.AmoTile.OUTLET), SALES_SUBMIT(RoleHomes.AmoTile.SALES_SUBMIT), REPORT(RoleHomes.AmoTile.REPORT);
 
     companion object { fun of(tile: RoleTile): AmoScreen = entries.firstOrNull { it.tileId == tile.id } ?: HOME }
 }
+
+/** Screens opened from Settings: Back returns there (Support, Printer diagnostics). */
+private val UNDER_SETTINGS = setOf(AmoScreen.SUPPORT, AmoScreen.PRINTER)
 
 /**
  * The AMO day host (docs/07; the frame of SrApp): Home, Settings and one screen per tile. Screen state is a saved enum
@@ -67,7 +70,7 @@ fun AmoApp(
     screens: Map<AmoScreen, @Composable (onBack: () -> Unit) -> Unit> = emptyMap(),
 ) {
     var screen by rememberSaveable { mutableStateOf(AmoScreen.HOME) }
-    BackHandler(enabled = screen != AmoScreen.HOME) { screen = if (screen == AmoScreen.SUPPORT) AmoScreen.SETTINGS else AmoScreen.HOME }
+    BackHandler(enabled = screen != AmoScreen.HOME) { screen = if (screen in UNDER_SETTINGS) AmoScreen.SETTINGS else AmoScreen.HOME }
     val tiles = remember(badges, reach) { RoleHomes.amoTiles(AmoMenu.badges(reach) + badges) }
     val sync = RoleHomes.syncState(bundle, user.offline).let { if (it == SyncChipState.Synced && syncedAt != null) SyncChipState.SyncedAt(syncedAt) else it }
     val header = remember(user, businessDate) { RoleHomes.header(RoleHomes.AMO_PREFIX, user, businessDate) }
@@ -82,8 +85,9 @@ fun AmoApp(
                 versionText, stringResource(R.string.set_logout_message), onLanguageSelect, onLogout, onBack = { screen = AmoScreen.HOME },
                 sunlight = sunlight, onSunlight = onSunlight, onUpdate = onUpdate, updateAvailable = updateAvailable,
                 onSupport = screens[AmoScreen.SUPPORT]?.let { { screen = AmoScreen.SUPPORT } },
+                onPrinter = screens[AmoScreen.PRINTER]?.let { { screen = AmoScreen.PRINTER } },
             )
-            else -> if (screens[s] != null) screens.getValue(s)({ screen = if (s == AmoScreen.SUPPORT) AmoScreen.SETTINGS else AmoScreen.HOME }) else {
+            else -> if (screens[s] != null) screens.getValue(s)({ screen = if (s in UNDER_SETTINGS) AmoScreen.SETTINGS else AmoScreen.HOME }) else {
                 // A screen without a tile (Support) whose host is not ready after a recreation goes back to Settings instead of crashing.
                 val tile = tiles.firstOrNull { it.id == s.tileId }
                 if (tile == null) { LaunchedEffect(s) { screen = AmoScreen.SETTINGS }; return@AronScreenTransition }

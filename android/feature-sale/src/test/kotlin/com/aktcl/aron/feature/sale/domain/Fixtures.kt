@@ -16,12 +16,13 @@ class FakeNumbers(private val prefix: String = "sr334001-261005") : com.aktcl.ar
     }
 }
 
+/** The catalog below counts cigarettes in loose sticks (`cfg.sale.allow_loose_base_units` = true) so the older maths tests keep their numbers; EntryUnitSaleTest covers the default packet rule. */
 object Fx {
     const val DATE = "2026-10-05"
-    val maxr = SaleSku(100, "MAXR10", "cigarette", "MaxR 10S", null, "stick", 10, 8_000, 1, "2026-09-01", stockBase = 400, drp = DrpRule(10))
-    val aster = SaleSku(103, "ASTER", "lighter", "Aster", null, "piece", 1, 12_500, 1, "2026-09-01", stockBase = 25)
+    val maxr = SaleSku(100, "MAXR10", "cigarette", "MaxR 10S", null, "stick", 10, 8_000, 1, "2026-09-01", stockBase = 400, drp = DrpRule(10), allowLoose = true)
+    val aster = SaleSku(103, "ASTER", "lighter", "Aster", null, "piece", 1, 12_500, 1, "2026-09-01", stockBase = 25, allowLoose = true)
     val match = SaleSku(105, "FB", "match", "Flame Box", null, "dozen", 1, 28_000, 1, "2026-09-01")
-    val odd = SaleSku(106, "ODD", "cigarette", "Odd", null, "stick", 20, 7_935, 1, "2026-09-01")
+    val odd = SaleSku(106, "ODD", "cigarette", "Odd", null, "stick", 20, 7_935, 1, "2026-09-01", allowLoose = true)
     val catalog = listOf(maxr, aster, match, odd).associateBy { it.skuId }
 
     fun draft(visit: String = ClientIds.newUuid()) =

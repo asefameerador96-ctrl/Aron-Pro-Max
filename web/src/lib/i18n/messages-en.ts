@@ -415,6 +415,7 @@ export const en = {
   "error.ERR_AUTH_INVALID_CREDENTIALS": "Wrong User ID or password.",
   "error.ERR_AUTH_ACCOUNT_LOCKED": "This account is locked for a while. Try again later.",
   "error.ERR_AUTH_USER_DISABLED": "This account is disabled. Contact support.",
+  "error.ERR_AUTH_PORTAL_NOT_ALLOWED": "This account is for the field app only. Sign in on the phone app.",
   "error.ERR_AUTH_MFA_INVALID": "That code is not right. Check the code and try again.",
   "error.ERR_RATE_LIMITED": "Too many attempts. Wait a moment and try again.",
   "error.ERR_UNAUTHENTICATED": "Your session ended. Sign in again.",

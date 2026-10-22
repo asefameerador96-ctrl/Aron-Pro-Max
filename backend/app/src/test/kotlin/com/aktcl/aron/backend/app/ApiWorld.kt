@@ -166,6 +166,9 @@ class ApiWorld(
         // A proof phone with the harness key (device-proof calls: policy, nonce, status), so the SR phone's trust never moves;
         // an unbound SR and an unbound phone with the placeholder key (bind-device).
         h.execute("INSERT INTO app.device (device_uuid, flavour, app_package, status, device_owner, lockdown_level, trust_level, public_key_jwk, public_key_thumbprint, attestation_summary, app_signing_cert_sha256, zone_id, device_info, app_version) SELECT '$PROOF_PHONE', flavour, app_package, 'active', device_owner, lockdown_level, 'normal', public_key_jwk, 'qa-proof-000a', attestation_summary, app_signing_cert_sha256, zone_id, device_info, app_version FROM app.device WHERE device_uuid = '$SR_PHONE'")
+        // D-ROLES-02: the AMO has no portal login, so amo1001 calls from an AMO phone with the harness key, bound already.
+        h.execute("INSERT INTO app.device (device_uuid, flavour, app_package, status, device_owner, lockdown_level, trust_level, public_key_jwk, public_key_thumbprint, attestation_summary, app_signing_cert_sha256, zone_id, device_info, app_version) SELECT '$AMO_PHONE', 'amo', 'com.aktcl.aron.amo', 'active', device_owner, lockdown_level, 'normal', public_key_jwk, 'qa-amo-000d', attestation_summary, app_signing_cert_sha256, zone_id, device_info, app_version FROM app.device WHERE device_uuid = '$SR_PHONE'")
+        h.execute("INSERT INTO app.device_binding (device_id, user_id, bind_ordinal, bound_via) SELECT d.id, u.id, 0, 'support' FROM app.device d, app.app_user u WHERE d.device_uuid = '$AMO_PHONE' AND u.username = 'amo1001'")
         h.execute("INSERT INTO app.device (device_uuid, flavour, app_package, status, device_owner, lockdown_level, trust_level, public_key_jwk, public_key_thumbprint, attestation_summary, app_signing_cert_sha256, zone_id, device_info, app_version) SELECT '$BIND_PHONE', flavour, app_package, 'active', device_owner, lockdown_level, trust_level, public_key_jwk, 'qa-bind-000b', attestation_summary, app_signing_cert_sha256, zone_id, device_info, app_version FROM app.device WHERE device_uuid = '$THROWAWAY_PHONE'")
         h.execute("INSERT INTO app.app_user (username, full_name, role, designation, employee_code, locale, home_zone_id, pilot, must_change_password, password_hash) SELECT '$BIND_USER', 'QA Bind', role, designation, 'QA9003', locale, home_zone_id, false, false, password_hash FROM app.app_user WHERE username = 'sr1001'")
         ids["bind_user"] = one("SELECT id FROM app.app_user WHERE username = '$BIND_USER'")
@@ -371,6 +374,7 @@ class ApiWorld(
         const val TUTORIAL_ASSET = "00000000-0000-4000-8000-0000000000a2"
         const val PROOF_PHONE = "00000000-0000-4000-8000-00000000000a"
         const val BIND_PHONE = "00000000-0000-4000-8000-00000000000b"
+        const val AMO_PHONE = "00000000-0000-4000-8000-00000000000d"
         const val ENROL_PHONE = "00000000-0000-4000-8000-00000000000c"
         const val BIND_USER = "qa9003"
         const val STORED_PHOTO = "6f1c2a3b-4d5e-4f60-8a71-b2c3d4e5f601"

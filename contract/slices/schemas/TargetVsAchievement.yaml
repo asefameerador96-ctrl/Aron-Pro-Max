@@ -6,7 +6,7 @@ TargetVsAchievement:
   - base_unit
   - daily_target
   - sales
-  - achievement_pct
+  - achievement_pct_bp
   properties:
     category_code:
       type: string
@@ -25,8 +25,8 @@ TargetVsAchievement:
       type: integer
       format: int64
       minimum: 0
-    achievement_pct:
+    achievement_pct_bp:
       type:
-      - number
+      - integer
       - 'null'
       minimum: 0

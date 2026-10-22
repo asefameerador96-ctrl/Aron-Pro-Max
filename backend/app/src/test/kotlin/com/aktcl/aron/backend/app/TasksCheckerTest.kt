@@ -68,6 +68,9 @@ class TasksCheckerTest {
             h.createUpdate("UPDATE app.app_user SET password_hash = :h WHERE pilot").bind("h", PasswordHasher().hash(password)).execute()
             h.execute("INSERT INTO app.cfg_value (key, scope_type, scope_id, value, effective_from, config_version, reason) SELECT 'cfg.auth.mfa_required_roles', 'global', 0, '[]'::jsonb, TIMESTAMPTZ '${ApiWorld.CFG_FROM}', max(config_version), 'test: admins log in without MFA' FROM app.cfg_version")
             sr = h.createQuery("SELECT id FROM app.app_user WHERE username = 'sr1001'").mapTo(Long::class.java).one()
+            // D-ROLES-02: no portal login for SR/AMO; amo1001 calls from an enrolled AMO phone bound to it (as ApiWorld.AMO_PHONE).
+            h.execute("INSERT INTO app.device (device_uuid, flavour, app_package, status, device_owner, lockdown_level, trust_level, public_key_jwk, public_key_thumbprint, attestation_summary, app_signing_cert_sha256, zone_id, device_info, app_version) SELECT '${ApiWorld.AMO_PHONE}', 'amo', 'com.aktcl.aron.amo', 'active', device_owner, lockdown_level, 'normal', public_key_jwk, 'qa-amo-000d', attestation_summary, app_signing_cert_sha256, zone_id, device_info, app_version FROM app.device WHERE device_uuid = '${ApiWorld.SR_PHONE}'")
+            h.execute("INSERT INTO app.device_binding (device_id, user_id, bind_ordinal, bound_via) SELECT d.id, u.id, 0, 'support' FROM app.device d, app.app_user u WHERE d.device_uuid = '${ApiWorld.AMO_PHONE}' AND u.username = 'amo1001'")
             // An SR in another territory: outside the TSO's reach.
             h.execute("INSERT INTO app.territory (code, name, division_id) SELECT 'T-OTHER', 'Other', division_id FROM app.territory WHERE code = 'T-DHK-N'")
             h.execute("INSERT INTO app.zone (code, name, territory_id) SELECT 'Z-OTHER', 'Other zone', id FROM app.territory WHERE code = 'T-OTHER'")
@@ -92,19 +95,25 @@ class TasksCheckerTest {
     private suspend fun HttpClient.token(user: String, phone: Boolean = false): String = tokens.getOrPut(user) {
         val r = post("/v1/auth/login") {
             contentType(ContentType.Application.Json); header("X-App-Version", "1.0.9+9")
-            setBody(if (phone) """{"username":"$user","password":"$password","client":"app_sr","device_uuid":"$devPhone"}""" else """{"username":"$user","password":"$password","client":"web"}""")
+            // D-ROLES-02: no portal login for SR/AMO (amo1001 logs in from its AMO phone).
+            setBody(if (user == "amo1001") """{"username":"$user","password":"$password","client":"app_amo","device_uuid":"${ApiWorld.AMO_PHONE}"}"""
+                else if (phone) """{"username":"$user","password":"$password","client":"app_sr","device_uuid":"$devPhone"}""" else """{"username":"$user","password":"$password","client":"web"}""")
         }
         assertEquals(HttpStatusCode.OK, r.status, r.bodyAsText())
-        json(r.bodyAsText())["access_token"]!!.jsonPrimitive.content
+        json(r.bodyAsText())["access_token"]!!.jsonPrimitive.content.also { if (user == "amo1001") amoTokens += it }
     }
 
+    /** The AMO's phone token travels with its phone's X-Device-Id. */
+    private val amoTokens = HashSet<String>()
+    private fun io.ktor.client.request.HttpRequestBuilder.amoDevice(token: String) { if (token in amoTokens) header("X-Device-Id", ApiWorld.AMO_PHONE) }
+
     private suspend fun HttpClient.create(token: String, taskUuid: String, assignee: Long, title: String = "Check the display"): HttpResponse = post("/v1/tasks") {
-        bearerAuth(token); contentType(ContentType.Application.Json)
+        bearerAuth(token); amoDevice(token); contentType(ContentType.Application.Json)
         setBody("""{"task_uuid":"$taskUuid","task_type_code":"display_check","assignee_user_id":$assignee,"title":"$title"}""")
     }
 
     private suspend fun HttpClient.list(token: String, phone: Boolean = false, query: String = ""): List<JsonObject> {
-        val r = get("/v1/tasks$query") { bearerAuth(token); if (phone) header("X-Device-Id", devPhone) }
+        val r = get("/v1/tasks$query") { bearerAuth(token); amoDevice(token); if (phone) header("X-Device-Id", devPhone) }
         assertEquals(HttpStatusCode.OK, r.status, r.bodyAsText())
         return json(r.bodyAsText())["items"]!!.jsonArray.map { it.jsonObject }
     }
@@ -137,7 +146,7 @@ class TasksCheckerTest {
         return if (at == null) r else buildJsonObject { r.forEach { (k, v) -> put(k, v) }; put("captured_at", at) }
     }
     private suspend fun HttpClient.cancel(token: String, t: String, phone: Boolean = false) = post("/v1/tasks/$t/cancel") {
-        bearerAuth(token); if (phone) header("X-Device-Id", devPhone); contentType(ContentType.Application.Json); setBody("""{"reason":"the outlet closed for good"}""")
+        bearerAuth(token); amoDevice(token); if (phone) header("X-Device-Id", devPhone); contentType(ContentType.Application.Json); setBody("""{"reason":"the outlet closed for good"}""")
     }
     private fun ids(l: List<JsonObject>) = l.map { it["task_uuid"]!!.jsonPrimitive.content }
     private fun st(l: List<JsonObject>, t: String) = l.single { it["task_uuid"]!!.jsonPrimitive.content == t }["status"]!!.jsonPrimitive.content
@@ -187,7 +196,7 @@ class TasksCheckerTest {
         assertTrue(client.list(srToken, phone = true, query = "?assignee_user_id=$outsider").isEmpty())
         val zOther = fresh.db.jdbi.withHandle<Long, Exception> { it.createQuery("SELECT id FROM app.zone WHERE code='Z-OTHER'").mapTo(Long::class.java).one() }
         for (u in listOf(tso, amo)) {
-            val r = client.get("/v1/tasks?zone_id=$zOther") { bearerAuth(u) }
+            val r = client.get("/v1/tasks?zone_id=$zOther") { bearerAuth(u); amoDevice(u) }
             assertEquals(HttpStatusCode.Forbidden, r.status, r.bodyAsText())
         }
         val r = client.get("/v1/tasks?zone_id=$zOther") { bearerAuth(srToken); header("X-Device-Id", devPhone) }

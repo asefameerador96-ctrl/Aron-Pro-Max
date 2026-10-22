@@ -9,9 +9,9 @@ NationalLoginSubmit:
   - last_updated_at
   - target_routes
   - successful_login
-  - login_pct
+  - login_pct_bp
   - submitted
-  - submit_pct
+  - submit_pct_bp
   additionalProperties: false
   properties:
     date:
@@ -37,20 +37,20 @@ NationalLoginSubmit:
       type: integer
       minimum: 0
       description: Of those, routes whose SR checked in and downloaded.
-    login_pct:
+    login_pct_bp:
       type:
-      - number
+      - integer
       - 'null'
       minimum: 0
-      maximum: 100
+      description: 'Basis points: 10000 = 100 %. Integer arithmetic, rounded half up; null when the denominator
+        is 0.'
     submitted:
       type: integer
       minimum: 0
       description: Routes that completed Bikroy Joma (sales upload).
-    submit_pct:
+    submit_pct_bp:
       type:
-      - number
+      - integer
       - 'null'
       minimum: 0
-      maximum: 100
-      description: submitted / successful_login x 100.
+      description: submitted / successful_login in basis points.

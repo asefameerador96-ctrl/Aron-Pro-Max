@@ -20,6 +20,11 @@ import java.time.YearMonth
 /** Who is asking: the server-side reach and, for a BRAND user, the brand ids (null for every other level; docs/34 s1). */
 class NationalCaller(val reach: Reach, val brandIds: Set<Long>? = null)
 
+/** Basis points (10000 = 100 %) by integer arithmetic, half up; null when the denominator is 0. Never a float (docs/31 money gate). */
+internal fun pctBp(n: Long, d: Long): Int? = if (d <= 0) null else ((n * 20_000 + d) / (2 * d)).toInt()
+
+internal fun ratioBp(part: BigDecimal, whole: BigDecimal): Long = part.multiply(BigDecimal(10_000)).divide(whole, 0, RoundingMode.HALF_UP).toLong()
+
 /** The day's channel order, as the brief lists it. */
 internal val CHANNELS = listOf("GT", "DCC", "Astha", "RCC", "MT", "HoReCa")
 internal val CATEGORY_ORDER = listOf("cigarette", "bidi", "lighter", "match")
@@ -153,7 +158,7 @@ class NationalDashboardService(
             val targets = sql.bind(h.createQuery(
                 """
                 SELECT p.category_code, sum(t.std_target) AS total, count(DISTINCT t.scope_id) AS routes
-                  FROM app.target t JOIN dw.dim_geo g ON g.route_id = t.scope_id JOIN dw.dim_product p ON p.sku_id = t.product_id
+                  FROM app.target t JOIN app.target_set ts ON ts.id = t.target_set_id AND ts.status = 'active' JOIN dw.dim_geo g ON g.route_id = t.scope_id JOIN dw.dim_product p ON p.sku_id = t.product_id
                  WHERE t.month = :m AND t.scope_type = 'route' AND t.product_level = 'sku' AND t.superseded_by_revision_id IS NULL ${sql.geo} ${sql.product}
                  GROUP BY 1
                 """,
@@ -166,9 +171,7 @@ class NationalDashboardService(
                 NationalSalesCard(
                     category_code = cat, base_unit = unit, total_sales = total, daily_target = daily?.toPlainString(), sales_so_far = total,
                     remaining = daily?.let { (it - BigDecimal(total)).max(BigDecimal.ZERO).setScale(3, RoundingMode.HALF_UP).toPlainString() },
-                    achievement_pct = daily?.takeIf { it.signum() > 0 }?.let {
-                        BigDecimal(total).multiply(BigDecimal(100)).divide(it, 2, RoundingMode.HALF_UP).toDouble()
-                    },
+                    achievement_pct_bp = daily?.takeIf { it.signum() > 0 }?.let { ratioBp(BigDecimal(total), it) },
                     target_routes = tgt?.second ?: 0,
                 )
             }
@@ -187,14 +190,14 @@ class NationalDashboardService(
             val targetOutlets = sql.bind(h.createQuery(
                 """
                 SELECT coalesce(sum(a.target_outlets), 0) FROM dw.agg_daily_route a JOIN dw.dim_geo g ON g.route_id = a.route_id
-                 WHERE a.business_date = :d AND a.planned AND NOT a.exception_approved AND g.route_class = 'normal' ${sql.geo}
+                 WHERE a.business_date = :d AND a.planned AND NOT a.exception_approved AND g.route_class = 'normal' AND g.route_kind = 'sr' ${sql.geo}
                 """,
             ).bind("d", date)).mapTo(Long::class.java).one().toInt()
             val calls = if (!sql.hasProductFilter) {
                 sql.bind(h.createQuery(
                     """
                     SELECT coalesce(sum(a.successful_calls), 0) FROM dw.agg_daily_route a JOIN dw.dim_geo g ON g.route_id = a.route_id
-                     WHERE a.business_date = :d AND a.planned AND NOT a.exception_approved AND g.route_class = 'normal' ${sql.geo}
+                     WHERE a.business_date = :d AND a.planned AND NOT a.exception_approved AND g.route_class = 'normal' AND g.route_kind = 'sr' ${sql.geo}
                     """,
                 ).bind("d", date)).mapTo(Long::class.java).one().toInt()
             } else {
@@ -202,12 +205,12 @@ class NationalDashboardService(
                     """
                     SELECT count(DISTINCT (s.route_id, s.outlet_id)) FROM dw.agg_daily_outlet_sku s JOIN dw.dim_geo g ON g.route_id = s.route_id
                       JOIN dw.dim_product p ON p.sku_id = s.sku_id JOIN dw.agg_daily_route a ON a.route_id = s.route_id AND a.business_date = s.business_date
-                     WHERE s.business_date = :d AND a.planned AND NOT a.exception_approved AND g.route_class = 'normal' ${sql.geo} ${sql.product}
+                     WHERE s.business_date = :d AND a.planned AND NOT a.exception_approved AND g.route_class = 'normal' AND g.route_kind = 'sr' ${sql.geo} ${sql.product}
                     """,
                 ).bind("d", date)).mapTo(Long::class.java).one().toInt()
             }
             val m = meta(h, date, listOf("agg_daily_route", "agg_daily_outlet_sku"))
-            NationalCpr(m.date, m.till, m.asOf, m.last, targetOutlets, calls, pct(calls.toLong(), targetOutlets.toLong()))
+            NationalCpr(m.date, m.till, m.asOf, m.last, targetOutlets, calls, pctBp(calls.toLong(), targetOutlets.toLong()))
         }
     }
 
@@ -215,7 +218,7 @@ class NationalDashboardService(
 
     private fun shares(rows: Map<String, Long>): List<ChannelShare> {
         val total = rows.values.sum()
-        return CHANNELS.map { c -> ChannelShare(c, rows[c] ?: 0L, pct(rows[c] ?: 0L, total)) }
+        return CHANNELS.map { c -> ChannelShare(c, rows[c] ?: 0L, pctBp(rows[c] ?: 0L, total)) }
     }
 
     fun channelCalls(caller: NationalCaller, f: NationalDashboardFilter): NationalChannelCalls {
@@ -227,7 +230,7 @@ class NationalDashboardService(
                 SELECT o.channel, count(DISTINCT (s.route_id, s.outlet_id)) AS n
                   FROM dw.agg_daily_outlet_sku s JOIN dw.dim_geo g ON g.route_id = s.route_id JOIN dw.dim_product p ON p.sku_id = s.sku_id
                   JOIN dw.dim_outlet o ON o.outlet_id = s.outlet_id JOIN dw.agg_daily_route a ON a.route_id = s.route_id AND a.business_date = s.business_date
-                 WHERE s.business_date = :d AND a.planned AND NOT a.exception_approved AND g.route_class = 'normal' ${sql.geo} ${sql.product} GROUP BY 1
+                 WHERE s.business_date = :d AND a.planned AND NOT a.exception_approved AND g.route_class = 'normal' AND g.route_kind = 'sr' ${sql.geo} ${sql.product} GROUP BY 1
                 """,
             ).bind("d", date)).map { rs, _ -> rs.getString(1) to rs.getLong(2) }.list().toMap()
             val m = meta(h, date, listOf("agg_daily_outlet_sku", "agg_daily_route"))
@@ -263,13 +266,13 @@ class NationalDashboardService(
             val (service, submitted) = sql.bind(h.createQuery(
                 """
                 WITH svc AS (SELECT DISTINCT a.zone_id FROM dw.agg_daily_route a JOIN dw.dim_geo g ON g.route_id = a.route_id
-                              WHERE a.business_date = :d AND a.planned AND NOT a.exception_approved AND g.route_class = 'normal' ${sql.geo})
+                              WHERE a.business_date = :d AND a.planned AND NOT a.exception_approved AND g.route_class = 'normal' AND g.route_kind = 'sr' ${sql.geo})
                 SELECT count(*), count(*) FILTER (WHERE z.final_submitted_at IS NOT NULL)
                   FROM svc LEFT JOIN dw.agg_daily_zone z ON z.zone_id = svc.zone_id AND z.business_date = :d
                 """,
             ).bind("d", date)).map { rs, _ -> rs.getInt(1) to rs.getInt(2) }.one()
             val m = meta(h, date, listOf("agg_daily_zone", "agg_daily_route"))
-            NationalFinalSubmit(m.date, m.till, m.asOf, m.last, total, service, submitted, service - submitted, pct(submitted.toLong(), service.toLong()))
+            NationalFinalSubmit(m.date, m.till, m.asOf, m.last, total, service, submitted, service - submitted, pctBp(submitted.toLong(), service.toLong()))
         }
     }
 
@@ -283,11 +286,11 @@ class NationalDashboardService(
                 SELECT count(*), count(*) FILTER (WHERE a.logged_in_at IS NOT NULL AND a.downloaded_at IS NOT NULL),
                        count(*) FILTER (WHERE a.logged_in_at IS NOT NULL AND a.downloaded_at IS NOT NULL AND a.sales_submitted_at IS NOT NULL)
                   FROM dw.agg_daily_route a JOIN dw.dim_geo g ON g.route_id = a.route_id
-                 WHERE a.business_date = :d AND a.planned AND NOT a.exception_approved AND g.route_class = 'normal' ${sql.geo}
+                 WHERE a.business_date = :d AND a.planned AND NOT a.exception_approved AND g.route_class = 'normal' AND g.route_kind = 'sr' ${sql.geo}
                 """,
             ).bind("d", date)).map { rs, _ -> Triple(rs.getInt(1), rs.getInt(2), rs.getInt(3)) }.one()
             val m = meta(h, date, listOf("agg_daily_route"))
-            NationalLoginSubmit(m.date, m.till, m.asOf, m.last, target, login, pct(login.toLong(), target.toLong()), submitted, pct(submitted.toLong(), login.toLong()))
+            NationalLoginSubmit(m.date, m.till, m.asOf, m.last, target, login, pctBp(login.toLong(), target.toLong()), submitted, pctBp(submitted.toLong(), login.toLong()))
         }
     }
 
@@ -299,6 +302,14 @@ class NationalDashboardService(
         val f = req.filter; val date = dateOf(f); val sql = NationalSql(caller, f)
         return read { h ->
             ensureReady(h)
+            // A memo count per node is exact only when no narrower product filter applies: the per-route tables count every memo holding any SKU of the node.
+            val narrower = when (req.dimension) {
+                "segment" -> f.brand_codes.isNotEmpty() || f.variant_codes.isNotEmpty() || caller.brandIds != null
+                "brand" -> f.variant_codes.isNotEmpty()
+                else -> false
+            }
+            if (req.measure == "memo" && narrower) throw ApiProblem(ProblemCode.ERR_VALIDATION, "memo counts by ${req.dimension} cannot be combined with a narrower product filter",
+                errors = listOf(FieldError("dimension", "unsupported_combination")))
             val nodeCols = when (req.dimension) { "segment" -> "p.segment_id, p.segment_code, p.segment_name"; "brand" -> "p.brand_id, p.brand_code, p.brand_name"; else -> "p.variant_id, p.variant_code, p.variant_name" }
             val items: List<BreakdownItem>
             var category: String? = null
@@ -351,7 +362,7 @@ class NationalDashboardService(
                 """,
             ).bind("d", date)).map { rs, _ -> rs.getInt(1) to rs.getInt(2) }.one()
             val m = meta(h, date, listOf("agg_daily_route"))
-            NationalGeoFencing(m.date, m.till, m.asOf, m.last, total, valid, pct(valid.toLong(), total.toLong()))
+            NationalGeoFencing(m.date, m.till, m.asOf, m.last, total, valid, pctBp(valid.toLong(), total.toLong()))
         }
     }
 

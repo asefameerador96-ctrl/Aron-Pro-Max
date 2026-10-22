@@ -20,6 +20,10 @@ Needs `dw.agg_daily_outlet_sku`, `dw.agg_daily_route_variant`, `dw.route_last_po
 - D-DASH-07 channel calls and CPR count normal planned routes only; sales, channel STD and geo fencing count all routes.
 - Contract: `SalePosition.radius_m` is 10..5000 (the stored radius), not the enum 20/50/100.
 
+### Opus checker (13 findings) - fixed in the next commit, with tests (`checker_*` in NationalDashboardTest/NationalMapsTest)
+Fixed: unvisited planned route-days now get a row (stale scan) and a target-outlet fallback; null product codes (code `n<id>`); memo breakdown refused where it could not be exact (brand scope leak); AMO routes excluded; route class read from `app.route.route_class` only (503 until it exists); voided fixes leave the path; positions are picked up by a stale scan (no outbox event exists); sale position limited to the outlet's route; auto-submit never overrides a real submit and looks back 7 days; freshness is the oldest waiting change; BRAND role without brands is refused; inactive target sets ignored.
+Open (documented, not fixed): login requires download but not an attendance check-in (both stamps come from the bundle path); history is filed under the route's current zone; weekend days are Friday, not `cfg.calendar.weekend_days`; outlets sold to by two routes count once per route (owner to confirm COUNT(DISTINCT outlet)).
+
 ### Next three
 1. Opus checker findings on the summaries (running), then fix.
 2. Reports from `docs/reports/*.md` when the lead files them (none yet).

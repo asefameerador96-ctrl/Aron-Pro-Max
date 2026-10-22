@@ -75,7 +75,7 @@ class NationalDashboardTest {
         val cig = s.cards.single { it.category_code == "cigarette" }
         assertEquals(75, cig.total_sales)
         // Monthly 2 500 + 1 250 over 25 working days = 150 a day; 75 / 150 = 50.0 %; remaining 75.
-        assertEquals("150.000", cig.daily_target); assertEquals(50.0, cig.achievement_pct); assertEquals("75.000", cig.remaining); assertEquals(2, cig.target_routes)
+        assertEquals("150.000", cig.daily_target); assertEquals(5000L, cig.achievement_pct_bp); assertEquals("75.000", cig.remaining); assertEquals(2, cig.target_routes)
         assertEquals(75, cig.sales_so_far); assertEquals("stick", cig.base_unit)
         assertEquals("2026-10-04", s.date); assertTrue(s.till_time)   // 06:00Z is 12:00 Dhaka on the same day: figures are "till time"
     }
@@ -87,13 +87,13 @@ class NationalDashboardTest {
         assertEquals(sales, std.total)                                         // brief s4.1: the channels add up to Sales (Cigarette)
         assertEquals(listOf("GT", "DCC", "Astha", "RCC", "MT", "HoReCa"), std.channels.map { it.channel })
         assertEquals(listOf(50L, 0L, 20L, 5L, 0L, 0L), std.channels.map { it.value })
-        assertEquals(listOf(66.67, 0.0, 26.67, 6.67, 0.0, 0.0), std.channels.map { it.share_pct })
+        assertEquals(listOf(6667, 0, 2667, 667, 0, 0), std.channels.map { it.share_pct_bp })
         val calls = svc.channelCalls(national(), all)
         val cpr = svc.cpr(national(), all)
         assertEquals(listOf(2L, 0L, 1L, 1L, 0L, 0L), calls.channels.map { it.value })
         assertEquals(cpr.successful_calls, calls.total)                        // brief s3.2: the channels add up to the successful calls
         assertEquals(0, calls.unclassified)
-        assertEquals(5, cpr.target_outlets); assertEquals(4, cpr.successful_calls); assertEquals(80.0, cpr.cpr_pct)
+        assertEquals(5, cpr.target_outlets); assertEquals(4, cpr.successful_calls); assertEquals(8000, cpr.cpr_pct_bp)
     }
 
     @Test
@@ -113,12 +113,12 @@ class NationalDashboardTest {
     @Test
     fun geoFencingLoginAndFinalSubmitFollowTheBrief() {
         val g = svc.geoFencing(national(), all)
-        assertEquals(4, g.total_calls); assertEquals(3, g.geo_validated); assertEquals(75.0, g.geo_pct)    // visit 3 was abandoned, visit 2 out of range
+        assertEquals(4, g.total_calls); assertEquals(3, g.geo_validated); assertEquals(7500, g.geo_pct_bp)    // visit 3 was abandoned, visit 2 out of range
         val l = svc.loginSubmit(national(), all)
-        assertEquals(3, l.target_routes); assertEquals(2, l.successful_login); assertEquals(66.67, l.login_pct)   // R3 never downloaded
-        assertEquals(1, l.submitted); assertEquals(50.0, l.submit_pct)
+        assertEquals(3, l.target_routes); assertEquals(2, l.successful_login); assertEquals(6667, l.login_pct_bp)   // R3 never downloaded
+        assertEquals(1, l.submitted); assertEquals(5000, l.submit_pct_bp)
         val f = svc.finalSubmit(national(), all)
-        assertEquals(2, f.total_zones); assertEquals(2, f.service_zones); assertEquals(1, f.final_submitted); assertEquals(1, f.remaining); assertEquals(50.0, f.submit_pct)
+        assertEquals(2, f.total_zones); assertEquals(2, f.service_zones); assertEquals(1, f.final_submitted); assertEquals(1, f.remaining); assertEquals(5000, f.submit_pct_bp)
     }
 
     @Test
@@ -127,7 +127,7 @@ class NationalDashboardTest {
         now = Instant.parse("2026-10-05T01:00:00Z")                                        // 07:00 Dhaka the next day
         AggregationWorker(fresh.db, AronClock { now }).runUntilIdle()
         val f = svc.finalSubmit(national(), all)
-        assertEquals(2, f.final_submitted); assertEquals(0, f.remaining); assertEquals(100.0, f.submit_pct)
+        assertEquals(2, f.final_submitted); assertEquals(0, f.remaining); assertEquals(10000, f.submit_pct_bp)
         val auto = fresh.db.jdbi.withHandle<List<Boolean>, Exception> { it.createQuery("SELECT auto_submitted FROM dw.agg_daily_zone WHERE business_date = '2026-10-04' ORDER BY zone_id").mapTo(Boolean::class.java).list() }
         assertEquals(listOf(true, false), auto)                                            // zone 2 was submitted by a TSO, zone 1 by the job
     }
@@ -182,7 +182,7 @@ class NationalDashboardTest {
         val f = all.copy(brand_codes = listOf("B2"))
         assertEquals(15, svc.sales(national(), f).cards.single { it.category_code == "cigarette" }.total_sales)
         val cpr = svc.cpr(national(), f)                                                   // outlets that bought BrandTwo: O2 (Astha) and O4 (RCC)
-        assertEquals(2, cpr.successful_calls); assertEquals(40.0, cpr.cpr_pct)
+        assertEquals(2, cpr.successful_calls); assertEquals(4000, cpr.cpr_pct_bp)
         assertEquals(listOf(0L, 0L, 1L, 1L, 0L, 0L), svc.channelCalls(national(), f).channels.map { it.value })
     }
 
@@ -194,5 +194,64 @@ class NationalDashboardTest {
         val fr = svc.freshness()
         assertEquals(t.toString(), fr.last_updated_at); assertTrue(fr.tables.all { it.last_updated_at != null })
         assertNotNull(svc.cpr(national(), all).as_of)
+    }
+
+    private fun sql(s: String) = fresh.db.jdbi.useHandle<Exception> { it.execute(s) }
+
+    @Test
+    fun checker_manualDummyAndAmoRoutesAreNotTargetRoutes() {
+        sql("UPDATE app.route SET route_class = 'manual' WHERE code = 'R3'")
+        fresh.db.jdbi.useHandle<Exception> { Aggregator.refreshDimensions(it) }
+        val l = svc.loginSubmit(national(), all)
+        assertEquals(2, l.target_routes)                                                   // R3 (manual) left out
+        assertEquals(1, svc.finalSubmit(national(), all).service_zones)                    // zone 2 only had the manual route
+        assertEquals(4, svc.cpr(national(), all).target_outlets)
+        sql("UPDATE app.route SET route_class = 'normal' WHERE code = 'R3'; UPDATE app.route SET kind = 'amo' WHERE code = 'R3'")
+        fresh.db.jdbi.useHandle<Exception> { Aggregator.refreshDimensions(it) }
+        assertEquals(2, svc.loginSubmit(national(), all).target_routes)                    // an AMO route is not an SR route
+    }
+
+    @Test
+    fun checker_aPlannedRouteNobodyOpenedStillCountsAsTargetRoute() {
+        sql("""
+            INSERT INTO app.route (code, name, zone_id, kind, visit_kind, visit_days_mask) SELECT 'R4', 'Route4', id, 'sr', 'daily', 127 FROM app.zone WHERE code = 'Z1';
+            INSERT INTO app.outlet (code, name, owner_name, zone_id, route_id, cluster_id, channel)
+              SELECT 'O9', 'Outlet 9', 'Owner', r.zone_id, r.id, (SELECT id FROM app.cluster WHERE zone_id = r.zone_id), 'GT' FROM app.route r WHERE r.code = 'R4';
+            INSERT INTO app.route_day (route_id, business_date, planned) SELECT id, DATE '2026-10-04', true FROM app.route WHERE code = 'R4';
+        """)
+        fresh.db.jdbi.useHandle<Exception> { Aggregator.refreshDimensions(it) }
+        AggregationWorker(fresh.db, AronClock { now }).runUntilIdle()                      // the stale scan queues the route-day nobody touched
+        val l = svc.loginSubmit(national(), all)
+        assertEquals(4, l.target_routes); assertEquals(2, l.successful_login)              // 2 of 4, not 2 of 3
+        assertEquals(6, svc.cpr(national(), all).target_outlets)                           // R4's one outlet counts although no bundle froze its target
+    }
+
+    @Test
+    fun checker_productNodesWithoutACodeStillBreakDownAndFilter() {
+        sql("UPDATE app.product_node SET code = NULL WHERE level IN ('brand', 'segment', 'variant')")
+        fresh.db.jdbi.useHandle<Exception> { Aggregator.refreshDimensions(it) }
+        val items = svc.breakdown(national(), NationalBreakdownRequest(all, "memo", "brand")).items
+        assertEquals(listOf(3L, 2L), items.map { it.value }); assertTrue(items.all { it.code.startsWith("n") })
+        assertEquals(2, svc.filterOptions(national()).brands.size)
+        assertEquals(15, svc.sales(national(), all.copy(brand_codes = listOf(items.last().code))).cards.single { it.category_code == "cigarette" }.total_sales)
+    }
+
+    @Test
+    fun checker_memoCountsAreRefusedWhereTheyCouldNotBeExact() {
+        for ((dim, f) in listOf("segment" to all.copy(brand_codes = listOf("B1")), "brand" to all.copy(variant_codes = listOf("V1")))) {
+            assertEquals(ProblemCode.ERR_VALIDATION, assertFailsWith<ApiProblem> { svc.breakdown(national(), NationalBreakdownRequest(f, "memo", dim)) }.code)
+        }
+        assertEquals(ProblemCode.ERR_VALIDATION, assertFailsWith<ApiProblem> { svc.breakdown(brandUser("B1"), NationalBreakdownRequest(all, "memo", "segment")) }.code)
+        assertEquals(listOf(3L), svc.breakdown(brandUser("B1"), NationalBreakdownRequest(all, "memo", "brand")).items.map { it.value })   // exact: the brand table
+        assertEquals(listOf(60L), svc.breakdown(brandUser("B1"), NationalBreakdownRequest(all, "std", "segment")).items.map { it.value })
+    }
+
+    @Test
+    fun checker_freshnessNeverClaimsMoreThanTheOldestWaitingChange() {
+        val later = Instant.now().plusSeconds(60)   // wall-clock-ok: the queue stamps last_dirtied_at with the database clock
+        sql("SELECT app.mark_dirty('route_day_agg', (SELECT id FROM app.route WHERE code = 'R1'), DATE '2026-10-04', 'stuck')")
+        fresh.db.jdbi.useHandle<Exception> { DashboardSummaries.touchFreshness(it, later) }
+        val last = Instant.parse(svc.freshness().last_updated_at!!)
+        assertTrue(last.isBefore(later))                   // the queue still holds a change: not "fresh now"
     }
 }

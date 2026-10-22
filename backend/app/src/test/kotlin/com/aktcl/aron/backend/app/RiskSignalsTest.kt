@@ -60,6 +60,9 @@ class RiskSignalsTest {
         fresh.db.jdbi.useHandle<Exception> { h ->
             h.createUpdate("UPDATE app.app_user SET password_hash = :h WHERE pilot").bind("h", PasswordHasher().hash(password)).execute()
             h.execute("INSERT INTO app.cfg_value (key, scope_type, scope_id, value, effective_from, config_version, reason) SELECT 'cfg.auth.mfa_required_roles', 'global', 0, '[]'::jsonb, TIMESTAMPTZ '${ApiWorld.CFG_FROM}', max(config_version), 'test: no MFA' FROM app.cfg_version")
+            // D-ROLES-02: no portal login for SR/AMO; amo1001 calls from an enrolled AMO phone bound to it (as ApiWorld.AMO_PHONE).
+            h.execute("INSERT INTO app.device (device_uuid, flavour, app_package, status, device_owner, lockdown_level, trust_level, public_key_jwk, public_key_thumbprint, attestation_summary, app_signing_cert_sha256, zone_id, device_info, app_version) SELECT '${ApiWorld.AMO_PHONE}', 'amo', 'com.aktcl.aron.amo', 'active', device_owner, lockdown_level, 'normal', public_key_jwk, 'qa-amo-000d', attestation_summary, app_signing_cert_sha256, zone_id, device_info, app_version FROM app.device WHERE device_uuid = '${ApiWorld.SR_PHONE}'")
+            h.execute("INSERT INTO app.device_binding (device_id, user_id, bind_ordinal, bound_via) SELECT d.id, u.id, 0, 'support' FROM app.device d, app.app_user u WHERE d.device_uuid = '${ApiWorld.AMO_PHONE}' AND u.username = 'amo1001'")
             h.execute("INSERT INTO app.territory (code, name, division_id) SELECT 'T-OTHER', 'Other', division_id FROM app.territory WHERE code = 'T-DHK-N'")
             h.execute("INSERT INTO app.zone (code, name, territory_id) SELECT 'Z-OTHER', 'Other zone', id FROM app.territory WHERE code = 'T-OTHER'")
             fun signal(name: String, code: String, zoneSql: String, userSql: String, date: String = "2027-01-03") {
@@ -90,18 +93,22 @@ class RiskSignalsTest {
 
     private suspend fun HttpClient.token(user: String): String = tokens.getOrPut(user) {
         val body = if (user == "sr1001") """{"username":"sr1001","password":"$password","client":"app_sr","device_uuid":"$devPhone"}"""
+        // D-ROLES-02: no portal login for SR/AMO; the AMO supervises from its AMO phone.
+        else if (user == "amo1001") """{"username":"amo1001","password":"$password","client":"app_amo","device_uuid":"${ApiWorld.AMO_PHONE}"}"""
         else """{"username":"$user","password":"$password","client":"web"}"""
         val r = post("/v1/auth/login") { contentType(ContentType.Application.Json); header("X-App-Version", "1.0.9+9"); setBody(body) }
         assertEquals(HttpStatusCode.OK, r.status, r.bodyAsText())
         json(r.bodyAsText())["access_token"]!!.jsonPrimitive.content
     }
 
+    private fun deviceOf(user: String) = if (user == "amo1001") ApiWorld.AMO_PHONE else devPhone
+
     private suspend fun HttpClient.list(user: String, query: String = ""): HttpResponse =
-        get("/v1/risk-signals$query") { bearerAuth(token(user)); header("X-Device-Id", devPhone); header("X-App-Version", "1.0.9+9") }
+        get("/v1/risk-signals$query") { bearerAuth(token(user)); header("X-Device-Id", deviceOf(user)); header("X-App-Version", "1.0.9+9") }
 
     private suspend fun HttpClient.review(user: String, id: Long, uuid: String, action: String): HttpResponse =
         post("/v1/risk-signals/$id/review") {
-            bearerAuth(token(user)); header("X-Device-Id", devPhone); header("X-App-Version", "1.0.9+9"); contentType(ContentType.Application.Json)
+            bearerAuth(token(user)); header("X-Device-Id", deviceOf(user)); header("X-App-Version", "1.0.9+9"); contentType(ContentType.Application.Json)
             setBody("""{"review_uuid":"$uuid","action":"$action","note":"checked with the TSO"}""")
         }
 

@@ -49,12 +49,12 @@ fun NationalDashboardService.ffGeoPins(caller: NationalCaller, req: FfGeoPinsReq
             """,
         ).bind("d", date)).map { rs, _ ->
             val done = rs.getInt("done"); val ok = rs.getInt("ok")
-            FfGeoPin(rs.getLong("route_id"), rs.getDouble("lat"), rs.getDouble("lng"), pinColor(ok, done), pct(ok.toLong(), done.toLong()), rs.getTimestamp("captured_at").toInstant().toString())
+            FfGeoPin(rs.getLong("route_id"), rs.getDouble("lat"), rs.getDouble("lng"), pinColor(ok, done), pctBp(ok.toLong(), done.toLong()), rs.getTimestamp("captured_at").toInstant().toString())
         }.list()
         val without = sql.bind(h.createQuery(
             """
             SELECT count(*) FROM dw.agg_daily_route a JOIN dw.dim_geo g ON g.route_id = a.route_id
-             WHERE a.business_date = :d AND a.planned AND NOT a.exception_approved AND g.route_class = 'normal' ${sql.geo}
+             WHERE a.business_date = :d AND a.planned AND NOT a.exception_approved AND g.route_class = 'normal' AND g.route_kind = 'sr' ${sql.geo}
                AND NOT EXISTS (SELECT 1 FROM dw.route_last_position p WHERE p.route_id = a.route_id AND p.business_date = a.business_date)
             """,
         ).bind("d", date)).mapTo(Long::class.java).one().toInt()
@@ -104,10 +104,10 @@ fun NationalDashboardService.ffGeoRoutePopup(caller: NationalCaller, routeId: Lo
             .map { rs, _ -> rs.getTimestamp(1).toInstant().toString() }.findOne().orElse(null)
         val (done, ok) = h.createQuery("SELECT completed_calls, completed_geo_valid_calls FROM dw.agg_daily_route WHERE route_id = :r AND business_date = :d")
             .bind("r", routeId).bind("d", date).map { rs, _ -> rs.getInt(1) to rs.getInt(2) }.findOne().orElse(0 to 0)
-        val geo = pct(ok.toLong(), done.toLong())
+        val geo = pctBp(ok.toLong(), done.toLong())
         val m = meta(h, date, listOf("route_last_position", "agg_daily_route"))
         // contact: the SR's phone is PII; it is returned only through the step-up read path (docs/34 s5 D-AUTHZ-PII), so null here.
-        FfGeoRoutePopup(m.date, m.till, m.asOf, m.last, head.route, userName(h, head.userId), null, head.territory, head.zone, pos, geo?.let { round2(100.0 - it) })
+        FfGeoRoutePopup(m.date, m.till, m.asOf, m.last, head.route, userName(h, head.userId), null, head.territory, head.zone, pos, geo?.let { 10_000 - it })
     }
 }
 
@@ -184,7 +184,7 @@ fun NationalDashboardService.routeMap(caller: NationalCaller, routeId: Long, dat
         val tva = cats.map { (cat, unit) ->
             val s = sold[cat]?.third ?: 0L
             val daily = targets[cat]?.takeIf { wd > 0 }?.divide(BigDecimal(wd), 3, RoundingMode.HALF_UP)
-            TargetVsAchievement(cat, unit, daily?.toPlainString(), s, daily?.takeIf { it.signum() > 0 }?.let { BigDecimal(s).multiply(BigDecimal(100)).divide(it, 2, RoundingMode.HALF_UP).toDouble() })
+            TargetVsAchievement(cat, unit, daily?.toPlainString(), s, daily?.takeIf { it.signum() > 0 }?.let { ratioBp(BigDecimal(s), it) })
         }
         val lastPlace = h.createQuery(
             """
@@ -197,7 +197,7 @@ fun NationalDashboardService.routeMap(caller: NationalCaller, routeId: Long, dat
             m.date, m.till, m.asOf, m.last, head.route, userName(h, head.userId), head.territory, head.zone,
             sale_start = first?.let { MapPosition(it.lat!!, it.lng!!, it.at.toString()) },
             sr_last_position = fixes.lastOrNull(), outlets = outlets, path = path, target_vs_achievement = tva, last_sale_place = lastPlace,
-            cpr = RouteMapCpr(targetOutlets, calls, geoOk, pct(calls.toLong(), targetOutlets.toLong())),
+            cpr = RouteMapCpr(targetOutlets, calls, geoOk, pctBp(calls.toLong(), targetOutlets.toLong())),
             time_card = RouteMapTimeCard(firstSale?.toString(), lastSale?.toString(), total, if (total != null && calls > 0) total / calls else null, round2(metres)),
         )
     }
@@ -224,17 +224,17 @@ fun NationalDashboardService.salePosition(caller: NationalCaller, outletId: Long
         val visits = h.createQuery(
             """
             SELECT visit_client_uuid, radius_m, outlet_lat, outlet_lng, fix_lat, fix_lng, distance_m, coalesce(server_verdict, device_verdict) = 'in_range' AS in_range, force_photo_uuid
-              FROM dw.fact_visit WHERE outlet_id = :o AND business_date = :d AND NOT voided AND visit_kind = 'sr_call' ORDER BY opened_at
+              FROM dw.fact_visit WHERE outlet_id = :o AND business_date = :d AND NOT voided AND visit_kind = 'sr_call' AND route_id = :rt ORDER BY opened_at
             """,
-        ).bind("o", outletId).bind("d", date).map { rs, _ ->
+        ).bind("o", outletId).bind("d", date).bind("rt", hd.route.id).map { rs, _ ->
             Vis(rs.getObject(1, java.util.UUID::class.java), (rs.getObject(2) as Number?)?.toInt(), rs.getObject(3) as Double?, rs.getObject(4) as Double?, rs.getObject(5) as Double?,
                 rs.getObject(6) as Double?, rs.getObject(7) as Double?, rs.getBoolean(8), rs.getObject(9, java.util.UUID::class.java))
         }.list().associateBy { it.uuid }
         // Detail page for one outlet and day: the memo versions are read from the memo table to tell new, repeat and edited sales apart.
         data class Mem(val uuid: java.util.UUID, val visit: java.util.UUID, val at: Instant, val edits: Boolean)
         val memos = h.createQuery(
-            "SELECT client_uuid, visit_client_uuid, committed_at, supersedes_client_uuid IS NOT NULL FROM app.memo WHERE outlet_id = :o AND business_date = :d AND status = 'active' AND voided_at IS NULL AND line_count > 0 ORDER BY committed_at, client_uuid",
-        ).bind("o", outletId).bind("d", date).map { rs, _ -> Mem(rs.getObject(1, java.util.UUID::class.java), rs.getObject(2, java.util.UUID::class.java), rs.getTimestamp(3).toInstant(), rs.getBoolean(4)) }.list()
+            "SELECT client_uuid, visit_client_uuid, committed_at, supersedes_client_uuid IS NOT NULL FROM app.memo WHERE outlet_id = :o AND business_date = :d AND route_id = :rt AND status = 'active' AND voided_at IS NULL AND line_count > 0 ORDER BY committed_at, client_uuid",
+        ).bind("o", outletId).bind("d", date).bind("rt", hd.route.id).map { rs, _ -> Mem(rs.getObject(1, java.util.UUID::class.java), rs.getObject(2, java.util.UUID::class.java), rs.getTimestamp(3).toInstant(), rs.getBoolean(4)) }.list()
         val editFix = h.createQuery("SELECT source_client_uuid, lat, lng FROM dw.fact_geo_fix WHERE slot = 'edit_fix' AND business_date = :d AND lat IS NOT NULL AND source_client_uuid = ANY(:u)")
             .bind("d", date).bindArray("u", java.util.UUID::class.java, memos.map { it.uuid }).map { rs, _ -> rs.getObject(1, java.util.UUID::class.java) to (rs.getDouble(2) to rs.getDouble(3)) }.list().toMap()
         var seenNew = false

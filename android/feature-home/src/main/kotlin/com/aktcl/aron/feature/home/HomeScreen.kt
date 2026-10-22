@@ -290,17 +290,20 @@ private val KpiOutline = Color(0xFF5C3DA8)
 /**
  * The six KPI tiles of the reference (sr/home-2-kpis.webp): four to a row, each a white 12 dp tile with a 1 dp indigo outline, a
  * big black numeral over a small indigo label. Order: outlets visited of planned, strike rate, issue, current stock, non-visit,
- * no sale. Issue and current stock add the categories exactly as the existing app does (the per-category split is in Summary).
+ * no sale. Issue and current stock are listed per category in the category's own unit (packets, boxes, dozens; never added across
+ * units, docs/34 s4.2), with any base-unit remainder in small text.
  */
 @Composable
 private fun KpiGrid(hero: HomeHero?, k: HomeKpis) {
     val visited = hero?.visited ?: 0
     val planned = hero?.target ?: 0
-    val cells = listOf(
+    val issueLabel = stringResource(R.string.hm_stock_issue)
+    val currentLabel = stringResource(R.string.hm_stock_current)
+    val cells = listOf<Pair<String?, String>>(
         stringResource(R.string.hm_meter_value, localizedNumber(visited.toLong()), localizedNumber(planned.toLong())) to stringResource(R.string.hm_hero_meter),
         (k.strikeRateText?.let { localizedDigits(it) } ?: stringResource(R.string.hm_kpi_none)) to stringResource(R.string.hm_kpi_strike),
-        localizedNumber(k.stock.sumOf { it.issueBase }) to stringResource(R.string.hm_stock_issue),
-        localizedNumber(k.stock.sumOf { it.currentBase }) to stringResource(R.string.hm_stock_current),
+        null to stringResource(R.string.hm_stock_issue),
+        null to stringResource(R.string.hm_stock_current),
         localizedNumber(k.nonVisit.toLong()) to stringResource(R.string.hm_kpi_non_visit),
         localizedNumber(k.noSale.toLong()) to stringResource(R.string.hm_kpi_no_sale),
     )
@@ -308,10 +311,50 @@ private fun KpiGrid(hero: HomeHero?, k: HomeKpis) {
     Column(Modifier.fillMaxWidth().testTag(HomeScreenTags.KPI), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         cells.chunked(columns).forEach { row ->
             Row(Modifier.fillMaxWidth().height(IntrinsicSize.Max), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                row.forEach { (value, label) -> KpiTile(label, value, Modifier.weight(1f).fillMaxHeight()) }
+                row.forEach { (value, label) ->
+                    when (label) {
+                        issueLabel -> StockKpiTile(label, k.stock.filter { it.issueBase != 0L || it.issueRemBase != 0L }.map { it.categoryLabel to figureText(it.issueBase, it.issueRemBase, it) }, Modifier.weight(1f).fillMaxHeight())
+                        currentLabel -> StockKpiTile(label, k.stock.filter { it.currentBase != 0L || it.currentRemBase != 0L }.map { it.categoryLabel to figureText(it.currentBase, it.currentRemBase, it) }, Modifier.weight(1f).fillMaxHeight())
+                        else -> KpiTile(label, value.orEmpty(), Modifier.weight(1f).fillMaxHeight())
+                    }
+                }
                 repeat(columns - row.size) { Spacer(Modifier.weight(1f)) }
             }
         }
+    }
+}
+
+/** "12 packets" or "12 packets + 5 sticks": whole entry units, then the base-unit remainder (never floored away). */
+@Composable
+private fun figureText(whole: Long, remBase: Long, line: HomeStockLine): Pair<String, String> =
+    stringResource(R.string.hm_qty_unit, localizedNumber(whole), line.unitLabel) to com.aktcl.aron.core.ui.remWithUnit(remBase, line.baseUnitLabel)
+
+/** The Issue and Current-stock tiles: one line per category in its own unit; "0" when nothing is loaded. */
+@Composable
+private fun StockKpiTile(label: String, lines: List<Pair<String, Pair<String, String>>>, modifier: Modifier) {
+    val shape = RoundedCornerShape(12.dp)
+    val look = LocalAronLook.current
+    Column(
+        modifier.heightIn(min = 84.dp).clip(shape).background(look.card).border(1.dp, if (look.sunlight) look.purple else KpiOutline, shape).padding(horizontal = 4.dp, vertical = 10.dp),
+        horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.SpaceBetween,
+    ) {
+        if (lines.isEmpty()) Text(localizedNumber(0), color = look.ink, fontSize = 26.sp, maxLines = 1)
+        else Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            lines.forEach { (cat, figure) ->
+                Text(cat, color = look.tileLabel, fontSize = 11.sp, textAlign = TextAlign.Center)
+                // the whole units on one line, the base remainder small on its own line: nothing clips at 360 dp or at large text
+                Text(
+                    figure.first, color = look.ink, fontSize = 15.sp, textAlign = TextAlign.Center, maxLines = 1, softWrap = false,
+                    autoSize = TextAutoSize.StepBased(minFontSize = 9.sp, maxFontSize = 15.sp, stepSize = 1.sp),
+                )
+                if (figure.second.isNotEmpty()) Text(
+                    figure.second, color = look.ink, fontSize = 12.sp, textAlign = TextAlign.Center, maxLines = 1, softWrap = false,
+                    autoSize = TextAutoSize.StepBased(minFontSize = 8.sp, maxFontSize = 12.sp, stepSize = 1.sp),
+                )
+                Spacer(Modifier.height(3.dp))
+            }
+        }
+        Text(label, color = look.tileLabel, fontSize = 12.sp, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 6.dp))
     }
 }
 
@@ -333,7 +376,7 @@ private fun KpiTile(label: String, value: String, modifier: Modifier) {
 }
 
 /**
- * The sales panel (sr/home-2-kpis.webp): a vertical red-to-purple gradient with white text. Left: the headline "বিক্রয় (স্টিক)"
+ * The sales panel (sr/home-2-kpis.webp): a vertical red-to-purple gradient with white text. Left: the headline "বিক্রয় (প্যাকেট)"
  * over the sticks sold. Right: one row per category with a sale, then gross (`মোট`), the offer discount (`ডিসকাউন্ট`, zero while
  * docs/27 defers programmes) and `QC`, each bound to its OWN field, a rule, and the net `সর্বমোট`. Rows carry no ৳ sign.
  */
@@ -352,7 +395,7 @@ private fun SalesPanel(m: HomeMoneyLines) {
                 Text(stringResource(R.string.hm_sales_unit), color = white, fontSize = 12.sp, modifier = Modifier.padding(bottom = 4.dp))
             }
             Spacer(Modifier.height(10.dp))
-            Text(localizedNumber(m.sticksSold), color = white, fontSize = 26.sp)
+            Text(localizedNumber(m.packetsSold), color = white, fontSize = 26.sp)
         }
         Column(Modifier.weight(1.2f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             m.categories.forEach { PanelRow(it.label, it.amountBare, white, 15) }

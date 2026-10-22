@@ -50,6 +50,7 @@ import com.aktcl.aron.core.database.entity.OutletEntity
 import com.aktcl.aron.core.printing.bt.PrinterManager
 import com.aktcl.aron.core.printing.ui.HoldPrinter
 import com.aktcl.aron.core.printing.ui.PrinterIndicator
+import com.aktcl.aron.core.printing.ui.PrinterDiagnosticsScreen
 import com.aktcl.aron.core.printing.ui.PrinterPickerDialog
 import com.aktcl.aron.core.ui.aron.AronPrinterBadge
 import com.aktcl.aron.core.ui.aron.AronScaffold as ParityScaffold
@@ -115,13 +116,13 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import com.aktcl.aron.feature.home.R as HomeR
 
-enum class SrScreen { PERMISSIONS, ROUTE_PICK, HOME, ATTENDANCE, STOCK, PICKER, VISIT, FORCE, TASKS, SETTINGS, SUPPORT, OUTLET_MENU, OWN_REQUESTS, REQUEST_OUTLET, REQUEST_FORM, NO_SALE, SKIP, MEMO, EDIT, SUMMARY, SUBMIT, JOURNEY, KPI, TUTORIAL }
+enum class SrScreen { PERMISSIONS, ROUTE_PICK, HOME, ATTENDANCE, STOCK, PICKER, VISIT, FORCE, TASKS, SETTINGS, SUPPORT, PRINTER_DIAG, OUTLET_MENU, OWN_REQUESTS, REQUEST_OUTLET, REQUEST_FORM, NO_SALE, SKIP, MEMO, EDIT, SUMMARY, SUBMIT, JOURNEY, KPI, TUTORIAL }
 
 /** The screen tree of the SR app: Back and the top bar's back button follow the same parent mapping; depth drives the transition direction. */
 object SrNav {
     fun parent(s: SrScreen): SrScreen = when (s) {
         SrScreen.FORCE, SrScreen.NO_SALE -> SrScreen.VISIT
-        SrScreen.SUPPORT -> SrScreen.SETTINGS
+        SrScreen.SUPPORT, SrScreen.PRINTER_DIAG -> SrScreen.SETTINGS
         SrScreen.OWN_REQUESTS, SrScreen.REQUEST_FORM, SrScreen.REQUEST_OUTLET -> SrScreen.OUTLET_MENU
         SrScreen.SKIP -> SrScreen.PICKER
         SrScreen.EDIT -> SrScreen.MEMO
@@ -307,7 +308,7 @@ fun SrApp(
         "cigarette" to stringResource(R.string.sr_cat_cigarette), "bidi" to stringResource(R.string.sr_cat_bidi),
         "lighter" to stringResource(R.string.sr_cat_lighter), "match" to stringResource(R.string.sr_cat_match),
     )
-    val unitLabels = mapOf("stick" to stringResource(R.string.sr_unit_stick), "piece" to stringResource(R.string.sr_unit_piece), "dozen" to stringResource(R.string.sr_unit_dozen))
+    val unitLabels = listOf("packet", "box", "dozen", "stick", "piece").associateWith { com.aktcl.aron.core.ui.entryUnitLabel(it) }
     var homeSnap by remember { mutableStateOf<SrHomeSnapshot?>(null) }
     val onHome = screen == SrScreen.HOME
     LaunchedEffect(data, attendance, resumeTick, onHome, loaded) {
@@ -409,10 +410,13 @@ fun SrApp(
                 photosWifiOnly = wifiOnly,
                 onPhotosWifiOnly = { on -> wifiOnly = on; mediaShell?.setWifiOnly(on) },
                 onSupport = shell?.let { { screen = SrScreen.SUPPORT } },
+                onPrinter = { screen = SrScreen.PRINTER_DIAG },
                 onBack = goBack, sunlight = sunlight, onSunlight = onSunlight, sync = sync, onSync = openSync, health = health ?: deviceHealth,
             )
         }
         SrScreen.SUPPORT -> SrFrame(stringResource(HomeR.string.set_support), goBack, sync, openSync) { shell?.let { SupportHost(it, day.userId, versionText) } }
+        // D-PRINT-02: no HoldPrinter here, the diagnostics open their own link (the printer takes one at a time)
+        SrScreen.PRINTER_DIAG -> SrFrame(stringResource(HomeR.string.set_printer), goBack, sync, openSync) { PrinterDiagnosticsScreen(day.printerManager, versionText) }
         SrScreen.STOCK -> SrFrame(stringResource(HomeR.string.hm_tile_stock), goBack, sync, openSync, printer = day.printerManager, icon = CoreR.drawable.aron_art_stock) { StockHost(day) }
         SrScreen.PICKER -> SrFrame(stringResource(HomeR.string.hm_tile_sale), goBack, sync, openSync, icon = CoreR.drawable.aron_art_sale) {
             PermissionGate(GatedFeature.SALE, onBack = goBack) {

@@ -29,7 +29,11 @@ data class StoredMemo(
     val supersedesMemoNo: String? = null,
 )
 
-data class MemoItem(val skuId: Long, val qtyBase: Long, val unitPriceMtk: Long, val grossMtk: Long)
+/**
+ * One stored memo line: [qtyBase] is what the server aggregates; [qtyEntered] in [unitEntered] (`pack`, `dozen`, `stick`, `piece`)
+ * is what the rep counted and what the screens and the paper show (docs/34 s4.2). A blank [unitEntered] means "base units".
+ */
+data class MemoItem(val skuId: Long, val qtyBase: Long, val unitPriceMtk: Long, val grossMtk: Long, val qtyEntered: Long = qtyBase, val unitEntered: String = "")
 data class MemoDiscountItem(val skuId: Long?, val qtyBase: Long, val valueMtk: Long, val kind: String)
 data class MemoQcItem(val skuId: Long, val qtyBase: Long, val settlementMtk: Long)
 

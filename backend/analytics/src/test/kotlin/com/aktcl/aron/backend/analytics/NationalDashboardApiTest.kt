@@ -37,7 +37,7 @@ class NationalDashboardApiTest : ReportFixture() {
 
     override fun mount(r: Route, clock: AronClock, reach: ReachResolver, guard: AuthGuardDeps) {
         val brandOne = fresh.db.jdbi.withHandle<Long, Exception> { it.createQuery("SELECT id FROM app.product_node WHERE level = 'brand' AND code = 'B1'").mapTo(Long::class.java).one() }
-        reaches[15] = Reach(15, Role.TOP, day, true, emptySet(), emptySet(), false, emptyList())
+        reaches[15] = Reach(15, Role.BRAND, day, true, emptySet(), emptySet(), false, emptyList())
         val resolver = ReachResolver { uid, role, sv, d -> if (uid == 15L) reaches.getValue(15) else reach.reach(uid, role, sv, d) }
         r.nationalDashboardRoutes(NationalDeps(NationalDashboardService(fresh.db, testClock), resolver, guard, BrandScopeResolver { uid, _ -> if (uid == 15L) setOf(brandOne) else null }, testClock))
     }
@@ -54,12 +54,12 @@ class NationalDashboardApiTest : ReportFixture() {
     fun everyCardAnswersOverHttpWithTheContractsRequiredFields() = app {
         val cards = mapOf(
             "/dashboards/national/sales" to listOf("working_days", "cards"),
-            "/dashboards/national/cpr" to listOf("target_outlets", "successful_calls", "cpr_pct"),
+            "/dashboards/national/cpr" to listOf("target_outlets", "successful_calls", "cpr_pct_bp"),
             "/dashboards/national/channel-calls" to listOf("channels", "total", "unclassified"),
-            "/dashboards/national/final-submit" to listOf("total_zones", "service_zones", "final_submitted", "remaining", "submit_pct"),
-            "/dashboards/national/login-submit" to listOf("target_routes", "successful_login", "login_pct", "submitted", "submit_pct"),
+            "/dashboards/national/final-submit" to listOf("total_zones", "service_zones", "final_submitted", "remaining", "submit_pct_bp"),
+            "/dashboards/national/login-submit" to listOf("target_routes", "successful_login", "login_pct_bp", "submitted", "submit_pct_bp"),
             "/dashboards/national/channel-std" to listOf("channels", "total", "unit"),
-            "/dashboards/national/geo-fencing" to listOf("total_calls", "geo_validated", "geo_pct"),
+            "/dashboards/national/geo-fencing" to listOf("total_calls", "geo_validated", "geo_pct_bp"),
             "/dashboards/national/ff-geo/pins" to listOf("pins", "counts", "routes_without_position"),
         )
         for ((path, fields) in cards) {
@@ -109,12 +109,13 @@ class NationalDashboardApiTest : ReportFixture() {
 
     @Test
     fun aBrandUserSeesTheProductCardsOfItsBrandsOnlyAndNothingElse() = app {
-        val s = post(15, Role.TOP, "/dashboards/national/sales").obj()
+        val sr = post(15, Role.BRAND, "/dashboards/national/sales"); assertEquals(HttpStatusCode.OK, sr.status, sr.bodyAsText())
+        val s = sr.obj()
         assertEquals(65, s["cards"]!!.jsonArray.map { it.jsonObject }.single { it["category_code"]!!.jsonPrimitive.content == "cigarette" }["total_sales"]!!.jsonPrimitive.content.toLong())
-        val bd = post(15, Role.TOP, "/dashboards/national/breakdown", """{"filter":{"date":"2026-10-04"},"measure":"std","dimension":"brand"}""").obj()
+        val bd = post(15, Role.BRAND, "/dashboards/national/breakdown", """{"filter":{"date":"2026-10-04"},"measure":"std","dimension":"brand"}""").obj()
         assertEquals(listOf("B1"), bd["items"]!!.jsonArray.map { it.jsonObject["code"]!!.jsonPrimitive.content })
-        for (p in listOf("cpr", "final-submit", "login-submit", "geo-fencing", "ff-geo/pins")) assertEquals(HttpStatusCode.Forbidden, post(15, Role.TOP, "/dashboards/national/$p", if (p.endsWith("/pins")) pinsBody else """{"date":"2026-10-04"}""").status, p)
-        assertEquals(HttpStatusCode.Forbidden, get(15, Role.TOP, "/dashboards/route-map/1").status)
-        assertFalse(post(15, Role.TOP, "/dashboards/national/channel-std").bodyAsText().contains("BrandTwo"))
+        for (p in listOf("cpr", "final-submit", "login-submit", "geo-fencing", "ff-geo/pins")) assertEquals(HttpStatusCode.Forbidden, post(15, Role.BRAND, "/dashboards/national/$p", if (p.endsWith("/pins")) pinsBody else """{"date":"2026-10-04"}""").status, p)
+        assertEquals(HttpStatusCode.Forbidden, get(15, Role.BRAND, "/dashboards/route-map/1").status)
+        assertFalse(post(15, Role.BRAND, "/dashboards/national/channel-std").bodyAsText().contains("BrandTwo"))
     }
 }

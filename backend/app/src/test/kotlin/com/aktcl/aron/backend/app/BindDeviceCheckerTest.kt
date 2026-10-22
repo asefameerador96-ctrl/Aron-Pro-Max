@@ -418,10 +418,10 @@ class BindDeviceCheckerTest {
         assertNull(items.firstOrNull { it["user_id"]!!.jsonPrimitive.long == outside.userId }, "the out-of-scope SR is not listed")
         // Explicit out-of-reach zone filter is refused.
         assertEquals("ERR_OUT_OF_SCOPE", client.get("/v1/admin/device-otps?zone_id=$outZone") { bearerAuth(tso) }.code())
-        // An SR cannot read the panel (its own OTP included).
-        val srTok = client.webToken("amo1001").let { it }
-        val asAmo = client.get("/v1/admin/device-otps") { bearerAuth(srTok) }
+        // A field role cannot reach the panel: D-ROLES-02: no portal login for SR/AMO, so the AMO's web login is refused.
+        val asAmo = client.post("/v1/auth/login") { contentType(ContentType.Application.Json); setBody("""{"username":"amo1001","password":"$password","client":"web"}""") }
         assertEquals(HttpStatusCode.Forbidden, asAmo.status, asAmo.bodyAsText())
+        assertEquals("ERR_AUTH_PORTAL_NOT_ALLOWED", asAmo.code())
         // After 5 wrong tries the code leaves the panel.
         val t = client.bindToken(inside)
         repeat(5) { client.bind(inside, t, wrong(otpIn)) }

@@ -36,3 +36,4 @@ GET /v1/sync/delta  # per-caller: answers only the caller's own data (bundle, to
 GET /v1/sync/generation  # global by design: catalogue, configuration or calendar shared by every division
 GET /v1/sync/totals  # per-caller: answers only the caller's own data (bundle, totals, exports, own media)
 GET /v1/tutorials  # global by design: catalogue, configuration or calendar shared by every division
+GET /v1/dashboards/national/freshness  # global by design: table names and last-updated times only, no geography or product rows

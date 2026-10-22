@@ -32,6 +32,9 @@ internal object DashboardSummaries {
             "SELECT table_name || '.' || column_name FROM information_schema.columns WHERE table_schema = 'dw' AND table_name = ANY(:t)",
         ).bindArray("t", String::class.java, columns.keys.toList()).mapTo(String::class.java).list().toSet()
         if (!wanted.all { (t, c) -> "$t.$c" in found }) return false
+        // The source of the route class must exist too: without it every route would silently count as normal (checker finding 8).
+        val routeClass = h.createQuery("SELECT count(*) FROM information_schema.columns WHERE table_schema = 'app' AND table_name = 'route' AND column_name = 'route_class'").mapTo(Long::class.java).one()
+        if (routeClass == 0L) return false
         return h.createQuery("SELECT count(*) FROM information_schema.tables WHERE table_schema = 'dw' AND table_name = ANY(:t)")
             .bindArray("t", String::class.java, tables).mapTo(Long::class.java).one() == tables.size.toLong()
     }
@@ -41,14 +44,14 @@ internal object DashboardSummaries {
         h.execute(
             """
             UPDATE dw.dim_geo g SET
-              route_class = coalesce(to_jsonb(r)->>'route_class', 'normal'),
+              route_class = r.route_class,
               house_id    = (SELECT min(h2.id) FROM app.house h2 WHERE h2.territory_id = hs.territory_id AND lower(h2.name) = lower(hs.name)
                                 AND coalesce(to_jsonb(h2)->>'status', 'active') = 'active'),
               house_name  = hs.name
               FROM app.route r JOIN app.zone z ON z.id = r.zone_id LEFT JOIN app.house hs ON hs.id = z.house_id
              WHERE g.route_id = r.id
                AND (g.route_class, g.house_id, g.house_name) IS DISTINCT FROM
-                   (coalesce(to_jsonb(r)->>'route_class', 'normal'),
+                   (r.route_class,
                     (SELECT min(h2.id) FROM app.house h2 WHERE h2.territory_id = hs.territory_id AND lower(h2.name) = lower(hs.name)
                         AND coalesce(to_jsonb(h2)->>'status', 'active') = 'active'),
                     hs.name)
@@ -56,11 +59,11 @@ internal object DashboardSummaries {
         )
         h.execute(
             """
-            UPDATE dw.dim_product p SET segment_code = sg.code, brand_code = b.code, variant_code = v.code
+            UPDATE dw.dim_product p SET segment_code = coalesce(sg.code, 'n' || sg.id), brand_code = coalesce(b.code, 'n' || b.id), variant_code = coalesce(v.code, 'n' || v.id)
               FROM app.sku s JOIN app.product_node v ON v.id = s.variant_id JOIN app.product_node b ON b.id = v.parent_id
               JOIN app.product_node sg ON sg.id = b.parent_id
              WHERE p.sku_id = s.id
-               AND (p.segment_code, p.brand_code, p.variant_code) IS DISTINCT FROM (sg.code, b.code, v.code)
+               AND (p.segment_code, p.brand_code, p.variant_code) IS DISTINCT FROM (coalesce(sg.code, 'n' || sg.id), coalesce(b.code, 'n' || b.id), coalesce(v.code, 'n' || v.id))
             """,
         )
     }
@@ -69,6 +72,22 @@ internal object DashboardSummaries {
 
     /** Route-day part: outlet × SKU sales, the route's latest position, call counts, sale times, download time, visit geometry. */
     fun rebuildRouteDay(h: Handle, routeId: Long, date: LocalDate, wm: Long) {
+        // A voided fix leaves the map path and the distance (the generic fact rebuild only upserts).
+        h.createUpdate(
+            """
+            DELETE FROM dw.fact_geo_fix f WHERE f.route_id = :r AND f.business_date = :d
+               AND NOT EXISTS (SELECT 1 FROM app.geo_fix g WHERE g.source_client_uuid = f.source_client_uuid AND g.slot = f.slot
+                                  AND g.business_date = f.business_date AND g.voided_at IS NULL)
+            """,
+        ).bind("r", routeId).bind("d", date).execute()
+        // Target outlets are frozen at the first bundle; a route nobody downloaded yet counts its active outlets.
+        h.createUpdate(
+            """
+            UPDATE dw.agg_daily_route a SET target_outlets = (SELECT count(*) FROM app.outlet o WHERE o.route_id = :r AND o.status = 'active')
+             WHERE a.route_id = :r AND a.business_date = :d AND a.target_outlets = 0
+               AND NOT EXISTS (SELECT 1 FROM app.route_day rd WHERE rd.route_id = :r AND rd.business_date = :d AND rd.target_frozen_at IS NOT NULL)
+            """,
+        ).bind("r", routeId).bind("d", date).execute()
         h.createUpdate("DELETE FROM dw.agg_daily_outlet_sku WHERE route_id = :r AND business_date = :d").bind("r", routeId).bind("d", date).execute()
         h.createUpdate(
             """
@@ -151,14 +170,36 @@ internal object DashboardSummaries {
     fun autoSubmit(h: Handle, today: LocalDate): Int = h.createUpdate(
         """
         UPDATE dw.agg_daily_zone z SET final_submitted_at = ((z.business_date + 1)::timestamp AT TIME ZONE 'Asia/Dhaka'), auto_submitted = true
-         WHERE z.business_date < :today AND z.final_submitted_at IS NULL
+         WHERE z.business_date < :today AND z.business_date >= :today - 7 AND z.final_submitted_at IS NULL
+           AND NOT EXISTS (SELECT 1 FROM app.final_submit f WHERE f.zone_id = z.zone_id AND f.business_date = z.business_date AND f.reopened_at IS NULL)
            AND EXISTS (SELECT 1 FROM dw.agg_daily_route a JOIN dw.dim_geo g ON g.route_id = a.route_id
-                        WHERE a.zone_id = z.zone_id AND a.business_date = z.business_date AND a.planned AND NOT a.exception_approved AND g.route_class = 'normal')
+                        WHERE a.zone_id = z.zone_id AND a.business_date = z.business_date AND a.planned AND NOT a.exception_approved AND g.route_class = 'normal' AND g.route_kind = 'sr')
         """,
     ).bind("today", today).execute()
 
-    /** The summary tables are current as of [at]: written when the worker found nothing left to project or rebuild. */
-    fun touchFreshness(h: Handle, at: Instant) {
+    /**
+     * Route-days the outbox does not announce: planned ones with no aggregate row yet (nobody opened the app) and ones whose positions
+     * arrived since [since] (geo fixes emit no event). Marks them dirty; the next drain rebuilds them.
+     */
+    fun dirtyStale(h: Handle, since: Instant, today: LocalDate): Int = h.createQuery(
+        """
+        SELECT DISTINCT route_id, business_date FROM (
+          SELECT rd.route_id, rd.business_date FROM app.route_day rd
+           WHERE rd.business_date = :today AND rd.planned
+             AND NOT EXISTS (SELECT 1 FROM dw.agg_daily_route a WHERE a.route_id = rd.route_id AND a.business_date = rd.business_date)
+          UNION ALL
+          SELECT g.route_id, g.business_date FROM app.geo_fix g WHERE g.received_at > :since AND g.route_id IS NOT NULL AND g.business_date >= :today - 1
+        ) s
+        """,
+    ).bind("today", today).bind("since", since).map { rs, _ -> rs.getLong(1) to rs.getObject(2, LocalDate::class.java) }.list()
+        .onEach { (r, d) -> h.execute("SELECT app.mark_dirty('route_day_agg', ?, ?, 'stale_scan')", r, d) }.size
+
+    /** The summary tables are current as of the time given: see [touchFreshness]. */
+    fun touchFreshness(h: Handle, now: Instant) {
+        // Current as of now, or as of the oldest change still waiting (or stuck) in the rebuild queue: the page never claims more than is true.
+        val pending = h.createQuery("SELECT min(last_dirtied_at) FROM app.dirty_key WHERE kind IN ('route_day_agg', 'zone_day_agg')")
+            .map { rs, _ -> rs.getTimestamp(1)?.toInstant() }.one()
+        val at = if (pending != null && pending.isBefore(now)) pending else now
         val wm = h.createQuery("SELECT coalesce(max(id), 0) FROM app.domain_event").mapTo(Long::class.java).one()
         for (t in FRESHNESS_TABLES) {
             h.createUpdate(
