@@ -40,7 +40,7 @@ CREATE TABLE app.device_command (
   CHECK (expires_at > requested_at AND expires_at <= requested_at + interval '30 days'),
   CHECK ((approved_by IS NULL) = (approved_at IS NULL)),
   CHECK (approved_by IS NULL OR approved_by <> requested_by),
-  CHECK (type <> 'factory_reset' OR status IN ('pending_approval', 'cancelled') OR approved_by IS NOT NULL),
+  CHECK (type <> 'factory_reset' OR status IN ('pending_approval', 'cancelled', 'expired') OR approved_by IS NOT NULL),
   CHECK (status <> 'pending_approval' OR type = 'factory_reset'),
   CHECK ((status = 'cancelled') = (cancelled_by IS NOT NULL))
 );

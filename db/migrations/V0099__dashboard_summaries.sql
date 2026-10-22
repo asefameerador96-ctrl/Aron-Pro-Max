@@ -24,7 +24,7 @@ CREATE TABLE dw.agg_daily_outlet_sku (
   updated_at     timestamptz NOT NULL DEFAULT now(),
   PRIMARY KEY (business_date, route_id, outlet_id, sku_id)
 ) PARTITION BY RANGE (business_date);
-INSERT INTO app.partition_policy (parent) VALUES ('dw.agg_daily_outlet_sku');
+INSERT INTO app.partition_policy (parent, retention_class) VALUES ('dw.agg_daily_outlet_sku', 'event_fact');
 
 CREATE TABLE dw.agg_daily_route_variant (
   business_date  date   NOT NULL,

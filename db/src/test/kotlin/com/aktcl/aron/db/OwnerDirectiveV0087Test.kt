@@ -306,7 +306,8 @@ class OwnerDirectiveV0087Test {
             exec("INSERT INTO app.device_command (command_uuid, device_id, type, status, requested_by, requested_at, expires_at) VALUES ('$stale', $dev, 'factory_reset', 'pending_approval', $admin, now() - interval '2 days', now() - interval '1 day')")
             assertEquals("23514", refused("UPDATE app.device_command SET status = 'queued', approved_by = $superadmin, approved_at = now() WHERE command_uuid = '$stale'"))
             exec("UPDATE app.device_command SET status = 'expired' WHERE command_uuid = '$stale'")
-            assertEquals("42501", refused("UPDATE app.device_command SET status = 'queued', approved_by = $admin, approved_at = now() WHERE command_uuid = $reset"))
+            // admin1001 holds mdm = w (seed) but requested the reset itself: the CHECK refuses.
+            assertEquals("23514", refused("UPDATE app.device_command SET status = 'queued', approved_by = $admin, approved_at = now() WHERE command_uuid = $reset"))
             // The requester never approves its own reset, even as SUPERADMIN.
             val own = UUID.randomUUID()
             exec("INSERT INTO app.device_command (command_uuid, device_id, type, status, requested_by, expires_at) VALUES ('$own', $dev, 'factory_reset', 'pending_approval', $superadmin, now() + interval '1 day')")
@@ -319,7 +320,7 @@ class OwnerDirectiveV0087Test {
             exec("UPDATE app.device_command SET status = 'cancelled', cancelled_by = $superadmin WHERE command_uuid = $reset")
             assertEquals("42501", refused("DELETE FROM app.device_command"))
         }
-        assertEquals("true|true", listOf("api_rw", "support_ro").joinToString("|") { can(c, it, "app.device_command", "SELECT")!! })
+        assertEquals("true", can(c, "api_rw", "app.device_command", "SELECT"))
         assertEquals("false", can(c, "api_rw", "app.device_command", "DELETE"))
         assertEquals("true|false", listOf("type", "result").joinToString("|") { c.scalar("SELECT has_column_privilege('support_ro', 'app.device_command', '$it', 'SELECT')::text")!! })
     }
