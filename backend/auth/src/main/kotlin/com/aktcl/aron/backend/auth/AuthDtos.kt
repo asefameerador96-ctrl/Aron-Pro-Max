@@ -80,6 +80,10 @@ data class Jwks(val keys: List<JwkEcPublic>)
 data class Me(val user: UserSummary, val permissions: List<String>, val scope: ScopeSummary, val pii: Boolean, val mfa_enabled: Boolean, val menus: List<kotlinx.serialization.json.JsonElement>? = null,
     /** End of the caller's PII reveal window while [pii] is true, else null (D-AUTHZ-PII). */
     val pii_until: String? = null,
+    /** D-ROLES-02: ADMIN its token's module grants, SUPERADMIN every module at `w`; absent for other roles and before the grants are deployed. */
+    val modules: Map<String, String>? = null,
+    /** D-ROLES-02: a BRAND user's brand node ids (its token's claim); absent for other roles. */
+    val brands: List<Long>? = null,
 )
 
 /** POST /v1/auth/reauth (contract ReauthRequest; never logged): the password, and a TOTP code for an MFA user. */
