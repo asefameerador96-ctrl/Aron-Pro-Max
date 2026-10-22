@@ -2,7 +2,52 @@
 
 Updated with every push. Rows of Day 1: N-005, N-006, N-007, N-008 (`python3 tools/my-rows.py db 1 --full`).
 
-## Session 7, 2026-10-22 (Wave 4, docs/34; handover at the top)
+## HANDOVER (session 7 -> session 8), 2026-10-22, lane/db e1250831 (INT 256572bb merged)
+
+**Pushed, CI to judge.** Local evidence before the push (lead stopped the run at 557k context): db 267/0, backend
+platform 79, auth 71, sync 34, masterdata 192, config 68, media 16, all green on lane/db alone; **analytics, notify,
+app and shared:contract were not run on the final tree.** squawk 0 on V0087-V0104. Opus checker: round 1 FAIL (fixed),
+round 2 PASS (it reviewed the tree before the backend-admin/mdm realignment of V0096/V0102; those two are unchecked).
+Consumers' contract and per-lane deltas: `docs/requests/db-wave4-tables.md`; mdm answer `db-mdm-device-command-answer.md`.
+
+| Migration | What it does | Source |
+|---|---|---|
+| V0087 / V0088 | role codes NATIONAL (11), BRAND (12); NATIONAL inherits TOP's role cfg values, BRAND the web-role defaults; `*_roles` lists naming TOP gain NATIONAL; menu_by_role NATIONAL = TOP, BRAND = dashboard + reports; role_grant_map TOP -> NATIONAL. V0088 validates role_def_role_check | backend-authz A1-A4 |
+| held | TOP users -> NATIONAL + `app_user_no_top`: `db/held/authz_retire_top.sql` (INT tests still insert TOP users). Ship as the next pair when backend-authz says its tests are ready | backend-authz A4/A5 |
+| V0089 | `app.user_module_grant` (15 fixed modules, r/w), admins seeded w; seed 01 grants admin1001 (guarded by to_regclass) | backend-authz B |
+| V0090 | `app.user_brand_scope` (brand nodes only) | backend-authz C |
+| V0091 / V0092 | `user_scope.node_type` += house | backend-authz D |
+| V0093 | `house.is_active` (generated from status), one-off dedupe, unique active (territory, name) index, dim_geo house_id/name | brief s1 |
+| V0094 / V0095 | `route.route_class` normal/manual/dummy_br/dummy_institutional (+ dim_geo, version) | backend-reports A1 |
+| V0096 | `app.route_monthly_target` PK (route, sku, month) + `app.route_target_batch` | backend-admin DDL |
+| V0097 | `dw.v_calendar`, `v_calendar_month`, `v_working_day`, `v_route_monthly_target` | brief s2 / reports A5 |
+| V0098 | dim_product segment/brand/variant codes | reports A4 |
+| V0099 | agg_daily_outlet_sku (partitioned), agg_daily_route_variant, route_last_position, agg_daily_route/zone columns, summary_freshness | reports B1-B5, B7 |
+| V0100 | fact_visit radius_m, outlet/fix lat/lng, force_photo_uuid, completed, server_distance_m, within_fence (generated) | reports B6 |
+| V0101 | `dw.v_final_submit_log` (first submit wins) | brief s3.3 |
+| V0102 / V0103 | `mdm_policy`, `device.mdm_policy_id/version`, `device_command` + guard trigger, `dw.v_device_command`; V0103 validates the device constraints | mdm DDL |
+| V0104 | lighters 25/box, entry units pack/pack/pack/dozen, cfg.sale.qty_entry_unit default, `cfg.sale.allow_loose_base_units` | docs/34 s4.2 |
+| outlet.channel | nothing: NOT NULL with the six channels since V0004 | |
+| seed 06 | Gulshan/Banani dev geography (built, tested in SeedGulshanBananiTest): dev profile only (no 04 config version); replaces 06_dev_real_route.sql; map `docs/evidence/seed-gulshan-banani.md` | D-SEED-02 |
+
+**Session 8, in order:**
+1. Watch CI on e1250831; fix forward. Not yet run here on the final tree: `:backend:analytics:test`, `:backend:notify:test`,
+   `:backend:app:test`, `:shared:contract:jvmTest`.
+2. **Known clash for backend-reports' branch:** their fixtures (NationalDashboardTest x11, NationalMapsTest x6,
+   NationalDashboardApiTest x5) insert duplicate ACTIVE houses on purpose; V0093's unique index `house_active_name_once`
+   refuses them (they called the index optional). Either drop the index in a new migration (V0105) or ask them to adapt.
+   Lead's call; my recommendation: drop it (their query de-duplicates; the one-off dedupe stays).
+3. Combined tree (lane/db with the re-role + backend-authz e449edb7 + reports ec0976ed): 68/1325 failed, list sent to
+   backend-authz (TOP inserts, grant-less test admins -> 403, portal-login refusal, password rules). Their work.
+4. Checker the realigned V0096 and V0102 (T1, Opus).
+5. Infra: the dev smoke outlet sits on MIR-SR-D, which the dev seed closes (`db-infra-smoke-gulshan.md`); promote the seed
+   with that change. Checker follow-up before the final account: retention of `route_last_position` (unpartitioned,
+   personal) and `fact_visit.fix_lat/lng` (event_fact horizon > fix class).
+6. Replies owed: candidate sha to backend-authz (session_019B2UpUbUmdw1wR25U3zPMj), backend-reports
+   (session_01KfUFry6iMtXCCgfCCjZUCi), mdm (session_01DVRkAnyU5vkAm8vSEydVoa), backend-admin's next session; route.kind stays
+   sr/amo, the API rule becomes `kind = 'sr' AND route_class IN ('normal','manual')`.
+
+## Session 7, 2026-10-22 (Wave 4, docs/34): detail
 
 **Built on lane/db:** V0087-V0103 (one test per migration, `OwnerDirectiveV0087Test`), the Gulshan/Banani dev seed
 (`SeedGulshanBananiTest`), data dictionary regenerated, squawk 0. Realigned the same day to the two lane requests that
