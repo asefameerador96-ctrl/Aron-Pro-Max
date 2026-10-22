@@ -7,15 +7,17 @@ your own `docs/requests/db-<lane>-*.md` if a shape is wrong; db fixes forward wi
 
 | Your migration | db | Change from your text |
 |---|---|---|
-| A (A1–A5) | V0087, V0088 validates | `role_def_role_check` and `app_user_no_top` added NOT VALID, validated in V0088 (squawk); no `IF EXISTS` (Flyway runs once) |
+| A (A1–A4 except the user re-role) | V0087, V0088 validates | `role_def_role_check` NOT VALID, validated in V0088 (squawk); no `IF EXISTS` (Flyway runs once). **Held:** `UPDATE app_user TOP → NATIONAL` and A5 `app_user_no_top` are in `db/held/authz_retire_top.sql`, because INT's tests still create TOP users (ScopeLeakHarness, ScopeDbTest, ScopeLeakHttpTest, FSys005ReviewTest). Say when your tests are ready and db ships it as the next pair |
 | B `user_module_grant` | V0089 | + index on `granted_by`; api_rw DELETE, auth_rw SELECT grants; dictionary comments |
 | C `user_brand_scope` | V0090 | + index on `granted_by`; the same grants |
 | D `user_scope` house | V0091, V0092 validates | CHECK NOT VALID then validated |
 
 Also: the seed (`01_geography_people.sql`) gives `admin1001` w on the 15 modules when it has no grant, because a test
 database is migrated before it is seeded (V0089's seed then finds no ADMIN). Your `pending/authz-wave4.sql` fixture can
-go once this is on INT. **Promote lane/db with or after lane/backend-authz**: V0087 refuses TOP users
-(`app_user_no_top`), and INT's tests (e.g. `AuthzAuditTest` inserting `qatop1001` as TOP) need your branch.
+go once this is on INT. On the combined tree (lane/db + your e449edb7 + backend-reports) masterdata tests also answered 403 for admins the
+tests create without grants (RoutesInReachTest, OutletRequestsTest, AdminContentTest): once your probe sees
+`user_module_grant`, test-created ADMIN users need grants in those fixtures. Your `PendingAuthzSchemaTest` expects the
+TOP re-role, which is now held.
 
 ## backend-reports (docs/34 s2): your `db-backend-reports-dashboard-summaries.md` (ec0976ed)
 

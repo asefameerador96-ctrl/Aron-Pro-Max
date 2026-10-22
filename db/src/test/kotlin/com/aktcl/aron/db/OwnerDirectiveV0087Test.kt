@@ -48,9 +48,9 @@ class OwnerDirectiveV0087Test {
     @Test
     fun v0087NationalAndBrandReplaceTopForUsers() = db.connect().use { c ->
         assertEquals("NATIONAL|11|f,BRAND|12|f", c.scalar("SELECT string_agg(role || '|' || ordinal || '|' || field_role::text::char, ',' ORDER BY ordinal) FROM app.role_def WHERE ordinal > 10"))
-        assertEquals("t|t", c.scalar("SELECT string_agg(convalidated::text::char, '|' ORDER BY conname) FROM pg_constraint WHERE conname IN ('role_def_role_check', 'app_user_no_top')"))
-        // TOP stays a role code (audit history) but no user may hold it.
-        assertEquals("1|0", c.scalar("SELECT (SELECT count(*) FROM app.role_def WHERE role = 'TOP') || '|' || (SELECT count(*) FROM app.app_user WHERE role = 'TOP')"))
+        assertEquals("t", c.scalar("SELECT convalidated::text::char FROM pg_constraint WHERE conname = 'role_def_role_check'"))
+        // TOP stays a role code; retiring its users (app_user_no_top) is held in db/held/authz_retire_top.sql.
+        assertEquals("1|0", c.scalar("SELECT (SELECT count(*) FROM app.role_def WHERE role = 'TOP') || '|' || (SELECT count(*) FROM pg_constraint WHERE conname = 'app_user_no_top')"))
         // NATIONAL inherits TOP's role values; BRAND gets the two web-role defaults.
         val roleValues = { r: String -> c.scalar("SELECT string_agg(v.key || '=' || v.value::text, ',' ORDER BY v.key) FROM app.cfg_value v JOIN app.role_def d ON d.ordinal = v.scope_id WHERE v.scope_type = 'role' AND d.role = '$r' AND v.superseded_in_version IS NULL") }
         assertEquals(roleValues("TOP"), roleValues("NATIONAL"))
@@ -60,14 +60,13 @@ class OwnerDirectiveV0087Test {
         assertEquals("dashboard/dashboard,reports/reports", c.scalar("SELECT string_agg(e ->> 'menu' || '/' || (e ->> 'page'), ',') FROM jsonb_array_elements($menu -> 'BRAND') e"))
         c.tx {
             newUser(this, "qanational1", "NATIONAL"); newUser(this, "qabrand1", "BRAND")
-            assertEquals("23514", refused("INSERT INTO app.app_user (username, full_name, role) VALUES ('qatop9', 'QA TOP', 'TOP')"))
         }
     }
 
     @Test
-    fun v0087MovesTopUsersAndRoleListsOnAPopulatedDatabase() {
-        // Migrate to V0086, add a TOP user and a role list naming TOP, then run the rest: the user is NATIONAL with a
-        // new scope_version, and the list names NATIONAL too (MFA never loosens).
+    fun v0087ExtendsRoleListsOnAPopulatedDatabase() {
+        // Migrate to V0086, add a TOP user and a role list naming TOP, then run the rest: the list names NATIONAL too
+        // (MFA never loosens); the user stays TOP until the held retirement ships.
         TestPostgres.createDatabase().use { other ->
             other.flyway().let { org.flywaydb.core.Flyway.configure().configuration(it.configuration).target("86").load() }.migrate()
             other.connect().use { c ->
@@ -78,7 +77,7 @@ class OwnerDirectiveV0087Test {
             }
             other.flyway().migrate()
             other.connect().use { c ->
-                assertEquals("NATIONAL|2", c.scalar("SELECT role || '|' || scope_version FROM app.app_user WHERE username = 'qatop1'"))
+                assertEquals("TOP|1", c.scalar("SELECT role || '|' || scope_version FROM app.app_user WHERE username = 'qatop1'"))
                 assertEquals("[\"ADMIN\", \"SUPERADMIN\", \"TOP\", \"NATIONAL\"]", c.scalar("SELECT value::text FROM app.cfg_value WHERE key = 'cfg.auth.mfa_required_roles' AND superseded_in_version IS NULL"))
             }
         }

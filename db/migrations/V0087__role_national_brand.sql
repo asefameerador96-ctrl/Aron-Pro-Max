@@ -1,7 +1,7 @@
 -- V0087 role codes NATIONAL and BRAND; TOP retired and its users migrated (owner directive 2026-10-22, docs/34 s1,
 -- DECISIONS D-ROLES-02). The statements are backend-authz's request, migration A, as written
 -- (docs/requests/db-backend-authz-roles.md on lane/backend-authz e449edb7), with the two new CHECKs added NOT VALID and
--- validated in V0088 (squawk). backend-authz's API treats TOP exactly as NATIONAL, so this lands with or after its head.
+-- validated in V0088 (squawk). backend-authz's API treats TOP exactly as NATIONAL.
 -- A1. NATIONAL (ordinal 11) and BRAND (12), web-only. TOP stays in the CHECK and in role_def because audit_log.actor_role
 --     and historical rows name it; after A4 no user holds it.
 -- A2. NATIONAL inherits every open TOP role-scoped config value; BRAND gets the two V0006 web-role defaults (password
@@ -9,9 +9,8 @@
 -- A2b. A config value in effect now of any `*_roles` key whose list names TOP and not NATIONAL (cfg.auth.mfa_required_roles
 --     above all, so MFA never loosens) is closed at now and replaced by the same list plus NATIONAL until the old end.
 -- A3. cfg.web.menu_by_role default: NATIONAL = TOP's entry; BRAND = dashboard (read, filter) and reports (read, export).
--- A4. TOP's admin permissions (role_grant_map) go to NATIONAL; TOP users become NATIONAL with scope_version + 1, so a TOP
---     token in flight answers 401 ERR_SCOPE_CHANGED and the refresh mints a NATIONAL token.
--- A5. CHECK app_user_no_top: no user may hold TOP again.
+-- A4. TOP's admin permissions (role_grant_map) go to NATIONAL. Moving TOP users to NATIONAL and A5 (CHECK
+--     app_user_no_top) are held (db/held/authz_retire_top.sql; see the note at A4 below).
 
 SET lock_timeout = '5s';
 
@@ -86,9 +85,8 @@ UPDATE app.cfg_key
 INSERT INTO app.role_grant_map (role, permission)
 SELECT 'NATIONAL', permission FROM app.role_grant_map WHERE role = 'TOP'
 ON CONFLICT DO NOTHING;
-UPDATE app.app_user SET role = 'NATIONAL', scope_version = scope_version + 1 WHERE role = 'TOP';
+-- The rest of A4 (TOP users -> NATIONAL) and A5 (CHECK app_user_no_top) are HELD in db/held/authz_retire_top.sql:
+-- INT's tests still create TOP users (ScopeLeakHarness, ScopeDbTest, FSys005ReviewTest, ...), so the retirement ships
+-- as its own migration when backend-authz confirms its tests are ready (the API already treats TOP as NATIONAL).
 
--- A5
-ALTER TABLE app.app_user ADD CONSTRAINT app_user_no_top CHECK (role <> 'TOP') NOT VALID;
-
-COMMENT ON COLUMN app.role_def.role IS 'User role code (contract Role); TOP is retired (V0087: no user may hold it, kept for audit_log.actor_role and history), NATIONAL and BRAND are web-only portal levels (docs/34 s1).';
+COMMENT ON COLUMN app.role_def.role IS 'User role code (contract Role); NATIONAL and BRAND are web-only portal levels (V0087, docs/34 s1); TOP is being retired (its users move to NATIONAL; kept for audit_log.actor_role and history).';
