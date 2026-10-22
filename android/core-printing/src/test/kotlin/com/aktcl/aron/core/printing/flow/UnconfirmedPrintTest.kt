@@ -6,6 +6,7 @@ import com.aktcl.aron.core.printing.bt.SavedPrinter
 import com.aktcl.aron.core.printing.bt.SavedPrinterStore
 import com.aktcl.aron.core.printing.bt.SimPrinter
 import kotlinx.coroutines.async
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
@@ -109,5 +110,57 @@ class UnconfirmedPrintTest {
         assertEquals(SaveAndPrint.Step.AskReadable, flow.step.value)
         flow.onReadableAnswer(true)
         assertEquals(SaveAndPrint.Step.Done(printed = true), flow.step.value)
+    }
+
+    /** Default pacing (3 KB buffer, the printer keeps up): most of the memo is out while the loop still runs. */
+    private fun TestScope.defaultEnv(): Env {
+        val sim = SimPrinter({ testScheduler.currentTime })
+        val pm = PrinterManager(sim.factory(), Store(), backgroundScope, nowMs = { testScheduler.currentTime })
+        val ledger = PrintFlowTest.MemLedger()
+        val printing = MemoPrinting(pm, { Fixtures.renderer() }, ledger, { java.util.UUID.randomUUID().toString() }, { testScheduler.currentTime }, { 5 }, { true })
+        return Env(sim, ledger, pm, printing)
+    }
+
+    private fun memoBytes(): Long = com.aktcl.aron.core.printing.escpos.EscPos.job(Fixtures.renderer().memo(Fixtures.seededSale).bitmap).sumOf { it.size }.toLong()
+
+    /** Checker T1 (2bea9ecd) #1: Bluetooth lost at 90% of the memo, inside the write loop. */
+    @Test fun aDropAt90PercentInsideTheLoopAsksTheSellerAndNoMeansTheOriginalAgain() = runTest {
+        val e = defaultEnv()
+        e.sim.switchOffAtByte = 3 + memoBytes() * 9 / 10
+        val a = e.printing.printMemo(memoUuid, Fixtures.seededSale)
+        assertTrue("asked, not failed: $a", a is PrintAttempt.AwaitingConfirmation)
+        assertTrue(e.ledger.pending().single().paperOut)
+        e.sim.on = true
+        e.sim.switchOffAtByte = Long.MAX_VALUE
+        e.printing.confirm(a as PrintAttempt.AwaitingConfirmation, false)
+        val b = e.printing.printMemo(memoUuid, Fixtures.seededSale) as PrintAttempt.AwaitingConfirmation
+        e.printing.confirm(b, true)
+        assertEquals(listOf(PrintEvent.FAILED_USER, PrintEvent.PRINTED), e.ledger.events.map { it.outcome })
+        assertEquals("memo", e.ledger.events.last().documentKind)
+    }
+
+    @Test fun aDropBeforeTheFirstBandIsAPlainFailureNothingIsOnPaper() = runTest {
+        val e = defaultEnv()
+        e.sim.switchOffAtByte = 3 + 3 // inside ESC @ / ESC 3, before any image band
+        val a = e.printing.printMemo(memoUuid, Fixtures.seededSale)
+        assertTrue("$a", a is PrintAttempt.Failed)
+        assertEquals(PrintEvent.FAILED, e.ledger.events.single().outcome)
+        assertTrue(e.sim.sessions.single().isEmpty())
+    }
+
+    /** Checker T1 (2bea9ecd) #2: the app killed mid-print, after ink started: recover() counts it, never a second original. */
+    @Test fun killedMidPrintAfterInkStartedRecoversAsPrinted() = runTest {
+        val e = defaultEnv()
+        val job = launch { e.printing.printMemo(memoUuid, Fixtures.seededSale) }
+        advanceTimeBy(1_000)
+        runCurrent()
+        assertTrue("printing", e.sim.sessions.single().isNotEmpty())
+        job.cancel()
+        job.join()
+        val after = MemoPrinting(e.pm, { Fixtures.renderer() }, e.ledger, { java.util.UUID.randomUUID().toString() }, { testScheduler.currentTime }, { 5 }, { false })
+        after.recover()
+        assertEquals(PrintEvent.PRINTED, e.ledger.events.single().outcome)
+        assertEquals(PrintAttempt.Done, after.printMemo(memoUuid, Fixtures.seededSale))
+        assertEquals("memo_reprint", e.ledger.events.last().documentKind)
     }
 }

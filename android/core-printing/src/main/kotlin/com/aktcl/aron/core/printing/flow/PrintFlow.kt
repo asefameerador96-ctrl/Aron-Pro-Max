@@ -218,16 +218,17 @@ class MemoPrinting(
         var awaiting = false
         try {
             ledger.savePending(PendingPrint(base, paperOut = false))
-            return when (val r = printer.print(PrintJob(eventUuid, paper.bitmap))) {
+            return when (val r = printer.print(PrintJob(eventUuid, paper.bitmap)) { markPaperOut(base) }) {
                 is PrintOutcome.Failed -> {
                     ledger.record(base.copy(outcome = PrintEvent.FAILED))
                     PrintAttempt.Failed(r.reason)
                 }
-                PrintOutcome.Unconfirmed -> {
-                    // All sent, no confirmation from the printer (D-PRINT-02): the paper may be out. Always ask the
-                    // seller, whatever cfg.print.confirm_after_print says: Yes counts the copy, No lets the next print
-                    // be this same copy again. Killed before an answer, recover() records it printed (a later print
-                    // is then a marked reprint, never a second unmarked original).
+                is PrintOutcome.Unconfirmed -> {
+                    // Ink had started, then no confirmation (link lost, printer silent, roll out on the way; D-PRINT-02):
+                    // paper may be out. Always ask the seller, whatever cfg.print.confirm_after_print says: Yes counts
+                    // the copy, No lets the next print be this same copy again. The paper was marked out when the
+                    // first band went (onInkStarted), so a process killed before the answer recovers it as printed: a
+                    // later print is then a marked reprint, never a second unmarked original.
                     markPaperOut(base)
                     awaiting = true
                     PrintAttempt.AwaitingConfirmation(base)

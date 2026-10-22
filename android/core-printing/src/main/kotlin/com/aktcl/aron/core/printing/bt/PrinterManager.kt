@@ -61,11 +61,12 @@ sealed interface PrintOutcome {
     data object AlreadyPrinted : PrintOutcome
     data class Failed(val reason: PrintFailure) : PrintOutcome
     /**
-     * Every byte was written, then the link dropped or the printer went silent before it confirmed (D-PRINT-02): the
-     * paper may well be out. Never retried silently: the caller asks the seller whether it printed, so a memo is
-     * neither printed twice nor called failed after it came out. The job id counts as printed here.
+     * Image data had started to go out, then the link dropped, a write stalled, the printer went silent before it
+     * confirmed, or (with [paperOut]) the roll ran out on the way (D-PRINT-02): paper may well be out. Never retried
+     * silently: the caller asks the seller whether it printed, so a memo is neither printed twice unmarked nor
+     * recorded failed after it came out. Retrying the same job id prints it whole again; that is the caller's call.
      */
-    data object Unconfirmed : PrintOutcome
+    data class Unconfirmed(val paperOut: Boolean = false) : PrintOutcome
 }
 
 /**
@@ -129,6 +130,8 @@ class PrinterManager(
     private var strandedBytes = 0
     /** The stranded command ends with LF (an ESC * band): the padding ends with a real LF so the band prints and clears. */
     private var strandedEndsWithLf = false
+    /** The current job has started writing image bands (see [print]'s onInkStarted). */
+    private var inkStarted = false
     private val printed = object : LinkedHashMap<String, Boolean>(64, 0.75f, false) {
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Boolean>?) = size > 500
     }
@@ -282,29 +285,38 @@ class PrinterManager(
         statusBytes.close()
     }
 
-    /** Prints [job]; never throws. See the class comment for the guarantees. */
-    suspend fun print(job: PrintJob): PrintOutcome = lock.withLock {
+    /**
+     * Prints [job]; never throws (but for cancellation). See the class comment for the guarantees. [onInkStarted]
+     * runs once, just before the first image band is written: from then on paper may come out, so the caller marks
+     * it (a process killed mid-print must not leave a job that recovers as "failed"). It must not throw.
+     */
+    suspend fun print(job: PrintJob, onInkStarted: suspend () -> Unit = {}): PrintOutcome = lock.withLock {
         if (printed.containsKey(job.id)) return@withLock PrintOutcome.AlreadyPrinted
         if (store.load() == null) return@withLock PrintOutcome.Failed(PrintFailure.NO_PRINTER)
         idleTimer?.cancel()
         if (!connectLocked()) return@withLock PrintOutcome.Failed(PrintFailure.UNREACHABLE)
         val t = transport!!
+        inkStarted = false
         val outcome = try {
-            send(t, job)
+            send(t, job, onInkStarted)
         } catch (e: CancellationException) {
+            // the link may be mid-command: close it so the next job starts clean and the icon is not stuck on Printing
+            closeLink()
+            _state.value = PrinterState.Off
             throw e
         } catch (_: IOException) {
-            PrintOutcome.Failed(PrintFailure.DISCONNECTED)
+            if (inkStarted) PrintOutcome.Unconfirmed() else PrintOutcome.Failed(PrintFailure.DISCONNECTED)
         } catch (_: SecurityException) {
-            PrintOutcome.Failed(PrintFailure.DISCONNECTED)
+            if (inkStarted) PrintOutcome.Unconfirmed() else PrintOutcome.Failed(PrintFailure.DISCONNECTED)
         }
         when (outcome) {
             PrintOutcome.Printed -> {
                 printed[job.id] = true
                 _state.value = PrinterState.Connected
             }
-            PrintOutcome.Unconfirmed -> {
-                printed[job.id] = true // the same job id never goes out again; a new attempt is the caller's decision
+            is PrintOutcome.Unconfirmed -> if (outcome.paperOut) {
+                _state.value = PrinterState.PaperOut // the link is fine; Print stays enabled for after the roll change
+            } else {
                 closeLink()
                 _state.value = PrinterState.Off
                 autoReconnect()
@@ -369,7 +381,7 @@ class PrinterManager(
         if (linkLost) throw IOException("link lost")
     }
 
-    private suspend fun send(t: PrinterTransport, job: PrintJob): PrintOutcome {
+    private suspend fun send(t: PrinterTransport, job: PrintJob, onInkStarted: suspend () -> Unit): PrintOutcome {
         _state.value = PrinterState.Printing(job.id, 0)
         if (queryPaper(t) == true) return PrintOutcome.Failed(PrintFailure.PAPER_OUT)
         val commands = ArrayList<ByteArray>()
@@ -386,7 +398,15 @@ class PrinterManager(
         val total = commands.sumOf { it.size }.toLong()
         val bytesPerSecond = pacing.safeRowsPerSecond.toLong() * job.bitmap.bytesPerRow
         val buffer = pacing.safeBufferBytes
-        val start = nowMs()
+        // Estimated bytes in the printer's buffer. It drains at print speed only while it holds data: a pause (a slow
+        // ledger write, a GC, a stalled write) earns no credit, so the data after it is never sent as one burst.
+        var level = 0L
+        var lastMs = nowMs()
+        fun drain() {
+            val now = nowMs()
+            level = maxOf(0L, level - (now - lastMs) * bytesPerSecond / 1000)
+            lastMs = now
+        }
         var sent = 0L
         for ((index, cmd) in commands.withIndex()) {
             var off = 0
@@ -397,19 +417,23 @@ class PrinterManager(
             val endsWithLf = if (padding && index == 0) strandedEndsWithLf else bitImage
             while (off < cmd.size) {
                 val n = minOf(pacing.safeChunkBytes, cmd.size - off)
-                // Estimated bytes still in the printer's buffer; wait until this chunk fits.
+                // Wait until this chunk fits in the estimated free buffer.
                 while (true) {
-                    val drained = (nowMs() - start) * bytesPerSecond / 1000
-                    val backlog = sent - drained
-                    if (backlog + n <= buffer) break
-                    val waitMs = ((backlog + n - buffer) * 1000 / bytesPerSecond).coerceAtLeast(5)
-                    delay(waitMs)
+                    drain()
+                    if (level + n <= buffer) break
+                    delay(((level + n - buffer) * 1000 / bytesPerSecond).coerceAtLeast(5))
                 }
                 // If this write breaks the link, assume none of it arrived: the printer may still want the rest.
+                if (!inkStarted && (bitImage || (raster && !(padding && index == 0)))) {
+                    inkStarted = true
+                    try { onInkStarted() } catch (e: CancellationException) { throw e } catch (_: Exception) {}
+                }
                 strandedBytes = if (raster) cmd.size - off else 0
                 strandedEndsWithLf = endsWithLf
                 guardedWrite(t, cmd.copyOfRange(off, off + n))
                 strandedBytes = if (raster && off + n < cmd.size) cmd.size - off - n else 0
+                drain()
+                level += n
                 off += n
                 sent += n
                 _state.value = PrinterState.Printing(job.id, (sent * 100 / total).toInt())
@@ -419,17 +443,19 @@ class PrinterManager(
         // the paper may be out, and a silent retry would print it twice.
         return try {
             // Wait for the paper to come out, then ask whether the roll ran out on the way.
-            val remainingMs = (sent * 1000 / bytesPerSecond) - (nowMs() - start)
+            drain()
+            val remainingMs = level * 1000 / bytesPerSecond
             if (remainingMs > 0) delay(remainingMs)
             if (linkLost) throw IOException("link lost")
             val slowMs = (sent * 1000 / (SLOW_ROWS_PER_SECOND * job.bitmap.bytesPerRow)).coerceAtMost(MAX_CLOSING_GRACE_MS)
-            if (queryPaper(t, graceMs = slowMs) == true) return PrintOutcome.Failed(PrintFailure.PAPER_OUT)
+            // the roll ran out on the way: the top of the document is out, so this is the seller's call too
+            if (queryPaper(t, graceMs = slowMs) == true) return if (inkStarted) PrintOutcome.Unconfirmed(paperOut = true) else PrintOutcome.Failed(PrintFailure.PAPER_OUT)
             if (linkLost) throw IOException("link lost")
             PrintOutcome.Printed
         } catch (_: IOException) {
-            PrintOutcome.Unconfirmed
+            if (inkStarted) PrintOutcome.Unconfirmed() else PrintOutcome.Failed(PrintFailure.DISCONNECTED)
         } catch (_: SecurityException) {
-            PrintOutcome.Unconfirmed
+            if (inkStarted) PrintOutcome.Unconfirmed() else PrintOutcome.Failed(PrintFailure.DISCONNECTED)
         }
     }
 
