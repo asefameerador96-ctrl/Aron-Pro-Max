@@ -197,7 +197,7 @@ private fun list(call: ApplicationCall, d: RouteTargetDeps): JsonElement {
         if (!tableReady(h)) throw ApiProblem(ProblemCode.ERR_SERVICE_UNAVAILABLE, "route targets are not deployed in this environment")
         val q = h.createQuery(
             "SELECT r.code AS route_code, r.name AS route_name, k.code AS sku_code, t.qty_base FROM app.route_monthly_target t JOIN app.route r ON r.id = t.route_id JOIN app.sku k ON k.id = t.sku_id " +
-                "WHERE t.month = :m" + (if (after != null) " AND (r.code, k.code) > (:rc, :sc)" else "") + " ORDER BY r.code, k.code LIMIT :lim",
+                "WHERE t.month = :m" + (if (after != null) " AND (r.code COLLATE \"C\", k.code COLLATE \"C\") > (CAST(:rc AS text) COLLATE \"C\", CAST(:sc AS text) COLLATE \"C\")" else "") + " ORDER BY r.code COLLATE \"C\", k.code COLLATE \"C\" LIMIT :lim",
         ).bind("m", month).bind("lim", limit + 1)
         if (after != null) q.bind("rc", after[0]).bind("sc", after[1])
         val rows = q.map { rs, _ -> Triple(rs.getString("route_code"), rs.getString("route_name"), rs.getString("sku_code") to rs.getLong("qty_base")) }.list()

@@ -17,8 +17,7 @@ WorkingDay:
       type: integer
       minimum: 1
       maximum: 7
-      description: ISO weekday
-      Monday 1.: null
+      description: ISO weekday (Monday is 1).
     is_friday:
       type: boolean
     is_weekend:

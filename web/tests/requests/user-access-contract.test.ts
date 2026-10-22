@@ -8,7 +8,8 @@ import { describe, expect, it } from "vitest";
 const yaml = readFileSync(resolve(__dirname, "../../../contract/openapi.yaml"), "utf8");
 
 describe("contract carries the user-access operations (not yet: backend-authz / backend-admin)", () => {
-  it.fails("GET and PUT /v1/admin/users/{id}/access exist in contract/openapi.yaml", () => {
+  // Landed (backend-admin, 2026-10-22): now a plain assertion; drop the provisional types in lib/admin/access-grants.ts and this file with the Role part.
+  it("GET and PUT /v1/admin/users/{id}/access exist in contract/openapi.yaml", () => {
     expect(yaml).toContain("/v1/admin/users/{id}/access:");
   });
   it.fails("the Role enum carries NATIONAL and BRAND", () => {

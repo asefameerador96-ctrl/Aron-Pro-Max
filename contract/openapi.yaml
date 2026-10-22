@@ -4402,6 +4402,7 @@ paths:
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
     put:
       tags: [admin-targets]
       operationId: putRouteTargets
@@ -4429,6 +4430,7 @@ paths:
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
         '409': { $ref: '#/components/responses/Conflict' }
         '413': { $ref: '#/components/responses/PayloadTooLarge' }
 
@@ -10714,7 +10716,7 @@ components:
       additionalProperties: false
       properties:
         date: { $ref: '#/components/schemas/BusinessDate' }
-        weekday: { type: integer, minimum: 1, maximum: 7, description: ISO weekday, Monday 1. }
+        weekday: { type: integer, minimum: 1, maximum: 7, description: 'ISO weekday (Monday is 1).' }
         is_friday: { type: boolean }
         is_weekend: { type: boolean }
         is_holiday: { type: boolean, description: A global holiday or emergency off-day. }

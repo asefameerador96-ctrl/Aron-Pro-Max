@@ -32,6 +32,8 @@ operation:
       $ref: '#/components/responses/Unauthorized'
     '403':
       $ref: '#/components/responses/Forbidden'
+    '503':
+      $ref: '#/components/responses/ServiceUnavailable'
     '409':
       $ref: '#/components/responses/Conflict'
     '413':

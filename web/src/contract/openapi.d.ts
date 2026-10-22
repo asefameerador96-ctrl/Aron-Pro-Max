@@ -7120,7 +7120,7 @@ export interface components {
         };
         WorkingDay: {
             date: components["schemas"]["BusinessDate"];
-            /** @description ISO weekday */
+            /** @description ISO weekday (Monday is 1). */
             weekday: number;
             is_friday: boolean;
             is_weekend: boolean;
@@ -14617,6 +14617,7 @@ export interface operations {
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     putRouteTargets: {
@@ -14646,6 +14647,7 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             409: components["responses"]["Conflict"];
             413: components["responses"]["PayloadTooLarge"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     replaceDevice: {
