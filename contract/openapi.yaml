@@ -2820,6 +2820,46 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '409': { $ref: '#/components/responses/Conflict' }
 
+  /v1/admin/calendar/holidays/{holiday_id}/revoke:
+    post:
+      tags: [admin-calendar]
+      operationId: revokeHoliday
+      summary: Withdraw a holiday, make-up day or off-day declaration that has not started (its date is after today).
+      parameters:
+        - { name: holiday_id, in: path, required: true, schema: { $ref: '#/components/schemas/Id' }, description: Calendar entry id. }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/HolidayRevoke' }
+      responses:
+        '200':
+          description: The revoked entry.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Holiday' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /v1/admin/calendar/working-days:
+    get:
+      tags: [admin-calendar]
+      operationId: getWorkingDays
+      summary: Every date of a month with Friday, weekend and national holiday flags and the working-day count (Fridays and holidays excluded).
+      description: 'Weekend days come from `cfg.calendar.weekend_days` (ISO weekdays, default Friday = 5). Only global declarations count; a global make-up day is a working day.'
+      parameters:
+        - { name: month, in: query, required: false, schema: { $ref: '#/components/schemas/RouteTargetMonth' }, description: 'YYYY-MM; default the current Dhaka month.' }
+      responses:
+        '200':
+          description: The month.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/WorkingDays' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
   /v1/admin/calendar/holidays:
     get:
       tags: [admin-calendar]
@@ -10546,6 +10586,38 @@ components:
         name_en: { type: string, minLength: 2, maxLength: 120 }
         name_bn: { type: [string, 'null'], maxLength: 120 }
         reason: { $ref: '#/components/schemas/ChangeReason' }
+    HolidayRevoke:
+      type: object
+      required: [change_reason]
+      additionalProperties: false
+      properties:
+        change_reason: { $ref: '#/components/schemas/ChangeReason' }
+    WorkingDay:
+      type: object
+      required: [date, weekday, is_friday, is_weekend, is_holiday, name_en, name_bn, is_working_day]
+      additionalProperties: false
+      properties:
+        date: { $ref: '#/components/schemas/BusinessDate' }
+        weekday: { type: integer, minimum: 1, maximum: 7, description: ISO weekday, Monday 1. }
+        is_friday: { type: boolean }
+        is_weekend: { type: boolean }
+        is_holiday: { type: boolean, description: A global holiday or emergency off-day. }
+        name_en: { type: [string, 'null'] }
+        name_bn: { type: [string, 'null'] }
+        is_working_day: { type: boolean }
+    WorkingDays:
+      type: object
+      required: [month, working_days, weekend_days, days]
+      additionalProperties: false
+      properties:
+        month: { $ref: '#/components/schemas/RouteTargetMonth' }
+        working_days: { type: integer, minimum: 0, maximum: 31 }
+        weekend_days:
+          type: array
+          items: { type: integer, minimum: 1, maximum: 7 }
+        days:
+          type: array
+          items: { $ref: '#/components/schemas/WorkingDay' }
     HolidayList:
       type: object
       required: [items]

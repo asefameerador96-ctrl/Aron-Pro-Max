@@ -3,7 +3,7 @@
 Source: contract/openapi.yaml, version 1.3.3.
 
 
-## Schemas (513)
+## Schemas (516)
 
 - `schemas/Uuid.yaml` (273 B)
 - `schemas/Id.yaml` (104 B)
@@ -369,6 +369,9 @@ Source: contract/openapi.yaml, version 1.3.3.
 - `schemas/TargetBatchResult.yaml` (652 B)
 - `schemas/Holiday.yaml` (723 B)
 - `schemas/HolidayWrite.yaml` (712 B)
+- `schemas/HolidayRevoke.yaml` (171 B)
+- `schemas/WorkingDay.yaml` (684 B)
+- `schemas/WorkingDays.yaml` (471 B)
 - `schemas/HolidayList.yaml` (181 B)
 - `schemas/ConfigKeyName.yaml` (131 B)
 - `schemas/ConfigBounds.yaml` (557 B)
@@ -519,7 +522,7 @@ Source: contract/openapi.yaml, version 1.3.3.
 - `schemas/ChannelVolume.yaml` (751 B)
 - `schemas/SuggestedQty.yaml` (234 B)
 
-## Operations (218)
+## Operations (220)
 
 - `operations/getHealth.yaml`  GET /v1/health (770 B)
 - `operations/headHealth.yaml`  HEAD /v1/health (483 B)
@@ -637,6 +640,8 @@ Source: contract/openapi.yaml, version 1.3.3.
 - `operations/updateOutlet.yaml`  PATCH /v1/admin/outlets/{id} (902 B)
 - `operations/listTargets.yaml`  GET /v1/admin/targets (810 B)
 - `operations/putTargets.yaml`  PUT /v1/admin/targets (1013 B)
+- `operations/revokeHoliday.yaml`  POST /v1/admin/calendar/holidays/{holiday_id}/revoke (1003 B)
+- `operations/getWorkingDays.yaml`  GET /v1/admin/calendar/working-days (970 B)
 - `operations/listHolidays.yaml`  GET /v1/admin/calendar/holidays (581 B)
 - `operations/createHoliday.yaml`  POST /v1/admin/calendar/holidays (756 B)
 - `operations/listCodeLists.yaml`  GET /v1/admin/code-lists (512 B)

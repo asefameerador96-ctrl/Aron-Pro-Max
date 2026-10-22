@@ -1,0 +1,38 @@
+WorkingDay:
+  type: object
+  required:
+  - date
+  - weekday
+  - is_friday
+  - is_weekend
+  - is_holiday
+  - name_en
+  - name_bn
+  - is_working_day
+  additionalProperties: false
+  properties:
+    date:
+      $ref: '#/components/schemas/BusinessDate'
+    weekday:
+      type: integer
+      minimum: 1
+      maximum: 7
+      description: ISO weekday
+      Monday 1.: null
+    is_friday:
+      type: boolean
+    is_weekend:
+      type: boolean
+    is_holiday:
+      type: boolean
+      description: A global holiday or emergency off-day.
+    name_en:
+      type:
+      - string
+      - 'null'
+    name_bn:
+      type:
+      - string
+      - 'null'
+    is_working_day:
+      type: boolean

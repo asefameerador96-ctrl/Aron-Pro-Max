@@ -1778,6 +1778,43 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/admin/calendar/holidays/{holiday_id}/revoke": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Withdraw a holiday, make-up day or off-day declaration that has not started (its date is after today). */
+        post: operations["revokeHoliday"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/calendar/working-days": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Every date of a month with Friday, weekend and national holiday flags and the working-day count (Fridays and holidays excluded).
+         * @description Weekend days come from `cfg.calendar.weekend_days` (ISO weekdays, default Friday = 5). Only global declarations count; a global make-up day is a working day.
+         */
+        get: operations["getWorkingDays"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/admin/calendar/holidays": {
         parameters: {
             query?: never;
@@ -6994,6 +7031,27 @@ export interface components {
             name_bn?: string | null;
             reason: components["schemas"]["ChangeReason"];
         };
+        HolidayRevoke: {
+            change_reason: components["schemas"]["ChangeReason"];
+        };
+        WorkingDay: {
+            date: components["schemas"]["BusinessDate"];
+            /** @description ISO weekday */
+            weekday: number;
+            is_friday: boolean;
+            is_weekend: boolean;
+            /** @description A global holiday or emergency off-day. */
+            is_holiday: boolean;
+            name_en: string | null;
+            name_bn: string | null;
+            is_working_day: boolean;
+        };
+        WorkingDays: {
+            month: components["schemas"]["RouteTargetMonth"];
+            working_days: number;
+            weekend_days: number[];
+            days: components["schemas"]["WorkingDay"][];
+        };
         HolidayList: {
             items: components["schemas"]["Holiday"][];
         };
@@ -12201,6 +12259,64 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             409: components["responses"]["Conflict"];
+        };
+    };
+    revokeHoliday: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Calendar entry id. */
+                holiday_id: components["schemas"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HolidayRevoke"];
+            };
+        };
+        responses: {
+            /** @description The revoked entry. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Holiday"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    getWorkingDays: {
+        parameters: {
+            query?: {
+                /** @description YYYY-MM; default the current Dhaka month. */
+                month?: components["schemas"]["RouteTargetMonth"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The month. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkingDays"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
         };
     };
     listHolidays: {

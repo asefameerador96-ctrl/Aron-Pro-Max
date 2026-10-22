@@ -1,0 +1,25 @@
+WorkingDays:
+  type: object
+  required:
+  - month
+  - working_days
+  - weekend_days
+  - days
+  additionalProperties: false
+  properties:
+    month:
+      $ref: '#/components/schemas/RouteTargetMonth'
+    working_days:
+      type: integer
+      minimum: 0
+      maximum: 31
+    weekend_days:
+      type: array
+      items:
+        type: integer
+        minimum: 1
+        maximum: 7
+    days:
+      type: array
+      items:
+        $ref: '#/components/schemas/WorkingDay'
