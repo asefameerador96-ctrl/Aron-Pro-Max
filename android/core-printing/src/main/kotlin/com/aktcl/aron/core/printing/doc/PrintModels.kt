@@ -59,7 +59,7 @@ data class MemoPrint(
     }
 }
 
-data class StockSlipLine(val category: String, val sku: String, val qtyBase: Long, val qtyEntered: Long = qtyBase, val unit: String = "")
+data class StockSlipLine(val category: String, val sku: String, val qtyBase: Long, val qtyEntered: Long = qtyBase, val unit: String = "", val baseUnit: String = "")
 
 data class StockSlipPrint(
     val printedAtEpochMs: Long,
@@ -70,7 +70,9 @@ data class StockSlipPrint(
     val reprintNo: Int = 0,
 )
 
-data class DaySummaryLine(val sku: String, val memoCount: Int, val qtyBase: Long, val valueMtk: Long, val qtyEntered: Long = qtyBase, val unit: String = "")
+data class DaySummaryLine(val sku: String, val memoCount: Int, val qtyBase: Long, val valueMtk: Long, val qtyEntered: Long = qtyBase, val unit: String = "",
+    /** Base units left over after whole entry units (printed after the count), and the base unit key for their word. */
+    val remBase: Long = 0L, val baseUnit: String = "")
 
 data class DaySummaryPrint(
     val printedAtEpochMs: Long,
@@ -125,6 +127,10 @@ class DocumentBuilder(private val digits: DigitStyle, private val unitWord: (Str
     }
 
     /** `(60 stick)`: the base figure under a category total, only when the lines share one entry unit that is not the base unit; else null. */
+    /** ` + 5 stick`: the base units left over after whole entry units, with their word; blank when none. */
+    private fun remText(remBase: Long, baseUnit: String): String =
+        if (remBase == 0L) "" else (if (remBase > 0) " + " else " \u2212 ") + qty(kotlin.math.abs(remBase), baseUnit)
+
     private fun baseBracket(lines: List<MemoPrintLine>): String? {
         val unit = lines.map { it.unit }.distinct().singleOrNull()?.takeIf { it.isNotBlank() } ?: return null
         val baseUnit = lines.map { it.baseUnit }.distinct().singleOrNull()?.takeIf { it.isNotBlank() && it != unit } ?: return null
@@ -154,7 +160,10 @@ class DocumentBuilder(private val digits: DigitStyle, private val unitWord: (Str
             mapOf("category" to key.first, "label" to "$totalWord ${key.first}", "qty" to groupQty(ls.map { it.qtyEntered to it.unit }, ls.sumOf { it.qtyBase }, ls.map { it.baseUnit }.distinct().singleOrNull().orEmpty()), "value" to money(ls.sumOf { it.grossMtk }))
         }
         // the base figure of each category total in its own block (bundle templates that predate it simply do not print it)
-        val categoryBase = groups.mapNotNull { (key, ls) -> baseBracket(ls)?.let { mapOf("category" to key.first, "qty" to it) } }
+        val unitsPerCategory = groups.keys.groupBy { it.first }.mapValues { it.value.size }
+        val categoryBase = groups.mapNotNull { (key, ls) ->
+            baseBracket(ls)?.let { mapOf("category" to if ((unitsPerCategory[key.first] ?: 1) > 1) key.first + " (" + qty(ls.sumOf { l -> l.qtyEntered }, key.second) + ")" else key.first, "qty" to it) }
+        }
         if (categoryTotals.isNotEmpty()) flags.add("has_categories")
         if (m.isCredit || m.dueMtk > 0L) flags.add("credit") // a negative due is a QC credit note, not money the outlet owes
         val totalDiscount = m.offerDiscountMtk + m.drpDiscountMtk
@@ -194,9 +203,12 @@ class DocumentBuilder(private val digits: DigitStyle, private val unitWord: (Str
      */
     fun stockSlip(s: StockSlipPrint): PrintDocument {
         val rows = ArrayList<Map<String, String>>()
-        for ((category, lines) in s.lines.groupBy { it.category }) {
+        // one block per category and unit: quantities of different units are never added; the base figure follows in brackets
+        for ((key, lines) in s.lines.groupBy { it.category to it.unit }) {
             for (l in lines) rows.add(mapOf("sku" to l.sku, "qty" to qty(l.qtyEntered, l.unit)))
-            rows.add(mapOf("sku" to category, "qty" to groupQty(lines.map { it.qtyEntered to it.unit }, lines.sumOf { it.qtyBase }), "_bold" to "1"))
+            rows.add(mapOf("sku" to key.first, "qty" to groupQty(lines.map { it.qtyEntered to it.unit }, lines.sumOf { it.qtyBase }, lines.map { it.baseUnit }.distinct().singleOrNull().orEmpty()), "_bold" to "1"))
+            val base = lines.map { it.baseUnit }.distinct().singleOrNull()?.takeIf { it.isNotBlank() && it != key.second }
+            if (key.second.isNotBlank() && base != null) rows.add(mapOf("sku" to "", "qty" to "(" + qty(lines.sumOf { it.qtyBase }, base) + ")"))
         }
         return PrintDocument(
             fields = mapOf(
@@ -215,7 +227,7 @@ class DocumentBuilder(private val digits: DigitStyle, private val unitWord: (Str
             "grand_total" to money(d.netMtk), "due" to money(d.dueMtk), "memo_count" to count(d.memoCount),
         ),
         tables = mapOf("lines" to d.lines.map {
-            mapOf("sku" to it.sku, "memos" to count(it.memoCount), "qty" to qty(it.qtyEntered, it.unit), "value" to money(it.valueMtk))
+            mapOf("sku" to it.sku, "memos" to count(it.memoCount), "qty" to qty(it.qtyEntered, it.unit) + remText(it.remBase, it.baseUnit), "value" to money(it.valueMtk))
         }),
     )
 

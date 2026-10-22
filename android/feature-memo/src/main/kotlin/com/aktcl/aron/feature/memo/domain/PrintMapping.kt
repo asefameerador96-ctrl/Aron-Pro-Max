@@ -45,7 +45,7 @@ object PrintMapping {
 
     fun daySummary(s: DaySummary, qcMtk: Long, dueMtk: Long, nowEpochMs: Long, names: PrintNames): DaySummaryPrint = DaySummaryPrint(
         printedAtEpochMs = nowEpochMs, sr = names.sr, route = names.route,
-        lines = s.skus.map { DaySummaryLine(names.sku(it.skuId), it.memoCount, it.qtyBase, it.valueMtk, it.qtyEntered, it.unitKey) },
+        lines = s.skus.map { DaySummaryLine(names.sku(it.skuId), it.memoCount, it.qtyBase, it.valueMtk, it.qtyEntered, it.unitKey, it.qtyRemBase, EntryUnits.baseLabelKey(names.categoryCode(it.skuId)).takeIf { _ -> names.categoryCode(it.skuId).isNotBlank() }.orEmpty()) },
         grossMtk = s.grossMtk, discountMtk = s.discountAndOthersMtk - qcMtk, qcMtk = qcMtk, netMtk = s.grandTotalMtk, dueMtk = dueMtk, memoCount = s.memoCount,
     )
 }

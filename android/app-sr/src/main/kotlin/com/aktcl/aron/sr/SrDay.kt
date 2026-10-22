@@ -350,7 +350,7 @@ class SrDay(
         val skus = reference.skus().associateBy { it.skuId }
         return com.aktcl.aron.core.printing.doc.StockSlipPrint(
             printedAtEpochMs = clock.nowMs(), sr = userName, route = data.value.route?.name.orEmpty(), distributor = "",
-            lines = movements.sortedBy { it.skuId }.map { com.aktcl.aron.core.printing.doc.StockSlipLine(skus[it.skuId]?.categoryCode.orEmpty(), skus[it.skuId]?.shortName ?: it.skuId.toString(), it.qtyBase, it.qtyEntered, com.aktcl.aron.feature.memo.domain.PrintMapping.unitKeyOf(skus[it.skuId]?.categoryCode.orEmpty(), it.unitEntered)) },
+            lines = movements.sortedBy { it.skuId }.map { com.aktcl.aron.core.printing.doc.StockSlipLine(skus[it.skuId]?.categoryCode.orEmpty(), skus[it.skuId]?.shortName ?: it.skuId.toString(), it.qtyBase, it.qtyEntered, com.aktcl.aron.feature.memo.domain.PrintMapping.unitKeyOf(skus[it.skuId]?.categoryCode.orEmpty(), it.unitEntered), com.aktcl.aron.rules.EntryUnits.baseLabelKey(skus[it.skuId]?.categoryCode.orEmpty())) },
         )
     }
 

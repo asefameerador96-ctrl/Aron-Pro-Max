@@ -25,6 +25,9 @@ data class StockRow(val sku: SkuEntity, val loadedBase: Long, val entered: Long,
     /** The stock figure of the row in entry units, plus the quantity being entered. */
     val figureEntry: Long get() = entry.fromBase(stockBase ?: loadedBase) + entered
 
+    /** The load's base units left over after whole entry units. */
+    val loadedRemainderBase: Long get() = entry.remainderBase(loadedBase)
+
     /** Base units left over after whole entry units (QC returns are counted in sticks); shown as `+n`, never dropped. */
     val figureRemainderBase: Long get() = entry.remainderBase(stockBase ?: loadedBase)
 }

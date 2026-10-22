@@ -93,6 +93,16 @@ class StockScreenTest {
         compose.onNodeWithText("মোট লোড").assertDoesNotExist()
     }
 
+    @Test fun totalsPanelKeepsTheStickRemainderOfThePackets() {
+        // 137 sticks of a 20s SKU (6 packets + 17) and -7 sticks of a 10s SKU (0 packets - 7): the category stock is 6 packets + 10 sticks, not 6
+        val rows = listOf(
+            StockRow(SkuEntity(1, "A20", 1, "cigarette", "n", "A20", null, "stick", 20, "pack", null, "1.000", 1, "active", 1), 200, 0, stockBase = 137),
+            StockRow(SkuEntity(2, "A10", 2, "cigarette", "n", "A10", null, "stick", 10, "pack", null, "1.000", 2, "active", 1), 100, 0, stockBase = -7),
+        )
+        show(AppLanguage.BN, rows = rows)
+        assertTrue(compose.onAllNodesWithText("৬+১০").fetchSemanticsNodes().isNotEmpty())
+    }
+
     @Test fun refusedMessageShowsInBangla() {
         show(AppLanguage.BN, StockMessage.REFUSED_SAME_VALUES)
         compose.onNodeWithText("এই মানগুলো এইমাত্র সংরক্ষণ করা হয়েছে। মান বদলান বা কয়েক মিনিট অপেক্ষা করুন।").assertExists()

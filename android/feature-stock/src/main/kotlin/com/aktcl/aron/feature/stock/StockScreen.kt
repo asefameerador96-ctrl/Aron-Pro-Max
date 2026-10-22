@@ -212,13 +212,22 @@ private fun StockSkuRow(r: StockRow, softCeiling: Long, onIssue: (Long, Int) -> 
  */
 @Composable
 private fun StockTotals(rows: List<StockRow>, totals: List<CategoryTotal>, hasStock: Boolean) {
-    val issued = totals.associate { it.categoryCode to it.issuedEntry }
+    // one line per category and unit (a category with SKUs in different units is never added together); issued and stock keep
+    // the base remainder: "6+10". A category with no row shows a zero line in its field unit.
     val cats = listOf("cigarette", "bidi", "lighter", "match")
-    val lines = cats.map { code ->
-        // one category has one unit word; with no row the category's field unit is used (packet, packet, box, dozen)
-        val unit = entryUnitLabel(rows.firstOrNull { it.sku.categoryCode == code }?.labelKey ?: fieldUnitKey(code))
-        val stock = rows.filter { it.sku.categoryCode == code }.sumOf { it.figureEntry }
-        TotalsLine(categoryLabel(code), listOf(localizedNumber(issued[code] ?: 0L), localizedNumber(stock)), caption = unit)
+    val lines = cats.flatMap { code ->
+        val of = rows.filter { it.sku.categoryCode == code }
+        if (of.isEmpty()) listOf(TotalsLine(categoryLabel(code), listOf(localizedNumber(0), localizedNumber(0)), caption = entryUnitLabel(fieldUnitKey(code))))
+        else of.groupBy { it.labelKey }.map { (key, rs) ->
+            TotalsLine(
+                categoryLabel(code),
+                listOf(
+                    localizedNumber(rs.sumOf { it.loadedEntry }) + com.aktcl.aron.core.ui.remSuffix(rs.sumOf { it.loadedRemainderBase }),
+                    localizedNumber(rs.sumOf { it.figureEntry }) + com.aktcl.aron.core.ui.remSuffix(rs.sumOf { it.figureRemainderBase }),
+                ),
+                caption = entryUnitLabel(key),
+            )
+        }
     }
     TotalsPanel(
         header = TotalsLine(

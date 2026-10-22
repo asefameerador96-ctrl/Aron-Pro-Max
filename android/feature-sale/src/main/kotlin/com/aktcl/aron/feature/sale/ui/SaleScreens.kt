@@ -410,7 +410,7 @@ private fun SaleSkuRow(sku: SaleSku, qty: Long, line: ReviewLine?, onQuantity: (
         // the over-stock state stays visible (a warning, never a block): the stock figure is named in red under the card
         if (line?.exceedsStock == true) {
             Text(
-                localizedDigits(stringResource(R.string.sale_stock_warning, entry.fromBase(sku.stockBase ?: 0L).toString(), sku.name, unit)),
+                localizedDigits(stringResource(R.string.sale_stock_warning, entryStockText(entry, sku.stockBase ?: 0L), sku.name, unit)),
                 color = look.red, fontSize = 13.sp, modifier = Modifier.padding(start = 16.dp, top = 4.dp, end = 16.dp),
             )
         }

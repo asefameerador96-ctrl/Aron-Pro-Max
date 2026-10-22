@@ -497,8 +497,10 @@ fun SummaryScreen(
                             val unit = categoryUnit(cat)
                             val name = categoryLabel(cat.categoryCode)
                             Text(if (unit.isEmpty()) name else stringResource(R.string.summary_group_head, name, unit), style = MaterialTheme.typography.titleSmall, color = look.purple)
+                            // the whole quantity on its own full-width line: "3 packets + 5 sticks (65 sticks)" never gets cut
+                            Text(stringResource(R.string.summary_col_qty) + ": " + catQtyText(cat, unit), style = MaterialTheme.typography.bodyMedium, color = look.ink)
                             SummaryPairs(
-                                stringResource(R.string.summary_col_qty) to catQtyText(cat, unit), stringResource(R.string.summary_col_value) to takaAmount(cat.valueMtk),
+                                stringResource(R.string.summary_col_value) to takaAmount(cat.valueMtk),
                                 stringResource(R.string.summary_col_discount) to amount(cat.discountMtk), stringResource(R.string.summary_col_after) to takaAmount(cat.discountedValueMtk),
                                 stringResource(R.string.summary_col_return) to remFigure(cat.returnEntered, cat.returnRemBase),
                             )
@@ -557,7 +559,7 @@ private fun SummaryDock(summary: DaySummary, categoryLabel: (String) -> String, 
     Column(Modifier.fillMaxWidth().background(look.rowAlt).padding(horizontal = 12.dp, vertical = 8.dp)) {
         summary.categories.forEach { cat ->
             val unit = unitOf(cat)
-            Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+            Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.Top) {
                 Text(categoryLabel(cat.categoryCode), style = TextStyle(fontSize = 13.sp, color = look.purple), softWrap = false, modifier = Modifier.weight(weights[0]))
                 Text(
                     buildAnnotatedString {
@@ -569,7 +571,7 @@ private fun SummaryDock(summary: DaySummary, categoryLabel: (String) -> String, 
                             baseBracket(cat)?.let { append(" "); append(it) }
                         } else if (cat.qtyRemBase != 0L) append(com.aktcl.aron.core.ui.remSuffix(cat.qtyRemBase))
                     },
-                    style = figure, softWrap = false, modifier = Modifier.weight(weights[1]),
+                    style = figure, maxLines = 3, modifier = Modifier.weight(weights[1]),
                 )
                 Text(takaAmount(cat.valueMtk), style = figure, softWrap = false, modifier = Modifier.weight(weights[2]))
                 Text(amount(cat.discountMtk), style = figure, softWrap = false, modifier = Modifier.weight(weights[3]))

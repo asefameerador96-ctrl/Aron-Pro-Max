@@ -155,4 +155,18 @@ class MemoCategoryTotalsPrintTest {
             assertEquals("a 3-digit packet count wrapped ($digits)", small, big)
         }
     }
+
+    // checker round 2: stock slip and day summary never add across units and never drop the base remainder
+    @Test fun stockSlipAndDaySummaryKeepUnitsAndRemainders() {
+        val words = mapOf("packet" to "packet", "stick" to "stick", "box" to "box")
+        val b = DocumentBuilder(DigitStyle.LATIN) { words[it].orEmpty() }
+        val slip = b.stockSlip(com.aktcl.aron.core.printing.doc.StockSlipPrint(0, "sr", "r", "d", listOf(
+            com.aktcl.aron.core.printing.doc.StockSlipLine("c", "A", 60, 3, "packet", "stick"), com.aktcl.aron.core.printing.doc.StockSlipLine("c", "B", 5, 5, "stick", "stick"),
+        )))
+        assertEquals(listOf("3 packet", "3 packet", "(60 stick)", "5 stick", "5 stick"), slip.tables.getValue("lines").map { it.getValue("qty") })
+        val sum = b.daySummary(com.aktcl.aron.core.printing.doc.DaySummaryPrint(0, "sr", "r", listOf(
+            com.aktcl.aron.core.printing.doc.DaySummaryLine("A", 1, 65, 1, 3, "packet", 5, "stick"),
+        ), 1, 0, 0, 1, 0, 1))
+        assertEquals("3 packet + 5 stick", sum.tables.getValue("lines").single().getValue("qty"))
+    }
 }
