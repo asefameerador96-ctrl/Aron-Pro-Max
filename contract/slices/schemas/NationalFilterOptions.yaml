@@ -1,6 +1,6 @@
 NationalFilterOptions:
   type: object
-  description: Selectable values inside the caller's scope. Houses are active only and listed once per (territory,
+  description: Selectable values inside the scope of the caller. Houses are active only and listed once per (territory,
     name). Product lists carry their parent code for the cascading selects.
   required:
   - date
@@ -37,200 +37,44 @@ NationalFilterOptions:
       type: array
       maxItems: 50
       items:
-        type: object
-        additionalProperties: false
-        required:
-        - id
-        - code
-        - name
-        properties:
-          id:
-            $ref: '#/components/schemas/Id'
-          code:
-            type: string
-            maxLength: 40
-          name:
-            type:
-            - string
-            - 'null'
-            maxLength: 120
+        $ref: '#/components/schemas/FilterNode'
     divisions:
       type: array
       maxItems: 200
       items:
-        type: object
-        additionalProperties: false
-        required:
-        - id
-        - code
-        - name
-        properties:
-          id:
-            $ref: '#/components/schemas/Id'
-          code:
-            type: string
-            maxLength: 40
-          name:
-            type:
-            - string
-            - 'null'
-            maxLength: 120
-          wing_id:
-            $ref: '#/components/schemas/Id'
+        $ref: '#/components/schemas/FilterNode'
     territories:
       type: array
       maxItems: 400
       items:
-        type: object
-        additionalProperties: false
-        required:
-        - id
-        - code
-        - name
-        properties:
-          id:
-            $ref: '#/components/schemas/Id'
-          code:
-            type: string
-            maxLength: 40
-          name:
-            type:
-            - string
-            - 'null'
-            maxLength: 120
-          division_id:
-            $ref: '#/components/schemas/Id'
+        $ref: '#/components/schemas/FilterNode'
     houses:
       type: array
       maxItems: 400
       items:
-        type: object
-        additionalProperties: false
-        required:
-        - id
-        - code
-        - name
-        properties:
-          id:
-            $ref: '#/components/schemas/Id'
-          code:
-            type: string
-            maxLength: 40
-          name:
-            type:
-            - string
-            - 'null'
-            maxLength: 120
-          territory_id:
-            $ref: '#/components/schemas/Id'
+        $ref: '#/components/schemas/FilterNode'
     zones:
       type: array
       maxItems: 1200
       items:
-        type: object
-        additionalProperties: false
-        required:
-        - id
-        - code
-        - name
-        properties:
-          id:
-            $ref: '#/components/schemas/Id'
-          code:
-            type: string
-            maxLength: 40
-          name:
-            type:
-            - string
-            - 'null'
-            maxLength: 120
-          house_id:
-            type:
-            - integer
-            - 'null'
-          territory_id:
-            $ref: '#/components/schemas/Id'
+        $ref: '#/components/schemas/FilterNode'
     categories:
       type: array
       maxItems: 20
       items:
-        type: object
-        additionalProperties: false
-        required:
-        - code
-        - name
-        properties:
-          code:
-            type: string
-            maxLength: 40
-          name:
-            type:
-            - string
-            - 'null'
-            maxLength: 120
+        $ref: '#/components/schemas/FilterCode'
     segments:
       type: array
       maxItems: 100
       items:
-        type: object
-        additionalProperties: false
-        required:
-        - code
-        - name
-        - category_code
-        properties:
-          code:
-            type: string
-            maxLength: 40
-          name:
-            type:
-            - string
-            - 'null'
-            maxLength: 120
-          category_code:
-            type: string
-            maxLength: 40
+        $ref: '#/components/schemas/FilterCode'
     brands:
       type: array
       maxItems: 200
       items:
-        type: object
-        additionalProperties: false
-        required:
-        - code
-        - name
-        - segment_code
-        properties:
-          code:
-            type: string
-            maxLength: 40
-          name:
-            type:
-            - string
-            - 'null'
-            maxLength: 120
-          segment_code:
-            type: string
-            maxLength: 40
+        $ref: '#/components/schemas/FilterCode'
     variants:
       type: array
       maxItems: 500
       items:
-        type: object
-        additionalProperties: false
-        required:
-        - code
-        - name
-        - brand_code
-        properties:
-          code:
-            type: string
-            maxLength: 40
-          name:
-            type:
-            - string
-            - 'null'
-            maxLength: 120
-          brand_code:
-            type: string
-            maxLength: 40
+        $ref: '#/components/schemas/FilterCode'

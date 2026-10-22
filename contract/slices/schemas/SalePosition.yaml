@@ -38,10 +38,9 @@ SalePosition:
       maxLength: 40
     radius_m:
       type: integer
-      enum:
-      - 20
-      - 50
-      - 100
+      minimum: 10
+      maximum: 5000
+      description: The outlet radius used at the call (20, 50 or 100 m by default; cfg may set 10 to 5000).
     base:
       type: object
       additionalProperties: false

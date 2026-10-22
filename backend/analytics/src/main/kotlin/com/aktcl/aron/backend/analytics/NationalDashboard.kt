@@ -125,7 +125,7 @@ class NationalDashboardService(
         return rows.values.min().toString()
     }
 
-    private fun ensureReady(h: Handle) {
+    internal fun ensureReady(h: Handle) {
         if (!DashboardSummaries.ready(h)) throw ApiProblem(ProblemCode.ERR_SERVICE_UNAVAILABLE, "dashboard summary tables are not migrated yet")
     }
 

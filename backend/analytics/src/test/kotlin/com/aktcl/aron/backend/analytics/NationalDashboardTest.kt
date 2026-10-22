@@ -140,6 +140,19 @@ class NationalDashboardTest {
         assertEquals(45, svc.sales(zones(z1), all.copy(zone_ids = listOf(z1, z2))).cards.single { it.category_code == "cigarette" }.total_sales)
         assertEquals(30, svc.sales(national(), all.copy(zone_ids = listOf(z2))).cards.single { it.category_code == "cigarette" }.total_sales)
         assertEquals(4, svc.cpr(zones(z1), all).target_outlets)
+        // Every card is cut to the reach, not only the first two: zone 1 holds R1 and R2 (outlets O1..O4, 3 completed calls, 2 routes).
+        assertEquals(3, svc.channelCalls(zones(z1), all).total); assertEquals(45, svc.channelStd(zones(z1), all).total)
+        assertEquals(1, svc.finalSubmit(zones(z1), all).total_zones); assertEquals(2, svc.loginSubmit(zones(z1), all).target_routes)
+        assertEquals(3, svc.geoFencing(zones(z1), all).total_calls)
+        assertEquals(listOf(45L), svc.breakdown(zones(z1), NationalBreakdownRequest(all, "std", "segment")).items.map { it.value })
+        assertEquals(3, svc.breakdown(zones(z1), NationalBreakdownRequest(all, "memo", "segment")).items.single().value)
+    }
+
+    @Test
+    fun filterOptionsListOnlyTheCallersReach() {
+        val o = svc.filterOptions(zones(z1))
+        assertEquals(listOf("Z1"), o.zones.map { it.code }); assertEquals(1, o.wings.size); assertEquals(1, o.houses.size)
+        assertEquals(listOf("Z1", "Z2"), svc.filterOptions(national()).zones.map { it.code })
     }
 
     @Test

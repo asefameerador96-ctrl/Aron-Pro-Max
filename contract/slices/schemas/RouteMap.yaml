@@ -11,6 +11,8 @@ RouteMap:
   - sr_name
   - territory
   - zone
+  - sale_start
+  - sr_last_position
   - outlets
   - path
   - target_vs_achievement
@@ -45,10 +47,14 @@ RouteMap:
     zone:
       $ref: '#/components/schemas/PlaceRef'
     sale_start:
-      $ref: '#/components/schemas/MapPosition'
-      description: Where the first call of the day was made; absent before the first call.
+      oneOf:
+      - $ref: '#/components/schemas/MapPosition'
+      - type: 'null'
+      description: Where the first call of the day was made; null before the first call.
     sr_last_position:
-      $ref: '#/components/schemas/MapPosition'
+      oneOf:
+      - $ref: '#/components/schemas/MapPosition'
+      - type: 'null'
     outlets:
       type: array
       maxItems: 2000
