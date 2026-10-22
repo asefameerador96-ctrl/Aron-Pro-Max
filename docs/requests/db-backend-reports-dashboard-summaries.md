@@ -13,7 +13,7 @@ target), `app.calendar_holiday`, `app.final_submit` (unique per zone/date while 
 
 | # | Need | Used by |
 |---|---|---|
-| A1 | `route_class` text NOT NULL on `app.route`, in (`normal`,`manual`,`dummy_br`,`dummy_institutional`), default `normal`, and `dw.dim_geo.route_class` (copied; rebuilds with the dim). Name is yours to choose if `route.kind` is reused; I read only `dw.dim_geo.route_class`. | Target Outlet, Target Route, Login, Final Submit service zones |
+| A1 | `route_class` text NOT NULL on `app.route`, in (`normal`,`manual`,`dummy_br`,`dummy_institutional`), default `normal`, and `dw.dim_geo.route_class` (copied; rebuilds with the dim). The name `app.route.route_class` is fixed: I read exactly that column (the service answers 503 until it exists, so a missing column can never make every route count as normal). `route.kind` stays `sr`/`amo`; cards count `sr` routes only. | Target Outlet, Target Route, Login, Final Submit service zones |
 | A2 | `app.house.status` already exists (`active`/`inactive`); I treat `status='active'` as the active flag and de-duplicate by (territory, lower(name)) keeping the lowest id. Only `house_id`, `house_name` on `dw.dim_geo` are asked (I fill them from the zone's house). Add a unique index on `app.house (territory_id, lower(name)) WHERE status='active'` if you want the duplicates gone at the source. | House filter and scope |
 | A3 | `app.outlet.channel` stays NOT NULL (exists). Nothing to do; confirm the seed has no outlet without channel. | channel cards |
 | A4 | `dw.dim_product`: add `segment_code`, `brand_code`, `variant_code` (the filter and the response use codes). | Segment/Brand/Variant filters |

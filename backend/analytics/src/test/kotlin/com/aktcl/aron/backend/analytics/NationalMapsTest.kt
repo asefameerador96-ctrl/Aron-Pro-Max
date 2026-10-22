@@ -118,4 +118,16 @@ class NationalMapsTest {
             assertEquals(ProblemCode.ERR_FORBIDDEN, assertFailsWith<ApiProblem> { call() }.code)
         }
     }
+
+    @Test
+    fun checker_aVoidedFixLeavesThePathAndTheDistance() {
+        fresh.db.jdbi.useHandle<Exception> { h ->
+            h.execute("UPDATE app.geo_fix SET voided_at = now() WHERE route_id = $r1 AND lat = 23.7808")
+        }
+        AggregationWorker(fresh.db, AronClock { now }).also { it.requestRebuild(day); it.runUntilIdle() }
+        val m = svc.routeMap(national(), r1, "2026-10-04")
+        assertEquals(2, m.path.size)
+        assertEquals(1, m.path.count { it.lat == 23.7808 }.let { 1 - it })
+        assertEquals(3470.55 > m.time_card.distance_covered_m, true)                       // now only the first and the last fix: A to C
+    }
 }

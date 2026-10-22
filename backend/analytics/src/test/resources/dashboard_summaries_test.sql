@@ -1,6 +1,7 @@
 -- TEST-ONLY stand-in for the db lane's wave-4 migration (docs/requests/db-backend-reports-dashboard-summaries.md).
 -- Idempotent on purpose: it also runs unchanged on a database that already has the real objects, and is deleted
 -- the day those migrations are on INT.
+ALTER TABLE app.route ADD COLUMN IF NOT EXISTS route_class text NOT NULL DEFAULT 'normal';
 ALTER TABLE dw.dim_geo ADD COLUMN IF NOT EXISTS route_class text NOT NULL DEFAULT 'normal';
 ALTER TABLE dw.dim_geo ADD COLUMN IF NOT EXISTS house_id bigint;
 ALTER TABLE dw.dim_geo ADD COLUMN IF NOT EXISTS house_name text;

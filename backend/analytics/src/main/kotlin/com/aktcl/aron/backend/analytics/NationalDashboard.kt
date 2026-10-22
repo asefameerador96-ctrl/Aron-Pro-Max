@@ -153,7 +153,7 @@ class NationalDashboardService(
             val targets = sql.bind(h.createQuery(
                 """
                 SELECT p.category_code, sum(t.std_target) AS total, count(DISTINCT t.scope_id) AS routes
-                  FROM app.target t JOIN dw.dim_geo g ON g.route_id = t.scope_id JOIN dw.dim_product p ON p.sku_id = t.product_id
+                  FROM app.target t JOIN app.target_set ts ON ts.id = t.target_set_id AND ts.status = 'active' JOIN dw.dim_geo g ON g.route_id = t.scope_id JOIN dw.dim_product p ON p.sku_id = t.product_id
                  WHERE t.month = :m AND t.scope_type = 'route' AND t.product_level = 'sku' AND t.superseded_by_revision_id IS NULL ${sql.geo} ${sql.product}
                  GROUP BY 1
                 """,
@@ -187,14 +187,14 @@ class NationalDashboardService(
             val targetOutlets = sql.bind(h.createQuery(
                 """
                 SELECT coalesce(sum(a.target_outlets), 0) FROM dw.agg_daily_route a JOIN dw.dim_geo g ON g.route_id = a.route_id
-                 WHERE a.business_date = :d AND a.planned AND NOT a.exception_approved AND g.route_class = 'normal' ${sql.geo}
+                 WHERE a.business_date = :d AND a.planned AND NOT a.exception_approved AND g.route_class = 'normal' AND g.route_kind = 'sr' ${sql.geo}
                 """,
             ).bind("d", date)).mapTo(Long::class.java).one().toInt()
             val calls = if (!sql.hasProductFilter) {
                 sql.bind(h.createQuery(
                     """
                     SELECT coalesce(sum(a.successful_calls), 0) FROM dw.agg_daily_route a JOIN dw.dim_geo g ON g.route_id = a.route_id
-                     WHERE a.business_date = :d AND a.planned AND NOT a.exception_approved AND g.route_class = 'normal' ${sql.geo}
+                     WHERE a.business_date = :d AND a.planned AND NOT a.exception_approved AND g.route_class = 'normal' AND g.route_kind = 'sr' ${sql.geo}
                     """,
                 ).bind("d", date)).mapTo(Long::class.java).one().toInt()
             } else {
@@ -202,7 +202,7 @@ class NationalDashboardService(
                     """
                     SELECT count(DISTINCT (s.route_id, s.outlet_id)) FROM dw.agg_daily_outlet_sku s JOIN dw.dim_geo g ON g.route_id = s.route_id
                       JOIN dw.dim_product p ON p.sku_id = s.sku_id JOIN dw.agg_daily_route a ON a.route_id = s.route_id AND a.business_date = s.business_date
-                     WHERE s.business_date = :d AND a.planned AND NOT a.exception_approved AND g.route_class = 'normal' ${sql.geo} ${sql.product}
+                     WHERE s.business_date = :d AND a.planned AND NOT a.exception_approved AND g.route_class = 'normal' AND g.route_kind = 'sr' ${sql.geo} ${sql.product}
                     """,
                 ).bind("d", date)).mapTo(Long::class.java).one().toInt()
             }
@@ -227,7 +227,7 @@ class NationalDashboardService(
                 SELECT o.channel, count(DISTINCT (s.route_id, s.outlet_id)) AS n
                   FROM dw.agg_daily_outlet_sku s JOIN dw.dim_geo g ON g.route_id = s.route_id JOIN dw.dim_product p ON p.sku_id = s.sku_id
                   JOIN dw.dim_outlet o ON o.outlet_id = s.outlet_id JOIN dw.agg_daily_route a ON a.route_id = s.route_id AND a.business_date = s.business_date
-                 WHERE s.business_date = :d AND a.planned AND NOT a.exception_approved AND g.route_class = 'normal' ${sql.geo} ${sql.product} GROUP BY 1
+                 WHERE s.business_date = :d AND a.planned AND NOT a.exception_approved AND g.route_class = 'normal' AND g.route_kind = 'sr' ${sql.geo} ${sql.product} GROUP BY 1
                 """,
             ).bind("d", date)).map { rs, _ -> rs.getString(1) to rs.getLong(2) }.list().toMap()
             val m = meta(h, date, listOf("agg_daily_outlet_sku", "agg_daily_route"))
@@ -263,7 +263,7 @@ class NationalDashboardService(
             val (service, submitted) = sql.bind(h.createQuery(
                 """
                 WITH svc AS (SELECT DISTINCT a.zone_id FROM dw.agg_daily_route a JOIN dw.dim_geo g ON g.route_id = a.route_id
-                              WHERE a.business_date = :d AND a.planned AND NOT a.exception_approved AND g.route_class = 'normal' ${sql.geo})
+                              WHERE a.business_date = :d AND a.planned AND NOT a.exception_approved AND g.route_class = 'normal' AND g.route_kind = 'sr' ${sql.geo})
                 SELECT count(*), count(*) FILTER (WHERE z.final_submitted_at IS NOT NULL)
                   FROM svc LEFT JOIN dw.agg_daily_zone z ON z.zone_id = svc.zone_id AND z.business_date = :d
                 """,
@@ -283,7 +283,7 @@ class NationalDashboardService(
                 SELECT count(*), count(*) FILTER (WHERE a.logged_in_at IS NOT NULL AND a.downloaded_at IS NOT NULL),
                        count(*) FILTER (WHERE a.logged_in_at IS NOT NULL AND a.downloaded_at IS NOT NULL AND a.sales_submitted_at IS NOT NULL)
                   FROM dw.agg_daily_route a JOIN dw.dim_geo g ON g.route_id = a.route_id
-                 WHERE a.business_date = :d AND a.planned AND NOT a.exception_approved AND g.route_class = 'normal' ${sql.geo}
+                 WHERE a.business_date = :d AND a.planned AND NOT a.exception_approved AND g.route_class = 'normal' AND g.route_kind = 'sr' ${sql.geo}
                 """,
             ).bind("d", date)).map { rs, _ -> Triple(rs.getInt(1), rs.getInt(2), rs.getInt(3)) }.one()
             val m = meta(h, date, listOf("agg_daily_route"))
@@ -299,6 +299,14 @@ class NationalDashboardService(
         val f = req.filter; val date = dateOf(f); val sql = NationalSql(caller, f)
         return read { h ->
             ensureReady(h)
+            // A memo count per node is exact only when no narrower product filter applies: the per-route tables count every memo holding any SKU of the node.
+            val narrower = when (req.dimension) {
+                "segment" -> f.brand_codes.isNotEmpty() || f.variant_codes.isNotEmpty() || caller.brandIds != null
+                "brand" -> f.variant_codes.isNotEmpty()
+                else -> false
+            }
+            if (req.measure == "memo" && narrower) throw ApiProblem(ProblemCode.ERR_VALIDATION, "memo counts by ${req.dimension} cannot be combined with a narrower product filter",
+                errors = listOf(FieldError("dimension", "unsupported_combination")))
             val nodeCols = when (req.dimension) { "segment" -> "p.segment_id, p.segment_code, p.segment_name"; "brand" -> "p.brand_id, p.brand_code, p.brand_name"; else -> "p.variant_id, p.variant_code, p.variant_name" }
             val items: List<BreakdownItem>
             var category: String? = null

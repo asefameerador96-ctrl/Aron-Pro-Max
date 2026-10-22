@@ -28,7 +28,10 @@ private fun NationalDeps.caller(call: ApplicationCall): NationalCaller {
     val p = call.principal
     if (p.role !in DASHBOARD_ROLES) throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "the dashboard is not available to this role")
     val today = service.run { dateOf(null as String?) }
-    return NationalCaller(reach.reach(p.userId, p.role, p.scopeVersion, today), brands.brandIds(p.userId, p.role))
+    val brandIds = brands.brandIds(p.userId, p.role)
+    // A BRAND user without brands must see nothing, never everything (fail closed).
+    if (p.role.wire == "BRAND" && brandIds == null) throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "no brand scope")
+    return NationalCaller(reach.reach(p.userId, p.role, p.scopeVersion, today), brandIds)
 }
 
 private fun pathId(call: ApplicationCall, name: String): Long =

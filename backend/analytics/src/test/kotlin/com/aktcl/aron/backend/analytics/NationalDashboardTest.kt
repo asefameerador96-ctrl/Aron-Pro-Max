@@ -195,4 +195,63 @@ class NationalDashboardTest {
         assertEquals(t.toString(), fr.last_updated_at); assertTrue(fr.tables.all { it.last_updated_at != null })
         assertNotNull(svc.cpr(national(), all).as_of)
     }
+
+    private fun sql(s: String) = fresh.db.jdbi.useHandle<Exception> { it.execute(s) }
+
+    @Test
+    fun checker_manualDummyAndAmoRoutesAreNotTargetRoutes() {
+        sql("UPDATE app.route SET route_class = 'manual' WHERE code = 'R3'")
+        fresh.db.jdbi.useHandle<Exception> { Aggregator.refreshDimensions(it) }
+        val l = svc.loginSubmit(national(), all)
+        assertEquals(2, l.target_routes)                                                   // R3 (manual) left out
+        assertEquals(1, svc.finalSubmit(national(), all).service_zones)                    // zone 2 only had the manual route
+        assertEquals(4, svc.cpr(national(), all).target_outlets)
+        sql("UPDATE app.route SET route_class = 'normal' WHERE code = 'R3'; UPDATE app.route SET kind = 'amo' WHERE code = 'R3'")
+        fresh.db.jdbi.useHandle<Exception> { Aggregator.refreshDimensions(it) }
+        assertEquals(2, svc.loginSubmit(national(), all).target_routes)                    // an AMO route is not an SR route
+    }
+
+    @Test
+    fun checker_aPlannedRouteNobodyOpenedStillCountsAsTargetRoute() {
+        sql("""
+            INSERT INTO app.route (code, name, zone_id, kind, visit_kind, visit_days_mask) SELECT 'R4', 'Route4', id, 'sr', 'daily', 127 FROM app.zone WHERE code = 'Z1';
+            INSERT INTO app.outlet (code, name, owner_name, zone_id, route_id, cluster_id, channel)
+              SELECT 'O9', 'Outlet 9', 'Owner', r.zone_id, r.id, (SELECT id FROM app.cluster WHERE zone_id = r.zone_id), 'GT' FROM app.route r WHERE r.code = 'R4';
+            INSERT INTO app.route_day (route_id, business_date, planned) SELECT id, DATE '2026-10-04', true FROM app.route WHERE code = 'R4';
+        """)
+        fresh.db.jdbi.useHandle<Exception> { Aggregator.refreshDimensions(it) }
+        AggregationWorker(fresh.db, AronClock { now }).runUntilIdle()                      // the stale scan queues the route-day nobody touched
+        val l = svc.loginSubmit(national(), all)
+        assertEquals(4, l.target_routes); assertEquals(2, l.successful_login)              // 2 of 4, not 2 of 3
+        assertEquals(6, svc.cpr(national(), all).target_outlets)                           // R4's one outlet counts although no bundle froze its target
+    }
+
+    @Test
+    fun checker_productNodesWithoutACodeStillBreakDownAndFilter() {
+        sql("UPDATE app.product_node SET code = NULL WHERE level IN ('brand', 'segment', 'variant')")
+        fresh.db.jdbi.useHandle<Exception> { Aggregator.refreshDimensions(it) }
+        val items = svc.breakdown(national(), NationalBreakdownRequest(all, "memo", "brand")).items
+        assertEquals(listOf(3L, 2L), items.map { it.value }); assertTrue(items.all { it.code.startsWith("n") })
+        assertEquals(2, svc.filterOptions(national()).brands.size)
+        assertEquals(15, svc.sales(national(), all.copy(brand_codes = listOf(items.last().code))).cards.single { it.category_code == "cigarette" }.total_sales)
+    }
+
+    @Test
+    fun checker_memoCountsAreRefusedWhereTheyCouldNotBeExact() {
+        for ((dim, f) in listOf("segment" to all.copy(brand_codes = listOf("B1")), "brand" to all.copy(variant_codes = listOf("V1")))) {
+            assertEquals(ProblemCode.ERR_VALIDATION, assertFailsWith<ApiProblem> { svc.breakdown(national(), NationalBreakdownRequest(f, "memo", dim)) }.code)
+        }
+        assertEquals(ProblemCode.ERR_VALIDATION, assertFailsWith<ApiProblem> { svc.breakdown(brandUser("B1"), NationalBreakdownRequest(all, "memo", "segment")) }.code)
+        assertEquals(listOf(3L), svc.breakdown(brandUser("B1"), NationalBreakdownRequest(all, "memo", "brand")).items.map { it.value })   // exact: the brand table
+        assertEquals(listOf(60L), svc.breakdown(brandUser("B1"), NationalBreakdownRequest(all, "std", "segment")).items.map { it.value })
+    }
+
+    @Test
+    fun checker_freshnessNeverClaimsMoreThanTheOldestWaitingChange() {
+        val later = Instant.now().plusSeconds(60)   // wall-clock-ok: the queue stamps last_dirtied_at with the database clock
+        sql("SELECT app.mark_dirty('route_day_agg', (SELECT id FROM app.route WHERE code = 'R1'), DATE '2026-10-04', 'stuck')")
+        fresh.db.jdbi.useHandle<Exception> { DashboardSummaries.touchFreshness(it, later) }
+        val last = Instant.parse(svc.freshness().last_updated_at!!)
+        assertTrue(last.isBefore(later))                   // the queue still holds a change: not "fresh now"
+    }
 }
