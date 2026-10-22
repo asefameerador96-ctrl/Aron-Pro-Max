@@ -335,11 +335,12 @@ class NationalDashboardService(
             var category: String? = null
             var unit: String? = null
             if (req.measure == "std") {
-                // STD mixes sticks, pieces and dozens: one category per answer (the requested one, else the biggest).
+                // STD mixes sticks, pieces and dozens: one category per answer (the requested one, else the first in the brief's order that has sales: quantities of
+                // different units are never compared).
                 category = req.category_code ?: sql.bind(h.createQuery(
                     """
                     SELECT p.category_code FROM dw.agg_daily_route_sku a JOIN dw.dim_geo g ON g.route_id = a.route_id JOIN dw.dim_product p ON p.sku_id = a.sku_id
-                     WHERE a.business_date = :d ${sql.geo} ${sql.product} GROUP BY 1 ORDER BY sum(a.sold_qty_base) DESC, 1 LIMIT 1
+                     WHERE a.business_date = :d ${sql.geo} ${sql.product} GROUP BY 1 ORDER BY array_position(ARRAY['cigarette','bidi','lighter','match'], p.category_code), 1 LIMIT 1
                     """,
                 ).bind("d", date)).mapTo(String::class.java).findOne().orElse(null)
                 unit = category?.let { c -> sql.bind(h.createQuery("SELECT min(p.base_unit) FROM dw.dim_product p WHERE p.category_code = :c ${sql.product}").bind("c", c)).mapTo(String::class.java).findOne().orElse(null) }

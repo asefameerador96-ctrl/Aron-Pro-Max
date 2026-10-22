@@ -186,9 +186,9 @@ private fun outletSpec(ctx: ReportContext, byDay: Boolean): SqlSpec {
                        WHERE ${ctx.dateClause("m.business_date")} AND ${ctx.zoneClause("m.zone_id")} AND ${ctx.routeClause("m.route_id")} AND m.status = 'active' AND m.line_count > 0
                        GROUP BY 1, 2),
         qty AS (SELECT m.outlet_id, ${if (byDay) "m.business_date" else "NULL::date"} AS d,
-                       sum(ml.qty_base) FILTER (WHERE p.category_code = 'cigarette') AS cig, sum(ml.qty_base) FILTER (WHERE p.category_code = 'bidi') AS bidi,
-                       sum(ml.qty_base) FILTER (WHERE p.category_code = 'lighter') AS lighter, sum(ml.qty_base) FILTER (WHERE p.category_code = 'match') AS match
-                  FROM app.memo_line ml JOIN dw.dim_product p ON p.sku_id = ml.sku_id
+                       sum(ml.qty_base) FILTER (WHERE s.category_code = 'cigarette') AS cig, sum(ml.qty_base) FILTER (WHERE s.category_code = 'bidi') AS bidi,
+                       sum(ml.qty_base) FILTER (WHERE s.category_code = 'lighter') AS lighter, sum(ml.qty_base) FILTER (WHERE s.category_code = 'match') AS match
+                  FROM app.memo_line ml JOIN app.sku s ON s.id = ml.sku_id   -- the category from the master, not from the 10-minute dimension copy
                   JOIN dw.fact_memo m ON m.memo_client_uuid = ml.memo_client_uuid AND m.business_date = ml.business_date
                  WHERE ${ctx.dateClause("m.business_date")} AND ${ctx.zoneClause("m.zone_id")} AND ${ctx.routeClause("m.route_id")} AND m.status = 'active' AND m.line_count > 0
                    AND ml.voided_at IS NULL AND ml.line_kind = 'sale' GROUP BY 1, 2),
