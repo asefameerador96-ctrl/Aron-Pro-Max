@@ -19,3 +19,19 @@ All 48 dashboard rows have code (docs/status/web-dashboard.md), so this pass is 
 4. Functionality gaps you find in the data layer: file `docs/requests/backend-reports-<name>.md` with the report key, the columns and a failing contract test, and carry on with the rest; the lead routes it.
 5. Tests: unit and Playwright; screenshots of the key pages in `web/e2e` (Linux goldens are recorded by the `web-snapshots` workflow, never locally on Windows). Keep the p95 and bundle budgets of docs/31.
 6. Before 05:00 UTC write the top of `docs/status/web-dashboard.md`: what changed tonight, which seeded user to log in as for each page (`tso1001`, `dmo1001`, `admin1001`; passwords are never written down), what is still open.
+
+## Wave 4: the national dashboard, screen for screen (owner directive 2026-10-22, docs/34 s2, D-DASH-02)
+
+The binding spec is now `docs/ui-reference/web/dashboard-national.webp`, `dashboard-brief.md` (every card's
+formula and source) and `dashboard.md` (UI-WEB-01..14). Build in this order, one candidate per step on
+`lane/web-dashboard`: (1) the filter panel with the House level, Apply Filter and the top-right Filter toggle;
+(2) the twelve cards exactly as laid out (sales rings with "i" pop-ups showing Daily Target / Sales so far /
+Remaining; Live CPR; By Channel Successful Call with the concentric radial; Final Submit; Login/Submit bars;
+By Channel STD pie with legend; Breakdown with the gear menu; Geo Fencing; FF Geo map with clusters, pin
+colours Red < 70 / Amber 70–90 / Green > 90, Filter by Color and the route pop-up); (3) the Route map page
+("Map Details": five marker kinds, path line, legend, Target vs Achievement, CPR, time card) and the Sale
+Position page (hit/miss, three sale markers, force-sale photo "View Image"); (4) "last updated hh:mm", Lakh /
+Crore formatting, Bengali digits in Bangla mode, role views by scope (docs/34 s1), BRAND users see product
+cards only. Contract: backend-reports publishes one slice per card first; build against the mock server from
+those slices and switch to the real API as it lands. Deferred menu entries stay hidden (docs/27). Keep the
+existing routes working; the old queue follows this pass.
