@@ -131,3 +131,20 @@ test("Bangla mode uses Bengali digits and words on the cards", async ({ page }, 
   await expect(page.getByTestId("sales-total-bidi")).toHaveText("৩৪.৮৮ লাখ");
   await shot(page, info, "national-dashboard-bn");
 });
+
+test("the dashboard, the route map and the sale position pass axe A/AA", async ({ page }) => {
+  const { default: AxeBuilder } = await import("@axe-core/playwright");
+  await page.setViewportSize({ width: 1366, height: 900 });
+  await open(page);
+  const check = async (name: string) => {
+    const r = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa"]).analyze();
+    expect(r.violations.map((v) => `${name}: ${v.id} ${v.nodes[0]?.target}`)).toEqual([]);
+  };
+  await check("dashboard");
+  await page.goto("/dashboard/route-map/100");
+  await expect(page.getByTestId("route-map-page")).toBeVisible();
+  await check("route-map");
+  await page.goto("/dashboard/sale-position/100000");
+  await expect(page.getByTestId("sale-position-page")).toBeVisible();
+  await check("sale-position");
+});

@@ -24,7 +24,7 @@ export default async function SalePositionPage({ params, searchParams }: { param
   if (!r.ok && r.status === 404) notFound();
   if (!r.ok && r.status === 403) return <Forbidden locale={locale} />;
   const back = (
-    <Link href="/" aria-label={t(locale, "nat.back")} title={t(locale, "nat.back")} data-testid="nat-back" className="inline-flex size-10 items-center justify-center rounded-full border border-divider bg-raised text-accent hover:bg-pressed focus-visible:outline-(length:--focus-w) focus-visible:outline-offset-2 outline-focus">
+    <Link href="/" aria-label={t(locale, "nat.back")} title={t(locale, "nat.back")} data-testid="nat-back" className="inline-flex size-(--ctl-h) items-center justify-center rounded-full border border-divider bg-raised text-accent hover:bg-pressed focus-visible:outline-(length:--focus-w) focus-visible:outline-offset-2 outline-focus">
       <Icon name="chevron-left" size={20} />
     </Link>
   );

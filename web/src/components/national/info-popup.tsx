@@ -33,14 +33,14 @@ export function InfoPopup({ openLabel, title, rows, emptyText, closeLabel, testI
   }, [open]);
   return (
     <div className="no-print absolute bottom-2 end-3">
-      <button ref={btn} type="button" aria-label={openLabel} aria-expanded={open} aria-controls={id} onClick={() => setOpen((o) => !o)} data-testid={testId} className="flex size-9 items-center justify-center rounded-full bg-accent text-on-accent hover:brightness-110 focus-visible:outline-(length:--focus-w) focus-visible:outline-offset-2 outline-focus">
+      <button ref={btn} type="button" aria-label={openLabel} aria-expanded={open} aria-controls={id} onClick={() => setOpen((o) => !o)} data-testid={testId} className="flex size-(--ctl-h) items-center justify-center rounded-full bg-accent text-on-accent hover:brightness-110 focus-visible:outline-(length:--focus-w) focus-visible:outline-offset-2 outline-focus">
         <Icon name="info" size={20} />
       </button>
       {open ? (
         <div ref={box} id={id} role="dialog" aria-label={title} data-testid={`${testId}-dialog`} className="glass-pop absolute bottom-11 end-0 z-30 w-64 p-3 text-body text-primary">
           <div className="mb-2 flex items-center justify-between gap-2">
             <h3 className="text-body-strong text-accent">{title}</h3>
-            <button type="button" aria-label={closeLabel} onClick={() => { setOpen(false); btn.current?.focus(); }} className="flex size-8 items-center justify-center rounded-full text-secondary hover:bg-pressed focus-visible:outline-(length:--focus-w) focus-visible:outline-offset-2 outline-focus">
+            <button type="button" aria-label={closeLabel} onClick={() => { setOpen(false); btn.current?.focus(); }} className="flex size-(--ctl-h) items-center justify-center rounded-full text-secondary hover:bg-pressed focus-visible:outline-(length:--focus-w) focus-visible:outline-offset-2 outline-focus">
               <Icon name="close" size={16} />
             </button>
           </div>

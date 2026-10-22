@@ -35,7 +35,7 @@ export function MultiSelect({ label, options, value, onChange, allText, someText
           <span id={`${lid}-t`} className="truncate" data-testid={`${testId}-text`}>{text}</span>
         </button>
         {chosen.length > 0 && chosen.length < options.length ? (
-          <button type="button" aria-label={`${clearLabel}: ${label}`} onClick={() => onChange([])} data-testid={`${testId}-clear`} className="flex size-8 shrink-0 items-center justify-center rounded-full text-secondary hover:bg-pressed focus-visible:outline-(length:--focus-w) focus-visible:outline-offset-2 outline-focus">
+          <button type="button" aria-label={`${clearLabel}: ${label}`} onClick={() => onChange([])} data-testid={`${testId}-clear`} className="flex size-(--ctl-h) shrink-0 items-center justify-center rounded-full text-secondary hover:bg-pressed focus-visible:outline-(length:--focus-w) focus-visible:outline-offset-2 outline-focus">
             <Icon name="close" size={16} />
           </button>
         ) : null}
@@ -48,7 +48,7 @@ export function MultiSelect({ label, options, value, onChange, allText, someText
             {shown.length === 0 ? <li className="px-2 py-2 text-caption text-secondary">{noneText}</li> : null}
             {shown.map((o) => (
               <li key={o.id} role="option" aria-selected={chosen.includes(o.id)}>
-                <label className="flex min-h-10 cursor-pointer items-center gap-2 rounded-chip px-2 hover:bg-pressed">
+                <label className="flex min-h-(--ctl-h) cursor-pointer items-center gap-2 rounded-chip px-2 hover:bg-pressed">
                   <input type="checkbox" checked={chosen.includes(o.id)} onChange={() => toggle(o.id)} className="size-4 accent-(--accent)" />
                   <span className="min-w-0 flex-1 truncate" title={o.name}>{o.name}</span>
                 </label>

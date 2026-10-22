@@ -71,9 +71,10 @@ test("auto-refresh does not poll faster than 60 s", async ({ page }) => {
   await page.clock.install();
   await loginOk(page, "tso334", "tso-pass-1");
   await english(page);
+  await page.goto("/overview");
   let reads = 0;
   page.on("request", (r) => {
-    if (r.headers()["rsc"] === "1" && new URL(r.url()).pathname === "/") reads++;
+    if (r.headers()["rsc"] === "1" && new URL(r.url()).pathname === "/overview") reads++;
   });
   await page.clock.runFor(30_000);
   expect(reads).toBe(0);

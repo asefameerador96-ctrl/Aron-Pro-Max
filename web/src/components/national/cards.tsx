@@ -223,7 +223,7 @@ export function BreakdownCard({ slot, locale, hrefFor, measure, by }: { slot: Sl
   if (!visible(slot)) return null;
   const gear = (
     <details className="no-print relative" data-testid="breakdown-gear">
-      <summary aria-label={t(locale, "nat.gear")} title={t(locale, "nat.gear")} className="flex size-10 cursor-pointer list-none items-center justify-center rounded-full text-accent hover:bg-pressed focus-visible:outline-(length:--focus-w) focus-visible:outline-offset-2 outline-focus [&::-webkit-details-marker]:hidden">
+      <summary aria-label={t(locale, "nat.gear")} title={t(locale, "nat.gear")} className="flex size-(--ctl-h) cursor-pointer list-none items-center justify-center rounded-full text-accent hover:bg-pressed focus-visible:outline-(length:--focus-w) focus-visible:outline-offset-2 outline-focus [&::-webkit-details-marker]:hidden">
         <Icon name="config" size={26} />
       </summary>
       <div className="glass-pop absolute end-0 top-11 z-30 w-52 p-2 text-body" role="menu" aria-label={t(locale, "nat.gear")}>
@@ -233,7 +233,7 @@ export function BreakdownCard({ slot, locale, hrefFor, measure, by }: { slot: Sl
             {MODES.filter((x) => x.measure === m).map((x) => {
               const on = x.measure === measure && x.by === by;
               return (
-                <a key={x.by} role="menuitemradio" aria-checked={on} aria-current={on ? "true" : undefined} href={hrefFor(x.measure, x.by)} data-testid={`breakdown-${x.measure}-${x.by}`} className={`block min-h-10 rounded-chip px-3 py-2 ${on ? "bg-accent text-on-accent" : "bg-pressed text-primary hover:brightness-95"} mb-1 focus-visible:outline-(length:--focus-w) focus-visible:outline-offset-2 outline-focus`}>
+                <a key={x.by} role="menuitemradio" aria-checked={on} aria-current={on ? "true" : undefined} href={hrefFor(x.measure, x.by)} data-testid={`breakdown-${x.measure}-${x.by}`} className={`block min-h-(--ctl-h) rounded-chip px-3 py-2 ${on ? "bg-accent text-on-accent" : "bg-pressed text-primary hover:brightness-95"} mb-1 focus-visible:outline-(length:--focus-w) focus-visible:outline-offset-2 outline-focus`}>
                   {t(locale, x.label)}
                 </a>
               );
