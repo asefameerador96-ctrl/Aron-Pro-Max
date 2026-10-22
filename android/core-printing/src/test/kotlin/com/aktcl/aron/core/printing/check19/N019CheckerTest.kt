@@ -102,7 +102,7 @@ class N019CheckerTest {
         val m = PrinterManager({ p.link() }, Store(), backgroundScope, nowMs = { testScheduler.currentTime })
         val img = image()
         p.dropAtByte = 20_000 + 500 // inside a band
-        assertTrue(m.print(PrintJob("m1", img)) is PrintOutcome.Failed)
+        assertTrue(m.print(PrintJob("m1", img)) is PrintOutcome.Unconfirmed) // mid-band: ink had started (D-PRINT-02)
         p.dropAtByte = Long.MAX_VALUE
         p.rows.clear()
         assertEquals(PrintOutcome.Printed, m.print(PrintJob("m1", img)))

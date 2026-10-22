@@ -59,6 +59,55 @@ object EscPos {
         return out
     }
 
+    /** ESC 3 24: line spacing 24 dots, so 24-dot bit-image bands ([bitImage24Band]) touch. */
+    val LINE_SPACING_24 = byteArrayOf(0x1B, 0x33, 24)
+
+    /** ESC 2: back to the default line spacing (for text after an image). */
+    val LINE_SPACING_DEFAULT = byteArrayOf(0x1B, 0x32)
+
+    /**
+     * Rows [from, from + 24) of [bitmap] as `ESC * 33 nL nH d1..dk LF` (24-dot double density, D-PRINT-02): the
+     * bit-image command older ESC/POS firmware supports when it has no `GS v 0`. Column major: three bytes per dot
+     * column, MSB = top dot. Rows past the bitmap's end are white.
+     */
+    fun bitImage24Band(bitmap: MonoBitmap, from: Int): ByteArray {
+        val n = bitmap.width
+        val out = ByteArray(5 + 3 * n + 1)
+        out[0] = 0x1B; out[1] = 0x2A; out[2] = 33; out[3] = (n and 0xFF).toByte(); out[4] = (n ushr 8).toByte()
+        for (x in 0 until n) {
+            for (k in 0 until 3) {
+                var v = 0
+                for (bit in 0 until 8) if (bitmap[x, from + k * 8 + bit]) v = v or (0x80 ushr bit)
+                out[5 + 3 * x + k] = v.toByte()
+            }
+        }
+        out[out.size - 1] = 0x0A
+        return out
+    }
+
+    /** The whole image as 24-dot bit-image bands: reset, spacing 24, the bands, default spacing, a feed. */
+    fun bitImageJob(bitmap: MonoBitmap, feed: Int = 3): List<ByteArray> {
+        val out = ArrayList<ByteArray>()
+        out.add(INIT + LINE_SPACING_24)
+        val height = lastInkRow(bitmap) + 1
+        var y = 0
+        while (y < height) { out.add(bitImage24Band(bitmap, y)); y += 24 }
+        out.add(LINE_SPACING_DEFAULT + feedLines(feed))
+        return out
+    }
+
+    /**
+     * Plain text in the printer's own font (no image at all): reset, the ASCII [lines] each ended by LF, a feed.
+     * Any character outside printable ASCII is sent as '?', so no byte can start a command.
+     */
+    fun textJob(lines: List<String>, feed: Int = 3): List<ByteArray> {
+        val out = ArrayList<ByteArray>()
+        out.add(INIT)
+        for (l in lines) out.add(ByteArray(l.length + 1) { i -> if (i == l.length) 0x0A else l[i].let { c -> if (c.code in 0x20..0x7E) c.code.toByte() else '?'.code.toByte() } })
+        out.add(feedLines(feed))
+        return out
+    }
+
     private fun lastInkRow(b: MonoBitmap): Int {
         for (y in b.height - 1 downTo 0) {
             val from = y * b.bytesPerRow

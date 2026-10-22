@@ -59,6 +59,7 @@ object SettingsTags {
     const val UPDATE = "set_update"
     const val PHOTOS_WIFI = "set_photos_wifi"
     const val SUPPORT = "set_support"
+    const val PRINTER = "set_printer"
     const val SUNLIGHT = "set_sunlight"
     const val LANGUAGE = "set_language"
 }
@@ -84,6 +85,8 @@ fun SettingsContent(
     onPhotosWifiOnly: (Boolean) -> Unit = {},
     /** "PDA to Support" tile (F-SYS-021). Shown when non-null. */
     onSupport: (() -> Unit)? = null,
+    /** "Printer diagnostics" (D-PRINT-02): Bluetooth, permissions, paired devices, test pages, report. Shown when non-null. */
+    onPrinter: (() -> Unit)? = null,
     /** The top bar's back; null hides the back button (the screen is then a root). */
     onBack: (() -> Unit)? = null,
     /** The sun switch row (docs/32 s2a item 5); shown when non-null. */
@@ -130,9 +133,10 @@ fun SettingsContent(
                 }
             }
             // device: PDA to Support
-            if (onSupport != null) {
+            if (onSupport != null || onPrinter != null) {
                 GroupLabel(stringResource(R.string.set_group_device))
-                AronListRow(stringResource(R.string.set_support), Modifier.testTag(SettingsTags.SUPPORT), onClick = onSupport, trailing = "›")
+                onPrinter?.let { AronListRow(stringResource(R.string.set_printer), Modifier.testTag(SettingsTags.PRINTER), onClick = it, trailing = "›") }
+                onSupport?.let { AronListRow(stringResource(R.string.set_support), Modifier.testTag(SettingsTags.SUPPORT), onClick = it, trailing = "›") }
             }
             // device status: the line Home no longer carries (battery, free storage, waiting uploads, last sync)
             health?.let { h ->
