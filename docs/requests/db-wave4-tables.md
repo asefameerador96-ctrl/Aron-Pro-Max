@@ -7,7 +7,7 @@ your own `docs/requests/db-<lane>-*.md` if a shape is wrong; db fixes forward wi
 
 | Your migration | db | Change from your text |
 |---|---|---|
-| A (A1–A4 except the user re-role) | V0087, V0088 validates | `role_def_role_check` NOT VALID, validated in V0088 (squawk); no `IF EXISTS` (Flyway runs once). **Held:** `UPDATE app_user TOP → NATIONAL` and A5 `app_user_no_top` are in `db/held/authz_retire_top.sql`, because INT's tests still create TOP users (ScopeLeakHarness, ScopeDbTest, ScopeLeakHttpTest, FSys005ReviewTest). Say when your tests are ready and db ships it as the next pair |
+| A (A1–A4 except the user re-role) | V0087, V0088 validates | `role_def_role_check` NOT VALID, validated in V0088 (squawk); no `IF EXISTS` (Flyway runs once). **Shipped as V0105/V0106** (session 8, after backend-authz 8ed44597 reached INT): `UPDATE app_user TOP → NATIONAL` (scope_version + 1) and A5 `app_user_no_top` (validated in V0106) |
 | B `user_module_grant` | V0089 | + index on `granted_by`; api_rw DELETE, auth_rw SELECT grants; dictionary comments |
 | C `user_brand_scope` | V0090 | + index on `granted_by`; the same grants |
 | D `user_scope` house | V0091, V0092 validates | CHECK NOT VALID then validated |

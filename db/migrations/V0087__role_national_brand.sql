@@ -11,7 +11,7 @@
 -- A3. cfg.web.menu_by_role default: NATIONAL = TOP's entry; BRAND = dashboard (read, filter), reports (read,
 --     export) and change_password (write_own), as every web role has.
 -- A4. TOP's admin permissions (role_grant_map) go to NATIONAL. Moving TOP users to NATIONAL and A5 (CHECK
---     app_user_no_top) are held (db/held/authz_retire_top.sql; see the note at A4 below).
+--     app_user_no_top) are V0105/V0106 (see the note at A4 below).
 
 SET lock_timeout = '5s';
 
@@ -86,8 +86,7 @@ UPDATE app.cfg_key
 INSERT INTO app.role_grant_map (role, permission)
 SELECT 'NATIONAL', permission FROM app.role_grant_map WHERE role = 'TOP'
 ON CONFLICT DO NOTHING;
--- The rest of A4 (TOP users -> NATIONAL) and A5 (CHECK app_user_no_top) are HELD in db/held/authz_retire_top.sql:
--- INT's tests still create TOP users (ScopeLeakHarness, ScopeDbTest, FSys005ReviewTest, ...), so the retirement ships
--- as its own migration when backend-authz confirms its tests are ready (the API already treats TOP as NATIONAL).
+-- The rest of A4 (TOP users -> NATIONAL) and A5 (CHECK app_user_no_top) are V0105/V0106: they waited until
+-- backend-authz's tests stopped creating TOP users (the API already treats TOP as NATIONAL).
 
 COMMENT ON COLUMN app.role_def.role IS 'User role code (contract Role); NATIONAL and BRAND are web-only portal levels (V0087, docs/34 s1); TOP is being retired (its users move to NATIONAL; kept for audit_log.actor_role and history).';

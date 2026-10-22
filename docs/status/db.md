@@ -2,15 +2,15 @@
 
 Updated with every push. Rows of Day 1: N-005, N-006, N-007, N-008 (`python3 tools/my-rows.py db 1 --full`).
 
-## Session 8, 2026-10-22 (lane/db, INT 256572bb merged): in progress
+## Session 8, 2026-10-22 (lane/db, INT 658f65d0 merged): in progress
 
-All edits below are in place in V0087-V0104 (none is on INT yet; INT stops at V0086).
+All edits below are in place in V0087-V0104 (none is on INT yet; INT stops at V0086), plus the new V0105/V0106.
 
 | Job | State | What |
 |---|---|---|
-| 1 CI on e1250831 | run 1335: gates, android, release APKs, images, infra green; backend/web still running at the time of writing | local: analytics, notify, app, contract (session 7 had not run them) |
+| 1 CI on e1250831 | run 1335: gates, android, release APKs, images, infra green; backend/web running | local on e1250831's tree: `ContractConformanceTest` failed (`/admin/permissions` lists NATIONAL/BRAND, absent from the contract enum before INT 658f65d0); fixed by merging INT 658f65d0, which carries backend-authz's contract. Full JVM suite re-run on the new tree |
 | 2 V0093 (lead ruling) | done | unique active-house index dropped (in place); `is_active`, the one-off dedupe and dim_geo house columns stay; test asserts duplicates are allowed and the index is absent; `db-wave4-tables.md` updated |
-| 3 TOP -> NATIONAL | **waiting**: backend-authz 8ed44597 is not on INT yet | `db/held/authz_retire_top.sql` becomes V0105 + V0106 (validate) once it is |
+| 3 TOP -> NATIONAL | done | backend-authz 8ed44597 reached INT (658f65d0): **V0105** TOP users -> NATIONAL (scope_version + 1) + `app_user_no_top` NOT VALID, **V0106** validates; held file deleted; tests: populated DB re-roles `qatop1` to NATIONAL\|2, a TOP insert is refused (23514) |
 | 6a BRAND menu | done (in place, V0087) | BRAND default of `cfg.web.menu_by_role` gains `credentials/change_password [write_own]` (backend-authz's fix) |
 | 4 Opus checker V0096/V0102 | round 3 FAIL, fixed | **blocker:** a pending factory reset that expires broke both device_command CHECKs, so mdm's pull UPDATE raised 23514 forever for that phone; fixed. Guard now polices UPDATE (forward-only states, fixed request columns, write-once approval/delivery/result), reset needs a requester. V0096: `batch_uuid` FK to `route_target_batch`, month CHECK `extract(day) = 1`. New test `v0102CommandsMoveForwardOnlyAndAPendingResetCanExpire`. mdm told in `db-mdm-device-command-answer.md`. Approver role stays API-only (noted) |
 | 5 smoke outlet | done by db (no infra lane this wave) | `infra/sql/devseed-smoke-outlet.sql`: SMOKE-SR-001 (moved to GUL-SR-2 on dev, placement closed/reopened, location appended), -002 GUL-SR-1, -003 BAN-SR-11; on the test profile (no Gulshan seed) SMOKE-SR-001 stays on MIR-SR-D (BackendCoreAsksV0061Test loads the file). `infra/scripts/slice-smoke.py` takes the code list; Friday reported as "no route by design". Proved on a dev-profile and a test-profile database (second run changes nothing); infra SliceSmoke 5/6 locally (6th needs compiled Bicep) |
