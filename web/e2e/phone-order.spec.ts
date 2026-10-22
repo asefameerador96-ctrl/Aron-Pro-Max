@@ -11,8 +11,9 @@ test("phone card order: before and after comparison", async ({ page }, info) => 
   await page.emulateMedia({ colorScheme: "light", reducedMotion: "reduce" });
   await loginOk(page, "tso334", "tso-pass-1"); // the helper expects the desktop shell
   await page.getByRole("link", { name: "English" }).click();
+  await page.goto("/overview");
   await page.setViewportSize({ width: 360, height: 740 });
-  await page.goto("/");
+  await page.goto("/overview");
   await expect(page.getByTestId("dashboard-tiles")).toBeVisible();
   await page.waitForLoadState("networkidle");
   const before = await page.screenshot({ fullPage: true });
