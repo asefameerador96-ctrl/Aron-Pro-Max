@@ -111,6 +111,8 @@ open class RefreshTest {
             // Ten bursts: the race this guards (a reader seeing the parent used before its child existed, fixed in the
             // in-memory store's locking, 2026-10-22) failed one CI run with a single burst.
             repeat(10) { round ->
+                // Past the per-device refresh limit's window (20 an hour) and the login limits; each round logs in afresh.
+                if (round > 0) f.clock.advance(3_601)
                 val (rt, _) = client.loginTokens(f)
                 val got = coroutineScope { (1..20).map { async { client.refresh(rt, f.srDevice) } }.awaitAll() }
                 assertTrue(got.all { it.status == HttpStatusCode.OK }, "round $round: " + got.map { it.status }.toString())
