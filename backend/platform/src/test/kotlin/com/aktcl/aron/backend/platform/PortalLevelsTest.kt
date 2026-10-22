@@ -22,10 +22,7 @@ class PortalLevelsTest {
     @Test
     fun theTable() {
         val forbidden = ProblemCode.ERR_FORBIDDEN
-        val portal = ProblemCode.ERR_AUTH_PORTAL_NOT_ALLOWED
         val rows = listOf(
-            // SR and AMO: nothing on the web, everything on their phones (the handlers decide there).
-            Triple(Role.SR, "GET /v1/me", portal), Triple(Role.AMO, "POST /v1/auth/logout", portal), Triple(Role.SR, "GET /v1/reports", portal),
             // NATIONAL and the retired TOP: every read passes; writes only for their own session and report queries.
             Triple(Role.NATIONAL, "GET /v1/admin/users", null), Triple(Role.NATIONAL, "HEAD /v1/outlets", null),
             Triple(Role.NATIONAL, "POST /v1/reports/sales-summary/query", null), Triple(Role.NATIONAL, "POST /v1/auth/logout", null),

@@ -18,8 +18,8 @@ import kotlin.test.assertEquals
 
 /**
  * D-ROLES-02 (docs/34 s1, backend-authz wave 4 row 1): SR and AMO have no portal login. The web login refuses them with
- * 403 ERR_AUTH_PORTAL_NOT_ALLOWED only after the password matched (a wrong password stays the common 401), a web refresh
- * family of theirs never refreshes, and a web token of theirs is refused by the guard; their phone apps are unchanged.
+ * 403 ERR_AUTH_PORTAL_NOT_ALLOWED only after the password matched (a wrong password stays the common 401) and a web
+ * refresh family of theirs never refreshes, so no web token is minted for them; their phone apps are unchanged.
  */
 class PortalLevelLoginTest {
     private val made = mutableListOf<AuthFixture>()
@@ -65,19 +65,14 @@ class PortalLevelLoginTest {
     }
 
     @Test
-    fun aWebFamilyOrWebTokenOfAnSrIsRefused() {
+    fun aWebFamilyOfAnSrIsRefused() {
         val f = fixture()
-        val sr = f.users.findById(1001)!!
         val family = f.refresh.issue(1001, null, Grant.FULL, "web")
-        val webToken = f.issuer.access(TokenSubject(sr, null, null, "web")).token
         testApplication {
             application { f.application(this) }
             val r = client.post("/v1/auth/refresh") { contentType(ContentType.Application.Json); setBody("""{"refresh_token":"${family.token}","grant":"full"}""") }
             assertEquals(HttpStatusCode.Forbidden, r.status, r.bodyAsText())
             assertEquals("ERR_AUTH_PORTAL_NOT_ALLOWED", json(r.bodyAsText()).code)
-            val me = client.get("/v1/me") { bearerAuth(webToken) }
-            assertEquals(HttpStatusCode.Forbidden, me.status, me.bodyAsText())
-            assertEquals("ERR_AUTH_PORTAL_NOT_ALLOWED", json(me.bodyAsText()).code)
         }
     }
 

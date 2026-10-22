@@ -43,7 +43,7 @@ import kotlin.test.assertTrue
 class ScopeLeakHttpTest {
     private lateinit var fresh: FreshDb
     private val world = ScopeWorld(77)
-    private val readers = setOf(Role.TSO, Role.DMO, Role.WM, Role.TOP, Role.ANALYST, Role.SUPPORT, Role.ADMIN, Role.SUPERADMIN)
+    private val readers = setOf(Role.TSO, Role.DMO, Role.WM, Role.NATIONAL, Role.ANALYST, Role.SUPPORT, Role.ADMIN, Role.SUPERADMIN)
 
     @BeforeAll
     fun setUp() { fresh = FreshDb.create(); WorldLoader.load(fresh, world) }

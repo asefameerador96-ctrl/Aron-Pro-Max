@@ -7,7 +7,8 @@ import io.ktor.http.decodeURLPart
 /**
  * The owner's portal levels (docs/34 s1, D-ROLES-02), enforced in the guard before any handler runs, so a role that a
  * handler's older deny-list (`Role.entries - SR - ...`) never heard of cannot slip through it:
- * - SR and AMO have no portal login: a web token of theirs is refused everywhere (login refuses first).
+ * - SR and AMO have no portal login: no web token is ever minted for them (LoginService.complete, which every login,
+ *   change-password, MFA and bind path ends in, and the web refresh refuse them with ERR_AUTH_PORTAL_NOT_ALLOWED).
  * - NATIONAL (TOP retired; TOP is treated the same until the migration moves its users) reads everything its
  *   handlers allow and writes nothing but its own session, error reports and report queries.
  * - BRAND may call only [BRAND_ROUTES]: its own session and the product-based reads that filter by its brands.
@@ -64,7 +65,6 @@ object PortalLevels {
             if (p.audience != Audience.UPLOAD && PHONE_ROLE[p.flavour] != p.role) throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "this account cannot use this app")
             return
         }
-        if (p.role in NO_PORTAL) throw ApiProblem(ProblemCode.ERR_AUTH_PORTAL_NOT_ALLOWED, "SR and AMO accounts use the field app only")
         val m = if (method == "HEAD") "GET" else method
         val read = m == "GET" || m == "OPTIONS"
         when (p.role) {
