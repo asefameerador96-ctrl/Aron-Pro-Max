@@ -198,6 +198,15 @@ class BundleAcceptanceTest {
         val pictured = skus.map { it.jsonObject }.filter { it["image_asset_id"]?.let { v -> v !is kotlinx.serialization.json.JsonNull } == true }
         assertEquals(listOf("MaxR-10S" to "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"), pictured.map { it["code"]!!.jsonPrimitive.content to it["image_asset_id"]!!.jsonPrimitive.content })
         assertTrue(skus.none { it.jsonObject["image_url"]?.let { v -> v !is kotlinx.serialization.json.JsonNull } == true }, "never a signed URL in the bundle")
+        // docs/34 s4.2 (android-units): every bundle SKU carries the pack size and the default entry unit exactly as the SKU master holds them.
+        val master = fresh.db.jdbi.withHandle<Map<String, Pair<Int, String>>, Exception> { h ->
+            h.createQuery("SELECT code, base_per_pack, entry_unit_default FROM app.sku").map { rs, _ -> rs.getString(1) to (rs.getInt(2) to rs.getString(3)) }.list().toMap()
+        }
+        skus.forEach { sk ->
+            val o = sk.jsonObject; val code = o["code"]!!.jsonPrimitive.content
+            assertEquals(master.getValue(code), o["base_per_pack"]!!.jsonPrimitive.int to o["entry_unit_default"]!!.jsonPrimitive.content, "pack fields of $code")
+            assertTrue(o["base_per_pack"]!!.jsonPrimitive.int >= 1)
+        }
         assertTrue(b["products"]!!.jsonObject["nodes"]!!.jsonArray.isNotEmpty())
         val prices = b["prices"]!!.jsonArray.map { it.jsonObject }
         assertEquals(setOf("outlet", "cc", "distributor"), prices.map { it["price_type"]!!.jsonPrimitive.content }.toSet())

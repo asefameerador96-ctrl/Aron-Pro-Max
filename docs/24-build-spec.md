@@ -926,7 +926,8 @@ Legend. **Levels:** G global, ROLE, W wing, D division, T territory, GC geo_clas
 | `cfg.day.month_close_grace_days` | int | 3 | 0..10 | G | S | B | srv | C3 |
 | `cfg.day.exception_requires_approval` | bool | true | — | G W | F | B | srv | C2 |
 | **Sale, memo, print, price, UI** |||||||||
-| `cfg.sale.qty_entry_unit` | json (category → unit) | {cigarette: stick, bidi: stick, lighter: piece, match: dozen} | units of `QtyUnit` | G | O | S, FD | both | C3 |
+| `cfg.sale.qty_entry_unit` | json (category → unit) | {cigarette: pack, bidi: pack, lighter: pack, match: dozen} (V0104, D-UNITS-02; was stick, stick, piece, dozen) | units of `QtyUnit` | G | O | S, FD | both | C3 |
+| `cfg.sale.allow_loose_base_units` (**new**, D-UNITS-02) | bool | false | — | G | O | B | both | C2 |
 | `cfg.sale.max_lines_per_memo` | int | 60 | 40..200 | G | O | B | both | C1 |
 | `cfg.sale.stock_check` | enum(off, warn, block) | warn | — | G W Z | F | B | both | C2 |
 | `cfg.sale.force_requires_photo` | bool | true | — | G T | F | B | both | C2 |
