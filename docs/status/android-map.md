@@ -18,5 +18,8 @@ D-MAP-02 built: the Sale outlet-confirm step shows distance, radius and verdict 
 - The map never gates the sale: it is an overlay on the offline picture, so a missing key, no tiles or a slow load shows the picture and the distance.
 - Tile cache: lite mode uses the SDK's own cache, left on; no snapshot is stored for this view (a stored image would show an old SR position).
 
+## Checker (Sonnet, T2) and what came of it
+Fixed: the start step lost the "No" path that abandoned the visit (now a "Go back" link that abandons, F-SR-060); a force-sold visit read "in range" over "outside" (card follows the verdict); the inside/outside wording follows distance against radius; the AMO keeps its earlier range view and wording (`geoPanel` is on for the SR only). Left as is: the map also loads on the out-of-range step (same Sale confirm step, where the owner's complaint is); the scale label is hidden whenever a map slot exists, so with a key but no tiles the picture has no scale (cosmetic).
+
 ## Next
 Nothing planned. If the owner wants the map on the picker rows or on in-range outlets only after the call starts, say so.

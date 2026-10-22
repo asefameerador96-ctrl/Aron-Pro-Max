@@ -71,7 +71,8 @@ fun SaleHost(day: SrDay, sunlight: Boolean, onSunlight: (Boolean) -> Unit, onNoS
                 VisitUiState.Open(v), onRefresh = {}, onForceSale = {}, onRetry = {},
                 onMap =
                     { context.startActivity(OutletMapActivity.intent(context, g.outletName, g.outletLat, g.outletLng, g.radiusM, g.phoneLat, g.phoneLng)) },
-                onStartCall = start, onNoSale = onNoSale, geo = g, mapSlot = mapSlot,
+                onStartCall = start, onNoSale = onNoSale, geo = g, mapSlot = mapSlot, geoPanel = true,
+                onBack = { scope.launch { day.closeVisitAbandoned(); onDone() } },
             )
         }
         return

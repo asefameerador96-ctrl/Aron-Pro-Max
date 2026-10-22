@@ -11,6 +11,7 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.aktcl.aron.core.common.AppLanguage
@@ -51,7 +52,7 @@ class VisitGeoTest {
     private val stub: GeoMapSlot = { _, m -> Text("MAP-STUB", m.fillMaxSize()) }
 
     @Test fun outsideShowsDistanceRadiusAndVerdictInBanglaWithTheMapStubbed() {
-        show(AppLanguage.BN) { VisitCheckContent(outside(), {}, {}, {}, {}, mapSlot = stub) }
+        show(AppLanguage.BN) { VisitCheckContent(outside(), {}, {}, {}, {}, geoPanel = true, mapSlot = stub) }
         compose.onNodeWithText("আপনি নির্বাচিত খুচরা বিক্রেতার সীমার মধ্যে নেই।").assertExists()
         compose.onNodeWithText("সীমার বাইরে: আউটলেট থেকে ১৬৩ মি · সীমা ১০০ মি").assertIsDisplayed()
         compose.onNodeWithTag(GeoPanelTags.MAP_SLOT).assertExists()
@@ -61,13 +62,13 @@ class VisitGeoTest {
     }
 
     @Test fun outsideShowsTheEnglishLine() {
-        show(AppLanguage.EN) { VisitCheckContent(outside(), {}, {}, {}, {}, mapSlot = stub) }
+        show(AppLanguage.EN) { VisitCheckContent(outside(), {}, {}, {}, {}, geoPanel = true, mapSlot = stub) }
         compose.onNodeWithText("Outside the range: 163 m from the outlet · limit 100 m").assertIsDisplayed()
         compose.onNodeWithText("The outlet is to the south-west").assertExists()
     }
 
     @Test fun offlineShowsThePanelAndTheBearingArrowWithNoMapSlot() {
-        show(AppLanguage.EN) { VisitCheckContent(outside(), {}, {}, {}, {}, mapSlot = null) }
+        show(AppLanguage.EN) { VisitCheckContent(outside(), {}, {}, {}, {}, geoPanel = true, mapSlot = null) }
         compose.onNodeWithTag(GeoPanelTags.MAP_SLOT).assertDoesNotExist()
         compose.onNodeWithTag(GeoPanelTags.DISTANCE).assertIsDisplayed()
         compose.onNodeWithTag(GeoPanelTags.ARROW).assertIsDisplayed()
@@ -77,7 +78,7 @@ class VisitGeoTest {
         val info = VisitGeoInfo.of(outlet, GeoVerdict.IN_RANGE, 42.0, 23.7903, 90.4002)!!
         var started = 0
         show(AppLanguage.BN) {
-            VisitCheckContent(VisitUiState.Open(OpenVisit("v1", 1, 2, "in_range", "sale_allowed", true, false, null, "x")), {}, {}, {}, {}, onStartCall = { started++ }, geo = info, mapSlot = stub)
+            VisitCheckContent(VisitUiState.Open(OpenVisit("v1", 1, 2, "in_range", "sale_allowed", true, false, null, "x")), {}, {}, {}, {}, onStartCall = { started++ }, geo = info, mapSlot = stub, geoPanel = true)
         }
         compose.onNodeWithText("আপনি আউটলেটের সীমার মধ্যে আছেন।").assertExists()
         compose.onNodeWithText("সীমার মধ্যে: আউটলেট থেকে ৪২ মি · সীমা ১০০ মি").assertIsDisplayed()
@@ -95,9 +96,20 @@ class VisitGeoTest {
 
     @Test fun withoutAFixTheTextLineStaysAndThereIsNoPanel() {
         val st = VisitUiState.NeedsDecision(outlet, GeoVerdictResult(GeoVerdict.NO_FIX, GeoAction.REFRESH_OFFERED, null), 0, true, 3, false, false)
-        show(AppLanguage.EN) { VisitCheckContent(st, {}, {}, {}, {}, mapSlot = stub) }
+        show(AppLanguage.EN) { VisitCheckContent(st, {}, {}, {}, {}, geoPanel = true, mapSlot = stub) }
         compose.onNodeWithTag(GeoPanelTags.PANEL).assertDoesNotExist()
         compose.onNodeWithTag(OutletTags.MAP).assertExists()
+    }
+
+    @Test fun forceSoldVisitDoesNotClaimInRangeAndOffersAbandon() {
+        val info = VisitGeoInfo.of(outlet, GeoVerdict.OUT_OF_RANGE, 140.0, phoneLat, phoneLng)!!
+        var abandoned = 0
+        show(AppLanguage.EN) {
+            VisitCheckContent(VisitUiState.Open(OpenVisit("v1", 1, 2, "out_of_range", "force_sale", false, true, "location_change", "x")), {}, {}, {}, {}, onStartCall = {}, geo = info, onBack = { abandoned++ })
+        }
+        compose.onNodeWithText("You are within the outlet's range.").assertDoesNotExist()
+        compose.onNodeWithText("Outside the range: 140 m from the outlet · limit 100 m").assertExists()
+        compose.onNodeWithText("Go back").performScrollTo().performClick(); assertEquals(1, abandoned)
     }
 
     @Test fun bearingAndCompass() {

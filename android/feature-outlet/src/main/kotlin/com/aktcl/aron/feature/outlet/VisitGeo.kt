@@ -100,7 +100,7 @@ fun VisitGeoPanel(info: VisitGeoInfo, modifier: Modifier = Modifier, mapSlot: Ge
     Column(modifier.fillMaxWidth().testTag(GeoPanelTags.PANEL), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
         info.distanceM?.let { d ->
             Text(
-                stringResource(if (info.inRange) R.string.out_geo_inside else R.string.out_geo_outside, localizedNumber(Math.round(d)), localizedNumber(info.radiusM.toLong())),
+                stringResource(if (d <= info.radiusM) R.string.out_geo_inside else R.string.out_geo_outside, localizedNumber(Math.round(d)), localizedNumber(info.radiusM.toLong())),
                 style = MaterialTheme.typography.titleSmall, modifier = Modifier.testTag(GeoPanelTags.DISTANCE),
             )
         }
