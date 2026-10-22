@@ -43,7 +43,7 @@ data class DashboardKpis(
 
 @Serializable
 data class CategoryVolume(
-    val category_code: String, val base_unit: String, val qty_base: Long, val net_mtk: Long, val report_unit: String? = null, val qty_report: String? = null,
+    val category_code: String, val base_unit: String, val qty_base: Long, val net_mtk: Long, val report_unit: String? = null, val qty_report: String? = null, val entry_unit: String? = null, val qty_entered: String? = null,
 )
 
 @Serializable
@@ -271,18 +271,21 @@ class DashboardService(
         val byCategory = h.q(
             """
             WITH k AS (
-              SELECT p.category_code, p.base_unit, s.report_unit, s.report_factor, sum(a.sold_qty_base + a.free_qty_base) qty, sum(a.gross_mtk) gross
+              SELECT p.category_code, p.base_unit, s.report_unit, s.report_factor, p.base_per_pack, sum(a.sold_qty_base + a.free_qty_base) qty, sum(a.gross_mtk) gross
                 FROM dw.agg_daily_route_sku a JOIN dw.dim_product p ON p.sku_id = a.sku_id JOIN dw.dim_geo g ON g.route_id = a.route_id
                 JOIN app.sku s ON s.id = a.sku_id
-               WHERE a.business_date BETWEEN :f AND :t AND ${eff.clause("g.zone_id")} GROUP BY 1, 2, 3, 4)
+               WHERE a.business_date BETWEEN :f AND :t AND ${eff.clause("g.zone_id")} GROUP BY 1, 2, 3, 4, 5)
             SELECT category_code, base_unit, sum(qty) qty, sum(gross) gross,
                    CASE WHEN count(*) = count(report_unit) AND count(DISTINCT report_unit) = 1 THEN min(report_unit) END ru,
-                   CASE WHEN count(*) = count(report_unit) AND count(DISTINCT report_unit) = 1 THEN round(sum(qty / report_factor), 3) END qr
+                   CASE WHEN count(*) = count(report_unit) AND count(DISTINCT report_unit) = 1 THEN round(sum(qty / report_factor), 3) END qr,
+                   CASE WHEN base_unit = 'dozen' THEN 'dozen' ELSE 'pack' END eu,
+                   round(sum(qty::numeric / CASE WHEN base_unit = 'dozen' THEN 1 ELSE base_per_pack END), 3) qe
               FROM k GROUP BY 1, 2 ORDER BY 1, 2
             """,
         ) {
             it.map { rs, _ ->
-                CategoryVolume(rs.getString(1), rs.getString(2), rs.getLong(3), rs.getLong(4), rs.getString(5), rs.getBigDecimal(6)?.setScale(3, RoundingMode.HALF_UP)?.toPlainString())
+                CategoryVolume(rs.getString(1), rs.getString(2), rs.getLong(3), rs.getLong(4), rs.getString(5), rs.getBigDecimal(6)?.setScale(3, RoundingMode.HALF_UP)?.toPlainString(),
+                    rs.getString(7), rs.getBigDecimal(8).setScale(3, RoundingMode.HALF_UP).toPlainString())
             }.list()
         }
 

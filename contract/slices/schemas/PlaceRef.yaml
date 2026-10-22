@@ -1,0 +1,18 @@
+PlaceRef:
+  type: object
+  additionalProperties: false
+  required:
+  - id
+  - code
+  - name
+  properties:
+    id:
+      $ref: '#/components/schemas/Id'
+    code:
+      type: string
+      maxLength: 40
+    name:
+      type:
+      - string
+      - 'null'
+      maxLength: 120

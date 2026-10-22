@@ -2,7 +2,6 @@ package com.aktcl.aron.backend.analytics.mdm
 
 import com.aktcl.aron.backend.platform.ApiProblem
 import com.aktcl.aron.backend.platform.AronPrincipal
-import com.aktcl.aron.backend.platform.Database
 import com.aktcl.aron.contract.ProblemCode
 import com.aktcl.aron.contract.Role
 
@@ -21,15 +20,18 @@ object RoleGrants : MdmGrants {
 }
 
 /**
- * The real grant (V0089 `app.user_module_grant`): SUPERADMIN writes; ADMIN gets the `mdm` row (`r`/`w`, absent = none); the others none.
- * Read per request from the table (admin-only traffic) until the token carries the `modules` claim; then swap for the claim.
+ * The production grants (backend-authz, docs/requests/mdm-authz-module-grant.md, D-AUTHZ-MODULES-01): SUPERADMIN writes;
+ * an ADMIN has its token's `mdm` module (`w` write, `r` lists only, absent nothing); an ADMIN token without the `modules`
+ * claim (the grants are not deployed yet) keeps today's write; every other role has none. The guard's module gate
+ * refuses the same routes first; this is the handler-side check of the same grant.
  */
-class DbGrants(private val db: Database) : MdmGrants {
-    override fun level(p: AronPrincipal): MdmLevel = when (p.role) {
+object ModuleGrants : MdmGrants {
+    override fun level(p: AronPrincipal) = when (p.role) {
         Role.SUPERADMIN -> MdmLevel.WRITE
-        Role.ADMIN -> when (db.readJdbi.withHandle<String?, Exception> { h ->
-            h.createQuery("SELECT access FROM app.user_module_grant WHERE user_id = :u AND module = 'mdm'").bind("u", p.userId).mapTo(String::class.java).findOne().orElse(null)
-        }) { "w" -> MdmLevel.WRITE; "r" -> MdmLevel.READ; else -> MdmLevel.NONE }
+        Role.ADMIN -> when (val m = p.modules) {
+            null -> MdmLevel.WRITE
+            else -> when (m["mdm"]) { "w" -> MdmLevel.WRITE; "r" -> MdmLevel.READ; else -> MdmLevel.NONE }
+        }
         else -> MdmLevel.NONE
     }
 }

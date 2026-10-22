@@ -1,6 +1,7 @@
 // Outlet import from Excel (docs/34 s2): the channel (GT, DCC, Astha, RCC, MT, HoReCa) is MANDATORY on every row: a row without a
 // known channel is refused in the validation report and again by the server. The sheet is read in the browser; codes are checked
-// by the server. The API is PROVISIONAL: docs/requests/backend-admin-outlet-import.md, served by mock/custom.ts.
+// by the server. Wire types come from the contract (importOutlets).
+import type { Schemas } from "@/contract/types";
 import { latinDigits } from "./taka";
 
 export const OUTLET_CHANNELS = ["GT", "DCC", "Astha", "RCC", "MT", "HoReCa"] as const;
@@ -133,12 +134,5 @@ export function outletImportRules(op: "validate" | "commit", body: Record<string
   return out;
 }
 
-/** Wire shape of the preview answer (REQUEST: backend-admin-outlet-import). */
-export interface OutletPreview {
-  batch_uuid: string;
-  rows: number;
-  creates: number;
-  updates: number;
-  by_channel: Record<string, number>;
-  errors: { row: number; column: string; code: string }[];
-}
+/** Preview answer of a dry run (contract `OutletImportPreview`). */
+export type OutletPreview = Schemas["OutletImportPreview"];

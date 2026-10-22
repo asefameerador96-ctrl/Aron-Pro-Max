@@ -37,6 +37,10 @@ data class AronPrincipal(
      * true only before this instant; the guard then also requires the role's live `pii.reveal` grant and an audit row.
      */
     val piiUntil: Instant? = null,
+    /** ADMIN web tokens once the grants are deployed: `{module: "r"|"w"}` from `app.user_module_grant` (D-ROLES-02); null = no claim. */
+    val modules: Map<String, String>? = null,
+    /** BRAND web tokens: the product-tree brand node ids of `app.user_brand_scope` (D-ROLES-02); null = no claim. */
+    val brands: List<Long>? = null,
 ) {
     val isPhone: Boolean get() = flavour != "web"
 }
@@ -46,6 +50,12 @@ class AccessTokenVerifier(private val keys: JwtKeys, private val clock: AronCloc
 
     fun verify(token: String, audiences: Set<String>, expiredGraceS: Long = 0): AronPrincipal {
         val jwt = try { SignedJWT.parse(token) } catch (e: ParseException) { throw unauth("malformed token") }
+        // Canonical encoding only (lead 2026-10-22, BindDeviceTest intermittent): an ES256 signature is 64 bytes, so the
+        // last base64url character carries 2 significant bits and a lenient decoder maps several strings to the same
+        // bytes. A token string we never minted is refused even when its decoded signature is valid. (Header and payload
+        // need no check: the signature covers their exact encoded characters.)
+        val sigPart = token.substringAfterLast('.')
+        if (com.nimbusds.jose.util.Base64URL.encode(jwt.signature.decode()).toString() != sigPart) throw unauth("non-canonical signature encoding")
         if (jwt.header.algorithm?.name != "ES256") throw unauth("wrong algorithm")
         val verifier = keys.verifier(jwt.header.keyID) ?: throw unauth("unknown key id")
         val ok = try { jwt.verify(verifier) } catch (e: JOSEException) { false }
@@ -76,6 +86,15 @@ class AccessTokenVerifier(private val keys: JwtKeys, private val clock: AronCloc
                 jti = c.jwtid ?: throw unauth("no jti"),
                 expiresAt = exp,
                 piiUntil = piiUntil,
+                modules = c.getJSONObjectClaim("modules")?.let { m ->
+                    // Only names and levels this server mints; anything else is a token we never signed in this shape.
+                    m.entries.associate { (k, v) ->
+                        if (k !in AdminModules.ALL || (v != "r" && v != "w")) throw unauth("bad modules claim")
+                        k to (v as String)
+                    }
+                },
+                brands = (c.getClaim("brands") as? List<*>)?.map { (it as? Number)?.toLong()?.takeIf { id -> id >= 1 } ?: throw unauth("bad brands claim") }
+                    ?: c.getClaim("brands")?.let { throw unauth("bad brands claim") },
             )
         } catch (e: ApiProblem) {
             throw e

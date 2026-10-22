@@ -18,6 +18,7 @@ DECLARE
   today date := app.dhaka_date(now());
 BEGIN
   IF EXISTS (SELECT 1 FROM app.cfg_version WHERE summary = 'Dev database overrides (docs/24 s9.4, seed)') THEN
+    RAISE NOTICE 'seed 06 skipped (config version of 04 present: test or local profile)';
     RETURN;   -- test or local profile: the Mirpur fixture stays as the tests expect it
   END IF;
 
@@ -176,5 +177,6 @@ BEGIN
              WHERE r.code IN ('GUL-SR-2', 'GUL-SR-1', 'BAN-SR-11')) w
      CROSS JOIN (VALUES (DATE '2026-10-01'), (DATE '2026-11-01'), (DATE '2026-12-01')) AS m(month)
     ON CONFLICT (route_id, sku_id, month) DO NOTHING;
+  RAISE NOTICE 'seed 06 applied (Gulshan/Banani: sr1001 on GUL-SR-2, GUL-SR-1, BAN-SR-11)';
 END
 $seed$;

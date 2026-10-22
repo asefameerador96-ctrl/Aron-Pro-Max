@@ -58,6 +58,7 @@ object Aggregator {
               status = excluded.status, updated_at = now()
             """,
         )
+        if (DashboardSummaries.ready(h)) DashboardSummaries.refreshDimensions(h)
     }
 
     /**
@@ -78,6 +79,7 @@ object Aggregator {
         rebuildAggOutlet(h, routeId, date, wm)
         rebuildAttendance(h, routeId, date, wm)
         rebuildGeoFixes(h, routeId, date, wm)
+        if (DashboardSummaries.ready(h)) DashboardSummaries.rebuildRouteDay(h, routeId, date, wm)
         // The phones of this route-day's users also changed their device-day (batches, rows, rejects).
         h.createUpdate(
             """
@@ -351,6 +353,7 @@ object Aggregator {
             """,
         ).bind("z", zoneId).bind("d", date).bind("wm", wm).bind("thr", suspiciousThreshold).execute()
 
+        if (DashboardSummaries.ready(h)) DashboardSummaries.rebuildZoneDay(h, zoneId, date)
         h.createUpdate("DELETE FROM dw.agg_hourly_zone WHERE zone_id = :z AND business_date = :d").bind("z", zoneId).bind("d", date).execute()
         h.createUpdate(
             """

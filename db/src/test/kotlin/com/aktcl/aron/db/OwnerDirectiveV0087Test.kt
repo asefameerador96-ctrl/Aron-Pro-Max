@@ -52,8 +52,8 @@ class OwnerDirectiveV0087Test {
         // TOP stays a role code (audit history); no user may hold it (V0105, validated in V0106).
         assertEquals("1|t", c.scalar("SELECT (SELECT count(*) FROM app.role_def WHERE role = 'TOP') || '|' || (SELECT convalidated::text::char FROM pg_constraint WHERE conname = 'app_user_no_top')"))
         assertEquals("0", c.scalar("SELECT count(*) FROM app.app_user WHERE role = 'TOP'"))
-        // A4: every admin permission TOP holds, NATIONAL holds.
-        assertEquals("0", c.scalar("SELECT count(*) FROM app.role_grant_map t WHERE t.role = 'TOP' AND NOT EXISTS (SELECT 1 FROM app.role_grant_map n WHERE n.role = 'NATIONAL' AND n.permission = t.permission)"))
+        // A4 + N3 (V0107): TOP's admin permissions moved to NATIONAL; TOP holds none.
+        assertEquals("0", c.scalar("SELECT count(*) FROM app.role_grant_map WHERE role = 'TOP'"))
         // NATIONAL inherits TOP's role values; BRAND gets the two web-role defaults.
         val roleValues = { r: String -> c.scalar("SELECT string_agg(v.key || '=' || v.value::text, ',' ORDER BY v.key) FROM app.cfg_value v JOIN app.role_def d ON d.ordinal = v.scope_id WHERE v.scope_type = 'role' AND d.role = '$r' AND v.superseded_in_version IS NULL") }
         assertEquals(roleValues("TOP"), roleValues("NATIONAL"))
@@ -75,6 +75,7 @@ class OwnerDirectiveV0087Test {
             other.flyway().let { org.flywaydb.core.Flyway.configure().configuration(it.configuration).target("86").load() }.migrate()
             other.connect().use { c ->
                 c.exec("INSERT INTO app.app_user (username, full_name, role) VALUES ('qatop1', 'QA TOP', 'TOP')")
+                c.exec("INSERT INTO app.role_grant_map (role, permission) VALUES ('TOP', 'qa.top_only'), ('TOP', 'reports.export_pii')")
                 val sys = "(SELECT id FROM app.app_user WHERE username = 'aron.system')"
                 c.exec("INSERT INTO app.cfg_version (config_version, kind, committed_by, summary, max_risk_class) SELECT max(config_version) + 1, 'change', $sys, 'qa', 1 FROM app.cfg_version")
                 c.exec("INSERT INTO app.cfg_value (key, scope_type, scope_id, value, effective_from, config_version, created_by, reason) SELECT 'cfg.auth.mfa_required_roles', 'global', 0, '[\"ADMIN\", \"SUPERADMIN\", \"TOP\"]'::jsonb, now() - interval '1 day', max(config_version), $sys, 'qa' FROM app.cfg_version")
@@ -82,7 +83,43 @@ class OwnerDirectiveV0087Test {
             other.flyway().migrate()
             other.connect().use { c ->
                 assertEquals("NATIONAL|2", c.scalar("SELECT role || '|' || scope_version FROM app.app_user WHERE username = 'qatop1'"))
+                // N3 (V0107): TOP's grants, including one only TOP had, now belong to NATIONAL; TOP holds none.
+                assertEquals("0|t|t", c.scalar("SELECT (SELECT count(*) FROM app.role_grant_map WHERE role = 'TOP') || '|' || " +
+                    "(EXISTS (SELECT 1 FROM app.role_grant_map WHERE role = 'NATIONAL' AND permission = 'qa.top_only'))::text::char || '|' || " +
+                    "(EXISTS (SELECT 1 FROM app.role_grant_map WHERE role = 'NATIONAL' AND permission = 'reports.export_pii'))::text::char"))
                 assertEquals("[\"ADMIN\", \"SUPERADMIN\", \"TOP\", \"NATIONAL\"]", c.scalar("SELECT value::text FROM app.cfg_value WHERE key = 'cfg.auth.mfa_required_roles' AND superseded_in_version IS NULL"))
+            }
+        }
+    }
+
+    @Test
+    fun v0108CheckedInAtIsBackfilledForTheLastSevenDays() {
+        // Migrate to V0107 with the seed, add route-days and check-ins, then run V0108: the event's route wins; an event
+        // without a route counts for a route its user is assigned to that day; a route-day older than 7 days stays null.
+        TestPostgres.createDatabase().use { other ->
+            other.flyway().let { org.flywaydb.core.Flyway.configure().configuration(it.configuration).target("107").load() }.migrate()
+            other.connect().use { c ->
+                SeedLoader.load(c)
+                val d = "(app.dhaka_date(now()) - 1)"
+                val old = "(app.dhaka_date(now()) - 10)"
+                val route = { code: String -> "(SELECT id FROM app.route WHERE code = '$code')" }
+                for ((r, day) in listOf("MIR-SR-D" to d, "MIR-SR-3F" to d, "MIR-SR-D" to old)) {
+                    c.exec("INSERT INTO dw.agg_daily_route (business_date, route_id, zone_id) SELECT $day, id, zone_id FROM app.route WHERE code = '$r'")
+                }
+                fun checkIn(user: String, routeId: String, day: String, at: String) = c.exec(
+                    "INSERT INTO app.attendance_event (client_uuid, family_uuid, business_date, user_id, route_id, captured_at, config_version, kind) " +
+                        "SELECT gen_random_uuid(), gen_random_uuid(), $day, id, $routeId, $at, 0, 'check_in' FROM app.app_user WHERE username = '$user'")
+                // sr1001 holds MIR-SR-D in the fixture: its route-less check-in counts there.
+                checkIn("sr1001", "NULL", d, "($d + time '03:05') AT TIME ZONE 'Asia/Dhaka'")
+                checkIn("sr1001", "NULL", old, "($old + time '03:00') AT TIME ZONE 'Asia/Dhaka'")
+                // amo1001 names MIR-SR-3F on its event, earlier than sr1001 (who also holds MIR-SR-3F in the fixture).
+                checkIn("amo1001", route("MIR-SR-3F"), d, "($d + time '02:10') AT TIME ZONE 'Asia/Dhaka'")
+            }
+            other.flyway().migrate()
+            other.connect().use { c ->
+                assertEquals("MIR-SR-3F|02:10,MIR-SR-D|03:05,MIR-SR-D|-", c.scalar(
+                    "SELECT string_agg(r.code || '|' || coalesce(to_char(a.checked_in_at AT TIME ZONE 'Asia/Dhaka', 'HH24:MI'), '-'), ',' ORDER BY r.code, a.business_date DESC) " +
+                        "FROM dw.agg_daily_route a JOIN app.route r ON r.id = a.route_id"))
             }
         }
     }
@@ -93,6 +130,9 @@ class OwnerDirectiveV0087Test {
         assertEquals("15|w", c.scalar("SELECT count(*) || '|' || string_agg(DISTINCT access, ',') FROM app.user_module_grant WHERE user_id = ${user("admin1001")}"))
         c.tx {
             exec("UPDATE app.user_module_grant SET access = 'r', granted_by = $superadmin, granted_at = now() WHERE user_id = ${user("admin1001")} AND module = 'mdm'")
+            // Seed 07 (pilot admins get every module) runs again on every dev seed load: a narrowed grant stays narrowed.
+            exec(java.io.File(System.getProperty("aron.seed")).resolve("07_admin_module_grants.sql").readText())
+            assertEquals("15|r", scalar("SELECT count(*) || '|' || (SELECT access FROM app.user_module_grant WHERE user_id = ${user("admin1001")} AND module = 'mdm') FROM app.user_module_grant WHERE user_id = ${user("admin1001")}"))
             assertEquals("23505", refused("INSERT INTO app.user_module_grant (user_id, module, access) VALUES (${user("admin1001")}, 'mdm', 'r')"))
             assertEquals("23514", refused("INSERT INTO app.user_module_grant (user_id, module, access) VALUES (${user("support1001")}, 'routes', 'x')"))
             assertEquals("23514", refused("INSERT INTO app.user_module_grant (user_id, module, access) VALUES (${user("support1001")}, 'astha', 'r')"))

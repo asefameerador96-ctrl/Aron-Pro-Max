@@ -1,0 +1,56 @@
+NationalLoginSubmit:
+  type: object
+  description: Login (check-in and download) and Submit (Bikroy Joma) status per route. Hidden from BRAND users
+    (403).
+  required:
+  - date
+  - till_time
+  - as_of
+  - last_updated_at
+  - target_routes
+  - successful_login
+  - login_pct_bp
+  - submitted
+  - submit_pct_bp
+  additionalProperties: false
+  properties:
+    date:
+      $ref: '#/components/schemas/BusinessDate'
+    till_time:
+      type: boolean
+      description: 'True when `date` is today (Dhaka): figures are till the time of `as_of`; false: final figures
+        of a past day.'
+    as_of:
+      $ref: '#/components/schemas/Timestamp'
+    last_updated_at:
+      type:
+      - string
+      - 'null'
+      format: date-time
+      description: Oldest `last_updated_at` of the summary tables this card reads (null when none has been written
+        yet). The page shows it as "last updated hh:mm" (Dhaka).
+    target_routes:
+      type: integer
+      minimum: 0
+      description: Normal SR routes scheduled that day.
+    successful_login:
+      type: integer
+      minimum: 0
+      description: Of those, routes whose SR checked in and downloaded.
+    login_pct_bp:
+      type:
+      - integer
+      - 'null'
+      minimum: 0
+      description: 'Basis points: 10000 = 100 %. Integer arithmetic, rounded half up; null when the denominator
+        is 0.'
+    submitted:
+      type: integer
+      minimum: 0
+      description: Routes that completed Bikroy Joma (sales upload).
+    submit_pct_bp:
+      type:
+      - integer
+      - 'null'
+      minimum: 0
+      description: submitted / successful_login in basis points.

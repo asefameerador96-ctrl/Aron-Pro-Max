@@ -13,7 +13,7 @@ the class of docs/16 s13.1. **PII**: none, personal, sensitive, secret. Other pr
 | Schema | Relations | Columns |
 |---|---|---|
 | `app` | 155 | 2636 |
-| `dw` | 44 | 631 |
+| `dw` | 44 | 632 |
 
 ## Index
 
@@ -4904,6 +4904,7 @@ Per route and business date: day state, visit counts, sales, discounts, paid and
 | `completed_geo_valid_calls` | integer | not null |  | Completed calls whose server verdict, else device verdict, is in_range (Geo Validation). |
 | `first_sale_at` | timestamp with time zone | null |  | UTC time of the route-day's first memo (First Sale Time). |
 | `last_sale_at` | timestamp with time zone | null |  | UTC time of the route-day's last memo (Last Sale Time). |
+| `checked_in_at` | timestamp with time zone | null |  | UTC time of the first non-voided attendance check-in of the route's SR on the business date (the event's route, or, when the event names none, a user assigned to the route that day); null when none (V0108). |
 
 Keys: `PRIMARY KEY (business_date, route_id)`
 

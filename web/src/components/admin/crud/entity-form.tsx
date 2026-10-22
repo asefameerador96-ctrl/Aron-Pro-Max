@@ -273,7 +273,7 @@ export function EntityForm({ mode, slug, action, submitLabel, reasonStored = tru
         </Field>
         </div>
       ))}
-      {preview?.kind === "sku-pack" ? <SkuPackPreview values={{ ...preview.base, ...values }} editing={mode === "update"} /> : null}
+      {preview?.kind === "sku-pack" ? <SkuPackPreview values={{ ...preview.base, ...values }} /> : null}
       <ReasonField value={reason} onChange={setReason} error={errors.reason} />
       {!reasonStored && mode !== "action" ? (
         <p data-testid="reason-not-stored" className="text-xs text-amber-800">
@@ -298,7 +298,7 @@ export function EntityForm({ mode, slug, action, submitLabel, reasonStored = tru
 }
 
 /** "1 packet = 20 sticks": what the field apps will show for the pack size being entered (docs/34 s4.2), with non-blocking warnings. */
-function SkuPackPreview({ values, editing }: { values: Record<string, string>; editing: boolean }) {
+function SkuPackPreview({ values }: { values: Record<string, string> }) {
   const { t } = useI18n();
   const p = packPreview({ category: values.category_code ?? "", baseUnit: values.base_unit ?? "", basePerPack: values.base_per_pack ?? "", entryUnit: values.entry_unit_default ?? "" });
   return (
@@ -307,7 +307,6 @@ function SkuPackPreview({ values, editing }: { values: Record<string, string>; e
       {p.sentence ? <p data-testid="sku-pack-preview" className="text-base font-medium">{t(p.sentence.key, p.sentence.vars)}</p> : <p data-testid="sku-pack-pending" className="text-sm text-slate-600">{t("skupack.preview.pending")}</p>}
       {p.label ? <p className="text-sm text-slate-700">{t("skupack.label")}: <strong data-testid="sku-pack-label">{t(`skupack.label.${p.label}` as "skupack.label.packet")}</strong></p> : null}
       {p.warnings.map((w) => (<p key={w} role="note" data-testid="sku-pack-warning" className="text-sm text-amber-800">{t(w)}</p>))}
-      {editing ? <p className="text-xs text-slate-600">{t("skupack.edit_note")}</p> : null}
     </section>
   );
 }

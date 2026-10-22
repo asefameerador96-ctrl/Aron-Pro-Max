@@ -1,0 +1,21 @@
+CategoryQty:
+  type: object
+  additionalProperties: false
+  required:
+  - category_code
+  - base_unit
+  - qty
+  properties:
+    category_code:
+      type: string
+      maxLength: 40
+    base_unit:
+      type: string
+      enum:
+      - stick
+      - piece
+      - dozen
+    qty:
+      type: integer
+      format: int64
+      minimum: 0

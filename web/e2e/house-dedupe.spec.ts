@@ -29,6 +29,19 @@ test("houses: the duplicate pair is listed, one is deactivated with a reason, th
   await expect(page.getByTestId("hd-confirm")).toBeVisible();
 });
 
+test("houses: the duplicate is merged into the kept house through the server operation", async ({ page }) => {
+  await loginOk(page, "madmin1", "admin-pass-1", "123456");
+  await page.goto("/admin/house-dedupe");
+  await page.getByTestId("hd-merge-start").click();
+  await expect(page.getByTestId("hd-merge-keep")).toHaveValue("10"); // the oldest active house
+  await page.locator("#reason").fill("Same depot entered twice");
+  await page.getByTestId("hd-merge-apply").click();
+  await expect(page.getByTestId("form-ok")).toBeVisible();
+  const s = await (await fetch(`${MOCK}/__mock/state`)).json();
+  expect(s.audit.at(-1)).toMatchObject({ entity: "geo_house", action: "geo_house.merge", reason: "Same depot entered twice" });
+  await expect(page.getByTestId("hd-none")).toBeVisible();
+});
+
 test("houses: SUPPORT sees the groups without actions", async ({ page }) => {
   await loginOk(page, "msupport1", "support-pass-1", "123456");
   await page.goto("/admin/house-dedupe");

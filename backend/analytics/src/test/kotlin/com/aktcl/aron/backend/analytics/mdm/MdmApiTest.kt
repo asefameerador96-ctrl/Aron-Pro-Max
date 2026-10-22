@@ -68,12 +68,26 @@ class MdmApiTest : ReportFixture() {
           SELECT 'online', d.id, '2026-10-04', '2026-10-04T11:00:00Z', '1.0.0+1', true, 'prod', false, true, true, false, true, ARRAY['com.fake.gps'], 0, 64, 'periodic', '{"network_type":"wifi","battery_pct":64}'::jsonb FROM app.device d;
     """.trimIndent()
 
+    /**
+     * Route-level seam for the handler-side check: the grant row of the caller in app.user_module_grant (test tokens carry no
+     * `modules` claim). Production uses [ModuleGrants] over the token; its mapping is pinned in `ModuleGrantsTest`/the test above.
+     */
+    private val tableGrants = MdmGrants { p ->
+        when (p.role) {
+            com.aktcl.aron.contract.Role.SUPERADMIN -> MdmLevel.WRITE
+            com.aktcl.aron.contract.Role.ADMIN -> when (fresh.db.jdbi.withHandle<String?, Exception> { h ->
+                h.createQuery("SELECT access FROM app.user_module_grant WHERE user_id = :u AND module = 'mdm'").bind("u", p.userId).mapTo(String::class.java).findOne().orElse(null)
+            }) { "w" -> MdmLevel.WRITE; "r" -> MdmLevel.READ; else -> MdmLevel.NONE }
+            else -> MdmLevel.NONE
+        }
+    }
+
     private lateinit var service: MdmService
     override fun mount(r: Route, clock: AronClock, reach: ReachResolver, guard: AuthGuardDeps) {
         val devices = DeviceService(fresh.db, RegistryDefaults(), TestTokens.keys, EnrolmentSettings("https://api.example.test", "dev", AttestationTrust(mutableSetOf())), clock)
         // The MDM service clock can be moved forward by a test (expiry); the device and auth clocks stay fixed.
         service = MdmService(fresh.db, TestTokens.keys, devices, AronClock { clock.now().plus(skew) })
-        r.mdmRoutes(MdmDeps(service, DeviceDeps(devices, reach, guard, clock), guard, grants = DbGrants(fresh.db)))
+        r.mdmRoutes(MdmDeps(service, DeviceDeps(devices, reach, guard, clock), guard, grants = tableGrants))
     }
 
     private val admin get() = TestTokens.web(13, Role.ADMIN)
@@ -129,6 +143,21 @@ class MdmApiTest : ReportFixture() {
         val p = com.aktcl.aron.backend.platform.AronPrincipal(1, "u", Role.ADMIN, 1, "aron-api", null, null, "web", emptyList(), false, emptyList(), "j", Instant.now())
         ro.read(p)
         assertEquals("ERR_FORBIDDEN", runCatching { ro.write(p) }.exceptionOrNull().let { (it as com.aktcl.aron.backend.platform.ApiProblem).code.wire })
+    }
+
+    /** mdm's request to backend-authz: the production grants follow the token's `mdm` module (D-AUTHZ-MODULES-01). */
+    @Test
+    fun productionGrantsFollowTheMdmModule() {
+        fun p(role: Role, modules: Map<String, String>?) = com.aktcl.aron.backend.platform.AronPrincipal(1, "u", role, 1, "aron-api", null, null, "web", emptyList(), false, emptyList(), "j", Instant.now(), modules = modules)
+        assertEquals(MdmLevel.WRITE, ModuleGrants.level(p(Role.SUPERADMIN, null)))
+        assertEquals(MdmLevel.WRITE, ModuleGrants.level(p(Role.ADMIN, mapOf("mdm" to "w"))))
+        assertEquals(MdmLevel.READ, ModuleGrants.level(p(Role.ADMIN, mapOf("mdm" to "r", "users" to "w"))))
+        assertEquals(MdmLevel.NONE, ModuleGrants.level(p(Role.ADMIN, mapOf("users" to "w"))))
+        assertEquals(MdmLevel.WRITE, ModuleGrants.level(p(Role.ADMIN, null)), "before the grants are deployed: today's write")
+        for (r in Role.entries - Role.ADMIN - Role.SUPERADMIN) assertEquals(MdmLevel.NONE, ModuleGrants.level(p(r, mapOf("mdm" to "w"))), "$r")
+        val ro = p(Role.ADMIN, mapOf("mdm" to "r"))
+        ModuleGrants.read(ro)
+        assertEquals("ERR_FORBIDDEN", runCatching { ModuleGrants.write(ro) }.exceptionOrNull().let { (it as com.aktcl.aron.backend.platform.ApiProblem).code.wire })
     }
 
     @Test

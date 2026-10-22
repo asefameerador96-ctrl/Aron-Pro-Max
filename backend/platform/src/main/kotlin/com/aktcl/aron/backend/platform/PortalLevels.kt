@@ -43,10 +43,18 @@ object PortalLevels {
     val PHONE_ROLE: Map<String, Role> = mapOf("sr" to Role.SR, "amo" to Role.AMO, "tso" to Role.TSO)
 
     /** NATIONAL's non-read calls besides [OWN_SESSION]: a report query is a read sent as POST (it may queue an export). */
-    val NATIONAL_WRITES: List<Pattern> = OWN_SESSION + Pattern("POST", "/v1/reports/{report_key}/query")
+    val NATIONAL_WRITES: List<Pattern> = OWN_SESSION + Pattern("POST", "/v1/reports/{report_key}/query") +
+        Pattern("POST", "/v1/dashboards/national/**")   // the dashboard cards take their filter object as a POST body: reads
+
+    /** The national dashboard reads that carry a brand dimension; the cards without one (CPR, final submit, login, geo, FF Geo, maps) stay refused (docs/34 s1). */
+    private val BRAND_DASHBOARD: List<Pattern> = listOf(
+        Pattern("POST", "/v1/dashboards/national/sales"), Pattern("POST", "/v1/dashboards/national/channel-calls"),
+        Pattern("POST", "/v1/dashboards/national/channel-std"), Pattern("POST", "/v1/dashboards/national/breakdown"),
+        Pattern("GET", "/v1/dashboards/national/filter-options"), Pattern("GET", "/v1/dashboards/national/freshness"),
+    )
 
     /** BRAND's whole surface (row 3 adds the brand-filtered reads as they are built). */
-    val BRAND_ROUTES: List<Pattern> = OWN_SESSION + listOf(Pattern("GET", "/v1/me"))
+    val BRAND_ROUTES: List<Pattern> = OWN_SESSION + listOf(Pattern("GET", "/v1/me")) + BRAND_DASHBOARD
 
     /** The path the router matches: decoded segments, empty ones dropped (the same normalisation as the MFA check). */
     fun normalise(rawPath: String): String? {
@@ -60,9 +68,14 @@ object PortalLevels {
         if (p.isPhone) {
             // A phone token serves only its flavour's field role: after a role change (TSO to BRAND, SR to TSO, ...) a
             // token minted for the old app is refused here, so the new role's national reach never rides a phone token.
-            // The upload grant (sync/batch, logout only) is exempt: captured rows always reach the server (D24-57) and
-            // ingest judges every record by the uploader's current assignment.
-            if (p.audience != Audience.UPLOAD && PHONE_ROLE[p.flavour] != p.role) throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "this account cannot use this app")
+            // An upload token is minted with the flavour's role even after a role change (AuthModule refresh, checker round 2
+            // B1-bis); one of any other role (minted before that fix) is refused; its rows wait on the phone until the next upload refresh.
+            if (PHONE_ROLE[p.flavour] != p.role) {
+                // 401 for the upload grant (checker row 2, N6): the app refreshes it at once and the new token carries the
+                // field role; a 403 would stop its sync until the token expired.
+                if (p.audience == Audience.UPLOAD) throw ApiProblem(ProblemCode.ERR_SCOPE_CHANGED, "refresh the upload grant")
+                throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "this account cannot use this app")
+            }
             return
         }
         val m = if (method == "HEAD") "GET" else method

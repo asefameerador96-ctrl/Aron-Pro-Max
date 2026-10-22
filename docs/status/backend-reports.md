@@ -1,5 +1,49 @@
 # backend-reports lane status
 
+## HANDOVER (2026-10-22 ~16:50, session 3 recycling at ~420k): head ac3a95e3 is the candidate, CI pending
+**State:** `ac3a95e3` already contains INT 16cab775 (mdm 5d7079ad, contract 1.6.0 with the 1.5.0 changelog block D-CONTRACT-DASH-01 kept in DECISIONS.md), Wiring.kt and PortalLevels.kt merged (mdm, authz and my dashboard lines all present), slices and web client regenerated, db's real migrations (no test shims left), the entry-unit slice for android-units (done), and the active-house filter on `filter-options` with its test (D-SCOPE-TREE-01). Local suites green on it: National*, Dashboard, ReportBatchA, app ContractConformance/RouteInventory/ScopeLeak/Portal, shared:contract.
+**#4 must do first:** (1) look at the lane CI run for `ac3a95e3` (id 39815311264). If it is red ONLY on Repository gates > Gate self-tests > OsvGate (next@16.3.8 advisories, the lead fixes `next` repo-wide), wait for the lead's bump on INT, then merge INT (keep info.version at INT's value, regenerate INDEX.md with `python3 tools/slice-contract.py` and openapi.d.ts with `cd web && npm run gen:contract`, never hand-merge them), run `RouteInventoryTest`, `ContractConformanceTest`, `NationalDashboardApiTest`, push once, declare "backend-reports candidate <full sha>" when the whole run is green on that sha. (2) Any other red job: read it (GitHub API `actions/runs/<id>/jobs`), fix, same loop.
+**Then:** reports from `docs/reports/*.md` when the lead files them (none yet). Open checker items (documented below): login needs attendance check-in as well as download; history is filed under a route's current zone; weekend days come from cfg.calendar.weekend_days, not Friday; outlets sold to by two routes count once per route.
+**Traps:** `pgrep -f gradlew` matches your own shell, use `pgrep -f "[g]radle-wrapper"`; local tests need `pg_ctlcluster 16 main start` and the aron_test role/db; run each gradle command in the background and poll, foreground calls time out at 10 minutes; `RouteInventoryTest` needs every route's scope-case line to name a test whose source contains the path.
+
+## WAVE 4 (2026-10-22, session 3 again): national dashboard (docs/34 s2)
+Branch `lane/backend-reports`; contract 1.4.0 first (a18fc5fb, fixed in b2f2976a), then code.
+
+### Done (pushed)
+- **Contract 1.4.0** (additive): 14 operations, `POST /v1/dashboards/national/{sales,cpr,channel-calls,final-submit,login-submit,channel-std,breakdown,geo-fencing,ff-geo/pins}` (body `NationalDashboardFilter`, breakdown and pins wrap it), `GET .../national/ff-geo/routes/{route_id}`, `GET /v1/dashboards/route-map/{route_id}`, `GET /v1/dashboards/sale-position/{outlet_id}`, `GET .../national/filter-options`, `GET .../national/freshness`. `last_updated_at`, `as_of`, `date`, `till_time` on every response. Appendix A of docs/24 updated (230 operations).
+- **Summary rebuilds** (`DashboardSummaries.kt`, hooked into the route-day and zone-day rebuilds, idempotent): outlet x SKU, variant memo counts, route last position, completed/geo-valid call counts, first/last sale, download time, visit geometry, final-submit time, midnight auto-submit (summary only), freshness. Inert until the db objects exist (`ready()`).
+- **Eight card queries + filter options + freshness** (`NationalDashboard.kt`), **pins, popup, route map, sale position** (`NationalMaps.kt`), **HTTP routes** (`NationalDashboardApi.kt`, wired in `Wiring.kt`), scope from the token on every query, BRAND filter through `BrandScopeResolver` (default none until authz lands its `brands` claim).
+- Tests: `NationalDashboardTest` (brief arithmetic: channel STD = cigarette card, channel calls = CPR calls, brand memo counts not additive, daily target 2 500 + 1 250 over 25 working days, midnight job), `NationalMapsTest` (81.83 m, 3 470.55 m path, pin boundaries), `NationalDashboardApiTest` (HTTP, scope, roles, brand user). `ContractConformanceTest`, `RouteInventoryTest`, `shared:contract:jvmTest`, redocly lint green.
+
+### db delivered (V0093-V0101 on INT): test shims deleted
+The summary tables, route class, house dedupe, product codes and `app.route_monthly_target` are the real migrations now; the two test shims are gone and every test runs on them. Targets are read from `app.route_monthly_target` (not `app.target`).
+
+### Entry units (android-units request)
+`CategoryVolume` (TSO dashboard `by_category`) carries `entry_unit` (pack|dozen) and `qty_entered` (Decimal3, summed per SKU over `base_per_pack`); `route-std` rows (AMO report) carry `entry_unit` and `base_per_pack` per SKU. Default entry units only (pack, dozen); the `cfg.sale.qty_entry_unit` override is not read server-side. Tell android-units: shape pushed.
+
+### Decisions (to log in DECISIONS.md by the lead)
+- D-DASH-03 completed call = sr_call visit with outcome not null and not abandoned/not_reached; geo-validated = server verdict (else phone) in_range; pin geo % = validated/completed of that route today, no call yet = green.
+- D-DASH-04 contact (SR and outlet phone) is returned null: the phone numbers are PII and only the step-up read path may show them; wire it with PiiReadBudget when the web asks.
+- D-DASH-05 route map path and sale position are point reads of one route-day / one outlet-day (`dw.fact_geo_fix`, `dw.fact_visit`, and `app.memo` for new/repeat/edited); the cards read summaries only.
+- D-DASH-06 targets are read from `app.route_monthly_target`; working days come from Fridays + global `app.calendar_holiday` (zone-scoped holidays ignored for the national figure).
+- D-DASH-07 channel calls and CPR count normal planned routes only; sales, channel STD and geo fencing count all routes.
+- Contract: `SalePosition.radius_m` is 10..5000 (the stored radius), not the enum 20/50/100.
+
+### Opus checker (13 findings) - fixed in the next commit, with tests (`checker_*` in NationalDashboardTest/NationalMapsTest)
+Fixed: unvisited planned route-days now get a row (stale scan) and a target-outlet fallback; null product codes (code `n<id>`); memo breakdown refused where it could not be exact (brand scope leak); AMO routes excluded; route class read from `app.route.route_class` only (503 until it exists); voided fixes leave the path; positions are picked up by a stale scan (no outbox event exists); sale position limited to the outlet's route; auto-submit never overrides a real submit and looks back 7 days; freshness is the oldest waiting change; BRAND role without brands is refused; inactive target sets ignored.
+Open (documented, not fixed): login requires download but not an attendance check-in (both stamps come from the bundle path); history is filed under the route's current zone; weekend days are Friday, not `cfg.calendar.weekend_days`; outlets sold to by two routes count once per route (owner to confirm COUNT(DISTINCT outlet)).
+
+### Next three
+1. Opus checker findings on the summaries (running), then fix.
+2. Reports from `docs/reports/*.md` when the lead files them (none yet).
+3. When db lands: delete the two test shims, run the full suite, re-run the conformance test.
+
+### Traps
+- A `/*` inside a KDoc comment opens a nested comment (a path like `/v1/x/*` broke the build once).
+- `app.visit` and `app.memo` are immutable by trigger: fixtures that need coordinates `ALTER TABLE ... DISABLE TRIGGER visit_immutable` first.
+- `pg_temp` helper functions in seed_day.sql live only in the connection that ran it: run every fixture file on the same connection.
+- Fresh container: `pg_ctlcluster 16 main start`, then create the `aron_test` role and database (see the older handover below).
+
 ## HANDOVER (2026-10-15, session 3 recycling early: queue done; context was far below 400k)
 - **Full `:backend:analytics:test` on 26f5bef0: GREEN, 134 tests, 0 failed** (19 min, local PG16; a fresh container needs the `aron_test` role and database: `CREATE ROLE aron_test LOGIN SUPERUSER PASSWORD 'aron_test'; CREATE DATABASE aron_test OWNER aron_test;` and `ARON_TEST_PG_URL=jdbc:postgresql://127.0.0.1:5432/aron_test?user=aron_test&password=aron_test`). ContractDriftTest green; slice and WireDtos checks pass; not run locally: AuthDtoContractTest (no Android SDK here), redocly lint. No contract change since.
 - **F-AMO-044 zone-wide AMO bundle**: done (`SupervisorBundle.kt`, `BundleService`, 28c0fe0 + ea71d69). Opus checker: 4 confirmed defects, all fixed with its tests kept (`AmoZoneBundleCheckerTest`). Decisions D-REP-09, D-REP-11. The checker's fixes were not re-reviewed.

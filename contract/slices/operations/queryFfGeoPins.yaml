@@ -1,0 +1,33 @@
+path: /v1/dashboards/national/ff-geo/pins
+method: post
+operation:
+  tags:
+  - dashboards
+  operationId: queryFfGeoPins
+  summary: FF Geo Location pins
+  description: 'One pin per route, coloured by today''s geo-fencing % (brief s5.2). Clustering is done by the map.
+    BRAND users get 403 (docs/34 s1: cards without a brand dimension are hidden). Reads summary tables only (never
+    the transaction log); scope from the token.'
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          $ref: '#/components/schemas/FfGeoPinsRequest'
+  responses:
+    '200':
+      description: FF Geo Location pins
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/FfGeoPins'
+    '400':
+      $ref: '#/components/responses/BadRequest'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'
+    '429':
+      $ref: '#/components/responses/TooManyRequests'
+    '503':
+      $ref: '#/components/responses/ServiceUnavailable'

@@ -1,0 +1,28 @@
+path: /v1/dashboards/national/freshness
+method: get
+operation:
+  tags:
+  - dashboards
+  operationId: getNationalFreshness
+  summary: Summary table freshness
+  description: '`last_updated_at` per summary table.'
+  parameters: []
+  responses:
+    '200':
+      description: Summary table freshness
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/NationalFreshness'
+    '404':
+      $ref: '#/components/responses/NotFound'
+    '400':
+      $ref: '#/components/responses/BadRequest'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'
+    '429':
+      $ref: '#/components/responses/TooManyRequests'
+    '503':
+      $ref: '#/components/responses/ServiceUnavailable'
