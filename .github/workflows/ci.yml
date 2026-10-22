@@ -141,9 +141,15 @@ jobs:
           fetch-depth: 0
       - name: Choose the comparison base
         # SCAN_RANGE: the pushed commits for gitleaks (BEFORE..SHA works even when BEFORE is not an ancestor).
-        # CHECK_BASE: an ANCESTOR of this commit for the migration and contract gates: the merge-base with BEFORE,
-        # else (first push of a branch, force-push, manual run) the merge-base with the integration branch, else
-        # (a run on the integration branch tip itself) the parent commit.
+        # CHECK_BASE: an ANCESTOR of this commit for the migration gate: the merge-base with BEFORE, else (first push
+        # of a branch, force-push, manual run) the merge-base with the integration branch, else (a run on the
+        # integration branch tip itself) the parent commit.
+        # CONTRACT_BASE: the contract gate judges a lane's OWN delta, like the Semgrep step: on a lane push the
+        # merge-base with the integration branch. A lane that merges the integration branch picks up breaking changes
+        # already approved there (version bump plus request file on that branch) and must not be asked to approve them
+        # again, which it cannot when its own info.version is already the higher number (2026-10-22: mdm and
+        # backend-reports red on backend-authz's approved enum additions). Pull requests, main and the integration
+        # branch keep CHECK_BASE, which covers the promotion itself.
         run: |
           range="" check=""
           if [ -n "${BEFORE}" ] && git cat-file -e "${BEFORE}^{commit}" 2>/dev/null; then
@@ -157,9 +163,19 @@ jobs:
             check="$(git rev-parse HEAD~1)"
             echo "::notice::no earlier base for this run; the migration and contract gates compare with the parent commit"
           fi
-          echo "SCAN_RANGE=${range}" >> "${GITHUB_ENV}"
-          echo "CHECK_BASE=${check}" >> "${GITHUB_ENV}"
-          echo "gitleaks range: ${range:-whole history}; gate base: ${check}"
+          contract="${check}"
+          if [ "${GITHUB_EVENT_NAME}" = push ] && [ "${GITHUB_REF}" != "refs/heads/main" ] \
+             && [ "${GITHUB_REF}" != "refs/heads/${INTEGRATION_BRANCH}" ] && git rev-parse -q --verify "origin/${INTEGRATION_BRANCH}" >/dev/null; then
+            contract="$(git merge-base "origin/${INTEGRATION_BRANCH}" "${GITHUB_SHA}" || echo "${check}")"
+            # A lane head equal to the integration tip has no own delta: keep the gate base instead of comparing nothing.
+            [ "${contract}" != "${GITHUB_SHA}" ] || contract="${check}"
+          fi
+          {
+            echo "SCAN_RANGE=${range}"
+            echo "CHECK_BASE=${check}"
+            echo "CONTRACT_BASE=${contract}"
+          } >> "${GITHUB_ENV}"
+          echo "gitleaks range: ${range:-whole history}; gate base: ${check}; contract base: ${contract}"
       - name: Install gitleaks, oasdiff, squawk and osv-scanner (pinned, checksum-verified)
         run: |
           for t in gitleaks oasdiff squawk osv-scanner; do tools/ci/install-tool.sh "$t" "${RUNNER_TEMP}/bin"; done
@@ -220,7 +236,7 @@ jobs:
         run: tools/ci/migrations-check.sh "${CHECK_BASE}" squawk
       - name: Contract breaking-change check (oasdiff)
         if: needs.changes.outputs.contract == 'true'
-        run: tools/ci/contract-breaking.sh "${CHECK_BASE}" oasdiff
+        run: tools/ci/contract-breaking.sh "${CONTRACT_BASE:-${CHECK_BASE}}" oasdiff
       # Contract lint lives here since 2026-10-07 (CI audit s5 item 8: the tiny gate jobs folded into one; the required
       # check "Contract lint" is gone from tools/github-governance.ps1 in the same commit).
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
