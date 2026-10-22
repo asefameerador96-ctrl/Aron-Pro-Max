@@ -62,7 +62,12 @@ object PortalLevels {
             // token minted for the old app is refused here, so the new role's national reach never rides a phone token.
             // An upload token is minted with the flavour's role even after a role change (AuthModule refresh, checker round 2
             // B1-bis); one of any other role (minted before that fix) is refused; its rows wait on the phone until the next upload refresh.
-            if (PHONE_ROLE[p.flavour] != p.role) throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "this account cannot use this app")
+            if (PHONE_ROLE[p.flavour] != p.role) {
+                // 401 for the upload grant (checker row 2, N6): the app refreshes it at once and the new token carries the
+                // field role; a 403 would stop its sync until the token expired.
+                if (p.audience == Audience.UPLOAD) throw ApiProblem(ProblemCode.ERR_SCOPE_CHANGED, "refresh the upload grant")
+                throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "this account cannot use this app")
+            }
             return
         }
         val m = if (method == "HEAD") "GET" else method

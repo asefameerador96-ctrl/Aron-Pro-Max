@@ -59,13 +59,16 @@ class SqlReachResolver(private val db: Database, private val geo: GeoRepository,
         val now = clock.now().toEpochMilli()
         val key = Key(userId, scopeVersion, businessDate)
         cache[key]?.let { (at, r) -> if (now - at < 300_000 && r.role == role) return r }
+        var current: Role? = null
         val (scope, asg) = db.jdbi.withHandle<Pair<List<ScopeRow>, List<AssignmentRow>>, Exception> { h ->
+            current = h.createQuery("SELECT role FROM app.app_user WHERE id = :u").bind("u", userId).mapTo(String::class.java).findOne().orElse(null)
+                ?.let { w -> Role.entries.firstOrNull { it.wire == w } }
             h.createQuery("SELECT node_type, node_id, valid_from, valid_to FROM app.user_scope WHERE user_id = :u").bind("u", userId)
                 .map { rs, _ -> ScopeRow(rs.getString(1), rs.getLong(2), rs.getObject(3, LocalDate::class.java), rs.getObject(4, LocalDate::class.java)) }.list() to
                 h.createQuery("SELECT route_id, kind, valid_from, valid_to FROM app.route_assignment WHERE user_id = :u").bind("u", userId)
                     .map { rs, _ -> AssignmentRow(rs.getLong(1), rs.getString(2), rs.getObject(3, LocalDate::class.java), rs.getObject(4, LocalDate::class.java)) }.list()
         }
-        val r = ReachCalculator.compute(userId, role, businessDate, scope, asg, geo.geoCovering(routeIds = asg.map { it.routeId }))
+        val r = ReachCalculator.compute(userId, role, businessDate, scope, asg, geo.geoCovering(routeIds = asg.map { it.routeId }), current)
         if (cache.size > 50_000) cache.clear()
         cache[key] = now to r
         return r

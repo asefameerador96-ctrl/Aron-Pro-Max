@@ -70,7 +70,6 @@ object AdminModules {
         p("/v1/admin/surveys/**") to "masterdata",
         p("/v1/admin/rubrics/**") to "masterdata",
         p("/v1/admin/print-templates/**") to "masterdata",
-        p("/v1/admin/notifications/**") to "masterdata",
         p("/v1/admin/routes/**") to "routes",
         p("/v1/admin/route-assignments/**") to "routes",
         p("/v1/routes/**") to "routes",
@@ -97,6 +96,8 @@ object AdminModules {
         p("/v1/admin/enrolment-tokens/**") to "mdm",
         p("/v1/admin/releases/**") to "mdm",
         p("/v1/admin/mdm/**") to "mdm",
+        p("/v1/admin/notifications/**") to "mdm",
+        p("/v1/support/**") to "mdm",
         p("/v1/admin/data-entry/**") to "data_entry",
         p("/v1/admin/data-void/**") to "data_entry",
         p("/v1/admin/entry-unlocks/**") to "data_entry",
@@ -109,16 +110,15 @@ object AdminModules {
         p("/v1/leaderboard/**") to "leaderboard",
         p("/v1/dashboards/daily-tracking/**") to "daily_tracking",
         p("/v1/tasks/**") to "daily_tracking",
+        p("/v1/risk-signals/**") to "daily_tracking",
         p("/v1/dashboards/**") to "reports",
         p("/v1/reports/**") to "reports",
         p("/v1/report-exports/**") to "reports",
         p("/v1/app/home") to "reports",
         p("/v1/team/**") to "reports",
         p("/v1/memos/**") to "reports",
-        p("/v1/risk-signals/**") to "reports",
         p("/v1/feedback/**") to "reports",
         p("/v1/media/**") to "reports",
-        p("/v1/support/**") to "reports",
     )
 
     /**
@@ -134,7 +134,14 @@ object AdminModules {
     /** POSTs that only read. */
     val READ_POSTS: List<PortalLevels.Pattern> = listOf(
         PortalLevels.Pattern("POST", "/v1/reports/{report_key}/query"),
-        PortalLevels.Pattern("POST", "/v1/admin/prices/preview"),
+    )
+
+    /**
+     * Routes that need a second module besides their own (checker row 2, B1): creating a user answers its temporary
+     * password, so it is a credential act as much as a users one.
+     */
+    val ALSO_NEEDS: List<Pair<PortalLevels.Pattern, String>> = listOf(
+        PortalLevels.Pattern("POST", "/v1/admin/users") to "credentials",
     )
 
     /** "own", a module name, or null when the route is unmapped. [path] is normalised; [method] is upper case. */
@@ -160,6 +167,11 @@ object AdminModules {
         if (module == "own") return
         val access = mods[module] ?: throw denied(module)
         if (needsWrite(m, path) && access != "w") throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "read-only access to module $module")
+        for ((pattern, extra) in ALSO_NEEDS) {
+            if (!pattern.matches(m, path)) continue
+            val a = mods[extra] ?: throw denied(extra)
+            if (needsWrite(m, path) && a != "w") throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "read-only access to module $extra")
+        }
     }
 
     private fun denied(module: String? = null) =

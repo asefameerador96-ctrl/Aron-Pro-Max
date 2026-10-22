@@ -93,14 +93,23 @@ class JdbiUserStore(private val db: Database, private val clock: AronClock = Aro
         return perms
     }
     /**
-     * D-ROLES-02: whether db's grant tables exist (docs/requests/db-backend-authz-roles.md B, C). Probed once per process:
-     * the migrations run before the API restarts on a deploy.
+     * D-ROLES-02: whether db's grant tables exist (docs/requests/db-backend-authz-roles.md B, C). Once true it stays true;
+     * while false it is probed again at most once a minute, so a replica that started before the migration still turns
+     * the gate on (checker row 2, N2).
      */
-    private val grantsLive: Boolean by lazy {
-        db.jdbi.withHandle<Boolean, Exception> { h ->
+    @Volatile private var grantsLiveSeen = false
+    @Volatile private var grantsProbedAt = Long.MIN_VALUE
+
+    private val grantsLive: Boolean get() {
+        if (grantsLiveSeen) return true
+        val now = clock.now().toEpochMilli()
+        if (grantsProbedAt != Long.MIN_VALUE && now - grantsProbedAt < 60_000) return false
+        grantsProbedAt = now
+        grantsLiveSeen = db.jdbi.withHandle<Boolean, Exception> { h ->
             h.createQuery("SELECT to_regclass('app.user_module_grant') IS NOT NULL AND to_regclass('app.user_brand_scope') IS NOT NULL")
                 .mapTo(Boolean::class.java).one()
         }
+        return grantsLiveSeen
     }
 
     override fun live(): Boolean = grantsLive

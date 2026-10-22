@@ -98,7 +98,8 @@ class AdminModulesTest {
         assertEquals(null, outcome(readOnly, "HEAD", "/v1/admin/users"))
         assertEquals(null, outcome(readOnly, "OPTIONS", "/v1/admin/users"))
         assertEquals(null, outcome(readOnly, "POST", "/v1/reports/sales-summary/query"))
-        assertEquals(null, outcome(readOnly, "POST", "/v1/admin/prices/preview"))
+        // Checker row 2 (N1): a price preview stores the batch it previews; it is a write.
+        assertEquals(ProblemCode.ERR_FORBIDDEN, outcome(readOnly, "POST", "/v1/admin/prices/preview"))
         for (m in listOf("POST", "PUT", "PATCH", "DELETE", "post")) assertEquals(ProblemCode.ERR_FORBIDDEN, outcome(readOnly, m, "/v1/admin/users/4"), m)
         // A READ_POST shape on another path is a write.
         assertEquals(ProblemCode.ERR_FORBIDDEN, outcome(readOnly, "POST", "/v1/reports/sales-summary/query/extra"))
@@ -133,5 +134,22 @@ class AdminModulesTest {
         assertEquals(null, outcome(p(Role.SUPERADMIN, null), "POST", "/v1/admin/users"))
         assertEquals(null, outcome(p(Role.DMO, null), "POST", "/v1/admin/users"))
         try { AdminModules.check(p(Role.ADMIN, none), "GET", "/v1/admin/users", true); fail("no grant") } catch (e: ApiProblem) { assertEquals("no access to module users", e.detail) }
+    }
+
+    /** Checker row 2 (B1): creating a user answers its temporary password, so it also needs the credentials module. */
+    @Test
+    fun creatingAUserAlsoNeedsCredentials() {
+        assertEquals(ProblemCode.ERR_FORBIDDEN, outcome(p(Role.ADMIN, mapOf("users" to "w")), "POST", "/v1/admin/users"))
+        assertEquals(ProblemCode.ERR_FORBIDDEN, outcome(p(Role.ADMIN, mapOf("users" to "w", "credentials" to "r")), "POST", "/v1/admin/users"))
+        assertEquals(null, outcome(p(Role.ADMIN, mapOf("users" to "w", "credentials" to "w")), "POST", "/v1/admin/users"))
+        assertEquals(null, outcome(p(Role.ADMIN, mapOf("users" to "w")), "PATCH", "/v1/admin/users/4"))
+        assertEquals(null, outcome(p(Role.ADMIN, mapOf("users" to "r")), "GET", "/v1/admin/users"))
+    }
+
+    @Test
+    fun antiSpoofingReviewsAndFieldPushesSitWithTheirModules() {
+        assertEquals("daily_tracking", AdminModules.moduleOf("POST", "/v1/risk-signals/9/review"))
+        assertEquals("mdm", AdminModules.moduleOf("POST", "/v1/admin/notifications"))
+        assertEquals("mdm", AdminModules.moduleOf("POST", "/v1/support/pda-upload"))
     }
 }

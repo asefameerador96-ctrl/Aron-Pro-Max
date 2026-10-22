@@ -38,14 +38,21 @@ data class AssignmentRow(val routeId: Long, val kind: String, val validFrom: Loc
 /**
  * Reach of a user on a business date (docs/24 s8.4), a pure function of role, scope rows, assignments and geography:
  * - SR: the routes assigned on the date (primary or cover) and their outlets, own records only;
- * - AMO, TSO, DMO, WM: the zones under the scope nodes valid on the date, plus any route assigned to them;
+ * - AMO, TSO, DMO, WM: the zones under the scope nodes valid on the date, plus any route assigned to them; nothing for
+ *   a role the user no longer holds (the phone's upload token after a role change, checker row 2 B2);
  * - TOP (retired), NATIONAL, BRAND (its brands filter products, not geography), ANALYST, SUPPORT, ADMIN, SUPERADMIN: national.
  * Nothing the client sends is an input.
  */
 object ReachCalculator {
     private val nationalRoles = setOf(Role.TOP, Role.NATIONAL, Role.BRAND, Role.ANALYST, Role.SUPPORT, Role.ADMIN, Role.SUPERADMIN)
 
-    fun compute(userId: Long, role: Role, date: LocalDate, scope: List<ScopeRow>, assignments: List<AssignmentRow>, geo: Geo): Reach {
+    /**
+     * [currentRole] is the user's role now (null = not known: the caller already holds it). When [role] (the token's) is a
+     * geographic field role the user no longer holds, the phone's upload token of a role change is asking: its records
+     * get no geographic reach and go to quarantine (`scope_out_of_reach`, kept for the helpdesk), so neither the new
+     * role's scope rows nor the old role's surviving ones reach new records.
+     */
+    fun compute(userId: Long, role: Role, date: LocalDate, scope: List<ScopeRow>, assignments: List<AssignmentRow>, geo: Geo, currentRole: Role? = null): Reach {
         val routes = assignments.filter { it.validOn(date) }.map { it.routeId }.filter { it in geo.routeZone }.toSet()
         if (role in nationalRoles) {
             return Reach(userId, role, date, true, geo.zoneTerritory.keys, routes, false, listOf(ReachNode("national", 0)))
@@ -53,6 +60,7 @@ object ReachCalculator {
         if (role == Role.SR) {
             return Reach(userId, role, date, false, emptySet(), routes, true, routes.sorted().map { node("route", it, geo) })
         }
+        if (currentRole != null && currentRole != role) return Reach(userId, role, date, false, emptySet(), emptySet(), false, emptyList())
         val valid = scope.filter { it.validOn(date) }
         if (valid.any { it.nodeType == "national" }) {
             return Reach(userId, role, date, true, geo.zoneTerritory.keys, routes, false, listOf(ReachNode("national", 0)))

@@ -28,6 +28,8 @@ private val USERNAME_RE = Regex("^[A-Za-z][A-Za-z0-9._-]{2,39}$")
 private val MEMO_USERNAME_RE = Regex("^[a-z][a-z0-9]{3,31}$")
 private val ROLE_VALUES = Role.entries.map { it.wire }.toSet()
 private val SENIOR = setOf(Role.ADMIN, Role.SUPERADMIN)
+/** Roles with national reach besides ADMIN and SUPERADMIN: only a SUPERADMIN creates them or changes them (D-ROLES-02). */
+private val SUPERADMIN_MANAGED = setOf(Role.NATIONAL, Role.BRAND, Role.ANALYST, Role.SUPPORT, Role.TOP)
 
 /** Users in reach: the home zone or a live route assignment lies in a zone of the caller's reach. */
 private val userReach: (Reach, Geo) -> Pred? = { reach, _ ->
@@ -74,6 +76,10 @@ internal val USER = MasterEntity(
         val curRole = cur?.let { roleOf(it["role"]) }
         if (ctx.p.role == Role.ADMIN && (newRole in SENIOR || curRole in SENIOR))
             throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "only a SUPERADMIN manages ADMIN and SUPERADMIN users")
+        // D-ROLES-02 (checker row 2, B1): national-reach accounts are the Super Admin's (docs/34 s1); otherwise an ADMIN
+        // with the users module mints itself a SUPPORT or NATIONAL login and leaves its own module grants behind.
+        if (ctx.p.role == Role.ADMIN && (newRole in SUPERADMIN_MANAGED || curRole in SUPERADMIN_MANAGED))
+            throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "only a SUPERADMIN manages NATIONAL, BRAND, ANALYST and SUPPORT users")
         if (cur != null && cur["id"] == ctx.p.userId && ("role" in changes && changes["role"] != cur["role"] || changes["status"] == "disabled"))
             throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "you cannot change your own role or disable yourself")
         if (cur == null || "role" in changes && changes["role"] != cur["role"]) {
@@ -100,6 +106,14 @@ internal val USER = MasterEntity(
         if (cur != null && changes["status"] == "disabled") h.revokeFull(row["id"], "user_disabled", ctx.now)
         // D-ROLES-02: a new role starts with a new login; no session of the old role refreshes into it.
         else if (cur != null && "role" in changes && changes["role"] != cur["role"]) h.revokeFull(row["id"], "admin_force_logout", ctx.now)
+        // Checker row 2 (N3): module grants and brand scopes belong to the role they were given for; a role change drops
+        // them (the user row's audit image records the change), so a later change back starts from nothing (fail closed).
+        if (cur != null && "role" in changes && changes["role"] != cur["role"]) {
+            for (t in listOf("user_module_grant", "user_brand_scope")) {
+                if (h.count("SELECT count(*) FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = 'app' AND c.relname = :t", "t" to t) > 0)
+                    h.createUpdate("DELETE FROM app.$t WHERE user_id = :u").bind("u", row["id"]).execute()
+            }
+        }
     },
 )
 
@@ -156,6 +170,8 @@ private suspend fun credentials(call: ApplicationCall, d: AdminMasterDeps) {
             val role = roleOf(u["role"])!!
             if (p.role == Role.TSO && role !in setOf(Role.SR, Role.AMO)) throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "a TSO acts on SR and AMO users only")
             if (role in SENIOR && p.role != Role.SUPERADMIN) throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "only a SUPERADMIN acts on ADMIN and SUPERADMIN users")
+            // D-ROLES-02 (checker row 2, N5): a reset hands over the account; national-reach accounts are the Super Admin's.
+            if (role in SUPERADMIN_MANAGED && p.role != Role.SUPERADMIN) throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "only a SUPERADMIN acts on NATIONAL, BRAND, ANALYST and SUPPORT users")
             when (action) {
                 "reset_password" -> {
                     h.createUpdate("UPDATE app.app_user SET password_hash = :h, must_change_password = true, password_changed_at = NULL, scope_version = scope_version + 1 WHERE id = :id")

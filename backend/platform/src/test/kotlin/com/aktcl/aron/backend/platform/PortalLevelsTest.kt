@@ -63,7 +63,7 @@ class PortalLevelsTest {
         // Checker round 2 (B1-bis): an upload token of a non-field role never reaches sync/batch with that role's reach.
         for (r in Role.entries - Role.SR) {
             val upload = p(r, "sr").copy(audience = Audience.UPLOAD)
-            assertEquals(ProblemCode.ERR_FORBIDDEN, try { PortalLevels.check(upload, "POST", "/v1/sync/batch"); null } catch (e: ApiProblem) { e.code }, "$r upload on an sr phone")
+            assertEquals(ProblemCode.ERR_SCOPE_CHANGED, try { PortalLevels.check(upload, "POST", "/v1/sync/batch"); null } catch (e: ApiProblem) { e.code }, "$r upload on an sr phone")
         }
         PortalLevels.check(p(Role.SR, "sr").copy(audience = Audience.UPLOAD), "POST", "/v1/sync/batch")
         assertEquals("/v1/auth/logout", PortalLevels.normalise("/v1/%61uth//logout"))
