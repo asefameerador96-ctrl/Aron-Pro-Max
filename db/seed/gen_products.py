@@ -12,6 +12,9 @@ SRC, OUT = "db/seed/sku_catalog.csv", "db/seed/02_products.sql"
 PRICE_COLUMNS = [("outlet", "price_outlet"), ("cc", "price_cc"), ("distributor", "price_distributor"),
                  ("reporting", "price_reporting"), ("nto", "price_nto")]
 BASE_UNIT = {"cigarette": "stick", "bidi": "stick", "lighter": "piece", "match": "dozen"}
+# Field entry unit (owner 2026-10-22, D-UNITS-02, V0101): packets for cigarettes and bidi, a box of 25 for lighters
+# (pack_size 25 in the CSV), dozens for matches (the base unit). Prices stay per base unit.
+ENTRY_UNIT = {"cigarette": "pack", "bidi": "pack", "lighter": "pack", "match": "dozen"}
 
 
 def q(s):
@@ -65,7 +68,7 @@ for i, r in enumerate(rows, 1):
         "INSERT INTO app.sku (code, variant_id, category_code, name, short_name, base_unit, base_per_pack, pack_type,\n"
         "                     entry_unit_default, report_unit, report_factor, sort, status, external_ref)\n"
         f"  SELECT {q(code)}, v.id, '{cat}', {q(name)}, {q(r['short_name'].strip())}, '{BASE_UNIT[cat]}', {pack}, {q(r['pack_type'])},\n"
-        f"         '{BASE_UNIT[cat]}', '{BASE_UNIT[cat]}', 1, {i}, '{'active' if r['status'].strip() == '1' else 'inactive'}', {q(r['sku_code'].strip())}\n"
+        f"         '{ENTRY_UNIT[cat]}', '{BASE_UNIT[cat]}', 1, {i}, '{'active' if r['status'].strip() == '1' else 'inactive'}', {q(r['sku_code'].strip())}\n"
         f"    FROM app.product_node v JOIN app.product_node b ON b.id = v.parent_id JOIN app.product_node s ON s.id = b.parent_id\n"
         f"    JOIN app.product_node c ON c.id = s.parent_id\n"
         f"   WHERE v.level = 'variant' AND v.name = {q(r['variant'])} AND b.name = {q(r['brand'])} AND s.name = {q(r['segment'])} AND c.name = {q(r['category'])}\n"

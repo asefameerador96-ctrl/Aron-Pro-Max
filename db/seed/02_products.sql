@@ -172,7 +172,7 @@ INSERT INTO app.product_node (level, parent_id, name, sort)
 INSERT INTO app.sku (code, variant_id, category_code, name, short_name, base_unit, base_per_pack, pack_type,
                      entry_unit_default, report_unit, report_factor, sort, status, external_ref)
   SELECT 'MaxR-10S', v.id, 'cigarette', 'Maxim Regular 10 (HLP)', 'MaxR-10S', 'stick', 10, 'HLP',
-         'stick', 'stick', 1, 1, 'active', 'MaxR-10S'
+         'pack', 'stick', 1, 1, 'active', 'MaxR-10S'
     FROM app.product_node v JOIN app.product_node b ON b.id = v.parent_id JOIN app.product_node s ON s.id = b.parent_id
     JOIN app.product_node c ON c.id = s.parent_id
    WHERE v.level = 'variant' AND v.name = 'Maxim Regular' AND b.name = 'Maxim' AND s.name = 'Medium' AND c.name = 'Cigarette'
@@ -183,7 +183,7 @@ INSERT INTO app.sku_price (sku_id, price_type, amount_mtk, per_base_qty, valid_f
 INSERT INTO app.sku (code, variant_id, category_code, name, short_name, base_unit, base_per_pack, pack_type,
                      entry_unit_default, report_unit, report_factor, sort, status, external_ref)
   SELECT 'MaxR-20S', v.id, 'cigarette', 'Maxim Regular 20 (HLP)', 'MaxR-20S', 'stick', 20, 'HLP',
-         'stick', 'stick', 1, 2, 'active', 'MaxR-20S'
+         'pack', 'stick', 1, 2, 'active', 'MaxR-20S'
     FROM app.product_node v JOIN app.product_node b ON b.id = v.parent_id JOIN app.product_node s ON s.id = b.parent_id
     JOIN app.product_node c ON c.id = s.parent_id
    WHERE v.level = 'variant' AND v.name = 'Maxim Regular' AND b.name = 'Maxim' AND s.name = 'Medium' AND c.name = 'Cigarette'
@@ -194,7 +194,7 @@ INSERT INTO app.sku_price (sku_id, price_type, amount_mtk, per_base_qty, valid_f
 INSERT INTO app.sku (code, variant_id, category_code, name, short_name, base_unit, base_per_pack, pack_type,
                      entry_unit_default, report_unit, report_factor, sort, status, external_ref)
   SELECT 'MaxB-10S', v.id, 'cigarette', 'Maxim Bolt 10 (HLP)', 'MaxB-10S', 'stick', 10, 'HLP',
-         'stick', 'stick', 1, 3, 'active', 'MaxB-10S'
+         'pack', 'stick', 1, 3, 'active', 'MaxB-10S'
     FROM app.product_node v JOIN app.product_node b ON b.id = v.parent_id JOIN app.product_node s ON s.id = b.parent_id
     JOIN app.product_node c ON c.id = s.parent_id
    WHERE v.level = 'variant' AND v.name = 'Maxim Bolt' AND b.name = 'Maxim' AND s.name = 'Medium' AND c.name = 'Cigarette'
@@ -205,7 +205,7 @@ INSERT INTO app.sku_price (sku_id, price_type, amount_mtk, per_base_qty, valid_f
 INSERT INTO app.sku (code, variant_id, category_code, name, short_name, base_unit, base_per_pack, pack_type,
                      entry_unit_default, report_unit, report_factor, sort, status, external_ref)
   SELECT 'MaxB-20S', v.id, 'cigarette', 'Maxim Bolt 20 (HLP)', 'MaxB-20S', 'stick', 20, 'HLP',
-         'stick', 'stick', 1, 4, 'active', 'MaxB-20S'
+         'pack', 'stick', 1, 4, 'active', 'MaxB-20S'
     FROM app.product_node v JOIN app.product_node b ON b.id = v.parent_id JOIN app.product_node s ON s.id = b.parent_id
     JOIN app.product_node c ON c.id = s.parent_id
    WHERE v.level = 'variant' AND v.name = 'Maxim Bolt' AND b.name = 'Maxim' AND s.name = 'Medium' AND c.name = 'Cigarette'
@@ -216,7 +216,7 @@ INSERT INTO app.sku_price (sku_id, price_type, amount_mtk, per_base_qty, valid_f
 INSERT INTO app.sku (code, variant_id, category_code, name, short_name, base_unit, base_per_pack, pack_type,
                      entry_unit_default, report_unit, report_factor, sort, status, external_ref)
   SELECT 'MaxWB-10S', v.id, 'cigarette', 'Maxim Wild Berry 10 (HLP)', 'MaxWB-10S', 'stick', 10, 'HLP',
-         'stick', 'stick', 1, 5, 'active', 'MaxWB-10S'
+         'pack', 'stick', 1, 5, 'active', 'MaxWB-10S'
     FROM app.product_node v JOIN app.product_node b ON b.id = v.parent_id JOIN app.product_node s ON s.id = b.parent_id
     JOIN app.product_node c ON c.id = s.parent_id
    WHERE v.level = 'variant' AND v.name = 'Maxim Wild Berry' AND b.name = 'Maxim' AND s.name = 'Medium' AND c.name = 'Cigarette'
@@ -227,7 +227,7 @@ INSERT INTO app.sku_price (sku_id, price_type, amount_mtk, per_base_qty, valid_f
 INSERT INTO app.sku (code, variant_id, category_code, name, short_name, base_unit, base_per_pack, pack_type,
                      entry_unit_default, report_unit, report_factor, sort, status, external_ref)
   SELECT 'MaxWB-20S', v.id, 'cigarette', 'Maxim Wild Berry 20 (HLP)', 'MaxWB-20S', 'stick', 20, 'HLP',
-         'stick', 'stick', 1, 6, 'active', 'MaxWB-20S'
+         'pack', 'stick', 1, 6, 'active', 'MaxWB-20S'
     FROM app.product_node v JOIN app.product_node b ON b.id = v.parent_id JOIN app.product_node s ON s.id = b.parent_id
     JOIN app.product_node c ON c.id = s.parent_id
    WHERE v.level = 'variant' AND v.name = 'Maxim Wild Berry' AND b.name = 'Maxim' AND s.name = 'Medium' AND c.name = 'Cigarette'
@@ -238,7 +238,7 @@ INSERT INTO app.sku_price (sku_id, price_type, amount_mtk, per_base_qty, valid_f
 INSERT INTO app.sku (code, variant_id, category_code, name, short_name, base_unit, base_per_pack, pack_type,
                      entry_unit_default, report_unit, report_factor, sort, status, external_ref)
   SELECT 'MaxDB-20S_20HL', v.id, 'cigarette', 'Maxim Double Burst 20 (HLP)', 'MaxDB-20S 20HL', 'stick', 20, 'HLP',
-         'stick', 'stick', 1, 7, 'active', 'MaxDB-20S 20HL'
+         'pack', 'stick', 1, 7, 'active', 'MaxDB-20S 20HL'
     FROM app.product_node v JOIN app.product_node b ON b.id = v.parent_id JOIN app.product_node s ON s.id = b.parent_id
     JOIN app.product_node c ON c.id = s.parent_id
    WHERE v.level = 'variant' AND v.name = 'Maxim Double Burst' AND b.name = 'Maxim' AND s.name = 'Medium' AND c.name = 'Cigarette'
@@ -249,7 +249,7 @@ INSERT INTO app.sku_price (sku_id, price_type, amount_mtk, per_base_qty, valid_f
 INSERT INTO app.sku (code, variant_id, category_code, name, short_name, base_unit, base_per_pack, pack_type,
                      entry_unit_default, report_unit, report_factor, sort, status, external_ref)
   SELECT 'MaxDB-10S_10HL', v.id, 'cigarette', 'Maxim Double Burst 10 (HLP)', 'MaxDB-10S 10HL', 'stick', 10, 'HLP',
-         'stick', 'stick', 1, 8, 'active', 'MaxDB-10S 10HL'
+         'pack', 'stick', 1, 8, 'active', 'MaxDB-10S 10HL'
     FROM app.product_node v JOIN app.product_node b ON b.id = v.parent_id JOIN app.product_node s ON s.id = b.parent_id
     JOIN app.product_node c ON c.id = s.parent_id
    WHERE v.level = 'variant' AND v.name = 'Maxim Double Burst' AND b.name = 'Maxim' AND s.name = 'Medium' AND c.name = 'Cigarette'
@@ -260,7 +260,7 @@ INSERT INTO app.sku_price (sku_id, price_type, amount_mtk, per_base_qty, valid_f
 INSERT INTO app.sku (code, variant_id, category_code, name, short_name, base_unit, base_per_pack, pack_type,
                      entry_unit_default, report_unit, report_factor, sort, status, external_ref)
   SELECT 'MaxPrime-20S_20HL', v.id, 'cigarette', 'Maxim Prime 20 (HLP)', 'MaxPrime-20S 20HL', 'stick', 20, 'HLP',
-         'stick', 'stick', 1, 9, 'active', 'MaxPrime-20S 20HL'
+         'pack', 'stick', 1, 9, 'active', 'MaxPrime-20S 20HL'
     FROM app.product_node v JOIN app.product_node b ON b.id = v.parent_id JOIN app.product_node s ON s.id = b.parent_id
     JOIN app.product_node c ON c.id = s.parent_id
    WHERE v.level = 'variant' AND v.name = 'Maxim Prime' AND b.name = 'Maxim' AND s.name = 'Medium' AND c.name = 'Cigarette'
@@ -271,7 +271,7 @@ INSERT INTO app.sku_price (sku_id, price_type, amount_mtk, per_base_qty, valid_f
 INSERT INTO app.sku (code, variant_id, category_code, name, short_name, base_unit, base_per_pack, pack_type,
                      entry_unit_default, report_unit, report_factor, sort, status, external_ref)
   SELECT 'Avon-20S', v.id, 'cigarette', 'Avon 20 (HLP)', 'Avon-20S', 'stick', 20, 'HLP',
-         'stick', 'stick', 1, 10, 'active', 'Avon-20S'
+         'pack', 'stick', 1, 10, 'active', 'Avon-20S'
     FROM app.product_node v JOIN app.product_node b ON b.id = v.parent_id JOIN app.product_node s ON s.id = b.parent_id
     JOIN app.product_node c ON c.id = s.parent_id
    WHERE v.level = 'variant' AND v.name = 'Avon' AND b.name = 'Avon' AND s.name = 'Slim' AND c.name = 'Cigarette'
@@ -282,7 +282,7 @@ INSERT INTO app.sku_price (sku_id, price_type, amount_mtk, per_base_qty, valid_f
 INSERT INTO app.sku (code, variant_id, category_code, name, short_name, base_unit, base_per_pack, pack_type,
                      entry_unit_default, report_unit, report_factor, sort, status, external_ref)
   SELECT 'ARIS-A-20s', v.id, 'cigarette', 'ARIS Apple 20 (HLP)', 'ARIS-A-20s', 'stick', 20, 'HLP',
-         'stick', 'stick', 1, 11, 'active', 'ARIS-A-20s'
+         'pack', 'stick', 1, 11, 'active', 'ARIS-A-20s'
     FROM app.product_node v JOIN app.product_node b ON b.id = v.parent_id JOIN app.product_node s ON s.id = b.parent_id
     JOIN app.product_node c ON c.id = s.parent_id
    WHERE v.level = 'variant' AND v.name = 'ARIS Apple' AND b.name = 'ARIS' AND s.name = 'Slim' AND c.name = 'Cigarette'
@@ -293,7 +293,7 @@ INSERT INTO app.sku_price (sku_id, price_type, amount_mtk, per_base_qty, valid_f
 INSERT INTO app.sku (code, variant_id, category_code, name, short_name, base_unit, base_per_pack, pack_type,
                      entry_unit_default, report_unit, report_factor, sort, status, external_ref)
   SELECT 'ARIS-O-20s', v.id, 'cigarette', 'ARIS Original 20 (HLP)', 'ARIS-O-20s', 'stick', 20, 'HLP',
-         'stick', 'stick', 1, 12, 'active', 'ARIS-O-20s'
+         'pack', 'stick', 1, 12, 'active', 'ARIS-O-20s'
     FROM app.product_node v JOIN app.product_node b ON b.id = v.parent_id JOIN app.product_node s ON s.id = b.parent_id
     JOIN app.product_node c ON c.id = s.parent_id
    WHERE v.level = 'variant' AND v.name = 'ARIS Original' AND b.name = 'ARIS' AND s.name = 'Slim' AND c.name = 'Cigarette'
@@ -304,7 +304,7 @@ INSERT INTO app.sku_price (sku_id, price_type, amount_mtk, per_base_qty, valid_f
 INSERT INTO app.sku (code, variant_id, category_code, name, short_name, base_unit, base_per_pack, pack_type,
                      entry_unit_default, report_unit, report_factor, sort, status, external_ref)
   SELECT 'ARIS-S-20s', v.id, 'cigarette', 'ARIS Strawberry 20 (HLP)', 'ARIS-S-20s', 'stick', 20, 'HLP',
-         'stick', 'stick', 1, 13, 'active', 'ARIS-S-20s'
+         'pack', 'stick', 1, 13, 'active', 'ARIS-S-20s'
     FROM app.product_node v JOIN app.product_node b ON b.id = v.parent_id JOIN app.product_node s ON s.id = b.parent_id
     JOIN app.product_node c ON c.id = s.parent_id
    WHERE v.level = 'variant' AND v.name = 'ARIS Strawberry' AND b.name = 'ARIS' AND s.name = 'Slim' AND c.name = 'Cigarette'
@@ -315,7 +315,7 @@ INSERT INTO app.sku_price (sku_id, price_type, amount_mtk, per_base_qty, valid_f
 INSERT INTO app.sku (code, variant_id, category_code, name, short_name, base_unit, base_per_pack, pack_type,
                      entry_unit_default, report_unit, report_factor, sort, status, external_ref)
   SELECT 'MSB-10s', v.id, 'cigarette', 'Marise Special Blend 10 (HLP)', 'MSB-10s', 'stick', 10, 'HLP',
-         'stick', 'stick', 1, 14, 'active', 'MSB-10s'
+         'pack', 'stick', 1, 14, 'active', 'MSB-10s'
     FROM app.product_node v JOIN app.product_node b ON b.id = v.parent_id JOIN app.product_node s ON s.id = b.parent_id
     JOIN app.product_node c ON c.id = s.parent_id
    WHERE v.level = 'variant' AND v.name = 'Marise Special Blend' AND b.name = 'Marise' AND s.name = 'Low' AND c.name = 'Cigarette'
@@ -326,7 +326,7 @@ INSERT INTO app.sku_price (sku_id, price_type, amount_mtk, per_base_qty, valid_f
 INSERT INTO app.sku (code, variant_id, category_code, name, short_name, base_unit, base_per_pack, pack_type,
                      entry_unit_default, report_unit, report_factor, sort, status, external_ref)
   SELECT 'MSB-20s', v.id, 'cigarette', 'Marise Special Blend 20 (HLP)', 'MSB-20s', 'stick', 20, 'HLP',
-         'stick', 'stick', 1, 15, 'active', 'MSB-20s'
+         'pack', 'stick', 1, 15, 'active', 'MSB-20s'
     FROM app.product_node v JOIN app.product_node b ON b.id = v.parent_id JOIN app.product_node s ON s.id = b.parent_id
     JOIN app.product_node c ON c.id = s.parent_id
    WHERE v.level = 'variant' AND v.name = 'Marise Special Blend' AND b.name = 'Marise' AND s.name = 'Low' AND c.name = 'Cigarette'
@@ -337,7 +337,7 @@ INSERT INTO app.sku_price (sku_id, price_type, amount_mtk, per_base_qty, valid_f
 INSERT INTO app.sku (code, variant_id, category_code, name, short_name, base_unit, base_per_pack, pack_type,
                      entry_unit_default, report_unit, report_factor, sort, status, external_ref)
   SELECT 'BDDF-10s', v.id, 'cigarette', 'Black Diamond Double Filter 10 (HLP)', 'BDDF-10s', 'stick', 10, 'HLP',
-         'stick', 'stick', 1, 16, 'active', 'BDDF-10s'
+         'pack', 'stick', 1, 16, 'active', 'BDDF-10s'
     FROM app.product_node v JOIN app.product_node b ON b.id = v.parent_id JOIN app.product_node s ON s.id = b.parent_id
     JOIN app.product_node c ON c.id = s.parent_id
    WHERE v.level = 'variant' AND v.name = 'Black Diamond Double Filter' AND b.name = 'Black Diamond' AND s.name = 'Low' AND c.name = 'Cigarette'
@@ -348,7 +348,7 @@ INSERT INTO app.sku_price (sku_id, price_type, amount_mtk, per_base_qty, valid_f
 INSERT INTO app.sku (code, variant_id, category_code, name, short_name, base_unit, base_per_pack, pack_type,
                      entry_unit_default, report_unit, report_factor, sort, status, external_ref)
   SELECT 'BDDF-20s', v.id, 'cigarette', 'Black Diamond Double Filter 20 (HLP)', 'BDDF-20s', 'stick', 20, 'HLP',
-         'stick', 'stick', 1, 17, 'active', 'BDDF-20s'
+         'pack', 'stick', 1, 17, 'active', 'BDDF-20s'
     FROM app.product_node v JOIN app.product_node b ON b.id = v.parent_id JOIN app.product_node s ON s.id = b.parent_id
     JOIN app.product_node c ON c.id = s.parent_id
    WHERE v.level = 'variant' AND v.name = 'Black Diamond Double Filter' AND b.name = 'Black Diamond' AND s.name = 'Low' AND c.name = 'Cigarette'
@@ -359,7 +359,7 @@ INSERT INTO app.sku_price (sku_id, price_type, amount_mtk, per_base_qty, valid_f
 INSERT INTO app.sku (code, variant_id, category_code, name, short_name, base_unit, base_per_pack, pack_type,
                      entry_unit_default, report_unit, report_factor, sort, status, external_ref)
   SELECT 'BDA-10s', v.id, 'cigarette', 'Black Diamond Advanced 10 (HLP)', 'BDA-10s', 'stick', 10, 'HLP',
-         'stick', 'stick', 1, 18, 'active', 'BDA-10s'
+         'pack', 'stick', 1, 18, 'active', 'BDA-10s'
     FROM app.product_node v JOIN app.product_node b ON b.id = v.parent_id JOIN app.product_node s ON s.id = b.parent_id
     JOIN app.product_node c ON c.id = s.parent_id
    WHERE v.level = 'variant' AND v.name = 'Black Diamond Advanced' AND b.name = 'Black Diamond' AND s.name = 'Low' AND c.name = 'Cigarette'
@@ -370,7 +370,7 @@ INSERT INTO app.sku_price (sku_id, price_type, amount_mtk, per_base_qty, valid_f
 INSERT INTO app.sku (code, variant_id, category_code, name, short_name, base_unit, base_per_pack, pack_type,
                      entry_unit_default, report_unit, report_factor, sort, status, external_ref)
   SELECT 'BDA-20s', v.id, 'cigarette', 'Black Diamond Advanced 20 (HLP)', 'BDA-20s', 'stick', 20, 'HLP',
-         'stick', 'stick', 1, 19, 'active', 'BDA-20s'
+         'pack', 'stick', 1, 19, 'active', 'BDA-20s'
     FROM app.product_node v JOIN app.product_node b ON b.id = v.parent_id JOIN app.product_node s ON s.id = b.parent_id
     JOIN app.product_node c ON c.id = s.parent_id
    WHERE v.level = 'variant' AND v.name = 'Black Diamond Advanced' AND b.name = 'Black Diamond' AND s.name = 'Low' AND c.name = 'Cigarette'
@@ -381,7 +381,7 @@ INSERT INTO app.sku_price (sku_id, price_type, amount_mtk, per_base_qty, valid_f
 INSERT INTO app.sku (code, variant_id, category_code, name, short_name, base_unit, base_per_pack, pack_type,
                      entry_unit_default, report_unit, report_factor, sort, status, external_ref)
   SELECT 'SM-American-10s', v.id, 'cigarette', 'Sunmoon American blend 10 (HLP)', 'SM-American-10s', 'stick', 10, 'HLP',
-         'stick', 'stick', 1, 20, 'active', 'SM-American-10s'
+         'pack', 'stick', 1, 20, 'active', 'SM-American-10s'
     FROM app.product_node v JOIN app.product_node b ON b.id = v.parent_id JOIN app.product_node s ON s.id = b.parent_id
     JOIN app.product_node c ON c.id = s.parent_id
    WHERE v.level = 'variant' AND v.name = 'Sunmoon American blend' AND b.name = 'Sunmoon' AND s.name = 'Low' AND c.name = 'Cigarette'
@@ -392,7 +392,7 @@ INSERT INTO app.sku_price (sku_id, price_type, amount_mtk, per_base_qty, valid_f
 INSERT INTO app.sku (code, variant_id, category_code, name, short_name, base_unit, base_per_pack, pack_type,
                      entry_unit_default, report_unit, report_factor, sort, status, external_ref)
   SELECT 'SM-American-20s', v.id, 'cigarette', 'Sunmoon American blend 20 (HLP)', 'SM-American-20s', 'stick', 20, 'HLP',
-         'stick', 'stick', 1, 21, 'active', 'SM-American-20s'
+         'pack', 'stick', 1, 21, 'active', 'SM-American-20s'
     FROM app.product_node v JOIN app.product_node b ON b.id = v.parent_id JOIN app.product_node s ON s.id = b.parent_id
     JOIN app.product_node c ON c.id = s.parent_id
    WHERE v.level = 'variant' AND v.name = 'Sunmoon American blend' AND b.name = 'Sunmoon' AND s.name = 'Low' AND c.name = 'Cigarette'
@@ -403,7 +403,7 @@ INSERT INTO app.sku_price (sku_id, price_type, amount_mtk, per_base_qty, valid_f
 INSERT INTO app.sku (code, variant_id, category_code, name, short_name, base_unit, base_per_pack, pack_type,
                      entry_unit_default, report_unit, report_factor, sort, status, external_ref)
   SELECT 'SupSig-10S', v.id, 'cigarette', 'Supreme Signature 10 (HLP)', 'SupSig-10S', 'stick', 10, 'HLP',
-         'stick', 'stick', 1, 22, 'active', 'SupSig-10S'
+         'pack', 'stick', 1, 22, 'active', 'SupSig-10S'
     FROM app.product_node v JOIN app.product_node b ON b.id = v.parent_id JOIN app.product_node s ON s.id = b.parent_id
     JOIN app.product_node c ON c.id = s.parent_id
    WHERE v.level = 'variant' AND v.name = 'Supreme Signature' AND b.name = 'Supreme' AND s.name = 'Low' AND c.name = 'Cigarette'
@@ -414,7 +414,7 @@ INSERT INTO app.sku_price (sku_id, price_type, amount_mtk, per_base_qty, valid_f
 INSERT INTO app.sku (code, variant_id, category_code, name, short_name, base_unit, base_per_pack, pack_type,
                      entry_unit_default, report_unit, report_factor, sort, status, external_ref)
   SELECT 'SupSig-20S', v.id, 'cigarette', 'Supreme Signature 20 (HLP)', 'SupSig-20S', 'stick', 20, 'HLP',
-         'stick', 'stick', 1, 23, 'active', 'SupSig-20S'
+         'pack', 'stick', 1, 23, 'active', 'SupSig-20S'
     FROM app.product_node v JOIN app.product_node b ON b.id = v.parent_id JOIN app.product_node s ON s.id = b.parent_id
     JOIN app.product_node c ON c.id = s.parent_id
    WHERE v.level = 'variant' AND v.name = 'Supreme Signature' AND b.name = 'Supreme' AND s.name = 'Low' AND c.name = 'Cigarette'
@@ -425,7 +425,7 @@ INSERT INTO app.sku_price (sku_id, price_type, amount_mtk, per_base_qty, valid_f
 INSERT INTO app.sku (code, variant_id, category_code, name, short_name, base_unit, base_per_pack, pack_type,
                      entry_unit_default, report_unit, report_factor, sort, status, external_ref)
   SELECT 'Supreme-10S', v.id, 'cigarette', 'Supreme 10 (HLP)', 'Supreme-10S', 'stick', 10, 'HLP',
-         'stick', 'stick', 1, 24, 'active', 'Supreme-10S'
+         'pack', 'stick', 1, 24, 'active', 'Supreme-10S'
     FROM app.product_node v JOIN app.product_node b ON b.id = v.parent_id JOIN app.product_node s ON s.id = b.parent_id
     JOIN app.product_node c ON c.id = s.parent_id
    WHERE v.level = 'variant' AND v.name = 'Supreme' AND b.name = 'Supreme' AND s.name = 'Low' AND c.name = 'Cigarette'
@@ -436,7 +436,7 @@ INSERT INTO app.sku_price (sku_id, price_type, amount_mtk, per_base_qty, valid_f
 INSERT INTO app.sku (code, variant_id, category_code, name, short_name, base_unit, base_per_pack, pack_type,
                      entry_unit_default, report_unit, report_factor, sort, status, external_ref)
   SELECT 'Supreme-20S', v.id, 'cigarette', 'Supreme 20 (HLP)', 'Supreme-20S', 'stick', 20, 'HLP',
-         'stick', 'stick', 1, 25, 'active', 'Supreme-20S'
+         'pack', 'stick', 1, 25, 'active', 'Supreme-20S'
     FROM app.product_node v JOIN app.product_node b ON b.id = v.parent_id JOIN app.product_node s ON s.id = b.parent_id
     JOIN app.product_node c ON c.id = s.parent_id
    WHERE v.level = 'variant' AND v.name = 'Supreme' AND b.name = 'Supreme' AND s.name = 'Low' AND c.name = 'Cigarette'
@@ -447,7 +447,7 @@ INSERT INTO app.sku_price (sku_id, price_type, amount_mtk, per_base_qty, valid_f
 INSERT INTO app.sku (code, variant_id, category_code, name, short_name, base_unit, base_per_pack, pack_type,
                      entry_unit_default, report_unit, report_factor, sort, status, external_ref)
   SELECT 'SupSty-10S', v.id, 'cigarette', 'Supreme Style 10 (HLP)', 'SupSty-10S', 'stick', 10, 'HLP',
-         'stick', 'stick', 1, 26, 'active', 'SupSty-10S'
+         'pack', 'stick', 1, 26, 'active', 'SupSty-10S'
     FROM app.product_node v JOIN app.product_node b ON b.id = v.parent_id JOIN app.product_node s ON s.id = b.parent_id
     JOIN app.product_node c ON c.id = s.parent_id
    WHERE v.level = 'variant' AND v.name = 'Supreme Style' AND b.name = 'Supreme' AND s.name = 'Low' AND c.name = 'Cigarette'
@@ -458,7 +458,7 @@ INSERT INTO app.sku_price (sku_id, price_type, amount_mtk, per_base_qty, valid_f
 INSERT INTO app.sku (code, variant_id, category_code, name, short_name, base_unit, base_per_pack, pack_type,
                      entry_unit_default, report_unit, report_factor, sort, status, external_ref)
   SELECT 'SupSty-20S', v.id, 'cigarette', 'Supreme Style 20 (HLP)', 'SupSty-20S', 'stick', 20, 'HLP',
-         'stick', 'stick', 1, 27, 'active', 'SupSty-20S'
+         'pack', 'stick', 1, 27, 'active', 'SupSty-20S'
     FROM app.product_node v JOIN app.product_node b ON b.id = v.parent_id JOIN app.product_node s ON s.id = b.parent_id
     JOIN app.product_node c ON c.id = s.parent_id
    WHERE v.level = 'variant' AND v.name = 'Supreme Style' AND b.name = 'Supreme' AND s.name = 'Low' AND c.name = 'Cigarette'
@@ -469,7 +469,7 @@ INSERT INTO app.sku_price (sku_id, price_type, amount_mtk, per_base_qty, valid_f
 INSERT INTO app.sku (code, variant_id, category_code, name, short_name, base_unit, base_per_pack, pack_type,
                      entry_unit_default, report_unit, report_factor, sort, status, external_ref)
   SELECT 'SupFM-10S', v.id, 'cigarette', 'Supreme Fresh Max 10 (HLP)', 'SupFM-10S', 'stick', 10, 'HLP',
-         'stick', 'stick', 1, 28, 'active', 'SupFM-10S'
+         'pack', 'stick', 1, 28, 'active', 'SupFM-10S'
     FROM app.product_node v JOIN app.product_node b ON b.id = v.parent_id JOIN app.product_node s ON s.id = b.parent_id
     JOIN app.product_node c ON c.id = s.parent_id
    WHERE v.level = 'variant' AND v.name = 'Supreme Fresh Max' AND b.name = 'Supreme' AND s.name = 'Low' AND c.name = 'Cigarette'
@@ -480,7 +480,7 @@ INSERT INTO app.sku_price (sku_id, price_type, amount_mtk, per_base_qty, valid_f
 INSERT INTO app.sku (code, variant_id, category_code, name, short_name, base_unit, base_per_pack, pack_type,
                      entry_unit_default, report_unit, report_factor, sort, status, external_ref)
   SELECT 'SupFM-20S', v.id, 'cigarette', 'Supreme Fresh Max 20 (HLP)', 'SupFM-20S', 'stick', 20, 'HLP',
-         'stick', 'stick', 1, 29, 'active', 'SupFM-20S'
+         'pack', 'stick', 1, 29, 'active', 'SupFM-20S'
     FROM app.product_node v JOIN app.product_node b ON b.id = v.parent_id JOIN app.product_node s ON s.id = b.parent_id
     JOIN app.product_node c ON c.id = s.parent_id
    WHERE v.level = 'variant' AND v.name = 'Supreme Fresh Max' AND b.name = 'Supreme' AND s.name = 'Low' AND c.name = 'Cigarette'
@@ -491,7 +491,7 @@ INSERT INTO app.sku_price (sku_id, price_type, amount_mtk, per_base_qty, valid_f
 INSERT INTO app.sku (code, variant_id, category_code, name, short_name, base_unit, base_per_pack, pack_type,
                      entry_unit_default, report_unit, report_factor, sort, status, external_ref)
   SELECT 'EssP-20S_20HL', v.id, 'cigarette', 'ESSE Prime 20 (HLP)', 'EssP-20S 20HL', 'stick', 20, 'HLP',
-         'stick', 'stick', 1, 30, 'active', 'EssP-20S 20HL'
+         'pack', 'stick', 1, 30, 'active', 'EssP-20S 20HL'
     FROM app.product_node v JOIN app.product_node b ON b.id = v.parent_id JOIN app.product_node s ON s.id = b.parent_id
     JOIN app.product_node c ON c.id = s.parent_id
    WHERE v.level = 'variant' AND v.name = 'ESSE Prime' AND b.name = 'ESSE' AND s.name = 'Slim' AND c.name = 'Cigarette'
@@ -502,7 +502,7 @@ INSERT INTO app.sku_price (sku_id, price_type, amount_mtk, per_base_qty, valid_f
 INSERT INTO app.sku (code, variant_id, category_code, name, short_name, base_unit, base_per_pack, pack_type,
                      entry_unit_default, report_unit, report_factor, sort, status, external_ref)
   SELECT 'EssCM-20S_20HL', v.id, 'cigarette', 'ESSE Change Mango 20 (HLP)', 'EssCM-20S 20HL', 'stick', 20, 'HLP',
-         'stick', 'stick', 1, 31, 'active', 'EssCM-20S 20HL'
+         'pack', 'stick', 1, 31, 'active', 'EssCM-20S 20HL'
     FROM app.product_node v JOIN app.product_node b ON b.id = v.parent_id JOIN app.product_node s ON s.id = b.parent_id
     JOIN app.product_node c ON c.id = s.parent_id
    WHERE v.level = 'variant' AND v.name = 'ESSE Change Mango' AND b.name = 'ESSE' AND s.name = 'Slim' AND c.name = 'Cigarette'
@@ -513,7 +513,7 @@ INSERT INTO app.sku_price (sku_id, price_type, amount_mtk, per_base_qty, valid_f
 INSERT INTO app.sku (code, variant_id, category_code, name, short_name, base_unit, base_per_pack, pack_type,
                      entry_unit_default, report_unit, report_factor, sort, status, external_ref)
   SELECT 'SAB-25s', v.id, 'bidi', 'Special Abul Bidi 25 25 (Soft Pack)', 'SAB-25s', 'stick', 25, 'Soft Pack',
-         'stick', 'stick', 1, 32, 'active', 'SAB-25s'
+         'pack', 'stick', 1, 32, 'active', 'SAB-25s'
     FROM app.product_node v JOIN app.product_node b ON b.id = v.parent_id JOIN app.product_node s ON s.id = b.parent_id
     JOIN app.product_node c ON c.id = s.parent_id
    WHERE v.level = 'variant' AND v.name = 'Special Abul Bidi 25' AND b.name = 'Special Abul Bidi' AND s.name = 'Bidi' AND c.name = 'Bidi'
@@ -524,7 +524,7 @@ INSERT INTO app.sku_price (sku_id, price_type, amount_mtk, per_base_qty, valid_f
 INSERT INTO app.sku (code, variant_id, category_code, name, short_name, base_unit, base_per_pack, pack_type,
                      entry_unit_default, report_unit, report_factor, sort, status, external_ref)
   SELECT 'SAB-12s', v.id, 'bidi', 'Special Abul Bidi 12 12 (Hard Pack)', 'SAB-12s', 'stick', 12, 'Hard Pack',
-         'stick', 'stick', 1, 33, 'active', 'SAB-12s'
+         'pack', 'stick', 1, 33, 'active', 'SAB-12s'
     FROM app.product_node v JOIN app.product_node b ON b.id = v.parent_id JOIN app.product_node s ON s.id = b.parent_id
     JOIN app.product_node c ON c.id = s.parent_id
    WHERE v.level = 'variant' AND v.name = 'Special Abul Bidi 12' AND b.name = 'Special Abul Bidi' AND s.name = 'Bidi' AND c.name = 'Bidi'
@@ -535,7 +535,7 @@ INSERT INTO app.sku_price (sku_id, price_type, amount_mtk, per_base_qty, valid_f
 INSERT INTO app.sku (code, variant_id, category_code, name, short_name, base_unit, base_per_pack, pack_type,
                      entry_unit_default, report_unit, report_factor, sort, status, external_ref)
   SELECT 'EAB', v.id, 'bidi', 'Existing Abul Bidi/ 42 No. Abul Bidi 25 (Soft Pack)', 'EAB', 'stick', 25, 'Soft Pack',
-         'stick', 'stick', 1, 34, 'active', 'EAB'
+         'pack', 'stick', 1, 34, 'active', 'EAB'
     FROM app.product_node v JOIN app.product_node b ON b.id = v.parent_id JOIN app.product_node s ON s.id = b.parent_id
     JOIN app.product_node c ON c.id = s.parent_id
    WHERE v.level = 'variant' AND v.name = 'Existing Abul Bidi/ 42 No. Abul Bidi' AND b.name = 'Existing Abul Bidi/ 42 No. Abul Bidi' AND s.name = 'Bidi' AND c.name = 'Bidi'
@@ -546,7 +546,7 @@ INSERT INTO app.sku_price (sku_id, price_type, amount_mtk, per_base_qty, valid_f
 INSERT INTO app.sku (code, variant_id, category_code, name, short_name, base_unit, base_per_pack, pack_type,
                      entry_unit_default, report_unit, report_factor, sort, status, external_ref)
   SELECT 'AB-25s', v.id, 'bidi', 'Ananda Bidi 25 25 (Soft Pack)', 'AB-25s', 'stick', 25, 'Soft Pack',
-         'stick', 'stick', 1, 35, 'active', 'AB-25s'
+         'pack', 'stick', 1, 35, 'active', 'AB-25s'
     FROM app.product_node v JOIN app.product_node b ON b.id = v.parent_id JOIN app.product_node s ON s.id = b.parent_id
     JOIN app.product_node c ON c.id = s.parent_id
    WHERE v.level = 'variant' AND v.name = 'Ananda Bidi 25' AND b.name = 'Ananda Bidi' AND s.name = 'Bidi' AND c.name = 'Bidi'
@@ -557,7 +557,7 @@ INSERT INTO app.sku_price (sku_id, price_type, amount_mtk, per_base_qty, valid_f
 INSERT INTO app.sku (code, variant_id, category_code, name, short_name, base_unit, base_per_pack, pack_type,
                      entry_unit_default, report_unit, report_factor, sort, status, external_ref)
   SELECT 'AB-12s', v.id, 'bidi', 'Ananda Bidi 12 12 (Hard Pack)', 'AB-12s', 'stick', 12, 'Hard Pack',
-         'stick', 'stick', 1, 36, 'active', 'AB-12s'
+         'pack', 'stick', 1, 36, 'active', 'AB-12s'
     FROM app.product_node v JOIN app.product_node b ON b.id = v.parent_id JOIN app.product_node s ON s.id = b.parent_id
     JOIN app.product_node c ON c.id = s.parent_id
    WHERE v.level = 'variant' AND v.name = 'Ananda Bidi 12' AND b.name = 'Ananda Bidi' AND s.name = 'Bidi' AND c.name = 'Bidi'
@@ -568,7 +568,7 @@ INSERT INTO app.sku_price (sku_id, price_type, amount_mtk, per_base_qty, valid_f
 INSERT INTO app.sku (code, variant_id, category_code, name, short_name, base_unit, base_per_pack, pack_type,
                      entry_unit_default, report_unit, report_factor, sort, status, external_ref)
   SELECT 'ABG', v.id, 'bidi', 'Abul Bidi Gold 25 (Soft Pack)', 'ABG', 'stick', 25, 'Soft Pack',
-         'stick', 'stick', 1, 37, 'active', 'ABG'
+         'pack', 'stick', 1, 37, 'active', 'ABG'
     FROM app.product_node v JOIN app.product_node b ON b.id = v.parent_id JOIN app.product_node s ON s.id = b.parent_id
     JOIN app.product_node c ON c.id = s.parent_id
    WHERE v.level = 'variant' AND v.name = 'Abul Bidi Gold' AND b.name = 'Abul Bidi Gold' AND s.name = 'Bidi' AND c.name = 'Bidi'
@@ -579,7 +579,7 @@ INSERT INTO app.sku_price (sku_id, price_type, amount_mtk, per_base_qty, valid_f
 INSERT INTO app.sku (code, variant_id, category_code, name, short_name, base_unit, base_per_pack, pack_type,
                      entry_unit_default, report_unit, report_factor, sort, status, external_ref)
   SELECT 'ABS', v.id, 'bidi', 'Abul Bidi Style 25 (Soft Pack)', 'ABS', 'stick', 25, 'Soft Pack',
-         'stick', 'stick', 1, 38, 'active', 'ABS'
+         'pack', 'stick', 1, 38, 'active', 'ABS'
     FROM app.product_node v JOIN app.product_node b ON b.id = v.parent_id JOIN app.product_node s ON s.id = b.parent_id
     JOIN app.product_node c ON c.id = s.parent_id
    WHERE v.level = 'variant' AND v.name = 'Abul Bidi Style' AND b.name = 'Abul Bidi Style' AND s.name = 'Bidi' AND c.name = 'Bidi'
@@ -589,8 +589,8 @@ INSERT INTO app.sku_price (sku_id, price_type, amount_mtk, per_base_qty, valid_f
    WHERE s.code = 'ABS' AND NOT EXISTS (SELECT 1 FROM app.sku_price x WHERE x.sku_id = s.id AND x.price_type = p.price_type);
 INSERT INTO app.sku (code, variant_id, category_code, name, short_name, base_unit, base_per_pack, pack_type,
                      entry_unit_default, report_unit, report_factor, sort, status, external_ref)
-  SELECT 'Aster', v.id, 'lighter', 'Aster 1 (Box)', 'Aster', 'piece', 1, 'Box',
-         'piece', 'piece', 1, 39, 'active', 'Aster'
+  SELECT 'Aster', v.id, 'lighter', 'Aster 25 (Box)', 'Aster', 'piece', 25, 'Box',
+         'pack', 'piece', 1, 39, 'active', 'Aster'
     FROM app.product_node v JOIN app.product_node b ON b.id = v.parent_id JOIN app.product_node s ON s.id = b.parent_id
     JOIN app.product_node c ON c.id = s.parent_id
    WHERE v.level = 'variant' AND v.name = 'Aster' AND b.name = 'Aster' AND s.name = 'Lighter' AND c.name = 'Lighter'
@@ -600,8 +600,8 @@ INSERT INTO app.sku_price (sku_id, price_type, amount_mtk, per_base_qty, valid_f
    WHERE s.code = 'Aster' AND NOT EXISTS (SELECT 1 FROM app.sku_price x WHERE x.sku_id = s.id AND x.price_type = p.price_type);
 INSERT INTO app.sku (code, variant_id, category_code, name, short_name, base_unit, base_per_pack, pack_type,
                      entry_unit_default, report_unit, report_factor, sort, status, external_ref)
-  SELECT 'MAX', v.id, 'lighter', 'MAX 1 (Box)', 'Max', 'piece', 1, 'Box',
-         'piece', 'piece', 1, 40, 'active', 'MAX'
+  SELECT 'MAX', v.id, 'lighter', 'MAX 25 (Box)', 'Max', 'piece', 25, 'Box',
+         'pack', 'piece', 1, 40, 'active', 'MAX'
     FROM app.product_node v JOIN app.product_node b ON b.id = v.parent_id JOIN app.product_node s ON s.id = b.parent_id
     JOIN app.product_node c ON c.id = s.parent_id
    WHERE v.level = 'variant' AND v.name = 'MAX' AND b.name = 'MAX' AND s.name = 'Lighter' AND c.name = 'Lighter'
