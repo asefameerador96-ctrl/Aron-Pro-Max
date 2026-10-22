@@ -48,6 +48,11 @@ class PendingAuthzSchemaTest {
             INSERT INTO app.app_user (username, full_name, role, status, scope_version) VALUES
               ('top1', 'Top One', 'TOP', 'active', 4), ('admin7', 'Admin Seven', 'ADMIN', 'active', 1), ('tso7', 'Tso Seven', 'TSO', 'active', 1);
             INSERT INTO app.role_grant_map (role, permission) VALUES ('TOP', 'reports.export_pii');
+            INSERT INTO app.cfg_version (config_version, kind, committed_by, summary)
+              SELECT (SELECT max(config_version) + 1 FROM app.cfg_version), 'change', id, 'test: TOP must use MFA' FROM app.app_user WHERE username = 'aron.system';
+            INSERT INTO app.cfg_value (key, scope_type, scope_id, value, effective_from, config_version, created_by, reason)
+              SELECT 'cfg.auth.mfa_required_roles', 'global', 0, '["ADMIN", "SUPERADMIN", "SUPPORT", "TOP"]'::jsonb, now() - interval '1 day',
+                     (SELECT max(config_version) FROM app.cfg_version), id, 'test: TOP must use MFA' FROM app.app_user WHERE username = 'aron.system';
             """.trimIndent(),
         )
         PendingAuthzSchema.apply(fresh.dataSource)
@@ -59,6 +64,9 @@ class PendingAuthzSchemaTest {
         assertEquals(listOf("NATIONAL:5"), q("SELECT role || ':' || scope_version FROM app.app_user WHERE username = 'top1'") { it.getString(1) })
         assertEquals(0, q("SELECT count(*) FROM app.app_user WHERE role = 'TOP'") { it.getInt(1) }.single())
         assertTrue("NATIONAL:reports.export_pii" in once)
+        // Checker N4: a role list in effect that names TOP keeps meaning the migrated users (MFA must not loosen).
+        val mfa = q("SELECT value::text, effective_to IS NULL FROM app.cfg_value WHERE key = 'cfg.auth.mfa_required_roles' ORDER BY id") { it.getString(1) to it.getBoolean(2) }
+        assertEquals(listOf("""["ADMIN", "SUPERADMIN", "SUPPORT", "TOP"]""" to false, """["ADMIN", "SUPERADMIN", "SUPPORT", "TOP", "NATIONAL"]""" to true), mfa)
         // NATIONAL holds every role value TOP holds (web-role password length and token TTL); BRAND the two web defaults.
         val values = q("SELECT key, scope_id, value::text FROM app.cfg_value WHERE scope_type = 'role' AND scope_id IN (6, 11, 12)") { Triple(it.getString(1), it.getLong(2), it.getString(3)) }
         val top = values.filter { it.second == 6L }.map { it.first to it.third }.toSet()

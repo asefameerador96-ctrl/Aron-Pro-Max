@@ -98,6 +98,8 @@ internal val USER = MasterEntity(
     },
     after = { h, ctx, row, cur, changes, _ ->
         if (cur != null && changes["status"] == "disabled") h.revokeFull(row["id"], "user_disabled", ctx.now)
+        // D-ROLES-02: a new role starts with a new login; no session of the old role refreshes into it.
+        else if (cur != null && "role" in changes && changes["role"] != cur["role"]) h.revokeFull(row["id"], "admin_force_logout", ctx.now)
     },
 )
 

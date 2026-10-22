@@ -19,7 +19,7 @@ DECLARE v bigint; sys bigint;
 BEGIN
   IF EXISTS (
     SELECT 1 FROM app.cfg_value t
-     WHERE t.scope_type = 'role' AND t.scope_id = 6 AND (t.effective_to IS NULL OR t.effective_to > now())
+     WHERE t.scope_type = 'role' AND t.scope_id = 6 AND t.superseded_in_version IS NULL AND (t.effective_to IS NULL OR t.effective_to > now())
        AND (NOT EXISTS (SELECT 1 FROM app.cfg_value n WHERE n.key = t.key AND n.scope_type = 'role' AND n.scope_id = 11)
             OR (t.key IN ('cfg.auth.password_min_len','cfg.auth.access_ttl_min')
                 AND NOT EXISTS (SELECT 1 FROM app.cfg_value b WHERE b.key = t.key AND b.scope_type = 'role' AND b.scope_id = 12))))
@@ -31,14 +31,41 @@ BEGIN
     INSERT INTO app.cfg_value (key, scope_type, scope_id, value, effective_from, effective_to, config_version, created_by, reason)
     SELECT t.key, 'role', 11, t.value, t.effective_from, t.effective_to, v, sys, 'D-ROLES-02: copied from role TOP'
       FROM app.cfg_value t
-     WHERE t.scope_type = 'role' AND t.scope_id = 6 AND (t.effective_to IS NULL OR t.effective_to > now())
+     WHERE t.scope_type = 'role' AND t.scope_id = 6 AND t.superseded_in_version IS NULL AND (t.effective_to IS NULL OR t.effective_to > now())
        AND NOT EXISTS (SELECT 1 FROM app.cfg_value n WHERE n.key = t.key AND n.scope_type = 'role' AND n.scope_id = 11);
     INSERT INTO app.cfg_value (key, scope_type, scope_id, value, effective_from, effective_to, config_version, created_by, reason)
     SELECT t.key, 'role', 12, t.value, t.effective_from, t.effective_to, v, sys, 'D-ROLES-02: web-role default as role TOP'
       FROM app.cfg_value t
-     WHERE t.scope_type = 'role' AND t.scope_id = 6 AND (t.effective_to IS NULL OR t.effective_to > now())
+     WHERE t.scope_type = 'role' AND t.scope_id = 6 AND t.superseded_in_version IS NULL AND (t.effective_to IS NULL OR t.effective_to > now())
        AND t.key IN ('cfg.auth.password_min_len','cfg.auth.access_ttl_min')
        AND NOT EXISTS (SELECT 1 FROM app.cfg_value b WHERE b.key = t.key AND b.scope_type = 'role' AND b.scope_id = 12);
+  END IF;
+END $$;
+
+-- A2b. Role lists in config values (`cfg.auth.mfa_required_roles`, `cfg.day.reopen_roles`, `cfg.web.entry_unlock_roles`,
+--      ... every key named `*_roles`): a value in effect now that names TOP and not NATIONAL is closed at now and
+--      replaced by the same list plus NATIONAL until the old row's end, so a migrated user keeps every right TOP had
+--      (above all `mfa_required_roles`: dropping it would loosen MFA). A row that starts in the future cannot be closed
+--      (effective_to must exceed effective_from); none exists in the test account (logged; the API refuses new TOP).
+DO $$
+DECLARE v bigint; sys bigint; r record;
+BEGIN
+  IF EXISTS (SELECT 1 FROM app.cfg_value c
+              WHERE c.key LIKE '%\_roles' AND jsonb_typeof(c.value) = 'array' AND c.value ? 'TOP' AND NOT c.value ? 'NATIONAL'
+                AND c.superseded_in_version IS NULL AND c.effective_from <= now() AND (c.effective_to IS NULL OR c.effective_to > now()))
+  THEN
+    SELECT id INTO sys FROM app.app_user WHERE username = 'aron.system';
+    SELECT coalesce(max(config_version), 0) + 1 INTO v FROM app.cfg_version;
+    INSERT INTO app.cfg_version (config_version, kind, committed_by, summary, max_risk_class)
+    VALUES (v, 'change', sys, 'D-ROLES-02: role lists that name TOP also name NATIONAL', 2);
+    FOR r IN SELECT * FROM app.cfg_value c
+              WHERE c.key LIKE '%\_roles' AND jsonb_typeof(c.value) = 'array' AND c.value ? 'TOP' AND NOT c.value ? 'NATIONAL'
+                AND c.superseded_in_version IS NULL AND c.effective_from <= now() AND (c.effective_to IS NULL OR c.effective_to > now())
+    LOOP
+      UPDATE app.cfg_value SET effective_to = now(), superseded_in_version = v WHERE id = r.id;
+      INSERT INTO app.cfg_value (key, scope_type, scope_id, value, effective_from, effective_to, config_version, created_by, reason)
+      VALUES (r.key, r.scope_type, r.scope_id, r.value || '"NATIONAL"'::jsonb, now(), r.effective_to, v, sys, 'D-ROLES-02: NATIONAL added beside TOP');
+    END LOOP;
   END IF;
 END $$;
 
@@ -76,13 +103,14 @@ CREATE TABLE IF NOT EXISTS app.user_module_grant (
 );
 COMMENT ON TABLE app.user_module_grant IS 'Per-module access of an ADMIN user (D-ROLES-02, docs/34 s1): r = read, w = read and write. Carried in the web token as the modules claim; changed only through the admin grants API, which audits and bumps app_user.scope_version.';
 
--- Today's admins keep everything: w on every module (a second run inserts nothing).
+-- Today's admins keep everything: w on every module. Only into an empty table, so a run after a SUPERADMIN narrowed a
+-- grant never puts it back.
 INSERT INTO app.user_module_grant (user_id, module, access)
 SELECT u.id, m.module, 'w'
   FROM app.app_user u
  CROSS JOIN (VALUES ('masterdata'),('routes'),('outlets'),('products'),('prices'),('users'),('targets'),('credentials'),
                     ('mdm'),('reports'),('config'),('data_entry'),('indent'),('leaderboard'),('daily_tracking')) AS m(module)
- WHERE u.role = 'ADMIN'
+ WHERE u.role = 'ADMIN' AND NOT EXISTS (SELECT 1 FROM app.user_module_grant)
 ON CONFLICT (user_id, module) DO NOTHING;
 
 CREATE TABLE IF NOT EXISTS app.user_brand_scope (

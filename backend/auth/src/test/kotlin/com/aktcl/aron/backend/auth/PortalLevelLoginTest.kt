@@ -3,6 +3,7 @@ package com.aktcl.aron.backend.auth
 import com.aktcl.aron.contract.Role
 import io.ktor.client.request.bearerAuth
 import io.ktor.client.request.get
+import io.ktor.client.request.header
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.bodyAsText
@@ -77,6 +78,33 @@ class PortalLevelLoginTest {
             val me = client.get("/v1/me") { bearerAuth(webToken) }
             assertEquals(HttpStatusCode.Forbidden, me.status, me.bodyAsText())
             assertEquals("ERR_AUTH_PORTAL_NOT_ALLOWED", json(me.bodyAsText()).code)
+        }
+    }
+
+    /** Opus checker B1: a role change must not ride an old phone grant (TSO to BRAND would keep a tso app token with national reach). */
+    @Test
+    fun afterARoleChangeThePhoneFullGrantNoLongerRefreshesAndOldPhoneTokensAreRefused() {
+        val f = fixture()
+        val full = f.refresh.issue(1001, 501, Grant.FULL, "sr")
+        val upload = f.refresh.issue(1001, 501, Grant.UPLOAD, "sr")
+        f.addUser(f.user(1001, "sr334001", Role.BRAND).copy(scopeVersion = 8))
+        val brand = f.users.findById(1001)!!
+        val phoneToken = f.issuer.access(TokenSubject(brand, 501, f.srDevice, "sr")).token
+        testApplication {
+            application { f.application(this) }
+            suspend fun refresh(token: String, grant: String) = client.post("/v1/auth/refresh") {
+                contentType(ContentType.Application.Json); header("X-Device-Id", f.srDevice)
+                setBody("""{"refresh_token":"$token","grant":"$grant"}""")
+            }
+            val r = refresh(full.token, "full")
+            assertEquals(HttpStatusCode.Forbidden, r.status, r.bodyAsText())
+            assertEquals("ERR_FORBIDDEN", json(r.bodyAsText()).code)
+            // Captured rows still reach the server: the upload grant survives, as it survives a disable.
+            assertEquals(HttpStatusCode.OK, refresh(upload.token, "upload").status)
+            val me = client.get("/v1/me") { bearerAuth(phoneToken); header("X-Device-Id", f.srDevice) }
+            assertEquals(HttpStatusCode.Forbidden, me.status, me.bodyAsText())
+            // A web login of the new role works.
+            assertEquals(HttpStatusCode.OK, client.login("sr334001", "correct horse 1", client = "web").status)
         }
     }
 }

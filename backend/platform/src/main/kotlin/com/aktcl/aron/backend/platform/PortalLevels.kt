@@ -33,7 +33,13 @@ object PortalLevels {
     }
 
     /** Writes any portal role may make: its own session (logout, password, MFA, reveal) and its own error reports. */
-    val OWN_SESSION: List<Pattern> = listOf(Pattern("*", "/v1/auth/**"), Pattern("POST", "/v1/client-errors"))
+    val OWN_SESSION: List<Pattern> = listOf(
+        Pattern("POST", "/v1/auth/logout"), Pattern("POST", "/v1/auth/change-password"), Pattern("POST", "/v1/auth/mfa/enrol"),
+        Pattern("POST", "/v1/auth/reauth"), Pattern("POST", "/v1/client-errors"),
+    )
+
+    /** The one field role each phone flavour serves (login refuses any other; a role change must not carry over). */
+    val PHONE_ROLE: Map<String, Role> = mapOf("sr" to Role.SR, "amo" to Role.AMO, "tso" to Role.TSO)
 
     /** NATIONAL's non-read calls besides [OWN_SESSION]: a report query is a read sent as POST (it may queue an export). */
     val NATIONAL_WRITES: List<Pattern> = OWN_SESSION + Pattern("POST", "/v1/reports/{report_key}/query")
@@ -50,7 +56,14 @@ object PortalLevels {
 
     /** Throws when [p] may not call [method] [rawPath] at its portal level. */
     fun check(p: AronPrincipal, method: String, rawPath: String) {
-        if (p.isPhone) return
+        if (p.isPhone) {
+            // A phone token serves only its flavour's field role: after a role change (TSO to BRAND, SR to TSO, ...) a
+            // token minted for the old app is refused here, so the new role's national reach never rides a phone token.
+            // The upload grant (sync/batch, logout only) is exempt: captured rows always reach the server (D24-57) and
+            // ingest judges every record by the uploader's current assignment.
+            if (p.audience != Audience.UPLOAD && PHONE_ROLE[p.flavour] != p.role) throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "this account cannot use this app")
+            return
+        }
         if (p.role in NO_PORTAL) throw ApiProblem(ProblemCode.ERR_AUTH_PORTAL_NOT_ALLOWED, "SR and AMO accounts use the field app only")
         val m = if (method == "HEAD") "GET" else method
         val read = m == "GET" || m == "OPTIONS"
