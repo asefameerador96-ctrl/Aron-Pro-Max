@@ -223,6 +223,15 @@ class MemoPrinting(
                     ledger.record(base.copy(outcome = PrintEvent.FAILED))
                     PrintAttempt.Failed(r.reason)
                 }
+                PrintOutcome.Unconfirmed -> {
+                    // All sent, no confirmation from the printer (D-PRINT-02): the paper may be out. Always ask the
+                    // seller, whatever cfg.print.confirm_after_print says: Yes counts the copy, No lets the next print
+                    // be this same copy again. Killed before an answer, recover() records it printed (a later print
+                    // is then a marked reprint, never a second unmarked original).
+                    markPaperOut(base)
+                    awaiting = true
+                    PrintAttempt.AwaitingConfirmation(base)
+                }
                 PrintOutcome.Printed, PrintOutcome.AlreadyPrinted -> {
                     // The paper is out whatever storage says next: a failed save here never turns it into a
                     // failure; the confirmation (or the final record) stores it again.

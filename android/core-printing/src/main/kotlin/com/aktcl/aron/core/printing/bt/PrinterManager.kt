@@ -60,6 +60,12 @@ sealed interface PrintOutcome {
     /** The same job id printed earlier; nothing was sent. */
     data object AlreadyPrinted : PrintOutcome
     data class Failed(val reason: PrintFailure) : PrintOutcome
+    /**
+     * Every byte was written, then the link dropped or the printer went silent before it confirmed (D-PRINT-02): the
+     * paper may well be out. Never retried silently: the caller asks the seller whether it printed, so a memo is
+     * neither printed twice nor called failed after it came out. The job id counts as printed here.
+     */
+    data object Unconfirmed : PrintOutcome
 }
 
 /**
@@ -297,6 +303,12 @@ class PrinterManager(
                 printed[job.id] = true
                 _state.value = PrinterState.Connected
             }
+            PrintOutcome.Unconfirmed -> {
+                printed[job.id] = true // the same job id never goes out again; a new attempt is the caller's decision
+                closeLink()
+                _state.value = PrinterState.Off
+                autoReconnect()
+            }
             is PrintOutcome.Failed -> when (outcome.reason) {
                 PrintFailure.PAPER_OUT -> _state.value = PrinterState.PaperOut
                 else -> {
@@ -403,14 +415,22 @@ class PrinterManager(
                 _state.value = PrinterState.Printing(job.id, (sent * 100 / total).toInt())
             }
         }
-        // Wait for the paper to come out, then ask whether the roll ran out on the way.
-        val remainingMs = (sent * 1000 / bytesPerSecond) - (nowMs() - start)
-        if (remainingMs > 0) delay(remainingMs)
-        if (linkLost) throw IOException("link lost")
-        val slowMs = (sent * 1000 / (SLOW_ROWS_PER_SECOND * job.bitmap.bytesPerRow)).coerceAtMost(MAX_CLOSING_GRACE_MS)
-        if (queryPaper(t, graceMs = slowMs) == true) return PrintOutcome.Failed(PrintFailure.PAPER_OUT)
-        if (linkLost) throw IOException("link lost")
-        return PrintOutcome.Printed
+        // Everything is with the printer. From here a lost link or a silent printer is Unconfirmed, not a failure:
+        // the paper may be out, and a silent retry would print it twice.
+        return try {
+            // Wait for the paper to come out, then ask whether the roll ran out on the way.
+            val remainingMs = (sent * 1000 / bytesPerSecond) - (nowMs() - start)
+            if (remainingMs > 0) delay(remainingMs)
+            if (linkLost) throw IOException("link lost")
+            val slowMs = (sent * 1000 / (SLOW_ROWS_PER_SECOND * job.bitmap.bytesPerRow)).coerceAtMost(MAX_CLOSING_GRACE_MS)
+            if (queryPaper(t, graceMs = slowMs) == true) return PrintOutcome.Failed(PrintFailure.PAPER_OUT)
+            if (linkLost) throw IOException("link lost")
+            PrintOutcome.Printed
+        } catch (_: IOException) {
+            PrintOutcome.Unconfirmed
+        } catch (_: SecurityException) {
+            PrintOutcome.Unconfirmed
+        }
     }
 
     private companion object {

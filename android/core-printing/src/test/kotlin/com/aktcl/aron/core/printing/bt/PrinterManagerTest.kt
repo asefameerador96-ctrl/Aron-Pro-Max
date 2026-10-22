@@ -129,8 +129,11 @@ class PrinterManagerTest {
         assertEquals(PrintOutcome.Printed, m.print(PrintJob("m2", short)))
     }
 
-    /** The grace is only for a late answer: a printer switched off while the closing answer is awaited still fails. */
-    @Test fun printerGoneDuringTheClosingGraceFailsAsDisconnected() = runTest {
+    /**
+     * The grace is only for a late answer. A printer switched off while the closing answer is awaited had every byte:
+     * the paper may be out, so it is Unconfirmed (the caller asks the seller), never a silent-retry failure.
+     */
+    @Test fun printerGoneDuringTheClosingGraceIsUnconfirmedAndTheSameJobNeverPrintsAgain() = runTest {
         val sim = SimPrinter({ testScheduler.currentTime }, bufferBytes = 16_384, rowsPerSecond = 120)
         sim.statusAfterDrain = true
         val m = PrinterManager(sim.factory(), Store(), backgroundScope, nowMs = { testScheduler.currentTime })
@@ -140,7 +143,12 @@ class PrinterManagerTest {
         advanceTimeBy(1_000)
         runCurrent()
         sim.switchOff()
-        assertEquals(PrintOutcome.Failed(PrintFailure.DISCONNECTED), job.await())
+        assertEquals(PrintOutcome.Unconfirmed, job.await())
+        assertEquals(PrinterState.Off, m.state.value)
+        sim.on = true
+        val bytes = sim.totalBytes
+        assertEquals(PrintOutcome.AlreadyPrinted, m.print(PrintJob("m1", short)))
+        assertEquals(bytes, sim.totalBytes)
     }
 
     /** D-PRINT-02: a printer that ignores GS v 0 gets the memo as ESC * bit image once diagnostics chose it. */
