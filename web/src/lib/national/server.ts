@@ -29,7 +29,7 @@ export function toFilter(q: NationalQuery): Wire<"NationalDashboardFilter"> {
 const stamp = (w: { date: string; last_updated_at: string | null; as_of: string }): Stamp => ({ business_date: w.date, as_of: w.last_updated_at ?? w.as_of });
 const num = (s: string | null | undefined): number | null => (s === null || s === undefined || s === "" || !Number.isFinite(Number(s)) ? null : Number(s));
 const isCategory = (c: string): c is CategoryCode => (CATEGORIES as readonly string[]).includes(c);
-const channels = (w: { channels: { channel: ChannelCode; value: number }[] }) => (CHANNELS as readonly string[]).flatMap((c) => w.channels.filter((x) => x.channel === c).map((x) => ({ code: x.channel, value: x.value })));
+const channels = (w: { channels: { channel: ChannelCode; value: number; share_pct_bp: number | null }[] }) => (CHANNELS as readonly string[]).flatMap((c) => w.channels.filter((x) => x.channel === c).map((x) => ({ code: x.channel, value: x.value, share_bp: x.share_pct_bp })));
 
 export const getFilters = (token: string) =>
   get<Wire<"NationalFilterOptions">, NationalFilters>(token, "national/filter-options", {}, (w) => {
@@ -46,22 +46,22 @@ export const getFilters = (token: string) =>
 export const getSales = (token: string, q: NationalQuery) =>
   post<Wire<"NationalSales">, SalesSlice>(token, "national/sales", toFilter(q), (w) => ({
     ...stamp(w),
-    cards: w.cards.filter((c) => isCategory(c.category_code)).map((c) => ({ category: c.category_code as CategoryCode, unit: c.base_unit as UnitCode, total: c.total_sales, daily_target: num(c.daily_target), pct: c.achievement_pct, remaining: num(c.remaining) })),
+    cards: w.cards.filter((c) => isCategory(c.category_code)).map((c) => ({ category: c.category_code as CategoryCode, unit: c.base_unit as UnitCode, total: c.total_sales, daily_target: num(c.daily_target), pct_bp: c.achievement_pct_bp, remaining: num(c.remaining) })),
   }));
-export const getCpr = (token: string, q: NationalQuery) => post<Wire<"NationalCpr">, CprSlice>(token, "national/cpr", toFilter(q), (w) => ({ ...stamp(w), target_outlets: w.target_outlets, successful_calls: w.successful_calls }));
+export const getCpr = (token: string, q: NationalQuery) => post<Wire<"NationalCpr">, CprSlice>(token, "national/cpr", toFilter(q), (w) => ({ ...stamp(w), target_outlets: w.target_outlets, successful_calls: w.successful_calls, cpr_pct_bp: w.cpr_pct_bp }));
 export const getChannelCalls = (token: string, q: NationalQuery) => post<Wire<"NationalChannelCalls">, ChannelSlice>(token, "national/channel-calls", toFilter(q), (w) => ({ ...stamp(w), channels: channels(w) }));
 export const getChannelStd = (token: string, q: NationalQuery) => post<Wire<"NationalChannelStd">, ChannelSlice>(token, "national/channel-std", toFilter(q), (w) => ({ ...stamp(w), channels: channels(w) }));
-export const getFinalSubmit = (token: string, q: NationalQuery) => post<Wire<"NationalFinalSubmit">, FinalSubmitSlice>(token, "national/final-submit", toFilter(q), (w) => ({ ...stamp(w), total_zone: w.total_zones, service_zone: w.service_zones, submitted: w.final_submitted }));
-export const getLoginSubmit = (token: string, q: NationalQuery) => post<Wire<"NationalLoginSubmit">, LoginSubmitSlice>(token, "national/login-submit", toFilter(q), (w) => ({ ...stamp(w), target_routes: w.target_routes, logged_in: w.successful_login, submitted: w.submitted }));
-export const getGeoFencing = (token: string, q: NationalQuery) => post<Wire<"NationalGeoFencing">, GeoFencingSlice>(token, "national/geo-fencing", toFilter(q), (w) => ({ ...stamp(w), total_calls: w.total_calls, geo_validation: w.geo_validated }));
+export const getFinalSubmit = (token: string, q: NationalQuery) => post<Wire<"NationalFinalSubmit">, FinalSubmitSlice>(token, "national/final-submit", toFilter(q), (w) => ({ ...stamp(w), total_zone: w.total_zones, service_zone: w.service_zones, submitted: w.final_submitted, submit_pct_bp: w.submit_pct_bp }));
+export const getLoginSubmit = (token: string, q: NationalQuery) => post<Wire<"NationalLoginSubmit">, LoginSubmitSlice>(token, "national/login-submit", toFilter(q), (w) => ({ ...stamp(w), target_routes: w.target_routes, logged_in: w.successful_login, submitted: w.submitted, login_pct_bp: w.login_pct_bp, submit_pct_bp: w.submit_pct_bp }));
+export const getGeoFencing = (token: string, q: NationalQuery) => post<Wire<"NationalGeoFencing">, GeoFencingSlice>(token, "national/geo-fencing", toFilter(q), (w) => ({ ...stamp(w), total_calls: w.total_calls, geo_validation: w.geo_validated, geo_pct_bp: w.geo_pct_bp }));
 export const getBreakdown = (token: string, q: NationalQuery, measure: BreakdownMeasure, by: BreakdownBy) =>
   post<Wire<"NationalBreakdown">, BreakdownSlice>(token, "national/breakdown", { filter: toFilter(q), measure, dimension: by, ...(q.category?.length === 1 && { category_code: q.category[0] }) }, (w) => ({
     ...stamp(w), measure: w.measure, by: w.dimension, rows: w.items.map((i) => ({ key: i.code, label: i.name ?? i.code, value: i.value, unit: w.unit ?? null })),
   }));
 export const getFfGeo = (token: string, q: NationalQuery) =>
-  post<Wire<"FfGeoPins">, FfGeoSlice>(token, "national/ff-geo/pins", { filter: toFilter(q) }, (w) => ({ ...stamp(w), pins: w.pins.map((p) => ({ route_id: p.route_id, lat: p.lat, lng: p.lng, geo_pct: p.geo_pct, color: p.color, at: p.position_at })) }));
+  post<Wire<"FfGeoPins">, FfGeoSlice>(token, "national/ff-geo/pins", { filter: toFilter(q) }, (w) => ({ ...stamp(w), pins: w.pins.map((p) => ({ route_id: p.route_id, lat: p.lat, lng: p.lng, geo_pct_bp: p.geo_pct_bp, color: p.color, at: p.position_at })) }));
 export const getFfPopup = (token: string, routeId: number, date: string) =>
-  get<Wire<"FfGeoRoutePopup">, FfPopup>(token, `national/ff-geo/routes/${routeId}`, { date }, (w) => ({ sr_name: w.sr_name, contact: w.contact, territory: w.territory.name ?? w.territory.code, territory_code: w.territory.code, zone: w.zone.name ?? w.zone.code, route: w.route.name ?? w.route.code, position_at: w.position_at, miss_pct: w.miss_pct }));
+  get<Wire<"FfGeoRoutePopup">, FfPopup>(token, `national/ff-geo/routes/${routeId}`, { date }, (w) => ({ sr_name: w.sr_name, contact: w.contact, territory: w.territory.name ?? w.territory.code, territory_code: w.territory.code, zone: w.zone.name ?? w.zone.code, route: w.route.name ?? w.route.code, position_at: w.position_at, miss_pct_bp: w.miss_pct_bp }));
 
 export const getRouteMap = (token: string, routeId: number, date: string) =>
   get<Wire<"RouteMap">, RouteMapSlice>(token, `route-map/${routeId}`, { date }, (w) => {
@@ -71,9 +71,9 @@ export const getRouteMap = (token: string, routeId: number, date: string) =>
       ...stamp(w), sr_name: w.sr_name ?? "—", territory_code: w.territory.code, territory_name: w.territory.name ?? w.territory.code, zone: w.zone.name ?? w.zone.code, route: w.route.name ?? w.route.code,
       start: w.sale_start, last_position: w.sr_last_position, path: w.path,
       outlets: w.outlets.map((o) => ({ id: o.outlet_id, code: o.code, name: o.name ?? o.code, contact: o.contact ?? null, cluster: o.cluster_name ?? "—", lat: o.lat, lng: o.lng, state: o.state === "geo_validated" ? "geo" : o.state === "photo_validation" ? "photo" : "not_called", at: o.call_time, sales: o.call_time ? qtyOf(o) : null })),
-      target_vs_achievement: w.target_vs_achievement.filter((t) => isCategory(t.category_code)).map((t) => ({ category: t.category_code as CategoryCode, pct: t.achievement_pct })),
+      target_vs_achievement: w.target_vs_achievement.filter((t) => isCategory(t.category_code)).map((t) => ({ category: t.category_code as CategoryCode, pct_bp: t.achievement_pct_bp })),
       last_sale_place: w.last_sale_place ?? null,
-      cpr: { target_outlets: w.cpr.target_outlets, successful_calls: w.cpr.successful_calls, geo_validation: w.cpr.geo_validated },
+      cpr: { target_outlets: w.cpr.target_outlets, successful_calls: w.cpr.successful_calls, geo_validation: w.cpr.geo_validated, cpr_pct_bp: w.cpr.cpr_pct_bp },
       time: { first_sale: w.time_card.first_sale_time ?? null, last_sale: w.time_card.last_sale_time ?? null, total_hours: hours(w.time_card.total_sale_seconds), avg_hours: hours(w.time_card.average_sale_seconds), distance_m: w.time_card.distance_covered_m },
     };
   });

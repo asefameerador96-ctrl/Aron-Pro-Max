@@ -51,19 +51,8 @@ export function parseBreakdown(sp: Params): { measure: BreakdownMeasure; by: Bre
   return { measure: m, by: b === "segment" || b === "variant" ? b : "brand" };
 }
 
-/** The ring percentage of a sales card: total against the full-day target (null when no target is loaded or it is 0). */
-export function achievementPct(total: number, target: number | null): number | null {
-  return target !== null && target > 0 ? (total / target) * 100 : null;
-}
-
 export type PinColor = "red" | "amber" | "green";
 /** Pin colour by the route's geo-fencing % today (brief 5.2): red below 70, amber 70 to 90, green above 90. */
 export function pinColor(geoPct: number): PinColor {
   return geoPct < 70 ? "red" : geoPct <= 90 ? "amber" : "green";
 }
-
-/** Share of today's calls made outside the fence (brief 5.2 "Miss Percentage"). */
-export const missPct = (geoPct: number): number => Math.round((100 - geoPct) * 100) / 100;
-
-/** Share of a total, 0 when the total is 0 (never NaN). */
-export const share = (part: number, total: number): number => (total > 0 ? (part / total) * 100 : 0);

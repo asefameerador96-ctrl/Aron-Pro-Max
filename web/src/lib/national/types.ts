@@ -62,8 +62,8 @@ export interface SalesCard {
   total: number;
   /** Full-day target of the selected routes (monthly target / working days); null when no target is loaded. */
   daily_target: number | null;
-  /** Total against the daily target, as the server computes it (null without a target). */
-  pct: number | null;
+  /** Total against the daily target in basis points (0 to 10000 and beyond), as the server computes it; null without a target. */
+  pct_bp: number | null;
   /** Target minus sales, never below 0 (null without a target). */
   remaining: number | null;
 }
@@ -73,10 +73,13 @@ export interface SalesSlice extends Stamp {
 export interface CprSlice extends Stamp {
   target_outlets: number;
   successful_calls: number;
+  cpr_pct_bp: number | null;
 }
 export interface ChannelCount {
   code: ChannelCode;
   value: number;
+  /** Share of the channel total in basis points. */
+  share_bp: number | null;
 }
 export interface ChannelSlice extends Stamp {
   channels: ChannelCount[];
@@ -85,11 +88,14 @@ export interface FinalSubmitSlice extends Stamp {
   total_zone: number;
   service_zone: number;
   submitted: number;
+  submit_pct_bp: number | null;
 }
 export interface LoginSubmitSlice extends Stamp {
   target_routes: number;
   logged_in: number;
   submitted: number;
+  login_pct_bp: number | null;
+  submit_pct_bp: number | null;
 }
 export type BreakdownMeasure = "std" | "memo";
 export type BreakdownBy = "segment" | "brand" | "variant";
@@ -108,14 +114,15 @@ export interface BreakdownSlice extends Stamp {
 export interface GeoFencingSlice extends Stamp {
   total_calls: number;
   geo_validation: number;
+  geo_pct_bp: number | null;
 }
 
 export interface FfPin {
   route_id: number;
   lat: number;
   lng: number;
-  /** Today's share of calls inside the geo-fence, 0 to 100 (null: no call yet). */
-  geo_pct: number | null;
+  /** Today's share of calls inside the geo-fence in basis points (null: no call yet). */
+  geo_pct_bp: number | null;
   /** The server's colour of the pin (Red below 70, Amber 70 to 90, Green above 90). */
   color: PinColor;
   /** Time of the latest position. */
@@ -130,7 +137,7 @@ export interface FfPopup {
   zone: string;
   route: string;
   position_at: string | null;
-  miss_pct: number | null;
+  miss_pct_bp: number | null;
 }
 export interface FfGeoSlice extends Stamp {
   pins: FfPin[];
@@ -160,9 +167,9 @@ export interface RouteMapSlice extends Stamp {
   last_position: { lat: number; lng: number; at: string } | null;
   path: { lat: number; lng: number; at: string }[];
   outlets: RouteOutlet[];
-  target_vs_achievement: { category: CategoryCode; pct: number | null }[];
+  target_vs_achievement: { category: CategoryCode; pct_bp: number | null }[];
   last_sale_place: string | null;
-  cpr: { target_outlets: number; successful_calls: number; geo_validation: number };
+  cpr: { target_outlets: number; successful_calls: number; geo_validation: number; cpr_pct_bp: number | null };
   time: { first_sale: string | null; last_sale: string | null; total_hours: number | null; avg_hours: number | null; distance_m: number };
 }
 

@@ -7,8 +7,7 @@ import { ColumnChart } from "@/components/dash/charts";
 import { RetryButton } from "@/components/dash/table-actions";
 import type { ApiOutcome } from "@/lib/api/client";
 import { formatNumber, problemMessage, t, type Locale, type MessageKey } from "@/lib/i18n";
-import { clock, pct as pctText, qty } from "@/lib/national/fmt";
-import { achievementPct, share } from "@/lib/national/query";
+import { clock, pctBp, qty } from "@/lib/national/fmt";
 import type { BreakdownBy, BreakdownMeasure, BreakdownSlice, CategoryCode, ChannelCode, ChannelSlice, CprSlice, FinalSubmitSlice, GeoFencingSlice, LoginSubmitSlice, SalesSlice } from "@/lib/national/types";
 import { InfoPopup } from "./info-popup";
 import { BigRing, CardError, CHANNEL_COLOR, channelOrder, Figure, NatCard } from "./parts";
@@ -39,7 +38,7 @@ export function SalesCards({ slot, locale }: { slot: Slot<SalesSlice>; locale: L
               {(d) => {
                 const c = d.cards.find((x) => x.category === cat);
                 if (!c) return <p className="text-center text-body text-secondary">{t(locale, "nat.empty")}</p>;
-                const p = c.pct ?? achievementPct(c.total, c.daily_target);
+                const p = c.pct_bp;
                 const rows = c.daily_target === null ? null : [
                   { label: t(locale, "nat.info.daily_target"), value: qty(locale, c.daily_target) },
                   { label: t(locale, "nat.info.sales_so_far"), value: qty(locale, c.total) },
@@ -49,7 +48,7 @@ export function SalesCards({ slot, locale }: { slot: Slot<SalesSlice>; locale: L
                   <>
                     <div className="flex items-center justify-between gap-3 pb-8">
                       <Figure value={qty(locale, c.total)} caption={t(locale, "nat.total_sales")} testId={`sales-total-${cat}`} />
-                      <BigRing pct={p} text={p === null ? "—" : pctText(locale, p)} label={title} testId={`sales-ring-${cat}`} />
+                      <BigRing bp={p} text={pctBp(locale, p)} label={title} testId={`sales-ring-${cat}`} />
                     </div>
                     <InfoPopup testId={`sales-info-${cat}`} openLabel={t(locale, "nat.info.open", { card: title })} title={t(locale, "nat.info.title")} rows={rows} emptyText={t(locale, "nat.info.no_target")} closeLabel={t(locale, "nat.info.close")} />
                   </>
@@ -70,14 +69,14 @@ export function CprCard({ slot, locale }: { slot: Slot<CprSlice>; locale: Locale
     <NatCard id="cpr" title={t(locale, "nat.cpr")} className="xl:col-span-3">
       <Body slot={slot} locale={locale}>
         {(d) => {
-          const p = d.target_outlets > 0 ? (d.successful_calls / d.target_outlets) * 100 : null;
+          const p = d.cpr_pct_bp;
           return (
             <div className="flex items-center justify-between gap-3">
               <div className="flex flex-col gap-5">
                 <Figure value={qty(locale, d.target_outlets)} caption={t(locale, "nat.cpr.target")} testId="cpr-target" />
                 <Figure value={qty(locale, d.successful_calls)} caption={t(locale, "nat.cpr.calls")} testId="cpr-calls" />
               </div>
-              <BigRing pct={p} text={pctText(locale, p)} label={t(locale, "nat.cpr")} tone="green" testId="cpr-ring" />
+              <BigRing bp={p} text={pctBp(locale, p)} label={t(locale, "nat.cpr")} tone="green" testId="cpr-ring" />
             </div>
           );
         }}
@@ -86,14 +85,14 @@ export function CprCard({ slot, locale }: { slot: Slot<CprSlice>; locale: Locale
   );
 }
 
-function ChannelLegend({ rows, locale, valueOf, total, testPrefix }: { rows: { code: ChannelCode; value: number }[]; locale: Locale; valueOf: (n: number) => string; total: number; testPrefix: string }) {
+function ChannelLegend({ rows, locale, valueOf, testPrefix }: { rows: { code: ChannelCode; value: number; share_bp: number | null }[]; locale: Locale; valueOf: (n: number) => string; testPrefix: string }) {
   return (
     <ul className="space-y-1.5 text-center" aria-label={testPrefix}>
       {rows.map((r) => (
         <li key={r.code} data-testid={`${testPrefix}-${r.code}`} data-value={r.value}>
           <p className="flex items-center justify-center gap-1.5 text-body-strong tabular-nums text-primary">
             <span className="size-2.5 shrink-0 rounded-full" style={{ background: CHANNEL_COLOR[r.code] }} aria-hidden="true" />
-            {valueOf(r.value)} ({pctText(locale, share(r.value, total))})
+            {valueOf(r.value)} ({pctBp(locale, r.share_bp)})
           </p>
           <p className="text-caption text-secondary">{channelName(locale, r.code)}</p>
         </li>
@@ -111,10 +110,9 @@ export function ChannelCallsCard({ slot, locale }: { slot: Slot<ChannelSlice>; l
       <Body slot={slot} locale={locale}>
         {(d) => {
           const rows = sorted(d);
-          const total = rows.reduce((s, r) => s + r.value, 0);
           return (
             <div className="flex items-center justify-between gap-2">
-              <ChannelLegend rows={rows} locale={locale} valueOf={(v) => qty(locale, v)} total={total} testPrefix="ch-calls" />
+              <ChannelLegend rows={rows} locale={locale} valueOf={(v) => qty(locale, v)} testPrefix="ch-calls" />
               <ChannelRadial rows={rows} label={t(locale, "nat.ch_calls")} />
             </div>
           );
@@ -132,7 +130,7 @@ export function FinalSubmitCard({ slot, locale }: { slot: Slot<FinalSubmitSlice>
       <Body slot={slot} locale={locale}>
         {(d) => {
           const remaining = Math.max(0, d.service_zone - d.submitted);
-          const p = d.service_zone > 0 ? (d.submitted / d.service_zone) * 100 : null;
+          const p = d.submit_pct_bp;
           return (
             <div className="flex items-center justify-between gap-3">
               <div className="flex flex-col gap-3">
@@ -141,7 +139,7 @@ export function FinalSubmitCard({ slot, locale }: { slot: Slot<FinalSubmitSlice>
                 <Figure value={formatNumber(locale, remaining)} caption={t(locale, "nat.final.remaining")} captionTone="primary" testId="final-remaining" />
               </div>
               <div className="flex flex-col items-center gap-1">
-                <BigRing pct={p} text={pctText(locale, p)} label={t(locale, "nat.final")} tone="plain" size={120} testId="final-ring" />
+                <BigRing bp={p} text={pctBp(locale, p)} label={t(locale, "nat.final")} tone="plain" size={120} testId="final-ring" />
                 <p className="text-body-strong text-cyan">{t(locale, "nat.final.submitted")}</p>
                 <p className="text-body-strong tabular-nums" data-testid="final-submitted">{formatNumber(locale, d.submitted)}</p>
               </div>
@@ -153,8 +151,8 @@ export function FinalSubmitCard({ slot, locale }: { slot: Slot<FinalSubmitSlice>
   );
 }
 
-function StatusBlock({ icon, title, pct, pairs, locale, testId }: { icon: "download" | "upload"; title: string; pct: number | null; pairs: [string, string][]; locale: Locale; testId: string }) {
-  const text = pctText(locale, pct);
+function StatusBlock({ icon, title, bp, pairs, locale, testId }: { icon: "download" | "upload"; title: string; bp: number | null; pairs: [string, string][]; locale: Locale; testId: string }) {
+  const text = pctBp(locale, bp);
   return (
     <div data-testid={testId}>
       <div className="flex items-center gap-2">
@@ -162,7 +160,7 @@ function StatusBlock({ icon, title, pct, pairs, locale, testId }: { icon: "downl
         <p className="flex-1 text-body-strong text-accent">{title}</p>
         <p className="text-body-strong tabular-nums" data-testid={`${testId}-pct`}>{text}</p>
       </div>
-      <Meter pct={pct} valueText={text} label={title} className="mt-1 !h-3" />
+      <Meter pct={bp === null ? null : bp / 100} valueText={text} label={title} className="mt-1 !h-3" />
       <dl className="mt-2 grid grid-cols-2 gap-2 text-caption">
         {pairs.map(([label, value]) => (
           <div key={label}>
@@ -183,8 +181,8 @@ export function LoginSubmitCard({ slot, locale }: { slot: Slot<LoginSubmitSlice>
       <Body slot={slot} locale={locale}>
         {(d) => (
           <div className="space-y-4">
-            <StatusBlock locale={locale} testId="login-status" icon="download" title={t(locale, "nat.login.status")} pct={d.target_routes > 0 ? (d.logged_in / d.target_routes) * 100 : null} pairs={[[t(locale, "nat.login.target_route"), formatNumber(locale, d.target_routes)], [t(locale, "nat.login.successful"), formatNumber(locale, d.logged_in)]]} />
-            <StatusBlock locale={locale} testId="submit-status" icon="upload" title={t(locale, "nat.submit.status")} pct={d.logged_in > 0 ? (d.submitted / d.logged_in) * 100 : null} pairs={[[t(locale, "nat.submit.logged_in"), formatNumber(locale, d.logged_in)], [t(locale, "nat.submit.done"), formatNumber(locale, d.submitted)]]} />
+            <StatusBlock locale={locale} testId="login-status" icon="download" title={t(locale, "nat.login.status")} bp={d.login_pct_bp} pairs={[[t(locale, "nat.login.target_route"), formatNumber(locale, d.target_routes)], [t(locale, "nat.login.successful"), formatNumber(locale, d.logged_in)]]} />
+            <StatusBlock locale={locale} testId="submit-status" icon="upload" title={t(locale, "nat.submit.status")} bp={d.submit_pct_bp} pairs={[[t(locale, "nat.submit.logged_in"), formatNumber(locale, d.logged_in)], [t(locale, "nat.submit.done"), formatNumber(locale, d.submitted)]]} />
           </div>
         )}
       </Body>
@@ -200,10 +198,9 @@ export function ChannelStdCard({ slot, locale }: { slot: Slot<ChannelSlice>; loc
       <Body slot={slot} locale={locale}>
         {(d) => {
           const rows = sorted(d);
-          const total = rows.reduce((s, r) => s + r.value, 0);
           return (
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <ChannelLegend rows={rows} locale={locale} valueOf={(v) => qty(locale, v)} total={total} testPrefix="ch-std" />
+              <ChannelLegend rows={rows} locale={locale} valueOf={(v) => qty(locale, v)} testPrefix="ch-std" />
               <ChannelPie rows={rows} label={t(locale, "nat.ch_std")} locale={locale} />
             </div>
           );
@@ -279,14 +276,14 @@ export function GeoCard({ slot, locale }: { slot: Slot<GeoFencingSlice>; locale:
     <NatCard id="geo" title={t(locale, "nat.geo")} className="min-h-80 md:col-span-1 xl:col-span-4">
       <Body slot={slot} locale={locale}>
         {(d) => {
-          const p = d.total_calls > 0 ? (d.geo_validation / d.total_calls) * 100 : null;
+          const p = d.geo_pct_bp;
           return (
             <div className="flex items-center justify-between gap-3">
               <div className="flex flex-col gap-8">
                 <Figure value={qty(locale, d.geo_validation)} caption={t(locale, "nat.geo.valid")} testId="geo-valid" />
                 <Figure value={qty(locale, d.total_calls)} caption={t(locale, "nat.geo.total")} testId="geo-total" />
               </div>
-              <BigRing pct={p} text={pctText(locale, p, 2)} label={t(locale, "nat.geo")} tone="green" size={190} testId="geo-ring" />
+              <BigRing bp={p} text={pctBp(locale, p, 2)} label={t(locale, "nat.geo")} tone="green" size={190} testId="geo-ring" />
             </div>
           );
         }}

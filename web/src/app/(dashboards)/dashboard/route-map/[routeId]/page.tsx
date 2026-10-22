@@ -11,7 +11,7 @@ import { getLocale } from "@/lib/auth/service";
 import { isCalendarDate } from "@/lib/dates";
 import { mapsKey } from "@/lib/maps/guard";
 import { businessDate, formatNumber, problemMessage, t, type MessageKey } from "@/lib/i18n";
-import { clock, distance, hoursBetween, pct } from "@/lib/national/fmt";
+import { clock, distance, hoursBetween, pctBp } from "@/lib/national/fmt";
 import { flagIcon, personIcon, pinIcon, PIN_FILL } from "@/lib/national/marker-icons";
 import { getRouteMap } from "@/lib/national/server";
 
@@ -73,8 +73,8 @@ export default async function RouteMapPage({ params, searchParams }: { params: P
             {d.target_vs_achievement.map((x) => (
               <li key={x.category} data-testid={`tva-${x.category}`} className="grid grid-cols-[4.5rem_1fr_3rem] items-center gap-2 text-body">
                 <span className="text-secondary">{t(locale, `nat.rm.cat.${x.category}` as MessageKey)}</span>
-                <Meter pct={x.pct} valueText={pct(locale, x.pct, 0)} label={t(locale, `nat.rm.cat.${x.category}` as MessageKey)} className="!h-3" />
-                <span className="text-body-strong tabular-nums">{pct(locale, x.pct, 0)}</span>
+                <Meter pct={x.pct_bp === null ? null : x.pct_bp / 100} valueText={pctBp(locale, x.pct_bp, 0)} label={t(locale, `nat.rm.cat.${x.category}` as MessageKey)} className="!h-3" />
+                <span className="text-body-strong tabular-nums">{pctBp(locale, x.pct_bp, 0)}</span>
               </li>
             ))}
           </ul>
@@ -83,7 +83,7 @@ export default async function RouteMapPage({ params, searchParams }: { params: P
         <section className={card} aria-labelledby="cpr-h" data-testid="route-cpr">
           <h2 id="cpr-h" className="mb-3 border-b border-accent-graphic/40 pb-2 text-title text-secondary">{t(locale, "nat.rm.cpr")}</h2>
           <div className="flex items-center justify-between gap-3">
-            <BigRing pct={d.cpr.target_outlets > 0 ? (calls / d.cpr.target_outlets) * 100 : null} text={pct(locale, d.cpr.target_outlets > 0 ? (calls / d.cpr.target_outlets) * 100 : null, 0)} label={t(locale, "nat.rm.cpr")} tone="green" size={110} testId="route-cpr-ring" />
+            <BigRing bp={d.cpr.cpr_pct_bp} text={pctBp(locale, d.cpr.cpr_pct_bp, 0)} label={t(locale, "nat.rm.cpr")} tone="green" size={110} testId="route-cpr-ring" />
             <dl className="space-y-3 text-center">
               {([["nat.rm.cpr.target", d.cpr.target_outlets], ["nat.rm.cpr.success", calls], ["nat.rm.cpr.geo", d.cpr.geo_validation]] as const).map(([k, v]) => (
                 <div key={k}>

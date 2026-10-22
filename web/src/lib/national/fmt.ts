@@ -31,3 +31,15 @@ export function hoursBetween(a: string | null, b: string | null): number | null 
 export function distance(locale: Locale, m: number): string {
   return m < 1000 ? `${formatNumber(locale, m, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} m` : `${formatNumber(locale, m / 1000, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} km`;
 }
+
+/** A percentage from integer basis points (0 to 10000 is 0 to 100%), divided only here, at display, with integer arithmetic: 9796 -> 97.96%.
+ *  `digits` is 2 on Geo Fencing and the route map, 1 on the other cards, 0 on the route map's bars; half up on the magnitude. */
+export function pctBp(locale: Locale, bp: number | null | undefined, digits: 0 | 1 | 2 = 1): string {
+  if (bp === null || bp === undefined || !Number.isSafeInteger(bp)) return "—";
+  const unit = 10 ** (2 - digits); // basis points per displayed step
+  const steps = Math.floor((Math.abs(bp) + unit / 2) / unit);
+  const whole = formatNumber(locale, Math.floor(steps / 10 ** digits));
+  const frac = String(steps % 10 ** digits).padStart(digits, "0");
+  const bengali = (d: string): string => (locale === "bn" ? d.replace(/\d/g, (c) => "\u09E6\u09E7\u09E8\u09E9\u09EA\u09EB\u09EC\u09ED\u09EE\u09EF"[Number(c)]!) : d);
+  return `${bp < 0 ? "-" : ""}${whole}${digits > 0 ? `.${bengali(frac)}` : ""}%`;
+}

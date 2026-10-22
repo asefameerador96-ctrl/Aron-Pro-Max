@@ -7,7 +7,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useI18n } from "@/components/i18n-provider";
 import { clusterPins } from "@/lib/maps/cluster";
-import { clock, pct } from "@/lib/national/fmt";
+import { clock, pctBp } from "@/lib/national/fmt";
 import { clusterIcon, PIN_FILL, pinIcon } from "@/lib/national/marker-icons";
 import type { PinColor } from "@/lib/national/query";
 import type { FfGeoSlice, FfPin, FfPopup } from "@/lib/national/types";
@@ -70,7 +70,7 @@ function FfGeoInner({ search, date, mapsEnabled, onRetry }: { search: string; da
         { label: t("nat.pop.zone"), value: d?.zone ?? "—" },
         { label: t("nat.pop.route"), value: d?.route ?? String(p.route_id) },
         { label: t("nat.pop.time"), value: `${date} ${clock(locale, d?.position_at ?? p.at)}` },
-        { label: t("nat.pop.miss"), value: d?.miss_pct !== null && d?.miss_pct !== undefined ? pct(locale, d.miss_pct, 2) : "—" },
+        { label: t("nat.pop.miss"), value: pctBp(locale, d?.miss_pct_bp, 2) },
       ],
       { href: `/dashboard/route-map/${p.route_id}?date=${date}`, text: t("nat.pop.open") },
     ),
@@ -152,7 +152,7 @@ function FfGeoInner({ search, date, mapsEnabled, onRetry }: { search: string; da
                       <span className="size-3 shrink-0 rounded-full" style={{ background: PIN_FILL[c] }} aria-hidden="true" />
                       <span className="sr-only">{t(`nat.ff.${c}`)}</span>
                       <span className="min-w-0 flex-1 truncate">{t("nat.pop.route")} {p.route_id} · {clock(locale, p.at)}</span>
-                      <span className="tabular-nums text-secondary">{p.geo_pct === null ? "—" : pct(locale, p.geo_pct, 2)}</span>
+                      <span className="tabular-nums text-secondary">{pctBp(locale, p.geo_pct_bp, 2)}</span>
                       <Link href={`/dashboard/route-map/${p.route_id}?date=${date}`} className="text-body-strong text-accent hover:underline">{t("nat.pop.open")}</Link>
                     </li>
                   );

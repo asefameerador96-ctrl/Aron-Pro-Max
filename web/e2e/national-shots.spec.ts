@@ -1,13 +1,12 @@
 // Screenshot goldens of the national dashboard pages (docs/34 s2). A fixed past date makes the mock figures and stamps deterministic.
 // Goldens are recorded on the Linux runner by the web-snapshots workflow (default spec list), never locally.
 import { expect, test } from "@playwright/test";
-import { MOCK, loginOk, resetMock } from "./helpers";
+import { loginOk, resetMock } from "./helpers";
 
 const DAY = "2026-10-01";
 
 test.beforeEach(async ({ page }) => {
   await resetMock();
-  await fetch(`${MOCK}/__mock/national-view`, { method: "POST", body: JSON.stringify({ view: "national" }) });
   await page.emulateMedia({ reducedMotion: "reduce" });
   await page.setViewportSize({ width: 1440, height: 900 });
   await loginOk(page, "analyst1", "analyst-pass-1");

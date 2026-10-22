@@ -33,13 +33,14 @@ export function NatCard({ id, title, className = "", children, titleRight }: { i
 }
 
 /** The ring with the percentage in its middle (48.5%): a thick arc on a pale track. `tone` picks blue to cyan (sales) or green (CPR, geo). */
-export function BigRing({ pct, text, label, tone = "blue", size = 150, testId }: { pct: number | null; text: string; label: string; tone?: "blue" | "green" | "plain"; size?: number; testId?: string }) {
-  const v = pct === null ? 0 : Math.max(0, Math.min(100, pct));
+/** `bp` is the value in basis points (10000 = 100%); only the arc length is derived from it here, the text comes from the caller. */
+export function BigRing({ bp, text, label, tone = "blue", size = 150, testId }: { bp: number | null; text: string; label: string; tone?: "blue" | "green" | "plain"; size?: number; testId?: string }) {
+  const v = bp === null ? 0 : Math.max(0, Math.min(100, bp / 100));
   const r = 42;
   const c = 2 * Math.PI * r;
   const gid = `g-${tone}-${size}`;
   return (
-    <div role="img" aria-label={`${label}: ${text}`} data-testid={testId} data-pct={pct ?? ""} className="relative shrink-0" style={{ width: size, height: size }}>
+    <div role="img" aria-label={`${label}: ${text}`} data-testid={testId} data-bp={bp ?? ""} className="relative shrink-0" style={{ width: size, height: size }}>
       <svg viewBox="0 0 100 100" width={size} height={size} aria-hidden="true" className="-rotate-90">
         <defs>
           <linearGradient id={gid} x1="0" y1="0" x2="1" y2="1">

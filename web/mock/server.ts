@@ -11,7 +11,6 @@ import { maskAudit } from "./audit-mask";
 import { freshConfigStore, handleConfig, type ConfigStore } from "./config";
 import { handleCustom, seedCustom, type CustomState } from "./custom";
 import { freshDashStore, handleDash, type DashStore } from "./dash";
-import { setNationalView } from "./national";
 import type { AuditEntry, Cluster, LoginResponse, Me, Problem, ProblemCode, Role, ScopeSummary, TokenPair, UserSummary } from "../src/contract/types";
 
 interface MockUser {
@@ -40,6 +39,8 @@ function users(): Record<string, MockUser> {
     tso999: u(2006, "tso999", "Outside Scope", "TSO", "tso-pass-3", { scope_version: 7, nodes: [{ type: "territory", id: 999, code: "T-999", name: "Elsewhere" }] }),
     dmo1: u(2004, "dmo1", "Habib Rahman", "DMO", "dmo-pass-1", { scope_version: 4, nodes: [{ type: "division", id: 10, code: "D-10", name: "Dhaka North" }] }),
     wm1: u(2002, "wm1", "Karim Hossain", "WM", "wm-pass-1", { scope_version: 2, nodes: [{ type: "wing", id: 1, code: "W-1", name: "Dhaka Wing" }] }),
+    nat1: u(2007, "nat1", "Nasrin National", "NATIONAL", "nat-pass-1", nationalScope),
+    brand1: u(2008, "brand1", "Babul Brand", "BRAND", "brand-pass-1", nationalScope),
     analyst1: u(2003, "analyst1", "Nusrat Jahan", "ANALYST", "analyst-pass-1", nationalScope),
     madmin1: { ...u(3101, "madmin1", "Salma Akter", "ADMIN", "admin-pass-1", nationalScope, true), master: true },
     msuper1: { ...u(3105, "msuper1", "Rafiq Chowdhury", "SUPERADMIN", "super-pass-1", nationalScope, true), master: true },
@@ -245,11 +246,6 @@ async function handle(state: State, reset: () => void, req: IncomingMessage, res
   }
   if (path === "/__mock/long-names" && method === "POST") {
     longNames = ((await readJson(req)) as { on?: boolean } | undefined)?.on !== false;
-    return send(res, 204, undefined);
-  }
-  if (path === "/__mock/national-view" && method === "POST") {
-    // Dev knob: the real API derives the product-only view of a BRAND user from the token (docs/34 s1); the mock has no such user yet.
-    setNationalView(((await readJson(req)) as { view?: string } | undefined)?.view === "brand" ? "brand" : "national");
     return send(res, 204, undefined);
   }
   if (path === "/__mock/pii-window" && method === "POST") {

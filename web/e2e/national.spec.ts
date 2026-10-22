@@ -2,11 +2,10 @@
 // pages, role views. Figures at "everything selected" are the owner's screenshot of 2026-10-22 (docs/ui-reference/web/dashboard.md).
 // Screenshots go to the test report (and to the web-snapshots workflow); no golden is recorded locally.
 import { expect, test, type Page, type TestInfo } from "@playwright/test";
-import { MOCK, loginOk, resetMock } from "./helpers";
+import { loginOk, resetMock } from "./helpers";
 
 test.beforeEach(async () => {
   await resetMock();
-  await fetch(`${MOCK}/__mock/national-view`, { method: "POST", body: JSON.stringify({ view: "national" }) });
 });
 
 async function open(page: Page, path = "/", user: [string, string] = ["analyst1", "analyst-pass-1"]) {
@@ -113,9 +112,8 @@ test("a route opens its Map Details page, an outlet opens its Sale Position page
 });
 
 test("a brand user sees the product cards only", async ({ page }, info) => {
-  await fetch(`${MOCK}/__mock/national-view`, { method: "POST", body: JSON.stringify({ view: "brand" }) });
   await page.setViewportSize({ width: 1600, height: 1000 });
-  await open(page);
+  await open(page, "/", ["brand1", "brand-pass-1"]);
   await expect(page.getByTestId("nat-product-only")).toBeVisible();
   for (const id of ["nat-sales-cigarette", "nat-ch-std", "nat-breakdown"]) await expect(page.getByTestId(id)).toBeVisible();
   for (const id of ["nat-cpr", "nat-ch-calls", "nat-final", "nat-login", "nat-geo", "nat-ffgeo"]) await expect(page.getByTestId(id)).toHaveCount(0);

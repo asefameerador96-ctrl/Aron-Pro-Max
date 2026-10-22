@@ -33,10 +33,6 @@ const CH = { GT: [136_000, 26_400_000], DCC: [2_786, 560_000], Astha: [29_894, 8
 const SALES_TOTAL = { cigarette: 36_421_040, bidi: 3_488_000, lighter: 106_000, match: 11_165 } as const;
 const SALES_TARGET = { cigarette: 75_090_000, bidi: 9_107_000, lighter: 132_300, match: 64_500 } as const;
 
-export type NationalView = "national" | "brand";
-let view: NationalView = "national";
-export const setNationalView = (v: NationalView) => (view = v);
-
 const list = (v: string | null): string[] => (v ? v.split(",").filter(Boolean) : []);
 const ids = (v: string | null): number[] => list(v).map(Number).filter(Number.isInteger);
 
@@ -57,13 +53,13 @@ function scopeZones(role: string, q: URLSearchParams) {
   return zs;
 }
 
-function brandsIn(q: URLSearchParams) {
+function brandsIn(q: URLSearchParams, role: string) {
   let bs = BRANDS;
   const cat = list(q.get("category")), seg = list(q.get("segment")), br = list(q.get("brand"));
   if (cat.length) bs = bs.filter((b) => cat.includes(catOfSeg(b[2])));
   if (seg.length) bs = bs.filter((b) => seg.includes(b[2]));
   if (br.length) bs = bs.filter((b) => br.includes(b[0]));
-  if (view === "brand") bs = bs.filter((b) => OWN_BRANDS.includes(b[0]));
+  if (role === "BRAND") bs = bs.filter((b) => OWN_BRANDS.includes(b[0]));
   return bs;
 }
 
@@ -94,7 +90,8 @@ function pinsFor(zs: typeof ZONES) {
   }
   return out;
 }
-const r2 = (n: number) => Math.round(n * 100) / 100;
+/** A ratio as integer basis points (10000 = 100%), null without a denominator. */
+const bp = (part: number, whole: number): number | null => (whole > 0 ? Math.round((part * 10000) / whole) : null);
 
 const PHOTO = `data:image/svg+xml;charset=UTF-8,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="160" height="120"><rect width="160" height="120" fill="#8b5a2b"/><path d="M0 100L60 30l40 40 60-50v100z" fill="#c9a36b"/></svg>')}`;
 
@@ -125,12 +122,12 @@ export async function handleNational(x: DashCtx): Promise<boolean> {
   const today = new Date().toISOString().slice(0, 10);
   const asOf = AS_OF(date, today);
   const common = { date, till_time: date === today, as_of: asOf, last_updated_at: asOf };
-  const brand = view === "brand";
+  const brand = user.role === "BRAND";
   const forbidden = () => (send(403, problem(403, "ERR_FORBIDDEN")), true);
   const zs = scopeZones(user.role, q);
   const dayless = zs.reduce((s, z) => s + z.weight, 0) / TOTAL_W;
   const f = dayless * dayFactor(date, today);
-  const bs = brandsIn(q);
+  const bs = brandsIn(q, user.role);
   const pf = brand || list(q.get("category")).length || list(q.get("segment")).length || list(q.get("brand")).length || list(q.get("variant")).length ? bs.reduce((s, b) => s + b[3], 0) / BRAND_TOTAL : 1;
   const sc = (n: number, extra = 1) => Math.round(n * f * extra);
   const name = national ? path.slice("/v1/dashboards/national/".length) : "";
@@ -161,7 +158,7 @@ export async function handleNational(x: DashCtx): Promise<boolean> {
   if (name === "freshness" && method === "GET") return send(200, { ...common, tables: [{ table: "summary_sales", last_updated_at: asOf }] }), true;
 
   if (name === "sales") {
-    const cats = brandsIn(q);
+    const cats = bs;
     return send(200, {
       ...common, working_days: 26,
       cards: (Object.keys(C) as (keyof typeof C)[]).map((c) => {
@@ -170,32 +167,32 @@ export async function handleNational(x: DashCtx): Promise<boolean> {
         const share = all > 0 ? sel / all : 0;
         const total = sc(SALES_TOTAL[c], share);
         const target = Math.round(SALES_TARGET[c] * dayless * share);
-        return { category_code: c, base_unit: C[c], total_sales: total, daily_target: target > 0 ? `${target}.000` : null, sales_so_far: total, remaining: target > 0 ? `${Math.max(0, target - total)}.000` : null, achievement_pct: target > 0 ? r2((total / target) * 100) : null, target_routes: zs.length * 4 };
+        return { category_code: c, base_unit: C[c], total_sales: total, daily_target: target > 0 ? `${target}.000` : null, sales_so_far: total, remaining: target > 0 ? `${Math.max(0, target - total)}.000` : null, achievement_pct_bp: bp(total, target), target_routes: zs.length * 4 };
       }),
     }), true;
   }
   if (name === "cpr") {
     const target = Math.round(460_000 * dayless * pf), calls = sc(174_000, pf);
-    return send(200, { ...common, target_outlets: target, successful_calls: calls, cpr_pct: target > 0 ? r2((calls / target) * 100) : null }), true;
+    return send(200, { ...common, target_outlets: target, successful_calls: calls, cpr_pct_bp: bp(calls, target) }), true;
   }
   const channelBody = (col: 0 | 1) => {
     const rows = Object.entries(CH).map(([channel, v]) => ({ channel, value: sc(v[col], pf) }));
     const total = rows.reduce((s, r) => s + r.value, 0);
-    return { rows: rows.map((r) => ({ ...r, share_pct: total > 0 ? r2((r.value / total) * 100) : null })), total };
+    return { rows: rows.map((r) => ({ ...r, share_pct_bp: bp(r.value, total) })), total };
   };
   if (name === "channel-calls") { const c = channelBody(0); return send(200, { ...common, channels: c.rows, total: c.total, unclassified: 0 }), true; }
   if (name === "channel-std") { const c = channelBody(1); return send(200, { ...common, channels: c.rows, total: c.total, unit: "stick" }), true; }
   if (name === "final-submit") {
     const total = Math.round(1051 * (zs.length / ZONES.length)), service = Math.round(1046 * (zs.length / ZONES.length)), done = date === today ? 0 : service;
-    return send(200, { ...common, total_zones: total, service_zones: service, final_submitted: done, remaining: service - done, submit_pct: service > 0 ? r2((done / service) * 100) : null }), true;
+    return send(200, { ...common, total_zones: total, service_zones: service, final_submitted: done, remaining: service - done, submit_pct_bp: bp(done, service) }), true;
   }
   if (name === "login-submit") {
     const routes = Math.round(6933 * (zs.length / ZONES.length)), logged = Math.round(routes * 0.998), sub = date === today ? Math.round(logged * 0.0009) : Math.round(logged * 0.97);
-    return send(200, { ...common, target_routes: routes, successful_login: logged, login_pct: routes > 0 ? r2((logged / routes) * 100) : null, submitted: sub, submit_pct: logged > 0 ? r2((sub / logged) * 100) : null }), true;
+    return send(200, { ...common, target_routes: routes, successful_login: logged, login_pct_bp: bp(logged, routes), submitted: sub, submit_pct_bp: bp(sub, logged) }), true;
   }
   if (name === "geo-fencing") {
     const total = sc(200_000), ok = Math.round(total * 0.9796);
-    return send(200, { ...common, total_calls: total, geo_validated: ok, geo_pct: total > 0 ? r2((ok / total) * 100) : null }), true;
+    return send(200, { ...common, total_calls: total, geo_validated: ok, geo_pct_bp: bp(ok, total) }), true;
   }
   if (name === "breakdown") {
     const measure = body?.measure === "memo" ? "memo" : "std";
@@ -210,7 +207,7 @@ export async function handleNational(x: DashCtx): Promise<boolean> {
     return send(200, { ...common, measure, dimension: by, ...(measure === "std" ? { category_code: onlyCat, unit: C[onlyCat as keyof typeof C] ?? "stick" } : {}), items }), true;
   }
   if (name === "ff-geo/pins") {
-    const pins = pinsFor(zs).map((p) => ({ route_id: p.route_id, lat: Math.round(p.lat * 1e5) / 1e5, lng: Math.round(p.lng * 1e5) / 1e5, color: colorOf(p.geo_pct), geo_pct: r2(p.geo_pct), position_at: `${date}T0${6 + (p.n % 3)}:${10 + p.n}:00.000Z` }));
+    const pins = pinsFor(zs).map((p) => ({ route_id: p.route_id, lat: Math.round(p.lat * 1e5) / 1e5, lng: Math.round(p.lng * 1e5) / 1e5, color: colorOf(p.geo_pct), geo_pct_bp: Math.round(p.geo_pct * 100), position_at: `${date}T0${6 + (p.n % 3)}:${10 + p.n}:00.000Z` }));
     const count = (c: string) => pins.filter((p) => p.color === c).length;
     return send(200, { ...common, pins, counts: { red: count("red"), amber: count("amber"), green: count("green") }, routes_without_position: 0 }), true;
   }
@@ -220,7 +217,7 @@ export async function handleNational(x: DashCtx): Promise<boolean> {
     const pin = pinsFor(ZONES).find((p) => p.route_id === id);
     if (!pin) return send(404, problem(404, "ERR_NOT_FOUND")), true;
     const t = TERRS.find((tt) => tt.id === pin.zone.territory)!;
-    return send(200, { ...common, route: { id, code: `R${id}`, name: `Route ${pin.n + 1}` }, sr_name: `SR ${id}`, contact: x.piiOpen ? `01700${String(id).padStart(6, "0")}` : null, territory: { id: t.id, code: String(1300 + t.id), name: t.name }, zone: { id: pin.zone.id, code: `Z${pin.zone.id}`, name: pin.zone.name }, position_at: `${date}T0${6 + (pin.n % 3)}:${10 + pin.n}:00.000Z`, miss_pct: r2(100 - pin.geo_pct) }), true;
+    return send(200, { ...common, route: { id, code: `R${id}`, name: `Route ${pin.n + 1}` }, sr_name: `SR ${id}`, contact: x.piiOpen ? `01700${String(id).padStart(6, "0")}` : null, territory: { id: t.id, code: String(1300 + t.id), name: t.name }, zone: { id: pin.zone.id, code: `Z${pin.zone.id}`, name: pin.zone.name }, position_at: `${date}T0${6 + (pin.n % 3)}:${10 + pin.n}:00.000Z`, miss_pct_bp: Math.round((100 - pin.geo_pct) * 100) }), true;
   }
   const rm = mapPage?.[1] === "route-map" ? Number(mapPage[2]) : null;
   if (rm !== null) {
@@ -238,9 +235,9 @@ export async function handleNational(x: DashCtx): Promise<boolean> {
     return send(200, {
       ...common, route: { id: rm, code: `R${rm}`, name: `Route ${pin.n + 1}` }, sr_name: `SR ${rm}`, territory: { id: t.id, code: String(1300 + t.id), name: t.name }, zone: { id: pin.zone.id, code: `Z${pin.zone.id}`, name: pin.zone.name },
       sale_start: path[0] ?? null, sr_last_position: path[path.length - 1] ?? null, outlets, path,
-      target_vs_achievement: [["cigarette", 26], ["bidi", 0], ["lighter", 60], ["match", 68]].map(([c, p]) => ({ category_code: c, base_unit: C[c as keyof typeof C], daily_target: "1000.000", sales: Number(p) * 10, achievement_pct: p })),
+      target_vs_achievement: [["cigarette", 26], ["bidi", 0], ["lighter", 60], ["match", 68]].map(([c, p]) => ({ category_code: c, base_unit: C[c as keyof typeof C], daily_target: "1000.000", sales: Number(p) * 10, achievement_pct_bp: Number(p) * 100 })),
       last_sale_place: "Rampasha Bazar",
-      cpr: { target_outlets: 50, successful_calls: called.length, geo_validated: called.filter((o) => o.state === "geo_validated").length, cpr_pct: r2((called.length / 50) * 100) },
+      cpr: { target_outlets: 50, successful_calls: called.length, geo_validated: called.filter((o) => o.state === "geo_validated").length, cpr_pct_bp: bp(called.length, 50) },
       time_card: { first_sale_time: called[0]?.call_time ?? null, last_sale_time: called[called.length - 1]?.call_time ?? null, total_sale_seconds: secs, average_sale_seconds: Math.round(secs / called.length), distance_covered_m: 1196.97 },
     }), true;
   }
