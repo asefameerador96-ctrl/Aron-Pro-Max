@@ -1,5 +1,7 @@
 package com.aktcl.aron.backend.auth
 
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.Json
 import com.aktcl.aron.contract.Role
 import io.ktor.client.request.bearerAuth
 import io.ktor.client.request.get
@@ -95,7 +97,11 @@ class PortalLevelLoginTest {
             assertEquals(HttpStatusCode.Forbidden, r.status, r.bodyAsText())
             assertEquals("ERR_FORBIDDEN", json(r.bodyAsText()).code)
             // Captured rows still reach the server: the upload grant survives, as it survives a disable.
-            assertEquals(HttpStatusCode.OK, refresh(upload.token, "upload").status)
+            val up = refresh(upload.token, "upload")
+            assertEquals(HttpStatusCode.OK, up.status)
+            // Checker round 2 (B1-bis): the upload token keeps the phone's field role, never the new role's national reach.
+            val upToken = Json.parseToJsonElement(up.bodyAsText()).jsonObject["access_token"]!!.jsonPrimitive.content
+            f.verifier.verify(upToken, setOf(com.aktcl.aron.backend.platform.Audience.UPLOAD)).let { assertEquals(Role.SR, it.role); assertEquals("sr", it.flavour) }
             val me = client.get("/v1/me") { bearerAuth(phoneToken); header("X-Device-Id", f.srDevice) }
             assertEquals(HttpStatusCode.Forbidden, me.status, me.bodyAsText())
             // A web login of the new role works.

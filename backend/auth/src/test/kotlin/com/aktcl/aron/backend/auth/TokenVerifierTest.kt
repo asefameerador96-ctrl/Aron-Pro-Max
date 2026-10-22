@@ -65,4 +65,45 @@ class TokenVerifierTest {
         val off = f.issuer.access(TokenSubject(admin, null, null, "web", piiUntil = f.clock.now().plusSeconds(300))).token
         assertEquals(false, f.verifier.verify(off, setOf(Audience.API)).pii, "a window without the pii flag reveals nothing")
     }
+
+    /** D-ROLES-02: `modules` for an ADMIN and `brands` for a BRAND web token, minted from the grants once they are live. */
+    @Test
+    fun portalGrantClaimsAreMintedForWebTokensOnlyOnceLive() {
+        val admin = f.users.findById(9001)!!
+        val brand = admin.copy(id = 9101, username = "brand1", role = com.aktcl.aron.contract.Role.BRAND)
+        var live = false
+        val grants = object : com.aktcl.aron.backend.platform.PortalGrants {
+            override fun live() = live
+            override fun modules(userId: Long) = mapOf("users" to "r", "prices" to "w")
+            override fun brands(userId: Long) = listOf(11L, 12L)
+        }
+        val issuer = TokenIssuer(f.keys, f.config, f.clock, grants = grants)
+        fun verify(t: String) = f.verifier.verify(t, setOf(Audience.API))
+        verify(issuer.access(TokenSubject(admin, null, null, "web")).token).let { assertEquals(null, it.modules); assertEquals(null, it.brands) }
+        live = true
+        verify(issuer.access(TokenSubject(admin, null, null, "web")).token).let { assertEquals(mapOf("users" to "r", "prices" to "w"), it.modules); assertEquals(null, it.brands) }
+        verify(issuer.access(TokenSubject(brand, null, null, "web")).token).let { assertEquals(listOf(11L, 12L), it.brands); assertEquals(null, it.modules) }
+        verify(issuer.access(TokenSubject(sr, 501, f.srDevice, "sr")).token).let { assertEquals(null, it.modules); assertEquals(null, it.brands) }
+        val superadmin = admin.copy(role = com.aktcl.aron.contract.Role.SUPERADMIN)
+        assertEquals(null, verify(issuer.access(TokenSubject(superadmin, null, null, "web")).token).modules)
+    }
+
+    /** A signed token whose grant claims are not in the shape this server mints is refused (fail closed). */
+    @Test
+    fun malformedGrantClaimsAreRefused() {
+        fun signed(extra: com.nimbusds.jwt.JWTClaimsSet.Builder.() -> Unit): String {
+            val now = java.util.Date.from(f.clock.now())
+            val c = com.nimbusds.jwt.JWTClaimsSet.Builder().issuer("aron").audience(Audience.API).subject("9001").claim("uname", "admin")
+                .claim("role", "ADMIN").claim("sv", 7L).claim("flv", "web").claim("perm", emptyList<String>()).claim("amr", listOf("pwd"))
+                .issueTime(now).notBeforeTime(now).expirationTime(java.util.Date.from(f.clock.now().plusSeconds(600))).jwtID("j").apply(extra).build()
+            val jwt = com.nimbusds.jwt.SignedJWT(com.nimbusds.jose.JWSHeader.Builder(com.nimbusds.jose.JWSAlgorithm.ES256).keyID(f.keys.kid).build(), c)
+            jwt.sign(f.keys.signer)
+            return jwt.serialize()
+        }
+        assertEquals(mapOf("mdm" to "r"), f.verifier.verify(signed { claim("modules", mapOf("mdm" to "r")) }, setOf(Audience.API)).modules)
+        for (bad in listOf<com.nimbusds.jwt.JWTClaimsSet.Builder.() -> Unit>(
+            { claim("modules", mapOf("everything" to "w")) }, { claim("modules", mapOf("mdm" to "rw")) }, { claim("modules", mapOf("mdm" to 1)) },
+            { claim("modules", listOf("mdm")) }, { claim("brands", listOf("11")) }, { claim("brands", listOf(0)) }, { claim("brands", "11") },
+        )) assertEquals(ProblemCode.ERR_UNAUTHENTICATED, code { f.verifier.verify(signed(bad), setOf(Audience.API)) })
+    }
 }

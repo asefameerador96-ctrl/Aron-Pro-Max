@@ -157,6 +157,21 @@ class RouteInventoryTest {
         assertEquals(emptyList(), problems)
     }
 
+    /**
+     * D-ROLES-02 row 2: every guarded route belongs to an ADMIN module, to the caller's own session, or to the routes no
+     * ADMIN web token serves (AdminModules.NOT_ADMIN). A new route outside all three is refused for ADMIN by the guard
+     * (fail closed) and fails here, so its lane names its module in AdminModules.ROUTES.
+     */
+    @Test
+    fun everyGuardedRouteHasAnAdminModule() {
+        val unmapped = endpoints.filter { it.guarded }.filter { e ->
+            val m = if (e.method == "HEAD") "GET" else e.method
+            com.aktcl.aron.backend.platform.AdminModules.moduleOf(m, e.path) == null &&
+                com.aktcl.aron.backend.platform.AdminModules.NOT_ADMIN.none { it.matches(m, e.path) }
+        }.map { it.key }
+        assertTrue(unmapped.isEmpty(), "guarded routes without an ADMIN module (AdminModules.ROUTES or NOT_ADMIN):\n" + unmapped.joinToString("\n"))
+    }
+
     @Test
     fun theWalkerUnderstandsEveryNode() {
         assertEquals(emptyList(), oddNodes, "routes the inventory cannot see; teach the walker or use get/post/... under a path")

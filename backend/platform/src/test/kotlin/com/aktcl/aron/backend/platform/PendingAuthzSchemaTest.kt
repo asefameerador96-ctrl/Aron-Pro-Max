@@ -64,9 +64,11 @@ class PendingAuthzSchemaTest {
         assertEquals(listOf("NATIONAL:5"), q("SELECT role || ':' || scope_version FROM app.app_user WHERE username = 'top1'") { it.getString(1) })
         assertEquals(0, q("SELECT count(*) FROM app.app_user WHERE role = 'TOP'") { it.getInt(1) }.single())
         assertTrue("NATIONAL:reports.export_pii" in once)
+        // Checker round 2 (N3): moved, not copied, so a re-run cannot put back a grant narrowed on NATIONAL.
+        assertEquals(0, q("SELECT count(*) FROM app.role_grant_map WHERE role = 'TOP'") { it.getInt(1) }.single(), "no TOP grant left")
         // Checker N4: a role list in effect that names TOP keeps meaning the migrated users (MFA must not loosen).
         val mfa = q("SELECT value::text, effective_to IS NULL FROM app.cfg_value WHERE key = 'cfg.auth.mfa_required_roles' ORDER BY id") { it.getString(1) to it.getBoolean(2) }
-        assertEquals(listOf("""["ADMIN", "SUPERADMIN", "SUPPORT", "TOP"]""" to false, """["ADMIN", "SUPERADMIN", "SUPPORT", "TOP", "NATIONAL"]""" to true), mfa)
+        assertEquals(listOf("""["ADMIN", "SUPERADMIN", "SUPPORT", "TOP"]""" to false, """["ADMIN", "SUPERADMIN", "SUPPORT", "NATIONAL"]""" to true), mfa)
         // NATIONAL holds every role value TOP holds (web-role password length and token TTL); BRAND the two web defaults.
         val values = q("SELECT key, scope_id, value::text FROM app.cfg_value WHERE scope_type = 'role' AND scope_id IN (6, 11, 12)") { Triple(it.getString(1), it.getLong(2), it.getString(3)) }
         val top = values.filter { it.second == 6L }.map { it.first to it.third }.toSet()

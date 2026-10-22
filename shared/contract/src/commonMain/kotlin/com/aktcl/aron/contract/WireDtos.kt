@@ -607,6 +607,8 @@ data class Me(
     @SerialName("pii_until") val piiUntil: String? = null,
     @SerialName("mfa_enabled") val mfaEnabled: Boolean? = null,
     @SerialName("menus") val menus: List<JsonElement>? = null,
+    @SerialName("modules") val modules: Map<String, String>? = null,
+    @SerialName("brands") val brands: List<Long>? = null,
 )
 
 @Serializable

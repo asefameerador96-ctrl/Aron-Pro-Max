@@ -98,7 +98,7 @@ Source: contract/openapi.yaml, version 1.4.0.
 - `schemas/ReauthResponse.yaml` (327 B)
 - `schemas/Jwks.yaml` (212 B)
 - `schemas/JwkEcPublic.yaml` (465 B)
-- `schemas/Me.yaml` (985 B)
+- `schemas/Me.yaml` (2110 B)
 - `schemas/JwkEcPublicDevice.yaml` (394 B)
 - `schemas/DeviceInfo.yaml` (680 B)
 - `schemas/EnrolDeviceRequest.yaml` (2083 B)

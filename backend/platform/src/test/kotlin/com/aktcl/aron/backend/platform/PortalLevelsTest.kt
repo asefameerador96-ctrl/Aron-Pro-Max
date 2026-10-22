@@ -55,13 +55,17 @@ class PortalLevelsTest {
     }
 
     @Test
-    fun aPhoneTokenServesOnlyItsFlavoursRoleExceptTheUploadGrant() {
+    fun aPhoneTokenServesOnlyItsFlavoursRoleTheUploadGrantIncluded() {
         for (r in listOf(Role.SR, Role.AMO, Role.TSO)) assertNull(outcome(r, "POST", "/v1/sync/batch", r.wire.lowercase()))
         // Checker B1: a role change does not ride an old phone token.
         for (r in Role.entries - Role.TSO) assertEquals(ProblemCode.ERR_FORBIDDEN, outcome(r, "GET", "/v1/me", "tso"), "$r on a tso token")
         assertEquals(ProblemCode.ERR_FORBIDDEN, outcome(Role.BRAND, "GET", "/v1/reports", "sr"))
-        val upload = p(Role.BRAND, "sr").copy(audience = Audience.UPLOAD)
-        PortalLevels.check(upload, "POST", "/v1/sync/batch")
+        // Checker round 2 (B1-bis): an upload token of a non-field role never reaches sync/batch with that role's reach.
+        for (r in Role.entries - Role.SR) {
+            val upload = p(r, "sr").copy(audience = Audience.UPLOAD)
+            assertEquals(ProblemCode.ERR_FORBIDDEN, try { PortalLevels.check(upload, "POST", "/v1/sync/batch"); null } catch (e: ApiProblem) { e.code }, "$r upload on an sr phone")
+        }
+        PortalLevels.check(p(Role.SR, "sr").copy(audience = Audience.UPLOAD), "POST", "/v1/sync/batch")
         assertEquals("/v1/auth/logout", PortalLevels.normalise("/v1/%61uth//logout"))
         assertNull(PortalLevels.normalise("/v1/me/.."))
     }

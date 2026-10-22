@@ -179,7 +179,7 @@ class Wiring(
             val guard = AuthGuardDeps(AccessTokenVerifier(keys, clock), users, config, clock, piiReveals)
             val geo = GeoRepository(db, clock)
             val reach = SqlReachResolver(db, geo, clock)
-            val issuer = TokenIssuer(keys, config, clock)
+            val issuer = TokenIssuer(keys, config, clock, grants = users)
             // Its own one-connection pool: the writer never takes a request connection, and never counts as a pool
             // waiter (admission control sheds reads when the write pool has waiters).
             val securityDb = Database(Database.pool(s.dbUrl, s.dbUser, s.dbPassword, 1, "aron-security"))

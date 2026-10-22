@@ -37,6 +37,10 @@ data class AronPrincipal(
      * true only before this instant; the guard then also requires the role's live `pii.reveal` grant and an audit row.
      */
     val piiUntil: Instant? = null,
+    /** ADMIN web tokens once the grants are deployed: `{module: "r"|"w"}` from `app.user_module_grant` (D-ROLES-02); null = no claim. */
+    val modules: Map<String, String>? = null,
+    /** BRAND web tokens: the product-tree brand node ids of `app.user_brand_scope` (D-ROLES-02); null = no claim. */
+    val brands: List<Long>? = null,
 ) {
     val isPhone: Boolean get() = flavour != "web"
 }
@@ -76,6 +80,15 @@ class AccessTokenVerifier(private val keys: JwtKeys, private val clock: AronCloc
                 jti = c.jwtid ?: throw unauth("no jti"),
                 expiresAt = exp,
                 piiUntil = piiUntil,
+                modules = c.getJSONObjectClaim("modules")?.let { m ->
+                    // Only names and levels this server mints; anything else is a token we never signed in this shape.
+                    m.entries.associate { (k, v) ->
+                        if (k !in AdminModules.ALL || (v != "r" && v != "w")) throw unauth("bad modules claim")
+                        k to (v as String)
+                    }
+                },
+                brands = (c.getClaim("brands") as? List<*>)?.map { (it as? Number)?.toLong()?.takeIf { id -> id >= 1 } ?: throw unauth("bad brands claim") }
+                    ?: c.getClaim("brands")?.let { throw unauth("bad brands claim") },
             )
         } catch (e: ApiProblem) {
             throw e

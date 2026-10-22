@@ -60,9 +60,9 @@ object PortalLevels {
         if (p.isPhone) {
             // A phone token serves only its flavour's field role: after a role change (TSO to BRAND, SR to TSO, ...) a
             // token minted for the old app is refused here, so the new role's national reach never rides a phone token.
-            // The upload grant (sync/batch, logout only) is exempt: captured rows always reach the server (D24-57) and
-            // ingest judges every record by the uploader's current assignment.
-            if (p.audience != Audience.UPLOAD && PHONE_ROLE[p.flavour] != p.role) throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "this account cannot use this app")
+            // An upload token is minted with the flavour's role even after a role change (AuthModule refresh, checker round 2
+            // B1-bis); one of any other role (minted before that fix) is refused; its rows wait on the phone until the next upload refresh.
+            if (PHONE_ROLE[p.flavour] != p.role) throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "this account cannot use this app")
             return
         }
         val m = if (method == "HEAD") "GET" else method
