@@ -1,0 +1,44 @@
+MdmPolicy:
+  type: object
+  required:
+  - policy_id
+  - name
+  - allowed_packages
+  - block_windows
+  - kiosk
+  - location_sampling
+  - version
+  - device_count
+  - updated_at
+  additionalProperties: false
+  properties:
+    policy_id:
+      $ref: '#/components/schemas/Id'
+    name:
+      type: string
+      maxLength: 80
+    description:
+      type:
+      - string
+      - 'null'
+      maxLength: 300
+    allowed_packages:
+      type: array
+      items:
+        $ref: '#/components/schemas/PackageName'
+    block_windows:
+      type: array
+      items:
+        $ref: '#/components/schemas/MdmBlockWindow'
+    kiosk:
+      $ref: '#/components/schemas/MdmKiosk'
+    location_sampling:
+      $ref: '#/components/schemas/MdmLocationSampling'
+    version:
+      type: integer
+      minimum: 1
+    device_count:
+      type: integer
+      minimum: 0
+    updated_at:
+      $ref: '#/components/schemas/Timestamp'

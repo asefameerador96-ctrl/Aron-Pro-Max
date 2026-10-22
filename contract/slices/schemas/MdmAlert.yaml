@@ -1,0 +1,29 @@
+MdmAlert:
+  type: object
+  required:
+  - device_id
+  - flag
+  - since
+  additionalProperties: false
+  properties:
+    device_id:
+      $ref: '#/components/schemas/Id'
+    device_uuid:
+      $ref: '#/components/schemas/Uuid'
+    users:
+      type: array
+      maxItems: 4
+      items:
+        type: string
+        maxLength: 80
+    flavour:
+      $ref: '#/components/schemas/AppFlavour'
+    flag:
+      $ref: '#/components/schemas/MdmComplianceFlag'
+    since:
+      $ref: '#/components/schemas/Timestamp'
+    detail:
+      type:
+      - string
+      - 'null'
+      maxLength: 200

@@ -243,6 +243,12 @@ parameters:
     required: true
     schema:
       $ref: '#/components/schemas/Id'
+  MdmPolicyIdPath:
+    name: policy_id
+    in: path
+    required: true
+    schema:
+      $ref: '#/components/schemas/Id'
   ChangeIdPath:
     name: change_id
     in: path

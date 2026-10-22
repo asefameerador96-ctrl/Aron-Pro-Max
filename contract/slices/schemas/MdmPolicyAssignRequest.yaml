@@ -1,0 +1,17 @@
+MdmPolicyAssignRequest:
+  type: object
+  required:
+  - policy_id
+  - reason
+  additionalProperties: false
+  properties:
+    policy_id:
+      type:
+      - integer
+      - 'null'
+      format: int64
+      minimum: 1
+    reason:
+      type: string
+      minLength: 3
+      maxLength: 300

@@ -1,0 +1,10 @@
+MdmCommandState:
+  type: string
+  enum:
+  - pending_approval
+  - queued
+  - sent
+  - acked
+  - failed
+  - expired
+  - rejected

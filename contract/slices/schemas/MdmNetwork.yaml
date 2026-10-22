@@ -1,0 +1,7 @@
+MdmNetwork:
+  type: string
+  enum:
+  - wifi
+  - mobile
+  - offline
+  - unknown

@@ -1,0 +1,32 @@
+path: /v1/admin/mdm/policies/{policy_id}
+method: put
+operation:
+  tags:
+  - admin-mdm
+  operationId: updateMdmPolicy
+  summary: Replace an MDM policy (optimistic version); devices on it get an apply_policy command.
+  parameters:
+  - $ref: '#/components/parameters/MdmPolicyIdPath'
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          $ref: '#/components/schemas/MdmPolicyWrite'
+  responses:
+    '200':
+      description: Policy after the update.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/MdmPolicy'
+    '400':
+      $ref: '#/components/responses/BadRequest'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'
+    '404':
+      $ref: '#/components/responses/NotFound'
+    '409':
+      $ref: '#/components/responses/Conflict'
