@@ -140,3 +140,7 @@ green run of the exact sha). Usage stays `allowed` on the five-hour window.
 ## Update 2026-10-22 18:20 UTC (wave 4, lead)
 - Train 9 (web-admin house / working-days / SKU-pack UI and the Users+Credentials warning; backend-reports 1.5.0 dashboard contract, national summaries, active-house filter; db V0107 + seed 07) pushes when its two remaining lane runs are green, about 18:45 UTC, on dev about 19:40 UTC. Train 10 (backend-authz module grants, Me.modules) on dev about 20:30 UTC. Then web-dashboard #8 starts (national dashboard on dev 2026-10-23 morning), backend-admin #6 and qa's data-flow trace (2026-10-23).
 - Owner-dependent items unchanged (printer export from build 1331, report docs, MDM screenshots, Q1-Q4, packshots, `promote hardening`).
+
+## Update 2026-10-22 19:20 UTC (wave 4, lead)
+- Train 9 (web-admin UI, backend-reports 1.5.0 dashboard contract and national summaries, db V0107 + seed 07) is in INT CI since 18:37; dev deploy about 19:35 UTC. Train 10 (backend-authz module grants, brand and house scope) about 20:30 UTC; train 11 (mdm: token-based MDM grants, breadcrumb install, sampling seam; plus db V0108 checked_in_at and backend-reports F-DASH-010) about 21:30 UTC.
+- Tonight after train 9's deploy: web-dashboard #8 and qa (Gulshan-Banani data-flow trace) start. 2026-10-23 unchanged: national dashboard on dev, web-admin outlet-import and user-access UI, android-units AMO/TSO aggregates, backend-admin #6 follow-ups (after train 10). Owner-dependent items unchanged.
