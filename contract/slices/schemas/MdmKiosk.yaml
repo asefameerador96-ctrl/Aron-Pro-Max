@@ -1,0 +1,14 @@
+MdmKiosk:
+  type: object
+  required:
+  - enabled
+  additionalProperties: false
+  properties:
+    enabled:
+      type: boolean
+    packages:
+      type: array
+      maxItems: 10
+      items:
+        $ref: '#/components/schemas/PackageName'
+      description: Lock-task packages; the first is started.

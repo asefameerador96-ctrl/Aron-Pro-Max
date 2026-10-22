@@ -1,0 +1,22 @@
+path: /v1/admin/mdm/policies/{policy_id}
+method: get
+operation:
+  tags:
+  - admin-mdm
+  operationId: getMdmPolicy
+  summary: One MDM policy.
+  parameters:
+  - $ref: '#/components/parameters/MdmPolicyIdPath'
+  responses:
+    '200':
+      description: Policy.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/MdmPolicy'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'
+    '404':
+      $ref: '#/components/responses/NotFound'

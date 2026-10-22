@@ -1,0 +1,46 @@
+MdmPolicyWrite:
+  type: object
+  required:
+  - name
+  - allowed_packages
+  - block_windows
+  - kiosk
+  - location_sampling
+  additionalProperties: false
+  properties:
+    name:
+      type: string
+      minLength: 2
+      maxLength: 80
+    description:
+      type:
+      - string
+      - 'null'
+      maxLength: 300
+    allowed_packages:
+      type: array
+      maxItems: 300
+      items:
+        $ref: '#/components/schemas/PackageName'
+      description: Apps never suspended by a block window (the Aron apps are always allowed).
+    block_windows:
+      type: array
+      maxItems: 14
+      items:
+        $ref: '#/components/schemas/MdmBlockWindow'
+    kiosk:
+      $ref: '#/components/schemas/MdmKiosk'
+    location_sampling:
+      $ref: '#/components/schemas/MdmLocationSampling'
+    version:
+      type:
+      - integer
+      - 'null'
+      minimum: 1
+      description: Required on update; must equal the stored version.
+    reason:
+      type:
+      - string
+      - 'null'
+      minLength: 3
+      maxLength: 300

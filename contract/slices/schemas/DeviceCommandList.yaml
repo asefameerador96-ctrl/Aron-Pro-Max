@@ -1,0 +1,11 @@
+DeviceCommandList:
+  type: object
+  required:
+  - items
+  additionalProperties: false
+  properties:
+    items:
+      type: array
+      maxItems: 50
+      items:
+        $ref: '#/components/schemas/DeviceCommand'
