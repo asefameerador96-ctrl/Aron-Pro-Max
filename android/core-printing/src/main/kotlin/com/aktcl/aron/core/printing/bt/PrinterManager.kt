@@ -121,6 +121,8 @@ class PrinterManager(
      * bytes: white dots that finish the stranded band, or NULs, which ESC/POS ignores, if the printer was reset.
      */
     private var strandedBytes = 0
+    /** The stranded command ends with LF (an ESC * band): the padding ends with a real LF so the band prints and clears. */
+    private var strandedEndsWithLf = false
     private val printed = object : LinkedHashMap<String, Boolean>(64, 0.75f, false) {
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Boolean>?) = size > 500
     }
@@ -360,7 +362,9 @@ class PrinterManager(
         if (queryPaper(t) == true) return PrintOutcome.Failed(PrintFailure.PAPER_OUT)
         val commands = ArrayList<ByteArray>()
         val padding = strandedBytes > 0
-        if (padding) commands.add(ByteArray(strandedBytes))
+        // Zeros finish the stranded data; an ESC * band also gets its LF, so it prints (white-filled) and leaves the line
+        // buffer empty: cheap firmware whose ESC @ keeps the line buffer would otherwise join it to the next band.
+        if (padding) commands.add(ByteArray(strandedBytes).also { if (strandedEndsWithLf) it[it.size - 1] = 0x0A })
         commands.addAll(
             when (store.load()?.imageMode) {
                 ImageMode.BIT_IMAGE -> EscPos.bitImageJob(job.bitmap)
@@ -375,8 +379,10 @@ class PrinterManager(
         for ((index, cmd) in commands.withIndex()) {
             var off = 0
             // Raster commands and the padding before them leave the printer waiting when cut short.
-            val raster = (padding && index == 0) || (cmd.size > 1 && cmd[0].toInt() == 0x1D && cmd[1].toInt() == 0x76) ||
-                (cmd.size > 1 && cmd[0].toInt() == 0x1B && cmd[1].toInt() == 0x2A) // ESC * bands wait for their data too
+            val bitImage = cmd.size > 1 && cmd[0].toInt() == 0x1B && cmd[1].toInt() == 0x2A // ESC * bands wait for their data too
+            val raster = (padding && index == 0) || (cmd.size > 1 && cmd[0].toInt() == 0x1D && cmd[1].toInt() == 0x76) || bitImage
+            // by command type, never by the last byte: a GS v 0 band may end with the data byte 0x0A
+            val endsWithLf = if (padding && index == 0) strandedEndsWithLf else bitImage
             while (off < cmd.size) {
                 val n = minOf(pacing.safeChunkBytes, cmd.size - off)
                 // Estimated bytes still in the printer's buffer; wait until this chunk fits.
@@ -389,6 +395,7 @@ class PrinterManager(
                 }
                 // If this write breaks the link, assume none of it arrived: the printer may still want the rest.
                 strandedBytes = if (raster) cmd.size - off else 0
+                strandedEndsWithLf = endsWithLf
                 guardedWrite(t, cmd.copyOfRange(off, off + n))
                 strandedBytes = if (raster && off + n < cmd.size) cmd.size - off - n else 0
                 off += n

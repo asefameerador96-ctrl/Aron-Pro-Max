@@ -21,6 +21,23 @@ class SimPrinter(
     var answersStatus = true
     /** Cheap firmware: answers DLE EOT only once everything before it has printed (not in real time). */
     var statusAfterDrain = false
+    /**
+     * A printer that stayed on (out of range) while the link broke: its parser keeps a half-received command across
+     * reconnects instead of starting clean (the default models a printer that was switched off and on).
+     */
+    var stayedOn = false
+    /** False for firmware whose ESC @ does not empty the line buffer of a pending ESC * band. */
+    var initClearsLineBuffer = true
+    /** An ESC * band arrived while another still waited for its LF: two bands on one line, garbage on paper. */
+    var mergedLine = false
+    /** An ESC * band was printed with a line spacing under 24 dots: bands overlap. */
+    var badSpacing = false
+
+    // parser state: per printer, so a printer that stayed on keeps it across links
+    private var pending = ByteArrayOutputStream()
+    private var parsed = 0
+    private var lineBuf: List<ByteArray>? = null
+    private var spacing = 30
     var hangWrites = false
     /** Turn off once this many bytes have arrived in total (across sessions). */
     var switchOffAtByte: Long = Long.MAX_VALUE
@@ -50,8 +67,6 @@ class SimPrinter(
         /** When each queued reply may be read (the same order as [replies]). */
         private val readyAt = java.util.concurrent.ConcurrentLinkedQueue<Long>()
         private var open = false
-        private val pending = ByteArrayOutputStream()
-        private var parsed = 0
         private var level = 0L
         private var lastMs = 0L
         private lateinit var paper: MutableList<ByteArray>
@@ -72,6 +87,7 @@ class SimPrinter(
             level = 0
             paper = ArrayList()
             sessions.add(paper)
+            if (!stayedOn) { pending = ByteArrayOutputStream(); parsed = 0; lineBuf = null; spacing = 30 }
             link = this
         }
 
@@ -116,8 +132,8 @@ class SimPrinter(
             while (i < d.size) {
                 val b = d[i].toInt() and 0xFF
                 when {
-                    b == 0x1B && i + 1 < d.size && d[i + 1].toInt() == 0x40 -> i += 2
-                    b == 0x1B && i + 2 < d.size && d[i + 1].toInt() == 0x33 -> i += 3
+                    b == 0x1B && i + 1 < d.size && d[i + 1].toInt() == 0x40 -> { if (initClearsLineBuffer) lineBuf = null; spacing = 30; i += 2 }
+                    b == 0x1B && i + 2 < d.size && d[i + 1].toInt() == 0x33 -> { spacing = d[i + 2].toInt() and 0xFF; i += 3 }
                     b == 0x1B && i + 2 < d.size && d[i + 1].toInt() == 0x64 -> i += 3
                     b == 0x10 && i + 2 < d.size && d[i + 1].toInt() == 0x04 -> {
                         if (answersStatus) {
@@ -139,22 +155,29 @@ class SimPrinter(
                         i += 8 + w * h
                     }
                     b == 0x1B && i + 4 < d.size && d[i + 1].toInt() == 0x2A -> {
-                        // ESC * 33 nL nH: 24-dot bit image, 3 bytes per column (MSB top), printed by the LF after it
+                        // ESC * 33 nL nH: 24-dot bit image, 3 bytes per column (MSB top), into the line buffer
                         if (d[i + 2].toInt() != 33) throw AssertionError("ESC * mode ${d[i + 2]}")
                         val n = (d[i + 3].toInt() and 0xFF) or ((d[i + 4].toInt() and 0xFF) shl 8)
-                        if (i + 5 + 3 * n + 1 > d.size) break
-                        if (d[i + 5 + 3 * n].toInt() != 0x0A) throw AssertionError("ESC * band without LF")
+                        if (i + 5 + 3 * n > d.size) break
+                        if (lineBuf != null) mergedLine = true
                         val w = (n + 7) / 8
-                        for (r in 0 until 24) {
-                            if (paperRows <= 0) break
-                            paperRows--
+                        lineBuf = (0 until 24).map { r ->
                             val row = ByteArray(w)
                             for (x in 0 until n) if (d[i + 5 + 3 * x + r / 8].toInt() and (0x80 ushr (r % 8)) != 0) row[x / 8] = (row[x / 8].toInt() or (0x80 ushr (x % 8))).toByte()
-                            paper.add(row)
+                            row
                         }
-                        i += 5 + 3 * n + 1
+                        i += 5 + 3 * n
                     }
-                    b == 0x1B && i + 1 < d.size && d[i + 1].toInt() == 0x32 -> i += 2 // ESC 2
+                    b == 0x0A -> {
+                        // LF prints the line buffer (an ESC * band); a band needs a line spacing of 24 to touch the next
+                        lineBuf?.let { rows ->
+                            if (spacing < 24) badSpacing = true
+                            for (r in rows) { if (paperRows <= 0) break; paperRows--; paper.add(r) }
+                        }
+                        lineBuf = null
+                        i++
+                    }
+                    b == 0x1B && i + 1 < d.size && d[i + 1].toInt() == 0x32 -> { spacing = 30; i += 2 } // ESC 2
                     b == 0x00 -> i++ // NUL is ignored by ESC/POS printers
                     b == 0x1B || b == 0x10 || b == 0x1D -> break // incomplete command: wait for more bytes
                     else -> throw AssertionError("garbage byte 0x${b.toString(16)} at $i")

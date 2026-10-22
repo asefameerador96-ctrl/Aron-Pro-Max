@@ -151,6 +151,7 @@ class PrinterManagerTest {
         assertEquals(ImageMode.BIT_IMAGE, store.p!!.imageMode)
         assertEquals(PrintOutcome.Printed, m.print(PrintJob("m1", memo)))
         assertFalse(sim.overflowed)
+        assertFalse("bands must touch: line spacing 24", sim.badSpacing)
         val want = expectedRows(memo)
         val got = sim.sessions.single()
         assertEquals(0, got.size % 24)
@@ -180,6 +181,45 @@ class PrinterManagerTest {
         val want = expectedRows(memo)
         val last = sim.sessions.last()
         want.indices.forEach { assertArrayEquals("row $it", want[it], last[it]) }
+    }
+
+    /**
+     * Checker T1 (9d02bf22) #1/#2: a printer that stayed on keeps the half-received ESC * band. The padding must end
+     * with the LF so that band prints and empties the line buffer; with cheap firmware whose ESC @ keeps the line
+     * buffer, an all-zero padding left the band waiting and the retry's first band joined it on one line.
+     */
+    @Test fun bitImageRetryOnAPrinterThatStayedOnPrintsTheStrandedBandThenTheWholeMemo() = runTest {
+        val (sim, m) = setup()
+        sim.stayedOn = true
+        sim.initClearsLineBuffer = false
+        m.setImageMode(ImageMode.BIT_IMAGE)
+        sim.switchOffAtByte = 3L + 5 + 1158 * 3 + 600 // in the middle of the fourth band
+        assertEquals(PrintOutcome.Failed(PrintFailure.DISCONNECTED), m.print(PrintJob("m1", memo)))
+        sim.on = true
+        sim.switchOffAtByte = Long.MAX_VALUE
+        assertEquals(PrintOutcome.Printed, m.print(PrintJob("m1", memo)))
+        assertFalse("two bands on one line", sim.mergedLine)
+        assertFalse(sim.badSpacing)
+        val want = expectedRows(memo)
+        val last = sim.sessions.last()
+        assertEquals("the stranded band, then the memo", 24, last.size - (want.size + 23) / 24 * 24)
+        want.indices.forEach { assertArrayEquals("row $it", want[it], last[24 + it]) }
+    }
+
+    @Test fun rasterRetryOnAPrinterThatStayedOnFinishesTheStrandedBandThenPrintsTheWholeMemo() = runTest {
+        val (sim, m) = setup()
+        sim.stayedOn = true
+        sim.switchOffAtByte = 3L + 5 + 1160 * 4 + 500 // in the middle of the fifth band
+        assertEquals(PrintOutcome.Failed(PrintFailure.DISCONNECTED), m.print(PrintJob("m1", memo)))
+        sim.on = true
+        sim.switchOffAtByte = Long.MAX_VALUE
+        assertEquals(PrintOutcome.Printed, m.print(PrintJob("m1", memo)))
+        val want = expectedRows(memo)
+        val last = sim.sessions.last()
+        val head = last.size - want.size
+        assertTrue("the stranded band's rows come first: $head", head in 1..24)
+        want.indices.forEach { assertArrayEquals("row $it", want[it], last[head + it]) }
+        assertFalse(sim.overflowed)
     }
 
     @Test fun stuckWriteTimesOutAsDisconnected() = runTest {
