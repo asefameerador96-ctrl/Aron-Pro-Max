@@ -301,6 +301,8 @@ class LoginService(
         if (p.isPhone || p.audience != Audience.API) throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "a reveal is for web sessions only")
         val user = users.findById(p.userId) ?: throw ApiProblem(ProblemCode.ERR_UNAUTHENTICATED)
         if (user.status != "active") throw ApiProblem(ProblemCode.ERR_AUTH_USER_DISABLED, "user is disabled")
+        // D-ROLES-02 (checker round 2, N2): a reveal mints a web token, so it refuses SR and AMO like every other web mint.
+        if (user.role in com.aktcl.aron.backend.platform.PortalLevels.NO_PORTAL) throw ApiProblem(ProblemCode.ERR_AUTH_PORTAL_NOT_ALLOWED, "this account uses the field app only")
         // Before any hashing: a role without the grant learns nothing about the password.
         if (com.aktcl.aron.backend.platform.PiiReveal.PERMISSION !in p.permissions) throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "this role may not reveal personal data")
         val needsCode = user.role.wire in mfaRoles() || user.mfaEnabled

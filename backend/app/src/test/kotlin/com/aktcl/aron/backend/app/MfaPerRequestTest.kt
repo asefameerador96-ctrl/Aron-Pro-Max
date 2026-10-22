@@ -54,6 +54,7 @@ class MfaPerRequestTest {
         fresh.db.jdbi.useHandle<Exception> { h ->
             h.createUpdate("INSERT INTO app.app_user (username, full_name, role, password_hash, must_change_password) VALUES ('adminz1', 'Test', 'ADMIN', :p, false)")
                 .bind("p", PasswordHasher().hash(password)).execute()
+            com.aktcl.aron.backend.platform.AdminGrantsFixture.grantAllModules(h, "adminz1")
             h.execute("INSERT INTO app.cfg_value (key, scope_type, scope_id, value, effective_from, config_version, reason) SELECT 'cfg.auth.mfa_required_roles', 'global', 0, '[]'::jsonb, now() - interval '1 day', max(config_version), 'test: MFA off at first' FROM app.cfg_version")
         }
         wiring = Wiring.production(Settings.load(mapOf("ARON_ROLE" to "api", "ARON_DB_URL" to fresh.url, "ARON_JWT_SIGNING_KEY_FILE" to key.absolutePath)), clock)

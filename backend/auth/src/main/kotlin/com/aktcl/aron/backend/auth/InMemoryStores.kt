@@ -19,6 +19,13 @@ class InMemoryRefreshStore : RefreshStore {
         return id
     }
 
+    /**
+     * Read under the same lock as [rotate], so a reader sees a rotation whole (child row present, `usedAt` and `replacedBy`
+     * both set) or not at all, as a database transaction gives the Jdbi store. Without it a concurrent use of the same token
+     * could see the parent used before its child existed and answer 401 (or a reuse) to a legitimate replay (lead,
+     * RefreshTest.concurrentUseOfOneTokenRotatesOnce intermittent, 2026-10-22).
+     */
+    @Synchronized
     override fun findToken(hash: String): TokenView? {
         val r = tokens[hash] ?: return null
         return TokenView(hash, families.getValue(r.familyId), r.expiresAt, r.usedAt, r.replacedBy)
@@ -28,9 +35,9 @@ class InMemoryRefreshStore : RefreshStore {
     override fun rotate(hash: String, at: Instant, childHash: String, childExpiresAt: Instant): Boolean {
         val r = tokens[hash] ?: return false
         if (r.usedAt != null) return false
-        r.usedAt = at
-        r.replacedBy = childHash
         tokens[childHash] = Row(r.familyId, childExpiresAt)
+        r.replacedBy = childHash
+        r.usedAt = at
         return true
     }
 

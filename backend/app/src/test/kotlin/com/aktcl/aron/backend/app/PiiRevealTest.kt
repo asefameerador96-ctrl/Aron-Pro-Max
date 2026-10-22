@@ -80,6 +80,7 @@ class PiiRevealTest {
         val id = fresh.db.jdbi.withHandle<Long, Exception> { h ->
             h.createQuery("INSERT INTO app.app_user (username, full_name, role, password_hash, must_change_password, phone) VALUES (:u, 'Test', :r, :p, false, :ph) RETURNING id")
                 .bind("u", name).bind("r", role).bind("p", hasher.hash(password)).bind("ph", withPhone).mapTo(Long::class.java).one()
+                .also { if (role == "ADMIN") com.aktcl.aron.backend.platform.AdminGrantsFixture.grantAllModules(h, name) }
         }
         return id to name
     }

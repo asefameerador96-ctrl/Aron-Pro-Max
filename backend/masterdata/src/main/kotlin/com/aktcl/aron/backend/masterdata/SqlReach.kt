@@ -32,7 +32,7 @@ class GeoRepository(private val db: Database, private val clock: AronClock = Aro
     private fun load(): Geo = db.jdbi.withHandle<Geo, Exception> { h ->
         fun pairs(sql: String) = h.createQuery(sql).map { rs, _ -> rs.getLong(1) to rs.getLong(2) }.list().toMap()
         val names = HashMap<Pair<String, Long>, Pair<String?, String?>>()
-        for (t in listOf("wing", "division", "territory", "zone", "route")) {
+        for (t in listOf("wing", "division", "territory", "house", "zone", "route")) {
             h.createQuery("SELECT id, code, name FROM app.$t").map { rs, _ -> (t to rs.getLong(1)) to (rs.getString(2) to rs.getString(3)) }
                 .list().forEach { names[it.first] = it.second }
         }
@@ -42,6 +42,7 @@ class GeoRepository(private val db: Database, private val clock: AronClock = Aro
             divisionWing = pairs("SELECT id, wing_id FROM app.division"),
             routeZone = pairs("SELECT id, zone_id FROM app.route"),
             names = names,
+            zoneHouse = pairs("SELECT id, house_id FROM app.zone WHERE house_id IS NOT NULL"),
         )
     }
 }
@@ -57,7 +58,13 @@ class SqlReachResolver(private val db: Database, private val geo: GeoRepository,
 
     override fun reach(userId: Long, role: Role, scopeVersion: Long, businessDate: LocalDate): Reach {
         val now = clock.now().toEpochMilli()
-        val key = Key(userId, scopeVersion, businessDate)
+        // Keyed by the user's CURRENT scope version and role (round 2, N-a): an upload token minted before a role change
+        // (sync/batch skips the scope-version check) must not hit an entry computed while the old role was current.
+        val (current, sv) = db.jdbi.withHandle<Pair<Role?, Long>, Exception> { h ->
+            h.createQuery("SELECT role, scope_version FROM app.app_user WHERE id = :u").bind("u", userId)
+                .map { rs, _ -> Role.entries.firstOrNull { it.wire == rs.getString(1) } to rs.getLong(2) }.findOne().orElse(null to scopeVersion)
+        }
+        val key = Key(userId, sv, businessDate)
         cache[key]?.let { (at, r) -> if (now - at < 300_000 && r.role == role) return r }
         val (scope, asg) = db.jdbi.withHandle<Pair<List<ScopeRow>, List<AssignmentRow>>, Exception> { h ->
             h.createQuery("SELECT node_type, node_id, valid_from, valid_to FROM app.user_scope WHERE user_id = :u").bind("u", userId)
@@ -65,7 +72,7 @@ class SqlReachResolver(private val db: Database, private val geo: GeoRepository,
                 h.createQuery("SELECT route_id, kind, valid_from, valid_to FROM app.route_assignment WHERE user_id = :u").bind("u", userId)
                     .map { rs, _ -> AssignmentRow(rs.getLong(1), rs.getString(2), rs.getObject(3, LocalDate::class.java), rs.getObject(4, LocalDate::class.java)) }.list()
         }
-        val r = ReachCalculator.compute(userId, role, businessDate, scope, asg, geo.geoCovering(routeIds = asg.map { it.routeId }))
+        val r = ReachCalculator.compute(userId, role, businessDate, scope, asg, geo.geoCovering(routeIds = asg.map { it.routeId }), current)
         if (cache.size > 50_000) cache.clear()
         cache[key] = now to r
         return r

@@ -80,6 +80,7 @@ class BackfillMatchCheckerTest {
                 )
             }
             h.execute("INSERT INTO app.user_scope (user_id, node_type, node_id, valid_from, reason) SELECT u.id, 'zone', z.id, DATE '2026-01-01', 'test' FROM app.app_user u, app.zone z WHERE u.username IN ('admin2002', 'support2002') AND z.code = 'Z-OTHER'")
+            com.aktcl.aron.backend.platform.AdminGrantsFixture.grantAllModules(h, "admin2002")
             h.createUpdate("UPDATE app.app_user SET password_hash = :h WHERE pilot").bind("h", PasswordHasher().hash(password)).execute()
             routeId = h.createQuery("SELECT id FROM app.route WHERE code = 'MIR-SR-D'").mapTo(Long::class.java).one()
             // D-ROLES-02: no portal login for SR/AMO; amo1001 calls from an enrolled AMO phone bound to it (as ApiWorld.AMO_PHONE).
