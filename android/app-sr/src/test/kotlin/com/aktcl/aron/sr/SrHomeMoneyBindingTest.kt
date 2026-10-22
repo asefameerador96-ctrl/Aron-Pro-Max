@@ -20,7 +20,7 @@ class SrHomeMoneyBindingTest {
     private val label = { c: String -> c }
 
     @Test fun theDiscountNeverRendersUnderTheQcLabel() {
-        val m = SrHomeReads.money(day, label, UiLocale.EN, sticksSold = 0)
+        val m = SrHomeReads.money(day, label, UiLocale.EN, packetsSold = 0)
         assertEquals("437.50", m.offerDiscountBare)
         assertEquals("0.00", m.qcBare)
         assertEquals("437.50", m.totalDiscountBare)

@@ -91,7 +91,7 @@ class HomeScreenTest {
     @Test fun aDiscountCanNeverRenderUnderTheQcLabel() {
         // each row of the panel is bound to its own field: a 437.50 discount with no QC reads discount 437.50 and QC 0.00
         val m = HomeMoneyLines(
-            emptyList(), "4,828.50 ৳", null, null, "4,391.00 ৳", sticksSold = 0,
+            emptyList(), "4,828.50 ৳", null, null, "4,391.00 ৳", packetsSold = 0,
             grossBare = "4,828.50", offerDiscountBare = "437.50", qcBare = "0.00", netBare = "4,391.00", totalDiscountBare = "437.50", drpDiscountBare = "0.00", totalQcBare = "0.00",
         )
         show(AppLanguage.EN, hero = hero, kpis = kpis, money = m)

@@ -148,8 +148,8 @@ data class HomeMoneyLines(
     val discountText: String?,
     val qcText: String?,
     val grandTotalText: String,
-    /** Cigarette and bidi sticks sold today: the sales panel's headline figure. */
-    val sticksSold: Long = 0L,
+    /** Cigarette and bidi packets sold today (entry unit, docs/34 s4.2): the sales panel's headline figure. */
+    val packetsSold: Long = 0L,
     /**
      * The bare figures of the two reference panels, EACH bound to its own field (a discount can never render under the QC label):
      * the gross, the offer discount (zero while docs/27 defers programmes), the QC deduction, the net, then the second panel's

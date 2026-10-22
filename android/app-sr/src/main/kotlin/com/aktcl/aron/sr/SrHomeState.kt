@@ -74,13 +74,13 @@ object SrHomeReads {
      * discount less the DRP part (zero while docs/27 defers the programmes), the QC deduction is `totalQcMtk`, and neither can
      * land under the other's label. Deductions in the older one-line fields keep a true minus.
      */
-    fun money(m: HomeMoney, categoryLabel: (String) -> String, locale: UiLocale, sticksSold: Long = 0L) = HomeMoneyLines(
+    fun money(m: HomeMoney, categoryLabel: (String) -> String, locale: UiLocale, packetsSold: Long = 0L) = HomeMoneyLines(
         categories = m.categories.filter { it.netMtk != 0L }.map { HomeMoneyLine(categoryLabel(it.categoryCode), Formats.money(it.netMtk, locale), bare(it.netMtk, locale)) },
         grossText = Formats.money(m.grossMtk, locale),
         discountText = m.totalDiscountMtk.takeIf { it != 0L }?.let { MINUS + Formats.money(it, locale) },
         qcText = m.totalQcMtk.takeIf { it != 0L }?.let { MINUS + Formats.money(it, locale) },
         grandTotalText = Formats.money(m.grandTotalMtk, locale),
-        sticksSold = sticksSold,
+        packetsSold = packetsSold,
         grossBare = bare(m.grossMtk, locale),
         offerDiscountBare = bare(m.totalDiscountMtk - m.drpDiscountMtk, locale),
         qcBare = bare(m.totalQcMtk, locale),
@@ -103,7 +103,7 @@ object SrHomeReads {
     suspend fun snapshot(day: SrDay, attendance: AttendanceState, locale: UiLocale, categoryLabel: (String) -> String, unitLabel: (String) -> String): SrHomeSnapshot =
         withContext(Dispatchers.IO) {
             val (strip, money) = day.sale.kpi()
-            val sticks = day.sale.sticksSold()
+            val sticks = day.sale.packetsSold()
             val date = day.businessDate()
             val dao = day.database.captureDao()
             val state = dayState(strip, attendance, stockIssued = dao.stockOn(date).isNotEmpty(), submitted = dao.daySubmitsOn(date).isNotEmpty())

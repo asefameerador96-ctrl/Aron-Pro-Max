@@ -120,7 +120,7 @@
     <string name="hm_target_title">আজকের অগ্রগতি</string>
     <string name="hm_target_details">বিস্তারিত</string>
     <string name="hm_sales_title">বিক্রয়</string>
-    <string name="hm_sales_unit">(স্টিক)</string>
+    <string name="hm_sales_unit">(প্যাকেট)</string>
     <string name="hm_total_discount">মোট ডিসকাউন্ট</string>
     <string name="hm_drp_discount">DRP ডিসকাউন্ট</string>
     <string name="hm_total_qc">মোট QC</string>

@@ -130,7 +130,7 @@ fun MemoHost(day: SrDay, sunlight: Boolean, onSunlight: (Boolean) -> Unit, onEdi
         val sel = st.selected
         val h = history
         when {
-            h != null -> SaleHistoryScreen(h, offlineBanner = true, skuName = kit::skuName)
+            h != null -> SaleHistoryScreen(h, offlineBanner = true, skuName = kit::skuName, skuCategory = kit::skuCategoryCode)
             sel == null -> MemoMenuScreen(st.rows, kit::outletName, onOpen = { vm.open(it.memoUuid) })
             else -> {
                 MemoDetailView(sel, st.canMarkPaid, st.remainingDueMtk, kit::skuName, onPrint = vm::reprint, onEdit = { onEdit(sel.memo.memoUuid) }, onMarkPaid = vm::markPaid, skuCategory = kit::skuCategoryCode)
@@ -193,7 +193,7 @@ fun KpiHost(day: SrDay) {
         "cigarette" to stringResource(R.string.sr_cat_cigarette), "bidi" to stringResource(R.string.sr_cat_bidi),
         "lighter" to stringResource(R.string.sr_cat_lighter), "match" to stringResource(R.string.sr_cat_match),
     )
-    val units = mapOf("stick" to stringResource(R.string.sr_unit_stick), "piece" to stringResource(R.string.sr_unit_piece), "dozen" to stringResource(R.string.sr_unit_dozen))
+    val units = listOf("packet", "box", "dozen", "stick", "piece").associateWith { com.aktcl.aron.core.ui.entryUnitLabel(it) }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
         data?.let { (strip, money) ->
             KpiStripView(strip, categoryLabel = { cats[it] ?: it }, unitLabel = { units[it] ?: it })

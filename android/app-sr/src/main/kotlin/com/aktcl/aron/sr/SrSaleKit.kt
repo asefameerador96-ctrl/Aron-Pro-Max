@@ -86,7 +86,7 @@ class SrSaleKit(private val day: SrDay, private val context: Context, private va
     fun skuName(id: Long): String = skuNames[id] ?: id.toString()
     fun outletName(id: Long): String = day.dayData.value.outlets.firstOrNull { it.outletId == id }?.let { it.name + " (" + it.code + ")" } ?: id.toString()
     fun skuCategoryCode(id: Long): String? = skuCategory[id]
-    fun names() = PrintNames(::skuName, ::outletName, day.userDisplayName, day.dayData.value.route?.name.orEmpty(), category = { id -> com.aktcl.aron.feature.memo.ui.MemoCategories.label(context, skuCategory[id]) })
+    fun names() = PrintNames(::skuName, ::outletName, day.userDisplayName, day.dayData.value.route?.name.orEmpty(), category = { id -> com.aktcl.aron.feature.memo.ui.MemoCategories.label(context, skuCategory[id]) }, categoryCode = { id -> skuCategory[id].orEmpty() })
 
     /** Prices of the bundle and the day's stock (docs/24 s7.2, F-SYS-045). */
     val catalog = SaleCatalog { date, priceType -> reads.catalog(date, priceType) }
@@ -176,7 +176,7 @@ class SrSaleKit(private val day: SrDay, private val context: Context, private va
 
     suspend fun summary(): SummaryBundle { prepare(); return reads.summary(day.businessDate()) }
     suspend fun journey(): Journey = reads.journey(day.businessDate(), day.dayData.value.outlets)
-    suspend fun sticksSold(): Long { prepare(); return reads.sticksSold(day.businessDate()) }
+    suspend fun packetsSold(): Long { prepare(); return reads.packetsSold(day.businessDate()) }
     suspend fun kpi(): Pair<KpiStrip, HomeMoney> { prepare(); return reads.kpi(day.businessDate(), day.dayData.value.outlets) }
 
     /** One stable v4 UUID per user and business date, so every print of the day is one document (docs/requests/android-print-integration.md). */

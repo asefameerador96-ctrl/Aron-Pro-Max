@@ -333,7 +333,7 @@ private fun KpiTile(label: String, value: String, modifier: Modifier) {
 }
 
 /**
- * The sales panel (sr/home-2-kpis.webp): a vertical red-to-purple gradient with white text. Left: the headline "বিক্রয় (স্টিক)"
+ * The sales panel (sr/home-2-kpis.webp): a vertical red-to-purple gradient with white text. Left: the headline "বিক্রয় (প্যাকেট)"
  * over the sticks sold. Right: one row per category with a sale, then gross (`মোট`), the offer discount (`ডিসকাউন্ট`, zero while
  * docs/27 defers programmes) and `QC`, each bound to its OWN field, a rule, and the net `সর্বমোট`. Rows carry no ৳ sign.
  */
@@ -352,7 +352,7 @@ private fun SalesPanel(m: HomeMoneyLines) {
                 Text(stringResource(R.string.hm_sales_unit), color = white, fontSize = 12.sp, modifier = Modifier.padding(bottom = 4.dp))
             }
             Spacer(Modifier.height(10.dp))
-            Text(localizedNumber(m.sticksSold), color = white, fontSize = 26.sp)
+            Text(localizedNumber(m.packetsSold), color = white, fontSize = 26.sp)
         }
         Column(Modifier.weight(1.2f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             m.categories.forEach { PanelRow(it.label, it.amountBare, white, 15) }

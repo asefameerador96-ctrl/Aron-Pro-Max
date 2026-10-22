@@ -18,6 +18,8 @@ import com.aktcl.aron.feature.memo.domain.SummaryMemo
 import com.aktcl.aron.feature.memo.domain.SummarySku
 import com.aktcl.aron.feature.memo.ui.RoomMemoStore
 import com.aktcl.aron.feature.sale.domain.SaleSku
+import com.aktcl.aron.rules.EntrySpec
+import com.aktcl.aron.rules.EntryUnits
 import com.aktcl.aron.feature.stock.StockTracker
 
 /**
@@ -43,7 +45,10 @@ class RoomSaleReads(private val db: AronDatabase, private val reference: Referen
 
     /** Today's summary from stored memo rows and the stock tracker (never from the screen). */
     suspend fun summary(date: String): SummaryBundle {
-        val cats = reference.skus().associate { it.skuId to SummarySku(it.skuId, it.categoryCode) }
+        val allSkus = reference.skus()
+        val cats = allSkus.associate { it.skuId to SummarySku(it.skuId, it.categoryCode) }
+        val specs = allSkus.associate { it.skuId to EntryUnits.resolve(it.baseUnit, it.basePerPack, it.entryUnitDefault) }
+        val entryOf: (Long) -> EntrySpec? = { specs[it] }
         val memos = store.memos(date)
         val issued = StockTracker.of(db, date).mapValues { (_, b) -> b.issued + b.adjusted - b.qcReturned }
         val sm = memos.map { m ->
@@ -51,7 +56,7 @@ class RoomSaleReads(private val db: AronDatabase, private val reference: Referen
         }
         val superseded = memos.mapNotNull { it.supersedesUuid }.toSet()
         val live = memos.filter { it.memoUuid !in superseded }
-        return SummaryBundle(DaySummaryCalculator.compute(sm, cats, issued), live.sumOf { it.qcDeductionMtk }, live.sumOf { it.dueMtk.coerceAtLeast(0) }) // a QC credit (negative due) is not money the outlet owes: it must not cancel real dues
+        return SummaryBundle(DaySummaryCalculator.compute(sm, cats, issued, entryOf = entryOf), live.sumOf { it.qcDeductionMtk }, live.sumOf { it.dueMtk.coerceAtLeast(0) }) // a QC credit (negative due) is not money the outlet owes: it must not cancel real dues
     }
 
     /** Route progress of the planned [outlets] from stored visits and closes (F-SR-067). */
@@ -62,10 +67,16 @@ class RoomSaleReads(private val db: AronDatabase, private val reference: Referen
         return JourneyBuilder.build(planned, visits)
     }
 
-    /** Cigarette and bidi sticks sold today (the Home sales panel headline "বিক্রয় (স্টিক)"): sold quantities of the same tracker as the sale warning. */
-    suspend fun sticksSold(date: String): Long {
-        val categoryOf = reference.skus().associate { it.skuId to it.categoryCode }
-        return StockTracker.of(db, date).values.filter { categoryOf[it.skuId] in STICK_CATEGORIES }.sumOf { it.sold }
+    /**
+     * Cigarette and bidi packets sold today (the Home sales panel headline, packets since docs/34 s4.2): sold quantities of the same
+     * tracker as the sale warning, each SKU in its own entry unit (packets of 10, packets of 20, ...), never a stick total.
+     */
+    suspend fun packetsSold(date: String): Long {
+        val skus = reference.skus().associateBy { it.skuId }
+        return StockTracker.of(db, date).values.filter { skus[it.skuId]?.categoryCode in PACKET_CATEGORIES }.sumOf { b ->
+            val k = skus.getValue(b.skuId)
+            EntryUnits.resolve(k.baseUnit, k.basePerPack, k.entryUnitDefault).fromBase(b.sold.coerceAtLeast(0L))
+        }
     }
 
     /** The KPI strip and the two money cards, all from Room (airplane mode safe, F-SR-010/069). */
@@ -77,9 +88,12 @@ class RoomSaleReads(private val db: AronDatabase, private val reference: Referen
         val stock = StockTracker.of(db, date)
         val issue = stock.mapValues { (_, b) -> b.issued }.filterValues { it != 0L }
         val current = stock.filterValues { it.hasStockRow }.mapValues { (_, b) -> b.current }
-        val unitByCat = skus.groupBy { it.categoryCode }.mapValues { (_, v) -> v.first().baseUnit }
-        return KpiStripBuilder.build(j.planned, j.visited, j.sold, issue, current, cats) { unitByCat[it].orEmpty() } to HomeMoneyBuilder.build(memos, cats)
+        // quantities in the entry unit (packets, boxes, dozens; docs/34 s4.2): the strip's unit is the label key of the category's first SKU
+        val spec = skus.associate { it.skuId to EntryUnits.resolve(it.baseUnit, it.basePerPack, it.entryUnitDefault) }
+        fun entered(m: Map<Long, Long>) = m.mapValues { (id, base) -> spec[id]?.fromBase(base.coerceAtLeast(0L)) ?: base }
+        val unitByCat = skus.groupBy { it.categoryCode }.mapValues { (c, v) -> EntryUnits.labelKey(c, spec.getValue(v.first().skuId).unit) }
+        return KpiStripBuilder.build(j.planned, j.visited, j.sold, entered(issue), entered(current), cats) { unitByCat[it].orEmpty() } to HomeMoneyBuilder.build(memos, cats)
     }
 
-    private companion object { val STICK_CATEGORIES = setOf("cigarette", "bidi") }
+    private companion object { val PACKET_CATEGORIES = setOf("cigarette", "bidi") }
 }

@@ -160,7 +160,7 @@ class SrStateScreenshotTests {
             money = HomeMoneyLines(
                 listOf(HomeMoneyLine("Match", Formats.money(141_000, locale)), HomeMoneyLine("Lighter", Formats.money(4_687_500, locale))),
                 Formats.money(4_828_500, locale), "−" + Formats.money(437_500, locale), null, Formats.money(4_391_000, locale),
-                sticksSold = 0, grossBare = bare(4_828_500, locale), offerDiscountBare = bare(437_500, locale), qcBare = bare(0, locale), netBare = bare(4_391_000, locale),
+                packetsSold = 0, grossBare = bare(4_828_500, locale), offerDiscountBare = bare(437_500, locale), qcBare = bare(0, locale), netBare = bare(4_391_000, locale),
                 totalDiscountBare = bare(437_500, locale), drpDiscountBare = bare(0, locale), totalQcBare = bare(0, locale),
             ),
             sync = SyncChipState.SyncedAt(Formats.digits("10:42", locale)), onSync = {}, sunlight = false, onSunlight = {},
