@@ -4,7 +4,8 @@ import { OpForm, type OpFieldDef } from "@/components/admin/kit/op-form";
 import { FilterBar } from "@/components/admin/kit/filter-bar";
 import { Card, PageHeading } from "@/components/admin/kit/page";
 import type { Holiday, ResolvedConfigValue } from "@/lib/admin/types";
-import { formatBusinessDate, t, type Locale, type MessageKey } from "@/lib/i18n";
+import { formatBusinessDate, formatNumber, t, type Locale, type MessageKey } from "@/lib/i18n";
+import type { MonthDays } from "@/lib/admin/calendar-days";
 import { ConfigSetForm } from "./config-set-form";
 import type { ConfigKey } from "@/lib/admin/types";
 
@@ -20,9 +21,11 @@ export interface CalendarViewProps {
   from: string;
   to: string;
   canWrite: boolean;
+  /** Working days of the coming months (national entries), or null when the weekend setting could not be read. */
+  monthDays?: MonthDays[] | null;
 }
 
-export function CalendarView({ locale, holidays, weekend, weekendKey, from, to, canWrite }: CalendarViewProps) {
+export function CalendarView({ locale, holidays, weekend, weekendKey, from, to, canWrite, monthDays }: CalendarViewProps) {
   const days = Array.isArray(weekend?.value) ? (weekend.value as unknown[]).map(Number) : [];
   const columns: Column<Holiday>[] = [
     { key: "date", header: t(locale, "cfgc.col.date"), render: (h) => <time dateTime={h.date}>{formatBusinessDate(locale, h.date)}</time> },
@@ -54,6 +57,23 @@ export function CalendarView({ locale, holidays, weekend, weekendKey, from, to, 
           </>
         ) : null}
       </Card>
+      {monthDays ? (
+        <Card title={t(locale, "cal.working.title")} testId="working-days" data>
+          <p className="text-sm text-slate-600">{t(locale, "cal.working.hint")}</p>
+          <DataTable
+            columns={[
+              { key: "month", header: t(locale, "rt.col.month"), render: (m: MonthDays) => m.month },
+              { key: "working", header: t(locale, "cal.working.col.working"), align: "right", render: (m: MonthDays) => formatNumber(locale, m.working) },
+              { key: "weekend", header: t(locale, "cal.working.col.weekend"), align: "right", render: (m: MonthDays) => formatNumber(locale, m.weekend) },
+              { key: "holidays", header: t(locale, "cal.working.col.holidays"), align: "right", render: (m: MonthDays) => formatNumber(locale, m.holidays) },
+            ]}
+            rows={monthDays}
+            rowKey={(m) => m.month}
+            empty={t(locale, "common.empty")}
+            caption={t(locale, "cal.working.title")}
+          />
+        </Card>
+      ) : null}
       <Card title={t(locale, "cal.list.title")}>
         <p className="text-sm text-slate-600">
           {formatBusinessDate(locale, from)} – {formatBusinessDate(locale, to)} · {t(locale, "cal.range.hint")}
