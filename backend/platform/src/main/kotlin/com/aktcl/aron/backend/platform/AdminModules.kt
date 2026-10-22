@@ -134,14 +134,22 @@ object AdminModules {
     /** POSTs that only read. */
     val READ_POSTS: List<PortalLevels.Pattern> = listOf(
         PortalLevels.Pattern("POST", "/v1/reports/{report_key}/query"),
+        // The national dashboard cards take their filter object as a POST body (as for NATIONAL, PortalLevels.NATIONAL_WRITES):
+        // reads, so reports:r loads them (checker row 2 round 3, N4).
+        PortalLevels.Pattern("POST", "/v1/dashboards/national/**"),
     )
 
     /**
      * Routes that need a second module besides their own (checker row 2, B1): creating a user answers its temporary
-     * password, so it is a credential act as much as a users one.
+     * password, so it is a credential act as much as a users one. The reverse holds too (D-AUTHZ-ADMIN-CREDS-01 grants the
+     * credential acts on another login to an ADMIN holding users:w AND credentials:w; checker row 2 round 3, N1): a password
+     * or MFA reset hands the account over, so `credentials:w` alone does not reset a login.
      */
     val ALSO_NEEDS: List<Pair<PortalLevels.Pattern, String>> = listOf(
         PortalLevels.Pattern("POST", "/v1/admin/users") to "credentials",
+        p("/v1/admin/users/{id}/credentials") to "users",
+        p("/v1/admin/users/{id}/credentials/**") to "users",
+        p("/v1/admin/users/{id}/mfa/**") to "users",
     )
 
     /** "own", a module name, or null when the route is unmapped. [path] is normalised; [method] is upper case. */

@@ -14,11 +14,11 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import org.jdbi.v3.core.Handle
 
-/** The fixed module list of an ADMIN's grants (docs/34 s1, D-ROLES-02); the db CHECK on `user_module_grant.module` carries the same list. */
-internal val ADMIN_MODULES = listOf(
-    "masterdata", "routes", "outlets", "products", "prices", "users", "targets", "credentials", "mdm", "reports", "config", "data_entry", "indent",
-    "leaderboard", "daily_tracking",
-)
+/**
+ * The fixed module list of an ADMIN's grants (docs/34 s1, D-ROLES-02): the route gate's own list, so PUT never stores a module
+ * the token minting would drop (checker row 2 round 3, N3); the db CHECK on `user_module_grant.module` carries the same list.
+ */
+internal val ADMIN_MODULES: List<String> = com.aktcl.aron.backend.platform.AdminModules.ALL
 private val SENIOR_ROLES = setOf("ADMIN", "SUPERADMIN")
 
 /** The tables are db's (docs/requests/db-backend-authz-roles.md, migrations B and C); until they land the routes answer 503. */
