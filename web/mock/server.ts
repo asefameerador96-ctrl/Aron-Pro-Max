@@ -42,6 +42,7 @@ function users(): Record<string, MockUser> {
     wm1: u(2002, "wm1", "Karim Hossain", "WM", "wm-pass-1", { scope_version: 2, nodes: [{ type: "wing", id: 1, code: "W-1", name: "Dhaka Wing" }] }),
     nat1: u(2007, "nat1", "Nasrin National", "NATIONAL", "nat-pass-1", nationalScope),
     brand1: u(2008, "brand1", "Babul Brand", "BRAND", "brand-pass-1", nationalScope),
+    nodash1: u(2009, "nodash1", "Nadia NoDash", "ANALYST", "nodash-pass-1", nationalScope), // stands in for an ADMIN whose module grants omit the dashboard (an ADMIN login needs MFA): every national read is 403
     analyst1: u(2003, "analyst1", "Nusrat Jahan", "ANALYST", "analyst-pass-1", nationalScope),
     madmin1: { ...u(3101, "madmin1", "Salma Akter", "ADMIN", "admin-pass-1", nationalScope, true), master: true },
     msuper1: { ...u(3105, "msuper1", "Rafiq Chowdhury", "SUPERADMIN", "super-pass-1", nationalScope, true), master: true },
