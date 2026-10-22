@@ -102,7 +102,7 @@ test.describe("coarse pointer", () => {
     await assertTargets(page, "login");
     await login(page, "tso334", "tso-pass-1");
     await expect(page.getByTestId("top-bar")).toBeVisible();
-    await expect(page.getByTestId("dashboard-tiles")).toBeVisible();
+    await expect(page.getByTestId("national-dashboard")).toBeVisible();
     await assertTargets(page, "dashboard");
     await page.getByTestId("top-bar").getByRole("button").first().click();
     const drawer = page.locator("dialog[open]");

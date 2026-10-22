@@ -140,8 +140,9 @@ object SessionModule {
     /** Lane mdm: pulls and applies the MDM commands of this phone (device owner only does anything). */
     @Provides
     @Singleton
-    fun mdmCommandShell(@ApplicationContext context: Context, components: SessionComponents): com.aktcl.aron.core.sync.mdm.MdmCommandShell =
-        com.aktcl.aron.core.sync.mdm.MdmCommandShell(context, components)
+    fun mdmCommandShell(@ApplicationContext context: Context, components: SessionComponents, runtime: DeviceRuntime): com.aktcl.aron.core.sync.mdm.MdmCommandShell =
+        // A policy change (sampling mode) re-decides the breadcrumb request at once (D-MDM-BREADCRUMB-01).
+        com.aktcl.aron.core.sync.mdm.MdmCommandShell(context, components, afterPolicyChanged = runtime::reconcileBreadcrumbs)
 
     /** N-038 push: the FCM token for the signed-in user, the Bangla/English notice and the jittered pull (never an upload). */
     @Provides

@@ -1,3 +1,4 @@
+import { nationalEn } from "./messages-national-en";
 import { w4En } from "./messages-wave4";
 import { dashEn } from "./messages-dash-en";
 import { cfgEn } from "./messages-config";
@@ -430,6 +431,7 @@ export const en = {
   "error.ERR_SERVICE_UNAVAILABLE": "The service is busy. Try again in a moment.",
   "error.ERR_READ_ONLY_MODE": "The system is read-only right now. Try again later.",
   ...dashEn,
+  ...nationalEn,
   ...cfgEn,
   ...mdmEn,
   ...w4En,
