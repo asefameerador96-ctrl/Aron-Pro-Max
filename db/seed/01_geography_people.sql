@@ -71,3 +71,19 @@ INSERT INTO app.sub_channel (channel, code, name, name_bn)
                                                          ('GT', 'GT-TEA', 'Tea stall', 'চায়ের দোকান'),
                                                          ('Astha', 'ASTHA-1', 'Astha outlet', 'আস্থা')) AS s(channel, code, name, name_bn)
    WHERE NOT EXISTS (SELECT 1 FROM app.sub_channel x WHERE x.code = s.code);
+
+-- Module grants (V0089, D-ROLES-02): the seeded admin keeps every admin page, as V0089 does for the admins that exist
+-- when it runs (a database migrated before seeding has none then). Only when the admin has no grant at all, so a
+-- narrowed grant is never put back.
+DO $grants$
+BEGIN
+  IF to_regclass('app.user_module_grant') IS NULL THEN
+    RETURN;   -- a database migrated only up to a version before V0089 (some db tests do that)
+  END IF;
+  INSERT INTO app.user_module_grant (user_id, module, access)
+    SELECT u.id, m.module, 'w' FROM app.app_user u
+     CROSS JOIN (VALUES ('masterdata'),('routes'),('outlets'),('products'),('prices'),('users'),('targets'),('credentials'),
+                        ('mdm'),('reports'),('config'),('data_entry'),('indent'),('leaderboard'),('daily_tracking')) AS m(module)
+     WHERE u.username = 'admin1001' AND NOT EXISTS (SELECT 1 FROM app.user_module_grant g WHERE g.user_id = u.id);
+END
+$grants$;

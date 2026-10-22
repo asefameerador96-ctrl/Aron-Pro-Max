@@ -37,7 +37,7 @@ class ConfigDefaultsTest {
     @Test
     fun theMenuMatrixNamesOnlyContractRolesAndNoDeferredPage() = db.connect().use { c ->
         val roles = c.column("SELECT jsonb_object_keys(default_value) FROM app.cfg_key WHERE key = 'cfg.web.menu_by_role' ORDER BY 1")
-        assertEquals(listOf("ADMIN", "ANALYST", "DMO", "SUPERADMIN", "SUPPORT", "TOP", "TSO", "WM"), roles)
+        assertEquals(listOf("ADMIN", "ANALYST", "BRAND", "DMO", "NATIONAL", "SUPERADMIN", "SUPPORT", "TOP", "TSO", "WM"), roles)
         assertEquals("0", c.scalar("SELECT count(*) FROM jsonb_object_keys((SELECT default_value FROM app.cfg_key WHERE key = 'cfg.web.menu_by_role')) r WHERE r NOT IN (SELECT role FROM app.role_def)"))
         val pages = c.column(
             "SELECT e->>'menu' || '/' || (e->>'page') FROM app.cfg_key k, jsonb_each(k.default_value) r, jsonb_array_elements(r.value) e WHERE k.key = 'cfg.web.menu_by_role'",
