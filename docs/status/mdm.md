@@ -1,5 +1,8 @@
 # Status: lane mdm (session 1, 2026-10-22)
 
+Head 6c5a51c8 (INT 658f65d0 merged, contract 1.6.0). CI #1343: Android debug/release, size gate, backend app tests, web incl. e2e, images green. Red: the contract oasdiff gate (false red, lead's fix 28b22517 pending on INT) and backend:auth RefreshTest#concurrentUseOfOneTokenRotatesOnce (intermittent, backend-authz's). Not declared until the whole run is green after INT carries 28b22517.
+
+
 Branch `lane/mdm` (from INT + lead-directive docs). Brief: `docs/lanes/mdm.md`; directive `docs/34` s5 (D-MDM-01).
 
 ## Done
@@ -9,6 +12,7 @@ Branch `lane/mdm` (from INT + lead-directive docs). Brief: `docs/lanes/mdm.md`; 
 - **DPC** `android/dpc/.../mdm` (see `docs/status/mdm-dpc.md`): poll, verify, dedupe ledger, executors, policy applier with weekday/time windows (Dhaka), kiosk, location mode; 14 unit tests.
 - **Web** `web/src/app/admin/mdm/**` (see `docs/status/mdm-web.md`): list, detail with actions, policy editor with schedule grid, enrolment/QR, alerts, activity; bn+en; vitest + Playwright (list, detail).
 
+- **Fixes from CI**: DPC notification title/channel are string resources (bn/en); lock-task ActivityOptions only from API 28 (lint); routes always mounted, 503 until `ARON_MDM_ENABLED=1`; test shim `FreshDb` applies the pending DDL until db lands it (delete then).
 - **App wiring** (core-sync, SR/AMO/TSO): command poll on every sync run and on `mdm_nudge`, key from `/v1/auth/jwks`, `MdmCommandRunnerTest`. Contract version set to 1.6.0 (lead's numbering).
 
 ## Not done / waiting
