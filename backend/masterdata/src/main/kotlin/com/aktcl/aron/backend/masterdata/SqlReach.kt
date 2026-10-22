@@ -57,12 +57,15 @@ class SqlReachResolver(private val db: Database, private val geo: GeoRepository,
 
     override fun reach(userId: Long, role: Role, scopeVersion: Long, businessDate: LocalDate): Reach {
         val now = clock.now().toEpochMilli()
-        val key = Key(userId, scopeVersion, businessDate)
+        // Keyed by the user's CURRENT scope version and role (round 2, N-a): an upload token minted before a role change
+        // (sync/batch skips the scope-version check) must not hit an entry computed while the old role was current.
+        val (current, sv) = db.jdbi.withHandle<Pair<Role?, Long>, Exception> { h ->
+            h.createQuery("SELECT role, scope_version FROM app.app_user WHERE id = :u").bind("u", userId)
+                .map { rs, _ -> Role.entries.firstOrNull { it.wire == rs.getString(1) } to rs.getLong(2) }.findOne().orElse(null to scopeVersion)
+        }
+        val key = Key(userId, sv, businessDate)
         cache[key]?.let { (at, r) -> if (now - at < 300_000 && r.role == role) return r }
-        var current: Role? = null
         val (scope, asg) = db.jdbi.withHandle<Pair<List<ScopeRow>, List<AssignmentRow>>, Exception> { h ->
-            current = h.createQuery("SELECT role FROM app.app_user WHERE id = :u").bind("u", userId).mapTo(String::class.java).findOne().orElse(null)
-                ?.let { w -> Role.entries.firstOrNull { it.wire == w } }
             h.createQuery("SELECT node_type, node_id, valid_from, valid_to FROM app.user_scope WHERE user_id = :u").bind("u", userId)
                 .map { rs, _ -> ScopeRow(rs.getString(1), rs.getLong(2), rs.getObject(3, LocalDate::class.java), rs.getObject(4, LocalDate::class.java)) }.list() to
                 h.createQuery("SELECT route_id, kind, valid_from, valid_to FROM app.route_assignment WHERE user_id = :u").bind("u", userId)

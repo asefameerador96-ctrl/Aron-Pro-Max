@@ -105,11 +105,13 @@ class JdbiUserStore(private val db: Database, private val clock: AronClock = Aro
         val now = clock.now().toEpochMilli()
         if (grantsProbedAt != Long.MIN_VALUE && now - grantsProbedAt < 60_000) return false
         grantsProbedAt = now
-        grantsLiveSeen = db.jdbi.withHandle<Boolean, Exception> { h ->
+        val found = db.jdbi.withHandle<Boolean, Exception> { h ->
             h.createQuery("SELECT to_regclass('app.user_module_grant') IS NOT NULL AND to_regclass('app.user_brand_scope') IS NOT NULL")
                 .mapTo(Boolean::class.java).one()
         }
-        return grantsLiveSeen
+        // One-way latch (round 2, N-b): a slower probe that saw the schema before the migration never turns it off again.
+        if (found) grantsLiveSeen = true
+        return found
     }
 
     override fun live(): Boolean = grantsLive

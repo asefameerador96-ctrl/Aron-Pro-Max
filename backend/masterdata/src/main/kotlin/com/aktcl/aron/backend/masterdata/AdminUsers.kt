@@ -109,9 +109,12 @@ internal val USER = MasterEntity(
         // Checker row 2 (N3): module grants and brand scopes belong to the role they were given for; a role change drops
         // them (the user row's audit image records the change), so a later change back starts from nothing (fail closed).
         if (cur != null && "role" in changes && changes["role"] != cur["role"]) {
-            for (t in listOf("user_module_grant", "user_brand_scope")) {
-                if (h.count("SELECT count(*) FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = 'app' AND c.relname = :t", "t" to t) > 0)
-                    h.createUpdate("DELETE FROM app.$t WHERE user_id = :u").bind("u", row["id"]).execute()
+            // Each dropped set has its own audit row (round 2, N-c: every grant change is audited, docs/34 s1).
+            for ((t, col) in listOf("user_module_grant" to "module || ':' || access", "user_brand_scope" to "brand_id::text")) {
+                if (h.count("SELECT count(*) FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = 'app' AND c.relname = :t", "t" to t) == 0L) continue
+                val dropped = h.createQuery("DELETE FROM app.$t WHERE user_id = :u RETURNING $col").bind("u", row["id"]).mapTo(String::class.java).list().sorted()
+                if (dropped.isNotEmpty()) ctx.audit(h, t, row["id"].toString(), "drop_on_role_change", JsonArray(dropped.map { JsonPrimitive(it) }), null,
+                    "role changed from ${cur["role"]} to ${changes["role"]}")
             }
         }
     },
@@ -277,7 +280,12 @@ private suspend fun putScope(call: ApplicationCall, d: AdminMasterDeps) {
             val geo = d.geo.geoCovering()
             for ((i, n) in wanted.withIndex()) {
                 val (type, nid) = n
-                if (type == "national") { if (!ctx.reach.national) throw ApiProblem(ProblemCode.ERR_OUT_OF_SCOPE, "national scope needs national reach"); continue }
+                if (type == "national") {
+                    if (!ctx.reach.national) throw ApiProblem(ProblemCode.ERR_OUT_OF_SCOPE, "national scope needs national reach")
+                    // D-ROLES-02 (checker row 2, round 2): a national login is the Super Admin's to give (docs/34 s1).
+                    if (p.role != Role.SUPERADMIN) throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "only a SUPERADMIN gives national scope")
+                    continue
+                }
                 val exists = h.count("SELECT count(*) FROM ${SCOPE_TABLES.getValue(type)} WHERE id = :i", "i" to nid) > 0
                 if (!exists || (!ctx.reach.national && geo.zonesUnder(type, nid).none { it in ctx.reach.zoneIds })) admBad("body.nodes/$i/node_id", "unknown_node", "the node does not exist or is outside your reach")
             }

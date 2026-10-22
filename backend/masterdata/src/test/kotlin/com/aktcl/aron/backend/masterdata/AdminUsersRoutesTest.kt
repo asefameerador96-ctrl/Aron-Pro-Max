@@ -165,6 +165,12 @@ class AdminUsersRoutesTest {
         assertEquals("$moved", (sendA1(HttpMethod.Put, "/admin/users/$u/scope", admin, body("\"$moved\"")).objA1().arr("nodes").single() as JsonObject).strA1("valid_to"))
         assertNull((sendA1(HttpMethod.Put, "/admin/users/$u/scope", admin, body(null)).objA1().arr("nodes").single() as JsonObject).strA1("valid_to"))
         assertEquals("1", env.sql("SELECT count(*) FROM app.user_scope WHERE user_id = $u"))
+        // D-ROLES-02 (checker row 2, round 2): only a SUPERADMIN gives a national node.
+        val national = """{"valid_from":"${env.today}","nodes":[{"node_type":"national","node_id":0}],"change_reason":"National desk from today"}"""
+        assertEquals(HttpStatusCode.Forbidden, sendA1(HttpMethod.Put, "/admin/users/$u/scope", admin, national).status)
+        assertEquals("0", env.sql("SELECT count(*) FROM app.user_scope WHERE user_id = $u AND node_type = 'national'"))
+        assertEquals(HttpStatusCode.OK, sendA1(HttpMethod.Put, "/admin/users/$u/scope", superadmin, national).status)
+        sendA1(HttpMethod.Put, "/admin/users/$u/scope", superadmin, body(null))
         // valid_to must be after valid_from.
         assertEquals(HttpStatusCode.BadRequest, sendA1(HttpMethod.Put, "/admin/users/$u/scope", admin, body("\"${env.today}\"")).status)
         assertEquals(HttpStatusCode.BadRequest, sendA1(HttpMethod.Put, "/admin/users/$u/scope", admin, body("\"nope\"")).status)
