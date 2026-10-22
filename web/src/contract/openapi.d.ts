@@ -2780,6 +2780,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/admin/route-targets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Route x SKU monthly sales targets of one month (base units), sorted by route then SKU. */
+        get: operations["listRouteTargets"];
+        /**
+         * Validate (dry_run) or commit a route x SKU monthly target batch (upsert by route, SKU and month).
+         * @description The portal reads the Excel sheet in the browser and sends JSON rows. `dry_run: true` validates and writes nothing (no reason needed) and answers a `RouteTargetPreview` with every row error. `dry_run: false` needs `change_reason`; any row error refuses the whole batch with 400 `ERR_VALIDATION` (`errors[].pointer` `body.rows/<0-based index>/<member>`). Idempotent by `batch_uuid`: the same content replays (`replayed: true`), other content under the same uuid is 409. Quantities are base units (sticks, pieces, dozens), integers 0 to 1,000,000,000. A month before the current Dhaka month is never rewritten. Audited as entity `route_target`.
+         */
+        put: operations["putRouteTargets"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/admin/devices/{device_id}/replace": {
         parameters: {
             query?: never;
@@ -8202,6 +8223,68 @@ export interface components {
         };
         DuesAdjustmentPage: {
             items: components["schemas"]["DuesAdjustment"][];
+            next_cursor: components["schemas"]["PageCursor"] | null;
+        };
+        /** @example 2026-11 */
+        RouteTargetMonth: string;
+        RouteTargetRow: {
+            route_code: string;
+            sku_code: string;
+            month: components["schemas"]["RouteTargetMonth"];
+            /**
+             * Format: int64
+             * @description Base units: sticks, pieces or dozens.
+             */
+            qty_base: number;
+        };
+        RouteTargetBatchWrite: {
+            batch_uuid: components["schemas"]["Uuid"];
+            rows: components["schemas"]["RouteTargetRow"][];
+            dry_run: boolean;
+            change_reason?: components["schemas"]["ChangeReason"];
+        };
+        RouteTargetRowError: {
+            /** @description 1-based position in `rows`. */
+            row: number;
+            /** @enum {string} */
+            column: "route" | "sku" | "month" | "quantity";
+            /** @enum {string} */
+            code: "unknown_route" | "not_selling_route" | "unknown_sku" | "invalid_month" | "past_month" | "invalid_quantity" | "duplicate_row";
+        };
+        RouteTargetPreview: {
+            batch_uuid: components["schemas"]["Uuid"];
+            rows: number;
+            /** @description Distinct valid routes. */
+            routes: number;
+            /** @description Distinct valid SKUs. */
+            skus: number;
+            months: components["schemas"]["RouteTargetMonth"][];
+            /**
+             * Format: int64
+             * @description Sum of the quantities of the rows without an error.
+             */
+            total_qty_base: number;
+            /** @description Existing (route */
+            replaces: number;
+            errors: components["schemas"]["RouteTargetRowError"][];
+            /** @description True when more than 1000 errors exist. */
+            errors_truncated: boolean;
+        };
+        RouteTargetCommitResult: {
+            batch_uuid: components["schemas"]["Uuid"];
+            rows: number;
+            replayed: boolean;
+        };
+        RouteTargetItem: {
+            route_code: string;
+            route_name: string;
+            sku_code: string;
+            month: components["schemas"]["RouteTargetMonth"];
+            /** Format: int64 */
+            qty_base: number;
+        };
+        RouteTargetPage: {
+            items: components["schemas"]["RouteTargetItem"][];
             next_cursor: components["schemas"]["PageCursor"] | null;
         };
         DeviceReplaceRequest: {
@@ -14056,6 +14139,65 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
+        };
+    };
+    listRouteTargets: {
+        parameters: {
+            query?: {
+                /** @description Month as YYYY-MM; default the current Dhaka month. */
+                month?: components["schemas"]["RouteTargetMonth"];
+                /** @description Page size. */
+                limit?: components["parameters"]["Limit"];
+                /** @description Opaque cursor from `next_cursor` of the previous page. */
+                cursor?: components["parameters"]["Cursor"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Page of targets. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RouteTargetPage"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    putRouteTargets: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RouteTargetBatchWrite"];
+            };
+        };
+        responses: {
+            /** @description Preview (dry_run) or commit result. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RouteTargetPreview"] | components["schemas"]["RouteTargetCommitResult"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+            413: components["responses"]["PayloadTooLarge"];
         };
     };
     replaceDevice: {

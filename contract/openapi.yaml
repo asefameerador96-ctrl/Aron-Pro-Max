@@ -4234,6 +4234,54 @@ paths:
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
 
+  /v1/admin/route-targets:
+    get:
+      tags: [admin-targets]
+      operationId: listRouteTargets
+      summary: Route x SKU monthly sales targets of one month (base units), sorted by route then SKU.
+      parameters:
+        - { name: month, in: query, required: false, schema: { $ref: '#/components/schemas/RouteTargetMonth' }, description: 'Month as YYYY-MM; default the current Dhaka month.' }
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Page of targets.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RouteTargetPage' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    put:
+      tags: [admin-targets]
+      operationId: putRouteTargets
+      summary: Validate (dry_run) or commit a route x SKU monthly target batch (upsert by route, SKU and month).
+      description: >-
+        The portal reads the Excel sheet in the browser and sends JSON rows. `dry_run: true` validates and writes nothing (no reason needed) and answers a
+        `RouteTargetPreview` with every row error. `dry_run: false` needs `change_reason`; any row error refuses the whole batch with 400 `ERR_VALIDATION`
+        (`errors[].pointer` `body.rows/<0-based index>/<member>`). Idempotent by `batch_uuid`: the same content replays (`replayed: true`), other content under
+        the same uuid is 409. Quantities are base units (sticks, pieces, dozens), integers 0 to 1,000,000,000. A month before the current Dhaka month is never
+        rewritten. Audited as entity `route_target`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RouteTargetBatchWrite' }
+      responses:
+        '200':
+          description: Preview (dry_run) or commit result.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - { $ref: '#/components/schemas/RouteTargetPreview' }
+                  - { $ref: '#/components/schemas/RouteTargetCommitResult' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '413': { $ref: '#/components/responses/PayloadTooLarge' }
+
   /v1/admin/devices/{device_id}/replace:
     post:
       tags: [admin-devices]
@@ -12323,6 +12371,91 @@ components:
         items:
           type: array
           items: { $ref: '#/components/schemas/DuesAdjustment' }
+        next_cursor:
+          oneOf:
+            - { $ref: '#/components/schemas/PageCursor' }
+            - type: 'null'
+    RouteTargetMonth:
+      type: string
+      pattern: '^[0-9]{4}-(0[1-9]|1[0-2])$'
+      examples: ['2026-11']
+    RouteTargetRow:
+      type: object
+      required: [route_code, sku_code, month, qty_base]
+      additionalProperties: false
+      properties:
+        route_code: { type: string, minLength: 1, maxLength: 40 }
+        sku_code: { type: string, minLength: 1, maxLength: 40 }
+        month: { $ref: '#/components/schemas/RouteTargetMonth' }
+        qty_base: { type: integer, format: int64, minimum: 0, maximum: 1000000000, description: 'Base units: sticks, pieces or dozens.' }
+    RouteTargetBatchWrite:
+      type: object
+      required: [batch_uuid, rows, dry_run]
+      additionalProperties: false
+      properties:
+        batch_uuid: { $ref: '#/components/schemas/Uuid' }
+        rows:
+          type: array
+          minItems: 1
+          maxItems: 20000
+          items: { $ref: '#/components/schemas/RouteTargetRow' }
+        dry_run: { type: boolean }
+        change_reason: { $ref: '#/components/schemas/ChangeReason' }
+    RouteTargetRowError:
+      type: object
+      required: [row, column, code]
+      additionalProperties: false
+      properties:
+        row: { type: integer, minimum: 1, description: 1-based position in `rows`. }
+        column: { type: string, enum: [route, sku, month, quantity] }
+        code:
+          type: string
+          enum: [unknown_route, not_selling_route, unknown_sku, invalid_month, past_month, invalid_quantity, duplicate_row]
+    RouteTargetPreview:
+      type: object
+      required: [batch_uuid, rows, routes, skus, months, total_qty_base, replaces, errors, errors_truncated]
+      additionalProperties: false
+      properties:
+        batch_uuid: { $ref: '#/components/schemas/Uuid' }
+        rows: { type: integer, minimum: 0 }
+        routes: { type: integer, minimum: 0, description: Distinct valid routes. }
+        skus: { type: integer, minimum: 0, description: Distinct valid SKUs. }
+        months:
+          type: array
+          items: { $ref: '#/components/schemas/RouteTargetMonth' }
+        total_qty_base: { type: integer, format: int64, minimum: 0, description: Sum of the quantities of the rows without an error. }
+        replaces: { type: integer, minimum: 0, description: Existing (route, SKU, month) targets the batch would overwrite. }
+        errors:
+          type: array
+          maxItems: 1000
+          items: { $ref: '#/components/schemas/RouteTargetRowError' }
+        errors_truncated: { type: boolean, description: True when more than 1000 errors exist. }
+    RouteTargetCommitResult:
+      type: object
+      required: [batch_uuid, rows, replayed]
+      additionalProperties: false
+      properties:
+        batch_uuid: { $ref: '#/components/schemas/Uuid' }
+        rows: { type: integer, minimum: 1 }
+        replayed: { type: boolean }
+    RouteTargetItem:
+      type: object
+      required: [route_code, route_name, sku_code, month, qty_base]
+      additionalProperties: false
+      properties:
+        route_code: { type: string }
+        route_name: { type: string }
+        sku_code: { type: string }
+        month: { $ref: '#/components/schemas/RouteTargetMonth' }
+        qty_base: { type: integer, format: int64, minimum: 0 }
+    RouteTargetPage:
+      type: object
+      required: [items, next_cursor]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/RouteTargetItem' }
         next_cursor:
           oneOf:
             - { $ref: '#/components/schemas/PageCursor' }

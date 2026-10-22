@@ -1,0 +1,15 @@
+RouteTargetCommitResult:
+  type: object
+  required:
+  - batch_uuid
+  - rows
+  - replayed
+  additionalProperties: false
+  properties:
+    batch_uuid:
+      $ref: '#/components/schemas/Uuid'
+    rows:
+      type: integer
+      minimum: 1
+    replayed:
+      type: boolean

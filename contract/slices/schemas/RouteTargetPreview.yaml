@@ -1,0 +1,50 @@
+RouteTargetPreview:
+  type: object
+  required:
+  - batch_uuid
+  - rows
+  - routes
+  - skus
+  - months
+  - total_qty_base
+  - replaces
+  - errors
+  - errors_truncated
+  additionalProperties: false
+  properties:
+    batch_uuid:
+      $ref: '#/components/schemas/Uuid'
+    rows:
+      type: integer
+      minimum: 0
+    routes:
+      type: integer
+      minimum: 0
+      description: Distinct valid routes.
+    skus:
+      type: integer
+      minimum: 0
+      description: Distinct valid SKUs.
+    months:
+      type: array
+      items:
+        $ref: '#/components/schemas/RouteTargetMonth'
+    total_qty_base:
+      type: integer
+      format: int64
+      minimum: 0
+      description: Sum of the quantities of the rows without an error.
+    replaces:
+      type: integer
+      minimum: 0
+      description: Existing (route
+      SKU: null
+      month) targets the batch would overwrite.: null
+    errors:
+      type: array
+      maxItems: 1000
+      items:
+        $ref: '#/components/schemas/RouteTargetRowError'
+    errors_truncated:
+      type: boolean
+      description: True when more than 1000 errors exist.

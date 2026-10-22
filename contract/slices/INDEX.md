@@ -3,7 +3,7 @@
 Source: contract/openapi.yaml, version 1.3.3.
 
 
-## Schemas (505)
+## Schemas (513)
 
 - `schemas/Uuid.yaml` (273 B)
 - `schemas/Id.yaml` (104 B)
@@ -495,6 +495,14 @@ Source: contract/openapi.yaml, version 1.3.3.
 - `schemas/DuesAdjustment.yaml` (990 B)
 - `schemas/DuesAdjustmentWrite.yaml` (632 B)
 - `schemas/DuesAdjustmentPage.yaml` (310 B)
+- `schemas/RouteTargetMonth.yaml` (95 B)
+- `schemas/RouteTargetRow.yaml` (503 B)
+- `schemas/RouteTargetBatchWrite.yaml` (419 B)
+- `schemas/RouteTargetRowError.yaml` (510 B)
+- `schemas/RouteTargetPreview.yaml` (1113 B)
+- `schemas/RouteTargetCommitResult.yaml` (270 B)
+- `schemas/RouteTargetItem.yaml` (391 B)
+- `schemas/RouteTargetPage.yaml` (308 B)
 - `schemas/DeviceReplaceRequest.yaml` (455 B)
 - `schemas/DeviceReplaceResult.yaml` (481 B)
 - `schemas/RadiusWhatIf.yaml` (776 B)
@@ -511,7 +519,7 @@ Source: contract/openapi.yaml, version 1.3.3.
 - `schemas/ChannelVolume.yaml` (751 B)
 - `schemas/SuggestedQty.yaml` (234 B)
 
-## Operations (216)
+## Operations (218)
 
 - `operations/getHealth.yaml`  GET /v1/health (770 B)
 - `operations/headHealth.yaml`  HEAD /v1/health (483 B)
@@ -696,6 +704,8 @@ Source: contract/openapi.yaml, version 1.3.3.
 - `operations/listDuesAdjustments.yaml`  GET /v1/admin/dues-adjustments (932 B)
 - `operations/createDuesAdjustment.yaml`  POST /v1/admin/dues-adjustments (785 B)
 - `operations/decideDuesAdjustment.yaml`  POST /v1/admin/dues-adjustments/{adjustment_id}/decision (1039 B)
+- `operations/listRouteTargets.yaml`  GET /v1/admin/route-targets (844 B)
+- `operations/putRouteTargets.yaml`  PUT /v1/admin/route-targets (1631 B)
 - `operations/replaceDevice.yaml`  POST /v1/admin/devices/{device_id}/replace (1127 B)
 - `operations/configWhatIf.yaml`  GET /v1/admin/config/whatif (1019 B)
 - `operations/configBlastRadius.yaml`  GET /v1/admin/config/blast-radius (658 B)

@@ -1,0 +1,25 @@
+RouteTargetRow:
+  type: object
+  required:
+  - route_code
+  - sku_code
+  - month
+  - qty_base
+  additionalProperties: false
+  properties:
+    route_code:
+      type: string
+      minLength: 1
+      maxLength: 40
+    sku_code:
+      type: string
+      minLength: 1
+      maxLength: 40
+    month:
+      $ref: '#/components/schemas/RouteTargetMonth'
+    qty_base:
+      type: integer
+      format: int64
+      minimum: 0
+      maximum: 1000000000
+      description: 'Base units: sticks, pieces or dozens.'
