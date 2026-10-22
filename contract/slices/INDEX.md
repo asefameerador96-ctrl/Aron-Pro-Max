@@ -3,7 +3,7 @@
 Source: contract/openapi.yaml, version 1.3.3.
 
 
-## Schemas (521)
+## Schemas (526)
 
 - `schemas/Uuid.yaml` (273 B)
 - `schemas/Id.yaml` (104 B)
@@ -499,6 +499,11 @@ Source: contract/openapi.yaml, version 1.3.3.
 - `schemas/PricePreview.yaml` (806 B)
 - `schemas/PriceBatch.yaml` (604 B)
 - `schemas/OutletKindBulkWrite.yaml` (472 B)
+- `schemas/OutletImportRow.yaml` (1132 B)
+- `schemas/OutletImportWrite.yaml` (415 B)
+- `schemas/OutletImportRowError.yaml` (443 B)
+- `schemas/OutletImportPreview.yaml` (701 B)
+- `schemas/OutletImportResult.yaml` (265 B)
 - `schemas/BulkResult.yaml` (329 B)
 - `schemas/DuesAdjustment.yaml` (990 B)
 - `schemas/DuesAdjustmentWrite.yaml` (632 B)
@@ -527,7 +532,7 @@ Source: contract/openapi.yaml, version 1.3.3.
 - `schemas/ChannelVolume.yaml` (751 B)
 - `schemas/SuggestedQty.yaml` (234 B)
 
-## Operations (222)
+## Operations (223)
 
 - `operations/getHealth.yaml`  GET /v1/health (770 B)
 - `operations/headHealth.yaml`  HEAD /v1/health (483 B)
@@ -713,6 +718,7 @@ Source: contract/openapi.yaml, version 1.3.3.
 - `operations/previewPrices.yaml`  POST /v1/admin/prices/preview (740 B)
 - `operations/decidePriceBatch.yaml`  POST /v1/admin/prices/batches/{batch_uuid}/decision (1056 B)
 - `operations/bulkSetOutletKind.yaml`  POST /v1/admin/outlets/outlet-kind (744 B)
+- `operations/importOutlets.yaml`  POST /v1/admin/outlets/import (1452 B)
 - `operations/listDuesAdjustments.yaml`  GET /v1/admin/dues-adjustments (932 B)
 - `operations/createDuesAdjustment.yaml`  POST /v1/admin/dues-adjustments (785 B)
 - `operations/decideDuesAdjustment.yaml`  POST /v1/admin/dues-adjustments/{adjustment_id}/decision (1039 B)

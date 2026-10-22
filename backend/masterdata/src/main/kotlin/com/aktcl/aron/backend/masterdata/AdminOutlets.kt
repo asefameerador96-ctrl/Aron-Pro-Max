@@ -19,7 +19,8 @@ import java.util.UUID
 
 private val OUTLET_CODE_RE = Regex("^[0-9A-Za-z][0-9A-Za-z._/-]{0,31}$")
 private val PHONE_RE = Regex("^01[3-9][0-9]{8}$")
-private val CHANNELS = setOf("GT", "DCC", "Astha", "RCC", "MT", "HoReCa")
+internal val OUTLET_CHANNELS = listOf("GT", "DCC", "Astha", "RCC", "MT", "HoReCa")
+private val CHANNELS = OUTLET_CHANNELS.toSet()
 
 private fun outletJson(r: Map<String, Any?>, pii: Boolean) = JsonObject(mapOf(
     "id" to jv(r["id"]), "code" to jv(r["code"]), "name" to jv(r["name"]), "name_bn" to jv(r["name_bn"]), "owner_name" to jv(r["owner_name"]),
@@ -219,6 +220,7 @@ fun Route.adminOutletsRoutes(d: AdminMasterDeps) {
     authenticated(d.guard) {
         post("/admin/outlets") { val p = call.admPrincipal(MASTER_WRITERS, "outlet changes"); adminCreate(call, d, p, OUTLET) }
         post("/admin/outlets/outlet-kind") { bulkOutletKind(call, d) }
+        post("/admin/outlets/import") { importOutlets(call, d) }
         get("/admin/outlets/{id}") { getOutlet(call, d) }
         patch("/admin/outlets/{id}") { val p = call.admPrincipal(MASTER_WRITERS, "outlet changes"); adminPatch(call, d, p, OUTLET, call.admId()) }
     }

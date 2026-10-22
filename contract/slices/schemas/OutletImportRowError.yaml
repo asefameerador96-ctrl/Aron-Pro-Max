@@ -1,0 +1,25 @@
+OutletImportRowError:
+  type: object
+  required:
+  - row
+  - column
+  - code
+  additionalProperties: false
+  properties:
+    row:
+      type: integer
+      minimum: 1
+      description: 1-based position in rows.
+    column:
+      type: string
+    code:
+      type: string
+      enum:
+      - required
+      - invalid
+      - unknown_zone
+      - unknown_cluster
+      - unknown_route
+      - code_taken
+      - duplicate
+      - outlet_merged
