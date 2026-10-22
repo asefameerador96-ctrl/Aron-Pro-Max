@@ -309,6 +309,8 @@ class MdmService(
 
     private fun insertCommand(h: Handle, p: AronPrincipal, id: UUID, deviceId: Long, type: String, params: JsonObject, reason: String, ttlH: Int, requestId: String?): Pair<MdmCommand, Boolean> {
         val now = clock.now(); val exp = now.plus(Duration.ofHours(ttlH.toLong()))
+        // The signature covers params as the phone will see them: read back from jsonb (key order and spacing are jsonb's), parsed, printed compact.
+        val norm = JSON.parseToJsonElement(h.createQuery("SELECT CAST(:p AS jsonb)::text").bind("p", params.toString()).mapTo(String::class.java).one()).jsonObject
         val dev = h.createQuery("SELECT device_uuid::text, status FROM app.device WHERE id = :i").bind("i", deviceId).map { rs, _ -> rs.getString(1) to rs.getString(2) }.findOne().orElse(null)
             ?: throw ApiProblem(ProblemCode.ERR_NOT_FOUND, "no such device")
         val hash = sha("$deviceId|$type|$params|$reason|$ttlH")
@@ -318,8 +320,8 @@ class MdmService(
             INSERT INTO app.device_command (command_id, device_id, type, params, state, reason, request_sha256, sig, created_by, created_at, expires_at)
             VALUES (:id, :d, :t, CAST(:p AS jsonb), :s, :r, :h, :sig, :u, :now, :e) ON CONFLICT (command_id) DO NOTHING
             """.trimIndent(),
-        ).bind("id", id).bind("d", deviceId).bind("t", type).bind("p", params.toString()).bind("s", if (needsApproval) "pending_approval" else "queued").bind("r", reason).bind("h", hash)
-            .bind("sig", if (needsApproval) null else sign(id, dev.first, type, now, exp, params)).bind("u", p.userId).bind("now", ts(now)).bind("e", ts(exp)).execute() == 1
+        ).bind("id", id).bind("d", deviceId).bind("t", type).bind("p", norm.toString()).bind("s", if (needsApproval) "pending_approval" else "queued").bind("r", reason).bind("h", hash)
+            .bind("sig", if (needsApproval) null else sign(id, dev.first, type, now, exp, norm)).bind("u", p.userId).bind("now", ts(now)).bind("e", ts(exp)).execute() == 1
         if (!inserted) {
             val same = h.createQuery("SELECT device_id = :d AND request_sha256 = :h FROM app.device_command WHERE command_id = :id").bind("d", deviceId).bind("h", hash).bind("id", id).mapTo(Boolean::class.java).one()
             if (!same) throw ApiProblem(ProblemCode.ERR_CONFLICT, "command_id already used for a different command")

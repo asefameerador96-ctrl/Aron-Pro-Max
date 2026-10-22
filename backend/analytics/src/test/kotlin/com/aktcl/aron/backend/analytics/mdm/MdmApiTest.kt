@@ -101,6 +101,13 @@ class MdmApiTest : ReportFixture() {
         return client.post(path) { header("X-Device-Id", phoneUuid); header("X-Device-Proof", proof("POST", path, body.toByteArray())); contentType(ContentType.Application.Json); setBody(body) }
     }
 
+    /** What the DPC does: ES256 over the fields joined by newline, params printed compact from what it received. */
+    private fun assertSigned(item: JsonObject) {
+        val msg = listOf("aron-command-v1", item.s("command_id"), phoneUuid, item.s("type"), item.s("created_at"), item.s("expires_at"), item["params"]!!.toString()).joinToString("\n")
+        val ok = TestTokens.keys.verifier("t")!!.verify(com.nimbusds.jose.JWSHeader(com.nimbusds.jose.JWSAlgorithm.ES256), msg.toByteArray(), com.nimbusds.jose.util.Base64URL(item.s("sig")))
+        assertTrue(ok, "signature of ${item.s("type")} does not verify over $msg")
+    }
+
     @Test
     fun roleMatrixOnlyAdminAndSuperadminEnter() = app {
         for (role in listOf(Role.ANALYST, Role.TSO, Role.SUPPORT, Role.DMO, Role.WM, Role.AMO)) {
@@ -178,6 +185,7 @@ class MdmApiTest : ReportFixture() {
         assertEquals("queued", json(ok.bodyAsText()).o().s("state")); assertEquals("user10", json(ok.bodyAsText()).o().s("approved_by"))
         assertEquals(HttpStatusCode.Conflict, send("POST", "/admin/mdm/commands/$id/decision", """{"decision":"reject","reason":"too late"}""", root).status)
         val pulled = json(pull().bodyAsText()).o()["items"]!!.jsonArray.single().o()
+        assertSigned(pulled)
         assertEquals("factory_reset", pulled.s("type")); assertTrue(Regex("^[A-Za-z0-9_-]{86}$").matches(pulled.s("sig")))
         assertEquals(2, count("SELECT count(*) FROM app.audit_log WHERE entity = 'device_command' AND entity_id = '$id'"))
         // Rejection closes it for good.
@@ -193,7 +201,7 @@ class MdmApiTest : ReportFixture() {
         send("POST", "/admin/mdm/devices/$deviceId/commands", cmd(id, "locate", "where is it"))
         assertEquals(HttpStatusCode.Unauthorized, client.get("/v1/devices/me/commands").status)
         assertEquals(HttpStatusCode.Unauthorized, client.get("/v1/devices/me/commands") { header("X-Device-Id", phoneUuid); header("X-Device-Proof", proof("GET", "/v1/devices/me/commands", key = com.aktcl.aron.backend.analytics.devices.AttestationBuilder.keyPair())) }.status)
-        val one = json(pull().bodyAsText()).o()["items"]!!.jsonArray.single().o(); assertEquals(id, one.s("command_id"))
+        val one = json(pull().bodyAsText()).o()["items"]!!.jsonArray.single().o(); assertEquals(id, one.s("command_id")); assertSigned(one)
         assertEquals("sent", count("SELECT 1") .let { fresh.db.jdbi.withHandle<String, Exception> { h -> h.createQuery("SELECT state FROM app.device_command").mapTo(String::class.java).one() } })
         assertEquals(1, json(pull().bodyAsText()).o()["items"]!!.jsonArray.size)   // still waiting for the ack
         val a = ack(id, """{"state":"acked","result":{"lat":23.78,"lng":90.41,"accuracy_m":18}}""")
@@ -235,6 +243,7 @@ class MdmApiTest : ReportFixture() {
         assertEquals(HttpStatusCode.OK, assigned.status, assigned.bodyAsText())
         assertEquals("Day shift", json(assigned.bodyAsText()).o()["device"]!!.o().s("policy_name"))
         val applied = json(pull().bodyAsText()).o()["items"]!!.jsonArray.single().o()
+        assertSigned(applied)
         assertEquals("apply_policy", applied.s("type")); assertEquals("1", applied["params"]!!.o().s("version"))
         assertEquals("1", applied["params"]!!.o()["policy"]!!.o()["block_windows"]!!.jsonArray.size.toString())
         ack(applied.s("command_id"), """{"state":"acked","result":{"policy_version":1}}""")
