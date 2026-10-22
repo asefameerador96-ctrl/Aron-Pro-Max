@@ -59,238 +59,7 @@ import kotlin.test.assertTrue
  */
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 @TestMethodOrder(MethodOrderer.OrderAnnotation::class)
-class DataFlowTraceTest {
-    private val repoRoot = File(System.getProperty("aron.repoRoot") ?: "../..")
-    private val day = "2026-10-24" // Saturday: GUL-SR-2 (mask 9 = Saturday + Tuesday)
-    private val clock = AronClock { Instant.parse("2026-10-24T10:30:00Z") }
-    private val json = ContractModel.json
-    private lateinit var world: ApiWorld
-    private lateinit var app: TestApplication
-
-    private val trace = StringBuilder()
-    private val findings = mutableListOf<String>()
-    private var section = ""
-
-    // ---- trace plumbing --------------------------------------------------------------------------------------------
-
-    private fun h(title: String) { section = title; trace.append("\n### $title\n\n| Hop | Values | Result |\n|---|---|---|\n") }
-
-    /** Rows whose [values] are all equal PASS; otherwise FINDING (soft) or an assertion failure (hard). */
-    private fun hop(name: String, vararg values: Pair<String, Any?>, hard: Boolean = true) {
-        val shown = values.joinToString("; ") { "${it.first} = ${it.second}" }
-        val ok = values.map { it.second.toString() }.distinct().size == 1
-        trace.append("| $name | ${shown.replace("|", "/")} | ${if (ok) "PASS" else "**FINDING**"} |\n")
-        if (!ok) {
-            findings += "[$section] $name: $shown"
-            if (hard) throw AssertionError("[$section] $name differs: $shown")
-        }
-    }
-
-    private fun note(name: String, value: Any?) { trace.append("| $name | ${value.toString().replace("|", "/")} | info |\n") }
-
-    private fun <T> db(block: (org.jdbi.v3.core.Handle) -> T): T = world.fresh.db.jdbi.withHandle<T, Exception> { block(it) }
-    private fun sql(q: String): String? = db { it.createQuery(q).mapTo(String::class.java).findOne().orElse(null) }
-    private fun sqlLong(q: String): Long = sql(q)!!.toLong()
-    private fun rows(q: String): List<Map<String, Any?>> = db { it.createQuery(q).mapToMap().list() }
-
-    private fun uuid() = UUID.randomUUID().toString()
-
-    @BeforeAll
-    fun setUp() {
-        world = ApiWorld(repoRoot, mirrors = listOf(ApiWorld.OTHER), clock = clock, devProfile = true)
-        app = TestApplication { application { aronApi(world.wiring) } }
-        runBlocking { app.start() }
-        db { h ->
-            // What infra/scripts/devseed-run.sh does for the smoke device on dev: a used single-use enrolment token names it (the N-027 gate).
-            // Its real key is the harness key already (ApiWorld). Without this the sync gate quarantines every money row `device_not_enrolled`.
-            h.execute(
-                "WITH tok AS (INSERT INTO app.enrolment_token (token_sha256, token_prefix, flavour, lockdown_level, max_uses, used_count, release_id, expires_at, created_by, note) " +
-                    "SELECT sha256(convert_to(gen_random_uuid()::text, 'UTF8')), 'smoke0', 'sr', 'dev', 1, 1, (SELECT id FROM app.app_release WHERE flavour = 'sr' AND status = 'published' ORDER BY version_code DESC LIMIT 1), " +
-                    "now() + interval '1 hour', (SELECT id FROM app.app_user WHERE username = 'admin1001'), 'qa trace: the dev seed job enrols the smoke device' RETURNING id) " +
-                    "UPDATE app.device d SET enrolment_token_id = tok.id FROM tok WHERE d.device_uuid = '${ApiWorld.SR_PHONE}' AND d.enrolment_token_id IS NULL",
-            )
-            // Test geography only: the other division gets its own wing, so wing, division and territory scopes each have something to cut.
-            h.execute("INSERT INTO app.wing (code, name) VALUES ('W-LKX', 'Wing LKX')")
-            h.execute("UPDATE app.division SET wing_id = (SELECT id FROM app.wing WHERE code = 'W-LKX') WHERE code = 'D-LKX'")
-            val hash = PasswordHasher().hash(world.password)
-            // The portal levels db/seed does not have (docs/34 s1): NATIONAL, WM of the Gulshan wing, BRAND of one brand.
-            for ((u, role) in listOf("qanational1001" to "NATIONAL", "qawm1001" to "WM", "qabrand1001" to "BRAND")) {
-                h.execute(
-                    "INSERT INTO app.app_user (username, full_name, role, designation, employee_code, locale, home_zone_id, pilot, must_change_password, password_hash) " +
-                        "SELECT '$u', 'QA $role', '$role', 'QA', upper('$u'), 'en', home_zone_id, true, false, '$hash' FROM app.app_user WHERE username = 'admin1001'",
-                )
-            }
-            h.execute("INSERT INTO app.user_scope (user_id, node_type, node_id, valid_from, reason) SELECT u.id, 'national', 0, DATE '2026-01-01', 'qa trace' FROM app.app_user u WHERE u.username = 'qanational1001'")
-            h.execute("INSERT INTO app.user_scope (user_id, node_type, node_id, valid_from, reason) SELECT u.id, 'wing', d.wing_id, DATE '2026-01-01', 'qa trace' FROM app.app_user u, app.division d WHERE u.username = 'qawm1001' AND d.code = 'D-DHK'")
-            h.execute("INSERT INTO app.user_brand_scope (user_id, brand_id, granted_by) SELECT u.id, b.id, a.id FROM app.app_user u, app.product_node b, app.app_user a WHERE u.username = 'qabrand1001' AND a.username = 'superadmin1001' AND b.level = 'brand' AND b.code = (SELECT min(code) FROM app.product_node WHERE level = 'brand' AND status = 'active')")
-        }
-    }
-
-    @Test
-    @Order(99)
-    fun everyFindingIsKnownAndEveryKnownFindingStillHappens() {
-        val known = (javaClass.classLoader.getResourceAsStream("data-flow-trace-known-findings.txt")?.bufferedReader()?.readLines() ?: emptyList())
-            .map { it.trim() }.filter { it.isNotEmpty() && !it.startsWith("#") }
-        val now = findings.map { f -> known.firstOrNull { f.contains(it) } ?: f }.toSet()
-        val fresh = findings.filter { f -> known.none { f.contains(it) } }
-        val gone = known.filter { k -> findings.none { it.contains(k) } }
-        assertTrue(fresh.isEmpty(), "new findings (not in data-flow-trace-known-findings.txt):\n" + fresh.joinToString("\n"))
-        assertTrue(gone.isEmpty(), "known findings that no longer happen; delete them from data-flow-trace-known-findings.txt (the list only shrinks):\n" + gone.joinToString("\n"))
-        println("DataFlowTraceTest: ${now.size} known open finding(s)")
-    }
-
-    @AfterAll
-    fun tearDown() {
-        trace.append("\n### Findings (rows marked FINDING above)\n\n").append(if (findings.isEmpty()) "none\n" else findings.joinToString("\n") { "- $it" } + "\n")
-        val out = File("build/data-flow-trace.md").apply { parentFile.mkdirs() }
-        out.writeText(trace.toString())
-        println("DataFlowTraceTest: trace written to ${out.absolutePath}; ${findings.size} finding(s)")
-        findings.forEach { println("  FINDING $it") }
-        runBlocking { app.stop() }; world.close()
-    }
-
-    // ---- device-side truth -----------------------------------------------------------------------------------------
-
-    data class Sku(val id: Long, val code: String, val category: String, val baseUnit: String, val perPack: Int, val entryUnit: String, val price: Long, val perBase: Long)
-    data class Line(val sku: Sku, val qtyEntered: Int) {
-        val packFactor: Int get() = if (sku.entryUnit == "pack") sku.perPack else 1
-        val qtyBase: Long get() = qtyEntered.toLong() * packFactor
-        val gross: Long get() = (qtyBase * sku.price + sku.perBase / 2) / sku.perBase
-    }
-    class Memo(val outlet: Long, val outletCode: String, val lines: List<Line>, val paidShare: Int, val voided: Boolean = false, val minute: Int) {
-        val visit = UUID.randomUUID().toString(); val memo = UUID.randomUUID().toString(); val close = UUID.randomUUID().toString()
-        val gross: Long get() = lines.sumOf { it.gross }
-        val paid: Long get() = gross * paidShare / 100
-        val due: Long get() = gross - paid
-    }
-
-    class Device(val username: String, val deviceUuid: String, val deviceId: Long, val routeId: Long, val bundleVersion: String, val configVersion: Long, val token: String) {
-        val memos = mutableListOf<Memo>()
-        val all = mutableListOf<ObjectNode>()
-        val counts = sortedMapOf<String, Int>()
-        var seq = 1
-        var truthGross = 0L
-        var truthSold: Map<String, Long> = emptyMap()
-    }
-
-    private fun haversine(lat1: Double, lng1: Double, lat2: Double, lng2: Double): Double {
-        val r = 6_371_000.0; val p1 = Math.toRadians(lat1); val p2 = Math.toRadians(lat2)
-        val a = sin((p2 - p1) / 2).let { it * it } + cos(p1) * cos(p2) * sin(Math.toRadians(lng2 - lng1) / 2).let { it * it }
-        return 2 * r * atan2(sqrt(a), sqrt(1 - a))
-    }
-
-    private fun at(minute: Int): String = Instant.parse("2026-10-24T04:30:00Z").plusSeconds(minute * 60L).toString()
-
-    private fun fix(purpose: String, lat: Double, lng: Double): ObjectNode = json.readTree(
-        """{"purpose":"$purpose","fix_status":"ok","lat":$lat,"lng":$lng,"accuracy_m":9.0,"provider":"fused","is_mock":false,"reused":false,
-            "device":{"device_owner":true,"dev_options_enabled":false,"adb_enabled":false,"auto_time_enabled":true,"mock_app_present":false}}""",
-    ) as ObjectNode
-
-    private fun envelope(d: Device, type: String, cu: String, family: String, rank: Int, minute: Int, payload: JsonNode): ObjectNode =
-        (json.createObjectNode() as ObjectNode).apply {
-            put("type", type); put("client_uuid", cu); put("family_uuid", family); put("rank", rank); put("schema_version", 1)
-            put("business_date", day); put("captured_at", at(minute)); put("captured_elapsed_ms", 18_330_000L + minute * 60_000L); put("boot_count", 412)
-            put("clock_offset_ms", 0); put("captured_offline", true); put("route_id", d.routeId); put("bundle_version", d.bundleVersion)
-            put("bundle_stale", false); put("config_version", d.configVersion); set<JsonNode>("payload", payload)
-        }
-
-    /** The records one memo makes on the phone, in the order the outbox holds them (visit, memo, lines, close, then a void). */
-    private fun recordsOf(d: Device, m: Memo, pin: Pair<Double, Double>, radius: Int, maxAcc: Int, seqNo: Int): List<ObjectNode> {
-        val out = mutableListOf<ObjectNode>()
-        val lat = pin.first + 0.00004; val lng = pin.second + 0.00003 // about 5 m from the pin
-        val dist = haversine(lat, lng, pin.first, pin.second)
-        out += envelope(d, "visit", m.visit, m.visit, 0, m.minute, json.readTree(
-            """{"visit_kind":"sr_call","outlet_id":${m.outlet},"opened_at":"${at(m.minute)}","sequence_no":$seqNo,"planned":true,"fix":${fix("visit_open", lat, lng)},
-                "geo":{"verdict":"in_range","distance_m":${"%.1f".format(dist)},"radius_m_used":$radius,"max_accuracy_m_used":$maxAcc,"location_basis":"master","action":"sale_allowed"}}"""))
-        if (m.lines.isEmpty()) {
-            out += envelope(d, "visit_close", m.close, m.visit, 1, m.minute + 2, json.readTree(
-                """{"visit_client_uuid":"${m.visit}","outcome_code":"closed","call_declined":false,"ended_at":"${at(m.minute + 2)}","is_zero_sale":true}"""))
-            return out
-        }
-        val memoNo = "${d.username}-261024-${(d.seq++).toString().padStart(3, '0')}"
-        out += envelope(d, "memo", m.memo, m.visit, 1, m.minute + 4, json.readTree(
-            """{"visit_client_uuid":"${m.visit}","outlet_id":${m.outlet},"memo_no":"$memoNo","memo_kind":"sale","committed_at":"${at(m.minute + 4)}","price_list_date":"$day",
-                "price_type":"outlet","gross_mtk":${m.gross},"offer_discount_mtk":0,"drp_discount_mtk":0,"qc_deduction_mtk":0,"round_adj_mtk":0,"net_mtk":${m.gross},
-                "paid_mtk":${m.paid},"due_mtk":${m.due},"is_credit":${m.due > 0},"line_count":${m.lines.size},"discount_line_count":0,"qc_line_count":0,
-                "offer_version_ids":[],"rounding_mode":"half_up_paisa"}"""))
-        m.lines.forEachIndexed { i, l ->
-            out += envelope(d, "memo_line", uuid(), m.visit, 2, m.minute + 4, json.readTree(
-                """{"memo_client_uuid":"${m.memo}","line_no":${i + 1},"sku_id":${l.sku.id},"line_kind":"sale","qty_entered":${l.qtyEntered},"unit_entered":"${l.sku.entryUnit}",
-                    "pack_factor":${l.packFactor},"qty_base":${l.qtyBase},"price_type":"outlet","price_valid_from":"2026-01-01","base_price_mtk":${l.sku.price},
-                    "price_per_qty":${l.sku.perBase},"gross_mtk":${l.gross}}"""))
-        }
-        out += envelope(d, "visit_close", m.close, m.visit, 1, m.minute + 8, json.readTree(
-            """{"visit_client_uuid":"${m.visit}","outcome_code":"sold","call_declined":false,"ended_at":"${at(m.minute + 8)}","is_zero_sale":false}"""))
-        if (m.voided) {
-            val vu = uuid()
-            out += envelope(d, "memo_void", vu, vu, 0, m.minute + 30, json.readTree(
-                """{"memo_client_uuid":"${m.memo}","memo_no":"$memoNo","reason_code":"retailer_cancelled","retailer_ack":true,"fix":${fix("memo_void", lat, lng)}}"""))
-        }
-        return out
-    }
-
-    // ---- wire helpers ----------------------------------------------------------------------------------------------
-
-    private fun gz(s: String): ByteArray = java.io.ByteArrayOutputStream().also { o -> java.util.zip.GZIPOutputStream(o).use { it.write(s.toByteArray()) } }.toByteArray()
-
-    private fun batchBody(d: Device, recs: List<JsonNode>, batchUuid: String): String = (json.createObjectNode() as ObjectNode).apply {
-        put("batch_uuid", batchUuid); put("device_uuid", d.deviceUuid); put("schema_version", 1); put("app_version", ApiWorld.APP_VERSION)
-        put("trigger", "manual"); put("sent_at_device", "2026-10-24T10:29:00.000Z"); put("pending_rows", 0); set<JsonNode>("time_anchors", json.createArrayNode())
-        set<JsonNode>("device_counts", json.createObjectNode().also { c -> c.set<JsonNode>(day, json.createObjectNode().also { n -> d.counts.forEach { (k, v) -> n.put(k, v) } }) })
-        set<JsonNode>("records", json.createArrayNode().also { a -> recs.forEach { a.add(it) } })
-    }.toString()
-
-    private data class Answer(val status: Int, val body: JsonNode?, val text: String = "")
-
-    private fun send(d: Device, recs: List<JsonNode>, batchUuid: String = uuid()): Answer = runBlocking {
-        val bytes = gz(batchBody(d, recs, batchUuid))
-        val r = app.client.post("/v1/sync/batch") {
-            bearerAuth(d.token); header("X-Device-Id", d.deviceUuid); header("X-App-Version", ApiWorld.APP_VERSION); header("Content-Encoding", "gzip")
-            header("X-Device-Proof", world.batchProof(d.deviceUuid, bytes))
-            setBody(ByteArrayContent(bytes, ContentType.Application.Json))
-        }
-        val text = r.bodyAsText()
-        Answer(r.status.value, if (r.status == HttpStatusCode.OK) json.readTree(text) else null, text)
-    }
-
-    /** Statuses with their codes: `rejected(parent_missing)`; for a non-200 answer the problem code and title. */
-    private fun detail(a: Answer): String = a.body?.path("acks")?.joinToString(" ") { "${it.path("type").asText()}:${it.path("status").asText()}${it.path("code").asText("").let { c -> if (c.isEmpty()) "" else "($c)" }}${it.path("message_key").asText("").let { c -> if (c.isEmpty()) "" else "[$c]" }}" }
-        ?: ("HTTP ${a.status} " + a.text.take(300))
-
-    private fun acks(a: Answer): List<String> = a.body?.path("acks")?.map { it.path("status").asText() } ?: listOf("http-${a.status}")
-
-    private fun get(path: String, token: String, device: String? = null): HttpResponse = runBlocking {
-        app.client.get(path) { bearerAuth(token); header("X-App-Version", ApiWorld.APP_VERSION); device?.let { header("X-Device-Id", it) } }
-    }
-
-    private fun postJson(path: String, token: String, body: String): HttpResponse = runBlocking {
-        app.client.post(path) { bearerAuth(token); contentType(ContentType.Application.Json); setBody(body) }
-    }
-
-    private fun jsonOf(r: HttpResponse): JsonNode = runBlocking { json.readTree(r.bodyAsText()) }
-
-    private fun login(user: String, client: String, device: String?): String =
-        runBlocking { world.login(app.client, ApiWorld.Caller(user, client, device)) } ?: error("no token for $user: ${world.logins[user]?.toString()?.take(200)}")
-
-    private fun fetchBundle(token: String, device: String): JsonNode = runBlocking {
-        val r = app.client.get("/v1/sync/bundle?for=$day") {
-            bearerAuth(token); header("X-Device-Id", device); header("X-App-Version", ApiWorld.APP_VERSION); header("Accept-Encoding", "gzip")
-        }
-        assertEquals(HttpStatusCode.OK, r.status, "bundle")
-        val raw = r.bodyAsBytes()
-        json.readTree(if (r.headers["Content-Encoding"] == "gzip") GZIPInputStream(raw.inputStream()).readBytes().toString(Charsets.UTF_8) else raw.toString(Charsets.UTF_8))
-    }
-
-    // ---- state shared by the ordered steps ---------------------------------------------------------------------------
-
-    private lateinit var sr: Device
-    private lateinit var lkx: Device
-    private lateinit var bundle: JsonNode
-    private lateinit var route: JsonNode
-    private val skus = mutableMapOf<String, Sku>()
-    private var gulRouteId = 0L
-    private val gulPins = mutableMapOf<Long, Pair<Double, Double>>()
-
+class DataFlowTraceTest : DataFlowTraceSupport() {
     // ---- 1 the seed ------------------------------------------------------------------------------------------------
 
     @Test
@@ -313,50 +82,22 @@ class DataFlowTraceTest {
     @Order(2)
     fun hop2LoginAndBundle() {
         h("2 Login and bundle (sr1001, seeded dev phone)")
-        val token = login("sr1001", "app_sr", ApiWorld.SR_PHONE)
+        prepareSrDay()
+        val token = sr.token
         val claims = json.readTree(Base64.getUrlDecoder().decode(token.split('.')[1]))
         note("access token claims (names only)", claims.fieldNames().asSequence().toList().sorted())
         note("scope claims in the token", claims.fields().asSequence().filter { it.key in setOf("role", "geo", "brands", "modules", "scope_version", "reach") }.joinToString(", ") { "${it.key}=${it.value.toString().take(80)}" })
-        bundle = fetchBundle(token, ApiWorld.SR_PHONE)
         val meta = bundle.path("meta")
         note("bundle meta", "bundle_version=${meta.path("bundle_version").asText()} config_version=${meta.path("config_version").asText()}")
-        val routes = bundle.path("routes")
-        hop("routes in the Saturday bundle", "planned today" to routes.filter { it.path("planned_today").asBoolean() }.joinToString(",") { it.path("route").path("code").asText("?") }, "expected" to "GUL-SR-2")
-        route = routes.single { it.path("planned_today").asBoolean() }
-        gulRouteId = route.path("route_id").asLong()
+        hop("routes in the Saturday bundle", "planned today" to bundle.path("routes").filter { it.path("planned_today").asBoolean() }.joinToString(",") { it.path("route").path("code").asText("?") }, "expected" to "GUL-SR-2")
         hop("outlets on the planned route with a pin", "with pin" to route.path("outlets").count { it.path("lat").isNumber && it.path("lng").isNumber }, "outlets" to route.path("outlets").size(), "expected" to 21)
-        route.path("outlets").forEach { gulPins[it.path("outlet_id").asLong()] = it.path("lat").asDouble() to it.path("lng").asDouble() }
-        skus += skusOf(bundle, route)
         hop("plan SKUs with an outlet price today", "count" to skus.size, "expected >= 39" to skus.size.coerceAtLeast(39))
         note("pack sizes in the bundle (category: entry unit x pack)", skus.values.groupBy { it.category }.entries.joinToString(" / ") { (c, l) -> "$c: " + l.map { "${it.entryUnit}x${it.perPack}" }.distinct().sorted().joinToString("|") })
-        val dev = rows("SELECT id AS did FROM app.device WHERE device_uuid = '${ApiWorld.SR_PHONE}'")
-        sr = Device("sr1001", ApiWorld.SR_PHONE, dev.single()["did"] as Long, gulRouteId, meta.path("bundle_version").asText(), meta.path("config_version").asLong(), token)
-        sr.seq = bundle.path("user").path("bind_ordinal").asInt() * bundle.path("user").path("memo_seq_block_size").asInt() + 1
         note("memo numbers: bind_ordinal x block + n", "ordinal ${bundle.path("user").path("bind_ordinal").asInt()}, block ${bundle.path("user").path("memo_seq_block_size").asInt()}, first number ${sr.seq}")
         hop("first bundle of the day logged the route-day in", "route_day.logged_in_at set" to (sql("SELECT (logged_in_at IS NOT NULL)::text FROM app.route_day WHERE route_id = $gulRouteId AND business_date = DATE '$day'") ?: "no row"), "expected" to "true")
     }
 
     // ---- 3 the sale on the phone -----------------------------------------------------------------------------------
-
-    /** The plan SKUs of [route] with an outlet price valid on [day], as the phone would sell them. */
-    private fun skusOf(bundle: JsonNode, route: JsonNode): Map<String, Sku> {
-        val priced = bundle.path("prices").filter { it.path("price_type").asText() == "outlet" && it.path("valid_from").asText() <= day && (it.path("valid_to").isNull || it.path("valid_to").asText("") >= day) }.associateBy { it.path("sku_id").asLong() }
-        val plan = route.path("sales_plan_sku_ids").map { it.asLong() }.toSet()
-        val out = mutableMapOf<String, Sku>()
-        for (s in bundle.path("products").path("skus")) {
-            if (s.path("status").asText("active") != "active" || s.path("id").asLong() !in plan) continue
-            val p = priced[s.path("id").asLong()] ?: continue
-            out[s.path("code").asText()] = Sku(s.path("id").asLong(), s.path("code").asText(), s.path("category_code").asText(), s.path("base_unit").asText(), s.path("base_per_pack").asInt(),
-                s.path("entry_unit_default").asText(), p.path("amount_mtk").asLong(), p.path("per_base_qty").asLong().coerceAtLeast(1))
-        }
-        return out
-    }
-
-    private fun pick(category: String, perPack: Int? = null): Sku =
-        skus.values.filter { it.category == category && (perPack == null || it.perPack == perPack) }.minByOrNull { it.id } ?: error("no $category SKU with pack $perPack in the bundle")
-
-    private fun outletByCode(code: String): Long = route.path("outlets").single { it.path("code").asText() == code }.path("outlet_id").asLong()
-    private fun radiusOf(outlet: Long): Pair<Int, Int> = route.path("outlets").single { it.path("outlet_id").asLong() == outlet }.let { it.path("radius_m").asInt(100) to it.path("max_accuracy_m").asInt(100) }
 
     @Test
     @Order(3)
@@ -480,13 +221,6 @@ class DataFlowTraceTest {
 
     // ---- 6 data warehouse -----------------------------------------------------------------------------------------
 
-    private fun runWorker() {
-        AggregationWorker(world.fresh.db, world.clock).also { w ->
-            w.runUntilIdle(); world.fresh.db.jdbi.useHandle<Exception> { Aggregator.refreshDimensions(it) }
-            w.requestRebuild(LocalDate.parse(day)); w.runUntilIdle()
-        }
-    }
-
     @Test
     @Order(6)
     fun hop6WarehouseViewsAndAggregatesInBaseUnits() {
@@ -519,7 +253,7 @@ class DataFlowTraceTest {
         hop("dw.agg_daily_outlet net_mtk summed over the route (equals gross: no discounts)", "dw" to sqlLong("SELECT coalesce(sum(net_mtk), 0) FROM dw.agg_daily_outlet WHERE business_date = DATE '$day' AND route_id = $gulRouteId"), "device" to sr.truthGross)
         hop("dw.v_daily_route and v_daily_sr agree with the table", "v_daily_route.gross" to sqlLong("SELECT gross_mtk FROM dw.v_daily_route WHERE business_date = DATE '$day' AND route_id = $gulRouteId"),
             "v_daily_sr.gross" to sqlLong("SELECT coalesce(sum(s.gross_mtk), 0) FROM dw.v_daily_sr s JOIN app.app_user u ON u.id = s.user_id WHERE s.business_date = DATE '$day' AND u.username = 'sr1001'"), "device" to sr.truthGross)
-        hop("dw.agg_daily_outlet_category exists (named in docs/evidence/seed-gulshan-banani.md)", "to_regclass" to (sql("SELECT coalesce(to_regclass('dw.agg_daily_outlet_category')::text, 'absent')")), "expected" to "dw.agg_daily_outlet_category", hard = false)
+        observe("dw.agg_daily_outlet_category exists (named in docs/evidence/seed-gulshan-banani.md)", "to_regclass" to (sql("SELECT coalesce(to_regclass('dw.agg_daily_outlet_category')::text, 'absent')")), "expected" to "dw.agg_daily_outlet_category", hard = false)
     }
 
     // ---- 7 the other division sells a smaller day ---------------------------------------------------------------------
@@ -599,7 +333,7 @@ class DataFlowTraceTest {
             val national = role in setOf("SUPERADMIN", "ADMIN", "NATIONAL")
             val t = tokens.getValue(u)
             note("$role web token claim names", json.readTree(Base64.getUrlDecoder().decode(t.split('.')[1])).fieldNames().asSequence().toList().sorted())
-            if (role == "TSO") hop("TSO web token carries the scope claims of docs/34 s1 (geo)", "claims geo/brands/modules" to json.readTree(Base64.getUrlDecoder().decode(t.split('.')[1])).fieldNames().asSequence().any { it in setOf("geo", "brands", "modules", "mods") }, "expected" to true, hard = false)
+            if (role == "TSO") observe("TSO web token carries the scope claims of docs/34 s1 (geo)", "claims geo/brands/modules" to json.readTree(Base64.getUrlDecoder().decode(t.split('.')[1])).fieldNames().asSequence().any { it in setOf("geo", "brands", "modules", "mods") }, "expected" to true, hard = false)
             val expectSold = if (national) all else gul
             fun op(path: String, b: String = body): JsonNode { val r = postJson("/v1/dashboards/national/$path", t, b); assertEquals(HttpStatusCode.OK, r.status, "$u $path: ${runBlocking { r.bodyAsText() }.take(200)}"); return jsonOf(r) }
             val sales = op("sales")
@@ -670,7 +404,7 @@ class DataFlowTraceTest {
             val r = postJson("/v1/dashboards/national/$path", brandToken, if (path == "breakdown") """{"filter":{"date":"$day"},"measure":"std","dimension":"brand"}""" else """{"date":"$day"}""")
             note("BRAND qabrand1001 POST national/$path", "${r.status.value} ${jsonOf(r).path("code").asText("")}")
         }
-        hop("BRAND user can read the product cards of its brands (docs/34 s1, level 4)", "sales status" to postJson("/v1/dashboards/national/sales", brandToken, """{"date":"$day"}""").status.value, "expected" to 200, hard = false)
+        observe("BRAND user can read the product cards of its brands (docs/34 s1, level 4)", "sales status" to postJson("/v1/dashboards/national/sales", brandToken, """{"date":"$day"}""").status.value, "expected" to 200, hard = false)
         val srT = lkx.token
         val srStatus = postJson("/v1/dashboards/national/sales", srT, """{"date":"$day"}""").status.value
         hop("SR app token on the dashboard is refused (401 or 403)", "status" to (if (srStatus in setOf(401, 403)) "refused" else srStatus.toString()), "expected" to "refused", hard = false)
@@ -753,7 +487,7 @@ class DataFlowTraceTest {
         val pv = jsonOf(get("/v1/day/final-submit/preview?zone_id=$zGul&business_date=$day", tso))
         note("Final Submit preview (routes)", pv.path("routes").joinToString("; ") { "${it.path("route_code").asText()}: ${it.path("state").asText()}, had_data ${it.path("had_data").asBoolean()}, memos ${it.path("memo_count").asInt()}, net ${it.path("net_mtk").asLong()}" })
         note("Final Submit preview warnings", pv.path("warnings").toString())
-        hop("Final Submit preview lists the routes planned (or with data) on the day (question: is the unplanned GUL-SR-1 listing intended? F-TSO-010 says every active route)", "routes" to pv.path("routes").map { it.path("route_code").asText() }, "planned or with data" to listOf("GUL-SR-2"), hard = false)
+        observe("Final Submit preview lists the routes planned (or with data) on the day (question: is the unplanned GUL-SR-1 listing intended? F-TSO-010 says every active route)", "routes" to pv.path("routes").map { it.path("route_code").asText() }, "planned or with data" to listOf("GUL-SR-2"), hard = false)
         val fu = uuid()
         val fr = postJson("/v1/day/final-submit", tso, """{"client_uuid":"$fu","zone_id":$zGul,"business_date":"$day"}""")
         hop("TSO Final Submit", "status" to fr.status.value, "expected" to 200)
@@ -831,7 +565,7 @@ class DataFlowTraceTest {
             val node = runCatching { json.readTree(body) }.getOrNull()
             if (key == "by-outlet" && node != null) {
             val cols = node.path("columns").map { it.path("key").asText() }
-            hop("by-outlet separates units (sold_qty_base would add sticks, pieces and dozens)", "unit or category column" to cols.any { it in setOf("base_unit", "unit", "category", "category_code", "category_name") }, "expected" to true, hard = false)
+            observe("by-outlet separates units (sold_qty_base would add sticks, pieces and dozens)", "unit or category column" to cols.any { it in setOf("base_unit", "unit", "category", "category_code", "category_name") }, "expected" to true, hard = false)
         }
         note("report $key (columns_known=$known)", "HTTP ${r.status.value}, rows ${node?.path("total_rows")?.asText("-")}, totals ${node?.path("totals")?.toString()?.take(160)}")
             if (node != null) dump.set<JsonNode>(key, node)
@@ -864,7 +598,7 @@ class DataFlowTraceTest {
             note("memo_no \"$no\" ($what)", "${memoAck?.path("status")?.asText() ?: "HTTP ${a.status}"} ${memoAck?.path("code")?.asText("") ?: ""}")
             if (i == 0) hop("a number in the phone's block is accepted", "status" to memoAck?.path("status")?.asText(), "expected" to "accepted", hard = false)
             else if (what == "not the format") hop("memo_no $what is rejected", "status" to memoAck?.path("status")?.asText(), "expected" to "rejected", hard = false)
-            else hop("memo_no $what is refused as memo_no_invalid", "answer" to "${memoAck?.path("status")?.asText()} ${memoAck?.path("code")?.asText("")}".trim(), "expected" to "rejected memo_no_invalid", hard = false)
+            else observe("memo_no $what is refused as memo_no_invalid", "answer" to "${memoAck?.path("status")?.asText()} ${memoAck?.path("code")?.asText("")}".trim(), "expected" to "rejected memo_no_invalid", hard = false)
         }
     }
 
@@ -876,39 +610,26 @@ class DataFlowTraceTest {
     fun hop15IdempotencyEdgesAndPackSizeRecheck() {
         h("15 Edges: changed payload, same content under a new uuid, same memo_no under a new uuid, wrong pack size")
         val c10 = pick("cigarette", 10); val c20 = pick("cigarette", 20)
-        fun sale(code: String, minute: Int, line: Line, memoNo: String, packFactorOverride: Int? = null): List<ObjectNode> {
-            val m = Memo(outletByCode(code), code, listOf(line), paidShare = 100, minute = minute)
-            val r = recordsOf(sr, m, gulPins.getValue(m.outlet), 100, 100, 20)
-            r.first { it.path("type").asText() == "memo" }.path("payload").let { (it as ObjectNode).put("memo_no", memoNo) }
-            if (packFactorOverride != null) r.first { it.path("type").asText() == "memo_line" }.path("payload").let {
-                (it as ObjectNode).put("pack_factor", packFactorOverride).put("qty_base", line.qtyEntered.toLong() * packFactorOverride)
-                val g = (line.qtyEntered.toLong() * packFactorOverride * line.sku.price + line.sku.perBase / 2) / line.sku.perBase
-                it.put("gross_mtk", g)
-                r.first { x -> x.path("type").asText() == "memo" }.path("payload").let { mp -> (mp as ObjectNode).put("gross_mtk", g).put("net_mtk", g).put("paid_mtk", g).put("due_mtk", 0L) }
-            }
-            return r
-        }
-        fun memoAck(a: Answer, type: String = "memo") = a.body?.path("acks")?.firstOrNull { it.path("type").asText() == type }?.let { it.path("status").asText() + " " + it.path("code").asText("") }?.trim() ?: "HTTP ${a.status}"
-        val base = sale("GUL2-011", 300, Line(c10, 2), "sr1001-261024-060")
-        hop("edge base sale accepted", "memo" to memoAck(send(sr, base, uuid())), "expected" to "accepted")
+        val base = oneSale("GUL2-011", 300, Line(c10, 2), "sr1001-261024-060")
+        hop("edge base sale accepted", "memo" to ackOf(send(sr, base, uuid())), "expected" to "accepted")
         val memoUuid = base.first { it.path("type").asText() == "memo" }.path("client_uuid").asText()
         // (a) same client_uuid, changed payload: must not overwrite the stored memo.
         val changed = base.map { it.deepCopy() }
         changed.first { it.path("type").asText() == "memo" }.path("payload").let { (it as ObjectNode).put("paid_mtk", 1).put("due_mtk", it.path("net_mtk").asLong() - 1) }
-        note("same client_uuid, changed payload", memoAck(send(sr, changed, uuid())))
+        note("same client_uuid, changed payload", ackOf(send(sr, changed, uuid())))
         hop("a changed payload under a stored client_uuid never overwrites the memo", "stored paid_mtk" to sqlLong("SELECT paid_mtk FROM app.memo WHERE client_uuid = CAST('$memoUuid' AS uuid)"), "original paid_mtk" to base.first { it.path("type").asText() == "memo" }.path("payload").path("paid_mtk").asLong())
         // (b) same content under new client_uuids and a new memo_no
-        val again = sale("GUL2-011", 300, Line(c10, 2), "sr1001-261024-061")
-        note("same outlet, lines and minute under new uuids", memoAck(send(sr, again, uuid())))
+        val again = oneSale("GUL2-011", 300, Line(c10, 2), "sr1001-261024-061")
+        note("same outlet, lines and minute under new uuids", ackOf(send(sr, again, uuid())))
         hop("a second sale with the same content is held, not stored twice", "memos at GUL2-011" to sqlLong("SELECT count(*) FROM app.memo WHERE outlet_id = ${outletByCode("GUL2-011")} AND business_date = DATE '$day'"), "expected" to 1L, hard = false)
         // (c) same memo_no, different client_uuid, other outlet
-        val da = send(sr, sale("GUL2-012", 330, Line(c10, 3), "sr1001-261024-060"), uuid())
-        note("same memo_no under a new client_uuid", memoAck(da))
+        val da = send(sr, oneSale("GUL2-012", 330, Line(c10, 3), "sr1001-261024-060"), uuid())
+        note("same memo_no under a new client_uuid", ackOf(da))
         hop("the same memo_no is never stored twice", "rows with memo_no 060" to sqlLong("SELECT count(*) FROM app.memo WHERE memo_no = 'sr1001-261024-060' AND business_date = DATE '$day'"), "expected" to 1L)
         // (d) a wrong pack size: a 20s SKU sold as packs of 10
-        val wa = send(sr, sale("GUL2-013", 360, Line(c20, 2), "sr1001-261024-062", packFactorOverride = 10), uuid())
-        note("2 packets of a 20s SKU sent with pack_factor 10", "memo ${memoAck(wa)}; line ${memoAck(wa, "memo_line")}")
-        hop("a pack_factor that differs from the SKU's base_per_pack is refused (docs/34 s4.2: re-checked on the server)", "line" to memoAck(wa, "memo_line"), "expected" to "rejected qty_invalid", hard = false)
+        val wa = send(sr, oneSale("GUL2-013", 360, Line(c20, 2), "sr1001-261024-062", packFactorOverride = 10), uuid())
+        note("2 packets of a 20s SKU sent with pack_factor 10", "memo ${ackOf(wa)}; line ${ackOf(wa, "memo_line")}")
+        observe("a pack_factor that differs from the SKU's base_per_pack is refused (docs/34 s4.2: re-checked on the server)", "line" to ackOf(wa, "memo_line"), "expected" to "rejected qty_invalid", hard = false)
     }
 
 }

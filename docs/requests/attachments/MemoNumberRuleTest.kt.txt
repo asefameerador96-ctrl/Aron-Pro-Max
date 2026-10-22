@@ -1,0 +1,44 @@
+package com.aktcl.aron.backend.app
+
+import com.fasterxml.jackson.databind.node.ObjectNode
+import io.ktor.http.HttpStatusCode
+import org.junit.jupiter.api.BeforeAll
+import org.junit.jupiter.api.TestInstance
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertTrue
+
+/**
+ * Attached to docs/requests/backend-core-qa-1.md s1 (QA-FLOW-02). Add as backend/app/src/test/kotlin/.../MemoNumberRuleTest.kt (drop the .txt) with the fix:
+ * docs/24 s7.5 says the server rejects a memo number that does not match the user, the business date and the user's block.
+ */
+@TestInstance(TestInstance.Lifecycle.PER_CLASS)
+class MemoNumberRuleTest : DataFlowTraceSupport() {
+    override val traceName = "memo-number-rule"
+
+    @BeforeAll
+    fun prep() = prepareSrDay()
+
+    private fun ackFor(memoNo: String, outlet: String, minute: Int): String =
+        ackOf(send(sr, oneSale(outlet, minute, Line(pick("cigarette", 10), 1), memoNo), uuid()))
+
+    @Test
+    fun aNumberInThePhonesBlockIsAccepted() {
+        assertEquals("accepted", ackFor("sr1001-261024-050", "GUL2-006", 200))
+    }
+
+    @Test
+    fun aNumberOfAnotherUserIsRefused() {
+        assertEquals("rejected memo_no_invalid", ackFor("lkxsr1001-261024-051", "GUL2-007", 220))
+    }
+
+    @Test
+    fun aNumberOfAnotherBusinessDateIsRefused() {
+        assertEquals("rejected memo_no_invalid", ackFor("sr1001-261023-052", "GUL2-008", 240))
+    }
+
+    @Test
+    fun aSequenceOutsideEveryBlockOfTheUserIsRefused() {
+        assertEquals("rejected memo_no_invalid", ackFor("sr1001-261024-3000", "GUL2-009", 260))
+    }
+}

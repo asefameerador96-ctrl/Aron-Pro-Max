@@ -13,3 +13,6 @@ Failing test: hop 13 `by-outlet separates units`.
 Everything else reconciled: route-memo, std-memo, dss, sr-efficiency, tso-top-sheet money (gross 3,237,000, paid 2,658,600,
 due 578,400, outstanding 576,400 mtk across both divisions) equals the device model; final-submit-log shows 4 late rows after
 Final Submit; memo-number-gaps lists 0 gaps for numbers 1..4 (the void is explained).
+
+## Attached test (add it with the fix)
+`docs/requests/attachments/ReportUnitTotalsTest.kt.txt`: both checks fail today. Drop the `.txt`, add under `backend/app/src/test/kotlin/com/aktcl/aron/backend/app/`; extends `DataFlowTraceSupport`.

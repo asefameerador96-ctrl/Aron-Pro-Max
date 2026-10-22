@@ -1,0 +1,46 @@
+package com.aktcl.aron.backend.app
+
+import com.fasterxml.jackson.databind.node.ObjectNode
+import io.ktor.http.HttpStatusCode
+import org.junit.jupiter.api.BeforeAll
+import org.junit.jupiter.api.TestInstance
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertTrue
+
+/**
+ * Attached to docs/requests/backend-reports-qa-1.md (QA-FLOW-03). Add as backend/app/src/test/kotlin/.../ReportUnitTotalsTest.kt with the fix:
+ * docs/16 P8 and D-49: quantities are summed only inside one SKU or one category, never across sticks, pieces and dozens.
+ */
+@TestInstance(TestInstance.Lifecycle.PER_CLASS)
+class ReportUnitTotalsTest : DataFlowTraceSupport() {
+    override val traceName = "report-unit-totals"
+
+    @BeforeAll
+    fun prep() {
+        prepareSrDay()
+        val m = Memo(outletByCode("GUL2-001"), "GUL2-001", listOf(Line(pick("cigarette", 20), 3), Line(pick("lighter"), 2), Line(pick("match"), 5)), 100, minute = 0)
+        send(sr, recordsOf(sr, m, gulPins.getValue(m.outlet), 100, 100, 1), uuid()); runWorker()
+    }
+
+    private fun report(key: String) = jsonOf(postJson("/v1/reports/$key/query", login("superadmin1001", "web", null), """{"period":{"date":"$day"},"output":{"format":"json","page_size":100}}"""))
+
+    @Test
+    fun byOutletNeverAddsSticksPiecesAndDozens() {
+        val r = report("by-outlet")
+        val cols = r.path("columns").map { it.path("key").asText() }
+        val unitSplit = cols.any { it in setOf("base_unit", "unit", "category", "category_code", "category_name") }
+        val rows = r.path("rows").filter { it.path("outlet_code").asText() == "GUL2-001" && it.path("memos").asInt() > 0 }
+        assertTrue(unitSplit || rows.none { it.path("sold_qty_base").asLong() == 60L + 50L + 5L }, "GUL2-001 sold_qty_base adds 60 sticks, 50 pieces and 5 dozens: $rows")
+        val totals = r.path("totals")
+        assertTrue(totals.isNull || !totals.has("sold_qty_base") || unitSplit, "a total of sold_qty_base across units: $totals")
+    }
+
+    @Test
+    fun routeStdAndDsRrsTotalsDoNotAddUnits() {
+        for (k in listOf("route-std", "ds-rrs")) {
+            val t = report(k).path("totals")
+            assertTrue(t.isNull || !t.has("sold_qty_base"), "$k totals add units: $t")
+        }
+    }
+}

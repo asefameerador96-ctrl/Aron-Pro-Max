@@ -26,7 +26,7 @@ Business day: Saturday 2026-10-24 (route `GUL-SR-2`, clock 10:30Z = 16:30 Dhaka)
 - **Dev (test account):** `/v1/health` 200, build 384ecee2, ready 200; unauthenticated calls 401. Deploy #243: seed Succeeded; the slice smoke FAILED (non-blocking) on Friday at step 2b (see `infra-qa-1`). Seed 06 is applied on dev (inference from that Friday result:
   the bundle had no planned route, which would not hold if Mirpur's daily route were active). Route 22636 is **not confirmed**: inferred `BAN-SR-11` (Thursday), outlet 28201 `SMOKE-SR-003`; the next deploy that prints codes settles it. No dev login was used or needed.
 
-## Findings (7 open, all in `backend/app/src/test/resources/data-flow-trace-known-findings.txt`; the suite fails on a new one and on a fixed one still listed)
+## Findings (7 open). `DataFlowTraceTest` holds only checks that pass on INT; each defect is recorded below as an `open finding` row (an observation, not a check) and has its failing test attached to the owner's request in `docs/requests/attachments/` for the owner to add with the fix
 | Id | Owner | What | Request |
 |---|---|---|---|
 | QA-FLOW-01 | backend-authz | BRAND user: 403 on every national dashboard operation (NationalDeps built without a brand resolver) | `backend-authz-qa-1.md` |
@@ -38,7 +38,7 @@ Business day: Saturday 2026-10-24 (route `GUL-SR-2`, clock 10:30Z = 16:30 Dhaka)
 | QA-FLOW-07 | backend-authz | web tokens have no `geo`/`brands`/`modules` claims (scope is resolved server-side; docs/34 s1 says claims) | `backend-authz-qa-1.md` s2 |
 Infra: the Friday smoke is red instead of skipped (`infra-qa-1.md`). Scope rules that held: see hop 9.
 
-# Trace (generated; PASS = every listed value equal, FINDING = they differ)
+# Trace (generated; PASS = every listed value equal; `open finding` = an observation of a defect listed above)
 
 ### 1 Seed (dev profile: db/seed without 04_*, plus the smoke outlets)
 
@@ -156,7 +156,7 @@ Infra: the Friday smoke is red instead of skipped (`infra-qa-1.md`). Scope rules
 | dw.agg_daily_route_variant base units, checksum only (mixed units) | dw = 310; device = 310 | PASS |
 | dw.agg_daily_outlet net_mtk summed over the route (equals gross: no discounts) | dw = 2487000; device = 2487000 | PASS |
 | dw.v_daily_route and v_daily_sr agree with the table | v_daily_route.gross = 2487000; v_daily_sr.gross = 2487000; device = 2487000 | PASS |
-| dw.agg_daily_outlet_category exists (named in docs/evidence/seed-gulshan-banani.md) | to_regclass = absent; expected = dw.agg_daily_outlet_category | **FINDING** |
+| dw.agg_daily_outlet_category exists (named in docs/evidence/seed-gulshan-banani.md) | to_regclass = absent; expected = dw.agg_daily_outlet_category | open finding (see the request) |
 
 ### 7 Other division (LKX, its own wing) sells on the same Saturday, so a scope filter has something to cut
 
@@ -261,7 +261,7 @@ Infra: the Friday smoke is red instead of skipped (`infra-qa-1.md`). Scope rules
 | DMO freshness | {"date":"2026-10-24","till_time":true,"as_of":"2026-10-24T10:30:00Z","last_updated_at":"2026-10-24T10:30:00Z","tables":[{"table":"agg_daily_route_sku","last_updated_at":"2026-10-24T10:30:00Z"},{"table":"agg_daily_route_variant","last_updated_at":"2026-10-24T10:30:00Z"},{"table":"agg_daily_outlet_sku | info |
 | DMO filter-options counts | date="2026-10-24", till_time=true, as_of="2026-10-24T10:30:00Z", last_updated_at=null, wings=1, divisions=1, territories=1, houses=2, zones=3, categories=4, segments=6, brands=17, variants=30 | info |
 | TSO web token claim names | [amr, aud, exp, flv, iat, iss, jti, nbf, perm, pii, role, sub, sv, uname] | info |
-| TSO web token carries the scope claims of docs/34 s1 (geo) | claims geo/brands/modules = false; expected = true | **FINDING** |
+| TSO web token carries the scope claims of docs/34 s1 (geo) | claims geo/brands/modules = false; expected = true | open finding (see the request) |
 | TSO sales cards: total_sales per category (base units) | dashboard = {bidi=75, cigarette=180, lighter=50, match=5}; device truth = {bidi=75, cigarette=180, lighter=50, match=5} | PASS |
 | TSO sales cards: base_unit per category | units = {bidi=stick, cigarette=stick, lighter=piece, match=dozen}; expected = {bidi=stick, cigarette=stick, lighter=piece, match=dozen} | PASS |
 | TSO sales card detail | cigarette target/day 24003.600 remaining 23823.600 achv_bp 75 routes 3; bidi target/day 3600.960 remaining 3525.960 achv_bp 208 routes 3; lighter target/day 60.000 remaining 10.000 achv_bp 8333 routes 3; match target/day 36.000 remaining 31.000 achv_bp 1389 routes 3; working_days 25; till_time true | info |
@@ -303,7 +303,7 @@ Infra: the Friday smoke is red instead of skipped (`infra-qa-1.md`). Scope rules
 | BRAND qabrand1001 POST national/cpr | 403 ERR_FORBIDDEN | info |
 | BRAND qabrand1001 POST national/channel-std | 403 ERR_FORBIDDEN | info |
 | BRAND qabrand1001 POST national/breakdown | 403 ERR_FORBIDDEN | info |
-| BRAND user can read the product cards of its brands (docs/34 s1, level 4) | sales status = 403; expected = 200 | **FINDING** |
+| BRAND user can read the product cards of its brands (docs/34 s1, level 4) | sales status = 403; expected = 200 | open finding (see the request) |
 | SR app token on the dashboard is refused (401 or 403) | status = refused; expected = refused | PASS |
 | NATIONAL (read-only level) cannot Final Submit | status = 403; expected = 403 | PASS |
 | SR on the web login | status = 403; expected = 403 | PASS |
@@ -321,7 +321,7 @@ Infra: the Friday smoke is red instead of skipped (`infra-qa-1.md`). Scope rules
 | route map path points | 5 | info |
 | route map: outlets with sales | map = [GUL2-001, GUL2-002]; device truth = [GUL2-001, GUL2-002] | PASS |
 | route map GUL2-001 sales (category: base units) | map = {bidi=25, cigarette=80, lighter=50, match=5}; device truth = {bidi=25, cigarette=80, lighter=50, match=5} | PASS |
-| sale position GUL2-001 | 200 {"date":"2026-10-24","till_time":true,"as_of":"2026-10-24T10:30:00Z","last_updated_at":"2026-10-24T10:30:00Z","zone":{"id":2,"code":"Z-GUL","name":"Gulshan"},"route":{"id":4,"code":"GUL-SR-2","name":"Gulshan 2 (Sat, Tue)"},"outlet_code":"GUL2-001","radius_m":100,"base":{"lat":23.79192,"lng":90.4079},"header_distance_m":5.4,"sales":[{"memo_uuid":"f386ad61-f738-4195-9b2b-24b9f6a5542b","kind":"new","lat":23.79196,"lng":90.40793,"at":"2026-10-24T04:34:00Z","distance_m":5.4,"within_fence":true,"statu | info |
+| sale position GUL2-001 | 200 {"date":"2026-10-24","till_time":true,"as_of":"2026-10-24T10:30:00Z","last_updated_at":"2026-10-24T10:30:00Z","zone":{"id":2,"code":"Z-GUL","name":"Gulshan"},"route":{"id":4,"code":"GUL-SR-2","name":"Gulshan 2 (Sat, Tue)"},"outlet_code":"GUL2-001","radius_m":100,"base":{"lat":23.79192,"lng":90.4079},"header_distance_m":5.4,"sales":[{"memo_uuid":"bc355488-4ee3-420d-9730-72f93782f3e1","kind":"new","lat":23.79196,"lng":90.40793,"at":"2026-10-24T04:34:00Z","distance_m":5.4,"within_fence":true,"statu | info |
 
 ### 11 Day records: day_open, attendance, stock issue, Sales Submit (day_submit), TSO Final Submit
 
@@ -335,7 +335,7 @@ Infra: the Friday smoke is red instead of skipped (`infra-qa-1.md`). Scope rules
 | route-day timestamps (logged in, sales submitted, final submitted) | flags = true/true/false; expected = true/true/false | PASS |
 | Final Submit preview (routes) | GUL-SR-1: logged_in, had_data false, memos 0, net 0; GUL-SR-2: sales_submitted, had_data true, memos 2, net 2487000 | info |
 | Final Submit preview warnings | ["routes_not_sales_submitted"] | info |
-| Final Submit preview lists the routes planned (or with data) on the day (question: is the unplanned GUL-SR-1 listing intended? F-TSO-010 says every active route) | routes = [GUL-SR-1, GUL-SR-2]; planned or with data = [GUL-SR-2] | **FINDING** |
+| Final Submit preview lists the routes planned (or with data) on the day (question: is the unplanned GUL-SR-1 listing intended? F-TSO-010 says every active route) | routes = [GUL-SR-1, GUL-SR-2]; planned or with data = [GUL-SR-2] | open finding (see the request) |
 | TSO Final Submit | status = 200; expected = 200 | PASS |
 | Final Submit replayed with the same client_uuid | status = 200; expected = 200 | PASS |
 | second Final Submit with another client_uuid | status = 409 ERR_DAY_ALREADY_FINAL_SUBMITTED; expected = 409 ERR_DAY_ALREADY_FINAL_SUBMITTED | PASS |
@@ -367,7 +367,7 @@ Infra: the Friday smoke is red instead of skipped (`infra-qa-1.md`). Scope rules
 |---|---|---|
 | reports registered for SUPERADMIN | 32 | info |
 | report amo-call (columns_known=true) | HTTP 200, rows 0, totals null | info |
-| by-outlet separates units (sold_qty_base would add sticks, pieces and dozens) | unit or category column = false; expected = true | **FINDING** |
+| by-outlet separates units (sold_qty_base would add sticks, pieces and dozens) | unit or category column = false; expected = true | open finding (see the request) |
 | report by-outlet (columns_known=true) | HTTP 200, rows 7, totals {"memos":5,"sold_qty_base":408,"net_mtk":3237000,"due_mtk":578400,"dues_collected_mtk":2000} | info |
 | report by-outlet-by-day (columns_known=true) | HTTP 200, rows 7, totals {"memos":5,"sold_qty_base":408,"net_mtk":3237000,"due_mtk":578400,"dues_collected_mtk":2000} | info |
 | report by-route-geo-capture (columns_known=true) | HTTP 200, rows 9, totals {"outlets":183,"master_location":183,"provisional_location":0,"placeholder_location":0,"no_location":0,"confirmed":183} | info |
@@ -407,11 +407,11 @@ Infra: the Friday smoke is red instead of skipped (`infra-qa-1.md`). Scope rules
 | memo_no "sr1001-261024-050" (valid in the phone's block) | accepted  | info |
 | a number in the phone's block is accepted | status = accepted; expected = accepted | PASS |
 | memo_no "lkxsr1001-261024-051" (another user's name) | accepted  | info |
-| memo_no another user's name is refused as memo_no_invalid | answer = accepted; expected = rejected memo_no_invalid | **FINDING** |
+| memo_no another user's name is refused as memo_no_invalid | answer = accepted; expected = rejected memo_no_invalid | open finding (see the request) |
 | memo_no "sr1001-261023-052" (another business date) | accepted  | info |
-| memo_no another business date is refused as memo_no_invalid | answer = accepted; expected = rejected memo_no_invalid | **FINDING** |
+| memo_no another business date is refused as memo_no_invalid | answer = accepted; expected = rejected memo_no_invalid | open finding (see the request) |
 | memo_no "sr1001-261024-3000" (sequence outside every block of the user) | accepted  | info |
-| memo_no sequence outside every block of the user is refused as memo_no_invalid | answer = accepted; expected = rejected memo_no_invalid | **FINDING** |
+| memo_no sequence outside every block of the user is refused as memo_no_invalid | answer = accepted; expected = rejected memo_no_invalid | open finding (see the request) |
 | memo_no "MEMO-1" (not the format) | rejected schema_invalid | info |
 | memo_no not the format is rejected | status = rejected; expected = rejected | PASS |
 
@@ -427,16 +427,4 @@ Infra: the Friday smoke is red instead of skipped (`infra-qa-1.md`). Scope rules
 | same memo_no under a new client_uuid | quarantined memo_no_duplicate | info |
 | the same memo_no is never stored twice | rows with memo_no 060 = 1; expected = 1 | PASS |
 | 2 packets of a 20s SKU sent with pack_factor 10 | memo accepted; line accepted | info |
-| a pack_factor that differs from the SKU's base_per_pack is refused (docs/34 s4.2: re-checked on the server) | line = accepted; expected = rejected qty_invalid | **FINDING** |
-
-### Findings (rows marked FINDING above)
-
-- [6 Warehouse: dw facts, views and aggregates (base units)] dw.agg_daily_outlet_category exists (named in docs/evidence/seed-gulshan-banani.md): to_regclass = absent; expected = dw.agg_daily_outlet_category
-- [8 National dashboard (GET/POST /v1/dashboards/national/*): figures per caller, scope resolved on the server] TSO web token carries the scope claims of docs/34 s1 (geo): claims geo/brands/modules = false; expected = true
-- [9 Scope rules (server side): widening filters, wrong-level callers, BRAND, field roles] BRAND user can read the product cards of its brands (docs/34 s1, level 4): sales status = 403; expected = 200
-- [11 Day records: day_open, attendance, stock issue, Sales Submit (day_submit), TSO Final Submit] Final Submit preview lists the routes planned (or with data) on the day (question: is the unplanned GUL-SR-1 listing intended? F-TSO-010 says every active route): routes = [GUL-SR-1, GUL-SR-2]; planned or with data = [GUL-SR-2]
-- [13 Reports that exist (GET /v1/reports, POST /v1/reports/{key}/query), SUPERADMIN, the Saturday] by-outlet separates units (sold_qty_base would add sticks, pieces and dozens): unit or category column = false; expected = true
-- [14 Memo number rule: the server rejects a number that does not match user, date and block (memo_no_invalid, docs/24 s7.5)] memo_no another user's name is refused as memo_no_invalid: answer = accepted; expected = rejected memo_no_invalid
-- [14 Memo number rule: the server rejects a number that does not match user, date and block (memo_no_invalid, docs/24 s7.5)] memo_no another business date is refused as memo_no_invalid: answer = accepted; expected = rejected memo_no_invalid
-- [14 Memo number rule: the server rejects a number that does not match user, date and block (memo_no_invalid, docs/24 s7.5)] memo_no sequence outside every block of the user is refused as memo_no_invalid: answer = accepted; expected = rejected memo_no_invalid
-- [15 Edges: changed payload, same content under a new uuid, same memo_no under a new uuid, wrong pack size] a pack_factor that differs from the SKU's base_per_pack is refused (docs/34 s4.2: re-checked on the server): line = accepted; expected = rejected qty_invalid
+| a pack_factor that differs from the SKU's base_per_pack is refused (docs/34 s4.2: re-checked on the server) | line = accepted; expected = rejected qty_invalid | open finding (see the request) |

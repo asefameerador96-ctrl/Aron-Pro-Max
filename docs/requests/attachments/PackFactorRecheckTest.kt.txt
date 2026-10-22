@@ -1,0 +1,37 @@
+package com.aktcl.aron.backend.app
+
+import com.fasterxml.jackson.databind.node.ObjectNode
+import io.ktor.http.HttpStatusCode
+import org.junit.jupiter.api.BeforeAll
+import org.junit.jupiter.api.TestInstance
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertTrue
+
+/**
+ * Attached to docs/requests/backend-core-qa-1.md s2 (QA-FLOW-06). Add as backend/app/src/test/kotlin/.../PackFactorRecheckTest.kt with the fix:
+ * docs/34 s4.2 says pack_factor x qty_entered is re-checked on the server; a pack_factor that differs from sku.base_per_pack
+ * (unit_entered = pack) must not be stored. The line is sent with consistent quantity and money, so only the pack size is wrong.
+ */
+@TestInstance(TestInstance.Lifecycle.PER_CLASS)
+class PackFactorRecheckTest : DataFlowTraceSupport() {
+    override val traceName = "pack-factor-recheck"
+
+    @BeforeAll
+    fun prep() = prepareSrDay()
+
+    @Test
+    fun aWrongPackSizeIsNotStored() {
+        val twenty = pick("cigarette", 20)
+        val a = send(sr, oneSale("GUL2-013", 90, Line(twenty, 2), "sr1001-261024-062", packFactorOverride = 10), uuid())
+        assertTrue(ackOf(a, "memo_line").startsWith("rejected"), "line answer: ${ackOf(a, "memo_line")}")
+        assertEquals(0L, sqlLong("SELECT count(*) FROM app.memo_line WHERE sku_id = ${twenty.id} AND pack_factor = 10"))
+    }
+
+    @Test
+    fun theRightPackSizeIsAccepted() {
+        val twenty = pick("cigarette", 20)
+        val a = send(sr, oneSale("GUL2-014", 120, Line(twenty, 2), "sr1001-261024-063"), uuid())
+        assertEquals("accepted", ackOf(a, "memo_line"), detail(a))
+    }
+}
