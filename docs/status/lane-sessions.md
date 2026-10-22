@@ -114,16 +114,16 @@ Usage state read 2026-10-15 06:09 UTC from the archived integrator's live turn: 
 **UI wave rules (lead, 2026-10-19 00:05 UTC, after INT run 1220 went red on stale goldens):** (1) the kit goes LAST in each wave: a kit change that alters rendering stales every lane's goldens, so lanes do not merge lane/ui-kit beyond what INT holds and do not re-record for a newer kit; (2) feature heads go to INT first, in batches of one push per CI cycle; (3) then the KIT WINDOW opens: ui-kit merges INT, re-records every golden its change moves, and pushes ONE head that the integrator fast-forwards; feature lanes hold pushes during the window and merge INT afterwards; (4) each lane re-records only its own goldens (amo_*, tso_*, sr_*/stock_*/sale_* by ui-sr-a/ui-sr-b, kit_* by the kit); ui-packshots pictures appear only in its own dedicated goldens; (5) golden PNG conflicts are never hand-resolved by the integrator: stop and report. Vision QA list: docs/status/ui-parity-qa-2026-10-19.md.
 Dependents merge origin/lane/ui-kit (not wait for INT). Parity proof per lane: docs/status/ui-parity-<lane>.md and docs/evidence/ui-parity/*.png. Integrator promotes each head on the lead's 'checked <sha>'.
 
-## Wave 4: owner directive 2026-10-22 (`docs/34`; branch lane/lead-directive-1022). Started 2026-10-22 ~10:00 UTC.
+## Wave 4: owner directive 2026-10-22 (`docs/34`; branch lane/lead-directive-1022). Started 2026-10-22 09:08 UTC from lane/lead-directive-1022 fd262950 (sent as "checked" to integrator 15 at 09:08).
 | lane | session | model | branch | scope |
 |---|---|---|---|---|
-| backend-authz | (starting) | Opus | lane/backend-authz | docs/34 s1: role codes, module grants, brand scope, token claims |
-| db | (starting) | Opus | lane/db | docs/34 migrations (s1, s2, s4.2) then the Gulshan/Banani seed (s4.4) |
-| backend-reports | (starting) | Sonnet (Opus checker) | lane/backend-reports | dashboard contract, summary tables, card and map endpoints; reports from docs/reports/ as filed |
-| web-dashboard | (starting) | Sonnet | lane/web-dashboard | national dashboard screen for screen (docs/ui-reference/web) |
-| web-admin | (starting) | Sonnet | lane/web-admin | users/roles/grants/brand scope pages, target upload, calendar, house flag, outlet channel, SKU pack sizes |
-| android-print | (starting) | Opus | lane/android-print | MP-58N diagnostics and fix |
-| android-units | (starting) | Sonnet (Opus checker) | lane/android-units | packets / boxes / dozens across the apps |
-| android-map | (starting) | Sonnet | lane/android-map | inline map and distance on Sale |
-| mdm | (starting) | Sonnet | lane/mdm | MDM portal section, API, dpc command channel |
+| backend-authz | session_019B2UpUbUmdw1wR25U3zPMj (started 09:08 UTC) | Opus | lane/backend-authz | docs/34 s1: role codes, module grants, brand scope, token claims |
+| db | session_01XJgQV2JKgfg7YS8ziNShL5 (started 09:08 UTC) | Opus | lane/db | docs/34 migrations (s1, s2, s4.2) then the Gulshan/Banani seed (s4.4) |
+| backend-reports | session_01KfUFry6iMtXCCgfCCjZUCi (started 09:08 UTC) | Sonnet (Opus checker) | lane/backend-reports | dashboard contract, summary tables, card and map endpoints; reports from docs/reports/ as filed |
+| web-dashboard | session_01D2zQ8As8hEYUfKpVWEnf6F (started 09:08 UTC) | Sonnet | lane/web-dashboard | national dashboard screen for screen (docs/ui-reference/web) |
+| web-admin | session_01WrmfRQageVY9yT4n5tvnst (started 09:08 UTC) | Sonnet | lane/web-admin | users/roles/grants/brand scope pages, target upload, calendar, house flag, outlet channel, SKU pack sizes |
+| android-print | session_01QnDJeZJNP6StfWaFoSE6DE (started 09:08 UTC) | Opus | lane/android-print | MP-58N diagnostics and fix |
+| android-units | session_01Nd8dEfvfeLSDqpvGzzT2SW (started 09:08 UTC) | Sonnet (Opus checker) | lane/android-units | packets / boxes / dozens across the apps |
+| android-map | session_013nUUnEq5JwDtmgn5PXSYFv (started 09:08 UTC) | Sonnet | lane/android-map | inline map and distance on Sale |
+| mdm | session_01DVRkAnyU5vkAm8vSEydVoa (started 09:08 UTC) | Sonnet | lane/mdm | MDM portal section, API, dpc command channel |
 | qa | (later) | Sonnet | lane/qa | data-flow trace after db, backend-reports and android-units land |
