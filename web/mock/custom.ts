@@ -109,9 +109,9 @@ export async function handleCustom(st: CustomState, ctx: Ctx, canWrite: boolean,
       });
       const months = [...new Set(b.rows.map((r) => r.month))].sort();
       const replaces = st.routeTargets.filter((t) => months.includes(t.month) && b.rows!.some((r) => r.route_code === t.route_code && r.sku_code === t.sku_code && r.month === t.month)).length;
-      const summary = { batch_uuid: b.batch_uuid, rows: b.rows.length, routes: new Set(b.rows.map((r) => r.route_code)).size, skus: new Set(b.rows.map((r) => r.sku_code)).size, months, total_qty_base: b.rows.reduce((a, r) => a + r.qty_base, 0), replaces, errors };
+      const summary = { batch_uuid: b.batch_uuid, rows: b.rows.length, routes: new Set(b.rows.map((r) => r.route_code)).size, skus: new Set(b.rows.map((r) => r.sku_code)).size, months, total_qty_base: b.rows.reduce((a, r) => a + r.qty_base, 0), replaces, errors, errors_truncated: false };
       if (b.dry_run) return ctx.send(res, 200, summary), true;
-      if (errors.length) return ctx.send(res, 400, ctx.problem(400, "ERR_VALIDATION", { errors: errors.map((e) => ({ pointer: `/rows/${e.row - 1}`, code: e.code })) })), true;
+      if (errors.length) return ctx.send(res, 400, ctx.problem(400, "ERR_VALIDATION", { errors: errors.map((e) => ({ pointer: `body.rows/${e.row - 1}/${({ route: "route_code", sku: "sku_code", month: "month", quantity: "qty_base" } as Record<string, string>)[e.column] ?? e.column}`, code: e.code })) })), true;
       const hash = JSON.stringify(b.rows);
       const seen = st.routeTargetBatches.get(b.batch_uuid);
       if (seen) return seen.hash === hash ? (ctx.send(res, 200, { batch_uuid: b.batch_uuid, rows: seen.rows, replayed: true }), true) : (ctx.send(res, 409, ctx.problem(409, "ERR_CONFLICT")), true);
@@ -150,9 +150,9 @@ export async function handleCustom(st: CustomState, ctx: Ctx, canWrite: boolean,
     const by_channel: Record<string, number> = {};
     for (const r of b.rows) by_channel[r.channel] = (by_channel[r.channel] ?? 0) + 1;
     const updates = resolved.filter((x) => x.existing).length;
-    const summary = { batch_uuid: b.batch_uuid, rows: b.rows.length, creates: b.rows.length - updates, updates, by_channel, errors };
+    const summary = { batch_uuid: b.batch_uuid, rows: b.rows.length, creates: b.rows.length - updates, updates, by_channel, errors, errors_truncated: false };
     if (b.dry_run) return ctx.send(res, 200, summary), true;
-    if (errors.length) return ctx.send(res, 400, ctx.problem(400, "ERR_VALIDATION", { errors: errors.map((e) => ({ pointer: `/rows/${e.row - 1}/${e.column}`, code: e.code })) })), true;
+    if (errors.length) return ctx.send(res, 400, ctx.problem(400, "ERR_VALIDATION", { errors: errors.map((e) => ({ pointer: `body.rows/${e.row - 1}/${e.column}`, code: e.code })) })), true;
     const hash = JSON.stringify(b.rows);
     const seen = st.outletImportBatches.get(b.batch_uuid);
     if (seen) return seen.hash === hash ? (ctx.send(res, 200, { batch_uuid: b.batch_uuid, rows: seen.rows, replayed: true }), true) : (ctx.send(res, 409, ctx.problem(409, "ERR_CONFLICT")), true);

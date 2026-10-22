@@ -42,7 +42,7 @@ export function UserAccessEditor({ access, brands, canWrite }: { access: UserAcc
         setBanner({ ok: true, text: t("access.saved") });
         setReason("");
         router.refresh();
-      } else setBanner({ ok: false, text: res.status === 412 ? t("access.stale") : problem(data.code) });
+      } else setBanner({ ok: false, text: res.status === 412 ? t("access.stale") : res.status === 503 ? t("access.unavailable") : problem(data.code) });
     } catch {
       setBanner({ ok: false, text: t("error.network") });
     } finally {
