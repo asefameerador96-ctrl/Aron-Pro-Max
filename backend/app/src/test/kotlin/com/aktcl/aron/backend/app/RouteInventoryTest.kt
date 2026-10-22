@@ -268,7 +268,7 @@ class RouteInventoryTest {
 
     companion object {
         /** Optional-bearer operations that authenticate with the phone's own X-Device-Proof instead (docs/24 s8.3). */
-        val DEVICE_PROOF_OPERATIONS = listOf("POST /v1/devices/nonce", "GET /v1/devices/me/policy", "POST /v1/devices/me/status")
+        val DEVICE_PROOF_OPERATIONS = listOf("POST /v1/devices/nonce", "GET /v1/devices/me/policy", "POST /v1/devices/me/status", "GET /v1/devices/me/commands", "POST /v1/devices/me/commands/{}/ack")
 
         /** Contract operations a caller may use without a bearer token (2026-10-07). Change only with a security review. */
         val PUBLIC_OPERATIONS = setOf(

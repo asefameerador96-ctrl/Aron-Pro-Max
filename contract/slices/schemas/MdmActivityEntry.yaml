@@ -1,0 +1,43 @@
+MdmActivityEntry:
+  type: object
+  required:
+  - at
+  - kind
+  - summary
+  additionalProperties: false
+  properties:
+    at:
+      $ref: '#/components/schemas/Timestamp'
+    kind:
+      type: string
+      enum:
+      - command
+      - state
+      - policy
+      - enrolment
+      - status
+      - alert
+    device_id:
+      type:
+      - integer
+      - 'null'
+      format: int64
+      minimum: 1
+    summary:
+      type: string
+      maxLength: 300
+    actor:
+      type:
+      - string
+      - 'null'
+      maxLength: 80
+    reason:
+      type:
+      - string
+      - 'null'
+      maxLength: 300
+    ref:
+      type:
+      - string
+      - 'null'
+      maxLength: 80

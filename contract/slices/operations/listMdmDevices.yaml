@@ -1,0 +1,41 @@
+path: /v1/admin/mdm/devices
+method: get
+operation:
+  tags:
+  - admin-mdm
+  operationId: listMdmDevices
+  summary: MDM device list with owner mode, user, app version, last seen, battery, network, policy and compliance
+    flags.
+  description: Needs the mdm module (r), or SUPERADMIN. Filters combine with AND.
+  parameters:
+  - name: status
+    in: query
+    required: false
+    schema:
+      $ref: '#/components/schemas/DeviceState'
+  - $ref: '#/components/parameters/FlavourQueryOptional'
+  - name: flag
+    in: query
+    required: false
+    description: Only devices carrying this compliance flag.
+    schema:
+      $ref: '#/components/schemas/MdmComplianceFlag'
+  - name: policy_id
+    in: query
+    required: false
+    schema:
+      $ref: '#/components/schemas/Id'
+  - $ref: '#/components/parameters/Search'
+  - $ref: '#/components/parameters/Limit'
+  - $ref: '#/components/parameters/Cursor'
+  responses:
+    '200':
+      description: Page of devices.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/MdmDevicePage'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'

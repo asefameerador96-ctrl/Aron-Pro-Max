@@ -2,4 +2,6 @@
 <resources>
     <string name="aron_dpc_label">Aron device policy</string>
     <string name="aron_dpc_description">Keeps this AKTCL field phone configured for Aron.</string>
+    <string name="mdm_notice_title">Aron</string>
+    <string name="mdm_notice_channel">Aron</string>
 </resources>
