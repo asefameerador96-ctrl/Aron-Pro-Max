@@ -5,11 +5,12 @@ import { existsSync } from "node:fs";
 import { loginOk, resetMock } from "./helpers";
 
 const DAY = "2026-10-01";
-// Until the web-snapshots workflow has recorded the Linux goldens and they are committed, this spec only runs when it is recording them
-// (a missing golden would otherwise fail the whole e2e job).
-const recording = process.argv.includes("--update-snapshots");
+// Until the web-snapshots workflow has recorded the Linux goldens and they are committed, this spec only runs while recording them
+// (`--update-snapshots` sets the config to "changed" or "all"); a missing golden would otherwise fail the whole e2e job.
 const recorded = existsSync(new URL("./national-shots.spec.ts-snapshots", import.meta.url));
-test.skip(!recording && !recorded, "goldens not recorded yet (web-snapshots workflow)");
+test.beforeEach(({}, info) => {
+  test.skip(!["all", "changed"].includes(info.config.updateSnapshots) && !recorded, "goldens not recorded yet (web-snapshots workflow)");
+});
 
 test.beforeEach(async ({ page }) => {
   await resetMock();
