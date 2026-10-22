@@ -236,10 +236,78 @@ class PrinterManagerTest {
     @Test fun aPauseMidJobEarnsNoCreditSoTheBufferNeverOverflows() = runTest {
         val (sim, m) = setup()
         var calls = 0
-        assertEquals(PrintOutcome.Printed, m.print(PrintJob("m1", memo)) { calls++; kotlinx.coroutines.delay(2_000) })
+        assertEquals(PrintOutcome.Printed, m.print(PrintJob("m1", memo)) { calls++; kotlinx.coroutines.delay(2_000); true })
         assertEquals(1, calls)
         assertFalse("receive buffer overflowed (garbage on paper)", sim.overflowed)
         assertWhole(sim.sessions.single(), memo)
+    }
+
+    /** Checker T1 (3adf7b81) #2: a blocking stream write ignores cancellation; the watchdog's close ends it. */
+    @Test fun aWriteThatBlocksUncancellablyBeforeInkIsAFailureAtTheBound() = runTest {
+        val (sim, m) = setup()
+        sim.blockFromByte = 0
+        val t0 = testScheduler.currentTime
+        assertEquals(PrintOutcome.Failed(PrintFailure.DISCONNECTED), m.print(PrintJob("m1", memo)))
+        assertTrue("ended by the watchdog: ${testScheduler.currentTime - t0} ms", testScheduler.currentTime - t0 in 8_000..9_000)
+        assertEquals(PrinterState.Off, m.state.value)
+    }
+
+    @Test fun aWriteThatBlocksUncancellablyAfterInkIsUnconfirmed() = runTest {
+        val (sim, m) = setup()
+        sim.blockFromByte = 20_000
+        assertEquals(PrintOutcome.Unconfirmed(), m.print(PrintJob("m1", memo)))
+        assertEquals(PrinterState.Off, m.state.value)
+    }
+
+    /** #3: an OEM RuntimeException from the stream never escapes print() and never leaves the icon on Printing. */
+    @Test fun aRuntimeExceptionFromTheStreamIsUnconfirmedAfterInkAndAFailureBefore() = runTest {
+        val (sim, m) = setup()
+        sim.runtimeErrorAtByte = 20_000
+        assertEquals(PrintOutcome.Unconfirmed(), m.print(PrintJob("m1", memo)))
+        assertEquals(PrinterState.Off, m.state.value)
+        val (sim2, m2) = setup()
+        sim2.runtimeErrorAtByte = 0
+        assertEquals(PrintOutcome.Failed(PrintFailure.DISCONNECTED), m2.print(PrintJob("m2", memo)))
+    }
+
+    /** #1: when the paper mark cannot be stored, the job stops before the first band: nothing on paper, a plain failure. */
+    @Test fun anUnstoredPaperMarkStopsBeforeAnyInk() = runTest {
+        val (sim, m) = setup()
+        assertEquals(PrintOutcome.Failed(PrintFailure.DISCONNECTED), m.print(PrintJob("m1", memo)) { false })
+        assertTrue(sim.sessions.single().isEmpty())
+        assertEquals(PrintOutcome.Printed, m.print(PrintJob("m1", memo)))
+        assertWhole(sim.sessions.last(), memo)
+    }
+
+    /** #5: a print cancelled mid-job closes the link and, while a screen holds it, reconnects by itself. */
+    @Test fun aCancelledPrintReconnectsWhileAScreenHoldsTheLink() = runTest {
+        val (sim, m) = setup()
+        val release = m.hold()
+        runCurrent()
+        assertEquals(PrinterState.Connected, m.state.value)
+        val job = async { m.print(PrintJob("m1", memo)) }
+        advanceTimeBy(500)
+        runCurrent()
+        job.cancel()
+        runCurrent()
+        assertEquals(PrinterState.Off, m.state.value)
+        advanceTimeBy(3_000)
+        runCurrent()
+        assertEquals(PrinterState.Connected, m.state.value)
+        assertEquals(PrintOutcome.Printed, m.print(PrintJob("m2", memo)))
+        assertFalse(sim.overflowed)
+        release()
+    }
+
+    /** #4: the pacing keeps the configured speed (no lost fractions): 300 rows/s, so the whole memo takes about rows/300 s. */
+    @Test fun pacingRunsAtTheConfiguredSpeed() = runTest {
+        val (_, m) = setup()
+        val t0 = testScheduler.currentTime
+        assertEquals(PrintOutcome.Printed, m.print(PrintJob("m1", memo)))
+        val rows = expectedRows(memo).size
+        val ideal = rows * 1000L / 300
+        val took = testScheduler.currentTime - t0
+        assertTrue("took $took ms for an ideal $ideal ms", took < ideal * 105 / 100 + 1_500)
     }
 
     @Test fun stuckWriteTimesOutAsDisconnected() = runTest {

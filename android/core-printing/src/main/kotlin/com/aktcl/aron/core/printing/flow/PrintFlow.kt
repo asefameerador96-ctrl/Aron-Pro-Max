@@ -184,16 +184,18 @@ class MemoPrinting(
         }
     }
 
-    private suspend fun markPaperOut(event: PrintEvent) {
+    /** Stores paper_out on the pending job, three tries; false when it could not be stored. */
+    private suspend fun markPaperOut(event: PrintEvent): Boolean {
         repeat(3) {
             try {
                 ledger.savePending(PendingPrint(event, paperOut = true))
-                return
+                return true
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
             } catch (_: Exception) {
             }
         }
+        return false
     }
 
     private suspend fun print(

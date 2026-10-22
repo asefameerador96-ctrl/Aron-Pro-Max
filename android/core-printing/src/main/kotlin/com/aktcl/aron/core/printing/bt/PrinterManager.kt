@@ -288,9 +288,10 @@ class PrinterManager(
     /**
      * Prints [job]; never throws (but for cancellation). See the class comment for the guarantees. [onInkStarted]
      * runs once, just before the first image band is written: from then on paper may come out, so the caller marks
-     * it (a process killed mid-print must not leave a job that recovers as "failed"). It must not throw.
+     * it (a process killed mid-print must not leave a job that recovers as "failed"). It returns false when the mark
+     * could not be stored: the job then stops before any ink, as a plain failure.
      */
-    suspend fun print(job: PrintJob, onInkStarted: suspend () -> Unit = {}): PrintOutcome = lock.withLock {
+    suspend fun print(job: PrintJob, onInkStarted: suspend () -> Boolean = { true }): PrintOutcome = lock.withLock {
         if (printed.containsKey(job.id)) return@withLock PrintOutcome.AlreadyPrinted
         if (store.load() == null) return@withLock PrintOutcome.Failed(PrintFailure.NO_PRINTER)
         idleTimer?.cancel()
@@ -303,10 +304,10 @@ class PrinterManager(
             // the link may be mid-command: close it so the next job starts clean and the icon is not stuck on Printing
             closeLink()
             _state.value = PrinterState.Off
+            autoReconnect()
             throw e
-        } catch (_: IOException) {
-            if (inkStarted) PrintOutcome.Unconfirmed() else PrintOutcome.Failed(PrintFailure.DISCONNECTED)
-        } catch (_: SecurityException) {
+        } catch (_: Exception) {
+            // IOException normally; SecurityException; some OEM streams throw a RuntimeException after a close race
             if (inkStarted) PrintOutcome.Unconfirmed() else PrintOutcome.Failed(PrintFailure.DISCONNECTED)
         }
         when (outcome) {
@@ -371,17 +372,32 @@ class PrinterManager(
         return EscPos.paperOut(b)
     }
 
+    /**
+     * One write, bounded by [PrintPacing.writeTimeoutMs]. `BluetoothSocket` output streams block and ignore
+     * cancellation, so a timeout around the call alone would wait for the OS: a watchdog closes the link at the bound,
+     * which makes the blocked write throw (checker T1, 3adf7b81 #2).
+     */
     private suspend fun guardedWrite(t: PrinterTransport, bytes: ByteArray) {
         if (linkLost) throw IOException("link lost")
-        val done = withTimeoutOrNull(pacing.writeTimeoutMs.coerceAtLeast(500)) { t.write(bytes); true }
-        if (done == null) {
+        val fired = java.util.concurrent.atomic.AtomicBoolean(false)
+        val watchdog = scope.launch {
+            delay(pacing.writeTimeoutMs.coerceAtLeast(500))
+            fired.set(true)
             t.close() // unblocks the stuck write; the reader then reports the drop
-            throw IOException("write timed out")
         }
+        try {
+            t.write(bytes)
+        } catch (e: IOException) {
+            if (fired.get()) throw IOException("write timed out")
+            throw e
+        } finally {
+            watchdog.cancel()
+        }
+        if (fired.get()) throw IOException("write timed out")
         if (linkLost) throw IOException("link lost")
     }
 
-    private suspend fun send(t: PrinterTransport, job: PrintJob, onInkStarted: suspend () -> Unit): PrintOutcome {
+    private suspend fun send(t: PrinterTransport, job: PrintJob, onInkStarted: suspend () -> Boolean): PrintOutcome {
         _state.value = PrinterState.Printing(job.id, 0)
         if (queryPaper(t) == true) return PrintOutcome.Failed(PrintFailure.PAPER_OUT)
         val commands = ArrayList<ByteArray>()
@@ -404,8 +420,13 @@ class PrinterManager(
         var lastMs = nowMs()
         fun drain() {
             val now = nowMs()
-            level = maxOf(0L, level - (now - lastMs) * bytesPerSecond / 1000)
-            lastMs = now
+            val drained = (now - lastMs) * bytesPerSecond / 1000
+            if (drained >= level) {
+                level = 0; lastMs = now // empty: idle time earns nothing
+            } else if (drained > 0) {
+                level -= drained
+                lastMs += drained * 1000 / bytesPerSecond // keep the remainder of a partial byte for the next drain
+            }
         }
         var sent = 0L
         for ((index, cmd) in commands.withIndex()) {
@@ -421,12 +442,14 @@ class PrinterManager(
                 while (true) {
                     drain()
                     if (level + n <= buffer) break
-                    delay(((level + n - buffer) * 1000 / bytesPerSecond).coerceAtLeast(5))
+                    delay(((level + n - buffer) * 1000 + bytesPerSecond - 1) / bytesPerSecond) // rounded up: one wait suffices
                 }
                 // If this write breaks the link, assume none of it arrived: the printer may still want the rest.
                 if (!inkStarted && (bitImage || (raster && !(padding && index == 0)))) {
+                    val marked = try { onInkStarted() } catch (e: CancellationException) { throw e } catch (_: Exception) { false }
+                    // nothing of this job is on paper yet: unmarked, it stops here rather than risk a "failed" record later
+                    if (!marked) return PrintOutcome.Failed(PrintFailure.DISCONNECTED)
                     inkStarted = true
-                    try { onInkStarted() } catch (e: CancellationException) { throw e } catch (_: Exception) {}
                 }
                 strandedBytes = if (raster) cmd.size - off else 0
                 strandedEndsWithLf = endsWithLf
@@ -452,9 +475,9 @@ class PrinterManager(
             if (queryPaper(t, graceMs = slowMs) == true) return if (inkStarted) PrintOutcome.Unconfirmed(paperOut = true) else PrintOutcome.Failed(PrintFailure.PAPER_OUT)
             if (linkLost) throw IOException("link lost")
             PrintOutcome.Printed
-        } catch (_: IOException) {
-            if (inkStarted) PrintOutcome.Unconfirmed() else PrintOutcome.Failed(PrintFailure.DISCONNECTED)
-        } catch (_: SecurityException) {
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
             if (inkStarted) PrintOutcome.Unconfirmed() else PrintOutcome.Failed(PrintFailure.DISCONNECTED)
         }
     }

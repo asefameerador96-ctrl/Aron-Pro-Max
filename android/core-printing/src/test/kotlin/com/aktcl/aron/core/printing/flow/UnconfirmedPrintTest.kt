@@ -163,4 +163,33 @@ class UnconfirmedPrintTest {
         assertEquals(PrintAttempt.Done, after.printMemo(memoUuid, Fixtures.seededSale))
         assertEquals("memo_reprint", e.ledger.events.last().documentKind)
     }
+
+    /** Checker T1 (3adf7b81) #6: the roll ran out after ink started, through MemoPrinting. */
+    @Test fun rollOutAfterInkAsksTheSellerKeepsPrintEnabledAndNoMeansTheOriginalAgain() = runTest {
+        val e = defaultEnv()
+        e.sim.paperRows = 300
+        val a = e.printing.printMemo(memoUuid, Fixtures.seededSale)
+        assertTrue("asked: $a", a is PrintAttempt.AwaitingConfirmation)
+        assertEquals(com.aktcl.aron.core.printing.bt.PrinterState.PaperOut, e.pm.state.value)
+        assertTrue(e.pm.canPrint)
+        e.printing.confirm(a as PrintAttempt.AwaitingConfirmation, false)
+        assertNull(e.ledger.printedAt(memoUuid))
+        e.sim.paperRows = Int.MAX_VALUE
+        val b = e.printing.printMemo(memoUuid, Fixtures.seededSale) as PrintAttempt.AwaitingConfirmation
+        e.printing.confirm(b, true)
+        assertEquals("memo", e.ledger.events.last().documentKind)
+    }
+
+    /** #1: a ledger that cannot store paper_out stops the job before any ink: FAILED is then true. */
+    @Test fun aLedgerThatCannotMarkThePaperStopsBeforeInk() = runTest {
+        val e = defaultEnv()
+        val broken = object : PrintLedger by e.ledger {
+            override suspend fun savePending(job: PendingPrint) { if (job.paperOut) throw java.io.IOException("disk full") else e.ledger.savePending(job) }
+        }
+        val printing = MemoPrinting(e.pm, { Fixtures.renderer() }, broken, { java.util.UUID.randomUUID().toString() }, { testScheduler.currentTime }, { 5 }, { true })
+        val a = printing.printMemo(memoUuid, Fixtures.seededSale)
+        assertTrue("$a", a is PrintAttempt.Failed)
+        assertTrue("nothing on paper", e.sim.sessions.single().isEmpty())
+        assertEquals(PrintEvent.FAILED, e.ledger.events.single().outcome)
+    }
 }

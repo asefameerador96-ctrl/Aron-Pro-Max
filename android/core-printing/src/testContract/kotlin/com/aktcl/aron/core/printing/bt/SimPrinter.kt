@@ -39,6 +39,10 @@ class SimPrinter(
     private var lineBuf: List<ByteArray>? = null
     private var spacing = 30
     var hangWrites = false
+    /** From this byte on, a write blocks like a BluetoothSocket stream: cancellation does not end it, only close() does. */
+    var blockFromByte: Long = Long.MAX_VALUE
+    /** At this byte the stream throws a RuntimeException (an OEM close race), not an IOException. */
+    var runtimeErrorAtByte: Long = Long.MAX_VALUE
     /** Turn off once this many bytes have arrived in total (across sessions). */
     var switchOffAtByte: Long = Long.MAX_VALUE
     /** Rows of paper left on the roll. */
@@ -94,6 +98,8 @@ class SimPrinter(
         override suspend fun write(bytes: ByteArray) {
             if (!open || !on) throw IOException("link down")
             if (hangWrites) hang.await()
+            if (totalBytes >= blockFromByte) kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) { hang.await() }
+            if (totalBytes >= runtimeErrorAtByte) throw IllegalStateException("socket closed under the stream")
             // The buffer drains at print speed only while it holds data: idle time gives no credit.
             val t = now()
             level = maxOf(0L, level - (t - lastMs) * rowsPerSecond * bytesPerRow / 1000)
@@ -122,6 +128,7 @@ class SimPrinter(
 
         override fun close() {
             open = false
+            hang.completeExceptionally(IOException("closed"))
             replies.close()
             if (link === this) link = null
         }
