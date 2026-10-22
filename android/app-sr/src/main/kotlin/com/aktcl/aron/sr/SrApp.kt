@@ -456,6 +456,7 @@ fun SrApp(
                         onMap = (st as? VisitUiState.NeedsDecision)?.takeIf { it.outlet.lat != null && it.outlet.lng != null }?.let { d ->
                             { context.startActivity(OutletMapActivity.intent(context, d.outlet.name, d.outlet.lat!!, d.outlet.lng!!, d.outlet.radiusM, d.phoneLat, d.phoneLng)) }
                         },
+                        mapSlot = rememberOutletMapSlot(day.isOnline()), geoPanel = true,
                     )
                 }
             }

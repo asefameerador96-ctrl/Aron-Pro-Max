@@ -447,3 +447,15 @@ Needs: the owner's phone with the SR app built from lane/android-print (or INT o
 6. For each page the screen asks "Did the ... page print clearly?": answer Yes or No (No if nothing came out or it is garbage).
 7. Tap **Share report** (or **Copy report** and paste it) and send the text to the lead. It has no phone numbers and no secrets.
 Pass: the report shows a CONNECT line with OK and the GS v 0 raster page PRINTED OK. Anything else: the report says where it stops.
+
+## D-MAP-02 inline map on the Sale confirm step (android-map) — DEVICE-PENDING
+Needs a build with the Maps key (GitHub secret `MAPS_API_KEY`, restricted by package and SHA) and a phone with Play services.
+1. Online, in the Gulshan–Banani test geography: Sale → pick an outlet within its radius. Without any tap the confirm step
+   shows "সীমার মধ্যে: আউটলেট থেকে N মি · সীমা R মি", the compass line and the lite map with the pin, the radius circle
+   and your position. Expect the map within 3 s on mobile data; `adb shell dumpsys netstats` / the Data usage screen shows
+   at most 1 MB for the session (docs/17 s10.5).
+2. Stand outside the radius: the same step reads "সীমার বাইরে: …", Refresh and Force Sale (with photo) behave as before.
+3. Airplane mode, then pick the outlet: the panel shows the distance, the bearing arrow and the offline range picture; no
+   blank grey box, Start call works at once.
+4. "Maps অ্যাপে খুলুন" still opens the full interactive `OutletMapActivity`; the Map tile is unchanged.
+5. Bangla mode: digits are Bengali throughout; English mode: ASCII.
