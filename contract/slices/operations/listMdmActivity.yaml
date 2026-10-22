@@ -1,0 +1,21 @@
+path: /v1/admin/mdm/activity
+method: get
+operation:
+  tags:
+  - admin-mdm
+  operationId: listMdmActivity
+  summary: Activity log of the whole fleet, newest first.
+  parameters:
+  - $ref: '#/components/parameters/Limit'
+  - $ref: '#/components/parameters/Cursor'
+  responses:
+    '200':
+      description: Page of activity.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/MdmActivityPage'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'

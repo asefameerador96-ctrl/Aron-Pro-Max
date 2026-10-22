@@ -1,0 +1,57 @@
+MdmCommand:
+  type: object
+  required:
+  - command_id
+  - device_id
+  - type
+  - state
+  - created_at
+  - expires_at
+  - reason
+  additionalProperties: false
+  properties:
+    command_id:
+      $ref: '#/components/schemas/Uuid'
+    device_id:
+      $ref: '#/components/schemas/Id'
+    type:
+      $ref: '#/components/schemas/MdmCommandType'
+    params:
+      type: object
+      additionalProperties: true
+    state:
+      $ref: '#/components/schemas/MdmCommandState'
+    reason:
+      type: string
+      maxLength: 300
+    created_at:
+      $ref: '#/components/schemas/Timestamp'
+    created_by:
+      type:
+      - string
+      - 'null'
+      maxLength: 80
+    approved_by:
+      type:
+      - string
+      - 'null'
+      maxLength: 80
+    approved_at:
+      oneOf:
+      - $ref: '#/components/schemas/Timestamp'
+      - type: 'null'
+    sent_at:
+      oneOf:
+      - $ref: '#/components/schemas/Timestamp'
+      - type: 'null'
+    acked_at:
+      oneOf:
+      - $ref: '#/components/schemas/Timestamp'
+      - type: 'null'
+    expires_at:
+      $ref: '#/components/schemas/Timestamp'
+    result:
+      type:
+      - object
+      - 'null'
+      additionalProperties: true
