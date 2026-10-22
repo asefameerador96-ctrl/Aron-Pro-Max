@@ -160,3 +160,6 @@ green run of the exact sha). Usage stays `allowed` on the five-hour window.
 
 ## Update 2026-10-22 22:50 UTC (wave 4, lead): dates hold
 - Train 11 on dev about 23:15 UTC (INT CI slowed by seven concurrent lane runs). Train 12 about 00:30 UTC, train 13 about 01:45 UTC 2026-10-23 (backend-core's sync fixes join 13 only if its run is green by then, else 14 in the morning). backend-reports' V0109 fill and db's V0110 follow in the morning trains. Owner report about 06:30 UTC.
+
+## Update 2026-10-22 23:55 UTC (wave 4, lead): trains 11 and 12 on dev
+- Train 12 reached dev at 23:43 UTC (45 minutes earlier than forecast). Train 13 (backend-authz round 3, qa trace re-merge, web-dashboard long-Bangla pass and mock split, web-admin mock split, backend-core sync fixes, db V0109 last) about 01:45 UTC 2026-10-23, depending on six lane runs sharing the runners. backend-reports' V0109 fill and db's V0110 in the morning trains. Owner report about 06:30 UTC.
