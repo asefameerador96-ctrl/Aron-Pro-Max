@@ -172,6 +172,26 @@ class VisitFlowTest {
         assertNull(session.current.value)
     }
 
+    @Test fun openVisitCarriesTheFixItAlreadyTookForTheConfirmStep() = runTest {
+        val session = VisitSession()
+        val (f, _, src) = flow(listOf(fix(lat = 23.7938 + 0.0002)), session = session)
+        f.open(outlet)
+        val g = session.geo.value!!
+        assertEquals(1, src.reads) // no second sample (D-MAP-02)
+        assertEquals(com.aktcl.aron.rules.GeoVerdict.IN_RANGE, g.verdict)
+        assertEquals(100, g.radiusM)
+        assertEquals(22.0, g.distanceM!!, 2.0)
+        assertEquals(23.7938 + 0.0002, g.phoneLat!!, 1e-9)
+        session.close()
+        assertNull(session.geo.value)
+    }
+
+    @Test fun aRestoredVisitHasNoGeoInfo() {
+        val session = VisitSession()
+        session.restore(OpenVisit("00000000-0000-4000-8000-000000000001", 1, 2, "in_range", "sale_allowed", true, false, null, "x"))
+        assertNull(session.geo.value)
+    }
+
     @Test fun visitRecordUsesTheOutletsResolvedRadiusAndBasis() = runTest {
         val (f, rec, _) = flow(listOf(fix()))
         f.open(outlet)

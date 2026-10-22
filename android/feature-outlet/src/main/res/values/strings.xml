@@ -118,4 +118,18 @@
     <string name="out_req_err_point_far">The chosen point is too far from where you stand. Move it closer or walk to the shop.</string>
     <string name="out_req_err_mock">A fake location was detected. Turn it off and try again.</string>
     <string name="out_req_err_move_far">The new point is too far from where the shop was. Ask the office to move it.</string>
+    <string name="out_geo_inside">Inside the range: %1$s m from the outlet · limit %2$s m</string>
+    <string name="out_geo_outside">Outside the range: %1$s m from the outlet · limit %2$s m</string>
+    <string name="out_geo_direction">The outlet is to the %1$s</string>
+    <string name="out_geo_you">You</string>
+    <string name="out_geo_map_cd">Map: the outlet, its range circle and your position</string>
+    <string name="out_geo_arrow_cd">Direction to the outlet: %1$s</string>
+    <string name="out_compass_n">north</string>
+    <string name="out_compass_ne">north-east</string>
+    <string name="out_compass_e">east</string>
+    <string name="out_compass_se">south-east</string>
+    <string name="out_compass_s">south</string>
+    <string name="out_compass_sw">south-west</string>
+    <string name="out_compass_w">west</string>
+    <string name="out_compass_nw">north-west</string>
 </resources>

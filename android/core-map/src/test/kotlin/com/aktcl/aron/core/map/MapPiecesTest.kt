@@ -105,11 +105,11 @@ class MapPiecesTest {
         assertNull(MapFrame.of(listOf(MapPoint("3", "c", null, null))))
     }
 
-    /** "Loaded only when its screen opens": only the screen composable touches Maps SDK classes; the geocoder never does. */
+    /** "Loaded only when its screen opens": only the two map composables (the list screen and the D-MAP-02 single-outlet map) touch Maps SDK classes; the geocoder never does. */
     @Test
     fun onlyTheScreenComposableReferencesTheMapsSdk() {
         val src = File("src/main/kotlin/com/aktcl/aron/core/map")
         val users = src.listFiles()!!.filter { f -> f.readText().contains("com.google.android.gms.maps") || f.readText().contains("com.google.maps") }
-        assertEquals(listOf("LiteMapScreen.kt"), users.map { it.name })
+        assertEquals(listOf("LiteMapScreen.kt", "OutletLiteMap.kt"), users.map { it.name }.sorted())
     }
 }
