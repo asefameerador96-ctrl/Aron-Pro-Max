@@ -143,6 +143,45 @@ class PrinterManagerTest {
         assertEquals(PrintOutcome.Failed(PrintFailure.DISCONNECTED), job.await())
     }
 
+    /** D-PRINT-02: a printer that ignores GS v 0 gets the memo as ESC * bit image once diagnostics chose it. */
+    @Test fun bitImageModePrintsTheWholeMemoWithoutOverflowAndSurvivesTheStore() = runTest {
+        val store = Store()
+        val (sim, m) = setup(store)
+        m.setImageMode(ImageMode.BIT_IMAGE)
+        assertEquals(ImageMode.BIT_IMAGE, store.p!!.imageMode)
+        assertEquals(PrintOutcome.Printed, m.print(PrintJob("m1", memo)))
+        assertFalse(sim.overflowed)
+        val want = expectedRows(memo)
+        val got = sim.sessions.single()
+        assertEquals(0, got.size % 24)
+        assertTrue(got.size - want.size in 0 until 24)
+        want.indices.forEach { assertArrayEquals("row $it", want[it], got[it]) }
+        got.drop(want.size).forEach { r -> assertTrue("padding rows are white", r.all { it.toInt() == 0 }) }
+    }
+
+    @Test fun pickingTheSamePrinterAgainKeepsItsImageModeAnotherPrinterStartsRaster() = runTest {
+        val store = Store()
+        val (_, m) = setup(store)
+        m.setImageMode(ImageMode.BIT_IMAGE)
+        m.select(SavedPrinter("00:11:22:33:44:55", "MP-58N"))
+        assertEquals(ImageMode.BIT_IMAGE, store.p!!.imageMode)
+        m.select(SavedPrinter("AA:BB:CC:DD:EE:FF", "Other"))
+        assertEquals(ImageMode.RASTER, store.p!!.imageMode)
+    }
+
+    @Test fun bitImageModeRetryAfterADropFinishesTheStrandedBandAndPrintsWhole() = runTest {
+        val (sim, m) = setup()
+        m.setImageMode(ImageMode.BIT_IMAGE)
+        sim.switchOffAtByte = 20_000
+        assertEquals(PrintOutcome.Failed(PrintFailure.DISCONNECTED), m.print(PrintJob("m1", memo)))
+        sim.on = true
+        sim.switchOffAtByte = Long.MAX_VALUE
+        assertEquals(PrintOutcome.Printed, m.print(PrintJob("m1", memo)))
+        val want = expectedRows(memo)
+        val last = sim.sessions.last()
+        want.indices.forEach { assertArrayEquals("row $it", want[it], last[it]) }
+    }
+
     @Test fun stuckWriteTimesOutAsDisconnected() = runTest {
         val (sim, m) = setup()
         sim.hangWrites = true

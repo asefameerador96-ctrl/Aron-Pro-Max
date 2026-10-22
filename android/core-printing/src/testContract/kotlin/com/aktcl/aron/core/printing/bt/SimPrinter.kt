@@ -138,6 +138,23 @@ class SimPrinter(
                         }
                         i += 8 + w * h
                     }
+                    b == 0x1B && i + 4 < d.size && d[i + 1].toInt() == 0x2A -> {
+                        // ESC * 33 nL nH: 24-dot bit image, 3 bytes per column (MSB top), printed by the LF after it
+                        if (d[i + 2].toInt() != 33) throw AssertionError("ESC * mode ${d[i + 2]}")
+                        val n = (d[i + 3].toInt() and 0xFF) or ((d[i + 4].toInt() and 0xFF) shl 8)
+                        if (i + 5 + 3 * n + 1 > d.size) break
+                        if (d[i + 5 + 3 * n].toInt() != 0x0A) throw AssertionError("ESC * band without LF")
+                        val w = (n + 7) / 8
+                        for (r in 0 until 24) {
+                            if (paperRows <= 0) break
+                            paperRows--
+                            val row = ByteArray(w)
+                            for (x in 0 until n) if (d[i + 5 + 3 * x + r / 8].toInt() and (0x80 ushr (r % 8)) != 0) row[x / 8] = (row[x / 8].toInt() or (0x80 ushr (x % 8))).toByte()
+                            paper.add(row)
+                        }
+                        i += 5 + 3 * n + 1
+                    }
+                    b == 0x1B && i + 1 < d.size && d[i + 1].toInt() == 0x32 -> i += 2 // ESC 2
                     b == 0x00 -> i++ // NUL is ignored by ESC/POS printers
                     b == 0x1B || b == 0x10 || b == 0x1D -> break // incomplete command: wait for more bytes
                     else -> throw AssertionError("garbage byte 0x${b.toString(16)} at $i")

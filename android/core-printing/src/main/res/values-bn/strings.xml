@@ -106,4 +106,8 @@
     <string name="diag_copied">রিপোর্ট কপি হয়েছে</string>
     <string name="diag_refresh">রিফ্রেশ</string>
     <string name="printer_diagnostics">প্রিন্টার পরীক্ষা</string>
+    <string name="diag_memo_mode">মেমো ছাপার পদ্ধতি</string>
+    <string name="diag_memo_mode_hint">শুধু বিট ইমেজ টেস্ট পেজ পরিষ্কার ছাপা হলে বিট ইমেজ বেছে নিন, নইলে রাস্টার রাখুন।</string>
+    <string name="diag_mode_raster">রাস্টার (GS v 0), সাধারণ</string>
+    <string name="diag_mode_bitimage">বিট ইমেজ (ESC *), পুরনো প্রিন্টারের জন্য</string>
 </resources>

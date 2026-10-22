@@ -25,6 +25,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
@@ -38,6 +40,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.aktcl.aron.core.printing.R
 import com.aktcl.aron.core.printing.bt.BluetoothSppTransport
+import com.aktcl.aron.core.printing.bt.ImageMode
 import com.aktcl.aron.core.printing.bt.PrinterManager
 import com.aktcl.aron.core.printing.bt.SavedPrinter
 import com.aktcl.aron.core.printing.bt.SppConnector
@@ -79,7 +82,7 @@ fun PrinterDiagnosticsScreen(manager: PrinterManager, appVersion: String, modifi
         )
     }
     val state by controller.state.collectAsState()
-    fun refresh() = controller.setEnvironment(AndroidDiagEnvironment.collect(context, appVersion, manager.savedPrinter?.let { "${it.name} ${it.address}" }))
+    fun refresh() = controller.setEnvironment(AndroidDiagEnvironment.collect(context, appVersion, manager.savedPrinter?.let { "${it.name} ${it.address}, memo image ${it.imageMode}" }))
     val ask = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { refresh() }
     // read again on every return to the screen (after Bluetooth or app settings)
     val owner = LocalLifecycleOwner.current
@@ -163,6 +166,18 @@ fun PrinterDiagnosticsScreen(manager: PrinterManager, appVersion: String, modifi
                 Spacer(Modifier.height(12.dp))
                 Text(stringResource(R.string.diag_did_print, mode.label))
                 AronYesNo(stringResource(R.string.dialog_yes), stringResource(R.string.dialog_no), state.paper[mode], { controller.judge(mode, it) }, Modifier.padding(top = 4.dp))
+            }
+        }
+        // 4b. How memos go to the saved printer: raster by default, bit image when only that page printed
+        val saved = manager.savedPrinter
+        if (saved != null && state.selected?.address == saved.address) {
+            var mode by remember(saved.address) { mutableStateOf(saved.imageMode) }
+            AronSectionHeader(stringResource(R.string.diag_memo_mode))
+            AronCard {
+                Text(stringResource(R.string.diag_memo_mode_hint))
+                for ((m, label) in listOf(ImageMode.RASTER to R.string.diag_mode_raster, ImageMode.BIT_IMAGE to R.string.diag_mode_bitimage)) {
+                    AronRadioRow(stringResource(label), mode == m, { mode = m; scope.launch { manager.setImageMode(m); refresh() } }, enabled = !busy)
+                }
             }
         }
         // 5. Log and export

@@ -19,8 +19,16 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeoutOrNull
 import java.io.IOException
 
+/** How a document's image goes to the printer (D-PRINT-02). */
+enum class ImageMode {
+    /** `GS v 0` raster bands: the default, what the MP-58N and RPP02N print. */
+    RASTER,
+    /** `ESC * 33` 24-dot bit image: for firmware that ignores `GS v 0` (chosen in Printer diagnostics). */
+    BIT_IMAGE,
+}
+
 /** The paired printer the phone remembers (one per phone, shared by the SR, AMO and TSO apps' own copies). */
-data class SavedPrinter(val address: String, val name: String)
+data class SavedPrinter(val address: String, val name: String, val imageMode: ImageMode = ImageMode.RASTER)
 
 /** Where the paired printer is kept. */
 interface SavedPrinterStore {
@@ -135,10 +143,17 @@ class PrinterManager(
         lock.withLock {
             closeLink()
             strandedBytes = 0
-            store.save(printer)
+            // picking the same printer again keeps the image mode the diagnostics chose for it
+            val same = store.load()?.takeIf { it.address == printer.address && printer.imageMode == ImageMode.RASTER }
+            store.save(if (same != null) printer.copy(imageMode = same.imageMode) else printer)
             _state.value = PrinterState.Off
         }
         return connect()
+    }
+
+    /** Prints memos to the saved printer with [mode] from the next job on (Printer diagnostics, D-PRINT-02). */
+    suspend fun setImageMode(mode: ImageMode) = lock.withLock {
+        store.load()?.let { store.save(it.copy(imageMode = mode)) }
     }
 
     /** Forgets the printer. */
@@ -346,7 +361,12 @@ class PrinterManager(
         val commands = ArrayList<ByteArray>()
         val padding = strandedBytes > 0
         if (padding) commands.add(ByteArray(strandedBytes))
-        commands.addAll(EscPos.job(job.bitmap, pacing.safeBandRows))
+        commands.addAll(
+            when (store.load()?.imageMode) {
+                ImageMode.BIT_IMAGE -> EscPos.bitImageJob(job.bitmap)
+                else -> EscPos.job(job.bitmap, pacing.safeBandRows)
+            },
+        )
         val total = commands.sumOf { it.size }.toLong()
         val bytesPerSecond = pacing.safeRowsPerSecond.toLong() * job.bitmap.bytesPerRow
         val buffer = pacing.safeBufferBytes
@@ -355,7 +375,8 @@ class PrinterManager(
         for ((index, cmd) in commands.withIndex()) {
             var off = 0
             // Raster commands and the padding before them leave the printer waiting when cut short.
-            val raster = (padding && index == 0) || (cmd.size > 1 && cmd[0].toInt() == 0x1D && cmd[1].toInt() == 0x76)
+            val raster = (padding && index == 0) || (cmd.size > 1 && cmd[0].toInt() == 0x1D && cmd[1].toInt() == 0x76) ||
+                (cmd.size > 1 && cmd[0].toInt() == 0x1B && cmd[1].toInt() == 0x2A) // ESC * bands wait for their data too
             while (off < cmd.size) {
                 val n = minOf(pacing.safeChunkBytes, cmd.size - off)
                 // Estimated bytes still in the printer's buffer; wait until this chunk fits.

@@ -125,17 +125,19 @@ class PrefsSavedPrinterStore(context: Context) : SavedPrinterStore {
 
     override fun load(): SavedPrinter? {
         val a = prefs.getString(KEY_ADDRESS, null) ?: return null
-        return SavedPrinter(a, prefs.getString(KEY_NAME, null) ?: a)
+        val mode = prefs.getString(KEY_MODE, null)?.let { m -> ImageMode.entries.firstOrNull { it.name == m } } ?: ImageMode.RASTER
+        return SavedPrinter(a, prefs.getString(KEY_NAME, null) ?: a, mode)
     }
 
     override fun save(printer: SavedPrinter?) {
         prefs.edit().apply {
-            if (printer == null) { remove(KEY_ADDRESS); remove(KEY_NAME) } else { putString(KEY_ADDRESS, printer.address); putString(KEY_NAME, printer.name) }
+            if (printer == null) { remove(KEY_ADDRESS); remove(KEY_NAME); remove(KEY_MODE) } else { putString(KEY_ADDRESS, printer.address); putString(KEY_NAME, printer.name); putString(KEY_MODE, printer.imageMode.name) }
         }.apply()
     }
 
     private companion object {
         const val KEY_ADDRESS = "address"
         const val KEY_NAME = "name"
+        const val KEY_MODE = "image_mode"
     }
 }

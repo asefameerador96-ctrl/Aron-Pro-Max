@@ -106,4 +106,8 @@
     <string name="diag_copied">Report copied</string>
     <string name="diag_refresh">Refresh</string>
     <string name="printer_diagnostics">Printer diagnostics</string>
+    <string name="diag_memo_mode">Memo printing mode</string>
+    <string name="diag_memo_mode_hint">Keep raster unless only the bit image test page printed clearly.</string>
+    <string name="diag_mode_raster">Raster (GS v 0), normal</string>
+    <string name="diag_mode_bitimage">Bit image (ESC *), for older printers</string>
 </resources>
