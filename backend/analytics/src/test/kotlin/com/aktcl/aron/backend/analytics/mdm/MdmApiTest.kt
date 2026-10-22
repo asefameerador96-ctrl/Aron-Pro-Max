@@ -45,6 +45,7 @@ import kotlin.test.assertTrue
 /** D-MDM-01: role matrix, list filters and flags, idempotent commands, second approver, the phone's pull and ack, policies, activity and audit. */
 class MdmApiTest : ReportFixture() {
     private val now = Instant.parse("2026-10-04T12:00:00Z")
+    private var skew: java.time.Duration = java.time.Duration.ZERO
     private val phoneUuid = UUID.randomUUID().toString()
     private val phoneKey: KeyPair = com.aktcl.aron.backend.analytics.devices.AttestationBuilder.keyPair()
     private fun b64u(b: ByteArray) = Base64.getUrlEncoder().withoutPadding().encodeToString(b)
@@ -70,7 +71,8 @@ class MdmApiTest : ReportFixture() {
     private lateinit var service: MdmService
     override fun mount(r: Route, clock: AronClock, reach: ReachResolver, guard: AuthGuardDeps) {
         val devices = DeviceService(fresh.db, RegistryDefaults(), TestTokens.keys, EnrolmentSettings("https://api.example.test", "dev", AttestationTrust(mutableSetOf())), clock)
-        service = MdmService(fresh.db, TestTokens.keys, devices, clock)
+        // The MDM service clock can be moved forward by a test (expiry); the device and auth clocks stay fixed.
+        service = MdmService(fresh.db, TestTokens.keys, devices, AronClock { clock.now().plus(skew) })
         r.mdmRoutes(MdmDeps(service, DeviceDeps(devices, reach, guard, clock), guard))
     }
 
@@ -233,7 +235,8 @@ class MdmApiTest : ReportFixture() {
     fun expiredCommandsNeverReachThePhone() = app {
         val id = UUID.randomUUID().toString()
         send("POST", "/admin/mdm/devices/$deviceId/commands", cmd(id, "reboot", "stuck"))
-        fresh.db.jdbi.useHandle<Exception> { it.execute("UPDATE app.device_command SET created_at = created_at - interval '3 days', expires_at = expires_at - interval '3 days'") }
+        // Three days pass on the service clock (the request's times are fixed by app.device_command_guard, so no backdating UPDATE).
+        skew = java.time.Duration.ofDays(3)
         assertEquals("expired", json(get("/admin/mdm/devices/$deviceId/commands").bodyAsText()).o()["items"]!!.jsonArray.single().o().s("state"))
         assertEquals(0, json(pull().bodyAsText()).o()["items"]!!.jsonArray.size)
         assertEquals("expired", json(ack(id, """{"state":"acked"}""").bodyAsText()).o().s("state"))
