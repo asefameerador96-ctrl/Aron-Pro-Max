@@ -41,7 +41,7 @@ export default async function RouteMapPage({ params, searchParams }: { params: P
   const d = r.data;
   const calls = d.cpr.successful_calls;
   const total = d.time.total_hours ?? hoursBetween(d.time.first_sale, d.time.last_sale);
-  const avg = d.time.avg_hours ?? (total !== null && calls > 0 ? Math.round((total / calls) * 100) / 100 : null);
+  const avg = d.time.avg_hours; // the server's figure; the page does no arithmetic of its own on it
   const hours = (h: number | null) => (h === null ? "—" : `${formatNumber(locale, h, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${t(locale, "nat.rm.hour")}`);
   const legend = [
     { src: flagIcon(), label: "nat.rm.legend.start" }, { src: pinIcon(PIN_FILL.black), label: "nat.rm.legend.base" }, { src: pinIcon(PIN_FILL.green), label: "nat.rm.legend.geo" }, { src: pinIcon(PIN_FILL.red), label: "nat.rm.legend.photo" }, { src: personIcon(), label: "nat.rm.legend.sr" },
