@@ -20,11 +20,13 @@ and does not throw on an unknown role label (web/tests/role-tolerance.test.ts). 
   (`error.ERR_AUTH_PORTAL_NOT_ALLOWED`); docs/24 s3.x error table updated.
 - `login` description: the refusal above.
 
-## Part 2 (rows 2, 3 and 5; additive, a later push)
+## Part 2 (rows 2, 3 and 5; additive)
 
-- `AdminModule` enum: masterdata, routes, outlets, products, prices, users, targets, credentials, mdm, reports, config,
-  data_entry, indent, leaderboard, daily_tracking.
-- `Me.modules` (ADMIN: `{module: "r"|"w"}`; SUPERADMIN: every module `w`; others: absent or empty) and `Me.brands`
-  (BRAND: brand product-node ids; others absent), so the web builds the sidebar from the grants.
-- Grants API (row 5): `GET/PUT /v1/admin/users/{id}/module-grants`, `GET/PUT /v1/admin/users/{id}/brand-scope`, each
-  with `If-Match` and a `reason`; shapes in that push.
+- Row 2 (this push): `Me.modules` (ADMIN: `{module: "r"|"w"}` from its token; SUPERADMIN: every module `w`; others and
+  before db's grant tables are deployed: null) and `Me.brands` (BRAND: brand product-node ids from its token; others
+  null), so the web builds the sidebar from the grants. The module names are inline in `Me.modules` for now; they become
+  `$ref: AdminModule` once backend-admin's `AdminModule` schema (its access API) is on INT, to avoid two lanes adding the
+  same schema key.
+- Grants API (row 5): adopted from lane backend-admin (`GET/PUT /v1/admin/users/{id}/access`, `UserAccess`,
+  `UserAccessWrite`, `AdminModule`; commit 72c80eec on lane/backend-admin), built to web-admin's request
+  docs/requests/backend-admin-user-access.md. Not a second API in this lane.

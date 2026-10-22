@@ -33,3 +33,26 @@ Me:
       description: The caller's role row of cfg.web.menu_by_role, resolved now (same mapping as GET /v1/admin/permissions).
       items:
         $ref: '#/components/schemas/MenuPermission'
+    modules:
+      description: 'D-ROLES-02 (docs/34 s1): ADMIN the module grants its token carries (r = read, w = read and write;
+        a module not listed is refused with 403), SUPERADMIN every module at w; null for other roles and before
+        the grants are deployed. The portal builds the ADMIN menu from it.'
+      oneOf:
+      - type: object
+        propertyNames:
+          $ref: '#/components/schemas/AdminModule'
+        additionalProperties:
+          type: string
+          enum:
+          - r
+          - w
+      - type: 'null'
+    brands:
+      description: 'D-ROLES-02: a BRAND user''s brands (product-tree brand node ids) its token carries; null for
+        other roles.'
+      oneOf:
+      - type: array
+        maxItems: 200
+        items:
+          $ref: '#/components/schemas/Id'
+      - type: 'null'
