@@ -31,10 +31,13 @@ object KpiStripBuilder {
         skus: Map<Long, SummarySku>,
         issueRemBySku: Map<Long, Long> = emptyMap(),
         currentRemBySku: Map<Long, Long> = emptyMap(),
+        /** The unit label key of a SKU; a category whose SKUs are counted in different units gets one line per unit (never added across units). */
+        skuUnit: (Long) -> String? = { null },
         unitOf: (String) -> String,
     ): KpiStrip {
-        val cats = (issueBySku.keys + currentBySku.keys).groupBy { skus[it]?.categoryCode ?: "" }.toSortedMap().map { (c, ids) ->
-            KpiCategory(c, ids.sumOf { issueBySku[it] ?: 0L }, ids.sumOf { currentBySku[it] ?: 0L }, unitOf(c), ids.sumOf { issueRemBySku[it] ?: 0L }, ids.sumOf { currentRemBySku[it] ?: 0L })
+        val cats = (issueBySku.keys + currentBySku.keys).groupBy { (skus[it]?.categoryCode ?: "") to (skuUnit(it) ?: unitOf(skus[it]?.categoryCode ?: "")) }
+            .toSortedMap(compareBy({ it.first }, { it.second })).map { (key, ids) ->
+            KpiCategory(key.first, ids.sumOf { issueBySku[it] ?: 0L }, ids.sumOf { currentBySku[it] ?: 0L }, key.second, ids.sumOf { issueRemBySku[it] ?: 0L }, ids.sumOf { currentRemBySku[it] ?: 0L })
         }
         return KpiStrip(planned, visited, strikeRateHundredths(visited, planned), (planned - visited).coerceAtLeast(0), (visited - soldOutlets).coerceAtLeast(0), cats)
     }

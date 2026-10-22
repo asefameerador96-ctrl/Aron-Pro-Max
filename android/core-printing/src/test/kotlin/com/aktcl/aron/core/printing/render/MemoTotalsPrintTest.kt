@@ -118,8 +118,9 @@ class MemoCategoryTotalsPrintTest {
         val b = DocumentBuilder(DigitStyle.LATIN) { words[it].orEmpty() }
         val doc = b.memo(Fixtures.seededSale)
         assertEquals(listOf("3 dozen", "2 packet", "1 packet", "2 box"), doc.tables.getValue("lines").map { it.getValue("qty") })
-        // one line per category in its entry unit, the base figure in brackets on the next line (none for dozens: the base unit is the dozen)
-        assertEquals(listOf("3 dozen", "3 packet", "(50 stick)", "2 box", "(50 piece)"), doc.tables.getValue("category_totals").map { it.getValue("qty") }.filter { it.isNotBlank() })
+        // one line per category in its entry unit; the base figure in brackets in its own block (none for dozens: the base unit is the dozen)
+        assertEquals(listOf("3 dozen", "3 packet", "2 box"), doc.tables.getValue("category_totals").map { it.getValue("qty") })
+        assertEquals(listOf("সিগারেট" to "(50 stick)", "লাইটার" to "(50 piece)"), doc.tables.getValue("category_base").map { it.getValue("category") to it.getValue("qty") })
         assertEquals(listOf("3 dozen", "1 packet"), doc.tables.getValue("discounts").map { it.getValue("qty") })
         // the printed money is the stored money and equals the oracle
         val oracle = com.aktcl.aron.rules.MemoMath.totals(
@@ -129,16 +130,29 @@ class MemoCategoryTotalsPrintTest {
         )
         assertEquals(oracle.netMtk, Fixtures.seededSale.netMtk); assertEquals(oracle.grossMtk, Fixtures.seededSale.grossMtk)
         assertEquals("937.05", doc.fields.getValue("grand_total"))
-        // mixed units in one category fall back to the base total with no word
+        // mixed units in one category print one line per unit
         val mixed = b.memo(Fixtures.seededSale.copy(lines = listOf(
             MemoPrintLine("A", 20, 1, "x", 1, "packet"), MemoPrintLine("B", 25, 1, "x", 1, "box"),
         )))
-        assertEquals("45", mixed.tables.getValue("category_totals").single().getValue("qty"))
+        assertEquals(listOf("1 packet", "1 box"), mixed.tables.getValue("category_totals").map { it.getValue("qty") }) // one line per unit, never added across units
     }
 
     @Test fun linesWithoutACategoryLabelPrintNoSubtotals() {
         val doc = DocumentBuilder(DigitStyle.LATIN).memo(Fixtures.seededSale.copy(lines = Fixtures.seededSale.lines.map { it.copy(category = "") }))
         assertTrue(doc.tables.getValue("category_totals").isEmpty())
         assertTrue("has_categories" !in doc.flags)
+    }
+
+    // checker: three-digit quantities and the bracketed base total stay on one line at 384 dots
+    @Test fun threeDigitQuantitiesDoNotWrapOnPaper() {
+        val r = Fixtures.renderer()
+        fun memo(q: Long) = Fixtures.seededSale.copy(lines = listOf(
+            MemoPrintLine("Sheikh 20s", q * 20, 1, "সিগারেট", q, "packet", "stick"), MemoPrintLine("Navy 10s", q * 10, 1, "সিগারেট", q, "packet", "stick"),
+        ), discounts = emptyList(), drpDiscountMtk = 0)
+        for (digits in com.aktcl.aron.core.printing.template.DigitStyle.entries) {
+            val small = r.memo(memo(1), digits).bitmap.height
+            val big = r.memo(memo(150), digits).bitmap.height
+            assertEquals("a 3-digit packet count wrapped ($digits)", small, big)
+        }
     }
 }

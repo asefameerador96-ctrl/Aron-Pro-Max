@@ -24,3 +24,13 @@ fun entryUnitLabel(key: String): String = stringResource(
 @Composable
 fun entryUnitLabel(categoryCode: String, unitWire: String): String =
     entryUnitLabel(EntryUnits.labelKey(categoryCode, QtyUnit.entries.firstOrNull { it.wire == unitWire } ?: QtyUnit.STICK))
+
+/** `+5` or `−7`: the base units left over after whole entry units, signed (an oversold stock figure has a negative remainder); blank when zero. */
+@Composable
+fun remSuffix(remBase: Long): String =
+    if (remBase == 0L) "" else (if (remBase > 0) "+" else "\u2212") + localizedNumber(kotlin.math.abs(remBase))
+
+/** `+ 5 sticks` or `− 7 sticks`: the same with its unit word, for the small text beside a whole-units figure. */
+@Composable
+fun remWithUnit(remBase: Long, baseUnitWord: String): String =
+    if (remBase == 0L) "" else (if (remBase > 0) "+ " else "\u2212 ") + localizedNumber(kotlin.math.abs(remBase)) + " " + baseUnitWord

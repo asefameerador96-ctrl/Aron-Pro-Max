@@ -429,7 +429,7 @@ private fun subtotalQty(sub: com.aktcl.aron.feature.sale.domain.CategorySubtotal
 @Composable
 private fun entryStockText(entry: EntrySpec, stockBase: Long): String {
     val whole = entry.fromBase(stockBase); val rest = entry.remainderBase(stockBase)
-    return localizedNumber(whole) + if (rest > 0) "+" + localizedNumber(rest) else ""
+    return localizedNumber(whole) + com.aktcl.aron.core.ui.remSuffix(rest)
 }
 
 /** Typed digits (Latin or Bangla) to a quantity; empty reads as zero. */
@@ -479,7 +479,7 @@ fun ReviewScreen(
             outletLine?.lines()?.filter { it.isNotBlank() }?.forEachIndexed { i, l ->
                 Text(l, color = look.ink, fontSize = if (i == 0) 17.sp else 14.sp, fontWeight = if (i == 0) FontWeight.Bold else FontWeight.Normal)
             }
-            val byCategory = review.lines.groupBy { it.sku.categoryCode }.toList().sortedBy { categoryRank(it.first) }
+            val byCategory = review.lines.groupBy { it.sku.categoryCode to it.sku.entryLabelKey }.toList().sortedWith(compareBy({ categoryRank(it.first.first) }, { it.first.second }))
             // the net is printed once, at the bottom of the table card (the Summary reference); the Print button sits on the grey page
             val totals = buildList {
                 add(SummaryTotal(stringResource(R.string.review_gross), moneyGlued(t.grossMtk)))
@@ -497,8 +497,9 @@ fun ReviewScreen(
                 rows = byCategory.flatMap { (_, ls) ->
                     ls.map { l -> SummaryRow(l.sku.code, listOf(entryUnitLabel(l.sku.entryLabelKey), localizedNumber(l.entry.qtyEntered), moneyGlued(l.memoLine.grossMtk))) }
                 },
-                subtotals = byCategory.mapNotNull { (code, ls) ->
-                    review.categories.firstOrNull { it.categoryCode == code }?.let { sub ->
+                subtotals = byCategory.mapNotNull { (key, ls) ->
+                    val code = key.first
+                    review.categories.firstOrNull { it.categoryCode == code && it.unitKey == key.second }?.let { sub ->
                         TotalsLine(stringResource(R.string.review_subtotal, categoryLabel(code)), listOf(subtotalQty(sub, ls.first().sku), moneyGlued(sub.grossMtk)))
                     }
                 },

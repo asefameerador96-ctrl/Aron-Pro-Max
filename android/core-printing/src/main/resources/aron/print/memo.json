@@ -19,30 +19,33 @@
   { "type": "text", "value": "{@print_route}: {route}" },
   { "type": "rule" },
   { "type": "table", "rows": "lines", "header_bold": true, "columns": [
-    { "header": "{@print_sku}", "value": "{sku}", "width": 40, "align": "left" },
-    { "header": "{@print_qty}", "value": "{qty}", "width": 30, "align": "right" },
+    { "header": "{@print_sku}", "value": "{sku}", "width": 34, "align": "left" },
+    { "header": "{@print_qty}", "value": "{qty}", "width": 36, "align": "right" },
     { "header": "{@print_price}", "value": "{value}", "width": 30, "align": "right" } ] },
   { "type": "if", "when": "has_categories", "blocks": [
     { "type": "table", "rows": "category_totals", "columns": [
-      { "header": "", "value": "{label}", "width": 40, "align": "left" },
-      { "header": "", "value": "{qty}", "width": 30, "align": "right" },
-      { "header": "", "value": "{value}", "width": 30, "align": "right" } ] } ] },
+      { "header": "", "value": "{label}", "width": 34, "align": "left" },
+      { "header": "", "value": "{qty}", "width": 36, "align": "right" },
+      { "header": "", "value": "{value}", "width": 30, "align": "right" } ] },
+    { "type": "table", "rows": "category_base", "columns": [
+      { "header": "", "value": "{category}", "width": 40, "align": "left" },
+      { "header": "", "value": "{qty}", "width": 60, "align": "right" } ] } ] },
   { "type": "rule", "style": "dashed" },
   { "type": "table", "rows": "line_total", "columns": [
-    { "header": "", "value": "{@print_total}", "width": 40, "align": "left" },
-    { "header": "", "value": "{qty}", "width": 30, "align": "right" },
+    { "header": "", "value": "{@print_total}", "width": 34, "align": "left" },
+    { "header": "", "value": "{qty}", "width": 36, "align": "right" },
     { "header": "", "value": "{value}", "width": 30, "align": "right" } ] },
   { "type": "if", "when": "has_discounts", "blocks": [
     { "type": "space", "dots": 6 },
     { "type": "text", "value": "{@print_discount}", "bold": true },
     { "type": "table", "rows": "discounts", "header_bold": true, "columns": [
-      { "header": "{@print_sku}", "value": "{sku}", "width": 40, "align": "left" },
-      { "header": "{@print_qty}", "value": "{qty}", "width": 30, "align": "right" },
+      { "header": "{@print_sku}", "value": "{sku}", "width": 34, "align": "left" },
+      { "header": "{@print_qty}", "value": "{qty}", "width": 36, "align": "right" },
       { "header": "{@print_value}", "value": "{value}", "width": 30, "align": "right" } ] },
     { "type": "rule", "style": "dashed" },
     { "type": "table", "rows": "discount_total", "columns": [
-      { "header": "", "value": "{@print_total}", "width": 40, "align": "left" },
-      { "header": "", "value": "{qty}", "width": 30, "align": "right" },
+      { "header": "", "value": "{@print_total}", "width": 34, "align": "left" },
+      { "header": "", "value": "{qty}", "width": 36, "align": "right" },
       { "header": "", "value": "{value}", "width": 30, "align": "right" } ] } ] },
   { "type": "rule" },
   { "type": "pair", "left": "{@print_total_discount}", "right": "- {total_discount}" },

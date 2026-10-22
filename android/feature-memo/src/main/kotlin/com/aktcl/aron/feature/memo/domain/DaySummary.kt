@@ -92,7 +92,8 @@ object DaySummaryCalculator {
                 qtyRemBase = spec?.remainderBase(qty) ?: 0L, returnRemBase = spec?.remainderBase(ret) ?: 0L,
             )
         }
-        val skuCats = rows.groupBy { it.categoryCode }.toSortedMap().map { (c, rs) ->
+        val skuCats = rows.groupBy { it.categoryCode to it.unitKey }.toSortedMap(compareBy({ it.first }, { it.second })).map { (key, rs) ->
+            val c = key.first
             CategorySummaryRow(
                 c, rs.sumOf { it.qtyBase }, rs.sumOf { it.valueMtk }, rs.sumOf { it.discountMtk }, rs.sumOf { it.discountedValueMtk }, rs.sumOf { it.returnQtyBase },
                 rs.sumOf { it.qtyEntered }, rs.sumOf { it.returnEntered }, rs.map { it.unitKey }.distinct().singleOrNull().orEmpty(),

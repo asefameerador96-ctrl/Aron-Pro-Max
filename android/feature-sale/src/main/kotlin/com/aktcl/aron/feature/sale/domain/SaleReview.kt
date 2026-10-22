@@ -24,7 +24,7 @@ data class ReviewLine(
 )
 
 /** [qtyEntered] is the sum in the category's entry unit (packets, boxes or dozens: one category has one unit label); [qtyBase] the derived base total. */
-data class CategorySubtotal(val categoryCode: String, val qtyBase: Long, val grossMtk: Long, val qtyEntered: Long = 0L)
+data class CategorySubtotal(val categoryCode: String, val qtyBase: Long, val grossMtk: Long, val qtyEntered: Long = 0L, val unitKey: String = "")
 
 /** One Product QC deduction: defect sticks x price at capture (F-SR-027). */
 data class QcDeduction(val entry: QcEntry, val unitPriceMtk: Long, val pricePerQty: Int, val settlementMtk: Long)
@@ -92,9 +92,10 @@ object SaleReviewCalculator {
             ReviewLine(sku, e, base, line, Quantity.packBadge(base, sku.packFactor.toLong()), sku.stockBase?.let { base > it } ?: false)
         }
 
-        val categories = lines.groupBy { it.sku.categoryCode }.map { (cat, ls) ->
-            CategorySubtotal(cat, ls.sumOf { it.qtyBase }, ls.sumOf { it.memoLine.grossMtk }, ls.sumOf { it.entry.qtyEntered })
-        }.sortedBy { it.categoryCode }
+        // one subtotal per category and unit: quantities are never added across units
+        val categories = lines.groupBy { it.sku.categoryCode to it.sku.entryLabelKey }.map { (key, ls) ->
+            CategorySubtotal(key.first, ls.sumOf { it.qtyBase }, ls.sumOf { it.memoLine.grossMtk }, ls.sumOf { it.entry.qtyEntered }, key.second)
+        }.sortedWith(compareBy({ it.categoryCode }, { it.unitKey }))
 
         val drp = draft.slide.mapNotNull { s ->
             val sku = catalog[s.skuId]

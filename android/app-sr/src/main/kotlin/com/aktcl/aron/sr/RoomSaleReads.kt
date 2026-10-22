@@ -93,7 +93,7 @@ class RoomSaleReads(private val db: AronDatabase, private val reference: Referen
         fun entered(m: Map<Long, Long>) = m.mapValues { (id, base) -> spec[id]?.fromBase(base) ?: base }
         fun rem(m: Map<Long, Long>) = m.mapValues { (id, base) -> spec[id]?.remainderBase(base) ?: 0L }
         val unitByCat = skus.groupBy { it.categoryCode }.mapValues { (c, v) -> EntryUnits.labelKey(c, spec.getValue(v.first().skuId).unit) }
-        return KpiStripBuilder.build(j.planned, j.visited, j.sold, entered(issue), entered(current), cats, rem(issue), rem(current)) { unitByCat[it].orEmpty() } to HomeMoneyBuilder.build(memos, cats)
+        return KpiStripBuilder.build(j.planned, j.visited, j.sold, entered(issue), entered(current), cats, rem(issue), rem(current), skuUnit = { id -> spec[id]?.let { EntryUnits.labelKey(cats[id]?.categoryCode.orEmpty(), it.unit) } }) { unitByCat[it].orEmpty() } to HomeMoneyBuilder.build(memos, cats)
     }
 
     private companion object { val PACKET_CATEGORIES = setOf("cigarette", "bidi") }

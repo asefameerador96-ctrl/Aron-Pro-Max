@@ -561,8 +561,13 @@ private fun SummaryDock(summary: DaySummary, categoryLabel: (String) -> String, 
                 Text(categoryLabel(cat.categoryCode), style = TextStyle(fontSize = 13.sp, color = look.purple), softWrap = false, modifier = Modifier.weight(weights[0]))
                 Text(
                     buildAnnotatedString {
-                        append(remFigure(cat.qtyEntered, cat.qtyRemBase))
-                        if (unit.isNotEmpty()) withStyle(SpanStyle(fontSize = 10.sp)) { append(" "); append(unit); baseBracket(cat)?.let { append(" "); append(it) } }
+                        append(localizedNumber(cat.qtyEntered))
+                        // "3 packets + 5 sticks (65 sticks)": the remainder carries its own word, the bracket is the base total
+                        if (unit.isNotEmpty()) withStyle(SpanStyle(fontSize = 10.sp)) {
+                            append(" "); append(unit)
+                            if (cat.qtyRemBase != 0L) { append(" "); append(com.aktcl.aron.core.ui.remWithUnit(cat.qtyRemBase, entryUnitLabel(com.aktcl.aron.rules.EntryUnits.baseLabelKey(cat.categoryCode)))) }
+                            baseBracket(cat)?.let { append(" "); append(it) }
+                        } else if (cat.qtyRemBase != 0L) append(com.aktcl.aron.core.ui.remSuffix(cat.qtyRemBase))
                     },
                     style = figure, softWrap = false, modifier = Modifier.weight(weights[1]),
                 )
@@ -607,7 +612,7 @@ private fun SummaryPairs(vararg cells: Pair<String, String>) {
 
 /** `12` or `12+5`: whole entry units, then the base units left over (never floored away; the unit word sits in the row title). */
 @Composable
-internal fun remFigure(whole: Long, remBase: Long): String = localizedNumber(whole) + if (remBase != 0L) "+" + localizedNumber(remBase) else ""
+internal fun remFigure(whole: Long, remBase: Long): String = localizedNumber(whole) + com.aktcl.aron.core.ui.remSuffix(remBase)
 
 /** `(70 sticks)`: the base figure of a category line in brackets, only when the entry unit is not the base unit; null otherwise. */
 @Composable
@@ -621,7 +626,7 @@ internal fun baseBracket(cat: CategorySummaryRow): String? {
 internal fun catQtyText(cat: CategorySummaryRow, unit: String): String {
     val base = com.aktcl.aron.rules.EntryUnits.baseLabelKey(cat.categoryCode)
     val main = if (cat.qtyRemBase == 0L) qtyText(cat.qtyEntered, unit)
-    else stringResource(R.string.summary_qty_rem, localizedNumber(cat.qtyEntered), unit, localizedNumber(cat.qtyRemBase), entryUnitLabel(base))
+    else stringResource(R.string.summary_qty_rem, localizedNumber(cat.qtyEntered), unit, com.aktcl.aron.core.ui.remWithUnit(cat.qtyRemBase, entryUnitLabel(base)))
     return main + (baseBracket(cat)?.let { " $it" } ?: "")
 }
 

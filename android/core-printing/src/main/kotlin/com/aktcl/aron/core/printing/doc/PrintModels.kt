@@ -148,12 +148,13 @@ class DocumentBuilder(private val digits: DigitStyle, private val unitWord: (Str
         // M3: one "মোট <category>" money row per category, in first-seen order; a memo whose lines carry no category label prints none
         // one line per category in its entry unit (packet, box, dozen), then the base figure in brackets on the next line
         val totalWord = unitWord("total").ifBlank { "Total" }
-        val categoryTotals = m.lines.filter { it.category.isNotBlank() }.groupBy { it.category }.flatMap { (cat, ls) ->
-            listOfNotNull(
-                mapOf("category" to cat, "label" to "$totalWord $cat", "qty" to groupQty(ls.map { it.qtyEntered to it.unit }, ls.sumOf { it.qtyBase }, ls.map { it.baseUnit }.distinct().singleOrNull().orEmpty()), "value" to money(ls.sumOf { it.grossMtk })),
-                baseBracket(ls)?.let { mapOf("category" to "", "label" to "", "qty" to it, "value" to "") },
-            )
+        // a category whose lines are counted in different units gets one line per unit: quantities are never added across units
+        val groups = m.lines.filter { it.category.isNotBlank() }.groupBy { it.category to it.unit }
+        val categoryTotals = groups.map { (key, ls) ->
+            mapOf("category" to key.first, "label" to "$totalWord ${key.first}", "qty" to groupQty(ls.map { it.qtyEntered to it.unit }, ls.sumOf { it.qtyBase }, ls.map { it.baseUnit }.distinct().singleOrNull().orEmpty()), "value" to money(ls.sumOf { it.grossMtk }))
         }
+        // the base figure of each category total in its own block (bundle templates that predate it simply do not print it)
+        val categoryBase = groups.mapNotNull { (key, ls) -> baseBracket(ls)?.let { mapOf("category" to key.first, "qty" to it) } }
         if (categoryTotals.isNotEmpty()) flags.add("has_categories")
         if (m.isCredit || m.dueMtk > 0L) flags.add("credit") // a negative due is a QC credit note, not money the outlet owes
         val totalDiscount = m.offerDiscountMtk + m.drpDiscountMtk
@@ -178,6 +179,7 @@ class DocumentBuilder(private val digits: DigitStyle, private val unitWord: (Str
                 "lines" to m.lines.map { mapOf("sku" to it.sku, "qty" to qty(it.qtyEntered, it.unit), "value" to money(it.grossMtk)) },
                 // Quantities of different units (sticks, pieces, dozens) are never added up; totals are money only.
                 "category_totals" to categoryTotals,
+                "category_base" to categoryBase,
                 "line_total" to listOf(mapOf("value" to money(m.grossMtk))),
                 "discounts" to m.discounts.map { mapOf("sku" to it.sku, "qty" to qty(it.qtyEntered, it.unit), "value" to money(it.valueMtk)) },
                 "discount_total" to listOf(mapOf("value" to money(m.discounts.sumOf { it.valueMtk }))),

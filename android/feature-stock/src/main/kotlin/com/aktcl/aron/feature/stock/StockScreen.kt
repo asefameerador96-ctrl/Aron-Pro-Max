@@ -192,7 +192,7 @@ private fun StockSkuRow(r: StockRow, softCeiling: Long, onIssue: (Long, Int) -> 
             skuId = r.sku.skuId.toString(), skuCode = r.sku.code,
             quantity = localizedNumber(r.entered), onQuantityChange = { onIssue(r.sku.skuId, parseQty(it).coerceIn(0, max)) },
             onMinus = { onIssue(r.sku.skuId, (entered - 1).coerceAtLeast(0)) }, onPlus = { onIssue(r.sku.skuId, (entered + 1).coerceAtMost(max)) },
-            stock = localizedNumber(figure) + (if (r.figureRemainderBase != 0L) "+" + localizedNumber(r.figureRemainderBase) else ""),
+            stock = localizedNumber(figure) + com.aktcl.aron.core.ui.remSuffix(r.figureRemainderBase),
             minusLabel = stringResource(R.string.stk_less) + ", " + name, plusLabel = stringResource(R.string.stk_more) + ", " + name,
             quantityLabel = name + ", " + stringResource(R.string.stk_col_issue) + ", " + unit,
             packBadge = packs?.let { localizedNumber(it) },

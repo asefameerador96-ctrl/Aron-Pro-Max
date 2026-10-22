@@ -27,4 +27,13 @@ class EntryUnitSummaryTest {
         assertEquals(6L, k.categories[0].currentStockBase); assertEquals(17L, k.categories[0].currentRemBase)
         assertEquals(4L, k.categories[1].issueBase)
     }
+
+    @Test fun aCategoryWithTwoEntryUnitsGetsOneRowPerUnit() {
+        // one cigarette SKU counted in packets of 20, another with base_per_pack 1 counted in sticks: never added together
+        val memo = SummaryMemo("m", null, listOf(SummaryLine(1, 60, 1), SummaryLine(2, 5, 1)), emptyList(), 0, 2)
+        val specs = mapOf(1L to pack20, 2L to EntrySpec(QtyUnit.STICK, 1))
+        val cats = mapOf(1L to SummarySku(1, "cigarette"), 2L to SummarySku(2, "cigarette"))
+        val s = DaySummaryCalculator.compute(listOf(memo), cats, emptyMap()) { specs[it] }
+        assertEquals(listOf("packet" to 3L, "stick" to 5L), s.categories.map { it.unitKey to it.qtyEntered })
+    }
 }

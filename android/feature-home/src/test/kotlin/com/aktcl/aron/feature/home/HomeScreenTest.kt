@@ -111,6 +111,17 @@ class HomeScreenTest {
         }
     }
 
+    @Test fun aRemainderOfSticksShowsSmallAndNothingClips() {
+        // 6 packets and 17 sticks left over, and an oversold line: both fit their tile (the whole units and the remainder on their own lines)
+        show(AppLanguage.EN, hero = hero, kpis = HomeKpis("10%", 54, 0, listOf(HomeStockLine("Cigarette", 1_187, 6, "packets", 19, 17, "sticks"), HomeStockLine("Bidi", 0, -1, "packets", 0, -7, "sticks"))))
+        listOf("1,187 packets", "+ 19 sticks", "6 packets", "+ 17 sticks", "\u2212 7 sticks").forEach { text ->
+            val results = mutableListOf<TextLayoutResult>()
+            compose.onAllNodesWithText(text)[0].assertExists().performSemanticsAction(SemanticsActions.GetTextLayoutResult) { it(results) }
+            assertFalse("$text overflows its tile", results.first().didOverflowWidth)
+            assertEquals(1, results.first().lineCount)
+        }
+    }
+
     @Test fun completeDayShowsTheSuccessChipAndNoDock() {
         show(AppLanguage.BN, hero = hero.copy(dayState = HomeDayState.COMPLETE), dock = null)
         compose.onNodeWithTag(HomeScreenTags.DAY_DONE).assertExists()

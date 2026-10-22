@@ -326,13 +326,12 @@ private fun KpiGrid(hero: HomeHero?, k: HomeKpis) {
 
 /** "12 packets" or "12 packets + 5 sticks": whole entry units, then the base-unit remainder (never floored away). */
 @Composable
-private fun figureText(whole: Long, remBase: Long, line: HomeStockLine): String =
-    if (remBase == 0L) stringResource(R.string.hm_qty_unit, localizedNumber(whole), line.unitLabel)
-    else stringResource(R.string.hm_qty_unit_rem, localizedNumber(whole), line.unitLabel, localizedNumber(remBase), line.baseUnitLabel)
+private fun figureText(whole: Long, remBase: Long, line: HomeStockLine): Pair<String, String> =
+    stringResource(R.string.hm_qty_unit, localizedNumber(whole), line.unitLabel) to com.aktcl.aron.core.ui.remWithUnit(remBase, line.baseUnitLabel)
 
 /** The Issue and Current-stock tiles: one line per category in its own unit; "0" when nothing is loaded. */
 @Composable
-private fun StockKpiTile(label: String, lines: List<Pair<String, String>>, modifier: Modifier) {
+private fun StockKpiTile(label: String, lines: List<Pair<String, Pair<String, String>>>, modifier: Modifier) {
     val shape = RoundedCornerShape(12.dp)
     val look = LocalAronLook.current
     Column(
@@ -343,10 +342,16 @@ private fun StockKpiTile(label: String, lines: List<Pair<String, String>>, modif
         else Column(horizontalAlignment = Alignment.CenterHorizontally) {
             lines.forEach { (cat, figure) ->
                 Text(cat, color = look.tileLabel, fontSize = 11.sp, textAlign = TextAlign.Center)
+                // the whole units on one line, the base remainder small on its own line: nothing clips at 360 dp or at large text
                 Text(
-                    figure, color = look.ink, fontSize = 15.sp, textAlign = TextAlign.Center, maxLines = 1, softWrap = false, modifier = Modifier.padding(bottom = 3.dp),
+                    figure.first, color = look.ink, fontSize = 15.sp, textAlign = TextAlign.Center, maxLines = 1, softWrap = false,
                     autoSize = TextAutoSize.StepBased(minFontSize = 9.sp, maxFontSize = 15.sp, stepSize = 1.sp),
                 )
+                if (figure.second.isNotEmpty()) Text(
+                    figure.second, color = look.ink, fontSize = 12.sp, textAlign = TextAlign.Center, maxLines = 1, softWrap = false,
+                    autoSize = TextAutoSize.StepBased(minFontSize = 8.sp, maxFontSize = 12.sp, stepSize = 1.sp),
+                )
+                Spacer(Modifier.height(3.dp))
             }
         }
         Text(label, color = look.tileLabel, fontSize = 12.sp, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 6.dp))
