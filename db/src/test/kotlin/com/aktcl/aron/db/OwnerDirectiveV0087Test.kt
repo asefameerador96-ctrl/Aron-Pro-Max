@@ -52,6 +52,8 @@ class OwnerDirectiveV0087Test {
         // TOP stays a role code (audit history); no user may hold it (V0105, validated in V0106).
         assertEquals("1|t", c.scalar("SELECT (SELECT count(*) FROM app.role_def WHERE role = 'TOP') || '|' || (SELECT convalidated::text::char FROM pg_constraint WHERE conname = 'app_user_no_top')"))
         assertEquals("0", c.scalar("SELECT count(*) FROM app.app_user WHERE role = 'TOP'"))
+        // A4: every admin permission TOP holds, NATIONAL holds.
+        assertEquals("0", c.scalar("SELECT count(*) FROM app.role_grant_map t WHERE t.role = 'TOP' AND NOT EXISTS (SELECT 1 FROM app.role_grant_map n WHERE n.role = 'NATIONAL' AND n.permission = t.permission)"))
         // NATIONAL inherits TOP's role values; BRAND gets the two web-role defaults.
         val roleValues = { r: String -> c.scalar("SELECT string_agg(v.key || '=' || v.value::text, ',' ORDER BY v.key) FROM app.cfg_value v JOIN app.role_def d ON d.ordinal = v.scope_id WHERE v.scope_type = 'role' AND d.role = '$r' AND v.superseded_in_version IS NULL") }
         assertEquals(roleValues("TOP"), roleValues("NATIONAL"))
