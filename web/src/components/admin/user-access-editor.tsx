@@ -87,6 +87,7 @@ export function UserAccessEditor({ access, brands, canWrite }: { access: UserAcc
               </tbody>
             </table>
           </div>
+          {levels.users === "w" && levels.credentials === "w" ? <p role="note" data-testid="access-creds-warning" className="rounded border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">{t("access.warn.users_credentials")}</p> : null}
         </section>
       ) : (
         <section className="space-y-2" aria-labelledby="brand-h">
