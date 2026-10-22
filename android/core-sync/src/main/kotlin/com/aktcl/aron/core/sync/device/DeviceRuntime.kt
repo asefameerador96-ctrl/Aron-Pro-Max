@@ -2,7 +2,17 @@ package com.aktcl.aron.core.sync.device
 
 import android.content.Context
 import com.aktcl.aron.core.database.AronDatabase
+import com.aktcl.aron.core.geo.AndroidBreadcrumbClient
 import com.aktcl.aron.core.geo.AndroidDeviceStateReader
+import com.aktcl.aron.core.geo.BreadcrumbController
+import com.aktcl.aron.core.geo.Breadcrumbs
+import com.aktcl.aron.core.geo.PrefsBreadcrumbStateStore
+import com.aktcl.aron.core.common.ClientIds
+import com.aktcl.aron.core.database.entity.CaptureMeta
+import com.aktcl.aron.core.database.repo.CaptureRepository
+import com.aktcl.aron.core.database.repo.ReferenceRepository
+import com.aktcl.aron.rules.BusinessDate
+import kotlinx.coroutines.runBlocking
 import com.aktcl.aron.core.geo.AndroidGnssObserver
 import com.aktcl.aron.core.geo.AndroidLocationAccess
 import com.aktcl.aron.core.geo.FallbackLocationSource
@@ -60,6 +70,83 @@ class DeviceRuntime(
 
     private val policy: () -> DeviceOwnerPolicy = { DeviceOwnerPolicy.get(app) }
 
+    /**
+     * Optional breadcrumbs (N-035, D-MDM-BREADCRUMB-01), owned by lane mdm for SR and AMO: the controller exists only as a
+     * handle; it asks the platform for locations only when `cfg.geo.breadcrumbs_enabled` or the MDM policy `interval` is on,
+     * the rep is checked in, today is the day of the check-in, the same user is still signed in and the battery allows.
+     * Installed in [start] (Application.onCreate), so a delivery that cold-starts the process finds it.
+     */
+    val breadcrumbs: BreadcrumbController by lazy {
+        BreadcrumbController(
+            AndroidBreadcrumbClient(app), PrefsBreadcrumbStateStore(app),
+            BreadcrumbWiring.sink(ClientIds::newUuid, { runBlocking { breadcrumbMeta() } }) { id, meta, fix ->
+                runBlocking {
+                    // Points belong to whoever checked in; if that user is gone or the day moved on, end the window instead.
+                    val owner = breadcrumbOwner.load()
+                    if (!BreadcrumbWiring.ownerStillValid(owner, today(), activeUserId())) { endBreadcrumbWindow(); return@runBlocking }
+                    CaptureRepository(databases.of(owner!!.userId)).recordBreadcrumb(id, meta, fix)
+                }
+            },
+            deviceStateReader, components.clock,
+            BreadcrumbWiring.settings(
+                { dayConfig.breadcrumbsEnabled }, { dayConfig.breadcrumbIntervalMin },
+                { policy().mdmApplier?.locationMode() }, { policy().mdmApplier?.locationIntervalMin() },
+                backgroundGranted = { app.checkSelfPermission(android.Manifest.permission.ACCESS_BACKGROUND_LOCATION) == android.content.pm.PackageManager.PERMISSION_GRANTED },
+            ),
+        ).also { Breadcrumbs.controller = it }
+    }
+
+    private val breadcrumbOwner: BreadcrumbOwnerStore by lazy { PrefsBreadcrumbOwner(app) }
+    private fun today() = BusinessDate.of(components.trustedClock.nowMs()).toString()
+    @Volatile private var scope: CoroutineScope? = null
+
+    private fun endBreadcrumbWindow() {
+        breadcrumbOwner.clear()
+        runCatching { breadcrumbs.onCheckOut() }
+    }
+
+    private fun online(): Boolean = runCatching {
+        val cm = app.getSystemService(android.net.ConnectivityManager::class.java)
+        cm?.getNetworkCapabilities(cm.activeNetwork)?.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET) == true
+    }.getOrDefault(false)
+
+    private suspend fun breadcrumbMeta(): CaptureMeta? {
+        val userId = breadcrumbOwner.load()?.userId ?: return null
+        val now = components.trustedClock.nowMs()
+        val ref = ReferenceRepository(databases.of(userId))
+        return CaptureMeta(
+            businessDate = BusinessDate.of(now).toString(), capturedAt = SyncEngine.iso(now),
+            capturedElapsedMs = components.trustedClock.elapsedRealtimeMs(), bootCount = components.trustedClock.bootCountNow(),
+            clockOffsetMs = components.trustedClock.clockOffsetMs(), capturedOffline = !online(), routeId = null,
+            bundleVersion = ref.bundleVersion(), configVersion = ref.configVersionHeld(),
+        )
+    }
+
+    private fun battery(): Pair<Int?, Boolean> {
+        val bm = app.getSystemService(android.os.BatteryManager::class.java)
+        return bm?.getIntProperty(android.os.BatteryManager.BATTERY_PROPERTY_CAPACITY)?.takeIf { it in 0..100 } to (bm?.isCharging == true)
+    }
+
+    private fun offMain(block: () -> Unit) { val sc = scope; if (sc != null) sc.launch(kotlinx.coroutines.Dispatchers.IO) { runCatching(block) } else runCatching(block) }
+
+    /**
+     * Attendance commit of [userId] (SR, AMO): check-in opens the day's window for that user and date; check-out closes it.
+     * Nothing is requested from the platform while breadcrumbs are off. Runs off the main thread.
+     */
+    fun onAttendanceCommitted(kind: String, userId: Long) = offMain {
+        if (kind == "check_in") {
+            breadcrumbOwner.save(BreadcrumbOwner(today(), userId))
+            val (pct, charging) = battery(); breadcrumbs.onCheckIn(pct, charging)
+        } else endBreadcrumbWindow()
+    }
+
+    /** App start, a config refresh, an MDM policy change: ends a window left over from another day or user, then re-decides. */
+    fun reconcileBreadcrumbs() = offMain {
+        val owner = breadcrumbOwner.load()
+        if (owner != null && !BreadcrumbWiring.ownerStillValid(owner, today(), runBlocking { activeUserId() })) endBreadcrumbWindow()
+        val (pct, charging) = battery(); breadcrumbs.reconcile(pct, charging)
+    }
+
     val reporter: DeviceStatusReporter by lazy {
         val evidence = IntegrityEvidenceService(
             DeviceNonceApi(components.apiClient), PlayIntegritySource(app, playIntegrityProjectNumber), { components.deviceIdentity.deviceUuid },
@@ -86,6 +173,7 @@ class DeviceRuntime(
             runCatching { policy().configure(components.trustedClock::nowMs, dayConfig::isWorkingDay) }
             activeUserId()?.let { id -> runCatching { refreshDayConfig(id, databases.of(id), reevaluate = false) } }
             runCatching { policy().reapply() }
+            reconcileBreadcrumbs()
         } finally {
             started.complete(Unit)
         }
@@ -99,6 +187,8 @@ class DeviceRuntime(
      * report rides it). The login itself has already returned; nothing waits for this.
      */
     fun start(scope: CoroutineScope, scheduler: SyncScheduler) {
+        this.scope = scope
+        Breadcrumbs.controller = breadcrumbs // synchronous, before any delivery can reach the receiver (cold-start race)
         scope.launch { onAppCreate() }
         scope.launch {
             components.session.onlineLogins.collect { userId ->
@@ -140,6 +230,7 @@ class DeviceRuntime(
             }
         }
         if (reevaluate) runCatching { policy().reevaluateBlocking() }
+        reconcileBreadcrumbs()
     }
 
     /**

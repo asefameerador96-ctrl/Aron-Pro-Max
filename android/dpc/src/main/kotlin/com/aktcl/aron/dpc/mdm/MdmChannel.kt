@@ -10,13 +10,13 @@ import java.io.File
  * HTTP side ([CommandApi]), the server key ([CommandVerifier]) and the device uuid.
  */
 object MdmChannel {
-    fun processor(context: Context, api: CommandApi, verifier: CommandVerifier, deviceUuid: String): CommandProcessor {
+    fun processor(context: Context, api: CommandApi, verifier: CommandVerifier, deviceUuid: String, afterPolicyChanged: () -> Unit = {}): CommandProcessor {
         val app = context.applicationContext
         val policy = DeviceOwnerPolicy.get(app)
         val dir = File(app.noBackupFilesDir, "dpc")
         return CommandProcessor(
             api, AndroidMdmGateway(app), verifier, deviceUuid, CommandLedger(dir), MdmPolicyStore(dir),
-            nowMs = { policy.trustedNow() }, onPolicyChanged = { policy.reevaluateBlocking() },
+            nowMs = { policy.trustedNow() }, onPolicyChanged = { try { policy.reevaluateBlocking() } finally { runCatching(afterPolicyChanged) } },
         )
     }
 }

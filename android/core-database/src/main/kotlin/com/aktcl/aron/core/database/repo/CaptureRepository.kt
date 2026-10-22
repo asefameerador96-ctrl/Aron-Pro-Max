@@ -61,6 +61,18 @@ class CaptureRepository(
         outbox.insert(listOf(RecordMapping.attendance(event, fix, nowIso())))
     }
 
+    /**
+     * One breadcrumb (N-035): the fix and its outbox row in one transaction, idempotent by the record's UUID (a replay of an
+     * already acked one is ignored). It belongs to no route-day, so a Sales Submit never refuses it.
+     */
+    suspend fun recordBreadcrumb(clientUuid: String, meta: CaptureMeta, fix: GeoFixEntity) = db.withTransaction {
+        if (purged(clientUuid)) return@withTransaction emptyList()
+        requireUuids(clientUuid, fix.clientUuid)
+        require(fix.ownerClientUuid == clientUuid && fix.purpose == "breadcrumb") { "the fix must be the breadcrumb's own" }
+        capture.insertFix(fix)
+        outbox.insert(listOf(RecordMapping.geoBreadcrumb(clientUuid, meta, fix, nowIso())))
+    }
+
     /** One Save of the Stock screen: one event per SKU, all or nothing. */
     suspend fun recordStock(movements: List<StockMovementEntity>) {
         require(movements.isNotEmpty()) { "nothing to save" }

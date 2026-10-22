@@ -83,6 +83,9 @@ class BreadcrumbController(
     /** The interval and distance the running request was started with (null: not running). */
     private var runningWith: Pair<Long, Double>? = null
 
+    /** A request left by an earlier process is cleared once; after that `stop()` is only called for a request this process started. */
+    private var clearedOnce = false
+
     @Synchronized
     fun onCheckIn(batteryPct: Int? = null, charging: Boolean = false) {
         val now = clock.elapsedRealtimeMs()
@@ -107,7 +110,7 @@ class BreadcrumbController(
             if (runningWith != null) runCatching { client.stop() }
             runningWith = if (runCatching { client.start(target.first, target.second) }.isSuccess) target else null
         }
-        if (!want) { runCatching { client.stop() }; runningWith = null }
+        if (!want && (runningWith != null || !clearedOnce)) { runCatching { client.stop() }; runningWith = null; clearedOnce = true }
     }
 
     /** After a reboot elapsed realtime restarts: re-anchor the window at "now" (spacing from here, last place kept). */
@@ -173,4 +176,16 @@ class MemoryBreadcrumbStateStore : BreadcrumbStateStore {
     private var s = BreadcrumbState()
     @Synchronized override fun load() = s
     @Synchronized override fun save(s: BreadcrumbState) { this.s = s }
+}
+
+/**
+ * The MDM location sampling policy (D-MDM-01; `DeviceOwnerPolicy.mdmApplier?.locationMode()` / `locationIntervalMin()`) over the
+ * configured breadcrumb settings. `off` stops breadcrumbs, `interval` turns them on at the policy's interval (5..120 min, the same
+ * clamp as the config), `on_demand` (and a missing or unknown mode) leaves the configuration alone. It never changes the fix a sale or
+ * a check-in takes: geo-validation does not depend on this policy.
+ */
+fun BreadcrumbSettings.withMdmSampling(mode: String?, intervalMin: Int?): BreadcrumbSettings = when (mode) {
+    "off" -> copy(enabled = false)
+    "interval" -> copy(enabled = true, intervalMin = (intervalMin ?: this.intervalMin).coerceIn(5, 120))
+    else -> this
 }
