@@ -1,5 +1,12 @@
 # backend-reports lane status
 
+## HANDOVER (2026-10-22, session 3 recycling at ~415k): national dashboard candidate 4d5f4d79
+- Head `4d5f4d79` contains INT 2c10a157+, lane/lead-ci-contract-base e525732b, db V0093-V0106 (real migrations, test shims deleted), contract 1.5.0 (no 1.5.1, no extra request file). Locally green: analytics National*/Dashboard/ReportBatchA, app ContractConformance/RouteInventory/ScopeLeak, shared:contract, web typecheck+tests, money-float scan, oasdiff vs INT (0 breaking).
+- Lane CI on 4d5f4d79: everything green EXCEPT "Repository gates / Gate self-tests": `OsvGate.test_real_lockfile` fails on two NEW advisories in a production dependency, `next@16.3.8` (GHSA-2464-fhr4-w9xw 9.5, GHSA-p3m5-59mp-jv5r 8.2). Not from this lane (web/package-lock.json); needs the web lane to bump next, then re-run. Candidate is otherwise ready.
+- Entry units for android-units are DONE (CategoryVolume entry_unit/qty_entered; route-std entry_unit/base_per_pack), see below; tell session_01Nd8dEfvfeLSDqpvGzzT2SW.
+- Next three: (1) reports from docs/reports/*.md when filed (none yet); (2) open checker items: login needs attendance check-in too, history under current zone, weekend days from cfg.calendar.weekend_days; (3) AMO route-category report quantities per SKU are exposed via route-std only.
+- Trap: `pgrep -f gradlew` matches your own shell; use `pgrep -f "[g]radle-wrapper"`. Local tests need `pg_ctlcluster 16 main start` and the aron_test role/db.
+
 ## WAVE 4 (2026-10-22, session 3 again): national dashboard (docs/34 s2)
 Branch `lane/backend-reports`; contract 1.4.0 first (a18fc5fb, fixed in b2f2976a), then code.
 
