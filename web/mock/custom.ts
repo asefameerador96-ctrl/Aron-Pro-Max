@@ -8,12 +8,17 @@ export interface CustomState {
   salesPlans: Record<number, { valid_from: string; sku_ids: number[] }>;
   /** Wave 4 grants of a user: module levels (ADMIN) and brand ids (BRAND), with the If-Match version. */
   access: Record<number, { version: number; modules: Record<string, string>; brand_ids: number[] }>;
+  /** Wave 4 route monthly targets by route code, SKU code and month; batches seen (idempotent by batch_uuid). */
+  routeTargets: { route_code: string; sku_code: string; month: string; qty_base: number }[];
+  routeTargetBatches: Map<string, { hash: string; rows: number }>;
   priceBatches: Map<string, { hash: string; status: "applied" | "pending_approval"; valid_from: string }>;
   prices: { id: number; sku_id: number; price_type: string; amount_mtk: number; per_base_qty: number; valid_from: string; valid_to: string | null }[];
 }
 
-export function seedCustom(): Pick<CustomState, "scopes" | "salesPlans" | "priceBatches" | "prices" | "access"> {
+export function seedCustom(): Pick<CustomState, "scopes" | "salesPlans" | "priceBatches" | "prices" | "access" | "routeTargets" | "routeTargetBatches"> {
   return {
+    routeTargets: [{ route_code: "R-334-01", sku_code: "MaxR-20S", month: thisMonth(), qty_base: 2400 }],
+    routeTargetBatches: new Map(),
     access: { 3001: { version: 2, modules: { outlets: "w", reports: "r" }, brand_ids: [] }, 5002: { version: 1, modules: {}, brand_ids: [5] } },
     scopes: { 2001: { version: 7, nodes: [{ node_type: "territory", node_id: 6, valid_from: "2026-09-01", valid_to: null }] }, 1001: { version: 1, nodes: [] } },
     salesPlans: { 14: { valid_from: "2026-09-01", sku_ids: [1] } },
@@ -26,6 +31,7 @@ export function seedCustom(): Pick<CustomState, "scopes" | "salesPlans" | "price
   };
 }
 
+const thisMonth = () => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Dhaka", year: "numeric", month: "2-digit" }).format(new Date()).slice(0, 7);
 const today = () => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Dhaka", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
 
 export async function handleCustom(st: CustomState, ctx: Ctx, canWrite: boolean, method: string, url: URL, req: IncomingMessage, res: ServerResponse): Promise<boolean> {
@@ -73,6 +79,48 @@ export async function handleCustom(st: CustomState, ctx: Ctx, canWrite: boolean,
       st.access[id] = next;
       ctx.audit("user_access", id, "user_access.put", { modules: JSON.stringify(cur.modules), brand_ids: JSON.stringify(cur.brand_ids) }, { modules: JSON.stringify(next.modules), brand_ids: JSON.stringify(next.brand_ids) }, b.change_reason!);
       return ctx.send(res, 200, { user_id: id, role, version: next.version, modules: next.modules, brand_ids: next.brand_ids }, { ETag: `"${next.version}"` }), true;
+    }
+  }
+
+  if (path === "/v1/admin/route-targets") {
+    if (method === "GET") {
+      const month = url.searchParams.get("month");
+      const routes = st.tables.routes!;
+      let items = st.routeTargets.filter((r) => !month || r.month === month);
+      items = [...items].sort((a, b) => (a.route_code + a.sku_code).localeCompare(b.route_code + b.sku_code));
+      return ctx.send(res, 200, { items: items.map((r) => ({ ...r, route_name: String(routes.find((x) => x.code === r.route_code)?.name ?? "") })), next_cursor: null }), true;
+    }
+    if (method === "PUT") {
+      if (!canWrite) return ctx.send(res, 403, ctx.problem(403, "ERR_FORBIDDEN")), true;
+      const b = (await ctx.readJson(req)) as { batch_uuid?: string; rows?: { route_code: string; sku_code: string; month: string; qty_base: number }[]; dry_run?: boolean; change_reason?: string } | undefined;
+      if (!b || typeof b.batch_uuid !== "string" || !Array.isArray(b.rows) || b.rows.length < 1 || typeof b.dry_run !== "boolean") return ctx.send(res, 400, ctx.problem(400, "ERR_VALIDATION")), true;
+      if (!b.dry_run && !reasonOk(b.change_reason)) return ctx.send(res, 400, ctx.problem(400, "ERR_VALIDATION", { errors: [{ pointer: "/change_reason", code: "too_short" }] })), true;
+      const routes = st.tables.routes!;
+      const skus = st.tables.skus!;
+      const errors: { row: number; column: string; code: string }[] = [];
+      b.rows.forEach((r, i) => {
+        const route = routes.find((x) => x.code === r.route_code);
+        if (!route) errors.push({ row: i + 1, column: "route", code: "unknown_route" });
+        else if (route.kind !== "sr") errors.push({ row: i + 1, column: "route", code: "not_selling_route" });
+        if (!skus.some((x) => x.code === r.sku_code && x.status !== "inactive")) errors.push({ row: i + 1, column: "sku", code: "unknown_sku" });
+        if (r.month < thisMonth()) errors.push({ row: i + 1, column: "month", code: "past_month" });
+      });
+      const months = [...new Set(b.rows.map((r) => r.month))].sort();
+      const replaces = st.routeTargets.filter((t) => months.includes(t.month) && b.rows!.some((r) => r.route_code === t.route_code && r.sku_code === t.sku_code && r.month === t.month)).length;
+      const summary = { batch_uuid: b.batch_uuid, rows: b.rows.length, routes: new Set(b.rows.map((r) => r.route_code)).size, skus: new Set(b.rows.map((r) => r.sku_code)).size, months, total_qty_base: b.rows.reduce((a, r) => a + r.qty_base, 0), replaces, errors };
+      if (b.dry_run) return ctx.send(res, 200, summary), true;
+      if (errors.length) return ctx.send(res, 400, ctx.problem(400, "ERR_VALIDATION", { errors: errors.map((e) => ({ pointer: `/rows/${e.row - 1}`, code: e.code })) })), true;
+      const hash = JSON.stringify(b.rows);
+      const seen = st.routeTargetBatches.get(b.batch_uuid);
+      if (seen) return seen.hash === hash ? (ctx.send(res, 200, { batch_uuid: b.batch_uuid, rows: seen.rows, replayed: true }), true) : (ctx.send(res, 409, ctx.problem(409, "ERR_CONFLICT")), true);
+      st.routeTargetBatches.set(b.batch_uuid, { hash, rows: b.rows.length });
+      for (const r of b.rows) {
+        const cur = st.routeTargets.find((t) => t.route_code === r.route_code && t.sku_code === r.sku_code && t.month === r.month);
+        if (cur) cur.qty_base = r.qty_base;
+        else st.routeTargets.push({ ...r });
+      }
+      ctx.audit("route_target", b.batch_uuid, "route_target.commit", { replaced: replaces }, { rows: b.rows.length, total_qty_base: summary.total_qty_base }, b.change_reason!);
+      return ctx.send(res, 200, { batch_uuid: b.batch_uuid, rows: b.rows.length, replayed: false }), true;
     }
   }
 

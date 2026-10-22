@@ -24,6 +24,7 @@ export function seedTables(): Record<string, Row[]> {
       geo("house", 11, "H-2", "Mirpur House", 7),
       geo("house", 12, "H-3", "Motijheel House", 8),
       geo("house", 13, "H-4", "Agrabad House", 9),
+      geo("house", 20, "H-5", "Banani  House.", 6), // same name as H-1 in the same territory (spaces and punctuation ignored): the de-duplication view
       geo("zone", 14, "Z-334-1", "Banani Zone 1", 10, { dep_name: "Banani Depot" }),
       geo("zone", 15, "Z-335-1", "Mirpur Zone 1", 11, { dep_name: "Mirpur Depot" }),
       geo("zone", 16, "Z-336-1", "Motijheel Zone 1", 12),
