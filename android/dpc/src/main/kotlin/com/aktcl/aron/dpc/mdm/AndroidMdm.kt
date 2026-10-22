@@ -71,7 +71,7 @@ class AndroidMdmGateway(context: Context) : CommandGateway, KioskGateway {
 
     override fun startLockTask(pkg: String) {
         val intent = app.packageManager.getLaunchIntentForPackage(pkg)?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) ?: return
-        val opts = if (Build.VERSION.SDK_INT >= 26) ActivityOptions.makeBasic().setLockTaskEnabled(true).toBundle() else null
+        val opts = if (Build.VERSION.SDK_INT >= 28) ActivityOptions.makeBasic().setLockTaskEnabled(true).toBundle() else null
         app.startActivity(intent, opts)
     }
 
