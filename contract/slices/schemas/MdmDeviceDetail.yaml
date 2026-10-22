@@ -1,0 +1,44 @@
+MdmDeviceDetail:
+  type: object
+  required:
+  - device
+  - enrolled_at
+  - trust_level
+  - integrity_verdict
+  - recent_commands
+  additionalProperties: false
+  properties:
+    device:
+      $ref: '#/components/schemas/MdmDevice'
+    enrolled_at:
+      $ref: '#/components/schemas/Timestamp'
+    trust_level:
+      $ref: '#/components/schemas/TrustLevel'
+    integrity_verdict:
+      type: string
+      enum:
+      - pass
+      - fail
+      - unevaluated
+      - stale
+    lockdown_level:
+      $ref: '#/components/schemas/LockdownLevel'
+    zone_id:
+      type:
+      - integer
+      - 'null'
+      format: int64
+      minimum: 1
+    last_report:
+      oneOf:
+      - $ref: '#/components/schemas/DeviceStatusReport'
+      - type: 'null'
+    policy:
+      oneOf:
+      - $ref: '#/components/schemas/MdmPolicy'
+      - type: 'null'
+    recent_commands:
+      type: array
+      maxItems: 20
+      items:
+        $ref: '#/components/schemas/MdmCommand'

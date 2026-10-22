@@ -1,0 +1,26 @@
+path: /v1/admin/mdm/enrolment-tokens
+method: post
+operation:
+  tags:
+  - admin-mdm
+  operationId: createMdmEnrolmentToken
+  summary: Create an enrolment token and its provisioning QR payload (shown once).
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          $ref: '#/components/schemas/EnrolmentTokenCreateRequest'
+  responses:
+    '201':
+      description: Token with the QR payload.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/EnrolmentTokenCreated'
+    '400':
+      $ref: '#/components/responses/BadRequest'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'

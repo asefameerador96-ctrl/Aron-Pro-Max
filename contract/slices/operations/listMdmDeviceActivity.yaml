@@ -1,0 +1,24 @@
+path: /v1/admin/mdm/devices/{device_id}/activity
+method: get
+operation:
+  tags:
+  - admin-mdm
+  operationId: listMdmDeviceActivity
+  summary: Activity log of one device (commands, state changes, policy changes, enrolment, alerts), newest first.
+  parameters:
+  - $ref: '#/components/parameters/DeviceIdPath'
+  - $ref: '#/components/parameters/Limit'
+  - $ref: '#/components/parameters/Cursor'
+  responses:
+    '200':
+      description: Page of activity.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/MdmActivityPage'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'
+    '404':
+      $ref: '#/components/responses/NotFound'

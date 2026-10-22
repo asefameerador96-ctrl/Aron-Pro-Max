@@ -1,0 +1,26 @@
+path: /v1/admin/mdm/enrolment-tokens/{token_id}/revoke
+method: post
+operation:
+  tags:
+  - admin-mdm
+  operationId: revokeMdmEnrolmentToken
+  summary: Revoke an enrolment token.
+  parameters:
+  - name: token_id
+    in: path
+    required: true
+    schema:
+      $ref: '#/components/schemas/Id'
+  responses:
+    '200':
+      description: Token after revocation.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/EnrolmentToken'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'
+    '404':
+      $ref: '#/components/responses/NotFound'

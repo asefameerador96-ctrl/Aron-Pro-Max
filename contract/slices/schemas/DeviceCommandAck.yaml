@@ -1,0 +1,17 @@
+DeviceCommandAck:
+  type: object
+  required:
+  - state
+  additionalProperties: false
+  properties:
+    state:
+      type: string
+      enum:
+      - acked
+      - failed
+    result:
+      type:
+      - object
+      - 'null'
+      additionalProperties: true
+      description: 'At most 2 KB serialised: error code, locate fix, policy version applied.'

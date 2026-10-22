@@ -1,0 +1,26 @@
+path: /v1/admin/mdm/alerts
+method: get
+operation:
+  tags:
+  - admin-mdm
+  operationId: listMdmAlerts
+  summary: Open compliance alerts, one row per device and flag, derived from the latest status report.
+  parameters:
+  - name: flag
+    in: query
+    required: false
+    schema:
+      $ref: '#/components/schemas/MdmComplianceFlag'
+  - $ref: '#/components/parameters/Limit'
+  - $ref: '#/components/parameters/Cursor'
+  responses:
+    '200':
+      description: Page of alerts.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/MdmAlertPage'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'

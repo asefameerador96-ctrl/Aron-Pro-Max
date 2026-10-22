@@ -20,7 +20,8 @@ class NoPollingLintTest {
     private val rules = listOf(
         Rule("repeating alarm", Regex("""\bset(Inexact)?Repeating\s*\(""")),
         Rule("exact-alarm permission", Regex("""(SCHEDULE|USE)_EXACT_ALARM""")),
-        Rule("alarm", Regex("""\bAlarmManager\b|\bALARM_SERVICE\b"""), allowedIn = listOf("dpc/src/main/kotlin/com/aktcl/aron/dpc/blocking/")),
+        Rule("alarm", Regex("""\bAlarmManager\b|\bALARM_SERVICE\b"""), // The device owner's hard-end alarm, and the MDM block-window boundary (lane mdm): one inexact one-shot, re-armed at each evaluation, never repeating.
+            allowedIn = listOf("dpc/src/main/kotlin/com/aktcl/aron/dpc/blocking/", "dpc/src/main/kotlin/com/aktcl/aron/dpc/mdm/AndroidMdm.kt")),
         Rule("timer", Regex("""\bjava\.util\.Timer\b|\bTimer\s*\(|\bTimerTask\b|\bticker\s*\(|\bfixedRateTimer\s*\(|\btimer\s*\(|\bCountDownTimer\b""")),
         Rule("scheduled executor", Regex("""scheduleAtFixedRate|scheduleWithFixedDelay|ScheduledExecutorService|newScheduledThreadPool""")),
         Rule("delayed handler post", Regex("""\bpostDelayed\s*\(|\bsendMessageDelayed\s*\(""")),
