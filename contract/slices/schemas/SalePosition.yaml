@@ -1,0 +1,71 @@
+SalePosition:
+  type: object
+  description: The "Sale Position" page of an outlet and day.
+  required:
+  - date
+  - till_time
+  - as_of
+  - last_updated_at
+  - zone
+  - route
+  - outlet_code
+  - radius_m
+  - base
+  - sales
+  additionalProperties: false
+  properties:
+    date:
+      $ref: '#/components/schemas/BusinessDate'
+    till_time:
+      type: boolean
+      description: 'True when `date` is today (Dhaka): figures are till the time of `as_of`; false: final figures
+        of a past day.'
+    as_of:
+      $ref: '#/components/schemas/Timestamp'
+    last_updated_at:
+      type:
+      - string
+      - 'null'
+      format: date-time
+      description: Oldest `last_updated_at` of the summary tables this card reads (null when none has been written
+        yet). The page shows it as "last updated hh:mm" (Dhaka).
+    zone:
+      $ref: '#/components/schemas/PlaceRef'
+    route:
+      $ref: '#/components/schemas/PlaceRef'
+    outlet_code:
+      type: string
+      maxLength: 40
+    radius_m:
+      type: integer
+      enum:
+      - 20
+      - 50
+      - 100
+    base:
+      type: object
+      additionalProperties: false
+      required:
+      - lat
+      - lng
+      properties:
+        lat:
+          type: number
+          minimum: -90
+          maximum: 90
+        lng:
+          type: number
+          minimum: -180
+          maximum: 180
+      description: The outlet's approved base location.
+    header_distance_m:
+      type:
+      - number
+      - 'null'
+      minimum: 0
+      description: Distance of the latest sale shown in the page header ("SR Hit / Miss Position (81.83 Meter)").
+    sales:
+      type: array
+      maxItems: 200
+      items:
+        $ref: '#/components/schemas/SalePositionSale'

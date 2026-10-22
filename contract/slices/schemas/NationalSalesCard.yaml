@@ -1,0 +1,54 @@
+NationalSalesCard:
+  type: object
+  additionalProperties: false
+  required:
+  - category_code
+  - base_unit
+  - total_sales
+  - daily_target
+  - sales_so_far
+  - remaining
+  - achievement_pct
+  - target_routes
+  properties:
+    category_code:
+      type: string
+      maxLength: 40
+    base_unit:
+      type: string
+      enum:
+      - stick
+      - piece
+      - dozen
+    total_sales:
+      type: integer
+      format: int64
+      minimum: 0
+      description: SUM(quantity) in base units (sticks, pieces, dozens) of the category's latest-version memo lines
+        for the date, location and product filter.
+    daily_target:
+      oneOf:
+      - $ref: '#/components/schemas/Decimal3'
+      - type: 'null'
+      description: Sum over the routes in the filter of route monthly target / working days of the month (Fridays
+        and holidays excluded); null when no target is loaded for them. Always the full-day target.
+    sales_so_far:
+      type: integer
+      format: int64
+      minimum: 0
+      description: Same as total_sales; repeated for the "i" pop-up.
+    remaining:
+      oneOf:
+      - $ref: '#/components/schemas/Decimal3'
+      - type: 'null'
+      description: max(daily_target - sales_so_far, 0); null without a target.
+    achievement_pct:
+      type:
+      - number
+      - 'null'
+      minimum: 0
+      description: total_sales / daily_target x 100 (ring); null without a target. May exceed 100.
+    target_routes:
+      type: integer
+      minimum: 0
+      description: Routes in the filter that carry a monthly target for the category.

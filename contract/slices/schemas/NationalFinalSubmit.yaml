@@ -1,0 +1,51 @@
+NationalFinalSubmit:
+  type: object
+  description: Final Submit status by service zone; first submit per (zone, date) wins, unsubmitted zones are auto-submitted
+    at midnight. Hidden from BRAND users (403).
+  required:
+  - date
+  - till_time
+  - as_of
+  - last_updated_at
+  - total_zones
+  - service_zones
+  - final_submitted
+  - remaining
+  - submit_pct
+  additionalProperties: false
+  properties:
+    date:
+      $ref: '#/components/schemas/BusinessDate'
+    till_time:
+      type: boolean
+      description: 'True when `date` is today (Dhaka): figures are till the time of `as_of`; false: final figures
+        of a past day.'
+    as_of:
+      $ref: '#/components/schemas/Timestamp'
+    last_updated_at:
+      type:
+      - string
+      - 'null'
+      format: date-time
+      description: Oldest `last_updated_at` of the summary tables this card reads (null when none has been written
+        yet). The page shows it as "last updated hh:mm" (Dhaka).
+    total_zones:
+      type: integer
+      minimum: 0
+    service_zones:
+      type: integer
+      minimum: 0
+      description: Zones with normal SR routes working that day.
+    final_submitted:
+      type: integer
+      minimum: 0
+    remaining:
+      type: integer
+      minimum: 0
+      description: service_zones - final_submitted.
+    submit_pct:
+      type:
+      - number
+      - 'null'
+      minimum: 0
+      maximum: 100

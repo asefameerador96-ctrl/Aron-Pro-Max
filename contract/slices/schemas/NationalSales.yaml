@@ -1,0 +1,37 @@
+NationalSales:
+  type: object
+  description: Four sales cards (Cigarette, Bidi, Lighter, Match) with the daily target of the "i" pop-up.
+  required:
+  - date
+  - till_time
+  - as_of
+  - last_updated_at
+  - working_days
+  - cards
+  additionalProperties: false
+  properties:
+    date:
+      $ref: '#/components/schemas/BusinessDate'
+    till_time:
+      type: boolean
+      description: 'True when `date` is today (Dhaka): figures are till the time of `as_of`; false: final figures
+        of a past day.'
+    as_of:
+      $ref: '#/components/schemas/Timestamp'
+    last_updated_at:
+      type:
+      - string
+      - 'null'
+      format: date-time
+      description: Oldest `last_updated_at` of the summary tables this card reads (null when none has been written
+        yet). The page shows it as "last updated hh:mm" (Dhaka).
+    working_days:
+      type: integer
+      minimum: 0
+      maximum: 31
+      description: 'Working days of the date''s month (calendar: Fridays and holidays excluded).'
+    cards:
+      type: array
+      maxItems: 10
+      items:
+        $ref: '#/components/schemas/NationalSalesCard'

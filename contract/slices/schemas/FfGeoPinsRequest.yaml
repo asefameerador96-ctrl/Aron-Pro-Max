@@ -1,0 +1,16 @@
+FfGeoPinsRequest:
+  type: object
+  additionalProperties: false
+  properties:
+    filter:
+      $ref: '#/components/schemas/NationalDashboardFilter'
+    colors:
+      type: array
+      maxItems: 3
+      items:
+        type: string
+        enum:
+        - red
+        - amber
+        - green
+      description: Filter by Color; omitted or empty = all.
