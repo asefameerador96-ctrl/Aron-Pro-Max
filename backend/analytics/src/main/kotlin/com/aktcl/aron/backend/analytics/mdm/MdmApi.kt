@@ -22,7 +22,10 @@ import io.ktor.server.routing.get
 import io.ktor.server.routing.post
 import io.ktor.server.routing.put
 
-class MdmDeps(val service: MdmService, val devices: DeviceDeps, val guard: AuthGuardDeps, val grants: MdmGrants = RoleGrants)
+/** [enabled] false (the db migration is not there yet): the routes exist and refuse after authentication with 503, so the contract inventory holds. */
+class MdmDeps(val service: MdmService, val devices: DeviceDeps, val guard: AuthGuardDeps, val grants: MdmGrants = RoleGrants, val enabled: Boolean = true) {
+    fun requireEnabled() { if (!enabled) throw ApiProblem(ProblemCode.ERR_SERVICE_UNAVAILABLE, "MDM is not enabled on this server yet") }
+}
 
 /**
  * `/v1/admin/mdm/...` (user token, the `mdm` module) and the phone's `GET /v1/devices/me/commands` and its `.../ack`
@@ -33,17 +36,19 @@ fun Route.mdmRoutes(d: MdmDeps) {
 
     get("/devices/me/commands") {
         val dev = call.authDevice(d.devices, ByteArray(0))
+        d.requireEnabled()
         call.respond(s.pull(dev))
     }
     post("/devices/me/commands/{command_id}/ack") {
         val body = call.rawBody()
         val dev = call.authDevice(d.devices, body)
+        d.requireEnabled()
         call.respond(s.ack(dev, call.parameters["command_id"].orEmpty(), decodeStrict(DeviceCommandAck.serializer(), call.unzip(body).decodeToString())))
     }
 
     authenticated(d.guard) {
-        fun ApplicationCall.read() = d.grants.read(principal)
-        fun ApplicationCall.write() = d.grants.write(principal)
+        fun ApplicationCall.read() { d.grants.read(principal); d.requireEnabled() }
+        fun ApplicationCall.write() { d.grants.write(principal); d.requireEnabled() }
         fun ApplicationCall.id(name: String) = parameters[name]?.toLongOrNull()?.takeIf { it >= 1 } ?: throw ApiProblem(ProblemCode.ERR_VALIDATION, "bad $name", errors = listOf(FieldError("path.$name", "invalid_value")))
         fun ApplicationCall.limit() = request.queryParameters["limit"]?.let { it.toIntOrNull()?.takeIf { v -> v in 1..200 } ?: throw ApiProblem(ProblemCode.ERR_VALIDATION, "bad limit", errors = listOf(FieldError("query.limit", "out_of_range"))) } ?: 50
         fun ApplicationCall.cursor() = request.queryParameters["cursor"]?.let { it.toLongOrNull() ?: throw ApiProblem(ProblemCode.ERR_VALIDATION, "bad cursor", errors = listOf(FieldError("query.cursor", "invalid_value"))) }

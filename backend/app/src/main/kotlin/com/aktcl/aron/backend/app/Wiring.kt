@@ -294,15 +294,15 @@ class Wiring(
                 dbWaiting = { hikari?.hikariPoolMXBean?.threadsAwaitingConnection ?: 0 },
             )
             // D-MDM-01: the MDM section and the phone's command channel; off until the db migration for device_command lands (docs/requests/db-mdm-device-command.md).
-            val mdm = if (System.getenv("ARON_MDM_ENABLED") == "1") MdmDeps(
+            val mdm = MdmDeps(
                 MdmService(db, keys, deviceEnrolment.service, clock, MdmPush { deviceId ->
                     val tokens = db.jdbi.withHandle<List<Pair<Long, String>>, Exception> { h ->
                         h.createQuery("SELECT id, token FROM app.push_token WHERE device_id = :d AND revoked_at IS NULL ORDER BY id").bind("d", deviceId).map { rs, _ -> rs.getLong(1) to rs.getString(2) }.list()
                     }
                     push.broadcast(tokens) { mapOf("kind" to "mdm_nudge") }   // no business data; the phone pulls the command itself
                 }),
-                deviceEnrolment, guard,
-            ) else null
+                deviceEnrolment, guard, enabled = System.getenv("ARON_MDM_ENABLED") == "1",
+            )
             return Wiring(clock, config, db, generation::current, s.build, mount = {
                 authRoutes(auth)
                 outletRoutes(outlets)
@@ -311,7 +311,7 @@ class Wiring(
                 dailyTrackingRoutes(tracking)
                 opsRoutes(ops)
                 deviceRoutes(deviceEnrolment)
-                mdm?.let { mdmRoutes(it) }
+                mdmRoutes(mdm)
                 reportRoutes(reports)
                 configAdminRoutes(configDeps)
                 configDeltaRoutes(deltaDeps)
