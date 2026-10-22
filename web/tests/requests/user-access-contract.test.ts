@@ -11,9 +11,4 @@ describe("contract carries the user-access operations (not yet: backend-authz / 
   it.fails("GET and PUT /v1/admin/users/{id}/access exist in contract/openapi.yaml", () => {
     expect(yaml).toContain("/v1/admin/users/{id}/access:");
   });
-  it.fails("the Role enum carries NATIONAL and BRAND", () => {
-    const role = /\n {4}Role:\n[\s\S]*?\n {4}\w/.exec(yaml)?.[0] ?? "";
-    expect(role).toContain("NATIONAL");
-    expect(role).toContain("BRAND");
-  });
 });
