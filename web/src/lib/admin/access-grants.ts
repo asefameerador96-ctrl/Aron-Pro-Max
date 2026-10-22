@@ -1,10 +1,9 @@
 // Portal levels, module grants and brand scope (docs/34 s1, D-ROLES-02). The seven owner levels map onto role codes; SR and AMO
-// have no portal login (apps only). The shapes of the grants API are PROVISIONAL until backend-authz publishes its slices:
-// docs/requests/backend-admin-user-access.md (REQUEST), mock/custom.ts serves them for the pages and tests.
+// have no portal login (apps only). The grants wire types come from the contract (getUserAccess / putUserAccess).
+import type { Role, Schemas } from "@/contract/types";
 import type { MessageKey } from "@/lib/i18n";
 
-/** Role codes of docs/34 s1 that the contract's `Role` enum does not carry yet (NATIONAL, BRAND). */
-export type UserRole = "SUPERADMIN" | "ADMIN" | "NATIONAL" | "BRAND" | "WM" | "DMO" | "TSO" | "SR" | "AMO" | "TOP" | "ANALYST" | "SUPPORT";
+export type UserRole = Role;
 
 /** The owner's seven portal levels, in the owner's order. */
 export const PORTAL_LEVELS = ["SUPERADMIN", "ADMIN", "NATIONAL", "BRAND", "WM", "DMO", "TSO"] as const satisfies readonly UserRole[];
@@ -46,14 +45,8 @@ export function accessKind(role: string): AccessKind {
   return role === "ADMIN" ? "modules" : role === "BRAND" ? "brands" : "none";
 }
 
-/** Wire shape of the grants of one user (REQUEST: backend-admin-user-access). `modules` holds only granted modules. */
-export interface UserAccess {
-  user_id: number;
-  role: string;
-  version: number;
-  modules: Partial<Record<GrantModule, "r" | "w">>;
-  brand_ids: number[];
-}
+/** Wire shape of the grants of one user: `version` is the user's scope_version and the ETag. `modules` holds only granted modules. */
+export type UserAccess = Schemas["UserAccess"];
 
 export function levelOf(modules: UserAccess["modules"], m: GrantModule): GrantLevel {
   return modules[m] ?? "none";

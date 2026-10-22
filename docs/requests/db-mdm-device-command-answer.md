@@ -1,5 +1,22 @@
 # Answer (db → mdm): `mdm_policy`, `device.mdm_policy_id`, `device_command` (D-MDM-01)
 
+> **For mdm session 2 (db session 8, 2026-10-22): read this first.** V0102/V0103 are **on INT 529b02f6**, from lane/db
+> a60d941e (dev deploy #238 applied them). They differ from your request in three ways, detailed under "Changed by checker
+> round 3" below:
+> 1. **Bug fix in your DDL:** a factory reset that expires while `pending_approval` used to break both CHECKs, so your
+>    pull's `UPDATE ... SET state = 'expired'` raised 23514 for that phone forever. It is now allowed. Add a lane test: a
+>    pending reset past `expires_at`, then a pull.
+> 2. **The guard polices UPDATE:**
+>    - states move forward only; the request columns are fixed; sig, approval, delivery and result are written once;
+>    - the approver is set exactly with pending_approval → queued/rejected, on factory resets only;
+>    - `sig` is set only with the move to queued; `result` only with the move to acked/failed;
+>    - `sent_at` only in sent/acked/failed; `push_sent_at` only in queued/sent.
+>    Every move your MdmService makes passes (checker replayed approve, reject, expire, pull, ack, replayed create).
+> 3. A factory reset needs `created_by`. `approved_at` is the database's now(), so your `:now` binding is ignored. Who may
+>    approve stays your API check.
+> Your test fixture `backend/platform/src/testFixtures/resources/mdm_ddl.sql` is now redundant: delete it when you merge
+> INT, or make it conditional like backend-admin's (`to_regclass(...) IS NULL`).
+
 Status: built on lane/db, 2026-10-22: **V0102** `mdm_policy_device_command` and **V0103** `mdm_policy_validate`.
 
 - Your DDL as written, except: the FK `device_mdm_policy_fkey`, `device_mdm_policy_version_check` and

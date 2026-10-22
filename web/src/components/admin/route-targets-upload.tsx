@@ -1,5 +1,6 @@
 "use client";
 import { SheetImport, type SheetImportConfig } from "./sheet-import";
+import { TARGET_MEMBER_COLUMN } from "@/lib/admin/row-pointer";
 import { HEADERS, parseTargetSheet, templateCells, type TargetPreview } from "@/lib/admin/route-targets";
 import { useI18n } from "@/components/i18n-provider";
 
@@ -15,7 +16,8 @@ export function RouteTargetsUpload({ currentMonth }: { currentMonth: string }) {
     templateFile: "route-targets-template.xlsx",
     columnsText: `${t("rt.columns")} ${Object.values(HEADERS).join(", ")}`,
     columnLabel: (c) => t(`rt.col.${c}` as "rt.col.route"),
-    problemLabel: (c) => t(`rt.problem.${c}` as "rt.problem.invalid"),
+    problemKey: (c) => `rt.problem.${c}`,
+    memberColumn: (m) => TARGET_MEMBER_COLUMN[m] ?? m,
     summaryText: (p, number) => t("rt.summary", { rows: number(p.rows), routes: number(p.routes), skus: number(p.skus), months: p.months.join(", "), total: number(p.total_qty_base) }),
     committedKey: "rt.committed",
   };
