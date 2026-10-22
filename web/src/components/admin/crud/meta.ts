@@ -48,6 +48,8 @@ interface FieldBase {
   normalizeDigits?: boolean;
   /** Required when creating. */
   required?: boolean;
+  /** Required enum with no preselected option: the user must choose (outlet channel, docs/34 s2). */
+  noDefault?: boolean;
   /** Empty input is sent as null. */
   nullable?: boolean;
   maxLength?: number;
@@ -126,6 +128,8 @@ export interface EntityMeta<Row, Write, Patch> {
   /** `entity` value of this table's rows in /v1/admin/audit. */
   auditEntity: string;
   idField: Name<Row>;
+  /** A live preview under the form fields: the SKU pack sentence ("1 packet = 20 sticks"). */
+  preview?: "sku-pack";
   /** "uuid" for tables keyed by a client UUID (outlet requests); default "int". */
   idKind?: "int" | "uuid";
   fields: readonly FieldMeta<Row, Write, Patch>[];

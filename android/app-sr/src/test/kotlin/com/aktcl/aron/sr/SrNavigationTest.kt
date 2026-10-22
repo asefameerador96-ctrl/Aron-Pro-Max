@@ -22,6 +22,7 @@ class SrNavigationTest {
         assertEquals(SrScreen.PICKER, SrNav.parent(SrScreen.SKIP))
         assertEquals(SrScreen.MEMO, SrNav.parent(SrScreen.EDIT))
         assertEquals(SrScreen.SETTINGS, SrNav.parent(SrScreen.SUPPORT))
+        assertEquals(SrScreen.SETTINGS, SrNav.parent(SrScreen.PRINTER_DIAG))
         assertEquals(SrScreen.OUTLET_MENU, SrNav.parent(SrScreen.REQUEST_FORM))
         assertEquals(SrScreen.OUTLET_MENU, SrNav.parent(SrScreen.OWN_REQUESTS))
         assertEquals(SrScreen.HOME, SrNav.parent(SrScreen.MEMO))

@@ -69,6 +69,12 @@ export const OPS = {
   "dues.decide": { method: "POST", path: "/v1/admin/dues-adjustments/{adjustment_id}/decision", roles: SUPERS, reason: "note" },
   // Wave 4 (docs/34 s1): module grants of an ADMIN or brand scope of a BRAND user; Super Admin only. REQUEST: docs/requests/backend-admin-user-access.md
   "user-access.put": { method: "PUT", path: "/v1/admin/users/{id}/access", roles: SUPERS, reason: "change_reason", ifMatch: true },
+  // Wave 4 route monthly targets (D-TARGET-MIN-01): preview (dry run, no reason, writes nothing) then commit; idempotent by batch_uuid. REQUEST: docs/requests/backend-admin-route-targets.md
+  "route-targets.validate": { method: "PUT", path: "/v1/admin/route-targets", roles: ADMINS, reason: null },
+  "route-targets.commit": { method: "PUT", path: "/v1/admin/route-targets", roles: ADMINS, reason: "change_reason" },
+  // Wave 4 outlet import (docs/34 s2: channel mandatory): preview, then commit. REQUEST: docs/requests/backend-admin-outlet-import.md
+  "outlet-import.validate": { method: "POST", path: "/v1/admin/outlets/import", roles: ADMINS, reason: null },
+  "outlet-import.commit": { method: "POST", path: "/v1/admin/outlets/import", roles: ADMINS, reason: "change_reason" },
   // F-ADM-064 role x menu x action matrix: a C3 change request, second SUPERADMIN approves
   "permissions.put": { method: "PUT", path: "/v1/admin/permissions/roles/{role}", roles: SUPERS, reason: "reason" },
   // F-ADM-024 paper backfill: a dead-phone day keyed by printed memo number, source manual
