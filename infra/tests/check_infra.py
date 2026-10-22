@@ -1515,7 +1515,7 @@ class SliceSmoke(unittest.TestCase):
             r = subprocess.run(["openssl", "dgst", "-sha256", "-verify", self.pub, "-signature", sig.name, msg.name], capture_output=True)
         return r.returncode == 0
 
-    def serve(self, doubles=False, memo_read=True, totals_off=0, selling_today=True):
+    def serve(self, doubles=False, memo_read=True, totals_off=0, selling_today=True, today_selling_day=True):
         import gzip as gz, http.server, threading
         from urllib.parse import urlparse, parse_qs
         state = {"records": {}, "batches": {}, "memos": {}, "voided": set(), "calls": []}
@@ -1597,6 +1597,9 @@ class SliceSmoke(unittest.TestCase):
                         return self.reply(400, {"code": "ERR_VALIDATION"})
                     return self.reply(200, {
                         "meta": {"bundle_version": q["for"][0] + ":1", "config_version": 7},
+                        # today's calendar entry decides whether it is a selling day (as DayPlan.isSellingDay)
+                        "calendar": {"weekend_days": [5], "entries": [{"date": today.isoformat(), "selling_day": today_selling_day,
+                                                                       "kind": "holiday", "scope_type": "global", "scope_id": 0}]},
                         "products": {"skus": [{"id": 5, "code": "GL-20", "status": "active", "base_unit": "stick"}]},
                         "prices": [{"sku_id": 5, "price_type": "outlet", "amount_mtk": 14500, "per_base_qty": 1, "valid_from": "2026-01-01"}],
                         "routes": [{"route_id": 3, "route": {"code": "GUL-SR-2"}, "planned_today": selling_today or ahead == 1, "sales_plan_sku_ids": [5],
@@ -1646,14 +1649,25 @@ class SliceSmoke(unittest.TestCase):
         self.assertRegex(memo["payload"]["memo_no"], r"^sr1001-\d{6}-9\d{3}$", "contract pattern, clear of phone blocks")
         self.assertEqual(memo["payload"]["outlet_id"], 9, "the smoke's own outlet, never a tester's")
 
-    def test_a_day_without_a_selling_route_names_the_next_selling_days_route_and_sells_nothing(self):
-        srv, state = self.serve(selling_today=False)
+    def test_a_non_selling_day_is_skipped_and_names_the_next_selling_days_route(self):
+        srv, state = self.serve(selling_today=False, today_selling_day=False)
+        rc, out = self.run_smoke(srv)
+        self.assertEqual(rc, 3, out)
+        self.assertRegex(out, r"SKIP 2b route, outlet, SKU: \d{4}-\d{2}-\d{2} is not a selling day \(bundle calendar\) and no route "
+                              r"is planned; steps 3-10 not run; next selling day \d{4}-\d{2}-\d{2}: route GUL-SR-2 \(3\), "
+                              r"outlet SMOKE-SR-001 \(9\), sku GL-20")
+        self.assertIn("| 2b route, outlet, SKU | skip |", out)
+        self.assertEqual(state["calls"].count("/v1/sync/bundle"), 2, "today, then the next selling day (pre-fetch only)")
+        self.assertNotIn("/v1/sync/batch", state["calls"], "nothing is sold on a day without a selling route")
+        self.assertIn("### SR slice smoke: SKIPPED", out)
+
+    def test_a_selling_day_without_a_planned_route_still_fails(self):
+        srv, state = self.serve(selling_today=False, today_selling_day=True)
         rc, out = self.run_smoke(srv)
         self.assertEqual(rc, 1, out)
         self.assertRegex(out, r"FAIL 2b route, outlet, SKU: no planned route with a smoke outlet .*; next selling day "
-                              r"\d{4}-\d{2}-\d{2}: route GUL-SR-2 \(3\), outlet SMOKE-SR-001 \(9\), sku GL-20")
-        self.assertEqual(state["calls"].count("/v1/sync/bundle"), 2, "today, then the next selling day (pre-fetch only)")
-        self.assertNotIn("/v1/sync/batch", state["calls"], "nothing is sold on a day without a selling route")
+                              r"\d{4}-\d{2}-\d{2}: route GUL-SR-2")
+        self.assertNotIn("/v1/sync/batch", state["calls"])
         self.assertIn("### SR slice smoke: FAILED", out)
 
     def test_fails_when_a_re_upload_doubles_the_sale(self):
@@ -1695,7 +1709,10 @@ class SliceSmoke(unittest.TestCase):
 
     def test_wired_after_the_health_gate_for_dev_only(self):
         d = (ROOT / "infra" / "deploy.sh").read_text(encoding="utf-8")
-        self.assertLess(d.index('infra/scripts/smoke.sh "$API_HOST"'), d.rindex("python3 infra/scripts/slice-smoke.py; then"))
+        self.assertLess(d.index('infra/scripts/smoke.sh "$API_HOST"'), d.rindex("python3 infra/scripts/slice-smoke.py || slice_rc=$?"))
+        smoke = d[d.rindex("python3 infra/scripts/slice-smoke.py || slice_rc=$?"):]
+        self.assertLess(smoke.index('elif [ "$slice_rc" -eq 3 ]; then'), smoke.index('slice_result="SKIPPED (not a selling day'),
+                        "exit 3 (not a selling day) is SKIPPED, never FAILED")
         self.assertLess(d.index('DBLOGINS_JOB="$(az deployment'), d.index("publish aron-devseed build_devseed"))
         self.assertLess(d.index("publish aron-devseed build_devseed"), d.index('guard_newer_live "before the apps"'))
         self.assertIn("grep -qx 'param devSeed = true' \"infra/params/${PROFILE}.apps.bicepparam\"", d, "a committed switch")
