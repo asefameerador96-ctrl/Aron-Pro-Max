@@ -126,6 +126,8 @@ POST /v1/admin/notifications -> case AdminNotificationTest#aNodeOutsideTheCaller
 POST /v1/admin/outlets -> case AdminOutletsTest#outletScopeAndRoles
 POST /v1/admin/outlets/outlet-kind -> case AdminOutletsTest#bulkOutletKindValidationRolesAndScope
 POST /v1/admin/outlets/import -> case OutletImportTest#commitNeedsAReasonAndRoleAndCreatesWithHistoryAndAudit
+GET /v1/admin/users/{id}/access -> case UserAccessTest#roleMatrix
+PUT /v1/admin/users/{id}/access -> case UserAccessTest#roleMatrix
 POST /v1/admin/prices -> gap: backend-admin
 POST /v1/admin/prices/batches/{batch_uuid}/decision -> gap: backend-admin
 POST /v1/admin/prices/preview -> gap: backend-admin

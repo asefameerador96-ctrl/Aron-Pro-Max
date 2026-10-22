@@ -3,7 +3,7 @@
 Source: contract/openapi.yaml, version 1.3.3.
 
 
-## Schemas (526)
+## Schemas (529)
 
 - `schemas/Uuid.yaml` (273 B)
 - `schemas/Id.yaml` (104 B)
@@ -499,6 +499,9 @@ Source: contract/openapi.yaml, version 1.3.3.
 - `schemas/PricePreview.yaml` (806 B)
 - `schemas/PriceBatch.yaml` (604 B)
 - `schemas/OutletKindBulkWrite.yaml` (472 B)
+- `schemas/AdminModule.yaml` (305 B)
+- `schemas/UserAccess.yaml` (757 B)
+- `schemas/UserAccessWrite.yaml` (576 B)
 - `schemas/OutletImportRow.yaml` (1132 B)
 - `schemas/OutletImportWrite.yaml` (415 B)
 - `schemas/OutletImportRowError.yaml` (443 B)
@@ -532,7 +535,7 @@ Source: contract/openapi.yaml, version 1.3.3.
 - `schemas/ChannelVolume.yaml` (751 B)
 - `schemas/SuggestedQty.yaml` (234 B)
 
-## Operations (223)
+## Operations (225)
 
 - `operations/getHealth.yaml`  GET /v1/health (770 B)
 - `operations/headHealth.yaml`  HEAD /v1/health (483 B)
@@ -645,6 +648,8 @@ Source: contract/openapi.yaml, version 1.3.3.
 - `operations/updateUser.yaml`  PATCH /v1/admin/users/{id} (903 B)
 - `operations/getUserScope.yaml`  GET /v1/admin/users/{id}/scope (563 B)
 - `operations/putUserScope.yaml`  PUT /v1/admin/users/{id}/scope (817 B)
+- `operations/getUserAccess.yaml`  GET /v1/admin/users/{id}/access (773 B)
+- `operations/putUserAccess.yaml`  PUT /v1/admin/users/{id}/access (1132 B)
 - `operations/manageUserCredentials.yaml`  POST /v1/admin/users/{id}/credentials (1027 B)
 - `operations/listOutlets.yaml`  GET /v1/admin/outlets (1015 B)
 - `operations/createOutlet.yaml`  POST /v1/admin/outlets (730 B)

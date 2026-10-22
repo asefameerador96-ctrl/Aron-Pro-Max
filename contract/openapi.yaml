@@ -2695,6 +2695,51 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
+  /v1/admin/users/{id}/access:
+    get:
+      tags: [admin-users]
+      operationId: getUserAccess
+      summary: An ADMIN user's module grants or a BRAND user's brands (docs/34 s1); the ETag is the access version.
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '200':
+          description: The access of the user.
+          headers:
+            ETag: { $ref: '#/components/headers/ETag' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/UserAccess' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+    put:
+      tags: [admin-users]
+      operationId: putUserAccess
+      summary: Replace the module grants of an ADMIN user or the brands of a BRAND user (SUPERADMIN; bumps the version, so tokens refresh with 401 ERR_SCOPE_CHANGED).
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+        - $ref: '#/components/parameters/IfMatch'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UserAccessWrite' }
+      responses:
+        '200':
+          description: The new access.
+          headers:
+            ETag: { $ref: '#/components/headers/ETag' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/UserAccess' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '412': { $ref: '#/components/responses/PreconditionFailed' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
   /v1/admin/users/{id}/credentials:
     post:
       tags: [admin-users]
@@ -12526,6 +12571,39 @@ components:
         outlet_kind: { type: string, enum: [retail, wholesale] }
         outlet_ids: { type: array, minItems: 1, maxItems: 5000, items: { $ref: '#/components/schemas/Id' } }
         reason: { $ref: '#/components/schemas/ChangeReason' }
+    AdminModule:
+      type: string
+      enum: [masterdata, routes, outlets, products, prices, users, targets, credentials, mdm, reports, config, data_entry, indent, leaderboard, daily_tracking]
+      description: The fixed module list of an ADMIN user's grants (docs/34 s1).
+    UserAccess:
+      type: object
+      required: [user_id, role, version, modules, brand_ids]
+      additionalProperties: false
+      properties:
+        user_id: { $ref: '#/components/schemas/Id' }
+        role: { $ref: '#/components/schemas/Role' }
+        version: { type: integer, minimum: 1, description: Also the ETag; the user's scope_version. }
+        modules:
+          type: object
+          propertyNames: { $ref: '#/components/schemas/AdminModule' }
+          additionalProperties: { type: string, enum: [r, w] }
+          description: ADMIN users only; only granted modules appear.
+        brand_ids:
+          type: array
+          items: { $ref: '#/components/schemas/Id' }
+          description: BRAND users only; product-tree brand nodes.
+    UserAccessWrite:
+      type: object
+      required: [change_reason]
+      additionalProperties: false
+      description: Exactly one of modules (ADMIN user) and brand_ids (BRAND user, not empty).
+      properties:
+        modules:
+          type: object
+          propertyNames: { $ref: '#/components/schemas/AdminModule' }
+          additionalProperties: { type: string, enum: [r, w] }
+        brand_ids: { type: array, minItems: 1, maxItems: 200, items: { $ref: '#/components/schemas/Id' } }
+        change_reason: { $ref: '#/components/schemas/ChangeReason' }
     OutletImportRow:
       type: object
       required: [name, owner_name, zone_code, cluster, channel, outlet_kind]

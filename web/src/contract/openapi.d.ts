@@ -1738,6 +1738,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/admin/users/{id}/access": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** An ADMIN user's module grants or a BRAND user's brands (docs/34 s1); the ETag is the access version. */
+        get: operations["getUserAccess"];
+        /** Replace the module grants of an ADMIN user or the brands of a BRAND user (SUPERADMIN; bumps the version, so tokens refresh with 401 ERR_SCOPE_CHANGED). */
+        put: operations["putUserAccess"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/admin/users/{id}/credentials": {
         parameters: {
             query?: never;
@@ -8343,6 +8361,31 @@ export interface components {
             outlet_ids: components["schemas"]["Id"][];
             reason: components["schemas"]["ChangeReason"];
         };
+        /**
+         * @description The fixed module list of an ADMIN user's grants (docs/34 s1).
+         * @enum {string}
+         */
+        AdminModule: "masterdata" | "routes" | "outlets" | "products" | "prices" | "users" | "targets" | "credentials" | "mdm" | "reports" | "config" | "data_entry" | "indent" | "leaderboard" | "daily_tracking";
+        UserAccess: {
+            user_id: components["schemas"]["Id"];
+            role: components["schemas"]["Role"];
+            /** @description Also the ETag; the user's scope_version. */
+            version: number;
+            /** @description ADMIN users only; only granted modules appear. */
+            modules: {
+                [key: string]: "r" | "w";
+            };
+            /** @description BRAND users only; product-tree brand nodes. */
+            brand_ids: components["schemas"]["Id"][];
+        };
+        /** @description Exactly one of modules (ADMIN user) and brand_ids (BRAND user, not empty). */
+        UserAccessWrite: {
+            modules?: {
+                [key: string]: "r" | "w";
+            };
+            brand_ids?: components["schemas"]["Id"][];
+            change_reason: components["schemas"]["ChangeReason"];
+        };
         OutletImportRow: {
             code?: string | null;
             name: string;
@@ -12244,6 +12287,69 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+        };
+    };
+    getUserAccess: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["IdPath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The access of the user. */
+            200: {
+                headers: {
+                    ETag: components["headers"]["ETag"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserAccess"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    putUserAccess: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description ETag (the row `version` as a quoted string) of the representation being changed; mismatch is 412. */
+                "If-Match": components["parameters"]["IfMatch"];
+            };
+            path: {
+                id: components["parameters"]["IdPath"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UserAccessWrite"];
+            };
+        };
+        responses: {
+            /** @description The new access. */
+            200: {
+                headers: {
+                    ETag: components["headers"]["ETag"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserAccess"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            412: components["responses"]["PreconditionFailed"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     manageUserCredentials: {

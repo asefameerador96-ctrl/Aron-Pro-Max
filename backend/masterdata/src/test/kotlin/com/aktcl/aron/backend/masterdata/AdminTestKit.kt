@@ -53,6 +53,7 @@ class AdminEnv : AutoCloseable {
     fun token(user: String, role: Role, pii: Boolean = false) = TestTokens.web(db.ids.getValue(user), role, pii = pii)
 
     fun sql(q: String): String? = db.scalar(q)
+    fun exec(q: String) = db.fresh.db.jdbi.useHandle<Exception> { it.execute(q) }
     fun count(q: String): Long = db.scalar(q)!!.toLong()
     fun audit(entity: String, id: Any, action: String? = null): Long =
         count("SELECT count(*) FROM app.audit_log WHERE entity = '$entity' AND entity_id = '$id'" + (action?.let { " AND action = '$it'" } ?: ""))
