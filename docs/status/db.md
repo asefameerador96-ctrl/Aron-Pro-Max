@@ -2,6 +2,15 @@
 
 Updated with every push. Rows of Day 1: N-005, N-006, N-007, N-008 (`python3 tools/my-rows.py db 1 --full`).
 
+## Session 9, 2026-10-22 (lane/db; INT 384ecee2 = train 9.1)
+
+| Job | State | What |
+|---|---|---|
+| train 9.1 dev deploy | read (lead relay) | deploy #243 (run 39847052921) green 20:27 UTC: migrations incl. **V0107** applied, dev seed job ran (image `aron-devseed:384ecee2`), health 200 build 384ecee2, worker 0 restarts. Slice smoke: login and bundle passed; **2b skipped (non-blocking)** because the deploy ran at 02:14 Dhaka on **Friday 2026-10-23** (no selling route by design). So the route **could not be read from this deploy**: whether dev runs on Gulshan/Banani is still open |
+| when the codes print | recorded | 5be0a3e1's codes print from train 10's deploy only on a Dhaka selling day (Saturday 2026-10-24 06:00 Dhaka = 00:00 UTC onward), unless the fallback below is on dev |
+| smoke fallback (lead ask) | built, tested | `infra/scripts/slice-smoke.py`: when today has no smoke route, 2b fetches the bundle of the **next** selling day (the server's own pre-fetch: `for` up to the next working day; it never marks a login, and BundleService refuses past dates, so "last selling day" is not possible) and adds `; next selling day <date>: route <code> (<id>), outlet <code> (<id>), sku <code>` to the 2b line. No sale on such a day; 2b stays FAIL (non-blocking). Test `SliceSmoke.test_a_day_without_a_selling_route_names_the_next_selling_days_route_and_sells_nothing` (stub: 2 bundle calls, no batch); SliceSmoke stub tests 6/6 locally, the rest of check_infra needs compiled Bicep (same 38 errors before and after the change) |
+| requests | none open | no new `docs/requests/*db*` on any lane branch at 20:35 UTC (backend-reports' checked_in_at = V0108, answered). Next free migration **V0109** |
+
 ## HANDOVER (session 8 -> session 9), 2026-10-22 evening, lane/db 5be0a3e1
 
 **State.** a60d941e is on INT 529b02f6 (dev deploy #238 applied V0087-V0106; dev seed Succeeded; slice smoke PASS).

@@ -151,25 +151,11 @@ def run():
     s, bundle = call("GET", f"/v1/sync/bundle?for={day}", token)
     step("2 bundle", s == 200 and isinstance(bundle, dict), brief(s, bundle) if s != 200 else f"bundle {bundle['meta']['bundle_version']}")
     meta = bundle["meta"]
-    skus = {k["id"]: k for k in bundle["products"]["skus"] if k.get("status", "active") == "active"}
-    prices = {}
-    for p in bundle["prices"]:
-        if p["price_type"] == "outlet" and p["valid_from"] <= day and (p.get("valid_to") in (None, "") or p["valid_to"] >= day):
-            prices[p["sku_id"]] = p
-    pick = None
-    for r in bundle["routes"]:
-        if not r.get("planned_today"):
-            continue
-        outlet = next((o for o in r["outlets"] if o.get("code") in OUTLET_CODES and o.get("lat") is not None), None)
-        sku_id = next((i for i in r["sales_plan_sku_ids"] if i in skus and i in prices), None)
-        if outlet and sku_id:
-            pick = (r, outlet, skus[sku_id], prices[sku_id])
-            break
+    pick = pick_route(bundle, day)
     step("2b route, outlet, SKU", pick is not None,
          (f"no planned route with a smoke outlet ({OUTLET_CODE}) and a priced plan SKU"
-          + (" (Friday: no selling route by design)" if today.weekday() == 4 else "")) if pick is None
-         else f"route {(pick[0].get('route') or {}).get('code', '?')} ({pick[0]['route_id']}), "
-         f"outlet {pick[1].get('code', '?')} ({pick[1]['outlet_id']}), sku {pick[2]['code']}")
+          + (" (Friday: no selling route by design)" if today.weekday() == 4 else "") + next_selling_route(token, today)) if pick is None
+         else describe(pick))
     route, outlet, sku, price = pick
 
     # 3 baseline
@@ -244,6 +230,44 @@ def run():
             s, r4 = call("POST", "/v1/sync/batch", token, batch([void], str(uuid.uuid4())), gz=True)
             st = acks(r4)
             step("10 cleanup: sale voided", s == 200 and st == ["accepted"], f"acks={st}" if s == 200 else brief(s, r4))
+
+
+def pick_route(bundle, day):
+    """(route, outlet, sku, price) of the first planned route of [bundle] holding a smoke outlet and a plan SKU priced on [day]."""
+    skus = {k["id"]: k for k in bundle["products"]["skus"] if k.get("status", "active") == "active"}
+    prices = {}
+    for p in bundle["prices"]:
+        if p["price_type"] == "outlet" and p["valid_from"] <= day and (p.get("valid_to") in (None, "") or p["valid_to"] >= day):
+            prices[p["sku_id"]] = p
+    for r in bundle["routes"]:
+        if not r.get("planned_today"):
+            continue
+        outlet = next((o for o in r["outlets"] if o.get("code") in OUTLET_CODES and o.get("lat") is not None), None)
+        sku_id = next((i for i in r["sales_plan_sku_ids"] if i in skus and i in prices), None)
+        if outlet and sku_id:
+            return r, outlet, skus[sku_id], prices[sku_id]
+    return None
+
+
+def describe(pick):
+    return (f"route {(pick[0].get('route') or {}).get('code', '?')} ({pick[0]['route_id']}), "
+            f"outlet {pick[1].get('code', '?')} ({pick[1]['outlet_id']}), sku {pick[2]['code']}")
+
+
+def next_selling_route(token, today):
+    """When today has no selling route (Friday, a holiday): name the route of the next selling day, so a deploy on a
+    non-selling day still shows which seed dev runs on (a Gulshan/Banani code, or a Mirpur one if seed 06 skipped).
+    Only the server's own pre-fetch (for = a later day up to the next working day) is used: it never marks a login and
+    the server refuses past dates. No sale is made; the step stays failed (non-blocking) because nothing was sold."""
+    for ahead in range(1, 8):
+        d = (today + datetime.timedelta(days=ahead)).isoformat()
+        s, b = call("GET", f"/v1/sync/bundle?for={d}", token)
+        if s != 200 or not isinstance(b, dict):
+            break  # past the next working day the server answers 400: nothing further to look at
+        pick = pick_route(b, d)
+        if pick is not None:
+            return f"; next selling day {d}: {describe(pick)}"
+    return "; no smoke route on the next selling day either"
 
 
 def day_totals(resp, day):

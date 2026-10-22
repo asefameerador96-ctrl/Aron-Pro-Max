@@ -7,6 +7,7 @@ the templates deploy into ONE resource group only, carry no hard-coded subscript
 resource the row asks for with the reliability settings the spec fixes, and the workflows deploy only from the
 integration branch with OIDC and pinned actions. What they cannot prove (needs Azure) is listed in infra/README.md.
 """
+import datetime
 import hashlib
 import json
 import os
@@ -1514,7 +1515,7 @@ class SliceSmoke(unittest.TestCase):
             r = subprocess.run(["openssl", "dgst", "-sha256", "-verify", self.pub, "-signature", sig.name, msg.name], capture_output=True)
         return r.returncode == 0
 
-    def serve(self, doubles=False, memo_read=True, totals_off=0):
+    def serve(self, doubles=False, memo_read=True, totals_off=0, selling_today=True):
         import gzip as gz, http.server, threading
         from urllib.parse import urlparse, parse_qs
         state = {"records": {}, "batches": {}, "memos": {}, "voided": set(), "calls": []}
@@ -1589,11 +1590,16 @@ class SliceSmoke(unittest.TestCase):
                     return self.reply(401, {"code": "unauthorized"})
                 memos = [m for m in state["memos"].values() if m["client_uuid"] not in state["voided"]]
                 if u.path == "/v1/sync/bundle":
+                    # As BundleService: today, or a pre-fetch up to the next working day (here: tomorrow); never the past.
+                    today = datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=6))).date()
+                    ahead = (datetime.date.fromisoformat(q["for"][0]) - today).days
+                    if ahead < 0 or ahead > 1:
+                        return self.reply(400, {"code": "ERR_VALIDATION"})
                     return self.reply(200, {
                         "meta": {"bundle_version": q["for"][0] + ":1", "config_version": 7},
                         "products": {"skus": [{"id": 5, "code": "GL-20", "status": "active", "base_unit": "stick"}]},
                         "prices": [{"sku_id": 5, "price_type": "outlet", "amount_mtk": 14500, "per_base_qty": 1, "valid_from": "2026-01-01"}],
-                        "routes": [{"route_id": 3, "planned_today": True, "sales_plan_sku_ids": [5],
+                        "routes": [{"route_id": 3, "route": {"code": "GUL-SR-2"}, "planned_today": selling_today or ahead == 1, "sales_plan_sku_ids": [5],
                                     "outlets": [{"outlet_id": 8, "code": "MIR-D-001", "lat": 23.8, "lng": 90.3, "status": "active", "radius_m": 100, "max_accuracy_m": 100},
                                                 {"outlet_id": 9, "code": "SMOKE-SR-001", "lat": 23.8, "lng": 90.3, "status": "active", "radius_m": 100, "max_accuracy_m": 100}]}]})
                 if u.path == "/v1/app/home":
@@ -1639,6 +1645,16 @@ class SliceSmoke(unittest.TestCase):
         self.assertIn(memo["client_uuid"], state["voided"], "the smoke sale is voided")
         self.assertRegex(memo["payload"]["memo_no"], r"^sr1001-\d{6}-9\d{3}$", "contract pattern, clear of phone blocks")
         self.assertEqual(memo["payload"]["outlet_id"], 9, "the smoke's own outlet, never a tester's")
+
+    def test_a_day_without_a_selling_route_names_the_next_selling_days_route_and_sells_nothing(self):
+        srv, state = self.serve(selling_today=False)
+        rc, out = self.run_smoke(srv)
+        self.assertEqual(rc, 1, out)
+        self.assertRegex(out, r"FAIL 2b route, outlet, SKU: no planned route with a smoke outlet .*; next selling day "
+                              r"\d{4}-\d{2}-\d{2}: route GUL-SR-2 \(3\), outlet SMOKE-SR-001 \(9\), sku GL-20")
+        self.assertEqual(state["calls"].count("/v1/sync/bundle"), 2, "today, then the next selling day (pre-fetch only)")
+        self.assertNotIn("/v1/sync/batch", state["calls"], "nothing is sold on a day without a selling route")
+        self.assertIn("### SR slice smoke: FAILED", out)
 
     def test_fails_when_a_re_upload_doubles_the_sale(self):
         srv, state = self.serve(doubles=True)
