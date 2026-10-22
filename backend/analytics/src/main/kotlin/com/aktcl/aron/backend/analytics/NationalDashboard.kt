@@ -110,10 +110,14 @@ class NationalDashboardService(
     internal val clock: AronClock = AronClock.SYSTEM,
     private val config: ServerConfig? = null,
 ) {
-    /** The global `cfg.calendar.weekend_days` (the national figure has no zone; zone-scoped overrides are ignored, D-DASH-06). */
-    internal fun weekendDays(): Set<Int> = runCatching {
-        config?.value("cfg.calendar.weekend_days")?.jsonArray?.mapNotNull { it.jsonPrimitive.content.toIntOrNull() }?.filter { it in 1..7 }?.toSet()
-    }.getOrNull()?.takeIf { it.isNotEmpty() } ?: WorkingCalendar.DEFAULT_WEEKEND
+    /**
+     * The global `cfg.calendar.weekend_days` (the national figure has no zone; zone-scoped overrides are ignored, D-DASH-06). The registry
+     * allows 0..3 days, so a list that is empty (or holds only numbers outside 1..7) means no weekend day, as in the portal's calendar and the
+     * bundle; only a missing or unreadable value falls back to Friday.
+     */
+    internal fun weekendDays(): Set<Int> = config?.let { c ->
+        runCatching { c.value("cfg.calendar.weekend_days").jsonArray.mapNotNull { it.jsonPrimitive.content.toIntOrNull() }.filter { it in 1..7 }.toSet() }.getOrNull()
+    } ?: WorkingCalendar.DEFAULT_WEEKEND
 
     internal fun today(): LocalDate = BusinessDate.of(clock.now().toEpochMilli()).toJavaLocalDate()
 

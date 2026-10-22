@@ -285,8 +285,19 @@ class NationalDashboardTest {
         assertEquals(25, days(weekendConfig(JsonArray(listOf(JsonPrimitive(5))))))
         assertEquals(20, days(weekendConfig(JsonArray(listOf(JsonPrimitive(5), JsonPrimitive(6))))), "Friday and Saturday off")
         assertEquals(26, days(weekendConfig(JsonArray(listOf(JsonPrimitive(7))))), "Sunday only")
-        assertEquals(25, days(weekendConfig(JsonArray(emptyList()))), "an empty list falls back to the default")
-        assertEquals(25, days(weekendConfig(JsonArray(listOf(JsonPrimitive(0), JsonPrimitive(9))))), "out-of-range days are ignored")
+        assertEquals(30, days(weekendConfig(JsonArray(emptyList()))), "an empty list is no weekend (registry allows 0..3 days), one holiday off")
+        assertEquals(30, days(weekendConfig(JsonArray(listOf(JsonPrimitive(0), JsonPrimitive(9))))), "out-of-range days are ignored, leaving no weekend")
         assertEquals(25, days(weekendConfig(JsonPrimitive("junk"))), "a malformed value falls back to the default")
+    }
+
+    @Test
+    fun theSalesCardsUseTheConfiguredWeekendForTheDailyTarget() {
+        val friSat = NationalDashboardService(fresh.db, AronClock { now }, weekendConfig(JsonArray(listOf(JsonPrimitive(5), JsonPrimitive(6)))))
+        val s = friSat.sales(national(), all)
+        assertEquals(20, s.working_days)
+        // Monthly 2 500 + 1 250 over 20 working days = 187.5 a day (was 150 over 25).
+        assertEquals("187.500", s.cards.single { it.category_code == "cigarette" }.daily_target)
+        val none = NationalDashboardService(fresh.db, AronClock { now }, weekendConfig(JsonArray(emptyList())))
+        assertEquals(30, none.sales(national(), all).working_days)
     }
 }
