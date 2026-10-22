@@ -6336,6 +6336,13 @@ export interface components {
             /** @enum {string|null} */
             report_unit?: "stick" | "piece" | "dozen" | "box" | "pack" | null;
             qty_report?: components["schemas"]["Decimal3"] | null;
+            /**
+             * @description The unit the field apps count this category in (docs/34 s4.2): pack (packet or box, per SKU `base_per_pack`) or dozen (matches).
+             * @enum {string}
+             */
+            entry_unit?: "pack" | "dozen";
+            /** @description Quantity in `entry_unit`, summed per SKU first (each SKU's qty_base over its base_per_pack): 10s and 20s of one category convert correctly. Sold plus free, like qty_base. */
+            qty_entered?: components["schemas"]["Decimal3"];
             net_mtk: components["schemas"]["Mtk"];
         };
         /** @description The dashboard filter object (docs/34 s2, brief s1). Every list is optional; omitted or empty means everything the caller may see. The server intersects each list with the scope derived from the token (docs/34 s1, BRAND users also with their brands) and never widens it: ids outside the scope are ignored, and a list that leaves nothing yields zeros. Location ids are server surrogate keys; product codes are the product master codes. */

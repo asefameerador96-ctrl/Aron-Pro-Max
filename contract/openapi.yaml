@@ -9675,6 +9675,13 @@ components:
         qty_base: { type: integer, format: int64, minimum: 0 }
         report_unit: { type: [string, 'null'], enum: [stick, piece, dozen, box, pack, null] }
         qty_report: { oneOf: [ { $ref: '#/components/schemas/Decimal3' }, { type: 'null' } ] }
+        entry_unit:
+          type: string
+          enum: [pack, dozen]
+          description: 'The unit the field apps count this category in (docs/34 s4.2): pack (packet or box, per SKU `base_per_pack`) or dozen (matches).'
+        qty_entered:
+          $ref: '#/components/schemas/Decimal3'
+          description: 'Quantity in `entry_unit`, summed per SKU first (each SKU''s qty_base over its base_per_pack): 10s and 20s of one category convert correctly. Sold plus free, like qty_base.'
         net_mtk: { $ref: '#/components/schemas/Mtk' }
     NationalDashboardFilter:
       type: object

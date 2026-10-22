@@ -286,7 +286,7 @@ Source: contract/openapi.yaml, version 1.5.0.
 - `schemas/Feedback.yaml` (680 B)
 - `schemas/FeedbackPage.yaml` (298 B)
 - `schemas/DashboardKpis.yaml` (2073 B)
-- `schemas/CategoryVolume.yaml` (678 B)
+- `schemas/CategoryVolume.yaml` (1172 B)
 - `schemas/NationalDashboardFilter.yaml` (1650 B)
 - `schemas/NationalSalesCard.yaml` (1581 B)
 - `schemas/NationalSales.yaml` (1114 B)
