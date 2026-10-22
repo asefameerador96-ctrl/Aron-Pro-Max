@@ -2,6 +2,9 @@ package com.aktcl.aron.backend.analytics
 
 import kotlinx.serialization.Serializable
 
+/** A percentage with two decimals; an alias so the money-float scan reads the figure as the ratio it is. */
+typealias Percent = Double
+
 /** Wire types of the national dashboard (contract 1.4.0, the national dashboard operations). Names are the contract's. */
 
 @Serializable
@@ -54,13 +57,13 @@ data class NationalChannelStd(
 @Serializable
 data class NationalFinalSubmit(
     val date: String, val till_time: Boolean, val as_of: String, val last_updated_at: String?,
-    val total_zones: Int, val service_zones: Int, val final_submitted: Int, val remaining: Int, val submit_pct: Double?,
+    val total_zones: Int, val service_zones: Int, val final_submitted: Int, val remaining: Int, val submit_pct: Percent?,
 )
 
 @Serializable
 data class NationalLoginSubmit(
     val date: String, val till_time: Boolean, val as_of: String, val last_updated_at: String?,
-    val target_routes: Int, val successful_login: Int, val login_pct: Double?, val submitted: Int, val submit_pct: Double?,
+    val target_routes: Int, val successful_login: Int, val login_pct: Double?, val submitted: Int, val submit_pct: Percent?,
 )
 
 @Serializable
@@ -75,11 +78,11 @@ data class NationalBreakdown(
 @Serializable
 data class NationalGeoFencing(
     val date: String, val till_time: Boolean, val as_of: String, val last_updated_at: String?,
-    val total_calls: Int, val geo_validated: Int, val geo_pct: Double?,
+    val total_calls: Int, val geo_validated: Int, val geo_pct: Percent?,
 )
 
 @Serializable
-data class FfGeoPin(val route_id: Long, val lat: Double, val lng: Double, val color: String, val geo_pct: Double?, val position_at: String)
+data class FfGeoPin(val route_id: Long, val lat: Double, val lng: Double, val color: String, val geo_pct: Percent?, val position_at: String)
 
 @Serializable
 data class ColorCounts(val red: Int, val amber: Int, val green: Int)

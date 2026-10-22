@@ -20,6 +20,8 @@ import java.time.YearMonth
 /** Who is asking: the server-side reach and, for a BRAND user, the brand ids (null for every other level; docs/34 s1). */
 class NationalCaller(val reach: Reach, val brandIds: Set<Long>? = null)
 
+internal fun ratioPct(part: BigDecimal, whole: BigDecimal): Percent = part.multiply(BigDecimal(100)).divide(whole, 2, RoundingMode.HALF_UP).toDouble()
+
 /** The day's channel order, as the brief lists it. */
 internal val CHANNELS = listOf("GT", "DCC", "Astha", "RCC", "MT", "HoReCa")
 internal val CATEGORY_ORDER = listOf("cigarette", "bidi", "lighter", "match")
@@ -166,9 +168,7 @@ class NationalDashboardService(
                 NationalSalesCard(
                     category_code = cat, base_unit = unit, total_sales = total, daily_target = daily?.toPlainString(), sales_so_far = total,
                     remaining = daily?.let { (it - BigDecimal(total)).max(BigDecimal.ZERO).setScale(3, RoundingMode.HALF_UP).toPlainString() },
-                    achievement_pct = daily?.takeIf { it.signum() > 0 }?.let {
-                        BigDecimal(total).multiply(BigDecimal(100)).divide(it, 2, RoundingMode.HALF_UP).toDouble()
-                    },
+                    achievement_pct = daily?.takeIf { it.signum() > 0 }?.let { ratioPct(BigDecimal(total), it) },
                     target_routes = tgt?.second ?: 0,
                 )
             }

@@ -1107,6 +1107,286 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/dashboards/national/sales": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Sales cards with daily target
+         * @description Four category cards: total sales, ring % of the daily target and the "i" pop-up figures (brief s2). Reads summary tables only (never the transaction log); scope from the token.
+         */
+        post: operations["queryNationalSales"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/dashboards/national/cpr": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Live CPR card
+         * @description Target outlets, successful calls and CPR % for one day (brief s3.1). BRAND users get 403 (docs/34 s1: cards without a brand dimension are hidden). Reads summary tables only (never the transaction log); scope from the token.
+         */
+        post: operations["queryNationalCpr"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/dashboards/national/channel-calls": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * By Channel Successful Call card
+         * @description Distinct calling outlets by outlet-master channel (brief s3.2). Reads summary tables only (never the transaction log); scope from the token.
+         */
+        post: operations["queryNationalChannelCalls"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/dashboards/national/final-submit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Final Submit Status card
+         * @description Service zones and their Final Submit (brief s3.3). BRAND users get 403 (docs/34 s1: cards without a brand dimension are hidden). Reads summary tables only (never the transaction log); scope from the token.
+         */
+        post: operations["queryNationalFinalSubmit"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/dashboards/national/login-submit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Login / Submit Status card
+         * @description Target routes, logins and Bikroy Joma submits (brief s3.4). BRAND users get 403 (docs/34 s1: cards without a brand dimension are hidden). Reads summary tables only (never the transaction log); scope from the token.
+         */
+        post: operations["queryNationalLoginSubmit"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/dashboards/national/channel-std": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * By Channel STD card
+         * @description Cigarette sticks by outlet channel (brief s4.1). Reads summary tables only (never the transaction log); scope from the token.
+         */
+        post: operations["queryNationalChannelStd"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/dashboards/national/breakdown": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Breakdown STD / Memo card
+         * @description Bars by segment, brand or variant for STD or Memo (brief s4.2). Reads summary tables only (never the transaction log); scope from the token.
+         */
+        post: operations["queryNationalBreakdown"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/dashboards/national/geo-fencing": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Geo Fencing card
+         * @description Geo validation of completed calls (brief s5.1). BRAND users get 403 (docs/34 s1: cards without a brand dimension are hidden). Reads summary tables only (never the transaction log); scope from the token.
+         */
+        post: operations["queryNationalGeoFencing"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/dashboards/national/ff-geo/pins": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * FF Geo Location pins
+         * @description One pin per route, coloured by today's geo-fencing % (brief s5.2). Clustering is done by the map. BRAND users get 403 (docs/34 s1: cards without a brand dimension are hidden). Reads summary tables only (never the transaction log); scope from the token.
+         */
+        post: operations["queryFfGeoPins"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/dashboards/national/ff-geo/routes/{route_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * FF Geo route pop-up
+         * @description SR name, contact, territory, zone, route, latest position time and miss % (brief s5.2). The route must be inside the caller's scope, else 404. BRAND users get 403 (docs/34 s1: cards without a brand dimension are hidden).
+         */
+        get: operations["getFfGeoRoutePopup"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/dashboards/route-map/{route_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Route map ("Map Details")
+         * @description Markers, SR path and the Target vs Achievement, CPR and time cards of one route and day (brief s5.3). BRAND users get 403 (docs/34 s1: cards without a brand dimension are hidden).
+         */
+        get: operations["getRouteMap"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/dashboards/sale-position/{outlet_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Sale Position (SR hit / miss)
+         * @description Base position, sale positions with kind and the force-sale photo of one outlet and day (brief s5.4). BRAND users get 403 (docs/34 s1: cards without a brand dimension are hidden).
+         */
+        get: operations["getSalePosition"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/dashboards/national/filter-options": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Filter panel values
+         * @description Wings to zones inside the scope (active houses once, UI-WEB-14) and the category / segment / brand / variant tree.
+         */
+        get: operations["getNationalFilterOptions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/dashboards/national/freshness": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Summary table freshness
+         * @description `last_updated_at` per summary table.
+         */
+        get: operations["getNationalFreshness"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/dashboards/daily-tracking": {
         parameters: {
             query?: never;
@@ -5919,6 +6199,457 @@ export interface components {
             qty_report?: components["schemas"]["Decimal3"] | null;
             net_mtk: components["schemas"]["Mtk"];
         };
+        /** @description The dashboard filter object (docs/34 s2, brief s1). Every list is optional; omitted or empty means everything the caller may see. The server intersects each list with the scope derived from the token (docs/34 s1, BRAND users also with their brands) and never widens it: ids outside the scope are ignored, and a list that leaves nothing yields zeros. Location ids are server surrogate keys; product codes are the product master codes. */
+        NationalDashboardFilter: {
+            wing_ids?: components["schemas"]["Id"][];
+            division_ids?: components["schemas"]["Id"][];
+            territory_ids?: components["schemas"]["Id"][];
+            house_ids?: components["schemas"]["Id"][];
+            zone_ids?: components["schemas"]["Id"][];
+            category_codes?: string[];
+            segment_codes?: string[];
+            brand_codes?: string[];
+            variant_codes?: string[];
+            /** @description One business day; default today (Dhaka). */
+            date?: components["schemas"]["BusinessDate"];
+        };
+        NationalSalesCard: {
+            category_code: string;
+            /** @enum {string} */
+            base_unit: "stick" | "piece" | "dozen";
+            /**
+             * Format: int64
+             * @description SUM(quantity) in base units (sticks, pieces, dozens) of the category's latest-version memo lines for the date, location and product filter.
+             */
+            total_sales: number;
+            /** @description Sum over the routes in the filter of route monthly target / working days of the month (Fridays and holidays excluded); null when no target is loaded for them. Always the full-day target. */
+            daily_target: components["schemas"]["Decimal3"] | null;
+            /**
+             * Format: int64
+             * @description Same as total_sales; repeated for the "i" pop-up.
+             */
+            sales_so_far: number;
+            /** @description max(daily_target - sales_so_far, 0); null without a target. */
+            remaining: components["schemas"]["Decimal3"] | null;
+            /** @description total_sales / daily_target x 100 (ring); null without a target. May exceed 100. */
+            achievement_pct: number | null;
+            /** @description Routes in the filter that carry a monthly target for the category. */
+            target_routes: number;
+        };
+        /** @description Four sales cards (Cigarette, Bidi, Lighter, Match) with the daily target of the "i" pop-up. */
+        NationalSales: {
+            date: components["schemas"]["BusinessDate"];
+            /** @description True when `date` is today (Dhaka): figures are till the time of `as_of`; false: final figures of a past day. */
+            till_time: boolean;
+            as_of: components["schemas"]["Timestamp"];
+            /**
+             * Format: date-time
+             * @description Oldest `last_updated_at` of the summary tables this card reads (null when none has been written yet). The page shows it as "last updated hh:mm" (Dhaka).
+             */
+            last_updated_at: string | null;
+            /** @description Working days of the date's month (calendar: Fridays and holidays excluded). */
+            working_days: number;
+            cards: components["schemas"]["NationalSalesCard"][];
+        };
+        /** @description Live CPR: target outlets, successful calls and the ratio. Hidden from BRAND users (403). */
+        NationalCpr: {
+            date: components["schemas"]["BusinessDate"];
+            /** @description True when `date` is today (Dhaka): figures are till the time of `as_of`; false: final figures of a past day. */
+            till_time: boolean;
+            as_of: components["schemas"]["Timestamp"];
+            /**
+             * Format: date-time
+             * @description Oldest `last_updated_at` of the summary tables this card reads (null when none has been written yet). The page shows it as "last updated hh:mm" (Dhaka).
+             */
+            last_updated_at: string | null;
+            /** @description Outlets on the normal routes scheduled for the date, each route counted once (manual and dummy routes excluded). */
+            target_outlets: number;
+            /** @description Distinct outlets with at least one latest-version memo that day on those routes. */
+            successful_calls: number;
+            cpr_pct: number | null;
+        };
+        /** @description Successful calls split by the outlet-master channel (no "Other" group). `total` is the sum of the channels; `unclassified` counts calling outlets without a channel, which the mandatory channel keeps at 0. */
+        NationalChannelCalls: {
+            date: components["schemas"]["BusinessDate"];
+            /** @description True when `date` is today (Dhaka): figures are till the time of `as_of`; false: final figures of a past day. */
+            till_time: boolean;
+            as_of: components["schemas"]["Timestamp"];
+            /**
+             * Format: date-time
+             * @description Oldest `last_updated_at` of the summary tables this card reads (null when none has been written yet). The page shows it as "last updated hh:mm" (Dhaka).
+             */
+            last_updated_at: string | null;
+            channels: {
+                /** @enum {string} */
+                channel: "GT" | "DCC" | "Astha" | "RCC" | "MT" | "HoReCa";
+                /** Format: int64 */
+                value: number;
+                share_pct: number | null;
+            }[];
+            total: number;
+            unclassified: number;
+        };
+        /** @description Cigarette sales (sticks) split by outlet channel. Cigarette only; `total` equals the Sales (Cigarette) card for the same filter. */
+        NationalChannelStd: {
+            date: components["schemas"]["BusinessDate"];
+            /** @description True when `date` is today (Dhaka): figures are till the time of `as_of`; false: final figures of a past day. */
+            till_time: boolean;
+            as_of: components["schemas"]["Timestamp"];
+            /**
+             * Format: date-time
+             * @description Oldest `last_updated_at` of the summary tables this card reads (null when none has been written yet). The page shows it as "last updated hh:mm" (Dhaka).
+             */
+            last_updated_at: string | null;
+            channels: {
+                /** @enum {string} */
+                channel: "GT" | "DCC" | "Astha" | "RCC" | "MT" | "HoReCa";
+                /** Format: int64 */
+                value: number;
+                share_pct: number | null;
+            }[];
+            /** Format: int64 */
+            total: number;
+            /** @enum {string} */
+            unit: "stick";
+        };
+        /** @description Final Submit status by service zone; first submit per (zone, date) wins, unsubmitted zones are auto-submitted at midnight. Hidden from BRAND users (403). */
+        NationalFinalSubmit: {
+            date: components["schemas"]["BusinessDate"];
+            /** @description True when `date` is today (Dhaka): figures are till the time of `as_of`; false: final figures of a past day. */
+            till_time: boolean;
+            as_of: components["schemas"]["Timestamp"];
+            /**
+             * Format: date-time
+             * @description Oldest `last_updated_at` of the summary tables this card reads (null when none has been written yet). The page shows it as "last updated hh:mm" (Dhaka).
+             */
+            last_updated_at: string | null;
+            total_zones: number;
+            /** @description Zones with normal SR routes working that day. */
+            service_zones: number;
+            final_submitted: number;
+            /** @description service_zones - final_submitted. */
+            remaining: number;
+            submit_pct: number | null;
+        };
+        /** @description Login (check-in and download) and Submit (Bikroy Joma) status per route. Hidden from BRAND users (403). */
+        NationalLoginSubmit: {
+            date: components["schemas"]["BusinessDate"];
+            /** @description True when `date` is today (Dhaka): figures are till the time of `as_of`; false: final figures of a past day. */
+            till_time: boolean;
+            as_of: components["schemas"]["Timestamp"];
+            /**
+             * Format: date-time
+             * @description Oldest `last_updated_at` of the summary tables this card reads (null when none has been written yet). The page shows it as "last updated hh:mm" (Dhaka).
+             */
+            last_updated_at: string | null;
+            /** @description Normal SR routes scheduled that day. */
+            target_routes: number;
+            /** @description Of those, routes whose SR checked in and downloaded. */
+            successful_login: number;
+            login_pct: number | null;
+            /** @description Routes that completed Bikroy Joma (sales upload). */
+            submitted: number;
+            /** @description submitted / successful_login x 100. */
+            submit_pct: number | null;
+        };
+        /** @description The common filter plus the gear choice (six combinations, one active). */
+        NationalBreakdownRequest: {
+            filter?: components["schemas"]["NationalDashboardFilter"];
+            /** @enum {string} */
+            measure: "std" | "memo";
+            /** @enum {string} */
+            dimension: "segment" | "brand" | "variant";
+            /** @description STD mode mixes sticks, pieces and dozens, so the bars of an STD answer cover one category: this one, else the category with the most volume. Ignored for memo. */
+            category_code?: string | null;
+        };
+        /** @description One bar per segment, brand or variant. STD = SUM(quantity); Memo = COUNT(DISTINCT memo id) containing the item, recounted per item (never added across items). */
+        NationalBreakdown: {
+            date: components["schemas"]["BusinessDate"];
+            /** @description True when `date` is today (Dhaka): figures are till the time of `as_of`; false: final figures of a past day. */
+            till_time: boolean;
+            as_of: components["schemas"]["Timestamp"];
+            /**
+             * Format: date-time
+             * @description Oldest `last_updated_at` of the summary tables this card reads (null when none has been written yet). The page shows it as "last updated hh:mm" (Dhaka).
+             */
+            last_updated_at: string | null;
+            /** @enum {string} */
+            measure: "std" | "memo";
+            /** @enum {string} */
+            dimension: "segment" | "brand" | "variant";
+            category_code?: string | null;
+            /**
+             * @description Unit of every STD bar; null for memo.
+             * @enum {string|null}
+             */
+            unit?: "stick" | "piece" | "dozen" | null;
+            items: {
+                code: string;
+                name: string | null;
+                /** Format: int64 */
+                value: number;
+            }[];
+        };
+        /** @description Completed calls with or without a memo, and those inside the outlet radius. Hidden from BRAND users (403). */
+        NationalGeoFencing: {
+            date: components["schemas"]["BusinessDate"];
+            /** @description True when `date` is today (Dhaka): figures are till the time of `as_of`; false: final figures of a past day. */
+            till_time: boolean;
+            as_of: components["schemas"]["Timestamp"];
+            /**
+             * Format: date-time
+             * @description Oldest `last_updated_at` of the summary tables this card reads (null when none has been written yet). The page shows it as "last updated hh:mm" (Dhaka).
+             */
+            last_updated_at: string | null;
+            total_calls: number;
+            geo_validated: number;
+            geo_pct: number | null;
+        };
+        FfGeoPinsRequest: {
+            filter?: components["schemas"]["NationalDashboardFilter"];
+            /** @description Filter by Color; omitted or empty = all. */
+            colors?: ("red" | "amber" | "green")[];
+        };
+        FfGeoPin: {
+            route_id: components["schemas"]["Id"];
+            lat: number;
+            lng: number;
+            /** @enum {string} */
+            color: "red" | "amber" | "green";
+            /** @description Today's geo-fencing % of the route (validated / completed calls); null before the first call, then green. */
+            geo_pct: number | null;
+            position_at: components["schemas"]["Timestamp"];
+        };
+        /** @description One pin per route at the SR's latest position today. Red below 70 %, amber 70 to 90 % inclusive, green above 90 %. Routes with no position today are not pinned. Hidden from BRAND users (403). */
+        FfGeoPins: {
+            date: components["schemas"]["BusinessDate"];
+            /** @description True when `date` is today (Dhaka): figures are till the time of `as_of`; false: final figures of a past day. */
+            till_time: boolean;
+            as_of: components["schemas"]["Timestamp"];
+            /**
+             * Format: date-time
+             * @description Oldest `last_updated_at` of the summary tables this card reads (null when none has been written yet). The page shows it as "last updated hh:mm" (Dhaka).
+             */
+            last_updated_at: string | null;
+            pins: components["schemas"]["FfGeoPin"][];
+            /** @description Pins per colour before the colour filter. */
+            counts: {
+                red: number;
+                amber: number;
+                green: number;
+            };
+            routes_without_position: number;
+        };
+        PlaceRef: {
+            id: components["schemas"]["Id"];
+            code: string;
+            name: string | null;
+        };
+        /** @description Pop-up of a pin. `contact` is masked (last three digits) unless the caller holds a valid `pii_until` claim; every read is charged to the PII read budget. */
+        FfGeoRoutePopup: {
+            date: components["schemas"]["BusinessDate"];
+            /** @description True when `date` is today (Dhaka): figures are till the time of `as_of`; false: final figures of a past day. */
+            till_time: boolean;
+            as_of: components["schemas"]["Timestamp"];
+            /**
+             * Format: date-time
+             * @description Oldest `last_updated_at` of the summary tables this card reads (null when none has been written yet). The page shows it as "last updated hh:mm" (Dhaka).
+             */
+            last_updated_at: string | null;
+            route: components["schemas"]["PlaceRef"];
+            sr_name: string | null;
+            contact: string | null;
+            territory: components["schemas"]["PlaceRef"];
+            zone: components["schemas"]["PlaceRef"];
+            /** Format: date-time */
+            position_at: string | null;
+            /** @description 100 minus the route's geo-fencing % today. */
+            miss_pct: number | null;
+        };
+        CategoryQty: {
+            category_code: string;
+            /** @enum {string} */
+            base_unit: "stick" | "piece" | "dozen";
+            /** Format: int64 */
+            qty: number;
+        };
+        MapPosition: {
+            lat: number;
+            lng: number;
+            at: components["schemas"]["Timestamp"];
+        };
+        RouteMapOutlet: {
+            outlet_id: components["schemas"]["Id"];
+            code: string;
+            name: string | null;
+            /** @description Masked like FfGeoRoutePopup.contact. */
+            contact?: string | null;
+            cluster_name?: string | null;
+            lat: number;
+            lng: number;
+            /**
+             * @description Black / green / red marker: not called yet / called inside the radius / called outside (photo capture required).
+             * @enum {string}
+             */
+            state: "not_called" | "geo_validated" | "photo_validation";
+            /** Format: date-time */
+            call_time: string | null;
+            /** @description Category-wise sales of the call, own units; empty when not called or zero memo. */
+            sales: components["schemas"]["CategoryQty"][];
+        };
+        TargetVsAchievement: {
+            category_code: string;
+            /** @enum {string} */
+            base_unit: "stick" | "piece" | "dozen";
+            daily_target: components["schemas"]["Decimal3"] | null;
+            /** Format: int64 */
+            sales: number;
+            achievement_pct: number | null;
+        };
+        /** @description The "Map Details" page of a route and day: header, markers, SR path and the cards under the map. Distance is metres (docs/34 s6 Q1 default). */
+        RouteMap: {
+            date: components["schemas"]["BusinessDate"];
+            /** @description True when `date` is today (Dhaka): figures are till the time of `as_of`; false: final figures of a past day. */
+            till_time: boolean;
+            as_of: components["schemas"]["Timestamp"];
+            /**
+             * Format: date-time
+             * @description Oldest `last_updated_at` of the summary tables this card reads (null when none has been written yet). The page shows it as "last updated hh:mm" (Dhaka).
+             */
+            last_updated_at: string | null;
+            route: components["schemas"]["PlaceRef"];
+            sr_name: string | null;
+            territory: components["schemas"]["PlaceRef"];
+            zone: components["schemas"]["PlaceRef"];
+            /** @description Where the first call of the day was made; null before the first call. */
+            sale_start: components["schemas"]["MapPosition"] | null;
+            sr_last_position: components["schemas"]["MapPosition"] | null;
+            outlets: components["schemas"]["RouteMapOutlet"][];
+            /** @description The SR's recorded positions in time order, thinned to at most 3000 points; the line the map draws. */
+            path: components["schemas"]["MapPosition"][];
+            target_vs_achievement: components["schemas"]["TargetVsAchievement"][];
+            last_sale_place?: string | null;
+            cpr: {
+                target_outlets: number;
+                successful_calls: number;
+                geo_validated: number;
+                cpr_pct: number | null;
+            };
+            time_card: {
+                /** Format: date-time */
+                first_sale_time?: string | null;
+                /** Format: date-time */
+                last_sale_time?: string | null;
+                /** @description last sale time minus first sale time */
+                total_sale_seconds?: number | null;
+                /** @description total_sale_seconds / successful calls */
+                average_sale_seconds?: number | null;
+                /** @description Length in metres of the haversine polyline through the SR's recorded positions in time order (docs/34 D-DIST-01). */
+                distance_covered_m: number;
+            };
+        };
+        SalePositionSale: {
+            memo_uuid: components["schemas"]["Uuid"];
+            /**
+             * @description New sale, repeat sale (yellow marker), edited sale (teal marker).
+             * @enum {string}
+             */
+            kind: "new" | "repeat" | "edited";
+            lat: number;
+            lng: number;
+            at: components["schemas"]["Timestamp"];
+            /** @description Haversine distance base position to sale position, stored with the call. */
+            distance_m: number;
+            /** @description Hit when distance_m <= radius_m, else miss (force sale). */
+            within_fence: boolean;
+            status?: string;
+            /**
+             * Format: uuid
+             * @description Force-sale photo; open it through the media read-url of the same API.
+             */
+            photo_media_uuid?: string | null;
+        };
+        /** @description The "Sale Position" page of an outlet and day. */
+        SalePosition: {
+            date: components["schemas"]["BusinessDate"];
+            /** @description True when `date` is today (Dhaka): figures are till the time of `as_of`; false: final figures of a past day. */
+            till_time: boolean;
+            as_of: components["schemas"]["Timestamp"];
+            /**
+             * Format: date-time
+             * @description Oldest `last_updated_at` of the summary tables this card reads (null when none has been written yet). The page shows it as "last updated hh:mm" (Dhaka).
+             */
+            last_updated_at: string | null;
+            zone: components["schemas"]["PlaceRef"];
+            route: components["schemas"]["PlaceRef"];
+            outlet_code: string;
+            /** @description The outlet radius used at the call (20, 50 or 100 m by default; cfg may set 10 to 5000). */
+            radius_m: number;
+            /** @description The outlet's approved base location. */
+            base: {
+                lat: number;
+                lng: number;
+            };
+            /** @description Distance of the latest sale shown in the page header ("SR Hit / Miss Position (81.83 Meter)"). */
+            header_distance_m?: number | null;
+            sales: components["schemas"]["SalePositionSale"][];
+        };
+        /** @description A wing, division, territory, house or zone; the parent ids that apply to its level are set, the others are null. */
+        FilterNode: {
+            id: components["schemas"]["Id"];
+            code: string;
+            name: string | null;
+            wing_id?: number | null;
+            division_id?: number | null;
+            territory_id?: number | null;
+            house_id?: number | null;
+        };
+        /** @description A category, segment, brand or variant; the parent code that applies to its level is set, the others are null. */
+        FilterCode: {
+            code: string;
+            name: string | null;
+            category_code?: string | null;
+            segment_code?: string | null;
+            brand_code?: string | null;
+        };
+        /** @description Selectable values inside the scope of the caller. Houses are active only and listed once per (territory, name). Product lists carry their parent code for the cascading selects. */
+        NationalFilterOptions: {
+            date: components["schemas"]["BusinessDate"];
+            /** @description True when `date` is today (Dhaka): figures are till the time of `as_of`; false: final figures of a past day. */
+            till_time: boolean;
+            as_of: components["schemas"]["Timestamp"];
+            /**
+             * Format: date-time
+             * @description Oldest `last_updated_at` of the summary tables this card reads (null when none has been written yet). The page shows it as "last updated hh:mm" (Dhaka).
+             */
+            last_updated_at: string | null;
+            wings: components["schemas"]["FilterNode"][];
+            divisions: components["schemas"]["FilterNode"][];
+            territories: components["schemas"]["FilterNode"][];
+            houses: components["schemas"]["FilterNode"][];
+            zones: components["schemas"]["FilterNode"][];
+            categories: components["schemas"]["FilterCode"][];
+            segments: components["schemas"]["FilterCode"][];
+            brands: components["schemas"]["FilterCode"][];
+            variants: components["schemas"]["FilterCode"][];
+        };
+        /** @description `last_updated_at` per summary table (the card responses carry the oldest of those they read). */
+        NationalFreshness: {
+            date: components["schemas"]["BusinessDate"];
+            /** @description True when `date` is today (Dhaka): figures are till the time of `as_of`; false: final figures of a past day. */
+            till_time: boolean;
+            as_of: components["schemas"]["Timestamp"];
+            /**
+             * Format: date-time
+             * @description Oldest `last_updated_at` of the summary tables this card reads (null when none has been written yet). The page shows it as "last updated hh:mm" (Dhaka).
+             */
+            last_updated_at: string | null;
+            tables: {
+                table: string;
+                /** Format: date-time */
+                last_updated_at: string | null;
+            }[];
+        };
         /** @description Dashboard of a node; `by_channel`, `by_segment` and `by_brand` feed the TSO cards (By Channel STD, By Segment Value Contribution, By Brand Call/Memo Ratio). */
         DashboardSummary: {
             as_of: components["schemas"]["Timestamp"];
@@ -10453,6 +11184,412 @@ export interface operations {
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
+            429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    queryNationalSales: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NationalDashboardFilter"];
+            };
+        };
+        responses: {
+            /** @description Sales cards with daily target */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NationalSales"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    queryNationalCpr: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NationalDashboardFilter"];
+            };
+        };
+        responses: {
+            /** @description Live CPR card */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NationalCpr"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    queryNationalChannelCalls: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NationalDashboardFilter"];
+            };
+        };
+        responses: {
+            /** @description By Channel Successful Call card */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NationalChannelCalls"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    queryNationalFinalSubmit: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NationalDashboardFilter"];
+            };
+        };
+        responses: {
+            /** @description Final Submit Status card */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NationalFinalSubmit"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    queryNationalLoginSubmit: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NationalDashboardFilter"];
+            };
+        };
+        responses: {
+            /** @description Login / Submit Status card */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NationalLoginSubmit"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    queryNationalChannelStd: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NationalDashboardFilter"];
+            };
+        };
+        responses: {
+            /** @description By Channel STD card */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NationalChannelStd"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    queryNationalBreakdown: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NationalBreakdownRequest"];
+            };
+        };
+        responses: {
+            /** @description Breakdown STD / Memo card */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NationalBreakdown"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    queryNationalGeoFencing: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NationalDashboardFilter"];
+            };
+        };
+        responses: {
+            /** @description Geo Fencing card */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NationalGeoFencing"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    queryFfGeoPins: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FfGeoPinsRequest"];
+            };
+        };
+        responses: {
+            /** @description FF Geo Location pins */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FfGeoPins"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    getFfGeoRoutePopup: {
+        parameters: {
+            query?: {
+                /** @description Business day; default today (Dhaka). */
+                date?: components["schemas"]["BusinessDate"];
+            };
+            header?: never;
+            path: {
+                route_id: components["schemas"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description FF Geo route pop-up */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FfGeoRoutePopup"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    getRouteMap: {
+        parameters: {
+            query?: {
+                /** @description Business day; default today (Dhaka). */
+                date?: components["schemas"]["BusinessDate"];
+            };
+            header?: never;
+            path: {
+                route_id: components["schemas"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Route map ("Map Details") */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RouteMap"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    getSalePosition: {
+        parameters: {
+            query?: {
+                /** @description Business day; default today (Dhaka). */
+                date?: components["schemas"]["BusinessDate"];
+            };
+            header?: never;
+            path: {
+                outlet_id: components["schemas"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Sale Position (SR hit / miss) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SalePosition"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    getNationalFilterOptions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Filter panel values */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NationalFilterOptions"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            429: components["responses"]["TooManyRequests"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    getNationalFreshness: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Summary table freshness */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NationalFreshness"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
             429: components["responses"]["TooManyRequests"];
             503: components["responses"]["ServiceUnavailable"];
         };
