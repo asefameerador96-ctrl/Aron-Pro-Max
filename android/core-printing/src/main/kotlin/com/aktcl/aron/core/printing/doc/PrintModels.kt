@@ -19,6 +19,8 @@ import kotlinx.datetime.LocalDate
 data class MemoPrintLine(
     val sku: String, val qtyBase: Long, val grossMtk: Long, val category: String = "",
     val qtyEntered: Long = qtyBase, val unit: String = "",
+    /** Label key of the stored base unit (`stick`, `piece`, `dozen`); with [unit] it gives the bracketed base figure of a category total. */
+    val baseUnit: String = "",
 )
 
 data class MemoPrintDiscount(val sku: String, val qtyBase: Long, val valueMtk: Long, val qtyEntered: Long = qtyBase, val unit: String = "")
@@ -104,6 +106,7 @@ data class DueReceiptPrint(
 )
 
 /** Turns the print models into filled [PrintDocument]s in one digit style. */
+/** [unitWord] gives the paper word of a unit key (`packet`, `box`, `dozen`, `stick`, `piece`) and, for the key `total`, the word of a category total row. */
 class DocumentBuilder(private val digits: DigitStyle, private val unitWord: (String) -> String = { "" }) {
     private val locale = if (digits == DigitStyle.BENGALI) UiLocale.BN else UiLocale.EN
 
@@ -116,9 +119,16 @@ class DocumentBuilder(private val digits: DigitStyle, private val unitWord: (Str
     fun qty(n: Long, unit: String): String = qty(n) + unitWord(unit).takeIf { unit.isNotBlank() && it.isNotBlank() }?.let { " $it" }.orEmpty()
 
     /** The total of a group of lines in their entry unit when they all share one, else the base total with no word (quantities of different units are never added). */
-    private fun groupQty(entered: List<Pair<Long, String>>, base: Long): String {
+    private fun groupQty(entered: List<Pair<Long, String>>, base: Long, baseUnit: String = ""): String {
         val unit = entered.map { it.second }.distinct().singleOrNull()
-        return if (unit != null && unit.isNotBlank()) qty(entered.sumOf { it.first }, unit) else qty(base)
+        return if (unit != null && unit.isNotBlank()) qty(entered.sumOf { it.first }, unit) else qty(base, baseUnit)
+    }
+
+    /** `(60 stick)`: the base figure under a category total, only when the lines share one entry unit that is not the base unit; else null. */
+    private fun baseBracket(lines: List<MemoPrintLine>): String? {
+        val unit = lines.map { it.unit }.distinct().singleOrNull()?.takeIf { it.isNotBlank() } ?: return null
+        val baseUnit = lines.map { it.baseUnit }.distinct().singleOrNull()?.takeIf { it.isNotBlank() && it != unit } ?: return null
+        return "(" + qty(lines.sumOf { it.qtyBase }, baseUnit) + ")"
     }
 
     fun count(n: Int): String = Formats.integer(n.toLong(), locale)
@@ -136,8 +146,14 @@ class DocumentBuilder(private val digits: DigitStyle, private val unitWord: (Str
         if (m.discounts.isNotEmpty()) flags.add("has_discounts")
         if (m.roundAdjMtk != 0L) flags.add("has_rounding")
         // M3: one "মোট <category>" money row per category, in first-seen order; a memo whose lines carry no category label prints none
-        val categoryTotals = m.lines.filter { it.category.isNotBlank() }.groupBy { it.category }
-            .map { (cat, ls) -> mapOf("category" to cat, "qty" to groupQty(ls.map { it.qtyEntered to it.unit }, ls.sumOf { it.qtyBase }), "value" to money(ls.sumOf { it.grossMtk })) }
+        // one line per category in its entry unit (packet, box, dozen), then the base figure in brackets on the next line
+        val totalWord = unitWord("total").ifBlank { "Total" }
+        val categoryTotals = m.lines.filter { it.category.isNotBlank() }.groupBy { it.category }.flatMap { (cat, ls) ->
+            listOfNotNull(
+                mapOf("category" to cat, "label" to "$totalWord $cat", "qty" to groupQty(ls.map { it.qtyEntered to it.unit }, ls.sumOf { it.qtyBase }, ls.map { it.baseUnit }.distinct().singleOrNull().orEmpty()), "value" to money(ls.sumOf { it.grossMtk })),
+                baseBracket(ls)?.let { mapOf("category" to "", "label" to "", "qty" to it, "value" to "") },
+            )
+        }
         if (categoryTotals.isNotEmpty()) flags.add("has_categories")
         if (m.isCredit || m.dueMtk > 0L) flags.add("credit") // a negative due is a QC credit note, not money the outlet owes
         val totalDiscount = m.offerDiscountMtk + m.drpDiscountMtk

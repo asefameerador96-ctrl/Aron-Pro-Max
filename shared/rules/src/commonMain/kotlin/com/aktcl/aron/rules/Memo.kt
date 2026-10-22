@@ -207,6 +207,9 @@ object EntryUnits {
         if (qtyBase % spec.factor == 0L) spec.fromBase(qtyBase) to spec.unit
         else qtyBase to QtyUnit.entries.first { it.wire == baseUnit && it != QtyUnit.PACK }
 
+    /** Label key of the stored base unit of a category (`stick` for cigarettes and bidi, `piece` for lighters, `dozen` for matches). */
+    fun baseLabelKey(categoryCode: String): String = when (categoryCode) { "lighter" -> "piece"; "match" -> "dozen"; else -> "stick" }
+
     /** Report label key of a unit by category: cigarettes and bidi `packet`, lighters `box`, matches `dozen`; base units `stick`/`piece`. */
     fun labelKey(categoryCode: String, unit: QtyUnit): String = when (unit) {
         QtyUnit.PACK -> when (categoryCode) { "lighter" -> "box"; "match" -> "dozen"; else -> "packet" }

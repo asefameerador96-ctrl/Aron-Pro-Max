@@ -63,7 +63,7 @@ object SrHomeReads {
 
     fun kpis(strip: KpiStrip, categoryLabel: (String) -> String, unitLabel: (String) -> String) = HomeKpis(
         strikeRateText = strikeRateText(strip.strikeRateHundredths), nonVisit = strip.nonVisitOutlets, noSale = strip.noSaleOutlets,
-        stock = strip.categories.map { HomeStockLine(categoryLabel(it.categoryCode), it.issueBase, it.currentStockBase, unitLabel(it.unit)) },
+        stock = strip.categories.map { HomeStockLine(categoryLabel(it.categoryCode), it.issueBase, it.currentStockBase, unitLabel(it.unit), it.issueRemBase, it.currentRemBase, unitLabel(com.aktcl.aron.rules.EntryUnits.baseLabelKey(it.categoryCode))) },
     )
 
     /** A taka amount without the ৳ sign and without a minus (the reference's panel rows: "4,828.50"), digits per locale. */

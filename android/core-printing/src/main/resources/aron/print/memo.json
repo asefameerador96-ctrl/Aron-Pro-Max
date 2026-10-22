@@ -24,7 +24,7 @@
     { "header": "{@print_price}", "value": "{value}", "width": 30, "align": "right" } ] },
   { "type": "if", "when": "has_categories", "blocks": [
     { "type": "table", "rows": "category_totals", "columns": [
-      { "header": "", "value": "{@print_total} {category}", "width": 40, "align": "left" },
+      { "header": "", "value": "{label}", "width": 40, "align": "left" },
       { "header": "", "value": "{qty}", "width": 30, "align": "right" },
       { "header": "", "value": "{value}", "width": 30, "align": "right" } ] } ] },
   { "type": "rule", "style": "dashed" },

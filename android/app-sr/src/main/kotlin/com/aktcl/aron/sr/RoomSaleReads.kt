@@ -90,9 +90,10 @@ class RoomSaleReads(private val db: AronDatabase, private val reference: Referen
         val current = stock.filterValues { it.hasStockRow }.mapValues { (_, b) -> b.current }
         // quantities in the entry unit (packets, boxes, dozens; docs/34 s4.2): the strip's unit is the label key of the category's first SKU
         val spec = skus.associate { it.skuId to EntryUnits.resolve(it.baseUnit, it.basePerPack, it.entryUnitDefault) }
-        fun entered(m: Map<Long, Long>) = m.mapValues { (id, base) -> spec[id]?.fromBase(base.coerceAtLeast(0L)) ?: base }
+        fun entered(m: Map<Long, Long>) = m.mapValues { (id, base) -> spec[id]?.fromBase(base) ?: base }
+        fun rem(m: Map<Long, Long>) = m.mapValues { (id, base) -> spec[id]?.remainderBase(base) ?: 0L }
         val unitByCat = skus.groupBy { it.categoryCode }.mapValues { (c, v) -> EntryUnits.labelKey(c, spec.getValue(v.first().skuId).unit) }
-        return KpiStripBuilder.build(j.planned, j.visited, j.sold, entered(issue), entered(current), cats) { unitByCat[it].orEmpty() } to HomeMoneyBuilder.build(memos, cats)
+        return KpiStripBuilder.build(j.planned, j.visited, j.sold, entered(issue), entered(current), cats, rem(issue), rem(current)) { unitByCat[it].orEmpty() } to HomeMoneyBuilder.build(memos, cats)
     }
 
     private companion object { val PACKET_CATEGORIES = setOf("cigarette", "bidi") }

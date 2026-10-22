@@ -81,4 +81,6 @@
     <string name="memo_cat_match">Match</string>
     <string name="memo_total_category">Total %1$s</string>
     <string name="memo_due_chip_amount">Due %1$s</string>
+    <string name="kpi_stock_line_rem">Issue %1$s %3$s · Stock %2$s %3$s + %4$s %5$s</string>
+    <string name="summary_qty_rem">%1$s %2$s + %3$s %4$s</string>
 </resources>

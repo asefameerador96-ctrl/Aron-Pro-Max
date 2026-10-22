@@ -36,7 +36,7 @@ object PrintMapping {
     fun memo(m: StoredMemo, names: PrintNames, reprintNo: Int = 0): MemoPrint = MemoPrint(
         kind = kindOf(m), memoNo = m.memoNo, committedAtEpochMs = Instant.parse(m.committedAtIso).toEpochMilli(),
         outlet = names.outlet(m.outletId), sr = names.sr, route = names.route,
-        lines = m.lines.map { MemoPrintLine(names.sku(it.skuId), it.qtyBase, it.grossMtk, names.category(it.skuId), it.qtyEntered, unitKeyOf(names.categoryCode(it.skuId), it.unitEntered)) },
+        lines = m.lines.map { MemoPrintLine(names.sku(it.skuId), it.qtyBase, it.grossMtk, names.category(it.skuId), it.qtyEntered, unitKeyOf(names.categoryCode(it.skuId), it.unitEntered), EntryUnits.baseLabelKey(names.categoryCode(it.skuId)).takeIf { _ -> names.categoryCode(it.skuId).isNotBlank() }.orEmpty()) },
         discounts = m.discounts.map { MemoPrintDiscount(it.skuId?.let(names.sku).orEmpty(), it.qtyBase, it.valueMtk) },
         grossMtk = m.grossMtk, offerDiscountMtk = m.offerDiscountMtk, drpDiscountMtk = m.drpDiscountMtk, qcDeductionMtk = m.qcDeductionMtk,
         roundAdjMtk = m.roundAdjMtk, netMtk = m.netMtk, paidMtk = m.paidMtk, dueMtk = m.dueMtk, isCredit = m.dueMtk > 0,

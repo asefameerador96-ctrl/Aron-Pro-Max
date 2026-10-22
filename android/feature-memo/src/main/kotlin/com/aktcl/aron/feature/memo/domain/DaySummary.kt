@@ -37,12 +37,16 @@ data class SkuSummaryRow(
     val returnEntered: Long = returnQtyBase,
     /** Unit label key of the entered figures (`packet`, `box`, `dozen`, `stick`, `piece`); blank when unknown. */
     val unitKey: String = "",
+    /** Base units left over after whole entry units (sticks or pieces); shown small beside the figure, never floored away. */
+    val qtyRemBase: Long = 0L,
+    val returnRemBase: Long = 0L,
 )
 
 /** The category rows add entry units of their SKUs; [unitKey] is blank when its SKUs do not share one unit word (never added across units). */
 data class CategorySummaryRow(
     val categoryCode: String, val qtyBase: Long, val valueMtk: Long, val discountMtk: Long, val discountedValueMtk: Long, val returnQtyBase: Long,
     val qtyEntered: Long = qtyBase, val returnEntered: Long = returnQtyBase, val unitKey: String = "",
+    val qtyRemBase: Long = 0L, val returnRemBase: Long = 0L,
 )
 
 data class DaySummary(
@@ -85,12 +89,14 @@ object DaySummaryCalculator {
                 id, cat, withSku.size, qty, value, disc, value - disc, ret,
                 qtyEntered = spec?.fromBase(qty) ?: qty, returnEntered = spec?.fromBase(ret) ?: ret,
                 unitKey = spec?.let { EntryUnits.labelKey(cat, it.unit) }.orEmpty(),
+                qtyRemBase = spec?.remainderBase(qty) ?: 0L, returnRemBase = spec?.remainderBase(ret) ?: 0L,
             )
         }
         val skuCats = rows.groupBy { it.categoryCode }.toSortedMap().map { (c, rs) ->
             CategorySummaryRow(
                 c, rs.sumOf { it.qtyBase }, rs.sumOf { it.valueMtk }, rs.sumOf { it.discountMtk }, rs.sumOf { it.discountedValueMtk }, rs.sumOf { it.returnQtyBase },
                 rs.sumOf { it.qtyEntered }, rs.sumOf { it.returnEntered }, rs.map { it.unitKey }.distinct().singleOrNull().orEmpty(),
+                rs.sumOf { it.qtyRemBase }, rs.sumOf { it.returnRemBase },
             )
         }
         // Memo-level offers (no SKU) form their own "" category row so the Discount column reconciles with the
@@ -98,7 +104,7 @@ object DaySummaryCalculator {
         val memoLevel = live.sumOf { m -> m.discounts.filter { it.skuId == null && it.kind != "drp" }.sumOf { it.valueMtk } }
         val cats = if (memoLevel == 0L) skuCats else (skuCats.filter { it.categoryCode != "" } + skuCats.filter { it.categoryCode == "" } +
             CategorySummaryRow("", 0, 0, memoLevel, -memoLevel, 0)).let { l ->
-            l.filter { it.categoryCode != "" } + l.filter { it.categoryCode == "" }.reduce { a, b -> CategorySummaryRow("", a.qtyBase + b.qtyBase, a.valueMtk + b.valueMtk, a.discountMtk + b.discountMtk, a.discountedValueMtk + b.discountedValueMtk, a.returnQtyBase + b.returnQtyBase, a.qtyEntered + b.qtyEntered, a.returnEntered + b.returnEntered, if (a.unitKey == b.unitKey) a.unitKey else "") }
+            l.filter { it.categoryCode != "" } + l.filter { it.categoryCode == "" }.reduce { a, b -> CategorySummaryRow("", a.qtyBase + b.qtyBase, a.valueMtk + b.valueMtk, a.discountMtk + b.discountMtk, a.discountedValueMtk + b.discountedValueMtk, a.returnQtyBase + b.returnQtyBase, a.qtyEntered + b.qtyEntered, a.returnEntered + b.returnEntered, if (a.unitKey == b.unitKey) a.unitKey else "", a.qtyRemBase + b.qtyRemBase, a.returnRemBase + b.returnRemBase) }
         }
         val gross = live.sumOf { m -> m.lines.sumOf { it.grossMtk } }
         val net = live.sumOf { it.netMtk }

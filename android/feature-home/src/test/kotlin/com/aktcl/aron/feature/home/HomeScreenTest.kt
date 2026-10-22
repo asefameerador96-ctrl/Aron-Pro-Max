@@ -78,8 +78,9 @@ class HomeScreenTest {
         compose.onAllNodesWithText("6/60", substring = true)[0].assertExists() // the tile and the target card bar
         listOf("Strike rate", "Issue", "Current stock", "Non-visit", "No sale").forEach { compose.onNodeWithText(it).assertExists() }
         compose.onNodeWithText("10%").assertExists(); compose.onNodeWithText("54").assertExists()
-        compose.onNodeWithText("400").assertExists() // issue 400 + 0; the per-category stock card is gone
-        compose.onNodeWithText("25").assertExists()   // current stock 25 + 0
+        // issue and current stock are listed per category in the category's own unit, never added across units (docs/34 s4.2)
+        compose.onNodeWithText("400 pieces").assertExists(); compose.onNodeWithText("25 pieces").assertExists()
+        compose.onNodeWithText("Match").assertDoesNotExist() // nothing loaded: no line
         // the sales panel and the second panel
         compose.onNodeWithTag(HomeScreenTags.MONEY).assertExists()
         compose.onNodeWithText("Total").assertExists(); compose.onNodeWithText("Discount").assertExists(); compose.onNodeWithText("QC").assertExists()
@@ -102,7 +103,7 @@ class HomeScreenTest {
     @Test fun kpiFiguresNeverClip() {
         // a cigarette issue of 12,000 sticks is the widest KPI figure: it stays on one line inside its tile
         show(AppLanguage.EN, hero = hero, kpis = HomeKpis("10%", 54, 0, listOf(HomeStockLine("Cigarette", 12_000, 9_800, "sticks"))))
-        listOf("12,000", "9,800").forEach { qty ->
+        listOf("12,000 sticks", "9,800 sticks").forEach { qty ->
             val results = mutableListOf<TextLayoutResult>()
             compose.onNodeWithText(qty).assertExists().performSemanticsAction(SemanticsActions.GetTextLayoutResult) { it(results) }
             assertFalse("$qty overflows its tile", results.single().didOverflowWidth)

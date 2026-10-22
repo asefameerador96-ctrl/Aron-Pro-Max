@@ -80,4 +80,6 @@
     <string name="memo_cat_match">ম্যাচ</string>
     <string name="memo_total_category">মোট %1$s</string>
     <string name="memo_due_chip_amount">বাকি %1$s</string>
+    <string name="kpi_stock_line_rem">ইস্যু %1$s %3$s · স্টক %2$s %3$s + %4$s %5$s</string>
+    <string name="summary_qty_rem">%1$s %2$s + %3$s %4$s</string>
 </resources>

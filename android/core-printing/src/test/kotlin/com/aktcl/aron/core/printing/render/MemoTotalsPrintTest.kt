@@ -114,11 +114,12 @@ class MemoCategoryTotalsPrintTest {
 
     // D-UNITS-02: every quantity prints with its unit word, and a category total adds only quantities of one unit
     @Test fun quantitiesCarryTheirUnitWordAndCategoryTotalsAreInTheEntryUnit() {
-        val words = mapOf("packet" to "packet", "box" to "box", "dozen" to "dozen")
+        val words = mapOf("packet" to "packet", "box" to "box", "dozen" to "dozen", "stick" to "stick", "piece" to "piece", "total" to "Total")
         val b = DocumentBuilder(DigitStyle.LATIN) { words[it].orEmpty() }
         val doc = b.memo(Fixtures.seededSale)
         assertEquals(listOf("3 dozen", "2 packet", "1 packet", "2 box"), doc.tables.getValue("lines").map { it.getValue("qty") })
-        assertEquals(listOf("3 dozen", "3 packet", "2 box"), doc.tables.getValue("category_totals").map { it.getValue("qty") })
+        // one line per category in its entry unit, the base figure in brackets on the next line (none for dozens: the base unit is the dozen)
+        assertEquals(listOf("3 dozen", "3 packet", "(50 stick)", "2 box", "(50 piece)"), doc.tables.getValue("category_totals").map { it.getValue("qty") }.filter { it.isNotBlank() })
         assertEquals(listOf("3 dozen", "1 packet"), doc.tables.getValue("discounts").map { it.getValue("qty") })
         // the printed money is the stored money and equals the oracle
         val oracle = com.aktcl.aron.rules.MemoMath.totals(

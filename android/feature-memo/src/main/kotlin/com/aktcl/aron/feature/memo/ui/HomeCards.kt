@@ -79,7 +79,8 @@ fun KpiStripView(strip: KpiStrip, categoryLabel: (String) -> String, unitLabel: 
                     strip.categories.forEachIndexed { i, cat ->
                         AronListRow(
                             categoryLabel(cat.categoryCode),
-                            subtitle = stringResource(R.string.kpi_stock_line, localizedNumber(cat.issueBase), localizedNumber(cat.currentStockBase), unitLabel(cat.unit)),
+                            subtitle = if (cat.currentRemBase == 0L) stringResource(R.string.kpi_stock_line, localizedNumber(cat.issueBase), localizedNumber(cat.currentStockBase), unitLabel(cat.unit))
+                            else stringResource(R.string.kpi_stock_line_rem, localizedNumber(cat.issueBase), localizedNumber(cat.currentStockBase), unitLabel(cat.unit), localizedNumber(cat.currentRemBase), unitLabel(com.aktcl.aron.rules.EntryUnits.baseLabelKey(cat.categoryCode))),
                             divider = i < strip.categories.lastIndex,
                         )
                     }

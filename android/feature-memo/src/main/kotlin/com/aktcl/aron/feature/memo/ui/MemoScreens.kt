@@ -487,9 +487,9 @@ fun SummaryScreen(
                         summary.skus.forEach { r ->
                             Text(skuTitle(r), style = MaterialTheme.typography.titleMedium, color = look.purple)
                             SummaryPairs(
-                                stringResource(R.string.summary_col_memos) to localizedNumber(r.memoCount.toLong()), stringResource(R.string.summary_col_qty) to localizedNumber(r.qtyEntered),
+                                stringResource(R.string.summary_col_memos) to localizedNumber(r.memoCount.toLong()), stringResource(R.string.summary_col_qty) to remFigure(r.qtyEntered, r.qtyRemBase),
                                 stringResource(R.string.summary_col_value) to takaAmount(r.valueMtk), stringResource(R.string.summary_col_discount) to amount(r.discountMtk),
-                                stringResource(R.string.summary_col_after) to takaAmount(r.discountedValueMtk), stringResource(R.string.summary_col_return) to localizedNumber(r.returnEntered),
+                                stringResource(R.string.summary_col_after) to takaAmount(r.discountedValueMtk), stringResource(R.string.summary_col_return) to remFigure(r.returnEntered, r.returnRemBase),
                             )
                             CardDivider()
                         }
@@ -498,9 +498,9 @@ fun SummaryScreen(
                             val name = categoryLabel(cat.categoryCode)
                             Text(if (unit.isEmpty()) name else stringResource(R.string.summary_group_head, name, unit), style = MaterialTheme.typography.titleSmall, color = look.purple)
                             SummaryPairs(
-                                stringResource(R.string.summary_col_qty) to qtyText(cat.qtyEntered, unit), stringResource(R.string.summary_col_value) to takaAmount(cat.valueMtk),
+                                stringResource(R.string.summary_col_qty) to catQtyText(cat, unit), stringResource(R.string.summary_col_value) to takaAmount(cat.valueMtk),
                                 stringResource(R.string.summary_col_discount) to amount(cat.discountMtk), stringResource(R.string.summary_col_after) to takaAmount(cat.discountedValueMtk),
-                                stringResource(R.string.summary_col_return) to localizedNumber(cat.returnEntered),
+                                stringResource(R.string.summary_col_return) to remFigure(cat.returnEntered, cat.returnRemBase),
                             )
                         }
                         CardDivider()
@@ -533,8 +533,8 @@ fun SummaryScreen(
                             SummaryRow(
                                 skuTitle(r),
                                 listOf(
-                                    localizedNumber(r.memoCount.toLong()), localizedNumber(r.qtyEntered), takaAmount(r.valueMtk),
-                                    amount(r.discountMtk), takaAmount(r.discountedValueMtk), localizedNumber(r.returnEntered),
+                                    localizedNumber(r.memoCount.toLong()), remFigure(r.qtyEntered, r.qtyRemBase), takaAmount(r.valueMtk),
+                                    amount(r.discountMtk), takaAmount(r.discountedValueMtk), remFigure(r.returnEntered, r.returnRemBase),
                                 ),
                             )
                         },
@@ -561,15 +561,15 @@ private fun SummaryDock(summary: DaySummary, categoryLabel: (String) -> String, 
                 Text(categoryLabel(cat.categoryCode), style = TextStyle(fontSize = 13.sp, color = look.purple), softWrap = false, modifier = Modifier.weight(weights[0]))
                 Text(
                     buildAnnotatedString {
-                        append(localizedNumber(cat.qtyEntered))
-                        if (unit.isNotEmpty()) withStyle(SpanStyle(fontSize = 10.sp)) { append(" "); append(unit) }
+                        append(remFigure(cat.qtyEntered, cat.qtyRemBase))
+                        if (unit.isNotEmpty()) withStyle(SpanStyle(fontSize = 10.sp)) { append(" "); append(unit); baseBracket(cat)?.let { append(" "); append(it) } }
                     },
                     style = figure, softWrap = false, modifier = Modifier.weight(weights[1]),
                 )
                 Text(takaAmount(cat.valueMtk), style = figure, softWrap = false, modifier = Modifier.weight(weights[2]))
                 Text(amount(cat.discountMtk), style = figure, softWrap = false, modifier = Modifier.weight(weights[3]))
                 Text(takaAmount(cat.discountedValueMtk), style = figure, softWrap = false, modifier = Modifier.weight(weights[4]))
-                Text(localizedNumber(cat.returnEntered), style = figure, modifier = Modifier.weight(weights[5]))
+                Text(remFigure(cat.returnEntered, cat.returnRemBase), style = figure, modifier = Modifier.weight(weights[5]))
             }
         }
         val big = TextStyle(fontSize = 18.sp, fontWeight = FontWeight.Bold, color = look.purple)
@@ -603,6 +603,26 @@ private fun SummaryPairs(vararg cells: Pair<String, String>) {
             if (row.size == 1) Spacer(Modifier.weight(1f))
         }
     }
+}
+
+/** `12` or `12+5`: whole entry units, then the base units left over (never floored away; the unit word sits in the row title). */
+@Composable
+internal fun remFigure(whole: Long, remBase: Long): String = localizedNumber(whole) + if (remBase != 0L) "+" + localizedNumber(remBase) else ""
+
+/** `(70 sticks)`: the base figure of a category line in brackets, only when the entry unit is not the base unit; null otherwise. */
+@Composable
+internal fun baseBracket(cat: CategorySummaryRow): String? {
+    val base = com.aktcl.aron.rules.EntryUnits.baseLabelKey(cat.categoryCode)
+    return if (cat.unitKey.isEmpty() || cat.unitKey == base) null else "(" + localizedNumber(cat.qtyBase) + " " + entryUnitLabel(base) + ")"
+}
+
+/** A category's quantity: `3 packets (70 sticks)`, with `+ 5 sticks` when it is not whole entry units; the base figure alone when its SKUs share no unit. */
+@Composable
+internal fun catQtyText(cat: CategorySummaryRow, unit: String): String {
+    val base = com.aktcl.aron.rules.EntryUnits.baseLabelKey(cat.categoryCode)
+    val main = if (cat.qtyRemBase == 0L) qtyText(cat.qtyEntered, unit)
+    else stringResource(R.string.summary_qty_rem, localizedNumber(cat.qtyEntered), unit, localizedNumber(cat.qtyRemBase), entryUnitLabel(base))
+    return main + (baseBracket(cat)?.let { " $it" } ?: "")
 }
 
 /**

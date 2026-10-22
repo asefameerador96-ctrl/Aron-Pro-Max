@@ -127,4 +127,5 @@
     <string name="hm_gross_total">সর্ব মোট</string>
     <string name="hm_total_taka">মোট টাকা</string>
     <string name="set_group_status">ফোনের অবস্থা</string>
+    <string name="hm_qty_unit_rem">%1$s %2$s + %3$s %4$s</string>
 </resources>

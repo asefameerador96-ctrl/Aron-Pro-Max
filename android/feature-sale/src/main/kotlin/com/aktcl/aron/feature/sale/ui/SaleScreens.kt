@@ -417,6 +417,14 @@ private fun SaleSkuRow(sku: SaleSku, qty: Long, line: ReviewLine?, onQuantity: (
     }
 }
 
+/** `5 packets (70 sticks)`: the category subtotal in its entry unit with the base figure in brackets (no brackets when they are the same unit). */
+@Composable
+private fun subtotalQty(sub: com.aktcl.aron.feature.sale.domain.CategorySubtotal, sku: SaleSku): String {
+    val main = stringResource(R.string.review_qty_unit, localizedNumber(sub.qtyEntered), entryUnitLabel(sku.entryLabelKey))
+    val baseKey = com.aktcl.aron.rules.EntryUnits.baseLabelKey(sku.categoryCode)
+    return if (sku.entryLabelKey == baseKey) main else main + " (" + localizedNumber(sub.qtyBase) + " " + entryUnitLabel(baseKey) + ")"
+}
+
 /** Stock in the entry unit, e.g. `12`; stock that is not a whole number of entry units (older rows) appends `+n` base units. */
 @Composable
 private fun entryStockText(entry: EntrySpec, stockBase: Long): String {
@@ -491,7 +499,7 @@ fun ReviewScreen(
                 },
                 subtotals = byCategory.mapNotNull { (code, ls) ->
                     review.categories.firstOrNull { it.categoryCode == code }?.let { sub ->
-                        TotalsLine(stringResource(R.string.review_subtotal, categoryLabel(code)), listOf(stringResource(R.string.review_qty_unit, localizedNumber(sub.qtyEntered), entryUnitLabel(ls.first().sku.entryLabelKey)), moneyGlued(sub.grossMtk)))
+                        TotalsLine(stringResource(R.string.review_subtotal, categoryLabel(code)), listOf(subtotalQty(sub, ls.first().sku), moneyGlued(sub.grossMtk)))
                     }
                 },
                 totals = totals,
