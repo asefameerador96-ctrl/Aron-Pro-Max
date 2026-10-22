@@ -19,3 +19,12 @@ UPDATE app.route_day SET bundle_count = 1, target_frozen_at = TIMESTAMPTZ '2026-
 INSERT INTO app.final_submit (client_uuid, zone_id, business_date, submitted_by, submitted_at, via)
   SELECT '00000000-0000-4000-8000-0000000000f1', z.id, DATE '2026-10-04', u.id, TIMESTAMPTZ '2026-10-04 11:00Z', 'web'
     FROM app.zone z, app.app_user u WHERE z.code = 'Z2' AND u.username = 'sr003';
+-- Check-ins (brief s3.4: a successful login is a check-in AND a download): R1's carries its route, R2's carries none and is matched through
+-- sr002's primary assignment (V0108 rule); R3 never checked in.
+INSERT INTO app.route_assignment (route_id, user_id, kind, valid_from)
+  SELECT r.id, u.id, 'primary', DATE '2026-09-01' FROM app.route r, app.app_user u WHERE (r.code, u.username) IN (('R1', 'sr001'), ('R2', 'sr002'), ('R3', 'sr003'));
+INSERT INTO app.attendance_event (client_uuid, family_uuid, business_date, user_id, route_id, captured_at, config_version, kind)
+  SELECT d.cu::uuid, d.cu::uuid, DATE '2026-10-04', u.id, r.id, d.at::timestamptz, 1, 'check_in'
+    FROM (VALUES ('00000000-0000-4000-8000-0000000000a1', 'sr001', 'R1', '2026-10-04 01:40Z'),
+                 ('00000000-0000-4000-8000-0000000000a2', 'sr002', NULL, '2026-10-04 01:50Z')) d(cu, un, rc, at)
+    JOIN app.app_user u ON u.username = d.un LEFT JOIN app.route r ON r.code = d.rc;

@@ -5,6 +5,7 @@ import { apiGet, Card, NextLink, one, PageHeading, qs, type SearchParams } from 
 import { onApiFailure } from "@/components/admin/crud/pages";
 import { Forbidden } from "@/components/forbidden";
 import { canOp } from "@/lib/admin/access";
+import { canSee, canWriteModule, loadGrants } from "@/lib/admin/modules";
 import { ADMIN_PORTAL_ROLES, hasRole } from "@/lib/auth/roles";
 import { requireSession } from "@/lib/auth/require";
 import { getLocale } from "@/lib/auth/service";
@@ -18,10 +19,12 @@ interface TargetItem {
   qty_base: number;
 }
 
-// Route monthly targets (D-TARGET-MIN-01, docs/34 s2). PROVISIONAL API: docs/requests/backend-admin-route-targets.md.
+// Route monthly targets (D-TARGET-MIN-01, docs/34 s2). Read shows the targets; upload and commit need the targets module at w.
 export default async function RouteTargetsPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
   const [session, locale, sp] = await Promise.all([requireSession(), getLocale(), searchParams]);
   if (!hasRole(session.user.role, ADMIN_PORTAL_ROLES)) return <Forbidden locale={locale} />;
+  const grants = await loadGrants(session.at, session.user.role);
+  if (!canSee(grants, "targets")) return <Forbidden locale={locale} />;
   const current = businessDate().slice(0, 7);
   const m = one(sp.month, 7);
   const month = m && /^\d{4}-(0[1-9]|1[0-2])$/.test(m) ? m : current;
@@ -38,7 +41,8 @@ export default async function RouteTargetsPage({ searchParams }: { searchParams:
   return (
     <div className="space-y-4">
       <PageHeading title={t(locale, "rt.title")} intro={t(locale, "rt.intro")} />
-      {canOp("route-targets.commit", session.user.role) ? (
+      {/* upload and commit need targets: w (D-WEB-ADMIN-MENU-01) */}
+      {canOp("route-targets.commit", session.user.role) && canWriteModule(grants, "targets") ? (
         <Card>
           <RouteTargetsUpload currentMonth={current} />
         </Card>

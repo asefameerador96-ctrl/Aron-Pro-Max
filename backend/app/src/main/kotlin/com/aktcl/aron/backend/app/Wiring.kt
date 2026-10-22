@@ -203,7 +203,7 @@ class Wiring(
             val dashboards = DashboardDeps(dashboardService, reach, guard, clock)
             // Row 3 (D-ROLES-02): a BRAND user's brands are read from app.user_brand_scope on every call, not from the token,
             // so a grant change narrows the next card at once; no brand row answers 403 (fail closed), every other level null.
-            val national = NationalDeps(NationalDashboardService(db, clock), reach, guard, brandScope(users), clock = clock)
+            val national = NationalDeps(NationalDashboardService(db, clock, config), reach, guard, brandScope(users), clock = clock)
             // Enrolment (N-031): the public API URL the QR carries and the SHA-256 of the Google attestation roots to trust in production (new environment values, docs/requests/backend-reports-device-env.md).
             val enrolment = EnrolmentSettings(
                 System.getenv("ARON_PUBLIC_API_URL") ?: "https://localhost:8080", s.env.name.lowercase(),

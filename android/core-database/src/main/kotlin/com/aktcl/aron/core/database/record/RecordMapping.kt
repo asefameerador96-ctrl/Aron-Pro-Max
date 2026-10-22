@@ -50,6 +50,12 @@ import java.security.MessageDigest
  * Turns committed domain rows into the sync records of docs/24 s4.3: envelope + payload, built from the stored row so the
  * outbox can never say something the database does not. Family and rank follow the table of s4.2.
  */
+/** Contract `GeoBreadcrumbPayload` (`{fix}`); kept here until the contract batch adds the DTO to WireDtos. */
+@kotlinx.serialization.Serializable
+internal data class BreadcrumbPayload(
+    @kotlinx.serialization.Serializable(with = com.aktcl.aron.contract.GeoFixWire::class) @kotlinx.serialization.SerialName("fix") val fix: GeoFix,
+)
+
 object RecordMapping {
     /**
      * Encodes payloads with the contract's null rules: a member WITHOUT a default in the DTO is a required member and is
@@ -101,6 +107,12 @@ object RecordMapping {
     fun attendance(e: AttendanceEventEntity, fix: GeoFixEntity, createdAt: String) = outbox(
         RecordType.ATTENDANCE_EVENT, e.clientUuid, e.clientUuid, 0, e.meta, createdAt,
         AttendanceEventPayload.serializer(), AttendanceEventPayload(e.kind, fix(fix), e.addressDisplay),
+    )
+
+    /** A breadcrumb (N-035): standalone, rank 0, one embedded fix; the record's client_uuid is its own and the fix is keyed to it. */
+    fun geoBreadcrumb(clientUuid: String, meta: CaptureMeta, fix: GeoFixEntity, createdAt: String) = outbox(
+        RecordType.GEO_BREADCRUMB, clientUuid, clientUuid, 0, meta.copy(routeId = null, actingForUserId = null), createdAt,
+        BreadcrumbPayload.serializer(), BreadcrumbPayload(fix(fix)),
     )
 
     fun stock(e: StockMovementEntity, createdAt: String) = outbox(

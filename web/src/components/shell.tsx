@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import type { SessionData } from "@/lib/auth/session";
 import { t, type Locale } from "@/lib/i18n";
+import type { ModuleGrants } from "@/lib/admin/modules";
 import { menuFor } from "@/lib/menu/menu";
 import { arrangeNav } from "@/lib/menu/nav-tree";
 import { BrandMark } from "./brand-mark";
@@ -17,8 +18,8 @@ import { TopBarTitle } from "./top-bar-title";
 /** The Aron shell (PARITY-SPEC s4, owner directive 2026-10-18): crimson-purple gradient sidebar with the red Logout at its foot, a solid white top bar
  *  (page title in blue, scope, search, connection, language, theme, avatar and name), white cards on a light grey page. Shared by the dashboards and the admin portal.
  *  Below md the scope badge wraps to a second line of the same bar (one node, so tests and screen readers see it once). */
-export function Shell({ session, locale, children, allowedMenus = null }: { session: SessionData; locale: Locale; children: ReactNode; allowedMenus?: ReadonlySet<string> | null }) {
-  const sections: NavSection[] = arrangeNav(menuFor(session.user.role, undefined, allowedMenus)).map((n) => ({ id: n.id, label: n.labelKey ? t(locale, n.labelKey) : null, items: n.items.map((i) => ({ id: i.id, href: i.href, label: t(locale, i.labelKey) })) }));
+export function Shell({ session, locale, children, allowedMenus = null, grants = null }: { session: SessionData; locale: Locale; children: ReactNode; allowedMenus?: ReadonlySet<string> | null; grants?: ModuleGrants | null }) {
+  const sections: NavSection[] = arrangeNav(menuFor(session.user.role, undefined, allowedMenus, grants)).map((n) => ({ id: n.id, label: n.labelKey ? t(locale, n.labelKey) : null, items: n.items.map((i) => ({ id: i.id, href: i.href, label: t(locale, i.labelKey) })) }));
   const appName = t(locale, "app.name");
   const who = `${session.user.full_name} · ${t(locale, `role.${session.user.role}`)}`;
   return (

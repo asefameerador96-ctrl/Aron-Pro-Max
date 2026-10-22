@@ -123,12 +123,12 @@ class MdmCommandRunner(
 }
 
 /** The apps' handle: built once per process from [SessionComponents]. */
-class MdmCommandShell(context: Context, components: SessionComponents) {
+class MdmCommandShell(context: Context, components: SessionComponents, afterPolicyChanged: () -> Unit = {}) {
     private val app = context.applicationContext
     private val runner = MdmCommandRunner(
         DeviceMdmCommandHttp(components.apiClient, components.proofSigner, { components.deviceIdentity.deviceUuid }, components.clock::nowMs),
         PrefsKeys(app), { components.deviceIdentity.deviceUuid },
-        { api, verifier, uuid -> MdmChannel.processor(app, api, verifier, uuid) },
+        { api, verifier, uuid -> MdmChannel.processor(app, api, verifier, uuid, afterPolicyChanged) },
     )
 
     private val exec = java.util.concurrent.Executors.newSingleThreadExecutor { r -> Thread(r, "mdm-commands").apply { isDaemon = true } }

@@ -2,6 +2,7 @@ package com.aktcl.aron.backend.analytics
 
 import com.aktcl.aron.contract.Role
 import io.ktor.http.HttpStatusCode
+import kotlinx.serialization.json.jsonObject
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -62,7 +63,8 @@ class ReportBatchATest : ReportFixture() {
     @Test
     fun routeStdBySku() = app {
         val o = run(10, Role.ANALYST, "route-std").result()
-        assertEquals(4, o.rows().size); assertEquals(75, o.total("sold_qty_base")); assertEquals(63_000, o.total("gross_mtk"))
+        assertEquals(4, o.rows().size); assertEquals(63_000, o.total("gross_mtk"))
+        assertFalse(o["totals"]!!.jsonObject.containsKey("sold_qty_base"), "no quantity total across SKUs of different base units")
         val r1sku1 = o.rows().single { it.str("route_code") == "R1" && it.str("sku_code") == "SKU1" }
         assertEquals("pack", r1sku1.str("entry_unit")); assertEquals(10, r1sku1.num("base_per_pack").toInt())   // 30 sticks are 3 packs of 10 on the phone (docs/34 s4.2)
         assertEquals(30, r1sku1.num("sold_qty_base").toInt()); assertEquals(24_000, r1sku1.num("gross_mtk").toLong()); assertEquals(2, r1sku1.num("memos").toInt())
@@ -90,7 +92,7 @@ class ReportBatchATest : ReportFixture() {
     @Test
     fun byOutletAndByOutletByDay() = app {
         val o = run(10, Role.ANALYST, "by-outlet").result()
-        assertEquals(5, o.rows().size); assertEquals(63_000, o.total("net_mtk")); assertEquals(75, o.total("sold_qty_base")); assertEquals(4, o.total("memos"))
+        assertEquals(5, o.rows().size); assertEquals(63_000, o.total("net_mtk")); assertEquals(75, o.total("sold_cigarette_base")); assertEquals(4, o.total("memos"))
         val o2 = o.rows().by("outlet_code", "O2")
         assertEquals(18_000, o2.num("net_mtk").toLong()); assertEquals(8_000, o2.num("due_mtk").toLong()); assertEquals(3_000, o2.num("dues_collected_mtk").toLong())
         assertEquals(0, o.rows().by("outlet_code", "O3").num("memos").toInt())

@@ -306,11 +306,11 @@ class DashboardService(
 
         val byChannel = h.q(
             """
-            SELECT o.channel, sum(a.net_mtk) net, sum(a.sold_qty_base) qty, sum(a.active_memo_count) memos, count(*) FILTER (WHERE a.active_memo_count > 0) calls
+            SELECT o.channel, sum(a.net_mtk) net, sum(a.active_memo_count) memos, count(*) FILTER (WHERE a.active_memo_count > 0) calls
               FROM dw.agg_daily_outlet a JOIN dw.dim_outlet o ON o.outlet_id = a.outlet_id
              WHERE a.business_date BETWEEN :f AND :t AND ${eff.clause("o.zone_id")} GROUP BY 1 ORDER BY 1
             """,
-        ) { it.map { rs, _ -> ChannelVolume(rs.getString(1), null, rs.getLong(2), rs.getLong(3), rs.getInt(4), rs.getInt(5)) }.list() }
+        ) { it.map { rs, _ -> ChannelVolume(rs.getString(1), null, rs.getLong(2), null, rs.getInt(3), rs.getInt(4)) }.list() }   // qty_base null: base units differ per category and are never added (the channel STD is the national dashboard's cigarette card)
 
         // BSR per brand (docs/24 s12.4): active memos containing the brand / active memos, over the same route-days.
         val totalMemos = kpis.active_memo_count.toLong()

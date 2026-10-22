@@ -5,12 +5,18 @@ import com.aktcl.aron.backend.platform.AronClock
 import com.aktcl.aron.backend.platform.FreshDb
 import com.aktcl.aron.backend.platform.Reach
 import com.aktcl.aron.backend.platform.ReachNode
+import com.aktcl.aron.backend.platform.ServerConfig
 import com.aktcl.aron.contract.ProblemCode
 import com.aktcl.aron.contract.Role
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import java.time.Instant
 import java.time.LocalDate
+import java.time.YearMonth
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonNull
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonPrimitive
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -261,5 +267,91 @@ class NationalDashboardTest {
         fresh.db.jdbi.useHandle<Exception> { DashboardSummaries.touchFreshness(it, later) }
         val last = Instant.parse(svc.freshness().last_updated_at!!)
         assertTrue(last.isBefore(later))                   // the queue still holds a change: not "fresh now"
+    }
+
+    private fun weekendConfig(v: JsonElement) = object : ServerConfig {
+        override fun value(key: String): JsonElement = if (key == "cfg.calendar.weekend_days") v else JsonNull
+        override fun configVersion(): Long = 1
+    }
+
+    @Test
+    fun workingDaysFollowTheConfiguredWeekend() {
+        val october = YearMonth.of(2026, 10)   // 5 Fridays, 5 Saturdays, 4 Sundays, one global holiday on a Tuesday
+        fun days(cfg: ServerConfig?): Int {
+            val s = NationalDashboardService(fresh.db, AronClock { now }, cfg)
+            return fresh.db.jdbi.withHandle<Int, Exception> { WorkingCalendar.workingDays(it, october, s.weekendDays()) }
+        }
+        assertEquals(25, days(null), "no config: the Friday default")
+        assertEquals(25, days(weekendConfig(JsonArray(listOf(JsonPrimitive(5))))))
+        assertEquals(20, days(weekendConfig(JsonArray(listOf(JsonPrimitive(5), JsonPrimitive(6))))), "Friday and Saturday off")
+        assertEquals(26, days(weekendConfig(JsonArray(listOf(JsonPrimitive(7))))), "Sunday only")
+        assertEquals(30, days(weekendConfig(JsonArray(emptyList()))), "an empty list is no weekend (registry allows 0..3 days), one holiday off")
+        assertEquals(30, days(weekendConfig(JsonArray(listOf(JsonPrimitive(0), JsonPrimitive(9))))), "out-of-range days are ignored, leaving no weekend")
+        assertEquals(25, days(weekendConfig(JsonPrimitive("junk"))), "a malformed value falls back to the default")
+    }
+
+    @Test
+    fun theSalesCardsUseTheConfiguredWeekendForTheDailyTarget() {
+        val friSat = NationalDashboardService(fresh.db, AronClock { now }, weekendConfig(JsonArray(listOf(JsonPrimitive(5), JsonPrimitive(6)))))
+        val s = friSat.sales(national(), all)
+        assertEquals(20, s.working_days)
+        // Monthly 2 500 + 1 250 over 20 working days = 187.5 a day (was 150 over 25).
+        assertEquals("187.500", s.cards.single { it.category_code == "cigarette" }.daily_target)
+        val none = NationalDashboardService(fresh.db, AronClock { now }, weekendConfig(JsonArray(emptyList())))
+        assertEquals(30, none.sales(national(), all).working_days)
+    }
+
+    @Test
+    fun theBreakdownFreshnessComesFromTheTableTheFiguresAreReadFrom() {
+        fun stamp(table: String, at: String) = sql("UPDATE dw.summary_freshness SET last_updated_at = '$at' WHERE table_name = '$table'")
+        stamp("agg_daily_route_sku", "2026-10-04T01:00:00Z"); stamp("agg_daily_route_segment", "2026-10-04T02:00:00Z")
+        stamp("agg_daily_route_brand", "2026-10-04T03:00:00Z"); stamp("agg_daily_route_variant", "2026-10-04T04:00:00Z")
+        fun last(measure: String, dim: String) = svc.breakdown(national(), NationalBreakdownRequest(all, measure, dim)).last_updated_at
+        assertEquals("2026-10-04T02:00:00Z", last("memo", "segment"))
+        assertEquals("2026-10-04T03:00:00Z", last("memo", "brand"))
+        assertEquals("2026-10-04T04:00:00Z", last("memo", "variant"))
+        assertEquals("2026-10-04T01:00:00Z", last("std", "brand"), "STD figures come from the SKU table")
+    }
+
+    private fun checkIn(uuid: String, user: String, route: String?, at: String, voided: Boolean = false) = sql(
+        "INSERT INTO app.attendance_event (client_uuid, family_uuid, business_date, user_id, route_id, captured_at, config_version, kind, voided_at) " +
+            "SELECT '$uuid', '$uuid', DATE '2026-10-04', u.id, ${route?.let { "(SELECT id FROM app.route WHERE code = '$it')" } ?: "NULL"}, TIMESTAMPTZ '$at', 1, 'check_in', " +
+            "${if (voided) "now()" else "NULL"} FROM app.app_user u WHERE u.username = '$user'")
+
+    private fun checkedInAt(route: String): Instant? = fresh.db.jdbi.withHandle<Instant?, Exception> {
+        it.createQuery("SELECT a.checked_in_at FROM dw.agg_daily_route a JOIN app.route r ON r.id = a.route_id WHERE r.code = '$route' AND a.business_date = '2026-10-04'")
+            .map { rs, _ -> rs.getTimestamp(1)?.toInstant() }.findOne().orElse(null)
+    }
+
+    @Test
+    fun aSuccessfulLoginNeedsTheCheckInAsWellAsTheDownload() {
+        // R1 (event names the route) and R2 (event names none: the user's assignment) checked in and downloaded; R3 did neither.
+        assertNotNull(checkedInAt("R1")); assertNotNull(checkedInAt("R2")); assertNull(checkedInAt("R3"))
+        assertEquals(2, svc.loginSubmit(national(), all).successful_login)
+        // R2 downloads but its only check-in is voided (a data void tombstone): it no longer counts.
+        sql("ALTER TABLE app.attendance_event DISABLE TRIGGER attendance_event_immutable")
+        sql("UPDATE app.attendance_event SET voided_at = now() WHERE client_uuid = '00000000-0000-4000-8000-0000000000a2'")
+        sql("ALTER TABLE app.attendance_event ENABLE TRIGGER attendance_event_immutable")
+        sql("SELECT app.mark_dirty('route_day_agg', (SELECT id FROM app.route WHERE code = 'R2'), DATE '2026-10-04', 'test')")
+        AggregationWorker(fresh.db, AronClock { now }).runUntilIdle()
+        assertNull(checkedInAt("R2"))
+        val l = svc.loginSubmit(national(), all)
+        assertEquals(3, l.target_routes); assertEquals(1, l.successful_login); assertEquals(3333, l.login_pct_bp)
+        assertEquals(1, l.submitted); assertEquals(10000, l.submit_pct_bp)                 // R1 is the one that logged in and submitted
+        // A voided check-in (a data void tombstone) is ignored even when it is earlier than the live one (one live check-in per user and day).
+        checkIn("00000000-0000-4000-8000-0000000000a4", "sr001", "R1", "2026-10-04 01:10Z", voided = true)
+        sql("SELECT app.mark_dirty('route_day_agg', (SELECT id FROM app.route WHERE code = 'R1'), DATE '2026-10-04', 'test')")
+        AggregationWorker(fresh.db, AronClock { now }).runUntilIdle()
+        assertEquals(Instant.parse("2026-10-04T01:40:00Z"), checkedInAt("R1"))
+    }
+
+    @Test
+    fun aCheckInThatArrivesAfterTheLastRouteEventIsPickedUpByTheStaleScan() {
+        checkIn("00000000-0000-4000-8000-0000000000a5", "sr003", null, "2026-10-04 05:30Z")      // R3's SR checks in late, no route on the event
+        assertNull(checkedInAt("R3"))
+        val since = Instant.parse("2026-10-04T05:00:00Z")
+        fresh.db.jdbi.useHandle<Exception> { DashboardSummaries.dirtyStale(it, since, LocalDate.parse("2026-10-04")) }
+        AggregationWorker(fresh.db, AronClock { now }).runUntilIdle()
+        assertNotNull(checkedInAt("R3"))
     }
 }

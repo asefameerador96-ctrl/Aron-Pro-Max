@@ -459,3 +459,26 @@ Needs a build with the Maps key (GitHub secret `MAPS_API_KEY`, restricted by pac
    blank grey box, Start call works at once.
 4. "Maps অ্যাপে খুলুন" still opens the full interactive `OutletMapActivity`; the Map tile is unchanged.
 5. Bangla mode: digits are Bengali throughout; English mode: ASCII.
+
+## D-MDM-01 MDM actions on a device-owner phone (mdm) — DEVICE-PENDING
+Needs: a test-account backend with `ARON_MDM_ENABLED=1` (dev), a phone enrolled as device owner with the SR app built from INT, a portal login of a SUPERADMIN and a second one (SUPERADMIN, or ADMIN with the `mdm` write grant). Nothing here has run on a phone yet.
+1. Portal → MDM → Devices: the phone is listed (flavour, version, last seen, battery, compliance flags). Open it.
+2. **Lock**: Actions → Lock, reason "device check". Phone online: locks within a minute (push nudge); phone in airplane mode: locks at the next sync after you switch the network on. Action → Unlock clears it. Activity log shows both, each with the reason.
+3. **Message**: send "পরীক্ষা / test": it shows on the phone in Bangla and English.
+4. **Locate**: the result appears in the command row (lat, lng, accuracy) after the phone acks; it must match where you stand within about 50 m.
+5. **Reboot**: the phone restarts; the command ends `acked`. Send the same command_id twice from the portal (reload): it runs once.
+6. **Factory reset** (use a spare phone): request it as user A, reason mandatory; state is `pending_approval` and the phone does nothing. User A cannot approve it. User B approves with a reason: the phone wipes at its next sync. A request left alone for the expiry time ends `expired` and the phone is untouched.
+7. **Block window**: Policies → new policy with a window for today (now to now + 10 min, Dhaka time) and a package that is installed; assign it to the phone. The app is suspended inside the window and released after it; attendance and the Aron apps are never blocked. Switch the phone to airplane mode before the window starts: it still blocks at the start time.
+8. **Kiosk**: policy with kiosk on and the SR app as the only package: the phone stays in the SR app, no home/recents; clearing the policy releases it.
+9. **Location sampling**: policy with mode `off`: no breadcrumb points are recorded that day (a Sale still gets its fix); `interval` 15: breadcrumbs about every 15 minutes while checked in.
+Pass: every step ends with the expected command state in the portal and an audit row naming who and why.
+
+## D-MDM-BREADCRUMB-01 breadcrumb battery and data on an SR phone (mdm) — DEVICE-PENDING
+Needs: an SR build from INT with breadcrumbs reachable, the A06-class phone fully charged, a GPS-spoof app installed (not selected) for step 5, a policy with location sampling `interval` 15 from the portal.
+1. Baseline: breadcrumbs off (no policy interval, config off). Check in, put the phone in a pocket for 2 h, walk 10 minutes. Note battery %, Settings → Battery → Aron SR usage, and Data usage. Expect no location icon, no points: `adb shell dumpsys location` shows no Aron request.
+2. Assign the policy (interval 15). Within a sync the DPC applies it; `dumpsys location` shows ONE Aron request, fused/balanced, with a batch delay of about 15 min.
+3. Same 2 h routine: battery within 1% of the baseline plus the request cost; points stored ≤ 8 per 2 h; Data usage rise under 20 KB.
+4. Check out: the request disappears at once. Switch the policy to `off` while checked in: the request disappears at the next policy pull. Low battery (below 20%, not charging): the request stops.
+5. Select the spoof app as mock location provider and walk with it: points still arrive with `is_mock=true` and the portal/risk list flags them; none is dropped or shown as genuine.
+6. Reboot mid-day while checked in: no crash; the request restarts at the next app start or sync (open the app once).
+Pass: steps 1–6 as written; report the battery numbers to the lead (they replace the estimate in `docs/status/mdm.md`).
