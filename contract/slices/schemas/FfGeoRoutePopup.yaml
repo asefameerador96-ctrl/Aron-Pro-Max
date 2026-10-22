@@ -1,0 +1,60 @@
+FfGeoRoutePopup:
+  type: object
+  description: Pop-up of a pin. `contact` is masked (last three digits) unless the caller holds a valid `pii_until`
+    claim; every read is charged to the PII read budget.
+  required:
+  - date
+  - till_time
+  - as_of
+  - last_updated_at
+  - route
+  - sr_name
+  - contact
+  - territory
+  - zone
+  - position_at
+  - miss_pct_bp
+  additionalProperties: false
+  properties:
+    date:
+      $ref: '#/components/schemas/BusinessDate'
+    till_time:
+      type: boolean
+      description: 'True when `date` is today (Dhaka): figures are till the time of `as_of`; false: final figures
+        of a past day.'
+    as_of:
+      $ref: '#/components/schemas/Timestamp'
+    last_updated_at:
+      type:
+      - string
+      - 'null'
+      format: date-time
+      description: Oldest `last_updated_at` of the summary tables this card reads (null when none has been written
+        yet). The page shows it as "last updated hh:mm" (Dhaka).
+    route:
+      $ref: '#/components/schemas/PlaceRef'
+    sr_name:
+      type:
+      - string
+      - 'null'
+      maxLength: 120
+    contact:
+      type:
+      - string
+      - 'null'
+      maxLength: 30
+    territory:
+      $ref: '#/components/schemas/PlaceRef'
+    zone:
+      $ref: '#/components/schemas/PlaceRef'
+    position_at:
+      type:
+      - string
+      - 'null'
+      format: date-time
+    miss_pct_bp:
+      type:
+      - integer
+      - 'null'
+      minimum: 0
+      description: 10000 minus the route geo-fencing basis points today.

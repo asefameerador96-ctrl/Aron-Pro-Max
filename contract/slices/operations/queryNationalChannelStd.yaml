@@ -1,0 +1,32 @@
+path: /v1/dashboards/national/channel-std
+method: post
+operation:
+  tags:
+  - dashboards
+  operationId: queryNationalChannelStd
+  summary: By Channel STD card
+  description: Cigarette sticks by outlet channel (brief s4.1). Reads summary tables only (never the transaction
+    log); scope from the token.
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          $ref: '#/components/schemas/NationalDashboardFilter'
+  responses:
+    '200':
+      description: By Channel STD card
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/NationalChannelStd'
+    '400':
+      $ref: '#/components/responses/BadRequest'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'
+    '429':
+      $ref: '#/components/responses/TooManyRequests'
+    '503':
+      $ref: '#/components/responses/ServiceUnavailable'

@@ -10,7 +10,7 @@ import { isAppOnly, type UserAccess } from "@/lib/admin/access-grants";
 import { problemMessage, t, type MessageKey } from "@/lib/i18n";
 
 // Module grants of an ADMIN and brand scope of a BRAND user (docs/34 s1). Read by the portal roles, written by SUPERADMIN only.
-// The grants API is PROVISIONAL (REQUEST: docs/requests/backend-admin-user-access.md): the mock serves it.
+// 503 means the grant tables do not exist yet on that server: say so instead of a generic failure.
 export default async function UserAccessPage({ params }: { params: Promise<{ id: string }> }) {
   const [{ id }, session, locale] = await Promise.all([params, requireSession(), getLocale()]);
   if (!/^[0-9]{1,15}$/.test(id)) notFound();
@@ -18,7 +18,8 @@ export default async function UserAccessPage({ params }: { params: Promise<{ id:
   const access = await apiGet<UserAccess>(`/v1/admin/users/${id}/access`, session.at);
   if (!access.ok) {
     if (access.status === 404) notFound();
-    return <p role="alert" className="rounded border border-red-200 bg-red-50 p-3 text-red-800">{problemMessage(locale, access.problem.code)}</p>;
+    const text = access.status === 503 ? t(locale, "access.unavailable") : problemMessage(locale, access.problem.code);
+    return <p role="alert" data-testid="access-load-error" className="rounded border border-red-200 bg-red-50 p-3 text-red-800">{text}</p>;
   }
   const user = await apiGet<{ username: string; full_name: string }>(`/v1/admin/users/${id}`, session.at);
   // Brand options only when the page can use them: the brand level of the product tree.

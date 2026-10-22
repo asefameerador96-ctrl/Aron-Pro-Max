@@ -1,13 +1,7 @@
-// Working days of a month for the target upload page and the calendar (D-TARGET-MIN-01: the daily target divides the monthly one
-// by the working days; Fridays and holidays are excluded). National entries only: a day off for one zone or territory does not
-// change the national count. Weekday numbers are ISO (1 Monday .. 7 Sunday) like cfg.calendar.weekend_days.
-import type { Holiday } from "./types";
-
-export const isoWeekday = (ymd: string): number => {
-  const d = new Date(`${ymd}T00:00:00Z`).getUTCDay();
-  return d === 0 ? 7 : d;
-};
-export const daysInMonth = (month: string): number => new Date(Date.UTC(Number(month.slice(0, 4)), Number(month.slice(5, 7)), 0)).getUTCDate();
+// Working days of a month for the calendar page (D-TARGET-MIN-01: the daily target divides the monthly one by the working days;
+// Fridays and holidays are excluded). The SERVER counts them (contract getWorkingDays, national entries only); this file only
+// reads its answer into the three numbers of the table.
+import type { Schemas } from "@/contract/types";
 
 export interface MonthDays {
   month: string;
@@ -17,20 +11,10 @@ export interface MonthDays {
   holidays: number;
 }
 
-export function workingDays(month: string, weekendDays: readonly number[], holidays: readonly Pick<Holiday, "date" | "scope_type" | "selling_day">[]): MonthDays {
-  const national = new Map<string, boolean>();
-  for (const h of holidays) if (h.scope_type === "global" && h.date.startsWith(month)) national.set(h.date, h.selling_day);
-  let working = 0;
-  let weekend = 0;
-  let off = 0;
-  for (let i = 1; i <= daysInMonth(month); i++) {
-    const date = `${month}-${String(i).padStart(2, "0")}`;
-    const isWeekend = weekendDays.includes(isoWeekday(date));
-    const override = national.get(date);
-    const sells = override ?? !isWeekend;
-    if (sells) working++;
-    else if (isWeekend) weekend++;
-    else off++;
-  }
-  return { month, working, weekend, holidays: off };
+/** Table row of a server month: weekend and holiday counts are the days that are NOT working (a make-up Friday counts as working). */
+export function monthDaysOf(w: Schemas["WorkingDays"]): MonthDays {
+  const off = w.days.filter((d) => !d.is_working_day);
+  return { month: w.month, working: w.working_days, weekend: off.filter((d) => d.is_weekend).length, holidays: off.filter((d) => !d.is_weekend).length };
 }
+
+export const daysInMonth = (month: string): number => new Date(Date.UTC(Number(month.slice(0, 4)), Number(month.slice(5, 7)), 0)).getUTCDate();
