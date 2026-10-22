@@ -15,6 +15,7 @@ test("home on Fast 3G with 4x CPU: JS, LCP and layout shift stay in budget", asy
   await page.clock.install();
   await loginOk(page, "tso334", "tso-pass-1");
   await page.getByRole("link", { name: "English" }).click();
+  await page.goto("/overview");
   await page.setViewportSize({ width: 360, height: 740 });
   const cdp = await context.newCDPSession(page);
   await cdp.send("Network.enable");

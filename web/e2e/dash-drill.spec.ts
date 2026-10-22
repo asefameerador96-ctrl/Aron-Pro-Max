@@ -9,6 +9,7 @@ test.beforeEach(async () => {
 
 async function english(page: Page) {
   await page.getByRole("link", { name: "English" }).click();
+  await page.goto("/overview");
 }
 
 test("TSO home has the SR table, DMO home the ranking table", async ({ page }) => {
@@ -46,7 +47,7 @@ test("channel slice, CPR, strike and login cards each open their drill-down", as
   await expect(page).toHaveURL(/\/drill\/channel\?code=grocery/);
   await expect(page.getByTestId("table-channels")).toBeVisible();
   for (const [id, table] of [["drill-calls", "table-calls"], ["drill-strike", "table-calls"], ["drill-login", "table-not-logged-in"]] as const) {
-    await page.goto("/");
+    await page.goto("/overview");
     await page.getByTestId(id).click();
     await expect(page.getByTestId(table)).toBeVisible();
   }
