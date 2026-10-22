@@ -11,12 +11,14 @@ export interface CustomState {
   /** Wave 4 route monthly targets by route code, SKU code and month; batches seen (idempotent by batch_uuid). */
   routeTargets: { route_code: string; sku_code: string; month: string; qty_base: number }[];
   routeTargetBatches: Map<string, { hash: string; rows: number }>;
+  outletImportBatches: Map<string, { hash: string; rows: number }>;
   priceBatches: Map<string, { hash: string; status: "applied" | "pending_approval"; valid_from: string }>;
   prices: { id: number; sku_id: number; price_type: string; amount_mtk: number; per_base_qty: number; valid_from: string; valid_to: string | null }[];
 }
 
-export function seedCustom(): Pick<CustomState, "scopes" | "salesPlans" | "priceBatches" | "prices" | "access" | "routeTargets" | "routeTargetBatches"> {
+export function seedCustom(): Pick<CustomState, "scopes" | "salesPlans" | "priceBatches" | "prices" | "access" | "routeTargets" | "routeTargetBatches" | "outletImportBatches"> {
   return {
+    outletImportBatches: new Map(),
     routeTargets: [{ route_code: "R-334-01", sku_code: "MaxR-20S", month: thisMonth(), qty_base: 2400 }],
     routeTargetBatches: new Map(),
     access: { 3001: { version: 2, modules: { outlets: "w", reports: "r" }, brand_ids: [] }, 5002: { version: 1, modules: {}, brand_ids: [5] } },
@@ -122,6 +124,52 @@ export async function handleCustom(st: CustomState, ctx: Ctx, canWrite: boolean,
       ctx.audit("route_target", b.batch_uuid, "route_target.commit", { replaced: replaces }, { rows: b.rows.length, total_qty_base: summary.total_qty_base }, b.change_reason!);
       return ctx.send(res, 200, { batch_uuid: b.batch_uuid, rows: b.rows.length, replayed: false }), true;
     }
+  }
+
+  if (path === "/v1/admin/outlets/import" && method === "POST") {
+    if (!canWrite) return ctx.send(res, 403, ctx.problem(403, "ERR_FORBIDDEN")), true;
+    type R = { code: string | null; name: string; owner_name: string; zone_code: string; cluster: string; channel: string; outlet_kind: string; route_code: string | null; lat: number | null; lng: number | null; contact_number: string | null; address: string | null };
+    const b = (await ctx.readJson(req)) as { batch_uuid?: string; rows?: R[]; dry_run?: boolean; change_reason?: string } | undefined;
+    if (!b || typeof b.batch_uuid !== "string" || !Array.isArray(b.rows) || b.rows.length < 1 || typeof b.dry_run !== "boolean") return ctx.send(res, 400, ctx.problem(400, "ERR_VALIDATION")), true;
+    if (!b.dry_run && !reasonOk(b.change_reason)) return ctx.send(res, 400, ctx.problem(400, "ERR_VALIDATION", { errors: [{ pointer: "/change_reason", code: "too_short" }] })), true;
+    const channels = ["GT", "DCC", "Astha", "RCC", "MT", "HoReCa"];
+    const errors: { row: number; column: string; code: string }[] = [];
+    const resolved: { r: R; zone: number; cluster: number; route: number | null; existing: Record<string, unknown> | undefined }[] = [];
+    b.rows.forEach((r, i) => {
+      if (!channels.includes(r.channel)) return void errors.push({ row: i + 1, column: "channel", code: r.channel ? "unknown_channel" : "required" });
+      const zone = st.tables.geo!.find((g) => g.level === "zone" && g.code === r.zone_code && g.status === "active");
+      if (!zone) return void errors.push({ row: i + 1, column: "zone_code", code: "unknown_zone" });
+      const cluster = st.tables.clusters!.find((c) => c.zone_id === zone.id && c.name === r.cluster);
+      if (!cluster) errors.push({ row: i + 1, column: "cluster", code: "unknown_cluster" });
+      const route = r.route_code ? st.tables.routes!.find((x) => x.code === r.route_code && x.zone_id === zone.id) : null;
+      if (r.route_code && !route) errors.push({ row: i + 1, column: "route_code", code: "unknown_route" });
+      const existing = r.code ? st.tables.outlets!.find((o) => o.code === r.code) : undefined;
+      if (existing && existing.zone_id !== zone.id) errors.push({ row: i + 1, column: "code", code: "code_taken" });
+      if (cluster) resolved.push({ r, zone: Number(zone.id), cluster: Number(cluster.id), route: route ? Number(route.id) : null, existing });
+    });
+    const by_channel: Record<string, number> = {};
+    for (const r of b.rows) by_channel[r.channel] = (by_channel[r.channel] ?? 0) + 1;
+    const updates = resolved.filter((x) => x.existing).length;
+    const summary = { batch_uuid: b.batch_uuid, rows: b.rows.length, creates: b.rows.length - updates, updates, by_channel, errors };
+    if (b.dry_run) return ctx.send(res, 200, summary), true;
+    if (errors.length) return ctx.send(res, 400, ctx.problem(400, "ERR_VALIDATION", { errors: errors.map((e) => ({ pointer: `/rows/${e.row - 1}/${e.column}`, code: e.code })) })), true;
+    const hash = JSON.stringify(b.rows);
+    const seen = st.outletImportBatches.get(b.batch_uuid);
+    if (seen) return seen.hash === hash ? (ctx.send(res, 200, { batch_uuid: b.batch_uuid, rows: seen.rows, replayed: true }), true) : (ctx.send(res, 409, ctx.problem(409, "ERR_CONFLICT")), true);
+    st.outletImportBatches.set(b.batch_uuid, { hash, rows: b.rows.length });
+    const now = new Date().toISOString();
+    let nextId = Math.max(0, ...st.tables.outlets!.map((o) => Number(o.id))) + 1;
+    for (const { r, zone, cluster, route, existing } of resolved) {
+      const fields = { name: r.name, owner_name: r.owner_name, contact_number: r.contact_number, address: r.address, zone_id: zone, route_id: route, cluster_id: cluster, channel: r.channel, outlet_kind: r.outlet_kind, lat: r.lat, lng: r.lng };
+      if (existing) {
+        Object.assign(existing, fields);
+        existing.version = Number(existing.version) + 1;
+        existing.updated_at = now;
+      } else st.tables.outlets!.push({ id: nextId, version: 1, created_at: now, updated_at: now, status: "active", code: r.code ?? `OUT-${nextId}`, name_bn: null, sub_channel_id: null, geo_class: null, location_confirmed: false, price_type: r.outlet_kind === "wholesale" ? "wholesale" : "regular", visit_sequence: null, external_ref: null, ...fields });
+      if (!existing) nextId++;
+    }
+    ctx.audit("outlet_import", b.batch_uuid, "outlet_import.commit", { rows: 0 }, { rows: b.rows.length, creates: summary.creates, updates }, b.change_reason!);
+    return ctx.send(res, 200, { batch_uuid: b.batch_uuid, rows: b.rows.length, replayed: false }), true;
   }
 
   const plan = /^\/v1\/admin\/sales-plans\/(\d+)$/.exec(path);

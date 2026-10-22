@@ -51,7 +51,7 @@ data class FeedbackStatusIn(val status: String, val reason: String)
 
 class FeedbackDeps(val db: Database, val reach: ReachResolver, val config: ServerConfig, val guard: AuthGuardDeps, val clock: AronClock = AronClock.SYSTEM)
 
-private val FEEDBACK_READERS = setOf(Role.TSO, Role.DMO, Role.WM, Role.TOP, Role.ANALYST, Role.SUPPORT, Role.ADMIN, Role.SUPERADMIN)
+private val FEEDBACK_READERS = setOf(Role.TSO, Role.DMO, Role.WM, Role.TOP, Role.NATIONAL, Role.ANALYST, Role.SUPPORT, Role.ADMIN, Role.SUPERADMIN)
 private val FEEDBACK_TRIAGE = setOf(Role.SUPPORT, Role.ADMIN, Role.SUPERADMIN)
 private val FEEDBACK_STATUS = setOf("new", "in_progress", "resolved", "closed")
 

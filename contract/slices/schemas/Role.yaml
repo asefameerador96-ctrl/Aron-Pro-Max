@@ -7,8 +7,20 @@ Role:
   - DMO
   - WM
   - TOP
+  - NATIONAL
+  - BRAND
   - ANALYST
   - SUPPORT
   - ADMIN
   - SUPERADMIN
-  description: User role (docs/24 s8.5). One role per user; admin permission bundles are separate.
+  description: 'User role (docs/24 s8.5, docs/34 s1 D-ROLES-02). One role per user; admin permission bundles are
+    separate.
+
+    NATIONAL (national read, no writes) replaces TOP: TOP is retired, no user holds it after the migration and it
+
+    is kept only so historical rows stay readable. BRAND reads the product-based dashboard cards and reports of
+    its
+
+    own brands (`brands` on Me). SR and AMO have no portal login (`ERR_AUTH_PORTAL_NOT_ALLOWED`).
+
+    '

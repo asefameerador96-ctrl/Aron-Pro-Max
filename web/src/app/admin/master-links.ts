@@ -19,6 +19,8 @@ export const MASTER_LINKS: readonly MasterLink[] = [
   { id: "route-targets", href: "/admin/route-targets", labelKey: "menu.admin.route_targets", group: "routes", roles: ADMIN_PORTAL_ROLES },
   // Houses with the same name in one territory: resolve so the dashboard House filter lists each active house once (docs/34 s2).
   { id: "house-dedupe", href: "/admin/house-dedupe", labelKey: "menu.admin.house_dedupe", group: "geography", roles: ADMIN_PORTAL_ROLES },
+  // Outlet import from Excel: the channel is mandatory on every row (docs/34 s2).
+  { id: "outlet-import", href: "/admin/outlet-import", labelKey: "oi.title", group: "outlets", roles: ["ADMIN", "SUPERADMIN"] },
   { id: "sales-plan", href: "/admin/sales-plan", labelKey: "menu.admin.sales_plan", group: "products", roles: ADMIN_PORTAL_ROLES },
   { id: "sr-transfer", href: "/admin/sr-transfer", labelKey: "menu.admin.sr_transfer", group: "routes", roles: ADMIN_PORTAL_ROLES },
   { id: "code-lists", href: "/admin/code-lists/qc_fault_type", labelKey: "menu.config.qc_faults", group: "lists", roles: ADMIN_PORTAL_ROLES },

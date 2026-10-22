@@ -41,6 +41,7 @@ class AmoNavigationCoverageTest {
 
     @Test fun settingsAndSupportHaveRealScreens() {
         assertTrue("Support is built in MainActivity", AmoScreen.SUPPORT in built)
+        assertTrue("Printer diagnostics is built in MainActivity (D-PRINT-02)", AmoScreen.PRINTER in built)
         // Settings, like Home, is rendered by AmoApp itself (AmoSettingsContent), never by the placeholder
         assertTrue(File("../feature-amo/src/main/kotlin/com/aktcl/aron/feature/amo/AmoApp.kt").readText().contains("AmoScreen.SETTINGS -> AmoSettingsContent"))
     }

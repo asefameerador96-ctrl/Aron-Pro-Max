@@ -417,6 +417,7 @@ export const bn: Record<MessageKey, string> = {
   "error.ERR_AUTH_INVALID_CREDENTIALS": "ইউজার আইডি বা পাসওয়ার্ড ভুল।",
   "error.ERR_AUTH_ACCOUNT_LOCKED": "অ্যাকাউন্টটি কিছুক্ষণের জন্য লক করা আছে। পরে চেষ্টা করুন।",
   "error.ERR_AUTH_USER_DISABLED": "অ্যাকাউন্টটি বন্ধ আছে। সাপোর্টের সাথে যোগাযোগ করুন।",
+  "error.ERR_AUTH_PORTAL_NOT_ALLOWED": "এই অ্যাকাউন্টটি শুধু মাঠের অ্যাপের জন্য। ফোনের অ্যাপে লগইন করুন।",
   "error.ERR_AUTH_MFA_INVALID": "কোডটি সঠিক নয়। কোড দেখে আবার চেষ্টা করুন।",
   "error.ERR_RATE_LIMITED": "অনেকবার চেষ্টা হয়েছে। একটু অপেক্ষা করে আবার চেষ্টা করুন।",
   "error.ERR_UNAUTHENTICATED": "আপনার সেশন শেষ হয়েছে। আবার সাইন ইন করুন।",

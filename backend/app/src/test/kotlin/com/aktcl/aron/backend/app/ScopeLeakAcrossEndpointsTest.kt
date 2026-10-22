@@ -57,7 +57,7 @@ class ScopeLeakAcrossEndpointsTest {
 
     private val scoped = listOf(
         ApiWorld.Caller("sr1001", "app_sr", ApiWorld.SR_PHONE),
-        ApiWorld.Caller("amo1001", "web", null),
+        ApiWorld.Caller("amo1001", "app_amo", ApiWorld.AMO_PHONE),
         ApiWorld.Caller("tso1001", "web", null),
         ApiWorld.Caller("dmo1001", "web", null),
     )
