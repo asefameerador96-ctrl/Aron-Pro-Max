@@ -2,7 +2,7 @@
 
 **Sponsor decision.** Target, loyalty (Astha, Diamond League, Superstar, campaign gifts) and every other discount or promotional programme are set aside. The business rules are still being collected. Later they come back as a logic engine plus portals and dashboards for (a) Target, (b) Discount/Program, (c) Astha. Phase 1 must not block them.
 
-Units are confirmed: cigarettes in sticks, lighters in **pieces**, matches in **dozens**.
+Units are confirmed: cigarettes in sticks, lighters in **pieces**, matches in **dozens** — these remain the **storage and dashboard** units. The **field counting units** were changed by the owner on 2026-10-22 (packets of 20/10, boxes of 25, dozens): `docs/34` s4.2, D-UNITS-02. Two carve-outs of this page were made the same day (D-TARGET-MIN-01: the route monthly target upload, calendar and daily-target maths the dashboard rings need; and the outlet **channels** GT/DCC/Astha/RCC/MT/HoReCa as master data): `docs/34` s2. The programmes themselves stay deferred.
 
 ## What this means for every lane
 
