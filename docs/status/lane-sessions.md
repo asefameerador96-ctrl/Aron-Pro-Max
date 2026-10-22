@@ -117,8 +117,8 @@ Dependents merge origin/lane/ui-kit (not wait for INT). Parity proof per lane: d
 ## Wave 4: owner directive 2026-10-22 (`docs/34`; branch lane/lead-directive-1022). Started 2026-10-22 09:08 UTC from lane/lead-directive-1022 fd262950 (sent as "checked" to integrator 15 at 09:08).
 | lane | session | model | branch | scope |
 |---|---|---|---|---|
-| backend-authz | session_019B2UpUbUmdw1wR25U3zPMj (started 09:08 UTC) | Opus | lane/backend-authz | docs/34 s1: role codes, module grants, brand scope, token claims |
-| db | session_01XJgQV2JKgfg7YS8ziNShL5 (started 09:08 UTC) | Opus | lane/db | docs/34 migrations (s1, s2, s4.2) then the Gulshan/Banani seed (s4.4) |
+| backend-authz | session_019B2UpUbUmdw1wR25U3zPMj (started 09:08 UTC; candidate 8ed44597 checked 12:25; recycle next) | Opus | lane/backend-authz | docs/34 s1: role codes, module grants, brand scope, token claims |
+| db | session_01XJgQV2JKgfg7YS8ziNShL5 (started 09:08 UTC; 12:25 at ~557k, told to push and recycle) | Opus | lane/db | docs/34 migrations (s1, s2, s4.2) then the Gulshan/Banani seed (s4.4) |
 | backend-reports | session_01KfUFry6iMtXCCgfCCjZUCi (started 09:08 UTC) | Sonnet (Opus checker) | lane/backend-reports | dashboard contract, summary tables, card and map endpoints; reports from docs/reports/ as filed |
 | web-dashboard | session_01D2zQ8As8hEYUfKpVWEnf6F (started 09:08 UTC) | Sonnet | lane/web-dashboard | national dashboard screen for screen (docs/ui-reference/web) |
 | web-admin | session_01WrmfRQageVY9yT4n5tvnst (started 09:08 UTC) | Sonnet | lane/web-admin | users/roles/grants/brand scope pages, target upload, calendar, house flag, outlet channel, SKU pack sizes |
