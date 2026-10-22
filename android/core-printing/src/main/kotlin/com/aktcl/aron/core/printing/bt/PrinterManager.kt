@@ -67,7 +67,7 @@ data class PrintPacing(
     val bandRows: Int = 24,
     val statusTimeoutMs: Long = 400,
     val writeTimeoutMs: Long = 8_000,
-    val connectTimeoutMs: Long = 20_000,
+    val connectTimeoutMs: Long = 30_000,
 ) {
     /** Values a bad configuration could give are clamped, so pacing never divides by zero or stalls. */
     internal val safeRowsPerSecond get() = rowsPerSecond.coerceIn(20, 2_000)

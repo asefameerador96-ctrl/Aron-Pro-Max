@@ -1,4 +1,13 @@
-# Status: lane android-print (Day 3, 2026-10-07, session #3)
+# Status: lane android-print (wave 4, session 4, 2026-10-22)
+
+## Wave 4: D-PRINT-02 Thermal Crest MP-58N (docs/34 s4.1)
+- **Branch note:** the old `lane/android-print` (2026-10-07) had history unrelated to the rewritten INT and its core-printing was older than INT's; the lane was rebuilt from INT 513d7984 + `lane/lead-directive-1022`.
+- **Built (core-printing `diag/`, `bt/SppConnector.kt`; SR Settings → Device → Printer diagnostics):** Bluetooth state; runtime permissions (BLUETOOTH_CONNECT + BLUETOOTH_SCAN on 12+, location below) with a request and an app-settings way out, read before the paired list; every bonded device with name, address, class (no filter); connect secure → insecure → RFCOMM channel 1 with each exact error; status probe (DLE EOT 1/2/4); three test pages (GS v 0 raster, ESC * 33 24-dot, ASCII), each logged with bytes written, time, outcome; Yes/No per page for what came out on paper; plain-text report (copy + share), phone numbers redacted (Latin and Bengali digits, separators), other people's devices named only on screen.
+- **Fixed in the memo path (unit-proven):** (1) the connect timeout did not work: `BluetoothSocket.connect()` ignores interrupts, so the 12 s bound waited for the OS; now each try is closed at its bound (8 s) and the whole connect is bounded (30 s); (2) a third connect method (channel 1, no SDP) for printers with a broken SDP record; (3) the closing paper-status query treated a late answer from sequential firmware as "printer stopped answering": printed memos showed "print failed" and Retry printed twice. The wait now covers the job at a slow 100 rows/s (cap 20 s) and still ends at once on a link drop. `SimPrinter.statusAfterDrain` reproduces it; the test fails on the old code.
+- **T1 Opus checker** on the engine: 0 blocking defects; fixed: RuntimeException from OEM connect escaped, remembered method never forgotten, timeouts tight, redaction gaps, other devices' names in the export. Open from the checker: memos still always use GS v 0 (next: per-printer image mode from the diagnostics); the double-print window during the closing grace (a `PrintedUnconfirmed` outcome is the proper fix).
+- **DEVICE-PENDING:** D-PRINT-02 steps in `docs/status/device-checks.md`. Blocked on the owner's export for the root cause.
+
+## Earlier sessions (Day 3, 2026-10-07, session #3)
 
 ## Row state (2026-10-07 19:10 UTC, session #2, T1 Opus check on INT b85d81fd)
 - **F-SR-013, F-SR-028, F-SR-073, F-SR-066: done on the host** (builder tests + contract on Room + `StoredMemoPrintTotalsTest`; independent Opus checker: host acceptance proven). **DEVICE-PENDING:** D-P1, D-P2a, D-P2b with the owner's A06 and MP-58N.

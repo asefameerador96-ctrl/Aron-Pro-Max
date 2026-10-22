@@ -166,11 +166,27 @@ class DiagnosticsTest {
             )) assertTrue("missing <$want> in\n$text", text.contains(want))
             assertFalse(text, Regex("""01[3-9]\d{8}""").containsMatchIn(text))
             assertTrue(text.contains("call <phone> or <phone> ok"))
-            assertTrue(text.contains("Rahim <phone>"))
+            assertFalse("another person's phone is not named", text.contains("Rahim"))
+            assertTrue(text.contains("(other device, name hidden)  66:22:11:XX:XX:XX  class PHONE"))
             assertFalse("Latin digits only", text.any { it in '০'..'৯' })
         } finally {
             Locale.setDefault(saved)
         }
+    }
+
+    @Test fun redactionCatchesSeparatorsCountryCodeAndBengaliDigits() {
+        for (n in listOf("01712345678", "+8801712345678", "+880 1712-345678", "880-1712345678", "017-1234-5678", "01712 345 678", "০১৭১২৩৪৫৬৭৮", "8801712345678")) {
+            assertEquals(n, "x <phone> y", Redact.text("x $n y"))
+        }
+        // a MAC address, an error code and a short count stay
+        assertEquals("66:22:11:00:AA:01 read ret: -1 (1203 ms)", Redact.text("66:22:11:00:AA:01 read ret: -1 (1203 ms)"))
+    }
+
+    @Test fun theScreenAndTheDeviceUnderTestKeepEveryName() {
+        val phone = BondedDevice("Rahim phone", "66:22:11:00:AA:03", 0x0200, 3)
+        assertTrue(DiagnosticsReport.describe(phone, full = true).startsWith("Rahim phone  66:22:11:00:AA:03"))
+        val env = DiagEnvironment("x", "y", "14", 34, "a", true, "ON", emptyMap(), listOf(phone))
+        assertTrue(DiagnosticsReport.render(env, phone, emptyList(), emptyMap(), "now").contains("Printer under test: Rahim phone  66:22:11:00:AA:03"))
     }
 
     @Test fun reportSaysWhyThePairedListIsMissing() {
@@ -179,5 +195,52 @@ class DiagnosticsTest {
         assertTrue(text.contains("Paired devices: not readable (Bluetooth is off)"))
         assertTrue(text.contains("Permissions: none needed at runtime on this Android"))
         assertTrue(text.contains("(none run)"))
+    }
+
+    private val printer = BondedDevice("MP-58N", "66:22:11:00:AA:04", 0x0600, 1)
+    private val env = DiagEnvironment("x", "y", "14", 34, "sr 1258", true, "ON", mapOf("BLUETOOTH_CONNECT" to true), listOf(BondedDevice("Buds", "11:22:33:44:55:66", 0x0400, 1), printer))
+
+    @Test fun controllerPicksThePrinterRunsEverythingAndRecordsThePaper() = runTest {
+        val rec = Recorder()
+        var released = 0
+        val c = PrinterDiagnosticsController(
+            backgroundScope,
+            connect = { DiagConnection(rec, listOf(ConnectAttempt(SppMethod.SECURE, "IOException: refused", 900), ConnectAttempt(SppMethod.INSECURE, null, 400))) },
+            releaseAppLink = { released++ },
+            nowMs = { testScheduler.currentTime },
+        )
+        c.setEnvironment(env)
+        assertEquals("the printer class is chosen first", printer, c.state.value.selected)
+        c.runAll()
+        assertEquals(1, released)
+        val names = c.state.value.steps.map { it.name }
+        assertEquals(listOf("TARGET", "CONNECT SECURE", "CONNECT INSECURE", "STATUS DLE EOT 1", "STATUS DLE EOT 2", "STATUS DLE EOT 4", "TEST RASTER", "TEST BIT_IMAGE", "TEST ASCII"), names)
+        assertEquals(TestMode.entries, c.state.value.toJudge)
+        assertFalse(c.state.value.busy)
+        val all = TestMode.entries.flatMap { TestPages.commands(it) }.reduce { a, b -> a + b }
+        val sent = rec.out.toByteArray()
+        assertTrue(sent.size > all.size) // the pages plus three status queries
+        c.judge(TestMode.ASCII, true); c.judge(TestMode.RASTER, false)
+        assertEquals(listOf(TestMode.BIT_IMAGE), c.state.value.toJudge)
+        val text = c.report("now")
+        assertTrue(text, text.contains("GS v 0 raster: NOTHING OR GARBAGE"))
+        assertTrue(text, text.contains("ASCII self-test: PRINTED OK"))
+        assertTrue(text, text.contains("CONNECT SECURE: FAIL IOException: refused (900 ms)"))
+    }
+
+    @Test fun controllerLogsAFailedConnectAndStaysUsable() = runTest {
+        val c = PrinterDiagnosticsController(
+            backgroundScope,
+            connect = { DiagConnection(null, SppMethod.entries.map { ConnectAttempt(it, "IOException: Host is down", 5000) }) },
+            releaseAppLink = {},
+            nowMs = { testScheduler.currentTime },
+        )
+        c.connectOnly()
+        assertEquals("CONNECT", c.state.value.steps.single().name) // nothing chosen yet
+        c.setEnvironment(env)
+        c.testPage(TestMode.RASTER)
+        assertEquals(3, c.state.value.steps.count { it.name.startsWith("CONNECT ") && it.outcome == StepOutcome.FAIL })
+        assertTrue(c.state.value.toJudge.isEmpty())
+        assertFalse(c.state.value.busy)
     }
 }

@@ -1,5 +1,6 @@
 package com.aktcl.aron.core.printing.bt
 
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.awaitCancellation
@@ -47,8 +48,8 @@ class ConnectResult<S : SppSocket>(val socket: S?, val attempts: List<ConnectAtt
  * last for an address is tried first next time.
  */
 class SppConnector(
-    private val attemptTimeoutMs: Long = 6_000,
-    private val pauseMs: Long = 300,
+    private val attemptTimeoutMs: Long = 8_000,
+    private val pauseMs: Long = 600,
     private val ioContext: CoroutineContext = Dispatchers.IO,
     private val nowMs: () -> Long = { System.nanoTime() / 1_000_000 },
 ) {
@@ -70,9 +71,11 @@ class SppConnector(
             val error = try {
                 val ok = withTimeoutOrNull(attemptTimeoutMs) { connectCancellable(s); true }
                 if (ok == null) "timeout after ${attemptTimeoutMs} ms" else null
-            } catch (e: IOException) {
-                describe(e)
-            } catch (e: SecurityException) {
+            } catch (e: CancellationException) {
+                try { s.close() } catch (_: Exception) {}
+                throw e
+            } catch (e: Exception) {
+                // IOException normally; some OEM stacks throw a RuntimeException from connect(): logged, never escapes
                 describe(e)
             }
             attempts.add(ConnectAttempt(m, error, nowMs() - start))
@@ -80,7 +83,8 @@ class SppConnector(
                 lastGood[address] = m
                 return ConnectResult(s, attempts)
             }
-            try { s.close() } catch (_: IOException) {}
+            lastGood.remove(address, m) // re-paired or new firmware: do not lead with a dead method next time
+            try { s.close() } catch (_: Exception) {}
         }
         return ConnectResult(null, attempts)
     }
@@ -89,7 +93,7 @@ class SppConnector(
     private suspend fun connectCancellable(s: SppSocket) = coroutineScope {
         val done = AtomicBoolean(false)
         val closer = launch(start = CoroutineStart.UNDISPATCHED) {
-            try { awaitCancellation() } finally { if (!done.get()) try { s.close() } catch (_: IOException) {} }
+            try { awaitCancellation() } finally { if (!done.get()) try { s.close() } catch (_: Exception) {} }
         }
         try {
             runInterruptible(ioContext) { s.connect() }

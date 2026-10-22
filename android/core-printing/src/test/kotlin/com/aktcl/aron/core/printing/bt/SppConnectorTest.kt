@@ -95,6 +95,27 @@ class SppConnectorTest {
         assertTrue("took $ms ms", ms < 5_000)
     }
 
+    @Test fun anOemRuntimeExceptionFromConnectIsLoggedNotThrown() = runBlocking {
+        val r = connector.connect("AA:BB:CC:DD:EE:09") { m ->
+            object : SppSocket by FakeSocket(m) {
+                override fun connect() { if (m == SppMethod.SECURE) throw NullPointerException("mSocket is null") }
+            }
+        }
+        assertEquals("NullPointerException: mSocket is null", r.attempts[0].error)
+        assertEquals(SppMethod.INSECURE, r.attempts.last().method)
+        assertNotNull(r.socket)
+    }
+
+    @Test fun aRememberedMethodThatFailsIsForgotten() = runBlocking {
+        val addr = "AA:BB:CC:DD:EE:10"
+        connector.connect(addr) { m -> FakeSocket(m, error = if (m != SppMethod.CHANNEL_1) "no" else null) }
+        // re-paired: channel 1 now fails, secure works
+        val r = connector.connect(addr) { m -> FakeSocket(m, error = if (m == SppMethod.CHANNEL_1) "dead" else null) }
+        assertEquals(listOf(SppMethod.CHANNEL_1, SppMethod.SECURE), r.attempts.map { it.method })
+        val again = connector.connect(addr) { m -> FakeSocket(m) }
+        assertEquals(listOf(SppMethod.SECURE), again.attempts.map { it.method })
+    }
+
     @Test fun theMethodThatWorkedIsTriedFirstNextTime() = runBlocking {
         val addr = "AA:BB:CC:DD:EE:07"
         connector.connect(addr) { m -> FakeSocket(m, error = if (m != SppMethod.INSECURE) "no" else null) }

@@ -155,9 +155,9 @@ class DiagnosticsSession(
         return try {
             val ok = withTimeoutOrNull(writeTimeoutMs) { transport.write(bytes); true }
             if (ok == null) { transport.close(); "write timed out after $writeTimeoutMs ms" } else dropped?.let { "link dropped: $it" }
-        } catch (e: IOException) {
-            "${e.javaClass.simpleName}: ${e.message}"
-        } catch (e: SecurityException) {
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
             "${e.javaClass.simpleName}: ${e.message}"
         }
     }
@@ -171,10 +171,15 @@ class DiagnosticsSession(
 
 /** Takes phone numbers and long digit runs out of free text (error messages, device names) before export. */
 object Redact {
-    private val phone = Regex("""(?<!\d)(?:\+?880|0)1[3-9]\d{2}[-\s]?\d{6}(?!\d)""")
+    // optional +880 / 880 with spaces or dashes, then 01[3-9] and eight more digits with any spaces or dashes between
+    private val phone = Regex("""(?<![\d+])(?:(?:\+\s*)?880[\s-]*)?0?1[3-9](?:[\s-]*\d){8}(?!\d)""")
     private val longDigits = Regex("""\d{10,}""")
 
-    fun text(s: String): String = longDigits.replace(phone.replace(s, "<phone>"), "<number>")
+    /** Bengali digits become Latin first, so a number typed in Bangla is caught too. */
+    fun text(s: String): String {
+        val latin = buildString(s.length) { for (c in s) append(if (c in '০'..'৯') '0' + (c - '০') else c) }
+        return longDigits.replace(phone.replace(latin, "<phone>"), "<number>")
+    }
 }
 
 /** The plain-text report the owner copies or shares back (no secrets, no phone numbers). */
@@ -201,7 +206,7 @@ object DiagnosticsReport {
                 b.forEachIndexed { i, d -> appendLine("  ${i + 1}. ${describe(d)}") }
             }
         }
-        appendLine("Printer under test: ${selected?.let(::describe) ?: "none chosen"}")
+        appendLine("Printer under test: ${selected?.let { describe(it, full = true) } ?: "none chosen"}")
         appendLine("Steps:")
         if (steps.isEmpty()) appendLine("  (none run)")
         for (s in steps) appendLine("  [+%.1fs] %s: %s %s".format(Locale.ROOT, s.atMs / 1000.0, s.name, s.outcome, s.detail))
@@ -209,7 +214,8 @@ object DiagnosticsReport {
         for (m in TestMode.entries) appendLine("  ${m.label}: " + when (paper[m]) { true -> "PRINTED OK"; false -> "NOTHING OR GARBAGE"; null -> "not answered" })
     }
 
-    fun describe(d: BondedDevice): String {
+    /** [full] (the screen, the device under test) keeps every name: nothing is filtered or hidden there. */
+    fun describe(d: BondedDevice, full: Boolean = false): String {
         val cls = when (d.majorClass) {
             null -> "class ?"
             0x0600 -> "class IMAGING (printer)"
@@ -219,6 +225,10 @@ object DiagnosticsReport {
             else -> "class 0x%04X".format(Locale.ROOT, d.majorClass)
         }
         val type = when (d.type) { 1 -> "CLASSIC"; 2 -> "LE"; 3 -> "DUAL"; 0 -> "UNKNOWN"; else -> "?" }
+        // a headset or someone's phone is not the printer: its name and full address stay off the report
+        if (!full && d.majorClass != null && d.majorClass != 0x0600 && d.majorClass != 0x1F00 && d.majorClass != 0x0000) {
+            return "(other device, name hidden)  ${d.address.take(9)}XX:XX:XX  $cls  type $type"
+        }
         return "${Redact.text(d.name ?: "(no name)")}  ${d.address}  $cls  type $type"
     }
 }
