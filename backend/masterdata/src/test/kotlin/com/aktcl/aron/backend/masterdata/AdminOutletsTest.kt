@@ -1,6 +1,7 @@
 package com.aktcl.aron.backend.masterdata
 
 import com.aktcl.aron.contract.Role
+import io.ktor.client.statement.bodyAsText
 import io.ktor.http.HttpMethod
 import io.ktor.http.HttpStatusCode
 import org.junit.jupiter.api.AfterAll
@@ -29,6 +30,30 @@ class AdminOutletsTest {
 
     private fun body(name: String, extra: String = "") =
         """{"name":"$name","owner_name":"Owner of $name","zone_id":${zone("Z-MIR")},"cluster_id":${cluster()},"channel":"GT","outlet_kind":"retail"$extra}"""
+
+    @Test
+    fun channelIsMandatoryOnCreateAndUpdateWithAClearError() = env.app {
+        val noChannel = body("No Channel Store").replace(""","channel":"GT"""", "")
+        val missing = sendA1(HttpMethod.Post, "/admin/outlets", admin, noChannel)
+        assertEquals(HttpStatusCode.BadRequest, missing.status); assertEquals("ERR_VALIDATION", missing.code())
+        assertTrue(missing.bodyAsText().contains("body.channel") && missing.bodyAsText().contains("required") && missing.bodyAsText().contains("GT, DCC, Astha, RCC, MT, HoReCa"), missing.bodyAsText())
+        for (bad in listOf("null", "\"\"", "\"gt\"", "\"Retail\"", "5")) {
+            val r = sendA1(HttpMethod.Post, "/admin/outlets", admin, body("Bad Channel ${bad.filter { it.isLetterOrDigit() }}").replace("\"channel\":\"GT\"", "\"channel\":$bad"))
+            assertEquals(HttpStatusCode.BadRequest, r.status, "channel $bad")
+            assertTrue(r.bodyAsText().contains("body.channel"), r.bodyAsText())
+        }
+        assertEquals(0, env.sql("SELECT count(*) FROM app.outlet WHERE name LIKE 'No Channel%' OR name LIKE 'Bad Channel%'")!!.toInt())
+        for (c in listOf("GT", "DCC", "Astha", "RCC", "MT", "HoReCa")) {
+            assertEquals(HttpStatusCode.Created, sendA1(HttpMethod.Post, "/admin/outlets", admin, body("Channel $c").replace("\"channel\":\"GT\"", "\"channel\":\"$c\"")).status, c)
+        }
+        // A patch may change the channel but never clear it.
+        val o = sendA1(HttpMethod.Post, "/admin/outlets", admin, body("Patch Channel Store")).objA1()
+        val id = o.lng("id")
+        val patchNull = sendA1(HttpMethod.Patch, "/admin/outlets/$id", admin, """{"channel":null}""", ifMatch = 1)
+        assertEquals(HttpStatusCode.BadRequest, patchNull.status); assertTrue(patchNull.bodyAsText().contains("body.channel"))
+        assertEquals(HttpStatusCode.OK, sendA1(HttpMethod.Patch, "/admin/outlets/$id", admin, """{"channel":"MT"}""", ifMatch = 1).status)
+        assertEquals("MT", env.sql("SELECT channel FROM app.outlet WHERE id = $id"))
+    }
 
     @Test
     fun createOutletWritesPlacementAndLocationHistoryAuditsAndMasksPii() = env.app {
