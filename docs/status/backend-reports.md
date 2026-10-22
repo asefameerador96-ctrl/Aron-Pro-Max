@@ -1,5 +1,36 @@
 # backend-reports lane status
 
+## WAVE 4 (2026-10-22, session 3 again): national dashboard (docs/34 s2)
+Branch `lane/backend-reports`; contract 1.4.0 first (a18fc5fb, fixed in b2f2976a), then code.
+
+### Done (pushed)
+- **Contract 1.4.0** (additive): 14 operations, `POST /v1/dashboards/national/{sales,cpr,channel-calls,final-submit,login-submit,channel-std,breakdown,geo-fencing,ff-geo/pins}` (body `NationalDashboardFilter`, breakdown and pins wrap it), `GET .../national/ff-geo/routes/{route_id}`, `GET /v1/dashboards/route-map/{route_id}`, `GET /v1/dashboards/sale-position/{outlet_id}`, `GET .../national/filter-options`, `GET .../national/freshness`. `last_updated_at`, `as_of`, `date`, `till_time` on every response. Appendix A of docs/24 updated (230 operations).
+- **Summary rebuilds** (`DashboardSummaries.kt`, hooked into the route-day and zone-day rebuilds, idempotent): outlet x SKU, variant memo counts, route last position, completed/geo-valid call counts, first/last sale, download time, visit geometry, final-submit time, midnight auto-submit (summary only), freshness. Inert until the db objects exist (`ready()`).
+- **Eight card queries + filter options + freshness** (`NationalDashboard.kt`), **pins, popup, route map, sale position** (`NationalMaps.kt`), **HTTP routes** (`NationalDashboardApi.kt`, wired in `Wiring.kt`), scope from the token on every query, BRAND filter through `BrandScopeResolver` (default none until authz lands its `brands` claim).
+- Tests: `NationalDashboardTest` (brief arithmetic: channel STD = cigarette card, channel calls = CPR calls, brand memo counts not additive, daily target 2 500 + 1 250 over 25 working days, midnight job), `NationalMapsTest` (81.83 m, 3 470.55 m path, pin boundaries), `NationalDashboardApiTest` (HTTP, scope, roles, brand user). `ContractConformanceTest`, `RouteInventoryTest`, `shared:contract:jvmTest`, redocly lint green.
+
+### BLOCKED on db (request filed): `docs/requests/db-backend-reports-dashboard-summaries.md`
+Needs `dw.agg_daily_outlet_sku`, `dw.agg_daily_route_variant`, `dw.route_last_position`, `dw.summary_freshness`, the listed columns on `dw.dim_geo`, `dw.dim_product`, `dw.agg_daily_route`, `dw.agg_daily_zone`, `dw.fact_visit`, and route class (normal/manual/dummy). Until the migration is on INT the endpoints answer 503; tests use `dashboard_summaries_test.sql` (analytics) and `dashboard_summaries_shim.sql` (backend/app, loaded by ApiWorld). **Delete both the day the real migration lands.**
+
+### Decisions (to log in DECISIONS.md by the lead)
+- D-DASH-03 completed call = sr_call visit with outcome not null and not abandoned/not_reached; geo-validated = server verdict (else phone) in_range; pin geo % = validated/completed of that route today, no call yet = green.
+- D-DASH-04 contact (SR and outlet phone) is returned null: the phone numbers are PII and only the step-up read path may show them; wire it with PiiReadBudget when the web asks.
+- D-DASH-05 route map path and sale position are point reads of one route-day / one outlet-day (`dw.fact_geo_fix`, `dw.fact_visit`, and `app.memo` for new/repeat/edited); the cards read summaries only.
+- D-DASH-06 targets are read from `app.target` (route scope, sku level) until db delivers `route_monthly_target`; working days come from Fridays + global `app.calendar_holiday` (zone-scoped holidays ignored for the national figure).
+- D-DASH-07 channel calls and CPR count normal planned routes only; sales, channel STD and geo fencing count all routes.
+- Contract: `SalePosition.radius_m` is 10..5000 (the stored radius), not the enum 20/50/100.
+
+### Next three
+1. Opus checker findings on the summaries (running), then fix.
+2. Reports from `docs/reports/*.md` when the lead files them (none yet).
+3. When db lands: delete the two test shims, run the full suite, re-run the conformance test.
+
+### Traps
+- A `/*` inside a KDoc comment opens a nested comment (a path like `/v1/x/*` broke the build once).
+- `app.visit` and `app.memo` are immutable by trigger: fixtures that need coordinates `ALTER TABLE ... DISABLE TRIGGER visit_immutable` first.
+- `pg_temp` helper functions in seed_day.sql live only in the connection that ran it: run every fixture file on the same connection.
+- Fresh container: `pg_ctlcluster 16 main start`, then create the `aron_test` role and database (see the older handover below).
+
 ## HANDOVER (2026-10-15, session 3 recycling early: queue done; context was far below 400k)
 - **Full `:backend:analytics:test` on 26f5bef0: GREEN, 134 tests, 0 failed** (19 min, local PG16; a fresh container needs the `aron_test` role and database: `CREATE ROLE aron_test LOGIN SUPERUSER PASSWORD 'aron_test'; CREATE DATABASE aron_test OWNER aron_test;` and `ARON_TEST_PG_URL=jdbc:postgresql://127.0.0.1:5432/aron_test?user=aron_test&password=aron_test`). ContractDriftTest green; slice and WireDtos checks pass; not run locally: AuthDtoContractTest (no Android SDK here), redocly lint. No contract change since.
 - **F-AMO-044 zone-wide AMO bundle**: done (`SupervisorBundle.kt`, `BundleService`, 28c0fe0 + ea71d69). Opus checker: 4 confirmed defects, all fixed with its tests kept (`AmoZoneBundleCheckerTest`). Decisions D-REP-09, D-REP-11. The checker's fixes were not re-reviewed.
