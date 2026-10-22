@@ -32,6 +32,9 @@ export function open<T>(value: string | undefined, purpose: string, secret = ses
   try {
     const raw = Buffer.from(value, "base64url");
     if (raw.length < 12 + 16 + 2) return null;
+    // Canonical encoding only: a value whose trailing bits were altered can decode to the same bytes (Node's decoder
+    // ignores the unused bits of the last character), so a tampered string must be refused before the tag check.
+    if (raw.toString("base64url") !== value) return null;
     const decipher = createDecipheriv("aes-256-gcm", key(secret, purpose), raw.subarray(0, 12));
     decipher.setAAD(Buffer.from(purpose));
     decipher.setAuthTag(raw.subarray(12, 28));
