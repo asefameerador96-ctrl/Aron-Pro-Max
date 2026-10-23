@@ -127,6 +127,13 @@ export function CodeListEditor({ listKey, items: initial, attrs, canWrite }: Pro
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
+            {items.length === 0 ? (
+              <tr>
+                <td colSpan={5 + attrs.length} data-testid="codelist-empty" className="px-2 py-4 text-center text-slate-600">
+                  {t("common.empty")}
+                </td>
+              </tr>
+            ) : null}
             {items.map((it, i) => (
               <tr key={i} data-testid="codelist-row" className={rowErrors[i] ? "bg-red-50" : undefined}>
                 <td className="px-2 py-1">

@@ -1,4 +1,5 @@
 "use client";
+import { TableScroll } from "@/components/admin/kit/table-scroll";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useI18n } from "@/components/i18n-provider";
@@ -106,6 +107,7 @@ export function TutorialManager({ items, canWrite }: { items: TutorialRow[]; can
       {items.length === 0 ? (
         <p className="text-slate-600">{t("common.empty")}</p>
       ) : (
+        <TableScroll className="max-w-full overflow-x-auto focus-visible:outline-(length:--focus-w) focus-visible:outline-offset-2 outline-focus" tabIndex={0} role="region" aria-label={t("menu.admin.tutorials")}>
         <table className="w-full text-left text-sm" data-testid="data-table" aria-label={t("menu.admin.tutorials")}>
           <thead>
             <tr className="border-b border-slate-200 text-slate-600">
@@ -136,6 +138,7 @@ export function TutorialManager({ items, canWrite }: { items: TutorialRow[]; can
             ))}
           </tbody>
         </table>
+        </TableScroll>
       )}
       {canWrite ? (
         <section className="space-y-4 rounded-lg border border-slate-200 bg-white p-4" aria-labelledby="tut-form-title">
