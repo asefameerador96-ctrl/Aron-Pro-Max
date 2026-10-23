@@ -2,7 +2,7 @@ import { CalendarView } from "@/components/admin/config/calendar-view";
 import { apiGet, one, type SearchParams } from "@/components/admin/kit/page";
 import { onApiFailure } from "@/components/admin/crud/pages";
 import { Forbidden } from "@/components/forbidden";
-import { canOp } from "@/lib/admin/access";
+import { loadOpGate } from "@/lib/admin/access";
 import type { ConfigKey, Holiday, ResolvedConfigValue } from "@/lib/admin/types";
 import { ADMIN_ONLY_ROLES, ADMIN_PORTAL_ROLES, hasRole } from "@/lib/auth/roles";
 import { requireSession } from "@/lib/auth/require";
@@ -18,6 +18,7 @@ const addDays = (ymd: string, n: number) => new Date(Date.parse(`${ymd}T00:00:00
 
 export default async function CalendarPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
   const [session, locale, sp] = await Promise.all([requireSession(), getLocale(), searchParams]);
+  const gate = await loadOpGate(session.at, session.user.role);
   if (!hasRole(session.user.role, ADMIN_PORTAL_ROLES)) return <Forbidden locale={locale} />;
   const today = businessDate();
   const f = one(sp.from, 10);
@@ -40,7 +41,7 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
   const weekendKey = keys?.ok ? (keys.data.items.find((k) => k.key === "cfg.calendar.weekend_days") ?? null) : null;
   return (
     <div className="space-y-4">
-      <CalendarView locale={locale} holidays={list.data.items} weekend={weekend.ok ? weekend.data : null} weekendKey={weekendKey} from={from} to={to} canWrite={canOp("holiday.create", session.user.role)} monthDays={monthDays} />
+      <CalendarView locale={locale} holidays={list.data.items} weekend={weekend.ok ? weekend.data : null} weekendKey={weekendKey} from={from} to={to} canWrite={gate("holiday.create")} monthDays={monthDays} />
     </div>
   );
 }

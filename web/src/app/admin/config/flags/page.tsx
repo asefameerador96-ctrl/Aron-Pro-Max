@@ -2,7 +2,7 @@ import { FlagsView, type FlagRow } from "@/components/admin/config/flags-view";
 import { onApiFailure } from "@/components/admin/crud/pages";
 import { apiGet } from "@/components/admin/kit/page";
 import { Forbidden } from "@/components/forbidden";
-import { canOp } from "@/lib/admin/access";
+import { loadOpGate } from "@/lib/admin/access";
 import { listKeys } from "@/lib/admin/config-load";
 import type { ConfigValuePage } from "@/lib/admin/types";
 import { serverNowMs } from "@/lib/admin/time";
@@ -12,6 +12,7 @@ import { getLocale } from "@/lib/auth/service";
 
 export default async function FlagsPage() {
   const [session, locale] = await Promise.all([requireSession(), getLocale()]);
+  const gate = await loadOpGate(session.at, session.user.role);
   if (!hasRole(session.user.role, ADMIN_PORTAL_ROLES)) return <Forbidden locale={locale} />;
   const keys = await listKeys(session.at, "flag");
   if (!keys.ok) return onApiFailure(keys.status, keys.problem, locale);
@@ -22,5 +23,5 @@ export default async function FlagsPage() {
       return { key, values: v.ok ? v.data.items.filter((x) => !x.effective_to || Date.parse(x.effective_to) > serverNowMs()) : [] };
     }),
   );
-  return <FlagsView locale={locale} flags={flags} canWrite={canOp("config.change", session.user.role)} />;
+  return <FlagsView locale={locale} flags={flags} canWrite={gate("config.change")} />;
 }

@@ -4,6 +4,7 @@ import { FilterBar } from "@/components/admin/kit/filter-bar";
 import { loadAllRows } from "@/components/admin/crud/server";
 import { apiClient, outcome } from "@/lib/api/client";
 import { notFound } from "next/navigation";
+import { canWriteModule, loadGrants } from "@/lib/admin/modules";
 import { ADMIN_PORTAL_ROLES, hasRole } from "@/lib/auth/roles";
 import { requireSession } from "@/lib/auth/require";
 import { getLocale } from "@/lib/auth/service";
@@ -14,6 +15,7 @@ const CAT_KEY: Record<string, MessageKey> = { cigarette: "sku.cat.cigarette", bi
 export default async function SalesPlanPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const [session, locale, sp] = await Promise.all([requireSession(), getLocale(), searchParams]);
   if (!hasRole(session.user.role, ADMIN_PORTAL_ROLES)) return <Forbidden locale={locale} />;
+  const grants = await loadGrants(session.at, session.user.role);
   const zoneRaw = Array.isArray(sp.zone_id) ? sp.zone_id[0] : sp.zone_id;
   const zoneId = zoneRaw && /^[0-9]{1,15}$/.test(zoneRaw) ? Number(zoneRaw) : null;
 
@@ -60,7 +62,7 @@ export default async function SalesPlanPage({ searchParams }: { searchParams: Pr
       <p className="text-sm text-slate-600" data-testid="plan-since">
         {t(locale, "salesplan.since", { date: formatBusinessDate(locale, plan.data.valid_from) })}
       </p>
-      <SalesPlanEditor zoneId={zoneId} siblingZones={siblings} territoryLabel={territory ? `${territory.code} · ${territory.name}` : null} skus={skus} selected={plan.data.sku_ids} minDate={businessDate()} canWrite={["ADMIN", "SUPERADMIN"].includes(session.user.role)} />
+      <SalesPlanEditor zoneId={zoneId} siblingZones={siblings} territoryLabel={territory ? `${territory.code} · ${territory.name}` : null} skus={skus} selected={plan.data.sku_ids} minDate={businessDate()} canWrite={["ADMIN", "SUPERADMIN"].includes(session.user.role) && canWriteModule(grants, "targets")} />
     </div>
   );
 }

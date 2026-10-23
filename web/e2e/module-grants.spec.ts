@@ -28,3 +28,12 @@ test("modules: the menu shows only granted modules; targets at read hides the up
   await page.goto("/admin/outlet-import");
   await expect(page.getByTestId("oi-upload")).toBeVisible(); // outlets: w
 });
+
+// Non-generator pages hide their write controls from an ADMIN whose grant for the owning module is read (masterdata: r).
+test("modules: the calendar of a masterdata reader has no holiday form", async ({ page }) => {
+  await loginOk(page, "mgrant1", "grant-pass-1", "123456");
+  await page.goto("/admin/calendar");
+  await expect(page.getByTestId("module-read-only")).toBeVisible();
+  await expect(page.getByTestId("holiday-form")).toHaveCount(0);
+  await expect(page.getByTestId("weekend-form")).toHaveCount(0);
+});
