@@ -33,6 +33,23 @@ internal object DashboardSummaries {
         "SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'dw' AND table_name = 'agg_daily_route' AND column_name = 'checked_in_at')",
     ).mapTo(Boolean::class.java).one()
 
+    /**
+     * The one meaning of "Successful Login" (owner brief s3.4, D-REPORTS-LOGIN-01): the SR logged in AND downloaded the bundle AND checked in. SQL over
+     * `dw.agg_daily_route` columns, [alias] is the table alias ("" for none). Where the summary columns do not exist yet (before db's V0093 to V0108) the
+     * older rule holds (any state past `not_started`), so the worker and the cards work on either side of those migrations.
+     */
+    fun successfulLoginSql(h: Handle, alias: String = "a"): String {
+        val p = if (alias.isEmpty()) "" else "$alias."
+        if (!ready(h)) return "${p}day_state <> 'not_started'"
+        return "${p}logged_in_at IS NOT NULL AND ${p}downloaded_at IS NOT NULL" + if (hasCheckedIn(h)) " AND ${p}checked_in_at IS NOT NULL" else ""
+    }
+
+    /** [successfulLoginSql] as it stood at the instant bound to `:[param]`: every stamp present and at or before it (never null). */
+    fun successfulLoginAtSql(h: Handle, alias: String, param: String): String {
+        val stamps = if (!ready(h)) listOf("logged_in_at") else listOf("logged_in_at", "downloaded_at") + if (hasCheckedIn(h)) listOf("checked_in_at") else emptyList()
+        return "coalesce(" + stamps.joinToString(" AND ") { "$alias.$it <= :$param" } + ", false)"
+    }
+
     /** True when every table and column of the request exists. Cheap catalog query; not cached because test databases differ. */
     fun ready(h: Handle): Boolean {
         val wanted = columns.entries.flatMap { (t, cs) -> cs.map { t to it } }

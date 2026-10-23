@@ -63,6 +63,7 @@ export const nationalEn = {
   "nat.login.status": "Login Status",
   "nat.login.target_route": "Target Route",
   "nat.login.successful": "Successful Login",
+  "nat.login.successful.help": "A route counts once the SR has logged in, downloaded the day's bundle and checked in. All three are required, so this can be lower than a count of logins alone.",
   "nat.submit.status": "Submit Status",
   "nat.submit.logged_in": "Login successfully",
   "nat.submit.done": "Submitted successfully",

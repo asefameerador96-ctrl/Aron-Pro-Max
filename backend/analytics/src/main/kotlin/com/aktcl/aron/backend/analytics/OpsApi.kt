@@ -201,30 +201,36 @@ class OpsService(
 
     // ---------------- login and submit lists ----------------
 
+    /** One route-day of the login/submit lists; [loggedIn] = successful login (login, download and check-in). */
+    private data class LoginDay(val dto: RouteDayStateDto, val excused: Boolean, val submitted: Boolean, val loggedIn: Boolean)
+
     fun loginSubmit(reach: Reach, dashboards: DashboardService, date: LocalDate, level: String?, nodeId: Long?): LoginSubmitStatus {
         val summary = dashboards.summary(reach, level, nodeId, date, date)
-        val days = db.readJdbi.withHandle<List<Triple<RouteDayStateDto, Boolean, Boolean>>, Exception> { h ->
+        val days = db.readJdbi.withHandle<List<LoginDay>, Exception> { h ->
             val node = resolveScopedNode(h, reach, level, nodeId)
+            val login = DashboardSummaries.successfulLoginSql(h, "ag")   // Successful Login = login AND download AND check-in (D-REPORTS-LOGIN-01)
             node.bind(
                 h.createQuery(
                     """
                     SELECT rd.*, g.route_code, g.route_name, au.username AS assigned_username, au.full_name AS assigned_user_full_name,
+                           coalesce(($login), false) AS login_ok,
                            EXISTS (SELECT 1 FROM app.day_exception e WHERE e.status = 'approved' AND e.voided_at IS NULL AND rd.route_id = ANY (e.route_ids) AND rd.business_date BETWEEN e.from_date AND e.to_date) AS excused
                       FROM app.route_day rd JOIN dw.dim_geo g ON g.route_id = rd.route_id LEFT JOIN app.app_user au ON au.id = rd.assigned_user_id
+                      LEFT JOIN dw.agg_daily_route ag ON ag.route_id = rd.route_id AND ag.business_date = rd.business_date
                      WHERE rd.business_date = :d AND rd.planned AND ${node.clause("g.zone_id")} ORDER BY g.route_code
                     """,
                 ).bind("d", date),
             ).map { rs, _ ->
                 fun t(c: String) = rs.getObject(c, OffsetDateTime::class.java)?.toInstant()?.wire()
-                Triple(
+                LoginDay(
                     RouteDayStateDto(rs.getLong("route_id"), date.toString(), rs.getString("state"), rs.getBoolean("planned"), rs.getInt("submit_cycle"), rs.getBoolean("submit_voided"), rs.getObject("submit_count_mismatch") as Boolean?,
                         t("logged_in_at"), t("sales_submitted_at"), t("final_submitted_at"), rs.getObject("rows_awaited") as Int?, rs.getString("route_code"), rs.getString("route_name"),
                         rs.getObject("assigned_user_id") as Long?, rs.getObject("acting_user_id") as Long?, rs.getString("assigned_username"), rs.getString("assigned_user_full_name")),
-                    rs.getBoolean("excused"), rs.getString("state") in setOf("sales_submitted", "final_submitted"),
+                    rs.getBoolean("excused"), rs.getString("state") in setOf("sales_submitted", "final_submitted"), rs.getBoolean("login_ok") && rs.getString("state") != "not_started",
                 )
             }.list()
         }
-        val live = days.filter { !it.second }
+        val live = days.filter { !it.excused }
         val zones = db.readJdbi.withHandle<List<ZoneFinalDto>, Exception> { h ->
             val node = resolveScopedNode(h, reach, level, nodeId)
             node.bind(h.createQuery("SELECT zone_id, final_submitted FROM dw.agg_daily_zone a WHERE business_date = :d AND target_routes > 0 AND ${node.clause("a.zone_id")} ORDER BY zone_id").bind("d", date))
@@ -232,8 +238,8 @@ class OpsService(
         }
         return LoginSubmitStatus(
             summary.as_of, date.toString(), summary.kpis,
-            live.filter { it.first.state == "not_started" }.map { it.first }, live.filter { it.first.state != "not_started" && !it.third }.map { it.first },
-            live.filter { it.third }.map { it.first }, days.filter { it.second }.map { it.first }, zones,
+            live.filter { !it.loggedIn && !it.submitted }.map { it.dto }, live.filter { it.loggedIn && !it.submitted }.map { it.dto },
+            live.filter { it.submitted }.map { it.dto }, days.filter { it.excused }.map { it.dto }, zones,
         )
     }
 

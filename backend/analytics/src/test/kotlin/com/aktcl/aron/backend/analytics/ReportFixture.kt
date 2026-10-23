@@ -49,6 +49,14 @@ abstract class ReportFixture {
     protected open val handlers: List<ReportHandler> = ReportHandlers.all
     /** Extra SQL run after the seed and before aggregation. */
     protected open val extraSql: String = ""
+    /** Adds the bundle download and the check-in that make the seeded logged-in routes Successful Logins (login_extra.sql). A class that scripts its own attendance turns it off. */
+    protected open val successfulLogin: Boolean = true
+
+    /** Gives the seeded routes their download and check-in now and rebuilds the day (for a test of a class with [successfulLogin] off). */
+    protected fun grantLogin() {
+        fresh.dataSource.connection.use { c -> c.createStatement().use { it.execute(javaClass.classLoader.getResourceAsStream("login_extra.sql")!!.bufferedReader().readText()) } }
+        AggregationWorker(fresh.db).also { w -> w.requestRebuild(day); w.runUntilIdle() }
+    }
     /** Extra route groups mounted under /v1 next to the report routes. */
     protected open fun mount(r: io.ktor.server.routing.Route, clock: AronClock, reach: ReachResolver, guard: AuthGuardDeps) {}
 
@@ -76,6 +84,7 @@ abstract class ReportFixture {
         fresh.dataSource.connection.use { c ->
             c.createStatement().use { it.execute(javaClass.classLoader.getResourceAsStream("seed_day.sql")!!.bufferedReader().readText()) }
             if (extraSql.isNotBlank()) c.createStatement().use { it.execute(extraSql) }
+            if (successfulLogin) c.createStatement().use { it.execute(javaClass.classLoader.getResourceAsStream("login_extra.sql")!!.bufferedReader().readText()) }
             for (u in listOf("a1", "a2", "a4", "a5")) c.createStatement().use {
                 it.execute("INSERT INTO app.domain_event (event_type, aggregate_type, aggregate_id, business_date, source_client_uuid) VALUES ('memo.created','memo','x','2026-10-04','00000000-0000-4000-8000-0000000000$u')")
             }

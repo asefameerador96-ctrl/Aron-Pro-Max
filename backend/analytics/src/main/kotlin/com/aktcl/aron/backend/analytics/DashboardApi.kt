@@ -340,11 +340,12 @@ class DashboardService(
             ) { it.map { rs, _ -> DashboardChild(NodeRefDto(lv.childType!!, rs.getLong("cid"), null, rs.getString("cname")), kpisOf(rs)) }.list() }
         } else {
             // A zone's children are its routes: a route-day counts as one target route when planned and not excused.
+            val login = DashboardSummaries.successfulLoginSql(h)
             h.q(
                 """
                 SELECT g.route_id cid, g.route_name cname, g.route_code ccode,
                   count(*) FILTER (WHERE a.planned AND NOT a.exception_approved) tr,
-                  count(*) FILTER (WHERE a.planned AND NOT a.exception_approved AND a.day_state <> 'not_started') lr,
+                  count(*) FILTER (WHERE a.planned AND NOT a.exception_approved AND $login) lr,
                   count(*) FILTER (WHERE a.planned AND NOT a.exception_approved AND a.day_state IN ('sales_submitted','final_submitted')) sr,
                   coalesce(sum(a.target_outlets) FILTER (WHERE a.planned AND NOT a.exception_approved),0) tout, coalesce(sum(a.visited_outlets),0) vout,
                   coalesce(sum(a.successful_calls),0) sc, coalesce(sum(a.visits),0) vis, coalesce(sum(a.geo_valid_visits),0) gv,
