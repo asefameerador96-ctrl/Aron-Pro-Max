@@ -71,7 +71,7 @@
     <string name="route_in_use">চলতি রুট: %1$s</string>
     <string name="route_change">রুট বদলান</string>
     <string name="tut_title">টিউটোরিয়াল</string>
-    <string name="tut_empty">এখনো কোনো টিউটোরিয়াল ভিডিও নেই।</string>
+    <string name="tut_empty">কোনো টিউটোরিয়াল পাওয়া যায়নি।</string>
     <string name="tut_online_only">ভিডিও শুধু অনলাইনে চলে। দেখতে নেটওয়ার্কে যুক্ত হন।</string>
     <string name="tut_play">চালান</string>
     <string name="hm_hero_total">আজকের সর্বমোট</string>
