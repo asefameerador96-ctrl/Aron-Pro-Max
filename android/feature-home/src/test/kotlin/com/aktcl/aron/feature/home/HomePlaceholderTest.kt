@@ -57,7 +57,7 @@ class HomePlaceholderTest {
         compose.onNodeWithText("ব্যবসায়িক তারিখ: ২০২৬-১০-০৫").assertIsDisplayed()
         compose.onNodeWithText("SR - Testing Banani (sr334001)").assertIsDisplayed()
         compose.onNodeWithText("অফলাইন: আপনার কাজ এই ফোনে সংরক্ষিত আছে, পরে সিঙ্ক হবে").assertIsDisplayed()
-        compose.onNodeWithText("লগআউট").assertIsDisplayed()
+        compose.onNodeWithText("লগ আউট").assertIsDisplayed()
     }
 
     @Test

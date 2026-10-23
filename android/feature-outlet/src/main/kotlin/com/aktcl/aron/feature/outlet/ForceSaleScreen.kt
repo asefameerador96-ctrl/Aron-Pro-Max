@@ -43,7 +43,10 @@ object ForceSaleTags {
  * "GEO captured ± n m" line, the photo line, the mock warning and the shutter (secondary; one retake).
  */
 @Composable
-fun GeoPhotoBlock(state: GeoPhotoState, onShutter: () -> Unit, modifier: Modifier = Modifier, note: String? = null) {
+fun GeoPhotoBlock(
+    state: GeoPhotoState, onShutter: () -> Unit, modifier: Modifier = Modifier, note: String? = null,
+    @androidx.annotation.StringRes takeLabel: Int = R.string.out_take_photo,
+) {
     val look = LocalAronLook.current
     FormCard(modifier.fillMaxWidth()) {
         Column(Modifier.fillMaxWidth().padding(AronTokens.Space.L), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.M)) {
@@ -64,7 +67,7 @@ fun GeoPhotoBlock(state: GeoPhotoState, onShutter: () -> Unit, modifier: Modifie
             if (state.geoMocked) FormNotice(stringResource(R.string.out_mocked_warn), kind = BannerKind.Error)
             val canShoot = !state.busy && (state.photo == null || state.retakesLeft > 0)
             AronPrimaryButton(
-                stringResource(if (state.photo == null) R.string.out_take_photo else R.string.out_retake_photo), onShutter,
+                stringResource(if (state.photo == null) takeLabel else R.string.out_retake_photo), onShutter,
                 Modifier.fillMaxWidth().testTag(ForceSaleTags.PHOTO), enabled = canShoot,
             )
         }

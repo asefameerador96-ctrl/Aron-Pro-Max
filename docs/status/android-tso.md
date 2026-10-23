@@ -1,3 +1,6 @@
+# Session 3, slice 4 (2026-10-23): rulings D-TSO-PARITY-SHARED-01 (X4, X5) and D-TSO-PARITY-O3-01
+Slice 3 (M9) is at 26649017 (lane run 39988902021). Slice 4: shared bn strings `set_title` "সেটিং", `set_logout` "লগ আউট", logout dialog "আপনি কি নিশ্চিত যে লগআউট করতে চান?" with "হ্যাঁ" / "না" for SR, AMO and TSO; new `out_req_capture_geo_photo` for the outlet-request capture button (`GeoPhotoBlock(takeLabel)`), the force-sale button keeps `out_take_photo`. The outlet-request shutter reads one on-demand fix after the photo, so there is no follow-up. `HomePlaceholderTest` asserts the new tile word. Both decisions are in DECISIONS.md. H1 stays open (Daily is AKTCL wording, kit header layout).
+
 # Session 3, slice 3 (2026-10-23): SR parity M9 wording
 INT merged at 70060dd3. `feature-sale` bn: edit-reason title "দয়া করে বিক্রয় এডিট করার কারন লিখুন" and first reason "ভুল SKU নির্বাচিত।" (manual wording; shared with the AMO sale edit). The structure stays the three tap rows (EditReason wire values unchanged; the manual's dropdown with a cancel / submit pair is a layout change, not made). No golden shows the screen. H1 not changed: the route kind "Daily" is AKTCL's wording kept in English by design (`sr_route_kind_*`, screens-sr s2) and the two-line header is a kit layout (D-UI), so it is left for the lead's ruling together with X4, X5, O3.
 
