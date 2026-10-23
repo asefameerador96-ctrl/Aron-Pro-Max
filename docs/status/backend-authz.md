@@ -5,6 +5,7 @@
 - Role-node rule for web-admin (scope-rules.ts): house for TSO and AMO only; server does not enforce role-node pairing (as for every type).
 - Opus checker: 0 blockers; notes in the DECISIONS entry (GET access code beyond the contract text; HouseDedup merge does not move user_scope house nodes: backend-admin follow-up; backend-reports DashboardApi house top node).
 - Local: :backend:masterdata:test green; :backend:app:test see below. Then one push, lane run, candidate to the lead with the rule.
+- CANDIDATE 1cca13e2 (lane run #1478 id 39964344328, all 8 run jobs green, infra skipped) checked by the lead 14:32 UTC, staged for train 19. Lead rulings: keep ERR_AUTHZ_ROLE_ABOVE_GRANT on GET access (description change = row 1 of docs/requests/contract-v1.8-queue.md); HouseDedup house-node follow-up -> backend-admin #7, DashboardApi house top node -> backend-reports #6 (docs/requests/lead-hand-offs-2026-10-23.md); role-node rule relayed to web-admin #7. HOLD: no push until the lead says "train 19 landed", then merge INT once and push this status file. Nothing else queued; D-AUTHZ-NATIONAL-NODE-02 still waits on the owner.
 - Fresh container: the aron role/db had to be created (session-2 commands); no Gradle mirror init script was needed.
 
 ## HANDOVER (session 7 -> session 8, updated 2026-10-23 ~01:20 UTC at ~320k tokens) — read this first
