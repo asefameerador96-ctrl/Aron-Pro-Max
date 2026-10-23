@@ -296,16 +296,16 @@ abstract class DataFlowTraceSupport(
     }
 
     /** Login as sr1001 on the seeded phone, fetch the Saturday bundle, and fill route, pins, SKUs and the device model. */
-    protected fun prepareSrDay() {
-        val token = login("sr1001", "app_sr", ApiWorld.SR_PHONE)
-        bundle = fetchBundle(token, ApiWorld.SR_PHONE)
+    protected fun prepareSrDay(username: String = "sr1001", phone: String = ApiWorld.SR_PHONE, routeCode: String? = null) {
+        val token = login(username, "app_sr", phone)
+        bundle = fetchBundle(token, phone)
         val meta = bundle.path("meta")
-        route = bundle.path("routes").single { it.path("planned_today").asBoolean() }
+        route = if (routeCode == null) bundle.path("routes").single { it.path("planned_today").asBoolean() } else bundle.path("routes").single { it.path("route").path("code").asText() == routeCode }
         gulRouteId = route.path("route_id").asLong()
         route.path("outlets").forEach { gulPins[it.path("outlet_id").asLong()] = it.path("lat").asDouble() to it.path("lng").asDouble() }
         skus += skusOf(bundle, route)
-        val dev = rows("SELECT id AS did FROM app.device WHERE device_uuid = '${ApiWorld.SR_PHONE}'")
-        sr = Device("sr1001", ApiWorld.SR_PHONE, dev.single()["did"] as Long, gulRouteId, meta.path("bundle_version").asText(), meta.path("config_version").asLong(), token)
+        val dev = rows("SELECT id AS did FROM app.device WHERE device_uuid = '$phone'")
+        sr = Device(username, phone, dev.single()["did"] as Long, gulRouteId, meta.path("bundle_version").asText(), meta.path("config_version").asLong(), token)
         sr.seq = bundle.path("user").path("bind_ordinal").asInt() * bundle.path("user").path("memo_seq_block_size").asInt() + 1
     }
 
