@@ -193,3 +193,6 @@ green run of the exact sha). Usage stays `allowed` on the five-hour window.
 
 ## Update 2026-10-23 10:50 UTC (lead lane check)
 - Train 17 on dev 10:17 (no slip). Train 18 (qa cover/holiday/parking slice, lead contract 1.7.0 batch, db docs, lead docs): the batch pushes once its local backend suites finish (about 11:00), its CI runs about 40 minutes (contract, web and Android jobs all run), GO about 11:50, dev about 12:50. Then backend-authz #8, backend-core #15, mdm #2, web-admin #7 and an android-tso session wire rows 1 to 4 (small rows; candidates through the afternoon; train 19 about 16:00). Evening report 18:30.
+
+## Update 2026-10-23 13:00 UTC (lead)
+- Train 18 on dev 12:46 (no slip; contract 1.7.0 live). Wiring heads (backend-authz #8 rows 1–2, backend-core #15 row 4, mdm #2 row 3, web-admin #7, android-tso #3) are small: candidates expected 14:30–17:00; train 19 forms when two or more are checked, push about 17:00, dev about 18:00; a second wiring train tomorrow morning if any candidate slips. Integrator 19 is created at integrator 18's READY TO RECYCLE (about train 19 or 20). Evening report 18:30.

@@ -50,6 +50,7 @@ export const bn: Record<MessageKey, string> = {
   "scope.wing": "উইং",
   "scope.division": "বিভাগ",
   "scope.territory": "টেরিটরি",
+  "scope.house": "হাউস",
   "scope.zone": "জোন",
   "scope.route": "রুট",
   "scope.none": "কোনো পরিধি নির্ধারিত নেই",

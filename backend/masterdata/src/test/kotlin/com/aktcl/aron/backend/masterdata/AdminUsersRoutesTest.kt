@@ -1,6 +1,7 @@
 package com.aktcl.aron.backend.masterdata
 
 import com.aktcl.aron.contract.Role
+import io.ktor.client.statement.bodyAsText
 import io.ktor.http.HttpMethod
 import io.ktor.http.HttpStatusCode
 import kotlinx.serialization.json.JsonObject
@@ -33,6 +34,16 @@ class AdminUsersRoutesTest {
         // wall-clock-ok: the app under test runs on AronClock.SYSTEM; compares its expiry to now within 2 minutes (elapsed, not date-dependent)
         val h = java.time.Duration.between(java.time.Instant.now(), java.time.Instant.parse(at)).toMinutes()
         assertTrue(h in 24 * 60 - 2..24 * 60, "temporary password lives 24 h, got $h min")
+    }
+
+    private val SENIOR_DETAIL = "only a SUPERADMIN manages ADMIN and SUPERADMIN users"
+    private val SERVICE_DETAIL = "only a SUPERADMIN manages ANALYST and SUPPORT users"
+
+    /** D-AUTHZ-ADMIN-CREDS-01, contract 1.7.0: 403 ERR_AUTHZ_ROLE_ABOVE_GRANT with the stable detail of the cutover. */
+    private suspend fun assertAboveGrant(res: io.ktor.client.statement.HttpResponse, detail: String) {
+        assertEquals(HttpStatusCode.Forbidden, res.status)
+        assertEquals("ERR_AUTHZ_ROLE_ABOVE_GRANT", res.code())
+        assertEquals(detail, res.objA1().strA1("detail"))
     }
 
     private fun userBody(name: String, role: String = "TSO", extra: String = "") =
@@ -78,20 +89,20 @@ class AdminUsersRoutesTest {
         assertEquals(HttpStatusCode.BadRequest, post("""{"username":"okname4","full_name":"x","role":"TSO","locale":"bn","home_zone_id":99999}""").status)
         assertEquals(HttpStatusCode.Created, post(userBody("newsr001", "SR")).status)
         // An ADMIN cannot create ADMIN or SUPERADMIN users; a SUPERADMIN can.
-        assertEquals(HttpStatusCode.Forbidden, post(userBody("newadmin1", "ADMIN")).status)
+        assertAboveGrant(post(userBody("newadmin1", "ADMIN")), SENIOR_DETAIL)
         assertEquals(HttpStatusCode.Created, post(userBody("newadmin1", "ADMIN"), superadmin).status)
         // D-AUTHZ-ADMIN-CREDS-01: an ADMIN manages every portal level below ADMIN (NATIONAL and BRAND included), never
         // the internal service roles: it neither creates them, nor moves a user into or out of them, nor resets them.
-        for (r in listOf("SUPPORT", "ANALYST")) assertEquals(HttpStatusCode.Forbidden, post(userBody("new${r.lowercase()}1", r)).status, r)
+        for (r in listOf("SUPPORT", "ANALYST")) assertAboveGrant(post(userBody("new${r.lowercase()}1", r)), SERVICE_DETAIL)
         assertEquals(HttpStatusCode.Created, post(userBody("newsupport2", "SUPPORT"), superadmin).status)
         assertEquals(HttpStatusCode.Created, post(userBody("newnational1", "NATIONAL")).status)
         assertEquals(HttpStatusCode.Created, post(userBody("newbrand1", "BRAND")).status)
         val tso = (post(userBody("newtso9", "TSO")).objA1()["user"] as JsonObject).lng("id")
         val toSupport = sendA1(HttpMethod.Patch, "/admin/users/$tso", admin, """{"role":"SUPPORT","change_reason":"Moved to the helpdesk"}""", ifMatch = 1)
-        assertEquals(HttpStatusCode.Forbidden, toSupport.status, toSupport.objA1().toString())
+        assertAboveGrant(toSupport, SERVICE_DETAIL)
         val support = uid("support1001")
         val reset = sendA1(HttpMethod.Post, "/admin/users/$support/credentials", admin, """{"action":"reset_password","reason":"Forgot the password"}""")
-        assertEquals(HttpStatusCode.Forbidden, reset.status)
+        assertAboveGrant(reset, "only a SUPERADMIN acts on ANALYST and SUPPORT users")
         // A reset of a lower level works and its audit row names the target's role.
         val tsoReset = sendA1(HttpMethod.Post, "/admin/users/$tso/credentials", admin, """{"action":"reset_password","reason":"Forgot the password"}""")
         assertEquals(HttpStatusCode.OK, tsoReset.status, tsoReset.objA1().toString())
@@ -130,7 +141,7 @@ class AdminUsersRoutesTest {
         assertEquals(HttpStatusCode.Forbidden, sendA1(HttpMethod.Patch, "/admin/users/$me", admin, """{"status":"disabled"}""", ifMatch = mv).status)
         // An ADMIN cannot edit a SUPERADMIN.
         val su = uid("superadmin1001"); val sv = env.sql("SELECT version FROM app.app_user WHERE id = $su")!!
-        assertEquals(HttpStatusCode.Forbidden, sendA1(HttpMethod.Patch, "/admin/users/$su", admin, """{"designation":"x"}""", ifMatch = sv).status)
+        assertAboveGrant(sendA1(HttpMethod.Patch, "/admin/users/$su", admin, """{"designation":"x"}""", ifMatch = sv), SENIOR_DETAIL)
         assertEquals(HttpStatusCode.NotFound, sendA1(HttpMethod.Patch, "/admin/users/99999", admin, """{"designation":"x"}""", ifMatch = 1).status)
     }
 
@@ -211,6 +222,41 @@ class AdminUsersRoutesTest {
         assertEquals(HttpStatusCode.Forbidden, put(body, env.token("dmo1001", Role.DMO)).status)
     }
 
+    /** Contract 1.7.0 (D-SCOPE-TREE-01): a `house` node is written, read back and reaches exactly the zones of that house. */
+    @Test
+    fun putScopeAcceptsAnActiveHouseNodeAndItReachesThatHousesZones() = env.app {
+        val house = env.sql("SELECT id FROM app.house WHERE code = 'H-MIR'")!!.toLong()
+        val houseZones = env.db.fresh.db.jdbi.withHandle<Set<Long>, Exception> { h ->
+            h.createQuery("SELECT id FROM app.zone WHERE house_id = $house").mapTo(Long::class.java).set()
+        }
+        assertTrue(houseZones.isNotEmpty() && zone("Z-OTHER") !in houseZones, "$houseZones")
+        val geo = GeoRepository(env.db.fresh.db)
+        fun body(id: Long) = """{"valid_from":"${env.today}","nodes":[{"node_type":"house","node_id":$id}],"change_reason":"Cover one distribution house"}"""
+        for ((name, role) in listOf("housetso1" to Role.TSO, "housedmo1" to Role.DMO)) {
+            val u = (sendA1(HttpMethod.Post, "/admin/users", admin, userBody(name, role.wire)).objA1()["user"] as JsonObject).lng("id")
+            val r = sendA1(HttpMethod.Put, "/admin/users/$u/scope", admin, body(house))
+            assertEquals(HttpStatusCode.OK, r.status, r.objA1().toString())
+            val node = r.objA1().arr("nodes").single() as JsonObject
+            assertEquals("house", node.strA1("node_type")); assertEquals(house, node.lng("node_id"))
+            assertEquals("house|$house", env.sql("SELECT node_type || '|' || node_id FROM app.user_scope WHERE user_id = $u"))
+            assertEquals(r.objA1(), sendA1(HttpMethod.Get, "/admin/users/$u/scope", admin).objA1())
+            val reach = SqlReachResolver(env.db.fresh.db, geo).reach(u, role, scopeVersion(u), env.today)
+            assertFalse(reach.national, name); assertEquals(houseZones, reach.zoneIds, name)
+            assertEquals(listOf("house" to house), reach.topNodes.map { it.type to it.id }, "the reach summary names the stored node type")
+        }
+        // An unknown house and an inactive (merged) house are refused like any unknown node; nothing is stored.
+        val u = (sendA1(HttpMethod.Post, "/admin/users", admin, userBody("housetso2", "TSO")).objA1()["user"] as JsonObject).lng("id")
+        val closed = env.sql("INSERT INTO app.house (code, name, territory_id, status) SELECT 'H-SHUT', 'Shut House', territory_id, 'inactive' FROM app.house WHERE id = $house RETURNING id")!!.toLong()
+        for (id in listOf(99999L, closed)) {
+            val res = sendA1(HttpMethod.Put, "/admin/users/$u/scope", admin, body(id))
+            assertEquals(HttpStatusCode.BadRequest, res.status, "$id")
+            assertTrue(res.bodyAsText().contains("unknown_node"), res.bodyAsText())
+        }
+        assertEquals("0", env.sql("SELECT count(*) FROM app.user_scope WHERE user_id = $u"))
+        // Re-scoping an ADMIN or a service login stays the Super Admin's.
+        assertAboveGrant(sendA1(HttpMethod.Put, "/admin/users/${uid("support1001")}/scope", admin, body(house)), SERVICE_DETAIL)
+    }
+
     @Test
     fun credentialActionsAndTheTsoLimits() = env.app {
         val tso1 = env.token("tso1001", Role.TSO)
@@ -244,7 +290,7 @@ class AdminUsersRoutesTest {
         assertEquals(HttpStatusCode.Forbidden, sendA1(HttpMethod.Post, "/admin/users/$sr/credentials", env.token("sr1001", Role.SR), """{"action":"unlock","reason":"Self service attempt"}""").status)
         // SUPPORT may force a logout of any user in reach; only a SUPERADMIN acts on ADMIN users.
         assertEquals(HttpStatusCode.OK, sendA1(HttpMethod.Post, "/admin/users/${uid("tso1001")}/credentials", env.token("support1001", Role.SUPPORT), """{"action":"force_logout","reason":"Phone was lost today"}""").status)
-        assertEquals(HttpStatusCode.Forbidden, sendA1(HttpMethod.Post, "/admin/users/${uid("superadmin1001")}/credentials", env.token("support1001", Role.SUPPORT), """{"action":"reset_password","reason":"Support reset a superadmin"}""").status)
+        assertAboveGrant(sendA1(HttpMethod.Post, "/admin/users/${uid("superadmin1001")}/credentials", env.token("support1001", Role.SUPPORT), """{"action":"reset_password","reason":"Support reset a superadmin"}"""), "only a SUPERADMIN acts on ADMIN and SUPERADMIN users")
         assertEquals(HttpStatusCode.OK, sendA1(HttpMethod.Post, "/admin/users/${uid("admin1001")}/credentials", superadmin, """{"action":"reset_mfa","reason":"Admin lost the authenticator"}""").status)
         assertEquals(HttpStatusCode.Forbidden, sendA1(HttpMethod.Post, "/admin/users/$sr/credentials", env.token("support1001", Role.SUPPORT), """{"action":"reset_mfa","reason":"Support may not reset MFA"}""").status)
     }

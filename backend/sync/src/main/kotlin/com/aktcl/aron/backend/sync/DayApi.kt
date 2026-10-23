@@ -61,6 +61,8 @@ data class FinalSubmitResultDto(
 data class FinalSubmitPreviewRouteDto(
     val route_id: Long, val route_code: String, val route_name: String, val kind: String, val ff_user_id: Long?, val ff_user_name: String?,
     val state: String, val had_data: Boolean, val memo_count: Int, val net_mtk: Long, val pending_rows_reported: Int?,
+    /** `app.route_day.planned` on the date; null while the route has no route-day row (contract 1.7.0). */
+    val planned: Boolean?,
 )
 
 @Serializable
@@ -236,7 +238,7 @@ class DayService(
         ).bind("z", zone).bind("d", date).map { rs, _ -> rs.getObject(1, OffsetDateTime::class.java).toInstant().wire() to rs.getString(2) }.findOne().orElse(null)
         val routes = h.createQuery(
             """
-            SELECT r.id, r.code, r.name, r.kind, rd.state, rd.rows_awaited, ff.id AS ff_id, ff.full_name AS ff_name, rd.planned IS DISTINCT FROM false AS due_by_plan,
+            SELECT r.id, r.code, r.name, r.kind, rd.state, rd.rows_awaited, ff.id AS ff_id, ff.full_name AS ff_name, rd.planned, rd.planned IS DISTINCT FROM false AS due_by_plan,
                    (SELECT count(*) FROM app.memo m WHERE m.route_id = r.id AND m.business_date = :d AND $ACTIVE_MEMO) AS memos,
                    (SELECT coalesce(sum(m.net_mtk), 0) FROM app.memo m WHERE m.route_id = r.id AND m.business_date = :d AND $ACTIVE_MEMO) AS net,
                    EXISTS (SELECT 1 FROM app.visit v WHERE v.route_id = r.id AND v.business_date = :d AND v.voided_at IS NULL)
@@ -254,6 +256,7 @@ class DayService(
             FinalSubmitPreviewRouteDto(
                 rs.getLong("id"), rs.getString("code"), rs.getString("name"), rs.getString("kind"), rs.getObject("ff_id") as Long?, rs.getString("ff_name"),
                 rs.getString("state") ?: "not_started", rs.getBoolean("had_data"), rs.getInt("memos"), rs.getLong("net"), rs.getObject("rows_awaited") as Int?,
+                rs.getObject("planned") as Boolean?,
             ) to rs.getBoolean("due_by_plan")
         }.list()
         // Every active route is listed (F-TSO-010), but only a route due that day warns: planned on the date or with data.

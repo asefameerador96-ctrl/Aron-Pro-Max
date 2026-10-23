@@ -12,9 +12,9 @@ test("user scope: only the role's node type, saved from a date with a reason", a
   await page.getByRole("row", { name: /tso334/ }).getByTestId("link-scope").click();
   await expect(page.getByTestId("scope-user")).toContainText("tso334");
   await expect(page.getByTestId("scope-nodes")).toContainText("T-334");
-  // a TSO may only hold territories
+  // a TSO may hold a territory or a house (D-WEB-ADMIN-HOUSE-NOTDUE-01), nothing else
   const types = await page.getByLabel("পরিধি", { exact: true }).locator("option").allTextContents();
-  expect(types).toEqual(["টেরিটরি"]);
+  expect(types).toEqual(["টেরিটরি", "হাউস"]);
   await page.getByLabel("নোড").selectOption({ label: "T-335 · Mirpur" });
   await page.getByTestId("scope-add").click();
   await expect(page.getByTestId("scope-nodes")).toContainText("T-335");

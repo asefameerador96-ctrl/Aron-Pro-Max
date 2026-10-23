@@ -19,7 +19,10 @@ import io.ktor.http.contentType
 import io.ktor.server.testing.testApplication
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
@@ -330,25 +333,37 @@ class DayApiTest {
             assertEquals(HttpStatusCode.OK, r.status, r.bodyAsText())
             return json(r.bodyAsText())
         }
+        // Contract 1.7.0: each route carries `planned` from its route-day row, JSON null (present) when there is none.
+        fun planned(p: JsonObject): Map<Long, JsonElement> =
+            p["routes"]!!.jsonArray.associate { it.jsonObject["route_id"]!!.jsonPrimitive.content.toLong() to it.jsonObject.getValue("planned") }
         val p = preview()
+        assertTrue(planned(p).size > 1 && planned(p).values.all { it == JsonPrimitive(false) }, "every route planned false: $p")
         val listed = p["routes"]!!.jsonArray.map { it.jsonObject }.single { it["route_id"]!!.jsonPrimitive.content.toLong() == r1 }
         assertEquals("logged_in", listed["state"]!!.jsonPrimitive.content, "the unplanned route is still listed")
         assertEquals(false, listed["had_data"]!!.jsonPrimitive.content.toBoolean())
         assertEquals(emptyList(), p["warnings"]!!.jsonArray.map { it.jsonPrimitive.content }, "no route of the zone was due on $d: $p")
         // A route with no route-day row (the planner has not run) still warns as before.
         fresh.db.jdbi.useHandle<Exception> { h -> h.execute("DELETE FROM app.route_day WHERE business_date = DATE '$d' AND route_id <> ?", r1) }
-        assertEquals(listOf("routes_not_sales_submitted", "routes_not_logged_in"), preview()["warnings"]!!.jsonArray.map { it.jsonPrimitive.content })
+        val noRow = preview()
+        assertEquals(listOf("routes_not_sales_submitted", "routes_not_logged_in"), noRow["warnings"]!!.jsonArray.map { it.jsonPrimitive.content })
+        assertEquals(JsonPrimitive(false), planned(noRow)[r1])
+        assertTrue(planned(noRow).filterKeys { it != r1 }.values.let { it.isNotEmpty() && it.all { v -> v == JsonNull } }, "no route-day row: planned null: $noRow")
         fresh.db.jdbi.useHandle<Exception> { h ->
             h.execute("INSERT INTO app.route_day (route_id, business_date, planned) SELECT id, DATE '$d', false FROM app.route WHERE zone_id = ? AND status = 'active' ON CONFLICT DO NOTHING", zone)
         }
         assertEquals(emptyList(), preview()["warnings"]!!.jsonArray.map { it.jsonPrimitive.content })
         // Planned that day: the same state warns.
         fresh.db.jdbi.useHandle<Exception> { h -> h.execute("UPDATE app.route_day SET planned = true WHERE route_id = ? AND business_date = DATE '$d'", r1) }
-        assertEquals(listOf("routes_not_sales_submitted"), preview()["warnings"]!!.jsonArray.map { it.jsonPrimitive.content })
+        val plannedDay = preview()
+        assertEquals(listOf("routes_not_sales_submitted"), plannedDay["warnings"]!!.jsonArray.map { it.jsonPrimitive.content })
+        assertEquals(JsonPrimitive(true), planned(plannedDay)[r1])
+        assertTrue(planned(plannedDay).filterKeys { it != r1 }.values.all { it == JsonPrimitive(false) })
         // Unplanned, no data, but submitted with rows still on the phone: pending rows still warn (checker note 7).
         fresh.db.jdbi.useHandle<Exception> { h ->
             h.execute("UPDATE app.route_day SET planned = false, state = 'submit_pending_rows', rows_awaited = 2 WHERE route_id = ? AND business_date = DATE '$d'", r1)
         }
-        assertEquals(listOf("routes_not_sales_submitted", "routes_with_pending_rows"), preview()["warnings"]!!.jsonArray.map { it.jsonPrimitive.content })
+        val pending = preview()
+        assertEquals(listOf("routes_not_sales_submitted", "routes_with_pending_rows"), pending["warnings"]!!.jsonArray.map { it.jsonPrimitive.content })
+        assertEquals(JsonPrimitive(false), planned(pending)[r1])
     }
 }

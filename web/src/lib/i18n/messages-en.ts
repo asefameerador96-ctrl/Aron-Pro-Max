@@ -47,6 +47,7 @@ export const en = {
   "scope.wing": "Wing",
   "scope.division": "Division",
   "scope.territory": "Territory",
+  "scope.house": "House",
   "scope.zone": "Zone",
   "scope.route": "Route",
   "scope.none": "No scope assigned",
