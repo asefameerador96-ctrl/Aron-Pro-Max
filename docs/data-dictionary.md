@@ -15,11 +15,12 @@ the class of docs/16 s13.1. **PII**: none, personal, sensitive, secret. Other pr
 Removals are rare and listed here (a wrong column is removed, never redefined in place); additions are not listed.
 
 - V0109 (2026-10-22): `dw.v_daily_outlet.sold_qty_base` removed: it added cigarette and bidi sticks, lighter pieces and match dozens into one number. Use `cigarette_sold_sticks`, `bidi_sold_sticks`, `lighter_sold_pieces` and `match_sold_dozens`.
+- V0110 (2026-10-23): the deprecated table column behind it, `dw.agg_daily_outlet.sold_qty_base`, dropped (contract step of V0109). `dw.v_daily_outlet` itself is unchanged.
 
 | Schema | Relations | Columns |
 |---|---|---|
 | `app` | 155 | 2636 |
-| `dw` | 44 | 639 |
+| `dw` | 44 | 638 |
 
 ## Index
 
@@ -4840,7 +4841,6 @@ Per outlet and business date: whether visited, geo-valid, and sales totals.
 | `visited` | boolean | not null |  | True when the outlet was visited that day. |
 | `geo_valid` | boolean | not null |  | True when a visit that day passed the geo check. |
 | `active_memo_count` | integer | not null |  | Number of active (not voided or superseded) memos with at least one line. |
-| `sold_qty_base` | bigint | not null |  | DEPRECATED (V0109), dropped by a later migration: mixed base units (sticks, pieces and dozens added together), never aggregate it; use the four *_sold_* columns. |
 | `net_mtk` | bigint | not null |  | Net payable value in milli-taka (gross minus discounts and QC deduction, rounded to the paisa). |
 | `due_mtk` | bigint | not null |  | Amount left on credit (due) in milli-taka. |
 | `dues_collected_mtk` | bigint | not null |  | Dues collected against earlier credit memos, in milli-taka. |
