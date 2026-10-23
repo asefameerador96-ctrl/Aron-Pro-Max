@@ -30,6 +30,7 @@
     <string name="out_reason_internet_problem">ইন্টারনেট সমস্যা</string>
     <string name="out_reason_location_change">লোকেশন চেঞ্জ</string>
     <string name="out_take_photo">দোকানের ছবি তুলুন</string>
+    <string name="out_req_capture_geo_photo">GEO এবং ছবি ধারণ করুন</string>
     <string name="out_retake_photo">আবার ছবি তুলুন</string>
     <string name="out_geo_captured">জিইও নেওয়া হয়েছে ± %1$s মিটার</string>
     <string name="out_geo_missing">অবস্থান এখনো নেওয়া হয়নি</string>

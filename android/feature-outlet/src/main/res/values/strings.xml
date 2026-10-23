@@ -30,6 +30,7 @@
     <string name="out_reason_internet_problem">Internet problem</string>
     <string name="out_reason_location_change">Location changed</string>
     <string name="out_take_photo">Take shop photo</string>
+    <string name="out_req_capture_geo_photo">Capture GEO and photo</string>
     <string name="out_retake_photo">Retake photo</string>
     <string name="out_geo_captured">GEO captured ± %1$s m</string>
     <string name="out_geo_missing">Location not captured yet</string>

@@ -138,7 +138,7 @@ fun OutletRequestContent(
                     }
                 }
             }
-            if (kind.needsGeoPhoto) GeoPhotoBlock(capture, onShutter, note = stringResource(R.string.out_req_photo_note))
+            if (kind.needsGeoPhoto) GeoPhotoBlock(capture, onShutter, note = stringResource(R.string.out_req_photo_note), takeLabel = R.string.out_req_capture_geo_photo)
             fieldErrors.forEach { FormError(errorText(it)) }
             if (kind == OutletRequestKind.INFO && onAddToRoute != null) {
                 FormLink(stringResource(R.string.out_req_route_add), onAddToRoute, Modifier.fillMaxWidth().testTag(RequestTags.ROUTE_ADD))
