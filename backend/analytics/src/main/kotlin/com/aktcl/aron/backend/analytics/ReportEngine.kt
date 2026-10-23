@@ -48,6 +48,7 @@ class ReportContext(
     val query: ReportQuery, val from: LocalDate, val to: LocalDate, val principal: AronPrincipal,
     /** null = every zone. */ val zoneIds: List<Long>?, /** null = no route restriction. */ val routeIds: List<Long>?, val pii: Boolean,
     /** cfg.geo.suspicious_score_threshold: the user-day score that makes a day suspicious (docs/24 s11.4). */ val suspiciousThreshold: Int = Aggregator.DEFAULT_SUSPICIOUS_THRESHOLD,
+    /** Successful Login (login AND download AND check-in) over `dw.agg_daily_route` columns of alias `a`; see [DashboardSummaries.successfulLoginSql]. */ val successfulLogin: String = "a.day_state <> 'not_started'",
 ) {
     fun zoneClause(col: String) = if (zoneIds == null) "true" else "$col = ANY(:zones)"
     fun routeClause(col: String) = if (routeIds == null) "true" else "$col = ANY(:routes)"
@@ -118,7 +119,7 @@ class ReportEngine(
         }
         if (zones != null && zones.isEmpty()) zones = listOf(-1L)   // an empty reach reads nothing, never "everything"
         if (routes != null && routes.isEmpty()) routes = listOf(-1L)
-        return ReportContext(q, from, to, p, zones, routes, p.pii, runCatching { config.int("cfg.geo.suspicious_score_threshold") }.getOrNull() ?: Aggregator.DEFAULT_SUSPICIOUS_THRESHOLD)
+        return ReportContext(q, from, to, p, zones, routes, p.pii, runCatching { config.int("cfg.geo.suspicious_score_threshold") }.getOrNull() ?: Aggregator.DEFAULT_SUSPICIOUS_THRESHOLD, DashboardSummaries.successfulLoginSql(h, "a"))
     }
 
     private fun period(p: PeriodDto, today: LocalDate, bad: (String, String) -> Nothing): Pair<LocalDate, LocalDate> {

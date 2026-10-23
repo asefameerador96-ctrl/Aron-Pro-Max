@@ -44,10 +44,12 @@ import kotlin.test.assertTrue
 
 /** Shared world, device model and trace plumbing of the wave-4 data-flow trace and of the attached finding tests (docs/requests/attachments). */
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
-abstract class DataFlowTraceSupport {
+abstract class DataFlowTraceSupport(
+    /** The business date of the trace (Dhaka); the world clock stands at 10:30Z of that date. */
+    protected val day: String = "2026-10-24", // Saturday: GUL-SR-2 (mask 9 = Saturday + Tuesday)
+) {
     protected val repoRoot = File(System.getProperty("aron.repoRoot") ?: "../..")
-    protected val day = "2026-10-24" // Saturday: GUL-SR-2 (mask 9 = Saturday + Tuesday)
-    protected val clock = AronClock { Instant.parse("2026-10-24T10:30:00Z") }
+    protected val clock = AronClock { Instant.parse("${day}T10:30:00Z") }
     protected val json = ContractModel.json
     protected lateinit var world: ApiWorld
     protected lateinit var app: TestApplication
@@ -141,7 +143,7 @@ abstract class DataFlowTraceSupport {
         return 2 * r * atan2(sqrt(a), sqrt(1 - a))
     }
 
-    protected fun at(minute: Int): String = Instant.parse("2026-10-24T04:30:00Z").plusSeconds(minute * 60L).toString()
+    protected fun at(minute: Int): String = Instant.parse("${day}T04:30:00Z").plusSeconds(minute * 60L).toString()
 
     protected fun fix(purpose: String, lat: Double, lng: Double): ObjectNode = json.readTree(
         """{"purpose":"$purpose","fix_status":"ok","lat":$lat,"lng":$lng,"accuracy_m":9.0,"provider":"fused","is_mock":false,"reused":false,
@@ -169,7 +171,7 @@ abstract class DataFlowTraceSupport {
                 """{"visit_client_uuid":"${m.visit}","outcome_code":"closed","call_declined":false,"ended_at":"${at(m.minute + 2)}","is_zero_sale":true}"""))
             return out
         }
-        val memoNo = "${d.username}-261024-${(d.seq++).toString().padStart(3, '0')}"
+        val memoNo = "${d.username}-${java.time.LocalDate.parse(day).format(java.time.format.DateTimeFormatter.ofPattern("yyMMdd"))}-${(d.seq++).toString().padStart(3, '0')}"
         out += envelope(d, "memo", m.memo, m.visit, 1, m.minute + 4, json.readTree(
             """{"visit_client_uuid":"${m.visit}","outlet_id":${m.outlet},"memo_no":"$memoNo","memo_kind":"sale","committed_at":"${at(m.minute + 4)}","price_list_date":"$day",
                 "price_type":"outlet","gross_mtk":${m.gross},"offer_discount_mtk":0,"drp_discount_mtk":0,"qc_deduction_mtk":0,"round_adj_mtk":0,"net_mtk":${m.gross},
@@ -197,7 +199,7 @@ abstract class DataFlowTraceSupport {
 
     protected fun batchBody(d: Device, recs: List<JsonNode>, batchUuid: String): String = (json.createObjectNode() as ObjectNode).apply {
         put("batch_uuid", batchUuid); put("device_uuid", d.deviceUuid); put("schema_version", 1); put("app_version", ApiWorld.APP_VERSION)
-        put("trigger", "manual"); put("sent_at_device", "2026-10-24T10:29:00.000Z"); put("pending_rows", 0); set<JsonNode>("time_anchors", json.createArrayNode())
+        put("trigger", "manual"); put("sent_at_device", "${day}T10:29:00.000Z"); put("pending_rows", 0); set<JsonNode>("time_anchors", json.createArrayNode())
         set<JsonNode>("device_counts", json.createObjectNode().also { c -> c.set<JsonNode>(day, json.createObjectNode().also { n -> d.counts.forEach { (k, v) -> n.put(k, v) } }) })
         set<JsonNode>("records", json.createArrayNode().also { a -> recs.forEach { a.add(it) } })
     }.toString()
@@ -280,7 +282,7 @@ abstract class DataFlowTraceSupport {
         }
     }
 
-    protected open val traceName = "data-flow-trace"
+    protected open val traceName: String get() = "data-flow-trace"
 
     @AfterAll
     fun tearDown() {

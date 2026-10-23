@@ -178,3 +178,6 @@ green run of the exact sha). Usage stays `allowed` on the five-hour window.
 
 ## Update 2026-10-23 03:30 UTC (wave 4, lead): train 13 on dev
 - Train 13 content reached dev at 03:15 UTC via 13.1. Train 14 (web-admin mock split, backend-reports' V0109 fill if its run is green by then, five status handovers) pushes about 05:00, dev about 06:00. db V0110 and the contract 1.7 batch follow in the morning sessions. Owner report about 06:30 UTC.
+
+## Update 2026-10-23 04:40 UTC (lead sweep)
+- Train 14 (016427a2) on dev 04:34. Train 15 (qa Sunday/Monday trace, web-admin read-only gating, backend-reports login/void + no-write of sold_qty_base, lead docs) pushes once the three code heads are checked, about 06:15; dev about 07:30. Train 16 (db V0110 last, qa slice 2) dev about 09:30. Owner morning report 06:30. No slip against the wave-4 plan; the two-train expand/contract for V0110 is by design.

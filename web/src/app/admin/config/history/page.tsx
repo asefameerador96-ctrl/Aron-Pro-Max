@@ -2,7 +2,7 @@ import { HistoryView, compareVersions } from "@/components/admin/config/history-
 import { onApiFailure } from "@/components/admin/crud/pages";
 import { apiGet, one, qs, type SearchParams } from "@/components/admin/kit/page";
 import { Forbidden } from "@/components/forbidden";
-import { canOp } from "@/lib/admin/access";
+import { loadOpGate } from "@/lib/admin/access";
 import { versionDetail } from "@/lib/admin/config-load";
 import type { ConfigValuePage, ConfigVersionPage } from "@/lib/admin/types";
 import { ADMIN_PORTAL_ROLES, hasRole } from "@/lib/auth/roles";
@@ -13,6 +13,7 @@ const id = (v: string | undefined) => (v && /^\d{1,10}$/.test(v) ? v : undefined
 
 export default async function HistoryPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
   const [session, locale, sp] = await Promise.all([requireSession(), getLocale(), searchParams]);
+  const gate = await loadOpGate(session.at, session.user.role);
   if (!hasRole(session.user.role, ADMIN_PORTAL_ROLES)) return <Forbidden locale={locale} />;
   const r = await apiGet<ConfigVersionPage>("/v1/admin/config/versions", session.at, { cursor: one(sp.cursor, 512), limit: 50 });
   if (!r.ok) return onApiFailure(r.status, r.problem, locale);
@@ -33,5 +34,5 @@ export default async function HistoryPage({ searchParams }: { searchParams: Prom
     if (vr.ok) values = vr.data.items;
   }
   const nextHref = r.data.next_cursor ? `/admin/config/history${qs({ a, b, cursor: r.data.next_cursor })}` : null;
-  return <HistoryView locale={locale} versions={r.data.items} nextHref={nextHref} canWrite={canOp("config.rollback", session.user.role)} compare={compare} a={a ?? ""} b={b ?? ""} keyFilter={{ key, scope_type: scopeType, scope_id: scopeId }} values={values} />;
+  return <HistoryView locale={locale} versions={r.data.items} nextHref={nextHref} canWrite={gate("config.rollback")} compare={compare} a={a ?? ""} b={b ?? ""} keyFilter={{ key, scope_type: scopeType, scope_id: scopeId }} values={values} />;
 }
