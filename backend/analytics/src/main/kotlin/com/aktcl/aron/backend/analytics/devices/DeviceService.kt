@@ -248,6 +248,7 @@ class DeviceService(
 
     /** A status report from the phone (online path): stored, the device row updated, trust re-derived, pending directives handed back once. */
     fun report(d: DeviceRow, r: DeviceStatusReportDto, userId: Long? = null): DeviceStatusAck {
+        if (r.network_type != null && r.network_type !in NETWORK_TYPES) throw ApiProblem(ProblemCode.ERR_VALIDATION, "invalid network_type", errors = listOf(FieldError("/network_type", "invalid_value")))
         val now = clock.now()
         // N-027: the network decode runs before the transaction, so a slow Google call never holds a connection.
         val decoded = r.play_integrity?.let { decodeIntegrity(d, it.token) }
@@ -473,3 +474,5 @@ class DeviceService(
     private fun audit(h: Handle, p: AronPrincipal?, entity: String, entityId: String, action: String, before: JsonElement?, after: JsonElement?, reason: String?, requestId: String? = null) =
         com.aktcl.aron.backend.platform.AuditLog.write(h, p, entity, entityId, action, before, after, reason, requestId, via = if (p == null) "device" else "api")
 }
+
+private val NETWORK_TYPES = setOf("wifi", "mobile", "offline")

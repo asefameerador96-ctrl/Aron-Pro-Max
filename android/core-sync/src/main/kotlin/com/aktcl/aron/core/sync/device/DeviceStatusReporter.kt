@@ -45,6 +45,8 @@ data class DeviceFactsSnapshot(
     val batteryPct: Int,
     val charging: Boolean?,
     val freeStorageMb: Int?,
+    /** `wifi`, `mobile` or `offline` from one ConnectivityManager read; null when the read failed or the transport is neither (contract 1.7.0). */
+    val networkType: String? = null,
 )
 
 fun interface DeviceFacts {
@@ -186,6 +188,7 @@ class DeviceStatusReporter(
             batteryPct = f.batteryPct.coerceIn(0, 100),
             charging = f.charging,
             freeStorageMb = f.freeStorageMb?.coerceAtLeast(0),
+            networkType = f.networkType,
         )
         val uuid = ClientIds.newUuid()
         CaptureRepository(db) { SyncEngine.iso(clock.nowMs()) }.recordDeviceStatus(uuid, meta(reference, now), report)
