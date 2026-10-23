@@ -1,4 +1,22 @@
+# Status: lane qa (wave 4, session 2 -> 3 handover, 2026-10-23)
+
+## Handover from qa #2
+- **State:** the data-flow trace has an empty known-findings list (`data-flow-trace-known-findings.txt` holds its header only); any new difference fails `DataFlowTraceTest` by name. Heads declared and checked: 6fa6e5a8 -> e6650974 (train 13.1) -> 0adfc165 (Sunday/Monday) -> 8101f53b (slices 2 and 3, evidence doc) -> the BRAND figure check (this push).
+- **Proven (all in `backend/app/src/test`, evidence in `docs/evidence/data-flow-trace-2026-10-23.md`):**
+  - `DataFlowTraceTest` (Saturday, GUL-SR-2, 15 hops, incl. BRAND figures equal the brand's slice in base units across both divisions);
+  - `DataFlowTraceOtherDaysTest` (Sunday GUL-SR-1, Monday BAN-SR-11);
+  - `DataFlowTraceMoneyTargetsTest` (per_base_qty 1/2/3, exact .5 line, memo net half-up to the paisa, `round_adj`; monthly target over Oct, Nov doubled, Dec lighters removed, month boundary);
+  - `DataFlowTraceConcurrencyTest` (8 twins under 8 batch_uuids, 8 sends under one batch_uuid, batch_uuid reuse 409, changed copy quarantined).
+  The support takes the business date (`DataFlowTraceSupport(day)`); a new day or route is one subclass of `DataFlowTraceOtherDay`.
+- **Local setup in a fresh container:** `service postgresql start`; `ALTER ROLE postgres PASSWORD 'pg'`; `ARON_TEST_PG_URL=jdbc:postgresql://localhost:5432/postgres?user=postgres&password=pg`; the trace classes take about 1.5 min, the full `:backend:app:test` about 20 min.
+- **Open for qa #3:** (1) the dev-side rerun on a selling day needs a workflow job that carries the smoke device key (never a lane; the lead files it as a lead/infra item); (2) a cover day (another SR on the route) and a holiday or emergency day in the trace; (3) the window between a stored memo header and its rejected lines (not read mid-way) and server-side parking retry/expiry (docs/16 DQ-03); (4) re-merge INT on request and keep the known-findings list empty (a row is added only with a request doc to the owning lane).
+- **Lessons:** the trace's setup is part of the proof: the BRAND 403 of the first run was my setup (a grant insert that matched no row), now guarded by a `check`; a stale expectation after an intended product change (login needs a check-in, preview warnings only for due routes) is fixed in the test with the ruling cited, never by loosening.
+
 # Status: lane qa (wave 4, session 2: data-flow trace)
+
+## Wave 4, session 2f: BRAND figures in the trace (built locally, pushed after "train 16 landed"), 2026-10-23
+- Hop 9 of `DataFlowTraceTest` now grants the BRAND user the brand of the first sold SKU and checks that its sales cards equal that brand's slice in base units across both divisions ({cigarette=220} against the national day with five categories of sales), that the channel STD total equals the brand's cigarette sticks, and that filter-options list its own brand only. The check first asserts that the brand's slice is a strict part of the day, so the filter has something to cut. No finding.
+- Candidate 8101f53b (run #1459) is checked by the lead for train 16.
 
 ## Wave 4, session 2e: slice 3, concurrency and batch_uuid reuse (built locally, pushed after slice 2 rides train 15), 2026-10-23
 - `DataFlowTraceConcurrencyTest` (33 PASS rows): (1) eight concurrent twins under eight batch_uuids: each record accepted exactly once across the answers, the rest duplicate, rows per table, server_totals and the ingest registry equal the device; (2) eight concurrent sends under one batch_uuid: no 5xx, every answer 200, nothing stored twice (observed: none is flagged `replayed` while the first is in flight, each walks the records and answers duplicate); (3) a batch_uuid reused for another record set: 409 `ERR_SYNC_BATCH_UUID_REUSED`, nothing of the second set stored, the extra memo accepted under a new batch_uuid; (4) a changed copy of a stored line: quarantined `payload_conflict`, no figure changes (server_totals and dw route-day stay equal to the device).
