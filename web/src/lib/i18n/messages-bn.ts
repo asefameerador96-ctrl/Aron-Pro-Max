@@ -426,6 +426,7 @@ export const bn: Record<MessageKey, string> = {
   "error.ERR_TOKEN_EXPIRED": "আপনার সেশন শেষ হয়েছে। আবার সাইন ইন করুন।",
   "error.ERR_FORBIDDEN": "এই কাজের অনুমতি আপনার নেই।",
   "error.ERR_OUT_OF_SCOPE": "এটি আপনার পরিধির বাইরে।",
+  "error.ERR_AUTHZ_ROLE_ABOVE_GRANT": "এই স্তরের ব্যবহারকারীদের শুধু সুপার অ্যাডমিনিস্ট্রেটরই পরিচালনা করতে পারেন।",
   "error.ERR_NOT_FOUND": "পাওয়া যায়নি।",
   "error.ERR_VALIDATION": "কিছু ঘর সঠিক নয়। দেখে আবার চেষ্টা করুন।",
   "error.ERR_PRECONDITION_FAILED": "অন্য কেউ এই রেকর্ড বদলে দিয়েছে। পাতা নতুন করে খুলে আবার পরিবর্তন করুন।",

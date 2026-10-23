@@ -33,6 +33,15 @@ DeviceStatusReport:
       - app_update
       - periodic
       - directive
+    network_type:
+      type: string
+      enum:
+      - wifi
+      - mobile
+      - offline
+      description: Transport at the moment of the report, from one ConnectivityManager read per report (no polling).
+        Optional (contract 1.7.0); absent from phones built against an older contract, and the MDM list then shows
+        `unknown` (`docs/requests/mdm-contract-network-type.md`).
     app_version:
       $ref: '#/components/schemas/AppVersionString'
     device_info:

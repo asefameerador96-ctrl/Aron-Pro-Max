@@ -183,7 +183,9 @@ parameters:
     name: level
     in: query
     required: false
-    description: Level of the node the figures are for; default the caller's top level.
+    description: Level of the node the figures are for; default the caller's top level. The dashboards accept `national`,
+      `wing`, `division`, `territory` and `zone`; `house` (a scope node level from contract 1.7.0) and `route` answer
+      400 `ERR_VALIDATION` (`query.level` invalid_value).
     schema:
       $ref: '#/components/schemas/ReachLevel'
   NodeIdQuery:

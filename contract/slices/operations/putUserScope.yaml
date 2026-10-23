@@ -5,6 +5,10 @@ operation:
   - admin-users
   operationId: putUserScope
   summary: Replace a user's scope from a date (bumps scope_version; tokens refresh with 401 ERR_SCOPE_CHANGED).
+  description: Node types are the `UserScopeNode.node_type` enum; `house` from contract 1.7.0 (D-SCOPE-TREE-01).
+    An ADMIN (`users:w`) re-scopes only logins below ADMIN (TSO, DMO, WM, NATIONAL, BRAND, SR, AMO); for an ADMIN,
+    SUPERADMIN, ANALYST or SUPPORT login the answer is 403 `ERR_AUTHZ_ROLE_ABOVE_GRANT` (SUPERADMIN-only, D-AUTHZ-ADMIN-CREDS-01;
+    until the server carries contract 1.7.0 it is `ERR_FORBIDDEN` with the same detail).
   parameters:
   - $ref: '#/components/parameters/IdPath'
   requestBody:

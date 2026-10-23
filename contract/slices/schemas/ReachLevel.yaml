@@ -5,5 +5,8 @@ ReachLevel:
   - wing
   - division
   - territory
+  - house
   - zone
   - route
+  description: Node levels of a reach summary (`Me.scope`, `LoginResponse.scope`). `house` from contract 1.7.0,
+    with the `house` scope node (D-SCOPE-TREE-01).
