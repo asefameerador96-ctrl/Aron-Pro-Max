@@ -1,6 +1,7 @@
 "use client";
 // F-ADM-025 supervisory module: AMO call targets by month (total, control-call, joint-call, optional daily). One save = one
 // all-or-nothing PUT with a batch uuid (a retry replays) and a mandatory reason.
+import { EmptyNote } from "@/components/admin/kit/empty-note";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useI18n } from "@/components/i18n-provider";
@@ -76,6 +77,9 @@ export function SupervisorTargetsEditor({ month, initial: stored, names, canWrit
   const cell = "px-2 py-1 align-top";
   return (
     <div className="space-y-3" data-testid="targets-editor">
+      {initial.length === 0 ? (
+        <EmptyNote />
+      ) : (
       <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white shadow-sm">
         <table className="min-w-full text-sm">
           <thead className="bg-slate-50 text-left">
@@ -99,6 +103,7 @@ export function SupervisorTargetsEditor({ month, initial: stored, names, canWrit
           </tbody>
         </table>
       </div>
+      )}
       {canWrite ? (
         <div className="flex items-end gap-2" data-testid="add-officer">
           <label className="text-sm">
