@@ -182,6 +182,9 @@ class NationalScopeLeakTest {
             val claims = com.nimbusds.jwt.SignedJWT.parse(client.token(u)).jwtClaimsSet
             assertEquals(geo, claims.getClaim("geo"), u)
         }
+        // Contract 1.7.0 ReachLevel carries `house`: the Me reach summary names the stored node type.
+        val me = client.read(client.token("qahousetso1001"), "/me").obj().getValue("scope").jsonObject.getValue("nodes").jsonArray
+        assertEquals(listOf("house" to one("SELECT id FROM app.house WHERE code = 'H-MIR'")), me.map { it.jsonObject.getValue("type").jsonPrimitive.content to it.jsonObject.getValue("id").jsonPrimitive.long })
     }
 
     @Test

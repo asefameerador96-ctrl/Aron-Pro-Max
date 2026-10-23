@@ -157,7 +157,7 @@ class MemoNumberPackSizeTest {
            "price_per_qty":${l.sku[2]},"gross_mtk":${lineGross(l)}}""",
     )
 
-    private fun send(user: Long, records: List<JsonObject>): SyncBatchResponse = ingest.ingest(
+    private fun send(user: Long, records: List<JsonObject>, via: IngestService = ingest): SyncBatchResponse = via.ingest(
         Uploader(user, Role.SR, 1, device.first, device.second, null),
         SyncBatchRequest(
             batch_uuid = uuid(), device_uuid = device.second, schema_version = 1, app_version = "1.0.9+9", trigger = "manual",
@@ -189,6 +189,35 @@ class MemoNumberPackSizeTest {
         // The block size bounds what the ordinal blocks cover (cfg.memo.seq_block_size 100..999).
         assertNull(MemoNumbers.problem(MemoNumbers.Rule("sr1001", 999), "sr1001-270103-3996", d))
         assertTrue(MemoNumbers.problem(MemoNumbers.Rule("sr1001", 100), "sr1001-270103-401", d) != null)
+    }
+
+    /**
+     * Session 14 open item (b): a phone keeps the block size it bound with, so lowering `cfg.memo.seq_block_size` must
+     * not refuse numbers it already printed. The rule uses the largest size ever set. The rows here keep that at 500,
+     * the default, so the other tests of this class see the same rule.
+     */
+    @Test
+    fun aLoweredBlockSizeStillAcceptsNumbersPrintedUnderTheOldOne() {
+        fresh.db.jdbi.useHandle<Exception> { h ->
+            h.execute(
+                "INSERT INTO app.cfg_value (key, scope_type, scope_id, value, effective_from, effective_to, config_version, reason) " +
+                    "SELECT 'cfg.memo.seq_block_size', 'global', 0, '500'::jsonb, TIMESTAMPTZ '2026-01-01T00:00:00Z', TIMESTAMPTZ '2026-06-01T00:00:00Z', max(config_version), 'test' FROM app.cfg_version",
+            )
+            h.execute(
+                "INSERT INTO app.cfg_value (key, scope_type, scope_id, value, effective_from, config_version, reason) " +
+                    "SELECT 'cfg.memo.seq_block_size', 'global', 0, '100'::jsonb, TIMESTAMPTZ '2026-06-01T00:00:00Z', max(config_version), 'test' FROM app.cfg_version",
+            )
+        }
+        val config = DbServerConfig(fresh.db, RegistryDefaults(), clock)
+        assertEquals(100, config.int("cfg.memo.seq_block_size"), "the lowered size is in force")
+        val lowered = IngestService(fresh.db, config, SqlReachResolver(fresh.db, GeoRepository(fresh.db, clock), clock), clock)
+        // 1999 lies in ordinal 3's block of size 500 but past 4 x 100 = 400: printed before the change, still accepted.
+        val printed = sale("sr1001-270103-1999", listOf(stick()))
+        val res = send(sr, printed, lowered)
+        assertEquals(listOf("accepted", "accepted", "accepted"), printed.map { res.ack(it) }, res.acks.toString())
+        // Past every block of the largest size ever set: still refused.
+        val beyond = sale("sr1001-270103-2001", listOf(stick()))
+        assertEquals("rejected memo_no_invalid", send(sr, beyond, lowered).ack(beyond[1]))
     }
 
     @Test

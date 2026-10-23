@@ -49,7 +49,9 @@ class DeviceStatusReporterTest {
     private var signalsFail = false
     private var evidenceCalls = 0
     private var evidence: IntegrityResult = IntegrityResult.Evidence("tok.en", "n0nce")
-    private val facts = DeviceFactsSnapshot(
+    private var networkType: String? = "wifi"
+    private val facts get() = baseFacts.copy(networkType = networkType)
+    private val baseFacts = DeviceFactsSnapshot(
         deviceInfo = DeviceInfo("samsung", "SM-A065F", 34, "14", null, "arm64-v8a", 4096),
         deviceOwner = true, lockdownLevelApplied = "prod", policyVersionApplied = null, policyApplyErrors = listOf("restriction:no_safe_boot"),
         restrictionsApplied = mapOf("no_safe_boot" to false), batteryOptimisationIgnored = true, blockingActive = false, blockingSinceMs = null,
@@ -312,5 +314,27 @@ class DeviceStatusReporterTest {
           {"id":1,"date":"2026-10-09","scope_type":"global","scope_id":0,"kind":"makeup_day","selling_day":true,"name_en":"m"},
           {"id":2,"date":"2026-10-09","scope_type":"region","scope_id":9,"kind":"holiday","selling_day":false,"name_en":"h"}]}""")
         assertEquals(true, c.isWorkingDay("2026-10-09"))
+    }
+
+    @Test
+    fun theNetworkTypeIsReportedWhenReadAndLeftOutWhenTheReadFailed() = runBlocking {
+        for (t in listOf("wifi", "mobile", "offline")) {
+            networkType = t
+            signals = signals.copy(adbEnabled = !signals.adbEnabled)   // something changed, so a report is queued
+            assertNotNull(reporter.beforeBatch(db))
+            assertEquals(t, payload()["network_type"]!!.jsonPrimitive.content)
+        }
+        networkType = null
+        signals = signals.copy(adbEnabled = !signals.adbEnabled)
+        assertNotNull(reporter.beforeBatch(db))
+        assertTrue("network_type" !in payload())
+    }
+
+    @Test
+    fun theTransportMapsToTheThreeValues() {
+        assertEquals("offline", com.aktcl.aron.core.sync.device.AndroidDeviceFacts.networkTypeOf(false, false, false))
+        assertEquals("wifi", com.aktcl.aron.core.sync.device.AndroidDeviceFacts.networkTypeOf(true, true, true))
+        assertEquals("mobile", com.aktcl.aron.core.sync.device.AndroidDeviceFacts.networkTypeOf(true, false, true))
+        assertNull(com.aktcl.aron.core.sync.device.AndroidDeviceFacts.networkTypeOf(true, false, false))
     }
 }

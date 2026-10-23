@@ -144,12 +144,20 @@ class IngestService(
         var memoFps: Map<String, ByteArray> = emptyMap()
         /** Records of the current segment parked `qty_invalid` for a pack size that is not the SKU's (client_uuid to detail). */
         var packHeld: Map<String, String> = emptyMap()
-        /** s7.5: the uploader's login (memo number prefix) and the block size, read once per batch on first use. */
+        /**
+         * s7.5: the uploader's login (memo number prefix) and the block size, read once per batch on first use. The size
+         * is the largest ever set globally (cfg_value keeps every row), never below the current one: a phone keeps the
+         * size it bound with, so a lowered value must not refuse numbers already printed (the four blocks always span
+         * `1 .. 4 x size`, so the largest size covers every smaller one).
+         */
         val memoNoRule: MemoNumbers.Rule by lazy {
             db.jdbi.withHandle<MemoNumbers.Rule, Exception> { h ->
+                val everSet = h.createQuery(
+                    "SELECT max(least(floor((value #>> '{}')::numeric), 999))::int FROM app.cfg_value WHERE key = 'cfg.memo.seq_block_size' AND scope_type = 'global' AND jsonb_typeof(value) = 'number'",
+                ).mapTo(Int::class.javaObjectType).findOne().orElse(null) ?: 0
                 MemoNumbers.Rule(
                     h.createQuery("SELECT username FROM app.app_user WHERE id = :u").bind("u", up.userId).mapTo(String::class.java).one(),
-                    config.int("cfg.memo.seq_block_size").coerceIn(100, 999),
+                    maxOf(config.int("cfg.memo.seq_block_size"), everSet).coerceIn(100, 999),
                 )
             }
         }
