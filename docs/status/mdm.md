@@ -1,3 +1,13 @@
+# HANDOVER (lane mdm session 2 -> session 3, 2026-10-23, context about 380k)
+**Candidate:** c5de7c78 (network_type both ends; INT c07c66dc merged). Run 39961480341: all jobs green except one Docker Hub 500 at the base-image pull (not ours), failed job re-run once; the lead judges at 14:40 UTC (train 19, else train 20 with no further re-run).
+**On INT already:** ModuleGrants in production, breadcrumb install SR/AMO (D-MDM-BREADCRUMB-01 incl. lead ruling: the DPC `breadcrumbsEnabled` is the single background-location switch), device-lab rows, handover of session 2.
+**Open, none buildable without input:**
+1. Portal look: owner's MDM screenshots (`docs/ui-reference/web/mdm-*.webp`); the lead calls the lane when they arrive.
+2. Device rows DEVICE-PENDING in `docs/status/device-checks.md`: D-MDM-01, D-MDM-BREADCRUMB-01 (battery/data figures here are estimates).
+3. Packages catalogue endpoint for the policy editor: its contract change goes to `docs/requests/contract-v1.8-queue.md` (opened by the lead with 1.7.0; not queued yet), then backend + web picker.
+4. Decided NO (lead): boot/battery reconcile for the breadcrumb controller.
+**Traps.** Expiry tests move the MDM service clock, never UPDATE device_command (db's guard). Production MDM access = `ModuleGrants` (token `modules`); `MdmApiTest` uses a table-backed grant seam because test tokens carry no `modules`. `BreadcrumbPayload` is local to core-database until the contract batch adds the DTO. TSO has no background location (D-GEO-BG-01). Dispatch ci.yml only when the push run skipped jobs you need (a duplicate holds the concurrency group); `rerun_failed_jobs` once for a non-ours red. Merge INT before any push.
+
 # HANDOFF (lane mdm session 2 -> next, 2026-10-23)
 **State.** lane/mdm = INT 52bdd477 merged; train 11 carried 3c9522f1 (ModuleGrants in production, breadcrumb install SR/AMO, tests green, on dev). Idle: nothing buildable without input.
 **Waiting on the owner:** MDM console screenshots (`docs/ui-reference/web/mdm-*.webp`) to match the portal look; the lead calls this lane when they arrive.
