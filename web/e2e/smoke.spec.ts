@@ -216,6 +216,7 @@ test("create needs a reason too; the BFF refuses a write without one", async ({ 
 
 test("support can read but not change master data", async ({ page }) => {
   await loginOk(page, "msupport1", "support-pass-1", "123456");
+  await page.waitForURL(/\/sync-health/); // SUPPORT's landing redirect must finish, or the goto below is aborted (net::ERR_ABORTED)
   await page.goto("/admin/clusters");
   await expect(page.getByTestId("data-table")).toBeVisible();
   await expect(page.getByTestId("create-link")).toHaveCount(0);

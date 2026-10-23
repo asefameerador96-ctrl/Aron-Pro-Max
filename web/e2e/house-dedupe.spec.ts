@@ -44,6 +44,7 @@ test("houses: the duplicate is merged into the kept house through the server ope
 
 test("houses: SUPPORT sees the groups without actions", async ({ page }) => {
   await loginOk(page, "msupport1", "support-pass-1", "123456");
+  await page.waitForURL(/\/sync-health/); // SUPPORT's landing redirect must finish, or the goto below is aborted (net::ERR_ABORTED)
   await page.goto("/admin/house-dedupe");
   await expect(page.getByTestId("house-group")).toHaveCount(1);
   await expect(page.getByTestId("toggle-20")).toHaveCount(0);
