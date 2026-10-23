@@ -41,6 +41,12 @@ class SyncPhone(val day: String, val tag: String, val deviceUuid: String, val de
     private val fix = """{"purpose":"P","fix_status":"ok","lat":23.80,"lng":90.36,"accuracy_m":12.0,"provider":"fused","is_mock":false,"reused":false,
         "device":{"device_owner":true,"dev_options_enabled":false,"adb_enabled":false,"auto_time_enabled":true,"mock_app_present":false}}"""
 
+    /**
+     * Sale number s as a valid sequence of docs/24 s7.5 (the server refuses others memo_no_invalid): 1000..1999 in the
+     * ordinal blocks of block size 500, then the overflow ranges 5001..5999 .. 8001..8999 (about 5,000 sales a day).
+     */
+    private fun memoSeq(s: Int): Int = if (s < 1000) 1000 + s else (s - 1000).let { k -> 5000 + (k / 999) * 1000 + k % 999 + 1 }.also { check(it <= 8999) { "fuzz phone ran out of memo numbers" } }
+
     /** A day of 1 to 4 sales; each sale is unique in (outlet, lines, minute), so the double-tap rule never fires. */
     fun captureDay(rnd: Random): List<JsonObject> {
         val out = mutableListOf<JsonObject>()
@@ -50,7 +56,7 @@ class SyncPhone(val day: String, val tag: String, val deviceUuid: String, val de
             val outlet = outlets[s % 60 % outlets.size]
             val qty1 = 20 + (s % 60) / outlets.size
             val dueMtk = 1_000L * rnd.nextInt(1, 40)
-            val visit = uuid(); val memo = uuid(); val memoNo = "$username-270103-" + (1000 + s).toString()
+            val visit = uuid(); val memo = uuid(); val memoNo = "$username-270103-" + memoSeq(s)
             val (s1, p1) = skus[0]; val (s2, p2) = skus[1]
             val g = qty1 * p1 + 10 * p2
             out += env("visit", visit, visit, 0, """{"visit_kind":"sr_call","outlet_id":$outlet,"opened_at":"$time","sequence_no":1,"planned":true,"fix":${fix.replace("\"P\"", "\"visit_open\"")},

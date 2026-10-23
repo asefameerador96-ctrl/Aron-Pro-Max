@@ -77,6 +77,73 @@ object MemoChecks {
     }
 
     /**
+     * docs/34 s4.2 (the server re-checks the pack size, QA-FLOW-06): a line entered in packs whose `pack_factor` is not
+     * the SKU's `base_per_pack` would book the wrong number of sticks or pieces and their money. The line is refused
+     * `qty_invalid`, parked (retryable: a resend passes once the phone or the SKU master agrees), and its memo and the
+     * memo's other children are parked with it, so nothing of the memo is booked. `app.sku` keeps no pack-size history,
+     * so the comparison is with the current value (a pack-size change is a master-data event between days).
+     * client_uuid to detail; a line whose memo is not in the segment is listed alone (its memo is already stored).
+     */
+    fun packFactorHolds(h: Handle, records: List<JsonObject>): Map<String, String> {
+        val lines = records.filter { it.str("type") == "memo_line" && (it["payload"] as? JsonObject)?.str("unit_entered") == "pack" }
+        val skus = lines.mapNotNull { (it["payload"] as? JsonObject)?.long("sku_id") }.distinct()
+        if (skus.isEmpty()) return emptyMap()
+        val perPack = basePerPack(h, skus)
+        val out = HashMap<String, String>()
+        for (line in lines) {
+            val p = line["payload"] as JsonObject
+            val detail = packFactorProblem(p, perPack) ?: continue
+            val memo = p.str("memo_client_uuid")
+            val why = "memo $memo: line ${line.str("client_uuid")} $detail"
+            line.str("client_uuid")?.let { out[it] = why }
+            if (memo == null) continue
+            records.filter { it.str("client_uuid") == memo || (it.str("type") in CHILD_TYPES && (it["payload"] as? JsonObject)?.str("memo_client_uuid") == memo) }
+                .forEach { c -> c.str("client_uuid")?.let { out.putIfAbsent(it, why) } }
+        }
+        return out
+    }
+
+    /** The same rule for a record that stands alone (`stock_movement`): null when it holds or is not entered in packs. */
+    fun packFactorProblem(h: Handle, p: JsonObject): String? {
+        if (p.str("unit_entered") != "pack") return null
+        val sku = p.long("sku_id") ?: return null
+        return packFactorProblem(p, basePerPack(h, listOf(sku)))
+    }
+
+    private fun packFactorProblem(p: JsonObject, perPack: Map<Long, Long>): String? {
+        val sku = p.long("sku_id") ?: return null
+        // An unknown SKU is refused unknown_sku by its own check.
+        val want = perPack[sku] ?: return null
+        val got = p.long("pack_factor")
+        return if (got != want) "pack_factor $got, SKU $sku base_per_pack $want" else null
+    }
+
+    private fun basePerPack(h: Handle, skus: List<Long>): Map<Long, Long> =
+        h.createQuery("SELECT id, base_per_pack FROM app.sku WHERE id = ANY(:s)").bindArray("s", Long::class.javaObjectType, skus)
+            .map { rs, _ -> rs.getLong(1) to rs.getLong(2) }.list().toMap()
+
+    /**
+     * Detail of a line of [memo] parked `qty_invalid` earlier (sent before its memo) whose pack size is still not the
+     * SKU's, or null. Re-judged against the current master, so once the master agrees (or the line is in this segment
+     * and passes) the memo is not held by the line's stale parked row.
+     */
+    fun parkedPackLine(h: Handle, memo: String, userId: Long, businessDate: java.time.LocalDate): String? = h.createQuery(
+        """
+        SELECT s.client_uuid::text, s.payload -> 'payload' FROM app.sync_rejected s JOIN app.ingest_registry g ON g.client_uuid = s.client_uuid
+        WHERE s.user_id = :u AND s.business_date = :d AND s.record_type = 'memo_line' AND s.code = 'qty_invalid'
+          AND g.status = 'parked' AND g.outcome_code = 'qty_invalid'
+          AND s.payload -> 'payload' ->> 'memo_client_uuid' = :m
+        """.trimIndent(),
+    ).bind("m", memo).bind("u", userId).bind("d", businessDate).map { rs, _ -> rs.getString(1) to rs.getString(2) }.list()
+        .firstNotNullOfOrNull { (line, p) ->
+            val payload = runCatching { kotlinx.serialization.json.Json.parseToJsonElement(p) as JsonObject }.getOrNull() ?: return@firstNotNullOfOrNull null
+            packFactorProblem(h, payload)?.let { "memo $memo: line $line $it" }
+        }
+
+    /** Marks a stored memo for review (idempotent): a child held for its own fault leaves the printed memo incomplete. */
+    fun flagStored(h: Handle, memo: String, flag: String) = flag(h, memo, flag)
+
+    /**
      * Content fingerprint of a memo (s4.5 `content_duplicate`: same outlet, lines and minute): outlet, the minute of
      * `committed_at` and the sorted (sku, qty) of its lines in the segment. Only for a memo whose lines are all there.
      */

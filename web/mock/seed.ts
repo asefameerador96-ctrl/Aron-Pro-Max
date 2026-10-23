@@ -140,4 +140,6 @@ export const LONG_BANGLA: ReadonlyArray<readonly [string, string]> = [
   ["Selim Reza", "সৈয়দ সেলিম রেজা আল মাহমুদ ভূঁইয়া"],
   ["Tariq Aziz", "তারিক আজিজ উল্লাহ আল ফারুক মোল্লা"],
   ["Outlet ", "মেসার্স "],
+  ["Rampasha Bazar", "রামপাশা বাজার সংলগ্ন পুরাতন মসজিদ রোড ও কাঁচাবাজার এলাকা"],
+  ["Territory ", "গুলশান বনানী বারিধারা বাণিজ্যিক টেরিটরি "],
 ];

@@ -308,4 +308,47 @@ class DayApiTest {
             h.createQuery("SELECT count(*) FROM app.final_submit WHERE zone_id = :z").bind("z", otherZone).mapTo(Long::class.java).one()
         })
     }
+
+    /**
+     * QA-FLOW-04 (docs/requests/backend-core-qa-1.md item 3, lead ruling 2026-10-22): every active route is listed, but
+     * only a route planned on the date or with data warns. The first bundle of the day marks an SR's unplanned route
+     * logged in; with nothing on it, that route was not due.
+     */
+    @Test
+    fun theFinalSubmitPreviewWarnsOnlyForRoutesDueThatDay() = testApplication {
+        application { aronApi(wiring) }
+        val tso = client.web("tso1001")
+        val d = "2026-12-30"
+        fresh.db.jdbi.useHandle<Exception> { h ->
+            // The planner's rows for the zone's routes (none planned that day); the bundle then marked r1 logged in.
+            h.execute("INSERT INTO app.route_day (route_id, business_date, planned) SELECT id, DATE '$d', false FROM app.route WHERE zone_id = ? AND status = 'active' ON CONFLICT DO NOTHING", zone)
+            h.execute("UPDATE app.route_day SET planned = false WHERE business_date = DATE '$d'")
+            h.execute("UPDATE app.route_day SET state = 'logged_in', logged_in_at = TIMESTAMPTZ '${d}T03:00:00Z' WHERE route_id = ? AND business_date = DATE '$d'", r1)
+        }
+        suspend fun preview(): JsonObject {
+            val r = client.get("/v1/day/final-submit/preview?zone_id=$zone&business_date=$d") { bearerAuth(tso) }
+            assertEquals(HttpStatusCode.OK, r.status, r.bodyAsText())
+            return json(r.bodyAsText())
+        }
+        val p = preview()
+        val listed = p["routes"]!!.jsonArray.map { it.jsonObject }.single { it["route_id"]!!.jsonPrimitive.content.toLong() == r1 }
+        assertEquals("logged_in", listed["state"]!!.jsonPrimitive.content, "the unplanned route is still listed")
+        assertEquals(false, listed["had_data"]!!.jsonPrimitive.content.toBoolean())
+        assertEquals(emptyList(), p["warnings"]!!.jsonArray.map { it.jsonPrimitive.content }, "no route of the zone was due on $d: $p")
+        // A route with no route-day row (the planner has not run) still warns as before.
+        fresh.db.jdbi.useHandle<Exception> { h -> h.execute("DELETE FROM app.route_day WHERE business_date = DATE '$d' AND route_id <> ?", r1) }
+        assertEquals(listOf("routes_not_sales_submitted", "routes_not_logged_in"), preview()["warnings"]!!.jsonArray.map { it.jsonPrimitive.content })
+        fresh.db.jdbi.useHandle<Exception> { h ->
+            h.execute("INSERT INTO app.route_day (route_id, business_date, planned) SELECT id, DATE '$d', false FROM app.route WHERE zone_id = ? AND status = 'active' ON CONFLICT DO NOTHING", zone)
+        }
+        assertEquals(emptyList(), preview()["warnings"]!!.jsonArray.map { it.jsonPrimitive.content })
+        // Planned that day: the same state warns.
+        fresh.db.jdbi.useHandle<Exception> { h -> h.execute("UPDATE app.route_day SET planned = true WHERE route_id = ? AND business_date = DATE '$d'", r1) }
+        assertEquals(listOf("routes_not_sales_submitted"), preview()["warnings"]!!.jsonArray.map { it.jsonPrimitive.content })
+        // Unplanned, no data, but submitted with rows still on the phone: pending rows still warn (checker note 7).
+        fresh.db.jdbi.useHandle<Exception> { h ->
+            h.execute("UPDATE app.route_day SET planned = false, state = 'submit_pending_rows', rows_awaited = 2 WHERE route_id = ? AND business_date = DATE '$d'", r1)
+        }
+        assertEquals(listOf("routes_not_sales_submitted", "routes_with_pending_rows"), preview()["warnings"]!!.jsonArray.map { it.jsonPrimitive.content })
+    }
 }

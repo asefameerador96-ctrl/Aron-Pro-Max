@@ -10,10 +10,16 @@ ONLINE (web or API write), SERVER (derived by the server or worker), REFERENCE (
 the class of docs/16 s13.1. **PII**: none, personal, sensitive, secret. Other products read only the `dw` views
 (`v_*`, stable contract, additive changes only) and the domain-event outbox, never `app` tables (docs/31 s3).
 
+## Change log of the stable views
+
+Removals are rare and listed here (a wrong column is removed, never redefined in place); additions are not listed.
+
+- V0109 (2026-10-22): `dw.v_daily_outlet.sold_qty_base` removed: it added cigarette and bidi sticks, lighter pieces and match dozens into one number. Use `cigarette_sold_sticks`, `bidi_sold_sticks`, `lighter_sold_pieces` and `match_sold_dozens`.
+
 | Schema | Relations | Columns |
 |---|---|---|
 | `app` | 155 | 2636 |
-| `dw` | 44 | 632 |
+| `dw` | 44 | 639 |
 
 ## Index
 
@@ -208,7 +214,7 @@ the class of docs/16 s13.1. **PII**: none, personal, sensitive, secret. Other pr
 | [`dw.v_calendar`](#dwv_calendar) | view | worker | SERVER | master | none | Stable view: one row per date with Friday, national holiday, make-up day and working-day flags (dim_date plus the live global app.calendar_holiday rows). |
 | [`dw.v_calendar_month`](#dwv_calendar_month) | view | worker | SERVER | master | none | Stable view: per month the number of days, Fridays, national holidays and working days (divisor of the daily target). |
 | [`dw.v_collections`](#dwv_collections) | view | worker | SERVER | event_fact | none | Stable view: outlet-days with new credit or dues collected (credit and collection movements). |
-| [`dw.v_daily_outlet`](#dwv_daily_outlet) | view | worker | SERVER | event_fact | none | Stable view: per outlet and business date, visit, geo validity, sales and dues, with the outlet's classification. |
+| [`dw.v_daily_outlet`](#dwv_daily_outlet) | view | worker | SERVER | event_fact | none | Stable view: per outlet and business date, visit, geo validity, sales per category in base units and dues, with the outlet's classification. |
 | [`dw.v_daily_route`](#dwv_daily_route) | view | worker | SERVER | event_fact | none | Stable view (contract for BI and other products): KPIs, money and day state per route and business date, with its geography. |
 | [`dw.v_daily_sku`](#dwv_daily_sku) | view | worker | SERVER | event_fact | none | Stable view: per route, SKU and business date, quantities sold, free, issued and returned and the gross value. |
 | [`dw.v_daily_sr`](#dwv_daily_sr) | view | worker | SERVER | event_fact | none | Stable view: per field user and business date, SR calls, successful calls, geo validity and memo money from the dw facts (active memos with lines); a user-day with neither an SR call nor such a memo has no row. |
@@ -4834,12 +4840,16 @@ Per outlet and business date: whether visited, geo-valid, and sales totals.
 | `visited` | boolean | not null |  | True when the outlet was visited that day. |
 | `geo_valid` | boolean | not null |  | True when a visit that day passed the geo check. |
 | `active_memo_count` | integer | not null |  | Number of active (not voided or superseded) memos with at least one line. |
-| `sold_qty_base` | bigint | not null |  | Quantity sold in base units. |
+| `sold_qty_base` | bigint | not null |  | DEPRECATED (V0109), dropped by a later migration: mixed base units (sticks, pieces and dozens added together), never aggregate it; use the four *_sold_* columns. |
 | `net_mtk` | bigint | not null |  | Net payable value in milli-taka (gross minus discounts and QC deduction, rounded to the paisa). |
 | `due_mtk` | bigint | not null |  | Amount left on credit (due) in milli-taka. |
 | `dues_collected_mtk` | bigint | not null |  | Dues collected against earlier credit memos, in milli-taka. |
 | `last_event_id` | bigint | not null |  | Highest app.domain_event id folded into this row by the projector (replays are ignored). |
 | `updated_at` | timestamp with time zone | not null |  | UTC instant of the last update. |
+| `cigarette_sold_sticks` | bigint | not null |  | Cigarettes sold, in sticks: sum of qty_base of the active memos' non-voided sale lines of cigarette SKUs, every route of the outlet-day (V0109). |
+| `bidi_sold_sticks` | bigint | not null |  | Bidi sold, in sticks: sum of qty_base of the active memos' non-voided sale lines of bidi SKUs, every route of the outlet-day (V0109). |
+| `lighter_sold_pieces` | bigint | not null |  | Lighters sold, in pieces: sum of qty_base of the active memos' non-voided sale lines of lighter SKUs, every route of the outlet-day (V0109). |
+| `match_sold_dozens` | bigint | not null |  | Matches sold, in dozens: sum of qty_base of the active memos' non-voided sale lines of match SKUs, every route of the outlet-day (V0109). |
 
 Keys: `PRIMARY KEY (business_date, outlet_id)`
 
@@ -5656,7 +5666,7 @@ Stable view: outlet-days with new credit or dues collected (credit and collectio
 
 ## dw.v_daily_outlet
 
-Stable view: per outlet and business date, visit, geo validity, sales and dues, with the outlet's classification.
+Stable view: per outlet and business date, visit, geo validity, sales per category in base units and dues, with the outlet's classification.
 
 `owner: worker | capture: SERVER | retention: event_fact | pii: none` · view
 
@@ -5677,7 +5687,10 @@ Stable view: per outlet and business date, visit, geo validity, sales and dues, 
 | `visited` | boolean | null |  | True when the outlet had an SR visit that was not abandoned. |
 | `geo_valid` | boolean | null |  | True when a visit was in range by the server's re-check. |
 | `active_memo_count` | integer | null |  | Number of active (not voided or superseded) memos with at least one line. |
-| `sold_qty_base` | bigint | null |  | Quantity sold in base units. |
+| `cigarette_sold_sticks` | bigint | null |  | Cigarettes sold, in sticks (V0109; replaces the mixed-unit sold_qty_base). |
+| `bidi_sold_sticks` | bigint | null |  | Bidi sold, in sticks (V0109). |
+| `lighter_sold_pieces` | bigint | null |  | Lighters sold, in pieces (V0109). |
+| `match_sold_dozens` | bigint | null |  | Matches sold, in dozens (V0109). |
 | `net_mtk` | bigint | null |  | Net payable value in milli-taka (gross minus discounts and QC deduction, rounded to the paisa). |
 | `due_mtk` | bigint | null |  | Amount left on credit (due) in milli-taka. |
 | `dues_collected_mtk` | bigint | null |  | Dues collected against earlier credit memos, in milli-taka. |

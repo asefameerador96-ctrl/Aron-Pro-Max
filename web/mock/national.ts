@@ -132,6 +132,7 @@ export async function handleNational(x: DashCtx): Promise<boolean> {
   const sc = (n: number, extra = 1) => Math.round(n * f * extra);
   const name = national ? path.slice("/v1/dashboards/national/".length) : "";
   const productCards = ["sales", "channel-std", "breakdown", "filter-options"];
+  if (user.id === 2009) return forbidden(); // an ADMIN without the dashboard module grant (docs/34 s1)
   // BRAND: cards without a brand dimension are refused (docs/34 s1).
   if (brand && ((national && !productCards.includes(name)) || mapPage)) return forbidden();
 
