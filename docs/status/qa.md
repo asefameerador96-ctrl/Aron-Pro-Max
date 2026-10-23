@@ -1,5 +1,9 @@
 # Status: lane qa (wave 4, session 2: data-flow trace)
 
+## Wave 4, session 2d: slice 2, rounding branches and monthly targets (built locally, pushed after the lead reports train 15), 2026-10-23
+- `DataFlowTraceMoneyTargetsTest`. (1) Three SKUs repriced per 2, 1 and 3 base units (an exact .5 line in a lighter box), four memos whose unrounded sum rounds down (-3), up (+2, +3) and on the .5 tie (+5) to the paisa; every figure from the phone equals stored memos (net, round_adj, gross, paid, due), stored lines, server_totals and the dw route-day and outlet nets. (2) The sales cards' daily target over October, November (every target doubled), December (lighter targets removed) and the boundary day: month total over the month's working days, target routes per category, null where no target. No finding. `Memo` in the support now carries net and round_adj (Saturday memos are multiples of 10, so unchanged).
+- Next: slice 3 (concurrency and batch_uuid reuse at trace level).
+
 ## Wave 4, session 2c: slice 1, the trace on Sunday and Monday, 2026-10-23
 - `DataFlowTraceOtherDaysTest` (Sunday 2026-10-25 on GUL-SR-1, Monday 2026-10-26 on BAN-SR-11): the same dev-profile world with a clock at the date. `DataFlowTraceSupport` now takes the business date as a constructor parameter (default Saturday); the memo number follows it (`yyMMdd`).
 - Each day: the bundle plans only that day's route; the first bundle logs every bundled route-day in (planned or not; D-BC-PREVIEW-01 relies on it); a sale in packets (cigarette 20s and 10s, bidi, lighter, match), a credit memo with a partial due collection, a voided memo and a zero-sale visit; upload shuffled, in order, again and replayed; row counts, `server_totals` money and sold base units by SKU, dw route-day figures, `v_daily_sku` by category and the national sales cards for SUPERADMIN all equal the device. 29 PASS rows per day, no finding.

@@ -124,8 +124,11 @@ abstract class DataFlowTraceSupport(
     class Memo(val outlet: Long, val outletCode: String, val lines: List<Line>, val paidShare: Int, val voided: Boolean = false, val minute: Int) {
         val visit = UUID.randomUUID().toString(); val memo = UUID.randomUUID().toString(); val close = UUID.randomUUID().toString()
         val gross: Long get() = lines.sumOf { it.gross }
-        val paid: Long get() = gross * paidShare / 100
-        val due: Long get() = gross - paid
+        /** docs/24 s7.4: the unrounded lines are summed, then rounded half-up to the paisa once; `roundAdj` carries the difference. */
+        val net: Long get() = (gross + 5) / 10 * 10
+        val roundAdj: Long get() = net - gross
+        val paid: Long get() = net * paidShare / 100
+        val due: Long get() = net - paid
     }
 
     class Device(val username: String, val deviceUuid: String, val deviceId: Long, val routeId: Long, val bundleVersion: String, val configVersion: Long, val token: String) {
@@ -174,7 +177,7 @@ abstract class DataFlowTraceSupport(
         val memoNo = "${d.username}-${java.time.LocalDate.parse(day).format(java.time.format.DateTimeFormatter.ofPattern("yyMMdd"))}-${(d.seq++).toString().padStart(3, '0')}"
         out += envelope(d, "memo", m.memo, m.visit, 1, m.minute + 4, json.readTree(
             """{"visit_client_uuid":"${m.visit}","outlet_id":${m.outlet},"memo_no":"$memoNo","memo_kind":"sale","committed_at":"${at(m.minute + 4)}","price_list_date":"$day",
-                "price_type":"outlet","gross_mtk":${m.gross},"offer_discount_mtk":0,"drp_discount_mtk":0,"qc_deduction_mtk":0,"round_adj_mtk":0,"net_mtk":${m.gross},
+                "price_type":"outlet","gross_mtk":${m.gross},"offer_discount_mtk":0,"drp_discount_mtk":0,"qc_deduction_mtk":0,"round_adj_mtk":${m.roundAdj},"net_mtk":${m.net},
                 "paid_mtk":${m.paid},"due_mtk":${m.due},"is_credit":${m.due > 0},"line_count":${m.lines.size},"discount_line_count":0,"qc_line_count":0,
                 "offer_version_ids":[],"rounding_mode":"half_up_paisa"}"""))
         m.lines.forEachIndexed { i, l ->
