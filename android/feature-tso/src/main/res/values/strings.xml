@@ -177,6 +177,7 @@
     <string name="tso_fs_sales_date_label">Sales Date</string>
     <string name="tso_fs_ff">FF: %1$s</string>
     <string name="tso_fs_sr_not_set">FF: SR Not Set</string>
+    <string name="tso_fs_not_due">not due</string>
     <string name="tso_fs_route_totals">%1$d memos, net %2$s</string>
     <string name="tso_fs_done">Final Submit Done Successfully. %1$d routes, %2$d memos, net %3$s</string>
     <string name="tso_fs_no_zones">No zones are assigned to you</string>

@@ -8,7 +8,10 @@ import kotlinx.coroutines.flow.asStateFlow
 import org.json.JSONObject
 
 /** One route card of the preview: the FF (SR) name or null = "SR Not Set" (contract `FinalSubmitPreview.routes[]`). */
-data class FsRoute(val routeId: Long, val code: String, val name: String, val kind: String, val ffName: String?, val state: String, val hadData: Boolean, val memoCount: Int, val netMtk: Long, val pendingRows: Int?)
+data class FsRoute(val routeId: Long, val code: String, val name: String, val kind: String, val ffName: String?, val state: String, val hadData: Boolean, val memoCount: Int, val netMtk: Long, val pendingRows: Int?, val planned: Boolean? = null) {
+    /** Contract 1.7 `planned`: false (not null, not true) with no data = the route is not due that day; greyed, never a failed submit. */
+    val notDue: Boolean get() = planned == false && !hadData
+}
 
 data class FsPreview(val zoneId: Long, val date: String, val alreadySubmitted: Boolean, val submittedAt: String?, val submittedBy: String?, val routes: List<FsRoute>, val warnings: List<String>)
 
@@ -24,7 +27,8 @@ object FsJson {
             if (o.isNull("submitted_by")) null else o.optString("submitted_by"),
             (0 until a.length()).map { i -> a.getJSONObject(i).let { r ->
                 FsRoute(r.getLong("route_id"), str(r, "route_code"), str(r, "route_name"), str(r, "kind"), if (r.isNull("ff_user_name")) null else r.optString("ff_user_name").ifBlank { null },
-                    str(r, "state"), r.getBoolean("had_data"), r.getInt("memo_count"), r.getLong("net_mtk"), if (r.isNull("pending_rows_reported")) null else r.optInt("pending_rows_reported"))
+                    str(r, "state"), r.getBoolean("had_data"), r.getInt("memo_count"), r.getLong("net_mtk"), if (r.isNull("pending_rows_reported")) null else r.optInt("pending_rows_reported"),
+                    if (r.isNull("planned")) null else r.optBoolean("planned"))
             } },
             o.optJSONArray("warnings")?.let { w -> (0 until w.length()).map { w.getString(it) } }.orEmpty(),
         )

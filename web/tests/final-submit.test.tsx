@@ -60,4 +60,36 @@ describe("FinalSubmitView", () => {
   it("Bangla labels", () => {
     expect(text(html(<FinalSubmitView {...base} locale="bn" />))).toContain("ফাইনাল সাবমিট");
   });
+  describe("not due routes (D-BC-PREVIEW-01)", () => {
+    const rows = (over: Partial<FinalSubmitPreview["routes"][number]>) => preview({ routes: [route(7, { state: "not_started", had_data: false, memo_count: 0, net_mtk: 0, pending_rows_reported: 4, ...over })] });
+    it("planned false and no data: grey row, status text not due, no pending figure", () => {
+      const m = html(<FinalSubmitView {...base} preview={rows({ planned: false })} />);
+      expect(m).toContain('data-row-state="not-due"');
+      expect(text(m)).toContain("Not due");
+      expect(text(m)).not.toContain("Not started");
+      expect(m).not.toContain("void-7");
+    });
+    it("planned true, planned null and planned absent keep the ordinary row", () => {
+      for (const planned of [true, null, undefined]) {
+        const m = html(<FinalSubmitView {...base} preview={rows({ planned })} />);
+        expect(m).not.toContain("data-row-state");
+        expect(text(m)).toContain("Not started");
+        expect(text(m)).not.toContain("Not due");
+      }
+    });
+    it("planned false with data stays an ordinary row (the work happened)", () => {
+      const m = html(<FinalSubmitView {...base} preview={rows({ planned: false, had_data: true, state: "in_field" })} />);
+      expect(m).not.toContain("data-row-state");
+      expect(text(m)).toContain("In the field");
+      expect(m).toContain("void-7");
+    });
+    it("Bangla and a very long route name: the row renders, wraps in the scroll region and stays marked", () => {
+      const long = "বিশাল দীর্ঘ রুটের নাম ".repeat(20);
+      const m = html(<FinalSubmitView {...base} locale="bn" preview={rows({ planned: false, route_name: long })} />, "bn");
+      expect(m).toContain('data-row-state="not-due"');
+      expect(text(m)).toContain("আজ নির্ধারিত নয়");
+      expect(text(m)).toContain(long.trim());
+      expect(m).toContain("break-words");
+    });
+  });
 });

@@ -16,6 +16,7 @@ import com.aktcl.aron.core.ui.AppLocale
 import com.aktcl.aron.core.ui.AronTheme
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -112,6 +113,19 @@ class FinalSubmitLogicTest {
         assertTrue(s.ui.value.phase is FsPhase.Done); assertEquals(1, api.previews)
     }
 
+    @Test fun plannedParsesTrueFalseNullAndAbsent() {
+        fun route(extra: String) = """{"route_id":1,"route_code":"A","route_name":"N","kind":"sr","ff_user_id":null,"ff_user_name":null,"state":"in_field","had_data":false,"memo_count":0,"net_mtk":0,"pending_rows_reported":null$extra}"""
+        fun planned(extra: String) = FsJson.preview("""{"zone_id":10,"business_date":"2026-10-17","already_submitted":false,"submitted_at":null,"submitted_by":null,"routes":[${route(extra)}],"warnings":[]}""")!!.routes[0]
+        assertEquals(true, planned(""","planned":true""").planned); assertEquals(false, planned(""","planned":false""").planned)
+        assertNull(planned(""","planned":null""").planned); assertNull(planned("").planned)
+    }
+
+    @Test fun notDueOnlyWhenNotPlannedAndNoData() {
+        fun r(planned: Boolean?, data: Boolean) = FsRoute(1, "A", "N", "sr", null, "in_field", data, 0, 0, null, planned)
+        assertTrue(r(false, false).notDue)
+        assertFalse(r(false, true).notDue); assertFalse(r(true, false).notDue); assertFalse(r(null, false).notDue)
+    }
+
     @Test fun jsonReadsThePreviewAndTheResult() {
         val p = FsJson.preview("""{"zone_id":10,"business_date":"2026-10-17","already_submitted":false,"submitted_at":null,"submitted_by":null,"routes":[{"route_id":1,"route_code":"A","route_name":"N","kind":"sr","ff_user_id":null,"ff_user_name":null,"state":"in_field","had_data":true,"memo_count":3,"net_mtk":5000,"pending_rows_reported":null}],"warnings":["routes_not_logged_in"]}""")!!
         assertNull(p.routes[0].ffName); assertEquals(5000L, p.routes[0].netMtk); assertEquals(listOf("routes_not_logged_in"), p.warnings)
@@ -139,6 +153,20 @@ class FinalSubmitScreenTest {
         compose.onNodeWithTag(FsTags.GET).performClick(); compose.waitForIdle()
         compose.onNodeWithText("আপনি ইতিমধ্যেই আজকের জন্য 'FINAL SUBMIT' জমা দিয়েছেন!").assertExists()
     }
+
+    private fun showNotDue(lang: AppLanguage, word: String) {
+        val notDue = FsRoute(5, "Z", "Idle", "sr", null, "not_started", false, 0, 0, null, false)
+        val s = FinalSubmitState(Api(preview = FsPreviewOutcome.Ok(preview().copy(routes = preview().routes + notDue))), 7) { "2026-10-17" }
+        show(lang, s)
+        compose.onNodeWithTag(FsTags.zone(10)).performScrollTo().performClick(); compose.waitForIdle()
+        compose.onNodeWithTag(FsTags.GET).performClick(); compose.waitForIdle()
+        compose.onNodeWithTag(FsTags.notDue(5)).performScrollTo().assertExists(); compose.onNodeWithText(word).assertExists()
+        compose.onNodeWithTag(FsTags.notDue(1)).assertDoesNotExist(); compose.onNodeWithTag(FsTags.notDue(2)).assertDoesNotExist()
+    }
+
+    @Test fun notDueRouteCardIsLabelledInEnglish() = showNotDue(AppLanguage.EN, "not due")
+
+    @Test fun notDueRouteCardIsLabelledInBangla() = showNotDue(AppLanguage.BN, "আজ নির্ধারিত নয়")
 
     @Test fun routesShowTheFfNameOrSrNotSetThenConfirmThenSuccess() {
         val api = Api(); val s = FinalSubmitState(api, 7) { "2026-10-17" }

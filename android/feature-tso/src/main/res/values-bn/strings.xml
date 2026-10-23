@@ -177,6 +177,7 @@
     <string name="tso_fs_sales_date_label">বিক্রয়ের তারিখ</string>
     <string name="tso_fs_ff">এফএফ: %1$s</string>
     <string name="tso_fs_sr_not_set">এফএফ: এসআর নির্ধারিত নেই</string>
+    <string name="tso_fs_not_due">আজ নির্ধারিত নয়</string>
     <string name="tso_fs_route_totals">%1$d টি মেমো, নিট %2$s</string>
     <string name="tso_fs_done">ফাইনাল সাবমিট সফলভাবে হয়েছে। %1$d টি রুট, %2$d টি মেমো, নিট %3$s</string>
     <string name="tso_fs_no_zones">আপনার কোনো জোন নির্ধারিত নেই</string>

@@ -10,7 +10,13 @@ export interface Column<Row> {
 
 /** Presentational table on the data surface (web-glass s8.1): sticky glass header, density-driven rows, numeric columns
  *  right-aligned with tabular digits, hover bg-pressed. Server rendered; sorting and paging belong to the list operation. */
-export function DataTable<Row>({ columns, rows, rowKey, empty, caption }: { columns: readonly Column<Row>[]; rows: readonly Row[]; rowKey: (row: Row) => string; empty: string; caption: string }) {
+/** `rowProps` lets a view mark a row (a greyed "not due" row): a class and a data-state hook for tests. */
+export interface RowProps {
+  className?: string;
+  state?: string;
+}
+
+export function DataTable<Row>({ columns, rows, rowKey, empty, caption, rowProps }: { columns: readonly Column<Row>[]; rows: readonly Row[]; rowKey: (row: Row) => string; empty: string; caption: string; rowProps?: (row: Row) => RowProps | undefined }) {
   if (rows.length === 0) {
     return (
       <p data-testid="table-empty" className="glass-card border-dashed p-6 text-center text-body text-secondary">
@@ -34,15 +40,18 @@ export function DataTable<Row>({ columns, rows, rowKey, empty, caption }: { colu
           </tr>
         </thead>
         <tbody>
-          {rows.map((r) => (
-            <tr key={rowKey(r)}>
+          {rows.map((r) => {
+            const rp = rowProps?.(r);
+            return (
+            <tr key={rowKey(r)} className={rp?.className} data-row-state={rp?.state}>
               {columns.map((c) => (
                 <td key={c.key} className={`max-w-[32rem] px-3 py-2 align-top break-words ${c.align === "right" ? "text-end tabular-nums" : "text-start"}`}>
                   {c.render(r)}
                 </td>
               ))}
             </tr>
-          ))}
+            );
+          })}
         </tbody>
       </table>
     </TableScroll>
