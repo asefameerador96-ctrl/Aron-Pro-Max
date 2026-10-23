@@ -1,7 +1,7 @@
 # Web-admin lane status
 
 ## SESSION 7 (2026-10-23, contract 1.7.0 adoption; D-WEB-ADMIN-HOUSE-NOTDUE-01)
-Done on `lane/web-admin` (INT c07c66dc merged): (1) `house` in the user-scope editor (levels from `GEO_LEVELS`, `NodeType`, TSO may hold territory or house, bn/en label, server 400 detail shown); (2) Final Submit "not due" rows (planned false and no data). Vitest: `tests/master-ops.test.ts` (level list, role rule, save payload), `tests/final-submit.test.tsx` (three cases plus Bangla long text). Lint, tsc and vitest green locally (1388 tests); Playwright not run. Open: ask backend-authz which other roles may hold a house node.
+Done on `lane/web-admin` (INT c07c66dc merged): (1) `house` in the user-scope editor (levels from `GEO_LEVELS`, `NodeType`, TSO may hold territory or house, bn/en label, server 400 detail shown); (2) Final Submit "not due" rows (planned false and no data). Vitest: `tests/master-ops.test.ts` (level list, role rule, save payload), `tests/final-submit.test.tsx` (three cases plus Bangla long text). Lint, tsc and vitest green locally (1388 tests); Playwright: CI run 39956402461 failed only `e2e/master2.spec.ts` (TSO level list expected territory only); fixed to territory + house. Open: ask backend-authz which other roles may hold a house node.
 
 ## HANDOVER (session 6 -> session 7, 2026-10-23 ~08:35 UTC; start here)
 **Branch:** `lane/web-admin`. Everything of session 6 is live on dev: 85ce87ad (train 13 merge, mock split), 5b25900e (op gate, train 15), 85d367d3 (states audit, train 16, INT af2cfbcd). This docs-only commit (handover) rides train 17. No code is waiting.
