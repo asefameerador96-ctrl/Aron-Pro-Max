@@ -1,3 +1,21 @@
+# Status: lane qa (wave 4, session 2: data-flow trace)
+
+## Wave 4, session 2: re-merge of INT 52bdd477 (train 12), 2026-10-23
+- Merged INT; `ApiWorld.kt` keeps backend-admin's version plus the devProfile hooks. `DataFlowTraceTest` and the full `:backend:app:test` are green locally.
+- Known-findings list shrunk to what is still open: deleted QA-FLOW-01 (BRAND; the hop-9 403 was a trace setup bug, the BRAND grant insert matched no brand row because `product_node.code` is null; the setup now checks the insert, and the BRAND card now answers 200; proof of the scoping stays `NationalScopeLeakTest`), QA-FLOW-03 (by-outlet now has one `sold_<category>_base` column each, no `sold_qty_base`) and QA-FLOW-04 (hop 11 now asserts the preview warnings `routes_not_sales_submitted`, both active routes listed).
+- Login/Submit: since train 12 a successful login needs a check-in as well as a download (brief s3.4, db V0108), so hop 8 expects 0 before the attendance and a new check after hop 11 expects 1 for the TSO.
+- Still open (waiting for owners): QA-FLOW-02 and QA-FLOW-06 (backend-core 24b08bd6, train 13 or 14), QA-FLOW-07 (geo claim, backend-authz 45fc83d5, train 13).
+
+## Wave 4 handover (2026-10-23)
+- **Done:** `DataFlowTraceTest` (15 ordered hops; the open defects are rows of the shrink-only list `data-flow-trace-known-findings.txt` (each cites its request; the owning lane deletes its row with the fix; the lead accepted this pattern), `DataFlowTraceSupport` (shared world), `ApiWorld(devProfile = true)` (seed as dev loads it),
+  evidence `docs/evidence/data-flow-trace-2026-10-23.md`, requests `backend-core-qa-1`, `backend-authz-qa-1`, `backend-reports-qa-1`, `db-qa-1`, `infra-qa-1`.
+  Opus checker (T1 money and idempotency) ran; its label corrections and its missing edge cases (changed payload, content duplicate, memo_no duplicate, wrong pack size) are in. Local run: `:backend:app:test --tests '*DataFlowTraceTest*'` green; the rest of the lane suites were not re-run locally (the only product-test change is an optional `ApiWorld` constructor parameter): CI decides, so this head is **not** declared a candidate.
+- **Successor start (lead, 2026-10-22 22:36Z):** `6fa6e5a8` (lane run #1417 green) holds INT 384ecee2 only, two promotions behind (trains 10, 11); it overlaps backend-admin 7b44110d in `ApiWorld.kt`. After the lead reports train 12 landed (about 00:30Z 2026-10-23): merge INT into lane/qa, resolve `ApiWorld.kt` (keep backend-admin's dev-profile fixture changes and the `devProfile` parameter / trace hooks), run `DataFlowTraceTest`, delete from `data-flow-trace-known-findings.txt` only rows whose fix is on the merged head and proven by the trace (BRAND hop 9: fixed by train 10, see `backend-authz-qa-1-answer.md` on lane/backend-authz 6a62f4ac; by-outlet units: backend-reports 9be08ac4 + db V0109, train 12/13; memo_no_invalid and pack_factor: backend-core #14, in progress), run the full `:backend:app:test`, push once, declare "candidate <sha>" when the lane CI is green on every job. Do not push before train 12 lands.
+- **Local run facts:** full `:backend:app:test` takes 20 min locally, 12 min in CI; CI "Shared, db and backend" took 40 min.
+
+- **Local setup in a fresh container:** `service postgresql start`; `ALTER ROLE postgres PASSWORD 'pg'`; `ARON_TEST_PG_URL=jdbc:postgresql://localhost:5432/postgres?user=postgres&password=pg`; first Gradle sync takes about 6 minutes (online, not `--offline`).
+- **Open for the next qa session:** extend the trace to Sunday (GUL-SR-1) and Monday (BAN-SR-11) and to a multi-month target reading; half-up and `round_adj` branches (a SKU with `per_base_qty` > 1, a discount); concurrency and batch_uuid reuse at trace level; rerun against dev on a Saturday with the deploy's secrets only if the lead provides them through the workflow (qa never reads them); the BRAND level once backend-authz wires it; route 22636's code from the next deploy that prints codes.
+
 # Status: lane qa (wave 2, session 1, started 2026-10-17 18:30Z)
 
 ## Done (pushed to `lane/qa`)
