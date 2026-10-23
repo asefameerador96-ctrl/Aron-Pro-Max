@@ -125,6 +125,62 @@ class OwnerDirectiveV0087Test {
     }
 
     @Test
+    fun v0109SplitsTheOutletQuantityByCategoryAndTheViewLosesTheMixedColumn() {
+        // Migrate to V0108 with the seed, write sales and an agg_daily_outlet row with the old mixed sum, then run V0109:
+        // each category is backfilled in its own base unit; voided lines, data-voided memos and other outlets stay out.
+        TestPostgres.createDatabase().use { other ->
+            other.flyway().let { org.flywaydb.core.Flyway.configure().configuration(it.configuration).target("108").load() }.migrate()
+            val outlet = "(SELECT min(id) FROM app.outlet)"
+            val second = "(SELECT min(id) FROM app.outlet WHERE id > $outlet)"
+            other.connect().use { c ->
+                SeedLoader.load(c)
+                fun memo(no: String, outletId: String, voided: Boolean): UUID = UUID.randomUUID().also { m ->
+                    c.exec(
+                        "INSERT INTO app.memo (client_uuid, family_uuid, business_date, user_id, captured_at, config_version, visit_client_uuid, " +
+                            "outlet_id, memo_no, memo_kind, committed_at, price_list_date, price_type, gross_mtk, offer_discount_mtk, drp_discount_mtk, " +
+                            "qc_deduction_mtk, round_adj_mtk, net_mtk, paid_mtk, due_mtk, is_credit, line_count, discount_line_count, qc_line_count, voided_at) " +
+                            "VALUES ('$m', gen_random_uuid(), '2026-10-05', ${user("sr1001")}, now(), 0, gen_random_uuid(), $outletId, 'sr1001-261005-$no', " +
+                            "'sale', now(), '2026-10-05', 'outlet', 10000, 0, 0, 0, 0, 10000, 10000, 0, false, 1, 0, 0, ${if (voided) "now()" else "NULL"})",
+                    )
+                }
+                fun line(memo: UUID, no: Int, category: String, packs: Int, factor: Int, unit: String, voided: Boolean = false) = c.exec(
+                    "INSERT INTO app.memo_line (client_uuid, family_uuid, business_date, user_id, captured_at, config_version, memo_client_uuid, " +
+                        "line_no, sku_id, line_kind, qty_entered, unit_entered, pack_factor, qty_base, price_type, price_valid_from, base_price_mtk, " +
+                        "price_per_qty, gross_mtk, voided_at) SELECT gen_random_uuid(), gen_random_uuid(), '2026-10-05', ${user("sr1001")}, now(), 0, '$memo', " +
+                        "$no, min(id), 'sale', $packs, '$unit', $factor, ${packs * factor}, 'outlet', '2026-01-01', 1000, 1, ${packs * factor * 1000}, " +
+                        "${if (voided) "now()" else "NULL"} FROM app.sku WHERE category_code = '$category'",
+                )
+                val a = memo("001", outlet, voided = false)
+                line(a, 1, "cigarette", 2, 20, "pack")          // 40 sticks
+                line(a, 2, "cigarette", 1, 20, "pack", voided = true)
+                line(a, 3, "lighter", 2, 25, "pack")            // 50 pieces
+                line(a, 4, "match", 3, 1, "dozen")              // 3 dozens
+                val b = memo("002", outlet, voided = true)      // admin data void: out
+                line(b, 1, "bidi", 1, 25, "pack")
+                val other2 = memo("003", second, voided = false)
+                line(other2, 1, "bidi", 2, 25, "pack")          // 50 bidi sticks on the second outlet
+                for (o in listOf(outlet, second)) {
+                    c.exec("INSERT INTO dw.agg_daily_outlet (business_date, outlet_id, sold_qty_base) SELECT '2026-10-05', $o, 93")
+                }
+                c.exec("INSERT INTO dw.agg_daily_outlet (business_date, outlet_id, sold_qty_base) SELECT '2026-10-06', $outlet, 7")
+            }
+            other.flyway().migrate()
+            other.connect().use { c ->
+                assertEquals("2026-10-05|40|0|50|3|93,2026-10-05|0|50|0|0|93,2026-10-06|0|0|0|0|7", c.scalar(
+                    "SELECT string_agg(concat_ws('|', business_date, cigarette_sold_sticks, bidi_sold_sticks, lighter_sold_pieces, match_sold_dozens, sold_qty_base), ',' " +
+                        "ORDER BY business_date, outlet_id) FROM dw.agg_daily_outlet"))
+                val cols = "SELECT string_agg(attname, ',' ORDER BY attnum) FROM pg_attribute WHERE attrelid = 'dw.v_daily_outlet'::regclass AND attnum > 0"
+                val viewCols = c.scalar(cols)!!.split(',')
+                assertTrue("sold_qty_base" !in viewCols, "the mixed-unit column is gone from the stable view")
+                assertEquals(listOf("cigarette_sold_sticks", "bidi_sold_sticks", "lighter_sold_pieces", "match_sold_dozens"),
+                    viewCols.subList(viewCols.indexOf("active_memo_count") + 1, viewCols.indexOf("net_mtk")))
+                assertEquals("40|50|3", c.scalar("SELECT concat_ws('|', cigarette_sold_sticks, lighter_sold_pieces, match_sold_dozens) FROM dw.v_daily_outlet WHERE outlet_id = $outlet AND business_date = '2026-10-05'"))
+                assertEquals("true|true|true", listOf("bi_reader", "web_ro", "worker_rw").joinToString("|") { can(c, it, "dw.v_daily_outlet", "SELECT")!! })
+            }
+        }
+    }
+
+    @Test
     fun v0089ModuleGrantsHoldFifteenModules() = db.connect().use { c ->
         // The seeded admin holds w on every module (seed 01, as V0089 does for admins present when it runs).
         assertEquals("15|w", c.scalar("SELECT count(*) || '|' || string_agg(DISTINCT access, ',') FROM app.user_module_grant WHERE user_id = ${user("admin1001")}"))

@@ -62,6 +62,12 @@ object DataDictionary {
 
     private fun cell(s: String) = s.replace("|", "\\|").replace("\n", " ")
 
+    /** One line per non-additive change of a `dw.v_*` view (lead ruling 2026-10-22), oldest first. */
+    private val VIEW_CHANGES = listOf(
+        "V0109 (2026-10-22): `dw.v_daily_outlet.sold_qty_base` removed: it added cigarette and bidi sticks, lighter pieces and " +
+            "match dozens into one number. Use `cigarette_sold_sticks`, `bidi_sold_sticks`, `lighter_sold_pieces` and `match_sold_dozens`.",
+    )
+
     fun render(rels: List<Relation>): String = buildString {
         appendLine("# Data dictionary")
         appendLine()
@@ -74,6 +80,12 @@ object DataDictionary {
         appendLine("ONLINE (web or API write), SERVER (derived by the server or worker), REFERENCE (seeded by migration). **Retention**:")
         appendLine("the class of docs/16 s13.1. **PII**: none, personal, sensitive, secret. Other products read only the `dw` views")
         appendLine("(`v_*`, stable contract, additive changes only) and the domain-event outbox, never `app` tables (docs/31 s3).")
+        appendLine()
+        appendLine("## Change log of the stable views")
+        appendLine()
+        appendLine("Removals are rare and listed here (a wrong column is removed, never redefined in place); additions are not listed.")
+        appendLine()
+        VIEW_CHANGES.forEach { appendLine("- $it") }
         appendLine()
         appendLine("| Schema | Relations | Columns |")
         appendLine("|---|---|---|")
