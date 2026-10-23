@@ -49,7 +49,9 @@ abstract class DataFlowTraceSupport(
     protected val day: String = "2026-10-24", // Saturday: GUL-SR-2 (mask 9 = Saturday + Tuesday)
 ) {
     protected val repoRoot = File(System.getProperty("aron.repoRoot") ?: "../..")
-    protected val clock = AronClock { Instant.parse("${day}T10:30:00Z") }
+    /** Moves the world clock forward (the parking expiry); zero for every other trace. */
+    @Volatile protected var clockShift: java.time.Duration = java.time.Duration.ZERO
+    protected val clock = AronClock { Instant.parse("${day}T10:30:00Z").plus(clockShift) }
     protected val json = ContractModel.json
     protected lateinit var world: ApiWorld
     protected lateinit var app: TestApplication

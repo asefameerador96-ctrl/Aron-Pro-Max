@@ -1,3 +1,7 @@
+## Wave 4, session 2g: cover day, emergency off day, parking (built locally, pushed after "train 17 landed"), 2026-10-23
+- `DataFlowTraceCoverHolidayTest` (cover day Monday, emergency off day Tuesday, shared `DataFlowTraceScenario`), `DataFlowTraceParkingTest`; `DataFlowTraceSupport` has a movable clock (`clockShift`) and `prepareSrDay(username, phone, routeCode)`. No finding; two observations are in the evidence doc (a sale on a called-off day is in the sales cards but in no CPR/Login figure; a parentless child after the TTL is quarantined `business_date_out_of_window`, not a final reject as DQ-03 words it).
+- The handover above stays valid; strike items (2) and (3) of "Open for qa #3" once this is pushed.
+
 # Status: lane qa (wave 4, session 2 -> 3 handover, 2026-10-23)
 
 ## Handover from qa #2
