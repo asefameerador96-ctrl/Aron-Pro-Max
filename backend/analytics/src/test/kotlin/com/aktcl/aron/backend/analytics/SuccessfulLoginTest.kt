@@ -49,10 +49,11 @@ class SuccessfulLoginTest : ReportFixture() {
     fun loginDownloadWithoutCheckInCountsZeroAndWithCheckInCountsOne() = app {
         // Daily Tracking: only R1 (login, download, check-in) is logged in; R2 lacks the check-in, R3 the download.
         assertEquals(mapOf("Route1" to "below_80", "Route2" to "not_logged_in", "Route3" to "not_logged_in"), buckets())
-        // Ops login/submit: 1 of 3 target routes; R2 is the only unsubmitted route and it is not logged in; R1 and R3 are submitted.
+        // Ops login/submit: 1 of 3 target routes. R2 and R3 are not logged in even though R3 submitted (a submit without a successful login is not counted as submitted,
+        // so the submit share of the logged-in routes never exceeds 100 %); R1 is the only submitted route.
         val ops = get("/v1/dashboards/login-submit?business_date=2026-10-04")
-        assertEquals(33.33, ops["kpis"]!!.jsonObject.s("login_pct").toDouble())
-        assertEquals(setOf("R2"), ops.codes("not_logged_in")); assertEquals(emptySet(), ops.codes("logged_in_not_submitted")); assertEquals(setOf("R1", "R3"), ops.codes("submitted"))
+        assertEquals(33.33, ops["kpis"]!!.jsonObject.s("login_pct").toDouble()); assertEquals(100.0, ops["kpis"]!!.jsonObject.s("submit_pct_of_logged_in").toDouble())
+        assertEquals(setOf("R2", "R3"), ops.codes("not_logged_in")); assertEquals(emptySet(), ops.codes("logged_in_not_submitted")); assertEquals(setOf("R1"), ops.codes("submitted"))
         // Reports: the daily-tracking buckets and the final-submit-status counts follow the same rule.
         val dt = run(10, Role.ANALYST, "daily-tracking").result().rows().associate { it.str("route_code") to it.str("bucket") }
         assertEquals("not_logged_in", dt["R2"]); assertEquals("not_logged_in", dt["R3"]); assertEquals("below_80", dt["R1"])
@@ -70,11 +71,23 @@ class SuccessfulLoginTest : ReportFixture() {
         }
         AggregationWorker(fresh.db).also { w -> w.requestRebuild(day); w.runUntilIdle() }
         assertEquals(mapOf("Route1" to "below_80", "Route2" to "ge_100", "Route3" to "not_logged_in"), buckets())
-        val ops2 = get("/v1/dashboards/login-submit?business_date=2026-10-04")
-        assertEquals(66.67, ops2["kpis"]!!.jsonObject.s("login_pct").toDouble())
-        assertEquals(emptySet(), ops2.codes("not_logged_in")); assertEquals(setOf("R2"), ops2.codes("logged_in_not_submitted"))
+        // Zone 1 (R1, R2) is asked at its own scope: the national KPIs of phase A are held in the 30 s dashboard cache.
+        val ops2 = get("/v1/dashboards/login-submit?business_date=2026-10-04&level=zone&node_id=$z1")
+        assertEquals(100.0, ops2["kpis"]!!.jsonObject.s("login_pct").toDouble()); assertEquals(50.0, ops2["kpis"]!!.jsonObject.s("submit_pct_of_logged_in").toDouble())
+        assertEquals(emptySet(), ops2.codes("not_logged_in")); assertEquals(setOf("R2"), ops2.codes("logged_in_not_submitted")); assertEquals(setOf("R1"), ops2.codes("submitted"))
         val fs2 = run(10, Role.ANALYST, "final-submit-status").result().rows().first { it.num("target_routes").toInt() == 2 }
         assertEquals(0, fs2.num("not_started").toInt()); assertEquals(1, fs2.num("in_progress").toInt())
         assertEquals("ge_100", run(10, Role.ANALYST, "daily-tracking").result().rows().first { it.str("route_code") == "R2" }.str("bucket"))   // 1 call of 1 target
+
+        // R3 is worked by a stand-in SR (the route-day's acting user) whose check-in names no route; R3 downloads: now R3 counts as logged in too.
+        fresh.db.jdbi.useHandle<Exception> {
+            it.execute("UPDATE app.route_day SET acting_user_id = 10, bundle_count = 1, last_bundle_at = TIMESTAMPTZ '2026-10-04 01:30Z' WHERE route_id = (SELECT id FROM app.route WHERE code = 'R3')")
+            it.execute(
+                """INSERT INTO app.attendance_event (client_uuid, family_uuid, business_date, user_id, route_id, captured_at, config_version, kind, fix_status, fix_lat, fix_lng, fix_accuracy_m, fix_is_mock, address_display)
+                   VALUES (gen_random_uuid(), gen_random_uuid(), DATE '2026-10-04', 10, NULL, TIMESTAMPTZ '2026-10-04 03:30Z', 1, 'check_in', 'ok', 23.78, 90.41, 8, false, 'Banani')""",
+            )
+        }
+        AggregationWorker(fresh.db).also { w -> w.requestRebuild(day); w.runUntilIdle() }
+        assertEquals(emptySet(), get("/v1/dashboards/login-submit?business_date=2026-10-04").codes("not_logged_in"))
     }
 }

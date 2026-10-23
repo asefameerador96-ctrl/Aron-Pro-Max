@@ -161,14 +161,15 @@ internal object DashboardSummaries {
         ).bind("r", routeId).bind("d", date).execute()
 
         // The first non-voided attendance check-in of the route's SR that day: the event's own route, else (no route on the event) a user assigned
-        // to the route that day. The same rule as the V0108 backfill, so rebuilt and backfilled days agree.
+        // to the route that day, or the route-day's acting (stand-in) SR. A superset of the V0108 backfill rule (which lacks the stand-in).
         if (hasCheckedIn(h)) h.createUpdate(
             """
             WITH ci AS (SELECT min(e.captured_at) AS at FROM app.attendance_event e
                          WHERE e.kind = 'check_in' AND e.voided_at IS NULL AND e.business_date = :d
                            AND (e.route_id = :r OR (e.route_id IS NULL AND e.user_id IN (
                                   SELECT ra.user_id FROM app.route_assignment ra
-                                   WHERE ra.route_id = :r AND ra.valid_from <= :d AND (ra.valid_to IS NULL OR ra.valid_to > :d)))))
+                                   WHERE ra.route_id = :r AND ra.valid_from <= :d AND (ra.valid_to IS NULL OR ra.valid_to > :d)
+                                   UNION SELECT rd.acting_user_id FROM app.route_day rd WHERE rd.route_id = :r AND rd.business_date = :d AND rd.acting_user_id IS NOT NULL))))
             UPDATE dw.agg_daily_route a SET checked_in_at = (SELECT at FROM ci) WHERE a.route_id = :r AND a.business_date = :d
             """,
         ).bind("r", routeId).bind("d", date).execute()
@@ -234,6 +235,10 @@ internal object DashboardSummaries {
           UNION ALL
           SELECT ra.route_id, e.business_date FROM app.attendance_event e
             JOIN app.route_assignment ra ON ra.user_id = e.user_id AND ra.valid_from <= e.business_date AND (ra.valid_to IS NULL OR ra.valid_to > e.business_date)
+           WHERE e.received_at > :since AND e.kind = 'check_in' AND e.route_id IS NULL AND e.business_date >= :today - 7
+          UNION ALL
+          SELECT rd.route_id, rd.business_date FROM app.attendance_event e
+            JOIN app.route_day rd ON rd.acting_user_id = e.user_id AND rd.business_date = e.business_date
            WHERE e.received_at > :since AND e.kind = 'check_in' AND e.route_id IS NULL AND e.business_date >= :today - 7
         ) s
         """,

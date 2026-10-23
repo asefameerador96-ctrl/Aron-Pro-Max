@@ -340,7 +340,7 @@ object Aggregator {
             SELECT :d, :z, (SELECT territory_id FROM app.zone WHERE id = :z),
                    (SELECT count(*) FROM tgt),
                    (SELECT count(*) FROM tgt WHERE $login),
-                   (SELECT count(*) FROM tgt WHERE day_state IN ('sales_submitted','final_submitted')),
+                   (SELECT count(*) FROM tgt WHERE day_state IN ('sales_submitted','final_submitted') AND $login),
                    (SELECT count(*) > 0 AND bool_and(day_state = 'final_submitted') FROM tgt),
                    (SELECT coalesce(sum(target_outlets), 0) FROM tgt),
                    (SELECT coalesce(sum(visited_outlets), 0) FROM r), (SELECT coalesce(sum(successful_calls), 0) FROM r),

@@ -238,8 +238,8 @@ class OpsService(
         }
         return LoginSubmitStatus(
             summary.as_of, date.toString(), summary.kpis,
-            live.filter { !it.loggedIn && !it.submitted }.map { it.dto }, live.filter { it.loggedIn && !it.submitted }.map { it.dto },
-            live.filter { it.submitted }.map { it.dto }, days.filter { it.excused }.map { it.dto }, zones,
+            live.filter { !it.loggedIn }.map { it.dto }, live.filter { it.loggedIn && !it.submitted }.map { it.dto },
+            live.filter { it.loggedIn && it.submitted }.map { it.dto }, days.filter { it.excused }.map { it.dto }, zones,
         )
     }
 
