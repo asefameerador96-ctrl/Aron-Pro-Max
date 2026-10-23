@@ -1,5 +1,6 @@
 "use client";
 // F-WEB-052 market QC and F-WEB-060 warehouse QC: SKU by fault type, saved as a separate web source (never added to app QC).
+import { EmptyNote } from "@/components/admin/kit/empty-note";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useI18n } from "@/components/i18n-provider";
@@ -62,6 +63,9 @@ export function QcGrid({ source, zoneId, routeId, date, skus, faults }: { source
   const cell = "px-1 py-1 align-top";
   return (
     <div className="space-y-3" data-testid={`qc-grid-${source}`}>
+      {skus.length === 0 ? (
+        <EmptyNote />
+      ) : (
       <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white shadow-sm">
         <table className="min-w-full text-sm">
           <thead className="bg-slate-50 text-left">
@@ -92,6 +96,7 @@ export function QcGrid({ source, zoneId, routeId, date, skus, faults }: { source
           </tbody>
         </table>
       </div>
+      )}
       {err.cells ? <p role="alert" className="text-xs text-danger-on-container">{err.cells}</p> : null}
       {source === "warehouse" ? <ReasonField value={reason} onChange={setReason} error={err.reason} /> : null}
       {banner ? <p role={banner.ok ? "status" : "alert"} data-testid={banner.ok ? "form-ok" : "form-error"} className={`rounded p-3 text-sm ${banner.ok ? "bg-[color-mix(in_srgb,var(--success)_14%,transparent)] text-success-on-container" : "bg-[color-mix(in_srgb,var(--danger)_12%,transparent)] text-danger-on-container"}`}>{banner.text}</p> : null}

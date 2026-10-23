@@ -1,3 +1,4 @@
+import { t } from "@/lib/i18n";
 import { DeviceDetailView } from "@/components/admin/config/device-detail-view";
 import { onApiFailure } from "@/components/admin/crud/pages";
 import { apiGet } from "@/components/admin/kit/page";
@@ -20,5 +21,10 @@ export default async function DevicePage({ params }: { params: Promise<{ id: str
     apiGet<{ items: Directive[] }>(`/v1/admin/devices/${id}/directives`, session.at),
   ]);
   if (!d.ok) return onApiFailure(d.status, d.problem, locale);
-  return <DeviceDetailView locale={locale} device={d.data} history={h.ok ? h.data.items : []} directives={dirs.ok ? dirs.data.items : []} canWrite={gate("device.state")} />;
+  return (
+    <>
+      {!h.ok || !dirs.ok ? <p role="alert" data-testid="ref-load-failed" className="rounded border border-red-200 bg-red-50 p-3 text-red-800">{t(locale, "error.ref_load")}</p> : null}
+      <DeviceDetailView locale={locale} device={d.data} history={h.ok ? h.data.items : []} directives={dirs.ok ? dirs.data.items : []} canWrite={gate("device.state")} />
+    </>
+  );
 }
