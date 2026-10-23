@@ -190,3 +190,6 @@ green run of the exact sha). Usage stays `allowed` on the five-hour window.
 
 ## Update 2026-10-23 08:30 UTC (lead sweep)
 - Train 16 on dev 08:20 (no slip; db's V0110 moved to train 17 after a container reboot in its local run, by the lead's decision at 07:55). Train 17 (qa BRAND, web-admin handover, lead docs, db V0110 last): GO about 09:15, dev about 10:30. Then contract 1.7 batch and branch cleanup. Evening report about 18:30 UTC.
+
+## Update 2026-10-23 10:50 UTC (lead lane check)
+- Train 17 on dev 10:17 (no slip). Train 18 (qa cover/holiday/parking slice, lead contract 1.7.0 batch, db docs, lead docs): the batch pushes once its local backend suites finish (about 11:00), its CI runs about 40 minutes (contract, web and Android jobs all run), GO about 11:50, dev about 12:50. Then backend-authz #8, backend-core #15, mdm #2, web-admin #7 and an android-tso session wire rows 1 to 4 (small rows; candidates through the afternoon; train 19 about 16:00). Evening report 18:30.
