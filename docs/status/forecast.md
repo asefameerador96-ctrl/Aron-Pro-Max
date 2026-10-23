@@ -187,3 +187,6 @@ green run of the exact sha). Usage stays `allowed` on the five-hour window.
 
 ## Update 2026-10-23 06:45 UTC (lead sweep)
 - Train 15 on dev 06:40 (no slip). Train 16 forms now (qa slices 2+3, web-admin states audit, backend-reports handover, lead docs, db V0110 last): push about 08:00, CI about 08:45, dev about 09:15. Then the contract 1.7 batch (four rows) with new backend-authz and backend-core sessions, and the stale-branch cleanup. Owner-owed items unchanged (rows J to Q, H, I, 1).
+
+## Update 2026-10-23 08:30 UTC (lead sweep)
+- Train 16 on dev 08:20 (no slip; db's V0110 moved to train 17 after a container reboot in its local run, by the lead's decision at 07:55). Train 17 (qa BRAND, web-admin handover, lead docs, db V0110 last): GO about 09:15, dev about 10:30. Then contract 1.7 batch and branch cleanup. Evening report about 18:30 UTC.
