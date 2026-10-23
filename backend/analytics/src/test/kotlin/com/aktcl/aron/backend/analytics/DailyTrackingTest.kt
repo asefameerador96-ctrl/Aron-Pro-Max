@@ -74,8 +74,10 @@ class DailyTrackingTest : ReportFixture() {
     fun comparatorRebuildsYesterdayAtTheSameDhakaClockTime() = app {
         fun x(sql: String) = fresh.db.jdbi.useHandle<Exception> { it.execute(sql) }
         x("""
-            INSERT INTO dw.agg_daily_route (business_date, route_id, zone_id, planned, day_state, logged_in_at, target_outlets)
+            INSERT INTO dw.agg_daily_route (business_date, route_id, zone_id, planned, day_state, logged_in_at, downloaded_at, checked_in_at, target_outlets)
               SELECT DATE '2026-10-03', r.id, r.zone_id, true, 'final_submitted',
+                     CASE r.code WHEN 'R2' THEN TIMESTAMPTZ '2026-10-03 13:00Z' ELSE TIMESTAMPTZ '2026-10-03 04:00Z' END,
+                     CASE r.code WHEN 'R2' THEN TIMESTAMPTZ '2026-10-03 13:00Z' ELSE TIMESTAMPTZ '2026-10-03 03:00Z' END,
                      CASE r.code WHEN 'R2' THEN TIMESTAMPTZ '2026-10-03 13:00Z' ELSE TIMESTAMPTZ '2026-10-03 04:00Z' END,
                      CASE r.code WHEN 'R1' THEN 2 WHEN 'R3' THEN 4 ELSE 2 END
                 FROM app.route r WHERE r.code IN ('R1', 'R2', 'R3');

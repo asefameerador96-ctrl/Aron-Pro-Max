@@ -8,6 +8,7 @@ import kotlin.test.assertTrue
 
 /** N-051 (batch B) and F-API-013 / F-API-017b: every handler returns the seeded day's rows equal to hand-computed control totals, scoped to the caller. */
 class ReportBatchBTest : ReportFixture() {
+    override val successfulLogin = false   // the gigo tests script the attendance events; the tests that count logins call grantLogin()
     override val extraSql = """
 INSERT INTO app.app_user (username, full_name, role, must_change_password) VALUES ('amo001', 'AMO One', 'AMO', false);
 INSERT INTO app.attendance_event (client_uuid, family_uuid, business_date, user_id, route_id, captured_at, config_version, kind, fix_status, fix_lat, fix_lng, fix_accuracy_m, fix_is_mock, address_display)
@@ -32,6 +33,7 @@ ALTER TABLE app.visit ENABLE TRIGGER USER;
 
     @Test
     fun dataEntryLogAndFinalSubmitReports() = app {
+        grantLogin()
         val d = run(10, Role.ANALYST, "data-entry-log").result()
         assertEquals(3, d.rows().size)
         assertEquals(2, d.rows().by("username", "sr001").num("uploads").toInt()); assertEquals(15, d.rows().by("username", "sr001").num("records").toInt())
@@ -61,6 +63,7 @@ ALTER TABLE app.visit ENABLE TRIGGER USER;
 
     @Test
     fun dssDsRrsAndTopSheet() = app {
+        grantLogin()
         val d = run(10, Role.ANALYST, "dss").result()
         val z1 = d.rows().by("zone_name", "Zone1")
         assertEquals(2, z1.num("target_routes").toInt()); assertEquals(2, z1.num("logged_in_routes").toInt()); assertEquals(1, z1.num("sales_submitted_routes").toInt())
@@ -81,6 +84,7 @@ ALTER TABLE app.visit ENABLE TRIGGER USER;
 
     @Test
     fun dailyTrackingReportAndLeaderboard() = app {
+        grantLogin()
         val d = run(10, Role.ANALYST, "daily-tracking").result()
         assertEquals("below_80", d.rows().by("route_code", "R1").str("bucket")); assertEquals("ge_100", d.rows().by("route_code", "R2").str("bucket")); assertEquals("ge_100", d.rows().by("route_code", "R3").str("bucket"))
         val l = run(10, Role.ANALYST, "leaderboard").result().rows()

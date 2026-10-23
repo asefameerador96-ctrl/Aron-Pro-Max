@@ -73,8 +73,8 @@ object FinalSubmitStatusReport : ReportHandler {
 
     override fun spec(ctx: ReportContext) = SqlSpec(
         """
-        SELECT a.business_date, g.zone_name, count(*)::int AS target_routes, count(*) FILTER (WHERE a.day_state = 'not_started')::int AS not_started,
-               count(*) FILTER (WHERE a.day_state IN ('logged_in', 'in_field', 'synced', 'submit_pending_rows'))::int AS in_progress,
+        SELECT a.business_date, g.zone_name, count(*)::int AS target_routes, count(*) FILTER (WHERE a.day_state NOT IN ('sales_submitted', 'final_submitted') AND NOT (a.day_state IN ('logged_in', 'in_field', 'synced', 'submit_pending_rows') AND ${ctx.successfulLogin}))::int AS not_started,
+               count(*) FILTER (WHERE a.day_state IN ('logged_in', 'in_field', 'synced', 'submit_pending_rows') AND ${ctx.successfulLogin})::int AS in_progress,
                count(*) FILTER (WHERE a.day_state = 'sales_submitted')::int AS sales_submitted, count(*) FILTER (WHERE a.day_state = 'final_submitted')::int AS final_submitted,
                bool_and(a.day_state = 'final_submitted') AS zone_final
           FROM dw.agg_daily_route a JOIN dw.dim_geo g ON g.route_id = a.route_id
@@ -213,13 +213,13 @@ object DailyTrackingReport : ReportHandler {
     override fun spec(ctx: ReportContext) = SqlSpec(
         """
         WITH r AS (
-          SELECT a.business_date, g.zone_name, g.route_code, u.username, a.day_state AS state, a.target_outlets, a.successful_calls, a.exception_approved,
+          SELECT a.business_date, g.zone_name, g.route_code, u.username, a.day_state AS state, a.target_outlets, a.successful_calls, a.exception_approved, ${ctx.successfulLogin} AS login_ok,
                  round(100.0 * a.successful_calls / nullif(a.target_outlets, 0), 2) AS achievement_pct
             FROM dw.agg_daily_route a JOIN dw.dim_geo g ON g.route_id = a.route_id
             LEFT JOIN app.route_day rd ON rd.route_id = a.route_id AND rd.business_date = a.business_date LEFT JOIN app.app_user u ON u.id = $USER_OF_DAY
            WHERE ${ctx.dateClause("a.business_date")} AND (a.planned OR a.exception_approved) AND ${ctx.zoneClause("a.zone_id")} AND ${ctx.routeClause("a.route_id")})
         SELECT business_date, zone_name, route_code, username, state, target_outlets, successful_calls, achievement_pct,
-               CASE WHEN exception_approved THEN 'exception' WHEN state = 'not_started' THEN 'not_logged_in' WHEN achievement_pct IS NULL THEN 'below_80'
+               CASE WHEN exception_approved THEN 'exception' WHEN state = 'not_started' OR NOT login_ok THEN 'not_logged_in' WHEN achievement_pct IS NULL THEN 'below_80'
                     WHEN achievement_pct >= 100 THEN 'ge_100' WHEN achievement_pct >= 90 THEN 'from_90' WHEN achievement_pct >= 80 THEN 'from_80' ELSE 'below_80' END AS bucket
           FROM r
         """,

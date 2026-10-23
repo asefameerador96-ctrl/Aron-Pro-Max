@@ -64,6 +64,7 @@ export const nationalBn: Record<keyof typeof nationalEn, string> = {
   "nat.login.status": "লগইন অবস্থা",
   "nat.login.target_route": "টার্গেট রুট",
   "nat.login.successful": "সফল লগইন",
+  "nat.login.successful.help": "এসআর লগইন করলে, দিনের বান্ডল ডাউনলোড করলে এবং চেক-ইন করলে তবেই রুটটি গণনা হয়। তিনটিই প্রয়োজন, তাই এই সংখ্যা শুধু লগইনের গণনার চেয়ে কম হতে পারে।",
   "nat.submit.status": "সাবমিট অবস্থা",
   "nat.submit.logged_in": "সফলভাবে লগইন",
   "nat.submit.done": "সফলভাবে সাবমিট",

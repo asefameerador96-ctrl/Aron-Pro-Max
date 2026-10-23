@@ -35,6 +35,7 @@ class DashboardTest {
         fresh = FreshDb.create()
         fresh.dataSource.connection.use { c ->
             c.createStatement().use { it.execute(javaClass.classLoader.getResourceAsStream("seed_day.sql")!!.bufferedReader().readText()) }
+            c.createStatement().use { it.execute(javaClass.classLoader.getResourceAsStream("login_extra.sql")!!.bufferedReader().readText()) }   // Successful Login: download and check-in
             for (u in listOf("a1", "a2", "a4", "a5")) c.createStatement().use {
                 it.execute("INSERT INTO app.domain_event (event_type, aggregate_type, aggregate_id, business_date, source_client_uuid) VALUES ('memo.created','memo','x','2026-10-04','00000000-0000-4000-8000-0000000000$u')")
             }
