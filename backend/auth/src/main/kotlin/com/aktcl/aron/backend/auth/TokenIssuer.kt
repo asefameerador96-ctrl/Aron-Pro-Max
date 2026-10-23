@@ -1,11 +1,11 @@
 package com.aktcl.aron.backend.auth
 
+
 import com.aktcl.aron.backend.platform.AronClock
 import com.aktcl.aron.backend.platform.Audience
 import com.aktcl.aron.backend.platform.JwtKeys
 import com.aktcl.aron.backend.platform.PortalGrants
 import com.aktcl.aron.backend.platform.ServerConfig
-
 import com.aktcl.aron.contract.Role
 import com.nimbusds.jose.JOSEObjectType
 import com.nimbusds.jose.JWSAlgorithm
@@ -18,6 +18,7 @@ import java.time.Instant
 import java.util.Base64
 import java.util.Date
 import java.util.UUID
+import kotlinx.datetime.toJavaLocalDate
 
 /** Who the token is for: everything the claims of docs/24 s8.2 need. */
 data class TokenSubject(
@@ -45,7 +46,7 @@ class TokenIssuer(
     private val config: ServerConfig,
     private val clock: AronClock = AronClock.SYSTEM,
     private val random: SecureRandom = SecureRandom(),
-    /** D-ROLES-02: an ADMIN web token carries `modules`, a BRAND web token `brands`, read here at every mint once [PortalGrants.live]. */
+    /** D-ROLES-02: an ADMIN web token carries `modules`, a BRAND web token `brands` (read at every mint once [PortalGrants.live]); every web token `geo`. */
     private val grants: PortalGrants = PortalGrants.None,
 ) {
     fun access(subject: TokenSubject, audience: String = Audience.API): IssuedAccess {
@@ -84,6 +85,10 @@ class TokenIssuer(
             .apply {
                 // Read after the caller loaded the user (its `sv`): a grant change between the two leaves a token whose sv
                 // is already stale, so the guard answers 401 ERR_SCOPE_CHANGED and the refresh mints the new grants.
+                if (subject.flavour == "web") {
+                    val geo = grants.geo(subject.user.id, subject.user.role, com.aktcl.aron.rules.BusinessDate.of(now.toEpochMilli()).toJavaLocalDate())
+                    if (geo.isNotEmpty()) claim("geo", geo)
+                }
                 if (subject.flavour == "web" && grants.live()) when (subject.user.role) {
                     Role.ADMIN -> claim("modules", grants.modules(subject.user.id))
                     Role.BRAND -> claim("brands", grants.brands(subject.user.id))
