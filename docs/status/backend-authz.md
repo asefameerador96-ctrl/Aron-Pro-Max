@@ -1,5 +1,12 @@
 # backend-authz lane status
 
+## SESSION 8 (2026-10-23, from ~12:40 UTC) — read this first
+- Merged INT c07c66dc (train 18, contract 1.7.0) by fast-forward. Contract 1.7 rows 1 and 2 built (D-AUTHZ-1-7-WIRING-01): every D-AUTHZ-ADMIN-CREDS-01 refusal answers 403 ERR_AUTHZ_ROLE_ABOVE_GRANT with its stable detail (create/PATCH, credentials, PUT scope, GET access of another ADMIN); PUT scope also refuses an ADMIN re-scoping ANALYST/SUPPORT/TOP; `house` in SCOPE_TYPES/SCOPE_TABLES (active houses only). Tests: AdminUsersRoutesTest.putScopeAcceptsAnActiveHouseNodeAndItReachesThatHousesZones + assertAboveGrant on every refusal, UserAccessTest roleMatrix code, NationalScopeLeakTest Me names `house`.
+- Role-node rule for web-admin (scope-rules.ts): house for TSO and AMO only; server does not enforce role-node pairing (as for every type).
+- Opus checker: 0 blockers; notes in the DECISIONS entry (GET access code beyond the contract text; HouseDedup merge does not move user_scope house nodes: backend-admin follow-up; backend-reports DashboardApi house top node).
+- Local: :backend:masterdata:test green; :backend:app:test see below. Then one push, lane run, candidate to the lead with the rule.
+- Fresh container: the aron role/db had to be created (session-2 commands); no Gradle mirror init script was needed.
+
 ## HANDOVER (session 7 -> session 8, updated 2026-10-23 ~01:20 UTC at ~320k tokens) — read this first
 - Lead session_01MbUQSxrP7AB9tbyANjUTPS (send_message). Rules unchanged: merge INT before every push, run the authz tests (and the full :backend:app:test when the guard or token code changed) locally, push once, "candidate <full sha>" only when every job of that sha's lane run is green. Do not touch Wiring.kt until mdm and backend-reports have re-merged train 10 (trains 11/12) unless a bug needs it.
 - LANDED: train 10 = 84823f45 (row 3 brand scope wired, NationalScopeLeakTest, merge of train 9). On INT d698f8d4.
