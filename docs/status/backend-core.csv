@@ -1,0 +1,4 @@
+row_id,size,started_utc,finished_utc,minutes,review_findings,notes
+QA1-MEMO-NO-INVALID,M,2026-10-22T19:40Z,2026-10-22T22:30Z,170,"Opus checker PASS; non-blocking 1,2,3,4,7 fixed, 5,6 documented","memo_no_invalid per docs/24 s7.5 (QA-FLOW-02); shared session with the next two rows"
+QA1-PACK-FACTOR,M,2026-10-22T19:40Z,2026-10-22T22:30Z,0,"same checker","pack_factor re-check, parked qty_invalid retryable (QA-FLOW-06)"
+QA1-PREVIEW,S,2026-10-22T19:40Z,2026-10-22T22:30Z,0,"same checker","preview warnings only for due routes; not_due listing proposed (QA-FLOW-04)"

@@ -166,7 +166,7 @@ class DuesRecheckTest {
     ), at, bd)
 
     private fun memoRecords(visit: String, outlet: Long, dueMtk: Long, at: String, bd: String = day, supersedes: String? = null): M {
-        val memo = uuid(); val memoNo = "sr1001-270103-${memoSeq.incrementAndGet()}"
+        val memo = uuid(); val memoNo = "sr1001-${bd.substring(2).replace("-", "")}-${memoSeq.incrementAndGet()}"
         val qty1 = qtySeq.incrementAndGet()
         val (s1, p1) = skus[0]; val (s2, p2) = skus[1]
         val g1 = qty1 * p1; val g2 = 10 * p2; val gross = g1 + g2

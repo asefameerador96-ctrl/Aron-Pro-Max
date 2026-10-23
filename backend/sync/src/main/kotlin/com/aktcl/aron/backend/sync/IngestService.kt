@@ -87,7 +87,7 @@ class IngestService(
     private val routeDays = RouteDayPlanningJob(db, config, clock)
 
     /** Outcome of one record before the ack is built. */
-    private data class Outcome(val status: String, val code: RecordOutcomeCode? = null, val serverId: Long? = null) {
+    private data class Outcome(val status: String, val code: RecordOutcomeCode? = null, val serverId: Long? = null, val retryable: Boolean? = null) {
         companion object {
             fun accepted(id: Long?) = Outcome("accepted", null, id)
             fun duplicate(id: Long?) = Outcome("duplicate", null, id)
@@ -142,6 +142,17 @@ class IngestService(
         var arith: Map<String, String> = emptyMap()
         /** Memo content fingerprints of the current segment (s4.5: same outlet, lines and minute). */
         var memoFps: Map<String, ByteArray> = emptyMap()
+        /** Records of the current segment parked `qty_invalid` for a pack size that is not the SKU's (client_uuid to detail). */
+        var packHeld: Map<String, String> = emptyMap()
+        /** s7.5: the uploader's login (memo number prefix) and the block size, read once per batch on first use. */
+        val memoNoRule: MemoNumbers.Rule by lazy {
+            db.jdbi.withHandle<MemoNumbers.Rule, Exception> { h ->
+                MemoNumbers.Rule(
+                    h.createQuery("SELECT username FROM app.app_user WHERE id = :u").bind("u", up.userId).mapTo(String::class.java).one(),
+                    config.int("cfg.memo.seq_block_size").coerceIn(100, 999),
+                )
+            }
+        }
     }
 
     fun ingest(up: Uploader, req: SyncBatchRequest): SyncBatchResponse {
@@ -270,8 +281,12 @@ class IngestService(
         val ordered = recs.sortedBy { MANUAL_TYPES.indexOf(it.type) }
         val all = ordered.map { it.json }
         ctx.arith = MemoChecks.familyMismatches(all) + db.jdbi.withHandle<Map<String, String>, Exception> { h -> MemoChecks.unknownSkuSiblings(h, all) }
+        ctx.packHeld = db.jdbi.withHandle<Map<String, String>, Exception> { h -> MemoChecks.packFactorHolds(h, all) }
         ctx.memoFps = emptyMap()
         val outcomes = arrayOfNulls<Outcome>(recs.size)
+        // Not the SR's own number (s7.5): the memo is refused memo_no_invalid in the run, never answered as another
+        // user's stored number (duplicate_memo_no would name that user's memo).
+        val ownNumber = MemoNumbers.problem(ctx.memoNoRule, memoNo, bd) == null
         var taken: Long? = null
         var stored = false
         var attempt = 0
@@ -283,7 +298,7 @@ class IngestService(
                 db.jdbi.inTransaction<Unit, Exception> { h ->
                     // One printed number at a time: two keyings of it, or a keying and the phone's upload, never both store.
                     h.execute("SELECT pg_advisory_xact_lock(hashtextextended(?, 6))", "memo_no:$memoNo:$bd")
-                    taken = h.createQuery("SELECT id FROM app.memo WHERE memo_no = :n AND business_date = :d AND client_uuid <> CAST(:c AS uuid) LIMIT 1")
+                    if (ownNumber) taken = h.createQuery("SELECT id FROM app.memo WHERE memo_no = :n AND business_date = :d AND client_uuid <> CAST(:c AS uuid) LIMIT 1")
                         .bind("n", memoNo).bind("d", bd).bind("c", memo.clientUuid).mapTo(Long::class.java).findOne().orElse(null)
                     if (taken != null) throw ManualRollback()
                     ordered.forEach { r -> outcomes[r.index] = processInSavepoint(h, ctx, r) }
@@ -370,6 +385,7 @@ class IngestService(
             val family = listOf(rec.json) + children.map { it.payload }
             val arith = MemoChecks.familyMismatches(family) + MemoChecks.unknownSkuSiblings(h, family)
             val fps = MemoChecks.memoFingerprints(family)
+            val packs = MemoChecks.packFactorHolds(h, family)
             // Every held record runs as its own uploader and device (a TSO's collection on an SR's memo stays the TSO's).
             // The reviewer judged the item's own record: a child of another uploader gets no override of its own checks
             // (its reach, cross-user parent rule, device gate), only the window it was inside when received.
@@ -377,7 +393,7 @@ class IngestService(
             fun ctxOf(it: HeldItem): Ctx = ctxs.getOrPut(it.userId to it.deviceId) {
                 val batch = it.batchUuid ?: UUID.nameUUIDFromBytes("quarantine:${it.id}".toByteArray()).toString()
                 val same = it.userId == item.userId && it.deviceId == item.deviceId
-                Ctx(uploaderOf(h, it.userId, it.deviceId), batch, now, release = code.takeIf { same }, reviewed = true).also { c -> c.arith = arith; c.memoFps = fps }
+                Ctx(uploaderOf(h, it.userId, it.deviceId), batch, now, release = code.takeIf { same }, reviewed = true).also { c -> c.arith = arith; c.memoFps = fps; c.packHeld = packs }
             }
             val ctx = ctxOf(item)
             val up = ctx.up
@@ -656,6 +672,7 @@ class IngestService(
             val i = family.first().index
             ctx.arith = MemoChecks.familyMismatches(family.map { it.json }) + db.jdbi.withHandle<Map<String, String>, Exception> { h -> MemoChecks.unknownSkuSiblings(h, family.map { it.json }) }
             ctx.memoFps = MemoChecks.memoFingerprints(family.map { it.json })
+            ctx.packHeld = db.jdbi.withHandle<Map<String, String>, Exception> { h -> MemoChecks.packFactorHolds(h, family.map { it.json }) }
             try {
                 // AUD-REL-02: a transient failure (deadlock, serialization, failover, pool timeout) retries the family
                 // in a fresh transaction, at most three tries within 10 s; every record upserts by its client UUID and a
@@ -693,7 +710,7 @@ class IngestService(
             val o = outcomes[r.index]!!
             RecordAck(
                 client_uuid = r.clientUuid, type = r.type, status = o.status, code = o.code?.wire,
-                retryable = if (o.status == "rejected") o.code?.retryable else null,
+                retryable = if (o.status == "rejected") o.retryable ?: o.code?.retryable else null,
                 message_key = o.code?.let { "sync.outcome.${it.wire}" }, server_id = o.serverId,
             )
         }
@@ -870,6 +887,19 @@ class IngestService(
         if (skuId != null && h.createQuery("SELECT count(*) FROM app.sku WHERE id = :s").bind("s", skuId).mapTo(Long::class.java).one() == 0L) {
             return finalReject(h, ctx, r, RecordOutcomeCode.UNKNOWN_SKU, "sku $skuId")
         }
+        // 4b. Memo number (s7.5, QA-FLOW-02): the uploader's own login, the record's business date and a sequence inside
+        // the user's ordinal blocks or overflow ranges; anything else is a final memo_no_invalid, before the global
+        // (memo_no, business_date) uniqueness can see it, so a forged number never holds the real owner's memo as
+        // memo_no_duplicate. A stored memo's resend is a duplicate at step 2 and is never re-judged.
+        if (r.type == "memo") MemoNumbers.problem(ctx.memoNoRule, payload.str("memo_no"), bd)?.let {
+            return finalReject(h, ctx, r, RecordOutcomeCode.MEMO_NO_INVALID, it)
+        }
+        // A child of a memo refused for its number is refused with it (final), before any check that would park it.
+        if (r.type in MEMO_CHILD_TYPES) payload.str("memo_client_uuid")?.let { m ->
+            val refused = UUID_V4.matches(m) && h.createQuery("SELECT outcome_code = :c FROM app.ingest_registry WHERE client_uuid = CAST(:m AS uuid) AND status = 'rejected'")
+                .bind("c", RecordOutcomeCode.MEMO_NO_INVALID.wire).bind("m", m).mapTo(Boolean::class.java).findOne().orElse(false)
+            if (refused) return finalReject(h, ctx, r, RecordOutcomeCode.MEMO_NO_INVALID, "memo $m was refused memo_no_invalid")
+        }
 
         // 5. Scope on the record's business date (s8.4): from the token's user, never from the body.
         val scopeAccepted = ctx.overrides(RecordOutcomeCode.SCOPE_OUT_OF_REACH, RecordOutcomeCode.NO_ASSIGNMENT_ON_DATE)
@@ -939,6 +969,17 @@ class IngestService(
             if (twin != null) return quarantine(h, ctx, r, bd, RecordOutcomeCode.CONTENT_DUPLICATE, "same content as $twin", contentFp = contentFp)
         }
 
+        // 7b. Pack size (docs/34 s4.2, QA-FLOW-06): a line or stock movement entered in packs with a pack_factor that is not
+        // the SKU's base_per_pack is parked qty_invalid (retryable), with its memo and the memo's other children, so the
+        // wrong quantity and its money are never booked. A line held after its memo was stored marks that memo.
+        // A memo whose own line was parked for its pack size earlier (the line came first) is held with it; a line judged
+        // outside a family segment (a review or a backfill match) is judged on its own.
+        (ctx.packHeld[r.clientUuid] ?: if (r.type == "stock_movement" || r.type == "memo_line") MemoChecks.packFactorProblem(h, payload) else null
+            ?: if (r.type == "memo") MemoChecks.parkedPackLine(h, r.clientUuid, ctx.up.userId, bd) else null)?.let { why ->
+            if (r.type in MEMO_CHILD_TYPES) payload.str("memo_client_uuid")?.let { MemoChecks.flagStored(h, it, "pack_factor_mismatch") }
+            return park(h, ctx, r, RecordOutcomeCode.QTY_INVALID, why)
+        }
+
         // 8. Money (F-SYS-062, s7.4): a memo family whose equations fail is quarantined whole, before anything is stored.
         (ctx.arith[r.clientUuid] ?: MemoChecks.recordMismatch(r.type, payload))?.let { why ->
             return quarantine(h, ctx, r, bd, RecordOutcomeCode.ARITHMETIC_MISMATCH, why)
@@ -969,6 +1010,10 @@ class IngestService(
             if (found == null) {
                 // The child of a quarantined parent is held with it (same code), so a review that accepts the parent
                 // finds its children; parking it would let the phone give up on it.
+                // A memo refused for its number (final) takes its own children with it: they can never be stored.
+                if (reg?.get(2) == "rejected" && reg[3] == RecordOutcomeCode.MEMO_NO_INVALID.wire && field == "memo_client_uuid") {
+                    return finalReject(h, ctx, r, RecordOutcomeCode.MEMO_NO_INVALID, "memo $parent was refused memo_no_invalid")
+                }
                 if (reg?.get(2) == "quarantined") {
                     val code = code(reg[3]) ?: RecordOutcomeCode.PAYLOAD_CONFLICT
                     return quarantine(h, ctx, r, bd, code, "parent $parent is quarantined (${reg[3]})")
@@ -1415,7 +1460,8 @@ class IngestService(
         rejectedRow(h, ctx, r, code, detail, retryable = true)
         val bd = r.json.str("business_date")?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
         if (r.type.matches(TYPE_PATTERN)) register(h, ctx, r, bd, "parked", code, null)
-        return Outcome.of(code)
+        // Parked is retryable whatever the code's default (qty_invalid of a pack size is resent after a bundle refresh).
+        return Outcome.of(code).copy(retryable = true)
     }
 
     private fun quarantine(h: Handle, ctx: Ctx, r: Rec, bd: LocalDate, code: RecordOutcomeCode, detail: String?, register: Boolean = true, contentFp: ByteArray? = null): Outcome {
@@ -1693,6 +1739,7 @@ class IngestService(
         /** Memo references that follow a matched phone memo to its paper twin ([memoAlias]). */
         private val MEMO_ALIAS_FIELDS = mapOf("due_collection" to "against_memo_client_uuid", "memo_void" to "memo_client_uuid", "memo" to "supersedes_client_uuid")
         /** Data-entry (money and stock) records: a reviewer's fix of one needs a second person (docs/24 s8.6). */
+        private val MEMO_CHILD_TYPES = setOf("memo_line", "memo_discount", "qc_line")
         val MONEY_TYPES = setOf("memo", "memo_line", "memo_discount", "qc_line", "memo_void", "due_collection", "stock_movement", "redemption", "redemption_line", "day_submit")
         private val DEVICE_HOLD_CODES = setOf(RecordOutcomeCode.DEVICE_INTEGRITY_FAILED.wire, RecordOutcomeCode.DEVICE_NOT_ENROLLED.wire)
         val UUID_V4 = Regex("^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")
