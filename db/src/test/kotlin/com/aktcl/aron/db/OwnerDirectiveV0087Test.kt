@@ -206,9 +206,9 @@ class OwnerDirectiveV0087Test {
                 assertEquals(before, c.scalar(viewCols), "dw.v_daily_outlet is unchanged by V0110")
                 assertEquals("40|50|3", c.scalar("SELECT concat_ws('|', cigarette_sold_sticks, lighter_sold_pieces, match_sold_dozens) FROM dw.v_daily_outlet WHERE outlet_id = $outlet"))
                 assertEquals("true|true|true", listOf("bi_reader", "web_ro", "worker_rw").joinToString("|") { can(c, it, "dw.v_daily_outlet", "SELECT")!! })
-                // The Aggregator's insert without sold_qty_base (backend-reports, train 15) works on the dropped table.
-                c.exec("INSERT INTO dw.agg_daily_outlet (business_date, outlet_id, cigarette_sold_sticks) SELECT '2026-10-06', $outlet, 20")
-                assertEquals("20|0", c.scalar("SELECT cigarette_sold_sticks || '|' || match_sold_dozens FROM dw.agg_daily_outlet WHERE outlet_id = $outlet AND business_date = '2026-10-06'"))
+                // A writer that still names the column is refused (why V0110 rides after the Aggregator change).
+                val e = assertFailsWith<SQLException> { c.exec("INSERT INTO dw.agg_daily_outlet (business_date, outlet_id, sold_qty_base) SELECT '2026-10-06', $outlet, 1") }
+                assertEquals("42703", e.sqlState)
             }
         }
     }
