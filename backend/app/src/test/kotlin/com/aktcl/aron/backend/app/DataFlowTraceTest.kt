@@ -474,6 +474,8 @@ class DataFlowTraceTest : DataFlowTraceSupport() {
         val submit = envelope(sr, "day_submit", submitUuid, submitUuid, 0, 200, json.readTree(
             """{"scope":"route_day","submit_cycle":1,"device_counts":${json.writeValueAsString(sr.counts)},"device_money":$money,"rejected_count":0,"quarantined_count":0,"pending_count":0,
                 "submitted_with_dues":true,"dues_outstanding_mtk":$outstanding,"retailers_with_dues":1,"stock_slip_printed":true}"""))
+        val pvBefore = jsonOf(get("/v1/day/final-submit/preview?zone_id=$zGul&business_date=$day", login("tso1001", "web", null)))
+        hop("Final Submit preview before the Sales Submit warns: the planned GUL-SR-2 is due and not submitted", "warnings" to pvBefore.path("warnings").map { it.asText() }, "expected" to listOf("routes_not_sales_submitted"), hard = false)
         val sa = send(sr, listOf(submit), uuid())
         note("Sales Submit (day_submit) in a batch", detail(sa))
         hop("Sales Submit accepted", "statuses" to acks(sa), "expected" to listOf("accepted"))
@@ -490,8 +492,8 @@ class DataFlowTraceTest : DataFlowTraceSupport() {
         val pv = jsonOf(get("/v1/day/final-submit/preview?zone_id=$zGul&business_date=$day", tso))
         note("Final Submit preview (routes)", pv.path("routes").joinToString("; ") { "${it.path("route_code").asText()}: ${it.path("state").asText()}, had_data ${it.path("had_data").asBoolean()}, memos ${it.path("memo_count").asInt()}, net ${it.path("net_mtk").asLong()}" })
         note("Final Submit preview warnings", pv.path("warnings").toString())
-        hop("Final Submit preview lists every active route of the zone (F-TSO-010) and warns about the route without a Sales Submit", "routes" to pv.path("routes").map { it.path("route_code").asText() }.sorted(), "expected" to listOf("GUL-SR-1", "GUL-SR-2"), hard = false)
-        hop("Final Submit preview warnings (the unplanned GUL-SR-1 has no Sales Submit)", "warnings" to pv.path("warnings").map { it.asText() }, "expected" to listOf("routes_not_sales_submitted"), hard = false)
+        hop("Final Submit preview lists every active route of the zone (F-TSO-010) and is listed", "routes" to pv.path("routes").map { it.path("route_code").asText() }.sorted(), "expected" to listOf("GUL-SR-1", "GUL-SR-2"), hard = false)
+        hop("Final Submit preview warnings after the Sales Submit (D-BC-PREVIEW-01: the unplanned GUL-SR-1 without data is not due, so it raises none)", "warnings" to pv.path("warnings").map { it.asText() }, "expected" to emptyList<String>(), hard = false)
         val fu = uuid()
         val fr = postJson("/v1/day/final-submit", tso, """{"client_uuid":"$fu","zone_id":$zGul,"business_date":"$day"}""")
         hop("TSO Final Submit", "status" to fr.status.value, "expected" to 200)

@@ -1,5 +1,10 @@
 # Status: lane qa (wave 4, session 2: data-flow trace)
 
+## Wave 4, session 2b: re-merge of INT 604f9560 (train 13), 2026-10-23
+- Hop 11 follows D-BC-PREVIEW-01 (backend-core 24b08bd6): an unplanned route without data is listed but not due, so the preview after the Sales Submit has no warnings; a new check before the Sales Submit proves a due, unsubmitted route (GUL-SR-2) raises `routes_not_sales_submitted`.
+- The trace proved the remaining rows on this head (geo claim, memo_no_invalid x3, pack_factor), so `data-flow-trace-known-findings.txt` is empty (header only). Any new difference now fails the test by name.
+- `DataFlowTraceTest` and the full `:backend:app:test` are green locally.
+
 ## Wave 4, session 2: re-merge of INT 52bdd477 (train 12), 2026-10-23
 - Merged INT; `ApiWorld.kt` keeps backend-admin's version plus the devProfile hooks. `DataFlowTraceTest` and the full `:backend:app:test` are green locally.
 - Known-findings list shrunk to what is still open: deleted QA-FLOW-01 (BRAND; the hop-9 403 was a trace setup bug, the BRAND grant insert matched no brand row because `product_node.code` is null; the setup now checks the insert, and the BRAND card now answers 200; proof of the scoping stays `NationalScopeLeakTest`), QA-FLOW-03 (by-outlet now has one `sold_<category>_base` column each, no `sold_qty_base`) and QA-FLOW-04 (hop 11 now asserts the preview warnings `routes_not_sales_submitted`, both active routes listed).
