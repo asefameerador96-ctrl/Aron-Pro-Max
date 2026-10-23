@@ -245,7 +245,7 @@ class AggregationTest {
         worker().runUntilIdle()
         assertEquals(7_000, long("SELECT net_mtk FROM dw.agg_daily_outlet a JOIN app.outlet o ON o.id = a.outlet_id WHERE o.code = 'O4'"))
     }
-    /** V0109: a day mixing all four categories keeps each quantity in its own base unit; the voided line and the voided memo stay out. */
+    /** V0109: a day mixing all four categories keeps each quantity in its own base unit; a voided line, a non-sale line and a voided memo stay out. */
     @Test
     fun aMixedCategoryDayFillsTheFourPerCategoryColumns() {
         conn.createStatement().use {
@@ -260,10 +260,18 @@ class AggregationTest {
                 SELECT pg_temp.line('00000000-0000-4000-8000-0000000000c3', 2, 'SKU3', 50, 100, 'sale');
                 SELECT pg_temp.line('00000000-0000-4000-8000-0000000000c3', 3, 'SKU4', 3, 100, 'sale');
                 SELECT pg_temp.line('00000000-0000-4000-8000-0000000000c3', 4, 'SKU5', 25, 100, 'sale');
+                -- Stay out: a voided sale line, a free (non-sale) line, and a voided memo with a bidi line.
+                SELECT pg_temp.line('00000000-0000-4000-8000-0000000000c3', 5, 'SKU3', 99, 100, 'sale');
+                ALTER TABLE app.memo_line DISABLE TRIGGER memo_line_immutable;
+                UPDATE app.memo_line SET voided_at = now() WHERE memo_client_uuid = '00000000-0000-4000-8000-0000000000c3' AND line_no = 5;
+                ALTER TABLE app.memo_line ENABLE TRIGGER memo_line_immutable;
+                SELECT pg_temp.line('00000000-0000-4000-8000-0000000000c3', 6, 'SKU4', 40, 100, 'promo_free');
+                SELECT pg_temp.memo('00000000-0000-4000-8000-0000000000c4', '00000000-0000-4000-8000-000000000001', 'sr001', 'R1', 'O4', 'sr001-261004-011', TIMESTAMPTZ '2026-10-04 08:50Z', 900, 900, 1, 'voided');
+                SELECT pg_temp.line('00000000-0000-4000-8000-0000000000c4', 1, 'SKU5', 9, 100, 'sale');
                 """.trimIndent(),
             )
         }
-        event("memo.created", "00000000-0000-4000-8000-0000000000c3")
+        event("memo.created", "00000000-0000-4000-8000-0000000000c3"); event("memo.created", "00000000-0000-4000-8000-0000000000c4")
         worker().runUntilIdle()
         val o = "SELECT %s FROM dw.agg_daily_outlet a JOIN app.outlet o ON o.id = a.outlet_id WHERE o.code = 'O4'"
         // O4 already has 5 sticks of SKU2 (memo a4) from the seed.
@@ -274,8 +282,11 @@ class AggregationTest {
         // The stable view exposes the four columns and no mixed one.
         assertEquals(0, long("SELECT count(*) FROM information_schema.columns WHERE table_schema = 'dw' AND table_name = 'v_daily_outlet' AND column_name = 'sold_qty_base'"))
         assertEquals(50, long("SELECT lighter_sold_pieces FROM dw.v_daily_outlet WHERE outlet_id = (SELECT id FROM app.outlet WHERE code = 'O4')"))
-        // A rebuild is idempotent.
-        worker().runUntilIdle()
-        assertEquals(12, long(o.format("cigarette_sold_sticks")))
+        // O3 only has a voided memo: all four stay 0.
+        assertEquals(0, long("SELECT cigarette_sold_sticks + bidi_sold_sticks + lighter_sold_pieces + match_sold_dozens FROM dw.agg_daily_outlet WHERE outlet_id = (SELECT id FROM app.outlet WHERE code = 'O3')"))
+        // A forced rebuild recomputes the row and gives the same numbers (no accumulation).
+        val w = worker(); w.requestRebuild(day); w.runUntilIdle()
+        assertEquals(12, long(o.format("cigarette_sold_sticks"))); assertEquals(25, long(o.format("bidi_sold_sticks")))
+        assertEquals(50, long(o.format("lighter_sold_pieces"))); assertEquals(3, long(o.format("match_sold_dozens")))
     }
 }
