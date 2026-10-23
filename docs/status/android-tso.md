@@ -1,3 +1,6 @@
+# Session 3, slice 5 (2026-10-23): D-TSO-PARITY-SPELLING-01
+`edit_reason_title` bn "কারন" -> "কারণ" (lead ruling); DECISIONS block appended. Slice 3 (26649017, run 39988902021) was checked by the lead; slice 4 head 3db224b3 (run 39991804268) is waiting on its lane run.
+
 # Session 3, slice 4 (2026-10-23): rulings D-TSO-PARITY-SHARED-01 (X4, X5) and D-TSO-PARITY-O3-01
 Slice 3 (M9) is at 26649017 (lane run 39988902021). Slice 4: shared bn strings `set_title` "সেটিং", `set_logout` "লগ আউট", logout dialog "আপনি কি নিশ্চিত যে লগআউট করতে চান?" with "হ্যাঁ" / "না" for SR, AMO and TSO; new `out_req_capture_geo_photo` for the outlet-request capture button (`GeoPhotoBlock(takeLabel)`), the force-sale button keeps `out_take_photo`. The outlet-request shutter reads one on-demand fix after the photo, so there is no follow-up. `HomePlaceholderTest` asserts the new tile word. Both decisions are in DECISIONS.md. H1 stays open (Daily is AKTCL wording, kit header layout).
 
