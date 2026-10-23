@@ -25,6 +25,7 @@ test("ADMIN reads the row with its reason; the personal name stays masked", asyn
 for (const [user, pass, totp] of [["analyst1", "analyst-pass-1", undefined], ["support1", "support-pass-1", "123456"]] as const) {
   test(`${user} reads the row with allowlisted values only and the reason masked`, async ({ page }) => {
     await loginOk(page, user, pass, totp);
+    if (user === "support1") await page.waitForURL(/\/sync-health/); // SUPPORT's landing redirect must finish, or the goto below is aborted (net::ERR_ABORTED)
     const res = await page.goto("/admin/audit?entity=user");
     expect(res?.status()).toBe(200);
     const table = page.getByTestId("data-table");
