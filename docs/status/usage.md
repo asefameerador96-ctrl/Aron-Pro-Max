@@ -453,3 +453,8 @@
 
 ### 18:30 UTC — evening report
 - docs/status/evening-2026-10-23.md written and the chat summary posted. Nine trains today, no slip. Next sweep 06:10 UTC 2026-10-24 (train 23 GO, morning report 06:30).
+
+### 18:48 UTC — lane check (scheduled, evening)
+- INT 63e14fac (train 22). Dev health 200 build 70060dd3 (train 20; trains 21 and 22 were app-only). No train in flight; integrator 19 holds for train 23 (06:15 UTC tomorrow) with "checked deaa71f4" in hand; the lane's final head is 92e0667c (docs/status/android-tso.md only on top of deaa71f4).
+- Branch sweep: ahead of INT only lane/lead-docs-1022 e6d36388 (evening report + usage, docs-only, rides train 23), lane/android-tso 92e0667c (train 23), the HELD hardening refs, the salvage pair and the four single-commit leftovers (all classified in docs/status/stale-branches-2026-10-23.md; nothing deleted). No new docs/requests file on INT.
+- Sessions (all rate-limit `allowed`): integrator 19 ~151k idle; android-tso #3 ~377k idle, no open work (hand over after its next one or two slices tomorrow, before 450k); web-admin #7 ~248k idle; db #10 ~240k idle on requests; android-print #4 idle, complete. No nudges. Nothing needs the owner (rows J, K, L, M, O, P, Q, H, I, 1 open; evening report posted 18:30).

@@ -211,3 +211,6 @@ green run of the exact sha). Usage stays `allowed` on the five-hour window.
 
 ## Update 2026-10-23 17:30 UTC (lead)
 - Train 22 landed 17:25 (signed dev APK 1492; dev API unchanged by design). No train 23 today. Evening report 18:30. Tomorrow: train 23 (android-tso slice 5 spelling + any checked head) first thing; android-tso continues the parity audit rows that need no owner answer; qa #3 on request; backend-admin #7 / backend-reports #6 on request or the owner's report docs; v1.8 batch when rows accumulate. No slip.
+
+## Update 2026-10-23 18:48 UTC (lead)
+- Day closed with nine trains, no slip. Tomorrow 06:10 UTC: morning sweep, GO train 23 (android-tso 92e0667c + lead docs), morning report 06:30. android-tso #3 hands over to #4 after its next one or two parity slices (context ~377k).
