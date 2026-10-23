@@ -196,3 +196,6 @@ green run of the exact sha). Usage stays `allowed` on the five-hour window.
 
 ## Update 2026-10-23 13:00 UTC (lead)
 - Train 18 on dev 12:46 (no slip; contract 1.7.0 live). Wiring heads (backend-authz #8 rows 1–2, backend-core #15 row 4, mdm #2 row 3, web-admin #7, android-tso #3) are small: candidates expected 14:30–17:00; train 19 forms when two or more are checked, push about 17:00, dev about 18:00; a second wiring train tomorrow morning if any candidate slips. Integrator 19 is created at integrator 18's READY TO RECYCLE (about train 19 or 20). Evening report 18:30.
+
+## Update 2026-10-23 15:32 UTC (lead)
+- Train 19 on dev 15:31 (no slip; the five contract-1.7 wiring rows are live). Train 20 (web-admin AMO widening, android-tso parity slices, docs-only handovers, lead docs): GO about 17:30, dev about 18:30. Evening report 18:30. Tomorrow: parity slices (android-tso), qa #3 on request, backend-admin #7 / backend-reports #6 on request or the owner's docs, v1.8 batch when rows accumulate.
