@@ -5,6 +5,9 @@ operation:
   - admin-users
   operationId: createUser
   summary: Create a user with a temporary password (shown once, must be changed at first login).
+  description: An ADMIN (`users:w`) manages only logins below ADMIN (TSO, DMO, WM, NATIONAL, BRAND, SR, AMO); for
+    an ADMIN, SUPERADMIN, ANALYST or SUPPORT login the answer is 403 `ERR_AUTHZ_ROLE_ABOVE_GRANT` (SUPERADMIN-only,
+    D-AUTHZ-ADMIN-CREDS-01; until the server carries contract 1.7.0 it is `ERR_FORBIDDEN` with the same detail).
   requestBody:
     required: true
     content:

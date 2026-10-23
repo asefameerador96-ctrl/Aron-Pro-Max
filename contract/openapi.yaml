@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Aron API
-  version: 1.6.0
+  version: 1.7.0
   summary: The one API of the Aron rebuild (SR, AMO and TSO apps, web dashboards and admin portal).
   description: |
     Binding contract for every lane of the seven-day build. Rules that apply to every operation are in
@@ -22,6 +22,11 @@ info:
     - Scope is never sent by the client: reach is derived on the server from the token. Narrowing
       selectors outside the caller's reach return 403 `ERR_OUT_OF_SCOPE`.
     - 1.6.0 (lane mdm, additive): tag `admin-mdm` (`/v1/admin/mdm/*`) and the phone's `GET /v1/devices/me/commands`, `POST /v1/devices/me/commands/{command_id}/ack`.
+    - 1.7.0 (lead batch, D-CONTRACT-BATCH-01, `docs/requests/contract-v1.7-queue.md` rows 1 to 4): `ProblemCode` gains
+      `ERR_AUTHZ_ROLE_ABOVE_GRANT` (403); `UserScopeNode.node_type` and `UserScopeWrite.nodes[].node_type` gain `house`;
+      `ReachLevel` gains `house`; `DeviceStatusReport.network_type` (optional, `wifi`/`mobile`/`offline`); `FinalSubmitPreview.routes[].planned`
+      (optional, boolean or null). The three response-enum additions (`ProblemCode`, `UserScopeNode.node_type`, `ReachLevel`) are breaking for an
+      old reader and approved by the lead (D-CONTRACT-1-7-01).
     - Lists use cursor pagination (`limit`, `cursor`, response `next_cursor`) and master data also accept
       `updated_since`.
   contact:
@@ -3063,6 +3068,7 @@ paths:
       tags: [admin-users]
       operationId: createUser
       summary: Create a user with a temporary password (shown once, must be changed at first login).
+      description: An ADMIN (`users:w`) manages only logins below ADMIN (TSO, DMO, WM, NATIONAL, BRAND, SR, AMO); for an ADMIN, SUPERADMIN, ANALYST or SUPPORT login the answer is 403 `ERR_AUTHZ_ROLE_ABOVE_GRANT` (SUPERADMIN-only, D-AUTHZ-ADMIN-CREDS-01; until the server carries contract 1.7.0 it is `ERR_FORBIDDEN` with the same detail).
       requestBody:
         required: true
         content:
@@ -3100,6 +3106,7 @@ paths:
       tags: [admin-users]
       operationId: updateUser
       summary: Update a user (role and status changes bump scope_version; disabling keeps the upload grant).
+      description: An ADMIN (`users:w`) edits only logins below ADMIN (TSO, DMO, WM, NATIONAL, BRAND, SR, AMO); for an ADMIN, SUPERADMIN, ANALYST or SUPPORT login the answer is 403 `ERR_AUTHZ_ROLE_ABOVE_GRANT` (SUPERADMIN-only, D-AUTHZ-ADMIN-CREDS-01; until the server carries contract 1.7.0 it is `ERR_FORBIDDEN` with the same detail).
       parameters:
         - $ref: '#/components/parameters/IdPath'
         - $ref: '#/components/parameters/IfMatch'
@@ -3139,6 +3146,7 @@ paths:
       tags: [admin-users]
       operationId: putUserScope
       summary: Replace a user's scope from a date (bumps scope_version; tokens refresh with 401 ERR_SCOPE_CHANGED).
+      description: Node types are the `UserScopeNode.node_type` enum; `house` from contract 1.7.0 (D-SCOPE-TREE-01). An ADMIN (`users:w`) re-scopes only logins below ADMIN (TSO, DMO, WM, NATIONAL, BRAND, SR, AMO); for an ADMIN, SUPERADMIN, ANALYST or SUPPORT login the answer is 403 `ERR_AUTHZ_ROLE_ABOVE_GRANT` (SUPERADMIN-only, D-AUTHZ-ADMIN-CREDS-01; until the server carries contract 1.7.0 it is `ERR_FORBIDDEN` with the same detail).
       parameters:
         - $ref: '#/components/parameters/IdPath'
       requestBody:
@@ -3206,7 +3214,7 @@ paths:
       tags: [admin-users]
       operationId: manageUserCredentials
       summary: Reset password (temporary, shown once), unlock, or force logout (revoke full-grant families).
-      description: SUPPORT and ADMIN for any user in reach; a TSO may `reset_password` and `unlock` SR and AMO users of its own zones (docs/24 s8.5). Every action is audited.
+      description: SUPPORT and ADMIN for any user in reach below ADMIN; an ADMIN, SUPERADMIN, ANALYST or SUPPORT login is SUPERADMIN-only (403 `ERR_AUTHZ_ROLE_ABOVE_GRANT`, D-AUTHZ-ADMIN-CREDS-01; `ERR_FORBIDDEN` with the same detail until the server carries contract 1.7.0). A TSO may `reset_password` and `unlock` SR and AMO users of its own zones (docs/24 s8.5). Every action is audited.
       parameters:
         - $ref: '#/components/parameters/IdPath'
       requestBody:
@@ -6066,7 +6074,7 @@ components:
       name: level
       in: query
       required: false
-      description: Level of the node the figures are for; default the caller's top level.
+      description: Level of the node the figures are for; default the caller's top level. The dashboards accept `national`, `wing`, `division`, `territory` and `zone`; `house` (a scope node level from contract 1.7.0) and `route` answer 400 `ERR_VALIDATION` (`query.level` invalid_value).
       schema: { $ref: '#/components/schemas/ReachLevel' }
     NodeIdQuery:
       name: node_id
@@ -6466,7 +6474,7 @@ components:
     ProblemCode:
       type: string
       description: Stable problem codes (HTTP status in docs/24 s3.4).
-      enum: [ERR_VALIDATION, ERR_MALFORMED_JSON, ERR_UNSUPPORTED_SCHEMA_VERSION, ERR_UNAUTHENTICATED, ERR_TOKEN_EXPIRED, ERR_SCOPE_CHANGED, ERR_PASSWORD_CHANGED, ERR_FORBIDDEN, ERR_OUT_OF_SCOPE, ERR_NOT_FOUND, ERR_CONFLICT, ERR_PRECONDITION_FAILED, ERR_PAYLOAD_TOO_LARGE, ERR_UNSUPPORTED_MEDIA_TYPE, ERR_RATE_LIMITED, ERR_INTERNAL, ERR_SERVICE_UNAVAILABLE, ERR_READ_ONLY_MODE, ERR_AUTH_INVALID_CREDENTIALS, ERR_AUTH_ACCOUNT_LOCKED, ERR_AUTH_USER_DISABLED, ERR_AUTH_PASSWORD_POLICY, ERR_AUTH_PASSWORD_CHANGE_REQUIRED, ERR_AUTH_REFRESH_INVALID, ERR_AUTH_REFRESH_REUSED, ERR_AUTH_MFA_INVALID, ERR_AUTH_OTP_INVALID, ERR_AUTH_OTP_EXPIRED, ERR_AUTH_OTP_ATTEMPTS_EXCEEDED, ERR_AUTH_BIND_LOCKED, ERR_AUTH_PORTAL_NOT_ALLOWED, ERR_DEVICE_NOT_ENROLLED, ERR_DEVICE_UNBOUND, ERR_DEVICE_SUSPENDED, ERR_DEVICE_REVOKED, ERR_DEVICE_INTEGRITY_FAILED, ERR_DEVICE_PROOF_INVALID, ERR_DEVICE_LIMIT_REACHED, ERR_ENROLMENT_TOKEN_INVALID, ERR_ENROLMENT_TOKEN_EXPIRED, ERR_ENROLMENT_TOKEN_EXHAUSTED, ERR_ENROLMENT_ATTESTATION_FAILED, ERR_NONCE_INVALID, ERR_APP_VERSION_UNSUPPORTED, ERR_SYNC_BATCH_UUID_REUSED, ERR_SYNC_BATCH_TOO_LARGE, ERR_SYNC_DECOMPRESSION_LIMIT, ERR_SYNC_HOLD, ERR_BUNDLE_NEW_BUSINESS_DATE, ERR_BUNDLE_CURSOR_EXPIRED, ERR_BUNDLE_NOT_READY, ERR_DAY_ALREADY_FINAL_SUBMITTED, ERR_DAY_NOT_FINAL_SUBMITTED, ERR_DAY_SUBMIT_VOID_NOT_ALLOWED, ERR_DAY_DATA_VOID_NOT_ALLOWED, ERR_CFG_UNKNOWN_KEY, ERR_CFG_OUT_OF_BOUNDS, ERR_CFG_SCOPE_NOT_ALLOWED, ERR_CFG_DEPENDENCY, ERR_CFG_SELF_APPROVAL, ERR_CFG_REASON_REQUIRED, ERR_CFG_FREEZE_WINDOW, ERR_MASTER_DUPLICATE_CODE, ERR_MASTER_EFFECTIVE_DATE_PAST, ERR_MASTER_OVERLAP, ERR_MASTER_IN_USE, ERR_REQUEST_STATE, ERR_SEPARATION_OF_DUTIES, ERR_REPORT_INVALID_QUERY, ERR_REPORT_TOO_LARGE, ERR_PUSH_DISABLED, ERR_ENTRY_WINDOW_CLOSED, ERR_GIFT_CHOICE_LOCKED]
+      enum: [ERR_VALIDATION, ERR_MALFORMED_JSON, ERR_UNSUPPORTED_SCHEMA_VERSION, ERR_UNAUTHENTICATED, ERR_TOKEN_EXPIRED, ERR_SCOPE_CHANGED, ERR_PASSWORD_CHANGED, ERR_FORBIDDEN, ERR_OUT_OF_SCOPE, ERR_AUTHZ_ROLE_ABOVE_GRANT, ERR_NOT_FOUND, ERR_CONFLICT, ERR_PRECONDITION_FAILED, ERR_PAYLOAD_TOO_LARGE, ERR_UNSUPPORTED_MEDIA_TYPE, ERR_RATE_LIMITED, ERR_INTERNAL, ERR_SERVICE_UNAVAILABLE, ERR_READ_ONLY_MODE, ERR_AUTH_INVALID_CREDENTIALS, ERR_AUTH_ACCOUNT_LOCKED, ERR_AUTH_USER_DISABLED, ERR_AUTH_PASSWORD_POLICY, ERR_AUTH_PASSWORD_CHANGE_REQUIRED, ERR_AUTH_REFRESH_INVALID, ERR_AUTH_REFRESH_REUSED, ERR_AUTH_MFA_INVALID, ERR_AUTH_OTP_INVALID, ERR_AUTH_OTP_EXPIRED, ERR_AUTH_OTP_ATTEMPTS_EXCEEDED, ERR_AUTH_BIND_LOCKED, ERR_AUTH_PORTAL_NOT_ALLOWED, ERR_DEVICE_NOT_ENROLLED, ERR_DEVICE_UNBOUND, ERR_DEVICE_SUSPENDED, ERR_DEVICE_REVOKED, ERR_DEVICE_INTEGRITY_FAILED, ERR_DEVICE_PROOF_INVALID, ERR_DEVICE_LIMIT_REACHED, ERR_ENROLMENT_TOKEN_INVALID, ERR_ENROLMENT_TOKEN_EXPIRED, ERR_ENROLMENT_TOKEN_EXHAUSTED, ERR_ENROLMENT_ATTESTATION_FAILED, ERR_NONCE_INVALID, ERR_APP_VERSION_UNSUPPORTED, ERR_SYNC_BATCH_UUID_REUSED, ERR_SYNC_BATCH_TOO_LARGE, ERR_SYNC_DECOMPRESSION_LIMIT, ERR_SYNC_HOLD, ERR_BUNDLE_NEW_BUSINESS_DATE, ERR_BUNDLE_CURSOR_EXPIRED, ERR_BUNDLE_NOT_READY, ERR_DAY_ALREADY_FINAL_SUBMITTED, ERR_DAY_NOT_FINAL_SUBMITTED, ERR_DAY_SUBMIT_VOID_NOT_ALLOWED, ERR_DAY_DATA_VOID_NOT_ALLOWED, ERR_CFG_UNKNOWN_KEY, ERR_CFG_OUT_OF_BOUNDS, ERR_CFG_SCOPE_NOT_ALLOWED, ERR_CFG_DEPENDENCY, ERR_CFG_SELF_APPROVAL, ERR_CFG_REASON_REQUIRED, ERR_CFG_FREEZE_WINDOW, ERR_MASTER_DUPLICATE_CODE, ERR_MASTER_EFFECTIVE_DATE_PAST, ERR_MASTER_OVERLAP, ERR_MASTER_IN_USE, ERR_REQUEST_STATE, ERR_SEPARATION_OF_DUTIES, ERR_REPORT_INVALID_QUERY, ERR_REPORT_TOO_LARGE, ERR_PUSH_DISABLED, ERR_ENTRY_WINDOW_CLOSED, ERR_GIFT_CHOICE_LOCKED]
     DayState:
       type: string
       enum: [not_started, logged_in, in_field, synced, submit_pending_rows, sales_submitted, final_submitted]
@@ -6476,7 +6484,8 @@ components:
       enum: [wing, division, territory, house, zone]
     ReachLevel:
       type: string
-      enum: [national, wing, division, territory, zone, route]
+      enum: [national, wing, division, territory, house, zone, route]
+      description: Node levels of a reach summary (`Me.scope`, `LoginResponse.scope`). `house` from contract 1.7.0, with the `house` scope node (D-SCOPE-TREE-01).
     ProductTreeLevel:
       type: string
       enum: [category, segment, brand, variant]
@@ -7115,6 +7124,10 @@ components:
       properties:
         reported_at: { $ref: '#/components/schemas/Timestamp' }
         trigger: { type: string, enum: [enrolment, policy_applied, check_in, check_out, boot, integrity_change, app_update, periodic, directive] }
+        network_type:
+          type: string
+          enum: [wifi, mobile, offline]
+          description: Transport at the moment of the report, from one ConnectivityManager read per report (no polling). Optional (contract 1.7.0); absent from phones built against an older contract, and the MDM list then shows `unknown` (`docs/requests/mdm-contract-network-type.md`).
         app_version: { $ref: '#/components/schemas/AppVersionString' }
         device_info: { $ref: '#/components/schemas/DeviceInfo' }
         device_owner: { type: boolean }
@@ -9482,6 +9495,9 @@ components:
               ff_user_name: { type: [string, 'null'], maxLength: 120 }
               state: { $ref: '#/components/schemas/DayState' }
               had_data: { type: boolean }
+              planned:
+                type: [boolean, 'null']
+                description: Whether the route was planned for this business date (`app.route_day.planned`); null when the route has no route-day row yet. Every active route stays listed (F-TSO-010); a route with `planned == false` and `had_data == false` is "not due" and is greyed, not shown as a failed submit (D-BC-PREVIEW-01). Server warnings count only due routes. Optional (contract 1.7.0).
               memo_count: { type: integer, minimum: 0 }
               net_mtk: { $ref: '#/components/schemas/Mtk' }
               pending_rows_reported: { type: [integer, 'null'], minimum: 0 }
@@ -12653,7 +12669,7 @@ components:
       required: [node_type, node_id, valid_from]
       additionalProperties: false
       properties:
-        node_type: { type: string, enum: [national, wing, division, territory, zone] }
+        node_type: { type: string, enum: [national, wing, division, territory, house, zone] }
         node_id: { type: integer, format: int64, minimum: 0 }
         valid_from: { $ref: '#/components/schemas/BusinessDate' }
         valid_to:
@@ -12686,7 +12702,7 @@ components:
             required: [node_type, node_id]
             additionalProperties: false
             properties:
-              node_type: { type: string, enum: [national, wing, division, territory, zone] }
+              node_type: { type: string, enum: [national, wing, division, territory, house, zone] }
               node_id: { type: integer, format: int64, minimum: 0 }
               valid_to:
                 description: 'Optional end of an acting (temporary) scope node: the exclusive end date (Asia/Dhaka business date), as `UserScopeNode.valid_to` and `app.user_scope`; the node is in scope up to the day before and out of scope from this date on (an acting cover whose last day is D sends D + 1). Null or omitted = open-ended. After `valid_from` (400 `ERR_VALIDATION` otherwise). Returned unchanged on the read (docs/24 s14a R20).'

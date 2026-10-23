@@ -423,6 +423,7 @@ export const en = {
   "error.ERR_TOKEN_EXPIRED": "Your session ended. Sign in again.",
   "error.ERR_FORBIDDEN": "You are not allowed to do this.",
   "error.ERR_OUT_OF_SCOPE": "That is outside your scope.",
+  "error.ERR_AUTHZ_ROLE_ABOVE_GRANT": "Only a super administrator manages users at this level.",
   "error.ERR_NOT_FOUND": "Not found.",
   "error.ERR_VALIDATION": "Some fields are not valid. Check them and try again.",
   "error.ERR_PRECONDITION_FAILED": "Someone else changed this record. Reload and apply your change again.",

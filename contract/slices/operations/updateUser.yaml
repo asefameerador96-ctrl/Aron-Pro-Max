@@ -5,6 +5,9 @@ operation:
   - admin-users
   operationId: updateUser
   summary: Update a user (role and status changes bump scope_version; disabling keeps the upload grant).
+  description: An ADMIN (`users:w`) edits only logins below ADMIN (TSO, DMO, WM, NATIONAL, BRAND, SR, AMO); for
+    an ADMIN, SUPERADMIN, ANALYST or SUPPORT login the answer is 403 `ERR_AUTHZ_ROLE_ABOVE_GRANT` (SUPERADMIN-only,
+    D-AUTHZ-ADMIN-CREDS-01; until the server carries contract 1.7.0 it is `ERR_FORBIDDEN` with the same detail).
   parameters:
   - $ref: '#/components/parameters/IdPath'
   - $ref: '#/components/parameters/IfMatch'

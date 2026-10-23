@@ -1977,7 +1977,10 @@ export interface paths {
         /** Users in reach. */
         get: operations["listUsers"];
         put?: never;
-        /** Create a user with a temporary password (shown once, must be changed at first login). */
+        /**
+         * Create a user with a temporary password (shown once, must be changed at first login).
+         * @description An ADMIN (`users:w`) manages only logins below ADMIN (TSO, DMO, WM, NATIONAL, BRAND, SR, AMO); for an ADMIN, SUPERADMIN, ANALYST or SUPPORT login the answer is 403 `ERR_AUTHZ_ROLE_ABOVE_GRANT` (SUPERADMIN-only, D-AUTHZ-ADMIN-CREDS-01; until the server carries contract 1.7.0 it is `ERR_FORBIDDEN` with the same detail).
+         */
         post: operations["createUser"];
         delete?: never;
         options?: never;
@@ -1999,7 +2002,10 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        /** Update a user (role and status changes bump scope_version; disabling keeps the upload grant). */
+        /**
+         * Update a user (role and status changes bump scope_version; disabling keeps the upload grant).
+         * @description An ADMIN (`users:w`) edits only logins below ADMIN (TSO, DMO, WM, NATIONAL, BRAND, SR, AMO); for an ADMIN, SUPERADMIN, ANALYST or SUPPORT login the answer is 403 `ERR_AUTHZ_ROLE_ABOVE_GRANT` (SUPERADMIN-only, D-AUTHZ-ADMIN-CREDS-01; until the server carries contract 1.7.0 it is `ERR_FORBIDDEN` with the same detail).
+         */
         patch: operations["updateUser"];
         trace?: never;
     };
@@ -2012,7 +2018,10 @@ export interface paths {
         };
         /** Effective-dated supervisory scope nodes of a user. */
         get: operations["getUserScope"];
-        /** Replace a user's scope from a date (bumps scope_version; tokens refresh with 401 ERR_SCOPE_CHANGED). */
+        /**
+         * Replace a user's scope from a date (bumps scope_version; tokens refresh with 401 ERR_SCOPE_CHANGED).
+         * @description Node types are the `UserScopeNode.node_type` enum; `house` from contract 1.7.0 (D-SCOPE-TREE-01). An ADMIN (`users:w`) re-scopes only logins below ADMIN (TSO, DMO, WM, NATIONAL, BRAND, SR, AMO); for an ADMIN, SUPERADMIN, ANALYST or SUPPORT login the answer is 403 `ERR_AUTHZ_ROLE_ABOVE_GRANT` (SUPERADMIN-only, D-AUTHZ-ADMIN-CREDS-01; until the server carries contract 1.7.0 it is `ERR_FORBIDDEN` with the same detail).
+         */
         put: operations["putUserScope"];
         post?: never;
         delete?: never;
@@ -2050,7 +2059,7 @@ export interface paths {
         put?: never;
         /**
          * Reset password (temporary, shown once), unlock, or force logout (revoke full-grant families).
-         * @description SUPPORT and ADMIN for any user in reach; a TSO may `reset_password` and `unlock` SR and AMO users of its own zones (docs/24 s8.5). Every action is audited.
+         * @description SUPPORT and ADMIN for any user in reach below ADMIN; an ADMIN, SUPERADMIN, ANALYST or SUPPORT login is SUPERADMIN-only (403 `ERR_AUTHZ_ROLE_ABOVE_GRANT`, D-AUTHZ-ADMIN-CREDS-01; `ERR_FORBIDDEN` with the same detail until the server carries contract 1.7.0). A TSO may `reset_password` and `unlock` SR and AMO users of its own zones (docs/24 s8.5). Every action is audited.
          */
         post: operations["manageUserCredentials"];
         delete?: never;
@@ -4022,7 +4031,7 @@ export interface components {
          * @description Stable problem codes (HTTP status in docs/24 s3.4).
          * @enum {string}
          */
-        ProblemCode: "ERR_VALIDATION" | "ERR_MALFORMED_JSON" | "ERR_UNSUPPORTED_SCHEMA_VERSION" | "ERR_UNAUTHENTICATED" | "ERR_TOKEN_EXPIRED" | "ERR_SCOPE_CHANGED" | "ERR_PASSWORD_CHANGED" | "ERR_FORBIDDEN" | "ERR_OUT_OF_SCOPE" | "ERR_NOT_FOUND" | "ERR_CONFLICT" | "ERR_PRECONDITION_FAILED" | "ERR_PAYLOAD_TOO_LARGE" | "ERR_UNSUPPORTED_MEDIA_TYPE" | "ERR_RATE_LIMITED" | "ERR_INTERNAL" | "ERR_SERVICE_UNAVAILABLE" | "ERR_READ_ONLY_MODE" | "ERR_AUTH_INVALID_CREDENTIALS" | "ERR_AUTH_ACCOUNT_LOCKED" | "ERR_AUTH_USER_DISABLED" | "ERR_AUTH_PASSWORD_POLICY" | "ERR_AUTH_PASSWORD_CHANGE_REQUIRED" | "ERR_AUTH_REFRESH_INVALID" | "ERR_AUTH_REFRESH_REUSED" | "ERR_AUTH_MFA_INVALID" | "ERR_AUTH_OTP_INVALID" | "ERR_AUTH_OTP_EXPIRED" | "ERR_AUTH_OTP_ATTEMPTS_EXCEEDED" | "ERR_AUTH_BIND_LOCKED" | "ERR_AUTH_PORTAL_NOT_ALLOWED" | "ERR_DEVICE_NOT_ENROLLED" | "ERR_DEVICE_UNBOUND" | "ERR_DEVICE_SUSPENDED" | "ERR_DEVICE_REVOKED" | "ERR_DEVICE_INTEGRITY_FAILED" | "ERR_DEVICE_PROOF_INVALID" | "ERR_DEVICE_LIMIT_REACHED" | "ERR_ENROLMENT_TOKEN_INVALID" | "ERR_ENROLMENT_TOKEN_EXPIRED" | "ERR_ENROLMENT_TOKEN_EXHAUSTED" | "ERR_ENROLMENT_ATTESTATION_FAILED" | "ERR_NONCE_INVALID" | "ERR_APP_VERSION_UNSUPPORTED" | "ERR_SYNC_BATCH_UUID_REUSED" | "ERR_SYNC_BATCH_TOO_LARGE" | "ERR_SYNC_DECOMPRESSION_LIMIT" | "ERR_SYNC_HOLD" | "ERR_BUNDLE_NEW_BUSINESS_DATE" | "ERR_BUNDLE_CURSOR_EXPIRED" | "ERR_BUNDLE_NOT_READY" | "ERR_DAY_ALREADY_FINAL_SUBMITTED" | "ERR_DAY_NOT_FINAL_SUBMITTED" | "ERR_DAY_SUBMIT_VOID_NOT_ALLOWED" | "ERR_DAY_DATA_VOID_NOT_ALLOWED" | "ERR_CFG_UNKNOWN_KEY" | "ERR_CFG_OUT_OF_BOUNDS" | "ERR_CFG_SCOPE_NOT_ALLOWED" | "ERR_CFG_DEPENDENCY" | "ERR_CFG_SELF_APPROVAL" | "ERR_CFG_REASON_REQUIRED" | "ERR_CFG_FREEZE_WINDOW" | "ERR_MASTER_DUPLICATE_CODE" | "ERR_MASTER_EFFECTIVE_DATE_PAST" | "ERR_MASTER_OVERLAP" | "ERR_MASTER_IN_USE" | "ERR_REQUEST_STATE" | "ERR_SEPARATION_OF_DUTIES" | "ERR_REPORT_INVALID_QUERY" | "ERR_REPORT_TOO_LARGE" | "ERR_PUSH_DISABLED" | "ERR_ENTRY_WINDOW_CLOSED" | "ERR_GIFT_CHOICE_LOCKED";
+        ProblemCode: "ERR_VALIDATION" | "ERR_MALFORMED_JSON" | "ERR_UNSUPPORTED_SCHEMA_VERSION" | "ERR_UNAUTHENTICATED" | "ERR_TOKEN_EXPIRED" | "ERR_SCOPE_CHANGED" | "ERR_PASSWORD_CHANGED" | "ERR_FORBIDDEN" | "ERR_OUT_OF_SCOPE" | "ERR_AUTHZ_ROLE_ABOVE_GRANT" | "ERR_NOT_FOUND" | "ERR_CONFLICT" | "ERR_PRECONDITION_FAILED" | "ERR_PAYLOAD_TOO_LARGE" | "ERR_UNSUPPORTED_MEDIA_TYPE" | "ERR_RATE_LIMITED" | "ERR_INTERNAL" | "ERR_SERVICE_UNAVAILABLE" | "ERR_READ_ONLY_MODE" | "ERR_AUTH_INVALID_CREDENTIALS" | "ERR_AUTH_ACCOUNT_LOCKED" | "ERR_AUTH_USER_DISABLED" | "ERR_AUTH_PASSWORD_POLICY" | "ERR_AUTH_PASSWORD_CHANGE_REQUIRED" | "ERR_AUTH_REFRESH_INVALID" | "ERR_AUTH_REFRESH_REUSED" | "ERR_AUTH_MFA_INVALID" | "ERR_AUTH_OTP_INVALID" | "ERR_AUTH_OTP_EXPIRED" | "ERR_AUTH_OTP_ATTEMPTS_EXCEEDED" | "ERR_AUTH_BIND_LOCKED" | "ERR_AUTH_PORTAL_NOT_ALLOWED" | "ERR_DEVICE_NOT_ENROLLED" | "ERR_DEVICE_UNBOUND" | "ERR_DEVICE_SUSPENDED" | "ERR_DEVICE_REVOKED" | "ERR_DEVICE_INTEGRITY_FAILED" | "ERR_DEVICE_PROOF_INVALID" | "ERR_DEVICE_LIMIT_REACHED" | "ERR_ENROLMENT_TOKEN_INVALID" | "ERR_ENROLMENT_TOKEN_EXPIRED" | "ERR_ENROLMENT_TOKEN_EXHAUSTED" | "ERR_ENROLMENT_ATTESTATION_FAILED" | "ERR_NONCE_INVALID" | "ERR_APP_VERSION_UNSUPPORTED" | "ERR_SYNC_BATCH_UUID_REUSED" | "ERR_SYNC_BATCH_TOO_LARGE" | "ERR_SYNC_DECOMPRESSION_LIMIT" | "ERR_SYNC_HOLD" | "ERR_BUNDLE_NEW_BUSINESS_DATE" | "ERR_BUNDLE_CURSOR_EXPIRED" | "ERR_BUNDLE_NOT_READY" | "ERR_DAY_ALREADY_FINAL_SUBMITTED" | "ERR_DAY_NOT_FINAL_SUBMITTED" | "ERR_DAY_SUBMIT_VOID_NOT_ALLOWED" | "ERR_DAY_DATA_VOID_NOT_ALLOWED" | "ERR_CFG_UNKNOWN_KEY" | "ERR_CFG_OUT_OF_BOUNDS" | "ERR_CFG_SCOPE_NOT_ALLOWED" | "ERR_CFG_DEPENDENCY" | "ERR_CFG_SELF_APPROVAL" | "ERR_CFG_REASON_REQUIRED" | "ERR_CFG_FREEZE_WINDOW" | "ERR_MASTER_DUPLICATE_CODE" | "ERR_MASTER_EFFECTIVE_DATE_PAST" | "ERR_MASTER_OVERLAP" | "ERR_MASTER_IN_USE" | "ERR_REQUEST_STATE" | "ERR_SEPARATION_OF_DUTIES" | "ERR_REPORT_INVALID_QUERY" | "ERR_REPORT_TOO_LARGE" | "ERR_PUSH_DISABLED" | "ERR_ENTRY_WINDOW_CLOSED" | "ERR_GIFT_CHOICE_LOCKED";
         /**
          * @description Route-day state (docs/24 s4.9). Derived from timestamps on the server, so a retry never moves a route-day backwards.
          * @enum {string}
@@ -4030,8 +4039,11 @@ export interface components {
         DayState: "not_started" | "logged_in" | "in_field" | "synced" | "submit_pending_rows" | "sales_submitted" | "final_submitted";
         /** @enum {string} */
         GeoLevel: "wing" | "division" | "territory" | "house" | "zone";
-        /** @enum {string} */
-        ReachLevel: "national" | "wing" | "division" | "territory" | "zone" | "route";
+        /**
+         * @description Node levels of a reach summary (`Me.scope`, `LoginResponse.scope`). `house` from contract 1.7.0, with the `house` scope node (D-SCOPE-TREE-01).
+         * @enum {string}
+         */
+        ReachLevel: "national" | "wing" | "division" | "territory" | "house" | "zone" | "route";
         /** @enum {string} */
         ProductTreeLevel: "category" | "segment" | "brand" | "variant";
         /** @enum {string} */
@@ -4492,6 +4504,11 @@ export interface components {
             reported_at: components["schemas"]["Timestamp"];
             /** @enum {string} */
             trigger?: "enrolment" | "policy_applied" | "check_in" | "check_out" | "boot" | "integrity_change" | "app_update" | "periodic" | "directive";
+            /**
+             * @description Transport at the moment of the report, from one ConnectivityManager read per report (no polling). Optional (contract 1.7.0); absent from phones built against an older contract, and the MDM list then shows `unknown` (`docs/requests/mdm-contract-network-type.md`).
+             * @enum {string}
+             */
+            network_type?: "wifi" | "mobile" | "offline";
             app_version: components["schemas"]["AppVersionString"];
             device_info: components["schemas"]["DeviceInfo"];
             device_owner: boolean;
@@ -6204,6 +6221,8 @@ export interface components {
                 ff_user_name?: string | null;
                 state: components["schemas"]["DayState"];
                 had_data: boolean;
+                /** @description Whether the route was planned for this business date (`app.route_day.planned`); null when the route has no route-day row yet. Every active route stays listed (F-TSO-010); a route with `planned == false` and `had_data == false` is "not due" and is greyed, not shown as a failed submit (D-BC-PREVIEW-01). Server warnings count only due routes. Optional (contract 1.7.0). */
+                planned?: boolean | null;
                 memo_count: number;
                 net_mtk: components["schemas"]["Mtk"];
                 pending_rows_reported?: number | null;
@@ -7928,7 +7947,7 @@ export interface components {
         };
         UserScopeNode: {
             /** @enum {string} */
-            node_type: "national" | "wing" | "division" | "territory" | "zone";
+            node_type: "national" | "wing" | "division" | "territory" | "house" | "zone";
             /** Format: int64 */
             node_id: number;
             valid_from: components["schemas"]["BusinessDate"];
@@ -7944,7 +7963,7 @@ export interface components {
             valid_from: components["schemas"]["BusinessDate"];
             nodes: {
                 /** @enum {string} */
-                node_type: "national" | "wing" | "division" | "territory" | "zone";
+                node_type: "national" | "wing" | "division" | "territory" | "house" | "zone";
                 /** Format: int64 */
                 node_id: number;
                 /** @description Optional end of an acting (temporary) scope node: the exclusive end date (Asia/Dhaka business date), as `UserScopeNode.valid_to` and `app.user_scope`; the node is in scope up to the day before and out of scope from this date on (an acting cover whose last day is D sends D + 1). Null or omitted = open-ended. After `valid_from` (400 `ERR_VALIDATION` otherwise). Returned unchanged on the read (docs/24 s14a R20). */
@@ -10061,7 +10080,7 @@ export interface components {
         ZoneIdQueryRequired: components["schemas"]["Id"];
         /** @description Narrowing selector; must be inside the caller's reach. */
         TerritoryIdQuery: components["schemas"]["Id"];
-        /** @description Level of the node the figures are for; default the caller's top level. */
+        /** @description Level of the node the figures are for; default the caller's top level. The dashboards accept `national`, `wing`, `division`, `territory` and `zone`; `house` (a scope node level from contract 1.7.0) and `route` answer 400 `ERR_VALIDATION` (`query.level` invalid_value). */
         GeoLevelQuery: components["schemas"]["ReachLevel"];
         /** @description Id of the node at `level` (omit for national). */
         NodeIdQuery: components["schemas"]["Id"];
@@ -11967,7 +11986,7 @@ export interface operations {
     getDashboardSummary: {
         parameters: {
             query?: {
-                /** @description Level of the node the figures are for; default the caller's top level. */
+                /** @description Level of the node the figures are for; default the caller's top level. The dashboards accept `national`, `wing`, `division`, `territory` and `zone`; `house` (a scope node level from contract 1.7.0) and `route` answer 400 `ERR_VALIDATION` (`query.level` invalid_value). */
                 level?: components["parameters"]["GeoLevelQuery"];
                 /** @description Id of the node at `level` (omit for national). */
                 node_id?: components["parameters"]["NodeIdQuery"];
@@ -12408,7 +12427,7 @@ export interface operations {
         parameters: {
             query: {
                 business_date: components["parameters"]["BusinessDateQueryRequired"];
-                /** @description Level of the node the figures are for; default the caller's top level. */
+                /** @description Level of the node the figures are for; default the caller's top level. The dashboards accept `national`, `wing`, `division`, `territory` and `zone`; `house` (a scope node level from contract 1.7.0) and `route` answer 400 `ERR_VALIDATION` (`query.level` invalid_value). */
                 level?: components["parameters"]["GeoLevelQuery"];
                 /** @description Id of the node at `level` (omit for national). */
                 node_id?: components["parameters"]["NodeIdQuery"];
@@ -12441,7 +12460,7 @@ export interface operations {
         parameters: {
             query: {
                 business_date: components["parameters"]["BusinessDateQueryRequired"];
-                /** @description Level of the node the figures are for; default the caller's top level. */
+                /** @description Level of the node the figures are for; default the caller's top level. The dashboards accept `national`, `wing`, `division`, `territory` and `zone`; `house` (a scope node level from contract 1.7.0) and `route` answer 400 `ERR_VALIDATION` (`query.level` invalid_value). */
                 level?: components["parameters"]["GeoLevelQuery"];
                 /** @description Id of the node at `level` (omit for national). */
                 node_id?: components["parameters"]["NodeIdQuery"];
@@ -12469,7 +12488,7 @@ export interface operations {
         parameters: {
             query: {
                 business_date: components["parameters"]["BusinessDateQueryRequired"];
-                /** @description Level of the node the figures are for; default the caller's top level. */
+                /** @description Level of the node the figures are for; default the caller's top level. The dashboards accept `national`, `wing`, `division`, `territory` and `zone`; `house` (a scope node level from contract 1.7.0) and `route` answer 400 `ERR_VALIDATION` (`query.level` invalid_value). */
                 level?: components["parameters"]["GeoLevelQuery"];
                 /** @description Id of the node at `level` (omit for national). */
                 node_id?: components["parameters"]["NodeIdQuery"];
@@ -12505,7 +12524,7 @@ export interface operations {
                 from?: components["parameters"]["FromDate"];
                 /** @description Last business date, inclusive (at most 92 days after `from`). */
                 to?: components["parameters"]["ToDate"];
-                /** @description Level of the node the figures are for; default the caller's top level. */
+                /** @description Level of the node the figures are for; default the caller's top level. The dashboards accept `national`, `wing`, `division`, `territory` and `zone`; `house` (a scope node level from contract 1.7.0) and `route` answer 400 `ERR_VALIDATION` (`query.level` invalid_value). */
                 level?: components["parameters"]["GeoLevelQuery"];
                 /** @description Id of the node at `level` (omit for national). */
                 node_id?: components["parameters"]["NodeIdQuery"];
@@ -12533,7 +12552,7 @@ export interface operations {
         parameters: {
             query: {
                 month: components["schemas"]["Month"];
-                /** @description Level of the node the figures are for; default the caller's top level. */
+                /** @description Level of the node the figures are for; default the caller's top level. The dashboards accept `national`, `wing`, `division`, `territory` and `zone`; `house` (a scope node level from contract 1.7.0) and `route` answer 400 `ERR_VALIDATION` (`query.level` invalid_value). */
                 level?: components["parameters"]["GeoLevelQuery"];
                 /** @description Id of the node at `level` (omit for national). */
                 node_id?: components["parameters"]["NodeIdQuery"];

@@ -542,6 +542,7 @@ data class DeviceStatusReportPrinter(
 data class DeviceStatusReport(
     @SerialName("reported_at") val reportedAt: String,
     @SerialName("trigger") val trigger: String? = null,
+    @SerialName("network_type") val networkType: String? = null,
     @SerialName("app_version") val appVersion: String,
     @SerialName("device_info") val deviceInfo: DeviceInfo,
     @SerialName("device_owner") val deviceOwner: Boolean,

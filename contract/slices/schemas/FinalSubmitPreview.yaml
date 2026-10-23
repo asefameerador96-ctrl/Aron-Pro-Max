@@ -67,6 +67,14 @@ FinalSubmitPreview:
             $ref: '#/components/schemas/DayState'
           had_data:
             type: boolean
+          planned:
+            type:
+            - boolean
+            - 'null'
+            description: Whether the route was planned for this business date (`app.route_day.planned`); null when
+              the route has no route-day row yet. Every active route stays listed (F-TSO-010); a route with `planned
+              == false` and `had_data == false` is "not due" and is greyed, not shown as a failed submit (D-BC-PREVIEW-01).
+              Server warnings count only due routes. Optional (contract 1.7.0).
           memo_count:
             type: integer
             minimum: 0
