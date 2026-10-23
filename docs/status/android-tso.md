@@ -1,3 +1,6 @@
+# Session 3, slice 3 (2026-10-23): SR parity M9 wording
+INT merged at 70060dd3. `feature-sale` bn: edit-reason title "দয়া করে বিক্রয় এডিট করার কারন লিখুন" and first reason "ভুল SKU নির্বাচিত।" (manual wording; shared with the AMO sale edit). The structure stays the three tap rows (EditReason wire values unchanged; the manual's dropdown with a cancel / submit pair is a layout change, not made). No golden shows the screen. H1 not changed: the route kind "Daily" is AKTCL's wording kept in English by design (`sr_route_kind_*`, screens-sr s2) and the two-line header is a kit layout (D-UI), so it is left for the lead's ruling together with X4, X5, O3.
+
 # Session 3, slice 2 (2026-10-23): SR parity wording O2, O4, X1
 INT merged at fca0461d (train 19). `values-bn`: outlet request fields "ক্লাস্টার নির্বাচন করুন", "দোকানের মালিকের নাম", "মোবাইল নম্বর", save "সংরক্ষণ" (O2, O4); tutorial empty state "কোনো টিউটোরিয়াল পাওয়া যায়নি।" (X1); golden `sr_tutorial_empty_bn` re-recorded. Audit rows found already done: T1 (`sr_tasks_title` = "টাস্ক"). Not touched on purpose: X4/X5 (`set_title`, `set_logout*`, `set_cancel` are shared with the AMO and TSO apps and their tests, TSO has its own ruled "Log Out!" dialog) and O3 (`out_take_photo` is the force-sale button; which screen the manual's "GEO এবং ছবি ধারণ করুন" belongs to is unclear), both left for the lead's ruling.
 
