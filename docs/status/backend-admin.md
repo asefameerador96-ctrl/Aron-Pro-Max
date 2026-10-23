@@ -1,5 +1,11 @@
 # backend-admin lane status
 
+## HANDOVER (2026-10-23, session 6 ends; no open rows)
+Lane head 5fd1ed9e is on dev (INT 52bdd477, train 12; train 13 INT f8c5bffc carries backend-authz's and qa's re-merges of UserAccessApi.kt and ApiWorld.kt). Nothing half-done.
+Done in session 6: `UserAccessApi` reads `AdminModules.ALL` (test `theModuleListIsAdminModulesAll`); pending-table fixtures deleted, the suites run on the real migrations; route-targets gate = module `targets` (GET read, PUT write, `AdminModulesTest`); PATCH user drops module grants / brand scope on role change (code was on INT; added `roleChangeDropsGrantsAndBrandScope`). Contract untouched.
+Next only when a new admin API request arrives (`docs/requests/backend-admin-*.md` on lane/web-admin). Merge INT first; after any openapi.yaml edit run `python3 tools/slice-contract.py` and regenerate `web/src/contract/openapi.d.ts` (see session-5 handoff below for the traps, still valid).
+Local test traps (new): one gradle invocation at a time (the second dies on the configuration-cache lock); never `pkill -f gradlew` (kills the tool shell); set the postgres password before tests (`ALTER ROLE postgres PASSWORD 'postgres'`); CI "Shared, db and backend" can take 38 min on a slow runner without hanging.
+
 ## SESSION 6 (2026-10-22 evening, wave 4)
 - **Candidate 7b44110d** (lane CI #1419 green, all 9 jobs ran): INT d698f8d4 merged; `UserAccessApi` reads `AdminModules.ALL` (test `theModuleListIsAdminModulesAll`); pending-table fixtures deleted (`pending/*.sql`, `pending-user-access.sql`, `proposed_route_monthly_target.sql`, and `proposed_V0014_backend_admin.sql`, superseded by V0023): the suites run on the real migrations. Route-targets: `/v1/admin/route-targets/**` maps to module `targets` (GET read, PUT write) in `AdminModules.ROUTES`, covered by `AdminModulesTest`; handler roles agree.
 - Row 2b (grants dropped on role change in PATCH user) was already on INT (`AdminUsers.kt`, audit `drop_on_role_change`); added the missing test `roleChangeDropsGrantsAndBrandScope`.
