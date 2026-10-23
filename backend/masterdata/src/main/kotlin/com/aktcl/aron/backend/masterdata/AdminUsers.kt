@@ -79,11 +79,11 @@ internal val USER = MasterEntity(
         val newRole = roleOf(merged["role"])!!
         val curRole = cur?.let { roleOf(it["role"]) }
         if (ctx.p.role == Role.ADMIN && (newRole in SENIOR || curRole in SENIOR))
-            throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "only a SUPERADMIN manages ADMIN and SUPERADMIN users")
+            throw ApiProblem(ProblemCode.ERR_AUTHZ_ROLE_ABOVE_GRANT, "only a SUPERADMIN manages ADMIN and SUPERADMIN users")
         // D-AUTHZ-ADMIN-CREDS-01: the internal service roles are the Super Admin's (an ADMIN would otherwise mint itself
         // a SUPPORT login with reach outside its module grants).
         if (ctx.p.role == Role.ADMIN && (newRole in SUPERADMIN_MANAGED || curRole in SUPERADMIN_MANAGED))
-            throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "only a SUPERADMIN manages ANALYST and SUPPORT users")
+            throw ApiProblem(ProblemCode.ERR_AUTHZ_ROLE_ABOVE_GRANT, "only a SUPERADMIN manages ANALYST and SUPPORT users")
         if (cur != null && cur["id"] == ctx.p.userId && ("role" in changes && changes["role"] != cur["role"] || changes["status"] == "disabled"))
             throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "you cannot change your own role or disable yourself")
         if (cur == null || "role" in changes && changes["role"] != cur["role"]) {
@@ -176,9 +176,9 @@ private suspend fun credentials(call: ApplicationCall, d: AdminMasterDeps) {
             val u = ctx.visibleRow(h, USER, id, true) ?: admNotFound()
             val role = roleOf(u["role"])!!
             if (p.role == Role.TSO && role !in setOf(Role.SR, Role.AMO)) throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "a TSO acts on SR and AMO users only")
-            if (role in SENIOR && p.role != Role.SUPERADMIN) throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "only a SUPERADMIN acts on ADMIN and SUPERADMIN users")
+            if (role in SENIOR && p.role != Role.SUPERADMIN) throw ApiProblem(ProblemCode.ERR_AUTHZ_ROLE_ABOVE_GRANT, "only a SUPERADMIN acts on ADMIN and SUPERADMIN users")
             // D-AUTHZ-ADMIN-CREDS-01: a reset hands over the account; the internal service roles are the Super Admin's.
-            if (role in SUPERADMIN_MANAGED && p.role != Role.SUPERADMIN) throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "only a SUPERADMIN acts on ANALYST and SUPPORT users")
+            if (role in SUPERADMIN_MANAGED && p.role != Role.SUPERADMIN) throw ApiProblem(ProblemCode.ERR_AUTHZ_ROLE_ABOVE_GRANT, "only a SUPERADMIN acts on ANALYST and SUPPORT users")
             when (action) {
                 "reset_password" -> {
                     h.createUpdate("UPDATE app.app_user SET password_hash = :h, must_change_password = true, password_changed_at = NULL, scope_version = scope_version + 1 WHERE id = :id")
@@ -222,8 +222,9 @@ private fun unlockMfa(h: Handle, userId: Long) {
 
 // ---- scope -------------------------------------------------------------------------------------------------------
 
-private val SCOPE_TYPES = setOf("national", "wing", "division", "territory", "zone")
-private val SCOPE_TABLES = mapOf("wing" to "app.wing", "division" to "app.division", "territory" to "app.territory", "zone" to "app.zone")
+// `house` from contract 1.7.0 (D-SCOPE-TREE-01): the node reaches the zones whose zone.house_id it is (ReachCalculator).
+private val SCOPE_TYPES = setOf("national", "wing", "division", "territory", "house", "zone")
+private val SCOPE_TABLES = mapOf("wing" to "app.wing", "division" to "app.division", "territory" to "app.territory", "house" to "app.house", "zone" to "app.zone")
 
 private fun scopeNodes(h: Handle, userId: Long, today: LocalDate): List<Map<String, Any?>> =
     h.createQuery("SELECT node_type, node_id, valid_from, valid_to FROM app.user_scope WHERE user_id = :u AND (valid_to IS NULL OR valid_to > :t) ORDER BY valid_from, node_type, node_id LIMIT 100")
@@ -280,7 +281,9 @@ private suspend fun putScope(call: ApplicationCall, d: AdminMasterDeps) {
         d.db.jdbi.inTransaction<JsonObject, Exception> { h ->
             val u = ctx.visibleRow(h, USER, id, true) ?: admNotFound()
             val role = roleOf(u["role"])!!
-            if (p.role == Role.ADMIN && role in SENIOR) throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "only a SUPERADMIN manages ADMIN and SUPERADMIN users")
+            if (p.role == Role.ADMIN && role in SENIOR) throw ApiProblem(ProblemCode.ERR_AUTHZ_ROLE_ABOVE_GRANT, "only a SUPERADMIN manages ADMIN and SUPERADMIN users")
+            // Contract 1.7.0 PUT /v1/admin/users/{id}/scope: the internal service roles are the Super Admin's here too.
+            if (p.role == Role.ADMIN && role in SUPERADMIN_MANAGED) throw ApiProblem(ProblemCode.ERR_AUTHZ_ROLE_ABOVE_GRANT, "only a SUPERADMIN manages ANALYST and SUPPORT users")
             if (role == Role.SR) admBad("body.nodes", "scope_not_applicable", "an SR's reach comes from route assignments, not scope nodes")
             val geo = d.geo.geoCovering()
             for ((i, n) in wanted.withIndex()) {
@@ -291,7 +294,8 @@ private suspend fun putScope(call: ApplicationCall, d: AdminMasterDeps) {
                     if (p.role != Role.SUPERADMIN) throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "only a SUPERADMIN gives national scope")
                     continue
                 }
-                val exists = h.count("SELECT count(*) FROM ${SCOPE_TABLES.getValue(type)} WHERE id = :i", "i" to nid) > 0
+                // An inactive (merged or closed) house is not offered by the scope tree (D-SCOPE-TREE-01) and is not given either.
+                val exists = h.count("SELECT count(*) FROM ${SCOPE_TABLES.getValue(type)} WHERE id = :i" + if (type == "house") " AND status = 'active'" else "", "i" to nid) > 0
                 if (!exists || (!ctx.reach.national && geo.zonesUnder(type, nid).none { it in ctx.reach.zoneIds })) admBad("body.nodes/$i/node_id", "unknown_node", "the node does not exist or is outside your reach")
             }
             val pending = wanted.associate { (it.first to it.second) to it.third }.toMutableMap()

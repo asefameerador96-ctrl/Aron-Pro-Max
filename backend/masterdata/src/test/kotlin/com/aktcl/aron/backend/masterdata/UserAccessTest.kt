@@ -148,7 +148,9 @@ class UserAccessTest {
         }
         // An ADMIN reads its own access and a non-admin user's, never another ADMIN's.
         assertEquals(HttpStatusCode.OK, sendA1(HttpMethod.Get, "/admin/users/${uid("admin1001")}/access", env.token("admin1001", Role.ADMIN)).status)
-        assertEquals(HttpStatusCode.Forbidden, sendA1(HttpMethod.Get, "/admin/users/${uid("adminx2")}/access", env.token("admin1001", Role.ADMIN)).status)
+        val other = sendA1(HttpMethod.Get, "/admin/users/${uid("adminx2")}/access", env.token("admin1001", Role.ADMIN))
+        assertEquals(HttpStatusCode.Forbidden, other.status)
+        assertEquals("ERR_AUTHZ_ROLE_ABOVE_GRANT", other.code(), "contract 1.7.0, D-AUTHZ-ADMIN-CREDS-01")
         assertEquals(HttpStatusCode.OK, sendA1(HttpMethod.Get, "/admin/users/${uid("brandx1")}/access", env.token("admin1001", Role.ADMIN)).status)
     }
 
