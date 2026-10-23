@@ -1,7 +1,7 @@
 import { onApiFailure } from "@/components/admin/crud/pages";
 import { apiGet, one, qs, type SearchParams } from "@/components/admin/kit/page";
 import { Forbidden } from "@/components/forbidden";
-import { canOp } from "@/lib/admin/access";
+import { loadOpGate } from "@/lib/admin/access";
 import type { QuarantinePage } from "@/lib/admin/types";
 import { ADMIN_PORTAL_ROLES, hasRole } from "@/lib/auth/roles";
 import { requireSession } from "@/lib/auth/require";
@@ -11,6 +11,7 @@ import { QuarantineView } from "./quarantine-view";
 /** Shared body of F-ADM-030 and P14, so both list the same items. */
 export async function QuarantinePageContent({ searchParams, basePath, titleKey }: { searchParams: Promise<SearchParams>; basePath: string; titleKey?: "qr.title" | "cfgp14.title" }) {
   const [session, locale, sp] = await Promise.all([requireSession(), getLocale(), searchParams]);
+  const gate = await loadOpGate(session.at, session.user.role);
   if (!hasRole(session.user.role, ADMIN_PORTAL_ROLES)) return <Forbidden locale={locale} />;
   const st = one(sp.status, 20);
   const code = one(sp.code, 40);
@@ -25,5 +26,5 @@ export async function QuarantinePageContent({ searchParams, basePath, titleKey }
   const item = one(sp.item, 15);
   const selected = item ? (r.data.items.find((q) => String(q.quarantine_id) === item) ?? null) : null;
   const nextHref = r.data.next_cursor ? `${basePath}${qs({ ...filters, cursor: r.data.next_cursor })}` : null;
-  return <QuarantineView locale={locale} rows={r.data.items} filters={filters} basePath={basePath} nextHref={nextHref} canWrite={canOp("quarantine.resolve", session.user.role)} canMatch={canOp("quarantine.match-backfill", session.user.role)} titleKey={titleKey} selected={selected} cursor={one(sp.cursor, 512)} />;
+  return <QuarantineView locale={locale} rows={r.data.items} filters={filters} basePath={basePath} nextHref={nextHref} canWrite={gate("quarantine.resolve")} canMatch={gate("quarantine.match-backfill")} titleKey={titleKey} selected={selected} cursor={one(sp.cursor, 512)} />;
 }

@@ -299,12 +299,12 @@ class NationalDashboardService(
         val date = dateOf(f); val sql = NationalSql(caller, f)
         return read { h ->
             ensureReady(h)
-            // Brief s3.4: a successful login is a check-in AND a download. Before db's V0108 the check-in is not in the summary and the older rule holds.
-            val checkedIn = if (DashboardSummaries.hasCheckedIn(h)) "AND a.checked_in_at IS NOT NULL" else ""
+            // Brief s3.4: a successful login is a login AND a download AND a check-in (DashboardSummaries.successfulLoginSql).
+            val ok = DashboardSummaries.successfulLoginSql(h)
             val (target, login, submitted) = sql.bind(h.createQuery(
                 """
-                SELECT count(*), count(*) FILTER (WHERE a.logged_in_at IS NOT NULL AND a.downloaded_at IS NOT NULL $checkedIn),
-                       count(*) FILTER (WHERE a.logged_in_at IS NOT NULL AND a.downloaded_at IS NOT NULL $checkedIn AND a.sales_submitted_at IS NOT NULL)
+                SELECT count(*), count(*) FILTER (WHERE $ok),
+                       count(*) FILTER (WHERE $ok AND a.sales_submitted_at IS NOT NULL)
                   FROM dw.agg_daily_route a JOIN dw.dim_geo g ON g.route_id = a.route_id
                  WHERE a.business_date = :d AND a.planned AND NOT a.exception_approved AND g.route_class = 'normal' AND g.route_kind = 'sr' ${sql.geo}
                 """,

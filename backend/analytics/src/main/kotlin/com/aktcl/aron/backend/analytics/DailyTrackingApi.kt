@@ -71,11 +71,12 @@ class DailyTrackingService(private val db: Database, private val config: ServerC
         var comparator: TrackingComparator? = null
         val (items, next) = db.readJdbi.withHandle<Pair<List<DailyTrackingRow>, Long?>, Exception> { h ->
             val node = resolveScopedNode(h, reach, level, nodeId)
+            val login = DashboardSummaries.successfulLoginSql(h)
             val rows = node.bind(
                 h.createQuery(
                     """
                     SELECT a.route_id, g.route_name, a.zone_id, u.id AS uid, u.full_name, a.day_state, a.target_outlets, a.visited_outlets, a.successful_calls, a.active_memo_count, a.net_mtk,
-                           a.exception_approved
+                           a.exception_approved, ($login) AS login_ok
                       FROM dw.agg_daily_route a JOIN dw.dim_geo g ON g.route_id = a.route_id
                       LEFT JOIN app.route_day rd ON rd.route_id = a.route_id AND rd.business_date = a.business_date
                       LEFT JOIN app.app_user u ON u.id = coalesce(rd.acting_user_id, rd.assigned_user_id)
@@ -89,7 +90,7 @@ class DailyTrackingService(private val db: Database, private val config: ServerC
                 DailyTrackingRow(
                     rs.getLong("route_id"), rs.getString("route_name"), rs.getLong("zone_id"), rs.getObject("uid") as Long?, rs.getString("full_name"), state, target,
                     rs.getInt("visited_outlets"), calls, rs.getInt("active_memo_count"), rs.getLong("net_mtk"),
-                    bucket = bucket(rs.getBoolean("exception_approved"), state, achievement),
+                    bucket = bucket(rs.getBoolean("exception_approved"), state, rs.getBoolean("login_ok"), achievement),
                 )
             }.list()
             // Same-time-yesterday (F-WEB-038): only for the live Dhaka day; the previous day with route rows in reach, rebuilt from login time and memo commit times.
@@ -110,7 +111,7 @@ class DailyTrackingService(private val db: Database, private val config: ServerC
 
     /**
      * Buckets of the previous business day (the latest earlier date with planned routes in scope, within 7 days) as they stood at [time] Dhaka:
-     * a route counts as logged in when `logged_in_at` is at or before that instant, and its successful calls are the distinct outlets with an
+     * a route counts as logged in (successful login: login, download and check-in, each stamp at or before that instant) and its successful calls are the distinct outlets with an
      * active memo committed by then (the same definition as the daily aggregate). Both inputs are immutable timestamps, so the figure is exact
      * apart from a memo voided after that moment, which the facts no longer show as active. Null when there is no earlier day.
      */
@@ -118,12 +119,13 @@ class DailyTrackingService(private val db: Database, private val config: ServerC
         val prev = node.bind(h.createQuery("SELECT max(business_date) FROM dw.agg_daily_route a WHERE business_date < :d AND business_date >= :d - 7 AND (a.planned OR a.exception_approved) AND ${node.clause("a.zone_id")}").bind("d", date))
             .mapTo(LocalDate::class.java).findOne().orElse(null) ?: return null
         val cutoff = prev.atTime(time).atZone(ZoneId.of("Asia/Dhaka")).toInstant()
+        val loginAt = DashboardSummaries.successfulLoginAtSql(h, "a", "cut")
         val counts = node.bind(
             h.createQuery(
                 """
                 WITH r AS (
                   SELECT a.route_id, a.exception_approved AS ex, a.target_outlets,
-                         (a.logged_in_at IS NOT NULL AND a.logged_in_at <= :cut) AS logged,
+                         ($loginAt) AS logged,
                          (SELECT count(DISTINCT m.outlet_id) FROM dw.fact_memo m WHERE m.business_date = a.business_date AND m.route_id = a.route_id AND m.status = 'active' AND m.line_count > 0 AND m.committed_at <= :cut) AS calls
                     FROM dw.agg_daily_route a WHERE a.business_date = :p AND (a.planned OR a.exception_approved) AND ${node.clause("a.zone_id")}),
                 b AS (SELECT CASE WHEN ex THEN 'exception' WHEN NOT logged THEN 'not_logged_in' WHEN target_outlets <= 0 THEN 'below_80'
@@ -139,9 +141,9 @@ class DailyTrackingService(private val db: Database, private val config: ServerC
         )
     }
 
-    private fun bucket(exception: Boolean, state: String, pct: BigDecimal?): String = when {
+    private fun bucket(exception: Boolean, state: String, loginOk: Boolean, pct: BigDecimal?): String = when {
         exception -> "exception"
-        state == "not_started" -> "not_logged_in"
+        state == "not_started" || !loginOk -> "not_logged_in"
         pct == null -> "below_80"
         pct >= BigDecimal(100) -> "ge_100"
         pct >= BigDecimal(90) -> "from_90"

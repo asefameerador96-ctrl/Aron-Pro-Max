@@ -33,6 +33,23 @@ internal object DashboardSummaries {
         "SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'dw' AND table_name = 'agg_daily_route' AND column_name = 'checked_in_at')",
     ).mapTo(Boolean::class.java).one()
 
+    /**
+     * The one meaning of "Successful Login" (owner brief s3.4, D-REPORTS-LOGIN-01): the SR logged in AND downloaded the bundle AND checked in. SQL over
+     * `dw.agg_daily_route` columns, [alias] is the table alias ("" for none). Where the summary columns do not exist yet (before db's V0093 to V0108) the
+     * older rule holds (any state past `not_started`), so the worker and the cards work on either side of those migrations.
+     */
+    fun successfulLoginSql(h: Handle, alias: String = "a"): String {
+        val p = if (alias.isEmpty()) "" else "$alias."
+        if (!ready(h)) return "${p}day_state <> 'not_started'"
+        return "${p}logged_in_at IS NOT NULL AND ${p}downloaded_at IS NOT NULL" + if (hasCheckedIn(h)) " AND ${p}checked_in_at IS NOT NULL" else ""
+    }
+
+    /** [successfulLoginSql] as it stood at the instant bound to `:[param]`: every stamp present and at or before it (never null). */
+    fun successfulLoginAtSql(h: Handle, alias: String, param: String): String {
+        val stamps = if (!ready(h)) listOf("logged_in_at") else listOf("logged_in_at", "downloaded_at") + if (hasCheckedIn(h)) listOf("checked_in_at") else emptyList()
+        return "coalesce(" + stamps.joinToString(" AND ") { "$alias.$it <= :$param" } + ", false)"
+    }
+
     /** True when every table and column of the request exists. Cheap catalog query; not cached because test databases differ. */
     fun ready(h: Handle): Boolean {
         val wanted = columns.entries.flatMap { (t, cs) -> cs.map { t to it } }
@@ -144,14 +161,15 @@ internal object DashboardSummaries {
         ).bind("r", routeId).bind("d", date).execute()
 
         // The first non-voided attendance check-in of the route's SR that day: the event's own route, else (no route on the event) a user assigned
-        // to the route that day. The same rule as the V0108 backfill, so rebuilt and backfilled days agree.
+        // to the route that day, or the route-day's acting (stand-in) SR. A superset of the V0108 backfill rule (which lacks the stand-in).
         if (hasCheckedIn(h)) h.createUpdate(
             """
             WITH ci AS (SELECT min(e.captured_at) AS at FROM app.attendance_event e
                          WHERE e.kind = 'check_in' AND e.voided_at IS NULL AND e.business_date = :d
                            AND (e.route_id = :r OR (e.route_id IS NULL AND e.user_id IN (
                                   SELECT ra.user_id FROM app.route_assignment ra
-                                   WHERE ra.route_id = :r AND ra.valid_from <= :d AND (ra.valid_to IS NULL OR ra.valid_to > :d)))))
+                                   WHERE ra.route_id = :r AND ra.valid_from <= :d AND (ra.valid_to IS NULL OR ra.valid_to > :d)
+                                   UNION SELECT rd.acting_user_id FROM app.route_day rd WHERE rd.route_id = :r AND rd.business_date = :d AND rd.acting_user_id IS NOT NULL))))
             UPDATE dw.agg_daily_route a SET checked_in_at = (SELECT at FROM ci) WHERE a.route_id = :r AND a.business_date = :d
             """,
         ).bind("r", routeId).bind("d", date).execute()
@@ -217,6 +235,10 @@ internal object DashboardSummaries {
           UNION ALL
           SELECT ra.route_id, e.business_date FROM app.attendance_event e
             JOIN app.route_assignment ra ON ra.user_id = e.user_id AND ra.valid_from <= e.business_date AND (ra.valid_to IS NULL OR ra.valid_to > e.business_date)
+           WHERE e.received_at > :since AND e.kind = 'check_in' AND e.route_id IS NULL AND e.business_date >= :today - 7
+          UNION ALL
+          SELECT rd.route_id, rd.business_date FROM app.attendance_event e
+            JOIN app.route_day rd ON rd.acting_user_id = e.user_id AND rd.business_date = e.business_date
            WHERE e.received_at > :since AND e.kind = 'check_in' AND e.route_id IS NULL AND e.business_date >= :today - 7
         ) s
         """,

@@ -2,7 +2,7 @@ import { ReleasesView } from "@/components/admin/config/releases-view";
 import { onApiFailure } from "@/components/admin/crud/pages";
 import { apiGet } from "@/components/admin/kit/page";
 import { Forbidden } from "@/components/forbidden";
-import { canOp } from "@/lib/admin/access";
+import { loadOpGate } from "@/lib/admin/access";
 import { adoptionByVersion } from "@/lib/admin/adoption";
 import { globalValues, latestVersion, listKeys, versionDetail } from "@/lib/admin/config-load";
 import type { AppReleasePage, Device, DevicePage, ReleasePolicyList, ResolvedConfigValue } from "@/lib/admin/types";
@@ -14,6 +14,7 @@ const POLICY_KEYS = ["cfg.release.min_version_code", "cfg.release.blocked_versio
 
 export default async function ReleasesPage() {
   const [session, locale] = await Promise.all([requireSession(), getLocale()]);
+  const gate = await loadOpGate(session.at, session.user.role);
   if (!hasRole(session.user.role, ADMIN_PORTAL_ROLES)) return <Forbidden locale={locale} />;
   const [rel, policy, keys, ver] = await Promise.all([
     apiGet<AppReleasePage>("/v1/admin/releases", session.at, { limit: 100 }),
@@ -47,8 +48,8 @@ export default async function ReleasesPage() {
       policyKeys={keys.ok ? keys.data.items.filter((k) => POLICY_KEYS.includes(k.key)) : []}
       policyValues={values}
       apkMaxMb={!keys.ok && !(ver.ok && ver.data) ? undefined : Number.isFinite(apkMax) && apkMax > 0 ? apkMax : 30}
-      canWrite={canOp("release.update", session.user.role)}
-      canPublish={canOp("release.publish", session.user.role)}
+      canWrite={gate("release.update")}
+      canPublish={gate("release.publish")}
     />
   );
 }

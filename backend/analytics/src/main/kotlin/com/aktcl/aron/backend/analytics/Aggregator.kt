@@ -231,6 +231,7 @@ object Aggregator {
     /**
      * One row per (date, outlet) across ALL routes (the key has no route): the outlets touched on this route-day are recomputed
      * from every route's records, so two routes selling to one outlet never overwrite each other. `route_id` is the outlet's own route.
+     * Quantities are kept per category in that category's base unit (V0109). The mixed-unit `sold_qty_base` is no longer named here: its DEFAULT 0 fills new rows until db drops the column (V0110).
      */
     private fun rebuildAggOutlet(h: Handle, routeId: Long, date: LocalDate, wm: Long) {
         h.createUpdate(
@@ -242,18 +243,22 @@ object Aggregator {
                       FROM app.visit WHERE business_date = :d AND visit_kind = 'sr_call' AND voided_at IS NULL AND outlet_id IN (SELECT outlet_id FROM keys) GROUP BY outlet_id),
             memo AS (SELECT m.outlet_id, count(*) AS n, coalesce(sum(m.net_mtk), 0) AS net, coalesce(sum(m.due_mtk), 0) AS due
                        FROM app.memo m WHERE m.business_date = :d AND $ACTIVE_MEMO AND m.outlet_id IN (SELECT outlet_id FROM keys) GROUP BY m.outlet_id),
-            qty AS (SELECT m.outlet_id, sum(ml.qty_base) AS q
+            qty AS (SELECT m.outlet_id, sum(ml.qty_base) FILTER (WHERE s.category_code = 'cigarette') AS cig, sum(ml.qty_base) FILTER (WHERE s.category_code = 'bidi') AS bidi,
+                           sum(ml.qty_base) FILTER (WHERE s.category_code = 'lighter') AS lighter, sum(ml.qty_base) FILTER (WHERE s.category_code = 'match') AS match
                       FROM app.memo_line ml JOIN app.memo m ON m.client_uuid = ml.memo_client_uuid AND m.business_date = ml.business_date
+                      JOIN app.sku s ON s.id = ml.sku_id
                      WHERE m.business_date = :d AND $ACTIVE_MEMO AND ml.voided_at IS NULL AND ml.line_kind = 'sale' AND m.outlet_id IN (SELECT outlet_id FROM keys) GROUP BY m.outlet_id),
             dues AS (SELECT outlet_id, sum(amount_mtk) AS amt FROM app.due_collection WHERE business_date = :d AND voided_at IS NULL AND outlet_id IN (SELECT outlet_id FROM keys) GROUP BY outlet_id)
-            INSERT INTO dw.agg_daily_outlet (business_date, outlet_id, route_id, visited, geo_valid, active_memo_count, sold_qty_base, net_mtk, due_mtk,
-                                             dues_collected_mtk, last_event_id, updated_at)
-            SELECT :d, k.outlet_id, o.route_id, coalesce(v.visited, false), coalesce(v.geo_valid, false), coalesce(m.n, 0), coalesce(q.q, 0),
+            INSERT INTO dw.agg_daily_outlet (business_date, outlet_id, route_id, visited, geo_valid, active_memo_count, cigarette_sold_sticks, bidi_sold_sticks,
+                                             lighter_sold_pieces, match_sold_dozens, net_mtk, due_mtk, dues_collected_mtk, last_event_id, updated_at)
+            SELECT :d, k.outlet_id, o.route_id, coalesce(v.visited, false), coalesce(v.geo_valid, false), coalesce(m.n, 0),
+                   coalesce(q.cig, 0), coalesce(q.bidi, 0), coalesce(q.lighter, 0), coalesce(q.match, 0),
                    coalesce(m.net, 0), coalesce(m.due, 0), coalesce(d.amt, 0), :wm, now()
               FROM keys k JOIN app.outlet o ON o.id = k.outlet_id LEFT JOIN vis v USING (outlet_id) LEFT JOIN memo m USING (outlet_id)
               LEFT JOIN qty q USING (outlet_id) LEFT JOIN dues d USING (outlet_id)
             ON CONFLICT (business_date, outlet_id) DO UPDATE SET route_id = excluded.route_id, visited = excluded.visited, geo_valid = excluded.geo_valid,
-              active_memo_count = excluded.active_memo_count, sold_qty_base = excluded.sold_qty_base, net_mtk = excluded.net_mtk, due_mtk = excluded.due_mtk,
+              active_memo_count = excluded.active_memo_count, cigarette_sold_sticks = excluded.cigarette_sold_sticks, bidi_sold_sticks = excluded.bidi_sold_sticks, lighter_sold_pieces = excluded.lighter_sold_pieces,
+              match_sold_dozens = excluded.match_sold_dozens, net_mtk = excluded.net_mtk, due_mtk = excluded.due_mtk,
               dues_collected_mtk = excluded.dues_collected_mtk, last_event_id = excluded.last_event_id, updated_at = now()
             """,
         ).bind("r", routeId).bind("d", date).bind("wm", wm).execute()
@@ -321,6 +326,7 @@ object Aggregator {
     /** Zone-day rollup from the route-day aggregates (never from the transaction log), plus the Dhaka-hour profile from the facts. */
     fun rebuildZoneDay(h: Handle, zoneId: Long, date: LocalDate, suspiciousThreshold: Int = DEFAULT_SUSPICIOUS_THRESHOLD) {
         val wm = watermark(h)
+        val login = DashboardSummaries.successfulLoginSql(h, "")   // logged_in_routes = successful logins (login AND download AND check-in)
         h.createUpdate(
             """
             WITH r AS (SELECT * FROM dw.agg_daily_route WHERE zone_id = :z AND business_date = :d),
@@ -333,8 +339,8 @@ object Aggregator {
                 suspicious_user_days, active_memo_count, gross_mtk, net_mtk, dues_collected_mtk, last_event_id, updated_at)
             SELECT :d, :z, (SELECT territory_id FROM app.zone WHERE id = :z),
                    (SELECT count(*) FROM tgt),
-                   (SELECT count(*) FROM tgt WHERE day_state <> 'not_started'),
-                   (SELECT count(*) FROM tgt WHERE day_state IN ('sales_submitted','final_submitted')),
+                   (SELECT count(*) FROM tgt WHERE $login),
+                   (SELECT count(*) FROM tgt WHERE day_state IN ('sales_submitted','final_submitted') AND $login),
                    (SELECT count(*) > 0 AND bool_and(day_state = 'final_submitted') FROM tgt),
                    (SELECT coalesce(sum(target_outlets), 0) FROM tgt),
                    (SELECT coalesce(sum(visited_outlets), 0) FROM r), (SELECT coalesce(sum(successful_calls), 0) FROM r),
