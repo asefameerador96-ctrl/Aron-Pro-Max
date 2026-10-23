@@ -66,6 +66,8 @@ object DataDictionary {
     private val VIEW_CHANGES = listOf(
         "V0109 (2026-10-22): `dw.v_daily_outlet.sold_qty_base` removed: it added cigarette and bidi sticks, lighter pieces and " +
             "match dozens into one number. Use `cigarette_sold_sticks`, `bidi_sold_sticks`, `lighter_sold_pieces` and `match_sold_dozens`.",
+        "V0110 (2026-10-23): the deprecated table column behind it, `dw.agg_daily_outlet.sold_qty_base`, dropped (contract step of " +
+            "V0109). `dw.v_daily_outlet` itself is unchanged.",
     )
 
     fun render(rels: List<Relation>): String = buildString {

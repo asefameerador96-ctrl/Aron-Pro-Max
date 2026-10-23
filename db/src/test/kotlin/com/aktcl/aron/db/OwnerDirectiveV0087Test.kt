@@ -164,7 +164,8 @@ class OwnerDirectiveV0087Test {
                 }
                 c.exec("INSERT INTO dw.agg_daily_outlet (business_date, outlet_id, sold_qty_base) SELECT '2026-10-06', $outlet, 7")
             }
-            other.flyway().migrate()
+            // V0109 only: V0110 drops the table's sold_qty_base (v0110DropsTheDeprecatedMixedColumn).
+            other.flyway().let { org.flywaydb.core.Flyway.configure().configuration(it.configuration).target("109").load() }.migrate()
             other.connect().use { c ->
                 assertEquals("2026-10-05|40|0|50|3|93,2026-10-05|0|50|0|0|93,2026-10-06|0|0|0|0|7", c.scalar(
                     "SELECT string_agg(concat_ws('|', business_date, cigarette_sold_sticks, bidi_sold_sticks, lighter_sold_pieces, match_sold_dozens, sold_qty_base), ',' " +
@@ -176,6 +177,38 @@ class OwnerDirectiveV0087Test {
                     viewCols.subList(viewCols.indexOf("active_memo_count") + 1, viewCols.indexOf("net_mtk")))
                 assertEquals("40|50|3", c.scalar("SELECT concat_ws('|', cigarette_sold_sticks, lighter_sold_pieces, match_sold_dozens) FROM dw.v_daily_outlet WHERE outlet_id = $outlet AND business_date = '2026-10-05'"))
                 assertEquals("true|true|true", listOf("bi_reader", "web_ro", "worker_rw").joinToString("|") { can(c, it, "dw.v_daily_outlet", "SELECT")!! })
+            }
+        }
+    }
+
+    @Test
+    fun v0110DropsTheDeprecatedMixedColumn() {
+        // Migrate to V0109, write an outlet-day with the four columns and the old mixed sum, then run V0110: the row and
+        // the four columns stay, sold_qty_base is gone from the table, the view is unchanged and keeps its grants.
+        TestPostgres.createDatabase().use { other ->
+            other.flyway().let { org.flywaydb.core.Flyway.configure().configuration(it.configuration).target("109").load() }.migrate()
+            val outlet = "(SELECT min(id) FROM app.outlet)"
+            val viewCols = "SELECT string_agg(attname, ',' ORDER BY attnum) FROM pg_attribute WHERE attrelid = 'dw.v_daily_outlet'::regclass AND attnum > 0 AND NOT attisdropped"
+            val before = other.connect().use { c ->
+                SeedLoader.load(c)
+                c.exec(
+                    "INSERT INTO dw.agg_daily_outlet (business_date, outlet_id, active_memo_count, sold_qty_base, cigarette_sold_sticks, bidi_sold_sticks, " +
+                        "lighter_sold_pieces, match_sold_dozens, net_mtk) SELECT '2026-10-05', $outlet, 1, 93, 40, 0, 50, 3, 10000",
+                )
+                c.scalar(viewCols)
+            }
+            other.flyway().migrate()
+            other.connect().use { c ->
+                assertEquals("0", c.scalar("SELECT count(*) FROM information_schema.columns WHERE table_schema = 'dw' AND table_name = 'agg_daily_outlet' AND column_name = 'sold_qty_base'"))
+                assertEquals("2026-10-05|1|40|0|50|3|10000", c.scalar(
+                    "SELECT concat_ws('|', business_date, active_memo_count, cigarette_sold_sticks, bidi_sold_sticks, lighter_sold_pieces, match_sold_dozens, net_mtk) " +
+                        "FROM dw.agg_daily_outlet WHERE outlet_id = $outlet"))
+                assertEquals(before, c.scalar(viewCols), "dw.v_daily_outlet is unchanged by V0110")
+                assertEquals("40|50|3", c.scalar("SELECT concat_ws('|', cigarette_sold_sticks, lighter_sold_pieces, match_sold_dozens) FROM dw.v_daily_outlet WHERE outlet_id = $outlet"))
+                assertEquals("true|true|true", listOf("bi_reader", "web_ro", "worker_rw").joinToString("|") { can(c, it, "dw.v_daily_outlet", "SELECT")!! })
+                // A writer that still names the column is refused (why V0110 rides after the Aggregator change).
+                val e = assertFailsWith<SQLException> { c.exec("INSERT INTO dw.agg_daily_outlet (business_date, outlet_id, sold_qty_base) SELECT '2026-10-06', $outlet, 1") }
+                assertEquals("42703", e.sqlState)
             }
         }
     }

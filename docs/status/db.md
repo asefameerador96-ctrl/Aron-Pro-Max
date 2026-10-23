@@ -2,6 +2,23 @@
 
 Updated with every push. Rows of Day 1: N-005, N-006, N-007, N-008 (`python3 tools/my-rows.py db 1 --full`).
 
+## Session 10, 2026-10-23 (lane/db; INT 016427a2 = train 14 merged, fast-forward)
+
+| Job | State | What |
+|---|---|---|
+| train 14 dev deploy | read (lead relay) | INT 016427a2 on dev since 04:34 UTC (deploy run 39899966147 green). **No migration.** backend-reports' Aggregator now fills the four per-category columns of `dw.agg_daily_outlet` but still names `sold_qty_base` in its INSERT/UPSERT |
+| train 13.1 dev deploy | read (lead relay) | **V0109 applied on dev** (deploy run 39892764902 green 03:14 UTC) |
+| **V0110** | **prepared locally, committed, NOT pushed** (waits for the lead's "train 15 landed, V0110 may go") | `ALTER TABLE dw.agg_daily_outlet DROP COLUMN sold_qty_base` (plain, no CASCADE; lock_timeout; squawk 0). Readers checked: in `db/`, `backend/`, `web/` only backend-reports' Aggregator (removed in train 15) and their `AggregationTest` line 281 name the table column; the other `sold_qty_base` columns (route_sku/brand/segment/variant, outlet_sku, v_daily_sku) are other tables and stay. Tests: the V0109 test now migrates to `target("109")`; new `v0110DropsTheDeprecatedMixedColumn` (row and four columns kept, column gone, view unchanged with grants, an insert without the column works). Dictionary regenerated with `tools/data-dictionary/render.sh`, change-log line V0110 |
+| Opus checker V0110 | round 1 FAIL, fixed | blockers: dictionary not yet regenerated (render was running; now committed), comment claimed the Aggregator change was already in (now states the train-15 precondition and the 42703 failure mode); should-fix taken: the test asserts a writer naming the column is refused (42703) instead of a vacuous insert |
+| local suites on 25d05157+ (V0110 on INT 016427a2) | db 271/0; platform 93, auth 79, sync 34, masterdata 241, config 68, media 16 all 0 failed; **analytics 95/209 and app 5/420 failed, every one with `column "sold_qty_base" of relation "agg_daily_outlet" does not exist`** (INT's Aggregator still writes it; the route-day rebuild rolls back, so facts and aggregates stay empty) | the expected break: V0110 must ride after train 15. Re-run analytics and app after merging INT with train 15 before declaring |
+| train 15 | landed (lead 06:45): INT 02a23471 on dev (deploy 39911078266 green 06:40), Aggregator no longer writes `sold_qty_base`; pre-merged into lane/db (03a6f7e2, DECISIONS.md conflict, both sides kept). Local analytics on it: 210 tests, 1 failure = AggregationTest:282 naming the column | V0110 may go once that line is gone |
+| AggregationTest line 281-282 | lead ruled db deletes it (D-DB-V0110-TEST-01); this session's permission check refused the cross-lane test edit; ruling withdrawn, fallback: backend-reports #5 deletes it in its train 16 head, db merges that exact sha, re-runs analytics + app + db, pushes one head LAST in train 16 | waiting for "backend-reports head <sha> checked" |
+| V0110 head | **pushed** (lead 08:30: train 16 = INT af2cfbcd on dev, deploy 39922665170 green 08:20; nothing on INT writes or tests the table column). LAST in train 17 | lane/db = V0110 work + backend-reports 87fa26ae (run #1460 green) + INT af2cfbcd. Local on 10866c8c (before the af2cfbcd merge; container rebooted 07:26, re-run with --rerun): db 271, analytics 210, app 426, 0 failed. af2cfbcd adds DataFlowTrace app tests (none names the outlet column); lane CI judges the merged head |
+| AggregationTest (backend-reports) | told the lead | `backend/analytics/.../AggregationTest.kt:281` asserts the table's `sold_qty_base` = mixed sum; it fails after V0110 unless train 15 removes it. Not edited by db |
+| requests | none open (05:10 UTC) | no new `docs/requests/*db*` on any `origin/lane/*` branch. Next free migration after V0110: **V0111** |
+| DECISIONS.md | copied | D-DB-W4-01..05, D-DB-HOUSE-01 (V0093 no unique house index), D-DB-MDM-01 (device_command guard), D-DB-V0108-01 (SQL backfill), D-DB-V0110-01 (expand/contract) |
+| local setup | noted | fresh container: role `aron_test` (trust on localhost only, as CI), `max_connections` 400; `ARON_TEST_PG_URL=jdbc:postgresql://localhost:5432/aron_test?user=aron_test` |
+
 ## Session 9, 2026-10-22 (lane/db; INT 384ecee2 = train 9.1)
 
 | Job | State | What |
