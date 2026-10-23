@@ -5,6 +5,7 @@ import kotlin.test.assertEquals
 
 /** F-SYS-096 (the facts the dw views read): attendance, geo fixes and the device-day of the seeded day land in `dw` and a second run changes nothing. */
 class DeviceFactsTest : ReportFixture() {
+    override val successfulLogin = false   // this test scripts the attendance events itself
     override val extraSql = """
 INSERT INTO app.app_user (username, full_name, role, must_change_password) VALUES ('amo001', 'AMO One', 'AMO', false);
 INSERT INTO app.attendance_event (client_uuid, family_uuid, business_date, user_id, route_id, captured_at, config_version, kind, fix_status, fix_lat, fix_lng, fix_accuracy_m, fix_is_mock, address_display)

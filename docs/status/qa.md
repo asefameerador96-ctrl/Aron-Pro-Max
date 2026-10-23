@@ -1,5 +1,10 @@
 # Status: lane qa (wave 4, session 2: data-flow trace)
 
+## Wave 4, session 2c: slice 1, the trace on Sunday and Monday, 2026-10-23
+- `DataFlowTraceOtherDaysTest` (Sunday 2026-10-25 on GUL-SR-1, Monday 2026-10-26 on BAN-SR-11): the same dev-profile world with a clock at the date. `DataFlowTraceSupport` now takes the business date as a constructor parameter (default Saturday); the memo number follows it (`yyMMdd`).
+- Each day: the bundle plans only that day's route; the first bundle logs every bundled route-day in (planned or not; D-BC-PREVIEW-01 relies on it); a sale in packets (cigarette 20s and 10s, bidi, lighter, match), a credit memo with a partial due collection, a voided memo and a zero-sale visit; upload shuffled, in order, again and replayed; row counts, `server_totals` money and sold base units by SKU, dw route-day figures, `v_daily_sku` by category and the national sales cards for SUPERADMIN all equal the device. 29 PASS rows per day, no finding.
+- Next slices: (2) multi-month target reading and the half-up / `round_adj` branches (a SKU with per_base_qty > 1); (3) concurrency and batch_uuid reuse at trace level.
+
 ## Wave 4, session 2b: re-merge of INT 604f9560 (train 13), 2026-10-23
 - Hop 11 follows D-BC-PREVIEW-01 (backend-core 24b08bd6): an unplanned route without data is listed but not due, so the preview after the Sales Submit has no warnings; a new check before the Sales Submit proves a due, unsubmitted route (GUL-SR-2) raises `routes_not_sales_submitted`.
 - The trace proved the remaining rows on this head (geo claim, memo_no_invalid x3, pack_factor), so `data-flow-trace-known-findings.txt` is empty (header only). Any new difference now fails the test by name.
