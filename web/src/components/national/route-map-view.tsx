@@ -68,7 +68,7 @@ export function RouteMapView({ slice, date, mapsEnabled }: { slice: RouteMapSlic
               {slice.outlets.map((o) => (
                 <li key={o.id} data-state={o.state} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2 text-body">
                   <span className="size-3 shrink-0 rounded-full" style={{ background: STATE_FILL[o.state] }} aria-hidden="true" />
-                  <span className="min-w-0 flex-1 truncate">{o.code} · {o.name}</span>
+                  <span className="min-w-40 flex-1 truncate" title={`${o.code} · ${o.name}`}>{o.code} · {o.name}</span>
                   <span className="text-caption text-secondary">{t(`nat.rm.state.${o.state}`)}{o.at ? ` · ${clock(locale, o.at)}` : ""}</span>
                   <Link href={`/dashboard/sale-position/${o.id}?date=${date}`} className="text-body-strong text-accent hover:underline">{t("nat.rm.open_sale")}</Link>
                 </li>

@@ -146,3 +146,10 @@ test("the dashboard, the route map and the sale position pass axe A/AA", async (
   await expect(page.getByTestId("sale-position-page")).toBeVisible();
   await check("sale-position");
 });
+
+test("an admin without the dashboard grant gets a clear no-access note, not broken cards", async ({ page }) => {
+  await open(page, "/", ["nodash1", "nodash-pass-1"]);
+  await expect(page.getByTestId("nat-no-access")).toBeVisible();
+  await expect(page.getByTestId("nat-grid")).toHaveCount(0);
+  await expect(page.getByTestId("nat-filters-error")).toHaveCount(0);
+});

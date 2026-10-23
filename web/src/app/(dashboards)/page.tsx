@@ -31,7 +31,18 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
   const live = q.date === today;
   // A BRAND token is refused (403) on every card without a brand dimension: that is how the page knows to show product cards only.
   const productOnly = !cpr.ok && cpr.status === 403;
+  // Refused even on the product cards: the token carries no dashboard grant (an ADMIN without the module). Nothing to draw, say so.
+  const noAccess = productOnly && !sales.ok && sales.status === 403;
   const hrefFor = (m: typeof measure, b: typeof by) => `/?${toSearch(q, { bm: m === "std" ? undefined : m, bb: b === "brand" ? undefined : b }).toString()}`;
+
+  if (noAccess) {
+    return (
+      <div className="space-y-4" data-testid="national-dashboard">
+        <h1 className="sr-only">{t(locale, "nat.title")}</h1>
+        <Banner tone="warning" role="status" testId="nat-no-access">{t(locale, "nat.no_access")}</Banner>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-4" data-testid="national-dashboard">
