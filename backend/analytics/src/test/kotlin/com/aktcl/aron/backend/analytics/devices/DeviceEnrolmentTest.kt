@@ -105,6 +105,7 @@ class DeviceEnrolmentTest : ReportFixture() {
 
     private fun deviceId(phone: Phone) = fresh.db.jdbi.withHandle<Long, Exception> { it.createQuery("SELECT id FROM app.device WHERE device_uuid = CAST(:u AS uuid)").bind("u", phone.uuid).mapTo(Long::class.java).one() }
     private fun count(sql: String) = fresh.db.jdbi.withHandle<Int, Exception> { it.createQuery(sql).mapTo(Int::class.java).one() }
+    private fun count1(sql: String) = fresh.db.jdbi.withHandle<String?, Exception> { it.createQuery(sql).mapTo(String::class.java).one() }
     private fun JsonObject.s(k: String) = this[k]!!.jsonPrimitive.content
 
     // ---- tests ----
@@ -251,6 +252,19 @@ class DeviceEnrolmentTest : ReportFixture() {
         val n = devicePost(phone, "/v1/devices/nonce", "")
         assertEquals(HttpStatusCode.OK, n.status); assertEquals(43, Json.parseToJsonElement(n.bodyAsText()).jsonObject.s("nonce").length)
         assertEquals(1, count("SELECT count(*) FROM app.device_nonce"))
+    }
+
+    @Test
+    fun theNetworkTypeIsStoredWhenValidAndRefusedWhenNot() = app {
+        val t = mintToken(lockdown = "prod", maxUses = 5); val secret = t.s("enrolment_token"); val phone = Phone()
+        val chain = goodChain(phone, secret); trustedRoots += chain.rootSha256
+        assertEquals(HttpStatusCode.Created, enrol(enrolBody(secret, phone, chain)).status)
+        for (n in listOf("wifi", "mobile", "offline")) {
+            assertEquals(HttpStatusCode.OK, devicePost(phone, "/v1/devices/me/status", status(extra = ""","network_type":"$n"""")).status, n)
+            assertEquals(n, count1("SELECT report ->> 'network_type' FROM app.device_status_report ORDER BY id DESC LIMIT 1"))
+        }
+        assertEquals(HttpStatusCode.OK, devicePost(phone, "/v1/devices/me/status", status()).status)   // an older phone: absent is fine
+        assertEquals(HttpStatusCode.BadRequest, devicePost(phone, "/v1/devices/me/status", status(extra = ""","network_type":"5g"""")).status)
     }
 
     @Test

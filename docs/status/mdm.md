@@ -2,7 +2,7 @@
 **State.** lane/mdm = INT 52bdd477 merged; train 11 carried 3c9522f1 (ModuleGrants in production, breadcrumb install SR/AMO, tests green, on dev). Idle: nothing buildable without input.
 **Waiting on the owner:** MDM console screenshots (`docs/ui-reference/web/mdm-*.webp`) to match the portal look; the lead calls this lane when they arrive.
 **Waiting on a phone (DEVICE-PENDING in `docs/status/device-checks.md`):** D-MDM-01 (lock, message, locate, reboot, factory reset with a second approver, block window, kiosk, sampling) and D-MDM-BREADCRUMB-01 (battery and data; the figures in this file are estimates).
-**Waiting on the lead's contract batch:** `network_type` in DeviceStatusReport (`docs/requests/mdm-contract-v1.7-queue-line.md`), then the app side in `DeviceStatusReporter`; a packages catalogue endpoint for the policy editor (not queued yet).
+**Contract:** `network_type` landed in 1.7.0 and is wired both ends (backend `DeviceStatusReportDto` with enum check, `DeviceStatusReporter` from one ConnectivityManager read; absent when the read fails). Next contract change of this lane, the packages catalogue endpoint for the policy editor, goes to `docs/requests/contract-v1.8-queue.md` (opened with 1.7.0; not queued yet).
 **Done this session:** shim removed (db V0102/V0103), ModuleGrants (the table grant survives only as a test seam in MdmApiTest), approval/expiry/read-only tests, `withMdmSampling`, breadcrumb install with Opus T1 fixes. Context used: about 330k tokens.
 **Traps.** Expiry tests move the MDM service clock, never UPDATE device_command (db's guard). `BreadcrumbPayload` is local to core-database until the contract batch adds the DTO. TSO has no background location (D-GEO-BG-01). Merge INT before any push.
 
