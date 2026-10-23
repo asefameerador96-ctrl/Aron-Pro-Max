@@ -26,7 +26,7 @@ private fun notReady(): Nothing = throw ApiProblem(ProblemCode.ERR_SERVICE_UNAVA
 /** The user, or 404; an ADMIN may not see another ADMIN or SUPERADMIN (as for the other user routes), only itself. */
 private fun target(h: Handle, p: com.aktcl.aron.backend.platform.AronPrincipal, id: Long, lock: Boolean): Map<String, Any?> {
     val u = h.row("SELECT id, role, scope_version FROM app.app_user WHERE id = :i" + if (lock) " FOR UPDATE" else "", "i" to id) ?: admNotFound()
-    if (p.role == Role.ADMIN && u["role"] in SENIOR_ROLES && p.userId != id) throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "only a SUPERADMIN manages ADMIN and SUPERADMIN users")
+    if (p.role == Role.ADMIN && u["role"] in SENIOR_ROLES && p.userId != id) throw ApiProblem(ProblemCode.ERR_AUTHZ_ROLE_ABOVE_GRANT, "only a SUPERADMIN manages ADMIN and SUPERADMIN users")
     return u
 }
 

@@ -68,11 +68,32 @@ class AndroidDeviceFacts(context: Context, private val policy: () -> DeviceOwner
             }.getOrNull(),
             batteryPct = if (level >= 0 && scale > 0) (level * 100 / scale).coerceIn(0, 100) else 0,
             charging = plugged?.let { it > 0 },
+            networkType = networkType(),
             freeStorageMb = runCatching { (StatFs(app.filesDir.absolutePath).availableBytes / (1024 * 1024)).toInt() }.getOrNull(),
         )
     }
 
+    /** One ConnectivityManager read per report (no polling, no callback): `offline` without an active network. Null when unreadable. */
+    private fun networkType(): String? = runCatching {
+        val cm = app.getSystemService(android.net.ConnectivityManager::class.java) ?: return@runCatching null
+        val net = cm.activeNetwork
+        val caps = net?.let { cm.getNetworkCapabilities(it) }
+        networkTypeOf(
+            net != null && caps != null,
+            caps?.hasTransport(android.net.NetworkCapabilities.TRANSPORT_WIFI) == true || caps?.hasTransport(android.net.NetworkCapabilities.TRANSPORT_ETHERNET) == true,
+            caps?.hasTransport(android.net.NetworkCapabilities.TRANSPORT_CELLULAR) == true,
+        )
+    }.getOrNull()
+
     companion object {
+        /** `offline` with no active network; wifi (or ethernet) over mobile; any other transport (VPN only, bluetooth) is not reported. */
+        fun networkTypeOf(hasNetwork: Boolean, wifi: Boolean, cellular: Boolean): String? = when {
+            !hasNetwork -> "offline"
+            wifi -> "wifi"
+            cellular -> "mobile"
+            else -> null
+        }
+
         /** Contract `DeviceInfo` of this phone (also used by enrolment). */
         fun deviceInfo(context: Context): DeviceInfo {
             val am = context.getSystemService(ActivityManager::class.java)
