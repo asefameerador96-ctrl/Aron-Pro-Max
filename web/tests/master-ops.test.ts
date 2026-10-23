@@ -38,7 +38,7 @@ describe("money (integer milli-taka, three decimals, no floats)", () => {
 
 describe("role-node consistency", () => {
   it("AMO zone, TSO territory, DMO division, WM wing, national roles national, SR none", () => {
-    expect(ALLOWED_SCOPE_TYPES.AMO).toEqual(["zone"]);
+    expect(ALLOWED_SCOPE_TYPES.AMO).toEqual(["zone", "house"]);
     expect(ALLOWED_SCOPE_TYPES.TSO).toEqual(["territory", "house"]);
     expect(ALLOWED_SCOPE_TYPES.DMO).toEqual(["division"]);
     expect(ALLOWED_SCOPE_TYPES.WM).toEqual(["wing"]);
@@ -49,7 +49,8 @@ describe("role-node consistency", () => {
     expect(ALLOWED_SCOPE_TYPES.BRAND).toEqual(["national"]);
     expect(scopeNodeAllowed("TSO", "zone")).toBe(false);
     expect(scopeNodeAllowed("TSO", "house")).toBe(true);
-    for (const r of ["AMO", "DMO", "WM", "SR", "NATIONAL", "BRAND", "SUPERADMIN"] as const) expect(scopeNodeAllowed(r, "house")).toBe(false);
+    expect(scopeNodeAllowed("AMO", "house")).toBe(true);
+    for (const r of ["DMO", "WM", "SR", "NATIONAL", "BRAND", "SUPERADMIN"] as const) expect(scopeNodeAllowed(r, "house")).toBe(false);
   });
   it("the editor's level list is the geography order, house between territory and zone, and every level has a label", () => {
     expect([...GEO_LEVELS]).toEqual(["wing", "division", "territory", "house", "zone"]);
