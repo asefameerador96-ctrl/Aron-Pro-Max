@@ -88,6 +88,27 @@ class TokenVerifierTest {
         assertEquals(null, verify(issuer.access(TokenSubject(superadmin, null, null, "web")).token).modules)
     }
 
+    /** D-AUTHZ-GEO-CLAIM-01: every web token carries `geo` (level + ids) from the grants lookup; phone tokens do not, nor an empty lookup. */
+    @Test
+    fun theGeoClaimIsMintedOnWebTokensOnly() {
+        val admin = f.users.findById(9001)!!
+        val tso = admin.copy(id = 9102, username = "tsoGeo", role = com.aktcl.aron.contract.Role.TSO)
+        val grants = object : com.aktcl.aron.backend.platform.PortalGrants {
+            override fun live() = false
+            override fun modules(userId: Long) = emptyMap<String, String>()
+            override fun brands(userId: Long) = emptyList<Long>()
+            override fun geo(userId: Long, role: com.aktcl.aron.contract.Role, onDate: java.time.LocalDate) =
+                if (userId == 9102L) mapOf("territory" to listOf(12L), "route" to listOf(7L)) else emptyMap()
+        }
+        val issuer = TokenIssuer(f.keys, f.config, f.clock, grants = grants)
+        fun geo(t: String): Any? = com.nimbusds.jwt.SignedJWT.parse(t).jwtClaimsSet.getClaim("geo")
+        val web = issuer.access(TokenSubject(tso, null, null, "web")).token
+        assertEquals(mapOf("territory" to listOf(12L), "route" to listOf(7L)), geo(web))
+        f.verifier.verify(web, setOf(Audience.API))                                                  // the claim does not disturb verification
+        assertEquals(null, geo(issuer.access(TokenSubject(tso, null, null, "tso")).token))          // phone token: no geo
+        assertEquals(null, geo(issuer.access(TokenSubject(admin, null, null, "web")).token))        // empty lookup: no claim
+    }
+
     /** A signed token whose grant claims are not in the shape this server mints is refused (fail closed). */
     @Test
     fun malformedGrantClaimsAreRefused() {

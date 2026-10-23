@@ -42,6 +42,8 @@ class ApiWorld(
     extraRecordHandlers: List<com.aktcl.aron.backend.platform.RecordHandler> = emptyList(),
     /** Load [conformanceSeed]: the rows the contract suite's fixtures need that no served operation creates. */
     conformance: Boolean = false,
+    /** The seed as the Azure dev database gets it (infra/deploy.sh): every db/seed file except 04_*, then the smoke outlets. */
+    devProfile: Boolean = false,
 ) : AutoCloseable {
     data class Caller(val user: String, val client: String, val device: String?)
 
@@ -64,9 +66,10 @@ class ApiWorld(
         // The blob ports are the harness's in-memory store, but other Azure wiring (exports) still reads the process
         // environment: with ARON_BLOB_ACCOUNT set the harness would reach real Azure (checker finding, N-014).
         check(System.getenv("ARON_BLOB_ACCOUNT").isNullOrEmpty()) { "unset ARON_BLOB_ACCOUNT for the qa harness" }
-        val seed = repoRoot.resolve("db/seed").listFiles { f -> f.name.matches(Regex("0\\d_.*\\.sql")) }!!.sortedBy { it.name }
+        val seed = repoRoot.resolve("db/seed").listFiles { f -> f.name.matches(Regex("0\\d_.*\\.sql")) && !(devProfile && f.name.startsWith("04_")) }!!.sortedBy { it.name }
         fresh.dataSource.connection.use { c ->
             seed.forEach { f -> c.createStatement().use { it.execute(f.readText()) } }
+            if (devProfile) c.createStatement().use { it.execute(repoRoot.resolve("infra/sql/devseed-smoke-outlet.sql").readText()) }
             for (tag in mirrors) listOf("01_geography_people.sql", "03_outlets_and_plans.sql").forEach { n -> c.createStatement().use { it.execute(mirrored(repoRoot.resolve("db/seed/$n").readText(), tag)) } }
         }
         fresh.db.jdbi.useHandle<Exception> { h ->

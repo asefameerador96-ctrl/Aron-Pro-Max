@@ -101,6 +101,10 @@ class AdminModulesTest {
         assertEquals(null, outcome(readOnly, "HEAD", "/v1/admin/users"))
         assertEquals(null, outcome(readOnly, "OPTIONS", "/v1/admin/users"))
         assertEquals(null, outcome(readOnly, "POST", "/v1/reports/sales-summary/query"))
+        // Round 3 (N4): the national dashboard cards are POSTed filters, reads for reports:r.
+        assertEquals(null, outcome(readOnly, "POST", "/v1/dashboards/national/sales"))
+        assertEquals(null, outcome(readOnly, "POST", "/v1/dashboards/national/breakdown"))
+        assertEquals(ProblemCode.ERR_FORBIDDEN, outcome(p(Role.ADMIN, mapOf("users" to "w")), "POST", "/v1/dashboards/national/sales"))
         // Checker row 2 (N1): a price preview stores the batch it previews; it is a write.
         assertEquals(ProblemCode.ERR_FORBIDDEN, outcome(readOnly, "POST", "/v1/admin/prices/preview"))
         for (m in listOf("POST", "PUT", "PATCH", "DELETE", "post")) assertEquals(ProblemCode.ERR_FORBIDDEN, outcome(readOnly, m, "/v1/admin/users/4"), m)
@@ -114,6 +118,16 @@ class AdminModulesTest {
         assertEquals(ProblemCode.ERR_FORBIDDEN, outcome(usersOnly, "POST", "/v1/admin/users/9/credentials"))
         assertEquals(ProblemCode.ERR_FORBIDDEN, outcome(usersOnly, "POST", "/v1/admin/users/9/credentials/reset"))
         assertEquals(null, outcome(usersOnly, "PATCH", "/v1/admin/users/9"))
+        // Round 3 (N1, D-AUTHZ-ADMIN-CREDS-01): resetting another login hands the account over, so it needs users:w as well.
+        val credentialsOnly = p(Role.ADMIN, mapOf("credentials" to "w"))
+        val usersRead = p(Role.ADMIN, mapOf("credentials" to "w", "users" to "r"))
+        val both = p(Role.ADMIN, mapOf("credentials" to "w", "users" to "w"))
+        for (path in listOf("/v1/admin/users/9/credentials", "/v1/admin/users/9/credentials/reset", "/v1/admin/users/9/mfa/reset")) {
+            assertEquals(ProblemCode.ERR_FORBIDDEN, outcome(credentialsOnly, "POST", path), path)
+            assertEquals(ProblemCode.ERR_FORBIDDEN, outcome(usersRead, "POST", path), path)
+            assertEquals(null, outcome(both, "POST", path), path)
+        }
+        assertEquals(null, outcome(credentialsOnly, "GET", "/v1/admin/device-otps"))
         val dailyOnly = p(Role.ADMIN, mapOf("daily_tracking" to "r"))
         assertEquals(null, outcome(dailyOnly, "GET", "/v1/dashboards/daily-tracking"))
         assertEquals(ProblemCode.ERR_FORBIDDEN, outcome(dailyOnly, "GET", "/v1/dashboards/national"))

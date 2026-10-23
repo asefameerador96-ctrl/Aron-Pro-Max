@@ -745,6 +745,9 @@ Format **`<username>-<yyMMdd>-<seq>`** (`cfg.memo.number_format`), for example `
 | `perm` | admin permission bundle ids (web) |
 | `pii` | whether outlet owner and phone columns may be returned |
 | `amr` | `["pwd"]`, `["pwd","otp"]` or `["pwd","mfa"]` |
+| `modules` | ADMIN web tokens: `{module: "r"\|"w"}` from `app.user_module_grant` (D-ROLES-02, D-AUTHZ-MODULES-01) |
+| `brands` | BRAND web tokens: brand node ids from `app.user_brand_scope` (informational; the dashboard reads the table per call, D-AUTHZ-BRAND-01) |
+| `geo` | web tokens: `{level: [ids]}` of the user's scope on the Dhaka business date, `{"national": []}` for a national level, assigned routes under `route` (informational; reach is resolved on the server, D-AUTHZ-GEO-CLAIM-01) |
 | `iat`, `nbf`, `exp`, `jti` | standard |
 
 Header `alg ES256`, `kid` = the key id; keys are published at `GET /v1/auth/jwks`. The signing key is a P-256 key loaded at startup from Key Vault (D24-19); rotation publishes the new key in JWKS 24 h before it signs.

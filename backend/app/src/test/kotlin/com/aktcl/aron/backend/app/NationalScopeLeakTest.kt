@@ -165,6 +165,25 @@ class NationalScopeLeakTest {
         assertEquals(ids("SELECT z.id FROM app.zone z JOIN app.house hs ON hs.id = z.house_id WHERE hs.code = 'H-MIR' AND cardinality(:z) > 0", setOf(0L)), reachedZones("qahousetso1001"))
     }
 
+    /** D-AUTHZ-GEO-CLAIM-01 (qa backend-authz-qa-1 s2): every web token carries `geo`, the caller's scope as level + ids. */
+    @Test
+    fun webTokensCarryTheGeoClaimOfTheCallersScope() = testApplication {
+        application { aronApi(world.wiring) }
+        fun one(sql: String) = world.fresh.db.jdbi.withHandle<Long, Exception> { it.createQuery(sql).mapTo(Long::class.java).one() }
+        val expected = mapOf(
+            "tso1001" to mapOf("territory" to listOf(one("SELECT id FROM app.territory WHERE code = 'T-DHK-N'"))),
+            "qahousetso1001" to mapOf("house" to listOf(one("SELECT id FROM app.house WHERE code = 'H-MIR'"))),
+            "dmo1001" to mapOf("division" to listOf(one("SELECT id FROM app.division WHERE code = 'D-DHK'"))),
+            "qawm1001" to mapOf("wing" to listOf(one("SELECT id FROM app.wing WHERE code = 'W-CEN'"))),
+            "qanational1001" to mapOf("national" to emptyList()), brandUser to mapOf("national" to emptyList()),
+            "superadmin1001" to mapOf("national" to emptyList()), "admin1001" to mapOf("national" to emptyList()),
+        )
+        for ((u, geo) in expected) {
+            val claims = com.nimbusds.jwt.SignedJWT.parse(client.token(u)).jwtClaimsSet
+            assertEquals(geo, claims.getClaim("geo"), u)
+        }
+    }
+
     @Test
     fun aBrandUserSeesItsBrandsOnlyAndACraftedFilterCannotWidenIt() = testApplication {
         application { aronApi(world.wiring) }

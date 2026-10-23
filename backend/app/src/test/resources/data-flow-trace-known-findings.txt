@@ -1,0 +1,1 @@
+# Open findings of the wave-4 data-flow trace (DataFlowTraceTest). Shrink-only: the owning lane deletes its rows with the fix. Each row cites its request doc.

@@ -12,7 +12,7 @@ test.afterEach(async () => {
   await fetch(`${MOCK}/__mock/long-names`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ on: false }) });
 });
 
-const PAGES = [["home", "/"], ["tracking", "/daily-tracking"], ["retailers", "/reports/retailers"], ["routes", "/routes"], ["exceptions", "/exceptions"], ["drill-calls", "/drill/calls"]] as const;
+const PAGES = [["home", "/"], ["tracking", "/daily-tracking"], ["retailers", "/reports/retailers"], ["routes", "/routes"], ["exceptions", "/exceptions"], ["drill-calls", "/drill/calls"], ["route-map", "/dashboard/route-map/100?date=2026-10-01"], ["sale-position", "/dashboard/sale-position/100000?date=2026-10-01"]] as const;
 const SIZES = [["phone", 360, 740], ["laptop", 1366, 768]] as const;
 
 for (const [name, path] of PAGES) {
