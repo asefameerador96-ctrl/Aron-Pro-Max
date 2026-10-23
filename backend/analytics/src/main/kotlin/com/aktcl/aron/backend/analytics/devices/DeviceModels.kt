@@ -37,6 +37,7 @@ data class DeviceStatusReportDto(
     val auto_time_enabled: Boolean, val time_zone: String? = null, val mock_location_apps: List<String>, val play_services_version: Long? = null, val play_integrity: PlayIntegrityEvidence? = null,
     val play_integrity_unavailable: PlayIntegrityUnavailable? = null, val root_hints: List<String> = emptyList(), val pending_rows: Int, val pending_media: Int? = null,
     val last_sync_at: String? = null, val battery_pct: Int, val charging: Boolean? = null, val free_storage_mb: Int? = null, val printer: PrinterInfo? = null,
+    val network_type: String? = null,
 )
 
 @Serializable

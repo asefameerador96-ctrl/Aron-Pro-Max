@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { POST as opPost } from "@/app/api/bff/master-op/route";
 import { formatPriceMtk, mtkToTaka, parseTakaToMtk } from "@/lib/admin/price-money";
+import { GEO_LEVELS } from "@/lib/admin/geo";
 import { ALLOWED_SCOPE_TYPES, scopeNodeAllowed } from "@/lib/admin/scope-rules";
 import { ALL_ROLES } from "@/lib/auth/roles";
-import { businessDate } from "@/lib/i18n";
+import { businessDate, t, type MessageKey } from "@/lib/i18n";
 import { req, setupMock } from "./helpers/bff";
 
 const { mock, signIn } = setupMock();
@@ -38,7 +39,7 @@ describe("money (integer milli-taka, three decimals, no floats)", () => {
 describe("role-node consistency", () => {
   it("AMO zone, TSO territory, DMO division, WM wing, national roles national, SR none", () => {
     expect(ALLOWED_SCOPE_TYPES.AMO).toEqual(["zone"]);
-    expect(ALLOWED_SCOPE_TYPES.TSO).toEqual(["territory"]);
+    expect(ALLOWED_SCOPE_TYPES.TSO).toEqual(["territory", "house"]);
     expect(ALLOWED_SCOPE_TYPES.DMO).toEqual(["division"]);
     expect(ALLOWED_SCOPE_TYPES.WM).toEqual(["wing"]);
     expect(ALLOWED_SCOPE_TYPES.SR).toEqual([]);
@@ -47,6 +48,17 @@ describe("role-node consistency", () => {
     expect(ALLOWED_SCOPE_TYPES.NATIONAL).toEqual(["national"]);
     expect(ALLOWED_SCOPE_TYPES.BRAND).toEqual(["national"]);
     expect(scopeNodeAllowed("TSO", "zone")).toBe(false);
+    expect(scopeNodeAllowed("TSO", "house")).toBe(true);
+    for (const r of ["AMO", "DMO", "WM", "SR", "NATIONAL", "BRAND", "SUPERADMIN"] as const) expect(scopeNodeAllowed(r, "house")).toBe(false);
+  });
+  it("the editor's level list is the geography order, house between territory and zone, and every level has a label", () => {
+    expect([...GEO_LEVELS]).toEqual(["wing", "division", "territory", "house", "zone"]);
+    for (const l of GEO_LEVELS) {
+      const key = `scope.${l}` as MessageKey;
+      expect(t("en", key)).not.toBe(key);
+      expect(t("bn", key)).not.toBe(key);
+    }
+    expect(t("bn", "scope.house")).not.toBe(t("en", "scope.house"));
   });
 });
 
@@ -59,6 +71,14 @@ describe("user scope (F-ADM-008)", () => {
     expect(mock.state.custom.scopes[2001]!.nodes).toHaveLength(2);
     expect(mock.state.custom.scopes[2001]!.version).toBe(8);
     expect(mock.state.audit.at(-1)).toMatchObject({ entity: "user_scope", reason: REASON });
+  });
+  it("saves a TSO's house node as node_type house; another role's house node is refused", async () => {
+    const c = await signIn("madmin1");
+    expect((await put(2001, [{ node_type: "territory", node_id: 6 }, { node_type: "house", node_id: 9 }], c)).status).toBe(200);
+    expect(mock.state.custom.scopes[2001]!.nodes.map((n) => n.node_type)).toEqual(["territory", "house"]);
+    const bad = await put(1001, [{ node_type: "house", node_id: 9 }], c);
+    expect(bad.status).toBe(400);
+    expect((await bad.json()).errors[0]).toMatchObject({ code: "role_node_mismatch" });
   });
   it("refuses a node type the role may not hold, an empty scope for a supervisor, past dates, unknown members", async () => {
     const c = await signIn("madmin1");

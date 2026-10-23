@@ -32,7 +32,7 @@ interface Props {
 
 const nextDay = (d: string): string | undefined => (isRealDate(d) ? new Date(Date.parse(`${d}T00:00:00Z`) + 86_400_000).toISOString().slice(0, 10) : undefined);
 
-const TYPE_KEY: Record<string, MessageKey> = { national: "scope.national", wing: "scope.wing", division: "scope.division", territory: "scope.territory", zone: "scope.zone" };
+const TYPE_KEY: Record<string, MessageKey> = { national: "scope.national", wing: "scope.wing", division: "scope.division", territory: "scope.territory", house: "scope.house", zone: "scope.zone" };
 
 /** Replaces a user's supervisory scope from a date. Only node types the role may hold are offered. */
 export function ScopeEditor({ userId, allowedTypes, current, options, minDate, canWrite }: Props) {
@@ -75,7 +75,8 @@ export function ScopeEditor({ userId, allowedTypes, current, options, minDate, c
       router.refresh();
       return;
     }
-    setBanner({ ok: false, text: problem(r.problem.code) });
+    // A 400 carries the server's own sentence (for example unknown_node while the server does not know a node type yet).
+    setBanner({ ok: false, text: r.status === 400 && r.problem.detail ? r.problem.detail : problem(r.problem.code) });
   }
 
   if (allowedTypes.length === 0) {

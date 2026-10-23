@@ -296,6 +296,7 @@ const pairs = {
   "fs.col.memos": ["Memos", "মেমো"],
   "fs.col.net": ["Net sales (Tk)", "নিট বিক্রয় (টাকা)"],
   "fs.sr_not_set": ["SR Not Set", "এসআর নির্ধারিত নয়"],
+  "fs.state.not_due": ["Not due", "আজ নির্ধারিত নয়"],
   "fs.state.not_started": ["Not started", "শুরু হয়নি"],
   "fs.state.logged_in": ["Logged in", "লগইন"],
   "fs.state.in_field": ["In the field", "মাঠে"],
