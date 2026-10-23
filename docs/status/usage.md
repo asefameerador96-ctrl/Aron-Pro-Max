@@ -381,3 +381,7 @@
 
 ### 11:52 UTC — GO train 18
 - Batch run 39942790640 green at 11:40 (all nine jobs; the Shared/db/backend job took 42 min). "checked 2663abe3" and "checked 594e9ca2 docs-only" sent with the GO to integrator 18 at 11:52: train 18 = qa 2edd823d, lead contract 1.7.0 2663abe3, db docs 855bda09, lead docs 594e9ca2. Expected: push about 11:55, CI about 12:40 (every job runs on INT), deploy about 12:55; then the five wiring sessions (backend-authz #8, backend-core #15, mdm #2 row 3, web-admin #7, android-tso) start.
+
+### 12:27 UTC — sweep: train 18 on INT, CI running
+- Train 18 pushed 11:52 as INT c07c66dc (qa 2edd823d, lead contract 1.7.0 2663abe3, db docs 855bda09, lead docs 594e9ca2); lead verified with git: four heads contained, 36 files, no conflict markers, no new migration, `info.version` 1.7.0 and current slices on INT. CI run 39949168094 (#1471) in progress since 11:52 (every job runs: contract gates, Web, Android debug, Release APKs with signing on INT, shared/db/backend, backend app, images, infra); integrator 18 (~220k) conducts it and the deploy (no migration).
+- Next: a one-shot at 12:42 creates the wiring sessions once CI is green (backend-authz #8 and backend-core #15 on Opus; web-admin #7 and android-tso #3 on Sonnet; mdm #2 gets row 3); the 13:05 sweep confirms the deploy (health build c07c66dc) and sends "train 18 landed". Briefs are drafted with the INT sha. Lead context: fine.
