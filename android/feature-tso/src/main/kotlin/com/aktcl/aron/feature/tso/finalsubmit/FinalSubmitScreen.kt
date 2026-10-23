@@ -16,6 +16,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -55,6 +56,7 @@ object FsTags {
     fun zone(id: Long) = "tso_fs_zone_$id"
     fun route(id: Long) = "tso_fs_route_$id"
     fun ff(id: Long) = "tso_fs_ff_$id"
+    fun notDue(id: Long) = "tso_fs_not_due_$id"
 }
 
 /** F-TSO-010 / F-TSO-021 Final Submit. */
@@ -104,9 +106,10 @@ fun FinalSubmitScreen(state: FinalSubmitState, onBack: () -> Unit, modifier: Mod
                 TsoSectionTitle(stringResource(R.string.tso_fs_routes))
                 if (phase.preview.warnings.isNotEmpty()) TsoBanner(warnLines(phase.preview.warnings), Modifier.testTag(FsTags.WARNINGS), kind = TsoBannerKind.Warning)
                 phase.preview.routes.forEach { r ->
-                    AronCard(Modifier.fillMaxWidth().testTag(FsTags.route(r.routeId))) {
+                    AronCard(Modifier.fillMaxWidth().testTag(FsTags.route(r.routeId)).alpha(if (r.notDue) 0.55f else 1f)) {
                         Column(Modifier.fillMaxWidth().padding(AronTokens.Space.L), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.Xs)) {
                             Text(r.name + "  ·  " + r.code, style = MaterialTheme.typography.titleSmall)
+                            if (r.notDue) Text(stringResource(R.string.tso_fs_not_due), Modifier.testTag(FsTags.notDue(r.routeId)), style = MaterialTheme.typography.labelMedium)
                             Text(if (r.ffName != null) stringResource(R.string.tso_fs_ff, r.ffName) else stringResource(R.string.tso_fs_sr_not_set), Modifier.testTag(FsTags.ff(r.routeId)), style = MaterialTheme.typography.bodyMedium)
                             Text(localizedDigits(stringResource(R.string.tso_fs_route_totals, r.memoCount, Money.formatTaka(r.netMtk))), style = MaterialTheme.typography.bodySmall)
                         }
