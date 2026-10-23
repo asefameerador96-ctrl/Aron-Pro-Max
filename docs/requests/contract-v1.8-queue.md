@@ -4,4 +4,5 @@ Lanes needing a new value in a response enum (a new `ProblemCode`, a new role or
 
 | # | Ruled | Source | Shape |
 |---|---|---|---|
-| (none yet) | | | Expected first row: mdm's packages catalogue endpoint (docs/status/mdm.md), when mdm writes it up. |
+| 1 | 2026-10-23 (lead, backend-authz #8 checker note 1) | D-AUTHZ-1-7-WIRING-01 | `getUserAccess` (GET /v1/admin/users/{id}/access) description names `ERR_AUTHZ_ROLE_ABOVE_GRANT` for an ADMIN reading another ADMIN's access (the server answers it since the 1.7 wiring; description-only, additive). |
+| (next) | | | Expected: mdm's packages catalogue endpoint (docs/status/mdm.md), when mdm writes it up. |
