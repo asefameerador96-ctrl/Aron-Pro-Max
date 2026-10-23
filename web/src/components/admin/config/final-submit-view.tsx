@@ -13,6 +13,10 @@ import { formatBusinessDate, formatDateTime, formatNumber, t, type Locale, type 
 type RouteRow = FinalSubmitPreview["routes"][number];
 const TEAM = "/api/bff/team-op";
 
+// D-BC-PREVIEW-01: a route not planned for the day and with no data is "not due", greyed and left out of what is failed or pending.
+// planned null (no route-day row yet) or true keeps the ordinary row.
+const notDue = (r: RouteRow) => r.planned === false && !r.had_data;
+
 export interface FinalSubmitViewProps {
   locale: Locale;
   options: Record<GeoLevel, GeoNode[]>;
@@ -30,10 +34,10 @@ export function FinalSubmitView({ locale, options, selection, date, today, previ
   const columns: Column<RouteRow>[] = [
     { key: "route", header: t(locale, "fs.col.route"), render: (r) => `${r.route_code} · ${r.route_name}` },
     { key: "ff", header: t(locale, "fs.col.ff"), render: (r) => r.ff_user_name ?? t(locale, "fs.sr_not_set") },
-    { key: "state", header: t(locale, "cfgc.col.status"), render: (r) => t(locale, `fs.state.${r.state}` as MessageKey) },
+    { key: "state", header: t(locale, "cfgc.col.status"), render: (r) => (notDue(r) ? t(locale, "fs.state.not_due") : t(locale, `fs.state.${r.state}` as MessageKey)) },
     { key: "memos", header: t(locale, "fs.col.memos"), render: (r) => formatNumber(locale, r.memo_count), align: "right" },
     { key: "net", header: t(locale, "fs.col.net"), render: (r) => formatMtk(locale, r.net_mtk), align: "right" },
-    { key: "pend", header: t(locale, "sh.col.pending"), render: (r) => (r.pending_rows_reported == null ? "—" : formatNumber(locale, r.pending_rows_reported)), align: "right" },
+    { key: "pend", header: t(locale, "sh.col.pending"), render: (r) => (notDue(r) || r.pending_rows_reported == null ? "—" : formatNumber(locale, r.pending_rows_reported)), align: "right" },
     {
       key: "void",
       header: t(locale, "common.actions"),
@@ -72,7 +76,7 @@ export function FinalSubmitView({ locale, options, selection, date, today, previ
             <p className="mt-1 text-slate-600">{t(locale, "fs.dss.hint")}</p>
           </div>
           <Card title={`${formatBusinessDate(locale, preview.business_date)}`}>
-            <DataTable columns={columns} rows={preview.routes} rowKey={(r) => String(r.route_id)} empty={t(locale, "common.empty")} caption={t(locale, "fs.title")} />
+            <DataTable columns={columns} rows={preview.routes} rowKey={(r) => String(r.route_id)} empty={t(locale, "common.empty")} caption={t(locale, "fs.title")} rowProps={(r) => (notDue(r) ? { className: "text-secondary opacity-60", state: "not-due" } : undefined)} />
           </Card>
           {canSubmit && !preview.already_submitted ? (
             <Card title={t(locale, "fs.submit.title")}>

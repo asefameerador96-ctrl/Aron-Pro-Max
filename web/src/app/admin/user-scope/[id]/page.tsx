@@ -3,13 +3,13 @@ import { Forbidden } from "@/components/forbidden";
 import { ScopeEditor, type NodeOption, type ScopeNodeRow } from "@/components/admin/scope-editor";
 import { loadRefOptions } from "@/components/admin/crud/server";
 import { apiClient, outcome } from "@/lib/api/client";
+import { GEO_LEVELS } from "@/lib/admin/geo";
 import { ALLOWED_SCOPE_TYPES } from "@/lib/admin/scope-rules";
 import { ADMIN_PORTAL_ROLES, hasRole } from "@/lib/auth/roles";
 import { requireSession } from "@/lib/auth/require";
 import { getLocale } from "@/lib/auth/service";
 import { businessDate, problemMessage, t, type MessageKey } from "@/lib/i18n";
 
-const LEVELS = ["wing", "division", "territory", "zone"] as const;
 const ROLE_KEY = (r: string) => `role.${r}` as MessageKey;
 
 // User scope assignment (F-ADM-008): replace a user's supervisory nodes from a date; role-node consistency is enforced here
@@ -29,7 +29,7 @@ export default async function UserScopePage({ params }: { params: Promise<{ id: 
 
   const allowed = [...ALLOWED_SCOPE_TYPES[user.data.role]];
   const options: Record<string, NodeOption[]> = {};
-  await Promise.all(LEVELS.filter((l) => allowed.includes(l)).map(async (l) => void (options[l] = await loadRefOptions({ path: "/v1/admin/geo/{level}", params: { level: l }, label: ["code", "name"] }, session.at))));
+  await Promise.all(GEO_LEVELS.filter((l) => allowed.includes(l)).map(async (l) => void (options[l] = await loadRefOptions({ path: "/v1/admin/geo/{level}", params: { level: l }, label: ["code", "name"] }, session.at))));
   const label = (type: string, nodeId: number) => (type === "national" ? t(locale, "scope.national") : (options[type]?.find((o) => o.value === String(nodeId))?.label ?? String(nodeId)));
   // valid_to is the EXCLUSIVE end: a node ending today is already out of scope.
   const current: ScopeNodeRow[] = scope.data.nodes.filter((n) => !n.valid_to || n.valid_to > businessDate()).map((n) => ({ type: n.node_type, id: n.node_id, label: label(n.node_type, n.node_id), validTo: n.valid_to ?? null }));
