@@ -44,13 +44,13 @@
     <string name="out_req_cluster">ক্লাস্টার</string>
     <string name="out_req_route_add">এই আউটলেট আমার রুটে যোগ করুন</string>
     <string name="out_req_name">দোকানের নাম</string>
-    <string name="out_req_owner">মালিকের নাম</string>
-    <string name="out_req_mobile">মোবাইল (১১ সংখ্যা)</string>
-    <string name="out_req_cluster_pick">ক্লাস্টার</string>
+    <string name="out_req_owner">দোকানের মালিকের নাম</string>
+    <string name="out_req_mobile">মোবাইল নম্বর</string>
+    <string name="out_req_cluster_pick">ক্লাস্টার নির্বাচন করুন</string>
     <string name="out_req_note">কারণ বা মন্তব্য</string>
     <string name="out_req_close_notice">এই দোকান স্থায়ীভাবে বন্ধ করা হবে।</string>
     <string name="out_req_dues_warning">এই দোকানে এখনো বকেয়া আছে।</string>
-    <string name="out_req_save">জমা দিন</string>
+    <string name="out_req_save">সংরক্ষণ</string>
     <string name="out_req_saved">সংরক্ষিত হয়েছে। অনুরোধটি যাচাইয়ের অপেক্ষায় আছে।</string>
     <string name="out_req_confirm_title">নিশ্চিত করুন</string>
     <string name="out_req_confirm_message">এই পরিবর্তন সংরক্ষণ করা হবে?</string>
