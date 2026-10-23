@@ -1343,7 +1343,7 @@ Config keys use the canonical names of the plan: `cfg.sync.max_backdate_days` (7
 | --- | --- | --- | --- | --- |
 | DQ-01 | `client_uuid` is a valid v4 UUID and is not registered with a different `payload_sha256` | REJECT, to `sync_conflict`; first payload wins; locked | `conflict` | R |
 | DQ-02 | `client_uuid` already registered with the same hash | ACCEPT silently, `seen_count + 1` (idempotent replay, D-21) | none | R |
-| DQ-03 | Parent (`visit_client_uuid`, `memo_client_uuid`, `plan_client_uuid`, `against_memo_client_uuid`) exists | PARK; retried when the parent registers or every 10 minutes; REJECT after `cfg.sync.parked_ttl_days` | `parent_missing` | R |
+| DQ-03 | Parent (`visit_client_uuid`, `memo_client_uuid`, `plan_client_uuid`, `against_memo_client_uuid`) exists | PARK; retried when the parent registers or every 10 minutes; REJECT after `cfg.sync.parked_ttl_days`. A resend that arrives after the TTL is caught first by the sync window (docs/24 s4.4 rule 4, `cfg.sync.max_backdate_days`, both default 7 days) and is quarantined `business_date_out_of_window`, so nothing is dropped and the helpdesk sees it either way (observed by qa in `DataFlowTraceParkingTest`, 2026-10-23) | `parent_missing` | R |
 | DQ-04 | The payload user equals the token user and the device is bound to that user | REJECT; locked | `user_mismatch` | E |
 | DQ-05 | The outlet exists and was active on the business date | REJECT if unknown; FLAG if inactive or closed (archived and merged: DQ-51) | `outlet_unknown`, `outlet_inactive` | R |
 | DQ-06 | The outlet's route is inside the token's scope | REJECT; locked | `out_of_scope` | R |
