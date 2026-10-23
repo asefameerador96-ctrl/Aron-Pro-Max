@@ -352,7 +352,7 @@ class DataFlowTraceTest : DataFlowTraceSupport() {
             note("$role channel STD by channel (${cs.path("unit").asText()})", cs.path("channels").joinToString(", ") { "${it.path("channel").asText()}=${it.path("value").asLong()}" })
             val ls = op("login-submit")
             note("$role login/submit", "target ${ls.path("target_routes").asInt()}, login ${ls.path("successful_login").asInt()} (${ls.path("login_pct_bp").asText()} bp), submitted ${ls.path("submitted").asInt()}")
-            hop("$role successful login = routes whose bundle was downloaded", "dashboard" to ls.path("successful_login").asInt(), "device truth" to (if (national) 2 else 1), hard = false)
+            hop("$role successful login before any check-in (brief s3.4: a login is a check-in AND a download; the check-in comes in hop 11)", "dashboard" to ls.path("successful_login").asInt(), "device truth" to 0, hard = false)
             hop("$role submitted routes (nobody has submitted)", "dashboard" to ls.path("submitted").asInt(), "expected" to 0, hard = false)
             val fs = op("final-submit")
             note("$role final submit", "zones ${fs.path("total_zones").asInt()}, service zones ${fs.path("service_zones").asInt()}, submitted ${fs.path("final_submitted").asInt()}, remaining ${fs.path("remaining").asInt()}")
@@ -403,6 +403,8 @@ class DataFlowTraceTest : DataFlowTraceSupport() {
             val r = postJson("/v1/dashboards/national/$path", brandToken, if (path == "breakdown") """{"filter":{"date":"$day"},"measure":"std","dimension":"brand"}""" else """{"date":"$day"}""")
             note("BRAND qabrand1001 POST national/$path", "${r.status.value} ${jsonOf(r).path("code").asText("")}")
         }
+        note("BRAND grant rows", sql("SELECT string_agg(user_id || ':' || brand_id, ',') FROM app.user_brand_scope") + " user " + sql("SELECT id FROM app.app_user WHERE username = 'qabrand1001'"))
+        postJson("/v1/dashboards/national/sales", brandToken, """{"date":"$day"}""").let { note("BRAND sales answer", runBlocking { it.bodyAsText() }.take(300)) }
         hop("BRAND user can read the product cards of its brands (docs/34 s1, level 4)", "sales status" to postJson("/v1/dashboards/national/sales", brandToken, """{"date":"$day"}""").status.value, "expected" to 200, hard = false)
         val srT = lkx.token
         val srStatus = postJson("/v1/dashboards/national/sales", srT, """{"date":"$day"}""").status.value
@@ -481,12 +483,15 @@ class DataFlowTraceTest : DataFlowTraceSupport() {
         val state = rows("SELECT day_state, logged_in_at IS NOT NULL AS li, sales_submitted_at IS NOT NULL AS ss, final_submitted_at IS NOT NULL AS fs FROM dw.agg_daily_route WHERE business_date = DATE '$day' AND route_id = $gulRouteId").single()
         hop("route-day state after Sales Submit", "day_state" to state["day_state"], "expected" to "sales_submitted")
         hop("route-day timestamps (logged in, sales submitted, final submitted)", "flags" to "${state["li"]}/${state["ss"]}/${state["fs"]}", "expected" to "true/true/false")
+        val lsAfter = jsonOf(postJson("/v1/dashboards/national/login-submit", login("tso1001", "web", null), """{"date":"$day"}"""))
+        hop("TSO successful login after the check-in = routes checked in and downloaded", "dashboard" to lsAfter.path("successful_login").asInt(), "device truth" to 1, hard = false)
         // Final Submit by the TSO of the zone (online only).
         val tso = login("tso1001", "web", null)
         val pv = jsonOf(get("/v1/day/final-submit/preview?zone_id=$zGul&business_date=$day", tso))
         note("Final Submit preview (routes)", pv.path("routes").joinToString("; ") { "${it.path("route_code").asText()}: ${it.path("state").asText()}, had_data ${it.path("had_data").asBoolean()}, memos ${it.path("memo_count").asInt()}, net ${it.path("net_mtk").asLong()}" })
         note("Final Submit preview warnings", pv.path("warnings").toString())
-        hop("Final Submit preview lists the routes planned (or with data) on the day (question: is the unplanned GUL-SR-1 listing intended? F-TSO-010 says every active route)", "routes" to pv.path("routes").map { it.path("route_code").asText() }, "planned or with data" to listOf("GUL-SR-2"), hard = false)
+        hop("Final Submit preview lists every active route of the zone (F-TSO-010) and warns about the route without a Sales Submit", "routes" to pv.path("routes").map { it.path("route_code").asText() }.sorted(), "expected" to listOf("GUL-SR-1", "GUL-SR-2"), hard = false)
+        hop("Final Submit preview warnings (the unplanned GUL-SR-1 has no Sales Submit)", "warnings" to pv.path("warnings").map { it.asText() }, "expected" to listOf("routes_not_sales_submitted"), hard = false)
         val fu = uuid()
         val fr = postJson("/v1/day/final-submit", tso, """{"client_uuid":"$fu","zone_id":$zGul,"business_date":"$day"}""")
         hop("TSO Final Submit", "status" to fr.status.value, "expected" to 200)
@@ -564,7 +569,7 @@ class DataFlowTraceTest : DataFlowTraceSupport() {
             val node = runCatching { json.readTree(body) }.getOrNull()
             if (key == "by-outlet" && node != null) {
             val cols = node.path("columns").map { it.path("key").asText() }
-            hop("by-outlet separates units (sold_qty_base would add sticks, pieces and dozens)", "unit or category column" to cols.any { it in setOf("base_unit", "unit", "category", "category_code", "category_name") }, "expected" to true, hard = false)
+            hop("by-outlet separates units (sold_qty_base would add sticks, pieces and dozens)", "one sold_<category>_base column per category, no mixed sold_qty_base" to (cols.containsAll(listOf("sold_cigarette_base", "sold_bidi_base", "sold_lighter_base", "sold_match_base")) && "sold_qty_base" !in cols), "expected" to true, hard = false)
         }
         note("report $key (columns_known=$known)", "HTTP ${r.status.value}, rows ${node?.path("total_rows")?.asText("-")}, totals ${node?.path("totals")?.toString()?.take(160)}")
             if (node != null) dump.set<JsonNode>(key, node)

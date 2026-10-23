@@ -1,6 +1,4 @@
 # Open findings of the wave-4 data-flow trace (DataFlowTraceTest). Shrink-only: the owning lane deletes its rows with the fix. Each row cites its request doc.
-# QA-FLOW-01 docs/requests/backend-authz-qa-1.md s1: BRAND user gets 403 on every national dashboard operation (docs/34 s1 level 4)
-BRAND user can read the product cards of its brands
 # QA-FLOW-07 docs/requests/backend-authz-qa-1.md s2: web tokens carry no geo/brands/modules claims
 TSO web token carries the scope claims
 # QA-FLOW-02 docs/requests/backend-core-qa-1.md s1: memo_no_invalid is never raised (docs/24 s7.5)
@@ -9,7 +7,3 @@ memo_no another business date is refused as memo_no_invalid
 memo_no sequence outside every block of the user is refused as memo_no_invalid
 # QA-FLOW-06 docs/requests/backend-core-qa-1.md s2: a pack_factor that differs from sku.base_per_pack is accepted and stored
 a pack_factor that differs from the SKU's base_per_pack is refused
-# QA-FLOW-04 docs/requests/backend-core-qa-1.md s3 (question): the Final Submit preview lists an unplanned route
-Final Submit preview lists the routes planned
-# QA-FLOW-03 docs/requests/backend-reports-qa-1.md: by-outlet sold_qty_base adds sticks, pieces and dozens (docs/16 P8)
-by-outlet separates units

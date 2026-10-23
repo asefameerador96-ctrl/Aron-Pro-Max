@@ -107,7 +107,7 @@ abstract class DataFlowTraceSupport {
             }
             h.execute("INSERT INTO app.user_scope (user_id, node_type, node_id, valid_from, reason) SELECT u.id, 'national', 0, DATE '2026-01-01', 'qa trace' FROM app.app_user u WHERE u.username = 'qanational1001'")
             h.execute("INSERT INTO app.user_scope (user_id, node_type, node_id, valid_from, reason) SELECT u.id, 'wing', d.wing_id, DATE '2026-01-01', 'qa trace' FROM app.app_user u, app.division d WHERE u.username = 'qawm1001' AND d.code = 'D-DHK'")
-            h.execute("INSERT INTO app.user_brand_scope (user_id, brand_id, granted_by) SELECT u.id, b.id, a.id FROM app.app_user u, app.product_node b, app.app_user a WHERE u.username = 'qabrand1001' AND a.username = 'superadmin1001' AND b.level = 'brand' AND b.code = (SELECT min(code) FROM app.product_node WHERE level = 'brand' AND status = 'active')")
+            check(h.createUpdate("INSERT INTO app.user_brand_scope (user_id, brand_id, granted_by) SELECT u.id, b.id, a.id FROM app.app_user u, app.product_node b, app.app_user a WHERE u.username = 'qabrand1001' AND a.username = 'superadmin1001' AND b.level = 'brand' AND b.id = (SELECT min(id) FROM app.product_node WHERE level = 'brand' AND status = 'active')").execute() == 1) { "the BRAND user's brand grant was not inserted" }
         }
     }
 

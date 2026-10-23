@@ -1,5 +1,11 @@
 # Status: lane qa (wave 4, session 2: data-flow trace)
 
+## Wave 4, session 2: re-merge of INT 52bdd477 (train 12), 2026-10-23
+- Merged INT; `ApiWorld.kt` keeps backend-admin's version plus the devProfile hooks. `DataFlowTraceTest` and the full `:backend:app:test` are green locally.
+- Known-findings list shrunk to what is still open: deleted QA-FLOW-01 (BRAND; the hop-9 403 was a trace setup bug, the BRAND grant insert matched no brand row because `product_node.code` is null; the setup now checks the insert, and the BRAND card now answers 200; proof of the scoping stays `NationalScopeLeakTest`), QA-FLOW-03 (by-outlet now has one `sold_<category>_base` column each, no `sold_qty_base`) and QA-FLOW-04 (hop 11 now asserts the preview warnings `routes_not_sales_submitted`, both active routes listed).
+- Login/Submit: since train 12 a successful login needs a check-in as well as a download (brief s3.4, db V0108), so hop 8 expects 0 before the attendance and a new check after hop 11 expects 1 for the TSO.
+- Still open (waiting for owners): QA-FLOW-02 and QA-FLOW-06 (backend-core 24b08bd6, train 13 or 14), QA-FLOW-07 (geo claim, backend-authz 45fc83d5, train 13).
+
 ## Wave 4 handover (2026-10-23)
 - **Done:** `DataFlowTraceTest` (15 ordered hops; the open defects are rows of the shrink-only list `data-flow-trace-known-findings.txt` (each cites its request; the owning lane deletes its row with the fix; the lead accepted this pattern), `DataFlowTraceSupport` (shared world), `ApiWorld(devProfile = true)` (seed as dev loads it),
   evidence `docs/evidence/data-flow-trace-2026-10-23.md`, requests `backend-core-qa-1`, `backend-authz-qa-1`, `backend-reports-qa-1`, `db-qa-1`, `infra-qa-1`.
