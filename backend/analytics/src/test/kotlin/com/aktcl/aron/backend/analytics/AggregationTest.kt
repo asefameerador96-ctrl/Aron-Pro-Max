@@ -245,4 +245,37 @@ class AggregationTest {
         worker().runUntilIdle()
         assertEquals(7_000, long("SELECT net_mtk FROM dw.agg_daily_outlet a JOIN app.outlet o ON o.id = a.outlet_id WHERE o.code = 'O4'"))
     }
+    /** V0109: a day mixing all four categories keeps each quantity in its own base unit; the voided line and the voided memo stay out. */
+    @Test
+    fun aMixedCategoryDayFillsTheFourPerCategoryColumns() {
+        conn.createStatement().use {
+            it.execute(
+                """
+                INSERT INTO app.sku (code, variant_id, category_code, name, short_name, base_unit, base_per_pack, entry_unit_default)
+                  SELECT 'SKU3', id, 'lighter', 'Lighter', 'L1', 'piece', 1, 'pack' FROM app.product_node WHERE code = 'V1'
+                  UNION ALL SELECT 'SKU4', id, 'match', 'Matches', 'M1', 'dozen', 1, 'dozen' FROM app.product_node WHERE code = 'V1'
+                  UNION ALL SELECT 'SKU5', id, 'bidi', 'Bidi', 'B1', 'stick', 25, 'pack' FROM app.product_node WHERE code = 'V1';
+                SELECT pg_temp.memo('00000000-0000-4000-8000-0000000000c3', '00000000-0000-4000-8000-000000000001', 'sr001', 'R1', 'O4', 'sr001-261004-010', TIMESTAMPTZ '2026-10-04 08:40Z', 6000, 6000, 4, 'active');
+                SELECT pg_temp.line('00000000-0000-4000-8000-0000000000c3', 1, 'SKU2', 7, 1000, 'sale');
+                SELECT pg_temp.line('00000000-0000-4000-8000-0000000000c3', 2, 'SKU3', 50, 100, 'sale');
+                SELECT pg_temp.line('00000000-0000-4000-8000-0000000000c3', 3, 'SKU4', 3, 100, 'sale');
+                SELECT pg_temp.line('00000000-0000-4000-8000-0000000000c3', 4, 'SKU5', 25, 100, 'sale');
+                """.trimIndent(),
+            )
+        }
+        event("memo.created", "00000000-0000-4000-8000-0000000000c3")
+        worker().runUntilIdle()
+        val o = "SELECT %s FROM dw.agg_daily_outlet a JOIN app.outlet o ON o.id = a.outlet_id WHERE o.code = 'O4'"
+        // O4 already has 5 sticks of SKU2 (memo a4) from the seed.
+        assertEquals(12, long(o.format("cigarette_sold_sticks"))); assertEquals(25, long(o.format("bidi_sold_sticks")))
+        assertEquals(50, long(o.format("lighter_sold_pieces"))); assertEquals(3, long(o.format("match_sold_dozens")))
+        // The deprecated column still carries the mixed sum until V0110 drops it.
+        assertEquals(12 + 25 + 50 + 3, long(o.format("sold_qty_base")))
+        // The stable view exposes the four columns and no mixed one.
+        assertEquals(0, long("SELECT count(*) FROM information_schema.columns WHERE table_schema = 'dw' AND table_name = 'v_daily_outlet' AND column_name = 'sold_qty_base'"))
+        assertEquals(50, long("SELECT lighter_sold_pieces FROM dw.v_daily_outlet WHERE outlet_id = (SELECT id FROM app.outlet WHERE code = 'O4')"))
+        // A rebuild is idempotent.
+        worker().runUntilIdle()
+        assertEquals(12, long(o.format("cigarette_sold_sticks")))
+    }
 }
