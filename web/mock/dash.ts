@@ -241,7 +241,7 @@ export async function handleDash(x: DashCtx): Promise<boolean> {
     const rows = routesInScope(user.scope.nodes);
     const kpis = kp(rows);
     const top = user.scope.nodes[0] ?? { type: "national" as const, id: 0 };
-    const childLevel = ({ national: "wing", wing: "division", division: "territory", territory: "zone", zone: "route", route: "route" } as const)[top.type];
+    const childLevel = ({ national: "wing", wing: "division", division: "territory", territory: "zone", house: "zone", zone: "route", route: "route" } as const)[top.type];
     const key = (r: SeedRoute): number => (childLevel === "wing" ? r.wing_id : childLevel === "division" ? r.division_id : childLevel === "territory" ? r.territory_id : childLevel === "zone" ? r.zone_id : r.route_id);
     const nodeName = (id: number): string | null => GEO.find((g) => g.id === id)?.name ?? rows.find((r) => r.route_id === id)?.route_name ?? null;
     const byChild = [...new Set(rows.map(key))].map((id) => ({ node: { type: childLevel, id, name: nodeName(id) }, kpis: kp(rows.filter((r) => key(r) === id)) }));

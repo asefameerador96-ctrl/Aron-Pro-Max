@@ -13,6 +13,7 @@ UserScopeNode:
       - wing
       - division
       - territory
+      - house
       - zone
     node_id:
       type: integer
