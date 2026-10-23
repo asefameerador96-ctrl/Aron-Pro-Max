@@ -202,3 +202,9 @@ green run of the exact sha). Usage stays `allowed` on the five-hour window.
 
 ## Update 2026-10-23 16:35 UTC (lead)
 - Train 20 on dev 16:33 (no slip). Train 21 (android-tso SR parity slices): today only if a slice is checked by about 17:30 (dev about 18:30), otherwise first train tomorrow. Evening report 18:30. Tomorrow: android-tso parity slices, qa #3 on request (dev-side trace rerun still needs a workflow job carrying the smoke device key: lead/infra item), backend-admin #7 and backend-reports #6 on request or the owner's report docs, contract v1.8 batch when rows accumulate.
+
+## Update 2026-10-23 16:48 UTC (lead)
+- Train 21 (android-tso parity slice 2) in CI since 16:39; dev about 17:40. Train 22 (android-tso slice 3 or 3+4): today only if checked by about 17:45 after train 21 lands, otherwise first train tomorrow. Evening report 18:30. No slip.
+
+## Update 2026-10-23 16:52 UTC (lead)
+- Train 21 landed 16:47 (signed dev APK 1488; dev API unchanged by design). Train 22 decision 17:35–17:45. Evening report 18:30. No slip.
