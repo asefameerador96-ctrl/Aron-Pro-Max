@@ -1,5 +1,6 @@
 "use client";
 // N-046: edit one package list (blocked, allowed or always allowed) and save it as ONE config change with a reason.
+import { EmptyNote } from "@/components/admin/kit/empty-note";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useI18n } from "@/components/i18n-provider";
@@ -57,6 +58,7 @@ export function PackageListEditor({ keyName, title, initial, max, canWrite, also
   return (
     <section className="space-y-3 rounded-lg border border-slate-200 bg-white p-4 shadow-sm" data-testid={`pkg-${keyName}`}>
       <h2 className="text-lg font-semibold">{title}</h2>
+      {list.length === 0 ? <EmptyNote /> : null}
       <ul className="divide-y divide-slate-100 text-sm">
         {list.map((p) => (
           <li key={p} className="flex items-center justify-between gap-2 py-1.5">

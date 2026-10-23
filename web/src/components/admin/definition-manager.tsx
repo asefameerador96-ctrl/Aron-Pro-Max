@@ -1,4 +1,5 @@
 "use client";
+import { TableScroll } from "@/components/admin/kit/table-scroll";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useI18n } from "@/components/i18n-provider";
@@ -174,6 +175,7 @@ export function DefinitionManager({ kind, items, canWrite }: { kind: DefKind; it
       {items.length === 0 ? (
         <p className="text-slate-600">{t("common.empty")}</p>
       ) : (
+        <TableScroll className="max-w-full overflow-x-auto focus-visible:outline-(length:--focus-w) focus-visible:outline-offset-2 outline-focus" tabIndex={0} role="region" aria-label={t(`def.${kind}.title` as MessageKey)}>
         <table className="w-full text-left text-sm" data-testid="data-table" aria-label={t(`def.${kind}.title` as MessageKey)}>
           <thead>
             <tr className="border-b border-slate-200 text-slate-600">
@@ -211,6 +213,7 @@ export function DefinitionManager({ kind, items, canWrite }: { kind: DefKind; it
             })}
           </tbody>
         </table>
+        </TableScroll>
       )}
       {canWrite && !open ? (
         <button type="button" data-testid="def-new" onClick={() => start(null)} className="rounded bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700">

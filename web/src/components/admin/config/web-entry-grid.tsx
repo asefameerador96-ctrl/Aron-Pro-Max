@@ -1,5 +1,6 @@
 "use client";
 // F-WEB-050 per-SKU grid of one route-day: Issue, Return, Sale (read-only), Memos, and Successful Calls (at most the target outlets).
+import { EmptyNote } from "@/components/admin/kit/empty-note";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useI18n } from "@/components/i18n-provider";
@@ -70,6 +71,9 @@ export function WebEntryGrid({ routeId, date, skus: listed, initialLines, target
   return (
     <div className="space-y-3" data-testid="web-entry-grid">
       {appOverlap ? <p role="status" data-testid="app-overlap" className="rounded border border-[var(--warning)] bg-[color-mix(in_srgb,var(--warning)_14%,transparent)] p-3 text-sm text-warning-on-container">{t("we.overlap")}</p> : null}
+      {skus.length === 0 ? (
+        <EmptyNote />
+      ) : (
       <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white shadow-sm">
         <table className="min-w-full text-sm">
           <thead className="bg-slate-50 text-left">
@@ -99,6 +103,7 @@ export function WebEntryGrid({ routeId, date, skus: listed, initialLines, target
           </tbody>
         </table>
       </div>
+      )}
       <div className="max-w-xs">
         <label htmlFor="calls" className="block text-sm font-medium">{t("we.calls")}</label>
         <input id="calls" value={calls} disabled={!canWrite} inputMode="numeric" onChange={(e) => setCalls(digitsOnly(e.target.value).slice(0, 6))} className={inputClass} />

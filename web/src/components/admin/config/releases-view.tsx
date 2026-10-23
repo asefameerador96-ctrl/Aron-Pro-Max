@@ -1,4 +1,5 @@
 // F-ADM-027 app release management and F-ADM-049 Config page P12: register, publish, minimum and blocked versions, adoption.
+import { EmptyNote } from "@/components/admin/kit/empty-note";
 import { DataTable, type Column } from "@/components/admin/kit/data-table";
 import { OpForm, type OpFieldDef } from "@/components/admin/kit/op-form";
 import { OpInline } from "@/components/admin/kit/op-inline";
@@ -68,6 +69,7 @@ export function ReleasesView({ locale, releases, policy, adoption, policyKeys, p
       <DataTable columns={columns} rows={releases} rowKey={(r) => String(r.release_id)} empty={t(locale, "common.empty")} caption={t(locale, "rel.title")} />
       {canWrite && !canPublish ? <p className="text-xs text-slate-600">{t(locale, "rel.publish_note")}</p> : null}
       <Card title={t(locale, "rel.policy")} testId="release-policy">
+        {policy.length === 0 ? <EmptyNote /> : null}
         <ul className="space-y-1 text-sm">
           {policy.map((p) => (
             <li key={p.flavour}>
@@ -82,6 +84,7 @@ export function ReleasesView({ locale, releases, policy, adoption, policyKeys, p
           : null}
       </Card>
       <Card title={t(locale, "rel.adoption")} testId="adoption">
+        {adoption.length === 0 ? <EmptyNote /> : null}
         <ul className="space-y-1">
           {adoption.map((a) => (
             <li key={`${a.flavour}-${a.version}`} className="flex items-center gap-2 text-sm">

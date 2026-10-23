@@ -278,8 +278,6 @@ class AggregationTest {
         // O4 already has 5 sticks of SKU2 (memo a4) from the seed.
         assertEquals(12, long(o.format("cigarette_sold_sticks"))); assertEquals(25, long(o.format("bidi_sold_sticks")))
         assertEquals(50, long(o.format("lighter_sold_pieces"))); assertEquals(3, long(o.format("match_sold_dozens")))
-        // The deprecated mixed-unit column is no longer written: rows the rebuild creates keep its DEFAULT 0 until db drops it (V0110).
-        assertEquals(0, long(o.format("sold_qty_base")))
         // The stable view exposes the four columns and no mixed one.
         assertEquals(0, long("SELECT count(*) FROM information_schema.columns WHERE table_schema = 'dw' AND table_name = 'v_daily_outlet' AND column_name = 'sold_qty_base'"))
         assertEquals(50, long("SELECT lighter_sold_pieces FROM dw.v_daily_outlet WHERE outlet_id = (SELECT id FROM app.outlet WHERE code = 'O4')"))

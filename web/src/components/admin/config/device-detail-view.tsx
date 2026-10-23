@@ -1,4 +1,5 @@
 // P11 detail: bound users, latest status, status history and remote requests of one phone.
+import { EmptyNote } from "@/components/admin/kit/empty-note";
 import Link from "next/link";
 import { DataTable, type Column } from "@/components/admin/kit/data-table";
 import { OpInline } from "@/components/admin/kit/op-inline";
@@ -32,6 +33,7 @@ export function DeviceDetailView({ locale, device, history, directives, canWrite
         {deviceActions(locale, device, canWrite)}
       </Card>
       <Card title={t(locale, "dev.detail.users")}>
+        {device.bound_users.length === 0 ? <EmptyNote /> : null}
         <ul className="text-sm">
           {device.bound_users.map((u) => (
             <li key={u.user_id}>
