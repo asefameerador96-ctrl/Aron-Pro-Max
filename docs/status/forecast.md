@@ -175,3 +175,6 @@ green run of the exact sha). Usage stays `allowed` on the five-hour window.
 
 ## Update 2026-10-23 02:50 UTC (wave 4, lead)
 - Train 13.1 (train 13 + qa's test fix) pushing now; dev about 03:50 UTC. Train 14 (web-admin mock split, backend-reports' V0109 fill) about 05:30 on dev. Owner report about 06:30 UTC.
+
+## Update 2026-10-23 03:30 UTC (wave 4, lead): train 13 on dev
+- Train 13 content reached dev at 03:15 UTC via 13.1. Train 14 (web-admin mock split, backend-reports' V0109 fill if its run is green by then, five status handovers) pushes about 05:00, dev about 06:00. db V0110 and the contract 1.7 batch follow in the morning sessions. Owner report about 06:30 UTC.
