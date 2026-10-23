@@ -406,6 +406,25 @@ class DataFlowTraceTest : DataFlowTraceSupport() {
         note("BRAND grant rows", sql("SELECT string_agg(user_id || ':' || brand_id, ',') FROM app.user_brand_scope") + " user " + sql("SELECT id FROM app.app_user WHERE username = 'qabrand1001'"))
         postJson("/v1/dashboards/national/sales", brandToken, """{"date":"$day"}""").let { note("BRAND sales answer", runBlocking { it.bodyAsText() }.take(300)) }
         hop("BRAND user can read the product cards of its brands (docs/34 s1, level 4)", "sales status" to postJson("/v1/dashboards/national/sales", brandToken, """{"date":"$day"}""").status.value, "expected" to 200, hard = false)
+        // The figures of a BRAND user: only the SKUs of its brand, in base units, from both divisions (docs/34 s1 level 4).
+        val soldLines = (sr.memos + lkxMemos).filter { it.lines.isNotEmpty() && !it.voided }.flatMap { it.lines }
+        val brandOfSku = soldLines.map { it.sku.id }.distinct().associateWith { sqlLong("SELECT brand_id FROM dw.dim_product WHERE sku_id = $it") }
+        val ownBrand = brandOfSku.getValue(sr.memos[0].lines[0].sku.id)
+        db { hd ->
+            hd.execute("DELETE FROM app.user_brand_scope WHERE user_id = (SELECT id FROM app.app_user WHERE username = 'qabrand1001')")
+            hd.execute("INSERT INTO app.user_brand_scope (user_id, brand_id) SELECT id, $ownBrand FROM app.app_user WHERE username = 'qabrand1001'")
+        }
+        val brandSold = sortedMapOf<String, Long>(); for (l in soldLines) if (brandOfSku.getValue(l.sku.id) == ownBrand) brandSold.merge(l.sku.category, l.qtyBase, Long::plus)
+        val allSold = sortedMapOf<String, Long>(); for (l in soldLines) allSold.merge(l.sku.category, l.qtyBase, Long::plus)
+        hop("the BRAND user's brand is a strict part of the day (so the filter has something to cut)", "brand slice differs from the national day" to (brandSold != allSold), "expected" to true)
+        val brandTok = login("qabrand1001", "web", null)
+        val bSales = jsonOf(postJson("/v1/dashboards/national/sales", brandTok, """{"date":"$day"}"""))
+        hop("BRAND sales cards equal the brand's slice (base units, both divisions)", "dashboard" to cards(bSales).filterValues { it != 0L }.toSortedMap(), "device truth" to brandSold, hard = false)
+        val bStd = jsonOf(postJson("/v1/dashboards/national/channel-std", brandTok, """{"date":"$day"}"""))
+        hop("BRAND channel STD total = the brand's cigarette sticks", "dashboard" to bStd.path("total").asLong(), "device truth" to (brandSold["cigarette"] ?: 0L), hard = false)
+        val bBrandCode = sql("SELECT min(brand_code) FROM dw.dim_product WHERE brand_id = $ownBrand")
+        val bOpts = jsonOf(get("/v1/dashboards/national/filter-options", brandTok))
+        hop("BRAND filter-options list its own brand only", "brands" to bOpts.path("brands").map { it.path("code").asText(it.asText()) }, "expected" to listOf(bBrandCode), hard = false)
         val srT = lkx.token
         val srStatus = postJson("/v1/dashboards/national/sales", srT, """{"date":"$day"}""").status.value
         hop("SR app token on the dashboard is refused (401 or 403)", "status" to (if (srStatus in setOf(401, 403)) "refused" else srStatus.toString()), "expected" to "refused", hard = false)

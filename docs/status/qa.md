@@ -1,5 +1,9 @@
 # Status: lane qa (wave 4, session 2: data-flow trace)
 
+## Wave 4, session 2f: BRAND figures in the trace (built locally, pushed after "train 16 landed"), 2026-10-23
+- Hop 9 of `DataFlowTraceTest` now grants the BRAND user the brand of the first sold SKU and checks that its sales cards equal that brand's slice in base units across both divisions ({cigarette=220} against the national day with five categories of sales), that the channel STD total equals the brand's cigarette sticks, and that filter-options list its own brand only. The check first asserts that the brand's slice is a strict part of the day, so the filter has something to cut. No finding.
+- Candidate 8101f53b (run #1459) is checked by the lead for train 16.
+
 ## Wave 4, session 2e: slice 3, concurrency and batch_uuid reuse (built locally, pushed after slice 2 rides train 15), 2026-10-23
 - `DataFlowTraceConcurrencyTest` (33 PASS rows): (1) eight concurrent twins under eight batch_uuids: each record accepted exactly once across the answers, the rest duplicate, rows per table, server_totals and the ingest registry equal the device; (2) eight concurrent sends under one batch_uuid: no 5xx, every answer 200, nothing stored twice (observed: none is flagged `replayed` while the first is in flight, each walks the records and answers duplicate); (3) a batch_uuid reused for another record set: 409 `ERR_SYNC_BATCH_UUID_REUSED`, nothing of the second set stored, the extra memo accepted under a new batch_uuid; (4) a changed copy of a stored line: quarantined `payload_conflict`, no figure changes (server_totals and dw route-day stay equal to the device).
 - Open after the three slices: Friday-style exceptions (a holiday or emergency day in the trace), a cover day (another SR on the route), dev-side runs only with secrets through the workflow.
