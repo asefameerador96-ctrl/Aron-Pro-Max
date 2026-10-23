@@ -1,3 +1,6 @@
+# Session 3 close (2026-10-23 ~17:30 UTC): idle
+Pushed and checked: row 1 not-due card ccfcc78a, slices 2 to 4 (5ef25352 O2/O4/X1, 26649017 M9, 3db224b3 X4/X5/O3), all on INT through train 22 (63e14fac); slice 5 spelling deaa71f4 (run 39993871109 green) rides tomorrow's first train. Rulings recorded in DECISIONS: D-TSO-PARITY-SHARED-01, -O3-01, -SPELLING-01. Still open: H1 (header "Daily"/two-line layout, kit design), E4 and MQ-03 (owner), A1/A4/O5/SS3/SS5/S4/R5/R7/X2/X3/T3 audit rows not yet taken (layout or colour, need the lead's pick); no handover yet (about 310k tokens).
+
 # Session 3, slice 5 (2026-10-23): D-TSO-PARITY-SPELLING-01
 `edit_reason_title` bn "কারন" -> "কারণ" (lead ruling); DECISIONS block appended. Slice 3 (26649017, run 39988902021) was checked by the lead; slice 4 head 3db224b3 (run 39991804268) is waiting on its lane run.
 
