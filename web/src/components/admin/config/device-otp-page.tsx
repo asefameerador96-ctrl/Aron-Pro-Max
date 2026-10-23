@@ -10,7 +10,7 @@ import { serverNowMs } from "@/lib/admin/time";
 import { DeviceOtpView } from "./device-otp-view";
 
 /** Shared body of the TSO panel (view only) and the admin page (adds re-issue). The server decides who sees the OTP value. */
-export async function DeviceOtpPageContent({ searchParams, action, roles, canIssue }: { searchParams: Promise<SearchParams>; action: string; roles: readonly Role[]; canIssue: (role: Role) => boolean }) {
+export async function DeviceOtpPageContent({ searchParams, action, roles, canIssue }: { searchParams: Promise<SearchParams>; action: string; roles: readonly Role[]; canIssue: (role: Role, token: string) => boolean | Promise<boolean> }) {
   const [session, locale, sp] = await Promise.all([requireSession(), getLocale(), searchParams]);
   if (!roles.includes(session.user.role)) return <Forbidden locale={locale} />;
   const selection: Partial<Record<GeoLevel, string>> = {};
@@ -29,6 +29,6 @@ export async function DeviceOtpPageContent({ searchParams, action, roles, canIss
     items = r.data.items;
     nextHref = r.data.next_cursor ? `${action}${qs({ ...selection, q: q || undefined, cursor: r.data.next_cursor })}` : null;
   }
-  const issue = canIssue(session.user.role);
+  const issue = await canIssue(session.user.role, session.at);
   return <DeviceOtpView locale={locale} action={action} options={options} selection={selection} items={items} q={q} nextHref={nextHref} canIssue={issue} titleKey={issue ? "otp.admin.title" : "otp.panel.title"} nowMs={serverNowMs()} />;
 }

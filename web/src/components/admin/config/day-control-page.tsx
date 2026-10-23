@@ -1,7 +1,7 @@
 import { onApiFailure } from "@/components/admin/crud/pages";
 import { one, type SearchParams } from "@/components/admin/kit/page";
 import { Forbidden } from "@/components/forbidden";
-import { canOp } from "@/lib/admin/access";
+import { loadOpGate } from "@/lib/admin/access";
 import { lateRows, missingCheckoutRows, runReport } from "@/lib/admin/reports";
 import { isRealDate } from "@/lib/admin/time";
 import { ADMIN_PORTAL_ROLES, hasRole } from "@/lib/auth/roles";
@@ -12,6 +12,7 @@ import { DayControlView } from "./day-control-view";
 
 export async function DayControlPageContent({ searchParams, basePath, withMissing }: { searchParams: Promise<SearchParams>; basePath: string; withMissing: boolean }) {
   const [session, locale, sp] = await Promise.all([requireSession(), getLocale(), searchParams]);
+  const gate = await loadOpGate(session.at, session.user.role);
   if (!hasRole(session.user.role, ADMIN_PORTAL_ROLES)) return <Forbidden locale={locale} />;
   const z = one(sp.zone, 15);
   const zone = z && /^[1-9]\d{0,14}$/.test(z) ? z : "";
@@ -27,5 +28,5 @@ export async function DayControlPageContent({ searchParams, basePath, withMissin
     if (att?.ok) missing = { ...missingCheckoutRows(att.data), columns: att.data.columns, total: att.data.total_rows };
     else if (att) missingFailed = true;
   }
-  return <DayControlView locale={locale} zone={zone} date={date} late={late} missing={missing} canWrite={canOp("day.reopen", session.user.role)} withMissing={withMissing} basePath={basePath} missingFailed={missingFailed} />;
+  return <DayControlView locale={locale} zone={zone} date={date} late={late} missing={missing} canWrite={gate("day.reopen")} withMissing={withMissing} basePath={basePath} missingFailed={missingFailed} />;
 }

@@ -1,7 +1,7 @@
 import { AppBlockView } from "@/components/admin/config/app-block-view";
 import { onApiFailure } from "@/components/admin/crud/pages";
 import { Forbidden } from "@/components/forbidden";
-import { canOp } from "@/lib/admin/access";
+import { loadOpGate } from "@/lib/admin/access";
 import { globalValues, latestVersion, listKeys, versionDetail } from "@/lib/admin/config-load";
 import type { ResolvedConfigValue } from "@/lib/admin/types";
 import { ADMIN_PORTAL_ROLES, hasRole } from "@/lib/auth/roles";
@@ -10,6 +10,7 @@ import { getLocale } from "@/lib/auth/service";
 
 export default async function AppBlockPage() {
   const [session, locale] = await Promise.all([requireSession(), getLocale()]);
+  const gate = await loadOpGate(session.at, session.user.role);
   if (!hasRole(session.user.role, ADMIN_PORTAL_ROLES)) return <Forbidden locale={locale} />;
   const keys = await listKeys(session.at, "device");
   if (!keys.ok) return onApiFailure(keys.status, keys.problem, locale);
@@ -20,5 +21,5 @@ export default async function AppBlockPage() {
     const d = await versionDetail(session.at, v);
     if (d.ok) Object.assign(values, globalValues(d.data));
   }
-  return <AppBlockView locale={locale} keys={keys.data.items} values={values} version={v} canWrite={canOp("config.change", session.user.role)} />;
+  return <AppBlockView locale={locale} keys={keys.data.items} values={values} version={v} canWrite={gate("config.change")} />;
 }
