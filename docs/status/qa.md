@@ -1,3 +1,17 @@
+# Status: lane qa (wave 4, session 2 -> 3 handover, 2026-10-23)
+
+## Handover from qa #2
+- **State:** the data-flow trace has an empty known-findings list (`data-flow-trace-known-findings.txt` holds its header only); any new difference fails `DataFlowTraceTest` by name. Heads declared and checked: 6fa6e5a8 -> e6650974 (train 13.1) -> 0adfc165 (Sunday/Monday) -> 8101f53b (slices 2 and 3, evidence doc) -> the BRAND figure check (this push).
+- **Proven (all in `backend/app/src/test`, evidence in `docs/evidence/data-flow-trace-2026-10-23.md`):**
+  - `DataFlowTraceTest` (Saturday, GUL-SR-2, 15 hops, incl. BRAND figures equal the brand's slice in base units across both divisions);
+  - `DataFlowTraceOtherDaysTest` (Sunday GUL-SR-1, Monday BAN-SR-11);
+  - `DataFlowTraceMoneyTargetsTest` (per_base_qty 1/2/3, exact .5 line, memo net half-up to the paisa, `round_adj`; monthly target over Oct, Nov doubled, Dec lighters removed, month boundary);
+  - `DataFlowTraceConcurrencyTest` (8 twins under 8 batch_uuids, 8 sends under one batch_uuid, batch_uuid reuse 409, changed copy quarantined).
+  The support takes the business date (`DataFlowTraceSupport(day)`); a new day or route is one subclass of `DataFlowTraceOtherDay`.
+- **Local setup in a fresh container:** `service postgresql start`; `ALTER ROLE postgres PASSWORD 'pg'`; `ARON_TEST_PG_URL=jdbc:postgresql://localhost:5432/postgres?user=postgres&password=pg`; the trace classes take about 1.5 min, the full `:backend:app:test` about 20 min.
+- **Open for qa #3:** (1) the dev-side rerun on a selling day needs a workflow job that carries the smoke device key (never a lane; the lead files it as a lead/infra item); (2) a cover day (another SR on the route) and a holiday or emergency day in the trace; (3) the window between a stored memo header and its rejected lines (not read mid-way) and server-side parking retry/expiry (docs/16 DQ-03); (4) re-merge INT on request and keep the known-findings list empty (a row is added only with a request doc to the owning lane).
+- **Lessons:** the trace's setup is part of the proof: the BRAND 403 of the first run was my setup (a grant insert that matched no row), now guarded by a `check`; a stale expectation after an intended product change (login needs a check-in, preview warnings only for due routes) is fixed in the test with the ruling cited, never by loosening.
+
 # Status: lane qa (wave 4, session 2: data-flow trace)
 
 ## Wave 4, session 2f: BRAND figures in the trace (built locally, pushed after "train 16 landed"), 2026-10-23
