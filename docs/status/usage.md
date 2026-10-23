@@ -447,3 +447,9 @@
 - INT 63e14fac (pushed 17:17; delta verified by the lead as exactly android-tso 3db224b3 + lead docs b651b70d + the train row). CI 39993815587 (#1492) green 17:25 with Detect, Repository gates, Android debug, Release APKs and the APK size gate; signed artifact aron-release-signed-dev-1492 (also aron-debug-apks-63e14fac). Deploy 39994894383 (#257) completed success as the designed skip ("nothing deployable changed between the live commit 70060dd3 and 63e14fac"); the dev API stays on build 70060dd3. In this APK: SR parity M9 (edit-reason dialog), X4/X5 (Settings and Logout wording for all roles), O3 (outlet-request capture button label), on top of the train 21 wording (O2/O4/X1) and T1.
 - "train 22 landed" sent 17:30 to android-tso #3 (merge INT, push slice 5 = কারণ spelling for tomorrow's first train, then idle), web-admin #7 and db #10 (idle), integrator 19 (holds, ~120k; no train 23 today).
 - Nine trains today (14 to 22), no slip. Next: evening report 18:30; tomorrow's first train = android-tso slice 5 + whatever is checked by then.
+
+### 17:32 UTC — android-tso slice 5 checked for tomorrow
+- android-tso candidate deaa71f4 (slice 5, D-TSO-PARITY-SPELLING-01: edit_reason_title "কারন" → "কারণ", DECISIONS +1/-0, status) checked: contains INT 63e14fac; CI 39993871109 (#1493) green on that sha. Told to integrator 19 for tomorrow's first train (train 23); the lane pushed a docs-only close line on top (tip 92e0667c) and is idle.
+
+### 18:30 UTC — evening report
+- docs/status/evening-2026-10-23.md written and the chat summary posted. Nine trains today, no slip. Next sweep 06:10 UTC 2026-10-24 (train 23 GO, morning report 06:30).
