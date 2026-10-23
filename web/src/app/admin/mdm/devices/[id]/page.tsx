@@ -1,3 +1,4 @@
+import { t } from "@/lib/i18n";
 import { notFound } from "next/navigation";
 import { onApiFailure } from "@/components/admin/crud/pages";
 import { apiGet } from "@/components/admin/kit/page";
@@ -16,5 +17,10 @@ export default async function MdmDevicePage({ params }: { params: Promise<{ id: 
   ]);
   if (!d.ok) return onApiFailure(d.status, d.problem, ctx.locale);
   const policies = pols && pols.ok ? pols.data.items.map((p) => ({ id: p.policy_id, name: p.name })) : [];
-  return <MdmDeviceDetailView locale={ctx.locale} detail={d.data} activity={act.ok ? act.data.items : []} policies={policies} level={ctx.level} me={ctx.session.user.username} />;
+  return (
+    <>
+      {!act.ok || (pols && !pols.ok) ? <p role="alert" data-testid="ref-load-failed" className="rounded border border-red-200 bg-red-50 p-3 text-red-800">{t(ctx.locale, "error.ref_load")}</p> : null}
+      <MdmDeviceDetailView locale={ctx.locale} detail={d.data} activity={act.ok ? act.data.items : []} policies={policies} level={ctx.level} me={ctx.session.user.username} />
+    </>
+  );
 }

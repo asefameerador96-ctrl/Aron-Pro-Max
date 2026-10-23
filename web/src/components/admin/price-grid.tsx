@@ -1,4 +1,5 @@
 "use client";
+import { EmptyNote } from "@/components/admin/kit/empty-note";
 import { useRouter } from "next/navigation";
 import { useMemo, useRef, useState } from "react";
 import { useI18n } from "@/components/i18n-provider";
@@ -122,6 +123,9 @@ export function PriceGrid({ skus, minDate, canWrite, typeLabels }: { skus: Price
 
   return (
     <div className="space-y-4" data-testid="prices">
+      {skus.length === 0 ? (
+        <EmptyNote />
+      ) : (
       <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white shadow-sm">
         <table className="min-w-full text-sm">
           <caption className="sr-only">{t("prices.title")}</caption>
@@ -165,6 +169,7 @@ export function PriceGrid({ skus, minDate, canWrite, typeLabels }: { skus: Price
           </tbody>
         </table>
       </div>
+      )}
       {errors.cells ? (
         <p role="alert" className="text-sm text-red-700">
           {errors.cells}

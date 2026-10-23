@@ -3,6 +3,10 @@ import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { CodeListEditor } from "@/components/admin/codelist-editor";
+import { PackageListEditor } from "@/components/admin/config/package-list-editor";
+import { SupervisorTargetsEditor } from "@/components/admin/config/supervisor-targets-editor";
+import { PriceGrid } from "@/components/admin/price-grid";
+import { SalesPlanEditor } from "@/components/admin/sales-plan-editor";
 import { DataTable } from "@/components/admin/kit/data-table";
 import { html, text } from "./helpers/render";
 
@@ -20,6 +24,24 @@ describe("empty states", () => {
     const m = html(<CodeListEditor listKey="x" items={[]} attrs={[]} canWrite />, "bn");
     expect(m).toContain('data-testid="codelist-empty"');
     expect(m).not.toContain('data-testid="codelist-row"');
+  });
+});
+
+describe("empty states of the grids and editors (kit EmptyNote)", () => {
+  const typeLabels = { outlet: "o", cc: "c", distributor: "d", reporting: "r", nto: "n" };
+  it("a price grid with no SKU shows the empty note and no table", () => {
+    const m = html(<PriceGrid skus={[]} minDate="2026-10-23" canWrite typeLabels={typeLabels} />, "bn");
+    expect(m).toContain('data-testid="list-empty"');
+    expect(m).not.toContain("<table");
+  });
+  it("supervisor targets with no officer show the note and still offer to add one", () => {
+    const m = html(<SupervisorTargetsEditor month="2026-10" initial={[]} names={{}} canWrite />);
+    expect(m).toContain('data-testid="list-empty"');
+    expect(m).toContain('data-testid="add-officer"');
+  });
+  it("an empty package list and an empty sales plan say so", () => {
+    expect(html(<PackageListEditor keyName="k" title="T" initial={[]} max={10} canWrite />)).toContain('data-testid="list-empty"');
+    expect(html(<SalesPlanEditor zoneId={1} siblingZones={[]} territoryLabel={null} skus={[]} selected={[]} minDate="2026-10-23" canWrite />)).toContain('data-testid="list-empty"');
   });
 });
 

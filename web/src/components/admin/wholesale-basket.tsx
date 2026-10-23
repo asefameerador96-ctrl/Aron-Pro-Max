@@ -1,4 +1,5 @@
 "use client";
+import { EmptyNote } from "@/components/admin/kit/empty-note";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useI18n } from "@/components/i18n-provider";
 import type { Problem } from "@/contract/types";
@@ -103,6 +104,9 @@ export function WholesaleBasket({ rows, total = rows.length }: { rows: BasketRow
         {t("wholesale.count", { n: count })}
       </p>
       {count >= MAX ? <p role="status" className="text-sm text-amber-800">{t("wholesale.full", { max: number(MAX) })}</p> : null}
+      {rows.length === 0 ? (
+        <EmptyNote />
+      ) : (
       <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white shadow-sm">
         <table className="min-w-full text-sm">
           <caption className="sr-only">{t("wholesale.title")}</caption>
@@ -146,6 +150,7 @@ export function WholesaleBasket({ rows, total = rows.length }: { rows: BasketRow
           </tbody>
         </table>
       </div>
+      )}
 
       <div className="flex flex-wrap items-end gap-3">
         <label className="text-sm">

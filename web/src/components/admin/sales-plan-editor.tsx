@@ -1,4 +1,5 @@
 "use client";
+import { EmptyNote } from "@/components/admin/kit/empty-note";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { useI18n } from "@/components/i18n-provider";
@@ -81,6 +82,7 @@ export function SalesPlanEditor({ zoneId, siblingZones, territoryLabel, skus, se
       <p aria-live="polite" className="text-sm font-semibold" data-testid="plan-count">
         {t("salesplan.count", { n: ids.size })}
       </p>
+      {groups.length === 0 ? <EmptyNote /> : null}
       {groups.map(([key, g]) => {
         const all = g.items.every((s) => ids.has(s.id));
         return (
