@@ -166,3 +166,6 @@ green run of the exact sha). Usage stays `allowed` on the five-hour window.
 
 ## Update 2026-10-23 00:50 UTC (wave 4, lead)
 - Train 13 pushes about 01:20 UTC with seven heads if the authz and qa runs are green by then (else five, the rest in 14); CI about 02:15, dev about 02:30. Train 14 (web-admin mock split, any head that missed 13) about 03:45 on dev. backend-reports' V0109 fill: morning. Owner report about 06:30 UTC.
+
+## Update 2026-10-23 01:25 UTC (wave 4, lead)
+- Train 13 (seven heads incl. backend-authz round 3, qa trace, backend-core sync fixes, web-dashboard pass, db V0109) pushed 01:20; dev about 02:30 UTC. Train 14 (web-admin mock split, backend-reports' V0109 fill if ready) about 04:00 on dev. Owner report about 06:30 UTC.
