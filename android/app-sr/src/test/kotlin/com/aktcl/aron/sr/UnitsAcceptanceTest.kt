@@ -84,7 +84,9 @@ class UnitsAcceptanceTest {
             var seq = 0
             val committer = SaleCommitter(repo, { _, uuid -> "sr334001-261005-%03d".format(++seq) }, { _, route -> meta.copy(routeId = route) }, { "2026-10-05T04:35:00.000Z" }, findMemo = { db.captureDao().memo(it) })
             val catalog = RoomSaleReads(db, ReferenceRepository(db)).catalog(date, "outlet").associateBy { it.skuId }
-            assertEquals(rows.size, catalog.size)
+            // D-SALE-ZERO-PRICE-01: the zero-price rows of the real catalogue are not offered on Sale, every other row is
+            assertEquals(rows.count { it.outletMtk > 0 }, catalog.size)
+            assertTrue(catalog.values.all { it.unitPriceMtk > 0 })
 
             val words = mapOf("packet" to "packet", "box" to "box", "dozen" to "dozen", "stick" to "stick", "piece" to "piece")
             val names = PrintNames(sku = { catalog.getValue(it).name }, outlet = { "Outlet" }, sr = "SR", route = "Route", categoryCode = { catalog.getValue(it).categoryCode })

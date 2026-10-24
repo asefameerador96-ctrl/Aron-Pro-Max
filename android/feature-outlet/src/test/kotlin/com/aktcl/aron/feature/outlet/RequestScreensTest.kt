@@ -63,6 +63,23 @@ class RequestScreensTest {
         compose.onNodeWithText("Yes").performClick(); assertEquals(1, saves)
     }
 
+    @Test fun confirmDialogBodyFollowsTheKindInBangla() { // audit O5: "আপনি কি নিশ্চিত?" with a kind-specific body
+        show(AppLanguage.BN) {
+            OutletRequestContent(OutletRequestForm(OutletRequestKind.CLOSE, outletId = 5), emptySet(), emptyList(), GeoPhotoState(), false, true, {}, {}, {})
+        }
+        compose.onNodeWithTag(RequestTags.SAVE).performClick()
+        compose.onNodeWithText("আপনি কি নিশ্চিত?").assertExists()
+        compose.onNodeWithText("এই দোকানটি স্থায়ীভাবে বন্ধ হতে যাচ্ছে").assertExists()
+    }
+
+    @Test fun confirmDialogBodyForAClusterChangeIsTheSaveLine() {
+        show(AppLanguage.BN) {
+            OutletRequestContent(OutletRequestForm(OutletRequestKind.CLUSTER, outletId = 5), emptySet(), emptyList(), GeoPhotoState(), false, true, {}, {}, {})
+        }
+        compose.onNodeWithTag(RequestTags.SAVE).performClick()
+        compose.onNodeWithText("এই পরিবর্তন সংরক্ষণ করা হবে").assertExists()
+    }
+
     @Test fun savedMessageShowsPendingInBangla() {
         show(AppLanguage.BN) { OutletRequestContent(OutletRequestForm(OutletRequestKind.ROUTE_ADD, outletId = 1), emptySet(), emptyList(), GeoPhotoState(), true, false, {}, {}, {}) }
         compose.onNodeWithText("সংরক্ষিত হয়েছে। অনুরোধটি যাচাইয়ের অপেক্ষায় আছে।").assertExists()

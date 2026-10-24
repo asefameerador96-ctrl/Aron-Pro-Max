@@ -28,10 +28,12 @@ import androidx.compose.ui.viewinterop.AndroidView
 import com.aktcl.aron.core.database.entity.ContentItemEntity
 import com.aktcl.aron.core.database.entity.SurveyEntity
 import com.aktcl.aron.core.database.entity.SurveyQuestionEntity
+import com.aktcl.aron.core.ui.AronBanner
 import com.aktcl.aron.core.ui.AronConfirmDialog
 import com.aktcl.aron.core.ui.AronPrimaryButton
 import com.aktcl.aron.core.ui.AronSecondaryButton
 import com.aktcl.aron.core.ui.AronTokens
+import com.aktcl.aron.core.ui.BannerKind
 import com.aktcl.aron.feature.outlet.AnswerType
 import com.aktcl.aron.feature.outlet.ContentOutcome
 import com.aktcl.aron.feature.outlet.PosmSurvey
@@ -166,8 +168,11 @@ private fun SurveyStep(day: SrDay, visitUuid: String, survey: SurveyEntity, rows
     }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(AronTokens.Space.L), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.M)) {
         Text(stringResource(R.string.sr_survey_title), style = MaterialTheme.typography.headlineSmall)
-        questions.filter { it.first.key in visible && it.first.answerType in supported }.forEach { (q, label) ->
-            Text(label, style = MaterialTheme.typography.titleMedium)
+        val shown = questions.filter { it.first.key in visible && it.first.answerType in supported }
+        // the reference's info card (X3): starred questions must be answered
+        if (shown.any { it.first.required }) AronBanner(stringResource(R.string.sr_survey_required_info), kind = BannerKind.Info)
+        shown.forEach { (q, label) ->
+            Text(if (q.required) "$label (*)" else label, style = MaterialTheme.typography.titleMedium)
             val cur = answers[q.key]
             if (q.answerType == AnswerType.BOOL) {
                 androidx.compose.foundation.layout.Row(horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.M)) {

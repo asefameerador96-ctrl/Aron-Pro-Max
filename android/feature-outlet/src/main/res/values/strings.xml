@@ -55,6 +55,7 @@
     <string name="out_req_saved">Saved. The request is pending verification.</string>
     <string name="out_req_confirm_title">Confirm</string>
     <string name="out_req_confirm_message">Save this change?</string>
+    <string name="out_req_confirm_close">This shop will be permanently closed. Continue?</string>
     <string name="out_req_yes">Yes</string>
     <string name="out_req_no">No</string>
     <string name="out_req_err_name">Enter the shop name.</string>
