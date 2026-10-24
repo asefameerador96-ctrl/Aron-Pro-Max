@@ -151,7 +151,7 @@ fun OutletRequestContent(
     }
     if (confirm) {
         AronConfirmDialog(
-            stringResource(R.string.out_req_confirm_title), stringResource(R.string.out_req_confirm_message),
+            stringResource(R.string.out_req_confirm_title), stringResource(if (kind == OutletRequestKind.CLOSE) R.string.out_req_confirm_close else R.string.out_req_confirm_message),
             stringResource(R.string.out_req_yes), stringResource(R.string.out_req_no),
             onConfirm = { confirm = false; onChange(form.copy(confirmed = true)); onSave() }, onDismiss = { confirm = false },
         )

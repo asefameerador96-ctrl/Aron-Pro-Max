@@ -427,7 +427,7 @@ class SrDay(
             // One slip covers exactly one Save (the ledger flips the rows of the named row's Save); the next Save prints on the next tap.
             val save = StockSlips.oldestUnprintedSave(unprintedStock())
             if (save.isEmpty()) return@launch
-            runCatching { printing.printStockSlip(StockSlips.slipUuid(save), stockSlip(save)) }.onSuccess { _stockAttempt.value = it }
+            _stockAttempt.value = com.aktcl.aron.feature.sale.domain.guardedPrint { printing.printStockSlip(StockSlips.slipUuid(save), stockSlip(save)) }
         }
     }
 
@@ -443,7 +443,7 @@ class SrDay(
     val summaryAttempt: StateFlow<com.aktcl.aron.core.printing.flow.PrintAttempt?> = _summaryAttempt.asStateFlow()
 
     fun printSummary(b: SummaryBundle) {
-        printScope.launch { if (_summaryAttempt.value == null) _summaryAttempt.value = sale.printSummary(b) }
+        printScope.launch { if (_summaryAttempt.value == null) _summaryAttempt.value = com.aktcl.aron.feature.sale.domain.guardedPrint { sale.printSummary(b) } }
     }
 
     fun answerSummaryPrint(a: com.aktcl.aron.core.printing.flow.PrintAttempt.AwaitingConfirmation, readable: Boolean) {
