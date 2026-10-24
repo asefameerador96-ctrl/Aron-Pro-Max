@@ -836,6 +836,23 @@ class Workflows(unittest.TestCase):
         for app in ("app-sr", "app-amo", "app-tso"):
             self.assertIn(f":android:{app}:compileDebugKotlin", q)
 
+    def test_codeql_is_skipped_on_the_private_repository(self):
+        # 2026-10-24 (docs/30 s3a): CodeQL needs GitHub Advanced Security on a private repository. The visibility comes
+        # from the API because a scheduled run has no event payload; the schedule stays so it resumes once public.
+        q = self.text("codeql.yml")
+        self.assertIn('    - cron: "17 21 * * *"', q, "the nightly schedule is kept")
+        jobs = q[q.index("\njobs:"):]
+        self.assertEqual(re.findall(r"(?m)^  ([a-z][a-z0-9_-]*):$", jobs), ["visibility", "analyze"])
+        vis = jobs[jobs.index("\n  visibility:"):jobs.index("\n  analyze:")]
+        self.assertNotIn("\n    if:", vis, "the visibility check runs on every event")
+        self.assertIn("gh api \"repos/${GITHUB_REPOSITORY}\" --jq '.private'", vis)
+        self.assertIn("true|false) ;;", vis, "an unreadable visibility fails the run instead of skipping silently")
+        self.assertIn("private: ${{ steps.repo.outputs.private }}", vis)
+        analyze = jobs[jobs.index("\n  analyze:"):]
+        self.assertIn("    needs: visibility\n", analyze)
+        self.assertIn("    if: ${{ needs.visibility.outputs.private == 'false' }}\n", analyze)
+        self.assertNotIn("github.event.repository.private", q, "empty on a scheduled run")
+
     def test_apks_are_uploaded_on_every_successful_android_run(self):
         c = self.text("ci.yml")
         i = c.index("name: Upload debug APKs")
