@@ -1,3 +1,9 @@
+# Session 3 (2026-10-24) — work-hours allow-list (D-NIGHT-MDM-ALLOWLIST-01)
+- Runbook `docs/runbooks/mdm-work-hours-allowlist.md` (answer, enrolment, portal steps, limits, device-lab steps); device row D-MDM-ALLOWLIST-01 in `docs/status/device-checks.md` (DEVICE-PENDING).
+- Built: `work_hours_allowlist` in the policy jsonb (no migration), served ahead of contract 1.9 row 6 (shape: `docs/requests/contract-v1.9-shapes-mdm.md`, also the packages catalogue, part B, not built); backend validation + audit + delivery (`MdmApiTest.theWorkHoursAllowListIsValidatedAuditedAndDelivered`); DPC enforcement in `MdmPolicyApplier` with the protected set and fail-open rules (`MdmAllowlistTest`, 15); portal card `work-hours-allowlist-card.tsx` (vitest `mdm-allowlist.test.tsx`, e2e in `mdm.spec.ts`).
+- Decisions D-MDM-ALLOWLIST-01..05. Edges are not exact (lint forbids the exact-alarm permission): up to about 10 min late while in use.
+- Open: packages catalogue (contract 1.9 part B, then db request + backend + DPC upload + picker); the device row; drop the local web types once 1.9 regenerates `openapi.d.ts`.
+
 # HANDOVER (lane mdm session 2 -> session 3, 2026-10-23, context about 380k)
 **Candidate:** c5de7c78 (network_type both ends; INT c07c66dc merged). Run 39961480341: all jobs green except one Docker Hub 500 at the base-image pull (not ours), failed job re-run once; the lead judges at 14:40 UTC (train 19, else train 20 with no further re-run).
 **On INT already:** ModuleGrants in production, breadcrumb install SR/AMO (D-MDM-BREADCRUMB-01 incl. lead ruling: the DPC `breadcrumbsEnabled` is the single background-location switch), device-lab rows, handover of session 2.
