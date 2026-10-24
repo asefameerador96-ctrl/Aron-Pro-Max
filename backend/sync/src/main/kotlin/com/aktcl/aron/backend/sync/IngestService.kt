@@ -995,9 +995,10 @@ class IngestService(
 
         // 8a. Zero price (D-SALE-ZERO-PRICE-01): a sale line priced at zero is a final schema_invalid for that line alone
         // (a resend stays refused). After the money check, so its gross is zero: the memo and its other lines still add
-        // up and are stored, and the memo is flagged zero_price_line for review (its line count is one short).
+        // up and are stored, and the memo is flagged zero_price_line for review (its line count is one short): here when
+        // it is already stored, else when it is (a line sent first, or a memo held by the device gate or a review).
         if (r.type == "memo_line") MemoChecks.zeroPriceProblem(payload)?.let { why ->
-            payload.str("memo_client_uuid")?.let { MemoChecks.flagStored(h, it, "zero_price_line") }
+            payload.str("memo_client_uuid")?.let { MemoChecks.flagZeroPrice(h, it, ctx.up.userId) }
             return finalReject(h, ctx, r, RecordOutcomeCode.SCHEMA_INVALID, why)
         }
 
@@ -1077,6 +1078,7 @@ class IngestService(
                 register(h, ctx, r, bd, "accepted", null, stored.serverId, contentFp, flags)
                 if (stampRegress) stampRegressSignal(h, ctx, r, bd, routeId)
                 if (r.type == "memo") memoDuplicateSuspect(h, ctx, r, payload, bd, routeId)
+                if (r.type == "memo" && MemoChecks.refusedZeroLine(h, r.clientUuid, ctx.up.userId, bd)) MemoChecks.flagZeroPrice(h, r.clientUuid, ctx.up.userId)
                 MemoChecks.afterChildStored(h, r.type, payload)
                 DuesLedger.afterStored(h, r.type, env, payload)
                 // Day states follow the record but never decide its outcome: a failure here is logged, the record stays stored.

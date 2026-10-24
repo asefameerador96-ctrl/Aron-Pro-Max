@@ -1646,7 +1646,8 @@ class SliceSmoke(unittest.TestCase):
             self.assertIn(line, out)
         (memo,) = state["memos"].values()
         self.assertIn(memo["client_uuid"], state["voided"], "the smoke sale is voided")
-        self.assertRegex(memo["payload"]["memo_no"], r"^sr1001-\d{6}-5\d{3}$", "s7.5 rule: the bound ordinal 0's overflow 5001..5999")
+        self.assertRegex(memo["payload"]["memo_no"], r"^sr1001-\d{6}-\d{4}$")
+        self.assertTrue(5001 <= int(memo["payload"]["memo_no"].rsplit("-", 1)[1]) <= 5999, "s7.5 rule: the bound ordinal 0's overflow 5001..5999")
         self.assertEqual(memo["payload"]["outlet_id"], 9, "the smoke's own outlet, never a tester's")
 
     def test_a_non_selling_day_is_skipped_and_names_the_next_selling_days_route(self):

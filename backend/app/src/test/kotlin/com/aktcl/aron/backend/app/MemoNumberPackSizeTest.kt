@@ -211,7 +211,8 @@ class MemoNumberPackSizeTest {
         val script = File(System.getProperty("aron.repoRoot"), "infra/scripts/slice-smoke.py").readText()
         val (lo, hi) = Regex("""(?m)^MEMO_SEQ_RANGE = \((\d+), (\d+)\)""").find(script)!!.destructured.toList().map { it.toInt() }
         assertTrue(script.contains("return (5000 + o * 1000 + 1, 5000 + o * 1000 + 999) if isinstance(o, int) and 0 <= o <= 3 else MEMO_SEQ_RANGE"), "the smoke's overflow formula")
-        assertTrue(script.contains("random.randint(*seq_range)") && script.contains("seq_range = memo_seq_range(b)"), "the smoke's memo_no takes its seq from the login's range")
+        assertTrue(script.contains("return lo + (now.hour * 3600 + now.minute * 60 + now.second) * (hi - lo + 1) // 86400"), "the smoke's slot stays inside its range")
+        assertTrue(script.contains("memo_seq(seq_range, datetime.datetime.now(DHAKA))") && script.contains("seq_range = memo_seq_range(b)"), "the smoke's memo_no takes its seq from the login's range")
         val ranges = listOf(lo..hi) + (0..3).map { o -> (5000 + o * 1000 + 1)..(5000 + o * 1000 + 999) }
         val d = LocalDate.parse(day)
         for (r in ranges) {

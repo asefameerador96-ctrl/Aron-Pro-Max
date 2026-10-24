@@ -28,7 +28,6 @@ import gzip
 import hashlib
 import json
 import os
-import random
 import subprocess
 import sys
 import time
@@ -58,6 +57,13 @@ MEMO_SEQ_RANGE = (8001, 8999)
 def memo_seq_range(login):
     o = (login.get("device") or {}).get("bind_ordinal") if isinstance(login, dict) else None
     return (5000 + o * 1000 + 1, 5000 + o * 1000 + 999) if isinstance(o, int) and 0 <= o <= 3 else MEMO_SEQ_RANGE
+
+
+def memo_seq(seq_range, now):
+    """The range's slot for this second of the Dhaka day: two smoke runs at least 87 s apart (deploys are serialised and
+    take minutes) never draw the same number, which memo_no_unique would refuse even after the void."""
+    lo, hi = seq_range
+    return lo + (now.hour * 3600 + now.minute * 60 + now.second) * (hi - lo + 1) // 86400
 SKIP_EXIT = 3  # deploy.sh: "SKIPPED" (not a selling day), distinct from a failure (1)
 DHAKA = datetime.timezone(datetime.timedelta(hours=6))
 
@@ -192,7 +198,7 @@ def run():
     unit = sku["base_unit"]
     qty = 10
     gross = qty * price["amount_mtk"] // max(1, price["per_base_qty"])
-    memo_no = f"{USER}-{today.strftime('%y%m%d')}-{random.randint(*seq_range)}"
+    memo_no = f"{USER}-{today.strftime('%y%m%d')}-{memo_seq(seq_range, datetime.datetime.now(DHAKA))}"
     visit, memo, line, close = (str(uuid.uuid4()) for _ in range(4))
     lat, lng = outlet["lat"], outlet["lng"]
     fix = {"fix_status": "ok", "lat": lat, "lng": lng, "accuracy_m": 12.0, "provider": "fused", "is_mock": False, "reused": False,

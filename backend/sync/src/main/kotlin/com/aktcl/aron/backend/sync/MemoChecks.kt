@@ -153,6 +153,25 @@ object MemoChecks {
             packFactorProblem(h, payload)?.let { "memo $memo: line $line $it" }
         }
 
+    /**
+     * `zero_price_line` on [memo] when it is stored and the uploader's own (a line may name any uuid), idempotent. Called
+     * when the line is refused and again when the memo is stored ([refusedZeroLine]), so a line that came first, or whose
+     * memo was held, still marks it.
+     */
+    fun flagZeroPrice(h: Handle, memo: String, userId: Long) {
+        h.createUpdate(
+            "UPDATE app.memo SET server_flags = array_append(COALESCE(server_flags, '{}'), 'zero_price_line') WHERE client_uuid = CAST(:m AS uuid) AND user_id = :u AND NOT ('zero_price_line' = ANY(COALESCE(server_flags, '{}')))",
+        ).bind("m", memo).bind("u", userId).execute()
+    }
+
+    /** True when a sale line of [memo] by [userId] on [businessDate] was refused for its zero price before the memo was stored. */
+    fun refusedZeroLine(h: Handle, memo: String, userId: Long, businessDate: java.time.LocalDate): Boolean = h.createQuery(
+        """
+        SELECT EXISTS (SELECT 1 FROM app.sync_rejected WHERE user_id = :u AND business_date = :d AND record_type = 'memo_line' AND code = 'schema_invalid'
+                          AND detail LIKE 'zero_price_line:%' AND payload -> 'payload' ->> 'memo_client_uuid' = :m)
+        """.trimIndent(),
+    ).bind("m", memo).bind("u", userId).bind("d", businessDate).mapTo(Boolean::class.java).one()
+
     /** Marks a stored memo for review (idempotent): a child held for its own fault leaves the printed memo incomplete. */
     fun flagStored(h: Handle, memo: String, flag: String) = flag(h, memo, flag)
 

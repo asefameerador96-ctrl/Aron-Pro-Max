@@ -129,10 +129,10 @@ class ZeroPriceLineTest {
                "geo":{"verdict":"in_range","distance_m":38.4,"radius_m_used":100,"max_accuracy_m_used":100,"location_basis":"master","action":"sale_allowed"}}""",
         )
         val memoPayload = json(
-            """{"visit_client_uuid":"$visit","outlet_id":$outlet,"memo_no":"$memoNo","memo_kind":"sale","committed_at":"${bd}T03:%02d:00.000Z",
+            """{"visit_client_uuid":"$visit","outlet_id":$outlet,"memo_no":"$memoNo","memo_kind":"sale","committed_at":"${Instant.parse("${bd}T00:00:00Z").plusSeconds(60L * minute.incrementAndGet())}",
                "price_list_date":"$bd","price_type":"outlet","gross_mtk":$gross,"offer_discount_mtk":0,"drp_discount_mtk":0,"qc_deduction_mtk":0,
                "round_adj_mtk":0,"net_mtk":$gross,"paid_mtk":$gross,"due_mtk":0,"is_credit":false,"line_count":${lines.size},"discount_line_count":0,"qc_line_count":0,
-               "offer_version_ids":[],"rounding_mode":"half_up_paisa"}""".format(minute.incrementAndGet() % 60),
+               "offer_version_ids":[],"rounding_mode":"half_up_paisa"}""",
         )
         return listOf(envelope("visit", visit, visit, 0, visitPayload, route, bd), envelope("memo", memo, visit, 1, memoPayload, route, bd)) +
             lines.mapIndexed { i, l -> envelope("memo_line", uuid(), visit, 2, lineOf(memo, i + 1, l), route, bd) }
@@ -172,6 +172,20 @@ class ZeroPriceLineTest {
             assertEquals(listOf("duplicate", "duplicate", "duplicate", "rejected schema_invalid"), f.map { again.ack(it).substringBefore(" ").takeIf { s -> s != "rejected" } ?: again.ack(it) })
             assertEquals(1, count("SELECT count(*) FROM app.memo_line WHERE memo_client_uuid = '$memo'"), "resend stores nothing")
         }
+    }
+
+    /** Checker #6: the zero line arrives before its memo is stored (phone order, or the memo was held); the memo is flagged when it lands. */
+    @Test
+    fun aZeroLineSentBeforeItsMemoStillFlagsTheMemo() {
+        val f = sale(memoNo(), listOf(L(priced, 20, "stick", 1), L(zero, 1, "pack", zero[3])))
+        assertEquals("rejected schema_invalid", send(sr, listOf(f[3])).ack(f[3]), "refused before any parent check")
+        val res = send(sr, f.take(3))
+        assertEquals(listOf("accepted", "accepted", "accepted"), f.take(3).map { res.ack(it) }, res.acks.toString())
+        assertEquals(1, count("SELECT count(*) FROM app.memo WHERE client_uuid = '${uuidOf(f[1])}' AND 'zero_price_line' = ANY(server_flags)"))
+        // A priced family of the same user stays unflagged.
+        val clean = sale(memoNo(), listOf(L(priced, 7, "stick", 1)))
+        send(sr, clean)
+        assertEquals(0, count("SELECT count(*) FROM app.memo WHERE client_uuid = '${uuidOf(clean[1])}' AND 'zero_price_line' = ANY(COALESCE(server_flags, '{}'))"))
     }
 
     @Test
