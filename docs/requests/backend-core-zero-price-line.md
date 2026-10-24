@@ -14,3 +14,4 @@
 | Status | Date |
 |---|---|
 | queued | 2026-10-24 06:05 UTC |
+| done (backend-core #16, D-BC-ZERO-PRICE-01; code `schema_invalid`, `price_invalid` queued in contract-v1.8 row 2) | 2026-10-24 |

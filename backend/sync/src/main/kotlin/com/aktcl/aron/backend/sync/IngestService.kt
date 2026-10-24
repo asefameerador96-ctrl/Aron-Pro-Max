@@ -993,6 +993,14 @@ class IngestService(
             return quarantine(h, ctx, r, bd, RecordOutcomeCode.ARITHMETIC_MISMATCH, why)
         }
 
+        // 8a. Zero price (D-SALE-ZERO-PRICE-01): a sale line priced at zero is a final schema_invalid for that line alone
+        // (a resend stays refused). After the money check, so its gross is zero: the memo and its other lines still add
+        // up and are stored, and the memo is flagged zero_price_line for review (its line count is one short).
+        if (r.type == "memo_line") MemoChecks.zeroPriceProblem(payload)?.let { why ->
+            payload.str("memo_client_uuid")?.let { MemoChecks.flagStored(h, it, "zero_price_line") }
+            return finalReject(h, ctx, r, RecordOutcomeCode.SCHEMA_INVALID, why)
+        }
+
         // 8b. Handlers' early checks (before parents): a refusal here is final even when the parent is missing.
         handlers.forType(r.type).let { early ->
             if (early.isNotEmpty()) {

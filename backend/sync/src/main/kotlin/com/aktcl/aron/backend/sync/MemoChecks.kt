@@ -110,6 +110,19 @@ object MemoChecks {
         return packFactorProblem(p, basePerPack(h, listOf(sku)))
     }
 
+    /**
+     * D-SALE-ZERO-PRICE-01 (lead 2026-10-24): a `sale` line is never priced at zero. Null when the line states a positive
+     * `base_price_mtk`; otherwise why not. A line the phone priced above zero is not refused even when the server's price
+     * for the SKU is zero or missing: that money was collected and is in the memo's gross, so the line is stored and the
+     * memo flagged `price_mismatch` ([afterChildStored]). Free-issue kinds (`promo_free`, `free_sample`, `drp_reward`)
+     * belong to the deferred programmes and are not judged here.
+     */
+    fun zeroPriceProblem(p: JsonObject): String? {
+        if (p.str("line_kind") != "sale") return null
+        val stated = p.long("base_price_mtk")
+        return if (stated == null || stated <= 0) "zero_price_line: SKU ${p.long("sku_id")} is priced at ${stated ?: "no"} mtk" else null
+    }
+
     private fun packFactorProblem(p: JsonObject, perPack: Map<Long, Long>): String? {
         val sku = p.long("sku_id") ?: return null
         // An unknown SKU is refused unknown_sku by its own check.
