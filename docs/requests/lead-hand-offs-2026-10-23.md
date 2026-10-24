@@ -17,3 +17,8 @@ D-TEST-DATE-PIN-01: 22 DataFlowTrace tests failed at Dhaka midnight because the 
 2. **db (#11, on demand):** `db/seed/06_dev_gulshan_banani.sql` targets and holidays are fixed to Oct–Dec 2026, so the dev seed goes stale after 2026; make them relative to the seed's `today` (same rule as the assignments) when the seed is next touched (row R seed slice is the natural moment).
 3. **backend-core (next session, low):** checker notes left open after D-BC-TRACE-DAY-01: `traceDay` reads `route.visit_days_mask` and the global/wing/division weekend while the day-plan bundle uses `route_planned` and all config scopes (a divergence fails loudly, acceptable); the working-day SQL hard-codes Friday as the weekend (pre-existing; follow the calendar config); the weekday a trace covers now depends on the run date (by design under D-TEST-DATE-PIN-01).
 4. **db + analytics (queued, before any route-only TSO goes live):** route-keyed dashboard aggregates so a route-only TSO gets a default dashboard (D-DASH-TSO-HOUSE-SCOPE-03).
+
+### 2026-10-24 23:10 UTC — data-architecture review landed (lead)
+- Report `docs/status/data-architecture-review-2026-10-25.md`; rulings D-DATA-ARCH-REVIEW-01, D-DATA-OUTBOX-ROLE-01, D-DATA-LAKE-01; routing table `docs/requests/data-architecture-actions-2026-10-25.md` (10 slices; db "data origin" first, before any pilot sales).
+- Lead docs pass still to do: docs/31 s3.5, docs/16 mirroring removal, docs/data-events.md statuses, docs/33 C3.4 (row 10 of the table).
+- backend-reports #6 and infra #next are created on these rows after the night package lands (tomorrow morning).
