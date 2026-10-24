@@ -270,3 +270,6 @@ Generated from `git for-each-ref refs/remotes/origin` after `git fetch --prune`;
 ## What the owner is asked
 
 Nothing today. When wave 4 closes, the lead will ask once: "delete the 176 train staging refs, the 3 inspected refs and the lane branches of lanes that have ended (list attached)?" The two HELD hardening heads, `main`, INT, active lane branches and the dependabot branches stay whatever the answer.
+
+## Added 2026-10-24 10:52 UTC (lead)
+| `lane/android-tso-wip` | 6701ef62 | android-tso #4's scratch branch (same commit as lane/android-tso at the time, 09:45); the lane tried to delete it and the container's git proxy refuses ref deletion | delete with the rest, on the owner's word |
