@@ -110,7 +110,8 @@ class MdmPolicyApplier(
 
         /**
          * Never suspended by MDM, whatever the policy or the phone's resolvers say: system UI, Settings, telephony and the
-         * common diallers, emergency and cell broadcast, the installer and permission controller, the AOSP launcher.
+         * common diallers, emergency and cell broadcast, the installer and permission controller, the AOSP launcher, the SIM
+         * toolkit (USSD, mobile money), the clock apps (alarms) and the WebView providers.
          */
         val ALWAYS_PROTECTED = setOf(
             "android", "com.android.systemui", "com.android.settings", "com.android.phone", "com.android.server.telecom",
@@ -119,6 +120,8 @@ class MdmPolicyApplier(
             "com.google.android.apps.safetyhub", "com.android.cellbroadcastreceiver", "com.google.android.cellbroadcastreceiver",
             "com.android.permissioncontroller", "com.google.android.permissioncontroller", "com.android.packageinstaller",
             "com.google.android.packageinstaller", "com.android.launcher3", "com.android.inputmethod.latin",
+            "com.android.stk", "com.android.deskclock", "com.google.android.deskclock", "com.hihonor.deskclock", "com.huawei.deskclock",
+            "com.google.android.webview", "com.android.webview",
         )
 
         fun isProtected(pkg: String): Boolean = pkg in ALWAYS_PROTECTED || pkg.startsWith(ARON_PREFIX)

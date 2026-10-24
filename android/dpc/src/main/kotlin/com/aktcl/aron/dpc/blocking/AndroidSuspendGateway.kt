@@ -7,10 +7,12 @@ import android.content.Intent
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import android.net.Uri
+import android.provider.AlarmClock
 import android.provider.Settings
 import android.provider.Telephony
 import android.telecom.TelecomManager
 import android.view.inputmethod.InputMethodManager
+import android.webkit.WebView
 import com.aktcl.aron.dpc.AronDeviceAdminReceiver
 
 class AndroidSuspendGateway(context: Context) : SuspendGateway {
@@ -51,7 +53,10 @@ class AndroidSuspendGateway(context: Context) : SuspendGateway {
         out += handlers(Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS))
         Telephony.Sms.getDefaultSmsPackage(app)?.let { out += it }
         app.getSystemService(InputMethodManager::class.java)?.enabledInputMethodList?.forEach { out += it.packageName }
-        check(out.isNotEmpty()) { "no protected package resolved" }
+        // Alarms and timers (a hidden alarm notification is a missed alarm), and the WebView provider other apps render with.
+        out += handlers(Intent(AlarmClock.ACTION_SHOW_ALARMS))
+        out += handlers(Intent(AlarmClock.ACTION_SET_TIMER))
+        WebView.getCurrentWebViewPackage()?.packageName?.let { out += it }
         return out
     }
 }

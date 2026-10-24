@@ -11,7 +11,8 @@ again. You set it in the portal: **Admin > MDM > Policies > (policy) > Work-hour
 network on the phone once the policy has arrived: the phone keeps the rule and the schedule itself.
 
 What a rep sees: blocked icons turn grey; tapping one shows Android's "App paused by your IT admin" sheet. The ARON
-app, the phone dialler (and emergency calls), Settings, the keyboard and the home screen always work.
+app, the phone dialler (and emergency calls), Messages, Settings, the keyboard, the clock (alarms), the SIM toolkit and
+the home screen always work.
 
 A phone that is **not** device owner cannot be locked like this (Android allows app suspension only to the device
 owner or a profile owner). The policy is then stored but does nothing, and the portal's device row says
@@ -36,7 +37,11 @@ How the phone applies the allow-list (the DPC, `android/dpc/.../mdm`):
    (battery budget, `NoPollingLintTest`), so Android may deliver it up to about 10 minutes late while the phone is in
    use, and when the screen comes on if the phone was asleep. Every app start re-checks as well. `grace_min` gives reps
    the first minutes of the window; plan the end time with the 10 minutes in mind.
-4. It records what it suspended **before** suspending (write-ahead), so a crash can never strand an app suspended.
+4. It records what it suspended **before** suspending (write-ahead), so a crash leaves every suspended app on its list
+   and the next evaluation releases it; a release Android refuses is retried at every evaluation (tested with a fake
+   device policy manager; not yet proven on the Honor).
+5. A check-in or check-out re-runs the allow-list at once, so a check-out inside working hours does not open the apps
+   the allow-list still blocks.
 
 ## 3. Make the Honor a device owner
 
@@ -88,8 +93,9 @@ To find a package id: on the laptop `> adb shell pm list packages | findstr -i w
 
 - **Never suspended, whatever the policy says:** the ARON apps (`com.aktcl.aron.sr`, `.amo`, `.tso`), the default
   dialler and every app that answers "call" or "dial", the default SMS app, the home screen (launcher), the active and
-  enabled keyboards, Settings, System UI, the package installer and permission controller, emergency apps, and the
-  policy's own `allowed_packages`. The phone computes this list itself on every evaluation; no policy can remove an
+  enabled keyboards, Settings, System UI, the package installer and permission controller, emergency apps, the clock
+  apps (alarms and timers), the SIM toolkit (USSD, mobile money), the WebView provider, and the policy's own
+  `allowed_packages`. The phone computes this list itself whenever something is to be suspended; no policy can remove an
   entry from it, and the server also refuses a policy that would explicitly block an ARON app or a dialler.
 - **Emergency calls** always work: the dialler is protected, and Android allows emergency calls from the lock screen in
   any case.
@@ -118,8 +124,9 @@ Run on the enrolled Honor (section 3) with the dev build named in the morning re
 3. Dial **999** from the Phone app and hang up before it connects: the dialler opens and dials (do not complete the call).
 4. Airplane mode on, kill ARON SR, reboot: after unlock the same apps are still suspended.
 5. At the end time (up to about 10 minutes later, or at once after closing ARON SR from Recents and reopening it): every app opens again (`suspended=false`).
-6. Check-in blocking still works: check in during a window, check out after it ends; Facebook stays blocked until the
-   check-out (the two rules do not release each other's apps).
+6. Check-in blocking still works: check in during a window and **check out while the window is still on**: Facebook
+   stays blocked until the window ends (the allow-list re-asserts at once). Then check in after the window: Facebook is
+   blocked until the check-out.
 7. Toggle the allow-list off during a window and save: the apps open again after the command is acked.
 
 Pass = 2 to 7 as written. Report the times and any app that Android refused (`failed` in the device row).

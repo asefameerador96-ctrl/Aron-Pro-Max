@@ -57,7 +57,13 @@ Validation the server applies (400 `ERR_VALIDATION`, pointer in brackets): packa
 (`/work_hours_allowlist/packages[/i]`), at most 50; `mode` (`/schedule/mode`); `days` required for `window`, empty for
 `calendar` (`/schedule/days`); `start`/`end` syntax, end after start (`/schedule/end`); `grace_min` 0..30 and below the
 span (`/grace_min`). Also new from this slice: a block window's `packages` may not name an ARON app
-(`com.aktcl.aron.*`) or a known dialler/telephony/Settings/System UI package (`/block_windows/{i}/packages`).
+(`com.aktcl.aron.*`) or a known dialler/telephony/Settings/System UI package (`/block_windows/{i}/packages`). This
+tightens 1.8 validation: a policy stored before it with such a window is refused on its next save until the window is
+edited (the phone never suspended those packages anyway). Description text for `MdmBlockWindow.packages` in the batch:
+"may not name an ARON app or a dialler, telephony, Settings or System UI package".
+
+Semantics to state in the descriptions: `PUT` replaces the whole policy, so a writer that leaves the member out removes
+the allow-list (the portal always sends it once a policy has one). Working hours end at 23:59 at the latest (no 24:00).
 
 oasdiff: two optional request and response members and two new schemas: non-breaking. Mirrors: `web/src/contract/openapi.d.ts`
 (regenerate; then drop the local `MdmWorkHoursAllowlist`/`MdmPolicyFull` types in `web/src/lib/admin/mdm.ts` and the

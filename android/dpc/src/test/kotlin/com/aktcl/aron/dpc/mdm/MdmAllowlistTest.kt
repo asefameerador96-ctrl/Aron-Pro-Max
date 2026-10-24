@@ -196,4 +196,29 @@ class MdmAllowlistTest {
         // a policy from before the allow-list still decodes (absent member)
         assertEquals(null, Json { ignoreUnknownKeys = true }.decodeFromString(MdmPolicyDoc.serializer(), """{"allowed_packages":[]}""").workHoursAllowlist)
     }
+
+    @Test fun aCheckOutInsideTheWindowKeepsTheAllowListBlock() {
+        val dir = Files.createTempDirectory("al").toFile()
+        val dpm = FakeDpm()
+        val now = ms("2026-10-07T05:00:00Z") // Wednesday 11:00, inside the window
+        val ps = com.aktcl.aron.dpc.policy.PolicyStore(dir)
+        val dop = com.aktcl.aron.dpc.DeviceOwnerPolicy(ps, com.aktcl.aron.dpc.policy.PolicyApplier(com.aktcl.aron.dpc.policy.FakeGateway()), com.aktcl.aron.dpc.blocking.BlockingStore(dir), dpm, { now }, { true })
+        // check-in blocking also holds Facebook and YouTube (the default block list of the fixture policy)
+        dop.receive(com.aktcl.aron.dpc.policy.policyFixture())
+        val mdm = MdmPolicyApplier(dpm, Kiosk(), MdmPolicyStore(dir).also { it.save(1, 1, MdmPolicyDoc(workHoursAllowlist = window)) }, dir, { now }, { ps.load() },
+            { com.aktcl.aron.dpc.blocking.BlockingStore(dir).load().suspended.toSet() })
+        var hooks = 0
+        dop.mdmHook = { hooks++; mdm.evaluate() }
+        dop.onCheckInCommitted()
+        assertTrue("com.facebook.katana" in dpm.suspended)
+        dop.onCheckOutCommitted()
+        assertTrue(hooks >= 2)
+        assertEquals(blockedInWindow, dpm.suspended.toSet()) // the allow-list still wants Facebook suspended
+    }
+
+    @Test fun theAlarmDelayComesFromTrustedTimeAndIsNeverShorterThanAMinute() {
+        assertEquals(30 * 60_000L, MdmAlarm.delayMs(1_000_000L + 30 * 60_000L, 1_000_000L))
+        assertEquals(MdmAlarm.MIN_DELAY_MS, MdmAlarm.delayMs(1_000_000L, 1_000_000L)) // an edge already reached never loops
+        assertEquals(MdmAlarm.MIN_DELAY_MS, MdmAlarm.delayMs(0L, 1_000_000L))
+    }
 }

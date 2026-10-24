@@ -77,10 +77,14 @@ class DeviceOwnerPolicy(
     }
 
     /** Call when the check-in `attendance_event` has committed. */
-    fun onCheckInCommitted(): BlockingOutcome = synchronized(this) { blocking.onCheckIn().also(onBlockingChange) }
+    fun onCheckInCommitted(): BlockingOutcome = synchronized(this) { blocking.onCheckIn().also(onBlockingChange).also { runCatching { mdmHook?.invoke() } } }
 
     /** Call when the check-out `attendance_event` has committed. */
-    fun onCheckOutCommitted(): BlockingOutcome = synchronized(this) { blocking.onCheckOut().also(onBlockingChange) }
+    fun onCheckOutCommitted(): BlockingOutcome = synchronized(this) {
+        // The check-out releases every app the attendance engine held, including ones the MDM rules (allow-list, block
+        // windows) still want suspended; the MDM pass right after re-asserts those, so a check-out never opens them early.
+        blocking.onCheckOut().also(onBlockingChange).also { runCatching { mdmHook?.invoke() } }
+    }
 
     /** [onBlockingChange] runs after every evaluation (it re-arms the hard-end alarm, which a reboot clears); report only `changed` ones. */
     fun reevaluateBlocking(): BlockingOutcome = synchronized(this) { blocking.evaluate().also(onBlockingChange).also { runCatching { mdmHook?.invoke() } } }
@@ -130,7 +134,7 @@ class DeviceOwnerPolicy(
                         { BlockingStore(dir).load().suspended.toSet() }, { created.workingDay(it) },
                     )
                     created.mdmApplier = mdm
-                    created.mdmHook = { com.aktcl.aron.dpc.mdm.MdmAlarm.schedule(app, mdm.evaluate().nextBoundaryMs) }
+                    created.mdmHook = { com.aktcl.aron.dpc.mdm.MdmAlarm.schedule(app, mdm.evaluate().nextBoundaryMs, created.trustedNow()) }
                     created.also { instance = it }
                 }
             }
