@@ -261,6 +261,33 @@ class OwnerDirectiveV0087Test {
     }
 
     @Test
+    fun v0112SyncRejectedAcceptsEveryContractOutcomeCode() = db.connect().use { c ->
+        // RecordOutcomeCode of contract 1.8 (contract/openapi.yaml), in its order; price_invalid is new in 1.8.
+        val contract = listOf(
+            "scope_stale", "config_version_unknown", "parent_missing", "outlet_pending_approval", "price_list_unknown",
+            "schema_invalid", "unknown_record_type", "unknown_sku", "unknown_outlet", "unknown_route", "arithmetic_mismatch",
+            "memo_no_invalid", "memo_no_duplicate", "edit_not_allowed", "chain_too_deep", "voided_by_admin", "content_duplicate",
+            "lines_exceed_max", "qty_invalid", "price_invalid", "attendance_duplicate", "checkout_too_early", "server_error",
+            "payload_conflict", "business_date_out_of_window", "scope_out_of_reach", "no_assignment_on_date",
+            "device_integrity_failed", "device_not_enrolled", "user_disabled", "device_revoked", "app_version_blocked",
+            "after_month_close", "unknown_gift", "insufficient_points", "gift_photo_exists", "programme_inactive",
+        )
+        assertEquals(37, contract.size)
+        c.tx {
+            fun reject(code: String) = exec(
+                "INSERT INTO app.sync_rejected (client_uuid, record_type, code, retryable, payload_sha256, payload, user_id) " +
+                    "VALUES (gen_random_uuid(), 'memo', '$code', false, sha256(gen_random_uuid()::text::bytea), '{}', ${user("sr1001")})",
+            )
+            (contract + "retry_exhausted").forEach { reject(it) }
+            assertEquals("1", scalar("SELECT count(*) FROM app.sync_rejected WHERE code = 'price_invalid'"))
+            assertEquals("23514", refused("INSERT INTO app.sync_rejected (client_uuid, record_type, code, retryable, payload_sha256, payload, user_id) " +
+                "VALUES (gen_random_uuid(), 'memo', 'no_such_code', false, sha256('x'::bytea), '{}', ${user("sr1001")})"))
+        }
+        // V0113 validated the constraint.
+        assertEquals("true", c.scalar("SELECT convalidated::text FROM pg_constraint WHERE conname = 'sync_rejected_code_check' AND conrelid = 'app.sync_rejected'::regclass"))
+    }
+
+    @Test
     fun v0089ModuleGrantsHoldFifteenModules() = db.connect().use { c ->
         // The seeded admin holds w on every module (seed 01, as V0089 does for admins present when it runs).
         assertEquals("15|w", c.scalar("SELECT count(*) || '|' || string_agg(DISTINCT access, ',') FROM app.user_module_grant WHERE user_id = ${user("admin1001")}"))
