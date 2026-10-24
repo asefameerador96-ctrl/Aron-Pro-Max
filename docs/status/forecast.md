@@ -235,3 +235,6 @@ green run of the exact sha). Usage stays `allowed` on the five-hour window.
 
 ## Update 2026-10-24 14:48 UTC (lead)
 Train 30 (P0 print root-cause fix, android-tso state coverage, db V0112/V0113) is on INT with CI green and the dev build at ea44112e; the deploy and smoke are being confirmed. Train 31 (lead CI-cost branch + android-print docs) goes right after. backend-core's flagged-memos endpoint (row 3) and web-admin's slice are both in their final CI before candidate lines, so trains 32–33 are expected this evening. backend-core #16 and web-admin #7 both hand over after their current slice (above 450k). Owner-side: the build 1546 printer test and the pack-pictures laptop step are the two open hands-on items.
+
+## Update 2026-10-24 16:49 UTC (lead)
+Trains 30 and 31 landed this afternoon (P0 print root-cause fix in signed build 1546; db V0112/V0113; CI cost trims). Train 32 (flagged-memos endpoint + page, lead rulings, db handover) is with the integrator and should be on dev by about 17:40, which completes the memo-flags chain end to end; web-admin #8 then checks the page against the real endpoint and backend-core #17 fixes dashboards for house-scoped and route-only TSOs (D-DASH-TSO-HOUSE-SCOPE-01). Owner-side items unchanged: the printer test on build 1546 and the pack-pictures laptop step; the day's result depends on neither.
