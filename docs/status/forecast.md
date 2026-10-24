@@ -220,3 +220,6 @@ green run of the exact sha). Usage stays `allowed` on the five-hour window.
 
 ## Update 2026-10-24 08:49 UTC (lead)
 - Train 27 (backend-core smoke/zero-price server rule + android-tso print guards/X3/O5 + lead docs) pushed 08:34; CI, then the deploy with the slice smoke, expected green by about 09:25 (signed APK 1515). Train 28 (android-tso docs + feature-outlet controls, lead docs) about 10:30. Contract 1.8 batch head today (lead sub-lane), checked and then a train of its own; db V0111 dw.v_memo_flags rides the next train after it is green; backend-core's flagged-memos endpoint and web-admin's page follow the batch. Evening report 18:30. No slip.
+
+## Update 2026-10-24 10:01 UTC (lead)
+- Train 27 landed 09:05 (deploy green, slice smoke PASSED, signed APK 1515 = owner's device-check build). Train 28 (android-tso parity slices, backend-core zero-price tests, lead docs, db V0111 dw.v_memo_flags) GO about 10:15, landed about 11:05 (deploy with migration). Train 29 = contract 1.8 batch after lead checks and an Opus review, about 12:00; then backend-core's flagged-memos endpoint and web-admin's page (trains 30+ this afternoon). Evening report 18:30. No slip.
