@@ -9,7 +9,7 @@ import org.junit.jupiter.api.TestMethodOrder
 import kotlin.test.Test
 
 /** The memos, upload and server count the two scenarios below share: three memos on the first outlets of the route, a credit memo with a partial collection, a void-free day. */
-abstract class DataFlowTraceScenario(day: String) : DataFlowTraceSupport(day) {
+abstract class DataFlowTraceScenario(dayRoute: String) : DataFlowTraceSupport(dayRoute) {
     protected lateinit var recs: List<ObjectNode>
     protected var collected = 0L
 
@@ -63,14 +63,14 @@ abstract class DataFlowTraceScenario(day: String) : DataFlowTraceSupport(day) {
 }
 
 /**
- * A cover day (docs/24 s4.9): sr1001 is away on Monday 2026-10-26, a stand-in SR (qacover1001, its own phone) holds BAN-SR-11 as a `cover` assignment
+ * A cover day (docs/24 s4.9): sr1001 is away on a day of BAN-SR-11 (the first the seed plans, D-TEST-DATE-PIN-01), a stand-in SR (qacover1001, its own phone) holds BAN-SR-11 as a `cover` assignment
  * for that date only. The bundle plans the route for the stand-in, the route-day records the stand-in as the acting user, his sales and check-in
  * belong to him and to the route, and the Successful Login (D-REPORTS-LOGIN-01: logged in AND downloaded AND checked in) counts the route
  * once, through the stand-in's check-in; sr1001 has no record that day.
  */
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 @TestMethodOrder(MethodOrderer.OrderAnnotation::class)
-class DataFlowTraceCoverDayTest : DataFlowTraceScenario("2026-10-26") {
+class DataFlowTraceCoverDayTest : DataFlowTraceScenario("BAN-SR-11") {
     override val traceName get() = "data-flow-trace-cover"
     private val phone = "00000000-0000-4000-8000-0000000000c1"
     private var loginBefore = 0; private var targetRoutesBefore = 0
@@ -142,13 +142,13 @@ class DataFlowTraceCoverDayTest : DataFlowTraceScenario("2026-10-26") {
 }
 
 /**
- * A selling day the calendar calls off (docs/24 s4.9, D-DASH-06): Tuesday 2026-10-27 is an emergency off day for the division of Gulshan (division scope), a
+ * A selling day the calendar calls off (docs/24 s4.9, D-DASH-06): the first day the seed plans GUL-SR-2 on (D-TEST-DATE-PIN-01) is an emergency off day for the division of Gulshan (division scope), a
  * day GUL-SR-2 would otherwise sell. The route is not due (planned false); sr1001 sells anyway, the sale is stored and the sales cards count it, but
  * CPR and Login/Submit leave the route out; the national working days ignore a division-scoped day and drop by one for a global holiday.
  */
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 @TestMethodOrder(MethodOrderer.OrderAnnotation::class)
-class DataFlowTraceHolidayTest : DataFlowTraceScenario("2026-10-27") {
+class DataFlowTraceHolidayTest : DataFlowTraceScenario("GUL-SR-2") {
     override val traceName get() = "data-flow-trace-holiday"
     private var wd0 = 0L
 
@@ -156,10 +156,11 @@ class DataFlowTraceHolidayTest : DataFlowTraceScenario("2026-10-27") {
     @Order(1)
     fun theRouteIsNotDueOnAnEmergencyOffDay() {
         h("1 Emergency off day $day (division of Gulshan): the route is not due")
-        wd0 = workingDays("2026-10")
+        wd0 = workingDays(day.take(7))
         db { hd -> hd.execute("INSERT INTO app.calendar_holiday (date, scope_type, scope_id, kind, selling_day, name_en, reason) SELECT DATE '$day', 'division', d.id, 'emergency_off', false, 'QA emergency off', 'qa trace' FROM app.division d WHERE d.code = 'D-DHK'") }
         val mask = sqlLong("SELECT visit_days_mask FROM app.route WHERE code = 'GUL-SR-2'")
-        hop("GUL-SR-2 is a Tuesday route (mask bit 3)", "bit" to ((mask shr 3) and 1L), "expected" to 1L)
+        val bit = com.aktcl.aron.backend.platform.DayPlan.bit(java.time.LocalDate.parse(day).dayOfWeek)
+        hop("GUL-SR-2 visits on the day's weekday (mask bit $bit)", "bit" to ((mask shr bit) and 1L), "expected" to 1L)
         prepareSrDay(routeCode = "GUL-SR-2")
         hop("the bundle does not plan any route today", "planned" to bundle.path("routes").filter { it.path("planned_today").asBoolean() }.map { it.path("route").path("code").asText() }, "expected" to emptyList<String>())
         hop("route-day planned flag", "planned" to sql("SELECT planned::text FROM app.route_day WHERE route_id = $gulRouteId AND business_date = DATE '$day'"), "expected" to "false")
@@ -196,7 +197,16 @@ class DataFlowTraceHolidayTest : DataFlowTraceScenario("2026-10-27") {
         hop("Login/Submit: the unplanned route is no target and no Successful Login", "target/login" to "${ls.path("target_routes").asInt()}/${ls.path("successful_login").asInt()}", "dw oracle" to "${sqlLong("SELECT coalesce(count(*), 0) FROM dw.agg_daily_route a JOIN dw.dim_geo g ON g.route_id = a.route_id WHERE a.business_date = DATE '$day' AND a.planned AND NOT a.exception_approved AND g.route_class = 'normal' AND g.route_kind = 'sr'")}/0")
         val wdDivision = jsonOf(postJson("/v1/dashboards/national/sales", sup, """{"date":"$day"}""")).path("working_days").asLong()
         hop("a division-scoped off day does not change the national working days (D-DASH-06)", "working days" to wdDivision, "before the declaration" to wd0)
-        db { hd -> hd.execute("INSERT INTO app.calendar_holiday (date, scope_type, scope_id, kind, selling_day, name_en, reason) VALUES (DATE '2026-10-28', 'global', 0, 'holiday', false, 'QA holiday', 'qa trace')") }
+        // Another working day of the same month (not the weekend, no global entry yet), from the calendar, not a constant.
+        val other = sql(
+            """
+            SELECT g.d::date::text FROM generate_series(date_trunc('month', DATE '$day'), date_trunc('month', DATE '$day') + interval '1 month - 1 day', interval '1 day') g(d)
+             WHERE g.d::date <> DATE '$day' AND extract(isodow FROM g.d) <> 5
+               AND NOT EXISTS (SELECT 1 FROM app.calendar_holiday c WHERE c.date = g.d::date AND c.scope_type = 'global' AND c.revoked_at IS NULL)
+             ORDER BY 1 LIMIT 1
+            """.trimIndent(),
+        )!!
+        db { hd -> hd.execute("INSERT INTO app.calendar_holiday (date, scope_type, scope_id, kind, selling_day, name_en, reason) VALUES (DATE '$other', 'global', 0, 'holiday', false, 'QA holiday', 'qa trace')") }
         val wdGlobal = jsonOf(postJson("/v1/dashboards/national/sales", sup, """{"date":"$day"}""")).path("working_days").asLong()
         hop("a global holiday lowers the working days of the month by one", "working days" to wdGlobal, "expected" to wd0 - 1)
     }
