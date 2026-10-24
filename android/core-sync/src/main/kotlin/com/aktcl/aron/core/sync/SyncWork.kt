@@ -180,7 +180,12 @@ class SessionSyncRunner(
 
 /**
  * WorkManager scheduling of uploads (docs/24 s4.7, s5.4; F-SYS-011). Every job needs a network (`CONNECTED`); nothing polls:
- * - a save asks for one job 5 s later (`cfg.sync.debounce_s`; a burst of saves shares it, AC-14);
+ * - a save asks for one job 5 s later (`cfg.sync.debounce_s`; a burst of saves shares it, AC-14) under the pending name
+ *   ([pendingName], D-NIGHT-SYNC-01): while rows wait there is exactly one such job, so offline it waits only on the
+ *   network and WorkManager starts it the moment a network returns; a backoff after failed sends lives on the main and
+ *   retry names and never swallows a new save's debounce (it used to: a save could wait out a 300 s backoff online);
+ * - the network coming back or validating, app start and the app coming to the front ([ConnectivityFlush]) ask for the
+ *   same pending job without the debounce (KEEP: one job, whoever asks);
  * - Sales Submit and the Sync button run at once (expedited);
  * - check-out and Sales Submit go at once (no debounce), except in the minutes just after the 17:00
  *   gate opens ([CheckoutGate], F-SYS-079, doc 17 T7, D-505): then they wait a random 0 to 90 s
@@ -228,15 +233,17 @@ class WorkManagerSyncScheduler(
             // Off the wave, check-out goes at once under the "now" name, so a backoff queued on the main name cannot hold it.
             trigger == SyncTrigger.CHECKOUT ->
                 enqueue(userId, trigger, nowName(userId), ExistingWorkPolicy.KEEP, held(userId, 0), expedited = false, failures = 0)
+            // D-NIGHT-SYNC-01: the pending name, never the main one, where a backoff may be waiting.
             trigger == SyncTrigger.WRITE_DEBOUNCE ->
-                enqueue(userId, trigger, mainName(userId), ExistingWorkPolicy.KEEP, held(userId, debounceS * 1000), expedited = false, failures = 0)
+                enqueue(userId, trigger, pendingName(userId), ExistingWorkPolicy.KEEP, held(userId, debounceS * 1000), expedited = false, failures = 0)
         }
         when (trigger) {
             SyncTrigger.DAY_SUBMIT, SyncTrigger.MANUAL, SyncTrigger.WRITE_DEBOUNCE, SyncTrigger.CHECKOUT -> Unit
-            // A new signal (network back, app in front) runs under its own name, so a long backoff queued after earlier
-            // failures cannot swallow it; the engine's per-user lock keeps runs from overlapping.
+            // A new signal (network back, app in front) asks for the pending job, so a long backoff queued after earlier
+            // failures cannot swallow it, and a debounce already waiting is kept (the run reads the whole outbox); the
+            // engine's per-user lock keeps runs from overlapping.
             SyncTrigger.CONNECTIVITY, SyncTrigger.FOREGROUND ->
-                enqueue(userId, trigger, nowName(userId), ExistingWorkPolicy.KEEP, held(userId, 0), expedited = false, failures = 0)
+                enqueue(userId, trigger, pendingName(userId), ExistingWorkPolicy.KEEP, held(userId, 0), expedited = false, failures = 0)
             // F-SYS-047: after a server restore, spread over 0 to cfg.sync.resync_jitter_s so the fleet does not arrive at once.
             SyncTrigger.RESYNC -> {
                 val jitterMs = random.nextLong(0, runCatching { resyncJitterS() }.getOrDefault(900).coerceIn(0, 3_600) * 1000L + 1)
@@ -260,8 +267,8 @@ class WorkManagerSyncScheduler(
         }
         ensurePeriodic(userId)
         val next = if (ranAs == retryName(userId)) mainName(userId) else retryName(userId)
-        fun follow(delayMs: Long, expedited: Boolean, failed: Int) =
-            enqueue(userId, SyncTrigger.WORKMANAGER_CONNECTIVITY, next, ExistingWorkPolicy.KEEP, delayMs, expedited, failed)
+        fun follow(delayMs: Long, expedited: Boolean, failed: Int, policy: ExistingWorkPolicy = ExistingWorkPolicy.KEEP) =
+            enqueue(userId, SyncTrigger.WORKMANAGER_CONNECTIVITY, next, policy, delayMs, expedited, failed)
         when (report.stop) {
             SyncStop.OFFLINE, SyncStop.FAILED -> {
                 val failed = failures + 1
@@ -275,9 +282,11 @@ class WorkManagerSyncScheduler(
                 hold.set(userId, elapsedMs() + delay)
                 follow(delay, expedited = false, failures)
             }
-            SyncStop.RUN_LIMIT -> follow(held(userId, 0), expedited = false, 0)
+            // The server answered in full, so a backoff still waiting on the other name is stale: it is replaced, never
+            // kept (D-NIGHT-SYNC-01 checker: a save swallowed while the pending job ran must not wait out an old 300 s backoff).
+            SyncStop.RUN_LIMIT -> follow(held(userId, 0), expedited = false, 0, ExistingWorkPolicy.REPLACE)
             // Rows were saved while the job ran (its KEEP swallowed their request): one more debounced job.
-            SyncStop.DRAINED -> follow(held(userId, debounceS * 1000), expedited = false, 0)
+            SyncStop.DRAINED -> follow(held(userId, debounceS * 1000), expedited = false, 0, ExistingWorkPolicy.REPLACE)
             // Nothing a job can fix now (sign-in, device state, update): the periodic job keeps the rows in view.
             SyncStop.AUTH_REQUIRED, SyncStop.BLOCKED, SyncStop.UPDATE_REQUIRED, SyncStop.NO_DEVICE -> Unit
         }
@@ -326,6 +335,9 @@ class WorkManagerSyncScheduler(
         const val MAX_HOLD_MS = 1_080_000L
 
         fun mainName(userId: Long) = "aron-sync-u$userId"
+        /** D-NIGHT-SYNC-01: the one job that waits for a network while rows wait (saves, reconnect, app start, front). */
+        fun pendingName(userId: Long) = "aron-sync-pending-u$userId"
+        /** Check-out off the 17:00 wave: at once, never behind a debounce or a backoff. */
         fun nowName(userId: Long) = "aron-sync-now-u$userId"
         /** F-SYS-079: a check-out or Sales Submit upload jittered at the 17:00 gate. */
         fun gateName(userId: Long) = "aron-sync-gate-u$userId"
