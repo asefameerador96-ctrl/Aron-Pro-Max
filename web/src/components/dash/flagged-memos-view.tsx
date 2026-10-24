@@ -14,6 +14,8 @@ import { KNOWN_FLAGS, MAX_RANGE_DAYS, type FlaggedMemo, type FlaggedMemoPage, ty
 import { formatBusinessDate, formatDateTime, problemMessage, t, type Locale, type MessageKey } from "@/lib/i18n";
 
 const STATUS_TONE: Record<FlaggedMemo["status"], ChipTone> = { active: "warning", superseded: "quiet", void: "offline" };
+/** The server maps its stored status to these three (FlaggedMemos.kt); a value it may add later is shown as given, never a missing key. */
+const statusLabel = (locale: Locale, status: string): string => (status in STATUS_TONE ? t(locale, `flagged.status.${status}` as MessageKey) : status);
 
 export interface FlaggedMemosViewProps {
   locale: Locale;
@@ -38,7 +40,7 @@ export function FlaggedMemosView({ locale, today, query, scopeFilter, result, fi
   const columns: Column<FlaggedMemo>[] = [
     { key: "memo", header: t(locale, "flagged.col.memo"), render: (m) => <span className="tabular-nums" data-testid="flagged-memo-no">{m.memo_no}</span> },
     { key: "date", header: t(locale, "flagged.col.date"), render: (m) => formatBusinessDate(locale, m.business_date) },
-    { key: "status", header: t(locale, "flagged.col.status"), render: (m) => <StatusChip tone={STATUS_TONE[m.status]} data-status={m.status}>{t(locale, `flagged.status.${m.status}` as MessageKey)}</StatusChip> },
+    { key: "status", header: t(locale, "flagged.col.status"), render: (m) => <StatusChip tone={STATUS_TONE[m.status] ?? "quiet"} data-status={m.status}>{statusLabel(locale, m.status)}</StatusChip> },
     { key: "user", header: t(locale, "flagged.col.user"), render: (m) => `${m.user_code} · ${m.user_name}` },
     { key: "outlet", header: t(locale, "flagged.col.outlet"), render: (m) => m.outlet_name },
     { key: "route", header: t(locale, "flagged.col.route"), render: (m) => (m.route_id === null ? <span data-testid="flagged-no-route">{t(locale, "flagged.no_route")}</span> : n(locale, m.route_id)) },
@@ -102,7 +104,7 @@ export function FlaggedMemosView({ locale, today, query, scopeFilter, result, fi
           {query.rangeError === "order" ? t(locale, "flagged.range.order") : t(locale, "flagged.range.too_long", { days: n(locale, MAX_RANGE_DAYS) })}
         </Banner>
       ) : result === null ? null : !result.ok ? (
-        <Banner tone="danger" role="alert" testId="flagged-error" action={result.status === 403 ? undefined : <RetryButton msg={t(locale, "table.retry")} />}>
+        <Banner tone="danger" role="alert" testId="flagged-error" action={result.status === 403 || result.status === 400 ? undefined : <RetryButton msg={t(locale, "table.retry")} />}>
           {problemMessage(locale, result.problem.code)}
         </Banner>
       ) : result.data.items.length === 0 ? (

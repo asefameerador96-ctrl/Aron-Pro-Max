@@ -1,5 +1,20 @@
 # Web-admin lane status
 
+## SESSION 8, ROW 1: FLAGGED MEMOS vs THE REAL SERVER (D-WEB-FLAGGED-MEMOS-02, 2026-10-24)
+Read `FlaggedMemos.kt`, `FlaggedMemosApiTest.kt` and the `OpsApi.kt` route field by field against `mock/flagged.ts` and `lib/dash/flagged-memos.ts`. Fields, status mapping, nullable route, flag strings, gross, defaults and the 92-day cap already matched; the mock's 400 and 403 shapes, cursor and limit rules and tie order did not (fixed, see the decision). Page: unknown status shown as given, no Retry on 400. Tests: `tests/flagged-memos.test.tsx` (26) and `e2e/flagged-memos.spec.ts` (9) green; full vitest 1414 passed.
+
+### OWNER DEVICE-LAB ROW W-FLAG-01 (real API; the owner runs it with their own login, lanes hold no dev credentials)
+Open `/flagged-memos` on dev for each login and tick:
+1. **SUPERADMIN** (or national): rows list newest stored first; each row shows memo no, date, a status chip, `user_code · name` (as in the app user list), outlet, route number or "no route", gross in taka, flag chips, stored time. A voided memo is greyed; only an admin data void shows a void time (a memo voided by its user shows the status alone).
+2. **TSO** (own territory) and **DMO** (own division): only rows of their reach. Pick a territory or zone outside the reach in the URL (`?territory=<other id>`): the banner says "outside your scope" and has **no Retry button**.
+3. **BRAND** and **SUPPORT**: the forbidden page, no menu entry. An **ADMIN holding only a module other than reports** (for example users:r): the page opens (role gate) and the banner is the forbidden text with no Retry; the same ADMIN with reports:r sees rows.
+4. **An empty day**: pick a past day with no flagged memo (or a flag no memo carries, e.g. `?flag=nothing_yet`): the "nothing flagged" empty state, no table, no paging bar.
+5. **Paging past 50**: choose a range with more than 50 flagged memos (widen `from` toward 92 days back, or use the day with the most): page 1 shows 50 rows and Next; Next shows the following rows with no repeat or gap (compare memo numbers across pages); First page returns to the top; the last page shows the end marker and no Next.
+6. **Range rules**: from after to, or a range over 92 days: the page explains it and sends nothing. Exactly 92 days loads.
+7. **A flag value the page does not know** (if one appears): a chip with the raw text, no crash.
+8. **Bangla**: switch to Bangla; digits and labels are Bangla, no overflow at phone width.
+Record pass or the memo no and role of any failure.
+
 ## SESSION 7, ROW 3: FLAGGED MEMOS PAGE (D-WEB-FLAGGED-MEMOS-01, 2026-10-24)
 Built on INT 3289eecab (contract 1.8): `/flagged-memos` (menu entry, role gate, filters from/to/flag and wing to zone pickers, cursor paging, flags as chips, gross via `takaText`, empty/error/range states, Bangla first), mock `mock/flagged.ts` (voided, superseded, route-less, unknown-flag and 55 paging rows), `ScopeFilter` `levels` prop, `DataTable` `rowProps`. Tests: `tests/flagged-memos.test.tsx` (21: view states, query rules, role gate and menu, mock reads for scope, filter, paging, 403, 400) and `e2e/flagged-memos.spec.ts` (9: rows and chips, filter, empty, paging, range, role gate, Bangla 360, axe 1366 and 360). Local gate: eslint, tsc, vitest (1409), build, the new spec plus roles-routes, support-menu, module-grants green. The backend endpoint is not on dev yet: the page shows the error banner on a 404 until it is.
 

@@ -654,3 +654,32 @@
 ### 16:12 UTC — sweep: waiting on backend-core's candidate
 - backend-core #16 (Opus, ~485k) pushed 0a2b606d at 14:54 (a92a1071 price_invalid for zero-priced lines after V0112 + flagged-memos endpoint files + HANDOVER 16 -> 17); its own CI check is set for 16:32, the candidate line + READY TO RECYCLE follow. Lead pre-gate by git: base ea44112e (train 30), delta inside backend/analytics, backend/sync, backend/app tests, docs/24, docs/status/backend-core.md, DECISIONS; no file overlap with web-admin's head. No nudge: the lane is on plan.
 - Train 32 ready except this head: web-admin b4307849 checked, db f8f39a50 checked (LAST), lead docs tip merged with INT 4319d1b0. Sweep re-armed 17:20 (the 16:46 lane check runs in between).
+
+### 16:47 UTC — GO train 32 (backend-core 0a2b606d, web-admin b4307849, lead docs e57f88de, db f8f39a50 LAST)
+- backend-core #16 candidate 0a2b606d checked (ci #1554 green on the sha, 8 jobs ran, Infra skipped with no infra file; Opus checker PASS 0 blocking; git gate passed earlier; DECISIONS +2). READY TO RECYCLE → archived at ~511k. Its three checker notes became D-DASH-TSO-HOUSE-SCOPE-01 (lead docs head in this train).
+- GO sent 16:47 to integrator 20; expected DECISIONS 57; deploy runs (new endpoint; smoke must PASS). After the landing: web-admin #8 (Sonnet: Flagged memos page against the real endpoint on dev) and backend-core #17 (Opus: house/route-only TSO dashboards) are created. Sweep re-armed 17:40.
+
+### 16:49 UTC — lane check (scheduled)
+- INT 4319d1b0 (train 31); train 32 GO sent 16:47 (backend-core 0a2b606d, web-admin b4307849, lead docs e57f88de, db f8f39a50); integrator 20 push expected by 17:17. Health build 4319d1b0. Branches ahead of INT: the four train 32 heads, lane/lead-docs-1022 (this), and the classified refs; nothing unclassified. docs/requests new since the last check: the lead's backend-core-17 house-scope request and the 1.9 queue row 3 (both ride train 32; owning lanes are created after it lands).
+- Lanes: integrator 20 (Sonnet) working the GO; android-print #5 (Opus, ~325k) idle by design until the owner's build 1546 result. Archived since the last check: web-admin #7 (~500k), db #10 (~448k), backend-core #16 (~511k), all with HANDOVERs; successors web-admin #8 and backend-core #17 are created when train 32 lands; db #11 and android-tso #6 on demand. All rate limits allowed. Owner rows J–S unchanged (no new owner message since 13:33).
+
+### 16:50 UTC — train 32 pushed and lead-verified by git
+- Integrator 20 pushed train 32 at 16:48 (one minute after the GO): INT 39ed8bc5d702545dcbe4ed6d75613a4674500c8c, ci 40113233284 (#1555, in progress). Lead git check: four heads + prev INT 4319d1b0 contained; delta = union + train row (34 = 34 files); DECISIONS 57 (+D-BC-FLAGGED-MEMOS-01, D-BC-ZERO-PRICE-04, D-WEB-FLAGGED-MEMOS-01, D-DASH-TSO-HOUSE-SCOPE-01), 0 markers, 0 lost, 0 duplicates; no generated file touched. Deploy follows by workflow_run; the sweep at 17:40 reads CI, deploy, smoke and health.
+- lane/android-print is two commits ahead of INT: both are plain INT merges by android-print #5 (ea44112e, 4319d1b0), no file delta; nothing to ride a train.
+
+### 17:30 UTC — train 32 LANDED; web-admin #8 and backend-core #17 created
+- Train 32 lead-verified: ci 40113233284 (#1555) green 17:09 (Web, backend, container jobs ran; Android/Infra skipped, no such files; no new signed APK, the owner's build stays 1546); deploy 40114802250 (#267) green 17:09–17:23, SR slice smoke PASSED (memo sr1001-261024-5972, duplicate re-upload acked, counts unchanged, tile 5 -> 6, void accepted), health build 39ed8bc5; the new GET /v1/dashboards/flagged-memos answers 401 without a token (deployed, auth-gated; the smoke does not call it). The memo-flags chain (D-FLAGS-SURFACE-01) is now on dev end to end: dw.v_memo_flags → contract 1.8 → endpoint → Flagged memos page.
+- Created 17:29: web-admin #8 session_015Sr5e7H3NZhFCcqHSEzueP (Sonnet) and backend-core #17 session_019LvkAakMBPCH91VxShXRPN (Opus); "train 32 landed" to android-print #5. Integrator 20 (~190k) holds for the next GO. Next trains: backend-core #17's house-scope slice and web-admin #8's reconciliation as they come; db #11 and android-tso #6 on demand. Sweep re-armed 18:30 (evening report).
+
+### 17:31 UTC — lanes up; route-only TSO ruling
+- backend-core #17 and web-admin #8 both reported up with INT merged at 17:29–17:30. backend-core #17 asked about route-only TSOs: zone aggregates would expose other SRs' routes in a shared zone, wider than the memo reach. Ruled (D-DASH-TSO-HOUSE-SCOPE-02): fail-closed, default node set = zones whose every route is the TSO's on the business date; partly held zones stay out; none → today's 403; route-keyed aggregates queued as the proper later fix. Lane continues; the house part was never in question.
+
+### 17:48 UTC — route-only TSO: ruling (a), house part only
+- backend-core #17's Opus checker blocked the route-only default: zone stamps are historical, so a current-membership test still leaks over past ranges; the exact alternative is a nine-table scan. Ruled D-DASH-TSO-HOUSE-SCOPE-03: route-only default stays 403 until route-keyed aggregates; the slice ships the house part (house zones from Reach, duplicate-house fold tested, route-only 403 pinned). Request file annotated.
+
+### 18:02 UTC — web-admin #8 candidate checked for train 33
+- web-admin #8 candidate 5b381c34 (reconciliation of the Flagged memos mock + page with FlaggedMemos.kt: limit 1..500 default 100, from/to parsing, whole-node reach 403, keyset cursor, unknown status shown as given, no Retry on 400/403; owner device-lab row W-FLAG-01; D-WEB-FLAGGED-MEMOS-02): lane run 40117123310 (#1557) green on the sha, all jobs ran; Sonnet checker 3 blocking findings fixed; git gate passed (base 39ed8bc5, 5 files in lane). Checked to integrator 20 for train 33; GO when backend-core #17's house slice is checked, or alone by ~18:45.
+- backend-core #17: house part being finished under D-DASH-TSO-HOUSE-SCOPE-03 (route-only stays 403); candidate expected shortly.
+
+### 18:33 UTC — evening sweep
+- Evening report written to docs/status/evening-2026-10-24.md (compact version posted in chat). backend-core #17 (~278k) is running the backend suite before its first push; web-admin #8's head 5b381c34 is checked; train 33 goes now with web-admin + lead docs (CI only), backend-core rides train 34 with its deploy. A one-shot morning-report trigger (06:30 UTC 2026-10-25) is created; the two-hourly lane check continues.
