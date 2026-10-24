@@ -100,8 +100,8 @@ private val LEVELS = mapOf(
 /** The default node of a caller with route assignments only; its zones depend on the routes, so they join the cache key. */
 private const val ROUTE_ONLY = "route_only"
 private fun routesKey(reach: Reach, node: Pair<String, Long>) = if (node.first == ROUTE_ONLY) reach.routeIds.sorted().joinToString(",") else ""
-/** [LEVELS] plus `house` (children: its zones), for the caller's default node only; an explicit `level=house` stays 400 (contract GeoLevelQuery). */
-private val DEFAULT_LEVELS = LEVELS + ("house" to Level("house_id", "house_name", "zone_id", "zone_name", "zone"))
+/** [LEVELS] plus `house` (children: its zones; resolved from the reach in nodeScope), for the caller's default node only; an explicit `level=house` stays 400 (contract GeoLevelQuery). */
+private val DEFAULT_LEVELS = LEVELS + ("house" to Level(null, null, "zone_id", "zone_name", "zone"))
 
 /**
  * GET /v1/dashboards/summary (F-API-014). Reads `dw` aggregates only (never the transaction log; the SKU master for report units), from the read replica
@@ -236,6 +236,13 @@ class DashboardService(
             return NodeScope(LEVELS.getValue("zone"), ZoneScope(false, zones), NodeRefDto("zone", zones.first(), null, name))
         }
         val lv = DEFAULT_LEVELS.getValue(node.first)
+        if (node.first == "house") {
+            // D-BC-DASH-HOUSE-01: the house's zones as the reach has them (`app.zone.house_id`; `dw.dim_geo` folds same-name houses
+            // into one). With other top nodes too these are the whole reach, as the multi-node default of [resolveScopedNode].
+            val top = reach.topNodes.first { it.type == "house" }
+            val zones = reach.zoneIds.toList().ifEmpty { throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "node is outside your reach") }
+            return NodeScope(lv, ZoneScope(false, zones), NodeRefDto("house", top.id, top.code, top.name))
+        }
         // Zones of the node, narrowed to the reach. A caller with several top nodes and no selector reads the whole reach (labelled by the first node).
         val nodeZones: List<Long> = if (lv.col == null || multi) emptyList() else
             h.createQuery("SELECT DISTINCT zone_id FROM dw.dim_geo WHERE ${lv.col} = :id").bind("id", node.second).mapTo(Long::class.java).list()

@@ -560,14 +560,15 @@ class ScopeLeakAcrossEndpointsTest {
 
     /**
      * A sibling house H-SIB under the seed's territory T-DHK-N with its own zone Z-SIB and one route planned today (so the
-     * territory's figures differ from H-MIR's), and three TSOs: qahousetso1001 scoped by the house H-MIR,
+     * territory's figures differ from H-MIR's); its name is H-MIR's in other case, so `dw.dim_geo` folds both houses into
+     * H-MIR (V0093 duplicates): the house TSO must still read its own house's zones only. Three TSOs: qahousetso1001 scoped by the house H-MIR,
      * qaroutetso1001 covering SIB-SR-D (every route of Z-SIB) and MIR-SR-D (one of the routes of Z-MIR), and
      * qapartialtso1001 covering MIR-SR-D only (part of one zone).
      */
     private fun seedTsoLevels(h: org.jdbi.v3.core.Handle) {
         h.execute(
             """
-            INSERT INTO app.house (code, name, territory_id) SELECT 'H-SIB', 'Sibling House', id FROM app.territory WHERE code = 'T-DHK-N';
+            INSERT INTO app.house (code, name, territory_id) SELECT 'H-SIB', 'mirpur distribution house', id FROM app.territory WHERE code = 'T-DHK-N';
             INSERT INTO app.zone (code, name, name_bn, territory_id, house_id, dep_name)
               SELECT 'Z-SIB', 'Sibling', 'সিবলিং', t.id, hs.id, 'Sibling DEP' FROM app.territory t, app.house hs WHERE t.code = 'T-DHK-N' AND hs.code = 'H-SIB';
             INSERT INTO app.route (code, name, display_label, zone_id, kind, visit_kind, visit_days_mask, sequence_no)
