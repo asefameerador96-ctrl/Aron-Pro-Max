@@ -19,10 +19,20 @@ interface DaySource {
     suspend fun alreadySubmitted(businessDate: String): Boolean
     /** True once the server acknowledged the day_submit record of this day. */
     suspend fun submitSettled(businessDate: String): Boolean
+    /** D-NIGHT-DAYCLOSE-01 (b): the rows of the phone's ack registry the server refused, holds or asked to retry. */
+    suspend fun rejectedRows(businessDate: String): List<RejectedRow> = emptyList()
 }
 
 /** Server totals of the last successful sync (null before the first sync); production reads `server_totals` of the sync response. */
-fun interface ServerCounts { suspend fun counts(businessDate: String): Map<String, Int>? }
+fun interface ServerCounts {
+    suspend fun counts(businessDate: String): Map<String, Int>?
+
+    /**
+     * ADAPTER, contract 1.9 queue row 4 (backend-core, later): this phone's own counts per record type for the date, from
+     * the per-device digest. Null until the server sends them; the compare rule then uses the login totals of [counts].
+     */
+    suspend fun thisDeviceCounts(businessDate: String): Map<String, Int>? = null
+}
 
 /** Queues the `day_submit` record as the LAST event of the day, with the device counts and dues (REQUEST: core `recordDaySubmit`). */
 fun interface DaySubmitWriter { suspend fun queue(businessDate: String, gate: SubmitGate, counts: List<CountRow>) }
@@ -33,6 +43,10 @@ data class SubmitUiState(
     val gate: SubmitGate = SubmitGate(false, emptyList(), null),
     val progress: SubmitProgress = SubmitProgress.Idle,
     val syncing: Boolean = false,
+    /** D-NIGHT-DAYCLOSE-01 (b): listed, shown whether or not a digest has run. */
+    val rejected: List<RejectedRow> = emptyList(),
+    /** A digest (server totals) has answered at least once for the date: before it, "Nothing to compare yet". */
+    val serverKnown: Boolean = false,
 )
 
 /**
@@ -82,13 +96,17 @@ class SalesSubmitViewModel(
         val d = businessDate()
         val device = source.deviceCounts(d)
         val srv = server.counts(d)
-        val counts = device.toSortedMap().map { (t, n) -> CountRow(t, n, srv?.get(t)) }
+        val mine = runCatching { server.thisDeviceCounts(d) }.getOrNull()
+        // Every type either side counts (a type only the server has shows device 0: information, never a mismatch).
+        val types = (device.keys + srv.orEmpty().keys).toSortedSet()
+        val counts = types.map { t -> CountRow(t, device[t] ?: 0, srv?.let { it[t] ?: 0 }, mine?.get(t)) }
+        val rejected = runCatching { source.rejectedRows(d) }.getOrDefault(emptyList())
         val submitted = source.alreadySubmitted(d)
         val settled = submitted && source.submitSettled(d)
         val prev = _state.value.progress
         val gate = SalesSubmitRules.gate(source.outboxStates(d), counts, source.dues(d), alreadySubmitted = submitted && prev == SubmitProgress.Idle)
         _state.value = _state.value.copy(
-            online = online(), counts = counts, gate = gate,
+            online = online(), counts = counts, gate = gate, rejected = rejected, serverKnown = srv != null,
             progress = when { settled -> SubmitProgress.Settled; submitted || prev == SubmitProgress.Queued -> SubmitProgress.Queued; else -> SubmitProgress.Idle },
         )
     }

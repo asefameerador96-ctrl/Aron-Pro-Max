@@ -7,7 +7,7 @@
     <string name="submit_status_offline">Offline</string>
     <string name="submit_last_contact">Last contact %1$s</string>
     <string name="submit_col_item">Item</string>
-    <string name="submit_col_device">Device</string>
+    <string name="submit_col_device">Phone</string>
     <string name="submit_col_server">Server</string>
     <string name="submit_server_blank">—</string>
     <string name="submit_no_counts">Nothing to compare yet</string>
@@ -45,4 +45,18 @@
     <string name="submit_step_sync">Sync</string>
     <string name="submit_step_match">Match</string>
     <string name="submit_step_submit">Submit</string>
+    <!-- D-NIGHT-DAYCLOSE-01 -->
+    <string name="submit_server_more">Server has %1$s more %2$s from other phones or earlier installs of this login today.</string>
+    <string name="submit_rejected_title">Not accepted as sent (%1$s)</string>
+    <string name="submit_rejected_code">Reason code: %1$s</string>
+    <string name="submit_rejected_flagged">Stored on the server and flagged for review. Submit is not blocked.</string>
+    <string name="submit_rejected_dropped">Not stored on the server. Submit is not blocked.</string>
+    <string name="submit_rejected_retry">Will be sent again. Sync before Submit.</string>
+    <string name="submit_no_records">No records on this phone today</string>
+    <string name="submit_type_memo_line">Sale line</string>
+    <string name="submit_type_day_submit">Sales submit</string>
+    <string name="submit_type_print_event">Print</string>
+    <string name="submit_type_outlet_request">Outlet request</string>
+    <string name="submit_type_task_event">Task</string>
+    <string name="submit_type_other">Other record (%1$s)</string>
 </resources>

@@ -85,6 +85,7 @@ import androidx.compose.ui.draw.clip
 import com.aktcl.aron.core.ui.LocalAppLanguage
 import com.aktcl.aron.core.ui.LocalAronColors
 import com.aktcl.aron.core.ui.LocalReducedMotion
+import com.aktcl.aron.core.ui.localizedDigits
 import com.aktcl.aron.core.ui.localizedNumber
 import com.aktcl.aron.rules.Formats
 import com.aktcl.aron.rules.UiLocale
@@ -95,6 +96,8 @@ enum class SubmitProgress { Idle, Queued, Settled }
 object SalesSubmitTags {
     /** The press-and-hold button of the hold step (the bar primary opens it; the hold commits). */
     const val HOLD = "submit_hold"
+    /** D-NIGHT-DAYCLOSE-01 (b): the listed rejected rows. */
+    const val REJECTED = "submit_rejected"
 }
 
 /** The least width of the count columns of the reconciliation table on a 328 dp content width (screens-sr s11); a wider count grows its column. */
@@ -135,7 +138,18 @@ fun SalesSubmitScreen(
     rowGroups: List<List<String>>? = null,
     /** DISPLAY ONLY: without [rowGroups], show the legacy five rows (outlet, sale, stock, QC, promotion) instead of one row per record type; the gate never sees it. */
     legacyFiveRows: Boolean = true,
+    /** D-NIGHT-DAYCLOSE-01 (b): the refused, held and retry rows of the phone's ack registry, listed with type, memo or outlet, reason and outcome. */
+    rejected: List<RejectedRow> = emptyList(),
+    /** A digest has answered for the date; null infers it from the counts (a known server column). Before it: "Nothing to compare yet". */
+    serverKnown: Boolean? = null,
+    /** The business date on screen; a listed row of another date shows its date. */
+    today: String? = null,
 ) {
+    // A type the host has no label for (memo_line, day_submit, ...) still reads in words, never as its wire name (checker)
+    val known = recordTypeLabels()
+    val res = androidx.compose.ui.platform.LocalContext.current.resources
+    // used by the server-more notes and the rejected list (the table and the gate notices keep the host's own labels)
+    val wordLabel: (String) -> String = { t -> typeLabel(t).takeIf { it != t } ?: known[t] ?: res.getString(R.string.submit_type_other, t) }
     val look = LocalAronLook.current
     val bn = LocalAppLanguage.current == AppLanguage.BN
     var hold by rememberSaveable { mutableStateOf(false) }
@@ -178,12 +192,25 @@ fun SalesSubmitScreen(
                         action = if (SalesSubmitRules.syncButtonEnabled(online, syncing)) stringResource(R.string.submit_sync_again) else null, onAction = onSync,
                     )
                 }
-                gate.notes.forEach { n -> NoticeCard(blockText(n, typeLabel), Notice.Info) }
+                // D-NIGHT-DAYCLOSE-01 (b): the rows themselves, not a bare count, whether or not a digest has run
+                if (rejected.isNotEmpty()) RejectedList(rejected, wordLabel, bn, today)
+                else gate.notes.forEach { n -> NoticeCard(blockText(n, typeLabel), Notice.Info) }
+                // (a): a server count above the phone's is information (other phones, earlier installs of this login), never a mismatch
+                val extras = counts.filter { it.serverExtra > 0 }
+                if (extras.isNotEmpty()) {
+                    NoticeCard(
+                        extras.map { stringResource(R.string.submit_server_more, localizedNumber(it.serverExtra.toLong()), wordLabel(it.recordType)) }.joinToString("\n"),
+                        Notice.Info,
+                    )
+                }
                 gate.duesWarning?.let { d ->
                     val money = Formats.money(d.outstandingMtk, if (bn) UiLocale.BN else UiLocale.EN)
                     NoticeCard(stringResource(R.string.submit_dues_warning, localizedNumber(d.retailersWithDues.toLong()), money), Notice.Warning)
                 }
-                CountsTable(if (rowGroups == null && legacyFiveRows) SubmitDisplay.legacyFive(counts).ifEmpty { SubmitDisplay.views(counts, null) } else SubmitDisplay.views(counts, rowGroups), typeLabel)
+                CountsTable(
+                    if (rowGroups == null && legacyFiveRows) SubmitDisplay.legacyFive(counts).ifEmpty { SubmitDisplay.views(counts, null) } else SubmitDisplay.views(counts, rowGroups), typeLabel,
+                    serverKnown = serverKnown ?: counts.any { it.server != null },
+                )
                 if (progress == SubmitProgress.Idle) { Spacer(Modifier.height(AronTokens.Space.M)); NoticeCard(stringResource(R.string.submit_info), Notice.Warning) }
             }
             AronPrimaryButton(
@@ -257,7 +284,7 @@ private fun SettledState(records: Int) {
 
 /** The reconciliation table: the purple header (item, device, server) over white rows; only a waiting or mismatching row carries its word. */
 @Composable
-private fun CountsTable(counts: List<CountView>, typeLabel: (String) -> String) {
+private fun CountsTable(counts: List<CountView>, typeLabel: (String) -> String, serverKnown: Boolean) {
     val look = LocalAronLook.current
     val stacked = tableStacked()
     if (!stacked && counts.isNotEmpty()) {
@@ -266,6 +293,8 @@ private fun CountsTable(counts: List<CountView>, typeLabel: (String) -> String) 
         val blank = stringResource(R.string.submit_server_blank)
         AronDataTable(
             headers = listOf(stringResource(R.string.submit_col_item), stringResource(R.string.submit_col_device), stringResource(R.string.submit_col_server)),
+            // D-NIGHT-DAYCLOSE-01 (c): the count columns are wide enough for "Phone" / "Server" in one line at 360 px (never "Serve r")
+            weights = listOf(1.5f, 1f, 1f),
             rows = counts.map { row ->
                 val word = when { row.server == null -> waitingWord; !row.matches -> mismatchWord; else -> null }
                 listOf(listOfNotNull(typeLabel(row.key), word).joinToString("\n"), localizedNumber(row.device.toLong()), row.server?.let { localizedNumber(it.toLong()) } ?: blank)
@@ -284,7 +313,7 @@ private fun CountsTable(counts: List<CountView>, typeLabel: (String) -> String) 
                 Text(stringResource(R.string.submit_col_server), style = MaterialTheme.typography.titleMedium, color = Color.White, textAlign = TextAlign.End, modifier = Modifier.widthIn(min = CountColumn))
             }
         }
-        if (counts.isEmpty()) Text(stringResource(R.string.submit_no_counts), style = MaterialTheme.typography.bodyMedium, color = look.inkMuted, modifier = Modifier.padding(AronTokens.Space.L))
+        if (counts.isEmpty()) Text(stringResource(if (serverKnown) R.string.submit_no_records else R.string.submit_no_counts), style = MaterialTheme.typography.bodyMedium, color = look.inkMuted, modifier = Modifier.padding(AronTokens.Space.L))
         counts.forEachIndexed { i, row ->
             val waiting = row.server == null
             val mismatch = !waiting && !row.matches
@@ -323,6 +352,47 @@ private fun CountCell(caption: String, value: String, ink: Color, modifier: Modi
     Column(modifier) {
         Text(caption, style = MaterialTheme.typography.bodySmall, color = look.inkMuted, maxLines = 1)
         Text(value, style = MaterialTheme.typography.titleSmall, color = ink)
+    }
+}
+
+/** Words for the record types a host may not label (the Sales Submit notes and list name them; never a wire name alone). */
+@Composable
+private fun recordTypeLabels(): Map<String, String> = mapOf(
+    "memo_line" to stringResource(R.string.submit_type_memo_line),
+    "day_submit" to stringResource(R.string.submit_type_day_submit),
+    "print_event" to stringResource(R.string.submit_type_print_event),
+    "outlet_change_request" to stringResource(R.string.submit_type_outlet_request),
+    "task_event" to stringResource(R.string.submit_type_task_event),
+)
+
+/** D-NIGHT-DAYCLOSE-01 (b): one card listing each refused, held or retry row: what it is, why, and what happens to it. */
+@Composable
+private fun RejectedList(rows: List<RejectedRow>, typeLabel: (String) -> String, bn: Boolean, today: String?) {
+    val look = LocalAronLook.current
+    Column(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(AronLook.CardRadius)).background(look.card).padding(AronTokens.Space.L).testTag(SalesSubmitTags.REJECTED),
+        verticalArrangement = Arrangement.spacedBy(AronTokens.Space.M),
+    ) {
+        Text(stringResource(R.string.submit_rejected_title, localizedNumber(rows.size.toLong())), style = MaterialTheme.typography.titleSmall, color = look.ink)
+        rows.forEach { r ->
+            Column(verticalArrangement = Arrangement.spacedBy(AronTokens.Space.Xs)) {
+                val which = r.memoNo ?: r.outletName
+                val date = r.businessDate.takeIf { today != null && it != today }?.let { localizedDigits(it) }
+                Text(listOfNotNull(typeLabel(r.recordType), which, date).joinToString(" · "), style = MaterialTheme.typography.bodyLarge, color = look.ink)
+                val reason = (if (bn) r.reasonBn ?: r.reasonEn else r.reasonEn ?: r.reasonBn) ?: r.code?.let { stringResource(R.string.submit_rejected_code, it) }
+                if (reason != null) Text(reason, style = MaterialTheme.typography.bodyMedium, color = look.inkMuted)
+                Text(
+                    stringResource(
+                        when (r.outcome) {
+                            RejectedOutcome.STORED_FLAGGED -> R.string.submit_rejected_flagged
+                            RejectedOutcome.DROPPED -> R.string.submit_rejected_dropped
+                            RejectedOutcome.RETRY -> R.string.submit_rejected_retry
+                        },
+                    ),
+                    style = MaterialTheme.typography.bodySmall, color = if (r.outcome == RejectedOutcome.RETRY) WarnInk else OkInk,
+                )
+            }
+        }
     }
 }
 

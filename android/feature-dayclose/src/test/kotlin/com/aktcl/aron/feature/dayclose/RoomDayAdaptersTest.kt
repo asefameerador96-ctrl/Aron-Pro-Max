@@ -62,6 +62,36 @@ class RoomDayAdaptersTest {
         assertThrows(IllegalStateException::class.java) { kotlinx.coroutines.runBlocking { sell(0) } }
     }
 
+    /** D-NIGHT-DAYCLOSE-01 (b): the refused rows are listed from the phone's own outbox, with memo number, outlet, reason and outcome. */
+    @Test fun rejectedRowsAreListedFromTheAckRegistry() = runTest {
+        db.referenceDao().insertSections(listOf(com.aktcl.aron.core.database.entity.BundleSectionEntity("reason_texts",
+            "{\"memo_no_duplicate\": {\"bn\": \"এই মেমো নম্বর আগেই ব্যবহার হয়েছে\", \"en\": \"This memo number was already used\"}}")))
+        sell(due = 0)
+        val source = RoomDaySource(db)
+        assertTrue(source.rejectedRows("2026-10-05").isEmpty())
+        val rows = db.outboxDao().nextPending(100)
+        val memo = rows.first { it.recordType == "memo" }
+        val visit = rows.first { it.recordType == "visit" }
+        val line = rows.first { it.recordType == "memo_line" }
+        db.outboxDao().applyAck(memo.clientUuid, "quarantined", "memo_no_duplicate", null, "2026-10-05T05:00:00.000Z")
+        db.outboxDao().applyAck(line.clientUuid, "rejected", "price_invalid", null, "2026-10-05T05:00:00.000Z")
+        db.outboxDao().applyAck(visit.clientUuid, "pending", "resync", null, "2026-10-05T05:00:00.000Z")
+        // the phone's own markers on queued rows (resync, digest_resend) are not rejections
+        assertEquals(2, source.rejectedRows("2026-10-05").size)
+        db.outboxDao().applyAck(visit.clientUuid, "pending", "scope_stale", null, "2026-10-05T05:00:00.000Z")
+        val listed = source.rejectedRows("2026-10-05").associateBy { it.recordType }
+        assertEquals(3, listed.size)
+        listed.getValue("memo").let {
+            assertEquals(RejectedOutcome.STORED_FLAGGED, it.outcome); assertEquals("sr334001-261005-001", it.memoNo)
+            assertEquals("এই মেমো নম্বর আগেই ব্যবহার হয়েছে", it.reasonBn); assertEquals("This memo number was already used", it.reasonEn)
+        }
+        listed.getValue("memo_line").let {
+            assertEquals(RejectedOutcome.DROPPED, it.outcome); assertEquals("price_invalid", it.code); assertEquals(null, it.reasonEn)
+            assertEquals("sr334001-261005-001", it.memoNo) // through its parent memo
+        }
+        assertEquals(RejectedOutcome.RETRY, listed.getValue("visit").outcome)
+    }
+
     @Test fun anAmoSubmitIsASupervisorDayWithNoRoute() = runTest {
         val source = RoomDaySource(db)
         val noRoute = { meta().copy(routeId = null) }

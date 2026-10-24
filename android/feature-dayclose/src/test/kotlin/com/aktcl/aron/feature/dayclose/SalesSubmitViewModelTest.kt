@@ -61,4 +61,18 @@ class SalesSubmitViewModelTest {
         val v = vm(day, mapOf("memo" to 6), Sched(), q); v.refresh(); v.submit()
         assertTrue(q.isEmpty())
     }
+
+    /** D-NIGHT-DAYCLOSE-01: rejected rows are listed with or without a digest; a type only the server has shows device 0, in sync. */
+    @Test fun rejectedRowsAreListedAndTheServerOnlyTypesAreInformation() {
+        val listed = listOf(RejectedRow("u1", "memo", "2026-10-05", "price_invalid", RejectedOutcome.DROPPED))
+        class Rej : DaySource by Day() { override suspend fun rejectedRows(businessDate: String) = listed }
+        var digest: Map<String, Int>? = null
+        val v = SalesSubmitViewModel(1, { "2026-10-05" }, Rej(), { digest }, { _, _, _ -> }, Sched(), { true })
+        v.refresh()
+        assertFalse(v.state.value.serverKnown); assertEquals(listed, v.state.value.rejected); assertFalse(v.state.value.gate.enabled)
+        digest = mapOf("memo" to 10, "visit" to 9) // another install of this login sent more
+        v.refresh()
+        assertTrue(v.state.value.serverKnown); assertTrue(v.state.value.gate.enabled); assertEquals(listed, v.state.value.rejected)
+        assertEquals(listOf(CountRow("memo", 6, 10), CountRow("visit", 0, 9)), v.state.value.counts)
+    }
 }

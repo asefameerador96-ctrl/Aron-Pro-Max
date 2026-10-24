@@ -7,11 +7,48 @@ data class OutboxStates(val pending: Int, val inFlight: Int, val acked: Int, val
 
 /**
  * The sync screen's reconciliation row (F-SR-034): device versus server count per record type. [server] is null before the
- * first successful sync (the Server column then shows blank with a timestamp, not zero).
+ * first successful sync (the Server column then shows blank with a timestamp, not zero); it counts every upload of this login
+ * for the date, so other phones and earlier installs of the same login add to it.
+ *
+ * D-NIGHT-DAYCLOSE-01 compare rule (device ⊆ server): the row is in sync when the server holds at least what this phone
+ * committed; a server count above the device count is information ([serverExtra]), never a mismatch; a device count above
+ * the server count is the mismatch (an unacknowledged row is the separate Unsynced block). [serverThisDevice] is the ADAPTER
+ * for the per-device digest of contract 1.9 queue row 4: once the server reports this phone's own count, the rule compares
+ * with that instead of the login total.
  */
-data class CountRow(val recordType: String, val device: Int, val server: Int?) {
-    val matches: Boolean get() = server != null && server == device
+data class CountRow(val recordType: String, val device: Int, val server: Int?, val serverThisDevice: Int? = null) {
+    private val compareWith: Int? get() = serverThisDevice ?: server
+    val matches: Boolean get() = compareWith?.let { it >= device } == true
+    /** Rows the server has beyond this phone's (other phones or earlier installs of this login today); 0 when none or unknown. */
+    val serverExtra: Int get() = server?.let { (it - device).coerceAtLeast(0) } ?: 0
 }
+
+/** What happened to a record the server did not take as sent (docs/24 s4.5), as the Sales Submit list says it. */
+enum class RejectedOutcome {
+    /** Quarantined: the server stored it and flagged it for review. Final: never blocks Sales Submit. */
+    STORED_FLAGGED,
+    /** Rejected: the server did not store it. Final: never blocks Sales Submit. */
+    DROPPED,
+    /** Answered with a retryable code and still queued on the phone: blocks Sales Submit until it is re-synced. */
+    RETRY,
+}
+
+/**
+ * One record of the phone's own ack registry (its outbox) that the server refused, holds or asked to retry, listed on the
+ * Sales Submit screen instead of a bare count (D-NIGHT-DAYCLOSE-01 (b)). [memoNo] or [outletName] say which one it is;
+ * [reasonBn]/[reasonEn] come from the bundle's `reason_texts` (the server's `ReasonTexts`), null when the code has none.
+ */
+data class RejectedRow(
+    val clientUuid: String,
+    val recordType: String,
+    val businessDate: String,
+    val code: String?,
+    val outcome: RejectedOutcome,
+    val memoNo: String? = null,
+    val outletName: String? = null,
+    val reasonBn: String? = null,
+    val reasonEn: String? = null,
+)
 
 /** One line of the reconciliation table as shown: a record type, or several grouped by [SubmitDisplay.views]. */
 data class CountView(val key: String, val device: Int, val server: Int?, val matches: Boolean)
