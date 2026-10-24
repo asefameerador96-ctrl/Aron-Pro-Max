@@ -182,6 +182,13 @@ class AssetIds(unittest.TestCase):
         self.assertIsNone(lp.asset_in_url("https://acct.blob.core.windows.net/media/assets/content_kv/x.jpg"))
         self.assertIsNone(lp.asset_in_url(None))
 
+    def test_asset_in_url_with_the_slashes_encoded(self):
+        """The dev environment's real read link (2026-10-24): the blob name is one segment, `assets%2Fsku_image%2F<id>.jpg`."""
+        a = lp.asset_id_for(lp.sha256_hex(b"x"))
+        self.assertEqual(lp.asset_in_url(f"https://acct.blob.core.windows.net/media/assets%2Fsku_image%2F{a}.jpg?sv=1&sig=zz"), a)
+        self.assertEqual(lp.picture_of({"code": "X", "image_url": f"https://acct.blob.core.windows.net/media/assets%2Fsku_image%2F{a}.jpg?sv=1"}), (True, a))
+        self.assertIsNone(lp.asset_in_url("https://acct.blob.core.windows.net/media/assets%2Fcontent_kv%2Fx.jpg"))
+
 
 class PictureOf(unittest.TestCase):
     """What a SKU answer says about its picture: image_asset_id when it carries one (the contract), else the asset id in the
