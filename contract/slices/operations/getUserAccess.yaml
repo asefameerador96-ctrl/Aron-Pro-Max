@@ -5,6 +5,9 @@ operation:
   - admin-users
   operationId: getUserAccess
   summary: An ADMIN user's module grants or a BRAND user's brands (docs/34 s1); the ETag is the access version.
+  description: An ADMIN may read its own access; another ADMIN's or a SUPERADMIN's access is SUPERADMIN-only, and
+    an ADMIN asking for it gets 403 `ERR_AUTHZ_ROLE_ABOVE_GRANT` (D-AUTHZ-ADMIN-CREDS-01; the server answers it
+    since the contract 1.7.0 wiring, D-AUTHZ-1-7-WIRING-01).
   parameters:
   - $ref: '#/components/parameters/IdPath'
   responses:

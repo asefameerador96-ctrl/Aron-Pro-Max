@@ -28,6 +28,7 @@ object ReasonTexts {
         RecordOutcomeCode.CONTENT_DUPLICATE to ("একই বিক্রি দুবার এসেছে; পর্যালোচনার জন্য রাখা হয়েছে।" to "The same sale arrived twice; held for review."),
         RecordOutcomeCode.LINES_EXCEED_MAX to ("মেমোতে অনুমোদিত সংখ্যার বেশি লাইন আছে।" to "The memo has more lines than allowed."),
         RecordOutcomeCode.QTY_INVALID to ("পরিমাণ সঠিক নয়।" to "The quantity is not valid."),
+        RecordOutcomeCode.PRICE_INVALID to ("এই বিক্রির লাইনের দাম শূন্য, তাই লাইনটি গ্রহণ করা হয়নি; সাপোর্টে জানান।" to "This sale line is priced at zero and was not accepted; please contact support."),
         RecordOutcomeCode.ATTENDANCE_DUPLICATE to ("আজকের হাজিরা আগেই দেওয়া হয়েছে।" to "Attendance for today was already recorded."),
         RecordOutcomeCode.CHECKOUT_TOO_EARLY to ("নির্ধারিত সময়ের আগে চেক-আউট; পর্যালোচনার জন্য রাখা হয়েছে।" to "Check-out before the allowed time; held for review."),
         RecordOutcomeCode.SERVER_ERROR to ("সার্ভারে সমস্যা হয়েছে; পরে আবার পাঠানো হবে।" to "Server problem; it will be resent later."),

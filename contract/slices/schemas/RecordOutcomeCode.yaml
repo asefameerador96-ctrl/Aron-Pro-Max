@@ -21,6 +21,7 @@ RecordOutcomeCode:
   - content_duplicate
   - lines_exceed_max
   - qty_invalid
+  - price_invalid
   - attendance_duplicate
   - checkout_too_early
   - server_error

@@ -1,0 +1,31 @@
+MemoServerFlag:
+  type: string
+  minLength: 1
+  maxLength: 60
+  description: 'A review flag the server sets on a stored memo (`app.memo.server_flags`, written by `MemoChecks`
+    and
+
+    `IngestService` in backend/sync); the printed memo stays stored, the flag sends it to review. Deliberately a
+
+    string and not an enum: new values may appear without a contract version, and a reader shows an unknown value
+    as
+
+    it is. Known values (contract 1.8.0):
+
+    `arithmetic_mismatch` (a family split across batches whose stored lines, discounts and QC lines do not reproduce
+
+    the header, a header with a gross and a negative net (D-18), or more stored children than the header counts);
+
+    `price_mismatch` (a line priced differently from the price list valid on `price_list_date`, or for an SKU the
+
+    server has at zero or no price; never rejected);
+
+    `pack_factor_mismatch` (a child of the memo parked `qty_invalid` for a pack size that is not the SKU''s
+
+    `base_per_pack`, docs/34 s4.2);
+
+    `zero_price_line` (a sale line priced at zero was refused, `schema_invalid` until the server carries `price_invalid`;
+
+    the memo is stored one line short, D-BC-ZERO-PRICE-01).
+
+    '

@@ -1,0 +1,58 @@
+path: /v1/dashboards/flagged-memos
+method: get
+operation:
+  tags:
+  - dashboards
+  operationId: getFlaggedMemos
+  summary: Stored memos the server flagged for review (`server_flags`), for the Flagged memos dashboard page.
+  description: 'Memos in the caller''s reach whose `server_flags` is not empty, newest stored first. Scope from
+    the token: the
+
+    client never sends scope ids; without `node_id` the node is the caller''s top reach node, and a `level`/`node_id`
+
+    outside the caller''s reach is 403 `ERR_OUT_OF_SCOPE`. `from` and `to` are business dates (Asia/Dhaka), both
+
+    default to today, and `to` is at most 92 days after `from`. `flag` narrows to memos carrying that flag; it is
+    a
+
+    string, not an enum (values in `MemoServerFlag`), so an unknown value answers an empty page. Voided and
+
+    superseded memos stay listed with their `status` (the page greys or filters them; a count of open problems uses
+
+    `status == active`). Backing data: the stable view `dw.v_memo_flags` (V0111, D-DB-MEMO-FLAGS-VIEW-01: scope
+    keys
+
+    frozen at the business date); `user_code` and `user_name` are resolved by the endpoint from `app.app_user`,
+
+    because `dw` carries no names. Contract 1.8.0; until backend-core wires it the path answers 404 `ERR_NOT_FOUND`.
+
+    '
+  parameters:
+  - $ref: '#/components/parameters/FromDate'
+  - $ref: '#/components/parameters/ToDate'
+  - $ref: '#/components/parameters/GeoLevelQuery'
+  - $ref: '#/components/parameters/NodeIdQuery'
+  - name: flag
+    in: query
+    required: false
+    description: Only memos whose `server_flags` contains this value (see `MemoServerFlag`); omit for every flagged
+      memo.
+    schema:
+      $ref: '#/components/schemas/MemoServerFlag'
+  - $ref: '#/components/parameters/Limit'
+  - $ref: '#/components/parameters/Cursor'
+  responses:
+    '200':
+      description: Page of flagged memos.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/FlaggedMemoPage'
+    '400':
+      $ref: '#/components/responses/BadRequest'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'
+    '429':
+      $ref: '#/components/responses/TooManyRequests'
