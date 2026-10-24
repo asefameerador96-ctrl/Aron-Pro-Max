@@ -37,7 +37,7 @@ import kotlin.test.assertTrue
 /**
  * docs/requests/backend-core-zero-price-line.md (D-SALE-ZERO-PRICE-01, lead 2026-10-24): a `sale` memo line priced at
  * zero (the SKU's catalogue price is zero, or it has none and the phone priced it at zero) is a final per-record
- * `schema_invalid`; the memo and its priced lines are stored (the zero line adds nothing to the gross), the memo is
+ * `price_invalid`; the memo and its priced lines are stored (the zero line adds nothing to the gross), the memo is
  * flagged `zero_price_line`, and a resend in any order is idempotent. A line the phone priced above zero for an SKU the
  * server has no price for is stored and flagged `price_mismatch` (money collected). Sunday 2027-01-03, sr1001, MIR-SR-D.
  */
@@ -172,14 +172,14 @@ class ZeroPriceLineTest {
         for (bad in listOf(L(zero, 2, "pack", zero[3]), L(unpriced, 20, "stick", 1))) {
             val f = sale(memoNo(), listOf(L(priced, 20, "stick", 1), bad))
             val res = send(sr, f)
-            assertEquals(listOf("accepted", "accepted", "accepted", "rejected schema_invalid"), f.map { res.ack(it) }, res.acks.toString())
+            assertEquals(listOf("accepted", "accepted", "accepted", "rejected price_invalid"), f.map { res.ack(it) }, res.acks.toString())
             assertEquals(false, res.retryable(f[3]), "final")
             val memo = uuidOf(f[1])
             assertEquals(1, count("SELECT count(*) FROM app.memo_line WHERE memo_client_uuid = '$memo'"), "only the priced line is stored")
             assertEquals(1, count("SELECT count(*) FROM app.memo WHERE client_uuid = '$memo' AND 'zero_price_line' = ANY(server_flags)"))
             assertEquals(lineGross(L(priced, 20, "stick", 1)), count("SELECT gross_mtk FROM app.memo WHERE client_uuid = '$memo'"), "money unchanged")
             val again = send(sr, f.reversed())
-            assertEquals(listOf("duplicate", "duplicate", "duplicate", "rejected schema_invalid"), f.map { again.ack(it).substringBefore(" ").takeIf { s -> s != "rejected" } ?: again.ack(it) })
+            assertEquals(listOf("duplicate", "duplicate", "duplicate", "rejected price_invalid"), f.map { again.ack(it).substringBefore(" ").takeIf { s -> s != "rejected" } ?: again.ack(it) })
             assertEquals(1, count("SELECT count(*) FROM app.memo_line WHERE memo_client_uuid = '$memo'"), "resend stores nothing")
         }
     }
@@ -188,7 +188,7 @@ class ZeroPriceLineTest {
     @Test
     fun aZeroLineSentBeforeItsMemoStillFlagsTheMemo() {
         val f = sale(memoNo(), listOf(L(priced, 20, "stick", 1), L(zero, 1, "pack", zero[3])))
-        assertEquals("rejected schema_invalid", send(sr, listOf(f[3])).ack(f[3]), "refused before any parent check")
+        assertEquals("rejected price_invalid", send(sr, listOf(f[3])).ack(f[3]), "refused before any parent check")
         val res = send(sr, f.take(3))
         assertEquals(listOf("accepted", "accepted", "accepted"), f.take(3).map { res.ack(it) }, res.acks.toString())
         assertEquals(1, count("SELECT count(*) FROM app.memo WHERE client_uuid = '${uuidOf(f[1])}' AND 'zero_price_line' = ANY(server_flags)"))
@@ -202,7 +202,7 @@ class ZeroPriceLineTest {
     fun aLineStatingZeroIsRefusedEvenWhenTheServerHasAPrice() {
         val f = sale(memoNo(), listOf(L(priced, 20, "stick", 1), L(listOf(priced[0], 0L, priced[2], priced[3]), 10, "stick", 1)))
         val res = send(sr, f)
-        assertEquals("rejected schema_invalid", res.ack(f[3]), res.acks.toString())
+        assertEquals("rejected price_invalid", res.ack(f[3]), res.acks.toString())
         assertEquals("accepted", res.ack(f[2]))
     }
 
@@ -248,12 +248,12 @@ class ZeroPriceLineTest {
             val f = sale(memoNo(), listOf(L(priced, 20, "stick", 1), L(zero, 1, "pack", zero[3])))
             val held = send(sr, f, gated, key)
             assertEquals("quarantined device_integrity_failed", held.ack(f[1]), held.acks.toString())
-            assertEquals("rejected schema_invalid", held.ack(f[3]), "the zero line is refused while its memo is held")
+            assertEquals("rejected price_invalid", held.ack(f[3]), "the zero line is refused while its memo is held")
             assertEquals(0, count("SELECT count(*) FROM app.memo WHERE client_uuid = '${uuidOf(f[1])}'"))
             // The phone passes Play Integrity; the resend releases the memo and its priced line, and the memo is flagged.
             fresh.db.jdbi.useHandle<Exception> { it.execute("UPDATE app.device SET integrity_verdict = 'pass', integrity_checked_at = now() WHERE id = ${device.first}") }
             val res = send(sr, f, gated, key)
-            assertEquals(listOf("accepted", "accepted", "rejected schema_invalid"), f.drop(1).map { res.ack(it) }, res.acks.toString())
+            assertEquals(listOf("accepted", "accepted", "rejected price_invalid"), f.drop(1).map { res.ack(it) }, res.acks.toString())
             assertEquals(1, count("SELECT count(*) FROM app.memo_line WHERE memo_client_uuid = '${uuidOf(f[1])}'"))
             assertEquals(1, count("SELECT count(*) FROM app.memo WHERE client_uuid = '${uuidOf(f[1])}' AND 'zero_price_line' = ANY(server_flags)"))
         } finally {
@@ -271,12 +271,12 @@ class ZeroPriceLineTest {
         val stored = sale(memoNo(), listOf(L(priced, 20, "stick", 1)))
         assertEquals("accepted", send(sr, stored).ack(stored[1]))
         val after = zeroLineOf(uuidOf(stored[1]))
-        assertEquals("rejected schema_invalid", send(sr2, listOf(after)).ack(after))
+        assertEquals("rejected price_invalid", send(sr2, listOf(after)).ack(after))
         assertEquals(0, flagged(uuidOf(stored[1])))
         // Line first: sr2002 names a memo uuid sr1001 stores later.
         val later = sale(memoNo(), listOf(L(priced, 5, "stick", 1)))
         val before = zeroLineOf(uuidOf(later[1]))
-        assertEquals("rejected schema_invalid", send(sr2, listOf(before)).ack(before))
+        assertEquals("rejected price_invalid", send(sr2, listOf(before)).ack(before))
         assertEquals("accepted", send(sr, later).ack(later[1]))
         assertEquals(0, flagged(uuidOf(later[1])))
     }
@@ -298,12 +298,12 @@ class ZeroPriceLineTest {
         val all = families.flatten()
         fun isZero(r: JsonObject) = typeOf(r) == "memo_line" && skuOf(r) != priced[0]
         val first = send(sr, all)
-        for (r in all) assertEquals(if (isZero(r)) "rejected schema_invalid" else "accepted", first.ack(r), "${typeOf(r)} ${uuidOf(r)}")
+        for (r in all) assertEquals(if (isZero(r)) "rejected price_invalid" else "accepted", first.ack(r), "${typeOf(r)} ${uuidOf(r)}")
         repeat(3) {
             val again = send(sr, (all + all.filter { rnd.nextBoolean() }).shuffled(rnd))
             for (r in all) {
                 val a = again.acks.first { it.client_uuid == uuidOf(r) }
-                assertEquals(if (isZero(r)) "rejected schema_invalid" else "duplicate", if (a.status == "rejected") "rejected ${a.code}" else a.status, "resend ${typeOf(r)}")
+                assertEquals(if (isZero(r)) "rejected price_invalid" else "duplicate", if (a.status == "rejected") "rejected ${a.code}" else a.status, "resend ${typeOf(r)}")
             }
         }
         for (f in families) {
