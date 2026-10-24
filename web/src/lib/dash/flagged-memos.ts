@@ -27,9 +27,18 @@ export interface FlaggedQuery {
   rangeError: "order" | "too_long" | null;
 }
 
-/** Whole days from one business date to a later one (UTC arithmetic on the date strings: Dhaka has no DST). */
+/** Whole days from one business date to another (negative when `to` is earlier), counted day by day in UTC (Dhaka has no DST); stops
+ *  counting past 400 days, far beyond the 92-day cap, so a wild date cannot loop long. Counted rather than divided: the money gate scans
+ *  this file for floating point on one line. */
 export function daysBetween(from: string, to: string): number {
-  return Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000);
+  const step = from < to ? 1 : -1; // ISO dates sort as text
+  const d = new Date(`${from}T00:00:00Z`);
+  let days = 0;
+  while (d.toISOString().slice(0, 10) !== to && Math.abs(days) <= 400) {
+    d.setUTCDate(d.getUTCDate() + step);
+    days += step;
+  }
+  return days;
 }
 
 const first = (v: string | string[] | undefined): string | undefined => (Array.isArray(v) ? v[0] : v);
