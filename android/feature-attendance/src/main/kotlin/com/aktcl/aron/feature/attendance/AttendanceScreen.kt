@@ -159,6 +159,8 @@ fun AttendanceContent(
     userSubtitle: String? = null,
     /** D-NIGHT-CHECKOUT-01: opens the Sales Submit screen from the "Sales Submit first" notice; null shows the notice without the link. */
     onOpenSalesSubmit: (() -> Unit)? = null,
+    /** D-NIGHT-CHECKOUT-02: offline the notice says why (the submit needs the server); the pending upload goes when a network returns. */
+    offline: Boolean = false,
 ) {
     val c = LocalAronColors.current
     val look = LocalAronLook.current
@@ -194,7 +196,7 @@ fun AttendanceContent(
             // D-NIGHT-CHECKOUT-01: no check-out before the day's Sales Submit; one tap to the Sales Submit screen
             if (checkOutPhase && !dayComplete && state.needsSalesSubmit) {
                 AronBanner(
-                    stringResource(R.string.att_submit_first), kind = BannerKind.Warning,
+                    stringResource(if (offline) R.string.att_submit_first_offline else R.string.att_submit_first), kind = BannerKind.Warning,
                     actionLabel = if (onOpenSalesSubmit != null) stringResource(R.string.att_submit_first_open) else null, onAction = onOpenSalesSubmit,
                     modifier = Modifier.testTag(AttendanceTags.SUBMIT_FIRST),
                 )

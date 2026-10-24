@@ -102,11 +102,11 @@ class CheckoutNeedsSubmitTest {
         assertTrue(tso.checkOut() is AttendanceResult.Done)
     }
 
-    private fun render(language: AppLanguage, state: AttendanceState, onOpen: (() -> Unit)?) {
+    private fun render(language: AppLanguage, state: AttendanceState, offline: Boolean = false, onOpen: (() -> Unit)?) {
         val ctx = AppLocale.wrap(ApplicationProvider.getApplicationContext<Context>(), language)
         compose.setContent {
             CompositionLocalProvider(LocalContext provides ctx) {
-                AronTheme(language) { AttendanceContent(state, "17:00", {}, {}, nowIso = { "2026-10-07T11:30:00.000Z" }, onOpenSalesSubmit = onOpen) }
+                AronTheme(language) { AttendanceContent(state, "17:00", {}, {}, nowIso = { "2026-10-07T11:30:00.000Z" }, onOpenSalesSubmit = onOpen, offline = offline) }
             }
         }
         compose.waitForIdle()
@@ -127,6 +127,13 @@ class CheckoutNeedsSubmitTest {
         render(AppLanguage.EN, checkedIn) {}
         compose.onNodeWithText("Sales Submit first. Check-out opens once today's sales are submitted.").assertExists()
         compose.onNodeWithText("Open Sales Submit").assertExists()
+    }
+
+    /** D-NIGHT-CHECKOUT-02: offline the notice says why; check-out waits for the network (no bypass). */
+    @Test fun offlineTheNoticeSaysWhy() {
+        render(AppLanguage.BN, checkedIn, offline = true) {}
+        compose.onNodeWithText("অফলাইন — Sales Submit হয়নি। নেটওয়ার্ক ফিরলেই ডেটা নিজে থেকে যাবে; তারপর সাবমিট করে চেক আউট করুন।").assertExists()
+        compose.onNodeWithTag(AttendanceTags.CHECK_OUT).assertIsNotEnabled()
     }
 
     @Test fun afterSubmitTheNoticeIsGoneAndCheckOutIsOn() {

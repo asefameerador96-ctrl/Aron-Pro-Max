@@ -211,6 +211,7 @@ class MainActivity : ComponentActivity() {
                                             attendance, d.checkoutAtLabel(), onCheckIn = { dayScope.launch { d.attendance.checkIn() } },
                                             onCheckOut = { dayScope.launch { d.attendance.checkOut() } }, onBack = back,
                                             onOpenSalesSubmit = { navigate(AmoScreen.SALES_SUBMIT) },
+                                            offline = !d.online(),
                                         )
                                     },
                                 )

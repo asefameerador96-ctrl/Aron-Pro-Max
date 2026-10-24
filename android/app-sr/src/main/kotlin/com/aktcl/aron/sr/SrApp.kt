@@ -398,6 +398,7 @@ fun SrApp(
                     attendance, "17:00", onCheckIn = { scope.launch { day.attendance.checkIn(); resumeTick++ } }, onCheckOut = { scope.launch { day.attendance.checkOut(); resumeTick++ } },
                     userTitle = who.title, userSubtitle = who.subtitle, // Latin digits, as in the reference
                     onOpenSalesSubmit = { screen = SrScreen.SUBMIT },
+                    offline = !day.isOnline(), // read on each composition of the screen (one capabilities read, no callback)
                 )
             }
         }

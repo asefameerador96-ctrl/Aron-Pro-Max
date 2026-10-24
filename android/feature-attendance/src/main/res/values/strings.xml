@@ -33,4 +33,5 @@
     <!-- D-NIGHT-CHECKOUT-01 -->
     <string name="att_submit_first">Sales Submit first. Check-out opens once today\'s sales are submitted.</string>
     <string name="att_submit_first_open">Open Sales Submit</string>
+    <string name="att_submit_first_offline">Offline — Sales Submit not done yet. Your data goes out as soon as the network returns; then submit and check out.</string>
 </resources>

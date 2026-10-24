@@ -104,8 +104,9 @@ class SubmitDigestSource(
     suspend fun digest(businessDate: String): SubmitDigest? {
         cached?.let { (d, at, v) -> if (d == businessDate && nowMs() - at in 0 until maxAgeMs) return v }
         val answer = try {
-            auth.token(userId)?.let { token ->
-                kotlinx.coroutines.withTimeoutOrNull(timeoutMs) { (api.fetch(token, businessDate) as? ApiResult.Success)?.value }
+            // the token read is inside the cap too (a refresh may touch the network)
+            kotlinx.coroutines.withTimeoutOrNull(timeoutMs) {
+                auth.token(userId)?.let { token -> (api.fetch(token, businessDate) as? ApiResult.Success)?.value }
             }
         } catch (e: kotlinx.coroutines.CancellationException) {
             throw e
