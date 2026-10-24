@@ -63,6 +63,7 @@ import androidx.compose.ui.unit.dp
 import com.aktcl.aron.core.ui.AronCard
 import com.aktcl.aron.core.ui.AronEmptyState
 import com.aktcl.aron.core.ui.AronIcons
+import com.aktcl.aron.core.ui.aron.AronField
 import com.aktcl.aron.core.ui.AronMeter
 import com.aktcl.aron.core.ui.AronSegmented
 import com.aktcl.aron.core.ui.AronTextButton
@@ -167,7 +168,7 @@ fun OutletPickerContent(
                 else -> Column(Modifier.fillMaxSize()) {
                     if (searching) {
                         Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = AronTokens.Space.Xs), verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
-                            KitTextField(query, { query = it }, stringResource(R.string.out_search), Modifier.weight(1f))
+                            AronField(query, { query = it }, stringResource(R.string.out_search), Modifier.weight(1f))
                         }
                     }
                     if (visible.isEmpty()) {
