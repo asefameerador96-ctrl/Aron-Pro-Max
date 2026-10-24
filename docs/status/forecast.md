@@ -226,3 +226,6 @@ green run of the exact sha). Usage stays `allowed` on the five-hour window.
 
 ## Update 2026-10-24 10:48 UTC (lead)
 - Train 28 pushed 10:11; CI (full db chain) about 11:00, deploy with V0111 + smoke about 11:20 (signed APK 1528). Train 29 = contract 1.8 batch (committed, report + CI + Opus review pending) about 12:00–12:30. Then backend-core's flagged-memos endpoint and web-admin's page (trains 30+ this afternoon). Integrator 19 successor after train 29. Evening report 18:30. No slip.
+
+## Update 2026-10-24 11:06 UTC (lead)
+- Train 28 landed 11:05 (deploy green, smoke PASSED, signed APK 1528). Train 29 = contract 1.8 batch: the sub-lane's report, lane CI and an Opus review first, GO about 12:00, landed about 12:45. Then backend-core's flagged-memos endpoint (train 30/31) and web-admin's page (train 31/32) this afternoon; android-tso's cleanup slice rides train 30. Evening report 18:30. No slip.
