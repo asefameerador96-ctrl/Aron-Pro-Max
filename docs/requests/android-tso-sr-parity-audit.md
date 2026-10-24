@@ -47,10 +47,10 @@ Severity: **blocker** = a rep cannot finish a selling day, or money/units are sh
 
 | # | Manual / live app says | App does | Sev | Pres-only | File:line |
 |---|---|---|---|---|---|
-| A1 | User card "SR - Testing Banani (sr334001)" + "Apsis RouteDaily, 2026-10-05" under the title | no user/route/date card | minor | yes | `feature-attendance/.../AttendanceScreen.kt` (content root ~140-190) |
+| A1 | User card "SR - Testing Banani (sr334001)" + "Apsis RouteDaily, 2026-10-05" under the title | no user/route/date card | minor | yes | `feature-attendance/.../AttendanceScreen.kt` (content root ~140-190) | Already matches (user card via `userTitle`, `SrApp.kt`).
 | A2 | Reverse-geocoded address + red refresh | coordinates "২৩.৭৯২৫৮০, ৯০.৪০৭৮৩০" + fix-quality chip "ভালো · ±১৮ মি" (deliberate, UI-SR-11, offline) | minor | no (deliberate) | `AttendanceScreen.kt:225-245` |
 | A3 | Two large side-by-side buttons: **green "চেক ইন"**, grey (later **red**) "চেক আউট". Hold sheet: green half-circle to check in, red to check out | radio-style rows "চেক ইন" / "চেক আউট" plus one **navy** dock button. The hold button uses the accent colour for both. The green-in / red-out colour cue the rep uses daily is gone | **major** | yes | `AttendanceScreen.kt:160-170, 274-300`; `core-ui/.../KitStates.kt:184-185` |
-| A4 | Status message centred, above the buttons | message at the bottom, above the dock | minor | yes | `AttendanceScreen.kt:149-150` |
+| A4 | Status message centred, above the buttons | message at the bottom, above the dock | minor | yes | `AttendanceScreen.kt:149-150` | Already matches (prompt centred above the buttons).
 | A5 | "চেক আউট ৫টার পরে সক্রিয় হবে" / note "বিকাল ৫ ঘটিকা থেকে" | "চেক আউট ১৭:০০ থেকে চালু হবে।" (24-hour, different verb) | minor | yes | `feature-attendance/.../values-bn/strings.xml:22`; `app-sr/.../SrApp.kt:363` |
 | A6 | Hold-sheet time chip "04:47 PM" (12-hour) | "১৬:৪৭" (24-hour) | minor | yes | `AttendanceScreen.kt:99-102, 194` |
 | A7 | "আপনি এখনো চেক ইন করেননি…", "…চেক আউট করেননি…", day-complete text, "চেক ইন করা হচ্ছে", "চাপ দিয়ে ধরে রাখুন" | verbatim | matches | – | `feature-attendance/.../values-bn/strings.xml:16-27` |
@@ -62,7 +62,7 @@ Severity: **blocker** = a rep cannot finish a selling day, or money/units are sh
 | S1 | "প্রিন্টার কানেক্ট করা হয়েছে"; crossed red printer when disconnected | verbatim; printer icon in the frame | matches | – | `core-printing/.../values-bn/strings.xml:48` |
 | S2 | Column header row "এসকেইউ / ইস্যু / স্টক" | "এসকেইউ … স্টক" or "মোট লোড" (before any stock exists); "ইস্যু" sits beside each stepper, not as a column | minor | yes | `feature-stock/.../StockScreen.kt:191-192`; `values-bn/strings.xml:6` |
 | S3 | Purple totals panel "ক্যাটাগরি / মোট ইস্যু / স্টক" with all four rows (সিগারেট, বিড়ি, লাইটার, ম্যাচ, zeros included). The rep checks it before Save; it backs the distributor hand-over | a scrolling chip row "সিগারেট ৬০০ স্টিক · লাইটার ৪০০ পিস · ম্যাচ…" showing issue only, no stock column; at 360 dp the third chip is cut off. `stk_totals` exists only as a test tag | **major** | yes | `StockScreen.kt:371`; `values-bn/strings.xml:11` |
-| S4 | Red "সংরক্ষণ", grey "প্রিন্ট" | navy primary save, light print (labels match) | minor | yes | `StockScreen.kt:412-417` |
+| S4 | Red "সংরক্ষণ", grey "প্রিন্ট" | navy primary save, light print (labels match) | minor | yes | `StockScreen.kt:412-417` | Left: owner red=No rule, same as M8 (lead 2026-10-24).
 | S5 | Units unlabelled; issue/stock summed across units | stick / piece / dozen beside every number; pack badge for sticks (deliberate) | matches | – | `StockScreen.kt:88-93` |
 
 ### Sale: choose retailer (SR-S-18; `sale-select.png`)
@@ -104,9 +104,9 @@ Severity: **blocker** = a rep cannot finish a selling day, or money/units are sh
 | R2 | Labelled lines "রুট:" and "ক্লাস্টার:" | (when passed) one line "name (code) · route · cluster" with no labels | minor | yes | `SaleScreens.kt:518` |
 | R3 | "এসকেইউ / পরিমাণ / মূল্য", subtotals "মোট সিগারেট" … | verbatim, plus "(৳)" and units | matches | – | `values-bn/strings.xml:38-43` |
 | R4 | Slide shown as its own table (SKU / পরিমাণ / দাম) with the offer text | one line "স্লাইড − ৮০.০০ ৳" (offers deferred) | minor | yes | `SaleScreens.kt:524` |
-| R5 | Credit **checkbox** "এই বিক্রয়টি বাকি হিসাবে চিহ্নিত করুন"; after part-payment "Baki ৬১ টাকা" | same label on a **switch**; after part-payment "বাকি ৫৭.৫০ ৳" (exact paisa, better) | minor | yes | `SaleScreens.kt:546`; `values-bn/strings.xml:51-52` |
+| R5 | Credit **checkbox** "এই বিক্রয়টি বাকি হিসাবে চিহ্নিত করুন"; after part-payment "Baki ৬১ টাকা" | same label on a **switch**; after part-payment "বাকি ৫৭.৫০ ৳" (exact paisa, better) | minor | yes | `SaleScreens.kt:546`; `values-bn/strings.xml:51-52` | Already matches (purple checkbox; "বাকি N" after part payment).
 | R6 | Part-payment dialog "পরিশোধিত টাকার পরিমাণ লিখুন" / "এখন আপনি রিটেইলার থেকে কত টাকা সংগ্রহ করছেন?" / "আদায়কৃত অর্থ" / "বাকিঃ", **green হ্যাঁ, red না** | texts verbatim, but a full screen with "নিশ্চিত করুন" / "পরে" bar buttons (not green / red) | minor | yes | `SaleExtraScreens.kt:83-88`; `values-bn/strings.xml:60-66` |
-| R7 | Yellow "প্রোডাক্ট QC" button | list row "প্রোডাক্ট QC ›" | minor | yes | `SaleScreens.kt:550-556` |
+| R7 | Yellow "প্রোডাক্ট QC" button | list row "প্রোডাক্ট QC ›" | minor | yes | `SaleScreens.kt:550-556` | Already a yellow full-width button (`SaleScreens.kt` YellowButton); nothing left to do.
 | R8 | "আপনি পরে মেমো সেকশন থেকে প্রিন্ট করতে পারবেন।"; commit dialogs "আপনি কি নিশ্চিত?" / "বিক্রয় জমা হবে", "আপনি কি এই বিক্রয়টি প্রিন্ট করতে চান?" with green হ্যাঁ, red না | verbatim, green/red | matches | – | `values-bn/strings.xml:53`; `core-printing/.../values-bn/strings.xml:63-65`; `PrinterUi.kt:232-240` |
 | R9 | Success: tick, title **"সফল"**, "বিক্রয় সফল ভাবে জমা হয়েছে", green **"ওকে"** | no title; plain text button **"ঠিক আছে"** | minor | yes | `core-printing/.../PrinterUi.kt:207, 243-248`; `values-bn/strings.xml:61` |
 
@@ -163,9 +163,9 @@ Severity: **blocker** = a rep cannot finish a selling day, or money/units are sh
 |---|---|---|---|---|---|
 | SS1 | Title, "ডিভাইস স্ট্যাটাস" + "অনলাইন", columns "বিষয় / ডিভাইস / সার্ভার", "ডাটা সিঙ্ক করুন", "বিক্রয় জমা" | verbatim | matches | – | `feature-dayclose/.../values-bn/strings.xml:3-10,18-19` |
 | SS2 | Five rows: আউটলেট, বিক্রয়, স্টক, কিউসি, প্রমোশন | record-type rows labelled **ভিজিট**, **মেমো**, স্টক, **পণ্য কিউসি**, **ছাড়**, plus ভিজিট শেষ, বাকি আদায়, হাজিরা, বাদ দেওয়া দোকান. Counting records is deliberate (UI-SR-36); the five familiar words are not used | minor | yes | `app-sr/src/main/res/values-bn/strings.xml:28-36`; `SrSaleHosts.kt:159-163` |
-| SS3 | Red notice "আজকের কাজ শেষ করার আগে, অবশ্যই সব অপারেশন ডাটা সিঙ্ক করুন…" | "আজকের সব তথ্য সিঙ্ক হলে বিক্রয় জমা দেওয়া যাবে। সিঙ্ক নিজে থেকেই চলছে।" (deliberate, UI-SR-35) | minor | yes | `feature-dayclose/.../values-bn/strings.xml:17` |
+| SS3 | Red notice "আজকের কাজ শেষ করার আগে, অবশ্যই সব অপারেশন ডাটা সিঙ্ক করুন…" | "আজকের সব তথ্য সিঙ্ক হলে বিক্রয় জমা দেওয়া যাবে। সিঙ্ক নিজে থেকেই চলছে।" (deliberate, UI-SR-35) | minor | yes | `feature-dayclose/.../values-bn/strings.xml:17` | Already matches (`submit_info` carries the manual sentence in a warning notice).
 | SS4 | Dues: a **dialog** "আপনার এখনো ১টি রিটেইলারের কাছে বাকি রয়েছে। আপনি আপনার বিক্রয় জমা দিতে চান?" with green হ্যাঁ, red না; then a tap | an inline banner "%1$s জন খুচরা বিক্রেতার কাছে %2$s বাকি আছে। তবুও জমা দিতে পারবেন।", then a **press-and-hold** sheet "চাপ দিয়ে ধরে রাখুন" | **major** | yes | `values-bn/strings.xml:24-27,34` |
-| SS5 | Red-gradient sync button; grey (later blue) submit | light secondary sync; navy primary submit | minor | yes | `SalesSubmitScreen.kt` (bar) |
+| SS5 | Red-gradient sync button; grey (later blue) submit | light secondary sync; navy primary submit | minor | yes | `SalesSubmitScreen.kt` (bar) | Left: owner red=No rule, same as M8 (lead 2026-10-24).
 | SS6 | Success "বিক্রয় সফল ভাবে জমা হয়েছে" | "বিক্রয় সফলভাবে জমা হয়েছে।" | matches | – | `values-bn/strings.xml:36` |
 
 ### Outlet menu and forms (SR-S-46..49; `outlet-menu.png`)
@@ -185,7 +185,7 @@ Severity: **blocker** = a rep cannot finish a selling day, or money/units are sh
 |---|---|---|---|---|---|
 | T1 | Screen title "টাস্ক" | "টাস্ক ডেলিগেশন" (the tile label) | minor | yes | `app-sr/.../SrApp.kt:465`; `feature-tasks/.../values-bn/strings.xml:3` |
 | T2 | Red type tag "OOS" on each card | not shown; `taskTypeCode` is in the model but not rendered (the title takes its place) | minor | yes | `feature-tasks/.../TaskScreen.kt:173-176`; `TaskBoard.kt:13` |
-| T3 | Swipe left→right reveals red "Resolve" | swipe, or a visible text button "সমাধান করুন" | minor | yes | `values-bn/strings.xml:15`; `TaskScreen.kt:183` |
+| T3 | Swipe left→right reveals red "Resolve" | swipe, or a visible text button "সমাধান করুন" | minor | yes | `values-bn/strings.xml:15`; `TaskScreen.kt:183` | Left: visible Resolve button covers the swipe-revealed action; red per owner red=No rule, same as M8 (lead 2026-10-24).
 | T4 | "Completion on: 2025-11-30" (ISO with the year) | "শেষ তারিখ ৩০ নভেম্বর" (Bangla month name, **no year**) | minor | yes | `TaskScreen.kt:215-221`; `values-bn/strings.xml:13,17-29` |
 | T5 | Statuses "চলমান" / "সম্পন্ন"; empty "আপনার এএমও (AMO) কোনো কাজ বরাদ্দ করেনি।" | verbatim | matches | – | `values-bn/strings.xml:4,11-12` |
 

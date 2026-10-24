@@ -18,6 +18,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTextClearance
 import androidx.compose.ui.test.performTextInput
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.aktcl.aron.core.common.AppLanguage
@@ -115,8 +116,21 @@ class SaleExtraScreensTest {
         compose.onNodeWithTag(CreditTags.YES).assertIsNotEnabled()
         // the bar says what to do while the field is empty; the field is found by its label (placeholder while empty)
         compose.onNodeWithText("Enter the amount collected").assertExists()
-        compose.onNodeWithText("Amount collected").performTextInput("30.5")
+        compose.onNodeWithTag(CreditTags.PAID).performTextInput("30.5")
         compose.onNodeWithText("Due: 49.50 ৳").assertExists()
+        compose.onNodeWithTag(CreditTags.YES).assertIsEnabled().performClick()
+        assertEquals(30_500L, applied)
+    }
+
+    @Test fun theKitPaidFieldForwardsLatinAndBengaliDigitsToTheSameParser() {
+        val d = SaleDraftOps.setQuantity(Fx.draft(), 100, 10, QtyUnit.STICK) // net 80.00
+        var applied: Long? = -1
+        compose.setContent { AronTheme(AppLanguage.EN) { CreditPrompt(SaleReviewCalculator.review(d, Fx.catalog), { applied = it }) } }
+        compose.onNodeWithTag(CreditTags.PAID).performTextInput("30.5")
+        compose.onNodeWithTag(CreditTags.YES).assertIsEnabled().performClick()
+        assertEquals(30_500L, applied)
+        compose.onNodeWithTag(CreditTags.PAID).performTextClearance()
+        compose.onNodeWithTag(CreditTags.PAID).performTextInput("৩০.৫")
         compose.onNodeWithTag(CreditTags.YES).assertIsEnabled().performClick()
         assertEquals(30_500L, applied)
     }
@@ -124,7 +138,7 @@ class SaleExtraScreensTest {
     @Test fun creditRefusesPaidEqualToTheNet() {
         val d = SaleDraftOps.setQuantity(Fx.draft(), 100, 10, QtyUnit.STICK)
         compose.setContent { AronTheme(AppLanguage.EN) { CreditPrompt(SaleReviewCalculator.review(d, Fx.catalog), {}) } }
-        compose.onNodeWithText("Amount collected").performTextInput("80")
+        compose.onNodeWithTag(CreditTags.PAID).performTextInput("80")
         compose.onNodeWithTag(CreditTags.YES).assertIsNotEnabled()
         // a wrong value gets the inline error once, not the same sentence twice (the bar reason is gone)
         compose.onAllNodesWithText("The amount collected must be less than the total.").assertCountEquals(1)

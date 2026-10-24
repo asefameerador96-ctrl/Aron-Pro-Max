@@ -4,9 +4,11 @@ import android.content.Context
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTextInput
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.aktcl.aron.core.common.AppLanguage
@@ -82,5 +84,15 @@ class VisitScreensTest {
         compose.onNodeWithText("Rahim Store").performClick()
         assertEquals(1L, picked)
         compose.onNodeWithText("K").assertExists()
+    }
+
+    @Test fun pickerSearchIsTheKitFieldAndNarrowsTheList() { // the lavender KitTextField is gone: same behaviour, kit AronField
+        val rows = OutletPicker.rows(listOf(o(1, "Rahim Store"), o(2, "Karim")))
+        show(AppLanguage.EN) { OutletPickerContent(rows, OutletPicker.chips(rows), OutletPicker.ALL_CHIP, {}, {}) }
+        compose.onNodeWithText("Select retailer").performClick()
+        compose.onNodeWithText("Rahim Store").assertExists()
+        compose.onNodeWithContentDescription("Search").performTextInput("Kar")
+        compose.onNodeWithText("Karim").assertExists()
+        compose.onNodeWithText("Rahim Store").assertDoesNotExist()
     }
 }

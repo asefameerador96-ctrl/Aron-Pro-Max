@@ -17,11 +17,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -37,10 +34,6 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.semantics.clearAndSetSemantics
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.aktcl.aron.core.common.AppLanguage
 import com.aktcl.aron.core.ui.AronIcons
@@ -114,46 +107,6 @@ internal fun StatusPill(label: String, icon: ImageVector, container: Color, ink:
     ) {
         Icon(icon, contentDescription = null, tint = ink, modifier = Modifier.size(AronTokens.Space.L))
         Text(label, style = MaterialTheme.typography.labelMedium, color = ink, maxLines = 2)
-    }
-}
-
-/**
- * The kit-looking text field (android-glass s6.12): the label above in `type.caption` `text.secondary` (no floating
- * label), then the 56 dp field, `radius.chip`, raised surface, `border.input`, focus ring in `border.focus`. The field
- * node carries the label as its content description (TalkBack reads it once: the caption is decorative), and shows the
- * label as its placeholder while empty, so a test finds the field by the label text or by its description. [modifier]
- * lays out the whole control (label and field); [fieldModifier] goes on the field itself (a test tag).
- */
-@Composable
-fun KitTextField(
-    value: String,
-    onValueChange: (String) -> Unit,
-    label: String,
-    modifier: Modifier = Modifier,
-    isError: Boolean = false,
-    keyboardType: KeyboardType = KeyboardType.Text,
-    singleLine: Boolean = true,
-    fieldModifier: Modifier = Modifier,
-) {
-    val c = LocalAronColors.current
-    Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.Xs)) {
-        Text(label, Modifier.clearAndSetSemantics { }, style = MaterialTheme.typography.bodySmall, color = c.textSecondary)
-        OutlinedTextField(
-            value = value, onValueChange = onValueChange,
-            placeholder = { Text(label, style = MaterialTheme.typography.bodyLarge, color = c.textPlaceholder) },
-            modifier = fieldModifier.fillMaxWidth().heightIn(min = AronTokens.Touch.Primary).semantics { contentDescription = label },
-            singleLine = singleLine, isError = isError,
-            keyboardOptions = KeyboardOptions(keyboardType = keyboardType),
-            shape = RoundedCornerShape(AronTokens.Radius.Chip),
-            textStyle = MaterialTheme.typography.bodyLarge,
-            colors = OutlinedTextFieldDefaults.colors(
-                focusedContainerColor = c.surfaceSolidRaised, unfocusedContainerColor = c.surfaceSolidRaised, errorContainerColor = c.surfaceSolidRaised,
-                focusedBorderColor = c.borderFocus, unfocusedBorderColor = c.borderInput, errorBorderColor = c.danger,
-                focusedTextColor = c.textPrimary, unfocusedTextColor = c.textPrimary, errorTextColor = c.textPrimary,
-                focusedPlaceholderColor = c.textPlaceholder, unfocusedPlaceholderColor = c.textPlaceholder, errorPlaceholderColor = c.textPlaceholder,
-                cursorColor = c.accent,
-            ),
-        )
     }
 }
 
