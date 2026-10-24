@@ -54,6 +54,8 @@ export function shouldRefresh(now: number, lastRead: number, visible: boolean, e
 
 /** A focus event only counts when the last read is older than this, so a focus storm (alt-tab, devtools) cannot hammer the API. */
 export const FOCUS_MIN_MS = 5_000;
+/** A tick that fires a little early or late must not skip a whole 30 s round. */
+const TICK_SLACK_MS = 1_000;
 
 function stamp(locale: string, at: number): string {
   return new Date(at).toLocaleTimeString(locale === "bn" ? "bn-BD" : "en-GB", { timeZone: "Asia/Dhaka", hour12: false });
@@ -76,7 +78,7 @@ export function AutoRefresh({ everyMs = REFRESH_MS, label, locale = "en" }: { ev
       router.refresh();
     };
     const tick = () => {
-      if (shouldRefresh(Date.now(), last.current, document.visibilityState === "visible", everyMs)) read();
+      if (shouldRefresh(Date.now() + TICK_SLACK_MS, last.current, document.visibilityState === "visible", everyMs)) read();
     };
     const onFocus = () => {
       if (document.visibilityState === "visible" && Date.now() - last.current >= FOCUS_MIN_MS) read();
