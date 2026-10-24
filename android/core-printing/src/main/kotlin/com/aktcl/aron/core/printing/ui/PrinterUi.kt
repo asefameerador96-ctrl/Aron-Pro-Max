@@ -46,6 +46,7 @@ import com.aktcl.aron.core.printing.R
 import com.aktcl.aron.core.ui.AronNoButton
 import com.aktcl.aron.core.ui.AronYesButton
 import com.aktcl.aron.core.printing.bt.BluetoothSppTransport
+import com.aktcl.aron.core.printing.bt.PrintFailure
 import com.aktcl.aron.core.printing.bt.PrinterManager
 import com.aktcl.aron.core.printing.bt.PrinterState
 import com.aktcl.aron.core.printing.bt.SavedPrinter
@@ -197,7 +198,7 @@ fun SaveAndPrintDialogs(flow: SaveAndPrint, scope: CoroutineScope, onFinished: (
         SaveAndPrint.Step.Printing -> Busy(R.string.printer_printing)
         is SaveAndPrint.Step.PrintFailed -> AlertDialog(
             onDismissRequest = {},
-            text = { Text(stringResource(R.string.ui_print_failed)) },
+            text = { Text(stringResource(R.string.ui_print_failed) + "\n\n" + stringResource(PrintFailureText.of(s.reason))) },
             confirmButton = { TextButton(onClick = { scope.launch { flow.onRetry() } }) { Text(stringResource(R.string.ui_print_retry)) } },
             dismissButton = { TextButton(onClick = { flow.onLater() }) { Text(stringResource(R.string.ui_print_later)) } },
         )
@@ -222,7 +223,22 @@ fun PrintAttemptDialogs(attempt: PrintAttempt?, onAnswer: (PrintAttempt.Awaiting
         is PrintAttempt.AwaitingConfirmation -> YesNo(null, R.string.ui_print_readable_question, { onAnswer(attempt, it) })
         PrintAttempt.LimitReached -> Info(R.string.ui_print_limit_reached, onClose)
         PrintAttempt.TooLong -> Info(R.string.ui_print_too_long, onClose)
-        is PrintAttempt.Failed -> Info(R.string.ui_print_failed, onClose)
+        is PrintAttempt.Failed -> AlertDialog(
+            onDismissRequest = onClose,
+            text = { Text(stringResource(R.string.ui_print_failed_doc) + "\n\n" + stringResource(PrintFailureText.of(attempt.reason))) },
+            confirmButton = { AronYesButton(stringResource(R.string.dialog_ok), onClose) },
+        )
+    }
+}
+
+/** What the seller is told about a failed print, by cause (owner P0 2026-10-24: every failure is a message, never a crash). */
+object PrintFailureText {
+    @StringRes fun of(reason: PrintFailure): Int = when (reason) {
+        PrintFailure.NO_PRINTER -> R.string.ui_print_why_no_printer
+        PrintFailure.UNREACHABLE -> R.string.ui_print_why_unreachable
+        PrintFailure.DISCONNECTED -> R.string.ui_print_why_disconnected
+        PrintFailure.PAPER_OUT -> R.string.ui_print_why_paper_out
+        PrintFailure.INTERNAL -> R.string.ui_print_why_internal
     }
 }
 

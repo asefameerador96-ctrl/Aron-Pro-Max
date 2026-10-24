@@ -214,3 +214,6 @@ green run of the exact sha). Usage stays `allowed` on the five-hour window.
 
 ## Update 2026-10-23 18:48 UTC (lead)
 - Day closed with nine trains, no slip. Tomorrow 06:10 UTC: morning sweep, GO train 23 (android-tso 92e0667c + lead docs), morning report 06:30. android-tso #3 hands over to #4 after its next one or two parity slices (context ~377k).
+
+## Update 2026-10-24 07:08 UTC (lead)
+- Train 24 (zod hotfix) on dev 07:05. Train 25 (print-crash fix, signed APK) GO 07:08, CI green about 07:30. Train 26 (android-tso zero-price slice + handover) after that; android-tso #4 then takes the print call-site guards. Evening report 18:30. No slip; the owner's P0 build is about 30 minutes later than the 07:30 said in the morning report because of the advisory.

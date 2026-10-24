@@ -1,4 +1,13 @@
-# Status: lane android-print (wave 4, session 4, 2026-10-22)
+# Status: lane android-print
+
+## Session 5 (2026-10-24): owner P0 "the app crashes on Print with the MP-58N connected"
+- **HANDOVER:** slice 1 pushed as 669d1a59 (lane run 40070779737). There is no stack trace yet; the fixes come from reading the code (D-PRINT-03..06). Next input: the owner's Settings → Printer diagnostics → Share report text after the next signed build. It now carries the last crash, the last caught print error and Android's exit reasons.
+- **Causes found, most likely first:** (1) the sale and memo-reprint render ran on the main thread (ANR on a cold 2 GB phone); (2) only `Exception` was caught, not `Error`, so an OOM or an R8-missing class in rendering or storage escaped into `viewModelScope`; (3) the `PrinterManager` reader, connect (from `hold()` and reconnect), close and the write watchdog ran on a handler-less Default scope and caught only IOException and SecurityException, so an OEM NullPointerException or IllegalStateException from a closed socket would end the process; (4) the diagnostics reader and link open had the same narrow catch.
+- **Fixed with tests:** `PrintCrashProofTest` (10 tests: read NPE, connect/open RuntimeException, Error on write, throwing close, renderer and ledger Errors, SaveAndPrint, render thread, diagnostics link, messages in both languages; the read and render-thread tests fail on the old code) and `CrashLogTest` (6 tests).
+- **Open on app call sites (told to the lead for android-sr):** `SrDay.printSummary` and `AmoDay.printSummary` have no catch around `PrintMapping.daySummary`; the stock-slip `runCatching` swallows a `stockSlip()` failure with no message.
+- **Device-pending:** D-PRINT-02 (owner export), D-P1, D-P2 unchanged. After the next signed build: pair, print a sale and a stock slip; if it still fails, share the diagnostics report.
+
+## Session 4 (wave 4, 2026-10-22)
 
 ## Wave 4: D-PRINT-02 Thermal Crest MP-58N (docs/34 s4.1)
 - **Branch note:** the old `lane/android-print` (2026-10-07) had history unrelated to the rewritten INT and its core-printing was older than INT's; the lane was rebuilt from INT 513d7984 + `lane/lead-directive-1022`.
