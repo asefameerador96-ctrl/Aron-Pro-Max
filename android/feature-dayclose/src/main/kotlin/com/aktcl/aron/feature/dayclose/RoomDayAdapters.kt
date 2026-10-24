@@ -170,3 +170,40 @@ class RoomDaySubmitWriter(
         )
     }
 }
+
+/**
+ * D-NIGHT-DAYCLOSE-01 with contract 1.9 row 4: the login totals of [inner] plus, from the `digest` of `GET /v1/sync/totals`
+ * (lane-local parser [com.aktcl.aron.core.sync.SubmitDigest] until the generated DTOs land), this phone's own received counts
+ * and the server's list of rows it did not store, with the bundle's reason texts and the outlet names. Without the digest
+ * (offline, an older server) it adds nothing.
+ */
+class DigestServerCounts(
+    private val inner: ServerCounts,
+    private val digests: com.aktcl.aron.core.sync.SubmitDigestSource,
+    private val db: AronDatabase,
+) : ServerCounts {
+    override suspend fun counts(businessDate: String): Map<String, Int>? = inner.counts(businessDate)
+
+    override suspend fun thisDeviceCounts(businessDate: String): Map<String, Int>? = digests.digest(businessDate)?.deviceReceived
+
+    override suspend fun serverRejected(businessDate: String): List<RejectedRow> {
+        val rows = digests.digest(businessDate)?.rejected.orEmpty()
+        if (rows.isEmpty()) return emptyList()
+        val reasons = ReasonTextsJson.parse(ReferenceRepository(db).section("reason_texts"))
+        val ref = db.referenceDao()
+        return rows.map { r ->
+            val reason = reasons[r.code]
+            RejectedRow(
+                clientUuid = r.clientUuid, recordType = r.type, businessDate = r.businessDate, code = r.code,
+                outcome = when {
+                    r.status == "quarantined" && !r.final -> RejectedOutcome.STORED_FLAGGED
+                    r.final || r.status == "rejected" || r.status == "quarantined" -> RejectedOutcome.DROPPED
+                    r.fromThisDevice -> RejectedOutcome.RETRY
+                    else -> RejectedOutcome.WAITING_ELSEWHERE
+                },
+                memoNo = r.memoNo, outletName = r.outletId?.let { id -> runCatching { ref.outlet(id)?.name }.getOrNull() },
+                reasonBn = reason?.first, reasonEn = reason?.second, fromThisPhone = r.fromThisDevice,
+            )
+        }
+    }
+}

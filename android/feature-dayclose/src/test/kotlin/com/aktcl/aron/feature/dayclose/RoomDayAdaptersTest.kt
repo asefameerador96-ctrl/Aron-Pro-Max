@@ -92,6 +92,29 @@ class RoomDayAdaptersTest {
         assertEquals(RejectedOutcome.RETRY, listed.getValue("visit").outcome)
     }
 
+    /** Contract 1.9 row 4: the digest adds this phone's received counts and the server's rows this install does not hold. */
+    @Test fun theDigestFeedsThePerDeviceCountsAndTheServerList() = runTest {
+        db.referenceDao().insertSections(listOf(com.aktcl.aron.core.database.entity.BundleSectionEntity("reason_texts",
+            "{\"price_invalid\": {\"bn\": \"দাম শূন্য\", \"en\": \"Priced at zero\"}}")))
+        val digest = com.aktcl.aron.core.sync.SubmitDigest(
+            mapOf("memo" to 4),
+            listOf(
+                com.aktcl.aron.core.sync.SubmitDigest.Rejected("a", "memo_line", "2026-10-05", "rejected", "price_invalid", true, false, "x-1", null),
+                com.aktcl.aron.core.sync.SubmitDigest.Rejected("b", "visit", "2026-10-05", "parked", "scope_stale", false, false, null, null),
+                com.aktcl.aron.core.sync.SubmitDigest.Rejected("c", "memo", "2026-10-05", "quarantined", "memo_no_duplicate", false, true, "x-2", null),
+            ),
+            false,
+        )
+        val src = com.aktcl.aron.core.sync.SubmitDigestSource.answering(digest)
+        val counts = DigestServerCounts({ mapOf("memo" to 10) }, src, db)
+        assertEquals(mapOf("memo" to 10), counts.counts("2026-10-05"))
+        assertEquals(mapOf("memo" to 4), counts.thisDeviceCounts("2026-10-05"))
+        val rows = counts.serverRejected("2026-10-05").associateBy { it.clientUuid }
+        rows.getValue("a").let { assertEquals(RejectedOutcome.DROPPED, it.outcome); assertEquals("Priced at zero", it.reasonEn); assertFalse(it.fromThisPhone) }
+        assertEquals(RejectedOutcome.WAITING_ELSEWHERE, rows.getValue("b").outcome) // another install's parked row never blocks this phone
+        assertEquals(RejectedOutcome.STORED_FLAGGED, rows.getValue("c").outcome)
+    }
+
     @Test fun anAmoSubmitIsASupervisorDayWithNoRoute() = runTest {
         val source = RoomDaySource(db)
         val noRoute = { meta().copy(routeId = null) }

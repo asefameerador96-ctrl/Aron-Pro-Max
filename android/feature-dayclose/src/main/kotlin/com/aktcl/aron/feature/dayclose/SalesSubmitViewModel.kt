@@ -32,6 +32,9 @@ fun interface ServerCounts {
      * the per-device digest. Null until the server sends them; the compare rule then uses the login totals of [counts].
      */
     suspend fun thisDeviceCounts(businessDate: String): Map<String, Int>? = null
+
+    /** The server's own list of rows of this login and date it did not store (contract 1.9 row 4); empty until it sends them. */
+    suspend fun serverRejected(businessDate: String): List<RejectedRow> = emptyList()
 }
 
 /** Queues the `day_submit` record as the LAST event of the day, with the device counts and dues (REQUEST: core `recordDaySubmit`). */
@@ -100,7 +103,10 @@ class SalesSubmitViewModel(
         // Every type either side counts (a type only the server has shows device 0: information, never a mismatch).
         val types = (device.keys + srv.orEmpty().keys).toSortedSet()
         val counts = types.map { t -> CountRow(t, device[t] ?: 0, srv?.let { it[t] ?: 0 }, mine?.get(t)) }
-        val rejected = runCatching { source.rejectedRows(d) }.getOrDefault(emptyList())
+        val local = runCatching { source.rejectedRows(d) }.getOrDefault(emptyList())
+        // The phone's own rows first; the server adds what this install does not hold (earlier installs, other phones).
+        val held = local.map { it.clientUuid }.toSet()
+        val rejected = local + runCatching { server.serverRejected(d) }.getOrDefault(emptyList()).filter { it.clientUuid !in held }
         val submitted = source.alreadySubmitted(d)
         val settled = submitted && source.submitSettled(d)
         val prev = _state.value.progress

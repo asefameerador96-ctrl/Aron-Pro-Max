@@ -58,4 +58,6 @@
     <string name="submit_type_outlet_request">আউটলেট অনুরোধ</string>
     <string name="submit_type_task_event">টাস্ক</string>
     <string name="submit_type_other">অন্যান্য রেকর্ড (%1$s)</string>
+    <string name="submit_rejected_elsewhere">যে ফোন পাঠিয়েছে সেখান থেকে আবার পাঠানোর অপেক্ষায়। সাবমিট আটকাবে না।</string>
+    <string name="submit_rejected_other_phone">অন্য ফোন বা আগের ইনস্টল</string>
 </resources>

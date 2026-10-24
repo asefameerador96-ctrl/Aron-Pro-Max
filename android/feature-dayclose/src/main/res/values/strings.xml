@@ -59,4 +59,6 @@
     <string name="submit_type_outlet_request">Outlet request</string>
     <string name="submit_type_task_event">Task</string>
     <string name="submit_type_other">Other record (%1$s)</string>
+    <string name="submit_rejected_elsewhere">Waiting on the phone that sent it. Submit is not blocked.</string>
+    <string name="submit_rejected_other_phone">other phone or earlier install</string>
 </resources>

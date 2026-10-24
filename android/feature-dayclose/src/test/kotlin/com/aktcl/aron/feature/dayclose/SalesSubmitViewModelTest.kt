@@ -75,4 +75,19 @@ class SalesSubmitViewModelTest {
         assertTrue(v.state.value.serverKnown); assertTrue(v.state.value.gate.enabled); assertEquals(listed, v.state.value.rejected)
         assertEquals(listOf(CountRow("memo", 6, 10), CountRow("visit", 0, 9)), v.state.value.counts)
     }
+
+    /** The server's list adds only rows this install does not hold; the phone's own row wins. */
+    @Test fun serverRowsMergeAfterThePhonesOwn() {
+        val mine = RejectedRow("u1", "memo", "2026-10-05", "price_invalid", RejectedOutcome.DROPPED)
+        class Rej : DaySource by Day() { override suspend fun rejectedRows(businessDate: String) = listOf(mine) }
+        val server = object : ServerCounts {
+            override suspend fun counts(businessDate: String) = mapOf("memo" to 6)
+            override suspend fun serverRejected(businessDate: String) = listOf(
+                mine.copy(outcome = RejectedOutcome.STORED_FLAGGED), RejectedRow("u9", "memo", "2026-10-05", "memo_no_duplicate", RejectedOutcome.DROPPED, fromThisPhone = false),
+            )
+        }
+        val v = SalesSubmitViewModel(1, { "2026-10-05" }, Rej(), server, { _, _, _ -> }, Sched(), { true })
+        v.refresh()
+        assertEquals(listOf(mine, server.let { RejectedRow("u9", "memo", "2026-10-05", "memo_no_duplicate", RejectedOutcome.DROPPED, fromThisPhone = false) }), v.state.value.rejected)
+    }
 }

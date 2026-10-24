@@ -31,6 +31,8 @@ enum class RejectedOutcome {
     DROPPED,
     /** Answered with a retryable code and still queued on the phone: blocks Sales Submit until it is re-synced. */
     RETRY,
+    /** Server only: refused for now, from another phone or an earlier install of this login; this phone cannot resend it, so it never blocks. */
+    WAITING_ELSEWHERE,
 }
 
 /**
@@ -48,6 +50,8 @@ data class RejectedRow(
     val outletName: String? = null,
     val reasonBn: String? = null,
     val reasonEn: String? = null,
+    /** False for a row the server reports from another phone or an earlier install of this login (contract 1.9 row 4). */
+    val fromThisPhone: Boolean = true,
 )
 
 /** One line of the reconciliation table as shown: a record type, or several grouped by [SubmitDisplay.views]. */

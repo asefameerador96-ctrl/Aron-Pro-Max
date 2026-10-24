@@ -378,7 +378,8 @@ private fun RejectedList(rows: List<RejectedRow>, typeLabel: (String) -> String,
             Column(verticalArrangement = Arrangement.spacedBy(AronTokens.Space.Xs)) {
                 val which = r.memoNo ?: r.outletName
                 val date = r.businessDate.takeIf { today != null && it != today }?.let { localizedDigits(it) }
-                Text(listOfNotNull(typeLabel(r.recordType), which, date).joinToString(" · "), style = MaterialTheme.typography.bodyLarge, color = look.ink)
+                val elsewhere = if (r.fromThisPhone) null else stringResource(R.string.submit_rejected_other_phone)
+                Text(listOfNotNull(typeLabel(r.recordType), which, date, elsewhere).joinToString(" · "), style = MaterialTheme.typography.bodyLarge, color = look.ink)
                 val reason = (if (bn) r.reasonBn ?: r.reasonEn else r.reasonEn ?: r.reasonBn) ?: r.code?.let { stringResource(R.string.submit_rejected_code, it) }
                 if (reason != null) Text(reason, style = MaterialTheme.typography.bodyMedium, color = look.inkMuted)
                 Text(
@@ -387,6 +388,7 @@ private fun RejectedList(rows: List<RejectedRow>, typeLabel: (String) -> String,
                             RejectedOutcome.STORED_FLAGGED -> R.string.submit_rejected_flagged
                             RejectedOutcome.DROPPED -> R.string.submit_rejected_dropped
                             RejectedOutcome.RETRY -> R.string.submit_rejected_retry
+                            RejectedOutcome.WAITING_ELSEWHERE -> R.string.submit_rejected_elsewhere
                         },
                     ),
                     style = MaterialTheme.typography.bodySmall, color = if (r.outcome == RejectedOutcome.RETRY) WarnInk else OkInk,

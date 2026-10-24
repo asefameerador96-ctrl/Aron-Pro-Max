@@ -121,6 +121,11 @@ class SrDay(
     fun iso(ms: Long): String = isoMillis.format(Instant.ofEpochMilli(ms))
     fun currentMs(): Long = clock.nowMs()
     fun requestSync() = scheduler.requestSync(userId, SyncTrigger.WRITE_DEBOUNCE)
+    /** D-NIGHT-DAYCLOSE-01, contract 1.9 row 4: the Sales Submit digest (`GET /v1/sync/totals`), read when the screen asks. */
+    val submitDigests = com.aktcl.aron.core.sync.SubmitDigestSource(
+        userId, com.aktcl.aron.core.sync.SessionUploadAuth(components.session), com.aktcl.aron.core.sync.SyncTotalsDigestApi(components.apiClient),
+        nowMs = { components.clock.elapsedRealtimeMs() },
+    )
     /** The sync sheet's "sync now" (screens-sr s19): a manual trigger, scheduled, never awaited. */
     fun requestSyncNow() = scheduler.requestSync(userId, SyncTrigger.MANUAL)
     fun businessDate(): String = BusinessDate.of(clock.nowMs()).toString()
