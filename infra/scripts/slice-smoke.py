@@ -20,7 +20,7 @@ through the public address (Front Door), as the seeded SR on the seeded dev phon
 Payload shapes follow backend/app/src/test/.../SyncConvergenceFuzzTest.kt (the server's own accepted records).
 Exit 0 when every step passed, 1 otherwise; one line per step, and with GITHUB_STEP_SUMMARY a table there.
 Environment: SLICE_API_HOST (host only), SLICE_PASSWORD (the seed password; never printed), optional SLICE_USER
-(sr1001), SLICE_DEVICE, SLICE_DEVICE_KEY (PEM file; signs X-Device-Proof), SLICE_OUTLET_CODE (SMOKE-SR-001,SMOKE-SR-002,SMOKE-SR-003), SLICE_APP_VERSION (1.0.9+9), SLICE_TILE_WAIT_S (300).
+(sr1001), SLICE_DEVICE, SLICE_DEVICE_KEY (PEM file; signs X-Device-Proof), SLICE_OUTLET_CODE (SMOKE-SR-001,SMOKE-SR-002,SMOKE-SR-003), SLICE_APP_VERSION (1.0.9+9), SLICE_TILE_WAIT_S (300), SLICE_TILE_POLL_S (2).
 """
 import datetime
 import base64
@@ -46,7 +46,9 @@ TILE_WAIT_S = int(os.environ.get("SLICE_TILE_WAIT_S", "300"))
 OUTLET_CODES = [c.strip() for c in os.environ.get("SLICE_OUTLET_CODE", "SMOKE-SR-001,SMOKE-SR-002,SMOKE-SR-003").split(",") if c.strip()]
 OUTLET_CODE = ",".join(OUTLET_CODES)
 DEVICE_KEY = os.environ.get("SLICE_DEVICE_KEY", "")  # PEM file of the smoke device's key (Key Vault aron-dev-smoke-device-key)
-TILE_POLL_S = float(os.environ.get("SLICE_TILE_POLL_S", "15"))
+# 2 s polls (backend-core #18, D-NIGHT-SYNC-01): step 9 reports the seconds from the accepted sale to the tile.
+TILE_POLL_S = float(os.environ.get("SLICE_TILE_POLL_S", "2"))
+SALE_AT = [None]  # time.time() when the sale batch was answered
 SCHEME = os.environ.get("SLICE_SCHEME", "https")  # http only for the offline test against a local stub
 # Memo sequence (docs/24 s7.5): the overflow range of the slot the server bound this device to (login device.bind_ordinal:
 # 5000 + ordinal x 1000 + 1..999), which no other phone of the user numbers from; the smoke device is no real phone.
@@ -244,6 +246,7 @@ def run():
 
     first = batch(records, str(uuid.uuid4()))
     s, r1 = call("POST", "/v1/sync/batch", token, first, gz=True)
+    SALE_AT[0] = time.time()
     st = acks(r1)
     memo_accepted = any(a.get("client_uuid") == memo and a.get("status") == "accepted" for a in (r1 or {}).get("acks", [])) \
         if isinstance(r1, dict) else False
@@ -365,9 +368,10 @@ def after_sale(token, day, memo, gross, k0, records, first, batch, acks, r1):
             break
         time.sleep(TILE_POLL_S)
     shown = k1 is not None and k1.get("active_memo_count", 0) >= k0.get("active_memo_count", 0) + 1
+    took = f", {time.time() - SALE_AT[0]:.0f} s after the sale was accepted (polled every {TILE_POLL_S:g} s)" if shown and SALE_AT[0] else ""
     step("9 dashboard tile shows the sale", shown,
          f"active memos {k0.get('active_memo_count')} -> {k1.get('active_memo_count') if k1 else '?'}, "
-         f"gross {k0.get('gross_mtk')} -> {k1.get('gross_mtk') if k1 else '?'} mtk")
+         f"gross {k0.get('gross_mtk')} -> {k1.get('gross_mtk') if k1 else '?'} mtk{took}")
 
 def main():
     skipped = False
