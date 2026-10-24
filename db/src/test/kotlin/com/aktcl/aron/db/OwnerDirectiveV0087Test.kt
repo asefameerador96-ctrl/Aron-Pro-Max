@@ -214,6 +214,53 @@ class OwnerDirectiveV0087Test {
     }
 
     @Test
+    fun v0111MemoFlagsViewListsFlaggedMemosWithTheirScope() = db.connect().use { c ->
+        // Three memos on one outlet and route: flagged, unflagged, flagged and data-voided. Only the flagged ones show,
+        // with the route's zone and its territory, division and wing; the voided one keeps voided_at for readers to filter.
+        c.tx {
+            val route = "(SELECT min(id) FROM app.route WHERE status = 'active')"
+            val outlet = "(SELECT min(id) FROM app.outlet)"
+            fun memo(no: String, flags: String, voided: Boolean, routeId: String = route): UUID = UUID.randomUUID().also { m ->
+                exec(
+                    "INSERT INTO app.memo (client_uuid, family_uuid, business_date, user_id, route_id, captured_at, config_version, visit_client_uuid, " +
+                        "outlet_id, memo_no, memo_kind, committed_at, price_list_date, price_type, gross_mtk, offer_discount_mtk, drp_discount_mtk, " +
+                        "qc_deduction_mtk, round_adj_mtk, net_mtk, paid_mtk, due_mtk, is_credit, line_count, discount_line_count, qc_line_count, server_flags, voided_at) " +
+                        "VALUES ('$m', gen_random_uuid(), '2026-10-05', ${user("sr1001")}, $routeId, now(), 0, gen_random_uuid(), $outlet, 'sr1001-261005-$no', " +
+                        "'sale', now(), '2026-10-05', 'outlet', 18400, 0, 0, 0, 0, 18400, 18400, 0, false, 1, 0, 0, '$flags', ${if (voided) "now()" else "NULL"})",
+                )
+            }
+            val flagged = memo("901", "{zero_price_line,price_mismatch}", voided = false)
+            memo("902", "{}", voided = false)
+            val voided = memo("903", "{arithmetic_mismatch}", voided = true)
+            val scope = scalar(
+                "SELECT concat_ws('|', z.id, z.territory_id, t.division_id, d.wing_id) FROM app.route r JOIN app.zone z ON z.id = r.zone_id " +
+                    "JOIN app.territory t ON t.id = z.territory_id JOIN app.division d ON d.id = t.division_id WHERE r.id = $route",
+            )
+            assertEquals("sr1001-261005-901|$scope|18400|{zero_price_line,price_mismatch}|active|-", scalar(
+                "SELECT concat_ws('|', memo_no, zone_id, territory_id, division_id, wing_id, gross_mtk, flags, status, coalesce(voided_at::text, '-')) " +
+                    "FROM dw.v_memo_flags WHERE memo_client_uuid = '$flagged'"))
+            assertEquals("true", scalar("SELECT (route_id = $route AND outlet_id = $outlet AND user_id = ${user("sr1001")} AND stored_at IS NOT NULL)::text FROM dw.v_memo_flags WHERE memo_client_uuid = '$flagged'"))
+            assertEquals("0", scalar("SELECT count(*) FROM dw.v_memo_flags WHERE memo_no = 'sr1001-261005-902'"), "an unflagged memo is not listed")
+            assertEquals("{arithmetic_mismatch}|true", scalar("SELECT flags::text || '|' || (voided_at IS NOT NULL) FROM dw.v_memo_flags WHERE memo_client_uuid = '$voided'"))
+            // A memo uploaded without a route keeps the outlet's placement on its business date, not the outlet's later one:
+            // place the outlet on the test route until 2026-10-20, then move it (history and outlet row) to another route.
+            val other = "(SELECT min(id) FROM app.route WHERE id <> $route)"
+            exec("DELETE FROM app.outlet_placement_history WHERE outlet_id = $outlet")
+            exec("INSERT INTO app.outlet_placement_history (outlet_id, route_id, valid_from, valid_to) SELECT $outlet, $route, DATE '2026-01-01', DATE '2026-10-20'")
+            exec("INSERT INTO app.outlet_placement_history (outlet_id, route_id, valid_from) SELECT $outlet, $other, DATE '2026-10-20'")
+            exec("UPDATE app.outlet SET route_id = $other, zone_id = (SELECT zone_id FROM app.route WHERE id = $other) WHERE id = $outlet")
+            val routeless = memo("904", "{zero_price_line}", voided = false, routeId = "NULL")
+            assertEquals("true|true|$scope", scalar(
+                "SELECT concat_ws('|', (route_id = $route)::text, (route_id <> (SELECT route_id FROM app.outlet WHERE id = $outlet))::text, zone_id, territory_id, division_id, wing_id) " +
+                    "FROM dw.v_memo_flags WHERE memo_client_uuid = '$routeless'"))
+            assertEquals("true", scalar("SELECT (memo_family_uuid IS NOT NULL)::text FROM dw.v_memo_flags WHERE memo_client_uuid = '$flagged'"))
+        }
+        val cols = c.scalar("SELECT string_agg(attname, ',' ORDER BY attnum) FROM pg_attribute WHERE attrelid = 'dw.v_memo_flags'::regclass AND attnum > 0")!!.split(',')
+        assertTrue(cols.none { it in setOf("username", "full_name", "user_name", "user_code", "contact_number") }, "no names or contacts in dw: $cols")
+        assertEquals("true|true|true|true", listOf("api_rw", "web_ro", "bi_reader", "worker_rw").joinToString("|") { can(c, it, "dw.v_memo_flags", "SELECT")!! })
+    }
+
+    @Test
     fun v0089ModuleGrantsHoldFifteenModules() = db.connect().use { c ->
         // The seeded admin holds w on every module (seed 01, as V0089 does for admins present when it runs).
         assertEquals("15|w", c.scalar("SELECT count(*) || '|' || string_agg(DISTINCT access, ',') FROM app.user_module_grant WHERE user_id = ${user("admin1001")}"))
