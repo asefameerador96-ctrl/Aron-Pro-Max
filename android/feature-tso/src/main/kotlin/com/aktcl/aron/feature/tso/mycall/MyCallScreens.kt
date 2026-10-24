@@ -209,15 +209,16 @@ fun VisitQueryScreen(state: VisitQueryState, outletTitle: String, onDone: (deleg
 private fun YesNo(value: Boolean?, onPick: (Boolean) -> Unit, yesTag: String, noTag: String) {
     // two equal, full-width targets: easy to hit with a thumb outdoors; the chosen one also says so with a tick, never by colour alone
     androidx.compose.foundation.layout.Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.M)) {
-        // the chosen answer is the gradient button (and carries the tick), the other one is the grey button
-        YesNoButton(stringResource(R.string.tso_mc_yes) + if (value == true) " ✓" else "", value == true, { onPick(true) }, Modifier.weight(1f).testTag(yesTag))
-        YesNoButton(stringResource(R.string.tso_mc_no) + if (value == false) " ✓" else "", value == false, { onPick(false) }, Modifier.weight(1f).testTag(noTag))
+        // the chosen answer takes the owner's colour (Yes green, No red; 2026-10-17) and carries the tick, the other one stays the neutral button
+        YesNoButton(stringResource(R.string.tso_mc_yes) + if (value == true) " ✓" else "", value == true, yes = true, { onPick(true) }, Modifier.weight(1f).testTag(yesTag))
+        YesNoButton(stringResource(R.string.tso_mc_no) + if (value == false) " ✓" else "", value == false, yes = false, { onPick(false) }, Modifier.weight(1f).testTag(noTag))
     }
 }
 
 @Composable
-private fun YesNoButton(text: String, chosen: Boolean, onClick: () -> Unit, modifier: Modifier) {
-    if (chosen) com.aktcl.aron.core.ui.aron.AronPrimaryButton(text, onClick, modifier)
+private fun YesNoButton(text: String, chosen: Boolean, yes: Boolean, onClick: () -> Unit, modifier: Modifier) {
+    if (chosen && yes) com.aktcl.aron.core.ui.AronYesButton(text, onClick, modifier)
+    else if (chosen) com.aktcl.aron.core.ui.AronNoButton(text, onClick, modifier)
     else com.aktcl.aron.core.ui.aron.AronSecondaryButton(text, onClick, modifier)
 }
 
