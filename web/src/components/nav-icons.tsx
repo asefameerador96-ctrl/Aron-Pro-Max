@@ -55,7 +55,7 @@ export type NavIconName = keyof typeof P;
 
 /** Menu entry id -> glyph. Report entries use their slug (`report-<slug>`). Unknown ids fall back to the generic file icon. */
 const BY_ID: Record<string, NavIconName> = {
-  dashboard: "dashboard", "daily-tracking": "trend", "tso-daily-tracking": "users", "final-submit": "check", "sync-health": "sync", exceptions: "flag", leave: "calendar",
+  dashboard: "dashboard", "daily-tracking": "trend", "tso-daily-tracking": "users", "final-submit": "check", "sync-health": "sync", exceptions: "flag", "flagged-memos": "flag", leave: "calendar",
   routes: "route", tutorial: "cap", credentials: "key", "products-tree": "layers", "products-category": "layers", "products-segment": "list", "products-brand": "tag", "products-variant": "box",
   "report-retailers": "store", "report-skus": "box", "report-task-planner": "clipboard", "report-geo-capture": "pin", "report-std-memo": "receipt", "report-sr-efficiency": "gauge",
   "report-route-std": "route", "report-data-entry-log": "edit", "report-final-submit-log": "check", "report-cpr-bsr": "target", "report-by-outlet": "store", "report-gigo": "swap",

@@ -5,6 +5,7 @@ import { CONFIG_MENU } from "@/app/admin/config-menu";
 import type { Role } from "@/contract/types";
 import type { MessageKey } from "@/lib/i18n";
 import { SUPPORT_DASHBOARD_PATHS, WEB_ROLES, type RoleList } from "@/lib/auth/roles";
+import { FLAGGED_MEMO_ROLES } from "@/lib/dash/flagged-memos";
 import { REPORT_ROLES, WEB_REPORTS } from "@/lib/reports/catalog";
 import { canSee, moduleOfPage, type ModuleGrants } from "@/lib/admin/modules";
 
@@ -31,6 +32,7 @@ export const DASHBOARD_MENU: readonly MenuItem[] = [
   { id: "final-submit", labelKey: "menu.final_submit", href: "/final-submit", roles: rolesFor("/final-submit"), group: "main" },
   { id: "sync-health", labelKey: "menu.sync_health", href: "/sync-health", roles: rolesFor("/sync-health"), group: "main" },
   { id: "exceptions", labelKey: "menu.exceptions", href: "/exceptions", roles: rolesFor("/exceptions"), group: "main" },
+  { id: "flagged-memos", labelKey: "menu.flagged_memos", href: "/flagged-memos", roles: FLAGGED_MEMO_ROLES, group: "main" },
   { id: "leave", labelKey: "menu.leave", href: "/leave", roles: rolesFor("/leave"), group: "main" },
   { id: "routes", labelKey: "menu.routes", href: "/routes", roles: rolesFor("/routes"), group: "main" },
   { id: "tutorial", labelKey: "menu.tutorial", href: "/tutorial", roles: rolesFor("/tutorial"), group: "main" },
