@@ -261,27 +261,29 @@ class OwnerDirectiveV0087Test {
     }
 
     @Test
-    fun v0112SyncRejectedAcceptsEveryContractOutcomeCode() = db.connect().use { c ->
-        // RecordOutcomeCode of contract 1.8 (contract/openapi.yaml), in its order; price_invalid is new in 1.8.
-        val contract = listOf(
-            "scope_stale", "config_version_unknown", "parent_missing", "outlet_pending_approval", "price_list_unknown",
-            "schema_invalid", "unknown_record_type", "unknown_sku", "unknown_outlet", "unknown_route", "arithmetic_mismatch",
-            "memo_no_invalid", "memo_no_duplicate", "edit_not_allowed", "chain_too_deep", "voided_by_admin", "content_duplicate",
-            "lines_exceed_max", "qty_invalid", "price_invalid", "attendance_duplicate", "checkout_too_early", "server_error",
-            "payload_conflict", "business_date_out_of_window", "scope_out_of_reach", "no_assignment_on_date",
-            "device_integrity_failed", "device_not_enrolled", "user_disabled", "device_revoked", "app_version_blocked",
-            "after_month_close", "unknown_gift", "insufficient_points", "gift_photo_exists", "programme_inactive",
+    fun v0112SyncRejectedTakesPriceInvalidAndStillRefusesQuarantineCodes() = db.connect().use { c ->
+        // The rejected-status codes of contract 1.8 (price_invalid new) plus the server-only retry_exhausted go to
+        // sync_rejected; the 15 quarantined codes belong to sync_quarantine and stay refused here (V0008 split).
+        val rejected = listOf(
+            "scope_stale", "config_version_unknown", "parent_missing", "outlet_pending_approval", "price_list_unknown", "schema_invalid",
+            "unknown_record_type", "unknown_sku", "unknown_outlet", "unknown_route", "memo_no_invalid", "edit_not_allowed", "chain_too_deep",
+            "voided_by_admin", "lines_exceed_max", "qty_invalid", "price_invalid", "attendance_duplicate", "server_error", "retry_exhausted",
+            "unknown_gift", "insufficient_points", "gift_photo_exists",
         )
-        assertEquals(37, contract.size)
+        val quarantined = listOf(
+            "arithmetic_mismatch", "memo_no_duplicate", "content_duplicate", "checkout_too_early", "payload_conflict",
+            "business_date_out_of_window", "scope_out_of_reach", "no_assignment_on_date", "device_integrity_failed", "device_not_enrolled",
+            "user_disabled", "device_revoked", "app_version_blocked", "after_month_close", "programme_inactive",
+        )
+        fun insert(code: String) = "INSERT INTO app.sync_rejected (client_uuid, record_type, code, retryable, payload_sha256, payload, user_id) " +
+            "VALUES (gen_random_uuid(), 'memo', '$code', false, sha256(gen_random_uuid()::text::bytea), '{}', ${user("sr1001")})"
         c.tx {
-            fun reject(code: String) = exec(
-                "INSERT INTO app.sync_rejected (client_uuid, record_type, code, retryable, payload_sha256, payload, user_id) " +
-                    "VALUES (gen_random_uuid(), 'memo', '$code', false, sha256(gen_random_uuid()::text::bytea), '{}', ${user("sr1001")})",
-            )
-            (contract + "retry_exhausted").forEach { reject(it) }
+            rejected.forEach { exec(insert(it)) }
             assertEquals("1", scalar("SELECT count(*) FROM app.sync_rejected WHERE code = 'price_invalid'"))
-            assertEquals("23514", refused("INSERT INTO app.sync_rejected (client_uuid, record_type, code, retryable, payload_sha256, payload, user_id) " +
-                "VALUES (gen_random_uuid(), 'memo', 'no_such_code', false, sha256('x'::bytea), '{}', ${user("sr1001")})"))
+            (quarantined + "no_such_code").forEach { assertEquals("23514", refused(insert(it)), it) }
+            // The quarantine table still takes exactly the quarantined codes, not price_invalid.
+            assertEquals("23514", refused("INSERT INTO app.sync_quarantine (client_uuid, record_type, code, payload_sha256, payload, user_id, business_date) " +
+                "VALUES (gen_random_uuid(), 'memo', 'price_invalid', sha256('x'::bytea), '{}', ${user("sr1001")}, '2026-10-05')"))
         }
         // V0113 validated the constraint.
         assertEquals("true", c.scalar("SELECT convalidated::text FROM pg_constraint WHERE conname = 'sync_rejected_code_check' AND conrelid = 'app.sync_rejected'::regclass"))
