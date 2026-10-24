@@ -135,6 +135,8 @@ class ScopeLeakAcrossEndpointsTest {
             otherUuids += h.createQuery("SELECT client_uuid::text FROM app.visit WHERE user_id = :u UNION SELECT client_uuid::text FROM app.memo WHERE user_id = :u UNION SELECT client_uuid::text FROM app.due_collection WHERE user_id = :u")
                 .bind("u", other.userId).mapTo(String::class.java).list()
             otherUuids += seedOtherRows(h, other)
+            // getFlaggedMemos (contract 1.8.0) reads only flagged memos: one stored memo of each division carries a flag.
+            h.execute("UPDATE app.memo SET server_flags = '{price_mismatch}' WHERE id IN (SELECT max(id) FROM app.memo WHERE user_id IN (${own.userId}, ${other.userId}) GROUP BY user_id)")
             // Record paths named by uuid or row id are aimed at the other division's rows (the other-path variant).
             world.otherPathValues["request_uuid"] = otherRequestUuid
             world.otherPathValues["task_uuid"] = otherTaskUuid
