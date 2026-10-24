@@ -61,7 +61,7 @@ class SyncWorkTest {
     @Test fun aSaveAsksForOneNetworkJobFiveSecondsLaterAndAPeriodicSafetyNet() {
         scheduler.requestSync(7, SyncTrigger.WRITE_DEBOUNCE)
         scheduler.requestSync(7, SyncTrigger.WRITE_DEBOUNCE) // a burst shares the job
-        val job = live(WorkManagerSyncScheduler.mainName(7)).single()
+        val job = live(WorkManagerSyncScheduler.pendingName(7)).single()
         assertEquals(5_000L, spec(job).initialDelay)
         assertEquals(NetworkType.CONNECTED, job.constraints.requiredNetworkType)
         assertFalse(spec(job).expedited)
@@ -217,7 +217,7 @@ class SyncWorkTest {
         scheduler = WorkManagerSyncScheduler({ wm }, Random(1), sdkInt = 36, checkoutGate = { true })
         scheduler.requestSync(600, SyncTrigger.WRITE_DEBOUNCE)
         scheduler.requestSync(600, SyncTrigger.DAY_SUBMIT)
-        assertEquals(5_000L, spec(live(WorkManagerSyncScheduler.mainName(600)).single()).initialDelay)
+        assertEquals(5_000L, spec(live(WorkManagerSyncScheduler.pendingName(600)).single()).initialDelay)
         assertEquals(1, live(WorkManagerSyncScheduler.gateName(600)).size)
     }
 

@@ -52,7 +52,8 @@ class CheckerF011Test {
         if (delayed) driver.setInitialDelayMet(info.id)
         if (periodic) driver.setPeriodDelayMet(info.id)
     }
-    private fun oneTime(user: Long) = live(WorkManagerSyncScheduler.mainName(user)) + live(WorkManagerSyncScheduler.retryName(user))
+    private fun oneTime(user: Long) = live(WorkManagerSyncScheduler.mainName(user)) + live(WorkManagerSyncScheduler.retryName(user)) +
+        live(WorkManagerSyncScheduler.pendingName(user))
 
     /**
      * A save lands after the engine's last nextSendable but before its report: DRAINED with unsent > 0. afterRun leaves only

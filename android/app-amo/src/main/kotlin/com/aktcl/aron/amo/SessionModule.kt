@@ -156,7 +156,7 @@ object SessionModule {
     /** Connectivity trigger (F-SYS-046): uploads for every user on the phone with rows waiting, after a 5 s quiet period. */
     @Provides
     @Singleton
-    fun connectivityFlush(telemetry: com.aktcl.aron.core.sync.DeviceTelemetry, databases: UserDatabases, components: SessionComponents, scheduler: WorkManagerSyncScheduler): ConnectivityFlush =
+    fun connectivityFlush(telemetry: com.aktcl.aron.core.sync.DeviceTelemetry, databases: UserDatabases, components: SessionComponents, scheduler: WorkManagerSyncScheduler, bundles: BundleDownloaders): ConnectivityFlush =
         ConnectivityFlush(
             scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Default),
             healthy = { components.syncApi.healthy() },
@@ -164,6 +164,12 @@ object SessionModule {
             usersWithPendingRows = { databases.knownUserIds().filter { id -> runCatching { databases.of(id).outboxDao().unsentCount() > 0 }.getOrDefault(false) } },
             scheduler = scheduler,
             onNetworkChange = telemetry::onNetworkChange, // F-SYS-081: bytes billed to the network that carried them
+            // D-NIGHT-SYNC-01: nothing to upload on a reconnect: a delta when the server said it is newer, else on the 30 min gate.
+            pullIfStale = {
+                (components.session.settled() as? com.aktcl.aron.core.session.SessionState.Active)?.user?.userId
+                    ?.takeIf { databases.exists(it) }
+                    ?.let { bundles.of(it).let { d -> d.refreshIfServerNewer() ?: d.refreshOnForeground() } }
+            },
         )
 
     /** F-SYS-024: one activity log per process (the shells log into it; the sync runner flushes it before each batch). */
