@@ -673,3 +673,6 @@
 
 ### 17:31 UTC — lanes up; route-only TSO ruling
 - backend-core #17 and web-admin #8 both reported up with INT merged at 17:29–17:30. backend-core #17 asked about route-only TSOs: zone aggregates would expose other SRs' routes in a shared zone, wider than the memo reach. Ruled (D-DASH-TSO-HOUSE-SCOPE-02): fail-closed, default node set = zones whose every route is the TSO's on the business date; partly held zones stay out; none → today's 403; route-keyed aggregates queued as the proper later fix. Lane continues; the house part was never in question.
+
+### 17:48 UTC — route-only TSO: ruling (a), house part only
+- backend-core #17's Opus checker blocked the route-only default: zone stamps are historical, so a current-membership test still leaks over past ranges; the exact alternative is a nine-table scan. Ruled D-DASH-TSO-HOUSE-SCOPE-03: route-only default stays 403 until route-keyed aggregates; the slice ships the house part (house zones from Reach, duplicate-house fold tested, route-only 403 pinned). Request file annotated.
