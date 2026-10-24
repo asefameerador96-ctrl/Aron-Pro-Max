@@ -19,7 +19,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.aktcl.aron.core.ui.AronEmptyState
 import com.aktcl.aron.core.ui.AronListRow
 import com.aktcl.aron.core.ui.AronSecondaryButton
 import com.aktcl.aron.core.ui.AronTokens
@@ -149,6 +148,7 @@ fun MemoHost(day: SrDay, sunlight: Boolean, onSunlight: (Boolean) -> Unit, onEdi
         val sel = st.selected
         val h = history
         when {
+            !st.loaded -> com.aktcl.aron.core.ui.aron.AronLoadingScreen()
             h != null -> SaleHistoryScreen(h, offlineBanner = true, skuName = kit::skuName, skuCategory = kit::skuCategoryCode)
             sel == null -> MemoMenuScreen(st.rows, kit::outletName, onOpen = { vm.open(it.memoUuid) })
             else -> {
@@ -171,8 +171,9 @@ fun SummaryHost(day: SrDay, sunlight: Boolean, onSunlight: (Boolean) -> Unit) {
     var bundle by remember { mutableStateOf<SummaryBundle?>(null) }
     val attempt by day.summaryAttempt.collectAsState()
     LaunchedEffect(Unit) { bundle = kit.summary() }
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
-        bundle?.let { b -> SummaryScreen(b.summary, kit::skuName, onPrint = { day.printSummary(b) }) }
+    val b = bundle
+    if (b == null) com.aktcl.aron.core.ui.aron.AronLoadingScreen() else Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
+        SummaryScreen(b.summary, kit::skuName, onPrint = { day.printSummary(b) })
     }
     com.aktcl.aron.core.printing.ui.PrintAttemptDialogs(
         attempt, onAnswer = day::answerSummaryPrint, onClose = day::closeSummaryAttempt,
@@ -200,7 +201,7 @@ fun SubmitHost(day: SrDay) {
 fun JourneyHost(day: SrDay) {
     var j by remember { mutableStateOf<com.aktcl.aron.feature.memo.domain.Journey?>(null) }
     LaunchedEffect(Unit) { j = day.sale.journey() }
-    j?.let { JourneyScreen(it) }
+    j?.let { JourneyScreen(it) } ?: com.aktcl.aron.core.ui.aron.AronLoadingScreen()
 }
 
 /** The KPI strip and the two money cards of F-SR-010/069, read from Room only. */
@@ -213,11 +214,11 @@ fun KpiHost(day: SrDay) {
         "lighter" to stringResource(R.string.sr_cat_lighter), "match" to stringResource(R.string.sr_cat_match),
     )
     val units = listOf("packet", "box", "dozen", "stick", "piece").associateWith { com.aktcl.aron.core.ui.entryUnitLabel(it) }
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
-        data?.let { (strip, money) ->
-            KpiStripView(strip, categoryLabel = { cats[it] ?: it }, unitLabel = { units[it] ?: it })
-            MoneyCardsView(money, categoryLabel = { cats[it] ?: it })
-        }
+    val loaded = data
+    if (loaded == null) com.aktcl.aron.core.ui.aron.AronLoadingScreen() else Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
+        val (strip, money) = loaded
+        KpiStripView(strip, categoryLabel = { cats[it] ?: it }, unitLabel = { units[it] ?: it })
+        MoneyCardsView(money, categoryLabel = { cats[it] ?: it })
     }
 }
 
@@ -232,7 +233,7 @@ fun EditHost(day: SrDay, memoUuid: String, sunlight: Boolean, onSunlight: (Boole
     LaunchedEffect(memoUuid) { kit.prepare(); denied = kit.prepareEdit(memoUuid); checked = true }
     val r = reason
     when {
-        !checked -> AronEmptyState(stringResource(R.string.sr_edit_checking))
+        !checked -> com.aktcl.aron.core.ui.aron.AronLoadingScreen(label = stringResource(R.string.sr_edit_checking))
         denied != null || r == null -> EditReasonScreen(denied, onReason = { reason = it })
         else -> {
             LaunchedEffect(r) { kit.beginEdit(memoUuid, r); ready = true }

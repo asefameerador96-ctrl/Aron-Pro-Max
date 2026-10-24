@@ -2,9 +2,6 @@ package com.aktcl.aron.amo
 
 import com.aktcl.aron.feature.amo.AmoFrame
 import androidx.activity.compose.BackHandler
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -13,7 +10,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import com.aktcl.aron.core.database.entity.OutletEntity
@@ -73,7 +69,7 @@ fun AmoTaskHub(day: AmoDay, onBack: () -> Unit) {
         when (leaf) {
             TaskLeaf.LIST -> AmoTaskList(day, team, days.orEmpty(), onAssign = { srId = null; routeId = null; outletId = null; leaf = TaskLeaf.PICK_ROUTE })
             TaskLeaf.PICK_ROUTE -> {
-                val all = days ?: run { Box(Modifier.fillMaxSize(), Alignment.Center) { CircularProgressIndicator() }; return@AmoFrame }
+                val all = days ?: run { com.aktcl.aron.core.ui.aron.AronLoadingScreen(); return@AmoFrame }
                 AmoRoutePick(ControlCall.routes(all), { routeId = it.routeId; leaf = TaskLeaf.PICK_OUTLET })
             }
             TaskLeaf.PICK_OUTLET -> {
@@ -90,7 +86,7 @@ fun AmoTaskHub(day: AmoDay, onBack: () -> Unit) {
             TaskLeaf.PICK_SR -> TaskSrPickContent(candidates, { srId = it.userId; leaf = TaskLeaf.FORM })
             TaskLeaf.FORM -> {
                 val outlet = days.orEmpty().flatMap { it.outlets }.firstOrNull { it.outletId == outletId }
-                if (sr == null || outlet == null) Box(Modifier.fillMaxSize(), Alignment.Center) { CircularProgressIndicator() }
+                if (sr == null || outlet == null) com.aktcl.aron.core.ui.aron.AronLoadingScreen()
                 else AmoTaskForm(day, sr, outlet, onDone = { leaf = TaskLeaf.LIST })
             }
         }
@@ -113,7 +109,7 @@ private fun AmoTaskList(day: AmoDay, team: List<TeamSr>, days: List<RouteDay>, o
         stale = fetched is AmoFetch.Cached; failed = fetched !is AmoFetch.Fresh
         tasks = TaskDelegation.merge(TaskDelegation.assignedBy(json, day.userId), local)
     }
-    val list = tasks ?: run { Box(Modifier.fillMaxSize(), Alignment.Center) { CircularProgressIndicator() }; return }
+    val list = tasks ?: run { com.aktcl.aron.core.ui.aron.AronLoadingScreen(); return }
     val outletNames = remember(days, day.zoneOutlets.size) { (days.flatMap { it.outlets } + day.zoneOutlets).associate { it.outletId to it.name } }
     AssignedTasksContent(
         list, team.associate { it.userId to it.name }, outletNames,
@@ -140,7 +136,7 @@ private fun AmoTaskForm(day: AmoDay, sr: TeamSr, outlet: OutletEntity, onDone: (
     val failedText = stringResource(AmoR.string.amo_task_failed)
     val context = androidx.compose.ui.platform.LocalContext.current
     val savedText = stringResource(AmoR.string.amo_task_saved)
-    val loaded = types ?: run { Box(Modifier.fillMaxSize(), Alignment.Center) { CircularProgressIndicator() }; return }
+    val loaded = types ?: run { com.aktcl.aron.core.ui.aron.AronLoadingScreen(); return }
     TaskAssignContent(
         srName = sr.name, outletLines = listOfNotNull(outlet.name, outlet.code, outlet.clusterName.takeIf { it.isNotBlank() }, outlet.ownerName.takeIf { it.isNotBlank() }),
         types = loaded, bangla = bangla, typeCode = typeCode, dueChoices = TaskDelegation.dueChoices(today), due = due, description = description,
