@@ -561,7 +561,8 @@ class ScopeLeakAcrossEndpointsTest {
     /**
      * A sibling house H-SIB under the seed's territory T-DHK-N with its own zone Z-SIB and one route planned today (so the
      * territory's figures differ from H-MIR's), and three TSOs: qahousetso1001 scoped by the house H-MIR,
-     * qaroutetso1001 covering SIB-SR-D (every route of Z-SIB) and qapartialtso1001 covering MIR-SR-D (one route of Z-MIR).
+     * qaroutetso1001 covering SIB-SR-D (every route of Z-SIB) and MIR-SR-D (one of the routes of Z-MIR), and
+     * qapartialtso1001 covering MIR-SR-D only (part of one zone).
      */
     private fun seedTsoLevels(h: org.jdbi.v3.core.Handle) {
         h.execute(
@@ -576,7 +577,7 @@ class ScopeLeakAcrossEndpointsTest {
         )
         for ((u, grant) in listOf(
             houseTso.user to "INSERT INTO app.user_scope (user_id, node_type, node_id, valid_from, reason) SELECT u.id, 'house', hs.id, DATE '2026-01-01', 'qa house scope' FROM app.app_user u, app.house hs WHERE u.username = '${houseTso.user}' AND hs.code = 'H-MIR'",
-            routeTso.user to "INSERT INTO app.route_assignment (route_id, user_id, kind, valid_from, reason) SELECT r.id, u.id, 'cover', DATE '2026-01-01', 'qa route-only TSO' FROM app.route r, app.app_user u WHERE r.code = 'SIB-SR-D' AND u.username = '${routeTso.user}'",
+            routeTso.user to "INSERT INTO app.route_assignment (route_id, user_id, kind, valid_from, reason) SELECT r.id, u.id, 'cover', DATE '2026-01-01', 'qa route-only TSO' FROM app.route r, app.app_user u WHERE r.code IN ('SIB-SR-D', 'MIR-SR-D') AND u.username = '${routeTso.user}'",
             partialTso.user to "INSERT INTO app.route_assignment (route_id, user_id, kind, valid_from, reason) SELECT r.id, u.id, 'cover', DATE '2026-01-01', 'qa route-only TSO' FROM app.route r, app.app_user u WHERE r.code = 'MIR-SR-D' AND u.username = '${partialTso.user}'",
         )) {
             h.execute(
@@ -651,13 +652,14 @@ class ScopeLeakAcrossEndpointsTest {
             ContractModel.json.readTree(own.bodyAsText()).get("node")?.let {
                 assertEquals("zone" to sib, it.path("type").asText() to it.path("id").asLong(), "${op.key}: the default node is the zone of the TSO's route")
             }
+            // D-BC-DASH-ROUTE-ONLY-01: Z-SIB is held whole, Z-MIR in part (its other routes are outside the reach): Z-SIB only.
             val view = world.call(client, contract, op, national, admin, extraQuery = "level=zone&node_id=$sib")
-            assertEquals(figures(view.bodyAsText()), figures(own.bodyAsText()), "${op.key}: the route-only view is the national view of its route's zone")
+            assertEquals(figures(view.bodyAsText()), figures(own.bodyAsText()), "${op.key}: the route-only view is the national view of the zone it holds whole")
             // Explicit nodes keep the reach check: a route-only TSO reaches no zone (its routes only).
             for (q in listOf("level=zone&node_id=$sib", "level=zone&node_id=${world.ids["zones"]}", "level=territory&node_id=${world.ids["territories"]}", "level=zone&node_id=${world.otherIds["zones"]}")) {
                 assertEquals(403, client.status(op, routeTso, token, q), "${op.key} $q")
             }
-            // One route of a zone with others: the zone's figures would show the other routes, so nothing is served.
+            // Part of one zone only: the zone's figures would show the other routes, so the default call stays 403.
             assertEquals(403, world.call(client, contract, op, partialTso, partial).status.value, "${op.key}: a zone held in part")
         }
         val msg = verdict(client.probe(ops, Stats(), listOf(routeTso, partialTso)) { c -> if (c == routeTso) token else partial })
