@@ -680,3 +680,6 @@
 ### 18:02 UTC — web-admin #8 candidate checked for train 33
 - web-admin #8 candidate 5b381c34 (reconciliation of the Flagged memos mock + page with FlaggedMemos.kt: limit 1..500 default 100, from/to parsing, whole-node reach 403, keyset cursor, unknown status shown as given, no Retry on 400/403; owner device-lab row W-FLAG-01; D-WEB-FLAGGED-MEMOS-02): lane run 40117123310 (#1557) green on the sha, all jobs ran; Sonnet checker 3 blocking findings fixed; git gate passed (base 39ed8bc5, 5 files in lane). Checked to integrator 20 for train 33; GO when backend-core #17's house slice is checked, or alone by ~18:45.
 - backend-core #17: house part being finished under D-DASH-TSO-HOUSE-SCOPE-03 (route-only stays 403); candidate expected shortly.
+
+### 18:33 UTC — evening sweep
+- Evening report written to docs/status/evening-2026-10-24.md (compact version posted in chat). backend-core #17 (~278k) is running the backend suite before its first push; web-admin #8's head 5b381c34 is checked; train 33 goes now with web-admin + lead docs (CI only), backend-core rides train 34 with its deploy. A one-shot morning-report trigger (06:30 UTC 2026-10-25) is created; the two-hourly lane check continues.
