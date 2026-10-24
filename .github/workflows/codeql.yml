@@ -25,8 +25,37 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  # CodeQL needs GitHub Advanced Security on a private repository (private since 2026-10-24, docs/30 s3a), so it is
+  # skipped while the repository is private and runs again unchanged once it is public. A scheduled run has no event
+  # payload (no repository object, and the github context has no visibility field), so the visibility is read from the
+  # API here: a guard on the event's repository.private would let every nightly run through.
+  # If Advanced Security is enabled on the private repository, remove this job and the guard below.
+  visibility:
+    name: Repository visibility (CodeQL runs only on a public repository)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      private: ${{ steps.repo.outputs.private }}
+    steps:
+      - id: repo
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          private="$(gh api "repos/${GITHUB_REPOSITORY}" --jq '.private')"
+          case "${private}" in
+            true|false) ;;
+            *) echo "::error::could not read the repository visibility (got '${private}')"; exit 1 ;;
+          esac
+          echo "private=${private}" >> "${GITHUB_OUTPUT}"
+          [ "${private}" = false ] || echo "::notice::private repository: CodeQL skipped (needs GitHub Advanced Security; docs/30 s3a)"
+
   analyze:
     name: CodeQL ${{ matrix.language }}
+    needs: visibility
+    # Skipped on the private repository (see the visibility job).
+    if: ${{ needs.visibility.outputs.private == 'false' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     permissions:
