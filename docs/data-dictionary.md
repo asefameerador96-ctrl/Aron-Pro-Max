@@ -20,7 +20,7 @@ Removals are rare and listed here (a wrong column is removed, never redefined in
 | Schema | Relations | Columns |
 |---|---|---|
 | `app` | 155 | 2636 |
-| `dw` | 44 | 638 |
+| `dw` | 45 | 657 |
 
 ## Index
 
@@ -222,6 +222,7 @@ Removals are rare and listed here (a wrong column is removed, never redefined in
 | [`dw.v_device_command`](#dwv_device_command) | view | backend:mdm | ONLINE | audit | none | Stable view: MDM commands for the activity log, without signature and result. |
 | [`dw.v_final_submit_log`](#dwv_final_submit_log) | view | worker | SERVER | audit | none | Stable view: per zone and business date the first Final Submit (second submits ignored, Brief 07), the number of submits and the reopen state. |
 | [`dw.v_geo_integrity`](#dwv_geo_integrity) | view | worker | SERVER | event_fact | none | Stable view: per user and business date, geo-validation outcomes of visits and mock-location evidence of fixes. |
+| [`dw.v_memo_flags`](#dwv_memo_flags) | view | worker | SERVER | event_fact | none | Stable view: one row per memo the server flagged (app.memo.server_flags non-empty: zero price line, price, arithmetic or pack-factor mismatch and the like), with its scope keys; voided and superseded memos included with their status (counts use status = 'active' AND voided_at IS NULL). |
 | [`dw.v_outlet_masked`](#dwv_outlet_masked) | view | backend:masterdata | ONLINE | master | none | Stable view: outlets without owner name, address or national ids; the phone masked to 01*****NNN (D-107). |
 | [`dw.v_route_monthly_target`](#dwv_route_monthly_target) | view | worker | SERVER | master | none | Stable view: route x SKU monthly targets in base units with the month's working days and the derived daily target (D-TARGET-MIN-01). |
 | [`dw.v_working_day`](#dwv_working_day) | view | worker | SERVER | master | none | Stable view: one row per date, working = the national working-day flag of dw.v_calendar (Fridays and national holidays off, make-up days on). |
@@ -5865,6 +5866,34 @@ Stable view: per user and business date, geo-validation outcomes of visits and m
 | `fixes` | bigint | null |  | Location fixes received for the user-day. |
 | `mock_fixes` | bigint | null |  | Fixes flagged as mock locations. |
 | `avg_accuracy_m` | numeric | null |  | Average fix accuracy in metres (1 decimal). |
+
+## dw.v_memo_flags
+
+Stable view: one row per memo the server flagged (app.memo.server_flags non-empty: zero price line, price, arithmetic or pack-factor mismatch and the like), with its scope keys; voided and superseded memos included with their status (counts use status = 'active' AND voided_at IS NULL).
+
+`owner: worker | capture: SERVER | retention: event_fact | pii: none` · view
+
+| Column | Type | Null | PII | Description |
+|---|---|---|---|---|
+| `memo_id` | bigint | null |  | Memo (app.memo id; with business_date the memo's key). |
+| `memo_client_uuid` | uuid | null |  | Client-generated UUID of the memo (idempotency key). |
+| `memo_family_uuid` | uuid | null |  | Family UUID shared by a memo and its edits (superseding memos); group by it to count a problem once. |
+| `memo_no` | text | null |  | Printed memo number <username>-<yyMMdd>-<seq>. |
+| `business_date` | date | null |  | Asia/Dhaka business date of the memo. |
+| `status` | text | null |  | Memo status: active, voided (by a memo void) or superseded (by an edit). |
+| `user_id` | bigint | null |  | User who captured the memo (app.app_user); names are resolved by the API, not in dw. |
+| `outlet_id` | bigint | null |  | Outlet (app.outlet). |
+| `outlet_code` | text | null |  | Outlet code. |
+| `outlet_name` | text | null |  | Outlet name. |
+| `route_id` | bigint | null |  | Route of the memo; for a memo uploaded without one, the outlet's placement on the business date (else its current route). |
+| `zone_id` | bigint | null |  | Zone of the memo (its route's zone on the business date); without a route, the placement route's zone on that date (else the outlet's current zone). |
+| `territory_id` | bigint | null |  | Territory of that zone (current hierarchy). |
+| `division_id` | bigint | null |  | Division of that territory (current hierarchy). |
+| `wing_id` | bigint | null |  | Wing of that division (current hierarchy). |
+| `gross_mtk` | bigint | null |  | Gross sales value of the memo before discounts, in milli-taka. |
+| `flags` | text[] | null |  | Server flags of the memo (app.memo.server_flags), for example zero_price_line or price_mismatch. |
+| `stored_at` | timestamp with time zone | null |  | UTC instant the server stored the memo (app.memo.received_at). |
+| `voided_at` | timestamp with time zone | null |  | UTC instant of an admin data void; null when not data-voided. Readers filter it. |
 
 ## dw.v_outlet_masked
 
