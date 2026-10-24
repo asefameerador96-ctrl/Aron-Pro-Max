@@ -12,3 +12,5 @@
 5. No contract change (the operations and shapes exist); docs/24 wording where the reach rule is described.
 
 **Not in this slice:** the `dw.dim_geo` zone keying (db #11 note); the `getFlaggedMemos` description alignment (contract 1.9 queue row 3).
+
+**Ruling updates (lead, 2026-10-24):** 17:33 D-DASH-TSO-HOUSE-SCOPE-02 narrowed the route-only default to zones held entirely; 17:50 D-DASH-TSO-HOUSE-SCOPE-03 dropped the route-only default from this slice altogether (historical zone stamps leak over past ranges; the only exact check is a nine-table scan): the route-only default stays 403 until route-keyed aggregates exist. Build item 2 above is therefore replaced by "pin the route-only 403 with a test"; item 1 takes house zones from Reach, not dim_geo (duplicate-house fold).
