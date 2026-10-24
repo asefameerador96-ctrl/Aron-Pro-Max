@@ -1,17 +1,36 @@
 "use client";
 // D-MDM-01 policy editor: allowed apps, weekday x time block grid (30-minute cells, Dhaka time), kiosk and location sampling.
 // The grid is drawn by clicking or dragging; it becomes MdmBlockWindow[] (lib/admin/mdm.ts). Windows that name packages are kept as they are.
+// The work-hours allow-list card (D-NIGHT-MDM-ALLOWLIST-01) is sent only when the policy had one or it is switched on.
 import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
 import { useI18n } from "@/components/i18n-provider";
 import type { Problem } from "@/contract/types";
-import { ALLOWED_SUGGESTIONS, MAX_WINDOWS, SLOTS, WEEKDAY_KEYS, gridToWindows, packageWindows, validatePolicy, windowsToGrid, type Grid, type MdmPolicy } from "@/lib/admin/mdm";
+import {
+  ALLOWED_SUGGESTIONS,
+  ALLOWLIST_DEFAULT,
+  MAX_WINDOWS,
+  SLOTS,
+  WEEKDAY_KEYS,
+  allowlistBody,
+  gridToWindows,
+  packageWindows,
+  validateAllowlist,
+  validatePolicy,
+  windowsToGrid,
+  type Grid,
+  type MdmPolicyFull,
+  type MdmWorkHoursAllowlist,
+} from "@/lib/admin/mdm";
 import { PACKAGE_EXAMPLE, PACKAGE_MAX_LEN, PACKAGE_PATTERN } from "@/lib/admin/packages";
 import type { MessageKey } from "@/lib/i18n";
 import { Field, inputClass } from "../kit/field";
 import { REASON_MIN_LENGTH } from "../kit/reason-field";
+import { WorkHoursAllowlistCard } from "./work-hours-allowlist-card";
 
-export function PolicyEditor({ initial, canWrite }: { initial: MdmPolicy | null; canWrite: boolean }) {
+const ALLOWLIST_ERRORS: Record<string, MessageKey> = { allowlist_packages: "mdm.al.err.packages", allowlist_hours: "mdm.al.err.hours", allowlist_days: "mdm.al.err.days", allowlist_grace: "mdm.al.err.grace" };
+
+export function PolicyEditor({ initial, canWrite }: { initial: MdmPolicyFull | null; canWrite: boolean }) {
   const { t, problem } = useI18n();
   const router = useRouter();
   const [name, setName] = useState(initial?.name ?? "");
@@ -24,6 +43,8 @@ export function PolicyEditor({ initial, canWrite }: { initial: MdmPolicy | null;
   const [kioskPackages, setKioskPackages] = useState((initial?.kiosk.packages ?? []).join(", "));
   const [mode, setMode] = useState(initial?.location_sampling.mode ?? "on_demand");
   const [intervalMin, setIntervalMin] = useState(String(initial?.location_sampling.interval_min ?? 15));
+  const [allowlist, setAllowlist] = useState<MdmWorkHoursAllowlist>(initial?.work_hours_allowlist ?? ALLOWLIST_DEFAULT);
+  const hadAllowlist = initial?.work_hours_allowlist !== undefined;
   const [reason, setReason] = useState("");
   const [version, setVersion] = useState(initial?.version);
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -54,6 +75,8 @@ export function PolicyEditor({ initial, canWrite }: { initial: MdmPolicy | null;
     const out: Record<string, string> = {};
     for (const [k, c] of Object.entries(local)) out[k] = t(c === "too_many" ? "mdm.err.too_many_windows" : c === "too_long" ? "error.field.too_long" : c === "required" ? "error.field.required" : "error.field.invalid");
     if (kp.some((p) => !PACKAGE_PATTERN.test(p))) out.kiosk = t("ab.invalid");
+    const sendAllowlist = hadAllowlist || allowlist.enabled;
+    if (sendAllowlist) for (const [k, c] of Object.entries(validateAllowlist(allowlist, PACKAGE_PATTERN))) out[k] = t(c === "too_many" ? "mdm.al.err.too_many" : ALLOWLIST_ERRORS[k]!);
     if (Array.from(reason.trim()).length < REASON_MIN_LENGTH) out.reason = t("admin.reason.too_short");
     setErrors(out);
     if (Object.keys(out).length) return;
@@ -64,6 +87,7 @@ export function PolicyEditor({ initial, canWrite }: { initial: MdmPolicy | null;
       block_windows: windows,
       kiosk: { enabled: kioskOn, packages: kioskOn ? kp : [] },
       location_sampling: { mode, interval_min: mode === "interval" ? Number(intervalMin) : null },
+      ...(sendAllowlist ? { work_hours_allowlist: allowlistBody(allowlist) } : {}),
       ...(initial ? { version } : {}),
     };
     setBusy(true);
@@ -216,6 +240,8 @@ export function PolicyEditor({ initial, canWrite }: { initial: MdmPolicy | null;
           </p>
         ) : null}
       </section>
+
+      <WorkHoursAllowlistCard value={allowlist} onChange={setAllowlist} readOnly={ro} errors={errors} />
 
       <section className="grid gap-3 rounded-lg border border-slate-200 bg-white p-4 shadow-sm sm:grid-cols-2">
         <div className="space-y-2">

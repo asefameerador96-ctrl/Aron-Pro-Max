@@ -32,8 +32,10 @@ How the phone applies the allow-list (the DPC, `android/dpc/.../mdm`):
 2. Inside the window (after `grace_min` minutes from its start) it suspends every launcher-visible app that is not in
    the allow-list and not protected (section 5). Outside the window it releases only what **it** suspended; apps held by
    the check-in blocking or by a block window stay as those rules say.
-3. It arms an alarm at the next window edge (exact when Android lets the app schedule exact alarms, otherwise within a
-   few minutes; the next app start also re-checks).
+3. It arms one alarm at the next window edge. The alarm is **not exact**: the project forbids the exact-alarm permission
+   (battery budget, `NoPollingLintTest`), so Android may deliver it up to about 10 minutes late while the phone is in
+   use, and when the screen comes on if the phone was asleep. Every app start re-checks as well. `grace_min` gives reps
+   the first minutes of the window; plan the end time with the 10 minutes in mind.
 4. It records what it suspended **before** suspending (write-ahead), so a crash can never strand an app suspended.
 
 ## 3. Make the Honor a device owner
@@ -55,16 +57,10 @@ run the command again. If you cannot, or an error says it is "already provisione
 account screen in the wizard, then path A (or the QR at first boot, appendix B of the Honor runbook, once its two fixes
 are on dev). A factory reset erases the phone; the device-lab phone holds nothing to keep.
 
-Checks after enrolment:
+Check after enrolment:
 ```
 > adb shell dpm list-owners                               (com.aktcl.aron.sr/...AronDeviceAdminReceiver,DeviceOwner)
-> adb shell appops get com.aktcl.aron.sr SCHEDULE_EXACT_ALARM
 ```
-If the second line says `default` or `deny` (Android 14+ does not pre-grant it), grant it so window edges are exact:
-```
-> adb shell appops set com.aktcl.aron.sr SCHEDULE_EXACT_ALARM allow
-```
-Without it the rule still works; an edge can be a few minutes late (more in deep sleep), and `grace_min` absorbs it.
 
 The AMO and TSO phones use `com.aktcl.aron.amo` and `com.aktcl.aron.tso` in the same commands.
 
@@ -114,13 +110,14 @@ To find a package id: on the laptop `> adb shell pm list packages | findstr -i w
 Run on the enrolled Honor (section 3) with the dev build named in the morning report. Steps:
 
 1. Portal: on the phone's policy turn the allow-list on, allowed = WhatsApp + Calculator, *Fixed window* today's weekday,
-   start = now + 3 min, end = start + 10 min, grace 0. Save with a reason.
-2. Phone online: within a minute the command is `acked` on the device page. At the start time Facebook, TikTok, YouTube,
+   start = now + 3 min, end = start + 20 min, grace 0. Save with a reason.
+2. Phone online: within a minute the command is `acked` on the device page. At the start time (up to about 10 minutes
+   later; closing ARON SR from Recents and reopening it re-checks at once) Facebook, TikTok, YouTube,
    Chrome, Camera and Gallery grey out; WhatsApp, Calculator, Phone, Messages, Settings and ARON SR open.
    `> adb shell dumpsys package com.facebook.katana | findstr suspended` shows `suspended=true`.
 3. Dial **999** from the Phone app and hang up before it connects: the dialler opens and dials (do not complete the call).
 4. Airplane mode on, kill ARON SR, reboot: after unlock the same apps are still suspended.
-5. At the end time (+ a few minutes if the exact-alarm grant is missing): every app opens again (`suspended=false`).
+5. At the end time (up to about 10 minutes later, or at once after closing ARON SR from Recents and reopening it): every app opens again (`suspended=false`).
 6. Check-in blocking still works: check in during a window, check out after it ends; Facebook stays blocked until the
    check-out (the two rules do not release each other's apps).
 7. Toggle the allow-list off during a window and save: the apps open again after the command is acked.

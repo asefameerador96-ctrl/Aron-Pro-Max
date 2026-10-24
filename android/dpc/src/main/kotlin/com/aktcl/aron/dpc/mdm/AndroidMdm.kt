@@ -83,13 +83,20 @@ class AndroidMdmGateway(context: Context) : CommandGateway, KioskGateway {
     }
 }
 
-/** Wakes the MDM applier at the next block-window boundary (inexact, like [com.aktcl.aron.dpc.blocking.HardEndAlarm]). */
+/**
+ * Wakes the MDM applier at the next block-window or allow-list edge. One one-shot alarm, re-armed at every evaluation and
+ * never repeating; no exact-alarm permission (NoPollingLintTest). [WINDOW_MS] bounds the delivery while the phone is
+ * awake (a plain inexact alarm may slip by most of its lead time); a dozing phone gets it when the screen comes on, and
+ * every app start re-evaluates as well.
+ */
 object MdmAlarm {
+    const val WINDOW_MS = 10 * 60_000L
+
     fun schedule(context: Context, atMs: Long?) {
         val am = context.getSystemService(AlarmManager::class.java) ?: return
         val pi = PendingIntent.getBroadcast(context, 1, Intent(context, MdmWindowReceiver::class.java), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         am.cancel(pi)
-        if (atMs != null) am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, atMs, pi)
+        if (atMs != null) runCatching { am.setWindow(AlarmManager.RTC_WAKEUP, atMs, WINDOW_MS, pi) }.onFailure { am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, atMs, pi) }
     }
 }
 

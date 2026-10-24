@@ -473,6 +473,17 @@ Needs: a test-account backend with `ARON_MDM_ENABLED=1` (dev), a phone enrolled 
 9. **Location sampling**: policy with mode `off`: no breadcrumb points are recorded that day (a Sale still gets its fix); `interval` 15: breadcrumbs about every 15 minutes while checked in.
 Pass: every step ends with the expected command state in the portal and an audit row naming who and why.
 
+## D-MDM-ALLOWLIST-01 work-hours allow-list on a device-owner phone (mdm) — DEVICE-PENDING
+Needs: the Honor enrolled as device owner of the SR app (`docs/runbooks/mdm-work-hours-allowlist.md` s3), a dev SR build from INT carrying the allow-list, `ARON_MDM_ENABLED=1` on dev, an ADMIN with the `mdm` write grant or a SUPERADMIN. Full steps: the runbook's section 6.
+1. Portal → MDM → Policies → the phone's policy → Work-hours allow-list on, WhatsApp + Calculator, Fixed weekdays = today, start = now + 3 min, end = start + 20 min, grace 0. Save with a reason; the command ends `acked`.
+2. At the start (≤ about 10 min late): Facebook, TikTok, YouTube, Chrome, Camera, Gallery suspended (`dumpsys package <pkg> | findstr suspended` = true); WhatsApp, Calculator, Phone, Messages, Settings, keyboard, home screen and ARON SR open.
+3. Dial 999 in the Phone app and hang up before it connects: the dialler works.
+4. Airplane mode, kill ARON SR, reboot: still suspended after unlock.
+5. At the end (≤ about 10 min late, or at once on an ARON SR process start): every app opens.
+6. Check-in blocking still holds its own apps until check-out (the two rules never release each other's apps).
+7. Toggle off during a window and save: apps open after the command is acked.
+Pass: 1–7 as written; report times and any `failed` package of the device row to the lead.
+
 ## D-MDM-BREADCRUMB-01 breadcrumb battery and data on an SR phone (mdm) — DEVICE-PENDING
 Needs: an SR build from INT with breadcrumbs reachable, the A06-class phone fully charged, a GPS-spoof app installed (not selected) for step 5, a policy with location sampling `interval` 15 from the portal.
 1. Baseline: breadcrumbs off (no policy interval, config off). Check in, put the phone in a pocket for 2 h, walk 10 minutes. Note battery %, Settings → Battery → Aron SR usage, and Data usage. Expect no location icon, no points: `adb shell dumpsys location` shows no Aron request.

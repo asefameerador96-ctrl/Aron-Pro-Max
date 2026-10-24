@@ -58,6 +58,9 @@ class DeviceOwnerPolicy(
 
     fun trustedNow(): Long = trustedNowMs()
 
+    /** The bundle calendar the app configured; null before [configure] or without a bundle. */
+    fun workingDay(businessDate: String): Boolean? = isWorkingDay(businessDate)
+
     @Volatile var lastReport: ApplyReport? = null
         private set
 
@@ -124,7 +127,7 @@ class DeviceOwnerPolicy(
                     val kiosk = com.aktcl.aron.dpc.mdm.AndroidMdmGateway(app)
                     val mdm = com.aktcl.aron.dpc.mdm.MdmPolicyApplier(
                         AndroidSuspendGateway(app), kiosk, mdmStore, dir, { created.trustedNow() }, { store.load() },
-                        { BlockingStore(dir).load().suspended.toSet() },
+                        { BlockingStore(dir).load().suspended.toSet() }, { created.workingDay(it) },
                     )
                     created.mdmApplier = mdm
                     created.mdmHook = { com.aktcl.aron.dpc.mdm.MdmAlarm.schedule(app, mdm.evaluate().nextBoundaryMs) }

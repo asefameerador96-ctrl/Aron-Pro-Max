@@ -16,6 +16,25 @@ data class MdmKiosk(val enabled: Boolean = false, val packages: List<String> = e
 @Serializable
 data class MdmLocationSampling(val mode: String = "on_demand", @SerialName("interval_min") val intervalMin: Int? = null)
 
+/**
+ * Working-hours schedule of the allow-list: `calendar` = every working day of the bundle calendar, `window` = the listed
+ * ISO weekdays; both from [start] to [end] Dhaka time on the same day (end > start).
+ */
+@Serializable
+data class MdmAllowlistSchedule(val mode: String, val days: List<Int> = emptyList(), val start: String, val end: String)
+
+/**
+ * `work_hours_allowlist` (D-NIGHT-MDM-ALLOWLIST-01, contract 1.9 queue row 6): during working hours, plus [graceMin]
+ * minutes after the start, every launcher-visible app outside [packages] and the protected set is suspended.
+ */
+@Serializable
+data class MdmWorkHoursAllowlist(
+    val enabled: Boolean = false,
+    val packages: List<String> = emptyList(),
+    val schedule: MdmAllowlistSchedule,
+    @SerialName("grace_min") val graceMin: Int = 5,
+)
+
 /** The device-side copy of contract `MdmPolicy` (the editable fields only), delivered by an `apply_policy` command. */
 @Serializable
 data class MdmPolicyDoc(
@@ -23,6 +42,7 @@ data class MdmPolicyDoc(
     @SerialName("block_windows") val blockWindows: List<MdmBlockWindow> = emptyList(),
     val kiosk: MdmKiosk = MdmKiosk(),
     @SerialName("location_sampling") val locationSampling: MdmLocationSampling = MdmLocationSampling(),
+    @SerialName("work_hours_allowlist") val workHoursAllowlist: MdmWorkHoursAllowlist? = null,
 )
 
 /** Block-window arithmetic on Dhaka time (UTC+6, no DST), from the trusted clock. */
@@ -56,16 +76,56 @@ object MdmWindows {
 
     /** Next start or end of any window after [nowMs] (epoch ms), within a week; null when there are no windows. */
     fun nextBoundaryMs(doc: MdmPolicyDoc, nowMs: Long): Long? {
-        val edges = doc.blockWindows.flatMap { w ->
+        val edges = (doc.blockWindows.flatMap { w ->
             val s = minutes(w.start)
             val e = minutes(w.end)
             if (s == null || e == null || s == e) emptyList() else w.days.filter { it in 1..7 }.flatMap { d -> listOf((d - 1) * DAY_MIN + s, (d - 1) * DAY_MIN + e) }
-        }.map { it % WEEK_MIN }.distinct()
+        } + allowlistEdges(doc.workHoursAllowlist)).map { it % WEEK_MIN }.distinct()
         if (edges.isEmpty()) return null
         val mow = minuteOfWeek(nowMs)
         val deltaMin = edges.minOf { Math.floorMod(it - mow, WEEK_MIN).let { d -> if (d == 0) WEEK_MIN else d } }
         return Math.floorDiv(nowMs, 60_000L) * 60_000L + deltaMin * 60_000L
     }
+}
+
+/** Working-hours allow-list arithmetic on Dhaka time from the trusted clock. Fails open: anything unknown means "not now". */
+object MdmAllowlist {
+    const val MAX_GRACE_MIN = 30
+
+    /** The blocking span of a day in Dhaka minutes, [start + grace, end); null when invalid or empty. */
+    fun span(al: MdmWorkHoursAllowlist): IntRange? {
+        val s = MdmWindows.minutes(al.schedule.start) ?: return null
+        val e = MdmWindows.minutes(al.schedule.end) ?: return null
+        val from = s + al.graceMin.coerceIn(0, MAX_GRACE_MIN)
+        return if (from < e) from until e else null
+    }
+
+    /** The ISO weekdays the schedule may block on; `calendar` asks [isWorkingDay] per date as well. */
+    fun days(al: MdmWorkHoursAllowlist): List<Int> = when (al.schedule.mode) {
+        "calendar" -> (1..7).toList()
+        "window" -> al.schedule.days.filter { it in 1..7 }.distinct()
+        else -> emptyList()
+    }
+
+    /**
+     * True when the allow-list blocks at [nowMs]. In `calendar` mode a date the calendar does not know (no bundle yet)
+     * is not blocked: a missing calendar must never lock a rep out on a holiday.
+     */
+    fun isActive(al: MdmWorkHoursAllowlist?, nowMs: Long, isWorkingDay: (String) -> Boolean?): Boolean {
+        if (al == null || !al.enabled) return false
+        val span = span(al) ?: return false
+        val mow = MdmWindows.minuteOfWeek(nowMs)
+        val isoDay = mow / 1440 + 1
+        if (isoDay !in days(al) || (mow % 1440) !in span) return false
+        return al.schedule.mode != "calendar" || isWorkingDay(BusinessDate.of(nowMs).toString()) == true
+    }
+}
+
+/** Minute-of-week edges (blocking start and end) of an enabled allow-list. */
+internal fun allowlistEdges(al: MdmWorkHoursAllowlist?): List<Int> {
+    if (al == null || !al.enabled) return emptyList()
+    val span = MdmAllowlist.span(al) ?: return emptyList()
+    return MdmAllowlist.days(al).flatMap { d -> listOf((d - 1) * 1440 + span.first, (d - 1) * 1440 + span.last + 1) }
 }
 
 /** Stores the policy doc and its identity in one atomically replaced file; an older version of the same policy is refused. */

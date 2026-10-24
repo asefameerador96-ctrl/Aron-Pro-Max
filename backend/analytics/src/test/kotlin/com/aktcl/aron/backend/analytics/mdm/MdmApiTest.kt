@@ -348,6 +348,72 @@ class MdmApiTest : ReportFixture() {
         assertTrue(count("SELECT count(*) FROM app.audit_log WHERE entity = 'mdm_policy'") >= 2)
     }
 
+    private val allowlist = """"work_hours_allowlist":{"enabled":true,"packages":["com.whatsapp","com.hihonor.calculator"],"schedule":{"mode":"window","days":[7,1,2,3,4],"start":"09:00","end":"18:00"},"grace_min":5}"""
+    private fun withAllowlist(al: String = allowlist, name: String = "Work hours") = policyBody.replace("Day shift", name).dropLast(1) + ",$al}"
+
+    @Test
+    fun theWorkHoursAllowListIsValidatedAuditedAndDelivered() = app {
+        // A policy without the member answers without it (the 1.8 shape).
+        val plain = send("POST", "/admin/mdm/policies", policyBody)
+        assertEquals(HttpStatusCode.Created, plain.status, plain.bodyAsText())
+        assertNull(json(plain.bodyAsText()).o()["work_hours_allowlist"])
+        val created = send("POST", "/admin/mdm/policies", withAllowlist())
+        assertEquals(HttpStatusCode.Created, created.status, created.bodyAsText())
+        val body = json(created.bodyAsText()).o()
+        val al = body["work_hours_allowlist"]!!.o()
+        assertEquals("[\"com.hihonor.calculator\",\"com.whatsapp\"]", al["packages"].toString()) // stored sorted
+        assertEquals("[1,2,3,4,7]", al["schedule"]!!.o()["days"].toString())
+        val pid = body.s("policy_id").toLong()
+        assertEquals(al, json(get("/admin/mdm/policies/$pid").bodyAsText()).o()["work_hours_allowlist"])
+        // Lock-out guards and syntax.
+        val many = (1..51).joinToString(",") { "\"com.app.a$it\"" }
+        for ((bad, field) in listOf(
+            allowlist.replace("\"com.whatsapp\"", "\"not a package\"") to "/work_hours_allowlist/packages/0",
+            allowlist.replace("\"com.whatsapp\",\"com.hihonor.calculator\"", many) to "/work_hours_allowlist/packages",
+            allowlist.replace("\"com.hihonor.calculator\"", "\"com.whatsapp\"") to "/work_hours_allowlist/packages",
+            allowlist.replace("\"window\"", "\"weekly\"") to "/work_hours_allowlist/schedule/mode",
+            allowlist.replace("[7,1,2,3,4]", "[]") to "/work_hours_allowlist/schedule/days",
+            allowlist.replace("[7,1,2,3,4]", "[0,8]") to "/work_hours_allowlist/schedule/days",
+            allowlist.replace("\"window\"", "\"calendar\"") to "/work_hours_allowlist/schedule/days",
+            allowlist.replace("\"start\":\"09:00\"", "\"start\":\"18:00\"") to "/work_hours_allowlist/schedule/end",
+            allowlist.replace("\"end\":\"18:00\"", "\"end\":\"09:00\"") to "/work_hours_allowlist/schedule/end",
+            allowlist.replace("\"09:00\"", "\"9:00\"") to "/work_hours_allowlist/schedule/start",
+            allowlist.replace("\"grace_min\":5", "\"grace_min\":31") to "/work_hours_allowlist/grace_min",
+            allowlist.replace("\"grace_min\":5", "\"grace_min\":-1") to "/work_hours_allowlist/grace_min",
+            allowlist.replace("\"start\":\"09:00\",\"end\":\"18:00\"", "\"start\":\"09:00\",\"end\":\"09:20\"").replace("\"grace_min\":5", "\"grace_min\":20") to "/work_hours_allowlist/grace_min",
+        )) {
+            val r = send("POST", "/admin/mdm/policies", withAllowlist(bad, "Bad"))
+            assertEquals(HttpStatusCode.BadRequest, r.status, bad)
+            assertTrue(r.bodyAsText().contains(field), "$field in ${r.bodyAsText()}")
+        }
+        // An unknown member inside the allow-list is refused like any other (strict request parsing).
+        assertEquals(HttpStatusCode.BadRequest, send("POST", "/admin/mdm/policies", withAllowlist(allowlist.replace("\"grace_min\":5", "\"grace_min\":5,\"x\":1"), "Bad")).status)
+        // An ARON app or a dialler can never be blocked explicitly by a block window.
+        for (pkg in listOf("com.aktcl.aron.sr", "com.google.android.dialer", "com.android.settings")) {
+            val r = send("POST", "/admin/mdm/policies", policyBody.replace("Day shift", "Bad").replace("com.facebook.katana", pkg))
+            assertEquals(HttpStatusCode.BadRequest, r.status, pkg); assertTrue(r.bodyAsText().contains("/block_windows/0/packages"))
+        }
+        // Calendar mode is valid with no days.
+        assertEquals(HttpStatusCode.Created, send("POST", "/admin/mdm/policies", withAllowlist(allowlist.replace("\"window\"", "\"calendar\"").replace("[7,1,2,3,4]", "[]"), "Calendar")).status)
+        // Delivered to the phone inside the signed apply_policy command.
+        assertEquals(HttpStatusCode.OK, send("PUT", "/admin/mdm/devices/$deviceId/policy", """{"policy_id":$pid,"reason":"work hours allow-list"}""").status)
+        val applied = json(pull().bodyAsText()).o()["items"]!!.jsonArray.single().o()
+        assertSigned(applied)
+        assertEquals(al, applied["params"]!!.o()["policy"]!!.o()["work_hours_allowlist"])
+        // Switched off by an update: audited with the before and after lists, and re-delivered.
+        val off = send("PUT", "/admin/mdm/policies/$pid", withAllowlist(allowlist.replace("\"enabled\":true", "\"enabled\":false")).dropLast(1) + ""","version":1,"reason":"holiday week"}""")
+        assertEquals(HttpStatusCode.OK, off.status, off.bodyAsText())
+        assertEquals("false", json(off.bodyAsText()).o()["work_hours_allowlist"]!!.o()["enabled"].toString())
+        assertEquals("false", json(pull().bodyAsText()).o()["items"]!!.jsonArray.last().o()["params"]!!.o()["policy"]!!.o()["work_hours_allowlist"]!!.o()["enabled"].toString())
+        val audit = fresh.db.jdbi.withHandle<Pair<String, String>, Exception> { h ->
+            h.createQuery("SELECT before::text AS b, after::text AS a FROM app.audit_log WHERE entity = 'mdm_policy' AND entity_id = :i AND action = 'update'").bind("i", pid.toString())
+                .map { rs, _ -> rs.getString("b") to rs.getString("a") }.one()
+        }
+        assertTrue(audit.first.contains("\"enabled\": true") || audit.first.contains("\"enabled\":true"), audit.first)
+        assertTrue(audit.second.contains("\"enabled\": false") || audit.second.contains("\"enabled\":false"), audit.second)
+        assertEquals(1, count("SELECT count(*) FROM app.audit_log WHERE entity = 'mdm_policy' AND entity_id = '$pid' AND action = 'create' AND after::text LIKE '%com.hihonor.calculator%'"))
+    }
+
     @Test
     fun enrolmentTokensAreServedThroughTheMdmGate() = app {
         assertEquals(HttpStatusCode.Forbidden, get("/admin/mdm/enrolment-tokens", TestTokens.web(11, Role.TSO)).status)
