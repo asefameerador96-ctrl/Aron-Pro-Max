@@ -112,6 +112,9 @@
     <string name="diag_did_print">%1$s পেজটি কি পরিষ্কার ছাপা হয়েছে?</string>
     <string name="diag_log">লগ</string>
     <string name="diag_log_empty">এখনও কোনো পরীক্ষা চালানো হয়নি।</string>
+    <string name="diag_print_logo_title">লোগো</string>
+    <string name="diag_print_logo">কাগজে Aron লোগো ছাপুন</string>
+    <string name="diag_print_logo_hint">লোগো ঠিকমতো না এলে বন্ধ করুন; তখন শুধু লেখা দিয়ে শিরোনাম ছাপা হবে।</string>
     <string name="diag_copy">রিপোর্ট কপি করুন</string>
     <string name="diag_share">রিপোর্ট শেয়ার করুন</string>
     <string name="diag_copied">রিপোর্ট কপি হয়েছে</string>

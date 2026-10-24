@@ -74,8 +74,8 @@ class DiagnosticsTest {
     }
 
     @Test fun asciiPageIsPrintableAsciiOnlyAndNoByteStartsACommand() {
-        val bytes = EscPos.textJob(listOf("OK ১২৩ \u001B@"), feed = 1).reduce { a, b -> a + b }
-        val body = bytes.copyOfRange(2, bytes.size - 3)
+        val bytes = EscPos.textJob(listOf("OK ১২৩ \u001B@")).reduce { a, b -> a + b }
+        val body = bytes.copyOfRange(2, bytes.size - EscPos.TEAR_OFF.size)
         assertEquals("OK ??? ?@\n", String(body, Charsets.US_ASCII))
         val page = TestPages.commands(TestMode.ASCII).reduce { a, b -> a + b }
         val text = page.copyOfRange(2, page.size - 3)

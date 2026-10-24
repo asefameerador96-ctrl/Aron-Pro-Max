@@ -15,7 +15,9 @@ class EscPosTest {
         b.fillRect(10, 49, 20, 50)
         val cmds = EscPos.job(b, bandRows = 24)
         assertArrayEquals(byteArrayOf(0x1B, 0x40, 0x1B, 0x33, 0), cmds.first())
-        assertArrayEquals(byteArrayOf(0x1B, 0x64, 3), cmds.last())
+        assertArrayEquals("an inch of paper after the last row (D-PRINT-09)", byteArrayOf(0x1B, 0x33, 26, 0x1B, 0x64, 9), cmds.last())
+        assertArrayEquals("bit image: default spacing, then the same tear-off", byteArrayOf(0x1B, 0x32, 0x1B, 0x33, 26, 0x1B, 0x64, 9), EscPos.bitImageJob(b).last())
+        assertArrayEquals("ASCII test page too", byteArrayOf(0x1B, 0x33, 26, 0x1B, 0x64, 9), EscPos.textJob(listOf("x")).last())
         val bands = cmds.drop(1).dropLast(1)
         assertEquals(listOf(24, 24, 2), bands.map { (it[6].toInt() and 0xFF) or ((it[7].toInt() and 0xFF) shl 8) })
         bands.forEach { assertEquals(48, it[4].toInt()); assertEquals(0, it[5].toInt()); assertEquals(8 + 48 * ((it[6].toInt() and 0xFF)), it.size) }

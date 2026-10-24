@@ -31,7 +31,13 @@ enum class ImageMode {
 }
 
 /** The paired printer the phone remembers (one per phone, shared by the SR, AMO and TSO apps' own copies). */
-data class SavedPrinter(val address: String, val name: String, val imageMode: ImageMode = ImageMode.RASTER)
+data class SavedPrinter(
+    val address: String,
+    val name: String,
+    val imageMode: ImageMode = ImageMode.RASTER,
+    /** Print the Aron mark above the header (D-PRINT-09); switched off in Printer diagnostics when a printer garbles it. */
+    val printLogo: Boolean = true,
+)
 
 /** Where the paired printer is kept. */
 interface SavedPrinterStore {
@@ -39,6 +45,8 @@ interface SavedPrinterStore {
     fun save(printer: SavedPrinter?)
     /** The image mode last saved for [address], kept after another printer was picked; null when never saved. */
     fun rememberedMode(address: String): ImageMode? = load()?.takeIf { it.address == address }?.imageMode
+    /** The logo choice last saved for [address] (D-PRINT-09), kept after another printer was picked; null when never saved. */
+    fun rememberedLogo(address: String): Boolean? = load()?.takeIf { it.address == address }?.printLogo
 }
 
 /** What the printer icon and banner show (F-SR-013). */
@@ -177,7 +185,9 @@ class PrinterManager(
                 printer.imageMode != ImageMode.RASTER -> printer.imageMode
                 else -> store.rememberedMode(printer.address) ?: defaultMode(printer.name)
             }
-            store.save(printer.copy(imageMode = mode))
+            // the logo choice of a printer picked again is kept too
+            val logo = store.rememberedLogo(printer.address) ?: printer.printLogo
+            store.save(printer.copy(imageMode = mode, printLogo = logo))
             _state.value = PrinterState.Off
         }
         return connect()
@@ -186,6 +196,11 @@ class PrinterManager(
     /** Prints memos to the saved printer with [mode] from the next job on (Printer diagnostics, D-PRINT-02). */
     suspend fun setImageMode(mode: ImageMode) = lock.withLock {
         store.load()?.let { store.save(it.copy(imageMode = mode)) }
+    }
+
+    /** Prints the Aron mark above the header of the next documents, or not (Printer diagnostics, D-PRINT-09). */
+    suspend fun setPrintLogo(on: Boolean) = lock.withLock {
+        store.load()?.let { store.save(it.copy(printLogo = on)) }
     }
 
     /** Forgets the printer. */
@@ -506,6 +521,8 @@ class PrinterManager(
         return try {
             // Wait for the paper to come out, then ask whether the roll ran out on the way.
             drain()
+            // the closing feed is print time too: a job sent right after must not count the printer as idle (D-PRINT-09)
+            level += EscPos.TEAR_OFF_DOTS.toLong() * job.bitmap.bytesPerRow
             val remainingMs = level * 1000 / bytesPerSecond
             if (remainingMs > 0) delay(remainingMs)
             if (linkLost) throw IOException("link lost")
