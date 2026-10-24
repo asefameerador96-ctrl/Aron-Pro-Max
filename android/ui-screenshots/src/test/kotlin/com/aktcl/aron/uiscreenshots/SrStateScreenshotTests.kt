@@ -328,5 +328,14 @@ class SrStateScreenshotTests {
     @Test fun own_requests_bn_empty() = shot("own_requests_bn_empty") { OwnEmpty() }
     @Test fun own_requests_bn_empty_font20() = shot("own_requests_bn_empty_font20", fontScale = 2.0f) { OwnEmpty() }
     @Test fun tasks_bn_empty_font20() = shot("tasks_bn_empty_font20", fontScale = 2.0f) { TasksNone() }
+    @Composable private fun LoadFailed() = Frame(stringResource(HomeR.string.hm_tile_stock)) {
+        com.aktcl.aron.core.ui.aron.AronLoaded(
+            com.aktcl.aron.core.ui.aron.rememberAsyncLoad<List<String>> { error("room read failed") },
+            stringResource(com.aktcl.aron.feature.stock.R.string.stk_load_failed), stringResource(HomeR.string.fb_retry),
+        ) {}
+    }
+    @Test fun stock_bn_load_failed() = shot("stock_bn_load_failed") { LoadFailed() }
+    @Test fun stock_bn_load_failed_sunlight() = shot("stock_bn_load_failed_sunlight", sunlight = true) { LoadFailed() }
+    @Test fun stock_bn_load_failed_font20() = shot("stock_bn_load_failed_font20", fontScale = 2.0f) { LoadFailed() }
     private fun bare(mtk: Long, locale: UiLocale) = Formats.digits(com.aktcl.aron.rules.Money.formatTaka(mtk, 2), locale)
 }
