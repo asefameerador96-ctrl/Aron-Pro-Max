@@ -23,6 +23,9 @@ import org.junit.jupiter.api.AfterAll
 import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.TestInstance
 import java.io.File
+import java.security.KeyPairGenerator
+import java.security.interfaces.ECPublicKey
+import java.security.spec.ECGenParameterSpec
 import java.time.Instant
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicInteger
@@ -48,6 +51,9 @@ class ZeroPriceLineTest {
     private var routeId = 0L
     private var outletId = 0L
     private var sr = 0L
+    private var sr2 = 0L
+    private var route2 = 0L
+    private val switches = AtomicInteger(0)
     private lateinit var device: Pair<Long, String>
     /** (sku, price per base_per_qty, per_base_qty, base_per_pack): a priced SKU, one priced at zero, one with no outlet price. */
     private lateinit var priced: List<Long>
@@ -70,6 +76,10 @@ class ZeroPriceLineTest {
             outletId = id("SELECT min(id) FROM app.outlet WHERE route_id = $routeId")
             sr = id("SELECT id FROM app.app_user WHERE username = 'sr1001'")
             device = h.createQuery("SELECT id, device_uuid::text FROM app.device ORDER BY id LIMIT 1").map { rs, _ -> rs.getLong(1) to rs.getString(2) }.one()
+            // A second SR with its own daily route in sr1001's zone (the user guard of the flag).
+            sr2 = id("INSERT INTO app.app_user (username, full_name, role, password_hash) VALUES ('sr2002', 'Second SR', 'SR', 'x') RETURNING id")
+            route2 = id("INSERT INTO app.route (code, name, zone_id, kind, visit_kind, visit_days_mask) SELECT 'MIR-SR-X', 'Second route', zone_id, 'sr', 'daily', 127 FROM app.route WHERE id = $routeId RETURNING id")
+            h.execute("INSERT INTO app.route_assignment (route_id, user_id, kind, valid_from, reason) VALUES ($route2, $sr2, 'primary', DATE '2026-01-01', 'test')")
             val skus = h.createQuery(
                 "SELECT s.id, p.amount_mtk, p.per_base_qty, s.base_per_pack FROM app.sku s JOIN app.sku_price p ON p.sku_id = s.id AND p.price_type = 'outlet' " +
                     "WHERE p.amount_mtk > 0 AND p.valid_from <= DATE '$day' AND (p.valid_to IS NULL OR p.valid_to > DATE '$day') ORDER BY s.id LIMIT 3",
@@ -144,8 +154,8 @@ class ZeroPriceLineTest {
            "price_per_qty":${l.sku[2]},"gross_mtk":${lineGross(l)}}""",
     )
 
-    private fun send(user: Long, records: List<JsonObject>, via: IngestService = ingest): SyncBatchResponse = via.ingest(
-        Uploader(user, Role.SR, 1, device.first, device.second, null),
+    private fun send(user: Long, records: List<JsonObject>, via: IngestService = ingest, key: ECPublicKey? = null): SyncBatchResponse = via.ingest(
+        Uploader(user, Role.SR, 1, device.first, device.second, key),
         SyncBatchRequest(
             batch_uuid = uuid(), device_uuid = device.second, schema_version = 1, app_version = "1.0.9+9", trigger = "manual",
             sent_at_device = now.toString(), pending_rows = 0, time_anchors = emptyList(), device_counts = emptyMap(), records = records,
@@ -202,6 +212,73 @@ class ZeroPriceLineTest {
         val res = send(sr, f)
         assertEquals(listOf("accepted", "accepted", "accepted", "accepted"), f.map { res.ack(it) }, res.acks.toString())
         assertEquals(1, count("SELECT count(*) FROM app.memo WHERE client_uuid = '${uuidOf(f[1])}' AND 'price_mismatch' = ANY(server_flags) AND NOT 'zero_price_line' = ANY(server_flags)"))
+    }
+
+    /** A new global value of [key], in force from a fixed instant before [now] (one second later per switch), and a fresh service (its config cache is per instance). */
+    private fun switch(key: String, value: Boolean): IngestService {
+        val n = switches.incrementAndGet()
+        fresh.db.jdbi.useTransaction<Exception> { h ->
+            h.execute("INSERT INTO app.cfg_version (config_version, kind, committed_by, summary) SELECT max(config_version) + 1, 'change', (SELECT id FROM app.app_user WHERE username = 'aron.system'), 'test gate' FROM app.cfg_version")
+            h.execute("UPDATE app.cfg_value SET effective_to = TIMESTAMPTZ '${ApiWorld.CFG_SWITCH}' + interval '1 second' * $n WHERE key = '$key' AND scope_type = 'global' AND effective_to IS NULL")
+            h.execute(
+                "INSERT INTO app.cfg_value (key, scope_type, scope_id, value, effective_from, config_version, reason) " +
+                    "SELECT '$key', 'global', 0, '$value'::jsonb, TIMESTAMPTZ '${ApiWorld.CFG_SWITCH}' + interval '1 second' * $n, max(config_version), 'test' FROM app.cfg_version",
+            )
+        }
+        return IngestService(fresh.db, DbServerConfig(fresh.db, RegistryDefaults(), clock), SqlReachResolver(fresh.db, GeoRepository(fresh.db, clock), clock), clock)
+    }
+
+    /**
+     * Lead 2026-10-24 (a): a memo held by the device gate while its zero line is refused gets the flag when it is released.
+     * The integrity gate holds only the sale header (an enrolled phone with a key but no Play Integrity pass), so the
+     * lines go on to their own checks: the priced one waits for its parent, the zero one is refused.
+     */
+    @Test
+    fun aMemoHeldByTheDeviceGateIsFlaggedOnRelease() {
+        val key = KeyPairGenerator.getInstance("EC").apply { initialize(ECGenParameterSpec("secp256r1")) }.generateKeyPair().public as ECPublicKey
+        fresh.db.jdbi.useHandle<Exception> { h ->
+            h.execute(
+                "INSERT INTO app.enrolment_token (token_sha256, token_prefix, flavour, lockdown_level, max_uses, used_count, expires_at, created_by) " +
+                    "SELECT decode(repeat('cd', 32), 'hex'), 'cdcdcd', 'sr', 'dev', 1, 1, now() + interval '1 hour', id FROM app.app_user WHERE username = 'aron.system'",
+            )
+            h.execute("UPDATE app.device SET enrolment_token_id = (SELECT max(id) FROM app.enrolment_token), integrity_verdict = 'unevaluated' WHERE id = ${device.first}")
+        }
+        val gated = switch("cfg.device.require_integrity", true)
+        try {
+            val f = sale(memoNo(), listOf(L(priced, 20, "stick", 1), L(zero, 1, "pack", zero[3])))
+            val held = send(sr, f, gated, key)
+            assertEquals("quarantined device_integrity_failed", held.ack(f[1]), held.acks.toString())
+            assertEquals("rejected schema_invalid", held.ack(f[3]), "the zero line is refused while its memo is held")
+            assertEquals(0, count("SELECT count(*) FROM app.memo WHERE client_uuid = '${uuidOf(f[1])}'"))
+            // The phone passes Play Integrity; the resend releases the memo and its priced line, and the memo is flagged.
+            fresh.db.jdbi.useHandle<Exception> { it.execute("UPDATE app.device SET integrity_verdict = 'pass', integrity_checked_at = now() WHERE id = ${device.first}") }
+            val res = send(sr, f, gated, key)
+            assertEquals(listOf("accepted", "accepted", "rejected schema_invalid"), f.drop(1).map { res.ack(it) }, res.acks.toString())
+            assertEquals(1, count("SELECT count(*) FROM app.memo_line WHERE memo_client_uuid = '${uuidOf(f[1])}'"))
+            assertEquals(1, count("SELECT count(*) FROM app.memo WHERE client_uuid = '${uuidOf(f[1])}' AND 'zero_price_line' = ANY(server_flags)"))
+        } finally {
+            switch("cfg.device.require_integrity", false)
+            fresh.db.jdbi.useHandle<Exception> { it.execute("UPDATE app.device SET enrolment_token_id = NULL, integrity_verdict = 'unevaluated' WHERE id = ${device.first}") }
+        }
+    }
+
+    /** Lead 2026-10-24 (a): a zero line naming another user's memo uuid never flags that memo, stored before or after it. */
+    @Test
+    fun aZeroLineOfAnotherUserNeverFlagsTheMemo() {
+        fun zeroLineOf(memo: String) = envelope("memo_line", uuid(), uuid(), 2, lineOf(memo, 9, L(zero, 1, "pack", zero[3])), route2)
+        fun flagged(memo: String) = count("SELECT count(*) FROM app.memo WHERE client_uuid = '$memo' AND 'zero_price_line' = ANY(COALESCE(server_flags, '{}'))")
+        // Stored first: sr2002's line arrives after sr1001's memo.
+        val stored = sale(memoNo(), listOf(L(priced, 20, "stick", 1)))
+        assertEquals("accepted", send(sr, stored).ack(stored[1]))
+        val after = zeroLineOf(uuidOf(stored[1]))
+        assertEquals("rejected schema_invalid", send(sr2, listOf(after)).ack(after))
+        assertEquals(0, flagged(uuidOf(stored[1])))
+        // Line first: sr2002 names a memo uuid sr1001 stores later.
+        val later = sale(memoNo(), listOf(L(priced, 5, "stick", 1)))
+        val before = zeroLineOf(uuidOf(later[1]))
+        assertEquals("rejected schema_invalid", send(sr2, listOf(before)).ack(before))
+        assertEquals("accepted", send(sr, later).ack(later[1]))
+        assertEquals(0, flagged(uuidOf(later[1])))
     }
 
     /** Property: memos with a random mix of priced and zero lines, sent whole, then resent shuffled with duplicates. */
