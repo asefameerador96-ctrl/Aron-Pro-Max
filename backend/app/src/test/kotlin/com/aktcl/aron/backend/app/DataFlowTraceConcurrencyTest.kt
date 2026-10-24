@@ -12,7 +12,7 @@ import kotlin.test.Test
 
 /**
  * The trace's sync step under concurrency and batch_uuid reuse (docs/24 s2: a retried, duplicated or concurrent upload never creates a
- * second sale or doubles a number). One Saturday of sr1001, three memos, then:
+ * second sale or doubles a number). One GUL-SR-2 day of sr1001, three memos, then:
  *  1. eight twins send the whole day at once under eight batch_uuids: each record is accepted exactly once across all answers;
  *  2. a second day's worth of twins send under ONE batch_uuid: no 5xx, the day is stored once;
  *  3. a batch_uuid reused for another record set answers 409 ERR_SYNC_BATCH_UUID_REUSED and stores nothing of the second set;

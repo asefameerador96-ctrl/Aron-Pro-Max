@@ -10,12 +10,14 @@ import kotlin.test.Test
 /**
  * The data-flow trace on the other two days of sr1001's week (D-SEED-02: GUL-SR-2 is Saturday and Tuesday, GUL-SR-1 Sunday and
  * Wednesday, BAN-SR-11 Monday and Thursday; Friday is nobody's day). The same dev-profile world as [DataFlowTraceTest], a clock at
- * the date, and one selling day on the route planned that day: bundle -> sale in packets -> upload (out of order, duplicate, replay)
+ * the first date the seed plans the route on (D-TEST-DATE-PIN-01), and one selling day on the route planned that day: bundle -> sale in packets -> upload (out of order, duplicate, replay)
  * -> server count -> warehouse -> national dashboard. Every figure must equal the device truth; a difference fails the test.
  */
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 @TestMethodOrder(MethodOrderer.OrderAnnotation::class)
-abstract class DataFlowTraceOtherDay(day: String, private val weekday: String, private val routeCode: String, private val otherRoutes: List<String>) : DataFlowTraceSupport(day) {
+abstract class DataFlowTraceOtherDay(private val routeCode: String, private val otherRoutes: List<String>) : DataFlowTraceSupport(routeCode) {
+    /** The weekday of the trace's day, the first the seed plans [routeCode] on (D-TEST-DATE-PIN-01). */
+    private val weekday get() = java.time.LocalDate.parse(day).dayOfWeek.name.lowercase()
     override val traceName get() = "data-flow-trace-$weekday"
     private lateinit var allRecords: List<ObjectNode>
 
@@ -104,5 +106,7 @@ abstract class DataFlowTraceOtherDay(day: String, private val weekday: String, p
     }
 }
 
-class DataFlowTraceSundayTest : DataFlowTraceOtherDay("2026-10-25", "sunday", "GUL-SR-1", listOf("BAN-SR-11", "GUL-SR-2"))
-class DataFlowTraceMondayTest : DataFlowTraceOtherDay("2026-10-26", "monday", "BAN-SR-11", listOf("GUL-SR-1", "GUL-SR-2"))
+/** GUL-SR-1's day (seeded Sunday and Wednesday; the class keeps its first name). */
+class DataFlowTraceSundayTest : DataFlowTraceOtherDay("GUL-SR-1", listOf("BAN-SR-11", "GUL-SR-2"))
+/** BAN-SR-11's day (seeded Monday and Thursday; the class keeps its first name). */
+class DataFlowTraceMondayTest : DataFlowTraceOtherDay("BAN-SR-11", listOf("GUL-SR-1", "GUL-SR-2"))
