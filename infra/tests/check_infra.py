@@ -732,9 +732,12 @@ class Workflows(unittest.TestCase):
     def test_ci_skips_superseded_pending_runs_but_never_a_deploy(self):
         # Lead decision 2026-10-07: one ci run per ref (the integration branch is linear; the newer head contains every
         # older commit and compares with the last green head). The deploy is never cancelled mid-flight.
+        # 2026-10-24 (repository private, docs/30 s3a): a lane push also cancels its branch's older running run; a push to
+        # main or the integration branch and a manual dispatch never cancel.
         c = self.text("ci.yml")
-        self.assertIn("group: ci-${{ github.workflow }}-${{ github.ref }}\n  cancel-in-progress: ${{ github.event_name == 'pull_request' }}", c,
-                      "a running push run always finishes; only an older pending run is replaced")
+        self.assertIn("group: ci-${{ github.workflow }}-${{ github.ref }}\n  cancel-in-progress: ${{ github.event_name == 'pull_request' || "
+                      "(github.event_name == 'push' && github.ref != 'refs/heads/main' && github.ref != 'refs/heads/" + INTEGRATION_BRANCH + "') }}", c,
+                      "a running push run on main or the integration branch always finishes; pull requests and lane pushes cancel their older run")
         self.assertIn("status=success&per_page=1", c, "the changes job compares with the last green head")
         d = self.text("deploy.yml")
         self.assertEqual(d.count("cancel-in-progress: false"), 1)
@@ -1045,7 +1048,8 @@ class SupplyChainGates(unittest.TestCase):
                        'tools/ci/semgrep.sh "${base}"', 'base="$(git merge-base "origin/${INTEGRATION_BRANCH}" "${GITHUB_SHA}"', "tools/ci/install-scripts-check.py web/package-lock.json", '[ "${GITHUB_EVENT_NAME}" = push ] && [ "${GITHUB_REF}" != "refs/heads/main" ]',
                        "actions/dependency-review-action@", "fail-on-severity: high"):
             self.assertIn(needle, gates)
-        self.assertIn("if: github.event_name == 'pull_request'", gates[gates.index("Dependency review"):])
+        self.assertIn("if: github.event_name == 'pull_request' && !github.event.repository.private", gates[gates.index("Dependency review"):],
+                      "dependency review on pull requests; skipped on the private repository (needs GitHub Advanced Security)")
         web = c[c.index("\n  web:"):c.index("\n  images:")]
         self.assertIn("npm audit --omit=dev --audit-level=high", web)
         images = c[c.index("\n  images:"):c.index("\n  infra:")]
