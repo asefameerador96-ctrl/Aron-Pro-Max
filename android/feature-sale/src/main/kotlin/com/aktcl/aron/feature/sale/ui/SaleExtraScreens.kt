@@ -8,6 +8,7 @@ import androidx.compose.ui.unit.sp
 import com.aktcl.aron.core.ui.AronLook
 import com.aktcl.aron.core.ui.LocalAronLook
 import com.aktcl.aron.core.ui.aron.AronCard
+import com.aktcl.aron.core.ui.aron.AronField
 import com.aktcl.aron.core.ui.aron.AronMinus
 import com.aktcl.aron.core.ui.aron.AronPlus
 import com.aktcl.aron.core.ui.aron.AronPrimaryButton
@@ -84,13 +85,12 @@ fun CreditPrompt(review: SaleReview, onPaid: (Long?) -> Unit, modifier: Modifier
                 Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.M)) {
                     Text(stringResource(R.string.credit_title), color = look.purple, fontSize = 20.sp, fontWeight = FontWeight.Bold)
                     Text(stringResource(R.string.credit_body), color = look.inkMuted, fontSize = 16.sp)
-                    KitTextField(text, { text = it }, stringResource(R.string.credit_paid_label), isError = showError, keyboardType = KeyboardType.Decimal)
-                    if (showError) {
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(AronTokens.Space.S)) {
-                            Icon(AronIcons.Warning, contentDescription = null, tint = look.red, modifier = Modifier.size(AronTokens.Space.L))
-                            Text(stringResource(R.string.credit_error), color = look.red, fontSize = 13.sp)
-                        }
-                    }
+                    // the kit field: the label above, an underline that goes red on error with the sentence under it; the amount parser and rules are unchanged
+                    AronField(
+                        text, { text = it }, stringResource(R.string.credit_paid_label),
+                        errorText = if (showError) stringResource(R.string.credit_error) else null, keyboardType = KeyboardType.Decimal,
+                        fieldModifier = Modifier.testTag(CreditTags.PAID),
+                    )
                     Text(stringResource(R.string.review_net), color = look.inkMuted, fontSize = 13.sp)
                     MoneyText(money(review.totals.netMtk), style = MaterialTheme.typography.headlineLarge, color = look.ink)
                     if (valid) {
@@ -162,6 +162,8 @@ fun SlideScreen(skus: List<SaleSku>, review: SaleReview, emptyOf: (Long) -> Long
 object CreditTags {
     const val YES = "credit_yes"
     const val NO = "credit_no"
+    /** The paid-amount field (the editable node). */
+    const val PAID = "credit_paid"
 }
 
 /** Test tags of the QC screen. */
