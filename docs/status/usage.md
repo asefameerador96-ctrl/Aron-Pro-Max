@@ -676,3 +676,7 @@
 
 ### 17:48 UTC — route-only TSO: ruling (a), house part only
 - backend-core #17's Opus checker blocked the route-only default: zone stamps are historical, so a current-membership test still leaks over past ranges; the exact alternative is a nine-table scan. Ruled D-DASH-TSO-HOUSE-SCOPE-03: route-only default stays 403 until route-keyed aggregates; the slice ships the house part (house zones from Reach, duplicate-house fold tested, route-only 403 pinned). Request file annotated.
+
+### 18:02 UTC — web-admin #8 candidate checked for train 33
+- web-admin #8 candidate 5b381c34 (reconciliation of the Flagged memos mock + page with FlaggedMemos.kt: limit 1..500 default 100, from/to parsing, whole-node reach 403, keyset cursor, unknown status shown as given, no Retry on 400/403; owner device-lab row W-FLAG-01; D-WEB-FLAGGED-MEMOS-02): lane run 40117123310 (#1557) green on the sha, all jobs ran; Sonnet checker 3 blocking findings fixed; git gate passed (base 39ed8bc5, 5 files in lane). Checked to integrator 20 for train 33; GO when backend-core #17's house slice is checked, or alone by ~18:45.
+- backend-core #17: house part being finished under D-DASH-TSO-HOUSE-SCOPE-03 (route-only stays 403); candidate expected shortly.
