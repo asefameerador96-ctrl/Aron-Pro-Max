@@ -191,6 +191,38 @@ class MemoNumberPackSizeTest {
         assertTrue(MemoNumbers.problem(MemoNumbers.Rule("sr1001", 100), "sr1001-270103-401", d) != null)
     }
 
+    /** The oracle the slice smoke follows: every accepted sequence, at the smallest, default and largest block size. */
+    @Test
+    fun inRangesAcceptsExactlyTheFourBlocksAndTheFourOverflowRanges() {
+        for (size in listOf(100, 500, 999)) {
+            val want = (1..4 * size).toSet() + (5001..5999) + (6001..6999) + (7001..7999) + (8001..8999)
+            assertEquals(want, (-1..10_000).filter { MemoNumbers.inRanges(it, size) }.toSet(), "block size $size")
+        }
+    }
+
+    /**
+     * Lead P1 2026-10-24: the dev deploy's SR slice smoke built `seq` 9000..9999, outside every range, so its memo was
+     * `memo_no_invalid` on the first selling day it ran. It now numbers from the overflow range of the ordinal its login
+     * names (`5000 + o x 1000 + 1 .. + 999`), else from MEMO_SEQ_RANGE; each must pass the rule at every block size and
+     * stay clear of the ordinal blocks (`1 .. 4 x 999`).
+     */
+    @Test
+    fun theSliceSmokesMemoRangeIsValid() {
+        val script = File(System.getProperty("aron.repoRoot"), "infra/scripts/slice-smoke.py").readText()
+        val (lo, hi) = Regex("""(?m)^MEMO_SEQ_RANGE = \((\d+), (\d+)\)""").find(script)!!.destructured.toList().map { it.toInt() }
+        assertTrue(script.contains("return (5000 + o * 1000 + 1, 5000 + o * 1000 + 999) if isinstance(o, int) and 0 <= o <= 3 else MEMO_SEQ_RANGE"), "the smoke's overflow formula")
+        assertTrue(script.contains("return lo + (now.hour * 3600 + now.minute * 60 + now.second) * (hi - lo + 1) // 86400"), "the smoke's slot stays inside its range")
+        assertTrue(script.contains("memo_seq(seq_range, started)") && script.contains("seq_range = memo_seq_range(b)"), "the smoke's memo_no takes its seq from the login's range")
+        val ranges = listOf(lo..hi) + (0..3).map { o -> (5000 + o * 1000 + 1)..(5000 + o * 1000 + 999) }
+        val d = LocalDate.parse(day)
+        for (r in ranges) {
+            assertTrue(r.first > 4 * 999 && r.first <= r.last, "range $r")
+            for (size in listOf(100, 500, 999)) for (s in r) {
+                assertNull(MemoNumbers.problem(MemoNumbers.Rule("sr1001", size), "sr1001-270103-$s", d), "seq $s, block size $size")
+            }
+        }
+    }
+
     /**
      * Session 14 open item (b): a phone keeps the block size it bound with, so lowering `cfg.memo.seq_block_size` must
      * not refuse numbers it already printed. The rule uses the largest size ever set. The rows here keep that at 500,
