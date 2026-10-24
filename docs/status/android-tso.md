@@ -4,6 +4,17 @@ Done in session 4 (all checked by the lead unless noted): row 1 print guards (`g
 Open: nothing blocked on the lead. Owner questions stay open: M8, S4, SS5, T3 (red=No), E4 (what the three small sale-card indicators mean), MQ-03 (max-QC basis), H1 (SR header "Daily" and the two-line header). The branch `lane/android-tso-wip` on the remote was created by this session for the stop hook; `git push origin --delete` fails here ("remote end hung up", the git proxy refuses ref deletion): the lead or the owner must delete it; do not create other branches.
 Traps: the stop hook forces a push whenever commits are unpushed: a push before the local full run ends is normal, only "candidate" waits for the exact sha's own green run; a new push cancels the running lane run (about 8 to 10 minutes), so wait for it before pushing again when a candidate is pending; an English or Bangla string change can break Robolectric tests that match text; a golden diff in the full command means re-record (`./gradlew :android:ui-screenshots:testDebugUnitTest -Proborazzi.record=true`) and LOOK at the image before committing; the kit `AronField` shows its label as a separate text node, so tests find the editable node by `fieldModifier` tag, not by label text.
 
+# Session 5, slice 3: TSO screen-state coverage (2026-10-24)
+TSO screens are driven by sealed states, so the audit reads the state types against what each renders.
+| Screen | Empty | Loading | Offline | Error | Long Bangla |
+|---|---|---|---|---|---|
+| Dashboard host | present | `TsoLoading` (kit skeleton) | cached / offline failure state | refused / failure states present | TsoLargeTextScreenshotTests |
+| Leave list, Feedback list | `TsoEmpty` + hint | `TsoLoading` | cached banner | `TsoError` with retry | present (large-text goldens) |
+| My Team | n/a | `TsoLoading` | cached banner | was a banner without retry: now `TsoError` + "Try again" (existing words `tso_mc_unavailable`, `tso_retry`) | not added |
+| Retailer around me | n/a | banner "locating" / "loading" (one-shot, by design) | unavailable banner | permission / location-off / out-of-area states present | not added |
+| My Call (plan, query), Final Submit | present | `TsoLoading` in Final Submit | offline messages present | error messages present | Final Submit 200 % goldens present |
+Fix: My Team `TeamUi.Unavailable` is the kit error state with a retry that calls `TeamState.refresh()`; test `PeripheryScreenTest.teamUnavailableOffersTryAgainAndRecoversWhenTheListArrives`. No new wording. The retailer screen's unavailable state keeps its banner (its Find button is the retry).
+
 # Session 5, slice 2: AMO screen-state coverage (2026-10-24)
 Method as slice 1. AMO has its own look parts (`AmoEmpty`, `AmoBanner`, owner look) for empty and banner states, so those are not rebuilt; the gap was the loading state.
 | Screen group | Empty | Loading (before) | Loading (now) | Offline / error | Long Bangla |
