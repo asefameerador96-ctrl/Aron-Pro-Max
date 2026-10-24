@@ -293,6 +293,8 @@ class SrDay(
         // F-SYS-074: the address resolves online only (platform geocoder, after the commit, display only); offline the
         // coordinates stay, with the last resolved address when the fix is near it.
         addressResolver = { lat, lng -> addressResolver.displayText(context, lat, lng) },
+        // D-NIGHT-CHECKOUT-01: check-out only after the day's Sales Submit is committed on this phone (offline is enough).
+        salesSubmitted = { com.aktcl.aron.feature.dayclose.RoomDaySource(db).alreadySubmitted(businessDate()) },
     )
 
     @Volatile private var nextSequence = 1

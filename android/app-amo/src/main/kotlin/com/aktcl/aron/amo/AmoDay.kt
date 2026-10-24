@@ -146,6 +146,8 @@ class AmoDay(
         routeIdOf = { routeId }, nowIso = { iso(clock.nowMs()) }, dhakaMinutesNow = ::dhakaMinutesNow,
         checkoutEarliestMinutes = { deviceRuntime?.dayConfig?.checkoutEarliestMinutes ?: DayConfig.DEFAULT_CHECKOUT_MINUTES },
         addressResolver = { lat, lng -> addressResolver.displayText(context, lat, lng) },
+        // D-NIGHT-CHECKOUT-01: the AMO's supervisor-day Sales Submit, committed on this phone, before check-out.
+        salesSubmitted = { daySubmitted() },
     )
 
     suspend fun attendanceToday() = db.captureDao().attendanceOn(businessDate())

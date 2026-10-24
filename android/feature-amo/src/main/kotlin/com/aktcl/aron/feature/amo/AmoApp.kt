@@ -74,6 +74,8 @@ fun AmoApp(
     val tiles = remember(badges, reach) { RoleHomes.amoTiles(AmoMenu.badges(reach) + badges) }
     val sync = RoleHomes.syncState(bundle, user.offline).let { if (it == SyncChipState.Synced && syncedAt != null) SyncChipState.SyncedAt(syncedAt) else it }
     val header = remember(user, businessDate) { RoleHomes.header(RoleHomes.AMO_PREFIX, user, businessDate) }
+    val navigate: (AmoScreen) -> Unit = remember { { screen = it } }
+    androidx.compose.runtime.CompositionLocalProvider(LocalAmoNavigate provides navigate) {
     AronScreenTransition(screen, forward = { _, to -> to != AmoScreen.HOME }, modifier) { s ->
         when (s) {
             AmoScreen.HOME -> AmoHomeContent(
@@ -95,4 +97,8 @@ fun AmoApp(
             }
         }
     }
+    }
 }
+
+/** D-NIGHT-CHECKOUT-01: lets a screen supplied by the app module open another AMO screen (Attendance to Sales Submit). */
+val LocalAmoNavigate = androidx.compose.runtime.staticCompositionLocalOf<(AmoScreen) -> Unit> { {} }
