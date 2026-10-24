@@ -683,3 +683,6 @@
 
 ### 18:33 UTC — evening sweep
 - Evening report written to docs/status/evening-2026-10-24.md (compact version posted in chat). backend-core #17 (~278k) is running the backend suite before its first push; web-admin #8's head 5b381c34 is checked; train 33 goes now with web-admin + lead docs (CI only), backend-core rides train 34 with its deploy. A one-shot morning-report trigger (06:30 UTC 2026-10-25) is created; the two-hourly lane check continues.
+
+### 18:50 UTC — lane check (scheduled; evening sweep was 12 min earlier)
+- Train 33 pushed 18:34 (INT da861ec1, ci #1558 running); lead git check passed (two heads, delta 11 = 11, DECISIONS 60). backend-core #17 still in its backend suite (no push yet; candidate → train 34 with deploy); web-admin #8 idle after its checked head; android-print #5 idle for the owner; integrator 20 holds. No unclassified branch ahead of INT besides the lanes' own heads and lead docs. Owner rows unchanged; no owner message since 13:33.
