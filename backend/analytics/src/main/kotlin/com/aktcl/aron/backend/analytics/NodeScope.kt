@@ -18,9 +18,10 @@ private val GEO_COLUMNS = mapOf("wing" to ("wing_id" to "wing_name"), "division"
 /**
  * Resolves `level` + `node_id` (or the caller's top reach node) to the zones to read. Reach comes only from the token's user:
  * a node outside it, or unknown, is 403 with no existence leak; a node is allowed only when every zone under it is in reach.
+ * [outOfScope] is the 403's code: `ERR_FORBIDDEN` for the older dashboards, `ERR_OUT_OF_SCOPE` where the contract names it.
  */
-internal fun resolveScopedNode(h: Handle, reach: Reach, level: String?, nodeId: Long?): ScopedNode {
-    val out = ApiProblem(ProblemCode.ERR_FORBIDDEN, "node is outside your reach")
+internal fun resolveScopedNode(h: Handle, reach: Reach, level: String?, nodeId: Long?, outOfScope: ProblemCode = ProblemCode.ERR_FORBIDDEN): ScopedNode {
+    val out = ApiProblem(outOfScope, "node is outside your reach")
     val lv: String; val id: Long
     if (level == null && nodeId == null) {
         if (reach.national) return ScopedNode(NodeRefDto("national", 0, "national", "National"), null)

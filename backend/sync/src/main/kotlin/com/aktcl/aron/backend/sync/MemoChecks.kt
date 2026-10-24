@@ -164,10 +164,13 @@ object MemoChecks {
         ).bind("m", memo).bind("u", userId).execute()
     }
 
-    /** True when a sale line of [memo] by [userId] (on any business date) was refused for its zero price before the memo was stored. */
+    /**
+     * True when a sale line of [memo] by [userId] (on any business date) was refused for its zero price before the memo
+     * was stored: `price_invalid` since contract 1.8.0, `schema_invalid` for lines refused before it.
+     */
     fun refusedZeroLine(h: Handle, memo: String, userId: Long): Boolean = h.createQuery(
         """
-        SELECT EXISTS (SELECT 1 FROM app.sync_rejected WHERE user_id = :u AND record_type = 'memo_line' AND code = 'schema_invalid'
+        SELECT EXISTS (SELECT 1 FROM app.sync_rejected WHERE user_id = :u AND record_type = 'memo_line' AND code IN ('price_invalid', 'schema_invalid')
                           AND detail LIKE 'zero_price_line:%' AND payload -> 'payload' ->> 'memo_client_uuid' = :m)
         """.trimIndent(),
     ).bind("m", memo).bind("u", userId).mapTo(Boolean::class.java).one()

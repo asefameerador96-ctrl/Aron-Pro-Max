@@ -993,8 +993,8 @@ class IngestService(
             return quarantine(h, ctx, r, bd, RecordOutcomeCode.ARITHMETIC_MISMATCH, why)
         }
 
-        // 8a. Zero price (D-SALE-ZERO-PRICE-01): a sale line priced at zero is a final schema_invalid for that line alone
-        // (a resend stays refused). After the money check, so its gross is zero: the memo and its other lines still add
+        // 8a. Zero price (D-SALE-ZERO-PRICE-01): a sale line priced at zero is a final price_invalid for that line alone
+        // (contract 1.8.0; schema_invalid before it; a resend stays refused). After the money check, so its gross is zero: the memo and its other lines still add
         // up and are stored, and the memo is flagged zero_price_line for review (its line count is one short): here when
         // it is already stored, else when it is (a line sent first, or a memo held by the device gate or a review).
         if (r.type == "memo_line") MemoChecks.zeroPriceProblem(payload)?.let { why ->
@@ -1004,7 +1004,7 @@ class IngestService(
                 h.execute("SELECT pg_advisory_xact_lock(hashtextextended(?, 0))", m)
                 MemoChecks.flagZeroPrice(h, m, ctx.up.userId)
             }
-            return finalReject(h, ctx, r, RecordOutcomeCode.SCHEMA_INVALID, why)
+            return finalReject(h, ctx, r, RecordOutcomeCode.PRICE_INVALID, why)
         }
 
         // 8b. Handlers' early checks (before parents): a refusal here is final even when the parent is missing.
