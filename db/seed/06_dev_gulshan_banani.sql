@@ -2,8 +2,9 @@
 -- House H-GUL under T-DHK-N, zones Z-GUL (Gulshan 1 and 2) and Z-BAN (Banani), three SR routes with a Friday-aware
 -- schedule (every selling day Saturday to Thursday has exactly one route, Friday none), 60 outlets (20 per route)
 -- placed along the streets around Gulshan 2 circle (23.7925 N, 90.4078 E), Gulshan 1 circle (23.7808 N, 90.4165 E)
--- and Banani Road 11 (23.7937 N, 90.4043 E), every outlet channel present, the zones' sales plans, route x SKU monthly
--- targets for the current quarter and the quarter's national holidays. sr1001 works these routes; its Mirpur routes
+-- and Banani Road 11 (23.7937 N, 90.4043 E), every outlet channel present, plus the owner's three test outlets on
+-- GUL-SR-1 (D-NIGHT-SEED-OUTLETS-01), the zones' sales plans, route x SKU monthly targets for the three months from the
+-- seed's today and the national holidays of those months (D-DB-SEED-ROLLING-01). sr1001 works these routes; its Mirpur routes
 -- are closed. The seed -> table map for qa's data-flow trace is docs/evidence/seed-gulshan-banani.md.
 --
 -- PROFILE. The CI and backend test fixture is the Mirpur seed of 01 and 03 (about 250 test assertions key on its
@@ -107,6 +108,24 @@ BEGIN
     JOIN app.sub_channel sc ON sc.code = ch.sub
    WHERE NOT EXISTS (SELECT 1 FROM app.outlet x WHERE x.code = format('%s-%s', r.prefix, lpad(n::text, 3, '0')));
 
+  -- The owner's three test outlets (D-NIGHT-SEED-OUTLETS-01): retail GT on GUL-SR-1 (sr1001's Sunday and Wednesday route),
+  -- the owner's exact pins, visited after the 20 seeded outlets; same price type and geofence config as the others (no
+  -- outlet-level radius override). The repository is public, so these pins are public.
+  INSERT INTO app.outlet (code, name, name_bn, owner_name, contact_number, address, zone_id, route_id, cluster_id, channel,
+                          sub_channel_id, geo_class, lat, lng, location_basis, location_confirmed, location_accuracy_m,
+                          outlet_kind, price_type, visit_sequence)
+  SELECT t.code, t.name, t.name_bn, 'Asef (test outlet)', t.phone, t.name || ', Gulshan, Dhaka', z.id, ro.id, cl.id, 'GT', sc.id,
+         'Urban', t.lat, t.lng, 'master', true, 8, 'retail', 'outlet', t.seq
+    FROM (VALUES ('GUL1-T01', 'Asef Home', 'আসেফ হোম', '01707002101', 23.788347::double precision, 90.402357::double precision, 21),
+                 ('GUL1-T02', 'Asef Office', 'আসেফ অফিস', '01707002102', 23.791886, 90.420650, 22),
+                 ('GUL1-T03', 'Asef Head Office', 'আসেফ হেড অফিস', '01707002103', 23.795805, 90.418034, 23))
+           AS t(code, name, name_bn, phone, lat, lng, seq)
+    JOIN app.route ro ON ro.code = 'GUL-SR-1'
+    JOIN app.zone z ON z.id = ro.zone_id
+    JOIN app.cluster cl ON cl.zone_id = z.id AND cl.name = 'Gulshan 1 Circle'
+    JOIN app.sub_channel sc ON sc.code = 'GT-GROCERY'
+   WHERE NOT EXISTS (SELECT 1 FROM app.outlet x WHERE x.code = t.code);
+
   INSERT INTO app.outlet_placement_history (outlet_id, route_id, cluster_id, valid_from)
     SELECT o.id, o.route_id, o.cluster_id, DATE '2026-10-01' FROM app.outlet o JOIN app.route r ON r.id = o.route_id
      WHERE r.code IN ('GUL-SR-2', 'GUL-SR-1', 'BAN-SR-11') AND NOT EXISTS (SELECT 1 FROM app.outlet_placement_history h WHERE h.outlet_id = o.id);
@@ -147,16 +166,24 @@ BEGIN
        AND NOT EXISTS (SELECT 1 FROM app.user_scope x WHERE x.user_id = u.id AND x.node_type = 'zone' AND x.node_id = z.id
                          AND (x.valid_to IS NULL OR x.valid_to > today));
 
-  -- ---------- national holidays of the quarter (Oct-Dec 2026) ----------
-  -- Durga Puja (Bijoya Dashami) is a lunar date: 2026-10-21 here, AKTCL to confirm against the government list.
+  -- ---------- national holidays of the three months from today (D-DB-SEED-ROLLING-01) ----------
+  -- The fixed-date holidays (Victory Day, Christmas Day) of every year that the window from the first of today's month to
+  -- three months on touches. Durga Puja (Bijoya Dashami) is a lunar date: only the 2026 row the seed has always carried
+  -- (2026-10-21), which the owner still confirms (owner row O); no later year's date is guessed.
   INSERT INTO app.calendar_holiday (date, scope_type, scope_id, kind, selling_day, name_en, name_bn, reason)
     SELECT h.d, 'global', 0, 'holiday', false, h.en, h.bn, 'dev seed (D-SEED-02)'
-      FROM (VALUES (DATE '2026-10-21', 'Durga Puja (Bijoya Dashami)', 'দুর্গাপূজা (বিজয়া দশমী)'),
-                   (DATE '2026-12-16', 'Victory Day', 'বিজয় দিবস'),
-                   (DATE '2026-12-25', 'Christmas Day', 'বড়দিন')) AS h(d, en, bn)
+      FROM (SELECT DATE '2026-10-21' AS d, 'Durga Puja (Bijoya Dashami)' AS en, 'দুর্গাপূজা (বিজয়া দশমী)' AS bn
+            UNION ALL
+            SELECT make_date(y, f.m, f.dd), f.en, f.bn
+              FROM generate_series(extract(year FROM today)::int, extract(year FROM today)::int + 1) AS y,
+                   (VALUES (12, 16, 'Victory Day', 'বিজয় দিবস'), (12, 25, 'Christmas Day', 'বড়দিন')) AS f(m, dd, en, bn)
+             WHERE make_date(y, f.m, f.dd) >= date_trunc('month', today)::date
+               AND make_date(y, f.m, f.dd) < (date_trunc('month', today) + interval '3 months')::date) AS h
      WHERE NOT EXISTS (SELECT 1 FROM app.calendar_holiday x WHERE x.date = h.d AND x.scope_type = 'global' AND x.revoked_at IS NULL);
 
-  -- ---------- route x SKU monthly targets, Oct-Dec 2026 (D-TARGET-MIN-01) ----------
+  -- ---------- route x SKU monthly targets for today's month and the next two (D-TARGET-MIN-01, D-DB-SEED-ROLLING-01) ----------
+  -- One batch per month, keyed by the month (md5 of 'gulshan-banani-target-YYYY-MM-01'), so a later run adds the months
+  -- that came into the window and leaves the ones already loaded as they are.
   -- "September-like": per route and month 200,000 cigarette sticks (about 7,700 a working day, the brief's national
   -- daily target of 5.36 Cr sticks over 6,933 routes), 30,000 bidi sticks, 500 lighters (20 boxes) and 300 dozen matches,
   -- spread over the zone's plan SKUs with weights 1..3 by catalogue order, rounded to whole packs.
@@ -164,7 +191,7 @@ BEGIN
     SELECT md5('gulshan-banani-target-' || m.month)::uuid, sha256(convert_to('dev seed D-SEED-02 ' || m.month, 'UTF8')),
            (SELECT count(*) FROM app.route r JOIN app.sales_plan p ON p.zone_id = r.zone_id AND p.valid_to IS NULL
              WHERE r.code IN ('GUL-SR-2', 'GUL-SR-1', 'BAN-SR-11')), u.id
-      FROM (VALUES (DATE '2026-10-01'), (DATE '2026-11-01'), (DATE '2026-12-01')) AS m(month), app.app_user u
+      FROM (SELECT (date_trunc('month', today) + k * interval '1 month')::date FROM generate_series(0, 2) AS k) AS m(month), app.app_user u
      WHERE u.username = 'superadmin1001'
        AND NOT EXISTS (SELECT 1 FROM app.route_target_batch x WHERE x.batch_uuid = md5('gulshan-banani-target-' || m.month)::uuid);
   INSERT INTO app.route_monthly_target (route_id, sku_id, month, qty_base, batch_uuid, updated_by)
@@ -175,7 +202,7 @@ BEGIN
                    CASE s.category_code WHEN 'cigarette' THEN 200000 WHEN 'bidi' THEN 30000 WHEN 'lighter' THEN 500 ELSE 300 END AS total
               FROM app.route r JOIN app.sales_plan p ON p.zone_id = r.zone_id AND p.valid_to IS NULL JOIN app.sku s ON s.id = p.sku_id
              WHERE r.code IN ('GUL-SR-2', 'GUL-SR-1', 'BAN-SR-11')) w
-     CROSS JOIN (VALUES (DATE '2026-10-01'), (DATE '2026-11-01'), (DATE '2026-12-01')) AS m(month)
+     CROSS JOIN (SELECT (date_trunc('month', today) + k * interval '1 month')::date FROM generate_series(0, 2) AS k) AS m(month)
     ON CONFLICT (route_id, sku_id, month) DO NOTHING;
   RAISE NOTICE 'seed 06 applied (Gulshan/Banani: sr1001 on GUL-SR-2, GUL-SR-1, BAN-SR-11)';
 END
