@@ -223,3 +223,12 @@ green run of the exact sha). Usage stays `allowed` on the five-hour window.
 
 ## Update 2026-10-24 10:01 UTC (lead)
 - Train 27 landed 09:05 (deploy green, slice smoke PASSED, signed APK 1515 = owner's device-check build). Train 28 (android-tso parity slices, backend-core zero-price tests, lead docs, db V0111 dw.v_memo_flags) GO about 10:15, landed about 11:05 (deploy with migration). Train 29 = contract 1.8 batch after lead checks and an Opus review, about 12:00; then backend-core's flagged-memos endpoint and web-admin's page (trains 30+ this afternoon). Evening report 18:30. No slip.
+
+## Update 2026-10-24 10:48 UTC (lead)
+- Train 28 pushed 10:11; CI (full db chain) about 11:00, deploy with V0111 + smoke about 11:20 (signed APK 1528). Train 29 = contract 1.8 batch (committed, report + CI + Opus review pending) about 12:00–12:30. Then backend-core's flagged-memos endpoint and web-admin's page (trains 30+ this afternoon). Integrator 19 successor after train 29. Evening report 18:30. No slip.
+
+## Update 2026-10-24 11:06 UTC (lead)
+- Train 28 landed 11:05 (deploy green, smoke PASSED, signed APK 1528). Train 29 = contract 1.8 batch: the sub-lane's report, lane CI and an Opus review first, GO about 12:00, landed about 12:45. Then backend-core's flagged-memos endpoint (train 30/31) and web-admin's page (train 31/32) this afternoon; android-tso's cleanup slice rides train 30. Evening report 18:30. No slip.
+
+## Update 2026-10-24 12:49 UTC (lead)
+- Train 29 (contract 1.8) pushed 12:28; CI about 12:55, deploy + smoke about 13:10. Then "contract 1.8 landed": backend-core's flagged-memos endpoint slice (train 31, about 15:00) and web-admin's Flagged memos page (train 31/32). Train 30 (android-tso state coverage, lead docs, db V0112/V0113) GO right after train 29 lands, about 13:15, landed about 14:05. Recycles this afternoon: integrator 19 → 20 before train 30; android-tso #5 → #6 at 450k; db #10 hands over after train 30. Evening report 18:30. No slip.
