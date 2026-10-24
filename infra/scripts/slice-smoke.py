@@ -49,6 +49,9 @@ OUTLET_CODE = ",".join(OUTLET_CODES)
 DEVICE_KEY = os.environ.get("SLICE_DEVICE_KEY", "")  # PEM file of the smoke device's key (Key Vault aron-dev-smoke-device-key)
 TILE_POLL_S = float(os.environ.get("SLICE_TILE_POLL_S", "15"))
 SCHEME = os.environ.get("SLICE_SCHEME", "https")  # http only for the offline test against a local stub
+# Memo sequence: the last overflow range (ordinal 3, docs/24 s7.5), valid under the server rule for every block size and
+# reached by a phone only after 500+ memos in a day on ordinal 3, so it stays clear of real numbers (MemoNumberPackSizeTest).
+MEMO_SEQ_RANGE = (8001, 8999)
 SKIP_EXIT = 3  # deploy.sh: "SKIPPED" (not a selling day), distinct from a failure (1)
 DHAKA = datetime.timezone(datetime.timedelta(hours=6))
 
@@ -182,7 +185,7 @@ def run():
     unit = sku["base_unit"]
     qty = 10
     gross = qty * price["amount_mtk"] // max(1, price["per_base_qty"])
-    memo_no = f"{USER}-{today.strftime('%y%m%d')}-{9000 + random.randrange(1000)}"  # 9xxx: clear of a phone's own blocks
+    memo_no = f"{USER}-{today.strftime('%y%m%d')}-{random.randint(*MEMO_SEQ_RANGE)}"
     visit, memo, line, close = (str(uuid.uuid4()) for _ in range(4))
     lat, lng = outlet["lat"], outlet["lng"]
     fix = {"fix_status": "ok", "lat": lat, "lng": lng, "accuracy_m": 12.0, "provider": "fused", "is_mock": False, "reused": False,

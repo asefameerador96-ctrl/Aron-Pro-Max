@@ -192,6 +192,23 @@ class MemoNumberPackSizeTest {
     }
 
     /**
+     * Lead P1 2026-10-24: the dev deploy's SR slice smoke built `seq` 9000..9999, outside every range, so its memo was
+     * `memo_no_invalid` on the first selling day it ran. Its range must pass the rule at every block size and stay
+     * clear of the ordinal blocks a phone numbers from (`1 .. 4 x 999`).
+     */
+    @Test
+    fun theSliceSmokesMemoRangeIsValid() {
+        val script = File(System.getProperty("aron.repoRoot"), "infra/scripts/slice-smoke.py").readText()
+        val (lo, hi) = Regex("""(?m)^MEMO_SEQ_RANGE = \((\d+), (\d+)\)""").find(script)!!.destructured.toList().map { it.toInt() }
+        assertTrue(script.contains("random.randint(*MEMO_SEQ_RANGE)"), "the smoke's memo_no takes its seq from MEMO_SEQ_RANGE")
+        assertTrue(lo in 1..hi && lo > 4 * 999, "MEMO_SEQ_RANGE $lo..$hi")
+        val d = LocalDate.parse(day)
+        for (size in listOf(100, 500, 999)) for (s in lo..hi) {
+            assertNull(MemoNumbers.problem(MemoNumbers.Rule("sr1001", size), "sr1001-270103-$s", d), "seq $s, block size $size")
+        }
+    }
+
+    /**
      * Session 14 open item (b): a phone keeps the block size it bound with, so lowering `cfg.memo.seq_block_size` must
      * not refuse numbers it already printed. The rule uses the largest size ever set. The rows here keep that at 500,
      * the default, so the other tests of this class see the same rule.

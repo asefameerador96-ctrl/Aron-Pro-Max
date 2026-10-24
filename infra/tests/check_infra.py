@@ -1646,7 +1646,7 @@ class SliceSmoke(unittest.TestCase):
             self.assertIn(line, out)
         (memo,) = state["memos"].values()
         self.assertIn(memo["client_uuid"], state["voided"], "the smoke sale is voided")
-        self.assertRegex(memo["payload"]["memo_no"], r"^sr1001-\d{6}-9\d{3}$", "contract pattern, clear of phone blocks")
+        self.assertRegex(memo["payload"]["memo_no"], r"^sr1001-\d{6}-8\d{3}$", "s7.5 rule: ordinal 3 overflow 8001..8999, clear of phone blocks")
         self.assertEqual(memo["payload"]["outlet_id"], 9, "the smoke's own outlet, never a tester's")
 
     def test_a_non_selling_day_is_skipped_and_names_the_next_selling_days_route(self):
