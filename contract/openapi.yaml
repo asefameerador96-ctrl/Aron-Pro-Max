@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Aron API
-  version: 1.7.0
+  version: 1.8.0
   summary: The one API of the Aron rebuild (SR, AMO and TSO apps, web dashboards and admin portal).
   description: |
     Binding contract for every lane of the seven-day build. Rules that apply to every operation are in
@@ -27,6 +27,11 @@ info:
       `ReachLevel` gains `house`; `DeviceStatusReport.network_type` (optional, `wifi`/`mobile`/`offline`); `FinalSubmitPreview.routes[].planned`
       (optional, boolean or null). The three response-enum additions (`ProblemCode`, `UserScopeNode.node_type`, `ReachLevel`) are breaking for an
       old reader and approved by the lead (D-CONTRACT-1-7-01).
+    - 1.8.0 (lead batch, D-CONTRACT-BATCH-01, `docs/requests/contract-v1.8-queue.md` rows 1 to 3): `getUserAccess` names
+      `ERR_AUTHZ_ROLE_ABOVE_GRANT` (description only); `RecordOutcomeCode` gains `price_invalid` (rejected, not retryable:
+      a sale line priced at zero); new operation `GET /v1/dashboards/flagged-memos` (`getFlaggedMemos`, schemas
+      `FlaggedMemoPage`, `FlaggedMemoView`, `MemoServerFlag`); `MemoView.server_flags` (optional). The response-enum
+      addition (`RecordOutcomeCode`) is breaking for an old reader and approved by the lead (D-CONTRACT-1-8-01).
     - Lists use cursor pagination (`limit`, `cursor`, response `next_cursor`) and master data also accept
       `updated_since`.
   contact:
@@ -2129,6 +2134,46 @@ paths:
               schema: { $ref: '#/components/schemas/SyncHealthPage' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
+  /v1/dashboards/flagged-memos:
+    get:
+      tags: [dashboards]
+      operationId: getFlaggedMemos
+      summary: Stored memos the server flagged for review (`server_flags`), for the Flagged memos dashboard page.
+      description: |
+        Memos in the caller's reach whose `server_flags` is not empty, newest stored first. Scope from the token: the
+        client never sends scope ids; without `node_id` the node is the caller's top reach node, and a `level`/`node_id`
+        outside the caller's reach is 403 `ERR_OUT_OF_SCOPE`. `from` and `to` are business dates (Asia/Dhaka), both
+        default to today, and `to` is at most 92 days after `from`. `flag` narrows to memos carrying that flag; it is a
+        string, not an enum (values in `MemoServerFlag`), so an unknown value answers an empty page. Voided and
+        superseded memos stay listed with their `status` (the page greys or filters them; a count of open problems uses
+        `status == active`). Backing data: the stable view `dw.v_memo_flags` (V0111, D-DB-MEMO-FLAGS-VIEW-01: scope keys
+        frozen at the business date); `user_code` and `user_name` are resolved by the endpoint from `app.app_user`,
+        because `dw` carries no names. Callers: every portal level whose reach covers the node (SUPERADMIN, ADMIN with
+        the `reports:r` grant, which `/v1/dashboards/**` maps to, NATIONAL, WM, DMO and TSO); BRAND users get 403
+        `ERR_FORBIDDEN` (docs/34 s1: cards without a brand dimension are hidden, and a memo has no brand dimension; the
+        portal-level gate answers it); SR and AMO have no portal login (`ERR_AUTH_PORTAL_NOT_ALLOWED`).
+      parameters:
+        - $ref: '#/components/parameters/FromDate'
+        - $ref: '#/components/parameters/ToDate'
+        - $ref: '#/components/parameters/GeoLevelQuery'
+        - $ref: '#/components/parameters/NodeIdQuery'
+        - name: flag
+          in: query
+          required: false
+          description: Only memos whose `server_flags` contains this value (see `MemoServerFlag`); omit for every flagged memo.
+          schema: { $ref: '#/components/schemas/MemoServerFlag' }
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Page of flagged memos.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/FlaggedMemoPage' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
   /v1/dashboards/geo-validation:
     get:
       tags: [dashboards]
@@ -3169,6 +3214,7 @@ paths:
       tags: [admin-users]
       operationId: getUserAccess
       summary: An ADMIN user's module grants or a BRAND user's brands (docs/34 s1); the ETag is the access version.
+      description: An ADMIN may read its own access; another ADMIN's or a SUPERADMIN's access is SUPERADMIN-only, and an ADMIN asking for it gets 403 `ERR_AUTHZ_ROLE_ABOVE_GRANT` (D-AUTHZ-ADMIN-CREDS-01; the server answers it since the contract 1.7.0 wiring, D-AUTHZ-1-7-WIRING-01).
       parameters:
         - $ref: '#/components/parameters/IdPath'
       responses:
@@ -6470,7 +6516,7 @@ components:
     RecordOutcomeCode:
       type: string
       description: Stable code on a rejected or quarantined record (docs/24 s4.5 lists retryability and the phone action).
-      enum: [scope_stale, config_version_unknown, parent_missing, outlet_pending_approval, price_list_unknown, schema_invalid, unknown_record_type, unknown_sku, unknown_outlet, unknown_route, arithmetic_mismatch, memo_no_invalid, memo_no_duplicate, edit_not_allowed, chain_too_deep, voided_by_admin, content_duplicate, lines_exceed_max, qty_invalid, attendance_duplicate, checkout_too_early, server_error, payload_conflict, business_date_out_of_window, scope_out_of_reach, no_assignment_on_date, device_integrity_failed, device_not_enrolled, user_disabled, device_revoked, app_version_blocked, after_month_close, unknown_gift, insufficient_points, gift_photo_exists, programme_inactive]
+      enum: [scope_stale, config_version_unknown, parent_missing, outlet_pending_approval, price_list_unknown, schema_invalid, unknown_record_type, unknown_sku, unknown_outlet, unknown_route, arithmetic_mismatch, memo_no_invalid, memo_no_duplicate, edit_not_allowed, chain_too_deep, voided_by_admin, content_duplicate, lines_exceed_max, qty_invalid, price_invalid, attendance_duplicate, checkout_too_early, server_error, payload_conflict, business_date_out_of_window, scope_out_of_reach, no_assignment_on_date, device_integrity_failed, device_not_enrolled, user_disabled, device_revoked, app_version_blocked, after_month_close, unknown_gift, insufficient_points, gift_photo_exists, programme_inactive]
     ProblemCode:
       type: string
       description: Stable problem codes (HTTP status in docs/24 s3.4).
@@ -9707,6 +9753,10 @@ components:
             - type: 'null'
         print_count: { type: integer, minimum: 0 }
         entry_source: { type: string, enum: [app, manual, migration] }
+        server_flags:
+          type: array
+          description: Review flags the server set on the stored memo (`app.memo.server_flags`; values in `MemoServerFlag`). Omitted or empty when the memo has none. Optional (contract 1.8.0).
+          items: { $ref: '#/components/schemas/MemoServerFlag' }
     MemoPage:
       type: object
       required: [items, next_cursor]
@@ -9715,6 +9765,77 @@ components:
         items:
           type: array
           items: { $ref: '#/components/schemas/MemoView' }
+        next_cursor:
+          oneOf:
+            - { $ref: '#/components/schemas/PageCursor' }
+            - type: 'null'
+    MemoServerFlag:
+      type: string
+      minLength: 1
+      maxLength: 60
+      description: |
+        A review flag the server sets on a stored memo (`app.memo.server_flags`, written by `MemoChecks` and
+        `IngestService` in backend/sync); the printed memo stays stored, the flag sends it to review. Deliberately a
+        string and not an enum: new values may appear without a contract version, and a reader shows an unknown value as
+        it is. Known values (contract 1.8.0):
+        `arithmetic_mismatch` (a family split across batches whose stored lines, discounts and QC lines do not reproduce
+        the header, a header with a gross and a negative net (D-18), or more stored children than the header counts);
+        `price_mismatch` (a line priced differently from the price list valid on `price_list_date`, or for an SKU the
+        server has at zero or no price; never rejected);
+        `pack_factor_mismatch` (a child of the memo parked `qty_invalid` for a pack size that is not the SKU's
+        `base_per_pack`, docs/34 s4.2);
+        `zero_price_line` (a sale line priced at zero was refused, `schema_invalid` until the server carries `price_invalid`;
+        the memo is stored one line short, D-BC-ZERO-PRICE-01).
+    FlaggedMemoView:
+      type: object
+      description: One stored memo with at least one server flag (a row of `dw.v_memo_flags` with the user's login and name from `app.app_user`).
+      required: [memo_client_uuid, memo_no, business_date, status, user_id, user_code, user_name, outlet_id, outlet_name, route_id, zone_id, territory_id, division_id, wing_id, gross_mtk, flags, stored_at, voided_at]
+      additionalProperties: false
+      properties:
+        memo_client_uuid: { $ref: '#/components/schemas/Uuid' }
+        memo_no: { $ref: '#/components/schemas/MemoNo' }
+        business_date: { $ref: '#/components/schemas/BusinessDate' }
+        status:
+          type: string
+          enum: [active, superseded, void]
+          description: As `MemoView.status`; `void` is a memo voided by its user (`memo_void`) or by an admin data void (`voided_at` set).
+        user_id: { $ref: '#/components/schemas/Id' }
+        user_code:
+          type: string
+          maxLength: 40
+          description: Login of the memo's user (`app_user.username`, the prefix of `memo_no`).
+        user_name: { type: string, maxLength: 120 }
+        outlet_id: { $ref: '#/components/schemas/Id' }
+        outlet_name: { type: string, maxLength: 120 }
+        route_id:
+          type: [integer, 'null']
+          format: int64
+          minimum: 1
+          description: The memo's route; for a memo uploaded without one, the outlet's route placement on the business date, else its current route; null only when the outlet has neither.
+        zone_id: { $ref: '#/components/schemas/Id' }
+        territory_id: { $ref: '#/components/schemas/Id' }
+        division_id: { $ref: '#/components/schemas/Id' }
+        wing_id: { $ref: '#/components/schemas/Id' }
+        gross_mtk: { $ref: '#/components/schemas/MtkNonNegative' }
+        flags:
+          type: array
+          minItems: 1
+          description: The memo's `server_flags` (values in `MemoServerFlag`; new values may appear).
+          items: { $ref: '#/components/schemas/MemoServerFlag' }
+        stored_at: { $ref: '#/components/schemas/Timestamp' }
+        voided_at:
+          description: UTC instant of an admin data void of the memo; null otherwise (a memo voided by its user shows only in `status`).
+          oneOf:
+            - { $ref: '#/components/schemas/Timestamp' }
+            - type: 'null'
+    FlaggedMemoPage:
+      type: object
+      required: [items, next_cursor]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/FlaggedMemoView' }
         next_cursor:
           oneOf:
             - { $ref: '#/components/schemas/PageCursor' }

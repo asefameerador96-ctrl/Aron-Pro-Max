@@ -1,0 +1,85 @@
+FlaggedMemoView:
+  type: object
+  description: One stored memo with at least one server flag (a row of `dw.v_memo_flags` with the user's login and
+    name from `app.app_user`).
+  required:
+  - memo_client_uuid
+  - memo_no
+  - business_date
+  - status
+  - user_id
+  - user_code
+  - user_name
+  - outlet_id
+  - outlet_name
+  - route_id
+  - zone_id
+  - territory_id
+  - division_id
+  - wing_id
+  - gross_mtk
+  - flags
+  - stored_at
+  - voided_at
+  additionalProperties: false
+  properties:
+    memo_client_uuid:
+      $ref: '#/components/schemas/Uuid'
+    memo_no:
+      $ref: '#/components/schemas/MemoNo'
+    business_date:
+      $ref: '#/components/schemas/BusinessDate'
+    status:
+      type: string
+      enum:
+      - active
+      - superseded
+      - void
+      description: As `MemoView.status`; `void` is a memo voided by its user (`memo_void`) or by an admin data void
+        (`voided_at` set).
+    user_id:
+      $ref: '#/components/schemas/Id'
+    user_code:
+      type: string
+      maxLength: 40
+      description: Login of the memo's user (`app_user.username`, the prefix of `memo_no`).
+    user_name:
+      type: string
+      maxLength: 120
+    outlet_id:
+      $ref: '#/components/schemas/Id'
+    outlet_name:
+      type: string
+      maxLength: 120
+    route_id:
+      type:
+      - integer
+      - 'null'
+      format: int64
+      minimum: 1
+      description: The memo's route; for a memo uploaded without one, the outlet's route placement on the business
+        date, else its current route; null only when the outlet has neither.
+    zone_id:
+      $ref: '#/components/schemas/Id'
+    territory_id:
+      $ref: '#/components/schemas/Id'
+    division_id:
+      $ref: '#/components/schemas/Id'
+    wing_id:
+      $ref: '#/components/schemas/Id'
+    gross_mtk:
+      $ref: '#/components/schemas/MtkNonNegative'
+    flags:
+      type: array
+      minItems: 1
+      description: The memo's `server_flags` (values in `MemoServerFlag`; new values may appear).
+      items:
+        $ref: '#/components/schemas/MemoServerFlag'
+    stored_at:
+      $ref: '#/components/schemas/Timestamp'
+    voided_at:
+      description: UTC instant of an admin data void of the memo; null otherwise (a memo voided by its user shows
+        only in `status`).
+      oneOf:
+      - $ref: '#/components/schemas/Timestamp'
+      - type: 'null'

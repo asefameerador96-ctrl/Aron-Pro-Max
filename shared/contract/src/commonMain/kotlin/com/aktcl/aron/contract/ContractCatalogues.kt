@@ -308,6 +308,7 @@ enum class RecordOutcomeCode(val wire: String, val status: AckStatus, val retrya
     @SerialName("content_duplicate") CONTENT_DUPLICATE("content_duplicate", AckStatus.QUARANTINED, null),
     @SerialName("lines_exceed_max") LINES_EXCEED_MAX("lines_exceed_max", AckStatus.REJECTED, false),
     @SerialName("qty_invalid") QTY_INVALID("qty_invalid", AckStatus.REJECTED, false),
+    @SerialName("price_invalid") PRICE_INVALID("price_invalid", AckStatus.REJECTED, false),
     @SerialName("attendance_duplicate") ATTENDANCE_DUPLICATE("attendance_duplicate", AckStatus.REJECTED, false),
     @SerialName("checkout_too_early") CHECKOUT_TOO_EARLY("checkout_too_early", AckStatus.QUARANTINED, null),
     @SerialName("server_error") SERVER_ERROR("server_error", AckStatus.REJECTED, true),

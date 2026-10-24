@@ -97,3 +97,9 @@ MemoView:
       - app
       - manual
       - migration
+    server_flags:
+      type: array
+      description: Review flags the server set on the stored memo (`app.memo.server_flags`; values in `MemoServerFlag`).
+        Omitted or empty when the memo has none. Optional (contract 1.8.0).
+      items:
+        $ref: '#/components/schemas/MemoServerFlag'

@@ -1441,6 +1441,37 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/dashboards/flagged-memos": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Stored memos the server flagged for review (`server_flags`), for the Flagged memos dashboard page.
+         * @description Memos in the caller's reach whose `server_flags` is not empty, newest stored first. Scope from the token: the
+         *     client never sends scope ids; without `node_id` the node is the caller's top reach node, and a `level`/`node_id`
+         *     outside the caller's reach is 403 `ERR_OUT_OF_SCOPE`. `from` and `to` are business dates (Asia/Dhaka), both
+         *     default to today, and `to` is at most 92 days after `from`. `flag` narrows to memos carrying that flag; it is a
+         *     string, not an enum (values in `MemoServerFlag`), so an unknown value answers an empty page. Voided and
+         *     superseded memos stay listed with their `status` (the page greys or filters them; a count of open problems uses
+         *     `status == active`). Backing data: the stable view `dw.v_memo_flags` (V0111, D-DB-MEMO-FLAGS-VIEW-01: scope keys
+         *     frozen at the business date); `user_code` and `user_name` are resolved by the endpoint from `app.app_user`,
+         *     because `dw` carries no names. Callers: every portal level whose reach covers the node (SUPERADMIN, ADMIN with
+         *     the `reports:r` grant, which `/v1/dashboards/**` maps to, NATIONAL, WM, DMO and TSO); BRAND users get 403
+         *     `ERR_FORBIDDEN` (docs/34 s1: cards without a brand dimension are hidden, and a memo has no brand dimension; the
+         *     portal-level gate answers it); SR and AMO have no portal login (`ERR_AUTH_PORTAL_NOT_ALLOWED`).
+         */
+        get: operations["getFlaggedMemos"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/dashboards/geo-validation": {
         parameters: {
             query?: never;
@@ -2037,7 +2068,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** An ADMIN user's module grants or a BRAND user's brands (docs/34 s1); the ETag is the access version. */
+        /**
+         * An ADMIN user's module grants or a BRAND user's brands (docs/34 s1); the ETag is the access version.
+         * @description An ADMIN may read its own access; another ADMIN's or a SUPERADMIN's access is SUPERADMIN-only, and an ADMIN asking for it gets 403 `ERR_AUTHZ_ROLE_ABOVE_GRANT` (D-AUTHZ-ADMIN-CREDS-01; the server answers it since the contract 1.7.0 wiring, D-AUTHZ-1-7-WIRING-01).
+         */
         get: operations["getUserAccess"];
         /** Replace the module grants of an ADMIN user or the brands of a BRAND user (SUPERADMIN; bumps the version, so tokens refresh with 401 ERR_SCOPE_CHANGED). */
         put: operations["putUserAccess"];
@@ -4026,7 +4060,7 @@ export interface components {
          * @description Stable code on a rejected or quarantined record (docs/24 s4.5 lists retryability and the phone action).
          * @enum {string}
          */
-        RecordOutcomeCode: "scope_stale" | "config_version_unknown" | "parent_missing" | "outlet_pending_approval" | "price_list_unknown" | "schema_invalid" | "unknown_record_type" | "unknown_sku" | "unknown_outlet" | "unknown_route" | "arithmetic_mismatch" | "memo_no_invalid" | "memo_no_duplicate" | "edit_not_allowed" | "chain_too_deep" | "voided_by_admin" | "content_duplicate" | "lines_exceed_max" | "qty_invalid" | "attendance_duplicate" | "checkout_too_early" | "server_error" | "payload_conflict" | "business_date_out_of_window" | "scope_out_of_reach" | "no_assignment_on_date" | "device_integrity_failed" | "device_not_enrolled" | "user_disabled" | "device_revoked" | "app_version_blocked" | "after_month_close" | "unknown_gift" | "insufficient_points" | "gift_photo_exists" | "programme_inactive";
+        RecordOutcomeCode: "scope_stale" | "config_version_unknown" | "parent_missing" | "outlet_pending_approval" | "price_list_unknown" | "schema_invalid" | "unknown_record_type" | "unknown_sku" | "unknown_outlet" | "unknown_route" | "arithmetic_mismatch" | "memo_no_invalid" | "memo_no_duplicate" | "edit_not_allowed" | "chain_too_deep" | "voided_by_admin" | "content_duplicate" | "lines_exceed_max" | "qty_invalid" | "price_invalid" | "attendance_duplicate" | "checkout_too_early" | "server_error" | "payload_conflict" | "business_date_out_of_window" | "scope_out_of_reach" | "no_assignment_on_date" | "device_integrity_failed" | "device_not_enrolled" | "user_disabled" | "device_revoked" | "app_version_blocked" | "after_month_close" | "unknown_gift" | "insufficient_points" | "gift_photo_exists" | "programme_inactive";
         /**
          * @description Stable problem codes (HTTP status in docs/24 s3.4).
          * @enum {string}
@@ -6362,9 +6396,62 @@ export interface components {
             print_count: number;
             /** @enum {string} */
             entry_source: "app" | "manual" | "migration";
+            /** @description Review flags the server set on the stored memo (`app.memo.server_flags`; values in `MemoServerFlag`). Omitted or empty when the memo has none. Optional (contract 1.8.0). */
+            server_flags?: components["schemas"]["MemoServerFlag"][];
         };
         MemoPage: {
             items: components["schemas"]["MemoView"][];
+            next_cursor: components["schemas"]["PageCursor"] | null;
+        };
+        /**
+         * @description A review flag the server sets on a stored memo (`app.memo.server_flags`, written by `MemoChecks` and
+         *     `IngestService` in backend/sync); the printed memo stays stored, the flag sends it to review. Deliberately a
+         *     string and not an enum: new values may appear without a contract version, and a reader shows an unknown value as
+         *     it is. Known values (contract 1.8.0):
+         *     `arithmetic_mismatch` (a family split across batches whose stored lines, discounts and QC lines do not reproduce
+         *     the header, a header with a gross and a negative net (D-18), or more stored children than the header counts);
+         *     `price_mismatch` (a line priced differently from the price list valid on `price_list_date`, or for an SKU the
+         *     server has at zero or no price; never rejected);
+         *     `pack_factor_mismatch` (a child of the memo parked `qty_invalid` for a pack size that is not the SKU's
+         *     `base_per_pack`, docs/34 s4.2);
+         *     `zero_price_line` (a sale line priced at zero was refused, `schema_invalid` until the server carries `price_invalid`;
+         *     the memo is stored one line short, D-BC-ZERO-PRICE-01).
+         */
+        MemoServerFlag: string;
+        /** @description One stored memo with at least one server flag (a row of `dw.v_memo_flags` with the user's login and name from `app.app_user`). */
+        FlaggedMemoView: {
+            memo_client_uuid: components["schemas"]["Uuid"];
+            memo_no: components["schemas"]["MemoNo"];
+            business_date: components["schemas"]["BusinessDate"];
+            /**
+             * @description As `MemoView.status`; `void` is a memo voided by its user (`memo_void`) or by an admin data void (`voided_at` set).
+             * @enum {string}
+             */
+            status: "active" | "superseded" | "void";
+            user_id: components["schemas"]["Id"];
+            /** @description Login of the memo's user (`app_user.username`, the prefix of `memo_no`). */
+            user_code: string;
+            user_name: string;
+            outlet_id: components["schemas"]["Id"];
+            outlet_name: string;
+            /**
+             * Format: int64
+             * @description The memo's route; for a memo uploaded without one, the outlet's route placement on the business date, else its current route; null only when the outlet has neither.
+             */
+            route_id: number | null;
+            zone_id: components["schemas"]["Id"];
+            territory_id: components["schemas"]["Id"];
+            division_id: components["schemas"]["Id"];
+            wing_id: components["schemas"]["Id"];
+            gross_mtk: components["schemas"]["MtkNonNegative"];
+            /** @description The memo's `server_flags` (values in `MemoServerFlag`; new values may appear). */
+            flags: components["schemas"]["MemoServerFlag"][];
+            stored_at: components["schemas"]["Timestamp"];
+            /** @description UTC instant of an admin data void of the memo; null otherwise (a memo voided by its user shows only in `status`). */
+            voided_at: components["schemas"]["Timestamp"] | null;
+        };
+        FlaggedMemoPage: {
+            items: components["schemas"]["FlaggedMemoView"][];
             next_cursor: components["schemas"]["PageCursor"] | null;
         };
         OutletRequestSummary: {
@@ -12515,6 +12602,45 @@ export interface operations {
             };
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
+        };
+    };
+    getFlaggedMemos: {
+        parameters: {
+            query?: {
+                /** @description First business date, inclusive. */
+                from?: components["parameters"]["FromDate"];
+                /** @description Last business date, inclusive (at most 92 days after `from`). */
+                to?: components["parameters"]["ToDate"];
+                /** @description Level of the node the figures are for; default the caller's top level. The dashboards accept `national`, `wing`, `division`, `territory` and `zone`; `house` (a scope node level from contract 1.7.0) and `route` answer 400 `ERR_VALIDATION` (`query.level` invalid_value). */
+                level?: components["parameters"]["GeoLevelQuery"];
+                /** @description Id of the node at `level` (omit for national). */
+                node_id?: components["parameters"]["NodeIdQuery"];
+                /** @description Only memos whose `server_flags` contains this value (see `MemoServerFlag`); omit for every flagged memo. */
+                flag?: components["schemas"]["MemoServerFlag"];
+                /** @description Page size. */
+                limit?: components["parameters"]["Limit"];
+                /** @description Opaque cursor from `next_cursor` of the previous page. */
+                cursor?: components["parameters"]["Cursor"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Page of flagged memos. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FlaggedMemoPage"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            429: components["responses"]["TooManyRequests"];
         };
     };
     getGeoValidation: {
