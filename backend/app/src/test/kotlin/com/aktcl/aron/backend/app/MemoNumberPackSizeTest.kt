@@ -191,20 +191,34 @@ class MemoNumberPackSizeTest {
         assertTrue(MemoNumbers.problem(MemoNumbers.Rule("sr1001", 100), "sr1001-270103-401", d) != null)
     }
 
+    /** The oracle the slice smoke follows: every accepted sequence, at the smallest, default and largest block size. */
+    @Test
+    fun inRangesAcceptsExactlyTheFourBlocksAndTheFourOverflowRanges() {
+        for (size in listOf(100, 500, 999)) {
+            val want = (1..4 * size).toSet() + (5001..5999) + (6001..6999) + (7001..7999) + (8001..8999)
+            assertEquals(want, (-1..10_000).filter { MemoNumbers.inRanges(it, size) }.toSet(), "block size $size")
+        }
+    }
+
     /**
      * Lead P1 2026-10-24: the dev deploy's SR slice smoke built `seq` 9000..9999, outside every range, so its memo was
-     * `memo_no_invalid` on the first selling day it ran. Its range must pass the rule at every block size and stay
-     * clear of the ordinal blocks a phone numbers from (`1 .. 4 x 999`).
+     * `memo_no_invalid` on the first selling day it ran. It now numbers from the overflow range of the ordinal its login
+     * names (`5000 + o x 1000 + 1 .. + 999`), else from MEMO_SEQ_RANGE; each must pass the rule at every block size and
+     * stay clear of the ordinal blocks (`1 .. 4 x 999`).
      */
     @Test
     fun theSliceSmokesMemoRangeIsValid() {
         val script = File(System.getProperty("aron.repoRoot"), "infra/scripts/slice-smoke.py").readText()
         val (lo, hi) = Regex("""(?m)^MEMO_SEQ_RANGE = \((\d+), (\d+)\)""").find(script)!!.destructured.toList().map { it.toInt() }
-        assertTrue(script.contains("random.randint(*MEMO_SEQ_RANGE)"), "the smoke's memo_no takes its seq from MEMO_SEQ_RANGE")
-        assertTrue(lo in 1..hi && lo > 4 * 999, "MEMO_SEQ_RANGE $lo..$hi")
+        assertTrue(script.contains("return (5000 + o * 1000 + 1, 5000 + o * 1000 + 999) if isinstance(o, int) and 0 <= o <= 3 else MEMO_SEQ_RANGE"), "the smoke's overflow formula")
+        assertTrue(script.contains("random.randint(*seq_range)") && script.contains("seq_range = memo_seq_range(b)"), "the smoke's memo_no takes its seq from the login's range")
+        val ranges = listOf(lo..hi) + (0..3).map { o -> (5000 + o * 1000 + 1)..(5000 + o * 1000 + 999) }
         val d = LocalDate.parse(day)
-        for (size in listOf(100, 500, 999)) for (s in lo..hi) {
-            assertNull(MemoNumbers.problem(MemoNumbers.Rule("sr1001", size), "sr1001-270103-$s", d), "seq $s, block size $size")
+        for (r in ranges) {
+            assertTrue(r.first > 4 * 999 && r.first <= r.last, "range $r")
+            for (size in listOf(100, 500, 999)) for (s in r) {
+                assertNull(MemoNumbers.problem(MemoNumbers.Rule("sr1001", size), "sr1001-270103-$s", d), "seq $s, block size $size")
+            }
         }
     }
 

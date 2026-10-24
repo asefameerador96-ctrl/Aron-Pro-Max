@@ -49,9 +49,15 @@ OUTLET_CODE = ",".join(OUTLET_CODES)
 DEVICE_KEY = os.environ.get("SLICE_DEVICE_KEY", "")  # PEM file of the smoke device's key (Key Vault aron-dev-smoke-device-key)
 TILE_POLL_S = float(os.environ.get("SLICE_TILE_POLL_S", "15"))
 SCHEME = os.environ.get("SLICE_SCHEME", "https")  # http only for the offline test against a local stub
-# Memo sequence: the last overflow range (ordinal 3, docs/24 s7.5), valid under the server rule for every block size and
-# reached by a phone only after 500+ memos in a day on ordinal 3, so it stays clear of real numbers (MemoNumberPackSizeTest).
+# Memo sequence (docs/24 s7.5): the overflow range of the slot the server bound this device to (login device.bind_ordinal:
+# 5000 + ordinal x 1000 + 1..999), which no other phone of the user numbers from; the smoke device is no real phone.
+# Without an ordinal in the login, ordinal 3's overflow range. Valid at every block size (MemoNumberPackSizeTest).
 MEMO_SEQ_RANGE = (8001, 8999)
+
+
+def memo_seq_range(login):
+    o = (login.get("device") or {}).get("bind_ordinal") if isinstance(login, dict) else None
+    return (5000 + o * 1000 + 1, 5000 + o * 1000 + 999) if isinstance(o, int) and 0 <= o <= 3 else MEMO_SEQ_RANGE
 SKIP_EXIT = 3  # deploy.sh: "SKIPPED" (not a selling day), distinct from a failure (1)
 DHAKA = datetime.timezone(datetime.timedelta(hours=6))
 
@@ -160,6 +166,7 @@ def run():
     ok = s == 200 and isinstance(b, dict) and b.get("status") == "ok" and bool(b.get("access_token"))
     step("1 login", ok, f"{USER} on the seeded phone" if ok else brief(s, b) + (f" status={b.get('status')}" if isinstance(b, dict) else ""))
     token = b["access_token"]
+    seq_range = memo_seq_range(b)
 
     # 2 bundle
     s, bundle = call("GET", f"/v1/sync/bundle?for={day}", token)
@@ -185,7 +192,7 @@ def run():
     unit = sku["base_unit"]
     qty = 10
     gross = qty * price["amount_mtk"] // max(1, price["per_base_qty"])
-    memo_no = f"{USER}-{today.strftime('%y%m%d')}-{random.randint(*MEMO_SEQ_RANGE)}"
+    memo_no = f"{USER}-{today.strftime('%y%m%d')}-{random.randint(*seq_range)}"
     visit, memo, line, close = (str(uuid.uuid4()) for _ in range(4))
     lat, lng = outlet["lat"], outlet["lng"]
     fix = {"fix_status": "ok", "lat": lat, "lng": lng, "accuracy_m": 12.0, "provider": "fused", "is_mock": False, "reused": False,

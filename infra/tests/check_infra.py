@@ -1550,7 +1550,7 @@ class SliceSmoke(unittest.TestCase):
                 if path == "/v1/auth/login":
                     ok = b == {"username": "sr1001", "password": test.PW, "client": "app_sr",
                                "device_uuid": "00000000-0000-4000-8000-000000000001"}
-                    return self.reply(200, {"status": "ok", "access_token": test.TOKEN}) if ok else self.reply(401, {"code": "bad"})
+                    return self.reply(200, {"status": "ok", "access_token": test.TOKEN, "device": {"device_id": 1, "bind_ordinal": 0, "memo_seq_block_size": 500}}) if ok else self.reply(401, {"code": "bad"})
                 if path == "/v1/sync/batch" and self.authed():
                     # As SyncApi: a device with a key must sign the gzip bytes (raw r||s ES256, base64url).
                     proof = self.headers.get("X-Device-Proof")
@@ -1646,7 +1646,7 @@ class SliceSmoke(unittest.TestCase):
             self.assertIn(line, out)
         (memo,) = state["memos"].values()
         self.assertIn(memo["client_uuid"], state["voided"], "the smoke sale is voided")
-        self.assertRegex(memo["payload"]["memo_no"], r"^sr1001-\d{6}-8\d{3}$", "s7.5 rule: ordinal 3 overflow 8001..8999, clear of phone blocks")
+        self.assertRegex(memo["payload"]["memo_no"], r"^sr1001-\d{6}-5\d{3}$", "s7.5 rule: the bound ordinal 0's overflow 5001..5999")
         self.assertEqual(memo["payload"]["outlet_id"], 9, "the smoke's own outlet, never a tester's")
 
     def test_a_non_selling_day_is_skipped_and_names_the_next_selling_days_route(self):
