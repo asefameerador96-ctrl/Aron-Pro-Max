@@ -59,11 +59,17 @@ describe("FlaggedMemosView", () => {
     expect(m).toContain('data-testid="flagged-empty"');
     expect(m).not.toContain('data-testid="data-table"');
   });
+  it("a status the server may add later is shown as given, with no missing-key text", () => {
+    const m = html(<FlaggedMemosView {...withItems([memo(1, { status: "held" as never })])} />);
+    expect(m).toContain('data-status="held"');
+    expect(text(m)).toContain("held");
+    expect(text(m)).not.toContain("flagged.status");
+  });
   it("error (a 404 while the endpoint is not deployed, a 403, a network failure): an alert with retry, no table, no raw code", () => {
-    for (const [status, code] of [[404, "ERR_NOT_FOUND"], [403, "ERR_FORBIDDEN"], [503, "ERR_SERVICE_UNAVAILABLE"], [500, "ERR_INTERNAL"]] as const) {
+    for (const [status, code] of [[404, "ERR_NOT_FOUND"], [403, "ERR_FORBIDDEN"], [403, "ERR_OUT_OF_SCOPE"], [400, "ERR_VALIDATION"], [503, "ERR_SERVICE_UNAVAILABLE"], [500, "ERR_INTERNAL"]] as const) {
       const m = html(<FlaggedMemosView {...base} result={{ ok: false, status, problem: { code, title: "x", status } } as never} />);
       expect(m).toContain('data-testid="flagged-error"');
-      expect(m.includes('data-testid="retry"')).toBe(status !== 403);
+      expect(m.includes('data-testid="retry"')).toBe(status !== 403 && status !== 400);
       expect(m).not.toContain('data-testid="data-table"');
       expect(text(m)).not.toContain("ERR_");
     }
@@ -204,6 +210,58 @@ describe("reads against the mock endpoint", () => {
     }
     expect(seen).toHaveLength(55);
     expect(new Set(seen).size).toBe(55);
+  });
+  it("the server's 400 shapes: range order and cap, cursor, limit, flag, level and node_id", async () => {
+    const t = await token("wm1", "wm-pass-1");
+    const fetchRaw = async (qs: string) => {
+      const r = await fetch(`${base}/v1/dashboards/flagged-memos?${qs}`, { headers: { authorization: `Bearer ${t}` } });
+      return { status: r.status, body: (await r.json()) as { code: string; errors?: { pointer: string; code: string }[] } };
+    };
+    const d = "from=2026-10-07&to=2026-10-07";
+    const bad = async (qs: string) => (await fetchRaw(qs)).body.errors?.[0];
+    expect(await bad("from=2026-10-07&to=2026-10-06")).toEqual({ pointer: "query.to", code: "invalid_value" });
+    expect(await bad("from=2026-01-01&to=2026-10-01")).toEqual({ pointer: "query.to", code: "out_of_range" });
+    expect(await bad(`${d}&cursor=x`)).toEqual({ pointer: "query.cursor", code: "invalid_value" });
+    expect(await bad(`${d}&limit=0`)).toEqual({ pointer: "query.limit", code: "out_of_range" });
+    expect(await bad(`${d}&flag=`)).toEqual({ pointer: "query.flag", code: "invalid_value" });
+    expect(await bad(`${d}&node_id=334`)).toEqual({ pointer: "query.level", code: "required" });
+    expect(await bad(`${d}&level=territory`)).toEqual({ pointer: "query.node_id", code: "required" });
+    expect(await bad(`${d}&level=route&node_id=10231`)).toEqual({ pointer: "query.level", code: "invalid_value" });
+    expect(await bad(`${d}&limit=501`)).toEqual({ pointer: "query.limit", code: "out_of_range" });
+    expect(await bad("from=nope&to=2026-10-07")).toEqual({ pointer: "query.from", code: "invalid_value" });
+    expect(await bad(`${d}&level=zone&node_id=-1`)).toEqual({ pointer: "query.node_id", code: "invalid_value" });
+    expect((await fetchRaw(`${d}&limit=500`)).status).toBe(200);
+    expect((await fetchRaw("from=2026-07-07&to=2026-10-07")).status).toBe(200); // 92 days is allowed
+  });
+  it("a node only partly in the reach is refused (every zone under it must be in reach)", async () => {
+    const t = await token("tso334", "tso-pass-1");
+    for (const [level, id] of [["wing", 1], ["division", 10]] as const) {
+      const r = await getFlaggedMemos(t, { ...day, level, node_id: id });
+      expect(!r.ok && r.problem.code).toBe("ERR_OUT_OF_SCOPE");
+    }
+  });
+  it("a 403 outside the reach is ERR_OUT_OF_SCOPE and BRAND is ERR_FORBIDDEN", async () => {
+    const out = await getFlaggedMemos(await token("tso334", "tso-pass-1"), { ...day, level: "territory", node_id: 335 });
+    expect(!out.ok && out.problem.code).toBe("ERR_OUT_OF_SCOPE");
+    const brand = await getFlaggedMemos(await token("brand1", "brand-pass-1"), day);
+    expect(!brand.ok && brand.problem.code).toBe("ERR_FORBIDDEN");
+  });
+  it("pages are newest stored first and the last page ends with a null next_cursor", async () => {
+    const t = await token("wm1", "wm-pass-1");
+    const stored: string[] = [];
+    let cursor: string | undefined;
+    let last: string | null = "";
+    for (let i = 0; i < 4; i++) {
+      const r = await fetch(`${base}/v1/dashboards/flagged-memos?from=2026-10-05&to=2026-10-05&limit=30${cursor ? `&cursor=${cursor}` : ""}`, { headers: { authorization: `Bearer ${t}` } });
+      const page = (await r.json()) as { items: FlaggedMemo[]; next_cursor: string | null };
+      stored.push(...page.items.map((m) => m.stored_at));
+      last = page.next_cursor;
+      if (!last) break;
+      cursor = last;
+    }
+    expect(last).toBeNull();
+    expect(stored).toHaveLength(55);
+    expect(stored).toEqual([...stored].sort().reverse());
   });
   it("a range over 92 days is a 400", async () => {
     const r = await getFlaggedMemos(await token("wm1", "wm-pass-1"), { from: "2026-01-01", to: "2026-10-01" });
