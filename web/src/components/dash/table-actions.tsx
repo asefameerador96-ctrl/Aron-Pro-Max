@@ -1,12 +1,12 @@
 "use client";
 // Client controls shared by the dashboard tables and tiles: CSV download of the rows on screen, print, retry, and the
-// auto-refresh that never runs faster than 60 s and stays quiet while the tab is hidden.
+// auto-refresh that never runs faster than 30 s and stays quiet while the tab is hidden.
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { Button } from "@/components/kit/button";
 import { toCsv } from "@/lib/dash/csv";
 
-export const REFRESH_MS = 60_000;
+export const REFRESH_MS = 30_000;
 
 export function CsvButton({ msg, filename, header, rows }: { msg: string; filename: string; header: string[]; rows: string[][] }) {
   return (
@@ -52,24 +52,44 @@ export function shouldRefresh(now: number, lastRead: number, visible: boolean, e
   return visible && now - lastRead >= Math.max(everyMs, REFRESH_MS);
 }
 
-/** Refreshes the server-rendered data no faster than every 60 s; paused while the tab is hidden, and one refresh as soon as it is visible again when the data is older than that. */
-export function AutoRefresh({ everyMs = REFRESH_MS }: { everyMs?: number }) {
+/** A focus event only counts when the last read is older than this, so a focus storm (alt-tab, devtools) cannot hammer the API. */
+export const FOCUS_MIN_MS = 5_000;
+
+function stamp(locale: string, at: number): string {
+  return new Date(at).toLocaleTimeString(locale === "bn" ? "bn-BD" : "en-GB", { timeZone: "Asia/Dhaka", hour12: false });
+}
+
+/**
+ * Refreshes the server-rendered data every 30 s while the tab is visible (D-NIGHT-SYNC-01, web part), on window focus and when the tab
+ * becomes visible again; no timer work in a hidden tab. With `label` ("... {time}") it also shows when the page was last read.
+ */
+export function AutoRefresh({ everyMs = REFRESH_MS, label, locale = "en" }: { everyMs?: number; label?: string; locale?: string }) {
   const router = useRouter();
   const last = useRef(0);
+  const [at, setAt] = useState<number | null>(null);
   useEffect(() => {
     last.current = Date.now();
+    setAt(last.current);
+    const read = () => {
+      last.current = Date.now();
+      setAt(last.current);
+      router.refresh();
+    };
     const tick = () => {
-      if (shouldRefresh(Date.now(), last.current, document.visibilityState === "visible", everyMs)) {
-        last.current = Date.now();
-        router.refresh();
-      }
+      if (shouldRefresh(Date.now(), last.current, document.visibilityState === "visible", everyMs)) read();
+    };
+    const onFocus = () => {
+      if (document.visibilityState === "visible" && Date.now() - last.current >= FOCUS_MIN_MS) read();
     };
     const id = setInterval(tick, Math.max(everyMs, REFRESH_MS));
     document.addEventListener("visibilitychange", tick);
+    window.addEventListener("focus", onFocus);
     return () => {
       clearInterval(id);
       document.removeEventListener("visibilitychange", tick);
+      window.removeEventListener("focus", onFocus);
     };
   }, [router, everyMs]);
-  return null;
+  if (!label || at === null) return null;
+  return <span data-testid="dash-refreshed" suppressHydrationWarning> · {label.replace("{time}", stamp(locale, at))}</span>;
 }

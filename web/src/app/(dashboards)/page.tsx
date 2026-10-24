@@ -14,7 +14,7 @@ import { getBreakdown, getChannelCalls, getChannelStd, getCpr, getFilters, getFi
 
 // The national dashboard (owner directive 2026-10-22, docs/34 s2, D-DASH-02): filter panel, the twelve cards of the owner's screenshot and
 // brief, built from one slice each. The cards refresh only when Apply Filter is pressed (the filter is the URL); the page re-reads every
-// minute while it is open. Scope (geography, brands) is cut by the server from the token: the page never sends it.
+// 30 s while it is open and visible. Scope (geography, brands) is cut by the server from the token: the page never sends it.
 export default async function DashboardPage({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
   const [sp, locale, session] = await Promise.all([searchParams, getLocale(), requireSession()]);
   if (session.user.role === "SUPPORT") redirect("/sync-health"); // SUPPORT has no dashboard home (docs/24 s8.5: sync health only)
@@ -51,6 +51,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
         <p>
           <time dateTime={q.date} data-testid="nat-date">{formatBusinessDate(locale, q.date)}</time>
           {asOf ? <span data-testid="nat-last-updated"> · {t(locale, "nat.last_updated", { time: clock(locale, asOf) })}</span> : null}
+          <AutoRefresh label={t(locale, "dash.refreshed")} locale={locale} />
         </p>
         <p>{live ? t(locale, "nat.till_time", { time: clock(locale, asOf ?? new Date().toISOString()) }) : t(locale, "nat.final_day")}</p>
       </div>
@@ -71,7 +72,6 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
         <GeoCard slot={geo} locale={locale} />
         {productOnly || (!geo.ok && geo.status === 403) ? null : <FfGeoCard search={toSearch(q).toString()} date={q.date} mapsEnabled={mapsKey() !== null} />}
       </div>
-      <AutoRefresh />
     </div>
   );
 }

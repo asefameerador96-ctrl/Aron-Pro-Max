@@ -23,6 +23,7 @@ export const nationalBn: Record<keyof typeof nationalEn, string> = {
   "nat.f.clear": "নির্বাচন মুছুন",
   "nat.f.search": "খুঁজুন",
   "nat.f.none_found": "কিছু পাওয়া যায়নি",
+  "dash.refreshed": "হালনাগাদ {time}",
   "nat.last_updated": "সর্বশেষ হালনাগাদ {time}",
   "nat.till_time": "লাইভ: হিসাব {time} পর্যন্ত",
   "nat.final_day": "দিনের চূড়ান্ত হিসাব",
