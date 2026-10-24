@@ -232,3 +232,6 @@ green run of the exact sha). Usage stays `allowed` on the five-hour window.
 
 ## Update 2026-10-24 12:49 UTC (lead)
 - Train 29 (contract 1.8) pushed 12:28; CI about 12:55, deploy + smoke about 13:10. Then "contract 1.8 landed": backend-core's flagged-memos endpoint slice (train 31, about 15:00) and web-admin's Flagged memos page (train 31/32). Train 30 (android-tso state coverage, lead docs, db V0112/V0113) GO right after train 29 lands, about 13:15, landed about 14:05. Recycles this afternoon: integrator 19 → 20 before train 30; android-tso #5 → #6 at 450k; db #10 hands over after train 30. Evening report 18:30. No slip.
+
+## Update 2026-10-24 14:48 UTC (lead)
+Train 30 (P0 print root-cause fix, android-tso state coverage, db V0112/V0113) is on INT with CI green and the dev build at ea44112e; the deploy and smoke are being confirmed. Train 31 (lead CI-cost branch + android-print docs) goes right after. backend-core's flagged-memos endpoint (row 3) and web-admin's slice are both in their final CI before candidate lines, so trains 32–33 are expected this evening. backend-core #16 and web-admin #7 both hand over after their current slice (above 450k). Owner-side: the build 1546 printer test and the pack-pictures laptop step are the two open hands-on items.

@@ -626,3 +626,9 @@
 
 ### 14:07 UTC — android-print #4 archived
 - android-print #4 (Opus, ~665k) sent its candidate line (72ff0a37: every CI job area RAN green on #1542; release signing/dependency review/dictionary publish skipped by design on a lane ref) and READY TO RECYCLE at 14:06; archived 14:07. Its code is aboard train 30, its docs-only top 346d604f rides train 31; android-print #5 stays live for the owner's device result.
+
+### 14:48 UTC — lane check (scheduled)
+- INT ea44112e (train 30, pushed 13:49). ci run 40099770707 (#1546) GREEN at 14:29; dev health already reports build ea44112e, so the deploy ran; the deploy run id, V0112/V0113 and the smoke line are being read by a Haiku reader before "train 30 landed" goes out and the owner gets build 1546.
+- Branches ahead of INT: lane/android-print 346d604f (docs-only, train 31), lane/lead-ci-private 9ed6e407 (train 31), lane/lead-docs-1022 (this), lane/web-admin 6001176e (3 commits, pushed 14:06, lane run 40101132331 in e2e; candidate line expected); the 73 classified refs unchanged. No new docs/requests in the last 3 hours.
+- Lanes (all rate limits allowed): integrator 20 idle 123k (reports CI/deploy next); backend-core #16 468k, working (paging test 55606ac committed, full suite running before the row 3 push) → hand over after this slice; db #10 443k idle, waiting for "train 30 landed" then READY TO RECYCLE; android-print #5 323k idle, awaiting the owner's phone test; web-admin #7 458k, lane CI in e2e → hand over after this slice; android-print #4 archived 14:07.
+- Owner items: no new answer (rows J–S open; L = pack pictures path A/B; printer test moves to build 1546).
