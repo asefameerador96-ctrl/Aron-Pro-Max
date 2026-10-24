@@ -63,4 +63,6 @@ tasks.withType<Test>().configureEach {
     // reuses the cached verdict.
     inputs.file(rootProject.layout.projectDirectory.file("contract/openapi.yaml")).withPropertyName("openapi").withPathSensitivity(PathSensitivity.RELATIVE)
     inputs.files(fileTree("src/test/resources") { include("contract-*-baseline.txt") }).withPropertyName("contractBaselines").withPathSensitivity(PathSensitivity.RELATIVE)
+    // MemoNumberPackSizeTest reads the slice smoke's memo range through aron.repoRoot: declared for the same reason.
+    inputs.file(rootProject.layout.projectDirectory.file("infra/scripts/slice-smoke.py")).withPropertyName("sliceSmoke").withPathSensitivity(PathSensitivity.RELATIVE)
 }

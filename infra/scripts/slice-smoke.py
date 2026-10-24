@@ -28,7 +28,6 @@ import gzip
 import hashlib
 import json
 import os
-import random
 import subprocess
 import sys
 import time
@@ -49,6 +48,22 @@ OUTLET_CODE = ",".join(OUTLET_CODES)
 DEVICE_KEY = os.environ.get("SLICE_DEVICE_KEY", "")  # PEM file of the smoke device's key (Key Vault aron-dev-smoke-device-key)
 TILE_POLL_S = float(os.environ.get("SLICE_TILE_POLL_S", "15"))
 SCHEME = os.environ.get("SLICE_SCHEME", "https")  # http only for the offline test against a local stub
+# Memo sequence (docs/24 s7.5): the overflow range of the slot the server bound this device to (login device.bind_ordinal:
+# 5000 + ordinal x 1000 + 1..999), which no other phone of the user numbers from; the smoke device is no real phone.
+# Without an ordinal in the login, ordinal 3's overflow range. Valid at every block size (MemoNumberPackSizeTest).
+MEMO_SEQ_RANGE = (8001, 8999)
+
+
+def memo_seq_range(login):
+    o = (login.get("device") or {}).get("bind_ordinal") if isinstance(login, dict) else None
+    return (5000 + o * 1000 + 1, 5000 + o * 1000 + 999) if isinstance(o, int) and 0 <= o <= 3 else MEMO_SEQ_RANGE
+
+
+def memo_seq(seq_range, now):
+    """The range's slot for this second of the Dhaka day: two smoke runs at least 87 s apart (deploys are serialised and
+    take minutes) never draw the same number, which memo_no_unique would refuse even after the void."""
+    lo, hi = seq_range
+    return lo + (now.hour * 3600 + now.minute * 60 + now.second) * (hi - lo + 1) // 86400
 SKIP_EXIT = 3  # deploy.sh: "SKIPPED" (not a selling day), distinct from a failure (1)
 DHAKA = datetime.timezone(datetime.timedelta(hours=6))
 
@@ -149,7 +164,8 @@ def now_iso():
 def run():
     if not HOST or not PASSWORD:
         step("inputs", False, "SLICE_API_HOST and SLICE_PASSWORD are required")
-    today = datetime.datetime.now(DHAKA).date()
+    started = datetime.datetime.now(DHAKA)  # one clock for the business date and the memo slot
+    today = started.date()
     day = today.isoformat()
 
     # 1 login
@@ -157,6 +173,7 @@ def run():
     ok = s == 200 and isinstance(b, dict) and b.get("status") == "ok" and bool(b.get("access_token"))
     step("1 login", ok, f"{USER} on the seeded phone" if ok else brief(s, b) + (f" status={b.get('status')}" if isinstance(b, dict) else ""))
     token = b["access_token"]
+    seq_range = memo_seq_range(b)
 
     # 2 bundle
     s, bundle = call("GET", f"/v1/sync/bundle?for={day}", token)
@@ -182,7 +199,7 @@ def run():
     unit = sku["base_unit"]
     qty = 10
     gross = qty * price["amount_mtk"] // max(1, price["per_base_qty"])
-    memo_no = f"{USER}-{today.strftime('%y%m%d')}-{9000 + random.randrange(1000)}"  # 9xxx: clear of a phone's own blocks
+    memo_no = f"{USER}-{today.strftime('%y%m%d')}-{memo_seq(seq_range, started)}"
     visit, memo, line, close = (str(uuid.uuid4()) for _ in range(4))
     lat, lng = outlet["lat"], outlet["lng"]
     fix = {"fix_status": "ok", "lat": lat, "lng": lng, "accuracy_m": 12.0, "provider": "fused", "is_mock": False, "reused": False,

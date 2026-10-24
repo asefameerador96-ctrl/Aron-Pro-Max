@@ -53,8 +53,9 @@
     <string name="out_req_dues_warning">এই দোকানে এখনো বকেয়া আছে।</string>
     <string name="out_req_save">সংরক্ষণ</string>
     <string name="out_req_saved">সংরক্ষিত হয়েছে। অনুরোধটি যাচাইয়ের অপেক্ষায় আছে।</string>
-    <string name="out_req_confirm_title">নিশ্চিত করুন</string>
-    <string name="out_req_confirm_message">এই পরিবর্তন সংরক্ষণ করা হবে?</string>
+    <string name="out_req_confirm_title">আপনি কি নিশ্চিত?</string>
+    <string name="out_req_confirm_message">এই পরিবর্তন সংরক্ষণ করা হবে</string>
+    <string name="out_req_confirm_close">এই দোকানটি স্থায়ীভাবে বন্ধ হতে যাচ্ছে</string>
     <string name="out_req_yes">হ্যাঁ</string>
     <string name="out_req_no">না</string>
     <string name="out_req_err_name">দোকানের নাম দিন।</string>

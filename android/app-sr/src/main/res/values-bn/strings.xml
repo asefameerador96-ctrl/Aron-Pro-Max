@@ -10,7 +10,8 @@
     <string name="sr_survey_photo">ছবি তুলুন</string>
     <string name="sr_survey_photo_retake">আবার ছবি তুলুন</string>
     <string name="sr_survey_photo_taken">ছবি সংরক্ষিত</string>
-    <string name="sr_survey_submit">জমা দিন</string>
+    <string name="sr_survey_submit">সাবমিট →</string>
+    <string name="sr_survey_required_info">আপনার (*) মার্ক করা প্রশ্নের উত্তর দিতে হবে</string>
     <string name="sr_survey_skip">সার্ভে ছাড়া এগিয়ে যান</string>
     <string name="sr_survey_confirm">আপনি কি সার্ভে জমা দেওয়ার বিষয়ে নিশ্চিত?</string>
     <string name="sr_no">না</string>
