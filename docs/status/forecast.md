@@ -223,3 +223,6 @@ green run of the exact sha). Usage stays `allowed` on the five-hour window.
 
 ## Update 2026-10-24 10:01 UTC (lead)
 - Train 27 landed 09:05 (deploy green, slice smoke PASSED, signed APK 1515 = owner's device-check build). Train 28 (android-tso parity slices, backend-core zero-price tests, lead docs, db V0111 dw.v_memo_flags) GO about 10:15, landed about 11:05 (deploy with migration). Train 29 = contract 1.8 batch after lead checks and an Opus review, about 12:00; then backend-core's flagged-memos endpoint and web-admin's page (trains 30+ this afternoon). Evening report 18:30. No slip.
+
+## Update 2026-10-24 10:48 UTC (lead)
+- Train 28 pushed 10:11; CI (full db chain) about 11:00, deploy with V0111 + smoke about 11:20 (signed APK 1528). Train 29 = contract 1.8 batch (committed, report + CI + Opus review pending) about 12:00–12:30. Then backend-core's flagged-memos endpoint and web-admin's page (trains 30+ this afternoon). Integrator 19 successor after train 29. Evening report 18:30. No slip.
