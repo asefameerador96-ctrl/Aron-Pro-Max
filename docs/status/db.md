@@ -2,6 +2,41 @@
 
 Updated with every push. Rows of Day 1: N-005, N-006, N-007, N-008 (`python3 tools/my-rows.py db 1 --full`).
 
+## HANDOVER (session 10 -> session 11), 2026-10-24 ~12:55 UTC, lane/db a3fba66a (+ this docs-only commit)
+
+**State.** lane/db = INT cfd75917 (train 28) + docs-only 7f96000e + V0112/V0113 (a3fba66a, run #1535 green, checked,
+LAST head of train 30 after the contract 1.8 batch of train 29). This handover commit is docs-only on top; it rides a
+later train. **Next free migration: V0114.**
+
+| Migration | Where | What |
+|---|---|---|
+| V0109 / V0110 | on dev (trains 13.1 / 17) | `dw.agg_daily_outlet` per-category sold columns; mixed `sold_qty_base` dropped (expand/contract closed) |
+| V0111 | on dev (train 28) | `dw.v_memo_flags`: flagged memos with scope keys frozen at the business date, `memo_family_uuid`, no names (endpoint joins `app.app_user`); counts use `status='active' AND voided_at IS NULL` |
+| V0112 / V0113 | train 30 (LAST) | `app.sync_rejected.code` CHECK + `price_invalid` (NOT VALID, then VALIDATE). backend-core wires the code after it is on INT |
+
+**Open for db #11.**
+1. Owner row R: prices (per price type) or "discontinued" for MaxDB-10S_10HL, SupSty-10S, SupSty-20S (all five
+   prices 0.0 in `db/seed/sku_catalog.csv`). Seed-only slice: edit the CSV, regenerate `02_products.sql` with
+   `python3 db/seed/gen_products.py` (never hand-edit), add a test that no active SKU has a zero outlet price. db
+   never invents a price.
+2. Contract 1.9 queue rows that may need db: none known to db at handover; ask the lead which rows touch tables.
+3. After train 30 lands: record the V0112/V0113 deploy line here.
+
+**Lessons (session 10).**
+- `app.sync_rejected.code` and `app.sync_quarantine.code` split the contract `RecordOutcomeCode` by status (V0008):
+  rejected codes (+ server-only `retry_exhausted`) vs the 15 quarantined ones. A new code goes ONLY into the table
+  its `AckStatus` names (`shared/contract/.../ContractCatalogues.kt`). Widening one CHECK to the whole enum would let a
+  quarantined money record skip the admin queue silently (first V0112 draft; Opus checker caught it).
+- `dw` carries no user names/logins (`dim_user`; `web_ro`/`bi_reader` read all of dw): endpoints resolve names.
+- Expand/contract across lanes: the drop migration waits until the writer AND its tests stop naming the column; a
+  cross-lane test edit goes to the owning lane (this session's permission check refused editing backend-reports' test).
+- Local env (fresh container): role `aron_test` with trust on localhost only (as CI), `max_connections` 400,
+  `ARON_TEST_PG_URL=jdbc:postgresql://localhost:5432/aron_test?user=aron_test`; run Gradle suites one module at a time;
+  the container can reboot (Postgres down -> "connection refused" in every test): `service postgresql start`, re-run
+  with `--rerun`. squawk: `tools/ci/install-tool.sh squawk <dir>`.
+- The dictionary render (`tools/data-dictionary/render.sh`) must run on the FINAL migration text; re-run after any
+  change, or DataDictionaryTest fails as stale.
+
 ## Session 10, 2026-10-23 (lane/db; INT 016427a2 = train 14 merged, fast-forward)
 
 | Job | State | What |
