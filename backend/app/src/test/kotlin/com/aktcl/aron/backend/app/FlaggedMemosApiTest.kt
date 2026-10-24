@@ -106,6 +106,15 @@ class FlaggedMemosApiTest {
             )
             h.execute("INSERT INTO app.memo (${cols.joinToString()}) SELECT ${cols.joinToString { repl[it] ?: it }} FROM app.memo WHERE memo_no = '$base'")
         }
+        // Checker note: two memos of yesterday stored in the same microsecond, so the keyset needs memo_id and full precision.
+        for (no in listOf("sr1001-270102-951", "sr1001-270102-952")) {
+            val repl = mapOf(
+                "client_uuid" to "gen_random_uuid()", "family_uuid" to "gen_random_uuid()", "visit_client_uuid" to "gen_random_uuid()", "memo_no" to "'$no'",
+                "business_date" to "DATE '${ApiWorld.YESTERDAY}'", "device_id" to "NULL", "sig" to "NULL", "external_ref" to "NULL",
+                "server_flags" to "'{price_mismatch}'::text[]", "received_at" to "TIMESTAMPTZ '${ApiWorld.YESTERDAY}T05:00:00.123456Z'",
+            )
+            h.execute("INSERT INTO app.memo (${cols.joinToString()}) SELECT ${cols.joinToString { repl[it] ?: it }} FROM app.memo WHERE memo_no = '$base'")
+        }
         Aggregator.refreshDimensions(h)
     }
 
@@ -233,6 +242,18 @@ class FlaggedMemosApiTest {
             assertEquals(HttpStatusCode.BadRequest, c.read(t, "/dashboards/flagged-memos?$q").status, q)
         }
         assertEquals(HttpStatusCode.OK, c.read(t, "/dashboards/flagged-memos?from=2026-10-03&to=2027-01-03").status, "92 days is allowed")
+    }
+
+    @Test
+    fun pagesSplitTwoMemosStoredInTheSameMicrosecond() = testApplication {
+        application { aronApi(world.wiring) }
+        val c = createClient {}
+        val t = c.token("superadmin1001")
+        val day0 = ApiWorld.YESTERDAY
+        val first = c.read(t, "/dashboards/flagged-memos?from=$day0&to=$day0&limit=1").obj()
+        val second = c.read(t, "/dashboards/flagged-memos?from=$day0&to=$day0&limit=1&cursor=${first.str("next_cursor")}").obj()
+        assertEquals(listOf("sr1001-270102-952", "sr1001-270102-951"), (first.items() + second.items()).map { it.str("memo_no") }, "tie broken by memo_id, newest first")
+        assertEquals(JsonNull, second["next_cursor"])
     }
 
     @Test
