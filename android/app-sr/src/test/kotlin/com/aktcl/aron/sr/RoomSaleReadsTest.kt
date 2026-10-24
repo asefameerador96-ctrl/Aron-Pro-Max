@@ -71,4 +71,23 @@ class RoomSaleReadsTest {
         assertNull(reads.kpi(date, outlets).first.strikeRateHundredths)
         assertEquals(84_000, reads.kpi(date, outlets).second.grandTotalMtk)
     }
+
+    @Test fun aZeroPriceSkuIsNotOfferedOnSaleButStaysInStock() = runTest {
+        db.referenceDao().insertSkus(listOf(sku(105, "match", "dozen"), sku(107, "cigarette", "stick")))
+        db.referenceDao().insertPrices(listOf(
+            PriceEntity(1, 105, "outlet", 28_000, 1, "2026-09-01", null),
+            PriceEntity(2, 107, "outlet", 0, 1, "2026-09-01", null), // the real catalogue has zero prices for three SKUs
+        ))
+        val repo = CaptureRepository(db) { "2026-10-05T04:36:00.000Z" }
+        repo.recordStock(listOf(
+            StockMovementEntity(ClientIds.newUuid(), meta(), "issue", 105, 20, "dozen", 1, 20, null, false),
+            StockMovementEntity(ClientIds.newUuid(), meta(), "issue", 107, 200, "stick", 1, 200, null, false),
+        ))
+        val reads = RoomSaleReads(db, ReferenceRepository(db))
+
+        assertEquals(listOf(105L), reads.catalog(date, "outlet").map { it.skuId }) // 107 (price 0) is not on the Sale list
+        val stock = com.aktcl.aron.feature.stock.StockTracker.of(db, date)
+        assertEquals(200L, stock[107L]?.current) // the Stock screen still has it
+        assertEquals(20L, stock[105L]?.current)
+    }
 }
