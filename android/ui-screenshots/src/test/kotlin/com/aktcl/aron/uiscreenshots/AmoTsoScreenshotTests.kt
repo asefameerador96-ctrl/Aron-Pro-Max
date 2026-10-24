@@ -153,6 +153,10 @@ class AmoTsoScreenshotTests {
         TaskAssignContent("Rahim Uddin", listOf("Rahim Store", "R-1042", "Kawran Bazar"), listOf(TaskType("stock_check", "Stock check", "স্টক পরীক্ষা"), TaskType("price", "Price check", "দাম যাচাই")), false, "stock_check", listOf("2026-10-18", "2026-10-19"), "2026-10-18", "", emptySet(), false, false, {}, {}, {}, {})
     }
 
+    // ---- Loading (the AMO hosts show the quiet kit skeleton, not a spinner)
+    @Test @Config(qualifiers = "bn-w360dp-h800dp") fun amo_loading_bn() = shot("amo_loading_bn", AppLanguage.BN, "কাজ বণ্টন") { com.aktcl.aron.core.ui.aron.AronLoadingScreen() }
+    @Test @Config(qualifiers = "w360dp-h800dp") fun amo_loading_sunlight_en() = shot("amo_loading_sunlight_en", AppLanguage.EN, "SR Stock", sunlight = true) { com.aktcl.aron.core.ui.aron.AronLoadingScreen() }
+
     // ---- Team stock, live dashboard, performance
     @Test @Config(qualifiers = "w360dp-h800dp") fun amo_team_stock_list_en() = shot("amo_team_stock_list_en", AppLanguage.EN, "SR Stock") { TeamStockListContent(TeamStock.parse(stockJson), mapOf(7L to "017****678"), false, false, {}) }
     @Test @Config(qualifiers = "bn-w360dp-h800dp") fun amo_team_stock_detail_bn() = shot("amo_team_stock_detail_bn", AppLanguage.BN, "এসআর স্টক") {

@@ -49,6 +49,8 @@ data class MemoUiState(
     val outletDueMtk: Long = 0,
     val lastPrint: PrintAttempt? = null,
     val printing: Boolean = false,
+    /** The first read of the day's memos has finished: before it the list is not empty, it is not known yet. */
+    val loaded: Boolean = false,
 )
 
 /**
@@ -123,6 +125,7 @@ class MemoViewModel(
             rows = MemoMenu.rows(memos), selected = m?.let(MemoMenu::detail), remainingDueMtk = remaining,
             canMarkPaid = m != null && DueLedger.markPaid(m, collections, 0) != null,
             outletDueMtk = m?.let { DueLedger.outletOutstanding(memos, collections, it.outletId) } ?: 0L,
+            loaded = true,
         )
     }
 }

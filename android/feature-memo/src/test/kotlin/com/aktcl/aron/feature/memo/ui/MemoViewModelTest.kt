@@ -35,6 +35,13 @@ class MemoViewModelTest {
     private var result: () -> PrintAttempt = { PrintAttempt.Done }
     private fun vm(f: Fake, prints: MutableList<String> = ArrayList()) = MemoViewModel(f, f, object : MemoReprinter { override suspend fun print(memoUuid: String, memo: com.aktcl.aron.core.printing.doc.MemoPrint): PrintAttempt { prints += "$memoUuid:${memo.kind}"; return result() } }, { PrintNames({ "S$it" }, { "O$it" }, "sr", "r") }, { "2026-10-05" })
 
+    @Test fun theListIsNotKnownUntilTheFirstReadFinishes() {
+        val v = vm(Fake(credit))
+        assertFalse(v.state.value.loaded)
+        v.refresh()
+        assertTrue(v.state.value.loaded)
+    }
+
     @Test fun markPaidSettlesOnceAndTheButtonGoes() {
         val f = Fake(credit); val v = vm(f)
         v.open("m1")

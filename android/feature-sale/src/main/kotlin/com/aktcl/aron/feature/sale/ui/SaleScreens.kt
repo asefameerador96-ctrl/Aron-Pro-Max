@@ -58,12 +58,9 @@ import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -88,13 +85,10 @@ import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.clearAndSetSemantics
-import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.onClick
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
@@ -238,45 +232,6 @@ internal fun DockChip(label: String, selected: Boolean, onClick: () -> Unit, mod
             else if (icon != null) Icon(icon, contentDescription = null, tint = ink, modifier = Modifier.size(AronTokens.Size.IconSmall))
             Text(label, style = MaterialTheme.typography.labelMedium, color = ink, maxLines = 1)
         }
-    }
-}
-
-/**
- * The kit-looking text field (android-glass s6.12): the label above in `type.caption` `text.secondary` (no floating
- * label), then the 56 dp field, `radius.chip`, raised surface, `border.input`, focus ring in `border.focus`. The field
- * node carries the label as its content description (the caption is decorative) and shows it as the placeholder while
- * empty. [modifier] lays out the whole control; [fieldModifier] goes on the field itself (a test tag).
- */
-@Composable
-internal fun KitTextField(
-    value: String,
-    onValueChange: (String) -> Unit,
-    label: String,
-    modifier: Modifier = Modifier,
-    isError: Boolean = false,
-    keyboardType: KeyboardType = KeyboardType.Text,
-    singleLine: Boolean = true,
-    fieldModifier: Modifier = Modifier,
-) {
-    val c = LocalAronColors.current
-    Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.Xs)) {
-        Text(label, Modifier.clearAndSetSemantics { }, style = MaterialTheme.typography.bodySmall, color = c.textSecondary)
-        OutlinedTextField(
-            value = value, onValueChange = onValueChange,
-            placeholder = { Text(label, style = MaterialTheme.typography.bodyLarge, color = c.textPlaceholder) },
-            modifier = fieldModifier.fillMaxWidth().heightIn(min = AronTokens.Touch.Primary).semantics { contentDescription = label },
-            singleLine = singleLine, isError = isError,
-            keyboardOptions = KeyboardOptions(keyboardType = keyboardType),
-            shape = RoundedCornerShape(AronTokens.Radius.Chip),
-            textStyle = MaterialTheme.typography.bodyLarge,
-            colors = OutlinedTextFieldDefaults.colors(
-                focusedContainerColor = c.surfaceSolidRaised, unfocusedContainerColor = c.surfaceSolidRaised, errorContainerColor = c.surfaceSolidRaised,
-                focusedBorderColor = c.borderFocus, unfocusedBorderColor = c.borderInput, errorBorderColor = c.danger,
-                focusedTextColor = c.textPrimary, unfocusedTextColor = c.textPrimary, errorTextColor = c.textPrimary,
-                focusedPlaceholderColor = c.textPlaceholder, unfocusedPlaceholderColor = c.textPlaceholder, errorPlaceholderColor = c.textPlaceholder,
-                cursorColor = c.accent,
-            ),
-        )
     }
 }
 

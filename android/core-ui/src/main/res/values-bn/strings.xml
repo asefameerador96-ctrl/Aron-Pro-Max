@@ -162,6 +162,7 @@
     <string name="core_ui_look_new_request">নতুন অনুরোধ</string>
     <string name="core_ui_look_star">%1$s / ৫</string>
     <string name="core_ui_look_hold">চেপে ধরে জমা দিন</string>
+    <string name="core_ui_loading">লোড হচ্ছে</string>
     <string name="core_ui_look_loading">লোড হচ্ছে</string>
     <string name="core_ui_look_section">আমার টিম</string>
     <string name="core_ui_look_date_label">ছুটির তারিখ</string>

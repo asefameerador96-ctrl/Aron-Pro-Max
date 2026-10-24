@@ -1,20 +1,17 @@
 package com.aktcl.aron.amo
 
 import com.aktcl.aron.feature.amo.AmoBanner
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import com.aktcl.aron.core.ui.BannerKind
 import androidx.compose.ui.res.stringResource
 import com.aktcl.aron.feature.amo.R as AmoR
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import com.aktcl.aron.core.map.LiteMapScreen
@@ -49,7 +46,7 @@ fun AmoTeamLocation(day: AmoDay, modifier: Modifier = Modifier) {
         kept = fetched is AmoFetch.Cached; failed = fetched.isMissing()
         points = TeamLocations.parse(json).map { MapPoint(it.userId.toString(), it.name, it.lat, it.lng, it.atMs, it.source?.let { s -> sources[s] ?: s }) }
     }
-    val list = points ?: run { Box(modifier.fillMaxSize(), Alignment.Center) { CircularProgressIndicator() }; return }
+    val list = points ?: run { com.aktcl.aron.core.ui.aron.AronLoadingScreen(modifier); return }
     Column(modifier.fillMaxSize()) {
         if (failed) AmoBanner(stringResource(AmoR.string.amo_task_list_offline), kind = BannerKind.Warning)
         else if (kept) AmoBanner(stringResource(AmoR.string.amo_task_list_kept), kind = BannerKind.Info)
