@@ -103,6 +103,11 @@ class OpsService(
     private val db: Database, private val config: ServerConfig, private val clock: AronClock = AronClock.SYSTEM, private val acceptor: QuarantineAcceptor = QuarantineAcceptor.UNAVAILABLE,
 ) {
     private fun heldHours(): Long = runCatching { config.int("cfg.sla.pending_rows_alert_h") }.getOrDefault(4).toLong()
+    private val flagged = FlaggedMemos(db)
+
+    /** getFlaggedMemos (contract 1.8.0): see [FlaggedMemos]. */
+    fun flaggedMemos(reach: Reach, from: LocalDate, to: LocalDate, level: String?, nodeId: Long?, flag: String?, limit: Int, cursor: String?): FlaggedMemoPage =
+        flagged.page(reach, from, to, level, nodeId, flag, limit, cursor)
 
     // ---------------- sync health ----------------
 
@@ -333,6 +338,20 @@ fun Route.opsRoutes(d: OpsDeps) {
             val q = call.request.queryParameters
             val after = q["cursor"]?.let { c -> runCatching { String(Base64.getUrlDecoder().decode(c)).split('|').let { it[0].toLong() to it[1].toLong() } }.getOrNull() ?: throw ApiProblem(ProblemCode.ERR_VALIDATION, "bad cursor", errors = listOf(FieldError("query.cursor", "invalid_value"))) }
             call.respond(d.service.syncHealth(d.reach.reach(p.userId, p.role, p.scopeVersion, today), call.date("business_date", true)!!, q["level"], call.nodeId(), q["only_problems"] == "true", call.limit(), after))
+        }
+        get("/dashboards/flagged-memos") {
+            // BRAND is refused by the portal-level gate (no brand dimension on a memo); ADMIN needs reports:r (/v1/dashboards/**).
+            val p = call.principal
+            if (p.role !in DASHBOARD_ROLES) throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "dashboards are not available to this role")
+            val today = BusinessDate.of(d.clock.now().toEpochMilli()).toJavaLocalDate()
+            val q = call.request.queryParameters
+            val flag = q["flag"]?.also { if (it.isEmpty() || it.length > 60) throw ApiProblem(ProblemCode.ERR_VALIDATION, "bad flag", errors = listOf(FieldError("query.flag", "invalid_value"))) }
+            call.respond(
+                d.service.flaggedMemos(
+                    d.reach.reach(p.userId, p.role, p.scopeVersion, today), call.date("from", false) ?: today, call.date("to", false) ?: today,
+                    q["level"], call.nodeId(), flag, call.limit(), q["cursor"],
+                ),
+            )
         }
         get("/dashboards/login-submit") {
             val p = call.principal

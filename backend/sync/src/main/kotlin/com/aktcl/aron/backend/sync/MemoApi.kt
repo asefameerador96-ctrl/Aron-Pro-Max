@@ -49,6 +49,8 @@ data class MemoViewDto(
     val memo_client_uuid: String, val memo_no: String, val business_date: String, val outlet_id: Long, val outlet_name: String,
     val route_id: Long, val user_id: Long, val status: String, val supersedes_memo_no: String?, val totals: MemoTotalsDto,
     val lines: List<MemoLineDto>, val discounts: List<MemoDiscountDto>, val printed_at: String?, val print_count: Int, val entry_source: String,
+    /** Contract 1.8.0: the stored memo's review flags (`app.memo.server_flags`), empty when it has none. */
+    val server_flags: List<String> = emptyList(),
 )
 
 /** Contract MemoPage. */
@@ -132,7 +134,7 @@ internal class MemoReader(private val d: MemoDeps) {
                 """
                 SELECT m.id, m.client_uuid::text AS uuid, m.memo_no, m.business_date, m.outlet_id, o.name AS outlet_name, m.route_id, m.user_id,
                        CASE WHEN m.voided_at IS NOT NULL THEN 'void' WHEN m.status = 'voided' THEN 'void' ELSE m.status END AS status, s.memo_no AS supersedes_memo_no, m.gross_mtk, m.offer_discount_mtk, m.drp_discount_mtk, m.qc_deduction_mtk,
-                       m.round_adj_mtk, m.net_mtk, m.paid_mtk, m.due_mtk
+                       m.round_adj_mtk, m.net_mtk, m.paid_mtk, m.due_mtk, m.server_flags
                 FROM app.memo m
                 JOIN app.outlet o ON o.id = m.outlet_id
                 JOIN app.route r ON r.id = m.route_id
@@ -175,6 +177,7 @@ internal class MemoReader(private val d: MemoDeps) {
                             rs.getInt("round_adj_mtk"), rs.getLong("net_mtk"), rs.getLong("paid_mtk"), rs.getLong("due_mtk"),
                         ),
                         emptyList(), emptyList(), null, 0, "app",
+                        server_flags = (rs.getArray("server_flags").array as Array<*>).map { it as String },
                     ),
                 )
             }.list()

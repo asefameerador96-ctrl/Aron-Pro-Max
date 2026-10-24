@@ -55,6 +55,7 @@ GET /v1/app/update-check -> exempt: the caller's own account, token or phone onl
 GET /v1/config/delta -> gap: backend-admin
 GET /v1/dashboards/daily-tracking -> gap: backend-reports
 GET /v1/dashboards/geo-validation -> case GeoValidationTest#aZoneCallerSeesOnlyItsZone
+GET /v1/dashboards/flagged-memos -> case FlaggedMemosApiTest#aTsoSeesOnlyItsTerritoryAndADmoOnlyItsDivision
 GET /v1/dashboards/login-submit -> case OpsApiTest#v12AdditionsAreScopedAndConsistent
 GET /v1/dashboards/national/ff-geo/routes/{route_id} -> case NationalDashboardApiTest#mapPagesAnswerAndAZoneCallerCannotOpenAnotherZonesRoute
 GET /v1/dashboards/national/filter-options -> case NationalDashboardApiTest#everyCardAnswersOverHttpWithTheContractsRequiredFields
