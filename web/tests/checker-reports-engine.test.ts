@@ -1,7 +1,7 @@
 // Independent checker (docs/26 s4) for the report engine rows: each failing test is evidence of a defect.
 import type { AddressInfo } from "node:net";
 import { NextRequest } from "next/server";
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { GET as exportGet } from "@/app/api/bff/reports/[slug]/export/route";
 import { SESSION_COOKIE, SESSION_PURPOSE } from "@/lib/auth/cookies";
 import { seal } from "@/lib/auth/seal";
@@ -17,12 +17,16 @@ import { createMock } from "../mock/server";
 const mock = createMock();
 let base = "";
 beforeAll(async () => {
+  vi.setSystemTime(new Date("2026-10-24T09:00:00Z")); // 15:00 Dhaka: one business day, never near the 18:00Z day change (D-WEB-TEST-CLOCK-01)
   await new Promise<void>((r) => mock.server.listen(0, "127.0.0.1", r));
   base = `http://127.0.0.1:${(mock.server.address() as AddressInfo).port}`;
   process.env.ARON_API_BASE_URL = base;
   process.env.ARON_COOKIE_INSECURE = "1";
 });
-afterAll(() => new Promise<void>((r) => mock.server.close(() => r())));
+afterAll(async () => {
+  vi.useRealTimers();
+  await new Promise<void>((r) => mock.server.close(() => r()));
+});
 beforeEach(() => mock.reset());
 
 async function login(username: string, password: string) {
@@ -162,6 +166,7 @@ describe("export route security", () => {
     const r = await call({ cookie: me.cookie });
     const { businessDate } = await import("@/lib/i18n");
     expect(r.headers.get("content-disposition")).toContain(businessDate());
+    expect(businessDate()).toBe("2026-10-24"); // the pinned instant, not the real clock
     // differs only between 18:00 and 24:00 UTC; asserted structurally via source in the report
   });
   it("a role without PII gets no phone/owner/trade price in the xlsx either", async () => {

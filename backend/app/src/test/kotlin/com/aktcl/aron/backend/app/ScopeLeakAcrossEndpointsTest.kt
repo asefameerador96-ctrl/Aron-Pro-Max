@@ -95,6 +95,7 @@ class ScopeLeakAcrossEndpointsTest {
     fun setUp() {
         contract = ContractModel.load(repoRoot.resolve("contract/openapi.yaml"))
         world = ApiWorld(repoRoot, mirrors = listOf(ApiWorld.OTHER))
+        world.fresh.db.jdbi.useHandle<Exception> { seedTsoLevels(it) }
         val own = world.fresh.db.jdbi.withHandle<SyncPhone, Exception> { h ->
             fun id(sql: String) = h.createQuery(sql).mapTo(Long::class.java).one()
             val route = id("SELECT id FROM app.route WHERE code = 'MIR-SR-D'")
@@ -135,6 +136,8 @@ class ScopeLeakAcrossEndpointsTest {
             otherUuids += h.createQuery("SELECT client_uuid::text FROM app.visit WHERE user_id = :u UNION SELECT client_uuid::text FROM app.memo WHERE user_id = :u UNION SELECT client_uuid::text FROM app.due_collection WHERE user_id = :u")
                 .bind("u", other.userId).mapTo(String::class.java).list()
             otherUuids += seedOtherRows(h, other)
+            // getFlaggedMemos (contract 1.8.0) reads only flagged memos: one stored memo of each division carries a flag.
+            h.execute("UPDATE app.memo SET server_flags = '{price_mismatch}' WHERE id IN (SELECT max(id) FROM app.memo WHERE user_id IN (${own.userId}, ${other.userId}) GROUP BY user_id)")
             // Record paths named by uuid or row id are aimed at the other division's rows (the other-path variant).
             world.otherPathValues["request_uuid"] = otherRequestUuid
             world.otherPathValues["task_uuid"] = otherTaskUuid
@@ -333,14 +336,14 @@ class ScopeLeakAcrossEndpointsTest {
      * Calls every operation of [which] as every scoped caller in every variant and returns the leaks; [tokenFor] gives
      * the bearer of a caller (the seeded-leak test swaps in the national one).
      */
-    private suspend fun HttpClient.probe(which: List<ContractModel.Operation>, st: Stats, tokenFor: suspend (ApiWorld.Caller) -> String?): List<Leak> {
+    private suspend fun HttpClient.probe(which: List<ContractModel.Operation>, st: Stats, callers: List<ApiWorld.Caller> = scoped, tokenFor: suspend (ApiWorld.Caller) -> String?): List<Leak> {
         val found = mutableListOf<Leak>()
         for (op in which) {
             val shape = ContractModel.shape(op.path)
             val read = op.method == "GET" || READ_BY_POST.containsMatchIn(op.operationId)
             val resource = resourceOf(op)
             val ownNumbers = HashMap<String, List<String>>()
-            for (c in scoped) {
+            for (c in callers) {
                 suspend fun once(variant: String, pathIds: Map<String, Long>, query: String = "", body: Boolean = false, pins: Map<String, String> = ownPin) {
                     var retargeted = !body
                     val edit: ((JsonNode) -> Unit)? = if (body) { n -> retargeted = retarget(n) or aimGeo(op, n) } else null
@@ -545,6 +548,117 @@ class ScopeLeakAcrossEndpointsTest {
         assertTrue("GET /v1/dashboards/summary tso1001 other-node_id" in msg, "a seeded aggregate leak (numbers only) must fail the test: $msg")
         assertTrue("GET /v1/dashboards/summary tso1001 own" in msg, "a TSO served the national view on its own read must fail the test: $msg")
         assertTrue(found.none { it.caller != "tso1001" }, "only the seeded caller leaks: $found")
+    }
+
+    // ---- D-DASH-TSO-HOUSE-SCOPE-01: a TSO scoped by a house node, and TSOs holding route assignments only ------------
+
+    private val houseTso = ApiWorld.Caller("qahousetso1001", "web", null)
+    private val routeTso = ApiWorld.Caller("qaroutetso1001", "web", null)
+    private val partialTso = ApiWorld.Caller("qapartialtso1001", "web", null)
+    /** Ids of the fixtures below: `house_mir`, `zone_sib` (the sibling house's zone), `route_sib`. */
+    private val levelIds = HashMap<String, Long>()
+
+    /**
+     * A sibling house H-SIB under the seed's territory T-DHK-N with its own zone Z-SIB and one route planned today (so the
+     * territory's figures differ from H-MIR's); its name is H-MIR's in other case, so `dw.dim_geo` folds both houses into
+     * H-MIR (V0093 duplicates): the house TSO must still read its own house's zones only. Three TSOs: qahousetso1001 scoped by the house H-MIR,
+     * qaroutetso1001 covering SIB-SR-D (every route of Z-SIB) and MIR-SR-D (one of the routes of Z-MIR), and
+     * qapartialtso1001 covering MIR-SR-D only (part of one zone).
+     */
+    private fun seedTsoLevels(h: org.jdbi.v3.core.Handle) {
+        h.execute(
+            """
+            INSERT INTO app.house (code, name, territory_id) SELECT 'H-SIB', 'mirpur distribution house', id FROM app.territory WHERE code = 'T-DHK-N';
+            INSERT INTO app.zone (code, name, name_bn, territory_id, house_id, dep_name)
+              SELECT 'Z-SIB', 'Sibling', 'সিবলিং', t.id, hs.id, 'Sibling DEP' FROM app.territory t, app.house hs WHERE t.code = 'T-DHK-N' AND hs.code = 'H-SIB';
+            INSERT INTO app.route (code, name, display_label, zone_id, kind, visit_kind, visit_days_mask, sequence_no)
+              SELECT 'SIB-SR-D', 'Sibling Daily', 'Daily', id, 'sr', 'daily', 127, 1 FROM app.zone WHERE code = 'Z-SIB';
+            INSERT INTO app.route_day (route_id, business_date, planned) SELECT id, DATE '$day', true FROM app.route WHERE code = 'SIB-SR-D';
+            """.trimIndent(),
+        )
+        for ((u, grant) in listOf(
+            houseTso.user to "INSERT INTO app.user_scope (user_id, node_type, node_id, valid_from, reason) SELECT u.id, 'house', hs.id, DATE '2026-01-01', 'qa house scope' FROM app.app_user u, app.house hs WHERE u.username = '${houseTso.user}' AND hs.code = 'H-MIR'",
+            routeTso.user to "INSERT INTO app.route_assignment (route_id, user_id, kind, valid_from, reason) SELECT r.id, u.id, 'cover', DATE '2026-01-01', 'qa route-only TSO' FROM app.route r, app.app_user u WHERE r.code IN ('SIB-SR-D', 'MIR-SR-D') AND u.username = '${routeTso.user}'",
+            partialTso.user to "INSERT INTO app.route_assignment (route_id, user_id, kind, valid_from, reason) SELECT r.id, u.id, 'cover', DATE '2026-01-01', 'qa route-only TSO' FROM app.route r, app.app_user u WHERE r.code = 'MIR-SR-D' AND u.username = '${partialTso.user}'",
+        )) {
+            h.execute(
+                "INSERT INTO app.app_user (username, full_name, role, designation, employee_code, locale, home_zone_id, pilot, must_change_password, password_hash) " +
+                    "SELECT '$u', 'QA TSO', 'TSO', 'QA', upper('$u'), 'en', home_zone_id, true, false, password_hash FROM app.app_user WHERE username = 'admin1001'",
+            )
+            h.execute(grant)
+        }
+        fun one(sql: String) = h.createQuery(sql).mapTo(Long::class.java).one()
+        levelIds["house_mir"] = one("SELECT id FROM app.house WHERE code = 'H-MIR'")
+        levelIds["zone_sib"] = one("SELECT id FROM app.zone WHERE code = 'Z-SIB'")
+        levelIds["route_sib"] = one("SELECT id FROM app.route WHERE code = 'SIB-SR-D'")
+    }
+
+    /** The node-scoped dashboard reads (a `level` and a `node_id` selector). */
+    private fun dashboards() = ops.filter(::isDashboard).also { d -> check(d.size >= 5) { "dashboard reads: ${d.map { it.key }}" } }
+
+    /** The numbers of a dashboard answer without its own node label and its children (their level depends on the node's level). */
+    private fun figures(text: String): List<String> {
+        val n = ContractModel.json.readTree(text)
+        (n as? ObjectNode)?.remove(listOf("node", "children"))
+        return numbers(ContractModel.json.writeValueAsString(n))
+    }
+
+    private suspend fun HttpClient.status(op: ContractModel.Operation, c: ApiWorld.Caller, token: String, query: String) =
+        world.call(this, contract, op, c, token, extraQuery = query).status.value
+
+    @Test
+    fun aHouseScopedTsoReadsItsOwnHouseByDefaultAndNeverTheSiblingHouse() = testApplication {
+        application { aronApi(world.wiring) }
+        val token = world.login(client, houseTso)!!
+        val admin = world.login(client, national)!!
+        val mir = world.ids["zones"]!!
+        val ops = dashboards()
+        assertTrue(ops.map { it.path }.containsAll(listOf("/v1/dashboards/summary", "/v1/dashboards/daily-tracking")), "${ops.map { it.key }}")
+        for (op in ops) {
+            val own = world.call(client, contract, op, houseTso, token)
+            assertEquals(200, own.status.value, "${op.key} default: ${own.bodyAsText().take(300)}")
+            ContractModel.json.readTree(own.bodyAsText()).get("node")?.let {
+                assertEquals("house" to levelIds["house_mir"], it.path("type").asText() to it.path("id").asLong(), "${op.key}: the default node is the TSO's house")
+            }
+            // H-MIR holds the zone Z-MIR only: its default view is the national view of Z-MIR (never the sibling's Z-SIB).
+            val view = world.call(client, contract, op, national, admin, extraQuery = "level=zone&node_id=$mir")
+            assertEquals(figures(view.bodyAsText()), figures(own.bodyAsText()), "${op.key}: the house view is the national view of its zone")
+            assertEquals(200, client.status(op, houseTso, token, "level=zone&node_id=$mir"), "${op.key}: own zone")
+            for (q in listOf("level=zone&node_id=${levelIds["zone_sib"]}", "level=territory&node_id=${world.ids["territories"]}", "level=zone&node_id=${world.otherIds["zones"]}")) {
+                assertEquals(403, client.status(op, houseTso, token, q), "${op.key} $q: outside the house")
+            }
+            assertEquals(400, client.status(op, houseTso, token, "level=house&node_id=${levelIds["house_mir"]}"), "${op.key}: level=house stays 400 (contract GeoLevelQuery)")
+        }
+        // The control: the sibling house's zone has figures, so a view that took it in would differ.
+        val summary = ops.single { it.path == "/v1/dashboards/summary" }
+        val territory = world.call(client, contract, summary, national, admin, extraQuery = "level=territory&node_id=${world.ids["territories"]}").bodyAsText()
+        val zone = world.call(client, contract, summary, national, admin, extraQuery = "level=zone&node_id=$mir").bodyAsText()
+        assertTrue(figures(territory) != figures(zone), "the sibling zone Z-SIB adds nothing to T-DHK-N: the test cannot tell the houses apart")
+        val msg = verdict(client.probe(ops, Stats(), listOf(houseTso)) { token })
+        assertTrue(msg.isEmpty(), msg)
+    }
+
+    @Test
+    fun aRouteOnlyTsoGetsNoDefaultDashboardUntilRouteKeyedAggregates() = testApplication {
+        application { aronApi(world.wiring) }
+        val token = world.login(client, routeTso)!!
+        val partial = world.login(client, partialTso)!!
+        val ops = dashboards()
+        assertTrue(ops.map { it.path }.containsAll(listOf("/v1/dashboards/summary", "/v1/dashboards/daily-tracking")), "${ops.map { it.key }}")
+        // D-BC-DASH-ROUTE-ONLY-01 (lead ruling 17:50 UTC): zone figures carry the zone stamped when written (moved routes, route-less
+        // memos by the outlet's zone), so even a zone whose every current route is held (Z-SIB) could show other routes over a past
+        // range. Route assignments alone give no default node and no zone node: 403, pinned until route-keyed aggregates exist.
+        for (op in ops) {
+            for ((c, t) in listOf(routeTso to token, partialTso to partial)) {
+                val own = world.call(client, contract, op, c, t)
+                assertEquals(403, own.status.value, "${op.key} ${c.user} default: ${own.bodyAsText().take(300)}")
+            }
+            for (q in listOf("level=zone&node_id=${levelIds["zone_sib"]}", "level=zone&node_id=${world.ids["zones"]}", "level=territory&node_id=${world.ids["territories"]}", "level=zone&node_id=${world.otherIds["zones"]}")) {
+                assertEquals(403, client.status(op, routeTso, token, q), "${op.key} $q")
+            }
+        }
+        val msg = verdict(client.probe(ops, Stats(), listOf(routeTso, partialTso)) { c -> if (c == routeTso) token else partial })
+        assertTrue(msg.isEmpty(), msg)
     }
 
     @Test

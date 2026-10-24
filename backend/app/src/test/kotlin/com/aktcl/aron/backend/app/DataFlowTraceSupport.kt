@@ -4,6 +4,7 @@ import com.aktcl.aron.backend.analytics.AggregationWorker
 import com.aktcl.aron.backend.analytics.Aggregator
 import com.aktcl.aron.backend.auth.PasswordHasher
 import com.aktcl.aron.backend.platform.AronClock
+import com.aktcl.aron.backend.platform.DayPlan
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.node.ArrayNode
 import com.fasterxml.jackson.databind.node.ObjectNode
@@ -45,9 +46,16 @@ import kotlin.test.assertTrue
 /** Shared world, device model and trace plumbing of the wave-4 data-flow trace and of the attached finding tests (docs/requests/attachments). */
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 abstract class DataFlowTraceSupport(
-    /** The business date of the trace (Dhaka); the world clock stands at 10:30Z of that date. */
-    protected val day: String = "2026-10-24", // Saturday: GUL-SR-2 (mask 9 = Saturday + Tuesday)
+    /** The route of sr1001 the trace sells on; it chooses the trace's [day] (D-TEST-DATE-PIN-01). */
+    protected val dayRoute: String = "GUL-SR-2",
 ) {
+    /**
+     * The business date of the trace (Dhaka); the world clock stands at 10:30Z of that date. The dev seed starts its assignments at
+     * its own Dhaka today, so [setUp] takes the day from the seed's clock and tables ([traceDay]), never a constant; until then it
+     * is that today.
+     */
+    @Volatile protected var day: String = LocalDate.now(java.time.ZoneId.of("Asia/Dhaka")).toString()
+        private set
     protected val repoRoot = File(System.getProperty("aron.repoRoot") ?: "../..")
     /** Moves the world clock forward (the parking expiry); zero for every other trace. */
     @Volatile protected var clockShift: java.time.Duration = java.time.Duration.ZERO
@@ -87,6 +95,7 @@ abstract class DataFlowTraceSupport(
     @BeforeAll
     fun setUp() {
         world = ApiWorld(repoRoot, mirrors = listOf(ApiWorld.OTHER), clock = clock, devProfile = true)
+        day = traceDay()
         app = TestApplication { application { aronApi(world.wiring) } }
         runBlocking { app.start() }
         db { h ->
@@ -297,7 +306,44 @@ abstract class DataFlowTraceSupport(
         runBlocking { app.stop() }; world.close()
     }
 
-    /** Login as sr1001 on the seeded phone, fetch the Saturday bundle, and fill route, pins, SKUs and the device model. */
+    /**
+     * D-TEST-DATE-PIN-01: the first date on or after the seed's `app.dhaka_date(now())` on which [dayRoute] is planned for sr1001: an
+     * assignment valid that day, the route's visit days and the zone's working calendar and weekend as seeded, by the server's own rule
+     * ([DayPlan.isPlanned]). Nothing here names a weekday or a date.
+     */
+    private fun traceDay(): String = db { h ->
+        val today = h.createQuery("SELECT app.dhaka_date(now())").mapTo(LocalDate::class.java).one()
+        val r = h.createQuery(
+            """
+            SELECT r.id, r.visit_days_mask AS mask, r.status = 'active' AS active, z.id AS zone, t.id AS territory, d.id AS division, d.wing_id AS wing
+              FROM app.route r JOIN app.zone z ON z.id = r.zone_id JOIN app.territory t ON t.id = z.territory_id JOIN app.division d ON d.id = t.division_id
+             WHERE r.code = :c
+            """.trimIndent(),
+        ).bind("c", dayRoute).mapToMap().one()
+        fun long(k: String) = (r[k] as Number).toLong()
+        val zone = DayPlan.ZoneChain(long("zone"), long("territory"), long("division"), long("wing"))
+        val plan = DayPlan.PlanRoute(long("id"), (r["mask"] as Number).toInt(), zone, r["active"] as Boolean)
+        val assigned = h.createQuery("SELECT a.valid_from, a.valid_to FROM app.route_assignment a JOIN app.app_user u ON u.id = a.user_id WHERE u.username = 'sr1001' AND a.route_id = :r")
+            .bind("r", plan.routeId).map { rs, _ -> rs.getObject(1, LocalDate::class.java) to rs.getObject(2, LocalDate::class.java) }.list()
+        val calendar = h.createQuery("SELECT date, scope_type, scope_id, kind, selling_day FROM app.calendar_holiday WHERE revoked_at IS NULL AND date >= :d")
+            .bind("d", today).map { rs, _ ->
+                DayPlan.CalendarEntry(rs.getObject(1, LocalDate::class.java), DayPlan.CalendarScope.valueOf(rs.getString(2).uppercase()), rs.getLong(3), rs.getString(4), rs.getBoolean(5))
+            }.list()
+        // The weekend as configured for the route's zone chain (the most specific of global, wing and division), else the default.
+        val weekend = h.createQuery(
+            """
+            SELECT value::text FROM app.cfg_value WHERE key = 'cfg.calendar.weekend_days' AND superseded_in_version IS NULL AND effective_from <= now() AND (effective_to IS NULL OR effective_to > now())
+               AND ((scope_type = 'global') OR (scope_type = 'wing' AND scope_id = :w) OR (scope_type = 'division' AND scope_id = :d))
+             ORDER BY CASE scope_type WHEN 'division' THEN 0 WHEN 'wing' THEN 1 ELSE 2 END, effective_from DESC LIMIT 1
+            """.trimIndent(),
+        ).bind("w", zone.wingId).bind("d", zone.divisionId).mapTo(String::class.java).findOne().orElse(null)
+            ?.let { v -> json.readTree(v).mapNotNull { n -> n.asInt().takeIf { it in 1..7 } }.toSet() } ?: DayPlan.DEFAULT_WEEKEND
+        (0L..27L).map { today.plusDays(it) }.firstOrNull { d ->
+            assigned.any { (from, to) -> !d.isBefore(from) && (to == null || d.isBefore(to)) } && DayPlan.isPlanned(plan, d, calendar, weekend)
+        }?.toString() ?: error("$dayRoute is not planned for sr1001 in the four weeks from the seed's today $today")
+    }
+
+    /** Login as sr1001 on the seeded phone, fetch the trace day's bundle, and fill route, pins, SKUs and the device model. */
     protected fun prepareSrDay(username: String = "sr1001", phone: String = ApiWorld.SR_PHONE, routeCode: String? = null) {
         val token = login(username, "app_sr", phone)
         bundle = fetchBundle(token, phone)

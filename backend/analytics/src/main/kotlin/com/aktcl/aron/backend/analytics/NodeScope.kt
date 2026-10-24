@@ -18,13 +18,21 @@ private val GEO_COLUMNS = mapOf("wing" to ("wing_id" to "wing_name"), "division"
 /**
  * Resolves `level` + `node_id` (or the caller's top reach node) to the zones to read. Reach comes only from the token's user:
  * a node outside it, or unknown, is 403 with no existence leak; a node is allowed only when every zone under it is in reach.
+ * The default node may be a `house` (the reach's zones); route assignments alone give no default node (403).
+ * [outOfScope] is the 403's code: `ERR_FORBIDDEN` for the older dashboards, `ERR_OUT_OF_SCOPE` where the contract names it.
  */
-internal fun resolveScopedNode(h: Handle, reach: Reach, level: String?, nodeId: Long?): ScopedNode {
-    val out = ApiProblem(ProblemCode.ERR_FORBIDDEN, "node is outside your reach")
+internal fun resolveScopedNode(h: Handle, reach: Reach, level: String?, nodeId: Long?, outOfScope: ProblemCode = ProblemCode.ERR_FORBIDDEN): ScopedNode {
+    val out = ApiProblem(outOfScope, "node is outside your reach")
     val lv: String; val id: Long
     if (level == null && nodeId == null) {
         if (reach.national) return ScopedNode(NodeRefDto("national", 0, "national", "National"), null)
         val top = reach.topNodes.firstOrNull() ?: throw out
+        // Route nodes follow the scope nodes in the reach, so a route first means route assignments only: no zone is in reach,
+        // and zone figures carry the zone stamped when written, so they would show other routes (D-BC-DASH-ROUTE-ONLY-01).
+        if (top.type == "route") throw out
+        // A house (a TSO or AMO scope node since contract 1.7.0, D-BC-DASH-HOUSE-01): its zones as the reach has them
+        // (`app.zone.house_id`), not `dw.dim_geo`, which folds same-name houses into one. An explicit `level=house` stays 400.
+        if (top.type == "house") return ScopedNode(NodeRefDto(top.type, top.id, top.code, top.name), reach.zoneIds.toList().ifEmpty { throw out })
         // A caller with several top nodes sees all of them: the zones are the whole reach, the node label is the first top node.
         if (reach.topNodes.size > 1) return ScopedNode(NodeRefDto(top.type, top.id, top.code, top.name), reach.zoneIds.toList().ifEmpty { listOf(-1L) })
         lv = top.type; id = top.id

@@ -54,7 +54,7 @@ import kotlin.test.assertTrue
  * Every hop is a row of the trace written to `build/data-flow-trace.md`: the device figure and the figure of each later hop,
  * PASS when they are equal. Money, idempotency and unit conversions are asserted hard (the test fails); a dashboard figure
  * that differs is recorded as a FINDING row and the test fails at the end, naming them, so the trace never goes green over a
- * wrong number. The other division (mirror LKX, moved under its own wing) sells one smaller day on the same Saturday, so a scope
+ * wrong number. The other division (mirror LKX, moved under its own wing) sells one smaller day on the same day, so a scope
  * filter has something to cut.
  */
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
@@ -89,7 +89,7 @@ class DataFlowTraceTest : DataFlowTraceSupport() {
         note("scope claims in the token", claims.fields().asSequence().filter { it.key in setOf("role", "geo", "brands", "modules", "scope_version", "reach") }.joinToString(", ") { "${it.key}=${it.value.toString().take(80)}" })
         val meta = bundle.path("meta")
         note("bundle meta", "bundle_version=${meta.path("bundle_version").asText()} config_version=${meta.path("config_version").asText()}")
-        hop("routes in the Saturday bundle", "planned today" to bundle.path("routes").filter { it.path("planned_today").asBoolean() }.joinToString(",") { it.path("route").path("code").asText("?") }, "expected" to "GUL-SR-2")
+        hop("routes in the trace day's bundle", "planned today" to bundle.path("routes").filter { it.path("planned_today").asBoolean() }.joinToString(",") { it.path("route").path("code").asText("?") }, "expected" to "GUL-SR-2")
         hop("outlets on the planned route with a pin", "with pin" to route.path("outlets").count { it.path("lat").isNumber && it.path("lng").isNumber }, "outlets" to route.path("outlets").size(), "expected" to 21)
         hop("plan SKUs with an outlet price today", "count" to skus.size, "expected >= 39" to skus.size.coerceAtLeast(39))
         note("pack sizes in the bundle (category: entry unit x pack)", skus.values.groupBy { it.category }.entries.joinToString(" / ") { (c, l) -> "$c: " + l.map { "${it.entryUnit}x${it.perPack}" }.distinct().sorted().joinToString("|") })
@@ -265,7 +265,7 @@ class DataFlowTraceTest : DataFlowTraceSupport() {
     @Test
     @Order(7)
     fun hop7TheOtherDivisionSellsToo() {
-        h("7 Other division (LKX, its own wing) sells on the same Saturday, so a scope filter has something to cut")
+        h("7 Other division (LKX, its own wing) sells on the same day, so a scope filter has something to cut")
         val ph = world.phoneFor(ApiWorld.OTHER, 50, day)
         db { hh ->
             // The same enrolment the dev seed job gives the smoke device, with the harness key so batch proofs verify.
@@ -280,7 +280,8 @@ class DataFlowTraceTest : DataFlowTraceSupport() {
         val token = login(ph.username, "app_sr", ph.deviceUuid)
         val b = fetchBundle(token, ph.deviceUuid)
         val r = b.path("routes").first { it.path("planned_today").asBoolean() }
-        lkxTargetOutlets = r.path("outlets").size()
+        // Every route the bundle plans that day counts toward the target (the Daily route alone on a Saturday; the 3F route too on its days).
+        lkxTargetOutlets = b.path("routes").filter { it.path("planned_today").asBoolean() }.sumOf { it.path("outlets").size() }
         val ls = skusOf(b, r)
         val devMeta = b.path("meta")
         lkx = Device(ph.username, ph.deviceUuid, ph.deviceId, r.path("route_id").asLong(), devMeta.path("bundle_version").asText(), devMeta.path("config_version").asLong(), token)
@@ -577,7 +578,7 @@ class DataFlowTraceTest : DataFlowTraceSupport() {
     @Test
     @Order(13)
     fun hop13Reports() {
-        h("13 Reports that exist (GET /v1/reports, POST /v1/reports/{key}/query), SUPERADMIN, the Saturday")
+        h("13 Reports that exist (GET /v1/reports, POST /v1/reports/{key}/query), SUPERADMIN, the trace day")
         val t = login("superadmin1001", "web", null)
         val defs = jsonOf(get("/v1/reports", t)).let { if (it.isArray) it else it.path("items") }
         note("reports registered for SUPERADMIN", defs.size())
@@ -601,6 +602,9 @@ class DataFlowTraceTest : DataFlowTraceSupport() {
 
     // ---- 14 memo number rule (docs/24 s7.5) -------------------------------------------------------------------------------
 
+    /** The `yyMMdd` of a memo number on the trace's day plus [plus] days (the day follows the seed clock, D-TEST-DATE-PIN-01). */
+    private fun ymd(plus: Long = 0) = java.time.LocalDate.parse(day).plusDays(plus).format(java.time.format.DateTimeFormatter.ofPattern("yyMMdd"))
+
     @Test
     @Order(14)
     fun hop14MemoNumberRule() {
@@ -608,10 +612,10 @@ class DataFlowTraceTest : DataFlowTraceSupport() {
         val c10 = pick("cigarette", 10)
         val ord = bundle.path("user").path("bind_ordinal").asInt(); val block = bundle.path("user").path("memo_seq_block_size").asInt()
         val variants = listOf(
-            "valid in the phone's block" to "sr1001-261024-${(ord * block + 50).toString().padStart(3, '0')}",
-            "another user's name" to "lkxsr1001-261024-${(ord * block + 51).toString().padStart(3, '0')}",
-            "another business date" to "sr1001-261023-${(ord * block + 52).toString().padStart(3, '0')}",
-            "sequence outside every block of the user" to "sr1001-261024-3000",
+            "valid in the phone's block" to "sr1001-${ymd()}-${(ord * block + 50).toString().padStart(3, '0')}",
+            "another user's name" to "lkxsr1001-${ymd()}-${(ord * block + 51).toString().padStart(3, '0')}",
+            "another business date" to "sr1001-${ymd(-1)}-${(ord * block + 52).toString().padStart(3, '0')}",
+            "sequence outside every block of the user" to "sr1001-${ymd()}-3000",
             "not the format" to "MEMO-1",
         )
         variants.forEachIndexed { i, (what, no) ->
@@ -635,7 +639,7 @@ class DataFlowTraceTest : DataFlowTraceSupport() {
     fun hop15IdempotencyEdgesAndPackSizeRecheck() {
         h("15 Edges: changed payload, same content under a new uuid, same memo_no under a new uuid, wrong pack size")
         val c10 = pick("cigarette", 10); val c20 = pick("cigarette", 20)
-        val base = oneSale("GUL2-011", 300, Line(c10, 2), "sr1001-261024-060")
+        val base = oneSale("GUL2-011", 300, Line(c10, 2), "sr1001-${ymd()}-060")
         hop("edge base sale accepted", "memo" to ackOf(send(sr, base, uuid())), "expected" to "accepted")
         val memoUuid = base.first { it.path("type").asText() == "memo" }.path("client_uuid").asText()
         // (a) same client_uuid, changed payload: must not overwrite the stored memo.
@@ -644,15 +648,15 @@ class DataFlowTraceTest : DataFlowTraceSupport() {
         note("same client_uuid, changed payload", ackOf(send(sr, changed, uuid())))
         hop("a changed payload under a stored client_uuid never overwrites the memo", "stored paid_mtk" to sqlLong("SELECT paid_mtk FROM app.memo WHERE client_uuid = CAST('$memoUuid' AS uuid)"), "original paid_mtk" to base.first { it.path("type").asText() == "memo" }.path("payload").path("paid_mtk").asLong())
         // (b) same content under new client_uuids and a new memo_no
-        val again = oneSale("GUL2-011", 300, Line(c10, 2), "sr1001-261024-061")
+        val again = oneSale("GUL2-011", 300, Line(c10, 2), "sr1001-${ymd()}-061")
         note("same outlet, lines and minute under new uuids", ackOf(send(sr, again, uuid())))
         hop("a second sale with the same content is held, not stored twice", "memos at GUL2-011" to sqlLong("SELECT count(*) FROM app.memo WHERE outlet_id = ${outletByCode("GUL2-011")} AND business_date = DATE '$day'"), "expected" to 1L, hard = false)
         // (c) same memo_no, different client_uuid, other outlet
-        val da = send(sr, oneSale("GUL2-012", 330, Line(c10, 3), "sr1001-261024-060"), uuid())
+        val da = send(sr, oneSale("GUL2-012", 330, Line(c10, 3), "sr1001-${ymd()}-060"), uuid())
         note("same memo_no under a new client_uuid", ackOf(da))
-        hop("the same memo_no is never stored twice", "rows with memo_no 060" to sqlLong("SELECT count(*) FROM app.memo WHERE memo_no = 'sr1001-261024-060' AND business_date = DATE '$day'"), "expected" to 1L)
+        hop("the same memo_no is never stored twice", "rows with memo_no 060" to sqlLong("SELECT count(*) FROM app.memo WHERE memo_no = 'sr1001-${ymd()}-060' AND business_date = DATE '$day'"), "expected" to 1L)
         // (d) a wrong pack size: a 20s SKU sold as packs of 10
-        val wa = send(sr, oneSale("GUL2-013", 360, Line(c20, 2), "sr1001-261024-062", packFactorOverride = 10), uuid())
+        val wa = send(sr, oneSale("GUL2-013", 360, Line(c20, 2), "sr1001-${ymd()}-062", packFactorOverride = 10), uuid())
         note("2 packets of a 20s SKU sent with pack_factor 10", "memo ${ackOf(wa)}; line ${ackOf(wa, "memo_line")}")
         hop("a pack_factor that differs from the SKU's base_per_pack is refused (docs/34 s4.2: re-checked on the server)", "line" to ackOf(wa, "memo_line"), "expected" to "rejected qty_invalid", hard = false)
     }

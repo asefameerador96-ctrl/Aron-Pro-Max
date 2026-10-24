@@ -1,22 +1,24 @@
 // Route monthly targets (D-TARGET-MIN-01): sheet parsing, the validation report, the proxy rules and the preview/commit flow.
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { readSheet } from "read-excel-file/node";
 import writeExcelFile from "write-excel-file/node";
 import { monthOf, MAX_TARGET_ROWS, parseTargetSheet, qtyOf, routeTargetRules, templateCells } from "@/lib/admin/route-targets";
-import { businessDate } from "@/lib/i18n";
 import { OPS } from "@/lib/admin/ops";
 import { madmin, op, setupMock, support } from "./helpers/harness";
+
+// D-WEB-TEST-CLOCK-01 (after D-TEST-DATE-PIN-01): a fixed instant inside one Dhaka business day (15:00), so a run that crosses 18:00Z cannot see two days.
+beforeEach(() => {
+  vi.setSystemTime(new Date("2026-10-24T09:00:00Z"));
+});
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 const h = setupMock();
 const CUR = "2026-10";
 const REASON = "Monthly targets of the sales plan for November";
 const BATCH = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
-const monthPlus = (n: number) => {
-  const d = new Date(Date.parse(`${businessDate().slice(0, 7)}-01T00:00:00Z`));
-  d.setUTCMonth(d.getUTCMonth() + n);
-  return d.toISOString().slice(0, 7);
-};
-const NEXT = monthPlus(2); // tests must use relative dates: past months are refused
+const NEXT = "2026-12"; // two months after the pinned October 2026 (past months are refused); fixed so collection and test see the same month
 const HEAD = ["route_code", "sku_code", "month", "quantity_base"];
 
 describe("parseTargetSheet", () => {
