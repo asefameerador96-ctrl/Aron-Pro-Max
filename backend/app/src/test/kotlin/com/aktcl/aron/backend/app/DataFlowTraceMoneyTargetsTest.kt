@@ -11,7 +11,7 @@ import kotlin.test.Test
 import kotlin.test.assertTrue
 
 /**
- * Two readings the Saturday trace does not reach (docs/24 s7.3 and s7.4, D-TARGET-MIN-01):
+ * Two readings the GUL-SR-2 trace does not reach (docs/24 s7.3 and s7.4, D-TARGET-MIN-01):
  *  1. the rounding branches: SKUs priced per more than one base unit (`per_base_qty` 2 and 3, so a line divides half-up, including an exact
  *     tie), memos whose unrounded sum rounds down, up and on the .5 tie to the paisa, `round_adj_mtk` carried per memo; every figure from
  *     the phone to server_totals and the warehouse must equal the device;
@@ -74,11 +74,16 @@ class DataFlowTraceMoneyTargetsTest : DataFlowTraceSupport() {
     @Test
     @Order(2)
     fun monthlyTargetsReadOverThreeMonths() {
-        h("2 Monthly targets over October, November (doubled) and December (lighters removed): daily target = month total / working days")
+        h("2 Monthly targets over the seeded months (the second doubled, the third without lighters): daily target = month total / working days")
         val routes = "(SELECT id FROM app.route WHERE code IN ('GUL-SR-2','GUL-SR-1','BAN-SR-11'))"
+        // D-TEST-DATE-PIN-01: the seeded target months from the seed's today on, and dates on or after that today (the assignments start then).
+        val today = java.time.LocalDate.parse(sql("SELECT app.dhaka_date(now())::text")!!)
+        val months = rows("SELECT DISTINCT month::text AS m FROM app.route_monthly_target WHERE route_id IN $routes AND (month + interval '1 month - 1 day')::date >= DATE '$today' ORDER BY 1")
+            .map { java.time.LocalDate.parse(it["m"].toString()) }
+        check(months.isNotEmpty()) { "the dev seed's monthly targets (db/seed/06, fixed months) all end before the seed's today $today" }
         db { hd ->
-            hd.execute("UPDATE app.route_monthly_target SET qty_base = qty_base * 2 WHERE month = DATE '2026-11-01' AND route_id IN $routes")
-            hd.execute("DELETE FROM app.route_monthly_target t USING app.sku s WHERE s.id = t.sku_id AND s.category_code = 'lighter' AND t.month = DATE '2026-12-01'")
+            months.getOrNull(1)?.let { hd.execute("UPDATE app.route_monthly_target SET qty_base = qty_base * 2 WHERE month = DATE '$it' AND route_id IN $routes") }
+            months.getOrNull(2)?.let { hd.execute("DELETE FROM app.route_monthly_target t USING app.sku s WHERE s.id = t.sku_id AND s.category_code = 'lighter' AND t.month = DATE '$it'") }
         }
         val sup = login("superadmin1001", "web", null)
         fun workingDays(month: String): Long = sqlLong(
@@ -88,7 +93,7 @@ class DataFlowTraceMoneyTargetsTest : DataFlowTraceSupport() {
              WHERE (extract(isodow FROM g.d) <> 5 AND coalesce(c.kind, '') NOT IN ('holiday', 'emergency_off')) OR c.kind = 'makeup_day'
             """.trimIndent(),
         )
-        for ((month, dates) in listOf("2026-10" to listOf("2026-10-24", "2026-10-31"), "2026-11" to listOf("2026-11-01", "2026-11-14"), "2026-12" to listOf("2026-12-14"))) {
+        for ((month, dates) in months.map { m -> m.toString().take(7) to listOf(maxOf(m, today), m.plusMonths(1).minusDays(1)).distinct().map { it.toString() } }) {
             val wd = workingDays(month)
             val totals = rows("SELECT s.category_code AS cat, sum(t.qty_base) AS total, count(DISTINCT t.route_id) AS routes FROM app.route_monthly_target t JOIN app.sku s ON s.id = t.sku_id WHERE t.month = DATE '$month-01' AND t.route_id IN $routes GROUP BY 1")
                 .associate { it["cat"].toString() to ((it["total"] as Number).toLong() to (it["routes"] as Number).toInt()) }
