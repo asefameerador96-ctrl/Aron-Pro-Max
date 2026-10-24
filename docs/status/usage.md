@@ -712,3 +712,7 @@
 ### 21:35 UTC — train 35 pushed and git-verified; backend-core #17 archived
 - Integrator 20 pushed train 35 at 21:33 (INT c427d84227cc4168ee8549b628a14e4ad15422d0, ci 40134768409 #1565 running). Lead git check: both heads + prev contained; delta = union + train row (18 = 18); DECISIONS 65 (+D-WEB-TEST-CLOCK-01), 0 markers, 0 lost, 0 duplicates.
 - backend-core #17 READY TO RECYCLE with HANDOVER 0b6a206c (docs-only on INT c427d842: docs/status/backend-core.md); archived at ~400k. Its handover head is checked for the next train (36) when one forms. Active now: integrator 20, web-admin #8 (idle after train 35), android-print #5 (idle for the owner).
+
+### 22:14 UTC — train 35 LANDED; overnight posture
+- Train 35 lead-verified: ci 40134768409 (#1565) green 21:51 (Web ran incl. the 14 clock-pinned test files; backend/Android/Infra skipped, no such files); deploy 40136082673 (#270) green 21:51–22:04, SR slice smoke PASSED 1–10, health build c427d842. "train 35 landed" sent to web-admin #8 (idle). Thirteen trains landed today (23–35); INT c427d842; DECISIONS 65.
+- Overnight: integrator 20 (~225k) holds; web-admin #8 and android-print #5 idle; backend-core #17 archived (its handover 0b6a206c docs-only rides the next train); no candidate pending. Sweep ~2-hourly (00:30, 02:30, 04:30), lane check cron 22:46 …, morning report 06:30 UTC. Owner-side unchanged: printer test on build 1546, pack pictures.
