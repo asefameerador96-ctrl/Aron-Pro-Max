@@ -53,7 +53,7 @@ GET /v1/admin/users/{id}/scope -> gap: backend-admin
 GET /v1/app/home -> case TeamApiTest#appHomeGivesTheKpiStripAndTeamRowsOfTheCallersReach
 GET /v1/app/update-check -> exempt: the caller's own account, token or phone only; no geography rows
 GET /v1/config/delta -> gap: backend-admin
-GET /v1/dashboards/daily-tracking -> gap: backend-reports
+GET /v1/dashboards/daily-tracking -> case ScopeLeakAcrossEndpointsTest#aRouteOnlyTsoReadsTheZonesOfItsOwnRoutesOnly
 GET /v1/dashboards/geo-validation -> case GeoValidationTest#aZoneCallerSeesOnlyItsZone
 GET /v1/dashboards/flagged-memos -> case FlaggedMemosApiTest#aTsoSeesOnlyItsTerritoryAndADmoOnlyItsDivision
 GET /v1/dashboards/login-submit -> case OpsApiTest#v12AdditionsAreScopedAndConsistent
@@ -62,7 +62,7 @@ GET /v1/dashboards/national/filter-options -> case NationalDashboardApiTest#ever
 GET /v1/dashboards/national/freshness -> exempt: table names and times only, no geography rows
 GET /v1/dashboards/route-map/{route_id} -> case NationalDashboardApiTest#mapPagesAnswerAndAZoneCallerCannotOpenAnotherZonesRoute
 GET /v1/dashboards/sale-position/{outlet_id} -> case NationalDashboardApiTest#mapPagesAnswerAndAZoneCallerCannotOpenAnotherZonesRoute
-GET /v1/dashboards/summary -> gap: backend-reports
+GET /v1/dashboards/summary -> case ScopeLeakAcrossEndpointsTest#aHouseScopedTsoReadsItsOwnHouseByDefaultAndNeverTheSiblingHouse
 GET /v1/dashboards/sync-health -> case OpsApiTest#checker_syncHealthCountsOnlyRowsInsideTheViewersReach
 GET /v1/day/final-submit/preview -> case DayApiTest#zoneDayOutsideReachAndFieldRolesAreRefused
 GET /v1/feedback -> case FeedbackTest#randomisedListsNeverLeakFeedbackOutsideTheCallersReach

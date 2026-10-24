@@ -783,6 +783,8 @@ Reach is computed on the server from the user's role, `user_scope` (effective-da
 | `SUPPORT` | national read of users, devices and sync health; credential and device actions; no business edits |
 | `ADMIN`, `SUPERADMIN` | national |
 
+Dashboard default node (D-DASH-TSO-HOUSE-SCOPE-01): a node-scoped dashboard read without `level` and `node_id` (`GET /v1/dashboards/summary` and the other dashboards with those selectors) shows the caller's top reach node, which may be a `house` (the zones under it; an explicit `level=house` stays 400 `ERR_VALIDATION`). A caller with route assignments and no scope node (a route-only TSO) gets the zones whose every route is assigned to them on the business date, the same assignments that give `GET /v1/memos` its reach; a zone held only in part stays out, because its zone figures would show its other routes, and with none left the read is 403. An explicit `node_id` keeps the reach check: a node with a zone outside the reach is 403.
+
 ### 8.5 Roles and permissions
 
 `Role` = `SR`, `AMO`, `TSO`, `DMO`, `WM`, `TOP`, `ANALYST`, `SUPPORT`, `ADMIN`, `SUPERADMIN` (one role per user; `TOP` and `SUPPORT` added by D24-21). Web roles of `docs/23` Q6 map to WM, DMO, TSO, ADMIN, SUPERADMIN, ANALYST. R = read in reach, W = write in reach, A = approve, — = none.
