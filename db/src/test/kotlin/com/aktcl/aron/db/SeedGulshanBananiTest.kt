@@ -82,7 +82,7 @@ class SeedGulshanBananiTest {
     fun targetsAndTheCalendarFollowTheSeedsToday() = dev.connect().use { c ->
         // D-DB-SEED-ROLLING-01: today's month and the next two, never fixed months.
         val months = c.scalar("SELECT string_agg(to_char(date_trunc('month', app.dhaka_date(now())) + k * interval '1 month', 'YYYY-MM-DD'), ',' ORDER BY k) FROM generate_series(0, 2) k")
-        assertEquals(months, c.scalar("SELECT string_agg(DISTINCT month::text, ',') FROM app.route_monthly_target"))
+        assertEquals(months, c.scalar("SELECT string_agg(DISTINCT month::text, ',' ORDER BY month::text) FROM app.route_monthly_target"))
         assertEquals(months, c.scalar("SELECT string_agg(month::text, ',' ORDER BY month) FROM app.route_target_batch b JOIN LATERAL (SELECT DISTINCT month FROM app.route_monthly_target t WHERE t.batch_uuid = b.batch_uuid) m ON true"))
         // Per route and month: about 200,000 cigarette sticks, 30,000 bidi sticks, 500 lighters and 300 dozen matches, in whole packs.
         val first = c.column("SELECT s.category_code || '=' || sum(t.qty_base) FROM app.route_monthly_target t JOIN app.sku s ON s.id = t.sku_id JOIN app.route r ON r.id = t.route_id WHERE r.code = 'GUL-SR-2' AND t.month = date_trunc('month', app.dhaka_date(now()))::date GROUP BY s.category_code ORDER BY s.category_code")
@@ -102,11 +102,16 @@ class SeedGulshanBananiTest {
             c.scalar("SELECT string_agg(m || '=' || (SELECT count(*) FROM generate_series(m, (m + interval '1 month - 1 day')::date, interval '1 day') g(d) WHERE EXISTS (SELECT 1 FROM app.calendar_holiday h WHERE h.date = g.d::date AND h.scope_type = 'global' AND h.selling_day AND h.revoked_at IS NULL) OR (extract(isodow FROM g.d) <> 5 AND NOT EXISTS (SELECT 1 FROM app.calendar_holiday h WHERE h.date = g.d::date AND h.scope_type = 'global' AND NOT h.selling_day AND h.revoked_at IS NULL))), ',' ORDER BY m) FROM (SELECT (date_trunc('month', app.dhaka_date(now())) + k * interval '1 month')::date AS m FROM generate_series(0, 2) k) t"),
             c.scalar("SELECT string_agg(month || '=' || working_days, ',' ORDER BY month) FROM dw.v_calendar_month WHERE month >= date_trunc('month', app.dhaka_date(now()))::date AND month < (date_trunc('month', app.dhaka_date(now())) + interval '3 months')::date"),
         )
+        // Pinned where the window holds them (Durga Puja on 2026-10-21; Victory Day 2026-12-16; Christmas 2026-12-25 is a Friday).
+        val pinned = mapOf("2026-10-01" to "25", "2026-11-01" to "26", "2026-12-01" to "26")
+        for (m in months!!.split(',').filter { it in pinned }) {
+            assertEquals(pinned[m], c.scalar("SELECT working_days FROM dw.v_calendar_month WHERE month = DATE '$m'"), m)
+        }
     }
 
     @Test
     fun aSecondDevRunChangesNothing() {
-        fun count(c: Connection) = c.scalar("SELECT (SELECT count(*) FROM app.outlet) || '|' || (SELECT count(*) FROM app.route_assignment) || '|' || (SELECT count(*) FROM app.route_monthly_target) || '|' || (SELECT count(*) FROM app.user_scope) || '|' || (SELECT count(*) FROM app.calendar_holiday)")
+        fun count(c: Connection) = c.scalar("SELECT (SELECT count(*) FROM app.outlet) || '|' || (SELECT count(*) FROM app.route_assignment) || '|' || (SELECT count(*) FROM app.route_monthly_target) || '|' || (SELECT count(*) FROM app.route_target_batch) || '|' || (SELECT count(*) FROM app.user_scope) || '|' || (SELECT count(*) FROM app.calendar_holiday)")
         dev.connect().use { c ->
             val before = count(c)
             loadDevProfile(c)
