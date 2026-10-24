@@ -623,3 +623,6 @@
 ### 13:53 UTC — train 30 pushed, lead git verification PASSED
 - Integrator 20 pushed INT ea44112ef68e05f71cbf16c9c0e37a4208efac02 at 13:49 (ci run 40099770707 = #1546, in progress). Lead check by git: all four heads and prev INT 3289eeca contained; INT delta = union of the head deltas + docs/status/train.md (63 = 63 files, no extra, none missing); DECISIONS 52 `^- **D-` lines (48 + android-tso 1 + lead docs 2 + db 1), 0 markers, 0 prev lines lost, 0 exact duplicate lines; the one repeated id (D-SALE-ZERO-PRICE-01 ruling + its server-block confirmation) is pre-existing and intended. No generated file in the delta. Awaiting CI (signed APK = run number 1546) and the deploy (V0112/V0113 + smoke).
 - Train 31 staged: lead CI 9ed6e40795164952ee808e27f8eded5468ec3699 (5 files), android-print docs-only 346d604f5d933386e8872f3c9216a19308a14721 (DECISIONS +1 D-PRINT-07, docs/status/android-print.md), no file overlap; lead docs to follow after an INT merge.
+
+### 14:07 UTC — android-print #4 archived
+- android-print #4 (Opus, ~665k) sent its candidate line (72ff0a37: every CI job area RAN green on #1542; release signing/dependency review/dictionary publish skipped by design on a lane ref) and READY TO RECYCLE at 14:06; archived 14:07. Its code is aboard train 30, its docs-only top 346d604f rides train 31; android-print #5 stays live for the owner's device result.
