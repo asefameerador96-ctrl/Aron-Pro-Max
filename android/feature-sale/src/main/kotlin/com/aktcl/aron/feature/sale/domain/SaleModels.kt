@@ -35,6 +35,12 @@ data class SaleSku(
     /** Price of one entered unit (the packet price), exact in milli-taka; null only when the bundle price is not a whole multiple. */
     val entryPriceMtk: Long? get() = EntryUnits.entryPriceMtk(entry, unitPriceMtk, pricePerQty.toLong())
 
+    /**
+     * D-SALE-ZERO-PRICE-01: a SKU without a positive unit price for the outlet's price type is never offered on the Sale screen and so
+     * can never become a sale line. The Stock screen still lists it (it reads the stock tracker, not the sale catalog).
+     */
+    val isOfferable: Boolean get() = unitPriceMtk > 0
+
     /** Wire label key (`packet`, `box`, `dozen`, `stick`, `piece`) of the entry unit, for the string tables. */
     val entryLabelKey: String get() = EntryUnits.labelKey(categoryCode, entry.unit)
 

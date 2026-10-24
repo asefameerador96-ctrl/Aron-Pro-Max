@@ -30,7 +30,7 @@ class RoomSaleReads(private val db: AronDatabase, private val reference: Referen
     private val dao get() = db.captureDao()
     private val store = RoomMemoStore(db)
 
-    /** Priced SKUs of [priceType] on [date]; current stock = issued minus sold on live memos, null when the SKU has no stock row. */
+    /** SKUs with a positive price of [priceType] on [date]; current stock = issued minus sold on live memos, null when the SKU has no stock row. */
     suspend fun catalog(date: String, priceType: String): List<SaleSku> {
         val stock = StockTracker.of(db, date)
         return reference.skus().mapNotNull { s ->
@@ -40,7 +40,7 @@ class RoomSaleReads(private val db: AronDatabase, private val reference: Referen
                 packFactor = s.basePerPack, unitPriceMtk = p.amountMtk, pricePerQty = p.perBaseQty, priceValidFrom = p.validFrom, entryUnitDefault = s.entryUnitDefault,
                 stockBase = stock[s.skuId]?.takeIf { it.hasStockRow }?.current,
             )
-        }
+        }.filter { it.isOfferable } // D-SALE-ZERO-PRICE-01: a zero price is never offered on Sale (Stock still shows the SKU)
     }
 
     /** Today's summary from stored memo rows and the stock tracker (never from the screen). */
