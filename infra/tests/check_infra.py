@@ -732,9 +732,12 @@ class Workflows(unittest.TestCase):
     def test_ci_skips_superseded_pending_runs_but_never_a_deploy(self):
         # Lead decision 2026-10-07: one ci run per ref (the integration branch is linear; the newer head contains every
         # older commit and compares with the last green head). The deploy is never cancelled mid-flight.
+        # 2026-10-24 (repository private, docs/30 s3a): a lane push also cancels its branch's older running run; a push to
+        # main or the integration branch and a manual dispatch never cancel.
         c = self.text("ci.yml")
-        self.assertIn("group: ci-${{ github.workflow }}-${{ github.ref }}\n  cancel-in-progress: ${{ github.event_name == 'pull_request' }}", c,
-                      "a running push run always finishes; only an older pending run is replaced")
+        self.assertIn("group: ci-${{ github.workflow }}-${{ github.ref }}\n  cancel-in-progress: ${{ github.event_name == 'pull_request' || "
+                      "(github.event_name == 'push' && github.ref != 'refs/heads/main' && github.ref != 'refs/heads/" + INTEGRATION_BRANCH + "') }}", c,
+                      "a running push run on main or the integration branch always finishes; pull requests and lane pushes cancel their older run")
         self.assertIn("status=success&per_page=1", c, "the changes job compares with the last green head")
         d = self.text("deploy.yml")
         self.assertEqual(d.count("cancel-in-progress: false"), 1)
@@ -832,6 +835,23 @@ class Workflows(unittest.TestCase):
         self.assertIn("--no-build-cache", q, "CodeQL must see a real Kotlin compile")
         for app in ("app-sr", "app-amo", "app-tso"):
             self.assertIn(f":android:{app}:compileDebugKotlin", q)
+
+    def test_codeql_is_skipped_on_the_private_repository(self):
+        # 2026-10-24 (docs/30 s3a): CodeQL needs GitHub Advanced Security on a private repository. The visibility comes
+        # from the API because a scheduled run has no event payload; the schedule stays so it resumes once public.
+        q = self.text("codeql.yml")
+        self.assertIn('    - cron: "17 21 * * *"', q, "the nightly schedule is kept")
+        jobs = q[q.index("\njobs:"):]
+        self.assertEqual(re.findall(r"(?m)^  ([a-z][a-z0-9_-]*):$", jobs), ["visibility", "analyze"])
+        vis = jobs[jobs.index("\n  visibility:"):jobs.index("\n  analyze:")]
+        self.assertNotIn("\n    if:", vis, "the visibility check runs on every event")
+        self.assertIn("gh api \"repos/${GITHUB_REPOSITORY}\" --jq '.private'", vis)
+        self.assertIn("true|false) ;;", vis, "an unreadable visibility fails the run instead of skipping silently")
+        self.assertIn("private: ${{ steps.repo.outputs.private }}", vis)
+        analyze = jobs[jobs.index("\n  analyze:"):]
+        self.assertIn("    needs: visibility\n", analyze)
+        self.assertIn("    if: ${{ needs.visibility.outputs.private == 'false' }}\n", analyze)
+        self.assertNotIn("github.event.repository.private", q, "empty on a scheduled run")
 
     def test_apks_are_uploaded_on_every_successful_android_run(self):
         c = self.text("ci.yml")
@@ -1045,7 +1065,8 @@ class SupplyChainGates(unittest.TestCase):
                        'tools/ci/semgrep.sh "${base}"', 'base="$(git merge-base "origin/${INTEGRATION_BRANCH}" "${GITHUB_SHA}"', "tools/ci/install-scripts-check.py web/package-lock.json", '[ "${GITHUB_EVENT_NAME}" = push ] && [ "${GITHUB_REF}" != "refs/heads/main" ]',
                        "actions/dependency-review-action@", "fail-on-severity: high"):
             self.assertIn(needle, gates)
-        self.assertIn("if: github.event_name == 'pull_request'", gates[gates.index("Dependency review"):])
+        self.assertIn("if: github.event_name == 'pull_request' && !github.event.repository.private", gates[gates.index("Dependency review"):],
+                      "dependency review on pull requests; skipped on the private repository (needs GitHub Advanced Security)")
         web = c[c.index("\n  web:"):c.index("\n  images:")]
         self.assertIn("npm audit --omit=dev --audit-level=high", web)
         images = c[c.index("\n  images:"):c.index("\n  infra:")]
