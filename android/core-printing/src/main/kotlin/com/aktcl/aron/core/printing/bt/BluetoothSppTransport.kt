@@ -76,19 +76,39 @@ class BluetoothSppTransport(
 
     override suspend fun write(bytes: ByteArray) = withContext(Dispatchers.IO) {
         val s = socket ?: throw IOException("not connected")
-        s.output.write(bytes)
-        s.output.flush()
+        asIo {
+            s.output.write(bytes)
+            s.output.flush()
+        }
     }
 
     override suspend fun read(): Int {
         val s = socket ?: throw IOException("not connected")
-        return runInterruptible(Dispatchers.IO) { s.input.read() }
+        return runInterruptible(Dispatchers.IO) { asIo { s.input.read() } }
     }
 
     override fun close() {
         val s = socket
         socket = null
-        try { s?.close() } catch (_: IOException) {}
+        // a close racing a read or write on some OEM stacks throws more than IOException; the link is gone either way
+        try { s?.close() } catch (_: Throwable) {}
+    }
+
+    /**
+     * Stream calls on a socket closed under them (our own close, the write watchdog, the printer switched off) throw an
+     * IOException on AOSP but a NullPointerException or IllegalStateException on some OEM stacks (owner P0 2026-10-24):
+     * every such failure is the link going away, so callers see one kind of error.
+     */
+    private inline fun <T> asIo(block: () -> T): T = try {
+        block()
+    } catch (e: IOException) {
+        throw e
+    } catch (e: SecurityException) {
+        throw e
+    } catch (e: kotlinx.coroutines.CancellationException) {
+        throw e
+    } catch (e: RuntimeException) {
+        throw IOException("${e.javaClass.simpleName}: ${e.message}", e)
     }
 
     companion object {

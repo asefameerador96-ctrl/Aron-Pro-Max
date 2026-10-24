@@ -69,6 +69,12 @@
     <string name="ui_print_failed">Not printed. The sale is saved and can be printed later.</string>
     <string name="ui_print_retry">Retry</string>
     <string name="ui_print_later">Print later</string>
+    <string name="ui_print_failed_doc">Not printed. It can be printed again later.</string>
+    <string name="ui_print_why_no_printer">No printer chosen. Tap the printer icon at the top to choose one.</string>
+    <string name="ui_print_why_unreachable">Could not connect to the printer. Check that it is on and nearby, then try again.</string>
+    <string name="ui_print_why_disconnected">The printer connection dropped. Keep the printer on and try again.</string>
+    <string name="ui_print_why_paper_out">The printer is out of paper. Change the roll and try again.</string>
+    <string name="ui_print_why_internal">The app could not prepare the paper. Settings → Printer diagnostics → Share report.</string>
     <string name="ui_print_limit_reached">No more reprints allowed (limit reached)</string>
     <string name="ui_print_too_long">This document is too long to print</string>
     <string name="ui_sale_save_failed">The sale could not be saved. Please try again.</string>

@@ -37,6 +37,7 @@ class AronAMOApplication : Application(), Configuration.Provider {
         )
         super.onCreate()
         errorReporter.start(this, CoroutineScope(SupervisorJob() + Dispatchers.Default)) // F-SYS-032, first: crashes from here on are kept
+        com.aktcl.aron.core.printing.diag.CrashLog.install(this, BuildConfig.VERSION_NAME + "+" + BuildConfig.VERSION_CODE) // owner P0 2026-10-24: last crash in Settings → Printer → Export
         ConnectivityFlush.register(this, connectivityFlush) // T3: flush on reconnect while the process lives
         // DPC: trusted clock and calendar, re-apply the stored policy; integrity evidence after each online login.
         // Off the main thread; nothing here touches the network or waits for it.

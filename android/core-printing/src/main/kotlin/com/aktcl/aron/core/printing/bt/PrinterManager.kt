@@ -2,7 +2,9 @@ package com.aktcl.aron.core.printing.bt
 
 import com.aktcl.aron.core.printing.escpos.EscPos
 import com.aktcl.aron.core.printing.raster.MonoBitmap
+import com.aktcl.aron.core.printing.diag.CrashLog
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
@@ -14,6 +16,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.plus
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeoutOrNull
@@ -55,7 +58,11 @@ sealed interface PrinterState {
 /** One document to print. [id] makes printing idempotent: a job already printed is never printed again. */
 class PrintJob(val id: String, val bitmap: MonoBitmap)
 
-enum class PrintFailure { NO_PRINTER, UNREACHABLE, DISCONNECTED, PAPER_OUT }
+enum class PrintFailure {
+    NO_PRINTER, UNREACHABLE, DISCONNECTED, PAPER_OUT,
+    /** Not the printer: the app could not prepare or record the paper (rendering, storage). Kept in [com.aktcl.aron.core.printing.diag.CrashLog]. */
+    INTERNAL,
+}
 
 sealed interface PrintOutcome {
     data object Printed : PrintOutcome
@@ -105,7 +112,7 @@ data class PrintPacing(
 class PrinterManager(
     private val factory: PrinterTransportFactory,
     private val store: SavedPrinterStore,
-    private val scope: CoroutineScope,
+    scope: CoroutineScope,
     private val pacing: PrintPacing = PrintPacing(),
     private val idleDisconnectMs: Long = 120_000,
     private val nowMs: () -> Long = { System.nanoTime() / 1_000_000 },
@@ -114,6 +121,12 @@ class PrinterManager(
     /** The image mode a newly picked printer starts with, by its name ([PrinterDefaults]). */
     private val defaultMode: (String?) -> ImageMode = PrinterDefaults::modeFor,
 ) {
+    /**
+     * The link's own coroutines (reader, write watchdog, idle timer, reconnects) run here. The handler is the last line:
+     * whatever an OEM Bluetooth stack throws on those threads is logged, never the end of the process (owner P0 2026-10-24).
+     */
+    private val scope: CoroutineScope = scope + CoroutineExceptionHandler { _, e -> CrashLog.handled("printer-link", e) }
+
     private val _state = MutableStateFlow<PrinterState>(if (store.load() == null) PrinterState.NoPrinter else PrinterState.Off)
     val state: StateFlow<PrinterState> = _state.asStateFlow()
 
@@ -208,18 +221,25 @@ class PrinterManager(
         if (transport != null && !linkLost) return true
         closeLink()
         _state.value = PrinterState.Connecting
-        val t = factory.open(saved.address)
+        var opening: PrinterTransport? = null
         val ok = try {
-            withTimeoutOrNull(pacing.connectTimeoutMs) { t.connect(); true } ?: false
+            val opened = factory.open(saved.address)
+            opening = opened
+            withTimeoutOrNull(pacing.connectTimeoutMs) { opened.connect(); true } ?: false
         } catch (e: CancellationException) {
-            t.close(); throw e
+            opening?.let(::closeQuietly); throw e
         } catch (_: IOException) {
             false
         } catch (_: SecurityException) {
             false // Bluetooth permission withdrawn: same as unreachable for the seller
+        } catch (e: Throwable) {
+            // an OEM stack's RuntimeException from open or connect: unreachable for the seller, kept for the export
+            CrashLog.handled("connect", e)
+            false
         }
-        if (!ok) {
-            t.close()
+        val t = opening
+        if (!ok || t == null) {
+            opening?.let(::closeQuietly)
             _state.value = PrinterState.Off
             return false
         }
@@ -235,8 +255,13 @@ class PrinterManager(
                     if (b < 0) break
                     bytes.trySend(b)
                 }
+            } catch (e: CancellationException) {
+                throw e // closed by us (closeLink): not a drop
             } catch (_: IOException) {
             } catch (_: SecurityException) {
+            } catch (e: Throwable) {
+                // some stacks throw a RuntimeException (NPE) from read on a socket closed under it: a drop like any other
+                CrashLog.handled("reader", e)
             }
             onLinkDropped(t)
         }
@@ -289,8 +314,13 @@ class PrinterManager(
         transport = null
         reader?.cancel()
         reader = null
-        t?.close()
+        t?.let(::closeQuietly)
         statusBytes.close()
+    }
+
+    /** A close never throws out of here: the link is going away either way. */
+    private fun closeQuietly(t: PrinterTransport) {
+        try { t.close() } catch (_: Throwable) {}
     }
 
     /**
@@ -314,8 +344,9 @@ class PrinterManager(
             _state.value = PrinterState.Off
             autoReconnect()
             throw e
-        } catch (_: Exception) {
+        } catch (e: Throwable) {
             // IOException normally; SecurityException; some OEM streams throw a RuntimeException after a close race
+            if (e !is IOException) CrashLog.handled("print-send", e)
             if (inkStarted) PrintOutcome.Unconfirmed() else PrintOutcome.Failed(PrintFailure.DISCONNECTED)
         }
         when (outcome) {
@@ -391,7 +422,7 @@ class PrinterManager(
         val watchdog = scope.launch {
             delay(pacing.writeTimeoutMs.coerceAtLeast(500))
             fired.set(true)
-            t.close() // unblocks the stuck write; the reader then reports the drop
+            closeQuietly(t) // unblocks the stuck write; the reader then reports the drop
         }
         try {
             t.write(bytes)
@@ -454,7 +485,7 @@ class PrinterManager(
                 }
                 // If this write breaks the link, assume none of it arrived: the printer may still want the rest.
                 if (!inkStarted && (bitImage || (raster && !(padding && index == 0)))) {
-                    val marked = try { onInkStarted() } catch (e: CancellationException) { throw e } catch (_: Exception) { false }
+                    val marked = try { onInkStarted() } catch (e: CancellationException) { throw e } catch (_: Throwable) { false }
                     // nothing of this job is on paper yet: unmarked, it stops here rather than risk a "failed" record later
                     if (!marked) return PrintOutcome.Failed(PrintFailure.DISCONNECTED)
                     inkStarted = true
@@ -485,7 +516,7 @@ class PrinterManager(
             PrintOutcome.Printed
         } catch (e: CancellationException) {
             throw e
-        } catch (_: Exception) {
+        } catch (_: Throwable) {
             if (inkStarted) PrintOutcome.Unconfirmed() else PrintOutcome.Failed(PrintFailure.DISCONNECTED)
         }
     }
