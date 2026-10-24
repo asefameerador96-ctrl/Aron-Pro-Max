@@ -59,7 +59,7 @@ class CheckerF046Test {
         if (delayed) driver.setInitialDelayMet(info.id)
     }
     private fun oneTime(user: Long) = live(WorkManagerSyncScheduler.mainName(user)) + live(WorkManagerSyncScheduler.retryName(user)) +
-        live(WorkManagerSyncScheduler.nowName(user))
+        live(WorkManagerSyncScheduler.nowName(user)) + live(WorkManagerSyncScheduler.pendingName(user))
 
     /**
      * Two transport failures while the link flapped leave a 300 s backoff job under the main name. The link comes back:
@@ -86,7 +86,7 @@ class CheckerF046Test {
         scheduler.afterRun(7, report(SyncStop.RETRY_LATER, 3, retryAfterMs = 60_000), WorkManagerSyncScheduler.mainName(7))
         now = 30_000 // the phone rebooted
         scheduler.requestSync(7, SyncTrigger.WRITE_DEBOUNCE)
-        val delay = spec(live(WorkManagerSyncScheduler.mainName(7)).single()).initialDelay
+        val delay = spec(live(WorkManagerSyncScheduler.pendingName(7)).single()).initialDelay
         assertTrue("save debounce after reboot waits $delay ms", delay <= 60_000)
     }
 

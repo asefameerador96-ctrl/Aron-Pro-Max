@@ -22,6 +22,7 @@ export const nationalEn = {
   "nat.f.clear": "Clear selection",
   "nat.f.search": "Search",
   "nat.f.none_found": "Nothing found",
+  "dash.refreshed": "Updated {time}",
   "nat.last_updated": "Last updated {time}",
   "nat.till_time": "Live: figures are till {time}",
   "nat.final_day": "Final figures of the day",

@@ -71,10 +71,10 @@ describe("csv", () => {
 
 describe("auto refresh rule", () => {
   it("never faster than 60 s and never while hidden", () => {
-    expect(shouldRefresh(59_999, 0, true)).toBe(false);
-    expect(shouldRefresh(60_000, 0, true)).toBe(true);
+    expect(shouldRefresh(29_999, 0, true)).toBe(false);
+    expect(shouldRefresh(30_000, 0, true)).toBe(true);
     expect(shouldRefresh(10 * 60_000, 0, false)).toBe(false);
-    expect(shouldRefresh(30_000, 0, true, 1000)).toBe(false); // a shorter request is raised to 60 s
+    expect(shouldRefresh(20_000, 0, true, 1000)).toBe(false); // a shorter request is raised to 30 s
   });
 });
 

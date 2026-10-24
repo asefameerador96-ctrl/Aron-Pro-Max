@@ -42,8 +42,6 @@ jobs:
       - run: bash scripts/ci.sh install
       - run: bash scripts/ci.sh generate
       - name: next build
-        env:
-          NEXT_PUBLIC_MAPS_WEB_KEY: ${{ secrets.MAPS_WEB_KEY }}
         run: bash scripts/ci.sh build
       - name: Playwright version (browser cache key)
         id: pw
