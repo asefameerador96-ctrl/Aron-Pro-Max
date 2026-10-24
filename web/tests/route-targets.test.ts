@@ -1,11 +1,19 @@
 // Route monthly targets (D-TARGET-MIN-01): sheet parsing, the validation report, the proxy rules and the preview/commit flow.
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { readSheet } from "read-excel-file/node";
 import writeExcelFile from "write-excel-file/node";
 import { monthOf, MAX_TARGET_ROWS, parseTargetSheet, qtyOf, routeTargetRules, templateCells } from "@/lib/admin/route-targets";
 import { businessDate } from "@/lib/i18n";
 import { OPS } from "@/lib/admin/ops";
 import { madmin, op, setupMock, support } from "./helpers/harness";
+
+// D-WEB-TEST-CLOCK-01 (after D-TEST-DATE-PIN-01): a fixed instant inside one Dhaka business day (15:00), so a run that crosses 18:00Z cannot see two days.
+beforeEach(() => {
+  vi.setSystemTime(new Date("2026-10-24T09:00:00Z"));
+});
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 const h = setupMock();
 const CUR = "2026-10";

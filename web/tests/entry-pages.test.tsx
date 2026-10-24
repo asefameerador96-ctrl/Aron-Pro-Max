@@ -1,5 +1,5 @@
 // F-WEB-050 Web Entry, F-WEB-052 / F-WEB-060 QC entry, F-ADM-024 Data Entry and paper backfill.
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { POST as teamPost } from "@/app/api/bff/team-op/route";
 import { DataEntryView } from "@/components/admin/config/data-entry-view";
 import { QcEntryView } from "@/components/admin/config/qc-entry-view";
@@ -10,6 +10,14 @@ import type { CodeItem, Sku, WebEntryRouteDay } from "@/lib/admin/types";
 import { buildEntry, saleOf } from "@/lib/admin/web-entry";
 import { admin, op, req, setupMock, support, tso } from "./helpers/harness";
 import { html, text } from "./helpers/render";
+
+// D-WEB-TEST-CLOCK-01 (after D-TEST-DATE-PIN-01): a fixed instant inside one Dhaka business day (15:00), so a run that crosses 18:00Z cannot see two days.
+beforeEach(() => {
+  vi.setSystemTime(new Date("2026-10-24T09:00:00Z"));
+});
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh() {}, push() {} }) }));
 const h = setupMock();

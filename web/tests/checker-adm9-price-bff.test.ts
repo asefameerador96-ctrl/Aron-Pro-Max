@@ -1,10 +1,18 @@
 // Checker ADM-9 (F-ADM-005, T1 money rails): the price publish path through the BFF and the contract mock.
 // A failing test here is a confirmed defect against the contract (PricePublishRequest, SkuPrice, createPrices) or docs/24 s7.
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { POST as opPost } from "@/app/api/bff/master-op/route";
 import { mtkToTaka, parseTakaToMtk } from "@/lib/admin/price-money";
 import { businessDate } from "@/lib/i18n";
 import { req, setupMock } from "./helpers/bff";
+
+// D-WEB-TEST-CLOCK-01 (after D-TEST-DATE-PIN-01): a fixed instant inside one Dhaka business day (15:00), so a run that crosses 18:00Z cannot see two days.
+beforeEach(() => {
+  vi.setSystemTime(new Date("2026-10-24T09:00:00Z"));
+});
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 const { mock, signIn, token } = setupMock();
 const REASON = "Price revision for the October list";

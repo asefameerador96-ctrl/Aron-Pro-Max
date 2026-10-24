@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { AddressInfo } from "node:net";
 import { NextRequest } from "next/server";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { SESSION_COOKIE, SESSION_PURPOSE } from "@/lib/auth/cookies";
 import { seal } from "@/lib/auth/seal";
 import { MapsGuard, capFromEnv } from "@/lib/maps/guard";
@@ -34,6 +34,7 @@ describe("N-047 BFF", () => {
   const mock = createMock();
   let cookie = "";
   beforeAll(async () => {
+    vi.setSystemTime(new Date("2026-10-24T09:00:00Z")); // 15:00 Dhaka: one business day, never near the 18:00Z day change (D-WEB-TEST-CLOCK-01)
     await new Promise<void>((r) => mock.server.listen(0, "127.0.0.1", r));
     process.env.ARON_API_BASE_URL = `http://127.0.0.1:${(mock.server.address() as AddressInfo).port}`;
     process.env.ARON_COOKIE_INSECURE = "1";
@@ -42,7 +43,10 @@ describe("N-047 BFF", () => {
     const login = (await (await fetch(`${process.env.ARON_API_BASE_URL}/v1/auth/login`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ username: "tso334", password: "tso-pass-1", client: "web" }) })).json()) as { access_token: string; user: never; scope: never };
     cookie = `${SESSION_COOKIE}=${seal({ at: login.access_token, atExp: Date.now() + 600_000, user: login.user, scope: login.scope }, SESSION_PURPOSE, 600)}`;
   });
-  afterAll(() => new Promise<void>((r) => mock.server.close(() => r())));
+  afterAll(async () => {
+    vi.useRealTimers();
+    await new Promise<void>((r) => mock.server.close(() => r()));
+  });
 
   it("(holds) unauthenticated and cross-site callers get no key and do not consume the cap; the 429 body has no key", async () => {
     const { POST } = await import("@/app/api/bff/maps/load/route");
