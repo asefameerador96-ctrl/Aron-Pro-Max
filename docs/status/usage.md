@@ -615,3 +615,7 @@
 
 ### 13:33 UTC — owner: "public again"
 - Recorded D-REPO-PUBLIC-02 (reverses D-REPO-PRIVATE-01; rule 13 holds again: public until complete, private at go-live with the spending limit set first). Owner row L updated (loader preferred; committed pictures accepted on the owner's word). The CI-cost branch still rides train 31 (its private guards are no-ops now). docs/30 s3a's "made private" paragraph gets a one-sentence reversal note after train 31 lands (the paragraph lives on that branch; no cross-branch edit now).
+
+### 13:48 UTC — GO train 30 (android-tso 4a081302, android-print 72ff0a37 P0 fix, lead docs ae6056fd, db f7d8bb23)
+- android-print #1542 green on 72ff0a37 at 13:37 → checked + GO to integrator 20 at 13:48. Expected DECISIONS 52 (48 + android-tso 1 + db 1 + lead docs 2: D-REPO-PRIVATE-01, D-REPO-PUBLIC-02). Deploy runs (V0112/V0113 + smoke); CI signs the APK the owner tests (stock slip + sale memo).
+- Train 31 queue: lead CI-cost branch 9ed6e407 (ci #1544 green; concurrency cancel on lane refs, retention trims, dependency-review and CodeQL guards; lead read both diffs), android-print docs-only 346d604f (D-PRINT-07 bullet + handover), lead docs. backend-core's row 3 slice and web-admin's page come later (trains 32+).
