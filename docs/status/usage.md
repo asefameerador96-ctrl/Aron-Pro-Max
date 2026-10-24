@@ -654,3 +654,7 @@
 ### 16:12 UTC — sweep: waiting on backend-core's candidate
 - backend-core #16 (Opus, ~485k) pushed 0a2b606d at 14:54 (a92a1071 price_invalid for zero-priced lines after V0112 + flagged-memos endpoint files + HANDOVER 16 -> 17); its own CI check is set for 16:32, the candidate line + READY TO RECYCLE follow. Lead pre-gate by git: base ea44112e (train 30), delta inside backend/analytics, backend/sync, backend/app tests, docs/24, docs/status/backend-core.md, DECISIONS; no file overlap with web-admin's head. No nudge: the lane is on plan.
 - Train 32 ready except this head: web-admin b4307849 checked, db f8f39a50 checked (LAST), lead docs tip merged with INT 4319d1b0. Sweep re-armed 17:20 (the 16:46 lane check runs in between).
+
+### 16:47 UTC — GO train 32 (backend-core 0a2b606d, web-admin b4307849, lead docs e57f88de, db f8f39a50 LAST)
+- backend-core #16 candidate 0a2b606d checked (ci #1554 green on the sha, 8 jobs ran, Infra skipped with no infra file; Opus checker PASS 0 blocking; git gate passed earlier; DECISIONS +2). READY TO RECYCLE → archived at ~511k. Its three checker notes became D-DASH-TSO-HOUSE-SCOPE-01 (lead docs head in this train).
+- GO sent 16:47 to integrator 20; expected DECISIONS 57; deploy runs (new endpoint; smoke must PASS). After the landing: web-admin #8 (Sonnet: Flagged memos page against the real endpoint on dev) and backend-core #17 (Opus: house/route-only TSO dashboards) are created. Sweep re-armed 17:40.
