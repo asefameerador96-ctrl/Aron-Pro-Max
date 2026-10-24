@@ -46,7 +46,7 @@ infra/
 3. **Optional GitHub variables and secrets** (the deploy works without them): variable `ARON_BUDGET_AMOUNT` (monthly
    budget in the subscription's currency; default 800 dev, 7000 prod); variable `ARON_NAME_SUFFIX` (only to rebuild a
    deleted group within 90 days, see below); secret `FCM_SERVICE_ACCOUNT_JSON` (push stays off until it is set);
-   secret `MAPS_WEB_KEY` (web maps).
+   secret `MAPS_WEB_KEY` (web maps; set at run time as a secret on the web container app, never a build-arg).
 4. **Deploy.** Every push to `claude/wonderful-thompson-k6ejnf` that changes backend, db, shared, web or infra deploys
    automatically once CI is green. By hand: GitHub > Actions > **deploy** > Run workflow (branch
    `claude/wonderful-thompson-k6ejnf`). From a laptop after `az login`:

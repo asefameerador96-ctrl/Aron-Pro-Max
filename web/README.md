@@ -32,7 +32,7 @@ Mock users: `tso334/tso-pass-1` (TSO), `wm1/wm-pass-1`, `analyst1/analyst-pass-1
 | `ARON_API_BASE_URL` | origin of the API (paths already start with `/v1`); default is the mock |
 | `ARON_SESSION_SECRET` | 32+ characters sealing the session cookies; **required in production** (the server throws without it) |
 | `ARON_COOKIE_INSECURE=1` | drops `Secure` from cookies for plain-http localhost; never in production |
-| `NEXT_PUBLIC_MAPS_WEB_KEY` | Google Maps key (GitHub secret `MAPS_WEB_KEY`, build time). Empty = maps show a placeholder |
+| `MAPS_WEB_KEY` | Google Maps key, server side only (GitHub secret `MAPS_WEB_KEY` → web container app secret; served by `/api/bff/maps/load`). Empty = maps show a placeholder |
 | `PW_CHROMIUM_PATH` | optional path to a pre-installed Chromium for Playwright (sandbox only) |
 
 Nothing here needs a secret to build or test.

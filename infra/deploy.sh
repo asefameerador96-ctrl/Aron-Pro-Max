@@ -378,7 +378,7 @@ build_backend() {
 }
 build_web() {
   docker build --pull -q --provenance=false --sbom=false -f infra/docker/web.Dockerfile -t "${REGISTRY}/aron-web:${SHA}" \
-    --build-arg "NEXT_PUBLIC_MAPS_WEB_KEY=${MAPS_WEB_KEY:-}" --label "org.opencontainers.image.revision=${SHA}" web
+    --label "org.opencontainers.image.revision=${SHA}" web
 }
 az acr login --name "$REGISTRY_NAME"
 publish aron-backend build_backend; BACKEND_IMAGE="$IMAGE_REF"
@@ -625,6 +625,22 @@ API_HOST="$(out "$apps" apiHost)"
 WEB_DEPLOYED="$(out "$apps" webDeployed)"
 WEB_HOST="$(out "$apps" webHost)"
 api_mode_now="$(az containerapp show -g "$RG" -n "$api_name" --query properties.configuration.activeRevisionsMode -o tsv || true)"
+
+# Maps browser key (D-NIGHT-MAPS-01): a Container Apps secret + secret-backed env var on the web app, read at run time by
+# the capped BFF loader (/api/bff/maps/load); never a build-arg, so it is not inlined into client JS. The apps template
+# above rewrites the app, so this runs after every apps deployment. The value is never echoed.
+if [ "$WEB_DEPLOYED" = true ]; then
+  if [ -n "${MAPS_WEB_KEY:-}" ]; then
+    web_name="ca-aron-${ENV_NAME}-web"
+    az containerapp secret set -g "$RG" -n "$web_name" --secrets "maps-web-key=${MAPS_WEB_KEY}" -o none \
+      || die "cannot set the maps-web-key secret on $web_name"
+    az containerapp update -g "$RG" -n "$web_name" --set-env-vars "MAPS_WEB_KEY=secretref:maps-web-key" -o none \
+      || die "cannot set MAPS_WEB_KEY on $web_name"
+    note "MAPS_WEB_KEY set on $web_name (secret maps-web-key)"
+  else
+    note "MAPS_WEB_KEY absent: web maps show the no-key state"
+  fi
+fi
 
 if [ "$PRIVATE_LINK" = true ]; then
   expected=1; [ "$WEB_DEPLOYED" = true ] && expected=2

@@ -911,6 +911,17 @@ class DeploySafety(unittest.TestCase):
         self.assertIn("properties.trafficWeight > ", f, "the fallback serves traffic now")
         self.assertIn('then web_digest="$(digest_of aron-web "$SHA")"; fi', d, "a registry error stops a rollback")
 
+    def test_maps_key_is_a_runtime_secret_never_a_build_arg(self):
+        """D-NIGHT-MAPS-01: the key reaches the web app as a secret-backed env, never inlined into client JS."""
+        d = self.deploy()
+        self.assertNotIn("NEXT_PUBLIC_MAPS_WEB_KEY", d)
+        self.assertIn('--secrets "maps-web-key=${MAPS_WEB_KEY}"', d)
+        self.assertIn('--set-env-vars "MAPS_WEB_KEY=secretref:maps-web-key"', d)
+        self.assertIn("MAPS_WEB_KEY absent", d)
+        self.assertNotRegex(d, r"echo[^\n]*\$\{?MAPS_WEB_KEY")
+        for f in ("infra/docker/web.Dockerfile", ".github/workflows/ci.yml", ".github/workflows/web-snapshots.yml"):
+            self.assertNotIn("NEXT_PUBLIC_MAPS_WEB_KEY", (ROOT / f).read_text(encoding="utf-8"), f)
+
     def test_rollback_redeploys_an_existing_image_without_migrations(self):
         full = (ROOT / "infra" / "deploy.sh").read_text(encoding="utf-8")
         rb = full[full.index('if [ -n "$ROLLBACK_SHA" ]; then'):full.index("# Dhaka selling window")]
