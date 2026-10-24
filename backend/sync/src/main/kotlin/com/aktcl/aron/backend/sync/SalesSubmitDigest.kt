@@ -54,17 +54,20 @@ data class SalesSubmitDigestDto(
  * - `device`: the same user and date, only rows the calling phone uploaded ([deviceId] from the token's device proof);
  *   `received` is any outcome, `acknowledged` stored. Null for a caller without a phone (web).
  * - `rejected`: the user's rows of the date still not stored (registry `rejected`, `parked`, `quarantined`), newest first,
- *   at most [MAX_REJECTED]. `final`: `rejected`; a parked row past its TTL (`sync_rejected.finalised_at`); a quarantine
- *   item discarded with none open. `memo_no` is the row's own (`memo_no`, `against_memo_no`) or that of the memo it names
+ *   at most [MAX_REJECTED]. `final`: `rejected`; a parked row past its TTL (`parked_until` passed, or `finalised_at` set); a quarantine
+ *   item discarded with none open (payload_conflict copies left out). `memo_no` is the row's own (`memo_no`, `against_memo_no`) or that of the memo it names
  *   (stored memo, else the memo's own refused or held copy); `outlet_id` from the payload.
  * Never another user's rows: the user comes from the token only.
  */
-class SalesSubmitDigestService(private val db: Database) {
+class SalesSubmitDigestService(private val db: Database, private val clock: com.aktcl.aron.backend.platform.AronClock = com.aktcl.aron.backend.platform.AronClock.SYSTEM) {
     fun digest(userId: Long, deviceId: Long?, deviceUuid: String?, date: LocalDate): SalesSubmitDigestDto =
         db.jdbi.withHandle<SalesSubmitDigestDto, Exception> { h -> digest(h, userId, deviceId, deviceUuid, date) }
 
     fun digest(h: Handle, userId: Long, deviceId: Long?, deviceUuid: String?, date: LocalDate): SalesSubmitDigestDto {
-        val dev = deviceId?.takeIf { deviceUuid != null }
+        // The device half only for a device of this user whose uuid is the one given (both come from the token's proof).
+        val dev = if (deviceId == null || deviceUuid == null) null else h.createQuery(
+            "SELECT d.id FROM app.device d WHERE d.id = :id AND d.device_uuid = CAST(:du AS uuid) AND EXISTS (SELECT 1 FROM app.device_binding b WHERE b.device_id = d.id AND b.user_id = :u)",
+        ).bind("id", deviceId).bind("du", deviceUuid).bind("u", userId).mapTo(Long::class.java).findOne().orElse(null)
         val byType = h.createQuery(
             """
             SELECT record_type,
@@ -84,26 +87,28 @@ class SalesSubmitDigestService(private val db: Database) {
             """
             SELECT r.client_uuid::text AS cu, r.record_type, r.status, r.outcome_code, r.device_id, r.last_seen_at,
                    COALESCE(sr.payload, sq.payload) AS env,
-                   sr.finalised_at, sq.open_items, sq.discarded_items
+                   sr.finalised_at, sr.parked_until, sr.retryable, sq.open_items, sq.discarded_items
             FROM app.ingest_registry r
             LEFT JOIN LATERAL (
-                SELECT payload, finalised_at FROM app.sync_rejected x
+                SELECT payload, finalised_at, parked_until, retryable FROM app.sync_rejected x
                 WHERE x.client_uuid = r.client_uuid AND x.user_id = r.user_id AND x.stored_at IS NULL ORDER BY x.last_received_at DESC, x.id DESC LIMIT 1
             ) sr ON r.status IN ('rejected', 'parked')
             LEFT JOIN LATERAL (
                 SELECT (array_agg(payload ORDER BY received_at DESC, id DESC))[1] AS payload,
                        count(*) FILTER (WHERE status = 'open') AS open_items, count(*) FILTER (WHERE status = 'discarded') AS discarded_items
-                FROM app.sync_quarantine q WHERE q.client_uuid = r.client_uuid AND q.user_id = r.user_id
+                FROM app.sync_quarantine q WHERE q.client_uuid = r.client_uuid AND q.user_id = r.user_id AND q.code <> 'payload_conflict'
             ) sq ON r.status = 'quarantined'
             WHERE r.user_id = :u AND r.business_date = :d AND r.status IN ('rejected', 'parked', 'quarantined')
             ORDER BY r.last_seen_at DESC, r.client_uuid
             LIMIT :lim
             """.trimIndent(),
         ).bind("u", userId).bind("d", date).bind("lim", MAX_REJECTED + 1).map { rs, _ ->
+            val now = clock.now()
             val status = rs.getString("status")
             val final = when (status) {
                 "rejected" -> true
-                "parked" -> rs.getObject("finalised_at") != null
+                "parked" -> rs.getObject("finalised_at") != null || rs.getObject("retryable") == false ||
+                    rs.getObject("parked_until", OffsetDateTime::class.java)?.toInstant()?.let { !it.isAfter(now) } == true
                 else -> rs.getLong("open_items") == 0L && rs.getLong("discarded_items") > 0L
             }
             val env = rs.getString("env")?.let { runCatching { kotlinx.serialization.json.Json.parseToJsonElement(it) as? kotlinx.serialization.json.JsonObject }.getOrNull() }

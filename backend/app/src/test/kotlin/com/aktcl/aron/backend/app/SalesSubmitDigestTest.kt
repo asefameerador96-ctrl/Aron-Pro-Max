@@ -77,6 +77,11 @@ class SalesSubmitDigestTest : NightSyncHarness() {
         assertEquals("memo_line", rl.type); assertEquals(wrongNo, rl.memo_no); assertTrue(rl.final)
         val pm = byUuid.getValue(cu(parked[1]))
         assertEquals("parked", pm.status); assertEquals(false, pm.final, "a parked row is not final: it blocks Sales Submit until re-synced")
+        // Past its parked_until (cfg.sync.parked_ttl_days) the row is final: it never blocks the day for good.
+        val later = SalesSubmitDigestService(fresh.db, com.aktcl.aron.backend.platform.AronClock { clock.now().plus(java.time.Duration.ofDays(60)) })
+        assertEquals(true, later.digest(srId, devA, phoneA, date).rejected.single { it.client_uuid == cu(parked[1]) }.final)
+        // A device id and uuid that do not belong together (or to this user): no device half.
+        assertNull(digest.digest(srId, devA, "00000000-0000-4000-8000-0000000000ff", date).device_uuid)
         assertTrue(d.rejected.none { it.client_uuid in sale().map(::cu) })
         assertTrue(d.rejected.all { it.business_date == day })
         assertEquals(false, d.rejected_truncated)

@@ -712,12 +712,13 @@ class IngestService(
             .onFailure { log.error("day states failed batch_uuid=${ctx.batchUuid}", it) }
         // D-NIGHT-CHECKOUT-01: judged after the whole batch, so a Sales Submit sent with the check-out (either order) counts.
         val checkouts = recs.filter { r -> r.type == "attendance_event" && outcomes[r.index]?.status == "accepted" && (r.json["payload"] as? JsonObject)?.str("kind") == "check_out" }
-        if (checkouts.isNotEmpty()) runCatching { checkoutWithoutSubmit(ctx, checkouts) }.onFailure { log.error("checkout signal failed batch_uuid=${ctx.batchUuid}", it) }
+        if (checkouts.isNotEmpty()) checkoutWithoutSubmit(ctx, checkouts)
         return outcomes
     }
 
-    /** Cached database half of [checkoutRiskOn]: the risk_signal code constraint accepts the code (a db migration adds it). */
-    @Volatile private var checkoutCodeInDb: Boolean? = null
+    /** Cached database half of [checkoutRiskOn] once true; a false answer is asked again after a minute (the migration may land while running). */
+    @Volatile private var checkoutCodeInDb: Boolean = false
+    @Volatile private var checkoutCodeAskedAt: Instant = Instant.EPOCH
 
     /**
      * The CHECKOUT_WITHOUT_SUBMIT switch: on when the contract catalogue names the code (contract 1.9) and the database's
@@ -726,10 +727,17 @@ class IngestService(
     private fun checkoutRiskOn(): Boolean {
         checkoutRiskOverride?.let { return it }
         if (com.aktcl.aron.contract.RiskSignalCode.entries.none { it.wire == CHECKOUT_WITHOUT_SUBMIT }) return false
-        return checkoutCodeInDb ?: db.jdbi.withHandle<Boolean, Exception> { h ->
-            h.createQuery("SELECT coalesce(bool_or(pg_get_constraintdef(oid) LIKE :c), false) FROM pg_constraint WHERE conrelid = 'app.risk_signal'::regclass AND conname = 'risk_signal_code_check'")
-                .bind("c", "%'$CHECKOUT_WITHOUT_SUBMIT'%").mapTo(Boolean::class.java).one()
-        }.also { checkoutCodeInDb = it }
+        if (checkoutCodeInDb) return true
+        val now = clock.now()
+        if (now.isBefore(checkoutCodeAskedAt.plusSeconds(60))) return false
+        checkoutCodeAskedAt = now
+        checkoutCodeInDb = runCatching {
+            db.jdbi.withHandle<Boolean, Exception> { h ->
+                h.createQuery("SELECT coalesce(bool_or(pg_get_constraintdef(oid) LIKE :c), false) FROM pg_constraint WHERE conrelid = 'app.risk_signal'::regclass AND conname = 'risk_signal_code_check'")
+                    .bind("c", "%'$CHECKOUT_WITHOUT_SUBMIT'%").mapTo(Boolean::class.java).one()
+            }
+        }.getOrDefault(false)
+        return checkoutCodeInDb
     }
 
     /**
@@ -741,9 +749,9 @@ class IngestService(
      */
     private fun checkoutWithoutSubmit(ctx: Ctx, checkouts: List<Rec>) {
         if (ctx.up.role != Role.SR && ctx.up.role != Role.AMO) return
-        if (!checkoutRiskOn()) return
+        if (!runCatching { checkoutRiskOn() }.getOrDefault(false)) return
         val weight: Double = runCatching<Double?> { (config.value("cfg.geo.integrity_weight") as JsonObject)[CHECKOUT_WITHOUT_SUBMIT]?.jsonPrimitive?.content?.toDoubleOrNull() }.getOrNull() ?: 20.0
-        for (r in checkouts) db.jdbi.useTransaction<Exception> { h ->
+        for (r in checkouts) runCatching { db.jdbi.useTransaction<Exception> { h ->
             // The server's business date of the stored row (the server may have re-dated the phone's).
             val bd = h.createQuery("SELECT business_date FROM app.ingest_registry WHERE client_uuid = CAST(:c AS uuid) AND user_id = :u AND status = 'accepted'")
                 .bind("c", r.clientUuid).bind("u", ctx.up.userId).mapTo(LocalDate::class.java).findOne().orElse(null) ?: return@useTransaction
@@ -770,7 +778,7 @@ class IngestService(
                     put("checkout_client_uuid", JsonPrimitive(r.clientUuid)); put("checked_out_at", JsonPrimitive(r.json.str("captured_at")))
                     put("day_submit_found", JsonPrimitive(false))
                 }.toString()).bind("cv", config.configVersion()).execute()
-        }
+        } }.onFailure { log.error("checkout signal failed batch_uuid=${ctx.batchUuid} client_uuid=${r.clientUuid}", it) }
     }
 
     private fun acksOf(recs: List<Rec>, outcomes: Array<Outcome?>): List<RecordAck> {

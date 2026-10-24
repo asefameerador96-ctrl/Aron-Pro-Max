@@ -121,11 +121,14 @@ know what the phone committed; it knows what it received; the phone's committed 
 "login_today" is `login` (the date is the request's `business_date`, which can be a past day).
 
 ### Rules the server applies (built, tests in backend/app `SalesSubmitDigestTest`)
-- Counts come from `app.ingest_registry` (user from the token, `business_date`; device = the token's `device_id`).
+- Counts come from `app.ingest_registry` (user from the token, `business_date`; device = the token's `device_id`, used
+  only when it is a device bound to this user with the token's uuid). A row is counted for the device that first sent
+  it (the registry keeps the first device).
   Stored = status `accepted` or `voided`; received = any status.
 - `rejected` = rows of `app.sync_rejected` (`stored_at IS NULL`) and `app.sync_quarantine` (status `open` or `discarded`) of
   the user and date whose `client_uuid` the registry does not hold as stored; one entry per `client_uuid` (the newest).
-  `final`: sync_rejected `NOT retryable OR finalised_at IS NOT NULL`; quarantine `discarded`. A row without a business date
+  `final`: sync_rejected `NOT retryable OR finalised_at IS NOT NULL OR parked_until <= now`; quarantine `discarded` with
+  no open item (payload_conflict copies left out). A row without a business date
   in the store (refused before the date could be read) is not listed (its count shows in the batch acks only).
 - Never another user's rows (the token's user only; a TSO or AMO reads its own day only; no `user_id` parameter).
 
@@ -154,9 +157,14 @@ bump needed by itself (contract 1.3.1 rule), it rides 1.9. Mirrors: `ContractCat
 - Roles SR and AMO (TSO check-outs are not gated by D-NIGHT-CHECKOUT-01).
 - `subject_type = 'user'`, `subject_id = user id`, `ON CONFLICT (code, subject_type, subject_id, business_date) DO NOTHING`:
   idempotent, one signal per user-day; evidence `{checkout_client_uuid, checked_out_at, day_submit_found: false}`.
-- The check-out itself is stored unchanged (the phone gate is the rule); the insert runs in a savepoint, so a missing
-  constraint value can never fail the batch.
+- The check-out itself is stored unchanged (the phone gate is the rule); each check-out's evaluation runs in its own
+  transaction after the batch committed, failures are logged per check-out, so a missing constraint value can never fail
+  the batch or skip the other check-outs.
 - Switch: on when `ContractCatalogues.RiskSignalCode` names the code AND the database's `risk_signal_code_check` accepts it
-  (checked once per process). Both arrive with the 1.9 batch and the db row; nothing to flip by hand.
+  (a yes is kept; a no is asked again after a minute, so a migration applied while the API runs is picked up). Both
+  arrive with the 1.9 batch and the db row (db #11 V0114/V0115); nothing to flip by hand.
 - Known gap (stated, not fixed): a Sales Submit uploaded in a later batch than the check-out (phone offline with a
-  parked day_submit) leaves the signal open; a reviewer dismisses it. The phone gate makes this rare.
+  parked day_submit) leaves the signal open; a reviewer dismisses it. The phone gate makes this rare. Also not judged:
+  a check-out released from quarantine (`acceptQuarantined`) and paper backfill (no attendance records): missed signals,
+  never false ones. A Sales Submit just before Dhaka midnight with the check-out just after it raises the signal for
+  the check-out's date (the dates are the server's).

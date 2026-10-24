@@ -73,8 +73,14 @@ class CheckoutWithoutSubmitTest : NightSyncHarness() {
         }
         assertTrue(ev.contains(cu(out)) && ev.contains("\"day_submit_found\": false"), ev)
         assertEquals(20.0, count("SELECT score::bigint FROM app.risk_signal WHERE code = 'CHECKOUT_WITHOUT_SUBMIT' AND business_date = DATE '$day'").toDouble())
-        // The same check-out again (a duplicate) and a second check-out of the day (refused): still one signal.
+        // The same check-out again (a duplicate) is never judged again: with the signal removed, a resend raises none.
+        fresh.db.jdbi.useHandle<Exception> { h -> h.execute("DELETE FROM app.risk_signal WHERE code = 'CHECKOUT_WITHOUT_SUBMIT' AND business_date = DATE '$day'") }
         assertEquals(listOf("duplicate:-"), client.send(t, phone, listOf(out)))
+        assertEquals(0, signals(day), "a duplicate is not evaluated")
+        fresh.db.jdbi.useHandle<Exception> { h ->
+            h.execute("INSERT INTO app.risk_signal (code, severity, business_date, subject_type, subject_id, user_id, score, evidence, config_version) VALUES ('CHECKOUT_WITHOUT_SUBMIT', 2, DATE '$day', 'user', '$srId', $srId, 20, '{}', 1)")
+        }
+        // A second check-out of the day (refused) leaves one signal.
         assertEquals(listOf("rejected:attendance_duplicate"), client.send(t, phone, listOf(attendance("check_out"))))
         assertEquals(1, signals(day))
         // A Sales Submit stored afterwards does not raise anything new (the open signal is the reviewer's).
