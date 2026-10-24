@@ -177,15 +177,15 @@ fun AmoEditHost(day: AmoDay, memoUuid: String, onDone: () -> Unit) {
 @Composable
 fun AmoStockHost(day: AmoDay) {
     val scope = rememberCoroutineScope()
-    var load by remember { mutableStateOf<com.aktcl.aron.feature.stock.StockLoad?>(null) }
     var version by remember { mutableStateOf(0) }
     var message by remember { mutableStateOf<StockMessage?>(null) }
     var unprinted by remember { mutableStateOf(true) }
-    LaunchedEffect(Unit) { load = day.stockLoad(); unprinted = day.slipNotPrinted() }
     val att by day.stockAttempt.collectAsState()
     LaunchedEffect(att) { unprinted = day.slipNotPrinted() }
-    val l = load ?: return
-    version.let {}
+    // a thrown read is an error with a retry, never a crash and never a screen stuck on the loading card
+    val read = com.aktcl.aron.core.ui.aron.rememberAsyncLoad { day.stockLoad().also { unprinted = day.slipNotPrinted() } }
+    com.aktcl.aron.core.ui.aron.AronLoaded(read, stringResource(com.aktcl.aron.feature.stock.R.string.stk_load_failed), stringResource(com.aktcl.aron.feature.home.R.string.fb_retry)) { l ->
+        version.let {} // the content recomposes on every edit: StockLoad is a plain object, this counter is its signal
     StockContent(
         rows = l.rows, totals = l.totals, message = message, slipNotPrinted = unprinted,
         onIssue = { id, q -> l.setEntered(id, q.toLong()); version++ },
@@ -203,4 +203,5 @@ fun AmoStockHost(day: AmoDay) {
         // Print never blocks Save: it is offered after a Save and may be retried later (Q-UI-03).
         onPrint = if (unprinted && PermissionPolicy.allowed(GatedFeature.PRINT, AndroidPermissions.snapshotOf(LocalContext.current))) ({ day.printUnprintedStock() }) else null,
     )
+    }
 }

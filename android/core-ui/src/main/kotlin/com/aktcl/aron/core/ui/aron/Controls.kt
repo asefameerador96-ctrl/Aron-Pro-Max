@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -327,6 +328,15 @@ fun AronLoadingCard(label: String, modifier: Modifier = Modifier, lines: Int = 3
             Box(Modifier.fillMaxWidth(if (i == lines - 1) 0.6f else 1f).height(14.dp).clip(RoundedCornerShape(7.dp)).background(look.skeleton))
         }
     }
+}
+
+/**
+ * The loading state of a whole screen whose local data is still being read (no spinner, no animation: battery): the
+ * [AronLoadingCard] on the grey page, announced as "Loading" / "লোড হচ্ছে". Use it instead of drawing nothing for the first frame.
+ */
+@Composable
+fun AronLoadingScreen(modifier: Modifier = Modifier, label: String = androidx.compose.ui.res.stringResource(com.aktcl.aron.core.ui.R.string.core_ui_loading)) {
+    Box(modifier.fillMaxSize().background(LocalAronLook.current.page).padding(12.dp)) { AronLoadingCard(label) }
 }
 
 /** A section header on the grey page: purple semibold 17 sp with a short red rule under it (as the Attendance identity rule). */

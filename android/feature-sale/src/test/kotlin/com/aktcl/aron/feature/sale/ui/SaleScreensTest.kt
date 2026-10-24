@@ -114,7 +114,7 @@ class SaleExtraScreensTest {
         var applied: Long? = -1
         compose.setContent { AronTheme(AppLanguage.EN) { CreditPrompt(SaleReviewCalculator.review(d, Fx.catalog), { applied = it }) } }
         compose.onNodeWithTag(CreditTags.YES).assertIsNotEnabled()
-        // the bar says what to do while the field is empty; the field is found by its label (placeholder while empty)
+        // the bar says what to do while the field is empty; the field is found by its tag (the label is a separate caption above it)
         compose.onNodeWithText("Enter the amount collected").assertExists()
         compose.onNodeWithTag(CreditTags.PAID).performTextInput("30.5")
         compose.onNodeWithText("Due: 49.50 ৳").assertExists()
@@ -142,6 +142,19 @@ class SaleExtraScreensTest {
         compose.onNodeWithTag(CreditTags.YES).assertIsNotEnabled()
         // a wrong value gets the inline error once, not the same sentence twice (the bar reason is gone)
         compose.onAllNodesWithText("The amount collected must be less than the total.").assertCountEquals(1)
+    }
+
+    @Test fun creditRefusesNegativeAndOverlongPaidInputWithTheSameInlineError() { // the parser's existing refusal (PaidInput.SHAPE), unchanged
+        val d = SaleDraftOps.setQuantity(Fx.draft(), 100, 10, QtyUnit.STICK) // net 80.00
+        var applied: Long? = -1
+        compose.setContent { AronTheme(AppLanguage.EN) { CreditPrompt(SaleReviewCalculator.review(d, Fx.catalog), { applied = it }) } }
+        for (bad in listOf("-5", "30.555", "1234567890")) {
+            compose.onNodeWithTag(CreditTags.PAID).performTextClearance()
+            compose.onNodeWithTag(CreditTags.PAID).performTextInput(bad)
+            compose.onNodeWithTag(CreditTags.YES).assertIsNotEnabled()
+            compose.onAllNodesWithText("The amount collected must be less than the total.").assertCountEquals(1)
+        }
+        assertEquals(-1L, applied)
     }
 
     @Test fun slideListsOnlyOfferedSkusAndShowsTheEightyTakaReward() {

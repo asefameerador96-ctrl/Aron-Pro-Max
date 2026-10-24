@@ -134,4 +134,5 @@
     <string name="out_compass_sw">দক্ষিণ-পশ্চিম</string>
     <string name="out_compass_w">পশ্চিম</string>
     <string name="out_compass_nw">উত্তর-পশ্চিম</string>
+    <string name="out_own_load_failed">অনুরোধের তালিকা আনা যায়নি</string>
 </resources>
