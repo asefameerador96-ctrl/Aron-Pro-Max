@@ -102,7 +102,8 @@ class SalesSubmitViewModel(
         val mine = runCatching { server.thisDeviceCounts(d) }.getOrNull()
         // Every type either side counts (a type only the server has shows device 0: information, never a mismatch).
         val types = (device.keys + srv.orEmpty().keys).toSortedSet()
-        val counts = types.map { t -> CountRow(t, device[t] ?: 0, srv?.let { it[t] ?: 0 }, mine?.get(t)) }
+        // A type absent from the digest is all zero for this phone (contract 1.9), never a fallback to the login totals.
+        val counts = types.map { t -> CountRow(t, device[t] ?: 0, srv?.let { it[t] ?: 0 }, mine?.let { it[t] ?: 0 }) }
         val local = runCatching { source.rejectedRows(d) }.getOrDefault(emptyList())
         // The phone's own rows first; the server adds what this install does not hold (earlier installs, other phones).
         val held = local.map { it.clientUuid }.toSet()

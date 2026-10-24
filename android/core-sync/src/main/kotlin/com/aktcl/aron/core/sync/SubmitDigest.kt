@@ -95,19 +95,25 @@ class SubmitDigestSource(
     private val api: SubmitDigestApi,
     private val nowMs: () -> Long,
     private val maxAgeMs: Long = 30_000,
+    /** The longest a read may take: the Sales Submit tap never waits on a weak link longer than this (checker). */
+    private val timeoutMs: Long = 5_000,
 ) {
-    @Volatile private var cached: Triple<String, Long, SubmitDigest>? = null
+    /** Date, read time and answer; a failed or empty read is kept too, so a refresh and the Submit after it never retry it twice. */
+    @Volatile private var cached: Triple<String, Long, SubmitDigest?>? = null
 
     suspend fun digest(businessDate: String): SubmitDigest? {
         cached?.let { (d, at, v) -> if (d == businessDate && nowMs() - at in 0 until maxAgeMs) return v }
-        return try {
-            val token = auth.token(userId) ?: return null
-            (api.fetch(token, businessDate) as? ApiResult.Success)?.value?.also { cached = Triple(businessDate, nowMs(), it) }
+        val answer = try {
+            auth.token(userId)?.let { token ->
+                kotlinx.coroutines.withTimeoutOrNull(timeoutMs) { (api.fetch(token, businessDate) as? ApiResult.Success)?.value }
+            }
         } catch (e: kotlinx.coroutines.CancellationException) {
             throw e
         } catch (_: Exception) {
             null
         }
+        cached = Triple(businessDate, nowMs(), answer)
+        return answer
     }
 
     companion object {

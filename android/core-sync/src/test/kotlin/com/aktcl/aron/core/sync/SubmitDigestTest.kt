@@ -51,7 +51,18 @@ class SubmitDigestTest {
         now = 31_000; answer = ApiResult.Transport(TransportFailure.OFFLINE)
         assertNull(src.digest("2026-10-24"))
         assertEquals(2, calls)
+        now = 32_000; assertNull(src.digest("2026-10-24")) // a failure is kept too: Submit right after a refresh does not wait again
+        assertEquals(2, calls)
         val out = SubmitDigestSource(7, object : UploadAuth { override suspend fun token(userId: Long): String? = null; override suspend fun refresh(userId: Long, rejected: String?) = false }, { _, _ -> calls++; answer }, { now })
         assertNull(out.digest("2026-10-24")); assertEquals(2, calls)
+    }
+
+    /** A weak link never holds the Sales Submit tap longer than the read's cap. */
+    @Test fun aHangingReadGivesUpAfterItsCap() = runTest {
+        val auth = object : UploadAuth { override suspend fun token(userId: Long) = "t"; override suspend fun refresh(userId: Long, rejected: String?) = false }
+        val src = SubmitDigestSource(7, auth, { _, _ -> kotlinx.coroutines.delay(60_000); ApiResult.Transport(TransportFailure.TIMEOUT) }, { 0L }, timeoutMs = 5_000)
+        val started = testScheduler.currentTime
+        assertNull(src.digest("2026-10-24"))
+        assertEquals(5_000L, testScheduler.currentTime - started)
     }
 }

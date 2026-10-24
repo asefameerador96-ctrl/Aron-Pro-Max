@@ -198,7 +198,8 @@ class DigestServerCounts(
                 outcome = when {
                     r.status == "quarantined" && !r.final -> RejectedOutcome.STORED_FLAGGED
                     r.final || r.status == "rejected" || r.status == "quarantined" -> RejectedOutcome.DROPPED
-                    r.fromThisDevice -> RejectedOutcome.RETRY
+                    // Only a row this install still holds can be sent again from here (checker).
+                    r.fromThisDevice && db.outboxDao().byClientUuid(r.clientUuid) != null -> RejectedOutcome.RETRY
                     else -> RejectedOutcome.WAITING_ELSEWHERE
                 },
                 memoNo = r.memoNo, outletName = r.outletId?.let { id -> runCatching { ref.outlet(id)?.name }.getOrNull() },

@@ -50,6 +50,7 @@ class SalesSubmitTest {
     @Test fun thePerDeviceCountWinsOverTheLoginTotalOnceItArrives() {
         assertFalse(CountRow("memo", 4, 10, serverThisDevice = 3).matches) // one of this phone's memos is missing on the server
         assertTrue(CountRow("memo", 4, 10, serverThisDevice = 4).matches)
+        assertFalse(CountRow("memo", 4, 10, serverThisDevice = 0).matches) // a type the digest does not list is zero, not the login total
     }
 
     @Test fun aSubmittedDayCannotBeSubmittedTwice() {
