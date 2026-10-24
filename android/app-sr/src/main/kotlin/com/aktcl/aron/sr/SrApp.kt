@@ -640,8 +640,8 @@ private fun StockHost(day: SrDay) {
     LaunchedEffect(att) { unprinted = day.slipNotPrinted() }
     // a thrown read is an error with a retry, never a crash and never a screen stuck on the loading card
     val read = com.aktcl.aron.core.ui.aron.rememberAsyncLoad { day.stockLoad().also { unprinted = day.slipNotPrinted() } }
-    version.let {}
     com.aktcl.aron.core.ui.aron.AronLoaded(read, stringResource(com.aktcl.aron.feature.stock.R.string.stk_load_failed), stringResource(HomeR.string.fb_retry)) { l ->
+        version.let {} // the content recomposes on every edit: StockLoad is a plain object, this counter is its signal
     StockContent(
         rows = l.rows, totals = l.totals, message = message, slipNotPrinted = unprinted,
         onIssue = { id, q -> l.setEntered(id, q.toLong()); version++ },
