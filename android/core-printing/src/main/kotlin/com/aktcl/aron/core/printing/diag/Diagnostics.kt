@@ -90,6 +90,11 @@ class DiagnosticsSession(
                 dropped = "${e.javaClass.simpleName}: ${e.message}"
             } catch (e: SecurityException) {
                 dropped = "${e.javaClass.simpleName}: ${e.message}"
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Throwable) {
+                // an OEM stack's RuntimeException on a closed socket: logged as the drop, never the end of the app
+                dropped = "${e.javaClass.simpleName}: ${e.message}"
             }
         }
     }
@@ -157,14 +162,14 @@ class DiagnosticsSession(
             if (ok == null) { transport.close(); "write timed out after $writeTimeoutMs ms" } else dropped?.let { "link dropped: $it" } // i18n-ignore: technical diagnostics text, English by design (D-PRINT-02 report for the lead)
         } catch (e: kotlinx.coroutines.CancellationException) {
             throw e
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
             "${e.javaClass.simpleName}: ${e.message}"
         }
     }
 
     fun close() {
         reader?.cancel()
-        transport.close()
+        try { transport.close() } catch (_: Throwable) {}
         replies.close()
     }
 }

@@ -9,7 +9,11 @@ import com.aktcl.aron.core.printing.bt.PrinterManager
 import com.aktcl.aron.core.printing.doc.DaySummaryPrint
 import com.aktcl.aron.core.printing.doc.MemoPrint
 import com.aktcl.aron.core.printing.doc.StockSlipPrint
+import com.aktcl.aron.core.printing.diag.CrashLog
 import com.aktcl.aron.core.printing.render.PaperTooLongException
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -127,8 +131,12 @@ object ReprintPolicy {
 
 /**
  * Printing of committed documents (F-SR-028, F-SR-031, F-SR-066, F-SR-073, F-SR-015). Callers commit first:
- * nothing here touches the sale, and every failure leaves the document reprintable. Never throws for printer
- * problems.
+ * nothing here touches the sale, and every failure leaves the document reprintable. The print calls never throw but
+ * for cancellation: a printer, storage or rendering failure of any kind (an Error too: out of memory, a class missing
+ * from a shrunk build) is a [PrintAttempt.Failed] the screen shows, kept in [CrashLog] for the diagnostics export
+ * (owner P0 2026-10-24: the app closed on Print).
+ * Rendering (font loading, shaping, rasterising: seconds on a cold 2 GB phone) runs on [renderContext], never on the
+ * caller's thread, which is the main thread for the sale and memo screens (a frozen main thread is an ANR).
  * One instance per process (with the one [PrinterManager]): [recover] skips the jobs this instance has in flight.
  */
 class MemoPrinting(
@@ -139,25 +147,26 @@ class MemoPrinting(
     private val nowMs: () -> Long,
     private val reprintMax: () -> Int = { 5 },
     private val confirmAfterPrint: () -> Boolean = { true },
+    private val renderContext: kotlin.coroutines.CoroutineContext = Dispatchers.Default,
 ) {
     /** Jobs this process started and has not finished: [recover] leaves them alone (a dialog may still be open). */
     private val inFlight: MutableSet<String> = java.util.concurrent.ConcurrentHashMap.newKeySet()
 
     /** Prints [memo] (the stored memo, [memoClientUuid]) as the original or as the next reprint. */
-    suspend fun printMemo(memoClientUuid: String, memo: MemoPrint): PrintAttempt {
+    suspend fun printMemo(memoClientUuid: String, memo: MemoPrint): PrintAttempt = guarded {
         val history = historyOf(memoClientUuid)
-        if (!ReprintPolicy.allowed(history, reprintMax())) return PrintAttempt.LimitReached
+        if (!ReprintPolicy.allowed(history, reprintMax())) return@guarded PrintAttempt.LimitReached
         val reprintNo = ReprintPolicy.nextReprintNo(history)
         val kind = if (reprintNo == 0) "memo" else "memo_reprint"
-        return print(memoClientUuid, kind, memoClientUuid, null, history) { it.memo(memo.copy(reprintNo = reprintNo)) }
+        print(memoClientUuid, kind, memoClientUuid, null, history) { it.memo(memo.copy(reprintNo = reprintNo)) }
     }
 
     /** Prints the stock slip of the stock family [stockClientUuid] (F-SR-015). */
-    suspend fun printStockSlip(stockClientUuid: String, slip: StockSlipPrint): PrintAttempt {
+    suspend fun printStockSlip(stockClientUuid: String, slip: StockSlipPrint): PrintAttempt = guarded {
         val history = historyOf(stockClientUuid)
-        if (!ReprintPolicy.allowed(history, reprintMax())) return PrintAttempt.LimitReached
+        if (!ReprintPolicy.allowed(history, reprintMax())) return@guarded PrintAttempt.LimitReached
         val reprintNo = ReprintPolicy.nextReprintNo(history)
-        return print(stockClientUuid, "stock_slip", null, stockClientUuid, history) { it.stockSlip(slip.copy(reprintNo = reprintNo)) }
+        print(stockClientUuid, "stock_slip", null, stockClientUuid, history) { it.stockSlip(slip.copy(reprintNo = reprintNo)) }
     }
 
     /**
@@ -165,8 +174,19 @@ class MemoPrinting(
      * bill, so it has no reprint limit and no duplicate marker (AP-09). [daySummaryUuid] is the caller's stable
      * UUID v4 for that user's business date, so every print of one day is one document on the server.
      */
-    suspend fun printDaySummary(daySummaryUuid: String, summary: DaySummaryPrint): PrintAttempt =
+    suspend fun printDaySummary(daySummaryUuid: String, summary: DaySummaryPrint): PrintAttempt = guarded {
         print(daySummaryUuid, "day_summary", null, daySummaryUuid, historyOf(daySummaryUuid)) { it.daySummary(summary) }
+    }
+
+    /** The never-throws edge of every print call (see the class comment). */
+    private suspend inline fun guarded(block: () -> PrintAttempt): PrintAttempt = try {
+        block()
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Throwable) {
+        CrashLog.handled("print", e)
+        PrintAttempt.Failed(PrintFailure.INTERNAL)
+    }
 
     private suspend fun historyOf(uuid: String): List<PrintEvent> = ReprintPolicy.effective(
         ledger.history(uuid),
@@ -203,7 +223,7 @@ class MemoPrinting(
         render: (PaperRenderer) -> RenderedPaper,
     ): PrintAttempt {
         val paper = try {
-            render(renderer())
+            withContext(renderContext) { render(renderer()) }
         } catch (_: PaperTooLongException) {
             return PrintAttempt.TooLong
         }
@@ -266,7 +286,7 @@ class MemoPrinting(
                 else attempt.pending.copy(outcome = PrintEvent.FAILED_USER, userConfirmed = false),
             )
             inFlight.remove(attempt.pending.clientUuid)
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
             attempt.answered.set(false) // not stored: the seller can answer again
             throw e
         }

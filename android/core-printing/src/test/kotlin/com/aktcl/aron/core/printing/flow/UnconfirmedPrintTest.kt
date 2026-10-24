@@ -36,7 +36,7 @@ class UnconfirmedPrintTest {
         sim.statusAfterDrain = true
         val pm = PrinterManager(sim.factory(), Store(), backgroundScope, nowMs = { testScheduler.currentTime })
         val ledger = PrintFlowTest.MemLedger()
-        val printing = MemoPrinting(pm, { Fixtures.renderer() }, ledger, { java.util.UUID.randomUUID().toString() }, { testScheduler.currentTime }, { 5 }, { confirm })
+        val printing = MemoPrinting(pm, { Fixtures.renderer() }, ledger, { java.util.UUID.randomUUID().toString() }, { testScheduler.currentTime }, { 5 }, { confirm }, renderContext = kotlin.coroutines.EmptyCoroutineContext)
         return Env(sim, ledger, pm, printing)
     }
 
@@ -88,7 +88,7 @@ class UnconfirmedPrintTest {
         val e = env(confirm = true)
         printThenSwitchOffBeforeTheAnswer(e)
         // a new process: the old one's in-flight set is gone
-        val after = MemoPrinting(e.pm, { Fixtures.renderer() }, e.ledger, { java.util.UUID.randomUUID().toString() }, { testScheduler.currentTime }, { 5 }, { false })
+        val after = MemoPrinting(e.pm, { Fixtures.renderer() }, e.ledger, { java.util.UUID.randomUUID().toString() }, { testScheduler.currentTime }, { 5 }, { false }, renderContext = kotlin.coroutines.EmptyCoroutineContext)
         after.recover()
         assertEquals(PrintEvent.PRINTED, e.ledger.events.single().outcome)
         assertNull(e.ledger.events.single().userConfirmed)
@@ -117,7 +117,7 @@ class UnconfirmedPrintTest {
         val sim = SimPrinter({ testScheduler.currentTime })
         val pm = PrinterManager(sim.factory(), Store(), backgroundScope, nowMs = { testScheduler.currentTime })
         val ledger = PrintFlowTest.MemLedger()
-        val printing = MemoPrinting(pm, { Fixtures.renderer() }, ledger, { java.util.UUID.randomUUID().toString() }, { testScheduler.currentTime }, { 5 }, { true })
+        val printing = MemoPrinting(pm, { Fixtures.renderer() }, ledger, { java.util.UUID.randomUUID().toString() }, { testScheduler.currentTime }, { 5 }, { true }, renderContext = kotlin.coroutines.EmptyCoroutineContext)
         return Env(sim, ledger, pm, printing)
     }
 
@@ -157,7 +157,7 @@ class UnconfirmedPrintTest {
         assertTrue("printing", e.sim.sessions.single().isNotEmpty())
         job.cancel()
         job.join()
-        val after = MemoPrinting(e.pm, { Fixtures.renderer() }, e.ledger, { java.util.UUID.randomUUID().toString() }, { testScheduler.currentTime }, { 5 }, { false })
+        val after = MemoPrinting(e.pm, { Fixtures.renderer() }, e.ledger, { java.util.UUID.randomUUID().toString() }, { testScheduler.currentTime }, { 5 }, { false }, renderContext = kotlin.coroutines.EmptyCoroutineContext)
         after.recover()
         assertEquals(PrintEvent.PRINTED, e.ledger.events.single().outcome)
         assertEquals(PrintAttempt.Done, after.printMemo(memoUuid, Fixtures.seededSale))
@@ -186,7 +186,7 @@ class UnconfirmedPrintTest {
         val broken = object : PrintLedger by e.ledger {
             override suspend fun savePending(job: PendingPrint) { if (job.paperOut) throw java.io.IOException("disk full") else e.ledger.savePending(job) }
         }
-        val printing = MemoPrinting(e.pm, { Fixtures.renderer() }, broken, { java.util.UUID.randomUUID().toString() }, { testScheduler.currentTime }, { 5 }, { true })
+        val printing = MemoPrinting(e.pm, { Fixtures.renderer() }, broken, { java.util.UUID.randomUUID().toString() }, { testScheduler.currentTime }, { 5 }, { true }, renderContext = kotlin.coroutines.EmptyCoroutineContext)
         val a = printing.printMemo(memoUuid, Fixtures.seededSale)
         assertTrue("$a", a is PrintAttempt.Failed)
         assertTrue("nothing on paper", e.sim.sessions.single().isEmpty())

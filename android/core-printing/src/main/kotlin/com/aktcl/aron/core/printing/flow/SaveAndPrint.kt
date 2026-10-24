@@ -17,7 +17,8 @@ class CommittedMemo(val memoClientUuid: String, val print: MemoPrint)
  * 2. "আপনি কি এই বিক্রয়টি প্রিন্ট করতে চান?" — No leaves printed_at empty (reprint from the Memo menu).
  * 3. Printing; on a printer failure: retry or print later (the sale is already saved).
  * 4. "ছাপা ঠিক আছে?" — the answer is recorded; then "বিক্রয় সফল ভাবে জমা হয়েছে".
- * A second tap while a step runs is ignored, so one tap never commits or prints twice.
+ * A second tap while a step runs is ignored, so one tap never commits or prints twice. No step throws but for
+ * cancellation: the dialogs run in the screen model's scope, where an escaped exception ends the app.
  */
 class SaveAndPrint(
     private val commit: suspend () -> CommittedMemo,
@@ -66,7 +67,7 @@ class SaveAndPrint(
         } catch (e: CancellationException) {
             _step.value = Step.Idle
             throw e
-        } catch (_: Exception) {
+        } catch (_: Throwable) {
             _step.value = Step.SaveFailed
             return
         }
@@ -99,8 +100,10 @@ class SaveAndPrint(
         } catch (e: CancellationException) {
             _step.value = Step.PrintFailed(PrintFailure.DISCONNECTED)
             throw e
-        } catch (_: Exception) {
-            PrintAttempt.Failed(PrintFailure.DISCONNECTED) // storage or rendering trouble: the sale stays saved
+        } catch (e: Throwable) {
+            // MemoPrinting never throws; this is the last line in front of the screen's scope (owner P0 2026-10-24)
+            com.aktcl.aron.core.printing.diag.CrashLog.handled("save-and-print", e)
+            PrintAttempt.Failed(PrintFailure.INTERNAL) // the sale stays saved and reprintable
         }
         _step.value = when (val a = attempt) {
             is PrintAttempt.AwaitingConfirmation -> { awaiting = a; Step.AskReadable }
@@ -118,7 +121,7 @@ class SaveAndPrint(
             printing.confirm(a, readable)
         } catch (e: CancellationException) {
             throw e
-        } catch (_: Exception) {
+        } catch (_: Throwable) {
             return // not stored; the dialog stays and the seller can answer again (the job is recovered on restart)
         }
         awaiting = null

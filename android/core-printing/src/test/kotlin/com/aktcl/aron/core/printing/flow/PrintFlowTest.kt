@@ -61,7 +61,7 @@ class PrintFlowTest {
         val sim = SimPrinter({ testScheduler.currentTime })
         val pm = PrinterManager(sim.factory(), Store(), backgroundScope, nowMs = { testScheduler.currentTime })
         val ledger = MemLedger()
-        val printing = MemoPrinting(pm, { Fixtures.renderer() }, ledger, { java.util.UUID.randomUUID().toString() }, { testScheduler.currentTime }, { reprintMax }, { confirm })
+        val printing = MemoPrinting(pm, { Fixtures.renderer() }, ledger, { java.util.UUID.randomUUID().toString() }, { testScheduler.currentTime }, { reprintMax }, { confirm }, renderContext = kotlin.coroutines.EmptyCoroutineContext)
         return Env(sim, ledger, printing)
     }
 
@@ -242,7 +242,7 @@ class PrintFlowTest {
                 if (!job.paperOut) printing.recover()
             }
         }
-        printing = MemoPrinting(pm, { Fixtures.renderer() }, racing, { java.util.UUID.randomUUID().toString() }, { testScheduler.currentTime })
+        printing = MemoPrinting(pm, { Fixtures.renderer() }, racing, { java.util.UUID.randomUUID().toString() }, { testScheduler.currentTime }, renderContext = kotlin.coroutines.EmptyCoroutineContext)
         val a = printing.printMemo(memoUuid, Fixtures.seededSale) as PrintAttempt.AwaitingConfirmation
         assertTrue(mem.events.isEmpty())
         printing.confirm(a, true)

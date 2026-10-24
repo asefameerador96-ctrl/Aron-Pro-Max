@@ -34,7 +34,7 @@ class PrintFlowCheckerTest {
     private fun TestScope.printing(sim: SimPrinter, ledger: PrintFlowTest.MemLedger, prefix: String = "e"): MemoPrinting {
         val pm = PrinterManager(sim.factory(), Store(), backgroundScope, nowMs = { testScheduler.currentTime })
         var n = 0
-        return MemoPrinting(pm, { Fixtures.renderer() }, ledger, { "$prefix-${++n}" }, { testScheduler.currentTime })
+        return MemoPrinting(pm, { Fixtures.renderer() }, ledger, { "$prefix-${++n}" }, { testScheduler.currentTime }, renderContext = kotlin.coroutines.EmptyCoroutineContext)
     }
 
     /** F-SR-028: a commit that throws (disk full, constraint) must not leave the flow stuck on "Saving" forever. */
@@ -92,7 +92,7 @@ class PrintFlowCheckerTest {
         }
         val pm = PrinterManager(sim.factory(), Store(), backgroundScope, nowMs = { testScheduler.currentTime })
         var n = 0
-        val p = MemoPrinting(pm, { Fixtures.renderer() }, ledger, { "e-${++n}" }, { testScheduler.currentTime })
+        val p = MemoPrinting(pm, { Fixtures.renderer() }, ledger, { "e-${++n}" }, { testScheduler.currentTime }, renderContext = kotlin.coroutines.EmptyCoroutineContext)
         val flow = SaveAndPrint({ CommittedMemo(memoUuid, Fixtures.seededSale) }, p)
         flow.onPrintTapped(); flow.onSaveAnswer(true); flow.onPrintAnswer(true)
         assertEquals(SaveAndPrint.Step.AskReadable, flow.step.value)

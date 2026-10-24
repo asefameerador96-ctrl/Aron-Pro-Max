@@ -264,7 +264,7 @@ abstract class PrintLedgerContract {
     /** One app process: its `PrinterManager` and its one `MemoPrinting` on the current [ledger]. */
     private fun TestScope.process(sim: SimPrinter, reprintMax: Int = 5): MemoPrinting {
         val pm = PrinterManager(sim.factory(), OnePrinter(), backgroundScope, nowMs = { testScheduler.currentTime })
-        return MemoPrinting(pm, { ContractPaper.renderer }, ledger, { uuid() }, { 10_000 + testScheduler.currentTime }, { reprintMax }, { true })
+        return MemoPrinting(pm, { ContractPaper.renderer }, ledger, { uuid() }, { 10_000 + testScheduler.currentTime }, { reprintMax }, { true }, renderContext = kotlin.coroutines.EmptyCoroutineContext)
     }
 
     private suspend fun MemoPrinting.memo(memo: String, m: MemoPrint, readable: Boolean) {
@@ -414,7 +414,7 @@ abstract class PrintLedgerContract {
         val memo = newMemo()
         val sim = SimPrinter({ testScheduler.currentTime })
         val pm = PrinterManager(sim.factory(), OnePrinter(), backgroundScope, nowMs = { testScheduler.currentTime })
-        val printing = MemoPrinting(pm, { ContractPaper.renderer }, ledger, { uuid() }, { 10_000 + testScheduler.currentTime }, { 5 }, { false })
+        val printing = MemoPrinting(pm, { ContractPaper.renderer }, ledger, { uuid() }, { 10_000 + testScheduler.currentTime }, { 5 }, { false }, renderContext = kotlin.coroutines.EmptyCoroutineContext)
         assertEquals(PrintAttempt.Done, printing.printMemo(memo, ContractPaper.memo))
         val e = ledger.history(memo).single()
         assertEquals(PrintEvent.PRINTED, e.outcome)
@@ -431,6 +431,6 @@ abstract class PrintLedgerContract {
             override fun save(printer: SavedPrinter?) = Unit
         }
         val pm = PrinterManager(PrinterTransportFactory { error("recover() must not open the printer") }, store, scope)
-        return MemoPrinting(pm, { error("recover() must not render") }, ledger, { uuid() }, { 9_000 })
+        return MemoPrinting(pm, { error("recover() must not render") }, ledger, { uuid() }, { 9_000 }, renderContext = kotlin.coroutines.EmptyCoroutineContext)
     }
 }

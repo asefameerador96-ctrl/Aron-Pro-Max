@@ -45,6 +45,7 @@ import com.aktcl.aron.core.printing.bt.PrinterDefaults
 import com.aktcl.aron.core.printing.bt.PrinterManager
 import com.aktcl.aron.core.printing.bt.SavedPrinter
 import com.aktcl.aron.core.printing.bt.SppConnector
+import com.aktcl.aron.core.printing.diag.CrashLog
 import com.aktcl.aron.core.printing.diag.AndroidDiagEnvironment
 import com.aktcl.aron.core.printing.diag.DiagConnection
 import com.aktcl.aron.core.printing.diag.DiagnosticsReport
@@ -192,13 +193,13 @@ fun PrinterDiagnosticsScreen(manager: PrinterManager, appVersion: String, modifi
         }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             AronSolidButton(stringResource(R.string.diag_copy), {
-                val text = controller.report(now())
+                val text = fullReport(context, controller)
                 (context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager)?.setPrimaryClip(ClipData.newPlainText(context.getString(R.string.diag_report_subject), text))
                 Toast.makeText(context, R.string.diag_copied, Toast.LENGTH_SHORT).show()
             }, Modifier.weight(1f), tone = SolidTone.Green)
             AronOutlinedButton(stringResource(R.string.diag_share), {
                 val send = Intent(Intent.ACTION_SEND).setType("text/plain")
-                    .putExtra(Intent.EXTRA_SUBJECT, context.getString(R.string.diag_report_subject)).putExtra(Intent.EXTRA_TEXT, controller.report(now()))
+                    .putExtra(Intent.EXTRA_SUBJECT, context.getString(R.string.diag_report_subject)).putExtra(Intent.EXTRA_TEXT, fullReport(context, controller))
                 open(context, Intent.createChooser(send, null))
             }, Modifier.weight(1f))
         }
@@ -230,5 +231,16 @@ private suspend fun openLink(context: Context, address: String): DiagConnection 
     } catch (e: SecurityException) {
         t.close()
         DiagConnection(null, t.lastAttempts, SppConnector.describe(e))
+    } catch (e: kotlinx.coroutines.CancellationException) {
+        t.close()
+        throw e
+    } catch (e: Exception) {
+        // an OEM stack's RuntimeException: shown in the log, never the end of the screen (owner P0 2026-10-24)
+        t.close()
+        DiagConnection(null, t.lastAttempts, SppConnector.describe(e))
     }
 }
+
+/** The export: the diagnostics report, then the last crash, the last caught print error and Android's exit reasons. */
+private fun fullReport(context: Context, controller: PrinterDiagnosticsController): String =
+    controller.report(now()) + CrashLog.exportText(context) + CrashLog.exitReasons(context)

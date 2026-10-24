@@ -69,6 +69,12 @@
     <string name="ui_print_failed">প্রিন্ট হয়নি। বিক্রয় জমা আছে, পরে আবার প্রিন্ট করা যাবে।</string>
     <string name="ui_print_retry">আবার চেষ্টা</string>
     <string name="ui_print_later">পরে প্রিন্ট</string>
+    <string name="ui_print_failed_doc">প্রিন্ট হয়নি। কাগজটি পরে আবার প্রিন্ট করা যাবে।</string>
+    <string name="ui_print_why_no_printer">কোনো প্রিন্টার বাছাই করা নেই। উপরের প্রিন্টার চিহ্নে চাপ দিয়ে প্রিন্টার বাছাই করুন।</string>
+    <string name="ui_print_why_unreachable">প্রিন্টারে সংযোগ হয়নি। প্রিন্টার চালু ও কাছে আছে কি না দেখে আবার চেষ্টা করুন।</string>
+    <string name="ui_print_why_disconnected">প্রিন্টারের সংযোগ কেটে গেছে। প্রিন্টার চালু রেখে আবার চেষ্টা করুন।</string>
+    <string name="ui_print_why_paper_out">প্রিন্টারে কাগজ নেই। কাগজের রোল বদলে আবার চেষ্টা করুন।</string>
+    <string name="ui_print_why_internal">অ্যাপ কাগজটি তৈরি করতে পারেনি। সেটিং → প্রিন্টার পরীক্ষা → রিপোর্ট শেয়ার করুন।</string>
     <string name="ui_print_limit_reached">আর পুনঃমুদ্রণ করা যাবে না (সীমা শেষ)</string>
     <string name="ui_print_too_long">এই কাগজটি প্রিন্টের জন্য অনেক লম্বা</string>
     <string name="ui_sale_save_failed">বিক্রয় জমা করা যায়নি। আবার চেষ্টা করুন।</string>
