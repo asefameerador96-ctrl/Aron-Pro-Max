@@ -36,7 +36,7 @@ Every row: layout from manual, needs owner screenshot.
 - Shims in `AmoParts.kt` (`AmoListRow`, `AmoBanner`, ...) keep each screen's call shape and render the parity look; they are public so app-amo can use them.
 - AMO goldens re-recorded (Linux); the harness frame in `AmoTsoScreenshotTests`/`AmoCoreScreenshotTests` now uses `AmoFrame` (the 4 tso_ shots in that file changed with it: ui-tso should re-record on merge).
 - Asked ui-kit for icons: joint_call, control_call, team, team_location, team_performance, live_dashboard, sr_stock, exceptions, report, price_compliance, assessment, survey, verify, update_base.
-- Open: feature-outlet KitTextField (lavender) and rating stars/checkboxes are old-look controls; ui-packshots provider not yet wired into AMO screens.
+- Open: feature-outlet KitTextField (lavender) and rating stars/checkboxes are old-look controls; ui-packshots provider wiring into AMO screens: DONE (verified 2026-10-24 by android-tso #4: AMO SessionModule provides SkuPackshots and PackshotPreload, MainActivity sets LocalPackshotProvider, Stock and Sale hosts render the shared PackCard/PackshotImage rows; PackshotWiringTest covers them).
 
 ## Status at push 2026-10-19 00:00 UTC
 Merged INT 970662c1 + ui-sr-a fda4ed67; AMO goldens re-recorded (no pixel change vs the merged render); full local verify, lint, tests and the three debug APKs green. Run ids: d8e41a41 -> 39175027598 green; b52a117b -> 39176138483 green; f6adde08 -> 39177067752 green.
