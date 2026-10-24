@@ -64,8 +64,12 @@ class PrintTemplate(
 
     companion object {
         const val SCHEMA = 1
-        /** `{field}` or `{@label}`; the renderer fills exactly what this matches. */
-        val TOKEN = Regex("""\{(@?)([^{}]{1,60})}""")
+        /**
+         * `{field}` or `{@label}`; the renderer fills exactly what this matches. Every brace is escaped: Android's regex
+         * engine (ICU) rejects a bare `}` that the desktop JVM accepts, and the unescaped form made every print fail on
+         * the phone with U_REGEX_RULE_SYNTAX (owner report 2026-10-24, "the app could not prepare the paper").
+         */
+        val TOKEN = Regex("""\{(@?)([^\{\}]{1,60})\}""")
         private const val MAX_DEPTH = 4
         private const val MAX_BLOCKS = 200
 

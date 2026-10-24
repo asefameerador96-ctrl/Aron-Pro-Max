@@ -4194,7 +4194,7 @@ Records rejected or parked at ingest with the payload as received and the reason
 | `id` | bigint | not null |  | Server surrogate key. |
 | `client_uuid` | uuid | not null |  | UUID v4 generated on the phone when the record was committed; the idempotency key of sync. |
 | `record_type` | text | not null |  | Sync record type (contract RecordType). |
-| `code` | text | not null |  | Stable business code of the row, unique within its table. |
+| `code` | text | not null |  | Rejection code: a RecordOutcomeCode the contract marks rejected (price_invalid from V0112) or the server-only retry_exhausted; quarantined codes go to app.sync_quarantine. |
 | `retryable` | boolean | not null |  | True when the record may be accepted on a later resend. |
 | `payload_sha256` | bytea | not null |  | SHA-256 of the RFC 8785 canonical JSON of the record; same uuid and hash means duplicate. |
 | `payload` | jsonb | not null | personal | The record as received (JSON); may hold fixes, names and phone numbers. |

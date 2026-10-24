@@ -9,6 +9,9 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
@@ -121,7 +124,10 @@ fun StockContent(
                 if (slipNotPrinted && message != StockMessage.SAVED) AronBanner(stringResource(R.string.stk_slip_not_printed), kind = BannerKind.Warning)
             }
             if (rows.isEmpty()) {
-                AronEmptyState(stringResource(R.string.stk_empty), icon = AronIcons.Stock, syncedAt = syncedAt)
+                // scrolls: at a large font the docked totals panel leaves little room and the words must stay reachable
+                Box(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState())) {
+                    AronEmptyState(stringResource(R.string.stk_empty), icon = AronIcons.Stock, syncedAt = syncedAt)
+                }
             } else {
                 PackListHeader(
                     sku = stringResource(R.string.stk_col_sku), quantity = stringResource(R.string.stk_col_issue),

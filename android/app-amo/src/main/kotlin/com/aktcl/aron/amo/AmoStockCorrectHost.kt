@@ -39,7 +39,7 @@ fun AmoStockCorrectHost(day: AmoDay, onDone: () -> Unit) {
         }
     }
     LaunchedEffect(day, bn) { runCatching { load() }.onFailure { rows = emptyList() } }
-    val list = rows ?: return
+    val list = rows ?: run { com.aktcl.aron.core.ui.aron.AronLoadingScreen(); return }
     StockCorrectionContent(
         list, selected, text, reason, saved, saving,
         onSelect = { selected = it; text = ""; reason = null; saved = false },
