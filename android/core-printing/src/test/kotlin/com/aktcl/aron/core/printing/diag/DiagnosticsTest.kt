@@ -78,7 +78,7 @@ class DiagnosticsTest {
         val body = bytes.copyOfRange(2, bytes.size - EscPos.TEAR_OFF.size)
         assertEquals("OK ??? ?@\n", String(body, Charsets.US_ASCII))
         val page = TestPages.commands(TestMode.ASCII).reduce { a, b -> a + b }
-        val text = page.copyOfRange(2, page.size - 3)
+        val text = page.copyOfRange(2, page.size - EscPos.TEAR_OFF.size)
         assertTrue(text.all { it.toInt() == 0x0A || it.toInt() in 0x20..0x7E })
         assertTrue(String(text, Charsets.US_ASCII).lines().all { it.length <= 32 })
     }
