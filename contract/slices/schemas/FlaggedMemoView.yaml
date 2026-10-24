@@ -26,8 +26,7 @@ FlaggedMemoView:
     memo_client_uuid:
       $ref: '#/components/schemas/Uuid'
     memo_no:
-      type: string
-      maxLength: 40
+      $ref: '#/components/schemas/MemoNo'
     business_date:
       $ref: '#/components/schemas/BusinessDate'
     status:

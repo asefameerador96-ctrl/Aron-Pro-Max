@@ -1458,7 +1458,10 @@ export interface paths {
          *     superseded memos stay listed with their `status` (the page greys or filters them; a count of open problems uses
          *     `status == active`). Backing data: the stable view `dw.v_memo_flags` (V0111, D-DB-MEMO-FLAGS-VIEW-01: scope keys
          *     frozen at the business date); `user_code` and `user_name` are resolved by the endpoint from `app.app_user`,
-         *     because `dw` carries no names. Contract 1.8.0; until backend-core wires it the path answers 404 `ERR_NOT_FOUND`.
+         *     because `dw` carries no names. Callers: every portal level whose reach covers the node (SUPERADMIN, ADMIN with
+         *     the `reports:r` grant, which `/v1/dashboards/**` maps to, NATIONAL, WM, DMO and TSO); BRAND users get 403
+         *     `ERR_FORBIDDEN` (docs/34 s1: cards without a brand dimension are hidden, and a memo has no brand dimension; the
+         *     portal-level gate answers it); SR and AMO have no portal login (`ERR_AUTH_PORTAL_NOT_ALLOWED`).
          */
         get: operations["getFlaggedMemos"];
         put?: never;
@@ -6418,7 +6421,7 @@ export interface components {
         /** @description One stored memo with at least one server flag (a row of `dw.v_memo_flags` with the user's login and name from `app.app_user`). */
         FlaggedMemoView: {
             memo_client_uuid: components["schemas"]["Uuid"];
-            memo_no: string;
+            memo_no: components["schemas"]["MemoNo"];
             business_date: components["schemas"]["BusinessDate"];
             /**
              * @description As `MemoView.status`; `void` is a memo voided by its user (`memo_void`) or by an admin data void (`voided_at` set).
