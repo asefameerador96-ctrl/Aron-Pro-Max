@@ -53,7 +53,7 @@ GET /v1/admin/users/{id}/scope -> gap: backend-admin
 GET /v1/app/home -> case TeamApiTest#appHomeGivesTheKpiStripAndTeamRowsOfTheCallersReach
 GET /v1/app/update-check -> exempt: the caller's own account, token or phone only; no geography rows
 GET /v1/config/delta -> gap: backend-admin
-GET /v1/dashboards/daily-tracking -> case ScopeLeakAcrossEndpointsTest#aRouteOnlyTsoReadsTheZonesOfItsOwnRoutesOnly
+GET /v1/dashboards/daily-tracking -> case ScopeLeakAcrossEndpointsTest#aHouseScopedTsoReadsItsOwnHouseByDefaultAndNeverTheSiblingHouse
 GET /v1/dashboards/geo-validation -> case GeoValidationTest#aZoneCallerSeesOnlyItsZone
 GET /v1/dashboards/flagged-memos -> case FlaggedMemosApiTest#aTsoSeesOnlyItsTerritoryAndADmoOnlyItsDivision
 GET /v1/dashboards/login-submit -> case OpsApiTest#v12AdditionsAreScopedAndConsistent

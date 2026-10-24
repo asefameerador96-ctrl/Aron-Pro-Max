@@ -97,9 +97,6 @@ private val LEVELS = mapOf(
     "territory" to Level("territory_id", "territory_name", "zone_id", "zone_name", "zone"),
     "zone" to Level("zone_id", "zone_name", null, null, "route"),
 )
-/** The default node of a caller with route assignments only; its zones depend on the routes, so they join the cache key. */
-private const val ROUTE_ONLY = "route_only"
-private fun routesKey(reach: Reach, node: Pair<String, Long>) = if (node.first == ROUTE_ONLY) reach.routeIds.sorted().joinToString(",") else ""
 /** [LEVELS] plus `house` (children: its zones; resolved from the reach in nodeScope), for the caller's default node only; an explicit `level=house` stays 400 (contract GeoLevelQuery). */
 private val DEFAULT_LEVELS = LEVELS + ("house" to Level(null, null, "zone_id", "zone_name", "zone"))
 
@@ -120,7 +117,7 @@ class DashboardService(
         }
         val scope = ZoneScope(reach.national, reach.zoneIds.toList())
         val node = resolveNode(reach, level, nodeId)
-        val key = "${scope.hash}|${node.first}|${node.second}|${routesKey(reach, node)}|$from|$to"
+        val key = "${scope.hash}|${node.first}|${node.second}|$from|$to"
         val now = clock.now()
         cache[key]?.let { (at, v) -> if (Duration.between(at, now) < ttl) return v }
         val multi = level == null && nodeId == null && !reach.national && reach.topNodes.count { it.type in DEFAULT_LEVELS } > 1
@@ -144,7 +141,7 @@ class DashboardService(
         }
         val scope = ZoneScope(reach.national, reach.zoneIds.toList())
         val node = resolveNode(reach, level, nodeId)
-        val key = "${scope.hash}|${node.first}|${node.second}|${routesKey(reach, node)}|$from|$to"
+        val key = "${scope.hash}|${node.first}|${node.second}|$from|$to"
         val now = clock.now()
         geoCache[key]?.let { (at, v) -> if (Duration.between(at, now) < ttl) return v }
         val multi = level == null && nodeId == null && !reach.national && reach.topNodes.count { it.type in DEFAULT_LEVELS } > 1
@@ -213,9 +210,8 @@ class DashboardService(
         if (level == null && nodeId == null) {
             if (reach.national) return "national" to 0L
             // Cover routes outside the caller's zones are reach nodes too, but not a dashboard level: label with a geo node.
-            val top = reach.topNodes.firstOrNull { it.type in DEFAULT_LEVELS }
-                // Route assignments only (route nodes follow the scope nodes): the zones of [routeOnlyZones], resolved in nodeScope.
-                ?: return if (reach.topNodes.firstOrNull()?.type == "route") ROUTE_ONLY to 0L else throw out
+            // Route assignments only give no default node (D-BC-DASH-ROUTE-ONLY-01): zone figures would show other routes.
+            val top = reach.topNodes.firstOrNull { it.type in DEFAULT_LEVELS } ?: throw out
             return top.type to top.id
         }
         val lv = level ?: throw ApiProblem(ProblemCode.ERR_VALIDATION, "node_id needs level", errors = listOf(FieldError("query.level", "required")))
@@ -231,10 +227,6 @@ class DashboardService(
 
     /** The zones a node covers, narrowed to the reach (403 outside it), and its label; shared by the summary and geo-validation reads. */
     private fun nodeScope(h: Handle, reach: Reach, scope: ZoneScope, node: Pair<String, Long>, multi: Boolean): NodeScope {
-        if (node.first == ROUTE_ONLY) {
-            val (zones, name) = routeOnlyZones(h, reach)
-            return NodeScope(LEVELS.getValue("zone"), ZoneScope(false, zones), NodeRefDto("zone", zones.first(), null, name))
-        }
         val lv = DEFAULT_LEVELS.getValue(node.first)
         if (node.first == "house") {
             // D-BC-DASH-HOUSE-01: the house's zones as the reach has them (`app.zone.house_id`; `dw.dim_geo` folds same-name houses

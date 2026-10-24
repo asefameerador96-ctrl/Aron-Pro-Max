@@ -639,29 +639,23 @@ class ScopeLeakAcrossEndpointsTest {
     }
 
     @Test
-    fun aRouteOnlyTsoReadsTheZonesOfItsOwnRoutesOnly() = testApplication {
+    fun aRouteOnlyTsoGetsNoDefaultDashboardUntilRouteKeyedAggregates() = testApplication {
         application { aronApi(world.wiring) }
         val token = world.login(client, routeTso)!!
         val partial = world.login(client, partialTso)!!
-        val admin = world.login(client, national)!!
-        val sib = levelIds["zone_sib"]!!
         val ops = dashboards()
         assertTrue(ops.map { it.path }.containsAll(listOf("/v1/dashboards/summary", "/v1/dashboards/daily-tracking")), "${ops.map { it.key }}")
+        // D-BC-DASH-ROUTE-ONLY-01 (lead ruling 17:50 UTC): zone figures carry the zone stamped when written (moved routes, route-less
+        // memos by the outlet's zone), so even a zone whose every current route is held (Z-SIB) could show other routes over a past
+        // range. Route assignments alone give no default node and no zone node: 403, pinned until route-keyed aggregates exist.
         for (op in ops) {
-            val own = world.call(client, contract, op, routeTso, token)
-            assertEquals(200, own.status.value, "${op.key} default: ${own.bodyAsText().take(300)}")
-            ContractModel.json.readTree(own.bodyAsText()).get("node")?.let {
-                assertEquals("zone" to sib, it.path("type").asText() to it.path("id").asLong(), "${op.key}: the default node is the zone of the TSO's route")
+            for ((c, t) in listOf(routeTso to token, partialTso to partial)) {
+                val own = world.call(client, contract, op, c, t)
+                assertEquals(403, own.status.value, "${op.key} ${c.user} default: ${own.bodyAsText().take(300)}")
             }
-            // D-BC-DASH-ROUTE-ONLY-01: Z-SIB is held whole, Z-MIR in part (its other routes are outside the reach): Z-SIB only.
-            val view = world.call(client, contract, op, national, admin, extraQuery = "level=zone&node_id=$sib")
-            assertEquals(figures(view.bodyAsText()), figures(own.bodyAsText()), "${op.key}: the route-only view is the national view of the zone it holds whole")
-            // Explicit nodes keep the reach check: a route-only TSO reaches no zone (its routes only).
-            for (q in listOf("level=zone&node_id=$sib", "level=zone&node_id=${world.ids["zones"]}", "level=territory&node_id=${world.ids["territories"]}", "level=zone&node_id=${world.otherIds["zones"]}")) {
+            for (q in listOf("level=zone&node_id=${levelIds["zone_sib"]}", "level=zone&node_id=${world.ids["zones"]}", "level=territory&node_id=${world.ids["territories"]}", "level=zone&node_id=${world.otherIds["zones"]}")) {
                 assertEquals(403, client.status(op, routeTso, token, q), "${op.key} $q")
             }
-            // Part of one zone only: the zone's figures would show the other routes, so the default call stays 403.
-            assertEquals(403, world.call(client, contract, op, partialTso, partial).status.value, "${op.key}: a zone held in part")
         }
         val msg = verdict(client.probe(ops, Stats(), listOf(routeTso, partialTso)) { c -> if (c == routeTso) token else partial })
         assertTrue(msg.isEmpty(), msg)
