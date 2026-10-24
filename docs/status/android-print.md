@@ -1,5 +1,11 @@
 # Status: lane android-print
 
+## HANDOVER (session 6 → android-print #5, 2026-10-24 ~13:40 UTC)
+- **State:** the P0 root cause is fixed in 72ff0a37 (lane run 40096957341; on train 30 per the lead). Decision D-PRINT-07 in DECISIONS.md. Nothing else open in this session.
+- **Next input:** the owner's device result with the next signed build: Stock → Print (a slip) and a sale memo on the MP-58N. If either still fails: Settings → Printer diagnostics → Share report (it carries the caught error with its stack via CrashLog, now also from feature-sale `guardedPrint`).
+- **Tools left in the scratchpad of session 6 (not in git):** an ICU regex checker (`icucheck.cpp`, links the host's libicui18n.so.74 via `uregex_open_74`) and an R8-on-JVM harness for core-printing. Rebuild them if needed; the commit message of 72ff0a37 says how they were used.
+- **Open follow-ups (not blocking):** a device-lab `androidTest` that builds `PrintTemplate`, the shaper patterns and a `TemplateSet` on a real phone (ICU only exists there); D-P1/D-P2 device checks unchanged.
+
 ## Session 6 (2026-10-24): ROOT CAUSE of "the printer does not work" / crash on Print / "could not prepare the paper"
 - **Cause (proven, not inferred):** `PrintTemplate.TOKEN = Regex("""\{(@?)([^{}]{1,60})}""")` ends in a bare `}`. Android's `java.util.regex` is ICU, which rejects it (U_REGEX_RULE_SYNTAX); the desktop JVM accepts it, so every JVM and Robolectric test passed. Every document (memo, stock slip, day summary) parses its template through TOKEN, so every print failed on the phone before a byte reached the printer: a crash in builds that did not catch Errors, the INTERNAL dialog since session 5. Proof: the pattern compiled with the host's ICU 74 C library (`uregex_open`; Android 14 ships ICU 72): old FAIL, escaped OK. All other non-interpolated regex literals in android/**/src/main and shared/**/src/*Main, the shaper's runtime patterns and the two interpolated ones pass ICU.
 - **Ruled out on the way:** Bluetooth (PrinterManager never returns INTERNAL), resource shrinking (templates and fonts are in the release APK), R8 (the stock slip renders from R8-shrunk classes built with the app's merged release configuration), Android resources (Robolectric render with the SrDay renderer), units/mapping (slips with packets, boxes, dozens render).
