@@ -134,4 +134,5 @@
     <string name="out_compass_sw">south-west</string>
     <string name="out_compass_w">west</string>
     <string name="out_compass_nw">north-west</string>
+    <string name="out_own_load_failed">Could not load your requests</string>
 </resources>

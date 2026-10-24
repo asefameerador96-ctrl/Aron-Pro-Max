@@ -5,6 +5,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.onNodeWithText
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -127,6 +128,16 @@ class PeripheryScreenTest {
         val st = TeamState(Src(team = Stamped(listOf(member), "09:00", true))) { "2026-10-17" }
         show(AppLanguage.EN) { TeamScreen(st, online = { false }, nowMs = { 1_760_000_600_000 }, userKey = "t1", onBack = {}) }
         compose.onNodeWithTag(PeripheryTags.CACHED).assertExists(); compose.onNodeWithTag(PeripheryTags.LEGEND).assertExists(); compose.onNodeWithText("As of 09:00").assertExists()
+    }
+
+    @Test fun teamUnavailableOffersTryAgainAndRecoversWhenTheListArrives() {
+        val src = Src(team = null)
+        val st = TeamState(src) { "2026-10-17" }
+        show(AppLanguage.EN) { TeamScreen(st, online = { false }, nowMs = { 1_760_000_600_000 }, userKey = "t2", onBack = {}) }
+        compose.onNodeWithTag(PeripheryTags.STATUS).assertExists(); compose.onNodeWithText("Try again").assertExists()
+        src.team = Stamped(listOf(member), "09:00", false)
+        compose.onNodeWithText("Try again").performClick(); compose.waitForIdle()
+        compose.onNodeWithTag(PeripheryTags.LEGEND).assertExists()
     }
 
     @Test fun banglaAsOfUsesBengaliDigits() {

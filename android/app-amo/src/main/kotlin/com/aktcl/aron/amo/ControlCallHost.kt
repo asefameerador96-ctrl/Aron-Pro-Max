@@ -314,7 +314,7 @@ private fun PriceStep(day: AmoDay, onSaved: () -> Unit) {
         val done = visit?.let { runCatching { day.pricedSkus(it.visitUuid) }.getOrNull() }.orEmpty()
         rows = runCatching { day.priceRows(bn) }.getOrDefault(emptyList()).filter { it.skuId !in done } // already recorded SKUs are not asked again
     }
-    val list = rows ?: return // loading: the local read is a few ms, nothing to show yet
+    val list = rows ?: run { com.aktcl.aron.core.ui.aron.AronLoadingScreen(); return } // loading: the local read is a few ms
     com.aktcl.aron.feature.amo.PriceComplianceContent(
         list, typed, tolerance, saved, saving, { id, t -> typed = typed + (id to t) },
         onSave = {
