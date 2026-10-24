@@ -227,7 +227,18 @@ describe("reads against the mock endpoint", () => {
     expect(await bad(`${d}&node_id=334`)).toEqual({ pointer: "query.level", code: "required" });
     expect(await bad(`${d}&level=territory`)).toEqual({ pointer: "query.node_id", code: "required" });
     expect(await bad(`${d}&level=route&node_id=10231`)).toEqual({ pointer: "query.level", code: "invalid_value" });
+    expect(await bad(`${d}&limit=501`)).toEqual({ pointer: "query.limit", code: "out_of_range" });
+    expect(await bad("from=nope&to=2026-10-07")).toEqual({ pointer: "query.from", code: "invalid_value" });
+    expect(await bad(`${d}&level=zone&node_id=-1`)).toEqual({ pointer: "query.node_id", code: "invalid_value" });
+    expect((await fetchRaw(`${d}&limit=500`)).status).toBe(200);
     expect((await fetchRaw("from=2026-07-07&to=2026-10-07")).status).toBe(200); // 92 days is allowed
+  });
+  it("a node only partly in the reach is refused (every zone under it must be in reach)", async () => {
+    const t = await token("tso334", "tso-pass-1");
+    for (const [level, id] of [["wing", 1], ["division", 10]] as const) {
+      const r = await getFlaggedMemos(t, { ...day, level, node_id: id });
+      expect(!r.ok && r.problem.code).toBe("ERR_OUT_OF_SCOPE");
+    }
   });
   it("a 403 outside the reach is ERR_OUT_OF_SCOPE and BRAND is ERR_FORBIDDEN", async () => {
     const out = await getFlaggedMemos(await token("tso334", "tso-pass-1"), { ...day, level: "territory", node_id: 335 });

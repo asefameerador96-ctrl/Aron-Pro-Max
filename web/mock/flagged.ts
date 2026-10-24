@@ -49,17 +49,22 @@ export function handleFlagged(x: DashCtx): boolean {
   const flag = q.get("flag");
   if (flag !== null && (flag === "" || flag.length > 60)) return validation(x, "query.flag", "invalid_value");
   const limitRaw = q.get("limit");
-  const limit = limitRaw === null ? 50 : Number(limitRaw);
-  if (!Number.isInteger(limit) || limit < 1 || limit > 200) return validation(x, "query.limit", "out_of_range");
+  const limit = limitRaw === null ? 100 : Number(limitRaw);
+  if (!Number.isInteger(limit) || limit < 1 || limit > 500) return validation(x, "query.limit", "out_of_range");
+  const isDate = (v: string) => /^\d{4}-\d\d-\d\d$/.test(v) && !Number.isNaN(Date.parse(`${v}T00:00:00Z`)) && new Date(`${v}T00:00:00Z`).toISOString().slice(0, 10) === v;
   const from = q.get("from") ?? SEED_TODAY;
   const to = q.get("to") ?? SEED_TODAY;
+  if (!isDate(from)) return validation(x, "query.from", "invalid_value");
+  if (!isDate(to)) return validation(x, "query.to", "invalid_value");
   if (daysBetween(from, to) < 0) return validation(x, "query.to", "invalid_value");
   if (daysBetween(from, to) > 92) return validation(x, "query.to", "out_of_range");
   const cursorRaw = q.get("cursor");
   const cursor = cursorRaw === null ? null : decode(cursorRaw);
   if (cursorRaw !== null && !cursor) return validation(x, "query.cursor", "invalid_value");
   const level = q.get("level");
-  const nodeId = Number(q.get("node_id"));
+  const nodeRaw = q.get("node_id");
+  const nodeId = nodeRaw === null ? 0 : Number(nodeRaw);
+  if (nodeRaw !== null && !(Number.isInteger(nodeId) && nodeId >= 0)) return validation(x, "query.node_id", "invalid_value");
   let rows = SEED.filter((m) => inReach(user.scope.nodes, m) && m.business_date >= from && m.business_date <= to);
   if (level !== null || q.get("node_id") !== null) {
     if (level === null) return validation(x, "query.level", "required");
@@ -69,8 +74,10 @@ export function handleFlagged(x: DashCtx): boolean {
       if (!LEVELS.includes(level)) return validation(x, "query.level", "invalid_value");
       if (!(nodeId > 0)) return validation(x, "query.node_id", "required");
       // A node outside the caller's reach is refused whether or not a memo sits in it; inside the reach it narrows the list (possibly to nothing).
-      const known = ROUTES.filter((r) => ({ wing: r.wing_id, division: r.division_id, territory: r.territory_id, zone: r.zone_id })[level as "wing"] === nodeId);
-      const reached = user.scope.nodes.some((n) => n.type === "national" || (n.type === level && n.id === nodeId)) || known.some((r) => inReach(user.scope.nodes, { wing_id: r.wing_id, division_id: r.division_id, territory_id: r.territory_id, zone_id: r.zone_id, route_id: r.route_id } as Memo));
+      // Like resolveScopedNode: allowed only when every zone under the node is in reach; an unknown node (no zones) is refused too.
+      const zones = [...new Set(ROUTES.filter((r) => ({ wing: r.wing_id, division: r.division_id, territory: r.territory_id, zone: r.zone_id })[level as "wing"] === nodeId).map((r) => r.zone_id))];
+      const zoneReached = (z: number) => ROUTES.some((r) => r.zone_id === z && inReach(user.scope.nodes, { wing_id: r.wing_id, division_id: r.division_id, territory_id: r.territory_id, zone_id: r.zone_id, route_id: r.route_id } as Memo));
+      const reached = zones.length > 0 && (user.scope.nodes.some((n) => n.type === "national") || zones.every(zoneReached));
       if (!reached) return send(403, problem(403, "ERR_OUT_OF_SCOPE")), true;
       rows = rows.filter((m) => idAt(m, level) === nodeId);
     }

@@ -5,7 +5,7 @@ Read `FlaggedMemos.kt`, `FlaggedMemosApiTest.kt` and the `OpsApi.kt` route field
 
 ### OWNER DEVICE-LAB ROW W-FLAG-01 (real API; the owner runs it with their own login, lanes hold no dev credentials)
 Open `/flagged-memos` on dev for each login and tick:
-1. **SUPERADMIN** (or national): rows list newest stored first; each row shows memo no, date, a status chip, `user_code · name` (as in the app user list), outlet, route number or "no route", gross in taka, flag chips, stored time. A voided memo is greyed with its void time.
+1. **SUPERADMIN** (or national): rows list newest stored first; each row shows memo no, date, a status chip, `user_code · name` (as in the app user list), outlet, route number or "no route", gross in taka, flag chips, stored time. A voided memo is greyed; only an admin data void shows a void time (a memo voided by its user shows the status alone).
 2. **TSO** (own territory) and **DMO** (own division): only rows of their reach. Pick a territory or zone outside the reach in the URL (`?territory=<other id>`): the banner says "outside your scope" and has **no Retry button**.
 3. **BRAND** and **SUPPORT**: the forbidden page, no menu entry. An **ADMIN holding only a module other than reports** (for example users:r): the page opens (role gate) and the banner is the forbidden text with no Retry; the same ADMIN with reports:r sees rows.
 4. **An empty day**: pick a past day with no flagged memo (or a flag no memo carries, e.g. `?flag=nothing_yet`): the "nothing flagged" empty state, no table, no paging bar.
