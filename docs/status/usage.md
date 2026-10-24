@@ -689,3 +689,6 @@
 
 ### 19:19 UTC — train 33 LANDED
 - Lead-verified: ci 40121363738 (#1558) green 18:54 (Web, container, repository gates ran; backend/Android/Infra skipped, no such files); deploy 40122884176 (#268) green 18:54–19:06, SR slice smoke PASSED 1–10 (note: the Dhaka business date rolled to 2026-10-25 at 18:00 UTC during the run; the smoke picked GUL-SR-1 / SMOKE-SR-002 and passed); health build da861ec1. "train 33 landed" sent to web-admin #8 (idle after merging INT) and backend-core #17 (merge before its push; candidate pending, its branch tip still 0a2b606d at 14:54). DECISIONS on INT 60.
+
+### 19:21 UTC — incident: DataFlowTrace date time-bomb (D-TEST-DATE-PIN-01)
+- backend-core #17 found 22 DataFlowTrace* tests failing on INT 39ed8bc5 and on its head since 18:00 UTC (Dhaka date rolled to 10-25; seed 06 starts assignments at dhaka_date(now()); the trace day was the constant 2026-10-24). INT CI stayed green only because trains 32/33 ran no backend job after 18:00; the next backend change would have gone red. Ruled: the test day follows the seed clock; seed unchanged; backend-core #17 fixes it in the same push as its slice (not red, not widening) and greps for other constant dates; infra/qa follow-up = a constant-date lint in the repository gates (hand-offs file). Train 34 waits for that push.
