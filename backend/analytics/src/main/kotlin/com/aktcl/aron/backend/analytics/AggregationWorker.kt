@@ -103,15 +103,21 @@ class AggregationWorker(
     }
 
     /**
-     * Data-architecture review finding 6: a void or an edit stored on another business date than the memo it ends (a void
-     * after midnight, an edit of yesterday's memo) also dirties that memo's own route-day, so the sale's day is no longer
-     * overstated. The memo named by `voided_by_client_uuid` / `superseded_by_client_uuid` = the event's source record.
+     * Data-architecture review finding 6: a void or an edit also dirties the route-day of the memo it ends, whatever the
+     * event's own date and route (a void after midnight, an edit of an earlier day's memo, a void sent from another
+     * route), so the sale's day is never left overstated. Indexed lookups only (`UNIQUE (client_uuid, business_date)`):
+     * `memo.voided` names the voided memo in `aggregate_id`; `memo.created` of an editing memo reaches the edited one
+     * through its `supersedes_client_uuid`. Other events cost nothing here. A repeated dirty is harmless.
      */
     private fun earlierMemoDays(h: Handle, e: Ev): List<Pair<Long, LocalDate>> {
-        val src = e.source ?: return emptyList()
-        return h.createQuery(
-            "SELECT route_id, business_date FROM app.memo WHERE route_id IS NOT NULL AND business_date <> :d AND (voided_by_client_uuid = :u OR superseded_by_client_uuid = :u)",
-        ).bind("u", src).bind("d", e.date).map { rs, _ -> rs.getLong(1) to rs.getObject(2, LocalDate::class.java) }.list()
+        val id = runCatching { java.util.UUID.fromString(e.aggregateId) }.getOrNull() ?: return emptyList()
+        val sql = when (e.type) {
+            "memo.voided" -> "SELECT route_id, business_date FROM app.memo WHERE client_uuid = :id AND route_id IS NOT NULL"
+            "memo.created" -> "SELECT o.route_id, o.business_date FROM app.memo n JOIN app.memo o ON o.client_uuid = n.supersedes_client_uuid " +
+                "WHERE n.client_uuid = :id AND n.business_date = :d AND n.supersedes_client_uuid IS NOT NULL AND o.route_id IS NOT NULL"
+            else -> return emptyList()
+        }
+        return h.createQuery(sql).bind("id", id).bind("d", e.date).map { rs, _ -> rs.getLong(1) to rs.getObject(2, LocalDate::class.java) }.list()
     }
 
     /** Processes up to [limit] claimed keys of one pass. Returns the number rebuilt. */

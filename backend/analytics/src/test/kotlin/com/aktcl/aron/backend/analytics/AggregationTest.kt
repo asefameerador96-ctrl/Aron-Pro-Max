@@ -40,9 +40,9 @@ class AggregationTest {
 
     private fun resource(n: String) = checkNotNull(javaClass.classLoader.getResourceAsStream(n)).bufferedReader().readText()
 
-    private fun event(type: String, sourceUuid: String, date: String = "2026-10-04") = conn.prepareStatement(
-        "INSERT INTO app.domain_event (event_type, aggregate_type, aggregate_id, business_date, source_client_uuid) VALUES (?, split_part(?, '.', 1), ?, ?::date, ?::uuid)",
-    ).use { it.setString(1, type); it.setString(2, type); it.setString(3, sourceUuid); it.setString(4, date); it.setString(5, sourceUuid); it.executeUpdate() }
+    private fun event(type: String, sourceUuid: String, date: String = "2026-10-04", aggregateId: String = sourceUuid, payload: String = "{}") = conn.prepareStatement(
+        "INSERT INTO app.domain_event (event_type, aggregate_type, aggregate_id, business_date, source_client_uuid, payload) VALUES (?, split_part(?, '.', 1), ?, ?::date, ?::uuid, ?::jsonb)",
+    ).use { it.setString(1, type); it.setString(2, type); it.setString(3, aggregateId); it.setString(4, date); it.setString(5, sourceUuid); it.setString(6, payload); it.executeUpdate() }
 
     private fun worker(clock: AronClock = AronClock.SYSTEM, id: String = "w1") = AggregationWorker(fresh.db, clock, id)
 
@@ -147,10 +147,33 @@ class AggregationTest {
         conn.createStatement().use {
             it.execute("UPDATE app.memo SET status = 'voided', status_changed_at = now(), voided_by_client_uuid = '$void' WHERE client_uuid = '00000000-0000-4000-8000-0000000000a1'")
         }
-        event("memo.voided", void, date = "2026-10-05")
+        // As DomainEventProducer writes it: aggregate the voided memo, payload the void row's own route (here another one).
+        val other = long("SELECT id FROM app.route WHERE code = 'R2'")
+        event("memo.voided", void, date = "2026-10-05", aggregateId = "00000000-0000-4000-8000-0000000000a1", payload = """{"route_id": $other}""")
         w.runUntilIdle()
         assertEquals(18_000, route("R1", "net_mtk"), "the sale's day is rebuilt without the voided memo")
         assertEquals(zoneBefore - 16_000, zone("Z1", "gross_mtk"), "and its zone-day")
+    }
+
+    /** Finding 6, the edit half: an edit stored the next day rebuilds the edited memo's day (the old memo no longer counts). */
+    @Test
+    fun anEditOnTheNextBusinessDateRebuildsTheEditedMemosDay() {
+        val w = worker()
+        w.runUntilIdle()
+        assertEquals(34_000, route("R1", "net_mtk"))
+        val edit = "00000000-0000-4000-8000-0000000000e2"
+        val old = "00000000-0000-4000-8000-0000000000a2"   // 18 000 gross on R1, 2026-10-04
+        conn.createStatement().use {
+            val cols = it.executeQuery("SELECT string_agg(column_name, ', ' ORDER BY ordinal_position) FROM information_schema.columns WHERE table_schema = 'app' AND table_name = 'memo' AND column_name <> 'id' AND is_generated = 'NEVER'")
+                .use { rs -> rs.next(); rs.getString(1) }.split(", ")
+            val repl = mapOf("client_uuid" to "'$edit'::uuid", "family_uuid" to "'$edit'::uuid", "business_date" to "DATE '2026-10-05'", "memo_no" to "'sr001-261005-001'",
+                "supersedes_client_uuid" to "'$old'::uuid", "edit_reason_code" to "'wrong_quantity'", "external_ref" to "NULL", "sig" to "NULL")
+            it.execute("INSERT INTO app.memo (${cols.joinToString()}) SELECT ${cols.joinToString { c -> repl[c] ?: c }} FROM app.memo WHERE client_uuid = '$old'")
+            it.execute("UPDATE app.memo SET status = 'superseded', status_changed_at = now(), superseded_by_client_uuid = '$edit' WHERE client_uuid = '$old'")
+        }
+        event("memo.created", edit, date = "2026-10-05")
+        w.runUntilIdle()
+        assertEquals(16_000, route("R1", "net_mtk"), "the edited memo's day no longer counts the superseded memo")
     }
 
     @Test
