@@ -1,5 +1,8 @@
 # Web-admin lane status
 
+## SESSION 7, ROW 3: FLAGGED MEMOS PAGE (D-WEB-FLAGGED-MEMOS-01, 2026-10-24)
+Built on INT 3289eecab (contract 1.8): `/flagged-memos` (menu entry, role gate, filters from/to/flag and wing to zone pickers, cursor paging, flags as chips, gross via `takaText`, empty/error/range states, Bangla first), mock `mock/flagged.ts` (voided, superseded, route-less, unknown-flag and 55 paging rows), `ScopeFilter` `levels` prop, `DataTable` `rowProps`. Tests: `tests/flagged-memos.test.tsx` (21: view states, query rules, role gate and menu, mock reads for scope, filter, paging, 403, 400) and `e2e/flagged-memos.spec.ts` (9: rows and chips, filter, empty, paging, range, role gate, Bangla 360, axe 1366 and 360). Local gate: eslint, tsc, vitest (1409), build, the new spec plus roles-routes, support-menu, module-grants green. The backend endpoint is not on dev yet: the page shows the error banner on a 404 until it is.
+
 ## HANDOVER (session 7 -> session 8, 2026-10-23 ~13:45 UTC; start here)
 **Branch:** `lane/web-admin`. `af5ed9d1` (CI run #1475 green, lead-checked) is staged as the first head of train 19; do NOT push again until the lead says "train 19 landed", then merge INT once. This docs-only commit is local until then.
 **Done this session:** (1) `house` in the user-scope editor (levels from `GEO_LEVELS`, `NodeType`, `scope.house` bn/en, TSO may hold territory or house, a 400 shows the server's `detail`); (2) Final Submit "not due" rows (planned false and no data: grey row, `fs.state.not_due`, pending "—"; `DataTable` got optional `rowProps`). DECISIONS D-WEB-ADMIN-HOUSE-NOTDUE-01. Tests in `tests/master-ops.test.ts`, `tests/final-submit.test.tsx`; `e2e/master2.spec.ts` expects territory + house for a TSO.

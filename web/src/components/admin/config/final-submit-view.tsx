@@ -76,7 +76,7 @@ export function FinalSubmitView({ locale, options, selection, date, today, previ
             <p className="mt-1 text-slate-600">{t(locale, "fs.dss.hint")}</p>
           </div>
           <Card title={`${formatBusinessDate(locale, preview.business_date)}`}>
-            <DataTable columns={columns} rows={preview.routes} rowKey={(r) => String(r.route_id)} empty={t(locale, "common.empty")} caption={t(locale, "fs.title")} rowProps={(r) => (notDue(r) ? { className: "text-secondary opacity-60", state: "not-due" } : undefined)} />
+            <DataTable columns={columns} rows={preview.routes} rowKey={(r) => String(r.route_id)} empty={t(locale, "common.empty")} caption={t(locale, "fs.title")} rowProps={(r) => (notDue(r) ? { className: "text-secondary", state: "not-due" } : undefined)} />
           </Card>
           {canSubmit && !preview.already_submitted ? (
             <Card title={t(locale, "fs.submit.title")}>

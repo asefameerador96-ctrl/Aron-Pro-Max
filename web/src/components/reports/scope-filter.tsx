@@ -8,15 +8,15 @@ const LABEL: Record<GeoLevel, MessageKey> = { wing: "scope.wing", division: "sco
 /** The standard five-level scope filter (F-WEB-041): wing, division, territory, zone, route.
  *  Levels fixed by the caller's token are shown as read-only text and never submitted; the others cascade from the level above.
  *  Options come from the server in reach, so another territory's nodes are not offered; the query builder drops them again. */
-export async function ScopeFilter({ token, scope, locale, params }: { token: string; scope: ScopeSummary | null; locale: Locale; params: Record<string, string | string[] | undefined> }) {
+export async function ScopeFilter({ token, scope, locale, params, levels = GEO_LEVELS }: { token: string; scope: ScopeSummary | null; locale: Locale; params: Record<string, string | string[] | undefined>; /** Levels to offer, top down (a page whose endpoint takes no route node leaves `route` out). */ levels?: readonly GeoLevel[] }) {
   const bound = bindGeo(scope);
   const chosen = geoFromParams(params);
   const own = (scope?.nodes ?? []).map((n) => n.name ?? n.code ?? "").filter(Boolean).join(", ");
   const parts = await Promise.all(
-    GEO_LEVELS.map(async (lvl, i) => {
+    levels.map(async (lvl, i) => {
       if (bound.locked.includes(lvl)) return { lvl, locked: true as const, options: [] as { id: number; label: string }[], failed: false };
-      const parent = i === 0 ? undefined : chosen[GEO_LEVELS[i - 1]!]?.[0];
-      if (i > 0 && parent === undefined && !bound.locked.includes(GEO_LEVELS[i - 1]!)) return { lvl, locked: false as const, options: [], failed: false };
+      const parent = i === 0 ? undefined : chosen[levels[i - 1]!]?.[0];
+      if (i > 0 && parent === undefined && !bound.locked.includes(levels[i - 1]!)) return { lvl, locked: false as const, options: [], failed: false };
       const parentId = i === 0 || parent === undefined ? scopeParent(scope, lvl) : parent;
       const r = await geoOptions(token, lvl, parentId);
       const ownIds = bound.ownIds[lvl];

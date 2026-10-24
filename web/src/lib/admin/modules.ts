@@ -63,7 +63,7 @@ const PAGES: readonly (readonly [string, GrantModule])[] = [
   ["/admin/master-data", "masterdata"], ["/admin/calendar", "masterdata"], ["/admin/house-dedupe", "masterdata"], ["/admin/code-lists", "masterdata"], ["/admin/print-templates", "masterdata"], ["/admin/tutorials", "masterdata"], ["/admin/surveys", "masterdata"], ["/admin/rubrics", "masterdata"], ["/admin/content", "masterdata"], ["/admin/clusters", "masterdata"],
   ["/admin/export-log", "reports"], ["/reports", "reports"],
   ["/daily-tracking", "daily_tracking"], ["/tso-daily-tracking", "daily_tracking"], ["/leave", "users"],
-  ["/", "reports"], ["/exceptions", "reports"], ["/sync-health", "reports"], ["/final-submit", "reports"],
+  ["/", "reports"], ["/exceptions", "reports"], ["/flagged-memos", "reports"], ["/sync-health", "reports"], ["/final-submit", "reports"],
 ];
 const PAGES_SORTED = [...PAGES].sort((a, b) => b[0].length - a[0].length);
 
