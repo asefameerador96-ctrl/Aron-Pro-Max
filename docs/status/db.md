@@ -12,15 +12,14 @@ later train. **Next free migration: V0114.**
 |---|---|---|
 | V0109 / V0110 | on dev (trains 13.1 / 17) | `dw.agg_daily_outlet` per-category sold columns; mixed `sold_qty_base` dropped (expand/contract closed) |
 | V0111 | on dev (train 28) | `dw.v_memo_flags`: flagged memos with scope keys frozen at the business date, `memo_family_uuid`, no names (endpoint joins `app.app_user`); counts use `status='active' AND voided_at IS NULL` |
-| V0112 / V0113 | train 30 (LAST) | `app.sync_rejected.code` CHECK + `price_invalid` (NOT VALID, then VALIDATE). backend-core wires the code after it is on INT |
+| V0112 / V0113 | **on dev** (train 30, INT ea44112e, ci #1546 green, deploy 40102704144 #265 green) | `app.sync_rejected.code` CHECK + `price_invalid` (NOT VALID, then VALIDATE). backend-core may now wire the code |
 
 **Open for db #11.**
 1. Owner row R: prices (per price type) or "discontinued" for MaxDB-10S_10HL, SupSty-10S, SupSty-20S (all five
    prices 0.0 in `db/seed/sku_catalog.csv`). Seed-only slice: edit the CSV, regenerate `02_products.sql` with
    `python3 db/seed/gen_products.py` (never hand-edit), add a test that no active SKU has a zero outlet price. db
    never invents a price.
-2. Contract 1.9 queue rows that may need db: none known to db at handover; ask the lead which rows touch tables.
-3. After train 30 lands: record the V0112/V0113 deploy line here.
+2. Contract 1.9 queue (`docs/requests/contract-v1.9-queue.md`): MemoView.memo_no 44 chars and a nullable MemoView.route_id; neither touches a table (lead, 2026-10-24).
 
 **Lessons (session 10).**
 - `app.sync_rejected.code` and `app.sync_quarantine.code` split the contract `RecordOutcomeCode` by status (V0008):
