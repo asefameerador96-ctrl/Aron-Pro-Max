@@ -615,3 +615,20 @@
 
 ### 13:33 UTC — owner: "public again"
 - Recorded D-REPO-PUBLIC-02 (reverses D-REPO-PRIVATE-01; rule 13 holds again: public until complete, private at go-live with the spending limit set first). Owner row L updated (loader preferred; committed pictures accepted on the owner's word). The CI-cost branch still rides train 31 (its private guards are no-ops now). docs/30 s3a's "made private" paragraph gets a one-sentence reversal note after train 31 lands (the paragraph lives on that branch; no cross-branch edit now).
+
+### 13:48 UTC — GO train 30 (android-tso 4a081302, android-print 72ff0a37 P0 fix, lead docs ae6056fd, db f7d8bb23)
+- android-print #1542 green on 72ff0a37 at 13:37 → checked + GO to integrator 20 at 13:48. Expected DECISIONS 52 (48 + android-tso 1 + db 1 + lead docs 2: D-REPO-PRIVATE-01, D-REPO-PUBLIC-02). Deploy runs (V0112/V0113 + smoke); CI signs the APK the owner tests (stock slip + sale memo).
+- Train 31 queue: lead CI-cost branch 9ed6e407 (ci #1544 green; concurrency cancel on lane refs, retention trims, dependency-review and CodeQL guards; lead read both diffs), android-print docs-only 346d604f (D-PRINT-07 bullet + handover), lead docs. backend-core's row 3 slice and web-admin's page come later (trains 32+).
+
+### 13:53 UTC — train 30 pushed, lead git verification PASSED
+- Integrator 20 pushed INT ea44112ef68e05f71cbf16c9c0e37a4208efac02 at 13:49 (ci run 40099770707 = #1546, in progress). Lead check by git: all four heads and prev INT 3289eeca contained; INT delta = union of the head deltas + docs/status/train.md (63 = 63 files, no extra, none missing); DECISIONS 52 `^- **D-` lines (48 + android-tso 1 + lead docs 2 + db 1), 0 markers, 0 prev lines lost, 0 exact duplicate lines; the one repeated id (D-SALE-ZERO-PRICE-01 ruling + its server-block confirmation) is pre-existing and intended. No generated file in the delta. Awaiting CI (signed APK = run number 1546) and the deploy (V0112/V0113 + smoke).
+- Train 31 staged: lead CI 9ed6e40795164952ee808e27f8eded5468ec3699 (5 files), android-print docs-only 346d604f5d933386e8872f3c9216a19308a14721 (DECISIONS +1 D-PRINT-07, docs/status/android-print.md), no file overlap; lead docs to follow after an INT merge.
+
+### 14:07 UTC — android-print #4 archived
+- android-print #4 (Opus, ~665k) sent its candidate line (72ff0a37: every CI job area RAN green on #1542; release signing/dependency review/dictionary publish skipped by design on a lane ref) and READY TO RECYCLE at 14:06; archived 14:07. Its code is aboard train 30, its docs-only top 346d604f rides train 31; android-print #5 stays live for the owner's device result.
+
+### 14:48 UTC — lane check (scheduled)
+- INT ea44112e (train 30, pushed 13:49). ci run 40099770707 (#1546) GREEN at 14:29; dev health already reports build ea44112e, so the deploy ran; the deploy run id, V0112/V0113 and the smoke line are being read by a Haiku reader before "train 30 landed" goes out and the owner gets build 1546.
+- Branches ahead of INT: lane/android-print 346d604f (docs-only, train 31), lane/lead-ci-private 9ed6e407 (train 31), lane/lead-docs-1022 (this), lane/web-admin 6001176e (3 commits, pushed 14:06, lane run 40101132331 in e2e; candidate line expected); the 73 classified refs unchanged. No new docs/requests in the last 3 hours.
+- Lanes (all rate limits allowed): integrator 20 idle 123k (reports CI/deploy next); backend-core #16 468k, working (paging test 55606ac committed, full suite running before the row 3 push) → hand over after this slice; db #10 443k idle, waiting for "train 30 landed" then READY TO RECYCLE; android-print #5 323k idle, awaiting the owner's phone test; web-admin #7 458k, lane CI in e2e → hand over after this slice; android-print #4 archived 14:07.
+- Owner items: no new answer (rows J–S open; L = pack pictures path A/B; printer test moves to build 1546).

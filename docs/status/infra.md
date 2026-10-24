@@ -585,7 +585,7 @@ script is not run and no branch settings changed.
 | Migrations | ci.yml `gates` when db/migrations changes | an edited, renamed or deleted shipped migration; duplicate or out-of-order versions; squawk 2.67.0 findings on NEW migrations (`tools/ci/squawk.toml`: lock_timeout, CONCURRENTLY, NOT VALID, no drop/rename) |
 | Contract | ci.yml `gates` when contract/ changes | an oasdiff 1.33.0 breaking change, unless the same push bumps `info.version` AND adds `docs/requests/contract-*.md` |
 | SR release + APK size (F-SYS-036) | ci.yml `android-release` | `assembleRelease` breaking (android-core ask); 30 MB per ABI, 70 MB installed (estimate), +15 % over `tools/ci/apk-size-baseline.json` (warn +5 %). SR release today: **10.2 MB universal, 4.3 MB arm64-v8a, 3.2 MB armeabi-v7a** |
-| SBOM | ci.yml `images` | SPDX for aron-backend and aron-web (syft 1.54.1 pinned), artifact `sbom-<sha>`, 90 days |
+| SBOM | ci.yml `images` | SPDX for aron-backend and aron-web (syft 1.54.1 pinned), artifact `sbom-<sha>`, 30 days (since 2026-10-24, D-REPO-PRIVATE-01) |
 | CodeQL | codeql.yml (separate, never blocks the deploy) | java-kotlin (shared, backend, the three apps; real compile) and javascript-typescript, `security-extended`; push, PR, weekly. First run: 3.3 min and 1.2 min |
 
 Each gate is proven to fail on a deliberate violation: `tools/ci/test_gates.py` (15 tests, run in the gates job with

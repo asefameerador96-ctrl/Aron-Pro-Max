@@ -43,14 +43,17 @@ env:
   # ARON_VERSION_NAME is set by each Android job's first step: 0.<1 + run / 1000>.<run % 1000> (0.1.635 for run 635,
   # 0.2.0 for run 1000), so it always fits the contract's version_name pattern (three digits per part; N-064 manifest).
 
-# Lead decision 2026-10-07 (CI throughput): one group per ref. A running push run always finishes; GitHub keeps one
-# pending run per group and a newer push replaces the older PENDING one, so the newest head of each branch always gets
-# a verdict and intermediate merge commits are skipped. The newer head contains every older commit and compares with
-# the LAST GREEN head (changes job), so nothing of a skipped run goes untested. Pull requests cancel their older run.
-# The Azure deploy is a separate workflow (deploy.yml, on ci completed).
+# Lead decision 2026-10-07 (CI throughput): one group per ref. GitHub keeps one pending run per group and a newer push
+# replaces the older PENDING one, so the newest head of each branch always gets a verdict and intermediate merge commits
+# are skipped. The newer head contains every older commit and compares with the LAST GREEN head (changes job), so
+# nothing of a skipped or cancelled run goes untested. Pull requests cancel their older run.
+# 2026-10-24 (repository private, Actions minutes metered; docs/30 s3a): a push to any branch other than main and the
+# integration branch also cancels that branch's older RUNNING run. A push to main or the integration branch and a
+# manual dispatch never cancel a running run, so every started run on main and the integration branch finishes. The
+# Azure deploy is a separate workflow (deploy.yml, on ci completed, integration branch only): no cancel here stops it.
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref != 'refs/heads/main' && github.ref != 'refs/heads/claude/wonderful-thompson-k6ejnf') }}
 
 jobs:
   changes:
@@ -227,7 +230,8 @@ jobs:
           echo "semgrep base: ${base}"
           tools/ci/semgrep.sh "${base}"
       - name: Dependency review (pull requests; high or critical fails)
-        if: github.event_name == 'pull_request'
+        # Needs GitHub Advanced Security on a private repository; there OSV-Scanner (above) covers dependency vulnerabilities.
+        if: github.event_name == 'pull_request' && !github.event.repository.private
         uses: actions/dependency-review-action@2031cfc080254a8a887f58cffee85186f0e49e48 # v4.9.0
         with:
           fail-on-severity: high
@@ -322,7 +326,7 @@ jobs:
           name: data-dictionary-${{ github.sha }}
           path: docs/data-dictionary.md
           if-no-files-found: error
-          retention-days: 90
+          retention-days: 30
 
   # :backend:app:test is about 14.5 of the 26 minutes above (CI run 37669413915), so it runs in its own job, in
   # parallel (lead 2026-10-07: wall time about 17 min instead of 26; the job above keeps its required-check name).
@@ -521,6 +525,7 @@ jobs:
           name: aron-release-signed-dev-${{ github.run_number }}
           path: signed/
           if-no-files-found: error
+          # Never below 30: the owner's device checks install these (docs/30 s3a).
           retention-days: 30
 
   web:
@@ -645,7 +650,7 @@ jobs:
           name: sbom-${{ github.sha }}
           path: sbom-*.spdx.json
           if-no-files-found: error
-          retention-days: 90
+          retention-days: 30
 
   infra:
     name: Infra validation (Bicep, workflows)
