@@ -1713,6 +1713,9 @@ class SliceSmoke(unittest.TestCase):
         smoke = d[d.rindex("python3 infra/scripts/slice-smoke.py || slice_rc=$?"):]
         self.assertLess(smoke.index('elif [ "$slice_rc" -eq 3 ]; then'), smoke.index('slice_result="SKIPPED (not a selling day'),
                         "exit 3 (not a selling day) is SKIPPED, never FAILED")
+        tail = d[d.rindex('summary "| SR slice smoke | ${slice_result} |"'):]
+        self.assertIn('if [[ "$slice_result" == FAILED* ]]; then', tail, "a FAILED smoke turns the job red, after the summary (lead P1 2026-10-24)")
+        self.assertIn("exit 1", tail[tail.index('if [[ "$slice_result" == FAILED* ]]'):])
         self.assertLess(d.index('DBLOGINS_JOB="$(az deployment'), d.index("publish aron-devseed build_devseed"))
         self.assertLess(d.index("publish aron-devseed build_devseed"), d.index('guard_newer_live "before the apps"'))
         self.assertIn("grep -qx 'param devSeed = true' \"infra/params/${PROFILE}.apps.bicepparam\"", d, "a committed switch")

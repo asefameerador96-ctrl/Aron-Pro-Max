@@ -668,7 +668,7 @@ infra/scripts/release-marker.sh "$rg_id" "$ENV_NAME" "$SHA" \
   "${GITHUB_SERVER_URL:-}/${GITHUB_REPOSITORY:-}/actions/runs/${GITHUB_RUN_ID:-local}" \
   "$([ -n "$ROLLBACK_SHA" ] && echo rollback || echo deploy)" || echo "::warning::release marker step failed"
 # SR slice smoke (lead request 2026-10-07): login, bundle, one sale uploaded twice (duplicate acked, count +1), memo
-# read, dashboard tile, then the sale is voided. Non-blocking for now; result in the summary.
+# read, dashboard tile, then the sale is voided. Result in the summary; a FAILED smoke fails the job at the end.
 slice_result="off (no param devSeed = true)"
 if [ "$ARON_DEV_SEED" = true ] && [ -z "$ROLLBACK_SHA" ]; then
   if slice_pw="$(az keyvault secret show --vault-name "$KV" --name aron-dev-seed-password --query value -o tsv 2>/dev/null)" \
@@ -683,7 +683,7 @@ if [ "$ARON_DEV_SEED" = true ] && [ -z "$ROLLBACK_SHA" ]; then
     elif [ "$slice_rc" -eq 3 ]; then  # not a selling day in Dhaka (Friday, a holiday): nothing to sell; the table names the next day's route
       slice_result="SKIPPED (not a selling day; see the slice smoke table)"
     else
-      slice_result="FAILED (see the slice smoke table)"; echo "::warning::SR slice smoke failed (non-blocking)"
+      slice_result="FAILED (see the slice smoke table)"
     fi
   else
     slice_result="not run (aron-dev-seed-password unreadable)"; echo "::warning::SR slice smoke not run: no seed password"
@@ -714,3 +714,9 @@ summary "| Dev seed | ${devseed_result} |"
 summary "| SR slice smoke | ${slice_result} |"
 summary "| Migrations | ${RUN_MIGRATIONS} |"
 summary "| Budget | ${budget_line} |"
+# Lead P1 2026-10-24: a FAILED slice smoke turns the deploy job red (after the summary, with everything deployed and the
+# lock released by the exit trap), so a "success" never hides a refused sale. SKIPPED and "not run" stay warnings.
+if [[ "$slice_result" == FAILED* ]]; then
+  echo "::error::SR slice smoke FAILED: the deploy is live but the sale path is broken (see the slice smoke table)"
+  exit 1
+fi
