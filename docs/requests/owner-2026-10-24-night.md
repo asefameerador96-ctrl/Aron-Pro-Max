@@ -83,6 +83,15 @@ until it lands on INT. Rulings are DECISIONS bullets D-NIGHT-* on the same branc
 5. `RiskSignalCode` + `CHECKOUT_WITHOUT_SUBMIT` (backend-core #18).
 6. MDM packages catalogue endpoint for the allow-list picker (mdm #3 writes the shape; moved from the 1.8 queue note).
 
+## Rulings and facts added 22:55 UTC
+
+- **D-NIGHT-SEED-OUTLETS-02:** db #11 edits the one pinned literal in `backend/app` DataFlowTraceTest.kt:72 (`GUL-SR-1:18:21` → `:24`) in the same commit as the seed change (lead-approved exception; Backend app tests job must RUN); db head LAST.
+- **Digest shape (backend-core #18, lane/backend-core 9ce92700, `docs/requests/contract-v1.9-shapes-backend-core.md`):** no `GET /v1/sync/digest`; `SyncTotalsResponse` gains `digest` (by_type → {device: {received, acknowledged} | null, login: {acknowledged}}) and `rejected[]` {client_uuid, type, business_date, status rejected|parked|quarantined, code, final, from_this_device, memo_no?, outlet_id?, last_received_at} max 200 + `rejected_truncated`. "committed" is "received" (the server cannot know phone-committed). `CHECKOUT_WITHOUT_SUBMIT`: sev 2, weight 20, subject user, per user-day, evaluated at batch end; needs a db row (check constraint + `cfg.geo.integrity_weight` default) → db #11 row 2; the server switch stays off until catalogue and constraint accept it.
+- **Contract 1.9 batch** runs as its own Opus session (contract-1.9, lane/lead-contract-1.9 from lead-docs aca9377e); rows 1–5 now, row 6 when mdm's `docs/requests/contract-v1.9-shapes-mdm.md` lands (cut-off 23:25 UTC, else row 6 opens the 1.10 queue). Lanes do not edit `contract/openapi.yaml` or generated files.
+- **MDM answer (mdm #3):** yes on a device-owner phone via `setPackagesSuspended`; Honor enrolment = `honor-device-owner.md` path A (`dumpsys account` = 0 → `dpm set-device-owner`) else factory reset + QR; `appops set <pkg> SCHEDULE_EXACT_ALARM allow` for exact edges (inexact fallback); never suspended: ARON apps, dialler/call handlers, default SMS, launcher, IMEs, Settings, SystemUI, installer/permission controller, emergency. Device-lab row D-MDM-ALLOWLIST-01 (DEVICE-PENDING). Runbook `docs/runbooks/mdm-work-hours-allowlist.md`.
+- **Sync-at-once root cause (android-tso #6):** a save's 5 s debounce enqueues under the same WorkManager unique name as the failure back-off and KEEP swallows it, so rows waited up to 5 min; the reconnect nudge fired only on onAvailable (not on validated connectivity) and there was no foreground nudge. Fix in slice A.
+- **Board deck (owner item 8):** published as a private Slides artifact for the owner (link in the owner report); the owner shares it from the page's Share menu for the Board.
+
 ## Reporting
 
 Every lane: one push per slice, candidate line to the lead (full sha, lane run id, jobs RAN vs skipped, checker verdict,
