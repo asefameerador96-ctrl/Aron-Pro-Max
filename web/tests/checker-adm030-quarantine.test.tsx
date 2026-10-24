@@ -1,5 +1,5 @@
 // CHECKER (F-ADM-030 / F-ADM-051 / F-ADM-050): attempts to refute PII masking, paging and resolve consistency.
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { QuarantinePageContent } from "@/components/admin/config/quarantine-page";
 import { maskPayload } from "@/lib/admin/mask";
 import type { QuarantineItem } from "@/lib/admin/types";
@@ -88,6 +88,12 @@ describe("quarantine.resolve consistency", () => {
 
 describe("P13 sync health page (F-ADM-050)", () => {
   const page = { as_of: "2026-10-06T05:00:00.000Z", summary: { devices: 1, devices_with_pending: 0, held_rows_alerts: 0, rejected: 0, quarantined: 0, mismatched_route_days: 0 }, next_cursor: null, items: [] };
+  beforeEach(() => {
+    vi.setSystemTime(new Date("2026-10-24T09:00:00Z")); // 15:00 Dhaka: one business day, never near the 18:00Z day change (D-WEB-TEST-CLOCK-01)
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
   it("defaults to today's Dhaka business date and forwards only_problems", async () => {
     const { default: SyncHealthAdminPage } = await import("@/app/admin/config/sync-health/page");
     session.current = { user: { role: "SUPPORT" }, at: token(await support()) };
@@ -95,6 +101,7 @@ describe("P13 sync health page (F-ADM-050)", () => {
     html(await SyncHealthAdminPage({ searchParams: Promise.resolve({ only_problems: "true" }) }));
     const call = h.calls().find((c) => c.path === "/v1/dashboards/sync-health");
     const dhaka = new Date(Date.now() + 6 * 3600_000).toISOString().slice(0, 10);
+    expect(dhaka).toBe("2026-10-24");
     expect(call?.query.business_date).toBe(dhaka);
     expect(call?.query.only_problems).toBe("true");
   });

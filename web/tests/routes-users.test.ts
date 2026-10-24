@@ -1,9 +1,17 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { routeAssignments, routes } from "@/app/admin/_entities/routes";
 import { users } from "@/app/admin/_entities/users";
 import { valuesSchema } from "@/components/admin/crud/validation";
 import { businessDate } from "@/lib/i18n";
 import { setupMock } from "./helpers/bff";
+
+// D-WEB-TEST-CLOCK-01 (after D-TEST-DATE-PIN-01): a fixed instant inside one Dhaka business day (15:00), so a run that crosses 18:00Z cannot see two days.
+beforeEach(() => {
+  vi.setSystemTime(new Date("2026-10-24T09:00:00Z"));
+});
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 const { mock, signIn, create, update, act } = setupMock();
 const REASON = "Reason that is long enough";

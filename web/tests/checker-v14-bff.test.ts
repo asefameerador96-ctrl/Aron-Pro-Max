@@ -1,9 +1,17 @@
 // CHECKER v14 (T1 money): dues adjustment and paper backfill through the real BFF (POST /api/bff/admin-op, /api/bff/team-op)
 // against the contract mock. Attempts role bypass, body smuggling, flag bypass and path tricks.
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { POST as teamPost } from "@/app/api/bff/team-op/route";
 import { problemMessage } from "@/lib/i18n";
 import { admin, op, req, setupMock, signIn, support, tso } from "./helpers/harness";
+
+// D-WEB-TEST-CLOCK-01 (after D-TEST-DATE-PIN-01): a fixed instant inside one Dhaka business day (15:00), so a run that crosses 18:00Z cannot see two days.
+beforeEach(() => {
+  vi.setSystemTime(new Date("2026-10-24T09:00:00Z"));
+});
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 const h = setupMock();
 afterEach(() => vi.unstubAllEnvs());

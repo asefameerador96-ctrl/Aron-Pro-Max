@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { POST as opPost } from "@/app/api/bff/master-op/route";
 import { formatPriceMtk, mtkToTaka, parseTakaToMtk } from "@/lib/admin/price-money";
 import { GEO_LEVELS } from "@/lib/admin/geo";
@@ -6,6 +6,14 @@ import { ALLOWED_SCOPE_TYPES, scopeNodeAllowed } from "@/lib/admin/scope-rules";
 import { ALL_ROLES } from "@/lib/auth/roles";
 import { businessDate, t, type MessageKey } from "@/lib/i18n";
 import { req, setupMock } from "./helpers/bff";
+
+// D-WEB-TEST-CLOCK-01 (after D-TEST-DATE-PIN-01): a fixed instant inside one Dhaka business day (15:00), so a run that crosses 18:00Z cannot see two days.
+beforeEach(() => {
+  vi.setSystemTime(new Date("2026-10-24T09:00:00Z"));
+});
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 const { mock, signIn } = setupMock();
 const REASON = "Reason that is long enough";

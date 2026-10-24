@@ -3,7 +3,7 @@ import type * as ServerMod from "@/lib/dash/server";
 import type { ReactElement } from "react";
 
 import { renderToStaticMarkup } from "react-dom/server";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh() {} }), notFound() { throw new Error("notFound"); } }));
 vi.mock("@/lib/auth/require", () => ({ requireSession: async () => ({ at: "tok", user: { role: "TSO" } }) }));
@@ -18,6 +18,14 @@ import DailyTracking from "@/app/(dashboards)/daily-tracking/page";
 import RoutesPage from "@/app/(dashboards)/routes/page";
 import Tutorial from "@/app/(dashboards)/tutorial/page";
 import { businessDate } from "@/lib/i18n";
+
+// D-WEB-TEST-CLOCK-01 (after D-TEST-DATE-PIN-01): a fixed instant inside one Dhaka business day (15:00), so a run that crosses 18:00Z cannot see two days.
+beforeEach(() => {
+  vi.setSystemTime(new Date("2026-10-24T09:00:00Z"));
+});
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 const render = async (p: Promise<ReactElement>) => renderToStaticMarkup(await p);
 const ok = <T,>(data: T) => ({ ok: true as const, status: 200, data });
