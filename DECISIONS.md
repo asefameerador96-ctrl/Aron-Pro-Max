@@ -1325,3 +1325,5 @@ The sponsor said "hold it": keep the zone-redundant dev resources (about USD 15.
 
 ## D-STATE-LOADFAIL-01 (2026-10-24, android-tso): a thrown local read is an error state with a retry
 Rule 14 error state for host reads. SR Stock, SR My requests and AMO Stock read Room before their first frame. A throw used to leave the loading card up forever (Stock) or show "no requests" (My requests, `runCatching` to an empty list). Now `rememberAsyncLoad` + `AronLoaded` (core-ui) show the kit error state with a retry; cancellation is not a failure; the data layer is unchanged. Words follow the existing TSO load-failure pattern ("Could not load your leave list"): `stk_load_failed` "Could not load the stock" / "স্টক আনা যায়নি" and `out_own_load_failed` "Could not load your requests" / "অনুরোধের তালিকা আনা যায়নি"; retry label is the existing `fb_retry` "Try again" / "আবার চেষ্টা করুন". The two new sentences are mine, flagged to the lead for ratification.
+
+D-STATE-LOADFAIL-01 ratification (2026-10-24): the lead ratified the two sentences above (system error text, not parity screen wording) and the reuse of `fb_retry` as the retry label.
