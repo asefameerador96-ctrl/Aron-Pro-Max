@@ -29,31 +29,56 @@ const daysBetween = (a: string, b: string) => Math.round((Date.parse(`${b}T00:00
 const idAt = (m: Memo, level: string): number | null => ({ wing: m.wing_id, division: m.division_id, territory: m.territory_id, zone: m.zone_id, route: m.route_id })[level as "wing"] ?? null;
 const inReach = (nodes: { type: string; id: number }[], m: Memo) => nodes.some((n) => n.type === "national" || idAt(m, n.type) === n.id);
 
+const validation = (x: DashCtx, pointer: string, code: string) => (x.send(400, x.problem(400, "ERR_VALIDATION", { errors: [{ pointer, code }] })), true);
+const LEVELS = ["wing", "division", "territory", "zone"];
+// The server's keyset is (stored_at, memo_id) newest first; the mock's stand-in for memo_id is the memo uuid (opaque, unique, ordered).
+const after = (a: Memo, b: Memo) => (a.stored_at === b.stored_at ? b.memo_client_uuid.localeCompare(a.memo_client_uuid) : b.stored_at.localeCompare(a.stored_at));
+const encode = (m: Memo) => Buffer.from(`${m.stored_at}|${m.memo_client_uuid}`).toString("base64url");
+const decode = (c: string): [string, string] | null => {
+  const [at, id] = Buffer.from(c, "base64url").toString().split("|");
+  return at && id && /^\d{4}-\d\d-\d\dT/.test(at) ? [at, id] : null;
+};
+
 export function handleFlagged(x: DashCtx): boolean {
   if (x.path !== "/v1/dashboards/flagged-memos" || x.method !== "GET") return false;
   const { user, send, problem, url } = x;
+  // Mirrors OpsApi.kt `get("/dashboards/flagged-memos")` and FlaggedMemos.kt (D-BC-FLAGGED-MEMOS-01). An ADMIN without reports:r is refused the same
+  // way (ERR_FORBIDDEN) but the mock holds no module grants, so that case is covered by the device-lab row, not here.
   if (user.role === "BRAND") return send(403, problem(403, "ERR_FORBIDDEN")), true;
   const q = url.searchParams;
+  const flag = q.get("flag");
+  if (flag !== null && (flag === "" || flag.length > 60)) return validation(x, "query.flag", "invalid_value");
+  const limitRaw = q.get("limit");
+  const limit = limitRaw === null ? 50 : Number(limitRaw);
+  if (!Number.isInteger(limit) || limit < 1 || limit > 200) return validation(x, "query.limit", "out_of_range");
   const from = q.get("from") ?? SEED_TODAY;
   const to = q.get("to") ?? SEED_TODAY;
-  if (daysBetween(from, to) < 0 || daysBetween(from, to) > 92) return send(400, problem(400, "ERR_VALIDATION", { errors: [{ pointer: "query.to", code: "invalid_value" }] })), true;
+  if (daysBetween(from, to) < 0) return validation(x, "query.to", "invalid_value");
+  if (daysBetween(from, to) > 92) return validation(x, "query.to", "out_of_range");
+  const cursorRaw = q.get("cursor");
+  const cursor = cursorRaw === null ? null : decode(cursorRaw);
+  if (cursorRaw !== null && !cursor) return validation(x, "query.cursor", "invalid_value");
   const level = q.get("level");
   const nodeId = Number(q.get("node_id"));
   let rows = SEED.filter((m) => inReach(user.scope.nodes, m) && m.business_date >= from && m.business_date <= to);
-  if (level && level !== "national" && nodeId) {
-    // A node outside the caller's reach is refused whether or not a memo sits in it; inside the reach it narrows the list (possibly to nothing).
-    const known = ROUTES.filter((r) => ({ wing: r.wing_id, division: r.division_id, territory: r.territory_id, zone: r.zone_id, route: r.route_id })[level as "wing"] === nodeId);
-    const reached = user.scope.nodes.some((n) => n.type === "national" || (n.type === level && n.id === nodeId)) || known.some((r) => inReach(user.scope.nodes, { wing_id: r.wing_id, division_id: r.division_id, territory_id: r.territory_id, zone_id: r.zone_id, route_id: r.route_id } as Memo));
-    if (!reached) return send(403, problem(403, "ERR_OUT_OF_SCOPE")), true;
-    rows = rows.filter((m) => idAt(m, level) === nodeId);
+  if (level !== null || q.get("node_id") !== null) {
+    if (level === null) return validation(x, "query.level", "required");
+    if (level === "national") {
+      if (!user.scope.nodes.some((n) => n.type === "national")) return send(403, problem(403, "ERR_OUT_OF_SCOPE")), true;
+    } else {
+      if (!LEVELS.includes(level)) return validation(x, "query.level", "invalid_value");
+      if (!(nodeId > 0)) return validation(x, "query.node_id", "required");
+      // A node outside the caller's reach is refused whether or not a memo sits in it; inside the reach it narrows the list (possibly to nothing).
+      const known = ROUTES.filter((r) => ({ wing: r.wing_id, division: r.division_id, territory: r.territory_id, zone: r.zone_id })[level as "wing"] === nodeId);
+      const reached = user.scope.nodes.some((n) => n.type === "national" || (n.type === level && n.id === nodeId)) || known.some((r) => inReach(user.scope.nodes, { wing_id: r.wing_id, division_id: r.division_id, territory_id: r.territory_id, zone_id: r.zone_id, route_id: r.route_id } as Memo));
+      if (!reached) return send(403, problem(403, "ERR_OUT_OF_SCOPE")), true;
+      rows = rows.filter((m) => idAt(m, level) === nodeId);
+    }
   }
-  const flag = q.get("flag");
   if (flag) rows = rows.filter((m) => m.flags.includes(flag));
-  rows = [...rows].sort((a, b) => (a.stored_at === b.stored_at ? a.memo_client_uuid.localeCompare(b.memo_client_uuid) : b.stored_at.localeCompare(a.stored_at)));
-  const limit = Math.min(Math.max(Number(q.get("limit")) || 50, 1), 200);
-  const offset = Number(Buffer.from(q.get("cursor") ?? "MA", "base64url").toString()) || 0;
-  const page = rows.slice(offset, offset + limit);
-  const next = offset + limit < rows.length ? Buffer.from(String(offset + limit)).toString("base64url") : null;
-  const body: Schemas["FlaggedMemoPage"] = { items: page, next_cursor: next };
+  rows = [...rows].sort(after);
+  if (cursor) rows = rows.filter((m) => m.stored_at < cursor[0] || (m.stored_at === cursor[0] && m.memo_client_uuid < cursor[1]));
+  const page = rows.slice(0, limit);
+  const body: Schemas["FlaggedMemoPage"] = { items: page, next_cursor: rows.length > limit ? encode(page[page.length - 1]!) : null };
   return send(200, body), true;
 }
