@@ -508,7 +508,7 @@ fun SrApp(
         SrScreen.OWN_REQUESTS -> SrFrame(stringResource(HomeR.string.hm_tile_outlet), goBack, sync, openSync, icon = CoreR.drawable.aron_art_outlet) {
             var rows by remember { mutableStateOf<List<com.aktcl.aron.feature.outlet.OwnRequestRow>?>(null) }
             LaunchedEffect(Unit) { rows = runCatching { day.ownRequests() }.getOrDefault(emptyList()) }
-            rows?.let { com.aktcl.aron.feature.outlet.OwnRequestsContent(it) }
+            rows?.let { com.aktcl.aron.feature.outlet.OwnRequestsContent(it) } ?: com.aktcl.aron.core.ui.aron.AronLoadingScreen()
         }
         SrScreen.OUTLET_MENU -> SrFrame(stringResource(HomeR.string.hm_tile_outlet), goBack, sync, openSync, icon = CoreR.drawable.aron_art_outlet) {
             OutletMenuContent(onKind = { k ->
@@ -638,7 +638,7 @@ private fun StockHost(day: SrDay) {
     LaunchedEffect(Unit) { load = day.stockLoad(); unprinted = day.slipNotPrinted() }
     val att by day.stockAttempt.collectAsState()
     LaunchedEffect(att) { unprinted = day.slipNotPrinted() }
-    val l = load ?: return
+    val l = load ?: run { com.aktcl.aron.core.ui.aron.AronLoadingScreen(); return }
     version.let {}
     StockContent(
         rows = l.rows, totals = l.totals, message = message, slipNotPrinted = unprinted,

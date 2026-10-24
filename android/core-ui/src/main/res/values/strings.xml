@@ -165,6 +165,7 @@
     <string name="core_ui_look_new_request">New request</string>
     <string name="core_ui_look_star">%1$s of 5</string>
     <string name="core_ui_look_hold">Hold to submit</string>
+    <string name="core_ui_loading">Loading</string>
     <string name="core_ui_look_loading">Loading</string>
     <string name="core_ui_look_section">My team</string>
     <string name="core_ui_look_date_label">Leave date</string>

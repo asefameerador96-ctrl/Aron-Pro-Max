@@ -309,5 +309,24 @@ class SrStateScreenshotTests {
     @Test fun memo_bn_menu_list_font20() = shot("memo_bn_menu_list_font20", fontScale = 2.0f) { MenuList() }
     @Test fun memo_bn_detail_reprint_limit() = shot("memo_bn_detail_reprint_limit") { DetailReprintLimit() }
     @Test fun memo_bn_detail_font20() = shot("memo_bn_detail_font20", fontScale = 2.0f) { DetailReprintLimit() }
+    // ---- Screens that read local data before their first frame (session 5, slice 1) ----
+    @Composable private fun LoadingScreen() = Frame(stringResource(HomeR.string.hm_tile_stock)) { com.aktcl.aron.core.ui.aron.AronLoadingScreen() }
+    @Composable private fun StockEmpty() = Frame(stringResource(HomeR.string.hm_tile_stock)) {
+        StockContent(emptyList(), emptyList(), null, slipNotPrinted = false, onIssue = { _, _ -> }, onSave = {}, onPrint = {}, syncedAt = localizedDigits("10:42"))
+    }
+    @Composable private fun PickerEmpty() = Frame(stringResource(HomeR.string.hm_tile_sale)) { OutletPickerContent(emptyList(), OutletPicker.chips(emptyList()), OutletPicker.ALL_CHIP, {}, {}) }
+    @Composable private fun OwnEmpty() = Frame(stringResource(HomeR.string.hm_tile_outlet)) { com.aktcl.aron.feature.outlet.OwnRequestsContent(emptyList(), syncedAt = localizedDigits("10:42")) }
+    @Composable private fun TasksNone() = Frame(stringResource(HomeR.string.hm_tile_tasks)) {
+        com.aktcl.aron.feature.tasks.TaskContent(com.aktcl.aron.feature.tasks.TaskListState(showEmptyState = true, syncedAt = "2026-10-05T04:42:00.000Z"), {})
+    }
+    @Test fun loading_bn() = shot("loading_bn") { LoadingScreen() }
+    @Test fun loading_bn_sunlight() = shot("loading_bn_sunlight", sunlight = true) { LoadingScreen() }
+    @Test fun loading_bn_font20() = shot("loading_bn_font20", fontScale = 2.0f) { LoadingScreen() }
+    @Test fun stock_bn_empty() = shot("stock_bn_empty") { StockEmpty() }
+    @Test fun stock_bn_empty_font20() = shot("stock_bn_empty_font20", fontScale = 2.0f) { StockEmpty() }
+    @Test fun picker_bn_empty() = shot("picker_bn_empty") { PickerEmpty() }
+    @Test fun own_requests_bn_empty() = shot("own_requests_bn_empty") { OwnEmpty() }
+    @Test fun own_requests_bn_empty_font20() = shot("own_requests_bn_empty_font20", fontScale = 2.0f) { OwnEmpty() }
+    @Test fun tasks_bn_empty_font20() = shot("tasks_bn_empty_font20", fontScale = 2.0f) { TasksNone() }
     private fun bare(mtk: Long, locale: UiLocale) = Formats.digits(com.aktcl.aron.rules.Money.formatTaka(mtk, 2), locale)
 }
