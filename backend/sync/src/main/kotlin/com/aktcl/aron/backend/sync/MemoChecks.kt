@@ -164,13 +164,13 @@ object MemoChecks {
         ).bind("m", memo).bind("u", userId).execute()
     }
 
-    /** True when a sale line of [memo] by [userId] on [businessDate] was refused for its zero price before the memo was stored. */
-    fun refusedZeroLine(h: Handle, memo: String, userId: Long, businessDate: java.time.LocalDate): Boolean = h.createQuery(
+    /** True when a sale line of [memo] by [userId] (on any business date) was refused for its zero price before the memo was stored. */
+    fun refusedZeroLine(h: Handle, memo: String, userId: Long): Boolean = h.createQuery(
         """
-        SELECT EXISTS (SELECT 1 FROM app.sync_rejected WHERE user_id = :u AND business_date = :d AND record_type = 'memo_line' AND code = 'schema_invalid'
+        SELECT EXISTS (SELECT 1 FROM app.sync_rejected WHERE user_id = :u AND record_type = 'memo_line' AND code = 'schema_invalid'
                           AND detail LIKE 'zero_price_line:%' AND payload -> 'payload' ->> 'memo_client_uuid' = :m)
         """.trimIndent(),
-    ).bind("m", memo).bind("u", userId).bind("d", businessDate).mapTo(Boolean::class.java).one()
+    ).bind("m", memo).bind("u", userId).mapTo(Boolean::class.java).one()
 
     /** Marks a stored memo for review (idempotent): a child held for its own fault leaves the printed memo incomplete. */
     fun flagStored(h: Handle, memo: String, flag: String) = flag(h, memo, flag)

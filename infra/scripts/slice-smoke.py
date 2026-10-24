@@ -164,7 +164,8 @@ def now_iso():
 def run():
     if not HOST or not PASSWORD:
         step("inputs", False, "SLICE_API_HOST and SLICE_PASSWORD are required")
-    today = datetime.datetime.now(DHAKA).date()
+    started = datetime.datetime.now(DHAKA)  # one clock for the business date and the memo slot
+    today = started.date()
     day = today.isoformat()
 
     # 1 login
@@ -198,7 +199,7 @@ def run():
     unit = sku["base_unit"]
     qty = 10
     gross = qty * price["amount_mtk"] // max(1, price["per_base_qty"])
-    memo_no = f"{USER}-{today.strftime('%y%m%d')}-{memo_seq(seq_range, datetime.datetime.now(DHAKA))}"
+    memo_no = f"{USER}-{today.strftime('%y%m%d')}-{memo_seq(seq_range, started)}"
     visit, memo, line, close = (str(uuid.uuid4()) for _ in range(4))
     lat, lng = outlet["lat"], outlet["lng"]
     fix = {"fix_status": "ok", "lat": lat, "lng": lng, "accuracy_m": 12.0, "provider": "fused", "is_mock": False, "reused": False,
