@@ -74,16 +74,24 @@ class DataFlowTraceMoneyTargetsTest : DataFlowTraceSupport() {
     @Test
     @Order(2)
     fun monthlyTargetsReadOverThreeMonths() {
-        h("2 Monthly targets over the seeded months (the second doubled, the third without lighters): daily target = month total / working days")
+        h("2 Monthly targets over three months from today (the second doubled, the third without lighters): daily target = month total / working days")
         val routes = "(SELECT id FROM app.route WHERE code IN ('GUL-SR-2','GUL-SR-1','BAN-SR-11'))"
-        // D-TEST-DATE-PIN-01: the seeded target months from the seed's today on, and dates on or after that today (the assignments start then).
+        // D-TEST-DATE-PIN-01: three months from the seed's today (the seed's months are fixed, 2026-10 to 2026-12): any of them the
+        // seed lacks gets a copy of its first month's targets, so every branch runs whatever the date; dates on or after today.
         val today = java.time.LocalDate.parse(sql("SELECT app.dhaka_date(now())::text")!!)
-        val months = rows("SELECT DISTINCT month::text AS m FROM app.route_monthly_target WHERE route_id IN $routes AND (month + interval '1 month - 1 day')::date >= DATE '$today' ORDER BY 1")
-            .map { java.time.LocalDate.parse(it["m"].toString()) }
-        check(months.isNotEmpty()) { "the dev seed's monthly targets (db/seed/06, fixed months) all end before the seed's today $today" }
+        val months = (0L..2L).map { today.withDayOfMonth(1).plusMonths(it) }
         db { hd ->
-            months.getOrNull(1)?.let { hd.execute("UPDATE app.route_monthly_target SET qty_base = qty_base * 2 WHERE month = DATE '$it' AND route_id IN $routes") }
-            months.getOrNull(2)?.let { hd.execute("DELETE FROM app.route_monthly_target t USING app.sku s WHERE s.id = t.sku_id AND s.category_code = 'lighter' AND t.month = DATE '$it'") }
+            hd.execute(
+                """
+                INSERT INTO app.route_monthly_target (route_id, sku_id, month, qty_base, batch_uuid, updated_by)
+                SELECT t.route_id, t.sku_id, m.month, t.qty_base, t.batch_uuid, t.updated_by
+                  FROM app.route_monthly_target t, unnest(ARRAY[DATE '${months[0]}', DATE '${months[1]}', DATE '${months[2]}']) AS m(month)
+                 WHERE t.route_id IN $routes AND t.month = (SELECT min(month) FROM app.route_monthly_target WHERE route_id IN $routes)
+                ON CONFLICT (route_id, sku_id, month) DO NOTHING
+                """.trimIndent(),
+            )
+            hd.execute("UPDATE app.route_monthly_target SET qty_base = qty_base * 2 WHERE month = DATE '${months[1]}' AND route_id IN $routes")
+            hd.execute("DELETE FROM app.route_monthly_target t USING app.sku s WHERE s.id = t.sku_id AND s.category_code = 'lighter' AND t.month = DATE '${months[2]}'")
         }
         val sup = login("superadmin1001", "web", null)
         fun workingDays(month: String): Long = sqlLong(
