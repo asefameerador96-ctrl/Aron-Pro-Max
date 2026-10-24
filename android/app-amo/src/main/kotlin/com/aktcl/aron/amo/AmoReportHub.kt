@@ -4,7 +4,6 @@ import com.aktcl.aron.feature.amo.AmoFrame
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -52,7 +51,7 @@ fun AmoReportHub(day: AmoDay, onBack: () -> Unit) {
                 // Route totals and the per-category STD come from the server (`route-memo`, `route-std`, zone-scoped by the token); a refused or missing one falls back to the memo rows.
                 val totals = rememberReport(day, "route-memo", range.first, range.second)
                 val std = rememberReport(day, "route-std", range.first, range.second)
-                if (loaded == null || totals == null || std == null) Box(Modifier.fillMaxSize(), Alignment.Center) { CircularProgressIndicator() }
+                if (loaded == null || totals == null || std == null) com.aktcl.aron.core.ui.aron.AronLoadingScreen()
                 else {
                     val server = totals.data?.takeIf { !it.truncated && it.rows.isNotEmpty() }?.let { Reports.routeMemoTotals(it) }
                     StdMemoReportContent(
@@ -66,7 +65,7 @@ fun AmoReportHub(day: AmoDay, onBack: () -> Unit) {
                 // F-AMO-033: month to date over the trading days up to yesterday (today on the 1st), the same range as the STD report.
                 val range = remember { Reports.stdMemoRange(day.businessDate()) }
                 val loaded = rememberReport(day, "sales-summary", range.first, range.second)
-                if (loaded == null) Box(Modifier.fillMaxSize(), Alignment.Center) { CircularProgressIndicator() }
+                if (loaded == null) com.aktcl.aron.core.ui.aron.AronLoadingScreen()
                 else {
                     val cards = loaded.data?.let { Reports.routeCards(it) }.orEmpty()
                     val open = cards.firstOrNull { it.code == route }

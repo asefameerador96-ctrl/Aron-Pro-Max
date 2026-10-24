@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -103,7 +102,7 @@ private fun AmoExceptions(day: AmoDay, detail: Boolean, signalId: Long?, onOpen:
         rows = runCatching { day.openSignals() }.getOrDefault(emptyList())
         names = OutletVerify.teamNames(runCatching { day.reference.section("supervisor") }.getOrNull())
     }
-    val list = rows ?: run { Box(Modifier.fillMaxSize(), Alignment.Center) { CircularProgressIndicator() }; return }
+    val list = rows ?: run { com.aktcl.aron.core.ui.aron.AronLoadingScreen(); return }
     val row = if (detail) list.firstOrNull { it.id == signalId } else null
     if (detail && row == null) { LaunchedEffect(Unit) { onDone() }; return }
     if (row == null) { ExceptionsListContent(list, names, onOpen); return }

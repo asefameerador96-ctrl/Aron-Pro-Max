@@ -4,6 +4,16 @@ Done in session 4 (all checked by the lead unless noted): row 1 print guards (`g
 Open: nothing blocked on the lead. Owner questions stay open: M8, S4, SS5, T3 (red=No), E4 (what the three small sale-card indicators mean), MQ-03 (max-QC basis), H1 (SR header "Daily" and the two-line header). The branch `lane/android-tso-wip` on the remote was created by this session for the stop hook; `git push origin --delete` fails here ("remote end hung up", the git proxy refuses ref deletion): the lead or the owner must delete it; do not create other branches.
 Traps: the stop hook forces a push whenever commits are unpushed: a push before the local full run ends is normal, only "candidate" waits for the exact sha's own green run; a new push cancels the running lane run (about 8 to 10 minutes), so wait for it before pushing again when a candidate is pending; an English or Bangla string change can break Robolectric tests that match text; a golden diff in the full command means re-record (`./gradlew :android:ui-screenshots:testDebugUnitTest -Proborazzi.record=true`) and LOOK at the image before committing; the kit `AronField` shows its label as a separate text node, so tests find the editable node by `fieldModifier` tag, not by label text.
 
+# Session 5, slice 2: AMO screen-state coverage (2026-10-24)
+Method as slice 1. AMO has its own look parts (`AmoEmpty`, `AmoBanner`, owner look) for empty and banner states, so those are not rebuilt; the gap was the loading state.
+| Screen group | Empty | Loading (before) | Loading (now) | Offline / error | Long Bangla |
+|---|---|---|---|---|---|
+| Sale hub: stock (Issue), stock correction, price compliance | present (`AmoEmpty`) | blank first frame | kit `AronLoadingScreen` | n/a, local data | stock empty 200 % golden (slice 1, shared `StockContent`) |
+| Task delegation (list, route pick, assign), team stock, team performance, team location, live dashboard, risk signals | present | `CircularProgressIndicator` spinner | kit `AronLoadingScreen` (no spinner, no animation) | stale / failed notes present (`amo_tasks_offline_bn`) | not added |
+| Reports hub, outlet hub (own requests, request outlet, verify list, request form) | present | spinner | kit `AronLoadingScreen` | failed / stale present | not added |
+| Outlet verify detail | present | kit `AronLoadingCard` already | unchanged | "details offline" banner present | not added |
+No AMO logic changed: 14 spinner sites and 3 blank frames in `app-amo` hosts now call the slice 1 kit component; goldens `amo_loading_bn`, `amo_loading_sunlight_en`. Not covered: 200 % goldens for the AMO list screens need the per-screen fixtures in `AmoTsoScreenshotTests`; offered as a follow-up.
+
 # Session 5, slice 1: SR screen-state coverage (2026-10-24)
 Method: read every SR screen's host (`app-sr` SrApp/SrSaleHosts) and content composable for the five states. SR reads Room only, so "offline" and "error" are real states only where a screen shows sync or the network (Home, Attendance fix, Submit, Auth, Settings); elsewhere "n/a, local data". Loading = the host reads Room asynchronously before the first frame.
 | Screen | Empty | Loading | Offline | Error | Long Bangla (200 %) |

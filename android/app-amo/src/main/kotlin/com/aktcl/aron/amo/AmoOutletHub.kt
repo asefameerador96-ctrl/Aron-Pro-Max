@@ -8,7 +8,6 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.material3.Text
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.ui.Alignment
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -118,7 +117,7 @@ fun AmoOutletHub(day: AmoDay, onBack: () -> Unit, extra: @Composable (OutletHubE
                     failed -> Column(Modifier.fillMaxSize().padding(AronTokens.Space.Screen)) {
                         AmoListRow(stringResource(AmoR.string.amo_load_failed_retry), onClick = { reload++ }, position = RowPosition.Only, divider = false, flat = true)
                     }
-                    list == null -> Box(Modifier.fillMaxSize(), Alignment.Center) { CircularProgressIndicator() }
+                    list == null -> com.aktcl.aron.core.ui.aron.AronLoadingScreen()
                     else -> OwnRequestsContent(list.orEmpty())
                 }
             }
@@ -143,7 +142,7 @@ fun AmoOutletHub(day: AmoDay, onBack: () -> Unit, extra: @Composable (OutletHubE
                     names = com.aktcl.aron.feature.amo.OutletVerify.teamNames(runCatching { day.reference.section("supervisor") }.getOrNull())
                 }
                 rows?.let { all -> com.aktcl.aron.feature.amo.VerifyListContent(all.filter { when (verifyGroup) { "new" -> it.type == "new"; "close" -> it.type == "close"; else -> it.type != "new" && it.type != "close" } }, names, { r -> verifyUuid = r.uuid; leaf = OutletLeaf.VERIFY_FORM }) }
-                    ?: Box(Modifier.fillMaxSize(), Alignment.Center) { CircularProgressIndicator() }
+                    ?: com.aktcl.aron.core.ui.aron.AronLoadingScreen()
             }
             OutletLeaf.VERIFY_FORM -> PermissionGate(GatedFeature.OUTLET_REQUEST, onBack = back) { AmoVerifyHost(day, verifyUuid, onDone = { leaf = OutletLeaf.VERIFY_LIST }, onGone = { leaf = OutletLeaf.VERIFY_LIST }) }
             OutletLeaf.FORM -> PermissionGate(GatedFeature.OUTLET_REQUEST, onBack = back) {
@@ -215,7 +214,7 @@ private fun AmoVerifyHost(day: AmoDay, uuid: String?, onDone: () -> Unit, onGone
         } ?: com.aktcl.aron.feature.amo.VerifyDetailState.Unavailable
     }
     if (gone) { LaunchedEffect(Unit) { onGone() }; return }
-    val req = request ?: run { Box(Modifier.fillMaxSize(), Alignment.Center) { CircularProgressIndicator() }; return }
+    val req = request ?: run { com.aktcl.aron.core.ui.aron.AronLoadingScreen(); return }
     // Fixed when the form opens: a double tap or a replay queues one decision.
     val draftKey = "verify:${req.uuid}"
     val recordUuid = remember(draftKey) { day.drafts.uuid(draftKey) }

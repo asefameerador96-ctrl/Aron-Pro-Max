@@ -2,7 +2,6 @@ package com.aktcl.aron.amo
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -58,7 +57,7 @@ fun AmoLiveDashboard(day: AmoDay, filtering: Boolean, onFiltering: (Boolean) -> 
         LiveFilterContent(zones, routes, draftZone, draftRoute, { draftZone = it }, { draftRoute = it }, { applied = draftZone to draftRoute; onFiltering(false) }, modifier)
         return
     }
-    if (!loaded) { Box(modifier.fillMaxSize(), Alignment.Center) { CircularProgressIndicator() }; return }
+    if (!loaded) { com.aktcl.aron.core.ui.aron.AronLoadingScreen(modifier); return }
     val digitsBn = LocalAppLanguage.current == com.aktcl.aron.core.common.AppLanguage.BN
     val scope = listOfNotNull(
         applied.first?.let { z -> zones.firstOrNull { it.first == z }?.second } ?: stringResource(AmoR.string.amo_live_all_zones),

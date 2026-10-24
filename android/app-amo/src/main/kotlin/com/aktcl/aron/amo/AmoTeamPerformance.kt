@@ -2,7 +2,6 @@ package com.aktcl.aron.amo
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -29,7 +28,7 @@ fun AmoTeamPerformance(day: AmoDay, modifier: Modifier = Modifier) {
         json = f.jsonOrNull()
         stale = f is AmoFetch.Cached; failed = f is AmoFetch.Unavailable; loaded = true
     }
-    if (!loaded) { Box(modifier.fillMaxSize(), Alignment.Center) { CircularProgressIndicator() }; return }
+    if (!loaded) { com.aktcl.aron.core.ui.aron.AronLoadingScreen(modifier); return }
     val bars: List<PerfBar> = TeamPerformance.bars(json, "category", tillDate)
     TeamPerformanceContent(bars, tillDate, { tillDate = it }, stale, failed, modifier)
 }

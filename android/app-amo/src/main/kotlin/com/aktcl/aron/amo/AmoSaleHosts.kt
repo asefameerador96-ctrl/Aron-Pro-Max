@@ -184,7 +184,7 @@ fun AmoStockHost(day: AmoDay) {
     LaunchedEffect(Unit) { load = day.stockLoad(); unprinted = day.slipNotPrinted() }
     val att by day.stockAttempt.collectAsState()
     LaunchedEffect(att) { unprinted = day.slipNotPrinted() }
-    val l = load ?: return
+    val l = load ?: run { com.aktcl.aron.core.ui.aron.AronLoadingScreen(); return }
     version.let {}
     StockContent(
         rows = l.rows, totals = l.totals, message = message, slipNotPrinted = unprinted,

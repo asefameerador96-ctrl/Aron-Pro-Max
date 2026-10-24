@@ -2,7 +2,6 @@ package com.aktcl.aron.amo
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -36,7 +35,7 @@ fun AmoTeamStock(day: AmoDay, selected: Long?, onSelect: (Long) -> Unit, modifie
         stale = f is AmoFetch.Cached; failed = f.isMissing()
         srs = TeamStock.parse(f.jsonOrNull())
     }
-    val list = srs ?: run { Box(modifier.fillMaxSize(), Alignment.Center) { CircularProgressIndicator() }; return }
+    val list = srs ?: run { com.aktcl.aron.core.ui.aron.AronLoadingScreen(modifier); return }
     val sr = list.firstOrNull { it.userId == selected }
     if (sr == null) TeamStockListContent(list, phones, stale, failed, { onSelect(it.userId) }, modifier)
     else TeamStockDetailContent(sr, skus, TeamStock.totals(sr.lines, skus), bangla, modifier)
