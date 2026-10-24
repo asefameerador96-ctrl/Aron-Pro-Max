@@ -529,3 +529,8 @@
 - Expected INT after train 27: 44 DECISIONS blocks. CI builds the signed APK and the deploy runs; the slice smoke must pass step 4.
 - Parity rulings sent to android-tso: S4, SS5 left (owner red=No rule, same as M8); T3 swipe-to-reveal left (visible Resolve button covers it; red per the same rule); A1, A4, X2, SS3, R5, R7 already match in code.
 - Trigger re-armed for 09:25 (train 27 CI + deploy + health + smoke check).
+
+### 08:38 UTC — train 27 pushed (INT b747b3b8, ci #1515 run 40078554781)
+- Integrator 19 merged backend-core 21c4add2, android-tso 23a23461, lead docs be546231; two tolerated DECISIONS conflicts, markers removed only. Lead verification: INT contains all three heads and 67bce470; file delta = union of the three deltas + the train row; DECISIONS 45 blocks, 0 markers, no 67bce470 block lost, no exact duplicate line.
+- Count correction (lead error): I predicted 44 by adding ids; backend-core's base was train 25 (33 blocks), so its 41 held 8 new bullets, the 8th being the separate "D-SALE-ZERO-PRICE-01 server block (lead confirmation…" whose id prefix matches android-tso's block from train 26. Two blocks, two texts, both kept. Lesson: predict the merged count as INT + the lines each head ADDS (git diff on `^- \*\*D-` lines), not INT + distinct new ids.
+- Next: ci #1515 (gates, backend, web, android with the signed APK), then the deploy run (health build = b747b3b8; slice smoke must PASS step 4, a FAILED smoke now turns the deploy red). Sweep 09:25.
