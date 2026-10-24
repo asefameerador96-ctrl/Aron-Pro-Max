@@ -217,3 +217,6 @@ green run of the exact sha). Usage stays `allowed` on the five-hour window.
 
 ## Update 2026-10-24 07:08 UTC (lead)
 - Train 24 (zod hotfix) on dev 07:05. Train 25 (print-crash fix, signed APK) GO 07:08, CI green about 07:30. Train 26 (android-tso zero-price slice + handover) after that; android-tso #4 then takes the print call-site guards. Evening report 18:30. No slip; the owner's P0 build is about 30 minutes later than the 07:30 said in the morning report because of the advisory.
+
+## Update 2026-10-24 08:49 UTC (lead)
+- Train 27 (backend-core smoke/zero-price server rule + android-tso print guards/X3/O5 + lead docs) pushed 08:34; CI, then the deploy with the slice smoke, expected green by about 09:25 (signed APK 1515). Train 28 (android-tso docs + feature-outlet controls, lead docs) about 10:30. Contract 1.8 batch head today (lead sub-lane), checked and then a train of its own; db V0111 dw.v_memo_flags rides the next train after it is green; backend-core's flagged-memos endpoint and web-admin's page follow the batch. Evening report 18:30. No slip.
