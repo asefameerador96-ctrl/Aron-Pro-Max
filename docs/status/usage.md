@@ -686,3 +686,6 @@
 
 ### 18:50 UTC — lane check (scheduled; evening sweep was 12 min earlier)
 - Train 33 pushed 18:34 (INT da861ec1, ci #1558 running); lead git check passed (two heads, delta 11 = 11, DECISIONS 60). backend-core #17 still in its backend suite (no push yet; candidate → train 34 with deploy); web-admin #8 idle after its checked head; android-print #5 idle for the owner; integrator 20 holds. No unclassified branch ahead of INT besides the lanes' own heads and lead docs. Owner rows unchanged; no owner message since 13:33.
+
+### 19:19 UTC — train 33 LANDED
+- Lead-verified: ci 40121363738 (#1558) green 18:54 (Web, container, repository gates ran; backend/Android/Infra skipped, no such files); deploy 40122884176 (#268) green 18:54–19:06, SR slice smoke PASSED 1–10 (note: the Dhaka business date rolled to 2026-10-25 at 18:00 UTC during the run; the smoke picked GUL-SR-1 / SMOKE-SR-002 and passed); health build da861ec1. "train 33 landed" sent to web-admin #8 (idle after merging INT) and backend-core #17 (merge before its push; candidate pending, its branch tip still 0a2b606d at 14:54). DECISIONS on INT 60.
