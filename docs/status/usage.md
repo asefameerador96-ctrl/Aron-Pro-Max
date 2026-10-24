@@ -708,3 +708,7 @@
 ### 21:33 UTC — train 34 LANDED; GO train 35
 - Train 34 lead-verified: ci 40131306698 (#1561) green 21:13 (Backend app tests RAN 13 min and passed on INT: the 18:00 UTC date time-bomb is defused; Shared/db/backend 26 min; Web/Android/Infra skipped, no such files; no new signed APK); deploy 40133264091 (#269) green 21:13–21:24, SR slice smoke PASSED 1–10 (memo sr1001-261025-5142 on the 10-25 business date), health build 0248b45b. "train 34 landed" sent to backend-core #17 (HANDOVER 17 -> 18 + READY TO RECYCLE requested; ~400k) and web-admin #8.
 - GO train 35 sent 21:34: web-admin d06f2770 (14 clock-pinned web tests, D-WEB-TEST-CLOCK-01) + lead docs 3dbb50f6; expected DECISIONS 65; CI only. After it, nothing is queued: overnight posture (lanes idle; sweep ~2-hourly; morning report 06:30).
+
+### 21:35 UTC — train 35 pushed and git-verified; backend-core #17 archived
+- Integrator 20 pushed train 35 at 21:33 (INT c427d84227cc4168ee8549b628a14e4ad15422d0, ci 40134768409 #1565 running). Lead git check: both heads + prev contained; delta = union + train row (18 = 18); DECISIONS 65 (+D-WEB-TEST-CLOCK-01), 0 markers, 0 lost, 0 duplicates.
+- backend-core #17 READY TO RECYCLE with HANDOVER 0b6a206c (docs-only on INT c427d842: docs/status/backend-core.md); archived at ~400k. Its handover head is checked for the next train (36) when one forms. Active now: integrator 20, web-admin #8 (idle after train 35), android-print #5 (idle for the owner).
