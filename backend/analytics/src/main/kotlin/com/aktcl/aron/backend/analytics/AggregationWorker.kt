@@ -55,6 +55,7 @@ class AggregationWorker(
         ).bindArray("ids", Long::class.javaObjectType, missing.keys.toList()).map(::event).list()
         for (e in holes + fresh) {
             for (route in routesOf(h, e)) h.execute("SELECT app.mark_dirty('route_day_agg', ?, ?, ?)", route, e.date, e.type)
+            for ((route, date) in earlierMemoDays(h, e)) h.execute("SELECT app.mark_dirty('route_day_agg', ?, ?, ?)", route, date, e.type)
         }
         holes.forEach { missing.remove(it.id) }
         var prev = scanned
@@ -99,6 +100,18 @@ class AggregationWorker(
             return h.createQuery("SELECT DISTINCT route_id FROM app.visit WHERE user_id = :u AND business_date = :d AND route_id IS NOT NULL").bind("u", u).bind("d", e.date).mapTo(Long::class.java).list()
         }
         return emptyList()
+    }
+
+    /**
+     * Data-architecture review finding 6: a void or an edit stored on another business date than the memo it ends (a void
+     * after midnight, an edit of yesterday's memo) also dirties that memo's own route-day, so the sale's day is no longer
+     * overstated. The memo named by `voided_by_client_uuid` / `superseded_by_client_uuid` = the event's source record.
+     */
+    private fun earlierMemoDays(h: Handle, e: Ev): List<Pair<Long, LocalDate>> {
+        val src = e.source ?: return emptyList()
+        return h.createQuery(
+            "SELECT route_id, business_date FROM app.memo WHERE route_id IS NOT NULL AND business_date <> :d AND (voided_by_client_uuid = :u OR superseded_by_client_uuid = :u)",
+        ).bind("u", src).bind("d", e.date).map { rs, _ -> rs.getLong(1) to rs.getObject(2, LocalDate::class.java) }.list()
     }
 
     /** Processes up to [limit] claimed keys of one pass. Returns the number rebuilt. */

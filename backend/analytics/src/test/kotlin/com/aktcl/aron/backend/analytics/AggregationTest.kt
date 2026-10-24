@@ -135,6 +135,24 @@ class AggregationTest {
         assertEquals(0, long("SELECT count(*) FROM dw.agg_daily_route WHERE business_date <> '2026-10-04'"))
     }
 
+    /** Data-architecture review finding 6: a void stored on the next business date rebuilds the memo's own day too. */
+    @Test
+    fun aVoidOnTheNextBusinessDateRebuildsTheSalesDayToo() {
+        val w = worker()
+        w.runUntilIdle()
+        assertEquals(34_000, route("R1", "net_mtk"))
+        val zoneBefore = zone("Z1", "gross_mtk")
+        val void = "00000000-0000-4000-8000-0000000000e1"
+        // The void record (memo_void, dated 2026-10-05 after midnight) ends memo a1 of 2026-10-04 (16 000 on R1).
+        conn.createStatement().use {
+            it.execute("UPDATE app.memo SET status = 'voided', status_changed_at = now(), voided_by_client_uuid = '$void' WHERE client_uuid = '00000000-0000-4000-8000-0000000000a1'")
+        }
+        event("memo.voided", void, date = "2026-10-05")
+        w.runUntilIdle()
+        assertEquals(18_000, route("R1", "net_mtk"), "the sale's day is rebuilt without the voided memo")
+        assertEquals(zoneBefore - 16_000, zone("Z1", "gross_mtk"), "and its zone-day")
+    }
+
     @Test
     fun aKeyDirtiedDuringItsRebuildStaysQueued() {
         val w = worker()
