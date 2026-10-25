@@ -504,6 +504,8 @@ Projector behaviour: every 5 s read events after the consumer position (`app.eve
 
 **[IN_REPO]** `drain()` claims up to 200 keys per kind (`route_day_agg`, `device_day_agg`, `zone_day_agg`) with `FOR UPDATE SKIP LOCKED` and a 2-minute lease, rebuilds the route-day facts (`dw.fact_visit`, `fact_memo`, and others) and aggregates by delete and upsert inside one transaction, cascades to the zone-day and device-day keys, and deletes the key only if its `dirty_count` is unchanged since the claim. Failing keys back off and become dead after repeated attempts; `app.v_dirty_key_dead` feeds the sync-health screen. Late or voided data dirties its own business date.
 
+Domain events (`app.domain_event`) are thin change notices for the projector and integrations (type, keys, business date), not the reuse feed: the lake and every outside consumer read the `dw.v_*` views and the capture partitions, and catalogue types without a producer are marked `planned` in `docs/data-events.md` (D-DATA-OUTBOX-ROLE-01). Of the 11 catalogue types four have a producer today (`memo.created`, `memo.voided`, `visit.closed`, `stock.moved`); `memo.superseded` is planned. The accepted-memo to dashboard path is 5 s worker delay plus one pass, and the dashboard API cache is 5 s (D-BC-FRESH-01).
+
 Aggregate tables: `dw.agg_daily_route`, `agg_daily_route_sku`, `agg_daily_route_brand`, `agg_daily_route_segment`, `agg_daily_zone`, `agg_daily_outlet`, `agg_hourly_zone`, `agg_daily_screen_use`. Many `docs/16` objects (line-grain facts, dues ageing, month aggregates, programme and target KPIs) are not built (see C5).
 
 ### C3.5 Dashboards, reports and read paths
@@ -512,7 +514,7 @@ Aggregate tables: `dw.agg_daily_route`, `agg_daily_route_sku`, `agg_daily_route_
 
 | Surface | Read path | Behaviour | Evidence |
 |---|---|---|---|
-| `GET /v1/dashboards/summary`, `/geo-validation` | read replica (`ARON_DB_READ_URL`), `dw` aggregates | scope hash in cache key, 30 s TTL, 2,000 cache entries, at most 92 days | `DashboardApi.kt:100-140` |
+| `GET /v1/dashboards/summary`, `/geo-validation` | read replica (`ARON_DB_READ_URL`), `dw` aggregates | scope hash in cache key, 5 s TTL (D-BC-FRESH-01), 2,000 cache entries, at most 92 days | `DashboardApi.kt:100-140` |
 | Daily tracking, actions, sync health, login-submit | read replica | per-zone views; sync health from Postgres tables, not logs | `DailyTrackingApi.kt`, `OpsApi.kt:127-351` |
 | `POST /v1/reports/{key}/query` | read replica | 29 handlers registered of 42 report keys (`ReportHandlers.all`, `ReportHandlersA.kt:294-298`); role set per handler; geo selectors only narrow (403 outside); formats json, xlsx, print; page sizes 10, 25, 50, 100, 500; period at most 366 days; total-ordered paging | `ReportEngine.kt:60-220` |
 | Excel and print | streamed by the API | PII columns masked and unsortable without the `pii` claim; every xlsx or print export logged to the hash-chained audit log (entity `report_export`); inline up to `cfg.ops.report_sync_max_rows` (10,000), refusal above `cfg.ops.report_export_max_rows` (200,000) | `ReportApi.kt:36-150` |
