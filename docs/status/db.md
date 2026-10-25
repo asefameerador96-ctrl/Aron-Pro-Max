@@ -10,6 +10,28 @@ Updated with every push. Rows of Day 1: N-005, N-006, N-007, N-008 (`python3 too
 | **row 3: event status** (lead 06:37) | built; Opus checker PASS (2 schema should-fixes taken: route_id nullable, superseding-memo wording); local db 284/0; pushed after run #1594 of row 1 finished | V0117: `app.domain_event_type.status` (`live`/`planned`, default planned), 4 live, 7 planned + new planned `memo.superseded` v1; guard lets status move; `docs/data-events.md` regenerated. D-DB-EVENT-STATUS-01. Next free migration **V0118** |
 | **row 4: reuse surface** | pushed (candidate in the lead message); Opus round 1 FAIL (TRUNCATE left line facts) -> round 2 PASS; local db 292/0, analytics 212/0, app 464/0 | V0118: `dw.fact_memo_line` (trigger-synced with `dw.fact_memo`), stable views `v_memo`, `v_memo_line`, `v_visit`, `v_due_ledger`, `v_stock_movement`, `v_outlet_sku_daily`, `v_dim_geo/outlet/user/product`; `is_effective` on every view; `dw.view_contract_version()` 1.0 + `docs/dw-view-contract.md` (DwViewContractTest); memo number personal; `dw.agg_reconcile`, `dw.agg_restatement_log`. D-DB-REUSE-SURFACE-01. Next free migration **V0119** |
 
+## Pre-staging partition batch (D-DB-PART-01; review Medium 10, lead action row 9): the nine tables
+
+The design (docs/16 s5.1 table "Partitioned: yes") partitions these capture tables monthly on `business_date`; they are
+still plain tables and go into ONE forward-only batch in the scheduled window after the SR slice runs end to end on dev and
+**before the final account's staging deploy** (the final database is migrated from empty, so nothing live is rewritten).
+Already partitioned: `memo`, `memo_line`, `visit`, `geo_fix`, `geo_breadcrumb`, `domain_event` (and `ingest_registry` by hash).
+
+| # | Table | Group (docs/16 s5.1) | Design volume | Batch notes |
+|---|---|---|---|---|
+| 1 | `app.attendance_event` | stock and attendance | ~2 per SR-day | unique `client_uuid` becomes (`client_uuid`, `business_date`) + once-trigger, as memo/visit |
+| 2 | `app.stock_movement` | stock and attendance | ~6 per SR-day | same; V0042 context + V0116 origin triggers re-attach on the parent |
+| 3 | `app.due_collection` | money | a fraction of memos | same; `against_memo_client_uuid` index kept |
+| 4 | `app.memo_void` | corrections | small | child of memo by `memo_client_uuid` (no FK, D-361) |
+| 5 | `app.print_event` | corrections | ~1 per memo | same |
+| 6 | `app.qc_entry` | sale | per QC visit | server id `qc_entry_id` referenced by `qc_entry_line`: key change needed |
+| 7 | `app.qc_entry_line` | sale | per QC line | follows 6 |
+| 8 | `app.survey_response` | sale | per survey | |
+| 9 | `app.content_view` | sale (telemetry) | per view | telemetry retention class |
+
+Every one carries the V0116 `data_origin` stamp and guard triggers; the batch recreates them on the partitioned parents (the
+generic trigger functions need no change). `app.partition_policy` rows and `app.ensure_partitions` keep months ahead.
+
 ## HANDOVER (session 11 -> session 12), 2026-10-25 ~00:00 UTC, lane/db d69d3af4 (+ this docs-only commit)
 
 **State.** lane/db = INT c427d842 (train 35) + row 1 (seed 06 test outlets + rolling dates, 96130a78, run #1574 green,
