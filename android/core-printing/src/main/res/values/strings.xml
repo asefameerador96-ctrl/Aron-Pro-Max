@@ -112,6 +112,9 @@
     <string name="diag_did_print">Did the %1$s page print clearly?</string>
     <string name="diag_log">Log</string>
     <string name="diag_log_empty">No test run yet.</string>
+    <string name="diag_print_logo_title">Logo</string>
+    <string name="diag_print_logo">Print the Aron logo on paper</string>
+    <string name="diag_print_logo_hint">Switch off if the logo comes out garbled; the header is then printed as text only.</string>
     <string name="diag_copy">Copy report</string>
     <string name="diag_share">Share report</string>
     <string name="diag_copied">Report copied</string>
