@@ -2,6 +2,13 @@
 
 Updated with every push. Rows of Day 1: N-005, N-006, N-007, N-008 (`python3 tools/my-rows.py db 1 --full`).
 
+## Session 11, 2026-10-24 (lane/db; INT c427d842 = train 35 merged)
+
+| Job | State | What |
+|---|---|---|
+| **row 1: three test outlets + rolling seed dates** (D-NIGHT-SEED-OUTLETS-01, lead hand-off 2026-10-23 20:50 item 2) | pushed (candidate in the lead message) | seed 06 adds `GUL1-T01` Asef Home, `GUL1-T02` Asef Office, `GUL1-T03` Asef Head Office on GUL-SR-1 (retail GT, outlet price, visit order 21-23, owner's exact pins, no geofence override); targets for today's month + 2, Victory Day / Christmas Day in that window, Durga Puja only 2026-10-21 (owner row O). `DataFlowTraceTest.kt:72` literal GUL-SR-1 21 -> 24 by lead ruling D-NIGHT-SEED-OUTLETS-02. Opus checker PASS (should-fixes taken). Local: db 274/0, backend app 459/0, DataFlowTrace + seed re-run on the final head 37/0 + 5/0. D-DB-SEED-OUTLETS-01, D-DB-SEED-ROLLING-01 |
+| **row 2: risk code CHECKOUT_WITHOUT_SUBMIT** (lead 22:45, backend-core #18 shapes row 5) | building | V0114 CHECK NOT VALID + `cfg.geo.integrity_weight` default 20; V0115 VALIDATE; own head after row 1. Next free migration after it: **V0116** |
+
 ## HANDOVER (session 10 -> session 11), 2026-10-24 ~12:55 UTC, lane/db a3fba66a (+ this docs-only commit)
 
 **State.** lane/db = INT cfd75917 (train 28) + docs-only 7f96000e + V0112/V0113 (a3fba66a, run #1535 green, checked,
