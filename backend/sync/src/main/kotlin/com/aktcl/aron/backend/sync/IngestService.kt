@@ -85,6 +85,7 @@ class IngestService(
     private val log = LoggerFactory.getLogger("aron.sync.ingest")
     /** Creates a route-day ingest receives records for before the planning job or a bundle did (F-SYS-056). */
     private val routeDays = RouteDayPlanningJob(db, config, clock)
+    private val salesSubmitDigest = SalesSubmitDigestService(db, clock)
 
     /** Outcome of one record before the ack is built. */
     private data class Outcome(val status: String, val code: RecordOutcomeCode? = null, val serverId: Long? = null, val retryable: Boolean? = null) {
@@ -716,30 +717,6 @@ class IngestService(
         return outcomes
     }
 
-    /** Cached database half of [checkoutRiskOn] once true; a false answer is asked again after a minute (the migration may land while running). */
-    @Volatile private var checkoutCodeInDb: Boolean = false
-    @Volatile private var checkoutCodeAskedAt: Instant = Instant.EPOCH
-
-    /**
-     * The CHECKOUT_WITHOUT_SUBMIT switch: on when the contract catalogue names the code (contract 1.9) and the database's
-     * code constraint accepts it; [checkoutRiskOverride] decides instead when set (tests).
-     */
-    private fun checkoutRiskOn(): Boolean {
-        checkoutRiskOverride?.let { return it }
-        if (com.aktcl.aron.contract.RiskSignalCode.entries.none { it.wire == CHECKOUT_WITHOUT_SUBMIT }) return false
-        if (checkoutCodeInDb) return true
-        val now = clock.now()
-        if (now.isBefore(checkoutCodeAskedAt.plusSeconds(60))) return false
-        checkoutCodeAskedAt = now
-        checkoutCodeInDb = runCatching {
-            db.jdbi.withHandle<Boolean, Exception> { h ->
-                h.createQuery("SELECT coalesce(bool_or(pg_get_constraintdef(oid) LIKE :c), false) FROM pg_constraint WHERE conrelid = 'app.risk_signal'::regclass AND conname = 'risk_signal_code_check'")
-                    .bind("c", "%'$CHECKOUT_WITHOUT_SUBMIT'%").mapTo(Boolean::class.java).one()
-            }
-        }.getOrDefault(false)
-        return checkoutCodeInDb
-    }
-
     /**
      * D-NIGHT-CHECKOUT-01 (contract 1.9 queue row 5): an SR's or AMO's check-out stored in this batch (accepted now, never
      * a duplicate resend) while the user has no effective `day_submit` for its business date (not data-voided, its
@@ -749,7 +726,6 @@ class IngestService(
      */
     private fun checkoutWithoutSubmit(ctx: Ctx, checkouts: List<Rec>) {
         if (ctx.up.role != Role.SR && ctx.up.role != Role.AMO) return
-        if (!runCatching { checkoutRiskOn() }.getOrDefault(false)) return
         val weight: Double = runCatching<Double?> { (config.value("cfg.geo.integrity_weight") as JsonObject)[CHECKOUT_WITHOUT_SUBMIT]?.jsonPrimitive?.content?.toDoubleOrNull() }.getOrNull() ?: 20.0
         for (r in checkouts) runCatching { db.jdbi.useTransaction<Exception> { h ->
             // The server's business date of the stored row (the server may have re-dated the phone's).
@@ -1638,10 +1614,14 @@ class IngestService(
      * GET /v1/sync/totals (F-SYS-005 reconciliation): the same totals and day states a batch response carries, for the
      * caller's own records on [date] only (user from the token; no scope ids from the client). Read-only, so a repeated
      * batch, which stores nothing new, leaves it unchanged. On the primary: a lagging replica would show a short count
-     * and keep the phone retrying "Sync data".
+     * and keep the phone retrying "Sync data". `digest` (D-NIGHT-DAYCLOSE-01): the device half only for the token's own
+     * device ([deviceId]/[deviceUuid] from the device proof, never from the request).
      */
-    fun totals(userId: Long, date: LocalDate): SyncTotalsResponse = db.jdbi.withHandle<SyncTotalsResponse, Exception> { h ->
-        SyncTotalsResponse(serverTotals(h, userId, date, clock.now()), dayStates(h, userId, listOf(date)), supervisorDayState(h, userId, date))
+    fun totals(userId: Long, deviceId: Long?, deviceUuid: String?, date: LocalDate): SyncTotalsResponse = db.jdbi.withHandle<SyncTotalsResponse, Exception> { h ->
+        SyncTotalsResponse(
+            serverTotals(h, userId, date, clock.now()), dayStates(h, userId, listOf(date)), supervisorDayState(h, userId, date),
+            salesSubmitDigest.digest(h, userId, deviceId, deviceUuid, date),
+        )
     }
 
     /** Per type accepted/rejected/quarantined of the user's date from the registry, and the money of the date (s4.12). */
@@ -1819,8 +1799,6 @@ class IngestService(
 
     companion object {
         const val CHECKOUT_WITHOUT_SUBMIT = "CHECKOUT_WITHOUT_SUBMIT"
-        /** Test hook for the CHECKOUT_WITHOUT_SUBMIT switch; null (production) follows the catalogue and the database. */
-        @Volatile var checkoutRiskOverride: Boolean? = null
         private const val FAMILY_TRIES = 3
         private const val CHECKOUT_KEY = "cfg.day.checkout_earliest_time"
         private val DHAKA: java.time.ZoneId = java.time.ZoneId.of("Asia/Dhaka")

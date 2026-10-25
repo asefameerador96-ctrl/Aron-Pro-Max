@@ -8,10 +8,9 @@ import java.time.LocalDate
 import java.time.OffsetDateTime
 
 /*
- * Contract 1.9 queue row 4 (D-NIGHT-DAYCLOSE-01; shapes in docs/requests/contract-v1.9-shapes-backend-core.md): the
- * `digest` member of GET /v1/sync/totals. Local DTOs until the 1.9 batch lands; then `SyncTotalsResponse` gains
- * `val digest: SalesSubmitDigestDto` and `IngestService.totals` fills it from [SalesSubmitDigestService.digest] (the
- * route passes the principal's device). Nothing here is on the wire before that.
+ * Contract 1.9.0 `SalesSubmitDigest` (D-NIGHT-DAYCLOSE-01; shapes in docs/requests/contract-v1.9-shapes-backend-core.md):
+ * the `digest` member of GET /v1/sync/totals, filled by `IngestService.totals` with the principal's device. Hand-written
+ * DTOs (as BatchDtos.kt); ContractConformanceTest checks the served shape against openapi.yaml.
  */
 
 @Serializable

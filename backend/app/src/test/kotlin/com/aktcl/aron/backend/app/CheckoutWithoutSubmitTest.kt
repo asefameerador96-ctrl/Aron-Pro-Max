@@ -3,8 +3,6 @@ package com.aktcl.aron.backend.app
 import com.aktcl.aron.backend.sync.IngestService
 import com.aktcl.aron.contract.RiskSignalCode
 import io.ktor.server.testing.testApplication
-import org.junit.jupiter.api.AfterEach
-import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.MethodOrderer
 import org.junit.jupiter.api.Order
 import org.junit.jupiter.api.TestMethodOrder
@@ -15,54 +13,31 @@ import kotlin.test.assertTrue
 /**
  * D-NIGHT-CHECKOUT-01 server half (contract 1.9 queue row 5): a stored check-out of an SR without an effective
  * `day_submit` for its business date raises CHECKOUT_WITHOUT_SUBMIT once per user-day; the check-out is stored
- * unchanged either way. Behind a switch that turns on when the contract catalogue names the code and the database's
- * code constraint accepts it; this class adds the code to its own database's constraint (as the db migration will)
- * and turns the switch with the test hook.
+ * unchanged either way. Always on since contract 1.9.0 (catalogue) and db V0114/V0115 (constraint, weight default 20);
+ * the switch that waited for both is gone (D-BC-CHECKOUT-ON-01), so these tests run on the migrated database as is.
  */
 @TestMethodOrder(MethodOrderer.OrderAnnotation::class)
 class CheckoutWithoutSubmitTest : NightSyncHarness() {
     private val phone get() = seededPhone
-
-    @BeforeAll
-    fun allowTheCode() {
-        fresh.db.jdbi.useHandle<Exception> { h ->
-            val def = h.createQuery("SELECT pg_get_constraintdef(oid) FROM pg_constraint WHERE conrelid = 'app.risk_signal'::regclass AND conname = 'risk_signal_code_check'").mapTo(String::class.java).one()
-            h.execute("ALTER TABLE app.risk_signal DROP CONSTRAINT risk_signal_code_check")
-            h.execute("ALTER TABLE app.risk_signal ADD CONSTRAINT risk_signal_code_check " + def.replace("'MEMO_DUPLICATE_SUSPECT'::text", "'MEMO_DUPLICATE_SUSPECT'::text, 'CHECKOUT_WITHOUT_SUBMIT'::text"))
-            assertTrue(h.createQuery("SELECT pg_get_constraintdef(oid) FROM pg_constraint WHERE conname = 'risk_signal_code_check'").mapTo(String::class.java).one().contains("CHECKOUT_WITHOUT_SUBMIT"))
-        }
-    }
-
-    @AfterEach
-    fun resetSwitch() { IngestService.checkoutRiskOverride = null }
 
     private fun signals(date: String) = count("SELECT count(*) FROM app.risk_signal WHERE code = 'CHECKOUT_WITHOUT_SUBMIT' AND subject_type = 'user' AND subject_id = '$srId' AND user_id = $srId AND business_date = DATE '$date'")
     private fun stored(r: kotlinx.serialization.json.JsonObject) = count("SELECT count(*) FROM app.attendance_event WHERE client_uuid = '${cu(r)}'")
 
     @Test
     @Order(1)
-    fun offUntilTheCatalogueNamesTheCode() = testApplication {
-        application { aronApi(wiring) }
-        // Before contract 1.9 the catalogue lacks the code: the automatic switch stays off whatever the database says.
-        if (RiskSignalCode.entries.none { it.wire == IngestService.CHECKOUT_WITHOUT_SUBMIT }) {
-            val t = client.token("sr1001", phone)
-            val out = attendance("check_out", "2026-12-31")
-            assertEquals(listOf("accepted:-"), client.send(t, phone, listOf(out)))
-            assertEquals(1, stored(out)); assertEquals(0, signals("2026-12-31"))
+    fun onWithTheMigratedConstraintTheCatalogueAndTheDefaultWeight() {
+        assertTrue(RiskSignalCode.entries.any { it.wire == IngestService.CHECKOUT_WITHOUT_SUBMIT }, "contract 1.9.0 catalogue")
+        fresh.db.jdbi.useHandle<Exception> { h ->
+            val def = h.createQuery("SELECT pg_get_constraintdef(oid) FROM pg_constraint WHERE conrelid = 'app.risk_signal'::regclass AND conname = 'risk_signal_code_check'").mapTo(String::class.java).one()
+            assertTrue(def.contains("'CHECKOUT_WITHOUT_SUBMIT'"), "db V0114/V0115: $def")
         }
-        // The explicit off: nothing raised, the check-out stored.
-        IngestService.checkoutRiskOverride = false
-        val t = client.token("sr1001", phone)
-        val out = attendance("check_out", "2027-01-01")
-        assertEquals(listOf("accepted:-"), client.send(t, phone, listOf(out)))
-        assertEquals(1, stored(out)); assertEquals(0, signals("2027-01-01"))
+        assertEquals(20L, count("SELECT (default_value -> 'CHECKOUT_WITHOUT_SUBMIT')::bigint FROM app.cfg_key WHERE key = 'cfg.geo.integrity_weight'"))
     }
 
     @Test
     @Order(2)
     fun aCheckOutWithoutSalesSubmitRaisesOneSignalPerUserDayAndIsStoredUnchanged() = testApplication {
         application { aronApi(wiring) }
-        IngestService.checkoutRiskOverride = true
         val t = client.token("sr1001", phone)
         val out = attendance("check_out")
         assertEquals(listOf("accepted:-"), client.send(t, phone, listOf(out)))
@@ -92,7 +67,6 @@ class CheckoutWithoutSubmitTest : NightSyncHarness() {
     @Order(3)
     fun aSalesSubmitInTheSameBatchOrEarlierCountsInEitherOrderAndAVoidedOneDoesNot() = testApplication {
         application { aronApi(wiring) }
-        IngestService.checkoutRiskOverride = true
         val t = client.token("sr1001", phone)
         // Same batch, check-out first: judged after the whole batch, so the submit counts.
         val d1 = "2027-01-02"
