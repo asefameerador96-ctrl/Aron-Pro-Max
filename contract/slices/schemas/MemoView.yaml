@@ -19,8 +19,7 @@ MemoView:
     memo_client_uuid:
       $ref: '#/components/schemas/Uuid'
     memo_no:
-      type: string
-      maxLength: 40
+      $ref: '#/components/schemas/MemoNo'
     business_date:
       $ref: '#/components/schemas/BusinessDate'
     outlet_id:
@@ -29,7 +28,13 @@ MemoView:
       type: string
       maxLength: 120
     route_id:
-      $ref: '#/components/schemas/Id'
+      type:
+      - integer
+      - 'null'
+      format: int64
+      minimum: 1
+      description: The memo's route; null when the memo was stored without a route. Nullable from contract 1.9.0
+        (the read uses a left join on the route).
     user_id:
       $ref: '#/components/schemas/Id'
     status:

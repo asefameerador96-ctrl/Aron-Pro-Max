@@ -26,7 +26,10 @@ operation:
 
     because `dw` carries no names. Callers: every portal level whose reach covers the node (SUPERADMIN, ADMIN with
 
-    the `reports:r` grant, which `/v1/dashboards/**` maps to, NATIONAL, WM, DMO and TSO); BRAND users get 403
+    the `reports:r` grant, which `/v1/dashboards/**` maps to, the national-level roles (NATIONAL, TOP, ANALYST),
+    WM,
+
+    DMO and TSO; the same callers as every `/v1/dashboards/**` operation); BRAND users get 403
 
     `ERR_FORBIDDEN` (docs/34 s1: cards without a brand dimension are hidden, and a memo has no brand dimension;
     the

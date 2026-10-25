@@ -1,0 +1,14 @@
+DigestTypeCounts:
+  type: object
+  required:
+  - device
+  - login
+  additionalProperties: false
+  properties:
+    device:
+      description: Null without a phone token.
+      oneOf:
+      - $ref: '#/components/schemas/DigestDeviceCounts'
+      - type: 'null'
+    login:
+      $ref: '#/components/schemas/DigestLoginCounts'

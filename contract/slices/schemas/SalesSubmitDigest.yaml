@@ -1,0 +1,44 @@
+SalesSubmitDigest:
+  type: object
+  description: 'D-NIGHT-DAYCLOSE-01. The Sales Submit compare for the caller (user from the token) and `business_date`.
+    `device` counts cover only the rows this phone uploaded (device from the token''s device proof, never from the
+    request); `login` counts cover every device and install of this login on the date. The day is in sync when,
+    per type, the phone''s committed rows are all acknowledged: phone committed = device.acknowledged + the device
+    rows in `rejected`; a `login` count above the phone''s count is information (other devices or earlier installs),
+    never a mismatch.'
+  required:
+  - business_date
+  - device_uuid
+  - by_type
+  - rejected
+  - rejected_truncated
+  additionalProperties: false
+  properties:
+    business_date:
+      $ref: '#/components/schemas/BusinessDate'
+    device_uuid:
+      description: The device the `device` counts are for; null for a caller without a phone token (web), then every
+        `device` is null.
+      oneOf:
+      - $ref: '#/components/schemas/Uuid'
+      - type: 'null'
+    by_type:
+      type: object
+      description: Every record type with at least one registry row of this login on the date (absent type = all
+        zero).
+      propertyNames:
+        $ref: '#/components/schemas/RecordType'
+      additionalProperties:
+        $ref: '#/components/schemas/DigestTypeCounts'
+    rejected:
+      type: array
+      maxItems: 200
+      description: Rows of this login and date the server did not store (rejected, parked or held in quarantine)
+        and has not stored since, newest first, from every device of the login (`from_this_device` says which).
+        The phone shows each with the `ReasonTexts` text of `code`, also for a row it no longer holds (an earlier
+        install).
+      items:
+        $ref: '#/components/schemas/RejectedRecordView'
+    rejected_truncated:
+      type: boolean
+      description: True when more than 200 rows qualify (the oldest are left out).

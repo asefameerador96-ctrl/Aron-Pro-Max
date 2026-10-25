@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Aron API
-  version: 1.8.0
+  version: 1.9.0
   summary: The one API of the Aron rebuild (SR, AMO and TSO apps, web dashboards and admin portal).
   description: |
     Binding contract for every lane of the seven-day build. Rules that apply to every operation are in
@@ -32,6 +32,13 @@ info:
       a sale line priced at zero); new operation `GET /v1/dashboards/flagged-memos` (`getFlaggedMemos`, schemas
       `FlaggedMemoPage`, `FlaggedMemoView`, `MemoServerFlag`); `MemoView.server_flags` (optional). The response-enum
       addition (`RecordOutcomeCode`) is breaking for an old reader and approved by the lead (D-CONTRACT-1-8-01).
+    - 1.9.0 (lead batch, D-CONTRACT-BATCH-01, `docs/requests/contract-v1.9-queue.md` rows 1 to 5): `MemoView.memo_no` is
+      `MemoNo`; `MemoView.route_id` is nullable (a route-less memo, read with a left join); `getFlaggedMemos` names the
+      national-level roles (NATIONAL, TOP, ANALYST) as callers (description only); `SyncTotalsResponse.digest`
+      (optional until the server wires it; `SalesSubmitDigest`, `DigestTypeCounts`, `DigestDeviceCounts`, `DigestLoginCounts`, `RejectedRecordView`:
+      per-device and per-login counts and the rows not stored, D-NIGHT-DAYCLOSE-01); `RiskSignalCode` gains
+      `CHECKOUT_WITHOUT_SUBMIT` (extensible, D-NIGHT-CHECKOUT-01). The widened `MemoView` response members are breaking
+      for an old reader and approved by the lead (D-CONTRACT-1-9-01).
     - Lists use cursor pagination (`limit`, `cursor`, response `next_cursor`) and master data also accept
       `updated_since`.
   contact:
@@ -2149,7 +2156,8 @@ paths:
         `status == active`). Backing data: the stable view `dw.v_memo_flags` (V0111, D-DB-MEMO-FLAGS-VIEW-01: scope keys
         frozen at the business date); `user_code` and `user_name` are resolved by the endpoint from `app.app_user`,
         because `dw` carries no names. Callers: every portal level whose reach covers the node (SUPERADMIN, ADMIN with
-        the `reports:r` grant, which `/v1/dashboards/**` maps to, NATIONAL, WM, DMO and TSO); BRAND users get 403
+        the `reports:r` grant, which `/v1/dashboards/**` maps to, the national-level roles (NATIONAL, TOP, ANALYST), WM,
+        DMO and TSO; the same callers as every `/v1/dashboards/**` operation); BRAND users get 403
         `ERR_FORBIDDEN` (docs/34 s1: cards without a brand dimension are hidden, and a memo has no brand dimension; the
         portal-level gate answers it); SR and AMO have no portal login (`ERR_AUTH_PORTAL_NOT_ALLOWED`).
       parameters:
@@ -6641,7 +6649,7 @@ components:
         Risk signal catalogue (docs/24 s11.4). Extensible (contract 1.3.1, docs/requests/contract-risk-signal-extensible-enum.md):
         the server may add codes without a new contract version, so every client must accept a code it does not know
         (show it by its code, never fail the response or the bundle).
-      x-extensible-enum: [GEO_MOCK, GEO_TELEPORT, GEO_ZERO_JITTER, GEO_PERFECT_ACCURACY, GEO_SAME_POINT, GEO_ROUTE_SINGLE_POINT, GEO_STALE_FIX, GEO_GNSS_INCONSISTENT, GEO_GNSS_TIME_SKEW, GEO_DEVICE_SERVER_MISMATCH, GEO_SHORT_VISIT_GAPS, DEVICE_NOT_OWNER, DEVICE_INTEGRITY_FAIL, DEVICE_DEBUG_ENABLED, DEVICE_MOCK_APP_PRESENT, DEVICE_POLICY_DRIFT, CLOCK_SKEW, GEO_OUT_OF_BOUNDS, CONFIG_STAMP_REGRESS, MEMO_DUPLICATE_SUSPECT]
+      x-extensible-enum: [GEO_MOCK, GEO_TELEPORT, GEO_ZERO_JITTER, GEO_PERFECT_ACCURACY, GEO_SAME_POINT, GEO_ROUTE_SINGLE_POINT, GEO_STALE_FIX, GEO_GNSS_INCONSISTENT, GEO_GNSS_TIME_SKEW, GEO_DEVICE_SERVER_MISMATCH, GEO_SHORT_VISIT_GAPS, DEVICE_NOT_OWNER, DEVICE_INTEGRITY_FAIL, DEVICE_DEBUG_ENABLED, DEVICE_MOCK_APP_PRESENT, DEVICE_POLICY_DRIFT, CLOCK_SKEW, GEO_OUT_OF_BOUNDS, CONFIG_STAMP_REGRESS, MEMO_DUPLICATE_SUSPECT, CHECKOUT_WITHOUT_SUBMIT]
     RiskSignalStatus:
       type: string
       enum: [open, reviewed, dismissed, confirmed]
@@ -8716,6 +8724,91 @@ components:
           oneOf:
             - { $ref: '#/components/schemas/SupervisorDayState' }
             - type: 'null'
+        digest:
+          $ref: '#/components/schemas/SalesSubmitDigest'
+          description: Optional in 1.9.0 (the server adds it when backend-core wires D-NIGHT-DAYCLOSE-01); a later batch makes it required, which is not breaking for a reader. Until then a phone without `digest` falls back to `totals`.
+    SalesSubmitDigest:
+      type: object
+      description: >-
+        D-NIGHT-DAYCLOSE-01. The Sales Submit compare for the caller (user from the token) and `business_date`. `device` counts
+        cover only the rows this phone uploaded (device from the token's device proof, never from the request); `login`
+        counts cover every device and install of this login on the date. The day is in sync when, per type, the phone's
+        committed rows are all acknowledged: phone committed = device.acknowledged + the device rows in `rejected`; a
+        `login` count above the phone's count is information (other devices or earlier installs), never a mismatch.
+      required: [business_date, device_uuid, by_type, rejected, rejected_truncated]
+      additionalProperties: false
+      properties:
+        business_date: { $ref: '#/components/schemas/BusinessDate' }
+        device_uuid:
+          description: The device the `device` counts are for; null for a caller without a phone token (web), then every `device` is null.
+          oneOf:
+            - { $ref: '#/components/schemas/Uuid' }
+            - type: 'null'
+        by_type:
+          type: object
+          description: Every record type with at least one registry row of this login on the date (absent type = all zero).
+          propertyNames: { $ref: '#/components/schemas/RecordType' }
+          additionalProperties: { $ref: '#/components/schemas/DigestTypeCounts' }
+        rejected:
+          type: array
+          maxItems: 200
+          description: >-
+            Rows of this login and date the server did not store (rejected, parked or held in quarantine) and has not stored
+            since, newest first, from every device of the login (`from_this_device` says which). The phone shows each with
+            the `ReasonTexts` text of `code`, also for a row it no longer holds (an earlier install).
+          items: { $ref: '#/components/schemas/RejectedRecordView' }
+        rejected_truncated: { type: boolean, description: True when more than 200 rows qualify (the oldest are left out). }
+    DigestTypeCounts:
+      type: object
+      required: [device, login]
+      additionalProperties: false
+      properties:
+        device:
+          description: Null without a phone token.
+          oneOf:
+            - { $ref: '#/components/schemas/DigestDeviceCounts' }
+            - type: 'null'
+        login: { $ref: '#/components/schemas/DigestLoginCounts' }
+    DigestDeviceCounts:
+      type: object
+      required: [received, acknowledged]
+      additionalProperties: false
+      properties:
+        received: { type: integer, minimum: 0, description: 'Distinct client_uuids of this device, login and date the server holds an outcome for (stored, rejected, parked or quarantined).' }
+        acknowledged: { type: integer, minimum: 0, description: 'Of those, stored (accepted now or earlier, also voided since; duplicates counted once).' }
+    DigestLoginCounts:
+      type: object
+      required: [acknowledged]
+      additionalProperties: false
+      properties:
+        acknowledged: { type: integer, minimum: 0, description: 'Stored rows of this login and date from every device and install (= ServerTotals.by_type.accepted).' }
+    RejectedRecordView:
+      type: object
+      required: [client_uuid, type, business_date, status, code, final, from_this_device, last_received_at]
+      additionalProperties: false
+      properties:
+        client_uuid: { $ref: '#/components/schemas/Uuid' }
+        type: { $ref: '#/components/schemas/RecordType' }
+        business_date: { $ref: '#/components/schemas/BusinessDate' }
+        status:
+          type: string
+          enum: [rejected, parked, quarantined]
+          description: rejected = refused for good; parked = refused for now, a re-send can store it; quarantined = held for review (the decision arrives in `resolutions`).
+        code: { $ref: '#/components/schemas/RecordOutcomeCode' }
+        final:
+          type: boolean
+          description: >-
+            True when no re-send can change the outcome (status rejected, a parked row past its TTL, a discarded
+            quarantine). A final row never blocks Sales Submit; a non-final `parked` row does until re-synced; an open
+            quarantine does not (it is acknowledged, awaiting review).
+        from_this_device: { type: boolean, description: False for a row another device or an earlier install of this login uploaded (always false without a phone token). }
+        memo_no:
+          description: The memo number of a memo row, or of the memo a memo_line, memo_discount, memo_void or due_collection names, when the server can read it.
+          oneOf:
+            - { $ref: '#/components/schemas/MemoNo' }
+            - type: 'null'
+        outlet_id: { type: [integer, 'null'], format: int64, minimum: 1, description: 'The outlet the row names (payload or envelope), when present.' }
+        last_received_at: { $ref: '#/components/schemas/Timestamp' }
     ServerGeneration:
       type: object
       required: [generation, kind, minted_at]
@@ -9718,11 +9811,15 @@ components:
       additionalProperties: false
       properties:
         memo_client_uuid: { $ref: '#/components/schemas/Uuid' }
-        memo_no: { type: string, maxLength: 40 }
+        memo_no: { $ref: '#/components/schemas/MemoNo' }
         business_date: { $ref: '#/components/schemas/BusinessDate' }
         outlet_id: { $ref: '#/components/schemas/Id' }
         outlet_name: { type: string, maxLength: 120 }
-        route_id: { $ref: '#/components/schemas/Id' }
+        route_id:
+          type: [integer, 'null']
+          format: int64
+          minimum: 1
+          description: The memo's route; null when the memo was stored without a route. Nullable from contract 1.9.0 (the read uses a left join on the route).
         user_id: { $ref: '#/components/schemas/Id' }
         status: { type: string, enum: [active, superseded, void] }
         supersedes_memo_no: { type: [string, 'null'], maxLength: 40 }

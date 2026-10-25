@@ -1,5 +1,7 @@
 # Contract v1.9 queue (lead; applied as one batch after 1.8.0, D-CONTRACT-BATCH-01)
 
+**Applied as 1.9.0 by the lead on 2026-10-24 (branch `lane/lead-contract-1.9`, this head; one head per D-CONTRACT-BATCH-01, D-CONTRACT-1-9-01):** rows 1 to 5 are in `contract/openapi.yaml` (version, changelog, `MemoView.memo_no` as `MemoNo`, nullable `MemoView.route_id`, the `getFlaggedMemos` description, `SyncTotalsResponse.digest` with `SalesSubmitDigest`, `DigestTypeCounts`, `DigestDeviceCounts`, `DigestLoginCounts` and `RejectedRecordView` as written in `docs/requests/contract-v1.9-shapes-backend-core.md` on `lane/backend-core` 9ce9270, except that `digest` is optional until the server sends it (v1.10 row 3), and `RiskSignalCode` `CHECKOUT_WITHOUT_SUBMIT`), with the slices, `web/src/contract/openapi.d.ts`, `ContractCatalogues.kt` and docs/24 (s4.12, s11.4, s14a R23). Row 6 (mdm packages catalogue and `work_hours_allowlist`) did not ship: the lead shipped 1.9.0 without waiting for mdm's shapes file (lead, 22:56 UTC), so it is row 1 of `contract-v1.10-queue.md`.
+
 Lanes needing a new value in a response enum (a new `ProblemCode`, `RecordOutcomeCode`, role or level, ...) or a new member, operation or tag add one row here (same shape as `contract-v1.8-queue.md`); the lead applies the batch in one approved head with every generator and mirror (checklist in `contract-v1.7-queue.md`). Until a row ships, the server keeps the documented interim answer (for a new code: the nearest existing code with a stable detail). Opened 2026-10-24 when 1.8.0 was applied.
 
 | # | Ruled | Source | Shape |
@@ -10,4 +12,4 @@ Lanes needing a new value in a response enum (a new `ProblemCode`, `RecordOutcom
 | 4 | 2026-10-24 (lead; D-NIGHT-DAYCLOSE-01) | backend-core #18 writes the shape | Sync digest: per record type the counts for this login and business date AND for this device, plus `rejected[]` {client_uuid, type, code, final} so the phone can show reasons for rows it no longer holds. |
 | 5 | 2026-10-24 (lead; D-NIGHT-CHECKOUT-01) | backend-core #18 | `RiskSignalCode` gains `CHECKOUT_WITHOUT_SUBMIT` (x-extensible-enum, additive): a check-out stored without an effective `day_submit` for the user's business date. |
 | 6 | 2026-10-24 (lead; D-NIGHT-MDM-ALLOWLIST-01) | mdm #3 writes the shape | MDM packages catalogue endpoint (per device: launcher-visible packages with label and icon hash) for the allow-list picker; the policy document gains `work_hours_allowlist`. |
-| (next) | | | Expected: mdm's packages catalogue endpoint (docs/status/mdm.md), when mdm writes it up (moved from the v1.8 queue, not part of 1.8.0). |
+| (next) | | | Closed: row 6 and any later row move to `contract-v1.10-queue.md`. |

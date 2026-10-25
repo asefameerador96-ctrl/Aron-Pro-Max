@@ -1,0 +1,53 @@
+RejectedRecordView:
+  type: object
+  required:
+  - client_uuid
+  - type
+  - business_date
+  - status
+  - code
+  - final
+  - from_this_device
+  - last_received_at
+  additionalProperties: false
+  properties:
+    client_uuid:
+      $ref: '#/components/schemas/Uuid'
+    type:
+      $ref: '#/components/schemas/RecordType'
+    business_date:
+      $ref: '#/components/schemas/BusinessDate'
+    status:
+      type: string
+      enum:
+      - rejected
+      - parked
+      - quarantined
+      description: rejected = refused for good; parked = refused for now, a re-send can store it; quarantined =
+        held for review (the decision arrives in `resolutions`).
+    code:
+      $ref: '#/components/schemas/RecordOutcomeCode'
+    final:
+      type: boolean
+      description: True when no re-send can change the outcome (status rejected, a parked row past its TTL, a discarded
+        quarantine). A final row never blocks Sales Submit; a non-final `parked` row does until re-synced; an open
+        quarantine does not (it is acknowledged, awaiting review).
+    from_this_device:
+      type: boolean
+      description: False for a row another device or an earlier install of this login uploaded (always false without
+        a phone token).
+    memo_no:
+      description: The memo number of a memo row, or of the memo a memo_line, memo_discount, memo_void or due_collection
+        names, when the server can read it.
+      oneOf:
+      - $ref: '#/components/schemas/MemoNo'
+      - type: 'null'
+    outlet_id:
+      type:
+      - integer
+      - 'null'
+      format: int64
+      minimum: 1
+      description: The outlet the row names (payload or envelope), when present.
+    last_received_at:
+      $ref: '#/components/schemas/Timestamp'

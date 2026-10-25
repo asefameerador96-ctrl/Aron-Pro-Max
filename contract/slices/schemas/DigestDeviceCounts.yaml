@@ -1,0 +1,16 @@
+DigestDeviceCounts:
+  type: object
+  required:
+  - received
+  - acknowledged
+  additionalProperties: false
+  properties:
+    received:
+      type: integer
+      minimum: 0
+      description: Distinct client_uuids of this device, login and date the server holds an outcome for (stored,
+        rejected, parked or quarantined).
+    acknowledged:
+      type: integer
+      minimum: 0
+      description: Of those, stored (accepted now or earlier, also voided since; duplicates counted once).

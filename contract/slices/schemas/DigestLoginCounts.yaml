@@ -1,0 +1,10 @@
+DigestLoginCounts:
+  type: object
+  required:
+  - acknowledged
+  additionalProperties: false
+  properties:
+    acknowledged:
+      type: integer
+      minimum: 0
+      description: Stored rows of this login and date from every device and install (= ServerTotals.by_type.accepted).
