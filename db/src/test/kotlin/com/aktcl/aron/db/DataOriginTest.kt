@@ -236,12 +236,13 @@ class DataOriginTest {
     }
 
     @Test
-    fun everyStableViewOverCapturedOrMasterRowsEndsWithDataOrigin() = db.connect().use { c ->
+    fun everyStableViewOverCapturedOrMasterRowsCarriesDataOrigin() = db.connect().use { c ->
+        // V0116 appended data_origin last; V0118 appends is_effective after it (DwViewContractTest pins the order).
         val views = c.column("SELECT table_name FROM information_schema.views WHERE table_schema = 'dw' AND table_name LIKE 'v\\_%' ORDER BY 1").filterNotNull()
         val reference = setOf("v_calendar", "v_calendar_month", "v_working_day")
         for (v in views) {
-            val last = c.scalar("SELECT column_name FROM information_schema.columns WHERE table_schema = 'dw' AND table_name = '$v' ORDER BY ordinal_position DESC LIMIT 1")
-            if (v in reference) assertTrue(last != "data_origin", v) else assertEquals("data_origin", last, v)
+            val has = c.scalar("SELECT count(*) FROM information_schema.columns WHERE table_schema = 'dw' AND table_name = '$v' AND column_name = 'data_origin'")
+            assertEquals(if (v in reference) "0" else "1", has, v)
         }
         assertEquals("true", c.scalar("SELECT has_table_privilege('web_ro', 'dw.v_daily_route', 'SELECT')::text"))
     }

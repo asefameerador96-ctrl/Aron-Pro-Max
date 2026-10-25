@@ -258,7 +258,9 @@ class OwnerDirectiveV0087Test {
         }
         val cols = c.scalar("SELECT string_agg(attname, ',' ORDER BY attnum) FROM pg_attribute WHERE attrelid = 'dw.v_memo_flags'::regclass AND attnum > 0")!!.split(',')
         assertTrue(cols.none { it in setOf("username", "full_name", "user_name", "user_code", "contact_number") }, "no names or contacts in dw: $cols")
-        assertEquals("true|true|true|true", listOf("api_rw", "web_ro", "bi_reader", "worker_rw").joinToString("|") { can(c, it, "dw.v_memo_flags", "SELECT")!! })
+        // V0118: bi_reader reads the view through column grants without the printed memo number (personal), so its
+        // table-level check is false; ReuseSurfaceTest proves the columns it keeps.
+        assertEquals("true|true|false|true", listOf("api_rw", "web_ro", "bi_reader", "worker_rw").joinToString("|") { can(c, it, "dw.v_memo_flags", "SELECT")!! })
     }
 
     @Test

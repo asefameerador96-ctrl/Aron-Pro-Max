@@ -20,7 +20,7 @@ Removals are rare and listed here (a wrong column is removed, never redefined in
 | Schema | Relations | Columns |
 |---|---|---|
 | `app` | 156 | 2692 |
-| `dw` | 45 | 689 |
+| `dw` | 58 | 928 |
 
 ## Index
 
@@ -71,7 +71,7 @@ Removals are rare and listed here (a wrong column is removed, never redefined in
 | [`app.domain_event`](#appdomain_event) | partitioned table | backend:platform | SERVER | ops | none | Append-only outbox of events written with each change; the projector and later consumers read it in id order. |
 | [`app.domain_event_type`](#appdomain_event_type) | table | db | REFERENCE | master | none | Catalogue of domain-event types and payload versions; every outbox row must name one (docs/data-events.md). |
 | [`app.due_collection`](#appdue_collection) | table | backend:sync | OFFLINE | transaction | personal | Cash collected against an earlier credit memo, with the collecting location fix. |
-| [`app.due_ledger`](#appdue_ledger) | table | backend:sync | SERVER | transaction | none | Append-only ledger of an outlet's outstanding dues: credit memos and opening balances raise it, collections and voids lower it. |
+| [`app.due_ledger`](#appdue_ledger) | table | backend:sync | SERVER | transaction | personal | Append-only ledger of an outlet's outstanding dues: credit memos and opening balances raise it, collections and voids lower it. |
 | [`app.dues_adjustment`](#appdues_adjustment) | table | backend:admin | ONLINE | audit | personal | One row is a proposed correction or write-off of an outlet's dues, decided once by a checker other than the maker; an approval adds the due_ledger adjustment row (F-ADM-036). |
 | [`app.enrolment_token`](#appenrolment_token) | table | backend:auth | ONLINE | session | none | A one-time or limited-use token that lets a phone enrol; only its hash is stored. |
 | [`app.entry_unlock`](#appentry_unlock) | table | backend:masterdata | ONLINE | transaction | none | One row is a time-limited unlock that lets web entry be back-dated for a zone or route over a date range. |
@@ -93,7 +93,7 @@ Removals are rare and listed here (a wrong column is removed, never redefined in
 | [`app.mdm_policy`](#appmdm_policy) | table | backend:mdm | ONLINE | master | none | Editable MDM policy the device-owner DPC enforces on top of app.device_policy: allowed apps, blocking windows, kiosk, location sampling (D-MDM-01). |
 | [`app.media`](#appmedia) | table | backend:media | OFFLINE | transaction | personal | Metadata of a photo taken in the field with its location fix and Blob Storage path; the image itself is in Blob Storage. |
 | [`app.media_upload`](#appmedia_upload) | table | backend:media | ONLINE | transaction | none | One row is a photo whose bytes arrived through the multipart fallback POST /v1/media/upload (feedback or support); the idempotency ledger of that endpoint (F-API-007). |
-| [`app.memo`](#appmemo) | partitioned table | backend:sync | OFFLINE | transaction | none | One sales memo header (or zero-sale record) for an outlet visit, with gross, discount, net, paid and due amounts. |
+| [`app.memo`](#appmemo) | partitioned table | backend:sync | OFFLINE | transaction | personal | One sales memo header (or zero-sale record) for an outlet visit, with gross, discount, net, paid and due amounts. |
 | [`app.memo_discount`](#appmemo_discount) | table | backend:sync | OFFLINE | transaction | none | One discount component of a memo: offer, DRP or free goods, with SKU, quantity and value. |
 | [`app.memo_line`](#appmemo_line) | partitioned table | backend:sync | OFFLINE | transaction | none | One SKU line of a memo with quantity, base price and gross amount. |
 | [`app.memo_void`](#appmemo_void) | table | backend:sync | OFFLINE | transaction | personal | Void of a memo, recorded with its reason and location fix; the memo turns voided and is never deleted. |
@@ -145,7 +145,7 @@ Removals are rare and listed here (a wrong column is removed, never redefined in
 | [`app.route_zone_history`](#approute_zone_history) | table | db | SERVER | master | none | One row is a period in which a route belonged to a zone; written by triggers on app.route. |
 | [`app.rubric`](#apprubric) | table | backend:masterdata | ONLINE | master | none | One row is a scoring rubric (joint call or retailer questionnaire); its current version is in rubric_version. |
 | [`app.rubric_version`](#apprubric_version) | table | backend:masterdata | ONLINE | master | none | One row is an immutable published version of a rubric: its scored criteria; assessments reference it. |
-| [`app.sale_abort`](#appsale_abort) | table | backend:sync | OFFLINE | transaction | none | A memo number consumed without a memo, explaining gaps in memo numbering. |
+| [`app.sale_abort`](#appsale_abort) | table | backend:sync | OFFLINE | transaction | personal | A memo number consumed without a memo, explaining gaps in memo numbering. |
 | [`app.sales_plan`](#appsales_plan) | table | backend:masterdata | ONLINE | master | none | SKU enabled for a zone for a date range. |
 | [`app.security_event`](#appsecurity_event) | table | backend:platform | SERVER | audit | personal | Append-only security events (login failures, lockouts, refresh reuse, device proof and state refusals, scope and password changes, force logout, OTP views) for alerts and support (docs/21 s8.1). |
 | [`app.server_generation`](#appserver_generation) | table | backend:sync | SERVER | ops | none | Database lineage: one row per new generation after creation, failover or restore. |
@@ -192,6 +192,8 @@ Removals are rare and listed here (a wrong column is removed, never redefined in
 | [`dw.agg_daily_screen_use`](#dwagg_daily_screen_use) | table | backend:analytics | SERVER | event_fact | none | One row is the use of one screen action by one role on one day, rolled up from fact_activity and kept for ever. |
 | [`dw.agg_daily_zone`](#dwagg_daily_zone) | table | worker | SERVER | event_fact | none | Per zone and business date: route and visit counts, geo and risk counts, and sales totals. |
 | [`dw.agg_hourly_zone`](#dwagg_hourly_zone) | table | worker | SERVER | event_fact | none | Per zone and hour: records received and sales, for the live dashboard. |
+| [`dw.agg_reconcile`](#dwagg_reconcile) | table | worker | SERVER | audit | none | Nightly reconcile findings (docs/16 s8.6): a source total from app that disagrees with its aggregate for a key and business date; the key is re-enqueued and an alert raised when it survives two runs. |
+| [`dw.agg_restatement_log`](#dwagg_restatement_log) | table | worker | SERVER | audit | none | Restatement log (docs/16 s8.6-s8.7): one row per aggregate key whose figures changed on a closed business date, with the old and new figures and why. Append-only. |
 | [`dw.dim_date`](#dwdim_date) | table | db | REFERENCE | master | none | Calendar dimension keyed by date with week, month, quarter and holiday attributes. |
 | [`dw.dim_geo`](#dwdim_geo) | table | worker | SERVER | master | none | Route-level geography dimension flattened through zone, territory, division and wing. |
 | [`dw.dim_geo_version`](#dwdim_geo_version) | table | db | SERVER | master | none | One row is a version of geo valid over [valid_from, valid_to) (SCD2), kept by a trigger on dw.dim_geo. |
@@ -207,7 +209,8 @@ Removals are rare and listed here (a wrong column is removed, never redefined in
 | [`dw.fact_device_day`](#dwfact_device_day) | table | worker | SERVER | event_fact | none | Per device and business date: contact times, batch and record counts, rejects and battery low point. |
 | [`dw.fact_device_integrity`](#dwfact_device_integrity) | partitioned table | backend:analytics | SERVER | event_fact | none | One row is a phone's integrity and readiness state observed at a login or bundle download. |
 | [`dw.fact_geo_fix`](#dwfact_geo_fix) | partitioned table | worker | SERVER | event_fact | personal | One row per location fix copied for analysis, with slot and satellite count. |
-| [`dw.fact_memo`](#dwfact_memo) | partitioned table | worker | SERVER | event_fact | none | One row per memo with its money totals, for reports. |
+| [`dw.fact_memo`](#dwfact_memo) | partitioned table | worker | SERVER | event_fact | personal | One row per memo with its money totals, for reports. |
+| [`dw.fact_memo_line`](#dwfact_memo_line) | partitioned table | worker | SERVER | event_fact | none | One row per memo line of a memo in dw.fact_memo, kept in step with that fact by trigger (rebuilt with the memo's route-day). |
 | [`dw.fact_supervisor_day`](#dwfact_supervisor_day) | table | worker | SERVER | event_fact | none | One row per AMO or TSO and business date with the day's check-in, check-out and Sales Submit, filled by the worker from app.supervisor_day (F-AMO-039). |
 | [`dw.fact_visit`](#dwfact_visit) | partitioned table | worker | SERVER | event_fact | personal | One row per visit with device and server verdicts, distances, the outlet base and call positions, the Force Sale photo, the void flag and the completed and within_fence flags. |
 | [`dw.route_last_position`](#dwroute_last_position) | table | worker | SERVER | event_fact | personal | Latest position of each route's SR on a business date (FF Geo pins), upserted from geo fixes in capture-time order. |
@@ -221,11 +224,21 @@ Removals are rare and listed here (a wrong column is removed, never redefined in
 | [`dw.v_daily_sku`](#dwv_daily_sku) | view | worker | SERVER | event_fact | none | Stable view: per route, SKU and business date, quantities sold, free, issued and returned and the gross value. |
 | [`dw.v_daily_sr`](#dwv_daily_sr) | view | worker | SERVER | event_fact | none | Stable view: per field user and business date, SR calls, successful calls, geo validity and memo money from the dw facts (active memos with lines); a user-day with neither an SR call nor such a memo has no row. |
 | [`dw.v_device_command`](#dwv_device_command) | view | backend:mdm | ONLINE | audit | none | Stable view: MDM commands for the activity log, without signature and result. |
+| [`dw.v_dim_geo`](#dwv_dim_geo) | view | worker | SERVER | master | none | Stable view: the current route and geography dimension (dw.dim_geo; versions in dw.dim_geo_version). is_effective = route active. |
+| [`dw.v_dim_outlet`](#dwv_dim_outlet) | view | worker | SERVER | master | none | Stable view: the current outlet dimension (dw.dim_outlet): shop name and code, placement and class; no owner name, phone number or coordinates. is_effective = outlet active. |
+| [`dw.v_dim_product`](#dwv_dim_product) | view | worker | SERVER | master | none | Stable view: the current product dimension (dw.dim_product): SKU, base unit, pack size and the category, segment, brand and variant tree. is_effective = true. |
+| [`dw.v_dim_user`](#dwv_dim_user) | view | worker | SERVER | master | none | Stable view: the current user dimension (dw.dim_user): role, designation, home zone, status; no names or logins. is_effective = account active. |
+| [`dw.v_due_ledger`](#dwv_due_ledger) | view | backend:sync | SERVER | transaction | none | Stable view: every signed entry of the outlet dues ledger (app.due_ledger, append-only; reversals are entries of their own), without the printed memo number and the free-text note. is_effective = true. |
 | [`dw.v_final_submit_log`](#dwv_final_submit_log) | view | worker | SERVER | audit | none | Stable view: per zone and business date the first Final Submit (second submits ignored, Brief 07), the number of submits and the reopen state. |
 | [`dw.v_geo_integrity`](#dwv_geo_integrity) | view | worker | SERVER | event_fact | none | Stable view: per user and business date, geo-validation outcomes of visits and mock-location evidence of fixes. |
-| [`dw.v_memo_flags`](#dwv_memo_flags) | view | worker | SERVER | event_fact | none | Stable view: one row per memo the server flagged (app.memo.server_flags non-empty: zero price line, price, arithmetic or pack-factor mismatch and the like), with its scope keys; voided and superseded memos included with their status (counts use status = 'active' AND voided_at IS NULL). |
+| [`dw.v_memo`](#dwv_memo) | view | worker | SERVER | event_fact | none | Stable view: one row per memo (dw.fact_memo) with its money, scope keys and SCD2 keys; the memo UUID, never the printed memo number (personal: it embeds the login). is_effective = active with at least one line. |
+| [`dw.v_memo_flags`](#dwv_memo_flags) | view | worker | SERVER | event_fact | personal | Stable view: one row per memo the server flagged (app.memo.server_flags non-empty: zero price line, price, arithmetic or pack-factor mismatch and the like), with its scope keys; voided and superseded memos included with their status (counts use status = 'active' AND voided_at IS NULL). |
+| [`dw.v_memo_line`](#dwv_memo_line) | view | worker | SERVER | event_fact | none | Stable view: one row per memo line (dw.fact_memo_line) in entered and base units with its price at capture. is_effective = memo active and line not voided. |
 | [`dw.v_outlet_masked`](#dwv_outlet_masked) | view | backend:masterdata | ONLINE | master | none | Stable view: outlets without owner name, address or national ids; the phone masked to 01*****NNN (D-107). |
+| [`dw.v_outlet_sku_daily`](#dwv_outlet_sku_daily) | view | worker | SERVER | event_fact | none | Stable view: quantity sold and memo count per outlet, SKU and business date (dw.agg_daily_outlet_sku). is_effective = true. |
 | [`dw.v_route_monthly_target`](#dwv_route_monthly_target) | view | worker | SERVER | master | none | Stable view: route x SKU monthly targets in base units with the month's working days and the derived daily target (D-TARGET-MIN-01). |
+| [`dw.v_stock_movement`](#dwv_stock_movement) | view | backend:sync | OFFLINE | transaction | none | Stable view: every stock movement (issue, return and the other kinds of app.stock_movement) in entered and base units. is_effective = not voided. |
+| [`dw.v_visit`](#dwv_visit) | view | worker | SERVER | event_fact | none | Stable view: one row per visit (dw.fact_visit) with both geo verdicts and distances, no coordinates and no photo. is_effective = not voided. |
 | [`dw.v_working_day`](#dwv_working_day) | view | worker | SERVER | master | none | Stable view: one row per date, working = the national working-day flag of dw.v_calendar (Fridays and national holidays off, make-up days on). |
 
 ## app.activity_log
@@ -1538,7 +1551,7 @@ Cash collected against an earlier credit memo, with the collecting location fix.
 | `external_ref` | character varying(64) | null |  | Stable external reference for cross-walks with other systems (Apsis, ERP); unique when set. |
 | `outlet_id` | bigint | not null |  | Outlet (app.outlet). |
 | `against_memo_client_uuid` | uuid | not null |  | Client UUID of the credit memo being paid. |
-| `against_memo_no` | text | not null |  | Number of the credit memo being paid. |
+| `against_memo_no` | text | not null | personal | Number of the credit memo being paid. Contains the SR's login, so it is personal data: exports use the memo UUID instead. |
 | `against_memo_business_date` | date | not null |  | Business date of the credit memo being paid. |
 | `amount_mtk` | bigint | not null |  | Amount in milli-taka (1 Tk = 1000 mtk). |
 | `is_full_settlement` | boolean | not null |  | True when the collection clears the memo's outstanding due. |
@@ -1562,7 +1575,7 @@ References: `FOREIGN KEY (acting_for_user_id) REFERENCES app.app_user(id)`; `FOR
 
 Append-only ledger of an outlet's outstanding dues: credit memos and opening balances raise it, collections and voids lower it.
 
-`owner: backend:sync | capture: SERVER | retention: transaction | pii: none` · table
+`owner: backend:sync | capture: SERVER | retention: transaction | pii: personal` · table
 
 | Column | Type | Null | PII | Description |
 |---|---|---|---|---|
@@ -1572,7 +1585,7 @@ Append-only ledger of an outlet's outstanding dues: credit memos and opening bal
 | `entry_kind` | text | not null |  | Kind of entry: memo_due, collection, memo_void, memo_superseded or opening_balance. |
 | `amount_mtk` | bigint | not null |  | Signed change of the outlet balance in milli-taka (1 Tk = 1000 mtk; + raises, - lowers); never zero, \|amount\| at most 10^13 (V0079). |
 | `memo_client_uuid` | uuid | null |  | client_uuid of the memo the row belongs to. |
-| `memo_no` | text | null |  | Printed memo number <username>-<yyMMdd>-<seq>. |
+| `memo_no` | text | null | personal | Printed memo number <username>-<yyMMdd>-<seq>. Contains the SR's login, so it is personal data: exports use the memo UUID instead. |
 | `source_client_uuid` | uuid | not null |  | Client UUID of the memo, due_collection, memo_void or adjustment that caused the entry. |
 | `user_id` | bigint | null |  | User (app.app_user); for device records the capturing user from the token. |
 | `note` | text | null |  | Free-text note. |
@@ -2254,7 +2267,7 @@ References: `FOREIGN KEY (device_id) REFERENCES app.device(id)`; `FOREIGN KEY (u
 
 One sales memo header (or zero-sale record) for an outlet visit, with gross, discount, net, paid and due amounts.
 
-`owner: backend:sync | capture: OFFLINE | retention: transaction | pii: none` · partitioned table
+`owner: backend:sync | capture: OFFLINE | retention: transaction | pii: personal` · partitioned table
 
 | Column | Type | Null | PII | Description |
 |---|---|---|---|---|
@@ -2284,7 +2297,7 @@ One sales memo header (or zero-sale record) for an outlet visit, with gross, dis
 | `external_ref` | character varying(64) | null |  | Stable external reference for cross-walks with other systems (Apsis, ERP); unique when set. |
 | `visit_client_uuid` | uuid | not null |  | client_uuid of the visit the row belongs to. |
 | `outlet_id` | bigint | not null |  | Outlet (app.outlet). |
-| `memo_no` | text | not null |  | Printed memo number <username>-<yyMMdd>-<seq>. |
+| `memo_no` | text | not null | personal | Printed memo number <username>-<yyMMdd>-<seq>. Contains the SR's login, so it is personal data: exports use the memo UUID instead. |
 | `memo_kind` | text | not null |  | Memo kind: sale or zero_sale. |
 | `committed_at` | timestamp with time zone | not null |  | UTC instant the row was committed. |
 | `price_list_date` | date | not null |  | Date of the price list used to price the memo. |
@@ -2453,7 +2466,7 @@ Void of a memo, recorded with its reason and location fix; the memo turns voided
 | `voided_at` | timestamp with time zone | null |  | UTC time an admin data void tombstoned the row; the row is never deleted. |
 | `external_ref` | character varying(64) | null |  | Stable external reference for cross-walks with other systems (Apsis, ERP); unique when set. |
 | `memo_client_uuid` | uuid | not null |  | client_uuid of the memo the row belongs to. |
-| `memo_no` | text | not null |  | Printed memo number <username>-<yyMMdd>-<seq>. |
+| `memo_no` | text | not null | personal | Printed memo number <username>-<yyMMdd>-<seq>. Contains the SR's login, so it is personal data: exports use the memo UUID instead. |
 | `reason_code` | text | not null |  | Reason code from the matching business code list (app.code_list_item). |
 | `fix_status` | text | null |  | Outcome of the fix request: ok, timeout, permission_denied, location_off or provider_unavailable. |
 | `fix_lat` | double precision | null | personal | Latitude of the user's location fix taken with the record (WGS84 degrees). |
@@ -3799,7 +3812,7 @@ References: `FOREIGN KEY (rubric_id) REFERENCES app.rubric(id)`
 
 A memo number consumed without a memo, explaining gaps in memo numbering.
 
-`owner: backend:sync | capture: OFFLINE | retention: transaction | pii: none` · table
+`owner: backend:sync | capture: OFFLINE | retention: transaction | pii: personal` · table
 
 | Column | Type | Null | PII | Description |
 |---|---|---|---|---|
@@ -3826,7 +3839,7 @@ A memo number consumed without a memo, explaining gaps in memo numbering.
 | `created_at` | timestamp with time zone | not null |  | UTC instant the row was inserted on the server. |
 | `voided_at` | timestamp with time zone | null |  | UTC time an admin data void tombstoned the row; the row is never deleted. |
 | `external_ref` | character varying(64) | null |  | Stable external reference for cross-walks with other systems (Apsis, ERP); unique when set. |
-| `memo_no` | text | not null |  | Printed memo number <username>-<yyMMdd>-<seq>. |
+| `memo_no` | text | not null | personal | Printed memo number <username>-<yyMMdd>-<seq>. Contains the SR's login, so it is personal data: exports use the memo UUID instead. |
 | `reason` | text | not null |  | Reason given for the change or action (free text). |
 | `visit_client_uuid` | uuid | null |  | client_uuid of the visit the row belongs to. |
 | `outlet_id` | bigint | null |  | Outlet (app.outlet). |
@@ -5144,6 +5157,51 @@ Per zone and hour: records received and sales, for the live dashboard.
 
 Keys: `PRIMARY KEY (business_date, zone_id, hour_of_day)`
 
+## dw.agg_reconcile
+
+Nightly reconcile findings (docs/16 s8.6): a source total from app that disagrees with its aggregate for a key and business date; the key is re-enqueued and an alert raised when it survives two runs.
+
+`owner: worker | capture: SERVER | retention: audit | pii: none` · table
+
+| Column | Type | Null | PII | Description |
+|---|---|---|---|---|
+| `id` | bigint | not null |  | Server surrogate key. |
+| `run_at` | timestamp with time zone | not null |  | UTC instant of the reconcile run that found (or last confirmed) the difference. |
+| `business_date` | date | not null |  | Asia/Dhaka business date checked. |
+| `grain` | text | not null |  | Aggregate grain checked: route (dw.agg_daily_route) or zone (dw.agg_daily_zone). |
+| `key_id` | bigint | not null |  | route_id or zone_id of the checked row. |
+| `metric` | text | not null |  | Figure compared: net_mtk, gross_mtk, memo_count, visit_count or qty_base. |
+| `source_value` | bigint | not null |  | Figure recomputed from the app source rows (money in milli-taka). |
+| `agg_value` | bigint | not null |  | Figure the aggregate held (money in milli-taka). |
+| `diff` | bigint | null |  | source_value - agg_value. |
+| `consecutive_runs` | integer | not null |  | Number of consecutive nightly runs that found this difference (alert at 2). |
+| `re_enqueued` | boolean | not null |  | True once the key was re-enqueued for a rebuild. |
+| `resolved_at` | timestamp with time zone | null |  | UTC instant a later run found the figures equal; null while open. |
+
+Keys: `PRIMARY KEY (id)`
+
+## dw.agg_restatement_log
+
+Restatement log (docs/16 s8.6-s8.7): one row per aggregate key whose figures changed on a closed business date, with the old and new figures and why. Append-only.
+
+`owner: worker | capture: SERVER | retention: audit | pii: none` · table
+
+| Column | Type | Null | PII | Description |
+|---|---|---|---|---|
+| `id` | bigint | not null |  | Server surrogate key. |
+| `changed_at` | timestamp with time zone | not null |  | UTC instant the aggregate changed. |
+| `business_date` | date | not null |  | Asia/Dhaka business date of the changed aggregate row. |
+| `grain` | text | not null |  | Aggregate grain: route, route_sku, route_brand, route_segment, route_variant, outlet, outlet_sku, zone, hourly_zone or month. |
+| `key1` | bigint | not null |  | First key of the row (route_id, outlet_id or zone_id by grain). |
+| `key2` | bigint | null |  | Second key of the row (sku_id, brand_id, segment_id, variant_id or hour by grain); null for one-key grains. |
+| `reason` | text | not null |  | Why it changed: late_batch, memo_superseded, memo_voided, target_revision, dim_backdate, web_entry, import, rebuild or reconcile. |
+| `old_row` | jsonb | not null |  | Figures before the change (empty object for a new row); counts and milli-taka only, no names. |
+| `new_row` | jsonb | not null |  | Figures after the change (empty object for a removed row). |
+| `delta` | jsonb | not null |  | new minus old per figure. |
+| `rebuild_id` | uuid | null |  | Audited rebuild request that caused the change (reason rebuild), if any. |
+
+Keys: `PRIMARY KEY (id)`
+
 ## dw.dim_date
 
 Calendar dimension keyed by date with week, month, quarter and holiday attributes.
@@ -5545,13 +5603,13 @@ Keys: `PRIMARY KEY (source_client_uuid, slot, business_date)`
 
 One row per memo with its money totals, for reports.
 
-`owner: worker | capture: SERVER | retention: event_fact | pii: none` · partitioned table
+`owner: worker | capture: SERVER | retention: event_fact | pii: personal` · partitioned table
 
 | Column | Type | Null | PII | Description |
 |---|---|---|---|---|
 | `business_date` | date | not null |  | Asia/Dhaka business date of the row (cutoff 00:00 Dhaka); all day-level rollups key off it. |
 | `memo_client_uuid` | uuid | not null |  | client_uuid of the memo the row belongs to. |
-| `memo_no` | text | not null |  | Printed memo number <username>-<yyMMdd>-<seq>. |
+| `memo_no` | text | not null | personal | Printed memo number <username>-<yyMMdd>-<seq>. Contains the SR's login, so it is personal data: exports use the memo UUID instead. |
 | `user_id` | bigint | not null |  | User (app.app_user); for device records the capturing user from the token. |
 | `route_id` | bigint | null |  | Route (app.route) being worked. |
 | `zone_id` | bigint | null |  | Zone (app.zone). |
@@ -5579,6 +5637,39 @@ One row per memo with its money totals, for reports.
 | `data_origin` | app.data_origin | null |  | Origin (production, pilot, test, seed): the most synthetic of its memo (app.memo); set by trigger on every write. |
 
 Keys: `PRIMARY KEY (memo_client_uuid, business_date)`
+
+## dw.fact_memo_line
+
+One row per memo line of a memo in dw.fact_memo, kept in step with that fact by trigger (rebuilt with the memo's route-day).
+
+`owner: worker | capture: SERVER | retention: event_fact | pii: none` · partitioned table
+
+| Column | Type | Null | PII | Description |
+|---|---|---|---|---|
+| `business_date` | date | not null |  | Asia/Dhaka business date of the memo. |
+| `line_client_uuid` | uuid | not null |  | Client-generated UUID of the line (app.memo_line.client_uuid). |
+| `memo_client_uuid` | uuid | not null |  | Client-generated UUID of the memo (dw.fact_memo.memo_client_uuid). |
+| `line_no` | smallint | not null |  | Line number within the memo. |
+| `user_id` | bigint | null |  | User who captured the memo (app.app_user); names are resolved by the API, not in dw. |
+| `route_id` | bigint | null |  | Route of the memo. |
+| `outlet_id` | bigint | null |  | Outlet of the memo. |
+| `sku_id` | bigint | not null |  | SKU sold (app.sku). |
+| `line_kind` | text | not null |  | Line kind as captured: sale, drp_reward, promo_free or free_sample (app.memo_line.line_kind). |
+| `qty_entered` | integer | not null |  | Quantity as the SR entered it, in unit_entered. |
+| `unit_entered` | text | not null |  | Unit the quantity was entered in: stick, piece, dozen or pack. |
+| `pack_factor` | integer | not null |  | Base units per pack of the SKU at capture; qty_base = qty_entered x pack_factor when unit_entered is pack, else qty_entered. |
+| `qty_base` | bigint | not null |  | Quantity in the SKU base unit (sticks, pieces or dozens). |
+| `price_type` | text | null |  | Price type the line was priced at. |
+| `base_price_mtk` | bigint | null |  | Price per price_per_qty base units at capture, integer milli-taka. |
+| `price_per_qty` | integer | null |  | Number of base units base_price_mtk is quoted for. |
+| `gross_mtk` | bigint | not null |  | Gross value of the line, integer milli-taka. |
+| `offer_id` | bigint | null |  | Offer the line belongs to, if any (offers are deferred; hook only). |
+| `voided` | boolean | not null |  | True when the line itself carries a void tombstone. |
+| `memo_status` | text | not null |  | Status of the memo (active, voided, superseded), copied from dw.fact_memo. |
+| `data_origin` | app.data_origin | null |  | Origin of the line (app.memo_line.data_origin, stamped at capture). |
+| `updated_at` | timestamp with time zone | not null |  | UTC instant the row was last rewritten. |
+
+Keys: `PRIMARY KEY (line_client_uuid, business_date)`
 
 ## dw.fact_supervisor_day
 
@@ -5702,6 +5793,7 @@ Stable view: per user and business date, check-in and check-out times, hours in 
 | `check_out_is_mock` | boolean | null |  | True when the check-out fix came from a mock location provider. |
 | `updated_at` | timestamp with time zone | null |  | UTC instant of the last update. |
 | `data_origin` | app.data_origin | null |  | Origin of the user-day (dw.fact_attendance.data_origin: the user's origin). |
+| `is_effective` | boolean | null |  | Always true: the row is an aggregate or reference row built from effective rows only. |
 
 ## dw.v_calendar
 
@@ -5720,6 +5812,7 @@ Stable view: one row per date with Friday, national holiday, make-up day and wor
 | `holiday_name` | text | null |  | English name of the declared holiday or make-up day; null on ordinary days. |
 | `is_makeup_day` | boolean | null |  | True when the date is declared a selling (make-up) day. |
 | `is_working_day` | boolean | null |  | True when the date counts as a working day: a make-up day, or neither weekend nor holiday. |
+| `is_effective` | boolean | null |  | Always true: the row is an aggregate or reference row built from effective rows only. |
 
 ## dw.v_calendar_month
 
@@ -5734,6 +5827,7 @@ Stable view: per month the number of days, Fridays, national holidays and workin
 | `fridays` | integer | null |  | Fridays in the month. |
 | `holidays` | integer | null |  | Dates in the month with a live national holiday or emergency off day. |
 | `working_days` | integer | null |  | Working days in the month (dw.v_calendar.is_working_day). |
+| `is_effective` | boolean | null |  | Always true: the row is an aggregate or reference row built from effective rows only. |
 
 ## dw.v_collections
 
@@ -5754,6 +5848,7 @@ Stable view: outlet-days with new credit or dues collected (credit and collectio
 | `dues_collected_mtk` | bigint | null |  | Dues collected against earlier credit memos, in milli-taka. |
 | `updated_at` | timestamp with time zone | null |  | UTC instant of the last update. |
 | `data_origin` | app.data_origin | null |  | Origin of the outlet-day (dw.agg_daily_outlet.data_origin): production only when nothing non-production went into it. |
+| `is_effective` | boolean | null |  | Always true: the row is an aggregate or reference row built from effective rows only. |
 
 ## dw.v_daily_outlet
 
@@ -5787,6 +5882,7 @@ Stable view: per outlet and business date, visit, geo validity, sales per catego
 | `dues_collected_mtk` | bigint | null |  | Dues collected against earlier credit memos, in milli-taka. |
 | `updated_at` | timestamp with time zone | null |  | UTC instant of the last update. |
 | `data_origin` | app.data_origin | null |  | Origin of the outlet-day (dw.agg_daily_outlet.data_origin): production only when nothing non-production went into it. |
+| `is_effective` | boolean | null |  | Always true: the row is an aggregate or reference row built from effective rows only. |
 
 ## dw.v_daily_route
 
@@ -5837,6 +5933,7 @@ Stable view (contract for BI and other products): KPIs, money and day state per 
 | `late_rows_after_final` | integer | null |  | Rows received after the zone-day was final-submitted (accepted and flagged). |
 | `updated_at` | timestamp with time zone | null |  | UTC instant of the last update. |
 | `data_origin` | app.data_origin | null |  | Origin of the route-day (dw.agg_daily_route.data_origin): production only when nothing non-production went into it. |
+| `is_effective` | boolean | null |  | Always true: the row is an aggregate or reference row built from effective rows only. |
 
 ## dw.v_daily_sku
 
@@ -5867,6 +5964,7 @@ Stable view: per route, SKU and business date, quantities sold, free, issued and
 | `memo_count` | integer | null |  | Active memos containing the SKU. |
 | `updated_at` | timestamp with time zone | null |  | UTC instant of the last update. |
 | `data_origin` | app.data_origin | null |  | Origin of the route-day (dw.agg_daily_route_sku.data_origin): production only when nothing non-production went into it. |
+| `is_effective` | boolean | null |  | Always true: the row is an aggregate or reference row built from effective rows only. |
 
 ## dw.v_daily_sr
 
@@ -5895,6 +5993,7 @@ Stable view: per field user and business date, SR calls, successful calls, geo v
 | `last_visit_end_at` | timestamp with time zone | null |  | UTC instant the last call ended. |
 | `memos_entered_manually` | bigint | null |  | Active memos keyed on the web from paper (entry_source manual). |
 | `data_origin` | app.data_origin | null |  | Most synthetic origin among the visits and memos of the user-day. |
+| `is_effective` | boolean | null |  | Always true: the row is an aggregate or reference row built from effective rows only. |
 
 ## dw.v_device_command
 
@@ -5920,6 +6019,127 @@ Stable view: MDM commands for the activity log, without signature and result.
 | `sent_at` | timestamp with time zone | null |  | UTC instant of the first pull by the device. |
 | `acked_at` | timestamp with time zone | null |  | UTC instant the device reported done or failed. |
 | `data_origin` | app.data_origin | null |  | Most synthetic origin among the users with an active binding on the device now (production when none). |
+| `is_effective` | boolean | null |  | True unless the command was rejected, expired or failed. |
+
+## dw.v_dim_geo
+
+Stable view: the current route and geography dimension (dw.dim_geo; versions in dw.dim_geo_version). is_effective = route active.
+
+`owner: worker | capture: SERVER | retention: master | pii: none` · view
+
+| Column | Type | Null | PII | Description |
+|---|---|---|---|---|
+| `route_id` | bigint | null |  | Route (app.route) being worked. |
+| `route_code` | text | null |  | Code of the route. |
+| `route_name` | text | null |  | Name of the route. |
+| `route_kind` | text | null |  | Kind of the route. |
+| `visit_kind` | text | null |  | Kind of call: sr_call, amo_control_call, amo_joint_call, tso_visit or web_entry (route tables: daily, 3f or 2f). |
+| `route_class` | text | null |  | Route class copied from app.route.route_class (normal, manual, dummy_br, dummy_institutional). |
+| `zone_id` | bigint | null |  | Zone (app.zone). |
+| `zone_name` | text | null |  | Name of the zone. |
+| `house_id` | bigint | null |  | Distribution house of the route's zone (app.zone.house_id); null when the zone names none. |
+| `house_name` | text | null |  | Name of that house. |
+| `territory_id` | bigint | null |  | Territory (app.territory). |
+| `territory_name` | text | null |  | Name of the territory. |
+| `division_id` | bigint | null |  | Id of the division. |
+| `division_name` | text | null |  | Name of the division. |
+| `wing_id` | bigint | null |  | Id of the wing. |
+| `wing_name` | text | null |  | Name of the wing. |
+| `status` | text | null |  | Lifecycle status; allowed values are listed under constraints. |
+| `updated_at` | timestamp with time zone | null |  | UTC instant of the last update. |
+| `data_origin` | app.data_origin | null |  | Origin (production, pilot, test, seed): the most synthetic of the route (app.route.data_origin); set by trigger on every write. |
+| `is_effective` | boolean | null |  | True when the row counts in an ordinary total (the rule of this view is in its description). |
+
+## dw.v_dim_outlet
+
+Stable view: the current outlet dimension (dw.dim_outlet): shop name and code, placement and class; no owner name, phone number or coordinates. is_effective = outlet active.
+
+`owner: worker | capture: SERVER | retention: master | pii: none` · view
+
+| Column | Type | Null | PII | Description |
+|---|---|---|---|---|
+| `outlet_id` | bigint | null |  | Outlet (app.outlet). |
+| `outlet_code` | text | null |  | Code of the outlet. |
+| `outlet_name` | text | null |  | Name of the outlet. |
+| `route_id` | bigint | null |  | Route (app.route) being worked. |
+| `cluster_id` | bigint | null |  | Outlet cluster (market group) inside the zone. |
+| `zone_id` | bigint | null |  | Zone (app.zone). |
+| `channel` | text | null |  | Outlet channel: GT, DCC, Astha, RCC, MT or HoReCa. |
+| `sub_channel_id` | bigint | null |  | Outlet sub-channel (app.sub_channel). |
+| `geo_class` | text | null |  | Geographic class of the outlet area: Hill, Urban, SemiUrban or Rural. |
+| `outlet_kind` | text | null |  | Outlet kind: retail or wholesale. |
+| `location_confirmed` | boolean | null |  | True when the outlet location is confirmed. |
+| `status` | text | null |  | Lifecycle status; allowed values are listed under constraints. |
+| `updated_at` | timestamp with time zone | null |  | UTC instant of the last update. |
+| `data_origin` | app.data_origin | null |  | Origin (production, pilot, test, seed): the most synthetic of the outlet (app.outlet.data_origin); set by trigger on every write. |
+| `is_effective` | boolean | null |  | True when the row counts in an ordinary total (the rule of this view is in its description). |
+
+## dw.v_dim_product
+
+Stable view: the current product dimension (dw.dim_product): SKU, base unit, pack size and the category, segment, brand and variant tree. is_effective = true.
+
+`owner: worker | capture: SERVER | retention: master | pii: none` · view
+
+| Column | Type | Null | PII | Description |
+|---|---|---|---|---|
+| `sku_id` | bigint | null |  | SKU (app.sku). |
+| `sku_code` | text | null |  | Code of the SKU. |
+| `short_name` | text | null |  | Short name printed on the memo. |
+| `base_unit` | text | null |  | Unit of the SKU's quantities. |
+| `base_per_pack` | integer | null |  | Base units in one pack. |
+| `category_id` | bigint | null |  | Id of the category node. |
+| `category_code` | text | null |  | Product category: cigarette, bidi, lighter or match. |
+| `category_name` | text | null |  | Name of the category. |
+| `segment_id` | bigint | null |  | Id of the segment node. |
+| `segment_code` | text | null |  | Code of the SKU's segment node (app.product_node.code); null when the node has none. |
+| `segment_name` | text | null |  | Name of the segment. |
+| `brand_id` | bigint | null |  | Product brand (app.product_node of level brand). |
+| `brand_code` | text | null |  | Code of the SKU's brand node; null when the node has none. |
+| `brand_name` | text | null |  | Name of the brand. |
+| `variant_id` | bigint | null |  | Id of the variant node. |
+| `variant_code` | text | null |  | Code of the SKU's variant node; null when the node has none. |
+| `variant_name` | text | null |  | Name of the variant. |
+| `updated_at` | timestamp with time zone | null |  | UTC instant of the last update. |
+| `data_origin` | app.data_origin | null |  | Always production: products carry no origin of their own (every SKU is catalogue data). |
+| `is_effective` | boolean | null |  | True when the row counts in an ordinary total (the rule of this view is in its description). |
+
+## dw.v_dim_user
+
+Stable view: the current user dimension (dw.dim_user): role, designation, home zone, status; no names or logins. is_effective = account active.
+
+`owner: worker | capture: SERVER | retention: master | pii: none` · view
+
+| Column | Type | Null | PII | Description |
+|---|---|---|---|---|
+| `user_id` | bigint | null |  | User (app.app_user.id). |
+| `role` | text | null |  | Role code of the user. |
+| `designation` | text | null |  | Designation code of the user (null if none). |
+| `home_zone_id` | bigint | null |  | Home zone of the user (null if none). |
+| `status` | text | null |  | User status (active, disabled). |
+| `pilot` | boolean | null |  | True for pilot users. |
+| `updated_at` | timestamp with time zone | null |  | UTC instant of the last update. |
+| `data_origin` | app.data_origin | null |  | Origin (production, pilot, test, seed): the most synthetic of the user (app.app_user.data_origin); set by trigger on every write. |
+| `is_effective` | boolean | null |  | True when the row counts in an ordinary total (the rule of this view is in its description). |
+
+## dw.v_due_ledger
+
+Stable view: every signed entry of the outlet dues ledger (app.due_ledger, append-only; reversals are entries of their own), without the printed memo number and the free-text note. is_effective = true.
+
+`owner: backend:sync | capture: SERVER | retention: transaction | pii: none` · view
+
+| Column | Type | Null | PII | Description |
+|---|---|---|---|---|
+| `ledger_entry_id` | bigint | null |  | Ledger entry (app.due_ledger.id). |
+| `business_date` | date | null |  | Asia/Dhaka business date of the row (cutoff 00:00 Dhaka); all day-level rollups key off it. |
+| `outlet_id` | bigint | null |  | Outlet (app.outlet). |
+| `entry_kind` | text | null |  | Kind of entry: memo_due, collection, memo_void, memo_superseded or opening_balance. |
+| `amount_mtk` | bigint | null |  | Signed change of the outlet balance in milli-taka (1 Tk = 1000 mtk; + raises, - lowers); never zero, \|amount\| at most 10^13 (V0079). |
+| `memo_client_uuid` | uuid | null |  | client_uuid of the memo the row belongs to. |
+| `source_client_uuid` | uuid | null |  | Client UUID of the memo, due_collection, memo_void or adjustment that caused the entry. |
+| `user_id` | bigint | null |  | User (app.app_user); for device records the capturing user from the token. |
+| `created_at` | timestamp with time zone | null |  | UTC instant the row was inserted on the server. |
+| `data_origin` | app.data_origin | null |  | Origin of the row (production, pilot, test, seed): the most synthetic of its users, outlet, route, stamped at insert; changes only through app.restamp_data_origin. |
+| `is_effective` | boolean | null |  | True when the row counts in an ordinary total (the rule of this view is in its description). |
 
 ## dw.v_final_submit_log
 
@@ -5938,6 +6158,7 @@ Stable view: per zone and business date the first Final Submit (second submits i
 | `last_submitted_at` | timestamp with time zone | null |  | UTC time of the latest Final Submit of the zone-day. |
 | `reopened_now` | boolean | null |  | True when every submit of the zone-day is reopened (no live Final Submit). |
 | `data_origin` | app.data_origin | null |  | Most synthetic origin among the zone-day's final submits. |
+| `is_effective` | boolean | null |  | True while some final submit of the zone-day still stands (not every submit reopened). |
 
 ## dw.v_geo_integrity
 
@@ -5963,19 +6184,55 @@ Stable view: per user and business date, geo-validation outcomes of visits and m
 | `mock_fixes` | bigint | null |  | Fixes flagged as mock locations. |
 | `avg_accuracy_m` | numeric | null |  | Average fix accuracy in metres (1 decimal). |
 | `data_origin` | app.data_origin | null |  | Most synthetic origin among the visits and fixes of the user-day. |
+| `is_effective` | boolean | null |  | Always true: the row is an aggregate or reference row built from effective rows only. |
+
+## dw.v_memo
+
+Stable view: one row per memo (dw.fact_memo) with its money, scope keys and SCD2 keys; the memo UUID, never the printed memo number (personal: it embeds the login). is_effective = active with at least one line.
+
+`owner: worker | capture: SERVER | retention: event_fact | pii: none` · view
+
+| Column | Type | Null | PII | Description |
+|---|---|---|---|---|
+| `business_date` | date | null |  | Asia/Dhaka business date of the row (cutoff 00:00 Dhaka); all day-level rollups key off it. |
+| `memo_client_uuid` | uuid | null |  | client_uuid of the memo the row belongs to. |
+| `user_id` | bigint | null |  | User (app.app_user); for device records the capturing user from the token. |
+| `route_id` | bigint | null |  | Route (app.route) being worked. |
+| `zone_id` | bigint | null |  | Zone (app.zone). |
+| `outlet_id` | bigint | null |  | Outlet (app.outlet). |
+| `status` | text | null |  | Memo status: active, voided or superseded. |
+| `committed_at` | timestamp with time zone | null |  | UTC instant the row was committed. |
+| `line_count` | smallint | null |  | Number of memo lines. |
+| `gross_mtk` | bigint | null |  | Gross sales value before discounts, in milli-taka. |
+| `offer_discount_mtk` | bigint | null |  | Offer and free-goods discount in milli-taka (zero until the discount engine exists, docs/27). |
+| `drp_discount_mtk` | bigint | null |  | DRP (empty-pack slide) discount in milli-taka. |
+| `qc_deduction_mtk` | bigint | null |  | QC settlement deducted on the memo, in milli-taka. |
+| `net_mtk` | bigint | null |  | Net payable value in milli-taka (gross minus discounts and QC deduction, rounded to the paisa). |
+| `paid_mtk` | bigint | null |  | Amount paid in cash at the memo, in milli-taka. |
+| `due_mtk` | bigint | null |  | Amount left on credit (due) in milli-taka. |
+| `is_credit` | boolean | null |  | True when the memo leaves a due. |
+| `captured_offline` | boolean | null |  | True when the phone had no connection at capture. |
+| `entry_source` | text | null |  | device or manual (keyed on the web from the printed memo), copied from app.memo. |
+| `received_at` | timestamp with time zone | null |  | UTC instant the server received the row. |
+| `geo_key` | bigint | null |  | dim_geo_version key valid on the business date (dw.geo_key_on). |
+| `outlet_key` | bigint | null |  | dim_outlet_version key valid on the business date (dw.outlet_key_on). |
+| `user_key` | bigint | null |  | dim_user_version key valid on the business date (dw.user_key_on). |
+| `updated_at` | timestamp with time zone | null |  | UTC instant of the last update. |
+| `data_origin` | app.data_origin | null |  | Origin (production, pilot, test, seed): the most synthetic of its memo (app.memo); set by trigger on every write. |
+| `is_effective` | boolean | null |  | True when the row counts in an ordinary total (the rule of this view is in its description). |
 
 ## dw.v_memo_flags
 
 Stable view: one row per memo the server flagged (app.memo.server_flags non-empty: zero price line, price, arithmetic or pack-factor mismatch and the like), with its scope keys; voided and superseded memos included with their status (counts use status = 'active' AND voided_at IS NULL).
 
-`owner: worker | capture: SERVER | retention: event_fact | pii: none` · view
+`owner: worker | capture: SERVER | retention: event_fact | pii: personal` · view
 
 | Column | Type | Null | PII | Description |
 |---|---|---|---|---|
 | `memo_id` | bigint | null |  | Memo (app.memo id; with business_date the memo's key). |
 | `memo_client_uuid` | uuid | null |  | Client-generated UUID of the memo (idempotency key). |
 | `memo_family_uuid` | uuid | null |  | Family UUID shared by a memo and its edits (superseding memos); group by it to count a problem once. |
-| `memo_no` | text | null |  | Printed memo number <username>-<yyMMdd>-<seq>. |
+| `memo_no` | text | null | personal | Printed memo number <username>-<yyMMdd>-<seq>. Contains the SR's login, so it is personal data: exports use the memo UUID instead. |
 | `business_date` | date | null |  | Asia/Dhaka business date of the memo. |
 | `status` | text | null |  | Memo status: active, voided (by a memo void) or superseded (by an edit). |
 | `user_id` | bigint | null |  | User who captured the memo (app.app_user); names are resolved by the API, not in dw. |
@@ -5992,6 +6249,39 @@ Stable view: one row per memo the server flagged (app.memo.server_flags non-empt
 | `stored_at` | timestamp with time zone | null |  | UTC instant the server stored the memo (app.memo.received_at). |
 | `voided_at` | timestamp with time zone | null |  | UTC instant of an admin data void; null when not data-voided. Readers filter it. |
 | `data_origin` | app.data_origin | null |  | Origin of the memo (app.memo.data_origin, stamped at capture). |
+| `is_effective` | boolean | null |  | True when the memo counts: status active, not data-voided and at least one line (as dw.v_memo). |
+
+## dw.v_memo_line
+
+Stable view: one row per memo line (dw.fact_memo_line) in entered and base units with its price at capture. is_effective = memo active and line not voided.
+
+`owner: worker | capture: SERVER | retention: event_fact | pii: none` · view
+
+| Column | Type | Null | PII | Description |
+|---|---|---|---|---|
+| `business_date` | date | null |  | Asia/Dhaka business date of the memo. |
+| `memo_client_uuid` | uuid | null |  | Client-generated UUID of the memo (dw.fact_memo.memo_client_uuid). |
+| `line_client_uuid` | uuid | null |  | Client-generated UUID of the line (app.memo_line.client_uuid). |
+| `line_no` | smallint | null |  | Line number within the memo. |
+| `user_id` | bigint | null |  | User who captured the memo (app.app_user); names are resolved by the API, not in dw. |
+| `route_id` | bigint | null |  | Route of the memo. |
+| `outlet_id` | bigint | null |  | Outlet of the memo. |
+| `sku_id` | bigint | null |  | SKU sold (app.sku). |
+| `line_kind` | text | null |  | Line kind as captured: sale, drp_reward, promo_free or free_sample (app.memo_line.line_kind). |
+| `qty_entered` | integer | null |  | Quantity as the SR entered it, in unit_entered. |
+| `unit_entered` | text | null |  | Unit the quantity was entered in: stick, piece, dozen or pack. |
+| `pack_factor` | integer | null |  | Base units per pack of the SKU at capture; qty_base = qty_entered x pack_factor when unit_entered is pack, else qty_entered. |
+| `qty_base` | bigint | null |  | Quantity in the SKU base unit (sticks, pieces or dozens). |
+| `price_type` | text | null |  | Price type the line was priced at. |
+| `base_price_mtk` | bigint | null |  | Price per price_per_qty base units at capture, integer milli-taka. |
+| `price_per_qty` | integer | null |  | Number of base units base_price_mtk is quoted for. |
+| `gross_mtk` | bigint | null |  | Gross value of the line, integer milli-taka. |
+| `offer_id` | bigint | null |  | Offer the line belongs to, if any (offers are deferred; hook only). |
+| `voided` | boolean | null |  | True when the line itself carries a void tombstone. |
+| `memo_status` | text | null |  | Status of the memo (active, voided, superseded), copied from dw.fact_memo. |
+| `updated_at` | timestamp with time zone | null |  | UTC instant the row was last rewritten. |
+| `data_origin` | app.data_origin | null |  | Origin of the line (app.memo_line.data_origin, stamped at capture). |
+| `is_effective` | boolean | null |  | True when the row counts in an ordinary total (the rule of this view is in its description). |
 
 ## dw.v_outlet_masked
 
@@ -6018,6 +6308,25 @@ Stable view: outlets without owner name, address or national ids; the phone mask
 | `contact_number_masked` | text | null |  | Phone masked as 01*****NNN (last three digits); null when not a Bangladeshi mobile number. |
 | `updated_at` | timestamp with time zone | null |  | UTC instant of the last update. |
 | `data_origin` | app.data_origin | null |  | Origin of the outlet (app.outlet.data_origin). |
+| `is_effective` | boolean | null |  | True when the outlet is active. |
+
+## dw.v_outlet_sku_daily
+
+Stable view: quantity sold and memo count per outlet, SKU and business date (dw.agg_daily_outlet_sku). is_effective = true.
+
+`owner: worker | capture: SERVER | retention: event_fact | pii: none` · view
+
+| Column | Type | Null | PII | Description |
+|---|---|---|---|---|
+| `business_date` | date | null |  | Asia/Dhaka business date of the sales. |
+| `outlet_id` | bigint | null |  | Outlet (app.outlet). |
+| `route_id` | bigint | null |  | Route the memos were made on. |
+| `sku_id` | bigint | null |  | SKU (app.sku). |
+| `sold_qty_base` | bigint | null |  | Quantity sold in the SKU's base unit (sticks, pieces or dozens). |
+| `memo_count` | integer | null |  | Memos of the outlet-day with a line of the SKU. |
+| `updated_at` | timestamp with time zone | null |  | UTC time the row was last rebuilt. |
+| `data_origin` | app.data_origin | null |  | Origin (production, pilot, test, seed): the most synthetic of its outlet, route and the memos, visits and collections of the outlet-day; set by trigger on every write. |
+| `is_effective` | boolean | null |  | True when the row counts in an ordinary total (the rule of this view is in its description). |
 
 ## dw.v_route_monthly_target
 
@@ -6038,6 +6347,71 @@ Stable view: route x SKU monthly targets in base units with the month's working 
 | `batch_uuid` | uuid | null |  | Upload batch that last wrote the target (app.route_target_batch). |
 | `updated_at` | timestamp with time zone | null |  | UTC instant of the last upload that wrote the target. |
 | `data_origin` | app.data_origin | null |  | Origin of the route (app.route.data_origin). |
+| `is_effective` | boolean | null |  | Always true: the row is an aggregate or reference row built from effective rows only. |
+
+## dw.v_stock_movement
+
+Stable view: every stock movement (issue, return and the other kinds of app.stock_movement) in entered and base units. is_effective = not voided.
+
+`owner: backend:sync | capture: OFFLINE | retention: transaction | pii: none` · view
+
+| Column | Type | Null | PII | Description |
+|---|---|---|---|---|
+| `movement_client_uuid` | uuid | null |  | Client-generated UUID of the stock movement (idempotency key). |
+| `business_date` | date | null |  | Asia/Dhaka date of the trusted capture time. |
+| `user_id` | bigint | null |  | Database id of the user who captured the record, taken from the token and never from the body. |
+| `route_id` | bigint | null |  | Route (app.route) being worked. |
+| `zone_id` | bigint | null |  | Zone of the route on the business date, frozen at capture (never rewritten by a later route move). |
+| `kind` | text | null |  | Kind of the row; allowed values are listed under constraints. |
+| `sku_id` | bigint | null |  | SKU (app.sku). |
+| `qty_entered` | integer | null |  | Quantity as typed by the user, in unit_entered. |
+| `unit_entered` | text | null |  | Unit the user typed the quantity in: stick, piece, dozen or pack. |
+| `pack_factor` | integer | null |  | Base units per pack of the SKU at capture (copied from the SKU). |
+| `qty_base` | integer | null |  | Quantity in the SKU's base unit (sticks, pieces or dozens). |
+| `reason_code` | text | null |  | Reason code from the matching business code list (app.code_list_item). |
+| `captured_offline` | boolean | null |  | True when the phone had no connection at capture. |
+| `received_at` | timestamp with time zone | null |  | UTC instant the server received the row. |
+| `voided_at` | timestamp with time zone | null |  | UTC time an admin data void tombstoned the row; the row is never deleted. |
+| `data_origin` | app.data_origin | null |  | Origin of the row (production, pilot, test, seed): the most synthetic of its users, outlet, route, stamped at insert; changes only through app.restamp_data_origin. |
+| `is_effective` | boolean | null |  | True when the row counts in an ordinary total (the rule of this view is in its description). |
+
+## dw.v_visit
+
+Stable view: one row per visit (dw.fact_visit) with both geo verdicts and distances, no coordinates and no photo. is_effective = not voided.
+
+`owner: worker | capture: SERVER | retention: event_fact | pii: none` · view
+
+| Column | Type | Null | PII | Description |
+|---|---|---|---|---|
+| `business_date` | date | null |  | Asia/Dhaka business date of the row (cutoff 00:00 Dhaka); all day-level rollups key off it. |
+| `visit_client_uuid` | uuid | null |  | client_uuid of the visit the row belongs to. |
+| `user_id` | bigint | null |  | User (app.app_user); for device records the capturing user from the token. |
+| `route_id` | bigint | null |  | Route (app.route) being worked. |
+| `zone_id` | bigint | null |  | Zone (app.zone). |
+| `outlet_id` | bigint | null |  | Outlet (app.outlet). |
+| `visit_kind` | text | null |  | Kind of call: sr_call, amo_control_call, amo_joint_call, tso_visit or web_entry (route tables: daily, 3f or 2f). |
+| `opened_at` | timestamp with time zone | null |  | UTC time the visit was opened. |
+| `ended_at` | timestamp with time zone | null |  | UTC instant the activity ended. |
+| `outcome_code` | text | null |  | Outcome of the visit or check; allowed values are listed under constraints. |
+| `call_declined` | boolean | null |  | True when the retailer declined the call. |
+| `planned` | boolean | null |  | True when the route or outlet was planned for the business date. |
+| `completed` | boolean | null |  | True for a call closed with an outcome other than abandoned or not_reached (set by the rebuild, D-DASH-03). |
+| `device_verdict` | text | null |  | Phone's geo verdict for the visit. |
+| `server_verdict` | text | null |  | Server's re-check verdict for the visit. |
+| `geo_action` | text | null |  | Action taken: sale_allowed, force_sale or blocked. |
+| `distance_m` | double precision | null |  | Distance in metres between the fix and the outlet. |
+| `server_distance_m` | double precision | null |  | Server re-check of the distance between the call fix and the outlet location, metres; null until checked or not copied. |
+| `radius_m` | smallint | null |  | Geo-fence radius used at the call, metres (app.visit.radius_m_used). |
+| `within_fence` | boolean | null |  | Generated: true when the server verdict, else the device verdict, is in_range (geo-valid call). |
+| `is_mock` | boolean | null |  | True when the location came from a mock location provider (never geo-valid). |
+| `voided` | boolean | null |  | True when the visit was voided. |
+| `entry_source` | text | null |  | device or manual (keyed on the web for a dead-phone day), copied from app.visit. |
+| `geo_key` | bigint | null |  | dim_geo_version key valid on the business date (dw.geo_key_on). |
+| `outlet_key` | bigint | null |  | dim_outlet_version key valid on the business date (dw.outlet_key_on). |
+| `user_key` | bigint | null |  | dim_user_version key valid on the business date (dw.user_key_on). |
+| `updated_at` | timestamp with time zone | null |  | UTC instant of the last update. |
+| `data_origin` | app.data_origin | null |  | Origin (production, pilot, test, seed): the most synthetic of its visit (app.visit); set by trigger on every write. |
+| `is_effective` | boolean | null |  | True when the row counts in an ordinary total (the rule of this view is in its description). |
 
 ## dw.v_working_day
 
@@ -6049,3 +6423,4 @@ Stable view: one row per date, working = the national working-day flag of dw.v_c
 |---|---|---|---|---|
 | `day` | date | null |  | Calendar date (Asia/Dhaka business date). |
 | `working` | boolean | null |  | True when the date counts as a national working day. |
+| `is_effective` | boolean | null |  | Always true: the row is an aggregate or reference row built from effective rows only. |
