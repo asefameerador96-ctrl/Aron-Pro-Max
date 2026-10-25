@@ -2,12 +2,42 @@
 
 Updated with every push. Rows of Day 1: N-005, N-006, N-007, N-008 (`python3 tools/my-rows.py db 1 --full`).
 
+## HANDOVER (session 11 -> session 12), 2026-10-25 ~00:00 UTC, lane/db d69d3af4 (+ this docs-only commit)
+
+**State.** lane/db = INT c427d842 (train 35) + row 1 (seed 06 test outlets + rolling dates, 96130a78, run #1574 green,
+checked) + row 2 (V0114/V0115, d69d3af4, run #1579). d69d3af4 is the db head of **train 37, LAST** if its run is green
+(else row 1 rides 37 and row 2 train 38; read the lead's train message). This handover commit is docs-only on top.
+**Next free migration: V0116.**
+
+| Item | Where | What |
+|---|---|---|
+| seed 06 Asef outlets | train 37 | `GUL1-T01..T03` on GUL-SR-1 (D-DB-SEED-OUTLETS-01); GUL-SR-1 = 23 seeded (24 with SMOKE-SR-002) |
+| seed 06 rolling dates | train 37 | targets today's month + 2, Victory/Christmas in window, Durga Puja only 2026-10-21 (D-DB-SEED-ROLLING-01) |
+| V0114 / V0115 | train 37 (or 38) | `risk_signal_code_check` + `CHECKOUT_WITHOUT_SUBMIT`, weight 20 (D-DB-RISK-CHECKOUT-NO-SUBMIT-01). backend-core #18's switch turns on once on dev |
+
+**Open for db #12.**
+1. Owner row O: Durga Puja date in seed 06 (2026-10-21) still unconfirmed; later years have no Durga Puja row by design.
+2. Owner row R (zero-price SKUs), unchanged from session 10's handover.
+3. Told the lead (not db's files): `DataFlowTraceMoneyTargetsTest.kt:79` comment says the seed's months are fixed
+   (backend-core); other risk-code lists for CHECKOUT_WITHOUT_SUBMIT (docs/24 s11.4, contract, AMO
+   `ExceptionsScreens.kt` label, docs/19 weight list) belong to backend-core / android / lead.
+4. Queued (lead hand-off 2026-10-23 20:50 item 4): route-keyed dashboard aggregates for route-only TSOs (with analytics).
+
+**Lessons (session 11).**
+- lane CI cancels an in-progress run on a new push to the same lane branch (`concurrency` in ci.yml): push the next
+  head only after the previous candidate's run has finished.
+- `tools/ci/migrations-check.sh <base> <squawk>` judges committed migrations only (commit first); raw `squawk` without
+  the repo config reports rules the repo waives.
+- A seed change that moves an outlet count breaks `DataFlowTraceTest.kt:72` (qa/backend-core file): ask the lead for
+  a ruling first (this session: db edited the one literal, D-NIGHT-SEED-OUTLETS-02).
+- Local Postgres setup as session 10 (pg_hba trust for `aron_test` on localhost, superuser role, max_connections 400).
+
 ## Session 11, 2026-10-24 (lane/db; INT c427d842 = train 35 merged)
 
 | Job | State | What |
 |---|---|---|
 | **row 1: three test outlets + rolling seed dates** (D-NIGHT-SEED-OUTLETS-01, lead hand-off 2026-10-23 20:50 item 2) | pushed (candidate in the lead message) | seed 06 adds `GUL1-T01` Asef Home, `GUL1-T02` Asef Office, `GUL1-T03` Asef Head Office on GUL-SR-1 (retail GT, outlet price, visit order 21-23, owner's exact pins, no geofence override); targets for today's month + 2, Victory Day / Christmas Day in that window, Durga Puja only 2026-10-21 (owner row O). `DataFlowTraceTest.kt:72` literal GUL-SR-1 21 -> 24 by lead ruling D-NIGHT-SEED-OUTLETS-02. Opus checker PASS (should-fixes taken). Local: db 274/0, backend app 459/0, DataFlowTrace + seed re-run on the final head 37/0 + 5/0. D-DB-SEED-OUTLETS-01, D-DB-SEED-ROLLING-01 |
-| **row 2: risk code CHECKOUT_WITHOUT_SUBMIT** (lead 22:45, backend-core #18 shapes row 5) | building | V0114 CHECK NOT VALID + `cfg.geo.integrity_weight` default 20; V0115 VALIDATE; own head after row 1. Next free migration after it: **V0116** |
+| **row 2: risk code CHECKOUT_WITHOUT_SUBMIT** (lead 22:45, backend-core #18 shapes row 5) | pushed after row 1 (own head); Opus checker PASS; local db 275/0, backend app Risk* 5/0, config 68/0; squawk via migrations-check ok; dictionary regenerated; D-DB-RISK-CHECKOUT-NO-SUBMIT-01 | V0114 CHECK NOT VALID + `cfg.geo.integrity_weight` default 20; V0115 VALIDATE; own head after row 1. Next free migration after it: **V0116** |
 
 ## HANDOVER (session 10 -> session 11), 2026-10-24 ~12:55 UTC, lane/db a3fba66a (+ this docs-only commit)
 

@@ -3361,7 +3361,7 @@ A risk signal (for example mock location or teleport) computed by the worker for
 | Column | Type | Null | PII | Description |
 |---|---|---|---|---|
 | `id` | bigint | not null |  | Server surrogate key. |
-| `code` | text | not null |  | Risk rule that raised the signal (GEO_*, DEVICE_*, CLOCK_SKEW, CONFIG_STAMP_REGRESS, MEMO_DUPLICATE_SUSPECT); weights in cfg.geo.integrity_weight. |
+| `code` | text | not null |  | Risk rule that raised the signal (GEO_*, DEVICE_*, CLOCK_SKEW, CONFIG_STAMP_REGRESS, MEMO_DUPLICATE_SUSPECT, CHECKOUT_WITHOUT_SUBMIT from V0114); weights in cfg.geo.integrity_weight. |
 | `severity` | smallint | not null |  | Severity of the signal on a small integer scale. |
 | `business_date` | date | not null |  | Asia/Dhaka business date of the row (cutoff 00:00 Dhaka); all day-level rollups key off it. |
 | `subject_type` | text | not null |  | What the signal is about: user, device, visit, outlet, route or memo. |
