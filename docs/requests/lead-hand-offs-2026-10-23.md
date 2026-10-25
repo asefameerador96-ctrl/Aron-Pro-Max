@@ -22,3 +22,10 @@ D-TEST-DATE-PIN-01: 22 DataFlowTrace tests failed at Dhaka midnight because the 
 - Report `docs/status/data-architecture-review-2026-10-25.md`; rulings D-DATA-ARCH-REVIEW-01, D-DATA-OUTBOX-ROLE-01, D-DATA-LAKE-01; routing table `docs/requests/data-architecture-actions-2026-10-25.md` (10 slices; db "data origin" first, before any pilot sales).
 - Lead docs pass still to do: docs/31 s3.5, docs/16 mirroring removal, docs/data-events.md statuses, docs/33 C3.4 (row 10 of the table).
 - backend-reports #6 and infra #next are created on these rows after the night package lands (tomorrow morning).
+
+### 2026-10-25 00:08 UTC — contract 1.9.0 wiring notes (from the contract session; relay by the lead)
+- **backend-core #19 (tomorrow):** `MemoApi` left join + nullable `MemoView.route_id` (and `memo_no` is `MemoNo`); add `SyncTotalsResponse.digest` to the hand-written `BatchDtos.kt` and serve `SalesSubmitDigestService` on GET /v1/sync/totals, then ask the lead for v1.10 row 3 (digest required); flip the CHECKOUT_WITHOUT_SUBMIT switch once db V0114/V0115 is on dev (train 37); apply `docs/requests/backend-core-19-bothdates-threshold.patch` after fixing the checker's blocking item noted in the #18 HANDOVER item 4.
+- **android (SR/TSO lanes):** Sales Submit already reads the digest through a lane-local parser (slice C); swap to the generated DTO once `shared:contract` exposes it; `feature-amo` ExceptionsScreens label for CHECKOUT_WITHOUT_SUBMIT (unknown codes fall back to the raw code today).
+- **web-dashboard / web-admin:** `openapi.d.ts` changes `MemoView.route_id` to number|null and `memo_no` to MemoNo; no current consumer (grep), nothing to change now.
+- **mdm:** row 6 is v1.10 row 1; shapes file `docs/requests/contract-v1.9-shapes-mdm.md` is on lane/mdm 09170778 (rides train 37).
+- **lead docs pass:** docs/15 and docs/25 F-API-014 still say the dashboard API cache is 30 s (now 5 s, D-BC-FRESH-01); merge the duplicate D-PRINT-08 lines.
