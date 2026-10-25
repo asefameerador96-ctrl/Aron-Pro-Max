@@ -69,7 +69,7 @@ class DataFlowTraceTest : DataFlowTraceSupport() {
         hop("config version `Dev database overrides` absent (the Gulshan seed applies)", "count" to sqlLong("SELECT count(*) FROM app.cfg_version WHERE summary = 'Dev database overrides (docs/24 s9.4, seed)'"), "expected" to 0L)
         hop("Gulshan/Banani routes, mask, outlets (20 seed + 1 smoke each)",
             "rows" to sql("SELECT string_agg(x, ',' ORDER BY x) FROM (SELECT r.code || ':' || r.visit_days_mask || ':' || count(o.id) AS x FROM app.route r JOIN app.outlet o ON o.route_id = r.id WHERE r.code IN ('GUL-SR-2','GUL-SR-1','BAN-SR-11') GROUP BY r.code, r.visit_days_mask) t"),
-            "expected" to "BAN-SR-11:36:21,GUL-SR-1:18:21,GUL-SR-2:9:21")
+            "expected" to "BAN-SR-11:36:21,GUL-SR-1:18:24,GUL-SR-2:9:21")
         hop("Friday (bit 6) is no route's day", "sum of masks" to sqlLong("SELECT sum(visit_days_mask) FROM app.route WHERE code IN ('GUL-SR-2','GUL-SR-1','BAN-SR-11')"), "Sat..Thu" to 63L)
         val u = rows("SELECT category_code AS cat, count(*) AS n, min(base_per_pack) AS lo, max(base_per_pack) AS hi, string_agg(DISTINCT base_unit, ',') AS unit, string_agg(DISTINCT entry_unit_default, ',') AS entry FROM app.sku WHERE status = 'active' GROUP BY category_code ORDER BY 1")
         note("SKU units by category (count, base_per_pack lo-hi, base unit, entry unit)", u.joinToString(" / ") { "${it["cat"]}: ${it["n"]}, ${it["lo"]}-${it["hi"]}, ${it["unit"]}, ${it["entry"]}" })

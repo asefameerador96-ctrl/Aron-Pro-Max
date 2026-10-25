@@ -1,5 +1,7 @@
 package com.aktcl.aron.backend.analytics.mdm
 
+import kotlinx.serialization.EncodeDefault
+import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonObject
 
@@ -42,16 +44,29 @@ data class MdmKiosk(val enabled: Boolean, val packages: List<String> = emptyList
 @Serializable
 data class MdmLocationSampling(val mode: String, val interval_min: Int? = null)
 
+/** `MdmAllowlistSchedule` (contract 1.9 queue row 6, docs/requests/contract-v1.9-shapes-mdm.md): `calendar` or `window`, Dhaka, end > start. */
+@Serializable
+data class MdmAllowlistSchedule(val mode: String, val days: List<Int> = emptyList(), val start: String, val end: String)
+
+/** `MdmWorkHoursAllowlist` (D-NIGHT-MDM-ALLOWLIST-01): during working hours every launcher app outside [packages] is suspended. */
+@Serializable
+data class MdmWorkHoursAllowlist(val enabled: Boolean, val packages: List<String>, val schedule: MdmAllowlistSchedule, val grace_min: Int = 5)
+
+// work_hours_allowlist is optional and left out when absent, so a policy without it is byte-for-byte the 1.8 shape.
+@OptIn(ExperimentalSerializationApi::class)
 @Serializable
 data class MdmPolicyWrite(
     val name: String, val description: String? = null, val allowed_packages: List<String>, val block_windows: List<MdmBlockWindow>, val kiosk: MdmKiosk,
     val location_sampling: MdmLocationSampling, val version: Int? = null, val reason: String? = null,
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val work_hours_allowlist: MdmWorkHoursAllowlist? = null,
 )
 
+@OptIn(ExperimentalSerializationApi::class)
 @Serializable
 data class MdmPolicy(
     val policy_id: Long, val name: String, val description: String? = null, val allowed_packages: List<String>, val block_windows: List<MdmBlockWindow>, val kiosk: MdmKiosk,
     val location_sampling: MdmLocationSampling, val version: Int, val device_count: Int, val updated_at: String,
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val work_hours_allowlist: MdmWorkHoursAllowlist? = null,
 )
 
 @Serializable

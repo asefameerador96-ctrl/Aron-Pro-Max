@@ -82,6 +82,11 @@ class AmoDay(
     fun businessDate(): String = BusinessDate.of(clock.nowMs()).toString()
     fun dhakaMinutesNow(): Int = ((clock.nowMs() + BusinessDate.DHAKA_OFFSET_MS) / 60_000L).mod(24 * 60L).toInt()
     fun requestSync() = scheduler.requestSync(userId, SyncTrigger.WRITE_DEBOUNCE)
+    /** D-NIGHT-DAYCLOSE-01, contract 1.9 row 4: the Sales Submit digest (`GET /v1/sync/totals`), read when the screen asks. */
+    val submitDigests = com.aktcl.aron.core.sync.SubmitDigestSource(
+        userId, com.aktcl.aron.core.sync.SessionUploadAuth(components.session), com.aktcl.aron.core.sync.SyncTotalsDigestApi(components.apiClient),
+        nowMs = { components.clock.elapsedRealtimeMs() },
+    )
 
     fun online(): Boolean {
         val cm = context.getSystemService(ConnectivityManager::class.java) ?: return false
@@ -146,6 +151,8 @@ class AmoDay(
         routeIdOf = { routeId }, nowIso = { iso(clock.nowMs()) }, dhakaMinutesNow = ::dhakaMinutesNow,
         checkoutEarliestMinutes = { deviceRuntime?.dayConfig?.checkoutEarliestMinutes ?: DayConfig.DEFAULT_CHECKOUT_MINUTES },
         addressResolver = { lat, lng -> addressResolver.displayText(context, lat, lng) },
+        // D-NIGHT-CHECKOUT-01: the AMO's supervisor-day Sales Submit, committed on this phone, before check-out.
+        salesSubmitted = { daySubmitted() },
     )
 
     suspend fun attendanceToday() = db.captureDao().attendanceOn(businessDate())

@@ -328,6 +328,22 @@ class ScreenshotTests {
         SalesSubmitScreen(true, counts, gate, SubmitProgress.Idle, { labels[it] ?: it }, {}, {}, lastContactText = localizedDigits("10:42"))
     }
 
+    /** D-NIGHT-DAYCLOSE-01: the owner's 10:46 case: the server holds more (another install), two rows listed with reason and outcome. */
+    @Composable private fun SubmitOwnerCase() = Frame(stringResource(HomeR.string.hm_tile_sales_submit)) {
+        val c = listOf(
+            com.aktcl.aron.feature.dayclose.CountRow("visit", 3, 9), com.aktcl.aron.feature.dayclose.CountRow("memo", 4, 10),
+            com.aktcl.aron.feature.dayclose.CountRow("stock_movement", 4, 4),
+        )
+        val r = listOf(
+            com.aktcl.aron.feature.dayclose.RejectedRow("u1", "memo", "2026-10-24", "memo_no_duplicate", com.aktcl.aron.feature.dayclose.RejectedOutcome.STORED_FLAGGED,
+                memoNo = "sr1001-261024-003", reasonBn = "এই মেমো নম্বর আগেই ব্যবহার হয়েছে; পর্যালোচনার জন্য রাখা হয়েছে।"),
+            com.aktcl.aron.feature.dayclose.RejectedRow("u2", "memo", "2026-10-24", "price_invalid", com.aktcl.aron.feature.dayclose.RejectedOutcome.DROPPED,
+                outletName = "Asef Home", reasonBn = "এই বিক্রির লাইনের দাম শূন্য, তাই লাইনটি গ্রহণ করা হয়নি; সাপোর্টে জানান।"),
+        )
+        val g = SalesSubmitRules.gate(com.aktcl.aron.feature.dayclose.OutboxStates(0, 0, 11, 1, 1), c, com.aktcl.aron.feature.dayclose.DuesAtSubmit(0, 0), false)
+        SalesSubmitScreen(true, c, g, SubmitProgress.Idle, { labels[it] ?: it }, {}, {}, lastContactText = localizedDigits("10:46"), rejected = r)
+    }
+
     @Composable private fun Tasks() = Frame(stringResource(HomeR.string.hm_tile_tasks)) { TaskContent(tasks, {}) }
 
     @Composable private fun Login(sunlight: Boolean) =
@@ -395,6 +411,7 @@ class ScreenshotTests {
     // ---- Sales Submit ----
     @Test @Config(qualifiers = "bn-w360dp-h800dp") fun submit_bn_light() = shot("submit_bn_light", AppLanguage.BN) { Submit() }
     @Test @Config(qualifiers = "bn-w360dp-h800dp") fun submit_bn_sunlight() = shot("submit_bn_sunlight", AppLanguage.BN, sunlight = true) { Submit() }
+    @Test @Config(qualifiers = "bn-w360dp-h800dp") fun submit_owner_case_bn_light() = shot("submit_owner_case_bn_light", AppLanguage.BN) { SubmitOwnerCase() }
 
     // ---- Tasks ----
     @Test @Config(qualifiers = "bn-w360dp-h800dp") fun tasks_bn_light() = shot("tasks_bn_light", AppLanguage.BN) { Tasks() }

@@ -256,7 +256,7 @@ abstract class PrintLedgerContract {
     // (F-SR-031, F-SR-066, F-SR-073, F-SR-015). The paper is compared row for row with the expected rendering.
 
     private class OnePrinter : SavedPrinterStore {
-        private var p: SavedPrinter? = SavedPrinter("00:11:22:33:44:55", "MP-58N")
+        private var p: SavedPrinter? = SavedPrinter("00:11:22:33:44:55", "MP-58N", printLogo = false)
         override fun load() = p
         override fun save(printer: SavedPrinter?) { p = printer }
     }

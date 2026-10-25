@@ -42,6 +42,18 @@ private val PACKAGE = Regex("^[A-Za-z][A-Za-z0-9_]*(\\.[A-Za-z][A-Za-z0-9_]*)+$"
 private val HHMM = Regex("^([01][0-9]|2[0-3]):[0-5][0-9]$")
 private val STRINGS = kotlinx.serialization.builtins.ListSerializer(kotlinx.serialization.serializer<String>())
 private val JSON = Json { encodeDefaults = true; explicitNulls = true; ignoreUnknownKeys = true }
+/** Allow-list limits (D-NIGHT-MDM-ALLOWLIST-01). */
+const val MDM_ALLOWLIST_MAX = 50
+const val MDM_ALLOWLIST_MAX_GRACE = 30
+/**
+ * Packages no policy may suspend explicitly (a block window's or the allow-list's own list is checked against these): every
+ * ARON app, the common diallers and telephony, Settings and System UI. The phone keeps its own, wider protected set.
+ */
+val MDM_NEVER_BLOCK = setOf(
+    "com.android.dialer", "com.google.android.dialer", "com.samsung.android.dialer", "com.huawei.contacts", "com.hihonor.contacts", "com.android.contacts",
+    "com.android.incallui", "com.android.phone", "com.android.server.telecom", "com.android.systemui", "com.android.settings", "com.android.emergency",
+)
+fun mdmNeverBlock(pkg: String) = pkg in MDM_NEVER_BLOCK || pkg.startsWith("com.aktcl.aron.")
 private val SYSTEM_STATES = "('pending_approval','queued','sent')"
 
 /**
@@ -179,7 +191,9 @@ class MdmService(
             if (!HHMM.matches(b.start)) bad("block_windows/$i/start"); if (!HHMM.matches(b.end)) bad("block_windows/$i/end")
             if (b.start == b.end) bad("block_windows/$i/end", "invalid_value", "a window cannot start and end at the same time")
             if (b.packages.size > 200 || b.packages.any { !PACKAGE.matches(it) }) bad("block_windows/$i/packages")
+            b.packages.firstOrNull(::mdmNeverBlock)?.let { bad("block_windows/$i/packages", "invalid_value", "$it can never be blocked (ARON app, dialler or system)") }
         }
+        w.work_hours_allowlist?.let(::validateAllowlist)
         if (w.kiosk.packages.size > 10 || w.kiosk.packages.any { !PACKAGE.matches(it) }) bad("kiosk/packages")
         if (w.kiosk.enabled && w.kiosk.packages.isEmpty()) bad("kiosk/packages", "required", "kiosk needs at least one package")
         if (w.location_sampling.mode !in setOf("off", "on_demand", "interval")) bad("location_sampling/mode")
@@ -187,11 +201,34 @@ class MdmService(
         if (w.location_sampling.mode != "interval" && w.location_sampling.interval_min != null) bad("location_sampling/interval_min", "invalid_value", "interval_min only with mode interval")
     }
 
+    private fun validateAllowlist(a: MdmWorkHoursAllowlist) {
+        val f = "work_hours_allowlist"
+        if (a.packages.size > MDM_ALLOWLIST_MAX) bad("$f/packages", "out_of_range", "at most $MDM_ALLOWLIST_MAX allowed apps")
+        a.packages.forEachIndexed { i, p -> if (!PACKAGE.matches(p)) bad("$f/packages/$i", "invalid_value", "not a package id: ${p.take(80)}") }
+        if (a.packages.toSet().size != a.packages.size) bad("$f/packages", "invalid_value", "an app is listed twice")
+        val s = a.schedule
+        when (s.mode) {
+            "calendar" -> if (s.days.isNotEmpty()) bad("$f/schedule/days", "invalid_value", "days only with mode window")
+            "window" -> if (s.days.isEmpty() || s.days.any { it !in 1..7 } || s.days.toSet().size != s.days.size) bad("$f/schedule/days")
+            else -> bad("$f/schedule/mode")
+        }
+        if (!HHMM.matches(s.start)) bad("$f/schedule/start"); if (!HHMM.matches(s.end)) bad("$f/schedule/end")
+        val len = minutesOf(s.end) - minutesOf(s.start)
+        if (len <= 0) bad("$f/schedule/end", "invalid_value", "working hours end after they start on the same day")
+        if (a.grace_min !in 0..MDM_ALLOWLIST_MAX_GRACE) bad("$f/grace_min", "out_of_range")
+        if (a.grace_min >= len) bad("$f/grace_min", "invalid_value", "the grace is longer than the working hours")
+    }
+
+    private fun minutesOf(hhmm: String) = hhmm.substring(0, 2).toInt() * 60 + hhmm.substring(3, 5).toInt()
+
+    private fun allowlistOf(a: MdmWorkHoursAllowlist) = a.copy(packages = a.packages.distinct().sorted(), schedule = a.schedule.copy(days = a.schedule.days.sorted()))
+
     private fun docOf(w: MdmPolicyWrite): JsonObject = buildJsonObject {
         put("allowed_packages", JSON.encodeToJsonElement(STRINGS, w.allowed_packages.distinct().sorted()))
         put("block_windows", JSON.encodeToJsonElement(kotlinx.serialization.builtins.ListSerializer(MdmBlockWindow.serializer()), w.block_windows.map { it.copy(days = it.days.sorted(), packages = it.packages.distinct().sorted()) }))
         put("kiosk", JSON.encodeToJsonElement(MdmKiosk.serializer(), w.kiosk))
         put("location_sampling", JSON.encodeToJsonElement(MdmLocationSampling.serializer(), w.location_sampling))
+        w.work_hours_allowlist?.let { put("work_hours_allowlist", JSON.encodeToJsonElement(MdmWorkHoursAllowlist.serializer(), allowlistOf(it))) }
     }
 
     private fun policyRow(rs: ResultSet): MdmPolicy {
@@ -202,6 +239,7 @@ class MdmService(
             JSON.decodeFromJsonElement(kotlinx.serialization.builtins.ListSerializer(MdmBlockWindow.serializer()), doc.getValue("block_windows")),
             JSON.decodeFromJsonElement(MdmKiosk.serializer(), doc.getValue("kiosk")), JSON.decodeFromJsonElement(MdmLocationSampling.serializer(), doc.getValue("location_sampling")),
             rs.getInt("version"), rs.getInt("n"), rs.getObject("updated_at", OffsetDateTime::class.java).wire()!!,
+            doc["work_hours_allowlist"]?.takeIf { it !is kotlinx.serialization.json.JsonNull }?.let { JSON.decodeFromJsonElement(MdmWorkHoursAllowlist.serializer(), it) },
         )
     }
 
@@ -222,7 +260,8 @@ class MdmService(
             if (dup) throw ApiProblem(ProblemCode.ERR_CONFLICT, "a policy with this name exists")
             val id = h.createQuery("INSERT INTO app.mdm_policy (name, description, doc, created_by, updated_by) VALUES (:n, :d, CAST(:doc AS jsonb), :u, :u) RETURNING id")
                 .bind("n", w.name.trim()).bind("d", w.description).bind("doc", docOf(w).toString()).bind("u", p.userId).mapTo(Long::class.java).one()
-            audit(h, p, "mdm_policy", id.toString(), "create", null, buildJsonObject { put("name", w.name.trim()) }, w.reason, requestId)
+            audit(h, p, "mdm_policy", id.toString(), "create", null,
+                buildJsonObject { put("name", w.name.trim()); w.work_hours_allowlist?.let { put("work_hours_allowlist", JSON.encodeToJsonElement(MdmWorkHoursAllowlist.serializer(), allowlistOf(it))) } }, w.reason, requestId)
             policyById(h, id)!!
         }
     }
@@ -232,13 +271,15 @@ class MdmService(
         validate(w)
         val v = w.version ?: bad("version", "required")
         return db.jdbi.inTransaction<MdmPolicy, Exception> { h ->
-            val cur = h.createQuery("SELECT version FROM app.mdm_policy WHERE id = :i FOR UPDATE").bind("i", id).mapTo(Int::class.java).findOne().orElse(null) ?: throw ApiProblem(ProblemCode.ERR_NOT_FOUND, "no such policy")
+            val (cur, oldAllowlist) = h.createQuery("SELECT version, doc -> 'work_hours_allowlist' AS al FROM app.mdm_policy WHERE id = :i FOR UPDATE").bind("i", id)
+                .map { rs, _ -> rs.getInt("version") to rs.getString("al")?.let { JSON.parseToJsonElement(it) } }.findOne().orElse(null) ?: throw ApiProblem(ProblemCode.ERR_NOT_FOUND, "no such policy")
             if (cur != v) throw ApiProblem(ProblemCode.ERR_CONFLICT, "the policy changed (version $cur); reload and retry")
             if (h.createQuery("SELECT EXISTS (SELECT 1 FROM app.mdm_policy WHERE lower(name) = lower(:n) AND id <> :i)").bind("n", w.name.trim()).bind("i", id).mapTo(Boolean::class.java).one()) throw ApiProblem(ProblemCode.ERR_CONFLICT, "a policy with this name exists")
             h.createUpdate("UPDATE app.mdm_policy SET name = :n, description = :d, doc = CAST(:doc AS jsonb), version = version + 1, updated_by = :u WHERE id = :i")
                 .bind("n", w.name.trim()).bind("d", w.description).bind("doc", docOf(w).toString()).bind("u", p.userId).bind("i", id).execute()
             h.createUpdate("UPDATE app.device SET mdm_policy_version = :v WHERE mdm_policy_id = :i").bind("v", cur + 1).bind("i", id).execute()
-            audit(h, p, "mdm_policy", id.toString(), "update", buildJsonObject { put("version", cur) }, buildJsonObject { put("version", cur + 1); put("name", w.name.trim()) }, w.reason, requestId)
+            audit(h, p, "mdm_policy", id.toString(), "update", buildJsonObject { put("version", cur); oldAllowlist?.let { put("work_hours_allowlist", it) } },
+                buildJsonObject { put("version", cur + 1); put("name", w.name.trim()); w.work_hours_allowlist?.let { put("work_hours_allowlist", JSON.encodeToJsonElement(MdmWorkHoursAllowlist.serializer(), allowlistOf(it))) } }, w.reason, requestId)
             val deviceIds = h.createQuery("SELECT id FROM app.device WHERE mdm_policy_id = :i AND status IN ('enrolled','active','suspended')").bind("i", id).mapTo(Long::class.java).list()
             deviceIds.forEach { queuePolicyCommand(h, p, it, id, "policy ${w.name.trim()} v${cur + 1}", requestId) }
             afterCommit(deviceIds)
@@ -273,6 +314,7 @@ class MdmService(
                     put("allowed_packages", JSON.encodeToJsonElement(STRINGS, pol.allowed_packages))
                     put("block_windows", JSON.encodeToJsonElement(kotlinx.serialization.builtins.ListSerializer(MdmBlockWindow.serializer()), pol.block_windows))
                     put("kiosk", JSON.encodeToJsonElement(MdmKiosk.serializer(), pol.kiosk)); put("location_sampling", JSON.encodeToJsonElement(MdmLocationSampling.serializer(), pol.location_sampling))
+                    pol.work_hours_allowlist?.let { put("work_hours_allowlist", JSON.encodeToJsonElement(MdmWorkHoursAllowlist.serializer(), it)) }
                 })
             }
         }

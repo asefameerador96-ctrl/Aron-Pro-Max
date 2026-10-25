@@ -24,10 +24,13 @@ fun AmoAttendance(
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
     onRefreshFix: (() -> Unit)? = null,
+    /** D-NIGHT-CHECKOUT-01: the "Sales Submit first" link. */
+    onOpenSalesSubmit: (() -> Unit)? = null,
+    offline: Boolean = false,
 ) {
     AmoFrame(stringResource(R.string.rh_amo_attendance), onBack, modifier, icon = com.aktcl.aron.core.ui.R.drawable.aron_art_attendance) {
         PermissionGate(GatedFeature.ATTENDANCE, onBack = onBack) {
-            AttendanceContent(state, checkoutAtLabel, onCheckIn, onCheckOut, onRefreshFix = onRefreshFix)
+            AttendanceContent(state, checkoutAtLabel, onCheckIn, onCheckOut, onRefreshFix = onRefreshFix, onOpenSalesSubmit = onOpenSalesSubmit, offline = offline)
         }
     }
 }

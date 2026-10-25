@@ -108,6 +108,8 @@ object AttendanceTags {
     /** The press-and-hold button of the hold sheet (one sheet for check-in and check-out). */
     const val HOLD = "att_hold"
     const val REFRESH = "att_refresh"
+    /** D-NIGHT-CHECKOUT-01: the "Sales Submit first" notice and its link. */
+    const val SUBMIT_FIRST = "att_submit_first"
 }
 
 /** `HH:mm` Asia/Dhaka (UTC+6) of an RFC 3339 instant; the screen shows corrected business time, never the raw clock. */
@@ -155,6 +157,10 @@ fun AttendanceContent(
     /** The user card of the reference (`SR - Name (login)` over `route, date`); null leaves the card out (tests, AMO/TSO hosts). */
     userTitle: String? = null,
     userSubtitle: String? = null,
+    /** D-NIGHT-CHECKOUT-01: opens the Sales Submit screen from the "Sales Submit first" notice; null shows the notice without the link. */
+    onOpenSalesSubmit: (() -> Unit)? = null,
+    /** D-NIGHT-CHECKOUT-02: offline the notice says why (the submit needs the server); the pending upload goes when a network returns. */
+    offline: Boolean = false,
 ) {
     val c = LocalAronColors.current
     val look = LocalAronLook.current
@@ -186,6 +192,14 @@ fun AttendanceContent(
                 !checkOutPhase && state.showCheckInPrompt -> stringResource(R.string.att_prompt_checkin)
                 checkOutPhase && !dayComplete && state.checkOutEnabled -> stringResource(R.string.att_prompt_checkout)
                 else -> null
+            }
+            // D-NIGHT-CHECKOUT-01: no check-out before the day's Sales Submit; one tap to the Sales Submit screen
+            if (checkOutPhase && !dayComplete && state.needsSalesSubmit) {
+                AronBanner(
+                    stringResource(if (offline) R.string.att_submit_first_offline else R.string.att_submit_first), kind = BannerKind.Warning,
+                    actionLabel = if (onOpenSalesSubmit != null) stringResource(R.string.att_submit_first_open) else null, onAction = onOpenSalesSubmit,
+                    modifier = Modifier.testTag(AttendanceTags.SUBMIT_FIRST),
+                )
             }
             if (prompt != null) {
                 Text(
@@ -337,7 +351,7 @@ private fun DayLines(state: AttendanceState, checkoutAtLabel: String) {
         DayRow(
             done = outAt != null,
             title = if (outAt != null) stringResource(R.string.att_checked_out, localizedDigits(clock12(dhakaClock(outAt)))) else stringResource(R.string.att_check_out),
-            caption = if (outAt == null && inAt != null && !state.checkOutEnabled) stringResource(R.string.att_check_out_hint, localizedDigits(clock12(checkoutAtLabel))) else null,
+            caption = if (outAt == null && inAt != null && !state.checkOutEnabled && !state.checkOutTimeReached) stringResource(R.string.att_check_out_hint, localizedDigits(clock12(checkoutAtLabel))) else null,
             dim = inAt == null, tag = null,
         )
         // the saved-offline notice appears only once a check-in or check-out is actually stored (not on the idle screen)

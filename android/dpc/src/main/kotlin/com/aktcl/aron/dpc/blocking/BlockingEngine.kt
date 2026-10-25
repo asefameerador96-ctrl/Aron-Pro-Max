@@ -14,6 +14,11 @@ interface SuspendGateway {
     fun setSuspended(packages: List<String>, suspended: Boolean): List<String>
     fun installed(): List<InstalledApp>
     val ownPackage: String
+    /**
+     * Packages the phone needs to stay usable and that must never be suspended: dialler and call handlers, default SMS,
+     * launcher, keyboards, Settings. Throws when they cannot be resolved (the MDM allow-list then does not block).
+     */
+    fun protectedPackages(): Set<String> = emptySet()
 }
 
 /** The phone's attendance state for blocking, kept across kills and reboots. */

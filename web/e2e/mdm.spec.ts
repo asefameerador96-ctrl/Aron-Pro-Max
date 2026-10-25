@@ -88,7 +88,7 @@ test("policy editor: draw a schedule on the grid, save, and the policy list show
   await expect(page.getByTestId("data-table")).toContainText("Strict kiosk");
   await page.getByTestId("mdm-policy-new").click();
   await page.locator("#mdm-p-name").fill("Night lock");
-  await page.getByRole("button", { name: "+ WhatsApp" }).click();
+  await page.getByTestId("mdm-allowed").getByRole("button", { name: "+ WhatsApp", exact: true }).click();
   // Monday 22:00 to 24:00: four cells (slots 44..47) by clicking the first and dragging to the last
   const first = page.getByTestId("cell-0-44");
   const last = page.getByTestId("cell-0-47");
@@ -104,6 +104,38 @@ test("policy editor: draw a schedule on the grid, save, and the policy list show
   await page.getByTestId("mdm-policy-save").click();
   await expect(page).toHaveURL(/\/admin\/mdm\/policies$/);
   await expect(page.getByTestId("data-table")).toContainText("Night lock");
+});
+
+test("policy editor: the work-hours allow-list is switched on with presets, previewed, saved and reloaded", async ({ page }) => {
+  await asAdmin(page);
+  await page.goto("/admin/mdm/policies/1");
+  const card = page.getByTestId("mdm-allowlist");
+  await expect(card).toBeVisible();
+  await expect(page.getByTestId("mdm-al-preview")).toContainText("Off");
+  await page.getByTestId("mdm-al-on").check();
+  await page.getByTestId("mdm-al-preset-com.whatsapp").click();
+  await page.getByTestId("mdm-al-preset-com.hihonor.calculator").click();
+  await page.locator("#mdm-al-pkg").fill("not a package");
+  await page.getByTestId("mdm-al-add").click();
+  await expect(card).toContainText("2 of 50");
+  await page.locator("#mdm-al-pkg").fill("com.android.calculator2");
+  await page.locator("#mdm-al-pkg").press("Enter");
+  await expect(card).toContainText("3 of 50");
+  // calendar mode (default): blocked on every working day, 09:00 + 5 min grace to 18:00
+  await expect(page.getByTestId("mdm-al-preview")).toContainText("Blocked today 09:05–18:00 except 3 apps");
+  await page.locator("#mdm-al-grace").fill("40");
+  await page.locator("#mdm-p-reason").fill("Lock other apps during work hours");
+  await page.getByTestId("mdm-policy-save").click();
+  await expect(card).toContainText("Grace is 0 to 30 minutes");
+  await page.locator("#mdm-al-grace").fill("0");
+  await page.getByTestId("mdm-al-mode-window").check();
+  await expect(page.getByTestId("mdm-al-day-7")).toHaveAttribute("aria-pressed", "true");
+  await page.getByTestId("mdm-policy-save").click();
+  await expect(page.getByTestId("form-ok")).toBeVisible();
+  await page.reload();
+  await expect(page.getByTestId("mdm-al-on")).toBeChecked();
+  await expect(page.getByTestId("mdm-al-packages")).toContainText("com.hihonor.calculator");
+  await expect(page.getByTestId("mdm-al-mode-window")).toBeChecked();
 });
 
 test("policy editor: a second editor holding the old version is refused", async ({ page }) => {

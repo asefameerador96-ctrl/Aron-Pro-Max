@@ -14,6 +14,7 @@ import android.content.Intent
 import android.location.Location
 import android.location.LocationManager
 import android.os.Build
+import android.os.SystemClock
 import com.aktcl.aron.dpc.AronDeviceAdminReceiver
 import com.aktcl.aron.dpc.DeviceOwnerPolicy
 import java.util.Locale
@@ -83,13 +84,25 @@ class AndroidMdmGateway(context: Context) : CommandGateway, KioskGateway {
     }
 }
 
-/** Wakes the MDM applier at the next block-window boundary (inexact, like [com.aktcl.aron.dpc.blocking.HardEndAlarm]). */
+/**
+ * Wakes the MDM applier at the next block-window or allow-list edge. One one-shot alarm, re-armed at every evaluation and
+ * never repeating; no exact-alarm permission (NoPollingLintTest). The edge is computed on the trusted clock, so the alarm
+ * is set on the elapsed-time base as a delay from trusted now (a skewed system clock can neither fire it early in a loop
+ * nor late), at least [MIN_DELAY_MS] away. [WINDOW_MS] bounds the delivery while the phone is awake; a dozing phone gets it
+ * when the screen comes on, and every app start re-evaluates as well.
+ */
 object MdmAlarm {
-    fun schedule(context: Context, atMs: Long?) {
+    const val WINDOW_MS = 10 * 60_000L
+    const val MIN_DELAY_MS = 60_000L
+
+    /** Delay from trusted now to the edge; never shorter than [MIN_DELAY_MS]. */
+    fun delayMs(atMs: Long, trustedNowMs: Long): Long = maxOf(MIN_DELAY_MS, atMs - trustedNowMs)
+
+    fun schedule(context: Context, atMs: Long?, trustedNowMs: Long) {
         val am = context.getSystemService(AlarmManager::class.java) ?: return
         val pi = PendingIntent.getBroadcast(context, 1, Intent(context, MdmWindowReceiver::class.java), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         am.cancel(pi)
-        if (atMs != null) am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, atMs, pi)
+        if (atMs != null) am.setWindow(AlarmManager.ELAPSED_REALTIME_WAKEUP, SystemClock.elapsedRealtime() + delayMs(atMs, trustedNowMs), WINDOW_MS, pi)
     }
 }
 

@@ -55,6 +55,7 @@ import com.aktcl.aron.core.printing.diag.TestMode
 import com.aktcl.aron.core.ui.aron.AronCard
 import com.aktcl.aron.core.ui.aron.AronOutlinedButton
 import com.aktcl.aron.core.ui.aron.AronRadioRow
+import com.aktcl.aron.core.ui.aron.AronSwitchRow
 import com.aktcl.aron.core.ui.aron.AronSectionHeader
 import com.aktcl.aron.core.ui.aron.AronSolidButton
 import com.aktcl.aron.core.ui.aron.AronYesNo
@@ -84,7 +85,7 @@ fun PrinterDiagnosticsScreen(manager: PrinterManager, appVersion: String, modifi
         )
     }
     val state by controller.state.collectAsState()
-    fun refresh() = controller.setEnvironment(AndroidDiagEnvironment.collect(context, appVersion, manager.savedPrinter?.let { "${it.name} ${it.address}, memo image ${it.imageMode} (model default: ${PrinterDefaults.modeFor(it.name)}, ${PrinterDefaults.sourceFor(it.name)})" })) // i18n-ignore: technical diagnostics text, English by design (D-PRINT-02 report for the lead)
+    fun refresh() = controller.setEnvironment(AndroidDiagEnvironment.collect(context, appVersion, manager.savedPrinter?.let { "${it.name} ${it.address}, memo image ${it.imageMode}, logo ${if (it.printLogo) "on" else "off"} (model default: ${PrinterDefaults.modeFor(it.name)}, ${PrinterDefaults.sourceFor(it.name)})" })) // i18n-ignore: technical diagnostics text, English by design (D-PRINT-02 report for the lead)
     val ask = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { refresh() }
     // read again on every return to the screen (after Bluetooth or app settings)
     val owner = LocalLifecycleOwner.current
@@ -180,6 +181,14 @@ fun PrinterDiagnosticsScreen(manager: PrinterManager, appVersion: String, modifi
                 for ((m, label) in listOf(ImageMode.RASTER to R.string.diag_mode_raster, ImageMode.BIT_IMAGE to R.string.diag_mode_bitimage)) {
                     AronRadioRow(stringResource(label), mode == m, { mode = m; scope.launch { manager.setImageMode(m); refresh() } }, enabled = !busy)
                 }
+            }
+        }
+        // 4c. The Aron mark above the header (D-PRINT-09): on by default, off when a printer garbles it
+        if (saved != null) {
+            var logo by remember(saved.address) { mutableStateOf(saved.printLogo) }
+            AronSectionHeader(stringResource(R.string.diag_print_logo_title))
+            AronCard {
+                AronSwitchRow(stringResource(R.string.diag_print_logo), logo, { on -> if (!busy) { logo = on; scope.launch { manager.setPrintLogo(on); refresh() } } }, subtitle = stringResource(R.string.diag_print_logo_hint))
             }
         }
         // 5. Log and export

@@ -251,7 +251,7 @@ fun SrApp(
     LaunchedEffect(Unit) {
         day.recoverPrinting(); day.resumeMedia()
         day.reload(); day.nextSequenceFromStore(); day.restoreOpenVisit(); day.taskBoard.load()
-        day.attendance.restore(day.attendanceToday())
+        day.attendance.restore(day.attendanceToday()); day.attendance.refreshSubmit()
         if (screen == SrScreen.HOME && permissions.toAsk.isNotEmpty()) screen = SrScreen.PERMISSIONS
         launch { startBundleDownload(); day.taskBoard.load(); resumeTick++ }
     }
@@ -275,7 +275,7 @@ fun SrApp(
     }
     LaunchedEffect(Unit) { com.aktcl.aron.core.sync.push.PushRuntime.pulled.collect { day.taskBoard.load() } }
     androidx.lifecycle.compose.LifecycleEventEffect(androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
-        scope.launch { day.attendance.tick(); day.reload(); day.taskBoard.load(); resumeTick++ }
+        scope.launch { day.attendance.refreshSubmit(); day.reload(); day.taskBoard.load(); resumeTick++ }
     }
     // Several routes planned today: the SR picks one before anything else (F-SR-065).
     val planned = data.routes.map { PlannedRoute(it.routeId, it.name, it.plannedToday, it.sequenceNo) }
@@ -392,9 +392,13 @@ fun SrApp(
         SrScreen.ATTENDANCE -> SrFrame(stringResource(HomeR.string.hm_tile_attendance), goBack, sync, openSync, icon = CoreR.drawable.aron_art_attendance) {
             PermissionGate(GatedFeature.ATTENDANCE, onBack = goBack) {
                 val who = HomeModel.header("SR", user.fullName, user.username, data.route?.name, data.route?.visitKind, data.businessDate)
+                // D-NIGHT-CHECKOUT-01: the local Sales Submit is read on every visit (also back from the Sales Submit screen)
+                LaunchedEffect(Unit) { day.attendance.refreshSubmit() }
                 AttendanceContent(
                     attendance, "17:00", onCheckIn = { scope.launch { day.attendance.checkIn(); resumeTick++ } }, onCheckOut = { scope.launch { day.attendance.checkOut(); resumeTick++ } },
                     userTitle = who.title, userSubtitle = who.subtitle, // Latin digits, as in the reference
+                    onOpenSalesSubmit = { screen = SrScreen.SUBMIT },
+                    offline = !day.isOnline(), // read on each composition of the screen (one capabilities read, no callback)
                 )
             }
         }

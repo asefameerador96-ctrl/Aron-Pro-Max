@@ -137,3 +137,74 @@ export function validatePolicy(p: { name: string; blockWindows: readonly MdmBloc
   }
   return e;
 }
+
+// ---------- work-hours allow-list (D-NIGHT-MDM-ALLOWLIST-01) ----------
+// The member is queued for contract 1.9 (row 6, docs/requests/contract-v1.9-shapes-mdm.md); until the generated types carry
+// it, these local types mirror that shape exactly. The API leaves the member out when a policy has none.
+export type MdmAllowlistSchedule = { mode: "calendar" | "window"; days?: number[]; start: string; end: string };
+export type MdmWorkHoursAllowlist = { enabled: boolean; packages: string[]; schedule: MdmAllowlistSchedule; grace_min?: number };
+export type MdmPolicyFull = MdmPolicy & { work_hours_allowlist?: MdmWorkHoursAllowlist };
+
+export const ALLOWLIST_MAX = 50;
+export const ALLOWLIST_MAX_GRACE = 30;
+export const ALLOWLIST_DEFAULT: MdmWorkHoursAllowlist = { enabled: false, packages: [], schedule: { mode: "calendar", days: [], start: "09:00", end: "18:00" }, grace_min: 5 };
+
+/** One-tap presets for the allow-list until the packages catalogue (contract 1.9) lists the phone's own apps. */
+export const ALLOWLIST_PRESETS: readonly { pkg: string; label: string }[] = [
+  { pkg: "com.whatsapp", label: "WhatsApp" },
+  { pkg: "com.whatsapp.w4b", label: "WhatsApp Business" },
+  { pkg: "com.android.calculator2", label: "Calculator" },
+  { pkg: "com.hihonor.calculator", label: "Calculator (Honor)" },
+  { pkg: "com.huawei.calculator", label: "Calculator (Huawei)" },
+  { pkg: "com.google.android.calculator", label: "Calculator (Google)" },
+  { pkg: "com.sec.android.app.popupcalculator", label: "Calculator (Samsung)" },
+];
+
+const minutesOf = (s: string): number | null => {
+  const m = /^([01]\d|2[0-3]):([0-5]\d)$/.exec(s);
+  return m ? Number(m[1]) * 60 + Number(m[2]) : null;
+};
+const clock = (min: number) => `${String(Math.floor(min / 60)).padStart(2, "0")}:${String(min % 60).padStart(2, "0")}`;
+
+/** Client-side check of the allow-list, same rules as the API (field -> error code). */
+export function validateAllowlist(a: MdmWorkHoursAllowlist, packagePattern: RegExp): Record<string, string> {
+  const e: Record<string, string> = {};
+  if (a.packages.length > ALLOWLIST_MAX) e.allowlist_packages = "too_many";
+  else if (a.packages.some((p) => !packagePattern.test(p)) || new Set(a.packages).size !== a.packages.length) e.allowlist_packages = "invalid";
+  const s = minutesOf(a.schedule.start);
+  const t = minutesOf(a.schedule.end);
+  if (s === null || t === null || t <= s) e.allowlist_hours = "invalid";
+  if (a.schedule.mode === "window" && !(a.schedule.days ?? []).length) e.allowlist_days = "required";
+  const g = a.grace_min ?? 5;
+  if (!Number.isInteger(g) || g < 0 || g > ALLOWLIST_MAX_GRACE || (s !== null && t !== null && t > s && g >= t - s)) e.allowlist_grace = "invalid";
+  return e;
+}
+
+/** The body member the API expects: days only in `window` mode, sorted; packages as entered. */
+export function allowlistBody(a: MdmWorkHoursAllowlist): MdmWorkHoursAllowlist {
+  const days = a.schedule.mode === "window" ? [...new Set(a.schedule.days ?? [])].sort((x, y) => x - y) : [];
+  return { enabled: a.enabled, packages: a.packages, schedule: { mode: a.schedule.mode, days, start: a.schedule.start, end: a.schedule.end }, grace_min: a.grace_min ?? 5 };
+}
+
+/** ISO weekday (1 = Monday) of an instant in Dhaka (UTC+6, no DST). */
+export const dhakaWeekday = (now: Date): number => {
+  const d = new Date(now.getTime() + 6 * 3_600_000).getUTCDay(); // 0 = Sunday
+  return d === 0 ? 7 : d;
+};
+
+export type AllowlistPreview =
+  | { kind: "off" }
+  | { kind: "invalid" }
+  | { kind: "free_today" }
+  | { kind: "blocked"; from: string; to: string; n: number; calendar: boolean };
+
+/** What the phone does today (Dhaka): the blocking span after the grace, or why nothing is blocked. In calendar mode the phone also skips holidays. */
+export function allowlistPreview(a: MdmWorkHoursAllowlist, now: Date): AllowlistPreview {
+  if (!a.enabled) return { kind: "off" };
+  const s = minutesOf(a.schedule.start);
+  const t = minutesOf(a.schedule.end);
+  const from = s === null ? null : s + Math.min(Math.max(a.grace_min ?? 5, 0), ALLOWLIST_MAX_GRACE);
+  if (from === null || t === null || from >= t) return { kind: "invalid" };
+  if (a.schedule.mode === "window" && !(a.schedule.days ?? []).includes(dhakaWeekday(now))) return { kind: "free_today" };
+  return { kind: "blocked", from: clock(from), to: clock(t), n: a.packages.length, calendar: a.schedule.mode === "calendar" };
+}

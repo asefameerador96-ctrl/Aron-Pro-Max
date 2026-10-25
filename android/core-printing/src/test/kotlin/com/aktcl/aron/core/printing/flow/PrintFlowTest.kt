@@ -21,7 +21,7 @@ import java.io.File
 
 /** F-SR-028, F-SR-073, F-SR-031, F-SR-066 and F-SR-015 (print part) against a simulated MP-58N. */
 class PrintFlowTest {
-    private class Store(var p: SavedPrinter? = SavedPrinter("00:11:22:33:44:55", "MP-58N")) : SavedPrinterStore {
+    private class Store(var p: SavedPrinter? = SavedPrinter("00:11:22:33:44:55", "MP-58N", printLogo = false)) : SavedPrinterStore {
         override fun load() = p
         override fun save(printer: SavedPrinter?) { p = printer }
     }

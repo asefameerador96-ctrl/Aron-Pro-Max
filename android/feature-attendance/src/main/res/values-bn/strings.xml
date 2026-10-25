@@ -29,4 +29,8 @@
     <string name="att_cancel">বাতিল</string>
     <string name="att_offline_saved">ফোনে সংরক্ষিত হয়েছে। নেটওয়ার্ক এলে আপলোড হবে।</string>
     <string name="att_accuracy_short">±%1$s m</string>
+    <!-- D-NIGHT-CHECKOUT-01 -->
+    <string name="att_submit_first">আগে Sales Submit করুন। আজকের বিক্রি সাবমিট করার পর চেক আউট চালু হবে।</string>
+    <string name="att_submit_first_open">Sales Submit খুলুন</string>
+    <string name="att_submit_first_offline">অফলাইন — Sales Submit হয়নি। নেটওয়ার্ক ফিরলেই ডেটা নিজে থেকে যাবে; তারপর সাবমিট করে চেক আউট করুন।</string>
 </resources>

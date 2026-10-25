@@ -3,10 +3,13 @@
 import { randomUUID } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { Schemas } from "../src/contract/types";
+import { validateAllowlist, type MdmWorkHoursAllowlist } from "../src/lib/admin/mdm";
+import { PACKAGE_PATTERN } from "../src/lib/admin/packages";
 import type { Ctx } from "./tables";
 
 type Device = Schemas["MdmDevice"];
-type Policy = Schemas["MdmPolicy"];
+// work_hours_allowlist rides ahead of contract 1.9 (row 6); the mock mirrors the API: absent unless the policy has one.
+type Policy = Schemas["MdmPolicy"] & { work_hours_allowlist?: MdmWorkHoursAllowlist };
 type Command = Schemas["MdmCommand"];
 type Activity = Schemas["MdmActivityEntry"];
 type Flag = Schemas["MdmComplianceFlag"];
@@ -191,11 +194,18 @@ export async function handleMdm(s: MdmStore, ctx: Ctx, user: { role: string; use
 
   if (sub === "policies" && method === "GET") return send(res, 200, page(s.policies.map((p) => policyView(s, p)), url)), true;
   const writePolicy = async (existing: Policy | null) => {
-    const b = (await ctx.readJson(req)) as Partial<Schemas["MdmPolicyWrite"]> | undefined;
+    const b = (await ctx.readJson(req)) as (Partial<Schemas["MdmPolicyWrite"]> & { work_hours_allowlist?: MdmWorkHoursAllowlist }) | undefined;
     if (!b || typeof b.name !== "string" || Array.from(b.name.trim()).length < 2 || !Array.isArray(b.allowed_packages) || !Array.isArray(b.block_windows) || b.block_windows.length > 14 || !b.kiosk || !b.location_sampling || !reasonOk(b.reason)) return fail(400, "ERR_VALIDATION");
+    if (b.work_hours_allowlist !== undefined) {
+      const al = b.work_hours_allowlist;
+      const bad = typeof al !== "object" || al === null || typeof al.enabled !== "boolean" || !Array.isArray(al.packages) || !al.schedule ? { allowlist: "invalid" } : validateAllowlist(al, PACKAGE_PATTERN);
+      const pointer: Record<string, string> = { allowlist_packages: "/work_hours_allowlist/packages", allowlist_hours: "/work_hours_allowlist/schedule/end", allowlist_days: "/work_hours_allowlist/schedule/days", allowlist_grace: "/work_hours_allowlist/grace_min", allowlist: "/work_hours_allowlist" };
+      const first = Object.keys(bad)[0];
+      if (first) return fail(400, "ERR_VALIDATION", { errors: [{ pointer: pointer[first]!, code: "invalid_value" }] });
+    }
     if (s.policies.some((p) => p.name.toLowerCase() === b.name!.trim().toLowerCase() && p.policy_id !== existing?.policy_id)) return fail(409, "ERR_CONFLICT");
     if (existing && b.version !== existing.version) return fail(409, "ERR_CONFLICT");
-    const next: Policy = { policy_id: existing?.policy_id ?? s.nextPolicy++, name: b.name.trim(), description: b.description ?? null, allowed_packages: b.allowed_packages, block_windows: b.block_windows, kiosk: b.kiosk, location_sampling: b.location_sampling, version: (existing?.version ?? 0) + 1, device_count: 0, updated_at: new Date().toISOString() };
+    const next: Policy = { policy_id: existing?.policy_id ?? s.nextPolicy++, name: b.name.trim(), description: b.description ?? null, allowed_packages: b.allowed_packages, block_windows: b.block_windows, kiosk: b.kiosk, location_sampling: b.location_sampling, version: (existing?.version ?? 0) + 1, device_count: 0, updated_at: new Date().toISOString(), ...(b.work_hours_allowlist ? { work_hours_allowlist: { ...b.work_hours_allowlist, packages: [...b.work_hours_allowlist.packages].sort() } } : {}) };
     if (existing) s.policies[s.policies.indexOf(existing)] = next;
     else s.policies.push(next);
     s.activity.unshift({ at: next.updated_at, kind: "policy", device_id: null, summary: `Policy ${next.name} ${existing ? "updated" : "created"}`, actor: user.username, reason: b.reason!.trim(), ref: String(next.policy_id) });

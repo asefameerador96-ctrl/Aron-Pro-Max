@@ -204,10 +204,14 @@ class MainActivity : ComponentActivity() {
                                     AmoScreen.JOINT_CALL to { back -> ControlCallHost(d, back, kind = com.aktcl.aron.feature.amo.AmoVisitKind.JOINT_CALL) },
                                     AmoScreen.ATTENDANCE to { back ->
                                         val attendance by d.attendance.state.collectAsStateWithLifecycle()
-                                        LaunchedEffect(d) { d.attendance.tick() }
+                                        // D-NIGHT-CHECKOUT-01: the local Sales Submit is read on every visit (also back from Sales Submit)
+                                        LaunchedEffect(d) { d.attendance.refreshSubmit() }
+                                        val navigate = com.aktcl.aron.feature.amo.LocalAmoNavigate.current
                                         com.aktcl.aron.feature.amo.AmoAttendance(
                                             attendance, d.checkoutAtLabel(), onCheckIn = { dayScope.launch { d.attendance.checkIn() } },
                                             onCheckOut = { dayScope.launch { d.attendance.checkOut() } }, onBack = back,
+                                            onOpenSalesSubmit = { navigate(AmoScreen.SALES_SUBMIT) },
+                                            offline = !d.online(),
                                         )
                                     },
                                 )

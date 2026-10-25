@@ -146,19 +146,23 @@ class PrefsSavedPrinterStore(context: Context) : SavedPrinterStore {
     override fun load(): SavedPrinter? {
         val a = prefs.getString(KEY_ADDRESS, null) ?: return null
         val mode = prefs.getString(KEY_MODE, null)?.let { m -> ImageMode.entries.firstOrNull { it.name == m } } ?: ImageMode.RASTER
-        return SavedPrinter(a, prefs.getString(KEY_NAME, null) ?: a, mode)
+        return SavedPrinter(a, prefs.getString(KEY_NAME, null) ?: a, mode, prefs.getBoolean(KEY_LOGO, true))
     }
 
     override fun save(printer: SavedPrinter?) {
         prefs.edit().apply {
             if (printer == null) {
-                remove(KEY_ADDRESS); remove(KEY_NAME); remove(KEY_MODE)
+                remove(KEY_ADDRESS); remove(KEY_NAME); remove(KEY_MODE); remove(KEY_LOGO)
             } else {
-                putString(KEY_ADDRESS, printer.address); putString(KEY_NAME, printer.name); putString(KEY_MODE, printer.imageMode.name)
+                putString(KEY_ADDRESS, printer.address); putString(KEY_NAME, printer.name); putString(KEY_MODE, printer.imageMode.name); putBoolean(KEY_LOGO, printer.printLogo)
                 putString(MODE_PREFIX + printer.address, printer.imageMode.name) // remembered per printer (D-PRINT-02)
+                putBoolean(LOGO_PREFIX + printer.address, printer.printLogo) // remembered per printer (D-PRINT-09)
             }
         }.apply()
     }
+
+    override fun rememberedLogo(address: String): Boolean? =
+        if (prefs.contains(LOGO_PREFIX + address)) prefs.getBoolean(LOGO_PREFIX + address, true) else null
 
     override fun rememberedMode(address: String): ImageMode? =
         prefs.getString(MODE_PREFIX + address, null)?.let { m -> ImageMode.entries.firstOrNull { it.name == m } }
@@ -167,6 +171,8 @@ class PrefsSavedPrinterStore(context: Context) : SavedPrinterStore {
         const val KEY_ADDRESS = "address"
         const val KEY_NAME = "name"
         const val KEY_MODE = "image_mode"
+        const val KEY_LOGO = "print_logo"
         const val MODE_PREFIX = "image_mode_"
+        const val LOGO_PREFIX = "print_logo_"
     }
 }

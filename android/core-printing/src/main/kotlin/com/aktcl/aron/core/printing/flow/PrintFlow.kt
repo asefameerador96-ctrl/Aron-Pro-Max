@@ -11,6 +11,7 @@ import com.aktcl.aron.core.printing.doc.MemoPrint
 import com.aktcl.aron.core.printing.doc.StockSlipPrint
 import com.aktcl.aron.core.printing.diag.CrashLog
 import com.aktcl.aron.core.printing.render.PaperTooLongException
+import com.aktcl.aron.core.printing.render.PrintLogo
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -223,7 +224,11 @@ class MemoPrinting(
         render: (PaperRenderer) -> RenderedPaper,
     ): PrintAttempt {
         val paper = try {
-            withContext(renderContext) { render(renderer()) }
+            withContext(renderContext) {
+                val p = render(renderer())
+                // the Aron mark above the header unless switched off for this printer (D-PRINT-09); no mark, no change
+                if (printer.savedPrinter?.printLogo == false) p else RenderedPaper(PrintLogo.onTop(p.bitmap), p.templateVersion)
+            }
         } catch (_: PaperTooLongException) {
             return PrintAttempt.TooLong
         }

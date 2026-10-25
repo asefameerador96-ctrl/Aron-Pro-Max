@@ -1,3 +1,18 @@
+# HANDOVER (lane mdm session 3 -> session 4, 2026-10-24, context about 200k)
+**Candidate:** 091707789f8b (run 40142118596, all 9 jobs green, nothing skipped; Opus T1 PASS after 5 fixes, re-check PASS); rides train 37. Base INT c427d842.
+**Shipped this session:** work-hours allow-list (D-NIGHT-MDM-ALLOWLIST-01; D-MDM-ALLOWLIST-01..05): runbook `docs/runbooks/mdm-work-hours-allowlist.md`, policy member `work_hours_allowlist` (jsonb, served ahead of the contract, omitted when absent), DPC enforcement (`MdmPolicyApplier`, protected set, fail open, check-in/out re-run, elapsed-time `setWindow` alarm), portal card `work-hours-allowlist-card.tsx`.
+**Open:**
+1. Contract: `docs/requests/contract-v1.9-shapes-mdm.md` is mapped by the lead to the **1.10** queue (part A allow-list member, part B packages catalogue). After 1.10: drop the local web types (`MdmPolicyFull`, `MdmWorkHoursAllowlist` in `web/src/lib/admin/mdm.ts`, the `Policy &` widening in `web/mock/mdm.ts`), add the member to the conformance fixture, then build part B (db request `db-mdm-device-packages.md`, backend, DPC upload on hash change, picker).
+2. Device rows DEVICE-PENDING: D-MDM-ALLOWLIST-01 (waits for the Honor device-owner enrolment, owner rows U), D-MDM-01, D-MDM-BREADCRUMB-01.
+3. Portal look: the owner's MDM screenshots are still missing.
+**Traps.** Never add SCHEDULE/USE_EXACT_ALARM (NoPollingLintTest); MDM alarms use elapsed time from the trusted clock. Block windows now refuse ARON, dialler and system packages (server) and never suspend the protected set (phone). Old traps below still hold.
+
+# Session 3 (2026-10-24) — work-hours allow-list (D-NIGHT-MDM-ALLOWLIST-01)
+- Runbook `docs/runbooks/mdm-work-hours-allowlist.md` (answer, enrolment, portal steps, limits, device-lab steps); device row D-MDM-ALLOWLIST-01 in `docs/status/device-checks.md` (DEVICE-PENDING).
+- Built: `work_hours_allowlist` in the policy jsonb (no migration), served ahead of contract 1.9 row 6 (shape: `docs/requests/contract-v1.9-shapes-mdm.md`, also the packages catalogue, part B, not built); backend validation + audit + delivery (`MdmApiTest.theWorkHoursAllowListIsValidatedAuditedAndDelivered`); DPC enforcement in `MdmPolicyApplier` with the protected set and fail-open rules (`MdmAllowlistTest`, 15); portal card `work-hours-allowlist-card.tsx` (vitest `mdm-allowlist.test.tsx`, e2e in `mdm.spec.ts`).
+- Decisions D-MDM-ALLOWLIST-01..05. Edges are not exact (lint forbids the exact-alarm permission): up to about 10 min late while in use.
+- Open: packages catalogue (contract 1.9 part B, then db request + backend + DPC upload + picker); the device row; drop the local web types once 1.9 regenerates `openapi.d.ts`.
+
 # HANDOVER (lane mdm session 2 -> session 3, 2026-10-23, context about 380k)
 **Candidate:** c5de7c78 (network_type both ends; INT c07c66dc merged). Run 39961480341: all jobs green except one Docker Hub 500 at the base-image pull (not ours), failed job re-run once; the lead judges at 14:40 UTC (train 19, else train 20 with no further re-run).
 **On INT already:** ModuleGrants in production, breadcrumb install SR/AMO (D-MDM-BREADCRUMB-01 incl. lead ruling: the DPC `breadcrumbsEnabled` is the single background-location switch), device-lab rows, handover of session 2.

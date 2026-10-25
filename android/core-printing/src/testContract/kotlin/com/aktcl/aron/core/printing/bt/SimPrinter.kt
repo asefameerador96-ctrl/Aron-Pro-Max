@@ -48,6 +48,8 @@ class SimPrinter(
     /** Rows of paper left on the roll. */
     var paperRows: Int = Int.MAX_VALUE
     var overflowed = false
+    /** Blank paper fed (dots) after the last printed row: `ESC d n` feeds n x the current line spacing (D-PRINT-09). */
+    var trailingFeedDots = 0
     var connects = 0
     /** Connect attempts, successful or not. */
     var attempts = 0
@@ -141,7 +143,7 @@ class SimPrinter(
                 when {
                     b == 0x1B && i + 1 < d.size && d[i + 1].toInt() == 0x40 -> { if (initClearsLineBuffer) lineBuf = null; spacing = 30; i += 2 }
                     b == 0x1B && i + 2 < d.size && d[i + 1].toInt() == 0x33 -> { spacing = d[i + 2].toInt() and 0xFF; i += 3 }
-                    b == 0x1B && i + 2 < d.size && d[i + 1].toInt() == 0x64 -> i += 3
+                    b == 0x1B && i + 2 < d.size && d[i + 1].toInt() == 0x64 -> { trailingFeedDots += (d[i + 2].toInt() and 0xFF) * spacing; i += 3 }
                     b == 0x10 && i + 2 < d.size && d[i + 1].toInt() == 0x04 -> {
                         if (answersStatus) {
                             // the backlog at this moment drains at print speed before a sequential firmware answers
@@ -158,6 +160,7 @@ class SimPrinter(
                             if (paperRows <= 0) break
                             paperRows--
                             paper.add(d.copyOfRange(i + 8 + r * w, i + 8 + (r + 1) * w))
+                            trailingFeedDots = 0
                         }
                         i += 8 + w * h
                     }
@@ -179,7 +182,7 @@ class SimPrinter(
                         // LF prints the line buffer (an ESC * band); a band needs a line spacing of 24 to touch the next
                         lineBuf?.let { rows ->
                             if (spacing < 24) badSpacing = true
-                            for (r in rows) { if (paperRows <= 0) break; paperRows--; paper.add(r) }
+                            for (r in rows) { if (paperRows <= 0) break; paperRows--; paper.add(r); trailingFeedDots = 0 }
                         }
                         lineBuf = null
                         i++
