@@ -290,6 +290,25 @@ class OwnerDirectiveV0087Test {
     }
 
     @Test
+    fun v0114RiskSignalTakesCheckoutWithoutSubmitWeightedTwenty() = db.connect().use { c ->
+        // D-NIGHT-CHECKOUT-01 (backend-core #18): subject the user, one per user-day, severity 2 on the row, weight 20 in the
+        // registry default; the earlier codes and weights stay. Business date = the seed's today (D-TEST-DATE-PIN-01).
+        assertEquals("20|30|100", c.scalar("SELECT concat_ws('|', default_value->>'CHECKOUT_WITHOUT_SUBMIT', default_value->>'MEMO_DUPLICATE_SUSPECT', default_value->>'GEO_MOCK') FROM app.cfg_key WHERE key = 'cfg.geo.integrity_weight'"))
+        fun insert(code: String) = "INSERT INTO app.risk_signal (code, severity, business_date, subject_type, subject_id, user_id, score, config_version) " +
+            "SELECT '$code', 2, app.dhaka_date(now()), 'user', u.id::text, u.id, 20, 0 FROM app.app_user u WHERE u.username = 'sr1001' " +
+            "ON CONFLICT (code, subject_type, subject_id, business_date) DO NOTHING"
+        c.tx {
+            exec(insert("CHECKOUT_WITHOUT_SUBMIT"))
+            exec(insert("CHECKOUT_WITHOUT_SUBMIT")) // the server's resend path: one signal per user-day
+            exec(insert("MEMO_DUPLICATE_SUSPECT"))
+            assertEquals("1", scalar("SELECT count(*) FROM app.risk_signal WHERE code = 'CHECKOUT_WITHOUT_SUBMIT' AND business_date = app.dhaka_date(now())"))
+            assertEquals("23514", refused(insert("CHECKOUT_WITHOUT_SUBMT")))
+        }
+        // V0115 validated the constraint.
+        assertEquals("true", c.scalar("SELECT convalidated::text FROM pg_constraint WHERE conname = 'risk_signal_code_check' AND conrelid = 'app.risk_signal'::regclass"))
+    }
+
+    @Test
     fun v0089ModuleGrantsHoldFifteenModules() = db.connect().use { c ->
         // The seeded admin holds w on every module (seed 01, as V0089 does for admins present when it runs).
         assertEquals("15|w", c.scalar("SELECT count(*) || '|' || string_agg(DISTINCT access, ',') FROM app.user_module_grant WHERE user_id = ${user("admin1001")}"))
