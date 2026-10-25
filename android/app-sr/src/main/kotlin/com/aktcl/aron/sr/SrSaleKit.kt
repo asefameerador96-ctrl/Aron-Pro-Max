@@ -192,7 +192,7 @@ class SrSaleKit(private val day: SrDay, private val context: Context, private va
 
 
     fun newSubmitViewModel() = SalesSubmitViewModel(
-        day.userId, day::businessDate, RoomDaySource(db), serverCounts,
+        day.userId, day::businessDate, RoomDaySource(db), com.aktcl.aron.feature.dayclose.DigestServerCounts(serverCounts, day.submitDigests, db),
         RoomDaySubmitWriter(db, day.capture, { day.metaProvider.meta(0L) }, { id -> skuCategory[id] ?: "other" }, stockSlipPrinted = { !day.slipNotPrinted() }),
         syncScheduler, online,
     )

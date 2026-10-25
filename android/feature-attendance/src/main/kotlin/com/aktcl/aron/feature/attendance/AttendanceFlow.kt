@@ -11,6 +11,7 @@ import com.aktcl.aron.feature.outlet.VisitFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.sync.withLock
 
 /** Commits one attendance event with its fix and outbox record in one transaction (`CaptureRepository.recordAttendance`). */
 fun interface AttendanceCommitter {
@@ -37,6 +38,13 @@ data class AttendanceState(
     val fixFailed: Boolean = false,
     /** True while a display-only location refresh runs (the refresh icon is off, the card shows the reading line). */
     val readingFix: Boolean = false,
+    /**
+     * D-NIGHT-CHECKOUT-01: the day's Sales Submit is not committed on this phone yet, so check-out stays off and the screen
+     * links to Sales Submit. Always false where the role has no such gate (TSO).
+     */
+    val needsSalesSubmit: Boolean = false,
+    /** `cfg.day.checkout_earliest_time` has passed on trusted Dhaka time (whatever else still holds check-out). */
+    val checkOutTimeReached: Boolean = false,
 )
 
 /** Result of a check-in or check-out press. */
@@ -52,6 +60,8 @@ sealed interface AttendanceResult {
  * Attendance (F-SR-011 check-in, F-SR-012 check-out). Offline by construction: one on-demand fix, the event and its
  * outbox record in one transaction, the address resolved only when a resolver answers (display only).
  * Check-out opens at `cfg.day.checkout_earliest_time` (17:00 inclusive) on trusted Dhaka time and needs a check-in.
+ * With [salesSubmitted] (SR and AMO, D-NIGHT-CHECKOUT-01) it also needs the day's Sales Submit committed locally: offline
+ * the local record is enough; until the first read answers, check-out stays off (no bypass).
  */
 class AttendanceFlow(
     private val fixes: LocationFixSource,
@@ -65,8 +75,12 @@ class AttendanceFlow(
     private val newUuid: () -> String = ClientIds::newUuid,
     /** Online reverse geocode, display only; null offline or on failure. Never awaited by the commit. */
     private val addressResolver: suspend (Double, Double) -> String? = { _, _ -> null },
+    /** True once the business date's `day_submit` is committed on this phone (and not voided); null: no such gate (TSO). */
+    private val salesSubmitted: (suspend () -> Boolean)? = null,
 ) {
-    private val ui = MutableStateFlow(AttendanceState())
+    /** The last answer of [salesSubmitted]; null before the first read (check-out off meanwhile). */
+    @Volatile private var submitted: Boolean? = null
+    private val ui = MutableStateFlow(AttendanceState(needsSalesSubmit = salesSubmitted != null))
     val state: StateFlow<AttendanceState> = ui.asStateFlow()
 
     /** Restores the screen from today's stored events (survives a kill and relaunch). */
@@ -79,16 +93,43 @@ class AttendanceFlow(
     /** Called when the minute changes so the check-out button enables at 17:00 without a press. */
     fun tick() { ui.value = recompute(ui.value.checkedInAt, ui.value.checkedOutAt, ui.value.addressText, ui.value.lastFixMock) }
 
+    /** Re-reads the local Sales Submit (screen open, resume, back from Sales Submit); a failed read keeps check-out off. */
+    suspend fun refreshSubmit() {
+        salesSubmitted?.let { submitted = readSubmitted(it) }
+        tick()
+    }
+
+    private suspend fun readSubmitted(gate: suspend () -> Boolean): Boolean = try {
+        gate()
+    } catch (t: kotlinx.coroutines.CancellationException) {
+        throw t
+    } catch (_: Throwable) {
+        false
+    }
+
     suspend fun checkIn(): AttendanceResult {
         val s = ui.value
         if (s.checkedInAt != null || s.busy) return AttendanceResult.Ignored
         return capture("check_in", "attendance_in")
     }
 
-    suspend fun checkOut(): AttendanceResult {
+    /**
+     * One press at a time: the gate read suspends between the checks and the busy flag, so a second press (a double
+     * hold-complete) waits here and then finds the day checked out (checker, D-NIGHT-CHECKOUT-01).
+     */
+    suspend fun checkOut(): AttendanceResult = pressLock.withLock { checkOutLocked() }
+
+    private val pressLock = kotlinx.coroutines.sync.Mutex()
+
+    private suspend fun checkOutLocked(): AttendanceResult {
         val s = ui.value
         if (s.checkedInAt == null || s.checkedOutAt != null || s.busy) return AttendanceResult.Ignored
         if (dhakaMinutesNow() < checkoutEarliestMinutes()) return AttendanceResult.Ignored // recomputed, never a stale flag
+        // D-NIGHT-CHECKOUT-01: read again at the press, never a stale flag: no Sales Submit, no check-out.
+        salesSubmitted?.let { gate ->
+            submitted = readSubmitted(gate)
+            if (submitted != true) { tick(); return AttendanceResult.Ignored }
+        }
         return capture("check_out", "attendance_out")
     }
 
@@ -151,11 +192,16 @@ class AttendanceFlow(
         fixFailed = !fix.isOk,
     )
 
-    private fun recompute(inAt: String?, outAt: String?, address: String?, mock: Boolean) = AttendanceState(
-        checkedInAt = inAt, checkedOutAt = outAt, showCheckInPrompt = inAt == null,
-        checkInEnabled = inAt == null,
-        checkOutEnabled = inAt != null && outAt == null && dhakaMinutesNow() >= checkoutEarliestMinutes(),
-        addressText = address, lastFixMock = mock, busy = ui.value.busy,
-        coordinatesText = ui.value.coordinatesText, fixAccuracyM = ui.value.fixAccuracyM, fixFailed = ui.value.fixFailed, readingFix = ui.value.readingFix,
-    )
+    private fun recompute(inAt: String?, outAt: String?, address: String?, mock: Boolean): AttendanceState {
+        val needsSubmit = salesSubmitted != null && submitted != true
+        return AttendanceState(
+            checkedInAt = inAt, checkedOutAt = outAt, showCheckInPrompt = inAt == null,
+            checkInEnabled = inAt == null,
+            checkOutEnabled = inAt != null && outAt == null && !needsSubmit && dhakaMinutesNow() >= checkoutEarliestMinutes(),
+            addressText = address, lastFixMock = mock, busy = ui.value.busy,
+            coordinatesText = ui.value.coordinatesText, fixAccuracyM = ui.value.fixAccuracyM, fixFailed = ui.value.fixFailed, readingFix = ui.value.readingFix,
+            needsSalesSubmit = needsSubmit,
+            checkOutTimeReached = dhakaMinutesNow() >= checkoutEarliestMinutes(),
+        )
+    }
 }

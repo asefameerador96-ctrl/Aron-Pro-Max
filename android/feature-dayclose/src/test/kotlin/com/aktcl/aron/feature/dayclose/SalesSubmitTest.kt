@@ -35,6 +35,24 @@ class SalesSubmitTest {
         assertFalse(CountRow("memo", 6, null).matches)
     }
 
+    /** D-NIGHT-DAYCLOSE-01 (a), the owner's 10:46 screenshot: server above the phone is information, never "Not matching". */
+    @Test fun theServerHoldingMoreThanThePhoneIsInSync() {
+        val owner = listOf(CountRow("visit", 3, 9), CountRow("memo", 4, 10), CountRow("memo_line", 23, 29), CountRow("stock_movement", 4, 4))
+        val g = SalesSubmitRules.gate(clean, owner, noDues, false)
+        assertTrue(g.enabled)
+        assertEquals(listOf(6, 6, 6, 0), owner.map { it.serverExtra })
+        assertFalse(CountRow("memo", 5, 4).matches) // the phone above the server is the mismatch
+        assertEquals(0, CountRow("memo", 5, 4).serverExtra)
+        assertEquals(0, CountRow("memo", 5, null).serverExtra)
+    }
+
+    /** The adapter for contract 1.9 row 4: once the server reports this phone's own count, the rule compares with it. */
+    @Test fun thePerDeviceCountWinsOverTheLoginTotalOnceItArrives() {
+        assertFalse(CountRow("memo", 4, 10, serverThisDevice = 3).matches) // one of this phone's memos is missing on the server
+        assertTrue(CountRow("memo", 4, 10, serverThisDevice = 4).matches)
+        assertFalse(CountRow("memo", 4, 10, serverThisDevice = 0).matches) // a type the digest does not list is zero, not the login total
+    }
+
     @Test fun aSubmittedDayCannotBeSubmittedTwice() {
         assertEquals(listOf(SubmitBlock.AlreadySubmitted), SalesSubmitRules.gate(clean, ok, noDues, true).blocks)
     }

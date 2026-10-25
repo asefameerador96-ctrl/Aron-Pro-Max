@@ -92,12 +92,13 @@ object SrHomeReads {
 
     /**
      * The day state from local facts: attendance (the flow's state), stock issued today, every planned outlet visited,
-     * the check-out time reached (the flow's `checkOutEnabled`, or already checked out) and a day submit stored.
+     * the check-out time reached (checked in and the flow's `checkOutTimeReached`, or already checked out; not
+     * `checkOutEnabled`, which also waits for the Sales Submit since D-NIGHT-CHECKOUT-01) and a day submit stored.
      */
     fun dayState(strip: KpiStrip, attendance: AttendanceState, stockIssued: Boolean, submitted: Boolean): HomeDayState = HomeDayModel.dayState(
         checkedIn = attendance.checkedInAt != null, checkedOut = attendance.checkedOutAt != null, stockIssued = stockIssued,
         routeDone = strip.plannedOutlets > 0 && strip.nonVisitOutlets == 0,
-        afterCheckoutTime = attendance.checkOutEnabled || attendance.checkedOutAt != null, submitted = submitted,
+        afterCheckoutTime = (attendance.checkedInAt != null && attendance.checkOutTimeReached) || attendance.checkedOutAt != null, submitted = submitted,
     )
 
     suspend fun snapshot(day: SrDay, attendance: AttendanceState, locale: UiLocale, categoryLabel: (String) -> String, unitLabel: (String) -> String): SrHomeSnapshot =
