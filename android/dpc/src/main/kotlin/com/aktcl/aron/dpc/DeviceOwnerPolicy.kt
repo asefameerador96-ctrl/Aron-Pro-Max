@@ -58,6 +58,9 @@ class DeviceOwnerPolicy(
 
     fun trustedNow(): Long = trustedNowMs()
 
+    /** The bundle calendar the app configured; null before [configure] or without a bundle. */
+    fun workingDay(businessDate: String): Boolean? = isWorkingDay(businessDate)
+
     @Volatile var lastReport: ApplyReport? = null
         private set
 
@@ -74,10 +77,14 @@ class DeviceOwnerPolicy(
     }
 
     /** Call when the check-in `attendance_event` has committed. */
-    fun onCheckInCommitted(): BlockingOutcome = synchronized(this) { blocking.onCheckIn().also(onBlockingChange) }
+    fun onCheckInCommitted(): BlockingOutcome = synchronized(this) { blocking.onCheckIn().also(onBlockingChange).also { runCatching { mdmHook?.invoke() } } }
 
     /** Call when the check-out `attendance_event` has committed. */
-    fun onCheckOutCommitted(): BlockingOutcome = synchronized(this) { blocking.onCheckOut().also(onBlockingChange) }
+    fun onCheckOutCommitted(): BlockingOutcome = synchronized(this) {
+        // The check-out releases every app the attendance engine held, including ones the MDM rules (allow-list, block
+        // windows) still want suspended; the MDM pass right after re-asserts those, so a check-out never opens them early.
+        blocking.onCheckOut().also(onBlockingChange).also { runCatching { mdmHook?.invoke() } }
+    }
 
     /** [onBlockingChange] runs after every evaluation (it re-arms the hard-end alarm, which a reboot clears); report only `changed` ones. */
     fun reevaluateBlocking(): BlockingOutcome = synchronized(this) { blocking.evaluate().also(onBlockingChange).also { runCatching { mdmHook?.invoke() } } }
@@ -124,10 +131,10 @@ class DeviceOwnerPolicy(
                     val kiosk = com.aktcl.aron.dpc.mdm.AndroidMdmGateway(app)
                     val mdm = com.aktcl.aron.dpc.mdm.MdmPolicyApplier(
                         AndroidSuspendGateway(app), kiosk, mdmStore, dir, { created.trustedNow() }, { store.load() },
-                        { BlockingStore(dir).load().suspended.toSet() },
+                        { BlockingStore(dir).load().suspended.toSet() }, { created.workingDay(it) },
                     )
                     created.mdmApplier = mdm
-                    created.mdmHook = { com.aktcl.aron.dpc.mdm.MdmAlarm.schedule(app, mdm.evaluate().nextBoundaryMs) }
+                    created.mdmHook = { com.aktcl.aron.dpc.mdm.MdmAlarm.schedule(app, mdm.evaluate().nextBoundaryMs, created.trustedNow()) }
                     created.also { instance = it }
                 }
             }

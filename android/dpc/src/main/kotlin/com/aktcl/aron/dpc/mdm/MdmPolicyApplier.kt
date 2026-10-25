@@ -12,7 +12,11 @@ interface KioskGateway {
     fun clearLockTask()
 }
 
-data class MdmOutcome(val activeWindows: Int, val suspended: List<String>, val failed: List<String>, val kioskOn: Boolean, val nextBoundaryMs: Long?)
+data class MdmOutcome(
+    val activeWindows: Int, val suspended: List<String>, val failed: List<String>, val kioskOn: Boolean, val nextBoundaryMs: Long?,
+    /** The work-hours allow-list is blocking now (D-NIGHT-MDM-ALLOWLIST-01). */
+    val allowlistActive: Boolean = false,
+)
 
 /**
  * Applies the MDM policy on top of the device policy: weekday/time block windows (Dhaka, trusted clock), allowed apps,
@@ -29,6 +33,8 @@ class MdmPolicyApplier(
     private val trustedNowMs: () -> Long,
     private val devicePolicy: () -> DevicePolicy?,
     private val heldByAttendance: () -> Set<String> = { emptySet() },
+    /** Business date to working day from the bundle calendar; null when unknown (the allow-list's `calendar` mode then does not block). */
+    private val isWorkingDay: (String) -> Boolean? = { null },
 ) {
     private val stateFile get() = File(dir, "mdm-suspended.txt")
 
@@ -53,13 +59,28 @@ class MdmPolicyApplier(
         if (!gw.isDeviceOwner()) return MdmOutcome(0, prev, emptyList(), false, null)
         val held = heldByAttendance()
         val windows = doc?.let { MdmWindows.active(it, now) }.orEmpty()
-        val never = doc?.allowedPackages.orEmpty().toSet() + devicePolicy()?.appControl?.alwaysAllowedPackages.orEmpty() + gw.ownPackage
-        val target = if (windows.isEmpty()) emptyList() else {
+        val notes = mutableListOf<String>()
+        // The protected set is resolved only when something may be suspended; if it cannot be resolved the allow-list
+        // (which reaches system apps) does not block this round: failing open never locks the dialler away.
+        val wantsAllowlist = MdmAllowlist.isActive(doc?.workHoursAllowlist, now, isWorkingDay)
+        val resolved = if (windows.isEmpty() && !wantsAllowlist) emptySet() else runCatching { gw.protectedPackages() }.getOrNull()
+        if (resolved == null) notes += PROTECTED_UNRESOLVED
+        val allowlistActive = wantsAllowlist && resolved != null
+        val kioskPkgs = doc?.kiosk?.takeIf { it.enabled }?.packages.orEmpty()
+        val never = doc?.allowedPackages.orEmpty().toSet() + devicePolicy()?.appControl?.alwaysAllowedPackages.orEmpty() + gw.ownPackage +
+            kioskPkgs + resolved.orEmpty() + ALWAYS_PROTECTED
+        val target = if (windows.isEmpty() && !allowlistActive) emptyList() else {
             val installed = gw.installed()
             val names = installed.map { it.packageName }.toSet()
-            windows.flatMap { w ->
+            val fromWindows = windows.flatMap { w ->
                 if (w.packages.isEmpty()) installed.filter { it.launchable && !it.system }.map { it.packageName } else w.packages.filter { it in names }
-            }.filter { it !in never }.distinct().sorted()
+            }
+            // The allow-list reaches every launcher-visible app, system apps included (YouTube, Chrome, the camera).
+            val fromAllowlist = if (allowlistActive) {
+                val allowed = doc!!.workHoursAllowlist!!.packages.toSet()
+                installed.filter { it.launchable && it.packageName !in allowed }.map { it.packageName }
+            } else emptyList()
+            (fromWindows + fromAllowlist).filter { it !in never && !isProtected(it) }.distinct().sorted()
         }
         val toRelease = prev.filter { it !in target && it !in held }
         // Write-ahead like BlockingEngine: record before suspending so a crash never strands a suspended app.
@@ -69,7 +90,7 @@ class MdmPolicyApplier(
         val after = (target + failedRelease).distinct().sorted()
         saveSuspended(after)
         val kioskOn = applyKiosk(doc?.kiosk)
-        return MdmOutcome(windows.size, after, (failedRelease + failedSuspend).distinct(), kioskOn, doc?.let { MdmWindows.nextBoundaryMs(it, now) })
+        return MdmOutcome(windows.size, after, (failedRelease + failedSuspend + notes).distinct(), kioskOn, doc?.let { MdmWindows.nextBoundaryMs(it, now) }, allowlistActive)
     }
 
     private fun applyKiosk(k: MdmKiosk?): Boolean = runCatching {
@@ -79,4 +100,30 @@ class MdmPolicyApplier(
             true
         } else { kiosk.clearLockTask(); false }
     }.getOrDefault(false)
+
+    companion object {
+        /** Reported in [MdmOutcome.failed] when the protected set could not be resolved (the allow-list did not block). */
+        const val PROTECTED_UNRESOLVED = "protected_unresolved"
+
+        /** Every ARON app and its test copies. */
+        const val ARON_PREFIX = "com.aktcl.aron."
+
+        /**
+         * Never suspended by MDM, whatever the policy or the phone's resolvers say: system UI, Settings, telephony and the
+         * common diallers, emergency and cell broadcast, the installer and permission controller, the AOSP launcher, the SIM
+         * toolkit (USSD, mobile money), the clock apps (alarms) and the WebView providers.
+         */
+        val ALWAYS_PROTECTED = setOf(
+            "android", "com.android.systemui", "com.android.settings", "com.android.phone", "com.android.server.telecom",
+            "com.android.dialer", "com.google.android.dialer", "com.android.incallui", "com.samsung.android.dialer",
+            "com.huawei.contacts", "com.hihonor.contacts", "com.android.contacts", "com.android.emergency",
+            "com.google.android.apps.safetyhub", "com.android.cellbroadcastreceiver", "com.google.android.cellbroadcastreceiver",
+            "com.android.permissioncontroller", "com.google.android.permissioncontroller", "com.android.packageinstaller",
+            "com.google.android.packageinstaller", "com.android.launcher3", "com.android.inputmethod.latin",
+            "com.android.stk", "com.android.deskclock", "com.google.android.deskclock", "com.hihonor.deskclock", "com.huawei.deskclock",
+            "com.google.android.webview", "com.android.webview",
+        )
+
+        fun isProtected(pkg: String): Boolean = pkg in ALWAYS_PROTECTED || pkg.startsWith(ARON_PREFIX)
+    }
 }
