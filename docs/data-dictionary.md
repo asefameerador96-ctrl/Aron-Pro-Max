@@ -19,7 +19,7 @@ Removals are rare and listed here (a wrong column is removed, never redefined in
 
 | Schema | Relations | Columns |
 |---|---|---|
-| `app` | 156 | 2691 |
+| `app` | 156 | 2692 |
 | `dw` | 45 | 689 |
 
 ## Index
@@ -1500,6 +1500,7 @@ Catalogue of domain-event types and payload versions; every outbox row must name
 | `introduced_in` | text | not null |  | Migration that added this version. |
 | `deprecated_at` | timestamp with time zone | null |  | UTC instant producers stopped writing this version; null while current. |
 | `enforce_required` | boolean | not null |  | True once the producer sends the required keys; the insert trigger then refuses a payload without them. |
+| `status` | app.domain_event_status | not null |  | live: a backend producer writes this type today; planned: catalogued, no producer yet (consumers must not wait for it). |
 
 Keys: `PRIMARY KEY (event_type, payload_version)`
 

@@ -14,24 +14,28 @@ The outbox `app.domain_event` is read in `id` order by the aggregate projector a
   a key required adds a new version (a db migration; ask through docs/requests). A published schema never changes.
 - Producers write the newest version that is not deprecated; consumers handle every version that is not
   deprecated and ignore keys they do not know.
+- Events are thin notices (D-DATA-OUTBOX-ROLE-01): a consumer that needs the figures reads the source row or
+  the `dw` views, and the data lake reads only the views. **Status** `live` means a backend producer writes the
+  type today; `planned` means it is catalogued with no producer yet, so no consumer may wait for it (V0117).
 
 | Event | Version | Aggregate | aggregate_id | Producer | Status | Required keys enforced |
 |---|---|---|---|---|---|---|
-| [`day_exception.decided`](#day_exceptiondecided-v1) | 1 | `day_exception` | `day_exception.client_uuid` | backend:masterdata | current | not yet |
-| [`due.collected`](#duecollected-v1) | 1 | `due_collection` | `due_collection.client_uuid` | backend:sync | current | not yet |
-| [`memo.created`](#memocreated-v1) | 1 | `memo` | `memo.client_uuid` | backend:sync | current | not yet |
-| [`memo.voided`](#memovoided-v1) | 1 | `memo` | `memo.client_uuid` | backend:sync | current | not yet |
-| [`outlet.changed`](#outletchanged-v1) | 1 | `outlet` | `outlet.id` | backend:masterdata | current | not yet |
-| [`risk_signal.changed`](#risk_signalchanged-v1) | 1 | `risk_signal` | `risk_signal.id` | backend:masterdata, backend:sync | current | not yet |
-| [`route_day.state_changed`](#route_daystate_changed-v1) | 1 | `route_day` | `route_day.id` | backend:sync | current | not yet |
-| [`stock.moved`](#stockmoved-v1) | 1 | `stock_movement` | `stock_movement.client_uuid` | backend:sync | current | not yet |
-| [`target.revised`](#targetrevised-v1) | 1 | `target_set` | `target_set.id` | backend:analytics | current | not yet |
-| [`tracking_action.created`](#tracking_actioncreated-v1) | 1 | `tracking_action` | `tracking action uuid (audit_log.entity_id)` | backend:analytics | current | not yet |
-| [`visit.closed`](#visitclosed-v1) | 1 | `visit` | `visit.client_uuid` | backend:sync | current | not yet |
+| [`day_exception.decided`](#day_exceptiondecided-v1) | 1 | `day_exception` | `day_exception.client_uuid` | backend:masterdata | planned | not yet |
+| [`due.collected`](#duecollected-v1) | 1 | `due_collection` | `due_collection.client_uuid` | backend:sync | planned | not yet |
+| [`memo.created`](#memocreated-v1) | 1 | `memo` | `memo.client_uuid` | backend:sync | live | not yet |
+| [`memo.superseded`](#memosuperseded-v1) | 1 | `memo` | `memo.client_uuid` | backend:sync | planned | not yet |
+| [`memo.voided`](#memovoided-v1) | 1 | `memo` | `memo.client_uuid` | backend:sync | live | not yet |
+| [`outlet.changed`](#outletchanged-v1) | 1 | `outlet` | `outlet.id` | backend:masterdata | planned | not yet |
+| [`risk_signal.changed`](#risk_signalchanged-v1) | 1 | `risk_signal` | `risk_signal.id` | backend:masterdata, backend:sync | planned | not yet |
+| [`route_day.state_changed`](#route_daystate_changed-v1) | 1 | `route_day` | `route_day.id` | backend:sync | planned | not yet |
+| [`stock.moved`](#stockmoved-v1) | 1 | `stock_movement` | `stock_movement.client_uuid` | backend:sync | live | not yet |
+| [`target.revised`](#targetrevised-v1) | 1 | `target_set` | `target_set.id` | backend:analytics | planned | not yet |
+| [`tracking_action.created`](#tracking_actioncreated-v1) | 1 | `tracking_action` | `tracking action uuid (audit_log.entity_id)` | backend:analytics | planned | not yet |
+| [`visit.closed`](#visitclosed-v1) | 1 | `visit` | `visit.client_uuid` | backend:sync | live | not yet |
 
 ## day_exception.decided v1
 
-A day exception was approved or rejected; one event per affected route. Introduced in V0036; current.
+A day exception was approved or rejected; one event per affected route. Introduced in V0036; planned.
 
 | Key | Type | Required | Description |
 |---|---|---|---|
@@ -42,7 +46,7 @@ A day exception was approved or rejected; one event per affected route. Introduc
 
 ## due.collected v1
 
-A due collection was accepted; the route-day and outlet dues are recomputed. Introduced in V0036; current.
+A due collection was accepted; the route-day and outlet dues are recomputed. Introduced in V0036; planned.
 
 | Key | Type | Required | Description |
 |---|---|---|---|
@@ -53,7 +57,7 @@ A due collection was accepted; the route-day and outlet dues are recomputed. Int
 
 ## memo.created v1
 
-A memo was accepted (ingest or web entry). The projector adds it to the day aggregates of its route, outlet and SKUs. Introduced in V0017; current.
+A memo was accepted (ingest or web entry). The projector adds it to the day aggregates of its route, outlet and SKUs. Introduced in V0017; live.
 
 | Key | Type | Required | Description |
 |---|---|---|---|
@@ -70,9 +74,21 @@ A memo was accepted (ingest or web entry). The projector adds it to the day aggr
 | `paid_mtk` | integer | no |  |
 | `visit_uuid` | string or null (uuid) | no | memo.visit_client_uuid |
 
+## memo.superseded v1
+
+An edit replaced a memo: the superseded memo leaves the day figures and the superseding memo counts once; both business dates are recomputed. Introduced in V0117; planned.
+
+| Key | Type | Required | Description |
+|---|---|---|---|
+| `business_date` | string (date) | yes | business date of the superseded memo |
+| `memo_uuid` | string (uuid) | yes | the superseded memo |
+| `route_id` | integer or null | yes | null for a memo without a route (contract 1.9 MemoView.route_id) |
+| `superseded_by_uuid` | string (uuid) | yes | the memo whose supersedes_client_uuid is memo_uuid (app.memo.superseded_by_client_uuid) |
+| `superseding_business_date` | string or null (date) | no | business date of the superseding memo when it differs |
+
 ## memo.voided v1
 
-A memo was voided (data-void tombstone or Final Submit void). The projector removes it from the day aggregates. Introduced in V0017; current.
+A memo was voided (data-void tombstone or Final Submit void). The projector removes it from the day aggregates. Introduced in V0017; live.
 
 | Key | Type | Required | Description |
 |---|---|---|---|
@@ -83,7 +99,7 @@ A memo was voided (data-void tombstone or Final Submit void). The projector remo
 
 ## outlet.changed v1
 
-An outlet was created, edited, moved, merged or closed. Names, phones and coordinates are not in the payload. Introduced in V0017; current.
+An outlet was created, edited, moved, merged or closed. Names, phones and coordinates are not in the payload. Introduced in V0017; planned.
 
 | Key | Type | Required | Description |
 |---|---|---|---|
@@ -96,7 +112,7 @@ An outlet was created, edited, moved, merged or closed. Names, phones and coordi
 
 ## risk_signal.changed v1
 
-A risk signal was raised (masterdata risk rules) or reviewed (sync risk_review records); the subject's day figures and integrity views are recomputed. Introduced in V0036; current.
+A risk signal was raised (masterdata risk rules) or reviewed (sync risk_review records); the subject's day figures and integrity views are recomputed. Introduced in V0036; planned.
 
 | Key | Type | Required | Description |
 |---|---|---|---|
@@ -110,7 +126,7 @@ A risk signal was raised (masterdata risk rules) or reviewed (sync risk_review r
 
 ## route_day.state_changed v1
 
-A route-day moved state (logged in, in field, synced, submitted, final submitted, voided). Introduced in V0017; current.
+A route-day moved state (logged in, in field, synced, submitted, final submitted, voided). Introduced in V0017; planned.
 
 | Key | Type | Required | Description |
 |---|---|---|---|
@@ -123,7 +139,7 @@ A route-day moved state (logged in, in field, synced, submitted, final submitted
 
 ## stock.moved v1
 
-A stock ledger row was accepted (issue, return, adjustment, damaged, short). Introduced in V0017; current.
+A stock ledger row was accepted (issue, return, adjustment, damaged, short). Introduced in V0017; live.
 
 | Key | Type | Required | Description |
 |---|---|---|---|
@@ -136,7 +152,7 @@ A stock ledger row was accepted (issue, return, adjustment, damaged, short). Int
 
 ## target.revised v1
 
-A target revision was committed (Phase 2 target engine; deferred programme, docs/27). Introduced in V0017; current.
+A target revision was committed (Phase 2 target engine; deferred programme, docs/27). Introduced in V0017; planned.
 
 | Key | Type | Required | Description |
 |---|---|---|---|
@@ -147,7 +163,7 @@ A target revision was committed (Phase 2 target engine; deferred programme, docs
 
 ## tracking_action.created v1
 
-A supervisor recorded a daily-tracking action on a route-day; the notify module nudges the route's TSO and AMO. Introduced in V0022; current.
+A supervisor recorded a daily-tracking action on a route-day; the notify module nudges the route's TSO and AMO. Introduced in V0022; planned.
 
 | Key | Type | Required | Description |
 |---|---|---|---|
@@ -158,7 +174,7 @@ A supervisor recorded a daily-tracking action on a route-day; the notify module 
 
 ## visit.closed v1
 
-A visit was accepted with its geo verdict. The projector counts calls, strike rate and geo validity. Introduced in V0017; current.
+A visit was accepted with its geo verdict. The projector counts calls, strike rate and geo validity. Introduced in V0017; live.
 
 | Key | Type | Required | Description |
 |---|---|---|---|
