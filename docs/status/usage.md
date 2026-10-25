@@ -779,3 +779,8 @@
 
 ### 04:47 UTC — lane check (04:46 cron)
 - Dev health: ok build 5a193330. INT unchanged at train 39 (5a193330). No owner message since the deck request at 03:5x (answered: deck cut to 2 pages, 87% figure). Lanes idle: integrator 21, mdm #3, android-print #5, web-admin #8. Nothing queued; the 06:30 morning trigger opens the day.
+
+### 06:35 UTC — morning pass (06:30 trigger)
+- State: INT 5a193330 (train 39), health ok on 5a193330, nothing queued; no owner message since the 2-page deck request (03:5x, answered). Night package complete: trains 36–39, DECISIONS 65 → 99, builds 1576/1583/1585.
+- Day lanes created 06:33 (all with source_url + source_revision + model): backend-core #19 session_01DapAXf4GnxsqbgPVW4a15G (Opus), db #12 session_0177kTeARAu1WZPFmKwmc88i (Opus), qa #3 session_01DRRqX8BftiMitu8F5fNSp8 (Sonnet), lead-docs-pass session_01CjDyoXZHX7MJJVe45KGRKk (Sonnet, branch lane/lead-docs-pass). Held for the afternoon because of the account's seven-day usage warning (docs/29 budget): backend-reports #6 (rows 2–3 as-was attribution, rebuild/reconcile) and infra (row 7 lake and blobs) — created after the morning trains land. Still alive from the night: integrator 21, mdm #3, android-print #5, web-admin #8 (idle).
+- Triggers: evening report one-shot 15:00 UTC (created now); lane-check cron refreshed with the day set; the 06:30 trigger is spent.
