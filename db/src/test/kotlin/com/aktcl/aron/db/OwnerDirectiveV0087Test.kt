@@ -197,7 +197,8 @@ class OwnerDirectiveV0087Test {
                 )
                 c.scalar(viewCols)
             }
-            other.flyway().migrate()
+            // To V0110 only: a later additive column (V0116 data_origin) is not this migration's change.
+            other.flyway().let { org.flywaydb.core.Flyway.configure().configuration(it.configuration).target("110").load() }.migrate()
             other.connect().use { c ->
                 assertEquals("0", c.scalar("SELECT count(*) FROM information_schema.columns WHERE table_schema = 'dw' AND table_name = 'agg_daily_outlet' AND column_name = 'sold_qty_base'"))
                 assertEquals("2026-10-05|1|40|0|50|3|10000", c.scalar(

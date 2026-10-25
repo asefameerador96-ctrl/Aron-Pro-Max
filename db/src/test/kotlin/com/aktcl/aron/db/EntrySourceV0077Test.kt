@@ -113,8 +113,8 @@ class EntrySourceV0077Test {
                 "3|1",
                 scalar("SELECT active_memo_count || '|' || memos_entered_manually FROM dw.v_daily_sr WHERE business_date = DATE '2026-10-08' AND user_id = (SELECT id FROM app.app_user WHERE username = 'sr1001')"),
             )
-            // The appended column is last, so readers of the V0015 columns see them unchanged.
-            assertEquals("memos_entered_manually", scalar("SELECT column_name FROM information_schema.columns WHERE table_schema = 'dw' AND table_name = 'v_daily_sr' ORDER BY ordinal_position DESC LIMIT 1"))
+            // The appended column is last, so readers of the V0015 columns see them unchanged (V0116 appends data_origin after it).
+            assertEquals("memos_entered_manually", scalar("SELECT column_name FROM information_schema.columns WHERE table_schema = 'dw' AND table_name = 'v_daily_sr' AND column_name <> 'data_origin' ORDER BY ordinal_position DESC LIMIT 1"))
         }
         assertEquals("true", c.scalar("SELECT has_table_privilege('web_ro', 'dw.v_daily_sr', 'SELECT')::text"))
     }

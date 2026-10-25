@@ -19,8 +19,8 @@ Removals are rare and listed here (a wrong column is removed, never redefined in
 
 | Schema | Relations | Columns |
 |---|---|---|
-| `app` | 155 | 2636 |
-| `dw` | 45 | 657 |
+| `app` | 156 | 2691 |
+| `dw` | 45 | 689 |
 
 ## Index
 
@@ -52,6 +52,7 @@ Removals are rare and listed here (a wrong column is removed, never redefined in
 | [`app.code_list_item`](#appcode_list_item) | table | backend:masterdata | ONLINE | master | none | One code of a business code list with English and Bangla labels; codes never change, only retire. |
 | [`app.content_item`](#appcontent_item) | table | backend:masterdata | ONLINE | master | none | An audio-visual or key-visual item played during sales calls, with its asset, size and version. |
 | [`app.content_view`](#appcontent_view) | table | backend:sync | OFFLINE | telemetry | none | One showing or skipping of a content item during a call. |
+| [`app.data_origin_capture`](#appdata_origin_capture) | table | db | REFERENCE | master | none | Registry of the app tables whose rows carry data_origin (stamped at insert by app.stamp_data_origin, re-derived by app.restamp_data_origin); a child row also takes its parent's origin. |
 | [`app.day_exception`](#appday_exception) | table | backend:sync | OFFLINE | transaction | personal | A rain, hartal or other day exception raised from the field for routes and dates, decided by the zone TSO. |
 | [`app.db_role_grant`](#appdb_role_grant) | table | db | REFERENCE | master | none | Least-privilege grant map of the database roles; app.apply_db_role_grants() generates every GRANT from it. |
 | [`app.db_role_limit`](#appdb_role_limit) | table | db | REFERENCE | master | none | Session limits per privilege role (docs/18 s2.6); app.apply_login_limits() writes them onto the login identities. |
@@ -409,6 +410,7 @@ One person who can log in, field or web, with role, status, locale and Argon2id 
 | `version` | integer | not null |  | Optimistic-concurrency version; increases by one on every update. |
 | `created_by` | bigint | null |  | User who created the row (null for migrations and jobs). |
 | `updated_by` | bigint | null |  | User who last updated the row. |
+| `data_origin` | app.data_origin | not null |  | Origin of the account: production (default for real users), pilot, test (test accounts) or seed; stamped onto every capture row of this user. |
 
 Keys: `UNIQUE (external_ref)`; `PRIMARY KEY (id)`
 
@@ -502,6 +504,7 @@ One check-in or check-out of a user with its on-demand location fix.
 | `fix_accuracy_m` | double precision | null | personal | Accuracy in metres of the location fix taken with the record. |
 | `fix_is_mock` | boolean | null |  | True when the phone flagged the fix as coming from a mock location provider. |
 | `address_display` | text | null | personal | Reverse-geocoded address shown for display only; never used for a decision. |
+| `data_origin` | app.data_origin | null |  | Origin of the row (production, pilot, test, seed): the most synthetic of its users, outlet, route, stamped at insert; changes only through app.restamp_data_origin. |
 
 Keys: `UNIQUE (client_uuid)`; `UNIQUE (external_ref)`; `PRIMARY KEY (id)`
 
@@ -639,6 +642,7 @@ One AMO or TSO joint-call assessment or retailer questionnaire for a visit, with
 | `total_score` | integer | not null |  | Sum of the criterion scores awarded. |
 | `max_score` | integer | not null |  | Maximum score possible for the rubric. |
 | `delegate_task` | boolean | not null |  | True when the assessor delegated a follow-up task. |
+| `data_origin` | app.data_origin | null |  | Origin of the row (production, pilot, test, seed): the most synthetic of its users, outlet, route, stamped at insert; changes only through app.restamp_data_origin. |
 
 Keys: `UNIQUE (client_uuid)`; `UNIQUE (external_ref)`; `PRIMARY KEY (id)`
 
@@ -680,6 +684,7 @@ One criterion answer (score, text or yes/no) of a call assessment.
 | `score` | smallint | null |  | Score awarded for the criterion, when it is scored. |
 | `answer_text` | text | null | personal | Free-text answer to the criterion. |
 | `answer_bool` | boolean | null |  | Yes or no answer to the criterion. |
+| `data_origin` | app.data_origin | null |  | Origin of the row (production, pilot, test, seed): the most synthetic of its users, outlet, route and parent row (app.call_assessment), stamped at insert; changes only through app.restamp_data_origin. |
 
 Keys: `UNIQUE (client_uuid)`; `UNIQUE (external_ref)`; `PRIMARY KEY (id)`
 
@@ -994,6 +999,22 @@ Keys: `UNIQUE (client_uuid)`; `UNIQUE (external_ref)`; `PRIMARY KEY (id)`
 
 References: `FOREIGN KEY (acting_for_user_id) REFERENCES app.app_user(id)`; `FOREIGN KEY (content_id) REFERENCES app.content_item(id)`; `FOREIGN KEY (device_id) REFERENCES app.device(id)`; `FOREIGN KEY (route_id) REFERENCES app.route(id)`; `FOREIGN KEY (user_id) REFERENCES app.app_user(id)`
 
+## app.data_origin_capture
+
+Registry of the app tables whose rows carry data_origin (stamped at insert by app.stamp_data_origin, re-derived by app.restamp_data_origin); a child row also takes its parent's origin.
+
+`owner: db | capture: REFERENCE | retention: master | pii: none` · table
+
+| Column | Type | Null | PII | Description |
+|---|---|---|---|---|
+| `table_name` | text | not null |  | App table (schema app) whose rows carry data_origin. |
+| `parent` | text | null |  | Parent app table of a child row (null for a row stamped from its own keys only). |
+| `child_col` | text | null |  | Column of the child row holding the parent's client UUID. |
+| `parent_col` | text | null |  | Column of the parent the child column points at. |
+| `pass` | smallint | not null |  | Restamp order: 1 = rows stamped from their own keys, 2 = child rows (after their parents). |
+
+Keys: `PRIMARY KEY (table_name)`
+
 ## app.day_exception
 
 A rain, hartal or other day exception raised from the field for routes and dates, decided by the zone TSO.
@@ -1034,6 +1055,7 @@ A rain, hartal or other day exception raised from the field for routes and dates
 | `decided_by` | bigint | null |  | User who took the decision. |
 | `decided_at` | timestamp with time zone | null |  | UTC instant of the decision. |
 | `decision_note` | text | null |  | Free-text note entered with the decision. |
+| `data_origin` | app.data_origin | null |  | Origin of the row (production, pilot, test, seed): the most synthetic of its users, outlet, route, stamped at insert; changes only through app.restamp_data_origin. |
 
 Keys: `UNIQUE (client_uuid)`; `UNIQUE (external_ref)`; `PRIMARY KEY (id)`
 
@@ -1364,6 +1386,7 @@ One AMO or TSO distribution check of a visited outlet.
 | `visit_client_uuid` | uuid | not null |  | client_uuid of the visit the row belongs to. |
 | `posm_present` | boolean | null |  | True when point-of-sale material was present at the outlet. |
 | `note` | text | null |  | Free-text note. |
+| `data_origin` | app.data_origin | null |  | Origin of the row (production, pilot, test, seed): the most synthetic of its users, outlet, route, stamped at insert; changes only through app.restamp_data_origin. |
 
 Keys: `UNIQUE (client_uuid)`; `UNIQUE (external_ref)`; `PRIMARY KEY (id)`
 
@@ -1404,6 +1427,7 @@ Presence and out-of-stock flags for one brand in a distribution check.
 | `brand_id` | bigint | not null |  | Product brand (app.product_node of level brand). |
 | `present` | boolean | not null |  | True when the brand was present in the outlet. |
 | `oos` | boolean | not null |  | True when the brand was out of stock; implies present. |
+| `data_origin` | app.data_origin | null |  | Origin of the row (production, pilot, test, seed): the most synthetic of its users, outlet, route and parent row (app.distribution_check), stamped at insert; changes only through app.restamp_data_origin. |
 
 Keys: `UNIQUE (client_uuid)`; `UNIQUE (external_ref)`; `PRIMARY KEY (id)`
 
@@ -1527,6 +1551,7 @@ Cash collected against an earlier credit memo, with the collecting location fix.
 | `fix_is_mock` | boolean | null |  | True when the phone flagged the fix as coming from a mock location provider. |
 | `zone_id` | bigint | null |  | Zone of the route on the business date, frozen at capture (never rewritten by a later route move). |
 | `cluster_id` | bigint | null |  | Cluster of the outlet on the business date, frozen at capture (null without an outlet). |
+| `data_origin` | app.data_origin | null |  | Origin of the row (production, pilot, test, seed): the most synthetic of its users, outlet, route, stamped at insert; changes only through app.restamp_data_origin. |
 
 Keys: `UNIQUE (client_uuid)`; `UNIQUE (external_ref)`; `PRIMARY KEY (id)`
 
@@ -1551,6 +1576,7 @@ Append-only ledger of an outlet's outstanding dues: credit memos and opening bal
 | `user_id` | bigint | null |  | User (app.app_user); for device records the capturing user from the token. |
 | `note` | text | null |  | Free-text note. |
 | `created_at` | timestamp with time zone | not null |  | UTC instant the row was inserted on the server. |
+| `data_origin` | app.data_origin | null |  | Origin of the row (production, pilot, test, seed): the most synthetic of its users, outlet, route, stamped at insert; changes only through app.restamp_data_origin. |
 
 Keys: `UNIQUE (source_client_uuid, entry_kind)`; `PRIMARY KEY (id)`
 
@@ -1684,6 +1710,7 @@ Free-text feedback or problem report sent from the TSO app, with optional photo.
 | `title` | text | not null |  | Short title of the feedback. |
 | `description` | text | not null | personal | Body of the feedback as written by the TSO. |
 | `photo_uuid` | uuid | null |  | Media uuid (app.media) of the photo attached to the row. |
+| `data_origin` | app.data_origin | null |  | Origin of the row (production, pilot, test, seed): the most synthetic of its users, outlet, route, stamped at insert; changes only through app.restamp_data_origin. |
 
 Keys: `UNIQUE (client_uuid)`; `UNIQUE (external_ref)`; `PRIMARY KEY (id)`
 
@@ -1701,6 +1728,7 @@ One row is the support-inbox status of a feedback item; a feedback item without 
 | `status` | text | not null |  | Inbox status; allowed values are listed under constraints. |
 | `updated_at` | timestamp with time zone | not null |  | UTC instant of the last update. |
 | `updated_by` | bigint | null |  | User who last set the status. |
+| `data_origin` | app.data_origin | null |  | Origin of the row (production, pilot, test, seed): the most synthetic of its users, outlet, route and parent row (app.feedback), stamped at insert; changes only through app.restamp_data_origin. |
 
 Keys: `PRIMARY KEY (feedback_client_uuid)`
 
@@ -1728,6 +1756,7 @@ Final Submit of a zone and business date, made online by the TSO, unless reopene
 | `reopen_reason` | text | null |  | Reason given for reopening. |
 | `reopen_client_uuid` | uuid | null |  | Client UUID of the reopen command, for idempotent replay. |
 | `created_at` | timestamp with time zone | not null |  | UTC instant the row was inserted on the server. |
+| `data_origin` | app.data_origin | null |  | Origin of the row (production, pilot, test, seed): the most synthetic of its users, outlet, route, stamped at insert; changes only through app.restamp_data_origin. |
 
 Keys: `UNIQUE (client_uuid)`; `UNIQUE (reopen_client_uuid)`; `PRIMARY KEY (id)`
 
@@ -1768,6 +1797,7 @@ Batched low-power location points recorded only while breadcrumbs are enabled by
 | `fix_lng` | double precision | null | personal | Longitude of the user's location fix taken with the record (WGS84 degrees). |
 | `fix_accuracy_m` | double precision | null | personal | Accuracy in metres of the location fix taken with the record. |
 | `fix_is_mock` | boolean | null |  | True when the phone flagged the fix as coming from a mock location provider. |
+| `data_origin` | app.data_origin | null |  | Origin of the row (production, pilot, test, seed): the most synthetic of its users, outlet, route, stamped at insert; changes only through app.restamp_data_origin. |
 
 Keys: `UNIQUE (client_uuid, business_date)`; `UNIQUE (external_ref, business_date)`; `PRIMARY KEY (id, business_date)`
 
@@ -1837,6 +1867,7 @@ One location fix carried by a record, with accuracy, provider and sensor evidenc
 | `received_at` | timestamp with time zone | not null |  | UTC instant the server received the row. |
 | `created_at` | timestamp with time zone | not null |  | UTC instant the row was inserted on the server. |
 | `voided_at` | timestamp with time zone | null |  | UTC time an admin data void tombstoned the row; the row is never deleted. |
+| `data_origin` | app.data_origin | null |  | Origin of the row (production, pilot, test, seed): the most synthetic of its users, outlet, route, stamped at insert; changes only through app.restamp_data_origin. |
 
 Keys: `UNIQUE (source_client_uuid, slot, business_date)`; `PRIMARY KEY (id, business_date)`
 
@@ -1889,6 +1920,7 @@ An Astha gift chosen for an outlet and quarter, locked by the hand-over photo.
 | `created_at` | timestamp with time zone | not null |  | UTC instant the row was inserted on the server. |
 | `updated_at` | timestamp with time zone | not null |  | UTC instant of the last update. |
 | `version` | integer | not null |  | Optimistic-concurrency version; increases by one on every update. |
+| `data_origin` | app.data_origin | null |  | Origin of the row (production, pilot, test, seed): the most synthetic of its users, outlet, route, stamped at insert; changes only through app.restamp_data_origin. |
 
 Keys: `UNIQUE (programme_id, quarter, outlet_id)`; `PRIMARY KEY (id)`
 
@@ -1938,6 +1970,7 @@ Hand-over photo record of a gift, one per Astha assignment or redeemed campaign 
 | `fix_lng` | double precision | null | personal | Longitude of the user's location fix taken with the record (WGS84 degrees). |
 | `fix_accuracy_m` | double precision | null | personal | Accuracy in metres of the location fix taken with the record. |
 | `fix_is_mock` | boolean | null |  | True when the phone flagged the fix as coming from a mock location provider. |
+| `data_origin` | app.data_origin | null |  | Origin of the row (production, pilot, test, seed): the most synthetic of its users, outlet, route, stamped at insert; changes only through app.restamp_data_origin. |
 
 Keys: `UNIQUE (client_uuid)`; `UNIQUE (external_ref)`; `PRIMARY KEY (id)`
 
@@ -2012,6 +2045,7 @@ Phase 2 indent-portal stock ledger with the same shape as stock_movement; empty 
 | `qty_base` | integer | not null |  | Quantity in the SKU's base unit (sticks, pieces or dozens). |
 | `reason_code` | text | null |  | Reason code from the matching business code list (app.code_list_item). |
 | `slip_printed` | boolean | not null |  | True when a stock slip was printed for the movement. |
+| `data_origin` | app.data_origin | null |  | Origin of the row (production, pilot, test, seed): the most synthetic of its users, outlet, route, stamped at insert; changes only through app.restamp_data_origin. |
 
 Keys: `UNIQUE (client_uuid)`; `UNIQUE (external_ref)`; `PRIMARY KEY (id)`
 
@@ -2085,6 +2119,7 @@ A TSO leave application with dates and reason, decided on the web.
 | `decided_by` | bigint | null |  | User who took the decision. |
 | `decided_at` | timestamp with time zone | null |  | UTC instant of the decision. |
 | `decision_note` | text | null | personal | Free-text note entered with the decision. |
+| `data_origin` | app.data_origin | null |  | Origin of the row (production, pilot, test, seed): the most synthetic of its users, outlet, route, stamped at insert; changes only through app.restamp_data_origin. |
 
 Keys: `UNIQUE (client_uuid)`; `UNIQUE (external_ref)`; `PRIMARY KEY (id)`
 
@@ -2108,6 +2143,7 @@ Append-only points ledger derived on the server, idempotent per source record.
 | `expires_on` | date | null |  | Date the earned points expire; null when they do not expire. |
 | `flags` | text[] | not null |  | Text flags set on the entry, for example negative_balance. |
 | `created_at` | timestamp with time zone | not null |  | UTC instant the row was inserted on the server. |
+| `data_origin` | app.data_origin | null |  | Origin of the row (production, pilot, test, seed): the most synthetic of its users, outlet, route, stamped at insert; changes only through app.restamp_data_origin. |
 
 Keys: `UNIQUE (source_type, source_id)`; `PRIMARY KEY (id)`
 
@@ -2185,6 +2221,7 @@ Metadata of a photo taken in the field with its location fix and Blob Storage pa
 | `stored_at` | timestamp with time zone | null |  | UTC time the image arrived in Blob Storage. |
 | `blob_bytes` | integer | null |  | Size in bytes of the stored image, checked against the declared size. |
 | `blob_sha256` | bytea | null |  | SHA-256 of the stored image, checked against the declared digest. |
+| `data_origin` | app.data_origin | null |  | Origin of the row (production, pilot, test, seed): the most synthetic of its users, outlet, route, stamped at insert; changes only through app.restamp_data_origin. |
 
 Keys: `UNIQUE (blob_path)`; `UNIQUE (client_uuid)`; `UNIQUE (external_ref)`; `PRIMARY KEY (id)`
 
@@ -2279,6 +2316,7 @@ One sales memo header (or zero-sale record) for an outlet visit, with gross, dis
 | `outlet_geo_class` | text | null |  | Outlet geo class code at capture (as the outlet master held it at ingest). |
 | `entry_source` | text | not null |  | device = captured on the phone; manual = keyed on the web from the printed memo (paper backfill, F-API-038). |
 | `entered_by_user_id` | bigint | null |  | Web user who keyed in a manual memo (app.app_user); null on device rows. |
+| `data_origin` | app.data_origin | null |  | Origin of the row (production, pilot, test, seed): the most synthetic of its users, outlet, route, stamped at insert; changes only through app.restamp_data_origin. |
 
 Keys: `UNIQUE (client_uuid, business_date)`; `UNIQUE (external_ref, business_date)`; `PRIMARY KEY (id, business_date)`
 
@@ -2324,6 +2362,7 @@ One discount component of a memo: offer, DRP or free goods, with SKU, quantity a
 | `offer_version_id` | bigint | null |  | Offer version (app.offer_version) applied. |
 | `basis_qty_base` | integer | null |  | For DRP discounts, empties collected in base units. |
 | `line_no` | smallint | null |  | Memo line the discount applies to; null for a memo-level discount. |
+| `data_origin` | app.data_origin | null |  | Origin of the row (production, pilot, test, seed): the most synthetic of its users, outlet, route and parent row (app.memo), stamped at insert; changes only through app.restamp_data_origin. |
 
 Keys: `UNIQUE (client_uuid)`; `UNIQUE (external_ref)`; `PRIMARY KEY (id)`
 
@@ -2374,6 +2413,7 @@ One SKU line of a memo with quantity, base price and gross amount.
 | `price_per_qty` | integer | not null |  | Number of base units the base price covers. |
 | `gross_mtk` | bigint | not null |  | Gross sales value before discounts, in milli-taka. |
 | `offer_id` | bigint | null |  | Offer (app.offer) the row refers to; offers are deferred (docs/27). |
+| `data_origin` | app.data_origin | null |  | Origin of the row (production, pilot, test, seed): the most synthetic of its users, outlet, route and parent row (app.memo), stamped at insert; changes only through app.restamp_data_origin. |
 
 Keys: `UNIQUE (client_uuid, business_date)`; `UNIQUE (external_ref, business_date)`; `PRIMARY KEY (id, business_date)`
 
@@ -2421,6 +2461,7 @@ Void of a memo, recorded with its reason and location fix; the memo turns voided
 | `fix_is_mock` | boolean | null |  | True when the phone flagged the fix as coming from a mock location provider. |
 | `retailer_ack` | boolean | not null |  | True when the retailer acknowledged the void. |
 | `note` | text | null | personal | Free-text note. |
+| `data_origin` | app.data_origin | null |  | Origin of the row (production, pilot, test, seed): the most synthetic of its users, outlet, route and parent row (app.memo), stamped at insert; changes only through app.restamp_data_origin. |
 
 Keys: `UNIQUE (client_uuid)`; `UNIQUE (external_ref)`; `PRIMARY KEY (id)`
 
@@ -2578,6 +2619,7 @@ One retail or wholesale outlet with owner, location, route placement and nationa
 | `tin_enc` | bytea | null | sensitive | Tax identification number, envelope-encrypted like nid_enc. |
 | `trade_license_enc` | bytea | null | sensitive | Trade licence number, envelope-encrypted like nid_enc. |
 | `pii_key_id` | smallint | null |  | app.pii_key that encrypted this row's *_enc values; null when none is set. |
+| `data_origin` | app.data_origin | not null |  | Origin of the outlet: production (default), pilot, test (for example the owner's test outlets) or seed; stamped onto every capture row at this outlet. |
 
 Keys: `UNIQUE (code)`; `UNIQUE (external_ref)`; `PRIMARY KEY (id)`
 
@@ -2634,6 +2676,7 @@ A request from the field to add, close, edit, move or relocate an outlet, with p
 | `decided_at` | timestamp with time zone | null |  | UTC instant of the decision. |
 | `decision_reason` | text | null |  | Reason given for approving or rejecting the request. |
 | `created_outlet_id` | bigint | null |  | Id of the outlet created when a new-outlet request was approved. |
+| `data_origin` | app.data_origin | null |  | Origin of the row (production, pilot, test, seed): the most synthetic of its users, outlet, route, stamped at insert; changes only through app.restamp_data_origin. |
 
 Keys: `UNIQUE (client_uuid)`; `UNIQUE (external_ref)`; `PRIMARY KEY (id)`
 
@@ -2887,6 +2930,7 @@ AMO check comparing the observed retail price of a SKU with the reference price.
 | `observed_price_mtk` | bigint | not null |  | Retail price the AMO observed in the outlet, in milli-taka. |
 | `compliant` | boolean | not null |  | True when the observed price is within the allowed tolerance of the reference. |
 | `note` | text | null |  | Free-text note. |
+| `data_origin` | app.data_origin | null |  | Origin of the row (production, pilot, test, seed): the most synthetic of its users, outlet, route, stamped at insert; changes only through app.restamp_data_origin. |
 
 Keys: `UNIQUE (client_uuid)`; `UNIQUE (external_ref)`; `PRIMARY KEY (id)`
 
@@ -2931,6 +2975,7 @@ One print attempt of a memo, reprint, stock slip, day summary, void slip or due 
 | `user_confirmed` | boolean | null |  | True when the user confirmed the print succeeded. |
 | `template_version` | integer | not null |  | Version of the print template used. |
 | `printer_model` | text | null |  | Model name of the Bluetooth printer. |
+| `data_origin` | app.data_origin | null |  | Origin of the row (production, pilot, test, seed): the most synthetic of its users, outlet, route and parent row (app.memo), stamped at insert; changes only through app.restamp_data_origin. |
 
 Keys: `UNIQUE (client_uuid)`; `UNIQUE (external_ref)`; `PRIMARY KEY (id)`
 
@@ -3073,6 +3118,7 @@ QC header created by the server for a visit from its QC fault lines.
 | `route_id` | bigint | null |  | Route (app.route) being worked. |
 | `outlet_id` | bigint | not null |  | Outlet (app.outlet). |
 | `created_at` | timestamp with time zone | not null |  | UTC instant the row was inserted on the server. |
+| `data_origin` | app.data_origin | null |  | Origin of the row (production, pilot, test, seed): the most synthetic of its users, outlet, route, stamped at insert; changes only through app.restamp_data_origin. |
 
 Keys: `UNIQUE (visit_client_uuid)`; `PRIMARY KEY (id)`
 
@@ -3119,6 +3165,7 @@ One QC fault line (faulty units) of a visit, optionally deducted on the memo.
 | `qty_base` | integer | not null |  | Quantity in the SKU's base unit (sticks, pieces or dozens). |
 | `unit_price_mtk` | bigint | not null |  | Price in milli-taka per unit used to value the fault. |
 | `settlement_mtk` | bigint | not null |  | Amount in milli-taka settled for the faulty units. |
+| `data_origin` | app.data_origin | null |  | Origin of the row (production, pilot, test, seed): the most synthetic of its users, outlet, route and parent row (app.memo), stamped at insert; changes only through app.restamp_data_origin. |
 
 Keys: `UNIQUE (client_uuid)`; `UNIQUE (external_ref)`; `PRIMARY KEY (id)`
 
@@ -3143,6 +3190,7 @@ One row is a back-office QC summary entered on the web: market QC for a route or
 | `entered_by` | bigint | not null |  | User who saved the entry. |
 | `entered_at` | timestamp with time zone | not null |  | UTC instant of the save. |
 | `voided_at` | timestamp with time zone | null |  | UTC time a data void voided the entry (tombstone); written once. |
+| `data_origin` | app.data_origin | null |  | Origin of the row (production, pilot, test, seed): the most synthetic of its users, outlet, route, stamped at insert; changes only through app.restamp_data_origin. |
 
 Keys: `UNIQUE (client_uuid)`; `PRIMARY KEY (id)`
 
@@ -3161,6 +3209,7 @@ One row is a faulty quantity of one SKU and fault type in a web QC summary.
 | `sku_id` | bigint | not null |  | SKU of the row. |
 | `fault_type_code` | text | not null |  | Fault type code (code list of QC fault types). |
 | `qty_base` | bigint | not null |  | Faulty quantity in the SKU's base unit (sticks, pieces or dozens). |
+| `data_origin` | app.data_origin | null |  | Origin of the row (production, pilot, test, seed): the most synthetic of its users, outlet, route and parent row (app.qc_summary_entry), stamped at insert; changes only through app.restamp_data_origin. |
 
 Keys: `UNIQUE (entry_client_uuid, sku_id, fault_type_code)`; `PRIMARY KEY (id)`
 
@@ -3214,6 +3263,7 @@ A loyalty redemption basket confirmed in the field; the server debits the loyalt
 | `fix_accuracy_m` | double precision | null | personal | Accuracy in metres of the location fix taken with the record. |
 | `fix_is_mock` | boolean | null |  | True when the phone flagged the fix as coming from a mock location provider. |
 | `server_flags` | text[] | not null |  | JSON flags added by the server, such as negative_balance (see cfg.loyalty.negative_balance_policy). |
+| `data_origin` | app.data_origin | null |  | Origin of the row (production, pilot, test, seed): the most synthetic of its users, outlet, route, stamped at insert; changes only through app.restamp_data_origin. |
 
 Keys: `UNIQUE (client_uuid)`; `UNIQUE (external_ref)`; `PRIMARY KEY (id)`
 
@@ -3255,6 +3305,7 @@ One gift of a redemption basket with quantity and points.
 | `qty` | smallint | not null |  | Number of units of the gift. |
 | `points_each` | integer | not null |  | Points cost of one unit of the gift. |
 | `points_total` | integer | not null |  | Points for the line: qty times points_each. |
+| `data_origin` | app.data_origin | null |  | Origin of the row (production, pilot, test, seed): the most synthetic of its users, outlet, route and parent row (app.redemption), stamped at insert; changes only through app.restamp_data_origin. |
 
 Keys: `UNIQUE (client_uuid)`; `UNIQUE (external_ref)`; `PRIMARY KEY (id)`
 
@@ -3375,6 +3426,7 @@ A risk signal (for example mock location or teleport) computed by the worker for
 | `config_version` | bigint | not null |  | Global config version in force for the row (at capture for device records). |
 | `created_at` | timestamp with time zone | not null |  | UTC instant the row was inserted on the server. |
 | `updated_at` | timestamp with time zone | not null |  | UTC instant of the last update. |
+| `data_origin` | app.data_origin | null |  | Origin of the row (production, pilot, test, seed): the most synthetic of its users, outlet, route, stamped at insert; changes only through app.restamp_data_origin. |
 
 Keys: `UNIQUE (code, subject_type, subject_id, business_date)`; `PRIMARY KEY (id)`
 
@@ -3474,6 +3526,7 @@ A sales route in a zone with its code, kind, visit days and label.
 | `created_by` | bigint | null |  | User who created the row (null for migrations and jobs). |
 | `updated_by` | bigint | null |  | User who last updated the row. |
 | `route_class` | text | not null |  | normal, manual (no-internet, keyed on the web), dummy_br or dummy_institutional; Live CPR, Target Route and Login count normal routes only (V0094). |
+| `data_origin` | app.data_origin | not null |  | Origin of the route: production (default), pilot, test (for example the Gulshan-Banani test geography) or seed; stamped onto every capture row on this route. |
 
 Keys: `UNIQUE (code)`; `UNIQUE (external_ref)`; `PRIMARY KEY (id)`
 
@@ -3542,6 +3595,7 @@ One row per route and business date holding the day state and submit timestamps;
 | `version` | integer | not null |  | Optimistic-concurrency version; increases by one on every update. |
 | `last_bundle_at` | timestamp with time zone | null |  | UTC time of the last full bundle download that carried this route-day (Data Entry Log DOWNLOAD MAX); null before the first. |
 | `bundle_count` | integer | not null |  | Number of full bundle downloads that carried this route-day (Data Entry Log DOWNLOAD count); 304 answers and delta pages are not counted. |
+| `data_origin` | app.data_origin | null |  | Origin of the row (production, pilot, test, seed): the most synthetic of its users, outlet, route, stamped at insert; changes only through app.restamp_data_origin. |
 
 Keys: `UNIQUE (route_id, business_date)`; `PRIMARY KEY (id)`
 
@@ -3595,6 +3649,7 @@ A day_open or day_submit record from a phone or the online Sales Submit.
 | `dues_outstanding_mtk` | bigint | null |  | Dues outstanding at submit, in milli-taka. |
 | `retailers_with_dues` | integer | null |  | Number of retailers with dues at submit. |
 | `stock_slip_printed` | boolean | null |  | True when the day's stock slip was printed. |
+| `data_origin` | app.data_origin | null |  | Origin of the row (production, pilot, test, seed): the most synthetic of its users, outlet, route, stamped at insert; changes only through app.restamp_data_origin. |
 
 Keys: `UNIQUE (client_uuid)`; `UNIQUE (external_ref)`; `PRIMARY KEY (id)`
 
@@ -3774,6 +3829,7 @@ A memo number consumed without a memo, explaining gaps in memo numbering.
 | `reason` | text | not null |  | Reason given for the change or action (free text). |
 | `visit_client_uuid` | uuid | null |  | client_uuid of the visit the row belongs to. |
 | `outlet_id` | bigint | null |  | Outlet (app.outlet). |
+| `data_origin` | app.data_origin | null |  | Origin of the row (production, pilot, test, seed): the most synthetic of its users, outlet, route, stamped at insert; changes only through app.restamp_data_origin. |
 
 Keys: `UNIQUE (client_uuid)`; `UNIQUE (external_ref)`; `PRIMARY KEY (id)`
 
@@ -3937,6 +3993,7 @@ Append-only stock event for one SKU (issue, return, adjustment, damage and other
 | `slip_printed` | boolean | not null |  | True when a stock slip was printed for the movement. |
 | `zone_id` | bigint | null |  | Zone of the route on the business date, frozen at capture (never rewritten by a later route move). |
 | `cluster_id` | bigint | null |  | Cluster of the outlet on the business date, frozen at capture (null without an outlet). |
+| `data_origin` | app.data_origin | null |  | Origin of the row (production, pilot, test, seed): the most synthetic of its users, outlet, route, stamped at insert; changes only through app.restamp_data_origin. |
 
 Keys: `UNIQUE (client_uuid)`; `UNIQUE (external_ref)`; `PRIMARY KEY (id)`
 
@@ -4006,6 +4063,7 @@ Attendance and Sales Submit state of an AMO or TSO for a date outside a route-da
 | `created_at` | timestamp with time zone | not null |  | UTC instant the row was inserted on the server. |
 | `updated_at` | timestamp with time zone | not null |  | UTC instant of the last update. |
 | `version` | integer | not null |  | Optimistic-concurrency version; increases by one on every update. |
+| `data_origin` | app.data_origin | null |  | Origin of the row (production, pilot, test, seed): the most synthetic of its users, outlet, route, stamped at insert; changes only through app.restamp_data_origin. |
 
 Keys: `UNIQUE (user_id, business_date)`; `PRIMARY KEY (id)`
 
@@ -4097,6 +4155,7 @@ One answer to an in-visit survey question.
 | `answer_option_code` | text | null |  | Code of the chosen option. |
 | `answer_text` | text | null | personal | Free-text answer. |
 | `photo_uuid` | uuid | null |  | Media uuid (app.media) of the photo attached to the row. |
+| `data_origin` | app.data_origin | null |  | Origin of the row (production, pilot, test, seed): the most synthetic of its users, outlet, route, stamped at insert; changes only through app.restamp_data_origin. |
 
 Keys: `UNIQUE (client_uuid)`; `UNIQUE (external_ref)`; `PRIMARY KEY (id)`
 
@@ -4326,6 +4385,7 @@ A task created by a supervisor for a user, optionally tied to an outlet or visit
 | `cancelled_by` | bigint | null |  | Id of the user who cancelled the task. |
 | `route_id` | bigint | null |  | Route the task belongs to (contract Task.route_id); null when the task names none. |
 | `cancel_reason` | text | null |  | Reason given when the task was cancelled (10 to 500 characters); set once, with the cancellation. |
+| `data_origin` | app.data_origin | null |  | Origin of the row (production, pilot, test, seed): the most synthetic of its users, outlet, route, stamped at insert; changes only through app.restamp_data_origin. |
 
 Keys: `UNIQUE (client_uuid)`; `UNIQUE (external_ref)`; `PRIMARY KEY (id)`
 
@@ -4364,6 +4424,7 @@ Resolve or reopen of a task by its assignee.
 | `task_uuid` | uuid | not null |  | Client UUID of the task the event is about. |
 | `event` | text | not null |  | Event: resolved or reopened. |
 | `note` | text | null | personal | Free-text note. |
+| `data_origin` | app.data_origin | null |  | Origin of the row (production, pilot, test, seed): the most synthetic of its users, outlet, route and parent row (app.task), stamped at insert; changes only through app.restamp_data_origin. |
 
 Keys: `UNIQUE (client_uuid)`; `UNIQUE (external_ref)`; `PRIMARY KEY (id)`
 
@@ -4604,6 +4665,7 @@ One outlet visit with the phone's and the server's geo verdicts, distance, outco
 | `outlet_geo_class` | text | null |  | Outlet geo class code at capture (as the outlet master held it at ingest). |
 | `entry_source` | text | not null |  | device = captured on the phone; manual = keyed on the web for a dead-phone day (paper backfill, F-API-038). |
 | `entered_by_user_id` | bigint | null |  | Web user who keyed in a manual visit (app.app_user); null on device rows. |
+| `data_origin` | app.data_origin | null |  | Origin of the row (production, pilot, test, seed): the most synthetic of its users, outlet, route, stamped at insert; changes only through app.restamp_data_origin. |
 
 Keys: `UNIQUE (client_uuid, business_date)`; `UNIQUE (external_ref, business_date)`; `PRIMARY KEY (id, business_date)`
 
@@ -4641,6 +4703,7 @@ A TSO visit plan for a date.
 | `external_ref` | character varying(64) | null |  | Stable external reference for cross-walks with other systems (Apsis, ERP); unique when set. |
 | `plan_date` | date | not null |  | Dhaka date the plan is for. |
 | `note` | text | null |  | Free-text note. |
+| `data_origin` | app.data_origin | null |  | Origin of the row (production, pilot, test, seed): the most synthetic of its users, outlet, route, stamped at insert; changes only through app.restamp_data_origin. |
 
 Keys: `UNIQUE (client_uuid)`; `UNIQUE (external_ref)`; `PRIMARY KEY (id)`
 
@@ -4678,6 +4741,7 @@ An outlet included in a TSO visit plan.
 | `external_ref` | character varying(64) | null |  | Stable external reference for cross-walks with other systems (Apsis, ERP); unique when set. |
 | `plan_client_uuid` | uuid | not null |  | Client UUID of the visit plan this outlet belongs to. |
 | `outlet_id` | bigint | not null |  | Outlet (app.outlet). |
+| `data_origin` | app.data_origin | null |  | Origin of the row (production, pilot, test, seed): the most synthetic of its users, outlet, route, stamped at insert; changes only through app.restamp_data_origin. |
 
 Keys: `UNIQUE (client_uuid)`; `UNIQUE (external_ref)`; `PRIMARY KEY (id)`
 
@@ -4716,6 +4780,7 @@ An outlet of the day's route not visited, with a reason.
 | `external_ref` | character varying(64) | null |  | Stable external reference for cross-walks with other systems (Apsis, ERP); unique when set. |
 | `outlet_id` | bigint | not null |  | Outlet (app.outlet). |
 | `reason_code` | text | not null |  | Reason code from the matching business code list (app.code_list_item). |
+| `data_origin` | app.data_origin | null |  | Origin of the row (production, pilot, test, seed): the most synthetic of its users, outlet, route, stamped at insert; changes only through app.restamp_data_origin. |
 
 Keys: `UNIQUE (client_uuid)`; `UNIQUE (external_ref)`; `PRIMARY KEY (id)`
 
@@ -4740,6 +4805,7 @@ One row is the per-SKU quantities of a route-day web entry.
 | `memo_count` | integer | not null |  | Number of memos the SKU was sold on. |
 | `class_qty_base` | jsonb | not null |  | Sale split by web-entry class (cfg.web.entry_classes): sub-channel id to base quantity. |
 | `voided_at` | timestamp with time zone | null |  | UTC time a data void voided the line (tombstone); written once. |
+| `data_origin` | app.data_origin | null |  | Origin of the row (production, pilot, test, seed): the most synthetic of its users, outlet, route and parent row (app.web_entry_route_day), stamped at insert; changes only through app.restamp_data_origin. |
 
 Keys: `UNIQUE (client_uuid)`; `UNIQUE (entry_client_uuid, sku_id)`; `PRIMARY KEY (id)`
 
@@ -4768,6 +4834,7 @@ One row is a back-office web entry of a route-day (issue, return and memos per S
 | `replaced_at` | timestamp with time zone | null |  | UTC time a re-save replaced this entry (null while it is live); written once. |
 | `replaced_by` | bigint | null |  | User whose re-save replaced this entry; written once with replaced_at. |
 | `voided_at` | timestamp with time zone | null |  | UTC time a data void voided the entry (tombstone); written once. |
+| `data_origin` | app.data_origin | null |  | Origin of the row (production, pilot, test, seed): the most synthetic of its users, outlet, route, stamped at insert; changes only through app.restamp_data_origin. |
 
 Keys: `UNIQUE (client_uuid)`; `UNIQUE (client_uuid, route_id, business_date)`; `UNIQUE (supersedes_client_uuid)`; `PRIMARY KEY (id)`
 
@@ -4851,6 +4918,7 @@ Per outlet and business date: whether visited, geo-valid, and sales totals.
 | `bidi_sold_sticks` | bigint | not null |  | Bidi sold, in sticks: sum of qty_base of the active memos' non-voided sale lines of bidi SKUs, every route of the outlet-day (V0109). |
 | `lighter_sold_pieces` | bigint | not null |  | Lighters sold, in pieces: sum of qty_base of the active memos' non-voided sale lines of lighter SKUs, every route of the outlet-day (V0109). |
 | `match_sold_dozens` | bigint | not null |  | Matches sold, in dozens: sum of qty_base of the active memos' non-voided sale lines of match SKUs, every route of the outlet-day (V0109). |
+| `data_origin` | app.data_origin | null |  | Origin (production, pilot, test, seed): the most synthetic of its outlet, route and the memos, visits and collections of the outlet-day; set by trigger on every write. |
 
 Keys: `PRIMARY KEY (business_date, outlet_id)`
 
@@ -4870,6 +4938,7 @@ Sales per outlet, SKU and business date of the latest memo versions (calling out
 | `memo_count` | integer | not null |  | Memos of the outlet-day with a line of the SKU. |
 | `last_event_id` | bigint | not null |  | Domain event id the projection last applied (watermark). |
 | `updated_at` | timestamp with time zone | not null |  | UTC time the row was last rebuilt. |
+| `data_origin` | app.data_origin | null |  | Origin (production, pilot, test, seed): the most synthetic of its outlet, route and the memos, visits and collections of the outlet-day; set by trigger on every write. |
 
 Keys: `PRIMARY KEY (business_date, route_id, outlet_id, sku_id)`
 
@@ -4916,6 +4985,7 @@ Per route and business date: day state, visit counts, sales, discounts, paid and
 | `first_sale_at` | timestamp with time zone | null |  | UTC time of the route-day's first memo (First Sale Time). |
 | `last_sale_at` | timestamp with time zone | null |  | UTC time of the route-day's last memo (Last Sale Time). |
 | `checked_in_at` | timestamp with time zone | null |  | UTC time of the first non-voided attendance check-in of the route's SR on the business date (the event's route, or, when the event names none, a user assigned to the route that day); null when none (V0108). |
+| `data_origin` | app.data_origin | null |  | Origin (production, pilot, test, seed): the most synthetic of its route and the memos, visits, stock movements and collections of the route-day; set by trigger on every write. |
 
 Keys: `PRIMARY KEY (business_date, route_id)`
 
@@ -4935,6 +5005,7 @@ Per route, brand and date: memo count containing the brand and its sales.
 | `gross_mtk` | bigint | not null |  | Gross sales value before discounts, in milli-taka. |
 | `last_event_id` | bigint | not null |  | Highest app.domain_event id folded into this row by the projector (replays are ignored). |
 | `updated_at` | timestamp with time zone | not null |  | UTC instant of the last update. |
+| `data_origin` | app.data_origin | null |  | Origin (production, pilot, test, seed): the most synthetic of its route and the memos, visits, stock movements and collections of the route-day; set by trigger on every write. |
 
 Keys: `PRIMARY KEY (business_date, route_id, brand_id)`
 
@@ -4954,6 +5025,7 @@ Per route, product segment and date: memo count containing the segment (each mem
 | `gross_mtk` | bigint | not null |  | Gross sales of the segment in integer milli-taka. |
 | `last_event_id` | bigint | not null |  | Last outbox event folded in (informational; the row is recomputed by dirty key). |
 | `updated_at` | timestamp with time zone | not null |  | UTC instant of the last recompute. |
+| `data_origin` | app.data_origin | null |  | Origin (production, pilot, test, seed): the most synthetic of its route and the memos, visits, stock movements and collections of the route-day; set by trigger on every write. |
 
 Keys: `PRIMARY KEY (business_date, route_id, segment_id)`
 
@@ -4976,6 +5048,7 @@ Per route, SKU and date: sold, free, issued and returned quantities and sales.
 | `memo_count` | integer | not null |  | Active memos containing the SKU. |
 | `last_event_id` | bigint | not null |  | Highest app.domain_event id folded into this row by the projector (replays are ignored). |
 | `updated_at` | timestamp with time zone | not null |  | UTC instant of the last update. |
+| `data_origin` | app.data_origin | null |  | Origin (production, pilot, test, seed): the most synthetic of its route and the memos, visits, stock movements and collections of the route-day; set by trigger on every write. |
 
 Keys: `PRIMARY KEY (business_date, route_id, sku_id)`
 
@@ -4994,6 +5067,7 @@ Distinct memos and sales per route, business date and product variant (Breakdown
 | `sold_qty_base` | bigint | not null |  | Quantity sold in base units. |
 | `last_event_id` | bigint | not null |  | Domain event id the projection last applied (watermark). |
 | `updated_at` | timestamp with time zone | not null |  | UTC time the row was last rebuilt. |
+| `data_origin` | app.data_origin | null |  | Origin (production, pilot, test, seed): the most synthetic of its route and the memos, visits, stock movements and collections of the route-day; set by trigger on every write. |
 
 Keys: `PRIMARY KEY (business_date, route_id, variant_id)`
 
@@ -5115,6 +5189,7 @@ Route-level geography dimension flattened through zone, territory, division and 
 | `house_id` | bigint | null |  | Distribution house of the route's zone (app.zone.house_id); null when the zone names none. |
 | `house_name` | text | null |  | Name of that house. |
 | `route_class` | text | not null |  | Route class copied from app.route.route_class (normal, manual, dummy_br, dummy_institutional). |
+| `data_origin` | app.data_origin | null |  | Origin (production, pilot, test, seed): the most synthetic of the route (app.route.data_origin); set by trigger on every write. |
 
 Keys: `PRIMARY KEY (route_id)`
 
@@ -5172,6 +5247,7 @@ Outlet dimension for reports.
 | `location_confirmed` | boolean | not null |  | True when the outlet location is confirmed. |
 | `status` | text | not null |  | Lifecycle status; allowed values are listed under constraints. |
 | `updated_at` | timestamp with time zone | not null |  | UTC instant of the last update. |
+| `data_origin` | app.data_origin | null |  | Origin (production, pilot, test, seed): the most synthetic of the outlet (app.outlet.data_origin); set by trigger on every write. |
 
 Keys: `PRIMARY KEY (outlet_id)`
 
@@ -5280,6 +5356,7 @@ One row is the current state of a user for reporting (role, designation, home zo
 | `status` | text | not null |  | User status (active, disabled). |
 | `pilot` | boolean | not null |  | True for pilot users. |
 | `updated_at` | timestamp with time zone | not null |  | UTC instant of the last update. |
+| `data_origin` | app.data_origin | null |  | Origin (production, pilot, test, seed): the most synthetic of the user (app.app_user.data_origin); set by trigger on every write. |
 
 Keys: `PRIMARY KEY (user_id)`
 
@@ -5322,6 +5399,7 @@ One row is one screen or action event from a phone's activity log.
 | `action` | text | not null |  | Action key of the event. |
 | `seq` | integer | not null |  | Position of the event in the source activity_log row's event array. |
 | `source_uuid` | uuid | not null |  | client_uuid of the source app.activity_log row. |
+| `data_origin` | app.data_origin | null |  | Origin (production, pilot, test, seed): the most synthetic of its user; set by trigger on every write. |
 
 Keys: `PRIMARY KEY (user_key, business_date, occurred_at, seq)`
 
@@ -5349,6 +5427,7 @@ One row per user and business date with the day's check-in and check-out and the
 | `check_out_is_mock` | boolean | null |  | True when the check-out fix came from a mock location provider. |
 | `last_event_id` | bigint | not null |  | Highest app.domain_event id folded into this row by the projector (replays are ignored). |
 | `updated_at` | timestamp with time zone | not null |  | UTC instant of the last update. |
+| `data_origin` | app.data_origin | null |  | Origin (production, pilot, test, seed): the most synthetic of its user; set by trigger on every write. |
 
 Keys: `PRIMARY KEY (business_date, user_id)`
 
@@ -5367,6 +5446,7 @@ One row is a user's acceptance of a policy version (employee-location notice and
 | `business_date` | date | not null |  | Asia/Dhaka business date of the acceptance. |
 | `text_sha256` | bytea | null |  | SHA-256 of the policy text shown. |
 | `source_uuid` | uuid | not null |  | client_uuid of the source app.user_consent row. |
+| `data_origin` | app.data_origin | null |  | Origin (production, pilot, test, seed): the most synthetic of its user; set by trigger on every write. |
 
 Keys: `PRIMARY KEY (user_key, policy_version, accepted_at)`
 
@@ -5392,6 +5472,7 @@ Per device and business date: contact times, batch and record counts, rejects an
 | `battery_pct_min` | smallint | null |  | Lowest battery percentage the device reported that day. |
 | `last_event_id` | bigint | not null |  | Highest app.domain_event id folded into this row by the projector (replays are ignored). |
 | `updated_at` | timestamp with time zone | not null |  | UTC instant of the last update. |
+| `data_origin` | app.data_origin | null |  | Origin (production, pilot, test, seed): the most synthetic of its user; set by trigger on every write. |
 
 Keys: `PRIMARY KEY (business_date, device_id)`
 
@@ -5429,6 +5510,7 @@ One row is a phone's integrity and readiness state observed at a login or bundle
 | `source_uuid` | uuid | not null |  | client_uuid of the source record (status report or bundle download). |
 | `source` | text | not null |  | Origin of the row: native (this system) or an import. |
 | `import_run_id` | bigint | null |  | Import run that loaded the row; null for native rows. |
+| `data_origin` | app.data_origin | null |  | Origin (production, pilot, test, seed): the most synthetic of its user; set by trigger on every write. |
 
 Keys: `PRIMARY KEY (device_key, business_date, observed_at)`
 
@@ -5454,6 +5536,7 @@ One row per location fix copied for analysis, with slot and satellite count.
 | `is_mock` | boolean | not null |  | True when the location came from a mock location provider (never geo-valid). |
 | `satellites_used` | smallint | null |  | Satellites used in the fix. |
 | `last_event_id` | bigint | not null |  | Highest app.domain_event id folded into this row by the projector (replays are ignored). |
+| `data_origin` | app.data_origin | null |  | Origin (production, pilot, test, seed): the most synthetic of its user and route; set by trigger on every write. |
 
 Keys: `PRIMARY KEY (source_client_uuid, slot, business_date)`
 
@@ -5492,6 +5575,7 @@ One row per memo with its money totals, for reports.
 | `user_key` | bigint | null |  | dim_user_version key valid on the business date (dw.user_key_on). |
 | `entry_source` | text | not null |  | device or manual (keyed on the web from the printed memo), copied from app.memo. |
 | `entered_by_user_id` | bigint | null |  | Web user who keyed the memo (entry_source manual), copied from app.memo; null for device rows. |
+| `data_origin` | app.data_origin | null |  | Origin (production, pilot, test, seed): the most synthetic of its memo (app.memo); set by trigger on every write. |
 
 Keys: `PRIMARY KEY (memo_client_uuid, business_date)`
 
@@ -5514,6 +5598,7 @@ One row per AMO or TSO and business date with the day's check-in, check-out and 
 | `submit_voided` | boolean | not null |  | True when the day's submit was voided. |
 | `last_event_id` | bigint | null |  | Domain event id the projection last applied (watermark). |
 | `updated_at` | timestamp with time zone | not null |  | UTC time the row was last rebuilt. |
+| `data_origin` | app.data_origin | null |  | Origin (production, pilot, test, seed): the most synthetic of its user; set by trigger on every write. |
 
 Keys: `PRIMARY KEY (user_id, business_date)`
 
@@ -5559,6 +5644,7 @@ One row per visit with device and server verdicts, distances, the outlet base an
 | `completed` | boolean | not null |  | True for a call closed with an outcome other than abandoned or not_reached (set by the rebuild, D-DASH-03). |
 | `server_distance_m` | double precision | null |  | Server re-check of the distance between the call fix and the outlet location, metres; null until checked or not copied. |
 | `within_fence` | boolean | null |  | Generated: true when the server verdict, else the device verdict, is in_range (geo-valid call). |
+| `data_origin` | app.data_origin | null |  | Origin (production, pilot, test, seed): the most synthetic of its visit (app.visit); set by trigger on every write. |
 
 Keys: `PRIMARY KEY (visit_client_uuid, business_date)`
 
@@ -5578,6 +5664,7 @@ Latest position of each route's SR on a business date (FF Geo pins), upserted fr
 | `captured_at` | timestamp with time zone | not null |  | UTC capture time of that fix. |
 | `last_event_id` | bigint | not null |  | Domain event id the projection last applied (watermark). |
 | `updated_at` | timestamp with time zone | not null |  | UTC time the row was last rebuilt. |
+| `data_origin` | app.data_origin | null |  | Origin (production, pilot, test, seed): the most synthetic of its route, user and the memos, visits, stock movements and collections of the route-day; set by trigger on every write. |
 
 Keys: `PRIMARY KEY (business_date, route_id)`
 
@@ -5613,6 +5700,7 @@ Stable view: per user and business date, check-in and check-out times, hours in 
 | `check_in_is_mock` | boolean | null |  | True when the check-in fix came from a mock location provider. |
 | `check_out_is_mock` | boolean | null |  | True when the check-out fix came from a mock location provider. |
 | `updated_at` | timestamp with time zone | null |  | UTC instant of the last update. |
+| `data_origin` | app.data_origin | null |  | Origin of the user-day (dw.fact_attendance.data_origin: the user's origin). |
 
 ## dw.v_calendar
 
@@ -5664,6 +5752,7 @@ Stable view: outlet-days with new credit or dues collected (credit and collectio
 | `new_due_mtk` | bigint | null |  | New credit (due) raised by that day's memos, in milli-taka. |
 | `dues_collected_mtk` | bigint | null |  | Dues collected against earlier credit memos, in milli-taka. |
 | `updated_at` | timestamp with time zone | null |  | UTC instant of the last update. |
+| `data_origin` | app.data_origin | null |  | Origin of the outlet-day (dw.agg_daily_outlet.data_origin): production only when nothing non-production went into it. |
 
 ## dw.v_daily_outlet
 
@@ -5696,6 +5785,7 @@ Stable view: per outlet and business date, visit, geo validity, sales per catego
 | `due_mtk` | bigint | null |  | Amount left on credit (due) in milli-taka. |
 | `dues_collected_mtk` | bigint | null |  | Dues collected against earlier credit memos, in milli-taka. |
 | `updated_at` | timestamp with time zone | null |  | UTC instant of the last update. |
+| `data_origin` | app.data_origin | null |  | Origin of the outlet-day (dw.agg_daily_outlet.data_origin): production only when nothing non-production went into it. |
 
 ## dw.v_daily_route
 
@@ -5745,6 +5835,7 @@ Stable view (contract for BI and other products): KPIs, money and day state per 
 | `dues_collected_mtk` | bigint | null |  | Dues collected against earlier credit memos, in milli-taka. |
 | `late_rows_after_final` | integer | null |  | Rows received after the zone-day was final-submitted (accepted and flagged). |
 | `updated_at` | timestamp with time zone | null |  | UTC instant of the last update. |
+| `data_origin` | app.data_origin | null |  | Origin of the route-day (dw.agg_daily_route.data_origin): production only when nothing non-production went into it. |
 
 ## dw.v_daily_sku
 
@@ -5774,6 +5865,7 @@ Stable view: per route, SKU and business date, quantities sold, free, issued and
 | `gross_mtk` | bigint | null |  | Gross sales value before discounts, in milli-taka. |
 | `memo_count` | integer | null |  | Active memos containing the SKU. |
 | `updated_at` | timestamp with time zone | null |  | UTC instant of the last update. |
+| `data_origin` | app.data_origin | null |  | Origin of the route-day (dw.agg_daily_route_sku.data_origin): production only when nothing non-production went into it. |
 
 ## dw.v_daily_sr
 
@@ -5801,6 +5893,7 @@ Stable view: per field user and business date, SR calls, successful calls, geo v
 | `first_visit_at` | timestamp with time zone | null |  | UTC instant the first call opened. |
 | `last_visit_end_at` | timestamp with time zone | null |  | UTC instant the last call ended. |
 | `memos_entered_manually` | bigint | null |  | Active memos keyed on the web from paper (entry_source manual). |
+| `data_origin` | app.data_origin | null |  | Most synthetic origin among the visits and memos of the user-day. |
 
 ## dw.v_device_command
 
@@ -5825,6 +5918,7 @@ Stable view: MDM commands for the activity log, without signature and result.
 | `push_sent_at` | timestamp with time zone | null |  | UTC instant FCM accepted the push. |
 | `sent_at` | timestamp with time zone | null |  | UTC instant of the first pull by the device. |
 | `acked_at` | timestamp with time zone | null |  | UTC instant the device reported done or failed. |
+| `data_origin` | app.data_origin | null |  | Most synthetic origin among the users with an active binding on the device now (production when none). |
 
 ## dw.v_final_submit_log
 
@@ -5842,6 +5936,7 @@ Stable view: per zone and business date the first Final Submit (second submits i
 | `submits` | bigint | null |  | Number of Final Submits of the zone-day (a reopen and a resubmit add one). |
 | `last_submitted_at` | timestamp with time zone | null |  | UTC time of the latest Final Submit of the zone-day. |
 | `reopened_now` | boolean | null |  | True when every submit of the zone-day is reopened (no live Final Submit). |
+| `data_origin` | app.data_origin | null |  | Most synthetic origin among the zone-day's final submits. |
 
 ## dw.v_geo_integrity
 
@@ -5866,6 +5961,7 @@ Stable view: per user and business date, geo-validation outcomes of visits and m
 | `fixes` | bigint | null |  | Location fixes received for the user-day. |
 | `mock_fixes` | bigint | null |  | Fixes flagged as mock locations. |
 | `avg_accuracy_m` | numeric | null |  | Average fix accuracy in metres (1 decimal). |
+| `data_origin` | app.data_origin | null |  | Most synthetic origin among the visits and fixes of the user-day. |
 
 ## dw.v_memo_flags
 
@@ -5894,6 +5990,7 @@ Stable view: one row per memo the server flagged (app.memo.server_flags non-empt
 | `flags` | text[] | null |  | Server flags of the memo (app.memo.server_flags), for example zero_price_line or price_mismatch. |
 | `stored_at` | timestamp with time zone | null |  | UTC instant the server stored the memo (app.memo.received_at). |
 | `voided_at` | timestamp with time zone | null |  | UTC instant of an admin data void; null when not data-voided. Readers filter it. |
+| `data_origin` | app.data_origin | null |  | Origin of the memo (app.memo.data_origin, stamped at capture). |
 
 ## dw.v_outlet_masked
 
@@ -5919,6 +6016,7 @@ Stable view: outlets without owner name, address or national ids; the phone mask
 | `location_confirmed` | boolean | null |  | True when the master location is confirmed. |
 | `contact_number_masked` | text | null |  | Phone masked as 01*****NNN (last three digits); null when not a Bangladeshi mobile number. |
 | `updated_at` | timestamp with time zone | null |  | UTC instant of the last update. |
+| `data_origin` | app.data_origin | null |  | Origin of the outlet (app.outlet.data_origin). |
 
 ## dw.v_route_monthly_target
 
@@ -5938,6 +6036,7 @@ Stable view: route x SKU monthly targets in base units with the month's working 
 | `daily_qty_base` | numeric | null |  | Daily target in base units = monthly_qty_base / working_days, unrounded; null when the month has no working day. |
 | `batch_uuid` | uuid | null |  | Upload batch that last wrote the target (app.route_target_batch). |
 | `updated_at` | timestamp with time zone | null |  | UTC instant of the last upload that wrote the target. |
+| `data_origin` | app.data_origin | null |  | Origin of the route (app.route.data_origin). |
 
 ## dw.v_working_day
 

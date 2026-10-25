@@ -87,3 +87,17 @@ BEGIN
      WHERE u.username = 'admin1001' AND NOT EXISTS (SELECT 1 FROM app.user_module_grant g WHERE g.user_id = u.id);
 END
 $grants$;
+
+-- Data origin (V0116, D-DB-DATA-ORIGIN-01): the test accounts are test data, the Mirpur fixture's routes are seed data.
+-- Real accounts and routes keep the default production. db/seed/08 restamps the capture rows afterwards.
+DO $origin$
+BEGIN
+  IF to_regtype('app.data_origin') IS NULL THEN
+    RETURN;   -- a database migrated only up to a version before V0116 (some db tests do that)
+  END IF;
+  UPDATE app.app_user SET data_origin = 'test'
+   WHERE username IN ('sr1001', 'amo1001', 'tso1001', 'dmo1001', 'admin1001', 'superadmin1001', 'support1001') AND data_origin <> 'test';
+  UPDATE app.route SET data_origin = 'seed'
+   WHERE zone_id IN (SELECT id FROM app.zone WHERE code = 'Z-MIR') AND data_origin <> 'seed';
+END
+$origin$;

@@ -205,5 +205,18 @@ BEGIN
      CROSS JOIN (SELECT (date_trunc('month', today) + k * interval '1 month')::date FROM generate_series(0, 2) AS k) AS m(month)
     ON CONFLICT (route_id, sku_id, month) DO NOTHING;
   RAISE NOTICE 'seed 06 applied (Gulshan/Banani: sr1001 on GUL-SR-2, GUL-SR-1, BAN-SR-11)';
+
+  -- ---------- data origin (V0116, D-DB-DATA-ORIGIN-01) ----------
+  -- The whole Gulshan-Banani geography is test data: its three routes and every outlet in its zones, the owner's three
+  -- test outlets GUL1-T01..T03 included (and any outlet added on these routes later, such as the smoke outlets, on the
+  -- next seed run). db/seed/08 restamps the capture rows.
+  IF to_regtype('app.data_origin') IS NOT NULL THEN
+    UPDATE app.route SET data_origin = 'test'
+     WHERE zone_id IN (SELECT id FROM app.zone WHERE code IN ('Z-GUL', 'Z-BAN')) AND data_origin <> 'test';
+    UPDATE app.outlet SET data_origin = 'test'
+     WHERE (zone_id IN (SELECT id FROM app.zone WHERE code IN ('Z-GUL', 'Z-BAN'))
+            OR route_id IN (SELECT id FROM app.route WHERE zone_id IN (SELECT id FROM app.zone WHERE code IN ('Z-GUL', 'Z-BAN'))))
+       AND data_origin <> 'test';
+  END IF;
 END
 $seed$;

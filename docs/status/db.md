@@ -2,6 +2,14 @@
 
 Updated with every push. Rows of Day 1: N-005, N-006, N-007, N-008 (`python3 tools/my-rows.py db 1 --full`).
 
+## Session 12, 2026-10-25 (lane/db; INT 5a193330 = train 39 merged)
+
+| Job | State | What |
+|---|---|---|
+| **row 1: data origin** (lead action row 1, review High 3) | pushed (candidate in the lead message) | V0116: `app.data_origin` enum; masters default production; 47 capture tables stamped by trigger (registry `app.data_origin_capture`), guarded, owner-only restamp; dw facts/aggregates/dims by trigger, every non-calendar `dw.v_*` ends with `data_origin`; `dw.scd2_track` and `app.touch_master` replaced so a re-tag opens no SCD2 version and bumps no version. Seeds 01/03/06 tag, new 08 restamps. Opus checker FAIL (2 blockers) -> PASS rounds 2 and 3. Local: db 283/0, app 464/0, analytics 212/0, sync and masterdata green. D-DB-DATA-ORIGIN-01; infra request `docs/requests/infra-move-runbook-data-origin.md`. Next free migration **V0117** |
+| row 3: event status (lead 06:37) | next, own head | live/planned per event type + `memo.superseded`, D-DB-EVENT-STATUS-01 |
+| row 4: reuse surface | after row 3 | |
+
 ## HANDOVER (session 11 -> session 12), 2026-10-25 ~00:00 UTC, lane/db d69d3af4 (+ this docs-only commit)
 
 **State.** lane/db = INT c427d842 (train 35) + row 1 (seed 06 test outlets + rolling dates, 96130a78, run #1574 green,

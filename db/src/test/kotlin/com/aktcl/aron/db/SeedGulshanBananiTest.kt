@@ -110,6 +110,16 @@ class SeedGulshanBananiTest {
     }
 
     @Test
+    fun theGulshanBananiGeographyAndTheOwnersTestOutletsAreTestData() = dev.connect().use { c ->
+        // V0116 (D-DB-DATA-ORIGIN-01): the dev geography is test data, the closed Mirpur fixture seed, the test accounts test.
+        assertEquals("test", c.scalar("SELECT string_agg(DISTINCT data_origin::text, ',') FROM app.route WHERE code IN $gul"))
+        assertEquals("63|test", c.scalar("SELECT count(*) || '|' || string_agg(DISTINCT o.data_origin::text, ',') FROM app.outlet o JOIN app.zone z ON z.id = o.zone_id WHERE z.code IN ('Z-GUL', 'Z-BAN')"))
+        assertEquals("GUL1-T01:test,GUL1-T02:test,GUL1-T03:test", c.scalar("SELECT string_agg(code || ':' || data_origin::text, ',' ORDER BY code) FROM app.outlet WHERE code LIKE 'GUL1-T%'"))
+        assertEquals("seed", c.scalar("SELECT string_agg(DISTINCT data_origin::text, ',') FROM app.route WHERE code LIKE 'MIR-SR-%'"))
+        assertEquals("test", c.scalar("SELECT data_origin::text FROM app.app_user WHERE username = 'sr1001'"))
+    }
+
+    @Test
     fun aSecondDevRunChangesNothing() {
         fun count(c: Connection) = c.scalar("SELECT (SELECT count(*) FROM app.outlet) || '|' || (SELECT count(*) FROM app.route_assignment) || '|' || (SELECT count(*) FROM app.route_monthly_target) || '|' || (SELECT count(*) FROM app.route_target_batch) || '|' || (SELECT count(*) FROM app.user_scope) || '|' || (SELECT count(*) FROM app.calendar_holiday)")
         dev.connect().use { c ->
