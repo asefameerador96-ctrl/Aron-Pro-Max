@@ -15,3 +15,8 @@ SyncTotalsResponse:
       oneOf:
       - $ref: '#/components/schemas/SupervisorDayState'
       - type: 'null'
+    digest:
+      $ref: '#/components/schemas/SalesSubmitDigest'
+      description: Optional in 1.9.0 (the server adds it when backend-core wires D-NIGHT-DAYCLOSE-01); a later batch
+        makes it required, which is not breaking for a reader. Until then a phone without `digest` falls back to
+        `totals`.

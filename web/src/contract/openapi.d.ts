@@ -1459,7 +1459,8 @@ export interface paths {
          *     `status == active`). Backing data: the stable view `dw.v_memo_flags` (V0111, D-DB-MEMO-FLAGS-VIEW-01: scope keys
          *     frozen at the business date); `user_code` and `user_name` are resolved by the endpoint from `app.app_user`,
          *     because `dw` carries no names. Callers: every portal level whose reach covers the node (SUPERADMIN, ADMIN with
-         *     the `reports:r` grant, which `/v1/dashboards/**` maps to, NATIONAL, WM, DMO and TSO); BRAND users get 403
+         *     the `reports:r` grant, which `/v1/dashboards/**` maps to, the national-level roles (NATIONAL, TOP, ANALYST), WM,
+         *     DMO and TSO; the same callers as every `/v1/dashboards/**` operation); BRAND users get 403
          *     `ERR_FORBIDDEN` (docs/34 s1: cards without a brand dimension are hidden, and a memo has no brand dimension; the
          *     portal-level gate answers it); SR and AMO have no portal login (`ERR_AUTH_PORTAL_NOT_ALLOWED`).
          */
@@ -5779,6 +5780,60 @@ export interface components {
             totals: components["schemas"]["ServerTotals"];
             day_states: components["schemas"]["RouteDayState"][];
             supervisor_day?: components["schemas"]["SupervisorDayState"] | null;
+            /** @description Optional in 1.9.0 (the server adds it when backend-core wires D-NIGHT-DAYCLOSE-01); a later batch makes it required, which is not breaking for a reader. Until then a phone without `digest` falls back to `totals`. */
+            digest?: components["schemas"]["SalesSubmitDigest"];
+        };
+        /** @description D-NIGHT-DAYCLOSE-01. The Sales Submit compare for the caller (user from the token) and `business_date`. `device` counts cover only the rows this phone uploaded (device from the token's device proof, never from the request); `login` counts cover every device and install of this login on the date. The day is in sync when, per type, the phone's committed rows are all acknowledged: phone committed = device.acknowledged + the device rows in `rejected`; a `login` count above the phone's count is information (other devices or earlier installs), never a mismatch. */
+        SalesSubmitDigest: {
+            business_date: components["schemas"]["BusinessDate"];
+            /** @description The device the `device` counts are for; null for a caller without a phone token (web), then every `device` is null. */
+            device_uuid: components["schemas"]["Uuid"] | null;
+            /** @description Every record type with at least one registry row of this login on the date (absent type = all zero). */
+            by_type: {
+                [key: string]: components["schemas"]["DigestTypeCounts"];
+            };
+            /** @description Rows of this login and date the server did not store (rejected, parked or held in quarantine) and has not stored since, newest first, from every device of the login (`from_this_device` says which). The phone shows each with the `ReasonTexts` text of `code`, also for a row it no longer holds (an earlier install). */
+            rejected: components["schemas"]["RejectedRecordView"][];
+            /** @description True when more than 200 rows qualify (the oldest are left out). */
+            rejected_truncated: boolean;
+        };
+        DigestTypeCounts: {
+            /** @description Null without a phone token. */
+            device: components["schemas"]["DigestDeviceCounts"] | null;
+            login: components["schemas"]["DigestLoginCounts"];
+        };
+        DigestDeviceCounts: {
+            /** @description Distinct client_uuids of this device, login and date the server holds an outcome for (stored, rejected, parked or quarantined). */
+            received: number;
+            /** @description Of those, stored (accepted now or earlier, also voided since; duplicates counted once). */
+            acknowledged: number;
+        };
+        DigestLoginCounts: {
+            /** @description Stored rows of this login and date from every device and install (= ServerTotals.by_type.accepted). */
+            acknowledged: number;
+        };
+        RejectedRecordView: {
+            client_uuid: components["schemas"]["Uuid"];
+            type: components["schemas"]["RecordType"];
+            business_date: components["schemas"]["BusinessDate"];
+            /**
+             * @description rejected = refused for good; parked = refused for now, a re-send can store it; quarantined = held for review (the decision arrives in `resolutions`).
+             * @enum {string}
+             */
+            status: "rejected" | "parked" | "quarantined";
+            code: components["schemas"]["RecordOutcomeCode"];
+            /** @description True when no re-send can change the outcome (status rejected, a parked row past its TTL, a discarded quarantine). A final row never blocks Sales Submit; a non-final `parked` row does until re-synced; an open quarantine does not (it is acknowledged, awaiting review). */
+            final: boolean;
+            /** @description False for a row another device or an earlier install of this login uploaded (always false without a phone token). */
+            from_this_device: boolean;
+            /** @description The memo number of a memo row, or of the memo a memo_line, memo_discount, memo_void or due_collection names, when the server can read it. */
+            memo_no?: components["schemas"]["MemoNo"] | null;
+            /**
+             * Format: int64
+             * @description The outlet the row names (payload or envelope), when present.
+             */
+            outlet_id?: number | null;
+            last_received_at: components["schemas"]["Timestamp"];
         };
         ServerGeneration: {
             generation: components["schemas"]["Uuid"];
@@ -6371,11 +6426,15 @@ export interface components {
         };
         MemoView: {
             memo_client_uuid: components["schemas"]["Uuid"];
-            memo_no: string;
+            memo_no: components["schemas"]["MemoNo"];
             business_date: components["schemas"]["BusinessDate"];
             outlet_id: components["schemas"]["Id"];
             outlet_name: string;
-            route_id: components["schemas"]["Id"];
+            /**
+             * Format: int64
+             * @description The memo's route; null when the memo was stored without a route. Nullable from contract 1.9.0 (the read uses a left join on the route).
+             */
+            route_id: number | null;
             user_id: components["schemas"]["Id"];
             /** @enum {string} */
             status: "active" | "superseded" | "void";
