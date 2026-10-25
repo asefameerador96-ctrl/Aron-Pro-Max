@@ -262,6 +262,31 @@ class AggregationTest {
         assertEquals(0, zone("Z1", "suspicious_user_days"))
     }
 
+    /**
+     * Data-architecture review finding 18: the worker built as the worker role builds it (`Main.kt`: database config over
+     * the registry defaults) reads the admin's `cfg.geo.suspicious_score_threshold`; the same score-20 signal that stays
+     * below the default 50 makes the user-day suspicious once the admin lowers the threshold to 20.
+     */
+    @Test
+    fun theWorkerReadsTheAdminsSuspiciousThreshold() {
+        conn.createStatement().use {
+            it.execute(
+                "INSERT INTO app.risk_signal (code, severity, business_date, subject_type, subject_id, user_id, route_id, zone_id, score, config_version) " +
+                    "SELECT 'GEO_PERFECT_ACCURACY', 2, DATE '2026-10-04', 'user', u.id::text, u.id, r.id, r.zone_id, 20, 1 " +
+                    "FROM app.app_user u, app.route r WHERE u.username = 'sr001' AND r.code = 'R1'",
+            )
+            it.execute(
+                "INSERT INTO app.cfg_value (key, scope_type, scope_id, value, effective_from, config_version, reason) " +
+                    "SELECT 'cfg.geo.suspicious_score_threshold', 'global', 0, '20'::jsonb, now() - interval '1 day', max(config_version), 'finding 18 test' FROM app.cfg_version",
+            )
+        }
+        val config = com.aktcl.aron.backend.platform.DbServerConfig(fresh.db, com.aktcl.aron.backend.platform.RegistryDefaults())
+        assertEquals(20, config.int("cfg.geo.suspicious_score_threshold"))
+        AggregationWorker(fresh.db, AronClock.SYSTEM, "w-cfg", config = config).runUntilIdle()
+        assertEquals(3, route("R1", "suspicious_visits"), "score 20 >= the admin's threshold 20: the user-day's R1 visits are suspicious")
+        assertEquals(1, zone("Z1", "suspicious_user_days"))
+    }
+
     /** A route moved to another zone: a re-aggregated past day lands in the new zone but stays in the old zone too. */
     @Test
     fun checker_aRouteMovedBetweenZonesIsNotCountedTwice() {

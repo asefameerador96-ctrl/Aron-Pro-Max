@@ -111,13 +111,17 @@ class AggregationWorker(
      */
     private fun earlierMemoDays(h: Handle, e: Ev): List<Pair<Long, LocalDate>> {
         val id = runCatching { java.util.UUID.fromString(e.aggregateId) }.getOrNull() ?: return emptyList()
-        val sql = when (e.type) {
-            "memo.voided" -> "SELECT route_id, business_date FROM app.memo WHERE client_uuid = :id AND route_id IS NOT NULL"
-            "memo.created" -> "SELECT o.route_id, o.business_date FROM app.memo n JOIN app.memo o ON o.client_uuid = n.supersedes_client_uuid " +
-                "WHERE n.client_uuid = :id AND n.business_date = :d AND n.supersedes_client_uuid IS NOT NULL AND o.route_id IS NOT NULL"
+        // Each statement binds exactly the names it uses (never rely on Jdbi's unused-binding default).
+        val q = when (e.type) {
+            "memo.voided" -> h.createQuery("SELECT route_id, business_date FROM app.memo WHERE client_uuid = :id AND route_id IS NOT NULL")
+                .bind("id", id)
+            "memo.created" -> h.createQuery(
+                "SELECT o.route_id, o.business_date FROM app.memo n JOIN app.memo o ON o.client_uuid = n.supersedes_client_uuid " +
+                    "WHERE n.client_uuid = :id AND n.business_date = :d AND n.supersedes_client_uuid IS NOT NULL AND o.route_id IS NOT NULL",
+            ).bind("id", id).bind("d", e.date)
             else -> return emptyList()
         }
-        return h.createQuery(sql).bind("id", id).bind("d", e.date).map { rs, _ -> rs.getLong(1) to rs.getObject(2, LocalDate::class.java) }.list()
+        return q.map { rs, _ -> rs.getLong(1) to rs.getObject(2, LocalDate::class.java) }.list()
     }
 
     /** Processes up to [limit] claimed keys of one pass. Returns the number rebuilt. */
