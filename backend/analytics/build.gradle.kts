@@ -23,4 +23,7 @@ dependencies {
 
 tasks.withType<Test>().configureEach {
     environment("ARON_TEST_PG_URL", System.getenv("ARON_TEST_PG_URL") ?: "")
+    // D-QA-CI-HANG-01: no single test (or @BeforeAll/@AfterAll) may run longer than 5 minutes; an overrun fails by name
+    // instead of eating the job's time. The slowest analytics class takes 4.4 minutes in all (22 tests, migrations included).
+    systemProperty("junit.jupiter.execution.timeout.default", "5m")
 }

@@ -266,8 +266,10 @@ jobs:
     runs-on: ubuntu-24.04
     # 75: the train that carried db's V0087-V0107 plus the dashboard tests ran past the old 45-minute limit
     # (INT run #1395 cancelled by the job timeout, no test failed); splitting db from backend is tracked in
-    # docs/requests/ci-jvm-job-split.md.
-    timeout-minutes: 75
+    # docs/requests/ci-jvm-job-split.md. D-QA-CI-HANG-01: :backend:analytics:test (about 20 of the 30 minutes) moved to
+    # the parallel job jvm-analytics, the test step fails fast at 45 minutes and the job at 60; the log prints every
+    # test class as it starts and ends ("TEST-CLASS START/END"), so an overrun names the class it sat in.
+    timeout-minutes: 60
     services:
       postgres:
         image: postgres:16
@@ -293,12 +295,13 @@ jobs:
           java-version: "21"
       - uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
       - name: Build and test shared, db and backend
+        timeout-minutes: 45
         run: >-
           ./gradlew --console=plain
           :shared:contract:build :shared:rules:build :db:build
           :backend:platform:build :backend:auth:build :backend:sync:build :backend:masterdata:build
           :backend:config:build :backend:analytics:build :backend:notify:build :backend:media:build
-          :backend:app:build -x :backend:app:test
+          :backend:app:build -x :backend:app:test -x :backend:analytics:test
       - name: Upload test reports
         if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -361,6 +364,7 @@ jobs:
           java-version: "21"
       - uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
       - name: Backend app tests
+        timeout-minutes: 40
         run: ./gradlew --console=plain :backend:app:test
       - name: Upload test reports
         if: failure()
@@ -370,6 +374,52 @@ jobs:
           path: |
             backend/app/build/reports/tests/
             backend/app/build/test-results/
+          retention-days: 7
+
+  # :backend:analytics:test was the long pole of the job above (about 20 of 30 minutes on a normal runner, 37+ on a slow
+  # one; two lane runs sat in it on 2026-10-25 and were cancelled). It runs here, in parallel, once; the job above
+  # excludes it (-x :backend:analytics:test). Same Gradle task, no test skipped or changed. D-QA-CI-HANG-01.
+  jvm-analytics:
+    name: Backend analytics tests
+    needs: changes
+    if: needs.changes.outputs.jvm == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: aron_test
+          POSTGRES_DB: aron_test
+          # Throwaway service container reachable only from this job: trust auth, no password at all.
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U aron_test -d aron_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      ARON_TEST_PG_URL: jdbc:postgresql://localhost:5432/aron_test?user=aron_test
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
+      - name: Backend analytics tests
+        timeout-minutes: 35
+        run: ./gradlew --console=plain :backend:analytics:test
+      - name: Upload test reports
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: jvm-analytics-test-reports
+          path: |
+            backend/analytics/build/reports/tests/
+            backend/analytics/build/test-results/
           retention-days: 7
 
   android:
