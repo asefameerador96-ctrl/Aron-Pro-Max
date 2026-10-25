@@ -1,0 +1,5 @@
+# Dates the dev seed itself names (db/seed/04_dev_config_and_codes.sql, 06_dev_gulshan_banani.sql): a test that asserts
+# these holiday rows pins a fact of the seed, not a day of the run. Format: <literal> | <reason>. Reviewed change only.
+2026-10-21 | Durga Puja (Bijoya Dashami): a lunar date, the one 2026 holiday row seed 06 carries (owner row O)
+2026-12-16 | Victory Day: fixed-date national holiday named in seeds 04 and 06
+2026-12-25 | Christmas Day: fixed-date national holiday named in seed 06

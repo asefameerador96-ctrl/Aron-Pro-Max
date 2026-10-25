@@ -208,6 +208,8 @@ jobs:
           python3 tools/ci/osv-gate.py "${RUNNER_TEMP}/osv.json" tools/ci/osv-allow.txt
       - name: Wall-clock reads in tests (report only until 2026-10-09, then blocking; escape comment wall-clock-ok)
         run: python3 tools/ci/wallclock-scan.py .
+      - name: Constant dates in seed-dependent tests (D-TEST-DATE-PIN-01; allow-list and shrink-only baseline in tools/ci/date-pin-*.txt)
+        run: python3 tools/ci/date-pin-scan.py .
       - name: npm install scripts reviewed (web/.npmrc ignore-scripts; tools/ci/npm-install-scripts.txt)
         run: python3 tools/ci/install-scripts-check.py web/package-lock.json tools/ci/npm-install-scripts.txt
       - name: Money gates (no float on money, shrink-only allow-list; the shared format corpus is current; their self-tests)
