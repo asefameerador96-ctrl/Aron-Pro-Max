@@ -505,7 +505,7 @@ sequenceDiagram
   end
   DB-)RR: async replication
   MGR->>WEB: open dashboard
-  WEB->>RR: GET /v1/dashboards/summary via API, scope from token, 30 s cache
+  WEB->>RR: GET /v1/dashboards/summary via API, scope from token, 5 s cache
   RR-->>MGR: tiles with as-of time and stale reason
 ```
 
