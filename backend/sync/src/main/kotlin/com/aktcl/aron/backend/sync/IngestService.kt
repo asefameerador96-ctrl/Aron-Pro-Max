@@ -710,7 +710,75 @@ class IngestService(
         DayStates.settleMinutes = runCatching { config.int("cfg.day.submit_settle_timeout_min").toLong() }.getOrDefault(30L)
         runCatching { db.jdbi.useTransaction<Exception> { h -> DayStates.afterBatch(h, up.userId, ctx.touched, now) } }
             .onFailure { log.error("day states failed batch_uuid=${ctx.batchUuid}", it) }
+        // D-NIGHT-CHECKOUT-01: judged after the whole batch, so a Sales Submit sent with the check-out (either order) counts.
+        val checkouts = recs.filter { r -> r.type == "attendance_event" && outcomes[r.index]?.status == "accepted" && (r.json["payload"] as? JsonObject)?.str("kind") == "check_out" }
+        if (checkouts.isNotEmpty()) checkoutWithoutSubmit(ctx, checkouts)
         return outcomes
+    }
+
+    /** Cached database half of [checkoutRiskOn] once true; a false answer is asked again after a minute (the migration may land while running). */
+    @Volatile private var checkoutCodeInDb: Boolean = false
+    @Volatile private var checkoutCodeAskedAt: Instant = Instant.EPOCH
+
+    /**
+     * The CHECKOUT_WITHOUT_SUBMIT switch: on when the contract catalogue names the code (contract 1.9) and the database's
+     * code constraint accepts it; [checkoutRiskOverride] decides instead when set (tests).
+     */
+    private fun checkoutRiskOn(): Boolean {
+        checkoutRiskOverride?.let { return it }
+        if (com.aktcl.aron.contract.RiskSignalCode.entries.none { it.wire == CHECKOUT_WITHOUT_SUBMIT }) return false
+        if (checkoutCodeInDb) return true
+        val now = clock.now()
+        if (now.isBefore(checkoutCodeAskedAt.plusSeconds(60))) return false
+        checkoutCodeAskedAt = now
+        checkoutCodeInDb = runCatching {
+            db.jdbi.withHandle<Boolean, Exception> { h ->
+                h.createQuery("SELECT coalesce(bool_or(pg_get_constraintdef(oid) LIKE :c), false) FROM pg_constraint WHERE conrelid = 'app.risk_signal'::regclass AND conname = 'risk_signal_code_check'")
+                    .bind("c", "%'$CHECKOUT_WITHOUT_SUBMIT'%").mapTo(Boolean::class.java).one()
+            }
+        }.getOrDefault(false)
+        return checkoutCodeInDb
+    }
+
+    /**
+     * D-NIGHT-CHECKOUT-01 (contract 1.9 queue row 5): an SR's or AMO's check-out stored in this batch (accepted now, never
+     * a duplicate resend) while the user has no effective `day_submit` for its business date (not data-voided, its
+     * route-day or supervisor-day not submit-voided; any scope, any route of the user) raises CHECKOUT_WITHOUT_SUBMIT on
+     * the user for that date (one per user-day, ON CONFLICT DO NOTHING). The check-out stays stored unchanged (the phone
+     * gate is the rule); each insert runs in its own transaction, so a failed signal never touches the batch.
+     */
+    private fun checkoutWithoutSubmit(ctx: Ctx, checkouts: List<Rec>) {
+        if (ctx.up.role != Role.SR && ctx.up.role != Role.AMO) return
+        if (!runCatching { checkoutRiskOn() }.getOrDefault(false)) return
+        val weight: Double = runCatching<Double?> { (config.value("cfg.geo.integrity_weight") as JsonObject)[CHECKOUT_WITHOUT_SUBMIT]?.jsonPrimitive?.content?.toDoubleOrNull() }.getOrNull() ?: 20.0
+        for (r in checkouts) runCatching { db.jdbi.useTransaction<Exception> { h ->
+            // The server's business date of the stored row (the server may have re-dated the phone's).
+            val bd = h.createQuery("SELECT business_date FROM app.ingest_registry WHERE client_uuid = CAST(:c AS uuid) AND user_id = :u AND status = 'accepted'")
+                .bind("c", r.clientUuid).bind("u", ctx.up.userId).mapTo(LocalDate::class.java).findOne().orElse(null) ?: return@useTransaction
+            val submitted = h.createQuery(
+                """
+                SELECT EXISTS (
+                    SELECT 1 FROM app.route_day_event e
+                    LEFT JOIN app.route_day rd ON e.scope = 'route_day' AND rd.route_id = e.route_id AND rd.business_date = e.business_date
+                    LEFT JOIN app.supervisor_day sd ON e.scope = 'supervisor_day' AND sd.user_id = e.user_id AND sd.business_date = e.business_date
+                    WHERE e.kind = 'day_submit' AND e.user_id = :u AND e.business_date = :d AND e.voided_at IS NULL
+                      AND NOT coalesce(rd.submit_voided, false) AND NOT coalesce(sd.submit_voided, false))
+                """.trimIndent(),
+            ).bind("u", ctx.up.userId).bind("d", bd).mapTo(Boolean::class.java).one()
+            if (submitted) return@useTransaction
+            h.createUpdate(
+                """
+                INSERT INTO app.risk_signal (code, severity, business_date, subject_type, subject_id, user_id, route_id, score, evidence, config_version)
+                VALUES (:code, 2, :d, 'user', :sid, :u, :route, :score, CAST(:ev AS jsonb), :cv)
+                ON CONFLICT (code, subject_type, subject_id, business_date) DO NOTHING
+                """.trimIndent(),
+            ).bind("code", CHECKOUT_WITHOUT_SUBMIT).bind("d", bd).bind("sid", ctx.up.userId.toString()).bind("u", ctx.up.userId).bind("route", r.json.long("route_id"))
+                .bind("score", weight.coerceIn(0.0, 300.0))
+                .bind("ev", kotlinx.serialization.json.buildJsonObject {
+                    put("checkout_client_uuid", JsonPrimitive(r.clientUuid)); put("checked_out_at", JsonPrimitive(r.json.str("captured_at")))
+                    put("day_submit_found", JsonPrimitive(false))
+                }.toString()).bind("cv", config.configVersion()).execute()
+        } }.onFailure { log.error("checkout signal failed batch_uuid=${ctx.batchUuid} client_uuid=${r.clientUuid}", it) }
     }
 
     private fun acksOf(recs: List<Rec>, outcomes: Array<Outcome?>): List<RecordAck> {
@@ -1750,6 +1818,9 @@ class IngestService(
     }
 
     companion object {
+        const val CHECKOUT_WITHOUT_SUBMIT = "CHECKOUT_WITHOUT_SUBMIT"
+        /** Test hook for the CHECKOUT_WITHOUT_SUBMIT switch; null (production) follows the catalogue and the database. */
+        @Volatile var checkoutRiskOverride: Boolean? = null
         private const val FAMILY_TRIES = 3
         private const val CHECKOUT_KEY = "cfg.day.checkout_earliest_time"
         private val DHAKA: java.time.ZoneId = java.time.ZoneId.of("Asia/Dhaka")

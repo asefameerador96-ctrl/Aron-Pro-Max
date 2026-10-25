@@ -20,7 +20,7 @@ import kotlin.test.assertNull
 import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
-/** F-API-014 on the seeded day: scoped rollups from dw only, 30 s cache per scope hash, as-of stamp, under one second. */
+/** F-API-014 on the seeded day: scoped rollups from dw only, 5 s cache per scope hash (D-NIGHT-SYNC-01), as-of stamp, under one second. */
 class DashboardTest {
     private val day = LocalDate.parse("2026-10-04")
     private lateinit var fresh: FreshDb
@@ -91,14 +91,15 @@ class DashboardTest {
     }
 
     @Test
-    fun cachedThirtySecondsPerScopeAndNeverAcrossScopes() {
+    fun cachedFiveSecondsPerScopeAndNeverAcrossScopes() {
+        // D-NIGHT-SYNC-01: 5 s (was 30 s), so the cache never holds a synced memo off the dashboard past the 15 s goal.
         val a = service.summary(reach(z1), null, null, day, day)
-        now = now.plusSeconds(10)
+        now = now.plusSeconds(4)
         assertSame(a, service.summary(reach(z1), null, null, day, day))
         val other = service.summary(reach(z2), null, null, day, day)
         assertTrue(other !== a); assertEquals(24_000, other.kpis.gross_mtk)
-        now = now.plus(Duration.ofSeconds(31))
-        assertTrue(service.summary(reach(z1), null, null, day, day) !== a)
+        now = now.plus(Duration.ofSeconds(2))
+        assertTrue(service.summary(reach(z1), null, null, day, day) !== a, "recomputed once 5 s passed")
     }
 
     @Test
