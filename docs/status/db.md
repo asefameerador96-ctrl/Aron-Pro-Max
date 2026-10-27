@@ -2,6 +2,12 @@
 
 Updated with every push. Rows of Day 1: N-005, N-006, N-007, N-008 (`python3 tools/my-rows.py db 1 --full`).
 
+## Session 13, 2026-10-27 (lane/db; rebased on INT d055c9c = train 42)
+
+| Job | State | What |
+|---|---|---|
+| **row 9 item 2: master history** (review Medium 9) | built; Opus checker round 1 FAIL (1 blocker: api_rw could rewrite the registry that steers the SECURITY DEFINER trigger) -> fixed, round 2 PASS (wording fix taken); local suites on the final tree | V0119: ten app-side history tables (geography parents, cluster, route class/status, outlet class, product tree, SKU attributes, user role/home zone), registry `app.master_history_map` (pinned tracked columns, owner-guarded), trigger `app.master_history_track` (period on a real change only; no-op, untracked and origin re-tag open none), seeded from `app.audit_log` before-images (`app.rebuild_master_history`), dw `v_dim_geo_history`, `v_dim_outlet_history`, `v_dim_product_history`, `v_dim_user_history`; view contract 1.1. D-DB-MASTER-HISTORY-01. Next free migration **V0120** |
+
 ## HANDOVER (session 12 -> session 13), 2026-10-27 ~20:00 UTC, lane/db ca4da94a (+ this docs-only commit)
 
 **State.** lane/db = INT 5a193330 (train 39) + row 1 (37e5c1be, V0116 data origin, run #1594 green) + row 3 (5d185755,
