@@ -65,6 +65,7 @@ $protection = @{
       'Repository gates (secrets, migrations, contract)',
       'Shared, db and backend (build and tests)',
       'Backend app tests',
+      'Backend analytics tests',
       'Android debug APKs, unit tests and lint',
       'Release APKs and APK size gate',
       'Web (lint, types, tests, build, e2e)',

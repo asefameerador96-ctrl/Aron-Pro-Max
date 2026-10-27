@@ -1,3 +1,7 @@
+## qa #3 (2026-10-25): CI time and hang, then the constant-date gate
+- Slice 1 (D-QA-CI-HANG-01): `:backend:analytics:test` in its own job `jvm-analytics`, step/job timeouts, `TEST-CLASS START/END` logging in the root build, 5 m JUnit timeout on analytics. Local facts: analytics suite 38 m 35 s with 1 fork, 36 m 43 s with 3 forks (4 cores, CPU-bound on per-class Flyway migrations: 11-13 s for a one-test class); slowest class NationalDashboardTest 263 s. Idea for db/platform owners: migrated template database for `FreshDb`.
+- Slice 1 candidate 5422938b (run #1590 green, analytics job 27.0 min, rest of jvm cached 1.2 min). Slice 2 (D-QA-DATE-PIN-GATE-01): `tools/ci/date-pin-scan.py`, 104 baselined offenders, list in docs/requests/date-pin-offenders-2026-10-25.md.
+
 ## Wave 4, session 2g: cover day, emergency off day, parking (built locally, pushed after "train 17 landed"), 2026-10-23
 - `DataFlowTraceCoverHolidayTest` (cover day Monday, emergency off day Tuesday, shared `DataFlowTraceScenario`), `DataFlowTraceParkingTest`; `DataFlowTraceSupport` has a movable clock (`clockShift`) and `prepareSrDay(username, phone, routeCode)`. No finding; two observations are in the evidence doc (a sale on a called-off day is in the sales cards but in no CPR/Login figure; a parentless child after the TTL is quarantined `business_date_out_of_window`, not a final reject as DQ-03 words it).
 - The handover above stays valid; strike items (2) and (3) of "Open for qa #3" once this is pushed.

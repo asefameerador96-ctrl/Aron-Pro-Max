@@ -51,6 +51,23 @@ val robolectricMirror = if (System.getenv("GITHUB_ACTIONS") == null && System.ge
 // DEV ONLY: bundle the pack pictures cropped from the owner's reference screenshot (android/dev-packshots/README.md).
 val devPackshots = (findProperty("aron.devPackshots") as String?)?.trim() == "true"
 
+// Prints "TEST-CLASS START/END <class> (<ms> ms, <result>)" for every test class, so a CI log that overruns names the
+// class it sat in (D-QA-CI-HANG-01). Class level only: per-method lines would bury the log (thousands of tests).
+fun Test.logTestClasses() {
+    addTestListener(object : TestListener {
+        override fun beforeSuite(suite: TestDescriptor) {
+            if (suite.className != null) println("TEST-CLASS START ${suite.className}")
+        }
+        override fun afterSuite(suite: TestDescriptor, result: TestResult) {
+            if (suite.className != null) {
+                println("TEST-CLASS END ${suite.className} (${result.endTime - result.startTime} ms, ${result.resultType}, ${result.testCount} tests)")
+            }
+        }
+        override fun beforeTest(testDescriptor: TestDescriptor) {}
+        override fun afterTest(testDescriptor: TestDescriptor, result: TestResult) {}
+    })
+}
+
 subprojects {
     group = "com.aktcl.aron"
     version = (findProperty("aron.version") as String?) ?: "0.1.0"
@@ -88,6 +105,7 @@ subprojects {
         tasks.withType<Test>().configureEach {
             useJUnitPlatform()
             testLogging { events("failed"); exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL }
+            logTestClasses()
         }
     }
     plugins.withId("org.jetbrains.kotlin.multiplatform") {
@@ -100,6 +118,7 @@ subprojects {
         tasks.withType<Test>().configureEach {
             useJUnitPlatform()
             testLogging { events("failed"); exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL }
+            logTestClasses()
         }
     }
 

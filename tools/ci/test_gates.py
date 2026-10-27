@@ -14,6 +14,8 @@ Each gate is proven to FAIL on a deliberate violation and to pass on a clean inp
                         unknown file name fails
   wallclock-scan.py     a wall-clock read in a test source is reported (fails with --blocking); the escape comment
                         and production sources are not flagged
+  date-pin-scan.py      a constant 2026 date in a test that uses the dev seed fails; a derived day, a comment, the escape
+                        comment, an allow-listed seed holiday, a baselined row and a test without the seed pass
   install-scripts-check.py  a new package with an install script fails; the reviewed ones pass
 Binaries: OASDIFF and SQUAWK (paths) or on PATH; a test that needs a missing binary is skipped, never faked.
 """
@@ -499,6 +501,63 @@ class WallClockScan(unittest.TestCase):
         rc, out = self.run_scan(files, "--blocking")
         self.assertEqual(rc, 0, out)
         self.assertIn("0 offender(s)", out)
+
+
+class DatePinScan(unittest.TestCase):
+    """D-TEST-DATE-PIN-01: the gate runs against the real tools/ci allow-list and baseline (read from HERE), over a temp tree."""
+
+    def run_scan(self, files):
+        with tempfile.TemporaryDirectory() as t:
+            for rel, text in files.items():
+                p = Path(t) / rel
+                p.parent.mkdir(parents=True, exist_ok=True)
+                p.write_text(text)
+            r = subprocess.run([sys.executable, str(HERE / "date-pin-scan.py"), t], capture_output=True, text=True)
+            return r.returncode, r.stdout
+
+    SEEDED = "backend/app/src/test/kotlin/com/aktcl/aron/backend/app/XTest.kt"
+
+    def test_constant_date_in_a_seed_test_fails(self):
+        rc, out = self.run_scan({self.SEEDED: 'val w = ApiWorld(devProfile = true)\nval day = "2026-11-03"\n'})
+        self.assertEqual(rc, 1, out)
+        self.assertIn("constant date 2026-11-03", out)
+        self.assertIn("(backend-app)", out)
+
+    def test_the_other_ways_to_pass(self):
+        files = {
+            self.SEEDED: ('val w = ApiWorld(devProfile = true)\n'
+                          '// 2026-11-03 in a comment names the day, it does not pin it\n'
+                          'val a = "2026-11-04" // date-pin-ok: a past fact of the test, not a day of the run\n'
+                          '// date-pin-ok: the first of the month the seed starts from\n'
+                          'val b = "2026-11-05"\n'
+                          'val h = "2026-10-21"   // Durga Puja, allow-listed\n'),
+            "db/src/test/kotlin/com/aktcl/aron/db/YTest.kt": 'val d = "2026-11-03"   // no dev seed here\n',
+            "db/src/test/kotlin/com/aktcl/aron/db/ZTest.kt": '// migrations only, never SeedLoader\nval d = "2026-11-03"\n',
+            "backend/app/src/main/kotlin/Q.kt": 'val seed = "GUL-SR-1"; val d = "2026-11-03"\n',
+        }
+        rc, out = self.run_scan(files)
+        self.assertEqual(rc, 0, out)
+        self.assertIn("0 new", out)
+
+    def test_timestamps_strings_with_slashes_and_urls(self):
+        w = 'val w = ApiWorld(devProfile = true)\n'
+        for code in ('val a = "2026-10-08T10:00:00Z"\n', 'val a = "a//b 2026-11-03"\n', 'val b = DATE \'2026-11-03\'\n'):
+            rc, out = self.run_scan({self.SEEDED: w + code})
+            self.assertEqual(rc, 1, code + out)
+        for code in ('val u = "http://x" // 2026-11-03 note\n', '/* 2026-11-03\n   and 2026-11-04 */\nval c = 1\n',
+                     'val r = """\n  http://x\n"""  // 2026-11-03\n'):
+            rc, out = self.run_scan({self.SEEDED: w + code})
+            self.assertEqual(rc, 0, code + out)
+
+    def test_every_allow_row_has_a_reason(self):
+        for line in (HERE / "date-pin-allow.txt").read_text(encoding="utf-8").splitlines():
+            if line.strip() and not line.startswith("#"):
+                self.assertGreaterEqual(len(line.split("|")), 2, line)
+                self.assertTrue(line.split("|")[1].strip(), line)
+
+    def test_the_real_tree_has_no_unbaselined_literal(self):
+        r = subprocess.run([sys.executable, str(HERE / "date-pin-scan.py"), str(ROOT)], capture_output=True, text=True)
+        self.assertEqual(r.returncode, 0, r.stdout)
 
 
 if __name__ == "__main__":
