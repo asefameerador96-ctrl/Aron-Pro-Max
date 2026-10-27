@@ -90,7 +90,7 @@ BUILD SUCCESSFUL in 22s            (first handback run; the final combined run o
 61 actionable tasks: 61 executed
 ```
 
-(`aron_test` is a throwaway local role on the build container, not a credential of any environment.)
+(`aron_test` is a throwaway local role on the build container, not a credential of any environment.) Since train 41 (D-QA-CI-HANG-01) CI runs `:backend:analytics:test` in its own job ("Backend analytics tests", about 27 minutes, 5-minute per-test timeout) and the "Shared, db and backend" job builds the rest; the local command above still builds everything in one go.
 
 | Module | Tests | Failed |
 |---|---|---|

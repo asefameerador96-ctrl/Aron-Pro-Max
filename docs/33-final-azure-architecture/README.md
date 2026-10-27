@@ -125,7 +125,7 @@ All volumes and peaks are **design values from `docs/18`**, not measurements. "I
 | Cost | Budgets | `budget-aron-prod` USD 7,000 per month, stage 2,500; alerts at 50, 90, 100 percent actual and 100 percent forecast. A running stage costs extra and its figure is UNKNOWN; the pilot-size figure is UNKNOWN | IN_REPO | `infra/modules/budget.bicep` |
 | Quota | Final subscription requests | PostgreSQL Ddsv5 vCores: 40 (prod alone: 24 steady + drill + headroom) or 64 (if stage and prod share a subscription; stage + prod + drill is 56); Container Apps cores 100 per environment; environments 2; Load Testing engines 40 | PLANNED; lead time up to a week | B11.3; `docs/setup/azure-quota-request.md` |
 | Delivery | Build progress | 363 of 490 BUILD backlog rows built (74.1 percent, lead tally 2026-10-08 06:50 UTC); backlog 619 rows = 490 BUILD + 33 DEFERRED + 96 DROP | measured by lead | `docs/status/forecast.md:83`; A10.2 |
-| Delivery | Tests and CI | about 2,494 `@Test` annotations in the repository, 833 in the backend; CI has 9 jobs and takes 22.3 minutes against a 15-minute target | IN_REPO | A8.3; C9 |
+| Delivery | Tests and CI | about 2,494 `@Test` annotations in the repository, 833 in the backend; CI has 10 jobs since train 41 (the backend analytics tests run in their own job, D-QA-CI-HANG-01) and takes about 27 to 29 minutes wall on a lane run, the analytics job alone about 27 minutes, against a 15-minute target | IN_REPO | A8.3; C9 |
 
 ---
 

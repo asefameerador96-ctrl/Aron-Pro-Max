@@ -345,7 +345,7 @@ flowchart TB
 | Data | PostgreSQL Flexible Server 16, `Standard_D8ds_v5`, ZoneRedundant HA, Premium SSD v2 1,024 GiB / 12,000 IOPS / 300 MB/s, backup 35 days + geo-redundant, built-in PgBouncer, replica `-r1` (intended for the second deploy, but the creation path does not work as written: B13.2 rows 36 and 37), maintenance Friday 01:00-02:00 Dhaka. The D8 size applies from the first deploy; the D2 to D4 to D8 ladder of D-06 is not in the parameter files (A10.3 row 38). Storage `staronprod<s>` RA-GZRS (soft delete 14 d; media Cool 30 d / Cold 90 d; bundles deleted 3 d) | **[IN_REPO]** |
 | Security services | Key Vault `kv-aron-prod-<s>` (RBAC, soft delete 90 d, purge protection on); four user-assigned identities (api, worker, web, migrate); ACR `craronprod<s>` Premium; GitHub OIDC deploy principal limited to one resource group; no Azure Policy, no locks, no Defender | Vault, identities, ACR **[IN_REPO]**; Policy and locks **[DESIGNED]** |
 | Monitoring | Log Analytics `log-aron-prod` 90 d, 8 GB/day cap; App Insights `appi-aron-prod` (Java agent 3.7.10); workbook "Aron operations"; 5 log alerts, 4 PostgreSQL metric alerts, app metric alerts, resource-health alerts; e-mail action group `ag-aron-prod`; budget `budget-aron-prod` USD 7,000/month | **[IN_REPO]**; SMS/voice paging **[DESIGNED]** |
-| Delivery | `ci.yml` (9 jobs) then `deploy.yml` / `infra/deploy.sh`, digest-pinned images, what-if guard, health gate; `promote-prod.yml` from a `server-vX.Y.Z` tag, inert until `ARON_FINAL_ACCOUNT=true` | **[IN_REPO]**; staging path not wired |
+| Delivery | `ci.yml` (10 jobs since train 41) then `deploy.yml` / `infra/deploy.sh`, digest-pinned images, what-if guard, health gate; `promote-prod.yml` from a `server-vX.Y.Z` tag, inert until `ARON_FINAL_ACCOUNT=true` | **[IN_REPO]**; staging path not wired |
 
 Evidence: `infra/main.bicep:11, 104, 221-234`; `infra/params/prod.bicepparam:99-144`; `infra/modules/network.bicep:14-110`; `infra/modules/frontdoor.bicep:24-129`; `infra/apps.bicep:262-529`; `infra/modules/postgres.bicep:84-166`; `infra/modules/storage.bicep:19-173`; `infra/modules/keyvault.bicep:22-78`; `infra/modules/monitoring.bicep:15-84`; `docs/18-scale-reliability-azure.md:263-272, 740-799`; `docs/setup/move-to-final-account.md:29, 33, 70, 72`.
 
@@ -832,7 +832,7 @@ Ring plan for apps: ring 0 the owner's three phones, ring 1 20 to 50 pilot SRs, 
 
 ### A8.3 CI and CD gates
 
-**CI (`ci.yml`, 9 jobs, actions pinned by commit SHA).** Measured: 22.3 minutes wall (run 37682155791, 9 of 9 green); the 15-minute target is **not met**.
+**CI (`ci.yml`, 10 jobs since train 41, actions pinned by commit SHA).** Measured: 22.3 minutes wall before the split (run 37682155791, 9 of 9 green); after the split 27.3 and 28.6 minutes wall on the qa lane runs 40174952495 and 40178671065 (10 of 10 green), where the new "Backend analytics tests" job alone takes about 27 minutes and every other job finishes within 21 minutes, so the wall is the longest job rather than a sum (D-QA-CI-HANG-01; a migrated template database for FreshDb is the next cut, hand-offs file); the 15-minute target is **not met**.
 
 | Job | Gate |
 |---|---|
