@@ -19,7 +19,7 @@ Removals are rare and listed here (a wrong column is removed, never redefined in
 
 | Schema | Relations | Columns |
 |---|---|---|
-| `app` | 167 | 2796 |
+| `app` | 167 | 2797 |
 | `dw` | 62 | 985 |
 
 ## Index
@@ -236,11 +236,11 @@ Removals are rare and listed here (a wrong column is removed, never redefined in
 | [`dw.v_daily_sr`](#dwv_daily_sr) | view | worker | SERVER | event_fact | none | Stable view: per field user and business date, SR calls, successful calls, geo validity and memo money from the dw facts (active memos with lines); a user-day with neither an SR call nor such a memo has no row. |
 | [`dw.v_device_command`](#dwv_device_command) | view | backend:mdm | ONLINE | audit | none | Stable view: MDM commands for the activity log, without signature and result. |
 | [`dw.v_dim_geo`](#dwv_dim_geo) | view | worker | SERVER | master | none | Stable view: the current route and geography dimension (dw.dim_geo; versions in dw.dim_geo_version). is_effective = route active. |
-| [`dw.v_dim_geo_history`](#dwv_dim_geo_history) | view | db | SERVER | master | none | Stable view: a route's place in the geography (zone, house, territory, division, wing) and its kind, class and status for each period in which none of them changed, from the app history tables. is_effective = route active in the period. |
+| [`dw.v_dim_geo_history`](#dwv_dim_geo_history) | view | db | SERVER | master | none | Stable view: a route's place in the geography (zone, house, territory, division, wing) and its kind, class and status per period, from the app history tables (a new period whenever one of the histories behind it changes; neighbours can carry equal values). is_effective = route active in the period. |
 | [`dw.v_dim_outlet`](#dwv_dim_outlet) | view | worker | SERVER | master | none | Stable view: the current outlet dimension (dw.dim_outlet): shop name and code, placement and class; no owner name, phone number or coordinates. is_effective = outlet active. |
 | [`dw.v_dim_outlet_history`](#dwv_dim_outlet_history) | view | db | SERVER | master | none | Stable view: an outlet's zone and class (channel, sub-channel, geo class, kind, price type, status) per period (app.outlet_class_history); no names, owner, phone or coordinates. is_effective = outlet active in the period. |
 | [`dw.v_dim_product`](#dwv_dim_product) | view | worker | SERVER | master | none | Stable view: the current product dimension (dw.dim_product): SKU, base unit, pack size and the category, segment, brand and variant tree. is_effective = true. |
-| [`dw.v_dim_product_history`](#dwv_dim_product_history) | view | db | SERVER | master | none | Stable view: a SKU's attributes and its variant, brand, segment and category for each period in which none of them changed (app.sku_history, app.product_node_history). is_effective = SKU active in the period. |
+| [`dw.v_dim_product_history`](#dwv_dim_product_history) | view | db | SERVER | master | none | Stable view: a SKU's attributes and its variant, brand, segment and category per period (app.sku_history, app.product_node_history; a new period whenever one of them changes, neighbours can carry equal values). is_effective = SKU active in the period. |
 | [`dw.v_dim_user`](#dwv_dim_user) | view | worker | SERVER | master | none | Stable view: the current user dimension (dw.dim_user): role, designation, home zone, status; no names or logins. is_effective = account active. |
 | [`dw.v_dim_user_history`](#dwv_dim_user_history) | view | db | SERVER | master | none | Stable view: a user's role, designation, home zone and status per period (app.user_history); no names or logins. is_effective = account active in the period. |
 | [`dw.v_due_ledger`](#dwv_due_ledger) | view | backend:sync | SERVER | transaction | none | Stable view: every signed entry of the outlet dues ledger (app.due_ledger, append-only; reversals are entries of their own), without the printed memo number and the free-text note. is_effective = true. |
@@ -924,7 +924,7 @@ One row is a period of the zone a cluster belonged to, its type and status (V011
 | `cluster_id` | bigint | not null |  | The app.cluster row. |
 | `zone_id` | bigint | not null |  | Zone (app.zone). (as it was in the period). |
 | `cluster_type` | text | null |  | Free-text type label of the cluster, up to 60 characters. (as it was in the period). |
-| `status` | text | not null |  | Lifecycle status; allowed values are listed under constraints. (as it was in the period). |
+| `status` | text | not null |  | Lifecycle status (as it was in the period). |
 | `valid_from` | date | null |  | First Asia/Dhaka business date of the period (null = since the row existed). |
 | `valid_to` | date | null |  | Asia/Dhaka business date the period ended, exclusive (null = current). |
 | `data_origin` | app.data_origin | not null |  | Always production: this master carries no origin of its own. |
@@ -1522,7 +1522,7 @@ One row is a period of the wing a division belonged to and its status (V0119); w
 | `id` | bigint | not null |  | Server surrogate key. |
 | `division_id` | bigint | not null |  | The app.division row. |
 | `wing_id` | bigint | not null |  | Id of the wing the division belongs to. (as it was in the period). |
-| `status` | text | not null |  | Lifecycle status; allowed values are listed under constraints. (as it was in the period). |
+| `status` | text | not null |  | Lifecycle status (as it was in the period). |
 | `valid_from` | date | null |  | First Asia/Dhaka business date of the period (null = since the row existed). |
 | `valid_to` | date | null |  | Asia/Dhaka business date the period ended, exclusive (null = current). |
 | `data_origin` | app.data_origin | not null |  | Always production: this master carries no origin of its own. |
@@ -2253,6 +2253,7 @@ Registry of the master history tables (V0119): the master each one follows, its 
 | `history_table` | text | not null |  | History table in schema app. |
 | `master_table` | text | not null |  | Master table in schema app whose tracked columns the history keeps. |
 | `key_col` | text | not null |  | Column of the history table that holds the master's id. |
+| `tracked_cols` | text[] | not null |  | Master columns the history keeps; a period opens when one of them changes. |
 | `audit_entities` | text[] | not null |  | app.audit_log entity names whose before-images date the master's past changes. |
 
 Keys: `UNIQUE (master_table)`; `PRIMARY KEY (history_table)`
@@ -2806,7 +2807,7 @@ One row is a period of an outlet's zone, channel, sub-channel, geo class, kind, 
 | `geo_class` | text | null |  | Geographic class of the outlet area: Hill, Urban, SemiUrban or Rural. (as it was in the period). |
 | `outlet_kind` | text | not null |  | Outlet kind: retail or wholesale. (as it was in the period). |
 | `price_type` | text | not null |  | Selling price type of the outlet or price row: outlet, cc, distributor (and reporting, nto for prices). (as it was in the period). |
-| `status` | text | not null |  | Lifecycle status; allowed values are listed under constraints. (as it was in the period). |
+| `status` | text | not null |  | Lifecycle status (as it was in the period). |
 | `valid_from` | date | null |  | First Asia/Dhaka business date of the period (null = since the row existed). |
 | `valid_to` | date | null |  | Asia/Dhaka business date the period ended, exclusive (null = current). |
 | `data_origin` | app.data_origin | not null |  | Origin of the master row (production, pilot, test, seed), kept equal to the master's on every period. |
@@ -3174,7 +3175,7 @@ One row is a period of the parent of a product tree node, its sales switch and s
 | `node_id` | bigint | not null |  | The app.product_node row. |
 | `parent_id` | bigint | null |  | Id of the parent node; null for a category. (as it was in the period). |
 | `sales_enable` | boolean | not null |  | True when the node's SKUs may be sold. (as it was in the period). |
-| `status` | text | not null |  | Lifecycle status; allowed values are listed under constraints. (as it was in the period). |
+| `status` | text | not null |  | Lifecycle status (as it was in the period). |
 | `valid_from` | date | null |  | First Asia/Dhaka business date of the period (null = since the row existed). |
 | `valid_to` | date | null |  | Asia/Dhaka business date the period ended, exclusive (null = current). |
 | `data_origin` | app.data_origin | not null |  | Always production: this master carries no origin of its own. |
@@ -3844,10 +3845,10 @@ One row is a period of a route's kind, visit kind, class and status (its zone is
 |---|---|---|---|---|
 | `id` | bigint | not null |  | Server surrogate key. |
 | `route_id` | bigint | not null |  | The app.route row. |
-| `kind` | text | not null |  | Kind of the row; allowed values are listed under constraints. (as it was in the period). |
+| `kind` | text | not null |  | Kind of the row (as it was in the period). |
 | `visit_kind` | text | null |  | Visit pattern of the route: daily, 3f (three days a week) or 2f (two days). (as it was in the period). |
 | `route_class` | text | not null |  | normal, manual (no-internet, keyed on the web), dummy_br or dummy_institutional; Live CPR, Target Route and Login count normal routes only (V0094). (as it was in the period). |
-| `status` | text | not null |  | Lifecycle status; allowed values are listed under constraints. (as it was in the period). |
+| `status` | text | not null |  | Lifecycle status (as it was in the period). |
 | `valid_from` | date | null |  | First Asia/Dhaka business date of the period (null = since the row existed). |
 | `valid_to` | date | null |  | Asia/Dhaka business date the period ended, exclusive (null = current). |
 | `data_origin` | app.data_origin | not null |  | Origin of the master row (production, pilot, test, seed), kept equal to the master's on every period. |
@@ -4126,7 +4127,7 @@ One row is a period of a SKU's variant, category, units, pack size, report unit,
 | `report_unit` | text | null |  | Unit shown in reports; null when the base unit is used. (as it was in the period). |
 | `report_factor` | numeric(16,3) | not null |  | Base units per report unit, with three decimals. (as it was in the period). |
 | `sales_enable` | boolean | not null |  | True when the SKU may be sold. (as it was in the period). |
-| `status` | text | not null |  | Lifecycle status; allowed values are listed under constraints. (as it was in the period). |
+| `status` | text | not null |  | Lifecycle status (as it was in the period). |
 | `valid_from` | date | null |  | First Asia/Dhaka business date of the period (null = since the row existed). |
 | `valid_to` | date | null |  | Asia/Dhaka business date the period ended, exclusive (null = current). |
 | `data_origin` | app.data_origin | not null |  | Always production: this master carries no origin of its own. |
@@ -4677,7 +4678,7 @@ One row is a period of the division a territory belonged to and its status (V011
 | `id` | bigint | not null |  | Server surrogate key. |
 | `territory_id` | bigint | not null |  | The app.territory row. |
 | `division_id` | bigint | not null |  | Id of the division the territory belongs to. (as it was in the period). |
-| `status` | text | not null |  | Lifecycle status; allowed values are listed under constraints. (as it was in the period). |
+| `status` | text | not null |  | Lifecycle status (as it was in the period). |
 | `valid_from` | date | null |  | First Asia/Dhaka business date of the period (null = since the row existed). |
 | `valid_to` | date | null |  | Asia/Dhaka business date the period ended, exclusive (null = current). |
 | `data_origin` | app.data_origin | not null |  | Always production: this master carries no origin of its own. |
@@ -4783,7 +4784,7 @@ One row is a period of a user's role, designation, home zone and status (V0119);
 | `role` | text | not null |  | User role (contract Role). (as it was in the period). |
 | `designation` | text | null |  | Job title shown on screens and reports. (as it was in the period). |
 | `home_zone_id` | bigint | null |  | Id of the zone the user belongs to by default. (as it was in the period). |
-| `status` | text | not null |  | Lifecycle status; allowed values are listed under constraints. (as it was in the period). |
+| `status` | text | not null |  | Lifecycle status (as it was in the period). |
 | `valid_from` | date | null |  | First Asia/Dhaka business date of the period (null = since the row existed). |
 | `valid_to` | date | null |  | Asia/Dhaka business date the period ended, exclusive (null = current). |
 | `data_origin` | app.data_origin | not null |  | Origin of the master row (production, pilot, test, seed), kept equal to the master's on every period. |
@@ -5159,7 +5160,7 @@ One row is a period of the territory and house a zone belonged to and its status
 | `zone_id` | bigint | not null |  | The app.zone row. |
 | `territory_id` | bigint | not null |  | Territory (app.territory). (as it was in the period). |
 | `house_id` | bigint | null |  | Id of the distribution house of the zone. (as it was in the period). |
-| `status` | text | not null |  | Lifecycle status; allowed values are listed under constraints. (as it was in the period). |
+| `status` | text | not null |  | Lifecycle status (as it was in the period). |
 | `valid_from` | date | null |  | First Asia/Dhaka business date of the period (null = since the row existed). |
 | `valid_to` | date | null |  | Asia/Dhaka business date the period ended, exclusive (null = current). |
 | `data_origin` | app.data_origin | not null |  | Always production: this master carries no origin of its own. |
@@ -6312,7 +6313,7 @@ Stable view: the current route and geography dimension (dw.dim_geo; versions in 
 
 ## dw.v_dim_geo_history
 
-Stable view: a route's place in the geography (zone, house, territory, division, wing) and its kind, class and status for each period in which none of them changed, from the app history tables. is_effective = route active in the period.
+Stable view: a route's place in the geography (zone, house, territory, division, wing) and its kind, class and status per period, from the app history tables (a new period whenever one of the histories behind it changes; neighbours can carry equal values). is_effective = route active in the period.
 
 `owner: db | capture: SERVER | retention: master | pii: none` · view
 
@@ -6327,7 +6328,7 @@ Stable view: a route's place in the geography (zone, house, territory, division,
 | `route_kind` | text | null |  | Route kind (sr, amo) in the period. |
 | `visit_kind` | text | null |  | Visit pattern of the route: daily, 3f (three days a week) or 2f (two days). (as it was in the period). |
 | `route_class` | text | null |  | normal, manual (no-internet, keyed on the web), dummy_br or dummy_institutional; Live CPR, Target Route and Login count normal routes only (V0094). (as it was in the period). |
-| `status` | text | null |  | Lifecycle status; allowed values are listed under constraints. (as it was in the period). |
+| `status` | text | null |  | Lifecycle status (as it was in the period). |
 | `valid_from` | date | null |  | First Asia/Dhaka business date of the period (null = since the route existed). |
 | `valid_to` | date | null |  | Asia/Dhaka business date the period ended, exclusive (null = current). |
 | `is_current` | boolean | null |  | True for the period that is still open (valid_to null). |
@@ -6373,7 +6374,7 @@ Stable view: an outlet's zone and class (channel, sub-channel, geo class, kind, 
 | `geo_class` | text | null |  | Geographic class of the outlet area: Hill, Urban, SemiUrban or Rural. (as it was in the period). |
 | `outlet_kind` | text | null |  | Outlet kind: retail or wholesale. (as it was in the period). |
 | `price_type` | text | null |  | Selling price type of the outlet or price row: outlet, cc, distributor (and reporting, nto for prices). (as it was in the period). |
-| `status` | text | null |  | Lifecycle status; allowed values are listed under constraints. (as it was in the period). |
+| `status` | text | null |  | Lifecycle status (as it was in the period). |
 | `valid_from` | date | null |  | First Asia/Dhaka business date of the period (null = since the row existed). |
 | `valid_to` | date | null |  | Asia/Dhaka business date the period ended, exclusive (null = current). |
 | `is_current` | boolean | null |  | True for the period that is still open (valid_to null). |
@@ -6411,7 +6412,7 @@ Stable view: the current product dimension (dw.dim_product): SKU, base unit, pac
 
 ## dw.v_dim_product_history
 
-Stable view: a SKU's attributes and its variant, brand, segment and category for each period in which none of them changed (app.sku_history, app.product_node_history). is_effective = SKU active in the period.
+Stable view: a SKU's attributes and its variant, brand, segment and category per period (app.sku_history, app.product_node_history; a new period whenever one of them changes, neighbours can carry equal values). is_effective = SKU active in the period.
 
 `owner: db | capture: SERVER | retention: master | pii: none` · view
 
@@ -6430,7 +6431,7 @@ Stable view: a SKU's attributes and its variant, brand, segment and category for
 | `report_unit` | text | null |  | Unit shown in reports; null when the base unit is used. (as it was in the period). |
 | `report_factor` | numeric(16,3) | null |  | Base units per report unit, with three decimals. (as it was in the period). |
 | `sales_enable` | boolean | null |  | True when the SKU may be sold. (as it was in the period). |
-| `status` | text | null |  | Lifecycle status; allowed values are listed under constraints. (as it was in the period). |
+| `status` | text | null |  | Lifecycle status (as it was in the period). |
 | `valid_from` | date | null |  | First Asia/Dhaka business date of the period (null = since the SKU existed). |
 | `valid_to` | date | null |  | Asia/Dhaka business date the period ended, exclusive (null = current). |
 | `is_current` | boolean | null |  | True for the period that is still open (valid_to null). |
@@ -6467,7 +6468,7 @@ Stable view: a user's role, designation, home zone and status per period (app.us
 | `role` | text | null |  | User role (contract Role). (as it was in the period). |
 | `designation` | text | null |  | Job title shown on screens and reports. (as it was in the period). |
 | `home_zone_id` | bigint | null |  | Id of the zone the user belongs to by default. (as it was in the period). |
-| `status` | text | null |  | Lifecycle status; allowed values are listed under constraints. (as it was in the period). |
+| `status` | text | null |  | Lifecycle status (as it was in the period). |
 | `valid_from` | date | null |  | First Asia/Dhaka business date of the period (null = since the row existed). |
 | `valid_to` | date | null |  | Asia/Dhaka business date the period ended, exclusive (null = current). |
 | `is_current` | boolean | null |  | True for the period that is still open (valid_to null). |
