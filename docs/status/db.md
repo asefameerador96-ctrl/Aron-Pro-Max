@@ -2,6 +2,47 @@
 
 Updated with every push. Rows of Day 1: N-005, N-006, N-007, N-008 (`python3 tools/my-rows.py db 1 --full`).
 
+## HANDOVER (session 12 -> session 13), 2026-10-27 ~20:00 UTC, lane/db ca4da94a (+ this docs-only commit)
+
+**State.** lane/db = INT 5a193330 (train 39) + row 1 (37e5c1be, V0116 data origin, run #1594 green) + row 3 (5d185755,
+V0117 event status, run #1595 green) + row 4 (b552c490, V0118 reuse surface, run #1596 green) + docs-only 08d5f60a
+(row 9 item 1, the nine tables) + ca4da94a (date-pin fix, run #1602 green; its Migrations step skipped, no migration changed: DataOriginTest and ReuseSurfaceTest take their day from the seed
+clock and the price floor from `app.sku_price`, qa's `tools/ci/date-pin-scan.py` "0 new" on the union with lane/qa
+d407232c). Gated by the lead 2026-10-27; the rows ride **train 42** once the fixed head is green. **Next free migration:
+V0119.**
+
+| Item | Where | What |
+|---|---|---|
+| row 1 data origin | V0116 (train 42) | `app.data_origin` on masters, 47 capture tables stamped by trigger, owner-only restamp, dw facts/aggs/dims by trigger, every non-calendar `dw.v_*`; `dw.scd2_track`, `app.touch_master` replaced. D-DB-DATA-ORIGIN-01. infra request `docs/requests/infra-move-runbook-data-origin.md` (runbook by origin, dangling refs, smoke outlets after seed 08) |
+| row 3 event status | V0117 (train 42) | `domain_event_type.status` live/planned, planned `memo.superseded`. D-DB-EVENT-STATUS-01. A lane that ships a producer asks db for the one-row status migration |
+| row 4 reuse surface | V0118 (train 42) | `dw.fact_memo_line`, ten reuse views, `is_effective` everywhere, view contract 1.0 (`docs/dw-view-contract.md`, DwViewContractTest hash history), memo number personal, `agg_reconcile`/`agg_restatement_log`. D-DB-REUSE-SURFACE-01; answer to backend-reports `docs/requests/db-backend-reports-reconcile-tables-answer.md` |
+
+**Open for db #13.**
+1. **Row 9 (partition and retention)**, lead: goes to db #13. Item 1 done (the nine tables in the "Pre-staging partition
+   batch" section below). Remaining, default order **master history tables first** (review Medium 9: geography parents,
+   SKU attributes, outlet class overwritten in place lose their past every day; seed `route_zone_history`-style tables
+   from `app.audit_log`), then ingest-registry pruning (45 days, keep tombstones, `cfg.retention.ingest_registry_days`),
+   then the archive export job (manifest state machine exists; first partitions reach the 13-month window ~2027-11).
+   The partition batch itself waits for the pre-staging window (D-DB-PART-01).
+2. **Two fleet follow-ups (before the 8,500-user move, not pilot):** (a) `dw.sync_fact_memo_lines` rewrites every line of a
+   memo on each projector upsert even when nothing changed (dead rows): skip unchanged memos or diff the lines;
+   (b) V0116's aggregate origin trigger runs up to four indexed max() lookups per aggregate write and
+   `app.restamp_data_origin` rewrites every dw row of its range: compute once per route-day and filter the restamp.
+3. Owner rows O (Durga Puja date in seed 06) and R (zero-price SKUs) unchanged from session 11.
+4. Queued: route-keyed dashboard aggregates for route-only TSOs (with analytics), from session 11's handover.
+
+**Lessons (session 12).**
+- New tests over the seed take their day from the seed clock (`app.dhaka_date(now())`) and floors from the data (e.g.
+  `min(valid_from)` of `app.sku_price`); qa's date-pin gate fails any new `2026-MM-DD` literal in a seed-dependent test.
+- `app.apply_db_role_grants()` grants EXECUTE on every app function to api/worker/auth roles: a REVOKE on a new function is
+  undone by the next migration; protect with a trigger-level owner check instead.
+- A trigger-filled column on a SCD2 dimension opens versions unless the `_version` table keeps it or `scd2_track`
+  ignores it (now: only columns the version table keeps count).
+- A seed UPDATE on a master bumps `version` (touch trigger) and breaks If-Match fixtures (ContractConformanceTest);
+  `touch_master` now ignores data_origin-only updates.
+- `pkill -f <pattern>` from the Bash tool matches its own shell: stop Gradle with `./gradlew --stop` instead.
+- Postgres stops when the container idles: `service postgresql start` before tests.
+
 ## Session 12, 2026-10-25 (lane/db; INT 5a193330 = train 39 merged)
 
 | Job | State | What |
