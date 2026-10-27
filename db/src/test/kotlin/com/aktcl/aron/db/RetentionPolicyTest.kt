@@ -38,7 +38,7 @@ class RetentionPolicyTest {
         assertEquals(
             listOf(
                 "app.domain_event|audit", "app.geo_breadcrumb|fix", "app.geo_fix|fix", "app.memo|transaction", "app.memo_line|transaction", "app.visit|transaction",
-                "dw.agg_daily_outlet_sku|event_fact", "dw.fact_activity|telemetry", "dw.fact_device_integrity|event_fact", "dw.fact_geo_fix|fix", "dw.fact_memo|event_fact", "dw.fact_visit|event_fact",
+                "dw.agg_daily_outlet_sku|event_fact", "dw.fact_activity|telemetry", "dw.fact_device_integrity|event_fact", "dw.fact_geo_fix|fix", "dw.fact_memo|event_fact", "dw.fact_memo_line|event_fact", "dw.fact_visit|event_fact",
             ),
             c.column("SELECT parent || '|' || retention_class FROM app.partition_policy ORDER BY parent"),
         )

@@ -44,3 +44,14 @@ INSERT INTO app.sales_plan (zone_id, sku_id, valid_from)
    WHERE z.code = 'Z-MIR' AND s.status = 'active'
      AND EXISTS (SELECT 1 FROM app.sku_price p WHERE p.sku_id = s.id AND p.price_type = 'outlet' AND p.amount_mtk > 0)
      AND NOT EXISTS (SELECT 1 FROM app.sales_plan p WHERE p.zone_id = z.id AND p.sku_id = s.id);
+
+-- Data origin (V0116, D-DB-DATA-ORIGIN-01): the Mirpur fixture's outlets are seed data.
+DO $origin$
+BEGIN
+  IF to_regtype('app.data_origin') IS NULL THEN
+    RETURN;   -- a database migrated only up to a version before V0116
+  END IF;
+  UPDATE app.outlet SET data_origin = 'seed'
+   WHERE zone_id IN (SELECT id FROM app.zone WHERE code = 'Z-MIR') AND data_origin <> 'seed';
+END
+$origin$;

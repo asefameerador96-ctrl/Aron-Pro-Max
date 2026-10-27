@@ -93,6 +93,27 @@ class DataEventsTest {
     }
 
     @Test
+    fun theCatalogueSaysWhichTypesAreLive() = db.connect().use { c ->
+        // V0117 (D-DB-EVENT-STATUS-01): the four types with a producer today are live, the rest planned; memo.superseded is new.
+        assertEquals("memo.created,memo.voided,stock.moved,visit.closed", c.scalar("SELECT string_agg(event_type, ',' ORDER BY event_type) FROM app.domain_event_type WHERE status = 'live'"))
+        assertEquals(
+            "day_exception.decided,due.collected,memo.superseded,outlet.changed,risk_signal.changed,route_day.state_changed,target.revised,tracking_action.created",
+            c.scalar("SELECT string_agg(event_type, ',' ORDER BY event_type) FROM app.domain_event_type WHERE status = 'planned'"),
+        )
+        assertEquals("'planned'::app.domain_event_status", c.scalar("SELECT column_default FROM information_schema.columns WHERE table_schema = 'app' AND table_name = 'domain_event_type' AND column_name = 'status'"))
+        c.autoCommit = false
+        try {
+            // A producer ships: the status moves; the published schema still cannot.
+            c.exec("UPDATE app.domain_event_type SET status = 'live' WHERE event_type = 'memo.superseded'")
+            assertEquals("42501", refused(c, "UPDATE app.domain_event_type SET payload_schema = '{}' WHERE event_type = 'memo.superseded'"))
+            c.exec(event("memo.superseded", 1, """{"memo_uuid":"6f1c2b0e-8d1a-4c5e-9f3a-2b7d4e6a8c10","superseded_by_uuid":"6f1c2b0e-8d1a-4c5e-9f3a-2b7d4e6a8c11","route_id":1,"business_date":"2026-10-07"}"""))
+        } finally {
+            c.rollback()
+            c.autoCommit = true
+        }
+    }
+
+    @Test
     fun everySchemaListsItsRequiredKeysAsProperties() = db.connect().use { c ->
         assertEquals(
             emptyList(),
@@ -127,12 +148,15 @@ class DataEventsTest {
         appendLine("  a key required adds a new version (a db migration; ask through docs/requests). A published schema never changes.")
         appendLine("- Producers write the newest version that is not deprecated; consumers handle every version that is not")
         appendLine("  deprecated and ignore keys they do not know.")
+        appendLine("- Events are thin notices (D-DATA-OUTBOX-ROLE-01): a consumer that needs the figures reads the source row or")
+        appendLine("  the `dw` views, and the data lake reads only the views. **Status** `live` means a backend producer writes the")
+        appendLine("  type today; `planned` means it is catalogued with no producer yet, so no consumer may wait for it (V0117).")
         appendLine()
         appendLine("| Event | Version | Aggregate | aggregate_id | Producer | Status | Required keys enforced |")
         appendLine("|---|---|---|---|---|---|---|")
         val types = c.column(
             "SELECT concat_ws(E'\\t', event_type, payload_version, aggregate_type, aggregate_id_is, producer, " +
-                "CASE WHEN deprecated_at IS NULL THEN 'current' ELSE 'deprecated' END, introduced_in, description, " +
+                "CASE WHEN deprecated_at IS NULL THEN status::text ELSE 'deprecated' END, introduced_in, description, " +
                 "CASE WHEN enforce_required THEN 'yes' ELSE 'not yet' END) " +
                 "FROM app.domain_event_type ORDER BY event_type, payload_version",
         ).map { it!!.split('\t') }

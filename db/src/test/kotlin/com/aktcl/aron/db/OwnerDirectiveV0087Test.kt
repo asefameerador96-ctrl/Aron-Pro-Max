@@ -197,7 +197,8 @@ class OwnerDirectiveV0087Test {
                 )
                 c.scalar(viewCols)
             }
-            other.flyway().migrate()
+            // To V0110 only: a later additive column (V0116 data_origin) is not this migration's change.
+            other.flyway().let { org.flywaydb.core.Flyway.configure().configuration(it.configuration).target("110").load() }.migrate()
             other.connect().use { c ->
                 assertEquals("0", c.scalar("SELECT count(*) FROM information_schema.columns WHERE table_schema = 'dw' AND table_name = 'agg_daily_outlet' AND column_name = 'sold_qty_base'"))
                 assertEquals("2026-10-05|1|40|0|50|3|10000", c.scalar(
@@ -257,7 +258,9 @@ class OwnerDirectiveV0087Test {
         }
         val cols = c.scalar("SELECT string_agg(attname, ',' ORDER BY attnum) FROM pg_attribute WHERE attrelid = 'dw.v_memo_flags'::regclass AND attnum > 0")!!.split(',')
         assertTrue(cols.none { it in setOf("username", "full_name", "user_name", "user_code", "contact_number") }, "no names or contacts in dw: $cols")
-        assertEquals("true|true|true|true", listOf("api_rw", "web_ro", "bi_reader", "worker_rw").joinToString("|") { can(c, it, "dw.v_memo_flags", "SELECT")!! })
+        // V0118: bi_reader reads the view through column grants without the printed memo number (personal), so its
+        // table-level check is false; ReuseSurfaceTest proves the columns it keeps.
+        assertEquals("true|true|false|true", listOf("api_rw", "web_ro", "bi_reader", "worker_rw").joinToString("|") { can(c, it, "dw.v_memo_flags", "SELECT")!! })
     }
 
     @Test
