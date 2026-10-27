@@ -789,3 +789,12 @@
 
 ### 06:47 UTC — lane check (06:46 cron)
 - Dev health: ok build 5a193330 (train 39 build; train 40 was docs only). INT fb0aeae8 (train 40). Day lanes 13 minutes in (backend-core #19, db #12, qa #3), no candidates yet; no owner message. Nothing else to do.
+
+## 2026-10-27
+
+### 18:52 UTC — catch-up after a 58-hour stall (lead)
+- What happened: the account's usage credits ran out on 2026-10-25 (the lead's last processed event 08:06 UTC; `/compact` answered "out of usage credits"; the lanes' last turns 08:35 backend-core, 09:29 qa, 12:50 db); every session showed the seven-day warning with reset 18:00 UTC 2026-10-27; the lead resumed 18:52 UTC with 39 queued notifications (9 lane messages, 30 trigger firings incl. the 15:00 evening report of 2026-10-25). No owner message in the queue. Ruling D-LEAD-STALL-01 (pacing); owner row Y (pace or extra usage), row Z (branch protection re-apply for `main`).
+- State verified: INT fb0aeae8 (train 40) unchanged; health ok build 5a193330; DECISIONS on INT 98. Lane heads: backend-core 24397fb5 (slices 1–2 + HANDOVER), qa d407232c (CI split + date-pin gate), db 08d5f60a (rows 1, 3, 4 + docs).
+- Gates (git + actions_get + local scans): all three heads base 5a193330 (one promotion back); deltas inside lane files; no pairwise overlap except DECISIONS.md (+4 / +2 / +3, 0 removed); lane runs 40171614925 (#1589, 8b031c77), 40175329625 (#1591, 2f6bc00f; android/web/infra skipped, byte-identical to 8b031c77), 40174952495 (#1590), 40178671065 (#1593), 40181092328 (#1594), 40184187696 (#1595), 40190239307 (#1596) all completed/success on the exact shas; 24397fb5 and 08d5f60a docs-only on green shas. Union date-pin scan: backend-core + qa = 106 baselined, 0 new; with db = 110, 4 NEW (DataOriginTest.kt:46/74, ReuseSurfaceTest.kt:43/60) and the gates self-test fails on the same literal → db is held out of train 41.
+- 19:05 GO train 41 → integrator 21: backend-core 24397fb5 + qa d407232c; expected DECISIONS 104; INT run shows 10 jobs. db #12 asked to fix the four literals (no baseline rows), confirm its lane run, then HANDOVER 12 → 13 (rides train 42 with lead docs). Morning one-shot created: trig_01GxGmo4QCARi2jzSsCRx5im (2026-10-28 06:30 UTC). Lane-check cron prompt refreshed.
+- Lead docs on lane/lead-docs-1022 (this push): evening-2026-10-25.md written late, D-LEAD-STALL-01, docs/33 job count 9 → 10 with measured walls, docs/24 CI split note, v1.10 row 3 marked ready, owner rows Y–Z, lane-sessions rows, hand-offs block.
