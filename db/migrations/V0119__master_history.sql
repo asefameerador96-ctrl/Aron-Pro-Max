@@ -21,7 +21,9 @@
 --      app.user_history           role, designation, home_zone_id, status (user)
 --    The registry app.master_history_map names the master, the key column, the tracked columns (pinned, so a later
 --    rename of a master column fails loudly instead of silently stopping its history) and the audit entities; it is
---    guarded like the history tables (the SECURITY DEFINER trigger reads it).
+--    guarded like the history tables (the SECURITY DEFINER trigger reads it). The update trigger's WHEN clause names
+--    the tracked columns: a later DROP COLUMN ... CASCADE of one silently drops that master's trigger, so such a
+--    migration recreates it (a plain DROP COLUMN is refused).
 -- 2. app.master_history_track(), AFTER INSERT and AFTER UPDATE (the latter only WHEN a tracked column or data_origin
 --    differs, so other writes pay nothing) on each master: an insert opens the first period (since ever);
 --    an update opens a new period on the business date of the change only when a tracked column changed. A no-op write,
@@ -36,7 +38,7 @@
 --    tracked column (admin API updates, outlet import updates, outlet-kind batches, house merges) becomes a period
 --    starting on the audit row's business date. What the audit log never saw (migrations such as V0104's lighter pack
 --    size, seed SQL, direct SQL, ingest-side writes) cannot be dated: such a change is attributed to the date of the
---    nearest newer audited change of the row (to "since ever" when there is none), an audited value it replaced can be
+--    nearest older audited change of the row that records the column (to "since ever" when there is none), an audited value it replaced can be
 --    lost, and for the full-snapshot entities (sku, product_node) any edit before an unaudited change dates that change
 --    too. One unreadable before-image stops the walk: the row's older past stays unknown. The function is the owner's
 --    (refuses other roles), locks the master while it runs, and REPLACES the whole history table: a re-run also drops
