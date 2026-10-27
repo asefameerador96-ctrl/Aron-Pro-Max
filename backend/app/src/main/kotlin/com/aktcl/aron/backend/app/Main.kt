@@ -59,7 +59,8 @@ fun main() {
         ServerRole.WORKER -> {
             // Jobs registered so far: the aggregation worker (dirty keys into dw, F-SYS-015). Other lanes append theirs.
             val workerDb = Database.fromSettings(settings)
-            AggregationWorker(workerDb).start()
+            // The admin's cfg.geo.suspicious_score_threshold, as the dashboards and reports read it (data-architecture review finding 18).
+            AggregationWorker(workerDb, config = com.aktcl.aron.backend.platform.DbServerConfig(workerDb, com.aktcl.aron.backend.platform.RegistryDefaults(settings.env))).start()
             run {
                 val workerClock = com.aktcl.aron.backend.platform.AronClock.SYSTEM
                 val workerConfig = com.aktcl.aron.backend.platform.DbServerConfig(workerDb, com.aktcl.aron.backend.platform.RegistryDefaults(settings.env))

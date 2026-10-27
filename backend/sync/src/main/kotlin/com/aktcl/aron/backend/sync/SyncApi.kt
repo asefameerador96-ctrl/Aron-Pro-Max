@@ -81,7 +81,7 @@ fun Route.syncRoutes(d: SyncDeps) {
                         com.aktcl.aron.contract.ProblemCode.ERR_VALIDATION, "business_date must be YYYY-MM-DD",
                         errors = listOf(com.aktcl.aron.backend.platform.FieldError("query.business_date", if (raw == null) "required" else "invalid_value")),
                     )
-                call.respond(withContext(Dispatchers.IO) { ingest.totals(call.principal.userId, date) })
+                call.respond(withContext(Dispatchers.IO) { call.principal.let { p -> ingest.totals(p.userId, p.deviceId, p.deviceUuid, date) } })
             }
         }
     }

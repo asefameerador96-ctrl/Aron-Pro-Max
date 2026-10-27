@@ -1,0 +1,31 @@
+# SHRINK-ONLY baseline of tools/ci/date-pin-scan.py (D-QA-DATE-PIN-GATE-01): the constant 2026 dates that seed-dependent tests
+# pinned when the gate was added (2026-10-25). Format: <path> | <literal> | <owner lane>. A row is deleted by the owning lane in
+# the head that derives the day from the seed clock (or adds `// date-pin-ok: <reason>`); a new row is never added by hand.
+# List per lane: docs/requests/date-pin-offenders-2026-10-25.md.
+backend/app/src/test/kotlin/com/aktcl/aron/backend/app/ApiWorld.kt | 2026-01-01 | backend-app
+backend/app/src/test/kotlin/com/aktcl/aron/backend/app/DataFlowTraceSupport.kt | 2026-01-01 | backend-app
+db/src/test/kotlin/com/aktcl/aron/db/BackendCoreAsksV0061Test.kt | 2026-10-08 | db
+db/src/test/kotlin/com/aktcl/aron/db/ClientErrorMfaKindsV0069Test.kt | 2026-10-08 | db
+db/src/test/kotlin/com/aktcl/aron/db/ClientErrorMfaKindsV0069Test.kt | 2026-10-09 | db
+db/src/test/kotlin/com/aktcl/aron/db/DuesAdjustmentSkuImageV0074Test.kt | 2026-10-15 | db
+db/src/test/kotlin/com/aktcl/aron/db/DwEnteredBySupervisorDayV0082Test.kt | 2026-10-05 | db
+db/src/test/kotlin/com/aktcl/aron/db/DwEnteredBySupervisorDayV0082Test.kt | 2026-10-06 | db
+db/src/test/kotlin/com/aktcl/aron/db/EntrySourceV0077Test.kt | 2026-10-05 | db
+db/src/test/kotlin/com/aktcl/aron/db/EntrySourceV0077Test.kt | 2026-10-08 | db
+db/src/test/kotlin/com/aktcl/aron/db/OwnerDirectiveV0087Test.kt | 2026-10-05 | db
+db/src/test/kotlin/com/aktcl/aron/db/OwnerDirectiveV0087Test.kt | 2026-01-01 | db
+db/src/test/kotlin/com/aktcl/aron/db/OwnerDirectiveV0087Test.kt | 2026-10-06 | db
+db/src/test/kotlin/com/aktcl/aron/db/OwnerDirectiveV0087Test.kt | 2026-10-20 | db
+db/src/test/kotlin/com/aktcl/aron/db/OwnerDirectiveV0087Test.kt | 2026-10-01 | db
+db/src/test/kotlin/com/aktcl/aron/db/OwnerDirectiveV0087Test.kt | 2026-11-02 | db
+db/src/test/kotlin/com/aktcl/aron/db/OwnerDirectiveV0087Test.kt | 2026-11-01 | db
+db/src/test/kotlin/com/aktcl/aron/db/OwnerDirectiveV0087Test.kt | 2026-12-01 | db
+db/src/test/kotlin/com/aktcl/aron/db/OwnerDirectiveV0087Test.kt | 2026-12-31 | db
+db/src/test/kotlin/com/aktcl/aron/db/OwnerDirectiveV0087Test.kt | 2026-12-17 | db
+db/src/test/kotlin/com/aktcl/aron/db/OwnerDirectiveV0087Test.kt | 2026-12-20 | db
+db/src/test/kotlin/com/aktcl/aron/db/SeedGulshanBananiTest.kt | 2026-10-01 | db
+db/src/test/kotlin/com/aktcl/aron/db/SeedGulshanBananiTest.kt | 2026-11-01 | db
+db/src/test/kotlin/com/aktcl/aron/db/SeedGulshanBananiTest.kt | 2026-12-01 | db
+db/src/test/kotlin/com/aktcl/aron/db/SeedTest.kt | 2026-10-07 | db
+db/src/test/kotlin/com/aktcl/aron/db/VisitSupersedeV0081Test.kt | 2026-10-05 | db
+backend/app/src/test/kotlin/com/aktcl/aron/backend/app/ApiWorld.kt | 2026-06-01 | backend-app

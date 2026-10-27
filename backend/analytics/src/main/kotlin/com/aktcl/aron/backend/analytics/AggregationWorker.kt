@@ -55,6 +55,7 @@ class AggregationWorker(
         ).bindArray("ids", Long::class.javaObjectType, missing.keys.toList()).map(::event).list()
         for (e in holes + fresh) {
             for (route in routesOf(h, e)) h.execute("SELECT app.mark_dirty('route_day_agg', ?, ?, ?)", route, e.date, e.type)
+            for ((route, date) in earlierMemoDays(h, e)) h.execute("SELECT app.mark_dirty('route_day_agg', ?, ?, ?)", route, date, e.type)
         }
         holes.forEach { missing.remove(it.id) }
         var prev = scanned
@@ -99,6 +100,28 @@ class AggregationWorker(
             return h.createQuery("SELECT DISTINCT route_id FROM app.visit WHERE user_id = :u AND business_date = :d AND route_id IS NOT NULL").bind("u", u).bind("d", e.date).mapTo(Long::class.java).list()
         }
         return emptyList()
+    }
+
+    /**
+     * Data-architecture review finding 6: a void or an edit also dirties the route-day of the memo it ends, whatever the
+     * event's own date and route (a void after midnight, an edit of an earlier day's memo, a void sent from another
+     * route), so the sale's day is never left overstated. Indexed lookups only (`UNIQUE (client_uuid, business_date)`):
+     * `memo.voided` names the voided memo in `aggregate_id`; `memo.created` of an editing memo reaches the edited one
+     * through its `supersedes_client_uuid`. Other events cost nothing here. A repeated dirty is harmless.
+     */
+    private fun earlierMemoDays(h: Handle, e: Ev): List<Pair<Long, LocalDate>> {
+        val id = runCatching { java.util.UUID.fromString(e.aggregateId) }.getOrNull() ?: return emptyList()
+        // Each statement binds exactly the names it uses (never rely on Jdbi's unused-binding default).
+        val q = when (e.type) {
+            "memo.voided" -> h.createQuery("SELECT route_id, business_date FROM app.memo WHERE client_uuid = :id AND route_id IS NOT NULL")
+                .bind("id", id)
+            "memo.created" -> h.createQuery(
+                "SELECT o.route_id, o.business_date FROM app.memo n JOIN app.memo o ON o.client_uuid = n.supersedes_client_uuid " +
+                    "WHERE n.client_uuid = :id AND n.business_date = :d AND n.supersedes_client_uuid IS NOT NULL AND o.route_id IS NOT NULL",
+            ).bind("id", id).bind("d", e.date)
+            else -> return emptyList()
+        }
+        return q.map { rs, _ -> rs.getLong(1) to rs.getObject(2, LocalDate::class.java) }.list()
     }
 
     /** Processes up to [limit] claimed keys of one pass. Returns the number rebuilt. */

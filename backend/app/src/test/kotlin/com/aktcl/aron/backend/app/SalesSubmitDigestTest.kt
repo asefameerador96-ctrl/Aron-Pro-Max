@@ -1,11 +1,13 @@
 package com.aktcl.aron.backend.app
 
+import com.aktcl.aron.backend.sync.SalesSubmitDigestDto
 import com.aktcl.aron.backend.sync.SalesSubmitDigestService
 import io.ktor.client.request.bearerAuth
 import io.ktor.client.request.get
 import io.ktor.client.request.header
 import io.ktor.client.statement.bodyAsText
 import io.ktor.server.testing.testApplication
+import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.int
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -21,8 +23,9 @@ import kotlin.test.assertTrue
 /**
  * D-NIGHT-DAYCLOSE-01 server half (contract 1.9 queue row 4, shapes in docs/requests/contract-v1.9-shapes-backend-core.md):
  * the Sales Submit digest counts one login's rows per device and for the login, and lists the rows the server did not
- * store with their code, finality and memo number, for this login only. Built behind the current DTOs: the service is
- * called directly until the 1.9 batch puts it on GET /v1/sync/totals.
+ * store with their code, finality and memo number, for this login only. Read over HTTP from GET /v1/sync/totals `digest`
+ * (contract 1.9.0; the device comes from the token); the service is called directly only for what a token cannot ask
+ * (a device id and uuid that do not belong together, another user, a later clock).
  */
 @TestMethodOrder(MethodOrderer.OrderAnnotation::class)
 class SalesSubmitDigestTest : NightSyncHarness() {
@@ -30,6 +33,13 @@ class SalesSubmitDigestTest : NightSyncHarness() {
     private val phoneB = "00000000-0000-4000-8000-0000000000b2"
 
     private fun deviceId(uuid: String): Long = count("SELECT id FROM app.device WHERE device_uuid = '$uuid'")
+
+    /** The `digest` member of GET /v1/sync/totals for [token] on [phone] (the device half comes from the token). */
+    private suspend fun io.ktor.client.HttpClient.digestOf(token: String, phone: String): SalesSubmitDigestDto {
+        val res = get("/v1/sync/totals?business_date=$day") { bearerAuth(token); header("X-Device-Id", phone); header("X-App-Version", "1.0.9+9") }
+        assertEquals(200, res.status.value, res.bodyAsText())
+        return Json.decodeFromJsonElement(SalesSubmitDigestDto.serializer(), json(res.bodyAsText())["digest"]!!)
+    }
 
     @Test
     @Order(1)
@@ -55,7 +65,8 @@ class SalesSubmitDigestTest : NightSyncHarness() {
         assertEquals(List(5) { "accepted:-" }, client.send(b, phoneB, sale()))
 
         val devA = deviceId(phoneA)
-        val d = digest.digest(srId, devA, phoneA, date)
+        val d = client.digestOf(a, phoneA)
+        assertEquals(digest.digest(srId, devA, phoneA, date), d, "the wire digest is the service's for the token's device")
         assertEquals(day, d.business_date); assertEquals(phoneA, d.device_uuid)
         val memo = d.by_type.getValue("memo")
         assertEquals(2, memo.login.acknowledged, "both phones' stored memos")
@@ -90,7 +101,7 @@ class SalesSubmitDigestTest : NightSyncHarness() {
         assertEquals(seen.sortedDescending(), seen)
 
         // Phone B's view: the login's rejected rows are listed, but none is from this device; its own counts are its own.
-        val dB = digest.digest(srId, deviceId(phoneB), phoneB, date)
+        val dB = client.digestOf(b, phoneB)
         assertEquals(1, dB.by_type.getValue("memo").device!!.received)
         assertEquals(2, dB.by_type.getValue("memo").login.acknowledged)
         assertEquals(d.rejected.map { it.client_uuid }.toSet(), dB.rejected.map { it.client_uuid }.toSet())
@@ -121,9 +132,10 @@ class SalesSubmitDigestTest : NightSyncHarness() {
         val firstLine = family[2]
         val acks = client.send(a, phoneA, listOf(firstLine))
         assertTrue(acks.single().startsWith("rejected:") || acks.single().startsWith("quarantined:"), acks.toString())
-        assertTrue(digest.digest(srId, deviceId(phoneA), phoneA, LocalDate.parse(day)).rejected.any { it.client_uuid == cu(firstLine) })
+        assertTrue(client.digestOf(a, phoneA).rejected.any { it.client_uuid == cu(firstLine) })
         assertTrue(client.send(a, phoneA, family).all { it.startsWith("accepted") || it.startsWith("duplicate") })
-        val after = digest.digest(srId, deviceId(phoneA), phoneA, LocalDate.parse(day))
+        val after = client.digestOf(a, phoneA)
+        assertEquals(digest.digest(srId, deviceId(phoneA), phoneA, LocalDate.parse(day)), after)
         assertTrue(after.rejected.none { it.client_uuid == cu(firstLine) }, "stored since: no longer listed")
     }
 }

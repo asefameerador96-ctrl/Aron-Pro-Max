@@ -1858,14 +1858,24 @@ class JvmSplit(unittest.TestCase):
     def test_app_tests_run_once_in_their_own_job(self):
         c = (WORKFLOWS / "ci.yml").read_text(encoding="utf-8")
         jvm = c[c.index("\n  jvm:"):c.index("\n  jvm-app:")]
-        app = c[c.index("\n  jvm-app:"):c.index("\n  android:")]
+        app = c[c.index("\n  jvm-app:"):c.index("\n  jvm-analytics:")]
+        analytics = c[c.index("\n  jvm-analytics:"):c.index("\n  android:")]
         self.assertIn(":backend:app:build -x :backend:app:test", jvm)
         self.assertIn("run: ./gradlew --console=plain :backend:app:test", app)
         self.assertIn("name: Backend app tests", app)
         self.assertIn("if: needs.changes.outputs.jvm == 'true'", app, "runs exactly when the jvm job runs")
         self.assertIn("ARON_TEST_PG_URL", app, "its own PostgreSQL service")
+        # D-QA-CI-HANG-01: :backend:analytics:test (the long pole) runs once, in its own parallel job; the 45-minute step
+        # limit and the 60-minute job limit make a hang fail fast.
+        self.assertIn("-x :backend:app:test -x :backend:analytics:test", jvm)
+        self.assertIn("run: ./gradlew --console=plain :backend:analytics:test", analytics)
+        self.assertIn("name: Backend analytics tests", analytics)
+        self.assertIn("if: needs.changes.outputs.jvm == 'true'", analytics, "runs exactly when the jvm job runs")
+        self.assertIn("ARON_TEST_PG_URL", analytics, "its own PostgreSQL service")
+        self.assertIn("timeout-minutes: 60", jvm)
+        self.assertIn("timeout-minutes: 45\n        run: >-", jvm, "the test step fails before the job does")
         gov = (ROOT / "tools" / "github-governance.ps1").read_text(encoding="utf-8")
-        for name in ("'Shared, db and backend (build and tests)'", "'Backend app tests'"):
+        for name in ("'Shared, db and backend (build and tests)'", "'Backend app tests'", "'Backend analytics tests'"):
             self.assertIn(name, gov)
 
 if __name__ == "__main__":
