@@ -19,8 +19,8 @@ Removals are rare and listed here (a wrong column is removed, never redefined in
 
 | Schema | Relations | Columns |
 |---|---|---|
-| `app` | 156 | 2692 |
-| `dw` | 58 | 928 |
+| `app` | 167 | 2796 |
+| `dw` | 62 | 985 |
 
 ## Index
 
@@ -48,6 +48,7 @@ Removals are rare and listed here (a wrong column is removed, never redefined in
 | [`app.cfg_version`](#appcfg_version) | table | backend:config | ONLINE | audit | none | One committed config version; versions are global and increase monotonically. |
 | [`app.client_error`](#appclient_error) | table | backend:platform | ONLINE | telemetry | none | One row is a privacy-scrubbed error report from the web app (POST /v1/client-errors, F-SYS-032); phones report errors as app.app_error. |
 | [`app.cluster`](#appcluster) | table | backend:masterdata | ONLINE | master | none | A named group of outlets within a zone, used to organise routes. |
+| [`app.cluster_history`](#appcluster_history) | table | db | SERVER | master | none | One row is a period of the zone a cluster belonged to, its type and status (V0119); written by the history trigger on app.cluster, seeded from app.audit_log. |
 | [`app.code_list`](#appcode_list) | table | backend:masterdata | REFERENCE | master | none | Header of a business code list (reasons, outcomes, channels and similar) with its key. |
 | [`app.code_list_item`](#appcode_list_item) | table | backend:masterdata | ONLINE | master | none | One code of a business code list with English and Bangla labels; codes never change, only retire. |
 | [`app.content_item`](#appcontent_item) | table | backend:masterdata | ONLINE | master | none | An audio-visual or key-visual item played during sales calls, with its asset, size and version. |
@@ -68,6 +69,7 @@ Removals are rare and listed here (a wrong column is removed, never redefined in
 | [`app.distribution_check`](#appdistribution_check) | table | backend:sync | OFFLINE | transaction | none | One AMO or TSO distribution check of a visited outlet. |
 | [`app.distribution_check_line`](#appdistribution_check_line) | table | backend:sync | OFFLINE | transaction | none | Presence and out-of-stock flags for one brand in a distribution check. |
 | [`app.division`](#appdivision) | table | backend:masterdata | ONLINE | master | none | Geography level below a wing; groups territories. |
+| [`app.division_history`](#appdivision_history) | table | db | SERVER | master | none | One row is a period of the wing a division belonged to and its status (V0119); written by the history trigger on app.division, seeded from app.audit_log. |
 | [`app.domain_event`](#appdomain_event) | partitioned table | backend:platform | SERVER | ops | none | Append-only outbox of events written with each change; the projector and later consumers read it in id order. |
 | [`app.domain_event_type`](#appdomain_event_type) | table | db | REFERENCE | master | none | Catalogue of domain-event types and payload versions; every outbox row must name one (docs/data-events.md). |
 | [`app.due_collection`](#appdue_collection) | table | backend:sync | OFFLINE | transaction | personal | Cash collected against an earlier credit memo, with the collecting location fix. |
@@ -86,10 +88,12 @@ Removals are rare and listed here (a wrong column is removed, never redefined in
 | [`app.gift_assignment`](#appgift_assignment) | table | backend:masterdata | ONLINE | transaction | none | An Astha gift chosen for an outlet and quarter, locked by the hand-over photo. |
 | [`app.gift_photo`](#appgift_photo) | table | backend:sync | OFFLINE | transaction | personal | Hand-over photo record of a gift, one per Astha assignment or redeemed campaign unit. |
 | [`app.house`](#apphouse) | table | backend:masterdata | ONLINE | master | none | Distribution house that a zone may belong to; it carries no rules in Phase 1. |
+| [`app.house_history`](#apphouse_history) | table | db | SERVER | master | none | One row is a period of the territory a distribution house belonged to and its status (V0119); written by the history trigger on app.house, seeded from app.audit_log. |
 | [`app.indent_movement`](#appindent_movement) | table | backend:masterdata | ONLINE | transaction | none | Phase 2 indent-portal stock ledger with the same shape as stock_movement; empty in Phase 1. |
 | [`app.ingest_registry`](#appingest_registry) | partitioned table | backend:sync | SERVER | ops | none | Global register of every device record's client_uuid and payload hash; the uniqueness point for idempotent sync. |
 | [`app.leave_application`](#appleave_application) | table | backend:masterdata | OFFLINE | transaction | personal | A TSO leave application with dates and reason, decided on the web. |
 | [`app.loyalty_ledger`](#apployalty_ledger) | table | backend:analytics | SERVER | transaction | none | Append-only points ledger derived on the server, idempotent per source record. |
+| [`app.master_history_map`](#appmaster_history_map) | table | db | SERVER | master | none | Registry of the master history tables (V0119): the master each one follows, its key column and the audit entities its past was recovered from. |
 | [`app.mdm_policy`](#appmdm_policy) | table | backend:mdm | ONLINE | master | none | Editable MDM policy the device-owner DPC enforces on top of app.device_policy: allowed apps, blocking windows, kiosk, location sampling (D-MDM-01). |
 | [`app.media`](#appmedia) | table | backend:media | OFFLINE | transaction | personal | Metadata of a photo taken in the field with its location fix and Blob Storage path; the image itself is in Blob Storage. |
 | [`app.media_upload`](#appmedia_upload) | table | backend:media | ONLINE | transaction | none | One row is a photo whose bytes arrived through the multipart fallback POST /v1/media/upload (feedback or support); the idempotency ledger of that endpoint (F-API-007). |
@@ -104,6 +108,7 @@ Removals are rare and listed here (a wrong column is removed, never redefined in
 | [`app.offer_version_scope`](#appoffer_version_scope) | table | backend:masterdata | ONLINE | master | none | Geography or channel node an offer version is limited to; no rows means everywhere. |
 | [`app.outlet`](#appoutlet) | table | backend:masterdata | ONLINE | master | sensitive | One retail or wholesale outlet with owner, location, route placement and national id, TIN and trade licence. |
 | [`app.outlet_change_request`](#appoutlet_change_request) | table | backend:masterdata | OFFLINE | transaction | sensitive | A request from the field to add, close, edit, move or relocate an outlet, with proposed data and decision trail. |
+| [`app.outlet_class_history`](#appoutlet_class_history) | table | db | SERVER | master | none | One row is a period of an outlet's zone, channel, sub-channel, geo class, kind, price type and status (route and cluster are in app.outlet_placement_history) (V0119); written by the history trigger on app.outlet, seeded from app.audit_log. |
 | [`app.outlet_location_history`](#appoutlet_location_history) | table | backend:masterdata | SERVER | master | none | Append-only history of every map pin an outlet has had and where it came from. |
 | [`app.outlet_placement_history`](#appoutlet_placement_history) | table | backend:masterdata | SERVER | master | none | History of an outlet's route and cluster placement over time. |
 | [`app.outlet_programme`](#appoutlet_programme) | table | backend:analytics | SERVER | master | none | Programme eligibility of an outlet, shown as dots in the SR app outlet list. |
@@ -117,6 +122,7 @@ Removals are rare and listed here (a wrong column is removed, never redefined in
 | [`app.print_event`](#appprint_event) | table | backend:sync | OFFLINE | transaction | none | One print attempt of a memo, reprint, stock slip, day summary, void slip or due receipt. |
 | [`app.print_template`](#appprint_template) | table | backend:masterdata | ONLINE | master | none | One row is an immutable version of a thermal-print template for one slip kind, in force from effective_from. |
 | [`app.product_node`](#appproduct_node) | table | backend:masterdata | ONLINE | master | none | One node of the product tree (category, segment, brand or variant). |
+| [`app.product_node_history`](#appproduct_node_history) | table | db | SERVER | master | none | One row is a period of the parent of a product tree node, its sales switch and status (V0119); written by the history trigger on app.product_node, seeded from app.audit_log. |
 | [`app.programme`](#appprogramme) | table | backend:masterdata | ONLINE | master | none | A loyalty or incentive programme (Diamond League, Astha, campaign, Superstar) with period and rules. |
 | [`app.programme_enrolment`](#appprogramme_enrolment) | table | backend:masterdata | ONLINE | master | none | Enrolment of an outlet in a programme for a period, with league, tier and base target. |
 | [`app.push_token`](#apppush_token) | table | backend:notify | ONLINE | ops | secret | FCM push token of a user on a phone. |
@@ -139,6 +145,7 @@ Removals are rare and listed here (a wrong column is removed, never redefined in
 | [`app.route_day`](#approute_day) | table | backend:sync | SERVER | transaction | none | One row per route and business date holding the day state and submit timestamps; created by the server from assignments. |
 | [`app.route_day_event`](#approute_day_event) | table | backend:sync | OFFLINE | transaction | none | A day_open or day_submit record from a phone or the online Sales Submit. |
 | [`app.route_day_void_barrier`](#approute_day_void_barrier) | table | backend:sync | ONLINE | audit | none | Admin data void of a route-day: rows captured before the barrier are voided, later rows accepted. |
+| [`app.route_history`](#approute_history) | table | db | SERVER | master | none | One row is a period of a route's kind, visit kind, class and status (its zone is in app.route_zone_history) (V0119); written by the history trigger on app.route, seeded from app.audit_log. |
 | [`app.route_monthly_target`](#approute_monthly_target) | table | backend:admin | ONLINE | master | none | Monthly sales target of a route for a SKU in base units (D-TARGET-MIN-01); one row per route, SKU and month, rewritten by a later upload. |
 | [`app.route_planned`](#approute_planned) | table | backend:masterdata | ONLINE | master | none | Planned visit days of a route, effective-dated. |
 | [`app.route_target_batch`](#approute_target_batch) | table | backend:admin | ONLINE | master | none | One committed route-target upload: the idempotency record (same uuid and content replays, other content conflicts). |
@@ -150,6 +157,7 @@ Removals are rare and listed here (a wrong column is removed, never redefined in
 | [`app.security_event`](#appsecurity_event) | table | backend:platform | SERVER | audit | personal | Append-only security events (login failures, lockouts, refresh reuse, device proof and state refusals, scope and password changes, force logout, OTP views) for alerts and support (docs/21 s8.1). |
 | [`app.server_generation`](#appserver_generation) | table | backend:sync | SERVER | ops | none | Database lineage: one row per new generation after creation, failover or restore. |
 | [`app.sku`](#appsku) | table | backend:masterdata | ONLINE | master | none | A sellable product with unit, pack size, names and category. |
+| [`app.sku_history`](#appsku_history) | table | db | SERVER | master | none | One row is a period of a SKU's variant, category, units, pack size, report unit, sales switch and status (V0119); written by the history trigger on app.sku, seeded from app.audit_log. |
 | [`app.sku_price`](#appsku_price) | table | backend:masterdata | ONLINE | master | none | Effective-dated price of a SKU for one of the five price types. |
 | [`app.stock_movement`](#appstock_movement) | table | backend:sync | OFFLINE | transaction | none | Append-only stock event for one SKU (issue, return, adjustment, damage and others) with signed quantity. |
 | [`app.sub_channel`](#appsub_channel) | table | backend:masterdata | ONLINE | master | none | Outlet sub-channel within a channel. |
@@ -168,9 +176,11 @@ Removals are rare and listed here (a wrong column is removed, never redefined in
 | [`app.task`](#apptask) | table | backend:notify | OFFLINE | transaction | personal | A task created by a supervisor for a user, optionally tied to an outlet or visit. |
 | [`app.task_event`](#apptask_event) | table | backend:notify | OFFLINE | transaction | personal | Resolve or reopen of a task by its assignee. |
 | [`app.territory`](#appterritory) | table | backend:masterdata | ONLINE | master | none | Geography level below a division; groups zones. |
+| [`app.territory_history`](#appterritory_history) | table | db | SERVER | master | none | One row is a period of the division a territory belonged to and its status (V0119); written by the history trigger on app.territory, seeded from app.audit_log. |
 | [`app.tutorial`](#apptutorial) | table | backend:masterdata | ONLINE | master | none | One row is a tutorial video or manual shown to the listed roles in the apps and on the web. |
 | [`app.user_brand_scope`](#appuser_brand_scope) | table | backend:authz | ONLINE | master | none | Brands a BRAND user may see (D-ROLES-02, docs/34 s1); carried in the web token as the brands claim; product-based reports and dashboard cards are filtered to them on the server. |
 | [`app.user_consent`](#appuser_consent) | table | backend:auth | OFFLINE | audit | none | Acceptance of a notice such as the location notice by a user on a phone. |
+| [`app.user_history`](#appuser_history) | table | db | SERVER | master | none | One row is a period of a user's role, designation, home zone and status (V0119); written by the history trigger on app.app_user, seeded from app.audit_log. |
 | [`app.user_module_grant`](#appuser_module_grant) | table | backend:authz | ONLINE | master | none | Per-module access of an ADMIN user (D-ROLES-02, docs/34 s1): r = read, w = read and write. Carried in the web token as the modules claim; changed only through the admin grants API, which audits and bumps app_user.scope_version. |
 | [`app.user_scope`](#appuser_scope) | table | backend:masterdata | ONLINE | master | none | Supervisory reach of a user: a geography node, effective-dated. |
 | [`app.v_dirty_key_dead`](#appv_dirty_key_dead) | view | db | SERVER | ops | none | Dead rebuild keys per kind, for the sync-health page and alerting. |
@@ -182,6 +192,7 @@ Removals are rare and listed here (a wrong column is removed, never redefined in
 | [`app.web_entry_route_day`](#appweb_entry_route_day) | table | backend:masterdata | ONLINE | transaction | none | One row is a back-office web entry of a route-day (issue, return and memos per SKU, successful calls); a re-save is a new row that closes the old one. |
 | [`app.wing`](#appwing) | table | backend:masterdata | ONLINE | master | none | Top level of the sales geography. |
 | [`app.zone`](#appzone) | table | backend:masterdata | ONLINE | master | none | Geography level below a territory; the unit of Final Submit and day rollups. |
+| [`app.zone_history`](#appzone_history) | table | db | SERVER | master | none | One row is a period of the territory and house a zone belonged to and its status (V0119); written by the history trigger on app.zone, seeded from app.audit_log. |
 | [`dw.agg_daily_outlet`](#dwagg_daily_outlet) | table | worker | SERVER | event_fact | none | Per outlet and business date: whether visited, geo-valid, and sales totals. |
 | [`dw.agg_daily_outlet_sku`](#dwagg_daily_outlet_sku) | partitioned table | worker | SERVER | event_fact | none | Sales per outlet, SKU and business date of the latest memo versions (calling outlets and channel STD under any product filter). |
 | [`dw.agg_daily_route`](#dwagg_daily_route) | table | worker | SERVER | event_fact | none | Per route and business date: day state, visit counts, sales, discounts, paid and due money. |
@@ -225,9 +236,13 @@ Removals are rare and listed here (a wrong column is removed, never redefined in
 | [`dw.v_daily_sr`](#dwv_daily_sr) | view | worker | SERVER | event_fact | none | Stable view: per field user and business date, SR calls, successful calls, geo validity and memo money from the dw facts (active memos with lines); a user-day with neither an SR call nor such a memo has no row. |
 | [`dw.v_device_command`](#dwv_device_command) | view | backend:mdm | ONLINE | audit | none | Stable view: MDM commands for the activity log, without signature and result. |
 | [`dw.v_dim_geo`](#dwv_dim_geo) | view | worker | SERVER | master | none | Stable view: the current route and geography dimension (dw.dim_geo; versions in dw.dim_geo_version). is_effective = route active. |
+| [`dw.v_dim_geo_history`](#dwv_dim_geo_history) | view | db | SERVER | master | none | Stable view: a route's place in the geography (zone, house, territory, division, wing) and its kind, class and status for each period in which none of them changed, from the app history tables. is_effective = route active in the period. |
 | [`dw.v_dim_outlet`](#dwv_dim_outlet) | view | worker | SERVER | master | none | Stable view: the current outlet dimension (dw.dim_outlet): shop name and code, placement and class; no owner name, phone number or coordinates. is_effective = outlet active. |
+| [`dw.v_dim_outlet_history`](#dwv_dim_outlet_history) | view | db | SERVER | master | none | Stable view: an outlet's zone and class (channel, sub-channel, geo class, kind, price type, status) per period (app.outlet_class_history); no names, owner, phone or coordinates. is_effective = outlet active in the period. |
 | [`dw.v_dim_product`](#dwv_dim_product) | view | worker | SERVER | master | none | Stable view: the current product dimension (dw.dim_product): SKU, base unit, pack size and the category, segment, brand and variant tree. is_effective = true. |
+| [`dw.v_dim_product_history`](#dwv_dim_product_history) | view | db | SERVER | master | none | Stable view: a SKU's attributes and its variant, brand, segment and category for each period in which none of them changed (app.sku_history, app.product_node_history). is_effective = SKU active in the period. |
 | [`dw.v_dim_user`](#dwv_dim_user) | view | worker | SERVER | master | none | Stable view: the current user dimension (dw.dim_user): role, designation, home zone, status; no names or logins. is_effective = account active. |
+| [`dw.v_dim_user_history`](#dwv_dim_user_history) | view | db | SERVER | master | none | Stable view: a user's role, designation, home zone and status per period (app.user_history); no names or logins. is_effective = account active in the period. |
 | [`dw.v_due_ledger`](#dwv_due_ledger) | view | backend:sync | SERVER | transaction | none | Stable view: every signed entry of the outlet dues ledger (app.due_ledger, append-only; reversals are entries of their own), without the printed memo number and the free-text note. is_effective = true. |
 | [`dw.v_final_submit_log`](#dwv_final_submit_log) | view | worker | SERVER | audit | none | Stable view: per zone and business date the first Final Submit (second submits ignored, Brief 07), the number of submits and the reopen state. |
 | [`dw.v_geo_integrity`](#dwv_geo_integrity) | view | worker | SERVER | event_fact | none | Stable view: per user and business date, geo-validation outcomes of visits and mock-location evidence of fixes. |
@@ -897,6 +912,28 @@ Keys: `UNIQUE (external_ref)`; `UNIQUE (zone_id, name)`; `PRIMARY KEY (id)`
 
 References: `FOREIGN KEY (zone_id) REFERENCES app.zone(id)`
 
+## app.cluster_history
+
+One row is a period of the zone a cluster belonged to, its type and status (V0119); written by the history trigger on app.cluster, seeded from app.audit_log.
+
+`owner: db | capture: SERVER | retention: master | pii: none` · table
+
+| Column | Type | Null | PII | Description |
+|---|---|---|---|---|
+| `id` | bigint | not null |  | Server surrogate key. |
+| `cluster_id` | bigint | not null |  | The app.cluster row. |
+| `zone_id` | bigint | not null |  | Zone (app.zone). (as it was in the period). |
+| `cluster_type` | text | null |  | Free-text type label of the cluster, up to 60 characters. (as it was in the period). |
+| `status` | text | not null |  | Lifecycle status; allowed values are listed under constraints. (as it was in the period). |
+| `valid_from` | date | null |  | First Asia/Dhaka business date of the period (null = since the row existed). |
+| `valid_to` | date | null |  | Asia/Dhaka business date the period ended, exclusive (null = current). |
+| `data_origin` | app.data_origin | not null |  | Always production: this master carries no origin of its own. |
+| `created_at` | timestamp with time zone | not null |  | UTC instant the row was inserted on the server. |
+
+Keys: `PRIMARY KEY (id)`
+
+References: `FOREIGN KEY (cluster_id) REFERENCES app.cluster(id) ON DELETE CASCADE`
+
 ## app.code_list
 
 Header of a business code list (reasons, outcomes, channels and similar) with its key.
@@ -1474,6 +1511,27 @@ Keys: `UNIQUE (code)`; `UNIQUE (external_ref)`; `PRIMARY KEY (id)`
 
 References: `FOREIGN KEY (wing_id) REFERENCES app.wing(id)`
 
+## app.division_history
+
+One row is a period of the wing a division belonged to and its status (V0119); written by the history trigger on app.division, seeded from app.audit_log.
+
+`owner: db | capture: SERVER | retention: master | pii: none` · table
+
+| Column | Type | Null | PII | Description |
+|---|---|---|---|---|
+| `id` | bigint | not null |  | Server surrogate key. |
+| `division_id` | bigint | not null |  | The app.division row. |
+| `wing_id` | bigint | not null |  | Id of the wing the division belongs to. (as it was in the period). |
+| `status` | text | not null |  | Lifecycle status; allowed values are listed under constraints. (as it was in the period). |
+| `valid_from` | date | null |  | First Asia/Dhaka business date of the period (null = since the row existed). |
+| `valid_to` | date | null |  | Asia/Dhaka business date the period ended, exclusive (null = current). |
+| `data_origin` | app.data_origin | not null |  | Always production: this master carries no origin of its own. |
+| `created_at` | timestamp with time zone | not null |  | UTC instant the row was inserted on the server. |
+
+Keys: `PRIMARY KEY (id)`
+
+References: `FOREIGN KEY (division_id) REFERENCES app.division(id) ON DELETE CASCADE`
+
 ## app.domain_event
 
 Append-only outbox of events written with each change; the projector and later consumers read it in id order.
@@ -2019,6 +2077,27 @@ Keys: `UNIQUE (code)`; `UNIQUE (external_ref)`; `PRIMARY KEY (id)`
 
 References: `FOREIGN KEY (territory_id) REFERENCES app.territory(id)`
 
+## app.house_history
+
+One row is a period of the territory a distribution house belonged to and its status (V0119); written by the history trigger on app.house, seeded from app.audit_log.
+
+`owner: db | capture: SERVER | retention: master | pii: none` · table
+
+| Column | Type | Null | PII | Description |
+|---|---|---|---|---|
+| `id` | bigint | not null |  | Server surrogate key. |
+| `house_id` | bigint | not null |  | The app.house row. |
+| `territory_id` | bigint | not null |  | Territory (app.territory). (as it was in the period). |
+| `status` | text | not null |  | active or inactive; the one source of truth for the active flag (is_active is generated from it, V0093). (as it was in the period). |
+| `valid_from` | date | null |  | First Asia/Dhaka business date of the period (null = since the row existed). |
+| `valid_to` | date | null |  | Asia/Dhaka business date the period ended, exclusive (null = current). |
+| `data_origin` | app.data_origin | not null |  | Always production: this master carries no origin of its own. |
+| `created_at` | timestamp with time zone | not null |  | UTC instant the row was inserted on the server. |
+
+Keys: `PRIMARY KEY (id)`
+
+References: `FOREIGN KEY (house_id) REFERENCES app.house(id) ON DELETE CASCADE`
+
 ## app.indent_movement
 
 Phase 2 indent-portal stock ledger with the same shape as stock_movement; empty in Phase 1.
@@ -2162,6 +2241,21 @@ Append-only points ledger derived on the server, idempotent per source record.
 Keys: `UNIQUE (source_type, source_id)`; `PRIMARY KEY (id)`
 
 References: `FOREIGN KEY (outlet_id) REFERENCES app.outlet(id)`; `FOREIGN KEY (programme_id) REFERENCES app.programme(id)`
+
+## app.master_history_map
+
+Registry of the master history tables (V0119): the master each one follows, its key column and the audit entities its past was recovered from.
+
+`owner: db | capture: SERVER | retention: master | pii: none` · table
+
+| Column | Type | Null | PII | Description |
+|---|---|---|---|---|
+| `history_table` | text | not null |  | History table in schema app. |
+| `master_table` | text | not null |  | Master table in schema app whose tracked columns the history keeps. |
+| `key_col` | text | not null |  | Column of the history table that holds the master's id. |
+| `audit_entities` | text[] | not null |  | app.audit_log entity names whose before-images date the master's past changes. |
+
+Keys: `UNIQUE (master_table)`; `PRIMARY KEY (history_table)`
 
 ## app.mdm_policy
 
@@ -2696,6 +2790,32 @@ Keys: `UNIQUE (client_uuid)`; `UNIQUE (external_ref)`; `PRIMARY KEY (id)`
 
 References: `FOREIGN KEY (acting_for_user_id) REFERENCES app.app_user(id)`; `FOREIGN KEY (created_outlet_id) REFERENCES app.outlet(id)`; `FOREIGN KEY (decided_by) REFERENCES app.app_user(id)`; `FOREIGN KEY (device_id) REFERENCES app.device(id)`; `FOREIGN KEY (outlet_id) REFERENCES app.outlet(id)`; `FOREIGN KEY (route_id) REFERENCES app.route(id)`; `FOREIGN KEY (user_id) REFERENCES app.app_user(id)`; `FOREIGN KEY (verified_by) REFERENCES app.app_user(id)`
 
+## app.outlet_class_history
+
+One row is a period of an outlet's zone, channel, sub-channel, geo class, kind, price type and status (route and cluster are in app.outlet_placement_history) (V0119); written by the history trigger on app.outlet, seeded from app.audit_log.
+
+`owner: db | capture: SERVER | retention: master | pii: none` · table
+
+| Column | Type | Null | PII | Description |
+|---|---|---|---|---|
+| `id` | bigint | not null |  | Server surrogate key. |
+| `outlet_id` | bigint | not null |  | The app.outlet row. |
+| `zone_id` | bigint | not null |  | Zone (app.zone). (as it was in the period). |
+| `channel` | text | not null |  | Outlet channel: GT, DCC, Astha, RCC, MT or HoReCa. (as it was in the period). |
+| `sub_channel_id` | bigint | null |  | Outlet sub-channel (app.sub_channel). (as it was in the period). |
+| `geo_class` | text | null |  | Geographic class of the outlet area: Hill, Urban, SemiUrban or Rural. (as it was in the period). |
+| `outlet_kind` | text | not null |  | Outlet kind: retail or wholesale. (as it was in the period). |
+| `price_type` | text | not null |  | Selling price type of the outlet or price row: outlet, cc, distributor (and reporting, nto for prices). (as it was in the period). |
+| `status` | text | not null |  | Lifecycle status; allowed values are listed under constraints. (as it was in the period). |
+| `valid_from` | date | null |  | First Asia/Dhaka business date of the period (null = since the row existed). |
+| `valid_to` | date | null |  | Asia/Dhaka business date the period ended, exclusive (null = current). |
+| `data_origin` | app.data_origin | not null |  | Origin of the master row (production, pilot, test, seed), kept equal to the master's on every period. |
+| `created_at` | timestamp with time zone | not null |  | UTC instant the row was inserted on the server. |
+
+Keys: `PRIMARY KEY (id)`
+
+References: `FOREIGN KEY (outlet_id) REFERENCES app.outlet(id) ON DELETE CASCADE`
+
 ## app.outlet_location_history
 
 Append-only history of every map pin an outlet has had and where it came from.
@@ -3041,6 +3161,28 @@ One node of the product tree (category, segment, brand or variant).
 Keys: `UNIQUE (external_ref)`; `PRIMARY KEY (id)`
 
 References: `FOREIGN KEY (parent_id) REFERENCES app.product_node(id)`
+
+## app.product_node_history
+
+One row is a period of the parent of a product tree node, its sales switch and status (V0119); written by the history trigger on app.product_node, seeded from app.audit_log.
+
+`owner: db | capture: SERVER | retention: master | pii: none` · table
+
+| Column | Type | Null | PII | Description |
+|---|---|---|---|---|
+| `id` | bigint | not null |  | Server surrogate key. |
+| `node_id` | bigint | not null |  | The app.product_node row. |
+| `parent_id` | bigint | null |  | Id of the parent node; null for a category. (as it was in the period). |
+| `sales_enable` | boolean | not null |  | True when the node's SKUs may be sold. (as it was in the period). |
+| `status` | text | not null |  | Lifecycle status; allowed values are listed under constraints. (as it was in the period). |
+| `valid_from` | date | null |  | First Asia/Dhaka business date of the period (null = since the row existed). |
+| `valid_to` | date | null |  | Asia/Dhaka business date the period ended, exclusive (null = current). |
+| `data_origin` | app.data_origin | not null |  | Always production: this master carries no origin of its own. |
+| `created_at` | timestamp with time zone | not null |  | UTC instant the row was inserted on the server. |
+
+Keys: `PRIMARY KEY (id)`
+
+References: `FOREIGN KEY (node_id) REFERENCES app.product_node(id) ON DELETE CASCADE`
 
 ## app.programme
 
@@ -3692,6 +3834,29 @@ Keys: `UNIQUE (client_uuid)`; `PRIMARY KEY (id)`
 
 References: `FOREIGN KEY (approved_by) REFERENCES app.app_user(id)`; `FOREIGN KEY (route_id) REFERENCES app.route(id)`; `FOREIGN KEY (voided_by) REFERENCES app.app_user(id)`
 
+## app.route_history
+
+One row is a period of a route's kind, visit kind, class and status (its zone is in app.route_zone_history) (V0119); written by the history trigger on app.route, seeded from app.audit_log.
+
+`owner: db | capture: SERVER | retention: master | pii: none` · table
+
+| Column | Type | Null | PII | Description |
+|---|---|---|---|---|
+| `id` | bigint | not null |  | Server surrogate key. |
+| `route_id` | bigint | not null |  | The app.route row. |
+| `kind` | text | not null |  | Kind of the row; allowed values are listed under constraints. (as it was in the period). |
+| `visit_kind` | text | null |  | Visit pattern of the route: daily, 3f (three days a week) or 2f (two days). (as it was in the period). |
+| `route_class` | text | not null |  | normal, manual (no-internet, keyed on the web), dummy_br or dummy_institutional; Live CPR, Target Route and Login count normal routes only (V0094). (as it was in the period). |
+| `status` | text | not null |  | Lifecycle status; allowed values are listed under constraints. (as it was in the period). |
+| `valid_from` | date | null |  | First Asia/Dhaka business date of the period (null = since the row existed). |
+| `valid_to` | date | null |  | Asia/Dhaka business date the period ended, exclusive (null = current). |
+| `data_origin` | app.data_origin | not null |  | Origin of the master row (production, pilot, test, seed), kept equal to the master's on every period. |
+| `created_at` | timestamp with time zone | not null |  | UTC instant the row was inserted on the server. |
+
+Keys: `PRIMARY KEY (id)`
+
+References: `FOREIGN KEY (route_id) REFERENCES app.route(id) ON DELETE CASCADE`
+
 ## app.route_monthly_target
 
 Monthly sales target of a route for a SKU in base units (D-TARGET-MIN-01); one row per route, SKU and month, rewritten by a later upload.
@@ -3941,6 +4106,35 @@ A sellable product with unit, pack size, names and category.
 Keys: `UNIQUE (code)`; `UNIQUE (external_ref)`; `PRIMARY KEY (id)`
 
 References: `FOREIGN KEY (image_asset_id) REFERENCES app.admin_asset(asset_id)`; `FOREIGN KEY (variant_id) REFERENCES app.product_node(id)`
+
+## app.sku_history
+
+One row is a period of a SKU's variant, category, units, pack size, report unit, sales switch and status (V0119); written by the history trigger on app.sku, seeded from app.audit_log.
+
+`owner: db | capture: SERVER | retention: master | pii: none` · table
+
+| Column | Type | Null | PII | Description |
+|---|---|---|---|---|
+| `id` | bigint | not null |  | Server surrogate key. |
+| `sku_id` | bigint | not null |  | The app.sku row. |
+| `variant_id` | bigint | not null |  | Id of the variant node the SKU belongs to. (as it was in the period). |
+| `category_code` | text | not null |  | Product category: cigarette, bidi, lighter or match. (as it was in the period). |
+| `base_unit` | text | not null |  | Unit in which quantities are counted: stick, piece or dozen. (as it was in the period). |
+| `base_per_pack` | integer | not null |  | Base units in one pack: 20 or 10 sticks per cigarette packet, the stick count of a bidi packet, 25 pieces per lighter box, 1 for matches (dozen is the base unit; V0104). (as it was in the period). |
+| `pack_type` | text | null |  | Pack type label such as HLP, Soft Pack, Box or Dozen. (as it was in the period). |
+| `entry_unit_default` | text | not null |  | Unit the apps enter, show and print: pack for cigarettes, bidi and lighters (box), dozen for matches (V0104, D-UNITS-02). (as it was in the period). |
+| `report_unit` | text | null |  | Unit shown in reports; null when the base unit is used. (as it was in the period). |
+| `report_factor` | numeric(16,3) | not null |  | Base units per report unit, with three decimals. (as it was in the period). |
+| `sales_enable` | boolean | not null |  | True when the SKU may be sold. (as it was in the period). |
+| `status` | text | not null |  | Lifecycle status; allowed values are listed under constraints. (as it was in the period). |
+| `valid_from` | date | null |  | First Asia/Dhaka business date of the period (null = since the row existed). |
+| `valid_to` | date | null |  | Asia/Dhaka business date the period ended, exclusive (null = current). |
+| `data_origin` | app.data_origin | not null |  | Always production: this master carries no origin of its own. |
+| `created_at` | timestamp with time zone | not null |  | UTC instant the row was inserted on the server. |
+
+Keys: `PRIMARY KEY (id)`
+
+References: `FOREIGN KEY (sku_id) REFERENCES app.sku(id) ON DELETE CASCADE`
 
 ## app.sku_price
 
@@ -4472,6 +4666,27 @@ Keys: `UNIQUE (code)`; `UNIQUE (external_ref)`; `PRIMARY KEY (id)`
 
 References: `FOREIGN KEY (division_id) REFERENCES app.division(id)`
 
+## app.territory_history
+
+One row is a period of the division a territory belonged to and its status (V0119); written by the history trigger on app.territory, seeded from app.audit_log.
+
+`owner: db | capture: SERVER | retention: master | pii: none` · table
+
+| Column | Type | Null | PII | Description |
+|---|---|---|---|---|
+| `id` | bigint | not null |  | Server surrogate key. |
+| `territory_id` | bigint | not null |  | The app.territory row. |
+| `division_id` | bigint | not null |  | Id of the division the territory belongs to. (as it was in the period). |
+| `status` | text | not null |  | Lifecycle status; allowed values are listed under constraints. (as it was in the period). |
+| `valid_from` | date | null |  | First Asia/Dhaka business date of the period (null = since the row existed). |
+| `valid_to` | date | null |  | Asia/Dhaka business date the period ended, exclusive (null = current). |
+| `data_origin` | app.data_origin | not null |  | Always production: this master carries no origin of its own. |
+| `created_at` | timestamp with time zone | not null |  | UTC instant the row was inserted on the server. |
+
+Keys: `PRIMARY KEY (id)`
+
+References: `FOREIGN KEY (territory_id) REFERENCES app.territory(id) ON DELETE CASCADE`
+
 ## app.tutorial
 
 One row is a tutorial video or manual shown to the listed roles in the apps and on the web.
@@ -4554,6 +4769,29 @@ Acceptance of a notice such as the location notice by a user on a phone.
 Keys: `UNIQUE (client_uuid)`; `UNIQUE (external_ref)`; `PRIMARY KEY (id)`
 
 References: `FOREIGN KEY (acting_for_user_id) REFERENCES app.app_user(id)`; `FOREIGN KEY (device_id) REFERENCES app.device(id)`; `FOREIGN KEY (user_id) REFERENCES app.app_user(id)`
+
+## app.user_history
+
+One row is a period of a user's role, designation, home zone and status (V0119); written by the history trigger on app.app_user, seeded from app.audit_log.
+
+`owner: db | capture: SERVER | retention: master | pii: none` · table
+
+| Column | Type | Null | PII | Description |
+|---|---|---|---|---|
+| `id` | bigint | not null |  | Server surrogate key. |
+| `user_id` | bigint | not null |  | The app.app_user row. |
+| `role` | text | not null |  | User role (contract Role). (as it was in the period). |
+| `designation` | text | null |  | Job title shown on screens and reports. (as it was in the period). |
+| `home_zone_id` | bigint | null |  | Id of the zone the user belongs to by default. (as it was in the period). |
+| `status` | text | not null |  | Lifecycle status; allowed values are listed under constraints. (as it was in the period). |
+| `valid_from` | date | null |  | First Asia/Dhaka business date of the period (null = since the row existed). |
+| `valid_to` | date | null |  | Asia/Dhaka business date the period ended, exclusive (null = current). |
+| `data_origin` | app.data_origin | not null |  | Origin of the master row (production, pilot, test, seed), kept equal to the master's on every period. |
+| `created_at` | timestamp with time zone | not null |  | UTC instant the row was inserted on the server. |
+
+Keys: `PRIMARY KEY (id)`
+
+References: `FOREIGN KEY (user_id) REFERENCES app.app_user(id) ON DELETE CASCADE`
 
 ## app.user_module_grant
 
@@ -4908,6 +5146,28 @@ Geography level below a territory; the unit of Final Submit and day rollups.
 Keys: `UNIQUE (code)`; `UNIQUE (external_ref)`; `PRIMARY KEY (id)`
 
 References: `FOREIGN KEY (house_id) REFERENCES app.house(id)`; `FOREIGN KEY (territory_id) REFERENCES app.territory(id)`
+
+## app.zone_history
+
+One row is a period of the territory and house a zone belonged to and its status (V0119); written by the history trigger on app.zone, seeded from app.audit_log.
+
+`owner: db | capture: SERVER | retention: master | pii: none` · table
+
+| Column | Type | Null | PII | Description |
+|---|---|---|---|---|
+| `id` | bigint | not null |  | Server surrogate key. |
+| `zone_id` | bigint | not null |  | The app.zone row. |
+| `territory_id` | bigint | not null |  | Territory (app.territory). (as it was in the period). |
+| `house_id` | bigint | null |  | Id of the distribution house of the zone. (as it was in the period). |
+| `status` | text | not null |  | Lifecycle status; allowed values are listed under constraints. (as it was in the period). |
+| `valid_from` | date | null |  | First Asia/Dhaka business date of the period (null = since the row existed). |
+| `valid_to` | date | null |  | Asia/Dhaka business date the period ended, exclusive (null = current). |
+| `data_origin` | app.data_origin | not null |  | Always production: this master carries no origin of its own. |
+| `created_at` | timestamp with time zone | not null |  | UTC instant the row was inserted on the server. |
+
+Keys: `PRIMARY KEY (id)`
+
+References: `FOREIGN KEY (zone_id) REFERENCES app.zone(id) ON DELETE CASCADE`
 
 ## dw.agg_daily_outlet
 
@@ -6050,6 +6310,30 @@ Stable view: the current route and geography dimension (dw.dim_geo; versions in 
 | `data_origin` | app.data_origin | null |  | Origin (production, pilot, test, seed): the most synthetic of the route (app.route.data_origin); set by trigger on every write. |
 | `is_effective` | boolean | null |  | True when the row counts in an ordinary total (the rule of this view is in its description). |
 
+## dw.v_dim_geo_history
+
+Stable view: a route's place in the geography (zone, house, territory, division, wing) and its kind, class and status for each period in which none of them changed, from the app history tables. is_effective = route active in the period.
+
+`owner: db | capture: SERVER | retention: master | pii: none` · view
+
+| Column | Type | Null | PII | Description |
+|---|---|---|---|---|
+| `route_id` | bigint | null |  | Route. |
+| `zone_id` | bigint | null |  | Zone of the route in the period (app.route_zone_history). |
+| `house_id` | bigint | null |  | Distribution house of the zone in the period. |
+| `territory_id` | bigint | null |  | Territory of the zone in the period. |
+| `division_id` | bigint | null |  | Division of the territory in the period. |
+| `wing_id` | bigint | null |  | Wing of the division in the period. |
+| `route_kind` | text | null |  | Route kind (sr, amo) in the period. |
+| `visit_kind` | text | null |  | Visit pattern of the route: daily, 3f (three days a week) or 2f (two days). (as it was in the period). |
+| `route_class` | text | null |  | normal, manual (no-internet, keyed on the web), dummy_br or dummy_institutional; Live CPR, Target Route and Login count normal routes only (V0094). (as it was in the period). |
+| `status` | text | null |  | Lifecycle status; allowed values are listed under constraints. (as it was in the period). |
+| `valid_from` | date | null |  | First Asia/Dhaka business date of the period (null = since the route existed). |
+| `valid_to` | date | null |  | Asia/Dhaka business date the period ended, exclusive (null = current). |
+| `is_current` | boolean | null |  | True for the period that is still open (valid_to null). |
+| `data_origin` | app.data_origin | null |  | Origin of the master row (production, pilot, test, seed), kept equal to the master's on every period. |
+| `is_effective` | boolean | null |  | True when the row counts in an ordinary total (the rule of this view is in its description). |
+
 ## dw.v_dim_outlet
 
 Stable view: the current outlet dimension (dw.dim_outlet): shop name and code, placement and class; no owner name, phone number or coordinates. is_effective = outlet active.
@@ -6072,6 +6356,28 @@ Stable view: the current outlet dimension (dw.dim_outlet): shop name and code, p
 | `status` | text | null |  | Lifecycle status; allowed values are listed under constraints. |
 | `updated_at` | timestamp with time zone | null |  | UTC instant of the last update. |
 | `data_origin` | app.data_origin | null |  | Origin (production, pilot, test, seed): the most synthetic of the outlet (app.outlet.data_origin); set by trigger on every write. |
+| `is_effective` | boolean | null |  | True when the row counts in an ordinary total (the rule of this view is in its description). |
+
+## dw.v_dim_outlet_history
+
+Stable view: an outlet's zone and class (channel, sub-channel, geo class, kind, price type, status) per period (app.outlet_class_history); no names, owner, phone or coordinates. is_effective = outlet active in the period.
+
+`owner: db | capture: SERVER | retention: master | pii: none` · view
+
+| Column | Type | Null | PII | Description |
+|---|---|---|---|---|
+| `outlet_id` | bigint | null |  | The app.outlet row. |
+| `zone_id` | bigint | null |  | Zone (app.zone). (as it was in the period). |
+| `channel` | text | null |  | Outlet channel: GT, DCC, Astha, RCC, MT or HoReCa. (as it was in the period). |
+| `sub_channel_id` | bigint | null |  | Outlet sub-channel (app.sub_channel). (as it was in the period). |
+| `geo_class` | text | null |  | Geographic class of the outlet area: Hill, Urban, SemiUrban or Rural. (as it was in the period). |
+| `outlet_kind` | text | null |  | Outlet kind: retail or wholesale. (as it was in the period). |
+| `price_type` | text | null |  | Selling price type of the outlet or price row: outlet, cc, distributor (and reporting, nto for prices). (as it was in the period). |
+| `status` | text | null |  | Lifecycle status; allowed values are listed under constraints. (as it was in the period). |
+| `valid_from` | date | null |  | First Asia/Dhaka business date of the period (null = since the row existed). |
+| `valid_to` | date | null |  | Asia/Dhaka business date the period ended, exclusive (null = current). |
+| `is_current` | boolean | null |  | True for the period that is still open (valid_to null). |
+| `data_origin` | app.data_origin | null |  | Origin of the master row (production, pilot, test, seed), kept equal to the master's on every period. |
 | `is_effective` | boolean | null |  | True when the row counts in an ordinary total (the rule of this view is in its description). |
 
 ## dw.v_dim_product
@@ -6103,6 +6409,34 @@ Stable view: the current product dimension (dw.dim_product): SKU, base unit, pac
 | `data_origin` | app.data_origin | null |  | Always production: products carry no origin of their own (every SKU is catalogue data). |
 | `is_effective` | boolean | null |  | True when the row counts in an ordinary total (the rule of this view is in its description). |
 
+## dw.v_dim_product_history
+
+Stable view: a SKU's attributes and its variant, brand, segment and category for each period in which none of them changed (app.sku_history, app.product_node_history). is_effective = SKU active in the period.
+
+`owner: db | capture: SERVER | retention: master | pii: none` · view
+
+| Column | Type | Null | PII | Description |
+|---|---|---|---|---|
+| `sku_id` | bigint | null |  | The app.sku row. |
+| `variant_id` | bigint | null |  | Id of the variant node the SKU belongs to. (as it was in the period). |
+| `brand_id` | bigint | null |  | Brand node of the variant in the period. |
+| `segment_id` | bigint | null |  | Segment node of the brand in the period. |
+| `category_id` | bigint | null |  | Category node of the segment in the period. |
+| `category_code` | text | null |  | Product category: cigarette, bidi, lighter or match. (as it was in the period). |
+| `base_unit` | text | null |  | Unit in which quantities are counted: stick, piece or dozen. (as it was in the period). |
+| `base_per_pack` | integer | null |  | Base units in one pack: 20 or 10 sticks per cigarette packet, the stick count of a bidi packet, 25 pieces per lighter box, 1 for matches (dozen is the base unit; V0104). (as it was in the period). |
+| `pack_type` | text | null |  | Pack type label such as HLP, Soft Pack, Box or Dozen. (as it was in the period). |
+| `entry_unit_default` | text | null |  | Unit the apps enter, show and print: pack for cigarettes, bidi and lighters (box), dozen for matches (V0104, D-UNITS-02). (as it was in the period). |
+| `report_unit` | text | null |  | Unit shown in reports; null when the base unit is used. (as it was in the period). |
+| `report_factor` | numeric(16,3) | null |  | Base units per report unit, with three decimals. (as it was in the period). |
+| `sales_enable` | boolean | null |  | True when the SKU may be sold. (as it was in the period). |
+| `status` | text | null |  | Lifecycle status; allowed values are listed under constraints. (as it was in the period). |
+| `valid_from` | date | null |  | First Asia/Dhaka business date of the period (null = since the SKU existed). |
+| `valid_to` | date | null |  | Asia/Dhaka business date the period ended, exclusive (null = current). |
+| `is_current` | boolean | null |  | True for the period that is still open (valid_to null). |
+| `data_origin` | app.data_origin | null |  | Always production: products carry no origin of their own (every SKU is catalogue data). |
+| `is_effective` | boolean | null |  | True when the row counts in an ordinary total (the rule of this view is in its description). |
+
 ## dw.v_dim_user
 
 Stable view: the current user dimension (dw.dim_user): role, designation, home zone, status; no names or logins. is_effective = account active.
@@ -6119,6 +6453,25 @@ Stable view: the current user dimension (dw.dim_user): role, designation, home z
 | `pilot` | boolean | null |  | True for pilot users. |
 | `updated_at` | timestamp with time zone | null |  | UTC instant of the last update. |
 | `data_origin` | app.data_origin | null |  | Origin (production, pilot, test, seed): the most synthetic of the user (app.app_user.data_origin); set by trigger on every write. |
+| `is_effective` | boolean | null |  | True when the row counts in an ordinary total (the rule of this view is in its description). |
+
+## dw.v_dim_user_history
+
+Stable view: a user's role, designation, home zone and status per period (app.user_history); no names or logins. is_effective = account active in the period.
+
+`owner: db | capture: SERVER | retention: master | pii: none` · view
+
+| Column | Type | Null | PII | Description |
+|---|---|---|---|---|
+| `user_id` | bigint | null |  | The app.app_user row. |
+| `role` | text | null |  | User role (contract Role). (as it was in the period). |
+| `designation` | text | null |  | Job title shown on screens and reports. (as it was in the period). |
+| `home_zone_id` | bigint | null |  | Id of the zone the user belongs to by default. (as it was in the period). |
+| `status` | text | null |  | Lifecycle status; allowed values are listed under constraints. (as it was in the period). |
+| `valid_from` | date | null |  | First Asia/Dhaka business date of the period (null = since the row existed). |
+| `valid_to` | date | null |  | Asia/Dhaka business date the period ended, exclusive (null = current). |
+| `is_current` | boolean | null |  | True for the period that is still open (valid_to null). |
+| `data_origin` | app.data_origin | null |  | Origin of the master row (production, pilot, test, seed), kept equal to the master's on every period. |
 | `is_effective` | boolean | null |  | True when the row counts in an ordinary total (the rule of this view is in its description). |
 
 ## dw.v_due_ledger

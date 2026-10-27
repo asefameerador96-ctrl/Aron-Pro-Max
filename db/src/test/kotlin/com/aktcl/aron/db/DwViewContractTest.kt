@@ -38,6 +38,7 @@ class DwViewContractTest {
      */
     private val history = mapOf(
         "1.0" to "c9680e52564594847fed54155e522e7292dad3b6b053acc8d50aee4c369d7a45",
+        "1.1" to "a9c369ff55c3053f1d5224c54836895cdc9de7e9a9e0ebf327e3feb3471e085d",           // V0119 master history dims
     )
 
     private fun views(c: Connection): Map<String, List<String>> =
