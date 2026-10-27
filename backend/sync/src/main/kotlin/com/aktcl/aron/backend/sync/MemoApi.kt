@@ -47,7 +47,7 @@ data class MemoDiscountDto(
 @Serializable
 data class MemoViewDto(
     val memo_client_uuid: String, val memo_no: String, val business_date: String, val outlet_id: Long, val outlet_name: String,
-    val route_id: Long, val user_id: Long, val status: String, val supersedes_memo_no: String?, val totals: MemoTotalsDto,
+    val route_id: Long?, val user_id: Long, val status: String, val supersedes_memo_no: String?, val totals: MemoTotalsDto,
     val lines: List<MemoLineDto>, val discounts: List<MemoDiscountDto>, val printed_at: String?, val print_count: Int, val entry_source: String,
     /** Contract 1.8.0: the stored memo's review flags (`app.memo.server_flags`), empty when it has none. */
     val server_flags: List<String> = emptyList(),
@@ -120,7 +120,9 @@ internal data class MemoQuery(
 /**
  * Memo history in the caller's reach (docs/24 s8.4, F-SR-054 "all memos for that outlet within the user's scope"):
  * reach is derived on the server from the token; a memo is visible when its route is one of the caller's routes, its
- * zone is in the caller's zones (non-field roles), or the caller wrote it. Out-of-reach rows are simply not returned,
+ * zone is in the caller's zones (non-field roles), or the caller wrote it. A memo stored without a route (contract 1.9.0:
+ * `route_id` null, left join) is reached through its outlet's current route and that route's zone (else the outlet's
+ * zone) (D-BC-MEMO-ROUTELESS-01). Out-of-reach rows are simply not returned,
  * whatever the filters name. Newest first, keyset-paginated on (business_date, id). Voided and superseded memos are
  * listed with their status (a reprint must show what was printed); a memo tombstoned by an admin data void is `void`
  * too, as the totals leave it out.
@@ -137,14 +139,14 @@ internal class MemoReader(private val d: MemoDeps) {
                        m.round_adj_mtk, m.net_mtk, m.paid_mtk, m.due_mtk, m.server_flags
                 FROM app.memo m
                 JOIN app.outlet o ON o.id = m.outlet_id
-                JOIN app.route r ON r.id = m.route_id
+                LEFT JOIN app.route r ON r.id = COALESCE(m.route_id, o.route_id)
                 LEFT JOIN app.memo s ON s.client_uuid = m.supersedes_client_uuid
-                WHERE m.route_id IS NOT NULL
+                WHERE true
                 """.trimIndent(),
             )
             if (!reach.national) {
-                sql.append(" AND (m.user_id = :me OR m.route_id = ANY(:routes)")
-                if (!reach.ownRecordsOnly) sql.append(" OR r.zone_id = ANY(:zones)")
+                sql.append(" AND (m.user_id = :me OR COALESCE(m.route_id, o.route_id) = ANY(:routes)")
+                if (!reach.ownRecordsOnly) sql.append(" OR COALESCE(r.zone_id, o.zone_id) = ANY(:zones)")
                 sql.append(")")
             }
             q.outletId?.let { sql.append(" AND m.outlet_id = :outlet") }
@@ -170,7 +172,7 @@ internal class MemoReader(private val d: MemoDeps) {
                     rs.getLong("id"), date,
                     MemoViewDto(
                         rs.getString("uuid"), rs.getString("memo_no"), date.toString(), rs.getLong("outlet_id"), rs.getString("outlet_name"),
-                        rs.getLong("route_id"), rs.getLong("user_id"), rs.getString("status"),
+                        rs.getObject("route_id") as Long?, rs.getLong("user_id"), rs.getString("status"),
                         rs.getString("supersedes_memo_no"),
                         MemoTotalsDto(
                             rs.getLong("gross_mtk"), rs.getLong("offer_discount_mtk"), rs.getLong("drp_discount_mtk"), rs.getLong("qc_deduction_mtk"),

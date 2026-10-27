@@ -63,9 +63,17 @@ data class MoneyTotals(
 @Serializable
 data class ServerTotals(val business_date: String, val as_of: String, val by_type: Map<String, TypeOutcomeCounts>, val money: MoneyTotals)
 
-/** GET /v1/sync/totals (contract SyncTotalsResponse): the Server column of Sales Submit for one date. */
+/**
+ * GET /v1/sync/totals (contract SyncTotalsResponse): the Server column of Sales Submit for one date, and the Sales Submit
+ * digest (contract 1.9.0 `digest`, optional there until v1.10 makes it required; the server always sends it).
+ */
 @Serializable
-data class SyncTotalsResponse(val totals: ServerTotals, val day_states: List<RouteDayStateDto>, val supervisor_day: SupervisorDayStateDto?)
+data class SyncTotalsResponse(
+    val totals: ServerTotals,
+    val day_states: List<RouteDayStateDto>,
+    val supervisor_day: SupervisorDayStateDto?,
+    val digest: SalesSubmitDigestDto,
+)
 
 @Serializable
 data class Resolution(val client_uuid: String, val type: String, val resolution: String, val resolved_at: String)

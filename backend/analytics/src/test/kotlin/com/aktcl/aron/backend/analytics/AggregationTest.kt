@@ -40,9 +40,9 @@ class AggregationTest {
 
     private fun resource(n: String) = checkNotNull(javaClass.classLoader.getResourceAsStream(n)).bufferedReader().readText()
 
-    private fun event(type: String, sourceUuid: String, date: String = "2026-10-04") = conn.prepareStatement(
-        "INSERT INTO app.domain_event (event_type, aggregate_type, aggregate_id, business_date, source_client_uuid) VALUES (?, split_part(?, '.', 1), ?, ?::date, ?::uuid)",
-    ).use { it.setString(1, type); it.setString(2, type); it.setString(3, sourceUuid); it.setString(4, date); it.setString(5, sourceUuid); it.executeUpdate() }
+    private fun event(type: String, sourceUuid: String, date: String = "2026-10-04", aggregateId: String = sourceUuid, payload: String = "{}") = conn.prepareStatement(
+        "INSERT INTO app.domain_event (event_type, aggregate_type, aggregate_id, business_date, source_client_uuid, payload) VALUES (?, split_part(?, '.', 1), ?, ?::date, ?::uuid, ?::jsonb)",
+    ).use { it.setString(1, type); it.setString(2, type); it.setString(3, aggregateId); it.setString(4, date); it.setString(5, sourceUuid); it.setString(6, payload); it.executeUpdate() }
 
     private fun worker(clock: AronClock = AronClock.SYSTEM, id: String = "w1") = AggregationWorker(fresh.db, clock, id)
 
@@ -135,6 +135,47 @@ class AggregationTest {
         assertEquals(0, long("SELECT count(*) FROM dw.agg_daily_route WHERE business_date <> '2026-10-04'"))
     }
 
+    /** Data-architecture review finding 6: a void stored on the next business date rebuilds the memo's own day too. */
+    @Test
+    fun aVoidOnTheNextBusinessDateRebuildsTheSalesDayToo() {
+        val w = worker()
+        w.runUntilIdle()
+        assertEquals(34_000, route("R1", "net_mtk"))
+        val zoneBefore = zone("Z1", "gross_mtk")
+        val void = "00000000-0000-4000-8000-0000000000e1"
+        // The void record (memo_void, dated 2026-10-05 after midnight) ends memo a1 of 2026-10-04 (16 000 on R1).
+        conn.createStatement().use {
+            it.execute("UPDATE app.memo SET status = 'voided', status_changed_at = now(), voided_by_client_uuid = '$void' WHERE client_uuid = '00000000-0000-4000-8000-0000000000a1'")
+        }
+        // As DomainEventProducer writes it: aggregate the voided memo, payload the void row's own route (here another one).
+        val other = long("SELECT id FROM app.route WHERE code = 'R2'")
+        event("memo.voided", void, date = "2026-10-05", aggregateId = "00000000-0000-4000-8000-0000000000a1", payload = """{"route_id": $other}""")
+        w.runUntilIdle()
+        assertEquals(18_000, route("R1", "net_mtk"), "the sale's day is rebuilt without the voided memo")
+        assertEquals(zoneBefore - 16_000, zone("Z1", "gross_mtk"), "and its zone-day")
+    }
+
+    /** Finding 6, the edit half: an edit stored the next day rebuilds the edited memo's day (the old memo no longer counts). */
+    @Test
+    fun anEditOnTheNextBusinessDateRebuildsTheEditedMemosDay() {
+        val w = worker()
+        w.runUntilIdle()
+        assertEquals(34_000, route("R1", "net_mtk"))
+        val edit = "00000000-0000-4000-8000-0000000000e2"
+        val old = "00000000-0000-4000-8000-0000000000a2"   // 18 000 gross on R1, 2026-10-04
+        conn.createStatement().use {
+            val cols = it.executeQuery("SELECT string_agg(column_name, ', ' ORDER BY ordinal_position) FROM information_schema.columns WHERE table_schema = 'app' AND table_name = 'memo' AND column_name <> 'id' AND is_generated = 'NEVER'")
+                .use { rs -> rs.next(); rs.getString(1) }.split(", ")
+            val repl = mapOf("client_uuid" to "'$edit'::uuid", "family_uuid" to "'$edit'::uuid", "business_date" to "DATE '2026-10-05'", "memo_no" to "'sr001-261005-001'",
+                "supersedes_client_uuid" to "'$old'::uuid", "edit_reason_code" to "'wrong_quantity'", "external_ref" to "NULL", "sig" to "NULL")
+            it.execute("INSERT INTO app.memo (${cols.joinToString()}) SELECT ${cols.joinToString { c -> repl[c] ?: c }} FROM app.memo WHERE client_uuid = '$old'")
+            it.execute("UPDATE app.memo SET status = 'superseded', status_changed_at = now(), superseded_by_client_uuid = '$edit' WHERE client_uuid = '$old'")
+        }
+        event("memo.created", edit, date = "2026-10-05")
+        w.runUntilIdle()
+        assertEquals(16_000, route("R1", "net_mtk"), "the edited memo's day no longer counts the superseded memo")
+    }
+
     @Test
     fun aKeyDirtiedDuringItsRebuildStaysQueued() {
         val w = worker()
@@ -219,6 +260,31 @@ class AggregationTest {
         worker().runUntilIdle()
         assertEquals(0, route("R1", "suspicious_visits"), "score 20 < threshold 50, yet all 3 R1 visits are counted suspicious")
         assertEquals(0, zone("Z1", "suspicious_user_days"))
+    }
+
+    /**
+     * Data-architecture review finding 18: the worker built as the worker role builds it (`Main.kt`: database config over
+     * the registry defaults) reads the admin's `cfg.geo.suspicious_score_threshold`; the same score-20 signal that stays
+     * below the default 50 makes the user-day suspicious once the admin lowers the threshold to 20.
+     */
+    @Test
+    fun theWorkerReadsTheAdminsSuspiciousThreshold() {
+        conn.createStatement().use {
+            it.execute(
+                "INSERT INTO app.risk_signal (code, severity, business_date, subject_type, subject_id, user_id, route_id, zone_id, score, config_version) " +
+                    "SELECT 'GEO_PERFECT_ACCURACY', 2, DATE '2026-10-04', 'user', u.id::text, u.id, r.id, r.zone_id, 20, 1 " +
+                    "FROM app.app_user u, app.route r WHERE u.username = 'sr001' AND r.code = 'R1'",
+            )
+            it.execute(
+                "INSERT INTO app.cfg_value (key, scope_type, scope_id, value, effective_from, config_version, reason) " +
+                    "SELECT 'cfg.geo.suspicious_score_threshold', 'global', 0, '20'::jsonb, now() - interval '1 day', max(config_version), 'finding 18 test' FROM app.cfg_version",
+            )
+        }
+        val config = com.aktcl.aron.backend.platform.DbServerConfig(fresh.db, com.aktcl.aron.backend.platform.RegistryDefaults())
+        assertEquals(20, config.int("cfg.geo.suspicious_score_threshold"))
+        AggregationWorker(fresh.db, AronClock.SYSTEM, "w-cfg", config = config).runUntilIdle()
+        assertEquals(3, route("R1", "suspicious_visits"), "score 20 >= the admin's threshold 20: the user-day's R1 visits are suspicious")
+        assertEquals(1, zone("Z1", "suspicious_user_days"))
     }
 
     /** A route moved to another zone: a re-aggregated past day lands in the new zone but stays in the old zone too. */

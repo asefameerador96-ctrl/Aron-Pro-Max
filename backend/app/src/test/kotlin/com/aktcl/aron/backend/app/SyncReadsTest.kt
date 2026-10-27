@@ -212,6 +212,14 @@ class SyncReadsTest {
         assertEquals(fromBatch.sansAsOf(), t["totals"]!!.jsonObject.sansAsOf(), "the Server column equals what the batch answered")
         assertEquals(b["day_states"], t["day_states"])
         assertTrue(t.containsKey("supervisor_day"))
+        // Contract 1.9.0 `digest`: this phone's half (device from the token) and the login's, equal to the Server column.
+        val dg = t["digest"]!!.jsonObject
+        assertEquals(day, dg["business_date"]!!.jsonPrimitive.content)
+        assertEquals(devPhone, dg["device_uuid"]!!.jsonPrimitive.content)
+        val dm = dg["by_type"]!!.jsonObject["memo"]!!.jsonObject
+        assertEquals(t["totals"]!!.jsonObject["by_type"]!!.jsonObject["memo"]!!.jsonObject["accepted"]!!.jsonPrimitive.long, dm["login"]!!.jsonObject["acknowledged"]!!.jsonPrimitive.long)
+        assertTrue(dm["device"]!!.jsonObject["acknowledged"]!!.jsonPrimitive.long >= 1)
+        assertEquals(false, dg["rejected_truncated"]!!.jsonPrimitive.boolean)
         // The same rows under a new batch uuid (duplicates), then that batch again (replayed): the totals do not move.
         val again = batch(family)
         repeat(2) {
@@ -278,6 +286,27 @@ class SyncReadsTest {
         for (q in listOf("memo_no=$otherNo", "outlet_id=$otherOutletId&from=$day&to=$day", "from=$day&to=$day&limit=500")) {
             val items = json(client.read(token, "/v1/memos?$q").bodyAsText())["items"]!!.jsonArray.map { it.jsonObject }
             assertTrue(items.none { it["memo_no"]!!.jsonPrimitive.content == otherNo }, "out of reach: $q")
+        }
+        // Contract 1.9.0: a memo stored without a route is listed with route_id null, reached through its outlet's current
+        // route (D-BC-MEMO-ROUTELESS-01); one at an outlet outside the caller's reach stays out.
+        val routeless = "tso1001-270103-902"; val farRouteless = "tso1001-270103-903"
+        fresh.db.jdbi.useHandle<Exception> { h ->
+            val cols = h.createQuery("SELECT column_name FROM information_schema.columns WHERE table_schema = 'app' AND table_name = 'memo' AND column_name <> 'id' AND is_generated = 'NEVER' ORDER BY ordinal_position").mapTo(String::class.java).list()
+            for ((no, outlet) in listOf(routeless to outletId, farRouteless to otherOutletId)) {
+                val repl = mapOf(
+                    "client_uuid" to "gen_random_uuid()", "family_uuid" to "gen_random_uuid()", "visit_client_uuid" to "gen_random_uuid()", "memo_no" to "'$no'",
+                    "route_id" to "NULL", "outlet_id" to "$outlet", "user_id" to "(SELECT id FROM app.app_user WHERE username = 'tso1001')",
+                    "device_id" to "NULL", "sig" to "NULL", "zone_id" to "NULL", "external_ref" to "NULL",
+                )
+                h.execute("INSERT INTO app.memo (${cols.joinToString()}) SELECT ${cols.joinToString { repl[it] ?: it }} FROM app.memo WHERE client_uuid = '$memoCu'")
+            }
+        }
+        val rl = json(client.read(token, "/v1/memos?memo_no=$routeless").bodyAsText())["items"]!!.jsonArray.single().jsonObject
+        assertEquals(kotlinx.serialization.json.JsonNull, rl["route_id"], "route-less memo: route_id null")
+        assertTrue(json(client.read(token, "/v1/memos?outlet_id=$outletId&from=$day&to=$day&limit=500").bodyAsText())["items"]!!.jsonArray.any { it.jsonObject["memo_no"]!!.jsonPrimitive.content == routeless })
+        for (q in listOf("memo_no=$farRouteless", "outlet_id=$otherOutletId&from=$day&to=$day", "from=$day&to=$day&limit=500")) {
+            val items = json(client.read(token, "/v1/memos?$q").bodyAsText())["items"]!!.jsonArray.map { it.jsonObject }
+            assertTrue(items.none { it["memo_no"]!!.jsonPrimitive.content == farRouteless }, "route-less, out of reach: $q")
         }
         // An admin data void tombstones the row (voided_at, status untouched): it is listed as void, as the totals leave it out.
         fresh.db.jdbi.useHandle<Exception> { h -> h.execute("UPDATE app.memo SET voided_at = now() WHERE client_uuid = '$memoCu'") }
