@@ -43,7 +43,8 @@ class DataOriginTest {
         return e
     }
 
-    private val day = "DATE '2026-10-05'"
+    // The seed's clock (D-TEST-DATE-PIN-01): the rolling dev seed and the partitions move with it.
+    private val day = "app.dhaka_date(now())"
     private fun user(name: String) = "(SELECT id FROM app.app_user WHERE username = '$name')"
     private fun outlet(code: String) = "(SELECT id FROM app.outlet WHERE code = '$code')"
     private fun route(code: String) = "(SELECT id FROM app.route WHERE code = '$code')"
@@ -71,7 +72,7 @@ class DataOriginTest {
         "INSERT INTO app.memo_line (client_uuid, family_uuid, business_date, user_id, route_id, captured_at, config_version, memo_client_uuid, " +
             "line_no, sku_id, line_kind, qty_entered, unit_entered, pack_factor, qty_base, price_type, price_valid_from, base_price_mtk, " +
             "price_per_qty, gross_mtk) SELECT gen_random_uuid(), gen_random_uuid(), $day, ${user(userName)}, ${routeCode?.let { route(it) } ?: "NULL"}, now(), 0, '$memo', " +
-            "1, min(id), 'sale', 1, 'stick', 1, 1, 'outlet', '2026-01-01', 1000, 1, 1000 FROM app.sku WHERE category_code = 'cigarette'"
+            "1, min(id), 'sale', 1, 'stick', 1, 1, 'outlet', (SELECT min(valid_from) FROM app.sku_price), 1000, 1, 1000 FROM app.sku WHERE category_code = 'cigarette'"
 
     private fun Connection.origin(table: String, uuidCol: String, uuid: String) =
         scalar("SELECT data_origin::text FROM $table WHERE $uuidCol = '$uuid'")

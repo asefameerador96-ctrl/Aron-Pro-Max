@@ -40,7 +40,8 @@ class ReuseSurfaceTest {
         return e.sqlState
     }
 
-    private val day = "DATE '2026-10-05'"
+    // The seed's clock (D-TEST-DATE-PIN-01): the rolling dev seed and the partitions move with it.
+    private val day = "app.dhaka_date(now())"
     private val sr = "(SELECT id FROM app.app_user WHERE username = 'sr1001')"
     private val route = "(SELECT id FROM app.route WHERE code = 'MIR-SR-D')"
     private val outlet = "(SELECT min(id) FROM app.outlet WHERE route_id = (SELECT id FROM app.route WHERE code = 'MIR-SR-D'))"
@@ -57,7 +58,7 @@ class ReuseSurfaceTest {
             "INSERT INTO app.memo_line (client_uuid, family_uuid, business_date, user_id, route_id, captured_at, config_version, memo_client_uuid, " +
                 "line_no, sku_id, line_kind, qty_entered, unit_entered, pack_factor, qty_base, price_type, price_valid_from, base_price_mtk, " +
                 "price_per_qty, gross_mtk) SELECT gen_random_uuid(), gen_random_uuid(), $day, $sr, $route, now(), 0, '$uuid', " +
-                "$n, min(id), 'sale', 1, 'pack', 20, 20, 'outlet', '2026-01-01', 1000, 1, 20000 FROM app.sku WHERE category_code = 'cigarette'",
+                "$n, min(id), 'sale', 1, 'pack', 20, 20, 'outlet', (SELECT min(valid_from) FROM app.sku_price), 1000, 1, 20000 FROM app.sku WHERE category_code = 'cigarette'",
         )
     }
 
