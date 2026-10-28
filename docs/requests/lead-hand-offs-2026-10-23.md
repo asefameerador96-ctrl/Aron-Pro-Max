@@ -51,3 +51,6 @@ D-TEST-DATE-PIN-01: 22 DataFlowTrace tests failed at Dhaka midnight because the 
 - **infra, later (not row 7):** `bi_reader` row scope and per-app logins outside dev (review finding 12, part 2); the final-account lake SKU question is now a row in docs/28 "Deferred to the final account".
 - **backend-core #21 pick list:** `docs/requests/backend-core-photo-retention-exemptions.md` (a prefix lifecycle rule cannot exempt active-outlet reference photos or retention holds; latent until a photo is 730 days old).
 - **Lead, on the first INT deploy that carries D-INFRA-LAKE-01:** read the deploy's "Database logins" row (five logins) and the infra step; the lake account is created by that deploy.
+
+### 2026-10-28 12:00 UTC — support/ bundles (lead ruling for infra #7 candidate 3)
+- **Ruling:** `support/` (encrypted PDA support zips, F-API-030) follows docs/18 s2.8: Hot → Cool at 30 days; nothing deletes them until a retention row names a figure (the lead adds the open question to the docs/21 s4.8 retention table in its next docs pass; default proposal 365 days, owner's call). Small infra candidate, own lane run, Opus checker, after train 52 lands.
