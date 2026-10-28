@@ -20,9 +20,15 @@ over older handovers below.
   `postgres` outside the scratchpad (the scratchpad path is not traversable for that user), apply
   `db/migrations/V*.sql` in `sort -V` order with `psql -1` (Flyway runs each in a transaction), then run
   `infra/sql/runtime-logins.sql` with the five ARON_PW_* variables set to throwaway 24+ character values.
-- **Open for the next infra session:** photo exemptions (backend-core request), narrowing `media-tiering` to
-  `media/photos/` (lead to agree), final lake SKU (sponsor), bi_reader row scope and per-app logins outside dev
-  (finding 12 part 2, not row 7). Row 8 (nightly export) is backend-core's; its needs are listed below.
+- **Row 7 candidate 1** (66410ed8) accepted by the lead 10:25 UTC, rides train 50; if its deploy goes red, fix it
+  at once as candidate 1b. **Candidate 2** (lead-approved): `media-tiering` narrowed to `media/photos/`
+  (D-INFRA-LAKE-02), plus the deploy summary's login count and a read-only "Key Vault network ACLs" row
+  (D-INFRA-LAKE-03, lead ask after deploy #284: its what-if listed "Modify kv properties.networkAcls"; keyvault.bicep
+  is unchanged since 87d07e0f, so read that row on the next deploy). Train 50 (INT 25046886, deploy #284 green)
+  carried candidate 1: lake account created, four Key Vault secrets generated, database logins succeeded.
+- **Open for the next infra session:** photo exemptions (backend-core #21), bi_reader row scope and per-app logins
+  outside dev (finding 12 part 2, a later infra slice). Final lake SKU is on the docs/28 final list (lead). Row 8
+  (nightly export) is backend-core's; its needs are listed below.
 
 ## Seventh infra session, 2026-10-28: data-architecture action row 7 (lake and blobs, pilot size)
 
@@ -64,11 +70,13 @@ D-INFRA-LAKE-01.
 
 - Photo exemptions (active outlet's reference photo, retention hold) before the first photo turns 730 days old:
   backend-core request above.
-- The existing `media-tiering` rule (Cool 30, Cold 90) covers the whole `media` container, so admin `assets/`
-  (tutorials) and `support/` bundles also tier to Cold; reading a Cold blob costs more and has a 90-day early-delete
-  charge. Not changed in this slice (outside row 7); infra can narrow it to `media/photos/` if the lead agrees.
-- Final-account lake SKU (`Standard_ZRS` set in stage and prod params) is an open sponsor question, not decided: to be
-  confirmed before the move and added to the docs/28 final-profile list by the lead.
+- `media-tiering` (Cool 30, Cold 90) covered the whole `media` container, so admin `assets/` (tutorials) and
+  `support/` bundles would have tiered too: candidate 2 narrows it to `media/photos/` (lead yes, 10:25 UTC; answers
+  docs/requests/brand-infra-media-lifecycle.md). The rule dates from 2026-10-05 with a 30-day threshold, so no blob
+  has tiered yet. Open: docs/18 s2.8 gives `support/` "Hot to Cool, 30 days" and nothing deletes support bundles
+  today; whether to tier or delete them at 30 days is a question for the lead (encrypted PDA zips, F-API-030).
+- Final-account lake SKU (`Standard_ZRS` in stage and prod params): on the docs/28 "Deferred to the final account"
+  list (lead), needs the sponsor's written yes.
 - No `bi_reader` row scope (brand or wing, D-374) and per-app logins still off in dev-lite, stage and prod
   (finding 12, part 2): not in row 7.
 

@@ -1961,6 +1961,14 @@ class LakeAndBlobRetention(unittest.TestCase):
             if "delete" in d["actions"]["baseBlob"]:
                 self.assertNotEqual(d["filters"]["prefixMatch"], ["[format('{0}/', parameters('mediaContainer'))]"], name)
         self.assertEqual(rules["bundles-expiry"]["actions"]["baseBlob"]["delete"]["daysAfterModificationGreaterThan"], 3)
+        # Tiering (docs/18 s2.8) covers field photos only; assets/ and support/ stay Hot (D-INFRA-LAKE-02).
+        tier = rules["media-tiering"]
+        self.assertEqual(tier["filters"]["prefixMatch"], ["[format('{0}/photos/', parameters('mediaContainer'))]"])
+        self.assertEqual(tier["actions"]["baseBlob"]["tierToCool"]["daysAfterModificationGreaterThan"], 30)
+        self.assertEqual(tier["actions"]["baseBlob"]["tierToCold"]["daysAfterModificationGreaterThan"], 90)
+        for name, d in rules.items():
+            for p in d["filters"]["prefixMatch"]:
+                self.assertNotEqual(p, "[format('{0}/', parameters('mediaContainer'))]", f"{name} covers the whole media container")
         backend = (ROOT / "backend" / "app" / "src" / "main" / "kotlin" / "com" / "aktcl" / "aron" / "backend" / "app"
                    / "ExportWiring.kt").read_text(encoding="utf-8")
         self.assertIn('containerVar = "ARON_BLOB_CONTAINER_EXPORTS", defaultContainer = "exports"', backend)
@@ -2044,6 +2052,35 @@ class LakeAndBlobRetention(unittest.TestCase):
             subprocess.run([sys.executable, "-", snap, "rg-aron-dev", profile], input=code, text=True, check=True,
                            capture_output=True)
             return [l.rsplit("/", 1)[-1] for l in Path(snap, "plan.txt").read_text(encoding="utf-8").split()]
+
+    def test_deploy_summary_names_the_logins_and_the_vault_acls(self):
+        import subprocess
+        d = (ROOT / "infra" / "deploy.sh").read_text(encoding="utf-8")
+        m = re.search(r'    logins="\$\(python3 -c (\'.*?\') infra/sql/runtime-logins.sql\)"', d, re.S)
+        self.assertTrue(m, "deploy.sh reads the login list from runtime-logins.sql")
+        code = subprocess.run(["bash", "-c", f"python3 -c {m.group(1)} infra/sql/runtime-logins.sql"], cwd=ROOT,
+                              capture_output=True, text=True, check=True).stdout.strip()
+        self.assertEqual(code, "5 logins: app_api, app_worker, app_jobs, app_bi, lake_export")
+        self.assertIn('dblogins_result="succeeded (${logins}; memberships verified by the job)"', d)
+        self.assertIn('summary "| Key Vault network ACLs | ${kv_acls} |"', d)
+        self.assertIn('az keyvault show -n "$KV" --query properties.networkAcls -o json', d, "read-only")
+        # Both snippets, as deploy.sh runs them (set -euo pipefail), never stop the deploy and print one line.
+        login_line = re.search(r'^    (logins="\$\(python3 -c .*? \|\| logins="login list not read")$', d, re.S | re.M).group(1)
+        kv_line = re.search(r'^(kv_acls="\$\( \{ az keyvault show .*?\| sed -n 1p\)")$', d, re.S | re.M).group(1)
+        def run(az_body, sql="infra/sql/runtime-logins.sql"):
+            script = (f"set -euo pipefail\naz() {{ {az_body}; }}\nKV=kv-test\n"
+                      + login_line.replace("infra/sql/runtime-logins.sql", sql) + "\n" + kv_line
+                      + '\nprintf "%s\\n%s\\n" "$logins" "$kv_acls"\n')
+            r = subprocess.run(["bash", "-c", script], cwd=ROOT, capture_output=True, text=True)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            return r.stdout.splitlines()
+        acl = '{"defaultAction": "Allow", "bypass": "AzureServices", "ipRules": [], "virtualNetworkRules": []}'
+        self.assertEqual(run(f"echo '{acl}'"), [code, "default Allow, bypass AzureServices, 0 IP rules, 0 VNet rules"])
+        self.assertEqual(run("echo null"), [code, "none set"])
+        self.assertEqual(run("return 1"), [code, "not read"])
+        self.assertEqual(run(f"echo '{acl}'; return 1")[1], "default Allow, bypass AzureServices, 0 IP rules, 0 VNet rules",
+                         "JSON then a non-zero exit still gives one table cell")
+        self.assertEqual(run("return 1", sql="no/such/file.sql"), ["login list not read", "not read"])
 
     def test_reset_compares_the_lake_with_its_own_sku(self):
         # dev (photo ZRS under the docs/28 exception, lake LRS): nothing to replace.

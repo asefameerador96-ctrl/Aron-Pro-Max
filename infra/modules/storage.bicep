@@ -105,6 +105,9 @@ resource mediaQueue 'Microsoft.Storage/storageAccounts/queueServices/queues@2024
 
 // docs/18 s2.8: photos Cool at 30 days and Cold at 90; bundle snapshots are deleted after 3 days. Field photos
 // (photos/<business date>/...) are deleted after photoDeleteDays, export files after exportsDeleteDays (finding 11).
+// Only photos/ is tiered: admin assets/ (pack pictures, tutorials, read by the API for every phone) and support/
+// bundles stay Hot, since Cool and Cold reads cost more and Cold bills an early-delete charge (D-INFRA-LAKE-02;
+// docs/18 s2.8 gives support/ "Hot to Cool, 30 days", an open question kept in docs/status/infra.md).
 resource lifecycle 'Microsoft.Storage/storageAccounts/managementPolicies@2024-01-01' = {
   parent: st
   name: 'default'
@@ -116,7 +119,7 @@ resource lifecycle 'Microsoft.Storage/storageAccounts/managementPolicies@2024-01
           enabled: true
           type: 'Lifecycle'
           definition: {
-            filters: { blobTypes: ['blockBlob'], prefixMatch: ['${mediaContainer}/'] }
+            filters: { blobTypes: ['blockBlob'], prefixMatch: ['${mediaContainer}/photos/'] }
             actions: {
               baseBlob: {
                 tierToCool: { daysAfterModificationGreaterThan: 30 }
