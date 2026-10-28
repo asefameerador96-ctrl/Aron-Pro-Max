@@ -277,7 +277,7 @@ object AmoCallReport : ReportHandler {
         """
         SELECT v.business_date, am.username AS amo, g.route_code, o.outlet_code, o.outlet_name, v.visit_kind, v.opened_at, sr.username AS assessed_sr, ca.total_score, ca.max_score,
                round(100.0 * ca.total_score / nullif(ca.max_score, 0), 2) AS score_pct
-          FROM dw.fact_visit v JOIN app.app_user am ON am.id = v.user_id ${AsWasSql.outlet("o", "v.outlet_id", "v.business_date", "JOIN", lo = ":from", hi = ":to")} LEFT JOIN dw.dim_geo g ON g.route_id = v.route_id
+          FROM dw.fact_visit v JOIN app.app_user am ON am.id = v.user_id JOIN dw.dim_outlet o ON o.outlet_id = v.outlet_id LEFT JOIN dw.dim_geo g ON g.route_id = v.route_id
           LEFT JOIN app.call_assessment ca ON ca.visit_client_uuid = v.visit_client_uuid AND ca.voided_at IS NULL LEFT JOIN app.app_user sr ON sr.id = ca.assessed_user_id
          WHERE ${ctx.dateClause("v.business_date")} AND v.visit_kind IN ('amo_control_call', 'amo_joint_call') AND NOT v.voided AND ${ctx.zoneClause("v.zone_id")} AND ${ctx.routeClause("coalesce(v.route_id, -1)")}
            AND :fft <> 'sr'

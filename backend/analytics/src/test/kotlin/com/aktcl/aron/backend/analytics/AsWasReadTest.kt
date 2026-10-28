@@ -25,7 +25,6 @@ class AsWasReadTest {
     private lateinit var fresh: FreshDb
     private val now = Instant.parse("2026-10-04T12:00:00Z")
     private lateinit var national: NationalDashboardService
-    private lateinit var dash: DashboardService
     private var z1 = 0L
     private var z2 = 0L
 
@@ -47,12 +46,13 @@ class AsWasReadTest {
         w.requestRebuild(day); w.runUntilIdle()
         z1 = id("SELECT id FROM app.zone WHERE code = 'Z1'"); z2 = id("SELECT id FROM app.zone WHERE code = 'Z2'")
         national = NationalDashboardService(fresh.db, AronClock { now })
-        dash = DashboardService(fresh.db, AronClock { now })
     }
 
     @AfterEach
     fun tearDown() { AsWasSql.probeTtlMs = 20_000; fresh.close() }
 
+    /** A new service per read: the 5 s summary cache (fixed clock here) would otherwise hand back the object of the first read. */
+    private fun dash() = DashboardService(fresh.db, AronClock { now })
     private fun id(sql: String) = fresh.db.jdbi.withHandle<Long, Exception> { it.createQuery(sql).mapTo(Long::class.java).one() }
     private fun text(sql: String) = fresh.db.jdbi.withHandle<String, Exception> { it.createQuery(sql).mapTo(String::class.java).one() }
     /** A master edit as the worker would see it: the current dimensions follow it (the worker refreshes them every few minutes), the history keeps the old side. */
@@ -81,14 +81,14 @@ class AsWasReadTest {
         assertEquals(inZ1, screens(f(zones = listOf(z1))), "Z1 lost the route's old day")
         assertEquals(inZ2, screens(f(zones = listOf(z2))), "Z2 gained the route's old day")
         assertEquals(all, screens(f()), "the national totals moved")
-        assertEquals(63_000, dash.summary(Reach(1, Role.TSO, day, true, emptySet(), emptySet(), false, emptyList()), null, null, day, day).kpis.gross_mtk)
+        assertEquals(63_000, dash().summary(Reach(1, Role.TSO, day, true, emptySet(), emptySet(), false, emptyList()), null, null, day, day).kpis.gross_mtk)
     }
 
     @Test
     fun aZoneMovedToAnotherTerritoryDivisionAndWingKeepsItsOldAncestorsOnTheOldDate() {
         val t1 = id("SELECT id FROM app.territory WHERE code = 'T1'"); val d1 = id("SELECT id FROM app.division WHERE code = 'D1'"); val w1 = id("SELECT id FROM app.wing WHERE code = 'W1'")
         val before = screens(f(territories = listOf(t1), divisions = listOf(d1), wings = listOf(w1)))
-        val wingsBefore = dash.summary(Reach(1, Role.TSO, day, true, emptySet(), emptySet(), false, emptyList()), null, null, day, day).children.map { it.node.id to it.kpis.net_mtk }
+        val wingsBefore = dash().summary(Reach(1, Role.TSO, day, true, emptySet(), emptySet(), false, emptyList()), null, null, day, day).children.map { it.node.id to it.kpis.net_mtk }
         exec("INSERT INTO app.wing (code, name) VALUES ('W2','Wing2')")
         exec("INSERT INTO app.division (code, name, wing_id) VALUES ('D2','Div2', (SELECT id FROM app.wing WHERE code = 'W2'))")
         exec("INSERT INTO app.territory (code, name, division_id) VALUES ('T2','Terr2', (SELECT id FROM app.division WHERE code = 'D2'))")
@@ -99,7 +99,7 @@ class AsWasReadTest {
         for (flt in listOf(f(territories = listOf(t2)), f(divisions = listOf(d2)), f(wings = listOf(w2)))) {
             assertEquals(0L, national.sales(caller(), flt).cards.sumOf { it.total_sales }, "the new chain did not exist on the old day")
         }
-        val wingsAfter = dash.summary(Reach(1, Role.TSO, day, true, emptySet(), emptySet(), false, emptyList()), null, null, day, day).children.map { it.node.id to it.kpis.net_mtk }
+        val wingsAfter = dash().summary(Reach(1, Role.TSO, day, true, emptySet(), emptySet(), false, emptyList()), null, null, day, day).children.map { it.node.id to it.kpis.net_mtk }
         assertEquals(wingsBefore, wingsAfter, "the wing children of the national summary moved")
         assertEquals(63_000L, wingsAfter.sumOf { it.second })
     }
@@ -107,23 +107,23 @@ class AsWasReadTest {
     @Test
     fun aVariantMovedToAnotherBrandKeepsItsOldBrandOnTheOldDate() {
         val b1 = screens(f(brands = listOf("B1"))); val b2 = screens(f(brands = listOf("B2"))); val all = screens(f())
-        val brandsBefore = dash.summary(Reach(1, Role.TSO, day, true, emptySet(), emptySet(), false, emptyList()), null, null, day, day).by_brand.map { it.code to it.net_mtk }
+        val brandsBefore = dash().summary(Reach(1, Role.TSO, day, true, emptySet(), emptySet(), false, emptyList()), null, null, day, day).by_brand.map { it.code to it.net_mtk }
         exec("UPDATE app.product_node SET parent_id = (SELECT id FROM app.product_node WHERE code = 'B2') WHERE code = 'V1'")
         assertEquals("B2", text("SELECT brand_code FROM dw.dim_product WHERE variant_name = 'Var1' LIMIT 1"), "the current dimension moved")
         assertEquals(b1, screens(f(brands = listOf("B1"))), "B1 lost the variant's old day")
         assertEquals(b2, screens(f(brands = listOf("B2"))))
         assertEquals(all, screens(f()))
-        assertEquals(brandsBefore, dash.summary(Reach(1, Role.TSO, day, true, emptySet(), emptySet(), false, emptyList()), null, null, day, day).by_brand.map { it.code to it.net_mtk })
+        assertEquals(brandsBefore, dash().summary(Reach(1, Role.TSO, day, true, emptySet(), emptySet(), false, emptyList()), null, null, day, day).by_brand.map { it.code to it.net_mtk })
     }
 
     @Test
     fun anOutletMovedToAnotherChannelTodayKeepsItsOldChannelOnTheOldDate() {
-        val before = screens(f()); val channelsBefore = dash.summary(Reach(1, Role.TSO, day, true, emptySet(), emptySet(), false, emptyList()), null, null, day, day).by_channel.map { it.code to it.net_mtk }
+        val before = screens(f()); val channelsBefore = dash().summary(Reach(1, Role.TSO, day, true, emptySet(), emptySet(), false, emptyList()), null, null, day, day).by_channel.map { it.code to it.net_mtk }
         assertTrue(channelsBefore.isNotEmpty())
         exec("UPDATE app.outlet SET channel = 'MT' WHERE channel = 'GT'")
         assertEquals(0, id("SELECT count(*) FROM dw.dim_outlet WHERE channel = 'GT'"), "the current dimension moved")
         assertEquals(before, screens(f()), "the channel cards moved with the outlets")
-        assertEquals(channelsBefore, dash.summary(Reach(1, Role.TSO, day, true, emptySet(), emptySet(), false, emptyList()), null, null, day, day).by_channel.map { it.code to it.net_mtk })
+        assertEquals(channelsBefore, dash().summary(Reach(1, Role.TSO, day, true, emptySet(), emptySet(), false, emptyList()), null, null, day, day).by_channel.map { it.code to it.net_mtk })
     }
 
     @Test
@@ -141,7 +141,7 @@ class AsWasReadTest {
         // History present, and the fixture's own house edit closed every route's period, so this runs the timeline path with nothing moved on the day.
         assertEquals(75, national.sales(caller(), f()).cards.single { it.category_code == "cigarette" }.total_sales)
         assertEquals(75, national.sales(caller(), f(zones = listOf(z1, z2))).cards.single { it.category_code == "cigarette" }.total_sales)
-        assertEquals(63_000, dash.summary(Reach(1, Role.TSO, day, true, emptySet(), emptySet(), false, emptyList()), null, null, day, day).kpis.gross_mtk)
+        assertEquals(63_000, dash().summary(Reach(1, Role.TSO, day, true, emptySet(), emptySet(), false, emptyList()), null, null, day, day).kpis.gross_mtk)
     }
 
     @Test
@@ -150,7 +150,7 @@ class AsWasReadTest {
         val p = fresh.db.jdbi.withHandle<AsWasSql.Plain, Exception> { AsWasSql.probe(it, day) }
         assertTrue(p.geo && p.product && p.outlet, "no history period closed: all three dimensions are on the plain path")
         assertEquals(75, national.sales(caller(), f()).cards.single { it.category_code == "cigarette" }.total_sales)
-        assertEquals(63_000, dash.summary(Reach(1, Role.TSO, day, true, emptySet(), emptySet(), false, emptyList()), null, null, day, day).kpis.gross_mtk)
+        assertEquals(63_000, dash().summary(Reach(1, Role.TSO, day, true, emptySet(), emptySet(), false, emptyList()), null, null, day, day).kpis.gross_mtk)
     }
 
     @Test
@@ -161,5 +161,19 @@ class AsWasReadTest {
         assertEquals(before, screens(f(), tso), "the TSO of Z1 lost the old day of the route that left Z1")
         val z2Tso = NationalCaller(Reach(1, Role.TSO, day, false, setOf(z2), emptySet(), false, listOf(ReachNode("zone", z2))))
         assertEquals(screens(f(zones = listOf(z2))), screens(f(), z2Tso), "scope is the reach, never more than it")
+    }
+
+    @Test
+    fun theProbeIsPerDimensionAndIgnoresEditsNoReadUses() {
+        fun probe() = fresh.db.jdbi.withHandle<AsWasSql.Plain, Exception> { AsWasSql.probe(it, day) }
+        assertTrue(probe().product, "nothing of the product tree changed yet")
+        exec("UPDATE app.sku SET report_unit = 'box' WHERE code = 'SKU2'")   // closes a sku period, but no timeline reads report_unit
+        assertTrue(probe().product, "an edit of a column no read uses stays on the plain path")
+        exec("UPDATE app.product_node SET parent_id = (SELECT id FROM app.product_node WHERE code = 'B2') WHERE code = 'V1'")
+        val p = probe()
+        assertTrue(!p.product, "a variant move switches the product dimension to the timeline")
+        assertEquals(p.geo, probe().geo)
+        exec("UPDATE app.route SET zone_id = (SELECT id FROM app.zone WHERE code = 'Z2') WHERE code = 'R2'")
+        assertTrue(!probe().geo)
     }
 }

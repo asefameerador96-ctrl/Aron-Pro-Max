@@ -27,9 +27,30 @@ internal object AsWasSql {
     /** How long a probe answer is reused. Tests that edit masters and read at once set it to 0. */
     @Volatile var probeTtlMs: Long = 20_000
 
-    private val GEO_HISTORY = listOf("route_zone_history", "route_history", "zone_history", "territory_history", "division_history")
-    private val PRODUCT_HISTORY = listOf("sku_history", "product_node_history")
-    private val OUTLET_HISTORY = listOf("outlet_class_history")
+    /** A table whose periods the timelines read: the key column and the columns of it that a read uses. */
+    private class Tracked(val table: String, val key: String, val cols: List<String>)
+
+    private val GEO_HISTORY = listOf(
+        Tracked("route_zone_history", "route_id", listOf("zone_id")),
+        Tracked("route_history", "route_id", listOf("kind", "visit_kind", "route_class")),
+        Tracked("zone_history", "zone_id", listOf("territory_id", "house_id")),
+        Tracked("territory_history", "territory_id", listOf("division_id")),
+        Tracked("division_history", "division_id", listOf("wing_id")),
+    )
+    private val PRODUCT_HISTORY = listOf(
+        Tracked("sku_history", "sku_id", listOf("variant_id", "category_code", "base_unit", "base_per_pack")),
+        Tracked("product_node_history", "node_id", listOf("parent_id")),
+    )
+    private val OUTLET_HISTORY = listOf(Tracked("outlet_class_history", "outlet_id", listOf("zone_id", "channel", "sub_channel_id", "geo_class", "outlet_kind")))
+
+    /**
+     * SQL over [t] (alias `a`) for the keys that have a period closed after [after] whose read columns differ from the next period's
+     * (or that has no next period): a status, price type or `sales_enable` edit closes a period too, but changes nothing a read uses.
+     */
+    private fun changedKeys(t: Tracked, after: String?, select: String = "1"): String =
+        "SELECT $select FROM app.${t.table} a LEFT JOIN app.${t.table} b ON b.${t.key} = a.${t.key} AND b.valid_from = a.valid_to " +
+            "WHERE a.valid_to IS NOT NULL${if (after != null) " AND a.valid_to > $after" else ""} AND " +
+            "(b.${t.key} IS NULL OR ROW(${t.cols.joinToString { "a.$it" }}) IS DISTINCT FROM ROW(${t.cols.joinToString { "b.$it" }}))"
 
     /**
      * Per dimension (geography, product tree, outlet class): true when no master history period of it closed after [from], i.e. nothing
@@ -40,7 +61,7 @@ internal object AsWasSql {
         val key = "${h.connection.catalog}|$from"
         val now = System.currentTimeMillis()
         probes[key]?.let { (at, v) -> if (now - at < probeTtlMs) return v }
-        fun none(tables: List<String>) = tables.joinToString(" AND ") { "NOT EXISTS (SELECT 1 FROM app.$it WHERE valid_to > :f)" }
+        fun none(tables: List<Tracked>) = tables.joinToString(" AND ") { "NOT EXISTS (${changedKeys(it, ":f")})" }
         val v = h.createQuery("SELECT ${none(GEO_HISTORY)}, ${none(PRODUCT_HISTORY)}, ${none(OUTLET_HISTORY)}").bind("f", from)
             .map { rs, _ -> Plain(rs.getBoolean(1), rs.getBoolean(2), rs.getBoolean(3)) }.one()
         if (probes.size > 1_000) probes.clear()
@@ -90,8 +111,8 @@ internal object AsWasSql {
                  CASE WHEN h.has THEN hs.name ELSE cg.house_name END AS house_name,
                  coalesce(h.vf, '-infinity'::date) AS as_from, coalesce(h.vt, 'infinity'::date) AS as_to
             FROM h JOIN dw.dim_geo cg ON cg.route_id = h.route_id
-            LEFT JOIN app.zone n_zone ON n_zone.id = h.zone_id LEFT JOIN app.territory n_territory ON n_territory.id = h.territory_id
-            LEFT JOIN app.division n_division ON n_division.id = h.division_id LEFT JOIN app.wing n_wing ON n_wing.id = h.wing_id
+            LEFT JOIN app.zone n_zone ON n_zone.id = coalesce(h.zone_id, cg.zone_id) LEFT JOIN app.territory n_territory ON n_territory.id = coalesce(h.territory_id, cg.territory_id)
+            LEFT JOIN app.division n_division ON n_division.id = coalesce(h.division_id, cg.division_id) LEFT JOIN app.wing n_wing ON n_wing.id = coalesce(h.wing_id, cg.wing_id)
             LEFT JOIN app.house hs ON hs.id = h.house_id
         ) $alias ${on(alias, "route_id", route, date)}
     """.trimIndent()
@@ -116,8 +137,8 @@ internal object AsWasSql {
                  cp.updated_at, ${nodeCols("variant", true)}, ${nodeCols("brand", true)}, ${nodeCols("segment", true)}, ${nodeCols("category", false)},
                  coalesce(h.vf, '-infinity'::date) AS as_from, coalesce(h.vt, 'infinity'::date) AS as_to
             FROM h JOIN dw.dim_product cp ON cp.sku_id = h.sku_id
-            LEFT JOIN app.product_node n_variant ON n_variant.id = h.variant_id LEFT JOIN app.product_node n_brand ON n_brand.id = h.brand_id
-            LEFT JOIN app.product_node n_segment ON n_segment.id = h.segment_id LEFT JOIN app.product_node n_category ON n_category.id = h.category_id"""
+            LEFT JOIN app.product_node n_variant ON n_variant.id = coalesce(h.variant_id, cp.variant_id) LEFT JOIN app.product_node n_brand ON n_brand.id = coalesce(h.brand_id, cp.brand_id)
+            LEFT JOIN app.product_node n_segment ON n_segment.id = coalesce(h.segment_id, cp.segment_id) LEFT JOIN app.product_node n_category ON n_category.id = coalesce(h.category_id, cp.category_id)"""
 
     /** `dw.dim_product` as of the date: SKU -> variant -> brand -> segment -> category, category code and units. */
     fun product(alias: String, sku: String, date: String, join: String = "JOIN", lo: String? = null, hi: String? = null, plain: Boolean = false): String =
@@ -134,7 +155,7 @@ internal object AsWasSql {
     fun outlet(alias: String, outlet: String, date: String, join: String = "JOIN", lo: String? = null, hi: String? = null, plain: Boolean = false): String =
         if (plain) "$join dw.dim_outlet $alias ON $alias.outlet_id = $outlet" else """
         $join (
-          WITH chg AS (SELECT DISTINCT outlet_id FROM app.outlet_class_history WHERE valid_to IS NOT NULL${if (lo != null) " AND valid_to > CAST($lo AS date)" else ""}),
+          WITH chg AS (${changedKeys(OUTLET_HISTORY[0], lo?.let { "CAST($it AS date)" }, "DISTINCT a.outlet_id")}),
           per AS (SELECT hh.outlet_id, hh.valid_from AS vf, hh.valid_to AS vt, hh.zone_id, hh.channel, hh.sub_channel_id, hh.geo_class, hh.outlet_kind
                     FROM dw.v_dim_outlet_history hh JOIN chg ON chg.outlet_id = hh.outlet_id WHERE ${win("hh.valid_from", "hh.valid_to", lo, hi)}),
           ${gaps("outlet_id", "(SELECT o.* FROM dw.dim_outlet o JOIN chg ON chg.outlet_id = o.outlet_id)")},
