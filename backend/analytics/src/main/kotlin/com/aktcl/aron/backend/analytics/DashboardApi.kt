@@ -119,17 +119,21 @@ class DashboardService(
 ) {
     private val cache = ConcurrentHashMap<String, Pair<Instant, DashboardSummary>>()
 
-    fun summary(reach: Reach, level: String?, nodeId: Long?, from: LocalDate, to: LocalDate): DashboardSummary {
+    /**
+     * [brands] non-null is a BRAND caller (docs/34 rule 16, "own brands only"; the ids come from the server's brand scope, never from the
+     * request): every brand-bearing figure is cut to those brands and every figure without a brand dimension is hidden, see [compute].
+     */
+    fun summary(reach: Reach, level: String?, nodeId: Long?, from: LocalDate, to: LocalDate, brands: Set<Long>? = null): DashboardSummary {
         if (to.isBefore(from) || ChronoUnit.DAYS.between(from, to) > 92) {
             throw ApiProblem(ProblemCode.ERR_VALIDATION, "to must be on or after from, at most 92 days", errors = listOf(FieldError("query.to", "out_of_range")))
         }
         val scope = ZoneScope(reach.national, reach.zoneIds.toList(), if (level == null && nodeId == null) routeOnlyNode(reach)?.routes else null)
         val node = resolveNode(reach, level, nodeId)
-        val key = "${scope.hash}|${node.first}|${node.second}|$from|$to"
+        val key = "${scope.hash}|${node.first}|${node.second}|$from|$to|${brands?.sorted()?.joinToString(",", "B:") ?: ""}"
         val now = clock.now()
         cache[key]?.let { (at, v) -> if (Duration.between(at, now) < ttl) return v }
         val multi = level == null && nodeId == null && !reach.national && reach.topNodes.count { it.type in DEFAULT_LEVELS } > 1
-        val v = db.readJdbi.withHandle<DashboardSummary, Exception> { h -> compute(h, reach, scope, node, from, to, multi) }
+        val v = db.readJdbi.withHandle<DashboardSummary, Exception> { h -> compute(h, reach, scope, node, from, to, multi, brands) }
         if (cache.size > 2_000) { cache.entries.removeIf { Duration.between(it.value.first, now) >= ttl }; if (cache.size > 2_000) cache.clear() }
         cache[key] = now to v
         return v
@@ -271,13 +275,17 @@ class DashboardService(
         return NodeScope(lv, eff, nodeRef)
     }
 
-    private fun compute(h: Handle, reach: Reach, scope: ZoneScope, node: Pair<String, Long>, from: LocalDate, to: LocalDate, multi: Boolean): DashboardSummary {
+    private fun compute(h: Handle, reach: Reach, scope: ZoneScope, node: Pair<String, Long>, from: LocalDate, to: LocalDate, multi: Boolean, brands: Set<Long>? = null): DashboardSummary {
         val ns = nodeScope(h, reach, scope, node, multi)
         val lv = ns.lv
         val nodeRef = ns.ref
         val asWas = AsWasSql.probe(h, from)
 
-        fun <T> Handle.q(sql: String, f: (org.jdbi.v3.core.statement.Query) -> T): T = f(ns.bind(createQuery(sql).bind("f", from).bind("t", to)))
+        // A BRAND caller (D-REPORTS-BRANDSCOPE-01): `:scopeBrands` is bound only where a query uses it (an unused binding is an error).
+        fun <T> Handle.q(sql: String, f: (org.jdbi.v3.core.statement.Query) -> T): T = f(ns.bind(createQuery(sql).bind("f", from).bind("t", to)).also {
+            if (brands != null && sql.contains(":scopeBrands")) it.bindArray("scopeBrands", Long::class.javaObjectType, brands.toList().ifEmpty { listOf(-1L) })
+        })
+        val brandOnly = brands != null
         val sums = "coalesce(sum(target_routes),0) tr, coalesce(sum(logged_in_routes),0) lr, coalesce(sum(sales_submitted_routes),0) sr, " +
             "coalesce(sum(target_outlets),0) tout, coalesce(sum(visited_outlets),0) vout, coalesce(sum(successful_calls),0) sc, coalesce(sum(visits),0) vis, " +
             "coalesce(sum(geo_valid_visits),0) gv, coalesce(sum(force_sale_visits),0) fs, coalesce(sum(mock_visits),0) mock, coalesce(sum(suspicious_visits),0) susp, " +
@@ -309,7 +317,7 @@ class DashboardService(
               SELECT p.category_code, p.base_unit, s.report_unit, s.report_factor, p.base_per_pack, sum(a.sold_qty_base + a.free_qty_base) qty, sum(a.gross_mtk) gross
                 FROM dw.agg_daily_route_sku a ${AsWasSql.product("p", "a.sku_id", "a.business_date", lo = ":f", hi = ":t", plain = asWas.product)} ${AsWasSql.geo("g", "a.route_id", "a.business_date", lo = ":f", hi = ":t", plain = asWas.geo)}
                 JOIN app.sku s ON s.id = a.sku_id
-               WHERE a.business_date BETWEEN :f AND :t AND ${ns.clause("g.zone_id", "a.route_id")} GROUP BY 1, 2, 3, 4, 5)
+               WHERE a.business_date BETWEEN :f AND :t AND ${ns.clause("g.zone_id", "a.route_id")}${if (brandOnly) " AND p.brand_id = ANY(:scopeBrands)" else ""} GROUP BY 1, 2, 3, 4, 5)
             SELECT category_code, base_unit, sum(qty) qty, sum(gross) gross,
                    CASE WHEN count(*) = count(report_unit) AND count(DISTINCT report_unit) = 1 THEN min(report_unit) END ru,
                    CASE WHEN count(*) = count(report_unit) AND count(DISTINCT report_unit) = 1 THEN round(sum(qty / report_factor), 3) END qr,
@@ -324,24 +332,35 @@ class DashboardService(
             }.list()
         }
 
+        // The segment rollup carries no brand, so a BRAND caller reads the SKU rollup (the product tree as it was on each day, brand filter on the
+        // brand then) and gets no memo count: memos of the caller's brands in one segment cannot be added across brands without double counting.
         val bySegment = h.q(
-            """
-            SELECT a.segment_id, p.segment_name, sum(a.gross_mtk) net, sum(a.sold_qty_base) qty, sum(a.memo_count) memos
-              FROM dw.agg_daily_route_segment a ${AsWasSql.geo("g", "a.route_id", "a.business_date", lo = ":f", hi = ":t", plain = asWas.geo)}
-              JOIN LATERAL (SELECT name AS segment_name FROM app.product_node WHERE id = a.segment_id) p ON true
-             WHERE a.business_date BETWEEN :f AND :t AND ${ns.clause("g.zone_id", "a.route_id")} GROUP BY 1, 2 ORDER BY 1
-            """,
+            if (brandOnly) {
+                """
+                SELECT p.segment_id, p.segment_name, sum(a.gross_mtk) net, sum(a.sold_qty_base) qty, 0 memos
+                  FROM dw.agg_daily_route_sku a ${AsWasSql.product("p", "a.sku_id", "a.business_date", lo = ":f", hi = ":t", plain = asWas.product)} ${AsWasSql.geo("g", "a.route_id", "a.business_date", lo = ":f", hi = ":t", plain = asWas.geo)}
+                 WHERE a.business_date BETWEEN :f AND :t AND ${ns.clause("g.zone_id", "a.route_id")} AND p.brand_id = ANY(:scopeBrands) GROUP BY 1, 2 ORDER BY 1
+                """
+            } else {
+                """
+                SELECT a.segment_id, p.segment_name, sum(a.gross_mtk) net, sum(a.sold_qty_base) qty, sum(a.memo_count) memos
+                  FROM dw.agg_daily_route_segment a ${AsWasSql.geo("g", "a.route_id", "a.business_date", lo = ":f", hi = ":t", plain = asWas.geo)}
+                  JOIN LATERAL (SELECT name AS segment_name FROM app.product_node WHERE id = a.segment_id) p ON true
+                 WHERE a.business_date BETWEEN :f AND :t AND ${ns.clause("g.zone_id", "a.route_id")} GROUP BY 1, 2 ORDER BY 1
+                """
+            },
         ) {
             it.map { rs, _ ->
                 val memos = rs.getInt(5)
                 // As for brands, one memo is one successful call of the segment.
-                ChannelVolume(rs.getLong(1).toString(), rs.getString(2), rs.getLong(3), rs.getLong(4), memos, memos, pct(memos.toLong(), kpis.active_memo_count.toLong()))
+                ChannelVolume(rs.getLong(1).toString(), rs.getString(2), rs.getLong(3), rs.getLong(4), memos, memos, if (brandOnly) null else pct(memos.toLong(), kpis.active_memo_count.toLong()))
             }.list()
         }
 
         // A route-only caller: the channel frozen on the memo at capture, by the route that sold (dw.v_route_day_channel), so a later
         // outlet move or reclassification never pulls in another route's sales; memos with no channel on record are `unknown`.
-        val byChannel = h.q(
+        // A BRAND caller gets no channel split: the outlet rollups carry no brand (docs/34, the cards without a brand dimension are hidden).
+        val byChannel = if (brandOnly) emptyList() else h.q(
             if (ns.routeOnly) {
                 """
                 SELECT coalesce(c.outlet_channel, 'unknown'), sum(c.net_mtk) net, sum(c.active_memo_count) memos, sum(c.successful_calls) calls
@@ -364,17 +383,29 @@ class DashboardService(
             SELECT b.brand_id, p.brand_name, sum(b.gross_mtk) net, sum(b.sold_qty_base) qty, sum(b.memo_count) memos
               FROM dw.agg_daily_route_brand b ${AsWasSql.geo("g", "b.route_id", "b.business_date", lo = ":f", hi = ":t", plain = asWas.geo)}
               JOIN LATERAL (SELECT name AS brand_name FROM app.product_node WHERE id = b.brand_id) p ON true
-             WHERE b.business_date BETWEEN :f AND :t AND ${ns.clause("g.zone_id", "b.route_id")} GROUP BY 1, 2 ORDER BY 1
+             WHERE b.business_date BETWEEN :f AND :t AND ${ns.clause("g.zone_id", "b.route_id")}${if (brandOnly) " AND b.brand_id = ANY(:scopeBrands)" else ""} GROUP BY 1, 2 ORDER BY 1
             """,
         ) {
             it.map { rs, _ ->
                 val memos = rs.getInt(5)
                 // Successful calls of a brand are not stored per brand; one memo is one successful call here (docs/requests/backend-reports-brand-calls.md).
-                ChannelVolume(rs.getLong(1).toString(), rs.getString(2), rs.getLong(3), rs.getLong(4), memos, memos, pct(memos.toLong(), totalMemos))
+                // A BRAND caller gets no share: memos / all memos would let it back out the total memo count of every brand.
+                ChannelVolume(rs.getLong(1).toString(), rs.getString(2), rs.getLong(3), rs.getLong(4), memos, memos, if (brandOnly) null else pct(memos.toLong(), totalMemos))
             }.list()
         }
 
-        val children: List<DashboardChild> = if (lv.childCol != null && lv.childName != null) {
+        val children: List<DashboardChild> = if (brandOnly) {
+            // Brand-scoped value per child (the BRAND caller's own brands, the placement as it was on each day); every other figure is hidden.
+            val byRoute = lv.childCol == null || lv.childName == null
+            h.q(
+                """
+                SELECT ${if (byRoute) "g.route_id cid, g.route_name cname, g.route_code ccode" else "g.${lv.childCol} cid, g.${lv.childName} cname, NULL ccode"}, sum(b.gross_mtk) gross
+                  FROM dw.agg_daily_route_brand b ${AsWasSql.geo("g", "b.route_id", "b.business_date", lo = ":f", hi = ":t", plain = asWas.geo)}
+                 WHERE b.business_date BETWEEN :f AND :t AND ${ns.clause("g.zone_id", "b.route_id")} AND b.brand_id = ANY(:scopeBrands)
+                 GROUP BY 1, 2, 3 ORDER BY 1
+                """,
+            ) { it.map { rs, _ -> DashboardChild(NodeRefDto(lv.childType!!, rs.getLong("cid"), rs.getString("ccode"), rs.getString("cname")), brandKpis(rs.getLong("gross"))) }.list() }
+        } else if (lv.childCol != null && lv.childName != null) {
             h.q(
                 """
                 SELECT zg.${lv.childCol} cid, zg.${lv.childName} cname, $sums
@@ -400,8 +431,19 @@ class DashboardService(
                 """,
             ) { it.map { rs, _ -> DashboardChild(NodeRefDto("route", rs.getLong("cid"), rs.getString("ccode"), rs.getString("cname")), kpisOf(rs, zones = false)) }.list() }
         }
-        return DashboardSummary(asOf.wire(), from.toString(), to.toString(), nodeRef, kpis, byCategory, byChannel, byBrand, children, bySegment)
+        val shown = if (brandOnly) brandKpis(byBrand.sumOf { it.net_mtk }) else kpis
+        return DashboardSummary(asOf.wire(), from.toString(), to.toString(), nodeRef, shown, byCategory, byChannel, byBrand, children, bySegment)
     }
+
+    /**
+     * What a BRAND caller sees of the KPIs: the sale value of its own brands (the by_brand basis: sale lines, before memo-level settlements) and
+     * nothing else; routes, logins, visits, geo and memo counts have no brand dimension and are hidden (docs/34 s1; zero, percentages null).
+     */
+    private fun brandKpis(value: Long) = DashboardKpis(
+        target_routes = 0, logged_in_routes = 0, login_pct = null, sales_submitted_routes = 0, submit_pct_of_logged_in = null, day_completion_pct = null,
+        target_outlets = 0, visited_outlets = 0, successful_calls = 0, strike_rate_pct = null, active_memo_count = 0, gross_mtk = value, net_mtk = value,
+        geo_valid_pct = null, force_sale_pct = null, mock_visits = 0, suspicious_visits = 0,
+    )
 
     private fun kpisOf(rs: java.sql.ResultSet, zones: Boolean = true): DashboardKpis {
         val tr = rs.getLong("tr"); val lr = rs.getLong("lr"); val sr = rs.getLong("sr"); val vis = rs.getLong("vis")
@@ -418,7 +460,11 @@ class DashboardService(
     }
 }
 
-class DashboardDeps(val service: DashboardService, val reach: ReachResolver, val guard: AuthGuardDeps, val clock: AronClock = AronClock.SYSTEM)
+class DashboardDeps(
+    val service: DashboardService, val reach: ReachResolver, val guard: AuthGuardDeps, val clock: AronClock = AronClock.SYSTEM,
+    /** A BRAND caller's brand ids, read server-side (the same resolver as the national dashboard); null for every other level. */
+    val brands: BrandScopeResolver = BrandScopeResolver { _, _ -> null },
+)
 
 /** Field phones read their own home strip (`/app/home`); the dashboards are for TSO and above. */
 internal val DASHBOARD_ROLES = Role.entries.toSet() - Role.SR - Role.AMO - Role.SUPPORT   // SUPPORT sees sync health only (docs/24 s8.5)
@@ -437,7 +483,10 @@ fun Route.dashboardRoutes(d: DashboardDeps) {
             val to = date("to", from)
             val nodeId = q["node_id"]?.let { it.toLongOrNull()?.takeIf { v -> v >= 0 } ?: throw ApiProblem(ProblemCode.ERR_VALIDATION, "bad node_id", errors = listOf(FieldError("query.node_id", "invalid_value"))) }
             val reach = d.reach.reach(p.userId, p.role, p.scopeVersion, today)
-            call.respond(d.service.summary(reach, q["level"], nodeId, from, to))
+            val brandIds = d.brands.brandIds(p.userId, p.role)
+            // A BRAND user without brands must see nothing, never everything (fail closed).
+            if (p.role == Role.BRAND && brandIds == null) throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "no brand scope")
+            call.respond(d.service.summary(reach, q["level"], nodeId, from, to, brandIds))
         }
         get("/dashboards/geo-validation") {
             val p = call.principal
