@@ -1,0 +1,42 @@
+SupportTicketSummary:
+  type: object
+  description: Ticket counts by status (D-TSO-MAN-25); the caller's own tickets, or every ticket for the support
+    desk. No percentage members (lead ruling R-F-14) - the phone and the web compute each whole percent once from
+    these counts (resolved / total, open / total; TicketMath on the phone, the corpus formatter on the web), and
+    total 0 prints "0%".
+  required:
+  - as_of
+  - total
+  - new
+  - in_progress
+  - resolved
+  - closed
+  - cancelled
+  - open
+  additionalProperties: false
+  properties:
+    as_of:
+      $ref: '#/components/schemas/Timestamp'
+    total:
+      type: integer
+      minimum: 0
+      description: Every status.
+    new:
+      type: integer
+      minimum: 0
+    in_progress:
+      type: integer
+      minimum: 0
+    resolved:
+      type: integer
+      minimum: 0
+    closed:
+      type: integer
+      minimum: 0
+    cancelled:
+      type: integer
+      minimum: 0
+    open:
+      type: integer
+      minimum: 0
+      description: new + in_progress.

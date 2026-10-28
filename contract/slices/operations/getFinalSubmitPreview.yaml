@@ -5,6 +5,17 @@ operation:
   - day
   operationId: getFinalSubmitPreview
   summary: Read before Final Submit (the "already submitted" alert fires here, at Get Sales Data).
+  description: 'From contract 1.10.0 (D-TSO-MAN-27, 28): every route carries `upload_state` (a saved Web Entry counts
+    as uploaded;
+
+    a dummy BR or Institutional route without data is `not_due`), `warn_route_ids` names the due routes not uploaded
+
+    (the app warns, never blocks), and `submit_seq` counts the reopened Final Submits of the zone-day, from which
+    the
+
+    app derives the next `client_uuid` (FinalSubmitRequest).
+
+    '
   parameters:
   - $ref: '#/components/parameters/ZoneIdQueryRequired'
   - $ref: '#/components/parameters/BusinessDateQueryRequired'

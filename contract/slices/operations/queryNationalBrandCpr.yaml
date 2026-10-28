@@ -1,0 +1,35 @@
+path: /v1/dashboards/national/brand-cpr
+method: post
+operation:
+  tags:
+  - dashboards
+  operationId: queryNationalBrandCpr
+  summary: Brand CPR card
+  description: 'Per brand: distinct (route, outlet) pairs with an effective sale line of the brand on the national
+    route set (normal SR route-days, planned, not excused), over the configured denominator: successful calls by
+    default, or target outlets (D-TSO-MAN-06). The answer carries both ratios and both denominators, so a switch
+    is one config change. TSO dashboard card (screenshot 7, contract 1.10.0). Reads summary tables only (never the
+    transaction log); scope from the token.'
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          $ref: '#/components/schemas/NationalDashboardFilter'
+  responses:
+    '200':
+      description: Brand CPR card
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/NationalBrandCpr'
+    '400':
+      $ref: '#/components/responses/BadRequest'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'
+    '429':
+      $ref: '#/components/responses/TooManyRequests'
+    '503':
+      $ref: '#/components/responses/ServiceUnavailable'

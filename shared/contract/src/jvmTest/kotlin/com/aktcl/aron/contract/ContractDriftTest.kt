@@ -37,6 +37,13 @@ class ContractDriftTest {
     @Test fun bundleSectionNames() = assertMirrors("BundleSectionName", BundleSectionName.entries.map { it.wire })
     @Test fun programmeKinds() = assertMirrors("ProgrammeKind", ProgrammeKind.entries.map { it.wire })
     @Test fun contentKinds() = assertMirrors("ContentKind", ContentKind.entries.map { it.wire })
+    // contract 1.10.0 (TSO manual build s3.2)
+    @Test fun supportTicketStatuses() = assertMirrors("SupportTicketStatus", SupportTicketStatus.entries.map { it.wire })
+    @Test fun supportTicketPriorities() = assertMirrors("SupportTicketPriority", SupportTicketPriority.entries.map { it.wire })
+    @Test fun supportTicketEventKinds() = assertMirrors("SupportTicketEventKind", SupportTicketEventKind.entries.map { it.wire })
+    @Test fun notificationKinds() = assertMirrors("NotificationKind", NotificationKind.entries.map { it.wire })
+    // contract 1.10.0, lead ruling R-F-11
+    @Test fun adminModules() = assertMirrors("AdminModule", AdminModule.entries.map { it.wire })
 
     @Test
     fun everyRecordTypeHasAPayloadMapping() {

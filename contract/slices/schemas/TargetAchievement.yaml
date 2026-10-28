@@ -1,11 +1,51 @@
 TargetAchievement:
   type: object
+  description: 'Monthly target and achievement of a node (D-TSO-MAN-05, 39, 40). Till-date: elapsed_days e and period_days
+    n of
+
+    the basis (calendar days by default: e = day of month of `day`, n = days in the month; working days: the working
+
+    days in [1st..day] and in the month); a past month has e = n, a future month e = 0. Item (variant) till-date
+    =
+
+    round_half_up(T * e / n); a category or card figure is the sum of its item rows, never the card total rounded
+
+    once (the screenshot''s eight Cigarette items, T = 40999 in all: 25/31 gives 33064; 21/26 gives 33114, where
+    a
+
+    rounded total would give 33115). e and n are per node: `elapsed_days` and `period_days` here are those of `node`
+
+    and govern `rows`; each entry of `children` carries its own pair and its rows follow it. On the working-days
+    basis
+
+    n is W of the node''s own path (D-TSO-MAN-08, WorkingDays.resolve: a zone holiday or emergency off counts only
+    for
+
+    that zone), so a child zone can have n = 0 while its territory has n > 0, or the other way round; on the
+
+    calendar-days basis every node has the parent''s pair. n = 0 at a node (a working-days basis in a month with
+    no
+
+    working day at that node) makes the till-date members of every row of that node null: tilldate_target_qty_base,
+
+    remaining_tilldate_qty_base and tilldate_achievement_pct_bp, and its rows'' Decimal3 tilldate_target_qty is
+    "0.000"
+
+    (lead ruling R-F-15). From contract 1.10.0: `day`,
+
+    `elapsed_days`, `period_days`, `last_updated_at`, `children` and the integer row members.
+
+    '
   required:
   - month
   - as_of
   - node
   - tilldate_basis
   - rows
+  - day
+  - elapsed_days
+  - period_days
+  - last_updated_at
   additionalProperties: false
   properties:
     month:
@@ -23,53 +63,34 @@ TargetAchievement:
     rows:
       type: array
       items:
-        type: object
-        required:
-        - product_level
-        - product_id
-        - name
-        - unit
-        - target_qty
-        - achieved_qty
-        - tilldate_target_qty
-        - remaining_qty
-        additionalProperties: false
-        properties:
-          product_level:
-            $ref: '#/components/schemas/ProductLevel'
-          product_id:
-            $ref: '#/components/schemas/Id'
-          name:
-            type: string
-            maxLength: 120
-          unit:
-            type: string
-            enum:
-            - stick
-            - piece
-            - dozen
-            - box
-            - pack
-          target_qty:
-            $ref: '#/components/schemas/Decimal3'
-          achieved_qty:
-            $ref: '#/components/schemas/Decimal3'
-          tilldate_target_qty:
-            $ref: '#/components/schemas/Decimal3'
-          achievement_pct:
-            type:
-            - number
-            - 'null'
-            minimum: 0
-          remaining_qty:
-            $ref: '#/components/schemas/Decimal3'
-          memo_target:
-            type:
-            - integer
-            - 'null'
-            minimum: 0
-          memo_achieved:
-            type:
-            - integer
-            - 'null'
-            minimum: 0
+        $ref: '#/components/schemas/TargetAchievementRow'
+    day:
+      $ref: '#/components/schemas/BusinessDate'
+      description: 'The business date the figures run to: today (Dhaka) in the current month, the last day of a
+        past month, the first day of a future month.'
+    elapsed_days:
+      type: integer
+      minimum: 0
+      maximum: 31
+      description: e of the till-date basis at `node` (each child carries its own, R-F-15).
+    period_days:
+      type: integer
+      minimum: 0
+      maximum: 31
+      description: n of the till-date basis at `node`, 0..31; 0 only on a working-days basis in a month with no
+        working day at `node`, and then the till-date members of every row in `rows` are null (R-F-15). Each child
+        carries its own `period_days`, and the same rule applies to its rows.
+    last_updated_at:
+      type:
+      - string
+      - 'null'
+      format: date-time
+      description: Oldest `last_updated_at` of the summary tables the achievement reads (null when none has been
+        written yet); the app shows "as of" from it.
+    children:
+      type: array
+      maxItems: 200
+      description: 'Only with `children=zone`: one node per zone in the caller''s reach under `node` (the Zone cards),
+        each with its rows at the requested product level; absent otherwise.'
+      items:
+        $ref: '#/components/schemas/TargetAchievementNode'

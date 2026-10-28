@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Aron API
-  version: 1.9.0
+  version: 1.10.0
   summary: The one API of the Aron rebuild (SR, AMO and TSO apps, web dashboards and admin portal).
   description: |
     Binding contract for every lane of the seven-day build. Rules that apply to every operation are in
@@ -39,6 +39,22 @@ info:
       per-device and per-login counts and the rows not stored, D-NIGHT-DAYCLOSE-01); `RiskSignalCode` gains
       `CHECKOUT_WITHOUT_SUBMIT` (extensible, D-NIGHT-CHECKOUT-01). The widened `MemoView` response members are breaking
       for an old reader and approved by the lead (D-CONTRACT-1-9-01).
+    - 1.10.0 (TSO manual build, D-TSO-MAN-43, `docs/requests/tso-manual-build-2026-10.md` s3, gate file
+      `docs/requests/contract-tso-manual-1.10.md`): support tickets (`listSupportTickets`, `getSupportTicketSummary`,
+      `getSupportTicket`, `updateSupportTicket`, `addSupportTicketEvent`; record types `support_ticket` and
+      `support_ticket_event`; code lists `ticket_issue_type` and `ticket_resolution_code`); the notifications inbox
+      (`listMyNotifications`, `markMyNotificationsRead`, `Me.support_desk`); TSO dashboard cards (`queryNationalBrandCpr`,
+      `queryNationalSegmentShare`, `queryNationalLoginSubmitUsers`, `NationalSalesCard.monthly_target_qty`,
+      `NationalLoginSubmit.submit_of_target_pct_bp`); Target Status (`getTargetAchievement` with `children=zone` and
+      integer members); Final Submit (`submit_seq`, `warn_route_ids`, `upload_state`, the reopened replay 409
+      `ERR_DAY_FINAL_SUBMIT_REOPENED`, `DayReopenRequest.client_uuid`); `RecordOutcomeCode` gains `after_final_submit`,
+      `day_final_submitted`, `ticket_state_invalid` and `issue_type_unknown`; `ProblemCode` gains
+      `ERR_TICKET_TRANSITION_INVALID`, `ERR_TICKET_COMMENTS_CLOSED` and `ERR_DAY_FINAL_SUBMIT_REOPENED`; read-only members
+      on `LeaveApplication`, `Feedback` and `TeamLocation`; `AdminModule` gains `support` and `ReportKey` gains
+      `tso-visit-log` (lead rulings R-F-11, R-F-12); every `*_bp` member without a `maximum` is `format: int64`
+      (R-F-16). Members added to responses the server already sends are
+      optional until the server lanes ship them (1.10.x makes them required). The response-enum additions are breaking
+      for an old reader and approved by the lead (D-TSO-MAN-43).
     - Lists use cursor pagination (`limit`, `cursor`, response `next_cursor`) and master data also accept
       `updated_since`.
   contact:
@@ -80,7 +96,7 @@ tags:
   - name: tasks
     description: Tasks assigned by AMO or TSO and resolved by the SR.
   - name: notifications
-    description: Push token registration and admin nudges (FCM data messages only nudge a sync).
+    description: Push token registration, admin nudges and the caller's notification inbox (FCM data messages only nudge a sync or an inbox read).
   - name: team
     description: Supervisor views of the team (last synced location, stock).
   - name: people
@@ -124,7 +140,7 @@ tags:
   - name: admin-finance
     description: Dues adjustments and write-offs (maker-checker).
   - name: support
-    description: PDA to Support uploads and web error reports.
+    description: PDA to Support uploads, web error reports and support tickets (D-TSO-MAN-17 to 25; raised and closed on the phone through the sync records `support_ticket` and `support_ticket_event`, worked by the support desk here).
 paths:
   /v1/health:
     get:
@@ -941,6 +957,11 @@ paths:
       tags: [day]
       operationId: getFinalSubmitPreview
       summary: Read before Final Submit (the "already submitted" alert fires here, at Get Sales Data).
+      description: |
+        From contract 1.10.0 (D-TSO-MAN-27, 28): every route carries `upload_state` (a saved Web Entry counts as uploaded;
+        a dummy BR or Institutional route without data is `not_due`), `warn_route_ids` names the due routes not uploaded
+        (the app warns, never blocks), and `submit_seq` counts the reopened Final Submits of the zone-day, from which the
+        app derives the next `client_uuid` (FinalSubmitRequest).
       parameters:
         - $ref: '#/components/parameters/ZoneIdQueryRequired'
         - $ref: '#/components/parameters/BusinessDateQueryRequired'
@@ -957,7 +978,11 @@ paths:
       tags: [day]
       operationId: postFinalSubmit
       summary: Close a zone-day (TSO app or web). Online-only, once per zone and day.
-      description: The same `client_uuid` replays the first success; a different one gets 409 `ERR_DAY_ALREADY_FINAL_SUBMITTED`.
+      description: |
+        The same `client_uuid` replays the first success; a different one gets 409 `ERR_DAY_ALREADY_FINAL_SUBMITTED`.
+        A replay succeeds only while the matched submit is live: when that zone-day was reopened since, the answer is 409
+        `ERR_DAY_FINAL_SUBMIT_REOPENED` and the app reads the preview again (its `submit_seq` gives the next
+        `client_uuid`; D-TSO-MAN-28, contract 1.10.0). Not-uploaded due routes never block the submit (D-TSO-MAN-27).
       requestBody:
         required: true
         content:
@@ -998,6 +1023,12 @@ paths:
       tags: [day]
       operationId: postDayReopen
       summary: Audited reopen of a final-submitted zone-day (roles in cfg.day.reopen_roles).
+      description: |
+        D-TSO-MAN-29 (contract 1.10.0). Roles from `cfg.day.reopen_roles` (default ADMIN and SUPERADMIN), within
+        `cfg.day.reopen_window_days` of the business date, with a reason of 10 to 500 characters. Idempotent by the
+        optional `client_uuid`: a repeat of the same reopen answers the first result. Audited; the zone-day's
+        aggregates are marked for rebuild. A later Final Submit replay of the reopened submit's `client_uuid` gets 409
+        `ERR_DAY_FINAL_SUBMIT_REOPENED`.
       requestBody:
         required: true
         content:
@@ -1376,6 +1407,59 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '409': { $ref: '#/components/responses/Conflict' }
 
+  /v1/me/notifications:
+    get:
+      tags: [notifications]
+      operationId: listMyNotifications
+      summary: The caller's notification inbox, newest first (the bell in the TSO app).
+      description: |
+        D-TSO-MAN-26 (contract 1.10.0). Own rows only: the user is the token's user, never a parameter. Newest first by
+        `id`; `before_id` pages back to older rows (`next_before_id` of the previous page). `unread_count` counts every
+        unread row of the caller, not only this page. Kinds: `ticket_updated`, `leave_decided`, `final_submit_auto`.
+        The app reads it on Dashboard open, on pull-to-refresh and after a push with reason `notification`; it never
+        polls. Rows older than the inbox retention (90 days by default) are pruned by the server.
+      parameters:
+        - name: before_id
+          in: query
+          required: false
+          description: Only rows with an `id` below this one (the `next_before_id` of the previous page).
+          schema: { $ref: '#/components/schemas/Id' }
+        - name: limit
+          in: query
+          required: false
+          description: Page size.
+          schema: { type: integer, minimum: 1, maximum: 100, default: 50 }
+      responses:
+        '200':
+          description: One page of the inbox with the unread count.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/NotificationInbox' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /v1/me/notifications/read:
+    post:
+      tags: [notifications]
+      operationId: markMyNotificationsRead
+      summary: Mark the caller's inbox read up to an id (opening the bell).
+      description: |
+        D-TSO-MAN-26 (contract 1.10.0). Sets `read_at` on the caller's unread rows with `id <= up_to_id` (own rows only)
+        and answers the unread count left. Idempotent: a repeat, or an `up_to_id` at or below rows already read, changes
+        nothing and answers the same count; an `up_to_id` above the caller's newest row is accepted.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/NotificationReadRequest' }
+      responses:
+        '200':
+          description: Unread rows left.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/NotificationReadResult' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
   /v1/team/locations:
     get:
       tags: [team]
@@ -1689,6 +1773,40 @@ paths:
           $ref: '#/components/responses/TooManyRequests'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
+  /v1/dashboards/national/brand-cpr:
+    post:
+      tags:
+      - dashboards
+      operationId: queryNationalBrandCpr
+      summary: Brand CPR card
+      description: 'Per brand: distinct (route, outlet) pairs with an effective sale line of the brand on the national
+        route set (normal SR route-days, planned, not excused), over the configured denominator: successful calls by
+        default, or target outlets (D-TSO-MAN-06). The answer carries both ratios and both denominators, so a switch
+        is one config change. TSO dashboard card (screenshot 7, contract 1.10.0). Reads summary tables only (never
+        the transaction log); scope from the token.'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NationalDashboardFilter'
+      responses:
+        '200':
+          description: Brand CPR card
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NationalBrandCpr'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
   /v1/dashboards/national/channel-calls:
     post:
       tags:
@@ -1783,6 +1901,53 @@ paths:
           $ref: '#/components/responses/TooManyRequests'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
+  /v1/dashboards/national/login-submit/users:
+    post:
+      tags:
+      - dashboards
+      operationId: queryNationalLoginSubmitUsers
+      summary: Login / Submit Status users (Not Logged In, Not Uploaded)
+      description: 'The rows behind the Login / Submit Status card (D-TSO-MAN-12, screenshot 8, contract 1.10.0), over
+        the card''s target routes. `tab=not_logged_in`: routes without a successful login; `tab=not_uploaded`: routes
+        with a successful login and no submit. Per route: one row for the route-day SR (vacant: `user_id` null, shown
+        "SR Not Set"), then one row per active AMO whose scope covers the route''s zone on the date, by `username`; AMO
+        rows follow the route state, not the AMO''s own login. Order: route name, route id, then the SR row before the
+        AMO rows. At most 2000 rows: a longer tab answers the first 2000 in this order with `truncated` true, and
+        `route_count` still counts every route of the tab. BRAND users get 403 (docs/34 s1). Reads summary tables only
+        (never the transaction log); scope from the token.'
+      parameters:
+      - name: tab
+        in: query
+        required: true
+        description: Which list of the screen.
+        schema:
+          type: string
+          enum:
+          - not_logged_in
+          - not_uploaded
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NationalDashboardFilter'
+      responses:
+        '200':
+          description: Login / Submit Status users
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NationalLoginSubmitUsers'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
   /v1/dashboards/national/channel-std:
     post:
       tags:
@@ -1804,6 +1969,40 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/NationalChannelStd'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /v1/dashboards/national/segment-share:
+    post:
+      tags:
+      - dashboards
+      operationId: queryNationalSegmentShare
+      summary: By Segment Value Contribution card
+      description: 'Each segment''s share of sales value and of volume for one day (D-TSO-MAN-11, screenshot 7, contract
+        1.10.0). Value share = the segment''s sale-line gross milli-taka / the total. Volume share is computed within
+        the segment''s unit family (sticks: cigarette and bidi; pieces; dozens); different units are never added.
+        Segments ordered by value descending. Reads summary tables only (never the transaction log); scope from the
+        token.'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NationalDashboardFilter'
+      responses:
+        '200':
+          description: By Segment Value Contribution card
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NationalSegmentShare'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -2205,6 +2404,20 @@ paths:
       tags: [dashboards]
       operationId: getTargetAchievement
       summary: Monthly target and achievement (till-date basis per surface) for a node.
+      description: |
+        Target Status (D-TSO-MAN-39, contract 1.10.0). Without `level`/`node_id` the node is the caller's top reach node;
+        a node outside the reach is 403 `ERR_OUT_OF_SCOPE`. `children=zone` also returns one node per zone in the
+        caller's reach under that node (the TSO's Territory card plus one card per zone); the zones come from the token
+        reach, never from client ids. `children=zone` is allowed only when the node is a territory or below (lead ruling
+        R-F-18): a territory node answers its zones, a zone node answers itself as its one child, a house node answers
+        its zones in the reach (a house is a group of zones inside one territory; it is the default top reach node of a
+        TSO or AMO who holds a house, D-AUTHZ-1-7-WIRING-01); at a national, wing or division node it is 400
+        `ERR_VALIDATION` (`query.children` invalid_value). The check runs on the resolved node, the default top reach node
+        included. An explicit `level=house` stays 400 `ERR_VALIDATION` (`query.level`, as GeoLevelQuery says), with or
+        without `children`. Each child carries its own `elapsed_days` and `period_days` and its rows follow them (R-F-15,
+        D-TSO-MAN-08). The till-date basis follows the caller's role (TSO: the TSO key, AMO: the AMO team
+        key; calendar days by default, D-TSO-MAN-05). The integer members (`*_qty_base`, `*_pct_bp`) are what the TSO app
+        prints; the Decimal3 members and `achievement_pct` keep their meaning for the AMO app.
       parameters:
         - name: month
           in: query
@@ -2216,12 +2429,18 @@ paths:
           in: query
           required: false
           schema: { $ref: '#/components/schemas/ProductLevel' }
+        - name: children
+          in: query
+          required: false
+          description: '`zone`: add `children`, one node per zone in the caller''s reach under the node (contract 1.10.0). Only at a territory, house or zone node; at a national, wing or division node 400 `ERR_VALIDATION` (R-F-18).'
+          schema: { type: string, enum: [zone] }
       responses:
         '200':
           description: Target rows.
           content:
             application/json:
               schema: { $ref: '#/components/schemas/TargetAchievement' }
+        '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
 
@@ -4312,6 +4531,183 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '429': { $ref: '#/components/responses/TooManyRequests' }
         '503': { $ref: '#/components/responses/ServiceUnavailable' }
+
+  /v1/support/tickets:
+    get:
+      tags: [support]
+      operationId: listSupportTickets
+      summary: Support tickets, newest first (the caller's own; the support desk sees every ticket).
+      description: |
+        D-TSO-MAN-22 (contract 1.10.0). Scope is server-side: a caller without the support-desk permission
+        (`support.ticket.manage`, `Me.support_desk`) sees only the tickets it raised (requester = the token's user);
+        the desk sees every ticket. `requester_user_id` and `assignee_user_id` are desk-only filters (403
+        `ERR_FORBIDDEN` for anyone else). `q` matches a `ticket_no` prefix or, case-insensitively, the title or the issue
+        type label. `from` and `to` filter on `business_date`. Order: `created_at` descending, then id descending.
+        Tickets are created only through the sync record `support_ticket` (D-TSO-MAN-18); there is no online create.
+      parameters:
+        - name: q
+          in: query
+          required: false
+          description: A ticket number prefix (`INC1001`) or text in the title or the issue type label.
+          schema: { type: string, minLength: 2, maxLength: 40 }
+        - name: status
+          in: query
+          required: false
+          schema: { $ref: '#/components/schemas/SupportTicketStatus' }
+        - name: issue_type_code
+          in: query
+          required: false
+          description: A `ticket_issue_type` code.
+          schema: { type: string, pattern: '^[a-z][a-z0-9_]{1,40}$' }
+        - name: priority
+          in: query
+          required: false
+          schema: { $ref: '#/components/schemas/SupportTicketPriority' }
+        - name: requester_user_id
+          in: query
+          required: false
+          description: Support desk only.
+          schema: { $ref: '#/components/schemas/Id' }
+        - name: assignee_user_id
+          in: query
+          required: false
+          description: Support desk only.
+          schema: { $ref: '#/components/schemas/Id' }
+        - $ref: '#/components/parameters/FromDate'
+        - $ref: '#/components/parameters/ToDate'
+        - name: limit
+          in: query
+          required: false
+          description: Page size.
+          schema: { type: integer, minimum: 1, maximum: 200, default: 50 }
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: One page of tickets.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SupportTicketPage' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /v1/support/tickets/summary:
+    get:
+      tags: [support]
+      operationId: getSupportTicketSummary
+      summary: Ticket counts for the Ticket Dashboard (the caller's own tickets; the support desk counts every ticket).
+      description: |
+        D-TSO-MAN-25 (contract 1.10.0). `total` counts every status, `open` = `new` + `in_progress`. The answer carries
+        counts only (lead ruling R-F-14): the phone and the web compute the whole percents (resolved / total, open /
+        total) once from the counts, and total 0 prints "0%". The app reads it on Ticket Dashboard open and on
+        pull-to-refresh only.
+      responses:
+        '200':
+          description: Ticket counts.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SupportTicketSummary' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /v1/support/tickets/{ticket_uuid}:
+    get:
+      tags: [support]
+      operationId: getSupportTicket
+      summary: One ticket with its thread and photos.
+      description: |
+        D-TSO-MAN-21, 22 (contract 1.10.0). 404 `ERR_NOT_FOUND` when the ticket is not the caller's own and the caller
+        is not the support desk (no existence leak). Events oldest first; a support actor is shown as "Support", never
+        by name. Photos are media uuids, read through the media read URL.
+      parameters:
+        - { name: ticket_uuid, in: path, required: true, schema: { $ref: '#/components/schemas/Uuid' }, description: The ticket's client UUID. }
+      responses:
+        '200':
+          description: The ticket, its events and its photos.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SupportTicketDetail' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [support]
+      operationId: updateSupportTicket
+      summary: Support desk action on a ticket (status, priority, assignee, resolution or cancellation).
+      description: |
+        Support desk only (permission `support.ticket.manage`; anyone else 403 `ERR_FORBIDDEN`), D-TSO-MAN-20 (contract
+        1.10.0). Checks run in this order: the desk permission (403), the request body (400), the ticket (404), the
+        `op_uuid` replay check, `expected_version` (409), then the transition rules (409).
+        Idempotent by `op_uuid`. The replay check comes before `expected_version` and the transition rules, so a retried
+        op whose first answer was lost replays instead of failing: an `op_uuid` this ticket already applied with the same body
+        (compared as a JSON value: member order and spacing ignored) answers 200 with the ticket as it is now and
+        writes nothing again (no event, audit row, inbox row or push). The same `op_uuid` with another body, or one
+        already used on another ticket or by any other ticket event, is 409 `ERR_CONFLICT`; nothing changes.
+        `expected_version` must equal the ticket's `version`, else 409 `ERR_CONFLICT` (reload and re-apply). Allowed
+        status changes: new -> in_progress; new or in_progress -> resolved (needs `resolution_code` from the
+        `ticket_resolution_code` list and `resolution_notes`; writes the support message
+        "[TicketID: <ticket_no>] - Resolved:\nResolution Code: <label>\nResolution Notes:\n\n<notes>"); new or in_progress
+        -> cancelled (needs `cancel_reason`); resolved -> closed. Any other status, the current one included, is 409
+        `ERR_TICKET_TRANSITION_INVALID`; there is no reopen and no auto-close. A `priority` or `assignee_user_id` equal
+        to the current value is not a change; an op with no change at all answers 200 with the ticket and writes
+        nothing (it records no op, so its `op_uuid` stays unused).
+        One op writes, in one transaction, one event per change in this order: the status entry (`status_change`, or
+        `resolution` for a resolve), then `priority_change`, then `assign`. The first of them has `event_uuid` =
+        `op_uuid`; each later one has the name-based, version-4-shaped UUID (as StableIds.v4: SHA-256 of the UTF-8 name,
+        first 16 bytes, version nibble 4, variant bits 10) of `aron.support.ticket-op:<op_uuid>:<kind>`. A retry
+        therefore can never add a second event, and the server keeps the op's body fingerprint with it for the
+        same-body check. The op is audited; after commit the reporter gets one inbox row for it and, when ticket pushes
+        are switched on, one push with reason `ticket_updated`.
+      parameters:
+        - { name: ticket_uuid, in: path, required: true, schema: { $ref: '#/components/schemas/Uuid' }, description: The ticket's client UUID. }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SupportTicketUpdate' }
+      responses:
+        '200':
+          description: The ticket after the change.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SupportTicket' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /v1/support/tickets/{ticket_uuid}/events:
+    post:
+      tags: [support]
+      operationId: addSupportTicketEvent
+      summary: Support desk reply on a ticket.
+      description: |
+        Support desk only (anyone else 403 `ERR_FORBIDDEN`), D-TSO-MAN-20, 21 (contract 1.10.0); the reporter comments
+        through the sync record `support_ticket_event`. Idempotent by `event_uuid`: the first call stores the reply
+        (201), a repeat with the same body answers it unchanged (200), the same uuid with another body is 409
+        `ERR_CONFLICT`. Allowed only while the ticket is new or in_progress, else 409 `ERR_TICKET_COMMENTS_CLOSED`. The
+        first support reply on a new ticket moves it to in_progress and stamps `first_response_at`.
+      parameters:
+        - { name: ticket_uuid, in: path, required: true, schema: { $ref: '#/components/schemas/Uuid' }, description: The ticket's client UUID. }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SupportTicketEventWrite' }
+      responses:
+        '200':
+          description: Replay of a stored reply; nothing changed.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SupportTicketEvent' }
+        '201':
+          description: Reply stored.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SupportTicketEvent' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
 
   /v1/media/upload:
     post:
@@ -6511,8 +6907,8 @@ components:
         own brands (`brands` on Me). SR and AMO have no portal login (`ERR_AUTH_PORTAL_NOT_ALLOWED`).
     RecordType:
       type: string
-      enum: [geo_breadcrumb, attendance_event, day_open, day_submit, day_exception, stock_movement, visit, visit_close, visit_skip, memo, memo_line, memo_discount, qc_line, print_event, memo_void, due_collection, survey_response, outlet_change_request, outlet_request_verification, distribution_check, distribution_check_line, call_assessment, call_assessment_answer, task, task_event, visit_plan, visit_plan_outlet, leave_application, feedback, media_meta, device_status, config_ack, content_view, redemption, redemption_line, gift_photo, price_compliance_check, risk_review, activity_log, app_error, sale_abort, consent_accept]
-      description: Sync record types of Phase 1 (docs/24 s4.2). The server table of a type has the same name except where docs/24 s12 says otherwise.
+      enum: [geo_breadcrumb, attendance_event, day_open, day_submit, day_exception, stock_movement, visit, visit_close, visit_skip, memo, memo_line, memo_discount, qc_line, print_event, memo_void, due_collection, survey_response, outlet_change_request, outlet_request_verification, distribution_check, distribution_check_line, call_assessment, call_assessment_answer, task, task_event, visit_plan, visit_plan_outlet, leave_application, feedback, media_meta, device_status, config_ack, content_view, redemption, redemption_line, gift_photo, price_compliance_check, risk_review, activity_log, app_error, sale_abort, consent_accept, support_ticket, support_ticket_event]
+      description: Sync record types of Phase 1 (docs/24 s4.2). The server table of a type has the same name except where docs/24 s12 says otherwise. `support_ticket` and `support_ticket_event` from contract 1.10.0 (D-TSO-MAN-18).
     AckStatus:
       type: string
       enum: [accepted, duplicate, rejected, quarantined]
@@ -6523,12 +6919,25 @@ components:
         for the phone until a resolution arrives.
     RecordOutcomeCode:
       type: string
-      description: Stable code on a rejected or quarantined record (docs/24 s4.5 lists retryability and the phone action).
-      enum: [scope_stale, config_version_unknown, parent_missing, outlet_pending_approval, price_list_unknown, schema_invalid, unknown_record_type, unknown_sku, unknown_outlet, unknown_route, arithmetic_mismatch, memo_no_invalid, memo_no_duplicate, edit_not_allowed, chain_too_deep, voided_by_admin, content_duplicate, lines_exceed_max, qty_invalid, price_invalid, attendance_duplicate, checkout_too_early, server_error, payload_conflict, business_date_out_of_window, scope_out_of_reach, no_assignment_on_date, device_integrity_failed, device_not_enrolled, user_disabled, device_revoked, app_version_blocked, after_month_close, unknown_gift, insufficient_points, gift_photo_exists, programme_inactive]
+      description: |
+        Stable code on a rejected or quarantined record (docs/24 s4.5 lists retryability and the phone action).
+        From contract 1.10.0 (D-TSO-MAN-31, D-TSO-MAN-17..20): `after_final_submit` (quarantined): a record captured
+        before its zone-day's Final Submit that arrived after it; held out of the day's figures and counted, flagged
+        late, only when an ADMIN accepts it on the quarantine page. `day_final_submitted` (rejected, not retryable): a
+        memo, memo edit, void, return or collection captured at or after the zone-day's Final Submit. `ticket_state_invalid`
+        (rejected, not retryable): a `support_ticket_event` the ticket's state does not allow (a comment after
+        resolved, a close review before resolved) or on another user's ticket. `issue_type_unknown` (rejected, not
+        retryable): a `support_ticket` whose `issue_type_code` is not an active `ticket_issue_type` code on its
+        business date.
+      enum: [scope_stale, config_version_unknown, parent_missing, outlet_pending_approval, price_list_unknown, schema_invalid, unknown_record_type, unknown_sku, unknown_outlet, unknown_route, arithmetic_mismatch, memo_no_invalid, memo_no_duplicate, edit_not_allowed, chain_too_deep, voided_by_admin, content_duplicate, lines_exceed_max, qty_invalid, price_invalid, attendance_duplicate, checkout_too_early, server_error, payload_conflict, business_date_out_of_window, scope_out_of_reach, no_assignment_on_date, device_integrity_failed, device_not_enrolled, user_disabled, device_revoked, app_version_blocked, after_month_close, unknown_gift, insufficient_points, gift_photo_exists, programme_inactive, after_final_submit, day_final_submitted, ticket_state_invalid, issue_type_unknown]
     ProblemCode:
       type: string
-      description: Stable problem codes (HTTP status in docs/24 s3.4).
-      enum: [ERR_VALIDATION, ERR_MALFORMED_JSON, ERR_UNSUPPORTED_SCHEMA_VERSION, ERR_UNAUTHENTICATED, ERR_TOKEN_EXPIRED, ERR_SCOPE_CHANGED, ERR_PASSWORD_CHANGED, ERR_FORBIDDEN, ERR_OUT_OF_SCOPE, ERR_AUTHZ_ROLE_ABOVE_GRANT, ERR_NOT_FOUND, ERR_CONFLICT, ERR_PRECONDITION_FAILED, ERR_PAYLOAD_TOO_LARGE, ERR_UNSUPPORTED_MEDIA_TYPE, ERR_RATE_LIMITED, ERR_INTERNAL, ERR_SERVICE_UNAVAILABLE, ERR_READ_ONLY_MODE, ERR_AUTH_INVALID_CREDENTIALS, ERR_AUTH_ACCOUNT_LOCKED, ERR_AUTH_USER_DISABLED, ERR_AUTH_PASSWORD_POLICY, ERR_AUTH_PASSWORD_CHANGE_REQUIRED, ERR_AUTH_REFRESH_INVALID, ERR_AUTH_REFRESH_REUSED, ERR_AUTH_MFA_INVALID, ERR_AUTH_OTP_INVALID, ERR_AUTH_OTP_EXPIRED, ERR_AUTH_OTP_ATTEMPTS_EXCEEDED, ERR_AUTH_BIND_LOCKED, ERR_AUTH_PORTAL_NOT_ALLOWED, ERR_DEVICE_NOT_ENROLLED, ERR_DEVICE_UNBOUND, ERR_DEVICE_SUSPENDED, ERR_DEVICE_REVOKED, ERR_DEVICE_INTEGRITY_FAILED, ERR_DEVICE_PROOF_INVALID, ERR_DEVICE_LIMIT_REACHED, ERR_ENROLMENT_TOKEN_INVALID, ERR_ENROLMENT_TOKEN_EXPIRED, ERR_ENROLMENT_TOKEN_EXHAUSTED, ERR_ENROLMENT_ATTESTATION_FAILED, ERR_NONCE_INVALID, ERR_APP_VERSION_UNSUPPORTED, ERR_SYNC_BATCH_UUID_REUSED, ERR_SYNC_BATCH_TOO_LARGE, ERR_SYNC_DECOMPRESSION_LIMIT, ERR_SYNC_HOLD, ERR_BUNDLE_NEW_BUSINESS_DATE, ERR_BUNDLE_CURSOR_EXPIRED, ERR_BUNDLE_NOT_READY, ERR_DAY_ALREADY_FINAL_SUBMITTED, ERR_DAY_NOT_FINAL_SUBMITTED, ERR_DAY_SUBMIT_VOID_NOT_ALLOWED, ERR_DAY_DATA_VOID_NOT_ALLOWED, ERR_CFG_UNKNOWN_KEY, ERR_CFG_OUT_OF_BOUNDS, ERR_CFG_SCOPE_NOT_ALLOWED, ERR_CFG_DEPENDENCY, ERR_CFG_SELF_APPROVAL, ERR_CFG_REASON_REQUIRED, ERR_CFG_FREEZE_WINDOW, ERR_MASTER_DUPLICATE_CODE, ERR_MASTER_EFFECTIVE_DATE_PAST, ERR_MASTER_OVERLAP, ERR_MASTER_IN_USE, ERR_REQUEST_STATE, ERR_SEPARATION_OF_DUTIES, ERR_REPORT_INVALID_QUERY, ERR_REPORT_TOO_LARGE, ERR_PUSH_DISABLED, ERR_ENTRY_WINDOW_CLOSED, ERR_GIFT_CHOICE_LOCKED]
+      description: |
+        Stable problem codes (HTTP status in docs/24 s3.4). From contract 1.10.0 (409): `ERR_TICKET_TRANSITION_INVALID`
+        (a support-desk status change the ticket's state does not allow, D-TSO-MAN-20), `ERR_TICKET_COMMENTS_CLOSED` (a
+        reply on a ticket that is no longer new or in_progress, D-TSO-MAN-21), `ERR_DAY_FINAL_SUBMIT_REOPENED` (a Final
+        Submit replay of a submit whose zone-day was reopened since, D-TSO-MAN-28).
+      enum: [ERR_VALIDATION, ERR_MALFORMED_JSON, ERR_UNSUPPORTED_SCHEMA_VERSION, ERR_UNAUTHENTICATED, ERR_TOKEN_EXPIRED, ERR_SCOPE_CHANGED, ERR_PASSWORD_CHANGED, ERR_FORBIDDEN, ERR_OUT_OF_SCOPE, ERR_AUTHZ_ROLE_ABOVE_GRANT, ERR_NOT_FOUND, ERR_CONFLICT, ERR_PRECONDITION_FAILED, ERR_PAYLOAD_TOO_LARGE, ERR_UNSUPPORTED_MEDIA_TYPE, ERR_RATE_LIMITED, ERR_INTERNAL, ERR_SERVICE_UNAVAILABLE, ERR_READ_ONLY_MODE, ERR_AUTH_INVALID_CREDENTIALS, ERR_AUTH_ACCOUNT_LOCKED, ERR_AUTH_USER_DISABLED, ERR_AUTH_PASSWORD_POLICY, ERR_AUTH_PASSWORD_CHANGE_REQUIRED, ERR_AUTH_REFRESH_INVALID, ERR_AUTH_REFRESH_REUSED, ERR_AUTH_MFA_INVALID, ERR_AUTH_OTP_INVALID, ERR_AUTH_OTP_EXPIRED, ERR_AUTH_OTP_ATTEMPTS_EXCEEDED, ERR_AUTH_BIND_LOCKED, ERR_AUTH_PORTAL_NOT_ALLOWED, ERR_DEVICE_NOT_ENROLLED, ERR_DEVICE_UNBOUND, ERR_DEVICE_SUSPENDED, ERR_DEVICE_REVOKED, ERR_DEVICE_INTEGRITY_FAILED, ERR_DEVICE_PROOF_INVALID, ERR_DEVICE_LIMIT_REACHED, ERR_ENROLMENT_TOKEN_INVALID, ERR_ENROLMENT_TOKEN_EXPIRED, ERR_ENROLMENT_TOKEN_EXHAUSTED, ERR_ENROLMENT_ATTESTATION_FAILED, ERR_NONCE_INVALID, ERR_APP_VERSION_UNSUPPORTED, ERR_SYNC_BATCH_UUID_REUSED, ERR_SYNC_BATCH_TOO_LARGE, ERR_SYNC_DECOMPRESSION_LIMIT, ERR_SYNC_HOLD, ERR_BUNDLE_NEW_BUSINESS_DATE, ERR_BUNDLE_CURSOR_EXPIRED, ERR_BUNDLE_NOT_READY, ERR_DAY_ALREADY_FINAL_SUBMITTED, ERR_DAY_NOT_FINAL_SUBMITTED, ERR_DAY_SUBMIT_VOID_NOT_ALLOWED, ERR_DAY_DATA_VOID_NOT_ALLOWED, ERR_CFG_UNKNOWN_KEY, ERR_CFG_OUT_OF_BOUNDS, ERR_CFG_SCOPE_NOT_ALLOWED, ERR_CFG_DEPENDENCY, ERR_CFG_SELF_APPROVAL, ERR_CFG_REASON_REQUIRED, ERR_CFG_FREEZE_WINDOW, ERR_MASTER_DUPLICATE_CODE, ERR_MASTER_EFFECTIVE_DATE_PAST, ERR_MASTER_OVERLAP, ERR_MASTER_IN_USE, ERR_REQUEST_STATE, ERR_SEPARATION_OF_DUTIES, ERR_REPORT_INVALID_QUERY, ERR_REPORT_TOO_LARGE, ERR_PUSH_DISABLED, ERR_ENTRY_WINDOW_CLOSED, ERR_GIFT_CHOICE_LOCKED, ERR_TICKET_TRANSITION_INVALID, ERR_TICKET_COMMENTS_CLOSED, ERR_DAY_FINAL_SUBMIT_REOPENED]
     DayState:
       type: string
       enum: [not_started, logged_in, in_field, synced, submit_pending_rows, sales_submitted, final_submitted]
@@ -6661,14 +7070,15 @@ components:
       enum: [open, accepted, accepted_with_fix, discarded]
     CodeListKey:
       type: string
-      enum: [force_reason, edit_reason, void_reason, visit_outcome, skip_reason, day_exception_reason, stock_variance_reason, task_type, leave_type, feedback_category, qc_fault_type, payment_mode, outlet_close_reason, submit_void_reason, channel, sub_channel, geo_class]
+      enum: [force_reason, edit_reason, void_reason, visit_outcome, skip_reason, day_exception_reason, stock_variance_reason, task_type, leave_type, feedback_category, qc_fault_type, payment_mode, outlet_close_reason, submit_void_reason, channel, sub_channel, geo_class, ticket_issue_type, ticket_resolution_code]
+      description: Business code lists (docs/24 s12.1). `ticket_issue_type` (the 31 Annex A issue types, attrs priority, category, urgency, icon and hint_en) and `ticket_resolution_code` from contract 1.10.0 (D-TSO-MAN-19, 20).
     BundleSectionName:
       type: string
       enum: [outlets, open_memos, prices, offers, tasks, team, pending_outlet_requests, programmes, content]
     ReportKey:
       type: string
-      description: Report registry keys of this build, programme reports included (docs/24 s12.3).
-      enum: [std-memo, sr-efficiency, route-std, route-memo, route-bsr-cpr, data-entry-log, final-submit-log, final-submit-status, by-outlet, by-outlet-by-day, gigo, attendance, discount, online-offline, tso-top-sheet, daily-tracking, sr-outlets, leaderboard, suspicious-location, sync-health, ds-rrs, dss, amo-call, dues-ageing, settlement, qc-report, stock-summary, memo-number-gaps, sales-summary, task-planner, by-route-geo-capture, free-sample, target-allocation, route-qc, geofence-calibration, astha, astha-gift-choice, campaign-gift-redemption, diamond-league, superstar-campaign, retailer-list, sku-list]
+      description: Report registry keys of this build, programme reports included (docs/24 s12.3). `tso-visit-log` from contract 1.10.0 (lead ruling R-F-12; the TSO visit plans with their answers and delegated tasks).
+      enum: [std-memo, sr-efficiency, route-std, route-memo, route-bsr-cpr, data-entry-log, final-submit-log, final-submit-status, by-outlet, by-outlet-by-day, gigo, attendance, discount, online-offline, tso-top-sheet, daily-tracking, sr-outlets, leaderboard, suspicious-location, sync-health, ds-rrs, dss, amo-call, dues-ageing, settlement, qc-report, stock-summary, memo-number-gaps, sales-summary, task-planner, by-route-geo-capture, free-sample, target-allocation, route-qc, geofence-calibration, astha, astha-gift-choice, campaign-gift-redemption, diamond-league, superstar-campaign, retailer-list, sku-list, tso-visit-log]
 
     # ---------- problem details ----------
     Problem:
@@ -6979,6 +7389,9 @@ components:
               maxItems: 200
               items: { $ref: '#/components/schemas/Id' }
             - type: 'null'
+        support_desk:
+          type: boolean
+          description: 'Whether the caller holds the support-desk permission `support.ticket.manage` (seeded for ADMIN and SUPERADMIN; D-TSO-MAN-22): sees and works every support ticket. Drives the web "Tickets" menu. Absent means false (contract 1.10.0; no schema default, so a reader built before the server sends it keeps compiling).'
 
     # ---------- devices ----------
     JwkEcPublicDevice:
@@ -7761,6 +8174,26 @@ components:
             type: { const: config_ack }
             payload: { $ref: '#/components/schemas/ConfigAckPayload' }
       unevaluatedProperties: false
+    SupportTicketRecord:
+      description: A support ticket raised on the phone (contract 1.10.0, D-TSO-MAN-18); the only way a ticket is created.
+      allOf:
+        - { $ref: '#/components/schemas/RecordEnvelope' }
+        - type: object
+          required: [type, payload]
+          properties:
+            type: { const: support_ticket }
+            payload: { $ref: '#/components/schemas/SupportTicketPayload' }
+      unevaluatedProperties: false
+    SupportTicketEventRecord:
+      description: The reporter's comment on, or close review of, its own ticket (contract 1.10.0, D-TSO-MAN-20, 21).
+      allOf:
+        - { $ref: '#/components/schemas/RecordEnvelope' }
+        - type: object
+          required: [type, payload]
+          properties:
+            type: { const: support_ticket_event }
+            payload: { $ref: '#/components/schemas/SupportTicketEventPayload' }
+      unevaluatedProperties: false
     SyncRecord:
       description: One outbox record; `type` selects the payload schema.
       oneOf:
@@ -7806,6 +8239,8 @@ components:
         - { $ref: '#/components/schemas/AppErrorRecord' }
         - { $ref: '#/components/schemas/SaleAbortRecord' }
         - { $ref: '#/components/schemas/ConsentAcceptRecord' }
+        - { $ref: '#/components/schemas/SupportTicketRecord' }
+        - { $ref: '#/components/schemas/SupportTicketEventRecord' }
       discriminator:
         propertyName: type
         mapping:
@@ -7851,6 +8286,8 @@ components:
           app_error: '#/components/schemas/AppErrorRecord'
           sale_abort: '#/components/schemas/SaleAbortRecord'
           consent_accept: '#/components/schemas/ConsentAcceptRecord'
+          support_ticket: '#/components/schemas/SupportTicketRecord'
+          support_ticket_event: '#/components/schemas/SupportTicketEventRecord'
 
     ContentViewRecord:
       allOf:
@@ -8378,6 +8815,45 @@ components:
           oneOf:
             - { $ref: '#/components/schemas/Uuid' }
             - type: 'null'
+    SupportTicketPayload:
+      type: object
+      description: |
+        A ticket raised on the phone (contract 1.10.0, D-TSO-MAN-18, 19, 24). Write-once; the record's `client_uuid` is the
+        ticket's UUID and the server assigns `ticket_no` at the first insert (a replay answers the stored row). The
+        requester is the token's user; a requester role outside the configured requester roles (default TSO,
+        D-TSO-MAN-17) is quarantined `scope_out_of_reach`. When an ADMIN accepts such a quarantined record
+        (`resolveQuarantine`), the server runs the role check again and refuses the accept while the role is still not
+        allowed; the record stays quarantined (no new outcome code, lead ruling R-F-05). An issue type that is not an
+        active `ticket_issue_type` code on the business date is rejected `issue_type_unknown`. The priority comes from
+        the issue type. Photos follow as `media_meta` records with purpose
+        `support` and ref_type `support_ticket` (at most 3, D-TSO-MAN-23). Family: own header, rank 0.
+      required: [issue_type_code, title, description, source]
+      additionalProperties: false
+      properties:
+        issue_type_code: { type: string, pattern: '^[a-z][a-z0-9_]{1,40}$', description: A `ticket_issue_type` code. }
+        title: { type: string, minLength: 1, maxLength: 120, description: 'Quick ticket: the issue type label (en); manual ticket: typed by the reporter.' }
+        description: { type: string, maxLength: 2000, description: May be empty on a quick ticket. }
+        affected_username:
+          type: [string, 'null']
+          pattern: '^[A-Za-z0-9._-]{3,40}$'
+          description: Optional login name of the user the problem is about, when the ticket is raised from another user's phone (D-TSO-MAN-24); the server resolves it for the support desk only. The ticket stays the reporter's.
+        source: { type: string, enum: [quick, manual], description: 'quick: from a Quick Ticket tile; manual: from Create Ticket.' }
+    SupportTicketEventPayload:
+      type: object
+      description: |
+        The reporter's action on its own ticket through the outbox (contract 1.10.0, D-TSO-MAN-20, 21). `comment` needs a
+        `body` of 1 to 2000 characters and is allowed while the ticket is new or in_progress; `close_review` ("Submit
+        Review & Close", one tap, no rating) only while it is resolved. Otherwise, or on another user's ticket, the record
+        is rejected `ticket_state_invalid` (final). A ticket not on the server yet parks the event (`parent_missing`).
+        A requester role outside the configured requester roles is quarantined `scope_out_of_reach`, with the same role
+        check again on an accept as for the ticket (R-F-05).
+        Photos follow as `media_meta` with ref_type `support_ticket_event` (at most 3). Family: own header, rank 0.
+      required: [ticket_uuid, kind]
+      additionalProperties: false
+      properties:
+        ticket_uuid: { $ref: '#/components/schemas/Uuid' }
+        kind: { type: string, enum: [comment, close_review] }
+        body: { type: string, maxLength: 2000, description: 'The comment text (1 to 2000 characters for a comment, a server check); may be absent on a close review.' }
     MediaMetaPayload:
       type: object
       description: The record's client_uuid IS the media UUID; sent after the blob upload succeeded.
@@ -9640,16 +10116,44 @@ components:
               memo_count: { type: integer, minimum: 0 }
               net_mtk: { $ref: '#/components/schemas/Mtk' }
               pending_rows_reported: { type: [integer, 'null'], minimum: 0 }
+              route_class:
+                type: [string, 'null']
+                enum: [normal, manual, dummy_br, dummy_institutional, null]
+                description: The route's class (`app.route.route_class`); contract 1.10.0, optional until the server sends it.
+              visit_kind:
+                type: [string, 'null']
+                maxLength: 20
+                description: 'The route''s visit kind as stored (daily, 3f, 2f); null for an AMO route or a route without one. The card title is "<route name> <kind label>" with the label Daily, 3F, 2F or AMO (D-TSO-MAN-27, contract 1.10.0).'
+              ff_role:
+                oneOf:
+                  - { $ref: '#/components/schemas/Role' }
+                  - type: 'null'
+                description: Role of the route-day's field user (the "FF:" line); null with ff_user_id null ("SR Not Set"). Contract 1.10.0.
+              upload_state:
+                type: string
+                enum: [uploaded, web_entry, not_uploaded, not_due]
+                description: 'uploaded: the route-day''s sales are submitted; web_entry: a saved Web Entry stands for it (counts as uploaded); not_uploaded: due and not uploaded (amber "Not uploaded" chip, named in the warning); not_due: not planned and without data, or a dummy BR or Institutional route without data (D-TSO-MAN-27, contract 1.10.0; optional until the server sends it).'
         warnings:
           type: array
           maxItems: 20
           items: { type: string, enum: [routes_not_sales_submitted, routes_with_pending_rows, routes_not_logged_in] }
+        submit_seq:
+          type: integer
+          minimum: 0
+          description: Number of reopened Final Submits of this zone-day; the app derives the next client_uuid from it (FinalSubmitRequest, D-TSO-MAN-28). Contract 1.10.0, optional until the server sends it.
+        warn_route_ids:
+          type: array
+          maxItems: 200
+          description: The due routes not uploaded (upload_state not_uploaded), named in the app's warning dialog ("Submit anyway" / "Cancel"); the submit is never blocked (D-TSO-MAN-27). Empty when nothing is due. Contract 1.10.0, optional until the server sends it.
+          items: { $ref: '#/components/schemas/Id' }
     FinalSubmitRequest:
       type: object
       required: [client_uuid, zone_id, business_date]
       additionalProperties: false
       properties:
-        client_uuid: { $ref: '#/components/schemas/Uuid' }
+        client_uuid:
+          $ref: '#/components/schemas/Uuid'
+          description: 'Idempotency key. The TSO app derives it as the name-based, version-4-shaped UUID (StableIds.v4) of `aron.tso.final-submit:<user_id>:<zone_id>:<business_date>:<submit_seq>`, with submit_seq from the preview (D-TSO-MAN-28): the same submit retried keeps its UUID, a submit after a reopen gets a new one. A replay of a reopened submit''s UUID is 409 `ERR_DAY_FINAL_SUBMIT_REOPENED`.'
         zone_id: { $ref: '#/components/schemas/Id' }
         business_date: { $ref: '#/components/schemas/BusinessDate' }
     FinalSubmitResult:
@@ -9682,6 +10186,9 @@ components:
         zone_id: { $ref: '#/components/schemas/Id' }
         business_date: { $ref: '#/components/schemas/BusinessDate' }
         reason: { $ref: '#/components/schemas/ChangeReason' }
+        client_uuid:
+          $ref: '#/components/schemas/Uuid'
+          description: Optional idempotency key; a repeat of the same reopen answers the first result (D-TSO-MAN-29, contract 1.10.0).
     DayReopenResult:
       type: object
       required: [zone_id, business_date, reopened_at, reopened_by]
@@ -10143,6 +10650,10 @@ components:
             at: { $ref: '#/components/schemas/Timestamp' }
             source: { type: string, enum: [check_in, visit, check_out, breadcrumb] }
             age_min: { type: integer, minimum: 0 }
+        mock_fixes_today:
+          type: integer
+          minimum: 0
+          description: Fixes of the user flagged as mock locations on the business date (anti-spoofing chip, D-TSO-MAN-34, contract 1.10.0); `last_fix` never is one. Absent means 0.
     TeamLocationList:
       type: object
       required: [as_of, items]
@@ -10199,6 +10710,13 @@ components:
           oneOf:
             - { $ref: '#/components/schemas/Timestamp' }
             - type: 'null'
+        applicant_username:
+          oneOf:
+            - { $ref: '#/components/schemas/Username' }
+            - type: 'null'
+          description: Read-only, the applicant's login name for the deciding page (contract 1.10.0).
+        applicant_name: { type: [string, 'null'], maxLength: 120, description: 'Read-only, the applicant''s full name (contract 1.10.0).' }
+        territory_name: { type: [string, 'null'], maxLength: 120, description: 'Read-only, the applicant''s territory name (contract 1.10.0).' }
     LeavePage:
       type: object
       required: [items, next_cursor]
@@ -10261,6 +10779,18 @@ components:
             - type: 'null'
         created_at: { $ref: '#/components/schemas/Timestamp' }
         status: { $ref: '#/components/schemas/FeedbackStatus' }
+        business_date:
+          $ref: '#/components/schemas/BusinessDate'
+          description: The record's business date (contract 1.10.0).
+        captured_at:
+          $ref: '#/components/schemas/Timestamp'
+          description: When the TSO saved it on the phone (contract 1.10.0).
+        username:
+          oneOf:
+            - { $ref: '#/components/schemas/Username' }
+            - type: 'null'
+          description: The author's login name for the inbox (contract 1.10.0).
+        zone_id: { type: [integer, 'null'], format: int64, minimum: 1, description: 'The author''s zone, when it has one (contract 1.10.0).' }
     FeedbackPage:
       type: object
       required: [items, next_cursor]
@@ -10410,8 +10940,11 @@ components:
           oneOf:
           - $ref: '#/components/schemas/Decimal3'
           - type: 'null'
-          description: Sum over the routes in the filter of route monthly target / working days of the month (Fridays
-            and holidays excluded); null when no target is loaded for them. Always the full-day target.
+          description: 'Today''s target (D-TSO-MAN-08): the sum of the route monthly targets in scope for the month
+            (`monthly_target_qty`) / `NationalSales.working_days` W, the working days at the lowest common node of the
+            scope. Always the full-day target; on a Friday or holiday the same formula applies (no zeroing). Null when
+            no target is loaded for the routes in scope, and null when W = 0 (a month with no working day at that node;
+            the phone and the web print "—", lead ruling R-F-13).'
         sales_so_far:
           type: integer
           format: int64
@@ -10421,17 +10954,32 @@ components:
           oneOf:
           - $ref: '#/components/schemas/Decimal3'
           - type: 'null'
-          description: max(daily_target - sales_so_far, 0); null without a target.
+          description: max(daily_target - sales_so_far, 0); null whenever daily_target is null (no target, or W = 0).
         achievement_pct_bp:
           type:
           - integer
           - 'null'
+          format: int64
           minimum: 0
-          description: total_sales / daily_target in basis points (ring); null without a target. May exceed 10000.
+          description: 'total_sales / daily_target in basis points (ring); null whenever daily_target is null: without
+            a target, and when `NationalSales.working_days` is 0 (the ring prints "—", lead ruling R-F-13); and null when
+            `monthly_target_qty` is 0 (a loaded target that sums to 0: daily_target is "0.000", the ring prints "—"). Uncapped:
+            may exceed 10000, hence int64 (R-F-16). Exact: round_half_up(10000 * total_sales * working_days /
+            monthly_target_qty), from the integers, never from the rounded daily_target (D-TSO-MAN-10, contract 1.10.0).'
         target_routes:
           type: integer
           minimum: 0
           description: Routes in the filter that carry a monthly target for the category.
+        monthly_target_qty:
+          type:
+          - integer
+          - 'null'
+          format: int64
+          minimum: 0
+          description: 'Sum of the route monthly targets (base units) in scope for the month of `date`; null when no
+            target is loaded. The phone prints Total Target from it and `working_days` (D-TSO-MAN-08, contract 1.10.0;
+            optional until the server sends it). When `working_days` is 0 the phone and the web print "—" for every
+            figure derived from `working_days` and never divide by it (R-F-13).'
     NationalSales:
       type: object
       description: Four sales cards (Cigarette, Bidi, Lighter, Match) with the daily target of the "i" pop-up.
@@ -10463,7 +11011,16 @@ components:
           type: integer
           minimum: 0
           maximum: 31
-          description: 'Working days of the date''s month (calendar: Fridays and holidays excluded).'
+          description: 'Working days W of the date''s month at the lowest common node of the effective scope (filter
+            and token reach; D-TSO-MAN-08, lead ruling R-F-17): one zone gives the zone, one territory the territory,
+            mixed or national the global calendar. W = the number of dates in the month that are working days at the
+            node: a make-up day works, otherwise a date works when it is neither a weekend day
+            (`cfg.calendar.weekend_days` resolved at the node) nor an off day (a holiday or an emergency off); per date
+            the most specific declaration on the node''s path (global, wing, division, territory, zone) decides, and
+            each date counts once (one implementation, WorkingDays.resolve and WorkingDays.month of shared/rules).
+            Example: October 2026 at global scope with a Friday weekend gives 31 - 5 = 26; a global holiday on Friday 2
+            October leaves 26, and a make-up day on an ordinary weekday adds nothing. 0 when the node has no working
+            day in the month; every card''s daily_target, remaining and achievement_pct_bp are then null (R-F-13).'
         cards:
           type: array
           maxItems: 10
@@ -10510,9 +11067,102 @@ components:
           type:
           - integer
           - 'null'
+          format: int64
           minimum: 0
           description: 'Basis points: 10000 = 100 %. Integer arithmetic, rounded half up; null when the denominator
             is 0.'
+    NationalBrandCpr:
+      type: object
+      description: 'Brand CPR card (D-TSO-MAN-06, contract 1.10.0): per brand, the distinct (route, outlet) pairs with an
+        effective sale line of the brand on the national route set, over the configured denominator. Both ratios and
+        both denominators are sent.'
+      required:
+      - date
+      - till_time
+      - as_of
+      - last_updated_at
+      - target_outlets
+      - successful_calls
+      - denominator
+      - brands
+      additionalProperties: false
+      properties:
+        date:
+          $ref: '#/components/schemas/BusinessDate'
+        till_time:
+          type: boolean
+          description: 'True when `date` is today (Dhaka): figures are till the time of `as_of`; false: final figures
+            of a past day.'
+        as_of:
+          $ref: '#/components/schemas/Timestamp'
+        last_updated_at:
+          type:
+          - string
+          - 'null'
+          format: date-time
+          description: Oldest `last_updated_at` of the summary tables this card reads (null when none has been written
+            yet).
+        target_outlets:
+          type: integer
+          minimum: 0
+          description: As NationalCpr.target_outlets.
+        successful_calls:
+          type: integer
+          minimum: 0
+          description: As NationalCpr.successful_calls.
+        denominator:
+          type: string
+          enum:
+          - successful_calls
+          - target_outlets
+          description: The denominator `cpr_bp` uses (config; successful_calls by default).
+        brands:
+          type: array
+          maxItems: 100
+          description: Sorted by outlets_bought descending, then brand_code.
+          items:
+            type: object
+            required:
+            - brand_code
+            - brand_name
+            - outlets_bought
+            - cpr_bp
+            - cpr_of_successful_bp
+            - cpr_of_target_bp
+            additionalProperties: false
+            properties:
+              brand_code:
+                type: string
+                maxLength: 40
+              brand_name:
+                type: string
+                maxLength: 120
+              outlets_bought:
+                type: integer
+                minimum: 0
+                description: Distinct (route, outlet) pairs with an effective sale line of the brand.
+              cpr_bp:
+                type:
+                - integer
+                - 'null'
+                format: int64
+                minimum: 0
+                description: outlets_bought / the configured denominator in basis points, rounded half up; null when
+                  it is 0. The app prints its whole % from the integers, never from this rounded value (D-TSO-MAN-10).
+              cpr_of_successful_bp:
+                type:
+                - integer
+                - 'null'
+                format: int64
+                minimum: 0
+                description: outlets_bought / successful_calls in basis points; null when successful_calls is 0.
+              cpr_of_target_bp:
+                type:
+                - integer
+                - 'null'
+                format: int64
+                minimum: 0
+                description: outlets_bought / target_outlets in basis points; null when target_outlets is 0.
     NationalChannelCalls:
       type: object
       description: Successful calls split by the outlet-master channel (no "Other" group). `total` is the sum of the
@@ -10570,6 +11220,7 @@ components:
                 type:
                 - integer
                 - 'null'
+                format: int64
                 minimum: 0
                 description: 'Basis points: 10000 = 100 %. Integer arithmetic, rounded half up; null when the denominator
                   is 0.'
@@ -10636,6 +11287,7 @@ components:
                 type:
                 - integer
                 - 'null'
+                format: int64
                 minimum: 0
                 description: 'Basis points: 10000 = 100 %. Integer arithmetic, rounded half up; null when the denominator
                   is 0.'
@@ -10647,6 +11299,114 @@ components:
           type: string
           enum:
           - stick
+    NationalSegmentShare:
+      type: object
+      description: 'By Segment Value Contribution card (D-TSO-MAN-11, contract 1.10.0). Value share = the segment''s
+        sale-line gross milli-taka / total_value_mtk (discounts are zero under docs/27). Volume share is computed within
+        the segment''s unit family: qty_base / the total_qty_base of the family with the same base_unit (sticks:
+        cigarette and bidi; pieces; dozens); different units are never added.'
+      required:
+      - date
+      - till_time
+      - as_of
+      - last_updated_at
+      - total_value_mtk
+      - families
+      - segments
+      additionalProperties: false
+      properties:
+        date:
+          $ref: '#/components/schemas/BusinessDate'
+        till_time:
+          type: boolean
+          description: 'True when `date` is today (Dhaka): figures are till the time of `as_of`; false: final figures
+            of a past day.'
+        as_of:
+          $ref: '#/components/schemas/Timestamp'
+        last_updated_at:
+          type:
+          - string
+          - 'null'
+          format: date-time
+          description: Oldest `last_updated_at` of the summary tables this card reads (null when none has been written
+            yet).
+        total_value_mtk:
+          $ref: '#/components/schemas/MtkNonNegative'
+        families:
+          type: array
+          maxItems: 3
+          description: Volume total per unit family, the denominator of volume_share_bp.
+          items:
+            type: object
+            required:
+            - base_unit
+            - total_qty_base
+            additionalProperties: false
+            properties:
+              base_unit:
+                type: string
+                enum:
+                - stick
+                - piece
+                - dozen
+              total_qty_base:
+                type: integer
+                format: int64
+                minimum: 0
+        segments:
+          type: array
+          maxItems: 50
+          description: Sorted by value_mtk descending (the x axis order).
+          items:
+            type: object
+            required:
+            - segment_code
+            - segment_name
+            - category_code
+            - base_unit
+            - value_mtk
+            - value_share_bp
+            - qty_base
+            - volume_share_bp
+            additionalProperties: false
+            properties:
+              segment_code:
+                type: string
+                maxLength: 40
+              segment_name:
+                type: string
+                maxLength: 120
+              category_code:
+                type: string
+                maxLength: 40
+              base_unit:
+                type: string
+                enum:
+                - stick
+                - piece
+                - dozen
+              value_mtk:
+                $ref: '#/components/schemas/MtkNonNegative'
+              value_share_bp:
+                type:
+                - integer
+                - 'null'
+                minimum: 0
+                maximum: 10000
+                description: value_mtk / total_value_mtk in basis points, rounded half up; null when the total is 0.
+              qty_base:
+                type: integer
+                format: int64
+                minimum: 0
+                description: Sold quantity of sale lines in base units.
+              volume_share_bp:
+                type:
+                - integer
+                - 'null'
+                minimum: 0
+                maximum: 10000
+                description: qty_base / the total_qty_base of its family in basis points, rounded half up; null when
+                  that total is 0.
     NationalFinalSubmit:
       type: object
       description: Final Submit status by service zone; first submit per (zone, date) wins, unsubmitted zones are auto-submitted
@@ -10696,6 +11456,7 @@ components:
           type:
           - integer
           - 'null'
+          format: int64
           minimum: 0
           description: 'Basis points: 10000 = 100 %. Integer arithmetic, rounded half up; null when the denominator
             is 0.'
@@ -10742,6 +11503,7 @@ components:
           type:
           - integer
           - 'null'
+          format: int64
           minimum: 0
           description: 'Basis points: 10000 = 100 %. Integer arithmetic, rounded half up; null when the denominator
             is 0.'
@@ -10753,8 +11515,121 @@ components:
           type:
           - integer
           - 'null'
+          format: int64
           minimum: 0
-          description: submitted / successful_login in basis points.
+          description: submitted / successful_login in basis points (the web brief's figure).
+        submit_of_target_pct_bp:
+          type:
+          - integer
+          - 'null'
+          format: int64
+          minimum: 0
+          description: 'submitted / target_routes in basis points, rounded half up; null when target_routes is 0. The
+            TSO app''s Bikroy Joma % (D-TSO-MAN-07, contract 1.10.0; optional until the server sends it).'
+    LoginSubmitUserRow:
+      type: object
+      description: 'One (route, user) row of the Login / Submit Status screen (D-TSO-MAN-12). A vacant route has one SR
+        row with user_id, username and display_name null ("SR Not Set").'
+      required:
+      - route_id
+      - route_code
+      - route_name
+      - zone_id
+      - dep_name
+      - user_id
+      - username
+      - display_name
+      - role
+      additionalProperties: false
+      properties:
+        route_id:
+          $ref: '#/components/schemas/Id'
+        route_code:
+          type: string
+          maxLength: 40
+        route_name:
+          type: string
+          maxLength: 120
+        zone_id:
+          $ref: '#/components/schemas/Id'
+        dep_name:
+          type: string
+          maxLength: 120
+          description: The zone name (screenshot 8 "Dep Name").
+        user_id:
+          type:
+          - integer
+          - 'null'
+          format: int64
+          minimum: 1
+        username:
+          oneOf:
+          - $ref: '#/components/schemas/Username'
+          - type: 'null'
+          description: Shown as "User Name".
+        display_name:
+          type:
+          - string
+          - 'null'
+          maxLength: 120
+          description: The user's full_name ("SR - Testing Banani").
+        role:
+          type: string
+          enum:
+          - SR
+          - AMO
+    NationalLoginSubmitUsers:
+      type: object
+      description: The rows behind one tab of the Login / Submit Status screen (D-TSO-MAN-12, contract 1.10.0).
+      required:
+      - date
+      - till_time
+      - as_of
+      - last_updated_at
+      - tab
+      - route_count
+      - truncated
+      - items
+      additionalProperties: false
+      properties:
+        date:
+          $ref: '#/components/schemas/BusinessDate'
+        till_time:
+          type: boolean
+          description: 'True when `date` is today (Dhaka): figures are till the time of `as_of`; false: final figures
+            of a past day.'
+        as_of:
+          $ref: '#/components/schemas/Timestamp'
+        last_updated_at:
+          type:
+          - string
+          - 'null'
+          format: date-time
+          description: Oldest `last_updated_at` of the summary tables this card reads (null when none has been written
+            yet).
+        tab:
+          type: string
+          enum:
+          - not_logged_in
+          - not_uploaded
+        route_count:
+          type: integer
+          minimum: 0
+          description: 'Distinct routes in the tab: target_routes - successful_login for not_logged_in, successful_login
+            - submitted for not_uploaded. Counts every route of the tab, also when `items` is cut (`truncated`).'
+        truncated:
+          type: boolean
+          description: 'True when the tab has more than 2000 rows: `items` then holds the first 2000 in the order of
+            `items` and the rest are left out (a national or wide web reach before the day starts; a TSO''s territory
+            stays far below). The reader says the list is cut and asks for a narrower filter; false when every row is
+            in `items`.'
+        items:
+          type: array
+          maxItems: 2000
+          description: Per route the SR row first, then the AMO rows by username; routes by route name, then route id.
+            At most 2000 rows; see `truncated`.
+          items:
+            $ref: '#/components/schemas/LoginSubmitUserRow'
     NationalBreakdownRequest:
       type: object
       additionalProperties: false
@@ -10900,6 +11775,7 @@ components:
           type:
           - integer
           - 'null'
+          format: int64
           minimum: 0
           description: 'Basis points: 10000 = 100 %. Integer arithmetic, rounded half up; null when the denominator
             is 0.'
@@ -10950,6 +11826,7 @@ components:
           type:
           - integer
           - 'null'
+          format: int64
           minimum: 0
           description: Today's geo-fencing % of the route (validated / completed calls); null before the first call,
             then green.
@@ -11086,6 +11963,7 @@ components:
           type:
           - integer
           - 'null'
+          format: int64
           minimum: 0
           description: 10000 minus the route geo-fencing basis points today.
     CategoryQty:
@@ -11211,6 +12089,8 @@ components:
           oneOf:
           - $ref: '#/components/schemas/Decimal3'
           - type: 'null'
+          description: The route's monthly target for the category / the working days of the month. Null without a
+            target, and null when the month has no working day (W = 0, lead ruling R-F-13).
         sales:
           type: integer
           format: int64
@@ -11219,7 +12099,10 @@ components:
           type:
           - integer
           - 'null'
+          format: int64
           minimum: 0
+          description: sales / daily_target in basis points, uncapped (may exceed 10000, hence int64, R-F-16); null
+            whenever daily_target is null (R-F-13), and null when the route's monthly target is 0 (daily_target "0.000").
     RouteMap:
       type: object
       description: 'The "Map Details" page of a route and day: header, markers, SR path and the cards under the map.
@@ -11320,6 +12203,7 @@ components:
               type:
               - integer
               - 'null'
+              format: int64
               minimum: 0
               description: 'Basis points: 10000 = 100 %. Integer arithmetic, rounded half up; null when the denominator
                 is 0.'
@@ -11683,6 +12567,7 @@ components:
         by_category:
           type: array
           maxItems: 10
+          description: Sold quantity of sale lines only (no free or DRP lines), in base units (D-TSO-MAN-09, contract 1.10.0).
           items: { $ref: '#/components/schemas/CategoryVolume' }
         by_channel:
           type: array
@@ -11906,7 +12791,22 @@ components:
               suspicious_visits: { type: integer, minimum: 0 }
     TargetAchievement:
       type: object
-      required: [month, as_of, node, tilldate_basis, rows]
+      description: |
+        Monthly target and achievement of a node (D-TSO-MAN-05, 39, 40). Till-date: elapsed_days e and period_days n of
+        the basis (calendar days by default: e = day of month of `day`, n = days in the month; working days: the working
+        days in [1st..day] and in the month); a past month has e = n, a future month e = 0. Item (variant) till-date =
+        round_half_up(T * e / n); a category or card figure is the sum of its item rows, never the card total rounded
+        once (the screenshot's eight Cigarette items, T = 40999 in all: 25/31 gives 33064; 21/26 gives 33114, where a
+        rounded total would give 33115). e and n are per node: `elapsed_days` and `period_days` here are those of `node`
+        and govern `rows`; each entry of `children` carries its own pair and its rows follow it. On the working-days basis
+        n is W of the node's own path (D-TSO-MAN-08, WorkingDays.resolve: a zone holiday or emergency off counts only for
+        that zone), so a child zone can have n = 0 while its territory has n > 0, or the other way round; on the
+        calendar-days basis every node has the parent's pair. n = 0 at a node (a working-days basis in a month with no
+        working day at that node) makes the till-date members of every row of that node null: tilldate_target_qty_base,
+        remaining_tilldate_qty_base and tilldate_achievement_pct_bp, and its rows' Decimal3 tilldate_target_qty is "0.000"
+        (lead ruling R-F-15). From contract 1.10.0: `day`,
+        `elapsed_days`, `period_days`, `last_updated_at`, `children` and the integer row members.
+      required: [month, as_of, node, tilldate_basis, rows, day, elapsed_days, period_days, last_updated_at]
       additionalProperties: false
       properties:
         month: { $ref: '#/components/schemas/Month' }
@@ -11915,22 +12815,71 @@ components:
         tilldate_basis: { type: string, enum: [calendar_days, working_days, route_days] }
         rows:
           type: array
-          items:
-            type: object
-            required: [product_level, product_id, name, unit, target_qty, achieved_qty, tilldate_target_qty, remaining_qty]
-            additionalProperties: false
-            properties:
-              product_level: { $ref: '#/components/schemas/ProductLevel' }
-              product_id: { $ref: '#/components/schemas/Id' }
-              name: { type: string, maxLength: 120 }
-              unit: { type: string, enum: [stick, piece, dozen, box, pack] }
-              target_qty: { $ref: '#/components/schemas/Decimal3' }
-              achieved_qty: { $ref: '#/components/schemas/Decimal3' }
-              tilldate_target_qty: { $ref: '#/components/schemas/Decimal3' }
-              achievement_pct: { type: [number, 'null'], minimum: 0 }
-              remaining_qty: { $ref: '#/components/schemas/Decimal3' }
-              memo_target: { type: [integer, 'null'], minimum: 0 }
-              memo_achieved: { type: [integer, 'null'], minimum: 0 }
+          items: { $ref: '#/components/schemas/TargetAchievementRow' }
+        day:
+          $ref: '#/components/schemas/BusinessDate'
+          description: 'The business date the figures run to: today (Dhaka) in the current month, the last day of a past month, the first day of a future month.'
+        elapsed_days: { type: integer, minimum: 0, maximum: 31, description: 'e of the till-date basis at `node` (each child carries its own, R-F-15).' }
+        period_days: { type: integer, minimum: 0, maximum: 31, description: 'n of the till-date basis at `node`, 0..31; 0 only on a working-days basis in a month with no working day at `node`, and then the till-date members of every row in `rows` are null (R-F-15). Each child carries its own `period_days`, and the same rule applies to its rows.' }
+        last_updated_at:
+          type: [string, 'null']
+          format: date-time
+          description: Oldest `last_updated_at` of the summary tables the achievement reads (null when none has been written yet); the app shows "as of" from it.
+        children:
+          type: array
+          maxItems: 200
+          description: 'Only with `children=zone`: one node per zone in the caller''s reach under `node` (the Zone cards), each with its rows at the requested product level; absent otherwise.'
+          items: { $ref: '#/components/schemas/TargetAchievementNode' }
+    TargetAchievementRow:
+      type: object
+      description: |
+        One product row of a target node. The integer members are the TSO app's figures (D-TSO-MAN-39, 40):
+        target_qty_base T = the route monthly targets of the month in reach; achieved_qty_base A = sold quantity of sale
+        lines, business dates 1st..`day`; tilldate_target_qty_base T' = per item round_half_up(T * e / n), a category row
+        the sum of its items (never its own T rounded once; see TargetAchievement); remaining_* = max(target - A, 0); *_pct_bp = A / target in basis points, rounded half up,
+        uncapped (int64, R-F-16), null when the target is 0. When `period_days` n of the row's node is 0 (the parent's for
+        `rows`, the child's own for a child's rows) the three till-date members (tilldate_target_qty_base,
+        remaining_tilldate_qty_base, tilldate_achievement_pct_bp) are null and tilldate_target_qty is "0.000" (R-F-15). The
+        Decimal3 members and `achievement_pct` keep their meaning for the AMO app.
+      required: [product_level, product_id, name, unit, target_qty, achieved_qty, tilldate_target_qty, remaining_qty, category_code, target_qty_base, achieved_qty_base, tilldate_target_qty_base, remaining_qty_base, remaining_tilldate_qty_base, achievement_pct_bp, tilldate_achievement_pct_bp]
+      additionalProperties: false
+      properties:
+        product_level: { $ref: '#/components/schemas/ProductLevel' }
+        product_id: { $ref: '#/components/schemas/Id' }
+        name: { type: string, maxLength: 120 }
+        unit: { type: string, enum: [stick, piece, dozen, box, pack] }
+        target_qty: { $ref: '#/components/schemas/Decimal3' }
+        achieved_qty: { $ref: '#/components/schemas/Decimal3' }
+        tilldate_target_qty: { $ref: '#/components/schemas/Decimal3', description: 'The AMO app''s till-date target. "0.000" when `period_days` of the row''s node is 0 (R-F-15: T * e / n has no value there; the member stays required and non-null in 1.10.0).' }
+        achievement_pct: { type: [number, 'null'], minimum: 0 }
+        remaining_qty: { $ref: '#/components/schemas/Decimal3' }
+        memo_target: { type: [integer, 'null'], minimum: 0 }
+        memo_achieved: { type: [integer, 'null'], minimum: 0 }
+        category_code: { type: string, maxLength: 40, description: The row's category (its own code on a category row); the Details table filters by it. }
+        target_qty_base: { type: integer, format: int64, minimum: 0, description: Monthly target T in base units. }
+        achieved_qty_base: { type: integer, format: int64, minimum: 0, description: Achievement A month to date in base units. }
+        tilldate_target_qty_base: { type: [integer, 'null'], format: int64, minimum: 0, description: 'Till-date target T'' in base units; null when `period_days` is 0 (R-F-15), the `period_days` of the row''s node.' }
+        remaining_qty_base: { type: integer, format: int64, minimum: 0, description: 'max(T - A, 0).' }
+        remaining_tilldate_qty_base: { type: [integer, 'null'], format: int64, minimum: 0, description: 'max(T'' - A, 0); null when `period_days` is 0 (R-F-15), the `period_days` of the row''s node.' }
+        achievement_pct_bp: { type: [integer, 'null'], format: int64, minimum: 0, description: 'A / T in basis points, uncapped (int64, R-F-16); null when T is 0.' }
+        tilldate_achievement_pct_bp: { type: [integer, 'null'], format: int64, minimum: 0, description: 'A / T'' in basis points, uncapped (int64, R-F-16); null when T'' is 0, and null when `period_days` is 0 (R-F-15), the `period_days` of the row''s node.' }
+    TargetAchievementNode:
+      type: object
+      description: |
+        One child node of a target answer (`children=zone`), with the same rows as the parent (contract 1.10.0).
+        It carries its own till-date basis days (lead ruling R-F-15, D-TSO-MAN-08): on the working-days basis e and n are
+        the working days at this node's own path (WorkingDays.resolve: a zone holiday or emergency off counts only for
+        that zone), so they can differ from the parent's; on the calendar-days basis they equal the parent's. n = 0 at
+        this node makes the till-date members of its rows null, whatever the parent's n.
+      required: [node, elapsed_days, period_days, rows]
+      additionalProperties: false
+      properties:
+        node: { $ref: '#/components/schemas/NodeRef' }
+        elapsed_days: { type: integer, minimum: 0, maximum: 31, description: 'e of the till-date basis at this node (R-F-15).' }
+        period_days: { type: integer, minimum: 0, maximum: 31, description: 'n of the till-date basis at this node, 0..31; 0 makes the till-date members of this node''s rows null, whatever the parent''s n (R-F-15).' }
+        rows:
+          type: array
+          items: { $ref: '#/components/schemas/TargetAchievementRow' }
 
     # ---------- risk ----------
     RiskSignal:
@@ -14664,6 +15613,233 @@ components:
         message: { type: string, maxLength: 500 }
         stack: { type: [string, 'null'], maxLength: 16000 }
         build: { type: [string, 'null'], maxLength: 40 }
+
+    # ---------- support tickets and the notifications inbox (contract 1.10.0, D-TSO-MAN-17 to 26) ----------
+    TicketNumber:
+      type: string
+      pattern: '^INC[0-9]{6,}$'
+      maxLength: 22
+      description: Server-assigned ticket number, "INC" and at least 6 digits from INC100001 (7 digits after INC999999), so the vendor's numbers (INC0107xx) never collide (D-TSO-MAN-18). Assigned at the first insert; a replay answers the stored number. At most 22 characters (the bigint sequence has at most 19 digits).
+      examples: [INC100001]
+    SupportTicketStatus:
+      type: string
+      enum: [new, in_progress, resolved, closed, cancelled]
+      description: Ticket life cycle (D-TSO-MAN-20). Open = new + in_progress. No reopen and no auto-close; an unsolved problem is a new ticket quoting the old number.
+    SupportTicketPriority:
+      type: string
+      enum: [p1, p2, p3, p4]
+      description: 'P1 - Highest, P2 - High, P3 - Medium, P4 - Low (labels in the localisation layer). The default comes from the issue type (`attrs.priority`, P1 for all 31 types); the support desk may change it (D-TSO-MAN-19).'
+    SupportTicketEventKind:
+      type: string
+      enum: [created, comment, close_review, status_change, resolution, priority_change, assign]
+      description: 'Thread entry kind: created (the ticket), comment (reporter or support), close_review (the reporter''s "Submit Review & Close"), status_change, resolution (with the resolution message), priority_change, assign (support desk).'
+    NotificationKind:
+      type: string
+      enum: [ticket_updated, leave_decided, final_submit_auto]
+      description: Inbox row kind (D-TSO-MAN-26). ticket_updated (a support action on the caller's ticket), leave_decided (the caller's leave approved or rejected), final_submit_auto (a zone in the caller's reach was final-submitted by the midnight job).
+    SupportTicket:
+      type: object
+      description: A ticket as the reporter and the support desk read it (D-TSO-MAN-18 to 25). The desk-only members are absent for any other caller.
+      required: [ticket_uuid, ticket_no, issue_type_code, issue_type_label_en, issue_type_label_bn, category_label_en, title, description, source, priority, status, requester, affected_username, business_date, captured_at, created_at, updated_at, first_response_at, resolved_at, closed_at, cancelled_at, resolution_code, resolution_label_en, resolution_notes, cancel_reason, version, attachment_count]
+      additionalProperties: false
+      properties:
+        ticket_uuid: { $ref: '#/components/schemas/Uuid' }
+        ticket_no:
+          oneOf:
+            - { $ref: '#/components/schemas/TicketNumber' }
+            - type: 'null'
+        issue_type_code: { type: string, pattern: '^[a-z][a-z0-9_]{1,40}$' }
+        issue_type_label_en: { type: string, maxLength: 120 }
+        issue_type_label_bn: { type: [string, 'null'], maxLength: 120, description: Null until AKTCL supplies the Bangla label (the app shows the English one). }
+        category_label_en: { type: string, maxLength: 40, description: 'Always "Tickets" (screenshot 15 shows it before the urgency, "Tickets - High").' }
+        title: { type: string, maxLength: 120 }
+        description: { type: string, maxLength: 2000 }
+        source: { type: string, enum: [quick, manual] }
+        priority: { $ref: '#/components/schemas/SupportTicketPriority' }
+        status: { $ref: '#/components/schemas/SupportTicketStatus' }
+        requester:
+          type: object
+          description: The user who raised the ticket.
+          required: [user_id, username, full_name, role]
+          additionalProperties: false
+          properties:
+            user_id: { $ref: '#/components/schemas/Id' }
+            username: { $ref: '#/components/schemas/Username' }
+            full_name: { type: string, maxLength: 120 }
+            role: { $ref: '#/components/schemas/Role' }
+        affected_username: { type: [string, 'null'], pattern: '^[A-Za-z0-9._-]{3,40}$' }
+        assignee_user_id: { type: [integer, 'null'], format: int64, minimum: 1, description: Support desk only. }
+        assignee_name: { type: [string, 'null'], maxLength: 120, description: Support desk only. }
+        business_date: { $ref: '#/components/schemas/BusinessDate' }
+        captured_at: { $ref: '#/components/schemas/Timestamp' }
+        created_at: { $ref: '#/components/schemas/Timestamp' }
+        updated_at: { $ref: '#/components/schemas/Timestamp' }
+        first_response_at:
+          oneOf:
+            - { $ref: '#/components/schemas/Timestamp' }
+            - type: 'null'
+        resolved_at:
+          oneOf:
+            - { $ref: '#/components/schemas/Timestamp' }
+            - type: 'null'
+        closed_at:
+          oneOf:
+            - { $ref: '#/components/schemas/Timestamp' }
+            - type: 'null'
+        cancelled_at:
+          oneOf:
+            - { $ref: '#/components/schemas/Timestamp' }
+            - type: 'null'
+        resolution_code: { type: [string, 'null'], pattern: '^[a-z][a-z0-9_]{1,40}$', description: A `ticket_resolution_code` code. }
+        resolution_label_en: { type: [string, 'null'], maxLength: 120 }
+        resolution_notes: { type: [string, 'null'], maxLength: 2000 }
+        cancel_reason: { type: [string, 'null'], maxLength: 500 }
+        version: { type: integer, minimum: 1, description: Row version; the desk sends it as `expected_version`. }
+        attachment_count: { type: integer, minimum: 0, description: Photos on the ticket and its events. }
+    SupportTicketPage:
+      type: object
+      required: [items, next_cursor]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          maxItems: 200
+          items: { $ref: '#/components/schemas/SupportTicket' }
+        next_cursor:
+          oneOf:
+            - { $ref: '#/components/schemas/PageCursor' }
+            - type: 'null'
+    SupportTicketEvent:
+      type: object
+      description: One entry of a ticket's thread (D-TSO-MAN-21). A support actor is shown as "Support", never by name.
+      required: [event_uuid, kind, body, actor_is_support, actor_display, from_status, to_status, resolution_code, created_at, attachments]
+      additionalProperties: false
+      properties:
+        event_uuid: { $ref: '#/components/schemas/Uuid' }
+        kind: { $ref: '#/components/schemas/SupportTicketEventKind' }
+        body:
+          type: [string, 'null']
+          maxLength: 2400
+          description: 'The entry''s text; null for an entry without text. A comment or a desk reply is 1 to 2000 characters (SupportTicketEventPayload, SupportTicketEventWrite). A `resolution` entry carries the D-TSO-MAN-20 message (updateSupportTicket): 62 fixed characters, the ticket number (at most 22), the resolution label (at most 120) and the notes (at most 2000), so at most 2204; 2400 bounds it with room.'
+        actor_is_support: { type: boolean }
+        actor_display: { type: string, maxLength: 120, description: '"Support" for a support-desk actor or the job, else the reporter''s full name.' }
+        from_status:
+          oneOf:
+            - { $ref: '#/components/schemas/SupportTicketStatus' }
+            - type: 'null'
+        to_status:
+          oneOf:
+            - { $ref: '#/components/schemas/SupportTicketStatus' }
+            - type: 'null'
+        resolution_code: { type: [string, 'null'], pattern: '^[a-z][a-z0-9_]{1,40}$' }
+        created_at: { $ref: '#/components/schemas/Timestamp' }
+        attachments:
+          type: array
+          maxItems: 3
+          description: Media uuids of the event's photos (read through the media read URL).
+          items: { $ref: '#/components/schemas/Uuid' }
+    SupportTicketDetail:
+      type: object
+      required: [ticket, events, attachments]
+      additionalProperties: false
+      properties:
+        ticket: { $ref: '#/components/schemas/SupportTicket' }
+        events:
+          type: array
+          maxItems: 500
+          description: Oldest first.
+          items: { $ref: '#/components/schemas/SupportTicketEvent' }
+        attachments:
+          type: array
+          maxItems: 3
+          description: Media uuids of the ticket's own photos (read through the media read URL).
+          items: { $ref: '#/components/schemas/Uuid' }
+    SupportTicketSummary:
+      type: object
+      description: Ticket counts by status (D-TSO-MAN-25); the caller's own tickets, or every ticket for the support desk. No percentage members (lead ruling R-F-14) - the phone and the web compute each whole percent once from these counts (resolved / total, open / total; TicketMath on the phone, the corpus formatter on the web), and total 0 prints "0%".
+      required: [as_of, total, new, in_progress, resolved, closed, cancelled, open]
+      additionalProperties: false
+      properties:
+        as_of: { $ref: '#/components/schemas/Timestamp' }
+        total: { type: integer, minimum: 0, description: Every status. }
+        new: { type: integer, minimum: 0 }
+        in_progress: { type: integer, minimum: 0 }
+        resolved: { type: integer, minimum: 0 }
+        closed: { type: integer, minimum: 0 }
+        cancelled: { type: integer, minimum: 0 }
+        open: { type: integer, minimum: 0, description: new + in_progress. }
+    SupportTicketUpdate:
+      type: object
+      description: |
+        One support-desk action (D-TSO-MAN-20). `op_uuid` makes it idempotent (a new v4 UUID per desk action, kept for
+        its retries; the replay rules, the event UUIDs and the 409 for a reused `op_uuid` are in updateSupportTicket);
+        `expected_version` is the `version` the desk read. At least one change besides those two. A resolve needs
+        `resolution_code` and `resolution_notes`; a cancel needs `cancel_reason`.
+      required: [op_uuid, expected_version]
+      minProperties: 3
+      additionalProperties: false
+      properties:
+        op_uuid: { $ref: '#/components/schemas/Uuid' }
+        expected_version: { type: integer, minimum: 1 }
+        status: { type: string, enum: [in_progress, resolved, closed, cancelled] }
+        priority: { $ref: '#/components/schemas/SupportTicketPriority' }
+        assignee_user_id: { type: [integer, 'null'], format: int64, minimum: 1, description: Null unassigns. }
+        resolution_code: { type: string, pattern: '^[a-z][a-z0-9_]{1,40}$', description: A `ticket_resolution_code` code. }
+        resolution_notes: { type: string, minLength: 1, maxLength: 2000, description: 'D-TSO-MAN-20 (1 to 2000). The resolution message that wraps them fits SupportTicketEvent.body (at most 2204 of 2400 characters).' }
+        cancel_reason: { type: string, minLength: 3, maxLength: 500 }
+    SupportTicketEventWrite:
+      type: object
+      description: A support-desk reply; `event_uuid` makes it idempotent.
+      required: [event_uuid, body]
+      additionalProperties: false
+      properties:
+        event_uuid: { $ref: '#/components/schemas/Uuid' }
+        body: { type: string, minLength: 1, maxLength: 2000 }
+    NotificationItem:
+      type: object
+      description: One inbox row (D-TSO-MAN-26). The texts are fixed by the producer in both languages; `title_bn` and `body_bn` may be null (the app shows the English text).
+      required: [id, kind, ref_type, ref_id, title_en, title_bn, body_en, body_bn, created_at, business_date, read_at]
+      additionalProperties: false
+      properties:
+        id: { $ref: '#/components/schemas/Id' }
+        kind: { $ref: '#/components/schemas/NotificationKind' }
+        ref_type: { type: string, enum: [support_ticket, leave_application, zone_day] }
+        ref_id: { type: string, minLength: 1, maxLength: 64, description: 'The ticket_uuid, the leave_uuid, or `<zone_id>:<business_date>` for a zone-day.' }
+        title_en: { type: string, maxLength: 120 }
+        title_bn: { type: [string, 'null'], maxLength: 120 }
+        body_en: { type: string, maxLength: 300 }
+        body_bn: { type: [string, 'null'], maxLength: 300 }
+        created_at: { $ref: '#/components/schemas/Timestamp' }
+        business_date: { $ref: '#/components/schemas/BusinessDate' }
+        read_at:
+          oneOf:
+            - { $ref: '#/components/schemas/Timestamp' }
+            - type: 'null'
+    NotificationInbox:
+      type: object
+      required: [as_of, unread_count, items, next_before_id]
+      additionalProperties: false
+      properties:
+        as_of: { $ref: '#/components/schemas/Timestamp' }
+        unread_count: { type: integer, minimum: 0, description: 'Every unread row of the caller, not only this page.' }
+        items:
+          type: array
+          maxItems: 100
+          description: Newest first.
+          items: { $ref: '#/components/schemas/NotificationItem' }
+        next_before_id: { type: [integer, 'null'], format: int64, minimum: 1, description: The `before_id` of the next (older) page; null on the last page. }
+    NotificationReadRequest:
+      type: object
+      required: [up_to_id]
+      additionalProperties: false
+      properties:
+        up_to_id: { $ref: '#/components/schemas/Id' }
+    NotificationReadResult:
+      type: object
+      required: [unread_count]
+      additionalProperties: false
+      properties:
+        unread_count: { type: integer, minimum: 0 }
     MediaMultipartUpload:
       type: object
       required: [media_uuid, purpose, sha256, file]
@@ -15030,8 +16206,8 @@ components:
         reason: { $ref: '#/components/schemas/ChangeReason' }
     AdminModule:
       type: string
-      enum: [masterdata, routes, outlets, products, prices, users, targets, credentials, mdm, reports, config, data_entry, indent, leaderboard, daily_tracking]
-      description: The fixed module list of an ADMIN user's grants (docs/34 s1).
+      enum: [masterdata, routes, outlets, products, prices, users, targets, credentials, mdm, reports, config, data_entry, indent, leaderboard, daily_tracking, support]
+      description: 'The fixed module list of an ADMIN user''s grants (docs/34 s1). `support` from contract 1.10.0 (lead ruling R-F-11): the support ticket routes (`/v1/support/tickets` and every path under it) belong to it; the support-desk permission stays `support.ticket.manage` (`Me.support_desk`).'
     UserAccess:
       type: object
       required: [user_id, role, version, modules, brand_ids]

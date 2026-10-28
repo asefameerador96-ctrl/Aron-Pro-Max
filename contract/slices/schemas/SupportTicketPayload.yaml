@@ -1,0 +1,55 @@
+SupportTicketPayload:
+  type: object
+  description: 'A ticket raised on the phone (contract 1.10.0, D-TSO-MAN-18, 19, 24). Write-once; the record''s
+    `client_uuid` is the
+
+    ticket''s UUID and the server assigns `ticket_no` at the first insert (a replay answers the stored row). The
+
+    requester is the token''s user; a requester role outside the configured requester roles (default TSO,
+
+    D-TSO-MAN-17) is quarantined `scope_out_of_reach`. When an ADMIN accepts such a quarantined record
+
+    (`resolveQuarantine`), the server runs the role check again and refuses the accept while the role is still not
+
+    allowed; the record stays quarantined (no new outcome code, lead ruling R-F-05). An issue type that is not an
+
+    active `ticket_issue_type` code on the business date is rejected `issue_type_unknown`. The priority comes from
+
+    the issue type. Photos follow as `media_meta` records with purpose
+
+    `support` and ref_type `support_ticket` (at most 3, D-TSO-MAN-23). Family: own header, rank 0.
+
+    '
+  required:
+  - issue_type_code
+  - title
+  - description
+  - source
+  additionalProperties: false
+  properties:
+    issue_type_code:
+      type: string
+      pattern: ^[a-z][a-z0-9_]{1,40}$
+      description: A `ticket_issue_type` code.
+    title:
+      type: string
+      minLength: 1
+      maxLength: 120
+      description: 'Quick ticket: the issue type label (en); manual ticket: typed by the reporter.'
+    description:
+      type: string
+      maxLength: 2000
+      description: May be empty on a quick ticket.
+    affected_username:
+      type:
+      - string
+      - 'null'
+      pattern: ^[A-Za-z0-9._-]{3,40}$
+      description: Optional login name of the user the problem is about, when the ticket is raised from another
+        user's phone (D-TSO-MAN-24); the server resolves it for the support desk only. The ticket stays the reporter's.
+    source:
+      type: string
+      enum:
+      - quick
+      - manual
+      description: 'quick: from a Quick Ticket tile; manual: from Create Ticket.'

@@ -1,0 +1,9 @@
+TicketNumber:
+  type: string
+  pattern: ^INC[0-9]{6,}$
+  maxLength: 22
+  description: Server-assigned ticket number, "INC" and at least 6 digits from INC100001 (7 digits after INC999999),
+    so the vendor's numbers (INC0107xx) never collide (D-TSO-MAN-18). Assigned at the first insert; a replay answers
+    the stored number. At most 22 characters (the bigint sequence has at most 19 digits).
+  examples:
+  - INC100001

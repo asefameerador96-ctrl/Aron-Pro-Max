@@ -1,0 +1,108 @@
+NationalSegmentShare:
+  type: object
+  description: 'By Segment Value Contribution card (D-TSO-MAN-11, contract 1.10.0). Value share = the segment''s
+    sale-line gross milli-taka / total_value_mtk (discounts are zero under docs/27). Volume share is computed within
+    the segment''s unit family: qty_base / the total_qty_base of the family with the same base_unit (sticks: cigarette
+    and bidi; pieces; dozens); different units are never added.'
+  required:
+  - date
+  - till_time
+  - as_of
+  - last_updated_at
+  - total_value_mtk
+  - families
+  - segments
+  additionalProperties: false
+  properties:
+    date:
+      $ref: '#/components/schemas/BusinessDate'
+    till_time:
+      type: boolean
+      description: 'True when `date` is today (Dhaka): figures are till the time of `as_of`; false: final figures
+        of a past day.'
+    as_of:
+      $ref: '#/components/schemas/Timestamp'
+    last_updated_at:
+      type:
+      - string
+      - 'null'
+      format: date-time
+      description: Oldest `last_updated_at` of the summary tables this card reads (null when none has been written
+        yet).
+    total_value_mtk:
+      $ref: '#/components/schemas/MtkNonNegative'
+    families:
+      type: array
+      maxItems: 3
+      description: Volume total per unit family, the denominator of volume_share_bp.
+      items:
+        type: object
+        required:
+        - base_unit
+        - total_qty_base
+        additionalProperties: false
+        properties:
+          base_unit:
+            type: string
+            enum:
+            - stick
+            - piece
+            - dozen
+          total_qty_base:
+            type: integer
+            format: int64
+            minimum: 0
+    segments:
+      type: array
+      maxItems: 50
+      description: Sorted by value_mtk descending (the x axis order).
+      items:
+        type: object
+        required:
+        - segment_code
+        - segment_name
+        - category_code
+        - base_unit
+        - value_mtk
+        - value_share_bp
+        - qty_base
+        - volume_share_bp
+        additionalProperties: false
+        properties:
+          segment_code:
+            type: string
+            maxLength: 40
+          segment_name:
+            type: string
+            maxLength: 120
+          category_code:
+            type: string
+            maxLength: 40
+          base_unit:
+            type: string
+            enum:
+            - stick
+            - piece
+            - dozen
+          value_mtk:
+            $ref: '#/components/schemas/MtkNonNegative'
+          value_share_bp:
+            type:
+            - integer
+            - 'null'
+            minimum: 0
+            maximum: 10000
+            description: value_mtk / total_value_mtk in basis points, rounded half up; null when the total is 0.
+          qty_base:
+            type: integer
+            format: int64
+            minimum: 0
+            description: Sold quantity of sale lines in base units.
+          volume_share_bp:
+            type:
+            - integer
+            - 'null'
+            minimum: 0
+            maximum: 10000
+            description: qty_base / the total_qty_base of its family in basis points, rounded half up; null when
+              that total is 0.

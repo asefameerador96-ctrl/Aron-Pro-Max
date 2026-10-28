@@ -1,0 +1,86 @@
+path: /v1/support/tickets/{ticket_uuid}
+method: patch
+operation:
+  tags:
+  - support
+  operationId: updateSupportTicket
+  summary: Support desk action on a ticket (status, priority, assignee, resolution or cancellation).
+  description: 'Support desk only (permission `support.ticket.manage`; anyone else 403 `ERR_FORBIDDEN`), D-TSO-MAN-20
+    (contract
+
+    1.10.0). Checks run in this order: the desk permission (403), the request body (400), the ticket (404), the
+
+    `op_uuid` replay check, `expected_version` (409), then the transition rules (409).
+
+    Idempotent by `op_uuid`. The replay check comes before `expected_version` and the transition rules, so a retried
+
+    op whose first answer was lost replays instead of failing: an `op_uuid` this ticket already applied with the
+    same body
+
+    (compared as a JSON value: member order and spacing ignored) answers 200 with the ticket as it is now and
+
+    writes nothing again (no event, audit row, inbox row or push). The same `op_uuid` with another body, or one
+
+    already used on another ticket or by any other ticket event, is 409 `ERR_CONFLICT`; nothing changes.
+
+    `expected_version` must equal the ticket''s `version`, else 409 `ERR_CONFLICT` (reload and re-apply). Allowed
+
+    status changes: new -> in_progress; new or in_progress -> resolved (needs `resolution_code` from the
+
+    `ticket_resolution_code` list and `resolution_notes`; writes the support message
+
+    "[TicketID: <ticket_no>] - Resolved:\nResolution Code: <label>\nResolution Notes:\n\n<notes>"); new or in_progress
+
+    -> cancelled (needs `cancel_reason`); resolved -> closed. Any other status, the current one included, is 409
+
+    `ERR_TICKET_TRANSITION_INVALID`; there is no reopen and no auto-close. A `priority` or `assignee_user_id` equal
+
+    to the current value is not a change; an op with no change at all answers 200 with the ticket and writes
+
+    nothing (it records no op, so its `op_uuid` stays unused).
+
+    One op writes, in one transaction, one event per change in this order: the status entry (`status_change`, or
+
+    `resolution` for a resolve), then `priority_change`, then `assign`. The first of them has `event_uuid` =
+
+    `op_uuid`; each later one has the name-based, version-4-shaped UUID (as StableIds.v4: SHA-256 of the UTF-8 name,
+
+    first 16 bytes, version nibble 4, variant bits 10) of `aron.support.ticket-op:<op_uuid>:<kind>`. A retry
+
+    therefore can never add a second event, and the server keeps the op''s body fingerprint with it for the
+
+    same-body check. The op is audited; after commit the reporter gets one inbox row for it and, when ticket pushes
+
+    are switched on, one push with reason `ticket_updated`.
+
+    '
+  parameters:
+  - name: ticket_uuid
+    in: path
+    required: true
+    schema:
+      $ref: '#/components/schemas/Uuid'
+    description: The ticket's client UUID.
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          $ref: '#/components/schemas/SupportTicketUpdate'
+  responses:
+    '200':
+      description: The ticket after the change.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/SupportTicket'
+    '400':
+      $ref: '#/components/responses/BadRequest'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'
+    '404':
+      $ref: '#/components/responses/NotFound'
+    '409':
+      $ref: '#/components/responses/Conflict'

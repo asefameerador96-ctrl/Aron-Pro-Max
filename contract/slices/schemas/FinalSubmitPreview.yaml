@@ -85,6 +85,43 @@ FinalSubmitPreview:
             - integer
             - 'null'
             minimum: 0
+          route_class:
+            type:
+            - string
+            - 'null'
+            enum:
+            - normal
+            - manual
+            - dummy_br
+            - dummy_institutional
+            - null
+            description: The route's class (`app.route.route_class`); contract 1.10.0, optional until the server
+              sends it.
+          visit_kind:
+            type:
+            - string
+            - 'null'
+            maxLength: 20
+            description: The route's visit kind as stored (daily, 3f, 2f); null for an AMO route or a route without
+              one. The card title is "<route name> <kind label>" with the label Daily, 3F, 2F or AMO (D-TSO-MAN-27,
+              contract 1.10.0).
+          ff_role:
+            oneOf:
+            - $ref: '#/components/schemas/Role'
+            - type: 'null'
+            description: Role of the route-day's field user (the "FF:" line); null with ff_user_id null ("SR Not
+              Set"). Contract 1.10.0.
+          upload_state:
+            type: string
+            enum:
+            - uploaded
+            - web_entry
+            - not_uploaded
+            - not_due
+            description: 'uploaded: the route-day''s sales are submitted; web_entry: a saved Web Entry stands for
+              it (counts as uploaded); not_uploaded: due and not uploaded (amber "Not uploaded" chip, named in the
+              warning); not_due: not planned and without data, or a dummy BR or Institutional route without data
+              (D-TSO-MAN-27, contract 1.10.0; optional until the server sends it).'
     warnings:
       type: array
       maxItems: 20
@@ -94,3 +131,16 @@ FinalSubmitPreview:
         - routes_not_sales_submitted
         - routes_with_pending_rows
         - routes_not_logged_in
+    submit_seq:
+      type: integer
+      minimum: 0
+      description: Number of reopened Final Submits of this zone-day; the app derives the next client_uuid from
+        it (FinalSubmitRequest, D-TSO-MAN-28). Contract 1.10.0, optional until the server sends it.
+    warn_route_ids:
+      type: array
+      maxItems: 200
+      description: The due routes not uploaded (upload_state not_uploaded), named in the app's warning dialog ("Submit
+        anyway" / "Cancel"); the submit is never blocked (D-TSO-MAN-27). Empty when nothing is due. Contract 1.10.0,
+        optional until the server sends it.
+      items:
+        $ref: '#/components/schemas/Id'

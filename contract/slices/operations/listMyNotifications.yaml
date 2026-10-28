@@ -1,0 +1,46 @@
+path: /v1/me/notifications
+method: get
+operation:
+  tags:
+  - notifications
+  operationId: listMyNotifications
+  summary: The caller's notification inbox, newest first (the bell in the TSO app).
+  description: 'D-TSO-MAN-26 (contract 1.10.0). Own rows only: the user is the token''s user, never a parameter.
+    Newest first by
+
+    `id`; `before_id` pages back to older rows (`next_before_id` of the previous page). `unread_count` counts every
+
+    unread row of the caller, not only this page. Kinds: `ticket_updated`, `leave_decided`, `final_submit_auto`.
+
+    The app reads it on Dashboard open, on pull-to-refresh and after a push with reason `notification`; it never
+
+    polls. Rows older than the inbox retention (90 days by default) are pruned by the server.
+
+    '
+  parameters:
+  - name: before_id
+    in: query
+    required: false
+    description: Only rows with an `id` below this one (the `next_before_id` of the previous page).
+    schema:
+      $ref: '#/components/schemas/Id'
+  - name: limit
+    in: query
+    required: false
+    description: Page size.
+    schema:
+      type: integer
+      minimum: 1
+      maximum: 100
+      default: 50
+  responses:
+    '200':
+      description: One page of the inbox with the unread count.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/NotificationInbox'
+    '400':
+      $ref: '#/components/responses/BadRequest'
+    '401':
+      $ref: '#/components/responses/Unauthorized'

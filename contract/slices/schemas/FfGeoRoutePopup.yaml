@@ -56,5 +56,6 @@ FfGeoRoutePopup:
       type:
       - integer
       - 'null'
+      format: int64
       minimum: 0
       description: 10000 minus the route geo-fencing basis points today.

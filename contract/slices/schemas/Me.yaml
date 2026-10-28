@@ -56,3 +56,8 @@ Me:
         items:
           $ref: '#/components/schemas/Id'
       - type: 'null'
+    support_desk:
+      type: boolean
+      description: 'Whether the caller holds the support-desk permission `support.ticket.manage` (seeded for ADMIN
+        and SUPERADMIN; D-TSO-MAN-22): sees and works every support ticket. Drives the web "Tickets" menu. Absent
+        means false (contract 1.10.0; no schema default, so a reader built before the server sends it keeps compiling).'

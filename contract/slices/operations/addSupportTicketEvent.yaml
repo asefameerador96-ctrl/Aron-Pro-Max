@@ -1,0 +1,56 @@
+path: /v1/support/tickets/{ticket_uuid}/events
+method: post
+operation:
+  tags:
+  - support
+  operationId: addSupportTicketEvent
+  summary: Support desk reply on a ticket.
+  description: 'Support desk only (anyone else 403 `ERR_FORBIDDEN`), D-TSO-MAN-20, 21 (contract 1.10.0); the reporter
+    comments
+
+    through the sync record `support_ticket_event`. Idempotent by `event_uuid`: the first call stores the reply
+
+    (201), a repeat with the same body answers it unchanged (200), the same uuid with another body is 409
+
+    `ERR_CONFLICT`. Allowed only while the ticket is new or in_progress, else 409 `ERR_TICKET_COMMENTS_CLOSED`.
+    The
+
+    first support reply on a new ticket moves it to in_progress and stamps `first_response_at`.
+
+    '
+  parameters:
+  - name: ticket_uuid
+    in: path
+    required: true
+    schema:
+      $ref: '#/components/schemas/Uuid'
+    description: The ticket's client UUID.
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          $ref: '#/components/schemas/SupportTicketEventWrite'
+  responses:
+    '200':
+      description: Replay of a stored reply; nothing changed.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/SupportTicketEvent'
+    '201':
+      description: Reply stored.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/SupportTicketEvent'
+    '400':
+      $ref: '#/components/responses/BadRequest'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'
+    '404':
+      $ref: '#/components/responses/NotFound'
+    '409':
+      $ref: '#/components/responses/Conflict'

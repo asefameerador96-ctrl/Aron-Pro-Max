@@ -1,6 +1,25 @@
 RecordOutcomeCode:
   type: string
-  description: Stable code on a rejected or quarantined record (docs/24 s4.5 lists retryability and the phone action).
+  description: 'Stable code on a rejected or quarantined record (docs/24 s4.5 lists retryability and the phone action).
+
+    From contract 1.10.0 (D-TSO-MAN-31, D-TSO-MAN-17..20): `after_final_submit` (quarantined): a record captured
+
+    before its zone-day''s Final Submit that arrived after it; held out of the day''s figures and counted, flagged
+
+    late, only when an ADMIN accepts it on the quarantine page. `day_final_submitted` (rejected, not retryable):
+    a
+
+    memo, memo edit, void, return or collection captured at or after the zone-day''s Final Submit. `ticket_state_invalid`
+
+    (rejected, not retryable): a `support_ticket_event` the ticket''s state does not allow (a comment after
+
+    resolved, a close review before resolved) or on another user''s ticket. `issue_type_unknown` (rejected, not
+
+    retryable): a `support_ticket` whose `issue_type_code` is not an active `ticket_issue_type` code on its
+
+    business date.
+
+    '
   enum:
   - scope_stale
   - config_version_unknown
@@ -39,3 +58,7 @@ RecordOutcomeCode:
   - insufficient_points
   - gift_photo_exists
   - programme_inactive
+  - after_final_submit
+  - day_final_submitted
+  - ticket_state_invalid
+  - issue_type_unknown

@@ -1,0 +1,92 @@
+NationalBrandCpr:
+  type: object
+  description: 'Brand CPR card (D-TSO-MAN-06, contract 1.10.0): per brand, the distinct (route, outlet) pairs with
+    an effective sale line of the brand on the national route set, over the configured denominator. Both ratios
+    and both denominators are sent.'
+  required:
+  - date
+  - till_time
+  - as_of
+  - last_updated_at
+  - target_outlets
+  - successful_calls
+  - denominator
+  - brands
+  additionalProperties: false
+  properties:
+    date:
+      $ref: '#/components/schemas/BusinessDate'
+    till_time:
+      type: boolean
+      description: 'True when `date` is today (Dhaka): figures are till the time of `as_of`; false: final figures
+        of a past day.'
+    as_of:
+      $ref: '#/components/schemas/Timestamp'
+    last_updated_at:
+      type:
+      - string
+      - 'null'
+      format: date-time
+      description: Oldest `last_updated_at` of the summary tables this card reads (null when none has been written
+        yet).
+    target_outlets:
+      type: integer
+      minimum: 0
+      description: As NationalCpr.target_outlets.
+    successful_calls:
+      type: integer
+      minimum: 0
+      description: As NationalCpr.successful_calls.
+    denominator:
+      type: string
+      enum:
+      - successful_calls
+      - target_outlets
+      description: The denominator `cpr_bp` uses (config; successful_calls by default).
+    brands:
+      type: array
+      maxItems: 100
+      description: Sorted by outlets_bought descending, then brand_code.
+      items:
+        type: object
+        required:
+        - brand_code
+        - brand_name
+        - outlets_bought
+        - cpr_bp
+        - cpr_of_successful_bp
+        - cpr_of_target_bp
+        additionalProperties: false
+        properties:
+          brand_code:
+            type: string
+            maxLength: 40
+          brand_name:
+            type: string
+            maxLength: 120
+          outlets_bought:
+            type: integer
+            minimum: 0
+            description: Distinct (route, outlet) pairs with an effective sale line of the brand.
+          cpr_bp:
+            type:
+            - integer
+            - 'null'
+            format: int64
+            minimum: 0
+            description: outlets_bought / the configured denominator in basis points, rounded half up; null when
+              it is 0. The app prints its whole % from the integers, never from this rounded value (D-TSO-MAN-10).
+          cpr_of_successful_bp:
+            type:
+            - integer
+            - 'null'
+            format: int64
+            minimum: 0
+            description: outlets_bought / successful_calls in basis points; null when successful_calls is 0.
+          cpr_of_target_bp:
+            type:
+            - integer
+            - 'null'
+            format: int64
+            minimum: 0
+            description: outlets_bought / target_outlets in basis points; null when target_outlets is 0.

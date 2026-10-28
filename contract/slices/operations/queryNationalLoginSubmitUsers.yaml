@@ -1,0 +1,48 @@
+path: /v1/dashboards/national/login-submit/users
+method: post
+operation:
+  tags:
+  - dashboards
+  operationId: queryNationalLoginSubmitUsers
+  summary: Login / Submit Status users (Not Logged In, Not Uploaded)
+  description: 'The rows behind the Login / Submit Status card (D-TSO-MAN-12, screenshot 8, contract 1.10.0), over
+    the card''s target routes. `tab=not_logged_in`: routes without a successful login; `tab=not_uploaded`: routes
+    with a successful login and no submit. Per route: one row for the route-day SR (vacant: `user_id` null, shown
+    "SR Not Set"), then one row per active AMO whose scope covers the route''s zone on the date, by `username`;
+    AMO rows follow the route state, not the AMO''s own login. Order: route name, route id, then the SR row before
+    the AMO rows. At most 2000 rows: a longer tab answers the first 2000 in this order with `truncated` true, and
+    `route_count` still counts every route of the tab. BRAND users get 403 (docs/34 s1). Reads summary tables only
+    (never the transaction log); scope from the token.'
+  parameters:
+  - name: tab
+    in: query
+    required: true
+    description: Which list of the screen.
+    schema:
+      type: string
+      enum:
+      - not_logged_in
+      - not_uploaded
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          $ref: '#/components/schemas/NationalDashboardFilter'
+  responses:
+    '200':
+      description: Login / Submit Status users
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/NationalLoginSubmitUsers'
+    '400':
+      $ref: '#/components/responses/BadRequest'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'
+    '429':
+      $ref: '#/components/responses/TooManyRequests'
+    '503':
+      $ref: '#/components/responses/ServiceUnavailable'

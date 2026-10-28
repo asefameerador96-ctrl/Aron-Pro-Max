@@ -1,0 +1,14 @@
+SupportTicketRecord:
+  description: A support ticket raised on the phone (contract 1.10.0, D-TSO-MAN-18); the only way a ticket is created.
+  allOf:
+  - $ref: '#/components/schemas/RecordEnvelope'
+  - type: object
+    required:
+    - type
+    - payload
+    properties:
+      type:
+        const: support_ticket
+      payload:
+        $ref: '#/components/schemas/SupportTicketPayload'
+  unevaluatedProperties: false

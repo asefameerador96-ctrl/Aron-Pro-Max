@@ -1,0 +1,35 @@
+path: /v1/support/tickets/{ticket_uuid}
+method: get
+operation:
+  tags:
+  - support
+  operationId: getSupportTicket
+  summary: One ticket with its thread and photos.
+  description: 'D-TSO-MAN-21, 22 (contract 1.10.0). 404 `ERR_NOT_FOUND` when the ticket is not the caller''s own
+    and the caller
+
+    is not the support desk (no existence leak). Events oldest first; a support actor is shown as "Support", never
+
+    by name. Photos are media uuids, read through the media read URL.
+
+    '
+  parameters:
+  - name: ticket_uuid
+    in: path
+    required: true
+    schema:
+      $ref: '#/components/schemas/Uuid'
+    description: The ticket's client UUID.
+  responses:
+    '200':
+      description: The ticket, its events and its photos.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/SupportTicketDetail'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'
+    '404':
+      $ref: '#/components/responses/NotFound'
