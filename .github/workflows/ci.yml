@@ -381,12 +381,15 @@ jobs:
   # :backend:analytics:test was the long pole of the job above (about 20 of 30 minutes on a normal runner, 37+ on a slow
   # one; two lane runs sat in it on 2026-10-25 and were cancelled). It runs here, in parallel, once; the job above
   # excludes it (-x :backend:analytics:test). Same Gradle task, no test skipped or changed. D-QA-CI-HANG-01.
+  # The suite reached 23 minutes on a normal runner on 2026-10-28 and twice overran a 35-minute step on a slow one with
+  # every finished class green (runs 1668 and 1671, attempt 1 each), so the step guard is 42 minutes and the job 50:
+  # still a hang guard (a hang shows as one class with no END line in the log), no longer a slow-runner guard. D-LEAD-CI-ANALYTICS-TIMEOUT-01.
   jvm-analytics:
     name: Backend analytics tests
     needs: changes
     if: needs.changes.outputs.jvm == 'true'
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    timeout-minutes: 50
     services:
       postgres:
         image: postgres:16
@@ -412,7 +415,7 @@ jobs:
           java-version: "21"
       - uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
       - name: Backend analytics tests
-        timeout-minutes: 35
+        timeout-minutes: 42
         run: ./gradlew --console=plain :backend:analytics:test
       - name: Upload test reports
         if: failure()
