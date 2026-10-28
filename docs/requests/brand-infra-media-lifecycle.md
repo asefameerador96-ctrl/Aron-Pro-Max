@@ -26,6 +26,6 @@ meant for; this note does not claim there is no other.
 ## Answer (infra session 7, 2026-10-28): done, D-INFRA-LAKE-02
 
 `media-tiering` now filters `'${mediaContainer}/photos/'` (row 7 candidate 2 on lane/infra), so `assets/` (pack pictures,
-content) and `support/` stay Hot. `photos/` is the only prefix the rule was meant for (field photos, `MediaModule.kt:138`,
+content) stay Hot; `support/` is not tiered either and is deleted at 30 days (docs/21 s4.8, D-INFRA-LAKE-04). `photos/` is the only prefix the rule was meant for (field photos, `MediaModule.kt:138`,
 `MediaUpload.kt:71`); `check_infra.py` asserts the prefix and that no rule covers the whole container. The rule was 23 days
 old, so no picture had tiered.

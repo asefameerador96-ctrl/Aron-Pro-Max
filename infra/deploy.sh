@@ -733,18 +733,20 @@ summary "| Infrastructure | $([ "$skip_infra" = true ] && echo "unchanged, skipp
 # -g matters: with a name only, az looks the vault up across the subscription, which this identity (rights on the
 # group only) may not list ("not read" on deploy #286). On failure the row carries az's first error line, with ids,
 # resource paths and long tokens masked; the row never stops the deploy.
-kv_err="$(mktemp)"
+kv_err="$(mktemp 2>/dev/null)" || kv_err=/dev/null
 kv_acls="$( { az keyvault show -g "$RG" -n "$KV" --query properties.networkAcls -o json 2>"$kv_err" | python3 -c 'import json, sys
 a = json.load(sys.stdin)
 print("none set" if not a else "default {}, bypass {}, {} IP rules, {} VNet rules".format(a.get("defaultAction"), a.get("bypass"), len(a.get("ipRules") or []), len(a.get("virtualNetworkRules") or [])))' 2>/dev/null || echo "not read"; } | sed -n 1p)"
 if [ "$kv_acls" = "not read" ]; then
+  # Placeholders in brackets: angle-bracket ones would read as HTML in the step summary. The path mask only starts at
+  # a word boundary, so the refused action (e.g. Microsoft.Resources/subscriptions/resources/read) stays readable.
   kv_why="$(grep -m1 -v '^[[:space:]]*$' "$kv_err" 2>/dev/null | sed -E \
-    -e 's#/subscriptions/[^ "'"'"']*#<resource>#g' \
-    -e 's/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/<id>/g' \
-    -e 's/[A-Za-z0-9+\/=_.-]{32,}/<masked>/g' -e 's/[|`]/ /g' | cut -c1-200 || true)"
+    -e "s#(^|[ '\"(])/[Ss]ubscriptions/[^ '\")]*#\\1[resource]#g" \
+    -e 's/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/[id]/g' \
+    -e 's/[A-Za-z0-9+=_-]{32,}/[masked]/g' -e 's/[|`]/ /g' | cut -c1-200 || true)"
   kv_acls="not read${kv_why:+: ${kv_why}}"
 fi
-rm -f "$kv_err"
+[ "$kv_err" = /dev/null ] || rm -f "$kv_err"
 summary "| Key Vault network ACLs | ${kv_acls} |"
 summary "| Worker | ${worker_result} |"
 summary "| Database logins | ${dblogins_result} |"

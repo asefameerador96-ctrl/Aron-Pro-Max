@@ -1949,7 +1949,7 @@ class LakeAndBlobRetention(unittest.TestCase):
         self.assertEqual(defaults["exportsDeleteDays"], 7)
         ph = rules["photos-expiry"]
         self.assertEqual(ph["filters"]["prefixMatch"], ["[format('{0}/photos/', parameters('mediaContainer'))]"],
-                         "only field photos: admin assets/ and support/ bundles in the same container are never aged out")
+                         "only field photos: admin assets/ and support/ bundles in the same container are not photos")
         self.assertEqual(ph["actions"]["baseBlob"]["delete"]["daysAfterModificationGreaterThan"], "[parameters('photoDeleteDays')]")
         # The figure is the docs' cfg.retention.media_days (docs/21 s4.8, docs/16 s13.1), not one chosen here.
         doc21 = (ROOT / "docs" / "21-security-privacy.md").read_text(encoding="utf-8")
@@ -1961,16 +1961,20 @@ class LakeAndBlobRetention(unittest.TestCase):
             if "delete" in d["actions"]["baseBlob"]:
                 self.assertNotEqual(d["filters"]["prefixMatch"], ["[format('{0}/', parameters('mediaContainer'))]"], name)
         self.assertEqual(rules["bundles-expiry"]["actions"]["baseBlob"]["delete"]["daysAfterModificationGreaterThan"], 3)
-        # photos/ tier Cool then Cold (docs/18 s2.8, D-INFRA-LAKE-02); support/ is covered by support-tiering below.
+        # photos/ tier Cool then Cold (docs/18 s2.8, D-INFRA-LAKE-02); support/ is covered by support-expiry below.
         tier = rules["media-tiering"]
         self.assertEqual(tier["filters"]["prefixMatch"], ["[format('{0}/photos/', parameters('mediaContainer'))]"])
         self.assertEqual(tier["actions"]["baseBlob"]["tierToCool"]["daysAfterModificationGreaterThan"], 30)
         self.assertEqual(tier["actions"]["baseBlob"]["tierToCold"]["daysAfterModificationGreaterThan"], 90)
-        # support/ bundles: Hot to Cool at 30 days (docs/18 s2.8), never deleted until a retention figure is named
-        # (D-INFRA-LAKE-04); assets/ have no rule at all, so they stay Hot.
-        sup = rules["support-tiering"]
+        # support/ bundles are deleted at the docs/21 s4.8 retention (30 days; no registry key, the parameter is the
+        # single source; D-INFRA-LAKE-04); assets/ have no rule at all, so they stay Hot.
+        sup = rules["support-expiry"]
         self.assertEqual(sup["filters"]["prefixMatch"], ["[format('{0}/support/', parameters('mediaContainer'))]"])
-        self.assertEqual(sup["actions"]["baseBlob"], {"tierToCool": {"daysAfterModificationGreaterThan": 30}})
+        self.assertEqual(sup["actions"]["baseBlob"], {"delete": {"daysAfterModificationGreaterThan": "[parameters('supportDeleteDays')]"}})
+        self.assertNotIn("supportDeleteDays", call, "main.bicep keeps the docs' figure")
+        support_days = int(re.search(r"\| Support bundles \| (\d+) days", doc21).group(1))
+        self.assertEqual(defaults["supportDeleteDays"], support_days)
+        self.assertEqual(support_days, 30)
         # A prefix covers a path when the path starts with it, so a shorter prefix (media/s, media/a) counts too.
         for name, d in rules.items():
             for p in d["filters"]["prefixMatch"]:
@@ -1980,7 +1984,7 @@ class LakeAndBlobRetention(unittest.TestCase):
                 rest = m.group(1)
                 self.assertFalse("assets/x".startswith(rest), f"{name} ({rest!r}) touches admin assets")
                 if "support/x".startswith(rest):
-                    self.assertNotIn("delete", d["actions"]["baseBlob"], f"{name} ({rest!r}) deletes support bundles")
+                    self.assertEqual(name, "support-expiry", f"{name} ({rest!r}) also acts on support bundles")
         for name, d in rules.items():
             for p in d["filters"]["prefixMatch"]:
                 self.assertNotEqual(p, "[format('{0}/', parameters('mediaContainer'))]", f"{name} covers the whole media container")
@@ -2082,9 +2086,10 @@ class LakeAndBlobRetention(unittest.TestCase):
                       "read-only, and with the group: a name-only lookup lists the subscription (\"not read\" on deploy #286)")
         # Both snippets, as deploy.sh runs them (set -euo pipefail), never stop the deploy and print one line.
         login_line = re.search(r'^    (logins="\$\(python3 -c .*? \|\| logins="login list not read")$', d, re.S | re.M).group(1)
-        kv_line = re.search(r'^(kv_err="\$\(mktemp\)"\n.*?^rm -f "\$kv_err")$', d, re.S | re.M).group(1)
-        def run(az_body, sql="infra/sql/runtime-logins.sql"):
+        kv_line = re.search(r'^(kv_err="\$\(mktemp .*?^\[ "\$kv_err" = /dev/null \] \|\| rm -f "\$kv_err")$', d, re.S | re.M).group(1)
+        def run(az_body, sql="infra/sql/runtime-logins.sql", tmpdir=None):
             script = (f"set -euo pipefail\naz() {{ {az_body}; }}\nKV=kv-test\nRG=rg-test\n"
+                      + (f"export TMPDIR={tmpdir}\n" if tmpdir else "")
                       + login_line.replace("infra/sql/runtime-logins.sql", sql) + "\n" + kv_line
                       + '\nprintf "%s\\n%s\\n" "$logins" "$kv_acls"\n')
             r = subprocess.run(["bash", "-c", script], cwd=ROOT, capture_output=True, text=True)
@@ -2097,15 +2102,21 @@ class LakeAndBlobRetention(unittest.TestCase):
         # The first error line reaches the row, ids, resource paths and long tokens masked, no table separators.
         guid = "-".join("0" * n for n in (8, 4, 4, 4, 12))  # an id-shaped placeholder, not a real id
         long_token = "x" * 40  # anything 32+ characters long is masked
-        why = run(f"echo 'ERROR: (AuthorizationFailed) The client {guid} cannot list over scope "
-                  f"/subscriptions/{guid}/providers/Microsoft.KeyVault | token {long_token}' >&2; return 1")[1]
-        self.assertTrue(why.startswith("not read: ERROR: (AuthorizationFailed) The client <id> cannot list over scope <resource>"), why)
+        why = run(f"echo \"ERROR: (AuthorizationFailed) The client '{guid}' cannot perform action "
+                  f"'Microsoft.Resources/subscriptions/resources/read' over scope '/subscriptions/{guid}' at "
+                  f"https://learn.microsoft.com/azure | token {long_token}\" >&2; return 1")[1]
+        self.assertTrue(why.startswith("not read: ERROR: (AuthorizationFailed) The client '[id]' cannot perform action "
+                                       "'Microsoft.Resources/subscriptions/resources/read' over scope '[resource]' at "
+                                       "https://learn.microsoft.com/azure"), why)
+        self.assertNotIn("<", why, "angle brackets read as HTML in the step summary")
         self.assertNotIn(guid, why)
         self.assertNotIn(long_token, why)
         self.assertNotIn("|", why)
         self.assertEqual(run(f"echo '{acl}'; return 1")[1], "default Allow, bypass AzureServices, 0 IP rules, 0 VNet rules",
                          "JSON then a non-zero exit still gives one table cell")
         self.assertEqual(run("return 1", sql="no/such/file.sql"), ["login list not read", "not read"])
+        self.assertEqual(run("echo 'ERROR: x' >&2; return 1", tmpdir="/nonexistent/aron")[1], "not read",
+                         "no temp file: the row degrades, the deploy goes on")
 
     def test_reset_compares_the_lake_with_its_own_sku(self):
         # dev (photo ZRS under the docs/28 exception, lake LRS): nothing to replace.
