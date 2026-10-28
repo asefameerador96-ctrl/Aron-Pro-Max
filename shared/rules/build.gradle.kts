@@ -16,3 +16,11 @@ kotlin {
         }
     }
 }
+
+// tso-manual F3: KpiFormatCorpusTest reads contract/fixtures/kpi-format-corpus.json; with the build cache on, a corpus
+// change must re-run the tests (as feature-tso and backend/sync declare the money corpus).
+tasks.withType<Test>().configureEach {
+    inputs.file(rootProject.layout.projectDirectory.file("contract/fixtures/kpi-format-corpus.json"))
+        .withPropertyName("kpiCorpus")
+        .withPathSensitivity(PathSensitivity.RELATIVE)
+}
