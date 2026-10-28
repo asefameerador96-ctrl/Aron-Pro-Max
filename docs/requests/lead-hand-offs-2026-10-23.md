@@ -54,3 +54,4 @@ D-TEST-DATE-PIN-01: 22 DataFlowTrace tests failed at Dhaka midnight because the 
 
 ### 2026-10-28 12:00 UTC — support/ bundles (lead ruling for infra #7 candidate 3)
 - **Ruling:** `support/` (encrypted PDA support zips, F-API-030) follows docs/18 s2.8: Hot → Cool at 30 days; nothing deletes them until a retention row names a figure (the lead adds the open question to the docs/21 s4.8 retention table in its next docs pass; default proposal 365 days, owner's call). Small infra candidate, own lane run, Opus checker, after train 52 lands.
+- **Correction 12:40 UTC:** docs/21 s4.8 already names support bundles "30 days (`cfg.support.*`) | Blob lifecycle", so candidate 3 part (a) DELETES `support/` blobs at 30 days (Bicep parameter, same pattern as the exports rule), no Cool tiering; docs/18 s2.8 is aligned in the same candidate; no registry key exists for it and none is added (D-INFRA-LAKE-04). Sent to infra #7 at 12:40.
