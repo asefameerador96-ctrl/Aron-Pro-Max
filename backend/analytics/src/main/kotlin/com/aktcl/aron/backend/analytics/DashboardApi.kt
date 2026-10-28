@@ -13,6 +13,7 @@ import com.aktcl.aron.backend.platform.wire
 import com.aktcl.aron.contract.ProblemCode
 import com.aktcl.aron.contract.Role
 import com.aktcl.aron.rules.BusinessDate
+import com.aktcl.aron.rules.Percent
 import io.ktor.server.response.respond
 import io.ktor.server.routing.Route
 import io.ktor.server.routing.get
@@ -75,9 +76,26 @@ data class DashboardSummary(
     val by_segment: List<ChannelVolume> = emptyList(),
 )
 
-/** Percentage with two decimals (half up), null when the denominator is 0. */
+/** Percentage with two decimals: [Percent.bp] (F3, rounded once, half up) / 100; null when the denominator is 0. */
 internal fun pct(n: Long, d: Long): Double? =
-    if (d <= 0) null else BigDecimal(n).multiply(BigDecimal(100)).divide(BigDecimal(d), 2, RoundingMode.HALF_UP).toDouble()
+    if (d <= 0) null else Percent.bp(n, d)?.let { BigDecimal.valueOf(it, 2).toDouble() }
+
+/**
+ * The national route set's figures of one group (D-TSO-MAN-09): target routes, successful logins, Bikroy Joma, target outlets,
+ * successful calls and completed (geo-valid) calls of normal SR route-days, planned, not excused; plus the service zone-days and
+ * those with a live `app.final_submit` row (D-TSO-MAN-30). The same rows and rules as the national cards, so the summary and the
+ * TSO dashboard print the same figures (TsoDashboardParityTest).
+ */
+private class SetFigures(val tr: Long = 0, val lr: Long = 0, val sr: Long = 0, val tout: Long = 0, val sc: Long = 0, val calls: Long = 0, val geoCalls: Long = 0, val zt: Int = 0, val zf: Int = 0)
+
+/** [this] with its login, CPR, geo and final-submit members from [s]; [zones] false (a route row) leaves the zone members null. */
+private fun DashboardKpis.withSet(s: SetFigures, zones: Boolean = true) = copy(
+    target_routes = Math.toIntExact(s.tr), logged_in_routes = Math.toIntExact(s.lr), login_pct = pct(s.lr, s.tr), sales_submitted_routes = Math.toIntExact(s.sr),
+    submit_pct_of_logged_in = pct(s.sr, s.lr), day_completion_pct = pct(s.sr, s.tr), target_outlets = Math.toIntExact(s.tout), successful_calls = Math.toIntExact(s.sc),
+    strike_rate_pct = pct(s.sc, s.tout), geo_valid_pct = pct(s.geoCalls, s.calls),
+    zones_with_target_routes = if (zones) s.zt else null, zones_final_submitted = if (zones) s.zf else null,
+    final_submit_pct = if (zones) pct(s.zf.toLong(), s.zt.toLong()) else null,
+)
 
 /**
  * What a caller may see: all zones (national), a set of zones, or (a route-only caller, [routes] non-null) a set of routes.
@@ -294,19 +312,22 @@ class DashboardService(
             "count(DISTINCT (zone_id, business_date)) FILTER (WHERE is_target_route AND zone_final_submitted) zf"
         val days = if (ns.routeOnly) "SELECT $routeSums FROM dw.v_route_day" else "SELECT $sums FROM dw.agg_daily_zone"
         val inScope = ns.clause("zone_id", "route_id")
+        // D-TSO-MAN-09/30 (tso-manual B2): login, CPR, geo and final submit come from the national route set and the live Final Submit rows.
         val kpis = h.q("$days WHERE business_date BETWEEN :f AND :t AND $inScope") { it.map { rs, _ -> kpisOf(rs) }.one() }
+            .withSet(setFigures(h, ns, from, to, asWas, null)[0L] ?: SetFigures())
         val asOf = h.q("SELECT max(updated_at) FROM ${if (ns.routeOnly) "dw.v_route_day" else "dw.agg_daily_zone"} WHERE business_date BETWEEN :f AND :t AND $inScope") {
             it.map { rs, _ -> rs.getObject(1, java.time.OffsetDateTime::class.java)?.toInstant() }.one()
         } ?: clock.now()
 
         // Report unit and quantity (contract CategoryVolume) only when every SKU of the group has the same report unit; the
         // quantity is the exact sum of qty_base / report_factor (base units per report unit) rounded once to 3 decimals, half up.
-        // net_mtk is the sale-line value: free, DRP and offer lines are offset by their discounts, and memo-level QC
-        // settlements and rounding are not attributed to a SKU (the same basis as by_brand and by_segment).
+        // The quantity is the sold quantity of sale lines only, no free or DRP lines (D-TSO-MAN-09, contract 1.10.0), as the
+        // national sales card counts it. net_mtk is the sale-line value: memo-level QC settlements and rounding are not
+        // attributed to a SKU (the same basis as by_brand and by_segment).
         val byCategory = h.q(
             """
             WITH k AS (
-              SELECT p.category_code, p.base_unit, s.report_unit, s.report_factor, p.base_per_pack, sum(a.sold_qty_base + a.free_qty_base) qty, sum(a.gross_mtk) gross
+              SELECT p.category_code, p.base_unit, s.report_unit, s.report_factor, p.base_per_pack, sum(a.sold_qty_base) qty, sum(a.gross_mtk) gross
                 FROM dw.agg_daily_route_sku a ${AsWasSql.product("p", "a.sku_id", "a.business_date", lo = ":f", hi = ":t", plain = asWas.product)} ${AsWasSql.geo("g", "a.route_id", "a.business_date", lo = ":f", hi = ":t", plain = asWas.geo)}
                 JOIN app.sku s ON s.id = a.sku_id
                WHERE a.business_date BETWEEN :f AND :t AND ${ns.clause("g.zone_id", "a.route_id")} GROUP BY 1, 2, 3, 4, 5)
@@ -375,14 +396,16 @@ class DashboardService(
         }
 
         val children: List<DashboardChild> = if (lv.childCol != null && lv.childName != null) {
+            val set = setFigures(h, ns, from, to, asWas, "g.${lv.childCol}")
             h.q(
                 """
                 SELECT zg.${lv.childCol} cid, zg.${lv.childName} cname, $sums
                   FROM dw.agg_daily_zone a ${AsWasSql.zone("zg", "a.zone_id", "a.business_date", lo = ":f", hi = ":t", plain = asWas.geo)}
                  WHERE a.business_date BETWEEN :f AND :t AND ${ns.clause("a.zone_id", "a.route_id")} GROUP BY 1, 2 ORDER BY 1
                 """,
-            ) { it.map { rs, _ -> DashboardChild(NodeRefDto(lv.childType!!, rs.getLong("cid"), null, rs.getString("cname")), kpisOf(rs)) }.list() }
+            ) { it.map { rs, _ -> DashboardChild(NodeRefDto(lv.childType!!, rs.getLong("cid"), null, rs.getString("cname")), kpisOf(rs).withSet(set[rs.getLong("cid")] ?: SetFigures())) }.list() }
         } else {
+            val set = setFigures(h, ns, from, to, asWas, "g.route_id")
             // A zone's children are its routes: a route-day counts as one target route when planned and not excused.
             val login = DashboardSummaries.successfulLoginSql(h)
             h.q(
@@ -398,9 +421,34 @@ class DashboardService(
                   FROM dw.agg_daily_route a JOIN dw.dim_geo g ON g.route_id = a.route_id
                  WHERE a.business_date BETWEEN :f AND :t AND ${ns.clause("a.zone_id", "a.route_id")} GROUP BY 1, 2, 3 ORDER BY 1
                 """,
-            ) { it.map { rs, _ -> DashboardChild(NodeRefDto("route", rs.getLong("cid"), rs.getString("ccode"), rs.getString("cname")), kpisOf(rs, zones = false)) }.list() }
+            ) { it.map { rs, _ -> DashboardChild(NodeRefDto("route", rs.getLong("cid"), rs.getString("ccode"), rs.getString("cname")), kpisOf(rs, zones = false).withSet(set[rs.getLong("cid")] ?: SetFigures(), zones = false)) }.list() }
         }
         return DashboardSummary(asOf.wire(), from.toString(), to.toString(), nodeRef, kpis, byCategory, byChannel, byBrand, children, bySegment)
+    }
+
+    /**
+     * [SetFigures] per [group] (an SQL column over the as-was geography `g`, null for the node's total keyed 0): the national
+     * route set's route-days of the node and dates, read like the national cards (`dw.agg_daily_route`, D-TSO-MAN-09), and their
+     * service zone-days with a live `app.final_submit` row (D-TSO-MAN-30).
+     */
+    private fun setFigures(h: Handle, ns: NodeScope, from: LocalDate, to: LocalDate, asWas: AsWasSql.Plain, group: String?): Map<Long, SetFigures> {
+        val login = DashboardSummaries.successfulLoginSql(h)
+        return ns.bind(h.createQuery(
+            """
+            WITH s AS (SELECT ${group ?: "CAST(0 AS bigint)"} AS k, a.zone_id, a.business_date, ($login) AS ok, a.sales_submitted_at IS NOT NULL AS sub,
+                              a.target_outlets, a.successful_calls, a.completed_calls, a.completed_geo_valid_calls
+                         FROM dw.agg_daily_route a ${AsWasSql.geo("g", "a.route_id", "a.business_date", "JOIN", lo = ":f", hi = ":t", plain = asWas.geo)}
+                        WHERE a.business_date BETWEEN :f AND :t AND $NATIONAL_ROUTE_SET AND ${ns.clause("g.zone_id", "a.route_id")}),
+            r AS (SELECT k, count(*) tr, count(*) FILTER (WHERE ok) lr, count(*) FILTER (WHERE ok AND sub) sr, coalesce(sum(target_outlets), 0) tout,
+                         coalesce(sum(successful_calls), 0) sc, coalesce(sum(completed_calls), 0) cc, coalesce(sum(completed_geo_valid_calls), 0) cgv
+                    FROM s GROUP BY k),
+            z AS (SELECT k, count(*) zt, count(*) FILTER (WHERE ${liveFinalSubmitSql("d.zone_id", "d.business_date")}) zf
+                    FROM (SELECT DISTINCT k, zone_id, business_date FROM s) d GROUP BY k)
+            SELECT r.k, r.tr, r.lr, r.sr, r.tout, r.sc, r.cc, r.cgv, coalesce(z.zt, 0) zt, coalesce(z.zf, 0) zf FROM r LEFT JOIN z ON z.k = r.k
+            """,
+        ).bind("f", from).bind("t", to)).map { rs, _ ->
+            rs.getLong("k") to SetFigures(rs.getLong("tr"), rs.getLong("lr"), rs.getLong("sr"), rs.getLong("tout"), rs.getLong("sc"), rs.getLong("cc"), rs.getLong("cgv"), rs.getInt("zt"), rs.getInt("zf"))
+        }.list().toMap()
     }
 
     private fun kpisOf(rs: java.sql.ResultSet, zones: Boolean = true): DashboardKpis {
