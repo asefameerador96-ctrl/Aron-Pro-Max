@@ -41,6 +41,12 @@ must treat it as unknown (the Kotlin wire DTOs carry every enum as a String; `Un
   `LeaveApplication.applicant_username`, `.applicant_name`, `.territory_name`, `Feedback.business_date`, `.captured_at`,
   `.username`, `.zone_id`, `TeamLocation.mock_fixes_today`, `Me.support_desk`.
 - Optional request member: `DayReopenRequest.client_uuid`.
+- Checker round 1 (same 1.10.0, nothing released yet): `NationalLoginSubmitUsers.truncated` (required boolean; the
+  2000-row cap is flagged, as the other capped lists); `SupportTicketEvent.body` maxLength 2400 (the D-TSO-MAN-20
+  resolution message is at most 2204 characters, comments and replies stay 1..2000); `TicketNumber` maxLength 22 (bigint
+  sequence); `updateSupportTicket` description: check order, the `op_uuid` replay before `expected_version`, 409
+  `ERR_CONFLICT` for a reused `op_uuid`, deterministic event UUIDs; `TargetAchievement` / `TargetAchievementRow`
+  descriptions: the item-sum rule with the 21/26 example (33114, not 33115).
 - Description-only: `NationalSalesCard.achievement_pct_bp` (exact formula), `DashboardSummary.by_category` (sold quantity
   of sale lines only), `FinalSubmitRequest.client_uuid` (the D-TSO-MAN-28 rule), `postFinalSubmit`, `getFinalSubmitPreview`,
   `postDayReopen`, `RecordOutcomeCode`, `ProblemCode`, `CodeListKey`, `RecordType`, tags `support` and `notifications`.

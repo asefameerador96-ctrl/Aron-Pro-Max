@@ -8,7 +8,12 @@ TargetAchievement:
     days in [1st..day] and in the month); a past month has e = n, a future month e = 0. Item (variant) till-date
     =
 
-    round_half_up(T * e / n); a category or card figure is the sum of its item rows. From contract 1.10.0: `day`,
+    round_half_up(T * e / n); a category or card figure is the sum of its item rows, never the card total rounded
+
+    once (the screenshot''s eight Cigarette items, T = 40999 in all: 25/31 gives 33064; 21/26 gives 33114, where
+    a
+
+    rounded total would give 33115). From contract 1.10.0: `day`,
 
     `elapsed_days`, `period_days`, `last_updated_at`, `children` and the integer row members.
 

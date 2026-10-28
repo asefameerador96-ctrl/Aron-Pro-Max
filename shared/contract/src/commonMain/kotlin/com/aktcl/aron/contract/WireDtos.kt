@@ -1200,6 +1200,7 @@ data class NationalLoginSubmitUsers(
     @SerialName("last_updated_at") val lastUpdatedAt: String?,
     @SerialName("tab") val tab: String,
     @SerialName("route_count") val routeCount: Int,
+    @SerialName("truncated") val truncated: Boolean,
     @SerialName("items") val items: List<LoginSubmitUserRow>,
 )
 

@@ -10,8 +10,9 @@ operation:
     with a successful login and no submit. Per route: one row for the route-day SR (vacant: `user_id` null, shown
     "SR Not Set"), then one row per active AMO whose scope covers the route''s zone on the date, by `username`;
     AMO rows follow the route state, not the AMO''s own login. Order: route name, route id, then the SR row before
-    the AMO rows. BRAND users get 403 (docs/34 s1). Reads summary tables only (never the transaction log); scope
-    from the token.'
+    the AMO rows. At most 2000 rows: a longer tab answers the first 2000 in this order with `truncated` true, and
+    `route_count` still counts every route of the tab. BRAND users get 403 (docs/34 s1). Reads summary tables only
+    (never the transaction log); scope from the token.'
   parameters:
   - name: tab
     in: query

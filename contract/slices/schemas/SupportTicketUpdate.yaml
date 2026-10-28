@@ -1,12 +1,13 @@
 SupportTicketUpdate:
   type: object
-  description: 'One support-desk action (D-TSO-MAN-20). `op_uuid` makes it idempotent; `expected_version` is the
-    `version` the
+  description: 'One support-desk action (D-TSO-MAN-20). `op_uuid` makes it idempotent (a new v4 UUID per desk action,
+    kept for
 
-    desk read. At least one change besides those two. A resolve needs `resolution_code` and `resolution_notes`;
-    a
+    its retries; the replay rules, the event UUIDs and the 409 for a reused `op_uuid` are in updateSupportTicket);
 
-    cancel needs `cancel_reason`.
+    `expected_version` is the `version` the desk read. At least one change besides those two. A resolve needs
+
+    `resolution_code` and `resolution_notes`; a cancel needs `cancel_reason`.
 
     '
   required:
@@ -44,6 +45,8 @@ SupportTicketUpdate:
       type: string
       minLength: 1
       maxLength: 2000
+      description: D-TSO-MAN-20 (1 to 2000). The resolution message that wraps them fits SupportTicketEvent.body
+        (at most 2204 of 2400 characters).
     cancel_reason:
       type: string
       minLength: 3

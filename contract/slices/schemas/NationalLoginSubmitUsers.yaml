@@ -8,6 +8,7 @@ NationalLoginSubmitUsers:
   - last_updated_at
   - tab
   - route_count
+  - truncated
   - items
   additionalProperties: false
   properties:
@@ -35,10 +36,17 @@ NationalLoginSubmitUsers:
       type: integer
       minimum: 0
       description: 'Distinct routes in the tab: target_routes - successful_login for not_logged_in, successful_login
-        - submitted for not_uploaded.'
+        - submitted for not_uploaded. Counts every route of the tab, also when `items` is cut (`truncated`).'
+    truncated:
+      type: boolean
+      description: 'True when the tab has more than 2000 rows: `items` then holds the first 2000 in the order of
+        `items` and the rest are left out (a national or wide web reach before the day starts; a TSO''s territory
+        stays far below). The reader says the list is cut and asks for a narrower filter; false when every row is
+        in `items`.'
     items:
       type: array
       maxItems: 2000
       description: Per route the SR row first, then the AMO rows by username; routes by route name, then route id.
+        At most 2000 rows; see `truncated`.
       items:
         $ref: '#/components/schemas/LoginSubmitUserRow'

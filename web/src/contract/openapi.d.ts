@@ -1303,7 +1303,7 @@ export interface paths {
         put?: never;
         /**
          * Login / Submit Status users (Not Logged In, Not Uploaded)
-         * @description The rows behind the Login / Submit Status card (D-TSO-MAN-12, screenshot 8, contract 1.10.0), over the card's target routes. `tab=not_logged_in`: routes without a successful login; `tab=not_uploaded`: routes with a successful login and no submit. Per route: one row for the route-day SR (vacant: `user_id` null, shown "SR Not Set"), then one row per active AMO whose scope covers the route's zone on the date, by `username`; AMO rows follow the route state, not the AMO's own login. Order: route name, route id, then the SR row before the AMO rows. BRAND users get 403 (docs/34 s1). Reads summary tables only (never the transaction log); scope from the token.
+         * @description The rows behind the Login / Submit Status card (D-TSO-MAN-12, screenshot 8, contract 1.10.0), over the card's target routes. `tab=not_logged_in`: routes without a successful login; `tab=not_uploaded`: routes with a successful login and no submit. Per route: one row for the route-day SR (vacant: `user_id` null, shown "SR Not Set"), then one row per active AMO whose scope covers the route's zone on the date, by `username`; AMO rows follow the route state, not the AMO's own login. Order: route name, route id, then the SR row before the AMO rows. At most 2000 rows: a longer tab answers the first 2000 in this order with `truncated` true, and `route_count` still counts every route of the tab. BRAND users get 403 (docs/34 s1). Reads summary tables only (never the transaction log); scope from the token.
          */
         post: operations["queryNationalLoginSubmitUsers"];
         delete?: never;
@@ -3001,14 +3001,28 @@ export interface paths {
         /**
          * Support desk action on a ticket (status, priority, assignee, resolution or cancellation).
          * @description Support desk only (permission `support.ticket.manage`; anyone else 403 `ERR_FORBIDDEN`), D-TSO-MAN-20 (contract
-         *     1.10.0). Idempotent by `op_uuid`: a repeat of an applied op answers the ticket unchanged. `expected_version`
-         *     must equal the ticket's `version`, else 409 `ERR_CONFLICT` (reload and re-apply). Allowed status changes:
-         *     new -> in_progress; new or in_progress -> resolved (needs `resolution_code` from the `ticket_resolution_code`
-         *     list and `resolution_notes`; writes the support message
+         *     1.10.0). Checks run in this order: the desk permission (403), the request body (400), the ticket (404), the
+         *     `op_uuid` replay check, `expected_version` (409), then the transition rules (409).
+         *     Idempotent by `op_uuid`. The replay check comes before `expected_version` and the transition rules, so a retried
+         *     op whose first answer was lost replays instead of failing: an `op_uuid` this ticket already applied with the same body
+         *     (compared as a JSON value: member order and spacing ignored) answers 200 with the ticket as it is now and
+         *     writes nothing again (no event, audit row, inbox row or push). The same `op_uuid` with another body, or one
+         *     already used on another ticket or by any other ticket event, is 409 `ERR_CONFLICT`; nothing changes.
+         *     `expected_version` must equal the ticket's `version`, else 409 `ERR_CONFLICT` (reload and re-apply). Allowed
+         *     status changes: new -> in_progress; new or in_progress -> resolved (needs `resolution_code` from the
+         *     `ticket_resolution_code` list and `resolution_notes`; writes the support message
          *     "[TicketID: <ticket_no>] - Resolved:\nResolution Code: <label>\nResolution Notes:\n\n<notes>"); new or in_progress
-         *     -> cancelled (needs `cancel_reason`); resolved -> closed. Any other change is 409
-         *     `ERR_TICKET_TRANSITION_INVALID`; there is no reopen and no auto-close. Each change writes an event and an audit
-         *     row; the reporter gets an inbox row and, when ticket pushes are switched on, a push with reason `ticket_updated`.
+         *     -> cancelled (needs `cancel_reason`); resolved -> closed. Any other status, the current one included, is 409
+         *     `ERR_TICKET_TRANSITION_INVALID`; there is no reopen and no auto-close. A `priority` or `assignee_user_id` equal
+         *     to the current value is not a change; an op with no change at all answers 200 with the ticket and writes
+         *     nothing (it records no op, so its `op_uuid` stays unused).
+         *     One op writes, in one transaction, one event per change in this order: the status entry (`status_change`, or
+         *     `resolution` for a resolve), then `priority_change`, then `assign`. The first of them has `event_uuid` =
+         *     `op_uuid`; each later one has the name-based, version-4-shaped UUID (as StableIds.v4: SHA-256 of the UTF-8 name,
+         *     first 16 bytes, version nibble 4, variant bits 10) of `aron.support.ticket-op:<op_uuid>:<kind>`. A retry
+         *     therefore can never add a second event, and the server keeps the op's body fingerprint with it for the
+         *     same-body check. The op is audited; after commit the reporter gets one inbox row for it and, when ticket pushes
+         *     are switched on, one push with reason `ticket_updated`.
          */
         patch: operations["updateSupportTicket"];
         trace?: never;
@@ -7392,9 +7406,11 @@ export interface components {
             last_updated_at: string | null;
             /** @enum {string} */
             tab: "not_logged_in" | "not_uploaded";
-            /** @description Distinct routes in the tab: target_routes - successful_login for not_logged_in, successful_login - submitted for not_uploaded. */
+            /** @description Distinct routes in the tab: target_routes - successful_login for not_logged_in, successful_login - submitted for not_uploaded. Counts every route of the tab, also when `items` is cut (`truncated`). */
             route_count: number;
-            /** @description Per route the SR row first, then the AMO rows by username; routes by route name, then route id. */
+            /** @description True when the tab has more than 2000 rows: `items` then holds the first 2000 in the order of `items` and the rest are left out (a national or wide web reach before the day starts; a TSO's territory stays far below). The reader says the list is cut and asks for a narrower filter; false when every row is in `items`. */
+            truncated: boolean;
+            /** @description Per route the SR row first, then the AMO rows by username; routes by route name, then route id. At most 2000 rows; see `truncated`. */
             items: components["schemas"]["LoginSubmitUserRow"][];
         };
         /** @description The common filter plus the gear choice (six combinations, one active). */
@@ -7849,7 +7865,9 @@ export interface components {
          * @description Monthly target and achievement of a node (D-TSO-MAN-05, 39, 40). Till-date: elapsed_days e and period_days n of
          *     the basis (calendar days by default: e = day of month of `day`, n = days in the month; working days: the working
          *     days in [1st..day] and in the month); a past month has e = n, a future month e = 0. Item (variant) till-date =
-         *     round_half_up(T * e / n); a category or card figure is the sum of its item rows. From contract 1.10.0: `day`,
+         *     round_half_up(T * e / n); a category or card figure is the sum of its item rows, never the card total rounded
+         *     once (the screenshot's eight Cigarette items, T = 40999 in all: 25/31 gives 33064; 21/26 gives 33114, where a
+         *     rounded total would give 33115). From contract 1.10.0: `day`,
          *     `elapsed_days`, `period_days`, `last_updated_at`, `children` and the integer row members.
          */
         TargetAchievement: {
@@ -7877,7 +7895,7 @@ export interface components {
          * @description One product row of a target node. The integer members are the TSO app's figures (D-TSO-MAN-39, 40):
          *     target_qty_base T = the route monthly targets of the month in reach; achieved_qty_base A = sold quantity of sale
          *     lines, business dates 1st..`day`; tilldate_target_qty_base T' = per item round_half_up(T * e / n), a category row
-         *     the sum of its items; remaining_* = max(target - A, 0); *_pct_bp = A / target in basis points, rounded half up,
+         *     the sum of its items (never its own T rounded once; see TargetAchievement); remaining_* = max(target - A, 0); *_pct_bp = A / target in basis points, rounded half up,
          *     uncapped, null when the target is 0. The Decimal3 members and `achievement_pct` keep their meaning for the AMO
          *     app.
          */
@@ -9822,7 +9840,7 @@ export interface components {
             build?: string | null;
         };
         /**
-         * @description Server-assigned ticket number, "INC" and at least 6 digits from INC100001 (7 digits after INC999999), so the vendor's numbers (INC0107xx) never collide (D-TSO-MAN-18). Assigned at the first insert; a replay answers the stored number.
+         * @description Server-assigned ticket number, "INC" and at least 6 digits from INC100001 (7 digits after INC999999), so the vendor's numbers (INC0107xx) never collide (D-TSO-MAN-18). Assigned at the first insert; a replay answers the stored number. At most 22 characters (the bigint sequence has at most 19 digits).
          * @example INC100001
          */
         TicketNumber: string;
@@ -9903,6 +9921,7 @@ export interface components {
         SupportTicketEvent: {
             event_uuid: components["schemas"]["Uuid"];
             kind: components["schemas"]["SupportTicketEventKind"];
+            /** @description The entry's text; null for an entry without text. A comment or a desk reply is 1 to 2000 characters (SupportTicketEventPayload, SupportTicketEventWrite). A `resolution` entry carries the D-TSO-MAN-20 message (updateSupportTicket): 62 fixed characters, the ticket number (at most 22), the resolution label (at most 120) and the notes (at most 2000), so at most 2204; 2400 bounds it with room. */
             body: string | null;
             actor_is_support: boolean;
             /** @description "Support" for a support-desk actor or the job, else the reporter's full name. */
@@ -9939,9 +9958,10 @@ export interface components {
             open_pct_bp: number | null;
         };
         /**
-         * @description One support-desk action (D-TSO-MAN-20). `op_uuid` makes it idempotent; `expected_version` is the `version` the
-         *     desk read. At least one change besides those two. A resolve needs `resolution_code` and `resolution_notes`; a
-         *     cancel needs `cancel_reason`.
+         * @description One support-desk action (D-TSO-MAN-20). `op_uuid` makes it idempotent (a new v4 UUID per desk action, kept for
+         *     its retries; the replay rules, the event UUIDs and the 409 for a reused `op_uuid` are in updateSupportTicket);
+         *     `expected_version` is the `version` the desk read. At least one change besides those two. A resolve needs
+         *     `resolution_code` and `resolution_notes`; a cancel needs `cancel_reason`.
          */
         SupportTicketUpdate: {
             op_uuid: components["schemas"]["Uuid"];
@@ -9956,6 +9976,7 @@ export interface components {
             assignee_user_id?: number | null;
             /** @description A `ticket_resolution_code` code. */
             resolution_code?: string;
+            /** @description D-TSO-MAN-20 (1 to 2000). The resolution message that wraps them fits SupportTicketEvent.body (at most 2204 of 2400 characters). */
             resolution_notes?: string;
             cancel_reason?: string;
         };

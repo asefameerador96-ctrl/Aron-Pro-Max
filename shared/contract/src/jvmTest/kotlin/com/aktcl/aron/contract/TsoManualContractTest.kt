@@ -129,6 +129,83 @@ class TsoManualContractTest {
         for (bad in listOf("INC12345", "inc100001", "INC10000a", "IN100001", "INC 100001", "")) assertFalse(rx.matches(bad), bad)
         assertEquals("TicketNumber", ref(prop("SupportTicket", "ticket_no")))
         assertTrue(nullable(prop("SupportTicket", "ticket_no")))
+        // the number comes from a bigint sequence: at most 19 digits, so at most 22 characters
+        val longest = "INC" + Long.MAX_VALUE
+        assertTrue(rx.matches(longest))
+        assertEquals(longest.length, OpenApi.schema("TicketNumber")["maxLength"])
+    }
+
+    /** All whitespace runs (line breaks of a folded description included) as one space. */
+    private fun flat(s: Any?): String = s.toString().replace(Regex("\\s+"), " ")
+
+    /**
+     * D-TSO-MAN-20: resolution notes are 1..2000 and the resolve writes them wrapped in the support message. The longest
+     * message (longest ticket number, longest resolution label, longest notes) must fit `SupportTicketEvent.body`, or a
+     * valid PATCH would end in a contract violation (and in the event body CHECK of V0130).
+     */
+    @Test
+    fun theLongestResolutionMessageFitsTheEventBody() {
+        val desc = op("patch", "/v1/support/tickets/{ticket_uuid}")["description"].toString()
+        val template = Regex("\"(\\[TicketID: <ticket_no>\\][^\"]*<notes>)\"").find(desc)?.groupValues?.get(1) ?: error("resolution message template missing")
+        assertEquals("[TicketID: <ticket_no>] - Resolved:\\nResolution Code: <label>\\nResolution Notes:\\n\\n<notes>", template, "D-TSO-MAN-20 text (screenshot 14)")
+        val ticketNo = "INC" + "9".repeat(OpenApi.schema("TicketNumber")["maxLength"] as Int - 3)
+        val labelMax = nonNull(prop("SupportTicket", "resolution_label_en"))["maxLength"] as Int
+        assertEquals(120, labelMax, "code_list.label_en <= 120 (V0005)")
+        val notesMax = prop("SupportTicketUpdate", "resolution_notes")["maxLength"] as Int
+        assertEquals(listOf(1, 2000), listOf(prop("SupportTicketUpdate", "resolution_notes")["minLength"], notesMax), "D-TSO-MAN-20 notes 1..2000")
+        val longest = template.replace("\\n", "\n").replace("<ticket_no>", ticketNo).replace("<label>", "x".repeat(labelMax)).replace("<notes>", "n".repeat(notesMax))
+        assertEquals(62 + 22 + 120 + 2000, longest.length, "62 fixed characters around the number, the label and the notes")
+        val bodyMax = nonNull(prop("SupportTicketEvent", "body"))["maxLength"] as Int
+        assertTrue(longest.length <= bodyMax, "resolution message ${longest.length} > SupportTicketEvent.body maxLength $bodyMax")
+        assertEquals(2400, bodyMax, "the V0130 event body CHECK must match (F2 ask, docs/status/tso-manual-F1.md)")
+        // what a person types stays at 2000: the reporter's comment and the desk reply
+        assertEquals(2000, prop("SupportTicketEventPayload", "body")["maxLength"])
+        assertEquals(2000, prop("SupportTicketEventWrite", "body")["maxLength"])
+        assertEquals(2000, nonNull(prop("SupportTicket", "resolution_notes"))["maxLength"])
+    }
+
+    /** The name-based, version-4-shaped UUID of the TSO app's StableIds.v4 (SHA-256, version nibble 4, variant 10). */
+    private fun stableV4(name: String): String {
+        val b = java.security.MessageDigest.getInstance("SHA-256").digest(name.toByteArray(Charsets.UTF_8)).copyOf(16)
+        b[6] = ((b[6].toInt() and 0x0f) or 0x40).toByte()
+        b[8] = ((b[8].toInt() and 0x3f) or 0x80).toByte()
+        val h = b.joinToString("") { "%02x".format(it) }
+        return "${h.substring(0, 8)}-${h.substring(8, 12)}-${h.substring(12, 16)}-${h.substring(16, 20)}-${h.substring(20)}"
+    }
+
+    /**
+     * The desk PATCH is idempotent by `op_uuid` with a defined replay key: the replay check runs before the version and
+     * transition checks, a reused `op_uuid` with another body or on another ticket is 409, and the event rows of one op
+     * have deterministic UUIDs (the first = `op_uuid`, the others name-based), so a retried multi-field op can neither
+     * double-write events nor answer a version conflict for a change it already made.
+     */
+    @Test
+    fun deskPatchIdempotencyHasADefinedReplayKey() {
+        val desc = flat(op("patch", "/v1/support/tickets/{ticket_uuid}")["description"])
+        val order = listOf("the desk permission (403)", "the request body (400)", "the ticket (404)", "the `op_uuid` replay check", "`expected_version` (409)", "the transition rules (409)")
+        val at = order.map { desc.indexOf(it).also { i -> assertTrue(i >= 0, "check order names: $it") } }
+        assertEquals(at.sorted(), at, "checks run in the order $order")
+        for (rule in listOf(
+            "The replay check comes before `expected_version` and the transition rules",
+            "answers 200 with the ticket as it is now and writes nothing again",
+            "The same `op_uuid` with another body, or one already used on another ticket or by any other ticket event, is 409 `ERR_CONFLICT`",
+            "The first of them has `event_uuid` = `op_uuid`",
+            "`aron.support.ticket-op:<op_uuid>:<kind>`",
+            "an op with no change at all answers 200 with the ticket and writes nothing",
+        )) assertTrue(desc.contains(rule), "updateSupportTicket must say: $rule")
+        // the event order names real event kinds
+        val kinds = SupportTicketEventKind.entries.map { it.wire }
+        for (k in listOf("status_change", "resolution", "priority_change", "assign")) { assertTrue(k in kinds, k); assertTrue(desc.contains("`$k`"), k) }
+        // the derived event uuids are valid `Uuid` values, stable, and distinct per kind and per op
+        val uuid = Regex(OpenApi.schema("Uuid")["pattern"] as String)
+        val opUuid = "6f1c2b0e-8d1a-4c5e-9f3a-2b7d4e6a8c10"
+        val derived = listOf("priority_change", "assign").map { stableV4("aron.support.ticket-op:$opUuid:$it") }
+        for (d in derived) assertTrue(uuid.matches(d), d)
+        assertEquals(derived, listOf("priority_change", "assign").map { stableV4("aron.support.ticket-op:$opUuid:$it") })
+        assertEquals(3, (derived + opUuid).toSet().size)
+        assertTrue(stableV4("aron.support.ticket-op:7a1c2b0e-8d1a-4c5e-9f3a-2b7d4e6a8c10:assign") != derived[1])
+        // the request side points at the rules
+        assertTrue(flat(OpenApi.schema("SupportTicketUpdate")["description"]).contains("the 409 for a reused `op_uuid` are in updateSupportTicket"))
     }
 
     @Test
@@ -237,6 +314,12 @@ class TsoManualContractTest {
         assertEquals(listOf("SR", "AMO"), enumOf(prop("LoginSubmitUserRow", "role")))
         assertEquals(2000, prop("NationalLoginSubmitUsers", "items")["maxItems"])
         assertEquals(listOf("not_logged_in", "not_uploaded"), enumOf(prop("NationalLoginSubmitUsers", "tab")))
+        // a national web reach has more rows than the cap: the cut is flagged, never silent (as the other capped lists)
+        assertTrue("truncated" in required("NationalLoginSubmitUsers"))
+        assertEquals("boolean", prop("NationalLoginSubmitUsers", "truncated")["type"])
+        val usersOp = flat(op("post", "/v1/dashboards/national/login-submit/users")["description"])
+        assertTrue(usersOp.contains("a longer tab answers the first 2000 in this order with `truncated` true"), usersOp)
+        assertTrue(flat(prop("NationalLoginSubmitUsers", "route_count")["description"]).contains("also when `items` is cut"))
     }
 
     @Test
@@ -260,6 +343,26 @@ class TsoManualContractTest {
         // the AMO app's members keep their meaning
         for (n in listOf("target_qty", "achieved_qty", "tilldate_target_qty", "remaining_qty")) assertEquals("Decimal3", ref(prop("TargetAchievementRow", n)), n)
         assertNotNull(props("TargetAchievementRow")["achievement_pct"])
+    }
+
+    /**
+     * D-TSO-MAN-05: a card or category till-date is the sum of its item rows, never its total rounded once. The example
+     * in the TargetAchievement description is recomputed here with Targets.tillDate of s4.1, (2*T*e + n) div (2*n), over
+     * the eight Cigarette items of screenshots 39-42; at 21/26 the item sum (33114) and a rounded total (33115) differ.
+     */
+    @Test
+    fun tillDateCardIsTheSumOfItemRows() {
+        val items = listOf(1000L, 1000L, 10000L, 10000L, 5000L, 6000L, 2999L, 5000L)
+        fun tillDate(t: Long, e: Long, n: Long) = (2 * t * e + n) / (2 * n)
+        fun card(e: Long, n: Long) = items.sumOf { tillDate(it, e, n) }
+        assertEquals(40999L, items.sum())
+        assertEquals(33064L, card(25, 31)); assertEquals(33064L, tillDate(40999, 25, 31))
+        assertEquals(32799L, card(20, 25))
+        assertEquals(33114L, card(21, 26)); assertEquals(33115L, tillDate(40999, 21, 26), "the rounded total the rule forbids")
+        val desc = flat(OpenApi.schema("TargetAchievement")["description"])
+        assertTrue(desc.contains("a category or card figure is the sum of its item rows, never the card total rounded once"), desc)
+        assertTrue(desc.contains("25/31 gives ${card(25, 31)}; 21/26 gives ${card(21, 26)}, where a rounded total would give ${tillDate(40999, 21, 26)}"), desc)
+        assertTrue(flat(OpenApi.schema("TargetAchievementRow")["description"]).contains("a category row the sum of its items (never its own T rounded once"))
     }
 
     @Test

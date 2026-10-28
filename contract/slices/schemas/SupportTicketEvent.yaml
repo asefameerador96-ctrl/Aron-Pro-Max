@@ -22,7 +22,11 @@ SupportTicketEvent:
       type:
       - string
       - 'null'
-      maxLength: 2000
+      maxLength: 2400
+      description: 'The entry''s text; null for an entry without text. A comment or a desk reply is 1 to 2000 characters
+        (SupportTicketEventPayload, SupportTicketEventWrite). A `resolution` entry carries the D-TSO-MAN-20 message
+        (updateSupportTicket): 62 fixed characters, the ticket number (at most 22), the resolution label (at most
+        120) and the notes (at most 2000), so at most 2204; 2400 bounds it with room.'
     actor_is_support:
       type: boolean
     actor_display:
