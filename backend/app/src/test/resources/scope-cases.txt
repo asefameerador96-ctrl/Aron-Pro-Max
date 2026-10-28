@@ -213,3 +213,5 @@ POST /v1/admin/mdm/enrolment-tokens/{token_id}/revoke -> exempt: national module
 POST /v1/admin/mdm/policies -> exempt: national module (mdm grant), no geography rows; role gate proven by MdmApiTest#roleMatrixOnlyAdminAndSuperadminEnter
 PUT /v1/admin/mdm/devices/{device_id}/policy -> exempt: national module (mdm grant), no geography rows; role gate proven by MdmApiTest#roleMatrixOnlyAdminAndSuperadminEnter
 PUT /v1/admin/mdm/policies/{policy_id} -> exempt: national module (mdm grant), no geography rows; role gate proven by MdmApiTest#roleMatrixOnlyAdminAndSuperadminEnter
+# tso-manual B3
+POST /v1/day/reopen -> case DayApiTest#reopenIsAuditedIdempotentAndBoundToRoleWindowAndReach
