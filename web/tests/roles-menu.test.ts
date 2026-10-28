@@ -43,12 +43,13 @@ describe("menu is driven from data", () => {
     // ANALYST also reads the audit log (docs/24 s8.5, listAudit).
     expect(menuFor("ANALYST").find((s) => s.group === "admin")?.items.map((i) => i.href)).toEqual(["/admin/outlet-requests", "/admin/audit"]);
     expect(menuFor("DMO").find((s) => s.group === "admin")?.items.map((i) => i.href)).toEqual(["/admin/outlet-requests", "/admin/outlet-change"]);
-    expect(menuFor("SUPPORT").find((s) => s.group === "admin")?.items.map((i) => i.href)).toEqual(["/admin", "/admin/master-data", "/admin/team", "/admin/audit"]);
+    // tso-manual W1: /admin/tickets is in the static role list of the portal roles; the shell hides it without Me.support_desk (grantsOf, checker-tickets)
+    expect(menuFor("SUPPORT").find((s) => s.group === "admin")?.items.map((i) => i.href)).toEqual(["/admin", "/admin/master-data", "/admin/team", "/admin/audit", "/admin/tickets"]);
     expect(menuFor("ADMIN").map((s) => s.group)).toEqual(["main", "reports", "products", "admin", "config"]);
   });
   it("keeps the admin menu short: master-data tables hang off one hub, not one menu entry each", () => {
     const admin = menuFor("ADMIN").find((s) => s.group === "admin");
-    expect(admin?.items.map((i) => i.href)).toEqual(["/admin", "/admin/master-data", "/admin/outlet-requests", "/admin/team", "/admin/wholesale-marking", "/admin/mdm", "/admin/audit"]);
+    expect(admin?.items.map((i) => i.href)).toEqual(["/admin", "/admin/master-data", "/admin/outlet-requests", "/admin/team", "/admin/wholesale-marking", "/admin/mdm", "/admin/audit", "/admin/tickets"]); // tso-manual W1: + /admin/tickets
   });
   it("a new item with a role list appears for exactly those roles", () => {
     const extra: MenuItem = { id: "x", labelKey: "menu.dashboard", href: "/x", roles: ["DMO"], group: "main" };
