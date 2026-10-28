@@ -163,20 +163,21 @@ class NationalDashboardService(
         val date = dateOf(f); val sql = NationalSql(caller, f)
         return read { h ->
             ensureReady(h)
+            val asWasPlain = AsWasSql.unchangedSince(h, date)
             val sold = sql.bind(h.createQuery(
                 """
                 SELECT p.category_code, p.base_unit, sum(a.sold_qty_base) AS qty
-                  FROM dw.agg_daily_route_sku a ${AsWasSql.geo("g", "a.route_id", "a.business_date", "JOIN", lo = ":d", hi = ":d")} ${AsWasSql.product("p", "a.sku_id", "a.business_date", "JOIN", lo = ":d", hi = ":d")}
+                  FROM dw.agg_daily_route_sku a ${AsWasSql.geo("g", "a.route_id", "a.business_date", "JOIN", lo = ":d", hi = ":d", plain = asWasPlain)} ${AsWasSql.product("p", "a.sku_id", "a.business_date", "JOIN", lo = ":d", hi = ":d", plain = asWasPlain)}
                  WHERE a.business_date = :d ${sql.geo} ${sql.product} GROUP BY 1, 2
                 """,
             ).bind("d", date)).map { rs, _ -> Triple(rs.getString(1), rs.getString(2), rs.getLong(3)) }.list()
-            val cats = sql.bind(h.createQuery("SELECT DISTINCT p.category_code, p.base_unit FROM ${AsWasSql.productAll("p", lo = ":d", hi = ":d")} WHERE true ${sql.product}").bind("d", date)).map { rs, _ -> rs.getString(1) to rs.getString(2) }.list()
+            val cats = sql.bind(h.createQuery("SELECT DISTINCT p.category_code, p.base_unit FROM ${AsWasSql.productAll("p", lo = ":d", hi = ":d", plain = asWasPlain)} WHERE true ${sql.product}").bind("d", date)).map { rs, _ -> rs.getString(1) to rs.getString(2) }.list()
             val month = YearMonth.from(date)
             val wd = WorkingCalendar.workingDays(h, month, weekendDays())
             val targets = sql.bind(h.createQuery(
                 """
                 SELECT p.category_code, sum(t.qty_base) AS total, count(DISTINCT t.route_id) AS routes
-                  FROM app.route_monthly_target t ${AsWasSql.geo("g", "t.route_id", "CAST(:d AS date)", lo = ":d", hi = ":d")} ${AsWasSql.product("p", "t.sku_id", "CAST(:d AS date)", lo = ":d", hi = ":d")}
+                  FROM app.route_monthly_target t ${AsWasSql.geo("g", "t.route_id", "CAST(:d AS date)", lo = ":d", hi = ":d", plain = asWasPlain)} ${AsWasSql.product("p", "t.sku_id", "CAST(:d AS date)", lo = ":d", hi = ":d", plain = asWasPlain)}
                  WHERE t.month = :m ${sql.geo} ${sql.product}
                  GROUP BY 1
                 """,
@@ -205,24 +206,25 @@ class NationalDashboardService(
         val date = dateOf(f); val sql = NationalSql(caller, f)
         return read { h ->
             ensureReady(h)
+            val asWasPlain = AsWasSql.unchangedSince(h, date)
             val targetOutlets = sql.bind(h.createQuery(
                 """
-                SELECT coalesce(sum(a.target_outlets), 0) FROM dw.agg_daily_route a ${AsWasSql.geo("g", "a.route_id", "a.business_date", "JOIN", lo = ":d", hi = ":d")}
+                SELECT coalesce(sum(a.target_outlets), 0) FROM dw.agg_daily_route a ${AsWasSql.geo("g", "a.route_id", "a.business_date", "JOIN", lo = ":d", hi = ":d", plain = asWasPlain)}
                  WHERE a.business_date = :d AND a.planned AND NOT a.exception_approved AND g.route_class = 'normal' AND g.route_kind = 'sr' ${sql.geo}
                 """,
             ).bind("d", date)).mapTo(Long::class.java).one().toInt()
             val calls = if (!sql.hasProductFilter) {
                 sql.bind(h.createQuery(
                     """
-                    SELECT coalesce(sum(a.successful_calls), 0) FROM dw.agg_daily_route a ${AsWasSql.geo("g", "a.route_id", "a.business_date", "JOIN", lo = ":d", hi = ":d")}
+                    SELECT coalesce(sum(a.successful_calls), 0) FROM dw.agg_daily_route a ${AsWasSql.geo("g", "a.route_id", "a.business_date", "JOIN", lo = ":d", hi = ":d", plain = asWasPlain)}
                      WHERE a.business_date = :d AND a.planned AND NOT a.exception_approved AND g.route_class = 'normal' AND g.route_kind = 'sr' ${sql.geo}
                     """,
                 ).bind("d", date)).mapTo(Long::class.java).one().toInt()
             } else {
                 sql.bind(h.createQuery(
                     """
-                    SELECT count(DISTINCT (s.route_id, s.outlet_id)) FROM dw.agg_daily_outlet_sku s ${AsWasSql.geo("g", "s.route_id", "s.business_date", "JOIN", lo = ":d", hi = ":d")}
-                      ${AsWasSql.product("p", "s.sku_id", "s.business_date", "JOIN", lo = ":d", hi = ":d")} JOIN dw.agg_daily_route a ON a.route_id = s.route_id AND a.business_date = s.business_date
+                    SELECT count(DISTINCT (s.route_id, s.outlet_id)) FROM dw.agg_daily_outlet_sku s ${AsWasSql.geo("g", "s.route_id", "s.business_date", "JOIN", lo = ":d", hi = ":d", plain = asWasPlain)}
+                      ${AsWasSql.product("p", "s.sku_id", "s.business_date", "JOIN", lo = ":d", hi = ":d", plain = asWasPlain)} JOIN dw.agg_daily_route a ON a.route_id = s.route_id AND a.business_date = s.business_date
                      WHERE s.business_date = :d AND a.planned AND NOT a.exception_approved AND g.route_class = 'normal' AND g.route_kind = 'sr' ${sql.geo} ${sql.product}
                     """,
                 ).bind("d", date)).mapTo(Long::class.java).one().toInt()
@@ -243,11 +245,12 @@ class NationalDashboardService(
         val date = dateOf(f); val sql = NationalSql(caller, f)
         return read { h ->
             ensureReady(h)
+            val asWasPlain = AsWasSql.unchangedSince(h, date)
             val rows = sql.bind(h.createQuery(
                 """
                 SELECT o.channel, count(DISTINCT (s.route_id, s.outlet_id)) AS n
-                  FROM dw.agg_daily_outlet_sku s ${AsWasSql.geo("g", "s.route_id", "s.business_date", "JOIN", lo = ":d", hi = ":d")} ${AsWasSql.product("p", "s.sku_id", "s.business_date", "JOIN", lo = ":d", hi = ":d")}
-                  ${AsWasSql.outlet("o", "s.outlet_id", "s.business_date", "JOIN", lo = ":d", hi = ":d")} JOIN dw.agg_daily_route a ON a.route_id = s.route_id AND a.business_date = s.business_date
+                  FROM dw.agg_daily_outlet_sku s ${AsWasSql.geo("g", "s.route_id", "s.business_date", "JOIN", lo = ":d", hi = ":d", plain = asWasPlain)} ${AsWasSql.product("p", "s.sku_id", "s.business_date", "JOIN", lo = ":d", hi = ":d", plain = asWasPlain)}
+                  ${AsWasSql.outlet("o", "s.outlet_id", "s.business_date", "JOIN", lo = ":d", hi = ":d", plain = asWasPlain)} JOIN dw.agg_daily_route a ON a.route_id = s.route_id AND a.business_date = s.business_date
                  WHERE s.business_date = :d AND a.planned AND NOT a.exception_approved AND g.route_class = 'normal' AND g.route_kind = 'sr' ${sql.geo} ${sql.product} GROUP BY 1
                 """,
             ).bind("d", date)).map { rs, _ -> rs.getString(1) to rs.getLong(2) }.list().toMap()
@@ -260,11 +263,12 @@ class NationalDashboardService(
         val date = dateOf(f); val sql = NationalSql(caller, f)
         return read { h ->
             ensureReady(h)
+            val asWasPlain = AsWasSql.unchangedSince(h, date)
             val rows = sql.bind(h.createQuery(
                 """
                 SELECT o.channel, sum(s.sold_qty_base) AS q
-                  FROM dw.agg_daily_outlet_sku s ${AsWasSql.geo("g", "s.route_id", "s.business_date", "JOIN", lo = ":d", hi = ":d")} ${AsWasSql.product("p", "s.sku_id", "s.business_date", "JOIN", lo = ":d", hi = ":d")}
-                  ${AsWasSql.outlet("o", "s.outlet_id", "s.business_date", "JOIN", lo = ":d", hi = ":d")}
+                  FROM dw.agg_daily_outlet_sku s ${AsWasSql.geo("g", "s.route_id", "s.business_date", "JOIN", lo = ":d", hi = ":d", plain = asWasPlain)} ${AsWasSql.product("p", "s.sku_id", "s.business_date", "JOIN", lo = ":d", hi = ":d", plain = asWasPlain)}
+                  ${AsWasSql.outlet("o", "s.outlet_id", "s.business_date", "JOIN", lo = ":d", hi = ":d", plain = asWasPlain)}
                  WHERE s.business_date = :d AND p.category_code = 'cigarette' ${sql.geo} ${sql.product} GROUP BY 1
                 """,
             ).bind("d", date)).map { rs, _ -> rs.getString(1) to rs.getLong(2) }.list().toMap()
@@ -280,10 +284,11 @@ class NationalDashboardService(
         val date = dateOf(f); val sql = NationalSql(caller, f)
         return read { h ->
             ensureReady(h)
+            val asWasPlain = AsWasSql.unchangedSince(h, date)
             val total = sql.bind(h.createQuery("SELECT count(DISTINCT g.zone_id) FROM dw.dim_geo g WHERE g.status = 'active' ${sql.geo}")).mapTo(Long::class.java).one().toInt()
             val (service, submitted) = sql.bind(h.createQuery(
                 """
-                WITH svc AS (SELECT DISTINCT a.zone_id FROM dw.agg_daily_route a ${AsWasSql.geo("g", "a.route_id", "a.business_date", "JOIN", lo = ":d", hi = ":d")}
+                WITH svc AS (SELECT DISTINCT a.zone_id FROM dw.agg_daily_route a ${AsWasSql.geo("g", "a.route_id", "a.business_date", "JOIN", lo = ":d", hi = ":d", plain = asWasPlain)}
                               WHERE a.business_date = :d AND a.planned AND NOT a.exception_approved AND g.route_class = 'normal' AND g.route_kind = 'sr' ${sql.geo})
                 SELECT count(*), count(*) FILTER (WHERE z.final_submitted_at IS NOT NULL)
                   FROM svc LEFT JOIN dw.agg_daily_zone z ON z.zone_id = svc.zone_id AND z.business_date = :d
@@ -299,13 +304,14 @@ class NationalDashboardService(
         val date = dateOf(f); val sql = NationalSql(caller, f)
         return read { h ->
             ensureReady(h)
+            val asWasPlain = AsWasSql.unchangedSince(h, date)
             // Brief s3.4: a successful login is a login AND a download AND a check-in (DashboardSummaries.successfulLoginSql).
             val ok = DashboardSummaries.successfulLoginSql(h)
             val (target, login, submitted) = sql.bind(h.createQuery(
                 """
                 SELECT count(*), count(*) FILTER (WHERE $ok),
                        count(*) FILTER (WHERE $ok AND a.sales_submitted_at IS NOT NULL)
-                  FROM dw.agg_daily_route a ${AsWasSql.geo("g", "a.route_id", "a.business_date", "JOIN", lo = ":d", hi = ":d")}
+                  FROM dw.agg_daily_route a ${AsWasSql.geo("g", "a.route_id", "a.business_date", "JOIN", lo = ":d", hi = ":d", plain = asWasPlain)}
                  WHERE a.business_date = :d AND a.planned AND NOT a.exception_approved AND g.route_class = 'normal' AND g.route_kind = 'sr' ${sql.geo}
                 """,
             ).bind("d", date)).map { rs, _ -> Triple(rs.getInt(1), rs.getInt(2), rs.getInt(3)) }.one()
@@ -322,6 +328,7 @@ class NationalDashboardService(
         val f = req.filter; val date = dateOf(f); val sql = NationalSql(caller, f)
         return read { h ->
             ensureReady(h)
+            val asWasPlain = AsWasSql.unchangedSince(h, date)
             // A memo count per node is exact only when no narrower product filter applies: the per-route tables count every memo holding any SKU of the node.
             val narrower = when (req.dimension) {
                 "segment" -> f.brand_codes.isNotEmpty() || f.variant_codes.isNotEmpty() || caller.brandIds != null
@@ -339,15 +346,15 @@ class NationalDashboardService(
                 // different units are never compared).
                 category = req.category_code ?: sql.bind(h.createQuery(
                     """
-                    SELECT p.category_code FROM dw.agg_daily_route_sku a ${AsWasSql.geo("g", "a.route_id", "a.business_date", "JOIN", lo = ":d", hi = ":d")} ${AsWasSql.product("p", "a.sku_id", "a.business_date", "JOIN", lo = ":d", hi = ":d")}
+                    SELECT p.category_code FROM dw.agg_daily_route_sku a ${AsWasSql.geo("g", "a.route_id", "a.business_date", "JOIN", lo = ":d", hi = ":d", plain = asWasPlain)} ${AsWasSql.product("p", "a.sku_id", "a.business_date", "JOIN", lo = ":d", hi = ":d", plain = asWasPlain)}
                      WHERE a.business_date = :d ${sql.geo} ${sql.product} GROUP BY 1 ORDER BY array_position(ARRAY['cigarette','bidi','lighter','match'], p.category_code), 1 LIMIT 1
                     """,
                 ).bind("d", date)).mapTo(String::class.java).findOne().orElse(null)
-                unit = category?.let { c -> sql.bind(h.createQuery("SELECT min(p.base_unit) FROM ${AsWasSql.productAll("p", lo = ":d", hi = ":d")} WHERE p.category_code = :c ${sql.product}").bind("c", c).bind("d", date)).mapTo(String::class.java).findOne().orElse(null) }
+                unit = category?.let { c -> sql.bind(h.createQuery("SELECT min(p.base_unit) FROM ${AsWasSql.productAll("p", lo = ":d", hi = ":d", plain = asWasPlain)} WHERE p.category_code = :c ${sql.product}").bind("c", c).bind("d", date)).mapTo(String::class.java).findOne().orElse(null) }
                 items = if (category == null) emptyList() else sql.bind(h.createQuery(
                     """
                     SELECT $nodeCols, sum(a.sold_qty_base) AS v
-                      FROM dw.agg_daily_route_sku a ${AsWasSql.geo("g", "a.route_id", "a.business_date", "JOIN", lo = ":d", hi = ":d")} ${AsWasSql.product("p", "a.sku_id", "a.business_date", "JOIN", lo = ":d", hi = ":d")}
+                      FROM dw.agg_daily_route_sku a ${AsWasSql.geo("g", "a.route_id", "a.business_date", "JOIN", lo = ":d", hi = ":d", plain = asWasPlain)} ${AsWasSql.product("p", "a.sku_id", "a.business_date", "JOIN", lo = ":d", hi = ":d", plain = asWasPlain)}
                      WHERE a.business_date = :d AND p.category_code = :cat ${sql.geo} ${sql.product} GROUP BY 1, 2, 3 HAVING sum(a.sold_qty_base) > 0 ORDER BY v DESC, 3
                     """,
                 ).bind("d", date).bind("cat", category)).map { rs, _ -> BreakdownItem(rs.getString(2), rs.getString(3), rs.getLong(4)) }.list()
@@ -357,8 +364,8 @@ class NationalDashboardService(
                 items = sql.bind(h.createQuery(
                     """
                     SELECT n.$col, n.code, n.name, sum(a.memo_count) AS v
-                      FROM $table a ${AsWasSql.geo("g", "a.route_id", "a.business_date", "JOIN", lo = ":d", hi = ":d")}
-                      JOIN (SELECT DISTINCT $nodeCols FROM ${AsWasSql.productAll("p", lo = ":d", hi = ":d")} WHERE true ${sql.product}) n(${col}, code, name) ON n.$col = a.$col
+                      FROM $table a ${AsWasSql.geo("g", "a.route_id", "a.business_date", "JOIN", lo = ":d", hi = ":d", plain = asWasPlain)}
+                      JOIN (SELECT DISTINCT $nodeCols FROM ${AsWasSql.productAll("p", lo = ":d", hi = ":d", plain = asWasPlain)} WHERE true ${sql.product}) n(${col}, code, name) ON n.$col = a.$col
                      WHERE a.business_date = :d ${sql.geo} GROUP BY 1, 2, 3 HAVING sum(a.memo_count) > 0 ORDER BY v DESC, 3
                     """,
                 ).bind("d", date)).map { rs, _ -> BreakdownItem(rs.getString(2), rs.getString(3), rs.getLong(4)) }.list()
@@ -377,10 +384,11 @@ class NationalDashboardService(
         val date = dateOf(f); val sql = NationalSql(caller, f)
         return read { h ->
             ensureReady(h)
+            val asWasPlain = AsWasSql.unchangedSince(h, date)
             val (total, valid) = sql.bind(h.createQuery(
                 """
                 SELECT coalesce(sum(a.completed_calls), 0), coalesce(sum(a.completed_geo_valid_calls), 0)
-                  FROM dw.agg_daily_route a ${AsWasSql.geo("g", "a.route_id", "a.business_date", "JOIN", lo = ":d", hi = ":d")} WHERE a.business_date = :d ${sql.geo}
+                  FROM dw.agg_daily_route a ${AsWasSql.geo("g", "a.route_id", "a.business_date", "JOIN", lo = ":d", hi = ":d", plain = asWasPlain)} WHERE a.business_date = :d ${sql.geo}
                 """,
             ).bind("d", date)).map { rs, _ -> rs.getInt(1) to rs.getInt(2) }.one()
             val m = meta(h, date, listOf("agg_daily_route"))

@@ -32,6 +32,7 @@ class AsWasReadTest {
 
     @BeforeEach
     fun setUp() {
+        AsWasSql.probeTtlMs = 0   // the tests edit masters and read at once
         fresh = FreshDb.create()
         fresh.dataSource.connection.use { c ->
             c.createStatement().use { it.execute(resource("seed_day.sql")) }
@@ -49,7 +50,7 @@ class AsWasReadTest {
     }
 
     @AfterEach
-    fun tearDown() = fresh.close()
+    fun tearDown() { AsWasSql.probeTtlMs = 20_000; fresh.close() }
 
     private fun id(sql: String) = fresh.db.jdbi.withHandle<Long, Exception> { it.createQuery(sql).mapTo(Long::class.java).one() }
     private fun text(sql: String) = fresh.db.jdbi.withHandle<String, Exception> { it.createQuery(sql).mapTo(String::class.java).one() }

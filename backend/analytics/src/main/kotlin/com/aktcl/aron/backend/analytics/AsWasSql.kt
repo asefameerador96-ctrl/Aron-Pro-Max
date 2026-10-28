@@ -18,6 +18,34 @@ package com.aktcl.aron.backend.analytics
  * caller's scope filter still runs over the alias, so scope stays derived from the token's reach.
  */
 internal object AsWasSql {
+    /** Probe result per database and window start: (millis, unchanged). */
+    private val probes = java.util.concurrent.ConcurrentHashMap<String, Pair<Long, Boolean>>()
+
+    /** How long a probe answer is reused. Tests that edit masters and read at once set it to 0. */
+    @Volatile var probeTtlMs: Long = 20_000
+
+    private val HISTORY_TABLES = listOf(
+        "route_zone_history", "route_history", "zone_history", "territory_history", "division_history", "sku_history", "product_node_history",
+        "outlet_class_history",
+    )
+
+    /**
+     * True when no master history period closed after [from], i.e. nothing of the geography, the product tree or an outlet's class changed
+     * since the window began: the current dimension IS the as-was dimension for every row of the window, so the plain joins answer
+     * exactly (and cost what they always did). Any change, anywhere, switches the window to the timeline joins.
+     */
+    fun unchangedSince(h: org.jdbi.v3.core.Handle, from: java.time.LocalDate): Boolean {
+        val key = "${h.connection.catalog}|$from"
+        val now = System.currentTimeMillis()
+        probes[key]?.let { (at, v) -> if (now - at < probeTtlMs) return v }
+        val v = h.createQuery(
+            HISTORY_TABLES.joinToString(" AND ") { "NOT EXISTS (SELECT 1 FROM app.$it WHERE valid_to > :f)" }.let { "SELECT $it" },
+        ).bind("f", from).mapTo(Boolean::class.java).one()
+        if (probes.size > 1_000) probes.clear()
+        probes[key] = now to v
+        return v
+    }
+
     private const val ACTIVE_HOUSE =
         "(SELECT min(h2.id) FROM app.house h2 WHERE h2.territory_id = hs.territory_id AND lower(h2.name) = lower(hs.name) AND coalesce(to_jsonb(h2)->>'status', 'active') = 'active')"
 
@@ -27,9 +55,9 @@ internal object AsWasSql {
         hi?.let { "($from IS NULL OR $from <= CAST($hi AS date))" },
     ).joinToString(" AND ").ifEmpty { "true" }
 
-    /** The fact row's date falls in the alias's period. */
+    /** The fact row's date falls in the alias's period (`as_from`/`as_to` are never NULL: open ends are infinities). */
     private fun on(alias: String, key: String, keyExpr: String, date: String) =
-        "ON $alias.$key = $keyExpr AND $date >= coalesce($alias.as_from, '-infinity'::date) AND $date < coalesce($alias.as_to, 'infinity'::date)"
+        "ON $alias.$key = $keyExpr AND $date >= $alias.as_from AND $date < $alias.as_to"
 
     /** CTEs `cov` and `gap`: the dates of each key in [base] that `per` does not cover (the whole line for a key with no period). */
     private fun gaps(key: String, base: String) =
@@ -41,7 +69,8 @@ internal object AsWasSql {
         "CASE WHEN h.${level}_id = cg.${level}_id THEN cg.${level}_name ELSE coalesce(n_$level.name, cg.${level}_name) END AS ${level}_name"
 
     /** `dw.dim_geo` as of the date: route -> zone -> territory -> division -> wing, house, route kind and class. [join] is JOIN or LEFT JOIN. */
-    fun geo(alias: String, route: String, date: String, join: String = "JOIN", lo: String? = null, hi: String? = null): String = """
+    fun geo(alias: String, route: String, date: String, join: String = "JOIN", lo: String? = null, hi: String? = null, plain: Boolean = false): String =
+        if (plain) "$join dw.dim_geo $alias ON $alias.route_id = $route" else """
         $join (
           WITH per AS (SELECT hh.route_id, hh.valid_from AS vf, hh.valid_to AS vt, hh.zone_id, hh.house_id, hh.territory_id, hh.division_id, hh.wing_id,
                               hh.route_kind, hh.visit_kind, hh.route_class
@@ -57,7 +86,7 @@ internal object AsWasSql {
                  coalesce(h.wing_id, cg.wing_id) AS wing_id, ${geoName("wing")},
                  CASE WHEN h.has THEN $ACTIVE_HOUSE ELSE cg.house_id END AS house_id,
                  CASE WHEN h.has THEN hs.name ELSE cg.house_name END AS house_name,
-                 h.vf AS as_from, h.vt AS as_to
+                 coalesce(h.vf, '-infinity'::date) AS as_from, coalesce(h.vt, 'infinity'::date) AS as_to
             FROM h JOIN dw.dim_geo cg ON cg.route_id = h.route_id
             LEFT JOIN app.zone n_zone ON n_zone.id = h.zone_id LEFT JOIN app.territory n_territory ON n_territory.id = h.territory_id
             LEFT JOIN app.division n_division ON n_division.id = h.division_id LEFT JOIN app.wing n_wing ON n_wing.id = h.wing_id
@@ -83,23 +112,24 @@ internal object AsWasSql {
           SELECT cp.sku_id, cp.sku_code, cp.short_name, coalesce(h.base_unit, cp.base_unit) AS base_unit,
                  coalesce(h.base_per_pack, cp.base_per_pack) AS base_per_pack, coalesce(h.category_code, cp.category_code) AS category_code,
                  cp.updated_at, ${nodeCols("variant", true)}, ${nodeCols("brand", true)}, ${nodeCols("segment", true)}, ${nodeCols("category", false)},
-                 h.vf AS as_from, h.vt AS as_to
+                 coalesce(h.vf, '-infinity'::date) AS as_from, coalesce(h.vt, 'infinity'::date) AS as_to
             FROM h JOIN dw.dim_product cp ON cp.sku_id = h.sku_id
             LEFT JOIN app.product_node n_variant ON n_variant.id = h.variant_id LEFT JOIN app.product_node n_brand ON n_brand.id = h.brand_id
             LEFT JOIN app.product_node n_segment ON n_segment.id = h.segment_id LEFT JOIN app.product_node n_category ON n_category.id = h.category_id"""
 
     /** `dw.dim_product` as of the date: SKU -> variant -> brand -> segment -> category, category code and units. */
-    fun product(alias: String, sku: String, date: String, join: String = "JOIN", lo: String? = null, hi: String? = null): String =
-        "$join (${productBody(lo, hi)}\n        ) $alias ${on(alias, "sku_id", sku, date)}"
+    fun product(alias: String, sku: String, date: String, join: String = "JOIN", lo: String? = null, hi: String? = null, plain: Boolean = false): String =
+        if (plain) "$join dw.dim_product $alias ON $alias.sku_id = $sku" else "$join (${productBody(lo, hi)}\n        ) $alias ${on(alias, "sku_id", sku, date)}"
 
     /**
      * Every product row the timeline holds for the window (the as-was rows of the window plus the current row where the history has no
      * period), as a FROM item for lists of nodes, categories and units that a product filter selects ("which brands, which unit").
      */
-    fun productAll(alias: String, lo: String? = null, hi: String? = null): String = "(${productBody(lo, hi)}\n        ) $alias"
+    fun productAll(alias: String, lo: String? = null, hi: String? = null, plain: Boolean = false): String = if (plain) "dw.dim_product $alias" else "(${productBody(lo, hi)}\n        ) $alias"
 
     /** `dw.dim_outlet` as of the date: zone, channel, sub-channel, geo class and kind. */
-    fun outlet(alias: String, outlet: String, date: String, join: String = "JOIN", lo: String? = null, hi: String? = null): String = """
+    fun outlet(alias: String, outlet: String, date: String, join: String = "JOIN", lo: String? = null, hi: String? = null, plain: Boolean = false): String =
+        if (plain) "$join dw.dim_outlet $alias ON $alias.outlet_id = $outlet" else """
         $join (
           WITH per AS (SELECT hh.outlet_id, hh.valid_from AS vf, hh.valid_to AS vt, hh.zone_id, hh.channel, hh.sub_channel_id, hh.geo_class, hh.outlet_kind
                          FROM dw.v_dim_outlet_history hh WHERE ${win("hh.valid_from", "hh.valid_to", lo, hi)}),
@@ -109,7 +139,7 @@ internal object AsWasSql {
           SELECT co.outlet_id, co.outlet_code, co.outlet_name, co.route_id, co.cluster_id, coalesce(h.zone_id, co.zone_id) AS zone_id,
                  coalesce(h.channel, co.channel) AS channel, coalesce(h.sub_channel_id, co.sub_channel_id) AS sub_channel_id,
                  coalesce(h.geo_class, co.geo_class) AS geo_class, coalesce(h.outlet_kind, co.outlet_kind) AS outlet_kind,
-                 co.location_confirmed, co.status, co.updated_at, h.vf AS as_from, h.vt AS as_to
+                 co.location_confirmed, co.status, co.updated_at, coalesce(h.vf, '-infinity'::date) AS as_from, coalesce(h.vt, 'infinity'::date) AS as_to
             FROM h JOIN dw.dim_outlet co ON co.outlet_id = h.outlet_id
         ) $alias ${on(alias, "outlet_id", outlet, date)}
     """.trimIndent()
@@ -118,7 +148,8 @@ internal object AsWasSql {
      * A zone with its territory, division and wing as of the date (zone-level aggregates carry no route): the as-was replacement of a
      * `DISTINCT` zone chain over `dw.dim_geo`. Zones come from `app.zone`, so a zone that has since lost its routes keeps its rows.
      */
-    fun zone(alias: String, zone: String, date: String, join: String = "JOIN", lo: String? = null, hi: String? = null): String = """
+    fun zone(alias: String, zone: String, date: String, join: String = "JOIN", lo: String? = null, hi: String? = null, plain: Boolean = false): String =
+        if (plain) "$join (SELECT DISTINCT zone_id, zone_name, territory_id, territory_name, division_id, division_name, wing_id, wing_name FROM dw.dim_geo) $alias ON $alias.zone_id = $zone" else """
         $join (
           WITH per AS (SELECT zh.zone_id, lower(p.r) AS vf, upper(p.r) AS vt, zh.territory_id, th.division_id, dv.wing_id
                          FROM app.zone_history zh
@@ -133,7 +164,7 @@ internal object AsWasSql {
                    CROSS JOIN LATERAL unnest(datemultirange(daterange(NULL, NULL, '[)')) - coalesce(cov.m, '{}'::datemultirange)) u),
           h AS (SELECT zone_id, vf, vt, territory_id, division_id, wing_id FROM per UNION ALL SELECT zone_id, vf, vt, territory_id, division_id, wing_id FROM gap)
           SELECT h.zone_id, n_zone.name AS zone_name, h.territory_id, n_territory.name AS territory_name, h.division_id, n_division.name AS division_name,
-                 h.wing_id, n_wing.name AS wing_name, h.vf AS as_from, h.vt AS as_to
+                 h.wing_id, n_wing.name AS wing_name, coalesce(h.vf, '-infinity'::date) AS as_from, coalesce(h.vt, 'infinity'::date) AS as_to
             FROM h JOIN app.zone n_zone ON n_zone.id = h.zone_id JOIN app.territory n_territory ON n_territory.id = h.territory_id
             JOIN app.division n_division ON n_division.id = h.division_id JOIN app.wing n_wing ON n_wing.id = h.wing_id
         ) $alias ${on(alias, "zone_id", zone, date)}
