@@ -368,6 +368,7 @@ class Wiring(
                 mediaRoutes(MediaDeps(db, { path, max, until -> blob.writeSas(path, max, until) }, guard, clock, blobs.photoWriter, reach, blobs.photoRead, blobs.imageRead))
                 pushRoutes(com.aktcl.aron.backend.notify.PushDeps(db, config, guard, clock))
                 notificationRoutes(com.aktcl.aron.backend.notify.NotificationDeps(db, config, reach, push, guard, clock))
+                com.aktcl.aron.backend.analytics.TargetAchievementDeps(com.aktcl.aron.backend.analytics.TargetAchievementService(db, config, clock), reach, guard, clock).install(this)   // tso-manual B2
             }, frontDoorId = s.frontDoorId, admission = admission, cachedGeneration = generation::cached,
                 isolation = com.aktcl.aron.backend.platform.RequestIsolation.forPools(s.dbPoolMax, s.dbReadUrl?.let { s.dbReadPoolMax }),
                 securityEvents = securityEvents, securityStore = securityStore)
