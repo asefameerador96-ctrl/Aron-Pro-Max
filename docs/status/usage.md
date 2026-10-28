@@ -894,3 +894,6 @@
 
 ### 12:40 UTC — ruling correction (lead)
 - The 12:00 ruling on support/ bundles is corrected: docs/21 s4.8 (retention table) already says 30 days with deletion by blob lifecycle, so infra #7 candidate 3 part (a) is a 30-day delete rule, not Cool tiering; docs/18 s2.8 gets aligned to docs/21. Lesson: check the retention table in docs/21 before ruling on any lifecycle question; docs/18 describes tiers, docs/21 governs retention.
+
+### 12:58 UTC — lane check (scheduled 12:46, fired 12:58; lead)
+- No train in flight; INT 03ea8dc9 (train 52) is what dev serves (health build 03ea8dc9 at 12:58). integrator 22 confirmed ready at 12:29 (unshallowed, HANDOVER 21 → 22 read, INT head 03ea8dc9); integrator 21 archived 12:30. infra #7 on candidate 3 (support/ 30-day delete rule per docs/21 s4.8 + diagnosable Key Vault ACL row), report due by ~14:00. backend-reports #7 on the read half, first candidate due by ~15:30. No owner message since 09:43. Pacing unchanged: 1 Opus lane, 1 Sonnet lane, Sonnet integrator; the held Opus slot is decided at the 15:00 usage check.
