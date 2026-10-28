@@ -846,3 +846,6 @@
 
 ### 06:49 UTC — lane check (06:46 cron)
 - Train 46 ci 40643677288 (#1617) still in progress (since 06:24); health df6b8899 (train 45) as expected before the deploy. backend-reports #6 up (06:35: lane merged with INT 46, 0 markers; candidate 1 ETA ~3–4 h). backend-core #20 slice 2 in local suites. web-admin #8 briefed. No owner message. Nothing else to do.
+
+### 07:05 UTC — TRAIN 46 LANDED (lead)
+- INT 581de896d31070d71c9c0f5509502ac84840e80d (lead docs df1f1ce5 + backend-core #20 slice 1 0e3a3f37 LAST). ci 40643677288 (#1617) success 06:24 → 06:50 (RAN: Detect, Repository gates, Shared/db/backend, Backend app tests, Backend analytics tests, Container images; skipped unchanged: Release APKs, Android, Infra, Web → APK stays 1600); deploy 40646364960 (#280) success 06:50 → 07:03: migrations job ran with nothing new, Maps secret confirmed, worker revision --0000119 0 restarts, smoke PASSED, step 9 6 s (the smoke does not exercise the route-only TSO dashboards); health build 581de896 (lead curl 07:04). backend-core #20 told; slice 2 then HANDOVER 20 → 21. Since the stall ended: trains 41–46, DECISIONS 98 → 113, V0116–V0122 on dev.
