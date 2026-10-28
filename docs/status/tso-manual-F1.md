@@ -195,13 +195,15 @@ New decisions:
   exceed 10000 (four members), or when it is new in 1.10.0 and declares no `maximum` (four members). The 1.9.0 ratios
   without a declared maximum that are bounded by their meaning (`NationalCpr.cpr_pct_bp`, both `share_pct_bp`,
   `login_pct_bp`, both `submit_pct_bp`, both `geo_pct_bp`, `miss_pct_bp`, `RouteMap.cpr.cpr_pct_bp`) are unchanged: no
-  generated Kotlin DTO decodes them, and none can leave the 32-bit range (that needs about 214,748 %). The lead may
-  widen them in 1.10.x.
+  generated Kotlin DTO decodes them, and none can leave the 32-bit range (int32 holds 2,147,483,647 bp, that is about
+  21.5 million %, a ratio of about 214,748x; the first text said "about 214,748 %", which was wrong). The lead may
+  widen them in 1.10.x. **Superseded by D-F1-25 (checker round after the rulings): all ten are int64 in 1.10.0.**
 - **D-F1-20 `children=zone` at a zone node (R-F-18).** "Territory or below" includes a zone node; it answers itself as
   its one child, so the zone card list is never empty for a single-zone reach. The check runs on the resolved node, so
   a national or wing caller without `level` gets 400 for `children=zone`.
 - **D-F1-21 `tilldate_target_qty` with n = 0.** R-F-15 names the integer members only; the AMO app's Decimal3
-  `tilldate_target_qty` stays required and non-null (ask 12).
+  `tilldate_target_qty` stays required and non-null (ask 12). **Completed by D-F1-23: it is "0.000" when the node's n is
+  0, stated in the contract; ask 12 is closed.**
 
 Asks (round 2):
 
@@ -240,3 +242,70 @@ keys sit in the `SchemaV1aTest` ruled set).
 
 Not run: `JcsTest` (it calls `python3`, which this laptop does not have; not chased, as instructed);
 `tools/ci/contract-breaking.sh` (oasdiff is a Linux binary, CI only, R-F-22).
+
+## Fix round 2 (lead rulings): checker findings after the rulings round (2026-10-29)
+
+An independent checker found one medium and six low defects in the round-2 contract. All seven are fixed in 1.10.0,
+which is still unreleased and changed in place. Nothing is parked.
+
+| # | Sev | Defect | Fix in `contract/openapi.yaml` (or generator) | Pinned by |
+|---|---|---|---|---|
+| 1 | medium | R-F-15: only the parent carried e/n, but on the working-days basis a child zone's W comes from its own path (D-TSO-MAN-08), so a child can have n = 0 while the territory has n > 0 | `TargetAchievementNode` gains required `elapsed_days` and `period_days` (0..31) with the null rule per node. `TargetAchievement` (description, `elapsed_days`, `period_days`) and the `TargetAchievementRow` description say that the parent's pair governs `rows` and each child's own pair governs its rows; on the calendar-days basis every node has the parent's pair | `targetAchievementOfSections32And33` (required list, ranges, the per-node texts, `TargetAchievementNode.elapsedDays`/`periodDays` are `Int` in WireDtos) |
+| 2 | low | R-F-17 text "days - weekend - holidays + make-up days" counts a date twice when declarations overlap | `NationalSales.working_days`: W = the number of dates in the month that are working days at the node; a make-up day works, otherwise a date works when it is neither a weekend day nor an off day; per date the most specific declaration on the path decides, and each date counts once (WorkingDays.resolve, WorkingDays.month). Example: October 2026, global, Friday weekend = 26; a global holiday on Friday 2 October leaves 26; a make-up day on a weekday adds nothing | `noWorkingDayMakesTheDailyTargetAndTheRingNull` (new phrases, the old "- the holidays on the node's path" is gone, the example recomputed per date with java.time: 26, 26, 26) |
+| 3 | low | R-F-13: `monthly_target_qty` did not state the W = 0 rule; `achievement_pct_bp` did not cover a target that sums to 0 | `NationalSalesCard.monthly_target_qty`: when `working_days` is 0 the phone and the web print "—" for every figure derived from it and never divide by it. `NationalSalesCard.achievement_pct_bp`: also null when `monthly_target_qty` is 0. Same for `TargetVsAchievement.achievement_pct_bp`, which is null when the route's monthly target is 0. This matches the server (`daily?.takeIf { it.signum() > 0 }` in NationalDashboard.kt and NationalMaps.kt) | same test |
+| 4 | low | R-F-18 said nothing about a house node; the test comment was wrong | `getTargetAchievement`: a house node answers its zones in the reach. A house is a group of zones inside one territory, and it is the default top reach node of a house TSO or AMO (D-AUTHZ-1-7-WIRING-01, NodeScope). An explicit `level=house` stays 400 (`query.level`, GeoLevelQuery) with or without `children`. The `children` parameter reads "territory, house or zone" | `childrenZoneOnlyAtATerritoryOrBelow` (house texts; ReachLevel above a territory = national, wing, division; at or below = territory, house, zone, route; the GeoLevelQuery 400 text). Comment corrected |
+| 5 | low | `tilldate_target_qty` (AMO, Decimal3, required) had no value when n = 0 | Description: "0.000" when the row's node has `period_days` 0. The member stays required and non-null in 1.10.0. Description-only, not breaking | `targetAchievementOfSections32And33` |
+| 6 | low | R-F-16: ten 1.9.0 `*_bp` members without a `maximum` stayed int32; D-F1-19 misstated the int32 bound | `format: int64` on `NationalCpr.cpr_pct_bp`, `NationalChannelCalls.channels[].share_pct_bp`, `NationalChannelStd.channels[].share_pct_bp`, `NationalFinalSubmit.submit_pct_bp`, `NationalLoginSubmit.login_pct_bp`, `.submit_pct_bp`, `NationalGeoFencing.geo_pct_bp`, `FfGeoPin.geo_pct_bp`, `FfGeoRoutePopup.miss_pct_bp`, `RouteMap.cpr.cpr_pct_bp`. Gate file s1 has a second int64 row for them; the 1.10.0 changelog line says "every `*_bp` member without a `maximum` is int64". D-F1-19 figure corrected | `uncappedBasisPointMembersAreInt64` now walks every schema: each `*_bp` without a `maximum` is int64 (the ten listed by name), and a member described as uncapped declares no maximum |
+| 7 | low | The R7 explicit-null serializer was not applied to `List<T>` members, and not to nested classes | `gen_wire_dtos.py`: a `List<T>` of an R7 class gets `List<@Serializable(with = TWire::class) T>`; a nested class with required-nullable members gets its own `…Wire`, and its owner's field uses it. Regenerated WireDtos: `TargetAchievement.rows`, `TargetAchievementNode.rows`, `SupportTicketPage.items`, `SupportTicketDetail.events`, `NotificationInbox.items`, `NationalLoginSubmitUsers.items`, `NationalBrandCpr.brands` (new `NationalBrandCprBrandsWire`), `NationalSegmentShare.segments` (new `NationalSegmentShareSegmentsWire`). The doc line of every `…Wire` object now states what it covers | `WireDtosDriftTest.wireNullsHoldInListsAndNestedClasses` (encodes with `explicitNulls = false`: the four row keys are explicit nulls in `rows[]` and `children[].rows[]`, also through the plain `TargetAchievementNode` serializer; the three brand keys in `brands[]`; the value decodes back unchanged). Mutation check: with the type-argument serializer removed from WireDtos.kt the test fails with "tilldate_target_qty_base must be an explicit null"; the file was regenerated afterwards and `--check` is clean |
+
+New decisions:
+
+- **D-F1-22 Per-node e and n (defect 1).** I chose the first option the checker gave, the members on
+  `TargetAchievementNode`, over "children use the parent's calendar". The reason is D-TSO-MAN-08: W is computed at the
+  node from the node's own path, and a zone card shows the zone. Both members are required: the schema is new in 1.10.0
+  and the operation answers 404 today.
+- **D-F1-23 `tilldate_target_qty` when n = 0 (defect 5).** It is "0.000" (nothing is due when no working day exists or
+  has elapsed), and it stays required and non-null. Making it nullable stays a 1.10.x option for the lead. This closes
+  ask 12 and completes D-F1-21.
+- **D-F1-24 House under R-F-18 (defect 4).** "Territory or below" includes a house, because a house groups zones inside
+  one territory. A house answers its zones, as NodeScope already resolves it. The house case can only come from the
+  default top node, because an explicit `level=house` is 400 on every dashboard (GeoLevelQuery).
+- **D-F1-25 R-F-16 read literally (defect 6, supersedes the narrowed reading of D-F1-19).** A `*_bp` member without a
+  `maximum` is uncapped and therefore int64. The ten 1.9.0 count ratios are widened in 1.10.0, which is unreleased, the
+  same way as the two members already in s1. On the wire, the server's `Int?` values are unchanged; the web type stays
+  `number`.
+- **D-F1-26 R7 at every depth (defect 7).** For lists, the serializer goes on the type argument
+  (`List<@Serializable(with = …) T>`). This needs no extra list serializer objects, and the plain serializer of the
+  owner class already includes it. The same generator change also covers nested inline classes, which had the same
+  gap: `NationalBrandCprBrands` has three required-nullable members, `NationalSegmentShareSegments` has two.
+
+Asks (checker round after the rulings):
+
+17. **B2:** `TargetAchievementNode.elapsed_days` / `period_days` per child. On the working-days basis, compute them with
+    `WorkingDays.resolve` at the zone's path. For each node, apply the n = 0 null rule to that node's rows, and send
+    `tilldate_target_qty` "0.000" there. With `children=zone` at a house node (the default top node of a house TSO),
+    answer the house's zones.
+18. **A1, A2 (generated types changed):** `TargetAchievementNode` has two new `Int` members (`elapsedDays`, `periodDays`).
+    The list members of R7 classes now carry the Wire serializer on the type argument, which needs no source change in
+    a reader. A1: if the TSO app decodes any of the ten widened `*_bp` members with its own DTO, use `Long`.
+19. **B2 (optional):** `NationalDto.kt` may move the ten members from `Int?` to `Long?` to match the contract. Values in
+    the Int range stay valid against the int64 format, so this is not required.
+
+### Verify, checker round after the rulings (this worktree, local laptop; CI not run, nothing pushed)
+
+| Command | Result |
+|---|---|
+| `python tools/slice-contract.py` then `--check` | 890 files written; "contract/slices is up to date" |
+| `python shared/contract/tools/gen_wire_dtos.py` then `--check` | exit 0 |
+| `python backend/sync/tools/gen_payload_shapes.py --check` | exit 0 (no change) |
+| `cd web && npm run gen:contract`; `bash shared/contract/tools/check-web-contract-drift.sh` | "web/src/contract/openapi.d.ts matches contract/openapi.yaml" |
+| `cd web && npm run typecheck` | `tsc --noEmit` clean, exit 0 |
+| `cd web && npx vitest run tests/contract-drift.test.ts tests/report-keys.test.ts tests/checker-adm1-contract.test.ts tests/user-access.test.ts tests/admin-modules.test.ts` | 5 files, 36 tests passed |
+| `npm_config_ignore_scripts=true npx --yes @redocly/cli@2.59.0 lint contract/openapi.yaml --config contract/redocly.yaml` | "Your API description is valid" |
+| `gl.sh :shared:contract:jvmTest --rerun` | BUILD SUCCESSFUL; 79 tests, 0 failures (ContractDriftTest 32, WireDtosDriftTest 12, SpecCrossCheckTest 8, TsoManualContractTest 24, BacklogCoverageTest 2, UnknownEnumToleranceTest 1) |
+| `gl.sh :shared:contract:jvmTest --tests '*WireDtosDriftTest*'` with the list serializer removed from WireDtos.kt by hand (mutation check) | BUILD FAILED as expected: `wireNullsHoldInListsAndNestedClasses` "tilldate_target_qty_base must be an explicit null"; WireDtos.kt then regenerated, `--check` exit 0 |
+| `gl.sh :shared:contract:jvmTest :backend:app:test --tests '*ContractConformanceTest*'` | BUILD SUCCESSFUL in 41s; ContractConformanceTest 6/6 (every operation's answers checked with the networknt validator, format assertions on, against the changed schemas) |
+
+Not run: `JcsTest`, because it calls `python3` and this laptop does not have it. `tools/ci/contract-breaking.sh`, because
+oasdiff is a Linux binary that runs in CI only (R-F-22). BundleAcceptanceTest and BundleUnitTest were not rerun,
+because no payload or bundle schema changed (`gen_payload_shapes.py --check` is clean).
