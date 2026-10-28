@@ -44,7 +44,7 @@ class JcsTest {
         val p = ProcessBuilder("python3", "backend/sync/tools/gen_payload_shapes.py", "--check").directory(root).redirectErrorStream(true).start()
         val out = p.inputStream.bufferedReader().readText()
         assertEquals(0, p.waitFor(), "PayloadShapes.kt is stale: run python3 backend/sync/tools/gen_payload_shapes.py ($out)")
-        assertEquals(42, PayloadShapes.BY_TYPE.size)
+        assertEquals(44, PayloadShapes.BY_TYPE.size)
         assertEquals(PayloadShapes.BY_TYPE.keys, TypeRules.BY_TYPE.keys, "every contract record type has an ingest rule")
     }
 }
