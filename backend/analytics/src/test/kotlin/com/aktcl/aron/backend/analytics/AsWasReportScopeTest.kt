@@ -39,8 +39,13 @@ class AsWasReportScopeTest : ReportFixture() {
         }
         val gone = run(10, Role.ANALYST, "route-std", body(""","geo":{"territory":[$t2]}"""))
         assertEquals(HttpStatusCode.Forbidden, gone.status, "the new territory had no zone on the report's date")
-        // The reach still bounds it: a TSO of zone 1 asking for the old territory (which had zone 2 then) is refused.
-        assertEquals(HttpStatusCode.Forbidden, run(11, Role.TSO, "route-std", sel).status)
+        // The reach still bounds it: a TSO of zone 1 gets the old territory cut to the zone they reach (the zone that left is not held against them)...
+        val tso = run(11, Role.TSO, "route-std", sel)
+        assertEquals(HttpStatusCode.OK, tso.status)
+        assertEquals(run(11, Role.TSO, "route-std").result().rows(), tso.result().rows())
+        assertTrue(tso.result().rows().size < before.getValue("route-std").rows().size)
+        // ...and a territory that holds, today, a zone outside the reach is refused.
+        assertEquals(HttpStatusCode.Forbidden, run(14, Role.TSO, "route-std", sel).status, "zone 2's TSO is not in the old territory any more")
     }
 
     @Test

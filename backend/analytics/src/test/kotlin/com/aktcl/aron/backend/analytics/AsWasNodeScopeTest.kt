@@ -110,7 +110,9 @@ class AsWasNodeScopeTest {
         // Day 2 repeats day 1's zone rows; the move took effect on day 2 (the history is set to that date).
         fresh.dataSource.connection.use { c ->
             c.createStatement().use {
-                it.execute("CREATE TEMP TABLE x AS SELECT * FROM dw.agg_daily_zone; UPDATE x SET business_date = business_date + 1; INSERT INTO dw.agg_daily_zone SELECT * FROM x")
+                for (t in listOf("agg_daily_zone", "agg_daily_route_sku", "agg_daily_route_brand", "agg_daily_route_segment", "agg_daily_outlet")) {
+                    it.execute("CREATE TEMP TABLE x AS SELECT * FROM dw.$t; UPDATE x SET business_date = business_date + 1; INSERT INTO dw.$t SELECT * FROM x; DROP TABLE x")
+                }
             }
         }
         val zoneDay1 = dash().summary(national, "zone", z1, day, day).kpis.net_mtk
@@ -123,6 +125,13 @@ class AsWasNodeScopeTest {
         val old = terr(day, day2); val new = terr(day, day2, node = t2)
         assertEquals(zoneDay1 + z2Day + zoneDay1, old.kpis.net_mtk, "T1: both zones on day 1, Z1 alone on day 2")
         assertEquals(z2Day, new.kpis.net_mtk, "T2: the moved zone from day 2")
+        // Every other read of the summary follows the same days: brand, category, segment and channel add up to the node's own figure.
+        for ((name, s) in listOf("T1" to old, "T2" to new)) {
+            assertEquals(s.kpis.net_mtk, s.by_brand.sumOf { it.net_mtk }, "$name by_brand")
+            assertEquals(s.kpis.net_mtk, s.by_category.sumOf { it.net_mtk }, "$name by_category")
+            assertEquals(s.kpis.net_mtk, s.by_segment.sumOf { it.net_mtk }, "$name by_segment")
+            assertEquals(s.kpis.net_mtk, s.by_channel.sumOf { it.net_mtk }, "$name by_channel")
+        }
         assertEquals(setOf(z1, z2), old.children.map { it.node.id }.toSet())
         assertEquals(setOf(z2), new.children.map { it.node.id }.toSet())
         assertEquals(zoneDay1 + z2Day + zoneDay1, old.children.sumOf { it.kpis.net_mtk }, "children add up to the node")
