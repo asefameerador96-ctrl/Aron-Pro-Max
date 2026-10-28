@@ -2078,12 +2078,13 @@ class LakeAndBlobRetention(unittest.TestCase):
         self.assertEqual(code, "5 logins: app_api, app_worker, app_jobs, app_bi, lake_export")
         self.assertIn('dblogins_result="succeeded (${logins}; memberships verified by the job)"', d)
         self.assertIn('summary "| Key Vault network ACLs | ${kv_acls} |"', d)
-        self.assertIn('az keyvault show -n "$KV" --query properties.networkAcls -o json', d, "read-only")
+        self.assertIn('az keyvault show -g "$RG" -n "$KV" --query properties.networkAcls -o json', d,
+                      "read-only, and with the group: a name-only lookup lists the subscription (\"not read\" on deploy #286)")
         # Both snippets, as deploy.sh runs them (set -euo pipefail), never stop the deploy and print one line.
         login_line = re.search(r'^    (logins="\$\(python3 -c .*? \|\| logins="login list not read")$', d, re.S | re.M).group(1)
-        kv_line = re.search(r'^(kv_acls="\$\( \{ az keyvault show .*?\| sed -n 1p\)")$', d, re.S | re.M).group(1)
+        kv_line = re.search(r'^(kv_err="\$\(mktemp\)"\n.*?^rm -f "\$kv_err")$', d, re.S | re.M).group(1)
         def run(az_body, sql="infra/sql/runtime-logins.sql"):
-            script = (f"set -euo pipefail\naz() {{ {az_body}; }}\nKV=kv-test\n"
+            script = (f"set -euo pipefail\naz() {{ {az_body}; }}\nKV=kv-test\nRG=rg-test\n"
                       + login_line.replace("infra/sql/runtime-logins.sql", sql) + "\n" + kv_line
                       + '\nprintf "%s\\n%s\\n" "$logins" "$kv_acls"\n')
             r = subprocess.run(["bash", "-c", script], cwd=ROOT, capture_output=True, text=True)
@@ -2093,6 +2094,15 @@ class LakeAndBlobRetention(unittest.TestCase):
         self.assertEqual(run(f"echo '{acl}'"), [code, "default Allow, bypass AzureServices, 0 IP rules, 0 VNet rules"])
         self.assertEqual(run("echo null"), [code, "none set"])
         self.assertEqual(run("return 1"), [code, "not read"])
+        # The first error line reaches the row, ids, resource paths and long tokens masked, no table separators.
+        guid = "-".join("0" * n for n in (8, 4, 4, 4, 12))  # an id-shaped placeholder, not a real id
+        long_token = "x" * 40  # anything 32+ characters long is masked
+        why = run(f"echo 'ERROR: (AuthorizationFailed) The client {guid} cannot list over scope "
+                  f"/subscriptions/{guid}/providers/Microsoft.KeyVault | token {long_token}' >&2; return 1")[1]
+        self.assertTrue(why.startswith("not read: ERROR: (AuthorizationFailed) The client <id> cannot list over scope <resource>"), why)
+        self.assertNotIn(guid, why)
+        self.assertNotIn(long_token, why)
+        self.assertNotIn("|", why)
         self.assertEqual(run(f"echo '{acl}'; return 1")[1], "default Allow, bypass AzureServices, 0 IP rules, 0 VNet rules",
                          "JSON then a non-zero exit still gives one table cell")
         self.assertEqual(run("return 1", sql="no/such/file.sql"), ["login list not read", "not read"])

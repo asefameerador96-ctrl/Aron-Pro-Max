@@ -28,7 +28,10 @@ over older handovers below.
   carried candidate 1: lake account created, four Key Vault secrets generated, database logins succeeded.
   Candidate 2 (f2e7610d) accepted 12:00 UTC, rides train 52: read its deploy's "Database logins" and "Key Vault
   network ACLs" rows. **Candidate 3**: `support-tiering` (Cool at 30 days, no delete; D-INFRA-LAKE-04); push only
-  after train 52 is on INT and merged, own lane run, Opus checker. After it: READY TO RECYCLE (lead).
+  after train 52 is on INT and merged, own lane run, Opus checker. Deploy #286 (train 52) printed "Database logins |
+  succeeded (5 logins: ...)" as intended but "Key Vault network ACLs | not read": candidate 3 also adds `-g "$RG"` and
+  the masked first az error line to that row (D-INFRA-LAKE-05). After it: READY TO RECYCLE (lead), or propose the
+  next item if well under 300k.
 - **Open for the next infra session:** photo exemptions (backend-core #21), bi_reader row scope and per-app logins
   outside dev (finding 12 part 2, a later infra slice). Final lake SKU is on the docs/28 final list (lead). Row 8
   (nightly export) is backend-core's; its needs are listed below.
