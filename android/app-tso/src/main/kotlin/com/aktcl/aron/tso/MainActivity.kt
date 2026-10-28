@@ -140,7 +140,8 @@ class MainActivity : ComponentActivity() {
                         ) { onEnrol ->
                             // The bind step (OTP from /device-otp) follows the first login of an enrolled phone.
                             val vm = viewModel { LoginViewModel(components.session::login).also { it.bind = components.session::bindDevice } }
-                            LoginScreen(vm, stringResource(R.string.app_name), versionName, onLanguageSelect, onEnrol, sunlight = sunlight, onSunlight = { on -> sunlight = on; devicePref.enabled = on })
+                            // tso-manual A1: the TSO login of screenshot 5 (D-TSO-MAN-15); the sun switch and the version are in Settings
+                            LoginScreen(vm, stringResource(R.string.app_name), versionName, onLanguageSelect, onEnrol, sunlight = sunlight, onSunlight = { on -> sunlight = on; devicePref.enabled = on }, variant = com.aktcl.aron.feature.auth.LoginVariant.Tso)
                         }
                         is SessionState.Active -> {
                             // F-SYS-022: TSO is refused while anything is unsent, then wipes this user's data.
@@ -162,7 +163,11 @@ class MainActivity : ComponentActivity() {
                                                     is LogoutResult.WipeIncomplete -> Toast.makeText(this@MainActivity, SystemR.string.logout_wipe_incomplete, Toast.LENGTH_LONG).show()
                                                     else -> Unit
                                                 }
-                                                if (r !is LogoutResult.Refused) uid?.let { java.io.File(cacheDir, "tso_api_$it").deleteRecursively() }
+                                                if (r !is LogoutResult.Refused) {
+                                                    uid?.let { java.io.File(cacheDir, "tso_api_$it").deleteRecursively() }
+                                                    // SH-17: no retained screen state (half-typed forms, client uuids, the dashboard model) outlives the sign-in
+                                                    viewModelStore.clear()
+                                                }
                                             }
                                         }
                                         } catch (e: kotlinx.coroutines.CancellationException) {
@@ -186,6 +191,7 @@ class MainActivity : ComponentActivity() {
                                     mediaFor = { mediaShell.componentsFor(s.user.userId) { components.trustedClock.businessDate().toString() } },
                                 )
                             }
+                            val dashboard = remember(host) { dashboardScreens(host) }
                             val areas = remember(host) { areaScreens(AreasHostDeps(host)) }
                             val tickets = remember(host) { ticketScreens(TicketsHostDeps(host)) }
                             val vm = viewModel(key = "home-" + s.user.userId) {
@@ -223,20 +229,12 @@ class MainActivity : ComponentActivity() {
                                 onSunlight = { on -> sunlight = on; sunlightPref.enabled = on },
                                 onUpdate = { updateShell.openPage() },
                                 updateAvailable = updateState is com.aktcl.aron.core.system.update.UpdateState.Available,
-                                // the dashboard origin from the build config (aron.webBaseUrl); empty until it is configured
-                                webOrigin = BuildConfig.WEB_BASE_URL.ifEmpty { null },
                                 changePassword = remember { readModels.changePassword() },
                                 support = { back ->
                                     com.aktcl.aron.core.ui.AronScreen(topBar = { com.aktcl.aron.core.ui.AronTopBar(stringResource(com.aktcl.aron.feature.home.R.string.set_support), onBack = back) }) { SupportHost(systemShell, s.user.userId, versionName) }
                                 },
-                                screens = mapOf<com.aktcl.aron.feature.tso.TsoScreen, com.aktcl.aron.feature.tso.TsoScreenContent>(
-                                    com.aktcl.aron.feature.tso.TsoScreen.DASHBOARD to { nav, _ ->
-                                        val api = remember(s.user.userId) { TsoApi(components.apiClient, applicationContext, s.user.userId) }
-                                        // The business day follows the trusted clock at every recomposition, not the device clock at start.
-                                        val day = com.aktcl.aron.rules.BusinessDate.of(components.trustedClock.nowMs()).toString()
-                                        TsoDashboardHost(api, day, { nav.back() })
-                                    },
-                                ) + areas + tickets,
+                                // A1: the Dashboard (root) and Login & Bikroy Joma Status; A3 areas; A2 tickets
+                                screens = dashboard + areas + tickets,
                             ) } }
                             }
                         }

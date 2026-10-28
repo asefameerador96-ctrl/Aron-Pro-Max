@@ -2,89 +2,96 @@ package com.aktcl.aron.feature.tso
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.layout.ColumnScope
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.selection.selectable
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.Icon
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.aktcl.aron.core.ui.LocalAronLook
 import com.aktcl.aron.core.ui.R as CoreR
 import com.aktcl.aron.core.ui.aron.AronCard
+import com.aktcl.aron.core.ui.aron.AronDropdown
+import com.aktcl.aron.core.ui.aron.AronHomeFab
+import com.aktcl.aron.core.ui.aron.AronHomeFabHeight
 import com.aktcl.aron.core.ui.aron.AronMinus
+import com.aktcl.aron.core.ui.aron.AronNightTopBar
 import com.aktcl.aron.core.ui.aron.AronPlus
 import com.aktcl.aron.core.ui.aron.AronPrimaryButton
-import com.aktcl.aron.core.ui.aron.AronScaffold
 import com.aktcl.aron.core.ui.aron.AronSecondaryButton
-import com.aktcl.aron.core.ui.aron.AronTopBar
+import com.aktcl.aron.core.ui.aron.NightButton
+import com.aktcl.aron.core.ui.aron.NightButtonStyle
+import com.aktcl.aron.core.ui.aron.NightGlowCard
+import com.aktcl.aron.core.ui.aron.NightGlowField
+import com.aktcl.aron.core.ui.aron.NightOutlineCard
+import com.aktcl.aron.core.ui.aron.nightGlow
+import com.aktcl.aron.core.ui.aron.nightPage
+import com.aktcl.aron.core.ui.aron.nightRoles
+import com.aktcl.aron.core.ui.aron.nightText
+
+/** Room a scrolling screen leaves after its last item when it shows the Home button (the button sits over the content). */
+val TsoFabPadding: Dp = AronHomeFabHeight
 
 /**
- * The frame of every TSO sub-screen in the existing-Aron look (PARITY-SPEC s2.1/s2.2): the gradient top bar with the back chevron,
- * the screen's gradient icon and white bold title, the grey page, and the action buttons docked at the bottom. [tile] names the
- * Home tile whose picture the bar shows (see [tsoIcon]).
+ * The frame of the TSO screens that are not migrated to the [TsoNav] frame yet (A3's areas): the TSO top bar (grey round back
+ * button, gradient title) on the navy page, and the action buttons docked at the bottom. [tile] is kept for the callers and no longer
+ * drawn: the screenshots show no icon in the bar (D-TSO-MAN-13).
  */
 @Composable
 fun TsoFrame(
     title: String,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
-    tile: String? = null,
+    @Suppress("UNUSED_PARAMETER") tile: String? = null,
     bottomBar: (@Composable RowScope.() -> Unit)? = null,
     content: @Composable BoxScope.() -> Unit,
 ) {
-    AronScaffold(
-        modifier = modifier,
-        topBar = { AronTopBar(title, icon = tsoIcon(tile), onBack = onBack, backLabel = stringResource(CoreR.string.core_ui_back)) },
-        bottomButtons = bottomBar,
-        content = content,
-    )
+    val n = nightRoles()
+    Column(modifier.fillMaxSize().nightPage(n)) {
+        AronNightTopBar(title, onBack = onBack, backLabel = stringResource(CoreR.string.core_ui_back))
+        Box(Modifier.weight(1f).fillMaxWidth(), content = content)
+        if (bottomBar != null) {
+            Row(
+                Modifier.fillMaxWidth().windowInsetsPadding(WindowInsets.navigationBars).padding(12.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp), content = bottomBar,
+            )
+        }
+    }
 }
 
 /**
- * The frame of every TSO screen opened through [TsoNav] (build contract s5 A1): the top bar with the title and the back
- * button ([onBack], by default [TsoNav.back]), the Home button when [homeButton] (the s8 FAB column: Y screens pass true),
- * and [bottomBar] docked under the content. a1-stubs gives it a minimal working body in the current look; A1's styling
- * step draws the TsoNight bar, the grey round back button and the HomeFab without changing this signature.
+ * The frame of every TSO screen opened through [TsoNav] (build contract s5 A1; screenshots 8, 17, 24, 39): the TSO top bar with the
+ * gradient [title] and the grey round back button ([onBack], by default [TsoNav.back]) on the navy page, [bottomBar] docked under
+ * the content, and the Home button at the bottom centre when [homeButton] (pass `TsoFab.of(screen)`, the s8 FAB column). A scrolling
+ * content leaves [TsoFabPadding] at its end when the Home button shows.
  */
 @Composable
 fun TsoFrame(
@@ -96,14 +103,16 @@ fun TsoFrame(
     onBack: () -> Unit = { nav.back() },
     content: @Composable BoxScope.() -> Unit,
 ) {
-    val buttons: (@Composable RowScope.() -> Unit)? = if (bottomBar == null) null else { { bottomBar() } }
-    AronScaffold(
-        modifier = modifier,
-        topBar = { AronTopBar(title, onBack = onBack, backLabel = stringResource(CoreR.string.core_ui_back)) },
-        bottomButtons = buttons,
-    ) {
-        content()
-        if (homeButton) TsoHomeButton({ nav.home() }, Modifier.align(Alignment.BottomEnd).padding(16.dp))
+    val n = nightRoles()
+    Box(modifier.fillMaxSize().nightPage(n)) {
+        Column(Modifier.fillMaxSize()) {
+            AronNightTopBar(title, onBack = onBack, backLabel = stringResource(CoreR.string.core_ui_back))
+            Box(Modifier.weight(1f).fillMaxWidth(), content = content)
+            if (bottomBar != null) Box(Modifier.fillMaxWidth().windowInsetsPadding(WindowInsets.navigationBars).padding(16.dp)) { bottomBar() }
+        }
+        if (homeButton) {
+            AronHomeFab({ nav.home() }, stringResource(R.string.tso_chrome_home), Modifier.align(Alignment.BottomCenter), buttonModifier = Modifier.testTag(TsoKitTags.HOME))
+        }
     }
 }
 
@@ -114,31 +123,12 @@ object TsoKitTags {
     fun pill(index: Int) = "tso_kit_pill_$index"
 }
 
-/** The round Home button (FAB) of a [TsoFrame]; returns to the root. Minimal body until A1's `aron/HomeFab.kt`. */
-@Composable
-private fun TsoHomeButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
-    val look = LocalAronLook.current
-    val label = stringResource(R.string.tso_chrome_home)
-    Box(
-        modifier
-            .testTag(TsoKitTags.HOME)
-            .size(56.dp)
-            .clip(CircleShape)
-            .background(look.purple)
-            .clickable(role = Role.Button, onClickLabel = label, onClick = onClick)
-            .semantics { contentDescription = label },
-        contentAlignment = Alignment.Center,
-    ) {
-        Icon(com.aktcl.aron.core.ui.AronIcons.Dashboard, contentDescription = null, tint = look.onBar)
-    }
-}
-
 /** The colour of a [TsoGradientButton]: Lime (Final Submit and plan actions), Blue (Submit ticket), Cyan (Login). */
 enum class TsoButtonStyle { Lime, Blue, Cyan }
 
 /**
- * A full-width gradient action button (screenshots 5, 17, 24, 31). A busy button is not pressable. Minimal body in the
- * current look's gradients; A1's styling step takes the TsoNight gradients and the 7:1 text contrast.
+ * A full-width gradient action button (screenshots 5, 17, 24, 31) in the TSO look ([NightButton]): lime and cyan carry the navy
+ * label, blue the white one, all 7:1. A busy or disabled button is not pressable.
  */
 @Composable
 fun TsoGradientButton(
@@ -149,31 +139,14 @@ fun TsoGradientButton(
     enabled: Boolean = true,
     busy: Boolean = false,
 ) {
-    val look = LocalAronLook.current
-    val on = enabled && !busy
-    val brush = when {
-        !on -> SolidColor(look.disabledFill)
-        style == TsoButtonStyle.Lime -> Brush.horizontalGradient(listOf(look.goStart, look.goEnd))
-        style == TsoButtonStyle.Cyan -> Brush.horizontalGradient(listOf(look.printStart, look.printEnd))
-        else -> Brush.horizontalGradient(listOf(look.barStart, look.barEnd))
-    }
-    Box(
-        modifier
-            .fillMaxWidth()
-            .heightIn(min = 52.dp)
-            .clip(RoundedCornerShape(12.dp))
-            .background(brush)
-            .clickable(enabled = on, role = Role.Button, onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 12.dp),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(text, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = if (on) look.onBar else look.disabledText, textAlign = TextAlign.Center)
-    }
+    val s = when (style) { TsoButtonStyle.Lime -> NightButtonStyle.Lime; TsoButtonStyle.Cyan -> NightButtonStyle.Cyan; TsoButtonStyle.Blue -> NightButtonStyle.Blue }
+    NightButton(text, onClick, modifier, style = s, enabled = enabled, busy = busy)
 }
 
 /**
- * A TSO content card (Target Status, tickets, dashboard cards). [glow] marks the highlighted card of a screen; [onClick]
- * makes the whole card one button. Minimal body on the kit card; A1's styling step draws the TsoNight gradient and glow.
+ * A TSO content card: [glow] draws the purple-gradient glow card of the dashboard (Sales, Geo Fencing; screenshot 6), otherwise the
+ * navy card with the teal edge (CPR, Login status, Target Status, tickets; screenshots 7, 11, 39). [onClick] makes the whole card one
+ * button.
  */
 @Composable
 fun TsoCard(
@@ -182,14 +155,14 @@ fun TsoCard(
     onClick: (() -> Unit)? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
-    val look = LocalAronLook.current
-    AronCard(if (glow) modifier.border(1.dp, look.purple, RoundedCornerShape(com.aktcl.aron.core.ui.AronLook.CardRadius)) else modifier, onClick = onClick, content = content)
+    if (glow) NightGlowCard(modifier, onClick = onClick, verticalArrangement = Arrangement.spacedBy(8.dp), content = content)
+    else NightOutlineCard(modifier, onClick = onClick, verticalArrangement = Arrangement.spacedBy(8.dp), content = content)
 }
 
 /**
- * A text field with its label ABOVE it (never in the outline notch) and a placeholder inside (screenshots 5, 17, 20, 43).
- * TalkBack names the field by [label] (or [placeholder] when there is no label). Minimal body on a Material outlined field; A1's
- * styling step draws the TsoNight glow outline.
+ * A text field with its label ABOVE it (never in the outline notch) and a placeholder inside (screenshots 5, 17, 20, 43): the navy
+ * glow field of the TSO look ([NightGlowField]). [modifier] goes on the input (test tags). TalkBack names the field by [label] (or
+ * [placeholder] when there is no label).
  */
 @Composable
 fun TsoGlowField(
@@ -206,28 +179,16 @@ fun TsoGlowField(
     keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
     visualTransformation: VisualTransformation = VisualTransformation.None,
 ) {
-    val look = LocalAronLook.current
-    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        if (label != null) Text(label, style = MaterialTheme.typography.labelLarge, color = look.ink)
-        OutlinedTextField(
-            value, onValueChange, modifier.fillMaxWidth().semantics { (label ?: placeholder)?.let { contentDescription = it } },
-            enabled = enabled, singleLine = singleLine, minLines = minLines, isError = isError,
-            placeholder = if (placeholder == null) null else { { Text(placeholder, color = look.inkMuted) } },
-            supportingText = if (supportingText == null) null else { { Text(supportingText, color = if (isError) look.red else look.inkMuted) } },
-            keyboardOptions = keyboardOptions, visualTransformation = visualTransformation,
-            colors = OutlinedTextFieldDefaults.colors(
-                focusedContainerColor = look.card, unfocusedContainerColor = look.card, disabledContainerColor = look.card,
-                focusedTextColor = look.ink, unfocusedTextColor = look.ink, disabledTextColor = look.inkMuted,
-                focusedBorderColor = look.purple, unfocusedBorderColor = look.underline, cursorColor = look.purple,
-            ),
-        )
-    }
+    NightGlowField(
+        value, onValueChange, label = label, placeholder = placeholder, enabled = enabled, singleLine = singleLine, minLines = minLines,
+        isError = isError, supportingText = supportingText, keyboardOptions = keyboardOptions, visualTransformation = visualTransformation,
+        fieldModifier = modifier,
+    )
 }
 
 /**
- * A closed field that opens a list of [options] (issue type, leave type, route, zone levels; screenshots 17, 21, 23, 32):
- * the label above, the chosen option's text (or [placeholder]) and a chevron. Choosing calls [onSelect] and closes the
- * list. Minimal body on a Material dropdown menu; A1's styling step moves it to core-ui `aron/AronDropdown.kt`.
+ * A closed field that opens a list of [options] (issue type, leave type, route, zone levels; screenshots 17, 21, 23, 32): core-ui
+ * [AronDropdown] in the TSO look (the bold label above, the navy glow field, the down caret).
  */
 @Composable
 fun <T> TsoDropdownField(
@@ -240,81 +201,58 @@ fun <T> TsoDropdownField(
     placeholder: String = "",
     enabled: Boolean = true,
 ) {
-    val look = LocalAronLook.current
-    var open by remember { mutableStateOf(false) }
-    val shown = selected?.let(optionLabel)
-    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        if (label != null) Text(label, style = MaterialTheme.typography.labelLarge, color = look.ink)
-        Box {
-            Row(
-                modifier
-                    .fillMaxWidth()
-                    .heightIn(min = 52.dp)
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(look.card)
-                    .border(1.dp, look.underline, RoundedCornerShape(12.dp))
-                    .clickable(enabled = enabled, role = Role.DropdownList, onClickLabel = label) { open = true }
-                    // TalkBack reads the field's name and what it holds now ("Issue type, Login OTP issue")
-                    .semantics { contentDescription = listOfNotNull(label, shown ?: placeholder.ifEmpty { null }).joinToString(", ") }
-                    .padding(horizontal = 16.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(shown ?: placeholder, Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge, color = if (shown != null) look.ink else look.inkMuted)
-                Icon(com.aktcl.aron.core.ui.AronIcons.ChevronRight, contentDescription = null, tint = look.inkMuted)
-            }
-            DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
-                options.forEach { o ->
-                    DropdownMenuItem(text = { Text(optionLabel(o)) }, onClick = { open = false; onSelect(o) })
-                }
-            }
-        }
-    }
+    AronDropdown(options, selected, onSelect, optionLabel, modifier, label = label, placeholder = placeholder, enabled = enabled)
 }
 
 /**
- * Two or more equal tabs in one bar (Monthly Target / Till Date Target, screenshots 39 to 42): the selected one filled.
- * Each tab is a selectable Tab for TalkBack. Minimal body; A1's styling step takes the TsoNight green fill and glow.
+ * Two or more equal tabs in one bar (Monthly Target / Till Date Target, screenshots 39 to 42): a glowing teal frame, the selected tab
+ * filled green with a white label, the other on the field navy. Each tab is a selectable Tab for TalkBack.
  */
 @Composable
 fun TsoSegmentedTabs(labels: List<String>, selected: Int, onSelect: (Int) -> Unit, modifier: Modifier = Modifier) {
-    val look = LocalAronLook.current
-    Row(modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).border(1.dp, look.underline, RoundedCornerShape(12.dp))) {
+    val n = nightRoles()
+    val shape = RoundedCornerShape(12.dp)
+    Row(
+        modifier.fillMaxWidth().nightGlow(n, n.outlineEdge, shape, 8.dp).clip(shape)
+            .border(if (n.solid) 2.dp else 1.5.dp, n.outlineEdge, shape),
+    ) {
         labels.forEachIndexed { i, l ->
             val on = i == selected
             Box(
                 Modifier
                     .weight(1f)
-                    .heightIn(min = 48.dp)
-                    .background(if (on) look.goStart else look.card)
+                    .heightIn(min = 52.dp)
+                    .background(if (on) n.segmentOn else n.field)
                     .selectable(selected = on, role = Role.Tab, onClick = { onSelect(i) })
                     .testTag(TsoKitTags.segment(i))
                     .padding(horizontal = 12.dp, vertical = 10.dp),
                 contentAlignment = Alignment.CenterStart,
-            ) { Text(l, style = MaterialTheme.typography.titleSmall, color = if (on) look.onBar else look.ink) }
+            ) { Text(l, style = nightText(17.sp, if (on) n.onSegment else n.ink)) }
         }
     }
 }
 
 /**
- * A scrolling row of pill tabs (All / New / In Progress / Resolved / Closed, screenshots 12 and 13): the selected pill
- * filled. Minimal body; A1's styling step takes the TsoNight blue fill.
+ * A scrolling row of pill tabs (All / New / In Progress / Resolved / Closed, screenshots 12 and 13): the selected pill blue with a
+ * white label, the others quiet navy.
  */
 @Composable
 fun TsoPillTabs(labels: List<String>, selected: Int, onSelect: (Int) -> Unit, modifier: Modifier = Modifier) {
-    val look = LocalAronLook.current
-    Row(modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+    val n = nightRoles()
+    Row(modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
         labels.forEachIndexed { i, l ->
             val on = i == selected
             Box(
                 Modifier
                     .heightIn(min = 48.dp)
                     .clip(RoundedCornerShape(50))
-                    .background(if (on) look.purple else look.card)
+                    .background(if (on) n.pillOn else n.pillOff)
+                    .then(if (n.solid && !on) Modifier.border(2.dp, n.outlineEdge, RoundedCornerShape(50)) else Modifier)
                     .selectable(selected = on, role = Role.Tab, onClick = { onSelect(i) })
                     .testTag(TsoKitTags.pill(i))
-                    .padding(horizontal = 16.dp, vertical = 10.dp),
+                    .padding(horizontal = 18.dp, vertical = 10.dp),
                 contentAlignment = Alignment.Center,
-            ) { Text(l, style = MaterialTheme.typography.labelLarge, color = if (on) look.onBar else look.ink) }
+            ) { Text(l, style = nightText(16.sp, if (on) n.onBlue else n.inkMuted, semibold = on)) }
         }
     }
 }
@@ -322,13 +260,17 @@ fun TsoPillTabs(labels: List<String>, selected: Int, onSelect: (Int) -> Unit, mo
 /** What a [TsoStatusPill] says by colour; the words always carry the meaning. */
 enum class TsoPillTone { Neutral, Info, Success, Warning, Danger }
 
-/** A small status chip (P1 - Highest, RESOLVED, Pending; screenshots 12 to 14, 35). Minimal body; A1's styling step takes the TsoNight chips. */
+/** A small status chip (P1 - Highest, RESOLVED, Pending; screenshots 12 to 14, 35): the quiet chip fill with a tone ink. */
 @Composable
 fun TsoStatusPill(text: String, modifier: Modifier = Modifier, tone: TsoPillTone = TsoPillTone.Neutral) {
-    val look = LocalAronLook.current
-    val ink = when (tone) { TsoPillTone.Danger -> look.red; TsoPillTone.Success -> look.goStart; TsoPillTone.Warning -> look.amber; TsoPillTone.Info -> look.purple; TsoPillTone.Neutral -> look.inkMuted }
-    Box(modifier.clip(RoundedCornerShape(50)).border(1.dp, ink, RoundedCornerShape(50)).padding(horizontal = 10.dp, vertical = 4.dp)) {
-        Text(text, style = MaterialTheme.typography.labelMedium, color = ink)
+    val n = nightRoles()
+    val ink = when (tone) { TsoPillTone.Danger -> n.danger; TsoPillTone.Success -> n.success; TsoPillTone.Warning -> n.warning; TsoPillTone.Info -> n.teal; TsoPillTone.Neutral -> n.chipInk }
+    Box(
+        modifier.clip(RoundedCornerShape(50)).background(n.chip)
+            .then(if (n.solid) Modifier.border(1.dp, n.outlineEdge, RoundedCornerShape(50)) else Modifier)
+            .padding(horizontal = 12.dp, vertical = 5.dp),
+    ) {
+        Text(text, style = nightText(13.sp, ink, semibold = true))
     }
 }
 

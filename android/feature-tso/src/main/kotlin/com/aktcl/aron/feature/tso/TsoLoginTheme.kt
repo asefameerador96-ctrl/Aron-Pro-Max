@@ -5,14 +5,17 @@ import com.aktcl.aron.core.common.AppLanguage
 import com.aktcl.aron.core.ui.AronTheme
 
 /**
- * The TSO login keeps the dark navy theme of the manual (docs/08) as the kit's Dark mode, not a copy of the kit: the same
- * tokens, components and contrast ledger, so the pre-sign-in screens (enrolment, login) stay legible. Sunlight wins over
- * dark (docs/32 s2a: legibility first), so the sun switch on the login row still lifts the screen to solid light. Signed in ([loggedOut] false) the day is the light Calm Glass theme.
+ * The TSO theme (D-TSO-MAN-13, ruling 7): the TSO look ([com.aktcl.aron.core.ui.AronLook.TsoNight]: navy page, glow cards, cyan
+ * figures, gradient titles) for the login AND every signed-in TSO screen, on the kit's Dark mode for the shared Calm Glass parts
+ * (enrolment, location notice, support upload). Sunlight wins over the night look (docs/32 s2a: legibility first): solid light
+ * surfaces and black ink ([com.aktcl.aron.core.ui.AronLook.TsoSunlight]). [loggedOut] no longer changes the look; it is kept for the
+ * callers.
  */
 @Composable
-fun TsoLoginTheme(language: AppLanguage, sunlight: Boolean = false, loggedOut: Boolean = true, content: @Composable () -> Unit) {
-    AronTheme(language, dark = loggedOut, sunlight = sunlight, content = content)
+fun TsoLoginTheme(language: AppLanguage, sunlight: Boolean = false, @Suppress("UNUSED_PARAMETER") loggedOut: Boolean = true, content: @Composable () -> Unit) {
+    AronTheme(language, dark = !sunlight, sunlight = sunlight, tso = true, content = content)
 }
 
-/** True when the system bars need light icons over the page: dark navy login, and only while sunlight is off. */
-fun tsoLoginNeedsLightBarIcons(loggedOut: Boolean, sunlight: Boolean): Boolean = loggedOut && !sunlight
+/** True when the system bars need light icons over the page: the navy TSO page, unless Sunlight is on. */
+@Suppress("UNUSED_PARAMETER")
+fun tsoLoginNeedsLightBarIcons(loggedOut: Boolean, sunlight: Boolean): Boolean = !sunlight

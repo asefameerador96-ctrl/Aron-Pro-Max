@@ -19,8 +19,8 @@ enum class TsoScreen {
 
 /**
  * How a TSO screen moves: [open] pushes a destination (with an optional plain-string argument such as a ticket uuid or a
- * node id; never a scope list), [back] pops one, [home] returns to the root. The system back and the top-bar chevron
- * both call [back].
+ * node id; never a scope list), [back] pops one, [home] returns to the root (the Dashboard, D-TSO-MAN-14). The system back
+ * and the top-bar back button both call [back]; the Home button calls [home].
  */
 interface TsoNav {
     fun open(screen: TsoScreen, arg: String? = null)
@@ -36,8 +36,9 @@ typealias TsoScreenContent = @Composable (nav: TsoNav, arg: String?) -> Unit
 data class TsoRoute(val screen: TsoScreen, val arg: String? = null)
 
 /**
- * The saved back stack behind [TsoNav]. An empty stack is the root (the tile Home until A1's shell step makes the
- * Dashboard the root). Opening the screen already on top is a no-op, so a double tap never stacks the same screen twice.
+ * The saved back stack behind [TsoNav]. An empty stack is the root, the Dashboard (D-TSO-MAN-14). A drawer row opens its
+ * screen on the root ([openFromDrawer]: the stack becomes that one screen), so back from any drawer screen is the Dashboard.
+ * Opening the screen already on top is a no-op, so a double tap never stacks the same screen twice.
  */
 internal class TsoNavState(initial: List<TsoRoute> = emptyList()) : TsoNav {
     var stack: List<TsoRoute> by mutableStateOf(initial)
@@ -53,6 +54,11 @@ internal class TsoNavState(initial: List<TsoRoute> = emptyList()) : TsoNav {
     override fun back() { if (stack.isNotEmpty()) stack = stack.dropLast(1) }
 
     override fun home() { stack = emptyList() }
+
+    /** A drawer row: [screen] on the Dashboard (the Dashboard itself empties the stack). */
+    fun openFromDrawer(screen: TsoScreen) {
+        stack = if (screen == TsoScreen.DASHBOARD) emptyList() else listOf(TsoRoute(screen))
+    }
 
     companion object {
         private const val SEP = '\u0001'

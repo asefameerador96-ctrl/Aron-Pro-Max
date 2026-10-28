@@ -1,7 +1,78 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Lane A1 (build contract s5): drawer, chrome, dashboard and target strings. Bangla twin in values-bn/strings_a1.xml. -->
 <resources>
+    <!-- tso-manual A1: shell (drawer, top bar, bell, logout dialog), dashboard cards, Login & Bikroy Joma Status. Labels and
+         subtitles of the drawer are the screenshots' words (9, 10, 27, 30, 44). -->
     <string name="tso_drawer_tickets">Tickets</string>
+    <string name="tso_drawer_tickets_sub">Raise and manage tickets</string>
+    <string name="tso_drawer_ticket_dashboard">Ticket Dashboard</string>
+    <string name="tso_drawer_ticket_dashboard_sub">Get a quick overview</string>
+    <string name="tso_drawer_all_tickets">All Tickets</string>
+    <string name="tso_drawer_all_tickets_sub">View all tickets and manage</string>
+    <string name="tso_drawer_quick_ticket">Quick Ticket</string>
+    <string name="tso_drawer_quick_ticket_sub">Create ticket fast</string>
+    <string name="tso_drawer_create_ticket">Create Ticket</string>
+    <string name="tso_drawer_create_ticket_sub">Create ticket manually</string>
+    <string name="tso_drawer_my_team">My Team</string>
+    <string name="tso_drawer_retailer">Retailer</string>
+    <string name="tso_drawer_periphery_child_sub">Periphery</string>
+    <string name="tso_drawer_visit_plan">My Visit Plan</string>
+    <string name="tso_drawer_visit_plan_sub">View your visit plan</string>
+    <string name="tso_drawer_set_plan">Set Plan</string>
+    <string name="tso_drawer_set_plan_sub">Set a new visit plan</string>
     <string name="tso_drawer_target_status">Target Status</string>
+    <string name="tso_drawer_target_status_sub">Check targets</string>
+    <string name="tso_drawer_feedback_new">Add new feedback</string>
+    <string name="tso_drawer_feedback_list">My feedback</string>
+    <string name="tso_drawer_logout">Log Out</string>
+    <string name="tso_drawer_logout_sub">Logout from the app</string>
+    <string name="tso_drawer_collapsed">Collapsed</string>
+    <string name="tso_drawer_expanded">Expanded</string>
     <string name="tso_chrome_notifications">Notifications</string>
+    <string name="tso_chrome_greeting">Good day, %1$s</string>
+    <plurals name="tso_chrome_bell_unread">
+        <item quantity="one">Notifications, %1$s unread</item>
+        <item quantity="other">Notifications, %1$s unread</item>
+    </plurals>
+    <string name="tso_chrome_logout_body">All app data on this phone will be removed.</string>
+    <string name="tso_chrome_cancel">Cancel</string>
+    <string name="tso_chrome_soon">%1$s is coming soon</string>
+    <string name="tso_chrome_soon_hint">This screen arrives with the next update.</string>
+    <string name="tso_dash_sales_cigarette">Sales (Cigarette)</string>
+    <string name="tso_dash_sales_bidi">Sales (Bidi)</string>
+    <string name="tso_dash_sales_lighter">Sales (Lighter in Pieces)</string>
+    <string name="tso_dash_sales_match">Sales (Match in Dozen)</string>
+    <string name="tso_dash_sales_other">Sales (%1$s)</string>
+    <string name="tso_dash_total_sales">Total Sales</string>
+    <string name="tso_dash_total_target">Total Target</string>
+    <string name="tso_dash_geo">Geo Fencing</string>
+    <string name="tso_dash_geo_validation">Geo Validation</string>
+    <string name="tso_dash_total_call">Total Call</string>
+    <string name="tso_dash_channel_calls">By Channel Successful Call</string>
+    <string name="tso_dash_channel_switch">Switch to %1$s</string>
+    <string name="tso_dash_channel_label">%1$s %2$s Channel</string>
+    <string name="tso_dash_target_outlet">Target Outlet</string>
+    <string name="tso_dash_successful_calls">Successful Calls</string>
+    <string name="tso_dash_cpr_caption">CPR</string>
+    <string name="tso_dash_brand_cpr">Brand CPR</string>
+    <string name="tso_dash_bikroy_status">Bikroy Joma Status</string>
+    <string name="tso_dash_target_route">Target Route</string>
+    <string name="tso_dash_total_login">Total Login</string>
+    <string name="tso_dash_login_count">Login Count</string>
+    <string name="tso_dash_total_bikroy">Total Bikroy Joma</string>
+    <string name="tso_dash_open_status">Open the Not Logged In and Not Uploaded lists</string>
+    <string name="tso_dash_kept_copy">Offline: showing the copy of %1$s</string>
+    <string name="tso_dash_card_offline">Not available offline yet. Pull down to try again.</string>
+    <string name="tso_dash_card_refused">Not available for your login.</string>
+    <string name="tso_dash_card_none">No figures yet.</string>
+    <string name="tso_dash_no_points">No sales yet today.</string>
+    <string name="tso_dash_tab_not_logged_in">Not Logged In</string>
+    <string name="tso_dash_tab_not_uploaded">Not Uploaded</string>
+    <string name="tso_dash_user_name">User Name: %1$s</string>
+    <string name="tso_dash_user_route">Route: %1$s</string>
+    <string name="tso_dash_user_dep">Dep Name: %1$s</string>
+    <string name="tso_dash_sr_not_set">SR Not Set</string>
+    <string name="tso_dash_users_empty">Nobody in this list.</string>
+    <string name="tso_dash_truncated">Showing the first %1$s rows.</string>
+    <string name="tso_dash_point">%1$s %2$s</string>
+    <string name="tso_dash_loading">Loading the dashboard</string>
 </resources>

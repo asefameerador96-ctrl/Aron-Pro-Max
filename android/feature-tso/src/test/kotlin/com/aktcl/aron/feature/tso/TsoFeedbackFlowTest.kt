@@ -6,6 +6,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
@@ -58,8 +59,18 @@ class TsoFeedbackFlowTest {
         }
     }
 
+    /** My Feedback > My feedback from the drawer (A1 shell step: the tile Home is retired, D-TSO-MAN-14). */
+    private fun openMyFeedback() {
+        compose.onNodeWithTag(TsoShellTags.MENU).performClick(); compose.waitForIdle()
+        // the drawer keeps the last open group: expand My Feedback only when its rows are not shown yet
+        if (compose.onAllNodesWithTag(TsoShellTags.row("feedback_list"), useUnmergedTree = true).fetchSemanticsNodes().isEmpty()) {
+            compose.onNodeWithTag(TsoShellTags.row("feedback"), useUnmergedTree = true).performScrollTo().performClick(); compose.waitForIdle()
+        }
+        compose.onNodeWithTag(TsoShellTags.row("feedback_list"), useUnmergedTree = true).performScrollTo().performClick(); compose.waitForIdle()
+    }
+
     private fun sendOne() {
-        compose.onNodeWithTag(RoleHomeTags.tile(RoleHomes.TsoTile.FEEDBACK)).performScrollTo().performClick(); compose.waitForIdle()
+        openMyFeedback()
         compose.onNodeWithTag(FeedbackTags.NEW).performClick(); compose.waitForIdle()
         compose.onNodeWithTag(FeedbackTags.TITLE).performTextInput("t")
         compose.onNodeWithTag(FeedbackTags.DESCRIPTION).performTextInput("d")
@@ -71,8 +82,8 @@ class TsoFeedbackFlowTest {
         compose.onNodeWithTag(FeedbackTags.SEND).performClick(); compose.waitForIdle()
         compose.onNodeWithTag(FeedbackTags.QUEUED).assertExists()
         compose.onNodeWithTag(FeedbackTags.SEND).performClick(); compose.waitForIdle() // Done -> list
-        compose.activityRule.scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }; compose.waitForIdle() // list -> Home
-        compose.onNodeWithTag(RoleHomeTags.tile(RoleHomes.TsoTile.FEEDBACK)).performScrollTo().performClick(); compose.waitForIdle()
+        compose.activityRule.scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }; compose.waitForIdle() // list -> Dashboard
+        openMyFeedback()
         compose.onNodeWithTag(FeedbackTags.NEW).performClick(); compose.waitForIdle()
         compose.onNodeWithTag(FeedbackTags.QUEUED).assertDoesNotExist()
     }
@@ -93,11 +104,11 @@ class TsoFeedbackFlowTest {
                 }
             }
         }
-        compose.onNodeWithTag(RoleHomeTags.tile(RoleHomes.TsoTile.FEEDBACK)).performScrollTo().performClick(); compose.waitForIdle()
+        openMyFeedback()
         compose.onNodeWithTag(FeedbackTags.card("u-A")).assertExists()
         compose.runOnIdle { who.value = null }; compose.waitForIdle()   // logout: the TSO host leaves composition, the activity stays
         compose.runOnIdle { who.value = "B" }; compose.waitForIdle()    // next rep logs in
-        compose.onNodeWithTag(RoleHomeTags.tile(RoleHomes.TsoTile.FEEDBACK)).performScrollTo().performClick(); compose.waitForIdle()
+        openMyFeedback()
         compose.onNodeWithTag(FeedbackTags.card("u-A")).assertDoesNotExist()
         compose.onNodeWithTag(FeedbackTags.card("u-B")).assertExists()
     }
