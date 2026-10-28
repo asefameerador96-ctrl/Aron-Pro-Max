@@ -187,10 +187,9 @@ class DashboardService(
         val children: List<GeoValidationChild> = if (lv.childCol != null && lv.childName != null) {
             q(
                 """
-                WITH zg AS (SELECT DISTINCT zone_id, zone_name, territory_id, territory_name, division_id, division_name, wing_id, wing_name FROM dw.dim_geo)
                 SELECT zg.${lv.childCol} cid, zg.${lv.childName} cname, coalesce(sum(a.visits),0) vis, coalesce(sum(a.geo_valid_visits),0) gv,
                        coalesce(sum(a.suspicious_visits),0) susp
-                  FROM dw.agg_daily_zone a JOIN zg ON zg.zone_id = a.zone_id
+                  FROM dw.agg_daily_zone a ${AsWasSql.zone("zg", "a.zone_id", "a.business_date")}
                  WHERE a.business_date BETWEEN :f AND :t AND ${ns.clause("a.zone_id", "a.route_id")} GROUP BY 1, 2 ORDER BY 1
                 """,
             ) { it.map { rs, _ -> GeoValidationChild(NodeRefDto(lv.childType!!, rs.getLong("cid"), null, rs.getString("cname")), rs.getInt("vis"), pct(rs.getLong("gv"), rs.getLong("vis")), rs.getInt("susp"), rs.getInt("gv")) }.list() }
@@ -306,7 +305,7 @@ class DashboardService(
             """
             WITH k AS (
               SELECT p.category_code, p.base_unit, s.report_unit, s.report_factor, p.base_per_pack, sum(a.sold_qty_base + a.free_qty_base) qty, sum(a.gross_mtk) gross
-                FROM dw.agg_daily_route_sku a JOIN dw.dim_product p ON p.sku_id = a.sku_id JOIN dw.dim_geo g ON g.route_id = a.route_id
+                FROM dw.agg_daily_route_sku a ${AsWasSql.product("p", "a.sku_id", "a.business_date")} ${AsWasSql.geo("g", "a.route_id", "a.business_date")}
                 JOIN app.sku s ON s.id = a.sku_id
                WHERE a.business_date BETWEEN :f AND :t AND ${ns.clause("g.zone_id", "a.route_id")} GROUP BY 1, 2, 3, 4, 5)
             SELECT category_code, base_unit, sum(qty) qty, sum(gross) gross,
@@ -326,7 +325,7 @@ class DashboardService(
         val bySegment = h.q(
             """
             SELECT a.segment_id, p.segment_name, sum(a.gross_mtk) net, sum(a.sold_qty_base) qty, sum(a.memo_count) memos
-              FROM dw.agg_daily_route_segment a JOIN dw.dim_geo g ON g.route_id = a.route_id
+              FROM dw.agg_daily_route_segment a ${AsWasSql.geo("g", "a.route_id", "a.business_date")}
               JOIN LATERAL (SELECT segment_name FROM dw.dim_product WHERE segment_id = a.segment_id ORDER BY segment_name LIMIT 1) p ON true
              WHERE a.business_date BETWEEN :f AND :t AND ${ns.clause("g.zone_id", "a.route_id")} GROUP BY 1, 2 ORDER BY 1
             """,
@@ -350,7 +349,7 @@ class DashboardService(
             } else {
                 """
                 SELECT o.channel, sum(a.net_mtk) net, sum(a.active_memo_count) memos, count(*) FILTER (WHERE a.active_memo_count > 0) calls
-                  FROM dw.agg_daily_outlet a JOIN dw.dim_outlet o ON o.outlet_id = a.outlet_id
+                  FROM dw.agg_daily_outlet a ${AsWasSql.outlet("o", "a.outlet_id", "a.business_date")}
                  WHERE a.business_date BETWEEN :f AND :t AND ${ns.eff.clause("o.zone_id")} GROUP BY 1 ORDER BY 1
                 """
             },
@@ -361,7 +360,7 @@ class DashboardService(
         val byBrand = h.q(
             """
             SELECT b.brand_id, p.brand_name, sum(b.gross_mtk) net, sum(b.sold_qty_base) qty, sum(b.memo_count) memos
-              FROM dw.agg_daily_route_brand b JOIN dw.dim_geo g ON g.route_id = b.route_id
+              FROM dw.agg_daily_route_brand b ${AsWasSql.geo("g", "b.route_id", "b.business_date")}
               JOIN LATERAL (SELECT brand_name FROM dw.dim_product WHERE brand_id = b.brand_id ORDER BY brand_name LIMIT 1) p ON true
              WHERE b.business_date BETWEEN :f AND :t AND ${ns.clause("g.zone_id", "b.route_id")} GROUP BY 1, 2 ORDER BY 1
             """,
@@ -376,9 +375,8 @@ class DashboardService(
         val children: List<DashboardChild> = if (lv.childCol != null && lv.childName != null) {
             h.q(
                 """
-                WITH zg AS (SELECT DISTINCT zone_id, zone_name, territory_id, territory_name, division_id, division_name, wing_id, wing_name FROM dw.dim_geo)
                 SELECT zg.${lv.childCol} cid, zg.${lv.childName} cname, $sums
-                  FROM dw.agg_daily_zone a JOIN zg ON zg.zone_id = a.zone_id
+                  FROM dw.agg_daily_zone a ${AsWasSql.zone("zg", "a.zone_id", "a.business_date")}
                  WHERE a.business_date BETWEEN :f AND :t AND ${ns.clause("a.zone_id", "a.route_id")} GROUP BY 1, 2 ORDER BY 1
                 """,
             ) { it.map { rs, _ -> DashboardChild(NodeRefDto(lv.childType!!, rs.getLong("cid"), null, rs.getString("cname")), kpisOf(rs)) }.list() }

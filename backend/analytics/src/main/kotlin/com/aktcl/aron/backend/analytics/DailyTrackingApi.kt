@@ -99,7 +99,7 @@ class DailyTrackingService(private val db: Database, private val config: ServerC
             val cats = if (page.isEmpty()) emptyMap() else h.createQuery(
                 """
                 SELECT a.route_id, p.category_code, p.base_unit, sum(a.sold_qty_base + a.free_qty_base) qty, sum(a.gross_mtk) gross
-                  FROM dw.agg_daily_route_sku a JOIN dw.dim_product p ON p.sku_id = a.sku_id
+                  FROM dw.agg_daily_route_sku a ${AsWasSql.product("p", "a.sku_id", "a.business_date", "JOIN")}
                  WHERE a.business_date = :d AND a.route_id = ANY(:rids) GROUP BY 1, 2, 3 ORDER BY 1, 2
                 """,
             ).bind("d", date).bindArray("rids", Long::class.javaObjectType, page.map { it.route_id })

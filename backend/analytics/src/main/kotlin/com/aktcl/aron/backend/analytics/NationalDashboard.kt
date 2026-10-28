@@ -166,7 +166,7 @@ class NationalDashboardService(
             val sold = sql.bind(h.createQuery(
                 """
                 SELECT p.category_code, p.base_unit, sum(a.sold_qty_base) AS qty
-                  FROM dw.agg_daily_route_sku a JOIN dw.dim_geo g ON g.route_id = a.route_id JOIN dw.dim_product p ON p.sku_id = a.sku_id
+                  FROM dw.agg_daily_route_sku a ${AsWasSql.geo("g", "a.route_id", "a.business_date", "JOIN")} ${AsWasSql.product("p", "a.sku_id", "a.business_date", "JOIN")}
                  WHERE a.business_date = :d ${sql.geo} ${sql.product} GROUP BY 1, 2
                 """,
             ).bind("d", date)).map { rs, _ -> Triple(rs.getString(1), rs.getString(2), rs.getLong(3)) }.list()
@@ -176,11 +176,11 @@ class NationalDashboardService(
             val targets = sql.bind(h.createQuery(
                 """
                 SELECT p.category_code, sum(t.qty_base) AS total, count(DISTINCT t.route_id) AS routes
-                  FROM app.route_monthly_target t JOIN dw.dim_geo g ON g.route_id = t.route_id JOIN dw.dim_product p ON p.sku_id = t.sku_id
+                  FROM app.route_monthly_target t ${AsWasSql.geo("g", "t.route_id", "CAST(:d AS date)")} ${AsWasSql.product("p", "t.sku_id", "CAST(:d AS date)")}
                  WHERE t.month = :m ${sql.geo} ${sql.product}
                  GROUP BY 1
                 """,
-            ).bind("m", month.atDay(1))).map { rs, _ -> rs.getString(1) to (rs.getBigDecimal(2) to rs.getInt(3)) }.list().toMap()
+            ).bind("m", month.atDay(1)).bind("d", date)).map { rs, _ -> rs.getString(1) to (rs.getBigDecimal(2) to rs.getInt(3)) }.list().toMap()
             val soldBy = sold.associate { it.first to it.third }
             val cards = cats.sortedBy { CATEGORY_ORDER.indexOf(it.first).let { i -> if (i < 0) 99 else i } }.map { (cat, unit) ->
                 val total = soldBy[cat] ?: 0L
@@ -207,22 +207,22 @@ class NationalDashboardService(
             ensureReady(h)
             val targetOutlets = sql.bind(h.createQuery(
                 """
-                SELECT coalesce(sum(a.target_outlets), 0) FROM dw.agg_daily_route a JOIN dw.dim_geo g ON g.route_id = a.route_id
+                SELECT coalesce(sum(a.target_outlets), 0) FROM dw.agg_daily_route a ${AsWasSql.geo("g", "a.route_id", "a.business_date", "JOIN")}
                  WHERE a.business_date = :d AND a.planned AND NOT a.exception_approved AND g.route_class = 'normal' AND g.route_kind = 'sr' ${sql.geo}
                 """,
             ).bind("d", date)).mapTo(Long::class.java).one().toInt()
             val calls = if (!sql.hasProductFilter) {
                 sql.bind(h.createQuery(
                     """
-                    SELECT coalesce(sum(a.successful_calls), 0) FROM dw.agg_daily_route a JOIN dw.dim_geo g ON g.route_id = a.route_id
+                    SELECT coalesce(sum(a.successful_calls), 0) FROM dw.agg_daily_route a ${AsWasSql.geo("g", "a.route_id", "a.business_date", "JOIN")}
                      WHERE a.business_date = :d AND a.planned AND NOT a.exception_approved AND g.route_class = 'normal' AND g.route_kind = 'sr' ${sql.geo}
                     """,
                 ).bind("d", date)).mapTo(Long::class.java).one().toInt()
             } else {
                 sql.bind(h.createQuery(
                     """
-                    SELECT count(DISTINCT (s.route_id, s.outlet_id)) FROM dw.agg_daily_outlet_sku s JOIN dw.dim_geo g ON g.route_id = s.route_id
-                      JOIN dw.dim_product p ON p.sku_id = s.sku_id JOIN dw.agg_daily_route a ON a.route_id = s.route_id AND a.business_date = s.business_date
+                    SELECT count(DISTINCT (s.route_id, s.outlet_id)) FROM dw.agg_daily_outlet_sku s ${AsWasSql.geo("g", "s.route_id", "s.business_date", "JOIN")}
+                      ${AsWasSql.product("p", "s.sku_id", "s.business_date", "JOIN")} JOIN dw.agg_daily_route a ON a.route_id = s.route_id AND a.business_date = s.business_date
                      WHERE s.business_date = :d AND a.planned AND NOT a.exception_approved AND g.route_class = 'normal' AND g.route_kind = 'sr' ${sql.geo} ${sql.product}
                     """,
                 ).bind("d", date)).mapTo(Long::class.java).one().toInt()
@@ -246,8 +246,8 @@ class NationalDashboardService(
             val rows = sql.bind(h.createQuery(
                 """
                 SELECT o.channel, count(DISTINCT (s.route_id, s.outlet_id)) AS n
-                  FROM dw.agg_daily_outlet_sku s JOIN dw.dim_geo g ON g.route_id = s.route_id JOIN dw.dim_product p ON p.sku_id = s.sku_id
-                  JOIN dw.dim_outlet o ON o.outlet_id = s.outlet_id JOIN dw.agg_daily_route a ON a.route_id = s.route_id AND a.business_date = s.business_date
+                  FROM dw.agg_daily_outlet_sku s ${AsWasSql.geo("g", "s.route_id", "s.business_date", "JOIN")} ${AsWasSql.product("p", "s.sku_id", "s.business_date", "JOIN")}
+                  ${AsWasSql.outlet("o", "s.outlet_id", "s.business_date", "JOIN")} JOIN dw.agg_daily_route a ON a.route_id = s.route_id AND a.business_date = s.business_date
                  WHERE s.business_date = :d AND a.planned AND NOT a.exception_approved AND g.route_class = 'normal' AND g.route_kind = 'sr' ${sql.geo} ${sql.product} GROUP BY 1
                 """,
             ).bind("d", date)).map { rs, _ -> rs.getString(1) to rs.getLong(2) }.list().toMap()
@@ -263,8 +263,8 @@ class NationalDashboardService(
             val rows = sql.bind(h.createQuery(
                 """
                 SELECT o.channel, sum(s.sold_qty_base) AS q
-                  FROM dw.agg_daily_outlet_sku s JOIN dw.dim_geo g ON g.route_id = s.route_id JOIN dw.dim_product p ON p.sku_id = s.sku_id
-                  JOIN dw.dim_outlet o ON o.outlet_id = s.outlet_id
+                  FROM dw.agg_daily_outlet_sku s ${AsWasSql.geo("g", "s.route_id", "s.business_date", "JOIN")} ${AsWasSql.product("p", "s.sku_id", "s.business_date", "JOIN")}
+                  ${AsWasSql.outlet("o", "s.outlet_id", "s.business_date", "JOIN")}
                  WHERE s.business_date = :d AND p.category_code = 'cigarette' ${sql.geo} ${sql.product} GROUP BY 1
                 """,
             ).bind("d", date)).map { rs, _ -> rs.getString(1) to rs.getLong(2) }.list().toMap()
@@ -283,7 +283,7 @@ class NationalDashboardService(
             val total = sql.bind(h.createQuery("SELECT count(DISTINCT g.zone_id) FROM dw.dim_geo g WHERE g.status = 'active' ${sql.geo}")).mapTo(Long::class.java).one().toInt()
             val (service, submitted) = sql.bind(h.createQuery(
                 """
-                WITH svc AS (SELECT DISTINCT a.zone_id FROM dw.agg_daily_route a JOIN dw.dim_geo g ON g.route_id = a.route_id
+                WITH svc AS (SELECT DISTINCT a.zone_id FROM dw.agg_daily_route a ${AsWasSql.geo("g", "a.route_id", "a.business_date", "JOIN")}
                               WHERE a.business_date = :d AND a.planned AND NOT a.exception_approved AND g.route_class = 'normal' AND g.route_kind = 'sr' ${sql.geo})
                 SELECT count(*), count(*) FILTER (WHERE z.final_submitted_at IS NOT NULL)
                   FROM svc LEFT JOIN dw.agg_daily_zone z ON z.zone_id = svc.zone_id AND z.business_date = :d
@@ -305,7 +305,7 @@ class NationalDashboardService(
                 """
                 SELECT count(*), count(*) FILTER (WHERE $ok),
                        count(*) FILTER (WHERE $ok AND a.sales_submitted_at IS NOT NULL)
-                  FROM dw.agg_daily_route a JOIN dw.dim_geo g ON g.route_id = a.route_id
+                  FROM dw.agg_daily_route a ${AsWasSql.geo("g", "a.route_id", "a.business_date", "JOIN")}
                  WHERE a.business_date = :d AND a.planned AND NOT a.exception_approved AND g.route_class = 'normal' AND g.route_kind = 'sr' ${sql.geo}
                 """,
             ).bind("d", date)).map { rs, _ -> Triple(rs.getInt(1), rs.getInt(2), rs.getInt(3)) }.one()
@@ -339,7 +339,7 @@ class NationalDashboardService(
                 // different units are never compared).
                 category = req.category_code ?: sql.bind(h.createQuery(
                     """
-                    SELECT p.category_code FROM dw.agg_daily_route_sku a JOIN dw.dim_geo g ON g.route_id = a.route_id JOIN dw.dim_product p ON p.sku_id = a.sku_id
+                    SELECT p.category_code FROM dw.agg_daily_route_sku a ${AsWasSql.geo("g", "a.route_id", "a.business_date", "JOIN")} ${AsWasSql.product("p", "a.sku_id", "a.business_date", "JOIN")}
                      WHERE a.business_date = :d ${sql.geo} ${sql.product} GROUP BY 1 ORDER BY array_position(ARRAY['cigarette','bidi','lighter','match'], p.category_code), 1 LIMIT 1
                     """,
                 ).bind("d", date)).mapTo(String::class.java).findOne().orElse(null)
@@ -347,7 +347,7 @@ class NationalDashboardService(
                 items = if (category == null) emptyList() else sql.bind(h.createQuery(
                     """
                     SELECT $nodeCols, sum(a.sold_qty_base) AS v
-                      FROM dw.agg_daily_route_sku a JOIN dw.dim_geo g ON g.route_id = a.route_id JOIN dw.dim_product p ON p.sku_id = a.sku_id
+                      FROM dw.agg_daily_route_sku a ${AsWasSql.geo("g", "a.route_id", "a.business_date", "JOIN")} ${AsWasSql.product("p", "a.sku_id", "a.business_date", "JOIN")}
                      WHERE a.business_date = :d AND p.category_code = :cat ${sql.geo} ${sql.product} GROUP BY 1, 2, 3 HAVING sum(a.sold_qty_base) > 0 ORDER BY v DESC, 3
                     """,
                 ).bind("d", date).bind("cat", category)).map { rs, _ -> BreakdownItem(rs.getString(2), rs.getString(3), rs.getLong(4)) }.list()
@@ -357,7 +357,7 @@ class NationalDashboardService(
                 items = sql.bind(h.createQuery(
                     """
                     SELECT n.$col, n.code, n.name, sum(a.memo_count) AS v
-                      FROM $table a JOIN dw.dim_geo g ON g.route_id = a.route_id
+                      FROM $table a ${AsWasSql.geo("g", "a.route_id", "a.business_date", "JOIN")}
                       JOIN (SELECT DISTINCT $nodeCols FROM dw.dim_product p WHERE true ${sql.product}) n(${col}, code, name) ON n.$col = a.$col
                      WHERE a.business_date = :d ${sql.geo} GROUP BY 1, 2, 3 HAVING sum(a.memo_count) > 0 ORDER BY v DESC, 3
                     """,
@@ -380,7 +380,7 @@ class NationalDashboardService(
             val (total, valid) = sql.bind(h.createQuery(
                 """
                 SELECT coalesce(sum(a.completed_calls), 0), coalesce(sum(a.completed_geo_valid_calls), 0)
-                  FROM dw.agg_daily_route a JOIN dw.dim_geo g ON g.route_id = a.route_id WHERE a.business_date = :d ${sql.geo}
+                  FROM dw.agg_daily_route a ${AsWasSql.geo("g", "a.route_id", "a.business_date", "JOIN")} WHERE a.business_date = :d ${sql.geo}
                 """,
             ).bind("d", date)).map { rs, _ -> rs.getInt(1) to rs.getInt(2) }.one()
             val m = meta(h, date, listOf("agg_daily_route"))

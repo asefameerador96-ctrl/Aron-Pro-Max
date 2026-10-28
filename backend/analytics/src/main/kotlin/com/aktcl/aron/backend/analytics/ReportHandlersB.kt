@@ -26,7 +26,7 @@ object DataEntryLogReport : ReportHandler {
         WITH days AS (
           SELECT rd.business_date, u.id AS uid, u.username, string_agg(g.route_code, ', ' ORDER BY g.route_code) AS route_codes, min(rd.target_frozen_at) AS bundle_downloaded_at,
                  min(rd.logged_in_at) AS logged_in_at, min(rd.in_field_at) AS in_field_at, max(rd.last_batch_at) AS last_batch_at, max(rd.synced_at) AS synced_at
-            FROM app.route_day rd JOIN dw.dim_geo g ON g.route_id = rd.route_id JOIN app.app_user u ON u.id = $USER_OF_DAY
+            FROM app.route_day rd ${AsWasSql.geo("g", "rd.route_id", "rd.business_date", "JOIN")} JOIN app.app_user u ON u.id = $USER_OF_DAY
            WHERE ${ctx.dateClause("rd.business_date")} AND rd.planned AND ${ctx.zoneClause("g.zone_id")} AND ${ctx.routeClause("rd.route_id")}
            GROUP BY rd.business_date, u.id, u.username)
         SELECT d.business_date, d.username, d.route_codes, d.bundle_downloaded_at, d.logged_in_at, d.in_field_at, d.last_batch_at, d.synced_at,
@@ -53,7 +53,7 @@ object FinalSubmitLogReport : ReportHandler {
     override fun spec(ctx: ReportContext) = SqlSpec(
         """
         SELECT rd.business_date, g.zone_name, g.route_code, u.username, rd.sales_submitted_at, rd.final_submitted_at, rd.submit_cycle, rd.late_rows_after_final, rd.submit_voided, rd.submit_count_mismatch
-          FROM app.route_day rd JOIN dw.dim_geo g ON g.route_id = rd.route_id LEFT JOIN app.app_user u ON u.id = $USER_OF_DAY
+          FROM app.route_day rd ${AsWasSql.geo("g", "rd.route_id", "rd.business_date", "JOIN")} LEFT JOIN app.app_user u ON u.id = $USER_OF_DAY
          WHERE ${ctx.dateClause("rd.business_date")} AND rd.final_submitted_at IS NOT NULL AND ${ctx.zoneClause("g.zone_id")} AND ${ctx.routeClause("rd.route_id")}
         """,
         totalColumns = listOf("late_rows_after_final"),
@@ -77,7 +77,7 @@ object FinalSubmitStatusReport : ReportHandler {
                count(*) FILTER (WHERE a.day_state IN ('logged_in', 'in_field', 'synced', 'submit_pending_rows') AND ${ctx.successfulLogin})::int AS in_progress,
                count(*) FILTER (WHERE a.day_state = 'sales_submitted')::int AS sales_submitted, count(*) FILTER (WHERE a.day_state = 'final_submitted')::int AS final_submitted,
                bool_and(a.day_state = 'final_submitted') AS zone_final
-          FROM dw.agg_daily_route a JOIN dw.dim_geo g ON g.route_id = a.route_id
+          FROM dw.agg_daily_route a ${AsWasSql.geo("g", "a.route_id", "a.business_date", "JOIN")}
          WHERE ${ctx.dateClause("a.business_date")} AND a.planned AND NOT a.exception_approved AND ${ctx.zoneClause("a.zone_id")} AND ${ctx.routeClause("a.route_id")}
          GROUP BY a.business_date, g.zone_id, g.zone_name
         """,
@@ -165,7 +165,7 @@ object DsRrsReport : ReportHandler {
             SELECT g.zone_name, p.sku_code, p.short_name AS sku_name, p.base_unit, sum(a.issued_qty_base)::bigint AS issued_qty_base, sum(a.sold_qty_base)::bigint AS sold_qty_base,
                    sum(a.free_qty_base)::bigint AS free_qty_base, sum(a.returned_qty_base)::bigint AS returned_qty_base,
                    sum(a.issued_qty_base - a.sold_qty_base - a.free_qty_base - a.returned_qty_base)::bigint AS closing_qty_base
-              FROM dw.agg_daily_route_sku a JOIN dw.dim_geo g ON g.route_id = a.route_id JOIN dw.dim_product p ON p.sku_id = a.sku_id
+              FROM dw.agg_daily_route_sku a ${AsWasSql.geo("g", "a.route_id", "a.business_date", "JOIN")} ${AsWasSql.product("p", "a.sku_id", "a.business_date", "JOIN")}
              WHERE ${ctx.dateClause("a.business_date")} AND ${ctx.zoneClause("g.zone_id")} AND ${ctx.routeClause("a.route_id")} AND $prod
              GROUP BY 1, 2, 3, 4
             """,
@@ -191,7 +191,7 @@ object TsoTopSheetReport : ReportHandler {
         SELECT a.business_date, g.zone_name, g.route_code, u.username, a.day_state AS state, a.target_outlets, a.visited_outlets, a.successful_calls,
                round(100.0 * a.successful_calls / nullif(a.target_outlets, 0), 2) AS strike_rate_pct, a.active_memo_count AS memos, a.net_mtk,
                round(100.0 * a.geo_valid_visits / nullif(a.visits, 0), 2) AS geo_valid_pct
-          FROM dw.agg_daily_route a JOIN dw.dim_geo g ON g.route_id = a.route_id
+          FROM dw.agg_daily_route a ${AsWasSql.geo("g", "a.route_id", "a.business_date", "JOIN")}
           LEFT JOIN app.route_day rd ON rd.route_id = a.route_id AND rd.business_date = a.business_date LEFT JOIN app.app_user u ON u.id = $USER_OF_DAY
          WHERE ${ctx.dateClause("a.business_date")} AND (a.planned OR a.exception_approved) AND ${ctx.zoneClause("a.zone_id")} AND ${ctx.routeClause("a.route_id")}
         """,
@@ -215,7 +215,7 @@ object DailyTrackingReport : ReportHandler {
         WITH r AS (
           SELECT a.business_date, g.zone_name, g.route_code, u.username, a.day_state AS state, a.target_outlets, a.successful_calls, a.exception_approved, ${ctx.successfulLogin} AS login_ok,
                  round(100.0 * a.successful_calls / nullif(a.target_outlets, 0), 2) AS achievement_pct
-            FROM dw.agg_daily_route a JOIN dw.dim_geo g ON g.route_id = a.route_id
+            FROM dw.agg_daily_route a ${AsWasSql.geo("g", "a.route_id", "a.business_date", "JOIN")}
             LEFT JOIN app.route_day rd ON rd.route_id = a.route_id AND rd.business_date = a.business_date LEFT JOIN app.app_user u ON u.id = $USER_OF_DAY
            WHERE ${ctx.dateClause("a.business_date")} AND (a.planned OR a.exception_approved) AND ${ctx.zoneClause("a.zone_id")} AND ${ctx.routeClause("a.route_id")})
         SELECT business_date, zone_name, route_code, username, state, target_outlets, successful_calls, achievement_pct,
@@ -253,7 +253,7 @@ object LeaderboardReport : ReportHandler {
             SELECT rank() OVER (ORDER BY sum(a.net_mtk) DESC)::int AS rank, $label AS name, sum(a.net_mtk)::bigint AS net_mtk, sum(a.active_memo_count)::int AS memos,
                    sum(a.successful_calls)::int AS successful_calls,
                    round(100.0 * sum(a.successful_calls) FILTER (WHERE a.planned AND NOT a.exception_approved) / nullif(sum(a.target_outlets) FILTER (WHERE a.planned AND NOT a.exception_approved), 0), 2) AS strike_rate_pct
-              FROM dw.agg_daily_route a JOIN dw.dim_geo g ON g.route_id = a.route_id $join
+              FROM dw.agg_daily_route a ${AsWasSql.geo("g", "a.route_id", "a.business_date", "JOIN")} $join
              WHERE ${ctx.dateClause("a.business_date")} AND ${ctx.zoneClause("a.zone_id")} AND ${ctx.routeClause("a.route_id")}
              GROUP BY $id, $label
             """,
@@ -277,7 +277,7 @@ object AmoCallReport : ReportHandler {
         """
         SELECT v.business_date, am.username AS amo, g.route_code, o.outlet_code, o.outlet_name, v.visit_kind, v.opened_at, sr.username AS assessed_sr, ca.total_score, ca.max_score,
                round(100.0 * ca.total_score / nullif(ca.max_score, 0), 2) AS score_pct
-          FROM dw.fact_visit v JOIN app.app_user am ON am.id = v.user_id JOIN dw.dim_outlet o ON o.outlet_id = v.outlet_id LEFT JOIN dw.dim_geo g ON g.route_id = v.route_id
+          FROM dw.fact_visit v JOIN app.app_user am ON am.id = v.user_id ${AsWasSql.outlet("o", "v.outlet_id", "v.business_date", "JOIN")} LEFT JOIN dw.dim_geo g ON g.route_id = v.route_id
           LEFT JOIN app.call_assessment ca ON ca.visit_client_uuid = v.visit_client_uuid AND ca.voided_at IS NULL LEFT JOIN app.app_user sr ON sr.id = ca.assessed_user_id
          WHERE ${ctx.dateClause("v.business_date")} AND v.visit_kind IN ('amo_control_call', 'amo_joint_call') AND NOT v.voided AND ${ctx.zoneClause("v.zone_id")} AND ${ctx.routeClause("coalesce(v.route_id, -1)")}
            AND :fft <> 'sr'
@@ -358,7 +358,7 @@ object FreeSampleReport : ReportHandler {
             """
             SELECT g.route_code, g.route_name, p.sku_code, p.short_name AS sku_name, p.base_unit, sum(ml.qty_base)::bigint AS qty_base, count(DISTINCT m.memo_client_uuid)::int AS memos
               FROM app.memo_line ml JOIN dw.fact_memo m ON m.memo_client_uuid = ml.memo_client_uuid AND m.business_date = ml.business_date
-              JOIN dw.dim_geo g ON g.route_id = m.route_id JOIN dw.dim_product p ON p.sku_id = ml.sku_id
+              JOIN dw.dim_geo g ON g.route_id = m.route_id ${AsWasSql.product("p", "ml.sku_id", "ml.business_date", "JOIN")}
              WHERE ${ctx.dateClause("ml.business_date")} AND ml.line_kind = 'free_sample' AND ml.voided_at IS NULL AND m.status = 'active' AND m.line_count > 0
                AND ${ctx.zoneClause("m.zone_id")} AND ${ctx.routeClause("m.route_id")} AND $prod
              GROUP BY 1, 2, 3, 4, 5

@@ -43,7 +43,7 @@ fun NationalDashboardService.ffGeoPins(caller: NationalCaller, req: FfGeoPinsReq
         val all = sql.bind(h.createQuery(
             """
             SELECT p.route_id, p.lat, p.lng, p.captured_at, coalesce(a.completed_calls, 0) AS done, coalesce(a.completed_geo_valid_calls, 0) AS ok
-              FROM dw.route_last_position p JOIN dw.dim_geo g ON g.route_id = p.route_id
+              FROM dw.route_last_position p ${AsWasSql.geo("g", "p.route_id", "p.business_date", "JOIN")}
               LEFT JOIN dw.agg_daily_route a ON a.route_id = p.route_id AND a.business_date = p.business_date
              WHERE p.business_date = :d ${sql.geo} ORDER BY p.route_id
             """,
@@ -53,7 +53,7 @@ fun NationalDashboardService.ffGeoPins(caller: NationalCaller, req: FfGeoPinsReq
         }.list()
         val without = sql.bind(h.createQuery(
             """
-            SELECT count(*) FROM dw.agg_daily_route a JOIN dw.dim_geo g ON g.route_id = a.route_id
+            SELECT count(*) FROM dw.agg_daily_route a ${AsWasSql.geo("g", "a.route_id", "a.business_date", "JOIN")}
              WHERE a.business_date = :d AND a.planned AND NOT a.exception_approved AND g.route_class = 'normal' AND g.route_kind = 'sr' ${sql.geo}
                AND NOT EXISTS (SELECT 1 FROM dw.route_last_position p WHERE p.route_id = a.route_id AND p.business_date = a.business_date)
             """,
@@ -138,7 +138,7 @@ fun NationalDashboardService.routeMap(caller: NationalCaller, routeId: Long, dat
         val first = visits.firstOrNull { it.lat != null }
         val sales = h.createQuery(
             """
-            SELECT s.outlet_id, p.category_code, p.base_unit, sum(s.sold_qty_base) FROM dw.agg_daily_outlet_sku s JOIN dw.dim_product p ON p.sku_id = s.sku_id
+            SELECT s.outlet_id, p.category_code, p.base_unit, sum(s.sold_qty_base) FROM dw.agg_daily_outlet_sku s ${AsWasSql.product("p", "s.sku_id", "s.business_date", "JOIN")}
              WHERE s.route_id = :r AND s.business_date = :d GROUP BY 1, 2, 3
             """,
         ).bind("r", routeId).bind("d", date).map { rs, _ -> rs.getLong(1) to CategoryQty(rs.getString(2), rs.getString(3), rs.getLong(4)) }.list()
@@ -172,12 +172,12 @@ fun NationalDashboardService.routeMap(caller: NationalCaller, routeId: Long, dat
         val month = YearMonth.from(date); val wd = WorkingCalendar.workingDays(h, month, weekendDays())
         val targets = h.createQuery(
             """
-            SELECT p.category_code, sum(t.qty_base) FROM app.route_monthly_target t JOIN dw.dim_product p ON p.sku_id = t.sku_id
+            SELECT p.category_code, sum(t.qty_base) FROM app.route_monthly_target t ${AsWasSql.product("p", "t.sku_id", "CAST(:d AS date)")}
              WHERE t.month = :m AND t.route_id = :r GROUP BY 1
             """,
-        ).bind("m", month.atDay(1)).bind("r", routeId).map { rs, _ -> rs.getString(1) to rs.getBigDecimal(2) }.list().toMap()
+        ).bind("m", month.atDay(1)).bind("r", routeId).bind("d", date).map { rs, _ -> rs.getString(1) to rs.getBigDecimal(2) }.list().toMap()
         val sold = h.createQuery(
-            "SELECT p.category_code, p.base_unit, sum(s.sold_qty_base) FROM dw.agg_daily_route_sku s JOIN dw.dim_product p ON p.sku_id = s.sku_id WHERE s.route_id = :r AND s.business_date = :d GROUP BY 1, 2",
+            "SELECT p.category_code, p.base_unit, sum(s.sold_qty_base) FROM dw.agg_daily_route_sku s ${AsWasSql.product("p", "s.sku_id", "s.business_date", "JOIN")} WHERE s.route_id = :r AND s.business_date = :d GROUP BY 1, 2",
         ).bind("r", routeId).bind("d", date).map { rs, _ -> Triple(rs.getString(1), rs.getString(2), rs.getLong(3)) }.list().associateBy { it.first }
         val cats = h.createQuery("SELECT DISTINCT category_code, base_unit FROM dw.dim_product").map { rs, _ -> rs.getString(1) to rs.getString(2) }.list()
             .sortedBy { CATEGORY_ORDER.indexOf(it.first).let { i -> if (i < 0) 99 else i } }
