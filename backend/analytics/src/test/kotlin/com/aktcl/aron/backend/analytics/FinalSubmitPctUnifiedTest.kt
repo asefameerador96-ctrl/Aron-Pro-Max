@@ -1,0 +1,65 @@
+package com.aktcl.aron.backend.analytics
+
+import com.aktcl.aron.backend.platform.AronClock
+import java.time.Instant
+import kotlin.test.Test
+import kotlin.test.assertEquals
+
+/**
+ * D-TSO-MAN-30 (s5 B2): `DashboardSummaries.autoSubmit`, the dw-only midnight stamp, is gone; every final-submit percentage reads
+ * the live `app.final_submit` rows with one formula, zones submitted (the midnight job's `via = 'job'` rows included) / service
+ * zones (a route-day of the national route set). The national Final Submit card and the summary's KPIs agree on every change.
+ * On tso_dashboard_day.sql the screenshot TSO's service zones are Banani - Test and Gulshan - Test (Exact Zone plans no route).
+ */
+class FinalSubmitPctUnifiedTest : TsoDayFixture() {
+
+    private fun card(uid: Long): Pair<Int, Int> = national().finalSubmit(caller(uid), all).let { it.service_zones to it.final_submitted }
+    private fun summaryOf(uid: Long): Pair<Int?, Int?> = summary(uid).kpis.let { it.zones_with_target_routes to it.zones_final_submitted }
+
+    private fun submit(zone: String, uuid: String, via: String = "web", reopened: Boolean = false) = sql(
+        """
+        INSERT INTO app.final_submit (client_uuid, zone_id, business_date, submitted_by, submitted_at, via, reopened_at, reopened_by, reopen_reason)
+        SELECT '$uuid', ${id(zone)}, DATE '2026-10-25', ${if (via == "job") "NULL" else "u.id"}, TIMESTAMPTZ '2026-10-25 12:00Z', '$via',
+               ${if (reopened) "TIMESTAMPTZ '2026-10-25 13:00Z', u.id, 'B2 test reopen'" else "NULL, NULL, NULL"}
+          FROM app.app_user u WHERE u.username = 'tso9100'
+        """.trimIndent(),
+    )
+
+    private fun assertBoth(uid: Long, service: Int, submitted: Int, pctBp: Int?, why: String) {
+        assertEquals(service to submitted, card(uid), "national card: $why")
+        assertEquals(service to submitted, summaryOf(uid), "summary: $why")
+        assertEquals(pctBp, national().finalSubmit(caller(uid), all).submit_pct_bp, "national %: $why")
+        assertEquals(pctBp?.toLong(), bp(summary(uid).kpis.final_submit_pct), "summary %: $why")
+    }
+
+    @Test
+    fun oneFormulaFromTheLiveRowsForTheCardAndTheSummary() {
+        assertBoth(32, 2, 0, 0, "nothing submitted")
+        submit("Z2", "00000000-0000-4000-8000-0000000b2f01")
+        assertBoth(32, 2, 1, 5000, "a TSO submit of Gulshan - Test")
+        submit("Z1", "00000000-0000-4000-8000-0000000b2f02", reopened = true)
+        assertBoth(32, 2, 1, 5000, "a reopened submit no longer counts")
+        submit("Z1", "00000000-0000-4000-8000-0000000b2f03", via = "job")
+        assertBoth(32, 2, 2, 10000, "the midnight job's row counts like any other")
+        assertBoth(33, 1, 1, 10000, "Banani - Test alone")
+        assertBoth(35, 1, 1, 10000, "the route-only TSO: the zone of its routes")
+        assertBoth(37, 0, 0, null, "Exact Zone plans no route: no service zone")
+    }
+
+    @Test
+    fun aDwOnlyStampNeverCountsAndTheWorkerNeverWritesOne() {
+        // The old midnight stamp lived in dw.agg_daily_zone only; a stamp written by hand (or left from before) is not a Final Submit.
+        sql("UPDATE dw.agg_daily_zone SET final_submitted_at = TIMESTAMPTZ '2026-10-25 18:00Z', auto_submitted = true WHERE business_date = '2026-10-25' AND zone_id = ${id("Z1")}")
+        assertBoth(32, 2, 0, 0, "a dw-only stamp")
+        // The next morning the worker runs again: it stamps nothing (AutoFinalSubmitJob, lane B3, writes the app.final_submit row).
+        sql("UPDATE dw.agg_daily_zone SET final_submitted_at = NULL, auto_submitted = false")
+        AggregationWorker(fresh.db, AronClock { Instant.parse("2026-10-26T01:00:00Z") }).also { w -> w.requestRebuild(day); w.runUntilIdle() }
+        assertEquals(0L, long("SELECT count(*) FROM dw.agg_daily_zone WHERE business_date = '2026-10-25' AND (final_submitted_at IS NOT NULL OR auto_submitted)"))
+        assertBoth(32, 2, 0, 0, "the day after, before any job row")
+        // The zone rollup's time follows the live row (the first live submit of the zone-day).
+        submit("Z2", "00000000-0000-4000-8000-0000000b2f04", via = "job")
+        rebuild()
+        assertEquals(1L, long("SELECT count(*) FROM dw.agg_daily_zone WHERE business_date = '2026-10-25' AND final_submitted_at IS NOT NULL AND NOT auto_submitted"))
+        assertBoth(32, 2, 1, 5000, "the job's row")
+    }
+}
