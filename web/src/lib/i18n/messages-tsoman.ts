@@ -176,6 +176,9 @@ const pairs = {
   "tsoman.report.tso_visit_log": ["TSO Visit Log", "টিএসও ভিজিট লগ"],
 
   // --- step 2. quarantine reason after_final_submit (D-TSO-MAN-31) ---
+  // --- step 2. TSO Daily Tracking: the till-date achievement per route (B2's DailyTrackingApi, two decimals) ---
+  "tsoman.tracking.tilldate": ["Till-date {pct}", "আজ পর্যন্ত {pct}"],
+
   "tsoman.quarantine.after_final_submit": ["Late sale after Final Submit", "ফাইনাল সাবমিটের পরে আসা বিক্রি"],
   "tsoman.quarantine.accept_late": ["Accept as late sale", "দেরিতে আসা বিক্রি হিসেবে গ্রহণ"],
   "tsoman.quarantine.late_help": ["Captured on the phone before the zone's Final Submit, but it reached the server after it. It is kept out of the day's figures until you decide. Accept as late sale counts it in that day, marked late; Discard keeps it out. Nothing is lost while it waits here.", "জোনের ফাইনাল সাবমিটের আগে ফোনে নেওয়া, কিন্তু সার্ভারে পৌঁছেছে পরে। আপনি সিদ্ধান্ত না দেওয়া পর্যন্ত এটি দিনের হিসাবে ধরা হয় না। দেরিতে আসা বিক্রি হিসেবে গ্রহণ করলে সেই দিনের হিসাবে দেরি চিহ্নসহ যোগ হয়; বাতিল করলে বাদ থাকে। এখানে অপেক্ষার সময় কিছুই হারায় না।"],

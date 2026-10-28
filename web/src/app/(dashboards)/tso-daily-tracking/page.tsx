@@ -1,5 +1,5 @@
 import { BucketCards, BUCKET_KEY } from "@/components/dash/tracking";
-import { n, pctText } from "@/components/dash/tiles";
+import { n } from "@/components/dash/tiles";
 import { TileMeta } from "@/components/reports/tile-meta";
 import { requireSession } from "@/lib/auth/require";
 import { getLocale } from "@/lib/auth/service";
@@ -7,6 +7,7 @@ import { BUCKETS } from "@/lib/dash/buckets";
 import { getDailyTracking } from "@/lib/dash/server";
 import { isCalendarDate } from "@/lib/dates";
 import { businessDate, problemMessage, t } from "@/lib/i18n";
+import { pct2dpText } from "@/lib/national/fmt"; // tso-manual W1: the till-date % at the server's precision
 
 
 // TSO Daily Tracking Dashboard (F-WEB-028): routes of the TSO's territory in the 100, 90 to 100, 80 to 90 and below 80 percent buckets,
@@ -37,8 +38,8 @@ export default async function TsoDailyTrackingPage({ searchParams }: { searchPar
                 .map((i) => (
                   <li key={i.route_id} className="flex justify-between gap-2">
                     <span>{i.route_name}</span>
-                    <span className="tabular-nums">
-                      {n(locale, i.visited_outlets)}/{n(locale, i.target_outlets)} · {pctText(locale, i.tilldate_target_achievement_pct)}
+                    <span className="tabular-nums" data-testid={`tilldate-${i.route_id}`}>
+                      {n(locale, i.visited_outlets)}/{n(locale, i.target_outlets)} · {t(locale, "tsoman.tracking.tilldate", { pct: pct2dpText(locale, i.tilldate_target_achievement_pct) })}
                     </span>
                   </li>
                 ))}

@@ -103,6 +103,15 @@ export function pctText(locale: Locale, v: number | null | undefined, decimals: 
   return `${v < 0 ? "-" : ""}${grouped(locale, a / pow)}${frac}%`;
 }
 
+/** A percentage the server already sends at two decimals (DailyTrackingRow.tilldate_target_achievement_pct, "0 to 100 with 2
+ *  decimals"), printed at that precision without a second rounding: 87.5 -> "87.50%", 104.94 -> "104.94%"; null or not a
+ *  finite number -> "—". The value is moved to basis points once (exact for a two-decimal figure) and printed by pctText. */
+export function pct2dpText(locale: Locale, v: number | null | undefined): string {
+  if (typeof v !== "number" || !Number.isFinite(v)) return DASH;
+  const bp = Math.round(v * 100);
+  return Number.isSafeInteger(bp) ? pctText(locale, bp, 2) : DASH;
+}
+
 /** A quantity n / d (d = 1 for a total, working days for a daily target), one decimal half up: "40.0", "999.0"; from 1,000.0 in
  *  thousands with one decimal and " K", rounded once from n: "1.7 K", "1,234.6 K". No M, no lakh. A null n or d = 0 -> "—". */
 export function qtyText(locale: Locale, n: number | null | undefined, d = 1): string {
