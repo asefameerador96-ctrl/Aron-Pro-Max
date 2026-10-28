@@ -37,7 +37,11 @@ private fun NationalDeps.caller(call: ApplicationCall): NationalCaller {
 private fun pathId(call: ApplicationCall, name: String): Long =
     call.parameters[name]?.toLongOrNull()?.takeIf { it > 0 } ?: throw ApiProblem(ProblemCode.ERR_VALIDATION, "bad $name", errors = listOf(FieldError("path.$name", "invalid_value")))
 
-/** The national dashboard (contract 1.4.0): twelve cards, FF Geo, route map, sale position, filter options, freshness. */
+/**
+ * The national dashboard (contract 1.4.0): twelve cards, FF Geo, route map, sale position, filter options, freshness; contract
+ * 1.10.0 adds Brand CPR, segment share and the Login / Submit users. Every card answers the TSO role (the TSO app reads these
+ * operations, D-TSO-MAN-09), a route-only TSO by its routes.
+ */
 fun Route.nationalDashboardRoutes(d: NationalDeps) {
     authenticated(d.guard) {
         post("/dashboards/national/sales") { call.respond(d.service.sales(d.caller(call), call.receiveStrict(NationalDashboardFilter.serializer()))) }
@@ -54,6 +58,14 @@ fun Route.nationalDashboardRoutes(d: NationalDeps) {
         }
         get("/dashboards/route-map/{route_id}") { call.respond(d.service.routeMap(d.caller(call), pathId(call, "route_id"), call.request.queryParameters["date"])) }
         get("/dashboards/sale-position/{outlet_id}") { call.respond(d.service.salePosition(d.caller(call), pathId(call, "outlet_id"), call.request.queryParameters["date"])) }
+        // Contract 1.10.0, the TSO dashboard's cards (s5 B2): Brand CPR, segment shares, the Login / Submit users behind the status card.
+        post("/dashboards/national/brand-cpr") { call.respond(d.service.brandCpr(d.caller(call), call.receiveStrict(NationalDashboardFilter.serializer()))) }
+        post("/dashboards/national/segment-share") { call.respond(d.service.segmentShare(d.caller(call), call.receiveStrict(NationalDashboardFilter.serializer()))) }
+        post("/dashboards/national/login-submit/users") {
+            val caller = d.caller(call)
+            val tab = call.request.queryParameters["tab"]
+            call.respond(d.service.loginSubmitUsers(caller, tab, call.receiveStrict(NationalDashboardFilter.serializer())))
+        }
         get("/dashboards/national/filter-options") { call.respond(d.service.filterOptions(d.caller(call))) }
         get("/dashboards/national/freshness") { d.caller(call); call.respond(d.service.freshness()) }
     }
