@@ -155,3 +155,4 @@ The real column sets are the `columns` of each report in the registry: call `POS
 | Candidate | State |
 |---|---|
 | 1 brand scope of the dashboard summary | D-REPORTS-BRANDSCOPE-01; `AsWasBrandScopeTest` (4 tests, mutation-checked: category/segment filter removed and by_brand filter removed both fail it); DashboardTest, AsWasReadTest, RouteKeyedDashboardTest, OpsApiTest, TeamApiTest, NationalDashboardTest green locally; checker round 1 found no leak (test gap fixed), round 2 pending |
+| 2 NodeScope / ReportEngine as-was selectors | D-REPORTS-NODEASWAS-01; `AsWasNodeScopeTest` (3) and `AsWasReportScopeTest` (2), mutation-checked (membership filter off, node zones from today's structure, selector at the wrong date, route-std on current geo: each fails); staged locally, push held until train 57 landed |
