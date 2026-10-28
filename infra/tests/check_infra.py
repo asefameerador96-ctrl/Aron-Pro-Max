@@ -2110,42 +2110,78 @@ class LakeAndBlobRetention(unittest.TestCase):
             out = subprocess.run(["bash", "-c", f'set -euo pipefail; per_app="$1"; {case_line}; printf %s "$apps_use"', "_", value],
                                  capture_output=True, text=True, check=True).stdout
             self.assertEqual(out, want, repr(value))
-        self.assertIn('summary "| Key Vault network ACLs | ${kv_acls} |"', d)
-        self.assertIn('az keyvault show -g "$RG" -n "$KV" --query properties.networkAcls -o json', d,
-                      "read-only, and with the group: a name-only lookup lists the subscription (\"not read\" on deploy #286)")
-        # Both snippets, as deploy.sh runs them (set -euo pipefail), never stop the deploy and print one line.
+        # Login list: as deploy.sh runs it (set -euo pipefail), one line, never stops the deploy.
         login_line = re.search(r'^    (logins="\$\(python3 -c .*? \|\| logins="login list not read")$', d, re.S | re.M).group(1)
-        kv_line = re.search(r'^(kv_err="\$\(mktemp .*?^\[ "\$kv_err" = /dev/null \] \|\| rm -f "\$kv_err")$', d, re.S | re.M).group(1)
-        def run(az_body, sql="infra/sql/runtime-logins.sql", tmpdir=None):
-            script = (f"set -euo pipefail\naz() {{ {az_body}; }}\nKV=kv-test\nRG=rg-test\n"
-                      + (f"export TMPDIR={tmpdir}\n" if tmpdir else "")
-                      + login_line.replace("infra/sql/runtime-logins.sql", sql) + "\n" + kv_line
-                      + '\nprintf "%s\\n%s\\n" "$logins" "$kv_acls"\n')
-            r = subprocess.run(["bash", "-c", script], cwd=ROOT, capture_output=True, text=True)
-            self.assertEqual(r.returncode, 0, r.stderr)
-            return r.stdout.splitlines()
-        acl = '{"defaultAction": "Allow", "bypass": "AzureServices", "ipRules": [], "virtualNetworkRules": []}'
-        self.assertEqual(run(f"echo '{acl}'"), [code, "default Allow, bypass AzureServices, 0 IP rules, 0 VNet rules"])
-        self.assertEqual(run("echo null"), [code, "none set"])
-        self.assertEqual(run("return 1"), [code, "not read"])
-        # The first error line reaches the row, ids, resource paths and long tokens masked, no table separators.
+        for sql, want in (("infra/sql/runtime-logins.sql", code), ("no/such/file.sql", "login list not read")):
+            r = subprocess.run(["bash", "-c", "set -euo pipefail\n" + login_line.replace("infra/sql/runtime-logins.sql", sql)
+                                + '\nprintf %s "$logins"'], cwd=ROOT, capture_output=True, text=True)
+            self.assertEqual((r.returncode, r.stdout), (0, want), r.stderr)
+
+    def test_key_vault_rows_explain_themselves(self):
+        """D-INFRA-LAKE-05/06: deploys #286 and #287 printed a bare "not read". The rows come from
+        infra/scripts/kv-acl-row.sh, which prints one line naming the failing step and always exits 0."""
+        import base64, stat, subprocess, tempfile
+        d = (ROOT / "infra" / "deploy.sh").read_text(encoding="utf-8")
+        self.assertIn('kv_acls="$( { infra/scripts/kv-acl-row.sh acls "$RG" "$KV" 2>/dev/null || true; } | sed -n 1p)"', d)
+        self.assertIn('kv_roles="$( { infra/scripts/kv-acl-row.sh roles "$RG" "$KV" 2>/dev/null || true; } | sed -n 1p)"', d)
+        self.assertIn('summary "| Key Vault network ACLs | ${kv_acls:-not read: helper printed nothing} |"', d)
+        self.assertIn('summary "| Deploy identity roles on the vault | ${kv_roles:-not read: helper printed nothing} |"', d)
+        script = ROOT / "infra" / "scripts" / "kv-acl-row.sh"
+        src = script.read_text(encoding="utf-8")
+        self.assertIn('az keyvault show -g "$rg" -n "$kv" --query properties.networkAcls -o json', src, "read-only, with the group")
+        self.assertIn("--query \"[?principalId=='${oid}'].roleDefinitionName\" -o tsv", src, "role names of the deploy identity only")
+        self.assertIn('command -v az >/dev/null 2>&1 || { echo "not read: az not found"; exit 0; }', src)
         guid = "-".join("0" * n for n in (8, 4, 4, 4, 12))  # an id-shaped placeholder, not a real id
-        long_token = "x" * 40  # anything 32+ characters long is masked
-        why = run(f"echo \"ERROR: (AuthorizationFailed) The client '{guid}' cannot perform action "
-                  f"'Microsoft.Resources/subscriptions/resources/read' over scope '/subscriptions/{guid}' at "
-                  f"https://learn.microsoft.com/azure | token {long_token}\" >&2; return 1")[1]
-        self.assertTrue(why.startswith("not read: ERROR: (AuthorizationFailed) The client '[id]' cannot perform action "
-                                       "'Microsoft.Resources/subscriptions/resources/read' over scope '[resource]' at "
-                                       "https://learn.microsoft.com/azure"), why)
-        self.assertNotIn("<", why, "angle brackets read as HTML in the step summary")
-        self.assertNotIn(guid, why)
-        self.assertNotIn(long_token, why)
-        self.assertNotIn("|", why)
-        self.assertEqual(run(f"echo '{acl}'; return 1")[1], "default Allow, bypass AzureServices, 0 IP rules, 0 VNet rules",
-                         "JSON then a non-zero exit still gives one table cell")
-        self.assertEqual(run("return 1", sql="no/such/file.sql"), ["login list not read", "not read"])
-        self.assertEqual(run("echo 'ERROR: x' >&2; return 1", tmpdir="/nonexistent/aron")[1], "not read",
-                         "no temp file: the row degrades, the deploy goes on")
+        long_token = "x" * 40
+        b64 = lambda o: base64.urlsafe_b64encode(json.dumps(o).encode()).decode().rstrip("=")
+        fake_token = ".".join((b64({"alg": "none"}), b64({"oid": "11111111-1111-1111-1111-111111111111"}), "sig"))
+        with tempfile.TemporaryDirectory() as bindir:
+            fake = Path(bindir, "az")
+            fake.write_text("""#!/usr/bin/env bash
+case "$1 $2" in
+  "account show") [ -z "${FAKE_NOT_SIGNED:-}" ] || { echo "ERROR: Please run 'az login' to setup account." >&2; exit 1; }
+                  echo "$FAKE_SUB" ;;
+  "account get-access-token") echo "$FAKE_TOKEN" ;;
+  "keyvault show") printf '%s' "${FAKE_KV_OUT:-}"; [ -z "${FAKE_KV_ERR:-}" ] || echo "$FAKE_KV_ERR" >&2; exit "${FAKE_KV_RC:-0}" ;;
+  "role assignment") printf '%s' "${FAKE_ROLES:-}"; [ -z "${FAKE_ROLES_ERR:-}" ] || echo "$FAKE_ROLES_ERR" >&2; exit "${FAKE_ROLES_RC:-0}" ;;
+esac
+""", encoding="utf-8")
+            fake.chmod(fake.stat().st_mode | stat.S_IEXEC)
+
+            def row(mode, rg="rg-test", kv="kv-test", **env):
+                e = {**os.environ, "PATH": f"{bindir}:{os.environ['PATH']}", "FAKE_SUB": guid, "FAKE_TOKEN": fake_token, **env}
+                r = subprocess.run([str(script), mode, rg, kv], capture_output=True, text=True, env=e)
+                self.assertEqual(r.returncode, 0, r.stderr)
+                lines = r.stdout.splitlines()
+                self.assertEqual(len(lines), 1, r.stdout)
+                self.assertNotIn("|", lines[0])
+                self.assertNotIn("<", lines[0], "angle brackets read as HTML in the step summary")
+                return lines[0]
+
+            acl = '{"defaultAction": "Allow", "bypass": "AzureServices", "ipRules": [], "virtualNetworkRules": []}'
+            self.assertEqual(row("acls", FAKE_KV_OUT=acl), "default Allow, bypass AzureServices, 0 IP rules, 0 VNet rules")
+            # az prints nothing for a null query result (the likely cause of the bare "not read" on #286 and #287).
+            self.assertTrue(row("acls", FAKE_KV_OUT="").startswith("none returned (networkAcls is null on the vault"))
+            self.assertTrue(row("acls", FAKE_KV_OUT="null").startswith("none returned"))
+            self.assertEqual(row("acls", FAKE_KV_OUT="{not json"),
+                             "not read: parse failed: JSONDecodeError: Expecting property name enclosed in double quotes: line 1 column 2 (char 1)")
+            err = (f"ERROR: (AuthorizationFailed) The client '{guid}' cannot perform action "
+                   f"'Microsoft.KeyVault/vaults/read' over scope '/subscriptions/{guid}/x' at https://learn.microsoft.com/azure {long_token}")
+            why = row("acls", FAKE_KV_ERR=err, FAKE_KV_RC="3")
+            self.assertTrue(why.startswith("not read: az keyvault show exit 3: ERROR: (AuthorizationFailed) The client '[id]' "
+                                           "cannot perform action 'Microsoft.KeyVault/vaults/read' over scope '[resource]' at "
+                                           "https://learn.microsoft.com/azure [masked]"), why)
+            self.assertEqual(row("acls", FAKE_KV_RC="1"), "not read: az keyvault show exit 1: no error text")
+            self.assertEqual(row("acls", FAKE_NOT_SIGNED="1"),
+                             "not read: not signed in (az account show exit 1): ERROR: Please run 'az login' to setup account.")
+            self.assertEqual(row("acls", rg=""), "not read: resource group or vault name empty")
+            self.assertEqual(row("roles", FAKE_ROLES="Key Vault Secrets Officer\nContributor\nContributor\n"),
+                             "Contributor, Key Vault Secrets Officer")
+            self.assertEqual(row("roles", FAKE_ROLES=""), "none")
+            self.assertEqual(row("roles", FAKE_ROLES_ERR="ERROR: forbidden", FAKE_ROLES_RC="2"),
+                             "not read: az role assignment list exit 2: ERROR: forbidden")
+            self.assertEqual(row("bogus"), "not read: unknown mode 'bogus'")
+            self.assertEqual(row("acls", TMPDIR="/nonexistent/aron", FAKE_KV_OUT=acl), "not read: no temp directory")
 
     def test_reset_compares_the_lake_with_its_own_sku(self):
         # dev (photo ZRS under the docs/28 exception, lake LRS): nothing to replace.

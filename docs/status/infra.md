@@ -22,7 +22,10 @@ over older handovers below.
 - **Candidate 4 (this push, lead yes 13:50):** per-app logins ON in dev-lite (D-INFRA-LOGINS-LITE-01), the
   "Database logins" row says whether api and worker use the logins, and the db request
   `docs/requests/db-bi-reader-row-scope.md` (db #14, D-374 brand and wing scope). Same gate: lane run with Infra
-  validation and Container images, Opus checker, then the candidate report.
+  validation and Container images, Opus checker, then the candidate report. Part (c), lead ask after deploy #287
+  (ACL row again a bare "not read"): `infra/scripts/kv-acl-row.sh` makes the ACL row name the failing step, and a
+  new row lists the deploy identity's roles on the vault (D-INFRA-LAKE-06). Likely cause: az prints nothing for a
+  null networkAcls and the old inline parse failed silently; read the next deploy's two rows to confirm.
 - **Local proof kit:** PostgreSQL 16 server binaries are in /usr/lib/postgresql/16/bin. initdb a cluster owned by
   `postgres` outside the scratchpad (the scratchpad path is not traversable for that user), apply
   `db/migrations/V*.sql` in `sort -V` order with `psql -1` (Flyway runs each in a transaction), then run
