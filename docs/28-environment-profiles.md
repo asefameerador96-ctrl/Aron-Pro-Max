@@ -42,3 +42,4 @@ Rules for this exception:
 | Weighted canary and the Multiple-revision fallback (AUD-REL-06) | needs the prod-shaped stage and prod | `infra/params/stage*.apps.bicepparam`, `prod.apps.bicepparam` |
 | Build once and promote the CI-scanned image (AUD-DG-06) | staging and prod make it matter | `infra/README.md`, "Not in this version" |
 | 8,500-user load proof, geo-restore (RB-52) | only the final account has the size | `docs/setup/move-to-final-account.md` |
+| Data-lake storage SKU: `Standard_ZRS` in `infra/params/stage.bicepparam` and `prod.bicepparam` (test account: `Standard_LRS`, D-INFRA-LAKE-01, 2026-10-28) | zone redundancy needs the sponsor's written yes before the first final-account deploy; the sponsor question is open | `infra/modules/lake.bicep`, `docs/status/infra.md` |
