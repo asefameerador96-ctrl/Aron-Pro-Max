@@ -491,6 +491,8 @@ class ContractConformanceTest {
             ),
             "POST /v1/media/upload" to Fx(raw = { c, _ -> photoUpload(ApiWorld.v4("upload/${c.user}")) }),
             "POST /v1/day/final-submit" to Fx(after = listOf("POST /v1/web-entry/qc", "POST /v1/web-entry/route-day")),
+            // tso-manual B3: the reopen (D-TSO-MAN-29) reopens the zone-day the Final Submit above closed.
+            "POST /v1/day/reopen" to Fx(after = listOf("POST /v1/day/final-submit")),
             // MDM (lane mdm): the proof phone is the target, so the SR phone's state never moves.
             "GET /v1/devices/me/commands" to Fx(headers = { _, _ -> mapOf("X-Device-Id" to ApiWorld.PROOF_PHONE) }, proof = deviceProof(ApiWorld.PROOF_PHONE)),
             "POST /v1/admin/mdm/devices/{}/commands" to Fx(

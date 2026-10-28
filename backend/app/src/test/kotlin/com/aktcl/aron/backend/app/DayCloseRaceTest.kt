@@ -59,27 +59,34 @@ import kotlin.test.assertTrue
  * - (d) in about one round of three, an admin reopen racing a second wave of submits (new uuids and a replay of the
  *   first winner), then one more submit after the reopen and a batch after the second close.
  *
- * The reopen route `POST /v1/day/reopen` is in the contract but not served by the backend (docs/33 part C: "backend route
- * [PLANNED]", gaps G29/G34). The test probes it once: while it answers 404, (d) reopens with SQL the way the route would
- * have to, under the same zone-day advisory lock Final Submit takes (`final:<zone>:<date>`), setting only the columns
- * `app.final_submit` defines for a reopen. The route-day side of a reopen is not specified anywhere, so the oracle
- * expects what the product does today: `route_day.final_submitted_at` keeps the FIRST close (COALESCE).
+ * The reopen route `POST /v1/day/reopen` is served since tso-manual B3 (D-TSO-MAN-29): (d) reopens through it as
+ * admin1001 (the SQL fallback below stays for a backend that answers 404). A reopen clears the route-days' close, so
+ * after the second close they carry its time (S1 compares with the live close).
+ *
+ * tso-manual B3 (D-TSO-MAN-31, default cfg.day.late_sync_after_final_policy = quarantine): every row of a family that
+ * commits after the close was captured before it (the phone's capture times precede every close), so it is held
+ * `quarantined after_final_submit`, not counted; after wave 1 (and after the post-close batch of a reopen round) ADMIN
+ * accepts the held items on the quarantine page, which stores them and counts them late. The counter clauses (T1 to T4)
+ * are judged after the accepts; H1 and H2 judge the hold itself. A replay of the first close's uuid after the reopen
+ * is 409 `ERR_DAY_FINAL_SUBMIT_REOPENED` (D-TSO-MAN-28).
  *
  * The oracle ([oracle], one label per clause) per round:
  * - L1 exactly one live (`reopened_at IS NULL`) close of the zone-day; L2 exactly one close row per closed cycle;
  * - R1 every 200 answer to a cycle's winning uuid is identical and equals the stored close (submitted_at, kind, and
- *   route_count, memo_count and net_mtk as summed from the stored route_states); R2 no other uuid ever gets a 200; R3 every 409 is ERR_DAY_ALREADY_FINAL_SUBMITTED with
+ *   route_count, memo_count and net_mtk as summed from the stored route_states); R2 no other uuid ever gets a 200; R3 every 409 is ERR_DAY_ALREADY_FINAL_SUBMITTED (or, for a reopened close's uuid after the reopen, ERR_DAY_FINAL_SUBMIT_REOPENED) with
  *   context.submitted_at equal to a close that was live in that wave; R4 no 5xx and no other status;
- * - S1 every active route of the zone has a route-day whose final_submitted_at is the (first) close's time; S2 its
+ * - S1 every active route of the zone has a route-day whose final_submitted_at is the live close's time; S2 its
  *   state is final_submitted;
  * - Y1 the ingest registry of the SR and date holds exactly the device's client_uuids; Y2 every table holds exactly
- *   the device's rows (count and identity); Y3 no valid record was refused;
+ *   the device's rows (count and identity); Y3 no valid record was refused (a hold after_final_submit is not a refusal);
  * - T1 late_rows_after_final of the SR's route-day is EXACT: an ingest family is one transaction, the phone's families
  *   commit in order, and a family that commits after the close is late in all its records; the late count is
  *   therefore the records of a suffix of the family stream, and the suffix is bounded by what the client observed
  *   (a family whose batch answered before the first winning call was sent is not late; one whose batch was sent after
  *   the close was answered is late). T2 the other routes count no late rows; T3 the close rows' late_rows add up to
  *   the route-days' (and after a reopen the second close counts exactly the rows sent after it); T4 0 <= late <= rows;
+ * - H1 (tso-manual B3) the route-day counts no late row before the admin accepts the held ones; H2 the rows held
+ *   `after_final_submit` are exactly the late rows the route-day counts after the accepts;
  * - O1 after a reopen, the first close carries the reopen, and the second close is newer than the first and belongs
  *   to a submit sent after the reopen started. Not asserted, only counted and printed (`close-stamped-before-reopen`):
  *   Final Submit reads its clock before it waits for the zone-day lock, so a submit queued behind the reopen is
@@ -180,6 +187,12 @@ class DayCloseRaceTest {
         val reopened: Boolean, val postRecords: Int, val refused: List<String>,
         /** The record type that opens each family of [familySizes] (a sale family opens with its `visit`). */
         val familyFirstTypes: List<String> = emptyList(),
+        // tso-manual B3 (D-TSO-MAN-31): the day lock holds late rows until an admin accepts them.
+        /** client_uuids the server answered `quarantined after_final_submit` (held for review) in this round. */
+        val held: Set<String> = emptySet(),
+        /** The SR route-day's late_rows_after_final just before each admin accept pass, and just after it. */
+        val lateBeforeAccept: List<Int> = emptyList(),
+        val lateAfterAccept: List<Int> = emptyList(),
     )
 
     // ---- wire ------------------------------------------------------------------------------------------------------
@@ -242,6 +255,31 @@ class DayCloseRaceTest {
         return Call("admin1001", "reopen", 2, start, System.nanoTime(), if (n == 1) 200 else 409, null)
     }
 
+    /** The SR route-day's late_rows_after_final now (0 when it has no route-day yet). */
+    private fun lateNow(p: SyncPhone, date: LocalDate): Int = world.fresh.db.jdbi.withHandle<Int, Exception> { h ->
+        h.createQuery("SELECT late_rows_after_final FROM app.route_day WHERE route_id = :r AND business_date = :d").bind("r", p.routeId).bind("d", date).mapTo(Int::class.java).findOne().orElse(0)
+    }
+
+    /**
+     * tso-manual B3 (D-TSO-MAN-31): ADMIN accepts every open `after_final_submit` item of the SR and date on the quarantine
+     * page (`POST /v1/admin/quarantine/{id}/resolve`), oldest first; accepting a held visit releases its held children.
+     * A refusal is a round problem (noted in [refused]).
+     */
+    private suspend fun HttpClient.acceptHeld(p: SyncPhone, date: LocalDate, refused: MutableList<String>) {
+        while (true) {
+            val id = world.fresh.db.jdbi.withHandle<Long?, Exception> { h ->
+                h.createQuery("SELECT min(id) FROM app.sync_quarantine WHERE user_id = :u AND business_date = :d AND code = 'after_final_submit' AND status = 'open'")
+                    .bind("u", p.userId).bind("d", date).mapTo(Long::class.javaObjectType).findOne().orElse(null)
+            } ?: return
+            val r = post("/v1/admin/quarantine/$id/resolve") {
+                bearerAuth(tokens.getValue("admin1001")); contentType(ContentType.Application.Json); header("X-App-Version", ApiWorld.APP_VERSION)
+                setBody("""{"action":"accept","reason":"qa day-close race: late row accepted"}""")
+            }
+            if (r.status.value != 200) { refused += "accept of quarantine item $id answered ${r.status.value}: ${r.bodyAsText().take(200)}"; return }
+            count("held-accepted")
+        }
+    }
+
     // ---- one round -------------------------------------------------------------------------------------------------
 
     private val stats = ConcurrentHashMap<String, AtomicInteger>()
@@ -258,10 +296,14 @@ class DayCloseRaceTest {
         phone.token = world.login(this, ApiWorld.Caller(phone.username, "app_sr", phone.deviceUuid)) ?: error("no token for ${phone.username}")
 
         val refused = java.util.Collections.synchronizedList(mutableListOf<String>())
+        val held = java.util.Collections.synchronizedSet(mutableSetOf<String>())
         fun note(resp: JsonObject?) = resp?.get("acks")?.jsonArray?.forEach { a ->
             val st = a.jsonObject["status"]!!.jsonPrimitive.content
-            if (st != "accepted" && st != "duplicate") refused += a.toString()
+            // tso-manual B3: a late row is held for the admin (D-TSO-MAN-31), not refused; every other outcome is.
+            if (st == "quarantined" && (a.jsonObject["code"] as? kotlinx.serialization.json.JsonPrimitive)?.content == "after_final_submit") held += a.jsonObject["client_uuid"]!!.jsonPrimitive.content
+            else if (st != "accepted" && st != "duplicate") refused += a.toString()
         }
+        val lateBefore = mutableListOf<Int>(); val lateAfter = mutableListOf<Int>()
 
         // (c) the phone's stream: families in capture order, in batches of one to three families.
         val stream = (0 until rnd.nextInt(1, 3)).flatMap { phone.captureDay(rnd) }.map { moved(it, date) }
@@ -314,6 +356,8 @@ class DayCloseRaceTest {
         }
         if (tail) { count("tail-batch"); sendBatch(plan.lastIndex) }
         count("final-submit-calls", wave1.size)
+        // tso-manual B3: the rows held after the close wait for the admin; nothing is counted before the accept.
+        lateBefore += lateNow(phone, date); acceptHeld(phone, date, refused); lateAfter += lateNow(phone, date)
 
         // (d) a reopen racing a second wave, one submit after it, and rows after the second close.
         val reopen = forceReopen ?: (rnd.nextInt(3) == 0)
@@ -334,8 +378,12 @@ class DayCloseRaceTest {
             if (st != 200) refused += "post-close batch answered $st"
             post = more.sumOf { it.size }
             count("final-submit-calls", wave2.size + 1)
+            lateBefore += lateNow(phone, date); acceptHeld(phone, date, refused); lateAfter += lateNow(phone, date)
         }
-        return Round(seed, date, phone, calls.toList(), fams.map { it.size }, sent.toList().sortedBy { it.families.first() }, reopen, post, refused.toList(), fams.map { it.first().type() })
+        return Round(
+            seed, date, phone, calls.toList(), fams.map { it.size }, sent.toList().sortedBy { it.families.first() }, reopen, post, refused.toList(), fams.map { it.first().type() },
+            held.toSet(), lateBefore.toList(), lateAfter.toList(),
+        )
     }
 
     // ---- the oracle ------------------------------------------------------------------------------------------------
@@ -441,12 +489,18 @@ class DayCloseRaceTest {
                         ) p += "[R1] a 200 to ${c.uuid} differs from the stored close (${wire(w.submittedAt)}, $kind, routes ${w.routes}, memos ${w.memos}, net ${w.net}): $b"
                     }
                     409 -> {
-                        val allowed = if (c.wave == 1) setOf(wire(first.submittedAt)) else closes.map { wire(it.submittedAt) }.toSet()
-                        if (code(c) != ALREADY || ctxAt(c) !in allowed) p += "[R3] wave ${c.wave} 409 to ${c.uuid}: ${code(c)} submitted_at ${ctxAt(c)} (allowed $allowed)"
-                        // A cycle's winner is never refused once its cycle is open: the first close's uuid never, the second
-                        // close's uuid not after the reopen (before it, it lost wave 1 like any other uuid).
                         val cycle = closes.indexOfFirst { it.uuid == c.uuid }
-                        if (cycle == 0 || (cycle > 0 && c.wave >= 2)) p += "[R3] the winning uuid ${c.uuid} (cycle ${cycle + 1}) was answered 409 ${code(c)} in wave ${c.wave}"
+                        if (code(c) == REOPENED) {
+                            // tso-manual B3 (D-TSO-MAN-28, CR-3): only a replay, after the reopen, of a close that was reopened.
+                            if (cycle < 0 || closes[cycle].reopenedAt == null || c.wave < 2) p += "[R3] wave ${c.wave} 409 $REOPENED to ${c.uuid}, which holds no reopened close"
+                        } else {
+                            val allowed = if (c.wave == 1) setOf(wire(first.submittedAt)) else closes.map { wire(it.submittedAt) }.toSet()
+                            if (code(c) != ALREADY || ctxAt(c) !in allowed) p += "[R3] wave ${c.wave} 409 to ${c.uuid}: ${code(c)} submitted_at ${ctxAt(c)} (allowed $allowed)"
+                            // A cycle's winner is never refused as already submitted: the first close's uuid never (after the
+                            // reopen it is spent: REOPENED, above), the second close's uuid not after the reopen (before it,
+                            // it lost wave 1 like any other uuid).
+                            if (cycle == 0 || (cycle > 0 && c.wave >= 2)) p += "[R3] the winning uuid ${c.uuid} (cycle ${cycle + 1}) was answered 409 ${code(c)} in wave ${c.wave}"
+                        }
                     }
                     else -> p += "[R4] ${c.user} wave ${c.wave} answered ${c.status}: ${c.body?.get("code")}"
                 }
@@ -466,9 +520,11 @@ class DayCloseRaceTest {
             val days = h.createQuery("SELECT route_id, final_submitted_at, state, late_rows_after_final FROM app.route_day WHERE business_date = :d AND route_id = ANY(:r)")
                 .bind("d", r.date).bindArray("r", Long::class.javaObjectType, zoneRoutes)
                 .map { rs, _ -> rs.getLong(1) to Triple(rs.getObject(2, OffsetDateTime::class.java)?.toInstant(), rs.getString(3), rs.getInt(4)) }.list().toMap()
+            // tso-manual B3 (D-TSO-MAN-29): a reopen clears the route-days' close, so they carry the live close's time.
+            val liveClose = closes.lastOrNull { it.reopenedAt == null } ?: first
             for (route in zoneRoutes) {
                 val d = days[route]
-                if (d == null || d.first != first.submittedAt) p += "[S1] route $route final_submitted_at ${d?.first} (close ${first.submittedAt})"
+                if (d == null || d.first != liveClose.submittedAt) p += "[S1] route $route final_submitted_at ${d?.first} (live close ${liveClose.submittedAt})"
                 if (d?.second != "final_submitted") p += "[S2] route $route state ${d?.second}"
                 if (route != r.phone.routeId && (d?.third ?: 0) != 0) p += "[T2] route $route (no rows) counts ${d?.third} late rows"
             }
@@ -510,6 +566,13 @@ class DayCloseRaceTest {
             }
             if (r.reopened && closes.size >= 2 && closes[1].late != r.postRecords) p += "[T3] the second close counts ${closes[1].late} late rows, ${r.postRecords} were sent after it"
             if (late < 0 || late > total) p += "[T4] $late late rows of $total stored"
+
+            // tso-manual B3 (D-TSO-MAN-31): a late row is held after_final_submit and counted only when the admin accepts it.
+            r.lateBeforeAccept.forEachIndexed { i, v ->
+                val want = if (i == 0) 0 else r.lateAfterAccept.getOrElse(i - 1) { 0 }
+                if (v != want) p += "[H1] the route-day counted ${v - want} late rows before the admin accepted them (accept pass ${i + 1})"
+            }
+            if (r.held.size != late) p += "[H2] ${r.held.size} rows were held after_final_submit, the route-day counts $late late rows"
         }
         return p
     }
@@ -689,6 +752,12 @@ class DayCloseRaceTest {
             expect("foreign registry row", setOf("Y1"), oracle(r))
         }
         clean().let { r -> expect("refused record", setOf("Y3"), oracle(r.copy(refused = listOf("rejected memo (seeded)")))) }
+        // tso-manual B3 (D-TSO-MAN-31): the rows sent after the second close are held, then accepted by the admin.
+        clean(reopen = true).let { r ->
+            check(r.held.isNotEmpty() && r.lateBeforeAccept.size == 2) { "a reopen round holds its post-close rows: ${r.held.size} held, passes ${r.lateBeforeAccept}" }
+            expect("a late row counted before the accept", setOf("H1"), oracle(r.copy(lateBeforeAccept = r.lateBeforeAccept.mapIndexed { i, v -> if (i == r.lateBeforeAccept.lastIndex) v + 1 else v })))
+            expect("a late row stored without being held", setOf("H2"), oracle(r.copy(held = r.held + "00000000-0000-4000-8000-0000000000ff")))
+        }
         clean().let { r ->
             val i = r.calls.indexOfFirst { it.status == 200 }
             val bad = r.calls[i].copy(body = JsonObject(r.calls[i].body!! + ("submitted_at" to JsonPrimitive("2027-01-01T00:00:00.000Z"))))
@@ -710,13 +779,14 @@ class DayCloseRaceTest {
             check(r.familyFirstTypes.first() == "visit" && r.familySizes.first() > 1)
             val oneShort = suffixOf(r, 0) - 1
             db("UPDATE app.route_day SET late_rows_after_final = $oneShort WHERE ${rd(r)}"); db("UPDATE app.final_submit SET late_rows = $oneShort WHERE ${where(r)}")
-            val outside = oracle(r)
+            // tso-manual B3: the seeded counts stand for rows that were held and accepted (H2 agrees), so only T1 speaks.
+            val outside = oracle(r.copy(held = fakeHeld(oneShort)))
             expect("one short outside the close window", setOf("T1"), outside)
             assertTrue(outside.none { "KD-1" in it }, "one short outside the close window must not match KD-1: $outside")
             assertTrue(!tolerable(outside), "one short outside the close window was tolerated: $outside")
             val winnerStart = r.calls.filter { it.status == 200 }.minOf { it.start }
             val seen = r.calls.filter { it.status == 200 || it.status == 409 }.minOf { it.end }
-            val inside = oracle(r.copy(batches = r.batches.map { it.copy(start = winnerStart - 1, end = maxOf(seen, winnerStart) + 1) }))
+            val inside = oracle(r.copy(held = fakeHeld(oneShort), batches = r.batches.map { it.copy(start = winnerStart - 1, end = maxOf(seen, winnerStart) + 1) }))
             assertTrue(inside.isNotEmpty() && inside.all { "KD-1" in it }, "the same count inside the close window is KD-1: $inside")
             if ("KD-1" in tolerate) assertTrue(tolerable(inside), "the KD-1 shape inside the window is tolerated: $inside")
             assertEquals(5, kd1Cap(20)); assertEquals(20, kd1Cap(200))
@@ -735,10 +805,11 @@ class DayCloseRaceTest {
             val seen = r.calls.filter { it.status == 200 || it.status == 409 }.minOf { it.end }
             fun inWindow(i: Int) = Sent(listOf(i), winnerStart - 1, maxOf(seen, winnerStart) + 1)
             fun before(i: Int) = Sent(listOf(i), winnerStart - 20, winnerStart - 10)
-            val inside = oracle(r.copy(batches = r.familySizes.indices.map(::inWindow)))
+            val heldAsCounted = fakeHeld(suffixOf(r, f + 1)) // tso-manual B3: H2 agrees with the seeded route-day count
+            val inside = oracle(r.copy(held = heldAsCounted, batches = r.familySizes.indices.map(::inWindow)))
             assertTrue(inside.isNotEmpty() && inside.all { it.startsWith("[T3]") && "KD-1" in it }, "a one-record family split inside the window is KD-1 (T3 only): $inside")
             if ("KD-1" in tolerate) assertTrue(tolerable(inside), "the one-record KD-1 shape inside the window is tolerated: $inside")
-            val outside = oracle(r.copy(batches = r.familySizes.indices.map { if (it <= f) before(it) else inWindow(it) }))
+            val outside = oracle(r.copy(held = heldAsCounted, batches = r.familySizes.indices.map { if (it <= f) before(it) else inWindow(it) }))
             expect("one-record family split outside the close window", setOf("T3"), outside)
             assertTrue(outside.none { it.startsWith("[T1]") }, "the route-day value is an allowed suffix outside the window too: $outside")
             assertTrue(outside.none { "KD-1" in it } && !tolerable(outside), "a one-record split outside the close window was tolerated: $outside")
@@ -752,12 +823,17 @@ class DayCloseRaceTest {
             (want - labels).takeIf { it.isNotEmpty() }?.let { "$name: clauses $it did not report it (got $got)" }
         }
         assertEquals(emptyList(), missing, "seeded faults not reported by the clause that must catch them")
-        val clauses = setOf("L1", "L2", "R1", "R2", "R3", "R4", "S1", "S2", "Y1", "Y2", "Y3", "T1", "T2", "T3", "T4", "O1")
+        val clauses = setOf("L1", "L2", "R1", "R2", "R3", "R4", "S1", "S2", "Y1", "Y2", "Y3", "T1", "T2", "T3", "T4", "O1", "H1", "H2")
         assertEquals(clauses, faults.flatMap { it.second }.toSet(), "every oracle clause is guarded by a seeded fault")
         println("DayCloseRaceTest seeded faults: " + faults.joinToString("; ") { "${it.first} -> ${it.third.firstOrNull()}" })
     }
 
+    /** [n] distinct stand-in client_uuids for a seeded round whose late counts stand for held-and-accepted rows. */
+    private fun fakeHeld(n: Int): Set<String> = (1..n).map { "00000000-0000-4000-8000-%012d".format(it) }.toSet()
+
     companion object {
         const val ALREADY = "ERR_DAY_ALREADY_FINAL_SUBMITTED"
+        /** tso-manual B3 (D-TSO-MAN-28): a replay of a close whose zone-day was reopened since. */
+        const val REOPENED = "ERR_DAY_FINAL_SUBMIT_REOPENED"
     }
 }
