@@ -58,6 +58,9 @@ object TypeRules {
         TypeRule("app_error", "app_error", telemetry = true),
         TypeRule("sale_abort", "sale_abort", parents = listOf("visit_client_uuid")),
         TypeRule("consent_accept", "user_consent", telemetry = true),
+        // tso-manual F1: contract 1.10.0 record types (B1 owns their handler; JcsTest needs a rule per contract type)
+        TypeRule("support_ticket", "support_ticket"),
+        TypeRule("support_ticket_event", "support_ticket_event", parents = listOf("ticket_uuid")),
     )
 
     val BY_TYPE: Map<String, TypeRule> = list.associateBy { it.type }
