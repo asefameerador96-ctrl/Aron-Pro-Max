@@ -1,6 +1,8 @@
 package com.aktcl.aron.sr
 
 import androidx.room.withTransaction
+import androidx.compose.runtime.collectAsState
+import androidx.compose.ui.platform.testTag
 import android.content.Context
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
@@ -11,6 +13,8 @@ import com.aktcl.aron.core.database.entity.CaptureMeta
 import com.aktcl.aron.core.database.entity.OutletEntity
 import com.aktcl.aron.core.database.entity.RouteEntity
 import com.aktcl.aron.core.database.repo.CaptureRepository
+import com.aktcl.aron.core.database.repo.FinalSubmitLock
+import com.aktcl.aron.core.database.repo.LockAcks
 import com.aktcl.aron.core.database.repo.ReferenceRepository
 import com.aktcl.aron.core.geo.FixManager
 import com.aktcl.aron.core.session.SessionComponents
@@ -164,7 +168,32 @@ class SrDay(
         val outlets = if (planned.size > 1 && route != null) route.outlets else routes.flatMap { it.outlets }
         data.value = DayData(date, route?.route, routes.map { it.route }, outlets, freshness, data.value.downloading)
         _loaded.value = true
+        // tso-manual A3 (D-TSO-MAN-35): the Task screen shows the task type's label from this user's bundle, not its code
+        com.aktcl.aron.feature.tasks.TaskTypeLabels.hold(com.aktcl.aron.feature.tasks.TaskTypeLabels.parse(runCatching { reference.section("code_lists") }.getOrNull()))
+        refreshLock()
     }
+
+    // ---- tso-manual A3: the day lock after the zone's Final Submit (D-TSO-MAN-31)
+    private val _dayLock = MutableStateFlow<DayLock?>(null)
+
+    /** The route-day's Final Submit lock and the day's records that met it on the server; null when neither applies. */
+    val dayLock: StateFlow<DayLock?> = _dayLock.asStateFlow()
+
+    /**
+     * Re-reads the lock from the held day state (bundle or delta, the push `day_final_submitted` pulls the delta; or the last
+     * sync answer) for today's route, and the acks of records that met it. Local reads only; called by [reload] and by
+     * [SrDayLockBanner] on each applied push pull. Captures are refused by the database itself ([FinalSubmitLock]); this
+     * only drives the banner and the check-out gate.
+     */
+    suspend fun refreshLock() {
+        val date = businessDate()
+        val locked = routeId?.let { runCatching { FinalSubmitLock.isFinal(db, date, it) }.getOrDefault(false) } ?: false
+        val acks = runCatching { FinalSubmitLock.metLock(db, date) }.getOrDefault(LockAcks(0, 0))
+        _dayLock.value = if (locked || acks.any) DayLock(locked, acks) else null
+    }
+
+    /** True when today's route-day is closed by its zone's Final Submit (read from the database, not the cached flow). */
+    suspend fun finalLocked(): Boolean = routeId?.let { runCatching { FinalSubmitLock.isFinal(db, businessDate(), it) }.getOrDefault(false) } ?: false
 
     private val routePrefs = context.getSharedPreferences("aron-route-$userId", Context.MODE_PRIVATE)
     /** The route the SR picked for today's date (F-SR-065), or null. */
@@ -299,7 +328,9 @@ class SrDay(
         // coordinates stay, with the last resolved address when the fix is near it.
         addressResolver = { lat, lng -> addressResolver.displayText(context, lat, lng) },
         // D-NIGHT-CHECKOUT-01: check-out only after the day's Sales Submit is committed on this phone (offline is enough).
-        salesSubmitted = { com.aktcl.aron.feature.dayclose.RoomDaySource(db).alreadySubmitted(businessDate()) },
+        salesSubmitted = { com.aktcl.aron.feature.dayclose.RoomDaySource(db).alreadySubmitted(businessDate()) || finalLocked() },
+        // tso-manual A3: after the zone's Final Submit the route-day takes no Sales Submit on this phone, so the closed day
+        // opens the check-out as a Sales Submit would (D-TSO-MAN-31; the server accepts attendance after the lock)
     )
 
     @Volatile private var nextSequence = 1
@@ -584,3 +615,45 @@ class PrefsGuardStore(context: Context, userId: Long) : StockLoad.GuardStore {
     override fun load(): Pair<String, Long>? = prefs.getString("sig", null)?.let { it to prefs.getLong("at", 0L) }
     override fun save(signature: String, atMs: Long) { prefs.edit().putString("sig", signature).putLong("at", atMs).apply() }
 }
+
+/**
+ * The SR's route-day lock after the zone's Final Submit (tso-manual A3, D-TSO-MAN-31): [locked] when the route-day is
+ * closed; [acks] the day's records the server held for review (captured before the lock) or refused (captured after).
+ */
+data class DayLock(val locked: Boolean, val acks: LockAcks)
+
+/**
+ * The banner of the closed route-day (D-TSO-MAN-31): new sales, edits and collections cannot be saved, printing still
+ * works, and how many of the day's records met the lock on the server. It refreshes itself when a push pull lands (the
+ * push `day_final_submitted` pulls the delta that carries the day state), only while it is on screen: no timer, no listener
+ * outside its composition. Nothing shows while the day is open.
+ */
+@androidx.compose.runtime.Composable
+fun SrDayLockBanner(day: SrDay, modifier: androidx.compose.ui.Modifier = androidx.compose.ui.Modifier) {
+    val lock = day.dayLock.collectAsState().value
+    androidx.compose.runtime.LaunchedEffect(day) {
+        day.refreshLock()
+        com.aktcl.aron.core.sync.push.PushRuntime.pulled.collect { day.refreshLock() }
+    }
+    SrDayLockBannerContent(lock, modifier)
+}
+
+/** What [SrDayLockBanner] draws for [lock] (null: nothing). */
+@androidx.compose.runtime.Composable
+fun SrDayLockBannerContent(lock: DayLock?, modifier: androidx.compose.ui.Modifier = androidx.compose.ui.Modifier) {
+    val l = lock ?: return
+    val body = buildList {
+        if (l.locked) add(androidx.compose.ui.res.stringResource(R.string.sr_lock_body))
+        if (l.acks.held > 0) add(androidx.compose.ui.res.stringResource(R.string.sr_lock_held, com.aktcl.aron.core.ui.localizedNumber(l.acks.held.toLong())))
+        if (l.acks.refused > 0) add(androidx.compose.ui.res.stringResource(R.string.sr_lock_refused, com.aktcl.aron.core.ui.localizedNumber(l.acks.refused.toLong())))
+    }.joinToString(separator = LINE_BREAK)
+    com.aktcl.aron.core.ui.AronBanner(
+        body, modifier.then(androidx.compose.ui.Modifier.testTag(SrDayLockTags.BANNER)), kind = com.aktcl.aron.core.ui.BannerKind.Warning,
+        title = if (l.locked) androidx.compose.ui.res.stringResource(R.string.sr_lock_title) else null,
+    )
+}
+
+object SrDayLockTags { const val BANNER = "sr_day_lock_banner" }
+
+private const val LINE_BREAK = "\n"
+

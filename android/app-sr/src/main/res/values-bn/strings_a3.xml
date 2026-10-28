@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Lane A3 (build contract s5, D-TSO-MAN-31): Bangla twin of values/strings_a3.xml. -->
+<resources>
+    <string name="sr_lock_title">ফাইনাল সাবমিটে দিন বন্ধ</string>
+    <string name="sr_lock_body">আপনার টিএসও আজ এই রুটের ফাইনাল সাবমিট করেছেন। নতুন বিক্রয়, মেমো সংশোধন ও কালেকশন আর সংরক্ষণ করা যাবে না। প্রিন্ট করা যাবে।</string>
+    <string name="sr_lock_held">ফাইনাল সাবমিটের আগের %1$sটি রেকর্ড যাচাইয়ের জন্য রাখা হয়েছে; অ্যাডমিন গ্রহণ করলে তবেই গণনা হবে।</string>
+    <string name="sr_lock_refused">ফাইনাল সাবমিটের পরের %1$sটি রেকর্ড গৃহীত হয়নি।</string>
+</resources>

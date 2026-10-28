@@ -17,6 +17,10 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.withLock
 import com.aktcl.aron.core.database.entity.CaptureMeta
 import com.aktcl.aron.core.database.repo.CaptureRepository
+import com.aktcl.aron.core.database.repo.FinalSubmitLock
+import com.aktcl.aron.core.database.repo.LockAcks
+import androidx.compose.runtime.collectAsState
+import androidx.compose.ui.platform.testTag
 import com.aktcl.aron.core.database.repo.ReferenceRepository
 import com.aktcl.aron.core.geo.FixManager
 import com.aktcl.aron.core.session.SessionComponents
@@ -293,7 +297,30 @@ class AmoDay(
         runCatching { routes() }.getOrNull()?.let { days ->
             zoneOutlets = days.flatMap { it.outlets }; zoneRoutes = days.associate { it.route.routeId to it.route.name }
         }
+        refreshLock()
     }
+
+    // ---- tso-manual A3: the route-day lock after the zone's Final Submit (D-TSO-MAN-31)
+    private val _dayLock = MutableStateFlow<AmoDayLock?>(null)
+
+    /** The zone routes closed by Final Submit today and the day's records that met the lock on the server; null when neither applies. */
+    val dayLock: StateFlow<AmoDayLock?> = _dayLock.asStateFlow()
+
+    /**
+     * Re-reads which of the zone's routes are closed by Final Submit today (held day state: bundle or delta, which the push
+     * `day_final_submitted` pulls; or the last sync answer) and the acks of records that met the lock. Local reads only.
+     * The database refuses captures on a closed route-day itself ([FinalSubmitLock]); the AMO's routeless records (supervisor
+     * day, attendance) stay open, so this drives the banner only.
+     */
+    suspend fun refreshLock() {
+        val date = businessDate()
+        val closed = runCatching { FinalSubmitLock.finalRoutes(db, date, zoneRoutes.keys.sorted()) }.getOrDefault(emptyList())
+        val acks = runCatching { FinalSubmitLock.metLock(db, date) }.getOrDefault(LockAcks(0, 0))
+        _dayLock.value = if (closed.isNotEmpty() || acks.any) AmoDayLock(closed, acks) else null
+    }
+
+    /** True when [routeId]'s route-day today is closed by its zone's Final Submit (a control or joint call on it cannot record). */
+    suspend fun routeLocked(routeId: Long): Boolean = runCatching { FinalSubmitLock.isFinal(db, businessDate(), routeId) }.getOrDefault(false)
 
     private suspend fun closeAbandoned(v: com.aktcl.aron.feature.outlet.OpenVisit) {
         capture.recordVisitClose(
@@ -544,3 +571,45 @@ object NoCameraPipeline : PhotoPipeline {
     override suspend fun captureAndCompress(photoUuid: String): CapturedPhoto? = null
     override suspend fun discard(photoUuid: String) = Unit
 }
+
+/**
+ * The AMO's view of the Final Submit lock (tso-manual A3, D-TSO-MAN-31): the zone routes whose route-day is closed today
+ * ([closedRouteIds], in route id order) and the day's records the server held for review or refused ([acks]).
+ */
+data class AmoDayLock(val closedRouteIds: List<Long>, val acks: LockAcks)
+
+/**
+ * The banner of the AMO day after a Final Submit in the zone (D-TSO-MAN-31): how many routes are closed (sales, edits and
+ * collections on them cannot be saved; printing still works) and how many records met the lock. It refreshes itself when
+ * a push pull lands, only while on screen (no timer). Nothing shows while every route is open.
+ */
+@androidx.compose.runtime.Composable
+fun AmoDayLockBanner(day: AmoDay, modifier: androidx.compose.ui.Modifier = androidx.compose.ui.Modifier) {
+    val lock = day.dayLock.collectAsState().value
+    androidx.compose.runtime.LaunchedEffect(day) {
+        day.refreshLock()
+        com.aktcl.aron.core.sync.push.PushRuntime.pulled.collect { day.refreshLock() }
+    }
+    AmoDayLockBannerContent(lock, modifier)
+}
+
+/** What [AmoDayLockBanner] draws for [lock] (null: nothing). */
+@androidx.compose.runtime.Composable
+fun AmoDayLockBannerContent(lock: AmoDayLock?, modifier: androidx.compose.ui.Modifier = androidx.compose.ui.Modifier) {
+    val l = lock ?: return
+    val closed = l.closedRouteIds.size
+    val body = buildList {
+        if (closed > 0) add(androidx.compose.ui.res.stringResource(R.string.amo_lock_body, com.aktcl.aron.core.ui.localizedNumber(closed.toLong())))
+        if (l.acks.held > 0) add(androidx.compose.ui.res.stringResource(R.string.amo_lock_held, com.aktcl.aron.core.ui.localizedNumber(l.acks.held.toLong())))
+        if (l.acks.refused > 0) add(androidx.compose.ui.res.stringResource(R.string.amo_lock_refused, com.aktcl.aron.core.ui.localizedNumber(l.acks.refused.toLong())))
+    }.joinToString(separator = AMO_LINE_BREAK)
+    com.aktcl.aron.core.ui.AronBanner(
+        body, modifier.then(androidx.compose.ui.Modifier.testTag(AmoDayLockTags.BANNER)), kind = com.aktcl.aron.core.ui.BannerKind.Warning,
+        title = if (closed > 0) androidx.compose.ui.res.stringResource(R.string.amo_lock_title) else null,
+    )
+}
+
+object AmoDayLockTags { const val BANNER = "amo_day_lock_banner" }
+
+private const val AMO_LINE_BREAK = "\n"
+
