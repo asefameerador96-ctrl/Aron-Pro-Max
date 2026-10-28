@@ -2053,6 +2053,18 @@ class LakeAndBlobRetention(unittest.TestCase):
                            capture_output=True)
             return [l.rsplit("/", 1)[-1] for l in Path(snap, "plan.txt").read_text(encoding="utf-8").split()]
 
+    def test_deploy_summary_names_the_logins_and_the_vault_acls(self):
+        import subprocess
+        d = (ROOT / "infra" / "deploy.sh").read_text(encoding="utf-8")
+        m = re.search(r'    logins="\$\(python3 -c (\'.*?\') infra/sql/runtime-logins.sql\)"', d, re.S)
+        self.assertTrue(m, "deploy.sh reads the login list from runtime-logins.sql")
+        code = subprocess.run(["bash", "-c", f"python3 -c {m.group(1)} infra/sql/runtime-logins.sql"], cwd=ROOT,
+                              capture_output=True, text=True, check=True).stdout.strip()
+        self.assertEqual(code, "5 logins: app_api, app_worker, app_jobs, app_bi, lake_export")
+        self.assertIn('dblogins_result="succeeded (${logins}; memberships verified by the job)"', d)
+        self.assertIn('summary "| Key Vault network ACLs | ${kv_acls} |"', d)
+        self.assertIn('az keyvault show -n "$KV" --query properties.networkAcls -o json', d, "read-only")
+
     def test_reset_compares_the_lake_with_its_own_sku(self):
         # dev (photo ZRS under the docs/28 exception, lake LRS): nothing to replace.
         self.assertEqual(self.reset_plan("Standard_ZRS", "Standard_LRS", "dev"), [])

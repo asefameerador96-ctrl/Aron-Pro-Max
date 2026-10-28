@@ -22,7 +22,10 @@ over older handovers below.
   `infra/sql/runtime-logins.sql` with the five ARON_PW_* variables set to throwaway 24+ character values.
 - **Row 7 candidate 1** (66410ed8) accepted by the lead 10:25 UTC, rides train 50; if its deploy goes red, fix it
   at once as candidate 1b. **Candidate 2** (lead-approved): `media-tiering` narrowed to `media/photos/`
-  (D-INFRA-LAKE-02); push only after train 50 is on INT and merged into lane/infra, own lane run, Opus checker.
+  (D-INFRA-LAKE-02), plus the deploy summary's login count and a read-only "Key Vault network ACLs" row
+  (D-INFRA-LAKE-03, lead ask after deploy #284: its what-if listed "Modify kv properties.networkAcls"; keyvault.bicep
+  is unchanged since 87d07e0f, so read that row on the next deploy). Train 50 (INT 25046886, deploy #284 green)
+  carried candidate 1: lake account created, four Key Vault secrets generated, database logins succeeded.
 - **Open for the next infra session:** photo exemptions (backend-core #21), bi_reader row scope and per-app logins
   outside dev (finding 12 part 2, a later infra slice). Final lake SKU is on the docs/28 final list (lead). Row 8
   (nightly export) is backend-core's; its needs are listed below.
