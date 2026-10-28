@@ -59,22 +59,51 @@ here touches Azure (rule 1).
     lead added by ruling after docs/24 s9.5; docs/24 is not an F2 file); BackOfficeAndConfigV0023Test inserts version 1
     only for the rubric it creates (V0139 now seeds a rubric, so "every rubric" collided).
 11. **db/schema.sql** is the original starting-point sketch (not kept in sync with the migrations); not changed.
+12. **Origin of a midnight-job Final Submit (checker round 1, V0135 s4).** `app.final_submit` is a pass-1 table of the
+    V0116 origin registry, so its stamp and restamp read only user columns, outlet_id and route_id; a `via = 'job'` row
+    has none of them and would have been stamped `production` for every zone, test zones included (and the stamp
+    overwrites what the writer sends). V0135 now gives final_submit its own rule, `app.derive_final_submit_origin`: a
+    user's submit keeps the generic rule (the submitter's origin, unchanged since V0116); a job submit takes the most
+    synthetic origin of the routes in its `route_states`, or of the zone's routes when it lists none (an element without
+    a numeric route_id is ignored). The trigger `final_submit_stamp_origin` now calls `app.stamp_final_submit_origin()`;
+    the registry `app.data_origin_capture` gains `derive_fn` (null = `app.derive_data_origin`; set only for
+    final_submit) and `app.restamp_data_origin` (replaced, otherwise as V0121) calls it, so stamp and restamp agree.
+    `app.derive_data_origin` is unchanged and never reads zone_id, so a production memo or visit in a mixed zone stays
+    production. B3 needs no change: the job only has to write `route_states` as DayApi does (the preview's routes).
+    Confirmed by lead ruling R-F-09 (fix round 2).
+13. **Resolution message length (checker round 1, V0130; lead ruling R-F-02).** D-TSO-MAN-20's message
+    `[TicketID: <no>] - Resolved:\nResolution Code: <label>\nResolution Notes:\n\n<notes>` is 62 fixed characters +
+    a ticket number (up to 22: INC + a bigint) + the code label (up to 120, `code_list_item.label_en`) + notes (up to
+    2000, the state CHECK and SupportTicketUpdate) = at most 2204. The event body CHECK was `length(body) <= 2000`, so a
+    valid resolution with notes over about 1810 characters would have failed the insert (23514, a 500 on the desk
+    PATCH). V0130 now allows `length(body) <= 2000 OR (kind = 'resolution' AND length(body) <= 2400)`, 2400 being the
+    contract's `SupportTicketEvent.body` maxLength (R-F-02; the checker round 1 draft used 2300); every other kind keeps
+    2000 (comments from the phone and the desk unchanged).
 
 ## Asks and notes for other lanes
 
-- B1: `Inbox.add` inserts `app.user_notification` with `ON CONFLICT (dedupe_key) DO NOTHING`; `ref_id` <= 64 chars,
-  `dedupe_key` <= 160. The ticket handler inserts the state row with `requester_role` and `priority` (from attrs), the
-  `created` event (kind created) and the domain event in one transaction; the ticket number comes from the default.
-  `affected_username` is stored as sent; the resolved user goes to `support_ticket_state.affected_user_id` (write-once).
+- **B3 (bundle): `BundleRubricsTest` and the V0139 seed.** Done by F2 under R-F-10 (fix round 2): the test now pins
+  that a fresh database sends the seeded Visit Query to TSO and AMO, and the admin-rubric case sets the seeded row
+  inactive first. Still worth a look for B3: `BundleContent.rubrics` returns every active rubric of a kind; with the
+  seed plus an admin-created one there can be two active `retailer_questionnaire` rubrics, and the phone would get both.
+- **F1: `SupportTicketEvent.body` maxLength.** Settled by R-F-02 (2400, F1 done); the database CHECK matches.
+- **B1:** build the resolution message exactly as D-TSO-MAN-20 (`kind = 'resolution'`, `body` the formatted text); the
+  database accepts it up to 2400 characters, which covers 2000 characters of notes with any code label. Desk PATCH
+  replay (R-F-03): the op's first event row has `client_uuid = op_uuid` and `op_sha256` = SHA-256 of the request body
+  as canonical JSON (32 bytes; null on every other row; written once with the row).
+- B1: `Inbox.add` inserts `app.user_notification` with `ON CONFLICT (user_id, dedupe_key) DO NOTHING` (R-F-04: unique
+  per recipient); `ref_id` <= 64 chars, `dedupe_key` <= 160. The ticket handler inserts the state row with
+  `requester_role` and `priority` (from attrs), the `created` event (kind created) and the domain event in one
+  transaction; the ticket number comes from the default. A resolution update sets `resolved_at` with the status, and a
+  close sets `closed_at` (R-F-08 CHECKs refuse either without it). `affected_username` is stored as sent; the resolved
+  user goes to `support_ticket_state.affected_user_id` (write-once).
 - B1: add `ticket_issue_type` and `ticket_resolution_code` to `AdminCalendar.TABLE_LISTS` so the admin GUI edits them
   (TK-21); the bundle sends them once F1's CodeListKey has them (BundleService filters unknown keys).
 - B3: AutoFinalSubmitJob writes `via = 'job'` with `submitted_by` NULL (CHECK); the late-row code is
   `after_final_submit` (sync_quarantine) and the after-lock code `day_final_submitted` (sync_rejected).
-- B3 / lead: D-TSO-MAN-30 says "audit via job with actor system". Under per-app logins the worker (`worker_rw`) cannot
-  insert `app.audit_log` (DbRolesTest keeps it closed); today the worker signs in as the admin login, so it works on
-  dev. Options for the 1.10.x batch: keep the job's trace in the via=job row plus the `zone_day.final_submitted`
-  event (no grant), or the lead rules a narrow grant (then DbRolesTest's expected map changes with it). F2 did not
-  open the grant on its own.
+- B3: the audit question is settled by R-F-07: the worker gets no INSERT on `app.audit_log`; the midnight job's trace
+  is its `via = 'job'` final_submit row plus the `zone_day.final_submitted` event. The worker now has UPDATE on
+  `app.push_token` (revoking an unregistered token). Inbox rows of the job: `ON CONFLICT (user_id, dedupe_key)`.
   `dw.agg_daily_zone.auto_submitted` keeps its V0099 comment ("app.final_submit is not written"); once B2/B3 retire the
   dw-only stamp, F2 rewords or deprecates it in the 1.10.x batch.
 - B2: `dw.v_calendar` / `v_calendar_month` stay global with the Friday weekend (comment updated; DASH-04).
@@ -103,3 +132,68 @@ here touches Azure (rule 1).
   the real squawk.
 - Backend, web and Android tests were not run (other lanes' verify); the new defaults (late-sync quarantine, reopen
   roles) and the extra feedback category reach them only through the bundle and config reads they already make.
+
+## Fix round 2 (lead rulings)
+
+Contract s9 rulings R-F-02..11 applied in commit 6165e271 (V0130..V0140 are unshipped, so the files were edited in
+place; nothing at V0122 or lower was touched). An earlier fixer had left uncommitted edits (V0130 body CHECK at 2300,
+the V0135 job-origin rule, test additions, dictionary, status lines). Reviewed: the origin rule and its registry/restamp
+change were right and are kept; the 2300 limit was replaced by R-F-02's 2400; the status lines that the rulings settled
+were reworded above (decisions 12, 13; asks to B1, B3, F1).
+
+| ruling | what changed | test |
+|---|---|---|
+| R-F-02 | V0130 `support_ticket_event.body` CHECK `length(body) <= 2000 OR (kind = 'resolution' AND length(body) <= 2400)`; header and column comment say 2400 | `aResolutionWithTheLongestNotesAndLabelWritesItsMessage`: a resolution code with a 120-character label and 2000 characters of notes; the formatted D-TSO-MAN-20 event inserts (length 62 + ticket number + 120 + 2000, text checked in full); the theoretical longest (2204) and 2400 insert; 2401 refused; a comment keeps 2000 |
+| R-F-03 | V0130 `op_sha256 bytea CHECK (op_sha256 IS NULL OR octet_length(op_sha256) = 32)`; write-once (the event row guard covers it); column comment states the desk PATCH replay rule | `aDeskOpStoresItsBodyHashOnItsFirstEventRowOnly`: hash on the op's first row (client_uuid = op_uuid), null on its second row and on a device comment; same body matches, other body does not; 31, 33 and 0 bytes refused (23514); update refused (42501) |
+| R-F-04 | V0133 `UNIQUE (user_id, dedupe_key)` (constraint `user_notification_user_id_dedupe_key_key`) instead of `UNIQUE (dedupe_key)`; header and dedupe_key comment | `notificationsAreIdempotentAndReadOnce`: one key reaches two recipients; repeats for each recipient with `ON CONFLICT (user_id, dedupe_key) DO NOTHING` add nothing; a plain duplicate is 23505 |
+| R-F-06 | V0134 `cfg.feedback.max_images` bounds `{"min": 0, "max": 1}` | bounds asserted in `theBuildsSettingsPermissionAndEventsAreRegistered` |
+| R-F-07 | V0135 grant map row `worker_rw app.push_token UPDATE`; no audit grant | DbRolesTest map gains exactly `worker_rw app.push_token UPDATE = true` (its `worker_rw app.audit_log INSERT = false` stays); TsoManualV0130Test checks final_submit INSERT t, push_token UPDATE t, push_token INSERT f, audit_log INSERT f |
+| R-F-08 | V0130 `support_ticket_state_closed CHECK ((status = 'closed') = (closed_at IS NOT NULL))`, `support_ticket_state_resolved_at CHECK (status NOT IN ('resolved','closed') OR resolved_at IS NOT NULL)`; resolved_at and closed_at comments | state test: resolving without resolved_at, closed_at on a new ticket, closing without closed_at and closed_at on a resolved ticket are each refused 23514 |
+| R-F-09 | kept the round 1 rule (V0135 s4, decision 12). Checked: V0135's `CREATE OR REPLACE TRIGGER final_submit_stamp_origin` replaces V0116's trigger of the same name, so one stamp runs per insert and the two cannot fight; `final_submit_guard_origin` (BEFORE UPDATE, `app.guard_data_origin`) is untouched | `aJobFinalSubmitTakesTheOriginOfTheZonesRoutesAndKeepsItThroughARestamp`: the trigger list on app.final_submit is exactly the guard (BEFORE UPDATE) and the new stamp (BEFORE INSERT); a job submit for a zone whose routes are test is `test` (listed routes, or the zone's routes when none are listed, writer's value overwritten) and stays `test` after `app.restamp_data_origin()`; a user's submit keeps the submitter's origin (real TSO production, test TSO test); a second restamp changes nothing; re-tagged routes move only the job rows; api_rw cannot re-tag (42501) |
+| R-F-10 | cross-lane edit of `backend/sync/.../BundleRubricsTest.kt`: new test `aFreshDatabaseSendsTheSeededVisitQueryToTheSupervisors` (the V0139 rubric alone, version 1, criteria 1 and 2, keys, text type, bn and en labels, SR gets none); the existing case sets the seeded row inactive first and asserts it is left out; every earlier assertion unchanged | `:backend:sync:test` (BundleRubricsTest 2/2) and the backend/app classes below |
+| R-F-11 | the one database object that lists modules is the `app.user_module_grant.module` CHECK (V0089). V0135 s5 replaces it NOT VALID with `support` added; V0136 validates it; the column comment lists support. The V0089 seed INSERT (shipped) and the dev seed `db/seed/07_admin_module_grants.sql` also list the 15 modules: data, not CHECKs, so not changed (see asks) | `anAdminMayBeGrantedTheSupportModule` (support and all 15 others accepted, unknown modules 23514); `everyConstraintAddedNotValidIsValidated` includes `user_module_grant_module_check` |
+
+Docs: `docs/data-dictionary.md` regenerated (render.sh test set through the wrapper, `-Paron.writeDictionary=true
+--rerun-tasks`): op_sha256, derive_fn, the new comments and the inbox key. `docs/data-events.md` and
+`docs/dw-view-contract.md` regenerated with no change.
+
+### Verify (fix round 2)
+
+All through the shared wrapper (JDK 21, local PostgreSQL 16, UTC JAVA_TOOL_OPTIONS), at 6165e271.
+
+- `gl.sh <wt> :db:test` (full): **BUILD FAILED, 317 tests, 1 failed**: `OwnerDirectiveV0087Test.v0101TheFirstFinalSubmitWins`
+  (expected `2026-10-05 15:00:00+00`, got `2026-10-05 21:00:00+06`, the same instant in Asia/Dhaka). The run printed
+  "Configuration cache entry reused": the cached `:db:test` entry of this worktree predates the wrapper's UTC option, so
+  the test JVM was still in Asia/Dhaka. Not caused by this lane (see the ask). Every other class SUCCESS.
+- `gl.sh <wt> :db:test --no-configuration-cache` (full, rerun): **BUILD SUCCESSFUL in 12m**, 38 classes all SUCCESS,
+  among them OwnerDirectiveV0087Test 24/24, TsoManualV0130Test 17/17, DbRolesTest 9/9, DataOriginTest 7/7,
+  DataDictionaryTest 2/2.
+- `gl.sh <wt> :backend:sync:test` (full): **BUILD FAILED, 37 tests, 1 failed**: `JcsTest.payloadShapesMatchTheContractSlices`
+  starts `python3`, which is not on this laptop (Windows Store alias, exit 9009); not caused by this lane (F2 changes
+  no backend/sync main code). `python backend/sync/tools/gen_payload_shapes.py --check` exits 0. BundleRubricsTest 2/2
+  SUCCESS; BundleUnitTest, GnssRuleTest, MoneyFormatCorpusTest, RetentionJobTest, WorkingDaysTest SUCCESS.
+- `gl.sh <wt> :backend:app:test` with `--tests` for every backend/app test class that touches rubrics, final_submit,
+  user_notification, push_token, data_origin or restamp (grep of backend/app/src/test): ContractConformanceTest 6,
+  DataFlowTraceTest 16, DataVoidAcceptanceTest 3, DayApiTest 6, DayCloseRaceTest 3, PushCheckerTest 10, PushTest 2,
+  ScopeLeakAcrossEndpointsTest 7, SupervisorSyncFaultFuzzTest 3: **BUILD SUCCESSFUL**, all SUCCESS. No backend/app test
+  reads user_notification or restamp today.
+- Extra: `gl.sh <wt> :backend:masterdata:test --tests AdminContentTest --tests VisitPlansTest` (the other rubric
+  readers): **BUILD SUCCESSFUL**, 9 and 4 tests.
+- `bash tools/ci/migrations-check.sh eb7b8eb5 <no-op squawk>` at 6165e271: "checksum: 121 shipped migration(s) at
+  eb7b8eb checked; order: 11 new migration(s), highest shipped version 122; migrations: ok" (exit 0). squawk itself
+  runs in CI only (R-F-22); the new DDL follows the kept rules (lock_timeout first; the module CHECK added NOT VALID in
+  V0135 and validated in V0136; no index on an existing table).
+
+### Asks (fix round 2)
+
+- Lead (gl.sh): a plain `gl.sh <wt> :db:test` in a worktree that already has a configuration cache entry for `:db:test`
+  reuses it, and the cached Test task's environment predates the wrapper's `JAVA_TOOL_OPTIONS=-Duser.timezone=UTC`, so
+  the test JVM still runs in Asia/Dhaka and `OwnerDirectiveV0087Test.v0101TheFirstFinalSubmitWins` fails as before.
+  With `--no-configuration-cache` it passes. Suggest the wrapper passes `--no-configuration-cache` for test tasks (or
+  deletes `<wt>/.gradle/configuration-cache` once), or the db test task sets `systemProperty("user.timezone", "UTC")`.
+- B1 / W1 / lead: no ADMIN holds `support` yet. The shipped V0089 seed and the dev seed `07_admin_module_grants.sql`
+  grant the 15 older modules only, so once B1 maps `/v1/support/tickets/**` to `support`, an ADMIN reaches the desk
+  only after a SUPERADMIN grants it on the access page (SUPERADMIN is unaffected). If the lead wants seeded dev admins to
+  hold it, F2 adds `('support')` to the dev seed and moves OwnerDirectiveV0087Test's `15|w` to `16|w` (two lines).
+- Laptop only: `JcsTest.payloadShapesMatchTheContractSlices` runs `python3`, which this laptop does not have (Windows
+  Store alias, exit 9009). The same check run with `python backend/sync/tools/gen_payload_shapes.py --check` exits 0.
