@@ -145,8 +145,8 @@ class AsWasNodeScopeTest {
     }
 
     @Test
-    fun aNodeThatLostEveryZoneOnTheFirstDateOfTheWindowHasNoMembersThere() {
-        // Both zones left T1 for T2 on day 2: a period that ends exactly on the window's first date is not in the window (as_to is exclusive).
+    fun aNodeThatLostEveryZoneHasNoMembersFromThenOnAndKeepsThemBefore() {
+        // Both zones left T1 for T2 on day 2: T1 has no member from then on (403), still has both before it, and T2 has none on day 1.
         moveZ2()
         exec("UPDATE app.zone SET territory_id = $t2 WHERE code = 'Z1'")
         exec("UPDATE app.zone_history SET valid_to = DATE '$day2' WHERE zone_id IN ($z1, $z2) AND territory_id = $t1 AND valid_to IS NOT NULL")
