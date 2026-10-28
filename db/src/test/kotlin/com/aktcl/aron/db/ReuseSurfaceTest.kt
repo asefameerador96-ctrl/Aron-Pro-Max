@@ -89,6 +89,39 @@ class ReuseSurfaceTest {
         }
     }
 
+    /** V0121 (D-DB-MEMO-LINE-DIFF-01): a rebuild that changes nothing writes no new line version; a change touches only its line. */
+    @Test
+    fun anUnchangedMemoRebuildLeavesItsLinesUntouched() = db.connect().use { c ->
+        c.tx {
+            val m = "0e000000-0000-4000-8000-000000000003"
+            memoWithLines(m, "103", 3)
+            project(m)
+            val versions = "SELECT string_agg(line_no || ':' || ctid::text, ';' ORDER BY line_no) FROM dw.fact_memo_line WHERE memo_client_uuid = '$m'"
+            val before = scalar(versions)
+            project(m)
+            project(m)
+            assertEquals(before, scalar(versions), "an unchanged memo rewrites no line")
+            exec("UPDATE app.memo_line SET voided_at = now() WHERE memo_client_uuid = '$m' AND line_no = 2")
+            project(m)
+            val after = scalar(versions)!!.split(';')
+            val old = before!!.split(';')
+            assertEquals(listOf(true, false, true), old.indices.map { old[it] == after[it] }, "only the voided line gets a new version")
+            assertEquals("f,t,f", scalar("SELECT string_agg(voided::text, ',' ORDER BY line_no) FROM dw.fact_memo_line WHERE memo_client_uuid = '$m'")!!.replace("false", "f").replace("true", "t"))
+            assertEquals("3|40", scalar("SELECT count(*) || '|' || sum(qty_base) FILTER (WHERE is_effective) FROM dw.v_memo_line WHERE memo_client_uuid = '$m'"))
+            // An origin restamp of one line (owner) reaches only that line.
+            val beforeRestamp = scalar(versions)!!.split(';')
+            exec("UPDATE app.memo_line SET data_origin = 'test' WHERE memo_client_uuid = '$m' AND line_no = 3")
+            project(m)
+            val afterRestamp = scalar(versions)!!.split(';')
+            assertEquals(listOf(true, true, false), beforeRestamp.indices.map { beforeRestamp[it] == afterRestamp[it] })
+            assertEquals("test", scalar("SELECT data_origin::text FROM dw.fact_memo_line WHERE memo_client_uuid = '$m' AND line_no = 3"))
+            // A stale fact row of line 1 left under another memo is brought back to its own memo, not duplicated.
+            exec("UPDATE dw.fact_memo_line SET memo_client_uuid = '0e000000-0000-4000-8000-0000000000ff' WHERE memo_client_uuid = '$m' AND line_no = 1")
+            project(m)
+            assertEquals("3|0", scalar("SELECT count(*) FILTER (WHERE memo_client_uuid = '$m') || '|' || count(*) FILTER (WHERE memo_client_uuid <> '$m') FROM dw.fact_memo_line WHERE line_client_uuid IN (SELECT client_uuid FROM app.memo_line WHERE memo_client_uuid = '$m')"))
+        }
+    }
+
     @Test
     fun aWipeAndRebuildOfTheMemoFactsRebuildsTheLinesOnce() = db.connect().use { c ->
         // AggregationTest-style: TRUNCATE the facts (no row trigger fires), then project again; no duplicate, no orphan.
