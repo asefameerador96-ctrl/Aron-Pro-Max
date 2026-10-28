@@ -41,10 +41,10 @@ internal object Restatements {
                 INSERT INTO dw.agg_restatement_log (business_date, grain, key1, reason, old_row, new_row, delta, rebuild_id)
                 SELECT :d, :g, :k, :reason, o.j, n.j,
                        (SELECT coalesce(jsonb_object_agg(ks.k, coalesce((n.j ->> ks.k)::bigint, 0) - coalesce((o.j ->> ks.k)::bigint, 0)), '{}'::jsonb)
-                          FROM (SELECT jsonb_object_keys(o.j) AS k UNION SELECT jsonb_object_keys(n.j)) ks), :rid
+                          FROM (SELECT jsonb_object_keys(o.j) AS k UNION SELECT jsonb_object_keys(n.j)) ks), CAST(:rid AS uuid)
                   FROM o, n
                 """,
-            ).bind("old", old).bind("new", new).bind("d", date).bind("g", grain).bind("k", key).bind("reason", reason).bind("rid", rebuildId).execute()
+            ).bind("old", old).bind("new", new).bind("d", date).bind("g", grain).bind("k", key).bind("reason", reason).bind("rid", rebuildId?.toString()).execute()
         }
         return result
     }
