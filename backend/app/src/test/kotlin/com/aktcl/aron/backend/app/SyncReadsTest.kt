@@ -308,6 +308,31 @@ class SyncReadsTest {
             val items = json(client.read(token, "/v1/memos?$q").bodyAsText())["items"]!!.jsonArray.map { it.jsonObject }
             assertTrue(items.none { it["memo_no"]!!.jsonPrimitive.content == farRouteless }, "route-less, out of reach: $q")
         }
+        // A geo-scoped caller (tso1001, territory T-DHK-N) reaches a route-less memo through its outlet's zone, never the other division's.
+        // These two are written by sr1001, so the caller-wrote-it rule cannot be what lets the TSO in.
+        val tsoNear = "sr1001-270103-904"; val tsoFar = "sr1001-270103-905"
+        fresh.db.jdbi.useHandle<Exception> { h ->
+            val cols = h.createQuery("SELECT column_name FROM information_schema.columns WHERE table_schema = 'app' AND table_name = 'memo' AND column_name <> 'id' AND is_generated = 'NEVER' ORDER BY ordinal_position").mapTo(String::class.java).list()
+            for ((no, outlet) in listOf(tsoNear to outletId, tsoFar to otherOutletId)) {
+                val repl = mapOf(
+                    "client_uuid" to "gen_random_uuid()", "family_uuid" to "gen_random_uuid()", "visit_client_uuid" to "gen_random_uuid()", "memo_no" to "'$no'",
+                    "route_id" to "NULL", "outlet_id" to "$outlet", "user_id" to "(SELECT id FROM app.app_user WHERE username = 'sr1001')",
+                    "device_id" to "NULL", "sig" to "NULL", "zone_id" to "NULL", "external_ref" to "NULL",
+                )
+                h.execute("INSERT INTO app.memo (${cols.joinToString()}) SELECT ${cols.joinToString { repl[it] ?: it }} FROM app.memo WHERE client_uuid = '$memoCu'")
+            }
+        }
+        val tsoToken = json(client.post("/v1/auth/login") {
+            contentType(ContentType.Application.Json); header("X-App-Version", "1.0.9+9"); setBody("""{"username":"tso1001","password":"$password","client":"web"}""")
+        }.bodyAsText())["access_token"]!!.jsonPrimitive.content
+        suspend fun tsoMemos(q: String): List<String> {
+            val r = client.get("/v1/memos?$q") { bearerAuth(tsoToken); header("X-App-Version", "1.0.9+9") }
+            assertEquals(HttpStatusCode.OK, r.status, r.bodyAsText())
+            return json(r.bodyAsText())["items"]!!.jsonArray.map { it.jsonObject["memo_no"]!!.jsonPrimitive.content }
+        }
+        assertEquals(listOf(tsoNear), tsoMemos("memo_no=$tsoNear"), "a zone-scoped TSO reads the route-less memo of its zone")
+        assertTrue(tsoNear in tsoMemos("outlet_id=$outletId&from=$day&to=$day&limit=500"))
+        for (q in listOf("memo_no=$tsoFar", "from=$day&to=$day&limit=500")) assertTrue(tsoFar !in tsoMemos(q), "route-less, outside the TSO's zones: $q")
         // An admin data void tombstones the row (voided_at, status untouched): it is listed as void, as the totals leave it out.
         fresh.db.jdbi.useHandle<Exception> { h -> h.execute("UPDATE app.memo SET voided_at = now() WHERE client_uuid = '$memoCu'") }
         assertEquals("void", json(client.read(token, "/v1/memos?memo_no=$memoNo").bodyAsText())["items"]!!.jsonArray.single().jsonObject["status"]!!.jsonPrimitive.content)

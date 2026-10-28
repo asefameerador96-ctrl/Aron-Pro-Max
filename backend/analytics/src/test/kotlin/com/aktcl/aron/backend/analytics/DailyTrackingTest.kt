@@ -143,6 +143,20 @@ class DailyTrackingTest : ReportFixture() {
     private fun body(uuid: String, route: Long, date: String = "2026-10-04", note: String = "Please follow up") = """{"action_uuid":"$uuid","route_id":$route,"business_date":"$date","note":"$note"}"""
 
     @Test
+    fun aRouteOnlyTsoListsAndActsOnItsOwnRouteOnly() = app {
+        // D-BC-DASH-ROUTE-KEYED-01: a TSO holding R4 by assignment and no geo node sees R4's row and may take action on it, nowhere else.
+        val r4 = routeId("R4")
+        fresh.db.jdbi.useHandle<Exception> { it.execute("INSERT INTO app.app_user (id, username, full_name, role, must_change_password) OVERRIDING SYSTEM VALUE VALUES (15, 'user15', 'User 15', 'TSO', false)") }
+        reaches[15] = com.aktcl.aron.backend.platform.Reach(15, Role.TSO, java.time.LocalDate.parse("2026-10-04"), false, emptySet(), setOf(r4), false, listOf(com.aktcl.aron.backend.platform.ReachNode("route", r4)))
+        val page = Json.parseToJsonElement(get(15, Role.TSO, "/v1/dashboards/daily-tracking?business_date=2026-10-04").bodyAsText()).jsonObject
+        assertEquals(listOf("Route4"), page["items"]!!.jsonArray.map { it.jsonObject.s("route_name") })
+        assertEquals(HttpStatusCode.Created, act(15, Role.TSO, body("3a1c2b0e-8d1a-4c5e-9f3a-2b7d4e6a8c10", r4)).status)
+        for ((u, code) in listOf("3b1c2b0e-8d1a-4c5e-9f3a-2b7d4e6a8c10" to "R1", "3c1c2b0e-8d1a-4c5e-9f3a-2b7d4e6a8c10" to "R3")) {
+            assertEquals(HttpStatusCode.Forbidden, act(15, Role.TSO, body(u, routeId(code))).status, "$code: another route of the zone, or another zone")
+        }
+    }
+
+    @Test
     fun checker_cutoffIsExactly1700DhakaOnTheBusinessDate() = app {
         val r4 = routeId("R4")
         testNow = java.time.Instant.parse("2026-10-04T10:59:59Z")   // 16:59:59 Dhaka
