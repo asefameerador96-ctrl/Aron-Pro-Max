@@ -1,5 +1,6 @@
 // Seed rows and table definitions of the mock (see tables.ts). Ids are arbitrary but stable; zones are 14 to 19.
 import type { Row, TableDef } from "./tables";
+import { ISSUE_TYPES } from "./tickets"; // tso-manual W1
 
 const T0 = "2026-10-01T04:00:00.000Z";
 const row = (id: number, extra: Record<string, unknown>): Row => ({ id, version: 1, created_at: T0, updated_at: T0, status: "active", ...extra });
@@ -330,6 +331,9 @@ export function seedCodeLists(): Record<string, Item[]> {
     channel: [it("retail", "Retail", "খুচরা", 1), it("wholesale", "Wholesale", "পাইকারি", 2)],
     sub_channel: [{ ...it("grocery", "Grocery", "মুদি", 1), id: 11 }, { ...it("tea_stall", "Tea stall", "চায়ের দোকান", 2), id: 12 }],
     geo_class: [it("urban", "Urban", "শহর", 1), it("semi_urban", "Semi-urban", "উপশহর", 2), it("rural", "Rural", "গ্রাম", 3), it("hill", "Hill", "পাহাড়", 4)],
+    // tso-manual W1: db V0131 (D-TSO-MAN-19, D-TSO-MAN-20); label_bn NULL until AKTCL supplies it (V0027 rule)
+    ticket_issue_type: ISSUE_TYPES.map(([code, en], i) => it(code, en, null, i + 1, { priority: "p1", category: "tickets", urgency: "high", icon: i % 8 })),
+    ticket_resolution_code: [it("resolved", "Resolved", null, 1)],
     task_type: [it("oos", "Out of stock", "স্টক নেই", 1, { roles: "AMO,TSO" }), it("general", "General", "সাধারণ", 2, { roles: "AMO,TSO" }), it("irregular_visit", "Irregular visit", "অনিয়মিত ভিজিট", 3, { roles: "TSO" })],
     // the closed list of db V0027 (the six app codes carry applies_to "app"); never invent a code here
     qc_fault_type: [

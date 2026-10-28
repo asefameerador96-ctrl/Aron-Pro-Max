@@ -12,6 +12,7 @@ import { freshConfigStore, handleConfig, type ConfigStore } from "./config";
 import { seedCustom, type CustomState } from "./custom";
 import { freshMdmStore, type MdmStore } from "./mdm";
 import { freshDashStore, handleDash, type DashStore } from "./dash";
+import { freshTicketStore, handleTickets, type TicketStore } from "./tickets"; // tso-manual W1
 import type { AuditEntry, Cluster, LoginResponse, Me, Problem, ProblemCode, Role, ScopeSummary, TokenPair, UserSummary } from "../src/contract/types";
 
 export interface MockUser {
@@ -97,6 +98,8 @@ export interface State {
   accessTtlS: number;
   dash: DashStore;
   cfg: ConfigStore;
+  /** tso-manual W1: the support desk's tickets (mock/tickets.ts). */
+  tickets: TicketStore;
 }
 
 export interface MockOptions {
@@ -117,7 +120,7 @@ export function createMock(opts: MockOptions = {}): { server: Server; state: Sta
 
 function freshState(accessTtlS = Number(process.env.MOCK_ACCESS_TTL_S ?? 900)): State {
   const tables = seedTables();
-  return { failPrefix: null, reauthFails: new Map(), piiWindowS: 900, stubs: [], calls: [], users: users(), tables, blobs: new Map(), custom: { tables, ...seedCustom() }, mdm: freshMdmStore(), codeLists: seedCodeLists(), bulkBatches: new Map(), clusters: tables.clusters as unknown as Cluster[], audit: [], access: new Map(), refresh: new Map(), mfaTokens: new Map(), mfaEnrolled: new Set(["mgrant1", "admin1", "madmin1", "msuper1", "msupport1", "support1", "pwmfa1"]), pwcTokens: new Map(), refreshCount: 0, nextId: 100, accessTtlS, dash: freshDashStore(), cfg: freshConfigStore() };
+  return { failPrefix: null, reauthFails: new Map(), piiWindowS: 900, stubs: [], calls: [], users: users(), tables, blobs: new Map(), custom: { tables, ...seedCustom() }, mdm: freshMdmStore(), codeLists: seedCodeLists(), bulkBatches: new Map(), clusters: tables.clusters as unknown as Cluster[], audit: [], access: new Map(), refresh: new Map(), mfaTokens: new Map(), mfaEnrolled: new Set(["mgrant1", "admin1", "madmin1", "msuper1", "msupport1", "support1", "pwmfa1"]), pwcTokens: new Map(), refreshCount: 0, nextId: 100, accessTtlS, dash: freshDashStore(), cfg: freshConfigStore(), tickets: freshTicketStore() };
 }
 
 function problem(status: number, code: ProblemCode, extra: Partial<Problem> = {}): Problem {
@@ -210,6 +213,14 @@ function audit(state: State, user: MockUser, entity: string, entity_id: number |
   const entry = { id: state.audit.length + 1, at: new Date().toISOString(), actor_user_id: user.summary.user_id, actor_username: user.summary.username, actor_role: user.summary.role, via: "web" as const, entity, entity_id: String(entity_id), action, before, after, reason, request_id: randomUUID() };
   state.audit.push({ ...entry, row_hash: createHash("sha256").update(prev + JSON.stringify(entry)).digest("hex") });
 }
+
+/** tso-manual W1 (D-TSO-MAN-22): Me.support_desk is the permission support.ticket.manage, seeded for ADMIN and SUPERADMIN; SUPPORT
+ *  holds it only once granted (not in the mock). */
+function hasDesk(user: MockUser): boolean {
+  return user.summary.role === "ADMIN" || user.summary.role === "SUPERADMIN";
+}
+/** The desk routes also pass the ADMIN module guard: an ADMIN whose claim omits `support` (mgrant1) is no desk there. */
+const deskRoutes = (user: MockUser): boolean => hasDesk(user) && user.summary.username !== "mgrant1";
 
 async function handle(state: State, reset: () => void, req: IncomingMessage, res: ServerResponse): Promise<void> {
   const url = new URL(req.url ?? "/", "http://mock");
@@ -371,7 +382,7 @@ async function handle(state: State, reset: () => void, req: IncomingMessage, res
   if (path === "/v1/me") {
     const pii = revealer && a.piiUntil !== null;
     const perms = user.summary.role === "ADMIN" ? ["admin.master.write", "admin.audit.read"] : ["dashboards.read"];
-    const me: Me = { user: user.summary, permissions: revealer ? [...perms, "pii.reveal"] : perms, scope: user.scope, pii, pii_until: revealer && a.piiUntil !== null ? new Date(a.piiUntil).toISOString() : null, mfa_enabled: user.mfa, ...(user.summary.role === "TSO" ? { menus: [{ menu_id: "dashboard", actions: ["view"] as ("view")[] }] } : {}), ...(user.summary.username === "mgrant1" ? { modules: { targets: "r" as const, masterdata: "r" as const, outlets: "w" as const } } : {}) };
+    const me: Me = { user: user.summary, permissions: revealer ? [...perms, "pii.reveal"] : perms, scope: user.scope, pii, pii_until: revealer && a.piiUntil !== null ? new Date(a.piiUntil).toISOString() : null, mfa_enabled: user.mfa, ...(user.summary.role === "TSO" ? { menus: [{ menu_id: "dashboard", actions: ["view"] as ("view")[] }] } : {}), ...(user.summary.username === "mgrant1" ? { modules: { targets: "r" as const, masterdata: "r" as const, outlets: "w" as const } } : {}), support_desk: hasDesk(user) }; // tso-manual W1: support_desk
     return send(res, 200, me);
   }
 
@@ -384,6 +395,9 @@ async function handle(state: State, reset: () => void, req: IncomingMessage, res
     const r = await stub.fn(call, match as RegExpMatchArray);
     return send(res, r.status, r.body, r.headers);
   }
+
+  // tso-manual W1: the support desk (contract 1.10.0); after the stubs, so a test can still answer any ticket path itself
+  if (await handleTickets(state.tickets, { send, problem, readJson, audit: (entity, id, action, before, after, reason) => audit(state, user, entity, id, action, before, after, reason) }, { user_id: user.summary.user_id, role: user.summary.role, desk: deskRoutes(user) }, method, url, req, res)) return;
 
   if (await handleConfig({
     method, path, url, role: user.summary.role, userId: user.summary.user_id, store: state.cfg,

@@ -89,6 +89,12 @@ export const OPS = {
   "permissions.put": { method: "PUT", path: "/v1/admin/permissions/roles/{role}", roles: SUPERS, reason: "reason" },
   // F-ADM-024 paper backfill: a dead-phone day keyed by printed memo number, source manual
   "paper-backfill.create": { method: "POST", path: "/v1/admin/data-entry", roles: SUPPORT_UP, reason: "reason" },
+  // tso-manual W1: the support desk (TK-16, D-TSO-MAN-20/21; contract updateSupportTicket, addSupportTicketEvent). The API checks the
+  // desk permission (support.ticket.manage) and, for an ADMIN, the `support` module. No ChangeReason member: a desk action is
+  // idempotent by `op_uuid` and carries `expected_version` (the version read); a reply is idempotent by `event_uuid`. The cancel
+  // reason and the resolution notes are members of the update itself.
+  "ticket.update": { method: "PATCH", path: "/v1/support/tickets/{ticket_uuid}", roles: SUPPORT_UP, reason: null },
+  "ticket.event": { method: "POST", path: "/v1/support/tickets/{ticket_uuid}/events", roles: SUPPORT_UP, reason: null },
 } as const satisfies Record<string, OpDef>;
 
 /** Web-role operations (the TSO's own pages live outside /admin): served by /api/bff/team-op, gated by the web roles. */

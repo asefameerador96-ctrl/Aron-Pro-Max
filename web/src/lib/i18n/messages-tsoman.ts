@@ -119,7 +119,6 @@ const pairs = {
   "tickets.resolve.submit": ["Resolve ticket", "টিকিট সমাধান করুন"],
   "tickets.resolve.done": ["The ticket is resolved.", "টিকিটটি সমাধান হয়েছে।"],
   "tickets.resolve.codes_fallback": ["The resolution code list could not be loaded; only the standard code is offered.", "সমাধান কোডের তালিকা লোড হয়নি; শুধু সাধারণ কোডটি দেওয়া হলো।"],
-  "tickets.resolution.resolved": ["Resolved", "সমাধান হয়েছে"],
   "tickets.cancel.title": ["Cancel", "বাতিল"],
   "tickets.cancel.reason": ["Reason for cancelling", "বাতিলের কারণ"],
   "tickets.cancel.hint": ["3 to 500 characters, for example a duplicate or a test ticket. The reporter sees the ticket as Cancelled.", "৩ থেকে ৫০০ অক্ষর, যেমন একই টিকিট দুবার বা পরীক্ষার টিকিট। রিপোর্টকারী টিকিটটি বাতিল দেখেন।"],
