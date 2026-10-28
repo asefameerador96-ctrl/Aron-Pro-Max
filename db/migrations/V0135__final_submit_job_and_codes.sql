@@ -18,7 +18,9 @@
 --    "still outstanding when the zone-day was submitted"): the count is of rows captured before the submit that arrived
 --    after it. The dw columns that carry the same count are reworded too.
 -- The three CHECKs are replaced or added NOT VALID here and validated in V0136 (separate transaction, squawk rule).
--- Grants: the worker runs the job; it may now insert final submits and their audit rows.
+-- Grants: the worker runs the job; it may now insert final submits. It still may not write app.audit_log (DbRolesTest
+-- pins that: the audit trail is written by the API and auth roles only); the job's trace is the via = 'job' row itself
+-- and its zone_day.final_submitted event.
 
 SET lock_timeout = '5s';
 
@@ -47,8 +49,7 @@ ALTER TABLE app.sync_quarantine ADD CONSTRAINT sync_quarantine_code_check CHECK 
 
 -- ---------- grants ----------
 INSERT INTO app.db_role_grant (role, schema_name, object, privileges, note) VALUES
-  ('worker_rw', 'app', 'final_submit', 'INSERT', 'V0135: the midnight AutoFinalSubmitJob writes via=job submits (D-TSO-MAN-30)'),
-  ('worker_rw', 'app', 'audit_log', 'INSERT', 'V0135: audit rows of worker jobs (the midnight auto Final Submit, actor system)');
+  ('worker_rw', 'app', 'final_submit', 'INSERT', 'V0135: the midnight AutoFinalSubmitJob writes via=job submits (D-TSO-MAN-30)');
 
 -- ---------- 3. comments ----------
 COMMENT ON COLUMN app.final_submit.via IS 'Channel the Final Submit came through: app (TSO phone), web (portal) or job (the midnight AutoFinalSubmitJob, V0135).';

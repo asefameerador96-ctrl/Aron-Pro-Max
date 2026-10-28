@@ -367,7 +367,8 @@ class TsoManualV0130Test {
                     "WHERE has_table_privilege(r, 'app.user_notification', p)), '|' ORDER BY r) FROM unnest(ARRAY['api_rw','worker_rw']) r",
             ),
         )
-        assertEquals("t|t", c.scalar("SELECT has_table_privilege('worker_rw', 'app.final_submit', 'INSERT')::text::char || '|' || has_table_privilege('worker_rw', 'app.audit_log', 'INSERT')::text::char"))
+        // The midnight job may insert its Final Submit; the audit trail stays closed to the worker (DbRolesTest).
+        assertEquals("t|f", c.scalar("SELECT has_table_privilege('worker_rw', 'app.final_submit', 'INSERT')::text::char || '|' || has_table_privilege('worker_rw', 'app.audit_log', 'INSERT')::text::char"))
     }
 
     @Test
