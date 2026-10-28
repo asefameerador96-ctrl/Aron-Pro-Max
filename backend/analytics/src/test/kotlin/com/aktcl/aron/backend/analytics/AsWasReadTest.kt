@@ -3,6 +3,7 @@ package com.aktcl.aron.backend.analytics
 import com.aktcl.aron.backend.platform.AronClock
 import com.aktcl.aron.backend.platform.FreshDb
 import com.aktcl.aron.backend.platform.Reach
+import com.aktcl.aron.backend.platform.ReachNode
 import com.aktcl.aron.contract.Role
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
@@ -61,14 +62,14 @@ class AsWasReadTest {
         NationalDashboardFilter(date = day.toString(), zone_ids = zones, territory_ids = territories, division_ids = divisions, wing_ids = wings, brand_codes = brands)
 
     /** What a person sees for [flt]: the sales cards, the channel cards, CPR and the brand breakdowns. */
-    private fun screens(flt: NationalDashboardFilter): String = listOf(
-        national.sales(caller(), flt).cards.map { Triple(it.category_code, it.total_sales, it.target_routes) },
-        national.channelStd(caller(), flt).let { r -> r.channels.map { it.channel to it.value } + ("total" to r.total) },
-        national.channelCalls(caller(), flt).channels.map { it.channel to it.value },
-        national.cpr(caller(), flt).let { listOf(it.target_outlets, it.successful_calls) },
-        national.breakdown(caller(), NationalBreakdownRequest(flt, "std", "brand")).items.map { it.name to it.value },
-        national.breakdown(caller(), NationalBreakdownRequest(flt, "memo", "variant")).items.map { it.name to it.value },
-        national.geoFencing(caller(), flt).let { listOf(it.total_calls, it.geo_validated) },
+    private fun screens(flt: NationalDashboardFilter, c: NationalCaller = caller()): String = listOf(
+        national.sales(c, flt).cards.map { Triple(it.category_code, it.total_sales, it.target_routes) },
+        national.channelStd(c, flt).let { r -> r.channels.map { it.channel to it.value } + ("total" to r.total) },
+        national.channelCalls(c, flt).channels.map { it.channel to it.value },
+        national.cpr(c, flt).let { listOf(it.target_outlets, it.successful_calls) },
+        national.breakdown(c, NationalBreakdownRequest(flt, "std", "brand")).items.map { it.name to it.value },
+        national.breakdown(c, NationalBreakdownRequest(flt, "memo", "variant")).items.map { it.name to it.value },
+        national.geoFencing(c, flt).let { listOf(it.total_calls, it.geo_validated) },
     ).joinToString("\n")
 
     @Test
@@ -137,9 +138,28 @@ class AsWasReadTest {
 
     @Test
     fun withHistoryPresentAndNothingChangedTheFiguresAreTheControlTotals() {
-        // The ordinary production path: every key has a history period equal to the current row (the fixture's inserts wrote them).
+        // History present, and the fixture's own house edit closed every route's period, so this runs the timeline path with nothing moved on the day.
         assertEquals(75, national.sales(caller(), f()).cards.single { it.category_code == "cigarette" }.total_sales)
         assertEquals(75, national.sales(caller(), f(zones = listOf(z1, z2))).cards.single { it.category_code == "cigarette" }.total_sales)
         assertEquals(63_000, dash.summary(Reach(1, Role.TSO, day, true, emptySet(), emptySet(), false, emptyList()), null, null, day, day).kpis.gross_mtk)
+    }
+
+    @Test
+    fun withNoMasterChangeAtAllTheFastPathAnswersTheControlTotals() {
+        exec("DO \$\$ DECLARE t text; BEGIN FOR t IN SELECT history_table FROM app.master_history_map LOOP EXECUTE format('DELETE FROM app.%I', t); END LOOP; END \$\$")
+        val p = fresh.db.jdbi.withHandle<AsWasSql.Plain, Exception> { AsWasSql.probe(it, day) }
+        assertTrue(p.geo && p.product && p.outlet, "no history period closed: all three dimensions are on the plain path")
+        assertEquals(75, national.sales(caller(), f()).cards.single { it.category_code == "cigarette" }.total_sales)
+        assertEquals(63_000, dash.summary(Reach(1, Role.TSO, day, true, emptySet(), emptySet(), false, emptyList()), null, null, day, day).kpis.gross_mtk)
+    }
+
+    @Test
+    fun aZoneCallerKeepsSeeingARouteThatLeftItsZoneOnTheOldDate() {
+        val tso = NationalCaller(Reach(1, Role.TSO, day, false, setOf(z1), emptySet(), false, listOf(ReachNode("zone", z1))))
+        val before = screens(f(), tso)
+        exec("UPDATE app.route SET zone_id = (SELECT id FROM app.zone WHERE code = 'Z2') WHERE code = 'R2'")
+        assertEquals(before, screens(f(), tso), "the TSO of Z1 lost the old day of the route that left Z1")
+        val z2Tso = NationalCaller(Reach(1, Role.TSO, day, false, setOf(z2), emptySet(), false, listOf(ReachNode("zone", z2))))
+        assertEquals(screens(f(zones = listOf(z2))), screens(f(), z2Tso), "scope is the reach, never more than it")
     }
 }

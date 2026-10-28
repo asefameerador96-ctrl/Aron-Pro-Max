@@ -139,7 +139,7 @@ object DssReport : ReportHandler {
         SELECT g.zone_name, ${periodExpr(ctx, "a.business_date")} AS period, sum(a.target_routes)::int AS target_routes, sum(a.logged_in_routes)::int AS logged_in_routes,
                sum(a.sales_submitted_routes)::int AS sales_submitted_routes, sum(a.visits)::int AS visits, sum(a.successful_calls)::int AS successful_calls, sum(a.active_memo_count)::int AS memos,
                sum(a.gross_mtk)::bigint AS gross_mtk, sum(a.net_mtk)::bigint AS net_mtk, sum(a.dues_collected_mtk)::bigint AS dues_collected_mtk
-          FROM dw.agg_daily_zone a JOIN (SELECT DISTINCT zone_id, zone_name FROM dw.dim_geo) g ON g.zone_id = a.zone_id
+          FROM dw.agg_daily_zone a JOIN (SELECT id AS zone_id, name AS zone_name FROM app.zone) g ON g.zone_id = a.zone_id
          WHERE ${ctx.dateClause("a.business_date")} AND ${ctx.zoneClause("a.zone_id")}
          GROUP BY a.zone_id, g.zone_name, 2
         """,

@@ -18,29 +18,31 @@ package com.aktcl.aron.backend.analytics
  * caller's scope filter still runs over the alias, so scope stays derived from the token's reach.
  */
 internal object AsWasSql {
-    /** Probe result per database and window start: (millis, unchanged). */
-    private val probes = java.util.concurrent.ConcurrentHashMap<String, Pair<Long, Boolean>>()
+    /** Per dimension: true when nothing of it changed since the window began, so the plain current-dimension join is exactly as-was. */
+    class Plain(val geo: Boolean, val product: Boolean, val outlet: Boolean)
+
+    /** Probe result per database and window start: (millis, answer). */
+    private val probes = java.util.concurrent.ConcurrentHashMap<String, Pair<Long, Plain>>()
 
     /** How long a probe answer is reused. Tests that edit masters and read at once set it to 0. */
     @Volatile var probeTtlMs: Long = 20_000
 
-    private val HISTORY_TABLES = listOf(
-        "route_zone_history", "route_history", "zone_history", "territory_history", "division_history", "sku_history", "product_node_history",
-        "outlet_class_history",
-    )
+    private val GEO_HISTORY = listOf("route_zone_history", "route_history", "zone_history", "territory_history", "division_history")
+    private val PRODUCT_HISTORY = listOf("sku_history", "product_node_history")
+    private val OUTLET_HISTORY = listOf("outlet_class_history")
 
     /**
-     * True when no master history period closed after [from], i.e. nothing of the geography, the product tree or an outlet's class changed
-     * since the window began: the current dimension IS the as-was dimension for every row of the window, so the plain joins answer
-     * exactly (and cost what they always did). Any change, anywhere, switches the window to the timeline joins.
+     * Per dimension (geography, product tree, outlet class): true when no master history period of it closed after [from], i.e. nothing
+     * of it changed since the window began, so the current dimension IS the as-was dimension for every row of the window and the plain
+     * joins answer exactly (and cost what they always did). A change in one dimension leaves the other two on the plain path.
      */
-    fun unchangedSince(h: org.jdbi.v3.core.Handle, from: java.time.LocalDate): Boolean {
+    fun probe(h: org.jdbi.v3.core.Handle, from: java.time.LocalDate): Plain {
         val key = "${h.connection.catalog}|$from"
         val now = System.currentTimeMillis()
         probes[key]?.let { (at, v) -> if (now - at < probeTtlMs) return v }
-        val v = h.createQuery(
-            HISTORY_TABLES.joinToString(" AND ") { "NOT EXISTS (SELECT 1 FROM app.$it WHERE valid_to > :f)" }.let { "SELECT $it" },
-        ).bind("f", from).mapTo(Boolean::class.java).one()
+        fun none(tables: List<String>) = tables.joinToString(" AND ") { "NOT EXISTS (SELECT 1 FROM app.$it WHERE valid_to > :f)" }
+        val v = h.createQuery("SELECT ${none(GEO_HISTORY)}, ${none(PRODUCT_HISTORY)}, ${none(OUTLET_HISTORY)}").bind("f", from)
+            .map { rs, _ -> Plain(rs.getBoolean(1), rs.getBoolean(2), rs.getBoolean(3)) }.one()
         if (probes.size > 1_000) probes.clear()
         probes[key] = now to v
         return v
@@ -66,7 +68,7 @@ internal object AsWasSql {
             "                   CROSS JOIN LATERAL unnest(datemultirange(daterange(NULL, NULL, '[)')) - coalesce(cov.m, '{}'::datemultirange)) u)"
 
     private fun geoName(level: String) =
-        "CASE WHEN h.${level}_id = cg.${level}_id THEN cg.${level}_name ELSE coalesce(n_$level.name, cg.${level}_name) END AS ${level}_name"
+        "coalesce(n_$level.name, cg.${level}_name) AS ${level}_name"
 
     /** `dw.dim_geo` as of the date: route -> zone -> territory -> division -> wing, house, route kind and class. [join] is JOIN or LEFT JOIN. */
     fun geo(alias: String, route: String, date: String, join: String = "JOIN", lo: String? = null, hi: String? = null, plain: Boolean = false): String =
@@ -96,10 +98,10 @@ internal object AsWasSql {
 
     private fun nodeCols(level: String, withCode: Boolean): String {
         val code = if (withCode) {
-            ", CASE WHEN h.${level}_id = cp.${level}_id THEN cp.${level}_code ELSE coalesce(n_$level.code, 'n' || n_$level.id, cp.${level}_code) END AS ${level}_code"
+            ", coalesce(n_$level.code, 'n' || n_$level.id, cp.${level}_code) AS ${level}_code"
         } else ""
         return "coalesce(h.${level}_id, cp.${level}_id) AS ${level}_id, " +
-            "CASE WHEN h.${level}_id = cp.${level}_id THEN cp.${level}_name ELSE coalesce(n_$level.name, cp.${level}_name) END AS ${level}_name$code"
+            "coalesce(n_$level.name, cp.${level}_name) AS ${level}_name$code"
     }
 
     private fun productBody(lo: String?, hi: String?): String = """
@@ -132,11 +134,14 @@ internal object AsWasSql {
     fun outlet(alias: String, outlet: String, date: String, join: String = "JOIN", lo: String? = null, hi: String? = null, plain: Boolean = false): String =
         if (plain) "$join dw.dim_outlet $alias ON $alias.outlet_id = $outlet" else """
         $join (
-          WITH per AS (SELECT hh.outlet_id, hh.valid_from AS vf, hh.valid_to AS vt, hh.zone_id, hh.channel, hh.sub_channel_id, hh.geo_class, hh.outlet_kind
-                         FROM dw.v_dim_outlet_history hh WHERE ${win("hh.valid_from", "hh.valid_to", lo, hi)}),
-          ${gaps("outlet_id", "dw.dim_outlet")},
+          WITH chg AS (SELECT DISTINCT outlet_id FROM app.outlet_class_history WHERE valid_to IS NOT NULL${if (lo != null) " AND valid_to > CAST($lo AS date)" else ""}),
+          per AS (SELECT hh.outlet_id, hh.valid_from AS vf, hh.valid_to AS vt, hh.zone_id, hh.channel, hh.sub_channel_id, hh.geo_class, hh.outlet_kind
+                    FROM dw.v_dim_outlet_history hh JOIN chg ON chg.outlet_id = hh.outlet_id WHERE ${win("hh.valid_from", "hh.valid_to", lo, hi)}),
+          ${gaps("outlet_id", "(SELECT o.* FROM dw.dim_outlet o JOIN chg ON chg.outlet_id = o.outlet_id)")},
           h AS (SELECT outlet_id, vf, vt, zone_id, channel, sub_channel_id, geo_class, outlet_kind FROM per
-                UNION ALL SELECT outlet_id, vf, vt, NULL::bigint, NULL::text, NULL::bigint, NULL::text, NULL::text FROM gap)
+                UNION ALL SELECT outlet_id, vf, vt, NULL::bigint, NULL::text, NULL::bigint, NULL::text, NULL::text FROM gap
+                UNION ALL SELECT o.outlet_id, NULL::date, NULL::date, NULL::bigint, NULL::text, NULL::bigint, NULL::text, NULL::text
+                            FROM dw.dim_outlet o WHERE NOT EXISTS (SELECT 1 FROM chg WHERE chg.outlet_id = o.outlet_id))
           SELECT co.outlet_id, co.outlet_code, co.outlet_name, co.route_id, co.cluster_id, coalesce(h.zone_id, co.zone_id) AS zone_id,
                  coalesce(h.channel, co.channel) AS channel, coalesce(h.sub_channel_id, co.sub_channel_id) AS sub_channel_id,
                  coalesce(h.geo_class, co.geo_class) AS geo_class, coalesce(h.outlet_kind, co.outlet_kind) AS outlet_kind,
@@ -150,7 +155,7 @@ internal object AsWasSql {
      * `DISTINCT` zone chain over `dw.dim_geo`. Zones come from `app.zone`, so a zone that has since lost its routes keeps its rows.
      */
     fun zone(alias: String, zone: String, date: String, join: String = "JOIN", lo: String? = null, hi: String? = null, plain: Boolean = false): String =
-        if (plain) "$join (SELECT DISTINCT zone_id, zone_name, territory_id, territory_name, division_id, division_name, wing_id, wing_name FROM dw.dim_geo) $alias ON $alias.zone_id = $zone" else """
+        if (plain) "$join (SELECT z.id AS zone_id, z.name AS zone_name, t.id AS territory_id, t.name AS territory_name, d.id AS division_id, d.name AS division_name, d.wing_id, w.name AS wing_name FROM app.zone z JOIN app.territory t ON t.id = z.territory_id JOIN app.division d ON d.id = t.division_id JOIN app.wing w ON w.id = d.wing_id) $alias ON $alias.zone_id = $zone" else """
         $join (
           WITH per AS (SELECT zh.zone_id, lower(p.r) AS vf, upper(p.r) AS vt, zh.territory_id, th.division_id, dv.wing_id
                          FROM app.zone_history zh
