@@ -1,5 +1,11 @@
 # backend-reports lane status
 
+## Session 6 (2026-10-28)
+| Slice | State |
+|---|---|
+| Row 2 as-was attribution (D-REPORTS-ASWAS-01) | coded; AggregationTest 14/14 and AsWasAttributionTest 6/6 green locally; full analytics+app run and Opus checker pending; read-side joins to current dim_geo/dim_outlet remain (listed in the decision) |
+| Row 3 rebuild / reconcile / restate | not started |
+
 ## HANDOVER (2026-10-23 ~07:00, session 5 recycling at ~345k): everything is on INT, nothing open in code
 **State:** INT 02a23471 (train 15 landed, dev deploy 39911078266 green) contains all of this lane: `7aaa42f4` (train 14: the Aggregator fills `dw.agg_daily_outlet.cigarette_sold_sticks|bidi_sold_sticks|lighter_sold_pieces|match_sold_dozens`, `AggregationTest.aMixedCategoryDayFillsTheFourPerCategoryColumns`) and `94b620d4` (train 15, CI run 39905829821 green, lead-checked). This head is docs-only. Local suites on `94b620d4`: `:backend:analytics:test :backend:app:test :shared:contract:jvmTest` green (37 min).
 **Live rules (DECISIONS.md):**
