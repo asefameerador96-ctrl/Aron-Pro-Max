@@ -171,6 +171,9 @@ const pairs = {
   // --- step 2. FB-12: the feedback inbox ---
   "tsoman.feedback.photo": ["Photo", "ছবি"],
   "tsoman.feedback.zone": ["Zone", "জোন"],
+
+  // --- step 2. XA-02: the TSO visit log report (R-F-12) ---
+  "tsoman.report.tso_visit_log": ["TSO Visit Log", "টিএসও ভিজিট লগ"],
 } as const satisfies Record<string, readonly [string, string]>;
 
 export type TsoManMessageKey = keyof typeof pairs;
