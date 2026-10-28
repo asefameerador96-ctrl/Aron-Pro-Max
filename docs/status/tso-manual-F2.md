@@ -197,3 +197,57 @@ All through the shared wrapper (JDK 21, local PostgreSQL 16, UTC JAVA_TOOL_OPTIO
   hold it, F2 adds `('support')` to the dev seed and moves OwnerDirectiveV0087Test's `15|w` to `16|w` (two lines).
 - Laptop only: `JcsTest.payloadShapesMatchTheContractSlices` runs `python3`, which this laptop does not have (Windows
   Store alias, exit 9009). The same check run with `python backend/sync/tools/gen_payload_shapes.py --check` exits 0.
+
+## Fix round 2 (lead rulings): checker defects
+
+An independent checker reviewed fix round 2 and found one medium and five low defects. Fixed in commit 80a3743a (V0130
+and V0135 are unshipped, so the files were edited in place; nothing at V0122 or lower was touched; no date-pin
+baseline row was added).
+
+| defect | fix | test |
+|---|---|---|
+| medium: the blocking CI gate "Constant dates in seed-dependent tests" failed. `python tools/ci/date-pin-scan.py .` exited 1 ("113 literal(s), 106 baselined, 7 new"), all 7 in TsoManualV0130Test (R-F-04 inbox keys `zone:7:2026-10-25` x3, `zone:1:2026-10-25`, and the domain-event aggregate_id, business_date and payload) | `notificationsAreIdempotentAndReadOnce` and `theBuildsSettingsPermissionAndEventsAreRegistered` read `today` from the seed clock (`SELECT (app.dhaka_date(now()))::text`) and build the dedupe keys, aggregate_id `7:<today>`, `DATE '<today>'` and the payload's business_date from it | scan now prints "106 literal(s) in seed-dependent tests, 106 baselined, 0 new" and exits 0; TsoManualV0130Test 17/17 |
+| low: the worker's `app.push_token` UPDATE grant covered the whole table | V0135 grant map row now uses `only_columns = '{revoked_at,revoke_reason}'`, so the worker gets UPDATE on those two columns only. I chose only_columns over except_columns so that a column added later is not granted automatically. The worker's existing SELECT on app.* covers the `WHERE id = ... AND revoked_at IS NULL` of `Push.sendAll`, the only worker write to the table | DbRolesTest: no table-wide UPDATE or INSERT on push_token; `has_column_privilege` UPDATE is t for revoked_at and revoke_reason and f for token, token_sha256, user_id and device_id. TsoManualV0130Test checks the same plus final_submit INSERT t and audit_log INSERT f |
+| low: `op_sha256` could sit on a device or job row | V0130 adds `CONSTRAINT support_ticket_event_op_hash_desk CHECK (op_sha256 IS NULL OR via = 'web')` and a header note; the column comment is unchanged, so the dictionary is unchanged | `aDeskOpStoresItsBodyHashOnItsFirstEventRowOnly`: a device row and a job row with a 32-byte hash are each refused 23514, and the same row without a hash is accepted; the constraint definition is pinned |
+| low: R-F-10 verify was incomplete | ran the full `:backend:app:test` (below) | see Verify |
+| low: docs/19 still said `cfg.feedback.max_images` is 1 to 5 | the docs/19 row now says "0 to 1 (R-F-06: the feedback record holds one photo_uuid)". This file is outside F2's list, but R-F-06 belongs to F2 and the edit is one table cell, so I made it here rather than route it | none (no tool parses docs/19) |
+| low: existing ADMINs do not get `support` | **not changed: this needs a lead decision** (the checker says so too). See the ask below | n/a |
+
+### Verify (checker fixes)
+
+All runs used the shared wrapper (JDK 21, local PostgreSQL 16, UTC) with `--no-configuration-cache`, at 80a3743a.
+
+- `python tools/ci/date-pin-scan.py .`: exit 0, "106 literal(s) in seed-dependent tests, 106 baselined, 0 new" (before
+  the fix: exit 1, 7 new).
+- `gl.sh <wt> :db:test --tests TsoManualV0130Test --tests DbRolesTest`: **BUILD SUCCESSFUL**, 17 and 9 tests.
+- `gl.sh <wt> :db:test` (full): **BUILD SUCCESSFUL in 12m 8s**, all 38 classes SUCCESS (OwnerDirectiveV0087Test 24,
+  TsoManualV0130Test 17, DbRolesTest 9, DataOriginTest 7, DataDictionaryTest 2, MigrationApplyTest 3, SeedTest 9).
+- `gl.sh <wt> :backend:app:test` (full, R-F-10): **BUILD FAILED in 26m 4s, 464 tests, 1 failed, 2 skipped**; 88 of 89
+  classes SUCCESS. Among them are every class the checker named: ModuleGrantsTest 2, CheckoutWithoutSubmitTest 3,
+  FlaggedMemosApiTest 6, PiiRevealTest 4 and ChangePasswordCheckerTest 13. Also SUCCESS: PushTest 2,
+  PushCheckerTest 10, DataFlowTraceTest 16, ContractConformanceTest 6 and DayApiTest 6. The FreshDb seed path
+  (`db/seed/08_data_origin.sql` -> `app.restamp_data_origin`) runs in every one of them. The one failure is
+  `RouteInventoryTest.everyGuardedRouteHasAScopeCaseAnExemptionOrAKnownGap`, and F2 did not cause it. Every scope
+  case is reported "not found under backend/*/src/test", including cases that exist (AdminMasterTest, DayApiTest...).
+  The cause is RouteInventoryTest.kt line 133, which finds test sources with `"/src/test/" in it.path`. On Windows,
+  `File.path` uses backslashes, so the filter matches nothing on this laptop. On CI (Linux) it matches. F2 changes no
+  route and no backend source.
+- `gl.sh <wt> :backend:sync:test` (full): **BUILD FAILED, 37 tests, 1 failed**. This is the same laptop-only
+  `JcsTest.payloadShapesMatchTheContractSlices` failure as round 2: the test starts `python3`, which this laptop lacks
+  (exit 9009). `python backend/sync/tools/gen_payload_shapes.py --check` exits 0. BundleRubricsTest 2/2 and the other
+  five classes SUCCESS.
+- `bash tools/ci/migrations-check.sh eb7b8eb5 true` and the same against `origin/claude/wonderful-thompson-k6ejnf`
+  (5e66bc12): "checksum: 121 shipped migration(s) ... checked; order: 11 new migration(s), highest shipped version 122;
+  migrations: ok" (exit 0). The lint used a no-op squawk; the real squawk runs in CI only (R-F-22). The new CHECK is
+  part of a CREATE TABLE, so it adds no lock on an existing table.
+
+### Asks (checker fixes)
+
+- Lead (decision): should existing ADMINs keep the support desk after B1 maps `/v1/support/tickets/**` to `support`?
+  If yes, F2 adds an idempotent backfill to the unshipped V0135
+  (`INSERT INTO app.user_module_grant (user_id, module, access) SELECT id, 'support', 'w' FROM app.app_user WHERE
+  role = 'ADMIN' ON CONFLICT DO NOTHING`), adds `support` to `db/seed/07_admin_module_grants.sql`, and changes
+  OwnerDirectiveV0087Test's `15|w` to `16|w`. If no, nothing changes, and a SUPERADMIN grants the module on the access page.
+- Lead / backend: `RouteInventoryTest` line 133 should normalise the separator, for example
+  `it.invariantSeparatorsPath`, so that `:backend:app:test` passes on a Windows laptop. CI is not affected. It is not
+  F2's file and I did not change it.
