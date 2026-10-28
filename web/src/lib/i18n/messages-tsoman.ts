@@ -159,6 +159,14 @@ const pairs = {
   "tsoman.reopen.done": ["Zone {zone} for {date} is reopened ({at}). The action is in the audit log.", "{date} তারিখের জোন {zone} পুনরায় খোলা হয়েছে ({at})। কাজটি অডিট লগে আছে।"],
   "tsoman.reopen.retry": ["No answer from the server. Send again: the same request is repeated, never applied twice.", "সার্ভার থেকে উত্তর আসেনি। আবার পাঠান: একই অনুরোধ আবার যাবে, দুবার কার্যকর হবে না।"],
   "error.ERR_DAY_NOT_FINAL_SUBMITTED": ["This zone-day is not final-submitted, so there is nothing to reopen.", "এই জোন-দিনটি ফাইনাল সাবমিট হয়নি, তাই খোলার কিছু নেই।"],
+
+  // --- step 2. LV-19: the deciding page (applicant, territory, type label, optional reject note) ---
+  "tsoman.leave.col.applicant": ["Applicant", "আবেদনকারী"],
+  "tsoman.leave.col.territory": ["Territory", "টেরিটরি"],
+  "tsoman.leave.note": ["Note to the TSO (optional)", "টিএসও-র জন্য নোট (ঐচ্ছিক)"],
+  "tsoman.leave.note_hint": ["Up to {n} characters, kept with the decision.", "সর্বোচ্চ {n} অক্ষর, সিদ্ধান্তের সাথে রাখা হয়।"],
+  "tsoman.leave.reject_confirm": ["Reject leave", "ছুটি নাকচ করুন"],
+  "tsoman.leave.back": ["Back", "ফিরে যান"],
 } as const satisfies Record<string, readonly [string, string]>;
 
 export type TsoManMessageKey = keyof typeof pairs;

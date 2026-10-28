@@ -41,6 +41,8 @@ export interface DashStore {
   now: string | null;
   actions: Schemas["TrackingAction"][];
   leave: Schemas["LeaveApplication"][];
+  /** tso-manual W1 (LV-19): the note of each decision (DecisionRequest.note), by leave_uuid; the contract returns no note. */
+  leaveNotes: Record<string, string | null>;
   exceptionDecisions: Record<string, "reviewed" | "dismissed" | "confirmed">;
   exports: { reportKey: string; format: string; query: unknown; user: number; at: string }[];
   passwords: Record<number, string>;
@@ -53,9 +55,11 @@ export function freshDashStore(): DashStore {
     now: null,
     actions: [],
     leave: [
-      { leave_uuid: "11111111-1111-4111-8111-111111111111", user_id: 2001, leave_type_code: "casual", from_date: "2026-10-12", to_date: "2026-10-13", days: 2, reason: "Family event", status: "pending" },
-      { leave_uuid: "22222222-2222-4222-8222-222222222222", user_id: 2005, leave_type_code: "sick", from_date: "2026-10-08", to_date: "2026-10-08", days: 1, reason: "Fever", status: "pending" },
+      // tso-manual W1 (LV-19): the read-only applicant members of contract 1.10.0
+      { leave_uuid: "11111111-1111-4111-8111-111111111111", user_id: 2001, leave_type_code: "casual", from_date: "2026-10-12", to_date: "2026-10-13", days: 2, reason: "Family event", status: "pending", applicant_username: "tso334", applicant_name: "Rahim Uddin", territory_name: "Banani" },
+      { leave_uuid: "22222222-2222-4222-8222-222222222222", user_id: 2005, leave_type_code: "sick", from_date: "2026-10-08", to_date: "2026-10-08", days: 1, reason: "Fever", status: "pending", applicant_username: "tso335", applicant_name: "Salma Begum", territory_name: "Gulshan" },
     ],
+    leaveNotes: {},
     exceptionDecisions: {},
     exports: [],
     passwords: {},
@@ -333,10 +337,12 @@ export async function handleDash(x: DashCtx): Promise<boolean> {
     const row = store.leave.find((l) => l.leave_uuid === lv[1] && leaveVisible(l));
     if (!row) return send(404, problem(404, "ERR_NOT_FOUND")), true;
     if (!b || (b.decision !== "approve" && b.decision !== "reject")) return send(400, problem(400, "ERR_VALIDATION")), true;
+    if (b.note !== undefined && b.note !== null && (typeof b.note !== "string" || b.note.length > 500)) return send(400, problem(400, "ERR_VALIDATION", { errors: [{ pointer: "/note", code: "too_long" }] })), true; // tso-manual W1
     if (row.status !== "pending") return send(409, problem(409, "ERR_REQUEST_STATE")), true;
     row.status = b.decision === "approve" ? "approved" : "rejected";
     row.decided_by_user_id = user.id;
     row.decided_at = nowIso;
+    store.leaveNotes[row.leave_uuid] = b.note ?? null; // tso-manual W1 (LV-19)
     return send(200, row), true;
   }
 

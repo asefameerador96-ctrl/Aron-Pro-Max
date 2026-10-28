@@ -356,7 +356,7 @@ export function seedCodeLists(): Record<string, Item[]> {
     skip_reason: [it("closed", "Outlet closed", "দোকান বন্ধ", 1), it("not_reached", "Not reached", "যাওয়া হয়নি", 2)],
     day_exception_reason: [it("rain", "Heavy rain", "ভারী বৃষ্টি", 1), it("hartal", "Hartal", "হরতাল", 2)],
     stock_variance_reason: [it("damaged", "Damaged", "নষ্ট", 1)],
-    leave_type: [it("casual", "Casual", "নৈমিত্তিক", 1)],
+    leave_type: [it("casual", "Casual", "নৈমিত্তিক", 1), it("sick", "Sick", null, 2), it("earn", "Earn", null, 3)], // tso-manual W1: V0027 items (sick and earn without Bangla yet)
     feedback_category: [it("app", "App problem", "অ্যাপের সমস্যা", 1), it("route", "Route problem", "রুটের সমস্যা", 2)],
     payment_mode: [it("cash", "Cash", "নগদ", 1)],
     outlet_close_reason: [it("permanent", "Closed for good", "চিরতরে বন্ধ", 1)],
