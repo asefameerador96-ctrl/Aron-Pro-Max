@@ -155,4 +155,27 @@ class AsWasNodeScopeTest {
         assertTrue(terr(day, day2, t1).kpis.gross_mtk > 0, "but it had both on day 1")
         assertEquals(ProblemCode.ERR_FORBIDDEN, assertFailsWith<ApiProblem> { terr(day, day, t2) }.code, "and T2 had none on day 1")
     }
+
+    @Test
+    fun aNodeWithNoMemberInTheReachIsRefusedLikeAnUnknownOne() {
+        moveZ2()
+        // T1 had both zones on the fixture date and holds neither today's... of this caller's: nothing of it is in the reach.
+        val stranger = Reach(9, Role.TSO, day, false, setOf(999_999L), emptySet(), false, listOf(ReachNode("zone", 999_999L)))
+        assertEquals(ProblemCode.ERR_FORBIDDEN, assertFailsWith<ApiProblem> { terr(reach = stranger) }.code)
+        assertEquals(ProblemCode.ERR_FORBIDDEN, assertFailsWith<ApiProblem> { terr(node = 888_888L, reach = stranger) }.code, "the same answer as an unknown id")
+    }
+
+    @Test
+    fun theScopedNodeEndpointsResolveTheNodeOnTheirDate() {
+        moveZ2()
+        // T2 did not exist on the fixture date: every endpoint that takes a node and a date must say so, none may read today's structure.
+        val c = AronClock { now }
+        val e1 = assertFailsWith<ApiProblem> { FlaggedMemos(fresh.db).page(national, day, day, "territory", t2, null, 10, null) }
+        assertEquals(ProblemCode.ERR_OUT_OF_SCOPE, e1.code)
+        val e2 = assertFailsWith<ApiProblem> { DailyTrackingService(fresh.db, com.aktcl.aron.backend.platform.RegistryDefaults(), c).page(national, day, "territory", t2, 10, null) }
+        assertEquals(ProblemCode.ERR_FORBIDDEN, e2.code)
+        // The old territory still answers on that date.
+        FlaggedMemos(fresh.db).page(national, day, day, "territory", t1, null, 10, null)
+        DailyTrackingService(fresh.db, com.aktcl.aron.backend.platform.RegistryDefaults(), c).page(national, day, "territory", t1, 10, null)
+    }
 }

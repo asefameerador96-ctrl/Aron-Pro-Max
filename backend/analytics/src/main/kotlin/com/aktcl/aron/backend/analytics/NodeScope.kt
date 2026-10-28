@@ -31,14 +31,24 @@ internal class ScopedNode(val ref: NodeRefDto, val zones: List<Long>?, val route
  * [known] how many of the ids had one (an unknown id has none), [current] the zones it has now, [plain] true when nothing in the geography changed
  * since the window began (the current structure is then exact and the as-was filters are not needed).
  */
-internal class NodeMembers(val zones: List<Long>, val known: Long, val current: List<Long>, val plain: Boolean) {
+internal class NodeMembers(private val windowById: Map<Long, Set<Long>>, private val currentById: Map<Long, Set<Long>>, val plain: Boolean) {
+    /** The zones the nodes had on any date of the window. */
+    val zones: List<Long> = windowById.values.flatten().distinct()
+    /** How many of the requested ids had a zone in the window. */
+    val known: Long = windowById.values.count { it.isNotEmpty() }.toLong()
+    /** The zones the nodes have today. */
+    val current: List<Long> = currentById.values.flatten().distinct()
     /**
-     * The reach check: the node had a member, and every zone it has TODAY is in the reach (a node that still holds a zone the caller cannot see is
-     * not theirs: 403 as before the history existed). A zone that has since LEFT the node is not held against the caller (their own territory
+     * The reach check, for EACH node asked for: it had a member in the window, every zone it has TODAY is in the reach (a node that still holds a zone
+     * the caller cannot see is not theirs: 403 as before the history existed), and at least one of ITS window members is in the reach (so an old
+     * node outside the reach answers like an unknown id). A zone that has since LEFT a node is not held against the caller (their own territory
      * after a zone moved out must stay readable for a window that began before the move); it is simply cut from the read, see [readable].
      */
-    fun allowed(reachZones: Set<Long>?): Boolean = zones.isNotEmpty() && (reachZones == null || (current.all { it in reachZones } && zones.any { it in reachZones }))
-    /** The zones to read: the node's members of the window, never wider than the reach. */
+    fun allowed(reachZones: Set<Long>?, ids: Collection<Long>): Boolean = ids.all { id ->
+        val w = windowById[id].orEmpty()
+        w.isNotEmpty() && (reachZones == null || (currentById[id].orEmpty().all { it in reachZones } && w.any { it in reachZones }))
+    }
+    /** The zones to read: the nodes' members of the window, never wider than the reach. */
     fun readable(reachZones: Set<Long>?): List<Long> = if (reachZones == null) zones else zones.filter { it in reachZones }
 }
 
@@ -47,15 +57,15 @@ internal class NodeMembers(val zones: List<Long>, val known: Long, val current: 
  * is now. When nothing in the geography changed since [from] the current structure answers (the plain path, the old SQL). A zone's own id never moves.
  */
 internal fun memberZones(h: Handle, col: String, ids: List<Long>, from: LocalDate, to: LocalDate): NodeMembers {
-    fun rows(sql: String, asWas: Boolean): List<Pair<Long, Long>> {
+    fun rows(sql: String, asWas: Boolean): Map<Long, Set<Long>> {
         val q = h.createQuery(sql).bindArray("ids", Long::class.javaObjectType, ids)
         if (asWas) q.bind("f", from).bind("t", to)
-        return q.map { rs, _ -> rs.getLong(1) to rs.getLong(2) }.list()
+        return q.map { rs, _ -> rs.getLong(2) to rs.getLong(1) }.list().groupBy({ it.first }, { it.second }).mapValues { it.value.toSet() }
     }
-    val currentRows = rows("SELECT DISTINCT zone_id, $col FROM dw.dim_geo WHERE $col = ANY(:ids)", false)
+    val current = rows("SELECT DISTINCT zone_id, $col FROM dw.dim_geo WHERE $col = ANY(:ids)", false)
     val plain = col == "zone_id" || AsWasSql.probe(h, from).geo
-    val asWasRows = if (plain) currentRows else rows("SELECT DISTINCT zn.zone_id, zn.$col FROM ${AsWasSql.zoneAll("zn", ":f", ":t")} WHERE zn.$col = ANY(:ids)", true)
-    return NodeMembers(asWasRows.map { it.first }.distinct(), asWasRows.map { it.second }.distinct().size.toLong(), currentRows.map { it.first }.distinct(), plain)
+    val window = if (plain) current else rows("SELECT DISTINCT zn.zone_id, zn.$col FROM ${AsWasSql.zoneAll("zn", ":f", ":t")} WHERE zn.$col = ANY(:ids)", true)
+    return NodeMembers(window, current, plain)
 }
 
 private val GEO_COLUMNS = mapOf("wing" to ("wing_id" to "wing_name"), "division" to ("division_id" to "division_name"), "territory" to ("territory_id" to "territory_name"), "zone" to ("zone_id" to "zone_name"))
@@ -96,9 +106,9 @@ internal fun resolveScopedNode(
     }
     val (col, _) = GEO_COLUMNS[lv] ?: throw out
     val members = if (from != null && to != null) memberZones(h, col, listOf(id), from, to)
-    else h.createQuery("SELECT DISTINCT zone_id FROM dw.dim_geo WHERE $col = :id").bind("id", id).mapTo(Long::class.java).list().let { NodeMembers(it, if (it.isEmpty()) 0 else 1, it, true) }
+    else h.createQuery("SELECT DISTINCT zone_id FROM dw.dim_geo WHERE $col = :id").bind("id", id).mapTo(Long::class.java).list().let { NodeMembers(mapOf(id to it.toSet()), mapOf(id to it.toSet()), true) }
     val reachZones = if (reach.national) null else reach.zoneIds
-    if (!members.allowed(reachZones)) throw out
+    if (!members.allowed(reachZones, listOf(id))) throw out
     val zones = members.readable(reachZones)
     val name = h.createQuery("SELECT name FROM app.$lv WHERE id = :id").bind("id", id).mapTo(String::class.java).first()
     return ScopedNode(NodeRefDto(lv, id, null, name), zones)

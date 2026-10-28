@@ -58,4 +58,42 @@ class AsWasReportScopeTest : ReportFixture() {
         assertEquals(before.rows(), run(10, Role.ANALYST, "route-std", sel).result().rows(), "Z1 lost the moved route's old day")
         assertEquals(z2Before.rows(), run(10, Role.ANALYST, "route-std", body(""","geo":{"zone":[$z2]}""")).result().rows(), "Z2 gained it")
     }
+
+    private fun onDate(date: String, extra: String) = """{"period":{"date":"$date"},"output":{"format":"json","page_size":500}$extra}"""
+
+    @Test
+    fun severalSelectedNodesAreCheckedEachByItself() = app {
+        val t1 = id("SELECT id FROM app.territory WHERE code = 'T1'")
+        exec("INSERT INTO app.wing (code, name) VALUES ('W2','Wing2')")
+        exec("INSERT INTO app.division (code, name, wing_id) VALUES ('D2','Div2', (SELECT id FROM app.wing WHERE code = 'W2'))")
+        exec("INSERT INTO app.territory (code, name, division_id) VALUES ('TX','TerrX', (SELECT id FROM app.division WHERE code = 'D2'))")
+        val tx = id("SELECT id FROM app.territory WHERE code = 'TX'")
+        exec("UPDATE app.zone SET territory_id = $tx WHERE code = 'Z2'")
+        exec("UPDATE app.zone SET territory_id = $t1 WHERE code = 'Z2'")   // Z2 goes to TX and back: TX holds no zone today, and held one only during the move
+        // Zone 1's TSO: T1 holds zone 2 again today (not theirs); a territory that holds nothing of theirs, with or without a valid first id, is refused like an unknown id.
+        assertEquals(HttpStatusCode.Forbidden, run(11, Role.TSO, "route-std", body(""","geo":{"territory":[$t1]}""")).status)
+        assertEquals(HttpStatusCode.Forbidden, run(11, Role.TSO, "route-std", body(""","geo":{"territory":[$tx]}""")).status)
+        assertEquals(HttpStatusCode.Forbidden, run(11, Role.TSO, "route-std", body(""","geo":{"territory":[$t1,$tx]}""")).status)
+        assertEquals(HttpStatusCode.Forbidden, run(11, Role.TSO, "route-std", body(""","geo":{"territory":[$t1,999999]}""")).status)
+    }
+
+    @Test
+    fun aNodeThatNeverHeldTheZoneOnTheDateIsRefusedAfterTwoMoves() = app {
+        // Z2: T1 until 2026-10-05, T2 from then until today, T3 today. On 2026-10-05 T3 had no member (the zone was in T2).
+        exec("INSERT INTO app.wing (code, name) VALUES ('W2','Wing2')")
+        exec("INSERT INTO app.division (code, name, wing_id) VALUES ('D2','Div2', (SELECT id FROM app.wing WHERE code = 'W2'))")
+        exec("INSERT INTO app.territory (code, name, division_id) VALUES ('T2','Terr2', (SELECT id FROM app.division WHERE code = 'D2'))")
+        exec("INSERT INTO app.territory (code, name, division_id) VALUES ('T3','Terr3', (SELECT id FROM app.division WHERE code = 'D2'))")
+        val t2 = id("SELECT id FROM app.territory WHERE code = 'T2'"); val t3 = id("SELECT id FROM app.territory WHERE code = 'T3'")
+        exec("UPDATE app.zone SET territory_id = $t2 WHERE code = 'Z2'")
+        exec("UPDATE app.zone SET territory_id = $t3 WHERE code = 'Z2'")
+        // Two moves on one day collapse into one period, so the middle period is written the way the history would have it had the moves been days apart.
+        exec("UPDATE app.zone_history SET valid_to = DATE '2026-10-05' WHERE zone_id = $z2 AND valid_to IS NOT NULL")
+        exec("INSERT INTO app.zone_history (zone_id, territory_id, house_id, status, valid_from, valid_to) SELECT zone_id, $t2, house_id, status, DATE '2026-10-05', valid_from FROM app.zone_history WHERE zone_id = $z2 AND territory_id = $t3")
+        // T2 and its division existed from 10-05 too (the chain is the overlap of the zone, territory and division periods).
+        exec("UPDATE app.territory_history SET valid_from = DATE '2026-10-05' WHERE territory_id = $t2")
+        exec("UPDATE app.division_history SET valid_from = DATE '2026-10-05' WHERE division_id = (SELECT division_id FROM app.territory WHERE id = $t2)")
+        assertEquals(HttpStatusCode.OK, run(10, Role.ANALYST, "route-std", onDate("2026-10-05", ""","geo":{"territory":[$t2]}""")).status, "T2 held the zone on 10-05")
+        assertEquals(HttpStatusCode.Forbidden, run(10, Role.ANALYST, "route-std", onDate("2026-10-05", ""","geo":{"territory":[$t3]}""")).status, "T3 had no member on 10-05")
+    }
 }
