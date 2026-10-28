@@ -2104,7 +2104,12 @@ class LakeAndBlobRetention(unittest.TestCase):
         self.assertIn('dblogins_result="succeeded (${logins}; memberships verified by the job; api and worker use them: ${apps_use})"', d)
         # Whether the apps actually connect as these logins: read once, before the success and failure branches.
         self.assertLess(d.index('per_app="$(az deployment group show -g "$RG" -n aron-apps-migrate'), d.index('if [ "$status" != Succeeded ]; then\n    job_logs'))
-        self.assertIn('case "${per_app,,}" in false) apps_use=no ;; true) apps_use=yes ;; *) apps_use=unknown ;; esac', d)
+        case_line = 'case "${per_app,,}" in false) apps_use=no ;; true) apps_use=yes ;; *) apps_use=unknown ;; esac'
+        self.assertIn(case_line, d)
+        for value, want in (("True", "yes"), ("true", "yes"), ("False", "no"), ("false", "no"), ("", "unknown"), ("unknown", "unknown")):
+            out = subprocess.run(["bash", "-c", f'set -euo pipefail; per_app="$1"; {case_line}; printf %s "$apps_use"', "_", value],
+                                 capture_output=True, text=True, check=True).stdout
+            self.assertEqual(out, want, repr(value))
         self.assertIn('summary "| Key Vault network ACLs | ${kv_acls} |"', d)
         self.assertIn('az keyvault show -g "$RG" -n "$KV" --query properties.networkAcls -o json', d,
                       "read-only, and with the group: a name-only lookup lists the subscription (\"not read\" on deploy #286)")
