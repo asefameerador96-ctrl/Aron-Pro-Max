@@ -42,7 +42,8 @@ data class TillDateDays(val elapsed: Int, val period: Int)
  * Target figures (build contract s4.1 to s4.3; D-TSO-MAN-05, D-TSO-MAN-40; T-05, T-06, T-07, T-09). Long arithmetic, one
  * rounding per figure, no floating point. Monthly target T and achievement A are integer base units (sticks, pieces,
  * dozens). Card figures: a category or card till-date target is the SUM of its item (variant) till-date rows, each rounded
- * by [tillDate]; it is not [tillDate] of the summed monthly target (the two can differ by one).
+ * by [tillDate]; it is never [tillDate] of the summed monthly target (R-F-01: the Cigarette card at 21/26 is 33114, while
+ * tillDate(40999, 21, 26) is 33115).
  */
 object Targets {
     /**
@@ -78,8 +79,9 @@ object Targets {
 
     /**
      * Dashboard sales ring: today's sales A against today's target T / W, as tenths of a percent, uncapped:
-     * [Percent.tenths] (A x W, T). Null when T = 0 or W = 0 (no daily target; "Total Target" prints [Percent.DASH] then too).
-     * Cigarette 40 of 42,000 over 25 days -> 24 ("2.4%"); Bidi 2,991 of 26,000 -> 2876 ("287.6%").
+     * [Percent.tenths] (A x W, T). Null when W = 0 (R-F-13: no working day, no daily target; "Total Target"
+     * `Qty.text(T, 0)` prints [Percent.DASH] too) and when T = 0 (no whole; "Total Target" then prints "0.0").
+     * Cigarette 40 of 42,000 over 25 days -> 24 ("2.4%"); Bidi 2,991 of 26,000 -> 2876 ("287.6%"); Match 0 of 175 -> 0.
      */
     fun dailyRingTenths(a: Long, t: Long, w: Long): Long? {
         require(w >= 0L) { "working days must be >= 0: $w" }

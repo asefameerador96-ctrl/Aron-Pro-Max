@@ -58,7 +58,11 @@ class KpiFormatCorpusTest {
         val notes = all.map { it["note"] as String }.toSet()
         for (n in listOf("s4.2 CPR 29/1186 (double rounding: never 2.5)", "s4.2 K boundary 19999/20 (999.95 rounds to 1,000.0)",
                 "s4.3 Target card Cigarette (screenshots 39, 40)", "s4.4 Ticket Dashboard 723 / 0 / 0 / 18 (screenshot 11)",
-                "s4.2 Working days zone holiday 2026-10-12: territory", "s4.4 age 23 h 59 m")) {
+                "s4.2 Working days zone holiday 2026-10-12: territory", "s4.4 age 23 h 59 m",
+                "s4.2 Sales Match (screenshot 6)", "s4.1 A null prints a dash",
+                "s4.1 W = 0: daily target and ring print a dash (R-F-13)",
+                "s4.3 Target card Cigarette working basis 21/26: card 33114 = sum of item rows (R-F-01)",
+                "s4.4 whole % once from the counts: 1 of 201 is 0%, never 1% (R-F-14)")) {
             assertTrue(n in notes, "fixture missing from the corpus: $n")
         }
     }

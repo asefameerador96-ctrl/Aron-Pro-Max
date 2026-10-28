@@ -30,7 +30,26 @@ class TicketMathTest {
         assertEquals(0L, c.total)
         assertEquals("0%", c.resolvedPctText(en))
         assertEquals("0%", c.openPctText(en))
+        assertEquals("০%", c.resolvedPctText(bn)) // R-F-14: total 0 prints "0%", never a dash
+        assertEquals("০%", c.openPctText(bn))
         assertEquals(0L, TicketMath.pct(0, 0))
+    }
+
+    @Test
+    fun wholePercentIsComputedOnceFromTheCounts() {
+        // R-F-14: SupportTicketSummary carries no percentage; the whole percent is rounded once from the raw counts.
+        // 1 of 201 is 0.4975%: "0%", never the "1%" that rounding a 50 bp ("0.50%") figure a second time would give.
+        val c = TicketMath.counts(listOf(TicketMath.RESOLVED, TicketMath.IN_PROGRESS) + List(199) { TicketMath.CLOSED })
+        assertEquals(201L, c.total)
+        assertEquals(50L, Percent.bp(1, 201))
+        assertEquals(0L, c.resolvedPct)
+        assertEquals(0L, c.openPct)
+        assertEquals("0%", c.resolvedPctText(en))
+        assertEquals("০%", c.openPctText(bn))
+        // 312 of 12,500 is 2.496%: "2%", not the "3%" of 250 bp rounded again.
+        val d = TicketMath.counts(List(312) { TicketMath.RESOLVED } + List(12_188) { TicketMath.CLOSED })
+        assertEquals(250L, Percent.bp(312, 12_500))
+        assertEquals("2%", d.resolvedPctText(en))
     }
 
     @Test

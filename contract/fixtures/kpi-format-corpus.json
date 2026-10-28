@@ -5,8 +5,8 @@
  "k_suffix": " K",
  "counts": {
   "seeded": 300,
-  "fixtures": 81,
-  "fixture_checks": 128
+  "fixtures": 86,
+  "fixture_checks": 146
  },
  "percent": [
   {
@@ -3322,6 +3322,25 @@
    "note": "s4.2 Sales Lighter (screenshot 6)"
   },
   {
+   "a": 0,
+   "t": 175,
+   "w": 25,
+   "total_sales": {
+    "en": "0.0",
+    "bn": "০.০"
+   },
+   "total_target": {
+    "en": "7.0",
+    "bn": "৭.০"
+   },
+   "ring_tenths": 0,
+   "ring": {
+    "en": "0.0%",
+    "bn": "০.০%"
+   },
+   "note": "s4.2 Sales Match (screenshot 6)"
+  },
+  {
    "a": null,
    "t": 175,
    "w": 25,
@@ -3338,7 +3357,7 @@
     "en": "—",
     "bn": "—"
    },
-   "note": "s4.2 Sales Match total target (screenshot 6)"
+   "note": "s4.1 A null prints a dash"
   },
   {
    "a": 40,
@@ -3358,6 +3377,25 @@
     "bn": "—"
    },
    "note": "s4.2 Sales target null"
+  },
+  {
+   "a": 40,
+   "t": 42000,
+   "w": 0,
+   "total_sales": {
+    "en": "40.0",
+    "bn": "৪০.০"
+   },
+   "total_target": {
+    "en": "—",
+    "bn": "—"
+   },
+   "ring_tenths": null,
+   "ring": {
+    "en": "—",
+    "bn": "—"
+   },
+   "note": "s4.1 W = 0: daily target and ring print a dash (R-F-13)"
   }
  ],
  "tilldate": [
@@ -3422,14 +3460,14 @@
    "e": 20,
    "n": 25,
    "value": 32799,
-   "note": "s4.3 working basis 20/25 (holiday 21st)"
+   "note": "s4.3 tillDate(40999) at 20/25 (holiday 21st); the card is the item-row sum, also 32799"
   },
   {
    "t": 40999,
    "e": 21,
    "n": 26,
    "value": 33115,
-   "note": "s4.3 working basis 21/26 (no holiday)"
+   "note": "s4.3 tillDate(40999) at 21/26 = 33115, never a card figure (R-F-01)"
   },
   {
    "t": 1000,
@@ -3844,6 +3882,72 @@
     "bn": "৫৩%"
    },
    "note": "s4.3 Target card Match (screenshots 39, 40)"
+  },
+  {
+   "label": "Cigarette",
+   "items": [
+    1000,
+    1000,
+    10000,
+    10000,
+    5000,
+    6000,
+    2999,
+    5000
+   ],
+   "achieved": 1030,
+   "e": 20,
+   "n": 25,
+   "lo": 40,
+   "hi": 80,
+   "monthly_target": 40999,
+   "tilldate_target": 32799,
+   "monthly_pct": 3,
+   "tilldate_pct": 3,
+   "monthly_band": "red",
+   "tilldate_band": "red",
+   "monthly_text": {
+    "en": "3%",
+    "bn": "৩%"
+   },
+   "tilldate_text": {
+    "en": "3%",
+    "bn": "৩%"
+   },
+   "note": "s4.3 Target card Cigarette working basis 20/25 (holiday 21st)"
+  },
+  {
+   "label": "Cigarette",
+   "items": [
+    1000,
+    1000,
+    10000,
+    10000,
+    5000,
+    6000,
+    2999,
+    5000
+   ],
+   "achieved": 1030,
+   "e": 21,
+   "n": 26,
+   "lo": 40,
+   "hi": 80,
+   "monthly_target": 40999,
+   "tilldate_target": 33114,
+   "monthly_pct": 3,
+   "tilldate_pct": 3,
+   "monthly_band": "red",
+   "tilldate_band": "red",
+   "monthly_text": {
+    "en": "3%",
+    "bn": "৩%"
+   },
+   "tilldate_text": {
+    "en": "3%",
+    "bn": "৩%"
+   },
+   "note": "s4.3 Target card Cigarette working basis 21/26: card 33114 = sum of item rows (R-F-01)"
   }
  ],
  "details": [
@@ -5492,6 +5596,26 @@
     "bn": "৪৫%"
    },
    "note": "s4.4 open = new + in_progress, total = every status"
+  },
+  {
+   "new": 0,
+   "in_progress": 1,
+   "resolved": 1,
+   "closed": 199,
+   "cancelled": 0,
+   "total": 201,
+   "open": 1,
+   "resolved_pct": 0,
+   "open_pct": 0,
+   "resolved_text": {
+    "en": "0%",
+    "bn": "০%"
+   },
+   "open_text": {
+    "en": "0%",
+    "bn": "০%"
+   },
+   "note": "s4.4 whole % once from the counts: 1 of 201 is 0%, never 1% (R-F-14)"
   }
  ],
  "ticket_age": [

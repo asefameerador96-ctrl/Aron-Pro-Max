@@ -99,3 +99,35 @@ are other lanes.
 
 - `gl.sh :shared:rules:allTests` and `:shared:rules:jvmTest`: see the lane's final report for the exact run.
 - `python tools/ci/kpi-format-corpus.py --check`: up to date.
+
+## Fix round 2 (lead rulings)
+
+Contract s9 "Lead rulings after the foundation wave" (2026-10-29), the four rulings addressed to F3. Written 2026-10-29.
+
+| ruling | what changed |
+|---|---|
+| R-F-01 | The corpus pins the working-basis Cigarette **card** as a `target_card` entry: 33114 at 21/26 (the generator also checks the eight item rows 808+808+8077+8077+4038+4846+2422+4038) and 32799 at 20/25. The two `tilldate` entries for 40999 are relabelled "tillDate(40999) ..., never a card figure"; 33115 appears only there. The generator's contract-number list had 33115 on that till-date entry only (the card check was already 33114); the card number is now an entry, not a bare check. `TargetsTest.workingBasisSwitchCheck` asserts the card (item rows and 33114) first and states that 33115 = tillDate(40999) is never a card. `Targets` KDoc says the same. Settles deviation 2 above. |
+| R-F-13 | New `sales_card` entry a = 40, t = 42000, w = 0: Total Sales "40.0" / "৪০.০", Total Target "—", ring null and "—", checked by the oracle in en and bn. `Targets.dailyRingTenths` (null at W = 0) and `Qty.text(T, 0)` ("—") agree; `TargetsTest.dailyRingOfTheSalesCard` asserts both in en and bn and that W < 0 throws. The KDoc no longer says Total Target prints a dash when T = 0 (it prints "0.0"; only the ring is null). Settles D-F3-03. |
+| R-F-20 | Match fixture is `sales(0, 175, 25, "s4.2 Sales Match (screenshot 6)", "0.0", "7.0", "0.0%")`; the null case is its own entry "s4.1 A null prints a dash" (no screenshot label). `TargetsTest` asserts the Match figures too. |
+| R-F-14 | Confirmed: `TicketCounts` holds counts only; `resolvedPct` / `openPct` are `Percent.whole` of the counts, rounded once, 0 at total 0. Added `TicketMathTest.wholePercentIsComputedOnceFromTheCounts` (1 of 201 is "0%", never the "1%" of 50 bp rounded again; 312 of 12,500 is "2%", not 3%) and bn "০%" at total 0; corpus gains a `ticket_counts` entry for 1 of 201 and bn checks for the no-ticket entry, so W1's formatter is held to the same rule. |
+
+`KpiFormatCorpusTest` names the five new fixtures so a regenerated corpus cannot drop them. Corpus regenerated with the
+generator: 300 seeded cases (unchanged, same seed) plus 86 fixtures (was 81), 146 oracle checks (was 128).
+
+Mutation checks (all restored): the generator refuses to write with 33115 as the 21/26 card, "0.0%" as the W = 0 ring, or
+"—" as the Match ring (exit 1, file untouched); a hand-edited W = 0 entry in the JSON fails `--check` and fails
+`KpiFormatCorpusTest.salesCardMatchesTheCorpus` with three mismatches (ring_tenths, ring en, ring bn).
+
+Earlier asks: ask 1 (CI step) is done by the lead (R-F-19); ask 2 (`period_days` 0) is ruled R-F-15 for F1 and B2,
+`Targets.tillDate` already returns null at n = 0. Ask 3 (Bangla age wording) stays open for the owner.
+
+### Verify (fix round 2)
+
+- `python tools/ci/kpi-format-corpus.py --check`: up to date, exit 0.
+- `gl.sh <wt> :shared:rules:allTests --rerun-tasks`: BUILD SUCCESSFUL; jvmTest 19 suites, 123 tests, 0 failures, 0
+  skipped (KpiFormatCorpusTest 12, TargetsTest 12, TicketMathTest 9). `allTests` runs here (the module's only target is
+  JVM).
+- `python tools/ci/money-float-scan.py`: 0 open findings, exit 0.
+- `python tools/ci/money-format-corpus.py`: up to date (200 amounts), exit 0.
+- `python tools/ci/test_money_gates.py`: 21 tests OK, exit 0 (the `::error file=c.json` line in its output is the
+  expected message of its own hand-edit test).

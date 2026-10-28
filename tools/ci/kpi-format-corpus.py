@@ -13,18 +13,19 @@ Sections (each entry carries `note`: "seeded", or the contract fixture it pins):
                  (whole 0 dp, tenths 1 dp, bp 2 dp; whole part grouped with ","; "—" when d = 0)
   qty            n (null allowed), d -> text: one decimal half up; from 1,000.0 the value in K with one decimal, rounded
                  once from n, whole part grouped ("1,234.6 K"); "—" for null n or d = 0
-  sales_card     s4.2 Sales: a, t, w -> total_sales Qty(a), total_target Qty(t, w), ring tenths(a*w, t) (null when t or
-                 w is 0 or null)
+  sales_card     s4.2 Sales: a, t, w -> total_sales Qty(a), total_target Qty(t, w), ring tenths(a*w, t) (null when a or t
+                 is null, or t or w is 0); w = 0 has no daily target: total_target and ring print "—" (R-F-13)
   tilldate       t, e, n -> round_half_up(t * clamp(e, 0, n) / n), null when n = 0
-  target_card    s4.3 cards: item targets, achievement, e, n -> monthly and till-date target (sum of item rows),
-                 capped whole %, band, text
+  target_card    s4.3 cards: item targets, achievement, e, n -> monthly and till-date target (sum of item rows, R-F-01:
+                 33114 at 21/26, never tillDate(40999) = 33115), capped whole %, band, text
   details        s4.3 details rows: a, t -> bp (uncapped), 2 dp text, remaining max(t - a, 0)
   remaining      t, a -> max(t - a, 0)
   band           p, lo, hi -> red (p < lo), amber (p < hi), green
   working_days   month, weekend (ISO), node path, calendar marks (date, level, scope_id, kind as app.calendar_holiday)
                  [, day] -> month_days, elapsed_days ([1st..day]); per date the most specific mark on the path decides; a
                  working day is a make-up day or neither weekend nor off
-  ticket_counts  counts by status -> total, open, resolved % and open % (whole, 0 when total = 0) as text
+  ticket_counts  counts by status -> total, open, resolved % and open % (whole, computed once from the counts, "0%" when
+                 total = 0; R-F-14) as text
   ticket_age     now_ms, captured_ms -> en / bn age text (<1 min just now, <1 h minutes, <24 h hours, else days; floor)
 
 Readers: shared/rules KpiFormatCorpusTest (Kotlin, the phone and the server) and web/tests/kpi-format-corpus.test.ts
@@ -246,18 +247,25 @@ def fixtures():
                          "working_days", "ticket_counts", "ticket_age")}
     checks = []  # (description, oracle value, contract value)
 
-    def sales(a, t, w, note, sales_txt, target_txt, ring_txt):
+    def sales(a, t, w, note, sales_txt, target_txt, ring_txt, bn_txt=None):
         e = sales_entry(a, t, w, note)
         f["sales_card"].append(e)
-        checks.extend([(note + " total sales", e["total_sales"]["en"], sales_txt),
-                       (note + " total target", e["total_target"]["en"], target_txt),
-                       (note + " ring", e["ring"]["en"], ring_txt)])
+        for loc, (s_txt, t_txt, r_txt) in (("en", (sales_txt, target_txt, ring_txt)), ("bn", bn_txt or (None,) * 3)):
+            if s_txt is None:
+                continue
+            checks.extend([(f"{note} total sales {loc}", e["total_sales"][loc], s_txt),
+                           (f"{note} total target {loc}", e["total_target"][loc], t_txt),
+                           (f"{note} ring {loc}", e["ring"][loc], r_txt)])
 
     sales(40, 42000, 25, "s4.2 Sales Cigarette (screenshot 6)", "40.0", "1.7 K", "2.4%")
     sales(2991, 26000, 25, "s4.2 Sales Bidi (screenshot 6)", "3.0 K", "1.0 K", "287.6%")
     sales(0, 100, 25, "s4.2 Sales Lighter (screenshot 6)", "0.0", "4.0", "0.0%")
-    sales(None, 175, 25, "s4.2 Sales Match total target (screenshot 6)", DASH, "7.0", DASH)
+    sales(0, 175, 25, "s4.2 Sales Match (screenshot 6)", "0.0", "7.0", "0.0%")  # R-F-20: screenshot 6 shows A = 0
+    sales(None, 175, 25, "s4.1 A null prints a dash", DASH, "7.0", DASH)  # R-F-20: the null case, no screenshot label
     sales(40, None, 25, "s4.2 Sales target null", "40.0", DASH, DASH)
+    # R-F-13: W = 0 (no working day) has no daily target, so Total Target and the ring are null and print a dash.
+    sales(40, 42000, 0, "s4.1 W = 0: daily target and ring print a dash (R-F-13)", "40.0", DASH, DASH,
+          bn_txt=("৪০.০", DASH, DASH))
 
     def percent(n, d, note, kind, expected):
         e = percent_entry(n, d, note)
@@ -298,8 +306,10 @@ def fixtures():
         e = tilldate_entry(t, 25, 31, f"s4.3 till-date item {t} (25/31, calendar basis)")
         f["tilldate"].append(e)
         checks.append((e["note"], e["value"], v))
-    for t, e_, n, v, note in ((40999, 20, 25, 32799, "s4.3 working basis 20/25 (holiday 21st)"),
-                              (40999, 21, 26, 33115, "s4.3 working basis 21/26 (no holiday)")):
+    # R-F-01: tillDate of the summed monthly total is a single till-date, never a card figure (the card is the sum of
+    # its item rows, pinned under target_card below). At 20/25 the two agree (32799); at 21/26 they differ by one.
+    for t, e_, n, v, note in ((40999, 20, 25, 32799, "s4.3 tillDate(40999) at 20/25 (holiday 21st); the card is the item-row sum, also 32799"),
+                              (40999, 21, 26, 33115, "s4.3 tillDate(40999) at 21/26 = 33115, never a card figure (R-F-01)")):
         e = tilldate_entry(t, e_, n, note)
         f["tilldate"].append(e)
         checks.append((note, e["value"], v))
@@ -318,7 +328,17 @@ def fixtures():
                        (e["note"] + " monthly %", e["monthly_pct"], mp), (e["note"] + " till-date %", e["tilldate_pct"], tp),
                        (e["note"] + " monthly band", e["monthly_band"], mb), (e["note"] + " till-date band", e["tilldate_band"], tb)])
     checks.append(("s4.3 achieved Cigarette", sum([350, 330, 20, 200, 30, 30, 40, 30]), 1030))
-    checks.append(("s4.3 working-basis card sum 21/26 (sum of item rows)", sum(till_date(t, 21, 26) for t in CIG_ITEMS), 33114))
+    # s4.3 working basis (switch check), R-F-01: the Cigarette card on the working basis is the sum of its item rows:
+    # 32799 at 20/25 (holiday 21st) and 33114 at 21/26 (808+808+8077+8077+4038+4846+2422+4038), never 33115.
+    for e_, n, rows, tt, note in (
+            (20, 25, None, 32799, "s4.3 Target card Cigarette working basis 20/25 (holiday 21st)"),
+            (21, 26, [808, 808, 8077, 8077, 4038, 4846, 2422, 4038], 33114,
+             "s4.3 Target card Cigarette working basis 21/26: card 33114 = sum of item rows (R-F-01)")):
+        e = target_card_entry("Cigarette", CIG_ITEMS, 1030, e_, n, 40, 80, note)
+        f["target_card"].append(e)
+        checks.extend([(note + " monthly T", e["monthly_target"], 40999), (note + " till-date T", e["tilldate_target"], tt)])
+        if rows is not None:
+            checks.append((note + " item rows", [till_date(t, e_, n) for t in CIG_ITEMS], rows))
 
     for a, t, txt, rem in ((350, 1000, "35.00%", 650), (20, 10000, "0.20%", 9980), (40, 2999, "1.33%", 2959),
                            (350, 806, "43.42%", 456), (20, 8065, "0.25%", 8045), (85, 81, "104.94%", 0)):
@@ -358,8 +378,15 @@ def fixtures():
                    (e["note"] + " open %", e["open_text"]["en"], "0%")])
     e = counts_entry(0, 0, 0, 0, 0, "s4.4 no tickets: 0%")
     f["ticket_counts"].append(e)
-    checks.extend([(e["note"] + " resolved", e["resolved_text"]["en"], "0%"), (e["note"] + " open", e["open_text"]["en"], "0%")])
+    checks.extend([(e["note"] + " resolved", e["resolved_text"]["en"], "0%"), (e["note"] + " open", e["open_text"]["en"], "0%"),
+                   (e["note"] + " resolved bn", e["resolved_text"]["bn"], "০%"), (e["note"] + " open bn", e["open_text"]["bn"], "০%")])
     f["ticket_counts"].append(counts_entry(3, 2, 4, 1, 1, "s4.4 open = new + in_progress, total = every status"))
+    # R-F-14: the whole percent is computed once from the counts. 1 of 201 is 0.4975%: 0%, never the 1% that rounding a
+    # 50 bp ("0.50%") summary figure again would give.
+    e = counts_entry(0, 1, 1, 199, 0, "s4.4 whole % once from the counts: 1 of 201 is 0%, never 1% (R-F-14)")
+    f["ticket_counts"].append(e)
+    checks.extend([(e["note"] + " resolved", e["resolved_text"]["en"], "0%"), (e["note"] + " open", e["open_text"]["en"], "0%"),
+                   (e["note"] + " resolved bp would be 50", pct(1, 201, 10_000), 50)])
 
     for delta, txt, note in ((4 * 86_400_000, "4d ago", "s4.4 age 4 d"), (23 * 3_600_000 + 59 * 60_000, "23h ago", "s4.4 age 23 h 59 m"),
                              (59_000, "just now", "s4.4 age 59 s"), (-5_000, "just now", "s4.4 capture after now (skew)"),

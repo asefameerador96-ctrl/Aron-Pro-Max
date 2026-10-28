@@ -121,12 +121,16 @@ class TargetsTest {
         val d21 = Targets.days(TillDateBasis.WORKING_DAYS, YearMonth(2026, 10), oct25, noHoliday)
         assertEquals(TillDateDays(20, 25), d20)
         assertEquals(TillDateDays(21, 26), d21)
-        // The contract's switch check, on the card's monthly total: 40999 -> 32799 (20/25) and 33115 (21/26).
-        assertEquals(32_799L, Targets.tillDate(40_999, d20))
-        assertEquals(33_115L, Targets.tillDate(40_999, d21))
-        // The card itself is the sum of its item rows (D-TSO-MAN-05): equal at 20/25, one less at 21/26.
+        // The contract's switch check (s4.3, R-F-01): the Cigarette CARD is the sum of its item rows, rounded per item:
+        // 32799 at 20/25 (holiday 21st) and 33114 at 21/26 (808+808+8077+8077+4038+4846+2422+4038).
         assertEquals(32_799L, cigaretteItems.sumOf { Targets.tillDate(it, d20)!! })
-        assertEquals(33_114L, cigaretteItems.sumOf { Targets.tillDate(it, d21)!! })
+        val rows21 = cigaretteItems.map { Targets.tillDate(it, d21)!! }
+        assertEquals(listOf(808L, 808L, 8_077L, 8_077L, 4_038L, 4_846L, 2_422L, 4_038L), rows21)
+        assertEquals(33_114L, rows21.sum())
+        // tillDate of the summed monthly total is a single till-date, never a card figure: 33115 at 21/26 (one more than
+        // the card); at 20/25 it happens to equal the card.
+        assertEquals(33_115L, Targets.tillDate(40_999, d21))
+        assertEquals(32_799L, Targets.tillDate(40_999, d20))
         // Past and future months on the working basis; the basis needs the calendar.
         assertEquals(TillDateDays(26, 26), Targets.days(TillDateBasis.WORKING_DAYS, YearMonth(2026, 9), oct25, noHoliday))
         assertEquals(TillDateDays(0, 26), Targets.days(TillDateBasis.WORKING_DAYS, YearMonth(2026, 11), oct25, noHoliday))
@@ -147,8 +151,19 @@ class TargetsTest {
         assertEquals("2.4%", Percent.text(Targets.dailyRingTenths(40, 42_000, 25), 1, en))
         assertEquals("287.6%", Percent.text(Targets.dailyRingTenths(2_991, 26_000, 25), 1, en)) // uncapped
         assertEquals("0.0%", Percent.text(Targets.dailyRingTenths(0, 100, 25), 1, en))
+        // Match of screenshot 6 (R-F-20): A = 0, T = 175, W = 25.
+        assertEquals("0.0", Qty.text(0, en))
+        assertEquals("7.0", Qty.text(175, 25, en))
+        assertEquals("0.0%", Percent.text(Targets.dailyRingTenths(0, 175, 25), 1, en))
         assertNull(Targets.dailyRingTenths(40, 0, 25))
         assertNull(Targets.dailyRingTenths(40, 42_000, 0))
+        // W = 0 (R-F-13): no daily target, so Total Target and the ring both print the dash, in both locales.
+        for (loc in listOf(en, UiLocale.BN)) {
+            assertEquals("—", Qty.text(42_000, 0, loc))
+            assertEquals("—", Percent.text(Targets.dailyRingTenths(40, 42_000, 0), 1, loc))
+        }
+        assertEquals("৪০.০", Qty.text(40, UiLocale.BN))
+        assertFailsWith<IllegalArgumentException> { Targets.dailyRingTenths(40, 42_000, -1) }
         // The contract bound A <= 10^10, W <= 31 fits.
         assertEquals(310_000_000_000_000L, Targets.dailyRingTenths(10_000_000_000L, 1, 31))
     }
