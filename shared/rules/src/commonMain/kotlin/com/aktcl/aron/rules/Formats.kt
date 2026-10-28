@@ -36,6 +36,12 @@ object Formats {
         return digits(if (iso) "$yy-$mm-$dd" else "$dd/$mm/$yy", locale)
     }
 
+    /** KPI quantity, one decimal, " K" from 1,000 (delegates to [Qty.text]): 40 -> "40.0", 1234567 -> "1,234.6 K". */
+    fun qty(n: Long?, locale: UiLocale): String = Qty.text(n, locale)
+
+    /** A scaled integer percentage (delegates to [Percent.text]): 24 tenths with 1 decimal -> "2.4%"; null -> "—". */
+    fun percent(v: Long?, decimals: Int, locale: UiLocale): String = Percent.text(v, decimals, locale)
+
     /** Dhaka wall time of a UTC instant as 24-hour `HH:mm`, digits per [locale]. */
     fun time(epochMs: Long, locale: UiLocale): String {
         val minuteOfDay = ((epochMs + BusinessDate.DHAKA_OFFSET_MS).floorMod(86_400_000L) / 60_000L).toInt()
