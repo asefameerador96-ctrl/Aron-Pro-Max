@@ -178,8 +178,9 @@ internal object AsWasSql {
      * `DISTINCT` zone chain over `dw.dim_geo`. Zones come from `app.zone`, so a zone that has since lost its routes keeps its rows.
      */
     fun zone(alias: String, zone: String, date: String, join: String = "JOIN", lo: String? = null, hi: String? = null, plain: Boolean = false): String =
-        if (plain) "$join (SELECT z.id AS zone_id, z.name AS zone_name, t.id AS territory_id, t.name AS territory_name, d.id AS division_id, d.name AS division_name, d.wing_id, w.name AS wing_name FROM app.zone z JOIN app.territory t ON t.id = z.territory_id JOIN app.division d ON d.id = t.division_id JOIN app.wing w ON w.id = d.wing_id) $alias ON $alias.zone_id = $zone" else """
-        $join (
+        if (plain) "$join (SELECT z.id AS zone_id, z.name AS zone_name, t.id AS territory_id, t.name AS territory_name, d.id AS division_id, d.name AS division_name, d.wing_id, w.name AS wing_name FROM app.zone z JOIN app.territory t ON t.id = z.territory_id JOIN app.division d ON d.id = t.division_id JOIN app.wing w ON w.id = d.wing_id) $alias ON $alias.zone_id = $zone" else "$join (${zoneBody(lo, hi)}) $alias ${on(alias, "zone_id", zone, date)}"
+
+    private fun zoneBody(lo: String?, hi: String?): String = """
           WITH per AS (SELECT zh.zone_id, lower(p.r) AS vf, upper(p.r) AS vt, zh.territory_id, th.division_id, dv.wing_id
                          FROM app.zone_history zh
                          JOIN app.territory_history th ON th.territory_id = zh.territory_id AND daterange(th.valid_from, th.valid_to, '[)') && daterange(zh.valid_from, zh.valid_to, '[)')
@@ -196,6 +197,12 @@ internal object AsWasSql {
                  h.wing_id, n_wing.name AS wing_name, coalesce(h.vf, '-infinity'::date) AS as_from, coalesce(h.vt, 'infinity'::date) AS as_to
             FROM h JOIN app.zone n_zone ON n_zone.id = h.zone_id JOIN app.territory n_territory ON n_territory.id = h.territory_id
             JOIN app.division n_division ON n_division.id = h.division_id JOIN app.wing n_wing ON n_wing.id = h.wing_id
-        ) $alias ${on(alias, "zone_id", zone, date)}
-    """.trimIndent()
+    """
+
+    /**
+     * Every zone chain the timeline holds that overlaps the window [[lo], [hi]] (a FROM item): the zones a wing, division or territory had
+     * at any date of a period, for resolving a requested node to its member zones as of the dates asked (D-REPORTS-NODEASWAS-01).
+     */
+    fun zoneAll(alias: String, lo: String, hi: String): String =
+        "(SELECT z.* FROM (${zoneBody(lo, hi)}\n        ) z WHERE z.as_from <= CAST($hi AS date) AND z.as_to > CAST($lo AS date)) $alias"
 }

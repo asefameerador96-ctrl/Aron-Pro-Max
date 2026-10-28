@@ -223,7 +223,7 @@ class OpsService(
     fun loginSubmit(reach: Reach, dashboards: DashboardService, date: LocalDate, level: String?, nodeId: Long?): LoginSubmitStatus {
         val summary = dashboards.summary(reach, level, nodeId, date, date)
         val days = db.readJdbi.withHandle<List<LoginDay>, Exception> { h ->
-            val node = resolveScopedNode(h, reach, level, nodeId)
+            val node = resolveScopedNode(h, reach, level, nodeId, from = date)
             val login = DashboardSummaries.successfulLoginSql(h, "ag")   // Successful Login = login AND download AND check-in (D-REPORTS-LOGIN-01)
             node.bind(
                 h.createQuery(
@@ -248,7 +248,7 @@ class OpsService(
         }
         val live = days.filter { !it.excused }
         val zones = db.readJdbi.withHandle<List<ZoneFinalDto>, Exception> { h ->
-            val node = resolveScopedNode(h, reach, level, nodeId)
+            val node = resolveScopedNode(h, reach, level, nodeId, from = date)
             // A route-only caller: the zones its target routes were stamped with, and each zone's Final Submit (D-BC-DASH-ROUTE-KEYED-01).
             val sql = if (node.routeOnly) {
                 "SELECT zone_id, bool_or(zone_final_submitted) FROM dw.v_route_day v WHERE business_date = :d AND v.route_id = ANY(:routes) GROUP BY zone_id HAVING bool_or(is_target_route) ORDER BY zone_id"

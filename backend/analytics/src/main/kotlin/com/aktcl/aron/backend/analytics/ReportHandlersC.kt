@@ -94,8 +94,8 @@ object QcReport : ReportHandler {
         return SqlSpec(
             """
             SELECT l.business_date, g.route_code, u.username, o.outlet_code, o.outlet_name, p.sku_code, l.fault_type_code, l.fault_group, CASE l.fault_group WHEN 'MKT' THEN 'market' ELSE 'warehouse' END AS source, l.qty_base, l.unit_price_mtk, l.settlement_mtk, l.applied_to_memo
-              FROM app.qc_entry_line l JOIN app.qc_entry e ON e.id = l.qc_entry_id JOIN dw.dim_geo g ON g.route_id = l.route_id JOIN app.app_user u ON u.id = l.user_id
-              JOIN dw.dim_outlet o ON o.outlet_id = e.outlet_id JOIN dw.dim_product p ON p.sku_id = l.sku_id
+              FROM app.qc_entry_line l JOIN app.qc_entry e ON e.id = l.qc_entry_id ${AsWasSql.geo("g", "l.route_id", "l.business_date", "JOIN", lo = ":from", hi = ":to")} JOIN app.app_user u ON u.id = l.user_id
+              JOIN dw.dim_outlet o ON o.outlet_id = e.outlet_id ${AsWasSql.product("p", "l.sku_id", "l.business_date", "JOIN", lo = ":from", hi = ":to")}
              WHERE ${qcScope(ctx)} AND $prod
             """,
             binds, listOf("settlement_mtk"),   // quantities of different categories (stick, piece, dozen) are never added
@@ -119,7 +119,7 @@ object SettlementReport : ReportHandler {
         return SqlSpec(
             """
             SELECT l.fault_type_code, l.fault_group, p.sku_code, p.short_name AS sku_name, count(*)::int AS lines, sum(l.qty_base)::bigint AS qty_base, sum(l.settlement_mtk)::bigint AS settlement_mtk
-              FROM app.qc_entry_line l JOIN dw.dim_geo g ON g.route_id = l.route_id JOIN dw.dim_product p ON p.sku_id = l.sku_id
+              FROM app.qc_entry_line l ${AsWasSql.geo("g", "l.route_id", "l.business_date", "JOIN", lo = ":from", hi = ":to")} ${AsWasSql.product("p", "l.sku_id", "l.business_date", "JOIN", lo = ":from", hi = ":to")}
              WHERE ${qcScope(ctx)} AND $prod GROUP BY 1, 2, 3, 4
             """,
             binds, listOf("lines", "settlement_mtk"),   // per-SKU rows; a quantity total would add sticks, pieces and dozens
@@ -142,7 +142,7 @@ object RouteQcReport : ReportHandler {
     override fun spec(ctx: ReportContext) = SqlSpec(
         """
         SELECT g.route_code, g.route_name, l.fault_group, p.category_code, p.base_unit, count(*)::int AS lines, sum(l.qty_base)::bigint AS qty_base, sum(l.settlement_mtk)::bigint AS settlement_mtk
-          FROM app.qc_entry_line l JOIN dw.dim_geo g ON g.route_id = l.route_id JOIN dw.dim_product p ON p.sku_id = l.sku_id WHERE ${qcScope(ctx)} GROUP BY 1, 2, 3, 4, 5
+          FROM app.qc_entry_line l ${AsWasSql.geo("g", "l.route_id", "l.business_date", "JOIN", lo = ":from", hi = ":to")} ${AsWasSql.product("p", "l.sku_id", "l.business_date", "JOIN", lo = ":from", hi = ":to")} WHERE ${qcScope(ctx)} GROUP BY 1, 2, 3, 4, 5
         """,
         totalColumns = listOf("lines", "settlement_mtk"),   // one quantity row per category and unit; no cross-category total
     )

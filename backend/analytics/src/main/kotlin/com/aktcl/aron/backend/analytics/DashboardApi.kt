@@ -157,7 +157,7 @@ class DashboardService(
         val now = clock.now()
         geoCache[key]?.let { (at, v) -> if (Duration.between(at, now) < ttl) return v }
         val multi = level == null && nodeId == null && !reach.national && reach.topNodes.count { it.type in DEFAULT_LEVELS } > 1
-        val v = db.readJdbi.withHandle<GeoValidationSummary, Exception> { h -> computeGeo(h, nodeScope(h, reach, scope, node, multi), from, to) }
+        val v = db.readJdbi.withHandle<GeoValidationSummary, Exception> { h -> computeGeo(h, nodeScope(h, reach, scope, node, multi, from, to), from, to) }
         if (geoCache.size > 2_000) { geoCache.entries.removeIf { Duration.between(it.value.first, now) >= ttl }; if (geoCache.size > 2_000) geoCache.clear() }
         geoCache[key] = now to v
         return v
@@ -168,24 +168,24 @@ class DashboardService(
     private fun computeGeo(h: Handle, ns: NodeScope, from: LocalDate, to: LocalDate): GeoValidationSummary {
         fun <T> q(sql: String, f: (org.jdbi.v3.core.statement.Query) -> T): T = f(ns.bind(h.createQuery(sql).bind("f", from).bind("t", to)))
         // A route-only caller reads the route-days of its routes (dw.v_route_day, the zone rollup's rows at route grain).
-        val days = if (ns.routeOnly) "dw.v_route_day" else "dw.agg_daily_zone"
-        val inScope = ns.clause("zone_id", "route_id")
+        val days = "${if (ns.routeOnly) "dw.v_route_day" else "dw.agg_daily_zone"} a ${ns.chain("zn", "a.zone_id", "a.business_date")}"
+        val inScope = ns.clause("a.zone_id", "a.route_id") + ns.inNode("zn")
         data class Totals(val vis: Long, val gv: Long, val fs: Long, val mock: Long, val susp: Long)
         val t = q(
             "SELECT coalesce(sum(visits),0), coalesce(sum(geo_valid_visits),0), coalesce(sum(force_sale_visits),0), coalesce(sum(mock_visits),0), " +
-                "coalesce(sum(suspicious_visits),0) FROM $days WHERE business_date BETWEEN :f AND :t AND $inScope",
+                "coalesce(sum(suspicious_visits),0) FROM $days WHERE a.business_date BETWEEN :f AND :t AND $inScope",
         ) { it.map { rs, _ -> Totals(rs.getLong(1), rs.getLong(2), rs.getLong(3), rs.getLong(4), rs.getLong(5)) }.one() }
-        val asOf = q("SELECT max(updated_at) FROM $days WHERE business_date BETWEEN :f AND :t AND $inScope") {
+        val asOf = q("SELECT max(a.updated_at) FROM $days WHERE a.business_date BETWEEN :f AND :t AND $inScope") {
             it.map { rs, _ -> rs.getObject(1, java.time.OffsetDateTime::class.java)?.toInstant() }.one()
         } ?: clock.now()
         // Same visits as the rollup (SR calls, not voided); only those the server re-checked have a verdict to compare.
         val (checked, mismatched) = q(
             "SELECT count(*) FILTER (WHERE server_verdict IS NOT NULL), count(*) FILTER (WHERE server_verdict IS NOT NULL AND server_verdict <> device_verdict) " +
-                "FROM dw.fact_visit WHERE business_date BETWEEN :f AND :t AND NOT voided AND visit_kind = 'sr_call' AND $inScope",
+                "FROM dw.fact_visit a ${ns.chain("zn", "a.zone_id", "a.business_date")} WHERE a.business_date BETWEEN :f AND :t AND NOT a.voided AND a.visit_kind = 'sr_call' AND $inScope",
         ) { it.map { rs, _ -> rs.getLong(1) to rs.getLong(2) }.one() }
         // For a route-only caller, signals on its routes only: a signal with no route (a user- or device-level one) stays out.
         val signals = q(
-            "SELECT code, count(*) FROM app.risk_signal WHERE business_date BETWEEN :f AND :t AND status <> 'dismissed' AND $inScope GROUP BY code ORDER BY code",
+            "SELECT a.code, count(*) FROM app.risk_signal a ${ns.chain("zn", "a.zone_id", "a.business_date")} WHERE a.business_date BETWEEN :f AND :t AND a.status <> 'dismissed' AND $inScope GROUP BY a.code ORDER BY a.code",
         ) { it.map { rs, _ -> rs.getString(1) to rs.getInt(2) }.list().toMap() }
         val lv = ns.lv
         val asWas = AsWasSql.probe(h, from)
@@ -195,7 +195,7 @@ class DashboardService(
                 SELECT zg.${lv.childCol} cid, zg.${lv.childName} cname, coalesce(sum(a.visits),0) vis, coalesce(sum(a.geo_valid_visits),0) gv,
                        coalesce(sum(a.suspicious_visits),0) susp
                   FROM dw.agg_daily_zone a ${AsWasSql.zone("zg", "a.zone_id", "a.business_date", lo = ":f", hi = ":t", plain = asWas.geo)}
-                 WHERE a.business_date BETWEEN :f AND :t AND ${ns.clause("a.zone_id", "a.route_id")} GROUP BY 1, 2 ORDER BY 1
+                 WHERE a.business_date BETWEEN :f AND :t AND ${ns.clause("a.zone_id", "a.route_id")}${ns.inNode("zg")} GROUP BY 1, 2 ORDER BY 1
                 """,
             ) { it.map { rs, _ -> GeoValidationChild(NodeRefDto(lv.childType!!, rs.getLong("cid"), null, rs.getString("cname")), rs.getInt("vis"), pct(rs.getLong("gv"), rs.getLong("vis")), rs.getInt("susp"), rs.getInt("gv")) }.list() }
         } else {
@@ -235,17 +235,25 @@ class DashboardService(
     }
 
     /** [routes] non-null: a route-only caller, every read filters by route (D-BC-DASH-ROUTE-KEYED-01); otherwise by the zones of [eff]. */
-    private class NodeScope(val lv: Level, val eff: ZoneScope, val ref: NodeRefDto, val routes: List<Long>? = null) {
+    private class NodeScope(val lv: Level, val eff: ZoneScope, val ref: NodeRefDto, val routes: List<Long>? = null, val member: Pair<String, Long>? = null) {
+        /**
+         * Exact as-was membership (D-REPORTS-NODEASWAS-01): for a wing, division or territory whose membership changed in the window, [eff] holds the
+         * zones it had on ANY date of the window (a prefilter, and the reach check) and a row counts only when the zone it was written under was in
+         * the node on the row's own date: the zone chain of that zone and date, joined as [alias], must name the node. No change: no join, no filter.
+         */
+        fun chain(alias: String, zone: String, date: String) = if (member == null) "" else AsWasSql.zone(alias, zone, date, lo = ":f", hi = ":t")
+        fun inNode(alias: String) = if (member == null) "" else " AND $alias.${member.first} = :nodeId"
         val routeOnly: Boolean get() = routes != null
         fun clause(zoneCol: String, routeCol: String) = if (routes != null) "$routeCol = ANY(:routes)" else eff.clause(zoneCol)
         fun bind(st: org.jdbi.v3.core.statement.Query): org.jdbi.v3.core.statement.Query = st.also {
             if (routes != null) it.bindArray("routes", Long::class.javaObjectType, routes)
             else if (!eff.all) it.bindArray("zones", Long::class.javaObjectType, eff.zones)
+            if (member != null) it.bind("nodeId", member.second)
         }
     }
 
     /** The zones a node covers, narrowed to the reach (403 outside it), and its label; shared by the summary and geo-validation reads. */
-    private fun nodeScope(h: Handle, reach: Reach, scope: ZoneScope, node: Pair<String, Long>, multi: Boolean): NodeScope {
+    private fun nodeScope(h: Handle, reach: Reach, scope: ZoneScope, node: Pair<String, Long>, multi: Boolean, from: LocalDate, to: LocalDate): NodeScope {
         if (node.first == "route") {
             val rn = routeOnlyNode(reach) ?: throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "node is outside your reach")
             return NodeScope(ROUTE_LEVEL, ZoneScope(false, emptyList()), rn.ref, rn.routes)
@@ -259,24 +267,25 @@ class DashboardService(
             return NodeScope(lv, ZoneScope(false, zones), NodeRefDto("house", top.id, top.code, top.name))
         }
         // Zones of the node, narrowed to the reach. A caller with several top nodes and no selector reads the whole reach (labelled by the first node).
-        val nodeZones: List<Long> = if (lv.col == null || multi) emptyList() else
-            h.createQuery("SELECT DISTINCT zone_id FROM dw.dim_geo WHERE ${lv.col} = :id").bind("id", node.second).mapTo(Long::class.java).list()
-        if (lv.col != null && !multi) {
-            if (nodeZones.isEmpty() || (!reach.national && !reach.zoneIds.containsAll(nodeZones))) throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "node is outside your reach")
-        }
+        // As was (D-REPORTS-NODEASWAS-01): the zones the node had on any date of the window, not the zones it has now, so a drill-down on an old
+        // date reads the node as it was. Window never changed: the current structure answers (the plain path, the old SQL).
+        val members = if (lv.col == null || multi) null else memberZones(h, lv.col, listOf(node.second), from, to)
+        if (members != null && !members.allowed(if (reach.national) null else reach.zoneIds, listOf(node.second))) throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "node is outside your reach")
+        val nodeZones: List<Long> = members?.readable(if (reach.national) null else reach.zoneIds) ?: emptyList()
         val eff = when {
             multi -> ZoneScope(false, reach.zoneIds.toList().ifEmpty { listOf(-1L) })
             lv.col != null -> ZoneScope(false, nodeZones)
             else -> scope
         }
+        // The label is the node's own current name (a node that has lost every zone since still has one).
         val nodeRef = if (lv.col == null) NodeRefDto("national", 0, "national", "National") else
-            h.createQuery("SELECT DISTINCT ${lv.nameCol} FROM dw.dim_geo WHERE ${lv.col} = :id").bind("id", node.second).mapTo(String::class.java).first()
+            h.createQuery("SELECT name FROM app.${node.first} WHERE id = :id").bind("id", node.second).mapTo(String::class.java).first()
                 .let { NodeRefDto(node.first, node.second, null, it) }
-        return NodeScope(lv, eff, nodeRef)
+        return NodeScope(lv, eff, nodeRef, member = if (members != null && !members.plain) lv.col!! to node.second else null)
     }
 
     private fun compute(h: Handle, reach: Reach, scope: ZoneScope, node: Pair<String, Long>, from: LocalDate, to: LocalDate, multi: Boolean, brands: Set<Long>? = null): DashboardSummary {
-        val ns = nodeScope(h, reach, scope, node, multi)
+        val ns = nodeScope(h, reach, scope, node, multi, from, to)
         val lv = ns.lv
         val nodeRef = ns.ref
         val asWas = AsWasSql.probe(h, from)
@@ -300,10 +309,12 @@ class DashboardService(
             "coalesce(sum(active_memo_count),0) memos, coalesce(sum(gross_mtk),0) gross, coalesce(sum(net_mtk),0) net, " +
             "count(DISTINCT (zone_id, business_date)) FILTER (WHERE is_target_route) zt, " +
             "count(DISTINCT (zone_id, business_date)) FILTER (WHERE is_target_route AND zone_final_submitted) zf"
-        val days = if (ns.routeOnly) "SELECT $routeSums FROM dw.v_route_day" else "SELECT $sums FROM dw.agg_daily_zone"
-        val inScope = ns.clause("zone_id", "route_id")
+        // The zone rollup is joined to its zone chain of the day only when the node's membership changed in the window (see NodeScope.chain).
+        val zoneDays = "dw.agg_daily_zone a ${ns.chain("zn", "a.zone_id", "a.business_date")}"
+        val days = if (ns.routeOnly) "SELECT $routeSums FROM dw.v_route_day" else "SELECT $sums FROM $zoneDays"
+        val inScope = if (ns.routeOnly) ns.clause("zone_id", "route_id") else ns.clause("a.zone_id", "a.route_id") + ns.inNode("zn")
         val kpis = h.q("$days WHERE business_date BETWEEN :f AND :t AND $inScope") { it.map { rs, _ -> kpisOf(rs) }.one() }
-        val asOf = h.q("SELECT max(updated_at) FROM ${if (ns.routeOnly) "dw.v_route_day" else "dw.agg_daily_zone"} WHERE business_date BETWEEN :f AND :t AND $inScope") {
+        val asOf = h.q("SELECT max(a.updated_at) FROM ${if (ns.routeOnly) "dw.v_route_day a" else zoneDays} WHERE a.business_date BETWEEN :f AND :t AND $inScope") {
             it.map { rs, _ -> rs.getObject(1, java.time.OffsetDateTime::class.java)?.toInstant() }.one()
         } ?: clock.now()
 
@@ -317,7 +328,7 @@ class DashboardService(
               SELECT p.category_code, p.base_unit, s.report_unit, s.report_factor, p.base_per_pack, sum(a.sold_qty_base + a.free_qty_base) qty, sum(a.gross_mtk) gross
                 FROM dw.agg_daily_route_sku a ${AsWasSql.product("p", "a.sku_id", "a.business_date", lo = ":f", hi = ":t", plain = asWas.product)} ${AsWasSql.geo("g", "a.route_id", "a.business_date", lo = ":f", hi = ":t", plain = asWas.geo)}
                 JOIN app.sku s ON s.id = a.sku_id
-               WHERE a.business_date BETWEEN :f AND :t AND ${ns.clause("g.zone_id", "a.route_id")}${if (brandOnly) " AND p.brand_id = ANY(:scopeBrands)" else ""} GROUP BY 1, 2, 3, 4, 5)
+               WHERE a.business_date BETWEEN :f AND :t AND ${ns.clause("g.zone_id", "a.route_id")}${ns.inNode("g")}${if (brandOnly) " AND p.brand_id = ANY(:scopeBrands)" else ""} GROUP BY 1, 2, 3, 4, 5)
             SELECT category_code, base_unit, sum(qty) qty, sum(gross) gross,
                    CASE WHEN count(*) = count(report_unit) AND count(DISTINCT report_unit) = 1 THEN min(report_unit) END ru,
                    CASE WHEN count(*) = count(report_unit) AND count(DISTINCT report_unit) = 1 THEN round(sum(qty / report_factor), 3) END qr,
@@ -339,14 +350,14 @@ class DashboardService(
                 """
                 SELECT p.segment_id, p.segment_name, sum(a.gross_mtk) net, sum(a.sold_qty_base) qty, 0 memos
                   FROM dw.agg_daily_route_sku a ${AsWasSql.product("p", "a.sku_id", "a.business_date", lo = ":f", hi = ":t", plain = asWas.product)} ${AsWasSql.geo("g", "a.route_id", "a.business_date", lo = ":f", hi = ":t", plain = asWas.geo)}
-                 WHERE a.business_date BETWEEN :f AND :t AND ${ns.clause("g.zone_id", "a.route_id")} AND p.brand_id = ANY(:scopeBrands) GROUP BY 1, 2 ORDER BY 1
+                 WHERE a.business_date BETWEEN :f AND :t AND ${ns.clause("g.zone_id", "a.route_id")}${ns.inNode("g")} AND p.brand_id = ANY(:scopeBrands) GROUP BY 1, 2 ORDER BY 1
                 """
             } else {
                 """
                 SELECT a.segment_id, p.segment_name, sum(a.gross_mtk) net, sum(a.sold_qty_base) qty, sum(a.memo_count) memos
                   FROM dw.agg_daily_route_segment a ${AsWasSql.geo("g", "a.route_id", "a.business_date", lo = ":f", hi = ":t", plain = asWas.geo)}
                   JOIN LATERAL (SELECT name AS segment_name FROM app.product_node WHERE id = a.segment_id) p ON true
-                 WHERE a.business_date BETWEEN :f AND :t AND ${ns.clause("g.zone_id", "a.route_id")} GROUP BY 1, 2 ORDER BY 1
+                 WHERE a.business_date BETWEEN :f AND :t AND ${ns.clause("g.zone_id", "a.route_id")}${ns.inNode("g")} GROUP BY 1, 2 ORDER BY 1
                 """
             },
         ) {
@@ -370,8 +381,8 @@ class DashboardService(
             } else {
                 """
                 SELECT o.channel, sum(a.net_mtk) net, sum(a.active_memo_count) memos, count(*) FILTER (WHERE a.active_memo_count > 0) calls
-                  FROM dw.agg_daily_outlet a ${AsWasSql.outlet("o", "a.outlet_id", "a.business_date", lo = ":f", hi = ":t", plain = asWas.outlet)}
-                 WHERE a.business_date BETWEEN :f AND :t AND ${ns.eff.clause("o.zone_id")} GROUP BY 1 ORDER BY 1
+                  FROM dw.agg_daily_outlet a ${AsWasSql.outlet("o", "a.outlet_id", "a.business_date", lo = ":f", hi = ":t", plain = asWas.outlet)} ${ns.chain("zn", "o.zone_id", "a.business_date")}
+                 WHERE a.business_date BETWEEN :f AND :t AND ${ns.eff.clause("o.zone_id")}${ns.inNode("zn")} GROUP BY 1 ORDER BY 1
                 """
             },
         ) { it.map { rs, _ -> ChannelVolume(rs.getString(1), null, rs.getLong(2), null, rs.getInt(3), rs.getInt(4)) }.list() }   // qty_base null: base units differ per category and are never added (the channel STD is the national dashboard's cigarette card)
@@ -383,7 +394,7 @@ class DashboardService(
             SELECT b.brand_id, p.brand_name, sum(b.gross_mtk) net, sum(b.sold_qty_base) qty, sum(b.memo_count) memos
               FROM dw.agg_daily_route_brand b ${AsWasSql.geo("g", "b.route_id", "b.business_date", lo = ":f", hi = ":t", plain = asWas.geo)}
               JOIN LATERAL (SELECT name AS brand_name FROM app.product_node WHERE id = b.brand_id) p ON true
-             WHERE b.business_date BETWEEN :f AND :t AND ${ns.clause("g.zone_id", "b.route_id")}${if (brandOnly) " AND b.brand_id = ANY(:scopeBrands)" else ""} GROUP BY 1, 2 ORDER BY 1
+             WHERE b.business_date BETWEEN :f AND :t AND ${ns.clause("g.zone_id", "b.route_id")}${ns.inNode("g")}${if (brandOnly) " AND b.brand_id = ANY(:scopeBrands)" else ""} GROUP BY 1, 2 ORDER BY 1
             """,
         ) {
             it.map { rs, _ ->
@@ -401,7 +412,7 @@ class DashboardService(
                 """
                 SELECT ${if (byRoute) "g.route_id cid, g.route_name cname, g.route_code ccode" else "g.${lv.childCol} cid, g.${lv.childName} cname, NULL ccode"}, sum(b.gross_mtk) gross
                   FROM dw.agg_daily_route_brand b ${AsWasSql.geo("g", "b.route_id", "b.business_date", lo = ":f", hi = ":t", plain = asWas.geo)}
-                 WHERE b.business_date BETWEEN :f AND :t AND ${ns.clause("g.zone_id", "b.route_id")} AND b.brand_id = ANY(:scopeBrands)
+                 WHERE b.business_date BETWEEN :f AND :t AND ${ns.clause("g.zone_id", "b.route_id")}${ns.inNode("g")} AND b.brand_id = ANY(:scopeBrands)
                  GROUP BY 1, 2, 3 ORDER BY 1
                 """,
             ) { it.map { rs, _ -> DashboardChild(NodeRefDto(lv.childType!!, rs.getLong("cid"), rs.getString("ccode"), rs.getString("cname")), brandKpis(rs.getLong("gross"))) }.list() }
@@ -410,7 +421,7 @@ class DashboardService(
                 """
                 SELECT zg.${lv.childCol} cid, zg.${lv.childName} cname, $sums
                   FROM dw.agg_daily_zone a ${AsWasSql.zone("zg", "a.zone_id", "a.business_date", lo = ":f", hi = ":t", plain = asWas.geo)}
-                 WHERE a.business_date BETWEEN :f AND :t AND ${ns.clause("a.zone_id", "a.route_id")} GROUP BY 1, 2 ORDER BY 1
+                 WHERE a.business_date BETWEEN :f AND :t AND ${ns.clause("a.zone_id", "a.route_id")}${ns.inNode("zg")} GROUP BY 1, 2 ORDER BY 1
                 """,
             ) { it.map { rs, _ -> DashboardChild(NodeRefDto(lv.childType!!, rs.getLong("cid"), null, rs.getString("cname")), kpisOf(rs)) }.list() }
         } else {
