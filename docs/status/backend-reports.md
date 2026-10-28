@@ -149,3 +149,9 @@ The real column sets are the `columns` of each report in the registry: call `POS
 - Local Gradle works only with the committed mirror (settings.gradle.kts); Postgres in the container stops now and then: `pg_ctlcluster 16 main start`.
 - Seed fixture `backend/analytics/src/test/resources/seed_day.sql` (control totals in AggregationTest/DashboardTest) is reusable for report tests; it needs one session (pg_temp functions).
 - Contract names differ from backlog names: `/v1/dashboards/summary`, `/v1/reports/{key}/query` (POST), `/v1/report-exports`.
+
+## Session 8 progress
+
+| Candidate | State |
+|---|---|
+| 1 brand scope of the dashboard summary | D-REPORTS-BRANDSCOPE-01; `AsWasBrandScopeTest` (4 tests, mutation-checked: category/segment filter removed and by_brand filter removed both fail it); DashboardTest, AsWasReadTest, RouteKeyedDashboardTest, OpsApiTest, TeamApiTest, NationalDashboardTest green locally; checker round 1 found no leak (test gap fixed), round 2 pending |
