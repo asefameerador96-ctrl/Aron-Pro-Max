@@ -96,8 +96,8 @@ reason.
   and the one-time location notice stay, for security and consent (CR-2). A1 records both as deltas in
   `docs/evidence/manuals/delta-tso.md`.
 - **D-TSO-MAN-17 Tickets module.** New shared module `android/feature-tickets`; TSO wires it now, SR and AMO later. The
-  server takes requester roles from `cfg.support.ticket_requester_roles`, default ["TSO"]; other roles are rejected
-  `scope_out_of_reach`. Reason: ruling 8.
+  server takes requester roles from `cfg.support.ticket_requester_roles`, default ["TSO"]; other roles are
+  quarantined `scope_out_of_reach` (catalogue class; amended by R-F-05). Reason: ruling 8.
 - **D-TSO-MAN-18 Ticket identity.** Number "INC" + at least 6 digits from `app.support_ticket_no_seq` START 100001, so
   the vendor's numbers (INC0107xx), which TSOs will quote, never collide. Assigned at first insert; 7 digits after
   INC999999. The client generates the UUID v4. Tickets are created only through the sync record `support_ticket`
@@ -324,7 +324,7 @@ app.user_notification
   ref_type text NOT NULL CHECK (ref_type IN ('support_ticket','leave_application','zone_day')), ref_id text NOT NULL CHECK (length(ref_id) <= 64),
   title_en text NOT NULL CHECK (length(title_en) <= 120), title_bn text CHECK (length(title_bn) <= 120),
   body_en text NOT NULL CHECK (length(body_en) <= 300), body_bn text CHECK (length(body_bn) <= 300),
-  dedupe_key text NOT NULL UNIQUE CHECK (length(dedupe_key) <= 160),       -- producers are idempotent
+  dedupe_key text NOT NULL CHECK (length(dedupe_key) <= 160),  UNIQUE (user_id, dedupe_key),  -- per recipient (R-F-04)
   created_at timestamptz NOT NULL DEFAULT now(), business_date date NOT NULL DEFAULT app.dhaka_date(now()),
   read_at timestamptz
   INDEX (user_id, id DESC), INDEX (user_id) WHERE read_at IS NULL
@@ -349,7 +349,7 @@ app.user_notification
 | cfg.leave.allow_past_days | int | 31 | 0..90 | global | both |
 | cfg.leave.allow_ahead_days | int | 365 | 1..365 | global | both |
 | cfg.leave.block_overlap | bool | false | | global | server |
-| cfg.feedback.max_images | int | 1 | 0..3 | global | both |
+| cfg.feedback.max_images | int | 1 | 0..1 (R-F-06) | global | both |
 
 ### 2.5 dw views (V0140). Stable, additive, grants as other dw.v_*
 
@@ -412,7 +412,7 @@ basis points, `*_qty_base` int64 base units, `*_mtk` int64, BusinessDate, Timest
   roles, else the reporter's full_name), from_status|null, to_status|null, resolution_code|null, created_at,
   attachments (Uuid[] max 3).
 - **SupportTicketSummary**: as_of, total, new, in_progress, resolved, closed, cancelled, open (ints ≥ 0),
-  resolved_pct_bp|null, open_pct_bp|null.
+  (no percentage members: displays compute whole percent once from the counts, R-F-14).
 - **SupportTicketUpdate**: op_uuid (Uuid, idempotency key), expected_version (int), optional status ∈ [in_progress,
   resolved, closed, cancelled], priority, assignee_user_id (Id|null), resolution_code, resolution_notes (1..2000),
   cancel_reason (3..500). **SupportTicketEventWrite**: {event_uuid (Uuid), body (1..2000)}.
@@ -444,7 +444,7 @@ basis points, `*_qty_base` int64 base units, `*_mtk` int64, BusinessDate, Timest
 - **NationalLoginSubmit** + `submit_of_target_pct_bp` (int|null: submitted / target_routes).
 - **DashboardSummary**: by_category description becomes "sold quantity of sale lines only, base units".
 - **getTargetAchievement / TargetAchievement**: new query `children` (enum [zone], optional). Response + day
-  (BusinessDate), elapsed_days (0..31), period_days (1..31), last_updated_at, children (TargetAchievementNode[], max
+  (BusinessDate), elapsed_days (0..31), period_days (0..31; 0 makes the till-date members null, R-F-15), last_updated_at, children (TargetAchievementNode[], max
   200). rows + category_code, target_qty_base, achieved_qty_base, tilldate_target_qty_base, remaining_qty_base,
   remaining_tilldate_qty_base (int64 ≥ 0), achievement_pct_bp, tilldate_achievement_pct_bp (int|null). The Decimal3
   fields and `achievement_pct` keep their meaning, for the AMO app.
@@ -521,7 +521,7 @@ independent Python-integer oracle like money-format-corpus.py; `KpiFormatCorpusT
 | bar colour | Targets.band(card %, [40,80]) | 0, 1, 3 red; 42, 53 amber; 85, 100 green |
 | details % | Percent.bp(A, T') as 2 dp, uncapped | 350/1000 → 35.00%; 20/10000 → 0.20%; 40/2999 → 1.33%; 350/806 → 43.42%; 20/8065 → 0.25%; 85/81 → 104.94% |
 | remaining | Targets.remaining(T', A) | 1000−350 → 650; 2999−40 → 2959; 81−85 → 0 |
-| working basis (switch check) | e = 20, n = 25 (holiday 21st) | 40999 → 32799; without holiday 21/26 → 33115 |
+| working basis (switch check) | e = 20, n = 25 (holiday 21st) | 40999 → 32799; without holiday 21/26 → 33114 (Σ item rows 808+808+8077+8077+4038+4846+2422+4038; 33115 = tillDate(40999) is never a card figure, R-F-01) |
 
 ### 4.4 Tickets
 
@@ -599,7 +599,7 @@ Hot-file rules for every lane:
   ScopeLeakAcrossEndpointsTest, ContractConformanceTest, AuthzAuditTest and RouteInventoryTest.
 - **Fixed API for other lanes** (B1's first commit): `com.aktcl.aron.backend.platform.Inbox.add(h: Handle, item:
   InboxItem)`. InboxItem has userId, kind, refType, refId, titleEn, titleBn, bodyEn, bodyBn and dedupeKey. It is an
-  INSERT … ON CONFLICT (dedupe_key) DO NOTHING in the caller's transaction; after commit the caller nudges with reason
+  INSERT … ON CONFLICT (user_id, dedupe_key) DO NOTHING (R-F-04) in the caller's transaction; after commit the caller nudges with reason
   `notification`.
 - **Rules:**
   - Handler check order: replay first (a stored UUID answers as stored); requester role ∈ cfg (else
@@ -915,3 +915,33 @@ is named; device checks run on a pilot phone against dev (test account).
 | – | web reopen, final submit, drill, leave, feedback | W1, B3 | – | day-reopen-form, final-submit-roles, drill-columns, leave-applicant tests |
 | – | numbers everywhere | F3, W1, B2 | – | KpiFormatCorpusTest (Kotlin) == kpi-format-corpus.test.ts (web) |
 | – | data platform | F2, B1, B3 | – | DwViewContractTest, DataEventsTest; events emitted in the same transaction |
+
+## 9. Lead rulings after the foundation wave (2026-10-29)
+
+The F1, F2 and F3 checkers found 25 points. Each ruling below is binding for the fix round and for every later lane.
+Where a ruling changes a line above, that line is amended and names the ruling.
+
+| id | ruling | who acts |
+|---|---|---|
+| R-F-01 | A Target Status card figure is the sum of its item rows, rounded per item. At 21/26 the card is 33114. 33115 is tillDate(40999), which is never a card figure. | F3 tests, B2, A1 |
+| R-F-02 | `SupportTicketEvent.body` is at most 2400 characters, because the longest resolution message is 2204. The `app.support_ticket_event.body` CHECK matches (V0130, unshipped). Notes, comments and replies stay 1..2000. | F1 (done), F2 |
+| R-F-03 | Desk PATCH replay: the op's first event row has `event_uuid = op_uuid` and stores `op_sha256` (bytea, 32 bytes, nullable, only on that row) of the request body as canonical JSON. Same op_uuid and same hash: 200, nothing written. Same op_uuid with another hash or ticket: 409 ERR_CONFLICT. | F2 column, B1 |
+| R-F-04 | Inbox rows are unique per recipient: `UNIQUE (user_id, dedupe_key)`. Producers insert `ON CONFLICT (user_id, dedupe_key) DO NOTHING`, so a zone auto-submit reaches every TSO whose reach covers the zone. | F2, B1, B3 |
+| R-F-05 | A ticket from a role outside `cfg.support.ticket_requester_roles` is quarantined `scope_out_of_reach`, as the code catalogue says. When an admin accepts such a quarantined `support_ticket` or `support_ticket_event`, B1 runs the role check again and refuses the accept if the role is still not allowed. No new outcome code. | B1 |
+| R-F-06 | `cfg.feedback.max_images` is bounded 0..1, because the feedback record holds one `photo_uuid`. | F2 |
+| R-F-07 | The worker login gets UPDATE on `app.push_token`, so revoking an unregistered token does not stop the other pushes. It does not get INSERT on `app.audit_log`: the midnight job's trace is the `via='job'` final_submit row plus its `zone_day.final_submitted` domain event. DbRolesTest keeps the audit grant forbidden. | F2, B3 |
+| R-F-08 | `support_ticket_state`: `(status = 'closed') = (closed_at IS NOT NULL)` and `status NOT IN ('resolved','closed') OR resolved_at IS NOT NULL`. | F2 |
+| R-F-09 | A job Final Submit (`submitted_by` NULL) takes the most synthetic `data_origin` of the routes it closes, in the insert stamp and in `app.restamp_data_origin`. `derive_data_origin` is not changed for other tables. | F2 |
+| R-F-10 | The V0139 rubric seed changes `BundleRubricsTest` expectations. F2 adjusts that test in the same branch and runs `:backend:sync:test` and `:backend:app:test` before merge. | F2 |
+| R-F-11 | Admin module `support` is added in 1.10.0 (`/v1/support/tickets/**` maps to it, §5 B1). F1: contract enum and catalogue. F2: any module CHECK that lists modules. W1: GRANT_MODULES. B1: AdminModules line. The desk permission stays `support.ticket.manage`. | F1, F2, W1, B1 |
+| R-F-12 | Report key `tso-visit-log` is added in 1.10.0, with its catalogue entry, the docs/24 s12.3 row and `web/src/lib/admin/report-keys.ts`, so B3 and W1 stay green. | F1 |
+| R-F-13 | When working days W = 0, the daily target and the ring are null and print "—" on phone and web; the server sends `NationalSalesCard.achievement_pct_bp` null. The corpus pins a W = 0 case. | F1, F3, B2, W1 |
+| R-F-14 | `SupportTicketSummary` drops `resolved_pct_bp` and `open_pct_bp` (1.10.0 is unreleased). Phone and web compute the whole percent once from the counts (TicketMath; the web corpus formatter); total 0 prints "0%". | F1, A2, W1 |
+| R-F-15 | `TargetAchievement.period_days` is 0..31. When it is 0 (a working-days month with no working day), the till-date members are null. | F1, B2 |
+| R-F-16 | Every uncapped `*_bp` member is `format: int64`, so the phone decodes large percentages. | F1 |
+| R-F-17 | `NationalSales.working_days` and `daily_target` descriptions follow D-TSO-MAN-08: working days at the lowest common node of the scope, with the node's weekend, path holidays and make-up days. | F1 |
+| R-F-18 | `children=zone` is allowed only when the node is a territory or below; otherwise 400 ERR_VALIDATION. | F1, B2 |
+| R-F-19 | CI runs `tools/ci/kpi-format-corpus.py` in the Money gates step, so a hand-edited corpus cannot turn a test green. | lead (done) |
+| R-F-20 | The Match fixture uses A = 0 (screenshot 6: "0.0", "7.0", "0.0%"). The null case is its own entry without a screenshot label. | F3 |
+| R-F-21 | Accepted as built: the ticket number function (no lpad truncation), `data_origin` on the state table, `data_origin` before `is_effective` in views, dw grants as other views, the five db test edits, the 15 cfg keys in the SchemaV1aTest ruled set, the F1 backend/sync companion commit. | lead |
+| R-F-22 | squawk and oasdiff are Linux binaries and run in CI only. No download on the laptop. | lead |
