@@ -41,12 +41,13 @@ internal class NodeMembers(private val windowById: Map<Long, Set<Long>>, private
     /**
      * The reach check, for EACH node asked for: it had a member in the window, every zone it has TODAY is in the reach (a node that still holds a zone
      * the caller cannot see is not theirs: 403 as before the history existed), and at least one of ITS window members is in the reach (so an old
-     * node outside the reach answers like an unknown id). A zone that has since LEFT a node is not held against the caller (their own territory
+     * node outside the reach answers like an unknown id; [memberZones] is the reach, or, for a report whose earlier selectors already narrowed the zones,
+     * those). A zone that has since LEFT a node is not held against the caller (their own territory
      * after a zone moved out must stay readable for a window that began before the move); it is simply cut from the read, see [readable].
      */
-    fun allowed(reachZones: Set<Long>?, ids: Collection<Long>): Boolean = ids.all { id ->
+    fun allowed(reachZones: Set<Long>?, ids: Collection<Long>, memberZones: Set<Long>? = reachZones): Boolean = ids.all { id ->
         val w = windowById[id].orEmpty()
-        w.isNotEmpty() && (reachZones == null || (currentById[id].orEmpty().all { it in reachZones } && w.any { it in reachZones }))
+        w.isNotEmpty() && (reachZones == null || currentById[id].orEmpty().all { it in reachZones }) && (memberZones == null || w.any { it in memberZones })
     }
     /** The zones to read: the nodes' members of the window, never wider than the reach. */
     fun readable(reachZones: Set<Long>?): List<Long> = if (reachZones == null) zones else zones.filter { it in reachZones }
@@ -62,7 +63,9 @@ internal fun memberZones(h: Handle, col: String, ids: List<Long>, from: LocalDat
         if (asWas) q.bind("f", from).bind("t", to)
         return q.map { rs, _ -> rs.getLong(2) to rs.getLong(1) }.list().groupBy({ it.first }, { it.second }).mapValues { it.value.toSet() }
     }
-    val current = rows("SELECT DISTINCT zone_id, $col FROM dw.dim_geo WHERE $col = ANY(:ids)", false)
+    // A zone is its own node and exists with or without routes (a zone that lost every route is still a child of its territory on the old dates);
+    // the higher levels read the routed structure as before.
+    val current = rows(if (col == "zone_id") "SELECT id, id FROM app.zone WHERE id = ANY(:ids)" else "SELECT DISTINCT zone_id, $col FROM dw.dim_geo WHERE $col = ANY(:ids)", false)
     val plain = col == "zone_id" || AsWasSql.probe(h, from).geo
     val window = if (plain) current else rows("SELECT DISTINCT zn.zone_id, zn.$col FROM ${AsWasSql.zoneAll("zn", ":f", ":t")} WHERE zn.$col = ANY(:ids)", true)
     return NodeMembers(window, current, plain)

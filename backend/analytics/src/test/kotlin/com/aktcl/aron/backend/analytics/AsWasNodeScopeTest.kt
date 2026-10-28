@@ -178,8 +178,12 @@ class AsWasNodeScopeTest {
         assertEquals(ProblemCode.ERR_OUT_OF_SCOPE, e1.code)
         val e2 = assertFailsWith<ApiProblem> { DailyTrackingService(fresh.db, com.aktcl.aron.backend.platform.RegistryDefaults(), c).page(national, day, "territory", t2, 10, null) }
         assertEquals(ProblemCode.ERR_FORBIDDEN, e2.code)
-        // The old territory still answers on that date.
+        // The old territory still answers on that date: both zones' routes for a national caller, only the caller's own zone for a TSO of zone 1.
         FlaggedMemos(fresh.db).page(national, day, day, "territory", t1, null, 10, null)
-        DailyTrackingService(fresh.db, com.aktcl.aron.backend.platform.RegistryDefaults(), c).page(national, day, "territory", t1, 10, null)
+        val tracking = DailyTrackingService(fresh.db, com.aktcl.aron.backend.platform.RegistryDefaults(), c)
+        assertEquals(setOf(z1, z2), tracking.page(national, day, "territory", t1, 50, null).items.map { it.zone_id }.toSet())
+        val tso = Reach(2, Role.TSO, day, false, setOf(z1), emptySet(), false, listOf(ReachNode("territory", t1)))
+        assertEquals(setOf(z1), tracking.page(tso, day, "territory", t1, 50, null).items.map { it.zone_id }.toSet(), "the zone that left is not the caller's: cut from the read")
+        FlaggedMemos(fresh.db).page(tso, day, day, "territory", t1, null, 10, null)
     }
 }

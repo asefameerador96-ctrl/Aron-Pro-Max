@@ -99,4 +99,24 @@ class AsWasReportScopeTest : ReportFixture() {
         assertEquals(HttpStatusCode.OK, run(10, Role.ANALYST, "route-std", onDate("2026-10-05", ""","geo":{"territory":[$t2]}""")).status, "T2 held the zone on 10-05")
         assertEquals(HttpStatusCode.Forbidden, run(10, Role.ANALYST, "route-std", onDate("2026-10-05", ""","geo":{"territory":[$t3]}""")).status, "T3 had no member on 10-05")
     }
+
+    @Test
+    fun aParentAndAChildSelectorTogetherAreAsWasToo() = app {
+        // Z2: T1 until 10-05, T2 (under W2) from 10-05 until 10-20, back in T1 from then on. On 10-05 W1 held only Z1 while T1 holds both zones today.
+        exec("INSERT INTO app.wing (code, name) VALUES ('W2','Wing2')")
+        exec("INSERT INTO app.division (code, name, wing_id) VALUES ('D2','Div2', (SELECT id FROM app.wing WHERE code = 'W2'))")
+        exec("INSERT INTO app.territory (code, name, division_id) VALUES ('T2','Terr2', (SELECT id FROM app.division WHERE code = 'D2'))")
+        val t1 = id("SELECT id FROM app.territory WHERE code = 'T1'"); val t2 = id("SELECT id FROM app.territory WHERE code = 'T2'"); val w1 = id("SELECT id FROM app.wing WHERE code = 'W1'")
+        exec("UPDATE app.zone SET territory_id = $t2 WHERE code = 'Z2'")
+        exec("UPDATE app.zone SET territory_id = $t1 WHERE code = 'Z2'")
+        exec("DELETE FROM app.zone_history WHERE zone_id = $z2")
+        exec("INSERT INTO app.zone_history (zone_id, territory_id, house_id, status, valid_from, valid_to) SELECT $z2, $t1, house_id, status, NULL, DATE '2026-10-05' FROM app.zone WHERE id = $z2")
+        exec("INSERT INTO app.zone_history (zone_id, territory_id, house_id, status, valid_from, valid_to) SELECT $z2, $t2, house_id, status, DATE '2026-10-05', DATE '2026-10-20' FROM app.zone WHERE id = $z2")
+        exec("INSERT INTO app.zone_history (zone_id, territory_id, house_id, status, valid_from, valid_to) SELECT $z2, $t1, house_id, status, DATE '2026-10-20', NULL FROM app.zone WHERE id = $z2")
+        exec("UPDATE app.territory_history SET valid_from = DATE '2026-10-05' WHERE territory_id = $t2")
+        exec("UPDATE app.division_history SET valid_from = DATE '2026-10-05' WHERE division_id = (SELECT division_id FROM app.territory WHERE id = $t2)")
+        val both = run(10, Role.ANALYST, "route-std", onDate("2026-10-05", ""","geo":{"wing":[$w1],"territory":[$t1]}"""))
+        assertEquals(HttpStatusCode.OK, both.status, "a redundant parent selector must not turn the child's 200 into a 403")
+        assertEquals(run(10, Role.ANALYST, "route-std", onDate("2026-10-05", ""","geo":{"territory":[$t1]}""")).result().rows(), both.result().rows())
+    }
 }
