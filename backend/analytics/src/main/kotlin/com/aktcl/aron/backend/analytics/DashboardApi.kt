@@ -269,15 +269,9 @@ class DashboardService(
         // Zones of the node, narrowed to the reach. A caller with several top nodes and no selector reads the whole reach (labelled by the first node).
         // As was (D-REPORTS-NODEASWAS-01): the zones the node had on any date of the window, not the zones it has now, so a drill-down on an old
         // date reads the node as it was. Window never changed: the current structure answers (the plain path, the old SQL).
-        val asWas = if (lv.col == null || multi || node.first == "zone") null else AsWasSql.probe(h, from)
-        val nodeZones: List<Long> = if (lv.col == null || multi) emptyList() else if (asWas == null || asWas.geo) {
-            h.createQuery("SELECT DISTINCT zone_id FROM dw.dim_geo WHERE ${lv.col} = :id").bind("id", node.second).mapTo(Long::class.java).list()
-        } else {
-            h.createQuery("SELECT DISTINCT zn.zone_id FROM ${AsWasSql.zoneAll("zn", ":f", ":t")} WHERE zn.${lv.col} = :id").bind("id", node.second).bind("f", from).bind("t", to).mapTo(Long::class.java).list()
-        }
-        if (lv.col != null && !multi) {
-            if (nodeZones.isEmpty() || (!reach.national && !reach.zoneIds.containsAll(nodeZones))) throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "node is outside your reach")
-        }
+        val members = if (lv.col == null || multi) null else memberZones(h, lv.col, listOf(node.second), from, to)
+        if (members != null && !members.allowed(if (reach.national) null else reach.zoneIds)) throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "node is outside your reach")
+        val nodeZones: List<Long> = members?.readable(if (reach.national) null else reach.zoneIds) ?: emptyList()
         val eff = when {
             multi -> ZoneScope(false, reach.zoneIds.toList().ifEmpty { listOf(-1L) })
             lv.col != null -> ZoneScope(false, nodeZones)
@@ -287,7 +281,7 @@ class DashboardService(
         val nodeRef = if (lv.col == null) NodeRefDto("national", 0, "national", "National") else
             h.createQuery("SELECT name FROM app.${node.first} WHERE id = :id").bind("id", node.second).mapTo(String::class.java).first()
                 .let { NodeRefDto(node.first, node.second, null, it) }
-        return NodeScope(lv, eff, nodeRef, member = if (asWas != null && !asWas.geo) lv.col!! to node.second else null)
+        return NodeScope(lv, eff, nodeRef, member = if (members != null && !members.plain) lv.col!! to node.second else null)
     }
 
     private fun compute(h: Handle, reach: Reach, scope: ZoneScope, node: Pair<String, Long>, from: LocalDate, to: LocalDate, multi: Boolean, brands: Set<Long>? = null): DashboardSummary {

@@ -87,13 +87,22 @@ class AsWasNodeScopeTest {
     }
 
     @Test
-    fun theReachStillBoundsAnAsWasNode() {
+    fun theReachStillBoundsAnAsWasNodeButAZoneThatLeftIsNotHeldAgainstTheCaller() {
+        val tso = Reach(2, Role.TSO, day, false, setOf(z1), emptySet(), false, listOf(ReachNode("territory", t1)))
+        // Before any move T1 holds a zone this caller does not reach: refused, as ever.
+        assertEquals(ProblemCode.ERR_FORBIDDEN, assertFailsWith<ApiProblem> { terr(reach = tso) }.code)
+        val z1Only = dash().summary(national, "zone", z1, day, day).kpis
         moveZ2()
-        val tso = Reach(2, Role.TSO, day, false, setOf(z1), emptySet(), false, listOf(ReachNode("zone", z1)))
-        val e = assertFailsWith<ApiProblem> { terr(reach = tso) }
-        assertEquals(ProblemCode.ERR_FORBIDDEN, e.code, "T1 had a zone then that this caller does not reach")
-        val both = Reach(3, Role.TSO, day, false, setOf(z1, z2), emptySet(), false, listOf(ReachNode("territory", t1)))
-        assertEquals(63_000L, terr(reach = both).kpis.gross_mtk)
+        // After Z2 left, the territory is the caller's again: their own default dashboard and an explicit T1, on the old date, show their zone only.
+        val own = dash().summary(tso, null, null, day, day)
+        assertEquals(z1Only.net_mtk, own.kpis.net_mtk, "only the zone the caller reaches, never the zone that left")
+        assertEquals(listOf(z1), own.children.map { it.node.id })
+        assertEquals(own.kpis, terr(reach = tso).kpis)
+        assertEquals(dash().geoValidation(national, "zone", z1, day, day).visits, dash().geoValidation(tso, "territory", t1, day, day).visits, "geo-validation cuts the same way")
+        // Never wider than the reach: a node that held nothing of the caller's on that date is refused.
+        val other = Reach(4, Role.TSO, day, false, setOf(z2), emptySet(), false, listOf(ReachNode("zone", z2)))
+        assertEquals(ProblemCode.ERR_FORBIDDEN, assertFailsWith<ApiProblem> { terr(node = t2, reach = other) }.code, "T2 had no zone on that date")
+        assertEquals(63_000L, terr(reach = Reach(3, Role.TSO, day, false, setOf(z1, z2), emptySet(), false, listOf(ReachNode("territory", t1)))).kpis.gross_mtk)
     }
 
     @Test
@@ -118,6 +127,10 @@ class AsWasNodeScopeTest {
         assertEquals(setOf(z2), new.children.map { it.node.id }.toSet())
         assertEquals(zoneDay1 + z2Day + zoneDay1, old.children.sumOf { it.kpis.net_mtk }, "children add up to the node")
         assertEquals(geo(day, day2).visits + geo(day, day2, node = t2).visits, dash().geoValidation(national, null, null, day, day2).visits, "geo-validation splits the same visits")
+        // A window on the move date alone, and a caller who only reaches the zone that stayed: allowed, their zone's day 2 only.
+        val stayer = Reach(2, Role.TSO, day2, false, setOf(z1), emptySet(), false, listOf(ReachNode("territory", t1)))
+        assertEquals(zoneDay1, terr(day2, day2, reach = stayer).kpis.net_mtk)
+        assertEquals(zoneDay1 + zoneDay1, terr(day, day2, reach = stayer).kpis.net_mtk, "both days: the zone that stayed, none of the one that left")
         // The old window start alone (day 1) is unaffected by the move date.
         assertEquals(zoneDay1 + z2Day, terr(day, day).kpis.net_mtk)
     }
