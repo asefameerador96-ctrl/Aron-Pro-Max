@@ -1,24 +1,14 @@
 package com.aktcl.aron.feature.tso
 
 import androidx.activity.compose.BackHandler
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.navigationBarsPadding
-import androidx.compose.foundation.layout.consumeWindowInsets
-import androidx.compose.foundation.layout.navigationBars
-import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.layout.Box
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.platform.testTag
-import kotlinx.coroutines.launch
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import com.aktcl.aron.core.common.AppLanguage
+import com.aktcl.aron.core.ui.AronIcons
 import com.aktcl.aron.core.ui.AronScreenTransition
 import com.aktcl.aron.core.ui.SyncChipState
 import com.aktcl.aron.feature.home.BundleStatus
@@ -26,28 +16,35 @@ import com.aktcl.aron.feature.home.DeviceHealth
 import com.aktcl.aron.feature.home.HomeUser
 import com.aktcl.aron.feature.home.R
 import com.aktcl.aron.feature.home.RoleBanner
-import com.aktcl.aron.feature.home.RoleDeviceOtpContent
 import com.aktcl.aron.feature.home.RoleHero
-import com.aktcl.aron.feature.home.RoleHomeContent
 import com.aktcl.aron.feature.home.RoleHomes
 import com.aktcl.aron.feature.home.RoleSectionPlaceholder
-import com.aktcl.aron.feature.home.RoleSettingsContent
 import com.aktcl.aron.feature.home.RoleTile
 
-/** The TSO screens; every tile screen names its tile so the placeholder frame can show its label and icon. */
-enum class TsoScreen(val tileId: String?) {
-    HOME(null), SETTINGS(null),
-    DASHBOARD(RoleHomes.TsoTile.DASHBOARD), LEAVE(RoleHomes.TsoTile.LEAVE), FINAL_SUBMIT(RoleHomes.TsoTile.FINAL_SUBMIT), PERIPHERY(RoleHomes.TsoTile.PERIPHERY),
-    MY_CALL(RoleHomes.TsoTile.MY_CALL), FEEDBACK(RoleHomes.TsoTile.FEEDBACK), DEVICE_OTP(RoleHomes.TsoTile.DEVICE_OTP);
+/**
+ * The legacy tile Home's destinations (a1-stubs keeps the tile Home working; A1's shell step retires it for the drawer,
+ * D-TSO-MAN-14). A hub tile opens the screen that hosts its hub today: Periphery -> MY_TEAM, My Call -> MY_VISIT_PLAN,
+ * Feedback -> FEEDBACK_LIST.
+ */
+internal object TsoTiles {
+    val screenOf: Map<String, TsoScreen> = mapOf(
+        RoleHomes.TsoTile.DASHBOARD to TsoScreen.DASHBOARD,
+        RoleHomes.TsoTile.LEAVE to TsoScreen.LEAVE,
+        RoleHomes.TsoTile.FINAL_SUBMIT to TsoScreen.FINAL_SUBMIT,
+        RoleHomes.TsoTile.PERIPHERY to TsoScreen.MY_TEAM,
+        RoleHomes.TsoTile.MY_CALL to TsoScreen.MY_VISIT_PLAN,
+        RoleHomes.TsoTile.FEEDBACK to TsoScreen.FEEDBACK_LIST,
+    )
 
-    companion object { fun of(tile: RoleTile): TsoScreen = entries.firstOrNull { it.tileId == tile.id } ?: HOME }
+    fun tileOf(screen: TsoScreen): String? = screenOf.entries.firstOrNull { it.value == screen }?.key
 }
 
 /**
- * The TSO day host (docs/08; the frame of SrApp): Home, Settings, the Device OTP page and one screen per tile. Screen
- * state is a saved enum with the system back returning to Home, and screens change through [AronScreenTransition].
- * A section whose lane has not landed shows [RoleSectionPlaceholder]: never plain text. Logout wipes this user's data
- * (F-SYS-022), so Settings says so before the confirm.
+ * The TSO day host (docs/08): the root (the tile Home until A1's shell step), Settings with Change Password and PDA to
+ * Support, and every other screen from the host map [screens] (A1 dashboard, A2 tickets, A3 areas), keyed by [TsoScreen].
+ * Navigation is a saved back stack behind [TsoNav]; the system back pops it, and screens change through
+ * [AronScreenTransition]. A screen with no entry shows [RoleSectionPlaceholder]: never plain text. Logout wipes this user's
+ * data (F-SYS-022), so Settings says so before the confirm.
  */
 @Composable
 fun TsoApp(
@@ -71,199 +68,82 @@ fun TsoApp(
     syncedAt: String? = null,
     /** Opens the sync detail sheet from the Home chip; null until the TSO sheet lands (the chip is then not tappable). */
     onSync: (() -> Unit)? = null,
-    /** The web dashboard origin (scheme and host, no path) for the Device OTP page; null shows the path alone. */
-    webOrigin: String? = null,
-    /** F-TSO-008: the leave list source; null shows the placeholder (previews and tests). */
-    leave: com.aktcl.aron.feature.tso.leave.LeaveSource? = null,
-    /** F-TSO-009: queues a leave application; null hides the Apply button. */
-    leaveQueue: com.aktcl.aron.feature.tso.leave.LeaveQueue? = null,
-    /** Dhaka business date `YYYY-MM-DD` from trusted time, for the apply form's date checks. */
-    today: () -> String = { businessDate },
-    /** F-TSO-018/029: the feedback source (categories from the login snapshot, own list), its queue, the photo port (null hides it) and trusted `now` as RFC 3339. */
-    feedback: com.aktcl.aron.feature.tso.feedback.FeedbackSource? = null,
-    feedbackQueue: com.aktcl.aron.feature.tso.feedback.FeedbackQueue? = null,
-    feedbackPhotos: com.aktcl.aron.feature.tso.feedback.FeedbackPhotos? = null,
-    nowIso: () -> String = { java.time.Instant.now().toString() },
-    /** F-TSO-013..016: Set Plan, My Visit Plan, Visit Query and Assign Task; null shows the placeholder. */
-    myCall: com.aktcl.aron.feature.tso.mycall.MyCallDeps? = null,
-    /** F-TSO-010/021: Final Submit (online only); null shows the placeholder. */
-    finalSubmit: com.aktcl.aron.feature.tso.finalsubmit.FinalSubmitApi? = null,
-    /** F-TSO-011/012: My Team and Retailer maps; null shows the placeholder. */
-    periphery: PeripheryDeps? = null,
+    /**
+     * The web dashboard origin of the Device OTP page. The TSO app offers no Device OTP screen (D-AUTH-TSO-NOBIND; the
+     * tile was already hidden), so nothing reads it; kept so callers compile until A1's shell step trims the signature.
+     */
+    @Suppress("UNUSED_PARAMETER") webOrigin: String? = null,
     /** F-TSO-024: change password (online) and the PDA to Support screen; null hides the row. */
     changePassword: com.aktcl.aron.feature.tso.password.ChangePasswordApi? = null,
     support: (@Composable (onBack: () -> Unit) -> Unit)? = null,
-    userId: Long = 0L,
-    /** Real screens by destination, supplied by the app module; a screen not listed shows the placeholder frame. */
-    screens: Map<TsoScreen, @Composable (onBack: () -> Unit) -> Unit> = emptyMap(),
+    /** Real screens by destination, supplied by the app module's hosts; a screen not listed shows the placeholder frame. */
+    screens: Map<TsoScreen, TsoScreenContent> = emptyMap(),
 ) {
-    var screen by rememberSaveable { mutableStateOf(TsoScreen.HOME) }
-    BackHandler(enabled = screen != TsoScreen.HOME) { screen = TsoScreen.HOME }
+    val nav = rememberSaveable(saver = TsoNavState.Saver) { TsoNavState() }
+    BackHandler(enabled = nav.stack.isNotEmpty()) { nav.back() }
     // the TSO app has no bind OTP (D-AUTH-TSO-NOBIND), so the Device OTP tile of the shared catalogue has nothing to show and is not offered
     val tiles = remember(badges) { RoleHomes.tsoTiles(badges).filter { it.id != RoleHomes.TsoTile.DEVICE_OTP } }
     val sync = RoleHomes.syncState(bundle, user.offline).let { if (it == SyncChipState.Synced && syncedAt != null) SyncChipState.SyncedAt(syncedAt) else it }
     val header = remember(user, businessDate) { RoleHomes.header(RoleHomes.TSO_PREFIX, user, businessDate) }
     // Every screen but Home carries its own gradient top bar with the back chevron (PARITY-SPEC s2.1), so there is no Home strip below it.
-    androidx.compose.foundation.layout.Box(modifier) {
-    AronScreenTransition(screen, forward = { _, to -> to != TsoScreen.HOME }, Modifier) { s ->
-        when (s) {
-            TsoScreen.HOME -> TsoHomeContent(
-                header, user, bundle, tiles, sync, onTile = { screen = TsoScreen.of(it) }, onSettings = { screen = TsoScreen.SETTINGS },
-                hero = hero, health = health, banners = banners, onSync = onSync,
-            )
-            TsoScreen.SETTINGS -> {
-                var step by rememberSaveable { mutableStateOf("main") }
-                BackHandler(enabled = step != "main") { step = "main" }
-                when (step) {
-                    "password" -> if (changePassword != null) {
-                        // a fresh form (and no typed password kept) every time the screen is opened
-                        val cpEpoch = rememberRetained("tso-${user.username}-cp-epoch") { RetainedCounter() }
-                        val st = rememberRetained("tso-${user.username}-cp-${cpEpoch.n}") { com.aktcl.aron.feature.tso.password.ChangePasswordState(changePassword) }
-                        com.aktcl.aron.feature.tso.password.ChangePasswordScreen(st, onBack = { step = "main"; cpEpoch.n++ })
-                    }
-                    "support" -> support?.invoke { step = "main" }
-                    else -> TsoSettingsContent(
-                        versionText, stringResource(R.string.rh_set_logout_wipe), onLanguageSelect, onLogout, onBack = { screen = TsoScreen.HOME },
-                        sunlight = sunlight, onSunlight = onSunlight, onUpdate = onUpdate, updateAvailable = updateAvailable,
-                        onSupport = if (support != null) ({ step = "support" }) else null,
-                        onChangePassword = if (changePassword != null) ({ step = "password" }) else null,
-                    )
+    Box(modifier) {
+        AronScreenTransition(nav.stack, forward = { from, to -> to.size > from.size }, Modifier) { stack ->
+            val route = stack.lastOrNull()
+            val content = route?.let { screens[it.screen] }
+            when {
+                route == null -> TsoHomeContent(
+                    header, user, bundle, tiles, sync, onTile = { t -> TsoTiles.screenOf[t.id]?.let { nav.open(it) } }, onSettings = { nav.open(TsoScreen.SETTINGS) },
+                    hero = hero, health = health, banners = banners, onSync = onSync,
+                )
+                content != null -> content(nav, route.arg)
+                route.screen == TsoScreen.SETTINGS -> TsoSettingsContent(
+                    versionText, stringResource(R.string.rh_set_logout_wipe), onLanguageSelect, onLogout, onBack = nav::back,
+                    sunlight = sunlight, onSunlight = onSunlight, onUpdate = onUpdate, updateAvailable = updateAvailable,
+                    onSupport = if (support != null) ({ nav.open(TsoScreen.SUPPORT_UPLOAD) }) else null,
+                    onChangePassword = if (changePassword != null) ({ nav.open(TsoScreen.CHANGE_PASSWORD) }) else null,
+                )
+                route.screen == TsoScreen.CHANGE_PASSWORD && changePassword != null -> {
+                    // a fresh form (and no typed password kept) every time the screen is opened
+                    val cpEpoch = rememberRetained("tso-${user.username}-cp-epoch") { RetainedCounter() }
+                    val st = rememberRetained("tso-${user.username}-cp-${cpEpoch.n}") { com.aktcl.aron.feature.tso.password.ChangePasswordState(changePassword) }
+                    com.aktcl.aron.feature.tso.password.ChangePasswordScreen(st, onBack = { nav.back(); cpEpoch.n++ })
                 }
-            }
-            TsoScreen.DEVICE_OTP -> RoleDeviceOtpContent(onBack = { screen = TsoScreen.HOME }, webOrigin = webOrigin)
-            TsoScreen.LEAVE -> if (leave != null) {
-                var applying by rememberSaveable { mutableStateOf(false) }
-                // the epochs make a fresh list state / form after an application; the states themselves survive recreation
-                val uk = user.username // every retained key carries the user: a shared phone never hands one rep's state to the next
-                val counter = rememberRetained("tso-$uk-leave-epoch") { RetainedCounter() }
-                val epoch = counter.n
-                val state = rememberRetained("tso-$uk-leave-list-$epoch") { com.aktcl.aron.feature.tso.leave.LeaveListState(leave) }
-                BackHandler(enabled = applying) { applying = false; counter.n++ }
-                if (applying && leaveQueue != null) {
-                    val apply = rememberRetained("tso-$uk-leave-apply-$epoch") { com.aktcl.aron.feature.tso.leave.LeaveApplyState(leaveQueue, today) }
-                    com.aktcl.aron.feature.tso.leave.LeaveApplyScreen(apply, onBack = { applying = false; counter.n++ })
-                } else {
-                    com.aktcl.aron.feature.tso.leave.LeaveListScreen(state, onBack = { screen = TsoScreen.HOME }, onApply = if (leaveQueue != null) ({ applying = true }) else null)
-                }
-            } else TsoPlaceholderFor(s, tiles, syncedAt) { screen = TsoScreen.HOME }
-            TsoScreen.FINAL_SUBMIT -> if (finalSubmit != null) {
-                val counter = rememberRetained("tso-${user.username}-fs-epoch") { RetainedCounter() }
-                val st = rememberRetained("tso-${user.username}-fs-${counter.n}") { com.aktcl.aron.feature.tso.finalsubmit.FinalSubmitState(finalSubmit, userId, today) }
-                com.aktcl.aron.feature.tso.finalsubmit.FinalSubmitScreen(st, onBack = { screen = TsoScreen.HOME; counter.n++ })
-            } else TsoPlaceholderFor(s, tiles, syncedAt) { screen = TsoScreen.HOME }
-            TsoScreen.PERIPHERY -> if (periphery != null) {
-                PeripheryFlow(periphery, user.username, today, onBack = { screen = TsoScreen.HOME })
-            } else TsoPlaceholderFor(s, tiles, syncedAt) { screen = TsoScreen.HOME }
-            TsoScreen.MY_CALL -> if (myCall != null) {
-                MyCallFlow(myCall, user.username, today, onBack = { screen = TsoScreen.HOME })
-            } else TsoPlaceholderFor(s, tiles, syncedAt) { screen = TsoScreen.HOME }
-            TsoScreen.FEEDBACK -> if (feedback != null) {
-                var writing by rememberSaveable { mutableStateOf(false) }
-                val uk = user.username
-                val counter = rememberRetained("tso-$uk-fb-epoch") { RetainedCounter() }
-                val epoch = counter.n
-                val cats = rememberRetained("tso-$uk-fb-cats-$epoch") { com.aktcl.aron.feature.tso.feedback.CategoryHolder() }
-                androidx.compose.runtime.LaunchedEffect(epoch) { if (cats.list == null) cats.list = runCatching { feedback.categories() }.getOrDefault(emptyList()) }
-                val list = rememberRetained("tso-$uk-fb-list-$epoch") { com.aktcl.aron.feature.tso.feedback.FeedbackListState(feedback) }
-                BackHandler(enabled = writing) { writing = false; counter.n++ }
-                val loaded = cats.list
-                if (writing && feedbackQueue != null && loaded != null) {
-                    val form = rememberRetained("tso-$uk-fb-form-$epoch") { com.aktcl.aron.feature.tso.feedback.FeedbackFormState(feedbackQueue, loaded, nowIso, feedbackPhotos) }
-                    com.aktcl.aron.feature.tso.feedback.FeedbackFormScreen(form, onBack = { writing = false; counter.n++ }, photosEnabled = feedbackPhotos != null)
-                } else {
-                    com.aktcl.aron.feature.tso.feedback.FeedbackListScreen(list, loaded ?: emptyList(), onBack = { screen = TsoScreen.HOME }, onNew = if (feedbackQueue != null && loaded != null) ({ writing = true }) else null)
-                }
-            } else TsoPlaceholderFor(s, tiles, syncedAt) { screen = TsoScreen.HOME }
-            else -> if (screens[s] != null) screens.getValue(s)({ screen = TsoScreen.HOME }) else {
-                val tile = tiles.first { it.id == s.tileId }
-                RoleSectionPlaceholder(stringResource(tile.label), tile.icon, onBack = { screen = TsoScreen.HOME }, syncedAt = syncedAt)
+                route.screen == TsoScreen.SUPPORT_UPLOAD && support != null -> support { nav.back() }
+                else -> TsoPlaceholderFor(route.screen, tiles, syncedAt, nav::back)
             }
         }
     }
-    }
 }
 
+/** A destination whose lane has not landed: the designed placeholder with the screen's label (a Home tile's label and icon when it has one). */
 @Composable
 private fun TsoPlaceholderFor(s: TsoScreen, tiles: List<RoleTile>, syncedAt: String?, onBack: () -> Unit) {
-    val tile = tiles.first { it.id == s.tileId }
-    RoleSectionPlaceholder(stringResource(tile.label), tile.icon, onBack = onBack, syncedAt = syncedAt)
-}
-
-/** The My Call sub-navigation: hub, Set Plan, My Visit Plan, then Visit Query and Assign Task for one outlet. States survive recreation and are per user. */
-@Composable
-private fun MyCallFlow(deps: com.aktcl.aron.feature.tso.mycall.MyCallDeps, userKey: String, today: () -> String, onBack: () -> Unit) {
-    var step by rememberSaveable { mutableStateOf("hub") }
-    val counter = rememberRetained("tso-$userKey-mc-epoch") { RetainedCounter() }
-    val sel = rememberRetained("tso-$userKey-mc-sel") { com.aktcl.aron.feature.tso.mycall.McSelection() }
-    val e = counter.n
-    val scope = androidx.compose.runtime.rememberCoroutineScope()
-    BackHandler(enabled = step != "hub") { step = if (step == "task") "plan" else "hub"; if (step == "hub") counter.n++ }
-    when (step) {
-        "set" -> {
-            val st = rememberRetained("tso-$userKey-mc-set-$e") { com.aktcl.aron.feature.tso.mycall.SetPlanState(deps.source, deps.planQueue, today, { java.time.LocalDate.parse(today()).plusDays(1).toString() }) }
-            com.aktcl.aron.feature.tso.mycall.SetPlanScreen(st, onBack = { step = "hub"; counter.n++ })
-        }
-        "plan" -> {
-            val st = rememberRetained("tso-$userKey-mc-plan-$e") { com.aktcl.aron.feature.tso.mycall.VisitPlanState(deps.source, today) }
-            androidx.compose.runtime.LaunchedEffect(Unit) { if (sel.outlet != null) st.refresh() }
-            com.aktcl.aron.feature.tso.mycall.VisitPlanScreen(
-                st, onBack = { step = "hub"; counter.n++ },
-                onOpenOutlet = { planUuid, outlet, route ->
-                    sel.planUuid = planUuid; sel.outlet = outlet; sel.route = route
-                    scope.launch { sel.rubric = deps.loadRubric(); step = "query" }
-                },
-                onOpenTask = { planUuid, outlet, route ->
-                    sel.planUuid = planUuid; sel.outlet = outlet; sel.route = route
-                    scope.launch { sel.types = deps.loadTaskTypes(); step = "task" }
-                },
-            )
-        }
-        "query" -> {
-            val outlet = sel.outlet; val route = sel.route; val rubric = sel.rubric
-            if (outlet != null && route != null && rubric == null) {
-                com.aktcl.aron.feature.tso.mycall.MyCallUnavailable(com.aktcl.aron.feature.tso.R.string.tso_mc_no_rubric, onBack = { step = "plan" })
-            } else if (outlet == null || route == null || rubric == null) {
-                com.aktcl.aron.feature.tso.mycall.MyCallHub({ step = "set" }, { step = "plan" }, onBack) // nothing selected after a restore: back to the hub
-            } else {
-                val st = rememberRetained("tso-$userKey-mc-query-${sel.planUuid}-${outlet.id}") { com.aktcl.aron.feature.tso.mycall.VisitQueryState(rubric, sel.planUuid, outlet.id, route.id, deps.queryQueue) }
-                com.aktcl.aron.feature.tso.mycall.VisitQueryScreen(
-                    st, outlet.name, onBack = { step = "plan" },
-                    onDone = { delegate -> if (delegate) { scope.launch { sel.types = deps.loadTaskTypes(); step = "task" } } else step = "plan" },
-                )
-            }
-        }
-        "task" -> {
-            val outlet = sel.outlet; val route = sel.route
-            if (outlet == null) com.aktcl.aron.feature.tso.mycall.MyCallHub({ step = "set" }, { step = "plan" }, onBack) else {
-                val st = rememberRetained("tso-$userKey-mc-task-${sel.planUuid}-${outlet.id}") { com.aktcl.aron.feature.tso.mycall.AssignTaskState(sel.types, route, outlet.id, deps.taskQueue, today, sel.planUuid, com.aktcl.aron.feature.tso.mycall.QueryIds.task(sel.planUuid, outlet.id)) }
-                com.aktcl.aron.feature.tso.mycall.AssignTaskScreen(st, onDone = { step = "plan" })
-            }
-        }
-        else -> com.aktcl.aron.feature.tso.mycall.MyCallHub({ step = "set" }, { step = "plan" }, onBack)
+    val tile = TsoTiles.tileOf(s)?.let { id -> tiles.firstOrNull { it.id == id } }
+    if (tile != null) {
+        RoleSectionPlaceholder(stringResource(tile.label), tile.icon, onBack = onBack, syncedAt = syncedAt)
+    } else {
+        RoleSectionPlaceholder(stringResource(placeholderLabel(s)), AronIcons.Dashboard, onBack = onBack, syncedAt = syncedAt)
     }
 }
 
-/** What My Periphery needs from the host: the reads, one fix on demand, connectivity and trusted time. */
-class PeripheryDeps(
-    val source: com.aktcl.aron.feature.tso.periphery.PeripherySource, val fix: com.aktcl.aron.feature.tso.periphery.PeripheryFix,
-    val online: () -> Boolean, val nowMs: () -> Long, val settings: com.aktcl.aron.core.map.MapSettings = com.aktcl.aron.core.map.MapSettings(),
-)
-
-@Composable
-private fun PeripheryFlow(deps: PeripheryDeps, userKey: String, today: () -> String, onBack: () -> Unit) {
-    var step by rememberSaveable { mutableStateOf("hub") }
-    BackHandler(enabled = step != "hub") { step = "hub" }
-    when (step) {
-        "team" -> {
-            val st = rememberRetained("tso-$userKey-pe-team") { com.aktcl.aron.feature.tso.periphery.TeamState(deps.source, today) }
-            com.aktcl.aron.feature.tso.periphery.TeamScreen(st, deps.online, deps.nowMs, userKey, onBack = { step = "hub" }, settings = deps.settings)
-        }
-        "retailer" -> {
-            val st = rememberRetained("tso-$userKey-pe-retailer") { com.aktcl.aron.feature.tso.periphery.RetailerState(deps.source, deps.fix) }
-            com.aktcl.aron.feature.tso.periphery.RetailerScreen(st, deps.online, deps.nowMs, userKey, onBack = { step = "hub" }, settings = deps.settings)
-        }
-        else -> com.aktcl.aron.feature.tso.periphery.PeripheryHub({ step = "team" }, { step = "retailer" }, onBack)
-    }
+private fun placeholderLabel(s: TsoScreen): Int = when (s) {
+    TsoScreen.DASHBOARD -> com.aktcl.aron.feature.tso.R.string.tso_dash_title
+    TsoScreen.LOGIN_SUBMIT_STATUS -> com.aktcl.aron.feature.tso.R.string.tso_dash_login_status
+    TsoScreen.NOTIFICATIONS -> com.aktcl.aron.feature.tso.R.string.tso_chrome_notifications
+    TsoScreen.SETTINGS -> com.aktcl.aron.feature.tso.R.string.tso_drawer_settings
+    TsoScreen.CHANGE_PASSWORD -> com.aktcl.aron.feature.tso.R.string.tso_cp_title
+    TsoScreen.SUPPORT_UPLOAD -> R.string.set_support
+    TsoScreen.TICKET_DASHBOARD, TsoScreen.TICKET_LIST, TsoScreen.TICKET_QUICK, TsoScreen.TICKET_CREATE, TsoScreen.TICKET_DETAIL ->
+        com.aktcl.aron.feature.tso.R.string.tso_drawer_tickets
+    TsoScreen.LEAVE -> com.aktcl.aron.feature.tso.R.string.tso_leave_title
+    TsoScreen.FINAL_SUBMIT -> com.aktcl.aron.feature.tso.R.string.tso_fs_title
+    TsoScreen.MY_TEAM -> com.aktcl.aron.feature.tso.R.string.tso_pe_team
+    TsoScreen.RETAILER -> com.aktcl.aron.feature.tso.R.string.tso_pe_retailer
+    TsoScreen.MY_VISIT_PLAN -> com.aktcl.aron.feature.tso.R.string.tso_mc_visit_plan
+    TsoScreen.SET_PLAN -> com.aktcl.aron.feature.tso.R.string.tso_mc_set_plan
+    TsoScreen.TARGET_STATUS, TsoScreen.TARGET_DETAILS -> com.aktcl.aron.feature.tso.R.string.tso_drawer_target_status
+    TsoScreen.FEEDBACK_NEW -> com.aktcl.aron.feature.tso.R.string.tso_fb_new
+    TsoScreen.FEEDBACK_LIST -> com.aktcl.aron.feature.tso.R.string.tso_fb_title
 }
 
 object TsoSettingsTags { const val CHANGE_PASSWORD = "tso_settings_change_password" }

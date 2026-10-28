@@ -42,12 +42,17 @@ class TsoFeedbackFlowTest {
     }
     private val q = FeedbackQueue { u, _, _ -> sent += u; true }
 
+    /** My Feedback as the app's AreasHost wires it (FEEDBACK_LIST, the former Home tile's destination). */
+    private fun feedbackScreen(source: FeedbackSource, userKey: String) = mapOf<TsoScreen, TsoScreenContent>(
+        TsoScreen.FEEDBACK_LIST to { nav, _ -> FeedbackFlow(source, q, null, userKey, { java.time.Instant.now().toString() }, { nav.back() }) },
+    )
+
     private fun start() {
         val ctx = AppLocale.wrap(ApplicationProvider.getApplicationContext<Context>(), AppLanguage.EN)
         compose.setContent {
             CompositionLocalProvider(LocalContext provides ctx) {
                 AronTheme(AppLanguage.EN) {
-                    TsoApp(HomeUser("T", "tso1", "TSO", false, false, false), "2026-10-05", BundleStatus.Ready("b", "2026-10-05"), "0", {}, {}, feedback = src, feedbackQueue = q)
+                    TsoApp(HomeUser("T", "tso1", "TSO", false, false, false), "2026-10-05", BundleStatus.Ready("b", "2026-10-05"), "0", {}, {}, screens = feedbackScreen(src, "tso1"))
                 }
             }
         }
@@ -84,7 +89,7 @@ class TsoFeedbackFlowTest {
         compose.setContent {
             CompositionLocalProvider(LocalContext provides ctx) {
                 AronTheme(AppLanguage.EN) {
-                    who.value?.let { w -> TsoApp(HomeUser("T", w, "TSO", false, false, false), "2026-10-05", BundleStatus.Ready("b", "2026-10-05"), "0", {}, {}, feedback = androidx.compose.runtime.remember(w) { source(w) }, feedbackQueue = q) }
+                    who.value?.let { w -> TsoApp(HomeUser("T", w, "TSO", false, false, false), "2026-10-05", BundleStatus.Ready("b", "2026-10-05"), "0", {}, {}, screens = feedbackScreen(androidx.compose.runtime.remember(w) { source(w) }, w)) }
                 }
             }
         }

@@ -67,7 +67,7 @@ class TsoAppTest {
         assertEquals(AronIcons.Explore, tiles[3].icon); assertEquals(AronIcons.Place, tiles[4].icon); assertEquals(AronIcons.Feedback, tiles[5].icon)
         assertEquals(AronIcons.Lock, tiles[6].icon)
         assertEquals(1, tiles.first { it.id == "leave" }.badge)
-        tiles.forEach { assertEquals(it.id, TsoScreen.of(it).tileId) }
+        tiles.filter { it.id != RoleHomes.TsoTile.DEVICE_OTP }.forEach { assertEquals(it.id, TsoTiles.tileOf(TsoTiles.screenOf.getValue(it.id))) }
     }
 
     @Test

@@ -51,7 +51,7 @@ class TsoChromeTest {
     @Test fun homeTilesKeepTheManualOrderAndNoTargetStatus() {
         // the drawer of the manual (S-06) is now the tile grid: the same six destinations in the same order, Settings behind the gear
         val tiles = RoleHomes.tsoTiles().filter { it.id != RoleHomes.TsoTile.DEVICE_OTP }
-        assertEquals(listOf(TsoScreen.DASHBOARD, TsoScreen.LEAVE, TsoScreen.FINAL_SUBMIT, TsoScreen.PERIPHERY, TsoScreen.MY_CALL, TsoScreen.FEEDBACK), tiles.map { TsoScreen.of(it) })
+        assertEquals(listOf(TsoScreen.DASHBOARD, TsoScreen.LEAVE, TsoScreen.FINAL_SUBMIT, TsoScreen.MY_TEAM, TsoScreen.MY_VISIT_PLAN, TsoScreen.FEEDBACK_LIST), tiles.map { TsoTiles.screenOf.getValue(it.id) })
         assertFalse(tiles.any { it.id.contains("target") })
     }
 
