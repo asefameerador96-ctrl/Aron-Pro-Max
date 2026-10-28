@@ -78,7 +78,7 @@ class RebuildReconcileTest {
         assertEquals(net, long("SELECT net_mtk FROM dw.agg_daily_route WHERE route_id = ${routeId("R1")} AND business_date = '$day'"))
         // The restatement says what moved: -700 on the route, from the audited rebuild.
         assertEquals(-700, long("SELECT (delta ->> 'net_mtk')::bigint FROM dw.agg_restatement_log WHERE grain = 'route' AND key1 = ${routeId("R1")} AND reason = 'rebuild'"))
-        assertEquals(r.rebuildId.toString(), text("SELECT rebuild_id::text FROM dw.agg_restatement_log WHERE grain = 'route' AND key1 = ${routeId("R1")}"))
+        assertEquals(r.rebuildId.toString(), text("SELECT rebuild_id::text FROM dw.agg_restatement_log WHERE grain = 'route' AND key1 = ${routeId("R1")} AND reason = 'rebuild'"))
         // The request is in the audit chain with its reason and range.
         assertEquals(1, long("SELECT count(*) FROM app.audit_log WHERE entity = 'dw_rebuild' AND entity_id = '${r.rebuildId}' AND reason = 'repair after the 4 Oct incident'"))
         assertEquals(3, long("SELECT (after ->> 'route_days')::int FROM app.audit_log WHERE entity = 'dw_rebuild' AND entity_id = '${r.rebuildId}'"))
