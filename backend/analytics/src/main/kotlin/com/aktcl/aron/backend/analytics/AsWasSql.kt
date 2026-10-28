@@ -18,7 +18,7 @@ package com.aktcl.aron.backend.analytics
  * caller's scope filter still runs over the alias, so scope stays derived from the token's reach.
  */
 internal object AsWasSql {
-    /** Per dimension: true when nothing of it changed since the window began, so the plain current-dimension join is exactly as-was. */
+    /** Per dimension: true when no column its timeline reads changed since the window began, so the plain current-dimension join is exactly as-was. */
     class Plain(val geo: Boolean, val product: Boolean, val outlet: Boolean)
 
     /** Probe result per database and window start: (millis, answer). */
@@ -53,9 +53,11 @@ internal object AsWasSql {
             "(b.${t.key} IS NULL OR ROW(${t.cols.joinToString { "a.$it" }}) IS DISTINCT FROM ROW(${t.cols.joinToString { "b.$it" }}))"
 
     /**
-     * Per dimension (geography, product tree, outlet class): true when no master history period of it closed after [from], i.e. nothing
-     * of it changed since the window began, so the current dimension IS the as-was dimension for every row of the window and the plain
-     * joins answer exactly (and cost what they always did). A change in one dimension leaves the other two on the plain path.
+     * Per dimension (geography, product tree, outlet class): true when no history period of it closed after [from] with a different value
+     * in a column its timeline reads (column-aware: a status, price type, sales_enable or report_unit edit closes a period too but is
+     * ignored), i.e. nothing a read uses changed since the window began, so the current dimension IS the as-was dimension for every row
+     * of the window and the plain joins answer exactly (and cost what they always did). A change in one dimension leaves the other two
+     * on the plain path. Tested from a clean baseline in `AsWasProbeTest`.
      */
     fun probe(h: org.jdbi.v3.core.Handle, from: java.time.LocalDate): Plain {
         val key = "${h.connection.catalog}|$from"

@@ -162,18 +162,4 @@ class AsWasReadTest {
         val z2Tso = NationalCaller(Reach(1, Role.TSO, day, false, setOf(z2), emptySet(), false, listOf(ReachNode("zone", z2))))
         assertEquals(screens(f(zones = listOf(z2))), screens(f(), z2Tso), "scope is the reach, never more than it")
     }
-
-    @Test
-    fun theProbeIsPerDimensionAndIgnoresEditsNoReadUses() {
-        fun probe() = fresh.db.jdbi.withHandle<AsWasSql.Plain, Exception> { AsWasSql.probe(it, day) }
-        assertTrue(probe().product, "nothing of the product tree changed yet")
-        exec("UPDATE app.sku SET report_unit = 'box' WHERE code = 'SKU2'")   // closes a sku period, but no timeline reads report_unit
-        assertTrue(probe().product, "an edit of a column no read uses stays on the plain path")
-        exec("UPDATE app.product_node SET parent_id = (SELECT id FROM app.product_node WHERE code = 'B2') WHERE code = 'V1'")
-        val p = probe()
-        assertTrue(!p.product, "a variant move switches the product dimension to the timeline")
-        assertEquals(p.geo, probe().geo)
-        exec("UPDATE app.route SET zone_id = (SELECT id FROM app.zone WHERE code = 'Z2') WHERE code = 'R2'")
-        assertTrue(!probe().geo)
-    }
 }
