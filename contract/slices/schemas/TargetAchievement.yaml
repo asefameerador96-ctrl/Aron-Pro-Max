@@ -1,11 +1,28 @@
 TargetAchievement:
   type: object
+  description: 'Monthly target and achievement of a node (D-TSO-MAN-05, 39, 40). Till-date: elapsed_days e and period_days
+    n of
+
+    the basis (calendar days by default: e = day of month of `day`, n = days in the month; working days: the working
+
+    days in [1st..day] and in the month); a past month has e = n, a future month e = 0. Item (variant) till-date
+    =
+
+    round_half_up(T * e / n); a category or card figure is the sum of its item rows. From contract 1.10.0: `day`,
+
+    `elapsed_days`, `period_days`, `last_updated_at`, `children` and the integer row members.
+
+    '
   required:
   - month
   - as_of
   - node
   - tilldate_basis
   - rows
+  - day
+  - elapsed_days
+  - period_days
+  - last_updated_at
   additionalProperties: false
   properties:
     month:
@@ -23,53 +40,32 @@ TargetAchievement:
     rows:
       type: array
       items:
-        type: object
-        required:
-        - product_level
-        - product_id
-        - name
-        - unit
-        - target_qty
-        - achieved_qty
-        - tilldate_target_qty
-        - remaining_qty
-        additionalProperties: false
-        properties:
-          product_level:
-            $ref: '#/components/schemas/ProductLevel'
-          product_id:
-            $ref: '#/components/schemas/Id'
-          name:
-            type: string
-            maxLength: 120
-          unit:
-            type: string
-            enum:
-            - stick
-            - piece
-            - dozen
-            - box
-            - pack
-          target_qty:
-            $ref: '#/components/schemas/Decimal3'
-          achieved_qty:
-            $ref: '#/components/schemas/Decimal3'
-          tilldate_target_qty:
-            $ref: '#/components/schemas/Decimal3'
-          achievement_pct:
-            type:
-            - number
-            - 'null'
-            minimum: 0
-          remaining_qty:
-            $ref: '#/components/schemas/Decimal3'
-          memo_target:
-            type:
-            - integer
-            - 'null'
-            minimum: 0
-          memo_achieved:
-            type:
-            - integer
-            - 'null'
-            minimum: 0
+        $ref: '#/components/schemas/TargetAchievementRow'
+    day:
+      $ref: '#/components/schemas/BusinessDate'
+      description: 'The business date the figures run to: today (Dhaka) in the current month, the last day of a
+        past month, the first day of a future month.'
+    elapsed_days:
+      type: integer
+      minimum: 0
+      maximum: 31
+      description: e of the till-date basis.
+    period_days:
+      type: integer
+      minimum: 1
+      maximum: 31
+      description: n of the till-date basis.
+    last_updated_at:
+      type:
+      - string
+      - 'null'
+      format: date-time
+      description: Oldest `last_updated_at` of the summary tables the achievement reads (null when none has been
+        written yet); the app shows "as of" from it.
+    children:
+      type: array
+      maxItems: 200
+      description: 'Only with `children=zone`: one node per zone in the caller''s reach under `node` (the Zone cards),
+        each with its rows at the requested product level; absent otherwise.'
+      items:
+        $ref: '#/components/schemas/TargetAchievementNode'

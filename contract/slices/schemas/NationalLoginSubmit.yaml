@@ -53,4 +53,11 @@ NationalLoginSubmit:
       - integer
       - 'null'
       minimum: 0
-      description: submitted / successful_login in basis points.
+      description: submitted / successful_login in basis points (the web brief's figure).
+    submit_of_target_pct_bp:
+      type:
+      - integer
+      - 'null'
+      minimum: 0
+      description: submitted / target_routes in basis points, rounded half up; null when target_routes is 0. The
+        TSO app's Bikroy Joma % (D-TSO-MAN-07, contract 1.10.0; optional until the server sends it).

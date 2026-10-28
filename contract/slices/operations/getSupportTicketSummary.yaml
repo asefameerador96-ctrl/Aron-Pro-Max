@@ -1,0 +1,26 @@
+path: /v1/support/tickets/summary
+method: get
+operation:
+  tags:
+  - support
+  operationId: getSupportTicketSummary
+  summary: Ticket counts for the Ticket Dashboard (the caller's own tickets; the support desk counts every ticket).
+  description: 'D-TSO-MAN-25 (contract 1.10.0). `total` counts every status, `open` = `new` + `in_progress`. `resolved_pct_bp`
+    =
+
+    resolved / total and `open_pct_bp` = open / total in basis points, rounded half up from the integers; both are
+
+    null when total is 0 (the app prints 0%). The app reads it on Ticket Dashboard open and on pull-to-refresh only.
+
+    '
+  responses:
+    '200':
+      description: Ticket counts.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/SupportTicketSummary'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'

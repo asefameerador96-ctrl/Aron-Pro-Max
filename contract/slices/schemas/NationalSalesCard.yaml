@@ -47,8 +47,19 @@ NationalSalesCard:
       - integer
       - 'null'
       minimum: 0
-      description: total_sales / daily_target in basis points (ring); null without a target. May exceed 10000.
+      description: 'total_sales / daily_target in basis points (ring); null without a target. May exceed 10000.
+        Exact: round_half_up(10000 * total_sales * working_days / monthly_target_qty), from the integers, never
+        from the rounded daily_target (D-TSO-MAN-10, contract 1.10.0).'
     target_routes:
       type: integer
       minimum: 0
       description: Routes in the filter that carry a monthly target for the category.
+    monthly_target_qty:
+      type:
+      - integer
+      - 'null'
+      format: int64
+      minimum: 0
+      description: Sum of the route monthly targets (base units) in scope for the month of `date`; null when no
+        target is loaded. The phone prints Total Target from it and `working_days` (D-TSO-MAN-08, contract 1.10.0;
+        optional until the server sends it).

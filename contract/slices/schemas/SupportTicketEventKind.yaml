@@ -1,0 +1,13 @@
+SupportTicketEventKind:
+  type: string
+  enum:
+  - created
+  - comment
+  - close_review
+  - status_change
+  - resolution
+  - priority_change
+  - assign
+  description: 'Thread entry kind: created (the ticket), comment (reporter or support), close_review (the reporter''s
+    "Submit Review & Close"), status_change, resolution (with the resolution message), priority_change, assign (support
+    desk).'

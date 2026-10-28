@@ -1,0 +1,32 @@
+path: /v1/me/notifications/read
+method: post
+operation:
+  tags:
+  - notifications
+  operationId: markMyNotificationsRead
+  summary: Mark the caller's inbox read up to an id (opening the bell).
+  description: 'D-TSO-MAN-26 (contract 1.10.0). Sets `read_at` on the caller''s unread rows with `id <= up_to_id`
+    (own rows only)
+
+    and answers the unread count left. Idempotent: a repeat, or an `up_to_id` at or below rows already read, changes
+
+    nothing and answers the same count; an `up_to_id` above the caller''s newest row is accepted.
+
+    '
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          $ref: '#/components/schemas/NotificationReadRequest'
+  responses:
+    '200':
+      description: Unread rows left.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/NotificationReadResult'
+    '400':
+      $ref: '#/components/responses/BadRequest'
+    '401':
+      $ref: '#/components/responses/Unauthorized'

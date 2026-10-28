@@ -1,0 +1,325 @@
+package com.aktcl.aron.contract
+
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertNotNull
+import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.Test
+
+/**
+ * Contract 1.10.0 (TSO manual build, docs/requests/tso-manual-build-2026-10.md s3): the operations, schemas, enums and
+ * changed members other lanes build against. A later edit that drops or narrows one of them fails here, next to the
+ * drift tests.
+ */
+@Suppress("UNCHECKED_CAST")
+class TsoManualContractTest {
+    private fun map(o: Any?): Map<String, Any?> = o as Map<String, Any?>
+    private fun props(schema: String): Map<String, Map<String, Any?>> = OpenApi.schema(schema)["properties"] as Map<String, Map<String, Any?>>
+    private fun required(schema: String): List<String> = (OpenApi.schema(schema)["required"] as List<String>?).orEmpty()
+    private fun prop(schema: String, name: String): Map<String, Any?> = props(schema)[name] ?: error("$schema.$name missing")
+    private fun op(method: String, path: String): Map<String, Any?> = map(OpenApi.paths[path]?.get(method) ?: error("$method $path missing"))
+    private fun statuses(method: String, path: String): Set<String> = map(op(method, path)["responses"]).keys
+
+    /** The member's schema with `null` removed from `type` / `oneOf` (the shape a non-null value has). */
+    private fun nonNull(s: Map<String, Any?>): Map<String, Any?> {
+        (s["oneOf"] as List<Map<String, Any?>>?)?.filter { it["type"] != "null" }?.singleOrNull()?.let { return it }
+        val t = s["type"]
+        return if (t is List<*>) s + ("type" to t.single { it != "null" }) else s
+    }
+    private fun nullable(s: Map<String, Any?>): Boolean =
+        (s["type"] as? List<*>)?.contains("null") == true || (s["oneOf"] as List<Map<String, Any?>>?)?.any { it["type"] == "null" } == true
+    private fun ref(s: Map<String, Any?>): String? = (nonNull(s)["\$ref"] as String?)?.substringAfterLast('/')
+    private fun enumOf(s: Map<String, Any?>): List<String> = (nonNull(s)["enum"] as List<Any?>).filterNotNull().map { it.toString() }
+    private fun param(method: String, path: String, name: String): Map<String, Any?> {
+        val params = (op(method, path)["parameters"] as List<Map<String, Any?>>?).orEmpty()
+        return params.firstOrNull { it["name"] == name } ?: error("$method $path has no parameter $name")
+    }
+
+    @Test
+    fun versionIs110() = assertEquals("1.10.0", map(OpenApi.doc["info"])["version"])
+
+    @Test
+    fun theTenNewOperationsExistWithTheirIdsAndStatuses() {
+        val expected = listOf(
+            Triple("get", "/v1/support/tickets", "listSupportTickets") to setOf("200", "400", "401", "403"),
+            Triple("get", "/v1/support/tickets/summary", "getSupportTicketSummary") to setOf("200", "401"),
+            Triple("get", "/v1/support/tickets/{ticket_uuid}", "getSupportTicket") to setOf("200", "401", "404"),
+            Triple("patch", "/v1/support/tickets/{ticket_uuid}", "updateSupportTicket") to setOf("200", "400", "403", "404", "409"),
+            Triple("post", "/v1/support/tickets/{ticket_uuid}/events", "addSupportTicketEvent") to setOf("200", "201", "403", "404", "409"),
+            Triple("get", "/v1/me/notifications", "listMyNotifications") to setOf("200", "401"),
+            Triple("post", "/v1/me/notifications/read", "markMyNotificationsRead") to setOf("200", "400", "401"),
+            Triple("post", "/v1/dashboards/national/brand-cpr", "queryNationalBrandCpr") to statuses("post", "/v1/dashboards/national/cpr"),
+            Triple("post", "/v1/dashboards/national/segment-share", "queryNationalSegmentShare") to statuses("post", "/v1/dashboards/national/sales"),
+            Triple("post", "/v1/dashboards/national/login-submit/users", "queryNationalLoginSubmitUsers") to statuses("post", "/v1/dashboards/national/login-submit"),
+        )
+        for ((key, codes) in expected) {
+            val (method, path, id) = key
+            assertEquals(id, op(method, path)["operationId"], "$method $path")
+            assertTrue(statuses(method, path).containsAll(codes), "$id statuses ${statuses(method, path)} miss ${codes - statuses(method, path)}")
+        }
+    }
+
+    @Test
+    fun operationsReturnTheSchemasOfSection31() {
+        fun body(method: String, path: String, status: String): String? =
+            ((map(map(op(method, path)["responses"])[status])["content"] as Map<String, Any?>?)?.get("application/json") as Map<String, Any?>?)
+                ?.let { (map(it["schema"])["\$ref"] as String).substringAfterLast('/') }
+        fun request(method: String, path: String): String? =
+            (map(op(method, path)["requestBody"])["content"] as Map<String, Any?>).let { (map(map(it["application/json"])["schema"])["\$ref"] as String).substringAfterLast('/') }
+        assertEquals("SupportTicketPage", body("get", "/v1/support/tickets", "200"))
+        assertEquals("SupportTicketSummary", body("get", "/v1/support/tickets/summary", "200"))
+        assertEquals("SupportTicketDetail", body("get", "/v1/support/tickets/{ticket_uuid}", "200"))
+        assertEquals("SupportTicket", body("patch", "/v1/support/tickets/{ticket_uuid}", "200"))
+        assertEquals("SupportTicketUpdate", request("patch", "/v1/support/tickets/{ticket_uuid}"))
+        assertEquals("SupportTicketEvent", body("post", "/v1/support/tickets/{ticket_uuid}/events", "200"))
+        assertEquals("SupportTicketEvent", body("post", "/v1/support/tickets/{ticket_uuid}/events", "201"))
+        assertEquals("SupportTicketEventWrite", request("post", "/v1/support/tickets/{ticket_uuid}/events"))
+        assertEquals("NotificationInbox", body("get", "/v1/me/notifications", "200"))
+        assertEquals("NotificationReadRequest", request("post", "/v1/me/notifications/read"))
+        assertEquals("NotificationReadResult", body("post", "/v1/me/notifications/read", "200"))
+        for ((path, schema) in listOf("brand-cpr" to "NationalBrandCpr", "segment-share" to "NationalSegmentShare", "login-submit/users" to "NationalLoginSubmitUsers")) {
+            assertEquals(schema, body("post", "/v1/dashboards/national/$path", "200"))
+            assertEquals("NationalDashboardFilter", request("post", "/v1/dashboards/national/$path"))
+        }
+        // one ingest path for tickets: no online create (D-TSO-MAN-18)
+        assertFalse(OpenApi.paths.getValue("/v1/support/tickets").containsKey("post"))
+    }
+
+    @Test
+    fun queryParametersOfSection31() {
+        val q = map(param("get", "/v1/support/tickets", "q")["schema"])
+        assertEquals(2, q["minLength"]); assertEquals(40, q["maxLength"])
+        val limit = map(param("get", "/v1/support/tickets", "limit")["schema"])
+        assertEquals(listOf(1, 200, 50), listOf(limit["minimum"], limit["maximum"], limit["default"]))
+        for (p in listOf("status", "issue_type_code", "priority", "requester_user_id", "assignee_user_id")) param("get", "/v1/support/tickets", p)
+        val refs = (op("get", "/v1/support/tickets")["parameters"] as List<Map<String, Any?>>).mapNotNull { it["\$ref"] as String? }
+        assertEquals(listOf("FromDate", "ToDate", "Cursor"), refs.map { it.substringAfterLast('/') })
+        val inboxLimit = map(param("get", "/v1/me/notifications", "limit")["schema"])
+        assertEquals(listOf(1, 100, 50), listOf(inboxLimit["minimum"], inboxLimit["maximum"], inboxLimit["default"]))
+        assertEquals("Id", (map(param("get", "/v1/me/notifications", "before_id")["schema"])["\$ref"] as String).substringAfterLast('/'))
+        val tab = param("post", "/v1/dashboards/national/login-submit/users", "tab")
+        assertEquals(true, tab["required"])
+        assertEquals(listOf("not_logged_in", "not_uploaded"), map(tab["schema"])["enum"])
+        val children = param("get", "/v1/dashboards/targets", "children")
+        assertEquals(false, children["required"])
+        assertEquals(listOf("zone"), map(children["schema"])["enum"])
+    }
+
+    @Test
+    fun everyNewSchemaIsClosed() {
+        val objects = listOf(
+            "SupportTicketPayload", "SupportTicketEventPayload", "SupportTicket", "SupportTicketPage", "SupportTicketDetail", "SupportTicketEvent",
+            "SupportTicketSummary", "SupportTicketUpdate", "SupportTicketEventWrite", "NotificationItem", "NotificationInbox",
+            "NotificationReadRequest", "NotificationReadResult", "NationalBrandCpr", "NationalSegmentShare", "LoginSubmitUserRow",
+            "NationalLoginSubmitUsers", "TargetAchievementNode", "TargetAchievementRow",
+        )
+        for (s in objects) assertEquals(false, OpenApi.schema(s)["additionalProperties"], "$s must be additionalProperties: false")
+        for (s in listOf("SupportTicketRecord", "SupportTicketEventRecord")) assertEquals(false, OpenApi.schema(s)["unevaluatedProperties"], s)
+        // inline objects of the new schemas are closed too
+        assertEquals(false, prop("SupportTicket", "requester")["additionalProperties"])
+        assertEquals(false, map(prop("NationalBrandCpr", "brands")["items"])["additionalProperties"])
+        assertEquals(false, map(prop("NationalSegmentShare", "segments")["items"])["additionalProperties"])
+        assertEquals(false, map(prop("NationalSegmentShare", "families")["items"])["additionalProperties"])
+    }
+
+    @Test
+    fun ticketNumberIsInc6DigitsOrMore() {
+        val rx = Regex(OpenApi.schema("TicketNumber")["pattern"] as String)
+        for (ok in listOf("INC100001", "INC999999", "INC1000000", "INC010700")) assertTrue(rx.matches(ok), ok)
+        for (bad in listOf("INC12345", "inc100001", "INC10000a", "IN100001", "INC 100001", "")) assertFalse(rx.matches(bad), bad)
+        assertEquals("TicketNumber", ref(prop("SupportTicket", "ticket_no")))
+        assertTrue(nullable(prop("SupportTicket", "ticket_no")))
+    }
+
+    @Test
+    fun recordPayloadsOfSection32() {
+        assertEquals(listOf("issue_type_code", "title", "description", "source"), required("SupportTicketPayload"))
+        val code = Regex(prop("SupportTicketPayload", "issue_type_code")["pattern"] as String)
+        assertTrue(code.matches("login_otp") && code.matches("app_crash_order_submit") && !code.matches("Login") && !code.matches("x"))
+        assertEquals(listOf(1, 120), listOf(prop("SupportTicketPayload", "title")["minLength"], prop("SupportTicketPayload", "title")["maxLength"]))
+        assertEquals(null, prop("SupportTicketPayload", "description")["minLength"])
+        assertEquals(2000, prop("SupportTicketPayload", "description")["maxLength"])
+        val affected = prop("SupportTicketPayload", "affected_username")
+        assertTrue(nullable(affected))
+        val user = Regex(affected["pattern"] as String)
+        assertTrue(user.matches("sr334001") && user.matches("AMO-6334") && !user.matches("ab") && !user.matches("a".repeat(41)))
+        assertEquals(listOf("quick", "manual"), enumOf(prop("SupportTicketPayload", "source")))
+        assertEquals(listOf("ticket_uuid", "kind"), required("SupportTicketEventPayload"))
+        assertEquals("Uuid", ref(prop("SupportTicketEventPayload", "ticket_uuid")))
+        assertEquals(listOf("comment", "close_review"), enumOf(prop("SupportTicketEventPayload", "kind")))
+        assertEquals(2000, prop("SupportTicketEventPayload", "body")["maxLength"])
+        // the records: envelope + type const + payload, in the SyncRecord oneOf and discriminator
+        for ((type, rec, payload) in listOf(Triple("support_ticket", "SupportTicketRecord", "SupportTicketPayload"), Triple("support_ticket_event", "SupportTicketEventRecord", "SupportTicketEventPayload"))) {
+            val parts = OpenApi.schema(rec)["allOf"] as List<Map<String, Any?>>
+            assertEquals("RecordEnvelope", (parts[0]["\$ref"] as String).substringAfterLast('/'))
+            val p = map(parts[1]["properties"])
+            assertEquals(type, map(p["type"])["const"])
+            assertEquals(payload, (map(p["payload"])["\$ref"] as String).substringAfterLast('/'))
+            val sync = OpenApi.schema("SyncRecord")
+            assertTrue((sync["oneOf"] as List<Map<String, Any?>>).any { (it["\$ref"] as String).endsWith("/$rec") }, rec)
+            assertEquals("#/components/schemas/$rec", map(map(sync["discriminator"])["mapping"])[type])
+        }
+        assertTrue(RecordType.entries.map { it.wire }.containsAll(listOf("support_ticket", "support_ticket_event")))
+        // a ticket photo is media_meta with ref_type support_ticket(_event): MediaMetaPayload.ref_type is the RecordType enum
+        assertEquals("RecordType", ref(prop("MediaMetaPayload", "ref_type")))
+    }
+
+    @Test
+    fun ticketReadSchemasOfSection32() {
+        val ticket = required("SupportTicket").toSet()
+        assertTrue(ticket.containsAll(listOf("ticket_uuid", "ticket_no", "issue_type_code", "issue_type_label_en", "issue_type_label_bn", "category_label_en",
+            "title", "description", "source", "priority", "status", "requester", "affected_username", "business_date", "captured_at", "created_at",
+            "updated_at", "first_response_at", "resolved_at", "closed_at", "cancelled_at", "resolution_code", "resolution_label_en", "resolution_notes",
+            "cancel_reason", "version", "attachment_count")))
+        // desk-only members are optional (absent for the reporter)
+        assertFalse("assignee_user_id" in ticket || "assignee_name" in ticket)
+        assertEquals(listOf("user_id", "username", "full_name", "role"), prop("SupportTicket", "requester")["required"])
+        for (n in listOf("issue_type_label_bn", "affected_username", "first_response_at", "resolved_at", "closed_at", "cancelled_at", "resolution_code",
+            "resolution_label_en", "resolution_notes", "cancel_reason", "assignee_user_id", "assignee_name")) assertTrue(nullable(prop("SupportTicket", n)), n)
+        assertEquals(1, prop("SupportTicket", "version")["minimum"])
+        assertEquals(0, prop("SupportTicket", "attachment_count")["minimum"])
+        assertEquals(200, prop("SupportTicketPage", "items")["maxItems"])
+        assertTrue(nullable(prop("SupportTicketPage", "next_cursor")))
+        assertEquals(500, prop("SupportTicketDetail", "events")["maxItems"])
+        assertEquals(3, prop("SupportTicketDetail", "attachments")["maxItems"])
+        assertEquals(3, prop("SupportTicketEvent", "attachments")["maxItems"])
+        assertEquals(listOf("event_uuid", "kind", "body", "actor_is_support", "actor_display", "from_status", "to_status", "resolution_code", "created_at", "attachments"),
+            required("SupportTicketEvent"))
+        assertEquals("SupportTicketEventKind", ref(prop("SupportTicketEvent", "kind")))
+        assertEquals("SupportTicketStatus", ref(prop("SupportTicketEvent", "from_status")))
+        val summary = listOf("as_of", "total", "new", "in_progress", "resolved", "closed", "cancelled", "open", "resolved_pct_bp", "open_pct_bp")
+        assertEquals(summary, required("SupportTicketSummary"))
+        for (n in summary.drop(1).take(7)) assertEquals(0, prop("SupportTicketSummary", n)["minimum"], n)
+        assertTrue(nullable(prop("SupportTicketSummary", "resolved_pct_bp")) && nullable(prop("SupportTicketSummary", "open_pct_bp")))
+    }
+
+    @Test
+    fun deskWritesOfSection32() {
+        assertEquals(listOf("op_uuid", "expected_version"), required("SupportTicketUpdate"))
+        assertEquals(3, OpenApi.schema("SupportTicketUpdate")["minProperties"], "op_uuid, expected_version and at least one change")
+        assertEquals(listOf("in_progress", "resolved", "closed", "cancelled"), enumOf(prop("SupportTicketUpdate", "status")))
+        assertEquals("SupportTicketPriority", ref(prop("SupportTicketUpdate", "priority")))
+        assertTrue(nullable(prop("SupportTicketUpdate", "assignee_user_id")))
+        assertEquals(listOf(1, 2000), listOf(prop("SupportTicketUpdate", "resolution_notes")["minLength"], prop("SupportTicketUpdate", "resolution_notes")["maxLength"]))
+        assertEquals(listOf(3, 500), listOf(prop("SupportTicketUpdate", "cancel_reason")["minLength"], prop("SupportTicketUpdate", "cancel_reason")["maxLength"]))
+        assertEquals(listOf("event_uuid", "body"), required("SupportTicketEventWrite"))
+        assertEquals(listOf(1, 2000), listOf(prop("SupportTicketEventWrite", "body")["minLength"], prop("SupportTicketEventWrite", "body")["maxLength"]))
+    }
+
+    @Test
+    fun inboxSchemasOfSection32() {
+        assertEquals(listOf("support_ticket", "leave_application", "zone_day"), enumOf(prop("NotificationItem", "ref_type")))
+        assertEquals(64, prop("NotificationItem", "ref_id")["maxLength"])
+        assertEquals(120, prop("NotificationItem", "title_en")["maxLength"]); assertEquals(300, prop("NotificationItem", "body_en")["maxLength"])
+        for (n in listOf("title_bn", "body_bn", "read_at")) assertTrue(nullable(prop("NotificationItem", n)), n)
+        assertEquals("NotificationKind", ref(prop("NotificationItem", "kind")))
+        assertEquals(listOf("as_of", "unread_count", "items", "next_before_id"), required("NotificationInbox"))
+        assertEquals(100, prop("NotificationInbox", "items")["maxItems"])
+        assertTrue(nullable(prop("NotificationInbox", "next_before_id")))
+        assertEquals(listOf("up_to_id"), required("NotificationReadRequest"))
+        assertEquals(listOf("unread_count"), required("NotificationReadResult"))
+    }
+
+    @Test
+    fun dashboardSchemasOfSection32() {
+        assertEquals(listOf("successful_calls", "target_outlets"), enumOf(prop("NationalBrandCpr", "denominator")))
+        val brands = prop("NationalBrandCpr", "brands")
+        assertEquals(100, brands["maxItems"])
+        assertEquals(listOf("brand_code", "brand_name", "outlets_bought", "cpr_bp", "cpr_of_successful_bp", "cpr_of_target_bp"), map(brands["items"])["required"])
+        val segments = prop("NationalSegmentShare", "segments")
+        assertEquals(50, segments["maxItems"])
+        assertEquals(listOf("segment_code", "segment_name", "category_code", "base_unit", "value_mtk", "value_share_bp", "qty_base", "volume_share_bp"),
+            map(segments["items"])["required"])
+        assertEquals(listOf("base_unit", "total_qty_base"), map(prop("NationalSegmentShare", "families")["items"])["required"])
+        assertEquals("MtkNonNegative", ref(prop("NationalSegmentShare", "total_value_mtk")))
+        assertEquals(listOf("route_id", "route_code", "route_name", "zone_id", "dep_name", "user_id", "username", "display_name", "role"), required("LoginSubmitUserRow"))
+        for (n in listOf("user_id", "username", "display_name")) assertTrue(nullable(prop("LoginSubmitUserRow", n)), "vacant route: $n null")
+        assertEquals(listOf("SR", "AMO"), enumOf(prop("LoginSubmitUserRow", "role")))
+        assertEquals(2000, prop("NationalLoginSubmitUsers", "items")["maxItems"])
+        assertEquals(listOf("not_logged_in", "not_uploaded"), enumOf(prop("NationalLoginSubmitUsers", "tab")))
+    }
+
+    @Test
+    fun targetAchievementOfSections32And33() {
+        assertTrue(required("TargetAchievement").containsAll(listOf("day", "elapsed_days", "period_days", "last_updated_at")))
+        assertFalse("children" in required("TargetAchievement"), "children only with children=zone")
+        assertEquals(listOf(0, 31), listOf(prop("TargetAchievement", "elapsed_days")["minimum"], prop("TargetAchievement", "elapsed_days")["maximum"]))
+        assertEquals(listOf(1, 31), listOf(prop("TargetAchievement", "period_days")["minimum"], prop("TargetAchievement", "period_days")["maximum"]))
+        assertEquals(200, prop("TargetAchievement", "children")["maxItems"])
+        assertEquals("TargetAchievementNode", ref(map(prop("TargetAchievement", "children")["items"])))
+        assertEquals("TargetAchievementRow", ref(map(prop("TargetAchievement", "rows")["items"])))
+        assertEquals("TargetAchievementRow", ref(map(prop("TargetAchievementNode", "rows")["items"])))
+        assertEquals("NodeRef", ref(prop("TargetAchievementNode", "node")))
+        val row = required("TargetAchievementRow")
+        for (n in listOf("target_qty_base", "achieved_qty_base", "tilldate_target_qty_base", "remaining_qty_base", "remaining_tilldate_qty_base")) {
+            assertTrue(n in row, n)
+            assertEquals(listOf("integer", "int64", 0), listOf(prop("TargetAchievementRow", n)["type"], prop("TargetAchievementRow", n)["format"], prop("TargetAchievementRow", n)["minimum"]), n)
+        }
+        for (n in listOf("achievement_pct_bp", "tilldate_achievement_pct_bp")) { assertTrue(n in row); assertTrue(nullable(prop("TargetAchievementRow", n)), n) }
+        assertTrue("category_code" in row)
+        // the AMO app's members keep their meaning
+        for (n in listOf("target_qty", "achieved_qty", "tilldate_target_qty", "remaining_qty")) assertEquals("Decimal3", ref(prop("TargetAchievementRow", n)), n)
+        assertNotNull(props("TargetAchievementRow")["achievement_pct"])
+    }
+
+    @Test
+    fun changedSchemasOfSection33() {
+        assertTrue(CodeListKey.entries.map { it.wire }.containsAll(listOf("ticket_issue_type", "ticket_resolution_code")))
+        assertEquals(listOf("integer", "int64"), listOf(nonNull(prop("NationalSalesCard", "monthly_target_qty"))["type"], prop("NationalSalesCard", "monthly_target_qty")["format"]))
+        assertTrue(nullable(prop("NationalSalesCard", "monthly_target_qty")))
+        assertTrue((prop("NationalSalesCard", "achievement_pct_bp")["description"] as String).contains("round_half_up(10000 * total_sales * working_days / monthly_target_qty)"))
+        assertTrue(nullable(prop("NationalLoginSubmit", "submit_of_target_pct_bp")))
+        assertTrue((prop("DashboardSummary", "by_category")["description"] as String).contains("Sold quantity of sale lines only"))
+        assertEquals(0, prop("FinalSubmitPreview", "submit_seq")["minimum"])
+        assertEquals("Id", ref(map(prop("FinalSubmitPreview", "warn_route_ids")["items"])))
+        val route = map(map(prop("FinalSubmitPreview", "routes")["items"])["properties"])
+        assertEquals(listOf("uploaded", "web_entry", "not_uploaded", "not_due"), enumOf(map(route["upload_state"])))
+        assertEquals(listOf("normal", "manual", "dummy_br", "dummy_institutional"), enumOf(map(route["route_class"])))
+        assertEquals(20, map(route["visit_kind"])["maxLength"])
+        assertEquals("Role", ref(map(route["ff_role"])))
+        assertEquals("Uuid", ref(prop("DayReopenRequest", "client_uuid")))
+        assertFalse("client_uuid" in required("DayReopenRequest"), "optional")
+        for (n in listOf("applicant_username", "applicant_name", "territory_name")) assertTrue(nullable(prop("LeaveApplication", n)), n)
+        assertEquals("BusinessDate", ref(prop("Feedback", "business_date"))); assertEquals("Timestamp", ref(prop("Feedback", "captured_at")))
+        assertTrue(nullable(prop("Feedback", "username")) && nullable(prop("Feedback", "zone_id")))
+        assertEquals(listOf("integer", 0), listOf(prop("TeamLocation", "mock_fixes_today")["type"], prop("TeamLocation", "mock_fixes_today")["minimum"]))
+        assertEquals("boolean", prop("Me", "support_desk")["type"])
+        assertTrue((OpenApi.schema("FinalSubmitRequest")["properties"] as Map<String, Map<String, Any?>>)["client_uuid"]!!["description"].toString().contains("aron.tso.final-submit:"))
+    }
+
+    /**
+     * Members added to responses the server already sends stay optional until the server lanes ship them (the conformance
+     * suite validates every served answer; 1.10.x makes them required).
+     */
+    @Test
+    fun membersAddedToServedResponsesAreOptional() {
+        val added = mapOf(
+            "NationalSalesCard" to listOf("monthly_target_qty"), "NationalLoginSubmit" to listOf("submit_of_target_pct_bp"),
+            "FinalSubmitPreview" to listOf("submit_seq", "warn_route_ids"), "LeaveApplication" to listOf("applicant_username", "applicant_name", "territory_name"),
+            "Feedback" to listOf("business_date", "captured_at", "username", "zone_id"), "TeamLocation" to listOf("mock_fixes_today"), "Me" to listOf("support_desk"),
+        )
+        for ((schema, members) in added) for (m in members) {
+            assertNotNull(props(schema)[m], "$schema.$m")
+            assertFalse(m in required(schema), "$schema.$m must stay optional in 1.10.0")
+        }
+        val routeRequired = map(prop("FinalSubmitPreview", "routes")["items"])["required"] as List<String>
+        assertTrue(routeRequired.none { it in setOf("route_class", "visit_kind", "ff_role", "upload_state") })
+        // no schema default: openapi-typescript would make the member required for the web (defaultNonNullable)
+        assertFalse(prop("Me", "support_desk").containsKey("default")); assertFalse(prop("TeamLocation", "mock_fixes_today").containsKey("default"))
+    }
+
+    @Test
+    fun newCodesAndTheirStatuses() {
+        val outcome = RecordOutcomeCode.entries.associateBy { it.wire }
+        assertEquals(AckStatus.QUARANTINED to null, outcome.getValue("after_final_submit").let { it.status to it.retryable })
+        for (c in listOf("day_final_submitted", "ticket_state_invalid", "issue_type_unknown")) {
+            assertEquals(AckStatus.REJECTED to false, outcome.getValue(c).let { it.status to it.retryable }, c)
+        }
+        val problems = ProblemCode.entries.associate { it.wire to it.httpStatus }
+        for (c in listOf("ERR_TICKET_TRANSITION_INVALID", "ERR_TICKET_COMMENTS_CLOSED", "ERR_DAY_FINAL_SUBMIT_REOPENED")) assertEquals(409, problems[c], c)
+        assertEquals(listOf("new", "in_progress", "resolved", "closed", "cancelled"), SupportTicketStatus.entries.map { it.wire })
+        assertEquals(listOf("p1", "p2", "p3", "p4"), SupportTicketPriority.entries.map { it.wire })
+        assertEquals(listOf("created", "comment", "close_review", "status_change", "resolution", "priority_change", "assign"), SupportTicketEventKind.entries.map { it.wire })
+        assertEquals(listOf("ticket_updated", "leave_decided", "final_submit_auto"), NotificationKind.entries.map { it.wire })
+    }
+}

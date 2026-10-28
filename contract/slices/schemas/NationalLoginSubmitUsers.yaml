@@ -1,0 +1,44 @@
+NationalLoginSubmitUsers:
+  type: object
+  description: The rows behind one tab of the Login / Submit Status screen (D-TSO-MAN-12, contract 1.10.0).
+  required:
+  - date
+  - till_time
+  - as_of
+  - last_updated_at
+  - tab
+  - route_count
+  - items
+  additionalProperties: false
+  properties:
+    date:
+      $ref: '#/components/schemas/BusinessDate'
+    till_time:
+      type: boolean
+      description: 'True when `date` is today (Dhaka): figures are till the time of `as_of`; false: final figures
+        of a past day.'
+    as_of:
+      $ref: '#/components/schemas/Timestamp'
+    last_updated_at:
+      type:
+      - string
+      - 'null'
+      format: date-time
+      description: Oldest `last_updated_at` of the summary tables this card reads (null when none has been written
+        yet).
+    tab:
+      type: string
+      enum:
+      - not_logged_in
+      - not_uploaded
+    route_count:
+      type: integer
+      minimum: 0
+      description: 'Distinct routes in the tab: target_routes - successful_login for not_logged_in, successful_login
+        - submitted for not_uploaded.'
+    items:
+      type: array
+      maxItems: 2000
+      description: Per route the SR row first, then the AMO rows by username; routes by route name, then route id.
+      items:
+        $ref: '#/components/schemas/LoginSubmitUserRow'

@@ -27,6 +27,14 @@ GROUPS = [
                                                     "DevicePolicy", "EnrolDeviceResponse"]),
     ("Sync batch parts and errors", ["TimeAnchor", "Resolution", "RouteDayState", "ServerTotals", "ResolvedConfigValue", "FieldError", "Problem"]),
     ("Sync batch", ["SyncBatchRequest", "SyncBatchResponse", "RecordAck"]),
+    # contract 1.10.0, TSO manual build (docs/requests/tso-manual-build-2026-10.md s3.4 step 2)
+    ("Support tickets and the notifications inbox (contract 1.10.0)",
+     ["SupportTicketPayload", "SupportTicketEventPayload", "SupportTicket", "SupportTicketPage", "SupportTicketEvent",
+      "SupportTicketDetail", "SupportTicketSummary", "NotificationItem", "NotificationInbox", "NotificationReadRequest",
+      "NotificationReadResult"]),
+    ("TSO dashboard cards and Target Status (contract 1.10.0)",
+     ["NationalBrandCpr", "NationalSegmentShare", "LoginSubmitUserRow", "NationalLoginSubmitUsers", "TargetAchievementRow",
+      "TargetAchievementNode", "TargetAchievement"]),
 ]
 # Members that must never reach a log or crash report; WireDtosDriftTest fails when a generated class has a member
 # matching SECRET_PATTERN that its toString does not redact.

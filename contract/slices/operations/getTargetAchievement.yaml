@@ -5,6 +5,23 @@ operation:
   - dashboards
   operationId: getTargetAchievement
   summary: Monthly target and achievement (till-date basis per surface) for a node.
+  description: 'Target Status (D-TSO-MAN-39, contract 1.10.0). Without `level`/`node_id` the node is the caller''s
+    top reach node;
+
+    a node outside the reach is 403 `ERR_OUT_OF_SCOPE`. `children=zone` also returns one node per zone in the
+
+    caller''s reach under that node (the TSO''s Territory card plus one card per zone); the zones come from the
+    token
+
+    reach, never from client ids. The till-date basis follows the caller''s role (TSO: the TSO key, AMO: the AMO
+    team
+
+    key; calendar days by default, D-TSO-MAN-05). The integer members (`*_qty_base`, `*_pct_bp`) are what the TSO
+    app
+
+    prints; the Decimal3 members and `achievement_pct` keep their meaning for the AMO app.
+
+    '
   parameters:
   - name: month
     in: query
@@ -18,6 +35,14 @@ operation:
     required: false
     schema:
       $ref: '#/components/schemas/ProductLevel'
+  - name: children
+    in: query
+    required: false
+    description: '`zone`: add `children`, one node per zone in the caller''s reach under the node (contract 1.10.0).'
+    schema:
+      type: string
+      enum:
+      - zone
   responses:
     '200':
       description: Target rows.
@@ -25,6 +50,8 @@ operation:
         application/json:
           schema:
             $ref: '#/components/schemas/TargetAchievement'
+    '400':
+      $ref: '#/components/responses/BadRequest'
     '401':
       $ref: '#/components/responses/Unauthorized'
     '403':

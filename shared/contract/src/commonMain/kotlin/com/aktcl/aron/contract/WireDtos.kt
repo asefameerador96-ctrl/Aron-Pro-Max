@@ -611,6 +611,7 @@ data class Me(
     @SerialName("menus") val menus: List<JsonElement>? = null,
     @SerialName("modules") val modules: Map<String, String>? = null,
     @SerialName("brands") val brands: List<Long>? = null,
+    @SerialName("support_desk") val supportDesk: Boolean? = null,
 )
 
 @Serializable
@@ -916,4 +917,355 @@ data class RecordAck(
     @SerialName("server_id") val serverId: Long? = null,
 ) {
     override fun toString(): String = "RecordAck(clientUuid=${clientUuid}, type=${type}, status=${status}, code=***, retryable=${retryable}, messageKey=${messageKey}, serverId=${serverId})"
+}
+
+// ---- Support tickets and the notifications inbox (contract 1.10.0) ----
+
+/** A ticket raised on the phone (contract 1.10.0, D-TSO-MAN-18, 19, 24). Write-once; the record's `client_uuid` is the */
+@Serializable
+data class SupportTicketPayload(
+    @SerialName("issue_type_code") val issueTypeCode: String,
+    @SerialName("title") val title: String,
+    @SerialName("description") val description: String,
+    @SerialName("affected_username") val affectedUsername: String? = null,
+    @SerialName("source") val source: String,
+)
+
+/** The reporter's action on its own ticket through the outbox (contract 1.10.0, D-TSO-MAN-20, 21). `comment` needs a */
+@Serializable
+data class SupportTicketEventPayload(
+    @SerialName("ticket_uuid") val ticketUuid: String,
+    @SerialName("kind") val kind: String,
+    @SerialName("body") val body: String? = null,
+)
+
+/** The user who raised the ticket. */
+@Serializable
+data class SupportTicketRequester(
+    @SerialName("user_id") val userId: Long,
+    @SerialName("username") val username: String,
+    @SerialName("full_name") val fullName: String,
+    @SerialName("role") val role: String,
+)
+
+/** A ticket as the reporter and the support desk read it (D-TSO-MAN-18 to 25). The desk-only members are absent for any other caller. */
+@Serializable
+data class SupportTicket(
+    @SerialName("ticket_uuid") val ticketUuid: String,
+    @SerialName("ticket_no") val ticketNo: String?,
+    @SerialName("issue_type_code") val issueTypeCode: String,
+    @SerialName("issue_type_label_en") val issueTypeLabelEn: String,
+    @SerialName("issue_type_label_bn") val issueTypeLabelBn: String?,
+    @SerialName("category_label_en") val categoryLabelEn: String,
+    @SerialName("title") val title: String,
+    @SerialName("description") val description: String,
+    @SerialName("source") val source: String,
+    @SerialName("priority") val priority: String,
+    @SerialName("status") val status: String,
+    @SerialName("requester") val requester: SupportTicketRequester,
+    @SerialName("affected_username") val affectedUsername: String?,
+    @SerialName("assignee_user_id") val assigneeUserId: Long? = null,
+    @SerialName("assignee_name") val assigneeName: String? = null,
+    @SerialName("business_date") val businessDate: String,
+    @SerialName("captured_at") val capturedAt: String,
+    @SerialName("created_at") val createdAt: String,
+    @SerialName("updated_at") val updatedAt: String,
+    @SerialName("first_response_at") val firstResponseAt: String?,
+    @SerialName("resolved_at") val resolvedAt: String?,
+    @SerialName("closed_at") val closedAt: String?,
+    @SerialName("cancelled_at") val cancelledAt: String?,
+    @SerialName("resolution_code") val resolutionCode: String?,
+    @SerialName("resolution_label_en") val resolutionLabelEn: String?,
+    @SerialName("resolution_notes") val resolutionNotes: String?,
+    @SerialName("cancel_reason") val cancelReason: String?,
+    @SerialName("version") val version: Int,
+    @SerialName("attachment_count") val attachmentCount: Int,
+)
+
+/** Encode SupportTicket with this serializer (nested fields already do): required-nullable members stay on the wire as explicit null (R7) even when the Json omits nulls. */
+object SupportTicketWire : JsonTransformingSerializer<SupportTicket>(SupportTicket.serializer()) {
+    private val alwaysEmitted = listOf("ticket_no", "issue_type_label_bn", "affected_username", "first_response_at", "resolved_at", "closed_at", "cancelled_at", "resolution_code", "resolution_label_en", "resolution_notes", "cancel_reason")
+    override fun transformSerialize(element: JsonElement): JsonElement =
+        if (element is JsonObject) JsonObject(element + alwaysEmitted.filter { it !in element }.associateWith { JsonNull }) else element
+}
+
+@Serializable
+data class SupportTicketPage(
+    @SerialName("items") val items: List<SupportTicket>,
+    @SerialName("next_cursor") val nextCursor: String?,
+)
+
+/** Encode SupportTicketPage with this serializer (nested fields already do): required-nullable members stay on the wire as explicit null (R7) even when the Json omits nulls. */
+object SupportTicketPageWire : JsonTransformingSerializer<SupportTicketPage>(SupportTicketPage.serializer()) {
+    private val alwaysEmitted = listOf("next_cursor")
+    override fun transformSerialize(element: JsonElement): JsonElement =
+        if (element is JsonObject) JsonObject(element + alwaysEmitted.filter { it !in element }.associateWith { JsonNull }) else element
+}
+
+/** One entry of a ticket's thread (D-TSO-MAN-21). A support actor is shown as "Support", never by name. */
+@Serializable
+data class SupportTicketEvent(
+    @SerialName("event_uuid") val eventUuid: String,
+    @SerialName("kind") val kind: String,
+    @SerialName("body") val body: String?,
+    @SerialName("actor_is_support") val actorIsSupport: Boolean,
+    @SerialName("actor_display") val actorDisplay: String,
+    @SerialName("from_status") val fromStatus: String?,
+    @SerialName("to_status") val toStatus: String?,
+    @SerialName("resolution_code") val resolutionCode: String?,
+    @SerialName("created_at") val createdAt: String,
+    @SerialName("attachments") val attachments: List<String>,
+)
+
+/** Encode SupportTicketEvent with this serializer (nested fields already do): required-nullable members stay on the wire as explicit null (R7) even when the Json omits nulls. */
+object SupportTicketEventWire : JsonTransformingSerializer<SupportTicketEvent>(SupportTicketEvent.serializer()) {
+    private val alwaysEmitted = listOf("body", "from_status", "to_status", "resolution_code")
+    override fun transformSerialize(element: JsonElement): JsonElement =
+        if (element is JsonObject) JsonObject(element + alwaysEmitted.filter { it !in element }.associateWith { JsonNull }) else element
+}
+
+@Serializable
+data class SupportTicketDetail(
+    @Serializable(with = SupportTicketWire::class) @SerialName("ticket") val ticket: SupportTicket,
+    @SerialName("events") val events: List<SupportTicketEvent>,
+    @SerialName("attachments") val attachments: List<String>,
+)
+
+/** Ticket counts by status (D-TSO-MAN-25); the caller's own tickets, or every ticket for the support desk. */
+@Serializable
+data class SupportTicketSummary(
+    @SerialName("as_of") val asOf: String,
+    @SerialName("total") val total: Int,
+    @SerialName("new") val new: Int,
+    @SerialName("in_progress") val inProgress: Int,
+    @SerialName("resolved") val resolved: Int,
+    @SerialName("closed") val closed: Int,
+    @SerialName("cancelled") val cancelled: Int,
+    @SerialName("open") val open: Int,
+    @SerialName("resolved_pct_bp") val resolvedPctBp: Int?,
+    @SerialName("open_pct_bp") val openPctBp: Int?,
+)
+
+/** Encode SupportTicketSummary with this serializer (nested fields already do): required-nullable members stay on the wire as explicit null (R7) even when the Json omits nulls. */
+object SupportTicketSummaryWire : JsonTransformingSerializer<SupportTicketSummary>(SupportTicketSummary.serializer()) {
+    private val alwaysEmitted = listOf("resolved_pct_bp", "open_pct_bp")
+    override fun transformSerialize(element: JsonElement): JsonElement =
+        if (element is JsonObject) JsonObject(element + alwaysEmitted.filter { it !in element }.associateWith { JsonNull }) else element
+}
+
+/** One inbox row (D-TSO-MAN-26). The texts are fixed by the producer in both languages; `title_bn` and `body_bn` may be null (the app shows the English text). */
+@Serializable
+data class NotificationItem(
+    @SerialName("id") val id: Long,
+    @SerialName("kind") val kind: String,
+    @SerialName("ref_type") val refType: String,
+    @SerialName("ref_id") val refId: String,
+    @SerialName("title_en") val titleEn: String,
+    @SerialName("title_bn") val titleBn: String?,
+    @SerialName("body_en") val bodyEn: String,
+    @SerialName("body_bn") val bodyBn: String?,
+    @SerialName("created_at") val createdAt: String,
+    @SerialName("business_date") val businessDate: String,
+    @SerialName("read_at") val readAt: String?,
+)
+
+/** Encode NotificationItem with this serializer (nested fields already do): required-nullable members stay on the wire as explicit null (R7) even when the Json omits nulls. */
+object NotificationItemWire : JsonTransformingSerializer<NotificationItem>(NotificationItem.serializer()) {
+    private val alwaysEmitted = listOf("title_bn", "body_bn", "read_at")
+    override fun transformSerialize(element: JsonElement): JsonElement =
+        if (element is JsonObject) JsonObject(element + alwaysEmitted.filter { it !in element }.associateWith { JsonNull }) else element
+}
+
+@Serializable
+data class NotificationInbox(
+    @SerialName("as_of") val asOf: String,
+    @SerialName("unread_count") val unreadCount: Int,
+    @SerialName("items") val items: List<NotificationItem>,
+    @SerialName("next_before_id") val nextBeforeId: Long?,
+)
+
+/** Encode NotificationInbox with this serializer (nested fields already do): required-nullable members stay on the wire as explicit null (R7) even when the Json omits nulls. */
+object NotificationInboxWire : JsonTransformingSerializer<NotificationInbox>(NotificationInbox.serializer()) {
+    private val alwaysEmitted = listOf("next_before_id")
+    override fun transformSerialize(element: JsonElement): JsonElement =
+        if (element is JsonObject) JsonObject(element + alwaysEmitted.filter { it !in element }.associateWith { JsonNull }) else element
+}
+
+@Serializable
+data class NotificationReadRequest(
+    @SerialName("up_to_id") val upToId: Long,
+)
+
+@Serializable
+data class NotificationReadResult(
+    @SerialName("unread_count") val unreadCount: Int,
+)
+
+// ---- TSO dashboard cards and Target Status (contract 1.10.0) ----
+
+@Serializable
+data class NationalBrandCprBrands(
+    @SerialName("brand_code") val brandCode: String,
+    @SerialName("brand_name") val brandName: String,
+    @SerialName("outlets_bought") val outletsBought: Int,
+    @SerialName("cpr_bp") val cprBp: Int?,
+    @SerialName("cpr_of_successful_bp") val cprOfSuccessfulBp: Int?,
+    @SerialName("cpr_of_target_bp") val cprOfTargetBp: Int?,
+)
+
+/** Brand CPR card (D-TSO-MAN-06, contract 1.10.0): per brand, the distinct (route, outlet) pairs with an effective sale line of the brand on the national route set, over the configured denominator. Both ratios and both denominators are sent. */
+@Serializable
+data class NationalBrandCpr(
+    @SerialName("date") val date: String,
+    @SerialName("till_time") val tillTime: Boolean,
+    @SerialName("as_of") val asOf: String,
+    @SerialName("last_updated_at") val lastUpdatedAt: String?,
+    @SerialName("target_outlets") val targetOutlets: Int,
+    @SerialName("successful_calls") val successfulCalls: Int,
+    @SerialName("denominator") val denominator: String,
+    @SerialName("brands") val brands: List<NationalBrandCprBrands>,
+)
+
+/** Encode NationalBrandCpr with this serializer (nested fields already do): required-nullable members stay on the wire as explicit null (R7) even when the Json omits nulls. */
+object NationalBrandCprWire : JsonTransformingSerializer<NationalBrandCpr>(NationalBrandCpr.serializer()) {
+    private val alwaysEmitted = listOf("last_updated_at")
+    override fun transformSerialize(element: JsonElement): JsonElement =
+        if (element is JsonObject) JsonObject(element + alwaysEmitted.filter { it !in element }.associateWith { JsonNull }) else element
+}
+
+@Serializable
+data class NationalSegmentShareFamilies(
+    @SerialName("base_unit") val baseUnit: String,
+    @SerialName("total_qty_base") val totalQtyBase: Long,
+)
+
+@Serializable
+data class NationalSegmentShareSegments(
+    @SerialName("segment_code") val segmentCode: String,
+    @SerialName("segment_name") val segmentName: String,
+    @SerialName("category_code") val categoryCode: String,
+    @SerialName("base_unit") val baseUnit: String,
+    @SerialName("value_mtk") val valueMtk: Long,
+    @SerialName("value_share_bp") val valueShareBp: Int?,
+    @SerialName("qty_base") val qtyBase: Long,
+    @SerialName("volume_share_bp") val volumeShareBp: Int?,
+)
+
+/** By Segment Value Contribution card (D-TSO-MAN-11, contract 1.10.0). Value share = the segment's sale-line gross milli-taka / total_value_mtk (discounts are zero under docs/27). Volume share is computed within the segment's unit family: qty_base / the total_qty_base of the family with the same base_unit (sticks: cigarette and bidi; pieces; dozens); different units are never added. */
+@Serializable
+data class NationalSegmentShare(
+    @SerialName("date") val date: String,
+    @SerialName("till_time") val tillTime: Boolean,
+    @SerialName("as_of") val asOf: String,
+    @SerialName("last_updated_at") val lastUpdatedAt: String?,
+    @SerialName("total_value_mtk") val totalValueMtk: Long,
+    @SerialName("families") val families: List<NationalSegmentShareFamilies>,
+    @SerialName("segments") val segments: List<NationalSegmentShareSegments>,
+)
+
+/** Encode NationalSegmentShare with this serializer (nested fields already do): required-nullable members stay on the wire as explicit null (R7) even when the Json omits nulls. */
+object NationalSegmentShareWire : JsonTransformingSerializer<NationalSegmentShare>(NationalSegmentShare.serializer()) {
+    private val alwaysEmitted = listOf("last_updated_at")
+    override fun transformSerialize(element: JsonElement): JsonElement =
+        if (element is JsonObject) JsonObject(element + alwaysEmitted.filter { it !in element }.associateWith { JsonNull }) else element
+}
+
+/** One (route, user) row of the Login / Submit Status screen (D-TSO-MAN-12). A vacant route has one SR row with user_id, username and display_name null ("SR Not Set"). */
+@Serializable
+data class LoginSubmitUserRow(
+    @SerialName("route_id") val routeId: Long,
+    @SerialName("route_code") val routeCode: String,
+    @SerialName("route_name") val routeName: String,
+    @SerialName("zone_id") val zoneId: Long,
+    @SerialName("dep_name") val depName: String,
+    @SerialName("user_id") val userId: Long?,
+    @SerialName("username") val username: String?,
+    @SerialName("display_name") val displayName: String?,
+    @SerialName("role") val role: String,
+)
+
+/** Encode LoginSubmitUserRow with this serializer (nested fields already do): required-nullable members stay on the wire as explicit null (R7) even when the Json omits nulls. */
+object LoginSubmitUserRowWire : JsonTransformingSerializer<LoginSubmitUserRow>(LoginSubmitUserRow.serializer()) {
+    private val alwaysEmitted = listOf("user_id", "username", "display_name")
+    override fun transformSerialize(element: JsonElement): JsonElement =
+        if (element is JsonObject) JsonObject(element + alwaysEmitted.filter { it !in element }.associateWith { JsonNull }) else element
+}
+
+/** The rows behind one tab of the Login / Submit Status screen (D-TSO-MAN-12, contract 1.10.0). */
+@Serializable
+data class NationalLoginSubmitUsers(
+    @SerialName("date") val date: String,
+    @SerialName("till_time") val tillTime: Boolean,
+    @SerialName("as_of") val asOf: String,
+    @SerialName("last_updated_at") val lastUpdatedAt: String?,
+    @SerialName("tab") val tab: String,
+    @SerialName("route_count") val routeCount: Int,
+    @SerialName("items") val items: List<LoginSubmitUserRow>,
+)
+
+/** Encode NationalLoginSubmitUsers with this serializer (nested fields already do): required-nullable members stay on the wire as explicit null (R7) even when the Json omits nulls. */
+object NationalLoginSubmitUsersWire : JsonTransformingSerializer<NationalLoginSubmitUsers>(NationalLoginSubmitUsers.serializer()) {
+    private val alwaysEmitted = listOf("last_updated_at")
+    override fun transformSerialize(element: JsonElement): JsonElement =
+        if (element is JsonObject) JsonObject(element + alwaysEmitted.filter { it !in element }.associateWith { JsonNull }) else element
+}
+
+/** One product row of a target node. The integer members are the TSO app's figures (D-TSO-MAN-39, 40): */
+@Serializable
+data class TargetAchievementRow(
+    @SerialName("product_level") val productLevel: String,
+    @SerialName("product_id") val productId: Long,
+    @SerialName("name") val name: String,
+    @SerialName("unit") val unit: String,
+    @SerialName("target_qty") val targetQty: String,
+    @SerialName("achieved_qty") val achievedQty: String,
+    @SerialName("tilldate_target_qty") val tilldateTargetQty: String,
+    @SerialName("achievement_pct") val achievementPct: Double? = null,
+    @SerialName("remaining_qty") val remainingQty: String,
+    @SerialName("memo_target") val memoTarget: Int? = null,
+    @SerialName("memo_achieved") val memoAchieved: Int? = null,
+    @SerialName("category_code") val categoryCode: String,
+    @SerialName("target_qty_base") val targetQtyBase: Long,
+    @SerialName("achieved_qty_base") val achievedQtyBase: Long,
+    @SerialName("tilldate_target_qty_base") val tilldateTargetQtyBase: Long,
+    @SerialName("remaining_qty_base") val remainingQtyBase: Long,
+    @SerialName("remaining_tilldate_qty_base") val remainingTilldateQtyBase: Long,
+    @SerialName("achievement_pct_bp") val achievementPctBp: Int?,
+    @SerialName("tilldate_achievement_pct_bp") val tilldateAchievementPctBp: Int?,
+)
+
+/** Encode TargetAchievementRow with this serializer (nested fields already do): required-nullable members stay on the wire as explicit null (R7) even when the Json omits nulls. */
+object TargetAchievementRowWire : JsonTransformingSerializer<TargetAchievementRow>(TargetAchievementRow.serializer()) {
+    private val alwaysEmitted = listOf("achievement_pct_bp", "tilldate_achievement_pct_bp")
+    override fun transformSerialize(element: JsonElement): JsonElement =
+        if (element is JsonObject) JsonObject(element + alwaysEmitted.filter { it !in element }.associateWith { JsonNull }) else element
+}
+
+/** One child node of a target answer (`children=zone`), with the same rows as the parent (contract 1.10.0). */
+@Serializable
+data class TargetAchievementNode(
+    @SerialName("node") val node: NodeRef,
+    @SerialName("rows") val rows: List<TargetAchievementRow>,
+)
+
+/** Monthly target and achievement of a node (D-TSO-MAN-05, 39, 40). Till-date: elapsed_days e and period_days n of */
+@Serializable
+data class TargetAchievement(
+    @SerialName("month") val month: String,
+    @SerialName("as_of") val asOf: String,
+    @SerialName("node") val node: NodeRef,
+    @SerialName("tilldate_basis") val tilldateBasis: String,
+    @SerialName("rows") val rows: List<TargetAchievementRow>,
+    @SerialName("day") val day: String,
+    @SerialName("elapsed_days") val elapsedDays: Int,
+    @SerialName("period_days") val periodDays: Int,
+    @SerialName("last_updated_at") val lastUpdatedAt: String?,
+    @SerialName("children") val children: List<TargetAchievementNode>? = null,
+)
+
+/** Encode TargetAchievement with this serializer (nested fields already do): required-nullable members stay on the wire as explicit null (R7) even when the Json omits nulls. */
+object TargetAchievementWire : JsonTransformingSerializer<TargetAchievement>(TargetAchievement.serializer()) {
+    private val alwaysEmitted = listOf("last_updated_at")
+    override fun transformSerialize(element: JsonElement): JsonElement =
+        if (element is JsonObject) JsonObject(element + alwaysEmitted.filter { it !in element }.associateWith { JsonNull }) else element
 }

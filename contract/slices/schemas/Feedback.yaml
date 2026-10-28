@@ -30,3 +30,21 @@ Feedback:
       $ref: '#/components/schemas/Timestamp'
     status:
       $ref: '#/components/schemas/FeedbackStatus'
+    business_date:
+      $ref: '#/components/schemas/BusinessDate'
+      description: The record's business date (contract 1.10.0).
+    captured_at:
+      $ref: '#/components/schemas/Timestamp'
+      description: When the TSO saved it on the phone (contract 1.10.0).
+    username:
+      oneOf:
+      - $ref: '#/components/schemas/Username'
+      - type: 'null'
+      description: The author's login name for the inbox (contract 1.10.0).
+    zone_id:
+      type:
+      - integer
+      - 'null'
+      format: int64
+      minimum: 1
+      description: The author's zone, when it has one (contract 1.10.0).

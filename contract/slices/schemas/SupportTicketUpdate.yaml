@@ -1,0 +1,50 @@
+SupportTicketUpdate:
+  type: object
+  description: 'One support-desk action (D-TSO-MAN-20). `op_uuid` makes it idempotent; `expected_version` is the
+    `version` the
+
+    desk read. At least one change besides those two. A resolve needs `resolution_code` and `resolution_notes`;
+    a
+
+    cancel needs `cancel_reason`.
+
+    '
+  required:
+  - op_uuid
+  - expected_version
+  minProperties: 3
+  additionalProperties: false
+  properties:
+    op_uuid:
+      $ref: '#/components/schemas/Uuid'
+    expected_version:
+      type: integer
+      minimum: 1
+    status:
+      type: string
+      enum:
+      - in_progress
+      - resolved
+      - closed
+      - cancelled
+    priority:
+      $ref: '#/components/schemas/SupportTicketPriority'
+    assignee_user_id:
+      type:
+      - integer
+      - 'null'
+      format: int64
+      minimum: 1
+      description: Null unassigns.
+    resolution_code:
+      type: string
+      pattern: ^[a-z][a-z0-9_]{1,40}$
+      description: A `ticket_resolution_code` code.
+    resolution_notes:
+      type: string
+      minLength: 1
+      maxLength: 2000
+    cancel_reason:
+      type: string
+      minLength: 3
+      maxLength: 500

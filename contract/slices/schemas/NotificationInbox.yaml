@@ -1,0 +1,28 @@
+NotificationInbox:
+  type: object
+  required:
+  - as_of
+  - unread_count
+  - items
+  - next_before_id
+  additionalProperties: false
+  properties:
+    as_of:
+      $ref: '#/components/schemas/Timestamp'
+    unread_count:
+      type: integer
+      minimum: 0
+      description: Every unread row of the caller, not only this page.
+    items:
+      type: array
+      maxItems: 100
+      description: Newest first.
+      items:
+        $ref: '#/components/schemas/NotificationItem'
+    next_before_id:
+      type:
+      - integer
+      - 'null'
+      format: int64
+      minimum: 1
+      description: The `before_id` of the next (older) page; null on the last page.

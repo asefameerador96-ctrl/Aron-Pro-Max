@@ -1,0 +1,14 @@
+TargetAchievementNode:
+  type: object
+  description: One child node of a target answer (`children=zone`), with the same rows as the parent (contract 1.10.0).
+  required:
+  - node
+  - rows
+  additionalProperties: false
+  properties:
+    node:
+      $ref: '#/components/schemas/NodeRef'
+    rows:
+      type: array
+      items:
+        $ref: '#/components/schemas/TargetAchievementRow'

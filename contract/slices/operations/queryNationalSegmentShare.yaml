@@ -1,0 +1,34 @@
+path: /v1/dashboards/national/segment-share
+method: post
+operation:
+  tags:
+  - dashboards
+  operationId: queryNationalSegmentShare
+  summary: By Segment Value Contribution card
+  description: 'Each segment''s share of sales value and of volume for one day (D-TSO-MAN-11, screenshot 7, contract
+    1.10.0). Value share = the segment''s sale-line gross milli-taka / the total. Volume share is computed within
+    the segment''s unit family (sticks: cigarette and bidi; pieces; dozens); different units are never added. Segments
+    ordered by value descending. Reads summary tables only (never the transaction log); scope from the token.'
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          $ref: '#/components/schemas/NationalDashboardFilter'
+  responses:
+    '200':
+      description: By Segment Value Contribution card
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/NationalSegmentShare'
+    '400':
+      $ref: '#/components/responses/BadRequest'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'
+    '429':
+      $ref: '#/components/responses/TooManyRequests'
+    '503':
+      $ref: '#/components/responses/ServiceUnavailable'

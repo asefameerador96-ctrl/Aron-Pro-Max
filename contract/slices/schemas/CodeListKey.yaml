@@ -18,3 +18,7 @@ CodeListKey:
   - channel
   - sub_channel
   - geo_class
+  - ticket_issue_type
+  - ticket_resolution_code
+  description: Business code lists (docs/24 s12.1). `ticket_issue_type` (the 31 Annex A issue types, attrs priority,
+    category, urgency, icon and hint_en) and `ticket_resolution_code` from contract 1.10.0 (D-TSO-MAN-19, 20).

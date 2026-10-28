@@ -215,8 +215,9 @@ class WireDtosDriftTest {
     fun everyGeneratedClassRedactsItsSecretMembers() {
         val pattern = Regex("password|token|otp|secret|totp|recovery_codes|attestation|^code$|qr_payload|qr_text")
         val notSecret = setOf("token_id", "token_prefix", "enrolment_token_id", "temporary_password_expires_at")
+        // line endings normalised: a Windows checkout (core.autocrlf) has CRLF, the class pattern below expects LF
         val src = File(System.getProperty("aron.slices")).resolve("../../../shared/contract/src/commonMain/kotlin/com/aktcl/aron/contract/WireDtos.kt")
-            .canonicalFile.readText()
+            .canonicalFile.readText().replace("\r\n", "\n")
         val blocks = Regex("""(?s)@Serializable\ndata class (\w+)\((.*?)\n\)(.*?)(?=\n@Serializable|\n/\*\*|\nobject |\z)""").findAll(src).toList()
         assertTrue(blocks.size >= 60, "found only ${blocks.size} generated classes")
         var secretMembers = 0
@@ -253,6 +254,11 @@ class WireDtosDriftTest {
             "JwkEcPublicDevice", "DeviceInfo", "PermissionGrant", "AppControlPolicy", "BlockingSchedule", "DevicePolicy", "EnrolDeviceResponse",
             "TimeAnchor", "Resolution", "RouteDayState", "ServerTotals", "ResolvedConfigValue", "FieldError", "Problem",
             "SyncBatchRequest", "SyncBatchResponse", "RecordAck",
+            // contract 1.10.0 (TSO manual build s3.4 step 2): the two record payloads and the phone's read DTOs
+            "SupportTicketPayload", "SupportTicketEventPayload", "SupportTicket", "SupportTicketPage", "SupportTicketEvent",
+            "SupportTicketDetail", "SupportTicketSummary", "NotificationItem", "NotificationInbox", "NotificationReadRequest",
+            "NotificationReadResult", "NationalBrandCpr", "NationalSegmentShare", "LoginSubmitUserRow", "NationalLoginSubmitUsers",
+            "TargetAchievementRow", "TargetAchievementNode", "TargetAchievement",
         )
         assertEquals(requested.toSet(), WireDtoNames.serializers.keys)
     }
@@ -319,6 +325,16 @@ internal object WireDtoNames {
         "ServerTotals" to serializer<ServerTotals>(), "ResolvedConfigValue" to serializer<ResolvedConfigValue>(),
         "FieldError" to serializer<FieldError>(), "Problem" to serializer<Problem>(), "SyncBatchRequest" to serializer<SyncBatchRequest>(),
         "SyncBatchResponse" to serializer<SyncBatchResponse>(), "RecordAck" to serializer<RecordAck>(),
+        // contract 1.10.0 (TSO manual build)
+        "SupportTicketPayload" to serializer<SupportTicketPayload>(), "SupportTicketEventPayload" to serializer<SupportTicketEventPayload>(),
+        "SupportTicket" to serializer<SupportTicket>(), "SupportTicketPage" to serializer<SupportTicketPage>(),
+        "SupportTicketEvent" to serializer<SupportTicketEvent>(), "SupportTicketDetail" to serializer<SupportTicketDetail>(),
+        "SupportTicketSummary" to serializer<SupportTicketSummary>(), "NotificationItem" to serializer<NotificationItem>(),
+        "NotificationInbox" to serializer<NotificationInbox>(), "NotificationReadRequest" to serializer<NotificationReadRequest>(),
+        "NotificationReadResult" to serializer<NotificationReadResult>(), "NationalBrandCpr" to serializer<NationalBrandCpr>(),
+        "NationalSegmentShare" to serializer<NationalSegmentShare>(), "LoginSubmitUserRow" to serializer<LoginSubmitUserRow>(),
+        "NationalLoginSubmitUsers" to serializer<NationalLoginSubmitUsers>(), "TargetAchievementRow" to serializer<TargetAchievementRow>(),
+        "TargetAchievementNode" to serializer<TargetAchievementNode>(), "TargetAchievement" to serializer<TargetAchievement>(),
     )
     val all: Set<String> = serializers.keys
 }

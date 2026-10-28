@@ -1,0 +1,84 @@
+path: /v1/support/tickets
+method: get
+operation:
+  tags:
+  - support
+  operationId: listSupportTickets
+  summary: Support tickets, newest first (the caller's own; the support desk sees every ticket).
+  description: 'D-TSO-MAN-22 (contract 1.10.0). Scope is server-side: a caller without the support-desk permission
+
+    (`support.ticket.manage`, `Me.support_desk`) sees only the tickets it raised (requester = the token''s user);
+
+    the desk sees every ticket. `requester_user_id` and `assignee_user_id` are desk-only filters (403
+
+    `ERR_FORBIDDEN` for anyone else). `q` matches a `ticket_no` prefix or, case-insensitively, the title or the
+    issue
+
+    type label. `from` and `to` filter on `business_date`. Order: `created_at` descending, then id descending.
+
+    Tickets are created only through the sync record `support_ticket` (D-TSO-MAN-18); there is no online create.
+
+    '
+  parameters:
+  - name: q
+    in: query
+    required: false
+    description: A ticket number prefix (`INC1001`) or text in the title or the issue type label.
+    schema:
+      type: string
+      minLength: 2
+      maxLength: 40
+  - name: status
+    in: query
+    required: false
+    schema:
+      $ref: '#/components/schemas/SupportTicketStatus'
+  - name: issue_type_code
+    in: query
+    required: false
+    description: A `ticket_issue_type` code.
+    schema:
+      type: string
+      pattern: ^[a-z][a-z0-9_]{1,40}$
+  - name: priority
+    in: query
+    required: false
+    schema:
+      $ref: '#/components/schemas/SupportTicketPriority'
+  - name: requester_user_id
+    in: query
+    required: false
+    description: Support desk only.
+    schema:
+      $ref: '#/components/schemas/Id'
+  - name: assignee_user_id
+    in: query
+    required: false
+    description: Support desk only.
+    schema:
+      $ref: '#/components/schemas/Id'
+  - $ref: '#/components/parameters/FromDate'
+  - $ref: '#/components/parameters/ToDate'
+  - name: limit
+    in: query
+    required: false
+    description: Page size.
+    schema:
+      type: integer
+      minimum: 1
+      maximum: 200
+      default: 50
+  - $ref: '#/components/parameters/Cursor'
+  responses:
+    '200':
+      description: One page of tickets.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/SupportTicketPage'
+    '400':
+      $ref: '#/components/responses/BadRequest'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'

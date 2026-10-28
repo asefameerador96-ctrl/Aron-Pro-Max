@@ -1,0 +1,57 @@
+path: /v1/support/tickets/{ticket_uuid}
+method: patch
+operation:
+  tags:
+  - support
+  operationId: updateSupportTicket
+  summary: Support desk action on a ticket (status, priority, assignee, resolution or cancellation).
+  description: 'Support desk only (permission `support.ticket.manage`; anyone else 403 `ERR_FORBIDDEN`), D-TSO-MAN-20
+    (contract
+
+    1.10.0). Idempotent by `op_uuid`: a repeat of an applied op answers the ticket unchanged. `expected_version`
+
+    must equal the ticket''s `version`, else 409 `ERR_CONFLICT` (reload and re-apply). Allowed status changes:
+
+    new -> in_progress; new or in_progress -> resolved (needs `resolution_code` from the `ticket_resolution_code`
+
+    list and `resolution_notes`; writes the support message
+
+    "[TicketID: <ticket_no>] - Resolved:\nResolution Code: <label>\nResolution Notes:\n\n<notes>"); new or in_progress
+
+    -> cancelled (needs `cancel_reason`); resolved -> closed. Any other change is 409
+
+    `ERR_TICKET_TRANSITION_INVALID`; there is no reopen and no auto-close. Each change writes an event and an audit
+
+    row; the reporter gets an inbox row and, when ticket pushes are switched on, a push with reason `ticket_updated`.
+
+    '
+  parameters:
+  - name: ticket_uuid
+    in: path
+    required: true
+    schema:
+      $ref: '#/components/schemas/Uuid'
+    description: The ticket's client UUID.
+  requestBody:
+    required: true
+    content:
+      application/json:
+        schema:
+          $ref: '#/components/schemas/SupportTicketUpdate'
+  responses:
+    '200':
+      description: The ticket after the change.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/SupportTicket'
+    '400':
+      $ref: '#/components/responses/BadRequest'
+    '401':
+      $ref: '#/components/responses/Unauthorized'
+    '403':
+      $ref: '#/components/responses/Forbidden'
+    '404':
+      $ref: '#/components/responses/NotFound'
+    '409':
+      $ref: '#/components/responses/Conflict'

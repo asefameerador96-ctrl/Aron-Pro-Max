@@ -277,7 +277,7 @@ Every non-2xx API response is `application/problem+json` with members `type` (`u
 | 401 | `ERR_UNAUTHENTICATED`, `ERR_TOKEN_EXPIRED`, `ERR_SCOPE_CHANGED`, `ERR_PASSWORD_CHANGED`, `ERR_AUTH_INVALID_CREDENTIALS`, `ERR_AUTH_REFRESH_INVALID`, `ERR_AUTH_REFRESH_REUSED`, `ERR_AUTH_MFA_INVALID`, `ERR_AUTH_OTP_INVALID`, `ERR_AUTH_OTP_EXPIRED`, `ERR_DEVICE_PROOF_INVALID` | `ERR_TOKEN_EXPIRED` and `ERR_SCOPE_CHANGED`: yes after one refresh | `ERR_TOKEN_EXPIRED`/`ERR_SCOPE_CHANGED`: refresh once and repeat; `ERR_SCOPE_CHANGED` also schedules a full bundle. Refresh failures (`REFRESH_*`, `PASSWORD_CHANGED`): the phone keeps selling offline on the local session and asks for the password at the next online moment; the outbox keeps uploading on the upload grant |
 | 403 | `ERR_FORBIDDEN`, `ERR_OUT_OF_SCOPE`, `ERR_AUTHZ_ROLE_ABOVE_GRANT`, `ERR_AUTH_ACCOUNT_LOCKED` (with `retry_after_s`, D24-60), `ERR_AUTH_USER_DISABLED`, `ERR_AUTH_PASSWORD_CHANGE_REQUIRED`, `ERR_AUTH_BIND_LOCKED`, `ERR_AUTH_PORTAL_NOT_ALLOWED`, `ERR_AUTH_OTP_ATTEMPTS_EXCEEDED`, `ERR_DEVICE_NOT_ENROLLED`, `ERR_DEVICE_UNBOUND`, `ERR_DEVICE_SUSPENDED`, `ERR_DEVICE_REVOKED`, `ERR_DEVICE_INTEGRITY_FAILED`, `ERR_ENROLMENT_TOKEN_INVALID`, `ERR_ENROLMENT_TOKEN_EXPIRED`, `ERR_ENROLMENT_TOKEN_EXHAUSTED`, `ERR_ENROLMENT_ATTESTATION_FAILED` | no (`ACCOUNT_LOCKED` after `retry_after_s`) | show the localised message; never retry automatically |
 | 404 | `ERR_NOT_FOUND` | no | also returned for an id outside the caller's reach on a single-resource GET (no existence leak) |
-| 409 | `ERR_CONFLICT`, `ERR_REQUEST_STATE`, `ERR_SEPARATION_OF_DUTIES`, `ERR_CFG_SELF_APPROVAL`, `ERR_CFG_FREEZE_WINDOW`, `ERR_MASTER_DUPLICATE_CODE`, `ERR_MASTER_OVERLAP`, `ERR_MASTER_IN_USE`, `ERR_SYNC_BATCH_UUID_REUSED`, `ERR_BUNDLE_NEW_BUSINESS_DATE`, `ERR_DAY_ALREADY_FINAL_SUBMITTED`, `ERR_DAY_NOT_FINAL_SUBMITTED`, `ERR_DAY_SUBMIT_VOID_NOT_ALLOWED`, `ERR_DAY_DATA_VOID_NOT_ALLOWED`, `ERR_DEVICE_LIMIT_REACHED`, `ERR_PUSH_DISABLED`, `ERR_ENTRY_WINDOW_CLOSED`, `ERR_GIFT_CHOICE_LOCKED` | no | `ERR_SYNC_BATCH_UUID_REUSED`: the phone mints a new `batch_uuid` for the same rows (a phone bug if it happens); `ERR_BUNDLE_NEW_BUSINESS_DATE`: fetch the full bundle |
+| 409 | `ERR_CONFLICT`, `ERR_REQUEST_STATE`, `ERR_SEPARATION_OF_DUTIES`, `ERR_CFG_SELF_APPROVAL`, `ERR_CFG_FREEZE_WINDOW`, `ERR_MASTER_DUPLICATE_CODE`, `ERR_MASTER_OVERLAP`, `ERR_MASTER_IN_USE`, `ERR_SYNC_BATCH_UUID_REUSED`, `ERR_BUNDLE_NEW_BUSINESS_DATE`, `ERR_DAY_ALREADY_FINAL_SUBMITTED`, `ERR_DAY_NOT_FINAL_SUBMITTED`, `ERR_DAY_SUBMIT_VOID_NOT_ALLOWED`, `ERR_DAY_DATA_VOID_NOT_ALLOWED`, `ERR_DEVICE_LIMIT_REACHED`, `ERR_PUSH_DISABLED`, `ERR_ENTRY_WINDOW_CLOSED`, `ERR_GIFT_CHOICE_LOCKED`, `ERR_TICKET_TRANSITION_INVALID`, `ERR_TICKET_COMMENTS_CLOSED`, `ERR_DAY_FINAL_SUBMIT_REOPENED` | no | `ERR_SYNC_BATCH_UUID_REUSED`: the phone mints a new `batch_uuid` for the same rows (a phone bug if it happens); `ERR_BUNDLE_NEW_BUSINESS_DATE`: fetch the full bundle; `ERR_DAY_FINAL_SUBMIT_REOPENED` (contract 1.10.0): the TSO app reads the Final Submit preview again and submits with the next `submit_seq` UUID; the two ticket codes (contract 1.10.0): reload the ticket |
 | 410 | `ERR_BUNDLE_CURSOR_EXPIRED` | no | fetch the full bundle (or restart paging) |
 | 412 | `ERR_PRECONDITION_FAILED` | no | reload and re-apply the edit |
 | 413 | `ERR_PAYLOAD_TOO_LARGE`, `ERR_SYNC_BATCH_TOO_LARGE`, `ERR_SYNC_DECOMPRESSION_LIMIT`, `ERR_REPORT_TOO_LARGE` | no | phones halve the batch (s4.7); reports switch to the export job |
@@ -381,6 +381,8 @@ A **family** is a header record and its children, linked by `family_uuid` (the h
 | `app_error` | self | 0 | — | all | `app_error` |
 | `sale_abort` (memo number burned without a memo) | self | 0 | optional `visit_client_uuid` | SR, AMO | `sale_abort` |
 | `consent_accept` (location notice) | self | 0 | — | all | `user_consent` |
+| `support_ticket` (contract 1.10.0, D-TSO-MAN-18; the only way a ticket is created) | self | 0 | — | TSO (requester roles from config) | `support_ticket` (+ `support_ticket_state`) |
+| `support_ticket_event` (comment or close review, contract 1.10.0) | self | 0 | `ticket_uuid` | TSO (the ticket's requester) | `support_ticket_event` |
 
 Ordering rules (the phone MUST follow them; the server tolerates violations by parking):
 1. Outbox order is commit order (`seq`). A batch is the next rows in `seq` order, whole families first.
@@ -448,6 +450,10 @@ Code catalogue (`RecordOutcomeCode`):
 | `insufficient_points` | rejected | no | redemption above the server balance while `cfg.loyalty.negative_balance_policy` = reject (the default accept_and_flag never uses it) |
 | `gift_photo_exists` | rejected | no | a second hand-over photo for the same Astha assignment or redeemed unit under another `client_uuid` |
 | `programme_inactive` | quarantined | — | programme not active on the business date or outlet not enrolled |
+| `after_final_submit` | quarantined | — | captured before its zone-day's Final Submit and arrived after it; held out of the day's figures and counted (flagged late) only when an ADMIN accepts it on the quarantine page, so no offline sale is lost (contract 1.10.0, D-TSO-MAN-31) |
+| `day_final_submitted` | rejected | no | a memo, memo edit, void, return or collection captured at or after its zone-day's Final Submit; `day_submit` and `attendance_event` after the lock are still accepted (contract 1.10.0, D-TSO-MAN-31) |
+| `ticket_state_invalid` | rejected | no | a `support_ticket_event` the ticket's state does not allow (a comment after the ticket left new and in_progress, a close review before it is resolved) or on another user's ticket (contract 1.10.0, D-TSO-MAN-20, 21) |
+| `issue_type_unknown` | rejected | no | a `support_ticket` whose `issue_type_code` is not an active `ticket_issue_type` code on its business date (contract 1.10.0, D-TSO-MAN-19) |
 
 ### 4.6 Resume, retry and ordering guarantees
 
@@ -1545,7 +1551,7 @@ Each row is a question the sources left open or answered in conflicting ways, wi
 
 ## Appendix A. Endpoint index (generated from `contract/openapi.yaml`)
 
-Generated by the cross-check script (`--appendix`); 258 operations on 208 paths, grouped by tag in the order of the contract. Request and response schemas, statuses and examples are in the YAML.
+Generated by the cross-check script (`--appendix`); 268 operations on 217 paths (contract 1.10.0), grouped by tag in the order of the contract. Request and response schemas, statuses and examples are in the YAML.
 
 | Tag | Method | Path | operationId | Summary |
 |---|---|---|---|---|
@@ -1609,6 +1615,8 @@ Generated by the cross-check script (`--appendix`); 258 operations on 208 paths,
 | tasks | POST | `/v1/tasks/{task_uuid}/cancel` | `cancelTask` | Cancel an ongoing task (creator, the zone's TSO or an admin). |
 | notifications | PUT | `/v1/devices/me/push-token` | `registerPushToken` | Register or replace the FCM token of this phone for the calling user. |
 | notifications | POST | `/v1/admin/notifications` | `sendNotification` | Send an FCM data nudge (announcement or config pull) to devices in a scope. |
+| notifications | GET | `/v1/me/notifications` | `listMyNotifications` | The caller's notification inbox, newest first (the bell in the TSO app). |
+| notifications | POST | `/v1/me/notifications/read` | `markMyNotificationsRead` | Mark the caller's inbox read up to an id (opening the bell). |
 | team | GET | `/v1/team/locations` | `getTeamLocations` | Last synced fix per team member (no live tracking; age and source shown). |
 | team | GET | `/v1/team/stock` | `getTeamStock` | Issued, sold, returned and current stock per SR and SKU for a date (SR phones never returned). |
 | team | GET | `/v1/outlets/nearby` | `getNearbyOutlets` | Outlets within a radius of a point (TSO Retailer radius map), capped and scoped. |
@@ -1632,10 +1640,13 @@ Generated by the cross-check script (`--appendix`); 258 operations on 208 paths,
 | dashboards | GET | `/v1/dashboards/targets` | `getTargetAchievement` | Monthly target and achievement (till-date basis per surface) for a node. |
 | dashboards | POST | `/v1/dashboards/national/sales` | `queryNationalSales` | Sales cards with daily target |
 | dashboards | POST | `/v1/dashboards/national/cpr` | `queryNationalCpr` | Live CPR card |
+| dashboards | POST | `/v1/dashboards/national/brand-cpr` | `queryNationalBrandCpr` | Brand CPR card |
 | dashboards | POST | `/v1/dashboards/national/channel-calls` | `queryNationalChannelCalls` | By Channel Successful Call card |
 | dashboards | POST | `/v1/dashboards/national/final-submit` | `queryNationalFinalSubmit` | Final Submit Status card |
 | dashboards | POST | `/v1/dashboards/national/login-submit` | `queryNationalLoginSubmit` | Login / Submit Status card |
+| dashboards | POST | `/v1/dashboards/national/login-submit/users` | `queryNationalLoginSubmitUsers` | Login / Submit Status users (Not Logged In, Not Uploaded) |
 | dashboards | POST | `/v1/dashboards/national/channel-std` | `queryNationalChannelStd` | By Channel STD card |
+| dashboards | POST | `/v1/dashboards/national/segment-share` | `queryNationalSegmentShare` | By Segment Value Contribution card |
 | dashboards | POST | `/v1/dashboards/national/breakdown` | `queryNationalBreakdown` | Breakdown STD / Memo card |
 | dashboards | POST | `/v1/dashboards/national/geo-fencing` | `queryNationalGeoFencing` | Geo Fencing card |
 | dashboards | POST | `/v1/dashboards/national/ff-geo/pins` | `queryFfGeoPins` | FF Geo Location pins |
@@ -1807,6 +1818,11 @@ Generated by the cross-check script (`--appendix`); 258 operations on 208 paths,
 | admin-finance | POST | `/v1/admin/dues-adjustments/{adjustment_id}/decision` | `decideDuesAdjustment` | Approve or reject a dues adjustment (checker ≠ maker); approval adds a ledger row and changes the outlet balance. |
 | support | POST | `/v1/support/pda-upload` | `createSupportUpload` | Write-only SAS for one "PDA to Support" data file (encrypted zip, size-capped). |
 | support | POST | `/v1/client-errors` | `reportClientError` | Privacy-scrubbed error report from the web app (phones send `app_error` records in the batch). |
+| support | GET | `/v1/support/tickets` | `listSupportTickets` | Support tickets, newest first (the caller's own; the support desk sees every ticket). |
+| support | GET | `/v1/support/tickets/summary` | `getSupportTicketSummary` | Ticket counts for the Ticket Dashboard (the caller's own tickets; the support desk counts every ticket). |
+| support | GET | `/v1/support/tickets/{ticket_uuid}` | `getSupportTicket` | One ticket with its thread and photos. |
+| support | PATCH | `/v1/support/tickets/{ticket_uuid}` | `updateSupportTicket` | Support desk action on a ticket (status, priority, assignee, resolution or cancellation). |
+| support | POST | `/v1/support/tickets/{ticket_uuid}/events` | `addSupportTicketEvent` | Support desk reply on a ticket. |
 
 ---
 

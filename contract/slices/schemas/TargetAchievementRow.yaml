@@ -1,0 +1,117 @@
+TargetAchievementRow:
+  type: object
+  description: 'One product row of a target node. The integer members are the TSO app''s figures (D-TSO-MAN-39,
+    40):
+
+    target_qty_base T = the route monthly targets of the month in reach; achieved_qty_base A = sold quantity of
+    sale
+
+    lines, business dates 1st..`day`; tilldate_target_qty_base T'' = per item round_half_up(T * e / n), a category
+    row
+
+    the sum of its items; remaining_* = max(target - A, 0); *_pct_bp = A / target in basis points, rounded half
+    up,
+
+    uncapped, null when the target is 0. The Decimal3 members and `achievement_pct` keep their meaning for the AMO
+
+    app.
+
+    '
+  required:
+  - product_level
+  - product_id
+  - name
+  - unit
+  - target_qty
+  - achieved_qty
+  - tilldate_target_qty
+  - remaining_qty
+  - category_code
+  - target_qty_base
+  - achieved_qty_base
+  - tilldate_target_qty_base
+  - remaining_qty_base
+  - remaining_tilldate_qty_base
+  - achievement_pct_bp
+  - tilldate_achievement_pct_bp
+  additionalProperties: false
+  properties:
+    product_level:
+      $ref: '#/components/schemas/ProductLevel'
+    product_id:
+      $ref: '#/components/schemas/Id'
+    name:
+      type: string
+      maxLength: 120
+    unit:
+      type: string
+      enum:
+      - stick
+      - piece
+      - dozen
+      - box
+      - pack
+    target_qty:
+      $ref: '#/components/schemas/Decimal3'
+    achieved_qty:
+      $ref: '#/components/schemas/Decimal3'
+    tilldate_target_qty:
+      $ref: '#/components/schemas/Decimal3'
+    achievement_pct:
+      type:
+      - number
+      - 'null'
+      minimum: 0
+    remaining_qty:
+      $ref: '#/components/schemas/Decimal3'
+    memo_target:
+      type:
+      - integer
+      - 'null'
+      minimum: 0
+    memo_achieved:
+      type:
+      - integer
+      - 'null'
+      minimum: 0
+    category_code:
+      type: string
+      maxLength: 40
+      description: The row's category (its own code on a category row); the Details table filters by it.
+    target_qty_base:
+      type: integer
+      format: int64
+      minimum: 0
+      description: Monthly target T in base units.
+    achieved_qty_base:
+      type: integer
+      format: int64
+      minimum: 0
+      description: Achievement A month to date in base units.
+    tilldate_target_qty_base:
+      type: integer
+      format: int64
+      minimum: 0
+      description: Till-date target T' in base units.
+    remaining_qty_base:
+      type: integer
+      format: int64
+      minimum: 0
+      description: max(T - A, 0).
+    remaining_tilldate_qty_base:
+      type: integer
+      format: int64
+      minimum: 0
+      description: max(T' - A, 0).
+    achievement_pct_bp:
+      type:
+      - integer
+      - 'null'
+      minimum: 0
+      description: A / T in basis points, uncapped; null when T is 0.
+    tilldate_achievement_pct_bp:
+      type:
+      - integer
+      - 'null'
+      minimum: 0
+      description: A / T' in basis points, uncapped; null when T' is 0.

@@ -1,0 +1,52 @@
+SupportTicketEvent:
+  type: object
+  description: One entry of a ticket's thread (D-TSO-MAN-21). A support actor is shown as "Support", never by name.
+  required:
+  - event_uuid
+  - kind
+  - body
+  - actor_is_support
+  - actor_display
+  - from_status
+  - to_status
+  - resolution_code
+  - created_at
+  - attachments
+  additionalProperties: false
+  properties:
+    event_uuid:
+      $ref: '#/components/schemas/Uuid'
+    kind:
+      $ref: '#/components/schemas/SupportTicketEventKind'
+    body:
+      type:
+      - string
+      - 'null'
+      maxLength: 2000
+    actor_is_support:
+      type: boolean
+    actor_display:
+      type: string
+      maxLength: 120
+      description: '"Support" for a support-desk actor or the job, else the reporter''s full name.'
+    from_status:
+      oneOf:
+      - $ref: '#/components/schemas/SupportTicketStatus'
+      - type: 'null'
+    to_status:
+      oneOf:
+      - $ref: '#/components/schemas/SupportTicketStatus'
+      - type: 'null'
+    resolution_code:
+      type:
+      - string
+      - 'null'
+      pattern: ^[a-z][a-z0-9_]{1,40}$
+    created_at:
+      $ref: '#/components/schemas/Timestamp'
+    attachments:
+      type: array
+      maxItems: 3
+      description: Media uuids of the event's photos (read through the media read URL).
+      items:
+        $ref: '#/components/schemas/Uuid'
