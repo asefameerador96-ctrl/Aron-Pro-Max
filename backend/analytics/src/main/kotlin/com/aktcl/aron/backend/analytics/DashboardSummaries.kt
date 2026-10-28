@@ -128,11 +128,13 @@ internal object DashboardSummaries {
         h.createUpdate(
             """
             INSERT INTO dw.agg_daily_route_variant (business_date, route_id, variant_id, memo_count, sold_qty_base, last_event_id, updated_at)
-            SELECT :d, :r, s.variant_id, count(DISTINCT m.client_uuid), coalesce(sum(ml.qty_base), 0), :wm, now()
+            SELECT :d, :r, coalesce(ph.variant_id, s.variant_id), count(DISTINCT m.client_uuid), coalesce(sum(ml.qty_base), 0), :wm, now()
               FROM app.memo_line ml JOIN app.memo m ON m.client_uuid = ml.memo_client_uuid AND m.business_date = ml.business_date
               JOIN app.sku s ON s.id = ml.sku_id
+              LEFT JOIN LATERAL (SELECT x.variant_id FROM dw.v_dim_product_history x WHERE x.sku_id = s.id
+                                    AND (x.valid_from IS NULL OR x.valid_from <= :d) AND (x.valid_to IS NULL OR x.valid_to > :d) LIMIT 1) ph ON true
              WHERE m.route_id = :r AND m.business_date = :d AND $ACTIVE_MEMO AND ml.voided_at IS NULL AND ml.line_kind = 'sale'
-             GROUP BY s.variant_id
+             GROUP BY coalesce(ph.variant_id, s.variant_id)
             """,
         ).bind("r", routeId).bind("d", date).bind("wm", wm).execute()
 
