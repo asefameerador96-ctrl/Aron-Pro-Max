@@ -7,6 +7,7 @@ import { n, takaText } from "@/components/dash/tiles";
 import { ButtonLink } from "@/components/kit/button";
 import { requireSession } from "@/lib/auth/require";
 import { getLocale } from "@/lib/auth/service";
+import { channelLabel } from "@/lib/dash/channel";
 import { csvInt, csvTaka } from "@/lib/dash/csv";
 import { isDrillKind } from "@/lib/dash/drill";
 import { callsRows, categoryRoutes, type TrackingRow } from "@/lib/dash/rows";
@@ -66,7 +67,7 @@ export default async function DrillPage({ params, searchParams }: { params: Prom
     const cols: Col[] = [{ header: t(locale, "table.col.channel") }, { header: t(locale, "table.col.calls"), numeric: true }, { header: t(locale, "table.col.memos"), numeric: true }, { header: t(locale, "table.col.sales"), numeric: true }];
     const chRows: TRow[] = [...channels]
       .sort((a, b) => (a.code === chosen ? -1 : b.code === chosen ? 1 : b.successful_calls - a.successful_calls))
-      .map((c) => ({ key: c.code, cells: [c.name ?? c.code, n(locale, c.successful_calls), n(locale, c.memo_count), takaText(locale, c.net_mtk)], csv: [c.name ?? c.code, csvInt(locale, c.successful_calls), csvInt(locale, c.memo_count), csvTaka(locale, c.net_mtk)] }));
+      .map((c) => ({ key: c.code, cells: [channelLabel(locale, c.code, c.name), n(locale, c.successful_calls), n(locale, c.memo_count), takaText(locale, c.net_mtk)], csv: [channelLabel(locale, c.code, c.name), csvInt(locale, c.successful_calls), csvInt(locale, c.memo_count), csvTaka(locale, c.net_mtk)] }));
     body = (
       <>
         <DataTable id="channels" locale={locale} heading={t(locale, "drill.channel.title")} columns={cols} rows={chRows} csvName="channels" {...stamp(summary?.ok ? summary.data.as_of : null)} error={summary && !summary.ok ? summary.problem.code : undefined} />

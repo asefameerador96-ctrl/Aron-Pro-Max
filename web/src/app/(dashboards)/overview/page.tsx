@@ -18,6 +18,7 @@ import type { MapPin } from "@/components/map-panel";
 import { requireSession } from "@/lib/auth/require";
 import { getLocale } from "@/lib/auth/service";
 import { getDailyTracking, getGeoValidation, getLoginSubmit, getSummary, getTeamLocations, listOutlets } from "@/lib/dash/server";
+import { channelLabel } from "@/lib/dash/channel";
 import { drillHref } from "@/lib/dash/drill";
 import { rankRows, srRows } from "@/lib/dash/rows";
 import { zonesUnder } from "@/lib/dash/scope-zones";
@@ -277,7 +278,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
                 legendFirst
                 label={t(locale, "dashboard.channels.calls")}
                 centerText={formatLakhCrore(locale, callsTotal, lw)}
-                slices={channels.map((c) => ({ key: c.code, label: c.name ?? c.code, value: c.successful_calls, valueText: formatLakhCrore(locale, c.successful_calls, lw), shareText: callsTotal > 0 ? pctText(locale, (c.successful_calls / callsTotal) * 100) : "—", href: dl("channel", { code: c.code }) }))}
+                slices={channels.map((c) => ({ key: c.code, label: channelLabel(locale, c.code, c.name), value: c.successful_calls, valueText: formatLakhCrore(locale, c.successful_calls, lw), shareText: callsTotal > 0 ? pctText(locale, (c.successful_calls / callsTotal) * 100) : "—", href: dl("channel", { code: c.code }) }))}
                 size={92}
               />
             ) : (
@@ -325,7 +326,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
                 size={96}
                 testId="channel-std-donut"
                 label={t(locale, "dashboard.channels.net")}
-                slices={channels.map((c) => ({ key: c.code, label: c.name ?? c.code, value: Math.max(0, c.net_mtk), valueText: formatLakhCrore(locale, mtkToTaka(c.net_mtk), lw), shareText: channelNetTotal > 0 ? pctText(locale, (Math.max(0, c.net_mtk) / channelNetTotal) * 100) : "—", href: dl("channel", { code: c.code }) }))}
+                slices={channels.map((c) => ({ key: c.code, label: channelLabel(locale, c.code, c.name), value: Math.max(0, c.net_mtk), valueText: formatLakhCrore(locale, mtkToTaka(c.net_mtk), lw), shareText: channelNetTotal > 0 ? pctText(locale, (Math.max(0, c.net_mtk) / channelNetTotal) * 100) : "—", href: dl("channel", { code: c.code }) }))}
               />
               </div>
             ) : (
