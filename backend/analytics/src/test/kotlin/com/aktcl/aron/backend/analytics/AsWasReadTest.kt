@@ -61,12 +61,12 @@ class AsWasReadTest {
     /** What a person sees for [flt]: the sales cards, the channel cards, CPR and the brand breakdowns. */
     private fun screens(flt: NationalDashboardFilter): String = listOf(
         national.sales(caller(), flt).cards.map { Triple(it.category_code, it.total_sales, it.target_routes) },
-        national.channelStd(caller(), flt).let { r -> r.shares.map { it.code to it.value } + ("total" to r.total_std) },
-        national.channelCalls(caller(), flt).shares.map { it.code to it.value },
+        national.channelStd(caller(), flt).let { r -> r.channels.map { it.channel to it.value } + ("total" to r.total) },
+        national.channelCalls(caller(), flt).channels.map { it.channel to it.value },
         national.cpr(caller(), flt).let { listOf(it.target_outlets, it.successful_calls) },
         national.breakdown(caller(), NationalBreakdownRequest(flt, "std", "brand")).items.map { it.name to it.value },
         national.breakdown(caller(), NationalBreakdownRequest(flt, "memo", "variant")).items.map { it.name to it.value },
-        national.geoFencing(caller(), flt).let { listOf(it.total_calls, it.valid_calls) },
+        national.geoFencing(caller(), flt).let { listOf(it.total_calls, it.geo_validated) },
     ).joinToString("\n")
 
     @Test
