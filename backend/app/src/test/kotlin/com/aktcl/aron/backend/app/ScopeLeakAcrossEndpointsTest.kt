@@ -555,7 +555,7 @@ class ScopeLeakAcrossEndpointsTest {
     private val houseTso = ApiWorld.Caller("qahousetso1001", "web", null)
     private val routeTso = ApiWorld.Caller("qaroutetso1001", "web", null)
     private val partialTso = ApiWorld.Caller("qapartialtso1001", "web", null)
-    /** Ids of the fixtures below: `house_mir`, `zone_sib` (the sibling house's zone), `route_sib`. */
+    /** Ids of the fixtures below: `house_mir`, `zone_sib` (the sibling house's zone), `route_sib`, and the seed's `route_mir` (MIR-SR-D). */
     private val levelIds = HashMap<String, Long>()
 
     /**
@@ -591,6 +591,7 @@ class ScopeLeakAcrossEndpointsTest {
         levelIds["house_mir"] = one("SELECT id FROM app.house WHERE code = 'H-MIR'")
         levelIds["zone_sib"] = one("SELECT id FROM app.zone WHERE code = 'Z-SIB'")
         levelIds["route_sib"] = one("SELECT id FROM app.route WHERE code = 'SIB-SR-D'")
+        levelIds["route_mir"] = one("SELECT id FROM app.route WHERE code = 'MIR-SR-D'")
     }
 
     /** The node-scoped dashboard reads (a `level` and a `node_id` selector). */
@@ -638,24 +639,73 @@ class ScopeLeakAcrossEndpointsTest {
         assertTrue(msg.isEmpty(), msg)
     }
 
+    /** Every number under [key] in [n] (a scalar or an array of them), at any depth. */
+    private fun valuesOf(n: JsonNode, key: String): Set<Long> = buildSet {
+        fun walk(x: JsonNode) {
+            if (x.isArray) x.forEach(::walk)
+            if (!x.isObject) return
+            x.fieldNames().forEach { k ->
+                val v = x.get(k)
+                if (k == key) { if (v.isArray) v.forEach { if (it.isNumber) add(it.asLong()) } else if (v.isNumber) add(v.asLong()) }
+                walk(v)
+            }
+        }
+        walk(n)
+    }
+
     @Test
-    fun aRouteOnlyTsoGetsNoDefaultDashboardUntilRouteKeyedAggregates() = testApplication {
+    fun aRouteOnlyTsoReadsItsOwnRoutesByDefaultAndNothingElse() = testApplication {
         application { aronApi(world.wiring) }
         val token = world.login(client, routeTso)!!
         val partial = world.login(client, partialTso)!!
+        val admin = world.login(client, national)!!
         val ops = dashboards()
         assertTrue(ops.map { it.path }.containsAll(listOf("/v1/dashboards/summary", "/v1/dashboards/daily-tracking")), "${ops.map { it.key }}")
-        // D-BC-DASH-ROUTE-ONLY-01 (lead ruling 17:50 UTC): zone figures carry the zone stamped when written (moved routes, route-less
-        // memos by the outlet's zone), so even a zone whose every current route is held (Z-SIB) could show other routes over a past
-        // range. Route assignments alone give no default node and no zone node: 403, pinned until route-keyed aggregates exist.
+        val mir = world.ids["zones"]!!
+        val mirRoute = levelIds["route_mir"]!!   // MIR-SR-D, where sr1001 sold today
+        val ownRoutes = mapOf(routeTso.user to setOf(mirRoute, levelIds["route_sib"]!!), partialTso.user to setOf(mirRoute))
+        val ownZones = mapOf(routeTso.user to setOf(mir, levelIds["zone_sib"]!!), partialTso.user to setOf(mir))
+        // D-BC-DASH-ROUTE-KEYED-01 (replaces the 403 of D-BC-DASH-ROUTE-ONLY-01): the default call reads the caller's routes by route
+        // (dw.v_route_day and the route-grain splits), never a zone's figures; an explicit zone, territory or the other division stays 403.
         for (op in ops) {
             for ((c, t) in listOf(routeTso to token, partialTso to partial)) {
-                val own = world.call(client, contract, op, c, t)
-                assertEquals(403, own.status.value, "${op.key} ${c.user} default: ${own.bodyAsText().take(300)}")
+                val res = world.call(client, contract, op, c, t)
+                val text = res.bodyAsText()
+                assertEquals(200, res.status.value, "${op.key} ${c.user} default: ${text.take(300)}")
+                val body = ContractModel.json.readTree(text)
+                body.get("node")?.let { assertEquals("route" to true, it.path("type").asText() to (it.path("id").asLong() in ownRoutes.getValue(c.user)), "${op.key} ${c.user}: the default node is an own route") }
+                val routes = valuesOf(body, "route_id") + valuesOf(body, "route_ids") +
+                    body.path("children").filter { it.path("node").path("type").asText() == "route" }.map { it.path("node").path("id").asLong() }
+                assertTrue(ownRoutes.getValue(c.user).containsAll(routes), "${op.key} ${c.user}: routes $routes outside ${ownRoutes[c.user]}")
+                val zones = valuesOf(body, "zone_id")
+                assertTrue(ownZones.getValue(c.user).containsAll(zones), "${op.key} ${c.user}: zones $zones outside ${ownZones[c.user]}")
             }
-            for (q in listOf("level=zone&node_id=${levelIds["zone_sib"]}", "level=zone&node_id=${world.ids["zones"]}", "level=territory&node_id=${world.ids["territories"]}", "level=zone&node_id=${world.otherIds["zones"]}")) {
+            for (q in listOf("level=zone&node_id=${levelIds["zone_sib"]}", "level=zone&node_id=$mir", "level=territory&node_id=${world.ids["territories"]}", "level=zone&node_id=${world.otherIds["zones"]}")) {
                 assertEquals(403, client.status(op, routeTso, token, q), "${op.key} $q")
+                assertEquals(403, client.status(op, partialTso, partial, q), "${op.key} $q")
             }
+        }
+        // The partial TSO's summary is the national zone view's row for MIR-SR-D, and not Z-MIR's (its other planned routes count there).
+        val summary = ops.single { it.path == "/v1/dashboards/summary" }
+        val zoneView = ContractModel.json.readTree(world.call(client, contract, summary, national, admin, extraQuery = "level=zone&node_id=$mir").bodyAsText())
+        val zoneFields = listOf("zones_with_target_routes", "zones_final_submitted", "final_submit_pct")
+        val row = (zoneView.path("children").single { it.path("node").path("id").asLong() == mirRoute }.path("kpis") as ObjectNode).also { it.remove(zoneFields) }
+        val mine = ContractModel.json.readTree(world.call(client, contract, summary, partialTso, partial).bodyAsText())
+        val mineKpis = (mine.path("kpis").deepCopy<JsonNode>() as ObjectNode).also { it.remove(zoneFields) }
+        assertEquals(row, mineKpis, "the route's figures")
+        assertTrue(mineKpis.path("gross_mtk").asLong() > 0, "MIR-SR-D sold today: ${mine.path("kpis")}")
+        assertEquals(1, mine.path("kpis").path("zones_with_target_routes").asInt(), "the final-submit unit stays zones: Z-MIR")
+        // Control (the seed day plans no other Z-MIR route, so a zone read would equal it here; RouteKeyedDashboardTest shows the
+        // difference): the TSO holding SIB-SR-D too reads one more target route, planned in Z-SIB, and one more zone.
+        val both = ContractModel.json.readTree(world.call(client, contract, summary, routeTso, token).bodyAsText()).path("kpis")
+        assertEquals(mineKpis.path("target_routes").asInt() + 1 to 2, both.path("target_routes").asInt() to both.path("zones_with_target_routes").asInt(), "SIB-SR-D adds a target route and Z-SIB: $both")
+        assertEquals(mineKpis.path("gross_mtk").asLong(), both.path("gross_mtk").asLong(), "SIB-SR-D sold nothing")
+        // A territory TSO's numbers are unchanged: its default view is still the national view of its territory.
+        val tso = ApiWorld.Caller("tso1001", "web", null)
+        val tsoToken = world.login(client, tso)!!
+        for (op in ops) {
+            val view = world.call(client, contract, op, national, admin, extraQuery = "level=territory&node_id=${world.ids["territories"]}")
+            assertEquals(figures(view.bodyAsText()), figures(world.call(client, contract, op, tso, tsoToken).bodyAsText()), "${op.key}: tso1001 default = its territory")
         }
         val msg = verdict(client.probe(ops, Stats(), listOf(routeTso, partialTso)) { c -> if (c == routeTso) token else partial })
         assertTrue(msg.isEmpty(), msg)

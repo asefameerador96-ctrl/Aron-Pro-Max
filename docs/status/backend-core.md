@@ -2,6 +2,14 @@
 
 Updated 2026-10-24 (session 18 at the top, then session 17, then session 16, then session 15 close-out, then session 14; session 11 header text follows; earlier: session 10, earlier header text from session 5 of the lane, recycled at ~580k tokens). Last pushed head: see `git log origin/lane/backend-core`. Earlier history: `docs/status/backend.md`; time log `docs/status/backend.csv`.
 
+## Session 20 (2026-10-28) — status
+
+| Slice | What | Head | Lane CI | Checker | State |
+|---|---|---|---|---|---|
+| 0 | INT train 45 merged into the lane (fast-forward) | df6b8899 | — | — | pushed |
+| 1 | Route-only TSO dashboards on `dw.v_route_day` / `v_route_day_channel` (D-BC-DASH-ROUTE-KEYED-01) | see lead thread | pending | Opus PASS, 0 blocking (notes 1, 4, 6 taken) | candidate |
+| 2 | Small open checker notes from HANDOVER 19 → 20 | — | — | — | next |
+
 ## HANDOVER (session 19 → 20, 2026-10-25) — read this first
 1. **Lead:** session_01MbUQSxrP7AB9tbyANjUTPS (claude-code-remote `send_message` only). Push `lane/backend-core` only, one push per slice, candidate line per slice; never INT, no PRs, never edit openapi.yaml or generated files (contract changes are rows in `docs/requests/contract-v1.10-queue.md`).
 2. **State:** slice 1 = 8b031c77 (lane run 40171614925 green after one re-run of a web e2e load flake, v13-followup.spec.ts:43, not ours; reported to the lead); slice 2 = 2f6bc00f (on top of slice 1; see the lead thread for its run). Both Opus checker PASS, 0 blocking. Asked the lead for v1.10 row 3 (digest required). Nothing else queued for backend-core.

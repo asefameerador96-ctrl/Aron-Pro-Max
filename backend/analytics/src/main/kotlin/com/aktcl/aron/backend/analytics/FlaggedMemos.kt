@@ -46,7 +46,7 @@ internal class FlaggedMemos(private val db: Database) {
                        v.user_id, u.username, u.full_name, v.outlet_id, v.outlet_name, v.route_id, v.zone_id, v.territory_id, v.division_id, v.wing_id,
                        v.gross_mtk, v.flags, v.stored_at, v.voided_at
                 FROM dw.v_memo_flags v JOIN app.app_user u ON u.id = v.user_id
-                WHERE v.business_date BETWEEN :from AND :to AND ${node.clause("v.zone_id")}
+                WHERE v.business_date BETWEEN :from AND :to AND ${node.clause("v.zone_id", "v.route_id")}
                 ${if (flag != null) "AND :flag = ANY(v.flags)" else ""}
                 ${if (after != null) "AND (v.stored_at, v.memo_id) < (:after_at, :after_id)" else ""}
                 ORDER BY v.stored_at DESC, v.memo_id DESC LIMIT :lim

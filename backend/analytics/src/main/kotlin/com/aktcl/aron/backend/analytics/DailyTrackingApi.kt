@@ -80,7 +80,7 @@ class DailyTrackingService(private val db: Database, private val config: ServerC
                       FROM dw.agg_daily_route a JOIN dw.dim_geo g ON g.route_id = a.route_id
                       LEFT JOIN app.route_day rd ON rd.route_id = a.route_id AND rd.business_date = a.business_date
                       LEFT JOIN app.app_user u ON u.id = coalesce(rd.acting_user_id, rd.assigned_user_id)
-                     WHERE a.business_date = :d AND (a.planned OR a.exception_approved) AND ${node.clause("a.zone_id")} AND (CAST(:after AS bigint) IS NULL OR a.route_id > :after)
+                     WHERE a.business_date = :d AND (a.planned OR a.exception_approved) AND ${node.clause("a.zone_id", "a.route_id")} AND (CAST(:after AS bigint) IS NULL OR a.route_id > :after)
                      ORDER BY a.route_id LIMIT :lim
                     """,
                 ).bind("d", date).bind("after", afterRoute).bind("lim", limit + 1),
@@ -116,7 +116,7 @@ class DailyTrackingService(private val db: Database, private val config: ServerC
      * apart from a memo voided after that moment, which the facts no longer show as active. Null when there is no earlier day.
      */
     private fun comparator(h: org.jdbi.v3.core.Handle, node: ScopedNode, date: LocalDate, time: LocalTime): TrackingComparator? {
-        val prev = node.bind(h.createQuery("SELECT max(business_date) FROM dw.agg_daily_route a WHERE business_date < :d AND business_date >= :d - 7 AND (a.planned OR a.exception_approved) AND ${node.clause("a.zone_id")}").bind("d", date))
+        val prev = node.bind(h.createQuery("SELECT max(business_date) FROM dw.agg_daily_route a WHERE business_date < :d AND business_date >= :d - 7 AND (a.planned OR a.exception_approved) AND ${node.clause("a.zone_id", "a.route_id")}").bind("d", date))
             .mapTo(LocalDate::class.java).findOne().orElse(null) ?: return null
         val cutoff = prev.atTime(time).atZone(ZoneId.of("Asia/Dhaka")).toInstant()
         val loginAt = DashboardSummaries.successfulLoginAtSql(h, "a", "cut")
@@ -127,7 +127,7 @@ class DailyTrackingService(private val db: Database, private val config: ServerC
                   SELECT a.route_id, a.exception_approved AS ex, a.target_outlets,
                          ($loginAt) AS logged,
                          (SELECT count(DISTINCT m.outlet_id) FROM dw.fact_memo m WHERE m.business_date = a.business_date AND m.route_id = a.route_id AND m.status = 'active' AND m.line_count > 0 AND m.committed_at <= :cut) AS calls
-                    FROM dw.agg_daily_route a WHERE a.business_date = :p AND (a.planned OR a.exception_approved) AND ${node.clause("a.zone_id")}),
+                    FROM dw.agg_daily_route a WHERE a.business_date = :p AND (a.planned OR a.exception_approved) AND ${node.clause("a.zone_id", "a.route_id")}),
                 b AS (SELECT CASE WHEN ex THEN 'exception' WHEN NOT logged THEN 'not_logged_in' WHEN target_outlets <= 0 THEN 'below_80'
                                   WHEN calls * 100 >= target_outlets * 100 THEN 'ge_100' WHEN calls * 100 >= target_outlets * 90 THEN 'from_90'
                                   WHEN calls * 100 >= target_outlets * 80 THEN 'from_80' ELSE 'below_80' END AS bucket FROM r)
