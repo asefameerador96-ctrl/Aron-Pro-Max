@@ -389,7 +389,7 @@ object SalesSummaryReport : ReportHandler {
         SELECT g.route_code, g.route_name, coalesce(rt.t, 0)::int AS target_outlets, rt.sc::int AS successful_calls, round(100.0 * rt.sc / nullif(rt.t, 0), 2) AS cpr_pct,
                rt.memos::int AS memos, rt.net::bigint AS net_mtk, p.brand_name, br.bm::int AS brand_memos, round(100.0 * br.bm / nullif(rt.memos, 0), 2) AS bsr_pct
           FROM rt JOIN dw.dim_geo g ON g.route_id = rt.route_id LEFT JOIN br ON br.route_id = rt.route_id
-          LEFT JOIN LATERAL (SELECT brand_name FROM dw.dim_product WHERE brand_id = br.brand_id ORDER BY brand_name LIMIT 1) p ON true
+          LEFT JOIN LATERAL (SELECT name AS brand_name FROM app.product_node WHERE id = br.brand_id) p ON true
         """,
     )
 }
