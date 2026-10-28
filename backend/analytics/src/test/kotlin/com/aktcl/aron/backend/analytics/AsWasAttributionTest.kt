@@ -104,10 +104,10 @@ class AsWasAttributionTest {
         val w = AggregationWorker(fresh.db)
         w.runUntilIdle()
         val t1 = long("SELECT id FROM app.territory WHERE code = 'T1'")
-        assertEquals(t1, long("SELECT territory_id FROM dw.agg_daily_zone a JOIN app.zone z ON z.id = a.zone_id WHERE z.code = 'Z1'"))
+        assertEquals(t1, long("SELECT a.territory_id FROM dw.agg_daily_zone a JOIN app.zone z ON z.id = a.zone_id WHERE z.code = 'Z1'"))
         exec("UPDATE app.zone SET territory_id = (SELECT id FROM app.territory WHERE code = 'T2') WHERE code = 'Z1'")
         fullRebuild(w)
-        assertEquals(t1, long("SELECT territory_id FROM dw.agg_daily_zone a JOIN app.zone z ON z.id = a.zone_id WHERE z.code = 'Z1'"))
+        assertEquals(t1, long("SELECT a.territory_id FROM dw.agg_daily_zone a JOIN app.zone z ON z.id = a.zone_id WHERE z.code = 'Z1'"))
     }
 
     @Test
