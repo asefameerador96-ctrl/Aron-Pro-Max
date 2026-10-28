@@ -23,7 +23,7 @@ const PRIORITY_TONE: Record<SupportTicketPriority, ChipTone> = { p1: "danger", p
 
 export function StatusBadge({ locale, status }: { locale: Locale; status: SupportTicketStatus }) {
   return (
-    <StatusChip tone={STATUS_TONE[status]} data-status={status}>
+    <StatusChip tone={STATUS_TONE[status]} className="whitespace-nowrap" data-status={status}>
       {t(locale, `tickets.status.${status}` as MessageKey)}
     </StatusChip>
   );
@@ -31,7 +31,7 @@ export function StatusBadge({ locale, status }: { locale: Locale; status: Suppor
 
 export function PriorityBadge({ locale, priority }: { locale: Locale; priority: SupportTicketPriority }) {
   return (
-    <StatusChip tone={PRIORITY_TONE[priority]} icon={null} data-priority={priority}>
+    <StatusChip tone={PRIORITY_TONE[priority]} icon={null} className="whitespace-nowrap" data-priority={priority}>
       {t(locale, `tickets.priority.${priority}` as MessageKey)}
     </StatusChip>
   );

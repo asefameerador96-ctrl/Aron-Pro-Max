@@ -103,7 +103,8 @@ export function DeskPanel({ ticketUuid, version, status, priority, codes, codesF
     <div className="space-y-5" data-testid="desk-panel" data-version={version}>
       {op.last ? <TicketOpBanner action={op.last.action} outcome={op.last.outcome} onReload={op.reload} /> : null}
       {actions.length === 0 ? <p className="text-body text-secondary" data-testid="desk-none">{t("tickets.desk.none")}</p> : null}
-      {actions.some((a) => a === "start" || a === "close" || a === "priority") ? <StatusActions send={op.send} busy={busy} version={version} status={status} priority={priority} /> : null}
+      {/* keyed by the priority: after a refresh the select starts from the ticket's current priority again */}
+      {actions.some((a) => a === "start" || a === "close" || a === "priority") ? <StatusActions key={priority} send={op.send} busy={busy} version={version} status={status} priority={priority} /> : null}
       {actions.includes("reply") ? <ReplyForm send={op.send} busy={busy} /> : null}
       {actions.includes("resolve") || actions.includes("cancel") ? (
         <div className="grid gap-6 lg:grid-cols-2">
