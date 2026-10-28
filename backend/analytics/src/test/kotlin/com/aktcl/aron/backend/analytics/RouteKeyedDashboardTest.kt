@@ -105,6 +105,14 @@ class RouteKeyedDashboardTest {
     fun aRouteOnlyCallerWithOneRouteOfAZoneSeesThatRouteAndNothingElse() {
         val zone = service.summary(zoneReach(z1), null, null, day, day)
         val child = zone.children.single { it.node.id == r1 }
+        // Risk signals: one on R1 (counted), one on R2 and one with a zone and no route (both outside a route-only view).
+        fresh.db.jdbi.useHandle<Exception> { h ->
+            for ((code, route) in listOf("GEO_MOCK" to "'R1'", "GEO_TELEPORT" to "'R2'", "GEO_STALE_FIX" to null)) h.execute(
+                "INSERT INTO app.risk_signal (code, severity, business_date, subject_type, subject_id, user_id, route_id, zone_id, score, config_version) " +
+                    "SELECT '$code', 2, DATE '$day', 'user', 'qa-$code', u.id, ${if (route == null) "NULL" else "(SELECT id FROM app.route WHERE code = $route)"}, $z1, 10, 0 " +
+                    "FROM app.app_user u WHERE u.username = 'sr001'",
+            )
+        }
         val own = service.summary(routeOnly(r1), null, null, day, day)
         assertEquals(child.kpis, own.kpis.routeFigures(), "the route's figures are the zone view's row for that route")
         assertEquals(listOf(r1), own.children.map { it.node.id })
@@ -116,6 +124,8 @@ class RouteKeyedDashboardTest {
         val zoneGeoChild = service.geoValidation(zoneReach(z1), null, null, day, day).children.single { it.node.id == r1 }
         assertEquals(zoneGeoChild.visits to zoneGeoChild.geo_valid_visits, ownGeo.visits to ownGeo.geo_valid_visits)
         assertEquals(listOf(zoneGeoChild), ownGeo.children)
+        assertEquals(mapOf("GEO_MOCK" to 1), ownGeo.signals_by_code, "only R1's signal")
+        assertEquals(mapOf("GEO_TELEPORT" to 1, "GEO_MOCK" to 1, "GEO_STALE_FIX" to 1), service.geoValidation(zoneReach(z1), null, null, day, day).signals_by_code, "control: the zone sees all three")
         // No explicit node: a route-only caller reaches no zone, territory or the nation (403, as before).
         for ((lv, n) in listOf("zone" to z1, "zone" to id("SELECT id FROM app.zone WHERE code = 'Z2'"), "territory" to id("SELECT id FROM app.territory"), "national" to null)) {
             assertEquals(ProblemCode.ERR_FORBIDDEN, assertFailsWith<ApiProblem> { service.summary(routeOnly(r1), lv, n, day, day) }.code, "summary $lv")

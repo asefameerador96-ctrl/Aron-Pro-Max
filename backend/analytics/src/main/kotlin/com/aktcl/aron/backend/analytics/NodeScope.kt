@@ -39,6 +39,8 @@ internal fun resolveScopedNode(h: Handle, reach: Reach, level: String?, nodeId: 
     val lv: String; val id: Long
     if (level == null && nodeId == null) {
         if (reach.national) return ScopedNode(NodeRefDto("national", 0, "national", "National"), null)
+        // Route assignments and no zone in reach (also a scope node with no zones): the caller's routes, as DashboardService does.
+        routeOnlyNode(reach)?.let { return it }
         val top = reach.topNodes.firstOrNull() ?: throw out
         // Route nodes follow the scope nodes in the reach, so a route first means route assignments only: no zone is in reach,
         // and zone figures carry the zone stamped when written, so they would show other routes (D-BC-DASH-ROUTE-ONLY-01): read the

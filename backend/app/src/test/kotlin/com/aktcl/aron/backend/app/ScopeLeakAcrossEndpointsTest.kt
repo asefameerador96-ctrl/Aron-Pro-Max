@@ -644,7 +644,8 @@ class ScopeLeakAcrossEndpointsTest {
         fun walk(x: JsonNode) {
             if (x.isArray) x.forEach(::walk)
             if (!x.isObject) return
-            x.fields().forEach { (k, v) ->
+            x.fieldNames().forEach { k ->
+                val v = x.get(k)
                 if (k == key) { if (v.isArray) v.forEach { if (it.isNumber) add(it.asLong()) } else if (v.isNumber) add(v.asLong()) }
                 walk(v)
             }
