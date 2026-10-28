@@ -143,4 +143,16 @@ class AsWasNodeScopeTest {
         // The old window start alone (day 1) is unaffected by the move date.
         assertEquals(zoneDay1 + z2Day, terr(day, day).kpis.net_mtk)
     }
+
+    @Test
+    fun aNodeThatLostEveryZoneOnTheFirstDateOfTheWindowHasNoMembersThere() {
+        // Both zones left T1 for T2 on day 2: a period that ends exactly on the window's first date is not in the window (as_to is exclusive).
+        moveZ2()
+        exec("UPDATE app.zone SET territory_id = $t2 WHERE code = 'Z1'")
+        exec("UPDATE app.zone_history SET valid_to = DATE '$day2' WHERE zone_id IN ($z1, $z2) AND territory_id = $t1 AND valid_to IS NOT NULL")
+        exec("UPDATE app.zone_history SET valid_from = DATE '$day2' WHERE zone_id IN ($z1, $z2) AND territory_id = $t2")
+        assertEquals(ProblemCode.ERR_FORBIDDEN, assertFailsWith<ApiProblem> { terr(day2, day2, t1) }.code, "T1 had no zone on day 2")
+        assertTrue(terr(day, day2, t1).kpis.gross_mtk > 0, "but it had both on day 1")
+        assertEquals(ProblemCode.ERR_FORBIDDEN, assertFailsWith<ApiProblem> { terr(day, day, t2) }.code, "and T2 had none on day 1")
+    }
 }
