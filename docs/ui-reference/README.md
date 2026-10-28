@@ -27,6 +27,7 @@ Each note file contains: what the screen shows (labels in Bangla with an English
 | SR sales submit | `sr/sales-submit.md`, `sr/sales-submit.png` | UI-SR-35 to UI-SR-39 |
 | SR outlet menu | `sr/outlet-menu.md`, `sr/outlet-menu.png` | UI-SR-40 to UI-SR-42 |
 | SR task and Astha menus | `sr/tasks-and-astha.md`, `sr/tasks.png`, `sr/astha.png` | UI-SR-43 to UI-SR-46 |
+| TSO app, every screen (owner, 2026-10-28: the October 2026 TSO manual with Tickets) | `tso/01-*.jpg` to `tso/44-*.jpg`; text in `../evidence/manuals/manual-tso-2026-10.md` (screenshot N = manual step N) | D-TSO-MAN-01; build spec `docs/requests/tso-manual-build-2026-10.md` |
 | Web national dashboard (owner, 2026-10-22) | `web/dashboard.md`, `web/dashboard-national.webp` | UI-WEB-01 to UI-WEB-14 |
 | Web dashboard brief (Report Brief 14, every card's formula and source) | `web/dashboard-brief.md`, `web/dashboard-brief-1..6-*.webp` | binding spec, D-DASH-02 |
 
