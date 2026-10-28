@@ -20,7 +20,7 @@ Removals are rare and listed here (a wrong column is removed, never redefined in
 | Schema | Relations | Columns |
 |---|---|---|
 | `app` | 167 | 2797 |
-| `dw` | 62 | 985 |
+| `dw` | 64 | 1037 |
 
 ## Index
 
@@ -251,6 +251,8 @@ Removals are rare and listed here (a wrong column is removed, never redefined in
 | [`dw.v_memo_line`](#dwv_memo_line) | view | worker | SERVER | event_fact | none | Stable view: one row per memo line (dw.fact_memo_line) in entered and base units with its price at capture. is_effective = memo active and line not voided. |
 | [`dw.v_outlet_masked`](#dwv_outlet_masked) | view | backend:masterdata | ONLINE | master | none | Stable view: outlets without owner name, address or national ids; the phone masked to 01*****NNN (D-107). |
 | [`dw.v_outlet_sku_daily`](#dwv_outlet_sku_daily) | view | worker | SERVER | event_fact | none | Stable view: quantity sold and memo count per outlet, SKU and business date (dw.agg_daily_outlet_sku). is_effective = true. |
+| [`dw.v_route_day`](#dwv_route_day) | view | worker | SERVER | event_fact | none | Stable view: one row per route and business date (dw.agg_daily_route) with the zone-day flags derived per route (target route, successful login, sales submitted) and the Final Submit of the zone the route-day was stamped with; summing over a caller's routes gives the route-scoped dashboard totals. is_effective = true. |
+| [`dw.v_route_day_channel`](#dwv_route_day_channel) | view | worker | SERVER | event_fact | none | Stable view: active memos, outlets sold to, gross and net per route, business date and the outlet channel frozen on the memo at capture (dw.fact_memo, app.memo.outlet_channel); follows the route that sold, never a later outlet move. is_effective = true. |
 | [`dw.v_route_monthly_target`](#dwv_route_monthly_target) | view | worker | SERVER | master | none | Stable view: route x SKU monthly targets in base units with the month's working days and the derived daily target (D-TARGET-MIN-01). |
 | [`dw.v_stock_movement`](#dwv_stock_movement) | view | backend:sync | OFFLINE | transaction | none | Stable view: every stock movement (issue, return and the other kinds of app.stock_movement) in entered and base units. is_effective = not voided. |
 | [`dw.v_visit`](#dwv_visit) | view | worker | SERVER | event_fact | none | Stable view: one row per visit (dw.fact_visit) with both geo verdicts and distances, no coordinates and no photo. is_effective = not voided. |
@@ -6680,6 +6682,76 @@ Stable view: quantity sold and memo count per outlet, SKU and business date (dw.
 | `memo_count` | integer | null |  | Memos of the outlet-day with a line of the SKU. |
 | `updated_at` | timestamp with time zone | null |  | UTC time the row was last rebuilt. |
 | `data_origin` | app.data_origin | null |  | Origin (production, pilot, test, seed): the most synthetic of its outlet, route and the memos, visits and collections of the outlet-day; set by trigger on every write. |
+| `is_effective` | boolean | null |  | True when the row counts in an ordinary total (the rule of this view is in its description). |
+
+## dw.v_route_day
+
+Stable view: one row per route and business date (dw.agg_daily_route) with the zone-day flags derived per route (target route, successful login, sales submitted) and the Final Submit of the zone the route-day was stamped with; summing over a caller's routes gives the route-scoped dashboard totals. is_effective = true.
+
+`owner: worker | capture: SERVER | retention: event_fact | pii: none` · view
+
+| Column | Type | Null | PII | Description |
+|---|---|---|---|---|
+| `business_date` | date | null |  | Asia/Dhaka business date of the row (cutoff 00:00 Dhaka); all day-level rollups key off it. |
+| `route_id` | bigint | null |  | Route (app.route) being worked. |
+| `zone_id` | bigint | null |  | Zone (app.zone). |
+| `planned` | boolean | null |  | True when the route or outlet was planned for the business date. |
+| `exception_approved` | boolean | null |  | True when a day exception was approved for the route-day. |
+| `is_target_route` | boolean | null |  | True when the route was planned for the day and no day exception was approved (counted in the zone's target_routes and the strike-rate denominator). |
+| `day_state` | text | null |  | Route-day state at the time of the last event. |
+| `downloaded_at` | timestamp with time zone | null |  | First full bundle download of the route-day (app.route_day.target_frozen_at when bundle_count > 0); Login = check-in and download. |
+| `logged_in_at` | timestamp with time zone | null |  | UTC time of the route's first day_open. |
+| `checked_in_at` | timestamp with time zone | null |  | UTC time of the first non-voided attendance check-in of the route's SR on the business date (the event's route, or, when the event names none, a user assigned to the route that day); null when none (V0108). |
+| `successful_login` | boolean | null |  | True when the route-day has its login, its first full bundle download and the SR's check-in (the dashboards' successful-login rule). |
+| `sales_submitted` | boolean | null |  | True when Sales Submit (or Final Submit) is in effect and the login was successful (the zone's sales_submitted_routes rule). |
+| `sales_submitted_at` | timestamp with time zone | null |  | UTC instant Sales Submit took effect. |
+| `final_submitted_at` | timestamp with time zone | null |  | UTC time of the Final Submit. |
+| `zone_final_submitted` | boolean | null |  | dw.agg_daily_zone.final_submitted of the route-day's stamped zone: every target route of that zone-day is final-submitted (the midnight auto-submit does not set it; see zone_auto_submitted). |
+| `zone_final_submitted_at` | timestamp with time zone | null |  | UTC time of that zone-day's first Final Submit or midnight auto-submit. |
+| `zone_auto_submitted` | boolean | null |  | True when the midnight job auto-submitted that zone-day. |
+| `first_sale_at` | timestamp with time zone | null |  | UTC time of the route-day's first memo (First Sale Time). |
+| `last_sale_at` | timestamp with time zone | null |  | UTC time of the route-day's last memo (Last Sale Time). |
+| `target_outlets` | integer | null |  | Outlets planned for the route-day, frozen at the first bundle of the day (strike-rate denominator). |
+| `visited_outlets` | integer | null |  | Distinct outlets visited. |
+| `successful_calls` | integer | null |  | Visits with a sale. |
+| `completed_calls` | integer | null |  | SR calls closed with an outcome other than abandoned or not_reached, with or without a memo (Total Calls). |
+| `completed_geo_valid_calls` | integer | null |  | Completed calls whose server verdict, else device verdict, is in_range (Geo Validation). |
+| `visits` | integer | null |  | Number of visits. |
+| `geo_valid_visits` | integer | null |  | Visits whose geo verdict was in range. |
+| `force_sale_visits` | integer | null |  | Visits where a sale was forced past the geofence. |
+| `mock_visits` | integer | null |  | Visits with a mock-location verdict. |
+| `suspicious_visits` | integer | null |  | Visits that belong to suspicious user-days under the risk rules. |
+| `active_memo_count` | integer | null |  | Number of active (not voided or superseded) memos with at least one line. |
+| `gross_mtk` | bigint | null |  | Gross sales value before discounts, in milli-taka. |
+| `offer_discount_mtk` | bigint | null |  | Offer and free-goods discount in milli-taka (zero until the discount engine exists, docs/27). |
+| `drp_discount_mtk` | bigint | null |  | DRP (empty-pack slide) discount in milli-taka. |
+| `qc_deduction_mtk` | bigint | null |  | QC settlement deducted on the memo, in milli-taka. |
+| `net_mtk` | bigint | null |  | Net payable value in milli-taka (gross minus discounts and QC deduction, rounded to the paisa). |
+| `paid_mtk` | bigint | null |  | Amount paid in cash at the memo, in milli-taka. |
+| `due_mtk` | bigint | null |  | Amount left on credit (due) in milli-taka. |
+| `dues_collected_mtk` | bigint | null |  | Dues collected against earlier credit memos, in milli-taka. |
+| `late_rows_after_final` | integer | null |  | Rows that arrived after the Final Submit. |
+| `updated_at` | timestamp with time zone | null |  | UTC instant of the last update. |
+| `data_origin` | app.data_origin | null |  | Origin (production, pilot, test, seed): the most synthetic of its route and the memos, visits, stock movements and collections of the route-day; set by trigger on every write. |
+| `is_effective` | boolean | null |  | True when the row counts in an ordinary total (the rule of this view is in its description). |
+
+## dw.v_route_day_channel
+
+Stable view: active memos, outlets sold to, gross and net per route, business date and the outlet channel frozen on the memo at capture (dw.fact_memo, app.memo.outlet_channel); follows the route that sold, never a later outlet move. is_effective = true.
+
+`owner: worker | capture: SERVER | retention: event_fact | pii: none` · view
+
+| Column | Type | Null | PII | Description |
+|---|---|---|---|---|
+| `business_date` | date | null |  | Asia/Dhaka business date of the memos. |
+| `route_id` | bigint | null |  | Route of the memos (dw.fact_memo.route_id). |
+| `outlet_channel` | text | null |  | Outlet channel code frozen on the memo at capture (app.memo.outlet_channel). |
+| `active_memo_count` | integer | null |  | Active memos (not voided or superseded) with at least one line. |
+| `successful_calls` | integer | null |  | Distinct outlets with an active memo of the route on the date in that channel (the summary's by_channel calls). |
+| `gross_mtk` | bigint | null |  | Gross sales value before discounts of those memos, in milli-taka. |
+| `net_mtk` | bigint | null |  | Net payable value of those memos, in milli-taka. |
+| `updated_at` | timestamp with time zone | null |  | Latest update of the memo facts behind the row. |
+| `data_origin` | app.data_origin | null |  | Origin (production, pilot, test, seed): the most synthetic of the memos behind the row. |
 | `is_effective` | boolean | null |  | True when the row counts in an ordinary total (the rule of this view is in its description). |
 
 ## dw.v_route_monthly_target

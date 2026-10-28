@@ -39,6 +39,7 @@ class DwViewContractTest {
     private val history = mapOf(
         "1.0" to "c9680e52564594847fed54155e522e7292dad3b6b053acc8d50aee4c369d7a45",
         "1.1" to "a9c369ff55c3053f1d5224c54836895cdc9de7e9a9e0ebf327e3feb3471e085d",           // V0119 master history dims
+        "1.2" to "d05f4cc966c298227703c1210c1af3a91d1a2dae548d90979a1366a3d9368181",           // V0122 route-day views
     )
 
     private fun views(c: Connection): Map<String, List<String>> =
@@ -111,7 +112,8 @@ class DwViewContractTest {
 
     @Test
     fun theReuseViewsExposeNoPersonalDataAndNoCoordinates() = db.connect().use { c ->
-        val reuse = listOf("v_memo", "v_memo_line", "v_visit", "v_due_ledger", "v_stock_movement", "v_outlet_sku_daily", "v_dim_geo", "v_dim_outlet", "v_dim_user", "v_dim_product")
+        val reuse = listOf("v_memo", "v_memo_line", "v_visit", "v_due_ledger", "v_stock_movement", "v_outlet_sku_daily", "v_dim_geo", "v_dim_outlet", "v_dim_user", "v_dim_product",
+            "v_dim_geo_history", "v_dim_outlet_history", "v_dim_product_history", "v_dim_user_history", "v_route_day", "v_route_day_channel")
         val all = views(c)
         val banned = Regex("(memo_no|_name_bn|full_name|username|owner_name|contact|phone|_lat|_lng|^lat$|^lng$|note|photo)")
         for (v in reuse) {

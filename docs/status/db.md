@@ -2,12 +2,58 @@
 
 Updated with every push. Rows of Day 1: N-005, N-006, N-007, N-008 (`python3 tools/my-rows.py db 1 --full`).
 
+## HANDOVER (session 13 -> session 14), 2026-10-28 ~03:00 UTC, lane/db 1defc0c7 (+ this docs-only commit)
+
+**State.** lane/db = INT 83f0fec8 (train 44: V0119 master history, V0120 registry pruning, both deployed on dev) +
+e555cdb4 (V0121 memo-line diff) + 1defc0c7 (V0122 route-day views + backend-core answer), run #1612 green (Migrations step
+and Backend app tests ran), reported to the lead as candidate 3 (one candidate). This handover commit is docs-only on top.
+**Next free migration: V0123.** View contract **1.2** (history `1.0`, `1.1` V0119, `1.2` V0122 in DwViewContractTest).
+
+| Item | Where | What |
+|---|---|---|
+| master history | V0119 (train 43, dev) | ten app `*_history` tables, owner-guarded registry `app.master_history_map` (pinned tracked columns), SECURITY DEFINER `app.master_history_track` (update trigger WHEN tracked/origin differs), audit-log recovery `app.rebuild_master_history` (owner, locks, replaces the table), dw `v_dim_*_history`. D-DB-MASTER-HISTORY-01 |
+| registry pruning | V0120 + RetentionJob step 5 (train 44, dev, worker running it) | `app.prune_ingest_registry`, `app.ingest_registry_days` (floor = max(min 30, backdate + 31)). D-DB-REGISTRY-PRUNE-01 |
+| memo-line diff | V0121 (candidate 3) | `dw.sync_fact_memo_lines` by diff, no rewrite or lock for unchanged lines; restamp skips dw tables without an origin trigger. D-DB-MEMO-LINE-DIFF-01 |
+| route-day views | V0122 (candidate 3) | `dw.v_route_day`, `dw.v_route_day_channel`; answer `docs/requests/db-backend-core-route-aggregates-answer.md`. D-DB-ROUTE-DAY-VIEW-01 |
+
+**Open for db #14.**
+1. Candidate 3 rides the next train; confirm it lands (V0121, V0122 on dev).
+2. **backend-core #20 wiring** (not db's files): the answer file names per endpoint what replaces the route-only 403
+   (summary, geo-validation, login-submit, sync-health, daily-tracking, flagged-memos), the zone-unit final-submit KPIs,
+   `HAVING bool_or(is_target_route)` for `zones[]`, and an analytics test comparing `v_route_day` sums with
+   `Aggregator.rebuildZoneDay`. Answer their questions; a route hourly view or route `suspicious_user_days` only if asked.
+3. **Fleet follow-up (b)** (before the 8,500-user move, not pilot): V0116's aggregate origin trigger runs up to four
+   indexed max() lookups per aggregate write; compute once per route-day. (Restamp's line pass is fixed by V0121.)
+4. **Row 9 remaining, "not now" by the lead:** the partition batch (pre-staging window, D-DB-PART-01, nine tables in the
+   section below) and the archive export job (first partitions reach the window ~2027-11).
+5. Backend-reports (review High 1): rekey `dw.dim_*_version` and the Aggregator onto the V0119 app history tables;
+   db can help with `*_key_on`-style functions over them.
+6. Owner rows O (Durga Puja date in seed 06) and R (zero-price SKUs) unchanged; do not invent a date or a price.
+7. Nits left by checkers: matched-memo registry rows stay at the old end of the prune index (rare); V0119 notes a
+   `DROP COLUMN ... CASCADE` of a tracked master column silently drops that master's history trigger (recreate it).
+
+**Lessons (session 13).**
+- DwViewContractTest refuses to regenerate when the committed file already carries the new version with other columns:
+  while a version is unshipped, restore the previous file (`git show <base>:docs/dw-view-contract.md`) and re-render.
+  Added views need a minor bump (the lead accepted 1.1 over "keeps 1.0").
+- `apply_db_role_grants` gives api_rw INSERT/UPDATE on every app table: any table a SECURITY DEFINER function reads to
+  decide what to write needs an owner guard trigger too (V0119 checker blocker).
+- A prune DELETE must re-check its time condition on the outer (locked) row: READ COMMITTED re-evaluates only those
+  (V0120 checker blocker); `= ANY(ARRAY(subquery LIMIT n))` keeps a chunked delete on index lookups.
+- `ON CONFLICT DO UPDATE ... WHERE false` still locks and WAL-logs each conflicting row: filter unchanged rows first.
+- Running tools/ci tests leaves `tools/ci/__pycache__`, which NoSecretsInRepoTest flags locally: delete it.
+- A gradle suite started before an edit tests the old migration: stop it (`./gradlew --stop`) and rerun after edits.
+- The container can restart mid-run (background suites lost): Postgres needs `service postgresql start` again; setup as
+  session 10 (aron_test superuser, max_connections 400).
+
 ## Session 13, 2026-10-27 (lane/db; rebased on INT d055c9c = train 42)
 
 | Job | State | What |
 |---|---|---|
-| **row 9 item 2: master history** (review Medium 9) | built; Opus checker round 1 FAIL (1 blocker: api_rw could rewrite the registry that steers the SECURITY DEFINER trigger) -> fixed, round 2 PASS (wording fix taken); local db 297/0, app 464/0, analytics 215/0; pushed 203af27, run #1606 | V0119: ten app-side history tables (geography parents, cluster, route class/status, outlet class, product tree, SKU attributes, user role/home zone), registry `app.master_history_map` (pinned tracked columns, owner-guarded), trigger `app.master_history_track` (period on a real change only; no-op, untracked and origin re-tag open none), seeded from `app.audit_log` before-images (`app.rebuild_master_history`), dw `v_dim_geo_history`, `v_dim_outlet_history`, `v_dim_product_history`, `v_dim_user_history`; view contract 1.1. D-DB-MASTER-HISTORY-01. Next free migration V0120 (taken by item 3) |
-| **row 9 item 3: ingest-registry pruning** | built after V0119's run; Opus checker round 1 FAIL (3 blockers: replay race, full scan per chunk, backdate floor) -> fixed, round 2 PASS | V0120 `app.prune_ingest_registry` / `app.ingest_registry_days`, partial index; RetentionJob step 5 (backend/sync). D-DB-REGISTRY-PRUNE-01. Next free migration **V0121** |
+| **row 9 item 2: master history** (review Medium 9) | built; train 43 (203af27, run #1606; V0119 on dev); Opus checker round 1 FAIL (1 blocker: api_rw could rewrite the registry that steers the SECURITY DEFINER trigger) -> fixed, round 2 PASS | V0119: ten app-side history tables (geography parents, cluster, route class/status, outlet class, product tree, SKU attributes, user role/home zone), registry `app.master_history_map` (pinned tracked columns, owner-guarded), trigger `app.master_history_track` (period on a real change only; no-op, untracked and origin re-tag open none), seeded from `app.audit_log` before-images (`app.rebuild_master_history`), dw `v_dim_geo_history`, `v_dim_outlet_history`, `v_dim_product_history`, `v_dim_user_history`; view contract 1.1. D-DB-MASTER-HISTORY-01. Next free migration V0120 (taken by item 3) |
+| **row 9 item 3: ingest-registry pruning** | train 44 (0691a51, run #1607; V0120 on dev); Opus checker round 1 FAIL (3 blockers: replay race, full scan per chunk, backdate floor) -> fixed, round 2 PASS | V0120 `app.prune_ingest_registry` / `app.ingest_registry_days`, partial index; RetentionJob step 5 (backend/sync). D-DB-REGISTRY-PRUNE-01. Next free migration V0121 (taken) |
+| **fleet follow-up (a): memo lines by diff** (lead 00:28 item 1) | candidate 3 (e555cdb, run #1612 green); Opus checker PASS (should-fixes taken); local db 300/0, app 464/0, analytics 215/0 | V0121 `dw.sync_fact_memo_lines` diffs (no rewrite, no row lock for unchanged lines); restamp skips dw tables without an origin trigger. D-DB-MEMO-LINE-DIFF-01 |
+| **route-keyed dashboard views** (lead 00:28 item 2) | candidate 3 (1defc0c, run #1612 green); Opus checker PASS (should-fixes taken) | V0122 `dw.v_route_day`, `dw.v_route_day_channel`, contract 1.2; answer `docs/requests/db-backend-core-route-aggregates-answer.md` for backend-core #20. D-DB-ROUTE-DAY-VIEW-01. Next free migration **V0123** |
 
 ## HANDOVER (session 12 -> session 13), 2026-10-27 ~20:00 UTC, lane/db ca4da94a (+ this docs-only commit)
 
