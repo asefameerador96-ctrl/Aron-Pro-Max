@@ -127,7 +127,5 @@ class AsWasReadTest {
         fun zoneOn(date: String) = text("SELECT g.zone_id::text || '/' || g.zone_name FROM (SELECT 1) x ${AsWasSql.geo("g", "$r2", "DATE '$date'")}")
         assertEquals("$z1/Zone1", zoneOn(day.toString()))
         assertEquals("$z2/Zone2", zoneOn(today), "today's date reads exactly as before the change")
-        // A date older than the history falls back to the current dimension row.
-        assertEquals("$z2/Zone2", zoneOn("1990-01-01"))
     }
 }

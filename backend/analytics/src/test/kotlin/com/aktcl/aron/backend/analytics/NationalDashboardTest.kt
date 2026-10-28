@@ -50,6 +50,7 @@ class NationalDashboardTest {
                 it.execute("INSERT INTO app.domain_event (event_type, aggregate_type, aggregate_id, business_date, source_client_uuid) VALUES ('memo.created','memo','x','2026-10-04','00000000-0000-4000-8000-0000000000$u')")
             }
         }
+        fresh.db.jdbi.useHandle<Exception> { forgetMasterHistory(it) }
         rebuild()
         z1 = id("SELECT id FROM app.zone WHERE code = 'Z1'"); z2 = id("SELECT id FROM app.zone WHERE code = 'Z2'")
         svc = NationalDashboardService(fresh.db, AronClock { now })
@@ -210,7 +211,16 @@ class NationalDashboardTest {
         assertNotNull(svc.cpr(national(), all).as_of)
     }
 
-    private fun sql(s: String) = fresh.db.jdbi.useHandle<Exception> { it.execute(s) }
+    private fun sql(s: String) = fresh.db.jdbi.useHandle<Exception> { it.execute(s); forgetMasterHistory(it) }
+
+    /**
+     * The fixture's masters are edited after they are created, and the master history (V0119) records those edits as of today. These
+     * tests describe a fixture whose masters were always so, so the history is dropped and the read joins fall back to the current
+     * dimension (AsWasReadTest covers the history itself).
+     */
+    private fun forgetMasterHistory(h: org.jdbi.v3.core.Handle) = h.execute(
+        "DO $$ DECLARE t text; BEGIN FOR t IN SELECT history_table FROM app.master_history_map LOOP EXECUTE format('DELETE FROM app.%I', t); END LOOP; END $$",
+    )
 
     @Test
     fun checker_manualDummyAndAmoRoutesAreNotTargetRoutes() {
