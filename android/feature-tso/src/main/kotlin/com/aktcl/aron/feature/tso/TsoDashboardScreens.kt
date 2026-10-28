@@ -286,8 +286,9 @@ private fun ChannelCardView(load: CardLoad<ChannelCard>, mode: ChannelMode, onTo
                 if (!n.solid) drawCircle(Brush.radialGradient(listOf(colors[0].copy(alpha = 0.45f), Color.Transparent), radius = size.minDimension * 0.62f), radius = size.minDimension * 0.62f)
                 var start = -90f
                 slices.forEachIndexed { i, s ->
-                    // the angle is drawing only; the printed share is the integer bp above
-                    val sweep = (s.value.toFloat() / v.total.toFloat()) * 360f
+                    // the angle is drawing only (tenths of a degree from the integers); the printed share is the integer bp above
+                    val sweepTenths = TsoDashboards.sweepTenths(s, v.total)
+                    val sweep = sweepTenths / 10f
                     drawArc(colors[i % colors.size], start, sweep, useCenter = true, topLeft = Offset(size.width * 0.1f, size.height * 0.1f), size = androidx.compose.ui.geometry.Size(size.width * 0.8f, size.height * 0.8f))
                     start += sweep
                 }

@@ -150,6 +150,9 @@ object TsoDashboards {
     /** A channel's share, basis points of the card total, printed with 2 decimals ("100.00%"). */
     fun channelBp(c: ChannelSlice, total: Long): Long? = Percent.bp(c.value, total)
 
+    /** A pie slice's angle in tenths of a degree, half up, from the integers (drawing only; 0 when the card total is 0). */
+    fun sweepTenths(c: ChannelSlice, total: Long): Long = if (total <= 0L) 0L else (c.value * 7200L + total) / (2L * total)
+
     /** CPR ring: successful calls of target outlets, tenths (29 of 1,186 is 2.4%, never 2.5%). */
     fun cprTenths(c: CprCard): Long? = Percent.tenths(c.successfulCalls, c.targetOutlets)
 
