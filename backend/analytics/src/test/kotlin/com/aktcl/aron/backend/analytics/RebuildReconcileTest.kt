@@ -110,7 +110,7 @@ class RebuildReconcileTest {
     fun theReconcileFindsADifferenceKeepsOneOpenFindingReEnqueuesAndClosesItAfterTheRebuild() {
         val w = worker(); w.runUntilIdle()
         val clean = Reconciler(fresh.db, clock).run()
-        assertEquals(0, clean.findings); assertTrue(clean.checked > 0)
+        assertEquals(0, clean.findings, "clean run: $clean"); assertTrue(clean.checked > 0, "checked: $clean; routes=${long("SELECT count(*) FROM dw.agg_daily_route")} on=${text("SELECT string_agg(DISTINCT business_date::text, ',') FROM dw.agg_daily_route")}")
         exec("UPDATE dw.agg_daily_route SET net_mtk = net_mtk + 500 WHERE route_id = ${routeId("R1")} AND business_date = '$day'")
         val first = Reconciler(fresh.db, clock).run()
         // The route disagrees with its memos (500); its zone-day no longer equals the sum of its route-days (-500).
@@ -135,7 +135,7 @@ class RebuildReconcileTest {
         assertEquals(0, Reconciler(fresh.db, clock).run().alerts)
         exec("DELETE FROM app.dirty_key")                                 // the re-enqueue was lost (a dead or cleared key)
         val second = Reconciler(fresh.db, clock).run()
-        assertTrue(second.alerts >= 1)
+        assertTrue(second.alerts >= 1, "second: $second")
         assertEquals(2, long("SELECT consecutive_runs FROM dw.agg_reconcile WHERE grain = 'route' AND key_id = ${routeId("R2")} AND metric = 'gross_mtk' AND resolved_at IS NULL"))
         assertEquals(1, long("SELECT count(*) FROM dw.agg_reconcile WHERE grain = 'route' AND key_id = ${routeId("R2")} AND metric = 'gross_mtk' AND resolved_at IS NULL"), "one open finding per key and metric")
     }
@@ -166,7 +166,7 @@ class RebuildReconcileTest {
             assertEquals(attempt.toLong(), long("SELECT attempts FROM app.dirty_key WHERE subject_id = ${routeId("R1")}"))
             if (attempt < 8) {
                 assertEquals(0L, long("SELECT count(*) FROM app.dirty_key WHERE subject_id = ${routeId("R1")} AND dead_at IS NOT NULL"))
-                assertTrue(text("SELECT last_error FROM app.dirty_key WHERE subject_id = ${routeId("R1")}").contains("boom"))
+                assertTrue(text("SELECT last_error FROM app.dirty_key WHERE subject_id = ${routeId("R1")}").contains("boom"), "last_error=" + text("SELECT coalesce(last_error, '<null>') FROM app.dirty_key WHERE subject_id = ${routeId("R1")}"))
                 assertEquals(0, w.drain(), "backed off: not claimed again at the same instant")
                 assertEquals(attempt.toLong(), long("SELECT attempts FROM app.dirty_key WHERE subject_id = ${routeId("R1")}"), "no new attempt while backed off")
                 now.set(now.get().plusSeconds(1000))                      // past any back-off (cap 900 s)
