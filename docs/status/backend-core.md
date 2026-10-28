@@ -7,8 +7,8 @@ Updated 2026-10-24 (session 18 at the top, then session 17, then session 16, the
 | Slice | What | Head | Lane CI | Checker | State |
 |---|---|---|---|---|---|
 | 0 | INT train 45 merged into the lane (fast-forward) | df6b8899 | — | — | pushed |
-| 1 | Route-only TSO dashboards on `dw.v_route_day` / `v_route_day_channel` (D-BC-DASH-ROUTE-KEYED-01) | see lead thread | pending | Opus PASS, 0 blocking (notes 1, 4, 6 taken) | candidate |
-| 2 | Small open checker notes from HANDOVER 19 → 20 | — | — | — | next |
+| 1 | Route-only TSO dashboards on `dw.v_route_day` / `v_route_day_channel` (D-BC-DASH-ROUTE-KEYED-01) | 0e3a3f37 | 40641277031 green | Opus PASS, 0 blocking (notes 1, 4, 6 taken) | candidate reported |
+| 2 | Daily Tracking action for held routes (D-BC-TRACK-ACTION-ROUTE-01); zone-scoped TSO reads route-less memos test (session 19 checker note 1) | see lead thread | pending | Opus PASS, 0 blocking (wording notes fixed; audit scope and reach-of-today logged) | candidate |
 
 ## HANDOVER (session 19 → 20, 2026-10-25) — read this first
 1. **Lead:** session_01MbUQSxrP7AB9tbyANjUTPS (claude-code-remote `send_message` only). Push `lane/backend-core` only, one push per slice, candidate line per slice; never INT, no PRs, never edit openapi.yaml or generated files (contract changes are rows in `docs/requests/contract-v1.10-queue.md`).
