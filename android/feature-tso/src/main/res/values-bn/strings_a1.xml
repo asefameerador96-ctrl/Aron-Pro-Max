@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Lane A1 (build contract s5): drawer, chrome, dashboard and target strings. English twin in values/strings_a1.xml. -->
+<resources>
+    <string name="tso_drawer_tickets">টিকিট</string>
+    <string name="tso_drawer_target_status">টার্গেট স্ট্যাটাস</string>
+    <string name="tso_chrome_notifications">নোটিফিকেশন</string>
+</resources>
