@@ -122,19 +122,20 @@ private fun workingDays(call: ApplicationCall, d: AdminMasterDeps): JsonObject {
     else (ym.takeIf { MONTH_Q.matches(it) } ?: admBad("query.month")).let { java.time.YearMonth.parse(it).atDay(1) }
     val last = first.plusMonths(1).minusDays(1)
     val weekend = weekendDays(d)
-    val entries = d.db.jdbi.withHandle<Map<LocalDate, Map<String, Any?>>, Exception> { h ->
+    // tso-manual B2: the global node's calendar through the one count (D-TSO-MAN-08, WorkingDays); scoped declarations do not reach it.
+    val (entries, cal) = d.db.jdbi.withHandle<Pair<Map<LocalDate, Map<String, Any?>>, com.aktcl.aron.rules.NodeCalendar>, Exception> { h ->
         h.createQuery("SELECT * FROM app.calendar_holiday WHERE scope_type = 'global' AND revoked_at IS NULL AND date BETWEEN :f AND :t").bind("f", first).bind("t", last)
-            .mapToMap().list().associateBy { (it["date"] as java.sql.Date).toLocalDate() }
+            .mapToMap().list().associateBy { (it["date"] as java.sql.Date).toLocalDate() } to
+            com.aktcl.aron.rules.WorkingDays.resolve(com.aktcl.aron.rules.NodePath.GLOBAL, com.aktcl.aron.rules.WorkingDays.weekendOf(weekend), com.aktcl.aron.backend.platform.WorkingCalendarRepo.marks(h, first, last))
     }
-    var working = 0
+    val working = com.aktcl.aron.rules.WorkingDays.month(kotlinx.datetime.YearMonth(first.year, first.monthValue), cal)
     val days = (0 until last.dayOfMonth).map { i ->
         val date = first.plusDays(i.toLong())
         val dow = date.dayOfWeek.value
         val e = entries[date]
         val isWeekend = dow in weekend
         val isHoliday = e != null && e["kind"] != "makeup_day"
-        val isWorking = if (e != null && e["kind"] == "makeup_day") true else !isWeekend && !isHoliday
-        if (isWorking) working++
+        val isWorking = cal.isWorking(kotlinx.datetime.LocalDate(date.year, date.monthValue, date.dayOfMonth))
         JsonObject(mapOf(
             "date" to JsonPrimitive(date.toString()), "weekday" to JsonPrimitive(dow), "is_friday" to JsonPrimitive(dow == 5), "is_weekend" to JsonPrimitive(isWeekend),
             "is_holiday" to JsonPrimitive(isHoliday), "name_en" to jv(e?.get("name_en")), "name_bn" to jv(e?.get("name_bn")), "is_working_day" to JsonPrimitive(isWorking),

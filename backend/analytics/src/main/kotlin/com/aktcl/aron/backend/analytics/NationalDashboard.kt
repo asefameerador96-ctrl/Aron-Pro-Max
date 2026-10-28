@@ -6,8 +6,11 @@ import com.aktcl.aron.backend.platform.Database
 import com.aktcl.aron.backend.platform.FieldError
 import com.aktcl.aron.backend.platform.Reach
 import com.aktcl.aron.backend.platform.ServerConfig
+import com.aktcl.aron.backend.platform.WorkingCalendarRepo
 import com.aktcl.aron.contract.ProblemCode
 import com.aktcl.aron.rules.BusinessDate
+import com.aktcl.aron.rules.NodePath
+import com.aktcl.aron.rules.WorkingDays
 import kotlinx.datetime.toJavaLocalDate
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonPrimitive
@@ -60,6 +63,9 @@ internal class NationalSql(private val caller: NationalCaller, private val f: Na
 
     val hasProductFilter: Boolean = product.isNotEmpty()
 
+    /** True when the request names any geography (wing, division, territory, house or zone). */
+    val hasGeoFilter: Boolean = f.wing_ids.isNotEmpty() || f.division_ids.isNotEmpty() || f.territory_ids.isNotEmpty() || f.house_ids.isNotEmpty() || f.zone_ids.isNotEmpty()
+
     fun <T : SqlStatement<T>> bind(q: T): T {
         if (!r.national) q.bindArray("scopeZones", Long::class.javaObjectType, r.zoneIds.toList().ifEmpty { listOf(-1L) })
         if (f.wing_ids.isNotEmpty()) q.bindArray("wings", Long::class.javaObjectType, f.wing_ids)
@@ -77,26 +83,16 @@ internal class NationalSql(private val caller: NationalCaller, private val f: Na
 }
 
 /**
- * Working days of a month: not a weekend day (`cfg.calendar.weekend_days`, ISO 1..7, default Friday), not a global holiday or
- * emergency day, plus declared make-up days (brief s2, D-TARGET-MIN-01).
+ * Working days of a month at the national (global) node with an explicit weekend (ISO 1..7): the one count of
+ * D-TSO-MAN-08 ([WorkingDays] over [WorkingCalendarRepo.marks]); scoped declarations do not reach the global node. The cards
+ * themselves count at the lowest common node of their scope ([NationalDashboardService.workingDaysAt]).
  */
 internal object WorkingCalendar {
     val DEFAULT_WEEKEND: Set<Int> = setOf(DayOfWeek.FRIDAY.value)
 
     fun workingDays(h: Handle, month: YearMonth, weekend: Set<Int> = DEFAULT_WEEKEND): Int {
-        val first = month.atDay(1); val last = month.atEndOfMonth()
-        val special = h.createQuery(
-            "SELECT date, kind FROM app.calendar_holiday WHERE scope_type = 'global' AND revoked_at IS NULL AND date BETWEEN :f AND :l",
-        ).bind("f", first).bind("l", last).map { rs, _ -> rs.getObject("date", LocalDate::class.java) to rs.getString("kind") }.list().toMap()
-        var n = 0
-        var d = first
-        while (!d.isAfter(last)) {
-            val kind = special[d]
-            val off = d.dayOfWeek.value in weekend || kind == "holiday" || kind == "emergency_off"
-            if (!off || kind == "makeup_day") n++
-            d = d.plusDays(1)
-        }
-        return n
+        val cal = WorkingDays.resolve(NodePath.GLOBAL, WorkingDays.weekendOf(weekend), WorkingCalendarRepo.marks(h, month.atDay(1), month.atEndOfMonth()))
+        return WorkingDays.month(kotlinx.datetime.YearMonth(month.year, month.monthValue), cal)
     }
 }
 
@@ -118,6 +114,22 @@ class NationalDashboardService(
     internal fun weekendDays(): Set<Int> = config?.let { c ->
         runCatching { c.value("cfg.calendar.weekend_days").jsonArray.mapNotNull { it.jsonPrimitive.content.toIntOrNull() }.filter { it in 1..7 }.toSet() }.getOrNull()
     } ?: WorkingCalendar.DEFAULT_WEEKEND
+
+    /** W of [month] at [path] (D-TSO-MAN-08): the node's weekend, the declarations on its path, the one count. */
+    internal fun workingDaysAt(h: Handle, month: YearMonth, path: NodePath): Int = WorkingCalendarRepo.load(h, month, clock.now(), config).workingDays(path)
+
+    /**
+     * The node of a card's working days (D-TSO-MAN-08): the lowest common ancestor of the effective scope (the filter cut to
+     * the token's reach). A national caller without a geography filter is the global node, whatever the zones in the
+     * database; otherwise the zones the scope selects decide (one zone gives the zone, one territory the territory, mixed
+     * gives global).
+     */
+    internal fun scopePath(h: Handle, caller: NationalCaller, sql: NationalSql): NodePath {
+        if (caller.reach.national && !sql.hasGeoFilter) return NodePath.GLOBAL
+        val paths = sql.bind(h.createQuery("SELECT DISTINCT g.wing_id, g.division_id, g.territory_id, g.zone_id FROM dw.dim_geo g WHERE true ${sql.geo}"))
+            .map { rs, _ -> NodePath(rs.getLong(1), rs.getLong(2), rs.getLong(3), rs.getLong(4)) }.list()
+        return WorkingCalendarRepo.commonPath(paths)
+    }
 
     internal fun today(): LocalDate = BusinessDate.of(clock.now().toEpochMilli()).toJavaLocalDate()
 
@@ -173,7 +185,7 @@ class NationalDashboardService(
             ).bind("d", date)).map { rs, _ -> Triple(rs.getString(1), rs.getString(2), rs.getLong(3)) }.list()
             val cats = sql.bind(h.createQuery("SELECT DISTINCT p.category_code, p.base_unit FROM ${AsWasSql.productAll("p", lo = ":d", hi = ":d", plain = asWas.product)} WHERE true ${sql.product}").bind("d", date)).map { rs, _ -> rs.getString(1) to rs.getString(2) }.list()
             val month = YearMonth.from(date)
-            val wd = WorkingCalendar.workingDays(h, month, weekendDays())
+            val wd = workingDaysAt(h, month, scopePath(h, caller, sql))
             val targets = sql.bind(h.createQuery(
                 """
                 SELECT p.category_code, sum(t.qty_base) AS total, count(DISTINCT t.route_id) AS routes
