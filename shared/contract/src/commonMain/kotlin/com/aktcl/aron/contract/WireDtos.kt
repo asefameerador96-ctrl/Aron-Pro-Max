@@ -77,7 +77,7 @@ data class LoginDevice(
     @SerialName("memo_seq_block_size") val memoSeqBlockSize: Int,
 )
 
-/** Encode LoginDevice with this serializer (nested fields already do): required-nullable members stay on the wire as explicit null (R7) even when the Json omits nulls. */
+/** Encode LoginDevice with this serializer at the top level (a member of type LoginDevice or List<LoginDevice> already uses it): required-nullable members stay on the wire as explicit null (R7) even when the Json omits nulls. */
 object LoginDeviceWire : JsonTransformingSerializer<LoginDevice>(LoginDevice.serializer()) {
     private val alwaysEmitted = listOf("bind_ordinal")
     override fun transformSerialize(element: JsonElement): JsonElement =
@@ -339,7 +339,7 @@ data class GeoFix(
     @SerialName("device") val device: FixDeviceState,
 )
 
-/** Encode GeoFix with this serializer (nested fields already do): required-nullable members stay on the wire as explicit null (R7) even when the Json omits nulls. */
+/** Encode GeoFix with this serializer at the top level (a member of type GeoFix or List<GeoFix> already uses it): required-nullable members stay on the wire as explicit null (R7) even when the Json omits nulls. */
 object GeoFixWire : JsonTransformingSerializer<GeoFix>(GeoFix.serializer()) {
     private val alwaysEmitted = listOf("lat", "lng", "accuracy_m")
     override fun transformSerialize(element: JsonElement): JsonElement =
@@ -576,7 +576,7 @@ data class DeviceStatusReport(
     @SerialName("printer") val printer: DeviceStatusReportPrinter? = null,
 )
 
-/** Encode DeviceStatusReport with this serializer (nested fields already do): required-nullable members stay on the wire as explicit null (R7) even when the Json omits nulls. */
+/** Encode DeviceStatusReport with this serializer at the top level (a member of type DeviceStatusReport or List<DeviceStatusReport> already uses it): required-nullable members stay on the wire as explicit null (R7) even when the Json omits nulls. */
 object DeviceStatusReportWire : JsonTransformingSerializer<DeviceStatusReport>(DeviceStatusReport.serializer()) {
     private val alwaysEmitted = listOf("policy_version_applied")
     override fun transformSerialize(element: JsonElement): JsonElement =
@@ -680,7 +680,7 @@ data class BlockingSchedule(
     @SerialName("working_days_only") val workingDaysOnly: Boolean,
 )
 
-/** Encode BlockingSchedule with this serializer (nested fields already do): required-nullable members stay on the wire as explicit null (R7) even when the Json omits nulls. */
+/** Encode BlockingSchedule with this serializer at the top level (a member of type BlockingSchedule or List<BlockingSchedule> already uses it): required-nullable members stay on the wire as explicit null (R7) even when the Json omits nulls. */
 object BlockingScheduleWire : JsonTransformingSerializer<BlockingSchedule>(BlockingSchedule.serializer()) {
     private val alwaysEmitted = listOf("hard_end_time")
     override fun transformSerialize(element: JsonElement): JsonElement =
@@ -826,7 +826,7 @@ data class ResolvedConfigValue(
     @SerialName("bounds") val bounds: JsonElement? = null,
 )
 
-/** Encode ResolvedConfigValue with this serializer (nested fields already do): required-nullable members stay on the wire as explicit null (R7) even when the Json omits nulls. */
+/** Encode ResolvedConfigValue with this serializer at the top level (a member of type ResolvedConfigValue or List<ResolvedConfigValue> already uses it): required-nullable members stay on the wire as explicit null (R7) even when the Json omits nulls. */
 object ResolvedConfigValueWire : JsonTransformingSerializer<ResolvedConfigValue>(ResolvedConfigValue.serializer()) {
     private val alwaysEmitted = listOf("effective_from")
     override fun transformSerialize(element: JsonElement): JsonElement =
@@ -982,7 +982,7 @@ data class SupportTicket(
     @SerialName("attachment_count") val attachmentCount: Int,
 )
 
-/** Encode SupportTicket with this serializer (nested fields already do): required-nullable members stay on the wire as explicit null (R7) even when the Json omits nulls. */
+/** Encode SupportTicket with this serializer at the top level (a member of type SupportTicket or List<SupportTicket> already uses it): required-nullable members stay on the wire as explicit null (R7) even when the Json omits nulls. */
 object SupportTicketWire : JsonTransformingSerializer<SupportTicket>(SupportTicket.serializer()) {
     private val alwaysEmitted = listOf("ticket_no", "issue_type_label_bn", "affected_username", "first_response_at", "resolved_at", "closed_at", "cancelled_at", "resolution_code", "resolution_label_en", "resolution_notes", "cancel_reason")
     override fun transformSerialize(element: JsonElement): JsonElement =
@@ -991,11 +991,11 @@ object SupportTicketWire : JsonTransformingSerializer<SupportTicket>(SupportTick
 
 @Serializable
 data class SupportTicketPage(
-    @SerialName("items") val items: List<SupportTicket>,
+    @SerialName("items") val items: List<@Serializable(with = SupportTicketWire::class) SupportTicket>,
     @SerialName("next_cursor") val nextCursor: String?,
 )
 
-/** Encode SupportTicketPage with this serializer (nested fields already do): required-nullable members stay on the wire as explicit null (R7) even when the Json omits nulls. */
+/** Encode SupportTicketPage with this serializer at the top level (a member of type SupportTicketPage or List<SupportTicketPage> already uses it): required-nullable members stay on the wire as explicit null (R7) even when the Json omits nulls. */
 object SupportTicketPageWire : JsonTransformingSerializer<SupportTicketPage>(SupportTicketPage.serializer()) {
     private val alwaysEmitted = listOf("next_cursor")
     override fun transformSerialize(element: JsonElement): JsonElement =
@@ -1017,7 +1017,7 @@ data class SupportTicketEvent(
     @SerialName("attachments") val attachments: List<String>,
 )
 
-/** Encode SupportTicketEvent with this serializer (nested fields already do): required-nullable members stay on the wire as explicit null (R7) even when the Json omits nulls. */
+/** Encode SupportTicketEvent with this serializer at the top level (a member of type SupportTicketEvent or List<SupportTicketEvent> already uses it): required-nullable members stay on the wire as explicit null (R7) even when the Json omits nulls. */
 object SupportTicketEventWire : JsonTransformingSerializer<SupportTicketEvent>(SupportTicketEvent.serializer()) {
     private val alwaysEmitted = listOf("body", "from_status", "to_status", "resolution_code")
     override fun transformSerialize(element: JsonElement): JsonElement =
@@ -1027,7 +1027,7 @@ object SupportTicketEventWire : JsonTransformingSerializer<SupportTicketEvent>(S
 @Serializable
 data class SupportTicketDetail(
     @Serializable(with = SupportTicketWire::class) @SerialName("ticket") val ticket: SupportTicket,
-    @SerialName("events") val events: List<SupportTicketEvent>,
+    @SerialName("events") val events: List<@Serializable(with = SupportTicketEventWire::class) SupportTicketEvent>,
     @SerialName("attachments") val attachments: List<String>,
 )
 
@@ -1060,7 +1060,7 @@ data class NotificationItem(
     @SerialName("read_at") val readAt: String?,
 )
 
-/** Encode NotificationItem with this serializer (nested fields already do): required-nullable members stay on the wire as explicit null (R7) even when the Json omits nulls. */
+/** Encode NotificationItem with this serializer at the top level (a member of type NotificationItem or List<NotificationItem> already uses it): required-nullable members stay on the wire as explicit null (R7) even when the Json omits nulls. */
 object NotificationItemWire : JsonTransformingSerializer<NotificationItem>(NotificationItem.serializer()) {
     private val alwaysEmitted = listOf("title_bn", "body_bn", "read_at")
     override fun transformSerialize(element: JsonElement): JsonElement =
@@ -1071,11 +1071,11 @@ object NotificationItemWire : JsonTransformingSerializer<NotificationItem>(Notif
 data class NotificationInbox(
     @SerialName("as_of") val asOf: String,
     @SerialName("unread_count") val unreadCount: Int,
-    @SerialName("items") val items: List<NotificationItem>,
+    @SerialName("items") val items: List<@Serializable(with = NotificationItemWire::class) NotificationItem>,
     @SerialName("next_before_id") val nextBeforeId: Long?,
 )
 
-/** Encode NotificationInbox with this serializer (nested fields already do): required-nullable members stay on the wire as explicit null (R7) even when the Json omits nulls. */
+/** Encode NotificationInbox with this serializer at the top level (a member of type NotificationInbox or List<NotificationInbox> already uses it): required-nullable members stay on the wire as explicit null (R7) even when the Json omits nulls. */
 object NotificationInboxWire : JsonTransformingSerializer<NotificationInbox>(NotificationInbox.serializer()) {
     private val alwaysEmitted = listOf("next_before_id")
     override fun transformSerialize(element: JsonElement): JsonElement =
@@ -1104,6 +1104,13 @@ data class NationalBrandCprBrands(
     @SerialName("cpr_of_target_bp") val cprOfTargetBp: Long?,
 )
 
+/** Encode NationalBrandCprBrands with this serializer at the top level (a member of type NationalBrandCprBrands or List<NationalBrandCprBrands> already uses it): required-nullable members stay on the wire as explicit null (R7) even when the Json omits nulls. */
+object NationalBrandCprBrandsWire : JsonTransformingSerializer<NationalBrandCprBrands>(NationalBrandCprBrands.serializer()) {
+    private val alwaysEmitted = listOf("cpr_bp", "cpr_of_successful_bp", "cpr_of_target_bp")
+    override fun transformSerialize(element: JsonElement): JsonElement =
+        if (element is JsonObject) JsonObject(element + alwaysEmitted.filter { it !in element }.associateWith { JsonNull }) else element
+}
+
 /** Brand CPR card (D-TSO-MAN-06, contract 1.10.0): per brand, the distinct (route, outlet) pairs with an effective sale line of the brand on the national route set, over the configured denominator. Both ratios and both denominators are sent. */
 @Serializable
 data class NationalBrandCpr(
@@ -1114,10 +1121,10 @@ data class NationalBrandCpr(
     @SerialName("target_outlets") val targetOutlets: Int,
     @SerialName("successful_calls") val successfulCalls: Int,
     @SerialName("denominator") val denominator: String,
-    @SerialName("brands") val brands: List<NationalBrandCprBrands>,
+    @SerialName("brands") val brands: List<@Serializable(with = NationalBrandCprBrandsWire::class) NationalBrandCprBrands>,
 )
 
-/** Encode NationalBrandCpr with this serializer (nested fields already do): required-nullable members stay on the wire as explicit null (R7) even when the Json omits nulls. */
+/** Encode NationalBrandCpr with this serializer at the top level (a member of type NationalBrandCpr or List<NationalBrandCpr> already uses it): required-nullable members stay on the wire as explicit null (R7) even when the Json omits nulls. */
 object NationalBrandCprWire : JsonTransformingSerializer<NationalBrandCpr>(NationalBrandCpr.serializer()) {
     private val alwaysEmitted = listOf("last_updated_at")
     override fun transformSerialize(element: JsonElement): JsonElement =
@@ -1142,6 +1149,13 @@ data class NationalSegmentShareSegments(
     @SerialName("volume_share_bp") val volumeShareBp: Int?,
 )
 
+/** Encode NationalSegmentShareSegments with this serializer at the top level (a member of type NationalSegmentShareSegments or List<NationalSegmentShareSegments> already uses it): required-nullable members stay on the wire as explicit null (R7) even when the Json omits nulls. */
+object NationalSegmentShareSegmentsWire : JsonTransformingSerializer<NationalSegmentShareSegments>(NationalSegmentShareSegments.serializer()) {
+    private val alwaysEmitted = listOf("value_share_bp", "volume_share_bp")
+    override fun transformSerialize(element: JsonElement): JsonElement =
+        if (element is JsonObject) JsonObject(element + alwaysEmitted.filter { it !in element }.associateWith { JsonNull }) else element
+}
+
 /** By Segment Value Contribution card (D-TSO-MAN-11, contract 1.10.0). Value share = the segment's sale-line gross milli-taka / total_value_mtk (discounts are zero under docs/27). Volume share is computed within the segment's unit family: qty_base / the total_qty_base of the family with the same base_unit (sticks: cigarette and bidi; pieces; dozens); different units are never added. */
 @Serializable
 data class NationalSegmentShare(
@@ -1151,10 +1165,10 @@ data class NationalSegmentShare(
     @SerialName("last_updated_at") val lastUpdatedAt: String?,
     @SerialName("total_value_mtk") val totalValueMtk: Long,
     @SerialName("families") val families: List<NationalSegmentShareFamilies>,
-    @SerialName("segments") val segments: List<NationalSegmentShareSegments>,
+    @SerialName("segments") val segments: List<@Serializable(with = NationalSegmentShareSegmentsWire::class) NationalSegmentShareSegments>,
 )
 
-/** Encode NationalSegmentShare with this serializer (nested fields already do): required-nullable members stay on the wire as explicit null (R7) even when the Json omits nulls. */
+/** Encode NationalSegmentShare with this serializer at the top level (a member of type NationalSegmentShare or List<NationalSegmentShare> already uses it): required-nullable members stay on the wire as explicit null (R7) even when the Json omits nulls. */
 object NationalSegmentShareWire : JsonTransformingSerializer<NationalSegmentShare>(NationalSegmentShare.serializer()) {
     private val alwaysEmitted = listOf("last_updated_at")
     override fun transformSerialize(element: JsonElement): JsonElement =
@@ -1175,7 +1189,7 @@ data class LoginSubmitUserRow(
     @SerialName("role") val role: String,
 )
 
-/** Encode LoginSubmitUserRow with this serializer (nested fields already do): required-nullable members stay on the wire as explicit null (R7) even when the Json omits nulls. */
+/** Encode LoginSubmitUserRow with this serializer at the top level (a member of type LoginSubmitUserRow or List<LoginSubmitUserRow> already uses it): required-nullable members stay on the wire as explicit null (R7) even when the Json omits nulls. */
 object LoginSubmitUserRowWire : JsonTransformingSerializer<LoginSubmitUserRow>(LoginSubmitUserRow.serializer()) {
     private val alwaysEmitted = listOf("user_id", "username", "display_name")
     override fun transformSerialize(element: JsonElement): JsonElement =
@@ -1192,10 +1206,10 @@ data class NationalLoginSubmitUsers(
     @SerialName("tab") val tab: String,
     @SerialName("route_count") val routeCount: Int,
     @SerialName("truncated") val truncated: Boolean,
-    @SerialName("items") val items: List<LoginSubmitUserRow>,
+    @SerialName("items") val items: List<@Serializable(with = LoginSubmitUserRowWire::class) LoginSubmitUserRow>,
 )
 
-/** Encode NationalLoginSubmitUsers with this serializer (nested fields already do): required-nullable members stay on the wire as explicit null (R7) even when the Json omits nulls. */
+/** Encode NationalLoginSubmitUsers with this serializer at the top level (a member of type NationalLoginSubmitUsers or List<NationalLoginSubmitUsers> already uses it): required-nullable members stay on the wire as explicit null (R7) even when the Json omits nulls. */
 object NationalLoginSubmitUsersWire : JsonTransformingSerializer<NationalLoginSubmitUsers>(NationalLoginSubmitUsers.serializer()) {
     private val alwaysEmitted = listOf("last_updated_at")
     override fun transformSerialize(element: JsonElement): JsonElement =
@@ -1226,7 +1240,7 @@ data class TargetAchievementRow(
     @SerialName("tilldate_achievement_pct_bp") val tilldateAchievementPctBp: Long?,
 )
 
-/** Encode TargetAchievementRow with this serializer (nested fields already do): required-nullable members stay on the wire as explicit null (R7) even when the Json omits nulls. */
+/** Encode TargetAchievementRow with this serializer at the top level (a member of type TargetAchievementRow or List<TargetAchievementRow> already uses it): required-nullable members stay on the wire as explicit null (R7) even when the Json omits nulls. */
 object TargetAchievementRowWire : JsonTransformingSerializer<TargetAchievementRow>(TargetAchievementRow.serializer()) {
     private val alwaysEmitted = listOf("tilldate_target_qty_base", "remaining_tilldate_qty_base", "achievement_pct_bp", "tilldate_achievement_pct_bp")
     override fun transformSerialize(element: JsonElement): JsonElement =
@@ -1237,7 +1251,9 @@ object TargetAchievementRowWire : JsonTransformingSerializer<TargetAchievementRo
 @Serializable
 data class TargetAchievementNode(
     @SerialName("node") val node: NodeRef,
-    @SerialName("rows") val rows: List<TargetAchievementRow>,
+    @SerialName("elapsed_days") val elapsedDays: Int,
+    @SerialName("period_days") val periodDays: Int,
+    @SerialName("rows") val rows: List<@Serializable(with = TargetAchievementRowWire::class) TargetAchievementRow>,
 )
 
 /** Monthly target and achievement of a node (D-TSO-MAN-05, 39, 40). Till-date: elapsed_days e and period_days n of */
@@ -1247,7 +1263,7 @@ data class TargetAchievement(
     @SerialName("as_of") val asOf: String,
     @SerialName("node") val node: NodeRef,
     @SerialName("tilldate_basis") val tilldateBasis: String,
-    @SerialName("rows") val rows: List<TargetAchievementRow>,
+    @SerialName("rows") val rows: List<@Serializable(with = TargetAchievementRowWire::class) TargetAchievementRow>,
     @SerialName("day") val day: String,
     @SerialName("elapsed_days") val elapsedDays: Int,
     @SerialName("period_days") val periodDays: Int,
@@ -1255,7 +1271,7 @@ data class TargetAchievement(
     @SerialName("children") val children: List<TargetAchievementNode>? = null,
 )
 
-/** Encode TargetAchievement with this serializer (nested fields already do): required-nullable members stay on the wire as explicit null (R7) even when the Json omits nulls. */
+/** Encode TargetAchievement with this serializer at the top level (a member of type TargetAchievement or List<TargetAchievement> already uses it): required-nullable members stay on the wire as explicit null (R7) even when the Json omits nulls. */
 object TargetAchievementWire : JsonTransformingSerializer<TargetAchievement>(TargetAchievement.serializer()) {
     private val alwaysEmitted = listOf("last_updated_at")
     override fun transformSerialize(element: JsonElement): JsonElement =

@@ -12,9 +12,13 @@ TargetAchievementRow:
     the sum of its items (never its own T rounded once; see TargetAchievement); remaining_* = max(target - A, 0);
     *_pct_bp = A / target in basis points, rounded half up,
 
-    uncapped (int64, R-F-16), null when the target is 0. When `period_days` n is 0 the three till-date members
+    uncapped (int64, R-F-16), null when the target is 0. When `period_days` n of the row''s node is 0 (the parent''s
+    for
 
-    (tilldate_target_qty_base, remaining_tilldate_qty_base, tilldate_achievement_pct_bp) are null (R-F-15). The
+    `rows`, the child''s own for a child''s rows) the three till-date members (tilldate_target_qty_base,
+
+    remaining_tilldate_qty_base, tilldate_achievement_pct_bp) are null and tilldate_target_qty is "0.000" (R-F-15).
+    The
 
     Decimal3 members and `achievement_pct` keep their meaning for the AMO app.
 
@@ -59,6 +63,8 @@ TargetAchievementRow:
       $ref: '#/components/schemas/Decimal3'
     tilldate_target_qty:
       $ref: '#/components/schemas/Decimal3'
+      description: 'The AMO app''s till-date target. "0.000" when `period_days` of the row''s node is 0 (R-F-15:
+        T * e / n has no value there; the member stays required and non-null in 1.10.0).'
     achievement_pct:
       type:
       - number
@@ -96,7 +102,8 @@ TargetAchievementRow:
       - 'null'
       format: int64
       minimum: 0
-      description: Till-date target T' in base units; null when `period_days` is 0 (R-F-15).
+      description: Till-date target T' in base units; null when `period_days` is 0 (R-F-15), the `period_days` of
+        the row's node.
     remaining_qty_base:
       type: integer
       format: int64
@@ -108,7 +115,7 @@ TargetAchievementRow:
       - 'null'
       format: int64
       minimum: 0
-      description: max(T' - A, 0); null when `period_days` is 0 (R-F-15).
+      description: max(T' - A, 0); null when `period_days` is 0 (R-F-15), the `period_days` of the row's node.
     achievement_pct_bp:
       type:
       - integer
@@ -123,4 +130,4 @@ TargetAchievementRow:
       format: int64
       minimum: 0
       description: A / T' in basis points, uncapped (int64, R-F-16); null when T' is 0, and null when `period_days`
-        is 0 (R-F-15).
+        is 0 (R-F-15), the `period_days` of the row's node.

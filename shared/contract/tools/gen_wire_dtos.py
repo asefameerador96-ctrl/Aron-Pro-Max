@@ -6,6 +6,9 @@ The slices come from tools/slice-contract.py; contract/openapi.yaml stays the so
 Mapping: Uuid/Timestamp/BusinessDate/other string aliases and every enum -> String (a newer server's unknown enum
 value must not crash an old phone); Id, Mtk*, int64 -> Long; integer -> Int; number -> Double; schemas outside the
 requested set -> JsonElement/JsonObject. Optional members are nullable with a null default (or the schema default).
+R7 (docs/24 s14a): a class with required-nullable members, a nested one included, gets a <Name>Wire serializer that
+always emits them; a member of that class's type uses it on the property, a List of it on the type argument, so an
+encoder with explicitNulls = false keeps those keys at every depth (WireDtosDriftTest.wireNullsHoldInListsAndNestedClasses).
 """
 import re, sys, pathlib
 import yaml
@@ -121,6 +124,9 @@ def ktype(s, owner, prop):
         if (owner, prop) in NESTED or "properties" in s:
             cls = NESTED.get((owner, prop)) or owner + "".join(x.capitalize() for x in prop.split("_"))
             nested_out.append((cls, s))
+            rn = required_nullable(s)
+            if rn:  # R7 for a nested class too: its owner's field must use its Wire serializer
+                WIRE_NULLS[cls] = rn
             return cls
         if "additionalProperties" in s and "properties" not in s:
             return f"Map<String, {ktype(s['additionalProperties'], owner, prop)}>"
@@ -155,6 +161,9 @@ def emit_class(name, sch, owner_for_nested):
         nul = nullable(ps)
         has_default = "default" in strip_null(ps) and not nul
         prefix = ""
+        item = t[5:-1] if t.startswith("List<") and t.endswith(">") else None
+        if item in WIRE_NULLS:  # R7 for list members: each element keeps its required-nullable members on the wire
+            t = f"List<@Serializable(with = {item}Wire::class) {item}>"
         if isreq:
             decl = f"{t}?" if nul else t
             default = ""
@@ -178,16 +187,32 @@ def emit_class(name, sch, owner_for_nested):
     return "\n".join(lines)
 
 
+def required_nullable(sch):
+    props, req = schema_members(sch)
+    return [p for p in props if p in req and nullable(props[p])]
+
+
 def wire_nulls():
     """R7 (docs/24 s14a): classes with required-nullable members get a serializer that always emits them."""
     out = {}
     for _, names in GROUPS:
         for n in names:
-            props, req = schema_members(load(n))
-            rn = [p for p in props if p in req and nullable(props[p])]
+            rn = required_nullable(load(n))
             if rn:
                 out[n] = rn
     return out
+
+
+def wire_object(n):
+    """The R7 serializer of class n; a member of type n, n? or List<n> is generated with it (emit_class)."""
+    keys = ", ".join(f'"{k}"' for k in WIRE_NULLS[n])
+    return f"""/** Encode {n} with this serializer at the top level (a member of type {n} or List<{n}> already uses it): required-nullable members stay on the wire as explicit null (R7) even when the Json omits nulls. */
+object {n}Wire : JsonTransformingSerializer<{n}>({n}.serializer()) {{
+    private val alwaysEmitted = listOf({keys})
+    override fun transformSerialize(element: JsonElement): JsonElement =
+        if (element is JsonObject) JsonObject(element + alwaysEmitted.filter {{ it !in element }}.associateWith {{ JsonNull }}) else element
+}}
+"""
 
 
 WIRE_NULLS = {}
@@ -210,16 +235,11 @@ def build():
             body = emit_class(n, sch, n)
             for cls, s in list(nested_out):
                 out.append(emit_class(cls, s, cls) + "\n")
+                if cls in WIRE_NULLS:
+                    out.append(wire_object(cls))
             out.append(body + "\n")
             if n in WIRE_NULLS:
-                keys = ", ".join(f'"{k}"' for k in WIRE_NULLS[n])
-                out.append(f"""/** Encode {n} with this serializer (nested fields already do): required-nullable members stay on the wire as explicit null (R7) even when the Json omits nulls. */
-object {n}Wire : JsonTransformingSerializer<{n}>({n}.serializer()) {{
-    private val alwaysEmitted = listOf({keys})
-    override fun transformSerialize(element: JsonElement): JsonElement =
-        if (element is JsonObject) JsonObject(element + alwaysEmitted.filter {{ it !in element }}.associateWith {{ JsonNull }}) else element
-}}
-""")
+                out.append(wire_object(n))
     return "\n".join(out)
 
 

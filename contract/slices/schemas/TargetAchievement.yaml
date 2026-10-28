@@ -13,9 +13,23 @@ TargetAchievement:
     once (the screenshot''s eight Cigarette items, T = 40999 in all: 25/31 gives 33064; 21/26 gives 33114, where
     a
 
-    rounded total would give 33115). n = 0 (a working-days basis in a month with no working day) makes the till-date
+    rounded total would give 33115). e and n are per node: `elapsed_days` and `period_days` here are those of `node`
 
-    members of every row null: tilldate_target_qty_base, remaining_tilldate_qty_base and tilldate_achievement_pct_bp
+    and govern `rows`; each entry of `children` carries its own pair and its rows follow it. On the working-days
+    basis
+
+    n is W of the node''s own path (D-TSO-MAN-08, WorkingDays.resolve: a zone holiday or emergency off counts only
+    for
+
+    that zone), so a child zone can have n = 0 while its territory has n > 0, or the other way round; on the
+
+    calendar-days basis every node has the parent''s pair. n = 0 at a node (a working-days basis in a month with
+    no
+
+    working day at that node) makes the till-date members of every row of that node null: tilldate_target_qty_base,
+
+    remaining_tilldate_qty_base and tilldate_achievement_pct_bp, and its rows'' Decimal3 tilldate_target_qty is
+    "0.000"
 
     (lead ruling R-F-15). From contract 1.10.0: `day`,
 
@@ -58,13 +72,14 @@ TargetAchievement:
       type: integer
       minimum: 0
       maximum: 31
-      description: e of the till-date basis.
+      description: e of the till-date basis at `node` (each child carries its own, R-F-15).
     period_days:
       type: integer
       minimum: 0
       maximum: 31
-      description: n of the till-date basis, 0..31; 0 only on a working-days basis in a month with no working day,
-        and then the till-date members of every row are null (R-F-15).
+      description: n of the till-date basis at `node`, 0..31; 0 only on a working-days basis in a month with no
+        working day at `node`, and then the till-date members of every row in `rows` are null (R-F-15). Each child
+        carries its own `period_days`, and the same rule applies to its rows.
     last_updated_at:
       type:
       - string

@@ -1625,9 +1625,13 @@ export interface paths {
          *     a node outside the reach is 403 `ERR_OUT_OF_SCOPE`. `children=zone` also returns one node per zone in the
          *     caller's reach under that node (the TSO's Territory card plus one card per zone); the zones come from the token
          *     reach, never from client ids. `children=zone` is allowed only when the node is a territory or below (lead ruling
-         *     R-F-18): a territory node answers its zones, a zone node answers itself as its one child; at a national, wing or
-         *     division node it is 400 `ERR_VALIDATION` (`query.children` invalid_value). The check runs on the resolved node,
-         *     the default top reach node included. The till-date basis follows the caller's role (TSO: the TSO key, AMO: the AMO team
+         *     R-F-18): a territory node answers its zones, a zone node answers itself as its one child, a house node answers
+         *     its zones in the reach (a house is a group of zones inside one territory; it is the default top reach node of a
+         *     TSO or AMO who holds a house, D-AUTHZ-1-7-WIRING-01); at a national, wing or division node it is 400
+         *     `ERR_VALIDATION` (`query.children` invalid_value). The check runs on the resolved node, the default top reach node
+         *     included. An explicit `level=house` stays 400 `ERR_VALIDATION` (`query.level`, as GeoLevelQuery says), with or
+         *     without `children`. Each child carries its own `elapsed_days` and `period_days` and its rows follow them (R-F-15,
+         *     D-TSO-MAN-08). The till-date basis follows the caller's role (TSO: the TSO key, AMO: the AMO team
          *     key; calendar days by default, D-TSO-MAN-05). The integer members (`*_qty_base`, `*_pct_bp`) are what the TSO app
          *     prints; the Decimal3 members and `achievement_pct` keep their meaning for the AMO app.
          */
@@ -7182,14 +7186,14 @@ export interface components {
             remaining: components["schemas"]["Decimal3"] | null;
             /**
              * Format: int64
-             * @description total_sales / daily_target in basis points (ring); null whenever daily_target is null: without a target, and when `NationalSales.working_days` is 0 (the ring prints "—", lead ruling R-F-13). Uncapped: may exceed 10000, hence int64 (R-F-16). Exact: round_half_up(10000 * total_sales * working_days / monthly_target_qty), from the integers, never from the rounded daily_target (D-TSO-MAN-10, contract 1.10.0).
+             * @description total_sales / daily_target in basis points (ring); null whenever daily_target is null: without a target, and when `NationalSales.working_days` is 0 (the ring prints "—", lead ruling R-F-13); and null when `monthly_target_qty` is 0 (a loaded target that sums to 0: daily_target is "0.000", the ring prints "—"). Uncapped: may exceed 10000, hence int64 (R-F-16). Exact: round_half_up(10000 * total_sales * working_days / monthly_target_qty), from the integers, never from the rounded daily_target (D-TSO-MAN-10, contract 1.10.0).
              */
             achievement_pct_bp: number | null;
             /** @description Routes in the filter that carry a monthly target for the category. */
             target_routes: number;
             /**
              * Format: int64
-             * @description Sum of the route monthly targets (base units) in scope for the month of `date`; null when no target is loaded. The phone prints Total Target from it and `working_days` (D-TSO-MAN-08, contract 1.10.0; optional until the server sends it).
+             * @description Sum of the route monthly targets (base units) in scope for the month of `date`; null when no target is loaded. The phone prints Total Target from it and `working_days` (D-TSO-MAN-08, contract 1.10.0; optional until the server sends it). When `working_days` is 0 the phone and the web print "—" for every figure derived from `working_days` and never divide by it (R-F-13).
              */
             monthly_target_qty?: number | null;
         };
@@ -7204,7 +7208,7 @@ export interface components {
              * @description Oldest `last_updated_at` of the summary tables this card reads (null when none has been written yet). The page shows it as "last updated hh:mm" (Dhaka).
              */
             last_updated_at: string | null;
-            /** @description Working days W of the date's month at the lowest common node of the effective scope (filter and token reach; D-TSO-MAN-08, lead ruling R-F-17): one zone gives the zone, one territory the territory, mixed or national the global calendar. W = days of the month - the node's weekend days (`cfg.calendar.weekend_days` resolved at the node) - the holidays on the node's path (global, wing, division, territory, zone) + the make-up days on that path (one implementation, WorkingDays of shared/rules). 0 when the node has no working day in the month; every card's daily_target, remaining and achievement_pct_bp are then null (R-F-13). */
+            /** @description Working days W of the date's month at the lowest common node of the effective scope (filter and token reach; D-TSO-MAN-08, lead ruling R-F-17): one zone gives the zone, one territory the territory, mixed or national the global calendar. W = the number of dates in the month that are working days at the node: a make-up day works, otherwise a date works when it is neither a weekend day (`cfg.calendar.weekend_days` resolved at the node) nor an off day (a holiday or an emergency off); per date the most specific declaration on the node's path (global, wing, division, territory, zone) decides, and each date counts once (one implementation, WorkingDays.resolve and WorkingDays.month of shared/rules). Example: October 2026 at global scope with a Friday weekend gives 31 - 5 = 26; a global holiday on Friday 2 October leaves 26, and a make-up day on an ordinary weekday adds nothing. 0 when the node has no working day in the month; every card's daily_target, remaining and achievement_pct_bp are then null (R-F-13). */
             working_days: number;
             cards: components["schemas"]["NationalSalesCard"][];
         };
@@ -7223,7 +7227,10 @@ export interface components {
             target_outlets: number;
             /** @description Distinct outlets with at least one latest-version memo that day on those routes. */
             successful_calls: number;
-            /** @description Basis points: 10000 = 100 %. Integer arithmetic, rounded half up; null when the denominator is 0. */
+            /**
+             * Format: int64
+             * @description Basis points: 10000 = 100 %. Integer arithmetic, rounded half up; null when the denominator is 0.
+             */
             cpr_pct_bp: number | null;
         };
         /** @description Brand CPR card (D-TSO-MAN-06, contract 1.10.0): per brand, the distinct (route, outlet) pairs with an effective sale line of the brand on the national route set, over the configured denominator. Both ratios and both denominators are sent. */
@@ -7285,7 +7292,10 @@ export interface components {
                 channel: "GT" | "DCC" | "Astha" | "RCC" | "MT" | "HoReCa";
                 /** Format: int64 */
                 value: number;
-                /** @description Basis points: 10000 = 100 %. Integer arithmetic, rounded half up; null when the denominator is 0. */
+                /**
+                 * Format: int64
+                 * @description Basis points: 10000 = 100 %. Integer arithmetic, rounded half up; null when the denominator is 0.
+                 */
                 share_pct_bp: number | null;
             }[];
             total: number;
@@ -7307,7 +7317,10 @@ export interface components {
                 channel: "GT" | "DCC" | "Astha" | "RCC" | "MT" | "HoReCa";
                 /** Format: int64 */
                 value: number;
-                /** @description Basis points: 10000 = 100 %. Integer arithmetic, rounded half up; null when the denominator is 0. */
+                /**
+                 * Format: int64
+                 * @description Basis points: 10000 = 100 %. Integer arithmetic, rounded half up; null when the denominator is 0.
+                 */
                 share_pct_bp: number | null;
             }[];
             /** Format: int64 */
@@ -7370,7 +7383,10 @@ export interface components {
             final_submitted: number;
             /** @description service_zones - final_submitted. */
             remaining: number;
-            /** @description Basis points: 10000 = 100 %. Integer arithmetic, rounded half up; null when the denominator is 0. */
+            /**
+             * Format: int64
+             * @description Basis points: 10000 = 100 %. Integer arithmetic, rounded half up; null when the denominator is 0.
+             */
             submit_pct_bp: number | null;
         };
         /** @description Login (check-in and download) and Submit (Bikroy Joma) status per route. Hidden from BRAND users (403). */
@@ -7388,11 +7404,17 @@ export interface components {
             target_routes: number;
             /** @description Of those, routes whose SR checked in and downloaded. */
             successful_login: number;
-            /** @description Basis points: 10000 = 100 %. Integer arithmetic, rounded half up; null when the denominator is 0. */
+            /**
+             * Format: int64
+             * @description Basis points: 10000 = 100 %. Integer arithmetic, rounded half up; null when the denominator is 0.
+             */
             login_pct_bp: number | null;
             /** @description Routes that completed Bikroy Joma (sales upload). */
             submitted: number;
-            /** @description submitted / successful_login in basis points (the web brief's figure). */
+            /**
+             * Format: int64
+             * @description submitted / successful_login in basis points (the web brief's figure).
+             */
             submit_pct_bp: number | null;
             /**
              * Format: int64
@@ -7488,7 +7510,10 @@ export interface components {
             last_updated_at: string | null;
             total_calls: number;
             geo_validated: number;
-            /** @description Basis points: 10000 = 100 %. Integer arithmetic, rounded half up; null when the denominator is 0. */
+            /**
+             * Format: int64
+             * @description Basis points: 10000 = 100 %. Integer arithmetic, rounded half up; null when the denominator is 0.
+             */
             geo_pct_bp: number | null;
         };
         FfGeoPinsRequest: {
@@ -7502,7 +7527,10 @@ export interface components {
             lng: number;
             /** @enum {string} */
             color: "red" | "amber" | "green";
-            /** @description Today's geo-fencing % of the route (validated / completed calls); null before the first call, then green. */
+            /**
+             * Format: int64
+             * @description Today's geo-fencing % of the route (validated / completed calls); null before the first call, then green.
+             */
             geo_pct_bp: number | null;
             position_at: components["schemas"]["Timestamp"];
         };
@@ -7549,7 +7577,10 @@ export interface components {
             zone: components["schemas"]["PlaceRef"];
             /** Format: date-time */
             position_at: string | null;
-            /** @description 10000 minus the route geo-fencing basis points today. */
+            /**
+             * Format: int64
+             * @description 10000 minus the route geo-fencing basis points today.
+             */
             miss_pct_bp: number | null;
         };
         CategoryQty: {
@@ -7593,7 +7624,7 @@ export interface components {
             sales: number;
             /**
              * Format: int64
-             * @description sales / daily_target in basis points, uncapped (may exceed 10000, hence int64, R-F-16); null whenever daily_target is null (R-F-13).
+             * @description sales / daily_target in basis points, uncapped (may exceed 10000, hence int64, R-F-16); null whenever daily_target is null (R-F-13), and null when the route's monthly target is 0 (daily_target "0.000").
              */
             achievement_pct_bp: number | null;
         };
@@ -7624,7 +7655,10 @@ export interface components {
                 target_outlets: number;
                 successful_calls: number;
                 geo_validated: number;
-                /** @description Basis points: 10000 = 100 %. Integer arithmetic, rounded half up; null when the denominator is 0. */
+                /**
+                 * Format: int64
+                 * @description Basis points: 10000 = 100 %. Integer arithmetic, rounded half up; null when the denominator is 0.
+                 */
                 cpr_pct_bp: number | null;
             };
             time_card: {
@@ -7896,8 +7930,13 @@ export interface components {
          *     days in [1st..day] and in the month); a past month has e = n, a future month e = 0. Item (variant) till-date =
          *     round_half_up(T * e / n); a category or card figure is the sum of its item rows, never the card total rounded
          *     once (the screenshot's eight Cigarette items, T = 40999 in all: 25/31 gives 33064; 21/26 gives 33114, where a
-         *     rounded total would give 33115). n = 0 (a working-days basis in a month with no working day) makes the till-date
-         *     members of every row null: tilldate_target_qty_base, remaining_tilldate_qty_base and tilldate_achievement_pct_bp
+         *     rounded total would give 33115). e and n are per node: `elapsed_days` and `period_days` here are those of `node`
+         *     and govern `rows`; each entry of `children` carries its own pair and its rows follow it. On the working-days basis
+         *     n is W of the node's own path (D-TSO-MAN-08, WorkingDays.resolve: a zone holiday or emergency off counts only for
+         *     that zone), so a child zone can have n = 0 while its territory has n > 0, or the other way round; on the
+         *     calendar-days basis every node has the parent's pair. n = 0 at a node (a working-days basis in a month with no
+         *     working day at that node) makes the till-date members of every row of that node null: tilldate_target_qty_base,
+         *     remaining_tilldate_qty_base and tilldate_achievement_pct_bp, and its rows' Decimal3 tilldate_target_qty is "0.000"
          *     (lead ruling R-F-15). From contract 1.10.0: `day`,
          *     `elapsed_days`, `period_days`, `last_updated_at`, `children` and the integer row members.
          */
@@ -7910,9 +7949,9 @@ export interface components {
             rows: components["schemas"]["TargetAchievementRow"][];
             /** @description The business date the figures run to: today (Dhaka) in the current month, the last day of a past month, the first day of a future month. */
             day: components["schemas"]["BusinessDate"];
-            /** @description e of the till-date basis. */
+            /** @description e of the till-date basis at `node` (each child carries its own, R-F-15). */
             elapsed_days: number;
-            /** @description n of the till-date basis, 0..31; 0 only on a working-days basis in a month with no working day, and then the till-date members of every row are null (R-F-15). */
+            /** @description n of the till-date basis at `node`, 0..31; 0 only on a working-days basis in a month with no working day at `node`, and then the till-date members of every row in `rows` are null (R-F-15). Each child carries its own `period_days`, and the same rule applies to its rows. */
             period_days: number;
             /**
              * Format: date-time
@@ -7927,8 +7966,9 @@ export interface components {
          *     target_qty_base T = the route monthly targets of the month in reach; achieved_qty_base A = sold quantity of sale
          *     lines, business dates 1st..`day`; tilldate_target_qty_base T' = per item round_half_up(T * e / n), a category row
          *     the sum of its items (never its own T rounded once; see TargetAchievement); remaining_* = max(target - A, 0); *_pct_bp = A / target in basis points, rounded half up,
-         *     uncapped (int64, R-F-16), null when the target is 0. When `period_days` n is 0 the three till-date members
-         *     (tilldate_target_qty_base, remaining_tilldate_qty_base, tilldate_achievement_pct_bp) are null (R-F-15). The
+         *     uncapped (int64, R-F-16), null when the target is 0. When `period_days` n of the row's node is 0 (the parent's for
+         *     `rows`, the child's own for a child's rows) the three till-date members (tilldate_target_qty_base,
+         *     remaining_tilldate_qty_base, tilldate_achievement_pct_bp) are null and tilldate_target_qty is "0.000" (R-F-15). The
          *     Decimal3 members and `achievement_pct` keep their meaning for the AMO app.
          */
         TargetAchievementRow: {
@@ -7939,6 +7979,7 @@ export interface components {
             unit: "stick" | "piece" | "dozen" | "box" | "pack";
             target_qty: components["schemas"]["Decimal3"];
             achieved_qty: components["schemas"]["Decimal3"];
+            /** @description The AMO app's till-date target. "0.000" when `period_days` of the row's node is 0 (R-F-15: T * e / n has no value there; the member stays required and non-null in 1.10.0). */
             tilldate_target_qty: components["schemas"]["Decimal3"];
             achievement_pct?: number | null;
             remaining_qty: components["schemas"]["Decimal3"];
@@ -7958,7 +7999,7 @@ export interface components {
             achieved_qty_base: number;
             /**
              * Format: int64
-             * @description Till-date target T' in base units; null when `period_days` is 0 (R-F-15).
+             * @description Till-date target T' in base units; null when `period_days` is 0 (R-F-15), the `period_days` of the row's node.
              */
             tilldate_target_qty_base: number | null;
             /**
@@ -7968,7 +8009,7 @@ export interface components {
             remaining_qty_base: number;
             /**
              * Format: int64
-             * @description max(T' - A, 0); null when `period_days` is 0 (R-F-15).
+             * @description max(T' - A, 0); null when `period_days` is 0 (R-F-15), the `period_days` of the row's node.
              */
             remaining_tilldate_qty_base: number | null;
             /**
@@ -7978,13 +8019,23 @@ export interface components {
             achievement_pct_bp: number | null;
             /**
              * Format: int64
-             * @description A / T' in basis points, uncapped (int64, R-F-16); null when T' is 0, and null when `period_days` is 0 (R-F-15).
+             * @description A / T' in basis points, uncapped (int64, R-F-16); null when T' is 0, and null when `period_days` is 0 (R-F-15), the `period_days` of the row's node.
              */
             tilldate_achievement_pct_bp: number | null;
         };
-        /** @description One child node of a target answer (`children=zone`), with the same rows as the parent (contract 1.10.0). */
+        /**
+         * @description One child node of a target answer (`children=zone`), with the same rows as the parent (contract 1.10.0).
+         *     It carries its own till-date basis days (lead ruling R-F-15, D-TSO-MAN-08): on the working-days basis e and n are
+         *     the working days at this node's own path (WorkingDays.resolve: a zone holiday or emergency off counts only for
+         *     that zone), so they can differ from the parent's; on the calendar-days basis they equal the parent's. n = 0 at
+         *     this node makes the till-date members of its rows null, whatever the parent's n.
+         */
         TargetAchievementNode: {
             node: components["schemas"]["NodeRef"];
+            /** @description e of the till-date basis at this node (R-F-15). */
+            elapsed_days: number;
+            /** @description n of the till-date basis at this node, 0..31; 0 makes the till-date members of this node's rows null, whatever the parent's n (R-F-15). */
+            period_days: number;
             rows: components["schemas"]["TargetAchievementRow"][];
         };
         RiskSignal: {
@@ -13649,7 +13700,7 @@ export interface operations {
                 /** @description Id of the node at `level` (omit for national). */
                 node_id?: components["parameters"]["NodeIdQuery"];
                 product_level?: components["schemas"]["ProductLevel"];
-                /** @description `zone`: add `children`, one node per zone in the caller's reach under the node (contract 1.10.0). Only at a territory or zone node; at a national, wing or division node 400 `ERR_VALIDATION` (R-F-18). */
+                /** @description `zone`: add `children`, one node per zone in the caller's reach under the node (contract 1.10.0). Only at a territory, house or zone node; at a national, wing or division node 400 `ERR_VALIDATION` (R-F-18). */
                 children?: "zone";
             };
             header?: never;

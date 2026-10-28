@@ -52,9 +52,10 @@ NationalSalesCard:
       format: int64
       minimum: 0
       description: 'total_sales / daily_target in basis points (ring); null whenever daily_target is null: without
-        a target, and when `NationalSales.working_days` is 0 (the ring prints "—", lead ruling R-F-13). Uncapped:
-        may exceed 10000, hence int64 (R-F-16). Exact: round_half_up(10000 * total_sales * working_days / monthly_target_qty),
-        from the integers, never from the rounded daily_target (D-TSO-MAN-10, contract 1.10.0).'
+        a target, and when `NationalSales.working_days` is 0 (the ring prints "—", lead ruling R-F-13); and null
+        when `monthly_target_qty` is 0 (a loaded target that sums to 0: daily_target is "0.000", the ring prints
+        "—"). Uncapped: may exceed 10000, hence int64 (R-F-16). Exact: round_half_up(10000 * total_sales * working_days
+        / monthly_target_qty), from the integers, never from the rounded daily_target (D-TSO-MAN-10, contract 1.10.0).'
     target_routes:
       type: integer
       minimum: 0
@@ -67,4 +68,5 @@ NationalSalesCard:
       minimum: 0
       description: Sum of the route monthly targets (base units) in scope for the month of `date`; null when no
         target is loaded. The phone prints Total Target from it and `working_days` (D-TSO-MAN-08, contract 1.10.0;
-        optional until the server sends it).
+        optional until the server sends it). When `working_days` is 0 the phone and the web print "—" for every
+        figure derived from `working_days` and never divide by it (R-F-13).

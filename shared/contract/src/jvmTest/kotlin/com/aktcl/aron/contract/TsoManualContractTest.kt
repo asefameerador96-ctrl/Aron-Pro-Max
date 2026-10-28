@@ -352,7 +352,29 @@ class TsoManualContractTest {
             assertTrue(flat(prop("TargetAchievementRow", n)["description"]).contains("null when `period_days` is 0 (R-F-15)"), n)
         }
         for (n in listOf("target_qty_base", "achieved_qty_base", "remaining_qty_base")) assertFalse(nullable(prop("TargetAchievementRow", n)), n)
-        assertTrue(flat(OpenApi.schema("TargetAchievement")["description"]).contains("n = 0 (a working-days basis in a month with no working day) makes the till-date members of every row null"))
+        // R-F-15 with D-TSO-MAN-08: e and n are per node. On the working-days basis a child zone's W comes from its own
+        // path, so it can be 0 while the territory's is not: each child carries its own pair and its rows follow it.
+        val ta = flat(OpenApi.schema("TargetAchievement")["description"])
+        for (rule in listOf(
+            "e and n are per node: `elapsed_days` and `period_days` here are those of `node` and govern `rows`; each entry of `children` carries its own pair and its rows follow it",
+            "a child zone can have n = 0 while its territory has n > 0",
+            "n = 0 at a node (a working-days basis in a month with no working day at that node) makes the till-date members of every row of that node null",
+        )) assertTrue(ta.contains(rule), "TargetAchievement must say: $rule")
+        assertEquals(listOf("node", "elapsed_days", "period_days", "rows"), required("TargetAchievementNode"))
+        for (n in listOf("elapsed_days", "period_days")) {
+            val p = prop("TargetAchievementNode", n)
+            assertEquals(listOf("integer", 0, 31), listOf(p["type"], p["minimum"], p["maximum"]), "TargetAchievementNode.$n")
+        }
+        assertTrue(flat(prop("TargetAchievementNode", "period_days")["description"]).contains("0 makes the till-date members of this node's rows null, whatever the parent's n (R-F-15)"))
+        assertTrue(flat(OpenApi.schema("TargetAchievementNode")["description"]).contains("on the working-days basis e and n are the working days at this node's own path"))
+        assertTrue(flat(prop("TargetAchievement", "period_days")["description"]).contains("Each child carries its own `period_days`, and the same rule applies to its rows"))
+        assertTrue(flat(OpenApi.schema("TargetAchievementRow")["description"]).contains("When `period_days` n of the row's node is 0 (the parent's for `rows`, the child's own for a child's rows)"))
+        // the AMO app's Decimal3 till-date stays required and non-null: "0.000" when n is 0 (T * e / n has no value)
+        val tdq = prop("TargetAchievementRow", "tilldate_target_qty")
+        assertTrue("tilldate_target_qty" in row); assertFalse(nullable(tdq))
+        assertTrue(flat(tdq["description"]).contains("\"0.000\" when `period_days` of the row's node is 0 (R-F-15"), tdq.toString())
+        // what the phone decodes (WireDtos.kt): the child's own e and n
+        for (f in listOf("elapsedDays", "periodDays")) assertEquals(Int::class.javaPrimitiveType, TargetAchievementNode::class.java.getDeclaredField(f).type, f)
         assertTrue("category_code" in row)
         // the AMO app's members keep their meaning
         for (n in listOf("target_qty", "achieved_qty", "tilldate_target_qty", "remaining_qty")) assertEquals("Decimal3", ref(prop("TargetAchievementRow", n)), n)
@@ -490,26 +512,50 @@ class TsoManualContractTest {
         val text = flat(w["description"])
         for (rule in listOf(
             "at the lowest common node of the effective scope", "one zone gives the zone, one territory the territory, mixed or national the global calendar",
-            "the node's weekend days (`cfg.calendar.weekend_days` resolved at the node)", "the holidays on the node's path (global, wing, division, territory, zone)",
-            "+ the make-up days on that path", "WorkingDays of shared/rules", "R-F-17",
+            "W = the number of dates in the month that are working days at the node",
+            "a make-up day works, otherwise a date works when it is neither a weekend day (`cfg.calendar.weekend_days` resolved at the node) nor an off day",
+            "per date the most specific declaration on the node's path (global, wing, division, territory, zone) decides, and each date counts once",
+            "WorkingDays.resolve and WorkingDays.month of shared/rules", "R-F-17",
+            "October 2026 at global scope with a Friday weekend gives 31 - 5 = 26; a global holiday on Friday 2 October leaves 26, and a make-up day on an ordinary weekday adds nothing",
         )) assertTrue(text.contains(rule), "NationalSales.working_days must say: $rule")
+        // the old wording added and subtracted declarations, which counts a date twice when they overlap
+        assertFalse(text.contains("- the holidays on the node's path"), text)
+        // the example, recomputed per date (each date once): Friday weekend, a global holiday on a Friday, a make-up day on a weekday
+        val october = (1..31).map { java.time.LocalDate.of(2026, 10, it) }
+        fun wOf(off: Set<Int>, makeup: Set<Int>) = october.count { it.dayOfMonth in makeup || (it.dayOfWeek != java.time.DayOfWeek.FRIDAY && it.dayOfMonth !in off) }
+        assertEquals(java.time.DayOfWeek.FRIDAY, october[1].dayOfWeek)
+        assertEquals(listOf(26, 26, 26), listOf(wOf(emptySet(), emptySet()), wOf(setOf(2), emptySet()), wOf(emptySet(), setOf(5))))
         assertTrue(flat(prop("NationalSalesCard", "daily_target")["description"]).contains("D-TSO-MAN-08"))
+        // R-F-13 on the members the phone divides with: W = 0 prints "—", and a target of 0 gives no ring
+        assertTrue(flat(prop("NationalSalesCard", "monthly_target_qty")["description"])
+            .contains("When `working_days` is 0 the phone and the web print \"—\" for every figure derived from `working_days` and never divide by it (R-F-13)"))
+        assertTrue(flat(prop("NationalSalesCard", "achievement_pct_bp")["description"]).contains("and null when `monthly_target_qty` is 0"))
+        assertTrue(flat(prop("TargetVsAchievement", "achievement_pct_bp")["description"]).contains("null when the route's monthly target is 0"))
     }
 
     /**
-     * R-F-16: a basis-point member that can exceed 10000 without bound is int64, so the phone decodes it as a Long. Every
-     * `*_bp` member the contract describes as uncapped is int64, and the new 1.10.0 members without a `maximum` too.
+     * R-F-16: every uncapped basis-point member is int64, so the phone decodes it as a Long. Uncapped means the member
+     * declares no `maximum` (whatever its description says): every such `*_bp` member is int64, the ten 1.9.0 count
+     * ratios included (checker round after the rulings; they were int32 before), and a member described as uncapped
+     * never declares a maximum.
      */
     @Test
     fun uncappedBasisPointMembersAreInt64() {
         val found = mutableListOf<String>()
+        val noMaximum = mutableListOf<String>()
         fun walk(owner: String, s: Map<String, Any?>) {
             (s["properties"] as Map<String, Map<String, Any?>>?)?.forEach { (name, p) ->
                 if (name.endsWith("_bp")) {
                     val text = flat(p["description"] ?: "")
+                    val maximum = p["maximum"] ?: nonNull(p)["maximum"]
+                    val format = p["format"] ?: nonNull(p)["format"]
                     if (text.contains("uncapped", ignoreCase = true) || text.contains("exceed 10000")) {
                         found += "$owner.$name"
-                        assertEquals("int64", p["format"], "$owner.$name is uncapped")
+                        assertEquals(null, maximum, "$owner.$name is described as uncapped")
+                    }
+                    if (maximum == null) {
+                        noMaximum += "$owner.$name"
+                        assertEquals("int64", format, "$owner.$name declares no maximum, so it is uncapped (R-F-16)")
                     }
                 }
                 (p["items"] as Map<String, Any?>?)?.let { walk("$owner.$name[]", it) }
@@ -519,6 +565,11 @@ class TsoManualContractTest {
         (OpenApi.doc["components"] as Map<String, Any?>).let { map(it["schemas"]) }.forEach { (n, s) -> walk(n, map(s)) }
         assertTrue(found.containsAll(listOf("NationalSalesCard.achievement_pct_bp", "TargetVsAchievement.achievement_pct_bp",
             "TargetAchievementRow.achievement_pct_bp", "TargetAchievementRow.tilldate_achievement_pct_bp")), found.toString())
+        // the ten 1.9.0 count ratios the first reading of R-F-16 left at int32 (D-F1-19, corrected by D-F1-25)
+        assertTrue(noMaximum.containsAll(listOf("NationalCpr.cpr_pct_bp", "NationalChannelCalls.channels[].share_pct_bp",
+            "NationalChannelStd.channels[].share_pct_bp", "NationalFinalSubmit.submit_pct_bp", "NationalLoginSubmit.login_pct_bp",
+            "NationalLoginSubmit.submit_pct_bp", "NationalGeoFencing.geo_pct_bp", "FfGeoPin.geo_pct_bp", "FfGeoRoutePopup.miss_pct_bp",
+            "RouteMap.cpr.cpr_pct_bp")), noMaximum.toString())
         // the new 1.10.0 *_bp members: capped at 10000 or int64
         val newMembers = listOf("cpr_bp", "cpr_of_successful_bp", "cpr_of_target_bp").map { map(map(prop("NationalBrandCpr", "brands")["items"])["properties"])[it] as Map<String, Any?> } +
             listOf("value_share_bp", "volume_share_bp").map { map(map(prop("NationalSegmentShare", "segments")["items"])["properties"])[it] as Map<String, Any?> } +
@@ -532,19 +583,34 @@ class TsoManualContractTest {
         for (f in listOf("cprBp", "cprOfSuccessfulBp", "cprOfTargetBp")) assertEquals(Long::class.javaObjectType, fieldType(NationalBrandCprBrands::class.java, f), f)
     }
 
-    /** R-F-18: `children=zone` only at a territory or zone node; above it 400 ERR_VALIDATION. */
+    /**
+     * R-F-18: `children=zone` only at a territory or below; above it 400 ERR_VALIDATION. Below a territory the resolved
+     * node can be a zone or a house (a house TSO's or AMO's default top reach node, D-AUTHZ-1-7-WIRING-01; NodeScope
+     * resolves it to its zones); each has a defined answer.
+     */
     @Test
     fun childrenZoneOnlyAtATerritoryOrBelow() {
         val text = flat(op("get", "/v1/dashboards/targets")["description"])
         for (rule in listOf(
             "`children=zone` is allowed only when the node is a territory or below (lead ruling R-F-18)",
-            "a territory node answers its zones, a zone node answers itself as its one child",
+            "a territory node answers its zones, a zone node answers itself as its one child, a house node answers its zones in the reach",
+            "it is the default top reach node of a TSO or AMO who holds a house, D-AUTHZ-1-7-WIRING-01",
             "at a national, wing or division node it is 400 `ERR_VALIDATION` (`query.children` invalid_value)",
             "The check runs on the resolved node, the default top reach node included",
+            "An explicit `level=house` stays 400 `ERR_VALIDATION` (`query.level`, as GeoLevelQuery says), with or without `children`",
+            "Each child carries its own `elapsed_days` and `period_days` and its rows follow them (R-F-15",
         )) assertTrue(text.contains(rule), "getTargetAchievement must say: $rule")
         assertTrue("400" in statuses("get", "/v1/dashboards/targets"))
-        assertTrue(flat(param("get", "/v1/dashboards/targets", "children")["description"]).contains("at a national, wing or division node 400 `ERR_VALIDATION` (R-F-18)"))
-        // the levels the dashboards accept: territory and zone are the only ones at or below a territory
-        assertTrue(listOf("territory", "zone").all { it in OpenApi.enumOf("ReachLevel") })
+        val children = flat(param("get", "/v1/dashboards/targets", "children")["description"])
+        assertTrue(children.contains("Only at a territory, house or zone node; at a national, wing or division node 400 `ERR_VALIDATION` (R-F-18)"), children)
+        // ReachLevel runs national, wing, division, territory, house, zone, route: at or below a territory are territory,
+        // house, zone and route. An explicit `level` of house or route is 400 on every dashboard (GeoLevelQuery), so the
+        // nodes `children=zone` can meet there are a territory, a zone and a house reached as the default top node;
+        // the description names an answer for each, and 400 for the three levels above a territory.
+        val levels = OpenApi.enumOf("ReachLevel")
+        assertEquals(listOf("national", "wing", "division"), levels.take(levels.indexOf("territory")))
+        assertEquals(listOf("territory", "house", "zone", "route"), levels.drop(levels.indexOf("territory")))
+        val geoLevel = flat(map(map(map(OpenApi.doc["components"])["parameters"])["GeoLevelQuery"])["description"])
+        assertTrue(geoLevel.contains("`house` (a scope node level from contract 1.7.0) and `route` answer 400 `ERR_VALIDATION` (`query.level` invalid_value)"), geoLevel)
     }
 }

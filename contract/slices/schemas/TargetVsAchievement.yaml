@@ -34,4 +34,4 @@ TargetVsAchievement:
       format: int64
       minimum: 0
       description: sales / daily_target in basis points, uncapped (may exceed 10000, hence int64, R-F-16); null
-        whenever daily_target is null (R-F-13).
+        whenever daily_target is null (R-F-13), and null when the route's monthly target is 0 (daily_target "0.000").

@@ -19,6 +19,7 @@ must treat it as unknown (the Kotlin wire DTOs carry every enum as a String; `Un
 | `AdminModule` (lead ruling R-F-11) | `support` | `Me.modules` and `UserAccess.modules` (keys) | Only ADMIN and SUPERADMIN web sessions carry module grants; the field apps get `modules: null`. The web reads grants through its own `GRANT_MODULES` list, so an old web build ignores a key it does not list. The server sends `support` only once B1 adds the `AdminModules` line and F2 the grant CHECK value |
 | `ReportKey` (lead ruling R-F-12) | `tso-visit-log` | `GET /v1/reports` definitions, export log `report_key` | The web shows only the reports in its own catalogue; an export-log row of a key it does not know is shown by its raw key. B3 registers the report, W1 adds the catalogue entry and labels |
 | `format: int64` on two 1.9.0 response members (lead ruling R-F-16) | `NationalSalesCard.achievement_pct_bp`, `TargetVsAchievement.achievement_pct_bp` | `queryNationalSales`, `getRouteMap` | Same JSON integers on the wire; the format only tells a typed reader to use a 64-bit integer (an achievement against a tiny target can exceed the 32-bit range). Listed in case oasdiff reports a response format change; the web's `number` is unchanged and no Kotlin wire DTO decodes either schema today |
+| `format: int64` on ten more 1.9.0 response members (R-F-16, checker round after the rulings: a `*_bp` member without a `maximum` is uncapped) | `NationalCpr.cpr_pct_bp`, `NationalChannelCalls.channels[].share_pct_bp`, `NationalChannelStd.channels[].share_pct_bp`, `NationalFinalSubmit.submit_pct_bp`, `NationalLoginSubmit.login_pct_bp`, `NationalLoginSubmit.submit_pct_bp`, `NationalGeoFencing.geo_pct_bp`, `FfGeoPin.geo_pct_bp`, `FfGeoRoutePopup.miss_pct_bp`, `RouteMap.cpr.cpr_pct_bp` | `queryNationalCpr`, `queryNationalChannelCalls`, `queryNationalChannelStd`, `queryNationalFinalSubmit`, `queryNationalLoginSubmit`, `queryNationalGeoFencing`, `queryFfGeoPins`, `getFfGeoRoutePopup`, `getRouteMap` | Same JSON integers on the wire (count ratios; the server's `Int?` values stay well inside both ranges). Only the declared format widens, so every `*_bp` member without a `maximum` is int64 as R-F-16 says. The web's `number` is unchanged (only the generated "Format: int64" comments); no Kotlin wire DTO decodes these schemas. Listed in case oasdiff reports a response format change |
 
 ## 2. Additive changes (not breaking; listed for the reviewer)
 
@@ -69,6 +70,27 @@ must treat it as unknown (the Kotlin wire DTOs carry every enum as a String; `Un
     `achievement_pct_bp`: null when W = 0; all were already nullable), R-F-17 (`NationalSales.working_days` and
     `NationalSalesCard.daily_target` per D-TSO-MAN-08), R-F-18 (`getTargetAchievement` and its `children` parameter:
     `children=zone` only at a territory or zone node, else 400 `ERR_VALIDATION`, already declared).
+- Checker round after the rulings (same 1.10.0, nothing released yet):
+  - R-F-15 per node: `TargetAchievementNode` gains required `elapsed_days` and `period_days` (0..31; the schema is new
+    in 1.10.0 and the operation answers 404 today, so no reader of the old shape exists). On the working-days basis
+    a child zone's W comes from its own path (D-TSO-MAN-08), so each child carries its own e and n and the null rule
+    applies per node. `TargetAchievement`, its `elapsed_days` / `period_days` and `TargetAchievementRow` descriptions say
+    so; `TargetAchievementRow.tilldate_target_qty` (the AMO app's Decimal3) is "0.000" when the node's n is 0
+    (description only; it stays required and non-null).
+  - R-F-16: the ten 1.9.0 members of s1 (second int64 row).
+  - R-F-17 wording: `NationalSales.working_days` counts each date once, the most specific declaration on the node's
+    path deciding (WorkingDays.resolve), with the October 2026 example; description only.
+  - R-F-13 completeness: `NationalSalesCard.monthly_target_qty` (W = 0 prints "—", no division by 0),
+    `NationalSalesCard.achievement_pct_bp` and `TargetVsAchievement.achievement_pct_bp` (null when the target is 0, as
+    the server already sends); description only.
+  - R-F-18: the house node (a house TSO's or AMO's default top node answers its zones; an explicit `level=house` stays
+    400 per `GeoLevelQuery`); description only.
+  - Generated code only (no contract change): `gen_wire_dtos.py` applies the R7 explicit-null serializer to `List<T>`
+    members (on the type argument) and to nested classes with required-nullable members
+    (`NationalBrandCprBrands`, `NationalSegmentShareSegments`), so an encoder that omits nulls keeps every required key
+    in list elements too (`TargetAchievement.rows`, `children[].rows`, `SupportTicketPage.items`,
+    `SupportTicketDetail.events`, `NotificationInbox.items`, `NationalLoginSubmitUsers.items`, `NationalBrandCpr.brands`,
+    `NationalSegmentShare.segments`).
 - Description-only: `NationalSalesCard.achievement_pct_bp` (exact formula), `DashboardSummary.by_category` (sold quantity
   of sale lines only), `FinalSubmitRequest.client_uuid` (the D-TSO-MAN-28 rule), `postFinalSubmit`, `getFinalSubmitPreview`,
   `postDayReopen`, `RecordOutcomeCode`, `ProblemCode`, `CodeListKey`, `RecordType`, tags `support` and `notifications`.

@@ -7,7 +7,9 @@ import kotlinx.serialization.descriptors.PrimitiveKind
 import kotlinx.serialization.descriptors.SerialDescriptor
 import kotlinx.serialization.descriptors.StructureKind
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.serializer
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -199,6 +201,45 @@ class WireDtosDriftTest {
     }
 
     @Suppress("UNCHECKED_CAST")
+    /**
+     * R7 below the top level: a List<T> member of an R7 class T carries T's Wire serializer on its type argument, and a
+     * nested class with required-nullable members gets its own (gen_wire_dtos.py). An encoder that omits nulls keeps
+     * every required key in every list element, also two levels down (TargetAchievement.children[].rows[]).
+     */
+    @Test
+    fun wireNullsHoldInListsAndNestedClasses() {
+        val nullRow = TargetAchievementRow(
+            productLevel = "variant", productId = 7, name = "V", unit = "stick", targetQty = "100.000", achievedQty = "40.000",
+            tilldateTargetQty = "0.000", remainingQty = "60.000", categoryCode = "CIG", targetQtyBase = 100, achievedQtyBase = 40,
+            tilldateTargetQtyBase = null, remainingQtyBase = 60, remainingTilldateQtyBase = null, achievementPctBp = null, tilldateAchievementPctBp = null,
+        )
+        val zone = NodeRef(type = "zone", id = 9)
+        val answer = TargetAchievement(
+            month = "2026-10", asOf = "2026-10-29T06:00:00Z", node = NodeRef(type = "territory", id = 3), tilldateBasis = "working_days",
+            rows = listOf(nullRow), day = "2026-10-29", elapsedDays = 22, periodDays = 26, lastUpdatedAt = null,
+            children = listOf(TargetAchievementNode(node = zone, elapsedDays = 0, periodDays = 0, rows = listOf(nullRow))),
+        )
+        val obj = request.encodeToJsonElement(TargetAchievementWire, answer).jsonObject
+        val keys = listOf("tilldate_target_qty_base", "remaining_tilldate_qty_base", "achievement_pct_bp", "tilldate_achievement_pct_bp")
+        fun rowsOf(o: JsonObject) = o.getValue("rows").jsonArray.map { it.jsonObject }
+        val child = obj.getValue("children").jsonArray.single().jsonObject
+        for (row in rowsOf(obj) + rowsOf(child)) for (k in keys) assertTrue(row[k] is JsonNull, "$k must be an explicit null in $row")
+        assertTrue(obj["last_updated_at"] is JsonNull)
+        assertFalse(rowsOf(obj).single().containsKey("achievement_pct"), "optional null members stay omitted")
+        // the same through the plain serializer of the owner: the type-argument serializer is part of the class
+        val plain = request.encodeToJsonElement(TargetAchievementNode.serializer(), answer.children!!.single()).jsonObject
+        assertTrue(rowsOf(plain).single()["tilldate_achievement_pct_bp"] is JsonNull)
+        // a nested class (inline object in the contract) with required-nullable members
+        val cpr = NationalBrandCpr(
+            date = "2026-10-29", tillTime = true, asOf = "2026-10-29T06:00:00Z", lastUpdatedAt = null, targetOutlets = 0, successfulCalls = 0,
+            denominator = "target_outlets", brands = listOf(NationalBrandCprBrands(brandCode = "B", brandName = "B", outletsBought = 0, cprBp = null, cprOfSuccessfulBp = null, cprOfTargetBp = null)),
+        )
+        val brand = request.encodeToJsonElement(NationalBrandCprWire, cpr).jsonObject.getValue("brands").jsonArray.single().jsonObject
+        for (k in listOf("cpr_bp", "cpr_of_successful_bp", "cpr_of_target_bp")) assertTrue(brand[k] is JsonNull, "$k must be an explicit null")
+        // decoding is unchanged: the explicit nulls read back to the same value
+        assertEquals(answer, response.decodeFromJsonElement(TargetAchievementWire, obj))
+    }
+
     private fun enumValues(slice: Map<String, Any?>): List<String> = (slice["enum"] as List<Any?>).map { it.toString() }
 
     @Test

@@ -15,13 +15,22 @@ operation:
 
     reach, never from client ids. `children=zone` is allowed only when the node is a territory or below (lead ruling
 
-    R-F-18): a territory node answers its zones, a zone node answers itself as its one child; at a national, wing
+    R-F-18): a territory node answers its zones, a zone node answers itself as its one child, a house node answers
+
+    its zones in the reach (a house is a group of zones inside one territory; it is the default top reach node of
+    a
+
+    TSO or AMO who holds a house, D-AUTHZ-1-7-WIRING-01); at a national, wing or division node it is 400
+
+    `ERR_VALIDATION` (`query.children` invalid_value). The check runs on the resolved node, the default top reach
+    node
+
+    included. An explicit `level=house` stays 400 `ERR_VALIDATION` (`query.level`, as GeoLevelQuery says), with
     or
 
-    division node it is 400 `ERR_VALIDATION` (`query.children` invalid_value). The check runs on the resolved node,
+    without `children`. Each child carries its own `elapsed_days` and `period_days` and its rows follow them (R-F-15,
 
-    the default top reach node included. The till-date basis follows the caller''s role (TSO: the TSO key, AMO:
-    the AMO team
+    D-TSO-MAN-08). The till-date basis follows the caller''s role (TSO: the TSO key, AMO: the AMO team
 
     key; calendar days by default, D-TSO-MAN-05). The integer members (`*_qty_base`, `*_pct_bp`) are what the TSO
     app
@@ -46,7 +55,7 @@ operation:
     in: query
     required: false
     description: '`zone`: add `children`, one node per zone in the caller''s reach under the node (contract 1.10.0).
-      Only at a territory or zone node; at a national, wing or division node 400 `ERR_VALIDATION` (R-F-18).'
+      Only at a territory, house or zone node; at a national, wing or division node 400 `ERR_VALIDATION` (R-F-18).'
     schema:
       type: string
       enum:

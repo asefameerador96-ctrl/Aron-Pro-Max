@@ -29,6 +29,7 @@ FfGeoPin:
       type:
       - integer
       - 'null'
+      format: int64
       minimum: 0
       description: Today's geo-fencing % of the route (validated / completed calls); null before the first call,
         then green.

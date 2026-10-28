@@ -47,6 +47,7 @@ NationalFinalSubmit:
       type:
       - integer
       - 'null'
+      format: int64
       minimum: 0
       description: 'Basis points: 10000 = 100 %. Integer arithmetic, rounded half up; null when the denominator
         is 0.'
