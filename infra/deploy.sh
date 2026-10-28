@@ -535,7 +535,7 @@ if [ -n "$DBLOGINS_JOB" ]; then
     # exactly these logins (read from the same file the job runs).
     logins="$(python3 -c 'import re, sys
 seen = list(dict.fromkeys(re.findall(r"\((?:\x27)(\w+)(?:\x27), (?:\x27)\w+(?:\x27), (?:true|false)\)", open(sys.argv[1]).read())))
-print(len(seen), "logins:", ", ".join(seen))' infra/sql/runtime-logins.sql)"
+print(len(seen), "logins:", ", ".join(seen))' infra/sql/runtime-logins.sql)" || logins="login list not read"
     dblogins_result="succeeded (${logins}; memberships verified by the job)"
   fi
 fi
@@ -730,9 +730,9 @@ summary "| Backend image | ${BACKEND_IMAGE} |"
 summary "| Web image | ${WEB_IMAGE:-none (no web/ yet)} |"
 summary "| Infrastructure | $([ "$skip_infra" = true ] && echo "unchanged, skipped" || echo deployed) |"
 # Read-only evidence for the what-if's recurring "Modify networkAcls" on the vault: the live ACLs after the deploy.
-kv_acls="$(az keyvault show -n "$KV" --query properties.networkAcls -o json 2>/dev/null | python3 -c 'import json, sys
-a = json.load(sys.stdin) or {}
-print("default {}, bypass {}, {} IP rules, {} VNet rules".format(a.get("defaultAction"), a.get("bypass"), len(a.get("ipRules") or []), len(a.get("virtualNetworkRules") or [])))' 2>/dev/null || echo "not read")"
+kv_acls="$( { az keyvault show -n "$KV" --query properties.networkAcls -o json 2>/dev/null | python3 -c 'import json, sys
+a = json.load(sys.stdin)
+print("none set" if not a else "default {}, bypass {}, {} IP rules, {} VNet rules".format(a.get("defaultAction"), a.get("bypass"), len(a.get("ipRules") or []), len(a.get("virtualNetworkRules") or [])))' 2>/dev/null || echo "not read"; } | sed -n 1p)"
 summary "| Key Vault network ACLs | ${kv_acls} |"
 summary "| Worker | ${worker_result} |"
 summary "| Database logins | ${dblogins_result} |"
