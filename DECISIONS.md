@@ -1403,3 +1403,208 @@ The sponsor said "hold it": keep the zone-redundant dev resources (about USD 15.
 - **D-TSO-MAN-01 (owner, 2026-10-28; laptop session).** The owner supplied the October 2026 ARON TSO App User Manual with 44 screenshots (new: the Tickets module) and asked for the full TSO app, connected to the server, database, data lake, SR app, AMO app and web portal, with no miscalculation. Manual text: `docs/evidence/manuals/manual-tso-2026-10.md`; screenshots (owner: "Commit them", public repo, Apsis test account data): `docs/ui-reference/tso/NN-*.jpg`. Under PARITY-SPEC (rule 14a) these screenshots are now the TSO visual reference (the TSO app is the dark navy/purple look of the screenshots).
 - **D-TSO-MAN-02 (owner, 2026-10-28; changes sponsor rule 2 for targets only).** Asked "Build targets now for the TSO app?", the owner chose "Build targets now": the web admin uploads monthly targets (territory, zone, brand/item) and a holiday calendar; the TSO dashboard shows today's target (monthly target / working days of the month, Fridays and holidays excluded, manual s4) and Target Status shows Monthly and Till Date (target for the working days passed, manual s11). Loyalty (Astha, Diamond League, Superstar, gifts) and every discount/promotion programme stay deferred (docs/27 unchanged for them; the memo offer-discount line stays zero).
 - **D-TSO-MAN-03 (owner, 2026-10-28).** Push route for this work: a lane branch first; the integration branch is fast-forwarded only when that lane run is green (docs/26: INT stays green), so the signed TSO APK comes from that run.
+- **D-TSO-MAN-04..45 (lead, 2026-10-28; build contract `docs/requests/tso-manual-build-2026-10.md`, rows copied verbatim below).**
+- **D-TSO-MAN-04 Conflict rule.** Where the manual text and the screenshot numbers disagree on a formula, the
+  screenshot (current behaviour) wins. The server returns the raw integers for both readings, so a switch is one
+  config change. Every conflict is listed in §7.2. Reason: CLAUDE.md mission, rule 14a, lead ruling 1.
+- **D-TSO-MAN-05 Till-date target (TSO).** Basis `cfg.kpi.tilldate_basis.tso` ∈ {calendar_days, working_days},
+  default calendar_days.
+  - calendar_days: e = day-of-month(D), n = days in the month. working_days: e = working days in [1st..D] (D included
+    when it is a working day), n = working days of the month. Past month e = n; future month e = 0.
+  - Item (variant) row TD = round_half_up(T·e/n); a category or card figure is the sum of the item rows of that node.
+    This amends D-51 ("rounded up"): all 11 screenshot figures reproduce only with 25/31 half up (§4.3).
+  - AMO Team Performance uses `cfg.kpi.tilldate_basis.amo_team`, default calendar_days. Reason: ruling 1a.
+- **D-TSO-MAN-06 Brand CPR.** Numerator: distinct (route, outlet) pairs with an effective sale line of the brand.
+  Denominator: `cfg.kpi.brand_cpr_denominator.tso` ∈ {successful_calls, target_outlets}, default successful_calls
+  (screenshot: 67% and 33% with 3 successful calls). The response carries both bp values and both denominators.
+  Reason: ruling 1b.
+- **D-TSO-MAN-07 Bikroy Joma %.** On the TSO app: submitted / target routes (manual text and screenshot 7 agree:
+  1 of 5 = 20%), new field `submit_of_target_pct_bp`. `submit_pct_bp` (÷ successful login) stays for the web brief.
+  B2 corrects docs/10:26; A1 corrects docs/08:9. Reason: ruling 1c.
+- **D-TSO-MAN-08 Today's target.**
+  - Σ monthly target (routes × SKUs in scope, month of D) / W(node), Fridays and holidays excluded. On a Friday or
+    holiday the literal formula applies (no zeroing).
+  - Node = lowest common ancestor of the effective scope (filter ∩ token reach): one zone gives the zone, one
+    territory the territory, mixed or national gives global.
+  - Holidays: global plus wing, division, territory and zone holidays on the node's path, plus make-up days on that
+    path. Weekend = `cfg.calendar.weekend_days` resolved at the node.
+  - One implementation, `com.aktcl.aron.rules.WorkingDays` (F3), used by NationalDashboard, AdminCalendar,
+    TargetAchievementApi and DailyTrackingApi. `dw.v_calendar` / `v_calendar_month` stay global with a Friday weekend,
+    are documented as such and are tested equal to WorkingDays for global scope. Reason: ruling 2, CR-6.
+- **D-TSO-MAN-09 Total Sales.** Sold quantity of sale lines only (no free or DRP lines), base units (cigarette and
+  bidi sticks, lighter pieces, match dozens). `summary.by_category` becomes sold-only. Summary CPR, login and geo use
+  the national route set (normal SR route-days, planned, not excused). Every TSO dashboard card reads
+  `/v1/dashboards/national/*`. One parity test proves summary == national for each card on one fixture day.
+  Reason: ruling 3, CR-7.
+- **D-TSO-MAN-10 Numbers.**
+  - Every percentage is rounded once from integers (§4.1); no figure comes from a rounded intermediate. One formatter
+    (F3), mirrored on the web; a shared corpus proves they agree.
+  - Quantities: one decimal half up; from 1,000 they print as value/1000 with one decimal plus " K", whole part grouped
+    ("1,234.6 K"). No M and no lakh/crore on the phone. Bengali digits in Bangla; "K" and "%" stay Latin.
+  - Bar bands `cfg.kpi.bar_bands` default [40,80] on the printed integer %: red < 40 ≤ amber < 80 ≤ green.
+    Reason: ruling 4.
+- **D-TSO-MAN-11 Segment shares.** Value share = segment sale-line gross milli-taka / total (discounts are zero under
+  docs/27). Volume share is computed within the segment's unit family (sticks: cigarette + bidi; pieces; dozens);
+  different units are never added. X axis ordered by value descending. Reason: ruling 5.
+- **D-TSO-MAN-12 Not Logged In / Not Uploaded.**
+  - Rows are (route, user) over the card's target routes. Not Logged In: routes without a successful login. Not
+    Uploaded: routes with a successful login and no submit.
+  - Per route: one row for the route-day SR (vacant: user null, shown "SR Not Set"), then one row per active AMO whose
+    scope covers the route's zone on D, by username. AMO rows follow the route state, not the AMO's own login
+    (screenshot 8 shows AMO-6334 under several routes and in both tabs).
+  - Fields: display name = `full_name` ("SR - Testing Banani"), User Name = `username`, Route = route name, Dep Name =
+    zone name (screenshot 8 "Banani - Test" is the zone). Reason: ruling 6.
+- **D-TSO-MAN-13 TSO look.** Core-ui `AronLook.TsoNight` (navy page, purple-gradient glow cards, cyan figures,
+  green-to-yellow gradient title, grey round back button, glow fields, gradient buttons) for the login and every
+  signed-in TSO screen. Sunlight mode overrides it; key figures meet 7:1 (TokenContrastTest). PARITY-SPEC lines 5 and
+  47 ("TSO = SR look") are superseded for TSO. Reason: ruling 7, D-TSO-MAN-01.
+- **D-TSO-MAN-14 Navigation.**
+  - Dashboard is the root after login. Top bar: ☰, "Good day, <full_name>", bell with an unread badge.
+  - Drawer header: "TSO" over the bold name, plus a gear that opens Settings (language, Sunlight, version, update, PDA
+    to Support, Change Password; small improvement).
+  - Drawer rows, exactly: Dashboard; Tickets ˅ (Ticket Dashboard, All Tickets, Quick Ticket, Create Ticket); Leave;
+    Final Submit; My Periphery ˅ (My Team, Retailer); My Call ˅ (My Visit Plan, Set Plan); Target Status;
+    My Feedback ˅ (Add new feedback, My feedback); Log Out. Titles and subtitles from screenshots 9, 10, 27, 30;
+    "My feedback" (own list) is an improvement.
+  - The tile Home and `RoleHomes.tsoTiles` are retired for TSO. Back from any drawer screen goes to the Dashboard. Home
+    button per the §8 table. No zone filter on the TSO dashboard (none in the screenshots; scope is the token reach).
+    Reason: ruling 7.
+- **D-TSO-MAN-15 Login screen (screenshot 5).** Round mint-to-pink logo plate, "Username" and "Password" labels above
+  glow fields, centred cyan-to-blue Login. Kept as small improvements: a language text toggle at the bottom
+  (constraint 8: choose the language before login) and the password eye. Sun switch and version line move to
+  Settings. The launcher icon keeps the D-BRAND-02 plate; the screenshot's light plate is a recorded difference
+  (§7.2). Reason: ruling 7.
+- **D-TSO-MAN-16 Login and gates.** The TSO login stays without an OTP (D-AUTH-TSO-NOBIND, CR-1); the "Login OTP issue"
+  ticket type serves SR and AMO. The enrolment gate (side-loaded pilot phones only; fleet phones are QR-provisioned)
+  and the one-time location notice stay, for security and consent (CR-2). A1 records both as deltas in
+  `docs/evidence/manuals/delta-tso.md`.
+- **D-TSO-MAN-17 Tickets module.** New shared module `android/feature-tickets`; TSO wires it now, SR and AMO later. The
+  server takes requester roles from `cfg.support.ticket_requester_roles`, default ["TSO"]; other roles are rejected
+  `scope_out_of_reach`. Reason: ruling 8.
+- **D-TSO-MAN-18 Ticket identity.** Number "INC" + at least 6 digits from `app.support_ticket_no_seq` START 100001, so
+  the vendor's numbers (INC0107xx), which TSOs will quote, never collide. Assigned at first insert; 7 digits after
+  INC999999. The client generates the UUID v4. Tickets are created only through the sync record `support_ticket`
+  (offline outbox, idempotent upsert by UUID); there is no online create endpoint, so there is one ingest path.
+- **D-TSO-MAN-19 Issue types.** Code list `ticket_issue_type`: the 31 Annex A names verbatim, in Annex A order, attrs
+  `{priority:"p1", category:"tickets", urgency:"high", icon:(sort-1)%8, hint_en:<Annex A "use it when">}`. All 31
+  default to P1 (screenshot 15 shows "Tickets · High" on every tile; every ticket in 11–14 is "P1 - Highest"). Labels
+  P1 - Highest, P2 - High, P3 - Medium, P4 - Low; support may change the priority. The Astha, Discount, Campaign and
+  Target Panel types are labels only (docs/27 unaffected). `label_bn` stays NULL until AKTCL supplies it (V0027 rule).
+- **D-TSO-MAN-20 Ticket transitions (server-enforced).**
+  - Support: new→in_progress (Start, or the first support reply on a New ticket).
+  - Support: new|in_progress→resolved, with `resolution_code` (list `ticket_resolution_code`, seed resolved =
+    "Resolved") and notes 1..2000. It writes the support message
+    `[TicketID: <no>] - Resolved:\nResolution Code: <label>\nResolution Notes:\n\n<notes>` (screenshot 14).
+  - Support: new|in_progress→cancelled, reason 3..500. Reporter: resolved→closed by the `close_review` event ("Submit
+    Review & Close", one tap, no rating). Support may also close a resolved ticket.
+  - No reopen and no auto-close: if not solved, the reporter raises a new ticket quoting the old number (manual).
+- **D-TSO-MAN-21 Ticket comments.** The reporter (sync event `comment`) and support (REST) may comment only while the
+  ticket is new or in_progress. After that the app shows "This ticket is resolved. No further comments can be added."
+  (screenshot 14) and the server refuses (CR-8). Every support role is shown as "Support", never by name.
+- **D-TSO-MAN-22 Ticket scope.** The reporter sees own tickets (requester = token user). The support desk is the
+  permission `support.ticket.manage` in `app.role_grant_map`, seeded for ADMIN and SUPERADMIN; SUPPORT can be granted it
+  on the permission page without code. New `Me.support_desk` boolean drives the web menu.
+- **D-TSO-MAN-23 Ticket photos.** At most `cfg.support.ticket_max_photos` (default 3) per ticket and per event; media
+  purpose `support`, ref_type `support_ticket` / `support_ticket_event`. Gallery via `PickVisualMedia` (no storage
+  permission) or camera, both through the existing PhotoCompressor.
+- **D-TSO-MAN-24 Affected user.** Optional `affected_username` (3..40) for a ticket raised from another user's phone;
+  the server resolves it to `affected_user_id` for the desk only. The ticket stays the reporter's.
+- **D-TSO-MAN-25 Ticket counts.** Total = all statuses; Open = new + in_progress; Resolved % = whole(resolved, total);
+  Open % = whole(open, total); total 0 → 0%. Offline: cached list plus unsent rows counted as New, merged by UUID. Age
+  text: <1 min "just now", <1 h "Nm ago", <24 h "Nh ago", else "Nd ago", from captured_at and trusted now.
+- **D-TSO-MAN-26 Notifications inbox.**
+  - `app.user_notification`, kinds ticket_updated, leave_decided, final_submit_auto (the TSO-to-SR task is out of scope
+    for the bell). Unread count for the bell, read on Dashboard open, pull-to-refresh and push reason `notification`;
+    no polling.
+  - The bell opens a plain inbox list (no screenshot; improvement); opening it marks everything up to the newest id
+    read. Announcements stay push-only (no compose page; not in the manual). Retention
+    `cfg.notify.inbox_retention_days` (90).
+- **D-TSO-MAN-27 Final Submit flow (screenshots 23–26).**
+  - The preview gives each route an `upload_state`: uploaded, web_entry, not_uploaded, not_due. A saved Web Entry
+    counts as uploaded; dummy BR and Institutional routes without data are not_due.
+  - Not-uploaded due routes give a warning dialog that names them ("Submit anyway" / "Cancel"); it never blocks. No
+    confirm dialog when nothing is due. Success: "Success" / "Final Submit Done Successfully..." / OK. OK returns to
+    the selectors with the zone cleared, ready for the next zone (CR-5).
+  - Card title `<route name> <kind label>` (Daily/3F/2F/AMO; the space is an improvement over "Apsis RouteDaily");
+    FF line "FF: <full_name>" or "FF: SR Not Set". Dropped: the memo/net line and the success totals (screenshot).
+    Added: an amber "Not uploaded" chip on due routes (improvement serving manual s8). The red dot is not drawn.
+    `cfg.day.final_submit_allow_not_set_routes` is not read by this flow.
+- **D-TSO-MAN-28 Reopen replay fix (CR-3).** The preview returns `submit_seq` = number of reopened `final_submit` rows
+  for the zone-day. Client UUID = name-based UUID of `aron.tso.final-submit:<user>:<zone>:<date>:<submit_seq>`. A
+  server replay succeeds only when the matched row is live (`reopened_at IS NULL`); otherwise 409
+  `ERR_DAY_FINAL_SUBMIT_REOPENED`, and the app re-previews.
+- **D-TSO-MAN-29 Reopen.** `POST /v1/day/reopen` is implemented, idempotent by the optional `client_uuid`. Roles
+  `cfg.day.reopen_roles` (default changed to ["ADMIN","SUPERADMIN"]), window `cfg.day.reopen_window_days` (3), reason
+  10..500. Lock order: zone-day advisory lock, then route-days by route_id. Audited, emits `zone_day.reopened`, marks
+  the aggregates dirty. The web `/admin/day` form is fixed (it posts to a 404 today).
+- **D-TSO-MAN-30 Midnight auto Final Submit.**
+  - `AutoFinalSubmitJob` runs at 00:00 Asia/Dhaka and, at start, catches up the last `cfg.day.reopen_window_days` days.
+    It covers every service zone (planned normal SR route on D-1) without a live submit.
+  - It uses DayService's locked path: `via='job'`, `submitted_by` NULL, audit via job with actor "system". Idempotent
+    (`final_submit_once`); inbox rows to the TSOs whose reach covers the zone; emits `zone_day.final_submitted`. Switch
+    `cfg.day.auto_final_submit_enabled` (true).
+  - `DashboardSummaries.autoSubmit` (dw-only stamp) is removed. Every final-submit % reads live app.final_submit rows
+    (one formula: zones submitted, auto included / service zones).
+- **D-TSO-MAN-31 Day lock after Final Submit.**
+  - A record whose trusted `captured_at` is before the zone-day's `submitted_at` is quarantined `after_final_submit`:
+    stored, held out of the day's figures, counted (flagged late) only when ADMIN accepts it in `/admin/quarantine`.
+    No offline sale is lost (constraint 2).
+  - A record captured at or after the lock (memo, memo edit, void, return, collection) is rejected
+    `day_final_submitted` (final, not retryable). `day_submit` and `attendance_event` after the lock are accepted
+    (state only, no figures). `cfg.day.late_sync_after_final_policy` defaults to quarantine.
+  - Push `day_final_submitted` goes to the SR and AMO devices of the zone; those apps lock capture for the route-day
+    (printing stays allowed) and show a banner. `cfg.day.submit_grace_h` cannot unlock an auto-submitted zone.
+    Reason: ruling 10, constraint 2; §7.1 Q1.
+- **D-TSO-MAN-32 Cascade.** Wing > Division > Territory > House > Zone from `GET /v1/dashboards/national/filter-options`
+  (FilterNode parent ids; reach from the token). A level with one option is preselected.
+- **D-TSO-MAN-33 Leave (screenshots 19–22).**
+  - Card: range with a calendar icon, day count in a circle ("Day"/"Days"), "Reason:", orange status pill, no leave
+    type. Order: ascending by from_date (screenshot 19, conflict rule).
+  - Form: Leave Type dropdown with no preselection (types from the bundle code list), date empty until picked, typed
+    days field, Apply under the form; after Apply, back to the list with a toast.
+  - to_date = from + days − 1 in calendar days, Fridays and holidays counted (fixes the vendor's one-day limit that
+    testers reported in screenshot 19). A refused row shows "Not accepted: <reason>". The same checks run on sync and
+    POST (LeaveApplicationHandler). Config `cfg.leave.allow_past_days` 31, `allow_ahead_days` 365, `block_overlap`
+    false.
+- **D-TSO-MAN-34 Periphery (screenshots 27–29).**
+  - My Team: last synced non-mock fix, "last seen HH:mm (n min ago)", Refresh action. No live tracking and no locate
+    ping (constraint 3); D-170 kept.
+  - My Team and Retailer maps are interactive (zoom, pan, tap), loaded only while open, tilt off, no my-location layer.
+    This amends D-08 for TSO; AMO stays on the lite map.
+  - Retailer: one balanced fix per zone or radius pick, plus a refresh icon; offline it computes nearby outlets from
+    the bundle with the server's rule. Stale grey-out after `cfg.tso.team_location_max_age_min` (120);
+    `mock_fixes_today` chip; group by route; bbox margin; roundToInt.
+- **D-TSO-MAN-35 My Call (screenshots 30–38).**
+  - Separate screens: Set Plan, Select Outlets, My Visit Plan, Visit Plan Outlets, Visit Query, Assign Task. Dropdowns;
+    Set Plan defaults to today; tab counts removed; Select all kept (improvement). The 5-line outlet card shows
+    Channel. `visit_plan.route_id` is stored.
+  - Visit Query: rubric `retailer_questionnaire` v1 seeded (two text questions; bn from screenshot 37, en from the
+    manual); answers ≤ 1000 characters (amends D-199's 500); delegate Yes/No radio, default No. Task types: active
+    `task_type` items for TSO. The SR card shows the label, not the code; the bundle carries `TaskDto.route_id`. System
+    back and on-screen back go to the same place (CR-4).
+- **D-TSO-MAN-36 Feedback (screenshot 43).** Categories suggestion and feedback (supersedes D-197), as a vertical list;
+  placeholders "Enter title" / "Enter description"; label "Descriptions"; Browse Gallery only,
+  `cfg.feedback.max_images` 1; after Save, a toast and back; `business_date` shown; ingest precheck shared with POST.
+- **D-TSO-MAN-37 Logout.** Last drawer row. Dialog title "Log Out!", body "All app data on this phone will be removed."
+  (grammar fix of "Your all app data will removed."; §7.1 Q6), green Cancel, orange Log Out. Logout is still refused
+  while items are unsent (G-man-tso-01). The wipe also deletes `aron_ui_<id>.xml` and clears retained state (SH-17).
+- **D-TSO-MAN-38 Data platform (rule 12).** Views `dw.v_support_ticket`, `v_leave_application`, `v_feedback` (no free
+  text), `v_visit_plan_outlet`, `v_call_assessment`, `v_task`. Events, all v1: `support_ticket.created`,
+  `support_ticket.status_changed`, `support_ticket.commented`, `zone_day.final_submitted`, `zone_day.reopened`,
+  `leave.decided`.
+- **D-TSO-MAN-39 Target Status API.** `getTargetAchievement` is built with `children=zone`, integer fields, and nodes
+  from reach (never from client ids). The Decimal3 and `achievement_pct` fields stay filled for the AMO app. The basis
+  follows the caller's role: TSO the `.tso` key, AMO the `.amo_team` key.
+- **D-TSO-MAN-40 Target Status UI (screenshots 39–42).** Cards: the territory plus each zone in reach. Card % whole,
+  capped at 100; Details % 2 decimals, uncapped. Details rows are variants in catalogue order; tapping a category bar
+  filters the table. Offline: the cached copy with "as of".
+- **D-TSO-MAN-41 ▸ on By Channel STD.** Switches between By Channel STD and By Channel Successful Call (the older
+  manual's callout) and back; the choice is saved.
+- **D-TSO-MAN-42 Release copy.** CI also writes `aron_tso_app_<dd_mm_yyyy>_v<versionCode>.apk` (Dhaka build date) with
+  a line in SHA256SUMS. The existing names stay for the updater.
+- **D-TSO-MAN-43 Contract 1.10.0.** A minor bump. The response-enum additions trip the breaking gate, so F1 adds
+  `docs/requests/contract-tso-manual-1.10.md`, which this file approves. Only F1 edits `contract/openapi.yaml`; later
+  asks are batched by F1 into 1.10.x.
+- **D-TSO-MAN-44 Migrations.** Block V0130–V0149 is reserved for this build; only F2 writes it.
+- **D-TSO-MAN-45 Map config keys.** `cfg.map.provider` and `cfg.map.tile_cache_mb` are not added: one provider exists
+  and the SDK owns its cache. They return when a second provider exists. Reason: smallest correct.
