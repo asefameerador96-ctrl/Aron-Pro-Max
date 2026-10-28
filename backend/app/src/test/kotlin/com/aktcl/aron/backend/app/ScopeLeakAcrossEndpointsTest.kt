@@ -694,8 +694,12 @@ class ScopeLeakAcrossEndpointsTest {
         val mineKpis = (mine.path("kpis").deepCopy<JsonNode>() as ObjectNode).also { it.remove(zoneFields) }
         assertEquals(row, mineKpis, "the route's figures")
         assertTrue(mineKpis.path("gross_mtk").asLong() > 0, "MIR-SR-D sold today: ${mine.path("kpis")}")
-        assertTrue(zoneView.path("kpis").path("target_routes").asInt() > mineKpis.path("target_routes").asInt(), "control: Z-MIR has more target routes than MIR-SR-D")
         assertEquals(1, mine.path("kpis").path("zones_with_target_routes").asInt(), "the final-submit unit stays zones: Z-MIR")
+        // Control (the seed day plans no other Z-MIR route, so a zone read would equal it here; RouteKeyedDashboardTest shows the
+        // difference): the TSO holding SIB-SR-D too reads one more target route, planned in Z-SIB, and one more zone.
+        val both = ContractModel.json.readTree(world.call(client, contract, summary, routeTso, token).bodyAsText()).path("kpis")
+        assertEquals(mineKpis.path("target_routes").asInt() + 1 to 2, both.path("target_routes").asInt() to both.path("zones_with_target_routes").asInt(), "SIB-SR-D adds a target route and Z-SIB: $both")
+        assertEquals(mineKpis.path("gross_mtk").asLong(), both.path("gross_mtk").asLong(), "SIB-SR-D sold nothing")
         // A territory TSO's numbers are unchanged: its default view is still the national view of its territory.
         val tso = ApiWorld.Caller("tso1001", "web", null)
         val tsoToken = world.login(client, tso)!!
