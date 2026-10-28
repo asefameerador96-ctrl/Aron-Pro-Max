@@ -22,3 +22,10 @@ aged 30 or 90 days, for every phone that is new or has evicted its cache.
 The rule is wrong in kind, not in size (42 pictures of about 20 KB). Narrow the filter to the photo prefix
 (`'${mediaContainer}/photos/'`), or add an exclusion for `assets/`. Check first that `photos/` is the only prefix the rule was
 meant for; this note does not claim there is no other.
+
+## Answer (infra session 7, 2026-10-28): done, D-INFRA-LAKE-02
+
+`media-tiering` now filters `'${mediaContainer}/photos/'` (row 7 candidate 2 on lane/infra), so `assets/` (pack pictures,
+content) and `support/` stay Hot. `photos/` is the only prefix the rule was meant for (field photos, `MediaModule.kt:138`,
+`MediaUpload.kt:71`); `check_infra.py` asserts the prefix and that no rule covers the whole container. The rule was 23 days
+old, so no picture had tiered.

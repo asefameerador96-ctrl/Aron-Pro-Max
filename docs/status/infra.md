@@ -68,8 +68,10 @@ D-INFRA-LAKE-01.
 - Photo exemptions (active outlet's reference photo, retention hold) before the first photo turns 730 days old:
   backend-core request above.
 - `media-tiering` (Cool 30, Cold 90) covered the whole `media` container, so admin `assets/` (tutorials) and
-  `support/` bundles tiered to Cold too: candidate 2 narrows it to `media/photos/` (lead yes, 10:25 UTC). Blobs that
-  already moved stay Cool or Cold (both online, readable); new and untouched ones stay Hot.
+  `support/` bundles would have tiered too: candidate 2 narrows it to `media/photos/` (lead yes, 10:25 UTC; answers
+  docs/requests/brand-infra-media-lifecycle.md). The rule dates from 2026-10-05 with a 30-day threshold, so no blob
+  has tiered yet. Open: docs/18 s2.8 gives `support/` "Hot to Cool, 30 days" and nothing deletes support bundles
+  today; whether to tier or delete them at 30 days is a question for the lead (encrypted PDA zips, F-API-030).
 - Final-account lake SKU (`Standard_ZRS` in stage and prod params): on the docs/28 "Deferred to the final account"
   list (lead), needs the sponsor's written yes.
 - No `bi_reader` row scope (brand or wing, D-374) and per-app logins still off in dev-lite, stage and prod
