@@ -2161,7 +2161,7 @@ esac
             acl = '{"defaultAction": "Allow", "bypass": "AzureServices", "ipRules": [], "virtualNetworkRules": []}'
             self.assertEqual(row("acls", FAKE_KV_OUT=acl), "default Allow, bypass AzureServices, 0 IP rules, 0 VNet rules")
             # az prints nothing for a null query result (the likely cause of the bare "not read" on #286 and #287).
-            self.assertTrue(row("acls", FAKE_KV_OUT="").startswith("none returned (networkAcls is null on the vault"))
+            self.assertTrue(row("acls", FAKE_KV_OUT="").startswith("none returned (networkAcls likely null on the vault"))
             self.assertTrue(row("acls", FAKE_KV_OUT="null").startswith("none returned"))
             self.assertEqual(row("acls", FAKE_KV_OUT="{not json"),
                              "not read: parse failed: JSONDecodeError: Expecting property name enclosed in double quotes: line 1 column 2 (char 1)")
@@ -2181,6 +2181,20 @@ esac
             self.assertEqual(row("roles", FAKE_ROLES_ERR="ERROR: forbidden", FAKE_ROLES_RC="2"),
                              "not read: az role assignment list exit 2: ERROR: forbidden")
             self.assertEqual(row("bogus"), "not read: unknown mode 'bogus'")
+            # The deploy identity cannot be read (a token without an oid, or not a JWT): the exception, not "Traceback".
+            self.assertEqual(row("roles", FAKE_TOKEN=".".join((b64({"alg": "none"}), b64({"sub": "x"}), "sig"))),
+                             "not read: deploy identity unknown (exit 1): KeyError: 'oid'")
+            bad = row("roles", FAKE_TOKEN="not-a-jwt")
+            self.assertTrue(bad.startswith("not read: deploy identity unknown (exit 1): "), bad)
+            self.assertNotIn("Traceback", bad)
+            # No az at all: a PATH with only the tools the script needs (a runner has a real az in /usr/bin).
+            import shutil
+            with tempfile.TemporaryDirectory() as tools:
+                for t in ("bash", "env", "python3", "grep", "sed", "cut", "sort", "paste", "mktemp", "rm", "dirname", "cat", "tac"):
+                    Path(tools, t).symlink_to(shutil.which(t))
+                r = subprocess.run([str(script), "acls", "rg-test", "kv-test"], capture_output=True, text=True,
+                                   env={"PATH": tools, "HOME": os.environ.get("HOME", "/tmp")})
+                self.assertEqual((r.returncode, r.stdout), (0, "not read: az not found\n"), r.stderr)
             self.assertEqual(row("acls", TMPDIR="/nonexistent/aron", FAKE_KV_OUT=acl), "not read: no temp directory")
 
     def test_reset_compares_the_lake_with_its_own_sku(self):
