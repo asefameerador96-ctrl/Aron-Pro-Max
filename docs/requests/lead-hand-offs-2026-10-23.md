@@ -40,3 +40,8 @@ D-TEST-DATE-PIN-01: 22 DataFlowTrace tests failed at Dhaka midnight because the 
 - **backend-core #19:** v1.10 row 3 (digest required) is marked READY in docs/requests/contract-v1.10-queue.md; the session is READY TO RECYCLE and is archived once train 41 lands.
 - **qa #3's two doc notes** (docs/24 jvm command, docs/33 job table 9 → 10) were done by the lead on lane/lead-docs-1022; the branch-protection re-apply for `main` (tools/github-governance.ps1, new required check "Backend analytics tests") is owner row Z (laptop session).
 - **Gate addition (lead):** before every GO the lead runs the union date-pin scan in a scratch worktree (INT + the heads); the gates self-test `test_the_real_tree_has_no_unbaselined_literal` fails on the same finding, so a lane that adds seed-dependent tests must run the scan before pushing its candidate.
+
+### 2026-10-28 08:25 UTC — follow-ups from backend-reports candidate 1 (lead)
+- **backend-admin (next session):** a route, zone or product move emits no domain event, so the moved route's current route-day is not requeued for the as-was rebuild until that route's next sync; AdminRoutes (and the zone and product admin writes) should `mark_dirty` the affected route-days (D-REPORTS-ASWAS-01, open item 3).
+- **db #14 pick list:** `docs/requests/backend-reports-db-dim-version-rekey.md` (dimension versions are dated by projector runs, not by the change; rekey before the final-account move; optional for the pilot).
+- **backend-reports (after row 3):** the read half: NationalDashboard, ReportHandlersB, NationalMaps and DailyTrackingApi still join the current dw.dim_geo / dim_outlet / dim_product for division, wing, channel and brand names; move them onto the history views as a separate candidate with its own checker pass.
