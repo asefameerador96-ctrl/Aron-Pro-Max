@@ -12,10 +12,18 @@ import { formatBusinessDate, formatDateTime, formatNumber, t, type Locale, type 
 const STATUSES = ["open", "accepted", "accepted_with_fix", "discarded"] as const;
 const ACTIONS = ["accept", "accept_with_fix", "discard", "return_to_device"] as const;
 
+// tso-manual W1 (D-TSO-MAN-31): a row captured before the zone-day's Final Submit that arrived after it is parked as
+// `after_final_submit`, held out of the day's figures until an admin accepts it, which counts it as a late sale (flagged late).
+const LATE = "after_final_submit";
+/** The reason as people read it: the late sale has its own label; other codes stay as the server names them. */
+export function quarantineCodeLabel(locale: Locale, code: string): string {
+  return code === LATE ? t(locale, "tsoman.quarantine.after_final_submit") : code;
+}
+
 export function QuarantineView({ locale, rows, filters, basePath, nextHref, canWrite, canMatch = false, titleKey = "qr.title", selected, cursor }: { locale: Locale; rows: QuarantineItem[]; filters: { status: string; code: string; zone_id: string }; basePath: string; nextHref: string | null; canWrite: boolean; canMatch?: boolean; titleKey?: "qr.title" | "cfgp14.title"; selected: QuarantineItem | null; cursor?: string }) {
   const columns: Column<QuarantineItem>[] = [
     { key: "id", header: t(locale, "cfgc.col.id"), render: (q) => formatNumber(locale, q.quarantine_id, { useGrouping: false }) },
-    { key: "code", header: t(locale, "qr.col.reason"), render: (q) => q.code },
+    { key: "code", header: t(locale, "qr.col.reason"), render: (q) => quarantineCodeLabel(locale, q.code) }, // tso-manual W1
     { key: "type", header: t(locale, "cfgc.col.kind"), render: (q) => q.type },
     { key: "user", header: t(locale, "cfgc.col.user"), render: (q) => formatNumber(locale, q.user_id, { useGrouping: false }) },
     { key: "date", header: t(locale, "cfgc.col.date"), render: (q) => formatBusinessDate(locale, q.business_date) },
@@ -24,7 +32,7 @@ export function QuarantineView({ locale, rows, filters, basePath, nextHref, canW
     { key: "open", header: t(locale, "common.actions"), render: (q) => <Link className="text-brand-700 underline" href={`${basePath}?${new URLSearchParams({ ...(filters.status ? { status: filters.status } : {}), ...(filters.code ? { code: filters.code } : {}), ...(filters.zone_id ? { zone_id: filters.zone_id } : {}), ...(cursor ? { cursor } : {}), item: String(q.quarantine_id) }).toString()}`}>{t(locale, "qr.review")}</Link> },
   ];
   const fields: OpFieldDef[] = [
-    { name: "action", label: t(locale, "qr.action"), kind: "enum", required: true, options: ACTIONS.map((a) => ({ value: a, label: t(locale, `qr.action.${a}` as MessageKey) })) },
+    { name: "action", label: t(locale, "qr.action"), kind: "enum", required: true, options: ACTIONS.map((a) => ({ value: a, label: t(locale, a === "accept" && selected?.code === LATE ? "tsoman.quarantine.accept_late" : (`qr.action.${a}` as MessageKey)) })) }, // tso-manual W1: "Accept as late sale"
     { name: "fixed_record", label: t(locale, "qr.fixed"), kind: "json", nullable: true, hint: t(locale, "qr.fixed.hint") },
   ];
   return (
@@ -42,7 +50,12 @@ export function QuarantineView({ locale, rows, filters, basePath, nextHref, canW
       <NextLink href={nextHref} label={t(locale, "common.next")} />
       {selected ? (
         <Card title={t(locale, "qr.detail", { id: formatNumber(locale, selected.quarantine_id, { useGrouping: false }) })} testId="quarantine-detail">
-          <p className="text-sm">{selected.code}{selected.detail ? ` · ${selected.detail}` : ""}</p>
+          <p className="text-sm">{quarantineCodeLabel(locale, selected.code)}{selected.detail ? ` · ${selected.detail}` : ""}</p>
+          {selected.code === LATE ? (
+            <p role="note" data-testid="late-sale-help" className="rounded border border-[var(--warning)] bg-[color-mix(in_srgb,var(--warning)_14%,transparent)] p-2 text-sm text-warning-on-container">
+              {t(locale, "tsoman.quarantine.late_help")}
+            </p>
+          ) : null}
           <p className="text-xs text-slate-600">{t(locale, "qr.masked")}</p>
           <pre className="max-h-72 overflow-auto rounded bg-slate-100 p-2 text-xs" data-testid="masked-payload">{JSON.stringify(maskPayload(selected.payload), null, 2)}</pre>
           {canMatch && selected.type === "memo" && selected.code === "memo_no_duplicate" ? <BackfillMatchForm quarantineId={selected.quarantine_id} open={selected.status === "open"} /> : null}
