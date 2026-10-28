@@ -505,6 +505,7 @@ if [ -n "$DBLOGINS_JOB" ]; then
     case "$status" in Succeeded|Failed|Stopped|Degraded) break ;; esac
     sleep 10
   done
+  per_app="$(az deployment group show -g "$RG" -n aron-apps-migrate --query properties.outputs.dbPerAppLogins.value -o tsv 2>/dev/null || echo unknown)"
   if [ "$status" != Succeeded ]; then
     job_logs "$execution"
     # Straight from the platform (Log Analytics had nothing for runs 37624445094, 37630304505, 37632012265): the
@@ -518,7 +519,6 @@ if [ -n "$DBLOGINS_JOB" ]; then
     az containerapp job logs show -g "$RG" -n "$DBLOGINS_JOB" --execution "$execution" --container dblogins --tail 100 \
       --format text 2>&1 | tail -n 100 || true
     echo "----"
-    per_app="$(az deployment group show -g "$RG" -n aron-apps-migrate --query properties.outputs.dbPerAppLogins.value -o tsv 2>/dev/null || echo unknown)"
     # tsv prints a JSON boolean as True or true depending on the CLI version; anything but false counts as on.
     if [ "${per_app,,}" != false ]; then
       die "database logins $execution ended ${status:-unknown}; the apps use these logins, so they were NOT updated"
@@ -536,7 +536,8 @@ if [ -n "$DBLOGINS_JOB" ]; then
     logins="$(python3 -c 'import re, sys
 seen = list(dict.fromkeys(re.findall(r"\((?:\x27)(\w+)(?:\x27), (?:\x27)\w+(?:\x27), (?:true|false)\)", open(sys.argv[1]).read())))
 print(len(seen), "logins:", ", ".join(seen))' infra/sql/runtime-logins.sql)" || logins="login list not read"
-    dblogins_result="succeeded (${logins}; memberships verified by the job)"
+    case "${per_app,,}" in false) apps_use=no ;; true) apps_use=yes ;; *) apps_use=unknown ;; esac
+    dblogins_result="succeeded (${logins}; memberships verified by the job; api and worker use them: ${apps_use})"
   fi
 fi
 

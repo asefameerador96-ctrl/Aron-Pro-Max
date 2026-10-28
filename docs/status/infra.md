@@ -1,40 +1,37 @@
 # Infra lane status
 
-Updated 2026-10-28 09:50 UTC (seventh infra session, handover).
+Updated 2026-10-28 14:05 UTC (seventh infra session, handover).
 
-## HANDOVER (seventh infra session -> eighth), 2026-10-28 09:50 UTC: read this first
+## HANDOVER (seventh infra session -> eighth), 2026-10-28 14:05 UTC: read this first
 
 Lead: session_01MbUQSxrP7AB9tbyANjUTPS (talk only through the claude-code-remote `send_message` tool). Trust the tree
 over older handovers below.
 
 - **Git:** sessions clone shallow (depth 50); an old lane tip then looks "unrelated" to INT. Run
-  `git fetch --unshallow origin claude/wonderful-thompson-k6ejnf lane/infra` before any ancestry check. lane/infra was
-  fast-forwarded to INT 78a6d7b1 this session; push lane/infra only, never INT or main, no pull requests.
-- **Row 7 (lake and blobs):** built, section below. Candidate = the lane/infra head carrying this handover; the lead
-  gates it and the integrator lands it. The first INT deploy that carries it creates the lake account, the `exports`
-  container, the two lifecycle rules, the worker's lake role and env vars, and (dblogins job) the logins `app_bi` and
-  `lake_export`. Read that deploy's "Database logins" summary row and the dblogins evidence table (five logins).
-  If the dblogins job fails on a "read-only logins ..." exception, the message names the object: a real grant leak
-  is a db-lane request, never a weakened check.
+  `git fetch --unshallow origin claude/wonderful-thompson-k6ejnf lane/infra` before any ancestry check. Push lane/infra
+  only, never INT or main, no pull requests; merge INT before every candidate push (DECISIONS.md conflicts are
+  append-only: keep INT's lines first, then yours). A docs-only push starts no CI run, so a reported candidate sha
+  must carry code or keep its own green run.
+- **Row 7 is done and landed** (D-INFRA-LAKE-01..05): candidate 1 (66410ed8, train 50, deploy #284) lake account,
+  exports container, photo 730-day and export 7-day delete rules, logins `app_bi` and `lake_export`; candidate 2
+  (f2e7610d, train 52, deploy #286) tiering on `media/photos/` only, deploy summary login count and Key Vault ACL
+  row; candidate 3 (63d0c3f4, accepted 13:50, train 53) `support-expiry` (support bundles deleted at 30 days,
+  docs/21 s4.8) and the ACL row fix. **Read train 53's deploy summary:** "Key Vault network ACLs" should read
+  "default Allow, bypass AzureServices, 0 IP rules, 0 VNet rules"; if it reads "not read: ..." the masked az error
+  names the cause (deploy #286's "not read" was most likely the name-only `az keyvault show`, now `-g "$RG"`).
+- **Candidate 4 (this push, lead yes 13:50):** per-app logins ON in dev-lite (D-INFRA-LOGINS-LITE-01), the
+  "Database logins" row says whether api and worker use the logins, and the db request
+  `docs/requests/db-bi-reader-row-scope.md` (db #14, D-374 brand and wing scope). Same gate: lane run with Infra
+  validation and Container images, Opus checker, then the candidate report.
 - **Local proof kit:** PostgreSQL 16 server binaries are in /usr/lib/postgresql/16/bin. initdb a cluster owned by
   `postgres` outside the scratchpad (the scratchpad path is not traversable for that user), apply
   `db/migrations/V*.sql` in `sort -V` order with `psql -1` (Flyway runs each in a transaction), then run
-  `infra/sql/runtime-logins.sql` with the five ARON_PW_* variables set to throwaway 24+ character values.
-- **Row 7 candidate 1** (66410ed8) accepted by the lead 10:25 UTC, rides train 50; if its deploy goes red, fix it
-  at once as candidate 1b. **Candidate 2** (lead-approved): `media-tiering` narrowed to `media/photos/`
-  (D-INFRA-LAKE-02), plus the deploy summary's login count and a read-only "Key Vault network ACLs" row
-  (D-INFRA-LAKE-03, lead ask after deploy #284: its what-if listed "Modify kv properties.networkAcls"; keyvault.bicep
-  is unchanged since 87d07e0f, so read that row on the next deploy). Train 50 (INT 25046886, deploy #284 green)
-  carried candidate 1: lake account created, four Key Vault secrets generated, database logins succeeded.
-  Candidate 2 (f2e7610d) accepted 12:00 UTC, rides train 52: read its deploy's "Database logins" and "Key Vault
-  network ACLs" rows. **Candidate 3**: `support-expiry` (delete at 30 days; D-INFRA-LAKE-04); push only
-  after train 52 is on INT and merged, own lane run, Opus checker. Deploy #286 (train 52) printed "Database logins |
-  succeeded (5 logins: ...)" as intended but "Key Vault network ACLs | not read": candidate 3 also adds `-g "$RG"` and
-  the masked first az error line to that row (D-INFRA-LAKE-05). After it: READY TO RECYCLE (lead), or propose the
-  next item if well under 300k.
-- **Open for the next infra session:** photo exemptions (backend-core #21), bi_reader row scope and per-app logins
-  outside dev (finding 12 part 2, a later infra slice). Final lake SKU is on the docs/28 final list (lead). Row 8
-  (nightly export) is backend-core's; its needs are listed below.
+  `infra/sql/runtime-logins.sql` with the five ARON_PW_* variables set to throwaway 24+ character values. No Azure
+  sign-in exists in lane sessions: live facts come from the lead's reading of the deploy log.
+- **Open:** photo exemptions (backend-core #21); `app.support_upload` rows never purged (backend-core pick list);
+  bi_reader row scope (db #14, then infra adds any per-audience logins); per-app logins in stage and prod (final
+  account); final lake SKU (docs/28 final list, sponsor). Row 8 (nightly export) is backend-core's; its needs are
+  listed below.
 
 ## Seventh infra session, 2026-10-28: data-architecture action row 7 (lake and blobs, pilot size)
 

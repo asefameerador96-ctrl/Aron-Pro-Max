@@ -1118,9 +1118,11 @@ class PerAppDatabaseLogins(unittest.TestCase):
         self.assertIn("workerDbUrlSecret", worker_secrets["db-direct-url"])
         mig = secrets("migrate")
         self.assertIn("dbDirectUrl", mig["db-direct-url"], "the migrate job keeps the admin login")
-        # On in dev since the grants gap closed (V0029); off elsewhere until dev has proven it.
-        self.assertIs(params("dev.apps.parameters.json")["dbPerAppLogins"], True)
-        for f in ("dev-lite", "stage", "prod"):
+        # On in dev since the grants gap closed (V0029) and in dev-lite, the TEST profile (D-INFRA-LOGINS-LITE-01);
+        # off in stage and prod until the final account.
+        for f in ("dev", "dev-lite"):
+            self.assertIs(params(f"{f}.apps.parameters.json")["dbPerAppLogins"], True, f)
+        for f in ("stage", "prod"):
             self.assertIs(params(f"{f}.apps.parameters.json")["dbPerAppLogins"], False, f)
         self.assertIs(param_default("apps.json", "dbPerAppLogins"), False, "off unless a profile turns it on")
 
@@ -2099,7 +2101,10 @@ class LakeAndBlobRetention(unittest.TestCase):
         code = subprocess.run(["bash", "-c", f"python3 -c {m.group(1)} infra/sql/runtime-logins.sql"], cwd=ROOT,
                               capture_output=True, text=True, check=True).stdout.strip()
         self.assertEqual(code, "5 logins: app_api, app_worker, app_jobs, app_bi, lake_export")
-        self.assertIn('dblogins_result="succeeded (${logins}; memberships verified by the job)"', d)
+        self.assertIn('dblogins_result="succeeded (${logins}; memberships verified by the job; api and worker use them: ${apps_use})"', d)
+        # Whether the apps actually connect as these logins: read once, before the success and failure branches.
+        self.assertLess(d.index('per_app="$(az deployment group show -g "$RG" -n aron-apps-migrate'), d.index('if [ "$status" != Succeeded ]; then\n    job_logs'))
+        self.assertIn('case "${per_app,,}" in false) apps_use=no ;; true) apps_use=yes ;; *) apps_use=unknown ;; esac', d)
         self.assertIn('summary "| Key Vault network ACLs | ${kv_acls} |"', d)
         self.assertIn('az keyvault show -g "$RG" -n "$KV" --query properties.networkAcls -o json', d,
                       "read-only, and with the group: a name-only lookup lists the subscription (\"not read\" on deploy #286)")
