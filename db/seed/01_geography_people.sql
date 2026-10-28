@@ -83,8 +83,9 @@ BEGIN
   INSERT INTO app.user_module_grant (user_id, module, access)
     SELECT u.id, m.module, 'w' FROM app.app_user u
      CROSS JOIN (VALUES ('masterdata'),('routes'),('outlets'),('products'),('prices'),('users'),('targets'),('credentials'),
-                        ('mdm'),('reports'),('config'),('data_entry'),('indent'),('leaderboard'),('daily_tracking')) AS m(module)
-     WHERE u.username = 'admin1001' AND NOT EXISTS (SELECT 1 FROM app.user_module_grant g WHERE g.user_id = u.id);
+                        ('mdm'),('reports'),('config'),('data_entry'),('indent'),('leaderboard'),('daily_tracking'),('support')) AS m(module)
+     WHERE u.username = 'admin1001' AND NOT EXISTS (SELECT 1 FROM app.user_module_grant g WHERE g.user_id = u.id) AND (m.module <> 'support' OR EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'user_module_grant_module_check'
+                                                       AND pg_get_constraintdef(oid) LIKE '%''support''%'));
 END
 $grants$;
 

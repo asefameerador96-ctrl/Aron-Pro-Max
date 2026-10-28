@@ -97,7 +97,10 @@ class DataEventsTest {
         // V0117 (D-DB-EVENT-STATUS-01): the four types with a producer today are live, the rest planned; memo.superseded is new.
         assertEquals("memo.created,memo.voided,stock.moved,visit.closed", c.scalar("SELECT string_agg(event_type, ',' ORDER BY event_type) FROM app.domain_event_type WHERE status = 'live'"))
         assertEquals(
-            "day_exception.decided,due.collected,memo.superseded,outlet.changed,risk_signal.changed,route_day.state_changed,target.revised,tracking_action.created",
+            // V0134 (D-TSO-MAN-38): six TSO events, planned until lanes B1 and B3 ship their producers.
+            "day_exception.decided,due.collected,leave.decided,memo.superseded,outlet.changed,risk_signal.changed,route_day.state_changed," +
+                "support_ticket.commented,support_ticket.created,support_ticket.status_changed,target.revised,tracking_action.created," +
+                "zone_day.final_submitted,zone_day.reopened",
             c.scalar("SELECT string_agg(event_type, ',' ORDER BY event_type) FROM app.domain_event_type WHERE status = 'planned'"),
         )
         assertEquals("'planned'::app.domain_event_status", c.scalar("SELECT column_default FROM information_schema.columns WHERE table_schema = 'app' AND table_name = 'domain_event_type' AND column_name = 'status'"))

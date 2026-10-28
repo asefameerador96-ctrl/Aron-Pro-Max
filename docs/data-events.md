@@ -22,6 +22,7 @@ The outbox `app.domain_event` is read in `id` order by the aggregate projector a
 |---|---|---|---|---|---|---|
 | [`day_exception.decided`](#day_exceptiondecided-v1) | 1 | `day_exception` | `day_exception.client_uuid` | backend:masterdata | planned | not yet |
 | [`due.collected`](#duecollected-v1) | 1 | `due_collection` | `due_collection.client_uuid` | backend:sync | planned | not yet |
+| [`leave.decided`](#leavedecided-v1) | 1 | `leave_application` | `leave_application.client_uuid` | backend:masterdata | planned | not yet |
 | [`memo.created`](#memocreated-v1) | 1 | `memo` | `memo.client_uuid` | backend:sync | live | not yet |
 | [`memo.superseded`](#memosuperseded-v1) | 1 | `memo` | `memo.client_uuid` | backend:sync | planned | not yet |
 | [`memo.voided`](#memovoided-v1) | 1 | `memo` | `memo.client_uuid` | backend:sync | live | not yet |
@@ -29,9 +30,14 @@ The outbox `app.domain_event` is read in `id` order by the aggregate projector a
 | [`risk_signal.changed`](#risk_signalchanged-v1) | 1 | `risk_signal` | `risk_signal.id` | backend:masterdata, backend:sync | planned | not yet |
 | [`route_day.state_changed`](#route_daystate_changed-v1) | 1 | `route_day` | `route_day.id` | backend:sync | planned | not yet |
 | [`stock.moved`](#stockmoved-v1) | 1 | `stock_movement` | `stock_movement.client_uuid` | backend:sync | live | not yet |
+| [`support_ticket.commented`](#support_ticketcommented-v1) | 1 | `support_ticket` | `support_ticket.client_uuid` | backend:masterdata | planned | not yet |
+| [`support_ticket.created`](#support_ticketcreated-v1) | 1 | `support_ticket` | `support_ticket.client_uuid` | backend:masterdata | planned | not yet |
+| [`support_ticket.status_changed`](#support_ticketstatus_changed-v1) | 1 | `support_ticket` | `support_ticket.client_uuid` | backend:masterdata | planned | not yet |
 | [`target.revised`](#targetrevised-v1) | 1 | `target_set` | `target_set.id` | backend:analytics | planned | not yet |
 | [`tracking_action.created`](#tracking_actioncreated-v1) | 1 | `tracking_action` | `tracking action uuid (audit_log.entity_id)` | backend:analytics | planned | not yet |
 | [`visit.closed`](#visitclosed-v1) | 1 | `visit` | `visit.client_uuid` | backend:sync | live | not yet |
+| [`zone_day.final_submitted`](#zone_dayfinal_submitted-v1) | 1 | `zone_day` | `<zone_id>:<business_date>` | backend:sync | planned | not yet |
+| [`zone_day.reopened`](#zone_dayreopened-v1) | 1 | `zone_day` | `<zone_id>:<business_date>` | backend:sync | planned | not yet |
 
 ## day_exception.decided v1
 
@@ -54,6 +60,21 @@ A due collection was accepted; the route-day and outlet dues are recomputed. Int
 | `business_date` | string (date) | yes |  |
 | `outlet_id` | integer | yes |  |
 | `route_id` | integer or null | no | null when the collection has no route; consumers fall back to source_client_uuid |
+
+## leave.decided v1
+
+A leave application was approved or rejected on the web. The reason and the decision note are not in the payload. Introduced in V0134; planned.
+
+| Key | Type | Required | Description |
+|---|---|---|---|
+| `decided_by` | integer | yes |  |
+| `leave_uuid` | string (uuid) | yes | leave_application.client_uuid |
+| `status` | string | yes | one of approved, rejected |
+| `user_id` | integer | yes | the applicant |
+| `days` | integer | no |  |
+| `from_date` | string (date) | no |  |
+| `leave_type_code` | string | no | code list leave_type |
+| `to_date` | string (date) | no |  |
 
 ## memo.created v1
 
@@ -150,6 +171,48 @@ A stock ledger row was accepted (issue, return, adjustment, damaged, short). Int
 | `sku_id` | integer | yes |  |
 | `user_id` | integer | yes |  |
 
+## support_ticket.commented v1
+
+A comment was added to an open support ticket by the reporter (sync) or the desk (web). The comment text is not in the payload. Introduced in V0134; planned.
+
+| Key | Type | Required | Description |
+|---|---|---|---|
+| `actor_is_support` | boolean | yes |  |
+| `event_uuid` | string (uuid) | yes | support_ticket_event.client_uuid |
+| `ticket_uuid` | string (uuid) | yes |  |
+| `actor_user_id` | integer or null | no |  |
+| `attachment_count` | integer | no |  |
+
+## support_ticket.created v1
+
+A support ticket was accepted from the phone (record support_ticket) with its INC number and default priority. Title and description are not in the payload. Introduced in V0134; planned.
+
+| Key | Type | Required | Description |
+|---|---|---|---|
+| `business_date` | string (date) | yes |  |
+| `issue_type_code` | string | yes | code list ticket_issue_type |
+| `priority` | string | yes | one of p1, p2, p3, p4 |
+| `requester_user_id` | integer | yes |  |
+| `ticket_no` | string | yes | INC number |
+| `ticket_uuid` | string (uuid) | yes | support_ticket.client_uuid |
+| `has_affected_user` | boolean | no | true when the ticket names another user (affected_username) |
+| `requester_role` | string | no |  |
+| `source` | string | no | one of quick, manual |
+
+## support_ticket.status_changed v1
+
+A support ticket moved status (start, resolve, cancel, close review or desk close). Resolution notes and cancel reasons are not in the payload. Introduced in V0134; planned.
+
+| Key | Type | Required | Description |
+|---|---|---|---|
+| `from_status` | string | yes | one of new, in_progress, resolved, closed, cancelled |
+| `ticket_uuid` | string (uuid) | yes |  |
+| `to_status` | string | yes | one of new, in_progress, resolved, closed, cancelled |
+| `actor_is_support` | boolean | no |  |
+| `actor_user_id` | integer or null | no |  |
+| `event_uuid` | string or null (uuid) | no | support_ticket_event.client_uuid of the change |
+| `resolution_code` | string or null | no | code list ticket_resolution_code, on a resolve |
+
 ## target.revised v1
 
 A target revision was committed (Phase 2 target engine; deferred programme, docs/27). Introduced in V0017; planned.
@@ -187,3 +250,31 @@ A visit was accepted with its geo verdict. The projector counts calls, strike ra
 | `distance_m` | number or null | no |  |
 | `fix_is_mock` | boolean or null | no |  |
 | `planned` | boolean | no |  |
+
+## zone_day.final_submitted v1
+
+A zone-day was final-submitted by a TSO (app or web) or by the midnight AutoFinalSubmitJob (via job); its route-days lock and later rows are held or refused (D-TSO-MAN-31). Introduced in V0134; planned.
+
+| Key | Type | Required | Description |
+|---|---|---|---|
+| `business_date` | string (date) | yes |  |
+| `final_submit_uuid` | string (uuid) | yes | final_submit.client_uuid |
+| `via` | string | yes | one of app, web, job |
+| `zone_id` | integer | yes |  |
+| `not_uploaded_route_count` | integer | no |  |
+| `route_count` | integer | no |  |
+| `submit_seq` | integer | no | reopened submits before this one |
+| `submitted_by` | integer or null | no | null for the midnight job |
+
+## zone_day.reopened v1
+
+A final-submitted zone-day was reopened by an admin within the reopen window; its aggregates are recomputed. The reason is not in the payload. Introduced in V0134; planned.
+
+| Key | Type | Required | Description |
+|---|---|---|---|
+| `business_date` | string (date) | yes |  |
+| `final_submit_uuid` | string (uuid) | yes | the reopened final_submit.client_uuid |
+| `reopened_by` | integer | yes |  |
+| `zone_id` | integer | yes |  |
+| `reopen_uuid` | string or null (uuid) | no | final_submit.reopen_client_uuid |
+| `route_day_count` | integer | no |  |

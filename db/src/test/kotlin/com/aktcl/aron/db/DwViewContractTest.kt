@@ -40,6 +40,7 @@ class DwViewContractTest {
         "1.0" to "c9680e52564594847fed54155e522e7292dad3b6b053acc8d50aee4c369d7a45",
         "1.1" to "a9c369ff55c3053f1d5224c54836895cdc9de7e9a9e0ebf327e3feb3471e085d",           // V0119 master history dims
         "1.2" to "d05f4cc966c298227703c1210c1af3a91d1a2dae548d90979a1366a3d9368181",           // V0122 route-day views
+        "1.3" to "99cf75f028e708d5982586c4b8562da302241c9efd3b4256e1e11d9d40a9fc17",           // V0140 TSO manual views
     )
 
     private fun views(c: Connection): Map<String, List<String>> =
