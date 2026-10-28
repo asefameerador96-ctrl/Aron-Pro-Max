@@ -272,6 +272,7 @@ export const bn: Record<MessageKey, string> = {
   "channel.RCC": "আরসিসি",
   "channel.MT": "মডার্ন ট্রেড",
   "channel.HoReCa": "হোরেকা",
+  "channel.unknown": "অজানা",
   "geoclass.Hill": "পাহাড়",
   "geoclass.Urban": "শহর",
   "geoclass.SemiUrban": "উপশহর",

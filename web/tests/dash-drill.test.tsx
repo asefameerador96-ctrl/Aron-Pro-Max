@@ -105,7 +105,7 @@ describe("drill route", () => {
     stub.summary.mockReset();
     stub.login.mockReset();
     stub.tracking.mockResolvedValue(ok({ as_of: "2026-10-17T05:00:00Z", business_date: "2026-10-17", items: [tr({ by_category: [{ category_code: "cigarette", base_unit: "stick", qty_base: 400, net_mtk: 90_000 }] })], next_cursor: null }));
-    stub.summary.mockResolvedValue(ok({ as_of: "2026-10-17T05:00:00Z", by_brand: [{ code: "b", name: "Brand B", net_mtk: 5, memo_count: 1, successful_calls: 1 }], by_channel: [{ code: "gt", name: "GT", net_mtk: 5, memo_count: 1, successful_calls: 2 }], children: [] }));
+    stub.summary.mockResolvedValue(ok({ as_of: "2026-10-17T05:00:00Z", by_brand: [{ code: "b", name: "Brand B", net_mtk: 5, memo_count: 1, successful_calls: 1 }], by_channel: [{ code: "gt", name: "GT", net_mtk: 5, memo_count: 1, successful_calls: 2 }, { code: "unknown", net_mtk: 7, memo_count: 2, successful_calls: 3 }], children: [] }));
     stub.login.mockResolvedValue(ok({ as_of: "2026-10-17T05:00:00Z", not_logged_in: [{ route_id: 1, route_name: "R1", state: "not_started", business_date: "2026-10-17", submit_cycle: 0, submit_voided: false }], logged_in_not_submitted: [], submitted: [] }));
   });
   const render = async (kind: string, q: Record<string, string> = {}) => renderToStaticMarkup((await Drill({ params: Promise.resolve({ kind }), searchParams: Promise.resolve(q) })) as ReactElement);
@@ -118,6 +118,10 @@ describe("drill route", () => {
   });
   it("channel, calls and login pages render their tables; login names the SR from the tracking rows", async () => {
     expect(await render("channel", { code: "gt" })).toContain("table-channels");
+    // A row with the code 'unknown' (memos with no channel) is kept and shown with the neutral label, not a raw code or key.
+    const ch = await render("channel", { code: "gt" });
+    expect(ch).toContain("Unknown");
+    expect(ch).not.toContain("channel.unknown");
     expect(await render("calls")).toContain("table-calls");
     const l = await render("login");
     expect(l).toContain("table-not-logged-in");

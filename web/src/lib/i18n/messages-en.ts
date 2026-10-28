@@ -269,6 +269,7 @@ export const en = {
   "channel.RCC": "RCC",
   "channel.MT": "Modern trade",
   "channel.HoReCa": "HoReCa",
+  "channel.unknown": "Unknown",
   "geoclass.Hill": "Hill",
   "geoclass.Urban": "Urban",
   "geoclass.SemiUrban": "Semi-urban",
