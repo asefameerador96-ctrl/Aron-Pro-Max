@@ -64,6 +64,7 @@ export const OPS = {
   "mdm.enrolment.create": { method: "POST", path: "/v1/admin/mdm/enrolment-tokens", roles: ADMINS, reason: null },
   "mdm.enrolment.revoke": { method: "POST", path: "/v1/admin/mdm/enrolment-tokens/{token_id}/revoke", roles: ADMINS, reason: null, noBody: true },
   // F-ADM-029 / F-ADM-052 reopen a final-submitted zone-day (cfg.day.reopen_roles: admin)
+  // tso-manual W1 (FS-14, D-TSO-MAN-29): cfg.day.reopen_roles defaults to ADMIN and SUPERADMIN; the form adds client_uuid (idempotent)
   "day.reopen": { method: "POST", path: "/v1/day/reopen", roles: ADMINS, reason: "reason" },
   // F-ADM-057 entry unlock grants replace "call support" for back-dated web entry
   "entry-unlock.create": { method: "POST", path: "/v1/admin/entry-unlocks", roles: SUPPORT_UP, reason: "reason" },
