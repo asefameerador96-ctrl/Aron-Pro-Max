@@ -319,7 +319,7 @@ class OwnerDirectiveV0087Test {
             exec("UPDATE app.user_module_grant SET access = 'r', granted_by = $superadmin, granted_at = now() WHERE user_id = ${user("admin1001")} AND module = 'mdm'")
             // Seed 07 (pilot admins get every module) runs again on every dev seed load: a narrowed grant stays narrowed.
             exec(java.io.File(System.getProperty("aron.seed")).resolve("07_admin_module_grants.sql").readText())
-            assertEquals("15|r", scalar("SELECT count(*) || '|' || (SELECT access FROM app.user_module_grant WHERE user_id = ${user("admin1001")} AND module = 'mdm') FROM app.user_module_grant WHERE user_id = ${user("admin1001")}"))
+            assertEquals("16|r", scalar("SELECT count(*) || '|' || (SELECT access FROM app.user_module_grant WHERE user_id = ${user("admin1001")} AND module = 'mdm') FROM app.user_module_grant WHERE user_id = ${user("admin1001")}"))
             assertEquals("23505", refused("INSERT INTO app.user_module_grant (user_id, module, access) VALUES (${user("admin1001")}, 'mdm', 'r')"))
             assertEquals("23514", refused("INSERT INTO app.user_module_grant (user_id, module, access) VALUES (${user("support1001")}, 'routes', 'x')"))
             assertEquals("23514", refused("INSERT INTO app.user_module_grant (user_id, module, access) VALUES (${user("support1001")}, 'astha', 'r')"))
