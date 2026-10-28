@@ -16,7 +16,7 @@ FS-06/14, LV-19, FB-09/12 and PER-17. No pull request, no push (rule 11, D-TSO-M
 | s3.4 step 3 | `ContractEnums.kt` (`RecordType`) and `ContractCatalogues.kt` (`CodeListKey`, `RecordOutcomeCode` with status and retryability, `ProblemCode` 409s, new `SupportTicketStatus`, `SupportTicketPriority`, `SupportTicketEventKind`, `NotificationKind`) |
 | s3.4 step 4 | `web/src/contract/openapi.d.ts` by `npm run gen:contract`; `check-web-contract-drift.sh` clean; web `tsc --noEmit` clean |
 | s3.4 step 5 | `docs/requests/contract-tso-manual-1.10.md` (the four response-enum additions, every additive change, deploy order) |
-| Tests | `ContractDriftTest` (+4 enum mirrors), `WireDtosDriftTest` (+18 DTOs), new `TsoManualContractTest` (15 tests: operations, statuses, parameters, closed schemas, `TicketNumber` pattern, payloads, read schemas, desk writes, inbox, dashboard cards, Target Status, changed members, optional-until-shipped members, new codes). `contract/fixtures` holds no schema examples (only the money corpus), so no example pairs were added there |
+| Tests | `ContractDriftTest` (+4 enum mirrors), `WireDtosDriftTest` (+18 DTOs), new `TsoManualContractTest` (18 tests: operations, statuses, parameters, closed schemas, `TicketNumber` pattern and length, payloads, read schemas, desk writes, the resolution message bound, the desk PATCH replay key, inbox, dashboard cards with `truncated`, Target Status and its item-sum rule, changed members, optional-until-shipped members, new codes). `contract/fixtures` holds no schema examples (only the money corpus), so no example pairs were added there |
 
 ## Decisions taken in the lane (D-F1-xx; the lead may move them to DECISIONS.md)
 
@@ -87,7 +87,51 @@ FS-06/14, LV-19, FB-09/12 and PER-17. No pull request, no push (rule 11, D-TSO-M
    needs a coverage row in `docs/24-build-spec-verification.md` s10, or `BacklogCoverageTest` (in `:shared:contract:jvmTest`)
    fails.
 
+## Checker round 1 (2026-10-29): four defects, all real, all fixed in 1.10.0 (nothing released yet)
+
+| # | Defect | Fix in the contract | Test (TsoManualContractTest) |
+|---|---|---|---|
+| 1 | The D-TSO-MAN-20 resolution message (62 fixed characters + ticket number + label up to 120 + notes up to 2000) did not fit `SupportTicketEvent.body` maxLength 2000 (nor the V0130 CHECK), so a valid resolve with long notes would break the response or the insert | `SupportTicketEvent.body` maxLength 2400 (longest message 2204); `TicketNumber` maxLength 22 (bigint sequence: 19 digits); the comment and reply inputs stay 1..2000; notes stay 1..2000 (D-TSO-MAN-20 unchanged) | `theLongestResolutionMessageFitsTheEventBody` builds the longest message from the template in the operation's description and the schemas' bounds |
+| 2 | PATCH idempotency had no replay key and no rule for a reused `op_uuid` | `updateSupportTicket`: check order (403, 400, 404, `op_uuid` replay, `expected_version`, transitions); a replay of an applied op answers the ticket as it is now and writes nothing; the same `op_uuid` with another body, on another ticket or used by any other event is 409 `ERR_CONFLICT`; one event per change in a fixed order, the first with `event_uuid` = `op_uuid`, the others StableIds.v4 of `aron.support.ticket-op:<op_uuid>:<kind>`; a status equal to the current one is 409 `ERR_TICKET_TRANSITION_INVALID`; an op with no change answers 200 and records nothing | `deskPatchIdempotencyHasADefinedReplayKey` (rules, check order, derived UUIDs valid `Uuid` v4, stable and distinct) |
+| 3 | `NationalLoginSubmitUsers.items` capped at 2000 with no flag (a national web reach has about 8,500 SR rows) | required `truncated` (first 2000 rows in the D-TSO-MAN-12 order; `route_count` still counts every route) | `dashboardSchemasOfSection32` |
+| 4 | Build contract s4.3 fixture "21/26 -> 33115" is the forbidden card-level rounding; the item sum is 33114 | F1 cannot edit the lead's file (ask 8). The `TargetAchievement` and `TargetAchievementRow` descriptions now state "never the card total rounded once" with the example 25/31 -> 33064, 21/26 -> 33114 (a rounded total gives 33115) | `tillDateCardIsTheSumOfItemRows` recomputes 33064, 32799, 33114 and 33115 with the s4.1 formula and checks the description's numbers |
+
+New decisions:
+
+- **D-F1-13 Event body bound 2400.** Of the two options (raise the event body, or cut notes to 1800), the event body is
+  raised: precedence puts D-TSO-MAN-20 ("notes 1..2000") above the s2.1 column bound, so the bound gives way, not the
+  decision. 2400 leaves room over the longest message (2204).
+- **D-F1-14 Desk op replay key.** The first event of an op carries `op_uuid` as its `client_uuid` (unique, so a lookup
+  finds the op and any reuse by another event or ticket); the later events of the op use StableIds.v4 names, so a retried
+  op can never write a second event. The same-body check needs the op's body fingerprint stored with it: see ask 9.
+- **D-F1-15 Login / Submit users cut.** A plain row cut (the first 2000 rows in order) with a `truncated` flag rather
+  than paging: a TSO's territory is far below the cap, the web drill is a look-up, and a flag matches the other capped
+  lists (`truncated`, `rejected_truncated`, `errors_truncated`).
+
+More asks (round 1):
+
+8. **Lead: build contract s4.3 "working basis (switch check)"** reads "without holiday 21/26 -> 33115"; by D-TSO-MAN-05
+   (item sum) it is **33114** (items 808, 808, 8077, 8077, 4038, 4846, 2422, 4038). 33115 is round_half_up(40999 x 21 /
+   26 = 33114.5), the card-level rounding the rule forbids. Correct it before F3 (`TargetsTest`, `KpiFormatCorpusTest`,
+   `tools/ci/kpi-format-corpus.py`) and B2 (`TargetAchievementTest`) encode it. The other s4.2 to s4.4 fixtures check out.
+9. **F2 (V0130, still unmerged; else V0141+ with NOT VALID then VALIDATE):** `app.support_ticket_event.body` CHECK
+   `length(body) <= 2400` (today `<= 2000` in the F2 worktree), and its column comment. For the op fingerprint, either a
+   nullable `op_sha256 bytea CHECK (length(op_sha256) = 32)` on `app.support_ticket_event` (set on the op's first event
+   row only; the MDM `device_command.request_sha256` pattern) or, with no migration, B1 keeps it in the op's audit row
+   (`request_id` = `op_uuid`, the hash in `after`). B1 and F2 choose; the contract only fixes the behaviour.
+10. **B1:** implement the `updateSupportTicket` rules above (`SupportTicketTest`: replay after a lost answer returns 200
+    with no new event even when `version` moved; reused `op_uuid` with another body, on another ticket, or equal to a
+    reply's `event_uuid` -> 409 `ERR_CONFLICT`; a three-change op writes three events with the derived UUIDs; a no-change
+    op writes nothing). The resolution message must be built from the label and notes exactly as the template.
+11. **B2:** `NationalLoginSubmitUsers.truncated` (`LoginSubmitUsersTest`: 2001 rows -> 2000 rows and true; 2000 -> false;
+    `route_count` counts every route). **W1:** show a "list cut, narrow the filter" note (bn and en) when `truncated`.
+
 ## Verify (this worktree, 2026-10-29, local laptop; CI not run, nothing pushed)
+
+Round 1 rerun (after the checker fixes): every row below except "Extra" was run again on the new head with the same
+result, except `:shared:contract:jvmTest`, now 71 tests, 0 failures (TsoManualContractTest 18: +3 new tests, two
+extended). The "Extra" backend row was not rerun (the round-1 changes are descriptions, larger maxLength bounds and a
+required member on an operation no server answers yet).
 
 | Command | Result |
 |---|---|
@@ -96,7 +140,7 @@ FS-06/14, LV-19, FB-09/12 and PER-17. No pull request, no push (rule 11, D-TSO-M
 | `python backend/sync/tools/gen_payload_shapes.py --check` | exit 0 |
 | `cd web && npm run gen:contract`; `shared/contract/tools/check-web-contract-drift.sh` | "web/src/contract/openapi.d.ts matches contract/openapi.yaml" |
 | `cd web && npm run typecheck`; `npx vitest run tests/contract-drift.test.ts tests/report-keys.test.ts tests/checker-adm1-contract.test.ts` | tsc clean; 3 files, 5 tests passed |
-| `gl.sh :shared:contract:jvmTest` | BUILD SUCCESSFUL; 68 tests, 0 failures (ContractDriftTest 31, WireDtosDriftTest 11, SpecCrossCheckTest 8, TsoManualContractTest 15, BacklogCoverageTest 2, UnknownEnumToleranceTest 1) |
+| `gl.sh :shared:contract:jvmTest` | BUILD SUCCESSFUL; 71 tests, 0 failures (ContractDriftTest 31, WireDtosDriftTest 11, SpecCrossCheckTest 8, TsoManualContractTest 18, BacklogCoverageTest 2, UnknownEnumToleranceTest 1); first run 68 with TsoManualContractTest 15 |
 | `npx --yes @redocly/cli@2.59.0 lint contract/openapi.yaml --config contract/redocly.yaml` | "Your API description is valid", 0 errors, 0 warnings |
 | Extra: `gl.sh :backend:sync:test --tests *BundleUnitTest* --tests *JcsTest* :backend:app:test --tests *ContractConformanceTest* --tests *BundleAcceptanceTest* --tests *RouteInventoryTest*` | ContractConformanceTest 6/6 (every new 2xx schema satisfiable, no new finding), BundleAcceptanceTest 8/8, BundleUnitTest 5/5, JcsTest 3/4, RouteInventoryTest 8/9. The two failures are this laptop, not the change: JcsTest runs `python3` (absent here; the same check passes with `python`), and RouteInventoryTest's scope-case lookup filters test files on `"/src/test/"`, which a Windows path never contains (all 180 problems are "scope case ... not found under backend/*/src/test" for existing routes) |
 
