@@ -953,3 +953,7 @@
 
 ### 18:35 UTC — train 56 gate (lead)
 - CI guard head 1ad59061464681d55cfc81cb67c2aa97fd87b8e6 against INT 55: merge-base INT 54 (one promotion back); delta = .github/workflows/ci.yml (7 lines) + DECISIONS.md (+1); overlap with the INT 55 delta: DECISIONS.md only; union: DECISIONS 125, 0 markers, 0 lost, last id D-LEAD-CI-ANALYTICS-TIMEOUT-01, ci.yml byte-identical, parsed: jvm-analytics job timeout 50, step 42; date-pin scan 0 new; gates self-test OK. Lane run 40735142919 (#1672) success with Infra validation run for real. GO train 56 = this lead docs tip + 1ad59061 (expected DECISIONS 125).
+
+### 18:48 UTC — lane check (lead)
+- Train 56 in flight: integrator 22 pushed INT **619a48531c4217415eeaa7e24265bdd307e21d12** at 18:34 (heads lead docs c7c5050f + lead CI lane 1ad59061; DECISIONS 125, append-only resolution; train.md row carries the 0-baseline tile correction). Lead git verify 18:36: both heads and INT 55 contained, delta = ci.yml + DECISIONS.md + usage.md + lane-sessions.md + train.md, DECISIONS 125, 0 markers, 0 lost, 0 new duplicate ids, ci.yml byte-identical (parsed: jvm-analytics job 50, step 42), the two lead docs files byte-identical. ci 40746305976 (#1675) running every job (workflow change); landing verification at the 19:35 check-in (deploy + health + any new signed APK number).
+- backend-reports #8 (session_014mnioN42WNbS9487jtfLFv) created 18:31, no message yet (not due). Idle lanes unchanged; no owner message; Opus slot HELD. Reconciler's first nightly pass due 19:00 UTC; read by the morning pass.
