@@ -14,8 +14,8 @@ import java.time.ZoneOffset
 
 /**
  * Day state machine (F-SYS-016, docs/24 s4.9): `route_day.state` is derived from its event timestamps and only ever
- * moves forward (a late or repeated record never moves it back); submit void (rule 2) is the one way back and is not
- * done here.
+ * moves forward (a late or repeated record never moves it back); submit void (rule 2, not done here) and an admin
+ * reopen of the zone-day ([reopen], D-TSO-MAN-29) are the only ways back.
  *
  * - `logged_in`: the first bundle (BundleService) or a `day_open` record with `offline_start`;
  * - `in_field`: the first check-in `attendance_event` or the first `visit` of the route-day;
@@ -70,14 +70,25 @@ object DayStates {
         // route would both hold it and then deadlock on the UPDATE below.
         h.createQuery("SELECT 1 FROM app.route_day WHERE route_id = ANY(:r) AND business_date = :d ORDER BY route_id FOR NO KEY UPDATE")
             .bindArray("r", Long::class.javaObjectType, routes).bind("d", date).mapTo(Int::class.java).list()
-        // Rule 4: a row stored after the zone-day's Final Submit is accepted and counted as late, never reopening the day
-        // (cfg.day.late_sync_after_final_policy = accept_and_flag). Runs once per stored record, so a replay never counts twice.
-        h.createUpdate(
-            "UPDATE app.route_day SET late_rows_after_final = late_rows_after_final + 1 WHERE route_id = ANY(:r) AND business_date = :d AND final_submitted_at IS NOT NULL",
-        ).bindArray("r", Long::class.javaObjectType, routes).bind("d", date).execute()
-        h.createUpdate(
-            "UPDATE app.final_submit f SET late_rows = late_rows + 1 FROM app.route r WHERE r.id = ANY(:r) AND f.zone_id = r.zone_id AND f.business_date = :d AND f.reopened_at IS NULL",
-        ).bindArray("r", Long::class.javaObjectType, routes).bind("d", date).execute()
+        // Rule 4: a figure row stored after the zone-day's Final Submit is counted as late, never reopening the day. Under
+        // cfg.day.late_sync_after_final_policy = accept_and_flag every such row is stored; under quarantine (the default,
+        // D-TSO-MAN-31) only a row an ADMIN accepted from the quarantine reaches here (IngestService holds the others).
+        // Only the figure types of the day lock count (tso-manual B3, D-B3-03): a Sales Submit, an attendance event or a
+        // reprint after the lock is state, not a late row. Runs once per stored record, so a replay never counts twice.
+        if (type in IngestService.DAY_LOCKED_TYPES) {
+            h.createUpdate(
+                "UPDATE app.route_day SET late_rows_after_final = late_rows_after_final + 1 WHERE route_id = ANY(:r) AND business_date = :d AND final_submitted_at IS NOT NULL",
+            ).bindArray("r", Long::class.javaObjectType, routes).bind("d", date).execute()
+            // The live close of the route-day's zone, and only while the route-day is closed (after a reopen and before the
+            // next close a row is an ordinary row of the open day).
+            h.createUpdate(
+                """
+                UPDATE app.final_submit f SET late_rows = late_rows + 1 FROM app.route r
+                WHERE r.id = ANY(:r) AND f.zone_id = r.zone_id AND f.business_date = :d AND f.reopened_at IS NULL
+                  AND EXISTS (SELECT 1 FROM app.route_day rd WHERE rd.route_id = r.id AND rd.business_date = :d AND rd.final_submitted_at IS NOT NULL)
+                """.trimIndent(),
+            ).bindArray("r", Long::class.javaObjectType, routes).bind("d", date).execute()
+        }
         val set = when (type) {
             "day_open" -> if (p.bool("offline_start") == true) "logged_in_at = COALESCE(logged_in_at, :at)" else null
             "visit" -> "in_field_at = COALESCE(in_field_at, :at)"
@@ -166,12 +177,7 @@ object DayStates {
             """
             UPDATE app.route_day SET state = s.next FROM (
               SELECT id, CASE WHEN final_submitted_at IS NOT NULL THEN 'final_submitted'
-                              WHEN sales_submitted_at IS NOT NULL THEN 'sales_submitted'
-                              WHEN submit_received_at IS NOT NULL AND NOT submit_voided THEN 'submit_pending_rows'
-                              WHEN synced_at IS NOT NULL AND in_field_at IS NOT NULL THEN 'synced'
-                              WHEN in_field_at IS NOT NULL THEN 'in_field'
-                              WHEN logged_in_at IS NOT NULL THEN 'logged_in'
-                              ELSE 'not_started' END AS next
+                              $OPEN_STATE_CASE END AS next
               FROM app.route_day WHERE route_id = :r AND business_date = :d
             ) s
             WHERE app.route_day.id = s.id
@@ -179,5 +185,32 @@ object DayStates {
             """.trimIndent(),
         ).bind("r", route).bind("d", date).bindArray("o", String::class.java, ORDER).execute()
         if (moved > 0) h.execute("SELECT app.mark_dirty('route_day_agg', ?, ?, 'route_day_state')", route, date)
+    }
+
+    /** The states below final_submitted, from the route-day's own timestamps (shared by [advance] and [reopen]). */
+    private const val OPEN_STATE_CASE = """WHEN sales_submitted_at IS NOT NULL THEN 'sales_submitted'
+                              WHEN submit_received_at IS NOT NULL AND NOT submit_voided THEN 'submit_pending_rows'
+                              WHEN synced_at IS NOT NULL AND in_field_at IS NOT NULL THEN 'synced'
+                              WHEN in_field_at IS NOT NULL THEN 'in_field'
+                              WHEN logged_in_at IS NOT NULL THEN 'logged_in'
+                              ELSE 'not_started'"""
+
+    /**
+     * Reopen of a zone-day (D-TSO-MAN-29, tso-manual B3): the closed route-days of [routes] on [date] lose their Final
+     * Submit and go back to the state their other timestamps reach; this is the one move back besides submit void. The
+     * late counters stay (history of the closed cycle). The caller holds the zone-day lock and the route-day rows (in
+     * route_id order); each route-day is marked dirty, so the aggregates are rebuilt. Returns the reopened route ids.
+     */
+    fun reopen(h: Handle, routes: List<Long>, date: LocalDate): List<Long> {
+        if (routes.isEmpty()) return emptyList()
+        val reopened = h.createQuery(
+            """
+            UPDATE app.route_day SET final_submitted_at = NULL, state = CASE $OPEN_STATE_CASE END
+            WHERE route_id = ANY(:r) AND business_date = :d AND final_submitted_at IS NOT NULL
+            RETURNING route_id
+            """.trimIndent(),
+        ).bindArray("r", Long::class.javaObjectType, routes).bind("d", date).mapTo(Long::class.java).list().sorted()
+        reopened.forEach { h.execute("SELECT app.mark_dirty('route_day_agg', ?, ?, 'reopen')", it, date) }
+        return reopened
     }
 }

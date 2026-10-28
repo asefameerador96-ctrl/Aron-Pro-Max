@@ -139,6 +139,13 @@ class IngestService(
             // A flag, never a gate: a failed read means "no acks" (no flag), never a parked sale.
             runCatching { up.deviceId?.let { deviceAcks(it) } ?: emptyList() }.onFailure { log.warn("config acks not read device_id=${up.deviceId} cause=${it.javaClass.simpleName}") }.getOrDefault(emptyList())
         }
+        /**
+         * tso-manual B3, D-TSO-MAN-31: cfg.day.late_sync_after_final_policy, read once per batch on first use. An unreadable
+         * or unknown value is `quarantine`, which never loses a sale and never counts one an admin has not seen.
+         */
+        val latePolicy: String by lazy {
+            runCatching { config.string("cfg.day.late_sync_after_final_policy") }.getOrNull()?.takeIf { it in LATE_POLICIES } ?: "quarantine"
+        }
         /** Memo arithmetic failures of the current family segment (client_uuid to detail). */
         var arith: Map<String, String> = emptyMap()
         /** Memo content fingerprints of the current segment (s4.5: same outlet, lines and minute). */
@@ -1080,6 +1087,12 @@ class IngestService(
                 if (reg?.get(2) == "rejected" && reg[3] == RecordOutcomeCode.MEMO_NO_INVALID.wire && field == "memo_client_uuid") {
                     return finalReject(h, ctx, r, RecordOutcomeCode.MEMO_NO_INVALID, "memo $parent was refused memo_no_invalid")
                 }
+                // tso-manual B3 (D-TSO-MAN-31): a parent refused for the day lock takes its children with it (final), so a
+                // memo or a line of a call captured after the Final Submit is never parked waiting for a parent that
+                // can never be stored.
+                if (reg?.get(2) == "rejected" && reg[3] == RecordOutcomeCode.DAY_FINAL_SUBMITTED.wire) {
+                    return finalReject(h, ctx, r, RecordOutcomeCode.DAY_FINAL_SUBMITTED, "$field $parent was refused day_final_submitted")
+                }
                 if (reg?.get(2) == "quarantined") {
                     val code = code(reg[3]) ?: RecordOutcomeCode.PAYLOAD_CONFLICT
                     return quarantine(h, ctx, r, bd, code, "parent $parent is quarantined (${reg[3]})")
@@ -1093,6 +1106,13 @@ class IngestService(
             if (owner != ctx.up.userId && !scopeAccepted && !crossUserParentAllowed(h, ctx, field, parent, bd)) {
                 return quarantine(h, ctx, r, bd, RecordOutcomeCode.SCOPE_OUT_OF_REACH, "$field $parent belongs to another user")
             }
+        }
+
+        // 9b. tso-manual B3: the day lock after Final Submit (D-TSO-MAN-31). After the parents, so a child of a held parent
+        // is held with it (same code) and a review that accepts the parent releases it. A reviewer's accept is the admin's
+        // decision on the late row: it is stored and counted late (DayStates.afterStored).
+        if (routeId != null && r.type in DAY_LOCKED_TYPES && ctx.up.role in DAY_LOCKED_ROLES && !ctx.reviewed) {
+            dayLock(h, ctx, r, bd, routeId, captured)?.let { return it }
         }
 
         // 10. Visit-kind policy (F-SYS-078): a phone books only its role's kinds; web_entry comes from the web only.
@@ -1157,6 +1177,29 @@ class IngestService(
         code.status.wire == "quarantined" -> quarantine(h, ctx, r, bd, code, detail)
         code.retryable == true -> park(h, ctx, r, code, detail)
         else -> finalReject(h, ctx, r, code, detail)
+    }
+
+    /**
+     * tso-manual B3, D-TSO-MAN-31: the outcome of a figure record of a closed route-day, or null when the record goes on.
+     * The lock is the route-day's `final_submitted_at` (the live close's time; a reopen clears it). The route-day row is
+     * created when missing and held FOR NO KEY UPDATE before it is read, in the order Final Submit takes it (KD-1): a
+     * close either committed before this check or waits for this family's commit, so a family is never split by it.
+     * - `quarantine` (default): captured before the lock: held `after_final_submit` (no figure moves until an ADMIN
+     *   accepts it, then it is counted late); captured at or after it: refused `day_final_submitted` (final).
+     * - `reject`: every late figure row is refused `day_final_submitted`.
+     * - `accept_and_flag`: no check here; the row is stored and counted late (the pre-1.10 rule, D-55).
+     */
+    private fun dayLock(h: Handle, ctx: Ctx, r: Rec, bd: LocalDate, routeId: Long, captured: Instant): Outcome? {
+        if (ctx.latePolicy == "accept_and_flag") return null
+        routeDays.planIn(h, bd, listOf(routeId))
+        val lockAt = h.createQuery("SELECT final_submitted_at FROM app.route_day WHERE route_id = :r AND business_date = :d FOR NO KEY UPDATE")
+            .bind("r", routeId).bind("d", bd).map { rs, _ -> rs.getObject(1, OffsetDateTime::class.java)?.toInstant() }.findOne().orElse(null)
+            ?: return null
+        return if (ctx.latePolicy == "quarantine" && captured.isBefore(lockAt)) {
+            quarantine(h, ctx, r, bd, RecordOutcomeCode.AFTER_FINAL_SUBMIT, "captured ${captured.wire()} before the Final Submit of route $routeId on $bd at ${lockAt.wire()}")
+        } else {
+            finalReject(h, ctx, r, RecordOutcomeCode.DAY_FINAL_SUBMITTED, "captured ${captured.wire()}; route $routeId on $bd was final-submitted at ${lockAt.wire()}")
+        }
     }
 
     /**
@@ -1813,6 +1856,21 @@ class IngestService(
         /** Data-entry (money and stock) records: a reviewer's fix of one needs a second person (docs/24 s8.6). */
         private val MEMO_CHILD_TYPES = setOf("memo_line", "memo_discount", "qc_line")
         val MONEY_TYPES = setOf("memo", "memo_line", "memo_discount", "qc_line", "memo_void", "due_collection", "stock_movement", "redemption", "redemption_line", "day_submit")
+        // tso-manual B3: the day lock after Final Submit (D-TSO-MAN-31, contract 1.10.0).
+        /**
+         * Figure records of a route-day: the call, the sale and its edits, voids, returns, collections and stock. After the
+         * zone-day's Final Submit one captured before the lock is held `after_final_submit`, one captured at or after it is
+         * refused `day_final_submitted` (cfg.day.late_sync_after_final_policy = quarantine). State records stay accepted:
+         * `day_submit`, `day_open`, `attendance_event`, reprints (`print_event`, printing stays allowed) and telemetry.
+         */
+        val DAY_LOCKED_TYPES = setOf(
+            "visit", "visit_close", "visit_skip", "sale_abort", "memo", "memo_line", "memo_discount", "qc_line", "memo_void", "due_collection",
+            "stock_movement", "redemption", "redemption_line",
+        )
+        /** The field roles whose capture the lock closes (their apps lock the route-day on push `day_final_submitted`). */
+        val DAY_LOCKED_ROLES = setOf(Role.SR, Role.AMO)
+        /** Values of cfg.day.late_sync_after_final_policy (V0006 bounds). */
+        val LATE_POLICIES = setOf("accept_and_flag", "quarantine", "reject")
         private val DEVICE_HOLD_CODES = setOf(RecordOutcomeCode.DEVICE_INTEGRITY_FAILED.wire, RecordOutcomeCode.DEVICE_NOT_ENROLLED.wire)
         val UUID_V4 = Regex("^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")
         private val DATE = Regex("^\\d{4}-\\d{2}-\\d{2}$")

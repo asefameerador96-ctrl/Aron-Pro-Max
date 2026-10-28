@@ -361,7 +361,7 @@ class Wiring(
                 releaseAdminRoutes(ReleaseAdminDeps(ReleaseAdmin(db, configResolver, clock), guard))
                 syncRoutes(sync)
                 taskRoutes(com.aktcl.aron.backend.sync.TaskDeps(com.aktcl.aron.backend.sync.TaskService(db, reach, clock, push), guard))
-                dayRoutes(com.aktcl.aron.backend.sync.DayDeps(guard, com.aktcl.aron.backend.sync.DayService(db, config, reach, sync.ingest!!, clock)))
+                dayRoutes(com.aktcl.aron.backend.sync.DayDeps(guard, com.aktcl.aron.backend.sync.DayService(db, config, reach, sync.ingest!!, clock, nudger = push))) // tso-manual B3: push day_final_submitted
                 memoRoutes(com.aktcl.aron.backend.sync.MemoDeps(db, reach, guard, clock))
                 nearbyRoutes(com.aktcl.aron.backend.sync.NearbyDeps(db, config, reach, guard, clock))
                 riskSignalRoutes(com.aktcl.aron.backend.sync.RiskSignalDeps(db, config, reach, guard, clock))
