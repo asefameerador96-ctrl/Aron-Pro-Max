@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- tso-manual A2: pictures from the phone's gallery (D-TSO-MAN-23, D-TSO-MAN-36; GalleryImport.kt) -->
+    <string name="media_gallery_failed">এই ছবিটি যোগ করা যায়নি। অন্য একটি ছবি বেছে নিন।</string>
+    <string name="media_gallery_too_large">ছবিটি অনেক বড়। ছোট একটি ছবি বেছে নিন।</string>
+    <string name="media_gallery_unavailable">এই ফোনে গ্যালারি খোলা যায়নি।</string>
+</resources>
