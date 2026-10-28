@@ -8,7 +8,7 @@ const REASON = "Reason that is long enough";
 const status = (id = F1) => mock.state.tables.feedback!.find((r) => r.feedback_uuid === id)?.status;
 
 describe("feedback status action (BFF)", () => {
-  for (const u of ["tso334", "mtso1", "dmo1", "msupport1"] as const) {
+  for (const u of ["tso334", "mtso1", "dmo1"] as const) { // tso-manual W1 (FB-12): msupport1 triages like the API (feedback.test.ts)
     it(`CA4-20: ${u} gets 403 and nothing changes`, async () => {
       const c = await signIn(u);
       const before = mock.state.audit.length;
