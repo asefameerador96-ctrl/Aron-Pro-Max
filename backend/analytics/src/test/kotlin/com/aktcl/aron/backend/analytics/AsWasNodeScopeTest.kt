@@ -154,6 +154,10 @@ class AsWasNodeScopeTest {
         assertEquals(ProblemCode.ERR_FORBIDDEN, assertFailsWith<ApiProblem> { terr(day2, day2, t1) }.code, "T1 had no zone on day 2")
         assertTrue(terr(day, day2, t1).kpis.gross_mtk > 0, "but it had both on day 1")
         assertEquals(ProblemCode.ERR_FORBIDDEN, assertFailsWith<ApiProblem> { terr(day, day, t2) }.code, "and T2 had none on day 1")
+        // T1 holds nothing today, so only its members of the window can tie it to a reach: a caller who reached none of them is refused like an unknown id.
+        val stranger = Reach(9, Role.TSO, day, false, setOf(999_999L), emptySet(), false, listOf(ReachNode("zone", 999_999L)))
+        assertEquals(ProblemCode.ERR_FORBIDDEN, assertFailsWith<ApiProblem> { terr(day, day, t1, stranger) }.code)
+        assertEquals(63_000L, terr(day, day, t1, Reach(3, Role.TSO, day, false, setOf(z1, z2), emptySet(), false, listOf(ReachNode("territory", t1)))).kpis.gross_mtk)
     }
 
     @Test

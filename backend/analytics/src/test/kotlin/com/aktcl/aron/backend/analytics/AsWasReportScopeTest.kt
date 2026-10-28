@@ -75,6 +75,9 @@ class AsWasReportScopeTest : ReportFixture() {
         assertEquals(HttpStatusCode.Forbidden, run(11, Role.TSO, "route-std", body(""","geo":{"territory":[$tx]}""")).status)
         assertEquals(HttpStatusCode.Forbidden, run(11, Role.TSO, "route-std", body(""","geo":{"territory":[$t1,$tx]}""")).status)
         assertEquals(HttpStatusCode.Forbidden, run(11, Role.TSO, "route-std", body(""","geo":{"territory":[$t1,999999]}""")).status)
+        // Each selected node by itself: zone 1 is theirs, zone 2 is not, so asking for both is refused (and zone 1 alone is fine).
+        assertEquals(HttpStatusCode.OK, run(11, Role.TSO, "route-std", body(""","geo":{"zone":[$z1]}""")).status)
+        assertEquals(HttpStatusCode.Forbidden, run(11, Role.TSO, "route-std", body(""","geo":{"zone":[$z1,$z2]}""")).status)
     }
 
     @Test
