@@ -53,6 +53,7 @@ object AdminModules {
         PortalLevels.Pattern("GET", "/v1/tutorials"),
         PortalLevels.Pattern("GET", "/v1/tutorials/**"),
         PortalLevels.Pattern("GET", "/v1/app/update-check"),
+        PortalLevels.Pattern("*", "/v1/me/notifications/**"), // tso-manual B1: the caller's own bell inbox (D-TSO-MAN-26)
     )
 
     /** Most specific first. */

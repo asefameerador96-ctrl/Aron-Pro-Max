@@ -84,6 +84,7 @@ fun main() {
             com.aktcl.aron.backend.sync.GeoRecheckSweepJob(workerDb).start()
             com.aktcl.aron.backend.sync.RetentionJob(workerDb).start()
             com.aktcl.aron.backend.masterdata.OutletRequestLapseJob(workerDb).start()
+            com.aktcl.aron.backend.notify.InboxPruneJob(workerDb, com.aktcl.aron.backend.platform.DbServerConfig(workerDb, com.aktcl.aron.backend.platform.RegistryDefaults(settings.env))).start() // tso-manual B1
             log.info("aron worker started (aggregation, risk signals, route-day planning, bundle pre-generation, geo re-check sweep, retention, outlet request lapse)")
             Thread.currentThread().join()
         }
