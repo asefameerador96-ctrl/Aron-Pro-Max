@@ -53,7 +53,8 @@ class AsWasReadTest {
 
     private fun id(sql: String) = fresh.db.jdbi.withHandle<Long, Exception> { it.createQuery(sql).mapTo(Long::class.java).one() }
     private fun text(sql: String) = fresh.db.jdbi.withHandle<String, Exception> { it.createQuery(sql).mapTo(String::class.java).one() }
-    private fun exec(sql: String) = fresh.db.jdbi.useHandle<Exception> { it.execute(sql) }
+    /** A master edit as the worker would see it: the current dimensions follow it (the worker refreshes them every few minutes), the history keeps the old side. */
+    private fun exec(sql: String) = fresh.db.jdbi.useHandle<Exception> { it.execute(sql); Aggregator.refreshDimensions(it); DashboardSummaries.refreshDimensions(it) }
     private fun caller() = NationalCaller(Reach(1, Role.TOP, day, true, emptySet(), emptySet(), false, emptyList()))
     private fun f(zones: List<Long> = emptyList(), territories: List<Long> = emptyList(), divisions: List<Long> = emptyList(), wings: List<Long> = emptyList(), brands: List<String> = emptyList()) =
         NationalDashboardFilter(date = day.toString(), zone_ids = zones, territory_ids = territories, division_ids = divisions, wing_ids = wings, brand_codes = brands)
@@ -74,6 +75,7 @@ class AsWasReadTest {
         val all = screens(f()); val inZ1 = screens(f(zones = listOf(z1))); val inZ2 = screens(f(zones = listOf(z2)))
         assertNotEquals(inZ1, inZ2, "the fixture has different figures in the two zones")
         exec("UPDATE app.route SET zone_id = (SELECT id FROM app.zone WHERE code = 'Z2') WHERE code = 'R2'")
+        assertEquals(z2, id("SELECT zone_id FROM dw.dim_geo WHERE route_code = 'R2'"), "the current dimension moved")
         assertEquals(inZ1, screens(f(zones = listOf(z1))), "Z1 lost the route's old day")
         assertEquals(inZ2, screens(f(zones = listOf(z2))), "Z2 gained the route's old day")
         assertEquals(all, screens(f()), "the national totals moved")
@@ -89,6 +91,7 @@ class AsWasReadTest {
         exec("INSERT INTO app.division (code, name, wing_id) VALUES ('D2','Div2', (SELECT id FROM app.wing WHERE code = 'W2'))")
         exec("INSERT INTO app.territory (code, name, division_id) VALUES ('T2','Terr2', (SELECT id FROM app.division WHERE code = 'D2'))")
         exec("UPDATE app.zone SET territory_id = (SELECT id FROM app.territory WHERE code = 'T2') WHERE code IN ('Z1', 'Z2')")
+        assertEquals("W2", text("SELECT w.code FROM dw.dim_geo g JOIN app.wing w ON w.id = g.wing_id WHERE g.route_code = 'R1'"), "the current dimension moved")
         assertEquals(before, screens(f(territories = listOf(t1), divisions = listOf(d1), wings = listOf(w1))), "the old chain lost the old day")
         val t2 = id("SELECT id FROM app.territory WHERE code = 'T2'"); val d2 = id("SELECT id FROM app.division WHERE code = 'D2'"); val w2 = id("SELECT id FROM app.wing WHERE code = 'W2'")
         for (flt in listOf(f(territories = listOf(t2)), f(divisions = listOf(d2)), f(wings = listOf(w2)))) {
@@ -104,6 +107,7 @@ class AsWasReadTest {
         val b1 = screens(f(brands = listOf("B1"))); val b2 = screens(f(brands = listOf("B2"))); val all = screens(f())
         val brandsBefore = dash.summary(Reach(1, Role.TSO, day, true, emptySet(), emptySet(), false, emptyList()), null, null, day, day).by_brand.map { it.code to it.net_mtk }
         exec("UPDATE app.product_node SET parent_id = (SELECT id FROM app.product_node WHERE code = 'B2') WHERE code = 'V1'")
+        assertEquals("B2", text("SELECT brand_code FROM dw.dim_product WHERE variant_name = 'Var1' LIMIT 1"), "the current dimension moved")
         assertEquals(b1, screens(f(brands = listOf("B1"))), "B1 lost the variant's old day")
         assertEquals(b2, screens(f(brands = listOf("B2"))))
         assertEquals(all, screens(f()))
@@ -115,6 +119,7 @@ class AsWasReadTest {
         val before = screens(f()); val channelsBefore = dash.summary(Reach(1, Role.TSO, day, true, emptySet(), emptySet(), false, emptyList()), null, null, day, day).by_channel.map { it.code to it.net_mtk }
         assertTrue(channelsBefore.isNotEmpty())
         exec("UPDATE app.outlet SET channel = 'MT' WHERE channel = 'GT'")
+        assertEquals(0, id("SELECT count(*) FROM dw.dim_outlet WHERE channel = 'GT'"), "the current dimension moved")
         assertEquals(before, screens(f()), "the channel cards moved with the outlets")
         assertEquals(channelsBefore, dash.summary(Reach(1, Role.TSO, day, true, emptySet(), emptySet(), false, emptyList()), null, null, day, day).by_channel.map { it.code to it.net_mtk })
     }
@@ -127,5 +132,13 @@ class AsWasReadTest {
         fun zoneOn(date: String) = text("SELECT g.zone_id::text || '/' || g.zone_name FROM (SELECT 1) x ${AsWasSql.geo("g", "$r2", "DATE '$date'")}")
         assertEquals("$z1/Zone1", zoneOn(day.toString()))
         assertEquals("$z2/Zone2", zoneOn(today), "today's date reads exactly as before the change")
+    }
+
+    @Test
+    fun withHistoryPresentAndNothingChangedTheFiguresAreTheControlTotals() {
+        // The ordinary production path: every key has a history period equal to the current row (the fixture's inserts wrote them).
+        assertEquals(75, national.sales(caller(), f()).cards.single { it.category_code == "cigarette" }.total_sales)
+        assertEquals(75, national.sales(caller(), f(zones = listOf(z1, z2))).cards.single { it.category_code == "cigarette" }.total_sales)
+        assertEquals(63_000, dash.summary(Reach(1, Role.TSO, day, true, emptySet(), emptySet(), false, emptyList()), null, null, day, day).kpis.gross_mtk)
     }
 }
