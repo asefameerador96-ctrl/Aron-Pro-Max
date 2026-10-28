@@ -2,6 +2,8 @@ import { onApiFailure } from "@/components/admin/crud/pages";
 import { apiGet, one, type SearchParams } from "@/components/admin/kit/page";
 import { Forbidden } from "@/components/forbidden";
 import { canTeamOp } from "@/lib/admin/access";
+import { FINAL_SUBMIT_BUTTON_ROLES, FINAL_SUBMIT_PAGE_ROLES } from "@/lib/admin/ops";
+import { hasRole } from "@/lib/auth/roles";
 import { GEO_LEVELS, loadGeoOptions, type GeoLevel } from "@/lib/admin/geo";
 import { isRealDate } from "@/lib/admin/time";
 import type { FinalSubmitPreview } from "@/lib/admin/types";
@@ -13,7 +15,7 @@ import { FinalSubmitView } from "./final-submit-view";
 export async function FinalSubmitPageContent({ searchParams }: { searchParams: Promise<SearchParams> }) {
   const [session, locale, sp] = await Promise.all([requireSession(), getLocale(), searchParams]);
   const role = session.user.role;
-  if (!canTeamOp("day.final-submit", role)) return <Forbidden locale={locale} />;
+  if (!hasRole(role, FINAL_SUBMIT_PAGE_ROLES)) return <Forbidden locale={locale} />; // tso-manual W1 (FS-18): who may open the page
   const selection: Partial<Record<GeoLevel, string>> = {};
   for (const l of GEO_LEVELS) {
     const v = one(sp[l], 16);
@@ -29,5 +31,5 @@ export async function FinalSubmitPageContent({ searchParams }: { searchParams: P
     if (!r.ok) return onApiFailure(r.status, r.problem, locale);
     preview = r.data;
   }
-  return <FinalSubmitView locale={locale} options={options} selection={selection} date={date} today={today} preview={preview} canSubmit={canTeamOp("day.final-submit", role)} canVoid={canTeamOp("day.data-void", role)} />;
+  return <FinalSubmitView locale={locale} options={options} selection={selection} date={date} today={today} preview={preview} canSubmit={hasRole(role, FINAL_SUBMIT_BUTTON_ROLES)} canVoid={canTeamOp("day.data-void", role)} />;
 }

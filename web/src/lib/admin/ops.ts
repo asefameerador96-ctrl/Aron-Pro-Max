@@ -101,7 +101,9 @@ export const OPS = {
 /** Web-role operations (the TSO's own pages live outside /admin): served by /api/bff/team-op, gated by the web roles. */
 export const TEAM_OPS = {
   // F-WEB-051 web Final Submit (same server rule as the app: online only, once per zone and day)
-  "day.final-submit": { method: "POST", path: "/v1/day/final-submit", roles: ["TSO", "DMO", "ADMIN", "SUPERADMIN"], reason: null },
+  // tso-manual W1 (FS-18): only roles the API can accept: the TSO, and DMO or WM when cfg.day.final_submit_delegate_roles lists
+  // them (bounds "subset of DMO, WM"); an ADMIN or SUPERADMIN is always 403 there, so the proxy no longer forwards them.
+  "day.final-submit": { method: "POST", path: "/v1/day/final-submit", roles: ["TSO", "DMO", "WM"], reason: null },
   // F-WEB-051 Delete Section Data: an audited void with a reason, only before Final Submit
   "day.data-void": { method: "POST", path: "/v1/admin/data-void", roles: ["TSO", "ADMIN", "SUPERADMIN"], reason: "reason", forbid: { member: "scope", values: ["all", "app_memos"] } },
   // F-WEB-050 Web Entry (route-day aggregate): a re-save replaces the entry and needs a reason (change_reason)
@@ -109,6 +111,15 @@ export const TEAM_OPS = {
   // F-WEB-052 / F-WEB-060 market and warehouse QC entry (warehouse needs a reason and the warehouse QC permission)
   "qc-entry.save": { method: "POST", path: "/v1/web-entry/qc", roles: ["TSO", "ADMIN", "SUPERADMIN"], reason: "reason", reasonOptional: true },
 } as const satisfies Record<string, OpDef>;
+
+/**
+ * tso-manual W1 (FS-18). Who opens the web Final Submit page (the preview and Delete Section Data; the menu's roles), and who
+ * gets its Submit button: only the roles POST /v1/day/final-submit accepts with the shipped config, i.e. the TSO. A DMO or WM
+ * is accepted only when cfg.day.final_submit_delegate_roles lists the role; that key is server-only (default []), so the page
+ * cannot know it and does not offer the button (status file ask: a server-computed `can_submit` on the preview).
+ */
+export const FINAL_SUBMIT_PAGE_ROLES = ["TSO", "DMO", "ADMIN", "SUPERADMIN"] as const satisfies RoleList;
+export const FINAL_SUBMIT_BUTTON_ROLES = ["TSO"] as const satisfies RoleList;
 
 export type TeamOpKey = keyof typeof TEAM_OPS;
 export type OpKey = keyof typeof OPS;
