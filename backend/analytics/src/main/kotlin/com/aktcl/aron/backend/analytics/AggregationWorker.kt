@@ -124,18 +124,24 @@ class AggregationWorker(
         return q.map { rs, _ -> rs.getLong(1) to rs.getObject(2, LocalDate::class.java) }.list()
     }
 
-    /** Processes up to [limit] claimed keys of one pass. Returns the number rebuilt. */
+    /**
+     * Processes up to [limit] claimed keys of one pass. Returns the number rebuilt. A key whose rebuild throws is backed off (5 s, doubling to 15 min)
+     * and, after [MAX_ATTEMPTS] failures, goes dead (`dead_at`) and is no longer claimed until [redrive] or new data (`mark_dirty`) revives it.
+     * A rebuild that changes the figures of a closed business date appends to `dw.agg_restatement_log` ([Restatements]).
+     */
     fun drain(limit: Int = 200): Int {
         var done = 0
+        val today = com.aktcl.aron.rules.BusinessDate.of(clock.now().toEpochMilli()).toJavaLocalDate()
         for (kind in listOf("route_day_agg", "device_day_agg", "zone_day_agg")) {
             val claimed = claim(kind, limit)
             for (k in claimed) {
                 try {
                     db.jdbi.useTransaction<Exception> { h ->
                         when (kind) {
-                            "route_day_agg" -> Aggregator.rebuildRouteDay(h, k.subject, k.date, threshold()).forEach { z -> h.execute("SELECT app.mark_dirty('zone_day_agg', ?, ?, 'route_day_rebuilt')", z, k.date) }
+                            "route_day_agg" -> Restatements.around(h, "route", k.subject, k.date, today, k.reason) { Aggregator.rebuildRouteDay(h, k.subject, k.date, threshold()) }
+                                .forEach { z -> h.execute("SELECT app.mark_dirty('zone_day_agg', ?, ?, ?)", z, k.date, k.reason ?: "route_day_rebuilt") }
                             "device_day_agg" -> Aggregator.rebuildDeviceDay(h, k.subject, k.date)
-                            else -> Aggregator.rebuildZoneDay(h, k.subject, k.date, threshold())
+                            else -> Restatements.around(h, "zone", k.subject, k.date, today, k.reason) { Aggregator.rebuildZoneDay(h, k.subject, k.date, threshold()) }
                         }
                         beforeRelease(kind, k.subject, k.date)
                         h.createUpdate("DELETE FROM app.dirty_key WHERE kind = :k AND subject_id = :s AND business_date = :d AND dirty_count = :c")
@@ -143,16 +149,40 @@ class AggregationWorker(
                     }
                     done++
                 } catch (e: Exception) {
-                    log.error("aggregation of {} {} {} failed; key stays queued", kind, k.subject, k.date, e)
-                    // Release the claim so the next pass retries now, not after the lease.
-                    runCatching { db.jdbi.useHandle<Exception> { h -> h.execute("UPDATE app.dirty_key SET claimed_at = NULL, claimed_by = NULL WHERE kind = ? AND subject_id = ? AND business_date = ? AND claimed_by = ?", kind, k.subject, k.date, workerId) } }
+                    log.error("aggregation of {} {} {} failed; backing the key off", kind, k.subject, k.date, e)
+                    runCatching { backOff(kind, k, e) }
                 }
             }
         }
         return done
     }
 
-    private data class Key(val subject: Long, val date: LocalDate, val count: Int)
+    /** Releases the claim of a failed key with the next attempt later (exponential, capped), or dead after [MAX_ATTEMPTS]. */
+    private fun backOff(kind: String, k: Key, e: Exception) = db.jdbi.useHandle<Exception> { h ->
+        h.createUpdate(
+            """
+            UPDATE app.dirty_key SET claimed_at = NULL, claimed_by = NULL, attempts = attempts + 1,
+                   last_error = :err, not_before = CAST(:now AS timestamptz) + make_interval(secs => least(CAST(:base AS int) * power(2, attempts), CAST(:cap AS int))),
+                   dead_at = CASE WHEN attempts + 1 >= CAST(:max AS int) THEN CAST(:now AS timestamptz) END
+             WHERE kind = :k AND subject_id = :s AND business_date = :d AND claimed_by = :w
+            """,
+        ).bind("err", (e.javaClass.simpleName + ": " + (e.message ?: "")).replace("\u0000", " ").take(500)).bind("now", clock.now())
+            .bind("base", BACKOFF_BASE_SECONDS).bind("cap", BACKOFF_CAP_SECONDS).bind("max", MAX_ATTEMPTS)
+            .bind("k", kind).bind("s", k.subject).bind("d", k.date).bind("w", workerId).execute()
+    }
+
+    /** Gives dead keys (optionally one kind, subject, date) another chance: clears the dead mark, the attempts and the back-off. Returns the keys revived. */
+    fun redrive(kind: String? = null, subject: Long? = null, date: LocalDate? = null): Int = db.jdbi.inTransaction<Int, Exception> { h ->
+        h.createUpdate(
+            """
+            UPDATE app.dirty_key SET dead_at = NULL, attempts = 0, not_before = NULL, claimed_at = NULL, claimed_by = NULL
+             WHERE dead_at IS NOT NULL AND (CAST(:k AS text) IS NULL OR kind = :k) AND (CAST(:s AS bigint) IS NULL OR subject_id = :s)
+               AND (CAST(:d AS date) IS NULL OR business_date = :d)
+            """,
+        ).bind("k", kind).bind("s", subject).bind("d", date).execute()
+    }
+
+    private data class Key(val subject: Long, val date: LocalDate, val count: Int, val reason: String?)
 
     private fun claim(kind: String, limit: Int): List<Key> = db.jdbi.inTransaction<List<Key>, Exception> { h ->
         h.createQuery(
@@ -160,11 +190,12 @@ class AggregationWorker(
             UPDATE app.dirty_key d SET claimed_at = :now, claimed_by = :w
              WHERE (d.kind, d.subject_id, d.business_date) IN (
                SELECT kind, subject_id, business_date FROM app.dirty_key
-                WHERE kind = :k AND (claimed_at IS NULL OR claimed_at < :stale) ORDER BY last_dirtied_at LIMIT :l FOR UPDATE SKIP LOCKED)
-            RETURNING d.subject_id, d.business_date, d.dirty_count
+                WHERE kind = :k AND (claimed_at IS NULL OR claimed_at < :stale) AND dead_at IS NULL AND (not_before IS NULL OR not_before <= :now)
+                ORDER BY last_dirtied_at LIMIT :l FOR UPDATE SKIP LOCKED)
+            RETURNING d.subject_id, d.business_date, d.dirty_count, d.reason
             """,
         ).bind("now", clock.now()).bind("w", workerId).bind("k", kind).bind("stale", clock.now().minus(lease)).bind("l", limit)
-            .map { rs, _ -> Key(rs.getLong(1), rs.getObject(2, LocalDate::class.java), rs.getInt(3)) }.list()
+            .map { rs, _ -> Key(rs.getLong(1), rs.getObject(2, LocalDate::class.java), rs.getInt(3), rs.getString(4)) }.list()
     }
 
     /** Runs project and drain until both are idle: the synchronous form tests and the nightly rebuild use. */
@@ -241,10 +272,27 @@ class AggregationWorker(
     fun start(interval: Duration = Duration.ofSeconds(5)): ScheduledExecutorService {
         val ex = Executors.newSingleThreadScheduledExecutor { r -> Thread(r, "aggregation-worker").apply { isDaemon = true } }
         ex.scheduleWithFixedDelay({
-            runCatching { rebuildOnce(ASWAS_MARKER); refreshDimensionsIfDue(); runUntilIdle() }
+            runCatching { rebuildOnce(ASWAS_MARKER); refreshDimensionsIfDue(); reconcileIfDue(); runUntilIdle() }
                 .onFailure { log.error("aggregation pass failed", it) }
         }, 0, interval.toMillis(), TimeUnit.MILLISECONDS)
         return ex
+    }
+
+    /**
+     * The nightly reconcile ([Reconciler]) runs once per Dhaka business date, from 01:00 Dhaka: the replica that moves the `dw-reconcile` consumer's
+     * `updated_at` past the start of the date wins, so any number of replicas and restarts run it once. Returns the result, or null when not due / lost.
+     */
+    fun reconcileIfDue(): Reconciler.Result? {
+        val now = clock.now()
+        val dhaka = now.atZone(java.time.ZoneId.of("Asia/Dhaka"))
+        if (dhaka.hour < 1) return null
+        val dayStart = dhaka.toLocalDate().atStartOfDay(java.time.ZoneId.of("Asia/Dhaka")).toInstant()
+        val won = db.jdbi.inTransaction<Boolean, Exception> { h ->
+            h.execute("INSERT INTO app.event_consumer (consumer, last_event_id, updated_at) VALUES (?, 0, ?) ON CONFLICT DO NOTHING", RECONCILE_CONSUMER, dayStart.minusSeconds(1))
+            h.createUpdate("UPDATE app.event_consumer SET updated_at = :now WHERE consumer = :c AND updated_at < :start").bind("now", now).bind("c", RECONCILE_CONSUMER).bind("start", dayStart).execute() == 1
+        }
+        if (!won) return null
+        return runCatching { Reconciler(db, clock).run() }.onFailure { log.error("nightly reconcile failed", it) }.getOrNull()
     }
 
     private var dimsAt = java.time.Instant.EPOCH
@@ -258,5 +306,5 @@ class AggregationWorker(
 
     private fun threshold(): Int = runCatching { config?.int("cfg.geo.suspicious_score_threshold") }.getOrNull() ?: Aggregator.DEFAULT_SUSPICIOUS_THRESHOLD
 
-    companion object { const val CONSUMER = "dw-projector"; const val ASWAS_MARKER = "dw-rebuild-aswas-1"; private const val MAX_TRACKED_GAP = 10_000L }
+    companion object { const val CONSUMER = "dw-projector"; const val RECONCILE_CONSUMER = "dw-reconcile"; const val MAX_ATTEMPTS = 8; private const val BACKOFF_BASE_SECONDS = 5; private const val BACKOFF_CAP_SECONDS = 900; const val ASWAS_MARKER = "dw-rebuild-aswas-1"; private const val MAX_TRACKED_GAP = 10_000L }
 }
