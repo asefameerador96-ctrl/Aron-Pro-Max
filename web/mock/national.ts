@@ -3,6 +3,7 @@
 // A selection scales the national figures by the share of its zones (and products). The real slices arrive from backend-reports.
 import type { DashCtx } from "./dash";
 import { loginSubmitUsers } from "./tso-manual"; // tso-manual W1 (step 2)
+import type { Schemas } from "../src/contract/types"; // tso-manual W1 (step 2)
 
 type Num = number;
 const C = { cigarette: "stick", bidi: "stick", lighter: "piece", match: "dozen" } as const;
@@ -194,7 +195,7 @@ export async function handleNational(x: DashCtx): Promise<boolean> {
     // D-TSO-MAN-12 over the seeded day of mock/seed.ts (the drill page's geo ids), not this file's zones.
     const r = loginSubmitUsers(user.scope.nodes, body && typeof body === "object" ? body : null, url.searchParams.get("tab"));
     if (!r) return send(400, problem(400, "ERR_VALIDATION", { errors: [{ pointer: "/tab", code: "invalid" }] })), true;
-    return send(200, { ...common, ...r }), true;
+    return send(200, { ...common, ...r } satisfies Schemas["NationalLoginSubmitUsers"]), true;
   }
   if (name === "brand-cpr" && method === "POST") {
     // D-TSO-MAN-06: outlets that bought each brand; denominator successful calls (the cfg default), both readings sent.
@@ -204,7 +205,7 @@ export async function handleNational(x: DashCtx): Promise<boolean> {
       .map((b) => ({ ...b, outlets_bought: Math.max(0, b.outlets_bought) }))
       .sort((a, b) => b.outlets_bought - a.outlets_bought || a.brand_code.localeCompare(b.brand_code))
       .map((b) => ({ ...b, cpr_bp: bpOf(b.outlets_bought, calls), cpr_of_successful_bp: bpOf(b.outlets_bought, calls), cpr_of_target_bp: bpOf(b.outlets_bought, target) }));
-    return send(200, { ...common, target_outlets: target, successful_calls: calls, denominator: "successful_calls", brands }), true;
+    return send(200, { ...common, target_outlets: target, successful_calls: calls, denominator: "successful_calls", brands } satisfies Schemas["NationalBrandCpr"]), true;
   }
   if (name === "segment-share" && method === "POST") {
     // D-TSO-MAN-11: value share of all sale-line value; volume share inside the segment's unit family (never across units).
@@ -220,7 +221,7 @@ export async function handleNational(x: DashCtx): Promise<boolean> {
     const segments = segs
       .map((x) => ({ ...x, value_share_bp: bpOf(x.value_mtk, totalValue), volume_share_bp: bpOf(x.qty_base, famTotal(x.base_unit)) }))
       .sort((a, b) => b.value_mtk - a.value_mtk || a.segment_code.localeCompare(b.segment_code));
-    return send(200, { ...common, total_value_mtk: totalValue, families, segments }), true;
+    return send(200, { ...common, total_value_mtk: totalValue, families, segments } satisfies Schemas["NationalSegmentShare"]), true;
   }
   if (name === "login-submit") {
     const routes = Math.round(6933 * (zs.length / ZONES.length)), logged = Math.round(routes * 0.998), sub = date === today ? Math.round(logged * 0.0009) : Math.round(logged * 0.97);
