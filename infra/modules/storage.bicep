@@ -1,5 +1,5 @@
-// Blob Storage for photos (written by phones with short-lived user-delegation SAS, docs/24 s4.11) and bundle
-// snapshots (written by the server). Shared-key access is off, so the only SAS that works is a user-delegation SAS
+// Blob Storage for photos (written by phones with short-lived user-delegation SAS, docs/24 s4.11), bundle
+// snapshots and async report exports (written by the server). Shared-key access is off, so the only SAS that works is a user-delegation SAS
 // minted by the API's managed identity. BlobCreated events land in a storage queue the worker drains
 // ("the server's blob-created event marks the media row stored").
 
@@ -10,6 +10,14 @@ param storageName string
 param skuName string
 param mediaContainer string
 param bundlesContainer string
+@description('Async report exports (backend ExportWiring.kt, ARON_BLOB_CONTAINER_EXPORTS); read through short-lived user-delegation links.')
+param exportsContainer string
+@description('Days after which an export file is deleted (data-architecture review finding 11).')
+@minValue(1)
+param exportsDeleteDays int = 7
+@description('Days after which a field photo (photos/ in the media container) is deleted: cfg.retention.media_days (docs/21 s4.8, docs/16 s13.1: 730, Q21 still to be confirmed by the business). admin assets/ and support/ bundles are not photos and are never deleted by age.')
+@minValue(365)
+param photoDeleteDays int = 730
 param mediaEventsQueue string
 param eventGridTopicName string
 param logAnalyticsId string
@@ -79,6 +87,12 @@ resource bundles 'Microsoft.Storage/storageAccounts/blobServices/containers@2024
   properties: { publicAccess: 'None' }
 }
 
+resource exports 'Microsoft.Storage/storageAccounts/blobServices/containers@2024-01-01' = {
+  parent: blobs
+  name: exportsContainer
+  properties: { publicAccess: 'None' }
+}
+
 resource queues 'Microsoft.Storage/storageAccounts/queueServices@2024-01-01' = {
   parent: st
   name: 'default'
@@ -89,7 +103,8 @@ resource mediaQueue 'Microsoft.Storage/storageAccounts/queueServices/queues@2024
   name: mediaEventsQueue
 }
 
-// docs/18 s2.8: photos Cool at 30 days and Cold at 90; bundle snapshots are deleted after 3 days.
+// docs/18 s2.8: photos Cool at 30 days and Cold at 90; bundle snapshots are deleted after 3 days. Field photos
+// (photos/<business date>/...) are deleted after photoDeleteDays, export files after exportsDeleteDays (finding 11).
 resource lifecycle 'Microsoft.Storage/storageAccounts/managementPolicies@2024-01-01' = {
   parent: st
   name: 'default'
@@ -108,6 +123,24 @@ resource lifecycle 'Microsoft.Storage/storageAccounts/managementPolicies@2024-01
                 tierToCold: { daysAfterModificationGreaterThan: 90 }
               }
             }
+          }
+        }
+        {
+          name: 'photos-expiry'
+          enabled: true
+          type: 'Lifecycle'
+          definition: {
+            filters: { blobTypes: ['blockBlob'], prefixMatch: ['${mediaContainer}/photos/'] }
+            actions: { baseBlob: { delete: { daysAfterModificationGreaterThan: photoDeleteDays } } }
+          }
+        }
+        {
+          name: 'exports-expiry'
+          enabled: true
+          type: 'Lifecycle'
+          definition: {
+            filters: { blobTypes: ['blockBlob'], prefixMatch: ['${exportsContainer}/'] }
+            actions: { baseBlob: { delete: { daysAfterModificationGreaterThan: exportsDeleteDays } } }
           }
         }
         {

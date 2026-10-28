@@ -1,6 +1,49 @@
 # Infra lane status
 
-Updated 2026-10-08 00:50 UTC (sixth infra session, handover).
+Updated 2026-10-28 09:25 UTC (seventh infra session).
+
+## Seventh infra session, 2026-10-28: data-architecture action row 7 (lake and blobs, pilot size)
+
+Lead: session_01MbUQSxrP7AB9tbyANjUTPS. lane/infra was reset (fast-forward) to INT 78a6d7b1 first. Decision line:
+D-INFRA-LAKE-01.
+
+| Item (row 7) | Where | Status |
+|---|---|---|
+| (a) Lake account: StorageV2, HNS, Hot, Standard_LRS (dev, dev-lite), TLS 1.2, no shared key, no public blob, container `lake`; worker identity only | `infra/modules/lake.bicep`, `main.bicep` module `lake`, `identities.bicep` `workerLake`, params `lakeStorageSku` | built, validate.sh green; Azure apply on next INT deploy |
+| (b) `exports` container, delete at 7 days, `ARON_BLOB_CONTAINER_EXPORTS` on api and worker | `storage.bicep` (`exports`, rule `exports-expiry`), `apps.bicep` `commonEnv` | built |
+| (c) Photo delete at 730 days (docs/21 s4.8 `cfg.retention.media_days`; docs/28 and docs/31 name no figure) on `media/photos/` only | `storage.bicep` rule `photos-expiry` | built; exemptions asked: `docs/requests/backend-core-photo-retention-exemptions.md` |
+| (d) Logins `app_bi` and `lake_export` (members of privilege role `bi_reader`: SELECT on `dw.v_*` only), Key Vault passwords generated once, read URLs | `infra/sql/runtime-logins.sql`, `db-login-secrets.sh`, `apps.bicep` dblogins job, `image-smoke.sh`, `dblogins-probe.sh` | built; SQL run twice on local PostgreSQL 16 with all migrations, negative grants caught |
+| (e) Tests | `infra/tests/check_infra.py` class `LakeAndBlobRetention` (6 tests), `SecurityDefaults.test_storage`, `PerAppDatabaseLogins` | 105 tests green |
+| (f) Docs | `docs/33` part B (B6 storage, lake table) and part C (lifecycle row, lake readers), DECISIONS D-INFRA-LAKE-01 | done |
+| Safety | `reset-to-profile.sh` compares the lake (tag `component=lake`) with `lakeStorageSku`, never with `storageSku` | built |
+
+### What the nightly export job (row 8, backend-core) needs from infra
+
+- **Database:** `ARON_LAKE_DB_URL` on the worker (JDBC URL as `lake_export`, Key Vault `aron-db-lake-read-url`, the read
+  host: primary in dev, replica in the final account). It exists only when `dbPerAppLogins` is on (dev today; off in
+  dev-lite, stage, prod). With no variable the job must log and skip; it must never fall back to `ARON_DB_URL` (that
+  is `app_jobs` or the admin). `lake_export` reads every `dw.v_*` view (no `memo_no` column of `v_memo_flags`) and
+  `dw.view_contract_version()`; statement timeout 10 min, idle-in-transaction 30 s (V0020 limits of `bi_reader`).
+- **Storage:** `ARON_LAKE_ACCOUNT` (account name; DFS endpoint `https://<name>.dfs.core.windows.net`, blob endpoint
+  works too) and `ARON_LAKE_CONTAINER=lake`; sign in with `DefaultAzureCredential` and `AZURE_CLIENT_ID` (the worker
+  identity holds Storage Blob Data Contributor on that account only). No key and no SAS exist. Layout per the review
+  s4: `lake/v1/<view>/business_date=YYYY-MM-DD/` plus a manifest (row counts, SHA-256, migration and view-contract
+  versions); re-export the dates the projector rebuilt. Nothing in the lake is deleted by age.
+- **Size:** pilot volume is a few MB a day inside the existing worker (0.25 vCPU, 0.5 GiB in dev-lite); stream rows
+  per view and day rather than loading a whole view in memory.
+
+### Open items
+
+- Photo exemptions (active outlet's reference photo, retention hold) before the first photo turns 730 days old:
+  backend-core request above.
+- The existing `media-tiering` rule (Cool 30, Cold 90) covers the whole `media` container, so admin `assets/`
+  (tutorials) and `support/` bundles also tier to Cold; reading a Cold blob costs more and has a 90-day early-delete
+  charge. Not changed in this slice (outside row 7); infra can narrow it to `media/photos/` if the lead agrees.
+- Final-account lake SKU (`Standard_ZRS` set in stage and prod params) is to be confirmed with the sponsor before the
+  move (docs/28).
+- No `bi_reader` row scope (brand or wing, D-374) and per-app logins still off in dev-lite, stage and prod
+  (finding 12, part 2): not in row 7.
+
 
 ## HANDOVER (sixth infra session -> seventh), 2026-10-08 00:50 UTC: read this first
 

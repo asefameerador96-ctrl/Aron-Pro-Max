@@ -1,6 +1,6 @@
 // One user-assigned identity per process role, each with only the data-plane rights its role needs:
 //   api     pull image, read secrets, read/write blobs and mint user-delegation SAS for phones
-//   worker  pull image, read secrets, read/write blobs (bundles), drain the media-events queue
+//   worker  pull image, read secrets, read/write blobs (bundles), drain the media-events queue, write the data lake
 //   migrate pull image, read secrets (the direct database URL)
 //   web     pull image, read secrets (the BFF session secret)
 // The deploying principal (the GitHub identity) gets AcrPush and Key Vault Secrets Officer so the workflow can push
@@ -14,6 +14,7 @@ param names object
 param registryName string
 param keyVaultName string
 param storageName string
+param lakeStorageName string
 @description('Object id of the principal that runs the deployment (deployer().objectId); empty skips its grants.')
 param deployerObjectId string
 @allowed(['ServicePrincipal', 'User'])
@@ -22,6 +23,7 @@ param deployerPrincipalType string = 'ServicePrincipal'
 resource acr 'Microsoft.ContainerRegistry/registries@2023-07-01' existing = { name: registryName }
 resource kv 'Microsoft.KeyVault/vaults@2024-11-01' existing = { name: keyVaultName }
 resource st 'Microsoft.Storage/storageAccounts@2024-01-01' existing = { name: storageName }
+resource lake 'Microsoft.Storage/storageAccounts@2024-01-01' existing = { name: lakeStorageName }
 
 var identityNames = [names.idApi, names.idWorker, names.idMigrate, names.idWeb]
 var api = 0
@@ -67,6 +69,17 @@ resource blobRw 'Microsoft.Authorization/roleAssignments@2022-04-01' = [for i in
     roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', roles.storageBlobDataContributor)
   }
 }]
+
+// Only the worker writes the data lake (the nightly Parquet export, action row 8); nobody else has data rights there.
+resource workerLake 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(lake.id, names.idWorker, roles.storageBlobDataContributor)
+  scope: lake
+  properties: {
+    principalId: ids[worker].properties.principalId
+    principalType: 'ServicePrincipal'
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', roles.storageBlobDataContributor)
+  }
+}
 
 // Only the API mints user-delegation SAS for phones.
 resource apiDelegator 'Microsoft.Authorization/roleAssignments@2022-04-01' = {

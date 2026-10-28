@@ -1,5 +1,5 @@
 // Aron: infrastructure of one environment, deployed INTO ONE EXISTING RESOURCE GROUP (no subscription-scope resource).
-// Stage 1 of the deploy (infra/README.md): network, monitoring, Key Vault, registry, storage, PostgreSQL, Container
+// Stage 1 of the deploy (infra/README.md): network, monitoring, Key Vault, registry, storage, lake, PostgreSQL, Container
 // Apps environment, identities and role assignments, Front Door + WAF, alerts and the budget. Stage 2 (apps.bicep)
 // adds the migrate job, the api/worker/web apps and the Front Door routes once an image exists.
 //
@@ -55,6 +55,9 @@ param keyVaultPurgeProtection bool
 param registrySku string
 @allowed(['Standard_LRS', 'Standard_ZRS', 'Standard_GZRS', 'Standard_RAGZRS'])
 param storageSku string
+@description('Data-lake account (modules/lake.bicep). TEST profile: Standard_LRS only (docs/28).')
+@allowed(['Standard_LRS', 'Standard_ZRS'])
+param lakeStorageSku string = 'Standard_LRS'
 @description('Zone redundancy needs a VNet (privateNetworking); it is ignored without one.')
 param containerEnvZoneRedundant bool = true
 
@@ -210,11 +213,24 @@ module storage 'modules/storage.bicep' = {
     skuName: storageSku
     mediaContainer: 'media'
     bundlesContainer: 'bundles'
+    exportsContainer: 'exports'
     mediaEventsQueue: 'media-events'
     eventGridTopicName: n.eventGridTopic
     logAnalyticsId: monitoring.outputs.logAnalyticsId
     // The address browsers load the web app from: Front Door, or the web app's own address without it.
     uploadOrigins: [deployFrontDoor ? 'https://${frontDoor!.outputs.endpointHost}' : 'https://${n.webApp}.${containerEnv.outputs.defaultDomain}']
+  }
+}
+
+module lake 'modules/lake.bicep' = {
+  name: 'lake'
+  params: {
+    location: location
+    tags: allTags
+    storageName: n.lakeStorage
+    skuName: lakeStorageSku
+    lakeContainer: 'lake'
+    logAnalyticsId: monitoring.outputs.logAnalyticsId
   }
 }
 
@@ -242,9 +258,10 @@ module identities 'modules/identities.bicep' = {
     registryName: n.registry
     keyVaultName: n.keyVault
     storageName: n.storage
+    lakeStorageName: n.lakeStorage
     deployerObjectId: deployerObjectId
   }
-  dependsOn: [registry, keyVault, storage]
+  dependsOn: [registry, keyVault, storage, lake]
 }
 
 module frontDoor 'modules/frontdoor.bicep' = if (deployFrontDoor) {
@@ -301,5 +318,6 @@ output frontDoorEndpointHost string = deployFrontDoor ? frontDoor!.outputs.endpo
 output frontDoorEnabled bool = deployFrontDoor
 output postgresServerName string = n.postgres
 output storageAccountName string = n.storage
+output lakeStorageAccountName string = n.lakeStorage
 output privateLinkOrigin bool = privateLink
 output budgetName string = deployBudget ? n.budget : ''

@@ -104,6 +104,10 @@ var apiDbUrlSecret = perApp ? secretNames.dbApiUrl : secretNames.dbUrl
 var apiDbReadUrlSecret = perApp ? secretNames.dbApiReadUrl : secretNames.dbReadUrl
 var workerDbUrlSecret = perApp ? secretNames.dbJobsDirectUrl : secretNames.dbDirectUrl
 var workerDbReadUrlSecret = perApp ? secretNames.dbJobsReadUrl : secretNames.dbReadUrl
+// The nightly lake export (action row 8) reads as lake_export (dw.v_* only). Without the per-app logins that login
+// does not exist, so the variable is absent and the export must not run (never as the admin login).
+var workerLakeSecrets = perApp ? [kvSecret('db-lake-url', secretNames.dbLakeReadUrl, kvSecretUrl, idWorker.id)] : []
+var workerLakeDbEnv = perApp ? [{ name: 'ARON_LAKE_DB_URL', secretRef: 'db-lake-url' }] : []
 
 func kvSecret(name string, secret string, baseUrl string, identityId string) object => {
   name: name
@@ -122,6 +126,7 @@ var commonEnv = [
   { name: 'ARON_BLOB_ACCOUNT', value: st.name }
   { name: 'ARON_BLOB_CONTAINER_MEDIA', value: 'media' }
   { name: 'ARON_BLOB_CONTAINER_BUNDLES', value: 'bundles' }
+  { name: 'ARON_BLOB_CONTAINER_EXPORTS', value: 'exports' }
   { name: 'ARON_MEDIA_EVENTS_QUEUE', value: 'media-events' }
   { name: 'ARON_FRONT_DOOR_ID', value: frontDoorEnabled ? fd!.properties.frontDoorId : '' }
   { name: 'APPLICATIONINSIGHTS_CONNECTION_STRING', value: appi.properties.ConnectionString }
@@ -210,6 +215,8 @@ resource dblogins 'Microsoft.App/jobs@2025-07-01' = if (!empty(psqlImage)) {
         kvSecret('pw-app-api', secretNames.dbPwAppApi, kvSecretUrl, idMigrate.id)
         kvSecret('pw-app-worker', secretNames.dbPwAppWorker, kvSecretUrl, idMigrate.id)
         kvSecret('pw-app-jobs', secretNames.dbPwAppJobs, kvSecretUrl, idMigrate.id)
+        kvSecret('pw-app-bi', secretNames.dbPwAppBi, kvSecretUrl, idMigrate.id)
+        kvSecret('pw-lake-export', secretNames.dbPwLakeExport, kvSecretUrl, idMigrate.id)
         // The SQL itself (not a secret): mounted as a file. As a 7 KB env value the replica was never created
         // ("No replicas found for execution"), while the same job with only the image and the four Key Vault refs
         // ran (deploy run 37659152959, probes A and B).
@@ -234,6 +241,8 @@ resource dblogins 'Microsoft.App/jobs@2025-07-01' = if (!empty(psqlImage)) {
             { name: 'ARON_PW_APP_API', secretRef: 'pw-app-api' }
             { name: 'ARON_PW_APP_WORKER', secretRef: 'pw-app-worker' }
             { name: 'ARON_PW_APP_JOBS', secretRef: 'pw-app-jobs' }
+            { name: 'ARON_PW_APP_BI', secretRef: 'pw-app-bi' }
+            { name: 'ARON_PW_LAKE_EXPORT', secretRef: 'pw-lake-export' }
           ]
         }
       ]
@@ -357,11 +366,11 @@ resource worker 'Microsoft.App/containerApps@2025-07-01' = if (deployServices) {
       activeRevisionsMode: 'Single'
       maxInactiveRevisions: 5
       registries: [{ server: acr.properties.loginServer, identity: idWorker.id }]
-      secrets: [
+      secrets: concat([
         kvSecret('db-direct-url', workerDbUrlSecret, kvSecretUrl, idWorker.id)
         kvSecret('db-read-url', workerDbReadUrlSecret, kvSecretUrl, idWorker.id)
         kvSecret('fcm-service-account', secretNames.fcmServiceAccount, kvSecretUrl, idWorker.id)
-      ]
+      ], workerLakeSecrets)
     }
     template: {
       containers: [
@@ -369,8 +378,11 @@ resource worker 'Microsoft.App/containerApps@2025-07-01' = if (deployServices) {
           name: 'worker'
           image: backendImage
           resources: { cpu: json(workerCpu), memory: workerMemory }
-          env: concat(commonEnv, appSecretRefs, [
+          env: concat(commonEnv, appSecretRefs, workerLakeDbEnv, [
             { name: 'ARON_ROLE', value: 'worker' }
+            // Data lake (modules/lake.bicep): written with this app's identity (Storage Blob Data Contributor there).
+            { name: 'ARON_LAKE_ACCOUNT', value: n.lakeStorage }
+            { name: 'ARON_LAKE_CONTAINER', value: 'lake' }
             // Run-once jobs take PostgreSQL advisory locks; session locks need a direct connection, not PgBouncer.
             { name: 'ARON_DB_URL', secretRef: 'db-direct-url' }
             { name: 'ARON_DB_POOL_MAX', value: string(workerDbPoolMax) }

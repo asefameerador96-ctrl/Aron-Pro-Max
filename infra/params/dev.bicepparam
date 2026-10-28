@@ -41,6 +41,9 @@ param deployBudget = envDeployBudget != 'false'
 param keyVaultPurgeProtection = false
 param registrySku = 'Basic'
 param storageSku = 'Standard_ZRS'
+// Data lake (action row 7): pilot size, no zone redundancy even here (the docs/28 ZRS exception covers only what
+// already existed in rg-aron-dev).
+param lakeStorageSku = 'Standard_LRS'
 
 // As created (do not change: tier, storage type and geo backup are fixed at creation; the deploy refuses changes).
 param postgresSkuTier = 'GeneralPurpose'

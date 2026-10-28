@@ -12,6 +12,8 @@ func names(prefix string, env string, suffix string) object => {
   keyVault: take('kv-${prefix}-${env}-${suffix}', 24)
   registry: take(toLower(replace('cr${prefix}${env}${suffix}', '-', '')), 50)
   storage: take(toLower(replace('st${prefix}${env}${suffix}', '-', '')), 24)
+  // Data-lake account (hierarchical namespace; docs/status/data-architecture-review-2026-10-25.md s4).
+  lakeStorage: take(toLower(replace('st${prefix}${env}lake${suffix}', '-', '')), 24)
   postgres: 'psql-${prefix}-${env}-${suffix}'
   postgresReplica: 'psql-${prefix}-${env}-${suffix}-r1'
   postgresDnsZone: '${prefix}-${env}-${suffix}.private.postgres.database.azure.com'
@@ -59,6 +61,12 @@ var secretNames = {
   dbApiReadUrl: 'aron-db-api-read-url'
   dbJobsDirectUrl: 'aron-db-jobs-direct-url'
   dbJobsReadUrl: 'aron-db-jobs-read-url'
+  // Read-only logins on the stable dw.v_* views (V0014/V0020 privilege role bi_reader): BI tools and the nightly
+  // lake export (D-INFRA-LAKE-01).
+  dbPwAppBi: 'aron-db-pw-app-bi'
+  dbPwLakeExport: 'aron-db-pw-lake-export'
+  dbBiReadUrl: 'aron-db-bi-read-url'
+  dbLakeReadUrl: 'aron-db-lake-read-url'
 }
 
 @export()
