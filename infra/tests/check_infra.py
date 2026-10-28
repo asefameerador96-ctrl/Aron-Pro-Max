@@ -1961,7 +1961,7 @@ class LakeAndBlobRetention(unittest.TestCase):
             if "delete" in d["actions"]["baseBlob"]:
                 self.assertNotEqual(d["filters"]["prefixMatch"], ["[format('{0}/', parameters('mediaContainer'))]"], name)
         self.assertEqual(rules["bundles-expiry"]["actions"]["baseBlob"]["delete"]["daysAfterModificationGreaterThan"], 3)
-        # Tiering (docs/18 s2.8) covers field photos only; assets/ and support/ stay Hot (D-INFRA-LAKE-02).
+        # photos/ tier Cool then Cold (docs/18 s2.8, D-INFRA-LAKE-02); support/ is covered by support-tiering below.
         tier = rules["media-tiering"]
         self.assertEqual(tier["filters"]["prefixMatch"], ["[format('{0}/photos/', parameters('mediaContainer'))]"])
         self.assertEqual(tier["actions"]["baseBlob"]["tierToCool"]["daysAfterModificationGreaterThan"], 30)
@@ -1971,11 +1971,16 @@ class LakeAndBlobRetention(unittest.TestCase):
         sup = rules["support-tiering"]
         self.assertEqual(sup["filters"]["prefixMatch"], ["[format('{0}/support/', parameters('mediaContainer'))]"])
         self.assertEqual(sup["actions"]["baseBlob"], {"tierToCool": {"daysAfterModificationGreaterThan": 30}})
+        # A prefix covers a path when the path starts with it, so a shorter prefix (media/s, media/a) counts too.
         for name, d in rules.items():
             for p in d["filters"]["prefixMatch"]:
-                self.assertNotIn("/assets/", p, f"{name} touches admin assets")
-                if "/support/" in p:
-                    self.assertNotIn("delete", d["actions"]["baseBlob"], f"{name} deletes support bundles")
+                m = re.fullmatch(r"\[format\('\{0\}/(.*)', parameters\('mediaContainer'\)\)\]", p)
+                if not m:
+                    continue  # another container
+                rest = m.group(1)
+                self.assertFalse("assets/x".startswith(rest), f"{name} ({rest!r}) touches admin assets")
+                if "support/x".startswith(rest):
+                    self.assertNotIn("delete", d["actions"]["baseBlob"], f"{name} ({rest!r}) deletes support bundles")
         for name, d in rules.items():
             for p in d["filters"]["prefixMatch"]:
                 self.assertNotEqual(p, "[format('{0}/', parameters('mediaContainer'))]", f"{name} covers the whole media container")
