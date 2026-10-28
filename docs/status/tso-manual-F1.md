@@ -150,3 +150,93 @@ Linux runtime; downloading a Windows build was not done). Its approval condition
 names `docs/requests/contract-tso-manual-1.10.md`. The breaking candidates were listed by a schema diff: the four
 response-enum additions of the gate file s1, no removed path, operation or schema, no new required request member.
 CI runs oasdiff on the push.
+
+## Fix round 2 (lead rulings, build contract s9, 2026-10-29)
+
+Contract stays 1.10.0 (unreleased, changed in place). Every F1 ruling of s9 is applied; the ones for other lanes are
+listed under asks.
+
+| Ruling | What changed in `contract/openapi.yaml` | Pinned by (`TsoManualContractTest` unless noted) |
+|---|---|---|
+| R-F-05 | `SupportTicketPayload`: a requester role outside the configured requester roles (default TSO) is quarantined `scope_out_of_reach`; when an ADMIN accepts it (`resolveQuarantine`) the server runs the role check again and refuses the accept while the role is still not allowed (no new outcome code). `SupportTicketEventPayload` says the same for the event | `ticketFromARoleOutsideTheRequesterRolesIsQuarantinedAndReCheckedOnAccept` |
+| R-F-11 | `AdminModule` + `support` (appended; `Me.modules`, `UserAccess.modules` and `UserAccessWrite.modules` key on it); description: `/v1/support/tickets` and every path under it belong to it, the desk permission stays `support.ticket.manage`. New hand mirror `ContractCatalogues.AdminModule` | `ContractDriftTest.adminModules`, `adminModuleSupportIsInTheContract` |
+| R-F-12 | `ReportKey` + `tso-visit-log` (appended); `ContractCatalogues.ReportKey.TSO_VISIT_LOG`; docs/24 s12.3 row (the B3 columns: plan date, TSO, zone, route, outlet, status, completed at, both answers by key, delegate task, the task and its status); `web/src/lib/admin/report-keys.ts` | `ContractDriftTest.reportKeys`, `SpecCrossCheckTest.riskSignalsAndReportsMatch`, web `report-keys.test.ts`, `reportKeyTsoVisitLogIsInTheContract` |
+| R-F-13 | `NationalSalesCard.daily_target`, `remaining`, `achievement_pct_bp`: null when W = 0 (all three were already nullable; the ring and the target print "—"). Same for the other per-card daily target, `TargetVsAchievement` (`getRouteMap` cards): `daily_target` and `achievement_pct_bp` described, null when the month has no working day | `noWorkingDayMakesTheDailyTargetAndTheRingNull` |
+| R-F-14 | `SupportTicketSummary` drops `resolved_pct_bp` and `open_pct_bp`; its description and `getSupportTicketSummary`: the displays compute the whole percent once from the counts, total 0 prints "0%". WireDtos: no percentage members (the `SupportTicketSummaryWire` encoder is gone: no required-nullable member is left) | `ticketReadSchemasOfSection32` (the members are exactly the eight counts) |
+| R-F-15 | `TargetAchievement.period_days` 0..31; `TargetAchievementRow.tilldate_target_qty_base` and `remaining_tilldate_qty_base` nullable (as `tilldate_achievement_pct_bp`), all three null when `period_days` is 0; the `TargetAchievement` and row descriptions say so. WireDtos: `Long?`, and the three stay explicit nulls on the wire (`TargetAchievementRowWire`) | `targetAchievementOfSections32And33` |
+| R-F-16 | `format: int64` on `TargetAchievementRow.achievement_pct_bp`, `tilldate_achievement_pct_bp`, `NationalSalesCard.achievement_pct_bp`, `TargetVsAchievement.achievement_pct_bp` (the four described as uncapped) and on the new 1.10.0 members without a `maximum`: `NationalBrandCpr.brands[].cpr_bp`, `cpr_of_successful_bp`, `cpr_of_target_bp`, `NationalLoginSubmit.submit_of_target_pct_bp`. WireDtos: `Long?` | `uncappedBasisPointMembersAreInt64` (walks every schema: a `*_bp` described as uncapped must be int64; every new 1.10.0 `*_bp` is capped at 10000 or int64; the generated fields are `java.lang.Long`) |
+| R-F-17 | `NationalSales.working_days`: W at the lowest common node of the effective scope (one zone, one territory, else global): days of the month - the node's weekend days (`cfg.calendar.weekend_days` at the node) - the holidays on the node's path + the make-up days on that path, one implementation (WorkingDays). `NationalSalesCard.daily_target`: today's target = `monthly_target_qty` / W, the literal formula on a Friday or holiday | `noWorkingDayMakesTheDailyTargetAndTheRingNull` |
+| R-F-18 | `getTargetAchievement` and its `children` parameter: `children=zone` only at a territory or zone node (a territory answers its zones, a zone itself as its one child); at a national, wing or division node 400 `ERR_VALIDATION` (`query.children` invalid_value); the check runs on the resolved node, the default top reach node included. 400 was already declared | `childrenZoneOnlyAtATerritoryOrBelow` |
+
+Regenerated in the s3.4 order: `contract/slices/**` and `INDEX.md`, `WireDtos.kt`, `web/src/contract/openapi.d.ts`.
+`PayloadShapes.kt` is unchanged (`gen_payload_shapes.py --check` clean: the payload changes are descriptions only). The
+gate file `docs/requests/contract-tso-manual-1.10.md` lists the two new enum values and the int64 format on two 1.9.0
+response members in s1 (breaking-gate candidates, approved by the version bump and the file) and every other change of
+this round in s2, the removed `SupportTicketSummary` members included.
+
+New decisions:
+
+- **D-F1-16 R-F-05 wording.** The role re-check is stated on both record payloads (`support_ticket` and
+  `support_ticket_event`, as R-F-05 names both). The HTTP answer of a refused accept is B1's: `resolveQuarantine` already
+  declares 400, 403, 404 and 409, its description is unchanged, and no outcome or problem code is added. The cfg key is
+  not named in the contract (D-F1-11: it is not in docs/24 s9.5).
+- **D-F1-17 `AdminModule` mirror, no companion edit.** A new enum `ContractCatalogues.AdminModule` (it had no mirror
+  before) with a `ContractDriftTest` row; `support` is appended last so the existing order holds. No backend or web test
+  pins `AdminModules.ALL` or `GRANT_MODULES` against the contract: `AdminModulesTest` compares `ALL` with its own
+  per-module sample routes, `UserAccessTest` with the API's answer, web `user-access.test.ts` pins its own 15 entries and
+  `checker-adm1-contract.test.ts` checks only list filters. So no backend/web companion commit was needed and none was
+  made; adding `support` there is B1's (`AdminModules` line, its route mapping, an `AdminModulesTest` sample) and W1's
+  (`GRANT_MODULES`, labels, the length in `user-access.test.ts`), per R-F-11. The only web file touched is
+  `report-keys.ts`, which R-F-12 gives to F1.
+- **D-F1-18 Other per-card daily target (R-F-13).** `TargetVsAchievement` (the Map Details cards) is the only other card
+  with a daily target; it gets the W = 0 null rule in its descriptions. Its W node is not fixed by the contract, because
+  D-TSO-MAN-08 names NationalDashboard, AdminCalendar, TargetAchievementApi and DailyTrackingApi, not the route map.
+- **D-F1-19 "Uncapped" (R-F-16).** A `*_bp` member is uncapped when the contract describes it as uncapped or able to
+  exceed 10000 (four members), or when it is new in 1.10.0 and declares no `maximum` (four members). The 1.9.0 ratios
+  without a declared maximum that are bounded by their meaning (`NationalCpr.cpr_pct_bp`, both `share_pct_bp`,
+  `login_pct_bp`, both `submit_pct_bp`, both `geo_pct_bp`, `miss_pct_bp`, `RouteMap.cpr.cpr_pct_bp`) are unchanged: no
+  generated Kotlin DTO decodes them, and none can leave the 32-bit range (that needs about 214,748 %). The lead may
+  widen them in 1.10.x.
+- **D-F1-20 `children=zone` at a zone node (R-F-18).** "Territory or below" includes a zone node; it answers itself as
+  its one child, so the zone card list is never empty for a single-zone reach. The check runs on the resolved node, so
+  a national or wing caller without `level` gets 400 for `children=zone`.
+- **D-F1-21 `tilldate_target_qty` with n = 0.** R-F-15 names the integer members only; the AMO app's Decimal3
+  `tilldate_target_qty` stays required and non-null (ask 12).
+
+Asks (round 2):
+
+12. **B2 (and the lead):** with `period_days` = 0, `TargetAchievementRow.tilldate_target_qty` (Decimal3, required, the AMO
+    app's) has no defined value. Proposal: B2 sends "0.000" in 1.10.0 (a working-days basis is a TSO setting; the AMO
+    team key defaults to calendar days), or 1.10.x makes it nullable.
+13. **F2 (R-F-11):** the module CHECK of `app.user_module_grant` is in V0089, which is shipped (at or below V0122), so
+    `support` needs a new migration in the V0130..V0149 block (drop and re-add the CHECK, NOT VALID then VALIDATE).
+14. **B1 (R-F-11):** `AdminModules.ALL` + `support`, `ROUTES` maps `/v1/support/tickets/**` to `support` (today
+    `/v1/support/**` maps to `mdm`), and an `AdminModulesTest` sample pair; `UserAccessTest` follows `ALL`. **W1:**
+    `GRANT_MODULES` + `support` with `grant.module.support` labels (bn and en) and `user-access.test.ts` 15 -> 16; the
+    `tso-visit-log` catalogue entry and labels (R-F-12).
+15. **A1, A2 (generated types changed):** `TargetAchievementRow.tilldateTargetQtyBase`, `remainingTilldateQtyBase`,
+    `achievementPctBp`, `tilldateAchievementPctBp` and `NationalBrandCprBrands.cprBp`, `cprOfSuccessfulBp`, `cprOfTargetBp`
+    are `Long?`; `SupportTicketSummary` has no `resolvedPctBp` / `openPctBp` (A2 computes them with TicketMath). A1: decode
+    `NationalSalesCard.achievement_pct_bp` as a Long (int64 now).
+16. **B2:** `children=zone` 400 on the resolved node (R-F-18); the three till-date members null when n = 0 (R-F-15);
+    `NationalSalesCard.daily_target`, `remaining`, `achievement_pct_bp` null when W = 0 (R-F-13).
+
+Earlier asks settled by s9: 1 (R-F-12), 2 (R-F-11), 8 (R-F-01), 9 (R-F-02, R-F-03); ask 3 is ruled by R-F-21 (the 15 cfg
+keys sit in the `SchemaV1aTest` ruled set).
+
+### Verify, round 2 (this worktree, local laptop; CI not run, nothing pushed)
+
+| Command | Result |
+|---|---|
+| `python tools/slice-contract.py` then `--check` | 890 files written; "contract/slices is up to date" (rerun on the committed head too) |
+| `python shared/contract/tools/gen_wire_dtos.py` then `--check` | exit 0 (`WireDtos.kt`: 9 lines in, 18 out) |
+| `python backend/sync/tools/gen_payload_shapes.py --check` | exit 0 (no change) |
+| `cd web && npm run gen:contract`; `bash shared/contract/tools/check-web-contract-drift.sh` | "web/src/contract/openapi.d.ts matches contract/openapi.yaml" |
+| `cd web && npm run typecheck` | `tsc --noEmit` clean, exit 0 |
+| `cd web && npx vitest run tests/contract-drift.test.ts tests/report-keys.test.ts tests/checker-adm1-contract.test.ts tests/user-access.test.ts tests/admin-modules.test.ts` | 5 files, 36 tests passed (the last two added because they hold the module lists; neither changed) |
+| `npm_config_ignore_scripts=true npx --yes @redocly/cli@2.59.0 lint contract/openapi.yaml --config contract/redocly.yaml` | "Your API description is valid", no error or warning line |
+| `gl.sh :shared:contract:jvmTest` | BUILD SUCCESSFUL; 78 tests, 0 failures (ContractDriftTest 32, WireDtosDriftTest 11, SpecCrossCheckTest 8, TsoManualContractTest 24, BacklogCoverageTest 2, UnknownEnumToleranceTest 1) |
+| `gl.sh :backend:app:test --tests '*ContractConformanceTest*' --tests '*BundleAcceptanceTest*' :backend:sync:test --tests '*BundleUnitTest*'` | BUILD SUCCESSFUL in 1m 3s; ContractConformanceTest 6/6, BundleAcceptanceTest 8/8, BundleUnitTest 5/5 (it waited about 17 minutes for the Gradle lock held by lane F2's runs) |
+
+Not run: `JcsTest` (it calls `python3`, which this laptop does not have; not chased, as instructed);
+`tools/ci/contract-breaking.sh` (oasdiff is a Linux binary, CI only, R-F-22).
