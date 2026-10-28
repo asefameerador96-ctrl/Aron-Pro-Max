@@ -217,9 +217,30 @@ class AggregationWorker(
             }
     }
 
+    /**
+     * Runs once per [marker] (a row in `app.event_consumer`, so every replica and restart agrees): marks dirty every route-day with a
+     * record in the last [maxDays] days, so the worker rebuilds them with the current rules. Used after a rule change that attributes
+     * old days differently (D-REPORTS-ASWAS-01: the as-was zone, product tree and role); the range rebuild service is for everything else.
+     * Returns the number of route-days queued; 0 when the marker already exists.
+     */
+    fun rebuildOnce(marker: String, maxDays: Int = 120): Int = db.jdbi.inTransaction<Int, Exception> { h ->
+        if (h.createUpdate("INSERT INTO app.event_consumer (consumer, last_event_id) VALUES (:c, 0) ON CONFLICT DO NOTHING").bind("c", marker).execute() == 0) return@inTransaction 0
+        val today = com.aktcl.aron.rules.BusinessDate.of(clock.now().toEpochMilli()).toJavaLocalDate()
+        h.createQuery(
+            """
+            SELECT route_id, business_date FROM app.route_day WHERE business_date >= :from
+            UNION SELECT route_id, business_date FROM app.visit WHERE business_date >= :from AND route_id IS NOT NULL
+            UNION SELECT route_id, business_date FROM app.memo WHERE business_date >= :from AND route_id IS NOT NULL
+            UNION SELECT route_id, business_date FROM app.due_collection WHERE business_date >= :from AND route_id IS NOT NULL
+            """,
+        ).bind("from", today.minusDays(maxDays.toLong())).map { rs, _ -> rs.getLong(1) to rs.getObject(2, LocalDate::class.java) }.list()
+            .onEach { (route, date) -> h.execute("SELECT app.mark_dirty('route_day_agg', ?, ?, 'rebuild_once')", route, date) }.size
+    }
+
     /** Background loop for the `worker` role: poll every [interval] (default 5 s keeps the 60 s freshness goal with room). */
     fun start(interval: Duration = Duration.ofSeconds(5)): ScheduledExecutorService {
         val ex = Executors.newSingleThreadScheduledExecutor { r -> Thread(r, "aggregation-worker").apply { isDaemon = true } }
+        runCatching { rebuildOnce(ASWAS_MARKER) }.onFailure { log.error("as-was re-attribution queueing failed", it) }
         ex.scheduleWithFixedDelay({
             runCatching { refreshDimensionsIfDue(); runUntilIdle() }
                 .onFailure { log.error("aggregation pass failed", it) }
@@ -238,5 +259,5 @@ class AggregationWorker(
 
     private fun threshold(): Int = runCatching { config?.int("cfg.geo.suspicious_score_threshold") }.getOrNull() ?: Aggregator.DEFAULT_SUSPICIOUS_THRESHOLD
 
-    companion object { const val CONSUMER = "dw-projector"; private const val MAX_TRACKED_GAP = 10_000L }
+    companion object { const val CONSUMER = "dw-projector"; const val ASWAS_MARKER = "dw-rebuild-aswas-1"; private const val MAX_TRACKED_GAP = 10_000L }
 }
