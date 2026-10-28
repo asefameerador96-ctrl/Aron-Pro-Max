@@ -895,7 +895,7 @@ Evidence: `docs/30-environments-git-release.md:5-66`; `docs/26-lane-playbook.md:
 | Backup retention | 7 days | prod 35 days, stage 7 days |
 | API replicas | dev-lite 0 to 2 (scale to zero), dev 1 to 2 at 0.5 vCPU | 3 to 30 at 1 vCPU, pre-scaled |
 | Revision mode | Single | api Multiple, with automatic fallback |
-| Per-app database logins | dev on (proven), dev-lite off | **off in the parameter files today**, to flip after a clean dev week |
+| Per-app database logins | dev on (proven), dev-lite on (D-INFRA-LOGINS-LITE-01) | **off in the parameter files today**, to flip after a clean dev week |
 | Storage | LRS or ZRS | prod RA-GZRS, stage ZRS |
 | ACR | Basic | Premium, zone-redundant |
 | Key Vault purge protection | off | prod on |

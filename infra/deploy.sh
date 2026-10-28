@@ -505,6 +505,7 @@ if [ -n "$DBLOGINS_JOB" ]; then
     case "$status" in Succeeded|Failed|Stopped|Degraded) break ;; esac
     sleep 10
   done
+  per_app="$(az deployment group show -g "$RG" -n aron-apps-migrate --query properties.outputs.dbPerAppLogins.value -o tsv 2>/dev/null || echo unknown)"
   if [ "$status" != Succeeded ]; then
     job_logs "$execution"
     # Straight from the platform (Log Analytics had nothing for runs 37624445094, 37630304505, 37632012265): the
@@ -518,7 +519,6 @@ if [ -n "$DBLOGINS_JOB" ]; then
     az containerapp job logs show -g "$RG" -n "$DBLOGINS_JOB" --execution "$execution" --container dblogins --tail 100 \
       --format text 2>&1 | tail -n 100 || true
     echo "----"
-    per_app="$(az deployment group show -g "$RG" -n aron-apps-migrate --query properties.outputs.dbPerAppLogins.value -o tsv 2>/dev/null || echo unknown)"
     # tsv prints a JSON boolean as True or true depending on the CLI version; anything but false counts as on.
     if [ "${per_app,,}" != false ]; then
       die "database logins $execution ended ${status:-unknown}; the apps use these logins, so they were NOT updated"
@@ -536,7 +536,8 @@ if [ -n "$DBLOGINS_JOB" ]; then
     logins="$(python3 -c 'import re, sys
 seen = list(dict.fromkeys(re.findall(r"\((?:\x27)(\w+)(?:\x27), (?:\x27)\w+(?:\x27), (?:true|false)\)", open(sys.argv[1]).read())))
 print(len(seen), "logins:", ", ".join(seen))' infra/sql/runtime-logins.sql)" || logins="login list not read"
-    dblogins_result="succeeded (${logins}; memberships verified by the job)"
+    case "${per_app,,}" in false) apps_use=no ;; true) apps_use=yes ;; *) apps_use=unknown ;; esac
+    dblogins_result="succeeded (${logins}; memberships verified by the job; api and worker use them: ${apps_use})"
   fi
 fi
 
@@ -729,25 +730,12 @@ summary "| API | https://${API_HOST}/v1/health |"
 summary "| Backend image | ${BACKEND_IMAGE} |"
 summary "| Web image | ${WEB_IMAGE:-none (no web/ yet)} |"
 summary "| Infrastructure | $([ "$skip_infra" = true ] && echo "unchanged, skipped" || echo deployed) |"
-# Read-only evidence for the what-if's recurring "Modify networkAcls" on the vault: the live ACLs after the deploy.
-# -g matters: with a name only, az looks the vault up across the subscription, which this identity (rights on the
-# group only) may not list ("not read" on deploy #286). On failure the row carries az's first error line, with ids,
-# resource paths and long tokens masked; the row never stops the deploy.
-kv_err="$(mktemp 2>/dev/null)" || kv_err=/dev/null
-kv_acls="$( { az keyvault show -g "$RG" -n "$KV" --query properties.networkAcls -o json 2>"$kv_err" | python3 -c 'import json, sys
-a = json.load(sys.stdin)
-print("none set" if not a else "default {}, bypass {}, {} IP rules, {} VNet rules".format(a.get("defaultAction"), a.get("bypass"), len(a.get("ipRules") or []), len(a.get("virtualNetworkRules") or [])))' 2>/dev/null || echo "not read"; } | sed -n 1p)"
-if [ "$kv_acls" = "not read" ]; then
-  # Placeholders in brackets: angle-bracket ones would read as HTML in the step summary. The path mask only starts at
-  # a word boundary, so the refused action (e.g. Microsoft.Resources/subscriptions/resources/read) stays readable.
-  kv_why="$(grep -m1 -v '^[[:space:]]*$' "$kv_err" 2>/dev/null | sed -E \
-    -e "s#(^|[ '\"(])/[Ss]ubscriptions/[^ '\")]*#\\1[resource]#g" \
-    -e 's/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/[id]/g' \
-    -e 's/[A-Za-z0-9+=_-]{32,}/[masked]/g' -e 's/[|`]/ /g' | cut -c1-200 || true)"
-  kv_acls="not read${kv_why:+: ${kv_why}}"
-fi
-[ "$kv_err" = /dev/null ] || rm -f "$kv_err"
-summary "| Key Vault network ACLs | ${kv_acls} |"
+# Read-only evidence for the what-if's recurring "Modify networkAcls" on the vault (D-INFRA-LAKE-05/06): the live ACLs
+# and the deploy identity's roles on the vault, each one line that names the failing step; never stops the deploy.
+kv_acls="$( { infra/scripts/kv-acl-row.sh acls "$RG" "$KV" 2>/dev/null || true; } | sed -n 1p)"
+kv_roles="$( { infra/scripts/kv-acl-row.sh roles "$RG" "$KV" 2>/dev/null || true; } | sed -n 1p)"
+summary "| Key Vault network ACLs | ${kv_acls:-not read: helper printed nothing} |"
+summary "| Deploy identity roles on the vault | ${kv_roles:-not read: helper printed nothing} |"
 summary "| Worker | ${worker_result} |"
 summary "| Database logins | ${dblogins_result} |"
 summary "| Dev seed | ${devseed_result} |"

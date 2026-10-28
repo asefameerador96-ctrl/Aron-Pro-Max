@@ -22,8 +22,9 @@ param psqlImage = readEnvironmentVariable('ARON_PSQL_IMAGE', '')
 // Dev seed (db/seed without its global dev relaxations) + the SR slice smoke after every deploy (lead 2026-10-07).
 // deploy.sh reads this exact line; stage and prod never carry it.
 param devSeed = false
-// OFF until api_rw has the DELETE grants the admin flows need (docs/requests/db-runtime-roles-gaps.md); the logins are still created.
-param dbPerAppLogins = false
+// ON (infra session 7, D-INFRA-LOGINS-LITE-01; finding 12): api and worker connect as app_api and app_jobs, as in dev
+// since 2026-10-07 (V0029 closed docs/requests/db-runtime-roles-gaps.md). Stage and prod stay off until the final account.
+param dbPerAppLogins = true
 param deployServices = empty(envServices) ? true : bool(envServices)
 param frontDoorPrivateLink = false
 param frontDoorEnabled = false
