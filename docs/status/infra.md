@@ -1,6 +1,28 @@
 # Infra lane status
 
-Updated 2026-10-28 09:25 UTC (seventh infra session).
+Updated 2026-10-28 09:50 UTC (seventh infra session, handover).
+
+## HANDOVER (seventh infra session -> eighth), 2026-10-28 09:50 UTC: read this first
+
+Lead: session_01MbUQSxrP7AB9tbyANjUTPS (talk only through the claude-code-remote `send_message` tool). Trust the tree
+over older handovers below.
+
+- **Git:** sessions clone shallow (depth 50); an old lane tip then looks "unrelated" to INT. Run
+  `git fetch --unshallow origin claude/wonderful-thompson-k6ejnf lane/infra` before any ancestry check. lane/infra was
+  fast-forwarded to INT 78a6d7b1 this session; push lane/infra only, never INT or main, no pull requests.
+- **Row 7 (lake and blobs):** built, section below. Candidate = the lane/infra head carrying this handover; the lead
+  gates it and the integrator lands it. The first INT deploy that carries it creates the lake account, the `exports`
+  container, the two lifecycle rules, the worker's lake role and env vars, and (dblogins job) the logins `app_bi` and
+  `lake_export`. Read that deploy's "Database logins" summary row and the dblogins evidence table (five logins).
+  If the dblogins job fails on a "read-only logins ..." exception, the message names the object: a real grant leak
+  is a db-lane request, never a weakened check.
+- **Local proof kit:** PostgreSQL 16 server binaries are in /usr/lib/postgresql/16/bin. initdb a cluster owned by
+  `postgres` outside the scratchpad (the scratchpad path is not traversable for that user), apply
+  `db/migrations/V*.sql` in `sort -V` order with `psql -1` (Flyway runs each in a transaction), then run
+  `infra/sql/runtime-logins.sql` with the five ARON_PW_* variables set to throwaway 24+ character values.
+- **Open for the next infra session:** photo exemptions (backend-core request), narrowing `media-tiering` to
+  `media/photos/` (lead to agree), final lake SKU (sponsor), bi_reader row scope and per-app logins outside dev
+  (finding 12 part 2, not row 7). Row 8 (nightly export) is backend-core's; its needs are listed below.
 
 ## Seventh infra session, 2026-10-28: data-architecture action row 7 (lake and blobs, pilot size)
 
@@ -34,7 +56,9 @@ D-INFRA-LAKE-01.
   port 6432) where the server has it: read each view-day inside one transaction (a cursor or a single streamed
   SELECT), never a session-level setting.
 - **BI tools** (no app uses this): hand out host, port 5432 (direct, no PgBouncer), database `aron`, login `app_bi`
-  and the password from Key Vault `aron-db-pw-app-bi`; `aron-db-bi-read-url` is the JDBC form for JDBC clients.
+  and the password from Key Vault `aron-db-pw-app-bi`. `aron-db-bi-read-url` (JDBC) is built from `aron-db-read-url`,
+  so it goes through PgBouncer (port 6432, transaction pooling) where the server has one; give it only to clients that
+  need no session state.
 
 ### Open items
 

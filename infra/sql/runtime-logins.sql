@@ -131,9 +131,10 @@ BEGIN
   IF bad IS NOT NULL THEN RAISE EXCEPTION 'unwanted memberships remain: %', bad; END IF;
 END $$;
 
--- Read-only logins: SELECT on dw.v_* views and nothing else in app, dw, stg or public (no other relation, no write on
--- any, no CREATE), and no SECURITY DEFINER function they may execute there (one would lend them its owner's writes).
--- Extension objects are left out (Azure's own, granted to PUBLIC). Proves the bi_reader grant map as the logins see
+-- Read-only logins: SELECT on dw.v_* views and nothing else (no other relation, no write on any, no CREATE), and no
+-- SECURITY DEFINER function they may execute (one would lend them its owner's writes), in app, dw, stg, public and
+-- every schema a non-superuser owns (on Azure the admin login is not a superuser, so any schema a later migration
+-- creates; Azure's own schemas belong to its superuser). Extension objects are left out (Azure's own, granted to PUBLIC). Proves the bi_reader grant map as the logins see
 -- it, after every deploy.
 DO $$
 DECLARE bad text;
@@ -141,7 +142,8 @@ BEGIN
   SELECT string_agg(format('%s:%s.%s', l, n.nspname, c.relname), ', ') INTO bad
     FROM unnest(ARRAY['app_bi', 'lake_export']) l
     CROSS JOIN pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
-   WHERE n.nspname IN ('app', 'dw', 'stg', 'public') AND c.relkind IN ('r', 'p', 'v', 'm', 'f', 'S')
+   WHERE (n.nspname IN ('app', 'dw', 'stg', 'public') OR NOT (SELECT rolsuper FROM pg_roles WHERE oid = n.nspowner))
+     AND c.relkind IN ('r', 'p', 'v', 'm', 'f', 'S')
      AND NOT EXISTS (SELECT 1 FROM pg_depend d WHERE d.classid = 'pg_class'::regclass AND d.objid = c.oid AND d.deptype = 'e')
      AND (has_any_column_privilege(l, c.oid, 'INSERT') OR has_any_column_privilege(l, c.oid, 'UPDATE')
           OR has_any_column_privilege(l, c.oid, 'REFERENCES')
@@ -152,12 +154,14 @@ BEGIN
   IF bad IS NOT NULL THEN RAISE EXCEPTION 'read-only logins reach more than SELECT on dw.v_*: %', bad; END IF;
   SELECT string_agg(format('%s:%s', l, n.nspname), ', ') INTO bad
     FROM unnest(ARRAY['app_bi', 'lake_export']) l CROSS JOIN pg_namespace n
-   WHERE n.nspname IN ('app', 'dw', 'stg', 'public') AND has_schema_privilege(l, n.oid, 'CREATE');
+   WHERE (n.nspname IN ('app', 'dw', 'stg', 'public') OR NOT (SELECT rolsuper FROM pg_roles WHERE oid = n.nspowner))
+     AND has_schema_privilege(l, n.oid, 'CREATE');
   IF bad IS NOT NULL THEN RAISE EXCEPTION 'read-only logins may create objects in: %', bad; END IF;
   SELECT string_agg(format('%s:%s.%s', l, n.nspname, f.proname), ', ') INTO bad
     FROM unnest(ARRAY['app_bi', 'lake_export']) l
     CROSS JOIN pg_proc f JOIN pg_namespace n ON n.oid = f.pronamespace
-   WHERE n.nspname IN ('app', 'dw', 'stg', 'public') AND f.prosecdef AND has_function_privilege(l, f.oid, 'EXECUTE')
+   WHERE (n.nspname IN ('app', 'dw', 'stg', 'public') OR NOT (SELECT rolsuper FROM pg_roles WHERE oid = n.nspowner))
+     AND f.prosecdef AND has_function_privilege(l, f.oid, 'EXECUTE')
      AND NOT EXISTS (SELECT 1 FROM pg_depend d WHERE d.classid = 'pg_proc'::regclass AND d.objid = f.oid AND d.deptype = 'e');
   IF bad IS NOT NULL THEN RAISE EXCEPTION 'read-only logins may execute SECURITY DEFINER functions: %', bad; END IF;
   SELECT string_agg(l, ', ') INTO bad FROM unnest(ARRAY['app_bi', 'lake_export']) l
