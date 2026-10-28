@@ -236,12 +236,13 @@ class RebuildReconcileTest {
     fun theStaleScanDoesNotReviveABackedOffOrDeadKey() {
         val w = worker(); w.runUntilIdle()
         exec("DELETE FROM app.dirty_key")
+        // Two planned route-days without an aggregate row: the scan wants both. R1's key is backed off (3 failed attempts), R2's is not queued.
+        exec("DELETE FROM dw.agg_daily_route WHERE business_date = '$day' AND route_id IN (${routeId("R1")}, ${routeId("R2")})")
         exec("SELECT app.mark_dirty('route_day_agg', ${routeId("R1")}, DATE '$day', 'memo.created')")
         exec("UPDATE app.dirty_key SET attempts = 3, not_before = TIMESTAMPTZ '2030-01-01 00:00Z'")
-        // A check-in received now makes the scan consider the route-day; the backed-off key must keep its attempts and back-off.
-        exec("UPDATE app.attendance_event SET received_at = now() WHERE route_id = ${routeId("R1")}")
-        w.runUntilIdle()
-        assertEquals(3, long("SELECT attempts FROM app.dirty_key WHERE subject_id = ${routeId("R1")}"))
+        fresh.db.jdbi.useHandle<Exception> { h -> DashboardSummaries.dirtyStale(h, Instant.EPOCH, day) }
+        assertEquals(1, long("SELECT count(*) FROM app.dirty_key WHERE subject_id = ${routeId("R2")} AND reason = 'stale_scan'"), "the scan does mark an unqueued key")
+        assertEquals(3, long("SELECT attempts FROM app.dirty_key WHERE subject_id = ${routeId("R1")}"), "a backed-off key keeps its attempts")
         assertEquals(1, long("SELECT count(*) FROM app.dirty_key WHERE subject_id = ${routeId("R1")} AND not_before IS NOT NULL"))
     }
 
