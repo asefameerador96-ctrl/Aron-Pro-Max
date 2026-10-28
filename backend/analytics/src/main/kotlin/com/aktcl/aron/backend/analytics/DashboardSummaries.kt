@@ -245,7 +245,13 @@ internal object DashboardSummaries {
         ) s
         """,
     ).bind("today", today).bind("since", since).map { rs, _ -> rs.getLong(1) to rs.getObject(2, LocalDate::class.java) }.list()
-        .onEach { (r, d) -> h.execute("SELECT app.mark_dirty('route_day_agg', ?, ?, 'stale_scan')", r, d) }.size
+        .onEach { (r, d) ->
+            // A key already queued by an audited rebuild or a reconcile keeps that reason (the restatement log reads it): it is rebuilt anyway.
+            h.execute(
+                "SELECT app.mark_dirty('route_day_agg', ?, ?, 'stale_scan') WHERE NOT EXISTS (SELECT 1 FROM app.dirty_key k WHERE k.kind = 'route_day_agg' " +
+                    "AND k.subject_id = ? AND k.business_date = ? AND (k.reason LIKE 'rebuild%' OR k.reason = 'reconcile'))", r, d, r, d,
+            )
+        }.size
 
     /** The summary tables are current as of the time given: see [touchFreshness]. */
     fun touchFreshness(h: Handle, now: Instant) {

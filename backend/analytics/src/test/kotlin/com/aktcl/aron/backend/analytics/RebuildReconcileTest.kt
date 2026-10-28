@@ -179,7 +179,7 @@ class RebuildReconcileTest {
         failing = false
         assertEquals(0, w.drain(), "still dead after the cause is fixed")
         assertEquals(1, w.redrive("route_day_agg", routeId("R1"), day))
-        assertEquals(1, w.drain(), "the re-driven key rebuilds")
+        assertEquals(2, w.drain(), "the re-driven key rebuilds, and its zone-day follows in the same pass")
         assertEquals(0, long("SELECT count(*) FROM app.dirty_key WHERE subject_id = ${routeId("R1")} AND kind = 'route_day_agg'"))
     }
 
