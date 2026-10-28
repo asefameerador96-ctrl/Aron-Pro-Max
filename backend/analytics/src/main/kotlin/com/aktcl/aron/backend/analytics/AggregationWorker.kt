@@ -228,21 +228,20 @@ class AggregationWorker(
         val today = com.aktcl.aron.rules.BusinessDate.of(clock.now().toEpochMilli()).toJavaLocalDate()
         h.createQuery(
             """
-            SELECT route_id, business_date FROM app.route_day WHERE business_date >= :from
-            UNION SELECT route_id, business_date FROM app.visit WHERE business_date >= :from AND route_id IS NOT NULL
-            UNION SELECT route_id, business_date FROM app.memo WHERE business_date >= :from AND route_id IS NOT NULL
-            UNION SELECT route_id, business_date FROM app.due_collection WHERE business_date >= :from AND route_id IS NOT NULL
+            SELECT count(*) FROM (SELECT app.mark_dirty('route_day_agg', k.route_id, k.business_date, 'rebuild_once') FROM (
+              SELECT route_id, business_date FROM app.route_day WHERE business_date >= :from
+              UNION SELECT route_id, business_date FROM app.visit WHERE business_date >= :from AND route_id IS NOT NULL
+              UNION SELECT route_id, business_date FROM app.memo WHERE business_date >= :from AND route_id IS NOT NULL
+              UNION SELECT route_id, business_date FROM app.due_collection WHERE business_date >= :from AND route_id IS NOT NULL) k) q
             """,
-        ).bind("from", today.minusDays(maxDays.toLong())).map { rs, _ -> rs.getLong(1) to rs.getObject(2, LocalDate::class.java) }.list()
-            .onEach { (route, date) -> h.execute("SELECT app.mark_dirty('route_day_agg', ?, ?, 'rebuild_once')", route, date) }.size
+        ).bind("from", today.minusDays(maxDays.toLong())).mapTo(Int::class.java).one()
     }
 
     /** Background loop for the `worker` role: poll every [interval] (default 5 s keeps the 60 s freshness goal with room). */
     fun start(interval: Duration = Duration.ofSeconds(5)): ScheduledExecutorService {
         val ex = Executors.newSingleThreadScheduledExecutor { r -> Thread(r, "aggregation-worker").apply { isDaemon = true } }
-        runCatching { rebuildOnce(ASWAS_MARKER) }.onFailure { log.error("as-was re-attribution queueing failed", it) }
         ex.scheduleWithFixedDelay({
-            runCatching { refreshDimensionsIfDue(); runUntilIdle() }
+            runCatching { rebuildOnce(ASWAS_MARKER); refreshDimensionsIfDue(); runUntilIdle() }
                 .onFailure { log.error("aggregation pass failed", it) }
         }, 0, interval.toMillis(), TimeUnit.MILLISECONDS)
         return ex

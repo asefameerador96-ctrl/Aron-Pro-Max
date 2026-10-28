@@ -12,7 +12,8 @@ import java.time.LocalDate
  *
  * As-was attribution (data-architecture review High 1, D-REPORTS-ASWAS-01): a rebuilt day is attributed to the zone, product tree,
  * category, outlet class and user role AS THEY WERE on its business date, never to today's master data. The zone comes from the
- * capture row (frozen at capture, V0042) and else from `app.route_zone_on`; the product tree, the geography above the zone and the
+ * route's zone history (`app.route_zone_on`, the history that also stamps the capture rows, V0042). One route-day is one zone, so the facts,
+ * the route-day and the zone-day always agree (a move during the day is effective for the whole date); the product tree, the geography above the zone and the
  * user role come from the V0119 history (`dw.v_dim_product_history`, `app.zone_history`, `dw.v_dim_user_history`). Only a row with no
  * history at all (older than the history tables) falls back to the master's current value.
  */
@@ -28,7 +29,7 @@ object Aggregator {
 
     /** The zone a route belonged to on [date] (`app.route_zone_history`), else its current zone; null for an unknown route. */
     fun zoneOn(h: Handle, routeId: Long, date: LocalDate): Long? =
-        h.createQuery("SELECT coalesce(app.route_zone_on(:r, :d), (SELECT zone_id FROM app.route WHERE id = :r))")
+        h.createQuery("SELECT coalesce(app.route_zone_on(r.id, :d), r.zone_id) FROM app.route r WHERE r.id = :r")
             .bind("r", routeId).bind("d", date).mapTo(Long::class.java).findOne().orElse(null)
 
     /** Highest outbox event id at the time of the rebuild; stamped into `last_event_id` so a row shows how fresh it is. */
@@ -84,6 +85,11 @@ object Aggregator {
               status = excluded.status, pilot = excluded.pilot, updated_at = now()
             """,
         )
+        // Keys of recent facts written before their dimension row existed (a new outlet or user rebuilt before this refresh).
+        for (t in listOf("fact_memo", "fact_visit")) h.execute(
+            "UPDATE dw.$t SET geo_key = dw.geo_key_on(route_id, business_date), outlet_key = dw.outlet_key_on(outlet_id, business_date), user_key = dw.user_key_on(user_id, business_date) " +
+                "WHERE business_date >= app.dhaka_date(now()) - 7 AND (geo_key IS NULL OR outlet_key IS NULL OR user_key IS NULL)",
+        )
         if (DashboardSummaries.ready(h)) DashboardSummaries.refreshDimensions(h)
     }
 
@@ -126,7 +132,7 @@ object Aggregator {
             INSERT INTO dw.fact_visit (business_date, visit_client_uuid, user_id, route_id, zone_id, outlet_id, visit_kind, opened_at, ended_at, outcome_code,
                                        call_declined, device_verdict, server_verdict, geo_action, distance_m, is_mock, planned, voided, entry_source, entered_by_user_id, last_event_id, updated_at,
                                        geo_key, outlet_key, user_key)
-            SELECT v.business_date, v.client_uuid, v.user_id, v.route_id, coalesce(v.zone_id, :z), v.outlet_id, v.visit_kind, v.opened_at, v.ended_at, v.outcome_code,
+            SELECT v.business_date, v.client_uuid, v.user_id, v.route_id, :z, v.outlet_id, v.visit_kind, v.opened_at, v.ended_at, v.outcome_code,
                    v.call_declined, v.verdict, v.server_verdict, v.geo_action, v.distance_m, (v.fix_is_mock IS TRUE OR v.verdict = 'mocked'),
                    v.planned, v.voided_at IS NOT NULL, v.entry_source, v.entered_by_user_id, :wm, now(),
                    dw.geo_key_on(v.route_id, v.business_date), dw.outlet_key_on(v.outlet_id, v.business_date), dw.user_key_on(v.user_id, v.business_date)
@@ -144,7 +150,7 @@ object Aggregator {
             INSERT INTO dw.fact_memo (business_date, memo_client_uuid, memo_no, user_id, route_id, zone_id, outlet_id, status, committed_at, line_count,
                                       gross_mtk, offer_discount_mtk, drp_discount_mtk, qc_deduction_mtk, net_mtk, paid_mtk, due_mtk, is_credit,
                                       captured_offline, received_at, entry_source, entered_by_user_id, last_event_id, updated_at, geo_key, outlet_key, user_key)
-            SELECT m.business_date, m.client_uuid, m.memo_no, m.user_id, m.route_id, coalesce(m.zone_id, :z), m.outlet_id,
+            SELECT m.business_date, m.client_uuid, m.memo_no, m.user_id, m.route_id, :z, m.outlet_id,
                    CASE WHEN m.voided_at IS NOT NULL THEN 'voided' ELSE m.status END, m.committed_at, m.line_count,
                    m.gross_mtk, m.offer_discount_mtk, m.drp_discount_mtk, m.qc_deduction_mtk, m.net_mtk, m.paid_mtk, m.due_mtk, m.is_credit,
                    m.captured_offline, m.received_at, m.entry_source, m.entered_by_user_id, :wm, now(),
@@ -236,7 +242,7 @@ object Aggregator {
             SELECT :d, :r, coalesce(ph.brand_id, b.id), count(DISTINCT m.client_uuid), coalesce(sum(ml.qty_base) FILTER (WHERE ml.line_kind = 'sale'), 0),
                    coalesce(sum(ml.gross_mtk) FILTER (WHERE ml.line_kind = 'sale'), 0), :wm, now()
               FROM app.memo_line ml JOIN app.memo m ON m.client_uuid = ml.memo_client_uuid AND m.business_date = ml.business_date
-              JOIN app.sku s ON s.id = ml.sku_id JOIN app.product_node v ON v.id = s.variant_id JOIN app.product_node b ON b.id = v.parent_id
+              JOIN app.sku s ON s.id = ml.sku_id LEFT JOIN app.product_node v ON v.id = s.variant_id LEFT JOIN app.product_node b ON b.id = v.parent_id
               $PRODUCT_ON
              WHERE m.route_id = :r AND m.business_date = :d AND $ACTIVE_MEMO AND ml.voided_at IS NULL AND ml.line_kind = 'sale'
              GROUP BY coalesce(ph.brand_id, b.id)
@@ -252,7 +258,7 @@ object Aggregator {
             INSERT INTO dw.agg_daily_route_segment (business_date, route_id, segment_id, memo_count, sold_qty_base, gross_mtk, last_event_id, updated_at)
             SELECT :d, :r, coalesce(ph.segment_id, b.parent_id), count(DISTINCT m.client_uuid), coalesce(sum(ml.qty_base), 0), coalesce(sum(ml.gross_mtk), 0), :wm, now()
               FROM app.memo_line ml JOIN app.memo m ON m.client_uuid = ml.memo_client_uuid AND m.business_date = ml.business_date
-              JOIN app.sku s ON s.id = ml.sku_id JOIN app.product_node v ON v.id = s.variant_id JOIN app.product_node b ON b.id = v.parent_id
+              JOIN app.sku s ON s.id = ml.sku_id LEFT JOIN app.product_node v ON v.id = s.variant_id LEFT JOIN app.product_node b ON b.id = v.parent_id
               $PRODUCT_ON
              WHERE m.route_id = :r AND m.business_date = :d AND $ACTIVE_MEMO AND ml.voided_at IS NULL AND ml.line_kind = 'sale'
              GROUP BY coalesce(ph.segment_id, b.parent_id)

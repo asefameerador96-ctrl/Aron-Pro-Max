@@ -111,16 +111,44 @@ class AsWasAttributionTest {
     }
 
     @Test
-    fun theFactsCarryTheDimensionKeysOfTheirDateAndDimUserIsFilled() {
+    fun aRecordFrozenInAnotherZoneStillCountsInTheRouteDaysZone() {
+        // A route moved during the day: the morning's capture rows froze Z1, the afternoon's Z2. The route-day is one zone, so the hourly
+        // and the daily zone rows agree and Z1 is not left with memos its daily row lacks.
+        exec("ALTER TABLE app.memo DISABLE TRIGGER memo_immutable")
+        exec("UPDATE app.memo SET zone_id = (SELECT id FROM app.zone WHERE code = 'Z2') WHERE client_uuid = '00000000-0000-4000-8000-0000000000a4'")
+        exec("ALTER TABLE app.memo ENABLE TRIGGER memo_immutable")
+        val w = AggregationWorker(fresh.db)
+        w.runUntilIdle()
+        for (z in listOf("Z1", "Z2")) assertEquals(
+            long("SELECT coalesce(sum(net_mtk), 0) FROM dw.agg_daily_zone a JOIN app.zone x ON x.id = a.zone_id WHERE x.code = '$z'"),
+            long("SELECT coalesce(sum(net_mtk), 0) FROM dw.agg_hourly_zone a JOIN app.zone x ON x.id = a.zone_id WHERE x.code = '$z'"), "hourly vs daily in $z",
+        )
+        assertEquals(0, long("SELECT count(*) FROM dw.fact_memo f WHERE f.zone_id <> (SELECT zone_id FROM dw.agg_daily_route a WHERE a.route_id = f.route_id AND a.business_date = f.business_date)"))
+    }
+
+    @Test
+    fun theFactsKeepTheKeysOfTheirDateAfterARouteMoveAndDimUserIsFilled() {
         fresh.db.jdbi.useHandle<Exception> { Aggregator.refreshDimensions(it) }
         val w = AggregationWorker(fresh.db)
         w.runUntilIdle()
         assertEquals(3, long("SELECT count(*) FROM dw.dim_user WHERE role = 'SR'"), "dim_user is filled from app_user")
         assertEquals(0, long("SELECT count(*) FROM dw.fact_memo WHERE geo_key IS NULL OR outlet_key IS NULL OR user_key IS NULL"))
         assertEquals(0, long("SELECT count(*) FROM dw.fact_visit WHERE geo_key IS NULL OR outlet_key IS NULL OR user_key IS NULL"))
-        val key = long("SELECT f.geo_key FROM dw.fact_memo f JOIN app.route r ON r.id = f.route_id WHERE r.code = 'R1' LIMIT 1")
-        assertEquals(key, long("SELECT dw.geo_key_on((SELECT id FROM app.route WHERE code = 'R1'), DATE '$day')"))
-        assertNotNull(key)
+        val oldKey = long("SELECT f.geo_key FROM dw.fact_memo f JOIN app.route r ON r.id = f.route_id WHERE r.code = 'R2' LIMIT 1")
+        assertEquals("Z1", text("SELECT zone_name FROM dw.dim_geo_version WHERE geo_key = $oldKey").let { if (it == "Zone1") "Z1" else it })
+        exec("UPDATE app.route SET zone_id = (SELECT id FROM app.zone WHERE code = 'Z2') WHERE code = 'R2'")
+        fresh.db.jdbi.useHandle<Exception> { Aggregator.refreshDimensions(it) }
+        fullRebuild(w)
+        assertEquals(oldKey, long("SELECT f.geo_key FROM dw.fact_memo f JOIN app.route r ON r.id = f.route_id WHERE r.code = 'R2' LIMIT 1"), "the old date keeps its version")
+        assertTrue(long("SELECT dw.geo_key_on((SELECT id FROM app.route WHERE code = 'R2'), app.dhaka_date(now()))") != oldKey, "a new date gets the new version")
+    }
+
+    @Test
+    fun anUnknownRouteHasNoZoneAndIsNotRebuilt() {
+        fresh.db.jdbi.useHandle<Exception> { h ->
+            assertEquals(null, Aggregator.zoneOn(h, 999_999L, day))
+            assertEquals(emptySet(), Aggregator.rebuildRouteDay(h, 999_999L, day))
+        }
     }
 
     @Test
