@@ -122,10 +122,11 @@ internal object AsWasSql {
         if (plain) "$join dw.dim_product $alias ON $alias.sku_id = $sku" else "$join (${productBody(lo, hi)}\n        ) $alias ${on(alias, "sku_id", sku, date)}"
 
     /**
-     * Every product row the timeline holds for the window (the as-was rows of the window plus the current row where the history has no
+     * Every product row the timeline holds for the window (the as-was rows that overlap the window; the current row where the history has no
      * period), as a FROM item for lists of nodes, categories and units that a product filter selects ("which brands, which unit").
      */
-    fun productAll(alias: String, lo: String? = null, hi: String? = null, plain: Boolean = false): String = if (plain) "dw.dim_product $alias" else "(${productBody(lo, hi)}\n        ) $alias"
+    fun productAll(alias: String, lo: String? = null, hi: String? = null, plain: Boolean = false): String = if (plain) "dw.dim_product $alias" else
+        "(SELECT z.* FROM (${productBody(lo, hi)}\n        ) z WHERE ${if (lo != null && hi != null) "z.as_from <= CAST($hi AS date) AND z.as_to > CAST($lo AS date)" else "true"}) $alias"
 
     /** `dw.dim_outlet` as of the date: zone, channel, sub-channel, geo class and kind. */
     fun outlet(alias: String, outlet: String, date: String, join: String = "JOIN", lo: String? = null, hi: String? = null, plain: Boolean = false): String =
