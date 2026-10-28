@@ -45,3 +45,9 @@ D-TEST-DATE-PIN-01: 22 DataFlowTrace tests failed at Dhaka midnight because the 
 - **backend-admin (next session):** a route, zone or product move emits no domain event, so the moved route's current route-day is not requeued for the as-was rebuild until that route's next sync; AdminRoutes (and the zone and product admin writes) should `mark_dirty` the affected route-days (D-REPORTS-ASWAS-01, open item 3).
 - **db #14 pick list:** `docs/requests/backend-reports-db-dim-version-rekey.md` (dimension versions are dated by projector runs, not by the change; rekey before the final-account move; optional for the pilot).
 - **backend-reports (after row 3):** the read half: NationalDashboard, ReportHandlersB, NationalMaps and DailyTrackingApi still join the current dw.dim_geo / dim_outlet / dim_product for division, wing, channel and brand names; move them onto the history views as a separate candidate with its own checker pass.
+
+### 2026-10-28 10:25 UTC — follow-ups from infra candidate 1 (lead)
+- **infra #7, candidate 2 (lead approved):** narrow the existing media tiering rule (Cool at 30 days, Cold at 90) to `photos/` only; `assets/` (pack pictures the phones download) and `support/` stay Hot. Small slice, own lane run, Opus checker.
+- **infra, later (not row 7):** `bi_reader` row scope and per-app logins outside dev (review finding 12, part 2); the final-account lake SKU question is now a row in docs/28 "Deferred to the final account".
+- **backend-core #21 pick list:** `docs/requests/backend-core-photo-retention-exemptions.md` (a prefix lifecycle rule cannot exempt active-outlet reference photos or retention holds; latent until a photo is 730 days old).
+- **Lead, on the first INT deploy that carries D-INFRA-LAKE-01:** read the deploy's "Database logins" row (five logins) and the infra step; the lake account is created by that deploy.
