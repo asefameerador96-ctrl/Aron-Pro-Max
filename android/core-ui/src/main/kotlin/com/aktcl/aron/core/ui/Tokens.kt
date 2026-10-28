@@ -241,7 +241,112 @@ data class AronLookColors(
     val panelButtonEnd: Color = hex(0x7D2B7B), val printStart: Color = hex(0x4A1C99), val printEnd: Color = hex(0xA73964),
     /** Lane kit requests 2026-10-19: amber (memo Edit), gold (rating stars), the quiet loading bars, the info-card border (summary.png). */
     val amber: Color = hex(0xE08A00), val gold: Color = hex(0xF5B301), val skeleton: Color = hex(0xE3E3E3), val infoBorder: Color = hex(0xC0C0C0),
+    /** The TSO roles (D-TSO-MAN-13): set only by [AronLook.TsoNight] and [AronLook.TsoSunlight]; null in the SR and AMO looks. */
+    val night: AronNightRoles? = null,
 )
+
+/**
+ * The TSO look's own roles (D-TSO-MAN-13, build contract s5 A1), sampled from the owner's screenshots docs/ui-reference/tso/05-10, 17,
+ * 24, 39 and 44 (JPEG, 5x5 averages; the contract's starting values where the JPEG blurs): navy page, purple-gradient glow cards, navy
+ * outline cards with a teal edge, cyan figures, green-to-yellow gradient titles, the grey round back button, glow fields and gradient
+ * buttons. [AronNightRoles.Sunlight] is the same set solid (white surfaces, black ink, no gradient or glow): Sunlight overrides the
+ * night look. Contrast is computed by TokenContrastTest: key figures and button labels 7:1, body 4.5:1, graphics 3:1.
+ *
+ * Deviation from the screenshots, for legibility (rule 14): the bright Login (cyan), Final Submit (lime), Cancel (green) and Log Out
+ * (orange) buttons carry a navy label ([onBright]) where the screenshots show white (white on those fills is about 2:1); the blue
+ * button is a little deeper ([blue]) so its white label reaches 7:1; the cyan button's lower stop and the orange stop are lifted so the
+ * navy label holds 7:1 on both stops.
+ */
+@Immutable
+data class AronNightRoles(
+    /** True in Sunlight: every surface is drawn solid (no gradient, glow or translucent layer). */
+    val solid: Boolean,
+    val page: Color,
+    /** The purple glow card (Sales, Geo Fencing): gradient from [glowCardStart] (top start) to [glowCardEnd], halo [glow]. */
+    val glowCardStart: Color, val glowCardEnd: Color, val glow: Color,
+    /** The navy outline card (channel, CPR, Brand CPR, Login status, Segment, Target Status) and its teal edge. */
+    val outlineCard: Color, val outlineEdge: Color,
+    /** The row card of a list (screenshot 8) and its edge. */
+    val rowCard: Color, val rowEdge: Color,
+    /** Cyan key figures (40.0, 1.7 K) and the card labels on the glow card. */
+    val figure: Color, val label: Color,
+    /** Green and teal captions of the CPR card ("Target Outlet", "Successful Calls"). */
+    val positive: Color, val teal: Color,
+    /** The screen title gradient (green to yellow). */
+    val titleStart: Color, val titleEnd: Color,
+    val ink: Color, val inkMuted: Color,
+    /** The grey round back button and its chevron. */
+    val backButton: Color, val backInk: Color,
+    /** The glow text field: fill, glowing edge, placeholder. */
+    val field: Color, val fieldEdge: Color, val placeholder: Color,
+    /** The drawer: surface, the rules between groups, the row chevrons. */
+    val drawer: Color, val divider: Color, val chevron: Color,
+    /** The bell's unread badge and its digits. */
+    val badge: Color, val onBadge: Color,
+    /** The Home FAB, its glow and its glyph. */
+    val fab: Color, val fabGlow: Color, val onFab: Color,
+    /** Rings: the track on a glow card, the track on an outline card, the fill. */
+    val ringTrack: Color, val ringTrackOutline: Color, val ringFill: Color,
+    /** The login and Bikroy Joma bars: light track, blue fill ramp. */
+    val barTrack: Color, val barFillStart: Color, val barFillEnd: Color,
+    /** The segment chart lines and the channel pie. */
+    val valueLine: Color, val volumeLine: Color, val pie: Color, val gridLine: Color,
+    /** Gradient buttons: cyan (Login), lime (Final Submit, plans), blue (Submit ticket); [onBright] on cyan and lime, [onBlue] on blue. */
+    val cyanStart: Color, val cyanEnd: Color, val limeStart: Color, val limeEnd: Color, val blue: Color, val onBright: Color, val onBlue: Color,
+    /** The logout dialog: green Cancel, orange Log Out, the dialog surface ramp. */
+    val cancel: Color, val logoutStart: Color, val logoutEnd: Color, val dialogTop: Color, val dialogBottom: Color,
+    /** The selected segment of a segmented tab (Monthly Target), the pill tabs and the status chips. */
+    val segmentOn: Color, val onSegment: Color, val pillOn: Color, val pillOff: Color, val chip: Color, val chipInk: Color,
+    /** The round logo plate of the login (mint to pink). */
+    val plateTop: Color, val plateBottom: Color,
+    /** Status inks readable on the navy cards. */
+    val danger: Color, val warning: Color, val success: Color,
+) {
+    companion object {
+        val Night = AronNightRoles(
+            solid = false, page = hex(0x040C3A),
+            glowCardStart = hex(0x3A1F6B), glowCardEnd = hex(0x24204F), glow = hex(0x7B3FE4),
+            outlineCard = hex(0x101C42), outlineEdge = hex(0x1C6B80), rowCard = hex(0x0A1A3E), rowEdge = hex(0x1D3A60),
+            figure = hex(0x2ED3C6), label = hex(0xD7CCF0), positive = hex(0x5BD16A), teal = hex(0x2ED3C6),
+            titleStart = hex(0x6EE7A0), titleEnd = hex(0xE8E35A),
+            ink = hex(0xFFFFFF), inkMuted = hex(0xB8C2E5), backButton = hex(0x47516B), backInk = hex(0xFFFFFF),
+            field = hex(0x131C45), fieldEdge = hex(0x7B3FE4), placeholder = hex(0x8A93B8),
+            drawer = hex(0x03103A), divider = hex(0x8890B0), chevron = hex(0x8A98B5),
+            badge = hex(0xD32F2F), onBadge = hex(0xFFFFFF), fab = hex(0x2F80ED), fabGlow = hex(0x3DA0FE), onFab = hex(0xFFFFFF),
+            ringTrack = hex(0x615180), ringTrackOutline = hex(0x374462), ringFill = hex(0x51DAA6),
+            barTrack = hex(0xE1E6E1), barFillStart = hex(0x9BD0FF), barFillEnd = hex(0x2F80ED),
+            valueLine = hex(0xF28C28), volumeLine = hex(0x2ED3C6), pie = hex(0xD81B87), gridLine = hex(0x1E2A55),
+            cyanStart = hex(0x3BB8D8), cyanEnd = hex(0x78A8F2), limeStart = hex(0xA4C81A), limeEnd = hex(0x62B843), blue = hex(0x2244D0),
+            onBright = hex(0x04122F), onBlue = hex(0xFFFFFF),
+            cancel = hex(0x00C850), logoutStart = hex(0xF69703), logoutEnd = hex(0xE8930F), dialogTop = hex(0x04103A), dialogBottom = hex(0x0D1A55),
+            segmentOn = hex(0x0F844F), onSegment = hex(0xFFFFFF), pillOn = hex(0x2244D0), pillOff = hex(0x1A2550), chip = hex(0x2A3556), chipInk = hex(0xC9D0E6),
+            plateTop = hex(0xBFF5BC), plateBottom = hex(0xFFDCE0),
+            danger = hex(0xFF7A7A), warning = hex(0xFFB74D), success = hex(0x5BD16A),
+        )
+
+        /** The TSO roles in Sunlight: solid white surfaces, black ink, deep solid fills with white labels (docs/32 s2a). */
+        val Sunlight = AronNightRoles(
+            solid = true, page = hex(0xF4F4F4),
+            glowCardStart = hex(0xFFFFFF), glowCardEnd = hex(0xFFFFFF), glow = hex(0x202020),
+            outlineCard = hex(0xFFFFFF), outlineEdge = hex(0x202020), rowCard = hex(0xFFFFFF), rowEdge = hex(0x202020),
+            figure = hex(0x000000), label = hex(0x202020), positive = hex(0x00642F), teal = hex(0x085B6B),
+            titleStart = hex(0x000000), titleEnd = hex(0x000000),
+            ink = hex(0x000000), inkMuted = hex(0x202020), backButton = hex(0x202020), backInk = hex(0xFFFFFF),
+            field = hex(0xFFFFFF), fieldEdge = hex(0x202020), placeholder = hex(0x505050),
+            drawer = hex(0xFFFFFF), divider = hex(0x202020), chevron = hex(0x202020),
+            badge = hex(0xB0001C), onBadge = hex(0xFFFFFF), fab = hex(0x1A2AA8), fabGlow = hex(0x1A2AA8), onFab = hex(0xFFFFFF),
+            ringTrack = hex(0xC8C8C8), ringTrackOutline = hex(0xC8C8C8), ringFill = hex(0x00642F),
+            barTrack = hex(0xC8C8C8), barFillStart = hex(0x1A2AA8), barFillEnd = hex(0x1A2AA8),
+            valueLine = hex(0x8A3F00), volumeLine = hex(0x085B6B), pie = hex(0x7A0E52), gridLine = hex(0xC8C8C8),
+            cyanStart = hex(0x1A2AA8), cyanEnd = hex(0x1A2AA8), limeStart = hex(0x00642F), limeEnd = hex(0x00642F), blue = hex(0x1A2AA8),
+            onBright = hex(0xFFFFFF), onBlue = hex(0xFFFFFF),
+            cancel = hex(0x00642F), logoutStart = hex(0x8A3F00), logoutEnd = hex(0x8A3F00), dialogTop = hex(0xFFFFFF), dialogBottom = hex(0xFFFFFF),
+            segmentOn = hex(0x00642F), onSegment = hex(0xFFFFFF), pillOn = hex(0x1A2AA8), pillOff = hex(0xFFFFFF), chip = hex(0xEEEEEE), chipInk = hex(0x202020),
+            plateTop = hex(0xFFFFFF), plateBottom = hex(0xFFFFFF),
+            danger = hex(0xB0001C), warning = hex(0x8A3F00), success = hex(0x00642F),
+        )
+    }
+}
 
 object AronLook {
     val Default = AronLookColors(
@@ -272,6 +377,35 @@ object AronLook {
         tableHeaderStart = hex(0x202020), tableHeaderMid = hex(0x202020), tableHeaderEnd = hex(0x202020),
         amber = hex(0x8A4B00), infoBorder = hex(0x202020),
     )
+
+    /**
+     * The TSO look (D-TSO-MAN-13; ruling 7): the login and every signed-in TSO screen. The shared kit roles are the navy versions
+     * (navy page and cards, white ink, the cyan-to-blue bar and primary ramp with the navy label); the TSO-only roles are in
+     * [AronLookColors.night] ([AronNightRoles.Night]). PARITY-SPEC lines 5 and 47 ("TSO = SR look") are superseded for TSO.
+     */
+    val TsoNight = Default.copy(
+        barStart = hex(0x3BB8D8), barMid = hex(0x5AB0E5), barEnd = hex(0x78A8F2), onBar = hex(0x04122F),
+        red = hex(0xFF7A7A), minus = hex(0xD32F2F), purple = hex(0xB9A6FF), panel = hex(0x3A1F6B), onPanel = hex(0xFFFFFF), onPanelMuted = hex(0xD7CCF0),
+        page = hex(0x040C3A), pageHome = hex(0x040C3A), card = hex(0x101C42), tileHairline = hex(0x1D3A60), tileMenu = hex(0x101C42),
+        tileLabel = hex(0xFFFFFF), tileLabelOutlet = hex(0xFFFFFF),
+        panelDark = hex(0x0A1433), tableHeader = hex(0x1C2A5A), rowAlt = hex(0x0C1840),
+        targetTop = hex(0x3A1F6B), targetBottom = hex(0x24204F), track = hex(0xE1E6E1), trackFill = hex(0x2F80ED),
+        disabledFill = hex(0x2A3556), disabledText = hex(0xB8C2E5), secondaryText = hex(0xFFFFFF),
+        ink = hex(0xFFFFFF), inkMuted = hex(0xB8C2E5), columnHeader = hex(0xB8C2E5), underline = hex(0x5A6690),
+        silhouette = hex(0x1C2A5A), silhouetteInk = hex(0xB8C2E5),
+        badge = hex(0xD32F2F), printerOff = hex(0xFF7A7A), printerOn = hex(0xB9A6FF),
+        noticeFill = hex(0x3B1A2A), online = hex(0x5BD16A), offlineDot = hex(0x8A93B8), rowRule = hex(0x1D3A60), primaryDisabled = hex(0x2A3556),
+        avatarSquare = hex(0x1C2A5A), pinSquare = hex(0x1C2A5A), locationCard = hex(0x101C42),
+        goStart = hex(0xA4C81A), goEnd = hex(0x62B843), neutralStart = hex(0x2A3556), neutralEnd = hex(0x4A5680),
+        secondaryDisabledText = hex(0xB8C2E5), hint = hex(0x8A93B8), caret = hex(0xB8C2E5),
+        tableHeaderStart = hex(0x1C2A5A), tableHeaderMid = hex(0x1C2A5A), tableHeaderEnd = hex(0x1C2A5A),
+        panelButtonEnd = hex(0x78A8F2), printStart = hex(0x3BB8D8), printEnd = hex(0x78A8F2),
+        amber = hex(0xFFB74D), gold = hex(0xFCB203), skeleton = hex(0x1C2A5A), infoBorder = hex(0x2A3A6A),
+        night = AronNightRoles.Night,
+    )
+
+    /** The TSO look in Sunlight: [Sunlight] with the solid TSO roles ([AronNightRoles.Sunlight]); Sunlight overrides the night look. */
+    val TsoSunlight = Sunlight.copy(night = AronNightRoles.Sunlight)
 
     /** Card and tile radius 12 dp, button radius 8 dp, the plus/minus square 36 dp drawn inside a 48 dp hit area. */
     val CardRadius: Dp = 12.dp
