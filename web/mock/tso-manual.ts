@@ -33,6 +33,8 @@ function canonical(v: unknown): string {
   return JSON.stringify(v);
 }
 
+const PHOTO = `data:image/svg+xml;charset=UTF-8,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96"><rect width="96" height="96" fill="#6b4f2b"/><circle cx="48" cy="40" r="18" fill="#e8c27a"/></svg>')}`;
+
 /** The reopen window of the mock (cfg.day.reopen_window_days default). */
 export const REOPEN_WINDOW_DAYS = 3;
 /** Zones the mock knows (the seeded geography); a reopen of another zone is 404. */
@@ -98,6 +100,10 @@ export async function handleTsoManual(s: TsoManStore, ctx: Ctx, me: TsoManCaller
     ctx.audit("zone_day", key, "zone_day.reopened", { final_submitted: true }, { final_submitted: false }, String(b.reason).trim());
     return done(200, result);
   }
+
+  // A media read URL for every signed-in role (the feedback inbox and the desk read it as master-data users, whom the dashboard
+  // mock does not serve). The picture is a small inline SVG; a test fails a read with a stub.
+  if (/^\/v1\/media\/[0-9a-f-]{36}\/read-url$/.test(path) && method === "GET") return done(200, { url: PHOTO, expires_at: new Date(Date.now() + 300_000).toISOString() } satisfies Schemas["MediaReadUrl"]);
 
   if (path === "/v1/me/notifications" && method === "GET") {
     const p = url.searchParams;

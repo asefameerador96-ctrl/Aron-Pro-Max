@@ -70,6 +70,23 @@ export async function loadRefLabel(ref: RefMeta, id: string, token: string): Pro
   return (ref.label ?? ["name"]).map((k) => String(r.data[k] ?? "")).filter(Boolean).join(" · ") || null;
 }
 
+// tso-manual W1 (FB-12): pictures of `media` fields.
+const MEDIA_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+/** Read URLs of the `media` fields of these rows, as options (value = media UUID, label = URL) for the list cells. One read per
+ *  distinct picture of the page; a picture whose URL cannot be read is left out (its cell shows a dash). */
+export async function loadMediaRefs(fields: readonly AnyEntity["fields"][number][], token: string, rows: readonly Record<string, unknown>[]): Promise<Record<string, RefOption[]>> {
+  const out: Record<string, RefOption[]> = {};
+  for (const f of fields.filter((x) => x.media)) {
+    const ids = [...new Set(rows.map((r) => r[f.name]).filter((v): v is string => typeof v === "string" && MEDIA_UUID.test(v)))];
+    const got = await Promise.all(ids.map(async (id) => {
+      const r = await rawRequest<{ url?: unknown }>({ method: "GET", path: `/v1/media/${id}/read-url`, token });
+      return r.ok && typeof r.data.url === "string" ? { value: id, label: r.data.url } : null;
+    }));
+    out[f.name] = got.filter((x): x is RefOption => x !== null);
+  }
+  return out;
+}
+
 export async function loadRefOptions(ref: RefMeta, token: string): Promise<RefOption[]> {
   return (await loadRefOptionsChecked(ref, token)).options;
 }

@@ -14,7 +14,7 @@ import { DataTable, type Column } from "../kit/data-table";
 import { FilterBar, type FilterControl } from "../kit/filter-bar";
 import { EntityForm, type FormFieldDef } from "./entity-form";
 import { canRead, canWrite, entityCanEdit, isWritable, type ActionMeta, type AnyEntity, type AnyField } from "./meta";
-import { getRow, history, listRows, loadRefLabel, loadRefOptionsChecked, sanitizeFilters, type RefOption } from "./server";
+import { getRow, history, listRows, loadMediaRefs, loadRefLabel, loadRefOptionsChecked, sanitizeFilters, type RefOption } from "./server"; // tso-manual W1: loadMediaRefs
 
 type SearchParams = Record<string, string | string[] | undefined>;
 const one = (v: string | string[] | undefined, max = 80): string | undefined => (Array.isArray(v) ? v[0] : v)?.slice(0, max) || undefined;
@@ -113,10 +113,16 @@ function RefFailure({ locale }: { locale: Locale }) {
 function cell(locale: Locale, f: AnyField, row: Record<string, unknown>, refs: RefOptions = {}): ReactNode {
   const v = row[f.name];
   if (v === null || v === undefined || v === "") return <span className="text-slate-400">—</span>;
+  if (f.media) {
+    // tso-manual W1 (FB-12): a picture by its read URL (loadMediaRefs); a dash when the URL could not be read
+    const url = refs[f.name]?.find((o) => o.value === String(v))?.label;
+    // eslint-disable-next-line @next/next/no-img-element -- a compressed field photo from the storage origin (short-lived SAS URL); next/image would proxy it
+    return url ? <img src={url} alt={t(locale, f.labelKey)} width={48} height={48} loading="lazy" data-testid="media-thumb" className="h-12 w-12 rounded border border-slate-200 object-cover" /> : <span className="text-slate-400">—</span>;
+  }
   if (f.kind === "date") return formatBusinessDate(locale, String(v));
   if (f.kind === "mask") return f.maskBits?.filter((_, bit) => (Number(v) & (1 << bit)) !== 0).map((k) => t(locale, k)).join(" ") ?? String(v);
   if (f.kind === "bool") return t(locale, v ? "common.yes" : "common.no");
-  if (f.kind === "ref") return refs[f.name]?.find((o) => o.value === String(v))?.label ?? formatNumber(locale, Number(v), { useGrouping: false });
+  if (f.kind === "ref") return refs[f.name]?.find((o) => o.value === String(v))?.label ?? (f.ref?.value === "code" ? String(v) : formatNumber(locale, Number(v), { useGrouping: false })); // tso-manual W1: a code ref the list does not label shows its code, not NaN
   if (f.kind === "int") return formatNumber(locale, Number(v), { useGrouping: false });
   if (f.kind === "timestamp") return formatDateTime(locale, String(v));
   if (f.kind === "enum") return optionLabel(locale, f, String(v));
@@ -152,6 +158,7 @@ export async function EntityListPage({ meta, searchParams }: { meta: AnyEntity; 
   const cursor = one(searchParams.cursor, CURSOR_MAX);
   const [r, { refs, failed }] = await Promise.all([listRows(meta, session.at, query, cursor), loadAllRefs(meta, session.at, "list")]);
   if (!r.ok) return onApiFailure(r.status, r.problem, locale);
+  Object.assign(refs, await loadMediaRefs(meta.fields.filter((f) => f.column), session.at, r.data.items)); // tso-manual W1 (FB-12)
 
   const columns: Column<Record<string, unknown>>[] = meta.fields
     .filter((f) => f.column)
@@ -293,6 +300,7 @@ export async function EntityActionPage({ meta, id, actionKey, searchParams }: { 
     const label = await loadRefLabel(f.ref!, id, session.at);
     if (label) summaryRefs[f.name] = [{ value: id, label }];
   }));
+  Object.assign(summaryRefs, await loadMediaRefs(summary, session.at, [row.data as Record<string, unknown>])); // tso-manual W1 (FB-12)
   return (
     <div className="space-y-4">
       <h1 className="text-2xl font-bold">{t(locale, action.labelKey)}</h1>

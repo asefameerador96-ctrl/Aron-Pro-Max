@@ -90,9 +90,12 @@ export function seedTables(): Record<string, Row[]> {
       { tutorial_id: 1, kind: "video", title_en: "Taking a first order", title_bn: "প্রথম অর্ডার নেওয়া", url: "https://blob.example/tutorials/first-order.mp4", bytes: 5_000_000, duration_s: 120, sort: 1, roles: ["SR"], status: "active", version: 1 },
       { tutorial_id: 2, kind: "manual", title_en: "SR manual", title_bn: null, url: "https://blob.example/tutorials/sr-manual.pdf", bytes: 800_000, duration_s: null, sort: 2, roles: ["SR", "AMO"], status: "active", version: 1 },
     ] as unknown as Row[],
+    // tso-manual W1 (FB-03, D-TSO-MAN-36): TSO feedback in the two categories, with the contract 1.10.0 members (business date,
+    // capture time, the author's username and zone); one carries a photo for the inbox thumbnail.
     feedback: [
-      { feedback_uuid: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", user_id: 1003, category_code: "app", title: "Memo print is slow", description: "The memo takes long to print on the RPP02N.", photo_uuid: null, created_at: "2026-10-05T04:00:00.000Z", status: "new" },
-      { feedback_uuid: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", user_id: 1003, category_code: "route", title: "Route list missing an outlet", description: "Outlet is not on the Saturday route.", photo_uuid: null, created_at: "2026-10-06T04:00:00.000Z", status: "in_progress" },
+      { feedback_uuid: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", user_id: 2001, category_code: "feedback", title: "Memo print is slow", description: "The memo takes long to print on the RPP02N.", photo_uuid: "fb000000-0000-4000-8000-0000000000a1", created_at: "2026-10-05T04:00:00.000Z", status: "new", business_date: "2026-10-05", captured_at: "2026-10-05T03:58:10.000Z", username: "tso334", zone_id: 14 },
+      { feedback_uuid: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", user_id: 2001, category_code: "suggestion", title: "Route list missing an outlet", description: "Outlet is not on the Saturday route.", photo_uuid: null, created_at: "2026-10-06T04:00:00.000Z", status: "in_progress", business_date: "2026-10-06", captured_at: "2026-10-06T03:59:00.000Z", username: "tso334", zone_id: null },
+      { feedback_uuid: "cccccccc-cccc-4ccc-8ccc-cccccccccccc", user_id: 2005, category_code: "suggestion", title: "Show last month's target on the dashboard", description: "A small line under Total Target with last month's figure would help.", photo_uuid: null, created_at: "2026-10-20T05:00:00.000Z", status: "new", business_date: "2026-10-20", captured_at: "2026-10-20T04:55:00.000Z", username: "tso335", zone_id: 15 },
     ] as unknown as Row[],
     outletRequests: [
       { request_uuid: "11111111-1111-4111-8111-111111111111", request_type: "new", status: "pending", outlet_id: null, outlet_name: "New Corner Mart", route_id: 1, cluster_id: 1, requested_by_user_id: 1001, requested_at: "2026-10-05T04:00:00.000Z", rejection_reason: null, proposed: { name: "New Corner Mart", owner_name: "Rubel Ahmed" }, photos: [], events: [], version: 1 },
@@ -357,7 +360,7 @@ export function seedCodeLists(): Record<string, Item[]> {
     day_exception_reason: [it("rain", "Heavy rain", "ভারী বৃষ্টি", 1), it("hartal", "Hartal", "হরতাল", 2)],
     stock_variance_reason: [it("damaged", "Damaged", "নষ্ট", 1)],
     leave_type: [it("casual", "Casual", "নৈমিত্তিক", 1), it("sick", "Sick", null, 2), it("earn", "Earn", null, 3)], // tso-manual W1: V0027 items (sick and earn without Bangla yet)
-    feedback_category: [it("app", "App problem", "অ্যাপের সমস্যা", 1), it("route", "Route problem", "রুটের সমস্যা", 2)],
+    feedback_category: [it("suggestion", "Suggestion", null, 1), it("feedback", "Feedback", null, 2)], // tso-manual W1 (FB-03): V0027 + V0131, Bangla pending from AKTCL
     payment_mode: [it("cash", "Cash", "নগদ", 1)],
     outlet_close_reason: [it("permanent", "Closed for good", "চিরতরে বন্ধ", 1)],
     submit_void_reason: [it("mistake", "Submitted by mistake", "ভুলে সাবমিট", 1)],

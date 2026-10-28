@@ -167,6 +167,10 @@ const pairs = {
   "tsoman.leave.note_hint": ["Up to {n} characters, kept with the decision.", "সর্বোচ্চ {n} অক্ষর, সিদ্ধান্তের সাথে রাখা হয়।"],
   "tsoman.leave.reject_confirm": ["Reject leave", "ছুটি নাকচ করুন"],
   "tsoman.leave.back": ["Back", "ফিরে যান"],
+
+  // --- step 2. FB-12: the feedback inbox ---
+  "tsoman.feedback.photo": ["Photo", "ছবি"],
+  "tsoman.feedback.zone": ["Zone", "জোন"],
 } as const satisfies Record<string, readonly [string, string]>;
 
 export type TsoManMessageKey = keyof typeof pairs;
