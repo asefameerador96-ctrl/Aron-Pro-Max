@@ -308,7 +308,7 @@ class SyncReadsTest {
             val items = json(client.read(token, "/v1/memos?$q").bodyAsText())["items"]!!.jsonArray.map { it.jsonObject }
             assertTrue(items.none { it["memo_no"]!!.jsonPrimitive.content == farRouteless }, "route-less, out of reach: $q")
         }
-        // A geo-scoped caller (tso1001, territory T-DHK-N) reaches a route-less memo through its outlet's zone, never the other division's.
+        // A geo-scoped caller (tso1001, territory T-DHK-N) reaches a route-less memo through its outlet's zone, never another territory's.
         // These two are written by sr1001, so the caller-wrote-it rule cannot be what lets the TSO in.
         val tsoNear = "sr1001-270103-904"; val tsoFar = "sr1001-270103-905"
         fresh.db.jdbi.useHandle<Exception> { h ->
