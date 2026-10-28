@@ -15,7 +15,10 @@ param exportsContainer string
 @description('Days after which an export file is deleted (data-architecture review finding 11).')
 @minValue(1)
 param exportsDeleteDays int = 7
-@description('Days after which a field photo (photos/ in the media container) is deleted: cfg.retention.media_days (docs/21 s4.8, docs/16 s13.1: 730, Q21 still to be confirmed by the business). admin assets/ and support/ bundles are not photos and are never deleted by age.')
+@description('Days after which a PDA-to-Support bundle (support/ in the media container) is deleted: docs/21 s4.8 "Support bundles 30 days, Blob lifecycle". No registry key exists for it, so this parameter is the single source.')
+@minValue(1)
+param supportDeleteDays int = 30
+@description('Days after which a field photo (photos/ in the media container) is deleted: cfg.retention.media_days (docs/21 s4.8, docs/16 s13.1: 730, Q21 still to be confirmed by the business). admin assets/ are never deleted by age; support/ bundles follow supportDeleteDays.')
 @minValue(365)
 param photoDeleteDays int = 730
 param mediaEventsQueue string
@@ -105,9 +108,9 @@ resource mediaQueue 'Microsoft.Storage/storageAccounts/queueServices/queues@2024
 
 // docs/18 s2.8: photos Cool at 30 days and Cold at 90; bundle snapshots are deleted after 3 days. Field photos
 // (photos/<business date>/...) are deleted after photoDeleteDays, export files after exportsDeleteDays (finding 11).
-// Only photos/ is tiered: admin assets/ (pack pictures, tutorials, read by the API for every phone) and support/
-// bundles stay Hot, since Cool and Cold reads cost more and Cold bills an early-delete charge (D-INFRA-LAKE-02;
-// docs/18 s2.8 gives support/ "Hot to Cool, 30 days", an open question kept in docs/status/infra.md).
+// Photos tier Cool then Cold; support/ bundles (encrypted PDA zips) are deleted after supportDeleteDays, the docs/21
+// s4.8 retention (D-INFRA-LAKE-04); admin assets/ (pack pictures, tutorials, read by the API for every phone) stay
+// Hot (D-INFRA-LAKE-02).
 resource lifecycle 'Microsoft.Storage/storageAccounts/managementPolicies@2024-01-01' = {
   parent: st
   name: 'default'
@@ -126,6 +129,15 @@ resource lifecycle 'Microsoft.Storage/storageAccounts/managementPolicies@2024-01
                 tierToCold: { daysAfterModificationGreaterThan: 90 }
               }
             }
+          }
+        }
+        {
+          name: 'support-expiry'
+          enabled: true
+          type: 'Lifecycle'
+          definition: {
+            filters: { blobTypes: ['blockBlob'], prefixMatch: ['${mediaContainer}/support/'] }
+            actions: { baseBlob: { delete: { daysAfterModificationGreaterThan: supportDeleteDays } } }
           }
         }
         {
