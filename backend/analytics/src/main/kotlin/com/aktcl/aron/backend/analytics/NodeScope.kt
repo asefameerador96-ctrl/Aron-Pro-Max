@@ -63,9 +63,13 @@ internal fun memberZones(h: Handle, col: String, ids: List<Long>, from: LocalDat
         if (asWas) q.bind("f", from).bind("t", to)
         return q.map { rs, _ -> rs.getLong(2) to rs.getLong(1) }.list().groupBy({ it.first }, { it.second }).mapValues { it.value.toSet() }
     }
-    // A zone is its own node and exists with or without routes (a zone that lost every route is still a child of its territory on the old dates);
-    // the higher levels read the routed structure as before.
-    val current = rows(if (col == "zone_id") "SELECT id, id FROM app.zone WHERE id = ANY(:ids)" else "SELECT DISTINCT zone_id, $col FROM dw.dim_geo WHERE $col = ANY(:ids)", false)
+    // The members today, from the same source the history timeline lists (app.zone and its chain), so the plain path and the as-was path agree: a zone
+    // exists with or without routes, and a node whose zones have no route yet is still a node.
+    val nodeExpr = when (col) { "zone_id" -> "z.id"; "territory_id" -> "t.id"; "division_id" -> "d.id"; "wing_id" -> "w.id"; else -> throw IllegalArgumentException(col) }
+    val current = rows(
+        "SELECT z.id, $nodeExpr FROM app.zone z JOIN app.territory t ON t.id = z.territory_id JOIN app.division d ON d.id = t.division_id JOIN app.wing w ON w.id = d.wing_id WHERE $nodeExpr = ANY(:ids)",
+        false,
+    )
     val plain = col == "zone_id" || AsWasSql.probe(h, from).geo
     val window = if (plain) current else rows("SELECT DISTINCT zn.zone_id, zn.$col FROM ${AsWasSql.zoneAll("zn", ":f", ":t")} WHERE zn.$col = ANY(:ids)", true)
     return NodeMembers(window, current, plain)

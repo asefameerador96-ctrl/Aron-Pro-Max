@@ -186,4 +186,45 @@ class AsWasNodeScopeTest {
         assertEquals(setOf(z1), tracking.page(tso, day, "territory", t1, 50, null).items.map { it.zone_id }.toSet(), "the zone that left is not the caller's: cut from the read")
         FlaggedMemos(fresh.db).page(tso, day, day, "territory", t1, null, 10, null)
     }
+
+    @Test
+    fun aZoneAndATerritoryWithNoRouteYetAreNodesOnBothPaths() {
+        exec("INSERT INTO app.territory (code, name, division_id) VALUES ('TN','TerrNew', (SELECT division_id FROM app.territory WHERE code = 'T1'))")
+        exec("INSERT INTO app.zone (code, name, territory_id) VALUES ('ZN','ZoneNew', (SELECT id FROM app.territory WHERE code = 'TN'))")
+        val tn = id("SELECT id FROM app.territory WHERE code = 'TN'"); val zn = id("SELECT id FROM app.zone WHERE code = 'ZN'")
+        val ownZone = Reach(7, Role.TSO, now.atZone(java.time.ZoneOffset.UTC).toLocalDate(), false, setOf(zn), emptySet(), false, listOf(ReachNode("territory", tn)))
+        // Plain path (no geography period has closed since the window began): the route-less zone and its territory open, with zero figures.
+        assertEquals(0L, dash().summary(national, "zone", zn, day, day).kpis.gross_mtk)
+        assertEquals(0L, terr(node = tn).kpis.gross_mtk)
+        assertEquals(0L, dash().summary(ownZone, null, null, day, day).kpis.gross_mtk)
+        // As-was path (a zone moved since): the same answers, not 403 on one path and 200 on the other.
+        moveZ2()
+        assertEquals(0L, dash().summary(national, "zone", zn, day, day).kpis.gross_mtk)
+        assertEquals(0L, terr(node = tn).kpis.gross_mtk)
+        assertEquals(0L, dash().summary(ownZone, null, null, day, day).kpis.gross_mtk)
+    }
+
+    @Test
+    fun aBrandCallerAcrossAMoveIsCutByTheSameChain() {
+        fresh.dataSource.connection.use { c ->
+            c.createStatement().use {
+                for (t in listOf("agg_daily_zone", "agg_daily_route_sku", "agg_daily_route_brand", "agg_daily_route_segment", "agg_daily_outlet")) {
+                    it.execute("CREATE TEMP TABLE x AS SELECT * FROM dw.$t; UPDATE x SET business_date = business_date + 1; INSERT INTO dw.$t SELECT * FROM x; DROP TABLE x")
+                }
+            }
+        }
+        val b1 = setOf(id("SELECT id FROM app.product_node WHERE code = 'B1'"))
+        moveZ2()
+        exec("UPDATE app.zone_history SET valid_to = DATE '$day2' WHERE zone_id = $z2 AND territory_id = $t1 AND valid_to IS NOT NULL")
+        exec("UPDATE app.zone_history SET valid_from = DATE '$day2' WHERE zone_id = $z2 AND territory_id = $t2")
+        val all = dash().summary(national, null, null, day, day2, b1)
+        val old = dash().summary(national, "territory", t1, day, day2, b1); val new = dash().summary(national, "territory", t2, day, day2, b1)
+        assertTrue(old.kpis.net_mtk > 0 && new.kpis.net_mtk > 0)
+        assertEquals(all.kpis.net_mtk, old.kpis.net_mtk + new.kpis.net_mtk, "the brand value splits between the two territories by the day")
+        for ((name, s) in listOf("T1" to old, "T2" to new)) {
+            assertEquals(s.kpis.net_mtk, s.by_segment.sumOf { it.net_mtk }, "$name by_segment")
+            assertEquals(s.kpis.net_mtk, s.by_category.sumOf { it.net_mtk }, "$name by_category")
+            assertEquals(s.kpis.net_mtk, s.children.sumOf { it.kpis.net_mtk }, "$name children")
+        }
+    }
 }

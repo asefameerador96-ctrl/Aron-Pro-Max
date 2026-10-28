@@ -118,5 +118,7 @@ class AsWasReportScopeTest : ReportFixture() {
         val both = run(10, Role.ANALYST, "route-std", onDate("2026-10-05", ""","geo":{"wing":[$w1],"territory":[$t1]}"""))
         assertEquals(HttpStatusCode.OK, both.status, "a redundant parent selector must not turn the child's 200 into a 403")
         assertEquals(run(10, Role.ANALYST, "route-std", onDate("2026-10-05", ""","geo":{"territory":[$t1]}""")).result().rows(), both.result().rows())
+        // The child selector is checked against the zones the parent left: T2 sat under W2 on that date, so wing W1 with territory T2 selects nothing.
+        assertEquals(HttpStatusCode.Forbidden, run(10, Role.ANALYST, "route-std", onDate("2026-10-05", ""","geo":{"wing":[$w1],"territory":[$t2]}""")).status)
     }
 }
