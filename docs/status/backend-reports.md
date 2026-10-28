@@ -154,4 +154,4 @@ The real column sets are the `columns` of each report in the registry: call `POS
 
 | Candidate | State |
 |---|---|
-| 1 brand scope of the dashboard summary | D-REPORTS-BRANDSCOPE-01; `AsWasBrandScopeTest` (4 tests, mutation-checked: category/segment filter removed and by_brand filter removed both fail it); DashboardTest, AsWasReadTest, RouteKeyedDashboardTest, OpsApiTest, TeamApiTest, NationalDashboardTest green locally; checker round 1 found no leak (test gap fixed), round 2 pending |
+| 1 brand scope of the dashboard summary | D-REPORTS-BRANDSCOPE-01; `AsWasBrandScopeTest` (4 tests, mutation-checked: category/segment filter removed and by_brand filter removed both fail it); DashboardTest, AsWasReadTest, RouteKeyedDashboardTest, OpsApiTest, TeamApiTest, NationalDashboardTest green locally; checker round 1 found no leak (test gap fixed), round 2 CONFIRMED-CLEAN, lead independent checker PASS |
