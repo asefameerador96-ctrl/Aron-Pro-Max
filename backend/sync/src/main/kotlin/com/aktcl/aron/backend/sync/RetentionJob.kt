@@ -20,6 +20,11 @@ import java.util.concurrent.TimeUnit
  *    `app.archive_manifest`. This build never exports and never drops a partition: export, verification and the drop
  *    (only after a verified upload) are the archive job of a later release (before month 12). Photo tiering is Blob
  *    lifecycle policy (infra).
+ * 4. `app.client_error` rows past the telemetry keep window are deleted.
+ * 5. `app.prune_ingest_registry()` (db V0120): registry rows last seen more than `cfg.retention.ingest_registry_days`
+ *    ago are deleted in chunks of [registryChunk], each in its own transaction under a 60 s statement timeout, until a
+ *    chunk comes back short, one fails, or [registryBudgetMs] is spent; tombstones, rows under review and matched memo
+ *    uuids are kept (V0120 header). Idempotent: a second run deletes nothing new.
  *
  * Needs `jobs_rw` (EXECUTE on ensure_partitions, the manifest INSERT): the worker's `app_jobs` login when infra turns on
  * per-app logins (`dbPerAppLogins`, infra/sql/runtime-logins.sql); until then the worker runs as the admin login, which
@@ -29,12 +34,15 @@ class RetentionJob(
     private val db: Database,
     private val clock: AronClock = AronClock.SYSTEM,
     private val everyHours: Long = 6,
+    private val registryChunk: Int = 1000,
+    private val registryBudgetMs: Long = 10 * 60 * 1000,
 ) {
     private val log = LoggerFactory.getLogger("aron.retention")
 
     data class Report(
         val partitionsCreated: Int, val failedParents: Map<String, String>, val defaultRows: Map<String, Long>, val manifestsPlanned: Int,
         val clientErrorsDeleted: Int = 0,
+        val registryRowsPruned: Long = 0,
     )
 
     /** Each step on its own: a failure in one is logged and never skips the others. */
@@ -88,7 +96,24 @@ class RetentionJob(
             }
         }
         if (clientErrors > 0) log.info("retention: {} client error report(s) past the telemetry window deleted", clientErrors)
-        return Report(created, failed, defaults, planned, clientErrors)
+        // A failed chunk ends the loop but keeps the count of the chunks already committed.
+        var pruned = 0L
+        val started = System.nanoTime()
+        while (true) {
+            val n = step("ingest registry", -1) {
+                db.jdbi.inTransaction<Int, Exception> { h ->
+                    h.execute("SET LOCAL statement_timeout = '60s'")
+                    h.createQuery("SELECT app.prune_ingest_registry(:now, :limit)")
+                        .bind("now", java.time.OffsetDateTime.ofInstant(clock.now(), java.time.ZoneOffset.UTC)).bind("limit", registryChunk)
+                        .mapTo(Int::class.java).one()
+                }
+            }
+            if (n < 0) break
+            pruned += n
+            if (n < registryChunk || (System.nanoTime() - started) / 1_000_000 > registryBudgetMs) break
+        }
+        if (pruned > 0) log.info("retention: {} ingest registry row(s) past cfg.retention.ingest_registry_days pruned", pruned)
+        return Report(created, failed, defaults, planned, clientErrors, pruned)
     }
 
     private fun <T> step(name: String, fallback: T, body: () -> T): T = runCatching(body).getOrElse { e ->
