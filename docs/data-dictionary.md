@@ -19,8 +19,8 @@ Removals are rare and listed here (a wrong column is removed, never redefined in
 
 | Schema | Relations | Columns |
 |---|---|---|
-| `app` | 167 | 2797 |
-| `dw` | 64 | 1037 |
+| `app` | 171 | 2890 |
+| `dw` | 70 | 1109 |
 
 ## Index
 
@@ -163,6 +163,9 @@ Removals are rare and listed here (a wrong column is removed, never redefined in
 | [`app.sub_channel`](#appsub_channel) | table | backend:masterdata | ONLINE | master | none | Outlet sub-channel within a channel. |
 | [`app.submit_void_event`](#appsubmit_void_event) | table | backend:sync | ONLINE | audit | none | Append-only record of a Sales Submit being voided by a TSO or above. |
 | [`app.supervisor_day`](#appsupervisor_day) | table | backend:sync | SERVER | transaction | none | Attendance and Sales Submit state of an AMO or TSO for a date outside a route-day. |
+| [`app.support_ticket`](#appsupport_ticket) | table | backend:masterdata | OFFLINE | transaction | personal | A support ticket a field user raised from the phone (Quick Ticket or Create Ticket), with its INC number; write-once, its state is in app.support_ticket_state and its thread in app.support_ticket_event. |
+| [`app.support_ticket_event`](#appsupport_ticket_event) | table | backend:masterdata | OFFLINE | transaction | personal | Append-only thread of a support ticket: the reporter's comments and close review (synced from the phone) and the desk's replies, status changes, resolution, priority and assignment. |
+| [`app.support_ticket_state`](#appsupport_ticket_state) | table | backend:masterdata | ONLINE | transaction | personal | Current state of one support ticket (status, priority, assignee, resolution, close, cancel), written by the record handler at creation and by the support desk; status moves only forward (no reopen). |
 | [`app.support_upload`](#appsupport_upload) | table | backend:masterdata | OFFLINE | ops | none | One row is a phone database export a field user sent to Support (PDA to Support); the file is in Blob. |
 | [`app.survey`](#appsurvey) | table | backend:masterdata | ONLINE | master | none | One row is a survey (POSM, AMO survey or TSO visit query); its current published version is in survey_version. |
 | [`app.survey_response`](#appsurvey_response) | table | backend:sync | OFFLINE | transaction | personal | One answer to an in-visit survey question. |
@@ -182,6 +185,7 @@ Removals are rare and listed here (a wrong column is removed, never redefined in
 | [`app.user_consent`](#appuser_consent) | table | backend:auth | OFFLINE | audit | none | Acceptance of a notice such as the location notice by a user on a phone. |
 | [`app.user_history`](#appuser_history) | table | db | SERVER | master | none | One row is a period of a user's role, designation, home zone and status (V0119); written by the history trigger on app.app_user, seeded from app.audit_log. |
 | [`app.user_module_grant`](#appuser_module_grant) | table | backend:authz | ONLINE | master | none | Per-module access of an ADMIN user (D-ROLES-02, docs/34 s1): r = read, w = read and write. Carried in the web token as the modules claim; changed only through the admin grants API, which audits and bumps app_user.scope_version. |
+| [`app.user_notification`](#appuser_notification) | table | backend:notify | ONLINE | ops | personal | Notification inbox behind the bell: one notice for one user (ticket updated, leave decided, zone auto final-submitted); read_at is set once when the user opens the inbox; rows are pruned after cfg.notify.inbox_retention_days. |
 | [`app.user_scope`](#appuser_scope) | table | backend:masterdata | ONLINE | master | none | Supervisory reach of a user: a geography node, effective-dated. |
 | [`app.v_dirty_key_dead`](#appv_dirty_key_dead) | view | db | SERVER | ops | none | Dead rebuild keys per kind, for the sync-health page and alerting. |
 | [`app.visit`](#appvisit) | partitioned table | backend:sync | OFFLINE | transaction | personal | One outlet visit with the phone's and the server's geo verdicts, distance, outcome and close data. |
@@ -227,8 +231,9 @@ Removals are rare and listed here (a wrong column is removed, never redefined in
 | [`dw.route_last_position`](#dwroute_last_position) | table | worker | SERVER | event_fact | personal | Latest position of each route's SR on a business date (FF Geo pins), upserted from geo fixes in capture-time order. |
 | [`dw.summary_freshness`](#dwsummary_freshness) | table | worker | SERVER | master | none | Freshness of each dashboard summary table: the projector's last pass and its outbox position (the "last updated" time). |
 | [`dw.v_attendance`](#dwv_attendance) | view | worker | SERVER | event_fact | none | Stable view: per user and business date, check-in and check-out times, hours in field and mock-location flags (no coordinates or accuracy). |
-| [`dw.v_calendar`](#dwv_calendar) | view | worker | SERVER | master | none | Stable view: one row per date with Friday, national holiday, make-up day and working-day flags (dim_date plus the live global app.calendar_holiday rows). |
-| [`dw.v_calendar_month`](#dwv_calendar_month) | view | worker | SERVER | master | none | Stable view: per month the number of days, Fridays, national holidays and working days (divisor of the daily target). |
+| [`dw.v_calendar`](#dwv_calendar) | view | worker | SERVER | master | none | Stable view: one row per date with Friday, national holiday, make-up day and working-day flags (dim_date plus the live global app.calendar_holiday rows). Global holidays and the default Friday weekend only: scoped holidays and a configured weekend are applied by the API (WorkingDays, D-TSO-MAN-08); tested equal for global scope. |
+| [`dw.v_calendar_month`](#dwv_calendar_month) | view | worker | SERVER | master | none | Stable view: per month the number of days, Fridays, national holidays and working days (divisor of the daily target). Global holidays and the default Friday weekend only: scoped holidays and a configured weekend are applied by the API (WorkingDays, D-TSO-MAN-08); tested equal for global scope. |
+| [`dw.v_call_assessment`](#dwv_call_assessment) | view | backend:sync | OFFLINE | transaction | none | Stable view: one row per call assessment (AMO joint call or TSO Visit Query) with its rubric version and score; the answers stay in app. is_effective = not data-voided. |
 | [`dw.v_collections`](#dwv_collections) | view | worker | SERVER | event_fact | none | Stable view: outlet-days with new credit or dues collected (credit and collection movements). |
 | [`dw.v_daily_outlet`](#dwv_daily_outlet) | view | worker | SERVER | event_fact | none | Stable view: per outlet and business date, visit, geo validity, sales per category in base units and dues, with the outlet's classification. |
 | [`dw.v_daily_route`](#dwv_daily_route) | view | worker | SERVER | event_fact | none | Stable view (contract for BI and other products): KPIs, money and day state per route and business date, with its geography. |
@@ -244,8 +249,10 @@ Removals are rare and listed here (a wrong column is removed, never redefined in
 | [`dw.v_dim_user`](#dwv_dim_user) | view | worker | SERVER | master | none | Stable view: the current user dimension (dw.dim_user): role, designation, home zone, status; no names or logins. is_effective = account active. |
 | [`dw.v_dim_user_history`](#dwv_dim_user_history) | view | db | SERVER | master | none | Stable view: a user's role, designation, home zone and status per period (app.user_history); no names or logins. is_effective = account active in the period. |
 | [`dw.v_due_ledger`](#dwv_due_ledger) | view | backend:sync | SERVER | transaction | none | Stable view: every signed entry of the outlet dues ledger (app.due_ledger, append-only; reversals are entries of their own), without the printed memo number and the free-text note. is_effective = true. |
+| [`dw.v_feedback`](#dwv_feedback) | view | backend:masterdata | OFFLINE | transaction | none | Stable view: one row per TSO feedback with its category and inbox status (app.feedback, app.feedback_status); no title or description. is_effective = not data-voided. |
 | [`dw.v_final_submit_log`](#dwv_final_submit_log) | view | worker | SERVER | audit | none | Stable view: per zone and business date the first Final Submit (second submits ignored, Brief 07), the number of submits and the reopen state. |
 | [`dw.v_geo_integrity`](#dwv_geo_integrity) | view | worker | SERVER | event_fact | none | Stable view: per user and business date, geo-validation outcomes of visits and mock-location evidence of fixes. |
+| [`dw.v_leave_application`](#dwv_leave_application) | view | backend:masterdata | OFFLINE | transaction | none | Stable view: one row per leave application with its dates, day count and decision (app.leave_application); no reason or decision note. is_effective = not data-voided. |
 | [`dw.v_memo`](#dwv_memo) | view | worker | SERVER | event_fact | none | Stable view: one row per memo (dw.fact_memo) with its money, scope keys and SCD2 keys; the memo UUID, never the printed memo number (personal: it embeds the login). is_effective = active with at least one line. |
 | [`dw.v_memo_flags`](#dwv_memo_flags) | view | worker | SERVER | event_fact | personal | Stable view: one row per memo the server flagged (app.memo.server_flags non-empty: zero price line, price, arithmetic or pack-factor mismatch and the like), with its scope keys; voided and superseded memos included with their status (counts use status = 'active' AND voided_at IS NULL). |
 | [`dw.v_memo_line`](#dwv_memo_line) | view | worker | SERVER | event_fact | none | Stable view: one row per memo line (dw.fact_memo_line) in entered and base units with its price at capture. is_effective = memo active and line not voided. |
@@ -255,7 +262,10 @@ Removals are rare and listed here (a wrong column is removed, never redefined in
 | [`dw.v_route_day_channel`](#dwv_route_day_channel) | view | worker | SERVER | event_fact | none | Stable view: active memos, outlets sold to, gross and net per route, business date and the outlet channel frozen on the memo at capture (dw.fact_memo, app.memo.outlet_channel); follows the route that sold, never a later outlet move. is_effective = true. |
 | [`dw.v_route_monthly_target`](#dwv_route_monthly_target) | view | worker | SERVER | master | none | Stable view: route x SKU monthly targets in base units with the month's working days and the derived daily target (D-TARGET-MIN-01). |
 | [`dw.v_stock_movement`](#dwv_stock_movement) | view | backend:sync | OFFLINE | transaction | none | Stable view: every stock movement (issue, return and the other kinds of app.stock_movement) in entered and base units. is_effective = not voided. |
+| [`dw.v_support_ticket`](#dwv_support_ticket) | view | backend:masterdata | OFFLINE | transaction | none | Stable view: one row per support ticket with its current status, priority and lifecycle times (app.support_ticket and app.support_ticket_state); no title, description or notes. is_effective = not data-voided. |
+| [`dw.v_task`](#dwv_task) | view | backend:notify | OFFLINE | transaction | none | Stable view: one row per task (TSO Assign Task, AMO or web task) with its type, creator, assignee, outlet, route, due date and status; no title or description. is_effective = not data-voided. |
 | [`dw.v_visit`](#dwv_visit) | view | worker | SERVER | event_fact | none | Stable view: one row per visit (dw.fact_visit) with both geo verdicts and distances, no coordinates and no photo. is_effective = not voided. |
+| [`dw.v_visit_plan_outlet`](#dwv_visit_plan_outlet) | view | backend:masterdata | OFFLINE | transaction | none | Stable view: one row per outlet of a TSO visit plan (Set Plan) with the plan's date and route and the first Visit Query that completed it. is_effective = neither the outlet row nor its plan is data-voided. |
 | [`dw.v_working_day`](#dwv_working_day) | view | worker | SERVER | master | none | Stable view: one row per date, working = the national working-day flag of dw.v_calendar (Fridays and national holidays off, make-up days on). |
 
 ## app.activity_log
@@ -1820,11 +1830,11 @@ Final Submit of a zone and business date, made online by the TSO, unless reopene
 | `client_uuid` | uuid | not null |  | replay returns the first success |
 | `zone_id` | bigint | not null |  | Zone (app.zone). |
 | `business_date` | date | not null |  | Asia/Dhaka business date of the row (cutoff 00:00 Dhaka); all day-level rollups key off it. |
-| `submitted_by` | bigint | not null |  | Id of the user who made the Final Submit. |
+| `submitted_by` | bigint | null |  | Id of the user who made the Final Submit; null exactly when the midnight job made it (via job, CHECK final_submit_job_actor). |
 | `submitted_at` | timestamp with time zone | not null |  | UTC time of the Final Submit. |
-| `via` | text | not null |  | Channel the action came through: device, web, api or job. |
+| `via` | text | not null |  | Channel the Final Submit came through: app (TSO phone), web (portal) or job (the midnight AutoFinalSubmitJob, V0135). |
 | `route_states` | jsonb | not null |  | JSON of the route states the submitter saw in the preview. |
-| `late_rows` | integer | not null |  | Rows that were still outstanding when the zone-day was submitted. |
+| `late_rows` | integer | not null |  | Rows captured before this Final Submit that arrived after it (late rows of the zone-day). |
 | `reopened_at` | timestamp with time zone | null |  | UTC time the Final Submit was reopened; null if not. |
 | `reopened_by` | bigint | null |  | Id of the user who reopened it. |
 | `reopen_reason` | text | null |  | Reason given for reopening. |
@@ -3748,7 +3758,7 @@ One row per route and business date holding the day state and submit timestamps;
 | `rows_awaited` | integer | null |  | Rows the phone said were still to come at submit. |
 | `settle_deadline_at` | timestamp with time zone | null |  | UTC time by which awaited rows must arrive. |
 | `exception_reason` | text | null |  | Reason of the day exception that made the route-day planned or exempt. |
-| `late_rows_after_final` | integer | not null |  | Rows that arrived after the Final Submit. |
+| `late_rows_after_final` | integer | not null |  | Rows of the route-day captured before the zone-day's Final Submit that arrived after it. |
 | `created_at` | timestamp with time zone | not null |  | UTC instant the row was inserted on the server. |
 | `updated_at` | timestamp with time zone | not null |  | UTC instant of the last update. |
 | `version` | integer | not null |  | Optimistic-concurrency version; increases by one on every update. |
@@ -4280,6 +4290,124 @@ Keys: `UNIQUE (user_id, business_date)`; `PRIMARY KEY (id)`
 
 References: `FOREIGN KEY (user_id) REFERENCES app.app_user(id)`
 
+## app.support_ticket
+
+A support ticket a field user raised from the phone (Quick Ticket or Create Ticket), with its INC number; write-once, its state is in app.support_ticket_state and its thread in app.support_ticket_event.
+
+`owner: backend:masterdata | capture: OFFLINE | retention: transaction | pii: personal` · table
+
+| Column | Type | Null | PII | Description |
+|---|---|---|---|---|
+| `id` | bigint | not null |  | Server surrogate key. |
+| `client_uuid` | uuid | not null |  | Client-generated UUID v4 of the record; the server upserts by it (idempotency key). |
+| `family_uuid` | uuid | not null |  | client_uuid of the family header the record belongs to (equal to client_uuid on a header). |
+| `business_date` | date | not null |  | Asia/Dhaka date of the trusted capture time. |
+| `business_date_device` | date | null |  | Date on the phone's own clock, kept when the server re-dated the row to a trusted business date. |
+| `user_id` | bigint | not null |  | Database id of the user who captured the record, taken from the token and never from the body. |
+| `device_id` | bigint | null |  | Database id of the phone that captured the record, from the token. |
+| `acting_for_user_id` | bigint | null |  | Assignee of the route when the capturing user worked it as a cover substitute. |
+| `captured_at` | timestamp with time zone | not null |  | UTC instant of capture on the phone, from trusted time when an anchor exists. |
+| `captured_elapsed_ms` | bigint | null |  | SystemClock.elapsedRealtime() at capture, in milliseconds since boot. |
+| `boot_count` | integer | null |  | Android boot counter at capture; with captured_elapsed_ms it anchors trusted time. |
+| `clock_offset_ms` | bigint | null |  | Server time minus phone wall clock known at capture, in ms; null if the phone never synced. |
+| `captured_offline` | boolean | not null |  | True when the phone had no connection at capture. |
+| `schema_version` | integer | not null |  | Version of the record payload schema. |
+| `config_version` | bigint | not null |  | Global config version in force for the row (at capture for device records). |
+| `bundle_version` | text | null |  | Version of the day bundle the phone held at capture (<date>:<seq>). |
+| `bundle_stale` | boolean | not null |  | True when the record was captured on a cached bundle older than the business date. |
+| `first_batch_uuid` | uuid | null |  | batch_uuid of the sync batch that first delivered the record. |
+| `received_at` | timestamp with time zone | not null |  | UTC instant the server received the row. |
+| `created_at` | timestamp with time zone | not null |  | UTC instant the row was inserted on the server. |
+| `voided_at` | timestamp with time zone | null |  | UTC time an admin data void tombstoned the row; the row is never deleted. |
+| `external_ref` | character varying(64) | null |  | Stable external reference for cross-walks with other systems (Apsis, ERP); unique when set. |
+| `ticket_no` | text | not null |  | Human ticket number INC + at least 6 digits (app.next_support_ticket_no), assigned at the first insert; quoted by TSOs and the desk. |
+| `issue_type_code` | text | not null |  | Issue type, a code of the code list ticket_issue_type (31 Annex A types); its attrs give the default priority. |
+| `title` | text | not null |  | Short title of the ticket (1 to 120 characters). |
+| `description` | text | not null | personal | Description of the problem as written by the reporter (up to 2000 characters; empty for a quick ticket without text). |
+| `affected_username` | text | null | personal | Username of the user the problem is about when the ticket was raised from another user's phone (D-TSO-MAN-24); the server resolves it to app.support_ticket_state.affected_user_id. |
+| `source` | text | not null |  | Where the ticket was raised: quick (Quick Ticket tile) or manual (Create Ticket form). |
+| `data_origin` | app.data_origin | null |  | Origin of the row (production, pilot, test, seed): the most synthetic of its users, outlet, route, stamped at insert; changes only through app.restamp_data_origin. |
+
+Keys: `UNIQUE (client_uuid)`; `UNIQUE (external_ref)`; `UNIQUE (ticket_no)`; `PRIMARY KEY (id)`
+
+References: `FOREIGN KEY (acting_for_user_id) REFERENCES app.app_user(id)`; `FOREIGN KEY (device_id) REFERENCES app.device(id)`; `FOREIGN KEY (user_id) REFERENCES app.app_user(id)`
+
+## app.support_ticket_event
+
+Append-only thread of a support ticket: the reporter's comments and close review (synced from the phone) and the desk's replies, status changes, resolution, priority and assignment.
+
+`owner: backend:masterdata | capture: OFFLINE | retention: transaction | pii: personal` · table
+
+| Column | Type | Null | PII | Description |
+|---|---|---|---|---|
+| `id` | bigint | not null |  | Server surrogate key. |
+| `client_uuid` | uuid | not null |  | Client-generated UUID v4 of the record; the server upserts by it (idempotency key). |
+| `ticket_uuid` | uuid | not null |  | client_uuid of the ticket the event belongs to (app.support_ticket). |
+| `family_uuid` | uuid | not null |  | client_uuid of the family header the record belongs to (equal to client_uuid on a header). |
+| `business_date` | date | not null |  | Asia/Dhaka date of the trusted capture time. |
+| `business_date_device` | date | null |  | Date on the phone's own clock, kept when the server re-dated the row to a trusted business date. |
+| `user_id` | bigint | not null |  | Actor: the reporter for a device row (from the token), the support user for a desk row; the system account for a job row. |
+| `device_id` | bigint | null |  | Database id of the phone that captured the record, from the token. |
+| `acting_for_user_id` | bigint | null |  | Assignee of the route when the capturing user worked it as a cover substitute. |
+| `captured_at` | timestamp with time zone | not null |  | UTC instant of capture on the phone, from trusted time when an anchor exists. |
+| `captured_elapsed_ms` | bigint | null |  | SystemClock.elapsedRealtime() at capture, in milliseconds since boot. |
+| `boot_count` | integer | null |  | Android boot counter at capture; with captured_elapsed_ms it anchors trusted time. |
+| `clock_offset_ms` | bigint | null |  | Server time minus phone wall clock known at capture, in ms; null if the phone never synced. |
+| `captured_offline` | boolean | not null |  | True when the phone had no connection at capture. |
+| `schema_version` | integer | not null |  | Version of the record payload schema. |
+| `config_version` | bigint | not null |  | Global config version in force for the row (at capture for device records). |
+| `bundle_version` | text | null |  | Version of the day bundle the phone held at capture (<date>:<seq>). |
+| `bundle_stale` | boolean | not null |  | True when the record was captured on a cached bundle older than the business date. |
+| `first_batch_uuid` | uuid | null |  | batch_uuid of the sync batch that first delivered the record. |
+| `received_at` | timestamp with time zone | not null |  | UTC instant the server received the row. |
+| `created_at` | timestamp with time zone | not null |  | UTC instant the row was inserted on the server. |
+| `voided_at` | timestamp with time zone | null |  | UTC time an admin data void tombstoned the row; the row is never deleted. |
+| `external_ref` | character varying(64) | null |  | Stable external reference for cross-walks with other systems (Apsis, ERP); unique when set. |
+| `via` | text | not null |  | Channel the event came through: device (sync record support_ticket_event), web (support desk) or job. |
+| `kind` | text | not null |  | Event kind: created, comment, close_review (the reporter's Submit Review & Close), status_change, resolution, priority_change or assign. |
+| `body` | text | null | personal | Text of a comment or of the resolution message (up to 2000 characters); null for events without text. |
+| `from_status` | text | null |  | Ticket status before a status-moving event; null otherwise. |
+| `to_status` | text | null |  | Ticket status after a status-moving event; null otherwise. |
+| `resolution_code` | text | null |  | Resolution code of a resolution event (code list ticket_resolution_code); null otherwise. |
+| `data_origin` | app.data_origin | null |  | Origin of the row (production, pilot, test, seed): the most synthetic of its users, outlet, route and parent row (app.support_ticket), stamped at insert; changes only through app.restamp_data_origin. |
+
+Keys: `UNIQUE (client_uuid)`; `UNIQUE (external_ref)`; `PRIMARY KEY (id)`
+
+References: `FOREIGN KEY (acting_for_user_id) REFERENCES app.app_user(id)`; `FOREIGN KEY (device_id) REFERENCES app.device(id)`; `FOREIGN KEY (ticket_uuid) REFERENCES app.support_ticket(client_uuid)`; `FOREIGN KEY (user_id) REFERENCES app.app_user(id)`
+
+## app.support_ticket_state
+
+Current state of one support ticket (status, priority, assignee, resolution, close, cancel), written by the record handler at creation and by the support desk; status moves only forward (no reopen).
+
+`owner: backend:masterdata | capture: ONLINE | retention: transaction | pii: personal` · table
+
+| Column | Type | Null | PII | Description |
+|---|---|---|---|---|
+| `ticket_uuid` | uuid | not null |  | client_uuid of the ticket (app.support_ticket). |
+| `requester_user_id` | bigint | not null |  | Reporter: the user who raised the ticket (the token user of the record); the ticket is visible to this user. |
+| `requester_role` | text | not null |  | Role of the reporter when the ticket was raised (cfg.support.ticket_requester_roles). |
+| `affected_user_id` | bigint | null |  | User resolved from the ticket's affected_username (desk only); null when none was named or no such user exists. |
+| `status` | text | not null |  | Ticket status: new, in_progress, resolved, closed or cancelled; moves only forward (new>in_progress, new\|in_progress>resolved or cancelled, resolved>closed). |
+| `priority` | text | not null |  | Priority p1 (Highest) to p4 (Low); starts at the issue type's default, the desk may change it. |
+| `assignee_user_id` | bigint | null |  | Support user the ticket is assigned to; null when unassigned. |
+| `first_response_at` | timestamp with time zone | null |  | UTC time of the first support action (start or first reply); set once. |
+| `resolved_at` | timestamp with time zone | null |  | UTC time support resolved the ticket; set once. |
+| `resolved_by` | bigint | null |  | Support user who resolved the ticket; set once. |
+| `resolution_code` | text | null |  | Resolution code, a code of the code list ticket_resolution_code; set once, with the resolution. |
+| `resolution_notes` | text | null | personal | Resolution notes written by support (1 to 2000 characters); set once, with the resolution. |
+| `closed_at` | timestamp with time zone | null |  | UTC time the ticket was closed (the reporter's Submit Review & Close, or support); set once. |
+| `closed_by` | bigint | null |  | User who closed the ticket; set once. |
+| `cancelled_at` | timestamp with time zone | null |  | UTC time support cancelled the ticket; set exactly when the status is cancelled. |
+| `cancelled_by` | bigint | null |  | Support user who cancelled the ticket; set once. |
+| `cancel_reason` | text | null | personal | Reason support gave for the cancellation (3 to 500 characters); set once. |
+| `version` | integer | not null |  | Optimistic-lock version; every desk update checks the expected version and adds one. |
+| `updated_at` | timestamp with time zone | not null |  | UTC instant of the last update. |
+| `data_origin` | app.data_origin | null |  | Origin of the row (production, pilot, test, seed): the most synthetic of its users and parent row (app.support_ticket), stamped at insert; changes only through app.restamp_data_origin. |
+
+Keys: `PRIMARY KEY (ticket_uuid)`
+
+References: `FOREIGN KEY (affected_user_id) REFERENCES app.app_user(id)`; `FOREIGN KEY (assignee_user_id) REFERENCES app.app_user(id)`; `FOREIGN KEY (cancelled_by) REFERENCES app.app_user(id)`; `FOREIGN KEY (closed_by) REFERENCES app.app_user(id)`; `FOREIGN KEY (requester_role) REFERENCES app.role_def(role)`; `FOREIGN KEY (requester_user_id) REFERENCES app.app_user(id)`; `FOREIGN KEY (resolved_by) REFERENCES app.app_user(id)`; `FOREIGN KEY (ticket_uuid) REFERENCES app.support_ticket(client_uuid)`
+
 ## app.support_upload
 
 One row is a phone database export a field user sent to Support (PDA to Support); the file is in Blob.
@@ -4431,7 +4559,7 @@ Records held for a human decision with their payload and resolution.
 | `id` | bigint | not null |  | Server surrogate key. |
 | `client_uuid` | uuid | not null |  | UUID v4 generated on the phone when the record was committed; the idempotency key of sync. |
 | `record_type` | text | not null |  | Sync record type (contract RecordType). |
-| `code` | text | not null |  | Stable business code of the row, unique within its table. |
+| `code` | text | not null |  | Quarantine code: a RecordOutcomeCode the contract marks quarantined (after_final_submit from V0135: captured before the zone-day's Final Submit, arrived after it). |
 | `status` | text | not null |  | Lifecycle status; allowed values are listed under constraints. |
 | `payload_sha256` | bytea | not null |  | SHA-256 of the RFC 8785 canonical JSON of the record; same uuid and hash means duplicate. |
 | `payload` | jsonb | not null | personal | The SyncRecord as received (JSON); may hold fixes, names and phone numbers. |
@@ -4464,7 +4592,7 @@ Records rejected or parked at ingest with the payload as received and the reason
 | `id` | bigint | not null |  | Server surrogate key. |
 | `client_uuid` | uuid | not null |  | UUID v4 generated on the phone when the record was committed; the idempotency key of sync. |
 | `record_type` | text | not null |  | Sync record type (contract RecordType). |
-| `code` | text | not null |  | Rejection code: a RecordOutcomeCode the contract marks rejected (price_invalid from V0112) or the server-only retry_exhausted; quarantined codes go to app.sync_quarantine. |
+| `code` | text | not null |  | Rejection code: a RecordOutcomeCode the contract marks rejected (price_invalid from V0112; day_final_submitted, ticket_state_invalid and issue_type_unknown from V0135) or the server-only retry_exhausted; quarantined codes go to app.sync_quarantine. |
 | `retryable` | boolean | not null |  | True when the record may be accepted on a later resend. |
 | `payload_sha256` | bytea | not null |  | SHA-256 of the RFC 8785 canonical JSON of the record; same uuid and hash means duplicate. |
 | `payload` | jsonb | not null | personal | The record as received (JSON); may hold fixes, names and phone numbers. |
@@ -4814,6 +4942,32 @@ Keys: `PRIMARY KEY (user_id, module)`
 
 References: `FOREIGN KEY (granted_by) REFERENCES app.app_user(id)`; `FOREIGN KEY (user_id) REFERENCES app.app_user(id)`
 
+## app.user_notification
+
+Notification inbox behind the bell: one notice for one user (ticket updated, leave decided, zone auto final-submitted); read_at is set once when the user opens the inbox; rows are pruned after cfg.notify.inbox_retention_days.
+
+`owner: backend:notify | capture: ONLINE | retention: ops | pii: personal` · table
+
+| Column | Type | Null | PII | Description |
+|---|---|---|---|---|
+| `id` | bigint | not null |  | Server surrogate key; the inbox pages by it (newest first) and marks read up to it. |
+| `user_id` | bigint | not null |  | User the notice is for; only this user reads it. |
+| `kind` | text | not null |  | Kind of notice: ticket_updated, leave_decided or final_submit_auto. |
+| `ref_type` | text | not null |  | Kind of row the notice is about: support_ticket, leave_application or zone_day. |
+| `ref_id` | text | not null |  | Key of the row the notice is about (ticket or leave UUID, or <zone_id>:<business_date>), up to 64 characters. |
+| `title_en` | text | not null |  | English title of the notice (up to 120 characters). |
+| `title_bn` | text | null |  | Bangla title of the notice; null shows the English title. |
+| `body_en` | text | not null | personal | English text of the notice (up to 300 characters); may name a person. |
+| `body_bn` | text | null | personal | Bangla text of the notice; null shows the English text. |
+| `dedupe_key` | text | not null |  | Idempotency key of the producer (for example ticket uuid + event uuid); a second insert with the same key is ignored. |
+| `created_at` | timestamp with time zone | not null |  | UTC instant the row was inserted on the server. |
+| `business_date` | date | not null |  | Asia/Dhaka date the notice was created. |
+| `read_at` | timestamp with time zone | null |  | UTC time the user opened the inbox showing this notice; null while unread; set once. |
+
+Keys: `UNIQUE (dedupe_key)`; `PRIMARY KEY (id)`
+
+References: `FOREIGN KEY (user_id) REFERENCES app.app_user(id)`
+
 ## app.user_scope
 
 Supervisory reach of a user: a geography node, effective-dated.
@@ -4959,10 +5113,11 @@ A TSO visit plan for a date.
 | `plan_date` | date | not null |  | Dhaka date the plan is for. |
 | `note` | text | null |  | Free-text note. |
 | `data_origin` | app.data_origin | null |  | Origin of the row (production, pilot, test, seed): the most synthetic of its users, outlet, route, stamped at insert; changes only through app.restamp_data_origin. |
+| `route_id` | bigint | null |  | Route chosen in Set Plan; NULL on rows before V0137 (readers then use the smallest route of the plan's outlets). |
 
 Keys: `UNIQUE (client_uuid)`; `UNIQUE (external_ref)`; `PRIMARY KEY (id)`
 
-References: `FOREIGN KEY (acting_for_user_id) REFERENCES app.app_user(id)`; `FOREIGN KEY (device_id) REFERENCES app.device(id)`; `FOREIGN KEY (user_id) REFERENCES app.app_user(id)`
+References: `FOREIGN KEY (acting_for_user_id) REFERENCES app.app_user(id)`; `FOREIGN KEY (device_id) REFERENCES app.device(id)`; `FOREIGN KEY (route_id) REFERENCES app.route(id)`; `FOREIGN KEY (user_id) REFERENCES app.app_user(id)`
 
 ## app.visit_plan_outlet
 
@@ -5253,7 +5408,7 @@ Per route and business date: day state, visit counts, sales, discounts, paid and
 | `paid_mtk` | bigint | not null |  | Amount paid in cash at the memo, in milli-taka. |
 | `due_mtk` | bigint | not null |  | Amount left on credit (due) in milli-taka. |
 | `dues_collected_mtk` | bigint | not null |  | Dues collected against earlier credit memos, in milli-taka. |
-| `late_rows_after_final` | integer | not null |  | Rows that arrived after the Final Submit. |
+| `late_rows_after_final` | integer | not null |  | Rows of the route-day captured before the zone-day's Final Submit that arrived after it. |
 | `last_event_id` | bigint | not null |  | Highest app.domain_event id folded into this row by the projector (replays are ignored). |
 | `updated_at` | timestamp with time zone | not null |  | UTC instant of the last update. |
 | `downloaded_at` | timestamp with time zone | null |  | First full bundle download of the route-day (app.route_day.target_frozen_at when bundle_count > 0); Login = check-in and download. |
@@ -6060,7 +6215,7 @@ Stable view: per user and business date, check-in and check-out times, hours in 
 
 ## dw.v_calendar
 
-Stable view: one row per date with Friday, national holiday, make-up day and working-day flags (dim_date plus the live global app.calendar_holiday rows).
+Stable view: one row per date with Friday, national holiday, make-up day and working-day flags (dim_date plus the live global app.calendar_holiday rows). Global holidays and the default Friday weekend only: scoped holidays and a configured weekend are applied by the API (WorkingDays, D-TSO-MAN-08); tested equal for global scope.
 
 `owner: worker | capture: SERVER | retention: master | pii: none` · view
 
@@ -6079,7 +6234,7 @@ Stable view: one row per date with Friday, national holiday, make-up day and wor
 
 ## dw.v_calendar_month
 
-Stable view: per month the number of days, Fridays, national holidays and working days (divisor of the daily target).
+Stable view: per month the number of days, Fridays, national holidays and working days (divisor of the daily target). Global holidays and the default Friday weekend only: scoped holidays and a configured weekend are applied by the API (WorkingDays, D-TSO-MAN-08); tested equal for global scope.
 
 `owner: worker | capture: SERVER | retention: master | pii: none` · view
 
@@ -6091,6 +6246,28 @@ Stable view: per month the number of days, Fridays, national holidays and workin
 | `holidays` | integer | null |  | Dates in the month with a live national holiday or emergency off day. |
 | `working_days` | integer | null |  | Working days in the month (dw.v_calendar.is_working_day). |
 | `is_effective` | boolean | null |  | Always true: the row is an aggregate or reference row built from effective rows only. |
+
+## dw.v_call_assessment
+
+Stable view: one row per call assessment (AMO joint call or TSO Visit Query) with its rubric version and score; the answers stay in app. is_effective = not data-voided.
+
+`owner: backend:sync | capture: OFFLINE | retention: transaction | pii: none` · view
+
+| Column | Type | Null | PII | Description |
+|---|---|---|---|---|
+| `assessment_uuid` | uuid | null |  | Client UUID of the assessment. |
+| `kind` | text | null |  | joint_call (AMO with the SR) or retailer_questionnaire (TSO Visit Query). |
+| `business_date` | date | null |  | Asia/Dhaka business date of the assessment. |
+| `user_id` | bigint | null |  | Assessor (app.app_user id). |
+| `route_id` | bigint | null |  | Route of the assessment (envelope route). |
+| `outlet_id` | bigint | null |  | Outlet assessed: the planned outlet of a Visit Query, else the outlet of the visit of a joint call; null when neither is known. |
+| `rubric_id` | bigint | null |  | Rubric used (app.rubric id). |
+| `rubric_version` | integer | null |  | Version of the rubric used. |
+| `total_score` | integer | null |  | Score reached (0 for a text-only questionnaire). |
+| `max_score` | integer | null |  | Highest possible score of the rubric version. |
+| `delegate_task` | boolean | null |  | True when the assessor chose to delegate a task from it. |
+| `data_origin` | app.data_origin | null |  | Origin of the assessment (app.call_assessment.data_origin, stamped at capture). |
+| `is_effective` | boolean | null |  | True when the assessment is not data-voided (voided_at is null). |
 
 ## dw.v_collections
 
@@ -6193,7 +6370,7 @@ Stable view (contract for BI and other products): KPIs, money and day state per 
 | `paid_mtk` | bigint | null |  | Amount paid in cash at the memo, in milli-taka. |
 | `due_mtk` | bigint | null |  | Amount left on credit (due) in milli-taka. |
 | `dues_collected_mtk` | bigint | null |  | Dues collected against earlier credit memos, in milli-taka. |
-| `late_rows_after_final` | integer | null |  | Rows received after the zone-day was final-submitted (accepted and flagged). |
+| `late_rows_after_final` | integer | null |  | Rows of the route-day captured before the zone-day's Final Submit that arrived after it. |
 | `updated_at` | timestamp with time zone | null |  | UTC instant of the last update. |
 | `data_origin` | app.data_origin | null |  | Origin of the route-day (dw.agg_daily_route.data_origin): production only when nothing non-production went into it. |
 | `is_effective` | boolean | null |  | Always true: the row is an aggregate or reference row built from effective rows only. |
@@ -6497,6 +6674,23 @@ Stable view: every signed entry of the outlet dues ledger (app.due_ledger, appen
 | `data_origin` | app.data_origin | null |  | Origin of the row (production, pilot, test, seed): the most synthetic of its users, outlet, route, stamped at insert; changes only through app.restamp_data_origin. |
 | `is_effective` | boolean | null |  | True when the row counts in an ordinary total (the rule of this view is in its description). |
 
+## dw.v_feedback
+
+Stable view: one row per TSO feedback with its category and inbox status (app.feedback, app.feedback_status); no title or description. is_effective = not data-voided.
+
+`owner: backend:masterdata | capture: OFFLINE | retention: transaction | pii: none` · view
+
+| Column | Type | Null | PII | Description |
+|---|---|---|---|---|
+| `feedback_uuid` | uuid | null |  | Client UUID of the feedback. |
+| `business_date` | date | null |  | Asia/Dhaka business date the feedback was written. |
+| `user_id` | bigint | null |  | Author (app.app_user id). |
+| `category_code` | text | null |  | Feedback category (code list feedback_category: suggestion or feedback). |
+| `status` | text | null |  | Support-inbox status (app.feedback_status), new when the inbox has not touched it. |
+| `has_photo` | boolean | null |  | True when a gallery image is attached. |
+| `data_origin` | app.data_origin | null |  | Origin of the feedback (app.feedback.data_origin, stamped at capture). |
+| `is_effective` | boolean | null |  | True when the feedback is not data-voided (voided_at is null). |
+
 ## dw.v_final_submit_log
 
 Stable view: per zone and business date the first Final Submit (second submits ignored, Brief 07), the number of submits and the reopen state.
@@ -6508,7 +6702,7 @@ Stable view: per zone and business date the first Final Submit (second submits i
 | `zone_id` | bigint | null |  | Zone (app.zone). |
 | `business_date` | date | null |  | Asia/Dhaka business date that was final-submitted. |
 | `first_submitted_at` | timestamp with time zone | null |  | UTC time of the first Final Submit of the zone-day. |
-| `first_submitted_by` | bigint | null |  | User who made the first Final Submit (app.app_user id). |
+| `first_submitted_by` | bigint | null |  | User who made the first Final Submit (app.app_user id); null when the midnight job made it. |
 | `first_via` | text | null |  | Channel of the first Final Submit: app or web. |
 | `submits` | bigint | null |  | Number of Final Submits of the zone-day (a reopen and a resubmit add one). |
 | `last_submitted_at` | timestamp with time zone | null |  | UTC time of the latest Final Submit of the zone-day. |
@@ -6541,6 +6735,27 @@ Stable view: per user and business date, geo-validation outcomes of visits and m
 | `avg_accuracy_m` | numeric | null |  | Average fix accuracy in metres (1 decimal). |
 | `data_origin` | app.data_origin | null |  | Most synthetic origin among the visits and fixes of the user-day. |
 | `is_effective` | boolean | null |  | Always true: the row is an aggregate or reference row built from effective rows only. |
+
+## dw.v_leave_application
+
+Stable view: one row per leave application with its dates, day count and decision (app.leave_application); no reason or decision note. is_effective = not data-voided.
+
+`owner: backend:masterdata | capture: OFFLINE | retention: transaction | pii: none` · view
+
+| Column | Type | Null | PII | Description |
+|---|---|---|---|---|
+| `leave_uuid` | uuid | null |  | Client UUID of the leave application. |
+| `user_id` | bigint | null |  | Applicant (app.app_user id). |
+| `leave_type_code` | text | null |  | Leave type (code list leave_type). |
+| `from_date` | date | null |  | First day of the leave. |
+| `to_date` | date | null |  | Last day of the leave (from_date + days - 1, calendar days). |
+| `days` | integer | null |  | Number of calendar days of the leave. |
+| `status` | text | null |  | pending, approved or rejected. |
+| `applied_at` | timestamp with time zone | null |  | UTC time the applicant submitted the application (capture time). |
+| `decided_at` | timestamp with time zone | null |  | UTC time of the approval or rejection; null while pending. |
+| `decided_by_user_id` | bigint | null |  | User who decided (app.app_user id); null while pending. |
+| `data_origin` | app.data_origin | null |  | Origin of the application (app.leave_application.data_origin, stamped at capture). |
+| `is_effective` | boolean | null |  | True when the application is not data-voided (voided_at is null). |
 
 ## dw.v_memo
 
@@ -6730,7 +6945,7 @@ Stable view: one row per route and business date (dw.agg_daily_route) with the z
 | `paid_mtk` | bigint | null |  | Amount paid in cash at the memo, in milli-taka. |
 | `due_mtk` | bigint | null |  | Amount left on credit (due) in milli-taka. |
 | `dues_collected_mtk` | bigint | null |  | Dues collected against earlier credit memos, in milli-taka. |
-| `late_rows_after_final` | integer | null |  | Rows that arrived after the Final Submit. |
+| `late_rows_after_final` | integer | null |  | Rows of the route-day captured before the zone-day's Final Submit that arrived after it. |
 | `updated_at` | timestamp with time zone | null |  | UTC instant of the last update. |
 | `data_origin` | app.data_origin | null |  | Origin (production, pilot, test, seed): the most synthetic of its route and the memos, visits, stock movements and collections of the route-day; set by trigger on every write. |
 | `is_effective` | boolean | null |  | True when the row counts in an ordinary total (the rule of this view is in its description). |
@@ -6801,6 +7016,54 @@ Stable view: every stock movement (issue, return and the other kinds of app.stoc
 | `data_origin` | app.data_origin | null |  | Origin of the row (production, pilot, test, seed): the most synthetic of its users, outlet, route, stamped at insert; changes only through app.restamp_data_origin. |
 | `is_effective` | boolean | null |  | True when the row counts in an ordinary total (the rule of this view is in its description). |
 
+## dw.v_support_ticket
+
+Stable view: one row per support ticket with its current status, priority and lifecycle times (app.support_ticket and app.support_ticket_state); no title, description or notes. is_effective = not data-voided.
+
+`owner: backend:masterdata | capture: OFFLINE | retention: transaction | pii: none` · view
+
+| Column | Type | Null | PII | Description |
+|---|---|---|---|---|
+| `ticket_uuid` | uuid | null |  | Client UUID of the ticket (app.support_ticket.client_uuid). |
+| `ticket_no` | text | null |  | Ticket number INC + at least 6 digits. |
+| `business_date` | date | null |  | Asia/Dhaka business date the ticket was raised. |
+| `created_at` | timestamp with time zone | null |  | UTC instant the server stored the ticket. |
+| `user_id` | bigint | null |  | Reporter (app.app_user id). |
+| `requester_role` | text | null |  | Role of the reporter when the ticket was raised. |
+| `issue_type_code` | text | null |  | Issue type (code list ticket_issue_type). |
+| `source` | text | null |  | quick (Quick Ticket tile) or manual (Create Ticket form). |
+| `priority` | text | null |  | Current priority p1 (Highest) to p4 (Low). |
+| `status` | text | null |  | Current status: new, in_progress, resolved, closed or cancelled. |
+| `first_response_at` | timestamp with time zone | null |  | UTC time of the first support action; null before it. |
+| `resolved_at` | timestamp with time zone | null |  | UTC time support resolved the ticket; null before it. |
+| `closed_at` | timestamp with time zone | null |  | UTC time the ticket was closed; null before it. |
+| `cancelled_at` | timestamp with time zone | null |  | UTC time support cancelled the ticket; null unless cancelled. |
+| `resolution_code` | text | null |  | Resolution code (code list ticket_resolution_code); null until resolved. |
+| `has_affected_user` | boolean | null |  | True when the ticket was raised for another user (affected_username set). |
+| `data_origin` | app.data_origin | null |  | Origin of the ticket (app.support_ticket.data_origin, stamped at capture). |
+| `is_effective` | boolean | null |  | True when the ticket is not data-voided (voided_at is null). |
+
+## dw.v_task
+
+Stable view: one row per task (TSO Assign Task, AMO or web task) with its type, creator, assignee, outlet, route, due date and status; no title or description. is_effective = not data-voided.
+
+`owner: backend:notify | capture: OFFLINE | retention: transaction | pii: none` · view
+
+| Column | Type | Null | PII | Description |
+|---|---|---|---|---|
+| `task_uuid` | uuid | null |  | Client UUID of the task. |
+| `business_date` | date | null |  | Asia/Dhaka business date the task was created. |
+| `task_type_code` | text | null |  | Task type (code list task_type). |
+| `creator_user_id` | bigint | null |  | User who created the task (app.app_user id). |
+| `assignee_user_id` | bigint | null |  | User the task is assigned to (app.app_user id). |
+| `outlet_id` | bigint | null |  | Outlet the task is about; null when none. |
+| `route_id` | bigint | null |  | Route the task belongs to; null when the task names none. |
+| `due_date` | date | null |  | Due date; null when none. |
+| `status` | text | null |  | ongoing, completed or cancelled. |
+| `status_changed_at` | timestamp with time zone | null |  | UTC time of the last status change; null while never changed. |
+| `data_origin` | app.data_origin | null |  | Origin of the task (app.task.data_origin, stamped at capture). |
+| `is_effective` | boolean | null |  | True when the task is not data-voided (voided_at is null). |
+
 ## dw.v_visit
 
 Stable view: one row per visit (dw.fact_visit) with both geo verdicts and distances, no coordinates and no photo. is_effective = not voided.
@@ -6838,6 +7101,24 @@ Stable view: one row per visit (dw.fact_visit) with both geo verdicts and distan
 | `updated_at` | timestamp with time zone | null |  | UTC instant of the last update. |
 | `data_origin` | app.data_origin | null |  | Origin (production, pilot, test, seed): the most synthetic of its visit (app.visit); set by trigger on every write. |
 | `is_effective` | boolean | null |  | True when the row counts in an ordinary total (the rule of this view is in its description). |
+
+## dw.v_visit_plan_outlet
+
+Stable view: one row per outlet of a TSO visit plan (Set Plan) with the plan's date and route and the first Visit Query that completed it. is_effective = neither the outlet row nor its plan is data-voided.
+
+`owner: backend:masterdata | capture: OFFLINE | retention: transaction | pii: none` · view
+
+| Column | Type | Null | PII | Description |
+|---|---|---|---|---|
+| `plan_uuid` | uuid | null |  | Client UUID of the visit plan (app.visit_plan.client_uuid). |
+| `plan_date` | date | null |  | Date the TSO plans to visit the outlet. |
+| `planner_user_id` | bigint | null |  | TSO who set the plan (app.app_user id). |
+| `route_id` | bigint | null |  | Route chosen in Set Plan (app.visit_plan.route_id); for a plan stored before V0137, the smallest current route of the plan's outlets. |
+| `outlet_id` | bigint | null |  | Planned outlet (app.outlet id). |
+| `completed_at` | timestamp with time zone | null |  | Capture time of the first Visit Query (retailer_questionnaire assessment) for this planned outlet; null while pending. |
+| `assessment_uuid` | uuid | null |  | Client UUID of that Visit Query (dw.v_call_assessment.assessment_uuid); null while pending. |
+| `data_origin` | app.data_origin | null |  | Origin (production, pilot, test, seed): the most synthetic of the plan outlet row and its plan. |
+| `is_effective` | boolean | null |  | True when neither the plan outlet row nor its plan is data-voided. |
 
 ## dw.v_working_day
 
