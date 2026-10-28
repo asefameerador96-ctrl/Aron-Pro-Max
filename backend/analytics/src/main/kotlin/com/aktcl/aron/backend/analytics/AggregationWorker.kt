@@ -272,7 +272,7 @@ class AggregationWorker(
     fun start(interval: Duration = Duration.ofSeconds(5)): ScheduledExecutorService {
         val ex = Executors.newSingleThreadScheduledExecutor { r -> Thread(r, "aggregation-worker").apply { isDaemon = true } }
         ex.scheduleWithFixedDelay({
-            runCatching { rebuildOnce(ASWAS_MARKER); refreshDimensionsIfDue(); reconcileIfDue(); runUntilIdle() }
+            runCatching { rebuildOnce(ASWAS_MARKER); refreshDimensionsIfDue(); runUntilIdle(); reconcileIfDue() }
                 .onFailure { log.error("aggregation pass failed", it) }
         }, 0, interval.toMillis(), TimeUnit.MILLISECONDS)
         return ex

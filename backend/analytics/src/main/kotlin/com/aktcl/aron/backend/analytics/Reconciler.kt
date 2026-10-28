@@ -42,12 +42,12 @@ class Reconciler(private val db: Database, private val clock: AronClock = AronCl
                 ).bind("now", now).bind("d", d.date).bind("g", d.grain).bind("k", d.key).bind("m", d.metric).bind("s", d.source).bind("a", d.agg)
                     .mapTo(Int::class.java).one()
                 if (runs == 1) neu++
-                if (runs >= 2) { alerts++; log.error("reconcile: {} {} key {} metric {} on {} differs for {} runs (source {}, aggregate {})", d.grain, d.metric, d.key, d.metric, d.date, runs, d.source, d.agg) }
+                if (runs >= 2) { alerts++; log.error("reconcile: {} {} key {} on {} differs for {} runs (source {}, aggregate {})", d.grain, d.metric, d.key, d.date, runs, d.source, d.agg) }
                 h.execute("SELECT app.mark_dirty(?, ?, ?, 'reconcile')", if (d.grain == "route") "route_day_agg" else "zone_day_agg", d.key, d.date); enq++
             }
             // Close the findings whose difference is gone (a key still queued stays open: its rebuild has not run yet).
             val still = diffs.map { Triple(it.date, it.grain, it.key) to it.metric }.toSet()
-            val queued = h.createQuery("SELECT kind, subject_id, business_date FROM app.dirty_key WHERE kind IN ('route_day_agg', 'zone_day_agg') AND business_date BETWEEN :f AND :t")
+            val queued = h.createQuery("SELECT kind, subject_id, business_date FROM app.dirty_key WHERE kind IN ('route_day_agg', 'zone_day_agg') AND dead_at IS NULL AND business_date BETWEEN :f AND :t")
                 .bind("f", from).bind("t", to).map { rs, _ -> Triple(rs.getObject(3, LocalDate::class.java), if (rs.getString(1) == "route_day_agg") "route" else "zone", rs.getLong(2)) }.list().toSet()
             val open = h.createQuery("SELECT id, business_date, grain, key_id, metric FROM dw.agg_reconcile WHERE resolved_at IS NULL AND business_date BETWEEN :f AND :t")
                 .bind("f", from).bind("t", to).map { rs, _ -> Triple(rs.getLong(1), Triple(rs.getObject(2, LocalDate::class.java), rs.getString(3), rs.getLong(4)), rs.getString(5)) }.list()
@@ -79,7 +79,7 @@ class Reconciler(private val db: Database, private val clock: AronClock = AronCl
                                      ('net_mtk', coalesce(s.net, 0), coalesce(a.net_mtk, 0)),
                                      ('visit_count', coalesce(w.n, 0), coalesce(a.visits, 0)::bigint)) v(metric, sv, av)
          WHERE v.sv <> v.av
-           AND NOT EXISTS (SELECT 1 FROM app.dirty_key d WHERE d.kind = 'route_day_agg' AND d.subject_id = k.route_id AND d.business_date = k.business_date)
+           AND NOT EXISTS (SELECT 1 FROM app.dirty_key d WHERE d.kind = 'route_day_agg' AND d.subject_id = k.route_id AND d.business_date = k.business_date AND d.dead_at IS NULL)
         """,
     ).bind("f", from).bind("t", to).map { rs, _ -> Diff(rs.getObject(1, LocalDate::class.java), "route", rs.getLong(2), rs.getString(3), rs.getLong(4), rs.getLong(5)) }.list()
 
@@ -96,9 +96,9 @@ class Reconciler(private val db: Database, private val clock: AronClock = AronCl
                                      ('net_mtk', coalesce(s.net, 0)::bigint, coalesce(a.net_mtk, 0)),
                                      ('visit_count', coalesce(s.vis, 0)::bigint, coalesce(a.visits, 0)::bigint)) v(metric, sv, av)
          WHERE v.sv <> v.av
-           AND NOT EXISTS (SELECT 1 FROM app.dirty_key d WHERE d.kind = 'zone_day_agg' AND d.subject_id = k.zone_id AND d.business_date = k.business_date)
+           AND NOT EXISTS (SELECT 1 FROM app.dirty_key d WHERE d.kind = 'zone_day_agg' AND d.subject_id = k.zone_id AND d.business_date = k.business_date AND d.dead_at IS NULL)
            AND NOT EXISTS (SELECT 1 FROM app.dirty_key d JOIN dw.agg_daily_route r ON r.route_id = d.subject_id AND r.business_date = d.business_date
-                            WHERE d.kind = 'route_day_agg' AND d.business_date = k.business_date AND r.zone_id = k.zone_id)
+                            WHERE d.kind = 'route_day_agg' AND d.dead_at IS NULL AND d.business_date = k.business_date AND r.zone_id = k.zone_id)
         """,
     ).bind("f", from).bind("t", to).map { rs, _ -> Diff(rs.getObject(1, LocalDate::class.java), "zone", rs.getLong(2), rs.getString(3), rs.getLong(4), rs.getLong(5)) }.list()
 }

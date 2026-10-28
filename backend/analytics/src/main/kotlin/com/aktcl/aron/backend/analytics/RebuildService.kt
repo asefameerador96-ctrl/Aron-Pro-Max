@@ -31,6 +31,7 @@ class RebuildService(private val db: Database, private val clock: AronClock = Ar
     data class Result(val rebuildId: UUID, val routeDays: Int)
 
     fun rebuild(actor: AronPrincipal, reach: Reach, from: LocalDate, to: LocalDate, scope: Scope, reason: String, requestId: String? = null): Result {
+        if (reach.userId != actor.userId) throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "reach does not belong to the caller")
         if (actor.role !in ROLES) throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "a rebuild is an admin action")
         val today = BusinessDate.of(clock.now().toEpochMilli()).toJavaLocalDate()
         fun bad(field: String, msg: String): Nothing = throw ApiProblem(ProblemCode.ERR_VALIDATION, msg, errors = listOf(FieldError(field, "invalid_value")))
@@ -53,19 +54,23 @@ class RebuildService(private val db: Database, private val clock: AronClock = Ar
             }
             val days = h.createQuery(
                 """
-                SELECT DISTINCT k.route_id, k.business_date FROM (
+                SELECT k.route_id, k.business_date FROM (
                   SELECT route_id, business_date FROM app.route_day WHERE business_date BETWEEN :f AND :t
                   UNION SELECT route_id, business_date FROM app.visit WHERE business_date BETWEEN :f AND :t AND route_id IS NOT NULL
                   UNION SELECT route_id, business_date FROM app.memo WHERE business_date BETWEEN :f AND :t AND route_id IS NOT NULL
                   UNION SELECT route_id, business_date FROM app.due_collection WHERE business_date BETWEEN :f AND :t AND route_id IS NOT NULL
                   UNION SELECT route_id, business_date FROM dw.agg_daily_route WHERE business_date BETWEEN :f AND :t) k
-                 WHERE :nat OR k.route_id = ANY(:routes)
-                    OR coalesce(app.route_zone_on(k.route_id, k.business_date), (SELECT zone_id FROM app.route WHERE id = k.route_id)) = ANY(:zones)
+                 CROSS JOIN LATERAL (SELECT coalesce(app.route_zone_on(k.route_id, k.business_date), (SELECT zone_id FROM app.route WHERE id = k.route_id)) AS zone_id) z
+                 WHERE (:nat OR k.route_id = ANY(:routes) OR z.zone_id = ANY(:zones))
+                   AND (:reachNat OR z.zone_id = ANY(:reachZones))
                 """,
-            ).bind("f", from).bind("t", to).bind("nat", scope.national)
+            ).bind("f", from).bind("t", to).bind("nat", scope.national).bind("reachNat", reach.national)
                 .bindArray("routes", Long::class.javaObjectType, scope.routeIds.toList()).bindArray("zones", Long::class.javaObjectType, scope.zoneIds.toList())
+                .bindArray("reachZones", Long::class.javaObjectType, reach.zoneIds.toList())
                 .map { rs, _ -> rs.getLong(1) to rs.getObject(2, LocalDate::class.java) }.list()
-            for ((route, date) in days) h.execute("SELECT app.mark_dirty('route_day_agg', ?, ?, ?)", route, date, "rebuild:$rebuildId")
+            // One statement for all route-days (a national 93-day range is large); the keys are the distinct pairs above.
+            h.createUpdate("SELECT app.mark_dirty('route_day_agg', r, d, :why) FROM unnest(CAST(:rs AS bigint[]), CAST(:ds AS date[])) AS t(r, d)")
+                .bind("why", "rebuild:$rebuildId").bindArray("rs", Long::class.javaObjectType, days.map { it.first }).bindArray("ds", String::class.java, days.map { it.second.toString() }).execute()
             AuditLog.write(
                 h, actor, "dw_rebuild", rebuildId.toString(), "rebuild", null,
                 buildJsonObject {

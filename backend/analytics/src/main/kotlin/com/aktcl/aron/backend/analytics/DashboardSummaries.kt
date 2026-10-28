@@ -246,10 +246,11 @@ internal object DashboardSummaries {
         """,
     ).bind("today", today).bind("since", since).map { rs, _ -> rs.getLong(1) to rs.getObject(2, LocalDate::class.java) }.list()
         .onEach { (r, d) ->
-            // A key already queued by an audited rebuild or a reconcile keeps that reason (the restatement log reads it): it is rebuilt anyway.
+            // A key queued by an audited rebuild or a reconcile keeps that reason (the restatement log reads it), and a key that is backed off or dead keeps
+            // its back-off: re-marking it would reset the attempts (mark_dirty) and retry a failing key every pass for ever.
             h.execute(
                 "SELECT app.mark_dirty('route_day_agg', ?, ?, 'stale_scan') WHERE NOT EXISTS (SELECT 1 FROM app.dirty_key k WHERE k.kind = 'route_day_agg' " +
-                    "AND k.subject_id = ? AND k.business_date = ? AND (k.reason LIKE 'rebuild%' OR k.reason = 'reconcile'))", r, d, r, d,
+                    "AND k.subject_id = ? AND k.business_date = ? AND (k.reason LIKE 'rebuild%' OR k.reason = 'reconcile' OR k.dead_at IS NOT NULL OR k.not_before IS NOT NULL))", r, d, r, d,
             )
         }.size
 

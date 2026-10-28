@@ -62,7 +62,7 @@ class RebuildReconcileTest {
         userId = long("SELECT id FROM app.app_user WHERE username = 'sr001'"), username = "admin1", role = role, scopeVersion = 1, audience = "aron-api",
         deviceId = null, deviceUuid = null, flavour = "web", permissions = emptyList(), pii = false, amr = listOf("pwd", "mfa"), jti = "j", expiresAt = now.get().plusSeconds(600),
     )
-    private fun reach(national: Boolean, vararg zones: Long) = Reach(1, Role.ADMIN, day, national, zones.toSet(), emptySet(), false, emptyList())
+    private fun reach(national: Boolean, vararg zones: Long) = Reach(long("SELECT id FROM app.app_user WHERE username = 'sr001'"), Role.ADMIN, day, national, zones.toSet(), emptySet(), false, emptyList())
 
     // ---------- the audited range rebuild ----------
 
@@ -209,5 +209,48 @@ class RebuildReconcileTest {
         assertEquals(1, long("SELECT count(*) FROM app.dirty_key WHERE dead_at IS NOT NULL"))
         exec("SELECT app.mark_dirty('route_day_agg', ${routeId("R1")}, DATE '$day', 'memo.created')")
         assertEquals(0, long("SELECT count(*) FROM app.dirty_key WHERE dead_at IS NOT NULL"))
+    }
+
+    @Test
+    fun aReachThatIsNotTheCallersIsRefusedAndTheAuditRowNamesTheActor() {
+        val svc = RebuildService(fresh.db, clock)
+        val foreign = Reach(999_999, Role.ADMIN, day, true, emptySet(), emptySet(), false, emptyList())
+        assertEquals(ProblemCode.ERR_FORBIDDEN, assertFailsWith<ApiProblem> { svc.rebuild(admin(), foreign, day, day, RebuildService.Scope(national = true), "x") }.code)
+        val r = svc.rebuild(admin(), reach(true), day, day, RebuildService.Scope(national = true), "actor check")
+        assertEquals(admin().userId, long("SELECT actor_user_id FROM app.audit_log WHERE entity = 'dw_rebuild' AND entity_id = '${r.rebuildId}'"))
+        assertEquals("ADMIN", text("SELECT actor_role FROM app.audit_log WHERE entity = 'dw_rebuild' AND entity_id = '${r.rebuildId}'"))
+    }
+
+    @Test
+    fun aFailingRebuildOfACorruptedClosedDayWritesNoRestatement() {
+        val w = worker(); w.runUntilIdle()
+        val before = long("SELECT count(*) FROM dw.agg_restatement_log")
+        exec("UPDATE dw.agg_daily_route SET net_mtk = net_mtk + 1 WHERE route_id = ${routeId("R1")} AND business_date = '$day'")
+        w.beforeRelease = { kind, _, _ -> if (kind == "route_day_agg") error("boom") }
+        exec("SELECT app.mark_dirty('route_day_agg', ${routeId("R1")}, DATE '$day', 'rebuild:5b3f0a3e-6d1c-4b43-9a6c-1c1c1c1c1c1c')")
+        w.drain()
+        assertEquals(before, long("SELECT count(*) FROM dw.agg_restatement_log"), "the rolled-back rebuild left no restatement")
+    }
+
+    @Test
+    fun theStaleScanDoesNotReviveABackedOffOrDeadKey() {
+        val w = worker(); w.runUntilIdle()
+        exec("DELETE FROM app.dirty_key")
+        exec("SELECT app.mark_dirty('route_day_agg', ${routeId("R1")}, DATE '$day', 'memo.created')")
+        exec("UPDATE app.dirty_key SET attempts = 3, not_before = TIMESTAMPTZ '2030-01-01 00:00Z'")
+        // A check-in received now makes the scan consider the route-day; the backed-off key must keep its attempts and back-off.
+        exec("UPDATE app.attendance_event SET received_at = now() WHERE route_id = ${routeId("R1")}")
+        w.runUntilIdle()
+        assertEquals(3, long("SELECT attempts FROM app.dirty_key WHERE subject_id = ${routeId("R1")}"))
+        assertEquals(1, long("SELECT count(*) FROM app.dirty_key WHERE subject_id = ${routeId("R1")} AND not_before IS NOT NULL"))
+    }
+
+    @Test
+    fun aDeadKeysDifferenceIsStillReportedAndAlertsOnTheSecondRun() {
+        val w = worker(); w.runUntilIdle()
+        exec("UPDATE dw.agg_daily_route SET net_mtk = net_mtk + 9 WHERE route_id = ${routeId("R3")} AND business_date = '$day'")
+        assertEquals(0, Reconciler(fresh.db, clock).run().alerts)
+        exec("UPDATE app.dirty_key SET dead_at = now(), attempts = 8 WHERE kind = 'route_day_agg' AND subject_id = ${routeId("R3")}")
+        assertTrue(Reconciler(fresh.db, clock).run().alerts >= 1, "a dead key no longer hides its finding")
     }
 }
