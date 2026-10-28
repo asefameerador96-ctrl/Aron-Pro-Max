@@ -117,6 +117,8 @@ class AsWasBrandScopeTest {
         val before1 = summary(brands = setOf(b("B1"))); val before2 = summary(brands = setOf(b("B2")))
         exec("UPDATE app.product_node SET parent_id = (SELECT id FROM app.product_node WHERE code = 'B2') WHERE code = 'V1'")
         assertEquals("B2", fresh.db.jdbi.withHandle<String, Exception> { it.createQuery("SELECT brand_code FROM dw.dim_product WHERE variant_name = 'Var1' LIMIT 1").mapTo(String::class.java).one() }, "the current dimension moved")
+        // The aggregates are rebuilt after the move too: the per-brand rows must come out under the brand the variant had on that day.
+        val w = AggregationWorker(fresh.db, AronClock { now }); w.requestRebuild(day); w.runUntilIdle()
         val a1 = summary(brands = setOf(b("B1"))); val a2 = summary(brands = setOf(b("B2")))
         assertEquals(before1.by_category, a1.by_category, "B1 lost the variant's old day")
         assertEquals(before1.by_segment, a1.by_segment)
