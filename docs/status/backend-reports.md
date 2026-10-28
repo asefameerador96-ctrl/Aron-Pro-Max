@@ -3,7 +3,7 @@
 ## Session 6 (2026-10-28)
 | Slice | State |
 |---|---|
-| Row 2 as-was attribution (D-REPORTS-ASWAS-01) | coded; AggregationTest 14/14 and AsWasAttributionTest 6/6 green locally; full analytics+app run and Opus checker pending; read-side joins to current dim_geo/dim_outlet remain (listed in the decision) |
+| Row 2 as-was attribution (D-REPORTS-ASWAS-01) | candidate 1 `791f00f8`: lane CI 40647292255 green (all 10 jobs); local :backend:analytics:test + :backend:app:test green (464 tests); Opus checker: 1 blocking (a route-day split over two zones) fixed with a test, non-blocking fixed or listed; read-side joins to current dim_geo/dim_outlet remain (D-REPORTS-ASWAS-01), route/zone/product moves emit no event (backend-admin) |
 | Row 3 rebuild / reconcile / restate | not started |
 
 ## HANDOVER (2026-10-23 ~07:00, session 5 recycling at ~345k): everything is on INT, nothing open in code
