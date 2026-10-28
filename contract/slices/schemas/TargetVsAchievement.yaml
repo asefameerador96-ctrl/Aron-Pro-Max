@@ -21,6 +21,8 @@ TargetVsAchievement:
       oneOf:
       - $ref: '#/components/schemas/Decimal3'
       - type: 'null'
+      description: The route's monthly target for the category / the working days of the month. Null without a target,
+        and null when the month has no working day (W = 0, lead ruling R-F-13).
     sales:
       type: integer
       format: int64
@@ -29,4 +31,7 @@ TargetVsAchievement:
       type:
       - integer
       - 'null'
+      format: int64
       minimum: 0
+      description: sales / daily_target in basis points, uncapped (may exceed 10000, hence int64, R-F-16); null
+        whenever daily_target is null (R-F-13).

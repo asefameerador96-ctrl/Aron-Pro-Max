@@ -16,4 +16,7 @@ AdminModule:
   - indent
   - leaderboard
   - daily_tracking
-  description: The fixed module list of an ADMIN user's grants (docs/34 s1).
+  - support
+  description: 'The fixed module list of an ADMIN user''s grants (docs/34 s1). `support` from contract 1.10.0 (lead
+    ruling R-F-11): the support ticket routes (`/v1/support/tickets` and every path under it) belong to it; the
+    support-desk permission stays `support.ticket.manage` (`Me.support_desk`).'

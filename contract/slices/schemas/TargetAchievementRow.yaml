@@ -12,9 +12,11 @@ TargetAchievementRow:
     the sum of its items (never its own T rounded once; see TargetAchievement); remaining_* = max(target - A, 0);
     *_pct_bp = A / target in basis points, rounded half up,
 
-    uncapped, null when the target is 0. The Decimal3 members and `achievement_pct` keep their meaning for the AMO
+    uncapped (int64, R-F-16), null when the target is 0. When `period_days` n is 0 the three till-date members
 
-    app.
+    (tilldate_target_qty_base, remaining_tilldate_qty_base, tilldate_achievement_pct_bp) are null (R-F-15). The
+
+    Decimal3 members and `achievement_pct` keep their meaning for the AMO app.
 
     '
   required:
@@ -89,29 +91,36 @@ TargetAchievementRow:
       minimum: 0
       description: Achievement A month to date in base units.
     tilldate_target_qty_base:
-      type: integer
+      type:
+      - integer
+      - 'null'
       format: int64
       minimum: 0
-      description: Till-date target T' in base units.
+      description: Till-date target T' in base units; null when `period_days` is 0 (R-F-15).
     remaining_qty_base:
       type: integer
       format: int64
       minimum: 0
       description: max(T - A, 0).
     remaining_tilldate_qty_base:
-      type: integer
+      type:
+      - integer
+      - 'null'
       format: int64
       minimum: 0
-      description: max(T' - A, 0).
+      description: max(T' - A, 0); null when `period_days` is 0 (R-F-15).
     achievement_pct_bp:
       type:
       - integer
       - 'null'
+      format: int64
       minimum: 0
-      description: A / T in basis points, uncapped; null when T is 0.
+      description: A / T in basis points, uncapped (int64, R-F-16); null when T is 0.
     tilldate_achievement_pct_bp:
       type:
       - integer
       - 'null'
+      format: int64
       minimum: 0
-      description: A / T' in basis points, uncapped; null when T' is 0.
+      description: A / T' in basis points, uncapped (int64, R-F-16); null when T' is 0, and null when `period_days`
+        is 0 (R-F-15).

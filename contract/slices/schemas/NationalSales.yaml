@@ -29,7 +29,12 @@ NationalSales:
       type: integer
       minimum: 0
       maximum: 31
-      description: 'Working days of the date''s month (calendar: Fridays and holidays excluded).'
+      description: 'Working days W of the date''s month at the lowest common node of the effective scope (filter
+        and token reach; D-TSO-MAN-08, lead ruling R-F-17): one zone gives the zone, one territory the territory,
+        mixed or national the global calendar. W = days of the month - the node''s weekend days (`cfg.calendar.weekend_days`
+        resolved at the node) - the holidays on the node''s path (global, wing, division, territory, zone) + the
+        make-up days on that path (one implementation, WorkingDays of shared/rules). 0 when the node has no working
+        day in the month; every card''s daily_target, remaining and achievement_pct_bp are then null (R-F-13).'
     cards:
       type: array
       maxItems: 10

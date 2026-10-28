@@ -5,11 +5,17 @@ SupportTicketPayload:
 
     ticket''s UUID and the server assigns `ticket_no` at the first insert (a replay answers the stored row). The
 
-    requester is the token''s user; a requester role the server does not allow is quarantined `scope_out_of_reach`
+    requester is the token''s user; a requester role outside the configured requester roles (default TSO,
 
-    (D-TSO-MAN-17), an issue type that is not an active `ticket_issue_type` code on the business date is rejected
+    D-TSO-MAN-17) is quarantined `scope_out_of_reach`. When an ADMIN accepts such a quarantined record
 
-    `issue_type_unknown`. The priority comes from the issue type. Photos follow as `media_meta` records with purpose
+    (`resolveQuarantine`), the server runs the role check again and refuses the accept while the role is still not
+
+    allowed; the record stays quarantined (no new outcome code, lead ruling R-F-05). An issue type that is not an
+
+    active `ticket_issue_type` code on the business date is rejected `issue_type_unknown`. The priority comes from
+
+    the issue type. Photos follow as `media_meta` records with purpose
 
     `support` and ref_type `support_ticket` (at most 3, D-TSO-MAN-23). Family: own header, rank 0.
 

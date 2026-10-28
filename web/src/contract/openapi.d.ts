@@ -1624,7 +1624,10 @@ export interface paths {
          * @description Target Status (D-TSO-MAN-39, contract 1.10.0). Without `level`/`node_id` the node is the caller's top reach node;
          *     a node outside the reach is 403 `ERR_OUT_OF_SCOPE`. `children=zone` also returns one node per zone in the
          *     caller's reach under that node (the TSO's Territory card plus one card per zone); the zones come from the token
-         *     reach, never from client ids. The till-date basis follows the caller's role (TSO: the TSO key, AMO: the AMO team
+         *     reach, never from client ids. `children=zone` is allowed only when the node is a territory or below (lead ruling
+         *     R-F-18): a territory node answers its zones, a zone node answers itself as its one child; at a national, wing or
+         *     division node it is 400 `ERR_VALIDATION` (`query.children` invalid_value). The check runs on the resolved node,
+         *     the default top reach node included. The till-date basis follows the caller's role (TSO: the TSO key, AMO: the AMO team
          *     key; calendar days by default, D-TSO-MAN-05). The integer members (`*_qty_base`, `*_pct_bp`) are what the TSO app
          *     prints; the Decimal3 members and `achievement_pct` keep their meaning for the AMO app.
          */
@@ -2966,9 +2969,10 @@ export interface paths {
         };
         /**
          * Ticket counts for the Ticket Dashboard (the caller's own tickets; the support desk counts every ticket).
-         * @description D-TSO-MAN-25 (contract 1.10.0). `total` counts every status, `open` = `new` + `in_progress`. `resolved_pct_bp` =
-         *     resolved / total and `open_pct_bp` = open / total in basis points, rounded half up from the integers; both are
-         *     null when total is 0 (the app prints 0%). The app reads it on Ticket Dashboard open and on pull-to-refresh only.
+         * @description D-TSO-MAN-25 (contract 1.10.0). `total` counts every status, `open` = `new` + `in_progress`. The answer carries
+         *     counts only (lead ruling R-F-14): the phone and the web compute the whole percents (resolved / total, open /
+         *     total) once from the counts, and total 0 prints "0%". The app reads it on Ticket Dashboard open and on
+         *     pull-to-refresh only.
          */
         get: operations["getSupportTicketSummary"];
         put?: never;
@@ -4437,10 +4441,10 @@ export interface components {
         /** @enum {string} */
         BundleSectionName: "outlets" | "open_memos" | "prices" | "offers" | "tasks" | "team" | "pending_outlet_requests" | "programmes" | "content";
         /**
-         * @description Report registry keys of this build, programme reports included (docs/24 s12.3).
+         * @description Report registry keys of this build, programme reports included (docs/24 s12.3). `tso-visit-log` from contract 1.10.0 (lead ruling R-F-12; the TSO visit plans with their answers and delegated tasks).
          * @enum {string}
          */
-        ReportKey: "std-memo" | "sr-efficiency" | "route-std" | "route-memo" | "route-bsr-cpr" | "data-entry-log" | "final-submit-log" | "final-submit-status" | "by-outlet" | "by-outlet-by-day" | "gigo" | "attendance" | "discount" | "online-offline" | "tso-top-sheet" | "daily-tracking" | "sr-outlets" | "leaderboard" | "suspicious-location" | "sync-health" | "ds-rrs" | "dss" | "amo-call" | "dues-ageing" | "settlement" | "qc-report" | "stock-summary" | "memo-number-gaps" | "sales-summary" | "task-planner" | "by-route-geo-capture" | "free-sample" | "target-allocation" | "route-qc" | "geofence-calibration" | "astha" | "astha-gift-choice" | "campaign-gift-redemption" | "diamond-league" | "superstar-campaign" | "retailer-list" | "sku-list";
+        ReportKey: "std-memo" | "sr-efficiency" | "route-std" | "route-memo" | "route-bsr-cpr" | "data-entry-log" | "final-submit-log" | "final-submit-status" | "by-outlet" | "by-outlet-by-day" | "gigo" | "attendance" | "discount" | "online-offline" | "tso-top-sheet" | "daily-tracking" | "sr-outlets" | "leaderboard" | "suspicious-location" | "sync-health" | "ds-rrs" | "dss" | "amo-call" | "dues-ageing" | "settlement" | "qc-report" | "stock-summary" | "memo-number-gaps" | "sales-summary" | "task-planner" | "by-route-geo-capture" | "free-sample" | "target-allocation" | "route-qc" | "geofence-calibration" | "astha" | "astha-gift-choice" | "campaign-gift-redemption" | "diamond-league" | "superstar-campaign" | "retailer-list" | "sku-list" | "tso-visit-log";
         /** @description RFC 9457 problem details with Aron extension members. */
         Problem: {
             /**
@@ -5854,9 +5858,12 @@ export interface components {
         /**
          * @description A ticket raised on the phone (contract 1.10.0, D-TSO-MAN-18, 19, 24). Write-once; the record's `client_uuid` is the
          *     ticket's UUID and the server assigns `ticket_no` at the first insert (a replay answers the stored row). The
-         *     requester is the token's user; a requester role the server does not allow is quarantined `scope_out_of_reach`
-         *     (D-TSO-MAN-17), an issue type that is not an active `ticket_issue_type` code on the business date is rejected
-         *     `issue_type_unknown`. The priority comes from the issue type. Photos follow as `media_meta` records with purpose
+         *     requester is the token's user; a requester role outside the configured requester roles (default TSO,
+         *     D-TSO-MAN-17) is quarantined `scope_out_of_reach`. When an ADMIN accepts such a quarantined record
+         *     (`resolveQuarantine`), the server runs the role check again and refuses the accept while the role is still not
+         *     allowed; the record stays quarantined (no new outcome code, lead ruling R-F-05). An issue type that is not an
+         *     active `ticket_issue_type` code on the business date is rejected `issue_type_unknown`. The priority comes from
+         *     the issue type. Photos follow as `media_meta` records with purpose
          *     `support` and ref_type `support_ticket` (at most 3, D-TSO-MAN-23). Family: own header, rank 0.
          */
         SupportTicketPayload: {
@@ -5879,6 +5886,8 @@ export interface components {
          *     `body` of 1 to 2000 characters and is allowed while the ticket is new or in_progress; `close_review` ("Submit
          *     Review & Close", one tap, no rating) only while it is resolved. Otherwise, or on another user's ticket, the record
          *     is rejected `ticket_state_invalid` (final). A ticket not on the server yet parks the event (`parent_missing`).
+         *     A requester role outside the configured requester roles is quarantined `scope_out_of_reach`, with the same role
+         *     check again on an accept as for the ticket (R-F-05).
          *     Photos follow as `media_meta` with ref_type `support_ticket_event` (at most 3). Family: own header, rank 0.
          */
         SupportTicketEventPayload: {
@@ -7162,16 +7171,19 @@ export interface components {
              * @description SUM(quantity) in base units (sticks, pieces, dozens) of the category's latest-version memo lines for the date, location and product filter.
              */
             total_sales: number;
-            /** @description Sum over the routes in the filter of route monthly target / working days of the month (Fridays and holidays excluded); null when no target is loaded for them. Always the full-day target. */
+            /** @description Today's target (D-TSO-MAN-08): the sum of the route monthly targets in scope for the month (`monthly_target_qty`) / `NationalSales.working_days` W, the working days at the lowest common node of the scope. Always the full-day target; on a Friday or holiday the same formula applies (no zeroing). Null when no target is loaded for the routes in scope, and null when W = 0 (a month with no working day at that node; the phone and the web print "—", lead ruling R-F-13). */
             daily_target: components["schemas"]["Decimal3"] | null;
             /**
              * Format: int64
              * @description Same as total_sales; repeated for the "i" pop-up.
              */
             sales_so_far: number;
-            /** @description max(daily_target - sales_so_far, 0); null without a target. */
+            /** @description max(daily_target - sales_so_far, 0); null whenever daily_target is null (no target, or W = 0). */
             remaining: components["schemas"]["Decimal3"] | null;
-            /** @description total_sales / daily_target in basis points (ring); null without a target. May exceed 10000. Exact: round_half_up(10000 * total_sales * working_days / monthly_target_qty), from the integers, never from the rounded daily_target (D-TSO-MAN-10, contract 1.10.0). */
+            /**
+             * Format: int64
+             * @description total_sales / daily_target in basis points (ring); null whenever daily_target is null: without a target, and when `NationalSales.working_days` is 0 (the ring prints "—", lead ruling R-F-13). Uncapped: may exceed 10000, hence int64 (R-F-16). Exact: round_half_up(10000 * total_sales * working_days / monthly_target_qty), from the integers, never from the rounded daily_target (D-TSO-MAN-10, contract 1.10.0).
+             */
             achievement_pct_bp: number | null;
             /** @description Routes in the filter that carry a monthly target for the category. */
             target_routes: number;
@@ -7192,7 +7204,7 @@ export interface components {
              * @description Oldest `last_updated_at` of the summary tables this card reads (null when none has been written yet). The page shows it as "last updated hh:mm" (Dhaka).
              */
             last_updated_at: string | null;
-            /** @description Working days of the date's month (calendar: Fridays and holidays excluded). */
+            /** @description Working days W of the date's month at the lowest common node of the effective scope (filter and token reach; D-TSO-MAN-08, lead ruling R-F-17): one zone gives the zone, one territory the territory, mixed or national the global calendar. W = days of the month - the node's weekend days (`cfg.calendar.weekend_days` resolved at the node) - the holidays on the node's path (global, wing, division, territory, zone) + the make-up days on that path (one implementation, WorkingDays of shared/rules). 0 when the node has no working day in the month; every card's daily_target, remaining and achievement_pct_bp are then null (R-F-13). */
             working_days: number;
             cards: components["schemas"]["NationalSalesCard"][];
         };
@@ -7240,11 +7252,20 @@ export interface components {
                 brand_name: string;
                 /** @description Distinct (route, outlet) pairs with an effective sale line of the brand. */
                 outlets_bought: number;
-                /** @description outlets_bought / the configured denominator in basis points, rounded half up; null when it is 0. The app prints its whole % from the integers, never from this rounded value (D-TSO-MAN-10). */
+                /**
+                 * Format: int64
+                 * @description outlets_bought / the configured denominator in basis points, rounded half up; null when it is 0. The app prints its whole % from the integers, never from this rounded value (D-TSO-MAN-10).
+                 */
                 cpr_bp: number | null;
-                /** @description outlets_bought / successful_calls in basis points; null when successful_calls is 0. */
+                /**
+                 * Format: int64
+                 * @description outlets_bought / successful_calls in basis points; null when successful_calls is 0.
+                 */
                 cpr_of_successful_bp: number | null;
-                /** @description outlets_bought / target_outlets in basis points; null when target_outlets is 0. */
+                /**
+                 * Format: int64
+                 * @description outlets_bought / target_outlets in basis points; null when target_outlets is 0.
+                 */
                 cpr_of_target_bp: number | null;
             }[];
         };
@@ -7373,7 +7394,10 @@ export interface components {
             submitted: number;
             /** @description submitted / successful_login in basis points (the web brief's figure). */
             submit_pct_bp: number | null;
-            /** @description submitted / target_routes in basis points, rounded half up; null when target_routes is 0. The TSO app's Bikroy Joma % (D-TSO-MAN-07, contract 1.10.0; optional until the server sends it). */
+            /**
+             * Format: int64
+             * @description submitted / target_routes in basis points, rounded half up; null when target_routes is 0. The TSO app's Bikroy Joma % (D-TSO-MAN-07, contract 1.10.0; optional until the server sends it).
+             */
             submit_of_target_pct_bp?: number | null;
         };
         /** @description One (route, user) row of the Login / Submit Status screen (D-TSO-MAN-12). A vacant route has one SR row with user_id, username and display_name null ("SR Not Set"). */
@@ -7563,9 +7587,14 @@ export interface components {
             category_code: string;
             /** @enum {string} */
             base_unit: "stick" | "piece" | "dozen";
+            /** @description The route's monthly target for the category / the working days of the month. Null without a target, and null when the month has no working day (W = 0, lead ruling R-F-13). */
             daily_target: components["schemas"]["Decimal3"] | null;
             /** Format: int64 */
             sales: number;
+            /**
+             * Format: int64
+             * @description sales / daily_target in basis points, uncapped (may exceed 10000, hence int64, R-F-16); null whenever daily_target is null (R-F-13).
+             */
             achievement_pct_bp: number | null;
         };
         /** @description The "Map Details" page of a route and day: header, markers, SR path and the cards under the map. Distance is metres (docs/34 s6 Q1 default). */
@@ -7867,7 +7896,9 @@ export interface components {
          *     days in [1st..day] and in the month); a past month has e = n, a future month e = 0. Item (variant) till-date =
          *     round_half_up(T * e / n); a category or card figure is the sum of its item rows, never the card total rounded
          *     once (the screenshot's eight Cigarette items, T = 40999 in all: 25/31 gives 33064; 21/26 gives 33114, where a
-         *     rounded total would give 33115). From contract 1.10.0: `day`,
+         *     rounded total would give 33115). n = 0 (a working-days basis in a month with no working day) makes the till-date
+         *     members of every row null: tilldate_target_qty_base, remaining_tilldate_qty_base and tilldate_achievement_pct_bp
+         *     (lead ruling R-F-15). From contract 1.10.0: `day`,
          *     `elapsed_days`, `period_days`, `last_updated_at`, `children` and the integer row members.
          */
         TargetAchievement: {
@@ -7881,7 +7912,7 @@ export interface components {
             day: components["schemas"]["BusinessDate"];
             /** @description e of the till-date basis. */
             elapsed_days: number;
-            /** @description n of the till-date basis. */
+            /** @description n of the till-date basis, 0..31; 0 only on a working-days basis in a month with no working day, and then the till-date members of every row are null (R-F-15). */
             period_days: number;
             /**
              * Format: date-time
@@ -7896,8 +7927,9 @@ export interface components {
          *     target_qty_base T = the route monthly targets of the month in reach; achieved_qty_base A = sold quantity of sale
          *     lines, business dates 1st..`day`; tilldate_target_qty_base T' = per item round_half_up(T * e / n), a category row
          *     the sum of its items (never its own T rounded once; see TargetAchievement); remaining_* = max(target - A, 0); *_pct_bp = A / target in basis points, rounded half up,
-         *     uncapped, null when the target is 0. The Decimal3 members and `achievement_pct` keep their meaning for the AMO
-         *     app.
+         *     uncapped (int64, R-F-16), null when the target is 0. When `period_days` n is 0 the three till-date members
+         *     (tilldate_target_qty_base, remaining_tilldate_qty_base, tilldate_achievement_pct_bp) are null (R-F-15). The
+         *     Decimal3 members and `achievement_pct` keep their meaning for the AMO app.
          */
         TargetAchievementRow: {
             product_level: components["schemas"]["ProductLevel"];
@@ -7926,9 +7958,9 @@ export interface components {
             achieved_qty_base: number;
             /**
              * Format: int64
-             * @description Till-date target T' in base units.
+             * @description Till-date target T' in base units; null when `period_days` is 0 (R-F-15).
              */
-            tilldate_target_qty_base: number;
+            tilldate_target_qty_base: number | null;
             /**
              * Format: int64
              * @description max(T - A, 0).
@@ -7936,12 +7968,18 @@ export interface components {
             remaining_qty_base: number;
             /**
              * Format: int64
-             * @description max(T' - A, 0).
+             * @description max(T' - A, 0); null when `period_days` is 0 (R-F-15).
              */
-            remaining_tilldate_qty_base: number;
-            /** @description A / T in basis points, uncapped; null when T is 0. */
+            remaining_tilldate_qty_base: number | null;
+            /**
+             * Format: int64
+             * @description A / T in basis points, uncapped (int64, R-F-16); null when T is 0.
+             */
             achievement_pct_bp: number | null;
-            /** @description A / T' in basis points, uncapped; null when T' is 0. */
+            /**
+             * Format: int64
+             * @description A / T' in basis points, uncapped (int64, R-F-16); null when T' is 0, and null when `period_days` is 0 (R-F-15).
+             */
             tilldate_achievement_pct_bp: number | null;
         };
         /** @description One child node of a target answer (`children=zone`), with the same rows as the parent (contract 1.10.0). */
@@ -9940,7 +9978,7 @@ export interface components {
             /** @description Media uuids of the ticket's own photos (read through the media read URL). */
             attachments: components["schemas"]["Uuid"][];
         };
-        /** @description Ticket counts by status (D-TSO-MAN-25); the caller's own tickets, or every ticket for the support desk. */
+        /** @description Ticket counts by status (D-TSO-MAN-25); the caller's own tickets, or every ticket for the support desk. No percentage members (lead ruling R-F-14) - the phone and the web compute each whole percent once from these counts (resolved / total, open / total; TicketMath on the phone, the corpus formatter on the web), and total 0 prints "0%". */
         SupportTicketSummary: {
             as_of: components["schemas"]["Timestamp"];
             /** @description Every status. */
@@ -9952,10 +9990,6 @@ export interface components {
             cancelled: number;
             /** @description new + in_progress. */
             open: number;
-            /** @description resolved / total in basis points, rounded half up; null when total is 0. */
-            resolved_pct_bp: number | null;
-            /** @description open / total in basis points, rounded half up; null when total is 0. */
-            open_pct_bp: number | null;
         };
         /**
          * @description One support-desk action (D-TSO-MAN-20). `op_uuid` makes it idempotent (a new v4 UUID per desk action, kept for
@@ -10271,10 +10305,10 @@ export interface components {
             reason: components["schemas"]["ChangeReason"];
         };
         /**
-         * @description The fixed module list of an ADMIN user's grants (docs/34 s1).
+         * @description The fixed module list of an ADMIN user's grants (docs/34 s1). `support` from contract 1.10.0 (lead ruling R-F-11): the support ticket routes (`/v1/support/tickets` and every path under it) belong to it; the support-desk permission stays `support.ticket.manage` (`Me.support_desk`).
          * @enum {string}
          */
-        AdminModule: "masterdata" | "routes" | "outlets" | "products" | "prices" | "users" | "targets" | "credentials" | "mdm" | "reports" | "config" | "data_entry" | "indent" | "leaderboard" | "daily_tracking";
+        AdminModule: "masterdata" | "routes" | "outlets" | "products" | "prices" | "users" | "targets" | "credentials" | "mdm" | "reports" | "config" | "data_entry" | "indent" | "leaderboard" | "daily_tracking" | "support";
         UserAccess: {
             user_id: components["schemas"]["Id"];
             role: components["schemas"]["Role"];
@@ -13615,7 +13649,7 @@ export interface operations {
                 /** @description Id of the node at `level` (omit for national). */
                 node_id?: components["parameters"]["NodeIdQuery"];
                 product_level?: components["schemas"]["ProductLevel"];
-                /** @description `zone`: add `children`, one node per zone in the caller's reach under the node (contract 1.10.0). */
+                /** @description `zone`: add `children`, one node per zone in the caller's reach under the node (contract 1.10.0). Only at a territory or zone node; at a national, wing or division node 400 `ERR_VALIDATION` (R-F-18). */
                 children?: "zone";
             };
             header?: never;

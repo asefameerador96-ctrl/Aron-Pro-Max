@@ -1,7 +1,9 @@
 SupportTicketSummary:
   type: object
   description: Ticket counts by status (D-TSO-MAN-25); the caller's own tickets, or every ticket for the support
-    desk.
+    desk. No percentage members (lead ruling R-F-14) - the phone and the web compute each whole percent once from
+    these counts (resolved / total, open / total; TicketMath on the phone, the corpus formatter on the web), and
+    total 0 prints "0%".
   required:
   - as_of
   - total
@@ -11,8 +13,6 @@ SupportTicketSummary:
   - closed
   - cancelled
   - open
-  - resolved_pct_bp
-  - open_pct_bp
   additionalProperties: false
   properties:
     as_of:
@@ -40,17 +40,3 @@ SupportTicketSummary:
       type: integer
       minimum: 0
       description: new + in_progress.
-    resolved_pct_bp:
-      type:
-      - integer
-      - 'null'
-      minimum: 0
-      maximum: 10000
-      description: resolved / total in basis points, rounded half up; null when total is 0.
-    open_pct_bp:
-      type:
-      - integer
-      - 'null'
-      minimum: 0
-      maximum: 10000
-      description: open / total in basis points, rounded half up; null when total is 0.

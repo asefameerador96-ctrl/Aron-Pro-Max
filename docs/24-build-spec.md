@@ -1343,6 +1343,7 @@ Every report is one `POST /v1/reports/{report_key}/query` with a `ReportQuery` (
 | `superstar-campaign` | per outlet category, slab, base target and criteria-met flag |
 | `retailer-list` | Browse Retailer list export (PII columns by role) |
 | `sku-list` | Browse SKU list export with the price types the role may see (three decimals) |
+| `tso-visit-log` | TSO visit plans (contract 1.10.0, lead ruling R-F-12): plan date, TSO, zone, route, outlet, status, completed at, both answers by key, delegate task, the task and its status |
 
 Every export (xlsx, pdf, print) is listed in the export log `GET /v1/report-exports` with its filters, row count and PII flag. Column sets whose sample workbook is not yet seen carry `columns_known: false` in `GET /v1/reports` and are fixed when the sponsor provides the sample.
 

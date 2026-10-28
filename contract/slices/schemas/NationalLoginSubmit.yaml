@@ -58,6 +58,7 @@ NationalLoginSubmit:
       type:
       - integer
       - 'null'
+      format: int64
       minimum: 0
       description: submitted / target_routes in basis points, rounded half up; null when target_routes is 0. The
         TSO app's Bikroy Joma % (D-TSO-MAN-07, contract 1.10.0; optional until the server sends it).

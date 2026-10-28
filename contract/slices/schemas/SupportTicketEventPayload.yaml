@@ -10,6 +10,10 @@ SupportTicketEventPayload:
 
     is rejected `ticket_state_invalid` (final). A ticket not on the server yet parks the event (`parent_missing`).
 
+    A requester role outside the configured requester roles is quarantined `scope_out_of_reach`, with the same role
+
+    check again on an accept as for the ticket (R-F-05).
+
     Photos follow as `media_meta` with ref_type `support_ticket_event` (at most 3). Family: own header, rank 0.
 
     '

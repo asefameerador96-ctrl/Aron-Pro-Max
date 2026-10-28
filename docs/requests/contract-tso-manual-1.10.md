@@ -16,6 +16,9 @@ must treat it as unknown (the Kotlin wire DTOs carry every enum as a String; `Un
 | `RecordOutcomeCode` | `after_final_submit` (quarantined), `day_final_submitted` (rejected, not retryable), `ticket_state_invalid` (rejected, not retryable), `issue_type_unknown` (rejected, not retryable) | `RecordAck.code`, `SalesSubmitDigest.rejected[].code`, quarantine page | A rejected ack carries `retryable: false`, so an app on an old build marks the row final and shows the bundle's `reason_texts` (bn and en added in `ReasonTexts.kt`); a quarantined ack needs no code knowledge. The four codes are in docs/24 s4.5 |
 | `ProblemCode` | `ERR_TICKET_TRANSITION_INVALID`, `ERR_TICKET_COMMENTS_CLOSED`, `ERR_DAY_FINAL_SUBMIT_REOPENED` (all 409) | `Problem.code` | `ERR_DAY_FINAL_SUBMIT_REOPENED` reaches only a TSO app that replays a reopened Final Submit; an old TSO app shows the generic conflict message. The ticket codes reach only the web support desk |
 | `CodeListKey` | `ticket_issue_type`, `ticket_resolution_code` | bundle code lists, `GET /v1/admin/code-lists` | The phones keep the bundle's code lists as raw JSON keyed by `list_key` (`ReferenceRepository`), so a list an old app does not use is inert; the server sends only `CodeListKey` lists (`BundleService`) |
+| `AdminModule` (lead ruling R-F-11) | `support` | `Me.modules` and `UserAccess.modules` (keys) | Only ADMIN and SUPERADMIN web sessions carry module grants; the field apps get `modules: null`. The web reads grants through its own `GRANT_MODULES` list, so an old web build ignores a key it does not list. The server sends `support` only once B1 adds the `AdminModules` line and F2 the grant CHECK value |
+| `ReportKey` (lead ruling R-F-12) | `tso-visit-log` | `GET /v1/reports` definitions, export log `report_key` | The web shows only the reports in its own catalogue; an export-log row of a key it does not know is shown by its raw key. B3 registers the report, W1 adds the catalogue entry and labels |
+| `format: int64` on two 1.9.0 response members (lead ruling R-F-16) | `NationalSalesCard.achievement_pct_bp`, `TargetVsAchievement.achievement_pct_bp` | `queryNationalSales`, `getRouteMap` | Same JSON integers on the wire; the format only tells a typed reader to use a 64-bit integer (an achievement against a tiny target can exceed the 32-bit range). Listed in case oasdiff reports a response format change; the web's `number` is unchanged and no Kotlin wire DTO decodes either schema today |
 
 ## 2. Additive changes (not breaking; listed for the reviewer)
 
@@ -47,6 +50,25 @@ must treat it as unknown (the Kotlin wire DTOs carry every enum as a String; `Un
   sequence); `updateSupportTicket` description: check order, the `op_uuid` replay before `expected_version`, 409
   `ERR_CONFLICT` for a reused `op_uuid`, deterministic event UUIDs; `TargetAchievement` / `TargetAchievementRow`
   descriptions: the item-sum rule with the 21/26 example (33114, not 33115).
+- Fix round 2, lead rulings R-F-05 to R-F-18 of the build contract s9 (same 1.10.0, nothing released yet):
+  - R-F-14: `SupportTicketSummary` loses `resolved_pct_bp` and `open_pct_bp` (removed from a schema that is new in 1.10.0
+    and was never released; the base 1.9.0 has no `SupportTicketSummary`, so oasdiff has nothing to compare). The phone
+    and the web compute the whole percents once from the counts; total 0 prints "0%". `getSupportTicketSummary`
+    description follows.
+  - R-F-15: `TargetAchievement.period_days` 0..31 (was 1..31); `TargetAchievementRow.tilldate_target_qty_base` and
+    `remaining_tilldate_qty_base` become nullable (as `tilldate_achievement_pct_bp`), all three null when `period_days`
+    is 0. New members against 1.9.0, and the operation answers 404 today, so no reader of the old shape exists.
+  - R-F-16: `format: int64` on every uncapped `*_bp` member: the two 1.9.0 members in s1, and the new
+    `TargetAchievementRow.achievement_pct_bp`, `tilldate_achievement_pct_bp`, `NationalBrandCpr.brands[].cpr_bp`,
+    `cpr_of_successful_bp`, `cpr_of_target_bp`, `NationalLoginSubmit.submit_of_target_pct_bp` (WireDtos: `Long?`).
+  - R-F-11, R-F-12: the two enum values in s1, their mirrors (`ContractCatalogues.AdminModule` new with its
+    `ContractDriftTest` row; `ReportKey.TSO_VISIT_LOG`), the docs/24 s12.3 row and `web/src/lib/admin/report-keys.ts`.
+  - Description-only: R-F-05 (`SupportTicketPayload`, `SupportTicketEventPayload`: a requester role outside the
+    allowed list is quarantined `scope_out_of_reach` and an accept runs the role check again), R-F-13
+    (`NationalSalesCard.daily_target`, `remaining`, `achievement_pct_bp` and `TargetVsAchievement.daily_target`,
+    `achievement_pct_bp`: null when W = 0; all were already nullable), R-F-17 (`NationalSales.working_days` and
+    `NationalSalesCard.daily_target` per D-TSO-MAN-08), R-F-18 (`getTargetAchievement` and its `children` parameter:
+    `children=zone` only at a territory or zone node, else 400 `ERR_VALIDATION`, already declared).
 - Description-only: `NationalSalesCard.achievement_pct_bp` (exact formula), `DashboardSummary.by_category` (sold quantity
   of sale lines only), `FinalSubmitRequest.client_uuid` (the D-TSO-MAN-28 rule), `postFinalSubmit`, `getFinalSubmitPreview`,
   `postDayReopen`, `RecordOutcomeCode`, `ProblemCode`, `CodeListKey`, `RecordType`, tags `support` and `notifications`.

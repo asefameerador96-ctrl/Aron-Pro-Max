@@ -72,6 +72,7 @@ NationalBrandCpr:
             type:
             - integer
             - 'null'
+            format: int64
             minimum: 0
             description: outlets_bought / the configured denominator in basis points, rounded half up; null when
               it is 0. The app prints its whole % from the integers, never from this rounded value (D-TSO-MAN-10).
@@ -79,11 +80,13 @@ NationalBrandCpr:
             type:
             - integer
             - 'null'
+            format: int64
             minimum: 0
             description: outlets_bought / successful_calls in basis points; null when successful_calls is 0.
           cpr_of_target_bp:
             type:
             - integer
             - 'null'
+            format: int64
             minimum: 0
             description: outlets_bought / target_outlets in basis points; null when target_outlets is 0.

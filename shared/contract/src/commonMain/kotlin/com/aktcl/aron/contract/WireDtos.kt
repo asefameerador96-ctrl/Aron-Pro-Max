@@ -1031,7 +1031,7 @@ data class SupportTicketDetail(
     @SerialName("attachments") val attachments: List<String>,
 )
 
-/** Ticket counts by status (D-TSO-MAN-25); the caller's own tickets, or every ticket for the support desk. */
+/** Ticket counts by status (D-TSO-MAN-25); the caller's own tickets, or every ticket for the support desk. No percentage members (lead ruling R-F-14) - the phone and the web compute each whole percent once from these counts (resolved / total, open / total; TicketMath on the phone, the corpus formatter on the web), and total 0 prints "0%". */
 @Serializable
 data class SupportTicketSummary(
     @SerialName("as_of") val asOf: String,
@@ -1042,16 +1042,7 @@ data class SupportTicketSummary(
     @SerialName("closed") val closed: Int,
     @SerialName("cancelled") val cancelled: Int,
     @SerialName("open") val open: Int,
-    @SerialName("resolved_pct_bp") val resolvedPctBp: Int?,
-    @SerialName("open_pct_bp") val openPctBp: Int?,
 )
-
-/** Encode SupportTicketSummary with this serializer (nested fields already do): required-nullable members stay on the wire as explicit null (R7) even when the Json omits nulls. */
-object SupportTicketSummaryWire : JsonTransformingSerializer<SupportTicketSummary>(SupportTicketSummary.serializer()) {
-    private val alwaysEmitted = listOf("resolved_pct_bp", "open_pct_bp")
-    override fun transformSerialize(element: JsonElement): JsonElement =
-        if (element is JsonObject) JsonObject(element + alwaysEmitted.filter { it !in element }.associateWith { JsonNull }) else element
-}
 
 /** One inbox row (D-TSO-MAN-26). The texts are fixed by the producer in both languages; `title_bn` and `body_bn` may be null (the app shows the English text). */
 @Serializable
@@ -1108,9 +1099,9 @@ data class NationalBrandCprBrands(
     @SerialName("brand_code") val brandCode: String,
     @SerialName("brand_name") val brandName: String,
     @SerialName("outlets_bought") val outletsBought: Int,
-    @SerialName("cpr_bp") val cprBp: Int?,
-    @SerialName("cpr_of_successful_bp") val cprOfSuccessfulBp: Int?,
-    @SerialName("cpr_of_target_bp") val cprOfTargetBp: Int?,
+    @SerialName("cpr_bp") val cprBp: Long?,
+    @SerialName("cpr_of_successful_bp") val cprOfSuccessfulBp: Long?,
+    @SerialName("cpr_of_target_bp") val cprOfTargetBp: Long?,
 )
 
 /** Brand CPR card (D-TSO-MAN-06, contract 1.10.0): per brand, the distinct (route, outlet) pairs with an effective sale line of the brand on the national route set, over the configured denominator. Both ratios and both denominators are sent. */
@@ -1228,16 +1219,16 @@ data class TargetAchievementRow(
     @SerialName("category_code") val categoryCode: String,
     @SerialName("target_qty_base") val targetQtyBase: Long,
     @SerialName("achieved_qty_base") val achievedQtyBase: Long,
-    @SerialName("tilldate_target_qty_base") val tilldateTargetQtyBase: Long,
+    @SerialName("tilldate_target_qty_base") val tilldateTargetQtyBase: Long?,
     @SerialName("remaining_qty_base") val remainingQtyBase: Long,
-    @SerialName("remaining_tilldate_qty_base") val remainingTilldateQtyBase: Long,
-    @SerialName("achievement_pct_bp") val achievementPctBp: Int?,
-    @SerialName("tilldate_achievement_pct_bp") val tilldateAchievementPctBp: Int?,
+    @SerialName("remaining_tilldate_qty_base") val remainingTilldateQtyBase: Long?,
+    @SerialName("achievement_pct_bp") val achievementPctBp: Long?,
+    @SerialName("tilldate_achievement_pct_bp") val tilldateAchievementPctBp: Long?,
 )
 
 /** Encode TargetAchievementRow with this serializer (nested fields already do): required-nullable members stay on the wire as explicit null (R7) even when the Json omits nulls. */
 object TargetAchievementRowWire : JsonTransformingSerializer<TargetAchievementRow>(TargetAchievementRow.serializer()) {
-    private val alwaysEmitted = listOf("achievement_pct_bp", "tilldate_achievement_pct_bp")
+    private val alwaysEmitted = listOf("tilldate_target_qty_base", "remaining_tilldate_qty_base", "achievement_pct_bp", "tilldate_achievement_pct_bp")
     override fun transformSerialize(element: JsonElement): JsonElement =
         if (element is JsonObject) JsonObject(element + alwaysEmitted.filter { it !in element }.associateWith { JsonNull }) else element
 }

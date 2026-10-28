@@ -160,6 +160,8 @@ enum class ReportKey(val wire: String) {
     @SerialName("superstar-campaign") SUPERSTAR_CAMPAIGN("superstar-campaign"),
     @SerialName("retailer-list") RETAILER_LIST("retailer-list"),
     @SerialName("sku-list") SKU_LIST("sku-list"),
+    // contract 1.10.0, lead ruling R-F-12 (TSO manual build)
+    @SerialName("tso-visit-log") TSO_VISIT_LOG("tso-visit-log"),
 }
 
 /** Kind of visit; AMO calls never count in the SR strike rate (docs/24 s12.4). */
@@ -463,4 +465,28 @@ enum class NotificationKind(val wire: String) {
     @SerialName("ticket_updated") TICKET_UPDATED("ticket_updated"),
     @SerialName("leave_decided") LEAVE_DECIDED("leave_decided"),
     @SerialName("final_submit_auto") FINAL_SUBMIT_AUTO("final_submit_auto"),
+}
+
+/**
+ * Module of an ADMIN user's grants (docs/34 s1, D-ROLES-02; `Me.modules`, `UserAccess.modules`). SUPPORT from contract
+ * 1.10.0 (lead ruling R-F-11): the support ticket routes; the support-desk permission stays `support.ticket.manage`.
+ */
+@Serializable
+enum class AdminModule(val wire: String) {
+    @SerialName("masterdata") MASTERDATA("masterdata"),
+    @SerialName("routes") ROUTES("routes"),
+    @SerialName("outlets") OUTLETS("outlets"),
+    @SerialName("products") PRODUCTS("products"),
+    @SerialName("prices") PRICES("prices"),
+    @SerialName("users") USERS("users"),
+    @SerialName("targets") TARGETS("targets"),
+    @SerialName("credentials") CREDENTIALS("credentials"),
+    @SerialName("mdm") MDM("mdm"),
+    @SerialName("reports") REPORTS("reports"),
+    @SerialName("config") CONFIG("config"),
+    @SerialName("data_entry") DATA_ENTRY("data_entry"),
+    @SerialName("indent") INDENT("indent"),
+    @SerialName("leaderboard") LEADERBOARD("leaderboard"),
+    @SerialName("daily_tracking") DAILY_TRACKING("daily_tracking"),
+    @SerialName("support") SUPPORT("support"),
 }

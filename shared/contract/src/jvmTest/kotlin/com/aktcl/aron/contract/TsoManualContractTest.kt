@@ -264,10 +264,15 @@ class TsoManualContractTest {
             required("SupportTicketEvent"))
         assertEquals("SupportTicketEventKind", ref(prop("SupportTicketEvent", "kind")))
         assertEquals("SupportTicketStatus", ref(prop("SupportTicketEvent", "from_status")))
-        val summary = listOf("as_of", "total", "new", "in_progress", "resolved", "closed", "cancelled", "open", "resolved_pct_bp", "open_pct_bp")
+        // R-F-14: counts only; the displays compute the whole percent once from them
+        val summary = listOf("as_of", "total", "new", "in_progress", "resolved", "closed", "cancelled", "open")
         assertEquals(summary, required("SupportTicketSummary"))
-        for (n in summary.drop(1).take(7)) assertEquals(0, prop("SupportTicketSummary", n)["minimum"], n)
-        assertTrue(nullable(prop("SupportTicketSummary", "resolved_pct_bp")) && nullable(prop("SupportTicketSummary", "open_pct_bp")))
+        assertEquals(summary, props("SupportTicketSummary").keys.toList(), "no percentage members (R-F-14)")
+        for (n in summary.drop(1)) assertEquals(0, prop("SupportTicketSummary", n)["minimum"], n)
+        val text = flat(OpenApi.schema("SupportTicketSummary")["description"])
+        assertTrue(text.contains("compute each whole percent once from these counts") && text.contains("total 0 prints \"0%\""), text)
+        val opText = flat(op("get", "/v1/support/tickets/summary")["description"])
+        assertTrue(opText.contains("counts only (lead ruling R-F-14)") && !opText.contains("_pct_bp"), opText)
     }
 
     @Test
@@ -327,7 +332,8 @@ class TsoManualContractTest {
         assertTrue(required("TargetAchievement").containsAll(listOf("day", "elapsed_days", "period_days", "last_updated_at")))
         assertFalse("children" in required("TargetAchievement"), "children only with children=zone")
         assertEquals(listOf(0, 31), listOf(prop("TargetAchievement", "elapsed_days")["minimum"], prop("TargetAchievement", "elapsed_days")["maximum"]))
-        assertEquals(listOf(1, 31), listOf(prop("TargetAchievement", "period_days")["minimum"], prop("TargetAchievement", "period_days")["maximum"]))
+        // R-F-15: a working-days month with no working day has n = 0
+        assertEquals(listOf(0, 31), listOf(prop("TargetAchievement", "period_days")["minimum"], prop("TargetAchievement", "period_days")["maximum"]))
         assertEquals(200, prop("TargetAchievement", "children")["maxItems"])
         assertEquals("TargetAchievementNode", ref(map(prop("TargetAchievement", "children")["items"])))
         assertEquals("TargetAchievementRow", ref(map(prop("TargetAchievement", "rows")["items"])))
@@ -336,9 +342,17 @@ class TsoManualContractTest {
         val row = required("TargetAchievementRow")
         for (n in listOf("target_qty_base", "achieved_qty_base", "tilldate_target_qty_base", "remaining_qty_base", "remaining_tilldate_qty_base")) {
             assertTrue(n in row, n)
-            assertEquals(listOf("integer", "int64", 0), listOf(prop("TargetAchievementRow", n)["type"], prop("TargetAchievementRow", n)["format"], prop("TargetAchievementRow", n)["minimum"]), n)
+            val p = prop("TargetAchievementRow", n)
+            assertEquals(listOf("integer", "int64", 0), listOf(nonNull(p)["type"], p["format"], p["minimum"]), n)
         }
         for (n in listOf("achievement_pct_bp", "tilldate_achievement_pct_bp")) { assertTrue(n in row); assertTrue(nullable(prop("TargetAchievementRow", n)), n) }
+        // R-F-15: required, but null when n = 0; the month figures stay non-null
+        for (n in listOf("tilldate_target_qty_base", "remaining_tilldate_qty_base", "tilldate_achievement_pct_bp")) {
+            assertTrue(nullable(prop("TargetAchievementRow", n)), "$n is null when period_days is 0")
+            assertTrue(flat(prop("TargetAchievementRow", n)["description"]).contains("null when `period_days` is 0 (R-F-15)"), n)
+        }
+        for (n in listOf("target_qty_base", "achieved_qty_base", "remaining_qty_base")) assertFalse(nullable(prop("TargetAchievementRow", n)), n)
+        assertTrue(flat(OpenApi.schema("TargetAchievement")["description"]).contains("n = 0 (a working-days basis in a month with no working day) makes the till-date members of every row null"))
         assertTrue("category_code" in row)
         // the AMO app's members keep their meaning
         for (n in listOf("target_qty", "achieved_qty", "tilldate_target_qty", "remaining_qty")) assertEquals("Decimal3", ref(prop("TargetAchievementRow", n)), n)
@@ -424,5 +438,113 @@ class TsoManualContractTest {
         assertEquals(listOf("p1", "p2", "p3", "p4"), SupportTicketPriority.entries.map { it.wire })
         assertEquals(listOf("created", "comment", "close_review", "status_change", "resolution", "priority_change", "assign"), SupportTicketEventKind.entries.map { it.wire })
         assertEquals(listOf("ticket_updated", "leave_decided", "final_submit_auto"), NotificationKind.entries.map { it.wire })
+    }
+
+    // ---- lead rulings after the foundation wave (build contract s9, 2026-10-29) ----
+
+    /** R-F-05: a requester role outside the allowed list is quarantined, and an accept runs the role check again. */
+    @Test
+    fun ticketFromARoleOutsideTheRequesterRolesIsQuarantinedAndReCheckedOnAccept() {
+        val ticket = flat(OpenApi.schema("SupportTicketPayload")["description"])
+        for (rule in listOf(
+            "a requester role outside the configured requester roles (default TSO, D-TSO-MAN-17) is quarantined `scope_out_of_reach`",
+            "the server runs the role check again and refuses the accept while the role is still not allowed",
+            "no new outcome code, lead ruling R-F-05",
+        )) assertTrue(ticket.contains(rule), "SupportTicketPayload must say: $rule")
+        assertTrue(flat(OpenApi.schema("SupportTicketEventPayload")["description"]).contains("with the same role check again on an accept as for the ticket (R-F-05)"))
+        assertEquals(AckStatus.QUARANTINED to null, RecordOutcomeCode.entries.single { it.wire == "scope_out_of_reach" }.let { it.status to it.retryable })
+    }
+
+    /** R-F-11: admin module `support` in the enum `Me.modules` and `UserAccess.modules` key on, and in the mirror. */
+    @Test
+    fun adminModuleSupportIsInTheContract() {
+        assertEquals("support", OpenApi.enumOf("AdminModule").last())
+        assertEquals(AdminModule.SUPPORT, AdminModule.entries.last())
+        val meModules = (prop("Me", "modules")["oneOf"] as List<Map<String, Any?>>).single { it["type"] == "object" }
+        assertEquals("AdminModule", (map(meModules["propertyNames"])["\$ref"] as String).substringAfterLast('/'))
+        for (s in listOf("UserAccess", "UserAccessWrite")) assertEquals("AdminModule", (map(prop(s, "modules")["propertyNames"])["\$ref"] as String).substringAfterLast('/'), s)
+        val text = flat(OpenApi.schema("AdminModule")["description"])
+        assertTrue(text.contains("lead ruling R-F-11") && text.contains("`/v1/support/tickets`") && text.contains("stays `support.ticket.manage`"), text)
+    }
+
+    /** R-F-12: report key `tso-visit-log` (B3's report, W1's catalogue entry). */
+    @Test
+    fun reportKeyTsoVisitLogIsInTheContract() {
+        assertTrue("tso-visit-log" in OpenApi.enumOf("ReportKey"))
+        assertEquals(ReportKey.TSO_VISIT_LOG, ReportKey.entries.single { it.wire == "tso-visit-log" })
+    }
+
+    /** R-F-13, R-F-17: W at the scope's lowest common node; W = 0 makes the daily target and the ring null. */
+    @Test
+    fun noWorkingDayMakesTheDailyTargetAndTheRingNull() {
+        for (n in listOf("daily_target", "remaining", "achievement_pct_bp")) assertTrue(nullable(prop("NationalSalesCard", n)), "NationalSalesCard.$n")
+        assertTrue(flat(prop("NationalSalesCard", "daily_target")["description"]).contains("null when W = 0"))
+        assertTrue(flat(prop("NationalSalesCard", "remaining")["description"]).contains("null whenever daily_target is null (no target, or W = 0)"))
+        assertTrue(flat(prop("NationalSalesCard", "achievement_pct_bp")["description"]).contains("when `NationalSales.working_days` is 0"))
+        // the route card of the Map Details page carries a daily target too
+        for (n in listOf("daily_target", "achievement_pct_bp")) assertTrue(nullable(prop("TargetVsAchievement", n)), "TargetVsAchievement.$n")
+        assertTrue(flat(prop("TargetVsAchievement", "daily_target")["description"]).contains("null when the month has no working day (W = 0"))
+        assertTrue(flat(prop("TargetVsAchievement", "achievement_pct_bp")["description"]).contains("null whenever daily_target is null"))
+        val w = prop("NationalSales", "working_days")
+        assertEquals(listOf(0, 31), listOf(w["minimum"], w["maximum"]))
+        val text = flat(w["description"])
+        for (rule in listOf(
+            "at the lowest common node of the effective scope", "one zone gives the zone, one territory the territory, mixed or national the global calendar",
+            "the node's weekend days (`cfg.calendar.weekend_days` resolved at the node)", "the holidays on the node's path (global, wing, division, territory, zone)",
+            "+ the make-up days on that path", "WorkingDays of shared/rules", "R-F-17",
+        )) assertTrue(text.contains(rule), "NationalSales.working_days must say: $rule")
+        assertTrue(flat(prop("NationalSalesCard", "daily_target")["description"]).contains("D-TSO-MAN-08"))
+    }
+
+    /**
+     * R-F-16: a basis-point member that can exceed 10000 without bound is int64, so the phone decodes it as a Long. Every
+     * `*_bp` member the contract describes as uncapped is int64, and the new 1.10.0 members without a `maximum` too.
+     */
+    @Test
+    fun uncappedBasisPointMembersAreInt64() {
+        val found = mutableListOf<String>()
+        fun walk(owner: String, s: Map<String, Any?>) {
+            (s["properties"] as Map<String, Map<String, Any?>>?)?.forEach { (name, p) ->
+                if (name.endsWith("_bp")) {
+                    val text = flat(p["description"] ?: "")
+                    if (text.contains("uncapped", ignoreCase = true) || text.contains("exceed 10000")) {
+                        found += "$owner.$name"
+                        assertEquals("int64", p["format"], "$owner.$name is uncapped")
+                    }
+                }
+                (p["items"] as Map<String, Any?>?)?.let { walk("$owner.$name[]", it) }
+                walk("$owner.$name", p)
+            }
+        }
+        (OpenApi.doc["components"] as Map<String, Any?>).let { map(it["schemas"]) }.forEach { (n, s) -> walk(n, map(s)) }
+        assertTrue(found.containsAll(listOf("NationalSalesCard.achievement_pct_bp", "TargetVsAchievement.achievement_pct_bp",
+            "TargetAchievementRow.achievement_pct_bp", "TargetAchievementRow.tilldate_achievement_pct_bp")), found.toString())
+        // the new 1.10.0 *_bp members: capped at 10000 or int64
+        val newMembers = listOf("cpr_bp", "cpr_of_successful_bp", "cpr_of_target_bp").map { map(map(prop("NationalBrandCpr", "brands")["items"])["properties"])[it] as Map<String, Any?> } +
+            listOf("value_share_bp", "volume_share_bp").map { map(map(prop("NationalSegmentShare", "segments")["items"])["properties"])[it] as Map<String, Any?> } +
+            listOf(prop("NationalLoginSubmit", "submit_of_target_pct_bp"), prop("TargetAchievementRow", "achievement_pct_bp"), prop("TargetAchievementRow", "tilldate_achievement_pct_bp"))
+        for (p in newMembers) assertTrue(p["maximum"] == 10000 || p["format"] == "int64", p.toString())
+        // what the phone decodes (WireDtos.kt, generated): Long, not Int
+        fun fieldType(c: Class<*>, f: String) = c.getDeclaredField(f).type
+        for (f in listOf("achievementPctBp", "tilldateAchievementPctBp", "tilldateTargetQtyBase", "remainingTilldateQtyBase")) {
+            assertEquals(Long::class.javaObjectType, fieldType(TargetAchievementRow::class.java, f), "TargetAchievementRow.$f")
+        }
+        for (f in listOf("cprBp", "cprOfSuccessfulBp", "cprOfTargetBp")) assertEquals(Long::class.javaObjectType, fieldType(NationalBrandCprBrands::class.java, f), f)
+    }
+
+    /** R-F-18: `children=zone` only at a territory or zone node; above it 400 ERR_VALIDATION. */
+    @Test
+    fun childrenZoneOnlyAtATerritoryOrBelow() {
+        val text = flat(op("get", "/v1/dashboards/targets")["description"])
+        for (rule in listOf(
+            "`children=zone` is allowed only when the node is a territory or below (lead ruling R-F-18)",
+            "a territory node answers its zones, a zone node answers itself as its one child",
+            "at a national, wing or division node it is 400 `ERR_VALIDATION` (`query.children` invalid_value)",
+            "The check runs on the resolved node, the default top reach node included",
+        )) assertTrue(text.contains(rule), "getTargetAchievement must say: $rule")
+        assertTrue("400" in statuses("get", "/v1/dashboards/targets"))
+        assertTrue(flat(param("get", "/v1/dashboards/targets", "children")["description"]).contains("at a national, wing or division node 400 `ERR_VALIDATION` (R-F-18)"))
+        // the levels the dashboards accept: territory and zone are the only ones at or below a territory
+        assertTrue(listOf("territory", "zone").all { it in OpenApi.enumOf("ReachLevel") })
     }
 }
