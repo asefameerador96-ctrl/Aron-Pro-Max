@@ -1961,6 +1961,14 @@ class LakeAndBlobRetention(unittest.TestCase):
             if "delete" in d["actions"]["baseBlob"]:
                 self.assertNotEqual(d["filters"]["prefixMatch"], ["[format('{0}/', parameters('mediaContainer'))]"], name)
         self.assertEqual(rules["bundles-expiry"]["actions"]["baseBlob"]["delete"]["daysAfterModificationGreaterThan"], 3)
+        # Tiering (docs/18 s2.8) covers field photos only; assets/ and support/ stay Hot (D-INFRA-LAKE-02).
+        tier = rules["media-tiering"]
+        self.assertEqual(tier["filters"]["prefixMatch"], ["[format('{0}/photos/', parameters('mediaContainer'))]"])
+        self.assertEqual(tier["actions"]["baseBlob"]["tierToCool"]["daysAfterModificationGreaterThan"], 30)
+        self.assertEqual(tier["actions"]["baseBlob"]["tierToCold"]["daysAfterModificationGreaterThan"], 90)
+        for name, d in rules.items():
+            for p in d["filters"]["prefixMatch"]:
+                self.assertNotEqual(p, "[format('{0}/', parameters('mediaContainer'))]", f"{name} covers the whole media container")
         backend = (ROOT / "backend" / "app" / "src" / "main" / "kotlin" / "com" / "aktcl" / "aron" / "backend" / "app"
                    / "ExportWiring.kt").read_text(encoding="utf-8")
         self.assertIn('containerVar = "ARON_BLOB_CONTAINER_EXPORTS", defaultContainer = "exports"', backend)
