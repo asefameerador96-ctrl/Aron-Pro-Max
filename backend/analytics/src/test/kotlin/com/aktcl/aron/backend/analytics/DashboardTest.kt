@@ -177,8 +177,9 @@ class DashboardTest {
         val s = service.summary(mixed, null, null, day, day)
         assertEquals("zone", s.node.type); assertEquals(z1, s.node.id); assertEquals(39_000, s.kpis.gross_mtk)
         assertEquals("zone", service.geoValidation(mixed, null, null, day, day).node.type)
-        // Only a cover route and no geo node: a clean 403, not a 500.
+        // Only a cover route and no geo node: the route itself, read route-keyed (D-BC-DASH-ROUTE-KEYED-01; RouteKeyedDashboardTest).
         val onlyRoute = Reach(1, Role.TSO, day, false, emptySet(), setOf(r3), false, listOf(ReachNode("route", r3)))
-        assertEquals(ProblemCode.ERR_FORBIDDEN, assertFailsWith<ApiProblem> { service.summary(onlyRoute, null, null, day, day) }.code)
+        val own = service.summary(onlyRoute, null, null, day, day)
+        assertEquals("route" to r3, own.node.type to own.node.id); assertEquals(24_000, own.kpis.gross_mtk)
     }
 }
