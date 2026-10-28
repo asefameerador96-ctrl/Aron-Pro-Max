@@ -19,7 +19,7 @@ Removals are rare and listed here (a wrong column is removed, never redefined in
 
 | Schema | Relations | Columns |
 |---|---|---|
-| `app` | 171 | 2890 |
+| `app` | 171 | 2892 |
 | `dw` | 70 | 1109 |
 
 ## Index
@@ -1074,6 +1074,7 @@ Registry of the app tables whose rows carry data_origin (stamped at insert by ap
 | `child_col` | text | null |  | Column of the child row holding the parent's client UUID. |
 | `parent_col` | text | null |  | Column of the parent the child column points at. |
 | `pass` | smallint | not null |  | Restamp order: 1 = rows stamped from their own keys, 2 = child rows (after their parents). |
+| `derive_fn` | text | null |  | Function (schema-qualified, taking the row as jsonb) that derives the origin of a row of a table without a parent, when the table has its own rule; null = app.derive_data_origin. The table's stamp trigger calls the same function. |
 
 Keys: `PRIMARY KEY (table_name)`
 
@@ -1840,7 +1841,7 @@ Final Submit of a zone and business date, made online by the TSO, unless reopene
 | `reopen_reason` | text | null |  | Reason given for reopening. |
 | `reopen_client_uuid` | uuid | null |  | Client UUID of the reopen command, for idempotent replay. |
 | `created_at` | timestamp with time zone | not null |  | UTC instant the row was inserted on the server. |
-| `data_origin` | app.data_origin | null |  | Origin of the row (production, pilot, test, seed): the most synthetic of its users, outlet, route, stamped at insert; changes only through app.restamp_data_origin. |
+| `data_origin` | app.data_origin | null |  | Origin of the row (production, pilot, test, seed): a user's submit the submitter's; a job submit the most synthetic of the routes in route_states (else of the zone's routes); stamped at insert (app.derive_final_submit_origin, V0135); changes only through app.restamp_data_origin. |
 
 Keys: `UNIQUE (client_uuid)`; `UNIQUE (reopen_client_uuid)`; `PRIMARY KEY (id)`
 
@@ -4365,10 +4366,11 @@ Append-only thread of a support ticket: the reporter's comments and close review
 | `external_ref` | character varying(64) | null |  | Stable external reference for cross-walks with other systems (Apsis, ERP); unique when set. |
 | `via` | text | not null |  | Channel the event came through: device (sync record support_ticket_event), web (support desk) or job. |
 | `kind` | text | not null |  | Event kind: created, comment, close_review (the reporter's Submit Review & Close), status_change, resolution, priority_change or assign. |
-| `body` | text | null | personal | Text of a comment or of the resolution message (up to 2000 characters); null for events without text. |
+| `body` | text | null | personal | Text of a comment (up to 2000 characters) or of the resolution message (up to 2400: the D-TSO-MAN-20 header with the ticket number and the code label of up to 120 characters, then up to 2000 characters of notes); null for events without text. |
 | `from_status` | text | null |  | Ticket status before a status-moving event; null otherwise. |
 | `to_status` | text | null |  | Ticket status after a status-moving event; null otherwise. |
 | `resolution_code` | text | null |  | Resolution code of a resolution event (code list ticket_resolution_code); null otherwise. |
+| `op_sha256` | bytea | null |  | SHA-256 (32 bytes) of a support desk PATCH request body as canonical JSON, stored only on the first event row the op writes (its client_uuid is the op_uuid); null on every other row. Replay: the same op_uuid with the same hash answers 200 and writes nothing; the same op_uuid with another hash or for another ticket answers 409 ERR_CONFLICT (R-F-03). |
 | `data_origin` | app.data_origin | null |  | Origin of the row (production, pilot, test, seed): the most synthetic of its users, outlet, route and parent row (app.support_ticket), stamped at insert; changes only through app.restamp_data_origin. |
 
 Keys: `UNIQUE (client_uuid)`; `UNIQUE (external_ref)`; `PRIMARY KEY (id)`
@@ -4391,11 +4393,11 @@ Current state of one support ticket (status, priority, assignee, resolution, clo
 | `priority` | text | not null |  | Priority p1 (Highest) to p4 (Low); starts at the issue type's default, the desk may change it. |
 | `assignee_user_id` | bigint | null |  | Support user the ticket is assigned to; null when unassigned. |
 | `first_response_at` | timestamp with time zone | null |  | UTC time of the first support action (start or first reply); set once. |
-| `resolved_at` | timestamp with time zone | null |  | UTC time support resolved the ticket; set once. |
+| `resolved_at` | timestamp with time zone | null |  | UTC time support resolved the ticket; set once; present on every resolved or closed ticket. |
 | `resolved_by` | bigint | null |  | Support user who resolved the ticket; set once. |
 | `resolution_code` | text | null |  | Resolution code, a code of the code list ticket_resolution_code; set once, with the resolution. |
 | `resolution_notes` | text | null | personal | Resolution notes written by support (1 to 2000 characters); set once, with the resolution. |
-| `closed_at` | timestamp with time zone | null |  | UTC time the ticket was closed (the reporter's Submit Review & Close, or support); set once. |
+| `closed_at` | timestamp with time zone | null |  | UTC time the ticket was closed (the reporter's Submit Review & Close, or support); set once, exactly when the status is closed. |
 | `closed_by` | bigint | null |  | User who closed the ticket; set once. |
 | `cancelled_at` | timestamp with time zone | null |  | UTC time support cancelled the ticket; set exactly when the status is cancelled. |
 | `cancelled_by` | bigint | null |  | Support user who cancelled the ticket; set once. |
@@ -4933,7 +4935,7 @@ Per-module access of an ADMIN user (D-ROLES-02, docs/34 s1): r = read, w = read 
 | Column | Type | Null | PII | Description |
 |---|---|---|---|---|
 | `user_id` | bigint | not null |  | ADMIN user holding the grant (app.app_user). |
-| `module` | text | not null |  | Admin-portal module (contract AdminModule): masterdata, routes, outlets, products, prices, users, targets, credentials, mdm, reports, config, data_entry, indent, leaderboard or daily_tracking. |
+| `module` | text | not null |  | Admin-portal module (contract AdminModule): masterdata, routes, outlets, products, prices, users, targets, credentials, mdm, reports, config, data_entry, indent, leaderboard, daily_tracking or support (the support desk, V0135). |
 | `access` | text | not null |  | r = read only, w = read and write. |
 | `granted_at` | timestamp with time zone | not null |  | UTC instant the grant was set or last changed. |
 | `granted_by` | bigint | null |  | SUPERADMIN who set the grant; null for the V0089 seed of existing admins. |
@@ -4959,12 +4961,12 @@ Notification inbox behind the bell: one notice for one user (ticket updated, lea
 | `title_bn` | text | null |  | Bangla title of the notice; null shows the English title. |
 | `body_en` | text | not null | personal | English text of the notice (up to 300 characters); may name a person. |
 | `body_bn` | text | null | personal | Bangla text of the notice; null shows the English text. |
-| `dedupe_key` | text | not null |  | Idempotency key of the producer (for example ticket uuid + event uuid); a second insert with the same key is ignored. |
+| `dedupe_key` | text | not null |  | Idempotency key of the producer (for example ticket uuid + event uuid), unique per recipient: a second insert for the same user with the same key is ignored (ON CONFLICT (user_id, dedupe_key) DO NOTHING); the same key may reach several users. |
 | `created_at` | timestamp with time zone | not null |  | UTC instant the row was inserted on the server. |
 | `business_date` | date | not null |  | Asia/Dhaka date the notice was created. |
 | `read_at` | timestamp with time zone | null |  | UTC time the user opened the inbox showing this notice; null while unread; set once. |
 
-Keys: `UNIQUE (dedupe_key)`; `PRIMARY KEY (id)`
+Keys: `UNIQUE (user_id, dedupe_key)`; `PRIMARY KEY (id)`
 
 References: `FOREIGN KEY (user_id) REFERENCES app.app_user(id)`
 

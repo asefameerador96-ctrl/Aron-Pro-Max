@@ -2,8 +2,10 @@
 -- D-TSO-MAN-26; gap item SH-08; lane F2).
 --
 -- app.user_notification: one row per user and notice (kinds ticket_updated, leave_decided, final_submit_auto). The
--- producers (backend platform Inbox.add, in the caller's transaction) are idempotent through dedupe_key: INSERT ... ON
--- CONFLICT (dedupe_key) DO NOTHING. The bell's unread count reads the partial index; the inbox pages by id descending.
+-- producers (backend platform Inbox.add, in the caller's transaction) are idempotent per recipient through (user_id,
+-- dedupe_key): INSERT ... ON CONFLICT (user_id, dedupe_key) DO NOTHING (lead ruling R-F-04), so one event (a zone's
+-- auto-submit) reaches every user it concerns once each, and a producer's retry adds nothing. The bell's unread count
+-- reads the partial index; the inbox pages by id descending.
 -- Opening the inbox marks everything up to the newest id read: read_at is written once (BEFORE UPDATE guard; every other
 -- column is fixed). Rows older than cfg.notify.inbox_retention_days (90, V0134) are deleted by the InboxPruneJob, so
 -- the guard does not cover DELETE. No data_origin: the rows are server notices about other rows, kept for weeks, not
@@ -23,10 +25,11 @@ CREATE TABLE app.user_notification (
   title_bn      text CHECK (length(title_bn) <= 120),
   body_en       text NOT NULL CHECK (length(body_en) <= 300),
   body_bn       text CHECK (length(body_bn) <= 300),
-  dedupe_key    text NOT NULL UNIQUE CHECK (length(dedupe_key) <= 160),
+  dedupe_key    text NOT NULL CHECK (length(dedupe_key) <= 160),
   created_at    timestamptz NOT NULL DEFAULT now(),
   business_date date NOT NULL DEFAULT app.dhaka_date(now()),
-  read_at       timestamptz
+  read_at       timestamptz,
+  UNIQUE (user_id, dedupe_key)
 );
 CREATE INDEX user_notification_inbox ON app.user_notification (user_id, id DESC);
 CREATE INDEX user_notification_unread ON app.user_notification (user_id) WHERE read_at IS NULL;
@@ -48,7 +51,7 @@ COMMENT ON COLUMN app.user_notification.title_en IS 'English title of the notice
 COMMENT ON COLUMN app.user_notification.title_bn IS 'Bangla title of the notice; null shows the English title.';
 COMMENT ON COLUMN app.user_notification.body_en IS '[pii:personal] English text of the notice (up to 300 characters); may name a person.';
 COMMENT ON COLUMN app.user_notification.body_bn IS '[pii:personal] Bangla text of the notice; null shows the English text.';
-COMMENT ON COLUMN app.user_notification.dedupe_key IS 'Idempotency key of the producer (for example ticket uuid + event uuid); a second insert with the same key is ignored.';
+COMMENT ON COLUMN app.user_notification.dedupe_key IS 'Idempotency key of the producer (for example ticket uuid + event uuid), unique per recipient: a second insert for the same user with the same key is ignored (ON CONFLICT (user_id, dedupe_key) DO NOTHING); the same key may reach several users.';
 COMMENT ON COLUMN app.user_notification.created_at IS 'UTC instant the row was inserted on the server.';
 COMMENT ON COLUMN app.user_notification.business_date IS 'Asia/Dhaka date the notice was created.';
 COMMENT ON COLUMN app.user_notification.read_at IS 'UTC time the user opened the inbox showing this notice; null while unread; set once.';

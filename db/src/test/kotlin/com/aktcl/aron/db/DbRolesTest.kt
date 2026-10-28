@@ -89,6 +89,8 @@ class DbRolesTest {
             Triple("api_rw", "app.archive_manifest", "SELECT") to false, Triple("api_rw", "app.archive_manifest", "UPDATE") to false,
             Triple("jobs_rw", "app.archive_manifest", "UPDATE") to true, Triple("api_rw", "app.retention_policy", "UPDATE") to false,
             Triple("api_rw", "app.retention_policy", "INSERT") to false,
+            // V0135 (lead ruling R-F-07): the push sender revokes an unregistered token; the worker still writes no audit row.
+            Triple("worker_rw", "app.push_token", "UPDATE") to true,
         )
         val wrong = expected.filter { (k, allowed) -> can(c, k.first, k.second, k.third) != allowed }.keys
         assertEquals(emptySet(), wrong, "privileges that differ from the map")

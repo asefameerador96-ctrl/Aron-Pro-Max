@@ -7,6 +7,7 @@
 --    cfg.support.ticket_max_photos and cfg.feedback.max_images take cfg.edit.ops like the other photo and upload limits
 --    (cfg.support.max_upload_mb). List keys: the config editor checks max_items only; the item rules (subset of SR, AMO,
 --    TSO; two ascending integers 1..99) are written in bounds_rule and enforced by the reading module.
+--    cfg.feedback.max_images is bounded 0..1: the feedback record holds one photo_uuid (lead ruling R-F-06).
 -- 2. Default changes (D-TSO-MAN-29, D-TSO-MAN-31; owner question 1 of the contract s7.1 keeps quarantine as the
 --    default): cfg.day.late_sync_after_final_policy accept_and_flag -> quarantine; cfg.day.reopen_roles ["ADMIN"] ->
 --    ["ADMIN","SUPERADMIN"]. No backend code read either key before this build.
@@ -48,8 +49,8 @@ INSERT INTO app.cfg_key (key, area, kind, value_type, default_value, bounds, bou
    'Most days ahead a leave may start (D-TSO-MAN-33).'),
   ('cfg.leave.block_overlap', 'leave', 'S', 'bool', 'false'::jsonb, '{}'::jsonb, NULL, ARRAY['global']::text[], 1, NULL, 'B', 'server', false, false, 'none', 'cfg.edit.field',
    'Refuse a leave application that overlaps a pending or approved one of the same user (D-TSO-MAN-33: off).'),
-  ('cfg.feedback.max_images', 'feedback', 'S', 'int', '1'::jsonb, '{"min": 0, "max": 3}'::jsonb, NULL, ARRAY['global']::text[], 1, NULL, 'B', 'both', false, false, 'none', 'cfg.edit.ops',
-   'Most gallery images attached to one feedback (screenshot 43: one, D-TSO-MAN-36).');
+  ('cfg.feedback.max_images', 'feedback', 'S', 'int', '1'::jsonb, '{"min": 0, "max": 1}'::jsonb, NULL, ARRAY['global']::text[], 1, NULL, 'B', 'both', false, false, 'none', 'cfg.edit.ops',
+   'Most gallery images attached to one feedback (screenshot 43: one, D-TSO-MAN-36); at most 1, the feedback record holds one photo.');
 
 -- ---------- 2. default changes ----------
 UPDATE app.cfg_key SET default_value = '"quarantine"'::jsonb, updated_at = now()

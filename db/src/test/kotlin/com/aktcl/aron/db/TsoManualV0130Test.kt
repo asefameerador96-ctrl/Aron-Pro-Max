@@ -177,6 +177,8 @@ class TsoManualV0130Test {
             val w = "WHERE ticket_uuid = '$t'"
             assertEquals("42501", refused("$s status = 'closed', closed_at = now() $w"), "new cannot close")
             assertEquals("23514", refused("$s status = 'resolved', resolved_at = now() $w"), "a resolution needs its code and notes")
+            assertEquals("23514", refused("$s status = 'resolved', resolution_code = 'resolved', resolution_notes = 'Cleared.' $w"), "a resolved ticket has its resolved_at (R-F-08)")
+            assertEquals("23514", refused("$s closed_at = now() $w"), "closed_at only with the closed status (R-F-08)")
             assertEquals("23514", refused("$s status = 'cancelled' $w"), "a cancel needs its time")
             assertEquals("23514", refused("$s status = 'cancelled', cancelled_at = now(), cancel_reason = 'no' $w"), "a cancel reason has 3..500 characters")
             assertEquals("23514", refused("$s priority = 'p5' $w"))
@@ -187,6 +189,8 @@ class TsoManualV0130Test {
             assertEquals("42501", refused("$s status = 'in_progress' $w"), "no reopen")
             assertEquals("42501", refused("$s status = 'cancelled', cancelled_at = now(), cancel_reason = 'Too late' $w"))
             exec("$s priority = 'p2', assignee_user_id = ${user("support1001")}, version = version + 1 $w")
+            assertEquals("23514", refused("$s status = 'closed', closed_by = ${user("tso1001")} $w"), "a closed ticket has its closed_at (R-F-08)")
+            assertEquals("23514", refused("$s closed_at = now(), closed_by = ${user("tso1001")} $w"), "a resolved ticket cannot carry a close time (R-F-08)")
             exec("$s status = 'closed', closed_at = now(), closed_by = ${user("tso1001")}, version = version + 1 $w")
             assertEquals("closed|p2|5", scalar("SELECT status || '|' || priority || '|' || version FROM app.support_ticket_state $w"))
             assertEquals("42501", refused("$s status = 'resolved' $w"), "closed is final")
@@ -206,6 +210,90 @@ class TsoManualV0130Test {
             exec(ticket(uuid(204), "tso1001"))
             exec(state(uuid(204), "tso1001"))
             exec("$s status = 'resolved', resolved_at = now(), resolution_code = 'resolved', resolution_notes = 'Done.' WHERE ticket_uuid = '${uuid(204)}'")
+        }
+    }
+
+    /** D-TSO-MAN-20: "[TicketID: <no>] - Resolved:\nResolution Code: <label>\nResolution Notes:\n\n<notes>". */
+    private fun resolutionMessage(no: String, label: String, notes: String) =
+        "format('[TicketID: %s] - Resolved:' || E'\\n' || 'Resolution Code: %s' || E'\\n' || 'Resolution Notes:' || E'\\n\\n' || '%s', $no, $label, $notes)"
+
+    private fun resolutionEvent(uuid: String, ticket: String, body: String, kind: String = "resolution", code: String = "resolved") =
+        "INSERT INTO app.support_ticket_event (client_uuid, ticket_uuid, family_uuid, business_date, user_id, captured_at, config_version, via, kind, body, from_status, to_status, resolution_code) " +
+            "VALUES ('$uuid', '$ticket', '$uuid', $day, ${user("admin1001")}, now(), 0, 'web', '$kind', $body, 'in_progress', 'resolved', '$code')"
+
+    @Test
+    fun aResolutionWithTheLongestNotesAndLabelWritesItsMessage() = db.connect().use { c ->
+        c.tx {
+            val t = uuid(211)
+            exec(ticket(t, "tso1001"))
+            exec(state(t, "tso1001"))
+            exec("UPDATE app.support_ticket_state SET status = 'in_progress' WHERE ticket_uuid = '$t'")
+            // R-F-02: a resolution code whose label has the most characters code_list_item allows (120) and notes of 2000
+            // (the most the state and SupportTicketUpdate allow).
+            val label = "L".repeat(118) + "ক!"
+            exec("INSERT INTO app.code_list_item (list_key, code, label_en, sort) VALUES ('ticket_resolution_code', 'long_label_fix', '$label', 9)")
+            assertEquals("120", scalar("SELECT length(label_en) FROM app.code_list_item WHERE list_key = 'ticket_resolution_code' AND code = 'long_label_fix'"))
+            exec("UPDATE app.support_ticket_state SET status = 'resolved', resolved_at = now(), resolved_by = ${user("admin1001")}, resolution_code = 'long_label_fix', resolution_notes = repeat('n', 2000) WHERE ticket_uuid = '$t'")
+            val msg = resolutionMessage(
+                "(SELECT ticket_no FROM app.support_ticket WHERE client_uuid = '$t')",
+                "(SELECT i.label_en FROM app.code_list_item i JOIN app.support_ticket_state s ON s.resolution_code = i.code WHERE i.list_key = 'ticket_resolution_code' AND s.ticket_uuid = '$t')",
+                "(SELECT resolution_notes FROM app.support_ticket_state WHERE ticket_uuid = '$t')",
+            )
+            exec(resolutionEvent(uuid(212), t, msg, code = "long_label_fix"))
+            val ticketNoLen = scalar("SELECT length(ticket_no) FROM app.support_ticket WHERE client_uuid = '$t'")!!.toInt()
+            val stored = scalar("SELECT body FROM app.support_ticket_event WHERE client_uuid = '${uuid(212)}'")!!
+            assertEquals(62 + ticketNoLen + 120 + 2000, stored.length, "the formatted message, over the 2000 of a comment")
+            assertEquals(
+                "[TicketID: " + scalar("SELECT ticket_no FROM app.support_ticket WHERE client_uuid = '$t'") + "] - Resolved:\nResolution Code: $label\nResolution Notes:\n\n" + "n".repeat(2000),
+                stored,
+            )
+            // The longest message: a 22-character number (INC + a bigint), a 120-character code label, 2000 of notes = 2204.
+            val longest = resolutionMessage("'INC' || repeat('9', 19)", "repeat('L', 120)", "repeat('n', 2000)")
+            assertEquals("2204", scalar("SELECT length($longest)"))
+            exec(resolutionEvent(uuid(213), t, longest))
+            // The CHECK matches the contract's SupportTicketEvent.body maxLength (2400).
+            exec(resolutionEvent(uuid(214), t, "repeat('r', 2400)"))
+            assertEquals("23514", refused(resolutionEvent(uuid(215), t, "repeat('r', 2401)")), "a resolution message has at most 2400 characters")
+            // Every other event keeps the 2000 limit.
+            assertEquals("23514", refused(resolutionEvent(uuid(216), t, "repeat('c', 2001)", kind = "comment")))
+            assertEquals("23514", refused(resolutionEvent(uuid(217), t, longest, kind = "status_change")))
+            exec(resolutionEvent(uuid(218), t, "repeat('c', 2000)", kind = "comment"))
+        }
+    }
+
+    @Test
+    fun aDeskOpStoresItsBodyHashOnItsFirstEventRowOnly() = db.connect().use { c ->
+        assertEquals("bytea|YES", c.scalar("SELECT data_type || '|' || is_nullable FROM information_schema.columns WHERE table_schema = 'app' AND table_name = 'support_ticket_event' AND column_name = 'op_sha256'"))
+        c.tx {
+            val t = uuid(221)
+            exec(ticket(t, "tso1001"))
+            exec(state(t, "tso1001"))
+            // R-F-03: the op's first row has client_uuid = op_uuid and the SHA-256 of the canonical JSON body; the op's
+            // other rows (here its status change) leave it null.
+            val op = uuid(222)
+            val body = """{"expected_version":1,"priority":"p2","status":"in_progress"}"""
+            fun desk(uuid: String, kind: String, hash: String) =
+                "INSERT INTO app.support_ticket_event (client_uuid, ticket_uuid, family_uuid, business_date, user_id, captured_at, config_version, via, kind, from_status, to_status, op_sha256) " +
+                    "VALUES ('$uuid', '$t', '$uuid', $day, ${user("admin1001")}, now(), 0, 'web', '$kind', " +
+                    (if (kind == "status_change") "'new', 'in_progress'" else "NULL, NULL") + ", $hash)"
+            exec(desk(op, "priority_change", "sha256(convert_to('$body', 'UTF8'))"))
+            exec(desk(uuid(223), "status_change", "NULL"))
+            // The replay check reads the op's row by its op_uuid: the same body matches, another body does not.
+            val stored = "(SELECT op_sha256 FROM app.support_ticket_event WHERE client_uuid = '$op' AND ticket_uuid = '$t')"
+            assertEquals(
+                "t|f|32",
+                scalar("SELECT concat_ws('|', ($stored = sha256(convert_to('$body', 'UTF8')))::text::char, ($stored = sha256(convert_to('{}', 'UTF8')))::text::char, octet_length($stored))"),
+            )
+            assertEquals("1", scalar("SELECT count(*) FROM app.support_ticket_event WHERE ticket_uuid = '$t' AND op_sha256 IS NOT NULL"))
+            // 32 bytes or nothing; written once, with the row.
+            assertEquals("23514", refused(desk(uuid(224), "priority_change", "decode(repeat('ab', 31), 'hex')")))
+            assertEquals("23514", refused(desk(uuid(225), "priority_change", "decode(repeat('ab', 33), 'hex')")))
+            assertEquals("23514", refused(desk(uuid(226), "priority_change", "''::bytea")))
+            assertEquals("42501", refused("UPDATE app.support_ticket_event SET op_sha256 = sha256(convert_to('{}', 'UTF8')) WHERE client_uuid = '$op'"))
+            assertEquals("42501", refused("UPDATE app.support_ticket_event SET op_sha256 = sha256(convert_to('$body', 'UTF8')) WHERE client_uuid = '${uuid(223)}'"))
+            // A device comment carries none.
+            exec(event(uuid(227), t, "tso1001"))
+            assertEquals("t", scalar("SELECT (op_sha256 IS NULL)::text::char FROM app.support_ticket_event WHERE client_uuid = '${uuid(227)}'"))
         }
     }
 
@@ -306,6 +394,75 @@ class TsoManualV0130Test {
     }
 
     @Test
+    fun aJobFinalSubmitTakesTheOriginOfTheZonesRoutesAndKeepsItThroughARestamp() = db.connect().use { c ->
+        // The registry names the final_submit rule; every other table keeps the generic one.
+        assertEquals(listOf("final_submit|app.derive_final_submit_origin"), c.column("SELECT table_name || '|' || derive_fn FROM app.data_origin_capture WHERE derive_fn IS NOT NULL"))
+        // R-F-09: the insert stamp applies the same rule. V0135's stamp replaced V0116's trigger of the same name, so one
+        // stamp runs per insert (the generic one never runs after it), and the BEFORE UPDATE origin guard is still there.
+        assertEquals(
+            listOf("final_submit_guard_origin|BEFORE UPDATE|app.guard_data_origin", "final_submit_stamp_origin|BEFORE INSERT|app.stamp_final_submit_origin"),
+            c.column(
+                "SELECT t.tgname || '|' || CASE WHEN t.tgtype & 2 = 2 THEN 'BEFORE' ELSE 'AFTER' END || ' ' || CASE WHEN t.tgtype & 4 = 4 THEN 'INSERT' WHEN t.tgtype & 16 = 16 THEN 'UPDATE' ELSE '?' END " +
+                    "|| '|' || p.pronamespace::regnamespace || '.' || p.proname FROM pg_trigger t JOIN pg_proc p ON p.oid = t.tgfoid " +
+                    "WHERE t.tgrelid = 'app.final_submit'::regclass AND NOT t.tgisinternal AND (t.tgname LIKE '%origin%' OR p.proname LIKE '%origin%') ORDER BY 1",
+            ),
+        )
+        c.tx {
+            realUser("realtso", "TSO")
+            fun states(vararg codes: String) =
+                "(SELECT coalesce(jsonb_agg(jsonb_build_object('route_id', id, 'state', 'final_submitted', 'memo_count', 0, 'net_mtk', 0) ORDER BY id), '[]'::jsonb) FROM app.route WHERE code IN (${codes.joinToString { "'$it'" }}))"
+            fun submit(n: Int, by: String?, via: String, dayOffset: Int, routeStates: String, extraCols: String = "", extraVals: String = "") =
+                "INSERT INTO app.final_submit (client_uuid, zone_id, business_date, submitted_by, via, route_states$extraCols) " +
+                    "VALUES ('${uuid(n)}', $zone, $day - $dayOffset, ${by?.let(::user) ?: "NULL"}, '$via', $routeStates$extraVals)"
+            fun origin(n: Int) = scalar("SELECT data_origin::text FROM app.final_submit WHERE client_uuid = '${uuid(n)}'")
+            fun tag(origin: String, where: String) = exec("UPDATE app.route SET data_origin = '$origin' WHERE $where")
+            // The zone made a test geography (as Gulshan-Banani on dev, whose seed file the test profile skips).
+            assertEquals("seed", scalar("SELECT string_agg(DISTINCT data_origin::text, ',') FROM app.route WHERE zone_id = $zone"))
+            tag("test", "zone_id = $zone")
+            // The midnight job's submit is test, from the routes it listed or, with none listed, from the zone's routes.
+            // A writer's own value is overwritten.
+            exec(submit(601, null, "job", 1, states("MIR-SR-D", "MIR-SR-3F"), ", data_origin", ", 'production'"))
+            exec(submit(602, null, "job", 2, "'[]'::jsonb"))
+            exec(submit(603, null, "job", 3, "'[{\"route_id\": \"x\"}, 7, {\"state\": \"logged_in\"}]'::jsonb"))
+            assertEquals("test", origin(601))
+            assertEquals("test", origin(602), "no route listed: the zone's routes")
+            assertEquals("test", origin(603), "elements without a numeric route_id are ignored")
+            assertEquals("test", scalar("SELECT data_origin::text FROM dw.v_final_submit_log WHERE zone_id = $zone AND business_date = $day - 1"))
+            // A user's submit keeps the submitter's origin (the rule before V0135): a real TSO's submit is production.
+            exec(submit(604, "realtso", "web", 4, states("MIR-SR-D")))
+            exec(submit(605, "tso1001", "app", 5, states("MIR-SR-D")))
+            assertEquals("production", origin(604))
+            assertEquals("test", origin(605))
+            // The generic rule never reads the zone, so a real memo or visit in a mixed zone stays production.
+            assertEquals("production", scalar("SELECT app.derive_data_origin(jsonb_build_object('zone_id', $zone))::text"))
+            // The owner's restamp applies the same rule: the job's submits stay test (the generic rule would make them
+            // production), the users' submits stay as they were, and a second restamp changes nothing.
+            exec("SELECT app.restamp_data_origin(NULL)")
+            assertEquals(listOf("test", "test", "test", "production", "test"), (601..605).map { origin(it) })
+            assertEquals("0", scalar("SELECT app.restamp_data_origin(NULL)"), "a second restamp changes nothing")
+            // Routes re-tagged real move the job's submits on them at the next restamp (the users' submits stay).
+            tag("production", "zone_id = $zone")
+            exec("SELECT app.restamp_data_origin(NULL)")
+            assertEquals(listOf("production", "production", "production", "production", "test"), (601..605).map { origin(it) })
+            // A mixed zone: the most synthetic of the listed routes; with none listed, of the zone's routes.
+            exec(submit(606, null, "job", 6, states("MIR-SR-D")))
+            assertEquals("production", origin(606))
+            tag("test", "code = 'MIR-SR-3F'")
+            exec(submit(607, null, "job", 7, states("MIR-SR-D", "MIR-SR-3F")))
+            assertEquals("test", origin(607))
+            tag("seed", "code = 'MIR-SR-2F'")
+            exec(submit(608, null, "job", 8, states("MIR-SR-D")))
+            exec(submit(609, null, "job", 9, "'[]'::jsonb"))
+            assertEquals("production", origin(608), "only the listed routes count when the job listed some")
+            assertEquals("seed", origin(609))
+            // The API role (it may update a submit: reopen) cannot re-tag one.
+            exec("SET LOCAL ROLE api_rw")
+            assertEquals("42501", refused("UPDATE app.final_submit SET data_origin = 'seed' WHERE client_uuid = '${uuid(601)}'"))
+            exec("RESET ROLE")
+        }
+    }
+
+    @Test
     fun theSyncTablesTakeTheDayLockAndTicketCodes() = db.connect().use { c ->
         c.tx {
             fun rejected(n: Int, code: String) =
@@ -328,26 +485,58 @@ class TsoManualV0130Test {
         assertEquals(
             listOf(
                 "app.code_list|code_list_list_key_check|t", "app.final_submit|final_submit_job_actor|t", "app.final_submit|final_submit_via_check|t",
-                "app.sync_quarantine|sync_quarantine_code_check|t", "app.sync_rejected|sync_rejected_code_check|t", "app.visit_plan|visit_plan_route_id_fkey|t",
+                "app.sync_quarantine|sync_quarantine_code_check|t", "app.sync_rejected|sync_rejected_code_check|t",
+                "app.user_module_grant|user_module_grant_module_check|t", "app.visit_plan|visit_plan_route_id_fkey|t",
             ),
             c.column(
                 "SELECT conrelid::regclass || '|' || conname || '|' || CASE WHEN convalidated THEN 't' ELSE 'f' END FROM pg_constraint " +
                     "WHERE conname IN ('code_list_list_key_check', 'final_submit_via_check', 'final_submit_job_actor', 'sync_rejected_code_check', " +
-                    "'sync_quarantine_code_check', 'visit_plan_route_id_fkey')",
+                    "'sync_quarantine_code_check', 'visit_plan_route_id_fkey', 'user_module_grant_module_check')",
             ).filterNotNull().sorted(),
+        )
+    }
+
+    @Test
+    fun anAdminMayBeGrantedTheSupportModule() = db.connect().use { c ->
+        // R-F-11: /v1/support/tickets/** belongs to the AdminModule support; the module CHECK lists it with the 15 others.
+        c.tx {
+            fun grant(module: String) = "INSERT INTO app.user_module_grant (user_id, module, access) VALUES (${user("support1001")}, '$module', 'w')"
+            exec(grant("support"))
+            assertEquals("support:w", scalar("SELECT module || ':' || access FROM app.user_module_grant WHERE user_id = ${user("support1001")}"))
+            for (m in listOf("masterdata", "routes", "outlets", "products", "prices", "users", "targets", "credentials", "mdm", "reports", "config", "data_entry", "indent", "leaderboard", "daily_tracking")) exec(grant(m))
+            assertEquals("16", scalar("SELECT count(*) FROM app.user_module_grant WHERE user_id = ${user("support1001")}"))
+            assertEquals("23514", refused(grant("tickets")))
+            assertEquals("23514", refused(grant("support_desk")))
+        }
+        assertTrue(
+            c.scalar("SELECT col_description('app.user_module_grant'::regclass, (SELECT attnum FROM pg_attribute WHERE attrelid = 'app.user_module_grant'::regclass AND attname = 'module'))")!!
+                .contains("daily_tracking or support"),
         )
     }
 
     @Test
     fun notificationsAreIdempotentAndReadOnce() = db.connect().use { c ->
         c.tx {
-            fun note(key: String, kind: String = "ticket_updated", ref: String = "support_ticket", title: String = "Ticket INC100001 updated") =
+            fun note(key: String, kind: String = "ticket_updated", ref: String = "support_ticket", title: String = "Ticket INC100001 updated", to: String = "tso1001") =
                 "INSERT INTO app.user_notification (user_id, kind, ref_type, ref_id, title_en, body_en, dedupe_key) " +
-                    "VALUES (${user("tso1001")}, '$kind', '$ref', '${uuid(601)}', '$title', 'Support replied.', '$key')"
+                    "VALUES (${user(to)}, '$kind', '$ref', '${uuid(601)}', '$title', 'Support replied.', '$key')"
+            val idem = " ON CONFLICT (user_id, dedupe_key) DO NOTHING"
             exec(note("ticket:${uuid(601)}:a"))
-            exec(note("ticket:${uuid(601)}:a") + " ON CONFLICT (dedupe_key) DO NOTHING")
+            exec(note("ticket:${uuid(601)}:a") + idem)
             assertEquals("1", scalar("SELECT count(*) FROM app.user_notification WHERE dedupe_key = 'ticket:${uuid(601)}:a'"), "a second producer run adds nothing")
             assertEquals("23505", refused(note("ticket:${uuid(601)}:a")))
+            // R-F-04: unique per recipient. One zone auto-submit reaches every user it concerns once each; a rerun of the
+            // producer adds nothing for any of them.
+            for (to in listOf("dmo1001", "amo1001", "dmo1001", "amo1001")) exec(note("zone:7:2026-10-25", kind = "final_submit_auto", ref = "zone_day", to = to) + idem)
+            assertEquals(
+                listOf("amo1001", "dmo1001"),
+                column("SELECT u.username FROM app.user_notification n JOIN app.app_user u ON u.id = n.user_id WHERE n.dedupe_key = 'zone:7:2026-10-25' ORDER BY 1"),
+            )
+            assertEquals(
+                "user_notification_user_id_dedupe_key_key|UNIQUE (user_id, dedupe_key)",
+                scalar("SELECT conname || '|' || pg_get_constraintdef(oid) FROM pg_constraint WHERE conrelid = 'app.user_notification'::regclass AND contype = 'u'"),
+            )
+            exec("DELETE FROM app.user_notification WHERE dedupe_key = 'zone:7:2026-10-25'")
             assertEquals("23514", refused(note("k2", kind = "announcement")))
             assertEquals("23514", refused(note("k3", ref = "memo")))
             assertEquals("23514", refused(note("k4", title = "x".repeat(121))))
@@ -367,8 +556,15 @@ class TsoManualV0130Test {
                     "WHERE has_table_privilege(r, 'app.user_notification', p)), '|' ORDER BY r) FROM unnest(ARRAY['api_rw','worker_rw']) r",
             ),
         )
-        // The midnight job may insert its Final Submit; the audit trail stays closed to the worker (DbRolesTest).
-        assertEquals("t|f", c.scalar("SELECT has_table_privilege('worker_rw', 'app.final_submit', 'INSERT')::text::char || '|' || has_table_privilege('worker_rw', 'app.audit_log', 'INSERT')::text::char"))
+        // The midnight job may insert its Final Submit and the push sender may revoke a token (R-F-07); the audit trail
+        // stays closed to the worker (DbRolesTest).
+        assertEquals(
+            "t|t|f|f",
+            c.scalar(
+                "SELECT concat_ws('|', has_table_privilege('worker_rw', 'app.final_submit', 'INSERT')::text::char, has_table_privilege('worker_rw', 'app.push_token', 'UPDATE')::text::char, " +
+                    "has_table_privilege('worker_rw', 'app.push_token', 'INSERT')::text::char, has_table_privilege('worker_rw', 'app.audit_log', 'INSERT')::text::char)",
+            ),
+        )
     }
 
     @Test
@@ -417,6 +613,8 @@ class TsoManualV0130Test {
         assertEquals("0", c.scalar("SELECT count(*) FROM app.cfg_key WHERE $mine AND value_type = 'int' AND ((default_value #>> '{}')::numeric < (bounds ->> 'min')::numeric OR (default_value #>> '{}')::numeric > (bounds ->> 'max')::numeric)"))
         assertEquals("0", c.scalar("SELECT count(*) FROM app.cfg_key WHERE $mine AND value_type = 'list' AND jsonb_array_length(default_value) > (bounds ->> 'max_items')::int"))
         assertEquals("0", c.scalar("SELECT count(*) FROM app.cfg_key WHERE $mine AND (length(description_en) = 0 OR restrictive_dir <> 'none' OR effect <> 'B' OR requires_ack)"))
+        // R-F-06: the feedback record holds one photo_uuid.
+        assertEquals("0|1", c.scalar("SELECT (bounds ->> 'min') || '|' || (bounds ->> 'max') FROM app.cfg_key WHERE key = 'cfg.feedback.max_images'"))
         assertEquals("\"quarantine\"", c.scalar("SELECT default_value::text FROM app.cfg_key WHERE key = 'cfg.day.late_sync_after_final_policy'"))
         assertEquals("[\"ADMIN\", \"SUPERADMIN\"]", c.scalar("SELECT default_value::text FROM app.cfg_key WHERE key = 'cfg.day.reopen_roles'"))
         assertEquals(listOf("ADMIN", "SUPERADMIN"), c.column("SELECT role FROM app.role_grant_map WHERE permission = 'support.ticket.manage'").filterNotNull().sorted())
