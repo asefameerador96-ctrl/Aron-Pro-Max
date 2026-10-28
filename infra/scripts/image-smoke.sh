@@ -57,6 +57,7 @@ pw() { printf 'ci-%s-pw-0000000000000000' "$1"; }
 for run in 1 2; do
   docker run --rm --network host -v "$PWD/infra/sql:/sql:ro" -e "ARON_PW_APP_API=$(pw app_api)" \
     -e "ARON_PW_APP_WORKER=$(pw app_worker)" -e "ARON_PW_APP_JOBS=$(pw app_jobs)" \
+    -e "ARON_PW_APP_BI=$(pw app_bi)" -e "ARON_PW_LAKE_EXPORT=$(pw lake_export)" \
     --entrypoint psql "$PSQL_IMAGE" "$pg_uri" -X -q -f /sql/runtime-logins.sql || die "runtime-logins.sql failed (run $run)"
 done
 as_login() { # login -> the test JDBC URL with user replaced by the login

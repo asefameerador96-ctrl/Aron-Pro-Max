@@ -5,7 +5,7 @@
 #   - a Container Apps environment whose VNet setting differs (fixed at creation), with the apps and jobs on it;
 #   - Front Door profiles and WAF policies when the profile has no Front Door (they cost money while unused);
 #   - storage accounts whose replication cannot be converted in place (ZRS/GZRS <-> LRS/GRS), with their Event Grid
-#     system topic;
+#     system topic (the data-lake account, tag component=lake, is compared with lakeStorageSku and has no topic);
 #   - the VNet, its NSGs and the private DNS zone (with its VNet links) when the profile has no private networking;
 #   - log-search alert rules when the profile turns them off (incremental deployments never delete them; they bill).
 # Key Vault, Log Analytics, Application Insights, the registry, identities, metric alerts and the budget are kept
@@ -105,12 +105,17 @@ if not front_door:
         doom(r["id"], 5, "WAF policy; the profile has no Front Door")
 
 zonal = lambda sku: "ZRS" in (sku or "")
+# The data-lake account (tag component=lake, modules/lake.bicep) has its own SKU parameter and no Event Grid topic.
+lake_sku = params.get("lakeStorageSku", {}).get("value", "Standard_LRS")
 for a in load("storage.json"):
     sku = (a.get("sku") or {}).get("name")
-    if sku != storage_sku and zonal(sku) != zonal(storage_sku):
-        for t in by_type("Microsoft.EventGrid/systemTopics"):
-            doom(t["id"], 5, "Event Grid topic of a storage account being replaced")
-        doom(a["id"], 6, f"storage {sku} cannot become {storage_sku} in place")
+    is_lake = (a.get("tags") or {}).get("component") == "lake"
+    wanted = lake_sku if is_lake else storage_sku
+    if sku != wanted and zonal(sku) != zonal(wanted):
+        if not is_lake:
+            for t in by_type("Microsoft.EventGrid/systemTopics"):
+                doom(t["id"], 5, "Event Grid topic of a storage account being replaced")
+        doom(a["id"], 6, f"{'lake ' if is_lake else ''}storage {sku} cannot become {wanted} in place")
 
 if not private:
     for r in by_type("Microsoft.Network/privateDnsZones"):

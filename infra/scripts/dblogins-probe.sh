@@ -3,7 +3,7 @@
 # "No replicas found for execution", no console or system log). Starts two short executions of the SAME job with a
 # per-execution template override (the job's own template is unchanged), then prints which one ran:
 #   A  same image, `psql --version`, no environment           -> image and registry pull
-#   B  A plus the four Key Vault secret references             -> secret resolution
+#   B  A plus the six Key Vault secret references              -> secret resolution
 # If both succeed, what is left is the job's real command and its SQL (an env value until run 37659152959 showed it;
 # now a mounted file). Never prints a secret value.
 # Usage: infra/scripts/dblogins-probe.sh <resource-group> <job-name>
@@ -17,10 +17,11 @@ probe() { # label with-secrets
 import json, sys
 image, secrets = sys.argv[1], sys.argv[2] == "yes"
 env = [{"name": n, "secretRef": r} for n, r in (("ARON_DB_URL", "db-direct-url"), ("ARON_PW_APP_API", "pw-app-api"),
-       ("ARON_PW_APP_WORKER", "pw-app-worker"), ("ARON_PW_APP_JOBS", "pw-app-jobs"))] if secrets else []
+       ("ARON_PW_APP_WORKER", "pw-app-worker"), ("ARON_PW_APP_JOBS", "pw-app-jobs"), ("ARON_PW_APP_BI", "pw-app-bi"),
+       ("ARON_PW_LAKE_EXPORT", "pw-lake-export"))] if secrets else []
 # JSON is valid YAML. The command never echoes a value: it only reports which variables are set.
 print(json.dumps({"containers": [{"name": "dblogins", "image": image, "resources": {"cpu": 0.25, "memory": "0.5Gi"},
-    "command": ["/bin/sh", "-c", "psql --version; for v in ARON_DB_URL ARON_PW_APP_API ARON_PW_APP_WORKER ARON_PW_APP_JOBS; do eval \"x=\\${$v:-}\"; [ -n \"$x\" ] && echo \"$v set\" || echo \"$v unset\"; done"],
+    "command": ["/bin/sh", "-c", "psql --version; for v in ARON_DB_URL ARON_PW_APP_API ARON_PW_APP_WORKER ARON_PW_APP_JOBS ARON_PW_APP_BI ARON_PW_LAKE_EXPORT; do eval \"x=\\${$v:-}\"; [ -n \"$x\" ] && echo \"$v set\" || echo \"$v unset\"; done"],
     "env": env}]}))
 PY
   execution="$(az containerapp job start -g "$RG" -n "$JOB" --yaml "$tpl" --query name -o tsv 2>&1)" \

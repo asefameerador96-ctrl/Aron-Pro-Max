@@ -45,6 +45,8 @@ param deployBudget = envDeployBudget != 'false'
 param keyVaultPurgeProtection = false
 param registrySku = 'Basic'
 param storageSku = 'Standard_LRS'
+// Data lake (action row 7): pilot size (docs/28).
+param lakeStorageSku = 'Standard_LRS'
 
 // Burstable B1ms (1 vCore, 2 GiB; USD 0.026/h in Southeast Asia, about USD 19 a month): single zone, no HA, no replica,
 // no geo-redundant backup, 32 GiB SSD v1 (about USD 4.4), 7-day point-in-time restore. B2s is USD 0.104/h (about USD

@@ -49,6 +49,8 @@ param keyVaultPurgeProtection = false
 param registrySku = 'Premium'
 // stage: synthetic media only; zone-redundant, no geo copy.
 param storageSku = 'Standard_ZRS'
+// Data lake: zone-redundant like the rest of stage; FINAL sizing is confirmed with the sponsor before the move.
+param lakeStorageSku = 'Standard_ZRS'
 
 // D8ds_v5 (IOPS cap 12,800) on SSD v2 1,024 GiB at 12,000 IOPS; 300 MB/s is just above the D8 290 MiB/s cap.
 param postgresSkuName = 'Standard_D8ds_v5'

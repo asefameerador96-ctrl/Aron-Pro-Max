@@ -255,12 +255,14 @@ class SecurityDefaults(unittest.TestCase):
         return [r for r, _ in walk_resources(load("main.json")) if r.get("type") == type_]
 
     def test_storage(self):
-        (st,) = self.resources("Microsoft.Storage/storageAccounts")
-        p = st["properties"]
-        self.assertIs(p["allowBlobPublicAccess"], False)
-        self.assertIs(p["allowSharedKeyAccess"], False, "SAS must be user-delegation only")
-        self.assertEqual(p["minimumTlsVersion"], "TLS1_2")
-        self.assertIs(p["supportsHttpsTrafficOnly"], True)
+        accounts = self.resources("Microsoft.Storage/storageAccounts")
+        self.assertEqual(len(accounts), 2, "the photo account and the data-lake account")
+        for st in accounts:
+            p = st["properties"]
+            self.assertIs(p["allowBlobPublicAccess"], False)
+            self.assertIs(p["allowSharedKeyAccess"], False, "SAS must be user-delegation only; the lake has no key at all")
+            self.assertEqual(p["minimumTlsVersion"], "TLS1_2")
+            self.assertIs(p["supportsHttpsTrafficOnly"], True)
 
     def test_key_vault(self):
         (kv,) = self.resources("Microsoft.KeyVault/vaults")
@@ -1104,8 +1106,10 @@ class PerAppDatabaseLogins(unittest.TestCase):
     def test_apps_use_their_own_logins(self):
         res = load("apps.json")["resources"]
         def secrets(app):  # compiled as __bicep.kvSecret('<name>', <secret expression>, ...) calls
-            return {re.match(r"\[__bicep\.kvSecret\('([\w-]+)'", x).group(1): x
-                    for x in res[app]["properties"]["configuration"]["secrets"]}
+            raw = res[app]["properties"]["configuration"]["secrets"]
+            if isinstance(raw, str):  # concat(...) of a fixed list and a conditional one (the worker's lake URL)
+                return dict(re.findall(r"__bicep\.kvSecret\('([\w-]+)', ([^,]+),", raw))
+            return {re.match(r"\[__bicep\.kvSecret\('([\w-]+)'", x).group(1): x for x in raw}
         api_secrets, worker_secrets = secrets("api"), secrets("worker")
         text = json.dumps(load("apps.json"))
         for v in ("aron-db-api-url", "aron-db-api-read-url", "aron-db-jobs-direct-url", "aron-db-jobs-read-url"):
@@ -1148,7 +1152,8 @@ class PerAppDatabaseLogins(unittest.TestCase):
         self.assertIn('exec psql "${ARON_DB_URL#jdbc:}" -X -q -f /sql/runtime-logins.sql', cmd, "shell expansion, not a Bicep one")
         smoke = (ROOT / "infra" / "scripts" / "image-smoke.sh").read_text(encoding="utf-8")
         self.assertIn("-f /sql/runtime-logins.sql", smoke, "CI runs the SQL from the same path")
-        for k in ("ARON_PW_APP_API", "ARON_PW_APP_WORKER", "ARON_PW_APP_JOBS", "ARON_DB_URL"):
+        for k in ("ARON_PW_APP_API", "ARON_PW_APP_WORKER", "ARON_PW_APP_JOBS", "ARON_PW_APP_BI", "ARON_PW_LAKE_EXPORT",
+                  "ARON_DB_URL"):
             self.assertIn("secretRef", env[k], f"{k} must come from Key Vault")
         for needle in ("GRANT %I TO %I WITH INHERIT %s, SET TRUE", "REVOKE %I FROM %I", "\\getenv pw_api ARON_PW_APP_API",
                        "('app_api', 'pii_reader', false)", "SELECT app.apply_login_limits()", "\\if :{?pw_jobs}",
@@ -1877,6 +1882,181 @@ class JvmSplit(unittest.TestCase):
         gov = (ROOT / "tools" / "github-governance.ps1").read_text(encoding="utf-8")
         for name in ("'Shared, db and backend (build and tests)'", "'Backend app tests'", "'Backend analytics tests'"):
             self.assertIn(name, gov)
+
+
+class LakeAndBlobRetention(unittest.TestCase):
+    """Data-architecture action row 7 (review 2026-10-25 s4, findings 11 and 12; D-INFRA-LAKE-01): the lake account at
+    pilot size, the exports container with its delete rule and variable, photo retention, the read-only logins."""
+
+    def lake(self):
+        tpl, call = module("main.json", "lake")
+        (st,) = resources_of(tpl, "Microsoft.Storage/storageAccounts")
+        return tpl, call, st
+
+    def test_lake_account_is_pilot_sized_hns_hot_and_keyless(self):
+        tpl, call, st = self.lake()
+        p = st["properties"]
+        self.assertEqual(st["kind"], "StorageV2")
+        self.assertIs(p["isHnsEnabled"], True, "hierarchical namespace (Data Lake Gen2)")
+        self.assertEqual(p["accessTier"], "Hot")
+        self.assertIs(p["allowSharedKeyAccess"], False)
+        self.assertIs(p["defaultToOAuthAuthentication"], True)
+        self.assertIs(p["allowBlobPublicAccess"], False)
+        self.assertEqual(p["minimumTlsVersion"], "TLS1_2")
+        self.assertIs(p["isSftpEnabled"], False)
+        self.assertIs(p["isLocalUserEnabled"], False)
+        self.assertIn("'component', 'lake'", st["tags"], "reset-to-profile.sh finds the lake by this tag")
+        self.assertEqual(st["sku"]["name"], "[parameters('skuName')]")
+        self.assertEqual(call["skuName"]["value"], "[parameters('lakeStorageSku')]")
+        allowed = load("main.json")["parameters"]["lakeStorageSku"]["allowedValues"]
+        self.assertEqual(sorted(allowed), ["Standard_LRS", "Standard_ZRS"], "no geo-redundant lake")
+        self.assertEqual(param_default("main.json", "lakeStorageSku"), "Standard_LRS")
+        for f in ("dev", "dev-lite"):  # TEST account (docs/28): LRS, even where the docs/28 ZRS exception applies
+            self.assertEqual(params(f"{f}.parameters.json")["lakeStorageSku"], "Standard_LRS", f)
+        (c,) = resources_of(tpl, "Microsoft.Storage/storageAccounts/blobServices/containers")
+        self.assertEqual(call["lakeContainer"]["value"], "lake")
+        self.assertEqual(c["properties"]["publicAccess"], "None")
+        (bs,) = resources_of(tpl, "Microsoft.Storage/storageAccounts/blobServices")
+        self.assertNotIn("isVersioningEnabled", bs["properties"], "versioning is not available with HNS")
+        self.assertTrue(resources_of(tpl, "Microsoft.Insights/diagnosticSettings"), "lake blob logs go to Log Analytics")
+        self.assertFalse(resources_of(tpl, "Microsoft.Storage/storageAccounts/managementPolicies"),
+                         "no age-based delete in the lake (archived partitions live there in the final account)")
+
+    def test_only_the_worker_writes_the_lake(self):
+        tpl, _ = module("main.json", "identities")
+        lake_grants = [r for r in resources_of(tpl, "Microsoft.Authorization/roleAssignments")
+                       if "parameters('lakeStorageName')" in r.get("scope", "")]
+        self.assertEqual(len(lake_grants), 1, "exactly one role assignment on the lake account")
+        (g,) = lake_grants
+        self.assertIn("storageBlobDataContributor", g["properties"]["roleDefinitionId"])
+        self.assertIn("variables('worker')", g["properties"]["principalId"])
+        src = (ROOT / "infra" / "modules" / "identities.bicep").read_text(encoding="utf-8")
+        self.assertIn("resource workerLake 'Microsoft.Authorization/roleAssignments@2022-04-01' = {\n  name: guid(lake.id, names.idWorker", src)
+
+    def test_exports_container_and_delete_rules(self):
+        tpl, call = module("main.json", "storage")
+        names_ = [c["name"] for c in resources_of(tpl, "Microsoft.Storage/storageAccounts/blobServices/containers")]
+        self.assertTrue(any("exportsContainer" in n for n in names_), names_)
+        self.assertEqual(call["exportsContainer"]["value"], "exports")
+        (pol,) = resources_of(tpl, "Microsoft.Storage/storageAccounts/managementPolicies")
+        rules = {r["name"]: r["definition"] for r in pol["properties"]["policy"]["rules"]}
+        defaults = {k: v.get("defaultValue") for k, v in tpl["parameters"].items()}
+        self.assertNotIn("exportsDeleteDays", call, "main.bicep keeps the 7-day default")
+        self.assertNotIn("photoDeleteDays", call, "main.bicep keeps the docs' figure")
+        exp = rules["exports-expiry"]
+        self.assertEqual(exp["filters"]["prefixMatch"], ["[format('{0}/', parameters('exportsContainer'))]"])
+        self.assertEqual(exp["actions"]["baseBlob"]["delete"]["daysAfterModificationGreaterThan"], "[parameters('exportsDeleteDays')]")
+        self.assertEqual(defaults["exportsDeleteDays"], 7)
+        ph = rules["photos-expiry"]
+        self.assertEqual(ph["filters"]["prefixMatch"], ["[format('{0}/photos/', parameters('mediaContainer'))]"],
+                         "only field photos: admin assets/ and support/ bundles in the same container are never aged out")
+        self.assertEqual(ph["actions"]["baseBlob"]["delete"]["daysAfterModificationGreaterThan"], "[parameters('photoDeleteDays')]")
+        # The figure is the docs' cfg.retention.media_days (docs/21 s4.8, docs/16 s13.1), not one chosen here.
+        doc21 = (ROOT / "docs" / "21-security-privacy.md").read_text(encoding="utf-8")
+        figure = int(re.search(r"`cfg\.retention\.media_days` (\d+)", doc21).group(1))
+        self.assertEqual(defaults["photoDeleteDays"], figure)
+        self.assertEqual(figure, 730)
+        # Every other delete rule stays where it was; nothing deletes the whole media container.
+        for name, d in rules.items():
+            if "delete" in d["actions"]["baseBlob"]:
+                self.assertNotEqual(d["filters"]["prefixMatch"], ["[format('{0}/', parameters('mediaContainer'))]"], name)
+        self.assertEqual(rules["bundles-expiry"]["actions"]["baseBlob"]["delete"]["daysAfterModificationGreaterThan"], 3)
+        backend = (ROOT / "backend" / "app" / "src" / "main" / "kotlin" / "com" / "aktcl" / "aron" / "backend" / "app"
+                   / "ExportWiring.kt").read_text(encoding="utf-8")
+        self.assertIn('containerVar = "ARON_BLOB_CONTAINER_EXPORTS", defaultContainer = "exports"', backend)
+        media = (ROOT / "backend" / "media" / "src" / "main" / "kotlin" / "com" / "aktcl" / "aron" / "backend" / "media"
+                 / "MediaModule.kt").read_text(encoding="utf-8")
+        self.assertIn('val path = "photos/', media, "field photos live under photos/ (the delete rule's prefix)")
+
+    def test_app_variables(self):
+        apps = load("apps.json")
+        env = {app: json.dumps(apps["resources"][app]["properties"]["template"]["containers"][0]["env"]) for app in ("api", "worker")}
+        for app in ("api", "worker"):  # commonEnv, inlined by the compiler; same pattern as the media container
+            self.assertIn("createObject('name', 'ARON_BLOB_CONTAINER_EXPORTS', 'value', 'exports')", env[app], app)
+            self.assertIn("createObject('name', 'ARON_BLOB_CONTAINER_MEDIA', 'value', 'media')", env[app], app)
+        self.assertIn("'ARON_LAKE_ACCOUNT', 'value', variables('n').lakeStorage", env["worker"])
+        self.assertIn("'ARON_LAKE_CONTAINER', 'value', 'lake'", env["worker"])
+        self.assertIn("variables('workerLakeDbEnv')", env["worker"])
+        self.assertNotIn("LAKE", env["api"], "the api never touches the lake")
+        self.assertEqual(apps["variables"]["workerLakeDbEnv"],
+                         "[if(variables('perApp'), createArray(createObject('name', 'ARON_LAKE_DB_URL', 'secretRef', 'db-lake-url')), createArray())]",
+                         "only as lake_export; without per-app logins the export has no URL (never the admin login)")
+        secrets = apps["resources"]["worker"]["properties"]["configuration"]["secrets"]
+        self.assertIn("if(variables('perApp'), createArray(__bicep.kvSecret('db-lake-url', variables('secretNames').dbLakeReadUrl", secrets)
+        self.assertNotIn("db-lake-url", json.dumps(apps["resources"]["api"]["properties"]["configuration"]))
+
+    def test_read_only_logins(self):
+        sql = (ROOT / "infra" / "sql" / "runtime-logins.sql").read_text(encoding="utf-8")
+        for needle in ("\\getenv pw_bi ARON_PW_APP_BI", "\\getenv pw_lake ARON_PW_LAKE_EXPORT", "\\if :{?pw_bi}",
+                       "\\if :{?pw_lake}", "set_config('aron.pw_app_bi', :'pw_bi', false)",
+                       "set_config('aron.pw_lake_export', :'pw_lake', false)",
+                       "('app_bi', 'bi_reader', true)", "('lake_export', 'bi_reader', true)",
+                       "read-only logins reach more than SELECT on dw.v_*", "read-only logins may create objects in",
+                       "read-only logins cannot read any dw.v_* view",
+                       "read-only logins may execute SECURITY DEFINER functions", "AND f.prosecdef AND has_function_privilege"):
+            self.assertIn(needle, sql)
+        # The pw setting name is built from the login name; a mismatch would stop the job with "no password".
+        for login in re.findall(r"\('(\w+)', '\w+', (?:true|false)\)", sql):
+            self.assertIn(f"set_config('aron.pw_{login}',", sql, login)
+        self.assertIn("'app_bi', 'lake_export')\n GROUP BY", sql, "the evidence table lists the new logins")
+        job = load("apps.json")["resources"]["dblogins"]
+        env = {e["name"]: e for e in job["properties"]["template"]["containers"][0]["env"]}
+        self.assertEqual(env["ARON_PW_APP_BI"], {"name": "ARON_PW_APP_BI", "secretRef": "pw-app-bi"})
+        self.assertEqual(env["ARON_PW_LAKE_EXPORT"], {"name": "ARON_PW_LAKE_EXPORT", "secretRef": "pw-lake-export"})
+        secrets = job["properties"]["configuration"]["secrets"]
+        self.assertIn("__bicep.kvSecret('pw-app-bi', variables('secretNames').dbPwAppBi", secrets)
+        self.assertIn("__bicep.kvSecret('pw-lake-export', variables('secretNames').dbPwLakeExport", secrets)
+        sh = (ROOT / "infra" / "scripts" / "db-login-secrets.sh").read_text(encoding="utf-8")
+        self.assertIn("for login in app-api app-worker app-jobs app-bi lake-export; do", sh)
+        self.assertIn("url aron-db-bi-read-url aron-db-read-url app_bi", sh)
+        self.assertIn("url aron-db-lake-read-url aron-db-read-url lake_export", sh)
+        naming = (ROOT / "infra" / "lib" / "naming.bicep").read_text(encoding="utf-8")
+        for k, v in (("dbPwAppBi", "aron-db-pw-app-bi"), ("dbPwLakeExport", "aron-db-pw-lake-export"),
+                     ("dbBiReadUrl", "aron-db-bi-read-url"), ("dbLakeReadUrl", "aron-db-lake-read-url")):
+            self.assertIn(f"{k}: '{v}'", naming)
+            self.assertIn(v, sh, f"{v} is written by db-login-secrets.sh")
+        smoke = (ROOT / "infra" / "scripts" / "image-smoke.sh").read_text(encoding="utf-8")
+        self.assertIn('-e "ARON_PW_APP_BI=$(pw app_bi)" -e "ARON_PW_LAKE_EXPORT=$(pw lake_export)"', smoke,
+                      "CI runs the same SQL with every variable it requires")
+        probe = (ROOT / "infra" / "scripts" / "dblogins-probe.sh").read_text(encoding="utf-8")
+        self.assertIn('("ARON_PW_LAKE_EXPORT", "pw-lake-export")', probe)
+
+    def reset_plan(self, photo_sku, lake_sku_live, profile):
+        """Runs the decision code of reset-to-profile.sh (its embedded Python) on a fake snapshot; returns the plan."""
+        import subprocess, tempfile
+        src = (ROOT / "infra" / "scripts" / "reset-to-profile.sh").read_text(encoding="utf-8")
+        code = src.split("<<'PY' | tee \"$snap/inventory.txt\"\n", 1)[1].split("\nPY\n", 1)[0]
+        rg = "/subscriptions/0/resourceGroups/rg-aron-dev/providers"
+        photo = {"id": f"{rg}/Microsoft.Storage/storageAccounts/starondevabc123", "name": "starondevabc123",
+                 "sku": {"name": photo_sku}, "tags": {"project": "aron"}}
+        lake = {"id": f"{rg}/Microsoft.Storage/storageAccounts/starondevlakeabc123", "name": "starondevlakeabc123",
+                "sku": {"name": lake_sku_live}, "tags": {"project": "aron", "component": "lake"}}
+        topic = {"id": f"{rg}/Microsoft.EventGrid/systemTopics/evgt-aron-dev-storage", "name": "evgt-aron-dev-storage",
+                 "type": "Microsoft.EventGrid/systemTopics"}
+        res = [dict(x, type="Microsoft.Storage/storageAccounts") for x in (photo, lake)] + [topic]
+        p = params(f"{profile}.parameters.json")
+        with tempfile.TemporaryDirectory() as snap:
+            files = {"resources.json": {"value": res}, "postgres.json": [], "envs.json": [], "apps.json": [], "jobs.json": [],
+                     "storage.json": [photo, lake],
+                     "params.json": {"parametersJson": json.dumps({"parameters": {k: {"value": v} for k, v in p.items()}})}}
+            for name, body in files.items():
+                Path(snap, name).write_text(json.dumps(body), encoding="utf-8")
+            subprocess.run([sys.executable, "-", snap, "rg-aron-dev", profile], input=code, text=True, check=True,
+                           capture_output=True)
+            return [l.rsplit("/", 1)[-1] for l in Path(snap, "plan.txt").read_text(encoding="utf-8").split()]
+
+    def test_reset_compares_the_lake_with_its_own_sku(self):
+        # dev (photo ZRS under the docs/28 exception, lake LRS): nothing to replace.
+        self.assertEqual(self.reset_plan("Standard_ZRS", "Standard_LRS", "dev"), [])
+        # dev-lite (photo LRS): the ZRS photo account and its topic go; the LRS lake stays.
+        self.assertEqual(sorted(self.reset_plan("Standard_ZRS", "Standard_LRS", "dev-lite")),
+                         ["evgt-aron-dev-storage", "starondevabc123"])
+        # A lake created ZRS by mistake is replaced on its own, without touching the photo account's topic.
+        self.assertEqual(self.reset_plan("Standard_ZRS", "Standard_ZRS", "dev"), ["starondevlakeabc123"])
+        tpl, _ = module("main.json", "storage")
+        (st,) = resources_of(tpl, "Microsoft.Storage/storageAccounts")
+        self.assertNotIn("component", json.dumps(st.get("tags")), "the photo account is never tagged as the lake")
+
 
 if __name__ == "__main__":
     if not (COMPILED / "main.json").exists():

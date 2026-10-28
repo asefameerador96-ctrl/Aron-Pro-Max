@@ -461,7 +461,7 @@ In plain words: photos normally go from the phone straight into a storage accoun
 |---|---|---|
 | Kind / SKU | StorageV2, `Standard_RAGZRS` (stage ZRS, dev ZRS, dev-lite LRS), Hot | **[IN_REPO]** |
 | Security | TLS 1.2 minimum, HTTPS only, `allowSharedKeyAccess=false`, `allowBlobPublicAccess=false`, `defaultToOAuthAuthentication`, public endpoint reachable (SAS or Entra only) | **[IN_REPO]** |
-| Containers | `media` (photos), `bundles` (created and passed to apps, but no code writes to it); both `publicAccess=None` | **[IN_REPO]** |
+| Containers | `media` (photos under `photos/`, admin `assets/`, `support/` bundles), `bundles` (created and passed to apps, but no code writes to it), `exports` (async report exports, `ARON_BLOB_CONTAINER_EXPORTS` on api and worker); all `publicAccess=None` | **[IN_REPO]** |
 | Queue | `media-events` | **[IN_REPO]** |
 | Soft delete | blobs and containers 14 days | **[IN_REPO]** |
 | Versioning, immutability (WORM), Archive tier | none | **[DESIGNED]** |
@@ -473,9 +473,22 @@ Lifecycle rules:
 
 | Prefix | Rule | Status |
 |---|---|---|
-| `media` | Cool at 30 days and Cold at 90 days since modification; no delete rule (the 730-day photo retention of `docs/21` is not implemented) | **[IN_REPO]** |
+| `media` | Cool at 30 days and Cold at 90 days since modification | **[IN_REPO]** |
+| `media/photos/` | delete after 730 days (`cfg.retention.media_days`, `docs/21` s4.8; parameter `photoDeleteDays`). Exemptions for an active outlet's reference photo and for `app.retention_hold` are not built: the rule deletes every field photo at 730 days (first deletion no earlier than 730 days after the first upload; D-INFRA-LAKE-01, `docs/requests/backend-core-photo-retention-exemptions.md`) | **[IN_REPO]** |
+| `exports` | delete after 7 days (parameter `exportsDeleteDays`) | **[IN_REPO]** |
 | `bundles` | delete after 3 days | **[IN_REPO]** |
 | `apk/`, `thumbs/`, `content/`, `support/`, audit-export containers | specified in `docs/18:367-372` | **[DESIGNED]** |
+
+Data-lake account (`infra/modules/lake.bicep`, data-architecture action row 7, D-INFRA-LAKE-01):
+
+| Item | Value | Status |
+|---|---|---|
+| Kind / SKU | StorageV2 with hierarchical namespace, Hot; `lakeStorageSku`: `Standard_LRS` in dev and dev-lite (TEST, `docs/28`), `Standard_ZRS` set for stage and prod (to confirm with the sponsor before the move) | **[IN_REPO]** |
+| Security | as the photo account (TLS 1.2, HTTPS only, no shared key, no public blob access, Entra by default), no SFTP or local users; tag `component=lake` | **[IN_REPO]** |
+| Container | `lake`; layout `lake/v1/<view>/business_date=YYYY-MM-DD/` plus a manifest (written by the export job, row 8) | **[IN_REPO]** container, **[PLANNED]** files |
+| Access | worker identity only (Storage Blob Data Contributor); app variables `ARON_LAKE_ACCOUNT`, `ARON_LAKE_CONTAINER`, and `ARON_LAKE_DB_URL` (database login `lake_export`, only with per-app logins) | **[IN_REPO]** |
+| Soft delete, lifecycle | blobs and containers 14 days; no versioning (not available with HNS); no age-based delete | **[IN_REPO]** |
+| Diagnostics | blob service to Log Analytics | **[IN_REPO]** |
 
 Design volume: 150,000 photos per day at 150 KB is 22.5 GB per day and 8.2 TB per year (`docs/18:33,186`). Photo lifecycle cost at that volume is not costed in the extracts (**[UNKNOWN]**, see B11).
 

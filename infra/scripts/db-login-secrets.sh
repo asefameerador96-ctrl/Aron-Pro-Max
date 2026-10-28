@@ -4,6 +4,9 @@
 #                                    read is an error, never a reason to mint a new one: that would rotate a live login)
 #   aron-db-api-url, aron-db-api-read-url           api: pooled primary and read URLs as app_api
 #   aron-db-jobs-direct-url, aron-db-jobs-read-url  worker: direct primary (advisory locks) and read URLs as app_jobs
+#   aron-db-pw-app-bi, aron-db-pw-lake-export       passwords of the read-only dw.v_* logins (privilege role bi_reader)
+#   aron-db-bi-read-url                             BI tools: read URL as app_bi (no app references it; handed out by name)
+#   aron-db-lake-read-url                           worker's nightly lake export: read URL as lake_export
 # The URLs are the admin URLs Bicep writes (aron-db-url, aron-db-read-url, aron-db-direct-url) with only the user and
 # password replaced, so host, port, PgBouncer and TLS settings can never drift apart. A URL is written only when its
 # value changed (each write is a new secret version). Nothing secret is printed or passed on a command line.
@@ -22,7 +25,7 @@ get() {
 put() { az keyvault secret set --vault-name "$kv" --name "$1" --file "$2" --encoding utf-8 --content-type "$3" --only-show-errors -o none \
   || die "cannot write $1 to $kv"; }
 
-for login in app-api app-worker app-jobs; do
+for login in app-api app-worker app-jobs app-bi lake-export; do
   name="aron-db-pw-${login}"
   rc=0; get "$name" "$tmp/pw" || rc=$?
   if [ "$rc" -eq 3 ]; then
@@ -60,3 +63,5 @@ url aron-db-api-url aron-db-url app_api
 url aron-db-api-read-url aron-db-read-url app_api
 url aron-db-jobs-direct-url aron-db-direct-url app_jobs
 url aron-db-jobs-read-url aron-db-read-url app_jobs
+url aron-db-bi-read-url aron-db-read-url app_bi
+url aron-db-lake-read-url aron-db-read-url lake_export
