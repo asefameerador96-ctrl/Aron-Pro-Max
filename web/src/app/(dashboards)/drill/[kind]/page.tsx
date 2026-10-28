@@ -1,4 +1,3 @@
-import type { Schemas } from "@/contract/types";
 import { notFound } from "next/navigation";
 import { CallsTable, CategoryRouteTable, type Stamp } from "@/components/dash/tables";
 import { DataTable, type Col, type TRow } from "@/components/dash/data-table";
@@ -12,10 +11,11 @@ import { csvInt, csvTaka } from "@/lib/dash/csv";
 import { isDrillKind } from "@/lib/dash/drill";
 import { callsRows, categoryRoutes, type TrackingRow } from "@/lib/dash/rows";
 import { zonesUnder } from "@/lib/dash/scope-zones";
-import { getDailyTracking, getLoginSubmit, getSummary } from "@/lib/dash/server";
+import { getDailyTracking, getSummary } from "@/lib/dash/server";
 import { isCalendarDate } from "@/lib/dates";
 import { GEO_LEVELS, boundGeo, geoFromParams } from "@/lib/reports/query";
-import { businessDate, formatBusinessDate, formatDateTime, t, type MessageKey } from "@/lib/i18n";
+import { businessDate, formatBusinessDate, t, type MessageKey } from "@/lib/i18n";
+import { LOGIN_TABS, getLoginSubmitUsers, loginUserColumns, loginUserRows, loginUsersFilter, routeCountText, truncatedText } from "./login-users"; // tso-manual W1 (DASH-13)
 
 const CATS = ["cigarette", "bidi", "lighter", "match"];
 
@@ -32,17 +32,20 @@ export default async function DrillPage({ params, searchParams }: { params: Prom
   const node = deepest ? { level: deepest, node_id: picked[deepest]![0]! } : {};
   const backQs = new URLSearchParams({ ...(date === today ? {} : { date }), ...Object.fromEntries(GEO_LEVELS.filter((l) => picked[l]?.[0] !== undefined).map((l) => [l, String(picked[l]![0])])) }).toString();
 
-  const [tracking, summary, ls, zones] = await Promise.all([
-    getDailyTracking(token, date), // also gives the SR names for the login lists
+  // tso-manual W1 (DASH-13): the login drill reads its (route, user) rows from login-submit/users, one call per tab; the
+  // tracking read and the zone list serve the other drill-downs only.
+  const login = kind === "login";
+  const usersFilter = loginUsersFilter(picked, date);
+  const [tracking, summary, users, zones] = await Promise.all([
+    login ? Promise.resolve(null) : getDailyTracking(token, date),
     kind === "category" || kind === "channel" ? getSummary(token, { from: date, to: date, ...node }) : Promise.resolve(null),
-    kind === "login" ? getLoginSubmit(token, date, node) : Promise.resolve(null),
-    zonesUnder(token, node, date),
+    login ? Promise.all(LOGIN_TABS.map((tab) => getLoginSubmitUsers(token, usersFilter, tab))) : Promise.resolve(null),
+    login ? Promise.resolve(null) : zonesUnder(token, node, date),
   ]);
   const rows: TrackingRow[] = tracking?.ok ? tracking.data.items.filter((r) => zones === null || zones.has(r.zone_id)) : [];
   const trackErr = tracking && !tracking.ok ? tracking.problem.code : undefined;
   const stamp = (asOf: string | null): Stamp => ({ asOf, businessDate: date, today });
   const trackStamp = stamp(tracking?.ok ? tracking.data.as_of : null);
-  const nameOf = new Map(rows.map((r) => [r.route_id, r.user_name ?? null]));
 
   let title = "";
   let body: React.ReactNode = null;
@@ -78,21 +81,41 @@ export default async function DrillPage({ params, searchParams }: { params: Prom
     title = t(locale, "drill.title.calls");
     body = <CallsTable locale={locale} stamp={trackStamp} rows={callsRows(rows)} error={trackErr} />;
   } else {
+    // tso-manual W1 (DASH-13, D-TSO-MAN-12, F1 ask 11): Not Logged In and Not Uploaded as (route, user) rows with User Name, Dep
+    // Name (the zone) and the role; the route count of each tab, and a "list cut" note when the server left rows out.
     title = t(locale, "drill.title.login");
-    const cols: Col[] = [{ header: t(locale, "table.col.route") }, { header: t(locale, "table.col.sr") }, { header: t(locale, "table.col.logged_at") }, { header: t(locale, "table.col.submitted_at") }];
-    const mk = (list: Schemas["RouteDayState"][]): TRow[] =>
-      list.map((r) => {
-        const sr = nameOf.get(r.route_id) ?? t(locale, "table.unassigned");
-        const li = r.logged_in_at ? formatDateTime(locale, r.logged_in_at) : "—";
-        const su = r.sales_submitted_at ? formatDateTime(locale, r.sales_submitted_at) : "—";
-        return { key: String(r.route_id), cells: [r.route_name ?? r.route_code ?? String(r.route_id), sr, li, su] };
-      });
-    const err = ls && !ls.ok ? ls.problem.code : undefined;
-    const st = stamp(ls?.ok ? ls.data.as_of : null);
+    const cols = loginUserColumns(locale);
+    const routeId = picked.route?.[0];
     body = (
       <>
-        <DataTable id="not-logged-in" locale={locale} heading={t(locale, "drill.login.title")} columns={cols} rows={ls?.ok ? mk(ls.data.not_logged_in) : []} csvName="not-logged-in" {...st} error={err} note={t(locale, "drill.login.note")} />
-        <DataTable id="not-uploaded" locale={locale} heading={t(locale, "drill.login.not_uploaded")} columns={cols} rows={ls?.ok ? mk(ls.data.logged_in_not_submitted) : []} csvName="not-uploaded" {...st} error={err} />
+        {LOGIN_TABS.map((tab, i) => {
+          const r = users?.[i];
+          const id = tab === "not_logged_in" ? "not-logged-in" : "not-uploaded";
+          const cut = r?.ok ? truncatedText(locale, r.data) : null;
+          return (
+            <DataTable
+              key={tab}
+              id={id}
+              locale={locale}
+              heading={t(locale, tab === "not_logged_in" ? "tsoman.drill.not_logged_in" : "tsoman.drill.not_uploaded")}
+              columns={cols}
+              rows={r?.ok ? loginUserRows(locale, r.data.items, routeId) : []}
+              csvName={id}
+              {...stamp(r?.ok ? (r.data.last_updated_at ?? r.data.as_of) : null)}
+              error={r && !r.ok ? r.problem.code : undefined}
+              note={r?.ok ? routeCountText(locale, r.data) : undefined}
+              extra={
+                cut ? (
+                  <p role="note" data-testid={`truncated-${id}`} className="text-caption text-warning-on-container">
+                    {cut}
+                  </p>
+                ) : i === 0 ? (
+                  <p className="text-caption text-secondary">{t(locale, "tsoman.drill.login_note")}</p>
+                ) : null
+              }
+            />
+          );
+        })}
       </>
     );
   }

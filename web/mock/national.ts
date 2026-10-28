@@ -2,6 +2,7 @@
 // same figures; at "everything selected" they reproduce the owner's screenshot of 2026-10-22 (dashboard.md arithmetic checks).
 // A selection scales the national figures by the share of its zones (and products). The real slices arrive from backend-reports.
 import type { DashCtx } from "./dash";
+import { loginSubmitUsers } from "./tso-manual"; // tso-manual W1 (step 2)
 
 type Num = number;
 const C = { cigarette: "stick", bidi: "stick", lighter: "piece", match: "dozen" } as const;
@@ -131,7 +132,7 @@ export async function handleNational(x: DashCtx): Promise<boolean> {
   const pf = brand || list(q.get("category")).length || list(q.get("segment")).length || list(q.get("brand")).length || list(q.get("variant")).length ? bs.reduce((s, b) => s + b[3], 0) / BRAND_TOTAL : 1;
   const sc = (n: number, extra = 1) => Math.round(n * f * extra);
   const name = national ? path.slice("/v1/dashboards/national/".length) : "";
-  const productCards = ["sales", "channel-std", "breakdown", "filter-options"];
+  const productCards = ["sales", "channel-std", "breakdown", "filter-options", "segment-share"]; // tso-manual W1: segment-share (as queryNationalSales)
   if (user.id === 2009) return forbidden(); // an ADMIN without the dashboard module grant (docs/34 s1)
   // BRAND: cards without a brand dimension are refused (docs/34 s1).
   if (brand && ((national && !productCards.includes(name)) || mapPage)) return forbidden();
@@ -186,6 +187,40 @@ export async function handleNational(x: DashCtx): Promise<boolean> {
   if (name === "final-submit") {
     const total = Math.round(1051 * (zs.length / ZONES.length)), service = Math.round(1046 * (zs.length / ZONES.length)), done = date === today ? 0 : service;
     return send(200, { ...common, total_zones: total, service_zones: service, final_submitted: done, remaining: service - done, submit_pct_bp: bp(done, service) }), true;
+  }
+  // tso-manual W1 (step 2): the national operations of contract 1.10.0. Integer basis points, rounded half up once from the counts.
+  const bpOf = (n: number, d: number): number | null => (d > 0 ? Math.floor((20_000 * n + d) / (2 * d)) : null);
+  if (name === "login-submit/users" && method === "POST") {
+    // D-TSO-MAN-12 over the seeded day of mock/seed.ts (the drill page's geo ids), not this file's zones.
+    const r = loginSubmitUsers(user.scope.nodes, body && typeof body === "object" ? body : null, url.searchParams.get("tab"));
+    if (!r) return send(400, problem(400, "ERR_VALIDATION", { errors: [{ pointer: "/tab", code: "invalid" }] })), true;
+    return send(200, { ...common, ...r }), true;
+  }
+  if (name === "brand-cpr" && method === "POST") {
+    // D-TSO-MAN-06: outlets that bought each brand; denominator successful calls (the cfg default), both readings sent.
+    const target = Math.round(460_000 * dayless * pf), calls = sc(174_000, pf);
+    const brands = bs
+      .map((b, i) => ({ brand_code: b[0], brand_name: b[1], outlets_bought: Math.min(calls, Math.round(calls * (0.6 - (i % 7) * 0.08))) }))
+      .map((b) => ({ ...b, outlets_bought: Math.max(0, b.outlets_bought) }))
+      .sort((a, b) => b.outlets_bought - a.outlets_bought || a.brand_code.localeCompare(b.brand_code))
+      .map((b) => ({ ...b, cpr_bp: bpOf(b.outlets_bought, calls), cpr_of_successful_bp: bpOf(b.outlets_bought, calls), cpr_of_target_bp: bpOf(b.outlets_bought, target) }));
+    return send(200, { ...common, target_outlets: target, successful_calls: calls, denominator: "successful_calls", brands }), true;
+  }
+  if (name === "segment-share" && method === "POST") {
+    // D-TSO-MAN-11: value share of all sale-line value; volume share inside the segment's unit family (never across units).
+    const MTK_PER_BASE = { stick: 7_935, piece: 25_000, dozen: 12_000 } as const;
+    const segs = SEGS.map(([code, nameS, cat]) => {
+      const base_unit = C[cat as keyof typeof C];
+      const qty_base = bs.filter((b) => b[2] === code).reduce((a, b) => a + Math.round(b[3] * f), 0);
+      return { segment_code: code, segment_name: nameS, category_code: cat, base_unit, qty_base, value_mtk: qty_base * MTK_PER_BASE[base_unit] };
+    }).filter((x) => x.qty_base > 0);
+    const totalValue = segs.reduce((a, x) => a + x.value_mtk, 0);
+    const families = (["stick", "piece", "dozen"] as const).map((u) => ({ base_unit: u, total_qty_base: segs.filter((x) => x.base_unit === u).reduce((a, x) => a + x.qty_base, 0) })).filter((x) => x.total_qty_base > 0);
+    const famTotal = (u: string) => families.find((x) => x.base_unit === u)?.total_qty_base ?? 0;
+    const segments = segs
+      .map((x) => ({ ...x, value_share_bp: bpOf(x.value_mtk, totalValue), volume_share_bp: bpOf(x.qty_base, famTotal(x.base_unit)) }))
+      .sort((a, b) => b.value_mtk - a.value_mtk || a.segment_code.localeCompare(b.segment_code));
+    return send(200, { ...common, total_value_mtk: totalValue, families, segments }), true;
   }
   if (name === "login-submit") {
     const routes = Math.round(6933 * (zs.length / ZONES.length)), logged = Math.round(routes * 0.998), sub = date === today ? Math.round(logged * 0.0009) : Math.round(logged * 0.97);

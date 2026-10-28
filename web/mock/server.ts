@@ -13,6 +13,7 @@ import { seedCustom, type CustomState } from "./custom";
 import { freshMdmStore, type MdmStore } from "./mdm";
 import { freshDashStore, handleDash, type DashStore } from "./dash";
 import { freshTicketStore, handleTickets, type TicketStore } from "./tickets"; // tso-manual W1
+import { freshTsoManStore, handleTsoManual, type TsoManStore } from "./tso-manual"; // tso-manual W1 (step 2)
 import type { AuditEntry, Cluster, LoginResponse, Me, Problem, ProblemCode, Role, ScopeSummary, TokenPair, UserSummary } from "../src/contract/types";
 
 export interface MockUser {
@@ -100,6 +101,8 @@ export interface State {
   cfg: ConfigStore;
   /** tso-manual W1: the support desk's tickets (mock/tickets.ts). */
   tickets: TicketStore;
+  /** tso-manual W1 (step 2): day reopen and the notifications inbox (mock/tso-manual.ts). */
+  tsoman: TsoManStore;
 }
 
 export interface MockOptions {
@@ -120,7 +123,7 @@ export function createMock(opts: MockOptions = {}): { server: Server; state: Sta
 
 function freshState(accessTtlS = Number(process.env.MOCK_ACCESS_TTL_S ?? 900)): State {
   const tables = seedTables();
-  return { failPrefix: null, reauthFails: new Map(), piiWindowS: 900, stubs: [], calls: [], users: users(), tables, blobs: new Map(), custom: { tables, ...seedCustom() }, mdm: freshMdmStore(), codeLists: seedCodeLists(), bulkBatches: new Map(), clusters: tables.clusters as unknown as Cluster[], audit: [], access: new Map(), refresh: new Map(), mfaTokens: new Map(), mfaEnrolled: new Set(["mgrant1", "admin1", "madmin1", "msuper1", "msupport1", "support1", "pwmfa1"]), pwcTokens: new Map(), refreshCount: 0, nextId: 100, accessTtlS, dash: freshDashStore(), cfg: freshConfigStore(), tickets: freshTicketStore() };
+  return { failPrefix: null, reauthFails: new Map(), piiWindowS: 900, stubs: [], calls: [], users: users(), tables, blobs: new Map(), custom: { tables, ...seedCustom() }, mdm: freshMdmStore(), codeLists: seedCodeLists(), bulkBatches: new Map(), clusters: tables.clusters as unknown as Cluster[], audit: [], access: new Map(), refresh: new Map(), mfaTokens: new Map(), mfaEnrolled: new Set(["mgrant1", "admin1", "madmin1", "msuper1", "msupport1", "support1", "pwmfa1"]), pwcTokens: new Map(), refreshCount: 0, nextId: 100, accessTtlS, dash: freshDashStore(), cfg: freshConfigStore(), tickets: freshTicketStore(), tsoman: freshTsoManStore() }; // tso-manual W1: tsoman
 }
 
 function problem(status: number, code: ProblemCode, extra: Partial<Problem> = {}): Problem {
@@ -398,6 +401,8 @@ async function handle(state: State, reset: () => void, req: IncomingMessage, res
 
   // tso-manual W1: the support desk (contract 1.10.0); after the stubs, so a test can still answer any ticket path itself
   if (await handleTickets(state.tickets, { send, problem, readJson, audit: (entity, id, action, before, after, reason) => audit(state, user, entity, id, action, before, after, reason) }, { user_id: user.summary.user_id, role: user.summary.role, desk: deskRoutes(user) }, method, url, req, res)) return;
+  // tso-manual W1 (step 2): POST /v1/day/reopen and the notifications inbox (contract 1.10.0)
+  if (await handleTsoManual(state.tsoman, { send, problem, readJson, audit: (entity, id, action, before, after, reason) => audit(state, user, entity, id, action, before, after, reason) }, { user_id: user.summary.user_id, role: user.summary.role }, method, url, req, res)) return;
 
   if (await handleConfig({
     method, path, url, role: user.summary.role, userId: user.summary.user_id, store: state.cfg,

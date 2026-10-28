@@ -135,6 +135,19 @@ const pairs = {
   "tickets.conflict": ["Someone changed this ticket after you opened it. Reload to see the latest version, then apply your change again.", "আপনি খোলার পরে কেউ এই টিকিটটি বদলেছেন। সর্বশেষ অবস্থা দেখতে রিলোড করুন, তারপর আবার আপনার পরিবর্তন দিন।"],
   "tickets.reload": ["Reload", "রিলোড করুন"],
   "tickets.busy": ["Sending…", "পাঠানো হচ্ছে…"],
+
+  // --- step 2. DASH-13: Login & Bikroy Joma drill (D-TSO-MAN-12; tab names as screenshot 8) ---
+  "tsoman.drill.not_logged_in": ["Not Logged In", "লগইন করেননি"],
+  "tsoman.drill.not_uploaded": ["Not Uploaded", "আপলোড করেননি"],
+  "tsoman.drill.col.username": ["User Name", "ইউজার নেম"],
+  "tsoman.drill.col.dep_name": ["Dep Name", "ডেপ নেম"],
+  "tsoman.drill.col.role": ["Role", "ভূমিকা"],
+  "tsoman.drill.routes_not_logged_in": ["{n} routes without a login today.", "আজ {n}টি রুটে লগইন হয়নি।"],
+  "tsoman.drill.routes_not_uploaded": ["{n} routes logged in without Bikroy Joma.", "{n}টি রুটে লগইন হয়েছে, বিক্রয় জমা হয়নি।"],
+  "tsoman.drill.truncated": ["The list is cut at {shown} rows. Narrow the filter (a territory or a zone) to see every row.", "তালিকাটি {shown} সারিতে কাটা হয়েছে। সব সারি দেখতে ফিল্টার ছোট করুন (একটি টেরিটরি বা জোন)।"],
+  "tsoman.drill.login_note": ["One row per route for its SR (SR Not Set when the route has none), then one row per AMO covering the route's zone. Dep Name is the zone.", "প্রতিটি রুটের জন্য তার এসআর-এর একটি সারি (এসআর না থাকলে এসআর নির্ধারিত নয়), তারপর রুটের জোন দেখেন এমন প্রতিটি এএমও-র একটি সারি। ডেপ নেম হলো জোন।"],
+  "tsoman.role.SR": ["SR", "এসআর"],
+  "tsoman.role.AMO": ["AMO", "এএমও"],
 } as const satisfies Record<string, readonly [string, string]>;
 
 export type TsoManMessageKey = keyof typeof pairs;
