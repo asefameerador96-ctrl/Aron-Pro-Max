@@ -12,7 +12,7 @@ D-INFRA-LAKE-01.
 | (a) Lake account: StorageV2, HNS, Hot, Standard_LRS (dev, dev-lite), TLS 1.2, no shared key, no public blob, container `lake`; worker identity only | `infra/modules/lake.bicep`, `main.bicep` module `lake`, `identities.bicep` `workerLake`, params `lakeStorageSku` | built, validate.sh green; Azure apply on next INT deploy |
 | (b) `exports` container, delete at 7 days, `ARON_BLOB_CONTAINER_EXPORTS` on api and worker | `storage.bicep` (`exports`, rule `exports-expiry`), `apps.bicep` `commonEnv` | built |
 | (c) Photo delete at 730 days (docs/21 s4.8 `cfg.retention.media_days`; docs/28 and docs/31 name no figure) on `media/photos/` only | `storage.bicep` rule `photos-expiry` | built; exemptions asked: `docs/requests/backend-core-photo-retention-exemptions.md` |
-| (d) Logins `app_bi` and `lake_export` (members of privilege role `bi_reader`: SELECT on `dw.v_*` only), Key Vault passwords generated once, read URLs | `infra/sql/runtime-logins.sql`, `db-login-secrets.sh`, `apps.bicep` dblogins job, `image-smoke.sh`, `dblogins-probe.sh` | built; SQL run twice on local PostgreSQL 16 with all migrations, negative grants caught |
+| (d) Logins `app_bi` and `lake_export` (members of privilege role `bi_reader`: SELECT on `dw.v_*` plus invoker-rights `dw` functions, no SECURITY DEFINER), Key Vault passwords generated once, read URLs | `infra/sql/runtime-logins.sql`, `db-login-secrets.sh`, `apps.bicep` dblogins job, `image-smoke.sh`, `dblogins-probe.sh` | built; SQL run twice on local PostgreSQL 16 with all migrations, negative grants caught |
 | (e) Tests | `infra/tests/check_infra.py` class `LakeAndBlobRetention` (6 tests), `SecurityDefaults.test_storage`, `PerAppDatabaseLogins` | 105 tests green |
 | (f) Docs | `docs/33` part B (B6 storage, lake table) and part C (lifecycle row, lake readers), DECISIONS D-INFRA-LAKE-01 | done |
 | Safety | `reset-to-profile.sh` compares the lake (tag `component=lake`) with `lakeStorageSku`, never with `storageSku` | built |
@@ -30,7 +30,11 @@ D-INFRA-LAKE-01.
   s4: `lake/v1/<view>/business_date=YYYY-MM-DD/` plus a manifest (row counts, SHA-256, migration and view-contract
   versions); re-export the dates the projector rebuilt. Nothing in the lake is deleted by age.
 - **Size:** pilot volume is a few MB a day inside the existing worker (0.25 vCPU, 0.5 GiB in dev-lite); stream rows
-  per view and day rather than loading a whole view in memory.
+  per view and day rather than loading a whole view in memory. The URL goes through PgBouncer (transaction pooling,
+  port 6432) where the server has it: read each view-day inside one transaction (a cursor or a single streamed
+  SELECT), never a session-level setting.
+- **BI tools** (no app uses this): hand out host, port 5432 (direct, no PgBouncer), database `aron`, login `app_bi`
+  and the password from Key Vault `aron-db-pw-app-bi`; `aron-db-bi-read-url` is the JDBC form for JDBC clients.
 
 ### Open items
 
@@ -39,8 +43,8 @@ D-INFRA-LAKE-01.
 - The existing `media-tiering` rule (Cool 30, Cold 90) covers the whole `media` container, so admin `assets/`
   (tutorials) and `support/` bundles also tier to Cold; reading a Cold blob costs more and has a 90-day early-delete
   charge. Not changed in this slice (outside row 7); infra can narrow it to `media/photos/` if the lead agrees.
-- Final-account lake SKU (`Standard_ZRS` set in stage and prod params) is to be confirmed with the sponsor before the
-  move (docs/28).
+- Final-account lake SKU (`Standard_ZRS` set in stage and prod params) is an open sponsor question, not decided: to be
+  confirmed before the move and added to the docs/28 final-profile list by the lead.
 - No `bi_reader` row scope (brand or wing, D-374) and per-app logins still off in dev-lite, stage and prod
   (finding 12, part 2): not in row 7.
 

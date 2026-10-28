@@ -12,4 +12,6 @@
 
 Option 1 keeps the storage rule simple and needs no extra role; infra recommends it.
 
+**Also:** a deleted blob leaves its media row marked stored, so a read link would 404. Mark rows past `cfg.retention.media_days` as expired (or treat a 404 on read as expired) so the apps and the web show "photo expired", not a broken image.
+
 **Until then:** nothing reaches 730 days during the pilot, so the gap is latent; this file and the open item in `docs/status/infra.md` keep it visible.

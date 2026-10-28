@@ -1992,7 +1992,8 @@ class LakeAndBlobRetention(unittest.TestCase):
                        "set_config('aron.pw_lake_export', :'pw_lake', false)",
                        "('app_bi', 'bi_reader', true)", "('lake_export', 'bi_reader', true)",
                        "read-only logins reach more than SELECT on dw.v_*", "read-only logins may create objects in",
-                       "read-only logins cannot read any dw.v_* view"):
+                       "read-only logins cannot read any dw.v_* view",
+                       "read-only logins may execute SECURITY DEFINER functions", "AND f.prosecdef AND has_function_privilege"):
             self.assertIn(needle, sql)
         # The pw setting name is built from the login name; a mismatch would stop the job with "no password".
         for login in re.findall(r"\('(\w+)', '\w+', (?:true|false)\)", sql):
@@ -2020,10 +2021,41 @@ class LakeAndBlobRetention(unittest.TestCase):
         probe = (ROOT / "infra" / "scripts" / "dblogins-probe.sh").read_text(encoding="utf-8")
         self.assertIn('("ARON_PW_LAKE_EXPORT", "pw-lake-export")', probe)
 
+    def reset_plan(self, photo_sku, lake_sku_live, profile):
+        """Runs the decision code of reset-to-profile.sh (its embedded Python) on a fake snapshot; returns the plan."""
+        import subprocess, tempfile
+        src = (ROOT / "infra" / "scripts" / "reset-to-profile.sh").read_text(encoding="utf-8")
+        code = src.split("<<'PY' | tee \"$snap/inventory.txt\"\n", 1)[1].split("\nPY\n", 1)[0]
+        rg = "/subscriptions/0/resourceGroups/rg-aron-dev/providers"
+        photo = {"id": f"{rg}/Microsoft.Storage/storageAccounts/starondevabc123", "name": "starondevabc123",
+                 "sku": {"name": photo_sku}, "tags": {"project": "aron"}}
+        lake = {"id": f"{rg}/Microsoft.Storage/storageAccounts/starondevlakeabc123", "name": "starondevlakeabc123",
+                "sku": {"name": lake_sku_live}, "tags": {"project": "aron", "component": "lake"}}
+        topic = {"id": f"{rg}/Microsoft.EventGrid/systemTopics/evgt-aron-dev-storage", "name": "evgt-aron-dev-storage",
+                 "type": "Microsoft.EventGrid/systemTopics"}
+        res = [dict(x, type="Microsoft.Storage/storageAccounts") for x in (photo, lake)] + [topic]
+        p = params(f"{profile}.parameters.json")
+        with tempfile.TemporaryDirectory() as snap:
+            files = {"resources.json": {"value": res}, "postgres.json": [], "envs.json": [], "apps.json": [], "jobs.json": [],
+                     "storage.json": [photo, lake],
+                     "params.json": {"parametersJson": json.dumps({"parameters": {k: {"value": v} for k, v in p.items()}})}}
+            for name, body in files.items():
+                Path(snap, name).write_text(json.dumps(body), encoding="utf-8")
+            subprocess.run([sys.executable, "-", snap, "rg-aron-dev", profile], input=code, text=True, check=True,
+                           capture_output=True)
+            return [l.rsplit("/", 1)[-1] for l in Path(snap, "plan.txt").read_text(encoding="utf-8").split()]
+
     def test_reset_compares_the_lake_with_its_own_sku(self):
-        s = (ROOT / "infra" / "scripts" / "reset-to-profile.sh").read_text(encoding="utf-8")
-        self.assertIn('is_lake = (a.get("tags") or {}).get("component") == "lake"', s)
-        self.assertIn("wanted = lake_sku if is_lake else storage_sku", s)
+        # dev (photo ZRS under the docs/28 exception, lake LRS): nothing to replace.
+        self.assertEqual(self.reset_plan("Standard_ZRS", "Standard_LRS", "dev"), [])
+        # dev-lite (photo LRS): the ZRS photo account and its topic go; the LRS lake stays.
+        self.assertEqual(sorted(self.reset_plan("Standard_ZRS", "Standard_LRS", "dev-lite")),
+                         ["evgt-aron-dev-storage", "starondevabc123"])
+        # A lake created ZRS by mistake is replaced on its own, without touching the photo account's topic.
+        self.assertEqual(self.reset_plan("Standard_ZRS", "Standard_ZRS", "dev"), ["starondevlakeabc123"])
+        tpl, _ = module("main.json", "storage")
+        (st,) = resources_of(tpl, "Microsoft.Storage/storageAccounts")
+        self.assertNotIn("component", json.dumps(st.get("tags")), "the photo account is never tagged as the lake")
 
 
 if __name__ == "__main__":
