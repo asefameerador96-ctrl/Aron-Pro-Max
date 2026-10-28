@@ -25,7 +25,9 @@
 --    number of up to 22 (INC + a bigint) + a code label of up to 120 (code_list_item.label_en) + notes of up to 2000 =
 --    2204, so it may hold up to 2400, the contract's SupportTicketEvent.body maxLength (lead ruling R-F-02).
 --    op_sha256 (R-F-03): a desk PATCH is replayed by its op_uuid. The first event row the op writes has client_uuid =
---    op_uuid and stores the SHA-256 of the request body as canonical JSON; every other row leaves it null.
+--    op_uuid and stores the SHA-256 of the request body as canonical JSON; every other row leaves it null. Only a desk
+--    row (via = 'web') may carry it (CHECK support_ticket_event_op_hash_desk), so a device record whose payload names an
+--    op_sha256 key, or a job row, is refused by the database and not only by the sync writer's column list (V0116).
 -- New tables: the indexes need no CONCURRENTLY and the foreign keys no NOT VALID.
 
 SET lock_timeout = '5s';
@@ -158,7 +160,8 @@ CREATE TABLE app.support_ticket_event (
   to_status            text CHECK (to_status IN ('new','in_progress','resolved','closed','cancelled')),
   resolution_code      text CHECK (resolution_code ~ '^[a-z][a-z0-9_]{1,40}$'),
   op_sha256            bytea CHECK (op_sha256 IS NULL OR octet_length(op_sha256) = 32),
-  data_origin          app.data_origin
+  data_origin          app.data_origin,
+  CONSTRAINT support_ticket_event_op_hash_desk CHECK (op_sha256 IS NULL OR via = 'web')
 );
 CREATE INDEX support_ticket_event_thread ON app.support_ticket_event (ticket_uuid, created_at);
 CREATE TRIGGER support_ticket_event_immutable BEFORE UPDATE OR DELETE ON app.support_ticket_event

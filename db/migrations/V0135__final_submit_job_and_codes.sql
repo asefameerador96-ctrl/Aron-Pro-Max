@@ -32,8 +32,9 @@
 --    module CHECK of app.user_module_grant (V0089) gains it. Existing grants keep a listed module. No grant is seeded:
 --    a SUPERADMIN grants support to an ADMIN on the access page like any other module.
 -- The five CHECKs are replaced or added NOT VALID here and validated in V0136 (separate transaction, squawk rule).
--- Grants: the worker runs the job; it may now insert final submits, and it may update app.push_token, so the push
--- sender can revoke a token FCM reports unregistered without stopping the other pushes (lead ruling R-F-07). It still
+-- Grants: the worker runs the job; it may now insert final submits, and it may update app.push_token's revoked_at and
+-- revoke_reason (a column grant, only_columns: never the token, its hash, the user or the device), so the push sender
+-- can revoke a token FCM reports unregistered without stopping the other pushes (lead ruling R-F-07). It still
 -- may not write app.audit_log (DbRolesTest pins that: the audit trail is written by the API and auth roles only); the
 -- job's trace is the via = 'job' row itself and its zone_day.final_submitted event (R-F-07).
 
@@ -145,9 +146,9 @@ ALTER TABLE app.user_module_grant ADD CONSTRAINT user_module_grant_module_check 
 COMMENT ON COLUMN app.user_module_grant.module IS 'Admin-portal module (contract AdminModule): masterdata, routes, outlets, products, prices, users, targets, credentials, mdm, reports, config, data_entry, indent, leaderboard, daily_tracking or support (the support desk, V0135).';
 
 -- ---------- grants ----------
-INSERT INTO app.db_role_grant (role, schema_name, object, privileges, note) VALUES
-  ('worker_rw', 'app', 'final_submit', 'INSERT', 'V0135: the midnight AutoFinalSubmitJob writes via=job submits (D-TSO-MAN-30)'),
-  ('worker_rw', 'app', 'push_token', 'UPDATE', 'V0135: the push sender revokes a token FCM reports unregistered (R-F-07)');
+INSERT INTO app.db_role_grant (role, schema_name, object, privileges, only_columns, note) VALUES
+  ('worker_rw', 'app', 'final_submit', 'INSERT', '{}', 'V0135: the midnight AutoFinalSubmitJob writes via=job submits (D-TSO-MAN-30)'),
+  ('worker_rw', 'app', 'push_token', 'UPDATE', '{revoked_at,revoke_reason}', 'V0135: the push sender revokes a token FCM reports unregistered (R-F-07); the two revoke columns only');
 
 -- ---------- 3. comments ----------
 COMMENT ON COLUMN app.final_submit.via IS 'Channel the Final Submit came through: app (TSO phone), web (portal) or job (the midnight AutoFinalSubmitJob, V0135).';

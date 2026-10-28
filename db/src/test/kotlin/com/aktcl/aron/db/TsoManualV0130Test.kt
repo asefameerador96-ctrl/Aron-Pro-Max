@@ -294,6 +294,19 @@ class TsoManualV0130Test {
             // A device comment carries none.
             exec(event(uuid(227), t, "tso1001"))
             assertEquals("t", scalar("SELECT (op_sha256 IS NULL)::text::char FROM app.support_ticket_event WHERE client_uuid = '${uuid(227)}'"))
+            // Only a desk row may carry a hash (CHECK support_ticket_event_op_hash_desk): a device or job row with one is
+            // refused by the database, not only by the B1 handler's column list; the same row without it is accepted.
+            for ((n, via) in listOf(228 to "device", 229 to "job")) {
+                fun row(hash: String) =
+                    "INSERT INTO app.support_ticket_event (client_uuid, ticket_uuid, family_uuid, business_date, user_id, captured_at, config_version, via, kind, body, op_sha256) " +
+                        "VALUES ('${uuid(n)}', '$t', '${uuid(n)}', $day, ${user("tso1001")}, now(), 0, '$via', 'comment', 'Still stuck', $hash)"
+                assertEquals("23514", refused(row("sha256(convert_to('$body', 'UTF8'))")), via)
+                exec(row("NULL"))
+            }
+            assertEquals(
+                "support_ticket_event_op_hash_desk|CHECK (((op_sha256 IS NULL) OR (via = 'web'::text)))",
+                scalar("SELECT conname || '|' || pg_get_constraintdef(oid) FROM pg_constraint WHERE conrelid = 'app.support_ticket_event'::regclass AND conname = 'support_ticket_event_op_hash_desk'"),
+            )
         }
     }
 
@@ -521,27 +534,28 @@ class TsoManualV0130Test {
                 "INSERT INTO app.user_notification (user_id, kind, ref_type, ref_id, title_en, body_en, dedupe_key) " +
                     "VALUES (${user(to)}, '$kind', '$ref', '${uuid(601)}', '$title', 'Support replied.', '$key')"
             val idem = " ON CONFLICT (user_id, dedupe_key) DO NOTHING"
+            val today = scalar("SELECT ($day)::text")!!          // the seed's clock (D-TEST-DATE-PIN-01)
             exec(note("ticket:${uuid(601)}:a"))
             exec(note("ticket:${uuid(601)}:a") + idem)
             assertEquals("1", scalar("SELECT count(*) FROM app.user_notification WHERE dedupe_key = 'ticket:${uuid(601)}:a'"), "a second producer run adds nothing")
             assertEquals("23505", refused(note("ticket:${uuid(601)}:a")))
             // R-F-04: unique per recipient. One zone auto-submit reaches every user it concerns once each; a rerun of the
             // producer adds nothing for any of them.
-            for (to in listOf("dmo1001", "amo1001", "dmo1001", "amo1001")) exec(note("zone:7:2026-10-25", kind = "final_submit_auto", ref = "zone_day", to = to) + idem)
+            for (to in listOf("dmo1001", "amo1001", "dmo1001", "amo1001")) exec(note("zone:7:$today", kind = "final_submit_auto", ref = "zone_day", to = to) + idem)
             assertEquals(
                 listOf("amo1001", "dmo1001"),
-                column("SELECT u.username FROM app.user_notification n JOIN app.app_user u ON u.id = n.user_id WHERE n.dedupe_key = 'zone:7:2026-10-25' ORDER BY 1"),
+                column("SELECT u.username FROM app.user_notification n JOIN app.app_user u ON u.id = n.user_id WHERE n.dedupe_key = 'zone:7:$today' ORDER BY 1"),
             )
             assertEquals(
                 "user_notification_user_id_dedupe_key_key|UNIQUE (user_id, dedupe_key)",
                 scalar("SELECT conname || '|' || pg_get_constraintdef(oid) FROM pg_constraint WHERE conrelid = 'app.user_notification'::regclass AND contype = 'u'"),
             )
-            exec("DELETE FROM app.user_notification WHERE dedupe_key = 'zone:7:2026-10-25'")
+            exec("DELETE FROM app.user_notification WHERE dedupe_key = 'zone:7:$today'")
             assertEquals("23514", refused(note("k2", kind = "announcement")))
             assertEquals("23514", refused(note("k3", ref = "memo")))
             assertEquals("23514", refused(note("k4", title = "x".repeat(121))))
             exec(note("leave:${uuid(602)}", kind = "leave_decided", ref = "leave_application"))
-            exec(note("zone:1:2026-10-25", kind = "final_submit_auto", ref = "zone_day"))
+            exec(note("zone:1:$today", kind = "final_submit_auto", ref = "zone_day"))
             assertEquals("t|3", scalar("SELECT bool_and(business_date = $day)::text::char || '|' || count(*) FILTER (WHERE read_at IS NULL) FROM app.user_notification WHERE user_id = ${user("tso1001")}"))
             exec("UPDATE app.user_notification SET read_at = now() WHERE user_id = ${user("tso1001")} AND read_at IS NULL")
             assertEquals("42501", refused("UPDATE app.user_notification SET read_at = now() + interval '1 minute' WHERE dedupe_key = 'k2' OR dedupe_key LIKE 'ticket:%'"), "read once")
@@ -556,12 +570,14 @@ class TsoManualV0130Test {
                     "WHERE has_table_privilege(r, 'app.user_notification', p)), '|' ORDER BY r) FROM unnest(ARRAY['api_rw','worker_rw']) r",
             ),
         )
-        // The midnight job may insert its Final Submit and the push sender may revoke a token (R-F-07); the audit trail
-        // stays closed to the worker (DbRolesTest).
+        // The midnight job may insert its Final Submit and the push sender may revoke a token (R-F-07): UPDATE on the two
+        // revoke columns only, not on the token or the table; the audit trail stays closed to the worker (DbRolesTest).
         assertEquals(
-            "t|t|f|f",
+            "t|t|t|f|f|f|f",
             c.scalar(
-                "SELECT concat_ws('|', has_table_privilege('worker_rw', 'app.final_submit', 'INSERT')::text::char, has_table_privilege('worker_rw', 'app.push_token', 'UPDATE')::text::char, " +
+                "SELECT concat_ws('|', has_table_privilege('worker_rw', 'app.final_submit', 'INSERT')::text::char, " +
+                    "has_column_privilege('worker_rw', 'app.push_token', 'revoked_at', 'UPDATE')::text::char, has_column_privilege('worker_rw', 'app.push_token', 'revoke_reason', 'UPDATE')::text::char, " +
+                    "has_column_privilege('worker_rw', 'app.push_token', 'token', 'UPDATE')::text::char, has_table_privilege('worker_rw', 'app.push_token', 'UPDATE')::text::char, " +
                     "has_table_privilege('worker_rw', 'app.push_token', 'INSERT')::text::char, has_table_privilege('worker_rw', 'app.audit_log', 'INSERT')::text::char)",
             ),
         )
@@ -635,12 +651,13 @@ class TsoManualV0130Test {
         // Thin payloads: no free text keys (title, description, body, notes, reason, name).
         assertEquals("0", c.scalar("SELECT count(*) FROM app.domain_event_type t, jsonb_object_keys(t.payload_schema -> 'properties') k WHERE t.introduced_in = 'V0134' AND k ~ '(title|description|body|note|reason|name)'"))
         c.tx {
+            val today = scalar("SELECT ($day)::text")!!          // the seed's clock (D-TEST-DATE-PIN-01)
             exec("GRANT api_rw TO CURRENT_USER WITH INHERIT FALSE, SET TRUE")
             exec("SET ROLE api_rw")
             exec(
                 "INSERT INTO app.domain_event (event_type, payload_version, aggregate_type, aggregate_id, business_date, payload) VALUES " +
-                    "('zone_day.final_submitted', 1, 'zone_day', '7:2026-10-25', DATE '2026-10-25', " +
-                    "'{\"zone_id\":7,\"business_date\":\"2026-10-25\",\"final_submit_uuid\":\"${uuid(701)}\",\"via\":\"job\",\"submitted_by\":null}')",
+                    "('zone_day.final_submitted', 1, 'zone_day', '7:$today', DATE '$today', " +
+                    "'{\"zone_id\":7,\"business_date\":\"$today\",\"final_submit_uuid\":\"${uuid(701)}\",\"via\":\"job\",\"submitted_by\":null}')",
             )
             exec("RESET ROLE")
         }

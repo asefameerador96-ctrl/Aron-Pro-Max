@@ -89,8 +89,9 @@ class DbRolesTest {
             Triple("api_rw", "app.archive_manifest", "SELECT") to false, Triple("api_rw", "app.archive_manifest", "UPDATE") to false,
             Triple("jobs_rw", "app.archive_manifest", "UPDATE") to true, Triple("api_rw", "app.retention_policy", "UPDATE") to false,
             Triple("api_rw", "app.retention_policy", "INSERT") to false,
-            // V0135 (lead ruling R-F-07): the push sender revokes an unregistered token; the worker still writes no audit row.
-            Triple("worker_rw", "app.push_token", "UPDATE") to true,
+            // V0135 (lead ruling R-F-07): the push sender revokes an unregistered token through a column grant (below), so
+            // no table-wide UPDATE; the worker still writes no audit row.
+            Triple("worker_rw", "app.push_token", "UPDATE") to false, Triple("worker_rw", "app.push_token", "INSERT") to false,
         )
         val wrong = expected.filter { (k, allowed) -> can(c, k.first, k.second, k.third) != allowed }.keys
         assertEquals(emptySet(), wrong, "privileges that differ from the map")
@@ -108,6 +109,11 @@ class DbRolesTest {
             c.column("SELECT has_table_privilege('worker_rw', t, 'SELECT') FROM unnest(ARRAY['app.mfa_secret','app.device_otp','app.refresh_token','app.enrolment_token','app.password_history']) t"),
         )
         assertEquals("t", c.scalar("SELECT has_column_privilege('api_rw', 'app.app_user', 'password_hash', 'SELECT')"))
+        // V0135 (R-F-07): the worker may set only the revoke columns of a push token, never the token, its hash or owner.
+        assertEquals(
+            listOf("revoked_at|t", "revoke_reason|t", "token|f", "token_sha256|f", "user_id|f", "device_id|f"),
+            c.column("SELECT x.c || '|' || has_column_privilege('worker_rw', 'app.push_token', x.c, 'UPDATE')::text::char FROM unnest(ARRAY['revoked_at','revoke_reason','token','token_sha256','user_id','device_id']) WITH ORDINALITY x(c, n) ORDER BY x.n"),
+        )
         // pii_reader: outlet contact columns only, never the national ids; support_ro: the sync log without payloads.
         assertEquals("t", c.scalar("SELECT has_column_privilege('pii_reader', 'app.outlet', 'contact_number', 'SELECT')"))
         assertEquals("f", c.scalar("SELECT has_column_privilege('pii_reader', 'app.outlet', 'nid_enc', 'SELECT')"))   // V0049: nid became nid_enc
