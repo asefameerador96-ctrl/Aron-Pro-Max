@@ -471,7 +471,7 @@ No Azure region exists in Bangladesh (D-05: Southeast Asia primary, East Asia DR
 | Audit, config audit, export log, security events | 7 years (`cfg.retention.audit_years`, floor 7; ASSUMPTION; MUST-CONFIRM by 6b, D-113) | Never shortened below the floor |
 | Photos | `cfg.retention.media_days` 730 (ASSUMPTION; unknown; confirm with the business, Q21, MUST-CONFIRM by 6c, D-132): Hot, Cool at 30 days, Cold at 90, Archive at 365; a legal-hold flag stops deletion | Blob lifecycle |
 | `device_integrity`, `risk_signal` | 2 years, partition drop | Job |
-| Support bundles | 30 days (`cfg.support.*`) | Blob lifecycle |
+| Support bundles | 30 days after the last write (Bicep `supportDeleteDays`, lifecycle rule `support-expiry`, D-INFRA-LAKE-04; no registry key: the Bicep parameter is the single source; a replay re-PUT inside the 720 h replay window resets the clock, so a bundle can live about 60 days; soft delete keeps a deleted one recoverable for 14 more days; `app.support_upload` rows are not purged, backend-core's call) | Blob lifecycle |
 | Refresh tokens | 30 days after expiry or revocation (forensics) | Job |
 | Retailer erasure request | Outlet set to `closed`, personal columns nulled, `owner_name` set to `[erased]`, `phone_hash` kept for de-duplication only if counsel allows; transactions keep `outlet_id` | Admin action, audited |
 | Employee leaving | `status = disabled`, devices and tokens revoked, HR policy decides the rest (unknown) | Admin |
