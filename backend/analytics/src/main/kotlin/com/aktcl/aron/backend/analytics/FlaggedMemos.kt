@@ -39,7 +39,7 @@ internal class FlaggedMemos(private val db: Database) {
         if (ChronoUnit.DAYS.between(from, to) > MAX_DAYS) throw ApiProblem(ProblemCode.ERR_VALIDATION, "to is more than $MAX_DAYS days after from", errors = listOf(FieldError("query.to", "out_of_range")))
         val after = cursor?.let { decode(it) }
         return db.readJdbi.withHandle<FlaggedMemoPage, Exception> { h ->
-            val node = resolveScopedNode(h, reach, level, nodeId, ProblemCode.ERR_OUT_OF_SCOPE)
+            val node = resolveScopedNode(h, reach, level, nodeId, ProblemCode.ERR_OUT_OF_SCOPE, from, to)
             val sql = """
                 SELECT v.memo_id, v.memo_client_uuid::text AS uuid, v.memo_no, v.business_date,
                        CASE WHEN v.voided_at IS NOT NULL OR v.status = 'voided' THEN 'void' ELSE v.status END AS status,

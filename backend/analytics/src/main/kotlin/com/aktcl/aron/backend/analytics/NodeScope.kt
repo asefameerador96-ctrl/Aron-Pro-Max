@@ -6,6 +6,7 @@ import com.aktcl.aron.backend.platform.Reach
 import com.aktcl.aron.contract.ProblemCode
 import org.jdbi.v3.core.Handle
 import org.jdbi.v3.core.statement.Query
+import java.time.LocalDate
 
 /**
  * A dashboard node and the zones under it that the caller may read (`zones == null` means every zone), or, for a route-only
@@ -25,6 +26,21 @@ internal class ScopedNode(val ref: NodeRefDto, val zones: List<Long>?, val route
     }
 }
 
+/**
+ * The zones the nodes [ids] of a level ([col] is `wing_id`, `division_id`, `territory_id` or `zone_id`) had on ANY date of [from]..[to], and how many
+ * of the ids had one (an unknown id has none): the node as it was on the dates asked (D-REPORTS-NODEASWAS-01), not as the structure is now.
+ * When nothing in the geography changed since [from] the current structure is exact and answers (the plain path, the old SQL). A zone's own
+ * id never moves, so a `zone_id` selector needs no history.
+ */
+internal fun memberZones(h: Handle, col: String, ids: List<Long>, from: LocalDate, to: LocalDate): Pair<List<Long>, Long> {
+    val sql = if (col == "zone_id" || AsWasSql.probe(h, from).geo) "SELECT DISTINCT zone_id, $col FROM dw.dim_geo WHERE $col = ANY(:ids)"
+    else "SELECT DISTINCT zn.zone_id, zn.$col FROM ${AsWasSql.zoneAll("zn", ":f", ":t")} WHERE zn.$col = ANY(:ids)"
+    val q = h.createQuery(sql).bindArray("ids", Long::class.javaObjectType, ids)
+    if (!sql.startsWith("SELECT DISTINCT zone_id")) q.bind("f", from).bind("t", to)
+    val rows = q.map { rs, _ -> rs.getLong(1) to rs.getLong(2) }.list()
+    return rows.map { it.first }.distinct() to rows.map { it.second }.distinct().size.toLong()
+}
+
 private val GEO_COLUMNS = mapOf("wing" to ("wing_id" to "wing_name"), "division" to ("division_id" to "division_name"), "territory" to ("territory_id" to "territory_name"), "zone" to ("zone_id" to "zone_name"))
 
 /**
@@ -34,7 +50,10 @@ private val GEO_COLUMNS = mapOf("wing" to ("wing_id" to "wing_name"), "division"
  * (D-BC-DASH-ROUTE-KEYED-01; labelled by the first route). An explicit node is never a route: a route-only caller reaches no zone (403).
  * [outOfScope] is the 403's code: `ERR_FORBIDDEN` for the older dashboards, `ERR_OUT_OF_SCOPE` where the contract names it.
  */
-internal fun resolveScopedNode(h: Handle, reach: Reach, level: String?, nodeId: Long?, outOfScope: ProblemCode = ProblemCode.ERR_FORBIDDEN): ScopedNode {
+internal fun resolveScopedNode(
+    h: Handle, reach: Reach, level: String?, nodeId: Long?, outOfScope: ProblemCode = ProblemCode.ERR_FORBIDDEN,
+    /** The dates the read covers: the node's member zones are those it had then (null: the structure as it is now). */ from: LocalDate? = null, to: LocalDate? = from,
+): ScopedNode {
     val out = ApiProblem(outOfScope, "node is outside your reach")
     val lv: String; val id: Long
     if (level == null && nodeId == null) {
@@ -58,10 +77,11 @@ internal fun resolveScopedNode(h: Handle, reach: Reach, level: String?, nodeId: 
         if (lv !in GEO_COLUMNS) throw ApiProblem(ProblemCode.ERR_VALIDATION, "level must be national, wing, division, territory or zone", errors = listOf(FieldError("query.level", "invalid_value")))
         id = nodeId?.takeIf { it > 0 } ?: throw ApiProblem(ProblemCode.ERR_VALIDATION, "node_id required", errors = listOf(FieldError("query.node_id", "required")))
     }
-    val (col, nameCol) = GEO_COLUMNS[lv] ?: throw out
-    val zones = h.createQuery("SELECT DISTINCT zone_id FROM dw.dim_geo WHERE $col = :id").bind("id", id).mapTo(Long::class.java).list()
+    val (col, _) = GEO_COLUMNS[lv] ?: throw out
+    val zones = if (from != null && to != null) memberZones(h, col, listOf(id), from, to).first
+    else h.createQuery("SELECT DISTINCT zone_id FROM dw.dim_geo WHERE $col = :id").bind("id", id).mapTo(Long::class.java).list()
     if (zones.isEmpty() || (!reach.national && !reach.zoneIds.containsAll(zones))) throw out
-    val name = h.createQuery("SELECT DISTINCT $nameCol FROM dw.dim_geo WHERE $col = :id").bind("id", id).mapTo(String::class.java).first()
+    val name = h.createQuery("SELECT name FROM app.$lv WHERE id = :id").bind("id", id).mapTo(String::class.java).first()
     return ScopedNode(NodeRefDto(lv, id, null, name), zones)
 }
 
