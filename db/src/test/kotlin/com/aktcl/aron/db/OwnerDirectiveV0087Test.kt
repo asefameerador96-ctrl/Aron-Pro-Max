@@ -312,9 +312,9 @@ class OwnerDirectiveV0087Test {
     }
 
     @Test
-    fun v0089ModuleGrantsHoldFifteenModules() = db.connect().use { c ->
-        // The seeded admin holds w on every module (seed 01, as V0089 does for admins present when it runs).
-        assertEquals("15|w", c.scalar("SELECT count(*) || '|' || string_agg(DISTINCT access, ',') FROM app.user_module_grant WHERE user_id = ${user("admin1001")}"))
+    fun v0089ModuleGrantsHoldSixteenModules() = db.connect().use { c ->
+        // The seeded admin holds w on every module (seed 01, as V0089 does for admins present when it runs; V0135 adds support).
+        assertEquals("16|w", c.scalar("SELECT count(*) || '|' || string_agg(DISTINCT access, ',') FROM app.user_module_grant WHERE user_id = ${user("admin1001")}"))
         c.tx {
             exec("UPDATE app.user_module_grant SET access = 'r', granted_by = $superadmin, granted_at = now() WHERE user_id = ${user("admin1001")} AND module = 'mdm'")
             // Seed 07 (pilot admins get every module) runs again on every dev seed load: a narrowed grant stays narrowed.

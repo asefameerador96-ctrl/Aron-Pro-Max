@@ -9,7 +9,7 @@ BEGIN
     SELECT u.id, m.module, 'w'
       FROM app.app_user u
      CROSS JOIN (VALUES ('masterdata'),('routes'),('outlets'),('products'),('prices'),('users'),('targets'),('credentials'),
-                        ('mdm'),('reports'),('config'),('data_entry'),('indent'),('leaderboard'),('daily_tracking')) AS m(module)
+                        ('mdm'),('reports'),('config'),('data_entry'),('indent'),('leaderboard'),('daily_tracking'),('support')) AS m(module)
      WHERE u.role = 'ADMIN' AND u.pilot
        AND NOT EXISTS (SELECT 1 FROM app.user_module_grant g WHERE g.user_id = u.id)
     ON CONFLICT (user_id, module) DO NOTHING;

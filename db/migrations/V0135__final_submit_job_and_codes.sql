@@ -29,8 +29,9 @@
 --    of the same name (final_submit_stamp_origin), so one stamp runs per insert; the origin guard
 --    (final_submit_guard_origin, BEFORE UPDATE) is unchanged and still refuses a direct re-tag by the API or worker.
 -- 5. Admin module support (lead ruling R-F-11): /v1/support/tickets/** belongs to the new AdminModule support, so the
---    module CHECK of app.user_module_grant (V0089) gains it. Existing grants keep a listed module. No grant is seeded:
---    a SUPERADMIN grants support to an ADMIN on the access page like any other module.
+--    module CHECK of app.user_module_grant (V0089) gains it. Existing grants keep a listed module. Every existing ADMIN
+--    gets support at w (lead ruling R-F-23: V0089 gave admins every module, and D-TSO-MAN-22 seeds the desk for ADMIN);
+--    a SUPERADMIN narrows or removes it on the access page like any other module.
 -- The five CHECKs are replaced or added NOT VALID here and validated in V0136 (separate transaction, squawk rule).
 -- Grants: the worker runs the job; it may now insert final submits, and it may update app.push_token's revoked_at and
 -- revoke_reason (a column grant, only_columns: never the token, its hash, the user or the device), so the push sender
@@ -144,6 +145,10 @@ ALTER TABLE app.user_module_grant ADD CONSTRAINT user_module_grant_module_check 
   'masterdata', 'routes', 'outlets', 'products', 'prices', 'users', 'targets', 'credentials', 'mdm', 'reports', 'config',
   'data_entry', 'indent', 'leaderboard', 'daily_tracking', 'support')) NOT VALID;
 COMMENT ON COLUMN app.user_module_grant.module IS 'Admin-portal module (contract AdminModule): masterdata, routes, outlets, products, prices, users, targets, credentials, mdm, reports, config, data_entry, indent, leaderboard, daily_tracking or support (the support desk, V0135).';
+-- R-F-23: existing ADMINs keep every module, so they keep the support desk too (idempotent; a later narrowing stays).
+INSERT INTO app.user_module_grant (user_id, module, access)
+SELECT u.id, 'support', 'w' FROM app.app_user u WHERE u.role = 'ADMIN'
+ON CONFLICT (user_id, module) DO NOTHING;
 
 -- ---------- grants ----------
 INSERT INTO app.db_role_grant (role, schema_name, object, privileges, only_columns, note) VALUES
