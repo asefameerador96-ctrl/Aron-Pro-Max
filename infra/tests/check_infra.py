@@ -1975,19 +1975,38 @@ class LakeAndBlobRetention(unittest.TestCase):
         support_days = int(re.search(r"\| Support bundles \| (\d+) days", doc21).group(1))
         self.assertEqual(defaults["supportDeleteDays"], support_days)
         self.assertEqual(support_days, 30)
+        # Every rule is on, for block blobs, with at least one prefix (an empty list would cover the whole account).
+        for name, d in rules.items():
+            self.assertIs(pol["properties"]["policy"]["rules"][list(rules).index(name)]["enabled"], True, name)
+            self.assertEqual(d["filters"]["blobTypes"], ["blockBlob"], name)
+            self.assertTrue(d["filters"].get("prefixMatch"), f"{name} has no prefix: it would act on the whole account")
+
+        def media_rest(prefix):
+            """The path inside the media container a prefix starts at ('' = the whole container), or None when the
+            prefix is in another container. Handles format('{0}/...', mediaContainer), a bare container parameter and
+            literal prefixes ('media/...', or a prefix of the name 'media' itself)."""
+            m = re.fullmatch(r"\[format\('\{0\}/(.*)', parameters\('(\w+)'\)\)\]", prefix)
+            if m:
+                return m.group(1) if m.group(2) == "mediaContainer" else None
+            m = re.fullmatch(r"\[parameters\('(\w+)'\)\]", prefix)
+            if m:
+                return "" if m.group(1) == "mediaContainer" else None
+            self.assertNotIn("[", prefix, f"unrecognised prefix expression {prefix}")
+            container, slash, rest = prefix.partition("/")
+            if not slash:
+                return "" if "media".startswith(container) else None
+            return rest if container == "media" else None
+
         # A prefix covers a path when the path starts with it, so a shorter prefix (media/s, media/a) counts too.
         for name, d in rules.items():
             for p in d["filters"]["prefixMatch"]:
-                m = re.fullmatch(r"\[format\('\{0\}/(.*)', parameters\('mediaContainer'\)\)\]", p)
-                if not m:
-                    continue  # another container
-                rest = m.group(1)
+                rest = media_rest(p)
+                if rest is None:
+                    continue
+                self.assertNotEqual(rest, "", f"{name} covers the whole media container")
                 self.assertFalse("assets/x".startswith(rest), f"{name} ({rest!r}) touches admin assets")
                 if "support/x".startswith(rest):
                     self.assertEqual(name, "support-expiry", f"{name} ({rest!r}) also acts on support bundles")
-        for name, d in rules.items():
-            for p in d["filters"]["prefixMatch"]:
-                self.assertNotEqual(p, "[format('{0}/', parameters('mediaContainer'))]", f"{name} covers the whole media container")
         backend = (ROOT / "backend" / "app" / "src" / "main" / "kotlin" / "com" / "aktcl" / "aron" / "backend" / "app"
                    / "ExportWiring.kt").read_text(encoding="utf-8")
         self.assertIn('containerVar = "ARON_BLOB_CONTAINER_EXPORTS", defaultContainer = "exports"', backend)

@@ -18,7 +18,7 @@ param exportsDeleteDays int = 7
 @description('Days after which a PDA-to-Support bundle (support/ in the media container) is deleted: docs/21 s4.8 "Support bundles 30 days, Blob lifecycle". No registry key exists for it, so this parameter is the single source.')
 @minValue(1)
 param supportDeleteDays int = 30
-@description('Days after which a field photo (photos/ in the media container) is deleted: cfg.retention.media_days (docs/21 s4.8, docs/16 s13.1: 730, Q21 still to be confirmed by the business). admin assets/ and support/ bundles are not photos and are never deleted by age.')
+@description('Days after which a field photo (photos/ in the media container) is deleted: cfg.retention.media_days (docs/21 s4.8, docs/16 s13.1: 730, Q21 still to be confirmed by the business). admin assets/ are never deleted by age; support/ bundles follow supportDeleteDays.')
 @minValue(365)
 param photoDeleteDays int = 730
 param mediaEventsQueue string
