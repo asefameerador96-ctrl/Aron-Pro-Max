@@ -73,9 +73,7 @@ internal object AsWasSql {
             "CASE WHEN h.${level}_id = cp.${level}_id THEN cp.${level}_name ELSE coalesce(n_$level.name, cp.${level}_name) END AS ${level}_name$code"
     }
 
-    /** `dw.dim_product` as of the date: SKU -> variant -> brand -> segment -> category, category code and units. */
-    fun product(alias: String, sku: String, date: String, join: String = "JOIN", lo: String? = null, hi: String? = null): String = """
-        $join (
+    private fun productBody(lo: String?, hi: String?): String = """
           WITH per AS (SELECT hh.sku_id, hh.valid_from AS vf, hh.valid_to AS vt, hh.variant_id, hh.brand_id, hh.segment_id, hh.category_id, hh.category_code,
                               hh.base_unit, hh.base_per_pack
                          FROM dw.v_dim_product_history hh WHERE ${win("hh.valid_from", "hh.valid_to", lo, hi)}),
@@ -88,9 +86,17 @@ internal object AsWasSql {
                  h.vf AS as_from, h.vt AS as_to
             FROM h JOIN dw.dim_product cp ON cp.sku_id = h.sku_id
             LEFT JOIN app.product_node n_variant ON n_variant.id = h.variant_id LEFT JOIN app.product_node n_brand ON n_brand.id = h.brand_id
-            LEFT JOIN app.product_node n_segment ON n_segment.id = h.segment_id LEFT JOIN app.product_node n_category ON n_category.id = h.category_id
-        ) $alias ${on(alias, "sku_id", sku, date)}
-    """.trimIndent()
+            LEFT JOIN app.product_node n_segment ON n_segment.id = h.segment_id LEFT JOIN app.product_node n_category ON n_category.id = h.category_id"""
+
+    /** `dw.dim_product` as of the date: SKU -> variant -> brand -> segment -> category, category code and units. */
+    fun product(alias: String, sku: String, date: String, join: String = "JOIN", lo: String? = null, hi: String? = null): String =
+        "$join (${productBody(lo, hi)}\n        ) $alias ${on(alias, "sku_id", sku, date)}"
+
+    /**
+     * Every product row the timeline holds for the window (the as-was rows of the window plus the current row where the history has no
+     * period), as a FROM item for lists of nodes, categories and units that a product filter selects ("which brands, which unit").
+     */
+    fun productAll(alias: String, lo: String? = null, hi: String? = null): String = "(${productBody(lo, hi)}\n        ) $alias"
 
     /** `dw.dim_outlet` as of the date: zone, channel, sub-channel, geo class and kind. */
     fun outlet(alias: String, outlet: String, date: String, join: String = "JOIN", lo: String? = null, hi: String? = null): String = """

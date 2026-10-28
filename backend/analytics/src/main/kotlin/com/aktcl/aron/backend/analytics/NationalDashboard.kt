@@ -170,7 +170,7 @@ class NationalDashboardService(
                  WHERE a.business_date = :d ${sql.geo} ${sql.product} GROUP BY 1, 2
                 """,
             ).bind("d", date)).map { rs, _ -> Triple(rs.getString(1), rs.getString(2), rs.getLong(3)) }.list()
-            val cats = sql.bind(h.createQuery("SELECT DISTINCT p.category_code, p.base_unit FROM dw.dim_product p WHERE true ${sql.product}")).map { rs, _ -> rs.getString(1) to rs.getString(2) }.list()
+            val cats = sql.bind(h.createQuery("SELECT DISTINCT p.category_code, p.base_unit FROM ${AsWasSql.productAll("p", lo = ":d", hi = ":d")} WHERE true ${sql.product}").bind("d", date)).map { rs, _ -> rs.getString(1) to rs.getString(2) }.list()
             val month = YearMonth.from(date)
             val wd = WorkingCalendar.workingDays(h, month, weekendDays())
             val targets = sql.bind(h.createQuery(
@@ -343,7 +343,7 @@ class NationalDashboardService(
                      WHERE a.business_date = :d ${sql.geo} ${sql.product} GROUP BY 1 ORDER BY array_position(ARRAY['cigarette','bidi','lighter','match'], p.category_code), 1 LIMIT 1
                     """,
                 ).bind("d", date)).mapTo(String::class.java).findOne().orElse(null)
-                unit = category?.let { c -> sql.bind(h.createQuery("SELECT min(p.base_unit) FROM dw.dim_product p WHERE p.category_code = :c ${sql.product}").bind("c", c)).mapTo(String::class.java).findOne().orElse(null) }
+                unit = category?.let { c -> sql.bind(h.createQuery("SELECT min(p.base_unit) FROM ${AsWasSql.productAll("p", lo = ":d", hi = ":d")} WHERE p.category_code = :c ${sql.product}").bind("c", c).bind("d", date)).mapTo(String::class.java).findOne().orElse(null) }
                 items = if (category == null) emptyList() else sql.bind(h.createQuery(
                     """
                     SELECT $nodeCols, sum(a.sold_qty_base) AS v
@@ -358,7 +358,7 @@ class NationalDashboardService(
                     """
                     SELECT n.$col, n.code, n.name, sum(a.memo_count) AS v
                       FROM $table a ${AsWasSql.geo("g", "a.route_id", "a.business_date", "JOIN", lo = ":d", hi = ":d")}
-                      JOIN (SELECT DISTINCT $nodeCols FROM dw.dim_product p WHERE true ${sql.product}) n(${col}, code, name) ON n.$col = a.$col
+                      JOIN (SELECT DISTINCT $nodeCols FROM ${AsWasSql.productAll("p", lo = ":d", hi = ":d")} WHERE true ${sql.product}) n(${col}, code, name) ON n.$col = a.$col
                      WHERE a.business_date = :d ${sql.geo} GROUP BY 1, 2, 3 HAVING sum(a.memo_count) > 0 ORDER BY v DESC, 3
                     """,
                 ).bind("d", date)).map { rs, _ -> BreakdownItem(rs.getString(2), rs.getString(3), rs.getLong(4)) }.list()
