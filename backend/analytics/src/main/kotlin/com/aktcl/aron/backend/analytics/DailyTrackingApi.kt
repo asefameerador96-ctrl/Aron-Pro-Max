@@ -72,6 +72,7 @@ class DailyTrackingService(private val db: Database, private val config: ServerC
         val (items, next) = db.readJdbi.withHandle<Pair<List<DailyTrackingRow>, Long?>, Exception> { h ->
             val node = resolveScopedNode(h, reach, level, nodeId)
             val login = DashboardSummaries.successfulLoginSql(h)
+            val asWas = AsWasSql.probe(h, date)
             val rows = node.bind(
                 h.createQuery(
                     """
@@ -99,7 +100,7 @@ class DailyTrackingService(private val db: Database, private val config: ServerC
             val cats = if (page.isEmpty()) emptyMap() else h.createQuery(
                 """
                 SELECT a.route_id, p.category_code, p.base_unit, sum(a.sold_qty_base + a.free_qty_base) qty, sum(a.gross_mtk) gross
-                  FROM dw.agg_daily_route_sku a JOIN dw.dim_product p ON p.sku_id = a.sku_id
+                  FROM dw.agg_daily_route_sku a ${AsWasSql.product("p", "a.sku_id", "a.business_date", "JOIN", lo = ":d", hi = ":d", plain = asWas.product)}
                  WHERE a.business_date = :d AND a.route_id = ANY(:rids) GROUP BY 1, 2, 3 ORDER BY 1, 2
                 """,
             ).bind("d", date).bindArray("rids", Long::class.javaObjectType, page.map { it.route_id })
