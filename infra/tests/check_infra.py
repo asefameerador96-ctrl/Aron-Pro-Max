@@ -1966,6 +1966,16 @@ class LakeAndBlobRetention(unittest.TestCase):
         self.assertEqual(tier["filters"]["prefixMatch"], ["[format('{0}/photos/', parameters('mediaContainer'))]"])
         self.assertEqual(tier["actions"]["baseBlob"]["tierToCool"]["daysAfterModificationGreaterThan"], 30)
         self.assertEqual(tier["actions"]["baseBlob"]["tierToCold"]["daysAfterModificationGreaterThan"], 90)
+        # support/ bundles: Hot to Cool at 30 days (docs/18 s2.8), never deleted until a retention figure is named
+        # (D-INFRA-LAKE-04); assets/ have no rule at all, so they stay Hot.
+        sup = rules["support-tiering"]
+        self.assertEqual(sup["filters"]["prefixMatch"], ["[format('{0}/support/', parameters('mediaContainer'))]"])
+        self.assertEqual(sup["actions"]["baseBlob"], {"tierToCool": {"daysAfterModificationGreaterThan": 30}})
+        for name, d in rules.items():
+            for p in d["filters"]["prefixMatch"]:
+                self.assertNotIn("/assets/", p, f"{name} touches admin assets")
+                if "/support/" in p:
+                    self.assertNotIn("delete", d["actions"]["baseBlob"], f"{name} deletes support bundles")
         for name, d in rules.items():
             for p in d["filters"]["prefixMatch"]:
                 self.assertNotEqual(p, "[format('{0}/', parameters('mediaContainer'))]", f"{name} covers the whole media container")

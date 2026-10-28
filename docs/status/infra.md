@@ -26,6 +26,9 @@ over older handovers below.
   (D-INFRA-LAKE-03, lead ask after deploy #284: its what-if listed "Modify kv properties.networkAcls"; keyvault.bicep
   is unchanged since 87d07e0f, so read that row on the next deploy). Train 50 (INT 25046886, deploy #284 green)
   carried candidate 1: lake account created, four Key Vault secrets generated, database logins succeeded.
+  Candidate 2 (f2e7610d) accepted 12:00 UTC, rides train 52: read its deploy's "Database logins" and "Key Vault
+  network ACLs" rows. **Candidate 3**: `support-tiering` (Cool at 30 days, no delete; D-INFRA-LAKE-04); push only
+  after train 52 is on INT and merged, own lane run, Opus checker. After it: READY TO RECYCLE (lead).
 - **Open for the next infra session:** photo exemptions (backend-core #21), bi_reader row scope and per-app logins
   outside dev (finding 12 part 2, a later infra slice). Final lake SKU is on the docs/28 final list (lead). Row 8
   (nightly export) is backend-core's; its needs are listed below.
@@ -73,8 +76,9 @@ D-INFRA-LAKE-01.
 - `media-tiering` (Cool 30, Cold 90) covered the whole `media` container, so admin `assets/` (tutorials) and
   `support/` bundles would have tiered too: candidate 2 narrows it to `media/photos/` (lead yes, 10:25 UTC; answers
   docs/requests/brand-infra-media-lifecycle.md). The rule dates from 2026-10-05 with a 30-day threshold, so no blob
-  has tiered yet. Open: docs/18 s2.8 gives `support/` "Hot to Cool, 30 days" and nothing deletes support bundles
-  today; whether to tier or delete them at 30 days is a question for the lead (encrypted PDA zips, F-API-030).
+  has tiered yet. Lead ruling 12:00 UTC: `support/` follows docs/18 s2.8, Hot to Cool at 30 days, never deleted
+  until a retention figure is named (lead adds the question to the docs/21 retention table; the owner decides):
+  candidate 3, rule `support-tiering` (D-INFRA-LAKE-04).
 - Final-account lake SKU (`Standard_ZRS` in stage and prod params): on the docs/28 "Deferred to the final account"
   list (lead), needs the sponsor's written yes.
 - No `bi_reader` row scope (brand or wing, D-374) and per-app logins still off in dev-lite, stage and prod

@@ -473,7 +473,8 @@ Lifecycle rules:
 
 | Prefix | Rule | Status |
 |---|---|---|
-| `media/photos/` | Cool at 30 days and Cold at 90 days since modification; `assets/` and `support/` stay Hot (D-INFRA-LAKE-02) | **[IN_REPO]** |
+| `media/photos/` | Cool at 30 days and Cold at 90 days since modification; `assets/` stays Hot (D-INFRA-LAKE-02) | **[IN_REPO]** |
+| `media/support/` | Cool at 30 days (`docs/18` s2.8); no delete rule until a retention figure is named (D-INFRA-LAKE-04) | **[IN_REPO]** |
 | `media/photos/` | delete after 730 days (`cfg.retention.media_days`, `docs/21` s4.8; parameter `photoDeleteDays`). Exemptions for an active outlet's reference photo and for `app.retention_hold` are not built: the rule deletes every field photo at 730 days (first deletion no earlier than 730 days after the first upload; D-INFRA-LAKE-01, `docs/requests/backend-core-photo-retention-exemptions.md`) | **[IN_REPO]** |
 | `exports` | delete after 7 days (parameter `exportsDeleteDays`) | **[IN_REPO]** |
 | `bundles` | delete after 3 days | **[IN_REPO]** |
