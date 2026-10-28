@@ -93,8 +93,9 @@ class TargetAchievementService(private val db: Database, private val config: Ser
             val cals = if (basis == TillDateBasis.WORKING_DAYS) WorkingCalendarRepo.load(h, month, clock.now(), config) else null
             val zones = byZone.keys + coveredZones(h, node)
             val zonePaths = if (cals != null) WorkingCalendarRepo.zonePaths(h, zones) else emptyMap()
+            // e / n against today's business date D (a past month is complete, a future month has not started), not against `day`.
             fun days(path: () -> NodePath): TillDateDays =
-                Targets.days(basis, kotlinx.datetime.YearMonth(month.year, month.monthValue), day.toKotlinLocalDate(), cals?.at(path()))
+                Targets.days(basis, kotlinx.datetime.YearMonth(month.year, month.monthValue), today.toKotlinLocalDate(), cals?.at(path()))
             val parentDays = days { parentPath(h, reach, level, nodeId, node, zonePaths) }
             val all = Figures(sum(byZone.values.map { it.target }), sum(byZone.values.map { it.achieved }))
             val children = if (!withChildren) null else childZones(h, node, byZone.keys).take(MAX_CHILDREN).map { z ->
