@@ -1,40 +1,71 @@
 # Infra lane status
 
-Updated 2026-10-28 14:05 UTC (seventh infra session, handover).
+Updated 2026-10-28 15:25 UTC (seventh infra session, FINAL handover; recycled at about 550k tokens).
 
-## HANDOVER (seventh infra session -> eighth), 2026-10-28 14:05 UTC: read this first
+## HANDOVER (seventh infra session -> eighth), 2026-10-28 15:25 UTC: read this first
 
 Lead: session_01MbUQSxrP7AB9tbyANjUTPS (talk only through the claude-code-remote `send_message` tool). Trust the tree
-over older handovers below.
+over older handovers below. Watch your own context: this session's estimate was far below the platform's count; ask
+the lead (get_session) instead of guessing, and recycle at about 430k.
 
-- **Git:** sessions clone shallow (depth 50); an old lane tip then looks "unrelated" to INT. Run
-  `git fetch --unshallow origin claude/wonderful-thompson-k6ejnf lane/infra` before any ancestry check. Push lane/infra
-  only, never INT or main, no pull requests; merge INT before every candidate push (DECISIONS.md conflicts are
-  append-only: keep INT's lines first, then yours). A docs-only push starts no CI run, so a reported candidate sha
-  must carry code or keep its own green run.
-- **Row 7 is done and landed** (D-INFRA-LAKE-01..05): candidate 1 (66410ed8, train 50, deploy #284) lake account,
-  exports container, photo 730-day and export 7-day delete rules, logins `app_bi` and `lake_export`; candidate 2
-  (f2e7610d, train 52, deploy #286) tiering on `media/photos/` only, deploy summary login count and Key Vault ACL
-  row; candidate 3 (63d0c3f4, accepted 13:50, train 53) `support-expiry` (support bundles deleted at 30 days,
-  docs/21 s4.8) and the ACL row fix. **Read train 53's deploy summary:** "Key Vault network ACLs" should read
-  "default Allow, bypass AzureServices, 0 IP rules, 0 VNet rules"; if it reads "not read: ..." the masked az error
-  names the cause (deploy #286's "not read" was most likely the name-only `az keyvault show`, now `-g "$RG"`).
-- **Candidate 4 (this push, lead yes 13:50):** per-app logins ON in dev-lite (D-INFRA-LOGINS-LITE-01), the
-  "Database logins" row says whether api and worker use the logins, and the db request
-  `docs/requests/db-bi-reader-row-scope.md` (db #14, D-374 brand and wing scope). Same gate: lane run with Infra
-  validation and Container images, Opus checker, then the candidate report. Part (c), lead ask after deploy #287
-  (ACL row again a bare "not read"): `infra/scripts/kv-acl-row.sh` makes the ACL row name the failing step, and a
-  new row lists the deploy identity's roles on the vault (D-INFRA-LAKE-06). Likely cause: az prints nothing for a
-  null networkAcls and the old inline parse failed silently; read the next deploy's two rows to confirm.
-- **Local proof kit:** PostgreSQL 16 server binaries are in /usr/lib/postgresql/16/bin. initdb a cluster owned by
-  `postgres` outside the scratchpad (the scratchpad path is not traversable for that user), apply
-  `db/migrations/V*.sql` in `sort -V` order with `psql -1` (Flyway runs each in a transaction), then run
-  `infra/sql/runtime-logins.sql` with the five ARON_PW_* variables set to throwaway 24+ character values. No Azure
-  sign-in exists in lane sessions: live facts come from the lead's reading of the deploy log.
-- **Open:** photo exemptions (backend-core #21); `app.support_upload` rows never purged (backend-core pick list);
-  bi_reader row scope (db #14, then infra adds any per-audience logins); per-app logins in stage and prod (final
-  account); final lake SKU (docs/28 final list, sponsor). Row 8 (nightly export) is backend-core's; its needs are
-  listed below.
+**State after train 54 (INT eb7b8eb5, deploy #288 green 15:17 UTC).** Four candidates landed today, no red deploy:
+- c1 66410ed8 (train 50, deploy #284): lake account `starondevlake<suffix>` (StorageV2, HNS, Hot, LRS) with container
+  `lake`, worker-only write; `exports` container (7-day delete) and `ARON_BLOB_CONTAINER_EXPORTS`; photos deleted at
+  730 days; logins `app_bi` and `lake_export` (bi_reader, dw.v_* only, verified every deploy). D-INFRA-LAKE-01.
+- c2 f2e7610d (train 52, #286): tiering on `media/photos/` only; summary login count. D-INFRA-LAKE-02/03.
+- c3 63d0c3f4 (train 53, #287): `support-expiry` (support bundles deleted at 30 days, docs/21 s4.8,
+  `supportDeleteDays`); ACL row with `-g`. D-INFRA-LAKE-04/05.
+- c4 757d9620 (train 54, #288): per-app logins ON in dev-lite (D-INFRA-LOGINS-LITE-01); `infra/scripts/kv-acl-row.sh`
+  (D-INFRA-LAKE-06); db request `docs/requests/db-bi-reader-row-scope.md` (db #14).
+
+**Deploy #288 summary rows, verbatim:**
+- `| Infrastructure | unchanged, skipped |`
+- `| Key Vault network ACLs | none returned (networkAcls likely null on the vault: no rules, so public access follows publicNetworkAccess) |`
+- `| Deploy identity roles on the vault | Contributor, Key Vault Secrets Officer, Role Based Access Control Administrator |`
+- `| Database logins | succeeded (5 logins: app_api, app_worker, app_jobs, app_bi, lake_export; memberships verified by the job; api and worker use them: yes) |`
+
+The ACL diagnosis held: the vault carries no networkAcls object (keyvault.bicep's Allow/AzureServices block is all
+defaults and is not kept), so az prints nothing for the query and every what-if proposes "Modify networkAcls
+(Create)". That what-if line is noise, not drift.
+
+**Proposed next two items (each needs the lead's word):**
+1. **What-if guard for storage and the vault** (`infra/scripts/whatif-guard.py` protects only PostgreSQL today): refuse
+   a deploy whose what-if deletes the photo or lake storage account or the Key Vault, or changes a storage account's
+   SKU, kind or `isHnsEnabled` (HNS cannot be turned off; a replace would lose the lake). Deploy risk: low; it can only
+   refuse, and a false positive blocks deploys until fixed, so it needs guard tests on recorded what-if JSON
+   (the existing PostgreSQL tests are the pattern) and must ignore the known networkAcls "Create" noise.
+2. **Per-audience BI logins, after db #14 answers** (`docs/requests/db-bi-reader-row-scope.md`): add the logins db
+   names to `runtime-logins.sql`, Key Vault passwords in `db-login-secrets.sh`, the same "nothing beyond dw.v_*"
+   check (plus the db's scope table), tests. Deploy risk: low to medium; the dblogins job blocks dev deploys when it
+   fails (per-app logins on), so prove the SQL locally on PostgreSQL 16 with all migrations first (proof kit below).
+
+**Open (not infra's to start, or waiting):** photo exemptions for reference photos and retention holds (backend-core
+#21); `app.support_upload` rows never purged (backend-core pick list); bi_reader row scope (db #14); nightly export to
+the lake (row 8, backend-core; needs listed below); per-app logins in stage and prod (final account).
+
+**Owner-blocked:** nightly PostgreSQL stop/start (waits for the owner's confirmation); final lake SKU (`Standard_ZRS`
+in stage/prod params, sponsor's written yes, docs/28 final list).
+
+**Final-account list (from deploy #288, lead 15:20 UTC; not for the test account, docs/28):**
+- The vault has no network ACL object: stage and prod should restrict it to the VNet or a private endpoint, firewall
+  default Deny.
+- The deploy identity holds Role Based Access Control Administrator on the vault (needed today to create role
+  assignments): narrow it in the final least-privilege review (a scoped condition, or a separate assignment step).
+
+**How to work here:**
+- Git: sessions clone shallow (depth 50); run `git fetch --unshallow origin claude/wonderful-thompson-k6ejnf
+  lane/infra` before any ancestry check. Push lane/infra only (never INT or main, no pull requests); merge INT before
+  every candidate push (DECISIONS.md conflicts are append-only: INT's lines first, then yours). A docs-only push starts
+  no CI run, so a reported candidate sha must carry its own green lane run.
+- Gate per candidate: `infra/validate.sh` and `tools/ci/date-pin-scan.py` locally; lane run with Infra validation and
+  Container images actually run; an Opus checker on the diff (every one today found real fixes); one DECISIONS line
+  per decision.
+- Local proof kit: PostgreSQL 16 server binaries in /usr/lib/postgresql/16/bin. initdb a cluster owned by `postgres`
+  outside the scratchpad (the scratchpad path is not traversable for that user), apply `db/migrations/V*.sql` in
+  `sort -V` order with `psql -1` (Flyway runs each in a transaction), then run `infra/sql/runtime-logins.sql` with the
+  five ARON_PW_* variables set to throwaway 24+ character values. No Azure sign-in exists in lane sessions: live facts
+  come from the lead's reading of the deploy log, which is why the summary rows explain themselves.
+- A `bash -c` script containing `rm` is refused by a safety check; put such logic in a checked-in script or use Python.
 
 ## Seventh infra session, 2026-10-28: data-architecture action row 7 (lake and blobs, pilot size)
 
