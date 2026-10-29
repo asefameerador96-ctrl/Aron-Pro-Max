@@ -35,7 +35,9 @@ import org.robolectric.annotation.Config
  * on-screen back go to the same place at every step.
  */
 @RunWith(AndroidJUnit4::class)
-@Config(sdk = [34])
+// the field phone (360 x 800 dp, as the goldens): the frame keeps its content above the Home disc (X4b), so the default 470 dp
+// Robolectric screen leaves the form and the outlet list too little room to show the outlets at all
+@Config(sdk = [34], qualifiers = "w360dp-h800dp")
 class MyCallScreenTest {
     @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
     private fun show(language: AppLanguage, content: @androidx.compose.runtime.Composable () -> Unit) {
@@ -80,12 +82,12 @@ class MyCallScreenTest {
         show(AppLanguage.EN) { SetPlanScreen(st, onBack = {}, onShowOutlets = { shown++ }) }
         compose.onNodeWithText("October 17, 2026").assertIsDisplayed()
         compose.onNodeWithText("Zone 10").assertIsDisplayed() // the only zone is chosen
-        compose.onNodeWithTag(MyCallTags.SHOW).performClick(); compose.waitForIdle()
+        compose.onNodeWithTag(MyCallTags.SHOW).performScrollTo().performClick(); compose.waitForIdle()
         compose.onNodeWithTag(MyCallTags.MISSING_ROUTE).assertIsDisplayed(); assertEquals(0, shown)
-        compose.onNodeWithTag(MyCallTags.ROUTE).performClick(); compose.waitForIdle()
+        compose.onNodeWithTag(MyCallTags.ROUTE).performScrollTo().performClick(); compose.waitForIdle()
         compose.onNodeWithText("Route One").performClick(); compose.waitForIdle()
         assertEquals(1L, st.ui.value.routeId)
-        compose.onNodeWithTag(MyCallTags.SHOW).performClick(); compose.waitForIdle()
+        compose.onNodeWithTag(MyCallTags.SHOW).performScrollTo().performClick(); compose.waitForIdle()
         assertEquals(1, shown)
         assertEquals("accessibility: " + compose.a11yProblems(), emptyList<String>(), compose.a11yProblems())
     }
@@ -113,10 +115,10 @@ class MyCallScreenTest {
         show(AppLanguage.EN) { SetPlanEntry(deps, "u1", { "2026-10-17" }, nav) }
         fun toOutlets(pick: Boolean) {
             if (pick) {
-                compose.onNodeWithTag(MyCallTags.ROUTE).performClick(); compose.waitForIdle()
+                compose.onNodeWithTag(MyCallTags.ROUTE).performScrollTo().performClick(); compose.waitForIdle()
                 compose.onNodeWithText("Route One").performClick(); compose.waitForIdle()
             }
-            compose.onNodeWithTag(MyCallTags.SHOW).performClick(); compose.waitForIdle()
+            compose.onNodeWithTag(MyCallTags.SHOW).performScrollTo().performClick(); compose.waitForIdle()
             compose.onNodeWithTag(MyCallTags.SAVE).assertExists()
         }
         toOutlets(pick = true); systemBack()
@@ -166,20 +168,20 @@ class MyCallScreenTest {
         val deps = MyCallDeps(Src(plans = planned()), PlanQueue { 1 }, QueryQueue { queued += it; true }, TaskQueue { true }, { seeded }, { listOf(TaskType("irregular_visit", null, "Irregular Visit", 3)) })
         show(AppLanguage.EN) { VisitPlanEntry(deps, "u2", { today }, nav) }
         compose.onNodeWithText("October 17, 2026").assertIsDisplayed() // My Visit Plan opens on today too
-        compose.onNodeWithTag(MyCallTags.ROUTE).performClick(); compose.waitForIdle()
+        compose.onNodeWithTag(MyCallTags.ROUTE).performScrollTo().performClick(); compose.waitForIdle()
         compose.onNodeWithText("Route One").performClick(); compose.waitForIdle()
-        compose.onNodeWithTag(MyCallTags.SHOW).performClick(); compose.waitForIdle()
+        compose.onNodeWithTag(MyCallTags.SHOW).performScrollTo().performClick(); compose.waitForIdle()
         fun openQuery() { compose.onNodeWithTag(MyCallTags.outlet(1)).performClick(); compose.waitForIdle(); compose.onNodeWithTag(MyCallTags.text(1)).assertExists() }
         openQuery(); systemBack()
         compose.onNodeWithTag(MyCallTags.outlet(1)).assertExists() // Visit Query -> Visit Plan Outlets
         openQuery(); screenBack()
         compose.onNodeWithTag(MyCallTags.outlet(1)).assertExists()
         systemBack(); compose.onNodeWithTag(MyCallTags.SHOW).assertExists() // outlets -> form
-        compose.onNodeWithTag(MyCallTags.SHOW).performClick(); compose.waitForIdle()
+        compose.onNodeWithTag(MyCallTags.SHOW).performScrollTo().performClick(); compose.waitForIdle()
         screenBack(); compose.onNodeWithTag(MyCallTags.SHOW).assertExists()
         assertEquals(0, nav.backs)
         // delegate Yes goes on to Assign Task; back from it returns to the outlets, where the outlet is now Completed
-        compose.onNodeWithTag(MyCallTags.SHOW).performClick(); compose.waitForIdle()
+        compose.onNodeWithTag(MyCallTags.SHOW).performScrollTo().performClick(); compose.waitForIdle()
         openQuery()
         compose.onNodeWithTag(MyCallTags.text(1)).performTextInput("Yes, every Saturday")
         compose.onNodeWithTag(MyCallTags.DELEGATE_YES).performScrollTo().performClick()

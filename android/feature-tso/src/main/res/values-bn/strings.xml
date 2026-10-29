@@ -197,9 +197,7 @@
     <string name="tso_mc_task_waiting">কাজ দিন</string>
     <string name="tso_mc_no_task_types">কাজের ধরনের তালিকা এখনো নামেনি। একবার ইন্টারনেটে যুক্ত হয়ে অ্যাপ আবার খুলুন।</string>
     <string name="tso_mc_no_rubric">ভিজিটের প্রশ্ন এখনো নামেনি। একবার ইন্টারনেটে যুক্ত হয়ে অ্যাপ আবার খুলুন।</string>
-    <string name="tso_pe_team">আমার দল</string>
     <string name="tso_pe_team_sub">প্রতিটি এসআর-এর সর্বশেষ জানা অবস্থান</string>
-    <string name="tso_pe_retailer">খুচরা বিক্রেতা</string>
     <string name="tso_pe_retailer_sub">আপনার আশেপাশের দোকান</string>
     <string name="tso_pe_radius">ব্যাসার্ধ</string>
     <string name="tso_pe_find">এখানকার দোকান খুঁজুন</string>

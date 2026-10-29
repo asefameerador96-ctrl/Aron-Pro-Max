@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.activity.ComponentActivity
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onAllNodesWithTag
@@ -43,9 +44,10 @@ class TsoFeedbackFlowTest {
     }
     private val q = FeedbackQueue { u, _, _ -> sent += u; true }
 
-    /** My Feedback as the app's AreasHost wires it (FEEDBACK_LIST, the former Home tile's destination). */
+    /** My Feedback as the app's AreasHost wires it: A3's per-screen entries for the two drawer rows (R-W-12 (2)). */
     private fun feedbackScreen(source: FeedbackSource, userKey: String) = mapOf<TsoScreen, TsoScreenContent>(
-        TsoScreen.FEEDBACK_LIST to { nav, _ -> FeedbackFlow(source, q, null, userKey, { java.time.Instant.now().toString() }, { nav.back() }) },
+        TsoScreen.FEEDBACK_LIST to { nav, _ -> FeedbackListEntry(source, canWrite = true, userKey, nav) },
+        TsoScreen.FEEDBACK_NEW to { nav, _ -> FeedbackNewEntry(source, q, null, userKey, { java.time.Instant.now().toString() }, nav) },
     )
 
     private fun start() {
@@ -59,33 +61,48 @@ class TsoFeedbackFlowTest {
         }
     }
 
-    /** My Feedback > My feedback from the drawer (A1 shell step: the tile Home is retired, D-TSO-MAN-14). */
-    private fun openMyFeedback() {
+    /** A My Feedback row from the drawer (A1 shell step: the tile Home is retired, D-TSO-MAN-14): `feedback_list` or `feedback_new`. */
+    private fun openFromDrawer(row: String) {
         compose.onNodeWithTag(TsoShellTags.MENU).performClick(); compose.waitForIdle()
         // the drawer keeps the last open group: expand My Feedback only when its rows are not shown yet
-        if (compose.onAllNodesWithTag(TsoShellTags.row("feedback_list"), useUnmergedTree = true).fetchSemanticsNodes().isEmpty()) {
+        if (compose.onAllNodesWithTag(TsoShellTags.row(row), useUnmergedTree = true).fetchSemanticsNodes().isEmpty()) {
             compose.onNodeWithTag(TsoShellTags.row("feedback"), useUnmergedTree = true).performScrollTo().performClick(); compose.waitForIdle()
         }
-        compose.onNodeWithTag(TsoShellTags.row("feedback_list"), useUnmergedTree = true).performScrollTo().performClick(); compose.waitForIdle()
+        compose.onNodeWithTag(TsoShellTags.row(row), useUnmergedTree = true).performScrollTo().performClick(); compose.waitForIdle()
     }
 
-    private fun sendOne() {
-        openMyFeedback()
-        compose.onNodeWithTag(FeedbackTags.NEW).performClick(); compose.waitForIdle()
-        compose.onNodeWithTag(FeedbackTags.TITLE).performTextInput("t")
-        compose.onNodeWithTag(FeedbackTags.DESCRIPTION).performTextInput("d")
-    }
+    private fun openMyFeedback() = openFromDrawer("feedback_list")
 
-    @Test fun reopenAfterSendShowsAFreshForm() {
-        start(); sendOne()
+    private fun fillAndSave(title: String) {
         compose.onNode(androidx.compose.ui.test.hasText("Suggestion")).performScrollTo().performClick(); compose.waitForIdle()
-        compose.onNodeWithTag(FeedbackTags.SEND).performClick(); compose.waitForIdle()
-        compose.onNodeWithTag(FeedbackTags.QUEUED).assertExists()
-        compose.onNodeWithTag(FeedbackTags.SEND).performClick(); compose.waitForIdle() // Done -> list
-        compose.activityRule.scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }; compose.waitForIdle() // list -> Dashboard
+        compose.onNodeWithTag(FeedbackTags.TITLE).performTextInput(title)
+        compose.onNodeWithTag(FeedbackTags.DESCRIPTION).performTextInput("d")
+        // Save sits under the form (screenshot 43): scroll to it first on a small screen
+        compose.onNodeWithTag(FeedbackTags.SEND).performScrollTo().performClick(); compose.waitForIdle()
+    }
+
+    private fun titleText(): String =
+        compose.onNodeWithTag(FeedbackTags.TITLE).fetchSemanticsNode().config.getOrNull(androidx.compose.ui.semantics.SemanticsProperties.EditableText)?.text.orEmpty()
+
+    /**
+     * My feedback > Add new feedback opens the form on the list; Save queues it, toasts and returns to the list. The next form
+     * (here from the drawer's Add new feedback row) is a fresh one with a new uuid, never the saved draft.
+     */
+    @Test fun reopenAfterSendShowsAFreshForm() {
+        start()
         openMyFeedback()
         compose.onNodeWithTag(FeedbackTags.NEW).performClick(); compose.waitForIdle()
-        compose.onNodeWithTag(FeedbackTags.QUEUED).assertDoesNotExist()
+        fillAndSave("first")
+        assertEquals(1, sent.size)
+        assertEquals("Feedback saved", ShadowToast.getTextOfLatestToast())
+        compose.onNodeWithTag(FeedbackTags.NEW).assertExists() // back on My feedback
+        compose.activityRule.scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }; compose.waitForIdle() // list -> Dashboard
+        openFromDrawer("feedback_new")
+        compose.onNodeWithTag(FeedbackTags.SEND).assertExists()
+        assertEquals("", titleText()) // a fresh form, not the saved one
+        fillAndSave("second")
+        assertEquals(2, sent.size)
+        assertEquals(2, sent.toSet().size) // a new uuid for the new form
     }
 
     @Test fun nextUserOnTheSamePhoneNeverSeesTheLastUsersFeedback() {

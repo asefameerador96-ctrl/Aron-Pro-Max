@@ -249,10 +249,6 @@ class TsoAreaScreenshotTests {
     @Test @Config(fontScale = 2.0f) fun fs_s25_200_en() = shot("tso_fs_s25_200_en", AppLanguage.EN) { FinalSubmitScreen(fsAt(25), onBack = {}) }
     @Test @Config(fontScale = 2.0f) fun fs_s26_200_en() = shot("tso_fs_s26_200_en", AppLanguage.EN) { FinalSubmitScreen(fsAt(26), onBack = {}) }
 
-    // ---- menu hubs (sr/outlet-menu.png look)
-    @Test fun my_call_hub_bn() = shot("tso_my_call_hub_bn", AppLanguage.BN) { com.aktcl.aron.feature.tso.mycall.MyCallHub({}, {}, {}) }
-    @Test fun periphery_hub_en() = shot("tso_periphery_hub_en", AppLanguage.EN) { com.aktcl.aron.feature.tso.periphery.PeripheryHub({}, {}, {}) }
-
     // ---- tso-manual A3 step 2: screenshots 28, 29 (My Periphery), 31 to 38 (My Call) and 43 (feedback); D-TSO-MAN-34, 35, 36
     private val banani = 41L
     private val teamNow = 1_792_212_000_000L // 2026-10-26 10:40 Dhaka

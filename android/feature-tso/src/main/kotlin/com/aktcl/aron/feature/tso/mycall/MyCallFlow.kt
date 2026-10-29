@@ -13,7 +13,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import com.aktcl.aron.feature.tso.R
 import com.aktcl.aron.feature.tso.TsoNav
-import com.aktcl.aron.feature.tso.TsoScreen
 import com.aktcl.aron.feature.tso.rememberRetained
 import kotlinx.coroutines.launch
 
@@ -103,26 +102,6 @@ fun VisitPlanEntry(deps: MyCallDeps, userKey: String, today: () -> String, nav: 
             )
         }
         else -> VisitPlanScreen(st, onShow = { step = STEP_OUTLETS; scope.launch { st.show() } }, onBack = { nav.back() }, nav = nav)
-    }
-}
-
-/**
- * The former tile Home's My Call (hub, Set Plan, My Visit Plan), kept for the legacy wiring and the shell tests that still
- * compose it; the app's AreasHost opens [SetPlanEntry] and [VisitPlanEntry] directly. Back from either returns to the hub.
- */
-@Composable
-fun MyCallFlow(deps: MyCallDeps, userKey: String, today: () -> String, onBack: () -> Unit) {
-    var step by rememberSaveable { mutableStateOf("hub") }
-    val hub = object : TsoNav {
-        override fun open(screen: TsoScreen, arg: String?) = Unit
-        override fun back() { step = "hub" }
-        override fun home() { step = "hub"; onBack() }
-    }
-    BackHandler(enabled = step != "hub") { step = "hub" }
-    when (step) {
-        "set" -> SetPlanEntry(deps, userKey, today, hub)
-        "plan" -> VisitPlanEntry(deps, userKey, today, hub)
-        else -> MyCallHub({ step = "set" }, { step = "plan" }, onBack)
     }
 }
 

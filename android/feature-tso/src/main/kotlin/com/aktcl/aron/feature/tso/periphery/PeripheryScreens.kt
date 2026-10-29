@@ -55,8 +55,6 @@ import com.aktcl.aron.feature.tso.TsoDropdownField
 import com.aktcl.aron.feature.tso.TsoError
 import com.aktcl.aron.feature.tso.TsoFrame
 import com.aktcl.aron.feature.tso.TsoLoading
-import com.aktcl.aron.feature.tso.TsoMenuGrid
-import com.aktcl.aron.feature.tso.TsoMenuTile
 import com.aktcl.aron.feature.tso.TsoNav
 import com.aktcl.aron.feature.tso.leave.backOnly
 import com.aktcl.aron.feature.tso.zoneName
@@ -64,8 +62,6 @@ import java.io.File
 import kotlinx.coroutines.launch
 
 object PeripheryTags {
-    const val TEAM = "tso_pe_team"
-    const val RETAILER = "tso_pe_retailer"
     /** The refresh icon of Retailer: one new fix and one new search. */
     const val FIND = "tso_pe_find"
     const val ALLOW = "tso_pe_allow"
@@ -81,21 +77,6 @@ object PeripheryTags {
     const val RADIUS = "tso_pe_radius"
     /** The Refresh action of My Team: one new read of the last synced fixes (never live tracking). */
     const val REFRESH = "tso_pe_refresh"
-}
-
-/** The hub of the former tile Home (kept for the legacy [PeripheryFlow]; the drawer opens My Team and Retailer directly). */
-@Composable
-fun PeripheryHub(onTeam: () -> Unit, onRetailer: () -> Unit, onBack: () -> Unit, modifier: Modifier = Modifier) {
-    TsoFrame(stringResource(R.string.tso_drawer_periphery), onBack, modifier, tile = com.aktcl.aron.feature.home.RoleHomes.TsoTile.PERIPHERY) {
-        Column(Modifier.fillMaxSize().padding(AronTokens.Space.Screen), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.M)) {
-            TsoMenuGrid(
-                listOf(
-                    TsoMenuTile(stringResource(R.string.tso_pe_team), "team", PeripheryTags.TEAM, onTeam),
-                    TsoMenuTile(stringResource(R.string.tso_pe_retailer), "retailer", PeripheryTags.RETAILER, onRetailer),
-                ),
-            )
-        }
-    }
 }
 
 /** The zone names of [zones] (the scope tree's names, else "Zone <id>"), read once per composition. */

@@ -73,8 +73,6 @@ import com.aktcl.aron.feature.tso.TsoFrame
 import com.aktcl.aron.feature.tso.TsoGlowField
 import com.aktcl.aron.feature.tso.TsoGradientButton
 import com.aktcl.aron.feature.tso.TsoLoading
-import com.aktcl.aron.feature.tso.TsoMenuGrid
-import com.aktcl.aron.feature.tso.TsoMenuTile
 import com.aktcl.aron.feature.tso.TsoNav
 import com.aktcl.aron.feature.tso.TsoPillTone
 import com.aktcl.aron.feature.tso.TsoSegmentedTabs
@@ -87,8 +85,6 @@ import java.time.ZoneOffset
 import kotlinx.coroutines.launch
 
 object MyCallTags {
-    const val SET_PLAN = "tso_mc_set_plan"
-    const val VISIT_PLAN = "tso_mc_visit_plan"
     const val DATE = "tso_mc_date"
     const val ZONE = "tso_mc_zone"
     const val ROUTE = "tso_mc_route"
@@ -116,21 +112,6 @@ object MyCallTags {
     fun type(code: String) = "tso_mc_type_$code"
     const val DELEGATE_YES = "tso_mc_delegate_yes"
     const val DELEGATE_NO = "tso_mc_delegate_no"
-}
-
-/** The hub of the former tile Home (kept for the legacy [MyCallFlow]; the drawer opens My Visit Plan and Set Plan directly). */
-@Composable
-fun MyCallHub(onSetPlan: () -> Unit, onVisitPlan: () -> Unit, onBack: () -> Unit, modifier: Modifier = Modifier) {
-    TsoFrame(stringResource(R.string.tso_drawer_my_call), onBack, modifier, tile = com.aktcl.aron.feature.home.RoleHomes.TsoTile.MY_CALL) {
-        Column(Modifier.fillMaxSize().padding(AronTokens.Space.Screen), verticalArrangement = Arrangement.spacedBy(AronTokens.Space.M)) {
-            TsoMenuGrid(
-                listOf(
-                    TsoMenuTile(stringResource(R.string.tso_mc_visit_plan), "visit_plan", MyCallTags.VISIT_PLAN, onVisitPlan),
-                    TsoMenuTile(stringResource(R.string.tso_mc_set_plan), "set_plan", MyCallTags.SET_PLAN, onSetPlan),
-                ),
-            )
-        }
-    }
 }
 
 /**
