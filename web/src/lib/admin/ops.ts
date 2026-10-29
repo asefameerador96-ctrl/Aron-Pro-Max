@@ -1,7 +1,8 @@
 // Whitelist of the admin write operations the portal may call through the BFF (POST /api/bff/admin-op).
 // The browser names an operation by key; the server owns the method, the path, the roles and where the reason goes.
 // A path or a body member is never taken from the browser, so the console cannot be turned into an open proxy.
-import type { RoleList } from "@/lib/auth/roles";
+import type { Role } from "@/contract/types";
+import { hasRole, type RoleList } from "@/lib/auth/roles";
 
 export type OpMethod = "POST" | "PATCH" | "PUT" | "DELETE";
 
@@ -116,12 +117,26 @@ export const TEAM_OPS = {
  * tso-manual W1 (FS-18). Who opens the web Final Submit page (the preview and Delete Section Data; the menu's roles), and who
  * gets its Submit button: only the roles POST /v1/day/final-submit accepts with the shipped config, i.e. the TSO. A DMO or WM
  * is accepted only when cfg.day.final_submit_delegate_roles lists the role; that key is server-only (default []), so the page
- * cannot know it and does not offer the button (status file ask: a server-computed `can_submit` on the preview).
+ * cannot know it; the preview's `can_submit` (contract 1.10.0, R-W-06) now says it, see finalSubmitButton.
  * The page roles include WM (fix round): the menu lists Final Submit for a WM, the preview API serves any role in reach, and a WM
  * may be a delegate (the proxy forwards a WM submit).
  */
 export const FINAL_SUBMIT_PAGE_ROLES = ["TSO", "DMO", "WM", "ADMIN", "SUPERADMIN"] as const satisfies RoleList;
+/** The fallback of finalSubmitButton: who gets the button when the preview does not say (a server before contract 1.10.0's
+ *  integration round): the TSO alone, the role the API accepts with the shipped config. */
 export const FINAL_SUBMIT_BUTTON_ROLES = ["TSO"] as const satisfies RoleList;
+
+/**
+ * tso-manual X3 (R-W-13 (3), R-W-06 (1)). Whether the Final Submit page offers its Submit button to this caller for this preview:
+ * `FinalSubmitPreview.can_submit` when the server sends it (its role rule with cfg.day.final_submit_delegate_roles, so a delegated
+ * DMO or WM gets the button and a TSO can be told no), else the TSO-only rule above. Never for a role the team-op proxy does not
+ * forward (`day.final-submit`: TSO, DMO, WM), so a server that says yes to another role cannot produce a button that always fails.
+ * Whether the zone-day is already submitted stays the view's own check (`already_submitted`).
+ */
+export function finalSubmitButton(role: Role | undefined, preview: { can_submit?: boolean } | null | undefined): boolean {
+  if (!hasRole(role, TEAM_OPS["day.final-submit"].roles)) return false;
+  return preview?.can_submit ?? hasRole(role, FINAL_SUBMIT_BUTTON_ROLES);
+}
 
 export type TeamOpKey = keyof typeof TEAM_OPS;
 export type OpKey = keyof typeof OPS;

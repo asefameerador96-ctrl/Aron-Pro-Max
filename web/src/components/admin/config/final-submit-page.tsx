@@ -2,7 +2,7 @@ import { onApiFailure } from "@/components/admin/crud/pages";
 import { apiGet, one, type SearchParams } from "@/components/admin/kit/page";
 import { Forbidden } from "@/components/forbidden";
 import { canTeamOp } from "@/lib/admin/access";
-import { FINAL_SUBMIT_BUTTON_ROLES, FINAL_SUBMIT_PAGE_ROLES } from "@/lib/admin/ops";
+import { FINAL_SUBMIT_PAGE_ROLES, finalSubmitButton } from "@/lib/admin/ops"; // tso-manual X3: the button follows can_submit
 import { hasRole } from "@/lib/auth/roles";
 import { GEO_LEVELS, loadGeoOptions, type GeoLevel } from "@/lib/admin/geo";
 import { isRealDate } from "@/lib/admin/time";
@@ -31,5 +31,5 @@ export async function FinalSubmitPageContent({ searchParams }: { searchParams: P
     if (!r.ok) return onApiFailure(r.status, r.problem, locale);
     preview = r.data;
   }
-  return <FinalSubmitView locale={locale} options={options} selection={selection} date={date} today={today} preview={preview} canSubmit={hasRole(role, FINAL_SUBMIT_BUTTON_ROLES)} canVoid={canTeamOp("day.data-void", role)} />;
+  return <FinalSubmitView locale={locale} options={options} selection={selection} date={date} today={today} preview={preview} canSubmit={finalSubmitButton(role, preview)} canVoid={canTeamOp("day.data-void", role)} />;
 }
