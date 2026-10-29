@@ -87,12 +87,16 @@ fun ControlCallHost(
                 CcStep.OUTLET -> {
                     var chip by rememberSaveable { mutableStateOf(OutletPicker.ALL_CHIP) }
                     var opening by remember { mutableStateOf(false) }
+                    var lockNotice by remember { mutableStateOf(false) } // tso-manual X4a: no call on a route closed by Final Submit
+                    if (lockNotice) AmoDayLockDialog(day, onOk = { lockNotice = false })
                     val outlets = ControlCall.outlets(list.orEmpty(), routeId ?: -1L)
                     val all = OutletPicker.rows(outlets)
                     OutletPickerContent(OutletPicker.rows(outlets, chip), OutletPicker.chips(all), chip, { chip = it }, { r ->
                         if (!opening) {
                             opening = true
                             scope.launch {
+                                // tso-manual X4a (R-W-11, A3 ask 11): the lock text, not a fix and a generic failed commit
+                                if (day.routeLocked(r.outlet.routeId)) { lockNotice = true; opening = false; return@launch }
                                 day.routeId = r.outlet.routeId
                                 runCatching { day.visitFlow.open(ControlCall.visitOutlet(r.outlet, kind)) }
                                 opening = false; step = CcStep.CHECK
@@ -103,6 +107,12 @@ fun ControlCallHost(
                 CcStep.CHECK -> {
                     val st by day.visitFlow.state.collectAsState()
                     LaunchedEffect(st) { if (st is VisitUiState.Open) step = inCall }
+                    // tso-manual X4a (R-W-11): the lock landed while the fix was read and the committer refused the call (nothing
+                    // stored): the lock text instead of the generic failed commit and its retry
+                    val failed = st as? VisitUiState.CommitFailed
+                    var lockedOut by remember(failed) { mutableStateOf(false) }
+                    LaunchedEffect(failed) { lockedOut = failed != null && day.routeLocked(failed.outlet.routeId) }
+                    if (lockedOut) AmoDayLockDialog(day, onOk = { day.routeId = null; step = CcStep.OUTLET })
                     VisitCheckContent(
                         st, onRefresh = { scope.launch { day.visitFlow.refresh() } }, onForceSale = { step = CcStep.FORCE },
                         onRetry = { scope.launch { day.visitFlow.retryCommit() } }, onMap = null,
@@ -113,7 +123,7 @@ fun ControlCallHost(
                 CcStep.FORCE -> ManualOverrideStep(day, onStarted = { step = inCall }, onBack = { step = CcStep.CHECK })
                 CcStep.JOINT -> JointCallStep(day, onSaved = { scope.launch { day.closeVisit(); step = CcStep.OUTLET } })
                 CcStep.ASSESS -> PerfAssessmentStep(day, onSaved = { scope.launch { day.closeVisit(); step = CcStep.OUTLET } })
-                CcStep.SALE -> AmoSaleHost(day, onDone = { step = CcStep.MENU })
+                CcStep.SALE -> AmoSaleHost(day, onDone = { step = CcStep.MENU }, onCallEnded = { step = CcStep.OUTLET })
                 CcStep.SURVEY -> SurveyStep(day, onDone = { step = CcStep.MENU })
                 CcStep.PRICE -> PriceStep(day, onSaved = { step = CcStep.MENU })
                 CcStep.MENU -> ControlCallMenu(

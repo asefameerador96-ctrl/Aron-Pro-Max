@@ -332,13 +332,16 @@ class AmoDay(
     suspend fun routeLocked(routeId: Long): Boolean = runCatching { FinalSubmitLock.isFinal(db, businessDate(), routeId) }.getOrDefault(false)
 
     private suspend fun closeAbandoned(v: com.aktcl.aron.feature.outlet.OpenVisit) {
-        capture.recordVisitClose(
-            com.aktcl.aron.core.database.entity.VisitCloseEntity(
-                clientUuid = com.aktcl.aron.core.common.ClientIds.newUuid(), meta = metaProvider.meta(v.routeId), visitClientUuid = v.visitUuid, outcomeCode = "abandoned",
-                callStartedAt = null, callDeclined = false, endedAt = iso(clock.nowMs()), isZeroSale = true,
-            ),
-        )
-        visitSession.close(); runCatching { requestSync() }
+        // tso-manual X4a (R-W-11): a lock that lands after closeVisit's check ends the call on the phone (AmoLockGate.closeCall)
+        val queued = AmoLockGate.closeCall(visitSession) {
+            capture.recordVisitClose(
+                com.aktcl.aron.core.database.entity.VisitCloseEntity(
+                    clientUuid = com.aktcl.aron.core.common.ClientIds.newUuid(), meta = metaProvider.meta(v.routeId), visitClientUuid = v.visitUuid, outcomeCode = "abandoned",
+                    callStartedAt = null, callDeclined = false, endedAt = iso(clock.nowMs()), isZeroSale = true,
+                ),
+            )
+        }
+        if (queued) runCatching { requestSync() }
     }
 
     /** After a relaunch: a committed visit with no close is the call in progress. */
@@ -627,16 +630,13 @@ fun amoDayLockBanners(day: AmoDay?): List<com.aktcl.aron.feature.home.RoleBanner
         d.refreshLock()
         com.aktcl.aron.core.sync.push.PushRuntime.pulled.collect { d.refreshLock() }
     }
-    return amoDayLockText(lock)?.let { listOf(com.aktcl.aron.feature.home.RoleBanner(it, com.aktcl.aron.core.ui.BannerKind.Warning)) }.orEmpty()
+    return AmoDayLockWords.banners(amoDayLockText(lock)) // tso-manual X4a: the same words, checked by AmoDayLockWordsTest
 }
 
 /** The words of [lock] as one text: the title (when a route is closed), then each line; null when nothing applies. */
 @androidx.compose.runtime.Composable
-fun amoDayLockText(lock: AmoDayLock?): String? {
-    val l = lock ?: return null
-    val title = if (l.closedRouteIds.isNotEmpty()) androidx.compose.ui.res.stringResource(R.string.amo_lock_title) else null
-    return (listOfNotNull(title) + amoLockLines(l)).joinToString(separator = AMO_LINE_BREAK).ifEmpty { null }
-}
+fun amoDayLockText(lock: AmoDayLock?): String? =
+    AmoDayLockWords.text(lock, androidx.compose.ui.platform.LocalContext.current.resources, com.aktcl.aron.core.ui.LocalAppLanguage.current)
 
 @androidx.compose.runtime.Composable
 private fun amoLockLines(l: AmoDayLock): List<String> = buildList {

@@ -3,10 +3,10 @@ package com.aktcl.aron.amo
 import android.content.Context
 import com.aktcl.aron.core.common.ClientIds
 import com.aktcl.aron.core.database.entity.GeoFixEntity
+import com.aktcl.aron.core.database.repo.FinalSubmitLock
 import com.aktcl.aron.core.database.repo.ReconciliationRepository
 import com.aktcl.aron.core.printing.doc.DaySummaryPrint
 import com.aktcl.aron.core.printing.flow.PrintAttempt
-import com.aktcl.aron.core.printing.flow.SaveAndPrint
 import com.aktcl.aron.feature.dayclose.RoomDaySource
 import com.aktcl.aron.feature.dayclose.RoomDaySubmitWriter
 import com.aktcl.aron.feature.dayclose.SalesSubmitViewModel
@@ -115,17 +115,51 @@ class AmoSaleKit(private val day: AmoDay, private val context: Context, private 
     }
     private val commitStep = SaleCommitStep(flow, printSource) { editFix() }
 
-    fun newSaleViewModel() = SaleViewModel(flow, SaveAndPrint(commitStep::invoke, day.printing))
+    // tso-manual X4a (R-W-11): a sale save refused by the Final Submit lock (the lock arrived while the call was open)
+    private val _lockRefused = kotlinx.coroutines.flow.MutableStateFlow(false)
+
+    /** True after a sale or memo edit was refused by the Final Submit lock: the host shows the lock text, nothing was stored or printed. */
+    val lockRefused: kotlinx.coroutines.flow.StateFlow<Boolean> = _lockRefused
+
+    /** The host has shown the lock text of a refused save. */
+    fun clearLockRefusal() { _lockRefused.value = false }
+
+    fun newSaleViewModel() = SaleViewModel(flow, AmoLockGate.saveAndPrint(commitStep::invoke, day.printing, _lockRefused))
     fun saleVisit(v: com.aktcl.aron.feature.outlet.OpenVisit) =
         SaleVisit(v.visitUuid, v.outletId, v.routeId, day.businessDate(), PriceType.OUTLET.wire, canSell = v.geoAction != "blocked")
 
     private val closer = VisitCloser(day.capture, CaptureMetaSource { _, rid -> day.metaProvider.meta(rid ?: 0L) }, { day.iso(day.currentMs()) })
 
-    /** Writes the visit's one `visit_close` with [outcome] and closes the call; the sync is asked for afterwards (never awaited). */
+    /**
+     * Writes the visit's one `visit_close` with [outcome] and closes the call; the sync is asked for afterwards (never awaited).
+     * tso-manual X4a (R-W-11): [AmoDay.closeVisit] has already ended a call on a closed route on the phone; a lock that lands
+     * during the write ends the call the same way (no close queued, nothing thrown).
+     */
     suspend fun closeVisit(outcome: VisitOutcomeCode, declined: Boolean = false) {
-        val v = day.visitSession.current.value ?: return
-        closer.close(VisitToClose(v.visitUuid, v.routeId, callStartedAtIso = callStarted.remove(v.visitUuid)), outcome, day.businessDate(), declined)
-        day.visitSession.close(); runCatching { day.requestSync() }
+        val queued = AmoLockGate.closeCall(day.visitSession) { v ->
+            closer.close(VisitToClose(v.visitUuid, v.routeId, callStartedAtIso = callStarted.remove(v.visitUuid)), outcome, day.businessDate(), declined)
+        }
+        if (queued) runCatching { day.requestSync() }
+    }
+
+    /**
+     * tso-manual X4a (R-W-11, A3 ask 11): ends the open call on the phone when its route is closed by its zone's Final Submit
+     * (no close is written; the server would refuse it). True when it did; false leaves the call as it was.
+     */
+    suspend fun endCallIfDayFinal(): Boolean {
+        val v = day.visitSession.current.value ?: return false
+        val ended = AmoCallLock.endsOnPhone(db, day.visitSession, day.metaProvider.meta(v.routeId))
+        if (ended) { callStarted.remove(v.visitUuid); day.routeId = null }
+        return ended
+    }
+
+    /**
+     * tso-manual X4a (R-W-11): true when an edit of [memoUuid] would be refused by the Final Submit lock (the edit is a new
+     * `memo` on the old memo's route, today). The memo screen disables Edit with the lock text; reprints stay allowed.
+     */
+    suspend fun editLocked(memoUuid: String): Boolean {
+        val memo = dao.memo(memoUuid) ?: return false
+        return runCatching { FinalSubmitLock.refuses(db, day.metaProvider.meta(memo.meta.routeId ?: 0L), "memo") }.getOrDefault(false)
     }
 
     /**
@@ -159,18 +193,26 @@ class AmoSaleKit(private val day: AmoDay, private val context: Context, private 
         flow.withEdit(EditContext(memoUuid, reason.wire))
     }
 
-    /** Marks an outlet of the list as not reached: one `visit_skip` with its outbox record, no fix and no geo gate (F-SR-057). */
-    suspend fun skipOutlet(outlet: com.aktcl.aron.core.database.entity.OutletEntity, reason: VisitOutcomeCode) {
-        day.capture.recordVisitSkip(
-            com.aktcl.aron.core.database.entity.VisitSkipEntity(ClientIds.newUuid(), day.metaProvider.meta(outlet.routeId), outlet.outletId, reason.wire),
-        )
-        runCatching { day.requestSync() }
+    /**
+     * Marks an outlet of the list as not reached: one `visit_skip` with its outbox record, no fix and no geo gate (F-SR-057).
+     * tso-manual X4a (R-W-11): false when the Final Submit lock refused it (nothing stored).
+     */
+    suspend fun skipOutlet(outlet: com.aktcl.aron.core.database.entity.OutletEntity, reason: VisitOutcomeCode): Boolean {
+        val queued = AmoLockGate.skip {
+            day.capture.recordVisitSkip(
+                com.aktcl.aron.core.database.entity.VisitSkipEntity(ClientIds.newUuid(), day.metaProvider.meta(outlet.routeId), outlet.outletId, reason.wire),
+            )
+        }
+        if (queued) runCatching { day.requestSync() }
+        return queued
     }
 
     fun newMemoViewModel() = MemoViewModel(
         store,
         RoomDueCollectionWriter(day.capture, { day.metaProvider.meta(0L) }, visitUuidOf = { o -> dao.visitsOn(day.businessDate()).lastOrNull { it.outletId == o }?.clientUuid }),
         MemoPrintingReprinter(day.printing), ::names, day::businessDate,
+        // tso-manual X4a (R-W-11): Mark Paid is hidden when the collection (on the call's route, if any) would meet the lock
+        markPaidLocked = { FinalSubmitLock.refuses(db, day.metaProvider.meta(0L), "due_collection") },
     )
 
     suspend fun history(): List<StoredMemo> = store.history(day.businessDate())

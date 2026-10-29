@@ -53,10 +53,22 @@ import com.aktcl.aron.feature.amo.R as AmoR
  * ([AmoDay.closeVisit] reads the memo). One sale per call: a second tap on Sale says so (the memo is edited from Memo).
  */
 @Composable
-fun AmoSaleHost(day: AmoDay, onDone: () -> Unit) {
+fun AmoSaleHost(
+    day: AmoDay, onDone: () -> Unit,
+    /** tso-manual X4a: the call ended on the phone after the Final Submit lock refused its sale (back to the outlet list). */
+    onCallEnded: () -> Unit = onDone,
+) {
     val open by day.visitSession.current.collectAsState()
     val v = open ?: return
     val kit = day.sale
+    // tso-manual X4a (R-W-11): the lock arrived while this call was open and refused its sale: nothing was stored or printed.
+    // The lock text replaces the sale (and its "save failed" dialog); OK ends the call on the phone when its route is closed.
+    val scope = rememberCoroutineScope()
+    val lockRefused by kit.lockRefused.collectAsState()
+    if (lockRefused) {
+        AmoDayLockDialog(day, onOk = { scope.launch { kit.clearLockRefusal(); if (kit.endCallIfDayFinal()) onCallEnded() else onDone() } })
+        return
+    }
     var already by remember(v.visitUuid) { mutableStateOf<Boolean?>(null) }
     LaunchedEffect(v.visitUuid) { already = day.callHasSale() }
     when (already) {
@@ -84,6 +96,8 @@ fun AmoMemoHost(day: AmoDay, onEdit: (String) -> Unit) {
     var history by remember { mutableStateOf<com.aktcl.aron.feature.memo.domain.SaleHistory?>(null) }
     val scope = rememberCoroutineScope()
     LaunchedEffect(Unit) { kit.prepare(); vm.refresh() }
+    // tso-manual X4a (R-W-11): the push day_final_submitted pulls the delta; Mark Paid and Edit follow the lock while on screen
+    LaunchedEffect(Unit) { com.aktcl.aron.core.sync.push.PushRuntime.pulled.collect { vm.refresh() } }
     BackHandler(enabled = st.selected != null || history != null) { if (history != null) history = null else vm.open("") }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
         val sel = st.selected
@@ -92,7 +106,14 @@ fun AmoMemoHost(day: AmoDay, onEdit: (String) -> Unit) {
             h != null -> SaleHistoryScreen(h, offlineBanner = true, skuName = kit::skuName, skuCategory = kit::skuCategoryCode)
             sel == null -> MemoMenuScreen(st.rows, kit::outletName, onOpen = { vm.open(it.memoUuid) })
             else -> {
-                MemoDetailView(sel, st.canMarkPaid, st.remainingDueMtk, kit::skuName, onPrint = vm::reprint, onEdit = { onEdit(sel.memo.memoUuid) }, onMarkPaid = vm::markPaid, skuCategory = kit::skuCategoryCode)
+                // an edit is a new memo on the memo's route: on a route closed by Final Submit it is disabled with the lock text
+                var editLocked by remember(sel.memo.memoUuid) { mutableStateOf(false) }
+                LaunchedEffect(sel.memo.memoUuid, st.dayLocked) { editLocked = kit.editLocked(sel.memo.memoUuid) }
+                val closed = day.dayLock.collectAsState().value?.closedRouteIds?.size ?: 0
+                MemoDetailView(
+                    sel, st.canMarkPaid, st.remainingDueMtk, kit::skuName, onPrint = vm::reprint, onEdit = { onEdit(sel.memo.memoUuid) }, onMarkPaid = vm::markPaid, skuCategory = kit::skuCategoryCode,
+                    editDisabledReason = if (editLocked) stringResource(R.string.amo_lock_body, com.aktcl.aron.core.ui.localizedNumber(closed.coerceAtLeast(1).toLong())) else null,
+                )
                 AmoSecondary(
                     stringResource(AmoR.string.amo_sale_history),
                     { scope.launch { history = SaleHistoryBuilder.build(kit.history(), sel.memo.outletId) } },
@@ -102,6 +123,8 @@ fun AmoMemoHost(day: AmoDay, onEdit: (String) -> Unit) {
             }
         }
     }
+    // tso-manual X4a: a Mark Paid the lock refused (nothing stored)
+    if (st.lockRefused) AmoDayLockDialog(day, onOk = vm::dismissLockRefusal)
 }
 
 /** Sales Summary with its printed copy (F-SR-036); the print needs no connection and never blocks anything. */
@@ -157,7 +180,16 @@ fun AmoEditHost(day: AmoDay, memoUuid: String, onDone: () -> Unit) {
     var checked by remember(memoUuid) { mutableStateOf(false) }
     var reason by remember(memoUuid) { mutableStateOf<EditReason?>(null) }
     var ready by remember(memoUuid) { mutableStateOf(false) }
-    LaunchedEffect(memoUuid) { kit.prepare(); denied = kit.prepareEdit(memoUuid); checked = true }
+    // tso-manual X4a (R-W-11): an edit on a route closed by Final Submit is not started (no fix is taken) and says why;
+    // one the lock refuses at the save shows the same text, nothing stored or printed
+    var locked by remember(memoUuid) { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    val lockRefused by kit.lockRefused.collectAsState()
+    LaunchedEffect(memoUuid) { kit.prepare(); if (kit.editLocked(memoUuid)) locked = true else denied = kit.prepareEdit(memoUuid); checked = true }
+    if (locked || lockRefused) {
+        AmoDayLockDialog(day, onOk = { scope.launch { kit.clearLockRefusal(); onDone() } })
+        return
+    }
     val r = reason
     when {
         !checked -> AmoEmptyState(stringResource(AmoR.string.amo_edit_checking))
