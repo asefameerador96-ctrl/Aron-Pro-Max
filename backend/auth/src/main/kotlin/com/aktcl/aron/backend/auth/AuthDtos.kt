@@ -84,6 +84,8 @@ data class Me(val user: UserSummary, val permissions: List<String>, val scope: S
     val modules: Map<String, String>? = null,
     /** D-ROLES-02: a BRAND user's brand node ids (its token's claim); absent for other roles. */
     val brands: List<Long>? = null,
+    /** tso-manual B1 (D-TSO-MAN-22): the caller works the support desk (permission `support.ticket.manage`; an ADMIN also needs module `support`). */
+    val support_desk: Boolean = false,
 )
 
 /** POST /v1/auth/reauth (contract ReauthRequest; never logged): the password, and a TOTP code for an MFA user. */
