@@ -90,7 +90,7 @@ class CaptureRepository(
         if (purged(visit.clientUuid)) return@withTransaction emptyList()
         requireUuids(visit.clientUuid, fix.clientUuid)
         requireRoute(visit.meta)
-        requireOpenRouteDay(visit.meta)
+        requireOpenRouteDay(visit.meta, "visit") // tso-manual X4a (R-W-11): the call opens a locked type
         requireFixOf(fix, visit.clientUuid, visit.fixClientUuid)
         capture.insertFix(fix)
         capture.insertVisit(visit)
@@ -125,7 +125,7 @@ class CaptureRepository(
         }
         db.withTransaction {
             if (purged(m.clientUuid)) return@withTransaction emptyList()
-            requireOpenRouteDay(m.meta)
+            requireOpenRouteDay(m.meta, "memo") // tso-manual X4a (R-W-11): a sale or an edit (a superseding memo)
             val visit = checkNotNull(capture.visit(m.visitClientUuid)) { "memo ${m.memoNo} has no visit on this phone" }
             require(visit.outletId == m.outletId) { "memo ${m.memoNo} is for another outlet than its visit" }
             sale.editFix?.let {
@@ -151,7 +151,7 @@ class CaptureRepository(
         if (purged(close.clientUuid)) return@withTransaction emptyList()
         requireUuids(close.clientUuid, close.visitClientUuid)
         requireRoute(close.meta)
-        requireOpenRouteDay(close.meta)
+        requireOpenRouteDay(close.meta, "visit_close") // tso-manual X4a (R-W-11)
         checkNotNull(capture.visit(close.visitClientUuid)) { "visit_close without its visit" }
         capture.insertVisitClose(close)
         outbox.insert(listOf(RecordMapping.visitClose(close, nowIso())))
@@ -166,6 +166,8 @@ class CaptureRepository(
         check(!purged(sale.memo.clientUuid)) { "memo ${sale.memo.clientUuid} was already saved and sent from this phone" }
         // A replay of a sale that is still stored (a retry after a kill and relaunch) gets its own number back and burns none.
         capture.memo(sale.memo.clientUuid)?.memoNo?.let { return it }
+        // tso-manual X4a (D-X4a-03): a sale the Final Submit lock refuses takes no memo number (checked again in recordSale)
+        requireNotFinal(sale.memo.meta, "memo")
         val memoNo = MemoNumbers(db).reserve(sale.memo.meta.businessDate, numbering)
         recordSale(sale.copy(memo = sale.memo.copy(memoNo = memoNo)))
         return memoNo
@@ -183,7 +185,7 @@ class CaptureRepository(
         db.withTransaction {
             if (purged(due.clientUuid)) return@withTransaction emptyList()
             due.visitClientUuid?.let { checkNotNull(capture.visit(it)) { "due collection for a visit not on this phone" } }
-            if (due.meta.routeId != null) requireOpenRouteDay(due.meta)
+            if (due.meta.routeId != null) requireOpenRouteDay(due.meta, "due_collection") // tso-manual X4a (R-W-11): Mark Paid
             fix?.let { requireFixOf(it, due.clientUuid, due.fixClientUuid); capture.insertFix(it) }
             capture.insertDueCollection(due)
             outbox.insert(listOf(RecordMapping.dueCollection(due, fix, nowIso())))
@@ -226,7 +228,7 @@ class CaptureRepository(
         requireUuids(skip.clientUuid)
         requireRoute(skip.meta)
         require(REASON_CODE.matches(skip.reasonCode)) { "reason_code must match ${REASON_CODE.pattern}" }
-        requireOpenRouteDay(skip.meta)
+        requireOpenRouteDay(skip.meta, "visit_skip") // tso-manual X4a (R-W-11)
         capture.insertVisitSkip(skip)
         outbox.insert(listOf(RecordMapping.visitSkip(skip, nowIso())))
     }
@@ -387,9 +389,21 @@ class CaptureRepository(
     /** True when [uuids] holds one that was acked and purged earlier: the record is a replay and is not captured again. */
     private suspend fun purged(vararg uuids: String): Boolean = outbox.anyPurged(uuids.toList())
 
-    /** Refuses a route-day capture after its Sales Submit (docs/24 s4.2 rule 2: day_submit is the route-day's last record). */
-    private suspend fun requireOpenRouteDay(meta: CaptureMeta) {
-        check(RouteDayLock.isOpen(db, meta)) { "route-day ${meta.businessDate} is submitted; nothing more can be captured" }
+    /**
+     * Refuses a route-day capture after its Sales Submit (docs/24 s4.2 rule 2: day_submit is the route-day's last record;
+     * IllegalStateException) and, for a [recordType] the server refuses after the zone's Final Submit (B3's
+     * DAY_LOCKED_TYPES, [FinalSubmitLock.LOCKED_TYPES]), on a route-day closed by that lock
+     * ([RouteDayFinalSubmittedException], which the screens catch and word as the lock).
+     *
+     * tso-manual X4a (R-W-11, A3 ask 10): the callers name their type for visit, memo, due_collection, visit_skip and
+     * visit_close, and never for day_submit, amo records, survey answers or content views, which the server accepts after
+     * the lock as before (D-TSO-MAN-31). The print ledger does not come through here.
+     */
+    private suspend fun requireOpenRouteDay(meta: CaptureMeta, recordType: String? = null) = RouteDayLock.requireOpen(db, meta, recordType)
+
+    /** tso-manual X4a: the Final Submit part of [requireOpenRouteDay] alone, for a check that must run before a side effect. */
+    private suspend fun requireNotFinal(meta: CaptureMeta, recordType: String) {
+        if (FinalSubmitLock.refuses(db, meta, recordType)) throw RouteDayFinalSubmittedException(meta.businessDate, checkNotNull(meta.routeId), recordType)
     }
 
     /** Device ids are lower-case UUID v4 (contract `Uuid`); anything else would be rejected on upload as schema_invalid. */

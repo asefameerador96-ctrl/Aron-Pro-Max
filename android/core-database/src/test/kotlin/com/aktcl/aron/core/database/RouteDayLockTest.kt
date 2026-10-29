@@ -83,25 +83,29 @@ class RouteDayLockTest {
     }
 
     /**
-     * Checker fix (high): the lock never turns into a crash. CaptureRepository does not name its record types yet, so it is
-     * not checked against Final Submit: the SR's Sales Submit after the TSO's "Submit anyway" (day_submit, accepted by the
-     * server), leaving a call when the lock arrived mid-visit (visit_close) and Mark Paid (due_collection) are queued, not
-     * thrown in a screen that does not catch them; the server answers the late ones `day_final_submitted`.
+     * Checker fix (high), as amended by tso-manual X4a (R-W-11, A3 ask 10): CaptureRepository names its record types now, so
+     * leaving a call (visit_close) and Mark Paid (due_collection) after the lock are refused with
+     * [RouteDayFinalSubmittedException] and nothing is stored (the screens catch it and show the lock text; the
+     * CaptureRepositoryDayLockTest covers every typed capture). The SR's Sales Submit after the TSO's "Submit anyway"
+     * (day_submit, accepted by the server) is still queued, and a Sales Submit still closes its route-day for every capture.
      */
-    @Test fun capturesThatDoNotNameTheirTypeNeverThrowForTheLock() = runTest {
+    @Test fun aLateSalesSubmitIsQueuedAndTheLockedTypesAreRefused() = runTest {
         val (visit, fix) = TestRows.visit()
         repo.recordVisitOpen(visit, fix)
         section("final_submitted") // the lock arrives mid-visit
-        repo.recordVisitClose(TestRows.close(visit.clientUuid))
+        val close = TestRows.close(visit.clientUuid)
+        assertEquals("visit_close", assertThrows(RouteDayFinalSubmittedException::class.java) { runBlocking { repo.recordVisitClose(close) } }.recordType)
         val due = DueCollectionEntity(ClientIds.newUuid(), TestRows.meta(), 50001, ClientIds.newUuid(), "sr334001-261004-003", "2026-10-04", 50_000, false, 120_000)
-        repo.recordDueCollection(due)
+        assertEquals("due_collection", assertThrows(RouteDayFinalSubmittedException::class.java) { runBlocking { repo.recordDueCollection(due) } }.recordType)
+        listOf(close.clientUuid, due.clientUuid).forEach { assertNull("not queued: $it", db.outboxDao().byClientUuid(it)) }
         val submit = DaySubmitEntity(ClientIds.newUuid(), TestRows.meta(), "route_day", 1, "{}", MONEY, 0, 0, 0, false, 0, 0, false)
         repo.recordDaySubmit(submit)
-        listOf(due.clientUuid, submit.clientUuid).forEach { assertNotNull("queued: $it", db.outboxDao().byClientUuid(it)) }
         assertEquals("day_submit", db.outboxDao().byClientUuid(submit.clientUuid)!!.recordType)
         // the Sales Submit still closes its route-day for every capture, as before
         assertFalse(RouteDayLock.isOpen(db, TestRows.meta()))
         val (late, lateFix) = TestRows.visit(seq = 2)
+        assertThrows(IllegalStateException::class.java) { runBlocking { repo.recordVisitOpen(late, lateFix) } }
+        section("in_field") // without the Final Submit lock the refusal is the Sales Submit's own
         val e = assertThrows(IllegalStateException::class.java) { runBlocking { repo.recordVisitOpen(late, lateFix) } }
         assertFalse("a Sales Submit refusal is not the Final Submit's", e is RouteDayFinalSubmittedException)
     }

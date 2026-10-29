@@ -1,0 +1,139 @@
+package com.aktcl.aron.core.database
+
+import android.content.Context
+import androidx.room.Room
+import androidx.test.core.app.ApplicationProvider
+import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.aktcl.aron.core.common.ClientIds
+import com.aktcl.aron.core.database.entity.AmoRecordEntity
+import com.aktcl.aron.core.database.entity.BundleSectionEntity
+import com.aktcl.aron.core.database.entity.ContentViewEntity
+import com.aktcl.aron.core.database.entity.DaySubmitEntity
+import com.aktcl.aron.core.database.entity.DueCollectionEntity
+import com.aktcl.aron.core.database.entity.SurveyResponseEntity
+import com.aktcl.aron.core.database.entity.VisitSkipEntity
+import com.aktcl.aron.core.database.record.AmoPayloads
+import com.aktcl.aron.core.database.repo.CaptureRepository
+import com.aktcl.aron.core.database.repo.FinalSubmitLock
+import com.aktcl.aron.core.database.repo.MemoNumbering
+import com.aktcl.aron.core.database.repo.RouteDayFinalSubmittedException
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.test.runTest
+import org.junit.After
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertThrows
+import org.junit.Assert.assertTrue
+import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.annotation.Config
+
+/**
+ * tso-manual X4a (R-W-11, A3 ask 10, D-TSO-MAN-31): CaptureRepository names its record type for the captures the server
+ * refuses after the zone's Final Submit (B3's DAY_LOCKED_TYPES, which FinalSubmitLock.LOCKED_TYPES copies): the call
+ * (`visit`), the sale or edit (`memo`), Mark Paid (`due_collection`), a skip (`visit_skip`) and the close (`visit_close`).
+ * Once the route-day is final each is refused with [RouteDayFinalSubmittedException] before anything is stored, and a
+ * refused numbered sale takes no memo number. The state records the server accepts after the lock (day_submit, AMO
+ * records, survey answers, content views) are still queued.
+ */
+@RunWith(AndroidJUnit4::class)
+@Config(sdk = [36])
+class CaptureRepositoryDayLockTest {
+    private val context = ApplicationProvider.getApplicationContext<Context>()
+    private val db = Room.inMemoryDatabaseBuilder(context, AronDatabase::class.java).allowMainThreadQueries().build()
+    private val repo = CaptureRepository(db) { "2026-10-05T16:00:00.000Z" }
+    private val route = TestRows.meta().routeId!!
+    private val date = TestRows.meta().businessDate
+    private val numbering = MemoNumbering("sr334001", 0, 500)
+
+    @After fun tearDown() = db.close()
+
+    /** The zone's Final Submit as the phone learns it: the route section's day_state says final_submitted. */
+    private suspend fun finalSubmitted(routeId: Long = route) = db.referenceDao().insertSections(listOf(BundleSectionEntity("route.$routeId",
+        """{"route_id":$routeId,"targets":[],"day_state":{"route_id":$routeId,"business_date":"$date","state":"final_submitted","submit_cycle":0,"submit_voided":false,"final_submitted_at":"2026-10-05T15:00:00.000Z"}}""")))
+
+    private fun refused(type: String, block: suspend () -> Any?) {
+        val e = assertThrows(RouteDayFinalSubmittedException::class.java) { runBlocking { block() } }
+        assertEquals(type, e.recordType); assertEquals(route, e.routeId); assertEquals(date, e.businessDate)
+    }
+
+    @Test fun everyLockedCaptureIsRefusedBeforeAnythingIsStored() = runTest {
+        val (visit, fix) = TestRows.visit()
+        repo.recordVisitOpen(visit, fix) // the call opened before the lock
+        finalSubmitted()
+        val outboxBefore = db.outboxDao().unsentCount()
+
+        val (late, lateFix) = TestRows.visit(seq = 2)
+        refused("visit") { repo.recordVisitOpen(late, lateFix) }
+        val sale = TestRows.sale(visit.clientUuid)
+        refused("memo") { repo.recordSale(sale) }
+        refused("visit_close") { repo.recordVisitClose(TestRows.close(visit.clientUuid)) }
+        refused("visit_skip") { repo.recordVisitSkip(VisitSkipEntity(ClientIds.newUuid(), TestRows.meta(), 50002, "shop_closed")) }
+        val due = DueCollectionEntity(ClientIds.newUuid(), TestRows.meta(), 50001, ClientIds.newUuid(), "sr334001-261004-003", "2026-10-04", 50_000, false, 120_000)
+        refused("due_collection") { repo.recordDueCollection(due) }
+
+        assertEquals("no outbox row was written", outboxBefore, db.outboxDao().unsentCount())
+        val dao = db.captureDao()
+        assertEquals(listOf(visit.clientUuid), dao.visitsOn(date).map { it.clientUuid })
+        assertTrue(dao.memosOn(date).isEmpty()); assertTrue(dao.visitClosesOn(date).isEmpty())
+        assertTrue(dao.visitSkipsOn(date).isEmpty()); assertTrue(dao.dueCollectionsOn(date).isEmpty())
+    }
+
+    @Test fun aRefusedNumberedSaleTakesNoMemoNumber() = runTest {
+        val (visit, fix) = TestRows.visit()
+        repo.recordVisitOpen(visit, fix)
+        val before = repo.recordNumberedSale(TestRows.sale(visit.clientUuid), numbering) // one sale before the lock
+        assertEquals(1, db.referenceDao().memoCounter(date))
+        finalSubmitted()
+        refused("memo") { repo.recordNumberedSale(TestRows.sale(visit.clientUuid), numbering) }
+        assertEquals("the counter did not move", 1, db.referenceDao().memoCounter(date))
+        assertEquals(listOf(before), db.captureDao().memosOn(date).map { it.memoNo })
+    }
+
+    @Test fun aSaleStoredBeforeTheLockReplaysWithItsOwnNumber() = runTest {
+        val (visit, fix) = TestRows.visit()
+        repo.recordVisitOpen(visit, fix)
+        val sale = TestRows.sale(visit.clientUuid)
+        val no = repo.recordNumberedSale(sale, numbering)
+        finalSubmitted()
+        // a retry after a kill and relaunch of the commit that landed: its number back, nothing refused or written again
+        assertEquals(no, repo.recordNumberedSale(sale, numbering))
+        assertEquals(1, db.captureDao().memosOn(date).size)
+    }
+
+    @Test fun theStateRecordsAreStillQueuedAfterTheLock() = runTest {
+        val (visit, fix) = TestRows.visit()
+        repo.recordVisitOpen(visit, fix)
+        finalSubmitted()
+        // an AMO record in the call's family (rank 1, carries the route), a survey answer, a content view, the day's submit
+        val amo = AmoRecordEntity(ClientIds.newUuid(), TestRows.meta(), "distribution_check", visit.clientUuid, 1, AmoPayloads.distributionCheck(visit.clientUuid, true, null).toString())
+        assertTrue(repo.recordAmo(amo))
+        val answer = SurveyResponseEntity(ClientIds.newUuid(), TestRows.meta(), visit.clientUuid, 7, 3, 71, "bool").copy(answerBool = true)
+        repo.recordSurveyResponse(answer)
+        val view = ContentViewEntity(ClientIds.newUuid(), TestRows.meta(), visit.clientUuid, 2, 2, "av", "viewed", 1, "2026-10-05T04:32:00.000Z", 30_000)
+        assertTrue(repo.recordContentView(view))
+        val submit = DaySubmitEntity(ClientIds.newUuid(), TestRows.meta(), "route_day", 1, "{}", MONEY, 0, 0, 0, false, 0, 0, false)
+        repo.recordDaySubmit(submit)
+        for ((uuid, type) in listOf(amo.clientUuid to "distribution_check", answer.clientUuid to "survey_response", view.clientUuid to "content_view", submit.clientUuid to "day_submit")) {
+            assertEquals(type, db.outboxDao().byClientUuid(uuid)?.recordType)
+        }
+    }
+
+    @Test fun aRoutelessCollectionAndAnotherRouteStayOpen() = runTest {
+        finalSubmitted()
+        // the AMO's Mark Paid outside a call carries no route: the server never locks it, neither does the phone
+        val due = DueCollectionEntity(ClientIds.newUuid(), TestRows.meta(routeId = null), 50001, ClientIds.newUuid(), "sr334001-261004-003", "2026-10-04", 50_000, false, 120_000)
+        repo.recordDueCollection(due)
+        assertNotNull(db.outboxDao().byClientUuid(due.clientUuid))
+        // another route of the same date is not closed by this route's Final Submit
+        val (other, fix) = TestRows.visit()
+        val onOther = other.copy(meta = other.meta.copy(routeId = route + 1))
+        repo.recordVisitOpen(onOther, fix)
+        assertNotNull(db.outboxDao().byClientUuid(onOther.clientUuid))
+        assertTrue(FinalSubmitLock.isFinal(db, date, route))
+    }
+
+    private companion object {
+        const val MONEY = """{"active_memo_count":0,"gross_mtk":0,"offer_discount_mtk":0,"drp_discount_mtk":0,"qc_deduction_mtk":0,"net_mtk":0,"paid_mtk":0,"due_mtk":0,"due_collected_mtk":0,"net_by_category_mtk":{},"issued_qty_base_by_sku":{},"sold_qty_base_by_sku":{}}"""
+    }
+}

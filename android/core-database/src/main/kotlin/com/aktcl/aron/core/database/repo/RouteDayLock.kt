@@ -17,9 +17,9 @@ import kotlinx.serialization.json.JsonPrimitive
  * tso-manual A3 (D-TSO-MAN-31, D-A3-22): the zone-day's Final Submit closes the route-day too, but only for the record
  * types the server refuses after the lock ([FinalSubmitLock.LOCKED_TYPES]); a `day_submit`, an attendance event, a print
  * or an AMO record still goes through, as the server accepts them. The lock applies only when the caller names its record
- * type ([isOpen] with `recordType`, [requireOpen]). A caller that does not (CaptureRepository's requireOpenRouteDay until it
- * passes the type, the print ledger) is not checked against Final Submit, so nothing throws for the lock in a screen that
- * does not catch it; the SR and AMO days refuse a new call on a closed route-day themselves (SrDay, AmoDay).
+ * type ([isOpen] with `recordType`, [requireOpen]). A caller that does not (the print ledger) is not checked against Final
+ * Submit. tso-manual X4a (R-W-11): CaptureRepository names the type for visit, memo, due_collection, visit_skip and
+ * visit_close, and the SR and AMO screens catch [RouteDayFinalSubmittedException] and show the lock text.
  */
 internal object RouteDayLock {
     suspend fun isOpen(db: AronDatabase, meta: CaptureMeta, recordType: String? = null): Boolean {
@@ -33,7 +33,7 @@ internal object RouteDayLock {
     /**
      * tso-manual A3: refuses a capture of [recordType] with [meta] when its route-day is closed, by the zone's Final Submit
      * ([RouteDayFinalSubmittedException], which a screen catches and words as the lock) or by a Sales Submit
-     * (IllegalStateException, as before). The drop-in for CaptureRepository's requireOpenRouteDay once it passes the type.
+     * (IllegalStateException, as before). CaptureRepository's requireOpenRouteDay (tso-manual X4a).
      */
     suspend fun requireOpen(db: AronDatabase, meta: CaptureMeta, recordType: String?) {
         if (recordType != null && FinalSubmitLock.refuses(db, meta, recordType)) {
