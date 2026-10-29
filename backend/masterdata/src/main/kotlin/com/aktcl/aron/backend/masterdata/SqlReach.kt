@@ -12,12 +12,20 @@ import java.util.concurrent.atomic.AtomicReference
 /** Geography snapshot from PostgreSQL, refreshed at most every [ttlMs] (master data changes rarely). */
 class GeoRepository(private val db: Database, private val clock: AronClock = AronClock.SYSTEM, private val ttlMs: Long = 60_000) {
     private val cached = AtomicReference<Pair<Long, Geo>?>(null)
+    private val last = AtomicReference<Geo?>(null)
+    private val changes = java.util.concurrent.atomic.AtomicLong()
 
     fun geo(): Geo {
         val now = clock.now().toEpochMilli()
         cached.get()?.let { (at, g) -> if (now - at < ttlMs) return g }
-        return load().also { cached.set(now to it) }
+        return load().also { g ->
+            cached.set(now to g)
+            if (last.getAndSet(g) != g) changes.incrementAndGet()
+        }
     }
+
+    /** Counts the snapshots that differed from the one before (a zone created or moved, a territory re-parented): a cache of anything derived from the geography keys on it. */
+    fun version(): Long { geo(); return changes.get() }
 
     fun invalidate() = cached.set(null)
 
@@ -49,11 +57,11 @@ class GeoRepository(private val db: Database, private val clock: AronClock = Aro
 
 /**
  * Reach from `user_scope` and `route_assignment` (docs/24 s8.4), computed by [ReachCalculator] and cached per
- * (user, scope_version, business date) for 5 minutes. A change of scope or assignment bumps `scope_version`, so a
+ * (user, scope_version, business date, geography version) for 5 minutes. A change of scope or assignment bumps `scope_version`, so a
  * stale entry is never used by a token minted after the change.
  */
 class SqlReachResolver(private val db: Database, private val geo: GeoRepository, private val clock: AronClock = AronClock.SYSTEM) : ReachResolver {
-    private data class Key(val userId: Long, val sv: Long, val date: LocalDate)
+    private data class Key(val userId: Long, val sv: Long, val date: LocalDate, val geoVersion: Long)
     private val cache = ConcurrentHashMap<Key, Pair<Long, Reach>>()
 
     override fun reach(userId: Long, role: Role, scopeVersion: Long, businessDate: LocalDate): Reach {
@@ -64,7 +72,9 @@ class SqlReachResolver(private val db: Database, private val geo: GeoRepository,
             h.createQuery("SELECT role, scope_version FROM app.app_user WHERE id = :u").bind("u", userId)
                 .map { rs, _ -> Role.entries.firstOrNull { it.wire == rs.getString(1) } to rs.getLong(2) }.findOne().orElse(null to scopeVersion)
         }
-        val key = Key(userId, sv, businessDate)
+        // The geography version too: a zone created or moved does not bump scope_version, yet it changes the zones a territory/division/wing
+        // reach holds and the zones a node dashboard reads live from app.zone (D-REPORTS-NODEASWAS-04), so the two must agree.
+        val key = Key(userId, sv, businessDate, geo.version())
         cache[key]?.let { (at, r) -> if (now - at < 300_000 && r.role == role) return r }
         val (scope, asg) = db.jdbi.withHandle<Pair<List<ScopeRow>, List<AssignmentRow>>, Exception> { h ->
             h.createQuery("SELECT node_type, node_id, valid_from, valid_to FROM app.user_scope WHERE user_id = :u").bind("u", userId)
