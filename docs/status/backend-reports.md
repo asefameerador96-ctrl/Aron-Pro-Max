@@ -1,5 +1,11 @@
 # backend-reports lane status
 
+## Session 10 leftovers (branch `lane/backend-reports-wip-left10`, on top of candidate 5)
+- E DONE (D-REPORTS-LEFT-01, test + mutant). 
+- B (`RouteBsrCpr` brandFilter through the as-was product): NOT done. The brand fact `agg_daily_route_brand` has no SKU grain, so an as-was qualification needs a join through `agg_daily_route_sku` with `AsWasSql.product` per route-day (a heavier query at fleet size); needs a measurement and the lead's go.
+- D (plain `zone()` lag vs plain `geo()`), F (`house_name` for uncovered dates read from `dw.dim_geo`, up to 10 minutes of lag): NOT done; both are a lag of at most the 10-minute dimension refresh on dates no history period covers, and the fix (reading `app.*` there) changes the plain fast path the as-was design keeps on `dw`.
+- G (test gaps: kpis assertions that cannot catch an AsWasSql bug, segment-name test, zone-scoped DashboardApi test, a period ending exactly on a window start), REBUILD-01 leftovers, out-of-reach intermediate child labels, fleet-size chain-join measurement: NOT started.
+
 ## Session 10 (2026-10-29): candidate 4 = part B (pushed, lane run 40849512378)
 
 **Candidate 5 (selector, branch `lane/backend-reports-wip-sel10`, after candidate 4 is confirmed):** D-REPORTS-NODEASWAS-07 (node + route selectors refuse on scope only, -2 sentinel), D-REPORTS-BRANDSCOPE-03 (handler-level brand checks, `dashboardHandlers`), docs/requests/backend-reports-zone-move-day-disagreement.md. AsWasNodeScopeTest 13, AsWasReportScopeTest 6, OpsApiTest 11 green; mutants killed (windowById non-empty, NO_ROUTE -1, delete requireBrandScope, delete refuseBrandCaller). Full suites + Opus checker pending.
