@@ -29,6 +29,8 @@ internal object AsWasSql {
     private val inflight = java.util.concurrent.ConcurrentHashMap<String, java.util.concurrent.CompletableFuture<Plain>>()
     /** Test seam: runs at the start of a probe's own computation. */
     @Volatile internal var probeHook: (() -> Unit)? = null
+    /** Test seam: runs when a caller has joined a running probe, before it waits for the answer. */
+    @Volatile internal var probeJoinHook: (() -> Unit)? = null
 
     /** A table whose periods the timelines read: the key column and the columns of it that a read uses. */
     private class Tracked(val table: String, val key: String, val cols: List<String>)
@@ -70,6 +72,7 @@ internal object AsWasSql {
         val mine = java.util.concurrent.CompletableFuture<Plain>()
         val running = inflight.putIfAbsent(key, mine)
         if (running != null) {
+            probeJoinHook?.invoke()
             runCatching { running.get(30, java.util.concurrent.TimeUnit.SECONDS) }.getOrNull()?.let { return it }
             return compute(h, from, key)   // the running probe failed or took too long: answer on our own
         }

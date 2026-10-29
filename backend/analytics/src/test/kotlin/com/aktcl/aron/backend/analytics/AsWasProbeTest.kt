@@ -6,6 +6,7 @@ import org.junit.jupiter.api.BeforeEach
 import java.time.LocalDate
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 
 /**
  * The per-dimension, column-aware probe (`AsWasSql.probe`, D-REPORTS-ASWAS-02) from a CLEAN baseline: `seed_day.sql` only creates
@@ -84,11 +85,13 @@ class AsWasProbeTest {
             var a = ""; var b = ""
             val t1 = Thread { a = probe() }.also { it.start() }
             entered.await()                                   // the first probe is running
+            val joined = java.util.concurrent.CountDownLatch(1)
+            AsWasSql.probeJoinHook = { joined.countDown() }
             val t2 = Thread { b = probe() }.also { it.start() }
-            Thread.sleep(300)                                 // the second has arrived and is waiting for the first
+            assertTrue(joined.await(20, java.util.concurrent.TimeUnit.SECONDS), "the second probe joined the running one")
             release.countDown(); t1.join(20_000); t2.join(20_000)
             assertEquals("t/t/t", a); assertEquals(a, b)
             assertEquals(1, queries.get(), "the overlapping probe took the running one's answer instead of scanning the history tables again")
-        } finally { AsWasSql.probeHook = null }
+        } finally { AsWasSql.probeHook = null; AsWasSql.probeJoinHook = null }
     }
 }

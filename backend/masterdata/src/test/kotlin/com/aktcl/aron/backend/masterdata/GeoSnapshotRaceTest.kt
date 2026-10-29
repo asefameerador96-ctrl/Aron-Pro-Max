@@ -103,9 +103,13 @@ class GeoSnapshotRaceTest {
             ready.await()
             var loaderError: Throwable? = null
             val loader = Thread { try { geo.snapshot() } catch (e: Throwable) { loaderError = e } }.also { it.start() }   // takes the reload lock, then waits for a connection
-            Thread.sleep(300)
+            // The loader holds the reload lock and is waiting for a connection of the exhausted pool: proven by the pool, not by a sleep.
+            val deadline = System.nanoTime() + 10_000_000_000L
+            while (small.hikariPoolMXBean.threadsAwaitingConnection < 1 && System.nanoTime() < deadline) Thread.sleep(10)
+            assertEquals(1, small.hikariPoolMXBean.threadsAwaitingConnection, "the loader is blocked on the pool")
             go.countDown()
             holders.forEach { it.join(10_000) }; loader.join(10_000)
+            assertEquals(2, waited.size, "both holders were answered")
             assertTrue(waited.values.all { it < 1_000 }, "holders were served the expired entry at once, not after the pool timeout: $waited")
             assertEquals(null, loaderError, "and the loader got its connection once they finished")
         } finally { small.close() }
