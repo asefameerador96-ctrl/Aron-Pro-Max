@@ -33,6 +33,7 @@ import com.aktcl.aron.feature.tso.finalsubmit.FsFilterNode
 import com.aktcl.aron.feature.tso.finalsubmit.FsFilterOptions
 import com.aktcl.aron.feature.tso.finalsubmit.FsUploadState
 import com.aktcl.aron.feature.tso.leave.LeaveApplyScreen
+import com.aktcl.aron.feature.tso.leave.LeaveApplyTags
 import com.aktcl.aron.feature.tso.leave.LeaveApplyState
 import com.aktcl.aron.feature.tso.leave.LeaveItem
 import com.aktcl.aron.feature.tso.leave.LeaveListScreen
@@ -196,6 +197,11 @@ class TsoAreaScreenshotTests {
     }
     @Test @Config(fontScale = 2.0f) fun leave_s22_200_bn() = shot("tso_leave_s22_200_bn", AppLanguage.BN) { LeaveApplyScreen(s22(), onBack = {}) }
     @Test @Config(fontScale = 2.0f) fun leave_s19_200_bn() = shot("tso_leave_s19_200_bn", AppLanguage.BN) { LeaveListScreen(LeaveListState(leave(*s19)), onBack = {}, onApply = {}) }
+    @Test @Config(fontScale = 2.0f) fun leave_s20_200_bn() = shot("tso_leave_s20_200_bn", AppLanguage.BN) { LeaveApplyScreen(LeaveApplyState({ _, _ -> true }, { "2026-10-25" }), onBack = {}) }
+    // screenshot 21: the leave type list open (the bundle's types; Casual, Sick, Earn when the bundle has none)
+    @Test fun leave_s21_en() = menuShot("tso_leave_s21_en", AppLanguage.EN, LeaveApplyTags.TYPE) { LeaveApplyScreen(LeaveApplyState({ _, _ -> true }, { "2026-10-25" }), onBack = {}) }
+    @Test fun leave_s21_bn() = menuShot("tso_leave_s21_bn", AppLanguage.BN, LeaveApplyTags.TYPE) { LeaveApplyScreen(LeaveApplyState({ _, _ -> true }, { "2026-10-25" }), onBack = {}) }
+    @Test @Config(fontScale = 2.0f) fun leave_s21_200_bn() = menuShot("tso_leave_s21_200_bn", AppLanguage.BN, LeaveApplyTags.TYPE) { LeaveApplyScreen(LeaveApplyState({ _, _ -> true }, { "2026-10-25" }), onBack = {}) }
 
     private val apsis = FsFilterOptions(
         wings = listOf(FsFilterNode(1, "Apsis Wing", null)), divisions = listOf(FsFilterNode(11, "Apsis Division", 1)),
@@ -238,8 +244,10 @@ class TsoAreaScreenshotTests {
     @Test fun fs_warning_en() = shot("tso_fs_warning_en", AppLanguage.EN) { val st = fsAt(25); runBlocking { st.submit() }; FinalSubmitScreen(st, onBack = {}) }
     @Test fun fs_s26_en() = shot("tso_fs_s26_en", AppLanguage.EN) { FinalSubmitScreen(fsAt(26), onBack = {}) }
     @Test fun fs_s26_bn() = shot("tso_fs_s26_bn", AppLanguage.BN) { FinalSubmitScreen(fsAt(26), onBack = {}) }
+    @Test @Config(fontScale = 2.0f) fun fs_s23_200_bn() = shot("tso_fs_s23_200_bn", AppLanguage.BN) { FinalSubmitScreen(fsAt(23, twoWings), onBack = {}) }
     @Test @Config(fontScale = 2.0f) fun fs_s24_200_bn() = shot("tso_fs_s24_200_bn", AppLanguage.BN) { FinalSubmitScreen(fsAt(24), onBack = {}) }
     @Test @Config(fontScale = 2.0f) fun fs_s25_200_en() = shot("tso_fs_s25_200_en", AppLanguage.EN) { FinalSubmitScreen(fsAt(25), onBack = {}) }
+    @Test @Config(fontScale = 2.0f) fun fs_s26_200_en() = shot("tso_fs_s26_200_en", AppLanguage.EN) { FinalSubmitScreen(fsAt(26), onBack = {}) }
 
     // ---- menu hubs (sr/outlet-menu.png look)
     @Test fun my_call_hub_bn() = shot("tso_my_call_hub_bn", AppLanguage.BN) { com.aktcl.aron.feature.tso.mycall.MyCallHub({}, {}, {}) }
@@ -302,6 +310,8 @@ class TsoAreaScreenshotTests {
     @Test fun mc_s31_bn() = shot("tso_mc_s31_bn", AppLanguage.BN) { named { SetPlanScreen(setPlan(), onBack = {}) } }
     @Test @Config(fontScale = 2.0f) fun mc_s31_200_bn() = shot("tso_mc_s31_200_bn", AppLanguage.BN) { named { SetPlanScreen(setPlan(), onBack = {}) } }
     @Test fun mc_s32_en() = menuShot("tso_mc_s32_en", AppLanguage.EN, com.aktcl.aron.feature.tso.mycall.MyCallTags.ROUTE) { named { SetPlanScreen(setPlan(route = false), onBack = {}) } }
+    @Test fun mc_s32_bn() = menuShot("tso_mc_s32_bn", AppLanguage.BN, com.aktcl.aron.feature.tso.mycall.MyCallTags.ROUTE) { named { SetPlanScreen(setPlan(route = false), onBack = {}) } }
+    @Test @Config(fontScale = 2.0f) fun mc_s32_200_bn() = menuShot("tso_mc_s32_200_bn", AppLanguage.BN, com.aktcl.aron.feature.tso.mycall.MyCallTags.ROUTE) { named { SetPlanScreen(setPlan(route = false), onBack = {}) } }
     private fun outletsPicked(vararg ids: Long) = setPlan().also { st -> runBlocking { st.showOutlets() }; ids.forEach { st.toggle(it) } }
     @Test fun mc_s33_en() = shot("tso_mc_s33_en", AppLanguage.EN) { com.aktcl.aron.feature.tso.mycall.SelectOutletsScreen(outletsPicked(), onBack = {}, onSaved = {}) }
     @Test fun mc_s33_selected_bn() = shot("tso_mc_s33_selected_bn", AppLanguage.BN) { com.aktcl.aron.feature.tso.mycall.SelectOutletsScreen(outletsPicked(1), onBack = {}, onSaved = {}) }
@@ -312,6 +322,8 @@ class TsoAreaScreenshotTests {
     @Test fun mc_s34_bn() = shot("tso_mc_s34_bn", AppLanguage.BN) { named { com.aktcl.aron.feature.tso.mycall.VisitPlanScreen(visitPlan(emptyList(), route = false), onShow = {}, onBack = {}) } }
     @Test fun mc_s35_pending_en() = shot("tso_mc_s35_pending_en", AppLanguage.EN) { com.aktcl.aron.feature.tso.mycall.VisitPlanOutletsScreen(visitPlan(emptyList(), show = true), { _, _, _ -> }, { _, _, _ -> }, onBack = {}) }
     @Test fun mc_s35_completed_bn() = shot("tso_mc_s35_completed_bn", AppLanguage.BN) { com.aktcl.aron.feature.tso.mycall.VisitPlanOutletsScreen(visitPlan(emptyList(), show = true, tab = 1), { _, _, _ -> }, { _, _, _ -> }, onBack = {}) }
+    @Test @Config(fontScale = 2.0f) fun mc_s34_200_bn() = shot("tso_mc_s34_200_bn", AppLanguage.BN) { named { com.aktcl.aron.feature.tso.mycall.VisitPlanScreen(visitPlan(emptyList(), route = false), onShow = {}, onBack = {}) } }
+    @Test @Config(fontScale = 2.0f) fun mc_s35_200_en() = shot("tso_mc_s35_200_en", AppLanguage.EN) { com.aktcl.aron.feature.tso.mycall.VisitPlanOutletsScreen(visitPlan(emptyList(), show = true), { _, _, _ -> }, { _, _, _ -> }, onBack = {}) }
     private val plan36 = listOf(VisitPlanItem("p36", d26, 5, listOf(PlannedOutlet(11, PlanStatus.PENDING))))
     @Test fun mc_s36_en() = shot("tso_mc_s36_en", AppLanguage.EN) { com.aktcl.aron.feature.tso.mycall.VisitPlanOutletsScreen(visitPlan(plan36, show = true), { _, _, _ -> }, { _, _, _ -> }, onBack = {}) }
     @Test fun mc_s36_bn() = shot("tso_mc_s36_bn", AppLanguage.BN) { com.aktcl.aron.feature.tso.mycall.VisitPlanOutletsScreen(visitPlan(plan36, show = true), { _, _, _ -> }, { _, _, _ -> }, onBack = {}) }
