@@ -5,7 +5,7 @@ import type { ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type * as ServerMod from "@/lib/dash/server";
-import { pct2dpText } from "@/lib/national/fmt";
+import { pct2dpText, pctBpOf, pctText } from "@/lib/national/fmt";
 
 vi.mock("@/lib/auth/require", () => ({ requireSession: async () => ({ at: "tok", scope: { nodes: [] }, user: { role: "TSO" } }) }));
 const locale = vi.hoisted(() => ({ v: "en" as "en" | "bn" }));
@@ -33,6 +33,16 @@ describe("the till-date % per route", () => {
     expect(pct2dpText("en", null)).toBe("—");
     expect(pct2dpText("en", Number.NaN)).toBe("—");
     expect(pct2dpText("bn", 87.5)).toBe("৮৭.৫০%");
+  });
+  // status ask 8: until 1.10.x sends integer members (A and T', or the bp), the page depends on this wire form
+  it("pins B2's wire form (exactly bp / 100): the page prints what the corpus formatter prints from the integers", () => {
+    // DailyTrackingApi (tso-man/B2): Percent.bp(A, T') then BigDecimal.valueOf(bp, 2).toDouble(); the JSON number is that double
+    const wire = (bp: number) => Number(`${Math.trunc(bp / 100)}.${String(bp % 100).padStart(2, "0")}`);
+    for (let bp = 0; bp <= 1_000_000; bp += 7) expect(pct2dpText("en", wire(bp)), String(bp)).toBe(pctText("en", bp, 2));
+    for (const bp of [0, 1, 5, 49, 50, 99, 100, 101, 4342, 10494, 999_999]) expect(pct2dpText("bn", wire(bp))).toBe(pctText("bn", bp, 2));
+    // s4.3 fixtures through A and T': 350/806 -> 43.42 %, 85/81 -> 104.94 %, 20/8065 -> 0.25 %
+    for (const [a, t] of [[350, 806], [85, 81], [20, 8065], [1030, 33064]] as const) expect(pct2dpText("en", wire(pctBpOf(a, t)!))).toBe(pctText("en", pctBpOf(a, t), 2));
+    expect(pct2dpText("en", wire(pctBpOf(350, 806)!))).toBe("43.42%");
   });
   it("each route line shows visited / target and the till-date %; a route without one shows a dash", async () => {
     const m = await render();
