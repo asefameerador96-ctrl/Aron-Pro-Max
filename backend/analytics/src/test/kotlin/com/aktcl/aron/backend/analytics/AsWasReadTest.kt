@@ -117,6 +117,18 @@ class AsWasReadTest {
     }
 
     @Test
+    fun aBrandWhoseNodeRowIsMissingKeepsItsMoneyUnderAFallbackName() {
+        // D-REPORTS-LEFT-01: the name lookups are not inner joins that drop a row's money when a product_node row is gone.
+        val all = Reach(1, Role.TSO, day, true, emptySet(), emptySet(), false, emptyList())
+        val before = dash().summary(all, null, null, day, day).by_brand
+        val b1 = id("SELECT id FROM app.product_node WHERE code = 'B1'")
+        fresh.db.jdbi.useHandle<Exception> { h -> h.execute("SET session_replication_role = replica"); h.execute("DELETE FROM app.product_node WHERE id = $b1"); h.execute("SET session_replication_role = DEFAULT") }
+        val after = dash().summary(all, null, null, day, day).by_brand
+        assertEquals(before.sumOf { it.net_mtk }, after.sumOf { it.net_mtk }, "no brand's money dropped out")
+        assertEquals("n$b1", after.single { it.code == b1.toString() }.name, "the brand without a node row keeps its money under a fallback name")
+    }
+
+    @Test
     fun anOutletMovedToAnotherChannelTodayKeepsItsOldChannelOnTheOldDate() {
         val before = screens(f()); val channelsBefore = dash().summary(Reach(1, Role.TSO, day, true, emptySet(), emptySet(), false, emptyList()), null, null, day, day).by_channel.map { it.code to it.net_mtk }
         assertTrue(channelsBefore.isNotEmpty())

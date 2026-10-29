@@ -358,7 +358,7 @@ class DashboardService(
                 """
                 SELECT a.segment_id, p.segment_name, sum(a.gross_mtk) net, sum(a.sold_qty_base) qty, sum(a.memo_count) memos
                   FROM dw.agg_daily_route_segment a ${AsWasSql.geo("g", "a.route_id", "a.business_date", lo = ":f", hi = ":t", plain = asWas.geo)}
-                  JOIN LATERAL (SELECT name AS segment_name FROM app.product_node WHERE id = a.segment_id) p ON true
+                  JOIN LATERAL (SELECT coalesce((SELECT name FROM app.product_node WHERE id = a.segment_id), 'n' || a.segment_id) AS segment_name) p ON true
                  WHERE a.business_date BETWEEN :f AND :t AND ${ns.clause("g.zone_id", "a.route_id")}${ns.inNode("g")} GROUP BY 1, 2 ORDER BY 1
                 """
             },
@@ -395,7 +395,7 @@ class DashboardService(
             """
             SELECT b.brand_id, p.brand_name, sum(b.gross_mtk) net, sum(b.sold_qty_base) qty, sum(b.memo_count) memos
               FROM dw.agg_daily_route_brand b ${AsWasSql.geo("g", "b.route_id", "b.business_date", lo = ":f", hi = ":t", plain = asWas.geo)}
-              JOIN LATERAL (SELECT name AS brand_name FROM app.product_node WHERE id = b.brand_id) p ON true
+              JOIN LATERAL (SELECT coalesce((SELECT name FROM app.product_node WHERE id = b.brand_id), 'n' || b.brand_id) AS brand_name) p ON true
              WHERE b.business_date BETWEEN :f AND :t AND ${ns.clause("g.zone_id", "b.route_id")}${ns.inNode("g")}${if (brandOnly) " AND b.brand_id = ANY(:scopeBrands)" else ""} GROUP BY 1, 2 ORDER BY 1
             """,
         ) {
