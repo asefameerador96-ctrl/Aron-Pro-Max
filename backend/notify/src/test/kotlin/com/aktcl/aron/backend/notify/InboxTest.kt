@@ -89,7 +89,7 @@ class InboxTest {
     fun setUp() {
         fresh = FreshDb.create()
         db.jdbi.useHandle<Exception> { h ->
-            for ((u, role) in listOf("tsoinbox1" to "TSO", "tsoinbox2" to "TSO", "srinbox1" to "SR")) {
+            for ((u, role) in listOf("tsoinbox1" to "TSO", "tsoinbox2" to "TSO", "srinbox1" to "SR", "natinbox1" to "NATIONAL", "brandinbox1" to "BRAND")) {
                 h.execute("INSERT INTO app.app_user (username, full_name, role, locale, pilot, must_change_password) VALUES ('$u', 'Inbox $u', '$role', 'bn', true, false)")
             }
             h.createQuery("SELECT username, id FROM app.app_user WHERE username LIKE '%inbox%'").map { rs, _ -> rs.getString(1) to rs.getLong(2) }.list().forEach { (k, v) -> ids[k] = v }
@@ -329,6 +329,34 @@ class InboxTest {
         assertEquals(3, inbox(t2).unreadCount)
         // A user id in the query is not a parameter of the operation: ignored, own rows still.
         assertEquals(mine.items.map { it.id }, inbox(t1, "?user_id=${ids.getValue("tsoinbox2")}").items.map { it.id })
+    }
+
+    /**
+     * Lane X2, lead ruling R-W-08: the national read-only levels (NATIONAL and a legacy TOP token) mark their own inbox
+     * read as one of their own-session writes, and BRAND reads and marks its own inbox, through the real portal-level
+     * guard. Their other writes stay refused, and each still touches only its own rows.
+     */
+    @Test
+    fun nationalTopAndBrandReadAndMarkTheirOwnInbox() = app {
+        clear()
+        add(item("natinbox1", 1), item("natinbox1", 2), item("brandinbox1", 1), item("brandinbox1", 2), item("brandinbox1", 3), item("tsoinbox1", 1))
+        val national = webToken("natinbox1", Role.NATIONAL)
+        val top = sign("natinbox1", Role.TOP, "web", null)   // a token minted before TOP users moved to NATIONAL (V0105)
+        val brand = webToken("brandinbox1", Role.BRAND)
+        val nat = inbox(national)
+        assertEquals(2, nat.unreadCount); assertEquals(setOf("Ticket updated 1", "Ticket updated 2"), nat.items.map { it.titleEn }.toSet())
+        assertEquals(nat.items.map { it.id }, inbox(top).items.map { it.id }, "the TOP token reads the same user's rows")
+        val br = inbox(brand)
+        assertEquals(3, br.unreadCount); assertTrue(br.items.none { it.id in nat.items.map { n -> n.id } })
+        // Mark read: 200 for all three, own rows only (the highest id of everyone's rows touches nobody else).
+        val highest = (nat.items + br.items).maxOf { it.id }
+        assertEquals(1, read(top, nat.items.last().id), "TOP marks up to its older row")
+        assertEquals(0, read(national, highest))
+        assertEquals(0, read(brand, highest))
+        assertEquals(1, count("SELECT count(*) FROM app.user_notification WHERE user_id = ${ids.getValue("tsoinbox1")} AND read_at IS NULL"), "the TSO's row stays unread")
+        assertEquals(0, inbox(national).unreadCount); assertEquals(0, inbox(brand).unreadCount)
+        assertEquals(0, read(top, Long.MAX_VALUE), "idempotent")
+        // That nothing else widens (other writes under /v1/me, other national cards for BRAND) is PortalLevelsTest's table.
     }
 
     // ---- prune -----------------------------------------------------------------------------------------------------

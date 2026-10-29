@@ -42,6 +42,15 @@ class PortalLevelsTest {
             Triple(Role.BRAND, "GET /v1/me", null), Triple(Role.BRAND, "POST /v1/auth/logout", null),
             Triple(Role.BRAND, "GET /v1/outlets", forbidden), Triple(Role.BRAND, "GET /v1/admin/users", forbidden),
             Triple(Role.BRAND, "GET /v1/me/../admin/users", forbidden), Triple(Role.BRAND, "GET /v1/me/x", forbidden),
+            // Lane X2, R-W-08: the own bell inbox is an own-session write for TOP and NATIONAL; BRAND reads and marks its own
+            // inbox; BRAND reads the brand-cut segment share; nothing else under /v1/me or the national cards widens.
+            Triple(Role.NATIONAL, "POST /v1/me/notifications/read", null), Triple(Role.TOP, "POST /v1/me/notifications/read", null),
+            Triple(Role.NATIONAL, "GET /v1/me/notifications", null), Triple(Role.NATIONAL, "POST /v1/me/notifications", forbidden),
+            Triple(Role.NATIONAL, "POST /v1/me/notifications/read/1", forbidden), Triple(Role.TOP, "DELETE /v1/me/notifications/read", forbidden),
+            Triple(Role.BRAND, "GET /v1/me/notifications", null), Triple(Role.BRAND, "POST /v1/me/notifications/read", null),
+            Triple(Role.BRAND, "GET /v1/me/notifications/1", forbidden), Triple(Role.BRAND, "POST /v1/me/notifications", forbidden),
+            Triple(Role.BRAND, "POST /v1/dashboards/national/segment-share", null), Triple(Role.BRAND, "GET /v1/dashboards/national/segment-share", forbidden),
+            Triple(Role.BRAND, "POST /v1/dashboards/national/cpr", forbidden), Triple(Role.BRAND, "POST /v1/dashboards/national/final-submit", forbidden),
             // Everyone else passes to the handlers unchanged.
             Triple(Role.TSO, "POST /v1/tasks", null), Triple(Role.ADMIN, "POST /v1/admin/users", null), Triple(Role.SUPERADMIN, "PUT /v1/admin/x", null),
             Triple(Role.ANALYST, "GET /v1/reports", null), Triple(Role.SUPPORT, "POST /v1/admin/device-otps", null),

@@ -33,11 +33,18 @@ object PortalLevels {
         fun matches(m: String, p: String): Boolean = (method == "*" || method == m) && regex.matches(p)
     }
 
-    /** Writes any portal role may make: its own session (logout, password, MFA, reveal) and its own error reports. */
+    /**
+     * Writes any portal role may make: its own session (logout, password, MFA, reveal), its own error reports and, lane X2
+     * (lead ruling R-W-08), the read mark of its own bell inbox (the handler touches only the caller's rows, D-B1-04).
+     */
     val OWN_SESSION: List<Pattern> = listOf(
         Pattern("POST", "/v1/auth/logout"), Pattern("POST", "/v1/auth/change-password"), Pattern("POST", "/v1/auth/mfa/enrol"),
         Pattern("POST", "/v1/auth/reauth"), Pattern("POST", "/v1/client-errors"),
+        Pattern("POST", "/v1/me/notifications/read"),
     )
+
+    /** R-W-08: the caller's own bell inbox read (`GET /v1/me/notifications`); a read, so only BRAND needs it listed. */
+    private val OWN_INBOX_READ: Pattern = Pattern("GET", "/v1/me/notifications")
 
     /** The one field role each phone flavour serves (login refuses any other; a role change must not carry over). */
     val PHONE_ROLE: Map<String, Role> = mapOf("sr" to Role.SR, "amo" to Role.AMO, "tso" to Role.TSO)
@@ -46,15 +53,19 @@ object PortalLevels {
     val NATIONAL_WRITES: List<Pattern> = OWN_SESSION + Pattern("POST", "/v1/reports/{report_key}/query") +
         Pattern("POST", "/v1/dashboards/national/**")   // the dashboard cards take their filter object as a POST body: reads
 
-    /** The national dashboard reads that carry a brand dimension; the cards without one (CPR, final submit, login, geo, FF Geo, maps) stay refused (docs/34 s1). */
+    /**
+     * The national dashboard reads that carry a brand dimension; the cards without one (CPR, final submit, login, geo, FF Geo, maps) stay refused (docs/34 s1).
+     * Lane X2 (R-W-08): By Segment Value Contribution (`segment-share`), which the service already cuts to the caller's brands.
+     */
     private val BRAND_DASHBOARD: List<Pattern> = listOf(
         Pattern("POST", "/v1/dashboards/national/sales"), Pattern("POST", "/v1/dashboards/national/channel-calls"),
         Pattern("POST", "/v1/dashboards/national/channel-std"), Pattern("POST", "/v1/dashboards/national/breakdown"),
         Pattern("GET", "/v1/dashboards/national/filter-options"), Pattern("GET", "/v1/dashboards/national/freshness"),
+        Pattern("POST", "/v1/dashboards/national/segment-share"),
     )
 
-    /** BRAND's whole surface (row 3 adds the brand-filtered reads as they are built). */
-    val BRAND_ROUTES: List<Pattern> = OWN_SESSION + listOf(Pattern("GET", "/v1/me")) + BRAND_DASHBOARD
+    /** BRAND's whole surface (row 3 adds the brand-filtered reads as they are built); R-W-08 adds its own inbox (read and mark read). */
+    val BRAND_ROUTES: List<Pattern> = OWN_SESSION + listOf(Pattern("GET", "/v1/me"), OWN_INBOX_READ) + BRAND_DASHBOARD
 
     /** The path the router matches: decoded segments, empty ones dropped (the same normalisation as the MFA check). */
     fun normalise(rawPath: String): String? {
