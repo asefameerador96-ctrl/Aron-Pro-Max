@@ -414,6 +414,12 @@ export async function handleDash(x: DashCtx): Promise<boolean> {
     const withUsers = x.url.searchParams.get("include") === "assignees";
     return send(200, { items: rows.map((r) => ({ id: r.route_id, code: String(r.route_id), name: r.route_name, display_label: r.route_name, zone_id: r.zone_id, kind: r.kind, visit_kind: "daily", visit_days_mask: 127, status: "active", ...(withUsers ? { assignees: r.user_id ? [{ user_id: r.user_id, full_name: r.user_name ?? `User ${r.user_id}`, role: r.kind === "amo" ? "AMO" : "SR", username: `u${r.user_id}` }] : [] } : {}) })), next_cursor: null }), true;
   }
+  // tso-manual W1: one route of the caller's reach (the login drill reads the zone of a picked route); 404 outside it
+  const oneRoute = /^\/v1\/admin\/routes\/(\d+)$/.exec(path);
+  if (oneRoute && method === "GET") {
+    const r = routesInScope(user.scope.nodes).find((rt) => rt.route_id === Number(oneRoute[1]));
+    return r ? send(200, { id: r.route_id, code: String(r.route_id), name: r.route_name, display_label: r.route_name, zone_id: r.zone_id, kind: r.kind, visit_kind: "daily", visit_days_mask: 127, status: "active" }) : send(404, problem(404, "ERR_NOT_FOUND")), true;
+  }
   if (path === "/v1/admin/route-assignments" && method === "GET") {
     const items = routesInScope(user.scope.nodes).filter((r) => r.user_id).map((r, i) => ({ id: 700 + i, route_id: r.route_id, user_id: r.user_id!, kind: "primary", valid_from: "2026-10-01", valid_to: null, reason: null, created_at: asOf }));
     return send(200, { items, next_cursor: null }), true;

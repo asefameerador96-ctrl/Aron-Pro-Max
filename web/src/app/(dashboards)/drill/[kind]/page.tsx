@@ -15,7 +15,7 @@ import { getDailyTracking, getSummary } from "@/lib/dash/server";
 import { isCalendarDate } from "@/lib/dates";
 import { GEO_LEVELS, boundGeo, geoFromParams } from "@/lib/reports/query";
 import { businessDate, formatBusinessDate, t, type MessageKey } from "@/lib/i18n";
-import { LOGIN_TABS, getLoginSubmitUsers, loginUserColumns, loginUserRows, loginUsersFilter, routeCountText, truncatedText } from "./login-users"; // tso-manual W1 (DASH-13)
+import { LOGIN_TABS, getLoginSubmitUsers, loginUserColumns, loginUserRows, loginUsersFilter, routeCountText, routeZoneId, truncatedText } from "./login-users"; // tso-manual W1 (DASH-13)
 
 const CATS = ["cigarette", "bidi", "lighter", "match"];
 
@@ -35,7 +35,10 @@ export default async function DrillPage({ params, searchParams }: { params: Prom
   // tso-manual W1 (DASH-13): the login drill reads its (route, user) rows from login-submit/users, one call per tab; the
   // tracking read and the zone list serve the other drill-downs only.
   const login = kind === "login";
-  const usersFilter = loginUsersFilter(picked, date);
+  // a drill opened for one route with no zone picked asks for the route's zone, so a cut list cannot leave the route out
+  const pickedRoute = picked.route?.[0];
+  const routeZone = login && pickedRoute !== undefined && !picked.zone?.length ? await routeZoneId(token, pickedRoute) : null;
+  const usersFilter = loginUsersFilter(picked, date, routeZone);
   const [tracking, summary, users, zones] = await Promise.all([
     login ? Promise.resolve(null) : getDailyTracking(token, date),
     kind === "category" || kind === "channel" ? getSummary(token, { from: date, to: date, ...node }) : Promise.resolve(null),
@@ -85,7 +88,7 @@ export default async function DrillPage({ params, searchParams }: { params: Prom
     // Name (the zone) and the role; the route count of each tab, and a "list cut" note when the server left rows out.
     title = t(locale, "drill.title.login");
     const cols = loginUserColumns(locale);
-    const routeId = picked.route?.[0];
+    const routeId = pickedRoute;
     body = (
       <>
         {LOGIN_TABS.map((tab, i) => {
@@ -103,7 +106,7 @@ export default async function DrillPage({ params, searchParams }: { params: Prom
               csvName={id}
               {...stamp(r?.ok ? (r.data.last_updated_at ?? r.data.as_of) : null)}
               error={r && !r.ok ? r.problem.code : undefined}
-              note={r?.ok ? routeCountText(locale, r.data) : undefined}
+              note={r?.ok && routeId === undefined ? routeCountText(locale, r.data) : undefined /* the count is the filter's, not one route's */}
               extra={
                 cut ? (
                   <p role="note" data-testid={`truncated-${id}`} className="text-caption text-warning-on-container">

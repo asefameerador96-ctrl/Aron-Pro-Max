@@ -64,13 +64,22 @@ describe("rows and columns (D-TSO-MAN-12, screenshot 8)", () => {
     expect(loginUsersFilter({ territory: [334], zone: [3342], route: [10233] }, "2026-10-29")).toEqual({ date: "2026-10-29", territory_ids: [334], zone_ids: [3342] });
     expect(loginUsersFilter({}, "2026-10-29")).toEqual({ date: "2026-10-29" });
   });
+  it("a picked route without a picked zone sends the route's own zone, so a cut list cannot leave the route out", () => {
+    expect(loginUsersFilter({ territory: [334], route: [10233] }, "2026-10-29", 3342)).toEqual({ date: "2026-10-29", territory_ids: [334], zone_ids: [3342] });
+    expect(loginUsersFilter({ zone: [3341], route: [10233] }, "2026-10-29", 3342).zone_ids).toEqual([3341]); // the picked zone wins
+    expect(loginUsersFilter({ territory: [334] }, "2026-10-29", 3342)).toEqual({ date: "2026-10-29", territory_ids: [334] }); // no route, no zone
+    expect(loginUsersFilter({ route: [10233] }, "2026-10-29", null)).toEqual({ date: "2026-10-29" }); // zone unreadable: as before
+  });
 });
 
 describe("route count and the 'list cut' note (F1 ask 11)", () => {
-  it("each tab says how many routes it holds, Bengali digits in bn", () => {
-    expect(routeCountText("en", page({ route_count: 1186 }))).toBe("1,186 routes without a login today.");
-    expect(routeCountText("en", page({ tab: "not_uploaded", route_count: 3 }))).toBe("3 routes logged in without Bikroy Joma.");
-    expect(routeCountText("bn", page({ route_count: 12 }))).toContain("১২");
+  it("each tab says how many routes it holds on the drill's date (never 'today'), Bengali digits in bn", () => {
+    expect(routeCountText("en", page({ route_count: 1186 }))).toBe("1,186 routes without a login on 29 October 2026.");
+    expect(routeCountText("en", page({ tab: "not_uploaded", route_count: 3, date: "2026-10-20" }))).toBe("3 routes logged in without Bikroy Joma on 20 October 2026.");
+    const bnText = routeCountText("bn", page({ route_count: 12 }));
+    expect(bnText).toContain("১২");
+    expect(bnText).toContain("তারিখে");
+    expect(bnText).not.toContain("আজ");
   });
   it("the note shows only when the server cut the list, with the number of rows shown", () => {
     expect(truncatedText("en", page())).toBeNull();
@@ -90,7 +99,7 @@ describe("the drill page against the mock", () => {
     const t = plain(m);
     expect(t).toContain("Not Logged In");
     expect(t).toContain("Not Uploaded");
-    expect(t).toContain("1 routes logged in without Bikroy Joma.");
+    expect(t).toContain("1 routes logged in without Bikroy Joma on ");
     for (const cell of ["Jamal Uddin", "sr1003", "Banani South", "Banani Zone 2", "Rafiq Amin", "amo1004"]) expect(t).toContain(cell);
     expect(t).not.toContain("Gulshan"); // territory 335 is outside the token's reach
     expect(m).not.toContain("truncated-");
@@ -109,6 +118,18 @@ describe("the drill page against the mock", () => {
     expect(plain(m)).not.toContain("Gulshan");
     expect(m).toContain('data-testid="table-empty-not-uploaded"');
   });
+  it("a drill for one route: its zone is looked up and sent, and the scope-wide route count is not shown above its rows", async () => {
+    const seen: unknown[] = [];
+    h.stub({ method: "POST", path: PATH, fn: (c) => { seen.push(c.body); return { status: 200, body: page({ tab: c.query.tab as LoginUsers["tab"], route_count: 1186, items: [row({ route_id: 10233, route_name: "Banani South", zone_id: 3342 }), row({ route_id: 99 })] }) }; } });
+    await as("dmo1", "dmo-pass-1", "DMO", dmoScope);
+    const m = await render({ territory: "334", route: "10233", date: "2026-10-27" });
+    expect(seen).toHaveLength(2);
+    for (const b of seen) expect(b).toEqual({ date: "2026-10-27", territory_ids: [334], zone_ids: [3342] }); // Banani South is in zone 3342
+    const t = plain(m);
+    expect(t).toContain("Banani South");
+    expect(t).not.toContain("1,186 routes");
+    expect(t).not.toContain("without a login today");
+  });
   it("a DMO's zone pick narrows the request to that zone", async () => {
     const seen: unknown[] = [];
     h.stub({ method: "POST", path: PATH, fn: (c) => { seen.push(c.body); return { status: 200, body: page() }; } });
@@ -122,7 +143,7 @@ describe("the drill page against the mock", () => {
     const m = await render();
     expect(m).toContain('data-testid="truncated-not-logged-in"');
     expect(m).not.toContain('data-testid="truncated-not-uploaded"');
-    expect(plain(m)).toContain("2,412 routes without a login today.");
+    expect(plain(m)).toContain("2,412 routes without a login on 29 October 2026.");
     expect(plain(m)).toContain("The list is cut at 2,000 rows.");
   });
   it("a failed tab shows its error with Retry, the other tab still shows its rows", async () => {
@@ -139,7 +160,7 @@ describe("the drill page against the mock", () => {
     const t = plain(await render());
     expect(t).toContain("লগইন করেননি");
     expect(t).toContain("এসআর নির্ধারিত নয়");
-    expect(t).toContain("আজ ২টি রুটে লগইন হয়নি।");
+    expect(t).toContain("তারিখে ২টি রুটে লগইন হয়নি।");
   });
 });
 
