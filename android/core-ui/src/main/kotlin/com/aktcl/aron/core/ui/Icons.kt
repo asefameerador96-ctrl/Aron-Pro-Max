@@ -101,5 +101,7 @@ object AronIcons {
     val AddTask by lazy { icon("add_task", "M22 5.18L10.59 16.6l-4.24-4.24 1.41-1.41 2.83 2.83 10-10L22 5.18zM12 20c-4.41 0-8-3.59-8-8s3.59-8 8-8c1.57 0 3.04.46 4.28 1.25l1.45-1.45C16.1 2.67 14.13 2 12 2 6.48 2 2 6.48 2 12s4.48 10 10 10c1.73 0 3.36-.44 4.78-1.22l-1.5-1.5c-1 .46-2.11.72-3.28.72zm7-5h-3v2h3v3h2v-3h3v-2h-3v-3h-2v3z") }
     val Store by lazy { icon("store", "M20 4H4v2h16V4zm1 10v-2l-1-5H4l-1 5v2h1v6h10v-6h4v6h2v-6h1zm-9 4H6v-4h6v4z") }
     val AddBusiness by lazy { icon("add_business", "M15 17h2v-3h1v-2l-1-5H2l-1 5v2h1v6h9v-6h4v3zm-6 1H4v-4h5v4zM2 4h15v2H2z", "M20 18v-3h-2v3h-3v2h3v3h2v-3h3v-2z") }
+    /** tso-manual X4b (R-W-12 (3)): a picture (Material "image"), the glyph of Browse Gallery on the feedback form (screenshot 43). */
+    val Image by lazy { icon("image", "M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z") }
     val Scatter by lazy { icon("scatter", "M12 2.5a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3zM12 18.5a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3zM2.5 12a1.5 1.5 0 1 1 3 0 1.5 1.5 0 0 1-3 0zM18.5 12a1.5 1.5 0 1 1 3 0 1.5 1.5 0 0 1-3 0zM5.3 4.2a1.6 1.6 0 1 1 0 3.2 1.6 1.6 0 0 1 0-3.2zM18.7 16.6a1.6 1.6 0 1 1 0 3.2 1.6 1.6 0 0 1 0-3.2zM18.7 4.2a1.6 1.6 0 1 1 0 3.2 1.6 1.6 0 0 1 0-3.2zM5.3 16.6a1.6 1.6 0 1 1 0 3.2 1.6 1.6 0 0 1 0-3.2z") }
 }

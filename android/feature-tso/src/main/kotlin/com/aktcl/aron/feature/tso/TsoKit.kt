@@ -164,9 +164,11 @@ fun TsoGradientButton(
     style: TsoButtonStyle = TsoButtonStyle.Blue,
     enabled: Boolean = true,
     busy: Boolean = false,
+    /** A decorative glyph before the label (core-ui `AronIcons`), e.g. the picture of Browse Gallery (screenshot 43). */
+    icon: androidx.compose.ui.graphics.vector.ImageVector? = null,
 ) {
     val s = when (style) { TsoButtonStyle.Lime -> NightButtonStyle.Lime; TsoButtonStyle.Cyan -> NightButtonStyle.Cyan; TsoButtonStyle.Blue -> NightButtonStyle.Blue }
-    NightButton(text, onClick, modifier, style = s, enabled = enabled, busy = busy)
+    NightButton(text, onClick, modifier, style = s, enabled = enabled, busy = busy, icon = icon)
 }
 
 /**
