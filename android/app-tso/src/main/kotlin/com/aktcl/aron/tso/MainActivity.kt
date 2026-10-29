@@ -150,7 +150,8 @@ class MainActivity : ComponentActivity() {
                 Box(Modifier.fillMaxSize().aronPageBackground()) {
                     when (val s = state) {
                         SessionState.Restoring -> Unit // AUD-PERF-05: the background is the splash for the few ms of the restore
-                        SessionState.LoggedOut -> com.aktcl.aron.feature.auth.EnrolmentGate(
+                        // tso-manual A1 (SH-17): the login form lives in the logged-out phase's own store (a fresh form after every logout)
+                        SessionState.LoggedOut -> com.aktcl.aron.core.ui.SessionPhaseScope(signedInKey = null) { com.aktcl.aron.feature.auth.EnrolmentGate(
                             // Enrolment (docs/24 s10.4) before the first login of a new install; never in a signed-in day.
                             status = { com.aktcl.aron.feature.auth.EnrolStatus(deviceEnrolment.enrolled(), deviceEnrolment.pending(), deviceEnrolment.refusedCode()) },
                             submit = deviceEnrolment::submit,
@@ -162,8 +163,10 @@ class MainActivity : ComponentActivity() {
                             val vm = viewModel { LoginViewModel(components.session::login).also { it.bind = components.session::bindDevice } }
                             // tso-manual A1: the TSO login of screenshot 5 (D-TSO-MAN-15); the sun switch and the version are in Settings
                             LoginScreen(vm, stringResource(R.string.app_name), versionName, onLanguageSelect, onEnrol, sunlight = sunlight, onSunlight = { on -> sunlight = on; devicePref.enabled = on }, variant = com.aktcl.aron.feature.auth.LoginVariant.Tso)
-                        }
-                        is SessionState.Active -> {
+                        } }
+                        // tso-manual A1 (SH-17): every retained screen state of the day lives in this sign-in's own store; the logged-out
+                        // phase that follows a logout clears it (SessionPhaseScope). The activity's store is never cleared.
+                        is SessionState.Active -> com.aktcl.aron.core.ui.SessionPhaseScope(signedInKey = s.user.userId.toString()) {
                             // F-SYS-022: TSO is refused while anything is unsent, then wipes this user's data.
                             val logoutFlow = remember(s.user.userId) { shellLogout.flow(AppRole.TSO, s.user.userId) }
                             var unsent by remember { mutableStateOf<Int?>(null) }
@@ -185,8 +188,8 @@ class MainActivity : ComponentActivity() {
                                                 }
                                                 if (r !is LogoutResult.Refused) {
                                                     uid?.let { java.io.File(cacheDir, "tso_api_$it").deleteRecursively() }
-                                                    // SH-17: no retained screen state (half-typed forms, client uuids, the dashboard model) outlives the sign-in
-                                                    viewModelStore.clear()
+                                                    // SH-17: the retained screen state of the day went with the sign-in's store (SessionPhaseScope);
+                                                    // never clear the activity's store here: the login form is already on screen and holds its ViewModel.
                                                 }
                                             }
                                         }
