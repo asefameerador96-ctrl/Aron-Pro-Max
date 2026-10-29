@@ -2,6 +2,86 @@
 
 Updated with every push. Rows of Day 1: N-005, N-006, N-007, N-008 (`python3 tools/my-rows.py db 1 --full`).
 
+## HANDOVER (session 14 -> session 15), 2026-10-29 ~09:05 UTC, lane/db = INT 78ffb242 (train 60) + this docs-only commit
+
+**State.** **No candidate is gated.** V0123 is NOT on lane/db: the Opus checker's round 4 on its final diff FAILED (one
+blocker, below). The lead's 08:48 rule was "more than a small fix: report and stop".
+- All V0123 work is preserved on branch **`lane/db-wip-v0124`**:
+  - `2c1dd97d` = V0123 (migration, `DimVersionRekeyTest`, dictionary re-render, D-DB-DIM-REKEY-01 line, backend-reports answer note);
+  - `c5ad2a97` on top = V0124 geo version WIP + V0125 design draft.
+  - That branch is based on INT 78ffb242. Read it only; take its commits onto lane/db by cherry-pick when ready.
+- **Next free migration: V0123.** View contract **1.2**.
+
+**The round-4 blocker to fix first (db #15).**
+- **Mechanism.** V0123 versions `house_id` from the history (`v_dim_geo_history.house_id` = `zone_history.house_id`). The rekey runs only when a `dw.dim_geo` row changes. DashboardSummaries folds `dim_geo.house_id` to the lowest active same-name house, so a zone moved between same-name houses changes no `dim_geo` row. Typical case: an admin HouseDedup merge into the LOWER id, or a duplicate left unmerged. The current version then keeps the old raw house until a full rekey.
+- **Effect.** Post-merge facts resolve to the merged-away house, and "a second rekey changes nothing" holds only after a full run.
+- **Decision needed (small, then code):** what `dim_geo_version.house_id` means.
+  - **(a) As recorded.** Keep the raw house and also rekey the routes of a zone whose `house_id` changes: an AFTER UPDATE OF house_id trigger on `app.zone`, or the projector also sends the ids whose current version's `house_id` differs from `v_dim_geo_history.is_current`. Tell backend-reports to fold same-name houses when grouping by house as it was.
+  - **(b) Folded.** Version the DashboardSummaries key: the lowest same-name house active on the period's last day, from `app.house_history.status`. Earlier rounds showed the trap of keying over the current status: round 2 (past re-keyed when a house goes inactive) and round 3 (pointing at the loser after a merge into a higher id). Add tests for a merge into the lower id with routes on the higher duplicate, and for a move between same-name houses.
+- **Round-4 should-fixes in the D-DB line.** Line 1414 "deduped the same way" and assumption 3 "house_id counts once DashboardSummaries has set it" are stale. Give the round-3 change its own Round 3 entry. The answer note must say what `house_id` means for grouping.
+- **After the fix:** a round-5 checker on the full diff, then the full suites (db, analytics, app; the last full db run, at round 2, was 399/0; the round-4 run was stopped at 72/0 when the checker failed), then push lane/db as candidate 1.
+
+**V0123 (D-DB-DIM-REKEY-01, on `lane/db-wip-v0124` 2c1dd97d): what it is.**
+- `dw.rekey_dim_versions(dim, ids)` dates `dw.dim_geo/outlet/product/user_version` by the V0119 app history.
+- `dw.restamp_fact_keys` re-stamps the fact keys (`fact_memo`, `fact_visit`) of every changed id from its earliest changed version on.
+- The dimension triggers are statement level (`dw.dim_versions_follow`); ids the history does not date take V0043's step (`dw.scd2_open_version`).
+- Btree `(id, valid_from)` lookups on the version tables.
+- Answer for backend-reports: `docs/requests/db-backend-reports-dim-version-rekey-answer.md`. It also carries an ask for backend-analytics to close the fact-writer race: take shared advisory locks, or widen the 7-day key fix-up.
+
+**The lead's 07:08 conditions and how each is met.**
+1. **Key-stability deviation.** A key is kept while id, `valid_from` and versioned columns are unchanged; `valid_to` moves in place. Recorded in the D-DB line and in the answer note. The note also names the exact re-stamp condition, and the rekey re-stamps facts itself.
+2. **Idempotent and bounded.** The test checks that a second rekey leaves rows and ctids unchanged. One rekey per statement, plus an advisory lock per dimension. Timings with tools/loadgen are in the D-DB line:
+
+   | | pilot ×10 (`srs=100`) | `srs=500` |
+   |---|---|---|
+   | V0123 | 7.0 s | 9.3 s |
+   | Second full rekey | 0.22 s | 0.89 s |
+   | Projector refresh, no change to half the outlets edited | 0.96–1.60 s | 4.1–5.4 s |
+3. **Migration runtime.** Seconds on dev (pilot size), inside the Flyway transaction; the final account migrates from empty. Locks: row locks on the version rows and the re-stamped facts; DROP/CREATE TRIGGER on the dims and four small CREATE INDEX statements under `lock_timeout` 5s.
+4. **Dictionary.** Re-rendered (version-table comments); DataDictionaryTest and DwViewContractTest green.
+
+**Checker and mutations.**
+- Opus checker: round 1 FAIL (a trigger rekey deleted keys that facts held), round 2 PASS with should-fixes, round 3 FAIL (house keyed over every status pointed at the merged-away house), round 4 FAIL (house key follows `dim_geo` changes only; the blocker above).
+- Mutations, each caught: key match also on valid_to; agreement rule off; re-stamp off; the single-statement INSERT (GiST loss); the active-only house key; the any-status house key.
+
+**WIP on `lane/db-wip-v0124` (after V0123 lands: renumber nothing, V0124 stays V0124; finish, own candidate).**
+- **Item 2, V0124 `app.geo_version`.** One row (`id` true, `version`, `changed_at`), bumped by statement-level AFTER INSERT/UPDATE/DELETE/TRUNCATE triggers with transition tables on wing, division, territory, house, zone and route. No bump when a statement changed no row. The bump is transactional, so readers see it with the edit. Owner-guarded: `app.guard_geo_version`, SECURITY DEFINER `app.bump_geo_version`. api_rw and worker_rw read it.
+  - `GeoVersionTest` is green locally.
+  - Still to do: dictionary render; the answer note for backend-reports (read `(SELECT version FROM app.geo_version)` beside `scope_version` in `SqlReachResolver.reach`, `backend/masterdata/.../SqlReach.kt`; `GeoRepository.snapshot()` reloads when the database version is newer than the one it holds; statement-level, visible on commit); Opus checker; push as its own candidate.
+- **Item 3, V0125 BI row scope.** Design draft only: `docs/requests/db-bi-reader-row-scope-answer-DRAFT.md`.
+  - One login per BI audience, members of `bi_reader`.
+  - A `dw.bi_login` registry maps a login to `all_rows` or to one portal user's live scope (`app.user_scope`, `app.user_brand_scope`).
+  - Every `dw.v_*` is wrapped as `SELECT * FROM (<def>) s WHERE <scope>`, applied to `bi_reader` members only. Contract 1.3.
+  - `app_bi` sees nothing until mapped; `lake_export` gets `all_rows`.
+  - The lead decides per-audience logins with infra after reading it. Send it to the lead before writing code.
+- **Item 4** (history `(key, valid_from)` indexes): waits for `docs/requests/backend-reports-db-history-indexes.md` on INT or the lead's word.
+- **Item 5** (row 9 remainder): unchanged from HANDOVER 13 -> 14.
+
+**Told the lead (not db's files).** PostgreSQL 16.15 GiST finding: a statement that searched a GiST exclusion index for rows it then inserted lost index entries after rolled-back runs, and REINDEX fixed it. Other exclusion tables and `*_key_on` could be exposed; a REINDEX/amcheck runbook step is the lead's call.
+
+**Traps for a fresh container.**
+- Postgres: `pg_ctlcluster 16 main start`.
+- Test role and database: `aron_test` superuser with password aron_test, `max_connections` 400 (`ALTER SYSTEM`, then restart), `export ARON_TEST_PG_URL='jdbc:postgresql://127.0.0.1:5432/aron_test?user=aron_test&password=aron_test'`.
+- Maven mirror init script in `~/.gradle/init.d/` (docs/24 s9).
+- Run Gradle suites in the background, one module at a time. Before editing a migration, stop a running chain: TaskStop on the chain's shell, then `./gradlew --stop`; otherwise the next module starts and Postgres runs out of connections.
+- Loadgen measurements: `tools/loadgen/generate.sql -v srs=N` on an `aron_load*` database at V0122, with the seed password set.
+
+## Session 14, 2026-10-29 (lane/db; INT 78ffb242 = train 60 merged)
+
+| Job | State | What |
+|---|---|---|
+| **item 1: dim version re-key** (backend-reports request; lead plan approval 07:08 with 4 conditions) | NOT a candidate: on `lane/db-wip-v0124` (2c1dd97d). Opus checker: round 1 FAIL, round 2 PASS (should-fixes taken), round 3 FAIL (house), round 4 FAIL (house key follows dim_geo only; see HANDOVER). Mutations: key match on valid_to, agreement rule off, re-stamp off, single-statement INSERT, active-only house; each one is caught | V0123 `dw.rekey_dim_versions` / `dw.restamp_fact_keys` / statement-level `dw.dim_versions_follow`; versions dated by the V0119 history, keys kept while id, start and versioned columns are unchanged; btree `(id, valid_from)` lookups. Answer `docs/requests/db-backend-reports-dim-version-rekey-answer.md` (includes the fact-writer race ask for backend-analytics). Loadgen timings are in D-DB-DIM-REKEY-01. View contract unchanged (1.2) |
+| **item 2: geo version** | built locally (V0124 `app.geo_version`, statement-level bump on wing/division/territory/house/zone/route, owner-guarded; `GeoVersionTest`); next candidate after candidate 1's train | answer note for backend-reports to follow with it |
+| **item 3: BI row scope** | design note drafted (one login per audience, `dw.bi_login` registry mapped to a portal user's scope, `dw.v_*` filtered for `bi_reader` members only, contract 1.3); goes to the lead/infra before code | V0125 planned |
+
+**Next free migration: V0123** (V0123 to V0125 are reserved by items 1 to 3, all on `lane/db-wip-v0124`). View contract **1.2**.
+
+**Lessons (session 14).**
+- PostgreSQL 16.15, GiST: a statement that searched a GiST exclusion index for rows it then inserted into the same table lost index entries after rolled-back runs; REINDEX fixed it. Write version tables by surrogate key after a separate read. Reproduction recipe: the round-1 form `INSERT ... SELECT FROM periods WHERE NOT EXISTS (SELECT FROM <version table> ...)` (D-DB-DIM-REKEY-01), an outlet-only refresh in a rolled-back transaction, then again; count through the index with seqscan/bitmapscan off.
+- A plpgsql CTE fed by a set-returning function is estimated at one row: at 30k ids the anti-join went quadratic. Materialize into an analyzed temp table.
+- `./gradlew --stop` stops the daemon, but a `;`-chained background suite then starts its next module: kill the chain's shell first, or Postgres runs out of connections ("too many clients").
+- In a test transaction `now()` is fixed, so "unchanged" also needs ctid (an UPDATE moves it).
+
 ## HANDOVER (session 13 -> session 14), 2026-10-28 ~03:00 UTC, lane/db 1defc0c7 (+ this docs-only commit)
 
 **State.** lane/db = INT 83f0fec8 (train 44: V0119 master history, V0120 registry pruning, both deployed on dev) +
