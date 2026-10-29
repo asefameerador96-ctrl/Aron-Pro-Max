@@ -23,6 +23,9 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.repeatOnLifecycle
 import com.aktcl.aron.contract.RecordType
 import com.aktcl.aron.contract.SupportTicketEventPayload
 import com.aktcl.aron.contract.SupportTicketPayload
@@ -71,8 +74,10 @@ import com.aktcl.aron.core.sync.push.PushNotice
 import com.aktcl.aron.core.sync.push.PushNotices
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.json.Json
@@ -84,11 +89,27 @@ import com.aktcl.aron.core.media.R as MediaR
 // tso-manual A2 (build contract s5 A2, D-TSO-MAN-17..25): the Tickets screens wired into the TSO app.
 
 /**
+ * What the ticket screens read from the host: the ticket ports, the photo limit read and the push notices that make a ticket
+ * screen on show read again (tso-manual X4b fix round). [TicketsHostDeps] is the app's; a test gives its own ports (a fake
+ * source and its own push flow), so [ticketScreens] is tested as the app wires it.
+ */
+interface TicketScreenPorts {
+    /** One [TicketDeps] for the user: the screens' states are keyed on it, so it never changes identity. */
+    val deps: TicketDeps
+
+    /** The push notices of this phone ([PushNotices.arrived] in the app); [RefreshOnTicketPush] reads again on the ticket ones. */
+    val arrived: Flow<PushNotice>
+
+    /** Reads the photo limit from the bundle (a cheap local read), each time a ticket screen opens. */
+    suspend fun refreshConfig()
+}
+
+/**
  * The Tickets screens' host ports, built once per signed-in user (MainActivity remembers the map by [TsoHost]); each part is
  * created on first use. [host] carries every app handle a port needs (API client, outbox, media, trusted time), so the
  * tickets module stays role-agnostic and MainActivity is not edited (D-A1-05).
  */
-class TicketsHostDeps(val host: TsoHost) {
+class TicketsHostDeps(val host: TsoHost, override val arrived: Flow<PushNotice> = PushNotices.arrived) : TicketScreenPorts {
     val api by lazy { TicketApi(host.components.apiClient, host.context, host.userId) }
 
     /** The outbox side (records `support_ticket` / `support_ticket_event`, mirror rows, photo claims) and the bundle reads. */
@@ -101,10 +122,9 @@ class TicketsHostDeps(val host: TsoHost) {
 
     val photos: TicketPhotos by lazy { MediaTicketPhotos(host.media, host.mediaFor, { maxPhotos.intValue }) { device.holds(it) } }
 
-    /** One [TicketDeps] for the user: the screens' states are keyed on it, so it never changes identity. */
-    val deps: TicketDeps by lazy { TicketDeps(HostTicketSource(api, device, host.nowMs), device, photos, now = host.nowMs) }
+    override val deps: TicketDeps by lazy { TicketDeps(HostTicketSource(api, device, host.nowMs), device, photos, now = host.nowMs) }
 
-    suspend fun refreshConfig() { maxPhotos.intValue = device.maxPhotos(host.nowMs()) }
+    override suspend fun refreshConfig() { maxPhotos.intValue = device.maxPhotos(host.nowMs()) }
 }
 
 /**
@@ -113,11 +133,11 @@ class TicketsHostDeps(val host: TsoHost) {
  * form is closed and All Tickets opens, where it shows as New (manual s6, screenshot 16). TICKET_DETAIL takes the ticket
  * uuid as its argument. SUPPORT_UPLOAD stays A1's (Settings > PDA to Support).
  */
-fun ticketScreens(deps: TicketsHostDeps): Map<TsoScreen, TsoScreenContent> = mapOf<TsoScreen, TsoScreenContent>(
+fun ticketScreens(deps: TicketScreenPorts): Map<TsoScreen, TsoScreenContent> = mapOf<TsoScreen, TsoScreenContent>(
     TsoScreen.TICKET_DASHBOARD to { nav, arg ->
         WithTickets(deps) { d ->
             val state = rememberTicketDashboardState(d)
-            RefreshOnTicketPush { state.load(refresh = true) } // tso-manual X4b (R-W-12 (1))
+            RefreshOnTicketPush(deps.arrived) { state.load(refresh = true) } // tso-manual X4b (R-W-12 (1))
             TicketDashboardScreen(
                 state, ticketFrame(nav),
                 onOpen = { nav.open(TsoScreen.TICKET_DETAIL, it) }, onSeeAll = { nav.open(TsoScreen.TICKET_LIST) }, onQuick = { nav.open(TsoScreen.TICKET_QUICK) },
@@ -129,7 +149,7 @@ fun ticketScreens(deps: TicketsHostDeps): Map<TsoScreen, TsoScreenContent> = map
     TsoScreen.TICKET_LIST to { nav, _ ->
         WithTickets(deps) { d ->
             val state = rememberTicketListState(d)
-            RefreshOnTicketPush { state.load(refresh = true) } // tso-manual X4b (R-W-12 (1))
+            RefreshOnTicketPush(deps.arrived) { state.load(refresh = true) } // tso-manual X4b (R-W-12 (1))
             TicketListScreen(state, ticketFrame(nav), onOpen = { nav.open(TsoScreen.TICKET_DETAIL, it) })
         }
     },
@@ -143,7 +163,7 @@ fun ticketScreens(deps: TicketsHostDeps): Map<TsoScreen, TsoScreenContent> = map
         if (arg == null) LaunchedEffect(Unit) { nav.back() } // a detail without its ticket (never opened so): back
         else WithTickets(deps) { d ->
             val state = rememberTicketDetailState(d, arg)
-            RefreshOnTicketPush { state.load() } // tso-manual X4b (R-W-12 (1))
+            RefreshOnTicketPush(deps.arrived) { state.load() } // tso-manual X4b (R-W-12 (1))
             TicketDetailScreen(state, ticketFrame(nav))
         }
     },
@@ -194,20 +214,27 @@ object TicketPush {
 }
 
 /**
- * tso-manual X4b (R-W-12 (1)): while a ticket screen is composed, every push of [TicketPush.refreshes] runs [refresh] once
- * (the screen's own read: kept copy, then online); leaving the screen stops listening. A failed read keeps what is shown.
+ * tso-manual X4b (R-W-12 (1)): while a ticket screen is composed, a push of [TicketPush.refreshes] runs [refresh] (the screen's
+ * own read: kept copy, then online); leaving the screen stops listening. A failed read keeps what is shown. Reads run only
+ * while the screen is at least STARTED (fix round, docs/04): a push while the app is in the background only marks a read as
+ * due, and pushes that arrive meanwhile, or during a read, are one read, done when the screen is visible again.
  */
 @Composable
 internal fun RefreshOnTicketPush(arrived: Flow<PushNotice> = PushNotices.arrived, refresh: suspend () -> Unit) {
     val latest by rememberUpdatedState(refresh)
-    LaunchedEffect(arrived) {
-        arrived.filter { TicketPush.refreshes(it) }.collect {
-            try {
-                latest()
-            } catch (e: CancellationException) {
-                throw e
-            } catch (_: Exception) {
-                // the state already shows its offline line; the next push or a pull tries again
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    LaunchedEffect(arrived, lifecycle) {
+        val due = Channel<Unit>(Channel.CONFLATED)
+        launch { arrived.filter { TicketPush.refreshes(it) }.collect { due.trySend(Unit) } }
+        lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            for (ignored in due) {
+                try {
+                    latest()
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (_: Exception) {
+                    // the state already shows its offline line; the next push or a pull tries again
+                }
             }
         }
     }
@@ -218,7 +245,7 @@ private fun ticketFrame(nav: TsoNav): TicketFrame = remember(nav) { { title, con
 
 /** Reads the photo limit from the bundle each time a ticket screen opens (a cheap local read), then draws it. */
 @Composable
-private fun WithTickets(deps: TicketsHostDeps, content: @Composable (TicketDeps) -> Unit) {
+private fun WithTickets(deps: TicketScreenPorts, content: @Composable (TicketDeps) -> Unit) {
     LaunchedEffect(deps) { runCatching { deps.refreshConfig() } }
     content(deps.deps)
 }
