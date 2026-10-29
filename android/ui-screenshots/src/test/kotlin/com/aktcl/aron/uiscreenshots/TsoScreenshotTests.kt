@@ -54,6 +54,15 @@ import com.aktcl.aron.feature.tso.TsoDashboardState
 import com.aktcl.aron.feature.tso.TsoDashboards
 import com.aktcl.aron.feature.tso.TsoFailure
 import com.aktcl.aron.feature.tso.TsoSettingsContent
+// tso-manual A1 step 3
+import com.aktcl.aron.feature.tso.notifications.TsoInboxContent
+import com.aktcl.aron.feature.tso.notifications.TsoInboxPage
+import com.aktcl.aron.feature.tso.notifications.TsoInboxes
+import com.aktcl.aron.feature.tso.targets.TargetAnswer
+import com.aktcl.aron.feature.tso.targets.TargetDetailsContent
+import com.aktcl.aron.feature.tso.targets.TargetStatusContent
+import com.aktcl.aron.feature.tso.targets.TargetTab
+import com.aktcl.aron.rules.Bands
 import com.aktcl.aron.feature.home.BundleStatus
 import com.aktcl.aron.feature.home.HomeUser
 import com.aktcl.aron.feature.tso.leave.LeaveListScreen
@@ -277,4 +286,60 @@ class TsoScreenshotTests {
     }
     @Test fun logout_dialog_en() = shot("tso_logout_dialog_en", AppLanguage.EN) { LogoutOverDrawer() }
     @Test @Config(qualifiers = "bn-w360dp-h800dp") fun logout_dialog_bn() = shot("tso_logout_dialog_bn", AppLanguage.BN) { LogoutOverDrawer() }
+
+    // ---- tso-manual A1 step 3: Target Status (39, 40), Target Details (41, 42), the bell inbox (no screenshot) -------------------
+    private val tgtStamp = "\"month\":\"2026-10\",\"as_of\":\"2026-10-25T09:35:00Z\",\"day\":\"2026-10-25\",\"tilldate_basis\":\"calendar_days\",\"last_updated_at\":null"
+    private fun tgtRow(level: String, id: Long, name: String, code: String, t: Long, a: Long, td: Long?) =
+        """{"product_level":"$level","product_id":$id,"name":"$name","unit":"stick","target_qty":"$t.000","achieved_qty":"$a.000","tilldate_target_qty":"0.000","remaining_qty":"0.000","category_code":"$code","target_qty_base":$t,"achieved_qty_base":$a,"tilldate_target_qty_base":${td ?: "null"},"remaining_qty_base":0,"remaining_tilldate_qty_base":null,"achievement_pct_bp":null,"tilldate_achievement_pct_bp":null}"""
+    private val tgtCategories = listOf(
+        tgtRow("category", 1, "Cigarette", "cigarette", 40999, 1030, 33064), tgtRow("category", 2, "Bidi", "bidi", 11000, 50, 8871),
+        tgtRow("category", 3, "Lighter", "lighter", 100, 85, 81), tgtRow("category", 4, "Match", "match", 170, 72, 137),
+    ).joinToString(",")
+    /** Screenshots 39 and 40: the territory Apsis and its zone Banani - Test, the s4.3 figures. */
+    private val tgtStatus = com.aktcl.aron.feature.tso.targets.TargetStatus.parse("""{$tgtStamp,"node":{"type":"territory","id":3,"name":"Apsis"},"elapsed_days":25,"period_days":31,"rows":[$tgtCategories],
+        "children":[{"node":{"type":"zone","id":9,"name":"Banani - Test"},"elapsed_days":25,"period_days":31,"rows":[$tgtCategories]}]}""")
+    /** Screenshots 41 and 42: the eight Cigarette items, Bidi, Aster and the match (T' at 25/31 per item). */
+    private val tgtDetails = com.aktcl.aron.feature.tso.targets.TargetStatus.parse("""{$tgtStamp,"node":{"type":"territory","id":3,"name":"Apsis"},"elapsed_days":25,"period_days":31,"rows":[""" + listOf(
+        tgtRow("variant", 101, "Maxim Regular", "cigarette", 1000, 350, 806), tgtRow("variant", 102, "Maxim Bolt", "cigarette", 1000, 330, 806),
+        tgtRow("variant", 103, "Maxim Double Burst", "cigarette", 10000, 20, 8065), tgtRow("variant", 104, "Marise Special Blend", "cigarette", 10000, 200, 8065),
+        tgtRow("variant", 105, "Black Diamond Double Filter", "cigarette", 5000, 30, 4032), tgtRow("variant", 106, "Black Diamond Advanced", "cigarette", 6000, 30, 4839),
+        tgtRow("variant", 107, "Sunmoon American blend", "cigarette", 2999, 40, 2419), tgtRow("variant", 108, "Supreme Signature", "cigarette", 5000, 30, 4032),
+        tgtRow("variant", 201, "Ananda Bidi 25", "bidi", 11000, 50, 8871), tgtRow("variant", 301, "Aster", "lighter", 100, 85, 81),
+        tgtRow("variant", 401, "Dhaka Safety Match", "match", 170, 72, 137),
+    ).joinToString(",") + "]}")
+    private val nav0 = object : TsoNav { override fun open(screen: TsoScreen, arg: String?) {}; override fun back() {}; override fun home() {} }
+    @Composable private fun TargetStatusShot(tab: TargetTab, load: CardLoad<TargetAnswer>? = CardLoad(tgtStatus)) =
+        TsoFrame(androidx.compose.ui.res.stringResource(com.aktcl.aron.feature.tso.R.string.tso_drawer_target_status), nav0, homeButton = TsoFab.of(TsoScreen.TARGET_STATUS)) {
+            TargetStatusContent(load, tab, Bands.DEFAULT, false, {}, {}, {})
+        }
+    @Composable private fun TargetDetailsShot(tab: TargetTab, filter: String?) =
+        TsoFrame("Apsis", nav0, homeButton = TsoFab.of(TsoScreen.TARGET_DETAILS)) {
+            TargetDetailsContent(CardLoad(tgtDetails), tab, Bands.DEFAULT, filter, false, {}, {}, {})
+        }
+    @Test fun target_monthly_en() = shot("tso_target_monthly_en", AppLanguage.EN) { TargetStatusShot(TargetTab.MONTHLY) }
+    @Test fun target_till_date_en() = shot("tso_target_till_date_en", AppLanguage.EN) { TargetStatusShot(TargetTab.TILL_DATE) }
+    @Test @Config(qualifiers = "bn-w360dp-h800dp") fun target_monthly_bn() = shot("tso_target_monthly_bn", AppLanguage.BN) { TargetStatusShot(TargetTab.MONTHLY) }
+    @Test fun target_sunlight_en() = shot("tso_target_sunlight_en", AppLanguage.EN, sunlight = true) { TargetStatusShot(TargetTab.TILL_DATE) }
+    @Test fun target_kept_en() = shot("tso_target_kept_en", AppLanguage.EN) { TargetStatusShot(TargetTab.MONTHLY, CardLoad(tgtStatus, kept = true, failure = TsoFailure.OFFLINE)) }
+    @Test fun target_offline_empty_en() = shot("tso_target_offline_empty_en", AppLanguage.EN) { TargetStatusShot(TargetTab.MONTHLY, CardLoad(null, failure = TsoFailure.OFFLINE)) }
+    @Test fun target_loading_en() = shot("tso_target_loading_en", AppLanguage.EN) { TargetStatusShot(TargetTab.MONTHLY, null) }
+    @Test @Config(qualifiers = "w360dp-h1200dp") fun target_details_cigarette_en() = shot("tso_target_details_cigarette_en", AppLanguage.EN) { TargetDetailsShot(TargetTab.MONTHLY, "cigarette") }
+    @Test fun target_details_lighter_till_en() = shot("tso_target_details_lighter_till_en", AppLanguage.EN) { TargetDetailsShot(TargetTab.TILL_DATE, "lighter") }
+    @Test @Config(qualifiers = "w360dp-h1600dp") fun target_details_till_en() = shot("tso_target_details_till_en", AppLanguage.EN) { TargetDetailsShot(TargetTab.TILL_DATE, null) }
+    @Test @Config(qualifiers = "bn-w360dp-h1600dp") fun target_details_bn() = shot("tso_target_details_bn", AppLanguage.BN) { TargetDetailsShot(TargetTab.MONTHLY, null) }
+
+    private val inboxPage = TsoInboxes.parse("""{"as_of":"2026-10-29T08:30:00Z","unread_count":2,"next_before_id":12,"items":[
+        {"id":31,"kind":"ticket_updated","ref_type":"support_ticket","ref_id":"6f1c0b9e-1111-4c4c-9a9a-000000000031","title_en":"Ticket INC100123 resolved","title_bn":"টিকিট INC100123 সমাধান হয়েছে","body_en":"Support resolved your ticket Printer not connecting.","body_bn":"সাপোর্ট আপনার টিকিট সমাধান করেছে।","created_at":"2026-10-29T08:10:00Z","business_date":"2026-10-29","read_at":null},
+        {"id":30,"kind":"leave_decided","ref_type":"leave_application","ref_id":"77","title_en":"Leave approved","title_bn":null,"body_en":"Your leave of 2026-11-02 to 2026-11-03 was approved.","body_bn":null,"created_at":"2026-10-28T11:00:00Z","business_date":"2026-10-28","read_at":null},
+        {"id":29,"kind":"final_submit_auto","ref_type":"zone_day","ref_id":"9:2026-10-27","title_en":"Final Submit done at midnight","title_bn":"মধ্যরাতে ফাইনাল সাবমিট হয়েছে","body_en":"Zone Banani - Test was final submitted automatically for 2026-10-27.","body_bn":"জোন বনানী - টেস্ট ২০২৬-১০-২৭ তারিখের জন্য স্বয়ংক্রিয়ভাবে ফাইনাল সাবমিট হয়েছে।","created_at":"2026-10-28T18:00:00Z","business_date":"2026-10-28","read_at":"2026-10-28T19:00:00Z"}]}""")!!
+    private val inboxNow = java.time.Instant.parse("2026-10-29T09:00:00Z").toEpochMilli()
+    @Composable private fun InboxShot(load: CardLoad<TsoInboxPage>?, pending: Boolean = false) =
+        TsoFrame(androidx.compose.ui.res.stringResource(com.aktcl.aron.feature.tso.R.string.tso_chrome_notifications), nav0, homeButton = TsoFab.of(TsoScreen.NOTIFICATIONS)) {
+            TsoInboxContent(load, emptyList(), inboxNow, false, pending, {}, {}, if (load?.value?.nextBeforeId != null) ({}) else null)
+        }
+    @Test fun inbox_en() = shot("tso_inbox_en", AppLanguage.EN) { InboxShot(CardLoad(inboxPage)) }
+    @Test @Config(qualifiers = "bn-w360dp-h800dp") fun inbox_bn() = shot("tso_inbox_bn", AppLanguage.BN) { InboxShot(CardLoad(inboxPage)) }
+    @Test fun inbox_offline_pending_en() = shot("tso_inbox_offline_pending_en", AppLanguage.EN) { InboxShot(CardLoad(inboxPage, kept = true, failure = TsoFailure.OFFLINE), pending = true) }
+    @Test fun inbox_empty_en() = shot("tso_inbox_empty_en", AppLanguage.EN) { InboxShot(CardLoad(inboxPage.copy(unreadCount = 0, items = emptyList(), nextBeforeId = null))) }
+    @Test fun inbox_sunlight_bn() = shot("tso_inbox_sunlight_bn", AppLanguage.BN, sunlight = true) { InboxShot(CardLoad(inboxPage)) }
 }
