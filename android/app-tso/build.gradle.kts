@@ -126,4 +126,5 @@ dependencies {
     testImplementation(libs.robolectric)
     testImplementation(libs.androidx.test.core)
     testImplementation(libs.androidx.test.ext.junit)
+    implementation(project(":android:feature-tickets")) // tso-manual A2: the Tickets screens (TicketsHost.kt, TicketApi.kt)
 }
