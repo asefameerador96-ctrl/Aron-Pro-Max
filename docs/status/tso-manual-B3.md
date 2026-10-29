@@ -3,11 +3,11 @@
 Lane B3 of `docs/requests/tso-manual-build-2026-10.md` (s5 B3). Branch `tso-man/B3`, worktree
 `.claude/worktrees/tso-B3`, base 95a35b7d (contract 1.10.0, V0130-V0140, F3 rules). No pull request. Written 2026-10-29.
 
-The lane ran in two steps. **Step 1**: day and Final Submit (FS-06, 07, 11, 13, 14 backend; CR-3; CR-5 server part;
-D-TSO-MAN-27, 28, 29, 31, 32). **Step 2**: the midnight AutoFinalSubmitJob (D-TSO-MAN-30), leave (LV-16, 17, 19, 21,
-22), feedback (FB-09, 11, 12 backend; DP-03, 04), My Call (SP-03, XA-01..03, MC-T-01), periphery (PER-08, 11, 17), the
-bundle's TSO code lists (with `ticket_issue_type` and `ticket_resolution_code`, on behalf of B1) and R-F-07. Both steps
-are done; see "Verify" and "Not done".
+The lane ran in two steps and a fix round. **Step 1**: day and Final Submit (FS-06, 07, 11, 13, 14 backend; CR-3; CR-5
+server part; D-TSO-MAN-27, 28, 29, 31, 32). **Step 2**: the midnight AutoFinalSubmitJob (D-TSO-MAN-30), leave (LV-17,
+19, 21, 22), feedback (FB-09, 11, 12 backend; DP-03, 04), My Call (SP-03, XA-01..03, MC-T-01), periphery (PER-08, 17),
+the bundle's TSO code lists (with `ticket_issue_type` and `ticket_resolution_code`, on behalf of B1) and R-F-07.
+**Fix round** (independent checker, 12 defects): see "Fix round"; LV-16 and PER-11 are under "Not done".
 
 ## Done (step 1)
 
@@ -15,10 +15,10 @@ are done; see "Verify" and "Not done".
 |---|---|---|
 | D-TSO-MAN-27 preview | `backend/sync/.../DayApi.kt` `previewIn` | every route carries `route_class`, `visit_kind`, `ff_role` and `upload_state` (uploaded = sales submitted and not voided; web_entry = a live `app.web_entry_route_day`; not_uploaded = due; not_due); a dummy BR or Institutional route without data is never due; `warn_route_ids` = the not_uploaded routes; `warnings` keep their 1.7.0 meaning over those routes (a Web Entry route no longer warns); the submit is never blocked |
 | D-TSO-MAN-28 (CR-3) | `DayApi.kt` `replay`, `checked` | `submit_seq` = reopened closes of the zone-day; a replay succeeds only while the matched close is live, else 409 `ERR_DAY_FINAL_SUBMIT_REOPENED` (context `submitted_at`, `reopened_at`); a job close (`submitted_by` NULL) replays as kind `auto` and is never matched to a caller |
-| D-TSO-MAN-29 reopen | `DayApi.kt` `reopen`, route `POST /v1/day/reopen`; `DayStates.reopen` | check order body (400) -> own replay by `client_uuid` -> role in `cfg.day.reopen_roles` (403) -> reach (403) -> window `cfg.day.reopen_window_days`, not after today (409 `ERR_REQUEST_STATE`) -> live close (409 `ERR_DAY_NOT_FINAL_SUBMITTED`); locks: reopen uuid, zone-day lock, route-days in route_id order; one transaction: the close carries the reopen, route-days lose `final_submitted_at` and go back to their own state, dirty keys, audit row (entity `zone_day`), event `zone_day.reopened`; the same uuid by another user or for another zone-day is 409 `ERR_CONFLICT` (never a 500 on the unique index) |
-| D-TSO-MAN-31 day lock | `IngestService.kt` step 9b `dayLock`, `DAY_LOCKED_TYPES`, `DAY_LOCKED_ROLES`, `Ctx.latePolicy` | for SR and AMO uploaders, figure records (visit, visit_close, visit_skip, sale_abort, memo, memo_line, memo_discount, qc_line, memo_void, due_collection, stock_movement, redemption, redemption_line) of a closed route-day: policy quarantine (default) holds a row captured before the lock `after_final_submit` and refuses one captured at or after it `day_final_submitted` (final); `reject` refuses both; `accept_and_flag` stores and counts as before; a reviewer's accept skips the check and the row is counted late; a child of a parent refused `day_final_submitted` is refused with it (never parked); the route-day row is created when missing and held FOR NO KEY UPDATE before it is read (KD-1 order), so a close never splits a family |
+| D-TSO-MAN-29 reopen | `DayApi.kt` `reopen`, route `POST /v1/day/reopen`; `DayStates.reopen` | check order body (400) -> own replay by `client_uuid` -> role in `cfg.day.reopen_roles` resolved at the zone's wing, then global (fix round; 403) -> reach (403) -> window `cfg.day.reopen_window_days`, not after today (409 `ERR_REQUEST_STATE`) -> live close (409 `ERR_DAY_NOT_FINAL_SUBMITTED`); locks: reopen uuid, zone-day lock, route-days in route_id order, then the close row (fix round: route-days before the close row, the order ingest and the quarantine accept take them); one transaction: the close carries the reopen, route-days lose `final_submitted_at` and go back to their own state, dirty keys, audit row (entity `zone_day`), event `zone_day.reopened`; the same uuid by another user or for another zone-day is 409 `ERR_CONFLICT` (never a 500 on the unique index) |
+| D-TSO-MAN-31 day lock | `IngestService.kt` step 9b `dayLockVerdict` (fix round; was `dayLock`), `DAY_LOCKED_TYPES`, `DAY_LOCKED_ROLES`, `Ctx.latePolicy` | for SR and AMO uploaders, figure records (visit, visit_close, visit_skip, sale_abort, memo, memo_line, memo_discount, qc_line, memo_void, due_collection, stock_movement, redemption, redemption_line) of a closed route-day: policy quarantine (default) holds a row `after_final_submit` when it was captured before the lock, when its capture time is untrusted (`clock_offset_ms` null) or when it belongs to a visit family opened before the midnight job's close (D-B3-25), and refuses it `day_final_submitted` (final) otherwise; `reject` refuses all; `accept_and_flag` stores and counts as before; an ADMIN accept of an `after_final_submit` hold stores it counted late, an accept of any other hold still refuses a row captured at or after the lock (D-B3-05 revised); a child captured at or after the lock is refused before it can inherit a held parent's code; a child of a parent refused `day_final_submitted` is refused with it (never parked); the route-day row is created when missing and held FOR NO KEY UPDATE before it is read (KD-1 order), so a close never splits a family |
 | late counters | `DayStates.afterStored` | only the figure types count late; `final_submit.late_rows` counts only while the route-day is closed |
-| push after commit | `DayApi.kt` `finalSubmit`, `closeLocked`; `Wiring.kt` (one line) | after the commit, `sync_nudge` reason `day_final_submitted` to every active SR and AMO user with a route-day (assigned or acting) in the zone; never on a replay |
+| push after commit | `DayApi.kt` `finalSubmit`, `closeLocked`; `Wiring.kt` (one line) | after the commit, `sync_nudge` reason `day_final_submitted` to every active SR and AMO user with a route-day (assigned or acting) in the zone and (fix round) every active AMO whose scope covers the zone on the date (zone, house, territory, division, wing or national node: D-TSO-MAN-12's rule); never on a replay |
 | event | `DayApi.kt` `emitZoneDay` | `zone_day.final_submitted` v1 in the close's transaction (zone_id, business_date, final_submit_uuid, via, submitted_by, submit_seq, route_count, not_uploaded_route_count) |
 | job-ready close | `DayApi.kt` `closeLocked`, `liveClose`, `zoneDayLock` | the locked part of a close is one internal function (by = null, via = job for step 2's AutoFinalSubmitJob); `route_states` now also carry `upload_state` |
 | D-TSO-MAN-32 | test only | the cascade reads filter-options (B2's endpoint); FinalSubmitCascadeReadTest proves the chain and that every offered zone previews |
@@ -46,9 +46,9 @@ dedupe_key) DO NOTHING) as merge 1503bfb1.
 
 | item | where | what |
 |---|---|---|
-| D-TSO-MAN-30 auto Final Submit | `backend/sync/.../AutoFinalSubmitJob.kt` (new); `Main.kt` (one worker line) | at start a pass over the reopen window (`cfg.day.reopen_window_days`, default 3: the dates today-3..today-1), then one pass at every 00:00:05 Asia/Dhaka; closes every never-submitted service zone-day (a planned route-day of a normal SR route not removed by an approved day exception, the national figure's rule) through `DayService.closeLocked` under the zone-day advisory lock: `via = 'job'`, `submitted_by` NULL, client uuid `derivedV4("aron.final-submit.job:<zone>:<date>")` (replays as kind `auto`), route-days closed, `zone_day.final_submitted` in the same transaction, no `audit_log` row (R-F-07); switch `cfg.day.auto_final_submit_enabled` resolved at the zone's wing, then global; inbox rows `final_submit_auto` to every active TSO whose reach covers the zone on that date (dedupe key `final_submit_auto:<zone>:<date>:<recipient>`, R-F-04), after the commit push `notification` to those TSOs and `day_final_submitted` to the zone's SR and AMO users; each zone in its own transaction, a failure logs and the pass goes on |
+| D-TSO-MAN-30 auto Final Submit | `backend/sync/.../AutoFinalSubmitJob.kt` (new); `Main.kt` (one worker line) | at start a pass over the reopen window (`cfg.day.reopen_window_days`, default 3: the dates today-3..today-1), then one pass at every 00:00:05 Asia/Dhaka; closes every service zone-day without a live submit (a planned route-day of a normal SR route not removed by an approved day exception, the national figure's rule; fix round: a reopened zone-day is closed again, D-B3-11 revised) through `DayService.closeLocked` under the zone-day advisory lock: `via = 'job'`, `submitted_by` NULL, client uuid `derivedV4("aron.final-submit.job:<zone>:<date>:<submit_seq>")` (fix round: the cycle is part of it; replays as kind `auto`), route-days closed, `zone_day.final_submitted` in the same transaction, no `audit_log` row (R-F-07); switch `cfg.day.auto_final_submit_enabled` resolved at the zone's wing, then global; inbox rows `final_submit_auto` to every active TSO whose reach covers the zone on that date (dedupe key `final_submit_auto:<zone>:<date>:<submit_seq>:<recipient>`, R-F-04), after the commit push `notification` to those TSOs and `day_final_submitted` to the zone's SR and AMO users (the close's recipients, AMO scope coverage included); each zone in its own transaction, a failure logs and the pass goes on |
 | DayService | `DayApi.kt` | `ingest` nullable (only online Sales Submit needs it), so the job builds a DayService without an IngestService |
-| LV-16, 17 leave rules, both paths | `backend/masterdata/.../LeaveApplicationHandler.kt` (new: `LeaveRules`, `LeaveApplicationHandler`, `LeaveDecided`, `CaptureRefusal`, `HandleConfig`); `LeaveApi.kt` POST; `Wiring.kt` (handler line) | order: applicant TSO (403 / `scope_out_of_reach`), leave type valid on the first day (400 `unknown_code` / `schema_invalid` final), first day within `cfg.leave.allow_past_days` (31) back and `cfg.leave.allow_ahead_days` (365) ahead of the day applied (400 `out_of_window` / `business_date_out_of_window` held), overlap only with `cfg.leave.block_overlap` (default false; 409 `overlap` / `content_duplicate` held); to_date = from + days - 1 calendar days; replay first on both paths; the ack's code and `message_key` `sync.outcome.<code>` carry the reason the phone shows ("Not accepted: <reason>") |
+| LV-17 leave rules, both paths (LV-16's ack reason: see "Not done") | `backend/masterdata/.../LeaveApplicationHandler.kt` (new: `LeaveRules`, `LeaveApplicationHandler`, `LeaveDecided`, `CaptureRefusal`, `HandleConfig`); `LeaveApi.kt` POST; `Wiring.kt` (handler line) | order: applicant TSO (403 / `scope_out_of_reach`), leave type valid on the first day (400 `unknown_code` / `schema_invalid` final), first day within `cfg.leave.allow_past_days` (31) back and `cfg.leave.allow_ahead_days` (365) ahead of the day applied (400 `out_of_window` / `business_date_out_of_window` held), overlap only with `cfg.leave.block_overlap` (default false; 409 `overlap` / `content_duplicate` held); to_date = from + days - 1 calendar days; replay first on both paths; the ack's code and `message_key` `sync.outcome.<code>` are the generic codes (their reason texts do not fit leave: LV-16 stays open) |
 | LV-19 (backend) | `LeaveApi.kt` | `LeaveApplication.applicant_username`, `applicant_name`, `territory_name` (current territory scope, else the home zone's territory) on every read |
 | LV-22, D-TSO-MAN-26/38 leave decided | `LeaveApi.kt` decide; `LeaveDecided` | in the decision's transaction: event `leave.decided` v1 (leave_uuid, user_id, status, decided_by, leave_type_code, from_date, to_date, days) and the applicant's inbox row `leave_decided` (bn and en texts, Bengali digits in Bangla, dedupe `leave_decided:<uuid>`); push `notification` after the commit; a replayed decision writes nothing; `LeaveDeps.nudger` (Wiring passes `push`) |
 | FB-11, R-F-06 feedback precheck | `backend/masterdata/.../FeedbackChecks.kt` (new: `FeedbackRules`, `FeedbackChecks`); `FeedbackApi.kt` POST; `Wiring.kt` | author TSO (403 / `scope_out_of_reach`), category a `feedback_category` code valid on the business date (400 `unknown_code` / `schema_invalid`), an image only while `cfg.feedback.max_images` >= 1 (400 `not_allowed` / `schema_invalid`); replay first |
@@ -56,6 +56,8 @@ dedupe_key) DO NOTHING) as merge 1503bfb1.
 | SP-03 (backend) | `backend/sync/.../VisitPlanRecords.kt` (new); `VisitPlansApi.kt`; `Wiring.kt` | sync: uploader TSO (else `scope_out_of_reach`), `visit_plan.plan_date` >= the record's business date (else `business_date_out_of_window`), a `visit_plan_outlet` outlet on the envelope route or, without one, the stored plan's route (else `scope_out_of_reach`); the generic writer already stores the envelope route on `visit_plan.route_id` (V0137); POST stores `route_id`; `loadPlans` uses `coalesce(p.route_id, min outlet route)` |
 | XA-01 (backend) | `BundleService.kt` | bundle `TaskDto.route_id` = the task's route, else its outlet's (as GET /v1/tasks) |
 | bundle code lists | `BundleService.kt` | every contract code list (1.10.0's `ticket_issue_type` and `ticket_resolution_code` included); an item whose `attrs.roles` names roles reaches those roles only (V0027's rule; "active task_type items for TSO") |
+| bundle rubrics (fix round, F2's note) | `BundleService.kt` `newestRubricPerKind` | one active rubric per kind reaches the AMO and TSO phones: the newest (highest id), so an admin's own Visit Query beside the V0139 seed replaces it; `BundleContent.rubrics` (not B3's) is unchanged |
+| media_meta sha256 (fix round, found by the fuzz extension) | `IngestService.kt` before `RecordWriter.write` | a `media_meta`'s `sha256` (64 hex characters, contract Sha256Hex) reaches `app.media.sha256` (bytea, CHECK 32 bytes) in bytea's hex input form; before, `jsonb_populate_record` read the text as escape-format bytea (64 bytes), the CHECK failed (SQLSTATE 23514) and ingest refused every photo's metadata `schema_invalid`, final (SR, AMO and TSO alike; seen in fix-round run 1) |
 | XA-02 task planner | `ReportHandlersA.kt` | + `label` (task_type label), `assigned_by` (creator username), `route` (route name of the task's route, else its outlet's), `comment` (description), bn labels, W1's column order |
 | XA-03 `tso-visit-log` | `ReportHandlersB.kt` (new `TsoVisitLogReport`), registry line in `ReportHandlersA.kt` | one row per planned outlet whose plan date is in the period, scope by the plan's route: plan_date, tso, zone, route, outlet_code, outlet_name, status (completed/pending), completed_at (first Visit Query), `sr_visits_regularly`, `sr_prints_memo` (answers by rubric key), delegate_task, task (title of the TSO's task for that outlet on the Visit Query's day when delegated), task_status; W1's keys and labels |
 | PER-08 nearby margin | `NearbyApi.kt` `bbox` | box half side `r / (EARTH_RADIUS_M * pi / 180) * 1.01`, east-west divided by cos(lat); the haversine decides |
@@ -67,6 +69,23 @@ phones), `AutoFinalSubmitJobTest` (5, run as the worker login `SET ROLE worker_r
 `FeedbackIngestTest` (5), `VisitPlanRecordsTest` (4), `TsoMyCallEndToEndTest` (1), `TsoPeripheryTest` (1),
 `TsoSyncFaultFuzzTest` (3), `NearbyOutletsTest` (+1: 0.9995 r north and east for 50, 100, 300).
 
+## Fix round (2026-10-29, independent checker: 12 defects)
+
+| # | sev | defect | done |
+|---|---|---|---|
+| 1 | medium | the lock refused a row on the raw `captured_at` although an untrusted clock (`clock_offset_ms` null) proves nothing | fixed: such a row is held `after_final_submit` (D-B3-02); LateAfterFinalTest 5.1 |
+| 2 | medium | the close's push missed an AMO whose scope covers the zone but who holds no route-day there | fixed: AMO scope coverage added to the recipients (D-B3-09); AutoFinalSubmitJobTest 2 (AMO whose house covers Z-AFS, its own route in another zone of the house: 3 pushes; an AMO of another territory: none) |
+| 3 | medium | the job skipped a reopened zone-day (D-TSO-MAN-30 says "without a live submit"); a second cycle's job uuid would collide | fixed to the contract text, lead's written ruling still asked: predicate `reopened_at IS NULL`, uuid and inbox dedupe key carry `submit_seq` (D-B3-11 revised); AutoFinalSubmitJobTest 1 to 3 (Z-AFS-RE closed again as cycle 1, own uuid, submit_seq 1, its own inbox row) |
+| 4 | low | lock-order inversion reopen vs accept (close row before route-days) | fixed: reopen locks the route-days before the close row (D-B3-08); DayCloseRaceTest `aReopenRacingAnAcceptOfAHeldRowNeverDeadlocks` (deterministic: the accept's two steps on a second connection around a routed reopen) |
+| 5 | low | a child captured after the lock rode its held parent's code; a post-lock row held for another code was stored on that accept | fixed: lock checked before a parent's hold is copied; a non-`after_final_submit` accept still refuses a post-lock row (D-B3-05 revised); LateAfterFinalTest 5.2 and 5.3 |
+| 6 | low | LV-16's reason texts do not fit leave | status corrected: LV-16 under "Not done", ask to F1 / lead kept |
+| 7 | low | CheckerBackendAdminTest fixed leave dates expire with the 31-day window | fixed: dates relative to today (plan dates too), `// wall-clock-ok` |
+| 8 | low | a call straddling the midnight close was refused (lost) | rule added and raised: held when the job closed and the family's visit was captured before the lock (D-B3-25, ask to the lead); LateAfterFinalTest 6 |
+| 9 | low | the TSO fuzz never sent `media_meta` | fixed: `media_meta` (purpose feedback, ref the feedback) in the generated day, TYPES, the oracle tables (A1, I, J and the rest) and the parent fields; it exposed D-B3-26 (every `media_meta` refused `schema_invalid`, SQLSTATE 23514), fixed in IngestService |
+| 10 | low | two in-place Wiring.kt edits | kept; approval asked with merge evidence (Deviations) |
+| 11 | low | two active rubrics of a kind reach the phone | fixed in BundleService (D-B3-24 revised); TsoMyCallEndToEndTest step 7 |
+| 12 | low | PER-11 untraceable; `cfg.day.reopen_roles` wing value ignored | PER-11 under "Not done" (ask); reopen roles resolved at the zone's wing (D-B3-08); DayApiTest reopen case (wing value SUPERADMIN only: ADMIN 403, SUPERADMIN 200) |
+
 ## Decisions (D-B3-NN; the lead may move them to DECISIONS.md)
 
 - **D-B3-01 Which rows the lock covers.** The figure types above, uploaded by SR or AMO, with an envelope route_id.
@@ -75,17 +94,25 @@ phones), `AutoFinalSubmitJobTest` (5, run as the worker login `SET ROLE worker_r
   is never refused. Reason: D-TSO-MAN-31 names "memo, memo edit, void, return, collection" and "state only, no
   figures"; the lock exists for the field apps (the push goes to SR and AMO).
 - **D-B3-02 The lock time** is the route-day's `final_submitted_at` (set to the close's `submitted_at`; a reopen clears
-  it), compared with the envelope `captured_at` (the phone's trusted time; a capture more than 600 s in the future is
-  already quarantined out of window).
+  it), compared with the envelope `captured_at` (a capture more than 600 s in the future is already quarantined out of
+  window). Fix round: `captured_at` is the phone's trusted time only when `clock_offset_ms` is a number; with it null or
+  absent (a phone rebooted without a time anchor stamps the wall clock, docs/24 s3 item 2) "captured at or after the
+  lock" is unproven, so such a row is held `after_final_submit` for the admin, never refused. Ingest does not re-derive
+  the instant from `time_anchors` (none of IngestService does today); the hold is the safe side of D-TSO-MAN-31's "No
+  offline sale is lost".
 - **D-B3-03 Late counters count figure rows only**, under every policy (before: every stored record with a route-day,
   including a day_submit or a reprint after the close). `final_submit.late_rows` counts only while the route-day is
   closed (an accept after a reopen is an ordinary row).
 - **D-B3-04 Policies.** `quarantine` (default) as D-TSO-MAN-31; `reject` refuses every late figure row
   `day_final_submitted`; `accept_and_flag` keeps the pre-1.10 behaviour (stored and counted late). An unreadable value is
   `quarantine`.
-- **D-B3-05 A reviewer's accept is the admin's decision** on the late row: `acceptQuarantined` (any quarantine code)
-  skips the lock, so an admin can still accept, for example, a device-gate hold of a sale after the zone closed; the
-  row is counted late.
+- **D-B3-05 A reviewer's accept is the admin's decision** on the late row (revised in the fix round): an accept of an
+  `after_final_submit` hold skips the lock and the row is counted late; an accept of any other hold (device gate,
+  scope, window) still meets the lock: a row captured before it (or with untrusted time) is stored and counted late, a
+  row captured at or after it is refused `day_final_submitted`, so the accept answers 409 `ERR_REQUEST_STATE` naming it
+  and the item stays open for a discard. A child released with its parent is judged the same way (one captured at or
+  after the lock stays open with its own outcome). A child captured at or after the lock never inherits a held
+  parent's code in the first place: the lock is checked before the parent's hold is copied.
 - **D-B3-06 Child of a refused parent.** A child whose parent was refused `day_final_submitted` is refused with the
   same code (as memo_no_invalid does), never parked `parent_missing`.
 - **D-B3-07 upload_state.** uploaded = `sales_submitted_at IS NOT NULL AND NOT submit_voided` (a route still at
@@ -96,21 +123,31 @@ phones), `AutoFinalSubmitJobTest` (5, run as the worker login `SET ROLE worker_r
 - **D-B3-08 Reopen details.** Audit entity `zone_day`, entity id `<zone_id>:<business_date>`, action `reopen`, before =
   the live close (uuid, submitted_at, via, submitted_by, late_rows), after = reopened_at, reopen_uuid, route_day_count;
   via `web` (`device` from a phone token). The window refusal is 409 `ERR_REQUEST_STATE` with
-  `context.reopen_window_days`; a date after today is refused the same way. `cfg.day.reopen_roles` is read at global
-  scope (the wing scope of the registry is not resolved here). No push on reopen (D-TSO-MAN-31 names the close only; the
-  phones see the open day on their next pull).
+  `context.reopen_window_days`; a date after today is refused the same way. `cfg.day.reopen_roles` is resolved at the
+  zone's wing, then global (fix round; V0006 allows global and wing; `ScopedConfig`, as the job's switch). No push on
+  reopen (D-TSO-MAN-31 names the close only; the phones see the open day on their next pull). Lock order (fix round):
+  zone-day advisory lock, then the zone's route-days in route_id order, then the close row FOR UPDATE; ingest and the
+  quarantine accept take a route-day and then update the close row's `late_rows`, so the old order (close row first)
+  could deadlock with them (40P01, one admin action failing with a 5xx).
 - **D-B3-10 Paper backfill after a close.** A paper backfill keys records as the SR (role SR), so the lock applies: a
   backfilled memo of a closed zone-day is held `after_final_submit`, and because a backfill is all or nothing nothing
   is written and the web answer names the hold. Reopen the zone-day first (manual s8: "no memo can be edited after
   Final Submit").
 - **D-B3-09 Push recipients**: active SR and AMO users who are the assigned or acting user of a route-day of the zone
-  on the date (after the close created the missing route-days); reason `day_final_submitted`, no business data.
+  on the date (after the close created the missing route-days), and (fix round) every active AMO whose `user_scope`
+  covers the zone on the date (zone, house, territory, division, wing or national node, `valid_to` exclusive): an AMO
+  sells on the outlet's SR route (AmoSaleKit), so it captures on the zone's closed route-days without a route-day of
+  its own there (D-TSO-MAN-12's definition of the zone's AMOs); reason `day_final_submitted`, no business data.
 
-- **D-B3-11 The job never re-closes a reopened zone-day.** It closes only zone-days with no `final_submit` row at all.
-  D-TSO-MAN-30 says "without a live submit", but a reopen is an audited ADMIN decision to let late rows in; a job that
-  re-closed it would undo that decision at a moment set by the worker's passes. A reopened zone-day is closed again by
-  the TSO's or a delegate's Final Submit. If the owner wants the job to re-close it, it is one predicate in
-  `AutoFinalSubmitJob.openServiceZones` (ask to the lead below).
+- **D-B3-11 The job re-closes a reopened zone-day (revised in the fix round).** D-TSO-MAN-30 (binding) covers every
+  service zone "without a live submit"; the first version skipped any zone-day with a `final_submit` row (a reopened
+  one stayed open until a person closed it), which was an unratified deviation. Now the predicate is `reopened_at IS
+  NULL`: the next pass inside the reopen window (the midnight one, or a worker restart's catch-up) closes a reopened
+  zone-day again, as cycle `submit_seq` (the reopened closes): its client uuid is
+  `aron.final-submit.job:<zone>:<date>:<submit_seq>` (no collision with the first close's unique uuid) and its inbox
+  dedupe key names the cycle, so the TSOs are told again. Rows held before the re-close stay held; rows captured
+  between the reopen and the re-close are ordinary. If the lead prefers the earlier reading, it is the one predicate in
+  `openServiceZones` and `closeZone` (ask below).
 - **D-B3-12 Service zone** = a zone with a planned route-day of a normal SR route (`kind sr`, `route_class normal`) on
   the date that no approved, unvoided day exception removes: the rule of the national final-submit figure
   (`DashboardSummaries.autoSubmit`'s rule, on app tables). A worker down all day plans no route-day, so that zone-day is
@@ -120,7 +157,8 @@ phones), `AutoFinalSubmitJobTest` (5, run as the worker login `SET ROLE worker_r
   next pass as well as by a restart. `submitted_at` is the job's clock when it closes (truthful; a catch-up close days
   later carries that day). Each zone has its own transaction; a failure is logged and the pass goes on.
 - **D-B3-14 Job notices.** Recipients = active TSO users whose reach on the zone-day's date covers the zone. Texts en/bn
-  with the zone name and the date (Bengali digits in Bangla); dedupe key `final_submit_auto:<zone>:<date>:<recipient>`.
+  with the zone name and the date (Bengali digits in Bangla); dedupe key
+  `final_submit_auto:<zone>:<date>:<submit_seq>:<recipient>` (fix round: the cycle, see D-B3-11).
   Pushes go after the commit and only for new inbox rows (a repeat pass pushes nothing).
 - **D-B3-15 Leave refusal codes** (no leave code exists in the 1.10.0 catalogue): unknown type `schema_invalid` (final),
   first day outside the window `business_date_out_of_window` (held for review), overlap with `cfg.leave.block_overlap`
@@ -156,9 +194,25 @@ phones), `AutoFinalSubmitJobTest` (5, run as the worker login `SET ROLE worker_r
 - **D-B3-23 `leave.decided`** is written by the decision (aggregate `leave_application`, id the leave uuid,
   business_date the decision's Dhaka date, payload as docs/data-events.md v1). `LeaveApplication.territory_name` = the
   applicant's current territory scope, else the home zone's territory.
-- **D-B3-24 Rubrics in the bundle (F2's note).** Not changed: `BundleContent.rubrics` (not a B3 file) sends every active
-  rubric; with the V0139 seed plus an admin-created one there can be two active `retailer_questionnaire` rubrics. The
-  admin flow or the owner of BundleContent should keep one active per kind (ask below).
+- **D-B3-24 Rubrics in the bundle (F2's note; revised in the fix round).** `BundleContent.rubrics` (not a B3 file) still
+  returns every active rubric; `BundleService` (B3's) keeps the newest active rubric per kind (highest rubric id), so
+  the V0139 seed plus an admin-created `retailer_questionnaire` reach the phone as one, the admin's.
+  TsoMyCallEndToEndTest step 7 pins it for the TSO and AMO bundles.
+- **D-B3-25 A call that straddles the midnight close is held, not refused (fix round).** docs/17 fixes a family's
+  business date at visit open, so a call opened at 23:58 and saved at 00:01 is a sale of the closed day captured after
+  the job's 00:00:05 close; D-TSO-MAN-31 as written would refuse it (final) and lose it, against constraint 2. Rule:
+  when the live close is the job's (`via = 'job'`) and the record belongs to a visit family (family_uuid = the visit's
+  client_uuid) whose visit, stored or held, was captured before the lock, the record is held `after_final_submit` for
+  the admin. A whole call captured after the close, a void or a collection (their own families) and anything after a
+  TSO's or delegate's close keep the refusal. For the lead to ratify or to replace by an accepted loss in s7.2 (ask).
+- **D-B3-26 media_meta sha256 (fix round).** Found when the TSO fuzz gained `media_meta`: the record's `sha256` is hex
+  text and `app.media.sha256` is bytea with `CHECK (length(sha256) = 32)`; the generic writer's
+  `jsonb_populate_record` reads plain text as escape-format bytea (64 bytes), so the insert failed the CHECK and ingest
+  refused the record `schema_invalid` (final; `processInSavepoint` maps SQLSTATE class 23 to it) for every photo of
+  every app. Seen in fix-round run 1: all three TsoSyncFaultFuzzTest cases failed on `media_meta ... schema_invalid`,
+  the log says `sqlstate=23514`. IngestService (B3's) hands the
+  writer `\x<hex>` for this one member; RecordWriter (no lane's file in this build) is unchanged. The lead may move
+  the conversion into RecordWriter's special cases.
 
 ## Deviations (files outside the lane's Owns list)
 
@@ -178,7 +232,16 @@ phones), `AutoFinalSubmitJobTest` (5, run as the worker login `SET ROLE worker_r
 
 - Step 2: `Wiring.kt` line `leaveRoutes(LeaveDeps(...))` gains `nudger = push` in place (marked `// tso-manual B3`):
   LeaveDeps is built on that line, so no appended line could carry it (as step 1's dayRoutes line). The three handler
-  lines are appends to `recordHandlers`.
+  lines are appends to `recordHandlers`. **Both in-place edits (dayRoutes, leaveRoutes) still need the lead's
+  approval** (checker, fix round). Kept because an appended line cannot change how the existing route group is built
+  (a second registration of the same routes, or a process-wide nudger set after construction, would be worse: the
+  latter crosses test wirings). Merge risk checked: `git diff 95a35b7d tso-man/B1` and `tso-man/B2` on Wiring.kt add
+  only their own appended lines (B1: two imports, one handler, `inboxRoutes`, `supportTicketRoutes`; B2: one
+  `TargetAchievementDeps` line) and touch neither of these two lines.
+- Fix round, `backend/masterdata/src/test/.../CheckerBackendAdminTest.kt` (already edited in step 2): the fixed leave
+  first days (2027-08-01/03, 2027-09-01, 2027-10-01) and plan dates (2027-05-05, 2027-10-02) are now today + 30, 32,
+  60, 90 and today + 20, 91 (`ahead(days)`, `// wall-clock-ok`); with `cfg.leave.allow_past_days` 31 the leave dates
+  would have failed from 2027-09-02, and a past plan date is refused (pre-existing rule) from 2027-05-06.
 - Step 2: `backend/analytics/src/test/.../SupportReportAccessTest.kt`: `assertEquals(32, ...)` -> 33 (one line, marked):
   the registry gains `tso-visit-log`, which the lane must add (s5 B3 appends "report registry").
 - Step 2, masterdata tests that encoded the pre-D-TSO-MAN-33 leave rules (each change marked `tso-manual B3`):
@@ -199,22 +262,40 @@ phones), `AutoFinalSubmitJobTest` (5, run as the worker login `SET ROLE worker_r
   (step 2) `leave.decided` to `live` (their producers ship in B3: DayService, AutoFinalSubmitJob, LeaveDecided);
   DataEventsTest's planned list loses them. Also the V0099 comment of `dw.agg_daily_zone.auto_submitted` ("app.final_submit
   is not written"): the job now writes it (F2's own note).
-- **F1 / lead (1.10.x):** leave refusals ride on generic codes (D-B3-15), so the phone's "Not accepted: <reason>" reads
-  "The record is malformed; please contact support." for an unknown leave type and "The same sale arrived twice; held
-  for review." for a blocked overlap. Either add `leave_invalid` / `leave_overlap` (reason texts bn/en) or make the
-  `content_duplicate` text neutral ("The same entry arrived twice"). `ReasonTexts.kt` is not B3's file. Also D-F1-01 ask
-  5: `LeaveApplication.applicant_*`, `Feedback.business_date/captured_at/username/zone_id`,
-  `TeamLocation.mock_fixes_today` are now always served and can become required.
-- **Lead (D-B3-11):** confirm that the midnight job leaves a reopened zone-day open (closed again by a person); the other
-  reading of "without a live submit" is one predicate in `AutoFinalSubmitJob.openServiceZones`.
+- **F1 / lead (1.10.x), blocks LV-16:** leave refusals ride on generic codes (D-B3-15), so the phone's "Not accepted:
+  <reason>" reads "The record is malformed; please contact support." for an unknown leave type, "The same sale arrived
+  twice; held for review." for a blocked overlap and "Route or outlet is outside your area" for a non-TSO applicant (the
+  bn texts are as off-topic). Rule one of: add `leave_invalid` / `leave_overlap` / `leave_not_allowed` (reason texts
+  bn/en) or make the generic texts neutral. `ReasonTexts.kt` is not B3's file. Also D-F1-01 ask 5:
+  `LeaveApplication.applicant_*`, `Feedback.business_date/captured_at/username/zone_id`, `TeamLocation.mock_fixes_today`
+  are now always served and can become required.
+- **Lead (D-B3-11, before the merge):** the job now follows D-TSO-MAN-30's text (a reopened zone-day has no live submit
+  and is closed again by the next pass inside the window, cycle uuid `...:<submit_seq>`). Confirm in writing, or rule
+  for the earlier reading (a reopened zone-day waits for a person), which is one predicate in
+  `AutoFinalSubmitJob.openServiceZones` and `closeZone`.
+- **Lead (D-B3-25, before the merge):** ratify the midnight-straddle hold (a visit family opened before the job's close
+  is held, not refused), or record the loss as accepted in s7.2 and the rule goes.
+- **Lead (Wiring.kt, before the merge):** approve the two in-place edits (dayRoutes and leaveRoutes pass `nudger =
+  push`); evidence under Deviations that B1 and B2 do not touch those lines.
+- **Lead (PER-11):** the build contract names PER-11 only in s5 B3's item list; no text in the repository says what it
+  is (docs, status files and the other lanes' item lists searched). Say what it is, or drop it from B3.
+- **RecordWriter owner / lead (D-B3-26):** `media_meta` was never storable through sync (sha256 hex into a 32-byte
+  bytea column); fixed in IngestService for now. Move the conversion into RecordWriter if preferred, and check the
+  devices on the test account: every photo's metadata synced so far was refused `schema_invalid` (final), so
+  the phones dropped it; `app.media` rows are missing for those photos and need a re-send or a backfill.
+- **Lead, cfg.day.reopen_roles:** now read per wing (D-B3-08); no change asked, only noted for the portal's config page.
 - **masterdata owner (LeaveTest):** `LeaveTest` posts fixed dates 2027-03-01 .. 2027-06-24 with the system clock; with
   `cfg.leave.allow_past_days` 31 (D-TSO-MAN-33) they start failing from 2027-04 (`out_of_window`). Make them relative to
-  today. Not edited here (not a B3 file).
-- **BundleContent owner / admin rubric flow (D-B3-24):** keep one active rubric per kind (V0139 seed plus an
-  admin-created `retailer_questionnaire` would both reach the phone).
+  today. Not edited here (not a B3 file). (CheckerBackendAdminTest, which B3 had already edited, is fixed here.)
+- **Admin rubric flow (optional):** the bundle now sends the newest active rubric per kind (D-B3-24); the admin page may
+  still show two active ones of a kind. Deactivating the older one on activation would make the page match the phone.
 - **A3:** leave and plan refusals arrive as the codes of D-B3-15 and D-B3-18 (message_key `sync.outcome.<code>`);
   `TaskDto.route_id` is now filled in the SR bundle; code items with `attrs.roles` reach their roles only; leave decided
-  and auto Final Submit inbox rows come with push reason `notification` (B1's Inbox).
+  and auto Final Submit inbox rows come with push reason `notification` (B1's Inbox). Fix round: an AMO phone now gets
+  `day_final_submitted` for every zone its scope covers (not only zones where it holds a route-day); AMO sales carry the
+  outlet's SR route, so the AMO lock should apply to the closed zone's SR route-days. The server holds a row with an
+  untrusted capture time (`clock_offset_ms` null) instead of refusing it, and holds a call that straddles the midnight
+  close (D-B3-25): the phone shows those as held, not refused.
 - **W1:** `tso-visit-log` and `task-planner` serve the column keys of W1's mock (`label_bn` included); `Feedback.username`
   and `zone_id`, `LeaveApplication.applicant_username`, `applicant_name`, `territory_name` are served.
 - **B2:** the job now writes `app.final_submit` rows (`via = 'job'`, `submitted_by` NULL), so the unified final-submit %
@@ -290,6 +371,13 @@ phones), `AutoFinalSubmitJobTest` (5, run as the worker login `SET ROLE worker_r
 
 ## Not done
 
+- **LV-16 (ack reason)**: the server sends the refusal codes of D-B3-15 with `message_key` `sync.outcome.<code>`, but
+  the reason texts of those generic codes do not fit leave ("The same sale arrived twice; held for review." for a
+  blocked overlap, "The record is malformed; please contact support." for an unknown type, "Route or outlet is outside
+  your area" for a non-TSO applicant; bn equally off-topic). Open until the lead or F1 rules in 1.10.x (leave codes or
+  neutral texts; `ReasonTexts.kt` is not B3's file).
+- **PER-11**: no text in the repository defines it (see Asks). The periphery backend B3 shipped is PER-08 (nearby box
+  margin, NearbyOutletsTest) and PER-17 (`mock_fixes_today`, last_fix never mock, TsoPeripheryTest).
 - `docs/24-build-spec.md`, `docs/data-events.md` and DECISIONS.md are the lead's or F2's: the D-B3-NN decisions and the
   `leave.decided` producer are recorded here only (see Asks).
 - B1's InboxApi (`GET /v1/me/notifications`) is not on this branch, so the inbox rows are proven by their table rows
@@ -299,9 +387,13 @@ phones), `AutoFinalSubmitJobTest` (5, run as the worker login `SET ROLE worker_r
 
 ## Next step
 
-Step 2 is complete. For the next agent on this lane: answer the lead's rulings on the asks (D-B3-11 re-close rule,
-leave refusal codes), then merge order B1, B2, B3 (s6): rebase on B1's branch (Inbox.kt is the same commit 8dd73088;
-Wiring.kt and Main.kt take appended lines from both lanes, trivial conflicts) and on B2's (`DashboardSummaries.autoSubmit`
-is B2's to remove; the job now writes the `app.final_submit` rows B2's unified % reads). After the rebase run the same
-full Verify; CI on Linux also settles the two laptop-only failures (JcsTest python3 alias, AuditWriteRedactionTest
-path separator).
+The fix round is complete except what waits on rulings. For the next agent on this lane:
+1. Collect the lead's written rulings before the merge: D-B3-11 (re-close, now per the contract text), D-B3-25
+   (midnight straddle hold), the two in-place Wiring.kt edits, PER-11's meaning, and with F1 the leave reason texts
+   (LV-16). A ruling against D-B3-11 or D-B3-25 is a one-predicate change (`AutoFinalSubmitJob.openServiceZones` and
+   `closeZone`; `IngestService.visitOpenedBeforeJobClose`) plus its test lines.
+2. Merge order B1, B2, B3 (s6): rebase on B1's branch (Inbox.kt is the same commit 8dd73088; Wiring.kt and Main.kt take
+   appended lines from both lanes, trivial conflicts) and on B2's (`DashboardSummaries.autoSubmit` is B2's to remove;
+   the job writes the `app.final_submit` rows B2's unified % reads, a re-closed zone-day included).
+3. After the rebase run the same full Verify; CI on Linux also settles the two laptop-only failures (JcsTest python3
+   alias, AuditWriteRedactionTest path separator).

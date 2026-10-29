@@ -167,7 +167,7 @@ class BundleService(
                 routes = routes,
                 tasks = tasks(h, user.id),
                 surveys = BundleContent.surveys(h, user.role, date),
-                rubrics = BundleContent.rubrics(h, user.role),
+                rubrics = newestRubricPerKind(BundleContent.rubrics(h, user.role)), // tso-manual B3: one active rubric per kind (F2's note, D-B3-24)
                 supervisor = supReach?.let { SupervisorBundle.section(h, user.id, p.role, it, date, (plans.map { r -> r.routeId } + zonePlans.map { r -> r.routeId }).distinct()) },
                 reason_texts = ReasonTexts.ALL,
                 device_policy_version = configVersion,
@@ -712,5 +712,16 @@ class BundleService(
             Base64.getUrlEncoder().withoutPadding().encodeToString("c1|$date|$seq|${at.toEpochMilli()}".toByteArray())
 
         private fun ResultSet.ts(col: String): String? = getObject(col, OffsetDateTime::class.java)?.toInstant()?.wire()
+
+        // tso-manual B3
+        /**
+         * One active rubric per kind reaches a phone: the newest (highest rubric id), so an admin's own Visit Query beside
+         * the V0139 seed replaces it instead of giving the phone two (F2's note to B3, D-B3-24). The order stays by id.
+         */
+        fun newestRubricPerKind(rubrics: List<JsonObject>): List<JsonObject> {
+            fun id(r: JsonObject) = (r["rubric_id"] as? JsonPrimitive)?.content?.toLongOrNull() ?: Long.MIN_VALUE
+            val keep = rubrics.groupBy { (it["kind"] as? JsonPrimitive)?.content }.values.map { same -> same.maxBy { id(it) } }.toSet()
+            return rubrics.filter { it in keep }
+        }
     }
 }

@@ -58,7 +58,9 @@ import kotlin.test.assertTrue
  * - Visit Query on some planned outlets: a `call_assessment` (`retailer_questionnaire`, the V0139 rubric, parent the
  *   planned outlet) and one `call_assessment_answer` per question (its family, rank 1);
  * - Assign Task: a `task` for the route's primary SR on the visited outlet (envelope route);
- * - sometimes a `leave_application` and a `feedback` (either category, sometimes with an image).
+ * - sometimes a `leave_application` and a `feedback` (either category, sometimes with an image); a feedback image is
+ *   followed by its `media_meta` (purpose feedback, ref the feedback; the record's uuid is the photo uuid), which the
+ *   TSO app queues once the blob is uploaded (MediaShell.enqueueMeta).
  * Every TSO type is covered (support tickets are lane B1's, in its own fuzz test).
  *
  * Fault schedules, one per batch, as the supervisor test: partial, reorder (children before their parents park and
@@ -174,8 +176,15 @@ class TsoSyncFaultFuzzTest {
             }
             if (everything || rnd.nextInt(3) == 0) {
                 val f = uuid()
-                val photo = if (rnd.nextBoolean()) "\"${uuid()}\"" else "null"
-                out += env("feedback", f, f, 0, null, """{"category_code":"${if (rnd.nextBoolean()) "suggestion" else "feedback"}","title":"Shelf $tick","description":"The retailer asks for a rack.","photo_uuid":$photo}""")
+                val photo = if (everything || rnd.nextBoolean()) uuid() else null
+                out += env("feedback", f, f, 0, null, """{"category_code":"${if (rnd.nextBoolean()) "suggestion" else "feedback"}","title":"Shelf $tick","description":"The retailer asks for a rack.","photo_uuid":${photo?.let { "\"$it\"" } ?: "null"}}""")
+                // tso-manual B3 fix round: the photo's metadata, sent after the blob upload (its uuid is the photo uuid).
+                if (photo != null) {
+                    val sha = (1..4).joinToString("") { "%016x".format(rnd.nextLong()) }
+                    out += env("media_meta", photo, photo, 0, null, """{"purpose":"feedback","ref_type":"feedback","ref_client_uuid":"$f","sha256":"$sha","phash":null,
+                        "bytes":${rnd.nextInt(20_000, 300_000)},"width":1280,"height":960,"mime":"image/jpeg","blob_path":"photos/2027-01-03/${tsoPhone.deviceUuid}/$photo.jpg",
+                        "taken_at":"${TS.format(Instant.parse("2027-01-02T18:30:00Z").plusMillis(10L * tick))}","fix":null}""")
+                }
             }
             out.forEach { r -> val t = r.type(); rows.getOrPut(t) { mutableSetOf() } += r.uuid(); accepted.merge(t, 1, Int::plus) }
             return out
@@ -206,6 +215,7 @@ class TsoSyncFaultFuzzTest {
     private val tables = linkedMapOf(
         "visit_plan" to "app.visit_plan", "visit_plan_outlet" to "app.visit_plan_outlet", "call_assessment" to "app.call_assessment",
         "call_assessment_answer" to "app.call_assessment_answer", "task" to "app.task", "leave_application" to "app.leave_application", "feedback" to "app.feedback",
+        "media_meta" to "app.media",
     )
 
     internal fun oracle(p: Phone, last: JsonObject?): List<String> {
@@ -396,6 +406,12 @@ class TsoSyncFaultFuzzTest {
         val notAccepted = r!!["acks"]!!.jsonArray.map { it.jsonObject }.filter { it["status"]!!.jsonPrimitive.content != "accepted" }
         assertEquals(emptyList(), notAccepted, "every TSO record of a clean day is accepted")
         assertEquals(emptyList(), oracle(p, r))
+        // The photo's sha256 is stored as its 32 bytes (bytea), not as the 64 characters of its hex text.
+        val meta = records.single { it.type() == "media_meta" }
+        assertEquals(
+            meta["payload"]!!.jsonObject["sha256"]!!.jsonPrimitive.content,
+            world.scalar("SELECT encode(sha256, 'hex') FROM app.media WHERE client_uuid = '${meta.uuid()}' AND length(sha256) = 32"),
+        )
     }
 
     @Test
@@ -494,10 +510,10 @@ class TsoSyncFaultFuzzTest {
 
     companion object {
         /** The record types the TSO app queues (A3's outbox), parents first. */
-        val TYPES = listOf("visit_plan", "visit_plan_outlet", "call_assessment", "call_assessment_answer", "task", "leave_application", "feedback")
+        val TYPES = listOf("visit_plan", "visit_plan_outlet", "call_assessment", "call_assessment_answer", "task", "leave_application", "feedback", "media_meta")
 
         /** Payload members that name a record's parent. */
-        private val PARENT_FIELDS = listOf("assessment_client_uuid", "visit_plan_outlet_client_uuid", "plan_client_uuid")
+        private val PARENT_FIELDS = listOf("assessment_client_uuid", "visit_plan_outlet_client_uuid", "plan_client_uuid", "ref_client_uuid")
         private val TS: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'").withZone(ZoneOffset.UTC)
 
         fun rndUuid(rnd: Random): String {

@@ -16,6 +16,7 @@ import com.aktcl.aron.backend.platform.principal
 import com.aktcl.aron.backend.platform.receiveStrict
 import com.aktcl.aron.backend.platform.requestId
 import com.aktcl.aron.backend.platform.wire
+import com.aktcl.aron.contract.ConfigScopeType
 import com.aktcl.aron.contract.ContractInfo
 import com.aktcl.aron.contract.ProblemCode
 import com.aktcl.aron.contract.Role
@@ -428,12 +429,23 @@ class DayService(
             put("submitted_by", by); put("submit_seq", preview.submit_seq); put("route_count", preview.routes.size)
             put("not_uploaded_route_count", preview.warn_route_ids.size)
         })
+        // The zone's field phones (D-TSO-MAN-31): the SR and AMO users of its route-days, and every active AMO whose scope
+        // covers the zone on the date (the D-TSO-MAN-12 rule): an AMO sells on the outlet's SR route, so an AMO without a
+        // route-day here still captures on the zone's closed route-days. Scope rows are effective-dated, valid_to exclusive.
         val recipients = h.createQuery(
             """
-            SELECT DISTINCT u.id FROM app.route_day rd JOIN app.route r ON r.id = rd.route_id
+            SELECT u.id FROM app.route_day rd JOIN app.route r ON r.id = rd.route_id
             JOIN app.app_user u ON u.id IN (rd.assigned_user_id, rd.acting_user_id)
             WHERE r.zone_id = :z AND rd.business_date = :d AND u.role IN ('SR', 'AMO') AND u.status = 'active'
-            ORDER BY u.id
+            UNION
+            SELECT u.id FROM app.zone z JOIN app.territory t ON t.id = z.territory_id JOIN app.division dv ON dv.id = t.division_id
+            JOIN app.user_scope s ON s.valid_from <= :d AND (s.valid_to IS NULL OR s.valid_to > :d)
+                 AND ((s.node_type = 'zone' AND s.node_id = z.id) OR (s.node_type = 'house' AND s.node_id = z.house_id)
+                      OR (s.node_type = 'territory' AND s.node_id = z.territory_id) OR (s.node_type = 'division' AND s.node_id = t.division_id)
+                      OR (s.node_type = 'wing' AND s.node_id = dv.wing_id) OR s.node_type = 'national')
+            JOIN app.app_user u ON u.id = s.user_id AND u.role = 'AMO' AND u.status = 'active'
+            WHERE z.id = :z
+            ORDER BY 1
             """.trimIndent(),
         ).bind("z", zone).bind("d", date).mapTo(Long::class.java).list()
         return FinalSubmitResultDto(zone, date.toString(), now.wire(), kind, preview.routes.size, preview.routes.sumOf { it.memo_count }, preview.routes.sumOf { it.net_mtk }) to recipients
@@ -507,10 +519,11 @@ class DayService(
      * `POST /v1/day/reopen`: an audited admin reopen of a final-submitted zone-day.
      * - Check order: the body (400); the caller's own earlier reopen with the same `client_uuid` answers as stored (a
      *   uuid used for another zone-day or by another user is 409 `ERR_CONFLICT`); the role in `cfg.day.reopen_roles`
-     *   (default ADMIN, SUPERADMIN; 403); the zone in the caller's reach on the date (403); the date within
-     *   `cfg.day.reopen_window_days` of today, not after it (409 `ERR_REQUEST_STATE`); a live close (409
-     *   `ERR_DAY_NOT_FINAL_SUBMITTED`).
-     * - Locks: the reopen uuid, then the zone-day lock Final Submit takes, then the zone's route-days in route_id order.
+     *   resolved at the zone's wing, then global (default ADMIN, SUPERADMIN; 403); the zone in the caller's reach on the
+     *   date (403); the date within `cfg.day.reopen_window_days` of today, not after it (409 `ERR_REQUEST_STATE`); a live
+     *   close (409 `ERR_DAY_NOT_FINAL_SUBMITTED`).
+     * - Locks: the reopen uuid, then the zone-day lock Final Submit takes, then the zone's route-days in route_id order,
+     *   then the live close row (row locks in the order ingest and the quarantine accept take them: route-day first).
      * - Effect, in one transaction: the live close carries the reopen (`reopened_at`, `reopened_by`, `reopen_reason`,
      *   `reopen_client_uuid`), the route-days lose `final_submitted_at` and go back to their own state ([DayStates.reopen])
      *   and are marked dirty, an audit row (entity `zone_day`) and the event `zone_day.reopened`. A later replay of the
@@ -522,7 +535,16 @@ class DayService(
         val date = runCatching { LocalDate.parse(req.business_date) }.getOrNull()?.takeIf { DATE.matches(req.business_date) } ?: throw invalid("/business_date")
         if (req.reason.length !in 10..500 || req.reason.isBlank()) throw invalid("/reason")
         req.client_uuid?.let { cu -> db.jdbi.withHandle<DayReopenResultDto?, Exception> { h -> reopenReplay(h, cu, p, req.zone_id, date) }?.let { return it } }
-        val roles = runCatching { config.value("cfg.day.reopen_roles").jsonArray.map { it.jsonPrimitive.content }.toSet() }.getOrDefault(DEFAULT_REOPEN_ROLES)
+        // The registry lets cfg.day.reopen_roles be set per wing (V0006 scopes global, wing): the zone's wing wins over global.
+        val roles = runCatching {
+            db.jdbi.withHandle<Set<String>?, Exception> { h ->
+                val wing = h.createQuery("SELECT dv.wing_id FROM app.zone z JOIN app.territory t ON t.id = z.territory_id JOIN app.division dv ON dv.id = t.division_id WHERE z.id = :z")
+                    .bind("z", req.zone_id).mapTo(Long::class.javaObjectType).findOne().orElse(null)
+                val at = clock.now()
+                ScopedConfig.load(h, at, at, setOf(REOPEN_ROLES_KEY)).value(REOPEN_ROLES_KEY, ScopedConfig.Chain.of(ConfigScopeType.WING to wing))
+                    ?.jsonArray?.map { it.jsonPrimitive.content }?.toSet()
+            }
+        }.getOrNull() ?: DEFAULT_REOPEN_ROLES
         if (p.role.wire !in roles) throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "reopening a zone-day is for the roles in cfg.day.reopen_roles")
         if (!reach.reach(p.userId, p.role, p.scopeVersion, date).coversZone(req.zone_id)) throw ApiProblem(ProblemCode.ERR_OUT_OF_SCOPE, "zone outside your reach")
         val today = LocalDate.ofInstant(clock.now(), DHAKA)
@@ -535,6 +557,11 @@ class DayService(
             h.execute("SELECT pg_advisory_xact_lock(hashtextextended(?, 3))", zoneDayLock(req.zone_id, date))
             req.client_uuid?.let { cu -> reopenReplay(h, cu, p, req.zone_id, date)?.let { return@inTransaction it } }
             val now = clock.now().truncatedTo(java.time.temporal.ChronoUnit.MICROS)
+            // The zone's route-days in route_id order (the order Final Submit and ingest take them in) BEFORE the close
+            // row: an ingest or an ADMIN accept holds a route-day and then updates final_submit.late_rows
+            // (DayStates.afterStored), so taking the close row first could deadlock with it (40P01).
+            val zoneRoutes = h.createQuery("SELECT route_id FROM app.route_day WHERE business_date = :d AND route_id IN (SELECT id FROM app.route WHERE zone_id = :z) ORDER BY route_id FOR NO KEY UPDATE")
+                .bind("d", date).bind("z", req.zone_id).mapTo(Long::class.java).list()
             val live = h.createQuery(
                 "SELECT client_uuid::text, submitted_at, via, submitted_by, late_rows FROM app.final_submit WHERE zone_id = :z AND business_date = :d AND reopened_at IS NULL FOR UPDATE",
             ).bind("z", req.zone_id).bind("d", date).map { rs, _ ->
@@ -544,9 +571,6 @@ class DayService(
                 }
             }.findOne().orElse(null) ?: throw ApiProblem(ProblemCode.ERR_DAY_NOT_FINAL_SUBMITTED, "the zone-day is not final-submitted")
             val closeUuid = (live["final_submit_uuid"] as JsonPrimitive).content
-            // The zone's route-days in route_id order (the order Final Submit and ingest take them in).
-            val zoneRoutes = h.createQuery("SELECT route_id FROM app.route_day WHERE business_date = :d AND route_id IN (SELECT id FROM app.route WHERE zone_id = :z) ORDER BY route_id FOR NO KEY UPDATE")
-                .bind("d", date).bind("z", req.zone_id).mapTo(Long::class.java).list()
             h.createUpdate(
                 """
                 UPDATE app.final_submit SET reopened_at = :at, reopened_by = :by, reopen_reason = :why, reopen_client_uuid = CAST(:ru AS uuid)
@@ -591,6 +615,7 @@ class DayService(
         private val DUMMY_CLASSES = setOf("dummy_br", "dummy_institutional")
         /** cfg.day.reopen_roles when unreadable (the V0134 default). */
         private val DEFAULT_REOPEN_ROLES = setOf("ADMIN", "SUPERADMIN")
+        private const val REOPEN_ROLES_KEY = "cfg.day.reopen_roles"
 
         /** The key of the zone-day advisory lock (class 3) that Final Submit, the midnight job and reopen take. */
         fun zoneDayLock(zone: Long, date: LocalDate): String = "final:$zone:$date"

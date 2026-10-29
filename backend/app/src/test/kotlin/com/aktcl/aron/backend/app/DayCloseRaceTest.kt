@@ -638,6 +638,60 @@ class DayCloseRaceTest {
         } finally { frozen = null }
     }
 
+    /**
+     * tso-manual B3 fix round (checker: lock-order inversion between reopen and the quarantine accept). An ADMIN accept of
+     * a held late row (and any ingest under accept_and_flag) stores it under its route-day row lock and then counts it on
+     * the live close (DayStates.afterStored: `route_day ... FOR NO KEY UPDATE`, then `UPDATE app.final_submit SET
+     * late_rows`). A second connection takes exactly those two steps around a reopen through the real route that starts in
+     * between: the reopen must queue on the route-day (it takes the zone's route-days before the close row), so the
+     * accept's close-row update goes through, both commit, and the reopened close carries the counted row. With the close
+     * row taken first, the two would wait on each other and PostgreSQL would break the deadlock (40P01), failing one
+     * admin action with a 5xx.
+     */
+    @Test
+    @Order(4)
+    fun aReopenRacingAnAcceptOfAHeldRowNeverDeadlocks() = withApi {
+        probeReopen()
+        check(reopenRouted) { "POST /v1/day/reopen is served since tso-manual B3" }
+        val tso = "${tag.lowercase()}tso1001"
+        val date = allocDate()
+        setClock(date.atTime(6, 0).toInstant(ZoneOffset.UTC))
+        for (u in listOf(tso, "admin1001")) tokens[u] = web(u)
+        val close = finalSubmit(tso, uuid(), date, 1)
+        assertEquals(200, close.status, close.body.toString())
+        val accept = world.fresh.db.jdbi.open()
+        try {
+            accept.begin()
+            accept.createQuery("SELECT 1 FROM app.route_day WHERE route_id = :r AND business_date = :d FOR NO KEY UPDATE")
+                .bind("r", proto.routeId).bind("d", date).mapTo(Int::class.java).list()
+            coroutineScope {
+                val reopening = async(Dispatchers.IO) { reopen(date) }
+                // The reopen queues on a row lock (the accept's route-day) before this connection touches the close row.
+                fun waiting() = world.fresh.db.jdbi.withHandle<Boolean, Exception> { h ->
+                    h.createQuery("SELECT EXISTS (SELECT 1 FROM pg_stat_activity WHERE datname = current_database() AND pid <> pg_backend_pid() AND wait_event_type = 'Lock')")
+                        .mapTo(Boolean::class.java).one()
+                }
+                val until = System.nanoTime() + 20_000_000_000L
+                while (!waiting() && System.nanoTime() < until) delay(20)
+                assertTrue(waiting(), "the reopen waits on the accept's route-day lock")
+                val counted = accept.createUpdate(
+                    "UPDATE app.final_submit f SET late_rows = late_rows + 1 FROM app.route r WHERE r.id = :r AND f.zone_id = r.zone_id AND f.business_date = :d AND f.reopened_at IS NULL",
+                ).bind("r", proto.routeId).bind("d", date).execute()
+                assertEquals(1, counted, "the accept counts its row on the live close, not blocked by the reopen")
+                accept.commit()
+                val r = reopening.await()
+                assertEquals(200, r.status, "the reopen goes through after the accept: ${r.body}")
+            }
+        } finally {
+            accept.close()
+        }
+        val closeRow = world.fresh.db.jdbi.withHandle<Pair<Boolean, Int>, Exception> { h ->
+            h.createQuery("SELECT reopened_at IS NOT NULL, late_rows FROM app.final_submit WHERE zone_id = :z AND business_date = :d").bind("z", zone).bind("d", date)
+                .map { rs, _ -> rs.getBoolean(1) to rs.getInt(2) }.one()
+        }
+        assertEquals(true to 1, closeRow, "the reopened close carries the row the accept counted before the reopen")
+    }
+
     @Test
     @Order(1)
     fun theZoneDayClosesExactlyOnceUnderEveryRace() = withApi {

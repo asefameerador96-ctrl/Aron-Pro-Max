@@ -28,6 +28,10 @@ class CheckerBackendAdminTest {
 
     private fun leave(id: String, from: String, days: Int) = """{"leave_uuid":"$id","leave_type_code":"casual","from_date":"$from","days":$days,"reason":"Family"}"""
 
+    // tso-manual B3: leave first days and plan dates relative to the API's system clock (D-TSO-MAN-33 refuses a first day
+    // more than cfg.leave.allow_past_days back; a new plan is for today or later), so the class never expires.
+    private fun ahead(days: Long): String = java.time.LocalDate.now(java.time.ZoneId.of("Asia/Dhaka")).plusDays(days).toString() // wall-clock-ok: relative to the API's system clock
+
     // tso-manual B3 (D-TSO-MAN-33): overlapping leave is refused only with cfg.leave.block_overlap (default false), read
     // by LeaveRules on the request's own handle, so the switch is a cfg_value row (closed again after the test).
     private fun overlapBlock(on: Boolean) = if (on) {
@@ -41,10 +45,10 @@ class CheckerBackendAdminTest {
 
     @Test
     fun overlappingLeaveOfTheSameTsoIsRefused() = env.app {
-        assertEquals(HttpStatusCode.Created, sendA3(HttpMethod.Post, "/v1/leave", env.tok("tso1001"), leave(ckUuid(), "2027-08-01", 5)).status)
+        assertEquals(HttpStatusCode.Created, sendA3(HttpMethod.Post, "/v1/leave", env.tok("tso1001"), leave(ckUuid(), ahead(30), 5)).status)
         overlapBlock(true)
         try {
-            val r = sendA3(HttpMethod.Post, "/v1/leave", env.tok("tso1001"), leave(ckUuid(), "2027-08-03", 5))
+            val r = sendA3(HttpMethod.Post, "/v1/leave", env.tok("tso1001"), leave(ckUuid(), ahead(32), 5))
             assertTrue(r.status.value in 400..409, "overlapping leave accepted: ${r.status}")
         } finally { overlapBlock(false) }
     }
@@ -52,7 +56,7 @@ class CheckerBackendAdminTest {
     @Test
     fun unknownAndOutOfReachLeaveDecisionLookTheSame() = env.app {
         val id = ckUuid()
-        sendA3(HttpMethod.Post, "/v1/leave", env.tok("tso1001"), leave(id, "2027-09-01", 1))
+        sendA3(HttpMethod.Post, "/v1/leave", env.tok("tso1001"), leave(id, ahead(60), 1))
         val out = sendA3(HttpMethod.Post, "/v1/leave/$id/decision", env.tok("dmo3001"), """{"decision":"approve"}""")
         val unknown = sendA3(HttpMethod.Post, "/v1/leave/${ckUuid()}/decision", env.tok("dmo3001"), """{"decision":"approve"}""")
         assertEquals(out.status, unknown.status, "existence oracle for a caller outside reach")
@@ -71,7 +75,7 @@ class CheckerBackendAdminTest {
         val a = env.outletIds("MIR-SR-D", 1)
         val other = env.scalar("SELECT r.code FROM app.route r JOIN app.zone z ON z.id=r.zone_id JOIN app.app_user u ON u.home_zone_id=z.id WHERE u.username='tso1001' AND r.code <> 'MIR-SR-D' AND EXISTS (SELECT 1 FROM app.outlet o WHERE o.route_id=r.id) LIMIT 1")
         val plan = ckUuid()
-        fun body(route: String, o: List<Long>) = """{"plan_uuid":"$plan","plan_date":"2027-05-05","route_id":${env.routeIds.getValue(route)},"outlet_ids":[${o.joinToString(",")}]}"""
+        fun body(route: String, o: List<Long>) = """{"plan_uuid":"$plan","plan_date":"${ahead(20)}","route_id":${env.routeIds.getValue(route)},"outlet_ids":[${o.joinToString(",")}]}"""
         assertEquals(HttpStatusCode.Created, sendA3(HttpMethod.Post, "/v1/visit-plans", env.tok("tso1001"), body("MIR-SR-D", a)).status)
         println("CK other route in zone: $other")
         if (other != null) {
@@ -95,10 +99,10 @@ class CheckerBackendAdminTest {
         val codes = coroutineScope {
             (1..8).flatMap {
                 listOf(
-                    async { sendA3(HttpMethod.Post, "/v1/leave", env.tok("tso1001"), leave(lid, "2027-10-01", 1)).status.value },
+                    async { sendA3(HttpMethod.Post, "/v1/leave", env.tok("tso1001"), leave(lid, ahead(90), 1)).status.value },
                     async { sendA3(HttpMethod.Post, "/v1/feedback", env.tok("tso1001"), """{"feedback_uuid":"$fid","category_code":"idea","title":"t","description":"d"}""").status.value },
                     async { sendA3(HttpMethod.Post, "/v1/support/pda-upload", env.phone("sr1001", device), """{"upload_uuid":"$sid","bytes":10,"sha256":"${"a".repeat(64)}","app_version":"1"}""", mapOf("X-Device-Id" to device)).status.value },
-                    async { sendA3(HttpMethod.Post, "/v1/visit-plans", env.tok("tso1001"), """{"plan_uuid":"$pid","plan_date":"2027-10-02","route_id":${env.routeIds.getValue("MIR-SR-D")},"outlet_ids":[${o.joinToString(",")}]}""").status.value },
+                    async { sendA3(HttpMethod.Post, "/v1/visit-plans", env.tok("tso1001"), """{"plan_uuid":"$pid","plan_date":"${ahead(91)}","route_id":${env.routeIds.getValue("MIR-SR-D")},"outlet_ids":[${o.joinToString(",")}]}""").status.value },
                 )
             }.awaitAll()
         }

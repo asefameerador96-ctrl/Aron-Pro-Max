@@ -630,5 +630,25 @@ class DayApiTest {
         } finally {
             setConfig("cfg.day.reopen_roles", """["ADMIN","SUPERADMIN"]""")
         }
+
+        // tso-manual B3 fix round: cfg.day.reopen_roles may be set per wing (V0006 scopes global and wing); the zone's wing
+        // value wins over global. With SUPERADMIN only in Z-B3's wing, the ADMIN is refused there and the SUPERADMIN is not.
+        val wing = fresh.db.jdbi.withHandle<Long, Exception> { h ->
+            h.createQuery("SELECT dv.wing_id FROM app.zone z JOIN app.territory t ON t.id = z.territory_id JOIN app.division dv ON dv.id = t.division_id WHERE z.id = :z").bind("z", b3Zone).mapTo(Long::class.java).one()
+        }
+        fresh.db.jdbi.useHandle<Exception> { h ->
+            h.execute(
+                "INSERT INTO app.cfg_value (key, scope_type, scope_id, value, effective_from, config_version, reason) " +
+                    "SELECT 'cfg.day.reopen_roles', 'wing', $wing, '[\"SUPERADMIN\"]'::jsonb, TIMESTAMPTZ '${ApiWorld.CFG_SWITCH}' + interval '1 hour', max(config_version), 'test: wing value' FROM app.cfg_version",
+            )
+        }
+        try {
+            val byAdmin = client.reopenOf(admin, b3Zone, d)
+            assertEquals(HttpStatusCode.Forbidden, byAdmin.status, byAdmin.bodyAsText())
+            val bySuper = client.reopenOf(superadmin, b3Zone, d)
+            assertEquals(HttpStatusCode.OK, bySuper.status, bySuper.bodyAsText())
+        } finally {
+            fresh.db.jdbi.useHandle<Exception> { h -> h.execute("UPDATE app.cfg_value SET effective_to = TIMESTAMPTZ '${ApiWorld.CFG_SWITCH}' + interval '2 hours' WHERE key = 'cfg.day.reopen_roles' AND scope_type = 'wing' AND effective_to IS NULL") }
+        }
     }
 }

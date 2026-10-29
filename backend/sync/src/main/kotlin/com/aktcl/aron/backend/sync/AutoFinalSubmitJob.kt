@@ -33,17 +33,20 @@ import java.util.concurrent.TimeUnit
  * is idempotent, so a second worker replica or a second pass closes nothing twice.
  *
  * - **Which zone-days:** every service zone of the date (a planned route-day of a normal SR route that no approved day
- *   exception removes, the rule of the national final-submit figure) that was never final-submitted. A zone-day that a
- *   TSO, a delegate or this job already closed is skipped, and so is one an ADMIN reopened (D-B3-11: a reopen is an
- *   audited decision to let late rows in; a TSO or a delegate closes it again, the job never undoes it).
+ *   exception removes, the rule of the national final-submit figure) without a live submit (D-TSO-MAN-30). A zone-day
+ *   that a TSO, a delegate or this job closed is skipped while that close is live; one an ADMIN reopened is closed
+ *   again by the next pass inside the window, unless a person closed it first (D-B3-11, revised in the fix round).
  * - **Switch:** `cfg.day.auto_final_submit_enabled` (default true) resolved at the zone's wing, then global.
  * - **The close** is the manual submit's locked code path ([DayService.closeLocked]) under the same zone-day advisory
  *   lock, with `via = 'job'`, `submitted_by` NULL (V0135 CHECK `final_submit_job_actor`) and a client uuid derived from
- *   the zone-day (`aron.final-submit.job:<zone>:<date>`), so it is a v4-shaped uuid the replay rules know as kind `auto`.
+ *   the zone-day and its cycle (`aron.final-submit.job:<zone>:<date>:<submit_seq>`, submit_seq = the reopened closes,
+ *   D-TSO-MAN-28), so it is a v4-shaped uuid the replay rules know as kind `auto` and a re-close after a reopen never
+ *   collides with the first close's unique client_uuid.
  *   Its trace is the `via = 'job'` row and its `zone_day.final_submitted` event; it writes no `app.audit_log` row (the
  *   worker has no INSERT there, R-F-07).
  * - **Notices**, in the close's transaction: one inbox row `final_submit_auto` for every active TSO whose reach covers
- *   the zone on that date ([Inbox.add], unique per recipient, R-F-04; the dedupe key also names the recipient). After
+ *   the zone on that date ([Inbox.add], unique per recipient, R-F-04; the dedupe key also names the cycle and the
+ *   recipient). After
  *   the commit: the push `notification` to each TSO with a new row and `day_final_submitted` to the zone's SR and AMO
  *   phones (as the manual close does). A lost push only delays the phone's next pull; ingest holds late rows anyway.
  */
@@ -102,17 +105,18 @@ class AutoFinalSubmitJob(
      */
     private fun closeZone(zone: Long, date: LocalDate, tsoUsers: List<Long>): Closed? = db.jdbi.inTransaction<Closed?, Exception> { h ->
         h.execute("SELECT pg_advisory_xact_lock(hashtextextended(?, 3))", DayService.zoneDayLock(zone, date))
-        if (everSubmitted(h, zone, date)) return@inTransaction null
-        val uuid = jobUuid(zone, date)
+        if (day.liveClose(h, zone, date) != null) return@inTransaction null
+        val seq = reopenedCloses(h, zone, date)
+        val uuid = jobUuid(zone, date, seq)
         // The clock after the lock, cut to the microsecond the column stores (as the manual close, KD-2).
         val now = clock.now().truncatedTo(ChronoUnit.MICROS)
         val (_, field) = day.closeLocked(h, zone, date, uuid, by = null, via = "job", kind = "auto", now = now)
         val zoneName = h.createQuery("SELECT name FROM app.zone WHERE id = :z").bind("z", zone).mapTo(String::class.java).findOne().orElse("#$zone")
-        val tsos = Inbox.addAll(h, tsoUsers.map { u -> notice(u, zone, zoneName, date) })
+        val tsos = Inbox.addAll(h, tsoUsers.map { u -> notice(u, zone, zoneName, date, seq) })
         Closed(zone, date, uuid, tsos, field)
     }
 
-    /** The never-submitted service zones of [date] with their wing (D-TSO-MAN-30; D-B3-11), in zone id order. */
+    /** The service zones of [date] without a live submit, with their wing (D-TSO-MAN-30; D-B3-11), in zone id order. */
     private fun openServiceZones(h: Handle, date: LocalDate): List<Pair<Long, Long>> = h.createQuery(
         """
         SELECT z.id, dv.wing_id FROM app.zone z
@@ -121,13 +125,14 @@ class AutoFinalSubmitJob(
                         WHERE r.zone_id = z.id AND rd.business_date = :d AND rd.planned AND r.kind = 'sr' AND r.route_class = 'normal'
                           AND NOT EXISTS (SELECT 1 FROM app.day_exception e WHERE e.status = 'approved' AND e.voided_at IS NULL
                                            AND r.id = ANY (e.route_ids) AND :d BETWEEN e.from_date AND e.to_date))
-           AND NOT EXISTS (SELECT 1 FROM app.final_submit f WHERE f.zone_id = z.id AND f.business_date = :d)
+           AND NOT EXISTS (SELECT 1 FROM app.final_submit f WHERE f.zone_id = z.id AND f.business_date = :d AND f.reopened_at IS NULL)
          ORDER BY z.id
         """.trimIndent(),
     ).bind("d", date).map { rs, _ -> rs.getLong(1) to rs.getLong(2) }.list()
 
-    private fun everSubmitted(h: Handle, zone: Long, date: LocalDate): Boolean =
-        h.createQuery("SELECT EXISTS (SELECT 1 FROM app.final_submit WHERE zone_id = :z AND business_date = :d)").bind("z", zone).bind("d", date).mapTo(Boolean::class.java).one()
+    /** The reopened closes of the zone-day: the cycle of the next close (D-TSO-MAN-28's submit_seq). */
+    private fun reopenedCloses(h: Handle, zone: Long, date: LocalDate): Int =
+        h.createQuery("SELECT count(*) FROM app.final_submit WHERE zone_id = :z AND business_date = :d AND reopened_at IS NOT NULL").bind("z", zone).bind("d", date).mapTo(Int::class.java).one()
 
     /** The active TSOs and their reach on one date, read once per pass of that date. */
     private inner class TsoReach(private val date: LocalDate) {
@@ -142,16 +147,16 @@ class AutoFinalSubmitJob(
 
     /**
      * The inbox row of one TSO (D-TSO-MAN-26): fixed texts in both languages (constraint 8), the zone name and the date;
-     * the dedupe key names the zone-day and the recipient (R-F-04).
+     * the dedupe key names the zone-day, the cycle (a re-close after a reopen is a new notice) and the recipient (R-F-04).
      */
-    private fun notice(user: Long, zone: Long, zoneName: String, date: LocalDate): InboxItem {
+    private fun notice(user: Long, zone: Long, zoneName: String, date: LocalDate, seq: Int): InboxItem {
         val name = zoneName.take(60)
         return InboxItem(
             userId = user, kind = NotificationKind.FINAL_SUBMIT_AUTO.wire, refType = "zone_day", refId = Inbox.zoneDayRefId(zone, date),
             titleEn = "Final Submit done automatically", titleBn = "ফাইনাল সাবমিট স্বয়ংক্রিয়ভাবে হয়েছে",
             bodyEn = "$name, $date: no Final Submit by midnight, so the system submitted the zone.",
             bodyBn = "$name, ${bnDigits(date.toString())}: মধ্যরাতের মধ্যে ফাইনাল সাবমিট হয়নি, তাই সিস্টেম জোনটি সাবমিট করেছে।",
-            dedupeKey = "final_submit_auto:$zone:$date:$user",
+            dedupeKey = "final_submit_auto:$zone:$date:$seq:$user",
         )
     }
 
@@ -173,8 +178,8 @@ class AutoFinalSubmitJob(
         /** Past midnight by this much, so the Dhaka date has surely moved on every clock. */
         private val AFTER_MIDNIGHT: Duration = Duration.ofSeconds(5)
 
-        /** The client uuid of the job's close of a zone-day (v4-shaped, as the batch contract requires). */
-        fun jobUuid(zone: Long, date: LocalDate): String = DayService.derivedV4("aron.final-submit.job:$zone:$date")
+        /** The client uuid of the job's close of a zone-day in cycle [seq] (v4-shaped, as the batch contract requires). */
+        fun jobUuid(zone: Long, date: LocalDate, seq: Int): String = DayService.derivedV4("aron.final-submit.job:$zone:$date:$seq")
 
         /** From [now] to the next 00:00:05 Asia/Dhaka. */
         fun delayToNextRun(now: Instant): Duration {

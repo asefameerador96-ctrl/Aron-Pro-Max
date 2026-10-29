@@ -143,6 +143,16 @@ class TsoMyCallEndToEndTest {
             assertEquals(HttpStatusCode.OK, planner.status, planner.bodyAsText())
             val pr = json(planner.bodyAsText()).list("rows").single { it["outlet_code"]!!.jsonPrimitive.content == code1 }
             assertEquals(listOf("OOS", "tso1001", "sr1001", "Mirpur 10 Daily", "Refill the rack", "completed"), listOf("label", "assigned_by", "assignee", "route", "comment", "status").map { pr[it]!!.jsonPrimitive.content })
+
+            // 7. tso-manual B3 fix round (F2's note, D-B3-24): one active rubric per kind reaches a phone. An admin's own
+            //    Visit Query beside the V0139 seed replaces it in the TSO and AMO bundles (the newest wins).
+            val own = one("INSERT INTO app.rubric (kind, version, status) VALUES ('retailer_questionnaire', 1, 'active') RETURNING id")
+            exec("""INSERT INTO app.rubric_version (rubric_id, version, criteria) VALUES ($own, 1, '[{"criterion_id":1,"key":"clean","label_en":"Is the shop clean?","label_bn":null,"answer_type":"bool"}]'::jsonb)""")
+            assertTrue(own > rubricId)
+            for (p in listOf(tso, amo)) {
+                val kinds = json(getAs(p, "/v1/sync/bundle").bodyAsText()).list("rubrics").filter { it["kind"]!!.jsonPrimitive.content == "retailer_questionnaire" }
+                assertEquals(listOf(own), kinds.map { it["rubric_id"]!!.jsonPrimitive.long }, "one retailer_questionnaire rubric, the newest, in the ${p.flavour} bundle")
+            }
         }
     }
 }

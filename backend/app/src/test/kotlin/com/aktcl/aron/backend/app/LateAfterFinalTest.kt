@@ -1,6 +1,12 @@
 package com.aktcl.aron.backend.app
 
+import com.aktcl.aron.backend.masterdata.GeoRepository
+import com.aktcl.aron.backend.masterdata.SqlReachResolver
 import com.aktcl.aron.backend.platform.AronClock
+import com.aktcl.aron.backend.platform.DbServerConfig
+import com.aktcl.aron.backend.platform.Nudger
+import com.aktcl.aron.backend.platform.RegistryDefaults
+import com.aktcl.aron.backend.sync.AutoFinalSubmitJob
 import io.ktor.client.HttpClient
 import io.ktor.client.request.bearerAuth
 import io.ktor.client.request.header
@@ -14,6 +20,7 @@ import io.ktor.http.contentType
 import io.ktor.server.testing.TestApplication
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
@@ -29,6 +36,9 @@ import org.junit.jupiter.api.TestInstance
 import org.junit.jupiter.api.TestMethodOrder
 import java.io.File
 import java.time.Instant
+import java.time.LocalDate
+import java.time.OffsetDateTime
+import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoUnit
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicInteger
@@ -53,6 +63,13 @@ import kotlin.test.assertTrue
  * 3. cfg.day.late_sync_after_final_policy: `reject` refuses even a family captured before the lock; `accept_and_flag`
  *    stores it and counts it late at once (the pre-1.10 rule, D-55).
  * 4. After an admin reopen the day is open: a family captured before the old lock is an ordinary accepted row, not late.
+ * 5. (fix round) A family captured after the lock on a phone whose time is not trusted (`clock_offset_ms` null, docs/24
+ *    s3 item 2) is held, never refused; a void captured after the lock of a memo that is itself held is refused (it does
+ *    not ride its parent's hold); a void captured after the lock and first held for another reason (outside the window)
+ *    cannot be stored by an ADMIN accept of that hold.
+ * 6. (fix round) The midnight job's close on 2027-01-04: a call that straddles midnight (visit captured before the
+ *    close, its memo after) is held whole for review, and accepted it is counted late; a call captured wholly after
+ *    the close is refused.
  */
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 @TestMethodOrder(MethodOrderer.OrderAnnotation::class)
@@ -138,6 +155,59 @@ class LateAfterFinalTest {
 
     private fun uuidsOf(records: List<JsonObject>, type: String) = records.filter { it.type() == type }.map { it.uuid() }
 
+    /** A memo stored before the close (test 1) that no stored void names. */
+    private fun activeMemoBefore(): JsonObject {
+        val voided = before.filter { it.type() == "memo_void" }.map { it["payload"]!!.jsonObject["memo_client_uuid"]!!.jsonPrimitive.content }.toSet()
+        return before.first { it.type() == "memo" && it.uuid() !in voided }
+    }
+
+    /** A `memo_void` of [memo] captured at [capturedAt] on the SR's phone (trusted time). */
+    private fun voidOf(memo: JsonObject, capturedAt: String): JsonObject {
+        val cu = uuid()
+        return buildJsonObject {
+            put("type", "memo_void"); put("client_uuid", cu); put("family_uuid", cu); put("rank", 0); put("schema_version", 1)
+            put("business_date", day); put("captured_at", capturedAt); put("captured_elapsed_ms", 18_330_000); put("boot_count", 412)
+            put("clock_offset_ms", -1840); put("captured_offline", true); put("route_id", phone.routeId); put("bundle_version", "$day:3")
+            put("bundle_stale", false); put("config_version", 1)
+            put("payload", json(
+                """{"memo_client_uuid":"${memo.uuid()}","memo_no":"${memo["payload"]!!.jsonObject["memo_no"]!!.jsonPrimitive.content}","reason_code":"retailer_cancelled","retailer_ack":true,
+                   "fix":{"purpose":"memo_void","fix_status":"ok","lat":23.80,"lng":90.36,"accuracy_m":12.0,"provider":"fused","is_mock":false,"reused":false,
+                          "device":{"device_owner":true,"dev_options_enabled":false,"adb_enabled":false,"auto_time_enabled":true,"mock_app_present":false}}}""",
+            ))
+        }
+    }
+
+    // tso-manual B3 fix round
+    /** The first sale call of [records]: its visit and the visit's family (memo, lines, close). */
+    private fun saleCall(records: List<JsonObject>): List<JsonObject> {
+        val visit = records.first { it.type() == "visit" }.uuid()
+        return records.filter { it["family_uuid"]!!.jsonPrimitive.content == visit }
+    }
+
+    /**
+     * [records] with every instant set to [at] of the record; with [date], moved to that business date (dates, bundle
+     * version, memo numbers); with [untrusted], `clock_offset_ms` null (a phone rebooted without a time anchor).
+     */
+    private fun retimed(records: List<JsonObject>, at: (JsonObject) -> Instant, date: String? = null, untrusted: Boolean = false): List<JsonObject> = records.map { r ->
+        var text = r.toString().replace(instant) { "\"" + at(r) + "\"" }
+        if (date != null) {
+            text = text.replace("\"$day\"", "\"$date\"").replace("\"$day:", "\"$date:")
+                .replace("-" + LocalDate.parse(day).format(YYMMDD) + "-", "-" + LocalDate.parse(date).format(YYMMDD) + "-")
+        }
+        val j = json(text)
+        if (untrusted) JsonObject(j + ("clock_offset_ms" to JsonNull)) else j
+    }
+
+    private fun openItemOf(clientUuid: String): Pair<Long, String> = world.fresh.db.jdbi.withHandle<Pair<Long, String>, Exception> { h ->
+        h.createQuery("SELECT id, code FROM app.sync_quarantine WHERE client_uuid = CAST(:u AS uuid) AND status = 'open'").bind("u", clientUuid)
+            .map { rs, _ -> rs.getLong(1) to rs.getString(2) }.one()
+    }
+
+    private suspend fun HttpClient.acceptItem(id: Long): HttpResponse = post("/v1/admin/quarantine/$id/resolve") {
+        bearerAuth(web("admin1001")); contentType(ContentType.Application.Json); header("X-App-Version", ApiWorld.APP_VERSION)
+        setBody("""{"action":"accept","reason":"late sale checked with the SR"}""")
+    }
+
     private val switches = AtomicInteger(0)
 
     /** A global config switch the way the portal sets it (DeviceGateTest pattern); the clock moves past the 30 s config cache. */
@@ -208,21 +278,8 @@ class LateAfterFinalTest {
         assertEquals(setOf(Triple("rejected", "day_final_submitted", "false")), ackSummary(sync(after)), "a resend keeps the refusal")
 
         // A void after the lock of a memo stored before it: refused, the memo stays active.
-        val voided = before.filter { it.type() == "memo_void" }.map { it["payload"]!!.jsonObject["memo_client_uuid"]!!.jsonPrimitive.content }.toSet()
-        val memo = before.first { it.type() == "memo" && it.uuid() !in voided }
-        val cu = uuid()
-        val void = buildJsonObject {
-            put("type", "memo_void"); put("client_uuid", cu); put("family_uuid", cu); put("rank", 0); put("schema_version", 1)
-            put("business_date", day); put("captured_at", "2027-01-03T17:00:00Z"); put("captured_elapsed_ms", 18_330_000); put("boot_count", 412)
-            put("clock_offset_ms", -1840); put("captured_offline", true); put("route_id", phone.routeId); put("bundle_version", "$day:3")
-            put("bundle_stale", false); put("config_version", 1)
-            put("payload", json(
-                """{"memo_client_uuid":"${memo.uuid()}","memo_no":"${memo["payload"]!!.jsonObject["memo_no"]!!.jsonPrimitive.content}","reason_code":"retailer_cancelled","retailer_ack":true,
-                   "fix":{"purpose":"memo_void","fix_status":"ok","lat":23.80,"lng":90.36,"accuracy_m":12.0,"provider":"fused","is_mock":false,"reused":false,
-                          "device":{"device_owner":true,"dev_options_enabled":false,"adb_enabled":false,"auto_time_enabled":true,"mock_app_present":false}}}""",
-            ))
-        }
-        assertEquals(setOf(Triple("rejected", "day_final_submitted", "false")), ackSummary(sync(listOf(void))))
+        val memo = activeMemoBefore()
+        assertEquals(setOf(Triple("rejected", "day_final_submitted", "false")), ackSummary(sync(listOf(voidOf(memo, "2027-01-03T17:00:00Z")))))
         assertEquals("active", world.fresh.db.jdbi.withHandle<String, Exception> { h -> h.createQuery("SELECT status FROM app.memo WHERE client_uuid = CAST(:u AS uuid)").bind("u", memo.uuid()).mapTo(String::class.java).one() })
 
         // A Sales Submit after the lock: accepted (state only), the route-day stays closed, no late row.
@@ -284,5 +341,87 @@ class LateAfterFinalTest {
         val held = phone.captureDay(Random(7))
         assertEquals(setOf(Triple("quarantined", "after_final_submit", null)), ackSummary(sync(held)))
         assertEquals(held.size, openHeld().size)
+    }
+
+    @Test
+    @Order(5)
+    fun untrustedTimeIsHeldAndARowAfterTheLockNeverRidesAnotherHold() = withApi {
+        // The second close of test 4 is the live lock; the clock is 23:50 in Dhaka, still the business date.
+        val lock = world.fresh.db.jdbi.withHandle<Instant, Exception> { h ->
+            h.createQuery("SELECT final_submitted_at FROM app.route_day WHERE route_id = :r AND business_date = DATE '$day'").bind("r", phone.routeId).mapTo(OffsetDateTime::class.java).one().toInstant()
+        }
+        now.set(Instant.parse("2027-01-03T17:50:00Z"))
+        val afterLock = Instant.parse("2027-01-03T17:40:00Z")
+        assertTrue(lock.isBefore(afterLock), "the lock $lock precedes the captures below")
+
+        // 1. A call captured after the lock on a phone without a trusted time (clock_offset_ms null): held whole, never
+        //    refused, because "after the lock" rests on the phone's wall clock (docs/24 s3 item 2).
+        val untrusted = retimed(saleCall(phone.captureDay(Random(8))), { afterLock }, untrusted = true)
+        val acks = sync(untrusted)
+        assertEquals(setOf(Triple("quarantined", "after_final_submit", null)), ackSummary(acks), acks.toString())
+        assertEquals(0L, storedMemos(uuidsOf(untrusted, "memo")))
+
+        // 2. A void captured after the lock of a memo that is itself held (test 4): refused, not held with its memo, so an
+        //    ADMIN accept of the memo can never carry it into the tables.
+        val heldMemo = world.fresh.db.jdbi.withHandle<JsonObject, Exception> { h ->
+            json(h.createQuery("SELECT payload::text FROM app.sync_quarantine WHERE user_id = :u AND business_date = DATE '$day' AND code = 'after_final_submit' AND status = 'open' AND record_type = 'memo' ORDER BY id LIMIT 1")
+                .bind("u", srId).mapTo(String::class.java).one())
+        }
+        val lateVoid = voidOf(heldMemo, "2027-01-03T17:45:00Z")
+        assertEquals(setOf(Triple("rejected", "day_final_submitted", "false")), ackSummary(sync(listOf(lateVoid))), "a void after the lock never rides its memo's hold")
+
+        // 3. A void captured after the lock and first held for another reason (20 minutes ahead of the server clock:
+        //    outside the window): an ADMIN accept of that hold is refused, the memo stays active, the item stays open.
+        val memo = activeMemoBefore()
+        val ahead = voidOf(memo, "2027-01-03T18:10:00Z")
+        assertEquals(setOf(Triple("quarantined", "business_date_out_of_window", null)), ackSummary(sync(listOf(ahead))))
+        val (item, code) = openItemOf(ahead.uuid())
+        assertEquals("business_date_out_of_window", code)
+        val r = acceptItem(item)
+        assertEquals(409, r.status.value, r.bodyAsText())
+        assertTrue("day_final_submitted" in r.bodyAsText(), r.bodyAsText())
+        assertEquals("active", world.fresh.db.jdbi.withHandle<String, Exception> { h -> h.createQuery("SELECT status FROM app.memo WHERE client_uuid = CAST(:u AS uuid)").bind("u", memo.uuid()).mapTo(String::class.java).one() })
+        assertEquals(item, openItemOf(ahead.uuid()).first, "the item stays open for a discard")
+    }
+
+    @Test
+    @Order(6)
+    fun aCallStraddlingTheMidnightCloseIsHeldAndOneWhollyAfterItIsRefused() = withApi {
+        val d4 = "2027-01-04"
+        world.fresh.db.jdbi.useHandle<Exception> { h ->
+            h.execute("INSERT INTO app.route_day (route_id, business_date, planned, assigned_user_id) VALUES (?, DATE '$d4', true, ?) ON CONFLICT (route_id, business_date) DO UPDATE SET planned = true", phone.routeId, srId)
+        }
+        // The midnight job closes Z-LAF on 01-04 at 00:00:05 Dhaka (01-05).
+        val closeAt = Instant.parse("2027-01-04T18:00:05Z")
+        now.set(closeAt)
+        val db = world.fresh.db
+        val job = AutoFinalSubmitJob(db, DbServerConfig(db, RegistryDefaults(), clock), SqlReachResolver(db, GeoRepository(db, clock), clock), Nudger.NONE, clock)
+        assertTrue(job.closeDate(LocalDate.parse(d4)).any { it.zoneId == zone }, "the job closes Z-LAF on $d4")
+        now.set(Instant.parse("2027-01-04T18:05:00Z"))
+
+        // A call that straddles midnight: the visit opened at 23:58, the memo saved at 00:01 (the family keeps 01-04).
+        val visitAt = Instant.parse("2027-01-04T17:58:00Z"); val savedAt = Instant.parse("2027-01-04T18:01:00Z")
+        val straddle = retimed(saleCall(phone.captureDay(Random(9))), { r -> if (r.type() == "visit") visitAt else savedAt }, date = d4)
+        val acks = sync(straddle)
+        assertEquals(setOf(Triple("quarantined", "after_final_submit", null)), ackSummary(acks), acks.toString())
+        // A call wholly after the close: refused, final.
+        val after = retimed(saleCall(phone.captureDay(Random(10))), { savedAt }, date = d4)
+        assertEquals(setOf(Triple("rejected", "day_final_submitted", "false")), ackSummary(sync(after)))
+
+        // ADMIN accepts the straddling call: its tree is stored and counted late on the job's close.
+        val visit = straddle.first { it.type() == "visit" }.uuid()
+        val r = acceptItem(openItemOf(visit).first)
+        assertEquals(200, r.status.value, r.bodyAsText())
+        assertEquals(1L, storedMemos(uuidsOf(straddle, "memo")))
+        val counted = world.fresh.db.jdbi.withHandle<Pair<Int, Int>, Exception> { h ->
+            h.createQuery("SELECT late_rows_after_final FROM app.route_day WHERE route_id = :r AND business_date = DATE '$d4'").bind("r", phone.routeId).mapTo(Int::class.java).one() to
+                h.createQuery("SELECT late_rows FROM app.final_submit WHERE zone_id = :z AND business_date = DATE '$d4' AND via = 'job'").bind("z", zone).mapTo(Int::class.java).one()
+        }
+        assertEquals(straddle.size to straddle.size, counted, "the straddling call is counted late, on the route-day and on the job's close")
+        assertEquals(0L, storedMemos(uuidsOf(after, "memo")))
+    }
+
+    private companion object {
+        val YYMMDD: DateTimeFormatter = DateTimeFormatter.ofPattern("yyMMdd")
     }
 }
