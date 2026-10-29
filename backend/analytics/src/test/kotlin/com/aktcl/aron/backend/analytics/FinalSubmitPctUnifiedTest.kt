@@ -57,6 +57,58 @@ class FinalSubmitPctUnifiedTest : TsoDayFixture() {
     }
 
     @Test
+    fun anOldMidnightStampIsNoFinalSubmitEvenBeforeItsZoneDayIsRebuilt() {
+        // Checker defect (fix round): the removed worker stamped every unsubmitted service zone-day (final_submitted_at set,
+        // auto_submitted true, no app.final_submit row), and nothing rebuilds an old zone-day unless a late record dirties it. The
+        // card and the summary are read here with NO rebuild after the stamp: neither may count it.
+        sql("UPDATE dw.agg_daily_zone SET final_submitted_at = TIMESTAMPTZ '2026-10-25 18:00Z', auto_submitted = true WHERE business_date = '2026-10-25' AND zone_id IN (${id("Z1")}, ${id("Z2")})")
+        assertEquals(2L, stamped()); assertEquals(0L, long("SELECT count(*) FROM app.final_submit"))
+        assertBoth(32, 2, 0, 0, "two old midnight stamps, no live row, not rebuilt")
+        assertBoth(33, 1, 0, 0, "Banani - Test alone, stamped, not rebuilt")
+        assertBoth(35, 1, 0, 0, "the route-only TSO, stamped zone, not rebuilt")
+        // A real Final Submit of Gulshan - Test rebuilds that zone-day only; Banani - Test keeps its old stamp and still does not count.
+        sql(
+            """
+            INSERT INTO app.final_submit (client_uuid, zone_id, business_date, submitted_by, submitted_at, via)
+            SELECT '00000000-0000-4000-8000-0000000b2f05', ${id("Z2")}, DATE '2026-10-25', u.id, TIMESTAMPTZ '2026-10-25 12:00Z', 'web' FROM app.app_user u WHERE u.username = 'tso9100'
+            """.trimIndent(),
+        )
+        fresh.db.jdbi.useHandle<Exception> { DashboardSummaries.rebuildZoneDay(it, id("Z2"), day) }
+        assertEquals(1L, long("SELECT count(*) FROM dw.agg_daily_zone WHERE business_date = '2026-10-25' AND auto_submitted"))
+        assertBoth(32, 2, 1, 5000, "Gulshan - Test submitted and rebuilt; Banani - Test's old stamp still not counted")
+        assertBoth(33, 1, 0, 0, "Banani - Test: the old stamp alone")
+        assertBoth(34, 1, 1, 10000, "Gulshan - Test: the live row")
+    }
+
+    @Test
+    fun oneRouteDayDirtyMarkCarriesASubmitAndAReopenToTheCardAndTheSummary() {
+        // D-B2-18 without the whole-day rebuild: the submit (DayApi closeLocked, the midnight job's included) and the reopen (lane B3,
+        // DayStates.reopen) mark the zone's route-days `route_day_agg` dirty in their own transaction, with reason 'final_submit' or
+        // 'reopen'; the worker turns a route-day rebuild into a zone-day mark and rebuilds the projection the card and the summary read.
+        val worker = AggregationWorker(fresh.db, clock)
+        sql(
+            """
+            INSERT INTO app.final_submit (client_uuid, zone_id, business_date, submitted_by, submitted_at, via)
+            VALUES ('00000000-0000-4000-8000-0000000b2f06', ${id("Z2")}, DATE '2026-10-25', NULL, TIMESTAMPTZ '2026-10-25 18:00Z', 'job')
+            """.trimIndent(),
+        )
+        assertBoth(32, 2, 0, 0, "the row alone, before the worker's pass")
+        sql("SELECT app.mark_dirty('route_day_agg', ${id("R8")}, DATE '2026-10-25', 'final_submit')")
+        worker.runUntilIdle()
+        assertBoth(32, 2, 1, 5000, "the job's Final Submit of Gulshan - Test, through one route-day's dirty mark")
+        sql(
+            """
+            UPDATE app.final_submit f SET reopened_at = TIMESTAMPTZ '2026-10-25 19:00Z', reopened_by = u.id, reopen_reason = 'B2 test reopen',
+                   reopen_client_uuid = '00000000-0000-4000-8000-0000000b2f07'
+              FROM app.app_user u WHERE u.username = 'tso9100' AND f.client_uuid = '00000000-0000-4000-8000-0000000b2f06'
+            """.trimIndent(),
+        )
+        sql("SELECT app.mark_dirty('route_day_agg', ${id("R9")}, DATE '2026-10-25', 'reopen')")
+        worker.runUntilIdle()
+        assertBoth(32, 2, 0, 0, "the reopen, through one route-day's dirty mark")
+    }
+
+    @Test
     fun noDwOnlyStampSurvivesAndTheWorkerNeverWritesOne() {
         // The old midnight stamp lived in dw.agg_daily_zone only. A stamp without a live row (left from before) is cleared by the next
         // rebuild of its zone-day, and is not a Final Submit after it.

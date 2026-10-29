@@ -43,9 +43,13 @@ internal const val NATIONAL_ROUTE_SET = "a.planned AND NOT a.exception_approved 
  * `reopened_at` NULL, the midnight job's `via = 'job'` rows included; [DashboardSummaries.rebuildZoneDay]), and a submit, a reopen
  * or the job dirties the zone-day through its route-days. One formula for the national card and the summary, read from the summary
  * tables like every other card. [zone] and [date] are SQL.
+ *
+ * `NOT fz.auto_submitted` drops a stamp the removed dw-only midnight worker left before this build (`auto_submitted` true, no live
+ * row): nothing clears such a stamp until a later rebuild of that zone-day, so without the guard old midnight stamps would still
+ * count as Final Submits. The rebuild always writes `auto_submitted = false`, so a real Final Submit is never dropped.
  */
 internal fun zoneSubmittedSql(zone: String, date: String) =
-    "EXISTS (SELECT 1 FROM dw.agg_daily_zone fz WHERE fz.zone_id = $zone AND fz.business_date = $date AND fz.final_submitted_at IS NOT NULL)"
+    "EXISTS (SELECT 1 FROM dw.agg_daily_zone fz WHERE fz.zone_id = $zone AND fz.business_date = $date AND fz.final_submitted_at IS NOT NULL AND NOT fz.auto_submitted)"
 
 /** A non-negative thousandths value as the contract's Decimal3 ("150.000"). */
 internal fun decimal3(thousandths: Long): String = "${thousandths / 1000}.${(thousandths % 1000).toString().padStart(3, '0')}"

@@ -54,6 +54,12 @@ class DashboardTest {
 
     @Test
     fun nationalFiguresEqualTheHandComputedControlTotals() {
+        // tso-manual B2 (D-TSO-MAN-30): zone 2's Final Submit row (its route R3 is final_submitted), so this test still covers a
+        // final-submitted zone; the worker's pass builds the zone-day projection the summary reads.
+        fresh.db.jdbi.useHandle<Exception> {
+            it.execute("INSERT INTO app.final_submit (client_uuid, zone_id, business_date, submitted_by, submitted_at, via) SELECT '00000000-0000-4000-8000-0000000b2fd1', ?, DATE '2026-10-04', u.id, TIMESTAMPTZ '2026-10-04 11:00Z', 'app' FROM app.app_user u WHERE u.username = 'sr003'", z2)
+        }
+        AggregationWorker(fresh.db).also { w -> w.requestRebuild(day); w.runUntilIdle() }
         val s = service.summary(reach(national = true), null, null, day, day)
         assertEquals("national", s.node.type)
         // Zones 1 and 2 together: 3 target routes, 3 logged in, 2 sales-submitted; 5 target outlets; 4 successful calls; 4 memos; gross 63 000.
@@ -62,9 +68,9 @@ class DashboardTest {
         assertEquals(5, s.kpis.target_outlets); assertEquals(4, s.kpis.visited_outlets); assertEquals(4, s.kpis.successful_calls); assertEquals(80.0, s.kpis.strike_rate_pct)
         assertEquals(4, s.kpis.active_memo_count); assertEquals(63_000, s.kpis.gross_mtk); assertEquals(63_000, s.kpis.net_mtk)
         // tso-manual B2 (D-TSO-MAN-09, 30): geo = completed calls of the national route set (visit 3 was abandoned: 3 of 4, as the national
-        // Geo Fencing card); a zone counts as final-submitted only with a live app.final_submit row, and seed_day.sql has none.
+        // Geo Fencing card); a zone counts as final-submitted only with a live app.final_submit row (zone 2's, inserted above).
         assertEquals(75.0, s.kpis.geo_valid_pct); assertEquals(20.0, s.kpis.force_sale_pct); assertEquals(1, s.kpis.mock_visits)
-        assertEquals(2, s.kpis.zones_with_target_routes); assertEquals(0, s.kpis.zones_final_submitted); assertEquals(0.0, s.kpis.final_submit_pct)
+        assertEquals(2, s.kpis.zones_with_target_routes); assertEquals(1, s.kpis.zones_final_submitted); assertEquals(50.0, s.kpis.final_submit_pct)
         assertEquals(listOf("wing"), s.children.map { it.node.type }.distinct())
         assertEquals(63_000, s.children.sumOf { it.kpis.net_mtk })
         assertEquals(63_000L, s.by_category.sumOf { it.net_mtk }); assertEquals("cigarette", s.by_category.single().category_code)

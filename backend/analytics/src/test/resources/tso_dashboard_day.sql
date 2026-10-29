@@ -59,11 +59,12 @@ INSERT INTO app.user_scope (user_id, node_type, node_id, valid_from, valid_to)
                  ('amo9004', 'house', 'H2', '2026-09-01', NULL), ('tso9100', 'territory', 'T1', '2026-09-01', NULL)) d(u, t, n, f, e)
     JOIN app.app_user u ON u.username = d.u;
 
--- Outlets: R1 O1, O2; R2 O3, O3B, O3C; one each on R4..R9 and RX.
+-- Outlets: R1 O1, O2; R2 O3, O3B, O3C; one each on R4..R9 and RX. OX (RX) is an Astha outlet: Exact Zone sells cigarettes in one
+-- channel only (s4.2 By Channel STD "100.00% Astha Channel"); territory Apsis sells GT 30 and Astha 10 sticks (7500 / 2500 bp).
 INSERT INTO app.outlet (code, name, owner_name, zone_id, route_id, cluster_id, channel)
   SELECT d.oc, 'Outlet ' || d.oc, 'Owner', r.zone_id, r.id, (SELECT c.id FROM app.cluster c WHERE c.zone_id = r.zone_id), d.ch
     FROM (VALUES ('O1', 'R1', 'GT'), ('O2', 'R1', 'Astha'), ('O3', 'R2', 'GT'), ('O3B', 'R2', 'GT'), ('O3C', 'R2', 'GT'), ('O4', 'R4', 'GT'), ('O5', 'R5', 'GT'),
-                 ('O6', 'R6', 'GT'), ('O7', 'R7', 'GT'), ('O8', 'R8', 'GT'), ('O9', 'R9', 'GT'), ('OX', 'RX', 'GT')) d(oc, rc, ch)
+                 ('O6', 'R6', 'GT'), ('O7', 'R7', 'GT'), ('O8', 'R8', 'GT'), ('O9', 'R9', 'GT'), ('OX', 'RX', 'Astha')) d(oc, rc, ch)
     JOIN app.route r ON r.code = d.rc;
 
 -- Catalogue: one SKU per category. Segments "Medium" (cigarette) and "Bidi"; brands Maxim and Bidi Gold.

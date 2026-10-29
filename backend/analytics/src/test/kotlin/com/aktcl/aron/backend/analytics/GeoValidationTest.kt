@@ -82,6 +82,10 @@ class GeoValidationTest {
         // tso-manual B2 (D-TSO-MAN-09): the summary's geo % is the national Geo Fencing card's (completed calls of the national route set:
         // 1 of 4, the abandoned visit is no call); this page keeps every visit (1 of 5).
         assertEquals(25.0, summary.kpis.geo_valid_pct)
+        val card = NationalDashboardService(fresh.db, AronClock { Instant.parse("2026-10-04T12:00:00Z") })
+            .geoFencing(NationalCaller(reach(national = true)), NationalDashboardFilter(date = "2026-10-04"))
+        assertEquals(1 to 4, card.geo_validated to card.total_calls)
+        assertEquals(summary.kpis.geo_valid_pct, com.aktcl.aron.backend.analytics.pct(card.geo_validated.toLong(), card.total_calls.toLong()), "summary geo == the national Geo Fencing card")
         assertEquals(com.aktcl.aron.backend.analytics.pct(summary.kpis.suspicious_visits.toLong(), 5), g.suspicious_pct)
         assertEquals(mapOf("CLOCK_SKEW" to 1, "GEO_MOCK" to 1, "GEO_TELEPORT" to 1), g.signals_by_code, "dismissed and other dates left out")
         assertEquals(listOf("wing"), g.children.map { it.node.type }.distinct())

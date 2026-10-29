@@ -213,8 +213,8 @@ POST /v1/admin/mdm/enrolment-tokens/{token_id}/revoke -> exempt: national module
 POST /v1/admin/mdm/policies -> exempt: national module (mdm grant), no geography rows; role gate proven by MdmApiTest#roleMatrixOnlyAdminAndSuperadminEnter
 PUT /v1/admin/mdm/devices/{device_id}/policy -> exempt: national module (mdm grant), no geography rows; role gate proven by MdmApiTest#roleMatrixOnlyAdminAndSuperadminEnter
 PUT /v1/admin/mdm/policies/{policy_id} -> exempt: national module (mdm grant), no geography rows; role gate proven by MdmApiTest#roleMatrixOnlyAdminAndSuperadminEnter
+# tso-manual B2 (getTargetAchievement and the contract 1.10.0 national cards)
 GET /v1/dashboards/targets -> case TargetAchievementTest#aNodeOutsideTheReachIs403AndTheZoneCardsComeFromTheReach
-# tso-manual B2 (contract 1.10.0 national cards)
 POST /v1/dashboards/national/brand-cpr -> case BrandCprTest#overHttpTheScopeComesFromTheTokenAndTheClientCannotWidenIt
 POST /v1/dashboards/national/segment-share -> case SegmentShareTest#overHttpTheScopeComesFromTheTokenAndTheClientCannotWidenIt
 POST /v1/dashboards/national/login-submit/users -> case LoginSubmitUsersTest#overHttpTheScopeComesFromTheTokenAndTheClientCannotWidenIt

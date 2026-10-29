@@ -125,11 +125,11 @@ class TargetAchievementService(private val db: Database, private val config: Ser
              WHERE a.business_date BETWEEN :f AND :d AND ${node.clause("g.zone_id", "a.route_id")} GROUP BY 1, 2
             """,
         ).bind("f", month.atDay(1)).bind("d", day)).map { rs, _ -> Triple(rs.getLong(1), rs.getLong(2), rs.getLong(3)) }.list()
-        val zones = (t.map { it.first } + a.map { it.first }).toSet()
-        return zones.associateWith { z ->
-            // The contract's A is >= 0; a negative month total (only a data error could make one) shows as nothing achieved.
-            Figures(t.filter { it.first == z }.associate { it.second to it.third }, a.filter { it.first == z }.associate { it.second to it.third.coerceAtLeast(0L) })
-        }
+        // Grouped once (O(rows), not O(zones x rows): a national caller at fleet size has ~1,500 zones; docs/31 speed gate).
+        // The contract's A is >= 0; a negative month total (only a data error could make one) shows as nothing achieved.
+        val tz = t.groupBy({ it.first }) { it.second to it.third }
+        val az = a.groupBy({ it.first }) { it.second to it.third.coerceAtLeast(0L) }
+        return (tz.keys + az.keys).associateWith { z -> Figures(tz[z].orEmpty().toMap(), az[z].orEmpty().toMap()) }
     }
 
     private fun sum(maps: List<Map<Long, Long>>): Map<Long, Long> = buildMap { maps.forEach { m -> m.forEach { (k, v) -> put(k, Math.addExact(get(k) ?: 0L, v)) } } }
