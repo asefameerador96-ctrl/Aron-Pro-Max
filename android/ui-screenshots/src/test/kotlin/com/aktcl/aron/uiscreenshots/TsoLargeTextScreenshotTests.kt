@@ -40,8 +40,8 @@ import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 
 /**
- * 200 percent font scale goldens (docs/32 s2a: nothing clips, every action stays reachable) of the TSO Home, Leave apply and Final
- * Submit, and the longest Bangla labels wrapping to three lines. Linux only (`-Proborazzi.record=true`).
+ * 200 percent font scale goldens (docs/32 s2a: nothing clips, every action stays reachable) of the TSO Dashboard root, drawer and
+ * login (A1, in the TSO look), Leave apply and Final Submit, and the longest Bangla labels wrapping to three lines. Linux only (`-Proborazzi.record=true`).
  */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
@@ -54,7 +54,7 @@ class TsoLargeTextScreenshotTests {
 
     private fun shot(name: String, language: AppLanguage, content: @Composable () -> Unit) {
         val ctx = AppLocale.wrap(ApplicationProvider.getApplicationContext<Context>(), language)
-        rule.setContent { CompositionLocalProvider(LocalContext provides ctx) { AronTheme(language, dark = false, sunlight = false, tier = GlassTier.B, reducedMotion = true) { content() } } }
+        rule.setContent { CompositionLocalProvider(LocalContext provides ctx) { AronTheme(language, dark = true, sunlight = false, tier = GlassTier.B, reducedMotion = true, tso = true) { content() } } }
         rule.waitForIdle()
         if (recordTo == null && System.getProperty("roborazzi.test.record") != "true") assertTrue("missing golden $goldens/$name.png", java.io.File("$goldens/$name.png").exists())
         rule.onRoot().captureRoboImage("${recordTo ?: goldens}/$name.png", roborazziOptions = options)
@@ -62,8 +62,24 @@ class TsoLargeTextScreenshotTests {
 
     private val user = HomeUser("টেস্টিং ঢাকা নর্থ টেরিটরি অফিসার", "tso1001", "TSO", offline = false, reauthRequired = false, updateRequired = false)
 
-    @Test fun home_200_bn() = shot("tso_home_200_bn", AppLanguage.BN) {
-        TsoApp(user, "2026-10-17", BundleStatus.Ready("b-1", "2026-10-17"), "0.1.0 (1)", {}, {})
+    // tso-manual A1: the Dashboard root (top bar, cards, Home button), the drawer and the login at 200 percent
+    private val stamp = "\"as_of\":\"2026-10-29T08:30:00Z\""
+    private val dash = com.aktcl.aron.feature.tso.TsoDashboardState(
+        sales = com.aktcl.aron.feature.tso.CardLoad(com.aktcl.aron.feature.tso.TsoDashboards.sales("""{$stamp,"working_days":25,"cards":[{"category_code":"cigarette","base_unit":"stick","total_sales":1234567,"monthly_target_qty":42000}]}""")),
+        cpr = com.aktcl.aron.feature.tso.CardLoad(com.aktcl.aron.feature.tso.TsoDashboards.cpr("""{$stamp,"target_outlets":1186,"successful_calls":29}""")),
+        login = com.aktcl.aron.feature.tso.CardLoad(com.aktcl.aron.feature.tso.TsoDashboards.loginSubmit("""{$stamp,"target_routes":5,"successful_login":2,"submitted":1}""")),
+    )
+    @Test fun dashboard_200_bn() = shot("tso_dashboard_200_bn", AppLanguage.BN) {
+        TsoApp(
+            user, "2026-10-29", BundleStatus.Ready("b-1", "2026-10-29"), "0.1.0 (1)", {}, {}, unread = 12,
+            screens = mapOf(com.aktcl.aron.feature.tso.TsoScreen.DASHBOARD to { _, _ -> com.aktcl.aron.feature.tso.TsoDashboardContent(dash, false, com.aktcl.aron.feature.tso.ChannelMode.STD, {}, {}, {}) }),
+        )
+    }
+    @Test fun drawer_200_bn() = shot("tso_drawer_200_bn", AppLanguage.BN) {
+        com.aktcl.aron.feature.tso.TsoDrawerContent(user.fullName, {}, {}, {}, initiallyExpanded = "tickets")
+    }
+    @Test fun login_200_en() = shot("tso_login_200_en", AppLanguage.EN) {
+        com.aktcl.aron.feature.auth.TsoLoginContent(com.aktcl.aron.feature.auth.LoginUiState(message = com.aktcl.aron.feature.auth.LoginMessage.OfflineNeverOnline), {}, {}, {}, {}, {})
     }
 
     @Test fun leave_apply_200_bn() = shot("tso_leave_apply_200_bn", AppLanguage.BN) {

@@ -28,18 +28,34 @@ import com.aktcl.aron.feature.tso.finalsubmit.FsResult
 import com.aktcl.aron.feature.tso.finalsubmit.FsRoute
 import com.aktcl.aron.feature.tso.finalsubmit.FsSubmitOutcome
 import com.aktcl.aron.feature.tso.leave.LeaveItem
-import com.aktcl.aron.feature.tso.TsoHomeContent
+import com.aktcl.aron.feature.tso.CardLoad
+import com.aktcl.aron.feature.tso.ChannelMode
+import com.aktcl.aron.feature.tso.LoginSubmitTab
+import com.aktcl.aron.feature.tso.LoginSubmitUsers
+import com.aktcl.aron.feature.tso.TsoApp
+import com.aktcl.aron.feature.tso.TsoDrawerContent
+import com.aktcl.aron.feature.tso.TsoFab
+import com.aktcl.aron.feature.tso.TsoFrame
+import com.aktcl.aron.feature.tso.TsoLoginSubmitStatusContent
+import com.aktcl.aron.feature.tso.TsoLogoutDialogContent
+import com.aktcl.aron.feature.tso.TsoNav
+import com.aktcl.aron.feature.tso.TsoScreen
+import com.aktcl.aron.feature.auth.LoginMessage
+import com.aktcl.aron.feature.auth.LoginUiState
+import com.aktcl.aron.feature.auth.TsoLoginContent
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.ui.unit.dp
 import com.aktcl.aron.feature.tso.TsoDashboardContent
 import com.aktcl.aron.feature.tso.TsoDashboardState
 import com.aktcl.aron.feature.tso.TsoDashboards
 import com.aktcl.aron.feature.tso.TsoFailure
-import com.aktcl.aron.feature.tso.ZoneRef
 import com.aktcl.aron.feature.tso.TsoSettingsContent
 import com.aktcl.aron.feature.home.BundleStatus
 import com.aktcl.aron.feature.home.HomeUser
-import com.aktcl.aron.feature.home.RoleHero
-import com.aktcl.aron.feature.home.RoleHomes
-import com.aktcl.aron.core.ui.SyncChipState
 import com.aktcl.aron.feature.tso.leave.LeaveListScreen
 import com.aktcl.aron.feature.tso.leave.LeaveListState
 import com.aktcl.aron.feature.tso.leave.LeaveSource
@@ -73,8 +89,9 @@ import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 
 /**
- * Goldens of the TSO screens (leave, feedback, My Call, Final Submit, change password, Home and Settings) in their states: content,
- * empty, kept copy (offline), error, long Bangla, Sunlight (docs/32 s2a). Record on Linux only:
+ * Goldens of the TSO screens in the TSO look (D-TSO-MAN-13; AronTheme(tso = true)): A1's login, Dashboard, Login & Bikroy Joma
+ * Status, drawer, logout and Settings (screenshots 5 to 10, 27, 30, 44), and the area screens (leave, feedback, My Call, Final Submit,
+ * change password) until A3 moves them, in their states: content, empty, kept copy (offline), error, long Bangla, Sunlight (docs/32 s2a). Record on Linux only:
  * `./gradlew :android:ui-screenshots:testDebugUnitTest -Proborazzi.record=true --tests '*TsoScreenshotTests*'`.
  */
 @RunWith(RobolectricTestRunner::class)
@@ -89,7 +106,7 @@ class TsoScreenshotTests {
 
     private fun shot(name: String, language: AppLanguage, sunlight: Boolean = false, content: @Composable () -> Unit) {
         val ctx = AppLocale.wrap(ApplicationProvider.getApplicationContext<Context>(), language)
-        rule.setContent { CompositionLocalProvider(LocalContext provides ctx) { AronTheme(language, dark = false, sunlight = sunlight, tier = GlassTier.B, reducedMotion = true) { content() } } }
+        rule.setContent { CompositionLocalProvider(LocalContext provides ctx) { AronTheme(language, dark = !sunlight, sunlight = sunlight, tier = GlassTier.B, reducedMotion = true, tso = true) { content() } } }
         rule.waitForIdle()
         if (recordTo == null && System.getProperty("roborazzi.test.record") != "true") assertTrue("missing golden $goldens/$name.png", java.io.File("$goldens/$name.png").exists())
         rule.onRoot().captureRoboImage("${recordTo ?: goldens}/$name.png", roborazziOptions = options)
@@ -172,56 +189,92 @@ class TsoScreenshotTests {
         ChangePasswordScreen(st, onBack = {})
     }
 
-    // ---- home and settings (existing-Aron look, PARITY-SPEC s2.3 and s2.4)
-    private val tsoUser = HomeUser("টেস্টিং ঢাকা নর্থ", "tso1001", "TSO", offline = false, reauthRequired = false, updateRequired = false)
-    @Composable private fun TsoHomeShot(user: HomeUser = tsoUser, bundle: BundleStatus = BundleStatus.Ready("b-17", "2026-10-05"), sync: SyncChipState = SyncChipState.SyncedAt("10:42")) = TsoHomeContent(
-        RoleHomes.header(RoleHomes.TSO_PREFIX, user, "2026-10-05"), user, bundle,
-        RoleHomes.tsoTiles(mapOf(RoleHomes.TsoTile.LEAVE to 1)).filter { it.id != RoleHomes.TsoTile.DEVICE_OTP }, sync, onTile = {}, onSettings = {}, hero = RoleHero.Tso(3, 12),
-    )
-    @Test fun home_parity_bn() = shot("tso_home_parity_bn", AppLanguage.BN) { TsoHomeShot() }
-    @Test fun home_parity_offline_en() = shot("tso_home_parity_offline_en", AppLanguage.EN) { TsoHomeShot(tsoUser.copy(offline = true), BundleStatus.Offline, SyncChipState.Offline) }
-    @Test fun home_parity_sunlight_bn() = shot("tso_home_parity_sunlight_bn", AppLanguage.BN, sunlight = true) { TsoHomeShot() }
+    // ---- settings (A1: the TSO look; the drawer's gear opens it)
     @Test fun settings_parity_bn() = shot("tso_settings_parity_bn", AppLanguage.BN) {
-        TsoSettingsContent("0.1.0 (1)", "লগআউট করলে এই ফোন থেকে অ্যাপের সব তথ্য মুছে যাবে।", {}, {}, {}, sunlight = false, onSunlight = {}, onUpdate = {}, onSupport = {}, onChangePassword = {})
+        TsoSettingsContent("0.1.0 (1)", "", {}, {}, {}, sunlight = false, onSunlight = {}, onUpdate = {}, onSupport = {}, onChangePassword = {})
     }
 
-    // ---- dashboard (kit frame: gradient top bar, grey page)
-    private fun dashMoney(bangla: Boolean): (Long) -> String = { com.aktcl.aron.rules.Formats.money(it, if (bangla) com.aktcl.aron.rules.UiLocale.BN else com.aktcl.aron.rules.UiLocale.EN) }
-    private fun kitShot(name: String, language: AppLanguage, title: String, sunlight: Boolean = false, content: @Composable () -> Unit) = shot(name, language, sunlight) {
-        com.aktcl.aron.core.ui.aron.AronScaffold(topBar = {
-            com.aktcl.aron.core.ui.aron.AronTopBar(title, icon = androidx.compose.ui.res.painterResource(com.aktcl.aron.core.ui.R.drawable.aron_art_kpi), onBack = {}, backLabel = "Back")
-        }) { content() }
-    }
-    private val tsoJson = """{"as_of":"2026-10-17T08:30:00Z","node":{"type":"territory","id":3,"name":"T3"},
-      "kpis":{"target_routes":4,"logged_in_routes":1,"login_pct":25.0,"sales_submitted_routes":0,"submit_pct_of_logged_in":0.0,"target_outlets":44,"visited_outlets":30,"successful_calls":2,"strike_rate_pct":6.67,"active_memo_count":2,"gross_mtk":900000,"net_mtk":850000,"mock_visits":0,"suspicious_visits":0},
-      "by_category":[{"category_code":"cigarette","base_unit":"stick","qty_base":36100000,"report_unit":"stick","qty_report":"36100000.000","net_mtk":7000000},{"category_code":"bidi","base_unit":"stick","qty_base":6507000,"net_mtk":900000},{"category_code":"lighter","base_unit":"piece","qty_base":111000,"report_unit":"box","qty_report":1110.5,"net_mtk":100000},{"category_code":"match","base_unit":"dozen","qty_base":28067,"net_mtk":50000}],
-      "by_channel":[{"code":"GT","name":"General Trade","net_mtk":6000000,"memo_count":10,"successful_calls":10},{"code":"DCC","name":"DCC","net_mtk":2500000,"memo_count":4,"successful_calls":4},{"code":"MT","name":"Modern Trade","net_mtk":500000,"memo_count":1,"successful_calls":1}],
-      "by_segment":[{"code":"S1","name":"Premium","net_mtk":4000000,"qty_base":1000,"memo_count":3,"successful_calls":3},{"code":"S2","name":"Value","net_mtk":2000000,"qty_base":9000,"memo_count":9,"successful_calls":9}],
-      "by_brand":[{"code":"B1","name":"Gold Leaf","net_mtk":1,"memo_count":1,"successful_calls":1,"memo_ratio_pct":50.0},{"code":"B2","name":"Navy","net_mtk":1,"memo_count":0,"successful_calls":0,"memo_ratio_pct":0.0}],"children":[]}"""
-    private val tsoLogin = TsoDashboards.loginSubmit(
-        """{"as_of":"2026-10-17T08:30:00Z","kpis":{"target_routes":4,"logged_in_routes":1,"login_pct":25.0,"sales_submitted_routes":0,"submit_pct_of_logged_in":0.0},"not_logged_in":[{"route_id":2,"route_code":"R2"},{"route_id":3},{"route_id":4}],"logged_in_not_submitted":[{"route_id":1,"route_code":"R1"}],"submitted":[]}""",
-    )
-    @Test @Config(qualifiers = "w360dp-h800dp") fun dash_tso_dashboard_en() = kitShot("tso_dashboard_en", AppLanguage.EN, "Dashboard") { TsoDashboardContent(TsoDashboardState(TsoDashboards.summary(tsoJson), tsoLogin, false, TsoFailure.NONE, zones = listOf(ZoneRef(11, "Zone 11")), businessDate = "2026-10-17"), "All my zones", dashMoney(false), {}, {}, {}, {}) }
-    @Test @Config(qualifiers = "bn-w360dp-h800dp") fun dash_tso_dashboard_bn() = kitShot("tso_dashboard_bn", AppLanguage.BN, "ড্যাশবোর্ড") { TsoDashboardContent(TsoDashboardState(TsoDashboards.summary(tsoJson), tsoLogin, true, TsoFailure.NONE, businessDate = "2026-10-17"), "আমার সব জোন", dashMoney(true), {}, {}, {}, {}) }
-    @Test @Config(qualifiers = "w360dp-h800dp") fun dash_tso_dashboard_empty_offline_en() = kitShot("tso_dashboard_empty_offline_en", AppLanguage.EN, "Dashboard") { TsoDashboardContent(TsoDashboardState(null, null, false, TsoFailure.OFFLINE, loginFailure = TsoFailure.OFFLINE, businessDate = "2026-10-17"), "All my zones", dashMoney(false), {}, {}, {}, {}) }
-    @Test @Config(qualifiers = "bn-w360dp-h800dp") fun dash_tso_dashboard_sunlight_bn() = kitShot("tso_dashboard_sunlight_bn", AppLanguage.BN, "ড্যাশবোর্ড", sunlight = true) { TsoDashboardContent(TsoDashboardState(TsoDashboards.summary(tsoJson), tsoLogin, false, TsoFailure.NONE, businessDate = "2026-10-17"), "আমার সব জোন", dashMoney(true), {}, {}, {}, {}) }
-
-    // ---- menu hubs (sr/outlet-menu.png look)
+    // ---- menu hubs (A3's area screens until A3 moves them to TsoAreaScreenshotTests)
     @Test fun my_call_hub_bn() = shot("tso_my_call_hub_bn", AppLanguage.BN) { com.aktcl.aron.feature.tso.mycall.MyCallHub({}, {}, {}) }
     @Test fun periphery_hub_en() = shot("tso_periphery_hub_en", AppLanguage.EN) { com.aktcl.aron.feature.tso.periphery.PeripheryHub({}, {}, {}) }
 
-    // ---- dashboard drill-downs (route list behind a count, zone filter)
-    private val routeRows = listOf(
-        com.aktcl.aron.feature.tso.RouteDayRow(1, "DHK-R1", "ঢাকা উত্তর রুট এক", "not_logged_in", srName = "রহিম উদ্দিন"),
-        com.aktcl.aron.feature.tso.RouteDayRow(2, "DHK-R2", "Route Two", "not_logged_in"),
+    // ---- tso-manual A1: login (5), Dashboard (6, 7), Login & Bikroy Joma Status (8), drawer (9, 10, 27, 30), logout (44)
+    private val stamp = "\"as_of\":\"2026-10-29T08:30:00Z\",\"date\":\"2026-10-29\",\"till_time\":true,\"last_updated_at\":null"
+    /** The figures of screenshots 6 and 7 (the build contract s4.2 fixtures). */
+    private fun dash(kept: Boolean = false): TsoDashboardState {
+        fun <T> l(v: T?) = CardLoad(v, kept = kept, failure = if (kept) TsoFailure.OFFLINE else TsoFailure.NONE)
+        return TsoDashboardState(
+            sales = l(TsoDashboards.sales("""{$stamp,"working_days":25,"cards":[
+                {"category_code":"cigarette","base_unit":"stick","total_sales":40,"monthly_target_qty":42000},
+                {"category_code":"bidi","base_unit":"stick","total_sales":2991,"monthly_target_qty":26000},
+                {"category_code":"lighter","base_unit":"piece","total_sales":0,"monthly_target_qty":100},
+                {"category_code":"match","base_unit":"dozen","total_sales":0,"monthly_target_qty":175}]}""")),
+            geo = l(TsoDashboards.geo("""{$stamp,"total_calls":4,"geo_validated":4}""")),
+            channelStd = l(TsoDashboards.channels("""{$stamp,"channels":[{"channel":"Astha","value":40}],"total":40}""")),
+            channelCalls = l(TsoDashboards.channels("""{$stamp,"channels":[{"channel":"Astha","value":2},{"channel":"GT","value":1}],"total":3}""")),
+            cpr = l(TsoDashboards.cpr("""{$stamp,"target_outlets":119,"successful_calls":3}""")),
+            brand = l(TsoDashboards.brandCpr("""{$stamp,"target_outlets":119,"successful_calls":3,"denominator":"successful_calls","brands":[
+                {"brand_code":"MX","brand_name":"Maxim","outlets_bought":2},{"brand_code":"BG","brand_name":"Bidi Gold","outlets_bought":1}]}""")),
+            login = l(TsoDashboards.loginSubmit("""{$stamp,"target_routes":5,"successful_login":2,"submitted":1}""")),
+            segment = l(TsoDashboards.segments("""{$stamp,"total_value_mtk":1000,"families":[{"base_unit":"stick","total_qty_base":100}],"segments":[
+                {"segment_code":"BI","segment_name":"Bidi","category_code":"bidi","base_unit":"stick","value_mtk":820,"qty_base":91},
+                {"segment_code":"ME","segment_name":"Medium","category_code":"cigarette","base_unit":"stick","value_mtk":180,"qty_base":9}]}""")),
+            businessDate = "2026-10-29",
+        )
+    }
+    private val apsis = HomeUser("Apsis", "tso1001", "TSO", offline = false, reauthRequired = false, updateRequired = false)
+    @Composable private fun Root(state: TsoDashboardState?, mode: ChannelMode = ChannelMode.STD, unread: Int = 1, user: HomeUser = apsis) = TsoApp(
+        user, "2026-10-29", BundleStatus.Ready("b", "2026-10-29"), "0.1.0 (1)", {}, {}, unread = unread,
+        screens = mapOf(TsoScreen.DASHBOARD to { _, _ -> TsoDashboardContent(state, false, mode, {}, {}, {}) }),
     )
-    @Test fun dash_route_list_bn() = kitShot("tso_dashboard_routes_bn", AppLanguage.BN, "ড্যাশবোর্ড") {
-        com.aktcl.aron.feature.tso.TsoRouteListContent(routeRows, "2026-10-17", "2026-10-17T08:30:00Z", stale = false, failure = TsoFailure.NONE)
+
+    @Test fun login_en() = shot("tso_login_en", AppLanguage.EN) { TsoLoginContent(LoginUiState(), {}, {}, {}, {}, {}) }
+    @Test fun login_bn_refused() = shot("tso_login_refused_bn", AppLanguage.BN) { TsoLoginContent(LoginUiState(username = "tso1001", password = "x", message = LoginMessage.InvalidCredentials), {}, {}, {}, {}, {}) }
+    @Test fun login_sunlight_en() = shot("tso_login_sunlight_en", AppLanguage.EN, sunlight = true) { TsoLoginContent(LoginUiState(username = "tso1001"), {}, {}, {}, {}, {}) }
+
+    @Test fun dashboard_top_en() = shot("tso_dashboard_top_en", AppLanguage.EN) { Root(dash()) }
+    @Test @Config(qualifiers = "w360dp-h2600dp") fun dashboard_full_en() = shot("tso_dashboard_full_en", AppLanguage.EN) { Root(dash()) }
+    @Test @Config(qualifiers = "bn-w360dp-h2600dp") fun dashboard_full_bn() = shot("tso_dashboard_full_bn", AppLanguage.BN) { Root(dash(), user = apsis.copy(fullName = "টেস্টিং ঢাকা নর্থ")) }
+    @Test @Config(qualifiers = "w360dp-h2600dp") fun dashboard_full_sunlight_en() = shot("tso_dashboard_full_sunlight_en", AppLanguage.EN, sunlight = true) { Root(dash()) }
+    @Test @Config(qualifiers = "w360dp-h2600dp") fun dashboard_calls_kept_en() = shot("tso_dashboard_calls_kept_en", AppLanguage.EN) { Root(dash(kept = true), ChannelMode.CALLS, unread = 0) }
+    private fun <T> off() = CardLoad<T>(null, failure = TsoFailure.OFFLINE)
+    @Test fun dashboard_offline_empty_en() = shot("tso_dashboard_offline_empty_en", AppLanguage.EN) {
+        Root(TsoDashboardState(off(), off(), off(), off(), off(), off(), off(), off(), "2026-10-29"))
     }
-    @Test fun dash_route_list_empty_en() = kitShot("tso_dashboard_routes_empty_en", AppLanguage.EN, "Dashboard") {
-        com.aktcl.aron.feature.tso.TsoRouteListContent(emptyList(), "2026-10-17", null, stale = false, failure = TsoFailure.OFFLINE)
+    @Test fun dashboard_loading_en() = shot("tso_dashboard_loading_en", AppLanguage.EN) { Root(null) }
+
+    private val users = TsoDashboards.users("""{$stamp,"tab":"not_logged_in","route_count":2,"truncated":false,"items":[
+        {"route_id":2,"route_code":"R2","route_name":"Apsis Route 2","zone_id":9,"dep_name":"Banani - Test","user_id":4,"username":"sr334002","display_name":"SR - Testing Banani 2","role":"SR"},
+        {"route_id":2,"route_code":"R2","route_name":"Apsis Route 2","zone_id":9,"dep_name":"Banani - Test","user_id":7,"username":"amo6334","display_name":"AMO-6334","role":"AMO"},
+        {"route_id":3,"route_code":"R3","route_name":"Apsis Route 3","zone_id":9,"dep_name":"Banani - Test","user_id":null,"username":null,"display_name":null,"role":"SR"}]}""")
+    @Composable private fun Status(tab: LoginSubmitTab, load: CardLoad<LoginSubmitUsers>?) {
+        val nav = object : TsoNav { override fun open(screen: TsoScreen, arg: String?) {}; override fun back() {}; override fun home() {} }
+        TsoFrame(androidx.compose.ui.res.stringResource(com.aktcl.aron.feature.tso.R.string.tso_dash_login_submit), nav, homeButton = TsoFab.of(TsoScreen.LOGIN_SUBMIT_STATUS)) {
+            TsoLoginSubmitStatusContent(tab, load, false, {}, {})
+        }
     }
-    @Test fun dash_zone_filter_en() = kitShot("tso_dashboard_zones_en", AppLanguage.EN, "Dashboard") {
-        com.aktcl.aron.feature.tso.TsoZoneFilterContent(listOf(ZoneRef(10, "Zone 10"), ZoneRef(11, "Zone 11")), 11L, {})
+    @Test fun login_status_en() = shot("tso_login_status_en", AppLanguage.EN) { Status(LoginSubmitTab.NOT_LOGGED_IN, CardLoad(users)) }
+    @Test fun login_status_bn() = shot("tso_login_status_bn", AppLanguage.BN) { Status(LoginSubmitTab.NOT_UPLOADED, CardLoad(users)) }
+    @Test fun login_status_offline_en() = shot("tso_login_status_offline_en", AppLanguage.EN) { Status(LoginSubmitTab.NOT_LOGGED_IN, CardLoad(null, failure = TsoFailure.OFFLINE)) }
+
+    @Composable private fun Drawer(open: String?, name: String = "Apsis") {
+        androidx.compose.foundation.layout.Box(androidx.compose.ui.Modifier.fillMaxSize()) {
+            Root(dash())
+            androidx.compose.foundation.layout.Box(androidx.compose.ui.Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.32f)))
+            TsoDrawerContent(name, {}, {}, {}, androidx.compose.ui.Modifier.fillMaxWidth(0.85f).fillMaxHeight(), initiallyExpanded = open)
+        }
     }
+    @Test fun drawer_en() = shot("tso_drawer_en", AppLanguage.EN) { Drawer(null) }
+    @Test fun drawer_tickets_en() = shot("tso_drawer_tickets_en", AppLanguage.EN) { Drawer("tickets") }
+    @Test @Config(qualifiers = "bn-w360dp-h800dp") fun drawer_periphery_bn() = shot("tso_drawer_periphery_bn", AppLanguage.BN) { Drawer("periphery", "টেস্টিং ঢাকা নর্থ") }
+    @Test fun drawer_my_call_sunlight_en() = shot("tso_drawer_my_call_sunlight_en", AppLanguage.EN, sunlight = true) { Drawer("my_call") }
+    @Composable private fun LogoutOverDrawer() {
+        androidx.compose.foundation.layout.Box(androidx.compose.ui.Modifier.fillMaxSize()) {
+            Drawer("feedback")
+            androidx.compose.foundation.layout.Box(androidx.compose.ui.Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.32f)))
+            TsoLogoutDialogContent({}, {}, androidx.compose.ui.Modifier.align(androidx.compose.ui.Alignment.Center).padding(horizontal = 32.dp))
+        }
+    }
+    @Test fun logout_dialog_en() = shot("tso_logout_dialog_en", AppLanguage.EN) { LogoutOverDrawer() }
+    @Test @Config(qualifiers = "bn-w360dp-h800dp") fun logout_dialog_bn() = shot("tso_logout_dialog_bn", AppLanguage.BN) { LogoutOverDrawer() }
 }
