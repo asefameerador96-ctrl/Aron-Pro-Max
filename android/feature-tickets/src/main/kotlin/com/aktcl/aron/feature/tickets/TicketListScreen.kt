@@ -1,7 +1,10 @@
 package com.aktcl.aron.feature.tickets
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
@@ -86,14 +89,19 @@ fun TicketListScreen(state: TicketListState, frame: TicketFrame, onOpen: (String
     }
 }
 
+/** The tabs scroll sideways when they do not fit (200 % text); the selected one is always scrolled into view (screenshot 13). */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun TabRow(selected: TicketTab, onSelect: (TicketTab) -> Unit) {
     val p = ticketPalette()
+    val inView = remember { TicketTab.entries.associateWith { BringIntoViewRequester() } }
+    LaunchedEffect(selected) { inView.getValue(selected).bringIntoView() }
     Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
         TicketTab.entries.forEach { t ->
             val on = t == selected
             Box(
                 Modifier
+                    .bringIntoViewRequester(inView.getValue(t))
                     .heightIn(min = 48.dp)
                     .clip(RoundedCornerShape(50))
                     .background(if (on) p.accent else p.chip)
