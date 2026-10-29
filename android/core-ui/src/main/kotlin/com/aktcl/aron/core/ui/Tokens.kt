@@ -301,6 +301,8 @@ data class AronNightRoles(
     val plateTop: Color, val plateBottom: Color,
     /** Status inks readable on the navy cards. */
     val danger: Color, val warning: Color, val success: Color,
+    // tso-manual A1: the Target Status bars (screenshots 39 to 42): red, amber and green fills on [barTrack] by `cfg.kpi.bar_bands`
+    val bandRed: Color = hex(0xE53935), val bandAmber: Color = hex(0xFFB300), val bandGreen: Color = hex(0x2E8B3A),
 ) {
     companion object {
         val Night = AronNightRoles(
@@ -344,6 +346,7 @@ data class AronNightRoles(
             segmentOn = hex(0x00642F), onSegment = hex(0xFFFFFF), pillOn = hex(0x1A2AA8), pillOff = hex(0xFFFFFF), chip = hex(0xEEEEEE), chipInk = hex(0x202020),
             plateTop = hex(0xFFFFFF), plateBottom = hex(0xFFFFFF),
             danger = hex(0xB0001C), warning = hex(0x8A3F00), success = hex(0x00642F),
+            bandRed = hex(0xB0001C), bandAmber = hex(0x8A5A00), bandGreen = hex(0x00642F), // tso-manual A1
         )
     }
 }

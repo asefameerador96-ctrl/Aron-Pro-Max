@@ -227,4 +227,13 @@ class TokenContrastTest {
         night("kit secondary button label", l.secondaryText, l.disabledFill, 7.0)
         night("kit notice", l.ink, l.noticeFill, 7.0)
     }
+
+    // tso-manual A1 step 3: the Target Status bars. The printed percent carries the figure (danger, warning, success inks, 4.5:1 on
+    // the card above); the band fill must stand out from the card at 3:1. On the night card the bright amber of screenshot 39 sits
+    // on the light track at 1.4:1 (the screenshot's colours; the percent beside it is the figure); Sunlight also holds 3:1 on the track.
+    @Test fun tsoTargetBandsReachThreeToOne() = tsoRoles.forEach { (name, n) ->
+        listOf(n.bandRed, n.bandAmber, n.bandGreen).forEach { night("$name band fill on the card", it, n.outlineCard, 3.0) }
+        if (n.solid) listOf(n.bandRed, n.bandAmber, n.bandGreen).forEach { night("$name band fill on its track", it, n.barTrack, 3.0) }
+        assertTrue("$name bands distinct", setOf(n.bandRed, n.bandAmber, n.bandGreen).size == 3)
+    }
 }
