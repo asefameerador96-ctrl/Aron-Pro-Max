@@ -2,6 +2,7 @@ package com.aktcl.aron.feature.memo.ui
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.aktcl.aron.core.database.repo.RouteDayFinalSubmittedException
 import com.aktcl.aron.core.printing.doc.MemoPrint
 import com.aktcl.aron.core.printing.flow.PrintAttempt
 import com.aktcl.aron.feature.memo.domain.DueCollectionDraft
@@ -51,6 +52,13 @@ data class MemoUiState(
     val printing: Boolean = false,
     /** The first read of the day's memos has finished: before it the list is not empty, it is not known yet. */
     val loaded: Boolean = false,
+    /**
+     * tso-manual X4a (R-W-11): the day's route-day is closed by its zone's Final Submit, so a Mark Paid would be refused
+     * (`due_collection` is a locked type): Mark Paid is hidden. Reprints stay allowed.
+     */
+    val dayLocked: Boolean = false,
+    /** tso-manual X4a: a Mark Paid was refused by the Final Submit lock; the host shows the lock text until [MemoViewModel.dismissLockRefusal]. */
+    val lockRefused: Boolean = false,
 )
 
 /**
@@ -63,6 +71,11 @@ class MemoViewModel(
     private val reprinter: MemoReprinter,
     private val names: () -> PrintNames,
     private val businessDate: () -> String,
+    /**
+     * tso-manual X4a (R-W-11): true when a Mark Paid of the day would meet the Final Submit lock (the SR: `SrDay.finalLocked()`;
+     * the AMO: the lock for the collection's route). Read with every reload; a failing read counts as open.
+     */
+    private val markPaidLocked: suspend () -> Boolean = { false },
 ) : ViewModel() {
     private val lock = Mutex()
     private val printLock = Mutex()
@@ -80,7 +93,8 @@ class MemoViewModel(
             lock.withLock {
                 val m = _state.value.selected?.memo ?: return@withLock
                 val draft = DueLedger.markPaid(m, collections, DueLedger.outletOutstanding(memos, collections, m.outletId)) ?: return@withLock
-                dues.write(draft)
+                // tso-manual X4a (R-W-11): the lock can arrive after the button was drawn; the refusal stores nothing and is shown
+                try { dues.write(draft) } catch (_: RouteDayFinalSubmittedException) { _state.value = _state.value.copy(lockRefused = true) }
                 reloadLocked(m.memoUuid)
             }
         }
@@ -110,6 +124,9 @@ class MemoViewModel(
         }
     }
 
+    /** Closes the lock text of a refused Mark Paid (tso-manual X4a). */
+    fun dismissLockRefusal() { _state.value = _state.value.copy(lockRefused = false) }
+
     /** Retry from a failed print, or dismiss it ("print later"): the memo stays reprintable. */
     fun retryPrint() = reprint()
     fun dismissPrint() { _state.value = _state.value.copy(lastPrint = null) }
@@ -121,9 +138,10 @@ class MemoViewModel(
         memos = store.memos(d); collections = store.collections(d)
         val m = memos.firstOrNull { it.memoUuid == selected }
         val remaining = m?.let { DueLedger.remaining(it, collections) } ?: 0L
+        val locked = try { markPaidLocked() } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) { false }
         _state.value = _state.value.copy(
             rows = MemoMenu.rows(memos), selected = m?.let(MemoMenu::detail), remainingDueMtk = remaining,
-            canMarkPaid = m != null && DueLedger.markPaid(m, collections, 0) != null,
+            canMarkPaid = m != null && !locked && DueLedger.markPaid(m, collections, 0) != null, dayLocked = locked,
             outletDueMtk = m?.let { DueLedger.outletOutstanding(memos, collections, it.outletId) } ?: 0L,
             loaded = true,
         )
