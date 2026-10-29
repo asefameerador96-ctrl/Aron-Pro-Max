@@ -1,5 +1,29 @@
 # backend-reports lane status
 
+## Session 11 (2026-10-29): item B measurement (RouteBsrCpr `brandFilter` as-was qualification), numbers for the lead's decision
+
+**What was measured.** The report query of `RouteBsrCpr` (rt CTE + `br` CTE over `dw.agg_daily_route_brand` + `dim_geo` join + name lateral) at 3 sizes, local PostgreSQL 16, one connection, median of 3 timed runs after 1 warm-up, product history populated (40 brands, 120 variants, 360 SKUs, 20 variants moved to another brand and 3 brands moved to another segment AFTER the window, so the as-was path is non-plain), 8 brands per route per day, selection = category `cigarette`. Pilot is 5-10 users, so x10 = 100 routes, x50 = 500 routes. Three forms of `br`:
+- **today**: `EXISTS (SELECT 1 FROM dw.dim_product pp WHERE pp.brand_id = b.brand_id AND <selection>)` (the brand qualifies by TODAY's product list);
+- **as-was correlated**: the same `EXISTS` over `AsWasSql.productAll(pp, lo, hi)` with `pp.as_from <= b.business_date AND pp.as_to > b.business_date`;
+- **as-was qual-CTE**: `qual AS MATERIALIZED (SELECT DISTINCT brand_id, as_from, as_to FROM productAll WHERE <selection>)` then `EXISTS` on it per row.
+
+| routes | days | `agg_daily_route_brand` rows | today | as-was correlated | as-was qual-CTE | result rows today / as-was |
+|---|---|---|---|---|---|---|
+| 10 (x1, pilot) | 31 | 2,480 | 3 ms | 12 ms | 9 ms | 76 / 80 |
+| 10 | 92 | 7,360 | 5 ms | 20 ms | 14 ms | 76 / 80 |
+| 100 (x10) | 31 | 24,800 | 15 ms | 26 ms | 24 ms | 757 / 800 |
+| 100 | 92 | 73,600 | 40 ms | 65 ms | 65 ms | 757 / 800 |
+| 500 (x50) | 31 | 124,000 | 90 ms | 85 ms | 80 ms | 3,802 / 4,000 |
+| 500 | 92 | 368,000 | 118 ms | 239 ms | 336 ms | 3,808 / 4,000 |
+
+**Findings.**
+1. The lead's idea "join through `agg_daily_route_sku` with `AsWasSql.product`" does not give the figure: `agg_daily_route_sku.memo_count` is memos per SKU, so summing it per brand counts a memo once per SKU of the brand; BSR needs memos once per brand (`agg_daily_route_brand.memo_count`, `count(DISTINCT memo)` at aggregation time). `agg_daily_route_brand` is ALREADY written with the brand as it was on the memo's date (`$PRODUCT_ON`, `Aggregator.rebuildAggRouteBrand`). What `RouteBsrCpr` reads TODAY is only the QUALIFICATION by selection (categories / products): it uses today's `dw.dim_product`. So B is a filter on `agg_daily_route_brand`, as in the two as-was forms above, not a join to the SKU grain.
+2. Cost: at x50 and a 92-day period the as-was filter adds about 0.12 to 0.22 s over today's 0.12 s (a single report call); at x10 it adds 25 ms. The qual-CTE is NOT faster than the correlated `EXISTS` (the planner already hashes the small product set); take the correlated form, it is the smaller change (one `EXISTS`, no new CTE).
+3. The results differ (76 vs 80, 757 vs 800, 3,808 vs 4,000): as-was qualification keeps brand-days the brand had products for in the selection on that day, today's list drops or adds some. That is the correctness gain (same rule as the other as-was reads).
+4. Fleet size (8,500 users, about x850 of the pilot) is an extrapolation, NOT a measurement: `agg_daily_route_brand` grows linearly (about 6 M rows for 92 days at 8 brands per route per day); if the query stays linear, today is about 2 s and the as-was form 4 to 6 s for a 92-day national report. The report engine already pages and exports in the background (export jobs); the lead decides whether B is worth it before the final account measures it at fleet size.
+
+**Recommendation.** Do B with the correlated `EXISTS` over `productAll` (plain path keeps `dim_product`); one handler change in `ReportHandlersA.kt` (`brandFilter`) and one test (a brand whose only in-selection product moved out of the category after the report date still qualifies for the old date). The lead decides; nothing in code changed for B.
+
 ## HANDOVER 10 -> 11 (2026-10-29 ~11:50 UTC, session 10 near 400k): candidates 4 and 5 are done, leftovers on a WIP branch
 
 **What is where.**
