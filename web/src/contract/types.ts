@@ -62,3 +62,13 @@ export type OutletRequestApproveRequest = Schemas["OutletRequestApproveRequest"]
 export type Feedback = Schemas["Feedback"];
 export type FeedbackStatusWrite = Schemas["FeedbackStatusWrite"];
 export type ReasonRequest = Schemas["ReasonRequest"];
+// tso-manual W1: the support desk (contract 1.10.0, D-TSO-MAN-18 to 25)
+export type SupportTicket = Schemas["SupportTicket"];
+export type SupportTicketPage = Schemas["SupportTicketPage"];
+export type SupportTicketDetail = Schemas["SupportTicketDetail"];
+export type SupportTicketEvent = Schemas["SupportTicketEvent"];
+export type SupportTicketSummary = Schemas["SupportTicketSummary"];
+export type SupportTicketUpdate = Schemas["SupportTicketUpdate"];
+export type SupportTicketEventWrite = Schemas["SupportTicketEventWrite"];
+export type SupportTicketStatus = Schemas["SupportTicketStatus"];
+export type SupportTicketPriority = Schemas["SupportTicketPriority"];

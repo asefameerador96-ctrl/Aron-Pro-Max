@@ -41,6 +41,8 @@ export interface DashStore {
   now: string | null;
   actions: Schemas["TrackingAction"][];
   leave: Schemas["LeaveApplication"][];
+  /** tso-manual W1 (LV-19): the note of each decision (DecisionRequest.note), by leave_uuid; the contract returns no note. */
+  leaveNotes: Record<string, string | null>;
   exceptionDecisions: Record<string, "reviewed" | "dismissed" | "confirmed">;
   exports: { reportKey: string; format: string; query: unknown; user: number; at: string }[];
   passwords: Record<number, string>;
@@ -53,9 +55,11 @@ export function freshDashStore(): DashStore {
     now: null,
     actions: [],
     leave: [
-      { leave_uuid: "11111111-1111-4111-8111-111111111111", user_id: 2001, leave_type_code: "casual", from_date: "2026-10-12", to_date: "2026-10-13", days: 2, reason: "Family event", status: "pending" },
-      { leave_uuid: "22222222-2222-4222-8222-222222222222", user_id: 2005, leave_type_code: "sick", from_date: "2026-10-08", to_date: "2026-10-08", days: 1, reason: "Fever", status: "pending" },
+      // tso-manual W1 (LV-19): the read-only applicant members of contract 1.10.0
+      { leave_uuid: "11111111-1111-4111-8111-111111111111", user_id: 2001, leave_type_code: "casual", from_date: "2026-10-12", to_date: "2026-10-13", days: 2, reason: "Family event", status: "pending", applicant_username: "tso334", applicant_name: "Rahim Uddin", territory_name: "Banani" },
+      { leave_uuid: "22222222-2222-4222-8222-222222222222", user_id: 2005, leave_type_code: "sick", from_date: "2026-10-08", to_date: "2026-10-08", days: 1, reason: "Fever", status: "pending", applicant_username: "tso335", applicant_name: "Salma Begum", territory_name: "Gulshan" },
     ],
+    leaveNotes: {},
     exceptionDecisions: {},
     exports: [],
     passwords: {},
@@ -117,7 +121,6 @@ const ROUTE_REPORTS: Record<string, { fields: RouteField[]; sum: RouteField[] }>
   "final-submit-log": { fields: ["zone", "route", "state", "first", "last", "count"], sum: ["count"] },
   "online-offline": { fields: ["route", "online", "offline", "memos"], sum: ["online", "offline", "memos"] },
   "free-sample": { fields: ["route", "free"], sum: ["free"] },
-  "task-planner": { fields: ["user", "target", "visited"], sum: ["target", "visited"] },
   "gigo": { fields: ["user", "login", "geo"], sum: [] },
   "suspicious-location": { fields: ["date", "route", "user", "mock", "susp"], sum: ["mock", "susp"] },
   "memo-number-gaps": { fields: ["user", "memos", "offline"], sum: ["memos"] },
@@ -167,6 +170,22 @@ function build(key: Schemas["ReportKey"], user: DashCtx["user"], q: Schemas["Rep
     const rows = bands.map(([band, share, force]): Row => ({ distance_band_m: band, geo_class: "Urban", territory: "T", visits: Math.round((total * share) / 100), force_sale_share: force }));
     return { columns: [c("distance_band_m", "Distance band (m)", "string"), c("geo_class", "Geo class", "string"), c("territory", "Territory", "string"), c("visits", "Visits", "integer"), c("force_sale_share", "Force-sale share", "pct")], rows: total === 0 ? [] : rows, totals: null };
   }
+  // tso-manual W1 (XA-02, XA-03): the two TSO My Call reports as the server lists them (B3: tso-visit-log; the task planner with
+  // assigned by, route, label and comment). One row per seeded SR route-day in scope, so scope and the empty case behave as above.
+  if (key === "task-planner" || key === "tso-visit-log") {
+    const rows = inScope(user, q).filter((r) => r.kind === "sr");
+    const zone = (r: SeedRoute) => GEO.find((g) => g.level === "zone" && g.id === r.zone_id)?.name ?? `Z-${r.zone_id}`;
+    const tso = (r: SeedRoute) => (r.territory_id === 334 ? "tso334" : "tso335");
+    const done = (r: SeedRoute) => r.state === "sales_submitted" || r.state === "final_submitted";
+    if (key === "task-planner") {
+      const columns = [c("business_date", "Date", "date", { label_bn: "তারিখ" }), c("task_type_code", "Type", "string", { label_bn: "ধরন" }), c("label", "Label", "string", { label_bn: "লেবেল" }), c("title", "Task", "string", { label_bn: "কাজ" }), c("assigned_by", "Assigned by", "string", { label_bn: "যিনি দিয়েছেন" }), c("assignee", "Assignee", "string", { label_bn: "যাকে দেওয়া" }), c("route", "Route", "string", { label_bn: "রুট" }), c("outlet_code", "Outlet code", "string", { label_bn: "আউটলেট কোড" }), c("outlet_name", "Outlet", "string", { label_bn: "আউটলেট" }), c("due_date", "Due", "date", { label_bn: "শেষ তারিখ" }), c("status", "Status", "string", { label_bn: "অবস্থা" }), c("comment", "Comment", "string", { label_bn: "মন্তব্য" }), c("resolved_at", "Resolved at", "timestamp", { label_bn: "সমাধানের সময়" })];
+      const out = rows.map((r): Row => ({ business_date: SEED_DATE, task_type_code: "stock_check", label: "Stock check", title: `Check the stock at Outlet ${r.route_name} 1`, assigned_by: tso(r), assignee: r.user_id === 1001 ? "sr334001" : `sr${r.user_id}`, route: r.route_name, outlet_code: `O-${r.route_id}-1`, outlet_name: `Outlet ${r.route_name} 1`, due_date: SEED_DATE, status: done(r) ? "completed" : "open", comment: done(r) ? "Stock refilled" : null, resolved_at: done(r) ? r.submitted_at : null }));
+      return { columns, rows: q.outlet_code ? out.filter((x) => x.outlet_code === q.outlet_code) : out, totals: null };
+    }
+    const columns = [c("plan_date", "Plan date", "date", { label_bn: "পরিকল্পনার তারিখ" }), c("tso", "TSO", "string", { label_bn: "টিএসও" }), c("zone", "Zone", "string", { label_bn: "জোন" }), c("route", "Route", "string", { label_bn: "রুট" }), c("outlet_code", "Outlet code", "string", { label_bn: "আউটলেট কোড" }), c("outlet_name", "Outlet", "string", { label_bn: "আউটলেট" }), c("status", "Status", "string", { label_bn: "অবস্থা" }), c("completed_at", "Completed at", "timestamp", { label_bn: "সম্পন্নের সময়" }), c("sr_visits_regularly", "Does the SR visit your shop regularly?", "string", { label_bn: "SR আপনার দোকান নিয়মিত ভিজিট করে?" }), c("sr_prints_memo", "Does the SR give you a printed memo regularly?", "string", { label_bn: "SR নিয়মিত মেমো প্রিন্ট করে দেয়?" }), c("delegate_task", "Task delegated", "bool", { label_bn: "কাজ দেওয়া হয়েছে" }), c("task", "Task", "string", { label_bn: "কাজ" }), c("task_status", "Task status", "string", { label_bn: "কাজের অবস্থা" })];
+    const out = rows.map((r): Row => ({ plan_date: SEED_DATE, tso: tso(r), zone: zone(r), route: r.route_name, outlet_code: `O-${r.route_id}-1`, outlet_name: `Outlet ${r.route_name} 1`, status: done(r) ? "completed" : "pending", completed_at: done(r) ? r.submitted_at : null, sr_visits_regularly: done(r) ? "হ্যাঁ, প্রতিদিন আসে" : null, sr_prints_memo: done(r) ? "হ্যাঁ" : null, delegate_task: done(r) && r.route_id % 2 === 1, task: done(r) && r.route_id % 2 === 1 ? "Stock check" : null, task_status: done(r) && r.route_id % 2 === 1 ? "open" : null }));
+    return { columns, rows: out, totals: null };
+  }
   const spec = ROUTE_REPORTS[key];
   if (!spec) return null;
   const rows = inScope(user, q);
@@ -176,7 +195,7 @@ function build(key: Schemas["ReportKey"], user: DashCtx["user"], q: Schemas["Rep
   return { columns, rows: out, totals };
 }
 
-const REPORT_KEYS = [...Object.keys(ROUTE_REPORTS), "retailer-list", "by-outlet", "sku-list"];
+const REPORT_KEYS = [...Object.keys(ROUTE_REPORTS), "retailer-list", "by-outlet", "sku-list", "task-planner", "tso-visit-log"]; // tso-manual W1: the last two
 
 function listDefs(): Schemas["ReportDefinition"][] {
   return REPORT_KEYS.map((k) => ({ report_key: k as Schemas["ReportKey"], title_en: k, area: "sales", grain: "route-day", formats: ["json", "xlsx", "print"], columns: [], filters: ["period", "geo"], columns_known: true }));
@@ -333,10 +352,12 @@ export async function handleDash(x: DashCtx): Promise<boolean> {
     const row = store.leave.find((l) => l.leave_uuid === lv[1] && leaveVisible(l));
     if (!row) return send(404, problem(404, "ERR_NOT_FOUND")), true;
     if (!b || (b.decision !== "approve" && b.decision !== "reject")) return send(400, problem(400, "ERR_VALIDATION")), true;
+    if (b.note !== undefined && b.note !== null && (typeof b.note !== "string" || b.note.length > 500)) return send(400, problem(400, "ERR_VALIDATION", { errors: [{ pointer: "/note", code: "too_long" }] })), true; // tso-manual W1
     if (row.status !== "pending") return send(409, problem(409, "ERR_REQUEST_STATE")), true;
     row.status = b.decision === "approve" ? "approved" : "rejected";
     row.decided_by_user_id = user.id;
     row.decided_at = nowIso;
+    store.leaveNotes[row.leave_uuid] = b.note ?? null; // tso-manual W1 (LV-19)
     return send(200, row), true;
   }
 
@@ -392,6 +413,12 @@ export async function handleDash(x: DashCtx): Promise<boolean> {
     const rows = routesInScope(user.scope.nodes).filter((r) => !zone || r.zone_id === Number(zone));
     const withUsers = x.url.searchParams.get("include") === "assignees";
     return send(200, { items: rows.map((r) => ({ id: r.route_id, code: String(r.route_id), name: r.route_name, display_label: r.route_name, zone_id: r.zone_id, kind: r.kind, visit_kind: "daily", visit_days_mask: 127, status: "active", ...(withUsers ? { assignees: r.user_id ? [{ user_id: r.user_id, full_name: r.user_name ?? `User ${r.user_id}`, role: r.kind === "amo" ? "AMO" : "SR", username: `u${r.user_id}` }] : [] } : {}) })), next_cursor: null }), true;
+  }
+  // tso-manual W1: one route of the caller's reach (the login drill reads the zone of a picked route); 404 outside it
+  const oneRoute = /^\/v1\/admin\/routes\/(\d+)$/.exec(path);
+  if (oneRoute && method === "GET") {
+    const r = routesInScope(user.scope.nodes).find((rt) => rt.route_id === Number(oneRoute[1]));
+    return r ? send(200, { id: r.route_id, code: String(r.route_id), name: r.route_name, display_label: r.route_name, zone_id: r.zone_id, kind: r.kind, visit_kind: "daily", visit_days_mask: 127, status: "active" }) : send(404, problem(404, "ERR_NOT_FOUND")), true;
   }
   if (path === "/v1/admin/route-assignments" && method === "GET") {
     const items = routesInScope(user.scope.nodes).filter((r) => r.user_id).map((r, i) => ({ id: 700 + i, route_id: r.route_id, user_id: r.user_id!, kind: "primary", valid_from: "2026-10-01", valid_to: null, reason: null, created_at: asOf }));

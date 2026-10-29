@@ -51,7 +51,7 @@ test("an end date not after the start is refused before the call", async ({ page
 
 test("feedback is filtered by category and status", async ({ page }) => {
   await loginOk(page, "madmin1", "admin-pass-1", "123456");
-  await page.goto("/admin/feedback?category_code=route");
+  await page.goto("/admin/feedback?category_code=suggestion"); // tso-manual W1 (FB-03): the categories are suggestion and feedback
   await expect(page.getByTestId("data-table")).toContainText("Route list missing an outlet");
   await expect(page.getByTestId("data-table")).not.toContainText("Memo print is slow");
   await page.goto("/admin/feedback?status=new");

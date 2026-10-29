@@ -7,7 +7,7 @@ import { ColumnChart } from "@/components/dash/charts";
 import { RetryButton } from "@/components/dash/table-actions";
 import type { ApiOutcome } from "@/lib/api/client";
 import { formatNumber, problemMessage, t, type Locale, type MessageKey } from "@/lib/i18n";
-import { clock, pctBp, qty } from "@/lib/national/fmt";
+import { clock, dailyRingTenths, pctBp, pctTenths, pctText, qty } from "@/lib/national/fmt"; // tso-manual W1: rings from the integers
 import type { BreakdownBy, BreakdownMeasure, BreakdownSlice, CategoryCode, ChannelCode, ChannelSlice, CprSlice, FinalSubmitSlice, GeoFencingSlice, LoginSubmitSlice, SalesSlice } from "@/lib/national/types";
 import { InfoPopup } from "./info-popup";
 import { BigRing, CardError, CHANNEL_COLOR, channelOrder, Figure, NatCard } from "./parts";
@@ -39,6 +39,9 @@ export function SalesCards({ slot, locale }: { slot: Slot<SalesSlice>; locale: L
                 const c = d.cards.find((x) => x.category === cat);
                 if (!c) return <p className="text-center text-body text-secondary">{t(locale, "nat.empty")}</p>;
                 const p = c.pct_bp;
+                // tso-manual W1 (D-TSO-MAN-10, s4.2): ring tenths(total x W, monthly target), rounded once; W = 0 or no target "—"
+                // (R-F-13). The bp at one decimal only for a server that does not send monthly_target_qty yet.
+                const ring = c.monthly_target_qty === undefined || d.working_days === undefined ? pctBp(locale, p) : pctText(locale, dailyRingTenths(c.total, c.monthly_target_qty, d.working_days), 1);
                 const rows = c.daily_target === null ? null : [
                   { label: t(locale, "nat.info.daily_target"), value: qty(locale, c.daily_target) },
                   { label: t(locale, "nat.info.sales_so_far"), value: qty(locale, c.total) },
@@ -48,7 +51,7 @@ export function SalesCards({ slot, locale }: { slot: Slot<SalesSlice>; locale: L
                   <>
                     <div className="flex items-center justify-between gap-3 pb-8">
                       <Figure value={qty(locale, c.total)} caption={t(locale, "nat.total_sales")} testId={`sales-total-${cat}`} />
-                      <BigRing bp={p} text={pctBp(locale, p)} label={title} testId={`sales-ring-${cat}`} />
+                      <BigRing bp={p} text={ring} label={title} testId={`sales-ring-${cat}`} />
                     </div>
                     <InfoPopup testId={`sales-info-${cat}`} openLabel={t(locale, "nat.info.open", { card: title })} title={t(locale, "nat.info.title")} rows={rows} emptyText={t(locale, "nat.info.no_target")} closeLabel={t(locale, "nat.info.close")} />
                   </>
@@ -76,7 +79,8 @@ export function CprCard({ slot, locale }: { slot: Slot<CprSlice>; locale: Locale
                 <Figure value={qty(locale, d.target_outlets)} caption={t(locale, "nat.cpr.target")} testId="cpr-target" />
                 <Figure value={qty(locale, d.successful_calls)} caption={t(locale, "nat.cpr.calls")} testId="cpr-calls" />
               </div>
-              <BigRing bp={p} text={pctBp(locale, p)} label={t(locale, "nat.cpr")} tone="green" testId="cpr-ring" />
+              {/* tso-manual W1 (D-TSO-MAN-10): tenths from the counts, rounded once: 29 of 1,186 prints 2.4% as the phone */}
+              <BigRing bp={p} text={pctText(locale, pctTenths(d.successful_calls, d.target_outlets), 1)} label={t(locale, "nat.cpr")} tone="green" testId="cpr-ring" />
             </div>
           );
         }}
@@ -139,7 +143,8 @@ export function FinalSubmitCard({ slot, locale }: { slot: Slot<FinalSubmitSlice>
                 <Figure value={formatNumber(locale, remaining)} caption={t(locale, "nat.final.remaining")} captionTone="primary" testId="final-remaining" />
               </div>
               <div className="flex flex-col items-center gap-1">
-                <BigRing bp={p} text={pctBp(locale, p)} label={t(locale, "nat.final")} tone="plain" size={120} testId="final-ring" />
+                {/* tso-manual W1 (D-TSO-MAN-10): final submits over service zones, tenths rounded once */}
+                <BigRing bp={p} text={pctText(locale, pctTenths(d.submitted, d.service_zone), 1)} label={t(locale, "nat.final")} tone="plain" size={120} testId="final-ring" />
                 <p className="text-body-strong text-cyan">{t(locale, "nat.final.submitted")}</p>
                 <p className="text-body-strong tabular-nums" data-testid="final-submitted">{formatNumber(locale, d.submitted)}</p>
               </div>
@@ -151,8 +156,8 @@ export function FinalSubmitCard({ slot, locale }: { slot: Slot<FinalSubmitSlice>
   );
 }
 
-function StatusBlock({ icon, title, bp, pairs, locale, testId }: { icon: "download" | "upload"; title: string; bp: number | null; pairs: [string, string][]; locale: Locale; testId: string }) {
-  const text = pctBp(locale, bp);
+function StatusBlock({ icon, title, bp, part, whole, pairs, locale, testId }: { icon: "download" | "upload"; title: string; bp: number | null; part: number; whole: number; pairs: [string, string][]; locale: Locale; testId: string }) {
+  const text = pctText(locale, pctTenths(part, whole), 1); // tso-manual W1: from the counts, rounded once (the bp only draws the bar)
   return (
     <div data-testid={testId}>
       <div className="flex items-center gap-2">
@@ -181,8 +186,8 @@ export function LoginSubmitCard({ slot, locale }: { slot: Slot<LoginSubmitSlice>
       <Body slot={slot} locale={locale}>
         {(d) => (
           <div className="space-y-4">
-            <StatusBlock locale={locale} testId="login-status" icon="download" title={t(locale, "nat.login.status")} bp={d.login_pct_bp} pairs={[[t(locale, "nat.login.target_route"), formatNumber(locale, d.target_routes)], [t(locale, "nat.login.successful"), formatNumber(locale, d.logged_in)]]} />
-            <StatusBlock locale={locale} testId="submit-status" icon="upload" title={t(locale, "nat.submit.status")} bp={d.submit_pct_bp} pairs={[[t(locale, "nat.submit.logged_in"), formatNumber(locale, d.logged_in)], [t(locale, "nat.submit.done"), formatNumber(locale, d.submitted)]]} />
+            <StatusBlock locale={locale} testId="login-status" icon="download" title={t(locale, "nat.login.status")} bp={d.login_pct_bp} part={d.logged_in} whole={d.target_routes} pairs={[[t(locale, "nat.login.target_route"), formatNumber(locale, d.target_routes)], [t(locale, "nat.login.successful"), formatNumber(locale, d.logged_in)]]} />
+            <StatusBlock locale={locale} testId="submit-status" icon="upload" title={t(locale, "nat.submit.status")} bp={d.submit_pct_bp} part={d.submitted} whole={d.logged_in} pairs={[[t(locale, "nat.submit.logged_in"), formatNumber(locale, d.logged_in)], [t(locale, "nat.submit.done"), formatNumber(locale, d.submitted)]]} />
           </div>
         )}
       </Body>

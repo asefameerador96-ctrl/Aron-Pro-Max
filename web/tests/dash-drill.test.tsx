@@ -15,6 +15,9 @@ vi.mock("@/lib/dash/server", async (orig) => {
   return { ...real, getDailyTracking: stub.tracking, getSummary: stub.summary, getLoginSubmit: stub.login };
 });
 
+// tso-manual W1 (DASH-13): the login drill reads login-submit/users; its rows are stubbed here (drill-columns.test.tsx covers it).
+const users = vi.hoisted(() => ({ get: vi.fn() }));
+vi.mock("@/app/(dashboards)/drill/[kind]/login-users", async (orig) => ({ ...(await orig<Record<string, unknown>>()), getLoginSubmitUsers: users.get }));
 import Drill from "@/app/(dashboards)/drill/[kind]/page";
 import { DataTable } from "@/components/dash/data-table";
 import { formatTakaDisplay } from "@/lib/reports/format";
@@ -116,13 +119,14 @@ describe("drill route", () => {
     expect(h).toContain("Stick");
     expect(h).toContain("Brand B");
   });
-  it("channel, calls and login pages render their tables; login names the SR from the tracking rows", async () => {
+  it("channel, calls and login pages render their tables; login names the SR from the login-submit/users rows", async () => { // tso-manual W1
     expect(await render("channel", { code: "gt" })).toContain("table-channels");
     // A row with the code 'unknown' (memos with no channel) is kept and shown with the neutral label, not a raw code or key.
     const ch = await render("channel", { code: "gt" });
     expect(ch).toContain("Unknown");
     expect(ch).not.toContain("channel.unknown");
     expect(await render("calls")).toContain("table-calls");
+    users.get.mockImplementation(async (_t: string, _f: unknown, tab: string) => ok({ date: "2026-10-17", till_time: true, as_of: "2026-10-17T05:00:00Z", last_updated_at: null, tab, route_count: 1, truncated: false, items: [{ route_id: 1, route_code: "R1", route_name: "R1", zone_id: 1, dep_name: "Z1", user_id: 7, username: "sr7", display_name: "Rahim", role: "SR" }] })); // tso-manual W1
     const l = await render("login");
     expect(l).toContain("table-not-logged-in");
     expect(l).toContain("Rahim");
