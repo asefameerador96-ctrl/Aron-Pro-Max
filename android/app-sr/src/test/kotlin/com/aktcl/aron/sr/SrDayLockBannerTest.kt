@@ -32,13 +32,13 @@ import org.robolectric.annotation.Config
 class SrDayLockBannerTest {
     @get:Rule val compose = createEmptyComposeRule()
 
-    private fun show(language: AppLanguage, lock: DayLock?) {
+    private fun show(language: AppLanguage, lock: DayLock?, asText: Boolean = false) {
         val app = ApplicationProvider.getApplicationContext<Context>()
         shadowOf(app.packageManager).addActivityIfNotPresent(ComponentName(app, ComponentActivity::class.java))
         val scenario = ActivityScenario.launch(ComponentActivity::class.java)
         scenario.onActivity { activity ->
             val ctx = AppLocale.wrap(activity, language)
-            activity.setContent { CompositionLocalProvider(LocalContext provides ctx) { AronTheme(language) { SrDayLockBannerContent(lock) } } }
+            activity.setContent { CompositionLocalProvider(LocalContext provides ctx) { AronTheme(language) { if (asText) androidx.compose.material3.Text(srDayLockText(lock) ?: "no banner") else SrDayLockBannerContent(lock) } } }
         }
         compose.waitForIdle()
     }
@@ -62,5 +62,18 @@ class SrDayLockBannerTest {
     @Test fun anOpenDayShowsNothing() {
         show(AppLanguage.EN, null)
         compose.onNodeWithTag(SrDayLockTags.BANNER).assertDoesNotExist()
+    }
+
+    /** Fix round 1 (ask 1): the same words as one text, for the SR Home's banner slot; nothing while the day is open. */
+    @Test fun theOneTextBannerCarriesTheTitleAndTheLines() {
+        show(AppLanguage.EN, DayLock(locked = true, acks = LockAcks(held = 0, refused = 2)), asText = true)
+        compose.onNodeWithText("Day closed by Final Submit\nYour TSO has done the Final Submit", substring = true).assertExists()
+        compose.onNodeWithText("New calls cannot start", substring = true).assertExists()
+        compose.onNodeWithText("2 records made after the Final Submit were not accepted.", substring = true).assertExists()
+    }
+
+    @Test fun theOneTextBannerIsNullWhileTheDayIsOpen() {
+        show(AppLanguage.EN, null, asText = true)
+        compose.onNodeWithText("no banner").assertExists()
     }
 }

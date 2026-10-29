@@ -2,7 +2,7 @@
 <!-- Lane A3 (build contract s5, D-TSO-MAN-31): Bangla twin of values/strings_a3.xml. -->
 <resources>
     <string name="amo_lock_title">ফাইনাল সাবমিটে রুট বন্ধ</string>
-    <string name="amo_lock_body">আজ আপনার জোনের %1$sটি রুটের ফাইনাল সাবমিট হয়েছে। ওই রুটগুলোতে বিক্রয়, মেমো সংশোধন ও কালেকশন আর সংরক্ষণ করা যাবে না। প্রিন্ট করা যাবে।</string>
+    <string name="amo_lock_body">আজ আপনার জোনের %1$sটি রুটের ফাইনাল সাবমিট হয়েছে। ওই রুটগুলোতে নতুন কল শুরু করা যাবে না; বিক্রয়, মেমো সংশোধন ও কালেকশন গ্রহণ করা হবে না। প্রিন্ট করা যাবে।</string>
     <string name="amo_lock_held">ফাইনাল সাবমিটের আগের %1$sটি রেকর্ড যাচাইয়ের জন্য রাখা হয়েছে; অ্যাডমিন গ্রহণ করলে তবেই গণনা হবে।</string>
     <string name="amo_lock_refused">ফাইনাল সাবমিটের পরের %1$sটি রেকর্ড গৃহীত হয়নি।</string>
 </resources>

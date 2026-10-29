@@ -2,7 +2,7 @@
 <!-- Lane A3 (build contract s5, D-TSO-MAN-31): the SR day lock after Final Submit. Bangla twin in values-bn/strings_a3.xml. -->
 <resources>
     <string name="sr_lock_title">Day closed by Final Submit</string>
-    <string name="sr_lock_body">Your TSO has done the Final Submit for this route today. New sales, memo edits and collections cannot be saved. Printing still works.</string>
+    <string name="sr_lock_body">Your TSO has done the Final Submit for this route today. New calls cannot start; sales, memo edits and collections are not accepted. Printing still works.</string>
     <string name="sr_lock_held">%1$s records from before the Final Submit are held for review and count only when the admin accepts them.</string>
     <string name="sr_lock_refused">%1$s records made after the Final Submit were not accepted.</string>
 </resources>

@@ -6,12 +6,15 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.aktcl.aron.core.common.ClientIds
 import com.aktcl.aron.core.database.entity.BundleSectionEntity
+import com.aktcl.aron.core.database.entity.DaySubmitEntity
 import com.aktcl.aron.core.database.entity.DueCollectionEntity
 import com.aktcl.aron.core.database.entity.SyncMetaEntity
 import com.aktcl.aron.core.database.repo.CaptureRepository
 import com.aktcl.aron.core.database.repo.FinalSubmitLock
 import com.aktcl.aron.core.database.repo.LockAcks
 import com.aktcl.aron.core.database.repo.RoomPrintLedger
+import com.aktcl.aron.core.database.repo.RouteDayFinalSubmittedException
+import com.aktcl.aron.core.database.repo.RouteDayLock
 import com.aktcl.aron.core.printing.flow.PrintEvent
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
@@ -30,7 +33,7 @@ import org.robolectric.annotation.Config
  * tso-manual A3, D-TSO-MAN-31: after the zone-day's Final Submit the SR and AMO phones lock capture for the route-day
  * (the server would reject the rows `day_final_submitted`), while printing stays allowed. The lock comes from the route-day
  * state the phone holds: the route section's `day_state` (bundle, then every delta, which the push `day_final_submitted`
- * pulls) or the last sync answer's `day_states`.
+ * pulls) or the last sync answer's `day_states`. It refuses only the types the server refuses (D-A3-22).
  */
 @RunWith(AndroidJUnit4::class)
 @Config(sdk = [36])
@@ -53,28 +56,57 @@ class RouteDayLockTest {
     private suspend fun syncAnswer(vararg states: String) =
         db.referenceDao().putMeta(SyncMetaEntity(FinalSubmitLock.KEY_SYNC_DAY_STATES, "[" + states.joinToString(",") + "]"))
 
-    private fun refused(block: suspend () -> Unit) = assertThrows(IllegalStateException::class.java) { runBlocking { block() } }
-
-    @Test fun captureIsOpenUntilTheRouteSectionSaysFinalSubmitted() = runTest {
+    @Test fun theLockedTypesAreRefusedOnceTheRouteSectionSaysFinalSubmitted() = runTest {
         section("sales_submitted")
         val (visit, fix) = TestRows.visit()
         repo.recordVisitOpen(visit, fix)
         assertFalse(FinalSubmitLock.isFinal(db, date, route))
+        assertTrue(RouteDayLock.isOpen(db, TestRows.meta(), "memo"))
 
         section("final_submitted")
         assertTrue(FinalSubmitLock.isFinal(db, date, route))
-        val (late, lateFix) = TestRows.visit(seq = 2)
-        refused { repo.recordVisitOpen(late, lateFix) }
-        refused { repo.recordSale(TestRows.sale(visit.clientUuid)) }
-        refused { repo.recordVisitClose(TestRows.close(visit.clientUuid)) }
-        val due = DueCollectionEntity(ClientIds.newUuid(), TestRows.meta(), 50001, ClientIds.newUuid(), "sr334001-261004-003", "2026-10-04", 50_000, false, 120_000)
-        refused { repo.recordDueCollection(due) }
-        // nothing of the refused captures reached the outbox
-        assertNull(db.outboxDao().byClientUuid(late.clientUuid))
-        assertNull(db.outboxDao().byClientUuid(due.clientUuid))
+        // the types the server refuses after the lock (B3 DAY_LOCKED_TYPES) are refused on the phone
+        for (t in listOf("visit", "visit_close", "visit_skip", "memo", "memo_line", "memo_void", "due_collection")) {
+            assertTrue(t, FinalSubmitLock.refuses(db, TestRows.meta(), t))
+            assertFalse(t, RouteDayLock.isOpen(db, TestRows.meta(), t))
+            val e = assertThrows(RouteDayFinalSubmittedException::class.java) { runBlocking { RouteDayLock.requireOpen(db, TestRows.meta(), t) } }
+            assertEquals(t, e.recordType); assertEquals(route, e.routeId); assertEquals(date, e.businessDate)
+        }
+        // state records stay open (D-TSO-MAN-31: day_submit and attendance are accepted after the lock; printing stays allowed)
+        for (t in listOf("day_submit", "attendance_event", "print_event", "amo_record", "survey_response")) {
+            assertFalse(t, FinalSubmitLock.refuses(db, TestRows.meta(), t))
+            assertTrue(t, RouteDayLock.isOpen(db, TestRows.meta(), t))
+            RouteDayLock.requireOpen(db, TestRows.meta(), t)
+        }
+        // a routeless record never meets the lock
+        assertFalse(FinalSubmitLock.refuses(db, TestRows.meta(routeId = null), "due_collection"))
     }
 
-    @Test fun printingStaysAllowedAfterTheLockAndLeavesTheClosedRouteDay() = runTest {
+    /**
+     * Checker fix (high): the lock never turns into a crash. CaptureRepository does not name its record types yet, so it is
+     * not checked against Final Submit: the SR's Sales Submit after the TSO's "Submit anyway" (day_submit, accepted by the
+     * server), leaving a call when the lock arrived mid-visit (visit_close) and Mark Paid (due_collection) are queued, not
+     * thrown in a screen that does not catch them; the server answers the late ones `day_final_submitted`.
+     */
+    @Test fun capturesThatDoNotNameTheirTypeNeverThrowForTheLock() = runTest {
+        val (visit, fix) = TestRows.visit()
+        repo.recordVisitOpen(visit, fix)
+        section("final_submitted") // the lock arrives mid-visit
+        repo.recordVisitClose(TestRows.close(visit.clientUuid))
+        val due = DueCollectionEntity(ClientIds.newUuid(), TestRows.meta(), 50001, ClientIds.newUuid(), "sr334001-261004-003", "2026-10-04", 50_000, false, 120_000)
+        repo.recordDueCollection(due)
+        val submit = DaySubmitEntity(ClientIds.newUuid(), TestRows.meta(), "route_day", 1, "{}", MONEY, 0, 0, 0, false, 0, 0, false)
+        repo.recordDaySubmit(submit)
+        listOf(due.clientUuid, submit.clientUuid).forEach { assertNotNull("queued: $it", db.outboxDao().byClientUuid(it)) }
+        assertEquals("day_submit", db.outboxDao().byClientUuid(submit.clientUuid)!!.recordType)
+        // the Sales Submit still closes its route-day for every capture, as before
+        assertFalse(RouteDayLock.isOpen(db, TestRows.meta()))
+        val (late, lateFix) = TestRows.visit(seq = 2)
+        val e = assertThrows(IllegalStateException::class.java) { runBlocking { repo.recordVisitOpen(late, lateFix) } }
+        assertFalse("a Sales Submit refusal is not the Final Submit's", e is RouteDayFinalSubmittedException)
+    }
+
+    @Test fun printingStaysAllowedAfterTheLock() = runTest {
         val (visit, fix) = TestRows.visit()
         repo.recordVisitOpen(visit, fix)
         val sale = TestRows.sale(visit.clientUuid)
@@ -86,8 +118,8 @@ class RouteDayLockTest {
         val row = db.outboxDao().byClientUuid(e.clientUuid)
         assertNotNull("the print is queued", row)
         assertEquals("print_event", row!!.recordType)
-        assertEquals("its own family, not the closed visit's", e.clientUuid, row.familyUuid)
-        assertFalse("no route: it belongs to no route-day", row.payloadJson.contains("\"route_id\":$route"))
+        // a print is a state record the server accepts after the lock (B3): it stays the memo's child in the visit family
+        assertEquals(visit.clientUuid, row.familyUuid)
         assertNotNull(db.captureDao().memo(sale.memo.clientUuid)!!.printedAt)
     }
 
@@ -95,8 +127,7 @@ class RouteDayLockTest {
         section("sales_submitted") // the delta has not come yet
         syncAnswer(dayState("final_submitted"))
         assertTrue(FinalSubmitLock.isFinal(db, date, route))
-        val (visit, fix) = TestRows.visit()
-        refused { repo.recordVisitOpen(visit, fix) }
+        assertTrue(FinalSubmitLock.refuses(db, TestRows.meta(), "visit"))
     }
 
     @Test fun onlyTheSameRouteAndBusinessDateLock() = runTest {
@@ -144,5 +175,9 @@ class RouteDayLockTest {
         assertEquals(LockAcks(held = 2, refused = 1), FinalSubmitLock.metLock(db, date))
         assertEquals(LockAcks(0, 0), FinalSubmitLock.metLock(db, "2026-10-06"))
         assertFalse(LockAcks(0, 0).any)
+    }
+
+    private companion object {
+        const val MONEY = """{"active_memo_count":0,"gross_mtk":0,"offer_discount_mtk":0,"drp_discount_mtk":0,"qc_deduction_mtk":0,"net_mtk":0,"paid_mtk":0,"due_mtk":0,"due_collected_mtk":0,"net_by_category_mtk":{},"issued_qty_base_by_sku":{},"sold_qty_base_by_sku":{}}"""
     }
 }
