@@ -29,6 +29,8 @@ class GeoRepository(
     /** Test seams: after a load has read the database; and after the staleness check, right before the snapshot is installed. */
     @Volatile internal var afterLoad: (() -> Unit)? = null
     @Volatile internal var beforeInstall: (() -> Unit)? = null
+    /** Test seam: right after the install step (the snapshot is installed unless it was stale), still holding the reload lock. */
+    @Volatile internal var afterInstall: (() -> Unit)? = null
     /** Test seam: runs at the start of [invalidate]. */
     @Volatile internal var onInvalidate: (() -> Unit)? = null
 
@@ -50,9 +52,12 @@ class GeoRepository(
         val c0 = cached.get()
         fresh(c0)?.let { return it }
         val ttlOnly = c0 != null && c0.gen == generation.get()
-        val got = if (ttlOnly) lock.tryLock() else lock.tryLock(lockWaitMs, java.util.concurrent.TimeUnit.MILLISECONDS)
+        // The expired entry is served only up to twice the TTL: if every reload keeps failing (a lock winner without a connection, an exhausted pool) a repository
+        // that hears no invalidation (another replica, a worker) must not answer from it for ever; past that it waits for the reload like after an invalidation.
+        val servable = ttlOnly && clock.now().toEpochMilli() - c0!!.at < 2 * ttlMs
+        val got = if (servable) lock.tryLock() else lock.tryLock(lockWaitMs, java.util.concurrent.TimeUnit.MILLISECONDS)
         if (!got) {
-            if (ttlOnly) return c0!!.snap
+            if (servable) return c0!!.snap
             val g = load()
             return GeoSnapshot(g, register(g))
         }
@@ -70,6 +75,7 @@ class GeoRepository(
                 beforeInstall?.invoke()
                 // Tagged with the generation it was read under: an invalidation after this point (even one statement later) makes every reader reject the entry.
                 if (!stale) cached.set(Cached(clock.now().toEpochMilli(), snap, gen))
+                afterInstall?.invoke()
                 return snap
             }
         } finally { lock.unlock() }

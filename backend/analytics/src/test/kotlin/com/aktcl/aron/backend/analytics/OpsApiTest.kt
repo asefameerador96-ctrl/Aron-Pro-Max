@@ -246,7 +246,7 @@ class OpsApiTest : ReportFixture() {
         suspend fun refusal(path: String, level: String, node: Long): Pair<HttpStatusCode, JsonObject> =
             get(11, Role.TSO, "/v1/dashboards/$path${if ('?' in path) "&" else "?"}level=$level&node_id=$node").let { it.status to it.obj() }
         val z2Id = z2
-        for (path in listOf("summary?from=2026-10-04&to=2026-10-04", "geo-validation?from=2026-10-04&to=2026-10-04", "login-submit?business_date=2026-10-04", "flagged-memos?business_date=2026-10-04", "sync-health?business_date=2026-10-04")) {
+        for (path in listOf("summary?from=2026-10-04&to=2026-10-04", "geo-validation?from=2026-10-04&to=2026-10-04", "login-submit?business_date=2026-10-04", "flagged-memos?from=2026-10-04&to=2026-10-04", "sync-health?business_date=2026-10-04")) {
             val real = refusal(path, "zone", z2Id); val unknown = refusal(path, "zone", 999_999)
             assertEquals(HttpStatusCode.Forbidden, real.first, "$path: a real zone outside the reach")
             assertEquals(HttpStatusCode.Forbidden, unknown.first, "$path: no such zone")

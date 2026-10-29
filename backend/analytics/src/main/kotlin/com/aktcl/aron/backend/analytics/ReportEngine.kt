@@ -130,7 +130,7 @@ class ReportEngine(
                     .map { rs, _ -> rs.getLong(1) to rs.getLong(2) }.list().toMap()
                 val reachZones = if (reach.national) null else reach.zoneIds
                 fun inReach(r: Long) = (routes == null || r in routes!!) &&
-                    (reachZones == null || r in reach.routeIds || rows[r].orEmpty().any { it in reachZones } || nowZone[r]?.let { it in reachZones } == true)
+                    (reachZones == null || rows[r].orEmpty().any { it in reachZones } || nowZone[r]?.let { it in reachZones } == true)
                 if (ids.any { it !in known || !inReach(it) }) throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "a selected route is outside your reach")
                 val sel = ids.filter { r -> rows[r].orEmpty().any { zones == null || it in zones!! } }
                 routes = sel.ifEmpty { NO_ROUTE }   // in reach but not in the selected zones during the period: no rows, never "everything"
