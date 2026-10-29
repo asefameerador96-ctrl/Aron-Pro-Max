@@ -136,6 +136,7 @@ class ScopeLeakAcrossEndpointsTest {
             otherUuids += h.createQuery("SELECT client_uuid::text FROM app.visit WHERE user_id = :u UNION SELECT client_uuid::text FROM app.memo WHERE user_id = :u UNION SELECT client_uuid::text FROM app.due_collection WHERE user_id = :u")
                 .bind("u", other.userId).mapTo(String::class.java).list()
             otherUuids += seedOtherRows(h, other)
+            otherUuids += seedOtherTicket(h) // tso-manual B1
             // getFlaggedMemos (contract 1.8.0) reads only flagged memos: one stored memo of each division carries a flag.
             h.execute("UPDATE app.memo SET server_flags = '{price_mismatch}' WHERE id IN (SELECT max(id) FROM app.memo WHERE user_id IN (${own.userId}, ${other.userId}) GROUP BY user_id)")
             // Record paths named by uuid or row id are aimed at the other division's rows (the other-path variant).
@@ -237,6 +238,21 @@ class ScopeLeakAcrossEndpointsTest {
             h.execute("SET session_replication_role = origin")
         }
         return listOf(task, request, plan, planOutlet, entry, directive, adjustment)
+    }
+
+    /**
+     * tso-manual B1: a support ticket of the other division's TSO (lkxtso1001), its title marked; the ticket paths of the
+     * other-path probes name it. The national desk (admin1001) sees it; a scoped caller lists only its own tickets.
+     */
+    private fun seedOtherTicket(h: org.jdbi.v3.core.Handle): List<String> {
+        val t = java.util.UUID.randomUUID().toString()
+        h.execute(
+            "INSERT INTO app.support_ticket (client_uuid, family_uuid, business_date, user_id, captured_at, config_version, issue_type_code, title, description, source) " +
+                "SELECT '$t'::uuid, '$t'::uuid, '$day'::date, id, '${day}T04:00:00Z'::timestamptz, 1, 'others', 'LKX seeded ticket', 'LKX seeded ticket text', 'manual' FROM app.app_user WHERE username = 'lkxtso1001'",
+        )
+        h.execute("INSERT INTO app.support_ticket_state (ticket_uuid, requester_user_id, requester_role, priority) SELECT '$t'::uuid, id, 'TSO', 'p1' FROM app.app_user WHERE username = 'lkxtso1001'")
+        world.otherPathValues["ticket_uuid"] = t
+        return listOf(t)
     }
 
     private lateinit var otherRequestUuid: String

@@ -43,6 +43,7 @@ object AdminModules {
     val ALL: List<String> = listOf(
         "masterdata", "routes", "outlets", "products", "prices", "users", "targets", "credentials", "mdm", "reports",
         "config", "data_entry", "indent", "leaderboard", "daily_tracking",
+        "support", // tso-manual B1 (R-F-11): the support desk's ticket routes
     )
 
     private fun p(path: String) = PortalLevels.Pattern("*", path)
@@ -53,6 +54,7 @@ object AdminModules {
         PortalLevels.Pattern("GET", "/v1/tutorials"),
         PortalLevels.Pattern("GET", "/v1/tutorials/**"),
         PortalLevels.Pattern("GET", "/v1/app/update-check"),
+        PortalLevels.Pattern("*", "/v1/me/notifications/**"), // tso-manual B1: the caller's own bell inbox (D-TSO-MAN-26)
     )
 
     /** Most specific first. */
@@ -104,6 +106,7 @@ object AdminModules {
         p("/v1/admin/releases/**") to "mdm",
         p("/v1/admin/mdm/**") to "mdm",
         p("/v1/admin/notifications/**") to "mdm",
+        p("/v1/support/tickets/**") to "support", // tso-manual B1 (R-F-11): before /v1/support/** (first match wins)
         p("/v1/support/**") to "mdm",
         p("/v1/admin/data-entry/**") to "data_entry",
         p("/v1/admin/data-void/**") to "data_entry",

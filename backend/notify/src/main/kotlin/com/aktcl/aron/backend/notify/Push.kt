@@ -28,6 +28,20 @@ import java.time.OffsetDateTime
 import java.time.ZoneOffset
 import java.util.concurrent.TimeUnit
 
+/**
+ * The `reason` of a `sync_nudge` push (N-037). The phone pulls on any reason; the reason picks the notice it shows or the
+ * read it repeats. Only data keys travel, never business data.
+ * - [TASK_ASSIGNED]: a task for the user (switched by `cfg.notify.task_push_enabled`).
+ * - [NOTIFICATION] (D-TSO-MAN-26): a producer added a row to the user's bell inbox (`Inbox.add`, after its commit); the
+ *   TSO app re-reads `GET /v1/me/notifications`. A producer applies its own switch first (the desk's ticket updates:
+ *   `cfg.notify.ticket_push_enabled`); the inbox row is written either way.
+ */
+object PushReasons {
+    const val TASK_ASSIGNED = "task_assigned"
+    const val NOTIFICATION = com.aktcl.aron.backend.platform.Inbox.PUSH_REASON
+    val ALL: Set<String> = setOf(TASK_ASSIGNED, NOTIFICATION)
+}
+
 /** One data-only message to one FCM token; returns false when the token is no longer valid (unregistered). */
 fun interface PushSender {
     fun send(token: String, data: Map<String, String>): Boolean
@@ -98,7 +112,7 @@ class PushNotifier(
 
     override fun nudge(userId: Long, reason: String) {
         if (!enabledFor(userId, "cfg.ops.push_enabled")) return
-        if (reason == "task_assigned" && !enabledFor(userId, "cfg.notify.task_push_enabled")) return
+        if (reason == PushReasons.TASK_ASSIGNED && !enabledFor(userId, "cfg.notify.task_push_enabled")) return
         if (sender == null) {
             if (!warned) { warned = true; log.info("push is off: no FCM service account configured") }
             return

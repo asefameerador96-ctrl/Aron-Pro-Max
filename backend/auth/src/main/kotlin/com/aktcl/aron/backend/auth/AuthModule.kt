@@ -163,6 +163,8 @@ private fun me(call: ApplicationCall, d: AuthDeps): Me {
                     else -> null
                 },
                 brands = if (p.role == Role.BRAND) p.brands else null,
+                // tso-manual B1: drives the web Tickets menu; the same permission and module gate the ticket routes.
+                support_desk = "support.ticket.manage" in p.permissions && (p.role != Role.ADMIN || p.modules?.containsKey("support") != false),
             )
 }
 

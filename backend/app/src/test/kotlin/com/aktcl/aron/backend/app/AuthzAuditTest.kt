@@ -203,6 +203,21 @@ class AuthzAuditTest {
         } finally { h.execute("SET session_replication_role = origin") }
         lkxVisits = id("SELECT count(*) FROM app.visit WHERE route_id = $oRoute")
         Aggregator.refreshDimensions(h)
+        // tso-manual B1: a ticket of tso1001 (new) for the support ticket routes.
+        h.execute(
+            "INSERT INTO app.support_ticket (client_uuid, family_uuid, business_date, user_id, captured_at, config_version, issue_type_code, title, description, source) " +
+                "VALUES ('$ticketUuid'::uuid, '$ticketUuid'::uuid, DATE '$day', $tsoId, TIMESTAMPTZ '${day}T03:00:00Z', 0, 'printer_connection', 'QA audit ticket', '', 'manual')",
+        )
+        h.execute("INSERT INTO app.support_ticket_state (ticket_uuid, requester_user_id, requester_role, priority) VALUES ('$ticketUuid'::uuid, $tsoId, 'TSO', 'p1')")
+    }
+
+    /** tso-manual B1: the audited ticket and a desk change that is always a change (the next priority on the current version). */
+    private val ticketUuid = UUID.randomUUID().toString()
+    private fun ticketOp(): String {
+        val (version, priority) = world.fresh.db.jdbi.withHandle<Pair<Int, String>, Exception> { h ->
+            h.createQuery("SELECT version, priority FROM app.support_ticket_state WHERE ticket_uuid = CAST(:t AS uuid)").bind("t", ticketUuid).map { rs, _ -> rs.getInt(1) to rs.getString(2) }.one()
+        }
+        return obj("op_uuid" to uuid(), "expected_version" to version, "priority" to if (priority == "p2") "p3" else "p2").toString()
     }
 
     // ---- http -------------------------------------------------------------------------------------------------------
@@ -438,6 +453,13 @@ class AuthzAuditTest {
             // Contract only (targets and Astha outlet-SKU entry deferred, docs/27): 404 for everyone.
             RouteSpec("GET /v1/dashboards/targets", g, { "/v1/dashboards/targets" }, null, emptySet()),
             RouteSpec("POST /v1/web-entry/outlet-sku", p, { "/v1/web-entry/outlet-sku" }, { "{}" }, emptySet()),
+            // tso-manual B1 (D-TSO-MAN-22): every signed-in caller lists and counts its own tickets; tso1001's ticket is read by its
+            // reporter and the desk (support.ticket.manage: ADMIN, SUPERADMIN), anyone else gets 404; only the desk writes.
+            RouteSpec("GET /v1/support/tickets", g, { "/v1/support/tickets" }, null, all),
+            RouteSpec("GET /v1/support/tickets/summary", g, { "/v1/support/tickets/summary" }, null, all),
+            RouteSpec("GET /v1/support/tickets/{}", g, { "/v1/support/tickets/$ticketUuid" }, null, setOf("TSO", "ADMIN", "SUPERADMIN")),
+            RouteSpec("PATCH /v1/support/tickets/{}", HttpMethod.Patch, { "/v1/support/tickets/$ticketUuid" }, { ticketOp() }, writers),
+            RouteSpec("POST /v1/support/tickets/{}/events", p, { "/v1/support/tickets/$ticketUuid/events" }, { obj("event_uuid" to uuid(), "body" to "qa authz audit reply").toString() }, writers),
         )
     }
 

@@ -530,7 +530,38 @@ class ContractConformanceTest {
                 after = listOf("POST /v1/admin/mdm/policies"), path = { _, x -> mapOf("device_id" to mdmPhoneId(x)) },
                 body = { n, _, x -> n.put("policy_id", x.need("mdm_policy").toLong()); n.put("reason", "conformance assign") },
             ),
+            // tso-manual B1: a ticket of tso1001 (tickets come only from the sync record and no conformance caller holds a TSO
+            // phone), read by its reporter and the desk; the desk starts it (the second desk caller's repeat is a 409), then
+            // each desk caller replies with its own event uuid. Everyone else is refused (403, 404).
+            "GET /v1/support/tickets/{}" to Fx(prepare = { _, x -> seedTicket(x) }, path = { _, _ -> mapOf("ticket_uuid" to TICKET) }),
+            "PATCH /v1/support/tickets/{}" to Fx(
+                prepare = { _, x -> seedTicket(x) }, path = { _, _ -> mapOf("ticket_uuid" to TICKET) },
+                body = { n, c, x ->
+                    n.removeAll(); n.put("op_uuid", ApiWorld.v4("ticket-op/${c.user}")); n.put("status", "in_progress")
+                    n.put("expected_version", x.world.fresh.db.jdbi.withHandle<Int, Exception> { h -> h.createQuery("SELECT version FROM app.support_ticket_state WHERE ticket_uuid = CAST(:t AS uuid)").bind("t", TICKET).mapTo(Int::class.java).one() })
+                },
+            ),
+            "POST /v1/support/tickets/{}/events" to Fx(
+                after = listOf("PATCH /v1/support/tickets/{}"), path = { _, _ -> mapOf("ticket_uuid" to TICKET) },
+                body = { n, c, _ -> n.put("event_uuid", ApiWorld.v4("ticket-reply/${c.user}")); n.put("body", "Conformance reply") },
+            ),
         )
+
+        /** tso-manual B1: the conformance ticket (raised by tso1001, new). */
+        private const val TICKET = "6f1c2b0e-8d1a-4c5e-9f3a-2b7d4e6a8c1b"
+
+        private fun seedTicket(x: Ctx) = x.world.fresh.db.jdbi.useHandle<Exception> { h ->
+            h.execute(
+                "INSERT INTO app.support_ticket (client_uuid, family_uuid, business_date, user_id, captured_at, config_version, issue_type_code, title, description, source) " +
+                    "SELECT CAST(? AS uuid), CAST(? AS uuid), DATE '${ApiWorld.BUSINESS_DATE}', id, TIMESTAMPTZ '${ApiWorld.BUSINESS_DATE}T03:00:00Z', 0, 'printer_connection', 'Conformance ticket', '', 'manual' " +
+                    "FROM app.app_user WHERE username = 'tso1001' ON CONFLICT (client_uuid) DO NOTHING",
+                TICKET, TICKET,
+            )
+            h.execute(
+                "INSERT INTO app.support_ticket_state (ticket_uuid, requester_user_id, requester_role, priority) SELECT CAST(? AS uuid), id, 'TSO', 'p1' FROM app.app_user WHERE username = 'tso1001' ON CONFLICT (ticket_uuid) DO NOTHING",
+                TICKET,
+            )
+        }
     }
 
     /** The SR's real GET /v1/me answer, kept from the run (before the session-ending operations). */

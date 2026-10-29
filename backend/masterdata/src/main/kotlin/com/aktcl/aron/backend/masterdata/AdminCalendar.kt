@@ -174,6 +174,7 @@ private suspend fun revokeHoliday(call: ApplicationCall, d: AdminMasterDeps) {
 private val TABLE_LISTS = listOf(
     "force_reason", "edit_reason", "void_reason", "visit_outcome", "skip_reason", "day_exception_reason", "stock_variance_reason", "task_type",
     "leave_type", "feedback_category", "qc_fault_type", "payment_mode", "outlet_close_reason", "submit_void_reason",
+    "ticket_issue_type", "ticket_resolution_code", // tso-manual B1 (TK-21, F2 ask): the 31 issue types and the resolution codes
 )
 /** Contract CodeListKey members that are not rows of `app.code_list` (channel, sub_channel, geo_class are fixed enums or their own tables). */
 private val OTHER_LISTS = setOf("channel", "sub_channel", "geo_class")
