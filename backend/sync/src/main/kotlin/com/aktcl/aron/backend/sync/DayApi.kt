@@ -87,6 +87,12 @@ data class FinalSubmitPreviewDto(
     val submit_seq: Int = 0,
     /** The due routes not uploaded (upload_state not_uploaded), named in the app's warning; the submit is never blocked. */
     val warn_route_ids: List<Long> = emptyList(),
+    /**
+     * Lane X2 (lead ruling R-W-06 (1), contract 1.10.0): whether the caller may Final Submit this zone-day, from the rule
+     * the submit path enforces ([DayService.submitKind]): TSO, or a role in `cfg.day.final_submit_delegate_roles`. The
+     * zone is in the caller's reach (else the preview is 403). The role rule only: `already_submitted` stays separate.
+     */
+    val can_submit: Boolean = false,
 )
 
 /** POST /v1/day/reopen (contract DayReopenRequest; D-TSO-MAN-29). */
@@ -273,7 +279,22 @@ class DayService(
 
     fun preview(p: AronPrincipal, zone: Long, date: LocalDate): FinalSubmitPreviewDto {
         requireZone(p, zone, date)
-        return db.jdbi.withHandle<FinalSubmitPreviewDto, Exception> { h -> previewIn(h, zone, date) }
+        val canSubmit = submitKind(p) != null
+        return db.jdbi.withHandle<FinalSubmitPreviewDto, Exception> { h -> previewIn(h, zone, date) }.copy(can_submit = canSubmit)
+    }
+
+    /**
+     * Lane X2 (lead ruling R-W-06 (1)): the one rule of who may Final Submit, read by the submit and by the preview's
+     * `can_submit`: the TSO ("manual") or a role listed in `cfg.day.final_submit_delegate_roles` ("delegated"); null for
+     * anyone else. Reach is checked apart ([requireZone]: the preview answers 403 outside it, the submit too).
+     */
+    internal fun submitKind(p: AronPrincipal): String? {
+        val delegates = runCatching { config.value("cfg.day.final_submit_delegate_roles").jsonArray.map { it.jsonPrimitive.content }.toSet() }.getOrDefault(emptySet())
+        return when {
+            p.role == Role.TSO -> "manual"
+            p.role.wire in delegates -> "delegated"
+            else -> null
+        }
     }
 
     private fun previewIn(h: Handle, zone: Long, date: LocalDate): FinalSubmitPreviewDto {
@@ -348,12 +369,7 @@ class DayService(
         // Replay first: the caller's own stored submit answers before the role and the delegate list are re-judged (a
         // delegate role removed from cfg.day.final_submit_delegate_roles after the submit must not turn a retry into 403).
         replay(h = null, req.client_uuid, p.userId)?.let { return it.checked(req, date) }
-        val delegates = runCatching { config.value("cfg.day.final_submit_delegate_roles").jsonArray.map { it.jsonPrimitive.content }.toSet() }.getOrDefault(emptySet())
-        val kind = when {
-            p.role == Role.TSO -> "manual"
-            p.role.wire in delegates -> "delegated"
-            else -> throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "Final Submit is the TSO's (or a delegate role's)")
-        }
+        val kind = submitKind(p) ?: throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "Final Submit is the TSO's (or a delegate role's)")
         val today = LocalDate.ofInstant(clock.now(), DHAKA)
         if (date.isAfter(today)) throw ApiProblem(ProblemCode.ERR_VALIDATION, "a zone-day after today cannot be final-submitted", errors = listOf(FieldError("/business_date", "invalid_value")))
         requireZone(p, req.zone_id, date)
