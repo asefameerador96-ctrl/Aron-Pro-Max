@@ -90,6 +90,25 @@ class AsWasNodeScopeTest {
     }
 
     @Test
+    fun aNodeWithNoZoneAtAllIsTheCallersOnlyThroughItsParentChain() {
+        // A new, empty territory under T1's division: no zone today, none in the window. The reach carries zones only, so the parent chain is what ties it to a scope node.
+        val d1 = id("SELECT division_id FROM app.territory WHERE id = $t1"); val w1 = id("SELECT wing_id FROM app.division WHERE id = $d1")
+        exec("INSERT INTO app.territory (code, name, division_id) VALUES ('TEMPTY','Empty territory', $d1)")
+        val tEmpty = id("SELECT id FROM app.territory WHERE code = 'TEMPTY'")
+        exec("INSERT INTO app.division (code, name, wing_id) VALUES ('DOTHER','Other division', $w1)")
+        exec("INSERT INTO app.territory (code, name, division_id) VALUES ('TOTHER','Other empty', (SELECT id FROM app.division WHERE code = 'DOTHER'))")
+        val tOther = id("SELECT id FROM app.territory WHERE code = 'TOTHER'")
+        fun reachOf(vararg tops: ReachNode) = Reach(5, Role.TSO, day, false, setOf(z1, z2), emptySet(), false, tops.toList())
+        val dmo = reachOf(ReachNode("division", d1)); val wm = reachOf(ReachNode("wing", w1)); val tso = reachOf(ReachNode("zone", z1))
+        assertEquals(0L, terr(node = tEmpty, reach = dmo).kpis.gross_mtk, "under the caller's division: in reach, nothing in it")
+        assertEquals(0L, terr(node = tEmpty, reach = wm).kpis.gross_mtk, "under the caller's wing: in reach, nothing in it")
+        assertEquals(0L, terr(node = tOther, reach = wm).kpis.gross_mtk, "another division of the same wing")
+        assertEquals(ProblemCode.ERR_FORBIDDEN, assertFailsWith<ApiProblem> { terr(node = tOther, reach = dmo) }.code, "another division is not the DMO's")
+        assertEquals(ProblemCode.ERR_FORBIDDEN, assertFailsWith<ApiProblem> { terr(node = tEmpty, reach = tso) }.code, "a zone scope node does not own an empty territory")
+        assertEquals(ProblemCode.ERR_FORBIDDEN, assertFailsWith<ApiProblem> { terr(node = 999_999L, reach = dmo) }.code, "an unknown id")
+    }
+
+    @Test
     fun theReachStillBoundsAnAsWasNodeButAZoneThatLeftIsNotHeldAgainstTheCaller() {
         val tso = Reach(2, Role.TSO, day, false, setOf(z1), emptySet(), false, listOf(ReachNode("territory", t1)))
         // Before any move T1 holds a zone this caller does not reach: refused, as ever.
