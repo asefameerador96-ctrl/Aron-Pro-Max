@@ -14,12 +14,28 @@ Dashboard, Leave, Final Submit, My Periphery (My Team, Retailer), My Call (My Vi
 
 ## Leave
 
-- Leave applications list (date range, days, reason, status e.g. "DMO approval pending"). TSO leave is approved by the DMO.
-- Apply: Leave Type (Casual, Sick, Earn), date(s), number of days, reason.
+- Leave applications list (screenshot 19): oldest first (the screenshot wins over the manual's "newest first", D-TSO-MAN-33).
+  Each card: calendar icon with "from to to", "Reason: ...", the day count in a circle ("Day"/"Days"), and the orange status
+  pill ("DMO approval pending"); no leave type. TSO leave is approved by the DMO. An application still on the phone says
+  "Not sent yet"; one the server refused on sync says "Not accepted: <reason>". Apply For Leave at the bottom.
+- Apply (screenshots 20 to 22): Leave Type dropdown with nothing chosen (types from the bundle code list `leave_type`, else
+  Casual, Sick, Earn), Date empty until picked from the calendar, typed Number of days (starts at 0), Reason, and the lime Apply
+  under the form. to_date = from + days - 1 in calendar days. Apply saves on the phone (offline) and returns to the list with
+  a toast. Window `cfg.leave.allow_past_days` (31) and `allow_ahead_days` (365).
 
 ## Final Submit (per zone per day — a core control)
 
-Select Wing → Division → Territory → House → Zone → "Get Sales Data" → sales date + routes with FF (SR) name or "Not Set" → Submit → success. A second attempt the same day is refused ("already given FINAL SUBMIT for today"). → `final_submit`.
+Select Wing → Division → Territory → House → Zone (dropdowns from `GET /v1/dashboards/national/filter-options`, the reach
+from the token; a level with one option is preselected; D-TSO-MAN-32) → "Get Sales Data" (enabled once the zone is chosen)
+→ the Sales Date box and the routes: "<route name> <kind>" (Daily, 3F, 2F, AMO), "FF: <full name>" or "FF: SR Not Set", an
+amber "Not uploaded" chip on a due route without its upload (a Web Entry counts as uploaded; dummy BR and Institutional
+routes without data are not due) → Submit. Due routes not uploaded give a warning that names them ("Submit anyway" /
+"Cancel"); it never blocks; with nothing due there is no confirm. Success: "Success" / "Final Submit Done Successfully..." /
+OK, which returns to the selectors with the zone cleared for the next zone (CR-5). A second attempt the same day is refused
+("already given FINAL SUBMIT for today"). The client uuid carries the preview's `submit_seq`, so a submit after a reopen is
+new and a replay of a reopened one (409 `ERR_DAY_FINAL_SUBMIT_REOPENED`) reads the preview again (D-TSO-MAN-28). →
+`final_submit`. After it, the SR and AMO phones of the zone lock capture for the route-day (printing stays allowed) and show
+a banner (D-TSO-MAN-31).
 
 ## My Periphery
 

@@ -18,6 +18,12 @@ interface LeaveSource {
     /** One online read of `GET /v1/leave`; null when offline or refused (the cached list stays). */
     suspend fun refresh(): Cached?
 
+    /** The bundle code list `leave_type` (empty: the form offers the manual's three types). Offline: the stored bundle. */
+    suspend fun leaveTypes(): List<LeaveType> = emptyList()
+
+    /** `cfg.leave.allow_past_days` / `allow_ahead_days` from the stored bundle config (defaults 31 and 365). */
+    suspend fun window(): LeaveWindow = LeaveWindow()
+
     data class Cached(val items: List<LeaveItem>, val asOf: String)
 }
 

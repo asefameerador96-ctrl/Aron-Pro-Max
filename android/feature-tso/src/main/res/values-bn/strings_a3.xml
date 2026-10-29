@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Lane A3 (build contract s5): Bangla twin of values/strings_a3.xml. -->
+<resources>
+    <string name="tso_leave_type_label">ছুটির ধরন</string>
+    <string name="tso_leave_date_label">তারিখ</string>
+    <string name="tso_leave_days_hint">০</string>
+    <string name="tso_leave_day_word_one">দিন</string>
+    <string name="tso_leave_day_word">দিন</string>
+    <string name="tso_leave_not_accepted">গৃহীত হয়নি</string>
+    <string name="tso_leave_not_accepted_reason">গৃহীত হয়নি: %1$s</string>
+    <string name="tso_leave_refused_window">তারিখটি অনুমোদিত সময়ের বাইরে</string>
+    <string name="tso_leave_refused_duplicate">একই আবেদন আগেই পাঠানো হয়েছে</string>
+    <string name="tso_leave_refused_not_allowed">এই তারিখের জন্য আবেদন করা যাবে না</string>
+    <string name="tso_leave_refused_invalid">আবেদনটি অসম্পূর্ণ</string>
+    <string name="tso_leave_refused_other">সার্ভার এটি গ্রহণ করেনি</string>
+    <string name="tso_leave_err_date_missing">তারিখ বাছাই করুন</string>
+    <string name="tso_leave_applied_toast">ছুটির আবেদন সংরক্ষিত হয়েছে। ফোন অনলাইনে এলে পাঠানো হবে।</string>
+    <string name="tso_fs_level_zone">জোন</string>
+    <string name="tso_fs_select_wing">উইং বাছাই করুন</string>
+    <string name="tso_fs_select_division">ডিভিশন বাছাই করুন</string>
+    <string name="tso_fs_select_territory">টেরিটরি বাছাই করুন</string>
+    <string name="tso_fs_select_house">হাউস বাছাই করুন</string>
+    <string name="tso_fs_select_zone">জোন বাছাই করুন</string>
+    <string name="tso_fs_no_house">হাউস নেই</string>
+    <string name="tso_fs_kind_daily">দৈনিক</string>
+    <string name="tso_fs_kind_3f">3F</string>
+    <string name="tso_fs_kind_2f">2F</string>
+    <string name="tso_fs_kind_amo">এএমও</string>
+    <string name="tso_fs_not_uploaded">আপলোড হয়নি</string>
+    <string name="tso_fs_warn_title">আপলোড না হওয়া রুট</string>
+    <string name="tso_fs_warn_body">এই রুটগুলো বিক্রয় আপলোড করেনি:\n%1$s\nজমা দিলে এই জোনের দিনটি বন্ধ হয়ে যাবে।</string>
+    <string name="tso_fs_submit_anyway">তবুও জমা দিন</string>
+    <string name="tso_fs_done_short">ফাইনাল সাবমিট সফলভাবে সম্পন্ন হয়েছে...</string>
+    <string name="tso_fs_sales_date_colon">বিক্রয়ের তারিখ:</string>
+    <string name="tso_fs_reopened">শেষ ফাইনাল সাবমিটের পর এই জোনটি আবার খোলা হয়েছে। রুটগুলো দেখে আবার জমা দিন চাপুন।</string>
+    <string name="tso_fs_unavailable">জোনগুলো আনতে ফাইনাল সাবমিটের ইন্টারনেট লাগবে। যুক্ত হয়ে আবার খুলুন।</string>
+</resources>

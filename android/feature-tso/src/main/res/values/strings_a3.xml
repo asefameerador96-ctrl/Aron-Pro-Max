@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Lane A3 (build contract s5): Leave, Final Submit, My Periphery, My Call and My Feedback strings. Bangla twin in values-bn/strings_a3.xml. -->
+<resources>
+    <!-- Leave (screenshots 19 to 22, D-TSO-MAN-33) -->
+    <string name="tso_leave_type_label">Leave Type</string>
+    <string name="tso_leave_date_label">Date</string>
+    <string name="tso_leave_days_hint">0</string>
+    <string name="tso_leave_day_word_one">Day</string>
+    <string name="tso_leave_day_word">Days</string>
+    <string name="tso_leave_not_accepted">Not accepted</string>
+    <string name="tso_leave_not_accepted_reason">Not accepted: %1$s</string>
+    <string name="tso_leave_refused_window">the date is outside the allowed window</string>
+    <string name="tso_leave_refused_duplicate">the same application was already sent</string>
+    <string name="tso_leave_refused_not_allowed">you cannot apply for this date</string>
+    <string name="tso_leave_refused_invalid">the application is incomplete</string>
+    <string name="tso_leave_refused_other">the server did not accept it</string>
+    <string name="tso_leave_err_date_missing">Pick the date</string>
+    <string name="tso_leave_applied_toast">Leave application saved. It is sent when the phone is online.</string>
+    <!-- Final Submit (screenshots 23 to 26, D-TSO-MAN-27, 28, 32) -->
+    <string name="tso_fs_level_zone">Zone</string>
+    <string name="tso_fs_select_wing">Select Wing</string>
+    <string name="tso_fs_select_division">Select Division</string>
+    <string name="tso_fs_select_territory">Select Territory</string>
+    <string name="tso_fs_select_house">Select House</string>
+    <string name="tso_fs_select_zone">Select Zone</string>
+    <string name="tso_fs_no_house">No house</string>
+    <string name="tso_fs_kind_daily">Daily</string>
+    <string name="tso_fs_kind_3f">3F</string>
+    <string name="tso_fs_kind_2f">2F</string>
+    <string name="tso_fs_kind_amo">AMO</string>
+    <string name="tso_fs_not_uploaded">Not uploaded</string>
+    <string name="tso_fs_warn_title">Routes not uploaded</string>
+    <string name="tso_fs_warn_body">These routes have not uploaded their sales:\n%1$s\nSubmitting locks the day for this zone.</string>
+    <string name="tso_fs_submit_anyway">Submit anyway</string>
+    <string name="tso_fs_done_short">Final Submit Done Successfully...</string>
+    <string name="tso_fs_sales_date_colon">Sales Date:</string>
+    <string name="tso_fs_reopened">This zone was reopened after its last Final Submit. Check the routes and tap Submit again.</string>
+    <string name="tso_fs_unavailable">Final Submit needs the internet to read your zones. Connect and open it again.</string>
+</resources>

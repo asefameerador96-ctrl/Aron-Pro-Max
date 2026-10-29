@@ -72,10 +72,28 @@ class TsoReadModels(private val env: TsoEnv, private val databases: UserDatabase
             return LeaveJson.parsePage(body)?.let { LeaveSource.Cached(it.items, asOf) }
         }
 
-        /** The mirror rows written with each queued application (same transaction as the outbox row). */
+        /**
+         * The mirror rows written with each queued application (same transaction as the outbox row). A row the server refused
+         * on sync (outbox state rejected) carries its outcome code, so the card says "Not accepted: <reason>" (D-TSO-MAN-33).
+         */
         override suspend fun unsent(): List<com.aktcl.aron.feature.tso.leave.LeaveItem> = runCatching {
-            meta(userId).metaWithPrefix(LEAVE_MIRROR).mapNotNull { LeaveJson.parseUnsent(it.value) }
+            val box = databases.of(userId).outboxDao()
+            meta(userId).metaWithPrefix(LEAVE_MIRROR).mapNotNull { LeaveJson.parseUnsent(it.value) }.map { item ->
+                val row = runCatching { box.byClientUuid(item.leaveUuid) }.getOrNull()
+                if (row?.state == com.aktcl.aron.core.database.entity.OutboxState.REJECTED) item.copy(refusalCode = row.lastCode ?: "server_error") else item
+            }
         }.getOrDefault(emptyList())
+
+        /** The bundle code list `leave_type` (stored with the login snapshot, so the form works offline). */
+        override suspend fun leaveTypes() = com.aktcl.aron.feature.tso.leave.LeaveTypes.parse(runCatching { meta(userId).section("code_lists") }.getOrNull())
+
+        /** `cfg.leave.allow_past_days` / `allow_ahead_days` from the stored config; the defaults when unreadable. */
+        override suspend fun window(): com.aktcl.aron.feature.tso.leave.LeaveWindow {
+            val ref = runCatching { com.aktcl.aron.core.database.repo.ReferenceRepository(databases.of(userId)) }.getOrNull() ?: return com.aktcl.aron.feature.tso.leave.LeaveWindow()
+            val now = java.time.Instant.ofEpochMilli(env.nowMs()).toString()
+            suspend fun days(key: String, default: Long) = runCatching { ref.config(key, now) }.getOrNull()?.trim('"', ' ')?.toLongOrNull()?.takeIf { it in 0..3650 } ?: default
+            return com.aktcl.aron.feature.tso.leave.LeaveWindow(days("cfg.leave.allow_past_days", com.aktcl.aron.feature.tso.leave.MAX_BACKDATE_DAYS), days("cfg.leave.allow_ahead_days", com.aktcl.aron.feature.tso.leave.MAX_AHEAD_DAYS))
+        }
 
         override suspend fun refresh(): LeaveSource.Cached? {
             // follow next_cursor (at most 5 pages of 100): a TSO's history can exceed one page; a failure on a later page keeps the whole refresh out
@@ -388,7 +406,7 @@ class TsoReadModels(private val env: TsoEnv, private val databases: UserDatabase
         }
     }
 
-    /** F-TSO-010/021: preview read and the one online POST; no queue, scope from the token only. */
+    /** F-TSO-010/021, D-TSO-MAN-27/28/32: the filter options, the preview read and the one online POST; no queue, scope from the token only. */
     fun finalSubmit(userId: Long, plan: com.aktcl.aron.feature.tso.mycall.PlanSource): com.aktcl.aron.feature.tso.finalsubmit.FinalSubmitApi = object : com.aktcl.aron.feature.tso.finalsubmit.FinalSubmitApi {
         private fun why(r: ApiResult<*>): com.aktcl.aron.feature.tso.finalsubmit.FsFailure = when (r) {
             is ApiResult.Transport -> com.aktcl.aron.feature.tso.finalsubmit.FsFailure.OFFLINE
@@ -398,9 +416,14 @@ class TsoReadModels(private val env: TsoEnv, private val databases: UserDatabase
 
         override suspend fun zones(): List<Long>? = runCatching { plan.routes() }.getOrNull()?.let { com.aktcl.aron.feature.tso.mycall.zonesOf(it) }
 
-        override suspend fun geo(level: String, parentId: Long?): List<com.aktcl.aron.feature.tso.finalsubmit.FsGeoNode>? {
-            if (level !in com.aktcl.aron.feature.tso.finalsubmit.FsGeo.LEVELS) return null
-            return com.aktcl.aron.feature.tso.finalsubmit.FsGeo.parse(get("/v1/admin/geo/$level?limit=500" + (parentId?.let { "&parent_id=$it" } ?: "")))
+        /**
+         * Wing to zone of the TSO's reach (`GET /v1/dashboards/national/filter-options`, D-TSO-MAN-32; the server cuts it to the
+         * token's reach, the phone sends no ids). Kept in the user's database, so the pickers open offline with the last copy.
+         */
+        override suspend fun filterOptions(): com.aktcl.aron.feature.tso.finalsubmit.FsFilterOptions? {
+            val fresh = get("/v1/dashboards/national/filter-options")?.takeIf { com.aktcl.aron.feature.tso.finalsubmit.FsGeo.parseFilterOptions(it) != null }
+            if (fresh != null) cachePut(userId, "fs.filter", fresh, asOfNow())
+            return com.aktcl.aron.feature.tso.finalsubmit.FsGeo.parseFilterOptions(fresh ?: cacheGet(userId, "fs.filter")?.first)
         }
 
         override suspend fun preview(zoneId: Long, date: String): com.aktcl.aron.feature.tso.finalsubmit.FsPreviewOutcome {
@@ -418,6 +441,8 @@ class TsoReadModels(private val env: TsoEnv, private val databases: UserDatabase
                 post(json.toRequestBody("application/json".toMediaType()))
             }, decode = { body, _ -> body })
             if (r is ApiResult.Failure && r.httpStatus == 409 && r.problem.code == "ERR_DAY_ALREADY_FINAL_SUBMITTED") return com.aktcl.aron.feature.tso.finalsubmit.FsSubmitOutcome.AlreadySubmitted
+            // D-TSO-MAN-28: this uuid's submit was reopened since; the screen reads the preview again (its submit_seq gives the next uuid)
+            if (r is ApiResult.Failure && r.httpStatus == 409 && r.problem.code == "ERR_DAY_FINAL_SUBMIT_REOPENED") return com.aktcl.aron.feature.tso.finalsubmit.FsSubmitOutcome.Reopened
             if (r !is ApiResult.Success) return com.aktcl.aron.feature.tso.finalsubmit.FsSubmitOutcome.Failed(why(r))
             return com.aktcl.aron.feature.tso.finalsubmit.FsJson.result(r.value)?.let { com.aktcl.aron.feature.tso.finalsubmit.FsSubmitOutcome.Ok(it) }
                 ?: com.aktcl.aron.feature.tso.finalsubmit.FsSubmitOutcome.Failed(com.aktcl.aron.feature.tso.finalsubmit.FsFailure.SERVER)
