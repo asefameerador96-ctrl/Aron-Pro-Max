@@ -15,9 +15,5 @@ android/core-ui/src/main/kotlin/com/aktcl/aron/core/ui/Money.kt | (value.toFloat
 android/core-ui/src/main/kotlin/com/aktcl/aron/core/ui/Money.kt | ProgressBarRangeInfo(value.toFloat().coerceIn(0f, max.toFloat().coerceAtLeast(0f)), 0f..max.toFloat().coerceAtLeast(0f)) | ok | progress meter semantics range (counts), not an amount
 android/feature-amo/src/main/kotlin/com/aktcl/aron/feature/amo/LiveDashboard.kt | val strikeRatePct: Double? | ok | KPI percentage beside grossMtk/netMtk (Long)
 android/feature-amo/src/main/kotlin/com/aktcl/aron/feature/amo/Reports.kt | val cprPct: Double? | ok | KPI percentage beside netMtk (Long)
-android/feature-tso/src/main/kotlin/com/aktcl/aron/feature/tso/TsoDashboard.kt | val qtyReport: Double? | ok | a quantity in the report unit (boxes), not money; netMtk is Long
-android/feature-tso/src/main/kotlin/com/aktcl/aron/feature/tso/TsoDashboard.kt | val ratioPct: Double? | ok | a percentage; netMtk is Long
-android/feature-tso/src/main/kotlin/com/aktcl/aron/feature/tso/TsoDashboard.kt | qty_report")?.toDoubleOrNull() | ok | parses the report-unit quantity, not money
-android/feature-tso/src/main/kotlin/com/aktcl/aron/feature/tso/TsoDashboard.kt | pos.map { it * 100.0 / total } | ok | donut shares in percent of the total (display only); the amounts stay Long
 web/src/lib/admin/taka.ts | Math.round(Math.log10(scale)) | ok | the decimal count of a power-of-ten scale, not an amount
 web/src/app/(dashboards)/reports/[slug]/page.tsx | Math.ceil(result.data.total_rows / size) | ok | page count of a report ("total" is rows), not money

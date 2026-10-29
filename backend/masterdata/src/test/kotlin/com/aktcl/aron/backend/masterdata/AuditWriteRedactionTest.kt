@@ -19,7 +19,7 @@ class AuditWriteRedactionTest {
             root.resolve(d).walkTopDown().filter { it.isFile && it.extension in setOf("sql", "kt", "py", "sh", "ps1", "bicep") }.toList()
         }
         assertTrue(sources.size > 100, "the scan found the sources (${sources.size})")
-        val writers = sources.filter { insert.containsMatchIn(it.readText()) }.map { it.relativeTo(root).path }
+        val writers = sources.filter { insert.containsMatchIn(it.readText()) }.map { it.relativeTo(root).invariantSeparatorsPath }
         assertEquals(listOf("backend/platform/src/main/kotlin/com/aktcl/aron/backend/platform/AuditLog.kt"), writers, "only AuditLog.write inserts audit rows")
     }
 
