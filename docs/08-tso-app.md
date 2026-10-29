@@ -29,12 +29,24 @@ The Home button (bottom centre) is on the Dashboard and on Login & Bikroy Joma S
 
 ## Drawer menu (screenshots 9, 10, 27, 30, 44; D-TSO-MAN-14)
 
-Top bar of the Dashboard: ☰, "Good day, <full_name>", the bell with the unread badge (opens the inbox). Drawer header "TSO" over the
+Top bar of the Dashboard: ☰, "Good day, <full_name>", the bell with the unread badge (opens the inbox, below). Drawer header "TSO" over the
 bold name, with a gear that opens Settings. Rows, exactly, each with its subtitle: Dashboard (View Dashboard); Tickets ˅ (Raise and
 manage tickets: Ticket Dashboard, All Tickets, Quick Ticket, Create Ticket); Leave (Manage your leaves); Final Submit (Submit Sales
 Data); My Periphery ˅ (Check your team and outlet: My Team, Retailer); My Call ˅ (Create and manage plans: My Visit Plan, Set Plan);
 Target Status (Check targets); My Feedback ˅ (Manage your feedbacks: Add new feedback, My feedback); Log Out (Logout from the app).
 A drawer screen opens on the Dashboard, so back from it returns to the Dashboard. The tile Home is retired for TSO.
+
+**Notifications inbox (the bell; D-TSO-MAN-26, no screenshot: an improvement).** The badge is the server's unread count
+(`GET /v1/me/notifications`) minus the reads this phone has not sent yet; "99+" above 99. It is read when the Dashboard opens, on its
+pull-to-refresh and when a push with the reason `notification` (or `ticket_updated`) arrives; never on a timer. The bell opens a plain
+list, newest first (50 rows, "Show older" for more): a dot on the rows that were new, title and body in the app's language (English
+when the producer gave no Bangla), the age ("2h ago"). Opening it marks everything up to the newest id read (`POST
+/v1/me/notifications/read {up_to_id}`, idempotent); offline the read is kept on the phone, already counted off the badge, and sent
+first on the next read. A ticket row opens that ticket, a leave decision opens Leave, a midnight auto Final Submit opens Final Submit.
+The newest page is kept for offline with its "as of". Kinds: ticket_updated, leave_decided, final_submit_auto; announcements stay
+push-only. A tapped push notice opens the inbox (`notification`) or the Ticket Dashboard (`ticket_updated`); the push itself carries
+the reason only (fixed Bangla and English text, no business data). `day_final_submitted` is the SR and AMO day-lock push (silent
+"Day closed" notice).
 
 ## Leave
 
@@ -56,9 +68,27 @@ Select Wing → Division → Territory → House → Zone → "Get Sales Data" �
 - **My Visit Plan:** date, zone, route → Visit Plan Outlets tabs Pending / Completed (outlet card: code e.g. DHK-344-011, owner, contact, channel, cluster).
 - **Visit:** "Visit Query" questionnaire to the retailer (Does the SR visit regularly? Does the SR print memos regularly?) + "Delegate task?" Yes/No → Submit; Assign Task (type e.g. Irregular Visit, date, comment) → Assign. → `call_assessment(kind=retailer_questionnaire)`, `task`.
 
-## Target Status
+## Target Status (screenshots 39 to 42; D-TSO-MAN-05, 39, 40)
 
-- Monthly Target | Till Date Target; Territory card + Zone cards with Cigarette/Bidi/Lighter/Match bars (achieved/target, %). Details → item table (Item at SKU/variant level e.g. "Ananda Bidi 25", "Special Abul Bidi 25", "Maxim Double Burst"; Target, Achievement, Remaining, %).
+Drawer > Target Status. No Home button (build contract s8). Reads `GET /v1/dashboards/targets?month=<YYYY-MM>&product_level=category&children=zone`
+when the screen opens and on pull-to-refresh (never on a timer; a screen shown again within a minute of its last read, e.g. back
+from Details, keeps that read). The nodes come from the token's reach on the server; the phone names none. Every answer is kept per
+month (and per node for Details) so the screens open offline with "Offline: showing the copy of hh:mm"; a refusal never serves a copy.
+
+- **Tabs** Monthly Target | Till Date Target (one answer carries both; switching reads nothing). Details opens on the tab Status shows.
+- **Cards**: the TSO's territory (or house) card, then one card per zone in reach (a zone TSO sees one card). Title "Territory: <name>",
+  "Zone: <name>". One bar per category, Cigarette, Bidi, Lighter, Match (base units: sticks, pieces, dozens): `achieved/target` as
+  plain integers ("1030/40999", as the screenshots), the card percent `min(100, whole(A, T'))` (`Targets.cardPct`; 85 of 81 is
+  100%), the bar coloured by `cfg.kpi.bar_bands` (default [40, 80]: red below 40, amber below 80, green from 80) on the printed
+  percent (`Targets.band`). Till Date uses T' = the sum of the item rows, each `round_half_up(T x e / n)` (calendar basis by default,
+  `cfg.kpi.tilldate_basis.tso`; R-F-01). A node with no working day in a working-days month (its own `period_days` 0, R-F-24) prints
+  "—" for its till-date figures while its parent does not. "Details →" opens Target Details for that node.
+- **Target Details**: title = the node's name ("Apsis"); the same tabs; the node's card with one bar per category, each the sum of its
+  item rows; the item table (variant rows in catalogue order): Item, Target, Achievement, Remaining = `max(T - A, 0)`, % =
+  `Percent.bp(A, T)` with 2 decimals, uncapped ("104.94%"). Tapping a category bar shows only that bar and that category's items
+  (screenshot 41); tapping it again or "Show all categories" clears the filter; switching the tab keeps the node and the filter.
+- Every percent is computed once on the phone from the integers (`Targets`, `Percent`); the server's `*_pct_bp` members are not
+  printed. A month with no target prints "—".
 
 ## Settings (behind the drawer gear)
 

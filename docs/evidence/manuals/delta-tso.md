@@ -554,7 +554,7 @@ Not re-read: pp. 1-4, 8, 9, 12, 22 (cover, install, login, drawer repeats, empty
 
 ## A1 shell deltas (TSO manual build, 2026-10-29)
 
-What the rebuilt TSO shell (login, top bar, drawer, Dashboard chrome, Settings, Log Out) keeps different from the October screenshots,
+What the rebuilt TSO shell (login, top bar, drawer, Dashboard chrome, Settings, Log Out, Target Status and the bell inbox) keeps different from the October screenshots,
 each with its reason. Lane A1, build contract s5 A1 and s7.2.
 
 | Delta | Screenshot | Build | Reason |
@@ -575,3 +575,11 @@ each with its reason. Lane A1, build contract s5 A1 and s7.2.
 | Pull-to-refresh on the Dashboard | not shown | reads on open and on pull-to-refresh, never on a timer | constraint 3 (battery, data) |
 | By Channel STD ▸ | callout of the older manual | switches to By Channel Successful Call and back, choice kept | D-TSO-MAN-41 |
 | Totals in base units | sticks, pieces, dozens | the same (sold lines only) | D-TSO-MAN-09 |
+| Target Status figures | "1030/40999", "3%" | the same plain integers (no grouping, Bengali digits in Bangla); percents computed on the phone from the integers | screenshots 39 to 42 win (rule 14a); D-TSO-MAN-10 one rounding |
+| Target Status bar colours | bright red, amber, green on a light track | the same fills; the percent beside each bar is printed in a 4.5:1 status ink (the amber bar on the light track is 1.4:1, so the printed percent carries the figure) | legibility (rule 14, TokenContrastTest `tsoTargetBandsReachThreeToOne`) |
+| Details category filter | tapping a bar shows that bar and its items (screenshot 41) | the same, plus "Show all categories" under the bar while filtered (tapping the bar again also clears it) | the screenshot gives no way back to all categories |
+| Details table header | "Achieve ment", "Remainin g" (broken mid-word) | hyphenated where the word does not fit; figures shrink in their cells at 200 percent instead of breaking | legibility at 360 dp and 200 percent font |
+| "as of" and pull-to-refresh on Target Status, Details and the inbox | none | as on the Dashboard; a kept copy says so | the reads are snapshots (build contract s5 A1) |
+| A node with no working day | none | "—" for its till-date figures, per node | R-F-15, R-F-24 |
+| Notifications inbox behind the bell | bell with a badge, no inbox screenshot | a plain inbox list, newest first; opening it marks everything read; offline the read is kept and the badge counts it | D-TSO-MAN-26 improvement |
+| Push notices | none in the manual | fixed Bangla and English texts for `notification`, `ticket_updated` and `day_final_submitted` (silent channel for the day lock); the push carries no business data | D-TSO-MAN-26, 31; N-037 |
