@@ -11,6 +11,7 @@ import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.rememberCoroutineScope
@@ -65,11 +66,20 @@ fun TsoApp(
     screens: Map<TsoScreen, TsoScreenContent> = emptyMap(),
     /** Unread inbox items for the bell's badge (0 hides it); the host reads it on Dashboard open and pull-to-refresh, never on a timer. */
     unread: Int = 0,
+    /** tso-manual A1: a screen to open on the Dashboard now (a tapped push notice: the inbox or the tickets); then [onOpenRequestHandled]. */
+    openRequest: TsoScreen? = null,
+    onOpenRequestHandled: () -> Unit = {},
 ) {
     val nav = rememberSaveable(saver = TsoNavState.Saver) { TsoNavState() }
     val drawer = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
     var askLogout by rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(openRequest) {
+        val s = openRequest ?: return@LaunchedEffect
+        drawer.close()
+        nav.openFromDrawer(s) // on the Dashboard, as a drawer row: back returns to the Dashboard
+        onOpenRequestHandled()
+    }
     BackHandler(enabled = drawer.isOpen) { scope.launch { drawer.close() } }
     BackHandler(enabled = !drawer.isOpen && nav.stack.isNotEmpty()) { nav.back() }
     fun fromDrawer(action: () -> Unit) { scope.launch { drawer.close() }; action() }

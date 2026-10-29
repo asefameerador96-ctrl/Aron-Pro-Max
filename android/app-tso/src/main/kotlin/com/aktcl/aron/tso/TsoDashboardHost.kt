@@ -60,7 +60,13 @@ fun dashboardStateOf(fetches: Map<TsoDashCard, TsoFetch>, businessDate: String):
  * opens and on pull-to-refresh, never on a timer; the cards are read in parallel, each with its own cache key. The ▸ choice of the
  * channel card is kept in this user's `aron_ui_<id>` preferences, which logout wipes (SH-17).
  */
-class TsoDashboardModel(private val api: TsoApi, private val today: () -> String, private val prefs: SharedPreferences?) {
+class TsoDashboardModel(
+    private val api: TsoApi,
+    private val today: () -> String,
+    private val prefs: SharedPreferences?,
+    /** tso-manual A1: read with the cards on open and pull-to-refresh (the bell's unread count, D-TSO-MAN-26); a failure never stops the cards. */
+    private val alsoOnLoad: suspend () -> Unit = {},
+) {
     var state: TsoDashboardState? by mutableStateOf(null)
         private set
     var refreshing: Boolean by mutableStateOf(false)
@@ -84,8 +90,13 @@ class TsoDashboardModel(private val api: TsoApi, private val today: () -> String
         refreshing = true
         try {
             val day = today()
-            val fetches = coroutineScope { TsoDashCard.entries.map { c -> c to async { api.card(c, day) } }.associate { (c, d) -> c to d.await() } }
-            state = dashboardStateOf(fetches, day)
+            coroutineScope {
+                launch {
+                    try { alsoOnLoad() } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (_: Exception) { }
+                }
+                val fetches = TsoDashCard.entries.map { c -> c to async { api.card(c, day) } }.associate { (c, d) -> c to d.await() }
+                state = dashboardStateOf(fetches, day) // the cards show without waiting for the bell
+            }
         } finally {
             refreshing = false
         }
@@ -135,9 +146,12 @@ fun TsoLoginStatusHost(model: TsoDashboardModel, nav: TsoNav) {
     }
 }
 
-/** A1's host map: the Dashboard and Login & Bikroy Joma Status, sharing one model for the signed-in user. */
-fun dashboardScreens(host: TsoHost): Map<TsoScreen, TsoScreenContent> {
-    val model = TsoDashboardModel(TsoApi(host.components.apiClient, host.context, host.userId), host.today, TsoDashboardModel.prefs(host.context, host.userId))
+/**
+ * A1's host map: the Dashboard and Login & Bikroy Joma Status, sharing one model for the signed-in user; [inbox] (the bell) is read
+ * with the cards on open and pull-to-refresh.
+ */
+fun dashboardScreens(host: TsoHost, api: TsoApi = TsoApi(host.components.apiClient, host.context, host.userId), inbox: TsoInboxModel? = null): Map<TsoScreen, TsoScreenContent> {
+    val model = TsoDashboardModel(api, host.today, TsoDashboardModel.prefs(host.context, host.userId), alsoOnLoad = { inbox?.refresh() })
     return mapOf(
         TsoScreen.DASHBOARD to { nav, _ -> TsoDashboardHost(model, nav) },
         TsoScreen.LOGIN_SUBMIT_STATUS to { nav, _ -> TsoLoginStatusHost(model, nav) },

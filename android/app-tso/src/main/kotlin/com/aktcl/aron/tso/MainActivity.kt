@@ -93,6 +93,25 @@ class MainActivity : ComponentActivity() {
         activityLog.flushSoon(id) // the log's own scope: onDestroy right after must not cancel the write
     }
 
+    /** tso-manual A1: the screen a tapped push notice asks for (the inbox or the ticket dashboard); TsoApp opens it on the Dashboard. */
+    private val pushOpen = kotlinx.coroutines.flow.MutableStateFlow<com.aktcl.aron.feature.tso.TsoScreen?>(null)
+
+    private fun takePushIntent(intent: android.content.Intent?) {
+        val screen = when (com.aktcl.aron.core.sync.push.PushNotices.opens(intent)) {
+            com.aktcl.aron.core.sync.push.PushNotices.OPEN_INBOX -> com.aktcl.aron.feature.tso.TsoScreen.NOTIFICATIONS
+            com.aktcl.aron.core.sync.push.PushNotices.OPEN_TICKETS -> com.aktcl.aron.feature.tso.TsoScreen.TICKET_DASHBOARD
+            else -> return
+        }
+        intent?.removeExtra(com.aktcl.aron.core.sync.push.PushNotices.EXTRA_OPEN) // a recreate must not open it again
+        pushOpen.value = screen
+    }
+
+    override fun onNewIntent(intent: android.content.Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        takePushIntent(intent)
+    }
+
     private fun isOnline(): Boolean {
         val cm = getSystemService(android.net.ConnectivityManager::class.java) ?: return false
         val caps = cm.getNetworkCapabilities(cm.activeNetwork) ?: return false
@@ -112,6 +131,7 @@ class MainActivity : ComponentActivity() {
         val language = AppLocale.current(this)
         val onLanguageSelect: (AppLanguage) -> Unit = { if (AppLocale.set(this, it)) recreate() }
         val versionName = BuildConfig.VERSION_NAME + " (" + BuildConfig.VERSION_CODE + ")"
+        if (savedInstanceState == null) takePushIntent(intent)
         setContent {
             // PARITY-SPEC s2.6: pack pictures of the Stock and Sale rows (thumbnail cache, then the dev-only bundled art).
             androidx.compose.runtime.CompositionLocalProvider(com.aktcl.aron.core.ui.aron.LocalPackshotProvider provides packshotProvider) {
@@ -191,7 +211,19 @@ class MainActivity : ComponentActivity() {
                                     mediaFor = { mediaShell.componentsFor(s.user.userId) { components.trustedClock.businessDate().toString() } },
                                 )
                             }
-                            val dashboard = remember(host) { dashboardScreens(host) }
+                            // tso-manual A1: one read client per user for the Dashboard, Target Status and the bell inbox
+                            val api = remember(host) { TsoApi(host.components.apiClient, host.context, host.userId) }
+                            val inbox = remember(host) { TsoInboxModel(api, TsoDashboardModel.prefs(host.context, host.userId)) }
+                            // D-TSO-MAN-26: a push `notification` (or `ticket_updated`) re-reads the bell; no polling
+                            LaunchedEffect(inbox) {
+                                com.aktcl.aron.core.sync.push.PushNotices.arrived.collect { n ->
+                                    if (n == com.aktcl.aron.core.sync.push.PushNotice.InboxUpdated || n == com.aktcl.aron.core.sync.push.PushNotice.TicketUpdated) inbox.refresh()
+                                }
+                            }
+                            val dashboard = remember(host) { dashboardScreens(host, api, inbox) }
+                            val targets = remember(host) { targetScreens(host, api) }
+                            val inboxScreen = remember(host) { inboxScreens(host, inbox) }
+                            val openRequest by pushOpen.collectAsStateWithLifecycle()
                             val areas = remember(host) { areaScreens(AreasHostDeps(host)) }
                             val tickets = remember(host) { ticketScreens(TicketsHostDeps(host)) }
                             val vm = viewModel(key = "home-" + s.user.userId) {
@@ -234,7 +266,10 @@ class MainActivity : ComponentActivity() {
                                     com.aktcl.aron.core.ui.AronScreen(topBar = { com.aktcl.aron.core.ui.AronTopBar(stringResource(com.aktcl.aron.feature.home.R.string.set_support), onBack = back) }) { SupportHost(systemShell, s.user.userId, versionName) }
                                 },
                                 // A1: the Dashboard (root) and Login & Bikroy Joma Status; A3 areas; A2 tickets
-                                screens = dashboard + areas + tickets,
+                                screens = dashboard + targets + inboxScreen + areas + tickets, // tso-manual A1: Target Status, inbox
+                                unread = inbox.unread,
+                                openRequest = openRequest,
+                                onOpenRequestHandled = { pushOpen.value = null },
                             ) } }
                             }
                         }

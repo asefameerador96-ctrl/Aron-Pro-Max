@@ -8,6 +8,8 @@ import com.aktcl.aron.core.network.Grant
 import com.aktcl.aron.feature.tso.LoginSubmitTab
 import com.aktcl.aron.feature.tso.TsoDashCard
 import com.aktcl.aron.feature.tso.TsoDashboards
+import com.aktcl.aron.feature.tso.notifications.TsoInboxes
+import com.aktcl.aron.feature.tso.targets.TargetNodeKey
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.toRequestBody
 
@@ -27,6 +29,8 @@ fun TsoFetch.jsonOrNull(): String? = when (this) { is TsoFetch.Fresh -> json; is
  * date as the only filter: the scope is the token's reach and the client never sends scope ids. Every answer is kept per user and
  * per card and day as a file in the cache folder (3 days, bounded) so the Dashboard still shows its last figures offline, with the
  * server's own "as of" stamp. A refused or absent resource (403/404/501) never serves an old copy. No token is logged.
+ * tso-manual A1 step 3: the same reads serve Target Status and Details (`GET /v1/dashboards/targets`, kept per month and node) and the
+ * bell inbox (`GET /v1/me/notifications`, the newest page kept; `POST /v1/me/notifications/read`, never kept).
  */
 class TsoApi(private val client: AronApiClient, private val dir: java.io.File) {
     constructor(client: AronApiClient, context: Context, userId: Long) : this(client, java.io.File(context.cacheDir, "tso_api_$userId"))
@@ -40,18 +44,75 @@ class TsoApi(private val client: AronApiClient, private val dir: java.io.File) {
         post("/v1/dashboards/national/login-submit/users", "nat_users_${tab.wire}_$date", TsoDashboards.filterBody(date), mapOf("tab" to tab.wire))
 
     /** The POST helper of the cards: [body] is the JSON filter, [key] the per-card cache key, [query] extra query parameters. */
-    suspend fun post(path: String, key: String, body: String, query: Map<String, String> = emptyMap()): TsoFetch {
+    suspend fun post(path: String, key: String, body: String, query: Map<String, String> = emptyMap()): TsoFetch = send(path, key, query, body)
+
+    // ---- tso-manual A1 step 3: Target Status (D-TSO-MAN-39, 40) and the bell inbox (D-TSO-MAN-26) --------------------------------
+
+    /** The GET helper: [key] is the cache key of the answer (null: never kept, e.g. an older inbox page), [query] its parameters. */
+    suspend fun get(path: String, key: String?, query: Map<String, String> = emptyMap()): TsoFetch = send(path, key, query, null)
+
+    /**
+     * Target Status of [month] (`YYYY-MM`): the caller's top reach node and its zones (`children=zone`), category rows. The nodes come
+     * from the token's reach on the server; the request names none. Cache key: the month.
+     */
+    suspend fun targetStatus(month: String): TsoFetch =
+        get(TARGETS, "tgt_status_$month", linkedMapOf("month" to month, "product_level" to "category", "children" to "zone"))
+
+    /**
+     * Target Details of one node for [month]: its variant rows. The top node is read without `level`/`node_id` (the server takes the
+     * caller's top reach node; an explicit `level=house` is refused, contract GeoLevelQuery); a zone by `level=zone&node_id=<id>`, an
+     * id the server itself returned (it answers 403 outside the reach). Cache key: the node and the month.
+     */
+    suspend fun targetDetails(node: TargetNodeKey, month: String): TsoFetch {
+        val q = linkedMapOf("month" to month)
+        val level = node.level
+        val id = node.id
+        if (level != null && id != null) { q["level"] = level; q["node_id"] = id.toString() }
+        q["product_level"] = "variant"
+        return get(TARGETS, "tgt_details_${node.wire.replace(':', '_')}_$month", q)
+    }
+
+    /** The newest page of the inbox (`GET /v1/me/notifications`, 50 rows); kept, so the inbox opens offline with its "as of". */
+    suspend fun notifications(): TsoFetch = get(INBOX, "inbox", linkedMapOf("limit" to "$INBOX_PAGE"))
+
+    /** An older page, before [beforeId] (the server's `next_before_id`); never kept. */
+    suspend fun olderNotifications(beforeId: Long): TsoFetch = get(INBOX, null, linkedMapOf("before_id" to "$beforeId", "limit" to "$INBOX_PAGE"))
+
+    /** What `POST /v1/me/notifications/read` gave: the unread count left, a refusal (the read is dropped), or no answer (kept, retried). */
+    sealed interface MarkRead {
+        data class Done(val unread: Int) : MarkRead
+        data object Rejected : MarkRead
+        data object NoAnswer : MarkRead
+    }
+
+    /** Marks everything up to [upTo] read (idempotent on the server: a retry never changes more than the first call). */
+    suspend fun markNotificationsRead(upTo: Long): MarkRead {
+        val r = client.call(
+            path = INBOX_READ, auth = CallAuth.Grant(Grant.FULL),
+            build = { url(client.origin.path(INBOX_READ)); post(TsoInboxes.readBody(upTo).toRequestBody(JSON)) },
+            decode = { b, _ -> b },
+        )
+        return when {
+            r is ApiResult.Success -> TsoInboxes.readResult(r.value)?.let { MarkRead.Done(it) } ?: MarkRead.NoAnswer
+            r is ApiResult.Failure && r.httpStatus in 400..499 && r.httpStatus != 401 && r.httpStatus != 408 && r.httpStatus != 429 -> MarkRead.Rejected
+            else -> MarkRead.NoAnswer
+        }
+    }
+
+    /** One read: fresh (kept under [key]), the kept copy when the server cannot be reached, or Gone when refused (the copy is dropped). */
+    private suspend fun send(path: String, key: String?, query: Map<String, String>, body: String?): TsoFetch {
         val r = client.call(
             path = path, auth = CallAuth.Grant(Grant.FULL),
             build = {
                 url(query.entries.fold(client.origin.path(path).newBuilder()) { b, (k, v) -> b.addQueryParameter(k, v) }.build())
-                post(body.toRequestBody(JSON))
+                if (body != null) post(body.toRequestBody(JSON))
             },
             decode = { b, _ -> b },
         )
         return when {
-            r is ApiResult.Success -> { remember(key, r.value); TsoFetch.Fresh(r.value) }
-            r is ApiResult.Failure && (r.httpStatus == 403 || r.httpStatus == 404 || r.httpStatus == 501) -> { file(key).delete(); TsoFetch.Gone }
+            r is ApiResult.Success -> { if (key != null) remember(key, r.value); TsoFetch.Fresh(r.value) }
+            r is ApiResult.Failure && (r.httpStatus == 403 || r.httpStatus == 404 || r.httpStatus == 501) -> { if (key != null) file(key).delete(); TsoFetch.Gone }
+            key == null -> TsoFetch.Unavailable
             else -> cached(key)
         }
     }
@@ -77,6 +138,10 @@ class TsoApi(private val client: AronApiClient, private val dir: java.io.File) {
     }
 
     private companion object {
+        const val TARGETS = "/v1/dashboards/targets"
+        const val INBOX = "/v1/me/notifications"
+        const val INBOX_READ = "/v1/me/notifications/read"
+        const val INBOX_PAGE = 50
         val JSON = "application/json".toMediaType()
         const val MAX_FILES = 60; const val MAX_COPY_CHARS = 400_000; const val MAX_AGE_MS = 3L * 24 * 3600 * 1000
     }

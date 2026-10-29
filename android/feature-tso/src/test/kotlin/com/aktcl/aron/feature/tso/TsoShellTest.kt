@@ -239,4 +239,30 @@ class TsoShellTest {
         nav.openFromDrawer(TsoScreen.DASHBOARD)
         assertTrue(nav.stack.isEmpty())
     }
+
+    // tso-manual A1 step 3: a tapped push notice (the inbox, the tickets) opens its screen on the Dashboard once (D-TSO-MAN-26)
+    @Test fun aTappedPushOpensItsScreenOnTheDashboard() {
+        var handled = 0
+        val context = AppLocale.wrap(ApplicationProvider.getApplicationContext<Context>(), AppLanguage.EN)
+        compose.setContent {
+            CompositionLocalProvider(LocalContext provides context) {
+                TsoLoginTheme(AppLanguage.EN, loggedOut = false) {
+                    TsoApp(
+                        user, "2026-10-29", BundleStatus.Ready("b-1", "2026-10-29"), "0.1.0 (1)", {}, {}, unread = 3,
+                        screens = mapOf(
+                            TsoScreen.DASHBOARD to { _, _ -> Text("dashboard", Modifier.testTag("t_dashboard")) },
+                            TsoScreen.NOTIFICATIONS to frame(TsoScreen.NOTIFICATIONS, "Inbox", "t_inbox"),
+                        ),
+                        openRequest = TsoScreen.NOTIFICATIONS, onOpenRequestHandled = { handled++ },
+                    )
+                }
+            }
+        }
+        compose.waitForIdle()
+        compose.onNodeWithTag("t_inbox").assertExists()
+        assertEquals(1, handled)
+        compose.onNodeWithTag(TsoKitTags.HOME).assertDoesNotExist() // s8: the inbox has no Home button
+        systemBack()
+        compose.onNodeWithTag("t_dashboard").assertIsDisplayed()
+    }
 }

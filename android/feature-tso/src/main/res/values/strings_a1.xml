@@ -75,4 +75,33 @@
     <string name="tso_dash_truncated">Showing the first %1$s rows.</string>
     <string name="tso_dash_point">%1$s %2$s</string>
     <string name="tso_dash_loading">Loading the dashboard</string>
+    <!-- tso-manual A1 step 3: Target Status and Target Details (screenshots 39 to 42), the notifications inbox (D-TSO-MAN-26). -->
+    <string name="tso_dash_tgt_monthly">Monthly Target</string>
+    <string name="tso_dash_tgt_till_date">Till Date Target</string>
+    <string name="tso_dash_tgt_details">Details</string>
+    <string name="tso_dash_tgt_details_of">Details of %1$s</string>
+    <string name="tso_dash_tgt_node_territory">Territory: %1$s</string>
+    <string name="tso_dash_tgt_node_zone">Zone: %1$s</string>
+    <string name="tso_dash_tgt_node_house">House: %1$s</string>
+    <string name="tso_dash_tgt_node_division">Division: %1$s</string>
+    <string name="tso_dash_tgt_node_wing">Wing: %1$s</string>
+    <string name="tso_dash_tgt_node_route">Route: %1$s</string>
+    <string name="tso_dash_tgt_node_national">National</string>
+    <string name="tso_dash_tgt_item">Item</string>
+    <string name="tso_dash_tgt_target">Target</string>
+    <string name="tso_dash_tgt_achievement">Achievement</string>
+    <string name="tso_dash_tgt_remaining">Remaining</string>
+    <string name="tso_dash_tgt_pct" formatted="false">%</string>
+    <string name="tso_dash_tgt_empty">No targets for this month yet.</string>
+    <string name="tso_dash_tgt_items_empty">No item has a target or sales this month.</string>
+    <string name="tso_dash_tgt_show_all">Show all categories</string>
+    <string name="tso_dash_tgt_filter">Show only %1$s items</string>
+    <string name="tso_dash_tgt_bar_desc">%1$s, %2$s, %3$s</string>
+    <string name="tso_dash_tgt_row_desc">%1$s: target %2$s, achievement %3$s, remaining %4$s, %5$s</string>
+    <string name="tso_chrome_inbox_empty">No notifications yet.</string>
+    <string name="tso_chrome_inbox_older">Show older</string>
+    <string name="tso_chrome_inbox_new">New</string>
+    <string name="tso_chrome_inbox_pending">Marked as read on this phone; the server learns it when you are online.</string>
+    <string name="tso_chrome_inbox_open">Open</string>
+    <string name="tso_chrome_inbox_row_desc">%1$s. %2$s. %3$s</string>
 </resources>

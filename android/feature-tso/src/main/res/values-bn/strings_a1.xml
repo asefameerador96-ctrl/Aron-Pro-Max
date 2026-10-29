@@ -74,4 +74,33 @@
     <string name="tso_dash_truncated">প্রথম %1$sটি সারি দেখানো হচ্ছে।</string>
     <string name="tso_dash_point">%1$s %2$s</string>
     <string name="tso_dash_loading">ড্যাশবোর্ড লোড হচ্ছে</string>
+    <!-- tso-manual A1 step 3: Target Status and Target Details (screenshots 39 to 42), the notifications inbox (D-TSO-MAN-26). -->
+    <string name="tso_dash_tgt_monthly">মাসিক টার্গেট</string>
+    <string name="tso_dash_tgt_till_date">আজ পর্যন্ত টার্গেট</string>
+    <string name="tso_dash_tgt_details">বিস্তারিত</string>
+    <string name="tso_dash_tgt_details_of">%1$s-এর বিস্তারিত</string>
+    <string name="tso_dash_tgt_node_territory">টেরিটরি: %1$s</string>
+    <string name="tso_dash_tgt_node_zone">জোন: %1$s</string>
+    <string name="tso_dash_tgt_node_house">হাউস: %1$s</string>
+    <string name="tso_dash_tgt_node_division">ডিভিশন: %1$s</string>
+    <string name="tso_dash_tgt_node_wing">উইং: %1$s</string>
+    <string name="tso_dash_tgt_node_route">রুট: %1$s</string>
+    <string name="tso_dash_tgt_node_national">জাতীয়</string>
+    <string name="tso_dash_tgt_item">আইটেম</string>
+    <string name="tso_dash_tgt_target">টার্গেট</string>
+    <string name="tso_dash_tgt_achievement">অর্জন</string>
+    <string name="tso_dash_tgt_remaining">বাকি</string>
+    <string name="tso_dash_tgt_pct" formatted="false">%</string>
+    <string name="tso_dash_tgt_empty">এই মাসের টার্গেট এখনও আসেনি।</string>
+    <string name="tso_dash_tgt_items_empty">এই মাসে কোনো আইটেমের টার্গেট বা বিক্রি নেই।</string>
+    <string name="tso_dash_tgt_show_all">সব ক্যাটাগরি দেখান</string>
+    <string name="tso_dash_tgt_filter">শুধু %1$s আইটেম দেখান</string>
+    <string name="tso_dash_tgt_bar_desc">%1$s, %2$s, %3$s</string>
+    <string name="tso_dash_tgt_row_desc">%1$s: টার্গেট %2$s, অর্জন %3$s, বাকি %4$s, %5$s</string>
+    <string name="tso_chrome_inbox_empty">এখনও কোনো নোটিফিকেশন নেই।</string>
+    <string name="tso_chrome_inbox_older">আগেরগুলো দেখান</string>
+    <string name="tso_chrome_inbox_new">নতুন</string>
+    <string name="tso_chrome_inbox_pending">এই ফোনে পড়া হয়েছে; অনলাইনে এলে সার্ভার জানবে।</string>
+    <string name="tso_chrome_inbox_open">খুলুন</string>
+    <string name="tso_chrome_inbox_row_desc">%1$s। %2$s। %3$s</string>
 </resources>
