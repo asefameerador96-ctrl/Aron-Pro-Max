@@ -89,6 +89,7 @@ private suspend fun merge(call: ApplicationCall, d: AdminMasterDeps) {
             JsonObject(mapOf("kept" to houseJson(after), "merged" to JsonArray(moved)))
         }
     }
+    d.geo.invalidate()   // zone.house_id feeds the house-scope reach
     call.admRespond(HttpStatusCode.OK, out)
 }
 

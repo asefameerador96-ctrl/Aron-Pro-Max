@@ -38,12 +38,15 @@ class AdminEnv : AutoCloseable {
     // wall-clock-ok: the app under test runs on AronClock.SYSTEM, so its Dhaka "today" is the real one
     val today: LocalDate = BusinessDate.of(System.currentTimeMillis()).toJavaLocalDate()
 
+    /** The geography snapshot of the app under test (set when [app] mounts it). */
+    lateinit var geo: GeoRepository
+
     fun app(requireReason: Boolean = false, block: suspend ApplicationTestBuilder.() -> Unit) = testApplication {
         val cfg = RegistryDefaults(overrides = mapOf("cfg.api.rl.user_per_min" to JsonPrimitive(5000)))
         application {
             installAronPlatform(PlatformContext(AronClock.SYSTEM, cfg, { "00000000-0000-0000-0000-000000000000" }))
             val guard = TestTokens.guard(cfg)
-            val geo = GeoRepository(db.fresh.db)
+            val geo = GeoRepository(db.fresh.db).also { this@AdminEnv.geo = it }
             val deps = AdminMasterDeps(db.fresh.db, geo, SqlReachResolver(db.fresh.db, geo), guard, { "argon2id\$test\$" + it.reversed() }, requireReason = requireReason)
             routing { route("/v1") { adminMasterRoutes(deps) } }
         }

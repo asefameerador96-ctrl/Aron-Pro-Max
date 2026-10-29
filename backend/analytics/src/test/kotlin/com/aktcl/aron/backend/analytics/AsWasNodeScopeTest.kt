@@ -196,6 +196,24 @@ class AsWasNodeScopeTest {
     }
 
     @Test
+    fun syncHealthOfATsoWhoseZoneLeftTheirTerritoryAnswersWhileTheDimensionStillLags() {
+        // The move is only in app.zone (dw.dim_geo is rebuilt by the projector, up to minutes later), as in production right after an admin edit.
+        fresh.db.jdbi.useHandle<Exception> {
+            it.execute("INSERT INTO app.wing (code, name) VALUES ('W2','Wing2')")
+            it.execute("INSERT INTO app.division (code, name, wing_id) VALUES ('D2','Div2', (SELECT id FROM app.wing WHERE code = 'W2'))")
+            it.execute("INSERT INTO app.territory (code, name, division_id) VALUES ('T2','Terr2', (SELECT id FROM app.division WHERE code = 'D2'))")
+            it.execute("UPDATE app.zone SET territory_id = (SELECT id FROM app.territory WHERE code = 'T2') WHERE code = 'Z2'")
+        }
+        assertEquals(t1, id("SELECT territory_id FROM dw.dim_geo WHERE route_code = 'R3'"), "the dimension has not caught up")
+        val ops = OpsService(fresh.db, com.aktcl.aron.backend.platform.RegistryDefaults(), AronClock { now })
+        val tso = Reach(2, Role.TSO, day, false, setOf(z1), emptySet(), false, listOf(ReachNode("territory", t1)))
+        // The other dashboards answer for this caller (T1 holds only their zone now); so must sync-health.
+        dash().summary(tso, null, null, day, day)
+        ops.syncHealth(tso, day, null, null, false, 10, null)
+        ops.syncHealth(tso, day, "territory", t1, false, 10, null)
+    }
+
+    @Test
     fun aNodeWithNoMemberInTheReachIsRefusedLikeAnUnknownOne() {
         moveZ2()
         // T1 had both zones on the fixture date and holds neither today's... of this caller's: nothing of it is in the reach.
