@@ -55,21 +55,22 @@ class MediaReadTest {
         }
     }
 
-    private fun photo(f: Fixture, uuid: String, owner: Long, date: LocalDate = day, status: String = "stored", voided: Boolean = false) {
+    private fun photo(f: Fixture, uuid: String, owner: Long, date: LocalDate = day, status: String = "stored", voided: Boolean = false, purpose: String = "outlet_capture", refType: String = "outlet") {
         val path = "photos/$date/00000000-0000-4000-8000-00000000000${owner % 10}/$uuid.jpg"
         f.fresh.db.jdbi.useHandle<Exception> { h ->
             h.createUpdate(
                 """
                 INSERT INTO app.media (client_uuid, family_uuid, business_date, user_id, captured_at, config_version, purpose, ref_type, ref_client_uuid,
                                        sha256, bytes, width, height, blob_path, taken_at, status, voided_at)
-                VALUES (:u::uuid, :u::uuid, :d, :owner, :t, 1, 'outlet_capture', 'outlet', :u::uuid, decode(repeat('ab', 32), 'hex'), 1000, 640, 480, :p, :t, :s,
+                VALUES (:u::uuid, :u::uuid, :d, :owner, :t, 1, :purpose, :rt, :u::uuid, decode(repeat('ab', 32), 'hex'), 1000, 640, 480, :p, :t, :s,
                         CASE WHEN :voided THEN now() END)
                 """.trimIndent(),
-            ).bind("u", uuid).bind("d", date).bind("owner", owner).bind("t", now).bind("p", path).bind("s", status).bind("voided", voided).execute()
+            ).bind("u", uuid).bind("d", date).bind("owner", owner).bind("t", now).bind("p", path).bind("s", status).bind("voided", voided)
+                .bind("purpose", purpose).bind("rt", refType).execute()
         }
     }
 
-    private fun principal(id: Long, role: Role) = AronPrincipal(id, "u$id", role, 1, Audience.API, null, null, "web", emptyList(), false, listOf("pwd"), "j", now)
+    private fun principal(id: Long, role: Role, permissions: List<String> = emptyList()) = AronPrincipal(id, "u$id", role, 1, Audience.API, null, null, "web", permissions, false, listOf("pwd"), "j", now)
 
     @Test
     fun aPhotoIsReadableOnlyInsideTheCallersReach() {
@@ -114,6 +115,39 @@ class MediaReadTest {
             for (u in listOf(own, otherZone, coverOnMir, coverLater)) m.readUrl(principal(admin, Role.ADMIN), u)
             assertTrue(asked.all { it == day }, "reach on today's Dhaka date")
             assertEquals(1 + 2 + 1 + 4, issued.size, "no URL minted for a refused read")
+        }
+    }
+
+    /**
+     * Lane X2, lead ruling R-W-09 (6): a feedback photo is read by the feedback triage roles (SUPPORT, ADMIN, SUPERADMIN)
+     * and by the support desk (`support.ticket.manage`) whatever reach the resolver gives them; anyone else keeps the
+     * captor rule. The rule is the feedback photo's only: the same callers get no other photo outside their reach, and a
+     * ticket photo stays the reporter's and the desk's.
+     */
+    @Test
+    fun theTriageRolesAndTheDeskReadFeedbackPhotos() {
+        val f = fixture()
+        f.fresh.use {
+            val other = f.ids.getValue("sr2002"); val amo = f.ids.getValue("amo1001"); val admin = f.ids.getValue("admin1001")
+            // Every caller here reaches the Mirpur zone only: no national reach to fall back on.
+            val resolver = ReachResolver { u, r, _, _ -> Reach(u, r, day, false, setOf(f.mirZone), emptySet(), false, emptyList()) }
+            val m = MediaRead(MediaDeps(f.fresh.db, mockk(relaxed = true), mockk(relaxed = true), AronClock { now }, reach = resolver, reader = reader))
+            val feedback = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"; photo(f, feedback, other, purpose = "feedback", refType = "feedback")
+            val outlet = "cccccccc-cccc-4ccc-8ccc-cccccccccccc"; photo(f, outlet, other)
+            val ticket = "dddddddd-dddd-4ddd-8ddd-dddddddddddd"; photo(f, ticket, other, purpose = "support", refType = "support_ticket")
+            val desk = listOf("support.ticket.manage")
+            for (p in listOf(principal(admin, Role.SUPPORT), principal(admin, Role.ADMIN), principal(admin, Role.SUPERADMIN), principal(amo, Role.DMO, desk))) {
+                m.readUrl(p, feedback)
+            }
+            fun denied(p: AronPrincipal, uuid: String) = assertEquals("ERR_OUT_OF_SCOPE", assertFailsWith<ApiProblem> { m.readUrl(p, uuid) }.code.name, "$uuid for ${p.role} ${p.permissions}")
+            // Others keep the captor rule: the Mirpur TSO and AMO do not reach sr2002 (zone Z-OTHER).
+            denied(principal(amo, Role.TSO), feedback); denied(principal(amo, Role.AMO), feedback); denied(principal(amo, Role.DMO), feedback)
+            // Only feedback photos: an outlet photo outside the reach stays refused to the triage roles and the desk.
+            for (p in listOf(principal(admin, Role.SUPPORT), principal(admin, Role.ADMIN), principal(amo, Role.DMO, desk))) denied(p, outlet)
+            // A ticket photo stays the desk's (the permission), not a triage role's.
+            denied(principal(admin, Role.SUPPORT), ticket)
+            m.readUrl(principal(admin, Role.SUPPORT, desk), ticket)
+            assertEquals(4 + 1, issued.size, "no URL minted for a refused read")
         }
     }
 

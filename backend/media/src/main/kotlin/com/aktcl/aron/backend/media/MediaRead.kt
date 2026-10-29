@@ -3,6 +3,7 @@ package com.aktcl.aron.backend.media
 import com.aktcl.aron.backend.platform.ApiProblem
 import com.aktcl.aron.backend.platform.AronPrincipal
 import com.aktcl.aron.backend.platform.FieldError
+import com.aktcl.aron.backend.platform.SupportRoles
 import com.aktcl.aron.backend.platform.wire
 import com.aktcl.aron.contract.ProblemCode
 import com.aktcl.aron.rules.BusinessDate
@@ -51,7 +52,11 @@ internal class MediaRead(private val d: MediaDeps) {
             if (row.owner == p.userId) return@withHandle row to true
             // tso-manual B1 (D-TSO-MAN-22, 23, TK-14): a ticket photo is the reporter's and the support desk's only (as the
             // ticket itself); the desk is the permission `support.ticket.manage`, never a geography.
-            if (row.refType in TICKET_REFS) return@withHandle row to ("support.ticket.manage" in p.permissions)
+            if (row.refType in TICKET_REFS) return@withHandle row to SupportRoles.isDesk(p)
+            // Lane X2 (lead ruling R-W-09 (6)): a feedback photo is also read by the roles that triage feedback (SUPPORT,
+            // ADMIN, SUPERADMIN, FeedbackApi) and by the support desk, whatever their geography; the supervisors who read the
+            // feedback list by reach keep the captor rule below.
+            if (row.refType == FEEDBACK_REF && (p.role in SupportRoles.FEEDBACK_TRIAGE || SupportRoles.isDesk(p))) return@withHandle row to true
             val reach = reachResolver.reach(p.userId, p.role, p.scopeVersion, today)
             val ok = when {
                 reach.ownRecordsOnly -> false
@@ -87,5 +92,7 @@ internal class MediaRead(private val d: MediaDeps) {
         const val VALID_S = 5 * 60L
         val UUID_V4 = Regex("^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")
         val TICKET_REFS = setOf("support_ticket", "support_ticket_event") // tso-manual B1
+        /** The `ref_type` of a feedback record's photo (`media_meta` with purpose `feedback`). */
+        const val FEEDBACK_REF = "feedback" // lane X2
     }
 }
