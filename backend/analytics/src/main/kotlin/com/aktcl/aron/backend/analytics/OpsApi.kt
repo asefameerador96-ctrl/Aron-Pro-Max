@@ -131,7 +131,7 @@ class OpsService(
         // F-SYS-084: past 17:30 Dhaka on the business date (the day's upload deadline), a phone still reporting pending rows is held too.
         val pastClose = !clock.now().isBefore(date.atTime(17, 30).atZone(java.time.ZoneId.of("Asia/Dhaka")).toInstant())
         return db.readJdbi.withHandle<SyncHealthPage, Exception> { h ->
-            val node = resolveScopedNode(h, reach, level, nodeId)
+            val node = resolveScopedNode(h, reach, level, nodeId, from = date)
             val base = "WITH " + healthBase.replace("%ZONE%", node.clause("g.zone_id", "g.route_id")).replace("%ZONEGZ%", node.clause("gz.zone_id", "gz.route_id"))
             fun q(sql: String) = node.bind(h.createQuery(sql).bind("d", date).bind("held_before", OffsetDateTime.ofInstant(heldBefore, java.time.ZoneOffset.UTC)).bind("past_close", pastClose))
             val s = q("$base SELECT count(DISTINCT device_id)::int, count(DISTINCT device_id) FILTER (WHERE pending > 0)::int, count(DISTINCT device_id) FILTER (WHERE held)::int, (SELECT coalesce(sum(r), 0) FROM (SELECT DISTINCT user_id, rejected AS r FROM rows) x)::int, (SELECT coalesce(sum(q), 0) FROM (SELECT DISTINCT user_id, quarantined AS q FROM rows) y)::int, (SELECT count(*) FROM days WHERE mism)::int FROM rows")
