@@ -313,7 +313,8 @@ class DashboardService(
         val zoneDays = "dw.agg_daily_zone a ${ns.chain("zn", "a.zone_id", "a.business_date")}"
         val days = if (ns.routeOnly) "SELECT $routeSums FROM dw.v_route_day" else "SELECT $sums FROM $zoneDays"
         val inScope = if (ns.routeOnly) ns.clause("zone_id", "route_id") else ns.clause("a.zone_id", "a.route_id") + ns.inNode("zn")
-        val kpis = h.q("$days WHERE business_date BETWEEN :f AND :t AND $inScope") { it.map { rs, _ -> kpisOf(rs) }.one() }
+        // The all-brand figures are not read for a BRAND caller (nothing of them is shown; its KPIs come from by_brand).
+        val kpis by lazy { h.q("$days WHERE business_date BETWEEN :f AND :t AND $inScope") { it.map { rs, _ -> kpisOf(rs) }.one() } }
         val asOf = h.q("SELECT max(a.updated_at) FROM ${if (ns.routeOnly) "dw.v_route_day a" else zoneDays} WHERE a.business_date BETWEEN :f AND :t AND $inScope") {
             it.map { rs, _ -> rs.getObject(1, java.time.OffsetDateTime::class.java)?.toInstant() }.one()
         } ?: clock.now()
@@ -350,7 +351,7 @@ class DashboardService(
                 """
                 SELECT p.segment_id, p.segment_name, sum(a.gross_mtk) net, sum(a.sold_qty_base) qty, 0 memos
                   FROM dw.agg_daily_route_sku a ${AsWasSql.product("p", "a.sku_id", "a.business_date", lo = ":f", hi = ":t", plain = asWas.product)} ${AsWasSql.geo("g", "a.route_id", "a.business_date", lo = ":f", hi = ":t", plain = asWas.geo)}
-                 WHERE a.business_date BETWEEN :f AND :t AND ${ns.clause("g.zone_id", "a.route_id")}${ns.inNode("g")} AND p.brand_id = ANY(:scopeBrands) GROUP BY 1, 2 ORDER BY 1
+                 WHERE a.business_date BETWEEN :f AND :t AND ${ns.clause("g.zone_id", "a.route_id")}${ns.inNode("g")} AND p.brand_id = ANY(:scopeBrands) GROUP BY 1, 2 HAVING sum(a.gross_mtk) <> 0 OR sum(a.sold_qty_base) <> 0 ORDER BY 1
                 """
             } else {
                 """
@@ -388,7 +389,7 @@ class DashboardService(
         ) { it.map { rs, _ -> ChannelVolume(rs.getString(1), null, rs.getLong(2), null, rs.getInt(3), rs.getInt(4)) }.list() }   // qty_base null: base units differ per category and are never added (the channel STD is the national dashboard's cigarette card)
 
         // BSR per brand (docs/24 s12.4): active memos containing the brand / active memos, over the same route-days.
-        val totalMemos = kpis.active_memo_count.toLong()
+        val totalMemos = if (brandOnly) 0L else kpis.active_memo_count.toLong()
         val byBrand = h.q(
             """
             SELECT b.brand_id, p.brand_name, sum(b.gross_mtk) net, sum(b.sold_qty_base) qty, sum(b.memo_count) memos
@@ -480,6 +481,16 @@ class DashboardDeps(
 /** Field phones read their own home strip (`/app/home`); the dashboards are for TSO and above. */
 internal val DASHBOARD_ROLES = Role.entries.toSet() - Role.SR - Role.AMO - Role.SUPPORT   // SUPPORT sees sync health only (docs/24 s8.5)
 
+/** A BRAND user without brands must see nothing, never everything (fail closed). */
+internal fun requireBrandScope(role: Role, brandIds: Set<Long>?) {
+    if (role == Role.BRAND && brandIds == null) throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "no brand scope")
+}
+
+/** Visits, geo and mock rates have no brand dimension: a BRAND caller reads none of them (the portal gate refuses the route too; defence in depth). */
+internal fun refuseBrandCaller(role: Role) {
+    if (role == Role.BRAND) throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "geo validation is not available to this role")
+}
+
 fun Route.dashboardRoutes(d: DashboardDeps) {
     authenticated(d.guard) {
         get("/dashboards/summary") {
@@ -495,8 +506,7 @@ fun Route.dashboardRoutes(d: DashboardDeps) {
             val nodeId = q["node_id"]?.let { it.toLongOrNull()?.takeIf { v -> v >= 0 } ?: throw ApiProblem(ProblemCode.ERR_VALIDATION, "bad node_id", errors = listOf(FieldError("query.node_id", "invalid_value"))) }
             val reach = d.reach.reach(p.userId, p.role, p.scopeVersion, today)
             val brandIds = d.brands.brandIds(p.userId, p.role)
-            // A BRAND user without brands must see nothing, never everything (fail closed).
-            if (p.role == Role.BRAND && brandIds == null) throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "no brand scope")
+            requireBrandScope(p.role, brandIds)
             call.respond(d.service.summary(reach, q["level"], nodeId, from, to, brandIds))
         }
         get("/dashboards/geo-validation") {
@@ -510,6 +520,7 @@ fun Route.dashboardRoutes(d: DashboardDeps) {
             val from = date("from", today)
             val to = date("to", from)
             val nodeId = q["node_id"]?.let { it.toLongOrNull()?.takeIf { v -> v >= 0 } ?: throw ApiProblem(ProblemCode.ERR_VALIDATION, "bad node_id", errors = listOf(FieldError("query.node_id", "invalid_value"))) }
+            refuseBrandCaller(p.role)
             val reach = d.reach.reach(p.userId, p.role, p.scopeVersion, today)
             call.respond(d.service.geoValidation(reach, q["level"], nodeId, from, to))
         }
