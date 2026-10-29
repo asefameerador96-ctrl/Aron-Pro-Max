@@ -184,6 +184,34 @@ class GalleryImportTest {
         try { m.importFromGallery(u1, uri, support.copy(refClientUuid = u2)); fail() } catch (_: IllegalStateException) { }
     }
 
+    /** Step 3 (tickets): claim = false only stages; the save claims it, and a removed picture is dropped and never queued. */
+    @Test fun aStagedPictureIsNotClaimedUntilTheSaveAndARemovedOneIsDropped() = runTest {
+        val m = media()
+        val kept = m.importFromGallery(u1, picked("a", encoded(photo(800, 600))), support, claim = false)
+        val removed = m.importFromGallery(u2, picked("b", encoded(photo(640, 480, seed = 2))), support, claim = false)
+        assertEquals(MediaState.CAPTURED, kept.state)
+        assertNull("staged, not claimed", kept.ref)
+        assertEquals(MediaState.CAPTURED, removed.state)
+        // a repeat of the stage reads nothing again and changes nothing
+        assertEquals(kept, m.importFromGallery(u1, Uri.parse("content://media/picker/0/gone/media/1"), support, claim = false))
+        assertEquals(2, opens)
+
+        // the user removed the second picture: it is gone with its thumbnail
+        m.discard(u2)
+        assertNull(m.store.get(u2))
+        assertFalse(m.store.thumbnailFile(u2).exists())
+
+        // the record is saved: the kept picture is claimed for it (no shutter fix), exactly once
+        val claimed = m.attach(u1, support, stamp = null)
+        assertEquals(MediaState.ATTACHED, claimed.state)
+        assertEquals(support, claimed.ref)
+        assertEquals(claimed, m.attach(u1, support, stamp = null))
+        // a claimed picture is never dropped by a late discard
+        m.discard(u1)
+        assertEquals(MediaState.ATTACHED, m.store.get(u1)!!.state)
+        assertEquals(listOf(u1), m.store.all().map { it.mediaUuid })
+    }
+
     @Test fun twoImportsOfOneUuidAtOnceStillStoreOneItem() = runTest {
         val m = media()
         val uri = picked("a", encoded(photo(800, 600)))

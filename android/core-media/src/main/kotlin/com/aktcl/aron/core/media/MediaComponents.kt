@@ -51,9 +51,13 @@ class MediaComponents(
      * [mediaUuid]: a repeat returns the stored item without reading [uri] again. Call it right after the pick (the read
      * grant does not outlive the screen). Throws [GalleryImportException] (show its `messageRes`) when the picture cannot be
      * added; an evidence purpose is refused (camera-only).
+     *
+     * [claim] false only STAGES the picture (stored compressed, not claimed, nothing queued), like a camera [capture]: a form
+     * whose record is saved later claims it then with [attach], and [discard] drops a staged picture the user removed or
+     * abandoned (tickets, D-TSO-MAN-23: a removed picture must never be sent).
      */
-    suspend fun importFromGallery(mediaUuid: String, uri: Uri, ref: MediaRef): MediaItem {
-        gallery.import(mediaUuid, ref) { resolver.openInputStream(uri) }
-        return attach(mediaUuid, ref, stamp = null)
+    suspend fun importFromGallery(mediaUuid: String, uri: Uri, ref: MediaRef, claim: Boolean = true): MediaItem {
+        val staged = gallery.import(mediaUuid, ref) { resolver.openInputStream(uri) }
+        return if (claim) attach(mediaUuid, ref, stamp = null) else staged
     }
 }
