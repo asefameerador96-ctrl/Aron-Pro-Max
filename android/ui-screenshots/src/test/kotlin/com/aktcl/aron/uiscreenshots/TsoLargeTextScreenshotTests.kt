@@ -28,6 +28,12 @@ import com.aktcl.aron.feature.tso.mycall.Criterion
 import com.aktcl.aron.feature.tso.mycall.Rubric
 import com.aktcl.aron.feature.tso.mycall.VisitQueryScreen
 import com.aktcl.aron.feature.tso.mycall.VisitQueryState
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.ui.unit.dp
 import com.github.takahirom.roborazzi.RoborazziOptions
 import com.github.takahirom.roborazzi.captureRoboImage
 import kotlinx.coroutines.runBlocking
@@ -80,6 +86,22 @@ class TsoLargeTextScreenshotTests {
     }
     @Test fun login_200_en() = shot("tso_login_200_en", AppLanguage.EN) {
         com.aktcl.aron.feature.auth.TsoLoginContent(com.aktcl.aron.feature.auth.LoginUiState(message = com.aktcl.aron.feature.auth.LoginMessage.OfflineNeverOnline), {}, {}, {}, {}, {})
+    }
+    // tso-manual A1 fix round: Login & Bikroy Joma Status (screenshot 8) and the logout dialog (screenshot 44) at 200 percent
+    @Test fun login_status_200_bn() = shot("tso_login_status_200_bn", AppLanguage.BN) {
+        val users = com.aktcl.aron.feature.tso.TsoDashboards.users("""{$stamp,"tab":"not_uploaded","route_count":2,"truncated":false,"items":[
+            {"route_id":2,"route_code":"R2","route_name":"ঢাকা উত্তর রুট দুই","zone_id":9,"dep_name":"বনানী - টেস্ট জোন","user_id":4,"username":"sr334002","display_name":"এসআর - টেস্টিং বনানী দুই","role":"SR"},
+            {"route_id":3,"route_code":"R3","route_name":"ঢাকা উত্তর রুট তিন","zone_id":9,"dep_name":"বনানী - টেস্ট জোন","user_id":null,"username":null,"display_name":null,"role":"SR"}]}""")
+        com.aktcl.aron.feature.tso.TsoFrame(androidx.compose.ui.res.stringResource(com.aktcl.aron.feature.tso.R.string.tso_dash_login_submit), tgtNav, homeButton = true) {
+            com.aktcl.aron.feature.tso.TsoLoginSubmitStatusContent(com.aktcl.aron.feature.tso.LoginSubmitTab.NOT_UPLOADED, com.aktcl.aron.feature.tso.CardLoad(users), false, {}, {})
+        }
+    }
+    @Test fun logout_dialog_200_bn() = shot("tso_logout_dialog_200_bn", AppLanguage.BN) {
+        androidx.compose.foundation.layout.Box(androidx.compose.ui.Modifier.fillMaxSize()) {
+            com.aktcl.aron.feature.tso.TsoDrawerContent(user.fullName, {}, {}, {}, androidx.compose.ui.Modifier.fillMaxWidth(0.85f).fillMaxHeight(), initiallyExpanded = "feedback")
+            androidx.compose.foundation.layout.Box(androidx.compose.ui.Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.32f)))
+            com.aktcl.aron.feature.tso.TsoLogoutDialogContent({}, {}, androidx.compose.ui.Modifier.align(androidx.compose.ui.Alignment.Center).padding(horizontal = 32.dp))
+        }
     }
 
     @Test fun leave_apply_200_bn() = shot("tso_leave_apply_200_bn", AppLanguage.BN) {

@@ -277,6 +277,11 @@ class TsoScreenshotTests {
     @Test fun drawer_tickets_en() = shot("tso_drawer_tickets_en", AppLanguage.EN) { Drawer("tickets") }
     @Test @Config(qualifiers = "bn-w360dp-h800dp") fun drawer_periphery_bn() = shot("tso_drawer_periphery_bn", AppLanguage.BN) { Drawer("periphery", "টেস্টিং ঢাকা নর্থ") }
     @Test fun drawer_my_call_sunlight_en() = shot("tso_drawer_my_call_sunlight_en", AppLanguage.EN, sunlight = true) { Drawer("my_call") }
+    // tso-manual A1 fix round: both languages for screenshots 10 (Tickets), 27 (My Periphery) and 30 (My Call)
+    @Test @Config(qualifiers = "bn-w360dp-h800dp") fun drawer_tickets_bn() = shot("tso_drawer_tickets_bn", AppLanguage.BN) { Drawer("tickets", "টেস্টিং ঢাকা নর্থ") }
+    @Test fun drawer_periphery_en() = shot("tso_drawer_periphery_en", AppLanguage.EN) { Drawer("periphery") }
+    @Test fun drawer_my_call_en() = shot("tso_drawer_my_call_en", AppLanguage.EN) { Drawer("my_call") }
+    @Test @Config(qualifiers = "bn-w360dp-h800dp") fun drawer_my_call_bn() = shot("tso_drawer_my_call_bn", AppLanguage.BN) { Drawer("my_call", "টেস্টিং ঢাকা নর্থ") }
     @Composable private fun LogoutOverDrawer() {
         androidx.compose.foundation.layout.Box(androidx.compose.ui.Modifier.fillMaxSize()) {
             Drawer("feedback")
