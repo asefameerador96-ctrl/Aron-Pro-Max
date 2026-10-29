@@ -9,4 +9,9 @@
     <string name="map_last_seen">Last seen %1$s (%2$s min ago)</string>
     <string name="map_address_last_known">%1$s (near: %2$s, last known)</string>
     <string name="map_line_with_source" translatable="false">%1$s · %2$s</string>
+    <!-- tso-manual A3: the fix sources of the contract (TeamLocation.last_fix.source) in words -->
+    <string name="map_source_check_in">Check-in</string>
+    <string name="map_source_visit">Visit</string>
+    <string name="map_source_check_out">Check-out</string>
+    <string name="map_source_breadcrumb">On the move</string>
 </resources>
