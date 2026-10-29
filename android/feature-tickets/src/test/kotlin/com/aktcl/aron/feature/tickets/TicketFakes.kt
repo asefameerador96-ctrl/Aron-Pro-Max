@@ -7,6 +7,8 @@ import com.aktcl.aron.contract.SupportTicketPayload
 import com.aktcl.aron.rules.TicketCounts
 import com.aktcl.aron.rules.TicketMath
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 
 /** 2026-10-25 11:34:00 UTC = 17:34 in Dhaka (screenshot 14's "5:34 PM"). */
 const val T0 = 1_792_928_040_000L
@@ -156,10 +158,15 @@ class FakeDevice(val server: FakeServer, private val types: List<IssueType> = TY
     override suspend fun issueTypes() = types
     override suspend fun cached() = copy
 
+    /** Online list reads asked for (each costs data on a phone). */
+    var listReads = 0
+        private set
+
     override suspend fun list(): TicketSnapshot? {
+        listReads++
         if (!online) return null
         val items = server.list()
-        val snap = TicketSnapshot(items, complete = true, summary = server.summary(), asOfMs = nowMs)
+        val snap = TicketSnapshot(items, complete = true, summary = server.summary(), asOfMs = nowMs, readAtMs = nowMs)
         copy = snap
         items.forEach { ticketMirror.remove(it.uuid) }
         return snap
@@ -187,7 +194,10 @@ class FakePhotos(override val max: Int = 3) : TicketPhotos {
     val discarded = mutableListOf<String>()
     var failImport = false
 
-    override suspend fun capture(photoUuid: String): Boolean { staged += photoUuid; return true }
+    /** When set, a capture waits here (the camera is open) before it stages its photo. */
+    var cameraGate: CompletableDeferred<Unit>? = null
+
+    override suspend fun capture(photoUuid: String): Boolean { cameraGate?.await(); staged += photoUuid; return true }
 
     @Composable
     override fun rememberGallery(onPicked: (List<String>) -> Unit): (maxItems: Int) -> Unit = { n -> onPicked(List(n) { "content://pick/$it" }) }
@@ -207,4 +217,6 @@ class Uuids(private val prefix: String = "00000000-0000-4000-8000-") {
     fun next(): String = prefix + (++n).toString().padStart(12, '0')
 }
 
-fun deps(device: FakeDevice, photos: TicketPhotos? = null, uuids: Uuids = Uuids()) = TicketDeps(device, device, photos, now = { device.nowMs }, newUuid = uuids::next)
+/** [TicketDeps.background] runs at once here, so a left screen's discards are visible right after the dispose. */
+fun deps(device: FakeDevice, photos: TicketPhotos? = null, uuids: Uuids = Uuids()) =
+    TicketDeps(device, device, photos, now = { device.nowMs }, newUuid = uuids::next, background = CoroutineScope(Dispatchers.Unconfined))

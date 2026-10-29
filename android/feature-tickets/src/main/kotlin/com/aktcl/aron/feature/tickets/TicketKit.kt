@@ -35,9 +35,12 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.compositionLocalOf
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -58,6 +61,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.aktcl.aron.core.common.AppLanguage
 import com.aktcl.aron.core.common.LocaleDigits
 import com.aktcl.aron.core.ui.AronIcons
@@ -245,6 +250,9 @@ object TicketTags {
     fun card(uuid: String) = "tickets_card_$uuid"
     fun line(uuid: String) = "tickets_line_$uuid"
     fun refused(uuid: String) = "tickets_refused_$uuid"
+    fun chevron(uuid: String) = "tickets_chevron_$uuid"
+    fun age(uuid: String) = "tickets_age_$uuid"
+    fun tileLabel(code: String) = "tickets_tile_label_$code"
     fun tile(code: String) = "tickets_tile_$code"
     fun issue(code: String) = "tickets_issue_$code"
     fun event(uuid: String) = "tickets_event_$uuid"
@@ -353,10 +361,13 @@ internal fun TicketSurface(
     )
 }
 
-/** One ticket row of the dashboard and the list (screenshots 11 to 13). */
+/**
+ * One ticket row of the dashboard and the list (screenshots 11 to 13). [chevron]: the Dashboard's recent cards carry one
+ * above the age (screenshot 11); the All Tickets cards have none, the age is centred at the right (screenshots 12, 13).
+ */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-internal fun TicketCard(t: Ticket, nowMs: Long, onOpen: (String) -> Unit, modifier: Modifier = Modifier) {
+internal fun TicketCard(t: Ticket, nowMs: Long, onOpen: (String) -> Unit, modifier: Modifier = Modifier, chevron: Boolean = true) {
     val p = ticketPalette()
     val line = ticketLine(t)
     TicketSurface(
@@ -381,8 +392,8 @@ internal fun TicketCard(t: Ticket, nowMs: Long, onOpen: (String) -> Unit, modifi
                 }
             }
             Column(Modifier.padding(start = 8.dp), horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(18.dp)) {
-                Icon(AronIcons.ChevronRight, contentDescription = null, tint = p.inkMuted, modifier = Modifier.size(22.dp))
-                Text(ageText(nowMs, t.capturedAtMs), style = MaterialTheme.typography.labelSmall, color = p.inkFaint, maxLines = 1)
+                if (chevron) Icon(AronIcons.ChevronRight, contentDescription = null, tint = p.inkMuted, modifier = Modifier.size(22.dp).testTag(TicketTags.chevron(t.uuid)))
+                Text(ageText(nowMs, t.capturedAtMs), Modifier.testTag(TicketTags.age(t.uuid)), style = MaterialTheme.typography.labelSmall, color = p.inkFaint, maxLines = 1)
             }
         }
     }
@@ -560,3 +571,18 @@ internal fun TicketBar(pct: Long, modifier: Modifier = Modifier) {
 internal fun hueFill(page: Color, hue: Color, fraction: Float): Color = lerp(page, hue, fraction)
 
 internal fun helpBrush(p: TicketPalette): Brush = Brush.horizontalGradient(listOf(p.helpStart, p.helpEnd))
+
+/**
+ * Calls [onLeave] once when the rep leaves the screen: system back, the top bar's back or another destination remove it
+ * from the composition while the app is on screen (the TSO back stack keeps no state of a screen it pops, so its draft is
+ * gone for good). Not when the activity is only recreated (rotation, a language switch, process death): the lifecycle is
+ * then already below STARTED, and the saved state brings the screen and its draft back with their photos.
+ */
+@Composable
+internal fun OnLeaveScreen(onLeave: () -> Unit) {
+    val owner by rememberUpdatedState(LocalLifecycleOwner.current)
+    val leave by rememberUpdatedState(onLeave)
+    DisposableEffect(Unit) {
+        onDispose { if (owner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) leave() }
+    }
+}

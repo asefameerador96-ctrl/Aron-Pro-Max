@@ -153,6 +153,17 @@ class TicketModelTest {
         assertEquals("2%", c.resolvedPctText(UiLocale.EN))
     }
 
+    @Test fun aCopyIsFreshForThreeMinutesFromItsReadOnThisPhone() {
+        fun copy(readAt: Long?) = TicketSnapshot(emptyList(), true, null, asOfMs = T0 - HOUR, readAtMs = readAt)
+        assertFalse("never read", TicketLists.fresh(null, T0))
+        assertFalse("a copy kept before the read time was recorded", TicketLists.fresh(copy(null), T0))
+        assertTrue(TicketLists.fresh(copy(T0), T0))
+        assertTrue(TicketLists.fresh(copy(T0), T0 + TicketLimits.FRESH_MS - 1))
+        assertFalse(TicketLists.fresh(copy(T0), T0 + TicketLimits.FRESH_MS))
+        assertFalse("the clock went back", TicketLists.fresh(copy(T0), T0 - 1))
+        assertEquals(180_000L, TicketLimits.FRESH_MS)
+    }
+
     // ---- the thread rules (D-TSO-MAN-20, 21)
 
     @Test fun closeOnlyFromResolvedAndCommentsOnlyWhileOpen() {

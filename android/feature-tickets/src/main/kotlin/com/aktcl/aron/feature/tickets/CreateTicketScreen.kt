@@ -71,6 +71,10 @@ fun CreateTicketScreen(
     val draft = rememberSaveable(stateSaver = TicketSavers.Draft) { mutableStateOf(initial ?: TicketRules.newDraft(deps.newUuid(), TicketOrigin.MANUAL)) }
     var listOpen by rememberSaveable { mutableStateOf(issueListOpen) }
     val list = types.types
+    val ready = if (list != null) remember(list) { TicketFormState(deps, list, draft) } else null
+    // back without a save: the form is gone for good, so are its staged photos (a rotation keeps both; a save that is
+    // running owns them)
+    OnLeaveScreen { deps.discardLater(ready?.leave() ?: draft.value.takeUnless { it.queued }?.photoUuids.orEmpty()) }
     val p = ticketPalette()
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
@@ -78,11 +82,11 @@ fun CreateTicketScreen(
     val failed = stringResource(R.string.tickets_save_failed)
     frame(stringResource(R.string.tickets_title_create)) {
         TicketPage(modifier) {
-            if (list == null) {
+            if (list == null || ready == null) {
                 CircularProgressIndicator(Modifier.align(Alignment.Center), color = p.accentInk)
                 return@TicketPage
             }
-            val form = remember(list) { TicketFormState(deps, list, draft) }
+            val form: TicketFormState = ready
             val current by rememberUpdatedState(form)
             val gallery = deps.photos?.rememberGallery { picks -> scope.launch { current.addPicked(picks) } }
             LaunchedEffect(form.phase) {

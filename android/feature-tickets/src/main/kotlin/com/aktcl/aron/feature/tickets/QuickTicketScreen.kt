@@ -74,6 +74,12 @@ fun QuickTicketScreen(
     LaunchedEffect(types) { types.load() }
     val sheet = rememberSaveable(stateSaver = TicketSavers.OptionalDraft) { mutableStateOf(initialSheet) }
     val list = types.types
+    // the open sheet's form, one per draft uuid
+    val open = sheet.value
+    val form = if (list != null && open != null) remember(open.uuid, list) { SheetSlot(sheet, open).let { s -> TicketFormState(deps, list, s::read, s::write) } } else null
+    // the top bar's back (or the drawer) with the sheet open: its staged photos go too; a saved ticket keeps its own, and
+    // a save that is running owns them
+    OnLeaveScreen { deps.discardLater(form?.leave() ?: sheet.value?.takeUnless { it.queued }?.photoUuids.orEmpty()) }
     val p = ticketPalette()
     val language = LocalAppLanguage.current
     // two tiles a row as screenshot 15; one a row from the kit's one-column font scale, so labels stay readable
@@ -117,7 +123,7 @@ fun QuickTicketScreen(
                     }
                 }
             }
-            if (list != null) QuickSheet(deps, list, sheet, onSubmitted)
+            if (list != null) QuickSheet(deps, form, sheet, onSubmitted)
         }
     }
 }
@@ -136,11 +142,20 @@ private fun IssueTile(type: IssueType, language: com.aktcl.aron.core.common.AppL
                 Icon(TicketGlyphs.issue(type.icon), contentDescription = null, tint = if (p.night) hue else p.ink, modifier = Modifier.size(20.dp))
             }
             Spacer(Modifier.height(8.dp))
-            Text(type.label(language), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = p.ink, maxLines = labelLines, overflow = TextOverflow.Ellipsis)
+            // screenshot 15: every tile is one height and the label sits at the bottom of its [labelLines] lines, so a
+            // one-line label ("Astha Target") lines up with a two-line one beside it
+            val style = MaterialTheme.typography.titleSmall
+            val reserve = with(LocalDensity.current) { (if (style.lineHeight.isSp) style.lineHeight else style.fontSize * LINE_FALLBACK).toDp() * labelLines }
+            Box(Modifier.fillMaxWidth().height(reserve), contentAlignment = Alignment.BottomStart) {
+                Text(type.label(language), Modifier.testTag(TicketTags.tileLabel(type.code)), style = style, fontWeight = FontWeight.Bold, color = p.ink, maxLines = labelLines, overflow = TextOverflow.Ellipsis)
+            }
             Text(tileCaption(type), style = MaterialTheme.typography.labelSmall, color = p.inkFaint, maxLines = 1)
         }
     }
 }
+
+/** A tile label's line height when the type style has none: its font size times this. */
+private const val LINE_FALLBACK = 1.4f
 
 /** "Tickets · High": the type's category and urgency (attrs; V0131 seeds tickets / high for all 31). */
 @Composable
@@ -156,13 +171,11 @@ internal fun tileCaption(type: IssueType): String {
 }
 
 @Composable
-private fun androidx.compose.foundation.layout.BoxScope.QuickSheet(deps: TicketDeps, types: List<IssueType>, sheet: MutableState<TicketDraft?>, onSubmitted: (String) -> Unit) {
-    val d = sheet.value
+private fun androidx.compose.foundation.layout.BoxScope.QuickSheet(deps: TicketDeps, form: TicketFormState?, sheet: MutableState<TicketDraft?>, onSubmitted: (String) -> Unit) {
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     val saved = stringResource(R.string.tickets_saved)
     val failed = stringResource(R.string.tickets_save_failed)
-    val form = d?.let { draft -> remember(draft.uuid, types) { TicketFormState(deps, types, { sheet.value ?: draft }, { sheet.value = it }) } }
     val current by rememberUpdatedState(form)
     val gallery = deps.photos?.rememberGallery { picks -> scope.launch { current?.addPicked(picks) } }
     LaunchedEffect(form?.phase) {
@@ -176,10 +189,17 @@ private fun androidx.compose.foundation.layout.BoxScope.QuickSheet(deps: TicketD
             Toast.makeText(context, failed, Toast.LENGTH_LONG).show()
         }
     }
+    // X, the scrim and system back: the sheet closes for good (the form's writes never reopen it, SheetSlot) and the
+    // photos staged in it are dropped off this screen's scope; nothing while the save runs (a few milliseconds)
     val dismiss: () -> Unit = {
         val f = form
-        sheet.value = null
-        if (f != null) scope.launch { f.abandon() }
+        if (f == null) {
+            sheet.value = null
+        } else if (f.phase != FormPhase.Saving) {
+            val staged = f.leave()
+            sheet.value = null
+            deps.discardLater(staged)
+        }
     }
     TicketSheet(open = form != null, onDismiss = dismiss, modifier = Modifier.testTag(TicketTags.SHEET)) {
         val f = form ?: return@TicketSheet
@@ -213,6 +233,22 @@ private fun androidx.compose.foundation.layout.BoxScope.QuickSheet(deps: TicketD
         }
         FormMessages(f)
         TicketPrimaryButton(stringResource(R.string.tickets_submit_quick), { scope.launch { f.submit() } }, Modifier.testTag(TicketTags.SUBMIT), enabled = f.phase != FormPhase.Saving)
+    }
+}
+
+/**
+ * The sheet's draft for one form (one uuid): a write reaches the sheet only while it still shows this uuid, so a closed
+ * sheet is never reopened by a late write (an abandon, a photo staged after the close); [read] then gives the form's last
+ * draft, never the one it was opened with.
+ */
+private class SheetSlot(private val sheet: MutableState<TicketDraft?>, first: TicketDraft) {
+    private var last = first
+
+    fun read(): TicketDraft = sheet.value?.takeIf { it.uuid == last.uuid }?.also { last = it } ?: last
+
+    fun write(d: TicketDraft) {
+        last = d
+        if (sheet.value?.uuid == d.uuid) sheet.value = d
     }
 }
 

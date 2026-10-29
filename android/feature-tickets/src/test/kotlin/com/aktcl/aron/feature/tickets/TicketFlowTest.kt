@@ -39,12 +39,19 @@ class TicketFlowTest {
         val draft = form(TicketOrigin.QUICK, "outlet_related")
         val f = TicketFormState(d, TYPES, draft)
         f.setDescription("DHK-344-011 shows no sales for 25 Oct")
+        // screenshot 16: Pick from Gallery and Capture photo, offline; both are claimed with the record
+        f.addPicked(listOf("content://pick/0"))
+        f.capture()
+        assertEquals(2, draft.value.photoUuids.size)
+        assertEquals(draft.value.photoUuids, photos.staged)
         assertTrue(f.submit())
         assertEquals(FormPhase.Saved, f.phase)
         assertTrue(draft.value.queued)
         assertEquals(1, device.outboxRows.size)
         val rec = device.outboxRows.values.single()
         assertEquals(draft.value.uuid, rec.uuid)
+        assertEquals("the gallery and the camera photo go with the ticket, in order", draft.value.photoUuids, rec.photos)
+        assertTrue(photos.discarded.isEmpty())
         assertEquals("Outlet Related Issue", rec.ticket!!.title)
         assertEquals("quick", rec.ticket.source)
         assertEquals(0, server.rows.size) // nothing left the phone
@@ -170,6 +177,89 @@ class TicketFlowTest {
         f.abandon()
         assertEquals(0, draft.value.photoUuids.size)
         assertEquals(2, (small.photos as FakePhotos).discarded.size)
+    }
+
+    @Test fun aLeftFormIsDoneAndAPhotoStagedAfterwardsIsDroppedAtOnce() = runTest {
+        val draft = form(TicketOrigin.QUICK, "outlet_related")
+        val f = TicketFormState(d, TYPES, draft)
+        f.capture()
+        val first = draft.value.photoUuids.single()
+        // the camera is open for a second photo when the rep closes the sheet
+        photos.cameraGate = CompletableDeferred()
+        val late = launch { f.capture() }
+        runCurrent()
+        assertEquals(listOf(first), f.leave())
+        assertTrue(draft.value.photoUuids.isEmpty())
+        assertEquals("a second leave gives nothing again", emptyList<String>(), f.leave())
+        photos.cameraGate!!.complete(Unit)
+        late.join()
+        val second = photos.discarded.single() // the photo the camera returned after the close is dropped at once
+        assertTrue(second != first && second !in photos.staged)
+        assertTrue(draft.value.photoUuids.isEmpty())
+        // nothing changes a left form, and it is never saved
+        f.setDescription("late")
+        assertEquals("", draft.value.description)
+        assertFalse(f.canAddPhoto)
+        assertFalse(f.submit())
+        assertEquals(0, device.queueCalls)
+    }
+
+    @Test fun aRunningSaveOwnsItsPhotosRemoveAndLeaveWaitForIt() = runTest {
+        val draft = form(TicketOrigin.QUICK, "login_otp")
+        val f = TicketFormState(d, TYPES, draft)
+        f.capture()
+        val photo = draft.value.photoUuids.single()
+        device.gate = CompletableDeferred()
+        val save = launch { f.submit() }
+        runCurrent()
+        assertEquals(FormPhase.Saving, f.phase)
+        f.removePhoto(photo)
+        assertEquals("no removal while the save runs", listOf(photo), draft.value.photoUuids)
+        assertEquals(emptyList<String>(), f.leave())
+        device.gate!!.complete(Unit)
+        save.join()
+        assertEquals(listOf(photo), device.outboxRows.values.single().photos)
+        assertTrue(photos.discarded.isEmpty())
+        assertEquals("a saved form has nothing to drop", emptyList<String>(), f.leave())
+    }
+
+    // ---- data budget (constraint 3): a fresh copy is not read again when a screen opens
+
+    @Test fun aFreshCopyIsNotReadAgainOnOpenButAPullToRefreshAndAnOldCopyAre() = runTest {
+        device.online = true
+        val q = form(TicketOrigin.QUICK, "login_otp")
+        TicketFormState(d, TYPES, q).submit()
+        device.sync()
+        TicketDashboardState(d).load()
+        assertEquals(1, device.listReads)
+
+        // Dashboard -> All Tickets -> Details -> back to the Dashboard within a minute: no list read
+        device.nowMs += MIN
+        val list = TicketListState(d).apply { load() }
+        assertEquals(1, device.listReads)
+        assertEquals(listOf("INC100001"), list.ui.all.map { it.number })
+        assertFalse(list.ui.offline)
+        assertFalse(list.ui.loading)
+        val dash = TicketDashboardState(d).apply { load() }
+        assertEquals(1, device.listReads)
+        assertEquals(1L, dash.ui.counts.total)
+
+        // an unsent ticket made meanwhile still shows at once (the outbox is local)
+        TicketFormState(d, TYPES, form(TicketOrigin.QUICK, "outlet_related")).submit()
+        dash.load()
+        assertEquals(1, device.listReads)
+        assertEquals(2L, dash.ui.counts.total)
+
+        // a pull to refresh always reads
+        dash.load(refresh = true)
+        assertEquals(2, device.listReads)
+        list.load(refresh = true)
+        assertEquals(3, device.listReads)
+
+        // a copy older than the window is read again on open
+        device.nowMs += TicketLimits.FRESH_MS
+        TicketListState(d).load()
+        assertEquals(4, device.listReads)
     }
 
     // ---- the server side of the story

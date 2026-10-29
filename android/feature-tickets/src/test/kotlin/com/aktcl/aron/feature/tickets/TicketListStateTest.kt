@@ -95,10 +95,10 @@ class TicketListStateTest {
         st.setQuery("inc100001")
         assertEquals(listOf("s1"), uuids(st.ui.shown))
 
-        // back offline: the copy stays, flagged
+        // back offline, pulled to refresh (an open within the fresh window would not read at all): the copy stays, flagged
         device.online = false
         st.setQuery("")
-        st.load()
+        st.load(refresh = true)
         assertTrue(st.ui.offline)
         assertEquals(T0, st.ui.asOfMs)
         assertEquals(listOf("u1", "s1", "s2"), uuids(st.ui.shown))

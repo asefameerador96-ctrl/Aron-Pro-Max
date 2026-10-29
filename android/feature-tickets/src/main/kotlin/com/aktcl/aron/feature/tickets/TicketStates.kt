@@ -39,13 +39,18 @@ class TicketDashboardState(private val deps: TicketDeps) {
     /** The trusted now, for the age texts. */
     fun now(): Long = deps.now()
 
-    /** On open and on pull-to-refresh only: the kept copy at once, then one online read. */
-    suspend fun load() {
+    /**
+     * On open and on pull-to-refresh ([refresh]) only: the kept copy at once, then one online read, skipped on open when
+     * the copy is fresh ([TicketLists.fresh]; data budget).
+     */
+    suspend fun load(refresh: Boolean = false) {
         if (loading) return
         loading = true
         try {
             val cached = attempt { deps.source.cached() }
-            show(cached, attempt { deps.source.outbox() } ?: TicketOutbox.EMPTY, loading = true, offline = false)
+            val outbox = attempt { deps.source.outbox() } ?: TicketOutbox.EMPTY
+            if (!refresh && TicketLists.fresh(cached, deps.now())) return show(cached, outbox, loading = false, offline = false)
+            show(cached, outbox, loading = true, offline = false)
             val fresh = attempt { deps.source.list() }
             show(fresh ?: cached, attempt { deps.source.outbox() } ?: TicketOutbox.EMPTY, loading = false, offline = fresh == null)
         } finally {
@@ -84,12 +89,15 @@ class TicketListState(private val deps: TicketDeps, tab: TicketTab = TicketTab.A
 
     fun setQuery(query: String) { ui = ui.copy(query = query.take(QUERY_MAX)) }
 
-    suspend fun load() {
+    /** As [TicketDashboardState.load]: a fresh copy is not read again on open; [refresh] (pull to refresh) always reads. */
+    suspend fun load(refresh: Boolean = false) {
         if (loading) return
         loading = true
         try {
             val cached = attempt { deps.source.cached() }
-            show(cached, attempt { deps.source.outbox() } ?: TicketOutbox.EMPTY, loading = true, offline = false)
+            val outbox = attempt { deps.source.outbox() } ?: TicketOutbox.EMPTY
+            if (!refresh && TicketLists.fresh(cached, deps.now())) return show(cached, outbox, loading = false, offline = false)
+            show(cached, outbox, loading = true, offline = false)
             val fresh = attempt { deps.source.list() }
             show(fresh ?: cached, attempt { deps.source.outbox() } ?: TicketOutbox.EMPTY, loading = false, offline = fresh == null)
         } finally {
@@ -140,14 +148,17 @@ class TicketFormState(
         private set
     private var busy = false
 
+    /** The form was closed unsaved ([leave]): nothing changes it any more, and a photo staged after that is dropped. */
+    private var left = false
+
     val type: IssueType? get() = issueTypes.firstOrNull { it.code == draft.issueTypeCode }
     val maxPhotos: Int get() = deps.maxPhotos
     val photos: TicketPhotos? get() = deps.photos
-    val canAddPhoto: Boolean get() = !draft.queued && draft.photoUuids.size < maxPhotos
+    val canAddPhoto: Boolean get() = !left && !draft.queued && draft.photoUuids.size < maxPhotos
 
     private fun edit(f: (TicketDraft) -> TicketDraft) {
         val d = read()
-        if (d.queued || busy) return
+        if (d.queued || busy || left) return
         // the uuid, the origin and the photos never change through an edit
         write(f(d).copy(uuid = d.uuid, origin = d.origin, photoUuids = d.photoUuids, queued = false))
         if (phase !is FormPhase.Saving) phase = FormPhase.Editing
@@ -165,7 +176,7 @@ class TicketFormState(
         val id = deps.newUuid()
         if (attempt { p.capture(id) } == true) {
             val d = read()
-            if (d.queued || d.photoUuids.size >= maxPhotos) attempt { p.discard(id) } else write(d.copy(photoUuids = d.photoUuids + id))
+            if (left || d.queued || d.photoUuids.size >= maxPhotos) attempt { p.discard(id) } else write(d.copy(photoUuids = d.photoUuids + id))
         }
     }
 
@@ -176,31 +187,42 @@ class TicketFormState(
             if (!canAddPhoto) break
             val id = deps.newUuid()
             when (val r = attempt { p.import(id, pick, PhotoOwner.ticket(draft.uuid)) } ?: PhotoResult.Failed(null)) {
-                PhotoResult.Added -> read().let { write(it.copy(photoUuids = it.photoUuids + id)) }
+                PhotoResult.Added -> read().let { if (left || it.queued) attempt { p.discard(id) } else write(it.copy(photoUuids = it.photoUuids + id)) }
                 is PhotoResult.Failed -> phase = FormPhase.PhotoFailed(r.messageRes)
             }
         }
     }
 
+    /** Removes a photo from the form and drops it (never while the save runs: the save owns the photos it took). */
     suspend fun removePhoto(id: String) {
         val d = read()
-        if (d.queued || id !in d.photoUuids) return
+        if (d.queued || busy || id !in d.photoUuids) return
         write(d.copy(photoUuids = d.photoUuids - id))
         attempt { deps.photos?.discard(id) }
     }
 
-    /** The form is dismissed without a save: its staged photos are dropped. */
-    suspend fun abandon() {
+    /**
+     * The form is closed without a save (the sheet's X, the scrim, back, or leaving the screen): from now on nothing
+     * changes it and a photo staged later is dropped at once. Returns the staged photos for the caller to drop
+     * ([TicketDeps.discardLater] or [abandon]); none when the form is saved or its save is running.
+     */
+    fun leave(): List<String> {
         val d = read()
-        if (d.queued) return
-        d.photoUuids.forEach { attempt { deps.photos?.discard(it) } }
+        if (d.queued || busy || left) return emptyList()
+        left = true
         write(d.copy(photoUuids = emptyList()))
+        return d.photoUuids
+    }
+
+    /** [leave], then drops its staged photos here. */
+    suspend fun abandon() {
+        leave().forEach { attempt { deps.photos?.discard(it) } }
     }
 
     /** Validates, then queues the ticket under the form's one uuid. True when this call saved it. */
     suspend fun submit(): Boolean {
         val d = read()
-        if (busy || d.queued) return false
+        if (busy || d.queued || left) return false
         val errors = TicketRules.validate(d, issueTypes, maxPhotos)
         if (errors.isNotEmpty()) { phase = FormPhase.Invalid(errors); return false }
         val type = issueTypes.first { it.code == d.issueTypeCode }
@@ -380,10 +402,24 @@ class TicketDetailState(
 
     suspend fun removeCommentPhoto(id: String) {
         val c = readComment()
-        if (id !in c.photoUuids) return
+        if (busy || id !in c.photoUuids) return
         writeComment(c.copy(photoUuids = c.photoUuids - id))
         attempt { deps.photos?.discard(id) }
     }
+
+    /**
+     * The rep left the screen with an unsent comment: its staged photos, for the caller to drop
+     * ([TicketDeps.discardLater]); none while a send runs (the send owns them).
+     */
+    fun leaveComment(): List<String> {
+        val c = readComment()
+        if (busy || c.photoUuids.isEmpty()) return emptyList()
+        writeComment(c.copy(photoUuids = emptyList()))
+        return c.photoUuids
+    }
+
+    /** Drops [photoUuids] off the screen's scope (see [TicketDeps.discardLater]). */
+    fun discardLater(photoUuids: List<String>) = deps.discardLater(photoUuids)
 
     /** Queues the comment under its one uuid, then starts a new empty comment with a new uuid. */
     suspend fun sendComment(): Boolean {

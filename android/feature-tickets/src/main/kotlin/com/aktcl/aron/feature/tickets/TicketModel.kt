@@ -21,6 +21,9 @@ object TicketLimits {
     /** Recent tickets on the Ticket Dashboard (s5 A2). */
     const val RECENT = 10
 
+    /** A list copy younger than this is not read again when a screen opens ([TicketLists.fresh], D-A2-30). */
+    const val FRESH_MS = 3 * 60_000L
+
     val AFFECTED_USERNAME = Regex("^[A-Za-z0-9._-]{3,40}$")
     val ISSUE_CODE = Regex("^[a-z][a-z0-9_]{1,40}$")
 }
@@ -167,9 +170,10 @@ data class TicketOutbox(val tickets: List<Ticket> = emptyList(), val events: Lis
 
 /**
  * The phone's copy of the own tickets: [tickets] from the list read, [complete] when every page was read (the host may stop
- * at a page cap), [summary] the server's counts (getSupportTicketSummary), [asOfMs] the server stamp of the read.
+ * at a page cap), [summary] the server's counts (getSupportTicketSummary), [asOfMs] the server stamp of the read,
+ * [readAtMs] the phone's trusted time of that read (null when unknown: a copy kept before it was recorded).
  */
-data class TicketSnapshot(val tickets: List<Ticket>, val complete: Boolean, val summary: TicketCounts?, val asOfMs: Long)
+data class TicketSnapshot(val tickets: List<Ticket>, val complete: Boolean, val summary: TicketCounts?, val asOfMs: Long, val readAtMs: Long? = null)
 
 /** The list rules every screen shares (merge, order, tabs, local search, counts). */
 object TicketLists {
@@ -201,6 +205,16 @@ object TicketLists {
     fun filter(list: List<Ticket>, tab: TicketTab, query: String): List<Ticket> = list.filter { tab.shows(it) && matches(it, query) }
 
     fun recent(list: List<Ticket>): List<Ticket> = list.take(TicketLimits.RECENT)
+
+    /**
+     * Data budget (constraint 3, docs/04): a copy read on this phone less than [TicketLimits.FRESH_MS] ago is shown as it
+     * is when a list screen opens (moving between the Dashboard, All Tickets and Details reads nothing); a pull to refresh
+     * and a ticket push always read. A clock that went back, or an unknown read time, is never fresh.
+     */
+    fun fresh(snapshot: TicketSnapshot?, nowMs: Long): Boolean {
+        val at = snapshot?.readAtMs ?: return false
+        return nowMs - at in 0 until TicketLimits.FRESH_MS
+    }
 
     /**
      * The Ticket Dashboard counts (D-TSO-MAN-25, R-F-14), always through [TicketMath]: the copy plus the tickets the server

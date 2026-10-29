@@ -71,6 +71,8 @@ fun TicketDetailScreen(state: TicketDetailState, frame: TicketFrame, modifier: M
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     LaunchedEffect(state) { state.load() }
+    // back with an unsent comment: its staged photos go (the comment draft is gone for good; a rotation keeps both)
+    OnLeaveScreen { state.discardLater(state.leaveComment()) }
     val ui = state.ui
     val p = ticketPalette()
     val now = state.now()

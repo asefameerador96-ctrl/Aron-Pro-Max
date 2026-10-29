@@ -67,7 +67,7 @@ fun TicketListScreen(state: TicketListState, frame: TicketFrame, onOpen: (String
     val shown = ui.shown
     frame(stringResource(R.string.tickets_title_all)) {
         TicketPage(modifier.testTag(TicketTags.LIST)) {
-            PullToRefreshBox(isRefreshing = ui.loading && ui.asOfMs != null, onRefresh = { scope.launch { state.load() } }, modifier = Modifier.fillMaxSize()) {
+            PullToRefreshBox(isRefreshing = ui.loading && ui.asOfMs != null, onRefresh = { scope.launch { state.load(refresh = true) } }, modifier = Modifier.fillMaxSize()) {
                 LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
                     item {
                         TicketField(
@@ -82,7 +82,8 @@ fun TicketListScreen(state: TicketListState, frame: TicketFrame, onOpen: (String
                             TicketNote(stringResource(if (ui.all.isEmpty()) R.string.tickets_empty else R.string.tickets_no_match), Modifier.testTag(TicketTags.EMPTY))
                         }
                     }
-                    items(shown, key = { it.uuid }) { t -> TicketCard(t, now, onOpen) }
+                    // screenshots 12 and 13: no chevron on the All Tickets cards, only the age (the Dashboard's have one)
+                    items(shown, key = { it.uuid }) { t -> TicketCard(t, now, onOpen, chevron = false) }
                     item { Spacer(Modifier.height(8.dp)) }
                 }
             }

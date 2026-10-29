@@ -49,7 +49,8 @@ fun rememberTicketDashboardState(deps: TicketDeps): TicketDashboardState = remem
 
 /**
  * Screenshot 11: Total / New / In Progress / Resolved, the Ticket Resolution Status card (whole percent from the counts,
- * TicketMath, R-F-14), "Need help?" (opens Quick Ticket), and the 10 most recent tickets with "See all".
+ * TicketMath, R-F-14), "Need help?" (opens Quick Ticket), and the 10 most recent tickets with "See all". [refreshOnOpen]
+ * reads online even when the kept copy is fresh (the screen opened from a `ticket_updated` push).
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -60,15 +61,16 @@ fun TicketDashboardScreen(
     onSeeAll: () -> Unit,
     onQuick: () -> Unit,
     modifier: Modifier = Modifier,
+    refreshOnOpen: Boolean = false,
 ) {
     val scope = rememberCoroutineScope()
-    LaunchedEffect(state) { state.load() }
+    LaunchedEffect(state) { state.load(refresh = refreshOnOpen) }
     val ui = state.ui
     val p = ticketPalette()
     val now = state.now()
     frame(stringResource(R.string.tickets_title_dashboard)) {
         TicketPage(modifier.testTag(TicketTags.DASHBOARD)) {
-            PullToRefreshBox(isRefreshing = ui.loading && ui.asOfMs != null, onRefresh = { scope.launch { state.load() } }, modifier = Modifier.fillMaxSize()) {
+            PullToRefreshBox(isRefreshing = ui.loading && ui.asOfMs != null, onRefresh = { scope.launch { state.load(refresh = true) } }, modifier = Modifier.fillMaxSize()) {
                 LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
                     if (ui.offline) item { OfflineNote(ui.asOfMs, now) }
                     item {
