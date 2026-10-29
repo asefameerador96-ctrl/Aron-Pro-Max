@@ -1110,3 +1110,6 @@
 
 ### 10:45 UTC 2026-10-29 — train 62 pushed (lead git check)
 - Integrator 22 pushed INT 66d00644c6e638161749277b00135e3ca780af95 at 10:43 (ci 40859737214 #1712). Lead git check: both heads and INT 61 contained; delta 61 → 62 = SqlReach.kt, GeoSnapshotRaceTest, HouseDedupTest, AsWasSql.kt, NodeScope.kt, AsWasProbeTest, AsWasReportScopeTest, docs/requests/backend-reports-db-history-indexes.md (new), docs/status/backend-reports.md, lead docs (usage, lane-sessions, lead-hand-offs), DECISIONS (+5 → 144, resolved INT-first, 0 markers, 0 INT-61 lines lost), train.md; lane files byte-identical to b7fc9472. ci/deploy/health verification at the 11:38 check-in (real deploy expected: worker --0000134).
+
+### 10:49 UTC 2026-10-29 — lane check (lead)
+- Train 62 in flight (INT 66d00644 pushed 10:43, ci 40859737214 #1712 running; git check clean at 10:45); health still "build":"0ead5e3fa65da03841ad853877765851f9e5337d" (train 61) until the deploy. backend-reports #10 active (candidate 5 ready on lane/backend-reports-wip-sel10, waiting for "train 62 landed", closing two scope-test gaps and folding in the four non-blocking items). Opus slot held. Integrator watching. No owner message; nothing to act on. The 11:38 check-in verifies the landing.
