@@ -56,16 +56,80 @@ class GeoSnapshotRaceTest {
 
     @Test
     fun anInvalidationBetweenTheGenerationCheckAndTheInstallIsNotLost() {
-        // The edit commits and invalidates at the instant the loaded snapshot is stamped for installation (the clock call inside the install).
-        var geoRef: GeoRepository? = null
+        val geo = GeoRepository(fresh.db, clock)
         var armed = true
-        val seamClock = AronClock {
-            if (armed) { armed = false; exec("INSERT INTO app.zone (code, name, territory_id) VALUES ('Z2','Zone2', $t1)"); geoRef!!.invalidate() }
-            Instant.parse("2026-10-04T12:00:00Z")
-        }
-        val geo = GeoRepository(fresh.db, seamClock).also { geoRef = it }
+        // The edit commits and invalidates after the load passed its staleness check and right before it installs the snapshot it read.
+        geo.beforeInstall = { if (armed) { armed = false; exec("INSERT INTO app.zone (code, name, territory_id) VALUES ('Z2','Zone2', $t1)"); geo.invalidate() } }
         geo.snapshot()   // the pre-edit read
         assertEquals(2, geo.snapshot().geo.zoneTerritory.size, "the next read sees the edit: the old snapshot was not left installed")
+    }
+
+    @Test
+    fun afterAnInvalidationACallerThatCannotGetTheReloadLockLoadsOnItsOwnAndSeesTheEdit() {
+        val geo = GeoRepository(fresh.db, clock, lockWaitMs = 50)
+        val held = java.util.concurrent.CountDownLatch(1); val release = java.util.concurrent.CountDownLatch(1)
+        var first = true
+        geo.afterLoad = { if (first) { first = false; held.countDown(); release.await(20, java.util.concurrent.TimeUnit.SECONDS) } }
+        val reloader = Thread { geo.snapshot() }.also { it.start() }   // holds the reload lock between its read and its install
+        try {
+            assertTrue(held.await(10, java.util.concurrent.TimeUnit.SECONDS), "the reload is in progress")
+            exec("INSERT INTO app.zone (code, name, territory_id) VALUES ('Z2','Zone2', $t1)"); geo.invalidate()
+            // Not served the entry of the reload in progress (nothing is cached), not blocked beyond the wait: it loads alone and reads the edit.
+            // Answered while the reload still holds the lock (it is released only in the finally): waiting for the lock instead would time out here.
+            val answer = java.util.concurrent.CompletableFuture.supplyAsync { geo.snapshot().geo.zoneTerritory.size }
+            assertEquals(2, answer.get(5, java.util.concurrent.TimeUnit.SECONDS))
+        } finally { release.countDown(); reloader.join(10_000) }
+    }
+
+    @Test
+    fun theGeographyIsReadInOneStatementAndMatchesTheTables() {
+        val statements = java.util.concurrent.atomic.AtomicInteger()
+        fresh.db.jdbi.setSqlLogger(object : org.jdbi.v3.core.statement.SqlLogger {
+            override fun logAfterExecution(context: org.jdbi.v3.core.statement.StatementContext) { statements.incrementAndGet() }
+        })
+        val g = GeoRepository(fresh.db, clock).geo()
+        assertEquals(1, statements.get(), "one statement = one MVCC snapshot: the chain zone > territory > division > wing is never a mix of two commits")
+        val z1 = id("SELECT id FROM app.zone WHERE code = 'Z1'")
+        assertEquals(mapOf(z1 to t1), g.zoneTerritory)
+        assertEquals(mapOf(t1 to id("SELECT id FROM app.division WHERE code = 'D1'")), g.territoryDivision)
+        assertEquals(mapOf(id("SELECT id FROM app.division WHERE code = 'D1'") to id("SELECT id FROM app.wing WHERE code = 'W1'")), g.divisionWing)
+        assertEquals("Zone1", g.names[("zone" to z1)]?.second); assertEquals("Z1", g.names[("zone" to z1)]?.first)
+        assertEquals("Terr1", g.names[("territory" to t1)]?.second)
+    }
+
+    @Test
+    fun callersHoldingTheWholePoolAreNotStalledBehindAReloadThatNeedsAConnection() {
+        // Pool of 2, both connections held by callers that call geo() inside their handle (as AdminGeography and the planner do); a third caller with no handle reloads.
+        val small = com.zaxxer.hikari.HikariDataSource(com.zaxxer.hikari.HikariConfig().apply { jdbcUrl = fresh.url; maximumPoolSize = 2; connectionTimeout = 1_500 })
+        try {
+            var now = Instant.parse("2026-10-04T12:00:00Z")
+            val smallDb = com.aktcl.aron.backend.platform.Database(small)
+            val geo = GeoRepository(smallDb, AronClock { now })
+            geo.snapshot()                                  // warm
+            now = now.plusSeconds(120)                      // past the TTL: an expired entry, no edit since
+            val ready = java.util.concurrent.CountDownLatch(2); val go = java.util.concurrent.CountDownLatch(1)
+            val waited = java.util.concurrent.ConcurrentHashMap<String, Long>()
+            val holders = (1..2).map { n ->
+                Thread {
+                    smallDb.jdbi.useHandle<Exception> {
+                        ready.countDown(); go.await()
+                        val t0 = System.nanoTime(); geo.snapshot(); waited["h$n"] = (System.nanoTime() - t0) / 1_000_000
+                    }
+                }.also { it.start() }
+            }
+            ready.await()
+            var loaderError: Throwable? = null
+            val loader = Thread { try { geo.snapshot() } catch (e: Throwable) { loaderError = e } }.also { it.start() }   // takes the reload lock, then waits for a connection
+            // The loader holds the reload lock and is waiting for a connection of the exhausted pool: proven by the pool, not by a sleep.
+            val deadline = System.nanoTime() + 10_000_000_000L
+            while (small.hikariPoolMXBean.threadsAwaitingConnection < 1 && System.nanoTime() < deadline) Thread.sleep(10)
+            assertEquals(1, small.hikariPoolMXBean.threadsAwaitingConnection, "the loader is blocked on the pool")
+            go.countDown()
+            holders.forEach { it.join(10_000) }; loader.join(10_000)
+            assertEquals(2, waited.size, "both holders were answered")
+            assertTrue(waited.values.all { it < 1_000 }, "holders were served the expired entry at once, not after the pool timeout: $waited")
+            assertEquals(null, loaderError, "and the loader got its connection once they finished")
+        } finally { small.close() }
     }
 
     @Test

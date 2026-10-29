@@ -14,6 +14,9 @@ import kotlin.test.assertTrue
  * new territory has no members on that date (403).
  */
 class AsWasReportScopeTest : ReportFixture() {
+    /** The status first, so a refusal fails readably instead of as a missing field. */
+    private suspend fun io.ktor.client.statement.HttpResponse.okResult(): kotlinx.serialization.json.JsonObject { assertEquals(HttpStatusCode.OK, status, "the report answered ${status}"); return result() }
+
     @BeforeEach fun noProbeCache() { AsWasSql.probeTtlMs = 0 }
     @AfterEach fun probeCache() { AsWasSql.probeTtlMs = 20_000 }
 
@@ -25,7 +28,7 @@ class AsWasReportScopeTest : ReportFixture() {
         val t1 = id("SELECT id FROM app.territory WHERE code = 'T1'")
         val sel = body(""","geo":{"territory":[$t1]}""")
         val keys = listOf("route-std", "route-memo")
-        val before = keys.associateWith { run(10, Role.ANALYST, it, sel).result() }
+        val before = keys.associateWith { run(10, Role.ANALYST, it, sel).okResult() }
         assertEquals(4, before.getValue("route-std").rows().size); assertEquals(63_000, before.getValue("route-std").total("gross_mtk"))
         exec("INSERT INTO app.wing (code, name) VALUES ('W2','Wing2')")
         exec("INSERT INTO app.division (code, name, wing_id) VALUES ('D2','Div2', (SELECT id FROM app.wing WHERE code = 'W2'))")
@@ -33,7 +36,7 @@ class AsWasReportScopeTest : ReportFixture() {
         exec("UPDATE app.zone SET territory_id = (SELECT id FROM app.territory WHERE code = 'T2') WHERE code = 'Z2'")
         val t2 = id("SELECT id FROM app.territory WHERE code = 'T2'")
         for (key in keys) {
-            val after = run(10, Role.ANALYST, key, sel).result()
+            val after = run(10, Role.ANALYST, key, sel).okResult()
             assertEquals(before.getValue(key).rows(), after.rows(), "$key: the old territory still holds both zones' routes and figures on that date")
             assertEquals(63_000, after.total("gross_mtk"), key)
         }
@@ -42,8 +45,8 @@ class AsWasReportScopeTest : ReportFixture() {
         // The reach still bounds it: a TSO of zone 1 gets the old territory cut to the zone they reach (the zone that left is not held against them)...
         val tso = run(11, Role.TSO, "route-std", sel)
         assertEquals(HttpStatusCode.OK, tso.status)
-        assertEquals(run(11, Role.TSO, "route-std").result().rows(), tso.result().rows())
-        assertTrue(tso.result().rows().size < before.getValue("route-std").rows().size)
+        assertEquals(run(11, Role.TSO, "route-std").okResult().rows(), tso.okResult().rows())
+        assertTrue(tso.okResult().rows().size < before.getValue("route-std").rows().size)
         // ...and a territory that holds, today, a zone outside the reach is refused.
         assertEquals(HttpStatusCode.Forbidden, run(14, Role.TSO, "route-std", sel).status, "zone 2's TSO is not in the old territory any more")
     }
@@ -51,12 +54,12 @@ class AsWasReportScopeTest : ReportFixture() {
     @Test
     fun aRouteMovedToAnotherZoneKeepsItsOldDayInRouteStdForTheOldZone() = app {
         val sel = body(""","geo":{"zone":[$z1]}""")
-        val before = run(10, Role.ANALYST, "route-std", sel).result()
-        val z2Before = run(10, Role.ANALYST, "route-std", body(""","geo":{"zone":[$z2]}""")).result()
+        val before = run(10, Role.ANALYST, "route-std", sel).okResult()
+        val z2Before = run(10, Role.ANALYST, "route-std", body(""","geo":{"zone":[$z2]}""")).okResult()
         assertTrue(before.rows().any { it.str("route_code") == "R2" } && before.total("gross_mtk") > 0)
         exec("UPDATE app.route SET zone_id = (SELECT id FROM app.zone WHERE code = 'Z2') WHERE code = 'R2'")
-        assertEquals(before.rows(), run(10, Role.ANALYST, "route-std", sel).result().rows(), "Z1 lost the moved route's old day")
-        assertEquals(z2Before.rows(), run(10, Role.ANALYST, "route-std", body(""","geo":{"zone":[$z2]}""")).result().rows(), "Z2 gained it")
+        assertEquals(before.rows(), run(10, Role.ANALYST, "route-std", sel).okResult().rows(), "Z1 lost the moved route's old day")
+        assertEquals(z2Before.rows(), run(10, Role.ANALYST, "route-std", body(""","geo":{"zone":[$z2]}""")).okResult().rows(), "Z2 gained it")
     }
 
     @Test
@@ -65,17 +68,17 @@ class AsWasReportScopeTest : ReportFixture() {
         val sel = body(""","geo":{"route":[$r3]}""")
         val before = run(14, Role.TSO, "route-std", sel)
         assertEquals(HttpStatusCode.OK, before.status, "R3 is zone 2's route")
-        assertEquals(setOf("R3"), before.result().rows().map { it.str("route_code") }.toSet())
+        assertEquals(setOf("R3"), before.okResult().rows().map { it.str("route_code") }.toSet())
         assertEquals(HttpStatusCode.Forbidden, run(11, Role.TSO, "route-std", sel).status, "and not zone 1's")
         exec("UPDATE app.route SET zone_id = $z1 WHERE code = 'R3'")   // moved to zone 1 today
         // The old day is still zone 2's: its TSO keeps the route for that date, zone 1's TSO does not get it.
-        assertEquals(before.result().rows(), run(14, Role.TSO, "route-std", sel).result().rows())
+        assertEquals(before.okResult().rows(), run(14, Role.TSO, "route-std", sel).okResult().rows())
         assertEquals(HttpStatusCode.Forbidden, run(11, Role.TSO, "route-std", sel).status)
         assertEquals(HttpStatusCode.OK, run(10, Role.ANALYST, "route-std", sel).status)
         assertEquals(HttpStatusCode.Forbidden, run(10, Role.ANALYST, "route-std", body(""","geo":{"route":[$r3,999999]}""")).status, "an unknown id still refuses the lot")
         // A route with no history row at all (a bulk load with triggers off) is placed by the zone it has now, not refused for everyone.
         exec("DELETE FROM app.route_zone_history WHERE route_id = $r3")
-        assertEquals(setOf("R3"), run(10, Role.ANALYST, "route-std", sel).result().rows().map { it.str("route_code") }.toSet(), "selected on its current zone, its rows read")
+        assertEquals(setOf("R3"), run(10, Role.ANALYST, "route-std", sel).okResult().rows().map { it.str("route_code") }.toSet(), "selected on its current zone, its rows read")
         assertEquals(HttpStatusCode.OK, run(11, Role.TSO, "route-std", sel).status, "R3 is zone 1's today")
         assertEquals(HttpStatusCode.Forbidden, run(14, Role.TSO, "route-std", sel).status, "and not zone 2's")
     }
@@ -138,7 +141,7 @@ class AsWasReportScopeTest : ReportFixture() {
         exec("UPDATE app.division_history SET valid_from = DATE '2026-10-05' WHERE division_id = (SELECT division_id FROM app.territory WHERE id = $t2)")
         val both = run(10, Role.ANALYST, "route-std", onDate("2026-10-05", ""","geo":{"wing":[$w1],"territory":[$t1]}"""))
         assertEquals(HttpStatusCode.OK, both.status, "a redundant parent selector must not turn the child's 200 into a 403")
-        assertEquals(run(10, Role.ANALYST, "route-std", onDate("2026-10-05", ""","geo":{"territory":[$t1]}""")).result().rows(), both.result().rows())
+        assertEquals(run(10, Role.ANALYST, "route-std", onDate("2026-10-05", ""","geo":{"territory":[$t1]}""")).okResult().rows(), both.okResult().rows())
         // The child selector is checked against the zones the parent left: T2 sat under W2 on that date, so wing W1 with territory T2 selects nothing.
         assertEquals(HttpStatusCode.Forbidden, run(10, Role.ANALYST, "route-std", onDate("2026-10-05", ""","geo":{"wing":[$w1],"territory":[$t2]}""")).status)
     }
