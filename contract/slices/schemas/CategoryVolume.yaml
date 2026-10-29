@@ -44,8 +44,10 @@ CategoryVolume:
         `base_per_pack`) or dozen (matches).'
     qty_entered:
       $ref: '#/components/schemas/Decimal3'
-      description: 'Quantity in `entry_unit`, summed per SKU first (each SKU''s qty_base over its base_per_pack):
-        10s and 20s of one category convert correctly. Sold quantity of sale lines only, no free or DRP lines (D-TSO-MAN-09,
-        lead ruling R-W-06), like `DashboardSummary.by_category` qty_base.'
+      description: 'This item''s quantity in `entry_unit`, summed per SKU first (each SKU''s base-unit quantity
+        over its base_per_pack): 10s and 20s of one category convert correctly. Same basis as the item''s `qty_base`,
+        which the list that carries the item states: in `DashboardSummary.by_category` the sold quantity of sale
+        lines only, no free or DRP lines (D-TSO-MAN-09, lead ruling R-W-06); `DailyTrackingRow.by_category` states
+        its own basis.'
     net_mtk:
       $ref: '#/components/schemas/Mtk'

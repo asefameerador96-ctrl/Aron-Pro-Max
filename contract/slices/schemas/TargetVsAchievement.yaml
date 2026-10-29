@@ -22,8 +22,9 @@ TargetVsAchievement:
       - $ref: '#/components/schemas/Decimal3'
       - type: 'null'
       description: The route's monthly target for the category / the working days of the month (`monthly_target_qty`
-        / `working_days`, rounded once to 3 decimals). Null without a target, and null when the month has no working
-        day (W = 0, lead ruling R-F-13).
+        / `working_days`, rounded once to 3 decimals). For display only; `achievement_pct_bp` never divides by it
+        (lead ruling R-W-06). Null without a target, and null when the month has no working day (W = 0, lead ruling
+        R-F-13).
     sales:
       type: integer
       format: int64
@@ -34,12 +35,15 @@ TargetVsAchievement:
       - 'null'
       format: int64
       minimum: 0
-      description: 'sales / daily_target in basis points, uncapped (may exceed 10000, hence int64, R-F-16); null
-        whenever daily_target is null (R-F-13), and null when the route''s monthly target is 0 (daily_target "0.000").
-        One rule with the Sales card (lead ruling R-W-06): when `monthly_target_qty` and `working_days` are sent,
-        the bp is exact from them, round_half_up(10000 * sales * working_days / monthly_target_qty) once, never
-        from the rounded daily_target; null when `working_days` is 0 or there is no target (`monthly_target_qty`
-        null), and null when `monthly_target_qty` is 0.'
+      description: 'Achievement in basis points. One rule with the Sales card (lead ruling R-W-06): round_half_up(10000
+        * sales * working_days / monthly_target_qty) once, computed by the server from the integers (the route''s
+        monthly target for the category and W at its zone), never from the rounded daily_target, which is for display
+        only. Uncapped: may exceed 10000, hence int64 (R-F-16). Null when `working_days` is 0 or there is no target
+        (`monthly_target_qty` null), and null when `monthly_target_qty` is 0 (daily_target "0.000"); so null whenever
+        daily_target is null (R-F-13). The server sends `monthly_target_qty` and `working_days` with every card,
+        so a reader prints this figure and the bars from the same integers (R-W-13). Note on older servers: a server
+        before the integration round sent neither member and divided by the rounded daily_target, which can differ
+        by 1 bp; a reader prints the bp as sent.'
     monthly_target_qty:
       oneOf:
       - $ref: '#/components/schemas/Decimal3'

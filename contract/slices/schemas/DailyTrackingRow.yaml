@@ -50,6 +50,10 @@ DailyTrackingRow:
     by_category:
       type: array
       maxItems: 10
+      description: Per category for the route-day. `qty_base` is the sold plus free quantity of the route-day's
+        lines in base units (sale and free lines, as built), not the Total Sales basis of D-TSO-MAN-09 that `DashboardSummary.by_category`
+        uses. `entry_unit` and `qty_entered` are not sent here today; a server that sends them converts this same
+        quantity. Whether this list moves to sold only is open (lead ruling R-W-06 names the summary only).
       items:
         $ref: '#/components/schemas/CategoryVolume'
     tilldate_target_achievement_pct:

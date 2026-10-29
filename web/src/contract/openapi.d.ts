@@ -6644,8 +6644,8 @@ export interface components {
             zone_id: components["schemas"]["Id"];
             business_date: components["schemas"]["BusinessDate"];
             already_submitted: boolean;
-            /** @description Whether the caller may Final Submit this zone-day: true when the caller's role is TSO or is listed in `cfg.day.final_submit_delegate_roles` (resolved as `postFinalSubmit` reads it), the same rule the submit path enforces; the zone is already in the caller's reach (else this read is 403). The server always computes it. It is the role rule only: whether the zone-day is already submitted is `already_submitted`, so the app and the web offer Submit when `can_submit` is true and `already_submitted` is false. A reader of an older server that does not send it falls back to the TSO rule (lead ruling R-W-06, R-W-13; contract 1.10.0). */
-            can_submit: boolean;
+            /** @description Whether the caller may Final Submit this zone-day: true when the caller's role is TSO or is listed in `cfg.day.final_submit_delegate_roles` (resolved as `postFinalSubmit` reads it), the same rule the submit path enforces; the zone is already in the caller's reach (else this read is 403). It is the role rule only: whether the zone-day is already submitted is `already_submitted`, so the app and the web offer Submit when `can_submit` is true and `already_submitted` is false. Optional until the server sends it (the required list does not change, lead ruling R-W-06; 1.10.x makes it required); a reader of a server that does not send it falls back to the TSO rule (lead ruling R-W-13; contract 1.10.0). */
+            can_submit?: boolean;
             submitted_at?: components["schemas"]["Timestamp"] | null;
             submitted_by?: string | null;
             routes: {
@@ -7161,7 +7161,7 @@ export interface components {
              * @enum {string}
              */
             entry_unit?: "pack" | "dozen";
-            /** @description Quantity in `entry_unit`, summed per SKU first (each SKU's qty_base over its base_per_pack): 10s and 20s of one category convert correctly. Sold quantity of sale lines only, no free or DRP lines (D-TSO-MAN-09, lead ruling R-W-06), like `DashboardSummary.by_category` qty_base. */
+            /** @description This item's quantity in `entry_unit`, summed per SKU first (each SKU's base-unit quantity over its base_per_pack): 10s and 20s of one category convert correctly. Same basis as the item's `qty_base`, which the list that carries the item states: in `DashboardSummary.by_category` the sold quantity of sale lines only, no free or DRP lines (D-TSO-MAN-09, lead ruling R-W-06); `DailyTrackingRow.by_category` states its own basis. */
             qty_entered?: components["schemas"]["Decimal3"];
             net_mtk: components["schemas"]["Mtk"];
         };
@@ -7631,13 +7631,13 @@ export interface components {
             category_code: string;
             /** @enum {string} */
             base_unit: "stick" | "piece" | "dozen";
-            /** @description The route's monthly target for the category / the working days of the month (`monthly_target_qty` / `working_days`, rounded once to 3 decimals). Null without a target, and null when the month has no working day (W = 0, lead ruling R-F-13). */
+            /** @description The route's monthly target for the category / the working days of the month (`monthly_target_qty` / `working_days`, rounded once to 3 decimals). For display only; `achievement_pct_bp` never divides by it (lead ruling R-W-06). Null without a target, and null when the month has no working day (W = 0, lead ruling R-F-13). */
             daily_target: components["schemas"]["Decimal3"] | null;
             /** Format: int64 */
             sales: number;
             /**
              * Format: int64
-             * @description sales / daily_target in basis points, uncapped (may exceed 10000, hence int64, R-F-16); null whenever daily_target is null (R-F-13), and null when the route's monthly target is 0 (daily_target "0.000"). One rule with the Sales card (lead ruling R-W-06): when `monthly_target_qty` and `working_days` are sent, the bp is exact from them, round_half_up(10000 * sales * working_days / monthly_target_qty) once, never from the rounded daily_target; null when `working_days` is 0 or there is no target (`monthly_target_qty` null), and null when `monthly_target_qty` is 0.
+             * @description Achievement in basis points. One rule with the Sales card (lead ruling R-W-06): round_half_up(10000 * sales * working_days / monthly_target_qty) once, computed by the server from the integers (the route's monthly target for the category and W at its zone), never from the rounded daily_target, which is for display only. Uncapped: may exceed 10000, hence int64 (R-F-16). Null when `working_days` is 0 or there is no target (`monthly_target_qty` null), and null when `monthly_target_qty` is 0 (daily_target "0.000"); so null whenever daily_target is null (R-F-13). The server sends `monthly_target_qty` and `working_days` with every card, so a reader prints this figure and the bars from the same integers (R-W-13). Note on older servers: a server before the integration round sent neither member and divided by the rounded daily_target, which can differ by 1 bp; a reader prints the bp as sent.
              */
             achievement_pct_bp: number | null;
             /** @description The route's monthly target for the category in base units (the sum of its SKU targets for the month of the date; whole base units today, so the fraction is ".000", as the Decimal3 members of TargetAchievementRow carry them); null without a target. With `working_days` it gives `daily_target` and the exact `achievement_pct_bp` (the Sales-card rule, NationalSalesCard). When `working_days` is 0 the phone and the web print "—" for every figure derived from it and never divide by it (R-F-13). Lead ruling R-W-06, contract 1.10.0; optional until the server sends it. */
@@ -7823,6 +7823,7 @@ export interface components {
             successful_calls: number;
             active_memo_count: number;
             net_mtk: components["schemas"]["Mtk"];
+            /** @description Per category for the route-day. `qty_base` is the sold plus free quantity of the route-day's lines in base units (sale and free lines, as built), not the Total Sales basis of D-TSO-MAN-09 that `DashboardSummary.by_category` uses. `entry_unit` and `qty_entered` are not sent here today; a server that sends them converts this same quantity. Whether this list moves to sold only is open (lead ruling R-W-06 names the summary only). */
             by_category?: components["schemas"]["CategoryVolume"][];
             /** @description Deprecated (contract 1.10.0, lead ruling R-W-06): read `tilldate_target_achievement_bp`. The same figure as a percentage with two decimals: `tilldate_target_achievement_bp` / 100 (the bp is this figure x 100, rounded once half up). Kept for older readers; null exactly when the bp is null. */
             tilldate_target_achievement_pct?: number | null;

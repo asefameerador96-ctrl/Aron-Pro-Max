@@ -38,6 +38,16 @@ class TsoManualContractTest {
     @Test
     fun versionIs110() = assertEquals("1.10.0", map(OpenApi.doc["info"])["version"])
 
+    /** The changelog names the integration-round amendments (R-W-06) and says they are additive and optional. */
+    @Test
+    fun theChangelogNamesTheIntegrationRound() {
+        val info = flat(map(OpenApi.doc["info"])["description"])
+        assertTrue(info.contains("Integration-round amendments in place (lead ruling R-W-06, additive, every new member optional and no required list changed)"), info)
+        for (member in listOf("`FinalSubmitPreview.can_submit`", "`DailyTrackingRow.tilldate_target_achievement_bp`", "`TargetVsAchievement.monthly_target_qty` and `working_days`",
+            "`RouteSnapshot.sr_user_id` and `sr_name`", "`CategoryVolume.qty_entered`")) assertTrue(info.contains(member), "the 1.10.0 changelog must name $member")
+        assertFalse(info.contains("can_submit` (required"), "can_submit is optional (R-W-06: the required lists do not change)")
+    }
+
     @Test
     fun theTenNewOperationsExistWithTheirIdsAndStatuses() {
         val expected = listOf(
@@ -617,22 +627,25 @@ class TsoManualContractTest {
     // ---- lead rulings after the feature wave (build contract s10, 2026-10-29; lane X1) ----
 
     /**
-     * R-W-06 (1): `FinalSubmitPreview.can_submit`, the role rule of the submit path (TSO or a delegate role), always
-     * computed by the server, so it is required in the response; the app and the web keep a TSO fallback for an older
-     * server (R-W-13).
+     * R-W-06 (1): `FinalSubmitPreview.can_submit`, the role rule of the submit path (TSO or a delegate role). Optional
+     * until the server sends it: R-W-06 says the required lists do not change, and the contract's 1.10.0 rule keeps a
+     * member added to a response the server already sends optional until the server lanes ship it. The app and the web
+     * keep a TSO fallback for a server that does not send it (R-W-13).
      */
     @Test
     fun finalSubmitPreviewSaysWhetherTheCallerMaySubmit() {
         val p = prop("FinalSubmitPreview", "can_submit")
         assertEquals("boolean", p["type"])
-        assertTrue("can_submit" in required("FinalSubmitPreview"), "the server always computes it (lane X1 brief)")
-        assertEquals(listOf("zone_id", "business_date", "already_submitted", "can_submit", "routes"), required("FinalSubmitPreview"))
+        assertFalse("can_submit" in required("FinalSubmitPreview"), "optional until the server sends it (R-W-06: the required lists do not change)")
+        assertEquals(listOf("zone_id", "business_date", "already_submitted", "routes"), required("FinalSubmitPreview"), "the required list does not change (R-W-06)")
         val text = flat(p["description"])
         for (rule in listOf(
             "true when the caller's role is TSO or is listed in `cfg.day.final_submit_delegate_roles`", "the same rule the submit path enforces",
             "It is the role rule only: whether the zone-day is already submitted is `already_submitted`",
-            "offer Submit when `can_submit` is true and `already_submitted` is false", "falls back to the TSO rule", "R-W-06",
+            "offer Submit when `can_submit` is true and `already_submitted` is false", "Optional until the server sends it",
+            "1.10.x makes it required", "falls back to the TSO rule", "R-W-06",
         )) assertTrue(text.contains(rule), "FinalSubmitPreview.can_submit must say: $rule")
+        assertFalse(text.contains("The server always computes it"), "optional, so the contract does not promise it yet")
         assertFalse(p.containsKey("default"), "no schema default (openapi-typescript, D-F1-02)")
     }
 
@@ -670,9 +683,14 @@ class TsoManualContractTest {
         assertEquals(listOf("category_code", "base_unit", "daily_target", "sales", "achievement_pct_bp"), required("TargetVsAchievement"), "both optional (R-W-06)")
         val text = flat(prop("TargetVsAchievement", "achievement_pct_bp")["description"])
         for (rule in listOf("One rule with the Sales card (lead ruling R-W-06)", "round_half_up(10000 * sales * working_days / monthly_target_qty) once",
-            "never from the rounded daily_target", "null when `working_days` is 0 or there is no target (`monthly_target_qty` null)")) {
+            "computed by the server from the integers", "never from the rounded daily_target, which is for display only",
+            "null when `working_days` is 0 or there is no target (`monthly_target_qty` null)", "The server sends `monthly_target_qty` and `working_days` with every card")) {
             assertTrue(text.contains(rule), "TargetVsAchievement.achievement_pct_bp must say: $rule")
         }
+        // the exact rule is the only definition: no "sales / daily_target" bp, and the rule is not conditional on the members
+        assertFalse(text.contains("sales / daily_target in basis points"), text)
+        assertFalse(text.contains("when `monthly_target_qty` and `working_days` are sent"), text)
+        assertTrue(flat(prop("TargetVsAchievement", "daily_target")["description"]).contains("For display only; `achievement_pct_bp` never divides by it"))
         // the same formula as the Sales card, with sales in place of total_sales
         assertTrue(flat(prop("NationalSalesCard", "achievement_pct_bp")["description"]).contains("round_half_up(10000 * total_sales * working_days / monthly_target_qty)"))
         assertTrue(flat(w["description"]).contains("0 when the month has no working day there (then `daily_target` and `achievement_pct_bp` are null, R-F-13)"))
@@ -715,9 +733,17 @@ class TsoManualContractTest {
         val reply = flat(op("post", "/v1/support/tickets/{ticket_uuid}/events")["description"])
         assertTrue(reply.contains("a stored reply writes one inbox row for the reporter (kind `ticket_updated`)"), reply)
         assertTrue(reply.contains("push with reason `notification`; a replay writes neither again"), reply)
+        // CategoryVolume is the item of two lists with two bases: qty_entered follows its item's qty_base, and each list states it
         val entered = flat(prop("CategoryVolume", "qty_entered")["description"])
-        assertTrue(entered.contains("Sold quantity of sale lines only, no free or DRP lines (D-TSO-MAN-09"), entered)
-        assertFalse(entered.contains("Sold plus free"), entered)
+        assertTrue(entered.contains("Same basis as the item's `qty_base`"), entered)
+        assertTrue(entered.contains("in `DashboardSummary.by_category` the sold quantity of sale lines only, no free or DRP lines (D-TSO-MAN-09"), entered)
+        assertFalse(entered.contains("each SKU's qty_base"), "one quantity per item, not per SKU qty_base: $entered")
+        assertEquals("CategoryVolume", ref(map(prop("DailyTrackingRow", "by_category")["items"])))
+        assertEquals("CategoryVolume", ref(map(prop("DashboardSummary", "by_category")["items"])))
+        val tracking = flat(prop("DailyTrackingRow", "by_category")["description"])
+        assertTrue(tracking.contains("`qty_base` is the sold plus free quantity of the route-day's lines"), tracking)
+        assertTrue(tracking.contains("not the Total Sales basis of D-TSO-MAN-09"), tracking)
+        assertTrue(flat(prop("DashboardSummary", "by_category")["description"]).contains("Sold quantity of sale lines only (no free or DRP lines)"))
         fun share(schema: String) = flat(map(map(map(prop(schema, "channels")["items"])["properties"])["share_pct_bp"])["description"])
         assertTrue(share("NationalChannelCalls").contains("The denominator is the total including unclassified calls, `total` + `unclassified`"))
         assertTrue(share("NationalChannelStd").contains("The denominator is `total`"))

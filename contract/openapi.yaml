@@ -55,7 +55,7 @@ info:
       (R-F-16). Members added to responses the server already sends are
       optional until the server lanes ship them (1.10.x makes them required). The response-enum additions are breaking
       for an old reader and approved by the lead (D-TSO-MAN-43). Integration-round amendments in place (lead ruling
-      R-W-06, additive): `FinalSubmitPreview.can_submit` (required, the server always computes it),
+      R-W-06, additive, every new member optional and no required list changed): `FinalSubmitPreview.can_submit`,
       `DailyTrackingRow.tilldate_target_achievement_bp` (the float `tilldate_target_achievement_pct` is deprecated),
       `TargetVsAchievement.monthly_target_qty` and `working_days`, `RouteSnapshot.sr_user_id` and `sr_name`, and the
       descriptions of `updateSupportTicket`, `addSupportTicketEvent`, `CategoryVolume.qty_entered` and the channel
@@ -10106,7 +10106,7 @@ components:
         dues_outstanding_mtk: { $ref: '#/components/schemas/MtkNonNegative' }
     FinalSubmitPreview:
       type: object
-      required: [zone_id, business_date, already_submitted, can_submit, routes]
+      required: [zone_id, business_date, already_submitted, routes]
       additionalProperties: false
       properties:
         zone_id: { $ref: '#/components/schemas/Id' }
@@ -10116,10 +10116,11 @@ components:
           type: boolean
           description: 'Whether the caller may Final Submit this zone-day: true when the caller''s role is TSO or is listed
             in `cfg.day.final_submit_delegate_roles` (resolved as `postFinalSubmit` reads it), the same rule the submit
-            path enforces; the zone is already in the caller''s reach (else this read is 403). The server always computes
-            it. It is the role rule only: whether the zone-day is already submitted is `already_submitted`, so the app and
-            the web offer Submit when `can_submit` is true and `already_submitted` is false. A reader of an older server
-            that does not send it falls back to the TSO rule (lead ruling R-W-06, R-W-13; contract 1.10.0).'
+            path enforces; the zone is already in the caller''s reach (else this read is 403). It is the role rule only:
+            whether the zone-day is already submitted is `already_submitted`, so the app and the web offer Submit when
+            `can_submit` is true and `already_submitted` is false. Optional until the server sends it (the required list
+            does not change, lead ruling R-W-06; 1.10.x makes it required); a reader of a server that does not send it
+            falls back to the TSO rule (lead ruling R-W-13; contract 1.10.0).'
         submitted_at:
           oneOf:
             - { $ref: '#/components/schemas/Timestamp' }
@@ -10877,7 +10878,7 @@ components:
           description: 'The unit the field apps count this category in (docs/34 s4.2): pack (packet or box, per SKU `base_per_pack`) or dozen (matches).'
         qty_entered:
           $ref: '#/components/schemas/Decimal3'
-          description: 'Quantity in `entry_unit`, summed per SKU first (each SKU''s qty_base over its base_per_pack): 10s and 20s of one category convert correctly. Sold quantity of sale lines only, no free or DRP lines (D-TSO-MAN-09, lead ruling R-W-06), like `DashboardSummary.by_category` qty_base.'
+          description: 'This item''s quantity in `entry_unit`, summed per SKU first (each SKU''s base-unit quantity over its base_per_pack): 10s and 20s of one category convert correctly. Same basis as the item''s `qty_base`, which the list that carries the item states: in `DashboardSummary.by_category` the sold quantity of sale lines only, no free or DRP lines (D-TSO-MAN-09, lead ruling R-W-06); `DailyTrackingRow.by_category` states its own basis.'
         net_mtk: { $ref: '#/components/schemas/Mtk' }
     NationalDashboardFilter:
       type: object
@@ -12124,8 +12125,9 @@ components:
           - $ref: '#/components/schemas/Decimal3'
           - type: 'null'
           description: The route's monthly target for the category / the working days of the month (`monthly_target_qty`
-            / `working_days`, rounded once to 3 decimals). Null without a target, and null when the month has no working
-            day (W = 0, lead ruling R-F-13).
+            / `working_days`, rounded once to 3 decimals). For display only; `achievement_pct_bp` never divides by it
+            (lead ruling R-W-06). Null without a target, and null when the month has no working day (W = 0, lead ruling
+            R-F-13).
         sales:
           type: integer
           format: int64
@@ -12136,12 +12138,15 @@ components:
           - 'null'
           format: int64
           minimum: 0
-          description: 'sales / daily_target in basis points, uncapped (may exceed 10000, hence int64, R-F-16); null
-            whenever daily_target is null (R-F-13), and null when the route''s monthly target is 0 (daily_target "0.000").
-            One rule with the Sales card (lead ruling R-W-06): when `monthly_target_qty` and `working_days` are sent, the bp
-            is exact from them, round_half_up(10000 * sales * working_days / monthly_target_qty) once, never from the
-            rounded daily_target; null when `working_days` is 0 or there is no target (`monthly_target_qty` null), and null
-            when `monthly_target_qty` is 0.'
+          description: 'Achievement in basis points. One rule with the Sales card (lead ruling R-W-06):
+            round_half_up(10000 * sales * working_days / monthly_target_qty) once, computed by the server from the
+            integers (the route''s monthly target for the category and W at its zone), never from the rounded daily_target,
+            which is for display only. Uncapped: may exceed 10000, hence int64 (R-F-16). Null when `working_days` is 0 or
+            there is no target (`monthly_target_qty` null), and null when `monthly_target_qty` is 0 (daily_target "0.000");
+            so null whenever daily_target is null (R-F-13). The server sends `monthly_target_qty` and `working_days` with
+            every card, so a reader prints this figure and the bars from the same integers (R-W-13). Note on older servers:
+            a server before the integration round sent neither member and divided by the rounded daily_target, which can
+            differ by 1 bp; a reader prints the bp as sent.'
         monthly_target_qty:
           oneOf:
           - $ref: '#/components/schemas/Decimal3'
@@ -12667,6 +12672,11 @@ components:
         by_category:
           type: array
           maxItems: 10
+          description: 'Per category for the route-day. `qty_base` is the sold plus free quantity of the route-day''s lines
+            in base units (sale and free lines, as built), not the Total Sales basis of D-TSO-MAN-09 that
+            `DashboardSummary.by_category` uses. `entry_unit` and `qty_entered` are not sent here today; a server that
+            sends them converts this same quantity. Whether this list moves to sold only is open (lead ruling R-W-06 names
+            the summary only).'
           items: { $ref: '#/components/schemas/CategoryVolume' }
         tilldate_target_achievement_pct:
           type: [number, 'null']

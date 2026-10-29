@@ -4,7 +4,6 @@ FinalSubmitPreview:
   - zone_id
   - business_date
   - already_submitted
-  - can_submit
   - routes
   additionalProperties: false
   properties:
@@ -18,11 +17,11 @@ FinalSubmitPreview:
       type: boolean
       description: 'Whether the caller may Final Submit this zone-day: true when the caller''s role is TSO or is
         listed in `cfg.day.final_submit_delegate_roles` (resolved as `postFinalSubmit` reads it), the same rule
-        the submit path enforces; the zone is already in the caller''s reach (else this read is 403). The server
-        always computes it. It is the role rule only: whether the zone-day is already submitted is `already_submitted`,
-        so the app and the web offer Submit when `can_submit` is true and `already_submitted` is false. A reader
-        of an older server that does not send it falls back to the TSO rule (lead ruling R-W-06, R-W-13; contract
-        1.10.0).'
+        the submit path enforces; the zone is already in the caller''s reach (else this read is 403). It is the
+        role rule only: whether the zone-day is already submitted is `already_submitted`, so the app and the web
+        offer Submit when `can_submit` is true and `already_submitted` is false. Optional until the server sends
+        it (the required list does not change, lead ruling R-W-06; 1.10.x makes it required); a reader of a server
+        that does not send it falls back to the TSO rule (lead ruling R-W-13; contract 1.10.0).'
     submitted_at:
       oneOf:
       - $ref: '#/components/schemas/Timestamp'
