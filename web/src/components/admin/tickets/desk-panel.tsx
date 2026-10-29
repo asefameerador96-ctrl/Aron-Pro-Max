@@ -36,6 +36,7 @@ export function TicketOpBanner({ action, outcome, onReload }: { action: DeskActi
       </Banner>
     );
   }
+  if (outcome.kind === "reloaded") return <Banner tone="warning" role="status" testId="op-reloaded" data-action={action}>{t("tickets.reloaded")}</Banner>;
   if (outcome.kind === "refused") return <Banner tone="danger" role="alert" testId="op-refused" data-action={action} data-code={outcome.code}>{problem(outcome.code)}</Banner>;
   return <Banner tone="danger" role="alert" testId="op-network" data-action={action}>{t("error.network")}</Banner>;
 }

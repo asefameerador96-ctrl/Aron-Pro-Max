@@ -8,7 +8,7 @@ import { DeskPanel, TicketOpBanner } from "@/components/admin/tickets/desk-panel
 import { TicketListView } from "@/components/admin/tickets/ticket-list";
 import { deskContext, parseTicketQuery } from "@/components/admin/tickets/server";
 import { actorName, TicketThread } from "@/components/admin/tickets/ticket-thread";
-import { cancelProblems, deskActions, keepsKey, outcomeOf, replyProblems, resolveProblems, updateBody } from "@/components/admin/tickets/ticket-rules";
+import { cancelProblems, deskActions, keepsKey, nextKey, outcomeOf, replyProblems, requestSignature, resolveProblems, settleAttempt, updateBody } from "@/components/admin/tickets/ticket-rules";
 import { ADMIN_MENU } from "@/app/admin/menu";
 import { GRANT_MODULES, MODULE_KEYS } from "@/lib/admin/access-grants";
 import { grantsOf, moduleOfApiPath, moduleOfPage } from "@/lib/admin/modules";
@@ -66,6 +66,60 @@ describe("D-TSO-MAN-20: resolve needs a code and notes, cancel needs a reason", 
     expect(keepsKey(null)).toBe(true);
     expect(keepsKey(503)).toBe(true);
     for (const s of [200, 201, 400, 403, 404, 409]) expect(keepsKey(s), String(s)).toBe(false);
+  });
+});
+
+describe("the key follows the request (fix round: an edited body never reuses an unanswered key)", () => {
+  const fresh = () => OP3;
+  const resolve = (notes: string, version = 1) => (key: string) => updateBody(version, key, { kind: "resolve", code: "resolved", notes });
+  const reply = (text: string) => (key: string) => ({ event_uuid: key, body: text.trim() });
+  const sig = (b: (key: string) => object) => requestSignature(b(""));
+  it("the signature leaves the key out and does not depend on member order", () => {
+    expect(requestSignature(resolve("Printer re-paired.")(OP1))).toBe(requestSignature(resolve("Printer re-paired.")(OP2)));
+    expect(requestSignature({ b: 1, a: { d: 2, c: 3 }, op_uuid: OP1 })).toBe(requestSignature({ a: { c: 3, d: 2 }, b: 1 }));
+    expect(sig(reply("Done"))).not.toContain("event_uuid");
+  });
+  it("a resend of the same unanswered request keeps the key and is marked as a resend", () => {
+    expect(nextKey(settleAttempt(OP1, sig(resolve("Printer re-paired.")), null), sig(resolve("Printer re-paired.")), fresh)).toEqual({ key: OP1, resent: true });
+    expect(nextKey(settleAttempt(OP1, sig(reply("On it")), 502), sig(reply("On it")), fresh)).toEqual({ key: OP1, resent: true });
+  });
+  it("an edited reply, note, reason or priority after a lost answer is a new request with a new key", () => {
+    expect(nextKey(settleAttempt(OP1, sig(reply("On it")), null), sig(reply("On it, printer re-paired")), fresh)).toEqual({ key: OP3, resent: false });
+    expect(nextKey(settleAttempt(OP1, sig(resolve("Printer re-paired.")), null), sig(resolve("Printer replaced.")), fresh).key).toBe(OP3);
+    const cancel = (reason: string) => (key: string) => updateBody(1, key, { kind: "cancel", reason });
+    expect(nextKey(settleAttempt(OP1, sig(cancel("Duplicate ticket")), null), sig(cancel("Raised twice")), fresh).key).toBe(OP3);
+    const prio = (p: "p1" | "p2") => (key: string) => updateBody(1, key, { kind: "priority", priority: p });
+    expect(nextKey(settleAttempt(OP1, sig(prio("p1")), null), sig(prio("p2")), fresh).key).toBe(OP3);
+    // after a reload the ticket's version moved: the same change on the new version is a new op too
+    expect(nextKey(settleAttempt(OP1, sig(resolve("Printer re-paired.", 1)), null), sig(resolve("Printer re-paired.", 2)), fresh).key).toBe(OP3);
+  });
+  it("any answer settles the key; no attempt yet gets a new one", () => {
+    for (const s of [200, 400, 409]) expect(nextKey(settleAttempt(OP1, sig(reply("On it")), s), sig(reply("On it")), fresh), String(s)).toEqual({ key: OP3, resent: false });
+    expect(nextKey(undefined, sig(reply("On it")), fresh)).toEqual({ key: OP3, resent: false });
+  });
+  it("409 ERR_CONFLICT on a resend reloads the page instead of blaming someone else; the banner says so (en, bn)", () => {
+    expect(outcomeOf(409, "ERR_CONFLICT", true)).toEqual({ kind: "reloaded" });
+    expect(outcomeOf(409, "ERR_CONFLICT", false)).toEqual({ kind: "conflict" });
+    expect(outcomeOf(200, undefined, true)).toEqual({ kind: "ok" });
+    const m = html(<TicketOpBanner action="resolve" outcome={{ kind: "reloaded" }} />);
+    expect(m).toContain('data-testid="op-reloaded"');
+    expect(text(m)).toContain(en["tickets.reloaded"]);
+    expect(text(m)).not.toContain(en["tickets.conflict"]);
+    expect(text(html(<TicketOpBanner action="resolve" outcome={{ kind: "reloaded" }} />, "bn"))).toContain(bn["tickets.reloaded"]);
+  });
+  it("through the mock: the first send lands but its answer is lost; the edited resend gets a new key and is a separate reply, never a 409", async () => {
+    const c = await admin();
+    const first = reply("We are looking at it.");
+    const lost = settleAttempt(OP1, sig(first), null); // the server stored it, the desk never saw the answer
+    expect((await op(c, { op: "ticket.event", params: { ticket_uuid: NEW }, body: first(OP1) })).status).toBe(201);
+    const edited = reply("We are looking at it; the printer is being re-paired.");
+    const { key } = nextKey(lost, sig(edited), () => OP2);
+    expect(key).toBe(OP2);
+    const r = await op(c, { op: "ticket.event", params: { ticket_uuid: NEW }, body: edited(key) });
+    expect(r.status).toBe(201);
+    // with the old key the server would refuse the edited body (what the console used to send)
+    const reused = await op(c, { op: "ticket.event", params: { ticket_uuid: NEW }, body: edited(OP1) });
+    expect([reused.status, ((await reused.json()) as { code: string }).code]).toEqual([409, "ERR_CONFLICT"]);
   });
 });
 

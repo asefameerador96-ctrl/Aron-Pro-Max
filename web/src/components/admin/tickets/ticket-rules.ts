@@ -98,14 +98,15 @@ export function updateBody(version: number, opUuid: string, change: TicketChange
   }
 }
 
-/** How the desk reads an answer. `conflict` is 409 ERR_CONFLICT: the ticket changed since it was read (or the key was reused for
- *  another body), so the desk reloads before trying again; `refused` carries the problem code; `network` means no answer. */
-export type TicketOutcome = { kind: "ok" } | { kind: "conflict" } | { kind: "refused"; code: string | undefined } | { kind: "network" };
+/** How the desk reads an answer. `conflict` is 409 ERR_CONFLICT: the ticket changed since it was read, so the desk reloads
+ *  before trying again; `reloaded` is the same 409 on a resend of an unanswered request with its kept key (our own first send may
+ *  have landed, so it is not "someone else"): the page is read again; `refused` carries the problem code; `network` = no answer. */
+export type TicketOutcome = { kind: "ok" } | { kind: "conflict" } | { kind: "reloaded" } | { kind: "refused"; code: string | undefined } | { kind: "network" };
 
-export function outcomeOf(status: number | null, code: string | undefined): TicketOutcome {
+export function outcomeOf(status: number | null, code: string | undefined, resent = false): TicketOutcome {
   if (status === null) return { kind: "network" };
   if (status >= 200 && status < 300) return { kind: "ok" };
-  if (status === 409 && code === "ERR_CONFLICT") return { kind: "conflict" };
+  if (status === 409 && code === "ERR_CONFLICT") return resent ? { kind: "reloaded" } : { kind: "conflict" };
   return { kind: "refused", code };
 }
 
@@ -115,3 +116,37 @@ export function outcomeOf(status: number | null, code: string | undefined): Tick
  * or a refusal (nothing applied) starts a fresh key, so the next action is a new op.
  */
 export const keepsKey = (status: number | null): boolean => status === null || status >= 500;
+
+/** JSON with the object keys sorted at every level (undefined members left out): the same request always gives the same text. */
+export function canonicalJson(v: unknown): string {
+  if (Array.isArray(v)) return `[${v.map(canonicalJson).join(",")}]`;
+  if (v !== null && typeof v === "object") {
+    const o = v as Record<string, unknown>;
+    return `{${Object.keys(o).sort().filter((k) => o[k] !== undefined).map((k) => `${JSON.stringify(k)}:${canonicalJson(o[k])}`).join(",")}}`;
+  }
+  return JSON.stringify(v) ?? "null";
+}
+
+/** What identifies a desk request apart from its idempotency key: the canonical body without `op_uuid` and `event_uuid`. */
+export function requestSignature(body: object): string {
+  const rest: Record<string, unknown> = { ...(body as Record<string, unknown>) };
+  delete rest.op_uuid;
+  delete rest.event_uuid;
+  return canonicalJson(rest);
+}
+
+/** What an action's last attempt left behind: its key, the request it was for, and whether the server answered it. */
+export interface KeyedAttempt {
+  key: string;
+  signature: string;
+  answered: boolean;
+}
+
+/** The key of the next attempt: the last one again only when it got no answer AND the request is unchanged (a resend, which
+ *  the server replays); any answer, or an edited reply, note, reason or priority, is a new request with a new key. */
+export function nextKey(last: KeyedAttempt | undefined, signature: string, fresh: () => string): { key: string; resent: boolean } {
+  return last && !last.answered && last.signature === signature ? { key: last.key, resent: true } : { key: fresh(), resent: false };
+}
+
+/** The attempt record after an answer (status null = no answer at all). */
+export const settleAttempt = (key: string, signature: string, status: number | null): KeyedAttempt => ({ key, signature, answered: !keepsKey(status) });

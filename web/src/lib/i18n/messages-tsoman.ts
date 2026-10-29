@@ -134,6 +134,7 @@ const pairs = {
   "tickets.priority.same": ["Choose a different priority.", "অন্য একটি অগ্রাধিকার বাছুন।"],
   "tickets.conflict": ["Someone changed this ticket after you opened it. Reload to see the latest version, then apply your change again.", "আপনি খোলার পরে কেউ এই টিকিটটি বদলেছেন। সর্বশেষ অবস্থা দেখতে রিলোড করুন, তারপর আবার আপনার পরিবর্তন দিন।"],
   "tickets.reload": ["Reload", "রিলোড করুন"],
+  "tickets.reloaded": ["Your earlier send may have gone through, so the ticket was read again. Check it before you send the change again.", "আপনার আগের পাঠানোটি হয়তো পৌঁছেছে, তাই টিকিটটি আবার পড়া হয়েছে। পরিবর্তনটি আবার পাঠানোর আগে টিকিটটি দেখে নিন।"],
   "tickets.busy": ["Sending…", "পাঠানো হচ্ছে…"],
 
   // --- step 2. DASH-13: Login & Bikroy Joma drill (D-TSO-MAN-12; tab names as screenshot 8) ---
