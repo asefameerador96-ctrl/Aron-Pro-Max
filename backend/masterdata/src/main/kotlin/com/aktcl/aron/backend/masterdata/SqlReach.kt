@@ -41,7 +41,12 @@ class GeoRepository(private val db: Database, private val clock: AronClock = Aro
                 val g = load()
                 afterLoad?.invoke()
                 val snap = GeoSnapshot(g, register(g))
-                if (generation.get() == gen) { cached.set(Cached(clock.now().toEpochMilli(), snap)); return snap }
+                // Install first, then look at the generation: invalidate() bumps it BEFORE it clears `cached`, so an invalidation that lands between the two
+                // steps is seen here (and the entry removed), and one that lands after the check clears the entry itself. No ordering keeps a pre-edit snapshot.
+                val c = Cached(clock.now().toEpochMilli(), snap)
+                cached.set(c)
+                if (generation.get() == gen) return snap
+                cached.compareAndSet(c, null)
                 // An edit committed and invalidated while this load ran: it may predate the edit. Read again; after a few tries answer with what was read, uncached.
                 if (++attempt >= 3) return snap
             }
@@ -103,7 +108,7 @@ class SqlReachResolver(private val db: Database, private val geo: GeoRepository,
         // reach holds and the zones a node dashboard reads live from app.zone (D-REPORTS-NODEASWAS-04), so the two must agree.
         val snap = geo.snapshot()
         // A new geography version empties the cache (the old entries could never be hit again, and each keeps its snapshot's views alive).
-        if (snap.version != cacheVersion) synchronized(cache) { if (snap.version != cacheVersion) { cache.clear(); cacheVersion = snap.version } }
+        if (snap.version > cacheVersion) synchronized(cache) { if (snap.version > cacheVersion) { cache.clear(); cacheVersion = snap.version } }
         val key = Key(userId, sv, businessDate, snap.version)
         cache[key]?.let { (at, r) -> if (now - at < 300_000 && r.role == role) return r }
         val (scope, asg) = db.jdbi.withHandle<Pair<List<ScopeRow>, List<AssignmentRow>>, Exception> { h ->

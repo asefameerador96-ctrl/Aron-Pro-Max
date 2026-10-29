@@ -55,6 +55,20 @@ class GeoSnapshotRaceTest {
     }
 
     @Test
+    fun anInvalidationBetweenTheGenerationCheckAndTheInstallIsNotLost() {
+        // The edit commits and invalidates at the instant the loaded snapshot is stamped for installation (the clock call inside the install).
+        var geoRef: GeoRepository? = null
+        var armed = true
+        val seamClock = AronClock {
+            if (armed) { armed = false; exec("INSERT INTO app.zone (code, name, territory_id) VALUES ('Z2','Zone2', $t1)"); geoRef!!.invalidate() }
+            Instant.parse("2026-10-04T12:00:00Z")
+        }
+        val geo = GeoRepository(fresh.db, seamClock).also { geoRef = it }
+        geo.snapshot()   // the pre-edit read
+        assertEquals(2, geo.snapshot().geo.zoneTerritory.size, "the next read sees the edit: the old snapshot was not left installed")
+    }
+
+    @Test
     fun aNewGeographyVersionEmptiesTheReachCache() {
         val geo = GeoRepository(fresh.db, clock)
         val resolver = SqlReachResolver(fresh.db, geo, clock)
