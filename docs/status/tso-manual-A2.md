@@ -1,7 +1,7 @@
 # tso-manual A2 android-tickets: lane status
 
 Lane A2 of `docs/requests/tso-manual-build-2026-10.md` (s5 A2). Branch `tso-man/A2`, no pull request.
-Written 2026-10-29. Base: 95a35b7d (contract 1.10.0, V0130-V0140, F3 rules).
+Written 2026-10-29 (steps 1 and 2). Base: 95a35b7d (contract 1.10.0, V0130-V0140, F3 rules).
 
 ## Done
 
@@ -41,6 +41,64 @@ Behaviour:
 - The read stops at 32 MiB (`MAX_SOURCE_BYTES`), so a huge file never fills a 2 GB phone's memory.
 - Picker: `PickVisualMedia` / `PickMultipleVisualMedia`, images only. No storage permission anywhere.
 
+
+### Step 2: the tickets module `android/feature-tickets` (TK-01..13, TK-19, TK-22, CR-8, D-TSO-MAN-17..25)
+
+`settings.gradle.kts`: `include(":android:feature-tickets") // tso-manual A2` after the feature-tso line (the one line).
+Package `com.aktcl.aron.feature.tickets`, role-agnostic (no TSO type, no "tso." key, no nav): depends on core-ui,
+core-common (TicketMath, Percent, Formats through shared:rules) and `api(:shared:contract)` (the queue port carries the
+generated `SupportTicketPayload` / `SupportTicketEventPayload`).
+
+| file | what |
+|---|---|
+| `TicketPorts.kt` | host ports: `TicketSource` (issueTypes, cached, list, detail, cachedDetail, outbox), `DetailRead`, `TicketQueue` (ticket, event: outbox row + mirror row + photo claim in one transaction, idempotent by uuid), `TicketPhotos` (max, capture, rememberGallery, import, discard, Thumbnail), `PhotoOwner`, `PhotoResult`, `TicketDeps(source, queue, photos, now, newUuid)` |
+| `TicketModel.kt` | `TicketStatus`, `TicketPriority`, `TicketOrigin`, `TicketTab`, `IssueType`, `Delivery` (Sent / Pending / Refused(code)), `Ticket`, `TicketEvent`, `TicketDetail`, `LocalEvent`, `TicketOutbox`, `TicketSnapshot`; `TicketLists` (merge by uuid, local search, tabs, recent 10, counts through TicketMath); `TicketDraft`, `CommentDraft`, `TicketRules` (validation, payloads, the unsent row, `closeUuid`); `TicketThread` (thread merge, effective status, canClose, canComment); `TicketIds.nameV4` |
+| `TicketWire.kt` | `TicketWire` (SupportTicketPage / Summary / Detail bodies to the model; a bad row is dropped, not the page), `TicketMirror` (the host's mirror rows as JSON), `IssueTypes.parse` (bundle `code_lists` -> `ticket_issue_type`, sort order, icon fallback (sort-1) mod 8) |
+| `TicketStates.kt` | `TicketDashboardState`, `TicketListState`, `TicketFormState` (Quick sheet and Create), `IssueTypesState`, `TicketDetailState` (close, comment, photos), `FormPhase`, `DetailPhase`, `TicketSavers` (rememberSaveable savers: the draft and its uuid survive rotation and process death) |
+| `TicketKit.kt` | `TicketFrame` (the host's top bar slot) and `plainTicketFrame`, `TicketPalette` (+ `LocalTicketPalette`), the issue hues and glyphs, `TicketTags`, `TicketTime` (Asia/Dhaka 12-hour), cards, pills, fields, buttons, the in-layout sheet, the resolution bar |
+| `TicketDashboardScreen.kt` | screenshot 11 (+ `rememberTicketDashboardState`) |
+| `TicketListScreen.kt` | screenshots 12, 13 (+ `rememberTicketListState`: tab and search text saved) |
+| `TicketDetailScreen.kt` | screenshot 14 (+ `rememberTicketDetailState`: the comment draft saved) |
+| `QuickTicketScreen.kt` | screenshots 15, 16 (tiles, the sheet) |
+| `CreateTicketScreen.kt` | screenshots 17, 18 (the form, the issue list) |
+| `res/values/strings.xml`, `res/values-bn/strings.xml` | every visible text, en and bn (`tickets_` prefix) |
+| tests | `TicketModelTest`, `TicketListStateTest`, `TicketFlowTest`, `TicketScreensTest` (Robolectric), `TicketFakes.kt` (FakeServer, FakeDevice, FakePhotos) |
+| `android/ui-screenshots/.../TicketScreenshotTests.kt` | 27 goldens (names under Verify); one appended dependency line in `android/ui-screenshots/build.gradle.kts` (see Deviations) |
+
+How a host wires it (next step, app-tso `TicketsHost.kt`):
+
+```kotlin
+val frame: TicketFrame = { title, content -> TsoFrame(title, nav, homeButton = false) { content() } }
+TsoScreen.TICKET_DASHBOARD to { nav, _ -> TicketDashboardScreen(rememberTicketDashboardState(deps), frame, onOpen = { nav.open(TsoScreen.TICKET_DETAIL, it) }, onSeeAll = { nav.open(TsoScreen.TICKET_LIST) }, onQuick = { nav.open(TsoScreen.TICKET_QUICK) }) }
+TsoScreen.TICKET_LIST to { nav, _ -> TicketListScreen(rememberTicketListState(deps), frame, onOpen = { nav.open(TsoScreen.TICKET_DETAIL, it) }) }
+TsoScreen.TICKET_DETAIL to { _, arg -> TicketDetailScreen(rememberTicketDetailState(deps, arg!!), frame) }
+TsoScreen.TICKET_QUICK to { nav, _ -> QuickTicketScreen(deps, frame, onCreate = { nav.open(TsoScreen.TICKET_CREATE) }, onSubmitted = { nav.open(TsoScreen.TICKET_LIST) }) }
+TsoScreen.TICKET_CREATE to { nav, _ -> CreateTicketScreen(deps, frame, onSubmitted = { nav.open(TsoScreen.TICKET_LIST) }) }
+```
+
+Behaviour (s5 A2 rules):
+- One uuid per form: the draft (uuid, fields, staged photo uuids, `queued`) lives in `rememberSaveable` through
+  `TicketSavers`, so rotation, a language switch and process death keep it; a retry after a kill mid-save queues the same
+  uuid and the outbox keeps one row (the port returns false for a uuid it holds, which the form treats as saved). A
+  second tap while saving, or any tap after the save, does nothing. Comments: one uuid per comment, a new one after each
+  save. Close: one uuid per ticket (D-A2-11).
+- Quick: title = the issue's `label_en`, description optional (up to 2000). Create: issue type, title (1..120) and
+  description (1..2000) required. Validation runs before the queue; nothing waits for the network.
+- Unsent tickets show "Not sent yet · <issue>" instead of the INC number (amber); acked ones not yet read back show
+  "Sent, number follows"; refused ones keep their row with "Not accepted: <reason>" (ticket_state_invalid,
+  issue_type_unknown, scope_out_of_reach, else the code).
+- Local search: number, title, issue label (en and bn), case-insensitive, Bengali digits match the number. Tabs All, New,
+  In Progress, Resolved, Closed; All also shows Cancelled (and any unknown status). Recent tickets: 10, newest first.
+- Counts and percentages only through `TicketMath` / `TicketCounts.resolvedPctText` / `openPctText` (R-F-14; F1 ask 15
+  and F3's A2 ask done); total 0 prints "0%". Offline: the copy plus unsent tickets as New, merged by uuid
+  (`TicketMath.counts(cached, unsentUuids)`).
+- Times: ages through `TicketMath.ageText` (D-TSO-MAN-25); thread times Asia/Dhaka 12-hour ("5:34 PM"; another day
+  carries its date first).
+- Details: Submit Review & Close only on a Resolved ticket the server holds; after the tap the ticket shows Closed with
+  "Closing. Not sent yet." until read back. The composer shows only for New and In Progress; Resolved, Closed and
+  Cancelled show the fixed note (screenshot 14's text for Resolved). Support is always "Support" (never a name).
+- Reads only on open and pull-to-refresh (`PullToRefreshBox`); no timer anywhere.
+
 ## Decisions
 
 - **D-A2-01** Gallery failures are a typed exception (`GalleryImportException.reason`, `messageRes`), not a camera
@@ -60,11 +118,64 @@ Behaviour:
   the merge by resolving the test-only `ComponentActivity`). The app-level merged manifests are audited by core-system's
   `ManifestPermissionAuditTest` (not A2's file; see Asks).
 
+- **D-A2-06** `TicketSource` carries the summary inside the list answer (`TicketSnapshot.summary`), not as a separate
+  port call: the host reads `GET /v1/support/tickets` (every page up to its cap) and `/summary` together on open and
+  pull-to-refresh. `TicketSnapshot.complete` says whether every page was read.
+- **D-A2-07** Dashboard counts: a complete list gives `TicketMath.counts(list rows, unsent uuids)` (exact, merged by
+  uuid); a list cut at the host's page cap takes the server's summary and adds as New only the unsent tickets the cut list
+  does not hold. "Unsent" is every outbox ticket not refused (pending, or acked and not yet read back: the server has it
+  as New). A refused ticket is not counted (it is not a ticket on the server) but stays in the list with its reason.
+- **D-A2-08** The optional affected username (D-TSO-MAN-24) is offered only for the account issue types `user_login`,
+  `login_otp`, `password_reset`, `auto_logout`, so the Create form at rest is screenshot 17 exactly and the field appears
+  where the manual uses it (a login problem raised from another user's phone). Bengali digits typed are sent as ASCII.
+- **D-A2-09** Colours: a night look (page luminance under 0.18, not Sunlight) gets `TicketPalette.Night`, sampled from
+  screenshots 11 to 17 (page #03103A, card #0A183F, chips #293250, accent #2E5BFE, success #34D399, help gradient
+  #7B4FF5 to #9D7BF7, support bubble #1E1D2D with a #7A5A3A border); any day look and Sunlight derive from the look's own
+  tokens, so Sunlight keeps black on white. A host may set `LocalTicketPalette`. This keeps the screens matching the
+  screenshots whatever card colour A1's TsoNight picks for its glow cards.
+- **D-A2-10** The issue icons (key, fingerprint, screen_off, navigation, inbox, error, check, bolt, gallery, add photo,
+  headset, expand, send) are module-local vector glyphs (Material path data or simple shapes); sync, receipt, cart,
+  battery, clock, camera, search, close and chevron come from `AronIcons`. core-ui is A1's; a later kit move is one import.
+- **D-A2-11** The close_review event uuid is name-based per ticket (`TicketIds.nameV4("aron.ticket.close-review:" +
+  uuid)`, a valid v4): a double tap, a second detail screen or a retry after a kill can never queue two closes.
+- **D-A2-12** The Quick sheet and the issue list are drawn inside the screen (scrim + panel, system back closes them), not
+  as dialog windows, so the goldens of screenshots 16 and 18 capture them. The sheet covers the content below the host's
+  top bar (screenshot 16 also dims the bar; recorded difference).
+- **D-A2-13** Screens take a `TicketFrame` slot (title + content) and own their titles in their strings; the TSO host
+  passes its `TsoFrame`, so the module stays role-agnostic.
+- **D-A2-14** Bangla times: Bengali digits with "পূর্বাহ্ণ" / "অপরাহ্ণ"; Bangla priority labels "P১ - সর্বোচ্চ" to
+  "P৪ - নিম্ন" (no ASCII digit in Bangla text). Status pills are upper case in English as in the screenshots.
+- **D-A2-15** `TicketSource.outbox()` delivery: outbox row pending or in flight gives `Pending`; acked with the mirror
+  still there gives `Sent`; rejected or quarantined gives `Refused(last_code)`. The host drops a ticket's mirror row when
+  the list read returns it, and an event's when the thread read returns it.
+- **D-A2-16** A comment on a ticket still unsent is allowed (it is New; the outbox sends the ticket first). A refused
+  ticket takes no comment.
+- **D-A2-17** The ticket's description is drawn as the reporter's first bubble; `created` events are not drawn (no
+  duplicate). status_change, priority_change, assign and close_review are one small centred line each.
+
 ## Deviations
 
-None from s5 A2 for this step.
+- Step 1: none.
+- Step 2: `android/ui-screenshots/build.gradle.kts` gets one appended line (`testImplementation(project(":android:feature-tickets")) // tso-manual A2`,
+  last line of the dependencies block). s5 A2 owns `TicketScreenshotTests.kt` in that module but does not list its
+  build file; the test cannot compile without the line. Nothing else in that file changed.
+- Step 2: `TicketScreenshotTests` draws a test-local stand-in for the TSO top bar (navy, grey round back button,
+  green-to-yellow title) and a night look stand-in (`AronLook.Default.copy(page = #03103A, ...)`), because this branch
+  does not hold A1's `TsoFrame` restyle or `AronLook.TsoNight` yet. When A1's shell lands, the test switches to the real
+  frame and look (one helper each); the goldens are recorded after that, on the Linux runner.
+- Step 2: screenshot 16 dims the host's top bar under the sheet; the in-layout sheet (D-A2-12) dims only the content.
+- Step 2: on a 360 dp phone Submit Review & Close does not fit beside the two pills with the kit's font, so it moves to
+  its own line, right-aligned, with its whole label (screenshot 14's phone fits all three on one line). The pills and the
+  button are a flow: never squeezed, never clipped, also at 200 % text.
 
 ## Asks
+
+- **A1 (shell step):** none blocking. `TicketsHost.kt` passes `{ title, content -> TsoFrame(title, nav, homeButton =
+  false) { content() } }` as the ticket screens' frame (s8: no Home button on 11 to 18). The drawer's Tickets group opens
+  TICKET_DASHBOARD, TICKET_LIST, TICKET_QUICK, TICKET_CREATE; TICKET_DETAIL takes the ticket uuid as its argument.
+- **F1/F2 (optional, 1.10.x / V0141+):** an issue type attr `affected_user: true` would let the server decide which
+  types offer the affected username; today the app keeps the four codes of D-A2-08.
+- **lead:** the goldens of the step 2 list (Verify) are recorded on the Linux runner once A1's frame and TsoNight are in.
 
 - **lead / core-system owner (optional):** add the storage permissions (`READ_EXTERNAL_STORAGE`, `READ_MEDIA_IMAGES`,
   `READ_MEDIA_VISUAL_USER_SELECTED`, `MANAGE_EXTERNAL_STORAGE`, ...) to the forbidden set of
@@ -76,12 +187,72 @@ None from s5 A2 for this step.
 
 ## Not done (later A2 steps)
 
-feature-tickets module and `settings.gradle.kts` line, TicketsHost.kt, TicketApi.kt, the five ticket screens, states,
-TicketModel, strings, TicketWriteReplayTest, TicketScreenshotTests (goldens for screenshots 10-18), docs/08 "Tickets"
-section, the F1/F3 asks naming A2 (`SupportTicketSummary` without pct members: percent via `TicketMath` /
-`TicketCounts.resolvedPctText` / `openPctText`; `TicketMath.counts(cached, unsentUuids)` offline).
+- app-tso `TicketsHost.kt` (merge `tso-man/A1-stubs` first, s5) and `TicketApi.kt` (own cache like TsoApi): the five
+  screen entries; `TicketSource` over `GET /v1/support/tickets` (pages of 200 up to a cap, `complete` false when cut),
+  `/summary`, `/{uuid}`, stored per user; `TicketQueue` over `host.outbox.enqueueAll` with record types
+  `support_ticket` / `support_ticket_event`, mirror keys `tso.unsent.ticket.<uuid>` and `tso.unsent.ticket_event.<uuid>`
+  (`TicketMirror` JSON), photos claimed with `MediaRef("support", "support_ticket" | "support_ticket_event", uuid)` in the
+  same call; `outbox()` delivery per D-A2-15 (outbox row state and `last_code`); issue types from the bundle section
+  `code_lists` (`IssueTypes.parse`); `now` = trusted clock; the build.gradle.kts dependency line.
+- core-media: a gallery import that STAGES without claiming (the `TicketPhotos` contract): today
+  `MediaComponents.importFromGallery` claims at pick time, so a picture removed from the form would still be sent.
+  Additive (A2 owns GalleryImport.kt and the append): e.g. `importFromGallery(mediaUuid, uri, ref, claim = false)`, then
+  the queue's `attach` claims it.
+- app-tso `TicketWriteReplayTest` (outbox row + mirror in one transaction, replay by uuid, mirror dropped on read back).
+- Push `ticket_updated` deep link to TICKET_DASHBOARD (A1 owns PushNotices; the host maps the reason).
+- docs/08 "Tickets" section (append). Goldens recorded on the Linux runner.
+- Device lab: the five screens on a pilot phone against dev (B1 on dev), gallery and camera, offline create then sync.
 
 ## Verify
+
+Step 2, on this laptop (JDK 21, UTC, via gl.sh), 2026-10-29, one Gradle call (07:47 to 08:08 Dhaka, most of it waiting
+for the lock):
+
+| command | result |
+|---|---|
+| `gl.sh :android:feature-tickets:testDebugUnitTest :android:core-ui:testDebugUnitTest --tests 'com.aktcl.aron.core.ui.HardcodedStringScanTest' :android:ui-screenshots:testDebugUnitTest --tests '*TicketScreenshotTests*' -Paron.screenshots.recordTo=<scratchpad>/goldens/A2 --continue` | BUILD SUCCESSFUL; feature-tickets 47 tests, 0 failures (TicketModelTest 23, TicketFlowTest 12, TicketListStateTest 6, TicketScreensTest 6); HardcodedStringScanTest 5, 0 failures (every new text is a resource with its Bangla twin); TicketScreenshotTests 27 recorded to the scratch dir, 0 failures |
+
+Earlier runs of the same step: the first run had TicketScreensTest 1 failure (the test rendered without the app theme,
+so the digits were Bangla and legacy graphics measured text at 1 px per character; fixed in the test: AronTheme(EN) and
+native graphics). The recorded PNGs were then looked at against the owner's JPGs 11 to 18; three layout faults were
+fixed (the close button squeezed to "Submit", the Quick grid blank at 200 % because of a 2-column span in a 1-column
+grid, ticket pills clipped at 200 %), and the run above is after those fixes.
+
+What the tests prove (fakes: FakeServer upserts by uuid, FakeDevice is the host outbox with mirror rows and a sync):
+- TicketFlowTest: offline quick create (saved at once, "Not sent yet", counts New 1, one toast); offline manual create
+  (errors first, nothing queued; then title, description, affected username and a photo claimed with the record); a
+  double tap queues one ticket (the second tap never reaches the queue); a kill mid-save before the commit leaves nothing
+  and the retry from the saved draft (through the real Saver) is one ticket; a kill right after the commit gives one
+  ticket on retry and one on the server; a full disk shows the failure and the retry keeps the uuid; photos staged up to
+  the limit and dropped when removed or abandoned; offline close is one tap, one event, shows Closed, a second screen
+  offers no button, the server closes it on sync; offline comment queued once with a new uuid for the next, read back as
+  sent; a comment the server refuses shows ticket_state_invalid; replay after reconnect (answers lost, then two more
+  replays) never doubles a ticket or a comment, INC100001..3 in order, and the device counts equal the server's summary
+  with every mirror row dropped after read back; an unsent ticket opens from the phone, a gone one says not found.
+- TicketListStateTest: tabs (All also Cancelled and unknown statuses), search (number, title, issue label en and bn,
+  Bengali digits), unsent merge by uuid (server row wins, newest first, unsent under New), recent 10, the state's
+  offline copy then server read keeping tab and query, a refused ticket stays visible and is not counted.
+- TicketModelTest: validation and payloads of both forms (quick title = label_en), affected username rules, photo limit,
+  the unsent row, comment bounds, close uuid (stable, valid v4), s4.4 counts 723 / 18 -> "2%" and "0%" (bn "২%"), total 0
+  "0%", offline merge, the page-cap rule, thread rules (close only from resolved, comments only while open, pending close
+  shows Closed, refused leaves the status), the wire mapping (page, summary without percentages, detail order), the
+  bundle issue types, the mirror round trip, Dhaka 12-hour times (5:34 PM, 12:00 AM, 12:00 PM, other day with date, bn
+  digits), ages (4d, 23h, just now).
+- TicketScreensTest (Robolectric, en): dashboard 33 % / 67 % by tag and Need help opens Quick; a Quick tile opens the
+  sheet and Submit saves one ticket and closes it; an unsent ticket reads "Not sent yet · Outlet Related Issue" offline;
+  Create shows the errors, the issue list picks a type, Submit saves a manual ticket; a resolved ticket shows the note, no
+  composer, one close and then the closed note; an open ticket has the composer and a sent comment shows in the thread.
+
+Not run here: the app-tso host (next step), a real phone (device lab), goldens on Linux.
+
+Golden names needed (TicketScreenshotTests, record on the Linux runner after A1's frame and look are merged):
+tickets_dashboard_en, tickets_dashboard_bn, tickets_dashboard_200_bn, tickets_dashboard_offline_unsent_en,
+tickets_dashboard_empty_bn, tickets_dashboard_sunlight_en, tickets_list_en, tickets_list_bn, tickets_list_200_en,
+tickets_list_resolved_en, tickets_list_resolved_bn, tickets_list_no_match_en, tickets_details_en, tickets_details_bn,
+tickets_details_200_en, tickets_details_open_thread_en, tickets_details_offline_bn, tickets_quick_en, tickets_quick_bn,
+tickets_quick_200_bn, tickets_quick_sheet_en, tickets_quick_sheet_bn, tickets_create_en, tickets_create_bn,
+tickets_create_200_en, tickets_issue_types_en, tickets_issue_types_bn (27). Screenshot 10 (the Tickets menu) is A1's
+drawer golden.
 
 Step 1, on this laptop (JDK 21, UTC, via gl.sh), 2026-10-29:
 
@@ -106,6 +277,8 @@ Golden names needed: none for this step (no screen).
 
 ## Next step
 
-Step 2: create `android/feature-tickets` (role-agnostic; ports `TicketSource`, `TicketQueue`, `TicketPhotos`, `now`),
-add `include(":android:feature-tickets")` after the feature-tso line in `settings.gradle.kts`, then TicketModel and
-states with their tests, then the screens against screenshots 10-18. Merge only after A1's `a1-stubs` commit (s5).
+Step 3 (host): merge `tso-man/A1-stubs` (s5: A2 merges after a1-stubs), then write app-tso `TicketsHost.kt` and
+`TicketApi.kt` against the ports above (see Not done for the exact shape), the core-media stage-only gallery import, the
+`TicketWriteReplayTest`, the app-tso dependency line, and the docs/08 Tickets section. Verify with
+`gl.sh :android:feature-tickets:testDebugUnitTest :android:core-media:testDebugUnitTest :android:app-tso:testDebugUnitTest`,
+then record `TicketScreenshotTests` to the scratch dir with A1's real frame and look once A1's shell is merged.
