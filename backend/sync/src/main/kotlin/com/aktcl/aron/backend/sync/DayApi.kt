@@ -164,7 +164,8 @@ class DayService(
     private val db: Database,
     private val config: ServerConfig,
     private val reach: ReachResolver,
-    private val ingest: IngestService,
+    /** Online Sales Submit only; null for the midnight [AutoFinalSubmitJob], which only closes zone-days (tso-manual B3). */
+    private val ingest: IngestService?,
     private val clock: AronClock = AronClock.SYSTEM,
     /** tso-manual B3: the push after a close (backend:notify; [Nudger.NONE] in tests that do not look). */
     private val nudger: Nudger = Nudger.NONE,
@@ -192,7 +193,7 @@ class DayService(
                     .mapTo(String::class.java).findOne().orElse(null)
             }
             val res = try {
-                ingest.ingest(Uploader(p.userId, p.role, p.scopeVersion, deviceId, deviceUuid, key?.let(DeviceProof::publicKey)), onlineBatch(req, deviceUuid))
+                checkNotNull(ingest) { "Sales Submit needs the ingest service" }.ingest(Uploader(p.userId, p.role, p.scopeVersion, deviceId, deviceUuid, key?.let(DeviceProof::publicKey)), onlineBatch(req, deviceUuid))
             } catch (e: ApiProblem) {
                 // Two copies racing: the first one's record is stored; the second answers its state.
                 if (e.code != ProblemCode.ERR_SYNC_BATCH_UUID_REUSED || !storedFor(p.userId, req.client_uuid)) throw e
