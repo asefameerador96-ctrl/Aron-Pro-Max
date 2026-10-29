@@ -7,6 +7,7 @@ import com.aktcl.aron.backend.platform.Audience
 import com.aktcl.aron.backend.platform.FreshDb
 import com.aktcl.aron.backend.platform.Reach
 import com.aktcl.aron.backend.platform.ReachResolver
+import com.aktcl.aron.backend.platform.SupportRoles
 import com.aktcl.aron.contract.Role
 import io.mockk.mockk
 import java.io.File
@@ -119,35 +120,55 @@ class MediaReadTest {
     }
 
     /**
-     * Lane X2, lead ruling R-W-09 (6): a feedback photo is read by the feedback triage roles (SUPPORT, ADMIN, SUPERADMIN)
-     * and by the support desk (`support.ticket.manage`) whatever reach the resolver gives them; anyone else keeps the
-     * captor rule. The rule is the feedback photo's only: the same callers get no other photo outside their reach, and a
-     * ticket photo stays the reporter's and the desk's.
+     * Lane X2, lead ruling R-W-09 (6), bound to the record's reach in the fix round (checker L3): a feedback photo is read by
+     * the feedback triage roles (SUPPORT, ADMIN, SUPERADMIN) and by the support desk (`support.ticket.manage`) as far as they
+     * read the feedback record itself, FeedbackApi's `ownerInReach` on the author (national reach, or the author's home zone,
+     * else its primary route's zone, in the caller's zones); anyone else, and the desk outside that, keeps the captor rule.
+     * The rule is the feedback photo's only: the same callers get no other photo outside their reach, and a ticket photo
+     * stays the reporter's and the desk's.
      */
     @Test
     fun theTriageRolesAndTheDeskReadFeedbackPhotos() {
         val f = fixture()
         f.fresh.use {
-            val other = f.ids.getValue("sr2002"); val amo = f.ids.getValue("amo1001"); val admin = f.ids.getValue("admin1001")
-            // Every caller here reaches the Mirpur zone only: no national reach to fall back on.
-            val resolver = ReachResolver { u, r, _, _ -> Reach(u, r, day, false, setOf(f.mirZone), emptySet(), false, emptyList()) }
-            val m = MediaRead(MediaDeps(f.fresh.db, mockk(relaxed = true), mockk(relaxed = true), AronClock { now }, reach = resolver, reader = reader))
-            val feedback = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"; photo(f, feedback, other, purpose = "feedback", refType = "feedback")
+            val other = f.ids.getValue("sr2002"); val sr = f.ids.getValue("sr1001"); val amo = f.ids.getValue("amo1001"); val admin = f.ids.getValue("admin1001")
+            // The triage roles have national reach (as ReachCalculator gives them); everyone else reaches the Mirpur zone only.
+            val mirpur = { u: Long, r: Role -> Reach(u, r, day, false, setOf(f.mirZone), emptySet(), false, emptyList()) }
+            val triageNational = ReachResolver { u, r, _, _ -> if (r in SupportRoles.FEEDBACK_TRIAGE) Reach(u, r, day, true, emptySet(), emptySet(), false, emptyList()) else mirpur(u, r) }
+            fun read(resolver: ReachResolver) = MediaRead(MediaDeps(f.fresh.db, mockk(relaxed = true), mockk(relaxed = true), AronClock { now }, reach = resolver, reader = reader))
+            val m = read(triageNational)
+            val narrow = read { u, r, _, _ -> mirpur(u, r) }   // a triage role with a zone reach (ReachCalculator never gives one)
+            val feedback = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"; photo(f, feedback, other, purpose = "feedback", refType = "feedback")      // author sr2002, zone Z-OTHER
+            val mirFeedback = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee"; photo(f, mirFeedback, sr, purpose = "feedback", refType = "feedback")  // author sr1001, Mirpur
             val outlet = "cccccccc-cccc-4ccc-8ccc-cccccccccccc"; photo(f, outlet, other)
             val ticket = "dddddddd-dddd-4ddd-8ddd-dddddddddddd"; photo(f, ticket, other, purpose = "support", refType = "support_ticket")
             val desk = listOf("support.ticket.manage")
-            for (p in listOf(principal(admin, Role.SUPPORT), principal(admin, Role.ADMIN), principal(admin, Role.SUPERADMIN), principal(amo, Role.DMO, desk))) {
-                m.readUrl(p, feedback)
-            }
-            fun denied(p: AronPrincipal, uuid: String) = assertEquals("ERR_OUT_OF_SCOPE", assertFailsWith<ApiProblem> { m.readUrl(p, uuid) }.code.name, "$uuid for ${p.role} ${p.permissions}")
-            // Others keep the captor rule: the Mirpur TSO and AMO do not reach sr2002 (zone Z-OTHER).
-            denied(principal(amo, Role.TSO), feedback); denied(principal(amo, Role.AMO), feedback); denied(principal(amo, Role.DMO), feedback)
+            fun denied(m: MediaRead, p: AronPrincipal, uuid: String) = assertEquals("ERR_OUT_OF_SCOPE", assertFailsWith<ApiProblem> { m.readUrl(p, uuid) }.code.name, "$uuid for ${p.role} ${p.permissions}")
+            // The triage roles read every feedback photo: they read every feedback.
+            for (p in listOf(principal(admin, Role.SUPPORT), principal(admin, Role.ADMIN), principal(admin, Role.SUPERADMIN))) m.readUrl(p, feedback)
+            // The desk on a Mirpur DMO reads the feedback photos its feedback list shows (the Mirpur author's), never another
+            // zone's (sr2002, Z-OTHER): the photo is no wider than its record. Before the fix round it read both.
+            m.readUrl(principal(amo, Role.DMO, desk), mirFeedback)
+            denied(m, principal(amo, Role.DMO, desk), feedback)
+            denied(narrow, principal(admin, Role.SUPPORT), feedback)
+            // Others keep the captor rule: the Mirpur TSO, AMO and DMO do not reach sr2002.
+            denied(m, principal(amo, Role.TSO), feedback); denied(m, principal(amo, Role.AMO), feedback); denied(m, principal(amo, Role.DMO), feedback)
             // Only feedback photos: an outlet photo outside the reach stays refused to the triage roles and the desk.
-            for (p in listOf(principal(admin, Role.SUPPORT), principal(admin, Role.ADMIN), principal(amo, Role.DMO, desk))) denied(p, outlet)
+            for (p in listOf(principal(admin, Role.SUPPORT), principal(admin, Role.ADMIN), principal(amo, Role.DMO, desk))) denied(narrow, p, outlet)
             // A ticket photo stays the desk's (the permission), not a triage role's.
-            denied(principal(admin, Role.SUPPORT), ticket)
+            denied(m, principal(admin, Role.SUPPORT), ticket)
             m.readUrl(principal(admin, Role.SUPPORT, desk), ticket)
-            assertEquals(4 + 1, issued.size, "no URL minted for a refused read")
+            // FeedbackApi's owner rule, not the captor rule: sr2002's home zone moves to Mirpur while it still holds its Z-OTHER
+            // route on the photo's date. The Mirpur feedback list now shows its feedback (home zone first), so the desk reads
+            // the photo; a plain DMO keeps the captor rule (the route held that day) and stays refused.
+            f.fresh.db.jdbi.useHandle<Exception> { it.execute("UPDATE app.app_user SET home_zone_id = ? WHERE id = ?", f.mirZone, other) }
+            m.readUrl(principal(amo, Role.DMO, desk), feedback)
+            denied(m, principal(amo, Role.DMO), feedback)
+            // The desk on a role FeedbackApi does not list feedback to by zone (an AMO: no list; a TSO: its own only) adds nothing
+            // to the captor rule, which refuses both here (sr2002 held its Z-OTHER route on the photo's date).
+            denied(m, principal(amo, Role.AMO, desk), feedback); denied(m, principal(amo, Role.TSO, desk), feedback)
+            denied(narrow, principal(amo, Role.DMO, desk), outlet)
+            assertEquals(3 + 1 + 1 + 1, issued.size, "no URL minted for a refused read")
         }
     }
 

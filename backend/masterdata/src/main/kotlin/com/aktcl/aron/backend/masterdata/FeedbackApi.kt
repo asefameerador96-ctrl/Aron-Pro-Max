@@ -53,7 +53,7 @@ data class FeedbackStatusIn(val status: String, val reason: String)
 
 class FeedbackDeps(val db: Database, val reach: ReachResolver, val config: ServerConfig, val guard: AuthGuardDeps, val clock: AronClock = AronClock.SYSTEM)
 
-private val FEEDBACK_READERS = setOf(Role.TSO, Role.DMO, Role.WM, Role.TOP, Role.NATIONAL, Role.ANALYST, Role.SUPPORT, Role.ADMIN, Role.SUPERADMIN)
+private val FEEDBACK_READERS = com.aktcl.aron.backend.platform.SupportRoles.FEEDBACK_READERS // lane X2 fix round: shared with MediaRead (D-X2-13)
 private val FEEDBACK_TRIAGE = com.aktcl.aron.backend.platform.SupportRoles.FEEDBACK_TRIAGE // lane X2: shared with MediaRead (R-W-09 (6))
 private val FEEDBACK_STATUS = setOf("new", "in_progress", "resolved", "closed")
 
