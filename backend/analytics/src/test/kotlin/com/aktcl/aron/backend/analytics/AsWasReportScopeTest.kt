@@ -73,6 +73,11 @@ class AsWasReportScopeTest : ReportFixture() {
         assertEquals(HttpStatusCode.Forbidden, run(11, Role.TSO, "route-std", sel).status)
         assertEquals(HttpStatusCode.OK, run(10, Role.ANALYST, "route-std", sel).status)
         assertEquals(HttpStatusCode.Forbidden, run(10, Role.ANALYST, "route-std", body(""","geo":{"route":[$r3,999999]}""")).status, "an unknown id still refuses the lot")
+        // A route with no history row at all (a bulk load with triggers off) is placed by the zone it has now, not refused for everyone.
+        exec("DELETE FROM app.route_zone_history WHERE route_id = $r3")
+        assertEquals(setOf("R3"), run(10, Role.ANALYST, "route-std", sel).result().rows().map { it.str("route_code") }.toSet(), "selected on its current zone, its rows read")
+        assertEquals(HttpStatusCode.OK, run(11, Role.TSO, "route-std", sel).status, "R3 is zone 1's today")
+        assertEquals(HttpStatusCode.Forbidden, run(14, Role.TSO, "route-std", sel).status, "and not zone 2's")
     }
 
     private fun onDate(date: String, extra: String) = """{"period":{"date":"$date"},"output":{"format":"json","page_size":500}$extra}"""
