@@ -173,6 +173,13 @@ class CaptureRepository(
         return memoNo
     }
 
+    /**
+     * tso-manual X4a (fix round, R-W-11 (3)): true when a `due_collection` with [meta] would pass [recordDueCollection]'s
+     * route-day check: no Final Submit lock and no standing Sales Submit (route-day or the AMO's supervisor day) closes its
+     * route-day; a routeless collection is never checked. The memo screen draws Mark Paid only then. Pure reads, no write.
+     */
+    suspend fun acceptsDueCollection(meta: CaptureMeta): Boolean = meta.routeId == null || RouteDayLock.isOpen(db, meta, DUE_COLLECTION)
+
     /** A due collected against an earlier memo: its own family (a signed header record, docs/24 s4.2). */
     suspend fun recordDueCollection(due: DueCollectionEntity, fix: GeoFixEntity? = null) {
         requireUuids(due.clientUuid, due.againstMemoClientUuid)
@@ -185,7 +192,7 @@ class CaptureRepository(
         db.withTransaction {
             if (purged(due.clientUuid)) return@withTransaction emptyList()
             due.visitClientUuid?.let { checkNotNull(capture.visit(it)) { "due collection for a visit not on this phone" } }
-            if (due.meta.routeId != null) requireOpenRouteDay(due.meta, "due_collection") // tso-manual X4a (R-W-11): Mark Paid
+            if (due.meta.routeId != null) requireOpenRouteDay(due.meta, DUE_COLLECTION) // tso-manual X4a (R-W-11): Mark Paid
             fix?.let { requireFixOf(it, due.clientUuid, due.fixClientUuid); capture.insertFix(it) }
             capture.insertDueCollection(due)
             outbox.insert(listOf(RecordMapping.dueCollection(due, fix, nowIso())))
@@ -429,6 +436,9 @@ class CaptureRepository(
         )
         val REASON_CODE = Regex("^[a-z][a-z0-9_]{1,40}$")
         val CONTENT_OUTCOMES = setOf("viewed", "skipped_missing", "skipped_user")
+
+        /** The record type [recordDueCollection] names to the route-day lock, and [acceptsDueCollection] asks with. */
+        private const val DUE_COLLECTION = "due_collection"
 
         /** RFC 3339 UTC with exactly three fraction digits, as on the wire (docs/24 s3.1 item 5). */
         val ISO_MILLIS: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'").withZone(ZoneOffset.UTC)

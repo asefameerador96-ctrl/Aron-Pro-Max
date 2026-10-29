@@ -17,10 +17,12 @@ import com.aktcl.aron.core.database.repo.CaptureRepository
 import com.aktcl.aron.core.database.repo.FinalSubmitLock
 import com.aktcl.aron.core.database.repo.MemoNumbering
 import com.aktcl.aron.core.database.repo.RouteDayFinalSubmittedException
+import com.aktcl.aron.core.database.repo.RouteDaySubmittedException
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
@@ -131,6 +133,31 @@ class CaptureRepositoryDayLockTest {
         repo.recordVisitOpen(onOther, fix)
         assertNotNull(db.outboxDao().byClientUuid(onOther.clientUuid))
         assertTrue(FinalSubmitLock.isFinal(db, date, route))
+    }
+
+    /**
+     * tso-manual X4a fix round (checker high 2): [CaptureRepository.acceptsDueCollection] answers what [recordDueCollection]
+     * would do with the same meta, for the Final Submit lock and for the rep's own Sales Submit, whose refusal is now the
+     * named [RouteDaySubmittedException] (still an IllegalStateException with the old message).
+     */
+    @Test fun acceptsDueCollectionMatchesTheWriteForSalesSubmitAndFinalSubmit() = runTest {
+        fun due(routeId: Long?) = DueCollectionEntity(ClientIds.newUuid(), TestRows.meta(routeId = routeId), 50001, ClientIds.newUuid(), "sr334001-261004-003", "2026-10-04", 50_000, false, 120_000)
+        assertTrue("an open route-day takes the collection", repo.acceptsDueCollection(TestRows.meta()))
+        // the SR's own Sales Submit closes the route-day: Mark Paid is not drawn and a tap is refused by name
+        repo.recordDaySubmit(DaySubmitEntity(ClientIds.newUuid(), TestRows.meta(), "route_day", 1, "{}", MONEY, 0, 0, 0, false, 0, 0, false))
+        assertFalse(repo.acceptsDueCollection(TestRows.meta()))
+        val e = assertThrows(RouteDaySubmittedException::class.java) { runBlocking { repo.recordDueCollection(due(route)) } }
+        assertEquals(date, e.businessDate); assertEquals(route, e.routeId)
+        assertTrue("the same IllegalStateException as before", e is IllegalStateException)
+        assertTrue(e.message!!.contains("is submitted; nothing more can be captured"))
+        // another route stays open; a routeless collection is never checked
+        assertTrue(repo.acceptsDueCollection(TestRows.meta(routeId = route + 1)))
+        assertTrue(repo.acceptsDueCollection(TestRows.meta(routeId = null)))
+        // a Final Submit on the other route closes it too, with the lock's own type
+        finalSubmitted(route + 1)
+        assertFalse(repo.acceptsDueCollection(TestRows.meta(routeId = route + 1)))
+        assertThrows(RouteDayFinalSubmittedException::class.java) { runBlocking { repo.recordDueCollection(due(route + 1)) } }
+        assertTrue(db.captureDao().dueCollectionsOn(date).isEmpty())
     }
 
     private companion object {
