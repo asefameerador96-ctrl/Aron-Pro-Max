@@ -67,3 +67,21 @@ RouteSnapshot:
         $ref: '#/components/schemas/AchievementRow'
     day_state:
       $ref: '#/components/schemas/RouteDayState'
+    sr_user_id:
+      type:
+      - integer
+      - 'null'
+      format: int64
+      minimum: 1
+      description: 'The route''s assigned SR on the bundle date (`meta.valid_for_business_date`): the same SR that
+        `GET /v1/routes` names for the route on that date (its first `assignees` entry with role SR, a cover assignment
+        before the primary one); null when the route is vacant (no SR assigned; the TSO app shows "SR Not Set").
+        Sent in the TSO bundle so Assign Task works offline (lead rulings R-W-06, R-W-12); other bundles may omit
+        it. Contract 1.10.0, optional.'
+    sr_name:
+      type:
+      - string
+      - 'null'
+      maxLength: 120
+      description: Full name of `sr_user_id` (`app_user.full_name`); null exactly when `sr_user_id` is null. Lead
+        ruling R-W-06, contract 1.10.0, optional.

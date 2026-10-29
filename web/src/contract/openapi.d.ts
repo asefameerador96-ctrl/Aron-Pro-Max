@@ -3029,8 +3029,10 @@ export interface paths {
          *     `op_uuid`; each later one has the name-based, version-4-shaped UUID (as StableIds.v4: SHA-256 of the UTF-8 name,
          *     first 16 bytes, version nibble 4, variant bits 10) of `aron.support.ticket-op:<op_uuid>:<kind>`. A retry
          *     therefore can never add a second event, and the server keeps the op's body fingerprint with it for the
-         *     same-body check. The op is audited; after commit the reporter gets one inbox row for it and, when ticket pushes
-         *     are switched on, one push with reason `ticket_updated`.
+         *     same-body check. The op is audited; after commit the reporter gets one inbox row for it (kind `ticket_updated`)
+         *     and, when ticket pushes are switched on, one data-only push with reason `notification` (the bell's push reason,
+         *     D-TSO-MAN-26; the app then reads `listMyNotifications`). A desk reply (`addSupportTicketEvent`) also writes one
+         *     such inbox row for the reporter, with the same push rule (lead ruling R-W-06, D-B1-07, D-B1-12).
          */
         patch: operations["updateSupportTicket"];
         trace?: never;
@@ -3050,7 +3052,9 @@ export interface paths {
          *     through the sync record `support_ticket_event`. Idempotent by `event_uuid`: the first call stores the reply
          *     (201), a repeat with the same body answers it unchanged (200), the same uuid with another body is 409
          *     `ERR_CONFLICT`. Allowed only while the ticket is new or in_progress, else 409 `ERR_TICKET_COMMENTS_CLOSED`. The
-         *     first support reply on a new ticket moves it to in_progress and stamps `first_response_at`.
+         *     first support reply on a new ticket moves it to in_progress and stamps `first_response_at`. After commit a stored
+         *     reply writes one inbox row for the reporter (kind `ticket_updated`) and, when ticket pushes are switched on, one
+         *     data-only push with reason `notification`; a replay writes neither again (lead ruling R-W-06, D-B1-12).
          */
         post: operations["addSupportTicketEvent"];
         delete?: never;
@@ -6381,6 +6385,13 @@ export interface components {
             targets: components["schemas"]["TargetRow"][];
             achievement_mtd: components["schemas"]["AchievementRow"][];
             day_state: components["schemas"]["RouteDayState"];
+            /**
+             * Format: int64
+             * @description The route's assigned SR on the bundle date (`meta.valid_for_business_date`): the same SR that `GET /v1/routes` names for the route on that date (its first `assignees` entry with role SR, a cover assignment before the primary one); null when the route is vacant (no SR assigned; the TSO app shows "SR Not Set"). Sent in the TSO bundle so Assign Task works offline (lead rulings R-W-06, R-W-12); other bundles may omit it. Contract 1.10.0, optional.
+             */
+            sr_user_id?: number | null;
+            /** @description Full name of `sr_user_id` (`app_user.full_name`); null exactly when `sr_user_id` is null. Lead ruling R-W-06, contract 1.10.0, optional. */
+            sr_name?: string | null;
         };
         PrintTemplate: {
             /** @enum {string} */
@@ -6633,6 +6644,8 @@ export interface components {
             zone_id: components["schemas"]["Id"];
             business_date: components["schemas"]["BusinessDate"];
             already_submitted: boolean;
+            /** @description Whether the caller may Final Submit this zone-day: true when the caller's role is TSO or is listed in `cfg.day.final_submit_delegate_roles` (resolved as `postFinalSubmit` reads it), the same rule the submit path enforces; the zone is already in the caller's reach (else this read is 403). It is the role rule only: whether the zone-day is already submitted is `already_submitted`, so the app and the web offer Submit when `can_submit` is true and `already_submitted` is false. Optional until the server sends it (the required list does not change, lead ruling R-W-06; 1.10.x makes it required); a reader of a server that does not send it falls back to the TSO rule (lead ruling R-W-13; contract 1.10.0). */
+            can_submit?: boolean;
             submitted_at?: components["schemas"]["Timestamp"] | null;
             submitted_by?: string | null;
             routes: {
@@ -7148,7 +7161,7 @@ export interface components {
              * @enum {string}
              */
             entry_unit?: "pack" | "dozen";
-            /** @description Quantity in `entry_unit`, summed per SKU first (each SKU's qty_base over its base_per_pack): 10s and 20s of one category convert correctly. Sold plus free, like qty_base. */
+            /** @description This item's quantity in `entry_unit`, summed per SKU first (each SKU's base-unit quantity over its base_per_pack): 10s and 20s of one category convert correctly. Same basis as the item's `qty_base`, which the list that carries the item states: in `DashboardSummary.by_category` the sold quantity of sale lines only, no free or DRP lines (D-TSO-MAN-09, lead ruling R-W-06); `DailyTrackingRow.by_category` states its own basis. */
             qty_entered?: components["schemas"]["Decimal3"];
             net_mtk: components["schemas"]["Mtk"];
         };
@@ -7294,7 +7307,7 @@ export interface components {
                 value: number;
                 /**
                  * Format: int64
-                 * @description Basis points: 10000 = 100 %. Integer arithmetic, rounded half up; null when the denominator is 0.
+                 * @description Basis points: 10000 = 100 %. Integer arithmetic, rounded half up; null when the denominator is 0. The denominator is the total including unclassified calls, `total` + `unclassified`, so the six shares add up to 10000 only when `unclassified` is 0 (lead ruling R-W-06). The web legend prints the share once from `value` and that denominator.
                  */
                 share_pct_bp: number | null;
             }[];
@@ -7319,7 +7332,7 @@ export interface components {
                 value: number;
                 /**
                  * Format: int64
-                 * @description Basis points: 10000 = 100 %. Integer arithmetic, rounded half up; null when the denominator is 0.
+                 * @description Basis points: 10000 = 100 %. Integer arithmetic, rounded half up; null when the denominator is 0. The denominator is `total` (all the card's cigarette sticks, equal to the Sales (Cigarette) card; lead ruling R-W-06). The web legend prints the share once from `value` and `total`.
                  */
                 share_pct_bp: number | null;
             }[];
@@ -7618,15 +7631,19 @@ export interface components {
             category_code: string;
             /** @enum {string} */
             base_unit: "stick" | "piece" | "dozen";
-            /** @description The route's monthly target for the category / the working days of the month. Null without a target, and null when the month has no working day (W = 0, lead ruling R-F-13). */
+            /** @description The route's monthly target for the category / the working days of the month (`monthly_target_qty` / `working_days`, rounded once to 3 decimals). For display only; `achievement_pct_bp` never divides by it (lead ruling R-W-06). Null without a target, and null when the month has no working day (W = 0, lead ruling R-F-13). */
             daily_target: components["schemas"]["Decimal3"] | null;
             /** Format: int64 */
             sales: number;
             /**
              * Format: int64
-             * @description sales / daily_target in basis points, uncapped (may exceed 10000, hence int64, R-F-16); null whenever daily_target is null (R-F-13), and null when the route's monthly target is 0 (daily_target "0.000").
+             * @description Achievement in basis points. One rule with the Sales card (lead ruling R-W-06): round_half_up(10000 * sales * working_days / monthly_target_qty) once, computed by the server from the integers (the route's monthly target for the category and W at its zone), never from the rounded daily_target, which is for display only. Uncapped: may exceed 10000, hence int64 (R-F-16). The bp is null when `working_days` is 0 or there is no target (`monthly_target_qty` null), and null when the route's monthly target is 0 (`monthly_target_qty` "0.000", daily_target "0.000"); so null whenever daily_target is null (R-F-13). The server sends `monthly_target_qty` and `working_days` with every card, so a reader prints this figure and the bars from the same integers (R-W-13). Note on older servers: a server before the integration round sent neither member and divided by the rounded daily_target, which can differ by 1 bp; a reader prints the bp as sent.
              */
             achievement_pct_bp: number | null;
+            /** @description The route's monthly target for the category in base units (the sum of its SKU targets for the month of the date; whole base units today, so the fraction is ".000", as the Decimal3 members of TargetAchievementRow carry them); null without a target. With `working_days` it gives `daily_target` and the exact `achievement_pct_bp` (the Sales-card rule, NationalSalesCard). When `working_days` is 0 the phone and the web print "—" for every figure derived from it and never divide by it (R-F-13). Lead ruling R-W-06, contract 1.10.0; optional until the server sends it. */
+            monthly_target_qty?: components["schemas"]["Decimal3"] | null;
+            /** @description W: the working days of the month that `daily_target` divides by, at the route's zone (D-TSO-MAN-08: the zone's weekend and the declarations on its path; WorkingDays of shared/rules). 0 when the month has no working day there (then `daily_target` and `achievement_pct_bp` are null, R-F-13). Lead ruling R-W-06, contract 1.10.0; optional until the server sends it. */
+            working_days?: number;
         };
         /** @description The "Map Details" page of a route and day: header, markers, SR path and the cards under the map. Distance is metres (docs/34 s6 Q1 default). */
         RouteMap: {
@@ -7806,8 +7823,15 @@ export interface components {
             successful_calls: number;
             active_memo_count: number;
             net_mtk: components["schemas"]["Mtk"];
+            /** @description Per category for the route-day. `qty_base` is the sold plus free quantity of the route-day's lines in base units (sale and free lines, as built), not the Total Sales basis of D-TSO-MAN-09 that `DashboardSummary.by_category` uses. `entry_unit` and `qty_entered` are not sent here today; a server that sends them converts this same quantity. Whether this list moves to sold only is open (lead ruling R-W-06 names the summary only). */
             by_category?: components["schemas"]["CategoryVolume"][];
+            /** @description Deprecated (contract 1.10.0, lead ruling R-W-06): read `tilldate_target_achievement_bp`. The same figure as a percentage with two decimals: `tilldate_target_achievement_bp` / 100 (the bp is this figure x 100, rounded once half up). Kept for older readers; null exactly when the bp is null. */
             tilldate_target_achievement_pct?: number | null;
+            /**
+             * Format: int64
+             * @description Till-date target achievement of the route in basis points (10000 = 100 %), uncapped (may exceed 10000, hence int64, R-F-16): round_half_up(10000 x A / T') once, from the integers, where A is the route's cigarette sticks of sale lines from the 1st of the month to the tracked date and T' the sum of its cigarette items' till-date targets (each item rounded once, D-TSO-MAN-05) on the till-date basis of the TSO Target Status, with the working days at the route's zone (D-B2-13). Null without a cigarette target that month, when the month has no working day (n = 0), and when T' is 0. The web prints it with two decimals (bp / 100) and never from the float member (lead ruling R-W-06, R-W-13; contract 1.10.0).
+             */
+            tilldate_target_achievement_bp?: number | null;
             /** @enum {string} */
             bucket: "ge_100" | "from_90" | "from_80" | "below_80" | "exception" | "not_logged_in";
         };

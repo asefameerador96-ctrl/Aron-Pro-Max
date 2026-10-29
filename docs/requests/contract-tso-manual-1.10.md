@@ -94,6 +94,27 @@ must treat it as unknown (the Kotlin wire DTOs carry every enum as a String; `Un
 - Description-only: `NationalSalesCard.achievement_pct_bp` (exact formula), `DashboardSummary.by_category` (sold quantity
   of sale lines only), `FinalSubmitRequest.client_uuid` (the D-TSO-MAN-28 rule), `postFinalSubmit`, `getFinalSubmitPreview`,
   `postDayReopen`, `RecordOutcomeCode`, `ProblemCode`, `CodeListKey`, `RecordType`, tags `support` and `notifications`.
+- Integration round (build contract s10, lead ruling R-W-06, lane X1; 1.10.0 amended in place, all additive, no new
+  request member, no new response enum value, every new member optional and no required list changed, so not a
+  breaking-gate item):
+  - `FinalSubmitPreview.can_submit` (boolean, optional until the server sends it; 1.10.x makes it required, as the
+    other 1.10.0 response members): the TSO rule plus `cfg.day.final_submit_delegate_roles`, the rule `postFinalSubmit`
+    enforces; the role rule only (`already_submitted` stays separate). The web keeps a TSO fallback for a server that
+    does not send it (R-W-13). The server sends it from lane X2.
+  - `DailyTrackingRow.tilldate_target_achievement_bp` (int64, nullable, optional); `tilldate_target_achievement_pct`
+    is described as deprecated (the same figure: bp / 100), no `deprecated` flag.
+  - `TargetVsAchievement.monthly_target_qty` (Decimal3, nullable) and `working_days` (0..31), both optional;
+    `achievement_pct_bp` is defined only by the Sales-card rule, round_half_up(10000 * sales * working_days /
+    monthly_target_qty) from the integers (`daily_target` is for display only).
+  - `RouteSnapshot.sr_user_id` (int64, nullable) and `sr_name` (nullable), both optional: the route's SR on the bundle
+    date, sent in the TSO bundle (Assign Task offline, R-W-12).
+  - Descriptions: `updateSupportTicket` (push reason `notification`; a desk reply also writes an inbox row),
+    `addSupportTicketEvent` (its inbox row and push), `CategoryVolume.qty_entered` (the basis of the item's
+    `qty_base`: sold only in `DashboardSummary.by_category`, D-TSO-MAN-09; `DailyTrackingRow.by_category` states its
+    sold-plus-free basis),
+    `NationalChannelCalls` and `NationalChannelStd` `share_pct_bp` (denominator `total` + `unclassified`, resp. `total`).
+  - Regenerated: `contract/slices/**`, `WireDtos.kt` (`RouteSnapshot.srUserId`, `srName`),
+    `web/src/contract/openapi.d.ts`. `PayloadShapes.kt` unchanged (no payload changed).
 
 ## 3. Deploy order and wiring
 

@@ -22,7 +22,7 @@ The outbox `app.domain_event` is read in `id` order by the aggregate projector a
 |---|---|---|---|---|---|---|
 | [`day_exception.decided`](#day_exceptiondecided-v1) | 1 | `day_exception` | `day_exception.client_uuid` | backend:masterdata | planned | not yet |
 | [`due.collected`](#duecollected-v1) | 1 | `due_collection` | `due_collection.client_uuid` | backend:sync | planned | not yet |
-| [`leave.decided`](#leavedecided-v1) | 1 | `leave_application` | `leave_application.client_uuid` | backend:masterdata | planned | not yet |
+| [`leave.decided`](#leavedecided-v1) | 1 | `leave_application` | `leave_application.client_uuid` | backend:masterdata | live | not yet |
 | [`memo.created`](#memocreated-v1) | 1 | `memo` | `memo.client_uuid` | backend:sync | live | not yet |
 | [`memo.superseded`](#memosuperseded-v1) | 1 | `memo` | `memo.client_uuid` | backend:sync | planned | not yet |
 | [`memo.voided`](#memovoided-v1) | 1 | `memo` | `memo.client_uuid` | backend:sync | live | not yet |
@@ -30,14 +30,14 @@ The outbox `app.domain_event` is read in `id` order by the aggregate projector a
 | [`risk_signal.changed`](#risk_signalchanged-v1) | 1 | `risk_signal` | `risk_signal.id` | backend:masterdata, backend:sync | planned | not yet |
 | [`route_day.state_changed`](#route_daystate_changed-v1) | 1 | `route_day` | `route_day.id` | backend:sync | planned | not yet |
 | [`stock.moved`](#stockmoved-v1) | 1 | `stock_movement` | `stock_movement.client_uuid` | backend:sync | live | not yet |
-| [`support_ticket.commented`](#support_ticketcommented-v1) | 1 | `support_ticket` | `support_ticket.client_uuid` | backend:masterdata | planned | not yet |
-| [`support_ticket.created`](#support_ticketcreated-v1) | 1 | `support_ticket` | `support_ticket.client_uuid` | backend:masterdata | planned | not yet |
-| [`support_ticket.status_changed`](#support_ticketstatus_changed-v1) | 1 | `support_ticket` | `support_ticket.client_uuid` | backend:masterdata | planned | not yet |
+| [`support_ticket.commented`](#support_ticketcommented-v1) | 1 | `support_ticket` | `support_ticket.client_uuid` | backend:masterdata | live | not yet |
+| [`support_ticket.created`](#support_ticketcreated-v1) | 1 | `support_ticket` | `support_ticket.client_uuid` | backend:masterdata | live | not yet |
+| [`support_ticket.status_changed`](#support_ticketstatus_changed-v1) | 1 | `support_ticket` | `support_ticket.client_uuid` | backend:masterdata | live | not yet |
 | [`target.revised`](#targetrevised-v1) | 1 | `target_set` | `target_set.id` | backend:analytics | planned | not yet |
 | [`tracking_action.created`](#tracking_actioncreated-v1) | 1 | `tracking_action` | `tracking action uuid (audit_log.entity_id)` | backend:analytics | planned | not yet |
 | [`visit.closed`](#visitclosed-v1) | 1 | `visit` | `visit.client_uuid` | backend:sync | live | not yet |
-| [`zone_day.final_submitted`](#zone_dayfinal_submitted-v1) | 1 | `zone_day` | `<zone_id>:<business_date>` | backend:sync | planned | not yet |
-| [`zone_day.reopened`](#zone_dayreopened-v1) | 1 | `zone_day` | `<zone_id>:<business_date>` | backend:sync | planned | not yet |
+| [`zone_day.final_submitted`](#zone_dayfinal_submitted-v1) | 1 | `zone_day` | `<zone_id>:<business_date>` | backend:sync | live | not yet |
+| [`zone_day.reopened`](#zone_dayreopened-v1) | 1 | `zone_day` | `<zone_id>:<business_date>` | backend:sync | live | not yet |
 
 ## day_exception.decided v1
 
@@ -63,7 +63,7 @@ A due collection was accepted; the route-day and outlet dues are recomputed. Int
 
 ## leave.decided v1
 
-A leave application was approved or rejected on the web. The reason and the decision note are not in the payload. Introduced in V0134; planned.
+A leave application was approved or rejected on the web. The reason and the decision note are not in the payload. Introduced in V0134; live.
 
 | Key | Type | Required | Description |
 |---|---|---|---|
@@ -173,7 +173,7 @@ A stock ledger row was accepted (issue, return, adjustment, damaged, short). Int
 
 ## support_ticket.commented v1
 
-A comment was added to an open support ticket by the reporter (sync) or the desk (web). The comment text is not in the payload. Introduced in V0134; planned.
+A comment was added to an open support ticket by the reporter (sync) or the desk (web). The comment text is not in the payload. Introduced in V0134; live.
 
 | Key | Type | Required | Description |
 |---|---|---|---|
@@ -185,7 +185,7 @@ A comment was added to an open support ticket by the reporter (sync) or the desk
 
 ## support_ticket.created v1
 
-A support ticket was accepted from the phone (record support_ticket) with its INC number and default priority. Title and description are not in the payload. Introduced in V0134; planned.
+A support ticket was accepted from the phone (record support_ticket) with its INC number and default priority. Title and description are not in the payload. Introduced in V0134; live.
 
 | Key | Type | Required | Description |
 |---|---|---|---|
@@ -201,7 +201,7 @@ A support ticket was accepted from the phone (record support_ticket) with its IN
 
 ## support_ticket.status_changed v1
 
-A support ticket moved status (start, resolve, cancel, close review or desk close). Resolution notes and cancel reasons are not in the payload. Introduced in V0134; planned.
+A support ticket moved status (start, resolve, cancel, close review or desk close). Resolution notes and cancel reasons are not in the payload. Introduced in V0134; live.
 
 | Key | Type | Required | Description |
 |---|---|---|---|
@@ -253,7 +253,7 @@ A visit was accepted with its geo verdict. The projector counts calls, strike ra
 
 ## zone_day.final_submitted v1
 
-A zone-day was final-submitted by a TSO (app or web) or by the midnight AutoFinalSubmitJob (via job); its route-days lock and later rows are held or refused (D-TSO-MAN-31). Introduced in V0134; planned.
+A zone-day was final-submitted by a TSO (app or web) or by the midnight AutoFinalSubmitJob (via job); its route-days lock and later rows are held or refused (D-TSO-MAN-31). Introduced in V0134; live.
 
 | Key | Type | Required | Description |
 |---|---|---|---|
@@ -268,7 +268,7 @@ A zone-day was final-submitted by a TSO (app or web) or by the midnight AutoFina
 
 ## zone_day.reopened v1
 
-A final-submitted zone-day was reopened by an admin within the reopen window; its aggregates are recomputed. The reason is not in the payload. Introduced in V0134; planned.
+A final-submitted zone-day was reopened by an admin within the reopen window; its aggregates are recomputed. The reason is not in the payload. Introduced in V0134; live.
 
 | Key | Type | Required | Description |
 |---|---|---|---|
