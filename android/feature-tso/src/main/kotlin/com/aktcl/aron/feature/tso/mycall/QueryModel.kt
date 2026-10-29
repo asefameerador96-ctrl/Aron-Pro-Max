@@ -59,7 +59,8 @@ class VisitQueryState(private val rubric: Rubric, private val planUuid: String, 
     data class Ui(val answers: Map<Long, Boolean> = emptyMap(), val texts: Map<Long, String> = emptyMap(), val delegate: Boolean = false, val result: QueryResult = QueryResult.Editing)
 
     fun answer(criterionId: Long, yes: Boolean) { if (_s.value.result is QueryResult.Submitted) return; _s.value = _s.value.copy(answers = _s.value.answers + (criterionId to yes), result = QueryResult.Editing) }
-    fun text(criterionId: Long, value: String) { if (_s.value.result is QueryResult.Submitted) return; _s.value = _s.value.copy(texts = _s.value.texts + (criterionId to value.take(MAX_ANSWER_TEXT * 2)), result = QueryResult.Editing) }
+    /** A typed answer, at most [MAX_ANSWER_TEXT] characters (D-TSO-MAN-35: 1000, amends D-199's 500); the rest of a paste is dropped. */
+    fun text(criterionId: Long, value: String) { if (_s.value.result is QueryResult.Submitted) return; _s.value = _s.value.copy(texts = _s.value.texts + (criterionId to value.take(MAX_ANSWER_TEXT)), result = QueryResult.Editing) }
     fun delegate(yes: Boolean) { if (_s.value.result is QueryResult.Submitted) return; _s.value = _s.value.copy(delegate = yes, result = QueryResult.Editing) }
 
     suspend fun submit() {
@@ -110,14 +111,14 @@ sealed interface TaskResult {
     data object Failed : TaskResult
 }
 
-fun validateTask(typeCode: String?, types: List<TaskType>, date: String, comment: String, today: String): List<TaskError> {
+fun validateTask(typeCode: String?, types: List<TaskType>, date: String, comment: String, today: String, maxAheadDays: Long = MAX_PLAN_AHEAD_DAYS): List<TaskError> {
     val e = mutableListOf<TaskError>()
     if (typeCode == null || types.none { it.code == typeCode }) e += TaskError.NO_TYPE
     val d = runCatching { LocalDate.parse(date) }.getOrNull()
     if (d == null) e += TaskError.DATE_FORMAT else {
         val t = LocalDate.parse(today)
         if (d.isBefore(t)) e += TaskError.DATE_PAST
-        if (d.isAfter(t.plusDays(MAX_PLAN_AHEAD_DAYS))) e += TaskError.DATE_FAR
+        if (d.isAfter(t.plusDays(maxAheadDays))) e += TaskError.DATE_FAR
     }
     if (comment.trim().length > MAX_TASK_COMMENT) e += TaskError.COMMENT_LONG
     return e
@@ -129,6 +130,8 @@ class AssignTaskState(
     private val planUuid: String? = null,
     /** From a Visit Query: one task per plan outlet, so re-opening Assign Task can never create a second one. */
     taskUuid: String? = null,
+    /** The due-date window: `cfg.tso.plan_max_days_ahead` ([planDaysAhead]), as Set Plan. */
+    private val maxAheadDays: Long = MAX_PLAN_AHEAD_DAYS,
     private val newUuid: () -> String = { UUID.randomUUID().toString() },
 ) {
     private val uuid = taskUuid ?: newUuid()
@@ -138,7 +141,8 @@ class AssignTaskState(
     val typeList: List<TaskType> get() = types
     val srName: String? get() = route?.sr?.fullName
     fun todayIso() = today()
-    fun maxIso() = java.time.LocalDate.parse(today()).plusDays(MAX_PLAN_AHEAD_DAYS).toString()
+    fun maxIso() = java.time.LocalDate.parse(today()).plusDays(maxAheadDays).toString()
+    val routeName: String? get() = route?.name
 
     data class Ui(val typeCode: String? = null, val date: String, val comment: String = "", val result: TaskResult)
 
@@ -151,7 +155,7 @@ class AssignTaskState(
         val s = _s.value; val sr = route?.sr
         if (sr == null) { _s.value = s.copy(result = TaskResult.NoSr); return }
         if (busy || s.result is TaskResult.Assigned) return
-        val errors = validateTask(s.typeCode, types, s.date, s.comment, today())
+        val errors = validateTask(s.typeCode, types, s.date, s.comment, today(), maxAheadDays)
         if (errors.isNotEmpty()) { _s.value = s.copy(result = TaskResult.Invalid(errors)); return }
         busy = true
         try {

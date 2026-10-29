@@ -36,4 +36,52 @@
     <string name="tso_fs_sales_date_colon">Sales Date:</string>
     <string name="tso_fs_reopened">This zone was reopened after its last Final Submit. Check the routes and tap Submit again.</string>
     <string name="tso_fs_unavailable">Final Submit needs the internet to read your zones. Connect and open it again.</string>
+    <!-- My Periphery (screenshots 28 and 29, D-TSO-MAN-34) -->
+    <string name="tso_pe_my_teams">My Teams</string>
+    <string name="tso_pe_outlets_title">Outlets</string>
+    <string name="tso_pe_refresh">Refresh</string>
+    <string name="tso_pe_mock_today">Mock GPS today: %1$s</string>
+    <string name="tso_pe_computed">No connection: worked out on this phone from your outlet list.</string>
+    <string name="tso_pe_me">You are here</string>
+    <string name="tso_pe_found">%1$s outlets within %2$s m</string>
+    <string name="tso_pe_pick_hint">Pick the zone and the radius. The outlets around you show on the map.</string>
+    <!-- My Call (screenshots 31 to 38, D-TSO-MAN-35) -->
+    <string name="tso_mc_select_date">Select Date</string>
+    <string name="tso_mc_select_zone">Select Zone</string>
+    <string name="tso_mc_select_route">Select Route</string>
+    <string name="tso_mc_select_outlets">Select Outlets</string>
+    <string name="tso_mc_selected_count">%1$s of %2$s selected</string>
+    <string name="tso_mc_visit_plan_outlets">Visit Plan Outlets</string>
+    <string name="tso_mc_tab_pending">Pending</string>
+    <string name="tso_mc_tab_completed">Completed</string>
+    <string name="tso_mc_no_outlets_found">No Outlets Found</string>
+    <string name="tso_mc_code_line">Code: %1$s</string>
+    <string name="tso_mc_owner_line">Owner: %1$s</string>
+    <string name="tso_mc_contact_line">Contact: %1$s</string>
+    <string name="tso_mc_channel_line">Channel: %1$s Channel</string>
+    <string name="tso_mc_channel_none">Channel: -</string>
+    <string name="tso_mc_cluster_line">Cluster: %1$s</string>
+    <string name="tso_mc_none">-</string>
+    <string name="tso_mc_info_outlet">Outlet Name:</string>
+    <string name="tso_mc_info_cluster">Cluster:</string>
+    <string name="tso_mc_info_route">Route:</string>
+    <string name="tso_mc_select_task_type">Select Task Type</string>
+    <string name="tso_mc_plan_saved_toast">Plan saved. It is sent when the phone is online.</string>
+    <string name="tso_mc_query_saved_toast">Visit saved. It is sent when the phone is online.</string>
+    <string name="tso_mc_task_saved_toast">Task saved for %1$s. It is sent when the phone is online.</string>
+    <!-- My Feedback (screenshot 43, D-TSO-MAN-36) -->
+    <string name="tso_fb_list_title">My feedback</string>
+    <string name="tso_fb_add_new">Add new feedback</string>
+    <string name="tso_fb_create_title">Create New Feedback</string>
+    <string name="tso_fb_category_label">Feedback Category</string>
+    <string name="tso_fb_enter_title">Enter title</string>
+    <string name="tso_fb_descriptions">Descriptions</string>
+    <string name="tso_fb_enter_description">Enter description</string>
+    <string name="tso_fb_browse_gallery">Browse Gallery</string>
+    <string name="tso_fb_picture_added">One picture added</string>
+    <string name="tso_fb_remove_picture">Remove</string>
+    <string name="tso_fb_gallery_no_space">The phone is almost full, so the picture was not added. Free some space and try again.</string>
+    <string name="tso_fb_gallery_too_large">This picture is too large. Pick another one.</string>
+    <string name="tso_fb_gallery_failed">This picture could not be read. Pick another one.</string>
+    <string name="tso_fb_gallery_unavailable">This phone has no picture picker.</string>
 </resources>

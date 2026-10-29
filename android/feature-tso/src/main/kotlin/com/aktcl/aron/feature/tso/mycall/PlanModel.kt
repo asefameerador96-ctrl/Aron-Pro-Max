@@ -10,7 +10,8 @@ data class RouteSr(val userId: Long, val fullName: String)
 
 data class PlanRoute(val id: Long, val code: String, val name: String, val zoneId: Long, val label: String?, val sr: RouteSr? = null)
 
-data class PlanOutlet(val id: Long, val code: String, val name: String, val nameBn: String?, val owner: String, val cluster: String?, val phone: String?) {
+/** [channel]: the outlet's channel code (GT, DCC, Astha, RCC, MT, HoReCa); the 5-line card of screenshot 36 shows it (D-TSO-MAN-35). */
+data class PlanOutlet(val id: Long, val code: String, val name: String, val nameBn: String?, val owner: String, val cluster: String?, val phone: String?, val channel: String? = null) {
     fun title(bangla: Boolean) = if (bangla && !nameBn.isNullOrBlank()) nameBn else name
 }
 
@@ -37,9 +38,13 @@ object PlanIds {
 
 enum class PlanError { NO_ROUTE, NO_OUTLETS, DATE_FORMAT, DATE_PAST, DATE_FAR }
 
+/** `cfg.tso.plan_max_days_ahead` when the bundle has none (registry default 60, bounds 1..90). */
 const val MAX_PLAN_AHEAD_DAYS = 60L
 
-fun validatePlan(date: String, routeId: Long?, selected: Set<Long>, today: String): List<PlanError> {
+/** The days-ahead window of Set Plan and Assign Task from the config value; outside the registry bounds 1..90 the default. */
+fun planDaysAhead(cfg: Int?): Long = cfg?.takeIf { it in 1..90 }?.toLong() ?: MAX_PLAN_AHEAD_DAYS
+
+fun validatePlan(date: String, routeId: Long?, selected: Set<Long>, today: String, maxAheadDays: Long = MAX_PLAN_AHEAD_DAYS): List<PlanError> {
     val e = mutableListOf<PlanError>()
     if (routeId == null) e += PlanError.NO_ROUTE
     if (selected.isEmpty()) e += PlanError.NO_OUTLETS
@@ -47,7 +52,7 @@ fun validatePlan(date: String, routeId: Long?, selected: Set<Long>, today: Strin
     if (d == null) e += PlanError.DATE_FORMAT else {
         val t = LocalDate.parse(today)
         if (d.isBefore(t)) e += PlanError.DATE_PAST
-        if (d.isAfter(t.plusDays(MAX_PLAN_AHEAD_DAYS))) e += PlanError.DATE_FAR
+        if (d.isAfter(t.plusDays(maxAheadDays))) e += PlanError.DATE_FAR
     }
     return e
 }
@@ -82,7 +87,8 @@ object PlanJson {
         (0 until a.length()).mapNotNull { i -> runCatching { a.getJSONObject(i).let { o ->
             PlanOutlet(o.getLong("id"), str(o, "code"), str(o, "name"), if (o.isNull("name_bn")) null else o.optString("name_bn").ifBlank { null }, str(o, "owner_name"),
                 if (o.has("cluster_name") && !o.isNull("cluster_name")) o.optString("cluster_name") else null,
-                if (o.isNull("contact_number")) null else o.optString("contact_number").ifBlank { null }) } }.getOrNull() }
+                if (o.isNull("contact_number")) null else o.optString("contact_number").ifBlank { null },
+                if (!o.has("channel") || o.isNull("channel")) null else o.optString("channel").ifBlank { null }) } }.getOrNull() }
     }.getOrNull()
 
     fun nextCursor(body: String): String? = runCatching { JSONObject(body).let { if (it.isNull("next_cursor")) null else it.optString("next_cursor").ifEmpty { null } } }.getOrNull()
@@ -104,7 +110,7 @@ object PlanJson {
 
     fun outletsToCache(o: List<PlanOutlet>): String = JSONObject().put("items", JSONArray(o.map {
         JSONObject().put("id", it.id).put("code", it.code).put("name", it.name).put("name_bn", it.nameBn ?: JSONObject.NULL).put("owner_name", it.owner)
-            .put("cluster_name", it.cluster ?: JSONObject.NULL).put("contact_number", it.phone ?: JSONObject.NULL) })).toString()
+            .put("cluster_name", it.cluster ?: JSONObject.NULL).put("contact_number", it.phone ?: JSONObject.NULL).put("channel", it.channel ?: JSONObject.NULL) })).toString()
 
     fun plansToCache(p: List<VisitPlanItem>): String = JSONObject().put("items", JSONArray(p.filter { it.sent }.map { pl ->
         JSONObject().put("plan_uuid", pl.planUuid).put("plan_date", pl.planDate).put("route_id", pl.routeId).put("outlets", JSONArray(pl.outlets.map {
