@@ -112,11 +112,18 @@ class ReportEngine(
                 zones = if (zones == null) sel else zones.intersect(sel.toSet()).toList()
             }
             if (geo.route.isNotEmpty()) {
-                val rows = h.createQuery("SELECT route_id, zone_id FROM dw.dim_geo WHERE route_id = ANY(:ids)").bindArray("ids", Long::class.javaObjectType, geo.route)
+                // A route is in the zone(s) it had on the dates of the period (app.route_zone_history), not only the zone it has today: a route that moved
+                // is still its old zone's for an old period. Rows are read by zone and route both, so a route never widens the reach.
+                // A route with no history row at all (rows loaded with triggers off, a bulk import) is placed by the zone it has now (dw.dim_geo), as AsWasSql.geo does for the Ops lists.
+                val rows = h.createQuery(
+                    "SELECT route_id, zone_id FROM app.route_zone_history WHERE route_id = ANY(:ids) AND daterange(valid_from, valid_to, '[)') && daterange(:f, :t, '[]') " +
+                        "UNION SELECT g.route_id, g.zone_id FROM dw.dim_geo g WHERE g.route_id = ANY(:ids) AND NOT EXISTS (SELECT 1 FROM app.route_zone_history z WHERE z.route_id = g.route_id)",
+                )
+                    .bindArray("ids", Long::class.javaObjectType, geo.route).bind("f", from).bind("t", to)
                     .map { rs, _ -> rs.getLong(1) to rs.getLong(2) }.list()
-                val inReach = rows.filter { (r, z) -> (zones == null || z in zones!!) && (routes == null || r in routes!!) }
+                val inReach = rows.filter { (r, z) -> (zones == null || z in zones!!) && (routes == null || r in routes!!) }.map { it.first }.distinct()
                 if (inReach.size != geo.route.distinct().size) throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "a selected route is outside your reach")
-                routes = inReach.map { it.first }
+                routes = inReach
             }
         }
         if (zones != null && zones.isEmpty()) zones = listOf(-1L)   // an empty reach reads nothing, never "everything"

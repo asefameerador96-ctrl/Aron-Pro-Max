@@ -47,4 +47,17 @@ class ReportBatchCTest : ReportFixture() {
             assertEquals(HttpStatusCode.Forbidden, run(11, Role.TSO, key, body(""","geo":{"zone":[$z2]}""")).status, key)
         }
     }
+
+    @Test
+    fun qcReportsPlaceARouteInTheZoneItHadOnTheDate() = app {
+        // R1 (zone 1) moves to zone 2 today: the QC of the fixture date is still zone 1's, in all three reports.
+        val keys = listOf("qc-report", "settlement", "route-qc")
+        val z1Before = keys.associateWith { run(10, Role.ANALYST, it, body(""","geo":{"zone":[$z1]}""")).result() }
+        for (k in keys) assertEquals(4_800, z1Before.getValue(k).total("settlement_mtk"), k)
+        fresh.db.jdbi.useHandle<Exception> { h -> h.execute("UPDATE app.route SET zone_id = $z2 WHERE code = 'R1'"); Aggregator.refreshDimensions(h) }
+        for (k in keys) {
+            assertEquals(z1Before.getValue(k).rows(), run(10, Role.ANALYST, k, body(""","geo":{"zone":[$z1]}""")).result().rows(), "$k: zone 1 keeps the day")
+            assertEquals(0, run(10, Role.ANALYST, k, body(""","geo":{"zone":[$z2]}""")).result().rows().size, "$k: zone 2 does not get it")
+        }
+    }
 }
