@@ -111,6 +111,9 @@ ALTER TABLE app.visit ENABLE TRIGGER USER;
         val r1 = ss.rows().filter { it.str("route_code") == "R1" }
         assertEquals(2, r1.size); assertEquals(66.67, r1.first().num("cpr_pct")); assertEquals(34_000, r1.first().num("net_mtk").toLong())
         assertEquals(100.0, r1.single { it.str("brand_name") == "BrandOne" }.num("bsr_pct")); assertEquals(50.0, r1.single { it.str("brand_name") == "BrandTwo" }.num("bsr_pct"))
+        val b1 = fresh.db.jdbi.withHandle<Long, Exception> { it.createQuery("SELECT id FROM app.product_node WHERE name = 'BrandOne'").mapTo(Long::class.java).one() }
+        fresh.db.jdbi.useHandle<Exception> { h -> h.execute("SET session_replication_role = replica"); h.execute("DELETE FROM app.product_node WHERE id = $b1"); h.execute("SET session_replication_role = DEFAULT") }
+        assertEquals(1, run(10, Role.ANALYST, "sales-summary").result().rows().count { it.str("brand_name") == "n$b1" && it.str("route_code") == "R1" }, "a brand without a node row shows n<id>, as LEFT-01")
         // The AMO's app reads std-memo and sales-summary for its zone (F-API-017b); the other batch B reports are not for AMO.
         assertEquals(HttpStatusCode.OK, run(12, Role.AMO, "sales-summary").status)
         assertEquals(3, run(12, Role.AMO, "sales-summary").result().rows().size)           // zone 1: R1 two brands, R2 one

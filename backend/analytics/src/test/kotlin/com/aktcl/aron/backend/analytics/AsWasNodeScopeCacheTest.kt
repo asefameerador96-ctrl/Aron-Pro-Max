@@ -90,4 +90,24 @@ class AsWasNodeScopeCacheTest {
         val r = runCatching { DashboardService(fresh.db, AronClock { now }).summary(dmo, "territory", t1, day, day) }
         assertEquals(ProblemCode.ERR_FORBIDDEN, (r.exceptionOrNull() as? ApiProblem)?.code, "window zones all out of reach: 403, the chain is not consulted")
     }
+
+    private fun twoZoneCaller() = Reach(7, Role.DMO, day, false, setOf(z1, z2), emptySet(), false, listOf(ReachNode("zone", z1), ReachNode("zone", z2)))
+
+    @Test
+    fun aDefaultReadAndAnExplicitReadOfTheFirstTopNodeNeverShareACacheEntry() {
+        val caller = twoZoneCaller()
+        fun fresh1() = DashboardService(fresh.db, AronClock { now })
+        val aloneSummary = fresh1().summary(caller, "zone", z1, day, day); val aloneGeo = fresh1().geoValidation(caller, "zone", z1, day, day)
+        val wholeSummary = fresh1().summary(caller, null, null, day, day); val wholeGeo = fresh1().geoValidation(caller, null, null, day, day)
+        assertEquals(false, aloneSummary.kpis == wholeSummary.kpis && aloneSummary.children.size == wholeSummary.children.size, "fixture: Z1 alone differs from the whole reach (summary)")
+        assertEquals(false, aloneGeo.visits == wholeGeo.visits, "fixture: Z1 alone differs from the whole reach (geo)")
+        for (defaultFirst in listOf(true, false)) {
+            val svc = DashboardService(fresh.db, AronClock { now })   // ONE shared service, both reads within the TTL
+            val order = if (defaultFirst) listOf(true, false) else listOf(false, true)
+            for (default in order) {
+                if (default) { assertEquals(wholeSummary, svc.summary(caller, null, null, day, day)); assertEquals(wholeGeo, svc.geoValidation(caller, null, null, day, day)) }
+                else { assertEquals(aloneSummary, svc.summary(caller, "zone", z1, day, day)); assertEquals(aloneGeo, svc.geoValidation(caller, "zone", z1, day, day)) }
+            }
+        }
+    }
 }
