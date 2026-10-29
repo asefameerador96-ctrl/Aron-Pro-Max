@@ -47,6 +47,8 @@ data class DailyTrackingRow(
     val route_id: Long, val route_name: String, val zone_id: Long, val user_id: Long? = null, val user_name: String? = null, val state: String,
     val target_outlets: Int, val visited_outlets: Int, val successful_calls: Int, val active_memo_count: Int, val net_mtk: Long,
     val by_category: List<CategoryVolume> = emptyList(), val tilldate_target_achievement_pct: Double? = null, val bucket: String,
+    /** Lead ruling R-W-06 (tso-manual X2): the till-date achievement in basis points, the one figure; the float member is it / 100. */
+    val tilldate_target_achievement_bp: Long? = null,
 )
 
 @Serializable
@@ -72,6 +74,8 @@ data class TrackingAction(val action_uuid: String, val route_id: Long, val busin
  * sticks of sale lines, business dates 1st..the tracked date; T' = the sum over the route's cigarette items (variants) of
  * Targets.tillDate(T_item, e, n) on the `cfg.kpi.tilldate_basis.tso` basis (working days at the route's zone); Percent.bp(A, T') printed
  * with two decimals. Null when the route has no cigarette target that month (T' = 0) or n = 0.
+ * `tilldate_target_achievement_bp` (lead ruling R-W-06, tso-manual X2) is that Percent.bp itself, from the integers, rounded once;
+ * the deprecated float member is the same bp / 100 (exact at two decimals), so the two never disagree.
  */
 class DailyTrackingService(private val db: Database, private val config: ServerConfig, private val clock: AronClock = AronClock.SYSTEM) {
 
@@ -114,8 +118,11 @@ class DailyTrackingService(private val db: Database, private val config: ServerC
                 """,
             ).bind("d", date).bindArray("rids", Long::class.javaObjectType, page.map { it.route_id })
                 .map { rs, _ -> rs.getLong(1) to CategoryVolume(rs.getString(2), rs.getString(3), rs.getLong(4), rs.getLong(5)) }.list().groupBy({ it.first }, { it.second })
-            val tillDate = tillDatePct(h, page, date)
-            page.map { it.copy(by_category = cats[it.route_id].orEmpty(), tilldate_target_achievement_pct = tillDate[it.route_id]) } to (if (rows.size > limit) page.last().route_id else null)
+            val tillDate = tillDateBp(h, page, date)
+            page.map { r ->
+                val bp = tillDate[r.route_id]
+                r.copy(by_category = cats[r.route_id].orEmpty(), tilldate_target_achievement_bp = bp, tilldate_target_achievement_pct = bp?.let { BigDecimal.valueOf(it, 2).toDouble() })
+            } to (if (rows.size > limit) page.last().route_id else null)
         }
         return DailyTrackingPage(clock.now().wire(), date.toString(), items, next?.let { Base64.getUrlEncoder().withoutPadding().encodeToString("r|$it".toByteArray()) }, comparator)
     }
@@ -153,10 +160,11 @@ class DailyTrackingService(private val db: Database, private val config: ServerC
     }
 
     /**
-     * The till-date target achievement % of each route on [date] (see the class comment): cigarette sticks, item till-date rounded once per
-     * variant and summed (R-F-01), one Percent.bp rounding, null without a cigarette target or when n = 0 (R-F-15).
+     * The till-date target achievement of each route on [date] in basis points (see the class comment): cigarette sticks, item till-date
+     * rounded once per variant and summed (R-F-01), one Percent.bp rounding, null without a cigarette target, when n = 0 (R-F-15) and when
+     * T' = 0. The integer is the figure (R-W-06); the float member is derived from it.
      */
-    private fun tillDatePct(h: org.jdbi.v3.core.Handle, rows: List<DailyTrackingRow>, date: LocalDate): Map<Long, Double?> {
+    private fun tillDateBp(h: org.jdbi.v3.core.Handle, rows: List<DailyTrackingRow>, date: LocalDate): Map<Long, Long?> {
         if (rows.isEmpty()) return emptyMap()
         val ids = rows.map { it.route_id }
         val month = java.time.YearMonth.from(date)
@@ -180,7 +188,7 @@ class DailyTrackingService(private val db: Database, private val config: ServerC
             val items = targets[row.route_id]
             val days = Targets.days(basis, ym, date.toKotlinLocalDate(), cals?.at(paths[row.zone_id] ?: NodePath.GLOBAL))
             val td = if (items == null || days.period == 0) null else items.fold(0L) { s, t -> Math.addExact(s, Targets.tillDate(t, days) ?: 0L) }
-            row.route_id to td?.let { Percent.bp((achieved[row.route_id] ?: 0L).coerceAtLeast(0L), it) }?.let { BigDecimal.valueOf(it, 2).toDouble() }
+            row.route_id to td?.let { Percent.bp((achieved[row.route_id] ?: 0L).coerceAtLeast(0L), it) }
         }
     }
 
