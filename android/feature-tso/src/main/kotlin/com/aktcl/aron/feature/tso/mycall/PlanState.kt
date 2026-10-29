@@ -20,6 +20,9 @@ interface PlanSource {
 
     /** Outlets whose Visit Query said "Delegate task? Yes" and whose task has not been assigned yet: Assign Task stays reachable for them. */
     suspend fun taskPending(planUuid: String): Set<Long>
+
+    /** `cfg.tso.plan_max_days_ahead` of the bundle (1..90); the default 60 when the bundle has none (D-TSO-MAN-35). */
+    suspend fun planMaxDaysAhead(): Int = MAX_PLAN_AHEAD_DAYS.toInt()
 }
 
 /** Queues the plan record and one plan-outlet record per new outlet in one transaction; returns how many outlets were new. */
@@ -36,36 +39,54 @@ sealed interface SetPlanResult {
 
 enum class PickLoad { IDLE, LOADING, READY, UNAVAILABLE }
 
-/** F-TSO-013: date, zone, route, "Show Outlet", multi-select, "Set Plan". Saving twice for a date and route is a union. */
-class SetPlanState(private val source: PlanSource, private val queue: PlanQueue, private val today: () -> String, private val tomorrow: () -> String = { today() }) {
-    private val _s = MutableStateFlow(Ui(date = tomorrow()))
+/**
+ * F-TSO-013, D-TSO-MAN-35 (screenshots 31 to 33): Select Date (today by default, up to `cfg.tso.plan_max_days_ahead`
+ * days ahead), Select Zone, Select Route, "Show Outlet", then Select Outlets with the tick per outlet and "Set Plan".
+ * Saving twice for a date and route is a union. [initialDate] is the date the form opens on (today unless a caller says
+ * otherwise).
+ */
+class SetPlanState(private val source: PlanSource, private val queue: PlanQueue, private val today: () -> String, initialDate: () -> String = today) {
+    private val _s = MutableStateFlow(Ui(date = initialDate()))
     val ui: StateFlow<Ui> = _s.asStateFlow()
     private var busy = false
 
-    /** The date picker's bounds: today to [MAX_PLAN_AHEAD_DAYS] days ahead. */
+    /** The date picker's bounds: today to the configured days ahead. */
     fun todayIso() = today()
-    fun maxIso() = java.time.LocalDate.parse(today()).plusDays(MAX_PLAN_AHEAD_DAYS).toString()
+    fun maxIso() = java.time.LocalDate.parse(today()).plusDays(_s.value.maxAheadDays).toString()
 
     data class Ui(
         val date: String, val routes: List<PlanRoute> = emptyList(), val routesLoad: PickLoad = PickLoad.IDLE, val zoneId: Long? = null, val routeId: Long? = null,
         val outlets: List<PlanOutlet> = emptyList(), val outletsLoad: PickLoad = PickLoad.IDLE, val alreadyPlanned: Set<Long> = emptySet(),
         val selected: Set<Long> = emptySet(), val result: SetPlanResult = SetPlanResult.Editing,
+        /** "Show Outlet" was tapped with no route chosen: the route field says so. */
+        val missingRoute: Boolean = false,
+        val maxAheadDays: Long = MAX_PLAN_AHEAD_DAYS,
     )
 
+    /** The routes of the reach (the zone preselected when there is only one) and the days-ahead window of the config. */
     suspend fun loadRoutes() {
         _s.value = _s.value.copy(routesLoad = PickLoad.LOADING)
         val r = runCatching { source.routes() }.getOrNull()
-        _s.value = _s.value.copy(routes = r.orEmpty(), routesLoad = if (r == null) PickLoad.UNAVAILABLE else PickLoad.READY)
+        val days = planDaysAhead(runCatching { source.planMaxDaysAhead() }.getOrNull())
+        val zones = zonesOf(r.orEmpty())
+        _s.value = _s.value.copy(
+            routes = r.orEmpty(), routesLoad = if (r == null) PickLoad.UNAVAILABLE else PickLoad.READY, maxAheadDays = days,
+            zoneId = _s.value.zoneId ?: zones.singleOrNull(),
+        )
     }
 
     fun setDate(d: String) { _s.value = _s.value.copy(date = d.take(10), result = SetPlanResult.Editing, outlets = emptyList(), outletsLoad = PickLoad.IDLE, selected = emptySet()) }
     fun pickZone(z: Long) { _s.value = _s.value.copy(zoneId = z, routeId = null, outlets = emptyList(), outletsLoad = PickLoad.IDLE, selected = emptySet(), result = SetPlanResult.Editing) }
-    fun pickRoute(r: Long) { _s.value = _s.value.copy(routeId = r, outlets = emptyList(), outletsLoad = PickLoad.IDLE, selected = emptySet(), result = SetPlanResult.Editing) }
+    fun pickRoute(r: Long) { _s.value = _s.value.copy(routeId = r, outlets = emptyList(), outletsLoad = PickLoad.IDLE, selected = emptySet(), result = SetPlanResult.Editing, missingRoute = false) }
+
+    /** Back from Select Outlets (or after a save) to the form: the picks stay, the list is read again next time. */
+    fun backToForm() { _s.value = _s.value.copy(outlets = emptyList(), outletsLoad = PickLoad.IDLE, selected = emptySet(), result = SetPlanResult.Editing) }
 
     /** "Show Outlet": the route's outlets, with those already in a plan for this date marked (they stay selected: the save is a union). */
     suspend fun showOutlets() {
-        val s = _s.value; val rid = s.routeId ?: return
-        _s.value = s.copy(outletsLoad = PickLoad.LOADING)
+        val s = _s.value
+        val rid = s.routeId ?: run { _s.value = s.copy(missingRoute = true); return }
+        _s.value = s.copy(outletsLoad = PickLoad.LOADING, missingRoute = false)
         val outs = runCatching { source.outlets(rid) }.getOrNull()
         val planned = runCatching { source.plans(s.date) }.getOrNull().orEmpty().filter { it.routeId == rid }.flatMap { p -> p.outlets.map { it.outletId } }.toSet()
         _s.value = _s.value.copy(outlets = outs.orEmpty(), outletsLoad = if (outs == null) PickLoad.UNAVAILABLE else PickLoad.READY, alreadyPlanned = planned, selected = planned.filter { id -> outs.orEmpty().any { it.id == id } }.toSet())
@@ -81,7 +102,7 @@ class SetPlanState(private val source: PlanSource, private val queue: PlanQueue,
     suspend fun submit() {
         val s = _s.value
         if (busy || s.result is SetPlanResult.Saved) return
-        val errors = validatePlan(s.date, s.routeId, s.selected, today())
+        val errors = validatePlan(s.date, s.routeId, s.selected, today(), s.maxAheadDays)
         if (errors.isNotEmpty()) { _s.value = s.copy(result = SetPlanResult.Invalid(errors)); return }
         busy = true
         try {
@@ -91,32 +112,38 @@ class SetPlanState(private val source: PlanSource, private val queue: PlanQueue,
     }
 }
 
-/** F-TSO-014: My Visit Plan, date + zone + route, tabs Pending / Completed. */
+/** F-TSO-014, D-TSO-MAN-35 (screenshots 34 to 36): My Visit Plan, date (today) + zone + route, then Pending / Completed without counts. */
 class VisitPlanState(private val source: PlanSource, private val today: () -> String) {
     private val _s = MutableStateFlow(Ui(date = today()))
     val ui: StateFlow<Ui> = _s.asStateFlow()
-    fun maxIso() = java.time.LocalDate.parse(today()).plusDays(MAX_PLAN_AHEAD_DAYS).toString()
+    fun maxIso() = java.time.LocalDate.parse(today()).plusDays(_s.value.maxAheadDays).toString()
 
     data class Ui(
         val date: String, val routes: List<PlanRoute> = emptyList(), val routesLoad: PickLoad = PickLoad.IDLE, val zoneId: Long? = null, val routeId: Long? = null,
         val plan: VisitPlanItem? = null, val planLoad: PickLoad = PickLoad.IDLE, val outlets: Map<Long, PlanOutlet> = emptyMap(),
         val pending: List<Long> = emptyList(), val completed: List<Long> = emptyList(), val tab: Int = 0, val taskPending: Set<Long> = emptySet(),
+        val missingRoute: Boolean = false, val maxAheadDays: Long = MAX_PLAN_AHEAD_DAYS,
     )
 
     suspend fun loadRoutes() {
         _s.value = _s.value.copy(routesLoad = PickLoad.LOADING)
         val r = runCatching { source.routes() }.getOrNull()
-        _s.value = _s.value.copy(routes = r.orEmpty(), routesLoad = if (r == null) PickLoad.UNAVAILABLE else PickLoad.READY)
+        val days = planDaysAhead(runCatching { source.planMaxDaysAhead() }.getOrNull())
+        _s.value = _s.value.copy(
+            routes = r.orEmpty(), routesLoad = if (r == null) PickLoad.UNAVAILABLE else PickLoad.READY, maxAheadDays = days,
+            zoneId = _s.value.zoneId ?: zonesOf(r.orEmpty()).singleOrNull(),
+        )
     }
 
     fun setDate(d: String) { _s.value = _s.value.copy(date = d.take(10), plan = null, planLoad = PickLoad.IDLE, pending = emptyList(), completed = emptyList()) }
     fun pickZone(z: Long) { _s.value = _s.value.copy(zoneId = z, routeId = null, plan = null, planLoad = PickLoad.IDLE, pending = emptyList(), completed = emptyList()) }
-    fun pickRoute(r: Long) { _s.value = _s.value.copy(routeId = r, plan = null, planLoad = PickLoad.IDLE, pending = emptyList(), completed = emptyList()) }
+    fun pickRoute(r: Long) { _s.value = _s.value.copy(routeId = r, plan = null, planLoad = PickLoad.IDLE, pending = emptyList(), completed = emptyList(), missingRoute = false) }
     fun tab(i: Int) { _s.value = _s.value.copy(tab = i) }
 
     suspend fun show() {
-        val s = _s.value; val rid = s.routeId ?: return
-        _s.value = s.copy(planLoad = PickLoad.LOADING)
+        val s = _s.value
+        val rid = s.routeId ?: run { _s.value = s.copy(missingRoute = true); return }
+        _s.value = s.copy(planLoad = PickLoad.LOADING, missingRoute = false)
         val plans = runCatching { source.plans(s.date) }.getOrNull()
         if (plans == null) { _s.value = _s.value.copy(planLoad = PickLoad.UNAVAILABLE); return }
         val plan = plans.firstOrNull { it.routeId == rid }

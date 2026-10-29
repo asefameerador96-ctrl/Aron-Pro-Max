@@ -23,7 +23,7 @@
     <string name="tso_leave_type">Select leave Type</string>
     <string name="tso_leave_from">Select Date</string>
     <string name="tso_leave_date_hint">YYYY-MM-DD</string>
-    <string name="tso_leave_days_label">Number of Days</string>
+    <string name="tso_leave_days_label">Number of days</string>
     <string name="tso_leave_days_minus">One day less</string>
     <string name="tso_leave_days_plus">One day more</string>
     <string name="tso_leave_until">Last day: %1$s</string>

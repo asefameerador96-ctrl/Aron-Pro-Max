@@ -17,6 +17,10 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.withLock
 import com.aktcl.aron.core.database.entity.CaptureMeta
 import com.aktcl.aron.core.database.repo.CaptureRepository
+import com.aktcl.aron.core.database.repo.FinalSubmitLock
+import com.aktcl.aron.core.database.repo.LockAcks
+import androidx.compose.runtime.collectAsState
+import androidx.compose.ui.platform.testTag
 import com.aktcl.aron.core.database.repo.ReferenceRepository
 import com.aktcl.aron.core.geo.FixManager
 import com.aktcl.aron.core.session.SessionComponents
@@ -208,6 +212,9 @@ class AmoDay(
     val visitFlow: VisitFlow = VisitFlow(
         fixes = fixSource, metaProvider = metaProvider,
         committer = { v, f ->
+            // tso-manual A3 (D-TSO-MAN-31): no control, joint or sale call on a route closed by its zone's Final Submit
+            // ([routeLocked]); the visit flow shows the refusal as a failed commit and nothing is stored
+            FinalSubmitLock.requireCallOpen(db, v.meta)
             v.geoForcePhotoUuid?.let { claimPhoto(it, "force_sale", "visit", v.clientUuid, f) }
             capture.recordVisitOpen(v, f); runCatching { requestSync() }
         },
@@ -264,6 +271,9 @@ class AmoDay(
     suspend fun closeVisit() = closeLock.withLock {
         // the lock makes a double tap wait; the second run finds the session already closed
         val v = visitSession.current.value ?: return@withLock
+        // tso-manual A3 (D-A3-22): on a route closed by its zone's Final Submit the call ends on the phone (the server would
+        // refuse its close day_final_submitted), so leaving a control or joint call never throws
+        if (AmoCallLock.endsOnPhone(db, visitSession, metaProvider.meta(v.routeId))) { routeId = null; return@withLock }
         val date = businessDate()
         val memo = db.captureDao().memosOn(date).filter { it.visitClientUuid == v.visitUuid }
         val superseded = memo.mapNotNull { it.supersedesClientUuid }.toSet()
@@ -293,7 +303,33 @@ class AmoDay(
         runCatching { routes() }.getOrNull()?.let { days ->
             zoneOutlets = days.flatMap { it.outlets }; zoneRoutes = days.associate { it.route.routeId to it.route.name }
         }
+        refreshLock()
     }
+
+    // ---- tso-manual A3: the route-day lock after the zone's Final Submit (D-TSO-MAN-31)
+    private val _dayLock = MutableStateFlow<AmoDayLock?>(null)
+
+    /** The zone routes closed by Final Submit today and the day's records that met the lock on the server; null when neither applies. */
+    val dayLock: StateFlow<AmoDayLock?> = _dayLock.asStateFlow()
+
+    /**
+     * Re-reads which of the zone's routes are closed by Final Submit today (held day state: bundle or delta, which the push
+     * `day_final_submitted` pulls; or the last sync answer) and the acks of records that met the lock. Local reads only.
+     * A new call on a closed route is refused by the visit flow's committer ([routeLocked]) and a call in progress ends on
+     * the phone ([AmoCallLock]); the AMO's routeless records (supervisor day, attendance) stay open.
+     */
+    suspend fun refreshLock() {
+        val date = businessDate()
+        val closed = runCatching { FinalSubmitLock.finalRoutes(db, date, zoneRoutes.keys.sorted()) }.getOrDefault(emptyList())
+        val acks = runCatching { FinalSubmitLock.metLock(db, date) }.getOrDefault(LockAcks(0, 0))
+        _dayLock.value = if (closed.isNotEmpty() || acks.any) AmoDayLock(closed, acks) else null
+    }
+
+    /**
+     * True when [routeId]'s route-day today is closed by its zone's Final Submit: a control, joint or sale call on it cannot
+     * start (the visit flow's committer refuses it through [FinalSubmitLock.requireCallOpen], which reads the same state).
+     */
+    suspend fun routeLocked(routeId: Long): Boolean = runCatching { FinalSubmitLock.isFinal(db, businessDate(), routeId) }.getOrDefault(false)
 
     private suspend fun closeAbandoned(v: com.aktcl.aron.feature.outlet.OpenVisit) {
         capture.recordVisitClose(
@@ -308,9 +344,8 @@ class AmoDay(
     /** After a relaunch: a committed visit with no close is the call in progress. */
     suspend fun restoreOpenVisit() {
         if (visitSession.current.value != null) return
-        val date = businessDate()
-        val closed = db.captureDao().visitClosesOn(date).map { it.visitClientUuid }.toSet()
-        val last = db.captureDao().visitsOn(date).filter { it.clientUuid !in closed && it.geoAction != "blocked" && it.visitKind.startsWith("amo_") }.maxByOrNull { it.sequenceNo } ?: return
+        // tso-manual A3: a call on a route closed by Final Submit is not restored (it cannot go on; D-A3-22)
+        val last = FinalSubmitLock.callToRestore(db, businessDate()) { it.geoAction != "blocked" && it.visitKind.startsWith("amo_") } ?: return
         visitSession.restore(
             com.aktcl.aron.feature.outlet.OpenVisit(
                 visitUuid = last.clientUuid, outletId = last.outletId, routeId = last.meta.routeId ?: 0L, geoVerdict = last.geoVerdict,
@@ -544,3 +579,86 @@ object NoCameraPipeline : PhotoPipeline {
     override suspend fun captureAndCompress(photoUuid: String): CapturedPhoto? = null
     override suspend fun discard(photoUuid: String) = Unit
 }
+
+/**
+ * The AMO's view of the Final Submit lock (tso-manual A3, D-TSO-MAN-31): the zone routes whose route-day is closed today
+ * ([closedRouteIds], in route id order) and the day's records the server held for review or refused ([acks]).
+ */
+data class AmoDayLock(val closedRouteIds: List<Long>, val acks: LockAcks)
+
+/**
+ * tso-manual A3 (D-TSO-MAN-31, D-A3-22): the AMO's call in progress on a route closed by its zone's Final Submit ends on the
+ * phone: the server refuses a `visit_close` captured after the lock, so none is queued and nothing throws. Without the day
+ * object, so tests run it on a plain database.
+ */
+internal object AmoCallLock {
+    /** Ends the open call on the phone when its route-day is closed by Final Submit (no close queued); false otherwise. */
+    suspend fun endsOnPhone(db: AronDatabase, session: VisitSession, meta: CaptureMeta): Boolean {
+        if (session.current.value == null || !FinalSubmitLock.refuses(db, meta, "visit_close")) return false
+        session.close()
+        return true
+    }
+}
+
+/**
+ * The banner of the AMO day after a Final Submit in the zone (D-TSO-MAN-31): how many routes are closed (no new call; sales, edits and
+ * collections on them are not accepted; printing still works) and how many records met the lock. It refreshes itself when
+ * a push pull lands, only while on screen (no timer). Nothing shows while every route is open.
+ */
+@androidx.compose.runtime.Composable
+fun AmoDayLockBanner(day: AmoDay, modifier: androidx.compose.ui.Modifier = androidx.compose.ui.Modifier) {
+    val lock = day.dayLock.collectAsState().value
+    androidx.compose.runtime.LaunchedEffect(day) {
+        day.refreshLock()
+        com.aktcl.aron.core.sync.push.PushRuntime.pulled.collect { day.refreshLock() }
+    }
+    AmoDayLockBannerContent(lock, modifier)
+}
+
+/**
+ * tso-manual A3 (ask 1): the lock banner for the AMO Home's banner list (`AmoApp(banners = ...)`): one Warning banner with
+ * the title and the lines of [AmoDayLockBanner], refreshed the same way; empty while every route is open or before the day exists.
+ */
+@androidx.compose.runtime.Composable
+fun amoDayLockBanners(day: AmoDay?): List<com.aktcl.aron.feature.home.RoleBanner> {
+    val d = day ?: return emptyList()
+    val lock = d.dayLock.collectAsState().value
+    androidx.compose.runtime.LaunchedEffect(d) {
+        d.refreshLock()
+        com.aktcl.aron.core.sync.push.PushRuntime.pulled.collect { d.refreshLock() }
+    }
+    return amoDayLockText(lock)?.let { listOf(com.aktcl.aron.feature.home.RoleBanner(it, com.aktcl.aron.core.ui.BannerKind.Warning)) }.orEmpty()
+}
+
+/** The words of [lock] as one text: the title (when a route is closed), then each line; null when nothing applies. */
+@androidx.compose.runtime.Composable
+fun amoDayLockText(lock: AmoDayLock?): String? {
+    val l = lock ?: return null
+    val title = if (l.closedRouteIds.isNotEmpty()) androidx.compose.ui.res.stringResource(R.string.amo_lock_title) else null
+    return (listOfNotNull(title) + amoLockLines(l)).joinToString(separator = AMO_LINE_BREAK).ifEmpty { null }
+}
+
+@androidx.compose.runtime.Composable
+private fun amoLockLines(l: AmoDayLock): List<String> = buildList {
+    val closed = l.closedRouteIds.size
+    if (closed > 0) add(androidx.compose.ui.res.stringResource(R.string.amo_lock_body, com.aktcl.aron.core.ui.localizedNumber(closed.toLong())))
+    if (l.acks.held > 0) add(androidx.compose.ui.res.stringResource(R.string.amo_lock_held, com.aktcl.aron.core.ui.localizedNumber(l.acks.held.toLong())))
+    if (l.acks.refused > 0) add(androidx.compose.ui.res.stringResource(R.string.amo_lock_refused, com.aktcl.aron.core.ui.localizedNumber(l.acks.refused.toLong())))
+}
+
+/** What [AmoDayLockBanner] draws for [lock] (null: nothing). */
+@androidx.compose.runtime.Composable
+fun AmoDayLockBannerContent(lock: AmoDayLock?, modifier: androidx.compose.ui.Modifier = androidx.compose.ui.Modifier) {
+    val l = lock ?: return
+    val closed = l.closedRouteIds.size
+    val body = amoLockLines(l).joinToString(separator = AMO_LINE_BREAK)
+    com.aktcl.aron.core.ui.AronBanner(
+        body, modifier.then(androidx.compose.ui.Modifier.testTag(AmoDayLockTags.BANNER)), kind = com.aktcl.aron.core.ui.BannerKind.Warning,
+        title = if (closed > 0) androidx.compose.ui.res.stringResource(R.string.amo_lock_title) else null,
+    )
+}
+
+object AmoDayLockTags { const val BANNER = "amo_day_lock_banner" }
+
+private const val AMO_LINE_BREAK = "\n"
+

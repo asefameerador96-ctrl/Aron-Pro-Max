@@ -12,9 +12,23 @@ import com.aktcl.aron.feature.tso.mycall.PlanRoute
  * `GET /v1/outlets` stays the fallback for a phone whose bundle has no outlets yet (an older server, a first run before the bundle).
  */
 internal object TsoBundleReads {
+    /**
+     * tso-manual A3 (D-TSO-MAN-34): the bundle's outlets of [routes] for the offline Retailer search, with the zone of their
+     * route; the server's filters (status, confirmed coordinates) are applied by NearbyRule, not here.
+     */
+    fun nearbyOutlets(routes: List<RouteEntity>, outletsByRoute: Map<Long, List<OutletEntity>>): List<com.aktcl.aron.feature.tso.periphery.BundleOutlet> =
+        routes.flatMap { r ->
+            outletsByRoute[r.routeId].orEmpty().map {
+                com.aktcl.aron.feature.tso.periphery.BundleOutlet(
+                    it.outletId, it.code, it.name, it.lat, it.lng, it.routeId, r.zoneId, it.status == "active", it.locationConfirmed,
+                    it.clusterName.takeIf { c -> c.isNotBlank() }, it.channel.takeIf { c -> c.isNotBlank() }, it.contactNumber?.takeIf { p -> p.isNotBlank() },
+                )
+            }
+        }.distinctBy { it.id }
+
     /** The outlets of [routeId] in visit order; inactive ones are left out, as the online read does. */
     fun outlets(rows: List<OutletEntity>): List<PlanOutlet> = rows.filter { it.status == "active" }.map {
-        PlanOutlet(it.outletId, it.code, it.name, it.nameBn, it.ownerName, it.clusterName.takeIf { c -> c.isNotBlank() }, it.contactNumber?.takeIf { p -> p.isNotBlank() })
+        PlanOutlet(it.outletId, it.code, it.name, it.nameBn, it.ownerName, it.clusterName.takeIf { c -> c.isNotBlank() }, it.contactNumber?.takeIf { p -> p.isNotBlank() }, it.channel.takeIf { c -> c.isNotBlank() })
     }
 
     /** The routes of the bundle. The bundle names no SR on a route (the assignee comes from the online read), so [PlanRoute.sr] is null here. */

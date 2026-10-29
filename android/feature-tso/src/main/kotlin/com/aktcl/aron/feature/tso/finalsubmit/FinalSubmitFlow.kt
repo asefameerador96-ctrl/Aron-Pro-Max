@@ -6,7 +6,8 @@ import com.aktcl.aron.feature.tso.rememberRetained
 
 /**
  * Final Submit (F-TSO-010/021, online only), moved out of TsoApp by a1-stubs with the behaviour unchanged: the state
- * survives recreation and the on-screen back starts a fresh one next time (the epoch).
+ * survives recreation and leaving the screen (the on-screen back and the system back alike, FinalSubmitScreen routes both
+ * through [onBack]) starts a fresh one next time (the epoch).
  */
 @Composable
 fun FinalSubmitFlow(api: FinalSubmitApi, userKey: String, userId: Long, today: () -> String, onBack: () -> Unit) {

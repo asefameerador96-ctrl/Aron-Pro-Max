@@ -20,10 +20,10 @@
     <string name="tso_leave_apply_title">ছুটির আবেদন</string>
     <string name="tso_leave_apply">ছুটির আবেদন করুন</string>
     <string name="tso_leave_reason_line">কারণ: %1$s</string>
-    <string name="tso_leave_type">ছুটির ধরন</string>
-    <string name="tso_leave_from">শুরুর তারিখ</string>
+    <string name="tso_leave_type">ছুটির ধরন বাছাই করুন</string>
+    <string name="tso_leave_from">তারিখ বাছাই করুন</string>
     <string name="tso_leave_date_hint">YYYY-MM-DD</string>
-    <string name="tso_leave_days_label">কত দিন</string>
+    <string name="tso_leave_days_label">দিনের সংখ্যা</string>
     <string name="tso_leave_days_minus">এক দিন কম</string>
     <string name="tso_leave_days_plus">এক দিন বেশি</string>
     <string name="tso_leave_until">শেষ দিন: %1$s</string>

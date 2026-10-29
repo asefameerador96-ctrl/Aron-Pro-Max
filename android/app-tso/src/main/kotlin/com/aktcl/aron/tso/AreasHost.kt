@@ -2,14 +2,17 @@ package com.aktcl.aron.tso
 
 import com.aktcl.aron.feature.tso.TsoScreen
 import com.aktcl.aron.feature.tso.TsoScreenContent
-import com.aktcl.aron.feature.tso.feedback.FeedbackFlow
+import com.aktcl.aron.feature.tso.feedback.FeedbackListEntry
+import com.aktcl.aron.feature.tso.feedback.FeedbackNewEntry
 import com.aktcl.aron.feature.tso.feedback.FeedbackPhotos
 import com.aktcl.aron.feature.tso.finalsubmit.FinalSubmitFlow
 import com.aktcl.aron.feature.tso.leave.LeaveFlow
 import com.aktcl.aron.feature.tso.mycall.MyCallDeps
-import com.aktcl.aron.feature.tso.mycall.MyCallFlow
+import com.aktcl.aron.feature.tso.mycall.SetPlanEntry
+import com.aktcl.aron.feature.tso.mycall.VisitPlanEntry
+import com.aktcl.aron.feature.tso.periphery.MyTeamEntry
 import com.aktcl.aron.feature.tso.periphery.PeripheryDeps
-import com.aktcl.aron.feature.tso.periphery.PeripheryFlow
+import com.aktcl.aron.feature.tso.periphery.RetailerEntry
 
 /**
  * The area screens' host ports (lane A3 owns this file after a1-stubs; build contract s5 A3): Leave, Final Submit, My
@@ -24,7 +27,7 @@ class AreasHostDeps(val host: TsoHost) {
     val feedbackQueue by lazy { reads.feedbackQueue(host.userId) { host.mediaFor() } }
     val finalSubmit by lazy { reads.finalSubmit(host.userId, reads.plan(host.userId)) }
     val periphery by lazy {
-        PeripheryDeps(reads.periphery(host.userId, reads.plan(host.userId)), reads.fix(host.context), online = host.online, nowMs = host.nowMs)
+        PeripheryDeps(reads.periphery(host.userId, reads.plan(host.userId)), reads.fix(host.context), online = host.online, nowMs = host.nowMs, asOfNow = { reads.asOfClock() })
     }
     val myCall by lazy {
         val src = reads.plan(host.userId)
@@ -35,20 +38,22 @@ class AreasHostDeps(val host: TsoHost) {
     }
 
     /** The feedback photo port: null until this user's media components are ready (reads compose state, so the row appears then). */
-    fun feedbackPhotos(): FeedbackPhotos? = host.media()?.let { reads.feedbackPhotos(it) }
+    fun feedbackPhotos(): FeedbackPhotos? = host.media()?.let { reads.feedbackPhotos(it, host.context.contentResolver) }
 }
 
 /**
- * The area screens by destination. a1-stubs keeps one entry per former Home tile with the flow unchanged (the hubs stay
- * inside MY_TEAM and MY_VISIT_PLAN; the list and form inside LEAVE and FEEDBACK_LIST); A3 splits them per screen
- * (RETAILER, SET_PLAN, FEEDBACK_NEW) when the drawer replaces the hubs.
+ * The area screens by destination (tso-manual A3 step 2, D-TSO-MAN-14/34/35/36): one entry per drawer row, so the drawer
+ * opens My Team, Retailer, My Visit Plan, Set Plan, Add new feedback and My feedback directly (the hubs of the former tile
+ * Home are gone from the app). Each entry keeps its own sub-steps (Select Outlets; Visit Plan Outlets, Visit Query, Assign
+ * Task) with the system back and the on-screen back going to the same place (CR-4).
  */
 fun areaScreens(deps: AreasHostDeps): Map<TsoScreen, TsoScreenContent> = mapOf<TsoScreen, TsoScreenContent>(
     TsoScreen.LEAVE to { nav, _ -> LeaveFlow(deps.leave, deps.leaveQueue, deps.host.userKey, deps.host.today, onBack = { nav.back() }) },
     TsoScreen.FINAL_SUBMIT to { nav, _ -> FinalSubmitFlow(deps.finalSubmit, deps.host.userKey, deps.host.userId, deps.host.today, onBack = { nav.back() }) },
-    TsoScreen.MY_TEAM to { nav, _ -> PeripheryFlow(deps.periphery, deps.host.userKey, deps.host.today, onBack = { nav.back() }) },
-    TsoScreen.MY_VISIT_PLAN to { nav, _ -> MyCallFlow(deps.myCall, deps.host.userKey, deps.host.today, onBack = { nav.back() }) },
-    TsoScreen.FEEDBACK_LIST to { nav, _ ->
-        FeedbackFlow(deps.feedback, deps.feedbackQueue, deps.feedbackPhotos(), deps.host.userKey, deps.host.nowIso, onBack = { nav.back() })
-    },
+    TsoScreen.MY_TEAM to { nav, _ -> MyTeamEntry(deps.periphery, deps.host.userKey, deps.host.today, nav) },
+    TsoScreen.RETAILER to { nav, _ -> RetailerEntry(deps.periphery, deps.host.userKey, nav) },
+    TsoScreen.MY_VISIT_PLAN to { nav, _ -> VisitPlanEntry(deps.myCall, deps.host.userKey, deps.host.today, nav) },
+    TsoScreen.SET_PLAN to { nav, _ -> SetPlanEntry(deps.myCall, deps.host.userKey, deps.host.today, nav) },
+    TsoScreen.FEEDBACK_NEW to { nav, _ -> FeedbackNewEntry(deps.feedback, deps.feedbackQueue, deps.feedbackPhotos(), deps.host.userKey, deps.host.nowIso, nav) },
+    TsoScreen.FEEDBACK_LIST to { nav, _ -> FeedbackListEntry(deps.feedback, canWrite = true, deps.host.userKey, nav) },
 )

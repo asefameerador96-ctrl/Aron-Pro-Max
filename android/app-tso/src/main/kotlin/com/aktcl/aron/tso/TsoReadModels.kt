@@ -10,6 +10,7 @@ import com.aktcl.aron.core.network.Grant
 import com.aktcl.aron.core.session.SessionComponents
 import com.aktcl.aron.feature.tso.leave.LeaveJson
 import com.aktcl.aron.feature.tso.leave.LeaveSource
+import com.aktcl.aron.feature.tso.leave.answered
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.text.SimpleDateFormat
@@ -53,6 +54,16 @@ class TsoReadModels(private val env: TsoEnv, private val databases: UserDatabase
         if (env.nowMs() - ts in 0 until ttlMs) dao.meta("tso.cache.$key") else null
     }.getOrNull()
 
+    /** tso-manual A3: one config value of the user's bundle (the raw JSON text), null when unreadable or absent. */
+    private suspend fun configRaw(userId: Long, key: String): String? = runCatching {
+        com.aktcl.aron.core.database.repo.ReferenceRepository(databases.of(userId)).config(key, java.time.Instant.ofEpochMilli(env.nowMs()).toString())
+    }.getOrNull()
+
+    private suspend fun configInt(userId: Long, key: String): Int? = configRaw(userId, key)?.trim('"', ' ')?.toIntOrNull()
+
+    /** "HH:mm" in Asia/Dhaka on trusted time: the "as of" of an answer worked out on the phone. */
+    fun asOfClock(): String = asOfNow()
+
     /** Zone names of the TSO's reach (`GET /v1/admin/geo/zone`, scope from the token), kept 30 minutes; empty when never read (the screens then say "Zone <id>"). */
     suspend fun zoneNames(userId: Long, bangla: Boolean): Map<Long, String> {
         val body = cacheFresh(userId, "geo.zone", REFERENCE_TTL_MS)
@@ -72,10 +83,34 @@ class TsoReadModels(private val env: TsoEnv, private val databases: UserDatabase
             return LeaveJson.parsePage(body)?.let { LeaveSource.Cached(it.items, asOf) }
         }
 
-        /** The mirror rows written with each queued application (same transaction as the outbox row). */
+        /**
+         * The mirror rows written with each queued application (same transaction as the outbox row). A row the server refused
+         * on sync (outbox state rejected) carries its outcome code, so the card says "Not accepted: <reason>" (D-TSO-MAN-33);
+         * one the server holds for review (outbox state quarantined, e.g. scope_out_of_reach) says "Held for review: <reason>".
+         */
         override suspend fun unsent(): List<com.aktcl.aron.feature.tso.leave.LeaveItem> = runCatching {
-            meta(userId).metaWithPrefix(LEAVE_MIRROR).mapNotNull { LeaveJson.parseUnsent(it.value) }
+            val box = databases.of(userId).outboxDao()
+            meta(userId).metaWithPrefix(LEAVE_MIRROR).mapNotNull { LeaveJson.parseUnsent(it.value) }.map { item ->
+                val row = runCatching { box.byClientUuid(item.leaveUuid) }.getOrNull()
+                val answer = when (row?.state) {
+                    com.aktcl.aron.core.database.entity.OutboxState.REJECTED -> com.aktcl.aron.feature.tso.leave.LeaveSyncAnswer.REFUSED
+                    com.aktcl.aron.core.database.entity.OutboxState.QUARANTINED -> com.aktcl.aron.feature.tso.leave.LeaveSyncAnswer.HELD
+                    else -> null
+                }
+                item.answered(answer, row?.lastCode)
+            }
         }.getOrDefault(emptyList())
+
+        /** The bundle code list `leave_type` (stored with the login snapshot, so the form works offline). */
+        override suspend fun leaveTypes() = com.aktcl.aron.feature.tso.leave.LeaveTypes.parse(runCatching { meta(userId).section("code_lists") }.getOrNull())
+
+        /** `cfg.leave.allow_past_days` / `allow_ahead_days` from the stored config; the defaults when unreadable. */
+        override suspend fun window(): com.aktcl.aron.feature.tso.leave.LeaveWindow {
+            val ref = runCatching { com.aktcl.aron.core.database.repo.ReferenceRepository(databases.of(userId)) }.getOrNull() ?: return com.aktcl.aron.feature.tso.leave.LeaveWindow()
+            val now = java.time.Instant.ofEpochMilli(env.nowMs()).toString()
+            suspend fun days(key: String, default: Long) = runCatching { ref.config(key, now) }.getOrNull()?.trim('"', ' ')?.toLongOrNull()?.takeIf { it in 0..3650 } ?: default
+            return com.aktcl.aron.feature.tso.leave.LeaveWindow(days("cfg.leave.allow_past_days", com.aktcl.aron.feature.tso.leave.MAX_BACKDATE_DAYS), days("cfg.leave.allow_ahead_days", com.aktcl.aron.feature.tso.leave.MAX_AHEAD_DAYS))
+        }
 
         override suspend fun refresh(): LeaveSource.Cached? {
             // follow next_cursor (at most 5 pages of 100): a TSO's history can exceed one page; a failure on a later page keeps the whole refresh out
@@ -118,6 +153,9 @@ class TsoReadModels(private val env: TsoEnv, private val databases: UserDatabase
     /** F-TSO-018/029: categories come from the login snapshot (bundle section code_lists), so they work offline. */
     fun feedback(userId: Long): com.aktcl.aron.feature.tso.feedback.FeedbackSource = object : com.aktcl.aron.feature.tso.feedback.FeedbackSource {
         override suspend fun categories() = com.aktcl.aron.feature.tso.feedback.CodeLists.feedbackCategories(runCatching { meta(userId).section("code_lists") }.getOrNull())
+
+        /** tso-manual A3: `cfg.feedback.max_images` (0..1, R-F-06) of the bundle. */
+        override suspend fun maxImages() = com.aktcl.aron.feature.tso.feedback.feedbackMaxImages(configInt(userId, "cfg.feedback.max_images"))
 
         override suspend fun cached(): com.aktcl.aron.feature.tso.feedback.FeedbackSource.Cached? {
             val (body, asOf) = cacheGet(userId, "feedback") ?: return null
@@ -240,6 +278,9 @@ class TsoReadModels(private val env: TsoEnv, private val databases: UserDatabase
         override suspend fun locallyDone(planUuid: String): Set<Long> = runCatching {
             meta(userId).metaWithPrefix(DONE_MIRROR + planUuid + ".").mapNotNull { it.key.substringAfterLast('.').toLongOrNull() }.toSet()
         }.getOrDefault(emptySet())
+
+        /** tso-manual A3: `cfg.tso.plan_max_days_ahead` (1..90) of the bundle (D-TSO-MAN-35). */
+        override suspend fun planMaxDaysAhead() = com.aktcl.aron.feature.tso.mycall.planDaysAhead(configInt(userId, "cfg.tso.plan_max_days_ahead")).toInt()
     }
 
     private fun parsePlanMirror(t: String): com.aktcl.aron.feature.tso.mycall.VisitPlanItem? = runCatching {
@@ -336,6 +377,24 @@ class TsoReadModels(private val env: TsoEnv, private val databases: UserDatabase
 
         override suspend fun routeCodes(): Map<Long, String> = runCatching { plan.routes() }.getOrNull().orEmpty().associate { it.id to it.code }
 
+        /** tso-manual A3: the Retailer radii and the stale age of My Team from the bundle config (D-TSO-MAN-34). */
+        override suspend fun config(): com.aktcl.aron.feature.tso.periphery.PeripheryConfig {
+            val radii = configRaw(userId, "cfg.tso.periphery_radius_options_m")?.let { raw ->
+                runCatching { org.json.JSONArray(raw).let { a -> (0 until a.length()).map { a.getInt(it) } } }.getOrNull()
+            }
+            return com.aktcl.aron.feature.tso.periphery.PeripheryConfig.of(radii, configInt(userId, "cfg.tso.team_location_max_age_min"))
+        }
+
+        /**
+         * tso-manual A3: the outlets of the bundle (the zone-wide routes and outlets of the TSO's reach, D-TSO-BUNDLE-OUTLETS)
+         * for the offline Retailer search; the routes of today's business date, narrowed to [zoneId].
+         */
+        override suspend fun bundleOutlets(zoneId: Long?): List<com.aktcl.aron.feature.tso.periphery.BundleOutlet>? = runCatching {
+            val dao = meta(userId)
+            val routes = dao.routesFor(com.aktcl.aron.rules.BusinessDate.of(env.nowMs()).toString()).filter { zoneId == null || it.zoneId == zoneId }
+            TsoBundleReads.nearbyOutlets(routes, routes.associate { it.routeId to dao.outletsOf(it.routeId) })
+        }.getOrNull()?.takeIf { it.isNotEmpty() }
+
         override suspend fun nearby(lat: Double, lng: Double, radiusM: Int, zoneId: Long?): com.aktcl.aron.feature.tso.periphery.Stamped<com.aktcl.aron.feature.tso.periphery.Nearby>? {
             val key = "nearby.${zoneId ?: 0}.$radiusM." + com.aktcl.aron.feature.tso.periphery.positionKey(lat, lng)
             val path = "/v1/outlets/nearby?lat=$lat&lng=$lng&radius_m=$radiusM" + (zoneId?.let { "&zone_id=$it" } ?: "")
@@ -369,9 +428,29 @@ class TsoReadModels(private val env: TsoEnv, private val databases: UserDatabase
     }
 
     /** F-TSO-018: the one compressed photo of a feedback, through the shared camera and media queue. */
-    fun feedbackPhotos(media: com.aktcl.aron.core.media.MediaComponents): com.aktcl.aron.feature.tso.feedback.FeedbackPhotos = object : com.aktcl.aron.feature.tso.feedback.FeedbackPhotos {
+    fun feedbackPhotos(media: com.aktcl.aron.core.media.MediaComponents, resolver: android.content.ContentResolver? = null): com.aktcl.aron.feature.tso.feedback.FeedbackPhotos = object : com.aktcl.aron.feature.tso.feedback.FeedbackPhotos {
         override suspend fun take(photoUuid: String): String? = media.capture(photoUuid)?.let { photoUuid }
         override suspend fun discard(photoUuid: String) { media.discard(photoUuid) }
+
+        /**
+         * tso-manual A3 (D-TSO-MAN-36, D-A3-14): A2's gallery import ([com.aktcl.aron.core.media.GalleryImporter], the core of
+         * `MediaComponents.importFromGallery`) stores the picture compressed and EXIF-free under [photoUuid]; Save claims it
+         * for the feedback ([feedbackQueue] attaches it before the record commits), so a removed picture or an abandoned form
+         * is discarded and never uploads.
+         */
+        override suspend fun fromGallery(photoUuid: String, feedbackUuid: String, uri: android.net.Uri): com.aktcl.aron.feature.tso.feedback.GalleryPick {
+            val r = resolver ?: return com.aktcl.aron.feature.tso.feedback.GalleryPick.UNREADABLE
+            return try {
+                media.gallery.import(photoUuid, com.aktcl.aron.core.media.MediaRef("feedback", "feedback", feedbackUuid)) { r.openInputStream(uri) }
+                com.aktcl.aron.feature.tso.feedback.GalleryPick.OK
+            } catch (e: com.aktcl.aron.core.media.GalleryImportException) {
+                when (e.reason) {
+                    com.aktcl.aron.core.media.GalleryImportException.Reason.NO_SPACE -> com.aktcl.aron.feature.tso.feedback.GalleryPick.NO_SPACE
+                    com.aktcl.aron.core.media.GalleryImportException.Reason.TOO_LARGE -> com.aktcl.aron.feature.tso.feedback.GalleryPick.TOO_LARGE
+                    com.aktcl.aron.core.media.GalleryImportException.Reason.UNREADABLE -> com.aktcl.aron.feature.tso.feedback.GalleryPick.UNREADABLE
+                }
+            }
+        }
     }
 
     /** F-TSO-024: the online password change (204); the secrets go into the request body only, never a log or a field of ours. */
@@ -388,7 +467,7 @@ class TsoReadModels(private val env: TsoEnv, private val databases: UserDatabase
         }
     }
 
-    /** F-TSO-010/021: preview read and the one online POST; no queue, scope from the token only. */
+    /** F-TSO-010/021, D-TSO-MAN-27/28/32: the filter options, the preview read and the one online POST; no queue, scope from the token only. */
     fun finalSubmit(userId: Long, plan: com.aktcl.aron.feature.tso.mycall.PlanSource): com.aktcl.aron.feature.tso.finalsubmit.FinalSubmitApi = object : com.aktcl.aron.feature.tso.finalsubmit.FinalSubmitApi {
         private fun why(r: ApiResult<*>): com.aktcl.aron.feature.tso.finalsubmit.FsFailure = when (r) {
             is ApiResult.Transport -> com.aktcl.aron.feature.tso.finalsubmit.FsFailure.OFFLINE
@@ -398,9 +477,14 @@ class TsoReadModels(private val env: TsoEnv, private val databases: UserDatabase
 
         override suspend fun zones(): List<Long>? = runCatching { plan.routes() }.getOrNull()?.let { com.aktcl.aron.feature.tso.mycall.zonesOf(it) }
 
-        override suspend fun geo(level: String, parentId: Long?): List<com.aktcl.aron.feature.tso.finalsubmit.FsGeoNode>? {
-            if (level !in com.aktcl.aron.feature.tso.finalsubmit.FsGeo.LEVELS) return null
-            return com.aktcl.aron.feature.tso.finalsubmit.FsGeo.parse(get("/v1/admin/geo/$level?limit=500" + (parentId?.let { "&parent_id=$it" } ?: "")))
+        /**
+         * Wing to zone of the TSO's reach (`GET /v1/dashboards/national/filter-options`, D-TSO-MAN-32; the server cuts it to the
+         * token's reach, the phone sends no ids). Kept in the user's database, so the pickers open offline with the last copy.
+         */
+        override suspend fun filterOptions(): com.aktcl.aron.feature.tso.finalsubmit.FsFilterOptions? {
+            val fresh = get("/v1/dashboards/national/filter-options")?.takeIf { com.aktcl.aron.feature.tso.finalsubmit.FsGeo.parseFilterOptions(it) != null }
+            if (fresh != null) cachePut(userId, "fs.filter", fresh, asOfNow())
+            return com.aktcl.aron.feature.tso.finalsubmit.FsGeo.parseFilterOptions(fresh ?: cacheGet(userId, "fs.filter")?.first)
         }
 
         override suspend fun preview(zoneId: Long, date: String): com.aktcl.aron.feature.tso.finalsubmit.FsPreviewOutcome {
@@ -418,6 +502,8 @@ class TsoReadModels(private val env: TsoEnv, private val databases: UserDatabase
                 post(json.toRequestBody("application/json".toMediaType()))
             }, decode = { body, _ -> body })
             if (r is ApiResult.Failure && r.httpStatus == 409 && r.problem.code == "ERR_DAY_ALREADY_FINAL_SUBMITTED") return com.aktcl.aron.feature.tso.finalsubmit.FsSubmitOutcome.AlreadySubmitted
+            // D-TSO-MAN-28: this uuid's submit was reopened since; the screen reads the preview again (its submit_seq gives the next uuid)
+            if (r is ApiResult.Failure && r.httpStatus == 409 && r.problem.code == "ERR_DAY_FINAL_SUBMIT_REOPENED") return com.aktcl.aron.feature.tso.finalsubmit.FsSubmitOutcome.Reopened
             if (r !is ApiResult.Success) return com.aktcl.aron.feature.tso.finalsubmit.FsSubmitOutcome.Failed(why(r))
             return com.aktcl.aron.feature.tso.finalsubmit.FsJson.result(r.value)?.let { com.aktcl.aron.feature.tso.finalsubmit.FsSubmitOutcome.Ok(it) }
                 ?: com.aktcl.aron.feature.tso.finalsubmit.FsSubmitOutcome.Failed(com.aktcl.aron.feature.tso.finalsubmit.FsFailure.SERVER)

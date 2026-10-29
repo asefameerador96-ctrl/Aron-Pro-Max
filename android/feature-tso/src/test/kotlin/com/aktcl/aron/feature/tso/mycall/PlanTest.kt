@@ -12,9 +12,11 @@ import org.robolectric.annotation.Config
 private fun r(id: Long, zone: Long) = PlanRoute(id, "R$id", "Route $id", zone, null)
 private fun o(id: Long) = PlanOutlet(id, "DHK-$id", "Shop $id", null, "Owner $id", null, null)
 
-private class Src(var routes: List<PlanRoute>? = listOf(r(1, 10), r(2, 10), r(3, 11)), var outlets: Map<Long, List<PlanOutlet>> = mapOf(1L to (1L..4L).map(::o)), var plans: List<VisitPlanItem>? = emptyList(), var done: Set<Long> = emptySet()) : PlanSource {
+private class Src(var routes: List<PlanRoute>? = listOf(r(1, 10), r(2, 10), r(3, 11)), var outlets: Map<Long, List<PlanOutlet>> = mapOf(1L to (1L..4L).map(::o)), var plans: List<VisitPlanItem>? = emptyList(), var done: Set<Long> = emptySet(), var daysAhead: Int = 60) : PlanSource {
+    var outletReads = 0
+    override suspend fun planMaxDaysAhead() = daysAhead
     override suspend fun routes() = routes
-    override suspend fun outlets(routeId: Long) = outlets[routeId]
+    override suspend fun outlets(routeId: Long): List<PlanOutlet>? { outletReads++; return outlets[routeId] }
     override suspend fun plans(date: String) = plans
     override suspend fun locallyDone(planUuid: String) = done
     override suspend fun taskPending(planUuid: String) = emptySet<Long>()
@@ -215,5 +217,78 @@ class CheckerFixesTest {
             s.pickType("a_b"); s.submit()
         }
         assertEquals(1, made.map { it.uuid }.distinct().size); assertEquals("plan", made[0].planUuid)
+    }
+}
+
+/** tso-manual A3 step 2 (D-TSO-MAN-35): Set Plan's default date, the configured days ahead, the seeded questionnaire, the channel. */
+@RunWith(AndroidJUnit4::class)
+@Config(sdk = [34])
+class PlanTest {
+    private class Q : PlanQueue { val saves = mutableListOf<PlanSave>(); override suspend fun save(save: PlanSave): Int { saves += save; return save.outletIds.size } }
+
+    @Test fun setPlanAndMyVisitPlanDefaultToToday() {
+        assertEquals("2026-10-17", SetPlanState(Src(), Q(), { "2026-10-17" }).ui.value.date)
+        assertEquals("2026-10-17", VisitPlanState(Src()) { "2026-10-17" }.ui.value.date)
+    }
+
+    @Test fun daysAheadComeFromTheConfigWithinItsBounds() = runBlocking {
+        assertEquals(60L, planDaysAhead(null)); assertEquals(60L, planDaysAhead(0)); assertEquals(60L, planDaysAhead(91))
+        assertEquals(1L, planDaysAhead(1)); assertEquals(90L, planDaysAhead(90))
+        val q = Q(); val s = SetPlanState(Src(daysAhead = 10), q, { "2026-10-17" })
+        s.loadRoutes()
+        assertEquals("2026-10-27", s.maxIso())
+        s.pickRoute(1); s.setDate("2026-10-28"); s.showOutlets(); s.toggle(1); s.submit()
+        assertEquals(listOf(PlanError.DATE_FAR), (s.ui.value.result as SetPlanResult.Invalid).errors); assertTrue(q.saves.isEmpty())
+        s.setDate("2026-10-27"); s.showOutlets(); s.toggle(1); s.submit()
+        assertEquals(SetPlanResult.Saved(1), s.ui.value.result)
+        val v = VisitPlanState(Src(daysAhead = 5)) { "2026-10-17" }; v.loadRoutes(); assertEquals("2026-10-22", v.maxIso())
+        // Assign Task keeps the same window
+        assertEquals(listOf(TaskError.DATE_FAR), validateTask("t", listOf(TaskType("t", null, "T", 1)), "2026-10-23", "", "2026-10-17", maxAheadDays = 5))
+    }
+
+    @Test fun showOutletWithoutARouteSaysSoAndReadsNothing() = runBlocking {
+        val src = Src(); val s = SetPlanState(src, Q(), { "2026-10-17" }); s.loadRoutes(); s.showOutlets()
+        assertTrue(s.ui.value.missingRoute); assertEquals(0, src.outletReads)
+        s.pickZone(10); s.pickRoute(1); assertTrue(!s.ui.value.missingRoute)
+        val v = VisitPlanState(src) { "2026-10-17" }; v.loadRoutes(); v.show(); assertTrue(v.ui.value.missingRoute)
+    }
+
+    @Test fun aSingleZoneIsChosenForTheRep() = runBlocking {
+        val one = Src(routes = listOf(r(1, 10), r(2, 10)))
+        assertEquals(10L, SetPlanState(one, Q(), { "2026-10-17" }).also { it.loadRoutes() }.ui.value.zoneId)
+        assertEquals(10L, VisitPlanState(one) { "2026-10-17" }.also { it.loadRoutes() }.ui.value.zoneId)
+        assertEquals(null, SetPlanState(Src(), Q(), { "2026-10-17" }).also { it.loadRoutes() }.ui.value.zoneId) // two zones: the rep picks
+    }
+
+    @Test fun backToTheFormKeepsThePicksAndReadsTheListAgainNextTime() = runBlocking {
+        val src = Src(); val s = SetPlanState(src, Q(), { "2026-10-17" })
+        s.loadRoutes(); s.pickZone(10); s.pickRoute(1); s.showOutlets(); s.toggle(2); s.submit()
+        s.backToForm()
+        assertEquals(10L, s.ui.value.zoneId); assertEquals(1L, s.ui.value.routeId); assertEquals(PickLoad.IDLE, s.ui.value.outletsLoad)
+        assertEquals(SetPlanResult.Editing, s.ui.value.result); assertTrue(s.ui.value.selected.isEmpty())
+    }
+
+    @Test fun theSeededQuestionnaireParsesAsTwoTextQuestions() {
+        // V0139's criteria as the bundle carries them (rubrics section)
+        val j = """[{"rubric_id":3,"version":1,"kind":"retailer_questionnaire","criteria":[
+            {"criterion_id":1,"key":"sr_visits_regularly","label_bn":"SR আপনার দোকান নিয়মিত ভিজিট করে?","label_en":"Does the SR visit your shop regularly?","answer_type":"text"},
+            {"criterion_id":2,"key":"sr_prints_memo","label_bn":"SR নিয়মিত মেমো প্রিন্ট করে দেয়?","label_en":"Does the SR give you a printed memo regularly?","answer_type":"text"}]}]"""
+        val r = RubricJson.retailer(j)!!
+        assertEquals(listOf(true, true), r.criteria.map { it.text })
+        assertEquals("SR আপনার দোকান নিয়মিত ভিজিট করে?", r.criteria[0].label(true)); assertEquals("Does the SR give you a printed memo regularly?", r.criteria[1].label(false))
+    }
+
+    @Test fun answersAreCappedAt1000Characters() = runBlocking {
+        val r = Rubric(3, 1, listOf(Criterion(1, null, "Q1", text = true)))
+        val sent = mutableListOf<QuerySubmit>()
+        val s = VisitQueryState(r, "p", 1, 1) { sent += it; true }
+        s.text(1, "a".repeat(1000) + "b".repeat(500)); assertEquals(1000, s.ui.value.texts.getValue(1).length)
+        s.submit(); assertEquals("a".repeat(1000), sent.single().texts.getValue(1))
+    }
+
+    @Test fun theOutletChannelIsReadAndKept() {
+        val outs = PlanJson.parseOutlets("""{"items":[{"id":1,"code":"DHK-1","name":"S","name_bn":null,"owner_name":"O","contact_number":null,"channel":"GT"},{"id":2,"code":"DHK-2","name":"T","name_bn":null,"owner_name":"P","contact_number":null}]}""")!!
+        assertEquals(listOf("GT", null), outs.map { it.channel })
+        assertEquals(outs, PlanJson.parseOutlets(PlanJson.outletsToCache(outs)))
     }
 }
