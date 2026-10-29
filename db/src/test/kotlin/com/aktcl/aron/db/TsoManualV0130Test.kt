@@ -634,14 +634,15 @@ class TsoManualV0130Test {
         assertEquals("\"quarantine\"", c.scalar("SELECT default_value::text FROM app.cfg_key WHERE key = 'cfg.day.late_sync_after_final_policy'"))
         assertEquals("[\"ADMIN\", \"SUPERADMIN\"]", c.scalar("SELECT default_value::text FROM app.cfg_key WHERE key = 'cfg.day.reopen_roles'"))
         assertEquals(listOf("ADMIN", "SUPERADMIN"), c.column("SELECT role FROM app.role_grant_map WHERE permission = 'support.ticket.manage'").filterNotNull().sorted())
+        // V0134 catalogued them planned; V0141 (lead ruling R-W-07) makes them live once B1 and B3 ship the producers.
         assertEquals(
             listOf(
-                "leave.decided|1|leave_application|backend:masterdata|planned|V0134|f",
-                "support_ticket.commented|1|support_ticket|backend:masterdata|planned|V0134|f",
-                "support_ticket.created|1|support_ticket|backend:masterdata|planned|V0134|f",
-                "support_ticket.status_changed|1|support_ticket|backend:masterdata|planned|V0134|f",
-                "zone_day.final_submitted|1|zone_day|backend:sync|planned|V0134|f",
-                "zone_day.reopened|1|zone_day|backend:sync|planned|V0134|f",
+                "leave.decided|1|leave_application|backend:masterdata|live|V0134|f",
+                "support_ticket.commented|1|support_ticket|backend:masterdata|live|V0134|f",
+                "support_ticket.created|1|support_ticket|backend:masterdata|live|V0134|f",
+                "support_ticket.status_changed|1|support_ticket|backend:masterdata|live|V0134|f",
+                "zone_day.final_submitted|1|zone_day|backend:sync|live|V0134|f",
+                "zone_day.reopened|1|zone_day|backend:sync|live|V0134|f",
             ),
             c.column(
                 "SELECT concat_ws('|', event_type, payload_version, aggregate_type, producer, status, introduced_in, CASE WHEN enforce_required THEN 't' ELSE 'f' END) " +
