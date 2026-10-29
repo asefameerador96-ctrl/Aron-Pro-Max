@@ -136,6 +136,14 @@ class AsWasNodeScopeTest {
         assertEquals(setOf(z2), new.children.map { it.node.id }.toSet())
         assertEquals(zoneDay1 + z2Day + zoneDay1, old.children.sumOf { it.kpis.net_mtk }, "children add up to the node")
         assertEquals(geo(day, day2).visits + geo(day, day2, node = t2).visits, dash().geoValidation(national, null, null, day, day2).visits, "geo-validation splits the same visits")
+        // The children of each node are cut by the same per-day chain: they add up to the node (a zone that left would otherwise be listed under the old
+        // territory with its days after the move).
+        for ((name, g) in listOf("T1" to geo(day, day2), "T2" to geo(day, day2, node = t2))) {
+            assertTrue(g.visits > 0, "$name has visits")
+            assertEquals(g.visits, g.children.sumOf { it.visits }, "$name geo-validation children add up to the node")
+            assertEquals(g.geo_valid_visits, g.children.sumOf { it.geo_valid_visits }, "$name geo-valid children add up to the node")
+        }
+        assertEquals(setOf(z2), geo(day, day2, node = t2).children.map { it.node.id }.toSet())
         // A window on the move date alone, and a caller who only reaches the zone that stayed: allowed, their zone's day 2 only.
         val stayer = Reach(2, Role.TSO, day2, false, setOf(z1), emptySet(), false, listOf(ReachNode("territory", t1)))
         assertEquals(zoneDay1, terr(day2, day2, reach = stayer).kpis.net_mtk)
@@ -158,6 +166,33 @@ class AsWasNodeScopeTest {
         val stranger = Reach(9, Role.TSO, day, false, setOf(999_999L), emptySet(), false, listOf(ReachNode("zone", 999_999L)))
         assertEquals(ProblemCode.ERR_FORBIDDEN, assertFailsWith<ApiProblem> { terr(day, day, t1, stranger) }.code)
         assertEquals(63_000L, terr(day, day, t1, Reach(3, Role.TSO, day, false, setOf(z1, z2), emptySet(), false, listOf(ReachNode("territory", t1)))).kpis.gross_mtk)
+    }
+
+    @Test
+    fun aTerritoryHoldingARouteLessZoneOutsideTheReachIsRefusedOnTheAsWasPathToo() {
+        moveZ2()   // a zone moved: the as-was path answers
+        // Z1 stays in T1 and a new zone with no route joins it; the caller reaches Z1 only. Today's members come from app.zone, so the route-less zone counts.
+        exec("INSERT INTO app.zone (code, name, territory_id) VALUES ('ZX','ZoneX', $t1)")
+        val zx = id("SELECT id FROM app.zone WHERE code = 'ZX'")
+        assertTrue(fresh.db.jdbi.withHandle<Boolean, Exception> { h -> !AsWasSql.probe(h, day).geo }, "the as-was path is the one under test")
+        val tso = Reach(2, Role.TSO, day, false, setOf(z1), emptySet(), false, listOf(ReachNode("territory", t1)))
+        assertEquals(ProblemCode.ERR_FORBIDDEN, assertFailsWith<ApiProblem> { terr(reach = tso) }.code, "T1 holds ZX today and the caller does not reach it")
+        assertEquals(ProblemCode.ERR_FORBIDDEN, assertFailsWith<ApiProblem> { dash().summary(tso, null, null, day, day) }.code, "also the caller's own default node")
+        // Reaching it as well makes the node theirs again.
+        val both = Reach(3, Role.TSO, day, false, setOf(z1, zx), emptySet(), false, listOf(ReachNode("territory", t1)))
+        assertEquals(dash().summary(national, "zone", z1, day, day).kpis.net_mtk, terr(reach = both).kpis.net_mtk)
+    }
+
+    @Test
+    fun theLoginSubmitListsOfAnOldDateReadTheNodeAsItWasOnThatDate() {
+        moveZ2()
+        val ops = OpsService(fresh.db, com.aktcl.aron.backend.platform.RegistryDefaults(), AronClock { now })
+        fun routes(s: LoginSubmitStatus) = (s.not_logged_in + s.logged_in_not_submitted + s.submitted + s.exceptions).map { it.route_code }.toSet()
+        // On the fixture date T1 held both zones: R1 and R2 (Z1) and R3 (Z2); today it holds Z1 only.
+        val old = ops.loginSubmit(national, dash(), day, "territory", t1)
+        assertEquals(setOf("R1", "R2", "R3"), routes(old), "the routes of the zones T1 had that day")
+        assertEquals(setOf(z1, z2), old.zones.map { it.zone_id }.toSet(), "the Final Submit zones too")
+        assertEquals(ProblemCode.ERR_FORBIDDEN, assertFailsWith<ApiProblem> { ops.loginSubmit(national, dash(), day, "territory", t2) }.code, "T2 had no zone that day")
     }
 
     @Test
