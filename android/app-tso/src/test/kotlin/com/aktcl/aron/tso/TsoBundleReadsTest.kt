@@ -33,4 +33,25 @@ class TsoBundleReadsTest {
         val rows = TsoBundleReads.routes(listOf(route(1, label = "North"), route(2, status = "inactive")))
         assertEquals(listOf(1L), rows.map { it.id }); assertEquals(10L, rows[0].zoneId); assertEquals("North", rows[0].label); assertNull(rows[0].sr)
     }
+
+    // ---- tso-manual X4b (R-W-12 (9)): the route's SR from the bundle (R-W-06 `sr_user_id` / `sr_name`)
+
+    @Test fun theSrOfARouteSnapshotIsReadAndAVacantRouteIsCarriedWithoutSr() {
+        assertEquals(TsoBundleReads.SrInBundle(true, com.aktcl.aron.feature.tso.mycall.RouteSr(7, "Rahim")), TsoBundleReads.srOf("""{"route_id":1,"sr_user_id":7,"sr_name":" Rahim "}"""))
+        assertEquals(TsoBundleReads.SrInBundle(true, null), TsoBundleReads.srOf("""{"route_id":1,"sr_user_id":null,"sr_name":null}"""))
+        // not carried: an older server, an unreadable section, a bad id, a named id without its name
+        for (raw in listOf(null, "", "not json", "[1]", """{"route_id":1}""", """{"sr_user_id":"7","sr_name":"R"}""", """{"sr_user_id":0,"sr_name":"R"}""", """{"sr_user_id":7}""", """{"sr_user_id":7,"sr_name":"  "}""")) {
+            assertEquals("$raw", TsoBundleReads.SrInBundle(false, null), TsoBundleReads.srOf(raw))
+        }
+    }
+
+    @Test fun routesWithSrNameEveryRouteOrAreNullForAnOlderBundle() {
+        val extras = mapOf(1L to """{"sr_user_id":7,"sr_name":"Rahim"}""", 2L to """{"sr_user_id":null,"sr_name":null}""", 3L to """{"planned_today":true}""")
+        val rows = TsoBundleReads.routesWithSr(listOf(route(1, label = "North"), route(2), route(3), route(4, status = "inactive"))) { extras[it] }!!
+        assertEquals(listOf(1L, 2L, 3L), rows.map { it.id })
+        assertEquals(com.aktcl.aron.feature.tso.mycall.RouteSr(7, "Rahim"), rows[0].sr); assertEquals("North", rows[0].label)
+        assertNull(rows[1].sr); assertNull("a route without the members beside routes that carry them is vacant", rows[2].sr)
+        assertNull(TsoBundleReads.routesWithSr(listOf(route(1), route(2))) { """{"planned_today":true}""" })
+        assertNull(TsoBundleReads.routesWithSr(emptyList()) { null })
+    }
 }
