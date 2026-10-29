@@ -209,6 +209,8 @@ class RetailerState(private val source: PeripherySource, private val asOfNow: ()
     private val _s = MutableStateFlow(Ui())
     val ui: StateFlow<Ui> = _s.asStateFlow()
     private var busy = false
+    /** A find() asked for while one ran (a zone or radius pick, a refresh tap). */
+    private var again = false
 
     data class Ui(
         val zones: List<Long> = emptyList(), val zoneId: Long? = null, val radiusM: Int = RADIUS_OPTIONS_M.first(), val phase: RetailerUi = RetailerUi.Pick,
@@ -230,28 +232,45 @@ class RetailerState(private val source: PeripherySource, private val asOfNow: ()
     /** The rep refused the location permission in the system dialog (no asking again): the screen then offers the app settings. */
     fun permissionRefused() { _s.value = _s.value.copy(permissionDenied = true, phase = RetailerUi.NeedsPermission) }
 
+    /**
+     * One balanced fix and its answer for the current zone and radius. A pick while a fix runs (its own find() comes in
+     * while this one is busy) is not lost: the running find takes one more fix for the new choice once the old answer is
+     * dropped. A second tap on refresh during a run takes no extra fix. A pick without a find of its own leaves the screen
+     * on Pick (never on a "Loading" that no answer ends).
+     */
     suspend fun find() {
-        if (busy) return
+        if (busy) { again = true; return }
         busy = true
         try {
-            val s = _s.value
-            val gen = generation
-            _s.value = s.copy(phase = RetailerUi.Locating, permissionDenied = false)
-            val f = runCatching { fix.current() }.getOrElse { FixResult.Failed }
-            when (f) {
-                FixResult.PermissionNeeded -> { _s.value = _s.value.copy(phase = RetailerUi.NeedsPermission); return }
-                FixResult.LocationOff -> { _s.value = _s.value.copy(phase = RetailerUi.LocationOff); return }
-                FixResult.Failed -> { _s.value = _s.value.copy(phase = RetailerUi.NoFix); return }
-                is FixResult.Ok -> {
-                    if (!inBangladesh(f.lat, f.lng)) { _s.value = _s.value.copy(phase = RetailerUi.OutOfArea, mockWarning = f.isMock); return }
-                    _s.value = _s.value.copy(phase = RetailerUi.Loading, mockWarning = f.isMock)
-                    val r = answer(f.lat, f.lng, s.radiusM, s.zoneId)
-                    // the rep changed zone or radius while this ran: the answer belongs to the old choice and is dropped
-                    if (gen != generation) return
-                    _s.value = _s.value.copy(phase = if (r == null) RetailerUi.Unavailable else RetailerUi.Shown(r, f.lat, f.lng, s.radiusM, s.zoneId))
-                }
+            do {
+                again = false
+                val current = findOnce()
+                // the rep changed zone or radius while this ran: the old choice's answer was dropped
+                if (!current && !again) _s.value = _s.value.copy(phase = RetailerUi.Pick)
+            } while (!current && again)
+        } finally { busy = false; again = false }
+    }
+
+    /** One fix and one answer; false when the zone or radius changed meanwhile (nothing of the old choice is shown). */
+    private suspend fun findOnce(): Boolean {
+        val s = _s.value
+        val gen = generation
+        _s.value = s.copy(phase = RetailerUi.Locating, permissionDenied = false)
+        val f = runCatching { fix.current() }.getOrElse { FixResult.Failed }
+        if (gen != generation) return false
+        when (f) {
+            FixResult.PermissionNeeded -> _s.value = _s.value.copy(phase = RetailerUi.NeedsPermission)
+            FixResult.LocationOff -> _s.value = _s.value.copy(phase = RetailerUi.LocationOff)
+            FixResult.Failed -> _s.value = _s.value.copy(phase = RetailerUi.NoFix)
+            is FixResult.Ok -> {
+                if (!inBangladesh(f.lat, f.lng)) { _s.value = _s.value.copy(phase = RetailerUi.OutOfArea, mockWarning = f.isMock); return true }
+                _s.value = _s.value.copy(phase = RetailerUi.Loading, mockWarning = f.isMock)
+                val r = answer(f.lat, f.lng, s.radiusM, s.zoneId)
+                if (gen != generation) return false
+                _s.value = _s.value.copy(phase = if (r == null) RetailerUi.Unavailable else RetailerUi.Shown(r, f.lat, f.lng, s.radiusM, s.zoneId))
             }
-        } finally { busy = false }
+        }
+        return true
     }
 
     /** The server's answer; else the bundle worked out on the phone; else the last copy of this very view. */

@@ -63,6 +63,50 @@ class PeripheryLogicTest {
         assertEquals(RetailerUi.Pick, s.ui.value.phase); assertEquals(300, s.ui.value.radiusM)
     }
 
+    /**
+     * Checker fix (medium): the rep picks a radius while the opening fix is still running (a balanced fix takes seconds). The
+     * pick's own find comes in while the first is busy; the first drops its answer and takes exactly one more fix for the
+     * new radius, so the screen ends on the map of the new choice, never on a "Loading" no answer ends (D-TSO-MAN-34).
+     */
+    @Test fun aPickDuringTheOpeningFixTakesOneMoreFixAndShowsTheNewRadius() = runBlocking {
+        val opening = kotlinx.coroutines.CompletableDeferred<Unit>()
+        val src = Src(); var fixes = 0
+        val s = RetailerState(src, fix = object : PeripheryFix { override suspend fun current(): FixResult { fixes++; if (fixes == 1) opening.await(); return FixResult.Ok(23.7, 90.4, 8.0, false) } })
+        s.loadZones()
+        val job = launch { s.find() } // the screen opens: one fix, still running
+        kotlinx.coroutines.yield()
+        assertEquals(RetailerUi.Locating, s.ui.value.phase)
+        s.pickRadius(300); s.find() // the pick and its find, as the dropdown does
+        assertEquals(1, fixes)
+        opening.complete(Unit); job.join()
+        assertEquals(2, fixes)
+        val shown = s.ui.value.phase as RetailerUi.Shown
+        assertEquals(300, shown.radiusM); assertEquals(300, src.asked!!.third)
+    }
+
+    @Test fun aZonePickWithoutAFindOfItsOwnLeavesPickNotLoading() = runBlocking {
+        val opening = kotlinx.coroutines.CompletableDeferred<Unit>()
+        var fixes = 0
+        val s = RetailerState(Src(), fix = object : PeripheryFix { override suspend fun current(): FixResult { fixes++; opening.await(); return FixResult.Ok(23.7, 90.4, 8.0, false) } })
+        s.loadZones()
+        val job = launch { s.find() }
+        kotlinx.coroutines.yield()
+        s.pickZone(10)
+        opening.complete(Unit); job.join()
+        assertEquals(1, fixes); assertEquals(RetailerUi.Pick, s.ui.value.phase)
+    }
+
+    @Test fun aSecondRefreshDuringARunTakesNoExtraFix() = runBlocking {
+        val opening = kotlinx.coroutines.CompletableDeferred<Unit>()
+        var fixes = 0
+        val s = RetailerState(Src(), fix = object : PeripheryFix { override suspend fun current(): FixResult { fixes++; opening.await(); return FixResult.Ok(23.7, 90.4, 8.0, false) } })
+        val job = launch { s.find() }
+        kotlinx.coroutines.yield()
+        s.find() // a second tap on refresh: the running fix answers it
+        opening.complete(Unit); job.join()
+        assertEquals(1, fixes); assertTrue(s.ui.value.phase is RetailerUi.Shown)
+    }
+
     @Test fun positionKeyDiffersBetweenPlacesAndMatchesNearbyOnes() {
         assertEquals(positionKey(23.78101, 90.40001), positionKey(23.78102, 90.40002))
         assertTrue(positionKey(23.78, 90.40) != positionKey(23.80, 90.40))
