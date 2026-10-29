@@ -83,9 +83,10 @@ fun leavePayload(form: LeaveForm) = LeavePayload(form.type, form.fromDate, form.
 
 /**
  * The typed "Number of days" text as the form's number: digits only, at most 3 of them; empty is 0. Leading zeros go
- * ("01" becomes 1), so typing over the screenshot's "0" gives the number typed.
+ * ("01" becomes 1), so typing over the screenshot's "0" gives the number typed. Bengali digits from a Bangla keyboard
+ * count as their Latin digits ("৩" is 3).
  */
-fun daysFromText(text: String): Int = text.filter { it in '0'..'9' }.take(3).toIntOrNull() ?: 0
+fun daysFromText(text: String): Int = com.aktcl.aron.core.common.LocaleDigits.toAscii(text).filter { it in '0'..'9' }.take(3).toIntOrNull() ?: 0
 
 /** Queues the application as a sync record. Idempotent by [uuid]; false when the uuid was already queued. REQUEST-free: the host writes the outbox row. */
 fun interface LeaveQueue {

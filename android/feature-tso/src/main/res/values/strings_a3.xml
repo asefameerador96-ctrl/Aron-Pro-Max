@@ -9,6 +9,8 @@
     <string name="tso_leave_day_word">Days</string>
     <string name="tso_leave_not_accepted">Not accepted</string>
     <string name="tso_leave_not_accepted_reason">Not accepted: %1$s</string>
+    <string name="tso_leave_held">Held for review</string>
+    <string name="tso_leave_held_reason">Held for review: %1$s</string>
     <string name="tso_leave_refused_window">the date is outside the allowed window</string>
     <string name="tso_leave_refused_duplicate">the same application was already sent</string>
     <string name="tso_leave_refused_not_allowed">you cannot apply for this date</string>

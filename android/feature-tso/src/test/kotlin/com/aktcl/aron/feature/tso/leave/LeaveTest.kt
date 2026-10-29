@@ -28,6 +28,7 @@ import com.aktcl.aron.core.ui.AronTheme
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.launch
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -82,6 +83,16 @@ class LeaveModelTest {
         assertEquals(LeaveRefusal.INVALID, LeaveRefusal.of("schema_invalid"))
         assertEquals(LeaveRefusal.OTHER, LeaveRefusal.of("server_error"))
         assertEquals(LeaveRefusal.OTHER, LeaveRefusal.of(null))
+    }
+
+    /** Checker fix (low): the server's answer as the outbox holds it: rejected is "Not accepted", quarantined is "Held for review". */
+    @Test fun aQuarantinedApplicationIsHeldForReviewNotNotSentYet() {
+        val queued = item("q", "2026-10-21", sent = false)
+        assertEquals(queued, queued.answered(null, null))
+        val held = queued.answered(LeaveSyncAnswer.HELD, "scope_out_of_reach")
+        assertTrue(held.held); assertEquals("scope_out_of_reach", held.refusalCode)
+        val refused = queued.answered(LeaveSyncAnswer.REFUSED, null)
+        assertFalse(refused.held); assertEquals("server_error", refused.refusalCode)
     }
 
     @Test fun stateShowsCachedThenFresh() = runBlocking {
@@ -168,6 +179,15 @@ class LeaveScreenTest {
         compose.onNodeWithText("Not accepted: the date is outside the allowed window").assertExists()
         compose.onNodeWithText("Not accepted").assertExists() // the pill
         compose.onNodeWithTag(LeaveTags.unsent("r")).assertDoesNotExist()
+    }
+
+    @Test fun aHeldApplicationSaysHeldForReviewWithTheReason() {
+        val held = item("h", "2026-10-21", sent = false).answered(LeaveSyncAnswer.HELD, "scope_out_of_reach")
+        show(AppLanguage.EN, FakeSource(fresh = LeaveSource.Cached(emptyList(), "10:00"), unsent = listOf(held)))
+        compose.onNodeWithTag(LeaveTags.held("h")).assertExists()
+        compose.onNodeWithText("Held for review: you cannot apply for this date").assertExists()
+        compose.onNodeWithText("Held for review").assertExists() // the pill
+        compose.onNodeWithTag(LeaveTags.unsent("h")).assertDoesNotExist(); compose.onNodeWithTag(LeaveTags.refused("h")).assertDoesNotExist()
     }
 
     @Test fun banglaUsesBengaliDigitsAndBanglaBadge() {
@@ -412,6 +432,8 @@ class LeaveApplyOptionsTest {
     @Test fun daysTextKeepsDigitsDropsLeadingZerosAndEmptyIsZero() {
         assertEquals(0, daysFromText("")); assertEquals(0, daysFromText("0")); assertEquals(1, daysFromText("01"))
         assertEquals(12, daysFromText("1a2")); assertEquals(365, daysFromText("365")); assertEquals(123, daysFromText("12345"))
+        // a Bangla keyboard types Bengali digits (checker fix): they count as their Latin digits
+        assertEquals(3, daysFromText("৩")); assertEquals(12, daysFromText("০১২")); assertEquals(10, daysFromText("১0"))
     }
 
     @Test fun leaveTypesComeFromTheCodeListInSortOrder() {

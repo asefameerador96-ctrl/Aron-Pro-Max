@@ -10,6 +10,7 @@ import com.aktcl.aron.core.network.Grant
 import com.aktcl.aron.core.session.SessionComponents
 import com.aktcl.aron.feature.tso.leave.LeaveJson
 import com.aktcl.aron.feature.tso.leave.LeaveSource
+import com.aktcl.aron.feature.tso.leave.answered
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.text.SimpleDateFormat
@@ -84,13 +85,19 @@ class TsoReadModels(private val env: TsoEnv, private val databases: UserDatabase
 
         /**
          * The mirror rows written with each queued application (same transaction as the outbox row). A row the server refused
-         * on sync (outbox state rejected) carries its outcome code, so the card says "Not accepted: <reason>" (D-TSO-MAN-33).
+         * on sync (outbox state rejected) carries its outcome code, so the card says "Not accepted: <reason>" (D-TSO-MAN-33);
+         * one the server holds for review (outbox state quarantined, e.g. scope_out_of_reach) says "Held for review: <reason>".
          */
         override suspend fun unsent(): List<com.aktcl.aron.feature.tso.leave.LeaveItem> = runCatching {
             val box = databases.of(userId).outboxDao()
             meta(userId).metaWithPrefix(LEAVE_MIRROR).mapNotNull { LeaveJson.parseUnsent(it.value) }.map { item ->
                 val row = runCatching { box.byClientUuid(item.leaveUuid) }.getOrNull()
-                if (row?.state == com.aktcl.aron.core.database.entity.OutboxState.REJECTED) item.copy(refusalCode = row.lastCode ?: "server_error") else item
+                val answer = when (row?.state) {
+                    com.aktcl.aron.core.database.entity.OutboxState.REJECTED -> com.aktcl.aron.feature.tso.leave.LeaveSyncAnswer.REFUSED
+                    com.aktcl.aron.core.database.entity.OutboxState.QUARANTINED -> com.aktcl.aron.feature.tso.leave.LeaveSyncAnswer.HELD
+                    else -> null
+                }
+                item.answered(answer, row?.lastCode)
             }
         }.getOrDefault(emptyList())
 

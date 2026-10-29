@@ -63,6 +63,7 @@ object LeaveTags {
     fun badge(uuid: String) = "tso_leave_badge_$uuid"
     fun unsent(uuid: String) = "tso_leave_unsent_$uuid"
     fun refused(uuid: String) = "tso_leave_refused_$uuid"
+    fun held(uuid: String) = "tso_leave_held_$uuid"
     fun days(uuid: String) = "tso_leave_days_$uuid"
 }
 
@@ -121,11 +122,12 @@ private fun LeaveContent(u: LeaveListUi.Content) {
     }
 }
 
-/** The pill's words and tone: the decision of the DMO, or "Not accepted" when the server refused the record. */
+/** The pill's words and tone: the decision of the DMO, "Not accepted" when the server refused the record, "Held for review" when it holds it. */
 @Composable
 private fun pill(item: LeaveItem): Pair<String, TsoPillTone> {
     val dmo = stringResource(R.string.tso_role_dmo)
     return when {
+        item.refusalCode != null && item.held -> stringResource(R.string.tso_leave_held) to TsoPillTone.Warning
         item.refusalCode != null -> stringResource(R.string.tso_leave_not_accepted) to TsoPillTone.Danger
         item.status == LeaveStatus.PENDING -> stringResource(R.string.tso_leave_status_pending, dmo) to TsoPillTone.Warning
         item.status == LeaveStatus.APPROVED -> stringResource(R.string.tso_leave_status_approved, dmo) to TsoPillTone.Success
@@ -163,6 +165,10 @@ private fun LeaveCard(item: LeaveItem) {
                 }
                 Text(stringResource(R.string.tso_leave_reason_line, item.reason), style = MaterialTheme.typography.bodyLarge, fontStyle = FontStyle.Italic, color = look.ink)
                 when {
+                    item.refusalCode != null && item.held -> Text(
+                        stringResource(R.string.tso_leave_held_reason, refusalText(item.refusalCode)), Modifier.testTag(LeaveTags.held(item.leaveUuid)),
+                        style = MaterialTheme.typography.bodyMedium, color = look.inkMuted,
+                    )
                     item.refusalCode != null -> Text(
                         stringResource(R.string.tso_leave_not_accepted_reason, refusalText(item.refusalCode)), Modifier.testTag(LeaveTags.refused(item.leaveUuid)),
                         style = MaterialTheme.typography.bodyMedium, color = look.red,

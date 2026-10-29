@@ -13,7 +13,9 @@ enum class LeaveStatus(val wire: String) {
  * One leave application as the list shows it (`GET /v1/leave`, contract `LeaveApplication`). [sent] is false for an
  * application still in the outbox (F-TSO-009): the card says "not sent yet" until the server acknowledges it.
  * [refusalCode] is set when the server refused the record on sync (outbox state rejected, its `RecordOutcomeCode`): the
- * application never reached the DMO and the card says "Not accepted: <reason>" (D-TSO-MAN-33).
+ * application never reached the DMO and the card says "Not accepted: <reason>" (D-TSO-MAN-33). With [held] the server
+ * stored it but holds it for an admin's review (outbox state quarantined, e.g. `scope_out_of_reach`): the card says
+ * "Held for review: <reason>" until the server list carries it.
  */
 data class LeaveItem(
     val leaveUuid: String,
@@ -25,7 +27,21 @@ data class LeaveItem(
     val status: LeaveStatus,
     val sent: Boolean = true,
     val refusalCode: String? = null,
+    val held: Boolean = false,
 )
+
+/** How the server answered a queued application on sync, as the phone's outbox holds it (D-TSO-MAN-33, checker fix). */
+enum class LeaveSyncAnswer { REFUSED, HELD }
+
+/**
+ * The unsent card after the server's answer: refused (outbox rejected) says "Not accepted", held for review (outbox
+ * quarantined) says "Held for review", each with the reason worded from [code]; no answer leaves "Not sent yet".
+ */
+fun LeaveItem.answered(answer: LeaveSyncAnswer?, code: String?): LeaveItem = when (answer) {
+    null -> this
+    LeaveSyncAnswer.REFUSED -> copy(refusalCode = code ?: "server_error", held = false)
+    LeaveSyncAnswer.HELD -> copy(refusalCode = code ?: "server_error", held = true)
+}
 
 /** TSO leave is decided by the DMO (D24-55); the badge names that role. */
 const val APPROVER_ROLE = "DMO"

@@ -8,6 +8,8 @@
     <string name="tso_leave_day_word">দিন</string>
     <string name="tso_leave_not_accepted">গৃহীত হয়নি</string>
     <string name="tso_leave_not_accepted_reason">গৃহীত হয়নি: %1$s</string>
+    <string name="tso_leave_held">পর্যালোচনার জন্য আটকে আছে</string>
+    <string name="tso_leave_held_reason">পর্যালোচনার জন্য আটকে আছে: %1$s</string>
     <string name="tso_leave_refused_window">তারিখটি অনুমোদিত সময়ের বাইরে</string>
     <string name="tso_leave_refused_duplicate">একই আবেদন আগেই পাঠানো হয়েছে</string>
     <string name="tso_leave_refused_not_allowed">এই তারিখের জন্য আবেদন করা যাবে না</string>
