@@ -28,16 +28,11 @@ internal class ScopedNode(val ref: NodeRefDto, val zones: List<Long>?, val route
 
 /**
  * What a requested node (or the nodes of a report selector) is over a window (D-REPORTS-NODEASWAS-01): [zones] it had on ANY date of the window,
- * [known] how many of the ids had one (an unknown id has none), [current] the zones it has now, [plain] true when nothing in the geography changed
- * since the window began (the current structure is then exact and the as-was filters are not needed).
+ * [plain] true when nothing in the geography changed since the window began (the current structure is then exact and the as-was filters are not needed).
  */
 internal class NodeMembers(private val windowById: Map<Long, Set<Long>>, private val currentById: Map<Long, Set<Long>>, val plain: Boolean) {
     /** The zones the nodes had on any date of the window. */
     val zones: List<Long> = windowById.values.flatten().distinct()
-    /** How many of the requested ids had a zone in the window. */
-    val known: Long = windowById.values.count { it.isNotEmpty() }.toLong()
-    /** The zones the nodes have today. */
-    val current: List<Long> = currentById.values.flatten().distinct()
     /**
      * The reach check, for EACH node asked for: it had a member in the window, every zone it has TODAY is in the reach (a node that still holds a zone
      * the caller cannot see is not theirs: 403 as before the history existed), and at least one of ITS window members is in the reach (so an old
