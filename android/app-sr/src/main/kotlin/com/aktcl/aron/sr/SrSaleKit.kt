@@ -30,7 +30,7 @@ import com.aktcl.aron.feature.memo.domain.SummaryMemo
 import com.aktcl.aron.feature.memo.domain.SummarySku
 import com.aktcl.aron.feature.memo.ui.MemoPrintingReprinter
 import com.aktcl.aron.feature.memo.ui.MemoViewModel
-import com.aktcl.aron.feature.memo.ui.RoomDueCollectionWriter
+import com.aktcl.aron.feature.memo.ui.VisitDueCollectionWriter
 import com.aktcl.aron.feature.memo.ui.RoomMemoStore
 import com.aktcl.aron.feature.outlet.FixReading
 import com.aktcl.aron.feature.outlet.GeoSettings
@@ -114,16 +114,31 @@ class SrSaleKit(private val day: SrDay, private val context: Context, private va
     }
     private val commitStep = SaleCommitStep(flow, printSource) { editFix() }
 
-    // tso-manual X4a (R-W-11): a sale save refused by the Final Submit lock (the lock arrived while the call was open)
-    private val _lockRefused = kotlinx.coroutines.flow.MutableStateFlow(false)
+    // tso-manual X4a (R-W-11; fix round): the sale or edit whose save the Final Submit lock refused (the lock arrived while
+    // it was open), by its draft key, so only that sale's or edit's host shows the lock text
+    private val _lockRefused = kotlinx.coroutines.flow.MutableStateFlow<String?>(null)
 
-    /** True after a sale or memo edit was refused by the Final Submit lock: the host shows the lock text, nothing was stored or printed. */
-    val lockRefused: kotlinx.coroutines.flow.StateFlow<Boolean> = _lockRefused
+    /**
+     * The draft key of the sale or memo edit the Final Submit lock refused (nothing was stored or printed), or null: the
+     * call's visit uuid for a sale, the edited memo's uuid for an edit ([refusalKey]). The host whose key it is shows the lock text.
+     */
+    val lockRefused: kotlinx.coroutines.flow.StateFlow<String?> = _lockRefused
 
     /** The host has shown the lock text of a refused save. */
-    fun clearLockRefusal() { _lockRefused.value = false }
+    fun clearLockRefusal() { _lockRefused.value = null }
 
-    fun newSaleViewModel() = SaleViewModel(flow, SrLockGate.saveAndPrint(commitStep::invoke, day.printing, _lockRefused))
+    fun newSaleViewModel() = SaleViewModel(flow, SrLockGate.saveAndPrint(commitStep::invoke, day.printing) { _lockRefused.value = flow.state.value.draft?.let(::refusalKey) })
+
+    /**
+     * tso-manual X4a (fix round): OK on the lock text of a refused sale. The call ends on the phone when its route-day is
+     * still final (no close is written), then [onDone] (Home with the banner); the refusal is cleared last, so the sale's
+     * generic "save failed" never shows in between.
+     */
+    suspend fun afterSaleRefusal(onDone: () -> Unit) {
+        day.endCallIfDayFinal()
+        onDone()
+        clearLockRefusal()
+    }
     fun saleVisit(v: com.aktcl.aron.feature.outlet.OpenVisit) =
         SaleVisit(v.visitUuid, v.outletId, v.routeId, day.businessDate(), PriceType.OUTLET.wire, canSell = v.geoAction != "blocked")
 
@@ -150,6 +165,24 @@ class SrSaleKit(private val day: SrDay, private val context: Context, private va
      */
     suspend fun callLocked(routeId: Long): Boolean =
         runCatching { FinalSubmitLock.refuses(db, day.metaProvider.meta(routeId), "visit") }.getOrDefault(false)
+
+    /**
+     * tso-manual X4a (R-W-11, fix round): the outlet picker's tap. False when a new call on [outlet]'s route would be refused
+     * by the Final Submit lock: no fix is read and nothing is stored, the picker shows the lock text. Otherwise the visit flow
+     * opens the call (it reads the fix and commits; its state says how that went) and the picker moves to the visit screen.
+     */
+    suspend fun startCall(outlet: com.aktcl.aron.core.database.entity.OutletEntity): Boolean {
+        if (callLocked(outlet.routeId)) return false
+        runCatching { day.visitFlow.open(day.visitOutlet(outlet)) }
+        return true
+    }
+
+    /**
+     * tso-manual X4a (R-W-11, fix round): true when [state] is a call commit the Final Submit lock refused (the lock landed
+     * while the fix was read; nothing was stored). The visit screen shows the lock text, not the generic retry.
+     */
+    suspend fun refusedByLock(state: com.aktcl.aron.feature.outlet.VisitUiState?): Boolean =
+        (state as? com.aktcl.aron.feature.outlet.VisitUiState.CommitFailed)?.let { callLocked(it.outlet.routeId) } ?: false
 
     /**
      * tso-manual X4a (R-W-11): true when an edit of [memoUuid] would be refused by the Final Submit lock (the edit is a new
@@ -205,12 +238,15 @@ class SrSaleKit(private val day: SrDay, private val context: Context, private va
         return queued
     }
 
+    /**
+     * The memo screen. tso-manual X4a (R-W-11 (3), fix round): Mark Paid writes through [VisitDueCollectionWriter] (the
+     * collection carries the route of the visit it attaches to) and is drawn only when that write would be accepted, so it
+     * is hidden after the Final Submit lock and after the SR's own Sales Submit; a tap the lock beats is refused with words.
+     */
     fun newMemoViewModel() = MemoViewModel(
         store,
-        RoomDueCollectionWriter(day.capture, { day.metaProvider.meta(0L) }, visitUuidOf = { o -> dao.visitsOn(day.businessDate()).lastOrNull { it.outletId == o }?.clientUuid }),
+        VisitDueCollectionWriter(db, day.capture, { rid -> day.metaProvider.meta(rid ?: 0L) }, day::businessDate),
         MemoPrintingReprinter(day.printing), ::names, day::businessDate,
-        // tso-manual X4a (R-W-11): Mark Paid is hidden while today's route-day is closed by its zone's Final Submit
-        markPaidLocked = { day.finalLocked() },
     )
 
     suspend fun history(): List<StoredMemo> = store.history(day.businessDate())

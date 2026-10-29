@@ -443,8 +443,7 @@ fun SrApp(
                             opening = true
                             scope.launch {
                                 // tso-manual X4a (R-W-11, A3 ask 11): the lock text, not a fix and a generic failed commit
-                                if (day.sale.callLocked(r.outlet.routeId)) { lockNotice = true; opening = false; return@launch }
-                                runCatching { day.visitFlow.open(day.visitOutlet(r.outlet)) }
+                                if (!day.sale.startCall(r.outlet)) { lockNotice = true; opening = false; return@launch }
                                 opening = false; screen = SrScreen.VISIT
                             }
                         }
@@ -463,7 +462,7 @@ fun SrApp(
                     // stored): the lock text instead of the generic failed commit and its retry
                     val failed = st as? VisitUiState.CommitFailed
                     var lockedOut by remember(failed) { mutableStateOf(false) }
-                    LaunchedEffect(failed) { lockedOut = failed != null && day.sale.callLocked(failed.outlet.routeId) }
+                    LaunchedEffect(failed) { lockedOut = day.sale.refusedByLock(failed) }
                     if (lockedOut) SrDayLockDialog(onOk = { screen = SrScreen.HOME })
                     VisitCheckContent(
                         st, onRefresh = { scope.launch { day.visitFlow.refresh() } }, onForceSale = { screen = SrScreen.FORCE },

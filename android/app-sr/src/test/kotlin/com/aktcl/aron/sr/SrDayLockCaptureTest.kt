@@ -182,8 +182,8 @@ class SrDayLockCaptureTest {
         val reprinter = object : MemoReprinter { override suspend fun print(memoUuid: String, memo: com.aktcl.aron.core.printing.doc.MemoPrint) = PrintAttempt.Done }
         val uuid = ClientIds.newUuid()
         val vm = MemoViewModel(
+            // Mark Paid's check is the writer's own (fix round): the collection's route-day, as the write would see it
             store, RoomDueCollectionWriter(repo, { meta() }, newUuid = { uuid }), reprinter, { PrintNames({ "S$it" }, { "O$it" }, "sr", "r") }, { date },
-            markPaidLocked = { FinalSubmitLock.isFinal(db, date, route) }, // SrDay.finalLocked() on the SR's route
         )
         vm.open(memoUuid)
         runBlocking { withTimeoutOrNull(10_000) { while (!vm.state.value.canMarkPaid) delay(10) } }

@@ -8,7 +8,6 @@ import com.aktcl.aron.core.printing.flow.MemoPrinting
 import com.aktcl.aron.core.printing.flow.SaveAndPrint
 import com.aktcl.aron.feature.outlet.OpenVisit
 import com.aktcl.aron.feature.outlet.VisitSession
-import kotlinx.coroutines.flow.MutableStateFlow
 
 /**
  * tso-manual X4a (R-W-11, A3 asks 1 and 11, D-TSO-MAN-31, D-A3-22): how the SR screens meet the Final Submit lock that
@@ -18,16 +17,17 @@ import kotlinx.coroutines.flow.MutableStateFlow
  */
 internal object SrLockGate {
     /**
-     * The sale's Save and Print with the lock named: a commit refused by the lock sets [refused] and is rethrown, so
-     * [SaveAndPrint] stops at SaveFailed before the print step (nothing prints); the host shows the lock text in its place.
+     * The sale's Save and Print with the lock named: a commit refused by the lock calls [onRefused] (the kit keeps which
+     * sale or edit was refused) and is rethrown, so [SaveAndPrint] stops at SaveFailed before the print step (nothing
+     * prints); the host of that sale or edit shows the lock text in its place.
      * A sale already stored (a replay after a kill) commits as before.
      */
-    fun saveAndPrint(commit: suspend () -> CommittedMemo, printing: MemoPrinting, refused: MutableStateFlow<Boolean>): SaveAndPrint =
+    fun saveAndPrint(commit: suspend () -> CommittedMemo, printing: MemoPrinting, onRefused: () -> Unit): SaveAndPrint =
         SaveAndPrint({
             try {
                 commit()
             } catch (e: RouteDayFinalSubmittedException) {
-                refused.value = true
+                onRefused()
                 throw e
             }
         }, printing)
@@ -58,6 +58,12 @@ internal object SrLockGate {
             false
         }
 }
+
+/**
+ * tso-manual X4a (fix round): which sale or memo edit a refused save belongs to, so only its own host shows the lock text:
+ * the edited memo's uuid for an edit, else the call's visit uuid.
+ */
+internal fun refusalKey(draft: com.aktcl.aron.feature.sale.domain.SaleDraft): String = draft.edit?.supersedesMemoUuid ?: draft.visitUuid
 
 /**
  * The lock text where a capture was refused (a new call, a sale save, a skip, Mark Paid, a memo edit): the banner's title and

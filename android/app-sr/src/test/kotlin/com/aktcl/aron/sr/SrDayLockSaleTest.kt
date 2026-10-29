@@ -142,7 +142,7 @@ class SrDayLockSaleTest {
         flow.setQuantity(sku.skuId, 2, sku.entry.unit)
         // as SrSaleKit's printSource: the stored memo through the production memo store; counted, so a refused sale shows none
         val step = SaleCommitStep(flow, MemoPrintSource { uuid -> loads++; PrintMapping.memo(RoomMemoStore(db).memos(date).first { it.memoUuid == uuid }, names) })
-        SaleViewModel(flow, SrLockGate.saveAndPrint(step::invoke, printing(), refused)) to flow
+        SaleViewModel(flow, SrLockGate.saveAndPrint(step::invoke, printing()) { refused.value = true }) to flow
     }
 
     /** MemoPrinting on this database's ledger; no printer and no renderer: anything that tried to print would fail the test. */
