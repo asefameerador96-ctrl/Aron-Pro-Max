@@ -108,7 +108,7 @@ private val ROUTE_LEVEL = Level(null, null, null, null, "route")
 
 /**
  * GET /v1/dashboards/summary (F-API-014). Reads `dw` aggregates only (never the transaction log; the SKU master for report units), from the read replica
- * when configured, scoped by the caller's server-side reach; cached [ttl] (5 s) per scope hash, the caller's top nodes, node and date range.
+ * when configured, scoped by the caller's server-side reach; cached [ttl] (5 s) per scope hash, the caller's top nodes, node (and whether it was named or defaulted), date range and, for a brand caller, brands.
  * D-NIGHT-SYNC-01: the cache was 30 s (docs/25 F-API-014), which alone could hold a synced memo off the tile for longer
  * than the 15 s goal; 5 s still folds the 30 s refetches of every open tab of one scope into one query.
  */
@@ -129,7 +129,7 @@ class DashboardService(
         }
         val scope = ZoneScope(reach.national, reach.zoneIds.toList(), if (level == null && nodeId == null) routeOnlyNode(reach)?.routes else null)
         val node = resolveNode(reach, level, nodeId)
-        val key = "${scope.hash}|${node.first}|${node.second}|$from|$to|${brands?.sorted()?.joinToString(",", "B:") ?: ""}|${topNodesKey(reach)}"
+        val key = "${scope.hash}|${node.first}|${node.second}|$from|$to|${brands?.sorted()?.joinToString(",", "B:") ?: ""}|${topNodesKey(reach)}|${if (level == null && nodeId == null) "D" else ""}"
         val now = clock.now()
         cache[key]?.let { (at, v) -> if (Duration.between(at, now) < ttl) return v }
         val multi = level == null && nodeId == null && !reach.national && reach.topNodes.count { it.type in DEFAULT_LEVELS } > 1
@@ -145,7 +145,7 @@ class DashboardService(
      * `dw.agg_daily_zone` rollup (the same figures as the summary), the device/server verdict mismatch rate over the
      * visits the server re-checked (`dw.fact_visit`), the suspicious-visit rate, and the risk signals raised on those
      * dates in those zones by code (dismissed ones left out; a signal with no zone counts at national level only).
-     * Children as in the summary (routes under a zone). Cached [ttl] per scope, node and range like the summary.
+     * Children as in the summary (routes under a zone). Cached [ttl] per scope, node, range, the caller's top nodes and whether the node was named or defaulted (a default read of several top nodes is the whole reach, `multi`), like the summary.
      */
     fun geoValidation(reach: Reach, level: String?, nodeId: Long?, from: LocalDate, to: LocalDate): GeoValidationSummary {
         if (to.isBefore(from) || ChronoUnit.DAYS.between(from, to) > 92) {
@@ -153,7 +153,7 @@ class DashboardService(
         }
         val scope = ZoneScope(reach.national, reach.zoneIds.toList(), if (level == null && nodeId == null) routeOnlyNode(reach)?.routes else null)
         val node = resolveNode(reach, level, nodeId)
-        val key = "${scope.hash}|${node.first}|${node.second}|$from|$to|${topNodesKey(reach)}"
+        val key = "${scope.hash}|${node.first}|${node.second}|$from|$to|${topNodesKey(reach)}|${if (level == null && nodeId == null) "D" else ""}"
         val now = clock.now()
         geoCache[key]?.let { (at, v) -> if (Duration.between(at, now) < ttl) return v }
         val multi = level == null && nodeId == null && !reach.national && reach.topNodes.count { it.type in DEFAULT_LEVELS } > 1
