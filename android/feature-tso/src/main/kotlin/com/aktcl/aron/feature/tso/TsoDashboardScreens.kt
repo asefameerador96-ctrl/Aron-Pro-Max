@@ -24,6 +24,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.TextAutoSize
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -184,7 +185,10 @@ private fun CardTitle(text: String, modifier: Modifier = Modifier, align: TextAl
 private fun FigureBlock(figure: String, caption: String, modifier: Modifier = Modifier, figureColor: Color? = null, captionColor: Color? = null, figureSize: Int = 26) {
     val n = nightRoles()
     Column(modifier.semantics(mergeDescendants = true) {}, horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(figure, style = nightText(figureSize.sp, figureColor ?: n.figure, bold = true, align = TextAlign.Center), maxLines = 1)
+        Text(
+            figure, style = nightText(figureSize.sp, figureColor ?: n.figure, bold = true, align = TextAlign.Center), maxLines = 1, softWrap = false,
+            autoSize = TextAutoSize.StepBased(minFontSize = 11.sp, maxFontSize = figureSize.sp, stepSize = 1.sp),
+        )
         Text(caption, style = nightText(15.sp, captionColor ?: n.label, align = TextAlign.Center), maxLines = 2)
     }
 }

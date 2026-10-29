@@ -19,6 +19,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.TextAutoSize
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
@@ -288,8 +289,12 @@ fun NightRing(
                 drawArc(brush, -90f, sweep, false, Offset(inset, inset), arcSize, style = Stroke(w, cap = StrokeCap.Round))
             }
         }
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(text, style = lookStyle(textSize, bold = true, color = n.ink, align = TextAlign.Center), maxLines = 1)
+        // the figure shrinks to the ring's inside (one line) instead of clipping: "73,486.6%" at 200 percent font scale
+        Column(Modifier.padding(horizontal = stroke + 6.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(
+                text, style = lookStyle(textSize, bold = true, color = n.ink, align = TextAlign.Center), maxLines = 1, softWrap = false,
+                autoSize = TextAutoSize.StepBased(minFontSize = 9.sp, maxFontSize = textSize, stepSize = 1.sp),
+            )
             if (caption != null) Text(caption, style = lookStyle(11.sp, bold = true, color = n.ink, align = TextAlign.Center), maxLines = 1)
         }
     }

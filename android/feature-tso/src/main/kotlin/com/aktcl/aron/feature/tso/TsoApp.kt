@@ -81,7 +81,7 @@ fun TsoApp(
         drawerContent = {
             ModalDrawerSheet(
                 drawerContainerColor = n.drawer, drawerShape = RoundedCornerShape(topEnd = 24.dp, bottomEnd = 24.dp),
-                modifier = Modifier.fillMaxWidth(0.8f).fillMaxHeight(),
+                modifier = Modifier.fillMaxWidth(0.85f).fillMaxHeight(),
             ) {
                 TsoDrawerContent(
                     user.fullName,

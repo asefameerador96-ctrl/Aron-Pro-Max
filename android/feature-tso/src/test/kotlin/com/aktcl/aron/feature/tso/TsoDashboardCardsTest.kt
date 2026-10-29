@@ -181,6 +181,13 @@ class TsoDashboardCardsTest {
         assertEquals(listOf(2L, 1L), byTarget.brands.map { TsoDashboards.brandWhole(it, byTarget) })
     }
 
+    @Test fun pieAnglesComeFromTheIntegers() {
+        val c = ChannelCard("x", listOf(ChannelSlice("Astha", 2), ChannelSlice("GT", 1)), 3)
+        assertEquals(listOf(2400L, 1200L), c.channels.map { TsoDashboards.sweepTenths(it, c.total) })
+        assertEquals(3600L, TsoDashboards.sweepTenths(ChannelSlice("Astha", 40), 40))
+        assertEquals(0L, TsoDashboards.sweepTenths(ChannelSlice("Astha", 0), 0))
+    }
+
     @Test fun theBrandAxisIsScreenshot7() {
         // the top point is 2 of 3 = 6667 bp; six steps print 0, 11, 22, 33, 44, 56, 67
         assertEquals(listOf(0L, 11L, 22L, 33L, 44L, 56L, 67L), TsoDashboards.axisTicks(6667, 6))

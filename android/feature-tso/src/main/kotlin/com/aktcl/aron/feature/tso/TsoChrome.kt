@@ -172,7 +172,7 @@ fun TsoRootTopBar(fullName: String, unread: Int, onMenu: () -> Unit, onBell: () 
         ) { Icon(AronIcons.Menu, contentDescription = null, tint = n.ink, modifier = Modifier.size(28.dp)) }
         Text(
             stringResource(R.string.tso_chrome_greeting, fullName), Modifier.weight(1f).padding(start = 4.dp).testTag(TsoShellTags.GREETING),
-            style = nightText(17.sp, n.ink), maxLines = 1,
+            style = nightText(17.sp, n.ink), maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
         )
         val bellLabel = if (unread > 0) pluralStringResource(R.plurals.tso_chrome_bell_unread, unread, localizedNumber(unread.toLong())) else stringResource(R.string.tso_chrome_notifications)
         Box(
@@ -216,7 +216,7 @@ fun TsoDrawerContent(
             .verticalScroll(rememberScrollState())
             .testTag(TsoShellTags.DRAWER),
     ) {
-        Row(Modifier.fillMaxWidth().padding(start = 28.dp, end = 12.dp, top = 40.dp, bottom = 56.dp), verticalAlignment = Alignment.Top) {
+        Row(Modifier.fillMaxWidth().padding(start = 24.dp, end = 8.dp, top = 40.dp, bottom = 56.dp), verticalAlignment = Alignment.Top) {
             Column(Modifier.weight(1f)) {
                 Text(stringResource(R.string.tso_drawer_role), style = nightText(28.sp, n.ink))
                 Text(fullName, style = nightText(32.sp, n.ink, bold = true), maxLines = 2, modifier = Modifier.semantics { heading() })
@@ -272,22 +272,22 @@ private fun DrawerRow(e: TsoDrawerEntry, indent: Boolean, trailing: Trailing, on
     Row(
         Modifier
             .fillMaxWidth()
-            .heightIn(min = if (indent) 72.dp else 84.dp)
+            .heightIn(min = if (indent) 68.dp else 80.dp)
             .clickable(role = Role.Button, onClick = onClick)
             .semantics(mergeDescendants = true) { if (state != null) stateDescription = state }
             .testTag(TsoShellTags.row(e.id))
-            .padding(start = if (indent) 92.dp else 28.dp, end = 20.dp, top = 10.dp, bottom = 10.dp),
+            .padding(start = if (indent) 56.dp else 24.dp, end = 12.dp, top = 10.dp, bottom = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Icon(e.icon, contentDescription = null, tint = n.ink, modifier = Modifier.size(28.dp))
-        Spacer(Modifier.width(24.dp))
+        Icon(e.icon, contentDescription = null, tint = n.ink, modifier = Modifier.size(26.dp))
+        Spacer(Modifier.width(20.dp))
         Column(Modifier.weight(1f)) {
-            Text(title, style = nightText(20.sp, n.ink, semibold = true))
-            if (sub != null) Text(sub, style = nightText(15.sp, n.inkMuted))
+            Text(title, style = nightText(19.sp, n.ink, semibold = true))
+            if (sub != null) Text(sub, style = nightText(14.sp, n.inkMuted))
         }
         Icon(
             when (trailing) { Trailing.Open -> AronIcons.ChevronRight; Trailing.Expand -> AronIcons.ExpandMore; Trailing.Collapse -> AronIcons.ExpandLess },
-            contentDescription = null, tint = if (trailing == Trailing.Open) n.chevron else n.ink, modifier = Modifier.size(26.dp),
+            contentDescription = null, tint = if (trailing == Trailing.Open) n.chevron else n.ink, modifier = Modifier.size(24.dp),
         )
     }
 }
