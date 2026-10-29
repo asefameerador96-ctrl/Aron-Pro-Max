@@ -127,8 +127,8 @@ internal fun resolveScopedNode(
         // A house (a TSO or AMO scope node since contract 1.7.0, D-BC-DASH-HOUSE-01): its zones as the reach has them
         // (`app.zone.house_id`), not `dw.dim_geo`, which folds same-name houses into one. An explicit `level=house` stays 400.
         if (top.type == "house") return ScopedNode(NodeRefDto(top.type, top.id, top.code, top.name), reach.zoneIds.toList().ifEmpty { throw out })
-        // A caller with several top nodes sees all of them: the zones are the whole reach, the node label is the first top node.
-        if (reach.topNodes.size > 1) return ScopedNode(NodeRefDto(top.type, top.id, top.code, top.name), reach.zoneIds.toList().ifEmpty { listOf(-1L) })
+        // A caller with several dashboard-level top nodes (a cover route is not one, as in DashboardService) sees all of them: the zones are the whole reach, the node label is the first top node.
+        if (reach.topNodes.count { isDashboardLevel(it.type) } > 1) return ScopedNode(NodeRefDto(top.type, top.id, top.code, top.name), reach.zoneIds.toList().ifEmpty { listOf(-1L) })
         lv = top.type; id = top.id
     } else {
         lv = level ?: throw ApiProblem(ProblemCode.ERR_VALIDATION, "node_id needs level", errors = listOf(FieldError("query.level", "required")))

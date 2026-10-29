@@ -90,6 +90,18 @@ class AsWasNodeScopeTest {
     }
 
     @Test
+    fun aTerritoryPlusACoverRouteIsOneTopNodeForTheRouteListAsForTheKpis() {
+        // D-REPORTS-NODEASWAS-11: resolveScopedNode counts dashboard-level top nodes like DashboardService, so a territory plus a cover route reads the
+        // territory's members over the window, not the whole reach.
+        moveZ2()   // Z2 joined the new territory T2 today; on the fixture date T2 had no zone
+        val r3 = id("SELECT id FROM app.route WHERE code = 'R3'")
+        val caller = Reach(5, Role.TSO, day, false, setOf(z2), emptySet(), false, listOf(ReachNode("territory", t2), ReachNode("route", r3)))
+        val scoped = fresh.db.jdbi.withHandle<ScopedNode, Exception> { resolveScopedNode(it, caller, null, null, from = day) }
+        assertEquals(emptyList(), scoped.zones, "T2 had no member on that date: nothing to read (the KPIs agree)")
+        assertEquals(0L, dash().summary(caller, null, null, day, day).kpis.gross_mtk)
+    }
+
+    @Test
     fun aNodeWithNoZoneAtAllIsTheCallersOnlyThroughItsParentChain() {
         // A new, empty territory under T1's division: no zone today, none in the window. The reach carries zones only, so the parent chain is what ties it to a scope node.
         val d1 = id("SELECT division_id FROM app.territory WHERE id = $t1"); val w1 = id("SELECT wing_id FROM app.division WHERE id = $d1")

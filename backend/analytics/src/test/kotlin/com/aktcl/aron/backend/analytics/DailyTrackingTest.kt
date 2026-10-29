@@ -143,6 +143,18 @@ class DailyTrackingTest : ReportFixture() {
     private fun body(uuid: String, route: Long, date: String = "2026-10-04", note: String = "Please follow up") = """{"action_uuid":"$uuid","route_id":$route,"business_date":"$date","note":"$note"}"""
 
     @Test
+    fun takeActionChecksTheRoutesZoneLiveNotTheLaggingDimension() = app {
+        // D-REPORTS-NODEASWAS-11: R4 moves to zone 2 today and dw.dim_geo has not been refreshed yet: zone 1's TSO is refused at once, zone 2's TSO may act.
+        val r4 = routeId("R4")
+        fresh.db.jdbi.useHandle<Exception> { h ->
+            h.execute("INSERT INTO app.user_scope (user_id, node_type, node_id, valid_from) VALUES (11, 'zone', $z1, '2026-01-01'), (14, 'zone', $z2, '2026-01-01')")
+            h.execute("UPDATE app.route SET zone_id = $z2 WHERE id = $r4")
+        }
+        assertEquals(HttpStatusCode.Forbidden, act(11, Role.TSO, body("6f1c2b0e-8d1a-4c5e-9f3a-2b7d4e6a8c10", r4)).status, "the old zone's TSO no longer reaches the route")
+        assertEquals(HttpStatusCode.Created, act(14, Role.TSO, body("7f1c2b0e-8d1a-4c5e-9f3a-2b7d4e6a8c10", r4)).status, "the new zone's TSO does")
+    }
+
+    @Test
     fun aRouteOnlyTsoListsAndActsOnItsOwnRouteOnly() = app {
         // D-BC-DASH-ROUTE-KEYED-01: a TSO holding R4 by assignment and no geo node sees R4's row and may take action on it, nowhere else.
         val r4 = routeId("R4")
