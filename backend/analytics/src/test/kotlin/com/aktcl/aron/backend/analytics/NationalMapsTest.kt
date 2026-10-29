@@ -132,6 +132,46 @@ class NationalMapsTest {
         card().let { assertNull(it.monthly_target_qty); assertNull(it.daily_target); assertNull(it.achievement_pct_bp); assertEquals(25, it.working_days); assertEquals(45L, it.sales) }
     }
 
+    /**
+     * Lead ruling R-W-19 (tso-manual X2): `TargetVsAchievement.monthly_target_qty` stays a Decimal3 on the wire but is always a
+     * whole number, "<n>.000": T, the sum of the route's monthly targets in the category, in base units (sticks here), never
+     * converted to packets or divided by W. Every card of every route, over targets that are no whole number of packets of 10
+     * (2507 sticks would be "250.700" packets), single sticks and the column's upper bound on two SKUs; a route without a target
+     * sends null.
+     */
+    @Test
+    fun routeMapMonthlyTargetIsAlwaysAWholeNumberOfBaseUnits() {
+        fun sql(s: String) = fresh.db.jdbi.useHandle<Exception> { it.execute(s) }
+        val r3 = id("SELECT id FROM app.route WHERE code = 'R3'")
+        val sku1 = id("SELECT id FROM app.sku WHERE code = 'SKU1'"); val sku2 = id("SELECT id FROM app.sku WHERE code = 'SKU2'")
+        val whole = Regex("^(0|[1-9][0-9]*)\\.000$")
+        fun expected(route: Long): Map<String, Long> = fresh.db.jdbi.withHandle<Map<String, Long>, Exception> { h ->
+            h.createQuery("SELECT s.category_code, sum(t.qty_base) FROM app.route_monthly_target t JOIN app.sku s ON s.id = t.sku_id WHERE t.route_id = :r AND t.month = DATE '2026-10-01' GROUP BY 1")
+                .bind("r", route).map { rs, _ -> rs.getString(1) to rs.getLong(2) }.list().toMap()
+        }
+        fun target(route: Long, sku: Long, qty: Long) = sql(
+            "INSERT INTO app.route_monthly_target (route_id, sku_id, month, qty_base, batch_uuid) VALUES ($route, $sku, DATE '2026-10-01', $qty, '00000000-0000-4000-8000-0000000000c1') " +
+                "ON CONFLICT (route_id, sku_id, month) DO UPDATE SET qty_base = EXCLUDED.qty_base",
+        )
+        var seen = 0
+        for ((q1, q2) in listOf(2500L to 7L, 1L to 0L, 999L to 1L, 2501L to 6L, 1_000_000_000L to 1_000_000_000L)) {
+            target(r1, sku1, q1); target(r1, sku2, q2); target(r3, sku1, q2); target(r3, sku2, q1)   // each row within the column's 0..1e9
+            for (route in listOf(r1, r2, r3)) {
+                val want = expected(route)
+                for (card in svc.routeMap(national(), route, "2026-10-04").target_vs_achievement) {
+                    val t = card.monthly_target_qty
+                    val sum = want[card.category_code]
+                    if (sum == null) { assertNull(t, "route $route ${card.category_code}: no target, no T"); continue }
+                    assertTrue(t != null && whole.matches(t), "route $route ${card.category_code}: T $t is not a whole <n>.000")
+                    assertEquals("$sum.000", t, "route $route ${card.category_code}: T is the target sum in base units")
+                    seen++
+                }
+            }
+        }
+        assertEquals("2000000000.000", svc.routeMap(national(), r1, "2026-10-04").target_vs_achievement.single { it.category_code == "cigarette" }.monthly_target_qty)
+        assertEquals(10, seen, "R1 and R3 carry a cigarette target in each of the five rounds; R2 none")
+    }
+
     @Test
     fun salePositionTellsHitFromMissAndNewFromRepeatAndEdited() {
         val o = { code: String -> id("SELECT id FROM app.outlet WHERE code = '$code'") }
