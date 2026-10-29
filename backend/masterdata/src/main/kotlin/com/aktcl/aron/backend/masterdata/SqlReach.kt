@@ -13,7 +13,11 @@ import java.util.concurrent.atomic.AtomicReference
 class GeoSnapshot(val geo: Geo, val version: Long)
 
 /** Geography snapshot from PostgreSQL, refreshed at most every [ttlMs] (master data changes rarely). */
-class GeoRepository(private val db: Database, private val clock: AronClock = AronClock.SYSTEM, private val ttlMs: Long = 60_000) {
+class GeoRepository(
+    private val db: Database, private val clock: AronClock = AronClock.SYSTEM, private val ttlMs: Long = 60_000,
+    /** How long a caller that must not see the old geography (after an [invalidate], or when the expired entry is older than twice the TTL) waits for a reload in progress before it loads on its own; keep it below the pool's connection timeout. */
+    private val lockWaitMs: Long = 1_000,
+) {
     /** A snapshot is valid only for the [gen]eration it was read under: [invalidate] bumps the generation, so no reader accepts an entry that predates it. */
     private class Cached(val at: Long, val snap: GeoSnapshot, val gen: Long)
     private val cached = AtomicReference<Cached?>(null)
@@ -22,20 +26,41 @@ class GeoRepository(private val db: Database, private val clock: AronClock = Aro
     private val lock = java.util.concurrent.locks.ReentrantLock()
     private var lastGeo: Geo? = null
     private var changes = 0L
-    /** Test seam: runs after a load has read the database and before it is installed. */
+    /** Test seams: after a load has read the database; and after the staleness check, right before the snapshot is installed. */
     @Volatile internal var afterLoad: (() -> Unit)? = null
+    @Volatile internal var beforeInstall: (() -> Unit)? = null
+    /** Test seam: right after the install step (the snapshot is installed unless it was stale), still holding the reload lock. */
+    @Volatile internal var afterInstall: (() -> Unit)? = null
+    /** Test seam: runs at the start of [invalidate]. */
+    @Volatile internal var onInvalidate: (() -> Unit)? = null
 
     fun geo(): Geo = snapshot().geo
 
     /** The geography version (see [GeoSnapshot]); refreshes the snapshot when it is older than the TTL. */
     fun version(): Long = snapshot().version
 
-    private fun fresh(c: Cached?): GeoSnapshot? = c?.takeIf { clock.now().toEpochMilli() - it.at < ttlMs && it.gen == generation.get() }?.snap
+    private fun isFresh(c: Cached) = clock.now().toEpochMilli() - c.at < ttlMs && c.gen == generation.get()
+    private fun fresh(c: Cached?): GeoSnapshot? = c?.takeIf { isFresh(it) }?.snap
 
-    /** The current snapshot and its version as ONE pair (a reach computed from the geography is cached under the version of that same geography). */
+    /**
+     * The current snapshot and its version as ONE pair (a reach computed from the geography is cached under the version of that same geography).
+     * Only one thread reloads at a time. When the entry is merely older than the TTL, and younger than twice the TTL (no edit since), a caller that finds a reload in progress is served the
+     * expired entry instead of waiting: a request that holds a pool connection must never queue behind a loader that needs one. After an [invalidate] no old
+     * entry may be served; a caller then waits up to [lockWaitMs] for the reload in progress and, failing that, loads on its own (it began after the edit).
+     */
     fun snapshot(): GeoSnapshot {
-        fresh(cached.get())?.let { return it }
-        lock.lock()   // one reload at a time: callers arriving at the expiry share one
+        val c0 = cached.get()
+        fresh(c0)?.let { return it }
+        val ttlOnly = c0 != null && c0.gen == generation.get()
+        // The expired entry is served only up to twice the TTL: if every reload keeps failing (a lock winner without a connection, an exhausted pool) a repository
+        // that hears no invalidation (another replica, a worker) must not answer from it for ever; past that it waits for the reload like after an invalidation.
+        val servable = ttlOnly && clock.now().toEpochMilli() - c0!!.at < 2 * ttlMs
+        val got = if (servable) lock.tryLock() else lock.tryLock(lockWaitMs, java.util.concurrent.TimeUnit.MILLISECONDS)
+        if (!got) {
+            if (servable) return c0!!.snap
+            val g = load()
+            return GeoSnapshot(g, register(g))
+        }
         try {
             fresh(cached.get())?.let { return it }
             var attempt = 0
@@ -47,16 +72,18 @@ class GeoRepository(private val db: Database, private val clock: AronClock = Aro
                 // An edit committed and invalidated while this load ran: it may predate the edit. Read again; after a few tries answer with what was read, uncached.
                 if (stale && ++attempt < 3) continue
                 val snap = GeoSnapshot(g, register(g))
+                beforeInstall?.invoke()
                 // Tagged with the generation it was read under: an invalidation after this point (even one statement later) makes every reader reject the entry.
                 if (!stale) cached.set(Cached(clock.now().toEpochMilli(), snap, gen))
+                afterInstall?.invoke()
                 return snap
             }
         } finally { lock.unlock() }
     }
 
-    private fun register(g: Geo): Long { if (lastGeo != g) { lastGeo = g; changes++ }; return changes }
+    @Synchronized private fun register(g: Geo): Long { if (lastGeo != g) { lastGeo = g; changes++ }; return changes }
 
-    fun invalidate() { generation.incrementAndGet(); cached.set(null) }
+    fun invalidate() { onInvalidate?.invoke(); generation.incrementAndGet(); cached.set(null) }
 
     /** The snapshot, reloaded once when it lacks a route or zone that live rows already reference (no 60 s blind spot). */
     fun snapshotCovering(routeIds: Collection<Long> = emptyList(), zoneIds: Collection<Long> = emptyList()): GeoSnapshot {
@@ -68,21 +95,40 @@ class GeoRepository(private val db: Database, private val clock: AronClock = Aro
 
     fun geoCovering(routeIds: Collection<Long> = emptyList(), zoneIds: Collection<Long> = emptyList()): Geo = snapshotCovering(routeIds, zoneIds).geo
 
+    /**
+     * ONE statement: a single MVCC snapshot under READ COMMITTED, so the chain zone -> territory -> division -> wing is never a mix of two commits
+     * (separate statements could read a zone's new territory and that territory's old division). It also runs on a handle the caller already holds.
+     */
     private fun load(): Geo = db.jdbi.withHandle<Geo, Exception> { h ->
-        fun pairs(sql: String) = h.createQuery(sql).map { rs, _ -> rs.getLong(1) to rs.getLong(2) }.list().toMap()
+        val zoneTerritory = HashMap<Long, Long>(); val territoryDivision = HashMap<Long, Long>(); val divisionWing = HashMap<Long, Long>()
+        val routeZone = HashMap<Long, Long>(); val zoneHouse = HashMap<Long, Long>()
         val names = HashMap<Pair<String, Long>, Pair<String?, String?>>()
-        for (t in listOf("wing", "division", "territory", "house", "zone", "route")) {
-            h.createQuery("SELECT id, code, name FROM app.$t").map { rs, _ -> (t to rs.getLong(1)) to (rs.getString(2) to rs.getString(3)) }
-                .list().forEach { names[it.first] = it.second }
-        }
-        Geo(
-            zoneTerritory = pairs("SELECT id, territory_id FROM app.zone"),
-            territoryDivision = pairs("SELECT id, division_id FROM app.territory"),
-            divisionWing = pairs("SELECT id, wing_id FROM app.division"),
-            routeZone = pairs("SELECT id, zone_id FROM app.route"),
-            names = names,
-            zoneHouse = pairs("SELECT id, house_id FROM app.zone WHERE house_id IS NOT NULL"),
-        )
+        h.createQuery(
+            """
+            SELECT 'zone' k, id a, territory_id b, NULL::text c, NULL::text d FROM app.zone
+            UNION ALL SELECT 'territory', id, division_id, NULL, NULL FROM app.territory
+            UNION ALL SELECT 'division', id, wing_id, NULL, NULL FROM app.division
+            UNION ALL SELECT 'route', id, zone_id, NULL, NULL FROM app.route
+            UNION ALL SELECT 'zone_house', id, house_id, NULL, NULL FROM app.zone WHERE house_id IS NOT NULL
+            UNION ALL SELECT 'n:wing', id, NULL, code, name FROM app.wing
+            UNION ALL SELECT 'n:division', id, NULL, code, name FROM app.division
+            UNION ALL SELECT 'n:territory', id, NULL, code, name FROM app.territory
+            UNION ALL SELECT 'n:house', id, NULL, code, name FROM app.house
+            UNION ALL SELECT 'n:zone', id, NULL, code, name FROM app.zone
+            UNION ALL SELECT 'n:route', id, NULL, code, name FROM app.route
+            """.trimIndent(),
+        ).map { rs, _ ->
+            val k = rs.getString(1); val a = rs.getLong(2); val b = rs.getLong(3)
+            when {
+                k == "zone" -> zoneTerritory[a] = b
+                k == "territory" -> territoryDivision[a] = b
+                k == "division" -> divisionWing[a] = b
+                k == "route" -> routeZone[a] = b
+                k == "zone_house" -> zoneHouse[a] = b
+                else -> names[k.removePrefix("n:") to a] = rs.getString(4) to rs.getString(5)
+            }
+        }.list()
+        Geo(zoneTerritory, territoryDivision, divisionWing, routeZone, names, zoneHouse)
     }
 }
 

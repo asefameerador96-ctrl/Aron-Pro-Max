@@ -6,6 +6,7 @@ import org.junit.jupiter.api.BeforeEach
 import java.time.LocalDate
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 
 /**
  * The per-dimension, column-aware probe (`AsWasSql.probe`, D-REPORTS-ASWAS-02) from a CLEAN baseline: `seed_day.sql` only creates
@@ -70,5 +71,37 @@ class AsWasProbeTest {
         assertEquals("t/t/t", probe(), "a new territory closes no period")
         exec("UPDATE app.zone SET territory_id = (SELECT id FROM app.territory WHERE code = 'T9') WHERE code = 'Z1'")
         assertEquals("f/t/t", probe())
+    }
+
+    @Test
+    fun probesOfOneKeyThatOverlapRunOneQuery() {
+        val queries = java.util.concurrent.atomic.AtomicInteger()
+        fresh.db.jdbi.setSqlLogger(object : org.jdbi.v3.core.statement.SqlLogger {
+            override fun logAfterExecution(context: org.jdbi.v3.core.statement.StatementContext) { if (context.renderedSql.contains("NOT EXISTS")) queries.incrementAndGet() }
+        })
+        val entered = java.util.concurrent.CountDownLatch(1); val release = java.util.concurrent.CountDownLatch(1)
+        AsWasSql.probeHook = { entered.countDown(); release.await() }
+        try {
+            var a = ""; var b = ""
+            val t1 = Thread { a = probe() }.also { it.start() }
+            entered.await()                                   // the first probe is running
+            val joined = java.util.concurrent.CountDownLatch(1)
+            AsWasSql.probeJoinHook = { joined.countDown() }
+            val t2 = Thread { b = probe() }.also { it.start() }
+            assertTrue(joined.await(20, java.util.concurrent.TimeUnit.SECONDS), "the second probe joined the running one")
+            release.countDown(); t1.join(20_000); t2.join(20_000)
+            assertEquals("t/t/t", a); assertEquals(a, b)
+            assertEquals(1, queries.get(), "the overlapping probe took the running one's answer instead of scanning the history tables again")
+        } finally { release.countDown(); AsWasSql.probeHook = null; AsWasSql.probeJoinHook = null }
+    }
+
+    @Test
+    fun aHandleKeepsItsFirstAnswerSoOneRequestIsBuiltOnOneProbe() {
+        fresh.db.jdbi.withHandle<Unit, Exception> { h ->
+            assertEquals(true, AsWasSql.probe(h, day).geo)
+            h.execute("UPDATE app.route SET zone_id = (SELECT id FROM app.zone WHERE code = 'Z2') WHERE code = 'R2'")   // a geography edit lands mid-request
+            assertEquals(true, AsWasSql.probe(h, day).geo, "the same request still sees the answer it started with")
+        }
+        assertEquals("f/t/t", probe(), "the next request (a new handle) sees the edit")
     }
 }

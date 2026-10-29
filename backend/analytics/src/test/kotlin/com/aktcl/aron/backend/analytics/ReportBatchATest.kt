@@ -80,6 +80,16 @@ class ReportBatchATest : ReportFixture() {
     }
 
     @Test
+    fun aBrandWhoseNodeRowIsMissingKeepsItsRowUnderAFallbackName() = app {
+        // D-REPORTS-LEFT-01: the brand name is a fallback lookup, not an inner join that drops the route x brand row.
+        val b1 = fresh.db.jdbi.withHandle<Long, Exception> { it.createQuery("SELECT id FROM app.product_node WHERE name = 'BrandOne'").mapTo(Long::class.java).one() }
+        fresh.db.jdbi.useHandle<Exception> { h -> h.execute("SET session_replication_role = replica"); h.execute("DELETE FROM app.product_node WHERE id = $b1"); h.execute("SET session_replication_role = DEFAULT") }
+        val o = run(10, Role.ANALYST, "route-bsr-cpr").result()
+        assertEquals(4, o.rows().size, "no route x brand row dropped")
+        assertEquals(100.0, o.rows().single { it.str("route_code") == "R1" && it.str("brand_name") == "n$b1" }.num("bsr_pct"))
+    }
+
+    @Test
     fun cprAndBsrPerRouteAndBrand() = app {
         val o = run(10, Role.ANALYST, "route-bsr-cpr").result()
         assertEquals(4, o.rows().size)

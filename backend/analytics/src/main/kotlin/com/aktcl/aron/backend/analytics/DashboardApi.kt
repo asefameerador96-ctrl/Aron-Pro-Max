@@ -126,7 +126,7 @@ private val ROUTE_LEVEL = Level(null, null, null, null, "route")
 
 /**
  * GET /v1/dashboards/summary (F-API-014). Reads `dw` aggregates only (never the transaction log; the SKU master for report units), from the read replica
- * when configured, scoped by the caller's server-side reach; cached [ttl] (5 s) per scope hash, node and date range.
+ * when configured, scoped by the caller's server-side reach; cached [ttl] (5 s) per scope hash, the caller's top nodes, node (and whether it was named or defaulted), date range and, for a brand caller, brands.
  * D-NIGHT-SYNC-01: the cache was 30 s (docs/25 F-API-014), which alone could hold a synced memo off the tile for longer
  * than the 15 s goal; 5 s still folds the 30 s refetches of every open tab of one scope into one query.
  */
@@ -147,7 +147,7 @@ class DashboardService(
         }
         val scope = ZoneScope(reach.national, reach.zoneIds.toList(), if (level == null && nodeId == null) routeOnlyNode(reach)?.routes else null)
         val node = resolveNode(reach, level, nodeId)
-        val key = "${scope.hash}|${node.first}|${node.second}|$from|$to|${brands?.sorted()?.joinToString(",", "B:") ?: ""}"
+        val key = "${scope.hash}|${node.first}|${node.second}|$from|$to|${brands?.sorted()?.joinToString(",", "B:") ?: ""}|${topNodesKey(reach)}|${if (level == null && nodeId == null) "D" else ""}"
         val now = clock.now()
         cache[key]?.let { (at, v) -> if (Duration.between(at, now) < ttl) return v }
         val multi = level == null && nodeId == null && !reach.national && reach.topNodes.count { it.type in DEFAULT_LEVELS } > 1
@@ -163,7 +163,7 @@ class DashboardService(
      * `dw.agg_daily_zone` rollup (the same figures as the summary), the device/server verdict mismatch rate over the
      * visits the server re-checked (`dw.fact_visit`), the suspicious-visit rate, and the risk signals raised on those
      * dates in those zones by code (dismissed ones left out; a signal with no zone counts at national level only).
-     * Children as in the summary (routes under a zone). Cached [ttl] per scope, node and range like the summary.
+     * Children as in the summary (routes under a zone). Cached [ttl] per scope, node, range, the caller's top nodes and whether the node was named or defaulted (a default read of several top nodes is the whole reach, `multi`), like the summary.
      */
     fun geoValidation(reach: Reach, level: String?, nodeId: Long?, from: LocalDate, to: LocalDate): GeoValidationSummary {
         if (to.isBefore(from) || ChronoUnit.DAYS.between(from, to) > 92) {
@@ -171,7 +171,7 @@ class DashboardService(
         }
         val scope = ZoneScope(reach.national, reach.zoneIds.toList(), if (level == null && nodeId == null) routeOnlyNode(reach)?.routes else null)
         val node = resolveNode(reach, level, nodeId)
-        val key = "${scope.hash}|${node.first}|${node.second}|$from|$to"
+        val key = "${scope.hash}|${node.first}|${node.second}|$from|$to|${topNodesKey(reach)}|${if (level == null && nodeId == null) "D" else ""}"
         val now = clock.now()
         geoCache[key]?.let { (at, v) -> if (Duration.between(at, now) < ttl) return v }
         val multi = level == null && nodeId == null && !reach.national && reach.topNodes.count { it.type in DEFAULT_LEVELS } > 1
@@ -288,7 +288,7 @@ class DashboardService(
         // As was (D-REPORTS-NODEASWAS-01): the zones the node had on any date of the window, not the zones it has now, so a drill-down on an old
         // date reads the node as it was. Window never changed: the current structure answers (the plain path, the old SQL).
         val members = if (lv.col == null || multi) null else memberZones(h, lv.col, listOf(node.second), from, to)
-        if (members != null && !members.allowed(if (reach.national) null else reach.zoneIds, listOf(node.second))) throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "node is outside your reach")
+        if (members != null && !members.allowed(reach, listOf(node.second))) throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "node is outside your reach")
         val nodeZones: List<Long> = members?.readable(if (reach.national) null else reach.zoneIds) ?: emptyList()
         val eff = when {
             multi -> ZoneScope(false, reach.zoneIds.toList().ifEmpty { listOf(-1L) })
@@ -381,7 +381,7 @@ class DashboardService(
                 """
                 SELECT a.segment_id, p.segment_name, sum(a.gross_mtk) net, sum(a.sold_qty_base) qty, sum(a.memo_count) memos
                   FROM dw.agg_daily_route_segment a ${AsWasSql.geo("g", "a.route_id", "a.business_date", lo = ":f", hi = ":t", plain = asWas.geo)}
-                  JOIN LATERAL (SELECT name AS segment_name FROM app.product_node WHERE id = a.segment_id) p ON true
+                  JOIN LATERAL (SELECT coalesce((SELECT name FROM app.product_node WHERE id = a.segment_id), 'n' || a.segment_id) AS segment_name) p ON true
                  WHERE a.business_date BETWEEN :f AND :t AND ${ns.clause("g.zone_id", "a.route_id")}${ns.inNode("g")} GROUP BY 1, 2 ORDER BY 1
                 """
             },
@@ -418,7 +418,7 @@ class DashboardService(
             """
             SELECT b.brand_id, p.brand_name, sum(b.gross_mtk) net, sum(b.sold_qty_base) qty, sum(b.memo_count) memos
               FROM dw.agg_daily_route_brand b ${AsWasSql.geo("g", "b.route_id", "b.business_date", lo = ":f", hi = ":t", plain = asWas.geo)}
-              JOIN LATERAL (SELECT name AS brand_name FROM app.product_node WHERE id = b.brand_id) p ON true
+              JOIN LATERAL (SELECT coalesce((SELECT name FROM app.product_node WHERE id = b.brand_id), 'n' || b.brand_id) AS brand_name) p ON true
              WHERE b.business_date BETWEEN :f AND :t AND ${ns.clause("g.zone_id", "b.route_id")}${ns.inNode("g")}${if (brandOnly) " AND b.brand_id = ANY(:scopeBrands)" else ""} GROUP BY 1, 2 ORDER BY 1
             """,
         ) {
@@ -532,6 +532,12 @@ class DashboardDeps(
 /** Field phones read their own home strip (`/app/home`); the dashboards are for TSO and above. */
 internal val DASHBOARD_ROLES = Role.entries.toSet() - Role.SR - Role.AMO - Role.SUPPORT   // SUPPORT sees sync health only (docs/24 s8.5)
 
+/**
+ * The caller's scope nodes as part of the response-cache key (D-REPORTS-NODEASWAS-09): whether an empty node is the caller's depends on them
+ * ([NodeMembers.allowed]), and the zone set in `scope.hash` does not carry them, so two callers with the same zones must not share an answer.
+ */
+internal fun topNodesKey(reach: Reach): String = reach.topNodes.joinToString(",") { "${it.type}:${it.id}" }
+
 /** A BRAND user without brands must see nothing, never everything (fail closed). */
 internal fun requireBrandScope(role: Role, brandIds: Set<Long>?) {
     if (role == Role.BRAND && brandIds == null) throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "no brand scope")
@@ -543,37 +549,40 @@ internal fun refuseBrandCaller(role: Role) {
 }
 
 fun Route.dashboardRoutes(d: DashboardDeps) {
-    authenticated(d.guard) {
-        get("/dashboards/summary") {
-            val p = call.principal
-            if (p.role !in DASHBOARD_ROLES) throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "dashboards are not available to this role")
-            val q = call.request.queryParameters
-            val today = BusinessDate.of(d.clock.now().toEpochMilli()).toJavaLocalDate()
-            fun date(n: String, default: LocalDate) = q[n]?.let { s ->
-                runCatching { LocalDate.parse(s) }.getOrNull() ?: throw ApiProblem(ProblemCode.ERR_VALIDATION, "bad $n", errors = listOf(FieldError("query.$n", "invalid_value")))
-            } ?: default
-            val from = date("from", today)
-            val to = date("to", from)
-            val nodeId = q["node_id"]?.let { it.toLongOrNull()?.takeIf { v -> v >= 0 } ?: throw ApiProblem(ProblemCode.ERR_VALIDATION, "bad node_id", errors = listOf(FieldError("query.node_id", "invalid_value"))) }
-            val reach = d.reach.reach(p.userId, p.role, p.scopeVersion, today)
-            val brandIds = d.brands.brandIds(p.userId, p.role)
-            requireBrandScope(p.role, brandIds)
-            call.respond(d.service.summary(reach, q["level"], nodeId, from, to, brandIds))
-        }
-        get("/dashboards/geo-validation") {
-            val p = call.principal
-            if (p.role !in DASHBOARD_ROLES) throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "dashboards are not available to this role")
-            val q = call.request.queryParameters
-            val today = BusinessDate.of(d.clock.now().toEpochMilli()).toJavaLocalDate()
-            fun date(n: String, default: LocalDate) = q[n]?.let { s ->
-                runCatching { LocalDate.parse(s) }.getOrNull() ?: throw ApiProblem(ProblemCode.ERR_VALIDATION, "bad $n", errors = listOf(FieldError("query.$n", "invalid_value")))
-            } ?: default
-            val from = date("from", today)
-            val to = date("to", from)
-            val nodeId = q["node_id"]?.let { it.toLongOrNull()?.takeIf { v -> v >= 0 } ?: throw ApiProblem(ProblemCode.ERR_VALIDATION, "bad node_id", errors = listOf(FieldError("query.node_id", "invalid_value"))) }
-            refuseBrandCaller(p.role)
-            val reach = d.reach.reach(p.userId, p.role, p.scopeVersion, today)
-            call.respond(d.service.geoValidation(reach, q["level"], nodeId, from, to))
-        }
+    authenticated(d.guard) { dashboardHandlers(d) }
+}
+
+/** The handlers without the guard (a test mounts them with a principal of its own, past the portal gate, to prove the handler's own role checks). */
+internal fun Route.dashboardHandlers(d: DashboardDeps) {
+    get("/dashboards/summary") {
+        val p = call.principal
+        if (p.role !in DASHBOARD_ROLES) throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "dashboards are not available to this role")
+        val q = call.request.queryParameters
+        val today = BusinessDate.of(d.clock.now().toEpochMilli()).toJavaLocalDate()
+        fun date(n: String, default: LocalDate) = q[n]?.let { s ->
+            runCatching { LocalDate.parse(s) }.getOrNull() ?: throw ApiProblem(ProblemCode.ERR_VALIDATION, "bad $n", errors = listOf(FieldError("query.$n", "invalid_value")))
+        } ?: default
+        val from = date("from", today)
+        val to = date("to", from)
+        val nodeId = q["node_id"]?.let { it.toLongOrNull()?.takeIf { v -> v >= 0 } ?: throw ApiProblem(ProblemCode.ERR_VALIDATION, "bad node_id", errors = listOf(FieldError("query.node_id", "invalid_value"))) }
+        val reach = d.reach.reach(p.userId, p.role, p.scopeVersion, today)
+        val brandIds = d.brands.brandIds(p.userId, p.role)
+        requireBrandScope(p.role, brandIds)
+        call.respond(d.service.summary(reach, q["level"], nodeId, from, to, brandIds))
+    }
+    get("/dashboards/geo-validation") {
+        val p = call.principal
+        if (p.role !in DASHBOARD_ROLES) throw ApiProblem(ProblemCode.ERR_FORBIDDEN, "dashboards are not available to this role")
+        val q = call.request.queryParameters
+        val today = BusinessDate.of(d.clock.now().toEpochMilli()).toJavaLocalDate()
+        fun date(n: String, default: LocalDate) = q[n]?.let { s ->
+            runCatching { LocalDate.parse(s) }.getOrNull() ?: throw ApiProblem(ProblemCode.ERR_VALIDATION, "bad $n", errors = listOf(FieldError("query.$n", "invalid_value")))
+        } ?: default
+        val from = date("from", today)
+        val to = date("to", from)
+        val nodeId = q["node_id"]?.let { it.toLongOrNull()?.takeIf { v -> v >= 0 } ?: throw ApiProblem(ProblemCode.ERR_VALIDATION, "bad node_id", errors = listOf(FieldError("query.node_id", "invalid_value"))) }
+        refuseBrandCaller(p.role)
+        val reach = d.reach.reach(p.userId, p.role, p.scopeVersion, today)
+        call.respond(d.service.geoValidation(reach, q["level"], nodeId, from, to))
     }
 }
