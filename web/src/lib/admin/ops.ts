@@ -117,8 +117,10 @@ export const TEAM_OPS = {
  * gets its Submit button: only the roles POST /v1/day/final-submit accepts with the shipped config, i.e. the TSO. A DMO or WM
  * is accepted only when cfg.day.final_submit_delegate_roles lists the role; that key is server-only (default []), so the page
  * cannot know it and does not offer the button (status file ask: a server-computed `can_submit` on the preview).
+ * The page roles include WM (fix round): the menu lists Final Submit for a WM, the preview API serves any role in reach, and a WM
+ * may be a delegate (the proxy forwards a WM submit).
  */
-export const FINAL_SUBMIT_PAGE_ROLES = ["TSO", "DMO", "ADMIN", "SUPERADMIN"] as const satisfies RoleList;
+export const FINAL_SUBMIT_PAGE_ROLES = ["TSO", "DMO", "WM", "ADMIN", "SUPERADMIN"] as const satisfies RoleList;
 export const FINAL_SUBMIT_BUTTON_ROLES = ["TSO"] as const satisfies RoleList;
 
 export type TeamOpKey = keyof typeof TEAM_OPS;

@@ -55,7 +55,7 @@ describe("the page per role", () => {
     expect(m).toContain('data-testid="final-submit-form"');
     expect(text(m)).toContain("RouteDaily");
   });
-  for (const role of ["ADMIN", "SUPERADMIN", "DMO"]) {
+  for (const role of ["ADMIN", "SUPERADMIN", "DMO", "WM"]) {
     it(`${role}: the preview without the Submit form (the API would answer 403)`, async () => {
       const m = await pageAs(role);
       expect(m).not.toContain('data-testid="forbidden"');
@@ -66,11 +66,13 @@ describe("the page per role", () => {
   it("ADMIN keeps Delete Section Data on the preview", async () => {
     expect(await pageAs("ADMIN")).toContain('data-testid="void-10231"');
   });
-  for (const role of ["WM", "SUPPORT"]) {
-    it(`${role}: the page is not theirs (the menu's roles)`, async () => {
-      expect(await pageAs(role)).toContain('data-testid="forbidden"');
-    });
-  }
+  it("SUPPORT: the page is not theirs (the menu's roles)", async () => {
+    expect(await pageAs("SUPPORT")).toContain('data-testid="forbidden"');
+  });
+  it("the menu lists Final Submit for every page role, WM included (fix round)", async () => {
+    const { menuFor } = await import("@/lib/menu/menu");
+    for (const r of FINAL_SUBMIT_PAGE_ROLES) expect(menuFor(r).some((sec) => sec.items.some((i) => i.href === "/final-submit")), r).toBe(true);
+  });
 });
 
 describe("the team-op proxy", () => {
@@ -86,6 +88,14 @@ describe("the team-op proxy", () => {
     h.stub({ method: "POST", path: "/v1/day/final-submit", fn: () => ({ status: 200, body: { zone_id: 3341 } }) });
     expect((await post("TSO")).status).toBe(200);
     expect(h.calls()[0]?.body).toEqual(body);
+  });
+  it("a delegated DMO or WM (cfg.day.final_submit_delegate_roles lists them): the proxy forwards and the API's 200 passes through; the page still offers no button until the preview says so (ask 4: FinalSubmitPreview.can_submit)", async () => {
+    // the API with a delegate config: the TSO, DMO and WM are accepted
+    h.stub({ method: "POST", path: "/v1/day/final-submit", fn: () => ({ status: 200, body: { zone_id: 3341, business_date: "2026-10-29" } }) });
+    expect((await post("WM")).status).toBe(200);
+    expect((await post("DMO")).status).toBe(200);
+    expect(h.calls().map((c) => c.role)).toEqual(["WM", "DMO"]);
+    for (const role of ["WM", "DMO"]) expect(await pageAs(role), role).not.toContain('data-testid="final-submit-form"');
   });
   it("a DMO's submit is forwarded and the API decides (403 with the default delegate list)", async () => {
     h.stub({ method: "POST", path: "/v1/day/final-submit", fn: (c) => (c.role === "TSO" ? { status: 200, body: {} } : { status: 403, body: { type: "x", title: "x", status: 403, code: "ERR_FORBIDDEN" } }) });
