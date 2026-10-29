@@ -66,6 +66,17 @@ internal object AsWasSql {
      */
     fun probe(h: org.jdbi.v3.core.Handle, from: java.time.LocalDate): Plain {
         val key = "${h.connection.catalog}|$from"
+        // One handle = one request: it keeps the first answer it got, so the member list of a node and the joins of the same request cannot be built on
+        // two different answers when the cached one expires (or a bulk edit lands) between the two calls.
+        val own = synchronized(perHandle) { perHandle.getOrPut(h) { HashMap() } }
+        synchronized(own) { own[key] }?.let { return it }
+        return probeShared(h, from, key).also { synchronized(own) { own[key] = it } }
+    }
+
+    /** The answers a handle has already given (a request's own view), weakly held by the handle. */
+    private val perHandle = java.util.WeakHashMap<org.jdbi.v3.core.Handle, HashMap<String, Plain>>()
+
+    private fun probeShared(h: org.jdbi.v3.core.Handle, from: java.time.LocalDate, key: String): Plain {
         probes[key]?.let { (at, v) -> if (System.currentTimeMillis() - at < probeTtlMs) return v }
         // Single flight: callers that arrive while the probe of this key is running wait for its answer instead of each scanning the history tables
         // (after a bulk edit every dashboard request of the 20 s window would otherwise run its own).

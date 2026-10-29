@@ -94,4 +94,14 @@ class AsWasProbeTest {
             assertEquals(1, queries.get(), "the overlapping probe took the running one's answer instead of scanning the history tables again")
         } finally { AsWasSql.probeHook = null; AsWasSql.probeJoinHook = null }
     }
+
+    @Test
+    fun aHandleKeepsItsFirstAnswerSoOneRequestIsBuiltOnOneProbe() {
+        fresh.db.jdbi.withHandle<Unit, Exception> { h ->
+            assertEquals(true, AsWasSql.probe(h, day).geo)
+            h.execute("UPDATE app.route SET zone_id = (SELECT id FROM app.zone WHERE code = 'Z2') WHERE code = 'R2'")   // a geography edit lands mid-request
+            assertEquals(true, AsWasSql.probe(h, day).geo, "the same request still sees the answer it started with")
+        }
+        assertEquals("f/t/t", probe(), "the next request (a new handle) sees the edit")
+    }
 }
