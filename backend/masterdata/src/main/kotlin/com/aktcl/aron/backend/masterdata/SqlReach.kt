@@ -15,7 +15,7 @@ class GeoSnapshot(val geo: Geo, val version: Long)
 /** Geography snapshot from PostgreSQL, refreshed at most every [ttlMs] (master data changes rarely). */
 class GeoRepository(
     private val db: Database, private val clock: AronClock = AronClock.SYSTEM, private val ttlMs: Long = 60_000,
-    /** How long a caller that must not see the old geography (after an [invalidate]) waits for a reload in progress before it loads on its own; keep it below the pool's connection timeout. */
+    /** How long a caller that must not see the old geography (after an [invalidate], or when the expired entry is older than twice the TTL) waits for a reload in progress before it loads on its own; keep it below the pool's connection timeout. */
     private val lockWaitMs: Long = 1_000,
 ) {
     /** A snapshot is valid only for the [gen]eration it was read under: [invalidate] bumps the generation, so no reader accepts an entry that predates it. */
@@ -44,7 +44,7 @@ class GeoRepository(
 
     /**
      * The current snapshot and its version as ONE pair (a reach computed from the geography is cached under the version of that same geography).
-     * Only one thread reloads at a time. When the entry is merely older than the TTL (no edit since), a caller that finds a reload in progress is served the
+     * Only one thread reloads at a time. When the entry is merely older than the TTL, and younger than twice the TTL (no edit since), a caller that finds a reload in progress is served the
      * expired entry instead of waiting: a request that holds a pool connection must never queue behind a loader that needs one. After an [invalidate] no old
      * entry may be served; a caller then waits up to [lockWaitMs] for the reload in progress and, failing that, loads on its own (it began after the edit).
      */
