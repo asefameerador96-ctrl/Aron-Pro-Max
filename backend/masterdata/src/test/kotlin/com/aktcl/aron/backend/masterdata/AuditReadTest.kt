@@ -170,6 +170,36 @@ class AuditReadTest {
         }
     }
 
+    /**
+     * Lane X2, lead ruling R-W-09 (7) (B3's ask): the audit page shows a zone-day reopen to ANALYST and SUPPORT too. The
+     * images are DayService.reopen's (D-B3-08): before = the live close, after = the reopen; every member is on the
+     * `zone_day` allowlist, and the reason stays masked as on every row.
+     */
+    @Test
+    fun aZoneDayReopenIsListedWithItsImages() = app {
+        val actor = AronPrincipal(admin, "admin1001", Role.ADMIN, 1, "aron-api", null, null, "web", emptyList(), false, listOf("pwd", "mfa"), "j", Instant.now().plusSeconds(600)) // wall-clock-ok: token expiry only, as in setUp
+        env.fresh.db.jdbi.useTransaction<Exception> { h ->
+            AuditLog.write(
+                h, actor, "zone_day", "t-audit-6", "reopen",
+                buildJsonObject { put("final_submit_uuid", "6f1c2b0e-8d1a-4c5e-9f3a-2b7d4e6a8c10"); put("submitted_at", "2027-01-02T18:00:05.000Z"); put("via", "job"); put("submitted_by", JsonNull); put("late_rows", 2) },
+                buildJsonObject { put("reopened_at", "2027-01-03T04:00:00.000Z"); put("reopen_uuid", "7a2d3c1f-9e8b-4d6a-8c5b-3e1f0a9d7b20"); put("route_day_count", 4) },
+                "SR found unsent memos on the phone", null,
+            )
+        }
+        for (role in listOf(Role.ANALYST, Role.SUPPORT)) {
+            val e = one("t-audit-6", role)
+            assertEquals("zone_day", e.s("entity")); assertEquals("reopen", e.s("action"))
+            val before = e.side("before"); val after = e.side("after")
+            assertEquals(mapOf("final_submit_uuid" to "6f1c2b0e-8d1a-4c5e-9f3a-2b7d4e6a8c10", "submitted_at" to "2027-01-02T18:00:05.000Z", "via" to "job", "late_rows" to "2"),
+                (before.keys - "submitted_by").associateWith { before.s(it) }, "$role: the close's members in clear")
+            assertEquals(JsonNull, before["submitted_by"], "$role: a job close has no submitter")
+            assertEquals(mapOf("reopened_at" to "2027-01-03T04:00:00.000Z", "reopen_uuid" to "7a2d3c1f-9e8b-4d6a-8c5b-3e1f0a9d7b20", "route_day_count" to "4"),
+                after.keys.associateWith { after.s(it) }, "$role: the reopen's members in clear")
+            assertEquals(AuditMask.MASK, e.s("reason"), "$role: free-text reason")
+        }
+        assertEquals("SR found unsent memos on the phone", one("t-audit-6", Role.ADMIN).s("reason"))
+    }
+
     @Test
     fun pagesNewestFirstByIdWithoutGapsOrOverlap() = app {
         val all = Json.parseToJsonElement(get("limit=500", Role.ADMIN).bodyAsText()).jsonObject["items"]!!.jsonArray.map { it.jsonObject.s("id").toLong() }
